@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar</title>
+<script src="../../sdk/board21.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font);
+    display: flex; flex-direction: column; overflow: hidden; box-sizing: border-box;
+    padding: clamp(6px, 2.5vmin, 18px); gap: clamp(4px, 1.5vmin, 12px);
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  header { display: flex; align-items: center; gap: clamp(4px, 1.5vmin, 10px); flex: 0 0 auto; }
+  #title { flex: 1; text-align: center; font-weight: 800; font-size: min(7vw, 9vh); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  button {
+    font: inherit; border: 0; cursor: pointer; color: var(--b21-text); background: var(--b21-surface-2);
+    border-radius: 999px; height: clamp(30px, 10vmin, 54px); min-width: clamp(30px, 10vmin, 54px);
+    display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: min(4.5vw, 6vh);
+  }
+  button svg { width: 55%; height: 55%; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+  #today { padding: 0 clamp(10px, 3vmin, 18px); background: var(--b21-accent); color: var(--b21-on-accent); }
+  #today[hidden] { display: none; }
+  .grid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: auto repeat(6, 1fr); gap: clamp(2px, 0.8vmin, 6px); }
+  .dow { text-align: center; font-weight: 700; color: var(--b21-muted); font-size: min(3.6vw, 4.5vh); padding-bottom: 2px; }
+  .day { display: flex; align-items: center; justify-content: center; border-radius: clamp(6px, 1.6vmin, 12px); font-size: min(4.8vw, 6.2vh); font-weight: 600; font-variant-numeric: tabular-nums; background: var(--b21-surface); }
+  .day.other { color: var(--b21-muted); opacity: .45; background: transparent; }
+  .day.weekend:not(.other) { background: var(--b21-surface-2); }
+  .day.today { background: var(--b21-accent); color: var(--b21-on-accent); font-weight: 800; box-shadow: 0 0 0 2px var(--b21-accent); }
+  @media (max-height: 170px) { .dow { display: none; } .grid { grid-template-rows: repeat(6, 1fr); } }
+</style>
+</head>
+<body>
+  <header>
+    <button id="prev" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+    <div id="title" aria-live="polite"></div>
+    <button id="today">Today</button>
+    <button id="next" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+  </header>
+  <div class="grid" id="grid" role="grid"></div>
+<script>
+  // Config only: { weekStart: 0 (Sunday) | 1 (Monday) }.  The month being viewed is not saved:
+  // the calendar always opens on the current month.
+  let config = { weekStart: 0 };
+  const now = new Date();
+  let view = { y: now.getFullYear(), m: now.getMonth() };
+  const $ = id => document.getElementById(id);
+  const locale = () => (Board21.context && Board21.context.locale) || undefined;
+
+  function render() {
+    const today = new Date();
+    const first = new Date(view.y, view.m, 1);
+    $('title').textContent = first.toLocaleDateString(locale(), { month: 'long', year: 'numeric' });
+    $('today').hidden = view.y === today.getFullYear() && view.m === today.getMonth();
+    let html = '';
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(2023, 0, 1 + ((i + config.weekStart) % 7)); // Jan 1 2023 was a Sunday
+      html += `<div class="dow" role="columnheader" title="${d.toLocaleDateString(locale(), { weekday: 'long' })}">${d.toLocaleDateString(locale(), { weekday: 'short' })}</div>`;
+    }
+    const offset = (first.getDay() - config.weekStart + 7) % 7;
+    for (let i = 0; i < 42; i++) {
+      const d = new Date(view.y, view.m, 1 - offset + i);
+      const cls = ['day'];
+      if (d.getMonth() !== view.m) cls.push('other');
+      if (d.getDay() === 0 || d.getDay() === 6) cls.push('weekend');
+      if (d.toDateString() === today.toDateString()) cls.push('today');
+      html += `<div class="${cls.join(' ')}" role="gridcell" aria-label="${d.toLocaleDateString(locale(), { weekday: 'long', month: 'long', day: 'numeric' })}">${d.getDate()}</div>`;
+    }
+    $('grid').innerHTML = html;
+    Board21.window.setTitle(today.toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' }));
+  }
+
+  function move(delta) {
+    const d = new Date(view.y, view.m + delta, 1);
+    view = { y: d.getFullYear(), m: d.getMonth() };
+    render();
+  }
+
+  function setMenu() {
+    Board21.menu.set([
+      { id: 'sun', label: 'Week starts on Sunday', checked: config.weekStart === 0 },
+      { id: 'mon', label: 'Week starts on Monday', checked: config.weekStart === 1 }
+    ]);
+  }
+
+  $('prev').onclick = () => move(-1);
+  $('next').onclick = () => move(1);
+  $('today').onclick = () => { const t = new Date(); view = { y: t.getFullYear(), m: t.getMonth() }; render(); };
+
+  Board21.on('menu', id => {
+    config.weekStart = id === 'mon' ? 1 : 0;
+    Board21.saveConfig(config);
+    setMenu(); render();
+  });
+  Board21.on('config', c => { config = Object.assign({ weekStart: 0 }, c || {}); setMenu(); render(); });
+
+  Board21.ready().then(ctx => {
+    config = Object.assign(config, ctx.config || {});
+    setMenu(); render();
+    // Keep "today" right if the board stays open past midnight.
+    let day = new Date().toDateString();
+    setInterval(() => { const d = new Date().toDateString(); if (d !== day) { day = d; render(); } }, 60000);
+  });
+</script>
+</body>
+</html>

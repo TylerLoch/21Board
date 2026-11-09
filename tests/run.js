@@ -605,6 +605,47 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Calendar and date-only clock', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    ok(await page.evaluate(() => window.__board21.catalog().some(a => a.id === 'calendar')), 'Calendar is in the App Picker');
+    await page.evaluate(() => { window.__board21.openApp('calendar'); window.__board21.openApp('clock'); });
+    await page.waitForTimeout(1500);
+    const cal = page.frameLocator('.win[data-ikey="calendar:1"] iframe');
+    const info = await cal.locator('body').evaluate(() => {
+      const t = new Date();
+      return {
+        title: document.getElementById('title').textContent,
+        expect: t.toLocaleDateString(Board21.context.locale, { month: 'long', year: 'numeric' }),
+        todays: Array.from(document.querySelectorAll('.day.today')).map(d => d.textContent),
+        date: String(t.getDate()), cells: document.querySelectorAll('.day').length,
+        firstDow: document.querySelector('.dow').title
+      };
+    });
+    ok(info.title === info.expect && info.cells === 42, `calendar opens on the current month (${info.title})`);
+    ok(info.todays.length === 1 && info.todays[0] === info.date, `exactly one day is highlighted, and it is today (${info.todays.join(',')})`);
+    ok(info.firstDow === 'Sunday', 'week starts on Sunday by default');
+    await cal.locator('#next').click(); await page.waitForTimeout(150);
+    ok((await cal.locator('.day.today').count()) === 0 && await cal.locator('#today').isVisible(), 'next month: no today highlight, Today button shown');
+    await cal.locator('#today').click(); await page.waitForTimeout(150);
+    ok((await cal.locator('.day.today').count()) === 1, 'Today button returns to the current month');
+    await page.click('.win[data-ikey="calendar:1"] .win-label'); await page.click('#menu [data-id="mon"]'); await page.waitForTimeout(300);
+    ok((await cal.locator('.dow').first().getAttribute('title')) === 'Monday', 'menu switches the week to start on Monday');
+    ok(await page.evaluate(() => window.__board21.state.conf.get('calendar:1').weekStart === 1), 'week start is saved as config');
+
+    await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="date"]'); await page.waitForTimeout(600);
+    const clock = page.frameLocator('.win[data-ikey="clock:1"] iframe');
+    const wd = await clock.locator('#weekday').textContent();
+    const expectWd = await clock.locator('body').evaluate(() => new Date().toLocaleDateString(Board21.context.locale, { weekday: 'long' }));
+    ok(wd === expectWd && await clock.locator('#dateonly').isVisible() && !(await clock.locator('#analog').isVisible()), `clock "Date only" shows today's date (${wd})`);
+    const cd = await page.evaluate(() => Object.assign({}, window.__board21.state.wins.get('clock:1').disp));
+    ok(Math.abs(cd.w / (cd.h - 40) - 2.2) < 0.03, 'date-only clock uses a wide shape');
+    await page.screenshot({ path: OUT + 'calendar-and-date.png' });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');

@@ -44,9 +44,21 @@ self.BOARD21_APPS = [
     permissions: []
   },
   {
+    id: 'calendar',
+    name: 'Calendar',
+    description: 'Month calendar with today highlighted.',
+    version: '1.0.0',
+    entry: 'apps/calendar/index.html',
+    files: ['apps/calendar/index.html'],
+    color: '#db2777',
+    icon: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><rect x="13" y="13.5" width="4" height="3.5" rx="0.8" fill="currentColor" stroke="none"/></svg>',
+    window: { width: 420, height: 380, minWidth: 220, minHeight: 200 },
+    permissions: []
+  },
+  {
     id: 'clock',
     name: 'Clock',
-    description: 'Analog or digital clock.',
+    description: 'Analog, digital, or date-only clock.',
     version: '1.0.0',
     entry: 'apps/clock/index.html',
     files: ['apps/clock/index.html'],

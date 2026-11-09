@@ -20,8 +20,12 @@
   #time { font-size: min(24vw, 62vh); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
   #time small { font-size: .38em; font-weight: 600; color: var(--b21-muted); margin-left: .15em; }
   #date { font-size: min(6vw, 14vh); color: var(--b21-muted); font-weight: 500; }
-  body.digital #analog { display: none; }
+  body.digital #analog, body.date #analog { display: none; }
   body.digital #digital { display: flex; }
+  #dateonly { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 1vh; text-align: center; }
+  body.date #dateonly { display: flex; }
+  #weekday { font-size: min(17vw, 40vh); font-weight: 800; line-height: 1.05; }
+  #fulldate { font-size: min(8vw, 20vh); font-weight: 600; color: var(--b21-muted); }
 </style>
 </head>
 <body>
@@ -34,11 +38,12 @@
     <circle class="hub" cx="100" cy="100" r="4.5"/>
   </svg>
   <div id="digital"><div id="time"></div><div id="date"></div></div>
+  <div id="dateonly"><div id="weekday"></div><div id="fulldate"></div></div>
 <script>
-  // Config only (no content): { style: 'analog' | 'digital', hour24, seconds, date }
+  // Config only (no content): { style: 'analog' | 'digital' | 'date', hour24, seconds, date }
   const DEFAULTS = { style: 'analog', hour24: false, seconds: true, date: true };
   let config = Object.assign({}, DEFAULTS);
-  const ASPECT = { analog: 1, digital: 2.2 };
+  const ASPECT = { analog: 1, digital: 2.2, date: 2.2 };
 
   const ticks = document.getElementById('ticks');
   let html = '';
@@ -55,7 +60,11 @@
   function render() {
     const d = new Date();
     const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
-    if (config.style === 'analog') {
+    const locale = Board21.context ? Board21.context.locale : undefined;
+    if (config.style === 'date') {
+      document.getElementById('weekday').textContent = d.toLocaleDateString(locale, { weekday: 'long' });
+      document.getElementById('fulldate').textContent = d.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' });
+    } else if (config.style === 'analog') {
       rot('h', (h % 12) * 30 + m * 0.5);
       rot('m', m * 6 + s * 0.1);
       rot('s', s * 6);
@@ -66,26 +75,30 @@
       document.getElementById('time').innerHTML = `${hh}:${String(m).padStart(2, '0')}${config.seconds ? ':' + String(s).padStart(2, '0') : ''}${ampm}`;
       const date = document.getElementById('date');
       date.style.display = config.date ? '' : 'none';
-      date.textContent = d.toLocaleDateString(Board21.context ? Board21.context.locale : undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+      date.textContent = d.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' });
     }
   }
 
   function apply() {
     document.body.classList.toggle('digital', config.style === 'digital');
+    document.body.classList.toggle('date', config.style === 'date');
     Board21.window.setAspectRatio(ASPECT[config.style] || 1);
     Board21.menu.set([
       { id: 'analog', label: 'Analog', checked: config.style === 'analog' },
       { id: 'digital', label: 'Digital', checked: config.style === 'digital' },
+      { id: 'date', label: 'Date only', checked: config.style === 'date' },
       { separator: true },
-      { id: 'seconds', label: 'Show seconds', checked: !!config.seconds },
+      { id: 'seconds', label: 'Show seconds', checked: !!config.seconds, disabled: config.style === 'date' },
       { id: 'hour24', label: '24-hour time', checked: !!config.hour24, disabled: config.style !== 'digital' },
-      { id: 'date', label: 'Show date', checked: !!config.date, disabled: config.style !== 'digital' }
+      { id: 'showdate', label: 'Show date', checked: !!config.date, disabled: config.style !== 'digital' }
     ]);
     render();
   }
 
   Board21.on('menu', id => {
     if (id === 'analog' || id === 'digital') config.style = id;
+    else if (id === 'date') config.style = 'date';
+    else if (id === 'showdate') config.date = !config.date;
     else if (id in config) config[id] = !config[id];
     Board21.saveConfig(config);
     apply();
