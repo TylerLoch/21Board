@@ -170,8 +170,8 @@ const SUITES = [
 
     // ---- view shrink keeps windows inside; growing back restores positions
     await page.setViewportSize({ width: 800, height: 600 }); await page.waitForTimeout(400);
-    const shrunk = await wins(page);
-    ok(Object.values(shrunk).every(r => r.x >= 0 && r.y >= 0 && r.x + r.w <= 800 + 0.5 && r.y + r.h <= 600 + 0.5), 'windows fit inside a smaller view');
+    const shrunk = await page.evaluate(() => Array.from(document.querySelectorAll('.win')).map(e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }));
+    ok(shrunk.every(r => r.x >= -0.5 && r.y >= -0.5 && r.x + r.w <= 800 + 0.5 && r.y + r.h <= 600 + 0.5), 'windows fit inside a smaller view (on screen)');
     await page.setViewportSize({ width: 1400, height: 860 }); await page.waitForTimeout(400);
     ok(JSON.stringify(await wins(page)) === JSON.stringify(afterReload), 'growing the view restores original positions');
 
@@ -251,8 +251,8 @@ const SUITES = [
     await b.waitForTimeout(1500);
     ok(JSON.stringify(await wins(b)) === JSON.stringify(['name-picker:1', 'notes:1']), 'replace import: windows match file (' + (await wins(b)).join(',') + ')');
     ok(await frameOf(b, 'notes:1').locator('textarea').inputValue() === 'Secret student info', 'replace import: content restored');
-    const rects = await b.evaluate(() => Array.from(window.__board21.state.wins.values()).map(w => w.disp));
-    ok(rects.every(r => r.x + r.w <= 1000 && r.y + r.h <= 700), 'imported windows scaled/fit to smaller screen');
+    const rects = await b.evaluate(() => Array.from(document.querySelectorAll('.win')).map(e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }));
+    ok(rects.every(r => r.x >= -0.5 && r.y >= -0.5 && r.x + r.w <= 1000.5 && r.y + r.h <= 700.5), 'imported windows scaled/fit to smaller screen (on screen)');
     ok(await b.evaluate(() => window.__board21.state.insts.has('dice:1') && !window.__board21.state.insts.get('dice:1').open), 'closed dice instance imported');
 
     // Add template on top → instances renumbered
@@ -643,6 +643,105 @@ const SUITES = [
     const cd = await page.evaluate(() => Object.assign({}, window.__board21.state.wins.get('clock:1').disp));
     ok(Math.abs(cd.w / (cd.h - 40) - 2.2) < 0.03, 'date-only clock uses a wide shape');
     await page.screenshot({ path: OUT + 'calendar-and-date.png' });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Board scales with the screen size', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    const screenRects = p => p.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('.win')).map(e => { const r = e.getBoundingClientRect(); return [e.dataset.ikey, { x: r.left, y: r.top, w: r.width, h: r.height }]; })));
+    const layoutRects = p => p.evaluate(() => Object.fromEntries(Array.from(window.__board21.state.wins.values()).sort((a, b) => a.ikey < b.ikey ? -1 : 1).map(w => [w.ikey, Object.assign({}, w.disp)])));
+    const setRect = (ik, r) => page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, r]); // saves, like a real move
+    const ovl = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.5 && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 0.5;
+    ok(JSON.stringify(await page.evaluate(() => window.__board21.state.board.layout)) === JSON.stringify({ w: 1400, h: 860 }), 'a new board takes the screen size as its layout size');
+    await page.evaluate(() => { for (const id of ['notes', 'timer', 'dice', 'clock']) window.__board21.openApp(id); });
+    await page.waitForTimeout(1500);
+    // A tidy 2x2 arrangement spread over the big screen, snapped 8px apart.
+    await setRect('notes:1', { x: 40, y: 40, w: 600, h: 380 });
+    await setRect('timer:1', { x: 648, y: 40, w: 700, h: 380 });
+    await setRect('dice:1', { x: 40, y: 428, w: 600, h: 380 });
+    await setRect('clock:1', { x: 648, y: 428, w: 380, h: 420 });
+    await page.waitForTimeout(200);
+    const before = await layoutRects(page);
+
+    // Move to a laptop-sized screen: same arrangement, smaller, no new overlaps, all on screen.
+    await page.setViewportSize({ width: 1000, height: 620 }); await page.waitForTimeout(400);
+    const small = await screenRects(page);
+    const list = Object.values(small);
+    ok(list.every(r => r.x >= -0.5 && r.y >= -0.5 && r.x + r.w <= 1000.5 && r.y + r.h <= 620.5), 'all windows fit on the smaller screen');
+    let clash = false; for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) if (ovl(list[i], list[j])) clash = true;
+    ok(!clash, 'shrinking the screen does not make windows overlap');
+    ok(small['notes:1'].x < small['timer:1'].x && small['notes:1'].y < small['dice:1'].y && small['timer:1'].y < small['clock:1'].y, 'the arrangement is kept');
+    const z = await page.evaluate(() => window.__board21.zoom.s);
+    ok(Math.abs(small['timer:1'].w - 700 * z) < 1.5, `windows are drawn at the board zoom (${Math.round(z * 100)}%)`);
+    ok(JSON.stringify(await layoutRects(page)) === JSON.stringify(before), 'saved layout is untouched by the screen change');
+
+    // Dragging while zoomed follows the pointer (drag the Clock right, into open space).
+    const c0 = small['clock:1'];
+    await page.evaluate(() => window.__board21.focusWin('clock:1'));
+    await page.mouse.move(c0.x + 20, c0.y + 10); await page.mouse.down();
+    for (let i = 1; i <= 10; i++) { await page.mouse.move(c0.x + 20 + i * 6, c0.y + 10); await page.waitForTimeout(16); }
+    await page.mouse.up(); await page.waitForTimeout(250);
+    const c1 = (await screenRects(page))['clock:1'];
+    ok(Math.abs((c1.x - c0.x) - 60) <= 12 * z + 1 && Math.abs(c1.y - c0.y) <= 12 * z + 1, `zoomed drag follows the pointer (moved ${Math.round(c1.x - c0.x)}px for a 60px drag)`);
+
+    // A second, bigger tab shows the same layout scaled to its own screen.
+    const page2 = await (await browser.newContext({ viewport: { width: 1400, height: 860 } })).newPage();
+    await page2.goto(BASE); await page2.waitForTimeout(300);
+    await page2.close();
+    const tabB = await ctx.newPage(); await tabB.setViewportSize({ width: 1400, height: 860 });
+    await tabB.goto(BASE); await tabB.waitForTimeout(1500);
+    const la = await layoutRects(page), lb = await layoutRects(tabB);
+    ok(JSON.stringify(lb) === JSON.stringify(la), 'two tabs on different screen sizes agree on the layout' + (JSON.stringify(lb) === JSON.stringify(la) ? '' : ' ' + JSON.stringify({ la, lb })));
+    ok(await tabB.evaluate(() => window.__board21.zoom.s) === 1, 'the big tab shows it at 100%');
+    await tabB.close();
+
+    // Back to the big screen: exactly as before (except the moved window).
+    await page.setViewportSize({ width: 1400, height: 860 }); await page.waitForTimeout(400);
+    const back = await layoutRects(page);
+    ok(['notes:1', 'dice:1', 'timer:1'].every(k => JSON.stringify(back[k]) === JSON.stringify(before[k])), 'growing back restores the original layout');
+
+    // "Use this screen's size": windows keep their on-screen place and become full size.
+    await page.setViewportSize({ width: 1000, height: 620 }); await page.waitForTimeout(400);
+    const pre = await screenRects(page);
+    await page.evaluate(() => window.__board21.useScreenAsLayout()); await page.waitForTimeout(400);
+    const post = await screenRects(page);
+    ok(await page.evaluate(() => window.__board21.zoom.s) === 1 && JSON.stringify(await page.evaluate(() => window.__board21.state.board.layout)) === JSON.stringify({ w: 1000, h: 620 }), 'this screen becomes the layout size');
+    ok(Object.keys(pre).every(k => Math.abs(pre[k].x - post[k].x) <= 1.5 && Math.abs(pre[k].y - post[k].y) <= 1.5 && Math.abs(pre[k].w - post[k].w) <= 1.5), 'windows stay where they were on screen');
+
+    // Turning scaling off goes back to keep-inside-the-edges behaviour.
+    await page.setViewportSize({ width: 1400, height: 860 }); await page.waitForTimeout(300);
+    await page.evaluate(() => { window.__board21.state.settings.scaleToScreen = false; });
+    await page.setViewportSize({ width: 900, height: 600 }); await page.waitForTimeout(400);
+    ok(await page.evaluate(() => window.__board21.zoom.s) === 1, 'with scaling off windows are not zoomed');
+    const off = Object.values(await screenRects(page));
+    ok(off.every(r => r.x + r.w <= 900.5 && r.y + r.h <= 600.5), 'and are kept inside the screen');
+    await page.evaluate(() => { window.__board21.state.settings.scaleToScreen = true; });
+
+    // An older board without a layout size (arranged on a bigger screen) gets one that fits all its windows.
+    await page.setViewportSize({ width: 1000, height: 620 }); await page.waitForTimeout(200);
+    await page.evaluate(async () => {
+      const s = window.__board21.state;
+      for (const [k, i] of s.insts) s.insts.set(k, Object.assign({}, i, { rect: Object.assign({}, i.rect, { x: i.rect.x + 600 }) }));
+      const tx = await new Promise(res => { const r = indexedDB.open('21Board'); r.onsuccess = () => res(r.result); });
+      await new Promise(res => { const t = tx.transaction('records', 'readwrite'); const st = t.objectStore('records');
+        for (const [k, i] of s.insts) st.put({ key: 'inst:1:' + k, type: 'inst', rev: Date.now(), updatedAt: Date.now(), by: 'test', value: i });
+        st.get('board:1').onsuccess = e => { const b = e.target.result; b.value.layout = null; b.rev = Date.now(); st.put(b); };
+        t.oncomplete = res; });
+    });
+    await page.reload(); await page.waitForTimeout(1500);
+    const L = await page.evaluate(() => window.__board21.state.board.layout);
+    const legacy = Object.values(await screenRects(page));
+    ok(L && L.w > 1000 && legacy.every(r => r.x + r.w <= 1000.5 && r.y + r.h <= 620.5), `a board without a layout size gets one that fits its windows (${L && L.w}×${L && L.h})`);
+
+    // Taps inside a zoomed app still land on the right control.
+    await page.evaluate(() => window.__board21.focusWin('dice:1')); await page.waitForTimeout(200);
+    const before3 = await page.evaluate(() => JSON.stringify(window.__board21.state.data.get('dice:1') || null));
+    await page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('#roll').click(); await page.waitForTimeout(400);
+    ok(await page.evaluate(() => !!(window.__board21.state.data.get('dice:1') || {}).values), 'buttons inside a zoomed window work');
+    await page.screenshot({ path: OUT + 'scaled-board.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

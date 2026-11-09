@@ -69,7 +69,11 @@ without changing the format: `settings.activeBoard` will choose which board is s
 ### `board:<b>`
 
 ```js
-{ id: 1, name: "My Board", background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" } }
+{
+  id: 1, name: "My Board",
+  background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" },
+  layout: { w: 1920, h: 1080 }   // the screen size (CSS px) the board is arranged for; see "Layout space"
+}
 ```
 
 `color: null` means "match the light/dark theme".
@@ -88,10 +92,27 @@ without changing the format: `settings.activeBoard` will choose which board is s
 }
 ```
 
-`rect` is where the teacher *put* the window. If the screen is smaller (another device, a
-resized browser), 21Board shrinks and moves the window to fit **when displaying it**, but doesn't
-overwrite `rect` unless the teacher moves the window. Making the screen bigger again restores
-the original layout.
+`rect` is where the teacher *put* the window, in **layout space** (below). It only changes when
+the window is moved or resized, never because the screen changed.
+
+#### Layout space
+
+Window rects are CSS px on a board of size `board.layout` (the screen it was arranged on, set when
+the board is created). On any screen, 21Board draws the whole layout at one zoom factor
+`s = min(screenW / layout.w, screenH / layout.h)`, centered left-to-right, by giving each window
+its layout size and a CSS `transform: translate(…) scale(s)`. So:
+
+- Moving to a smaller or larger screen keeps the arrangement exactly (nothing starts overlapping);
+  sub-apps keep the same CSS size and are simply drawn smaller or larger.
+- Several copies of 21Board on different-sized screens agree on where everything is.
+- Pointer movement is divided by `s` before it's applied, so drags follow the finger.
+- *Settings → Use this screen's size* converts every rect to the current screen's on-screen
+  footprint and sets `layout` to this screen (zoom becomes 100%).
+- With *Settings → Scale the board to fit the screen* off (`settings.scaleToScreen: false`), the zoom
+  is always 1 and windows that don't fit are moved/shrunk inside the screen when displayed.
+
+A board saved before `layout` existed gets one on first load: the current screen size, enlarged if
+needed to contain all of its windows.
 
 ### `data:…` and `conf:…`
 
@@ -150,7 +171,7 @@ on Chrome) reads it.
   "kind": "full",                 // "full" = backup, "template" = layout only
   "exportedAt": "2026-11-09T18:30:00.000Z",
   "generator": "21Board 1.0.0",
-  "viewport": { "width": 1920, "height": 1080 },   // screen size when exported
+  "viewport": { "width": 1920, "height": 1080 },   // the board's layout size: the space the rects are in
   "theme": "light",
   "board": {
     "name": "Room 12",
@@ -185,5 +206,7 @@ Importing offers two choices:
 - **Add to my board** — keeps everything and adds the file's windows. Instance numbers are
   renumbered to the next free number per app, and windows are nudged into free space.
 
-If the file's `viewport` differs from the current screen by more than 5%, window rectangles are
-scaled to fit the new screen.
+With scaling on, *Replace* adopts the file's `viewport` as this board's layout size, so the board
+looks exactly as it did and is zoomed to fit this screen. *Add* (or scaling off) converts the
+file's rects into this board's layout (or this screen) with one uniform scale factor, keeping
+shapes and spacing.

@@ -64,12 +64,14 @@
     snapping: true,          // snap + resist overlap while dragging
     resistance: 'normal',    // 'gentle' | 'normal' | 'strong'
     pickerCorners: 'both',   // 'both' | 'left' | 'right'
+    scaleToScreen: true,     // zoom the whole layout to fit the screen (see Zoom in section 6)
     devMode: false,
     devApps: [],             // [{ id, name, entry }] test sub-apps added in Developer mode
     activeBoard: 1,
     lastBackupAt: null       // when a full backup was last exported (ms), for backup reminders
   };
-  const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' } });
+  // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
+  const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
 
   const BG_SWATCHES = [
     ['#ffffff', 'White'], ['#faf7f0', 'Paper'], ['#e0f2fe', 'Sky'], ['#dcfce7', 'Mint'], ['#fce7f3', 'Blush'],
@@ -412,6 +414,8 @@
     S.settings = Object.assign({}, DEFAULT_SETTINGS);
     S.board = defaultBoard(S.boardId);
     await reloadAll();
+    updateZoom();
+    ensureLayout();
     applySettings(); applyBoard();
   }
 
@@ -433,6 +437,7 @@
       case 'board':
         if (k.board !== S.boardId) break;
         S.board = Object.assign(defaultBoard(S.boardId), value || {});
+        S.board.layout = validLayout(S.board.layout);
         S.board.background = Object.assign({ color: null, pattern: 'none' }, (value && value.background) || {});
         applyBoard();
         break;
@@ -518,9 +523,11 @@
     }
     Picker.renderControls();
     Picker.render();
+    scheduleLayoutAll(); // "Scale the board to fit the screen" may have changed
   }
 
   function applyBoard() {
+    scheduleLayoutAll(); // the layout size may have changed
     const bg = S.board.background || {};
     const desk = $('#desk');
     desk.style.backgroundColor = bg.color || '';
@@ -558,7 +565,61 @@
   // 6. Geometry
   // =====================================================================
   const desk = () => $('#desk');
-  const viewRect = () => ({ x: 0, y: 0, w: desk().clientWidth || window.innerWidth, h: desk().clientHeight || window.innerHeight });
+
+  /*
+   * Zoom: the board scales like a picture to fit whatever screen it's on.
+   * Window rects are stored in "layout space": CSS px on a board of size S.board.layout
+   * (the screen it was arranged on). On a different screen every window is drawn at the
+   * same zoom factor s (and centered horizontally), so the arrangement is kept exactly
+   * and nothing that didn't overlap starts overlapping. All the geometry below works in
+   * layout space; only drawing (Win.applyRect) and pointer movement convert to the screen.
+   * With Settings → "Scale the board to fit the screen" off, s = 1 and windows are simply
+   * kept inside the screen.
+   */
+  const Zoom = { s: 1, ox: 0, oy: 0, vw: 0, vh: 0 };
+  function validLayout(l) {
+    return l && typeof l.w === 'number' && typeof l.h === 'number' && l.w >= 200 && l.h >= 150 && l.w < 20000 && l.h < 20000 ? { w: Math.round(l.w), h: Math.round(l.h) } : null;
+  }
+  function updateZoom() {
+    const d = desk();
+    Zoom.vw = d.clientWidth || window.innerWidth;
+    Zoom.vh = d.clientHeight || window.innerHeight;
+    const L = S.board.layout;
+    if (!S.settings.scaleToScreen || !L) { Zoom.s = 1; Zoom.ox = 0; Zoom.oy = 0; return; }
+    Zoom.s = Math.min(Zoom.vw / L.w, Zoom.vh / L.h);
+    Zoom.ox = (Zoom.vw - L.w * Zoom.s) / 2; // center left/right; keep the top aligned
+    Zoom.oy = 0;
+  }
+  // The visible screen expressed in layout space (may extend past the layout on one axis).
+  const viewRect = () => {
+    if (!Zoom.vw) updateZoom();
+    return { x: -Zoom.ox / Zoom.s, y: -Zoom.oy / Zoom.s, w: Zoom.vw / Zoom.s, h: Zoom.vh / Zoom.s };
+  };
+  // Screen rect (e.g. getBoundingClientRect) -> layout space.
+  const toLayout = r => ({ x: (r.left - Zoom.ox) / Zoom.s, y: (r.top - Zoom.oy) / Zoom.s, w: r.width / Zoom.s, h: r.height / Zoom.s });
+
+  // Give a board without a layout size one: the current screen, or larger if its windows
+  // already extend further (a board arranged on a bigger screen before scaling existed).
+  function ensureLayout() {
+    if (S.board.layout) return;
+    let w = Zoom.vw || desk().clientWidth || window.innerWidth, h = Zoom.vh || desk().clientHeight || window.innerHeight;
+    for (const i of S.insts.values()) { w = Math.max(w, i.rect.x + i.rect.w + GAP); h = Math.max(h, i.rect.y + i.rect.h + GAP); }
+    updateBoard({ layout: { w: Math.round(w), h: Math.round(h) } });
+  }
+
+  // Make the current screen the layout size, keeping every window where it appears now.
+  function useScreenAsLayout() {
+    updateZoom();
+    const { s, ox, oy } = Zoom;
+    for (const [ikey, inst] of S.insts) {
+      const r = inst.rect;
+      saveInst(ikey, Object.assign({}, inst, { rect: {
+        x: Math.round(ox + r.x * s), y: Math.round(oy + r.y * s),
+        w: Math.round(r.w * s), h: Math.round(r.h * s) // same footprint as on screen now, so nothing starts overlapping
+      } }));
+    }
+    updateBoard({ layout: { w: Zoom.vw, h: Zoom.vh } });
+  }
 
   function overlaps(a, b, pad = 0) {
     const ix = Math.min(a.x + a.w, b.x + b.w + pad) - Math.max(a.x, b.x - pad);
@@ -604,7 +665,7 @@
       const b = Picker.btns[side];
       if (!b || b.hidden) continue;
       const r = b.getBoundingClientRect();
-      if (r.width) out.push({ x: r.left - 6, y: r.top - 6, w: r.width + 12, h: r.height + 12, ui: true });
+      if (r.width) out.push(Object.assign(toLayout({ left: r.left - 6, top: r.top - 6, width: r.width + 12, height: r.height + 12 }), { ui: true }));
     }
     return out;
   }
@@ -781,7 +842,7 @@
   function placeNew(size, c, side) {
     const view = viewRect();
     const obs = obstacles(null);
-    const anchor = { x: view.w * (side === 'left' ? 0.32 : side === 'right' ? 0.68 : 0.5), y: view.h * 0.42 };
+    const anchor = { x: view.x + view.w * (side === 'left' ? 0.32 : side === 'right' ? 0.68 : 0.5), y: view.y + view.h * 0.42 };
     let prev = null;
     for (const scale of [1, 0.85, 0.7, 0.55]) {
       const s = fitSize(size.w * scale, size.h * scale, c, view);
@@ -921,7 +982,8 @@
       cl.toggle('at-r', r.x + r.w >= v.x + v.w - 0.5);
       cl.toggle('at-b', r.y + r.h >= v.y + v.h - 0.5);
       const s = this.el.style;
-      s.transform = `translate(${Math.round(r.x)}px, ${Math.round(r.y)}px)`;
+      const X = Zoom.ox + r.x * Zoom.s, Y = Zoom.oy + r.y * Zoom.s;
+      s.transform = `translate(${Math.round(X)}px, ${Math.round(Y)}px)` + (Zoom.s !== 1 ? ` scale(${Zoom.s})` : '');
       s.width = Math.round(r.w) + 'px';
       s.height = Math.round(r.h) + 'px';
       this.notifyInfo();
@@ -1210,6 +1272,7 @@
     if (layoutRaf) return;
     layoutRaf = requestAnimationFrame(() => {
       layoutRaf = 0;
+      updateZoom();
       for (const w of S.wins.values()) w.layout();
       if (Menu.win) Menu.position();
     });
@@ -1256,8 +1319,9 @@
           const inst = it.win.inst;
           const c = it.win.constraints();
           const s = fitSize(inst.rect.w, inst.rect.h, c, viewRect());
-          const rel = (it.sx - it.start.x) / Math.max(1, it.start.w);
-          it.start = { x: it.sx - rel * s.w, y: it.start.y, w: s.w, h: s.h };
+          const px = (it.sx - Zoom.ox) / Zoom.s; // pointer in layout space
+          const rel = (px - it.start.x) / Math.max(1, it.start.w);
+          it.start = { x: px - rel * s.w, y: it.start.y, w: s.w, h: s.h };
           it.win.el.classList.remove('maximized');
           it.unmax = true;
         }
@@ -1271,7 +1335,7 @@
       const brk = S.settings.snapping ? (RESISTANCE[S.settings.resistance] || RESISTANCE.normal) : 0;
       for (const it of this.map.values()) {
         if (!it.moved) continue;
-        const dx = it.x - it.sx, dy = it.y - it.sy;
+        const dx = (it.x - it.sx) / Zoom.s, dy = (it.y - it.sy) / Zoom.s; // screen px -> layout px
         const obs = obstacles(it.win);
         const r = it.kind === 'title'
           ? resolveMove({ x: it.start.x + dx, y: it.start.y + dy, w: it.start.w, h: it.start.h }, obs, view, brk, S.settings.snapping)
@@ -1640,6 +1704,8 @@
         <h3>Windows</h3>
         <div class="row"><div><div class="lbl">Snap and avoid overlap</div><div class="hint">Windows stop at each other's edges. Keep pushing to overlap anyway.</div></div>${sw('snapping', st.snapping, 'Snap and avoid overlap')}</div>
         <div class="row"><div class="lbl">Push needed to overlap</div>${seg('resistance', st.resistance, [['gentle', 'Light'], ['normal', 'Medium'], ['strong', 'Firm']], !st.snapping)}</div>
+        <div class="row"><div><div class="lbl">Scale the board to fit the screen</div><div class="hint">${esc(zoomHint())}</div></div>${sw('scale', st.scaleToScreen, 'Scale the board to fit the screen')}</div>
+        ${st.scaleToScreen && S.board.layout && Math.abs(Zoom.s - 1) > 0.01 ? `<div class="row"><div><div class="lbl">Use this screen's size</div><div class="hint">Windows stay where they are now and become full size on this screen.</div></div><button class="btn" data-act="use-screen">Use this size</button></div>` : ''}
         <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">Content stays saved for next time.</div></div><button class="btn" data-act="close-all">${svg('windows')}Close all</button></div>
 
         <h3>App Picker</h3>
@@ -1726,6 +1792,8 @@
       switch (act) {
         case 'theme': updateSettings({ theme: val }); break;
         case 'snapping': updateSettings({ snapping: !S.settings.snapping }); break;
+        case 'scale': updateSettings({ scaleToScreen: !S.settings.scaleToScreen }); updateZoom(); this.render(); break;
+        case 'use-screen': useScreenAsLayout(); updateZoom(); this.render(); toast('This screen is now the board’s layout size.'); break;
         case 'resistance': updateSettings({ resistance: val }); break;
         case 'corners': updateSettings({ pickerCorners: val }); if (val !== 'both' && val !== this.side) this.open(val); break;
         case 'devmode': updateSettings({ devMode: !S.settings.devMode }); break;
@@ -1776,6 +1844,14 @@
       }
     }
   };
+
+  function zoomHint() {
+    if (!S.settings.scaleToScreen) return 'Off: windows keep their size; on a smaller screen they are moved inside the edges.';
+    const L = S.board.layout;
+    if (!L) return 'Windows keep their arrangement on any screen size.';
+    const pct = Math.round(Zoom.s * 100);
+    return `Windows keep their arrangement on any screen size. Arranged for ${L.w} × ${L.h}` + (pct === 100 ? ' (this screen).' : `; shown here at ${pct}%.`);
+  }
 
   // Open a specific (closed) instance from Settings.
   function openSpecific(ikey) {
@@ -1842,14 +1918,14 @@
       });
     }
     instances.sort((a, b2) => a.appId.localeCompare(b2.appId) || a.instance - b2.instance);
-    const view = viewRect();
+    const L = (S.settings.scaleToScreen && S.board.layout) || { w: Zoom.vw || viewRect().w, h: Zoom.vh || viewRect().h };
     return {
       format: '21board',
       formatVersion: FORMAT_VERSION,
       kind,
       exportedAt: new Date().toISOString(),
       generator: `21Board ${BOARD_VERSION}`,
-      viewport: { width: view.w, height: view.h },
+      viewport: { width: L.w, height: L.h }, // the layout size the rects are in
       theme: S.settings.theme,
       board: { name: S.board.name, background: S.board.background },
       instances
@@ -1958,9 +2034,24 @@
 
   async function applyImport(p, mode) {
     const b = S.boardId;
+    // The file's rects are in its layout space F. Work out the target space T:
+    //   Replace + scaling on  -> adopt the file's layout (T = F, rects unchanged; the zoom fits it to this screen)
+    //   otherwise             -> this board's layout (scaling on) or this screen (scaling off)
+    const F = validLayout(p.viewport) ;
+    const scaling = !!S.settings.scaleToScreen;
+    const newLayout = mode === 'replace' && scaling && F ? F : (S.board.layout || null);
+    const T = mode === 'replace' && scaling && F ? F : scaling && S.board.layout ? S.board.layout : { w: Zoom.vw || viewRect().w, h: Zoom.vh || viewRect().h };
+    const k = F ? Math.min(T.w / F.w, T.h / F.h) : 1;            // uniform, so shapes and spacing are kept
+    const offX = F ? (T.w - F.w * k) / 2 : 0;
+    const convert = r => (F && (Math.abs(k - 1) > 0.001 || offX)) ? {
+      x: Math.round(r.x * k + offX), y: Math.round(r.y * k),
+      w: Math.round(r.w * k), h: Math.round(r.h * k)
+    } : Object.assign({}, r);
+    // Placement happens in the target space, seen through this screen.
+    const savedLayout = S.board.layout;
+    S.board.layout = newLayout; updateZoom();
     const view = viewRect();
-    const sx = p.viewport ? view.w / p.viewport.w : 1, sy = p.viewport ? view.h / p.viewport.h : 1;
-    const scale = Math.abs(sx - 1) > 0.05 || Math.abs(sy - 1) > 0.05;
+    S.board.layout = savedLayout; updateZoom();
     const rev = Date.now();
     const rec = (key, type, value) => ({ key, type, rev, updatedAt: rev, by: TAB_ID, value });
 
@@ -1977,8 +2068,7 @@
         n = 1; while (set.has(n)) n++;
         set.add(n); used.set(i.appId, set);
       }
-      let rect = Object.assign({}, i.rect);
-      if (scale) rect = { x: Math.round(rect.x * sx), y: Math.round(rect.y * sy), w: Math.round(rect.w * sx), h: Math.round((rect.h - TITLE_H) * sy + TITLE_H) };
+      let rect = convert(i.rect);
       const app = getApp(i.appId);
       if (app) rect = fitRect(rect, constraintsFor(app), view);
       if (mode === 'add' && i.open) {
@@ -2000,7 +2090,7 @@
       if (i.data !== null && p.kind === 'full') out.push(rec(Keys.data(b, ik), 'data', i.data));
     }
     if (mode === 'replace') {
-      const board = Object.assign({}, S.board, { background: p.board.background });
+      const board = Object.assign({}, S.board, { background: p.board.background, layout: newLayout });
       if (p.board.name) board.name = p.board.name;
       out.push(rec(Keys.board(b), 'board', board));
       if (p.theme) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, { theme: p.theme })));
@@ -2283,6 +2373,8 @@
       toast('This browser is blocking storage, so nothing will be saved. Try a normal (not private) window.', { timeout: 10000 });
     }
     await reloadAll();
+    updateZoom();
+    ensureLayout();
     if (!Known.has(Keys.board(S.boardId))) Writer.put(Keys.board(S.boardId), 'board', S.board);
     applySettings();
     applyBoard();
@@ -2294,7 +2386,9 @@
 
   // Exposed for debugging in the console and for automated tests.
   window.__board21 = {
-    version: BOARD_VERSION, state: S, store: Store, openApp, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
+    version: BOARD_VERSION, state: S, store: Store, zoom: Zoom, useScreenAsLayout,
+    setRect: (ikey, rect) => { const i = S.insts.get(ikey); if (!i) return; saveInst(ikey, Object.assign({}, i, { rect })); const w = S.wins.get(ikey); if (w) w.layout(); },
+    openApp, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,
     catalog: () => Array.from(catalog.values())
   };

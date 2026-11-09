@@ -56,13 +56,14 @@ include) to the static host. Then:
 | **Closing** | Closing a window keeps its content. Open the app again to pick up where you left off. If you have several of the same app, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and app settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
+| **Different screens** | The board scales like a picture to fit the screen, so moving from a big monitor to a laptop keeps your arrangement (just smaller) instead of piling windows up. Settings can turn this off or make the current screen the new full size. |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 
 ### Settings
 
 - **Appearance:** Light / Dark / Auto theme, board background color (or match theme), background
   pattern (dots, grid, lines).
-- **Windows:** snap & avoid overlap on/off, how hard you must push to overlap, close all windows.
+- **Windows:** snap & avoid overlap on/off, how hard you must push to overlap, scale the board to fit the screen (on by default) and "use this screen's size", close all windows.
 - **App Picker:** show the controls in both corners, or only left/right.
 - **Board:** board name (used for export file names), list of every saved app window with
   open/delete.

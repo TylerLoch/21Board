@@ -127,6 +127,7 @@
       border-radius: 12px;
       box-shadow: 0 0 0 1px var(--border), var(--shadow);
       will-change: transform;
+      transform-origin: 0 0; /* board.js scales windows from their top-left corner (see Zoom) */
       transition: box-shadow .2s;
     }
     .win.focused { box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring), var(--shadow-focus); }
