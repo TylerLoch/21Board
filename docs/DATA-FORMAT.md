@@ -107,6 +107,12 @@ its layout size and a CSS `transform: translate(…) scale(s)`. So:
 
 - Moving to a smaller or larger screen keeps the arrangement exactly (nothing starts overlapping);
   sub-apps keep the same CSS size and are simply drawn smaller or larger.
+- With scaling on, windows can only be placed **inside the layout** (0…`layout.w`, 0…`layout.h`),
+  on every screen. On a screen of a different shape the layout is centered and the leftover margin
+  is lightly shaded; windows stop at the layout edge, so every screen agrees and nothing ends up in
+  one screen's margin and piles up on another.
+- Resize handles and the focus ring are scaled back up when zoomed out (up to 2.5×) so they stay
+  finger-sized; snap reach and push-to-overlap are measured in screen pixels.
 - Several copies of 21Board on different-sized screens agree on where everything is.
 - Pointer movement is divided by `s` before it's applied, so drags follow the finger.
 - *Settings → Use this screen's size* converts every rect to the current screen's on-screen
@@ -114,8 +120,10 @@ its layout size and a CSS `transform: translate(…) scale(s)`. So:
 - With *Settings → Scale the board to fit the screen* off (`settings.scaleToScreen: false`), the zoom
   is always 1 and windows that don't fit are moved/shrunk inside the screen when displayed.
 
-A board saved before `layout` existed gets one on first load: the current screen size, enlarged if
-needed to contain all of its windows.
+A board that has never had a window follows the screen, so the screen its first window is opened
+on becomes its layout size. A board saved before `layout` existed gets one on first load: the
+current screen size, enlarged if needed to contain all of its windows. Exports write `layout`
+(grown to contain every window) as `viewport`.
 
 The whole feature can be switched off (`SCALING_FEATURE` in board.js, or `?scaling=off` to try it):
 the zoom is then always 1 and `layout` is neither written nor used. The format is compatible both

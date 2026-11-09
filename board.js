@@ -579,6 +579,7 @@
     const darkBg = bg.color ? luminance(bg.color) < 0.3 : resolvedTheme() === 'dark';
     desk.style.setProperty('--pattern', darkBg ? 'rgba(255,255,255,0.11)' : 'rgba(0,0,0,0.09)');
     desk.style.setProperty('--hint', darkBg ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.55)');
+    desk.style.setProperty('--margin-shade', darkBg ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)');
     const meta = $('meta[name="theme-color"]');
     if (meta) meta.content = bg.color || (resolvedTheme() === 'dark' ? '#121212' : '#f3f4f6');
   }
@@ -625,6 +626,8 @@
   // REMOVE IT entirely: delete this block, then
   //   - viewRect()        -> return { x: 0, y: 0, w: desk().clientWidth, h: desk().clientHeight }
   //   - toLayout(r)       -> return { x: r.left, y: r.top, w: r.width, h: r.height }
+  //   - boundsRect()      -> viewRect();   screenPx(px) -> px
+  //   - remove #layout-frame (index.html) and the --zi uses in the CSS (or leave them: --zi stays 1)
   //   - drop the Zoom.* terms in Win.applyRect and Inter (s = 1, ox = oy = 0)
   //   - drop updateZoom()/ensureLayout() calls, scalingSettingsRows()/scalingAct() in Settings,
   //     and use the screen size in exportViewport()/importPlan() (see their fallbacks).
@@ -642,10 +645,24 @@
     Zoom.vw = d.clientWidth || window.innerWidth;
     Zoom.vh = d.clientHeight || window.innerHeight;
     const L = S.board.layout;
-    if (!scalingOn() || !L) { Zoom.s = 1; Zoom.ox = 0; Zoom.oy = 0; return; }
-    Zoom.s = Math.min(Zoom.vw / L.w, Zoom.vh / L.h);
-    Zoom.ox = (Zoom.vw - L.w * Zoom.s) / 2; // center left/right; keep the top aligned
-    Zoom.oy = 0;
+    if (!scalingOn() || !L) { Zoom.s = 1; Zoom.ox = 0; Zoom.oy = 0; }
+    else {
+      Zoom.s = Math.min(Zoom.vw / L.w, Zoom.vh / L.h);
+      Zoom.ox = (Zoom.vw - L.w * Zoom.s) / 2; // center left/right; keep the top aligned
+      Zoom.oy = 0;
+    }
+    // Keep resize handles and the focus ring touchable when zoomed out (CSS uses --zi).
+    d.style.setProperty('--zi', String(Math.min(2.5, Math.max(1, 1 / Zoom.s))));
+    // Lightly shade the screen outside the layout, so it's clear why windows stop at its edge.
+    const fr = document.getElementById('layout-frame');
+    if (fr) {
+      const show = !!(scalingOn() && L && (Zoom.ox > 1 || L.h * Zoom.s < Zoom.vh - 1));
+      fr.hidden = !show;
+      if (show) {
+        fr.style.width = L.w * Zoom.s + 'px'; fr.style.height = L.h * Zoom.s + 'px';
+        fr.style.transform = `translate(${Zoom.ox}px, ${Zoom.oy}px)`;
+      }
+    }
   }
 
   // The visible screen expressed in layout space (may extend past the layout on one axis).
@@ -655,35 +672,75 @@
   };
   // Screen rect (e.g. getBoundingClientRect) -> layout space.
   const toLayout = r => ({ x: (r.left - Zoom.ox) / Zoom.s, y: (r.top - Zoom.oy) / Zoom.s, w: r.width / Zoom.s, h: r.height / Zoom.s });
+  // Where windows may be put and are kept: the shared layout when scaling is on (so every screen
+  // agrees and nothing lands in one screen's side margins), otherwise the screen.
+  // viewRect() is only for drawing: maximized windows and the board-edge classes.
+  // (Fallback without scaling: viewRect().)
+  const boundsRect = () => {
+    if (!Zoom.vw) updateZoom();
+    const L = scalingOn() && S.board.layout;
+    return L ? { x: 0, y: 0, w: L.w, h: L.h } : viewRect();
+  };
+  // A distance that should feel the same on screen at any zoom (snap reach, push-to-overlap), in layout px.
+  // (Fallback without scaling: px.)
+  const screenPx = px => px / Zoom.s;
 
   // Give a board without a layout size one: the current screen, or larger if its windows
   // already extend further (a board arranged on a bigger screen before scaling existed).
+  // A board that has never had a window follows the screen, so its first window sets the size.
   function ensureLayout() {
-    if (!SCALING_FEATURE || S.board.layout) return;
-    let w = Zoom.vw || desk().clientWidth || window.innerWidth, h = Zoom.vh || desk().clientHeight || window.innerHeight;
+    if (!SCALING_FEATURE) return;
+    if (!Zoom.vw) updateZoom();
+    const sw = Math.round(Zoom.vw), sh = Math.round(Zoom.vh), L = S.board.layout;
+    const empty = S.insts.size === 0;
+    if (L && !(empty && (L.w !== sw || L.h !== sh))) return;
+    let w = sw, h = sh;
     for (const i of S.insts.values()) { w = Math.max(w, i.rect.x + i.rect.w + GAP); h = Math.max(h, i.rect.y + i.rect.h + GAP); }
     updateBoard({ layout: { w: Math.round(w), h: Math.round(h) } });
+    updateZoom();
   }
 
   // Make the current screen the layout size, keeping every window where it appears now.
   function useScreenAsLayout() {
-    if (!SCALING_FEATURE) return;
+    if (!SCALING_FEATURE) return false;
+    if (Inter.active) { toast('Finish moving windows first.'); return false; }
     updateZoom();
-    const { s, ox, oy } = Zoom;
-    for (const [ikey, inst] of S.insts) {
+    const { s: z, ox, oy } = Zoom;
+    const view = { x: 0, y: 0, w: Zoom.vw, h: Zoom.vh };
+    const placed = [], placedFootprints = [];
+    // Open windows first, back to front, so the front-most keeps its spot if anything must move.
+    const order = Array.from(S.insts.entries()).sort((a, b) => (b[1].open - a[1].open) || (a[1].z - b[1].z));
+    for (const [ikey, inst] of order) {
+      const app = getApp(inst.appId);
+      const w0 = S.wins.get(ikey);
+      const c = w0 ? w0.constraints() : app ? constraintsFor(app) : null;
       const r = inst.rect;
-      saveInst(ikey, Object.assign({}, inst, { rect: {
-        x: Math.round(ox + r.x * s), y: Math.round(oy + r.y * s),
-        w: Math.round(r.w * s), h: Math.round(r.h * s) // same footprint as on screen now, so nothing starts overlapping
-      } }));
+      const fp = { x: ox + r.x * z, y: oy + r.y * z, w: r.w * z, h: r.h * z }; // where it is on screen now
+      let w = fp.w, h = fp.h;
+      if (c && c.ratio) { const ch = Math.max(1, Math.min(fp.h - TITLE_H, fp.w / c.ratio)); w = ch * c.ratio; h = ch + TITLE_H; }
+      const size = c ? fitSize(w, h, c, view) : { w: Math.round(w), h: Math.round(h) };
+      let rect = clampToView({ x: Math.round(fp.x), y: Math.round(fp.y), w: size.w, h: size.h }, view);
+      if (inst.open && !inst.maximized) {
+        // A window that had to grow (app minimum size) mustn't land on a neighbour it didn't touch before.
+        if (!placedFootprints.some(o => overlaps(fp, o)) && placed.some(o => overlaps(rect, o))) {
+          const spot = findFreeSpot(rect.w, rect.h, view, placed, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
+          if (spot) rect = spot;
+        }
+        placed.push(rect); placedFootprints.push(fp);
+      }
+      saveInst(ikey, Object.assign({}, inst, { rect }));
     }
-    updateBoard({ layout: { w: Zoom.vw, h: Zoom.vh } });
+    updateBoard({ layout: { w: Math.round(Zoom.vw), h: Math.round(Zoom.vh) } });
+    return true;
   }
 
   // Export: the size of the space the saved rects are in. (Fallback without scaling: the screen.)
   function exportViewport() {
-    const L = scalingOn() && S.board.layout;
-    return L ? { width: L.w, height: L.h } : { width: Zoom.vw || viewRect().w, height: Zoom.vh || viewRect().h };
+    const L = S.board.layout;
+    if (!L) return { width: Math.round(Zoom.vw || viewRect().w), height: Math.round(Zoom.vh || viewRect().h) };
+    let w = L.w, h = L.h; // grown if any window was saved outside it (e.g. while scaling was off)
+    for (const i of S.insts.values()) { w = Math.max(w, Math.ceil(i.rect.x + i.rect.w)); h = Math.max(h, Math.ceil(i.rect.y + i.rect.h)); }
+    return { width: w, height: h };
   }
 
   // Import: how to map a file's rects into this board, and where to place them.
@@ -693,19 +750,23 @@
   function importPlan(p, mode) {
     const F = validLayout(p.viewport);
     const on = scalingOn();
-    const adopt = mode === 'replace' && on && F;
-    const newLayout = adopt ? F : (S.board.layout || null);
-    const T = adopt ? F : on && S.board.layout ? S.board.layout : { w: Zoom.vw || viewRect().w, h: Zoom.vh || viewRect().h };
+    const screen = { w: Math.round(Zoom.vw || viewRect().w), h: Math.round(Zoom.vh || viewRect().h) };
+    let T, newLayout;
+    if (mode === 'replace') {
+      T = on && F ? F : screen;
+      // With scaling off the rects land in screen space, so record that as the layout.
+      newLayout = !SCALING_FEATURE ? S.board.layout : on ? (F || S.board.layout || screen) : screen;
+    } else {
+      T = on && S.board.layout ? S.board.layout : screen;
+      newLayout = S.board.layout;
+    }
     const k = F ? Math.min(T.w / F.w, T.h / F.h) : 1; // uniform, so shapes and spacing are kept
     const offX = F ? (T.w - F.w * k) / 2 : 0;
     const convert = r => (F && (Math.abs(k - 1) > 0.001 || offX)) ? {
       x: Math.round(r.x * k + offX), y: Math.round(r.y * k), w: Math.round(r.w * k), h: Math.round(r.h * k)
     } : Object.assign({}, r);
-    // The placement view: the target layout as seen on this screen.
-    const saved = S.board.layout;
-    S.board.layout = newLayout; updateZoom();
-    const view = viewRect();
-    S.board.layout = saved; updateZoom();
+    // Where imported windows are placed: the target layout (scaling on) or the screen.
+    const view = on && newLayout ? { x: 0, y: 0, w: newLayout.w, h: newLayout.h } : { x: 0, y: 0, w: screen.w, h: screen.h };
     return { convert, view, newLayout };
   }
 
@@ -713,21 +774,22 @@
   function scalingSettingsRows(st, sw) {
     if (!SCALING_FEATURE) return '';
     let html = `<div class="row"><div><div class="lbl">Scale the board to fit the screen</div><div class="hint">${esc(zoomHint())}</div></div>${sw('scale', st.scaleToScreen !== false, 'Scale the board to fit the screen')}</div>`;
-    if (scalingOn() && S.board.layout && Math.abs(Zoom.s - 1) > 0.01) {
+    const L = S.board.layout;
+    if (scalingOn() && L && (L.w !== Math.round(Zoom.vw) || L.h !== Math.round(Zoom.vh))) {
       html += `<div class="row"><div><div class="lbl">Use this screen's size</div><div class="hint">Windows stay where they are now and become full size on this screen.</div></div><button class="btn" data-act="use-screen">Use this size</button></div>`;
     }
     return html;
   }
   function scalingAct(act) {
     if (act === 'scale') { updateSettings({ scaleToScreen: S.settings.scaleToScreen === false }); updateZoom(); }
-    if (act === 'use-screen') { useScreenAsLayout(); updateZoom(); toast('This screen is now the board’s layout size.'); }
+    if (act === 'use-screen' && useScreenAsLayout()) { updateZoom(); toast('This screen is now the board’s layout size.'); }
   }
   function zoomHint() {
     if (!scalingOn()) return 'Off: windows keep their size; on a smaller screen they are moved inside the edges.';
     const L = S.board.layout;
     if (!L) return 'Windows keep their arrangement on any screen size.';
-    const pct = Math.round(Zoom.s * 100);
-    return `Windows keep their arrangement on any screen size. Arranged for ${L.w} × ${L.h}` + (pct === 100 ? ' (this screen).' : `; shown here at ${pct}%.`);
+    const same = L.w === Math.round(Zoom.vw) && L.h === Math.round(Zoom.vh);
+    return `Windows keep their arrangement on any screen size. Arranged for ${L.w} × ${L.h}` + (same ? ' (this screen).' : `; shown here at ${Math.round(Zoom.s * 100)}%.`);
   }
   // ------------------------------------------------------- end of board scaling
 
@@ -819,7 +881,7 @@
       cy.push(o.y, o.y + o.h - r.h, o.y + o.h + GAP, o.y - r.h - GAP);
     }
     const pick = (v, cands) => {
-      let best = v, bd = ALIGN_SNAP + 0.01;
+      let best = v, bd = screenPx(ALIGN_SNAP) + 0.01;
       for (const c of cands) { const d = Math.abs(c - v); if (d < bd) { bd = d; best = c; } }
       return best;
     };
@@ -896,7 +958,7 @@
           overlapCount(f) <= base;
       };
       const nearest = (v, cands, ok) => {
-        let best = null, bd = ALIGN_SNAP + 0.01;
+        let best = null, bd = screenPx(ALIGN_SNAP) + 0.01;
         for (const cand of cands) { const d = Math.abs(cand - v); if (d < bd && ok(cand)) { bd = d; best = cand; } }
         return best;
       };
@@ -950,7 +1012,7 @@
   }
 
   function placeNew(size, c, side) {
-    const view = viewRect();
+    const view = boundsRect();
     const obs = obstacles(null);
     const anchor = { x: view.x + view.w * (side === 'left' ? 0.32 : side === 'right' ? 0.68 : 0.5), y: view.y + view.h * 0.42 };
     let prev = null;
@@ -1068,9 +1130,9 @@
     layout(animate) {
       const inst = this.inst;
       if (!inst) return;
-      const view = viewRect();
+      const view = viewRect(); // the whole screen: a maximized window fills it
       const c = this.constraints();
-      const r = inst.maximized ? { x: view.x, y: view.y, w: view.w, h: view.h } : fitRect(inst.rect, c, view);
+      const r = inst.maximized ? { x: view.x, y: view.y, w: view.w, h: view.h } : fitRect(inst.rect, c, boundsRect());
       this.el.classList.toggle('maximized', !!inst.maximized);
       this.el.classList.toggle('no-resize', !c.resizable);
       this.el.style.zIndex = Math.max(1, Math.round(inst.z || 1));
@@ -1189,9 +1251,9 @@
         case 'setSize': {
           const cw = posOrNull(args[0]), ch = posOrNull(args[1]);
           if (!cw || !ch) return;
-          const view = viewRect();
+          const view = boundsRect();
           const s = fitSize(cw, ch + TITLE_H, this.constraints(), view);
-          const r = resolveMove({ x: inst.rect.x, y: inst.rect.y, w: s.w, h: s.h }, obstacles(this), view, RESISTANCE.strong, S.settings.snapping);
+          const r = resolveMove({ x: inst.rect.x, y: inst.rect.y, w: s.w, h: s.h }, obstacles(this), view, screenPx(RESISTANCE.strong), S.settings.snapping);
           saveInst(this.ikey, Object.assign({}, inst, { rect: r, maximized: false }));
           this.layout(true);
           break;
@@ -1280,12 +1342,13 @@
   function openApp(appId, opts = {}) {
     const app = getApp(appId);
     if (!app) return null;
+    if (S.insts.size === 0) ensureLayout(); // a never-used board takes this screen's size
     const mine = Array.from(S.insts.values()).filter(i => i.appId === appId).sort((a, b) => a.n - b.n);
     const closed = mine.find(i => !i.open);
     let ikey, inst;
     if (closed) {
       ikey = ikeyOf(appId, closed.n);
-      const view = viewRect();
+      const view = boundsRect();
       let rect = fitRect(closed.rect, constraintsFor(app), view);
       const obs = obstacles(null);
       if (obs.some(o => overlaps(rect, o))) {
@@ -1383,7 +1446,11 @@
     layoutRaf = requestAnimationFrame(() => {
       layoutRaf = 0;
       updateZoom();
-      for (const w of S.wins.values()) w.layout();
+      for (const w of S.wins.values()) {
+        const it = Inter.holds(w);
+        if (it && it.moved) w.applyRect(it.result || w.disp); // being dragged: redraw at the new zoom, don't snap back
+        else w.layout();
+      }
       if (Menu.win) Menu.position();
     });
   }
@@ -1401,12 +1468,15 @@
     deferredReload: false,
     deferredRebuild: false,
     get active() { return this.map.size > 0; },
+    holds(win) { for (const it of this.map.values()) if (it.win === win) return it; return null; },
 
     begin(e, win, kind, handle, el) {
       for (const it of this.map.values()) if (it.win === win) return;
       const it = {
         id: e.pointerId, win, kind, handle, el,
         sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY,
+        lx0: (e.clientX - Zoom.ox) / Zoom.s, ly0: (e.clientY - Zoom.oy) / Zoom.s, // grab point in layout space
+        layoutSig: JSON.stringify(S.board.layout),
         start: Object.assign({}, win.disp), moved: false, result: null,
         onLabel: !!(e.target.closest && e.target.closest('.win-label'))
       };
@@ -1428,8 +1498,8 @@
           // Dragging a maximized window restores it under the pointer.
           const inst = it.win.inst;
           const c = it.win.constraints();
-          const s = fitSize(inst.rect.w, inst.rect.h, c, viewRect());
-          const px = (it.sx - Zoom.ox) / Zoom.s; // pointer in layout space
+          const s = fitSize(inst.rect.w, inst.rect.h, c, boundsRect());
+          const px = it.lx0; // pointer in layout space
           const rel = (px - it.start.x) / Math.max(1, it.start.w);
           it.start = { x: px - rel * s.w, y: it.start.y, w: s.w, h: s.h };
           it.win.el.classList.remove('maximized');
@@ -1441,11 +1511,12 @@
 
     step() {
       this.raf = 0;
-      const view = viewRect();
-      const brk = S.settings.snapping ? (RESISTANCE[S.settings.resistance] || RESISTANCE.normal) : 0;
+      const view = boundsRect();
+      const brk = S.settings.snapping ? screenPx(RESISTANCE[S.settings.resistance] || RESISTANCE.normal) : 0;
       for (const it of this.map.values()) {
         if (!it.moved) continue;
-        const dx = (it.x - it.sx) / Zoom.s, dy = (it.y - it.sy) / Zoom.s; // screen px -> layout px
+        // Pointer movement in layout space (stays right even if the zoom changes mid-drag).
+        const dx = (it.x - Zoom.ox) / Zoom.s - it.lx0, dy = (it.y - Zoom.oy) / Zoom.s - it.ly0;
         const obs = obstacles(it.win);
         const r = it.kind === 'title'
           ? resolveMove({ x: it.start.x + dx, y: it.start.y + dy, w: it.start.w, h: it.start.h }, obs, view, brk, S.settings.snapping)
@@ -1462,9 +1533,12 @@
       this.map.delete(e.pointerId);
       it.el.classList.remove('dragging');
       const win = it.win;
-      if (it.moved && it.result && !cancelled && win.inst) {
-        const r = it.result;
-        saveInst(win.ikey, Object.assign({}, win.inst, { rect: { x: Math.round(r.x), y: Math.round(r.y), w: Math.round(r.w), h: Math.round(r.h) }, maximized: false }));
+      // If the board's layout size changed mid-drag ("Use this size" here or in another tab),
+      // the drop position is in the old space: drop the move rather than save it wrongly.
+      const layoutChanged = it.layoutSig !== JSON.stringify(S.board.layout);
+      if (it.moved && it.result && !cancelled && win.inst && !layoutChanged) {
+        const r = it.result, q = v => Math.round(v * 100) / 100; // sub-pixel, so zoomed drags don't drift
+        saveInst(win.ikey, Object.assign({}, win.inst, { rect: { x: q(r.x), y: q(r.y), w: q(r.w), h: q(r.h) }, maximized: false }));
         win.layout();
       } else if (it.moved) {
         win.layout();
@@ -1963,7 +2037,7 @@
     // Temporarily make it the lowest closed instance by opening directly.
     const app = getApp(inst.appId);
     if (!app) return;
-    const view = viewRect();
+    const view = boundsRect();
     let rect = fitRect(inst.rect, constraintsFor(app), view);
     const obs = obstacles(null);
     if (obs.some(o => overlaps(rect, o))) {

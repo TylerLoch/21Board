@@ -109,6 +109,9 @@
     }
     #desk.pattern-lines { background-image: linear-gradient(to bottom, var(--pattern) 1px, transparent 1px); background-size: 100% 48px; }
 
+    /* Board scaling: the area outside the board's layout (letterbox margins) is lightly shaded. */
+    #layout-frame { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; box-shadow: 0 0 0 100vmax var(--margin-shade, rgba(0, 0, 0, 0.05)); }
+    #layout-frame[hidden] { display: none; }
     #empty-hint {
       position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 14px; pointer-events: none; color: var(--hint, var(--muted)); text-align: center; padding: 24px;
@@ -126,11 +129,10 @@
       background: var(--surface);
       border-radius: 12px;
       box-shadow: 0 0 0 1px var(--border), var(--shadow);
-      will-change: transform;
       transform-origin: 0 0; /* board.js scales windows from their top-left corner (see Zoom) */
       transition: box-shadow .2s;
     }
-    .win.focused { box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring), var(--shadow-focus); }
+    .win.focused { box-shadow: 0 0 0 calc(var(--focus-ring-width) * var(--zi, 1)) var(--focus-ring), var(--shadow-focus); }
     .win.focused .win-title { background: var(--focus-title); border-bottom-color: transparent; }
     .win.maximized.focused { box-shadow: none; } /* fills the board; the tinted title bar marks focus */
     .win.animate { transition: transform .22s ease, width .22s ease, height .22s ease, box-shadow .2s; }
@@ -145,6 +147,7 @@
       touch-action: none; cursor: grab; container-type: inline-size;
     }
     body.busy .win-title, body.busy { cursor: grabbing; }
+    body.busy .win { will-change: transform; } /* only while dragging: a lasting layer would blur when the zoom grows */
     .win-label {
       display: inline-flex; align-items: center; gap: 4px; max-width: 100%;
       height: 32px; padding: 0 6px 0 12px; border-radius: 8px;
@@ -176,7 +179,12 @@
 
     /* Resize grips: corners and side centers. Hit areas are larger than what's drawn. */
     /* Resize grips are only shown (and only grabbable) on the focused window. */
-    .grip { position: absolute; z-index: 3; touch-action: none; transition: opacity .15s, visibility .15s; }
+    .grip { position: absolute; z-index: 3; touch-action: none; transition: opacity .15s, visibility .15s; scale: var(--zi, 1); }
+    /* When the board is zoomed out, handles are scaled back up (--zi) around their point on the edge. */
+    .grip.n { transform-origin: 50% 16px; } .grip.s { transform-origin: 50% calc(100% - 16px); }
+    .grip.w { transform-origin: 16px 50%; } .grip.e { transform-origin: calc(100% - 16px) 50%; }
+    .grip.nw { transform-origin: 14px 14px; } .grip.ne { transform-origin: calc(100% - 14px) 14px; }
+    .grip.sw { transform-origin: 14px calc(100% - 14px); } .grip.se { transform-origin: calc(100% - 14px) calc(100% - 14px); }
     .win:not(.focused) .grip { opacity: 0; visibility: hidden; pointer-events: none; }
     .win .grip.dragging { opacity: 1; visibility: visible; pointer-events: auto; } /* never vanish under a finger */
     .grip::after { content: ""; position: absolute; transition: background-color .2s, border-color .2s; }
@@ -212,10 +220,10 @@
     .win.at-l .grip.nw::after, .win.at-l .grip.sw::after { left: 17px; }
     .win.at-r .grip.ne::after, .win.at-r .grip.se::after { right: 17px; }
     .win::before { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; border-radius: 12px; border: 0 solid var(--focus-ring); }
-    .win.focused:not(.maximized).at-l::before { border-left-width: var(--focus-ring-width); }
-    .win.focused:not(.maximized).at-t::before { border-top-width: var(--focus-ring-width); }
-    .win.focused:not(.maximized).at-r::before { border-right-width: var(--focus-ring-width); }
-    .win.focused:not(.maximized).at-b::before { border-bottom-width: var(--focus-ring-width); }
+    .win.focused:not(.maximized).at-l::before { border-left-width: calc(var(--focus-ring-width) * var(--zi, 1)); }
+    .win.focused:not(.maximized).at-t::before { border-top-width: calc(var(--focus-ring-width) * var(--zi, 1)); }
+    .win.focused:not(.maximized).at-r::before { border-right-width: calc(var(--focus-ring-width) * var(--zi, 1)); }
+    .win.focused:not(.maximized).at-b::before { border-bottom-width: calc(var(--focus-ring-width) * var(--zi, 1)); }
     .win.no-resize .grip, .win.maximized .grip { display: none; }
     .win.maximized, .win.maximized .win-title { border-radius: 0; }
     .win.maximized .win-body { border-radius: 0; }
@@ -381,6 +389,7 @@
 </head>
 <body>
   <main id="desk" aria-label="Board">
+    <div id="layout-frame" hidden></div>
     <div id="empty-hint">
       <div class="big">Your board is ready</div>
       <div class="small">Tap <svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/></svg> in either bottom corner to open an app.</div>

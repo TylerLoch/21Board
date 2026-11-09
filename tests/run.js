@@ -709,7 +709,10 @@ const SUITES = [
     await page.evaluate(() => window.__board21.useScreenAsLayout()); await page.waitForTimeout(400);
     const post = await screenRects(page);
     ok(await page.evaluate(() => window.__board21.zoom.s) === 1 && JSON.stringify(await page.evaluate(() => window.__board21.state.board.layout)) === JSON.stringify({ w: 1000, h: 620 }), 'this screen becomes the layout size');
-    ok(Object.keys(pre).every(k => Math.abs(pre[k].x - post[k].x) <= 1.5 && Math.abs(pre[k].y - post[k].y) <= 1.5 && Math.abs(pre[k].w - post[k].w) <= 1.5), 'windows stay where they were on screen');
+    // Each window keeps its top-left corner and stays inside its old on-screen footprint (fixed-shape apps
+    // like Clock may get a little narrower to keep their shape with a full-size title bar).
+    const inside = k => Math.abs(pre[k].x - post[k].x) <= 1.5 && Math.abs(pre[k].y - post[k].y) <= 1.5 && post[k].w <= pre[k].w + 1.5 && post[k].h <= pre[k].h + 1.5;
+    ok(Object.keys(pre).every(inside), 'windows stay where they were on screen' + (Object.keys(pre).every(inside) ? '' : ' ' + JSON.stringify({ pre, post })));
 
     // Turning scaling off goes back to keep-inside-the-edges behaviour.
     await page.setViewportSize({ width: 1400, height: 860 }); await page.waitForTimeout(300);
@@ -806,6 +809,97 @@ const SUITES = [
     const p2 = await ctx2.newPage(); await p2.goto(BASE + '?scaling=off'); await p2.waitForTimeout(800);
     ok(await p2.evaluate(() => window.__board21.state.board.layout) === null, 'switched off: a new board stores no layout size');
     await ctx2.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Board scaling review fixes', async (browser) => {
+    const errors = [];
+    const ovl = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > 0.5 && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > 0.5;
+    const anyOverlap = list => { for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) if (ovl(list[i], list[j])) return true; return false; };
+    const onScreen = p => p.evaluate(() => Array.from(document.querySelectorAll('.win')).map(e => { const r = e.getBoundingClientRect(); return { k: e.dataset.ikey, x: r.left, y: r.top, w: r.width, h: r.height }; }));
+    const stored = p => p.evaluate(() => Array.from(window.__board21.state.insts.entries()).filter(([, i]) => i.open).map(([k, i]) => Object.assign({ k }, i.rect)));
+
+    // 1) Wide second screen: windows opened there stay inside the shared layout, so the first screen has no overlaps.
+    const ctx = await browser.newContext({ viewport: { width: 1000, height: 620 } });
+    const a = await ctx.newPage(); a.on('pageerror', e => errors.push(e.message));
+    await a.goto(BASE); await a.waitForTimeout(600);
+    await a.evaluate(() => window.__board21.openApp('clock')); await a.waitForTimeout(600); // first window fixes the layout at 1000x620
+    const b = await ctx.newPage(); await b.setViewportSize({ width: 1800, height: 620 });
+    await b.goto(BASE); await b.waitForTimeout(1000);
+    for (const id of ['timer', 'calendar', 'notes', 'dice']) { await b.click('.picker-btn.left'); await b.waitForTimeout(100); await b.click(`[data-app="${id}"]`); await b.waitForTimeout(350); }
+    await b.waitForTimeout(500); await a.waitForTimeout(800);
+    const st = await stored(b);
+    ok(st.every(r => r.x >= -0.5 && r.x + r.w <= 1000.5), 'windows opened on a wider screen are placed inside the shared layout');
+    // What each screen draws, mapped back into layout space, must match.
+    const drawn = pg => pg.evaluate(() => { const z = window.__board21.zoom; return Array.from(document.querySelectorAll('.win')).map(e => { const r = e.getBoundingClientRect(); return { k: e.dataset.ikey, x: (r.left - z.ox) / z.s, y: (r.top - z.oy) / z.s, w: r.width / z.s, h: r.height / z.s }; }).sort((p, q) => p.k < q.k ? -1 : 1); });
+    const da = await drawn(a), db = await drawn(b);
+    const agree = da.length === db.length && da.every((r, i) => ['x', 'y', 'w', 'h'].every(f => Math.abs(r[f] - db[i][f]) <= 1.5));
+    ok(agree, 'both screens draw every window in the same place');
+    ok(await b.evaluate(() => { const f = document.getElementById('layout-frame'); return !!f && !f.hidden; }), 'the wider screen shades the area outside the layout');
+    // A tall screen can't park a window below the layout.
+    await b.setViewportSize({ width: 1000, height: 1100 }); await b.waitForTimeout(400);
+    const t = (await onScreen(b)).find(r => r.k === 'timer:1');
+    await b.evaluate(() => window.__board21.focusWin('timer:1'));
+    await b.mouse.move(t.x + 20, t.y + 10); await b.mouse.down();
+    for (let i = 1; i <= 12; i++) { await b.mouse.move(t.x + 20, t.y + 10 + i * 60); await b.waitForTimeout(16); }
+    await b.mouse.up(); await b.waitForTimeout(300);
+    const tr = (await stored(b)).find(r => r.k === 'timer:1');
+    ok(tr.y + tr.h <= 620.5, `a window can't be dragged out of the layout on a taller screen (bottom ${Math.round(tr.y + tr.h)} of 620)`);
+    await b.close();
+
+    // 2) Zoomed out, handles and the focus ring stay touchable; windows aren't held on a blurry layer.
+    await a.setViewportSize({ width: 500, height: 310 }); await a.waitForTimeout(400); // zoom 0.5
+    await a.evaluate(() => window.__board21.focusWin('clock:1')); await a.waitForTimeout(200);
+    const grip = await a.evaluate(() => { const r = document.querySelector('.win[data-ikey="clock:1"] .grip.se').getBoundingClientRect(); return r.width; });
+    ok(grip >= 30, `corner handle stays finger-sized when zoomed out (${Math.round(grip)}px on screen)`);
+    ok(await a.evaluate(() => getComputedStyle(document.querySelector('.win')).willChange) === 'auto', 'windows at rest are not held on a fixed-scale layer (no blur after zooming in)');
+
+    // 3) Snap reach and push-to-overlap feel the same on screen when zoomed out.
+    await a.setViewportSize({ width: 1000, height: 620 }); await a.waitForTimeout(300);
+    await a.evaluate(() => { const b = window.__board21; for (const k of ['calendar:1', 'notes:1', 'dice:1', 'timer:1']) b.closeWin(k, { quiet: true }); });
+    await a.waitForTimeout(500);
+    await a.evaluate(() => { window.__board21.openApp('notes'); }); await a.waitForTimeout(600);
+    await a.evaluate(() => { const b = window.__board21; b.setRect('clock:1', { x: 100, y: 100, w: 300, h: 340 }); b.setRect('notes:1', { x: 600, y: 100, w: 300, h: 300 }); });
+    await a.setViewportSize({ width: 500, height: 310 }); await a.waitForTimeout(400);
+    let n = (await onScreen(a)).find(r => r.k === 'notes:1'), c = (await onScreen(a)).find(r => r.k === 'clock:1');
+    // drag Notes left so it would sit 50 screen px inside the Clock (100 layout px): should stop flush
+    const target = (c.x + c.w - 50) - n.x;
+    await a.evaluate(() => window.__board21.focusWin('notes:1'));
+    await a.mouse.move(n.x + 20, n.y + 8); await a.mouse.down();
+    for (let i = 1; i <= 10; i++) { await a.mouse.move(n.x + 20 + target * i / 10, n.y + 8); await a.waitForTimeout(16); }
+    await a.mouse.up(); await a.waitForTimeout(300);
+    n = (await onScreen(a)).find(r => r.k === 'notes:1');
+    ok(!ovl(n, c), 'a small push still snaps flush when zoomed out (push resistance is in screen px)');
+
+    // 4) "Use this size" keeps windows apart even when app minimum sizes make them grow.
+    const ctx2 = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+    const p = await ctx2.newPage(); p.on('pageerror', e => errors.push(e.message));
+    await p.goto(BASE); await p.waitForTimeout(500);
+    await p.evaluate(() => { for (const id of ['clock', 'notes', 'timer']) window.__board21.openApp(id); }); await p.waitForTimeout(1200);
+    await p.evaluate(() => { const b = window.__board21; b.setRect('clock:1', { x: 40, y: 40, w: 300, h: 340 }); b.setRect('notes:1', { x: 40, y: 388, w: 300, h: 300 }); b.setRect('timer:1', { x: 348, y: 388, w: 250, h: 300 }); });
+    await p.setViewportSize({ width: 960, height: 540 }); await p.waitForTimeout(400);
+    await p.evaluate(() => window.__board21.useScreenAsLayout()); await p.waitForTimeout(500);
+    ok(!anyOverlap(await onScreen(p)), '"Use this size" does not make windows overlap');
+    // ...and refuses while a window is being dragged.
+    const nn = (await onScreen(p)).find(r => r.k === 'notes:1');
+    await p.mouse.move(nn.x + 20, nn.y + 8); await p.mouse.down(); await p.mouse.move(nn.x + 40, nn.y + 8);
+    ok(await p.evaluate(() => window.__board21.useScreenAsLayout()) === false, '"Use this size" waits while a window is being moved');
+    await p.mouse.up();
+    await ctx2.close();
+
+    // 5) A never-used board follows the screen: its first window sets the layout size.
+    const ctx3 = await browser.newContext({ viewport: { width: 700, height: 500 } });
+    const q = await ctx3.newPage(); await q.goto(BASE); await q.waitForTimeout(500);
+    await q.setViewportSize({ width: 1400, height: 860 }); await q.waitForTimeout(300);
+    await q.evaluate(() => window.__board21.openApp('timer')); await q.waitForTimeout(500);
+    ok(JSON.stringify(await q.evaluate(() => window.__board21.state.board.layout)) === JSON.stringify({ w: 1400, h: 860 }), 'an empty board takes the screen size its first window is opened on');
+    ok(await q.evaluate(() => window.__board21.zoom.s) === 1, 'so new windows open at 100%');
+    await ctx3.close();
+
+    // 6) Export always describes the space the rects are in (grown if a window lies outside the layout).
+    await a.evaluate(() => { const s = window.__board21.state; s.insts.set('notes:1', Object.assign({}, s.insts.get('notes:1'), { rect: { x: 900, y: 100, w: 300, h: 300 } })); });
+    const vp = await a.evaluate(async () => (await window.__board21.buildExport('full')).viewport);
+    ok(vp.width >= 1200, `export viewport contains every window (${vp.width}×${vp.height})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
