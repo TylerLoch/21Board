@@ -37,6 +37,7 @@
       --focus-ring: #2563eb;
       --focus-ring-width: 3px;
       --focus-title: #eff6ff;
+      --label-open: #dbeafe;   /* window-menu button while its menu is open (must differ from --focus-title) */
       --title-h: 40px;
       color-scheme: light;
     }
@@ -61,6 +62,7 @@
       --shadow-focus: 0 18px 48px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.4);
       --focus-ring: #60a5fa;
       --focus-title: #22324a;
+      --label-open: rgba(96, 165, 250, 0.32);
       color-scheme: dark;
     }
 
@@ -155,7 +157,7 @@
     .win-label .sub:not(:empty)::before { content: "·"; margin: 0 6px 0 2px; }
     @container (max-width: 260px) { .win-label .sub { display: none; } }
     .win-label svg { width: 18px; height: 18px; color: var(--muted); }
-    .win-label.open { background: var(--active-bg); color: var(--primary); }
+    .win-label.open { background: var(--label-open); color: var(--primary); }
     .win-label.open svg { color: var(--primary); transform: rotate(180deg); }
 
     .win-body { position: relative; flex: 1 1 auto; overflow: hidden; border-radius: 0 0 12px 12px; background: var(--surface); }
@@ -175,10 +177,13 @@
     /* Resize grips are only shown (and only grabbable) on the focused window. */
     .grip { position: absolute; z-index: 3; touch-action: none; transition: opacity .15s, visibility .15s; }
     .win:not(.focused) .grip { opacity: 0; visibility: hidden; pointer-events: none; }
+    .win .grip.dragging { opacity: 1; visibility: visible; pointer-events: auto; } /* never vanish under a finger */
     .grip::after { content: ""; position: absolute; transition: background-color .2s, border-color .2s; }
     /* Handles take the focus color: side handles are filled bars, corner handles are L-shaped borders. */
     .win.focused .grip::after { border-color: var(--focus-ring); }
     .win.focused .grip.n::after, .win.focused .grip.s::after, .win.focused .grip.e::after, .win.focused .grip.w::after { background-color: var(--focus-ring); }
+    .grip.dragging::after { border-color: var(--focus-ring); }
+    .grip.n.dragging::after, .grip.s.dragging::after, .grip.e.dragging::after, .grip.w.dragging::after { background-color: var(--focus-ring); }
     .grip.n, .grip.s { left: 50%; width: 72px; margin-left: -36px; height: 26px; cursor: ns-resize; }
     .grip.n { top: -16px; } .grip.s { bottom: -16px; }
     .grip.n::after, .grip.s::after { left: 14px; right: 14px; height: 7px; border-radius: 4px; background: var(--grip); }
@@ -198,6 +203,18 @@
     .grip.ne::after { right: 5px; top: 5px; border-left: 0; border-bottom: 0; border-top-right-radius: 18px; }
     .grip.sw::after { left: 5px; bottom: 5px; border-right: 0; border-top: 0; border-bottom-left-radius: 18px; }
     .grip.se::after { right: 5px; bottom: 5px; border-left: 0; border-top: 0; border-bottom-right-radius: 18px; }
+    /* Sides flush with the board edge (classes set by board.js): the outside is clipped, so draw inside. */
+    .win.at-t .grip.n::after { top: 19px; }   .win.at-b .grip.s::after { bottom: 19px; }
+    .win.at-l .grip.w::after { left: 19px; }  .win.at-r .grip.e::after { right: 19px; }
+    .win.at-t .grip.nw::after, .win.at-t .grip.ne::after { top: 17px; }
+    .win.at-b .grip.sw::after, .win.at-b .grip.se::after { bottom: 17px; }
+    .win.at-l .grip.nw::after, .win.at-l .grip.sw::after { left: 17px; }
+    .win.at-r .grip.ne::after, .win.at-r .grip.se::after { right: 17px; }
+    .win::before { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; border-radius: 12px; border: 0 solid var(--focus-ring); }
+    .win.focused:not(.maximized).at-l::before { border-left-width: var(--focus-ring-width); }
+    .win.focused:not(.maximized).at-t::before { border-top-width: var(--focus-ring-width); }
+    .win.focused:not(.maximized).at-r::before { border-right-width: var(--focus-ring-width); }
+    .win.focused:not(.maximized).at-b::before { border-bottom-width: var(--focus-ring-width); }
     .win.no-resize .grip, .win.maximized .grip { display: none; }
     .win.maximized, .win.maximized .win-title { border-radius: 0; }
     .win.maximized .win-body { border-radius: 0; }
@@ -259,13 +276,14 @@
     /* -------------------------------------------------------- Window menu */
     .menu {
       position: fixed; z-index: 1100; min-width: 220px; max-width: min(320px, calc(100vw - 16px));
+      max-height: calc(100vh - 16px); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y;
       padding: 6px; display: none; flex-direction: column;
       background: var(--toolbar-bg); border: 1px solid var(--border); border-radius: 14px;
       box-shadow: 0 12px 30px rgba(0, 0, 0, .18); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
     }
     .menu.open { display: flex; animation: panel-in .14s ease-out; }
     .menu-item {
-      width: 100%; min-height: 46px; padding: 0 14px; gap: 14px; justify-content: flex-start;
+      width: 100%; min-height: 46px; flex: 0 0 auto; padding: 0 14px; gap: 14px; justify-content: flex-start;
       font-size: 15px; font-weight: 500; color: var(--text); border-radius: 9px; text-align: left;
     }
     .menu-item svg { width: 20px; height: 20px; color: var(--icon-color); }
@@ -275,8 +293,8 @@
     .menu-item.danger, .menu-item.danger svg { color: var(--danger); }
     @media (hover: hover) { .menu-item.danger:hover { background: var(--danger-soft); } }
     .menu-item:disabled { opacity: .45; cursor: default; }
-    .menu-sep { height: 1px; background: var(--border); margin: 5px 8px; }
-    .menu-confirm { padding: 10px 12px 6px; font-size: 14px; color: var(--muted); max-width: 280px; line-height: 1.35; }
+    .menu-sep { height: 1px; flex: 0 0 auto; background: var(--border); margin: 5px 8px; }
+    .menu-confirm { flex: 0 0 auto; padding: 10px 12px 6px; font-size: 14px; color: var(--muted); max-width: 280px; line-height: 1.35; }
 
     /* ------------------------------------------------------------ Settings */
     .sheet {

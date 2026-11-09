@@ -99,7 +99,7 @@ The **context**:
   config: { ... } | null,    // saved config for this instance
   theme: 'light' | 'dark',
   palette: { bg, text, accent, ... },   // same values as the --b21-* CSS variables
-  window: { width, height, x, y, maximized, focused },  // content size in CSS px
+  window: { width, height, x, y, maximized, focused },  // content size in CSS px; focused = selected
   locale: 'en-US',
   devMode: false,            // Developer mode is on in Settings
   boardVersion: '1.0.0',
@@ -130,7 +130,7 @@ Sizes are the **content area** (the iframe), not including the 40px title bar.
 | `Board21.window.setResizable(bool)` | Show or hide the resize grips. |
 | `Board21.window.setTitle(text)` | Short status shown after the app name in the title bar, e.g. `"Running"`. Hidden in narrow windows. |
 | `Board21.window.requestAttention()` | Pulse the title bar (e.g. a timer finished). |
-| `Board21.window.focus()` | Bring the window to the front. |
+| `Board21.window.focus()` | Select the window and bring it to the front. |
 | `Board21.window.maximize()` / `restore()` | Fill the board / return to normal size. |
 | `Board21.window.close()` | Close the window. Its data is kept. |
 | `Board21.window.getInfo()` | Promise of `{ width, height, x, y, maximized, focused }`. |
@@ -169,7 +169,7 @@ and links are stripped). Up to 20 items.
 | `config` | `(config, { reason })` | Same, for config. |
 | `theme` | `(theme, palette)` | Light/dark changed. CSS variables are already updated. |
 | `resize` | `(info)` | The window's content size, maximized or focused state changed. (Native `resize` events also fire.) |
-| `focus` / `blur` | — | The window became / stopped being the front window. |
+| `focus` / `blur` | — | The window was selected / deselected. Selecting a window brings it to the front. **`blur` also fires when the teacher taps the empty board to deselect everything; the window stays in front and visible**, so don't treat `blur` as "covered" (e.g. don't pause a timer on blur). |
 | `menu` | `(id, item)` | One of your menu items was tapped. |
 | `beforeclose` | — | The window is about to close. Save anything pending *synchronously* (call `save()`). |
 

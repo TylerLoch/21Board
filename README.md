@@ -54,7 +54,7 @@ include) to the static host. Then:
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the app's name (⌄) in the title bar: the app's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. |
 | **Closing** | Closing a window keeps its content. Open the app again to pick up where you left off. If you have several of the same app, they come back in order (1, 2, 3…). |
-| **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and app settings, no content — safe to share with colleagues). Saves a `.21board` file. |
+| **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and app settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 

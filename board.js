@@ -695,14 +695,35 @@
      *   - a width/height equal to another window's (so sizes match).
      * A snap is skipped if it would break min/max size, leave the board, or create a new overlap.
      */
+    // Turn edges into the final rect: for aspect-locked windows, derive the other dimension and anchor it.
+    const finish = (l, t, r, b) => {
+      let w = r - l, h = b - t, x = l, y = t;
+      if (c.ratio) {
+        let useW;
+        if ((E || W) && (N || So)) {
+          const rw = w / Math.max(1, s.w), rh = (h - TITLE_H) / Math.max(1, s.h - TITLE_H);
+          useW = Math.abs(Math.log(rw)) >= Math.abs(Math.log(rh));
+        } else useW = E || W;
+        if (useW) h = w / c.ratio + TITLE_H; else w = (h - TITLE_H) * c.ratio;
+        const f = fitSize(w, h, c, view);
+        w = f.w; h = f.h;
+        if (W) x = r - w; else if (!E) x = s.x + (s.w - w) / 2;
+        if (N) y = b - h; else if (!So) y = s.y + (s.h - h) / 2;
+      }
+      return { x, y, w, h };
+    };
+
     if (snap) {
       const others = obs.filter(o => !o.ui);
-      const overlapsAt = (l, t, r, b) => obs.reduce((n, o) => n + (overlaps({ x: l, y: t, w: r - l, h: b - t }, o) ? 1 : 0), 0);
-      const base = overlapsAt(left, top, right, bottom);
-      const fits = (l, t, r, b) =>
-        r - l >= minW - 0.5 && r - l <= maxW + 0.5 && b - t >= minH - 0.5 && b - t <= maxH + 0.5 &&
-        l >= view.x - 0.5 && t >= view.y - 0.5 && r <= view.x + view.w + 0.5 && b <= view.y + view.h + 0.5 &&
-        overlapsAt(l, t, r, b) <= base;
+      const overlapCount = r => obs.reduce((n, o) => n + (overlaps(r, o) ? 1 : 0), 0);
+      const base = overlapCount(finish(left, top, right, bottom));
+      // A snap is only taken if the resulting window (after any aspect-ratio adjustment) still fits.
+      const fits = (l, t, r, b) => {
+        if (r - l < minW - 0.5 || r - l > maxW + 0.5 || b - t < minH - 0.5 || b - t > maxH + 0.5) return false;
+        const f = finish(l, t, r, b);
+        return f.x >= view.x - 0.5 && f.y >= view.y - 0.5 && f.x + f.w <= view.x + view.w + 0.5 && f.y + f.h <= view.y + view.h + 0.5 &&
+          overlapCount(f) <= base;
+      };
       const nearest = (v, cands, ok) => {
         let best = null, bd = ALIGN_SNAP + 0.01;
         for (const cand of cands) { const d = Math.abs(cand - v); if (d < bd && ok(cand)) { bd = d; best = cand; } }
@@ -730,20 +751,7 @@
       }
     }
 
-    let w = right - left, h = bottom - top;
-    if (c.ratio) {
-      let useW;
-      if ((E || W) && (N || So)) {
-        const rw = w / Math.max(1, s.w), rh = (h - TITLE_H) / Math.max(1, s.h - TITLE_H);
-        useW = Math.abs(Math.log(rw)) >= Math.abs(Math.log(rh));
-      } else useW = E || W;
-      if (useW) h = w / c.ratio + TITLE_H; else w = (h - TITLE_H) * c.ratio;
-      const f = fitSize(w, h, c, view);
-      w = f.w; h = f.h;
-      if (W) left = right - w; else if (!E) left = s.x + (s.w - w) / 2;
-      if (N) top = bottom - h; else if (!So) top = s.y + (s.h - h) / 2;
-    }
-    return clampToView({ x: left, y: top, w, h }, view);
+    return clampToView(finish(left, top, right, bottom), view);
   }
 
   // Find the free spot (with GAP spacing) closest to an anchor point.
@@ -906,6 +914,12 @@
         this.animT = setTimeout(() => this.el.classList.remove('animate'), 260);
       }
       this.disp = { x: r.x, y: r.y, w: r.w, h: r.h };
+      // Sides flush with the board edge draw their handles and focus ring inside (the outside is clipped).
+      const v = viewRect(), cl = this.el.classList;
+      cl.toggle('at-l', r.x <= v.x + 0.5);
+      cl.toggle('at-t', r.y <= v.y + 0.5);
+      cl.toggle('at-r', r.x + r.w >= v.x + v.w - 0.5);
+      cl.toggle('at-b', r.y + r.h >= v.y + v.h - 0.5);
       const s = this.el.style;
       s.transform = `translate(${Math.round(r.x)}px, ${Math.round(r.y)}px)`;
       s.width = Math.round(r.w) + 'px';
@@ -1083,8 +1097,8 @@
     if (S.deselected) top = null;
     if (S.focused === top) return;
     const prev = S.wins.get(S.focused);
+    S.focused = top; // update first, so the old window's info reports focused: false
     if (prev) { prev.el.classList.remove('focused'); prev.post('blur'); prev.notifyInfo(); }
-    S.focused = top;
     const cur = S.wins.get(top);
     if (cur) { cur.el.classList.add('focused'); cur.post('focus'); cur.notifyInfo(); }
   }
@@ -1233,7 +1247,7 @@
       if (!it) return;
       it.x = e.clientX; it.y = e.clientY;
       if (!it.moved) {
-        if (Math.hypot(it.x - it.sx, it.y - it.sy) < (it.kind === 'title' ? DRAG_THRESHOLD : 2)) return;
+        if (Math.hypot(it.x - it.sx, it.y - it.sy) < DRAG_THRESHOLD) return;
         it.moved = true;
         document.body.classList.add('busy');
         Menu.close();
@@ -1300,6 +1314,7 @@
   // Tapping the empty board deselects every window, hiding all resize grips.
   function deselectAll() {
     if (S.deselected && S.focused === null) return;
+    for (const it of Inter.map.values()) if (it.win.ikey === S.focused) return; // still being moved/resized
     S.deselected = true;
     updateFocus();
   }
@@ -1499,14 +1514,21 @@
       const w = this.win;
       if (!w) return;
       const a = w.labelEl.getBoundingClientRect();
-      const m = this.el.getBoundingClientRect();
       const vw = window.innerWidth, vh = window.innerHeight;
+      this.el.style.maxHeight = '';
+      // offsetWidth/Height: layout size, unaffected by the menu's scale-in animation.
+      const m = { width: this.el.offsetWidth, height: this.el.offsetHeight };
       let x = a.left + a.width / 2 - m.width / 2;
       x = clamp(x, 8, vw - m.width - 8);
-      let y = a.bottom + 6;
-      if (y + m.height > vh - 8) y = Math.max(8, a.top - m.height - 6);
+      // Below the title if it fits, else above; if neither fits, use the roomier side and scroll.
+      const below = vh - a.bottom - 14, above = a.top - 14;
+      let y;
+      if (m.height <= below) y = a.bottom + 6;
+      else if (m.height <= above) y = a.top - m.height - 6;
+      else if (below >= above) { y = a.bottom + 6; this.el.style.maxHeight = Math.max(120, below) + 'px'; }
+      else { const h = Math.max(120, above); this.el.style.maxHeight = h + 'px'; y = a.top - h - 6; }
       this.el.style.left = Math.round(x) + 'px';
-      this.el.style.top = Math.round(y) + 'px';
+      this.el.style.top = Math.round(Math.max(8, y)) + 'px';
     },
 
     act(act, id) {
@@ -1671,6 +1693,12 @@
         } else if (st === 'unsupported') {
           per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Unavailable</span>';
           hint.textContent = 'This browser can’t promise to keep 21Board’s data. Export backups regularly.';
+        } else if (st === 'insecure') {
+          per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Needs https</span>';
+          hint.textContent = 'Browsers only protect data for sites served over https. Ask whoever hosts 21Board to enable https; until then, export backups regularly.';
+        } else if (st === 'file') {
+          per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Not available</span>';
+          hint.textContent = 'A copy of 21Board opened from a file can’t be protected. Use the hosted (https) 21Board for real use, or export backups regularly.';
         } else {
           per2.innerHTML = Install.prompt ? `<button class="btn small primary" data-act="install">${svg('plus')}Install app</button>`
             : '<span class="hint"><span class="status-dot warn"></span>Not yet</span>';
@@ -1829,25 +1857,45 @@
   }
 
   async function doExport(kind) {
+    const d = new Date();
+    const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
+    const safeName = (S.board.name || '21Board').replace(/[\\/:*?"<>|]+/g, '').trim() || '21Board';
+    const filename = `${safeName} ${stamp}${kind === 'template' ? ' template' : ''}.21board`;
+    // Where the browser has a native Save dialog (Chrome/Edge on desktop and ChromeOS), use it: the teacher
+    // chooses where the file goes (e.g. Google Drive), and a backup is only recorded once it's really written.
+    // Elsewhere, fall back to a normal download (which can't confirm the file was kept).
+    let handle = null;
+    if (typeof window.showSaveFilePicker === 'function') {
+      try {
+        handle = await window.showSaveFilePicker({ suggestedName: filename, types: [{ description: '21Board file', accept: { 'application/x-21board': ['.21board'] } }] });
+      } catch (err) {
+        if (err && err.name === 'AbortError') return false; // cancelled: nothing saved, nothing recorded
+        handle = null;                                       // not allowed here: use a download instead
+      }
+    }
     try {
-      const file = await buildExport(kind);
-      const d = new Date();
-      const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
-      const safeName = (S.board.name || '21Board').replace(/[\\/:*?"<>|]+/g, '').trim() || '21Board';
-      const filename = `${safeName} ${stamp}${kind === 'template' ? ' template' : ''}.21board`;
-      const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = filename; a.style.display = 'none';
-      document.body.appendChild(a); a.click(); a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      const text = JSON.stringify(await buildExport(kind), null, 2);
+      if (handle) {
+        const writable = await handle.createWritable();
+        await writable.write(text);
+        await writable.close();
+      } else {
+        const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        const a = document.createElement('a');
+        a.href = url; a.download = filename; a.style.display = 'none';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 30000);
+      }
       if (kind === 'full') updateSettings({ lastBackupAt: Date.now() });
       toast(kind === 'template' ? 'Template exported.' : 'Board exported.');
+      return true;
     } catch (err) {
       console.error(err);
       toast('Export failed: ' + (err.message || err));
+      return false;
     }
   }
+
 
   function parseBoardFile(text) {
     let j;
@@ -2075,11 +2123,14 @@
     lastAsk: 0,
     supported() { return !!(navigator.storage && navigator.storage.persist && navigator.storage.persisted); },
     async check() {
+      if (location.protocol === 'file:') { this.state = 'file'; return this.state; }
+      if (!window.isSecureContext) { this.state = 'insecure'; return this.state; }
       if (!this.supported()) { this.state = 'unsupported'; return this.state; }
       try { this.state = (await navigator.storage.persisted()) ? 'granted' : 'not-granted'; } catch (e) { /* keep last state */ }
       return this.state;
     },
     async request(force) {
+      if (this.state === 'file' || this.state === 'insecure') return this.state;
       if (!this.supported()) { this.state = 'unsupported'; return this.state; }
       if (this.state === 'granted') return this.state;
       if (!force && Date.now() - this.lastAsk < 30 * 60 * 1000) return this.state;
@@ -2092,8 +2143,15 @@
       await this.check();
       await this.request(true);
       // The browser's answer can change (e.g. once the app is installed or used regularly), so ask again later.
-      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.request(); });
+      // Boards stay open all day, so the backup reminder is re-checked hourly and when the tab is shown again
+      // (after a short delay so the board has finished re-reading its data).
+      document.addEventListener('visibilitychange', async () => {
+        if (document.visibilityState !== 'visible') return;
+        await this.request();
+        setTimeout(maybeRemindBackup, 2000);
+      });
       setTimeout(maybeRemindBackup, 8000);
+      setInterval(maybeRemindBackup, 60 * 60 * 1000);
     }
   };
 
@@ -2101,8 +2159,9 @@
   const Install = {
     prompt: null,
     init() {
+      // Keep the event so Settings can offer "Install app". (No preventDefault: Chrome's own
+      // install offer, e.g. the Android "Add to Home screen" banner, still appears.)
       window.addEventListener('beforeinstallprompt', e => {
-        e.preventDefault();
         this.prompt = e;
         if (Settings.isOpen) Settings.refreshStatus();
       });
@@ -2125,12 +2184,14 @@
   function backupAgo() {
     const t = S.settings.lastBackupAt;
     if (!t) return 'Last full backup: never';
-    const days = Math.floor((Date.now() - t) / DAY);
+    const midnight = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
+    const days = Math.round((midnight(Date.now()) - midnight(t)) / DAY); // calendar days, DST-safe
     return 'Last full backup: ' + (days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`);
   }
 
   // If the browser hasn't promised to keep the data, remind (at most every 3 days) to export a backup.
   function maybeRemindBackup() {
+    if (document.visibilityState !== 'visible') return; // never use up the reminder in a background tab
     if (Persist.state === 'granted' || Store.failed || !S.data.size) return;
     let oldest = Infinity;
     for (const i of S.insts.values()) oldest = Math.min(oldest, i.createdAt || Infinity);

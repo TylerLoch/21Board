@@ -499,6 +499,112 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Review fixes (multi-touch focus, edge handles, ratio snapping, backups)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 }, hasTouch: true });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    const disp = ik => page.evaluate(ik => Object.assign({}, window.__board21.state.wins.get(ik).disp), ik);
+    const setRect = (ik, r) => page.evaluate(([ik, r]) => { const s = window.__board21.state; s.insts.set(ik, Object.assign({}, s.insts.get(ik), { rect: r })); s.wins.get(ik).layout(); }, [ik, r]);
+    await page.evaluate(() => { window.__board21.openApp('notes'); window.__board21.openApp('timer'); });
+    await page.waitForTimeout(1200);
+
+    // A second touch on the empty board while the first finger resizes must not deselect the window.
+    await setRect('timer:1', { x: 400, y: 200, w: 380, h: 280 });
+    await page.evaluate(() => window.__board21.focusWin('timer:1')); await page.waitForTimeout(200);
+    const se = await page.locator('.win[data-ikey="timer:1"] .grip.se').boundingBox();
+    const cdp = await ctx.newCDPSession(page);
+    const f1 = (dx, dy) => ({ x: se.x + se.width / 2 + dx, y: se.y + se.height / 2 + dy, id: 1 });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [f1(0, 0)] });
+    for (let i = 1; i <= 5; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [f1(i * 6, i * 6)] }); await page.waitForTimeout(20); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [f1(30, 30), { x: 1300, y: 60, id: 2 }] });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [f1(30, 30)] });
+    await page.waitForTimeout(100);
+    const mid = await page.evaluate(() => ({ f: window.__board21.state.focused, vis: getComputedStyle(document.querySelector('.win[data-ikey="timer:1"] .grip.se')).visibility }));
+    ok(mid.f === 'timer:1' && mid.vis === 'visible', `stray second touch keeps the resizing window selected (focused=${mid.f}, grip ${mid.vis})`);
+    for (let i = 6; i <= 10; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [f1(i * 6, i * 6)] }); await page.waitForTimeout(20); }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+    await page.waitForTimeout(200);
+
+    // Sub-apps are told focused:false after a deselect (a freshly connected app is the case that used to break).
+    await page.evaluate(() => window.__board21.openApp('dice')); await page.waitForTimeout(1200);
+    await page.mouse.click(1300, 40); await page.waitForTimeout(400);
+    const appFocused = await page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('html').evaluate(() => Board21.context.window.focused);
+    ok(appFocused === false, `after tapping the empty board the sub-app sees focused: false (got ${appFocused})`);
+    await page.evaluate(() => window.__board21.closeWin('dice:1', { quiet: true })); await page.waitForTimeout(300);
+
+    // A tap on a grip with a little finger wobble must not resize (or snap) the window.
+    await setRect('notes:1', { x: 1000, y: 100, w: 380, h: 300 });
+    await page.evaluate(() => window.__board21.focusWin('notes:1')); await page.waitForTimeout(200);
+    const e = await page.locator('.win[data-ikey="notes:1"] .grip.e').boundingBox();
+    await page.mouse.move(e.x + e.width / 2, e.y + e.height / 2); await page.mouse.down();
+    await page.mouse.move(e.x + e.width / 2 + 2, e.y + e.height / 2 + 1); await page.mouse.up(); await page.waitForTimeout(200);
+    ok((await disp('notes:1')).w === 380, `wobbly tap on a grip leaves the size alone (w=${(await disp('notes:1')).w})`);
+
+    // Handles and focus ring are drawn inside the window on sides flush with the board edge.
+    await setRect('notes:1', { x: 0, y: 0, w: 380, h: 300 });
+    await page.evaluate(() => window.__board21.focusWin('notes:1')); await page.waitForTimeout(300);
+    const edge = await page.evaluate(() => {
+      const w = document.querySelector('.win[data-ikey="notes:1"]');
+      const n = getComputedStyle(w.querySelector('.grip.n'), '::after'), before = getComputedStyle(w, '::before');
+      return { cls: w.className, nTop: n.top, ringL: before.borderLeftWidth, ringR: before.borderRightWidth };
+    });
+    ok(/at-l/.test(edge.cls) && /at-t/.test(edge.cls) && edge.nTop === '19px', `top handle drawn inside at the board edge (${edge.nTop})`);
+    ok(edge.ringL === '3px' && edge.ringR === '0px', `focus ring drawn inside only on the flush sides (left ${edge.ringL}, right ${edge.ringR})`);
+
+    // Snapping an aspect-locked window must not push it into a neighbour.
+    await page.evaluate(() => window.__board21.openApp('clock')); await page.waitForTimeout(800);
+    await setRect('clock:1', { x: 300, y: 200, w: 300, h: 340 });
+    await setRect('notes:1', { x: 608, y: 150, w: 320, h: 416 });
+    await page.evaluate(() => window.__board21.focusWin('clock:1')); await page.waitForTimeout(250);
+    const cs = await page.locator('.win[data-ikey="clock:1"] .grip.s').boundingBox();
+    await page.mouse.move(cs.x + cs.width / 2, cs.y + cs.height / 2); await page.mouse.down();
+    for (let i = 1; i <= 10; i++) { await page.mouse.move(cs.x + cs.width / 2, cs.y + cs.height / 2 + i * 1.5); await page.waitForTimeout(16); }
+    await page.mouse.up(); await page.waitForTimeout(200);
+    const c = await disp('clock:1'), n = await disp('notes:1');
+    ok(c.x + c.w <= n.x, `aspect-locked resize snapping causes no overlap (clock right ${c.x + c.w}, notes left ${n.x})`);
+    ok(Math.abs(c.w / (c.h - 40) - 1) < 0.02, 'clock keeps its 1:1 shape');
+
+    // The open window-menu button is visible against the focused title tint.
+    await page.click('.win[data-ikey="clock:1"] .win-label'); await page.waitForTimeout(200);
+    const bgs = await page.evaluate(() => [getComputedStyle(document.querySelector('.win[data-ikey="clock:1"] .win-label')).backgroundColor, getComputedStyle(document.querySelector('.win[data-ikey="clock:1"] .win-title')).backgroundColor]);
+    ok(bgs[0] !== bgs[1], `open menu button stands out from the title bar (${bgs[0]} vs ${bgs[1]})`);
+    await page.keyboard.press('Escape');
+
+    // "Today/yesterday" use calendar days.
+    await page.evaluate(() => { const d = new Date(); d.setHours(0, 0, 0, 0); window.__board21.state.settings.lastBackupAt = d.getTime() - 60000; });
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(500);
+    ok((await page.locator('#st-backup').textContent()).includes('yesterday'), 'a backup from 23:59 last night says "yesterday"');
+
+    // Native Save dialog: cancelling records nothing; saving records the backup and writes a real file.
+    await page.evaluate(() => {
+      window.__board21.state.settings.lastBackupAt = null;
+      window.__saved = null;
+      window.showSaveFilePicker = async () => { const e = new Error('cancelled'); e.name = 'AbortError'; throw e; };
+    });
+    await page.click('#settings [data-act="backup"]'); await page.waitForTimeout(500);
+    ok(await page.evaluate(() => window.__board21.state.settings.lastBackupAt === null), 'cancelling the Save dialog does not count as a backup');
+    await page.evaluate(() => {
+      window.showSaveFilePicker = async opts => ({ createWritable: async () => ({ write: async t => { window.__saved = { name: opts.suggestedName, text: t }; }, close: async () => {} }) });
+    });
+    await page.click('#settings [data-act="backup"]'); await page.waitForTimeout(600);
+    const saved = await page.evaluate(() => window.__saved);
+    ok(saved && /\.21board$/.test(saved.name) && JSON.parse(saved.text).format === '21board', 'saving through the dialog writes a .21board file');
+    ok(await page.evaluate(() => typeof window.__board21.state.settings.lastBackupAt === 'number'), 'and records the backup time');
+    // On a short screen a long window menu stays on screen and scrolls, so Close is always reachable.
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 900, height: 520 }); await page.waitForTimeout(300);
+    await setRect('notes:1', { x: 0, y: 0, w: 340, h: 280 });
+    await page.evaluate(() => window.__board21.focusWin('notes:1')); await page.waitForTimeout(200);
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.waitForTimeout(300);
+    const mb = await page.evaluate(() => document.getElementById('menu').getBoundingClientRect().bottom);
+    ok(mb <= 520, `long window menu fits a short screen (bottom ${Math.round(mb)} of 520)`);
+    await page.locator('#menu [data-act="close"]').scrollIntoViewIfNeeded();
+    await page.click('#menu [data-act="close"]'); await page.waitForTimeout(400);
+    ok(await page.evaluate(() => !window.__board21.state.wins.has('notes:1')), 'Close is reachable by scrolling the menu');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');
@@ -514,6 +620,8 @@ const SUITES = [
     ok(await b.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').inputValue() === 'from disk', 'tabs opened from disk stay in sync');
     await a.reload(); await a.waitForTimeout(1500);
     ok(await a.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').inputValue() === 'from disk', 'content persists when opened from disk');
+    await a.click('.picker-btn.left'); await a.click('[data-ctl="settings"]'); await a.waitForTimeout(500);
+    ok((await a.locator('#st-persist').textContent()).includes('Not available') && !(await a.locator('#st-persist-hint').textContent()).includes('address bar'), 'data-protection status is accurate for a copy opened from a file');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }]
@@ -531,6 +639,14 @@ const SUITES = [
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   BASE = `http://127.0.0.1:${server.address().port}/`;
   const browser = await chromium.launch();
+  // Headless Chromium can't answer a native Save dialog, so contexts use the download fallback by default.
+  // The "Review fixes" suite stubs showSaveFilePicker itself to test that path.
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = async opts => {
+    const c = await newContext(opts);
+    await c.addInitScript(() => { window.showSaveFilePicker = undefined; });
+    return c;
+  };
   const only = process.argv[2];
   for (const [title, fn] of SUITES) {
     if (only && !title.toLowerCase().includes(only.toLowerCase())) continue;
