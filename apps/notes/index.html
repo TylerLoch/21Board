@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes</title>
+<script src="../../sdk/board21.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--note, #fef08a); color: var(--ink, #1f2937); font-family: var(--b21-font); overflow: hidden; transition: background-color .25s; }
+  textarea {
+    position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; resize: none; border: 0; outline: none;
+    background: transparent; color: inherit; font: inherit; line-height: 1.35;
+    padding: clamp(10px, 4vmin, 28px); font-size: var(--size, clamp(16px, 7vmin, 40px));
+  }
+  textarea::placeholder { color: inherit; opacity: .45; }
+</style>
+</head>
+<body>
+  <textarea id="t" placeholder="Type a note…" spellcheck="true" aria-label="Note"></textarea>
+<script>
+  // Content: { text }      Config: { color, size }
+  const COLORS = {
+    yellow: { light: ['#fef08a', '#1f2937'], dark: ['#4d4416', '#fef9c3'], label: 'Yellow' },
+    pink:   { light: ['#fbcfe8', '#1f2937'], dark: ['#4f2240', '#fce7f3'], label: 'Pink' },
+    blue:   { light: ['#bfdbfe', '#1f2937'], dark: ['#1e3a5f', '#dbeafe'], label: 'Blue' },
+    green:  { light: ['#bbf7d0', '#1f2937'], dark: ['#1d4a30', '#dcfce7'], label: 'Green' },
+    purple: { light: ['#e9d5ff', '#1f2937'], dark: ['#3d2a5c', '#f3e8ff'], label: 'Purple' },
+    plain:  { light: null, dark: null, label: 'Plain' }
+  };
+  const SIZES = [12, 16, 22, 30, 40, 54, 72];   // vmin-ish steps, applied with clamp()
+  const DEFAULTS = { color: 'yellow', size: 3 };
+  let config = Object.assign({}, DEFAULTS);
+  const t = document.getElementById('t');
+
+  function applyLook() {
+    const c = COLORS[config.color] || COLORS.yellow;
+    const pair = c[Board21.theme];
+    document.body.style.setProperty('--note', pair ? pair[0] : 'var(--b21-bg)');
+    document.body.style.setProperty('--ink', pair ? pair[1] : 'var(--b21-text)');
+    const px = SIZES[Math.max(0, Math.min(SIZES.length - 1, config.size))];
+    document.body.style.setProperty('--size', `clamp(14px, ${px / 5.5}vmin, ${px * 1.6}px)`);
+  }
+
+  function setMenu() {
+    Board21.menu.set([
+      ...Object.keys(COLORS).map(k => ({ id: 'color:' + k, label: COLORS[k].label, checked: config.color === k })),
+      { separator: true },
+      { id: 'bigger', label: 'Larger text', disabled: config.size >= SIZES.length - 1 },
+      { id: 'smaller', label: 'Smaller text', disabled: config.size <= 0 },
+      { separator: true },
+      { id: 'clear', label: 'Clear note', disabled: !t.value }
+    ]);
+  }
+
+  let menuTimer;
+  t.addEventListener('input', () => {
+    Board21.save({ text: t.value });
+    clearTimeout(menuTimer);
+    menuTimer = setTimeout(setMenu, 400); // keeps "Clear note" enabled/disabled correctly
+  });
+
+  Board21.on('menu', id => {
+    if (id.startsWith('color:')) config.color = id.slice(6);
+    else if (id === 'bigger') config.size++;
+    else if (id === 'smaller') config.size--;
+    else if (id === 'clear') { t.value = ''; Board21.save({ text: '' }); setMenu(); return; }
+    Board21.saveConfig(config);
+    applyLook(); setMenu();
+  });
+
+  // Edited in another 21Board tab: update without losing the cursor if we're typing here too.
+  Board21.on('data', data => {
+    const text = (data && data.text) || '';
+    if (text === t.value) return;
+    const focused = document.activeElement === t;
+    const s = t.selectionStart, e = t.selectionEnd;
+    t.value = text;
+    if (focused) t.setSelectionRange(Math.min(s, text.length), Math.min(e, text.length));
+    setMenu();
+  });
+  Board21.on('config', c => { config = Object.assign({}, DEFAULTS, c || {}); applyLook(); setMenu(); });
+  Board21.on('theme', applyLook);
+
+  Board21.ready().then(ctx => {
+    t.value = (ctx.data && ctx.data.text) || '';
+    config = Object.assign({}, DEFAULTS, ctx.config || {});
+    applyLook(); setMenu();
+  });
+</script>
+</body>
+</html>

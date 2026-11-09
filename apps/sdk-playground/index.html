@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SDK Playground</title>
+<script src="../../sdk/board21.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--b21-bg); color: var(--b21-text); font: 13px/1.4 var(--b21-font); display: flex; flex-direction: column; overflow: hidden; }
+  header { padding: 8px 10px; border-bottom: 1px solid var(--b21-border); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  header b { margin-right: auto; }
+  .grid { padding: 8px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; overflow-y: auto; max-height: 50%; }
+  button { font: inherit; border: 1px solid var(--b21-border); background: var(--b21-surface); color: var(--b21-text); border-radius: 8px; padding: 7px 8px; cursor: pointer; text-align: left; }
+  button:active { background: var(--b21-accent-soft); }
+  .k { color: var(--b21-muted); }
+  #log { flex: 1; margin: 0; padding: 8px 10px; overflow-y: auto; background: var(--b21-surface); border-top: 1px solid var(--b21-border); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; user-select: text; -webkit-user-select: text; }
+  #log .ev { color: var(--b21-accent); }
+  #log .err { color: var(--b21-danger); }
+</style>
+</head>
+<body>
+  <header><b>SDK Playground</b><span class="k" id="who"></span><button id="clear">Clear log</button></header>
+  <div class="grid" id="grid"></div>
+  <pre id="log"></pre>
+<script>
+  const log = (msg, cls) => {
+    const el = document.getElementById('log');
+    const line = document.createElement('div');
+    if (cls) line.className = cls;
+    line.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
+    el.appendChild(line); el.scrollTop = el.scrollHeight;
+  };
+  const j = v => JSON.stringify(v);
+  let counter = 0;
+
+  const actions = {
+    'save({counter})': async () => { await Board21.save({ counter: ++counter, at: new Date().toISOString() }); log('save ok: counter=' + counter); },
+    'load()': async () => log('load → ' + j(await Board21.load())),
+    'save(null)': async () => { await Board21.save(null); log('content cleared'); },
+    'saveConfig({n})': async () => { await Board21.saveConfig({ n: Math.round(Math.random() * 100) }); log('saveConfig ok'); },
+    'loadConfig()': async () => log('loadConfig → ' + j(await Board21.loadConfig())),
+    'setSize(480, 320)': () => Board21.window.setSize(480, 320),
+    'setSize(300, 500)': () => Board21.window.setSize(300, 500),
+    'aspect 16:9': () => Board21.window.setAspectRatio(16 / 9),
+    'aspect 1:1': () => Board21.window.setAspectRatio(1),
+    'aspect off': () => Board21.window.setAspectRatio(null),
+    'min 400×300': () => Board21.window.setMinSize(400, 300),
+    'min reset': () => Board21.window.setMinSize(320, 260),
+    'max 600×400': () => Board21.window.setMaxSize(600, 400),
+    'max off': () => Board21.window.setMaxSize(null, null),
+    'resizable off': () => Board21.window.setResizable(false),
+    'resizable on': () => Board21.window.setResizable(true),
+    'setTitle(time)': () => Board21.window.setTitle(new Date().toLocaleTimeString()),
+    'setTitle("")': () => Board21.window.setTitle(''),
+    'requestAttention()': () => Board21.window.requestAttention(),
+    'maximize()': () => Board21.window.maximize(),
+    'restore()': () => Board21.window.restore(),
+    'getInfo()': async () => log('getInfo → ' + j(await Board21.window.getInfo())),
+    'menu.set(3 items)': () => Board21.menu.set([{ id: 'a', label: 'Item A' }, { id: 'b', label: 'Checked B', checked: true }, { separator: true }, { id: 'c', label: 'Disabled C', disabled: true }]),
+    'menu.clear()': () => Board21.menu.clear(),
+    'toast()': () => Board21.toast('Hello from the SDK Playground!'),
+    'context': () => log('context → ' + j(Object.assign({}, Board21.context, { palette: '…' }))),
+    'close()': () => Board21.window.close()
+  };
+
+  const grid = document.getElementById('grid');
+  grid.innerHTML = Object.keys(actions).map(k => `<button data-k="${k.replace(/"/g, '&quot;')}">${k.replace(/</g, '&lt;')}</button>`).join('');
+  grid.onclick = async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    try { await actions[b.dataset.k](); } catch (err) { log('error: ' + err.message, 'err'); }
+  };
+  document.getElementById('clear').onclick = () => { document.getElementById('log').textContent = ''; };
+
+  ['data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose'].forEach(ev =>
+    Board21.on(ev, (...args) => log(`event ${ev} ${args.map(a => j(a && a.accent ? '…palette' : a)).join(' ')}`, 'ev')));
+
+  Board21.ready().then(ctx => {
+    counter = (ctx.data && ctx.data.counter) || 0;
+    document.getElementById('who').textContent = `${ctx.appId} #${ctx.instance}${ctx.standalone ? ' (standalone)' : ''}`;
+    log('ready: ' + j({ appId: ctx.appId, instance: ctx.instance, theme: ctx.theme, data: ctx.data, config: ctx.config, window: ctx.window }));
+  });
+</script>
+</body>
+</html>

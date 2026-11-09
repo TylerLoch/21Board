@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<!--
+  21Board sub-app starter
+  =======================
+  1. Copy this folder to apps/<your-app-id>/   (lowercase letters, numbers, dashes)
+  2. Add an entry for it in apps/registry.js
+  3. Bump VERSION in sw.js
+  You can open this file directly in a browser to try it: the SDK runs in
+  "standalone" mode and saves to localStorage instead of 21Board.
+
+  This folder is NOT in the registry, so it is not shown in 21Board or cached offline.
+  Full reference: docs/SUBAPP-SDK.md
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>My App</title>
+<script src="../../sdk/board21.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    /* --b21-* variables follow 21Board's light/dark theme automatically */
+    background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font);
+    display: grid; place-items: center; overflow: hidden;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  /* Size things relative to the window (vmin/vw/vh) so the app scales when resized. */
+  #count { font-size: 30vmin; font-weight: 800; }
+  button { font: inherit; font-size: 6vmin; border: 0; border-radius: 999px; padding: 2vmin 6vmin; background: var(--b21-accent); color: var(--b21-on-accent); cursor: pointer; }
+</style>
+</head>
+<body>
+  <div style="text-align:center">
+    <div id="count">0</div>
+    <button id="add">Add one</button>
+  </div>
+<script>
+  // Content you save with Board21.save() is kept per window (instance) and
+  // restored when the window is reopened. It is left out of template exports.
+  let state = { count: 0 };
+
+  function render() { document.getElementById('count').textContent = state.count; }
+
+  document.getElementById('add').onclick = () => {
+    state.count++;
+    Board21.save(state);   // save right away; 21Board batches writes for you
+    render();
+  };
+
+  // Fired when this window's content was changed somewhere else
+  // (another open 21Board tab, an import, or a reset).
+  Board21.on('data', data => { state = Object.assign({ count: 0 }, data || {}); render(); });
+
+  Board21.ready().then(ctx => {
+    state = Object.assign(state, ctx.data || {});
+    render();
+  });
+</script>
+</body>
+</html>

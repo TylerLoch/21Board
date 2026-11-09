@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dice</title>
+<script src="../../sdk/board21.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; display: flex; flex-direction: column; }
+  #tray { flex: 1; min-height: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; align-content: center; gap: var(--gap); padding: var(--gap); cursor: pointer; }
+  .die { width: var(--die); height: var(--die); }
+  .die rect { fill: #fff; stroke: #d1d5db; stroke-width: 3; }
+  .die circle { fill: #111827; }
+  [data-b21-theme="dark"] .die rect { fill: #f3f4f6; stroke: #9ca3af; }
+  .die.roll { animation: roll .5s ease-out; }
+  @keyframes roll { 0% { transform: rotate(-25deg) scale(.8); } 40% { transform: rotate(18deg) scale(1.08); } 70% { transform: rotate(-8deg); } 100% { transform: none; } }
+  footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 0 12px clamp(8px, 3vh, 16px); }
+  button { font: inherit; border: 0; cursor: pointer; border-radius: 999px; background: var(--b21-accent); color: var(--b21-on-accent); height: clamp(34px, 12vh, 60px); padding: 0 clamp(16px, 5vw, 32px); font-size: clamp(14px, 4.6vh, 22px); font-weight: 700; }
+  #total { font-size: clamp(14px, 5vh, 26px); font-weight: 700; color: var(--b21-muted); min-width: 3ch; }
+  @media (max-height: 150px) { footer { display: none; } }
+</style>
+</head>
+<body>
+  <div id="tray" title="Tap to roll" aria-live="polite"></div>
+  <footer><button id="roll">Roll</button><span id="total"></span></footer>
+<script>
+  // Content: { values: [..] }     Config: { count, showTotal }
+  const PIPS = { 1: [[50, 50]], 2: [[28, 28], [72, 72]], 3: [[28, 28], [50, 50], [72, 72]], 4: [[28, 28], [72, 28], [28, 72], [72, 72]], 5: [[28, 28], [72, 28], [50, 50], [28, 72], [72, 72]], 6: [[28, 26], [72, 26], [28, 50], [72, 50], [28, 74], [72, 74]] };
+  let config = { count: 2, showTotal: true };
+  let state = { values: [] };
+
+  const die = (v, cls) => `<svg class="die ${cls || ''}" viewBox="0 0 100 100" role="img" aria-label="${v}"><rect x="4" y="4" width="92" height="92" rx="18"/>${PIPS[v].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="9"/>`).join('')}</svg>`;
+
+  function size() {
+    const n = config.count, W = innerWidth, H = document.getElementById('tray').clientHeight || innerHeight;
+    let best = 0;
+    // c dice across take c*s + (c+1)*gap, with gap = 0.18*s (padding counts as a gap on each side)
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols);
+      best = Math.max(best, Math.min(W / (cols + 0.18 * (cols + 1)), H / (rows + 0.18 * (rows + 1))) - 1);
+    }
+    document.body.style.setProperty('--die', Math.floor(best) + 'px');
+    document.body.style.setProperty('--gap', Math.floor(best * 0.18) + 'px');
+  }
+
+  function render(animate) {
+    const vals = state.values.length === config.count ? state.values : Array.from({ length: config.count }, (_, i) => state.values[i] || i % 6 + 1);
+    document.getElementById('tray').innerHTML = vals.map(v => die(v, animate ? 'roll' : '')).join('');
+    const total = document.getElementById('total');
+    total.textContent = config.showTotal && config.count > 1 ? '= ' + vals.reduce((a, b) => a + b, 0) : '';
+    size();
+  }
+
+  function roll() {
+    state = { values: Array.from({ length: config.count }, () => 1 + Math.floor(Math.random() * 6)) };
+    Board21.save(state);
+    render(true);
+  }
+
+  function setMenu() {
+    Board21.menu.set([
+      ...[1, 2, 3, 4, 5, 6].map(n => ({ id: 'n' + n, label: n === 1 ? '1 die' : `${n} dice`, checked: config.count === n })),
+      { separator: true },
+      { id: 'total', label: 'Show total', checked: !!config.showTotal }
+    ]);
+  }
+
+  document.getElementById('roll').onclick = roll;
+  document.getElementById('tray').onclick = roll;
+  addEventListener('resize', size);
+
+  Board21.on('menu', id => {
+    if (id === 'total') config.showTotal = !config.showTotal;
+    else if (/^n\d$/.test(id)) { config.count = +id.slice(1); state.values = []; }
+    Board21.saveConfig(config); setMenu(); render();
+  });
+  Board21.on('data', d => { state = Object.assign({ values: [] }, d || {}); render(true); });
+  Board21.on('config', c => { config = Object.assign({ count: 2, showTotal: true }, c || {}); setMenu(); render(); });
+
+  Board21.ready().then(ctx => {
+    config = Object.assign(config, ctx.config || {});
+    state = Object.assign(state, ctx.data || {});
+    setMenu(); render();
+  });
+</script>
+</body>
+</html>

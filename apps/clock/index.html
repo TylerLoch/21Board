@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clock</title>
+<script src="../../sdk/board21.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font); overflow: hidden; user-select: none; -webkit-user-select: none; }
+  #analog { position: absolute; inset: 4%; width: 92%; height: 92%; }
+  #analog .face { fill: var(--b21-surface); stroke: var(--b21-border); stroke-width: 1.5; }
+  #analog .tick { stroke: var(--b21-muted); stroke-linecap: round; }
+  #analog .tick.major { stroke: var(--b21-text); }
+  #analog text { fill: var(--b21-text); font-weight: 600; font-size: 12px; text-anchor: middle; dominant-baseline: central; font-family: var(--b21-font); }
+  #analog .hand { stroke: var(--b21-text); stroke-linecap: round; }
+  #analog .second { stroke: var(--b21-danger); }
+  #analog .hub { fill: var(--b21-danger); }
+  #digital { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; }
+  #time { font-size: min(24vw, 62vh); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
+  #time small { font-size: .38em; font-weight: 600; color: var(--b21-muted); margin-left: .15em; }
+  #date { font-size: min(6vw, 14vh); color: var(--b21-muted); font-weight: 500; }
+  body.digital #analog { display: none; }
+  body.digital #digital { display: flex; }
+</style>
+</head>
+<body>
+  <svg id="analog" viewBox="0 0 200 200" aria-label="Analog clock">
+    <circle class="face" cx="100" cy="100" r="96"/>
+    <g id="ticks"></g>
+    <line id="h" class="hand" x1="100" y1="100" x2="100" y2="54" stroke-width="7"/>
+    <line id="m" class="hand" x1="100" y1="100" x2="100" y2="28" stroke-width="4.5"/>
+    <line id="s" class="hand second" x1="100" y1="114" x2="100" y2="20" stroke-width="2"/>
+    <circle class="hub" cx="100" cy="100" r="4.5"/>
+  </svg>
+  <div id="digital"><div id="time"></div><div id="date"></div></div>
+<script>
+  // Config only (no content): { style: 'analog' | 'digital', hour24, seconds, date }
+  const DEFAULTS = { style: 'analog', hour24: false, seconds: true, date: true };
+  let config = Object.assign({}, DEFAULTS);
+  const ASPECT = { analog: 1, digital: 2.2 };
+
+  const ticks = document.getElementById('ticks');
+  let html = '';
+  for (let i = 0; i < 60; i++) {
+    const major = i % 5 === 0, a = i * Math.PI / 30;
+    const r1 = major ? 80 : 86, r2 = 91;
+    html += `<line class="tick${major ? ' major' : ''}" stroke-width="${major ? 2.5 : 1.2}" x1="${100 + r1 * Math.sin(a)}" y1="${100 - r1 * Math.cos(a)}" x2="${100 + r2 * Math.sin(a)}" y2="${100 - r2 * Math.cos(a)}"/>`;
+    if (major) { const n = i / 5 || 12, rt = 69; html += `<text x="${100 + rt * Math.sin(a)}" y="${100 - rt * Math.cos(a)}">${n}</text>`; }
+  }
+  ticks.innerHTML = html;
+
+  const rot = (id, deg) => document.getElementById(id).setAttribute('transform', `rotate(${deg} 100 100)`);
+
+  function render() {
+    const d = new Date();
+    const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
+    if (config.style === 'analog') {
+      rot('h', (h % 12) * 30 + m * 0.5);
+      rot('m', m * 6 + s * 0.1);
+      rot('s', s * 6);
+      document.getElementById('s').style.display = config.seconds ? '' : 'none';
+    } else {
+      const hh = config.hour24 ? String(h).padStart(2, '0') : String(h % 12 || 12);
+      const ampm = config.hour24 ? '' : `<small>${h < 12 ? 'AM' : 'PM'}</small>`;
+      document.getElementById('time').innerHTML = `${hh}:${String(m).padStart(2, '0')}${config.seconds ? ':' + String(s).padStart(2, '0') : ''}${ampm}`;
+      const date = document.getElementById('date');
+      date.style.display = config.date ? '' : 'none';
+      date.textContent = d.toLocaleDateString(Board21.context ? Board21.context.locale : undefined, { weekday: 'long', month: 'long', day: 'numeric' });
+    }
+  }
+
+  function apply() {
+    document.body.classList.toggle('digital', config.style === 'digital');
+    Board21.window.setAspectRatio(ASPECT[config.style] || 1);
+    Board21.menu.set([
+      { id: 'analog', label: 'Analog', checked: config.style === 'analog' },
+      { id: 'digital', label: 'Digital', checked: config.style === 'digital' },
+      { separator: true },
+      { id: 'seconds', label: 'Show seconds', checked: !!config.seconds },
+      { id: 'hour24', label: '24-hour time', checked: !!config.hour24, disabled: config.style !== 'digital' },
+      { id: 'date', label: 'Show date', checked: !!config.date, disabled: config.style !== 'digital' }
+    ]);
+    render();
+  }
+
+  Board21.on('menu', id => {
+    if (id === 'analog' || id === 'digital') config.style = id;
+    else if (id in config) config[id] = !config[id];
+    Board21.saveConfig(config);
+    apply();
+  });
+  Board21.on('config', c => { config = Object.assign({}, DEFAULTS, c || {}); apply(); });
+
+  Board21.ready().then(ctx => {
+    config = Object.assign({}, DEFAULTS, ctx.config || {});
+    apply();
+    setInterval(render, 250);
+  });
+</script>
+</body>
+</html>

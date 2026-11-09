@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Name Picker</title>
+<script src="../../sdk/board21.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  .view { position: absolute; inset: 0; display: none; flex-direction: column; padding: clamp(8px, 3vmin, 20px); box-sizing: border-box; gap: clamp(6px, 2vmin, 14px); }
+  .view.on { display: flex; }
+  .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center; border-radius: 16px; background: var(--b21-surface); box-shadow: inset 0 0 0 1px var(--b21-border); padding: 8px; }
+  #name { font-size: min(13vw, 24vh); font-weight: 800; line-height: 1.05; word-break: break-word; }
+  #name.rolling { opacity: .55; }
+  #name.landed { animation: pop .35s ease-out; color: var(--b21-accent); }
+  @keyframes pop { 0% { transform: scale(.85); } 60% { transform: scale(1.06); } 100% { transform: scale(1); } }
+  .muted { color: var(--b21-muted); font-weight: 500; font-size: min(5vw, 7vh); }
+  .row { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+  button { font: inherit; border: 0; cursor: pointer; border-radius: 999px; background: var(--b21-surface-2); color: var(--b21-text); height: clamp(36px, 12vh, 64px); padding: 0 clamp(12px, 4vw, 28px); font-size: clamp(14px, 4.5vh, 22px); font-weight: 650; }
+  button.primary { background: var(--b21-accent); color: var(--b21-on-accent); min-width: 40%; }
+  button:disabled { opacity: .45; cursor: default; }
+  button.small { height: clamp(30px, 9vh, 44px); font-size: clamp(12px, 3.4vh, 16px); padding: 0 14px; font-weight: 600; }
+  #status { font-size: clamp(12px, 3.6vh, 17px); color: var(--b21-muted); }
+  textarea { flex: 1; min-height: 0; resize: none; border-radius: 12px; border: 1px solid var(--b21-border); background: var(--b21-surface); color: var(--b21-text); font: inherit; font-size: clamp(14px, 4vh, 20px); padding: 10px 12px; outline: none; line-height: 1.4; }
+  textarea:focus { border-color: var(--b21-accent); }
+  .edit-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 700; font-size: clamp(14px, 4vh, 19px); }
+  @media (max-height: 200px) { #status, .muted { display: none; } }
+</style>
+</head>
+<body>
+  <section class="view" id="pick">
+    <div class="stage"><div id="name"></div></div>
+    <div class="row"><button class="primary" id="go">Pick a name</button></div>
+    <div class="row"><span id="status"></span><button class="small" id="round" hidden>Start over</button></div>
+  </section>
+  <section class="view" id="edit">
+    <div class="edit-head"><span>Names — one per line</span><button class="small primary" id="done" style="min-width:0">Done</button></div>
+    <textarea id="list" placeholder="Ada&#10;Grace&#10;Katherine&#10;…" spellcheck="false" aria-label="Names, one per line"></textarea>
+  </section>
+<script>
+  // Content: { names: [...], left: [...] | null, current }   (names are content, so templates never include them)
+  // Config:  { noRepeats }
+  let state = { names: [], left: null, current: null };
+  let config = { noRepeats: true };
+  let rolling = false;
+  const $ = id => document.getElementById(id);
+
+  const pool = () => config.noRepeats ? (state.left || state.names.slice()) : state.names;
+
+  function show(view, focus) {
+    $('pick').classList.toggle('on', view === 'pick');
+    $('edit').classList.toggle('on', view === 'edit');
+    if (view === 'edit') { $('list').value = state.names.join('\n'); if (focus) setTimeout(() => $('list').focus(), 50); }
+  }
+
+  function render() {
+    if (rolling) return;
+    const n = $('name');
+    n.classList.remove('rolling');
+    if (!state.names.length) {
+      n.innerHTML = '<span class="muted">Add names to get started</span>';
+      $('go').textContent = 'Add names';
+    } else {
+      n.textContent = state.current || '?';
+      $('go').textContent = state.current ? 'Pick again' : 'Pick a name';
+    }
+    const p = pool();
+    const showRound = config.noRepeats && state.names.length > 0;
+    $('status').textContent = !state.names.length ? '' : config.noRepeats ? `${p.length} of ${state.names.length} left` : `${state.names.length} names`;
+    $('round').hidden = !showRound || p.length === state.names.length;
+    if (state.names.length && config.noRepeats && p.length === 0) $('go').textContent = 'Everyone picked — start over';
+    setMenu();
+  }
+
+  function setMenu() {
+    Board21.menu.set([
+      { id: 'edit', label: 'Edit names' },
+      { id: 'norepeat', label: 'No repeats', checked: !!config.noRepeats },
+      { id: 'round', label: 'Start over', disabled: !config.noRepeats }
+    ]);
+  }
+
+  function pick() {
+    if (!state.names.length) { show('edit', true); return; }
+    let p = pool();
+    if (!p.length) { state.left = state.names.slice(); state.current = null; Board21.save(state); render(); return; }
+    const choice = p[Math.floor(Math.random() * p.length)];
+    if (config.noRepeats) state.left = p.filter((x, i) => i !== p.indexOf(choice));
+    state.current = choice;
+    Board21.save(state);
+    // Little drum-roll, then land on the saved choice.
+    rolling = true;
+    const n = $('name');
+    n.classList.remove('landed'); n.classList.add('rolling');
+    let delay = 40, t = 0;
+    const step = () => {
+      n.textContent = state.names[Math.floor(Math.random() * state.names.length)];
+      t += delay; delay *= 1.12;
+      if (t < 1300) setTimeout(step, delay);
+      else { rolling = false; render(); void n.offsetWidth; n.classList.add('landed'); }
+    };
+    step();
+  }
+
+  $('go').onclick = pick;
+  $('round').onclick = () => { state.left = state.names.slice(); state.current = null; Board21.save(state); render(); };
+  $('done').onclick = () => {
+    const names = Array.from(new Set($('list').value.split('\n').map(s => s.trim()).filter(Boolean)));
+    const changed = names.join('\n') !== state.names.join('\n');
+    state.names = names;
+    if (changed) { state.left = names.slice(); state.current = null; }
+    Board21.save(state);
+    show('pick'); render();
+  };
+
+  Board21.on('menu', id => {
+    if (id === 'edit') show('edit', true);
+    if (id === 'norepeat') { config.noRepeats = !config.noRepeats; if (config.noRepeats) state.left = state.names.slice(); Board21.saveConfig(config); Board21.save(state); render(); }
+    if (id === 'round') $('round').onclick();
+  });
+  Board21.on('data', d => { state = Object.assign({ names: [], left: null, current: null }, d || {}); if ($('edit').classList.contains('on')) $('list').value = state.names.join('\n'); render(); });
+  Board21.on('config', c => { config = Object.assign({ noRepeats: true }, c || {}); render(); });
+
+  Board21.ready().then(ctx => {
+    state = Object.assign(state, ctx.data || {});
+    config = Object.assign(config, ctx.config || {});
+    show(state.names.length ? 'pick' : 'edit');
+    render();
+  });
+</script>
+</body>
+</html>

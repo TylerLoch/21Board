@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timer</title>
+<script src="../../sdk/board21.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font);
+    display: flex; flex-direction: column; overflow: hidden;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+    transition: background-color .3s;
+  }
+  .bar { height: max(6px, 1.6vh); background: var(--b21-surface-2); flex: 0 0 auto; }
+  .bar > div { height: 100%; width: 100%; background: var(--b21-accent); transform-origin: left; transition: transform .25s linear, background-color .3s; }
+  .display {
+    flex: 1 1 auto; display: flex; align-items: center; justify-content: center; min-height: 0;
+    font-size: min(27vw, 44vh); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1;
+  }
+  .controls { flex: 0 0 auto; display: flex; flex-direction: column; gap: min(2vh, 10px); padding: 0 min(3vw, 14px) min(3vh, 14px); }
+  .row { display: flex; gap: min(2vw, 8px); justify-content: center; }
+  button {
+    font: inherit; color: var(--b21-text); background: var(--b21-surface-2); border: 0; cursor: pointer;
+    border-radius: 999px; height: clamp(34px, 11vh, 64px); min-width: clamp(34px, 11vh, 64px); padding: 0 clamp(8px, 3vw, 22px);
+    font-size: clamp(13px, 4.2vh, 22px); font-weight: 600; display: inline-flex; align-items: center; justify-content: center;
+  }
+  button:active { filter: brightness(.92); }
+  button.primary { background: var(--b21-accent); color: var(--b21-on-accent); min-width: clamp(70px, 26vw, 160px); }
+  button svg { width: 1.1em; height: 1.1em; fill: currentColor; }
+  .chips button { height: clamp(28px, 8vh, 44px); font-size: clamp(12px, 3.4vh, 17px); padding: 0 clamp(6px, 2vw, 14px); background: transparent; box-shadow: inset 0 0 0 1.5px var(--b21-border); }
+  .chips button.on { box-shadow: inset 0 0 0 2px var(--b21-accent); color: var(--b21-accent); }
+  @media (max-height: 210px) { .chips { display: none; } }
+  @media (max-height: 130px) { .controls { display: none; } }
+  body.done { background: var(--b21-danger); color: #fff; animation: flash 1s steps(2) infinite; }
+  body.done .bar { visibility: hidden; }
+  @keyframes flash { 50% { background: var(--b21-bg); color: var(--b21-danger); } }
+  body.done button { background: rgba(255,255,255,.25); color: inherit; }
+  body.done .chips button { box-shadow: inset 0 0 0 1.5px currentColor; background: transparent; }
+</style>
+</head>
+<body>
+  <div class="bar"><div id="bar"></div></div>
+  <div class="display" id="display">05:00</div>
+  <div class="controls">
+    <div class="row chips" id="chips"></div>
+    <div class="row">
+      <button id="minus" aria-label="Subtract one minute">−1:00</button>
+      <button id="go" class="primary" aria-label="Start"></button>
+      <button id="reset" aria-label="Reset"><svg viewBox="0 0 24 24"><path d="M12 5V2L7 6l5 4V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
+      <button id="plus" aria-label="Add one minute">+1:00</button>
+    </div>
+  </div>
+<script>
+  const PRESETS = [1, 2, 3, 5, 10, 15];
+  const PLAY = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+  const PAUSE = '<svg viewBox="0 0 24 24"><path d="M6 5h4v14H6zM14 5h4v14h-4z"/></svg>';
+  const $ = id => document.getElementById(id);
+
+  // Content (saved with Board21.save):  { duration, remaining, endsAt }
+  //   endsAt is a wall-clock time while running, so every open copy of 21Board shows the same countdown.
+  // Config (Board21.saveConfig):          { sound }
+  let state = { duration: 5 * 60000, remaining: 5 * 60000, endsAt: null };
+  let config = { sound: true };
+  let finishedAlerted = false;
+
+  const running = () => state.endsAt !== null;
+  const left = () => running() ? Math.max(0, state.endsAt - Date.now()) : state.remaining;
+
+  function fmt(ms) {
+    const total = Math.ceil(ms / 1000);
+    const h = Math.floor(total / 3600), m = Math.floor((total % 3600) / 60), s = total % 60;
+    return (h ? h + ':' + String(m).padStart(2, '0') : String(m).padStart(2, '0')) + ':' + String(s).padStart(2, '0');
+  }
+
+  function save() { Board21.save(state); }
+
+  function render() {
+    const ms = left();
+    const done = ms <= 0 && state.duration > 0;
+    $('display').textContent = fmt(ms);
+    $('bar').style.transform = `scaleX(${state.duration ? ms / state.duration : 0})`;
+    $('go').innerHTML = running() ? PAUSE : PLAY;
+    $('go').setAttribute('aria-label', running() ? 'Pause' : 'Start');
+    document.body.classList.toggle('done', done);
+    document.querySelectorAll('#chips button').forEach(b => b.classList.toggle('on', +b.dataset.min * 60000 === state.duration));
+    Board21.window.setTitle(done ? 'Done!' : running() ? 'Running' : (ms < state.duration ? 'Paused' : ''));
+  }
+
+  function tick() {
+    if (running() && left() <= 0) {
+      state = { duration: state.duration, remaining: 0, endsAt: null };
+      save();
+      alertDone();
+    }
+    render();
+  }
+
+  function alertDone() {
+    if (finishedAlerted) return;
+    finishedAlerted = true;
+    Board21.window.requestAttention();
+    if (config.sound && document.visibilityState === 'visible') beep();
+  }
+
+  function beep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      [0, 0.35, 0.7].forEach(t => {
+        const o = ctx.createOscillator(), g = ctx.createGain();
+        o.type = 'sine'; o.frequency.value = 880;
+        g.gain.setValueAtTime(0.0001, ctx.currentTime + t);
+        g.gain.exponentialRampToValueAtTime(0.4, ctx.currentTime + t + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.28);
+        o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.3);
+      });
+      setTimeout(() => ctx.close(), 1500);
+    } catch (e) { /* audio unavailable */ }
+  }
+
+  function setDuration(ms) {
+    ms = Math.max(0, Math.min(ms, 24 * 3600000));
+    finishedAlerted = false;
+    state = { duration: ms, remaining: ms, endsAt: null };
+    save(); render();
+  }
+
+  $('go').onclick = () => {
+    if (running()) state = { duration: state.duration, remaining: left(), endsAt: null };
+    else {
+      if (left() <= 0) state.remaining = state.duration;
+      if (state.remaining <= 0) return;
+      finishedAlerted = false;
+      state = { duration: state.duration, remaining: state.remaining, endsAt: Date.now() + state.remaining };
+    }
+    save(); render();
+  };
+  $('reset').onclick = () => setDuration(state.duration);
+  $('plus').onclick = () => adjust(60000);
+  $('minus').onclick = () => adjust(-60000);
+
+  function adjust(delta) {
+    finishedAlerted = false;
+    if (running()) {
+      state.endsAt = Math.max(Date.now(), state.endsAt + delta);
+      state.duration = Math.max(state.duration + delta, left());
+    } else {
+      const fresh = state.remaining === state.duration || state.remaining <= 0;
+      const r = Math.max(0, (state.remaining <= 0 ? state.duration : state.remaining) + delta);
+      state = { duration: fresh ? r : Math.max(state.duration + delta, r), remaining: r, endsAt: null };
+    }
+    save(); render();
+  }
+
+  $('chips').innerHTML = PRESETS.map(m => `<button data-min="${m}">${m}m</button>`).join('');
+  $('chips').onclick = e => { const b = e.target.closest('button'); if (b) setDuration(+b.dataset.min * 60000); };
+
+  function setMenu() {
+    Board21.menu.set([
+      { id: 'sound', label: 'Alarm sound', checked: !!config.sound },
+      { id: 'test', label: 'Test the alarm' }
+    ]);
+  }
+
+  Board21.on('menu', id => {
+    if (id === 'sound') { config.sound = !config.sound; Board21.saveConfig(config); setMenu(); }
+    if (id === 'test') beep();
+  });
+
+  // Another 21Board tab (or an import) changed this timer.
+  Board21.on('data', data => {
+    if (data) { state = Object.assign(state, data); if (left() > 0) finishedAlerted = false; }
+    render();
+  });
+  Board21.on('config', c => { config = Object.assign({ sound: true }, c || {}); setMenu(); });
+
+  Board21.ready().then(ctx => {
+    if (ctx.data) state = Object.assign(state, ctx.data);
+    if (ctx.config) config = Object.assign(config, ctx.config);
+    if (!running() && state.remaining <= 0 && state.duration > 0) finishedAlerted = true; // finished while closed
+    setMenu();
+    render();
+    setInterval(tick, 200);
+  });
+</script>
+</body>
+</html>

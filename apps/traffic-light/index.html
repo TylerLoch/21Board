@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Traffic Light</title>
+<script src="../../sdk/board21.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--b21-bg); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  .housing { position: absolute; inset: 5%; border-radius: 18% / 8%; background: #1f2937; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; box-shadow: inset 0 -6px 0 rgba(0,0,0,.35); }
+  [data-b21-theme="dark"] .housing { background: #0b0f17; box-shadow: inset 0 0 0 2px #374151; }
+  .lamp { width: min(72%, 25vh); aspect-ratio: 1; border-radius: 50%; border: 0; cursor: pointer; padding: 0; opacity: .22; transition: opacity .2s, box-shadow .2s, transform .1s; }
+  .lamp:active { transform: scale(.96); }
+  .lamp.red { background: #ef4444; } .lamp.yellow { background: #facc15; } .lamp.green { background: #22c55e; }
+  .lamp.on { opacity: 1; }
+  .lamp.red.on { box-shadow: 0 0 2.5vmin 1vmin rgba(239,68,68,.75); }
+  .lamp.yellow.on { box-shadow: 0 0 2.5vmin 1vmin rgba(250,204,21,.75); }
+  .lamp.green.on { box-shadow: 0 0 2.5vmin 1vmin rgba(34,197,94,.75); }
+</style>
+</head>
+<body>
+  <div class="housing">
+    <button class="lamp red" data-c="red" aria-label="Red"></button>
+    <button class="lamp yellow" data-c="yellow" aria-label="Yellow"></button>
+    <button class="lamp green" data-c="green" aria-label="Green"></button>
+  </div>
+<script>
+  // Content: { active: 'red' | 'yellow' | 'green' | null }
+  const LABELS = { red: 'Red', yellow: 'Yellow', green: 'Green' };
+  let state = { active: null };
+
+  function render() {
+    document.querySelectorAll('.lamp').forEach(b => { b.classList.toggle('on', b.dataset.c === state.active); b.setAttribute('aria-pressed', String(b.dataset.c === state.active)); });
+    Board21.window.setTitle(state.active ? LABELS[state.active] : '');
+    Board21.menu.set([
+      ...Object.keys(LABELS).map(c => ({ id: c, label: LABELS[c], checked: state.active === c })),
+      { id: 'off', label: 'All off', disabled: !state.active }
+    ]);
+  }
+  function set(c) { state = { active: c }; Board21.save(state); render(); }
+
+  document.querySelector('.housing').addEventListener('click', e => {
+    const b = e.target.closest('.lamp');
+    if (b) set(state.active === b.dataset.c ? null : b.dataset.c);
+  });
+  Board21.on('menu', id => set(id === 'off' ? null : id));
+  Board21.on('data', d => { state = Object.assign({ active: null }, d || {}); render(); });
+  Board21.ready().then(ctx => { state = Object.assign(state, ctx.data || {}); render(); });
+</script>
+</body>
+</html>

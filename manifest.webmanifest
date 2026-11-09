@@ -1,0 +1,29 @@
+{
+  "id": "./",
+  "name": "21Board",
+  "short_name": "21Board",
+  "description": "Curate your own suite of smartboard apps and orchestrate your classroom with ease.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "orientation": "any",
+  "background_color": "#f3f4f6",
+  "theme_color": "#2563eb",
+  "categories": ["education", "productivity"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ],
+  "file_handlers": [
+    {
+      "action": "./",
+      "accept": { "application/x-21board": [".21board"] },
+      "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" }],
+      "launch_type": "single-client"
+    }
+  ],
+  "launch_handler": { "client_mode": "focus-existing" }
+}
