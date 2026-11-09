@@ -58,6 +58,9 @@ without changing the format: `settings.activeBoard` will choose which board is s
   snapping: true,          // snap windows together and resist overlap
   resistance: "normal",    // "gentle" | "normal" | "strong" — how hard you push to overlap
   pickerCorners: "both",   // "both" | "left" | "right"
+  scaleToScreen: true,     // zoom the board's layout to fit the screen (see "Layout space")
+  accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
+  lastBackupAt: null,      // ms of the last full backup export, for backup reminders
   devMode: false,
   devApps: [               // test sub-apps added in Developer mode
     { id: "dev-apps-my-app", name: "My-app (test)", entry: "apps/my-app/index.html" }
@@ -173,6 +176,7 @@ on Chrome) reads it.
   "generator": "21Board 1.0.0",
   "viewport": { "width": 1920, "height": 1080 },   // the board's layout size: the space the rects are in
   "theme": "light",
+  "accent": "blue",
   "board": {
     "name": "Room 12",
     "background": { "color": null, "pattern": "dots" }
@@ -202,7 +206,7 @@ on Chrome) reads it.
 Importing offers two choices:
 
 - **Replace my board** — removes this board's current windows and content, then loads the file
-  (including its board name, background and theme).
+  (including its board name, background, theme and accent color).
 - **Add to my board** — keeps everything and adds the file's windows. Instance numbers are
   renumbered to the next free number per app, and windows are nudged into free space.
 

@@ -65,6 +65,7 @@
     resistance: 'normal',    // 'gentle' | 'normal' | 'strong'
     pickerCorners: 'both',   // 'both' | 'left' | 'right'
     scaleToScreen: true,     // zoom the whole layout to fit the screen (see Zoom in section 6)
+    accent: 'blue',          // accent color: a key of ACCENTS
     devMode: false,
     devApps: [],             // [{ id, name, entry }] test sub-apps added in Developer mode
     activeBoard: 1,
@@ -72,6 +73,44 @@
   };
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
   const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
+
+  // Accent colors: [light theme, dark theme]. Light shades keep white text readable (≥4.5:1);
+  // dark shades are lighter so they stand out on dark surfaces.
+  const ACCENTS = {
+    blue: ['#2563eb', '#60a5fa', 'Blue'], purple: ['#7c3aed', '#a78bfa', 'Purple'], pink: ['#db2777', '#f472b6', 'Pink'],
+    red: ['#dc2626', '#f87171', 'Red'], orange: ['#c2410c', '#fb923c', 'Orange'], green: ['#15803d', '#4ade80', 'Green'],
+    teal: ['#0f766e', '#2dd4bf', 'Teal'], slate: ['#475569', '#94a3b8', 'Slate']
+  };
+  function mixHex(a, b, t) { // t = share of b
+    const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
+    const ch = sh => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t);
+    return '#' + [16, 8, 0].map(sh => ch(sh).toString(16).padStart(2, '0')).join('');
+  }
+  const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
+  // The palette sub-apps receive (--b21-* variables), with the chosen accent applied.
+  function paletteFor(theme) {
+    const base = Object.assign({}, PALETTES[theme]);
+    const a = ACCENTS[S.settings.accent];
+    if (!a || S.settings.accent === 'blue') return base; // blue is the built-in default
+    const c = theme === 'dark' ? a[1] : a[0];
+    base.accent = c;
+    base['accent-soft'] = theme === 'dark' ? rgba(c, 0.18) : mixHex(c, '#ffffff', 0.9);
+    return base;
+  }
+  // Board chrome: override the CSS color tokens for a non-default accent.
+  function applyAccent(theme) {
+    const st = document.body.style;
+    const names = ['--primary', '--primary-soft', '--active-bg', '--focus-ring', '--focus-title', '--label-open'];
+    const a = ACCENTS[S.settings.accent];
+    if (!a || S.settings.accent === 'blue') { names.forEach(n => st.removeProperty(n)); return; }
+    const dark = theme === 'dark', c = dark ? a[1] : a[0];
+    st.setProperty('--primary', c);
+    st.setProperty('--focus-ring', c);
+    st.setProperty('--primary-soft', rgba(c, dark ? 0.18 : 0.12));
+    st.setProperty('--active-bg', dark ? rgba(c, 0.2) : mixHex(c, '#ffffff', 0.92));
+    st.setProperty('--focus-title', dark ? mixHex(c, '#1e1e1e', 0.8) : mixHex(c, '#ffffff', 0.92));
+    st.setProperty('--label-open', dark ? rgba(c, 0.32) : mixHex(c, '#ffffff', 0.8));
+  }
 
   const BG_SWATCHES = [
     ['#ffffff', 'White'], ['#faf7f0', 'Paper'], ['#e0f2fe', 'Sky'], ['#dcfce7', 'Mint'], ['#fce7f3', 'Blush'],
@@ -505,11 +544,15 @@
   function applySettings() {
     const theme = resolvedTheme();
     document.body.classList.toggle('dark', theme === 'dark');
-    window.__board21Host = { theme, palette: PALETTES[theme], version: BOARD_VERSION };
-    if (theme !== S.appliedTheme) {
-      S.appliedTheme = theme;
-      for (const w of S.wins.values()) w.post('theme', { theme, palette: PALETTES[theme] });
-      applyBoard();
+    applyAccent(theme);
+    const palette = paletteFor(theme);
+    window.__board21Host = { theme, palette, version: BOARD_VERSION };
+    const themeSig = theme + '|' + S.settings.accent;
+    if (themeSig !== S.appliedTheme) {
+      const themeChanged = !S.appliedTheme || S.appliedTheme.split('|')[0] !== theme;
+      S.appliedTheme = themeSig;
+      for (const w of S.wins.values()) w.post('theme', { theme, palette });
+      if (themeChanged) applyBoard();
     }
     const corners = S.settings.pickerCorners;
     Picker.btns.left.hidden = corners === 'right';
@@ -1034,7 +1077,7 @@
               sdkProtocol: SDK_PROTOCOL, boardVersion: BOARD_VERSION,
               appId: this.app.id, appName: this.app.name, appVersion: this.app.version, instance: inst.n,
               data: clone(S.data.get(this.ikey)), config: clone(S.conf.get(this.ikey)),
-              theme, palette: PALETTES[theme], window: this.info(),
+              theme, palette: paletteFor(theme), window: this.info(),
               locale: navigator.language || 'en-US', devMode: !!S.settings.devMode
             }
           });
@@ -1692,6 +1735,8 @@
       this.body.innerHTML = `
         <h3>Appearance</h3>
         <div class="row"><div class="lbl">Theme</div>${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']])}</div>
+        <div class="row stack"><div><div class="lbl">Accent color</div><div class="hint">Buttons, the selected-window outline and highlights, in 21Board and its apps.</div></div>
+          <div class="swatches">${Object.entries(ACCENTS).map(([k, a]) => `<button class="swatch${(st.accent || 'blue') === k ? ' on' : ''}" style="background:${resolvedTheme() === 'dark' ? a[1] : a[0]}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent"></button>`).join('')}</div></div>
         <div class="row stack"><div class="lbl">Board background</div>
           <div class="swatches">
             <button class="swatch auto${!bg.color ? ' on' : ''}" data-act="bg" data-val="" title="Match theme" aria-label="Match theme"></button>
@@ -1791,6 +1836,7 @@
     async act(act, val) {
       switch (act) {
         case 'theme': updateSettings({ theme: val }); break;
+        case 'accent': if (ACCENTS[val]) updateSettings({ accent: val }); break;
         case 'snapping': updateSettings({ snapping: !S.settings.snapping }); break;
         case 'scale': updateSettings({ scaleToScreen: !S.settings.scaleToScreen }); updateZoom(); this.render(); break;
         case 'use-screen': useScreenAsLayout(); updateZoom(); this.render(); toast('This screen is now the board’s layout size.'); break;
@@ -1927,6 +1973,7 @@
       generator: `21Board ${BOARD_VERSION}`,
       viewport: { width: L.w, height: L.h }, // the layout size the rects are in
       theme: S.settings.theme,
+      accent: S.settings.accent,
       board: { name: S.board.name, background: S.board.background },
       instances
     };
@@ -1995,6 +2042,7 @@
     return {
       kind: j.kind === 'template' ? 'template' : 'full',
       theme: ['light', 'dark', 'system'].includes(j.theme) ? j.theme : null,
+      accent: typeof j.accent === 'string' && ACCENTS[j.accent] ? j.accent : null,
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
         background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none' }
@@ -2093,7 +2141,7 @@
       const board = Object.assign({}, S.board, { background: p.board.background, layout: newLayout });
       if (p.board.name) board.name = p.board.name;
       out.push(rec(Keys.board(b), 'board', board));
-      if (p.theme) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, { theme: p.theme })));
+      if (p.theme || p.accent) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, p.theme ? { theme: p.theme } : {}, p.accent ? { accent: p.accent } : {})));
     }
 
     await Store.tx('readwrite', s => {

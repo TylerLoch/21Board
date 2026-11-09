@@ -745,6 +745,34 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Accent color', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => window.__board21.openApp('timer')); await page.waitForTimeout(1200);
+    const tab2 = await ctx.newPage(); await tab2.goto(BASE); await tab2.waitForTimeout(1200);
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="accent"][data-val="purple"]'); await page.waitForTimeout(500);
+    const ring = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--focus-ring').trim());
+    ok(ring === '#7c3aed', `board accent changes (focus ring ${ring})`);
+    const appAccent = await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('html').evaluate(e => e.style.getPropertyValue('--b21-accent'));
+    ok(appAccent === '#7c3aed', `sub-apps get the accent (${appAccent})`);
+    await page.screenshot({ path: OUT + 'accent-purple.png' });
+    await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(500);
+    const darkAccent = await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('html').evaluate(e => e.style.getPropertyValue('--b21-accent'));
+    ok(darkAccent === '#a78bfa', `dark theme uses the lighter accent shade (${darkAccent})`);
+    await page.waitForTimeout(400);
+    ok(await tab2.evaluate(() => getComputedStyle(document.body).getPropertyValue('--focus-ring').trim()) === '#a78bfa', 'accent syncs to other tabs');
+    await page.reload(); await page.waitForTimeout(1200);
+    ok(await page.evaluate(() => window.__board21.state.settings.accent) === 'purple', 'accent is remembered');
+    await page.evaluate(() => { const s = window.__board21.state; s.settings.accent = 'blue'; });
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="accent"][data-val="blue"]'); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.body.style.getPropertyValue('--focus-ring')) === '', 'blue restores the built-in colors');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');
