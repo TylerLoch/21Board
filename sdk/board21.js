@@ -26,7 +26,8 @@
   var SDK_VERSION = '1.0.0';
   var PROTOCOL = 1;
   var embedded = window.parent && window.parent !== window;
-  var targetOrigin = (location.origin && location.origin !== 'null') ? location.origin : '*';
+  // file:// pages have opaque origins, so messages to the board can't be origin-restricted there.
+  var targetOrigin = (location.protocol !== 'file:' && location.origin && location.origin !== 'null') ? location.origin : '*';
 
   var PALETTES = {
     light: {

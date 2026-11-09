@@ -14,15 +14,22 @@ built independently and dropped in.
 
 ---
 
-## Running it
+## Trying it out
 
-Any static web server works. From the repository folder:
+You don't need a server to try 21Board:
 
-```bash
-python3 -m http.server 8000
-```
+| Option | Setup | Works | Doesn't work |
+| --- | --- | --- | --- |
+| **Open `index.html` from disk** | Download the repo (Code → Download ZIP), unzip, open `index.html` in Chrome | Picker, windows, all sub-apps, saving, export/import, multiple tabs | Offline mode / installing as an app (needs `https://`) |
+| **GitHub Pages** | Repo Settings → Pages → *Deploy from a branch* → pick the branch, `/ (root)` | Everything, including offline and install. A real URL you can open on a smartboard | — (private repos need a paid GitHub plan for Pages; the site itself is public) |
+| **Local web server** | `python3 -m http.server 8000` in the folder, open <http://localhost:8000> | Everything | — |
 
-Then open <http://localhost:8000>. (Offline support needs `https://` or `localhost`.)
+21Board uses only relative paths, so it also works from a subfolder (e.g.
+`https://example.org/21Board/`).
+
+> **Keep test copies on a different host than production.** Browser storage is per site, so a
+> test copy at `boardapp.ccsd21.org/preview/` would share teachers' real saved boards. Use a
+> separate (sub)domain for staging.
 
 ### Deploying
 

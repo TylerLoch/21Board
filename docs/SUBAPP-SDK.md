@@ -268,7 +268,7 @@ Then **bump `VERSION` in `sw.js`** so installed copies download the new files.
 
 ## Testing
 
-- **Standalone:** open `apps/<id>/index.html` directly in a browser (through any local web
+- **Standalone:** open `apps/<id>/index.html` directly in a browser (from disk or any local web
   server). The SDK notices it isn't inside 21Board, saves to `localStorage`, follows the system
   light/dark setting, and shows a small dropdown in the corner for your menu items.
 - **Inside 21Board without registering:** Settings → Advanced → turn on **Developer mode**, then

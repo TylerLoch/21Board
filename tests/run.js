@@ -406,6 +406,24 @@ const SUITES = [
     ok(pb.x >= 0 && pb.x + pb.width <= 375, `panel fits at phone width (${Math.round(pb.x)}..${Math.round(pb.x + pb.width)})`);
     await pp.screenshot({ path: OUT + '41-phone-panel.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  ['Opened from disk (file://)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');
+    const a = await ctx.newPage();
+    const errors = []; a.on('pageerror', e => errors.push(e.message));
+    await a.goto(url); await a.waitForTimeout(600);
+    await a.evaluate(() => { window.__board21.openApp('notes'); window.__board21.openApp('timer'); });
+    await a.waitForTimeout(1500);
+    ok((await a.evaluate(() => Array.from(window.__board21.state.wins.values()).every(w => w.connected))), 'sub-apps connect when index.html is opened from disk');
+    const b = await ctx.newPage(); await b.goto(url); await b.waitForTimeout(1500);
+    await a.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').fill('from disk');
+    await a.waitForTimeout(800);
+    ok(await b.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').inputValue() === 'from disk', 'tabs opened from disk stay in sync');
+    await a.reload(); await a.waitForTimeout(1500);
+    ok(await a.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').inputValue() === 'from disk', 'content persists when opened from disk');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
   }]
 ];
 

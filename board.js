@@ -39,7 +39,8 @@
   const DRAG_THRESHOLD = 6;    // px of movement before a tap becomes a drag
   const RESISTANCE = { gentle: 40, normal: 80, strong: 150 }; // px of push needed to overlap
   const TAB_ID = Math.random().toString(36).slice(2, 10);
-  const ORIGIN = (location.origin && location.origin !== 'null') ? location.origin : '*';
+  // Opened straight from disk (file://), every page has an opaque origin, so messages can't be origin-restricted.
+  const ORIGIN = (location.protocol !== 'file:' && location.origin && location.origin !== 'null') ? location.origin : '*';
   const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads';
 
