@@ -964,6 +964,41 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Timer sounds', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => window.__board21.openApp('timer')); await page.waitForTimeout(1200);
+    const timer = page.frameLocator('.win[data-ikey="timer:1"] iframe');
+    // Count notes played by wrapping the iframe's AudioContext.
+    await timer.locator('html').evaluate(() => {
+      const Real = window.AudioContext || window.webkitAudioContext;
+      window.__notes = 0;
+      window.AudioContext = function () { const c = new Real(); const mk = c.createOscillator.bind(c); c.createOscillator = () => { window.__notes++; return mk(); }; return c; };
+    });
+    await page.click('.win[data-ikey="timer:1"] .win-label'); await page.waitForTimeout(200);
+    const labels = await page.locator('#menu [data-act="app"]').allTextContents();
+    ok(['Beep', 'Chime', 'Bell', 'Marimba', 'Gentle', 'Alarm', 'No sound'].every(l => labels.some(x => x.includes(l))), 'window menu offers several alarm sounds');
+    await page.click('#menu [data-id="sound:marimba"]'); await page.waitForTimeout(400);
+    ok(await timer.locator('html').evaluate(() => window.__notes) === 4, 'picking a sound plays a preview');
+    ok(await page.evaluate(() => window.__board21.state.conf.get('timer:1').sound) === 'marimba', 'the chosen sound is saved for this timer');
+    // A timer saved before this change (sound: false) stays silent; sound: true is the old beep.
+    await page.evaluate(() => { const s = window.__board21.state; s.conf.set('timer:1', { sound: false }); s.wins.get('timer:1').post('config', { config: { sound: false } }); });
+    await page.waitForTimeout(300);
+    await page.click('.win[data-ikey="timer:1"] .win-label'); await page.waitForTimeout(200);
+    ok((await page.locator('#menu [data-id="sound:off"]').getAttribute('aria-checked')) === 'true', 'older timers with sound turned off stay silent');
+    await page.keyboard.press('Escape');
+    // The timer ending plays the chosen sound.
+    await page.evaluate(() => window.__board21.state.wins.get('timer:1').post('config', { config: { sound: 'chime' } }));
+    await timer.locator('html').evaluate(() => { window.__notes = 0; });
+    await timer.locator('#chips button[data-min="1"]').click();
+    await page.evaluate(() => { const s = window.__board21.state; s.wins.get('timer:1').post('data', { data: { duration: 60000, remaining: 60000, endsAt: Date.now() + 300 }, reason: 'remote' }); });
+    await page.waitForTimeout(1200);
+    ok(await timer.locator('html').evaluate(() => window.__notes) === 2, 'when the timer ends it plays the chosen sound');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');

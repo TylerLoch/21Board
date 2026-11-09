@@ -60,9 +60,10 @@
 
   // Content (saved with Board21.save):  { duration, remaining, endsAt }
   //   endsAt is a wall-clock time while running, so every open copy of 21Board shows the same countdown.
-  // Config (Board21.saveConfig):          { sound }
+  // Config (Board21.saveConfig):          { sound: 'beep' | 'chime' | 'bell' | 'marimba' | 'gentle' | 'alarm' | 'off' }
+  //   (older timers saved sound: true/false, read as 'beep'/'off')
   let state = { duration: 5 * 60000, remaining: 5 * 60000, endsAt: null };
-  let config = { sound: true };
+  let config = { sound: 'beep' };
   let finishedAlerted = false;
 
   const running = () => state.endsAt !== null;
@@ -101,21 +102,38 @@
     if (finishedAlerted) return;
     finishedAlerted = true;
     Board21.window.requestAttention();
-    if (config.sound && document.visibilityState === 'visible') beep();
+    if (soundName() !== 'off' && document.visibilityState === 'visible') playSound(soundName());
   }
 
-  function beep() {
+  // Alarm sounds, made with Web Audio (no sound files, so they work offline).
+  // Each note: [start (s), frequency (Hz), length (s), wave, volume].
+  const SOUNDS = {
+    beep:    { label: 'Beep',    notes: [[0, 880, 0.28, 'sine', 0.4], [0.35, 880, 0.28, 'sine', 0.4], [0.7, 880, 0.28, 'sine', 0.4]] },
+    chime:   { label: 'Chime',   notes: [[0, 1318.5, 1.2, 'sine', 0.3], [0.45, 1046.5, 1.6, 'sine', 0.3]] },
+    bell:    { label: 'Bell',    notes: [[0, 660, 2.2, 'sine', 0.35], [0, 1821.6, 1.2, 'sine', 0.12], [0, 3564, 0.6, 'sine', 0.06]] },
+    marimba: { label: 'Marimba', notes: [[0, 523.25, 0.4, 'triangle', 0.45], [0.15, 659.25, 0.4, 'triangle', 0.45], [0.3, 783.99, 0.4, 'triangle', 0.45], [0.45, 1046.5, 0.7, 'triangle', 0.45]] },
+    gentle:  { label: 'Gentle',  notes: [[0, 392, 1.4, 'sine', 0.22], [0.6, 523.25, 1.6, 'sine', 0.22]], slowAttack: true },
+    alarm:   { label: 'Alarm',   notes: [0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75].map((t, i) => [t, i % 2 ? 660 : 880, 0.22, 'square', 0.12]) }
+  };
+  const soundName = () => config.sound === true || config.sound === undefined ? 'beep' : config.sound === false ? 'off'
+    : (Object.prototype.hasOwnProperty.call(SOUNDS, config.sound) || config.sound === 'off') ? config.sound : 'beep';
+
+  function playSound(name) {
+    const snd = SOUNDS[name];
+    if (!snd) return;
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      [0, 0.35, 0.7].forEach(t => {
-        const o = ctx.createOscillator(), g = ctx.createGain();
-        o.type = 'sine'; o.frequency.value = 880;
-        g.gain.setValueAtTime(0.0001, ctx.currentTime + t);
-        g.gain.exponentialRampToValueAtTime(0.4, ctx.currentTime + t + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + t + 0.28);
-        o.connect(g).connect(ctx.destination); o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.3);
-      });
-      setTimeout(() => ctx.close(), 1500);
+      let end = 0;
+      for (const [t, f, len, wave, vol] of snd.notes) {
+        const o = ctx.createOscillator(), g = ctx.createGain(), at = ctx.currentTime + t;
+        o.type = wave; o.frequency.value = f;
+        g.gain.setValueAtTime(0.0001, at);
+        g.gain.exponentialRampToValueAtTime(vol, at + (snd.slowAttack ? 0.25 : 0.015));
+        g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+        o.connect(g).connect(ctx.destination); o.start(at); o.stop(at + len + 0.05);
+        end = Math.max(end, t + len);
+      }
+      setTimeout(() => ctx.close(), (end + 0.5) * 1000);
     } catch (e) { /* audio unavailable */ }
   }
 
@@ -156,16 +174,24 @@
   $('chips').innerHTML = PRESETS.map(m => `<button data-min="${m}">${m}m</button>`).join('');
   $('chips').onclick = e => { const b = e.target.closest('button'); if (b) setDuration(+b.dataset.min * 60000); };
 
+  // Window menu: pick the alarm sound (picking one plays it), or turn it off.
   function setMenu() {
+    const cur = soundName();
     Board21.menu.set([
-      { id: 'sound', label: 'Alarm sound', checked: !!config.sound },
-      { id: 'test', label: 'Test the alarm' }
+      ...Object.keys(SOUNDS).map(k => ({ id: 'sound:' + k, label: SOUNDS[k].label, checked: cur === k })),
+      { id: 'sound:off', label: 'No sound', checked: cur === 'off' },
+      { separator: true },
+      { id: 'test', label: 'Play alarm sound', disabled: cur === 'off' }
     ]);
   }
 
   Board21.on('menu', id => {
-    if (id === 'sound') { config.sound = !config.sound; Board21.saveConfig(config); setMenu(); }
-    if (id === 'test') beep();
+    if (id.startsWith('sound:')) {
+      config.sound = id.slice(6);
+      Board21.saveConfig(config); setMenu();
+      if (config.sound !== 'off') playSound(config.sound);
+    }
+    if (id === 'test') playSound(soundName());
   });
 
   // Another 21Board tab (or an import) changed this timer.
@@ -173,7 +199,7 @@
     if (data) { state = Object.assign(state, data); if (left() > 0) finishedAlerted = false; }
     render();
   });
-  Board21.on('config', c => { config = Object.assign({ sound: true }, c || {}); setMenu(); });
+  Board21.on('config', c => { config = Object.assign({ sound: 'beep' }, c || {}); setMenu(); });
 
   Board21.ready().then(ctx => {
     if (ctx.data) state = Object.assign(state, ctx.data);

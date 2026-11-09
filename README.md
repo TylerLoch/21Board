@@ -93,7 +93,7 @@ tests/run.js            Optional automated browser tests
 
 | App | Shows off |
 | --- | --- |
-| **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items |
+| **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio (no sound files) |
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
 | **Clock** | Analog, digital or date-only; aspect-ratio lock that changes at runtime (analog 1:1, digital/date 2.2:1), config-only app |
 | **Notes** | Live text sync without losing the cursor, theme-aware colors |
