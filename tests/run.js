@@ -77,7 +77,7 @@ const SUITES = [
 
     // ---- resize via se grip
     const before = (await wins(page))['timer:1'];
-    await page.mouse.move(before.x + 300, before.y + 100); // focus area irrelevant
+    await page.mouse.click(before.x + 20, before.y + 20); await page.waitForTimeout(250); // tap the title bar: grips only show on the focused window
     const se = await page.locator('.win[data-ikey="timer:1"] .grip.se').boundingBox();
     await drag(page, { x: se.x + se.width / 2, y: se.y + se.height / 2 }, { x: se.x + se.width / 2 + 80, y: se.y + se.height / 2 + 60 });
     const after = (await wins(page))['timer:1'];
@@ -406,6 +406,98 @@ const SUITES = [
     ok(pb.x >= 0 && pb.x + pb.width <= 375, `panel fits at phone width (${Math.round(pb.x)}..${Math.round(pb.x + pb.width)})`);
     await pp.screenshot({ path: OUT + '41-phone-panel.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  ['Focus, grips, resize snapping, storage protection', async (browser) => {
+  const disp = (p, ik) => p.evaluate(ik => Object.assign({}, window.__board21.state.wins.get(ik).disp), ik);
+  const gripVis = (p, ik) => p.evaluate(ik => getComputedStyle(document.querySelector(`.win[data-ikey="${ik}"] .grip.se`)).visibility, ik);
+  async function drag(page, from, to, steps = 14) {
+    await page.mouse.move(from.x, from.y); await page.mouse.down();
+    for (let i = 1; i <= steps; i++) { await page.mouse.move(from.x + (to.x - from.x) * i / steps, from.y + (to.y - from.y) * i / steps); await page.waitForTimeout(16); }
+    await page.mouse.up(); await page.waitForTimeout(200);
+  }
+  const setRect = (p, ik, r) => p.evaluate(([ik, r]) => { const s = window.__board21.state; const i = s.insts.get(ik); s.insts.set(ik, Object.assign({}, i, { rect: r })); s.wins.get(ik).layout(); }, [ik, r]);
+  async function gripDrag(page, ik, h, dx, dy) {
+    await page.evaluate(ik => window.__board21.focusWin(ik), ik); await page.waitForTimeout(250);
+    const b = await page.locator(`.win[data-ikey="${ik}"] .grip.${h}`).boundingBox();
+    await drag(page, { x: b.x + b.width / 2, y: b.y + b.height / 2 }, { x: b.x + b.width / 2 + dx, y: b.y + b.height / 2 + dy });
+  }
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => { window.__board21.openApp('notes'); window.__board21.openApp('timer'); });
+    await page.waitForTimeout(1200);
+    // ---- #1 grips only on focused window
+    ok(await gripVis(page, 'timer:1') === 'visible', 'focused window shows grips');
+    ok(await gripVis(page, 'notes:1') === 'hidden', 'unfocused window hides grips');
+    await page.screenshot({ path: OUT + '60-focus-light.png' });
+    await page.mouse.click(700, 60); await page.waitForTimeout(300);
+    ok(await page.locator('.win.focused').count() === 0, 'tapping the empty board deselects all windows');
+    ok(await gripVis(page, 'timer:1') === 'hidden', 'no grips after deselecting');
+    await page.screenshot({ path: OUT + '61-deselected.png' });
+    await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').click(); await page.waitForTimeout(300);
+    ok(await page.locator('.win.focused[data-ikey="notes:1"]').count() === 1 && await gripVis(page, 'notes:1') === 'visible', 'tapping inside a window focuses it and shows its grips');
+    // invisible grip of an unfocused window is not grabbable
+    const nb = await disp(page, 'timer:1');
+    const before = await disp(page, 'timer:1');
+    await drag(page, { x: nb.x + nb.w + 2, y: nb.y + nb.h + 2 }, { x: nb.x + nb.w + 80, y: nb.y + nb.h + 80 });
+    const after = await disp(page, 'timer:1');
+    ok(after.w === before.w && after.h === before.h, 'hidden grips of an unfocused window cannot be dragged');
+
+    // ---- #2 size snapping while resizing
+    await setRect(page, 'notes:1', { x: 100, y: 100, w: 320, h: 300 });
+    await setRect(page, 'timer:1', { x: 500, y: 120, w: 380, h: 240 });
+    await page.waitForTimeout(200);
+    // timer bottom 360 -> drag down 33px to 393 (within 12 of notes bottom 400) => snaps to 400
+    await gripDrag(page, 'timer:1', 's', 0, 33);
+    let t = await disp(page, 'timer:1');
+    ok(t.y + t.h === 400, `bottom edge snaps to neighbour's bottom edge (bottom=${t.y + t.h}, expected 400)`);
+    // top edge: timer top 120 -> drag up 15 -> 105, within 12 of notes top 100 => snaps to 100
+    await gripDrag(page, 'timer:1', 'n', 0, -15);
+    t = await disp(page, 'timer:1');
+    ok(t.y === 100, `top edge snaps to neighbour's top edge (top=${t.y})`);
+    // width match: put timer below notes, resize its right edge to near notes' width 320
+    await setRect(page, 'timer:1', { x: 100, y: 450, w: 380, h: 240 });
+    await page.waitForTimeout(200);
+    await gripDrag(page, 'timer:1', 'e', -54, 0); // 380 -> 326, within 12 of 320 and of notes right edge 420
+    t = await disp(page, 'timer:1');
+    ok(t.w === 320, `width snaps to match the window above (w=${t.w})`);
+    // snapping must not create overlap: timer to the right of notes; drag W edge toward notes right edge 420 -> snaps to 428 (gap)
+    await setRect(page, 'timer:1', { x: 470, y: 100, w: 380, h: 240 });
+    await page.waitForTimeout(200);
+    await gripDrag(page, 'timer:1', 'w', -36, 0); // left 470 -> 434, near 428 (gap line) and 420 (edge, would overlap)
+    t = await disp(page, 'timer:1');
+    ok(t.x === 428, `left edge snaps beside the neighbour with a gap, not into it (x=${t.x})`);
+    // snapping off
+    await page.evaluate(() => { const s = window.__board21.state; s.settings.snapping = false; });
+    await setRect(page, 'timer:1', { x: 500, y: 120, w: 380, h: 240 });
+    await gripDrag(page, 'timer:1', 's', 0, 33);
+    t = await disp(page, 'timer:1');
+    ok(t.y + t.h === 393, `no snapping when snapping is turned off (bottom=${t.y + t.h})`);
+    await page.evaluate(() => { window.__board21.state.settings.snapping = true; });
+
+    // ---- #4 storage protection UI
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(600);
+    await page.locator('#settings .sheet-body').evaluate(el => { const h = [...el.querySelectorAll('h3')].find(x => x.textContent.includes('Storage')); el.scrollTop = h.offsetTop - 10; });
+    await page.waitForTimeout(300);
+    const persistText = await page.locator('#st-persist').textContent();
+    const hint = await page.locator('#st-persist-hint').textContent();
+    console.log('  persist status:', JSON.stringify(persistText), '|', hint.slice(0, 90));
+    ok(persistText.length > 0 && hint.length > 0, 'settings shows data-protection status');
+    ok((await page.locator('#st-backup').textContent()).includes('never'), 'backup row says never backed up');
+    await page.screenshot({ path: OUT + '62-storage-settings.png' });
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#settings [data-act="backup"]')]);
+    await page.waitForTimeout(400);
+    ok(/\.21board$/.test(dl.suggestedFilename()), 'Back up now downloads a full backup');
+    ok((await page.locator('#st-backup').textContent()).includes('today'), 'backup row updates to "today"');
+    ok(await page.evaluate(() => typeof window.__board21.state.settings.lastBackupAt === 'number'), 'lastBackupAt recorded in settings');
+    await page.keyboard.press('Escape');
+    // dark focus screenshot
+    await page.evaluate(() => window.__board21.focusWin('notes:1'));
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="theme"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+    await page.screenshot({ path: OUT + '63-focus-dark.png' });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
   }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });

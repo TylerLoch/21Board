@@ -50,8 +50,8 @@ include) to the static host. Then:
 | **App Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap an app to open it. Tap ▦ again (or anywhere else) to close. |
 | **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Fullscreen, Settings. |
 | **Move a window** | Drag its title bar. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
-| **Resize** | Drag the grips at the corners and the middle of each side. Some apps keep a fixed shape. |
-| **Bring to front** | Tap anywhere on the window. |
+| **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some apps keep a fixed shape. |
+| **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the app's name (⌄) in the title bar: the app's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. |
 | **Closing** | Closing a window keeps its content. Open the app again to pick up where you left off. If you have several of the same app, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and app settings, no content — safe to share with colleagues). Saves a `.21board` file. |
@@ -66,7 +66,7 @@ include) to the static host. Then:
 - **App Picker:** show the controls in both corners, or only left/right.
 - **Board:** board name (used for export file names), list of every saved app window with
   open/delete.
-- **Storage & offline:** offline readiness, storage used, ask the browser to protect the data.
+- **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
 - **Advanced:** Developer mode (SDK Playground, test unregistered sub-apps), erase everything.
 
 ---
@@ -120,9 +120,14 @@ open/closed), its content, and its config. Each window of the same app has its o
 instance number and separate data. Other open copies of 21Board are notified of every change and
 re-read just what changed.
 
-The browser can clear site storage when a device runs low on space. 21Board asks for persistent
-storage automatically (and offers a *Protect my data* button), but **regular exports are the real
-backup.**
+The browser can clear site storage when a device runs low on space unless it grants the site
+*persistent storage*. No web page can force that: 21Board requests it automatically every time it
+starts and again later, and the browser decides. Chrome and Edge decide from signals such as the
+app being **installed**, so installing 21Board (or force-installing it for managed devices) is the
+most reliable way to get it. Safari may delete data for sites that haven't been visited in 7 days
+unless they're added to the Home Screen/Dock. While storage isn't protected, 21Board shows the
+status in Settings and reminds teachers (at most every 3 days) to save a backup, and
+**regular exports remain the real backup.**
 
 ---
 

@@ -31,8 +31,12 @@
       --pattern: rgba(0, 0, 0, 0.09);
       --danger: #dc2626;
       --danger-soft: #fef2f2;
-      --shadow: 0 4px 20px rgba(0, 0, 0, 0.10);
-      --shadow-focus: 0 14px 40px rgba(0, 0, 0, 0.20);
+      --shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+      --shadow-focus: 0 18px 48px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.10);
+      /* Focused window: tune these to make focus more or less prominent. */
+      --focus-ring: #2563eb;
+      --focus-ring-width: 3px;
+      --focus-title: #eff6ff;
       --title-h: 40px;
       color-scheme: light;
     }
@@ -53,8 +57,10 @@
       --pattern: rgba(255, 255, 255, 0.10);
       --danger: #f87171;
       --danger-soft: rgba(239, 68, 68, 0.18);
-      --shadow: 0 4px 20px rgba(0, 0, 0, 0.45);
-      --shadow-focus: 0 14px 40px rgba(0, 0, 0, 0.6);
+      --shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+      --shadow-focus: 0 18px 48px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.4);
+      --focus-ring: #60a5fa;
+      --focus-title: #22324a;
       color-scheme: dark;
     }
 
@@ -121,7 +127,9 @@
       will-change: transform;
       transition: box-shadow .2s;
     }
-    .win.focused { box-shadow: 0 0 0 1px var(--border), var(--shadow-focus); }
+    .win.focused { box-shadow: 0 0 0 var(--focus-ring-width) var(--focus-ring), var(--shadow-focus); }
+    .win.focused .win-title { background: var(--focus-title); border-bottom-color: transparent; }
+    .win.maximized.focused { box-shadow: none; } /* fills the board; the tinted title bar marks focus */
     .win.animate { transition: transform .22s ease, width .22s ease, height .22s ease, box-shadow .2s; }
     .win.opening { animation: win-open .18s ease-out; }
     @keyframes win-open { from { opacity: 0; scale: .96; } to { opacity: 1; scale: 1; } }
@@ -164,28 +172,32 @@
     @keyframes attention-text { 50% { color: #fff; } }
 
     /* Resize grips: corners and side centers. Hit areas are larger than what's drawn. */
-    .grip { position: absolute; z-index: 3; touch-action: none; }
-    .grip::after { content: ""; position: absolute; opacity: .55; transition: opacity .2s, background-color .2s, border-color .2s; }
-    .win.focused .grip::after { opacity: 1; }
-    .grip:active::after, .grip.dragging::after { opacity: 1; background-color: var(--primary); border-color: var(--primary); }
+    /* Resize grips are only shown (and only grabbable) on the focused window. */
+    .grip { position: absolute; z-index: 3; touch-action: none; transition: opacity .15s, visibility .15s; }
+    .win:not(.focused) .grip { opacity: 0; visibility: hidden; pointer-events: none; }
+    .grip::after { content: ""; position: absolute; transition: background-color .2s, border-color .2s; }
+    /* Handles take the focus color: side handles are filled bars, corner handles are L-shaped borders. */
+    .win.focused .grip::after { border-color: var(--focus-ring); }
+    .win.focused .grip.n::after, .win.focused .grip.s::after, .win.focused .grip.e::after, .win.focused .grip.w::after { background-color: var(--focus-ring); }
     .grip.n, .grip.s { left: 50%; width: 72px; margin-left: -36px; height: 26px; cursor: ns-resize; }
     .grip.n { top: -16px; } .grip.s { bottom: -16px; }
-    .grip.n::after, .grip.s::after { left: 18px; right: 18px; height: 5px; border-radius: 3px; background: var(--grip); }
-    .grip.n::after { top: 13px; } .grip.s::after { bottom: 13px; }
+    .grip.n::after, .grip.s::after { left: 14px; right: 14px; height: 7px; border-radius: 4px; background: var(--grip); }
+    .grip.n::after { top: 6px; } .grip.s::after { bottom: 6px; }
     .grip.e, .grip.w { top: 50%; height: 72px; margin-top: -36px; width: 26px; cursor: ew-resize; }
     .grip.e { right: -16px; } .grip.w { left: -16px; }
-    .grip.e::after, .grip.w::after { top: 18px; bottom: 18px; width: 5px; border-radius: 3px; background: var(--grip); }
-    .grip.e::after { right: 13px; } .grip.w::after { left: 13px; }
+    .grip.e::after, .grip.w::after { top: 14px; bottom: 14px; width: 7px; border-radius: 4px; background: var(--grip); }
+    .grip.e::after { right: 6px; } .grip.w::after { left: 6px; }
     .grip.nw, .grip.ne, .grip.sw, .grip.se { width: 34px; height: 34px; }
     .grip.nw { left: -14px; top: -14px; cursor: nwse-resize; }
     .grip.ne { right: -14px; top: -14px; cursor: nesw-resize; }
     .grip.sw { left: -14px; bottom: -14px; cursor: nesw-resize; }
     .grip.se { right: -14px; bottom: -14px; cursor: nwse-resize; }
-    .grip.nw::after, .grip.ne::after, .grip.sw::after, .grip.se::after { width: 16px; height: 16px; border: 5px solid var(--grip); }
-    .grip.nw::after { left: 11px; top: 11px; border-right: 0; border-bottom: 0; border-top-left-radius: 14px; }
-    .grip.ne::after { right: 11px; top: 11px; border-left: 0; border-bottom: 0; border-top-right-radius: 14px; }
-    .grip.sw::after { left: 11px; bottom: 11px; border-right: 0; border-top: 0; border-bottom-left-radius: 14px; }
-    .grip.se::after { right: 11px; bottom: 11px; border-left: 0; border-top: 0; border-bottom-right-radius: 14px; }
+    /* Handles sit just outside the window edge (and its focus ring) so they read as separate tabs. */
+    .grip.nw::after, .grip.ne::after, .grip.sw::after, .grip.se::after { width: 22px; height: 22px; border: 7px solid var(--grip); }
+    .grip.nw::after { left: 5px; top: 5px; border-right: 0; border-bottom: 0; border-top-left-radius: 18px; }
+    .grip.ne::after { right: 5px; top: 5px; border-left: 0; border-bottom: 0; border-top-right-radius: 18px; }
+    .grip.sw::after { left: 5px; bottom: 5px; border-right: 0; border-top: 0; border-bottom-left-radius: 18px; }
+    .grip.se::after { right: 5px; bottom: 5px; border-left: 0; border-top: 0; border-bottom-right-radius: 18px; }
     .win.no-resize .grip, .win.maximized .grip { display: none; }
     .win.maximized, .win.maximized .win-title { border-radius: 0; }
     .win.maximized .win-body { border-radius: 0; }

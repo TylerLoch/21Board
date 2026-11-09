@@ -66,7 +66,8 @@
     pickerCorners: 'both',   // 'both' | 'left' | 'right'
     devMode: false,
     devApps: [],             // [{ id, name, entry }] test sub-apps added in Developer mode
-    activeBoard: 1
+    activeBoard: 1,
+    lastBackupAt: null       // when a full backup was last exported (ms), for backup reminders
   };
   const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' } });
 
@@ -379,6 +380,7 @@
     conf: new Map(),    // ikey -> config
     wins: new Map(),    // ikey -> Win
     focused: null,
+    deselected: false,  // true after tapping the empty board: no window is focused (and no grips show)
     appliedTheme: null,
     sw: { state: 'checking', version: null, updateReady: null }
   };
@@ -658,7 +660,7 @@
     return r;
   }
 
-  function computeResize(s, handle, dx, dy, c, view, obs, brk) {
+  function computeResize(s, handle, dx, dy, c, view, obs, brk, snap) {
     const E = handle.includes('e'), W = handle.includes('w'), N = handle.includes('n'), So = handle.includes('s');
     let left = s.x, top = s.y, right = s.x + s.w, bottom = s.y + s.h;
     if (E) right += dx;
@@ -682,6 +684,49 @@
         if (W && vSpan && o.x + o.w <= s.x + 0.5) { const lim = o.x + o.w + GAP; if (left < lim && lim - left <= brk) left = Math.min(lim, right - minW); }
         if (So && hSpan && o.y >= sB - 0.5) { const lim = o.y - GAP; if (bottom > lim && bottom - lim <= brk) bottom = Math.max(lim, top + minH); }
         if (N && hSpan && o.y + o.h <= s.y + 0.5) { const lim = o.y + o.h + GAP; if (top < lim && lim - top <= brk) top = Math.min(lim, bottom - minH); }
+      }
+    }
+
+    /*
+     * Size snapping: a moving edge snaps (within ALIGN_SNAP px) to
+     *   - the other windows' edges (so edges line up),
+     *   - the line GAP px beside another window (so they sit neatly side by side),
+     *   - the board edges, and
+     *   - a width/height equal to another window's (so sizes match).
+     * A snap is skipped if it would break min/max size, leave the board, or create a new overlap.
+     */
+    if (snap) {
+      const others = obs.filter(o => !o.ui);
+      const overlapsAt = (l, t, r, b) => obs.reduce((n, o) => n + (overlaps({ x: l, y: t, w: r - l, h: b - t }, o) ? 1 : 0), 0);
+      const base = overlapsAt(left, top, right, bottom);
+      const fits = (l, t, r, b) =>
+        r - l >= minW - 0.5 && r - l <= maxW + 0.5 && b - t >= minH - 0.5 && b - t <= maxH + 0.5 &&
+        l >= view.x - 0.5 && t >= view.y - 0.5 && r <= view.x + view.w + 0.5 && b <= view.y + view.h + 0.5 &&
+        overlapsAt(l, t, r, b) <= base;
+      const nearest = (v, cands, ok) => {
+        let best = null, bd = ALIGN_SNAP + 0.01;
+        for (const cand of cands) { const d = Math.abs(cand - v); if (d < bd && ok(cand)) { bd = d; best = cand; } }
+        return best;
+      };
+      if (E) {
+        const cands = [view.x + view.w, view.x + view.w - GAP];
+        for (const o of others) cands.push(o.x, o.x + o.w, o.x - GAP, left + o.w);
+        const v = nearest(right, cands, x => fits(left, top, x, bottom)); if (v !== null) right = v;
+      }
+      if (W) {
+        const cands = [view.x, view.x + GAP];
+        for (const o of others) cands.push(o.x, o.x + o.w, o.x + o.w + GAP, right - o.w);
+        const v = nearest(left, cands, x => fits(x, top, right, bottom)); if (v !== null) left = v;
+      }
+      if (So) {
+        const cands = [view.y + view.h, view.y + view.h - GAP];
+        for (const o of others) cands.push(o.y, o.y + o.h, o.y - GAP, top + o.h);
+        const v = nearest(bottom, cands, y => fits(left, top, right, y)); if (v !== null) bottom = v;
+      }
+      if (N) {
+        const cands = [view.y, view.y + GAP];
+        for (const o of others) cands.push(o.y, o.y + o.h, o.y + o.h + GAP, bottom - o.h);
+        const v = nearest(top, cands, y => fits(left, y, right, bottom)); if (v !== null) top = v;
       }
     }
 
@@ -1012,6 +1057,7 @@
   function focusWin(ikey) {
     const inst = S.insts.get(ikey);
     if (!inst || !inst.open) return;
+    S.deselected = false;
     const top = maxZ();
     let tie = false;
     for (const [k, i] of S.insts) if (k !== ikey && i.open && i.z === top) tie = true;
@@ -1034,6 +1080,7 @@
       w.el.style.zIndex = Math.max(1, Math.round(z));
       if (z > topZ) { topZ = z; top = ikey; }
     }
+    if (S.deselected) top = null;
     if (S.focused === top) return;
     const prev = S.wins.get(S.focused);
     if (prev) { prev.el.classList.remove('focused'); prev.post('blur'); prev.notifyInfo(); }
@@ -1068,6 +1115,7 @@
       const rect = placeNew(defaultOuterSize(app), constraintsFor(app), opts.side);
       inst = { appId, n, open: true, rect, z: maxZ() + 1, maximized: false, createdAt: Date.now() };
     }
+    S.deselected = false;
     saveInst(ikey, inst);
     reconcileWin(ikey);
     updateFocus();
@@ -1213,7 +1261,7 @@
         const obs = obstacles(it.win);
         const r = it.kind === 'title'
           ? resolveMove({ x: it.start.x + dx, y: it.start.y + dy, w: it.start.w, h: it.start.h }, obs, view, brk, S.settings.snapping)
-          : computeResize(it.start, it.handle, dx, dy, it.win.constraints(), view, obs, brk);
+          : computeResize(it.start, it.handle, dx, dy, it.win.constraints(), view, obs, brk, S.settings.snapping);
         it.result = r;
         it.win.applyRect(r);
       }
@@ -1249,9 +1297,16 @@
     }
   };
 
+  // Tapping the empty board deselects every window, hiding all resize grips.
+  function deselectAll() {
+    if (S.deselected && S.focused === null) return;
+    S.deselected = true;
+    updateFocus();
+  }
+
   function onDeskPointerDown(e) {
     const winEl = e.target.closest && e.target.closest('.win');
-    if (!winEl) return;
+    if (!winEl) { deselectAll(); return; }
     const win = S.wins.get(winEl.dataset.ikey);
     if (!win) return;
     focusWin(win.ikey);
@@ -1576,8 +1631,9 @@
 
         <h3>Storage &amp; offline</h3>
         <div class="row"><div class="lbl">Offline</div><div class="hint" id="st-offline" style="text-align:right">Checking…</div></div>
+        <div class="row"><div><div class="lbl">Data protection</div><div class="hint" id="st-persist-hint"></div></div><div id="st-persist" style="flex:0 0 auto"></div></div>
+        <div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
         <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>
-        <div class="row"><div><div class="lbl">Protect my data</div><div class="hint">Asks the browser not to clear 21Board's storage when space runs low.</div></div><div id="st-persist"></div></div>
 
         <h3>Advanced</h3>
         <div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a sub-app by its path.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>
@@ -1604,21 +1660,38 @@
         if (S.sw.updateReady) off.innerHTML += ' · <button class="btn small" data-act="update">Update now</button>';
       }
       if (cache && S.sw.version) cache.textContent = ` · Offline copy ${S.sw.version}`;
-      if (quick && this._statusCache) { if (sto) sto.textContent = this._statusCache.storage; if (per) per.innerHTML = this._statusCache.persist; }
-      const nav = navigator.storage;
-      let storage = 'Unknown', persist = '<span class="hint">Not supported</span>';
-      try {
-        if (nav && nav.estimate) { const e = await nav.estimate(); storage = `${fmtBytes(e.usage || 0)} of ${fmtBytes(e.quota || 0)}`; }
-        if (nav && nav.persisted) {
-          persist = (await nav.persisted()) ? '<span class="hint"><span class="status-dot ok"></span>Protected</span>'
-            : `<button class="btn small" data-act="persist">Protect</button>`;
+      const renderPersist = () => {
+        const per2 = $('#st-persist', this.body), hint = $('#st-persist-hint', this.body), bk = $('#st-backup', this.body);
+        if (bk) bk.textContent = backupAgo();
+        if (!per2 || !hint) return;
+        const st = Persist.state;
+        if (st === 'granted') {
+          per2.innerHTML = '<span class="hint"><span class="status-dot ok"></span>Protected</span>';
+          hint.textContent = 'This browser has agreed never to clear 21Board’s data to free up space.';
+        } else if (st === 'unsupported') {
+          per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Unavailable</span>';
+          hint.textContent = 'This browser can’t promise to keep 21Board’s data. Export backups regularly.';
+        } else {
+          per2.innerHTML = Install.prompt ? `<button class="btn small primary" data-act="install">${svg('plus')}Install app</button>`
+            : '<span class="hint"><span class="status-dot warn"></span>Not yet</span>';
+          hint.textContent = '21Board asks for protection automatically every time it starts, but the browser decides. ' +
+            (Install.prompt ? 'Installing 21Board as an app usually turns it on. ' : 'Installing 21Board as an app (Install in Chrome’s address bar, or Add to Home Screen/Dock in Safari) usually turns it on. ') +
+            'Until then, keep backups.';
         }
+      };
+      if (quick && this._statusCache && sto) sto.textContent = this._statusCache.storage;
+      renderPersist();
+      let storage = 'Unknown';
+      try {
+        const nav = navigator.storage;
+        if (nav && nav.estimate) { const e = await nav.estimate(); storage = `${fmtBytes(e.usage || 0)} of ${fmtBytes(e.quota || 0)}`; }
+        await Persist.check();
       } catch (e) { /* ignore */ }
-      this._statusCache = { storage, persist };
+      this._statusCache = { storage };
       if (!this.isOpen) return;
-      const sto2 = $('#st-storage', this.body), per2 = $('#st-persist', this.body);
+      const sto2 = $('#st-storage', this.body);
       if (sto2) sto2.textContent = storage;
-      if (per2) per2.innerHTML = persist;
+      renderPersist();
     },
 
     async act(act, val) {
@@ -1641,10 +1714,8 @@
           if (ok) { await deleteInstance(val); this.render(); }
           break;
         }
-        case 'persist':
-          try { await navigator.storage.persist(); } catch (e) { /* ignore */ }
-          this.refreshStatus();
-          break;
+        case 'install': await Install.run(); this.refreshStatus(); break;
+        case 'backup': await doExport('full'); this.refreshStatus(); break;
         case 'update': applyUpdate(); break;
         case 'dev-add': {
           const input = $('#set-dev-path', this.body);
@@ -1692,6 +1763,7 @@
       const spot = findFreeSpot(rect.w, rect.h, view, obs, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
       if (spot) rect = spot;
     }
+    S.deselected = false;
     saveInst(ikey, Object.assign({}, inst, { open: true, rect, z: maxZ() + 1 }));
     reconcileWin(ikey);
     afterBulkApply();
@@ -1769,6 +1841,7 @@
       a.href = url; a.download = filename; a.style.display = 'none';
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 30000);
+      if (kind === 'full') updateSettings({ lastBackupAt: Date.now() });
       toast(kind === 'template' ? 'Template exported.' : 'Board exported.');
     } catch (err) {
       console.error(err);
@@ -1990,6 +2063,86 @@
     ctrl.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
   }
 
+  /*
+   * Persistent storage. Browsers may clear a site's storage when the device runs low on
+   * space unless the site has been granted "persistent" storage. No web page can force this:
+   * 21Board asks every time it starts (and again later), and the browser decides — Chrome
+   * and Edge grant it automatically based on signals such as the app being installed.
+   * When it isn't granted, 21Board nudges toward installing and toward regular backups.
+   */
+  const Persist = {
+    state: 'unknown',   // 'granted' | 'not-granted' | 'unsupported' | 'unknown'
+    lastAsk: 0,
+    supported() { return !!(navigator.storage && navigator.storage.persist && navigator.storage.persisted); },
+    async check() {
+      if (!this.supported()) { this.state = 'unsupported'; return this.state; }
+      try { this.state = (await navigator.storage.persisted()) ? 'granted' : 'not-granted'; } catch (e) { /* keep last state */ }
+      return this.state;
+    },
+    async request(force) {
+      if (!this.supported()) { this.state = 'unsupported'; return this.state; }
+      if (this.state === 'granted') return this.state;
+      if (!force && Date.now() - this.lastAsk < 30 * 60 * 1000) return this.state;
+      this.lastAsk = Date.now();
+      try { this.state = (await navigator.storage.persist()) ? 'granted' : 'not-granted'; } catch (e) { /* ignore */ }
+      if (Settings.isOpen) Settings.refreshStatus();
+      return this.state;
+    },
+    async init() {
+      await this.check();
+      await this.request(true);
+      // The browser's answer can change (e.g. once the app is installed or used regularly), so ask again later.
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.request(); });
+      setTimeout(maybeRemindBackup, 8000);
+    }
+  };
+
+  // Chrome/Edge "Install app" prompt, offered in Settings when storage isn't protected yet.
+  const Install = {
+    prompt: null,
+    init() {
+      window.addEventListener('beforeinstallprompt', e => {
+        e.preventDefault();
+        this.prompt = e;
+        if (Settings.isOpen) Settings.refreshStatus();
+      });
+      window.addEventListener('appinstalled', () => {
+        this.prompt = null;
+        Persist.request(true);
+        if (Settings.isOpen) Settings.refreshStatus();
+      });
+    },
+    async run() {
+      const p = this.prompt;
+      if (!p) return;
+      this.prompt = null;
+      try { await p.prompt(); await p.userChoice; } catch (e) { /* dismissed */ }
+      Persist.request(true);
+    }
+  };
+
+  const DAY = 24 * 60 * 60 * 1000;
+  function backupAgo() {
+    const t = S.settings.lastBackupAt;
+    if (!t) return 'Last full backup: never';
+    const days = Math.floor((Date.now() - t) / DAY);
+    return 'Last full backup: ' + (days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`);
+  }
+
+  // If the browser hasn't promised to keep the data, remind (at most every 3 days) to export a backup.
+  function maybeRemindBackup() {
+    if (Persist.state === 'granted' || Store.failed || !S.data.size) return;
+    let oldest = Infinity;
+    for (const i of S.insts.values()) oldest = Math.min(oldest, i.createdAt || Infinity);
+    if (!(Date.now() - oldest > DAY)) return;                         // brand-new board: nothing to lose yet
+    if (Date.now() - (S.settings.lastBackupAt || 0) < 7 * DAY) return; // backed up recently
+    let nagged = 0;
+    try { nagged = +localStorage.getItem('21board-backup-reminder') || 0; } catch (e) { /* ignore */ }
+    if (Date.now() - nagged < 3 * DAY) return;
+    try { localStorage.setItem('21board-backup-reminder', String(Date.now())); } catch (e) { /* ignore */ }
+    toast('This browser hasn’t promised to keep 21Board’s data yet. Save a backup file?', { action: 'Back up', timeout: 15000, onAction: () => doExport('full') });
+  }
+
   function setupFileLaunch() {
     if ('launchQueue' in window && window.launchQueue && window.launchQueue.setConsumer) {
       window.launchQueue.setConsumer(async params => {
@@ -2058,6 +2211,7 @@
   }
 
   async function boot() {
+    Install.init(); // before anything async: Chrome can fire beforeinstallprompt early
     initUI();
     Sync.init();
     try {
@@ -2074,7 +2228,7 @@
     updateHint();
     registerSW();
     setupFileLaunch();
-    if (navigator.storage && navigator.storage.persist) navigator.storage.persisted().then(p => { if (!p) navigator.storage.persist(); }).catch(() => {});
+    Persist.init();
   }
 
   // Exposed for debugging in the console and for automated tests.
