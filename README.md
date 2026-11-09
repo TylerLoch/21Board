@@ -133,6 +133,22 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 
 ---
 
+## Board scaling: trying it, switching it off, taking it out
+
+Board scaling (the board zooms to fit each screen, keeping the arrangement) is new and may be
+reworked, so it's built to be easy to back out:
+
+| To… | Do this |
+| --- | --- |
+| Compare with and without it | Open 21Board with `?scaling=off` at the end of the address (e.g. `…/21Board/?scaling=off`). Nothing is changed by doing this. |
+| Let a teacher turn it off | Settings → Windows → *Scale the board to fit the screen*. |
+| Switch it off for everyone | In `board.js`, set `SCALING_FEATURE = false` (section **6a. Board scaling**), bump `VERSION` in `sw.js`, deploy. |
+| Take it out entirely | Delete section 6a in `board.js` and follow the checklist at the top of it (a handful of one-line replacements). |
+
+Saved boards work in every case. Turning scaling off, or going back to a build without it, keeps
+all windows, positions and content (it was tested both ways). Boards made with scaling on just
+carry one extra field (`layout`) that older builds ignore.
+
 ## Tests
 
 ```bash

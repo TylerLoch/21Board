@@ -773,6 +773,42 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Board scaling switched off (?scaling=off)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    const onScreen = () => page.evaluate(() => Array.from(document.querySelectorAll('.win')).map(e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }));
+    // A board arranged with scaling on...
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => { for (const id of ['notes', 'timer']) window.__board21.openApp(id); });
+    await page.waitForTimeout(1200);
+    await page.evaluate(() => { window.__board21.setRect('notes:1', { x: 900, y: 400, w: 460, h: 420 }); window.__board21.setRect('timer:1', { x: 40, y: 40, w: 600, h: 380 }); });
+    await page.waitForTimeout(300);
+    const layout = await page.evaluate(() => window.__board21.state.board.layout);
+    // ...opened with scaling switched off, on a smaller screen.
+    await page.setViewportSize({ width: 1000, height: 620 });
+    await page.goto(BASE + '?scaling=off'); await page.waitForTimeout(1200);
+    ok(await page.evaluate(() => window.__board21.zoom.s) === 1, 'switched off: no zoom');
+    const r = await onScreen();
+    ok(r.length === 2 && r.every(w => w.x >= 0 && w.y >= 0 && w.x + w.w <= 1000.5 && w.y + w.h <= 620.5), 'switched off: windows are pushed inside the screen, as before scaling');
+    const t = r.find(w => w.x < 100);
+    ok(t && Math.abs(t.w - 600) < 1, 'switched off: windows keep their full size');
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    ok(!(await page.locator('#settings').textContent()).includes('Scale the board'), 'switched off: no scaling rows in Settings');
+    await page.keyboard.press('Escape');
+    ok(JSON.stringify(await page.evaluate(() => window.__board21.state.board.layout)) === JSON.stringify(layout), 'switched off: the saved layout size is left alone');
+    // Back on: the original arrangement returns.
+    await page.goto(BASE); await page.waitForTimeout(1200);
+    const back = await page.evaluate(() => Object.assign({}, window.__board21.state.wins.get('notes:1').disp));
+    ok(back.x === 900 && back.y === 400, 'switched back on: the arrangement is intact');
+    // A brand-new board with scaling switched off never gets a layout size.
+    const ctx2 = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    const p2 = await ctx2.newPage(); await p2.goto(BASE + '?scaling=off'); await p2.waitForTimeout(800);
+    ok(await p2.evaluate(() => window.__board21.state.board.layout) === null, 'switched off: a new board stores no layout size');
+    await ctx2.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');

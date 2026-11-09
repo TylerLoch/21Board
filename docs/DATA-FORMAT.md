@@ -117,6 +117,11 @@ its layout size and a CSS `transform: translate(…) scale(s)`. So:
 A board saved before `layout` existed gets one on first load: the current screen size, enlarged if
 needed to contain all of its windows.
 
+The whole feature can be switched off (`SCALING_FEATURE` in board.js, or `?scaling=off` to try it):
+the zoom is then always 1 and `layout` is neither written nor used. The format is compatible both
+ways: builds without scaling read boards saved with it (they ignore `layout` and keep windows on
+screen), and boards saved without it get a `layout` that fits their windows when scaling is on.
+
 ### `data:…` and `conf:…`
 
 Any JSON value the sub-app saved. The format is up to each sub-app; document it at the top of the
