@@ -903,6 +903,67 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Calendar, Clock and accent review fixes', async (browser) => {
+    const errors = [];
+    // Saturday: today's highlight must win over the weekend shading.
+    let ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    let page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.clock.setFixedTime(new Date('2026-11-07T10:00:00'));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => window.__board21.openApp('calendar')); await page.waitForTimeout(1200);
+    const cal = page.frameLocator('.win[data-ikey="calendar:1"] iframe');
+    const sat = await cal.locator('.day.today').evaluate(el => ({ bg: getComputedStyle(el).backgroundColor, accent: getComputedStyle(document.documentElement).getPropertyValue('--b21-accent').trim(), current: el.getAttribute('aria-current'), text: el.textContent }));
+    ok(sat.text === '7' && sat.bg === 'rgb(37, 99, 235)', `today is clearly highlighted on a Saturday (${sat.bg})`);
+    ok(sat.current === 'date' && await cal.locator('[role="row"]').count() === 7, 'calendar grid has rows and marks today for screen readers');
+    // Narrow window on another month: the month name isn't cut off.
+    await page.evaluate(() => window.__board21.setRect('calendar:1', { x: 40, y: 40, w: 220, h: 300 })); await page.waitForTimeout(300);
+    await cal.locator('#next').click(); await page.waitForTimeout(200);
+    const title = await cal.locator('#title').evaluate(el => ({ fits: el.scrollWidth <= el.clientWidth + 1, text: el.textContent }));
+    ok(title.fits, `month name fits in a narrow window (${title.text})`);
+    await ctx.close();
+
+    // Left open overnight at the end of a month: follows today into the new month.
+    ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.clock.install({ time: new Date('2026-10-31T23:58:30') });
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => window.__board21.openApp('calendar'));
+    await page.clock.runFor(2000); await page.waitForTimeout(800); await page.clock.runFor(2000);
+    const cal2 = page.frameLocator('.win[data-ikey="calendar:1"] iframe');
+    const before = await cal2.locator('#title').textContent();
+    await page.clock.runFor(3 * 60 * 1000); await page.waitForTimeout(300);
+    const after = await cal2.locator('#title').textContent();
+    ok(/October/.test(before) && /November/.test(after) && await cal2.locator('.day.today').count() === 1, `calendar rolls into the new month at midnight (${before} → ${after})`);
+    await ctx.close();
+
+    // Long weekday names fit in the Date-only clock.
+    ctx = await browser.newContext({ viewport: { width: 1200, height: 800 }, locale: 'ru-RU' });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.clock.setFixedTime(new Date('2026-09-27T10:00:00')); // a Sunday: "воскресенье"
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => window.__board21.openApp('clock')); await page.waitForTimeout(1000);
+    await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="date"]'); await page.waitForTimeout(800);
+    const wd = await page.frameLocator('.win[data-ikey="clock:1"] iframe').locator('#weekday').evaluate(el => { const r = el.getBoundingClientRect(); return { text: el.textContent, left: r.left, right: r.right, vw: innerWidth }; });
+    ok(wd.left >= -1 && wd.right <= wd.vw + 1, `long weekday name fits the clock (${wd.text})`);
+    await ctx.close();
+
+    // Accent: crafted names are rejected; dark-theme buttons get dark text on the light accent.
+    ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    const file = await page.evaluate(async () => { const f = await window.__board21.buildExport('full'); f.accent = 'constructor'; return f; });
+    await page.evaluate(f => window.__board21.applyImport(f, 'replace'), file); await page.waitForTimeout(800);
+    ok(await page.evaluate(() => window.__board21.state.settings.accent) !== 'constructor', 'an import with a bogus accent name is ignored');
+    await page.reload(); await page.waitForTimeout(800);
+    ok(await page.locator('.picker-btn.left').isVisible(), 'and the board still loads');
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="theme"]'); await page.waitForTimeout(200);
+    await page.click('[data-ctl="export"]'); await page.waitForTimeout(300); // the panel stays open after switching theme
+    const btnColor = await page.locator('#modal .btn.primary').evaluate(el => getComputedStyle(el).color);
+    ok(btnColor === 'rgb(11, 18, 32)', `dark theme: primary buttons use dark text on the light accent (${btnColor})`);
+    await page.keyboard.press('Escape');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');

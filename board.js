@@ -86,11 +86,13 @@
     const ch = sh => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t);
     return '#' + [16, 8, 0].map(sh => ch(sh).toString(16).padStart(2, '0')).join('');
   }
+  // Only real entries count ("constructor", "__proto__" etc. from a crafted file must not).
+  const accentOf = key => (typeof key === 'string' && Object.prototype.hasOwnProperty.call(ACCENTS, key)) ? ACCENTS[key] : null;
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
   // The palette sub-apps receive (--b21-* variables), with the chosen accent applied.
   function paletteFor(theme) {
     const base = Object.assign({}, PALETTES[theme]);
-    const a = ACCENTS[S.settings.accent];
+    const a = accentOf(S.settings.accent);
     if (!a || S.settings.accent === 'blue') return base; // blue is the built-in default
     const c = theme === 'dark' ? a[1] : a[0];
     base.accent = c;
@@ -101,7 +103,7 @@
   function applyAccent(theme) {
     const st = document.body.style;
     const names = ['--primary', '--primary-soft', '--active-bg', '--focus-ring', '--focus-title', '--label-open'];
-    const a = ACCENTS[S.settings.accent];
+    const a = accentOf(S.settings.accent);
     if (!a || S.settings.accent === 'blue') { names.forEach(n => st.removeProperty(n)); return; }
     const dark = theme === 'dark', c = dark ? a[1] : a[0];
     st.setProperty('--primary', c);
@@ -1976,7 +1978,7 @@
     async act(act, val) {
       switch (act) {
         case 'theme': updateSettings({ theme: val }); break;
-        case 'accent': if (ACCENTS[val]) updateSettings({ accent: val }); break;
+        case 'accent': if (accentOf(val)) updateSettings({ accent: val }); break;
         case 'snapping': updateSettings({ snapping: !S.settings.snapping }); break;
         case 'scale': case 'use-screen': scalingAct(act); this.render(); break;
         case 'resistance': updateSettings({ resistance: val }); break;
@@ -2172,7 +2174,7 @@
     return {
       kind: j.kind === 'template' ? 'template' : 'full',
       theme: ['light', 'dark', 'system'].includes(j.theme) ? j.theme : null,
-      accent: typeof j.accent === 'string' && ACCENTS[j.accent] ? j.accent : null,
+      accent: accentOf(j.accent) ? j.accent : null,
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
         background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none' }

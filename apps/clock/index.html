@@ -22,10 +22,10 @@
   #date { font-size: min(6vw, 14vh); color: var(--b21-muted); font-weight: 500; }
   body.digital #analog, body.date #analog { display: none; }
   body.digital #digital { display: flex; }
-  #dateonly { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 1vh; text-align: center; }
+  #dateonly { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 1vh; text-align: center; padding: 0 4vw; overflow: hidden; }
   body.date #dateonly { display: flex; }
-  #weekday { font-size: min(17vw, 40vh); font-weight: 800; line-height: 1.05; }
-  #fulldate { font-size: min(8vw, 20vh); font-weight: 600; color: var(--b21-muted); }
+  #weekday { font-size: min(17vw, 40vh); font-weight: 800; line-height: 1.05; white-space: nowrap; }
+  #fulldate { font-size: min(8vw, 20vh); font-weight: 600; color: var(--b21-muted); white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -55,6 +55,19 @@
   }
   ticks.innerHTML = html;
 
+  // Long day names (e.g. "воскресенье", "quinta-feira") shrink to fit the window instead of being cut off.
+  function fit(el) {
+    el.style.fontSize = '';
+    const box = document.getElementById('dateonly');
+    const avail = box.clientWidth - parseFloat(getComputedStyle(box).paddingLeft) * 2;
+    if (el.scrollWidth > avail && avail > 0) el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) * avail / el.scrollWidth * 0.98) + 'px';
+  }
+  function setFitted(id, text) {
+    const el = document.getElementById(id);
+    if (el.textContent !== text) { el.textContent = text; fit(el); }
+  }
+  addEventListener('resize', () => { if (config.style === 'date') { fit(document.getElementById('weekday')); fit(document.getElementById('fulldate')); } });
+
   const rot = (id, deg) => document.getElementById(id).setAttribute('transform', `rotate(${deg} 100 100)`);
 
   function render() {
@@ -62,8 +75,8 @@
     const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
     const locale = Board21.context ? Board21.context.locale : undefined;
     if (config.style === 'date') {
-      document.getElementById('weekday').textContent = d.toLocaleDateString(locale, { weekday: 'long' });
-      document.getElementById('fulldate').textContent = d.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' });
+      setFitted('weekday', d.toLocaleDateString(locale, { weekday: 'long' }));
+      setFitted('fulldate', d.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' }));
     } else if (config.style === 'analog') {
       rot('h', (h % 12) * 30 + m * 0.5);
       rot('m', m * 6 + s * 0.1);

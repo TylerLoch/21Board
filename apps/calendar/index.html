@@ -21,13 +21,17 @@
     display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: min(4.5vw, 6vh);
   }
   button svg { width: 55%; height: 55%; fill: none; stroke: currentColor; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
-  #today { padding: 0 clamp(10px, 3vmin, 18px); background: var(--b21-accent); color: var(--b21-on-accent); }
+  #today { padding: 0 clamp(10px, 3vmin, 18px); background: var(--b21-accent); color: var(--b21-on-accent); gap: 6px; }
   #today[hidden] { display: none; }
+  #today svg { display: none; width: 50%; height: 50%; fill: currentColor; stroke: none; }
+  .row-group { display: contents; }
+  /* Narrow windows: Today becomes an icon so the month name keeps its room. */
+  @media (max-width: 330px) { #today { padding: 0; } #today span { display: none; } #today svg { display: block; } }
   .grid { flex: 1 1 auto; min-height: 0; display: grid; grid-template-columns: repeat(7, 1fr); grid-template-rows: auto repeat(6, 1fr); gap: clamp(2px, 0.8vmin, 6px); }
   .dow { text-align: center; font-weight: 700; color: var(--b21-muted); font-size: min(3.6vw, 4.5vh); padding-bottom: 2px; }
   .day { display: flex; align-items: center; justify-content: center; border-radius: clamp(6px, 1.6vmin, 12px); font-size: min(4.8vw, 6.2vh); font-weight: 600; font-variant-numeric: tabular-nums; background: var(--b21-surface); }
   .day.other { color: var(--b21-muted); opacity: .45; background: transparent; }
-  .day.weekend:not(.other) { background: var(--b21-surface-2); }
+  .day.weekend:not(.other):not(.today) { background: var(--b21-surface-2); }
   .day.today { background: var(--b21-accent); color: var(--b21-on-accent); font-weight: 800; box-shadow: 0 0 0 2px var(--b21-accent); }
   @media (max-height: 170px) { .dow { display: none; } .grid { grid-template-rows: repeat(6, 1fr); } }
 </style>
@@ -36,7 +40,7 @@
   <header>
     <button id="prev" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
     <div id="title" aria-live="polite"></div>
-    <button id="today">Today</button>
+    <button id="today" aria-label="Today"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6"/></svg><span>Today</span></button>
     <button id="next" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
   </header>
   <div class="grid" id="grid" role="grid"></div>
@@ -54,23 +58,39 @@
     const first = new Date(view.y, view.m, 1);
     $('title').textContent = first.toLocaleDateString(locale(), { month: 'long', year: 'numeric' });
     $('today').hidden = view.y === today.getFullYear() && view.m === today.getMonth();
-    let html = '';
+    // Rows are role="row" wrappers with display: contents, so the grid layout is unchanged.
+    let html = '<div class="row-group" role="row">';
     for (let i = 0; i < 7; i++) {
       const d = new Date(2023, 0, 1 + ((i + config.weekStart) % 7)); // Jan 1 2023 was a Sunday
       html += `<div class="dow" role="columnheader" title="${d.toLocaleDateString(locale(), { weekday: 'long' })}">${d.toLocaleDateString(locale(), { weekday: 'short' })}</div>`;
     }
+    html += '</div>';
     const offset = (first.getDay() - config.weekStart + 7) % 7;
     for (let i = 0; i < 42; i++) {
+      if (i % 7 === 0) html += '<div class="row-group" role="row">';
       const d = new Date(view.y, view.m, 1 - offset + i);
       const cls = ['day'];
       if (d.getMonth() !== view.m) cls.push('other');
       if (d.getDay() === 0 || d.getDay() === 6) cls.push('weekend');
-      if (d.toDateString() === today.toDateString()) cls.push('today');
-      html += `<div class="${cls.join(' ')}" role="gridcell" aria-label="${d.toLocaleDateString(locale(), { weekday: 'long', month: 'long', day: 'numeric' })}">${d.getDate()}</div>`;
+      const isToday = d.toDateString() === today.toDateString();
+      if (isToday) cls.push('today');
+      html += `<div class="${cls.join(' ')}" role="gridcell"${isToday ? ' aria-current="date"' : ''} aria-label="${d.toLocaleDateString(locale(), { weekday: 'long', month: 'long', day: 'numeric' })}">${d.getDate()}</div>`;
+      if (i % 7 === 6) html += '</div>';
     }
     $('grid').innerHTML = html;
+    fitTitle();
     Board21.window.setTitle(today.toLocaleDateString(locale(), { weekday: 'short', month: 'short', day: 'numeric' }));
   }
+
+  // Shrink the month name to fit narrow windows instead of cutting it off.
+  function fitTitle() {
+    const el = $('title');
+    el.style.fontSize = '';
+    if (el.scrollWidth > el.clientWidth && el.clientWidth > 0) {
+      el.style.fontSize = Math.max(10, parseFloat(getComputedStyle(el).fontSize) * el.clientWidth / el.scrollWidth * 0.97) + 'px';
+    }
+  }
+  addEventListener('resize', fitTitle);
 
   function move(delta) {
     const d = new Date(view.y, view.m + delta, 1);
@@ -100,8 +120,14 @@
     config = Object.assign(config, ctx.config || {});
     setMenu(); render();
     // Keep "today" right if the board stays open past midnight.
-    let day = new Date().toDateString();
-    setInterval(() => { const d = new Date().toDateString(); if (d !== day) { day = d; render(); } }, 60000);
+    let day = new Date();
+    setInterval(() => {
+      const d = new Date();
+      if (d.toDateString() === day.toDateString()) return;
+      // If the calendar was showing the old current month, follow today into the new month.
+      if (view.y === day.getFullYear() && view.m === day.getMonth()) view = { y: d.getFullYear(), m: d.getMonth() };
+      day = d; render();
+    }, 60000);
   });
 </script>
 </body>
