@@ -2791,7 +2791,7 @@
       },
       viewport: j.viewport && j.viewport.width > 0 && j.viewport.height > 0 ? { w: j.viewport.width, h: j.viewport.height } : null,
       photo: (() => {
-        const m = j.media && j.media.background;
+        const m = j.kind !== 'template' && j.media && j.media.background;   // templates never carry a photo (it may show the class)
         return validPhoto(m) ? { data: m.data, w: +m.w, h: +m.h, bytes: +m.bytes || 0, name: String(m.name || 'Photo').slice(0, 80), addedAt: +m.addedAt || Date.now() } : null;
       })(),
       photoLook: j.media && j.media.background ? normalizePhotoSettings(j.media.look || {}) : null,

@@ -854,6 +854,8 @@ const SUITES = [
     const p2 = await ctxB.newPage(); await p2.goto(BASE); await p2.waitForTimeout(600);
     await p2.evaluate(o => window.__board21.applyImport(o, 'replace'), tpl); await p2.waitForTimeout(1200);
     ok(await p2.evaluate(() => document.getElementById('board-bg').hidden), 'a board whose photo is missing on this device just shows its color');
+    await p2.evaluate(([t, m]) => window.__board21.applyImport(Object.assign({}, t, { media: m }), 'replace'), [tpl, full.media]); await p2.waitForTimeout(1000);
+    ok(await p2.evaluate(() => document.getElementById('board-bg').hidden && !window.__board21.state.media.has('background')), 'a template file never brings a photo, even a hand-edited one');
     await p2.evaluate(o => window.__board21.applyImport(o, 'replace'), full); await p2.waitForTimeout(1500);
     ok(await p2.evaluate(() => !document.getElementById('board-bg').hidden && window.__board21.state.media.get('background').w === 2560), 'importing a full backup brings the photo along');
     await ctxB.close();
