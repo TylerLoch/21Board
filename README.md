@@ -141,8 +141,8 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 | --- | --- |
 | **16:9 (default)** | The board is a 16:9 canvas drawn as large as fits the window, centered, with the rest of the window lightly shaded. Every screen (laptop, monitor, smartboard) shows the same arrangement, so a board planned on a laptop looks the same on the board. Windows can't be put in the shaded margin. |
 | **Any shape** | Settings → Windows → *Board shape → Any shape*: the board fills the whole window at the chosen size. On a smaller screen, windows are moved to fit (as in early builds). |
-| **Size of windows and menus** | Settings → Windows, − / + (50%–200%, default **80%**): how big title bars, menus, the App Picker, Settings and app contents are, as on a 1920 × 1080 screen. Windows keep their place and footprint when it changes. |
-| **Tip** | When the 16:9 board leaves much of the window unused (a very wide, tall or narrow window), a small tip in the shaded margin offers *Use the whole window* (switches to Any shape). *Hide* keeps it away for the session. |
+| **Size of windows and menus** | Settings → Windows, − / + (50%–200%, default **80%**): how big title bars, menus, the App Picker, Settings and app contents are, as on a 1920 × 1080 screen. Windows keep their place and footprint when it changes. Menus, the App Picker, Settings and messages never get bigger than fits the screen (a size picked on a smartboard can arrive on a tablet in a backup). |
+| **Tip** | When the 16:9 board leaves much of the window unused (a very wide, tall or narrow window), a small tip in the shaded margin offers *Use the whole window* (switches to Any shape). *Hide* keeps it away for the session. It's left out when the margin is too small to hold it. |
 
 Both settings are saved with the board (and in exports). Boards saved before this existed are
 converted once when opened, keeping their arrangement as it looks on that screen. The code is

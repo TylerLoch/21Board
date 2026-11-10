@@ -110,6 +110,7 @@
       background-size: 48px 48px;
     }
     #desk.pattern-lines { background-image: linear-gradient(to bottom, var(--pattern) 1px, transparent 1px); background-size: 100% 48px; }
+    body.has-photo #desk { background-image: none; } /* no pattern while a photo is shown (not even in the margins) */
 
     /* Board scaling: the area outside the board's layout (letterbox margins) is lightly shaded. */
     #layout-frame { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; box-shadow: 0 0 0 100vmax var(--margin-shade, rgba(0, 0, 0, 0.05)); }
@@ -197,6 +198,10 @@
     .grip.n.dragging::after, .grip.s.dragging::after, .grip.e.dragging::after, .grip.w.dragging::after { background-color: var(--focus-ring); }
     .grip.n, .grip.s { left: 50%; width: 72px; margin-left: -36px; height: 26px; cursor: ns-resize; }
     .grip.n { top: -16px; } .grip.s { bottom: -16px; }
+    /* The top handle takes touches only above the window, so the window name (menu) under it stays tappable:
+       its inward part grows with --zi and covered the name on laptop screens. A window at the board's top
+       edge keeps it (nothing above). */
+    .win:not(.at-t) .grip.n { clip-path: inset(0 0 10px 0); }
     .grip.n::after, .grip.s::after { left: 14px; right: 14px; height: 7px; border-radius: 4px; background: var(--grip); }
     .grip.n::after { top: 6px; } .grip.s::after { bottom: 6px; }
     .grip.e, .grip.w { top: 50%; height: 72px; margin-top: -36px; width: 26px; cursor: ew-resize; }
@@ -329,12 +334,12 @@
     .menu.tight { padding: 4px; }
     .menu.tight .menu-item { min-height: 30px; font-size: 13px; }
     .menu.tight .menu-sep { margin: 2px 8px; }
-    .menu.open.cols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, max-content); column-gap: 4px; max-width: calc(100vw - 16px); }
+    .menu.open.cols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, max-content); column-gap: 4px; max-width: calc(100vw / var(--ui, 1) - 16px); }
 
     /* ------------------------------------------------------------ Settings */
     .sheet {
       position: fixed; z-index: 1050; bottom: calc(84px + env(safe-area-inset-bottom)); top: 16px;
-      width: min(460px, calc(100vw - 32px)); display: none; flex-direction: column;
+      width: min(460px, calc(100vw / var(--ui, 1) - 32px)); display: none; flex-direction: column; /* zoomed: see --ui */
       background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
       box-shadow: 0 20px 60px rgba(0, 0, 0, .25); overflow: hidden;
     }
@@ -400,7 +405,7 @@
     .modal-actions .choice small { font-weight: 400; font-size: 13px; opacity: .8; }
 
     /* -------------------------------------------------------------- Toast */
-    #toasts { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3000; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; width: max-content; max-width: calc(100vw - 180px); }
+    #toasts { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3000; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; width: max-content; max-width: calc(100vw / var(--ui, 1) - 180px); }
     .toast { pointer-events: auto; display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 18px; min-height: 46px; border-radius: 23px; background: #1f2937; color: #fff; font-size: 14.5px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); animation: toast-in .2s ease-out; }
     body.dark .toast { background: #f3f4f6; color: #111827; }
     .toast button { color: #93c5fd; font-weight: 700; padding: 0 10px; height: 32px; border-radius: 16px; }
@@ -442,8 +447,9 @@
     #board-bg::after { content: ""; position: absolute; inset: 0; background: var(--fade-color, var(--board-bg)); opacity: var(--fade, 0); }
     #board-bg[hidden] { display: none; }
     .photo-edit { display: flex; flex-direction: column; gap: 12px; width: 100%; }
-    .photo-thumb { position: relative; width: 100%; border-radius: 10px; background-color: var(--hover-bg); background-repeat: no-repeat; cursor: crosshair; box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; touch-action: none; }
-    .photo-thumb::after { content: ""; position: absolute; inset: 0; background: var(--surface); opacity: var(--fade, 0); pointer-events: none; }
+    .photo-thumb { position: relative; width: 100%; margin: 0 auto; border-radius: 10px; background-color: var(--hover-bg); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
+    .photo-thumb.pick { cursor: crosshair; touch-action: pan-y; } /* a swipe over it still scrolls Settings */
+    .photo-thumb::after { content: ""; position: absolute; inset: 0; background: var(--fade-color, var(--board-bg)); opacity: var(--fade, 0); pointer-events: none; }
     .photo-thumb.off { filter: grayscale(1) opacity(.5); }
     .photo-thumb .focus { position: absolute; z-index: 1; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; border: 2.5px solid #fff; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .55), inset 0 0 0 1.5px rgba(0, 0, 0, .55); pointer-events: none; }
     .photo-ctrls { display: flex; flex-direction: column; gap: 10px; }

@@ -623,6 +623,8 @@
     const unit = v => (typeof v === 'number' && v >= 0 && v <= 1 ? v : 0.5);
     return { on: im.on !== false, fit: im.fit === 'whole' ? 'whole' : 'fill', focus: { x: unit(f.x), y: unit(f.y) }, fade: Math.max(0, Math.min(0.7, +im.fade || 0)) };
   }
+  // CSS background-position: the chosen spot stays in view when filling; a whole photo is centered.
+  const photoPosition = im => (im.fit === 'whole' ? '50% 50%' : `${(im.focus.x * 100).toFixed(1)}% ${(im.focus.y * 100).toFixed(1)}%`);
   const BoardPhoto = {
     url: null, src: null,
     el() { return $('#board-bg'); },
@@ -648,7 +650,7 @@
       if (this.media() !== m) return;   // changed while loading; the newer render wins
       el.style.backgroundImage = `url("${url}")`;
       el.style.backgroundSize = im.fit === 'whole' ? 'contain' : 'cover';
-      el.style.backgroundPosition = `${(im.focus.x * 100).toFixed(1)}% ${(im.focus.y * 100).toFixed(1)}%`;
+      el.style.backgroundPosition = photoPosition(im);
       el.style.setProperty('--fade', String(im.fade));
       el.style.setProperty('--fade-color', (S.board.background && S.board.background.color) || 'var(--board-bg)');
       el.hidden = false;
@@ -765,7 +767,10 @@
   const BASE_W = 1920, BASE_H = 1080;
   const SCALES = [0.5, 0.6, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
   const DEFAULT_SCALE = 0.8;
-  const Zoom = { s: 1, ox: 0, oy: 0, vw: 0, vh: 0 };
+  const Zoom = { s: 1, ox: 0, oy: 0, vw: 0, vh: 0, ui: 1 };
+  // Menus, the App Picker, Settings, toasts and dialogs are drawn at the board's size, but never bigger than
+  // fits this screen (a size picked on a smartboard can arrive on a tablet or phone in a backup).
+  const UI_FIT_W = 520, UI_FIT_H = 440;
   const validScale = v => (typeof v === 'number' && v >= 0.5 && v <= 2 ? v : null);   // the Settings range
   const boardScale = () => validScale(S.board.scale) || DEFAULT_SCALE;
   const freeShape = () => S.board.shape === 'free';
@@ -789,7 +794,8 @@
       Zoom.ox = (Zoom.vw - L.w * Zoom.s) / 2; // center left/right; keep the top aligned
       Zoom.oy = 0;
     }
-    document.documentElement.style.setProperty('--ui', String(sc));
+    Zoom.ui = Math.max(0.4, Math.min(sc, (window.innerWidth || Zoom.vw) / UI_FIT_W, (window.innerHeight || Zoom.vh) / UI_FIT_H));
+    document.documentElement.style.setProperty('--ui', String(Zoom.ui));
     // Resize handles and the focus ring stay at the board's scale even when the board is drawn
     // smaller (CSS uses --zi), so they stay touchable on a small screen.
     d.style.setProperty('--zi', String(Math.min(2.5, Math.max(1, sc / Zoom.s))));
@@ -881,7 +887,11 @@
       this.el.addEventListener('click', e => {
         const b = e.target.closest('[data-act]');
         if (!b) return;
-        if (b.dataset.act === 'unlock') { setBoardShape('free'); if (Settings.isOpen) Settings.render(); toast('The board now fills the window. Settings → Windows → Board shape changes it back.'); }
+        if (b.dataset.act === 'unlock') {
+          if (!setBoardShape('free')) return;   // refused (someone is moving a window); it said why
+          if (Settings.isOpen) Settings.render();
+          toast('The board now fills the window. Settings → Windows → Board shape changes it back.');
+        }
         else { this.hidden = true; try { sessionStorage.setItem('21board-shape-hint', 'hidden'); } catch (err) { /* private mode */ } }
         this.update();
       });
@@ -890,16 +900,22 @@
       if (!this.el) return;
       const L = canvas(), bw = L.w * Zoom.s, bh = L.h * Zoom.s;
       const unused = Zoom.vw && Zoom.vh ? 1 - (bw * bh) / (Zoom.vw * Zoom.vh) : 0;
-      const show = !freeShape() && !this.hidden && unused > 0.3;
+      let show = !freeShape() && !this.hidden && unused > 0.3;
       this.el.hidden = !show;
       if (!show) return;
-      const ui = boardScale();
+      const ui = Zoom.ui;
       const side = Zoom.ox;                                  // width of each side margin
       const below = Zoom.vh - bh;                            // height of the margin under the board
-      // Put it where there's room: the middle of the space below the board, or the right margin.
-      const box = below >= side ? { x: 0, y: bh, w: Zoom.vw, h: below } : { x: Zoom.ox + bw, y: 0, w: side, h: Zoom.vh };
-      this.el.style.maxWidth = Math.max(140, box.w - 24) / ui + 'px';
+      const corner = 80 * ui;                                // the App Picker buttons in the bottom corners
+      // Put it where there's room, clear of the App Picker buttons: the middle of the space below the
+      // board, or the right margin above its button.
+      const box = below >= side ? { x: corner, y: bh, w: Zoom.vw - 2 * corner, h: below } : { x: Zoom.ox + bw, y: 0, w: side, h: Zoom.vh - corner };
+      Object.assign(this.el.style, { left: '0px', top: '0px', maxWidth: Math.max(140, box.w - 24) / ui + 'px' });   // measure unconstrained
       const r = { w: this.el.offsetWidth * ui, h: this.el.offsetHeight * ui };
+      // No room for it at this size (its button would spill out or Hide would go off screen): leave it out.
+      show = box.w - 16 >= Math.max(r.w, 250 * ui) && box.h - 16 >= r.h;
+      this.el.hidden = !show;
+      if (!show) return;
       this.el.style.left = (box.x + (box.w - r.w) / 2) / ui + 'px';
       this.el.style.top = (box.y + (box.h - r.h) / 2) / ui + 'px';
     }
@@ -1685,7 +1701,7 @@
         lx0: (e.clientX - Zoom.ox) / Zoom.s, ly0: (e.clientY - Zoom.oy) / Zoom.s, // grab point in layout space
         layoutSig: layoutSig(),
         start: Object.assign({}, win.disp), moved: false, result: null,
-        onLabel: !!(e.target.closest && e.target.closest('.win-label'))
+        onLabel: kind === 'resize' ? onLabelUnderGrip(e, win, handle) : !!(e.target.closest && e.target.closest('.win-label'))
       };
       try { el.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       this.map.set(e.pointerId, it);
@@ -1753,6 +1769,8 @@
         win.layout();
       } else if (it.moved) {
         win.layout();
+      } else if (it.kind === 'resize' && it.onLabel && !cancelled) {
+        Menu.toggle(win);   // a tap on the window name where the top handle overlaps it: the name wins
       } else if (it.kind === 'title' && !cancelled) {
         if (it.onLabel) Menu.toggle(win);
         else {
@@ -2029,6 +2047,14 @@
     updateFocus();
   }
 
+  // The top handle of a window at the board's top edge reaches into the title bar and can overlap the
+  // window name. A tap there still opens the menu; a drag resizes.
+  function onLabelUnderGrip(e, win, handle) {
+    if (handle !== 'n' || !win.labelEl) return false;
+    const r = win.labelEl.getBoundingClientRect();
+    return e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+  }
+
   function onDeskPointerDown(e) {
     const winEl = e.target.closest && e.target.closest('.win');
     if (!winEl) { deselectAll(); return; }
@@ -2039,7 +2065,7 @@
     const grip = e.target.closest('.grip');
     if (grip) {
       e.preventDefault();
-      if (Menu.win) Menu.close();
+      if (Menu.win && !(Menu.win === win && onLabelUnderGrip(e, win, grip.dataset.h))) Menu.close();   // a tap on the name toggles it
       Inter.begin(e, win, 'resize', grip.dataset.h, grip);
       return;
     }
@@ -2107,7 +2133,7 @@
       const counts = new Map();
       for (const inst of S.insts.values()) if (inst.open) counts.set(inst.appId, (counts.get(inst.appId) || 0) + 1);
       const apps = pickerApps();
-      const cols = window.innerWidth < 440 ? 3 : 4;
+      const cols = window.innerWidth / Zoom.ui < 440 ? 3 : 4;   // the panel is drawn at Zoom.ui
       this.el.style.setProperty('--cols', String(cols));
       $('.panel-apps', this.el).innerHTML = apps.map(a => {
         const c = counts.get(a.id) || 0;
@@ -2235,7 +2261,7 @@
       const vw = window.innerWidth, vh = window.innerHeight, M = 8, GAP = 6;
       // offsetWidth/Height: layout size, unaffected by the menu's scale-in animation.
       // (The CSS max-height is lifted while measuring so the full height is seen.)
-      const ui = boardScale();   // the menu is drawn at the board's scale (CSS zoom), so its px are scaled
+      const ui = Zoom.ui;   // the menu is drawn at this zoom (CSS zoom: var(--ui)), so its px are scaled
       const size = () => ({ width: this.el.offsetWidth * ui, height: this.el.offsetHeight * ui });
       // A menu taller than the whole screen gets tighter rows first (it should never need scrolling).
       this.el.classList.remove('compact', 'tight', 'cols');
@@ -2293,12 +2319,13 @@
       return `<div class="row"><div><div class="lbl">Background photo</div><div class="hint">A picture from this device (or Google Drive on a Chromebook). It's kept on this device and in full backups, not in templates.</div></div>
         <button class="btn" data-act="photo-add">${svg('image')}Add photo…</button></div>`;
     }
-    const g = photoThumbGeometry(m, im);
-    return `<div class="row stack"><div><div class="lbl">Background photo</div><div class="hint">${im.fit === 'whole' ? 'The whole photo is shown; the background color fills the rest.' : 'Tap the picture to choose the part that always stays in view.'}</div></div>
+    const g = photoThumbGeometry(m, im), fill = im.fit === 'fill';
+    // Shaped like the board, but never taller than about 200 px (a portrait window would make it huge).
+    return `<div class="row stack"><div><div class="lbl">Background photo</div><div class="hint">${fill ? 'Tap the picture to choose the part that always stays in view.' : 'The whole photo is shown; the background color fills the rest.'}</div></div>
       <div class="photo-edit">
-        <div class="photo-thumb${im.on ? '' : ' off'}" id="photo-thumb" role="button" tabindex="0" aria-label="Choose the part of the photo that stays in view"
-          style="aspect-ratio:${g.ratio.toFixed(4)};background-size:${im.fit === 'whole' ? 'contain' : 'cover'};background-position:${(im.focus.x * 100).toFixed(1)}% ${(im.focus.y * 100).toFixed(1)}%;--fade:${im.fade}">
-          ${im.fit === 'fill' ? `<span class="focus" style="left:${(g.mx * 100).toFixed(2)}%;top:${(g.my * 100).toFixed(2)}%"></span>` : ''}</div>
+        <div class="photo-thumb${im.on ? '' : ' off'}${fill ? ' pick' : ''}" id="photo-thumb"${fill ? ' role="button" tabindex="0" aria-label="Choose the part of the photo that stays in view (tap, or use the arrow keys)"' : ' role="img" aria-label="Background photo"'}
+          style="aspect-ratio:${g.ratio.toFixed(4)};width:min(100%, ${Math.round(200 * g.ratio)}px);background-size:${fill ? 'cover' : 'contain'};background-position:${photoPosition(im)};--fade:${im.fade}">
+          ${fill ? `<span class="focus" style="left:${(g.mx * 100).toFixed(2)}%;top:${(g.my * 100).toFixed(2)}%"></span>` : ''}</div>
         <div class="photo-ctrls">
           <div class="line"><span>Show photo</span>${sw('photo-on', im.on, 'Show photo')}</div>
           <div class="line"><span>Fit</span>${seg('photo-fit', im.fit, [['fill', 'Fill the board'], ['whole', 'Whole photo']])}</div>
@@ -2313,8 +2340,9 @@
     const W = 1, H = 1 / ratio, ia = m.w / m.h;
     const k = im.fit === 'whole' ? Math.min(W / ia, H) : Math.max(W / ia, H);   // image height in box units
     const dw = k * ia, dh = k;
-    const ox = (W - dw) * im.focus.x, oy = (H - dh) * im.focus.y;
-    return { ratio, dw, dh, ox, oy, W, H, mx: (ox + im.focus.x * dw) / W, my: (oy + im.focus.y * dh) / H };
+    const f = im.fit === 'whole' ? { x: 0.5, y: 0.5 } : im.focus;   // as photoPosition()
+    const ox = (W - dw) * f.x, oy = (H - dh) * f.y;
+    return { ratio, dw, dh, ox, oy, W, H, mx: (ox + f.x * dw) / W, my: (oy + f.y * dh) / H };
   }
 
   const Settings = {
@@ -2347,16 +2375,35 @@
           const th = $('#photo-thumb', this.body); if (th) th.style.setProperty('--fade', String(fade));
         }
       });
-      // Tap the preview: that spot of the photo stays in view however the board is shaped.
+      // Tap the preview: that spot of the photo stays in view however the board is shaped. A tap, not a
+      // press: a finger swiping over the preview to scroll Settings must not move the photo.
+      const clamp01 = x => Math.max(0, Math.min(1, x));
+      const setFocus = focus => { BoardPhoto.update({ focus }); this.render(); };
+      let press = null;
       this.body.addEventListener('pointerdown', e => {
-        const th = e.target.closest('#photo-thumb');
+        const th = e.target.closest('#photo-thumb.pick');
+        press = th && e.isPrimary && e.button === 0 ? { id: e.pointerId, x: e.clientX, y: e.clientY, th } : null;
+      });
+      this.body.addEventListener('pointercancel', () => { press = null; });   // the browser took it for scrolling
+      this.body.addEventListener('pointerup', e => {
+        const p = press; press = null;
+        if (!p || p.id !== e.pointerId || !p.th.isConnected || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 10) return;
         const m = BoardPhoto.media(), im = BoardPhoto.settings();
-        if (!th || !m || !im || im.fit !== 'fill') return;
-        const r = th.getBoundingClientRect(), g = photoThumbGeometry(m, im);
+        if (!m || !im || im.fit !== 'fill') return;
+        const r = p.th.getBoundingClientRect(), g = photoThumbGeometry(m, im);
         const u = (e.clientX - r.left) / r.width * g.W, v = (e.clientY - r.top) / r.height * g.H;
-        const clamp01 = x => Math.max(0, Math.min(1, x));
-        BoardPhoto.update({ focus: { x: clamp01((u - g.ox) / g.dw), y: clamp01((v - g.oy) / g.dh) } });
-        this.render();
+        setFocus({ x: clamp01((u - g.ox) / g.dw), y: clamp01((v - g.oy) / g.dh) });
+      });
+      // Keyboard: arrow keys move the spot that stays in view.
+      this.body.addEventListener('keydown', e => {
+        if (!e.target.matches || !e.target.matches('#photo-thumb.pick')) return;
+        const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+        const im = BoardPhoto.settings();
+        if (!d || !im) return;
+        e.preventDefault();
+        const step = e.shiftKey ? 0.2 : 0.05;
+        setFocus({ x: clamp01(im.focus.x + d[0] * step), y: clamp01(im.focus.y + d[1] * step) });
+        const th = $('#photo-thumb', this.body); if (th) th.focus({ preventScroll: true });
       });
       $('#photo-input').addEventListener('change', async e => {
         const f = e.target.files && e.target.files[0];
@@ -2467,6 +2514,7 @@
         Everything you make is stored only on this device. Nothing is sent to a server.</div>`;
       // The photo preview gets its picture here (never as text inside the HTML above).
       const thumb = $('#photo-thumb', this.body), pm = BoardPhoto.media();
+      if (thumb) thumb.style.setProperty('--fade-color', (S.board.background && S.board.background.color) || 'var(--board-bg)');   // as on the board
       if (thumb && pm) BoardPhoto.objectUrl(pm).then(u => { thumb.style.backgroundImage = `url("${u}")`; }, () => {});
       this.refreshStatus(true);
     },

@@ -824,6 +824,11 @@ const SUITES = [
     await page.mouse.click(th.x + th.width * 0.15, th.y + th.height * 0.8); await page.waitForTimeout(400);
     const im = await page.evaluate(() => window.__board21.state.media.get('background-look'));
     ok(im.focus.x < 0.3 && im.focus.y > 0.6, `tapping the preview sets the part that stays in view (${im.focus.x.toFixed(2)}, ${im.focus.y.toFixed(2)})`);
+    await page.mouse.move(th.x + th.width * 0.8, th.y + th.height * 0.2); await page.mouse.down(); await page.mouse.move(th.x + th.width * 0.8, th.y + th.height * 0.9, { steps: 5 }); await page.mouse.up(); await page.waitForTimeout(300);
+    const im2 = await page.evaluate(() => window.__board21.state.media.get('background-look'));
+    ok(im2.focus.x === im.focus.x && im2.focus.y === im.focus.y, 'a swipe over the preview (scrolling Settings) leaves it alone');
+    const fc = await page.evaluate(() => { const t = document.getElementById('photo-thumb'); return getComputedStyle(t, '::after').backgroundColor; });
+    ok(fc === await page.evaluate(() => getComputedStyle(document.getElementById('board-bg'), '::after').backgroundColor || getComputedStyle(document.getElementById('desk')).backgroundColor), `the preview fades toward the board's color, as the board does (${fc})`);
     b = await bg();
     const [px, py] = b.pos.split(' ').map(parseFloat);
     ok(Math.abs(px - im.focus.x * 100) < 0.2 && Math.abs(py - im.focus.y * 100) < 0.2, `the board uses it (${b.pos})`);
@@ -831,7 +836,9 @@ const SUITES = [
     await page.locator('#photo-fade').fill('40'); await page.waitForTimeout(400);
     b = await bg();
     ok(b.size === 'contain' && b.fade === '0.4', '"Whole photo" shows all of it; Fade blends it toward the background color');
+    ok(b.pos === '50% 50%', `a whole photo is centered (the Fill spot doesn't push it to one side) (${b.pos})`);
     ok(await page.evaluate(() => { const b = document.querySelector('#settings [data-act="pattern"]'); return b.disabled || !!b.closest('.seg.disabled'); }), 'patterns are off while a photo is shown');
+    ok(await page.evaluate(() => { const d = document.getElementById('desk'), had = d.className; d.classList.add('pattern-dots'); const none = getComputedStyle(d).backgroundImage === 'none'; d.className = had; return none; }), 'even in the shaded margins');
     // Another open tab shows the same photo.
     await page.waitForTimeout(500);
     ok(await tab2.evaluate(() => !document.getElementById('board-bg').hidden && getComputedStyle(document.getElementById('board-bg')).backgroundSize === 'contain'), 'another open tab shows it too');
@@ -879,6 +886,65 @@ const SUITES = [
     const corner = await page.evaluate(async () => { const m = window.__board21.state.media.get('background'); const img = new Image(); img.src = m.data; await img.decode();
       const c = document.createElement('canvas'); c.width = 10; c.height = 10; const g = c.getContext('2d'); g.drawImage(img, 0, 0, 10, 10); return { type: m.data.slice(5, 15), a: g.getImageData(0, 0, 1, 1).data[3] }; });
     ok(corner.a === 0 && /webp|png/.test(corner.type), `a transparent logo stays transparent (${corner.type}, corner alpha ${corner.a})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Large sizes on small screens', async (browser) => {
+    // A size chosen on a smartboard can arrive on a tablet in a backup: menus, Settings and toasts must still fit.
+    const ctx = await browser.newContext({ viewport: { width: 768, height: 1024 }, hasTouch: true });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(600);
+    await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(300);
+    const ui = await page.evaluate(() => +getComputedStyle(document.documentElement).getPropertyValue('--ui'));
+    ok(ui < 1.5 && ui > 1.3, `at 200% on a portrait tablet, menus and panels are drawn only as big as fits (${ui.toFixed(2)})`);
+    for (const side of ['left', 'right']) {
+      await page.tap(`.picker-btn.${side}`); await page.waitForTimeout(300);
+      const hit = await page.evaluate(() => { const g = document.querySelector('.panel.open [data-ctl="settings"]'), r = g.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return { inside: r.left >= 0 && r.right <= innerWidth, top: !!e && g.contains(e) }; });
+      ok(hit.inside && hit.top, `the Settings button in the ${side} App Picker is on screen and not under the other corner's button`);
+      await page.tap(`.picker-btn.${side}`); await page.waitForTimeout(250);
+    }
+    await page.tap('.picker-btn.left'); await page.waitForTimeout(250); await page.tap('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(500);
+    const sheet = await page.evaluate(() => { const r = document.getElementById('settings').getBoundingClientRect(), x = document.querySelector('#settings [data-close]').getBoundingClientRect(); return { r: r.right, x: x.right }; });
+    ok(sheet.r <= 768 && sheet.x <= 768, `Settings fits the screen, close button included (right edge ${Math.round(sheet.r)})`);
+    await page.tap('#settings [data-close]'); await page.waitForTimeout(300);
+    // Toasts wrap instead of running off both edges.
+    await page.setViewportSize({ width: 1024, height: 768 }); await page.waitForTimeout(400);
+    await page.evaluate(() => { window.__board21.openApp('timer'); }); await page.waitForTimeout(1000);
+    await page.evaluate(() => window.__board21.closeWin('timer:1')); await page.waitForTimeout(400);
+    const t = await page.evaluate(() => { const r = document.querySelector('#toasts .toast').getBoundingClientRect(); return { l: r.left, r: r.right }; });
+    ok(t.l >= 0 && t.r <= 1024, `a long toast wraps to fit the screen (${Math.round(t.l)}–${Math.round(t.r)})`);
+    // A two-column window menu stays on screen.
+    await page.setViewportSize({ width: 683, height: 400 }); await page.waitForTimeout(400);
+    await page.evaluate(() => { window.__board21.openApp('notes'); }); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.setRect('notes:1', { x: 0, y: 0, w: 400, h: 300 })); await page.waitForTimeout(200);
+    // (At the board's top edge the top handle overlaps the name: a tap there still opens the menu.)
+    await page.locator('.win[data-ikey="notes:1"] .win-label').click({ force: true }); await page.waitForTimeout(400);
+    const m = await page.evaluate(() => { const r = document.querySelector('.menu.open').getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom }; });
+    ok(m.l >= 0 && m.r <= 683 && m.b <= 400, `the window menu stays on screen (${Math.round(m.l)}–${Math.round(m.r)})`);
+    await page.keyboard.press('Escape');
+    // The shape tip never hides under the App Picker buttons or spills off screen.
+    for (const [w, h, sc] of [[1100, 400, 1.5], [1600, 600, 2], [600, 800, 2], [800, 720, 1.5], [1000, 900, 2]]) {
+      await page.setViewportSize({ width: w, height: h }); await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
+      const tip = await page.evaluate(() => { document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); const el = document.getElementById('shape-hint'); if (el.hidden) return { hidden: true };
+        const r = el.getBoundingClientRect(), hide = el.querySelector('.hide').getBoundingClientRect(), btn = el.querySelector('[data-act="unlock"]').getBoundingClientRect();
+        const pick = [...document.querySelectorAll('.picker-btn:not([hidden])')].map(b => b.getBoundingClientRect());
+        const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+        return { hidden: false, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, clear: !pick.some(p => hit(p, r)),
+          fits: btn.left >= r.left - 0.5 && btn.right <= r.right + 0.5, hideOk: document.elementFromPoint(hide.left + hide.width / 2, hide.top + hide.height / 2)?.closest('.hide') !== null }; });
+      ok(tip.hidden || (tip.inside && tip.clear && tip.fits && tip.hideOk), `${w}×${h} at ${sc * 100}%: the shape tip ${tip.hidden ? 'is left out (no room)' : 'fits in the margin, clear of the App Picker buttons'}`);
+    }
+    // The top handle doesn't cover the window's name on a laptop screen.
+    await page.setViewportSize({ width: 1280, height: 800 }); await page.evaluate(() => window.__board21.setBoardScale(0.8)); await page.waitForTimeout(300);
+    await page.evaluate(() => { window.__board21.setRect('notes:1', { x: 600, y: 300, w: 600, h: 400 }); window.__board21.focusWin('notes:1'); }); await page.waitForTimeout(300);
+    const lab = await page.evaluate(() => { const l = document.querySelector('.win[data-ikey="notes:1"] .win-label'), r = l.getBoundingClientRect();
+      return [0.15, 0.35, 0.5].every(f => l.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height * f))); });
+    ok(lab, 'the top resize handle no longer covers the window name (its menu opens from anywhere on it)');
+    const n = await page.evaluate(() => { const g = document.querySelector('.win[data-ikey="notes:1"] .grip.n'), w = document.querySelector('.win[data-ikey="notes:1"]').getBoundingClientRect();
+      const e = document.elementFromPoint(w.left + w.width / 2, w.top - 6); return g.contains(e); });
+    ok(n, 'the top handle still works just above the window');
+    // Shape tip: "Use the whole window" while someone is moving a window says only why it can't.
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
