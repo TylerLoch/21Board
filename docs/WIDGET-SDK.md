@@ -115,6 +115,7 @@ The **context**:
   boardVersion: '1.0.0',
   sdkProtocol: 1,
   host: 'board',             // 'board', 'dev' (the dev window's test board) or 'standalone'
+  kiosk: false,              // ChromeOS kiosk mode (?kiosk=yes): links can't open new windows
   standalone: false
 }
 ```

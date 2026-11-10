@@ -197,18 +197,37 @@ on a few real laptops and boards** (how quickly files arrive, and that the folde
 Open 21Board with **`?kiosk=yes`** (for example `https://boardapp.ccsd21.org/?kiosk=yes`) for a ChromeOS kiosk
 app, where no one signs in:
 
-- The Widget Picker leaves out Export, Import and Fullscreen (a kiosk is already full screen) and ends with
-  **Quit**, a red ✕ after the Settings gear.
-  Quit asks first, waits until everything is saved, then closes the app (`window.close()`, as 21Sketch does). On
-  ChromeOS this ends the kiosk session; an auto-launched kiosk app starts again. If the browser won't let the page
-  close (a normal tab), it says so.
-- Left out: Export, Import (including dropping or opening `.21board` files), the Google Drive folder, the install
-  prompt, backup reminders and Developer mode. Settings says it's in kiosk mode.
-- Everything else works as usual: widgets, saving on the device, board history and Undo.
-- Without the parameter (or with `?kiosk=no`), nothing changes.
+- The Widget Picker leaves out Export, Import and Fullscreen (a kiosk is always full screen) and ends with
+  **Quit**, a red ✕ after the Settings gear. Quit asks first, waits until everything is saved, then closes the app
+  (`window.close()`, as 21Sketch does). On ChromeOS that ends the kiosk session: an auto-launched kiosk starts
+  21Board again; one started from **Apps** on the sign-in screen goes back to the sign-in screen. If the page
+  isn't allowed to close (it only can while it hasn't navigated), it says so.
+- Left out: the Google Drive folder (a kiosk has no Google account), the install prompt, backup reminders and
+  Developer mode. Settings says it's in kiosk mode.
+- **Import and Export** are off, but Settings › *Import and Export* turns them on: ChromeOS shows its Files dialog
+  in kiosk sessions too, so files can be saved to and opened from the kiosk's own storage or a USB drive. Export
+  uses only the Save dialog (a plain download would land unseen in the kiosk's Downloads).
+- Links in Notes show as plain text: a kiosk can't open new windows.
+- Everything else works as usual: widgets, saving on the device, board history and Undo. Widgets can check
+  `Board21.context.kiosk`. Without the parameter (or with `?kiosk=no`), nothing changes.
 
-**Admin console:** Devices → Chrome → Apps & extensions → Kiosks → add the app by URL with `?kiosk=yes`, and
-choose whether it launches automatically. The offline cache (service worker) serves the board with the parameter too.
+**Admin console setup** (from Google's documentation and Chromium's source; try it on one device first):
+
+1. Devices → Chrome → Apps & extensions → **Kiosks** → choose the organizational unit → Add → **Add by URL** →
+   `https://boardapp.ccsd21.org/?kiosk=yes` (the exact address, no redirects). **Don't change the URL later:**
+   the kiosk's saved boards belong to that exact URL and are deleted with it.
+2. Optional: set **Auto-launch app** to 21Board. Otherwise it's started from **Apps** at the bottom left of the
+   sign-in screen. Changes apply after the device restarts.
+3. Keep the boards between sessions: for this OU, Device settings → *User data* must not be "Erase all local
+   user data" (unless the kiosk account itself is set to keep its data).
+4. Launch it the first time while online and leave it open for a minute, so its offline copy is complete. Leave
+   the kiosk web-app offline setting at its default (on).
+5. Keep **Kiosk troubleshooting tools** off (an open developer tools window keeps the session going after Quit)
+   and leave *new windows in kiosk* off. Optional: turn off pinch-to-zoom for touch panels.
+6. If Import and Export will be used: don't block USB drives, downloads, or file-system access for this OU.
+
+Check on a real device: Quit (auto-launched and from Apps), Import/Export to the device and to USB, typing on a
+touch-only panel, and that the board is still there after airplane mode and a restart.
 
 ## Board history (going back)
 

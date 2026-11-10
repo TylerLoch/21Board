@@ -86,7 +86,8 @@
     activeBoard: 1,
     lastBackupAt: null,      // when a full backup was last exported (ms), for backup reminders
     historyEvery: 10,        // Board history: save a version at most every N minutes while the board changes (0 = off)
-    historyFolder: true      // Board history: also keep copies in the linked Google Drive folder (about one an hour)
+    historyFolder: true,     // Board history: also keep copies in the linked Google Drive folder (about one an hour)
+    kioskFiles: false        // kiosk mode: show Import and Export (the kiosk's own files and USB drives)
   };
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
   const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
@@ -1502,7 +1503,8 @@
               data: clone(S.data.get(this.ikey)), config: clone(S.conf.get(this.ikey)),
               theme, palette: paletteFor(theme), window: this.info(),
               locale: navigator.language || 'en-US', devMode: !!S.settings.devMode || !!LAB,
-              host: LAB ? 'dev' : 'board'   // 'dev': the widget dev window (the SDK then reports errors to it)
+              host: LAB ? 'dev' : 'board',  // 'dev': the widget dev window (the SDK then reports errors to it)
+              kiosk: KIOSK                  // ChromeOS kiosk: links can't open new windows, no file access by default
             }
           });
           this.loadingEl.classList.add('done');
@@ -2273,8 +2275,9 @@
       const dark = resolvedTheme() === 'dark';
       const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
       const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
-      set('export', 'export', 'Export board').hidden = KIOSK;
-      set('import', 'import', 'Import board').hidden = KIOSK;
+      const noFiles = KIOSK && !S.settings.kioskFiles;
+      set('export', 'export', 'Export board').hidden = noFiles;
+      set('import', 'import', 'Import board').hidden = noFiles;
       set('quit', 'quit', 'Quit 21Board').hidden = !KIOSK;
       set('theme', dark ? 'sun' : 'moon', dark ? 'Light mode' : 'Dark mode');
       const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit fullscreen' : 'Fullscreen');
@@ -2310,7 +2313,8 @@
     await Writer.settled(3000);
     if (BoardHistory.dirty) { try { await Promise.race([BoardHistory.check(true), sleep(2000)]); } catch (e) { /* quit anyway */ } }
     window.close();
-    setTimeout(() => { if (!window.closed) toast('21Board couldn’t close this window. Close it from the browser, or ask an adult to end the session.', { timeout: 8000 }); }, 800);
+    const refused = () => toast('21Board can’t close itself right now. Your board is saved. To leave, restart the device or ask your school’s IT.', { timeout: 10000 });
+    if (!window.closed) setTimeout(() => { if (!window.closed) refused(); }, 600);
   }
 
   function toggleFullscreen() {
@@ -2682,7 +2686,8 @@
         <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : `<h3>Storage &amp; offline</h3>
         <div class="row"><div class="lbl">Offline</div><div class="hint" id="st-offline" style="text-align:right">Checking…</div></div>
         <div class="row"><div><div class="lbl">Data protection</div><div class="hint" id="st-persist-hint"></div></div><div id="st-persist" style="flex:0 0 auto"></div></div>
-        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so Export, Import and the Google Drive folder aren’t available. The board is kept on this device, and board history keeps earlier versions.</div></div></div>` : `<div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>`}
+        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so the Google Drive folder isn’t available. The board is kept on this device, and board history keeps earlier versions.</div></div></div>
+        <div class="row"><div><div class="lbl">Import and Export</div><div class="hint">Shows Export and Import in the Widget Picker. Files are saved to and opened from this device or a USB drive.</div></div>${sw('kiosk-files', st.kioskFiles, 'Import and Export')}</div>` : `<div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>`}
         <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>`}
 
         <h3>Advanced</h3>
@@ -2805,6 +2810,7 @@
         case 'install': await Install.run(); this.refreshStatus(); break;
         case 'backup': await doExport('full'); this.refreshStatus(); break;
         case 'hist-open': HistorySheet.open(this.side); break;
+        case 'kiosk-files': updateSettings({ kioskFiles: !S.settings.kioskFiles }); Picker.renderControls(); break;
         case 'hist-every': {
           if (val === '0') {
             const ok = await dialog({ title: 'Turn off automatic versions?', message: '21Board stops saving versions while you work. It still saves one before Reset, Delete, Close all, Import, Load, Erase and going back, so those can be undone. Versions already saved stay until you delete them.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
@@ -2976,6 +2982,8 @@
         handle = null;                                       // not allowed here: use a download instead
       }
     }
+    // A kiosk shows no downloads, so a download would vanish into its Downloads folder unseen: only the Save dialog.
+    if (KIOSK && !handle) { toast('Export needs the Save dialog, which this kiosk doesn’t allow.'); return false; }
     try {
       const text = JSON.stringify(await buildExport(kind), null, 2);
       if (handle) {
@@ -4896,7 +4904,7 @@
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (!f) return;
       e.preventDefault();
-      if (!KIOSK && /\.21board$|\.json$/i.test(f.name)) importFile(f);
+      if ((!KIOSK || S.settings.kioskFiles) && /\.21board$|\.json$/i.test(f.name)) importFile(f);
     });
 
     window.addEventListener('resize', () => { scheduleLayoutAll(); Picker.render(); });

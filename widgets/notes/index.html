@@ -109,13 +109,14 @@
 
   // ---- Links: http(s)://… or www.… become tappable while reading.
   const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"']*[^\s<>"'.,;:!?)\]}]/gi;
+  let linksOn = true;   // off in kiosk mode, where a link can't open a new window (it would seem to do nothing)
   function renderView() {
     view.textContent = '';
     const text = t.value;
     if (!text) { const p = document.createElement('span'); p.className = 'placeholder'; p.textContent = t.placeholder; view.appendChild(p); return; }
     let last = 0, m;
     URL_RE.lastIndex = 0;
-    while ((m = URL_RE.exec(text))) {
+    while (linksOn && (m = URL_RE.exec(text))) {
       if (m.index > last) view.appendChild(document.createTextNode(text.slice(last, m.index)));
       const a = document.createElement('a');
       a.textContent = m[0];                       // exactly the typed characters, so taps map back to the text
@@ -280,6 +281,7 @@
 
   Board21.ready().then(ctx => {
     t.value = (ctx.data && ctx.data.text) || '';
+    linksOn = !ctx.kiosk;
     config = readConfig(ctx.config);
     renderView(); applyLook(); setMenu();
   });

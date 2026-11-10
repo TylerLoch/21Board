@@ -2072,6 +2072,16 @@ const SUITES = [
     await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
     const set = await page.evaluate(() => { const r = document.getElementById('settings'); return { link: !!r.querySelector('[data-act^="link-"]'), backup: !!r.querySelector('[data-act="backup"]'), dev: !!r.querySelector('[data-act="devmode"]'), install: !!r.querySelector('[data-act="install"]'), kiosk: /Kiosk mode/.test(r.textContent), hist: !!r.querySelector('[data-act="hist-open"]') }; });
     ok(!set.link && !set.backup && !set.dev && !set.install && set.kiosk && set.hist, 'Settings leaves out the Google Drive folder, backups, Developer mode and Install, says it’s kiosk mode, and keeps Board history');
+    // Import and Export can be turned on (the kiosk's own files and USB drives); never the Google Drive folder.
+    await page.click('#settings [data-act="kiosk-files"]'); await page.waitForTimeout(300);
+    await page.keyboard.press('Escape');
+    await page.click('.picker-btn.left'); await page.waitForTimeout(250);
+    const ctl2 = await page.evaluate(() => Array.from(document.querySelectorAll('.panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl));
+    ok(JSON.stringify(ctl2) === JSON.stringify(['export', 'import', 'theme', 'settings', 'quit']), `Settings › Import and Export brings them back (${ctl2.join(', ')})`);
+    await page.click('[data-ctl="export"]'); await page.waitForTimeout(300); await page.locator('#modal.open .btn').first().click(); await page.waitForTimeout(600);
+    ok(await page.locator('.toast', { hasText: 'needs the Save dialog' }).count() === 1, 'without the Save dialog, kiosk Export says so (no download vanishing into the kiosk’s Downloads)');
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="kiosk-files"]'); await page.waitForTimeout(300);
     await page.keyboard.press('Escape');
     // The board itself works as usual, and is kept on the device.
     await page.evaluate(() => { window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }); window.__board21.openWidget('notes'); }); await page.waitForTimeout(1200);
@@ -2079,6 +2089,8 @@ const SUITES = [
     ok(await page.evaluate(async () => { await window.__board21.history.reload(); return window.__board21.history.metas.length > 0; }), 'board history works in kiosk mode');
     await page.reload(); await page.waitForTimeout(1500);
     ok(await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#t').inputValue() === 'Kiosk note' && await page.evaluate(() => document.body.classList.contains('kiosk')), 'widgets save as usual, and kiosk mode stays on after a reload');
+    await fillNote(page.frameLocator('.win[data-ikey="notes:1"] iframe'), 'See https://example.org'); await page.mouse.click(900, 80); await page.waitForTimeout(500);
+    ok(await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#view a').count() === 0, 'links in Notes stay plain text (a kiosk can’t open them)');
     // Quit asks first, saves, then closes the app.
     await page.click('.picker-btn.left'); await page.click('[data-ctl="quit"]'); await page.waitForTimeout(300);
     ok(await page.locator('#modal.open', { hasText: 'Quit 21Board?' }).count() === 1, 'Quit asks first');
@@ -2087,7 +2099,7 @@ const SUITES = [
     await page.click('.picker-btn.left'); await page.click('[data-ctl="quit"]'); await page.waitForTimeout(300);
     await page.locator('#modal.open .btn', { hasText: 'Quit' }).click(); await page.waitForTimeout(1500);
     ok(await page.evaluate(() => window.__closed === 1), 'Quit closes the app (window.close)');
-    ok(await page.locator('.toast', { hasText: 'couldn’t close this window' }).count() === 1, 'where the window can’t be closed, it says so instead of doing nothing');
+    ok(await page.locator('.toast', { hasText: 'can’t close itself' }).count() === 1, 'where the window can’t be closed, it says so instead of doing nothing');
     // Without ?kiosk=yes, nothing changes.
     const p2 = await ctx.newPage(); await p2.goto(BASE + '?kiosk=no'); await p2.waitForTimeout(600);
     await p2.click('.picker-btn.left'); await p2.waitForTimeout(250);
