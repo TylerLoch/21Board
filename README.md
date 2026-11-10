@@ -96,9 +96,9 @@ tests/run.js            Optional automated browser tests
 | **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio (no sound files) |
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
 | **Clock** | Analog, digital or date-only; aspect-ratio lock that changes at runtime (analog 1:1, digital/date 2.2:1), config-only app |
-| **Notes** | Live text sync without losing the cursor, theme-aware colors |
+| **Notes** | Text grows to fill the note, tappable web links, colors incl. a Chalkboard theme (bundled font), live text sync without losing the cursor |
 | **Name Picker** | Student names kept as *content* so templates never include them |
-| **Dice** | Responsive SVG sizing |
+| **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
 | **SDK Playground** | Developer mode only: every SDK call and event |
 
@@ -162,3 +162,9 @@ node tests/run.js offline    # just one suite (matches the suite title)
 
 Built for current **Chrome** (and Chromium-based Edge). Kept compatible with **Safari 16+**
 (iPadOS/macOS) and current Firefox. Fullscreen is hidden where the browser doesn't support it.
+
+## Third-party files
+
+- `apps/notes/fonts/CabinSketch-Regular.ttf`: *Cabin Sketch* by Pablo Impallari and contributors,
+  used unmodified under the SIL Open Font License 1.1 (`apps/notes/fonts/OFL.txt`). It gives the
+  Notes Chalkboard theme the same chalk look on every device, Chromebooks included.

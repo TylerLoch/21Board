@@ -2058,11 +2058,18 @@
       // (The CSS max-height is lifted while measuring so the full height is seen.)
       const size = () => ({ width: this.el.offsetWidth, height: this.el.offsetHeight });
       // A menu taller than the whole screen gets tighter rows first (it should never need scrolling).
-      this.el.classList.remove('compact', 'tight');
+      this.el.classList.remove('compact', 'tight', 'cols');
+      this.el.style.gridTemplateRows = '';
       this.el.style.maxHeight = 'none';
       let m = size();
       if (m.height > vh - 2 * M) { this.el.classList.add('compact'); m = size(); }
       if (m.height > vh - 2 * M) { this.el.classList.add('tight'); m = size(); }
+      if (m.height > vh - 2 * M) {
+        // Still too tall: two columns.
+        this.el.classList.add('cols');
+        this.el.style.gridTemplateRows = `repeat(${Math.ceil(this.el.children.length / 2)}, auto)`;
+        m = size();
+      }
       this.el.style.maxHeight = '';
       const below = vh - a.bottom - GAP - M, above = a.top - GAP - M;
       let x, y;

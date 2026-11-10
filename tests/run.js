@@ -22,6 +22,9 @@ let fails = 0, passes = 0;
 const ok = (cond, msg) => { if (cond) passes++; else fails++; console.log((cond ? '  ✓ ' : '  ✗ FAIL ') + msg); };
 let BASE;
 
+// Notes shows its text (with tappable links) until tapped; tap it, then type.
+async function fillNote(f, text) { await f.locator('#view').click(); await f.locator('#t').fill(text); }
+
 const SUITES = [
   ['Windows, data and multi-tab sync', async (browser) => {
   const wins = page => page.evaluate(() => Object.fromEntries(Array.from(window.__board21.state.wins.values()).sort((a,b)=>a.ikey<b.ikey?-1:1).map(w => [w.ikey, Object.assign({}, w.disp)])));
@@ -104,7 +107,7 @@ const SUITES = [
     ok(Math.abs(c.w / (c.h - 40) - 2.2) < 0.03, `digital clock switches aspect to 2.2 (${c.w}x${c.h - 40})`);
 
     // ---- notes content persistence across close/reopen
-    await frameOf(page, 'notes:1').locator('textarea').fill('Line up quietly');
+    await fillNote(frameOf(page, 'notes:1'), 'Line up quietly');
     await page.waitForTimeout(300);
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.waitForTimeout(150);
     await page.click('#menu [data-act="close"]'); await page.waitForTimeout(400);
@@ -119,7 +122,7 @@ const SUITES = [
     ok(!!(await wins(page))['notes:2'], 'second Notes is instance 2');
     ok(await frameOf(page, 'notes:2').locator('textarea').inputValue() === '', 'instance 2 has separate (empty) data');
     ok((await page.locator('.win[data-ikey="notes:2"] .num').textContent()) === '2', 'title shows instance number');
-    await frameOf(page, 'notes:2').locator('textarea').fill('Second note');
+    await fillNote(frameOf(page, 'notes:2'), 'Second note');
     await page.waitForTimeout(250);
     // close both, reopen → #1 first, then #2
     for (const ik of ['notes:2', 'notes:1']) { await page.evaluate(ik => window.__board21.closeWin(ik, { quiet: true }), ik); await page.waitForTimeout(250); }
@@ -142,7 +145,7 @@ const SUITES = [
     page2.on('pageerror', e => errors.push('[page2 pageerror] ' + e.message));
     await page2.goto(BASE); await page2.waitForTimeout(1200);
     ok(JSON.stringify(Object.keys(await wins(page2)).sort()) === JSON.stringify(Object.keys(await wins(page)).sort()), 'second tab shows the same windows');
-    await frameOf(page, 'notes:1').locator('textarea').fill('Synced text!');
+    await fillNote(frameOf(page, 'notes:1'), 'Synced text!');
     await page.waitForTimeout(600);
     ok(await frameOf(page2, 'notes:1').locator('textarea').inputValue() === 'Synced text!', 'content typed in tab 1 appears in tab 2');
     const tm = (await wins(page))['timer:1'];
@@ -202,7 +205,7 @@ const SUITES = [
     await a.goto(BASE); await a.waitForTimeout(600);
     await a.evaluate(() => { window.__board21.openApp('notes'); window.__board21.openApp('name-picker'); window.__board21.openApp('dice'); });
     await a.waitForTimeout(1200);
-    await frameOf(a, 'notes:1').locator('textarea').fill('Secret student info');
+    await fillNote(frameOf(a, 'notes:1'), 'Secret student info');
     await frameOf(a, 'name-picker:1').locator('textarea').fill('Ana\nBo\nCy');
     await frameOf(a, 'name-picker:1').locator('#done').click();
     // config change on notes: color pink via menu
@@ -435,7 +438,7 @@ const SUITES = [
     ok(await page.locator('.win.focused').count() === 0, 'tapping the empty board deselects all windows');
     ok(await gripVis(page, 'timer:1') === 'hidden', 'no grips after deselecting');
     await page.screenshot({ path: OUT + '61-deselected.png' });
-    await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').click(); await page.waitForTimeout(300);
+    await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#view').click(); await page.waitForTimeout(300);
     ok(await page.locator('.win.focused[data-ikey="notes:1"]').count() === 1 && await gripVis(page, 'notes:1') === 'visible', 'tapping inside a window focuses it and shows its grips');
     // invisible grip of an unfocused window is not grabbable
     const nb = await disp(page, 'timer:1');
@@ -1095,7 +1098,7 @@ const SUITES = [
 
     // Text app, mouse: dragging inside selects text instead of moving; the title bar still moves it.
     r0 = await rect('notes:1');
-    await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').fill('Some words to select');
+    await fillNote(page.frameLocator('.win[data-ikey="notes:1"] iframe'), 'Some words to select');
     await mouseDrag(r0.x + 30, r0.y + 70, 120, 0);
     r1 = await rect('notes:1');
     ok(r1.x === r0.x && r1.y === r0.y, 'in Notes, dragging inside does not move the window (text selection)');
@@ -1311,6 +1314,62 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Notes: fit, links, chalkboard', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => window.__board21.openApp('notes')); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.setRect('notes:1', { x: 60, y: 60, w: 420, h: 340 })); await page.waitForTimeout(400);
+    const f = page.frameLocator('.win[data-ikey="notes:1"] iframe');
+    const info = () => f.locator('body').evaluate(() => { const t = document.getElementById('t'), v = document.getElementById('view'); const ed = document.body.classList.contains('editing'); const el = ed ? t : v; return { size: parseFloat(getComputedStyle(t).fontSize), editing: ed, overflowY: el.scrollHeight > el.clientHeight + 1, overflowX: el.scrollWidth > el.clientWidth + 1 }; });
+    // Auto-fit: short text is big, long text shrinks, nothing overflows, resizing re-fits.
+    await f.locator('#view').click(); await page.waitForTimeout(150);
+    ok((await info()).editing, 'tapping the note starts editing');
+    await f.locator('#t').fill('Line up!'); await page.waitForTimeout(300);
+    const short = await info();
+    await f.locator('#t').fill('Today: finish the reading log, then pages 42-45 in the math workbook. Quiet voices during centers, please. Library at 1:30.'); await page.waitForTimeout(300);
+    const long = await info();
+    ok(short.size > long.size * 1.8, `text gets as big as fits (short ${short.size}px, long ${long.size}px)`);
+    ok(!long.overflowY && !long.overflowX, 'all the text fits in the window');
+    await page.evaluate(() => window.__board21.setRect('notes:1', { x: 60, y: 60, w: 700, h: 520 })); await page.waitForTimeout(500);
+    ok((await info()).size > long.size, 'resizing the window re-fits the text');
+    // Links.
+    await f.locator('#t').fill('Class site: www.example.org/room12 and https://ccsd21.org/calendar. Bring library books.');
+    await page.mouse.click(1000, 700); await page.waitForTimeout(300);
+    ok(!(await info()).editing, 'tapping elsewhere leaves editing');
+    const links = await f.locator('#view a').evaluateAll(as => as.map(a => [a.textContent, a.href, a.target]));
+    ok(links.length === 2 && links[0][1] === 'https://www.example.org/room12' && links[1][0] === 'https://ccsd21.org/calendar' && links.every(l => l[2] === '_blank'), 'web addresses become links (www. and https://, trailing period left out)');
+    await ctx.route(/example\.org/, r => r.fulfill({ body: 'ok', contentType: 'text/html' }));
+    const [popup] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), f.locator('#view a').first().click()]);
+    ok(!!popup && /example\.org\/room12/.test(popup.url()), 'tapping a link opens it in a new tab');
+    if (popup) await popup.close();
+    ok(!(await info()).editing, 'tapping a link does not start editing');
+    const word = await f.locator('#view').evaluate(v => { const n = Array.from(v.childNodes).pop(); const r = document.createRange(); const i = n.nodeValue.indexOf('library'); r.setStart(n, i + 2); r.setEnd(n, i + 3); const b = r.getBoundingClientRect(); return { x: b.left + 1, y: b.top + b.height / 2, idx: v.textContent.indexOf('library') + 2 }; });
+    const fr = await page.locator('.win[data-ikey="notes:1"] iframe').boundingBox();
+    await page.mouse.click(fr.x + word.x, fr.y + word.y); await page.waitForTimeout(200);
+    const caret = await f.locator('#t').evaluate(t => t.selectionStart);
+    ok((await info()).editing && Math.abs(caret - word.idx) <= 1, `tapping text starts editing with the cursor there (caret ${caret}, expected ~${word.idx})`);
+    // Chalkboard theme with the bundled font.
+    await page.mouse.click(1000, 700); await page.waitForTimeout(200);
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="color:chalkboard"]'); await page.waitForTimeout(800);
+    const chalk = await f.locator('body').evaluate(b => ({ bg: getComputedStyle(b).backgroundColor, font: getComputedStyle(document.getElementById('view')).fontFamily, chalk: b.classList.contains('chalk'), loaded: document.fonts.check('32px "Cabin Sketch"') && Array.from(document.fonts).some(x => x.family.replace(/"/g, '') === 'Cabin Sketch' && x.status === 'loaded') }));
+    ok(chalk.chalk && chalk.bg === 'rgb(47, 74, 58)' && /^"?Cabin Sketch/.test(chalk.font), 'Chalkboard theme: green board and the bundled chalk font');
+    ok(chalk.loaded, 'the chalk font file loads (works on any device, no system font needed)');
+    ok(!(await info()).overflowY, 'text still fits in the chalk font');
+    // Fixed size; saved config; older notes.
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="smaller"]'); await page.waitForTimeout(300);
+    const conf = await page.evaluate(() => window.__board21.state.conf.get('notes:1'));
+    ok(conf.fit === false && conf.px > 0 && conf.color === 'chalkboard', 'Smaller text switches to a fixed size and is saved');
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="fit"]'); await page.waitForTimeout(300);
+    ok((await page.evaluate(() => window.__board21.state.conf.get('notes:1'))).fit === true, '"Fit text to the note" turns fitting back on');
+    await page.evaluate(() => window.__board21.state.wins.get('notes:1').post('config', { config: { color: 'pink', size: 3 } })); await page.waitForTimeout(400);
+    ok(!(await info()).overflowY, 'a note saved before this update fits its text automatically');
+    // The chalk font is part of the offline cache.
+    ok(await page.evaluate(() => window.BOARD21_APPS.find(a => a.id === 'notes').files.includes('apps/notes/fonts/CabinSketch-Regular.ttf')), 'the chalk font is listed for offline use');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');
@@ -1321,7 +1380,7 @@ const SUITES = [
     await a.waitForTimeout(1500);
     ok((await a.evaluate(() => Array.from(window.__board21.state.wins.values()).every(w => w.connected))), 'sub-apps connect when index.html is opened from disk');
     const b = await ctx.newPage(); await b.goto(url); await b.waitForTimeout(1500);
-    await a.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').fill('from disk');
+    await fillNote(a.frameLocator('.win[data-ikey="notes:1"] iframe'), 'from disk');
     await a.waitForTimeout(800);
     ok(await b.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').inputValue() === 'from disk', 'tabs opened from disk stay in sync');
     await a.reload(); await a.waitForTimeout(1500);

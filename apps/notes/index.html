@@ -6,48 +6,166 @@
 <title>Notes</title>
 <script src="../../sdk/board21.js"></script>
 <style>
+  /* Cabin Sketch: a chalk-style font, bundled so the Chalkboard theme looks the same on every device
+     (Chromebooks included) and works offline. SIL Open Font License: see fonts/OFL.txt. */
+  @font-face { font-family: "Cabin Sketch"; src: url("fonts/CabinSketch-Regular.ttf") format("truetype"); font-display: swap; }
   html, body { margin: 0; height: 100%; }
-  body { background: var(--note, #fef08a); color: var(--ink, #1f2937); font-family: var(--b21-font); overflow: hidden; transition: background-color .25s; }
-  textarea {
-    position: absolute; inset: 0; width: 100%; height: 100%; box-sizing: border-box; resize: none; border: 0; outline: none;
-    background: transparent; color: inherit; font: inherit; line-height: 1.35;
-    padding: clamp(10px, 4vmin, 28px); font-size: var(--size, clamp(16px, 7vmin, 40px));
+  body {
+    background-color: var(--note, #fef08a); color: var(--ink, #1f2937); font-family: var(--note-font, var(--b21-font));
+    overflow: hidden; transition: background-color .25s;
+    --pad: clamp(10px, 4vmin, 28px);
   }
-  textarea::placeholder { color: inherit; opacity: .45; }
+  /* The note is drawn twice: #view (with tappable links) when reading, #t (the textarea) while typing. */
+  .layer {
+    position: absolute; inset: 0; margin: 0; box-sizing: border-box; padding: var(--pad);
+    font: inherit; font-size: var(--size, 32px); line-height: 1.3; color: inherit;
+    white-space: pre-wrap; overflow-wrap: break-word; tab-size: 4;
+  }
+  textarea.layer { width: 100%; height: 100%; resize: none; border: 0; outline: none; background: transparent; overflow: auto; }
+  textarea.layer::placeholder { color: inherit; opacity: .45; }
+  #view { overflow: auto; cursor: text; outline: none; }
+  #view .placeholder { opacity: .45; }
+  #view a { color: var(--link, #1d4ed8); text-decoration: underline; text-decoration-thickness: .06em; text-underline-offset: .12em; cursor: pointer; }
+  body:not(.editing) #t { visibility: hidden; }
+  body.editing #view { display: none; }
+  /* Measures how big the text can be; same typography, never shown. */
+  #sizer { visibility: hidden; height: auto; inset: auto; left: 0; top: 0; overflow: hidden; overflow-wrap: normal; pointer-events: none; }
+  /* Chalkboard theme: faint chalk dust and a soft chalk edge on the letters. */
+  body.chalk {
+    background-image:
+      radial-gradient(rgba(255, 255, 255, .045) 1px, transparent 1.6px),
+      radial-gradient(rgba(255, 255, 255, .03) 1px, transparent 1.6px),
+      radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, .06), transparent 60%);
+    background-size: 7px 7px, 11px 11px, 100% 100%;
+    background-position: 0 0, 3px 5px, 0 0;
+  }
+  body.chalk .layer { text-shadow: 0 0 1px rgba(255, 255, 255, .45), 0 0 .08em rgba(255, 255, 255, .15); letter-spacing: .01em; }
 </style>
 </head>
 <body>
-  <textarea id="t" placeholder="Type a note…" spellcheck="true" aria-label="Note"></textarea>
+  <div id="view" class="layer" tabindex="0" role="textbox" aria-multiline="true" aria-readonly="true" aria-label="Note (tap to edit)"></div>
+  <textarea id="t" class="layer" placeholder="Type a note…" spellcheck="true" aria-label="Note"></textarea>
+  <div id="sizer" class="layer" aria-hidden="true"></div>
 <script>
-  // Content: { text }      Config: { color, size }
+  // Content: { text }
+  // Config:  { color, fit, px }
+  //   fit: true  = text is as large as possible while all of it fits in the window (default)
+  //   fit: false = fixed size px (set with Larger/Smaller text)
+  //   (older notes saved { color, size }; they now fit automatically)
+  // The bundled chalk font (see @font-face), then chalk-style fonts that come with devices, just in case.
+  const CHALK_FONT = '"Cabin Sketch", "Chalkboard SE", Chalkboard, "Comic Sans MS", "Comic Neue", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const COLORS = {
-    yellow: { light: ['#fef08a', '#1f2937'], dark: ['#4d4416', '#fef9c3'], label: 'Yellow' },
-    pink:   { light: ['#fbcfe8', '#1f2937'], dark: ['#4f2240', '#fce7f3'], label: 'Pink' },
-    blue:   { light: ['#bfdbfe', '#1f2937'], dark: ['#1e3a5f', '#dbeafe'], label: 'Blue' },
-    green:  { light: ['#bbf7d0', '#1f2937'], dark: ['#1d4a30', '#dcfce7'], label: 'Green' },
-    purple: { light: ['#e9d5ff', '#1f2937'], dark: ['#3d2a5c', '#f3e8ff'], label: 'Purple' },
-    plain:  { light: null, dark: null, label: 'Plain' }
+    yellow:     { light: ['#fef08a', '#1f2937', '#1d4ed8'], dark: ['#4d4416', '#fef9c3', '#93c5fd'], label: 'Yellow' },
+    pink:       { light: ['#fbcfe8', '#1f2937', '#1d4ed8'], dark: ['#4f2240', '#fce7f3', '#93c5fd'], label: 'Pink' },
+    blue:       { light: ['#bfdbfe', '#1f2937', '#1e40af'], dark: ['#1e3a5f', '#dbeafe', '#bfdbfe'], label: 'Blue' },
+    green:      { light: ['#bbf7d0', '#1f2937', '#1d4ed8'], dark: ['#1d4a30', '#dcfce7', '#93c5fd'], label: 'Green' },
+    purple:     { light: ['#e9d5ff', '#1f2937', '#1d4ed8'], dark: ['#3d2a5c', '#f3e8ff', '#93c5fd'], label: 'Purple' },
+    chalkboard: { light: ['#2f4a3a', '#f4f7f2', '#bfe3ff'], dark: ['#223a2c', '#eef3ea', '#bfe3ff'], label: 'Chalkboard', font: CHALK_FONT },
+    plain:      { light: null, dark: null, label: 'Plain' }
   };
-  const SIZES = [12, 16, 22, 30, 40, 54, 72];   // vmin-ish steps, applied with clamp()
-  const DEFAULTS = { color: 'yellow', size: 3 };
+  const hasColor = k => typeof k === 'string' && Object.prototype.hasOwnProperty.call(COLORS, k);
+  const MIN_PX = 12, MAX_PX = 400;
+  const DEFAULTS = { color: 'yellow', fit: true, px: null };
   let config = Object.assign({}, DEFAULTS);
-  const t = document.getElementById('t');
+  const t = document.getElementById('t'), view = document.getElementById('view'), sizer = document.getElementById('sizer');
+  const body = document.body;
+
+  // ---- Links: http(s)://… or www.… become tappable while reading.
+  const URL_RE = /\b(?:https?:\/\/|www\.)[^\s<>"']*[^\s<>"'.,;:!?)\]}]/gi;
+  function renderView() {
+    view.textContent = '';
+    const text = t.value;
+    if (!text) { const p = document.createElement('span'); p.className = 'placeholder'; p.textContent = t.placeholder; view.appendChild(p); return; }
+    let last = 0, m;
+    URL_RE.lastIndex = 0;
+    while ((m = URL_RE.exec(text))) {
+      if (m.index > last) view.appendChild(document.createTextNode(text.slice(last, m.index)));
+      const a = document.createElement('a');
+      a.textContent = m[0];                       // exactly the typed characters, so taps map back to the text
+      a.href = /^www\./i.test(m[0]) ? 'https://' + m[0] : m[0];
+      a.target = '_blank'; a.rel = 'noopener noreferrer';
+      view.appendChild(a);
+      last = m.index + m[0].length;
+    }
+    if (last < text.length) view.appendChild(document.createTextNode(text.slice(last)));
+  }
+
+  // ---- Reading vs typing.
+  function startEditing(caret) {
+    if (body.classList.contains('editing')) return;
+    const top = view.scrollTop;
+    body.classList.add('editing');
+    t.focus();
+    const pos = Math.max(0, Math.min(caret == null ? t.value.length : caret, t.value.length));
+    t.setSelectionRange(pos, pos);
+    t.scrollTop = top;
+  }
+  function stopEditing() {
+    if (!body.classList.contains('editing')) return;
+    const top = t.scrollTop;
+    body.classList.remove('editing');
+    renderView();
+    view.scrollTop = top;
+  }
+  // Where in the text was tapped? (The view holds the same characters in the same order.)
+  function offsetAt(x, y) {
+    let node = null, off = 0;
+    if (document.caretPositionFromPoint) { const p = document.caretPositionFromPoint(x, y); if (p) { node = p.offsetNode; off = p.offset; } }
+    else if (document.caretRangeFromPoint) { const r = document.caretRangeFromPoint(x, y); if (r) { node = r.startContainer; off = r.startOffset; } }
+    if (!node || !view.contains(node) || node.nodeType !== 3 || (node.parentNode && node.parentNode.classList && node.parentNode.classList.contains('placeholder'))) return null;
+    let count = 0;
+    const walk = document.createTreeWalker(view, NodeFilter.SHOW_TEXT);
+    while (walk.nextNode()) { if (walk.currentNode === node) return count + off; count += walk.currentNode.nodeValue.length; }
+    return null;
+  }
+  view.addEventListener('click', e => {
+    if (e.target.closest('a')) return;                          // links open in a new tab
+    if (String(window.getSelection())) return;                  // someone selected text to copy
+    startEditing(offsetAt(e.clientX, e.clientY));
+  });
+  view.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); startEditing(); } });
+  t.addEventListener('blur', stopEditing);
+  t.addEventListener('keydown', e => { if (e.key === 'Escape') t.blur(); });
+
+  // ---- Size: largest that fits (binary search on a hidden copy), or a fixed size.
+  let fitQueued = false;
+  function fitSoon() { if (!fitQueued) { fitQueued = true; requestAnimationFrame(() => { fitQueued = false; fit(); }); } }
+  function fit() {
+    if (!config.fit) { body.style.setProperty('--size', Math.round(config.px || 32) + 'px'); return; }
+    const w = t.clientWidth, h = t.clientHeight;
+    if (!w || !h) return;
+    sizer.style.width = w + 'px';
+    sizer.textContent = (t.value || t.placeholder) + '​'; // the zero-width space keeps a trailing new line counted
+    const fits = px => { sizer.style.fontSize = px + 'px'; return sizer.scrollHeight <= h + 0.5 && sizer.scrollWidth <= w + 0.5; };
+    let lo = MIN_PX, hi = Math.max(MIN_PX, Math.min(MAX_PX, h * 0.6)), best = MIN_PX;
+    if (fits(hi)) best = hi;
+    else for (let i = 0; i < 14 && hi - lo > 0.5; i++) { const mid = (lo + hi) / 2; if (fits(mid)) { best = mid; lo = mid; } else hi = mid; }
+    body.style.setProperty('--size', Math.floor(best) + 'px');
+  }
+  const currentPx = () => parseFloat(getComputedStyle(t).fontSize) || 32;
 
   function applyLook() {
-    const c = COLORS[config.color] || COLORS.yellow;
-    const pair = c[Board21.theme];
-    document.body.style.setProperty('--note', pair ? pair[0] : 'var(--b21-bg)');
-    document.body.style.setProperty('--ink', pair ? pair[1] : 'var(--b21-text)');
-    const px = SIZES[Math.max(0, Math.min(SIZES.length - 1, config.size))];
-    document.body.style.setProperty('--size', `clamp(14px, ${px / 5.5}vmin, ${px * 1.6}px)`);
+    const c = hasColor(config.color) ? COLORS[config.color] : COLORS.yellow;
+    const set = c[Board21.theme];
+    body.style.setProperty('--note', set ? set[0] : 'var(--b21-bg)');
+    body.style.setProperty('--ink', set ? set[1] : 'var(--b21-text)');
+    body.style.setProperty('--link', set ? set[2] : 'var(--b21-accent)');
+    if (c.font) {
+      body.style.setProperty('--note-font', c.font);
+      // The font file loads the first time it's used: fit the text again once it's in.
+      if (document.fonts && document.fonts.load) document.fonts.load('32px "Cabin Sketch"').then(fitSoon, () => {});
+    } else body.style.removeProperty('--note-font');
+    body.classList.toggle('chalk', config.color === 'chalkboard');
+    fitSoon();
   }
 
   function setMenu() {
     Board21.menu.set([
       ...Object.keys(COLORS).map(k => ({ id: 'color:' + k, label: COLORS[k].label, checked: config.color === k })),
       { separator: true },
-      { id: 'bigger', label: 'Larger text', disabled: config.size >= SIZES.length - 1 },
-      { id: 'smaller', label: 'Smaller text', disabled: config.size <= 0 },
+      { id: 'fit', label: 'Fit text to the note', checked: !!config.fit },
+      { id: 'bigger', label: 'Larger text', disabled: !config.fit && config.px >= MAX_PX },
+      { id: 'smaller', label: 'Smaller text', disabled: !config.fit && config.px <= MIN_PX },
       { separator: true },
       { id: 'clear', label: 'Clear note', disabled: !t.value }
     ]);
@@ -56,15 +174,19 @@
   let menuTimer;
   t.addEventListener('input', () => {
     Board21.save({ text: t.value });
+    fitSoon();
     clearTimeout(menuTimer);
     menuTimer = setTimeout(setMenu, 400); // keeps "Clear note" enabled/disabled correctly
   });
 
   Board21.on('menu', id => {
     if (id.startsWith('color:')) config.color = id.slice(6);
-    else if (id === 'bigger') config.size++;
-    else if (id === 'smaller') config.size--;
-    else if (id === 'clear') { t.value = ''; Board21.save({ text: '' }); setMenu(); return; }
+    else if (id === 'fit') config.fit = !config.fit;
+    else if (id === 'bigger' || id === 'smaller') {
+      const from = config.fit ? currentPx() : (config.px || currentPx());
+      config.px = Math.round(Math.max(MIN_PX, Math.min(MAX_PX, id === 'bigger' ? from * 1.2 : from / 1.2)));
+      config.fit = false;
+    } else if (id === 'clear') { t.value = ''; Board21.save({ text: '' }); renderView(); fitSoon(); setMenu(); return; }
     Board21.saveConfig(config);
     applyLook(); setMenu();
   });
@@ -77,15 +199,24 @@
     const s = t.selectionStart, e = t.selectionEnd;
     t.value = text;
     if (focused) t.setSelectionRange(Math.min(s, text.length), Math.min(e, text.length));
-    setMenu();
+    else renderView();
+    fitSoon(); setMenu();
   });
-  Board21.on('config', c => { config = Object.assign({}, DEFAULTS, c || {}); applyLook(); setMenu(); });
+  const readConfig = c => {
+    const out = Object.assign({}, DEFAULTS, c || {});
+    if (!c || c.fit === undefined) out.fit = true; // notes saved before auto-fit
+    if (!hasColor(out.color)) out.color = 'yellow';
+    return out;
+  };
+  Board21.on('config', c => { config = readConfig(c); applyLook(); setMenu(); });
   Board21.on('theme', applyLook);
+  addEventListener('resize', fitSoon);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitSoon);
 
   Board21.ready().then(ctx => {
     t.value = (ctx.data && ctx.data.text) || '';
-    config = Object.assign({}, DEFAULTS, ctx.config || {});
-    applyLook(); setMenu();
+    config = readConfig(ctx.config);
+    renderView(); applyLook(); setMenu();
   });
 </script>
 </body>
