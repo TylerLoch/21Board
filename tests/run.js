@@ -2067,7 +2067,8 @@ const SUITES = [
     await page.goto(BASE + '?kiosk=yes'); await page.waitForTimeout(800);
     await page.click('.picker-btn.left'); await page.waitForTimeout(250);
     const ctl = await page.evaluate(() => Array.from(document.querySelectorAll('.panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl));
-    ok(JSON.stringify(ctl) === JSON.stringify(['quit', 'theme', 'settings']), `the Widget Picker shows Quit where Export, Import and Fullscreen were (${ctl.join(', ')})`);
+    ok(JSON.stringify(ctl) === JSON.stringify(['theme', 'settings', 'quit']), `the Widget Picker leaves out Export, Import and Fullscreen and ends with Quit, after Settings (${ctl.join(', ')})`);
+    ok(await page.evaluate(() => getComputedStyle(document.querySelector('[data-ctl="quit"]')).color === 'rgb(220, 38, 38)'), 'Quit is a red X');
     await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
     const set = await page.evaluate(() => { const r = document.getElementById('settings'); return { link: !!r.querySelector('[data-act^="link-"]'), backup: !!r.querySelector('[data-act="backup"]'), dev: !!r.querySelector('[data-act="devmode"]'), install: !!r.querySelector('[data-act="install"]'), kiosk: /Kiosk mode/.test(r.textContent), hist: !!r.querySelector('[data-act="hist-open"]') }; });
     ok(!set.link && !set.backup && !set.dev && !set.install && set.kiosk && set.hist, 'Settings leaves out the Google Drive folder, backups, Developer mode and Install, says it’s kiosk mode, and keeps Board history');

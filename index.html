@@ -292,6 +292,8 @@
     .ctl { width: 50px; height: 50px; border-radius: 14px; }
     .ctl svg { width: 26px; height: 26px; }
     .ctl[hidden] { display: none; }
+    .ctl[data-ctl="quit"] { color: var(--danger); } /* kiosk mode: a plain red X */
+    .ctl[data-ctl="quit"] svg { stroke-width: 2.6; }
 
     /* -------------------------------------------------------- Window menu */
     .menu {
@@ -516,12 +518,12 @@
     <div class="panel-sep"></div>
     <div class="panel-controls">
       <span class="picker-spacer" aria-hidden="true"></span>
-      <button class="ctl" data-ctl="quit" title="Quit" aria-label="Quit" hidden></button>
       <button class="ctl" data-ctl="export" title="Export" aria-label="Export"></button>
       <button class="ctl" data-ctl="import" title="Import" aria-label="Import"></button>
       <button class="ctl" data-ctl="theme" title="Dark mode" aria-label="Dark mode"></button>
       <button class="ctl" data-ctl="fullscreen" title="Fullscreen" aria-label="Fullscreen"></button>
       <button class="ctl" data-ctl="settings" title="Settings" aria-label="Settings"></button>
+      <button class="ctl" data-ctl="quit" title="Quit" aria-label="Quit" hidden></button>
     </div>
   </div>
 

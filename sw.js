@@ -10,7 +10,7 @@
  * That forces a clean download of everything and shows teachers an
  * "Update" prompt inside 21Board.
  */
-const VERSION = '2026.11.10-26';
+const VERSION = '2026.11.10-27';
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION;
 

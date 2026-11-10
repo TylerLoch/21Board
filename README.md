@@ -58,7 +58,7 @@ include) to the static host. Then:
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
-| **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): Quit replaces Export, Import and Fullscreen. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
+| **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Export, Import or Fullscreen, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 
 ### Settings
@@ -197,7 +197,8 @@ on a few real laptops and boards** (how quickly files arrive, and that the folde
 Open 21Board with **`?kiosk=yes`** (for example `https://boardapp.ccsd21.org/?kiosk=yes`) for a ChromeOS kiosk
 app, where no one signs in:
 
-- The Widget Picker shows **Quit** instead of Export, Import and Fullscreen (a kiosk is already full screen).
+- The Widget Picker leaves out Export, Import and Fullscreen (a kiosk is already full screen) and ends with
+  **Quit**, a red ✕ after the Settings gear.
   Quit asks first, waits until everything is saved, then closes the app (`window.close()`, as 21Sketch does). On
   ChromeOS this ends the kiosk session; an auto-launched kiosk app starts again. If the browser won't let the page
   close (a normal tab), it says so.

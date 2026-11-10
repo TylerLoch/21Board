@@ -157,7 +157,7 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     widget: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
     windows: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
-    quit: '<path d="M12 3v8"/><path d="M6.6 6.6a8 8 0 1 0 10.8 0"/>',   // power
+    quit: '<path d="M18 6L6 18M6 6l12 12"/>',   // a plain X (kiosk mode: Quit)
     history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 4.5v4h4"/><path d="M12 7.5V12l3 2"/>',   // clock with a back arrow
     send: '<path d="M7 18.5H6.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8.1 4.5 4.5 0 0 1 17.5 18.5H17"/><path d="M12 20.5v-8"/><path d="M8.8 15.2L12 12l3.2 3.2"/>' // cloud with an arrow going up
   };
