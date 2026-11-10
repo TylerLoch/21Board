@@ -283,6 +283,8 @@
       setMinSize: function (width, height) { return windowOp('setMinSize', [width, height]); },
       setMaxSize: function (width, height) { return windowOp('setMaxSize', [width || null, height || null]); },
       setResizable: function (resizable) { return windowOp('setResizable', [resizable !== false]); },
+      /** false while your app needs drags itself (e.g. an editing view); true to let the window be dragged from inside. */
+      setDragFromContent: function (on) { return windowOp('setDragFromContent', [on !== false]); },
       setTitle: function (subtitle) { return windowOp('setTitle', [subtitle == null ? '' : String(subtitle)]); },
       focus: function () { return windowOp('focus'); },
       maximize: function () { return windowOp('maximize'); },

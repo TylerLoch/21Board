@@ -11,6 +11,7 @@ Sub-apps talk to the board through one script: `sdk/board21.js`, which defines `
 - [API reference](#api-reference)
 - [Content vs. config](#content-vs-config)
 - [Multiple instances and sync](#multiple-instances-and-sync)
+- [Moving windows from inside](#moving-windows-from-inside)
 - [Theming](#theming)
 - [Registering a sub-app](#registering-a-sub-app)
 - [Testing](#testing)
@@ -128,6 +129,7 @@ Sizes are the **content area** (the iframe), not including the 40px title bar.
 | `Board21.window.setMinSize(w, h)` | Minimum content size. |
 | `Board21.window.setMaxSize(w, h)` | Maximum content size. `null` removes the limit. |
 | `Board21.window.setResizable(bool)` | Show or hide the resize grips. |
+| `Board21.window.setDragFromContent(bool)` | Whether the window can be dragged from anywhere inside it right now (see [Moving windows from inside](#moving-windows-from-inside)). |
 | `Board21.window.setTitle(text)` | Short status shown after the app name in the title bar, e.g. `"Running"`. Hidden in narrow windows. |
 | `Board21.window.requestAttention()` | Pulse the title bar (e.g. a timer finished). |
 | `Board21.window.focus()` | Select the window and bring it to the front. |
@@ -217,6 +219,36 @@ content, never config.** (Name Picker keeps its name list in content for exactly
 
 ---
 
+## Moving windows from inside
+
+Teachers can move a window by its title bar, and also from inside it:
+
+| App type | One finger or mouse inside | Two fingers inside |
+| --- | --- | --- |
+| **Click-only** (buttons, taps): the default, `dragFromContent: true` | moves the window | moves the window |
+| **Needs drags itself** (typing or selecting text, drawing, sliders, sortable lists): `dragFromContent: false` | goes to your app | moves the window |
+
+A tap is always a tap. If a press turns into a window drag, 21Board swallows the click, so a
+button the finger started on doesn't fire.
+
+Even in click-only apps a window drag never starts from: text fields, textareas, selects, range
+sliders, `canvas`, `video`/`audio`, editable content, text styled `user-select: text`, scrolling
+areas, `draggable` elements, anything inside an element with **`data-b21-nodrag`**, or a press your
+app already handled with **`event.preventDefault()`** on `pointerdown`.
+
+So:
+
+- **Mostly buttons?** Do nothing.
+- **Your app needs drags everywhere** (a text editor, a drawing board)? Set `dragFromContent: false`
+  in the registry.
+- **One area needs drags** (a sketch pad, a slider you built from divs)? Put `data-b21-nodrag` on it,
+  or `preventDefault()` its `pointerdown`.
+- **It depends on the view**? Call `Board21.window.setDragFromContent(false)` while the drag-needing
+  view is showing and `true` otherwise (see `apps/name-picker`: editing the list vs. picking).
+
+Teachers can switch this off in Settings → Windows → *Drag windows from inside* (then the title bar
+is the only way to move windows).
+
 ## Theming
 
 The SDK sets these CSS variables on your `<html>` element and keeps them updated, plus
@@ -256,6 +288,7 @@ Add an entry to `apps/registry.js`:
     // maxWidth, maxHeight             optional
     // aspectRatio: 16 / 9             optional content aspect-ratio lock
     // resizable: false                optional
+    // dragFromContent: false          if the app needs drags itself (text, drawing): see "Moving windows from inside"
   },
   permissions: [],                     // e.g. ['microphone', 'camera'] — added to the iframe's allow=""
   // devOnly: true                     only listed when Developer mode is on
@@ -289,5 +322,7 @@ Then **bump `VERSION` in `sw.js`** so installed copies download the new files.
 - [ ] Handles `data` events (test with two tabs)
 - [ ] Looks right in light and dark mode
 - [ ] Usable from the registry's `minWidth`×`minHeight` up to full screen
+- [ ] Drags: if any part of the app needs dragging (text selection, drawing, custom sliders), it sets
+      `dragFromContent: false`, marks that area `data-b21-nodrag`, or `preventDefault()`s its `pointerdown`
 - [ ] Every file listed in `files`
 - [ ] Works offline (load once, go offline, reload)

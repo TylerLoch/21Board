@@ -999,6 +999,109 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Drag windows from inside', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 }, hasTouch: true });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => { for (const id of ['clock', 'dice', 'notes', 'timer', 'calendar', 'name-picker']) window.__board21.openApp(id); });
+    await page.waitForTimeout(1800);
+    const b = await page.evaluate(() => { const r = {}; for (const [k, w] of window.__board21.state.wins) r[k] = Object.assign({}, w.disp); return r; });
+    const rect = ik => page.evaluate(ik => { const r = document.querySelector(`.win[data-ikey="${ik}"]`).getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }, ik);
+    const place = (ik, r) => page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, r]);
+    // Lay them out with room around each.
+    await place('clock:1', { x: 40, y: 40, w: 260, h: 300 });
+    await place('dice:1', { x: 360, y: 40, w: 360, h: 280 });
+    await place('notes:1', { x: 780, y: 40, w: 320, h: 300 });
+    await place('timer:1', { x: 40, y: 440, w: 380, h: 300 });
+    await place('calendar:1', { x: 480, y: 440, w: 360, h: 340 });
+    await place('name-picker:1', { x: 900, y: 440, w: 420, h: 340 });
+    await page.waitForTimeout(300);
+    async function mouseDrag(x, y, dx, dy) {
+      await page.mouse.move(x, y); await page.mouse.down();
+      for (let i = 1; i <= 10; i++) { await page.mouse.move(x + dx * i / 10, y + dy * i / 10); await page.waitForTimeout(16); }
+      await page.mouse.up(); await page.waitForTimeout(300);
+    }
+    const cdp = await ctx.newCDPSession(page);
+    async function touchDrag(points, dx, dy) {
+      const at = i => points.map((p, n) => ({ x: p.x + dx * i / 10, y: p.y + dy * i / 10, id: n + 1 }));
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) });
+      for (let i = 1; i <= 10; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(i) }); await page.waitForTimeout(20); }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(300);
+    }
+    const moved = (a, b2, dx, dy) => Math.abs((b2.x - a.x) - dx) <= 14 && Math.abs((b2.y - a.y) - dy) <= 14;
+
+    // Click-only app, mouse: drag the clock face.
+    let r0 = await rect('clock:1');
+    await mouseDrag(r0.x + r0.w / 2, r0.y + r0.h / 2 + 20, 0, 70);
+    let r1 = await rect('clock:1');
+    ok(moved(r0, r1, 0, 70), `mouse drag anywhere in a click-only app moves it (Clock moved ${Math.round(r1.x - r0.x)}, ${Math.round(r1.y - r0.y)})`);
+
+    // A plain tap still works; a press on a button that turns into a drag moves the window and doesn't click.
+    const timerLeft = () => page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('#display').textContent();
+    const before = await timerLeft();
+    const plus = await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('#plus').boundingBox();
+    const tr = await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('#plus').evaluate(() => 0); // ensure frame ready
+    r0 = await rect('timer:1');
+    const pb = await page.evaluate(() => { const f = document.querySelector('.win[data-ikey="timer:1"] iframe'); const r = f.getBoundingClientRect(); const k = r.width / f.clientWidth; const b = f.contentDocument.getElementById('plus').getBoundingClientRect(); return { x: r.left + (b.left + b.width / 2) * k, y: r.top + (b.top + b.height / 2) * k }; });
+    await mouseDrag(pb.x, pb.y, 60, 0);
+    r1 = await rect('timer:1');
+    ok(moved(r0, r1, 60, 0) && await timerLeft() === before, 'pressing a button and dragging moves the window without clicking the button');
+    await page.mouse.click(pb.x + 60, pb.y); await page.waitForTimeout(300);
+    ok(await timerLeft() !== before, 'a plain tap on the same button still works');
+
+    // Text app, mouse: dragging inside selects text instead of moving; the title bar still moves it.
+    r0 = await rect('notes:1');
+    await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').fill('Some words to select');
+    await mouseDrag(r0.x + 30, r0.y + 70, 120, 0);
+    r1 = await rect('notes:1');
+    ok(r1.x === r0.x && r1.y === r0.y, 'in Notes, dragging inside does not move the window (text selection)');
+    await mouseDrag(r0.x + 30, r0.y + 12, 0, 60);
+    r1 = await rect('notes:1');
+    ok(moved(r0, r1, 0, 60), 'Notes still moves by its title bar');
+
+    // Text app, touch: two fingers anywhere move it.
+    r0 = await rect('notes:1');
+    await touchDrag([{ x: r0.x + 80, y: r0.y + 120 }, { x: r0.x + 160, y: r0.y + 150 }], -40, -40);
+    r1 = await rect('notes:1');
+    ok(moved(r0, r1, -40, -40), `two-finger drag moves a text app (Notes moved ${Math.round(r1.x - r0.x)}, ${Math.round(r1.y - r0.y)})`);
+
+    // Click-only app, touch: one finger anywhere.
+    r0 = await rect('calendar:1');
+    await touchDrag([{ x: r0.x + r0.w / 2, y: r0.y + r0.h / 2 }], 0, 30);
+    r1 = await rect('calendar:1');
+    ok(moved(r0, r1, 0, 30), `one-finger drag moves a click-only app on a touchscreen (Calendar moved ${Math.round(r1.y - r0.y)})`);
+
+    // Name Picker: editing the list = title bar only; picking = anywhere.
+    r0 = await rect('name-picker:1');
+    await mouseDrag(r0.x + r0.w / 2, r0.y + 60, 0, -50);
+    r1 = await rect('name-picker:1');
+    ok(r1.y === r0.y, 'Name Picker while editing names does not move from inside');
+    await page.frameLocator('.win[data-ikey="name-picker:1"] iframe').locator('textarea').fill('Ana\nBo');
+    await page.frameLocator('.win[data-ikey="name-picker:1"] iframe').locator('#done').click(); await page.waitForTimeout(300);
+    r0 = await rect('name-picker:1');
+    await mouseDrag(r0.x + r0.w / 2, r0.y + 100, -40, 0);
+    r1 = await rect('name-picker:1');
+    ok(moved(r0, r1, -40, 0), `Name Picker while picking moves from anywhere (moved ${Math.round(r1.x - r0.x)})`);
+
+    // Zoomed board: still follows the pointer.
+    await page.setViewportSize({ width: 1000, height: 614 }); await page.waitForTimeout(400);
+    r0 = await rect('clock:1');
+    await mouseDrag(r0.x + r0.w / 2, r0.y + r0.h / 2 + 10, 50, 0);
+    r1 = await rect('clock:1');
+    ok(moved(r0, r1, 50, 0), `drag from inside follows the pointer when the board is zoomed (moved ${Math.round(r1.x - r0.x)})`);
+    await page.setViewportSize({ width: 1400, height: 860 }); await page.waitForTimeout(300);
+
+    // Settings switch off: title bar only.
+    await page.evaluate(() => { window.__board21.state.settings.dragFromContent = false; });
+    r0 = await rect('clock:1');
+    await mouseDrag(r0.x + r0.w / 2, r0.y + r0.h / 2 + 20, 0, 60);
+    r1 = await rect('clock:1');
+    ok(r1.y === r0.y, 'with "Drag windows from inside" off, only the title bar moves windows');
+    await page.evaluate(() => { window.__board21.state.settings.dragFromContent = true; });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');

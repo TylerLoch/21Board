@@ -27,6 +27,9 @@
  *                  maxWidth, maxHeight optional maximum content size
  *                  aspectRatio         optional width/height lock for the content area
  *                  resizable           false to disable resize grips
+ *                  dragFromContent     false if the app needs drags itself (typing or selecting
+ *                                      text, drawing...): then it moves by its title bar or with
+ *                                      two fingers. Default true: drag from anywhere inside.
  *   permissions  Browser features the iframe may use, e.g. ["microphone"].
  *   devOnly      true = only listed when Developer mode is on (Settings).
  */
@@ -76,7 +79,7 @@ self.BOARD21_APPS = [
     files: ['apps/notes/index.html'],
     color: '#eab308',
     icon: '<svg viewBox="0 0 24 24"><path d="M4 4h16v10l-6 6H4z"/><path d="M14 20v-6h6"/><path d="M8 9h8"/><path d="M8 13h4"/></svg>',
-    window: { width: 320, height: 280, minWidth: 180, minHeight: 120 },
+    window: { width: 320, height: 280, minWidth: 180, minHeight: 120, dragFromContent: false }, // typing: title bar or two fingers
     permissions: []
   },
   {
@@ -124,7 +127,7 @@ self.BOARD21_APPS = [
     files: ['apps/sdk-playground/index.html'],
     color: '#475569',
     icon: '<svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/><path d="M13.5 4l-3 16"/></svg>',
-    window: { width: 520, height: 440, minWidth: 320, minHeight: 260 },
+    window: { width: 520, height: 440, minWidth: 320, minHeight: 260, dragFromContent: false },
     permissions: [],
     devOnly: true
   }

@@ -51,6 +51,8 @@
   function show(view, focus) {
     $('pick').classList.toggle('on', view === 'pick');
     $('edit').classList.toggle('on', view === 'edit');
+    // Picking is tap-only, so the window can be dragged from anywhere; editing the list needs text selection.
+    Board21.window.setDragFromContent(view === 'pick');
     if (view === 'edit') { $('list').value = state.names.join('\n'); if (focus) setTimeout(() => $('list').focus(), 50); }
   }
 

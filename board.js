@@ -66,6 +66,7 @@
     pickerCorners: 'both',   // 'both' | 'left' | 'right'
     scaleToScreen: true,     // zoom the whole layout to fit the screen (see Zoom in section 6)
     accent: 'blue',          // accent color: a key of ACCENTS
+    dragFromContent: true,   // move windows by dragging inside them (see section 9a)
     devMode: false,
     devApps: [],             // [{ id, name, entry }] test sub-apps added in Developer mode
     activeBoard: 1,
@@ -202,7 +203,10 @@
         width: pos(w.width, 400), height: pos(w.height, 300),
         minWidth: pos(w.minWidth, 160), minHeight: pos(w.minHeight, 100),
         maxWidth: pos(w.maxWidth, Infinity), maxHeight: pos(w.maxHeight, Infinity),
-        aspectRatio: pos(w.aspectRatio, null), resizable: w.resizable !== false
+        aspectRatio: pos(w.aspectRatio, null), resizable: w.resizable !== false,
+        // true: click-only app, can be moved by dragging anywhere inside it.
+        // false: the app needs drags itself (typing/selecting text, drawing): title bar or two fingers.
+        dragFromContent: w.dragFromContent !== false
       }
     };
   }
@@ -1095,6 +1099,7 @@
       try {
         this.iframe.contentWindow.addEventListener('pointerdown', () => { focusWin(this.ikey); closePopups(); }, true);
       } catch (e) { /* cross-origin: the SDK's 'activate' message covers this */ }
+      attachContentDrag(this);
     }
 
     reload() {
@@ -1115,6 +1120,12 @@
       $('.num', this.labelEl).textContent = this.inst && this.inst.n > 1 ? String(this.inst.n) : '';
       $('.sub', this.labelEl).textContent = this.subtitle;
       this.labelEl.setAttribute('aria-label', `${this.app.name}${this.inst && this.inst.n > 1 ? ' ' + this.inst.n : ''} window menu`);
+    }
+
+    // One finger / mouse anywhere inside: only for click-only apps (registry or SDK), never when maximized.
+    canDragFromContent() {
+      if (S.settings.dragFromContent === false || !this.inst || this.inst.maximized) return false;
+      return this.rt.dragFromContent !== undefined ? this.rt.dragFromContent : this.app.win.dragFromContent;
     }
 
     constraints() {
@@ -1264,6 +1275,7 @@
         case 'setMinSize': this.rt.minW = posOrNull(args[0]) || undefined; this.rt.minH = posOrNull(args[1]) || undefined; this.refit(); break;
         case 'setMaxSize': this.rt.maxW = posOrNull(args[0]) || undefined; this.rt.maxH = posOrNull(args[1]) || undefined; this.refit(); break;
         case 'setResizable': this.rt.resizable = args[0] !== false; this.layout(); break;
+        case 'setDragFromContent': this.rt.dragFromContent = args[0] !== false; break;
         case 'setTitle': this.subtitle = String(args[0] == null ? '' : args[0]).slice(0, 80); this.renderTitle(); break;
         case 'focus': focusWin(this.ikey); break;
         case 'maximize': setMaximized(this.ikey, true); break;
@@ -1472,6 +1484,22 @@
     get active() { return this.map.size > 0; },
     holds(win) { for (const it of this.map.values()) if (it.win === win) return it; return null; },
 
+    // Drags that start inside an app (section 9a). `key` is the pointerId, or a string for two-finger drags.
+    beginAt(key, win, x, y) {
+      if (this.holds(win)) return false;
+      this.map.set(key, {
+        id: key, win, kind: 'content', handle: null, el: null,
+        sx: x, sy: y, x, y,
+        lx0: (x - Zoom.ox) / Zoom.s, ly0: (y - Zoom.oy) / Zoom.s,
+        layoutSig: JSON.stringify(S.board.layout),
+        start: Object.assign({}, win.disp), moved: false, result: null, onLabel: false
+      });
+      return true;
+    },
+    moveTo(key, x, y) { this.move({ pointerId: key, clientX: x, clientY: y }); const it = this.map.get(key); return !!(it && it.moved); },
+    endFor(key, cancelled) { const it = this.map.get(key); const moved = !!(it && it.moved); this.end({ pointerId: key }, cancelled); return moved; },
+    drop(key) { const it = this.map.get(key); if (it && !it.moved) this.map.delete(key); },
+
     begin(e, win, kind, handle, el) {
       for (const it of this.map.values()) if (it.win === win) return;
       const it = {
@@ -1520,7 +1548,7 @@
         // Pointer movement in layout space (stays right even if the zoom changes mid-drag).
         const dx = (it.x - Zoom.ox) / Zoom.s - it.lx0, dy = (it.y - Zoom.oy) / Zoom.s - it.ly0;
         const obs = obstacles(it.win);
-        const r = it.kind === 'title'
+        const r = it.kind !== 'resize'
           ? resolveMove({ x: it.start.x + dx, y: it.start.y + dy, w: it.start.w, h: it.start.h }, obs, view, brk, S.settings.snapping)
           : computeResize(it.start, it.handle, dx, dy, it.win.constraints(), view, obs, brk, S.settings.snapping);
         it.result = r;
@@ -1533,7 +1561,7 @@
       if (!it) return;
       if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; this.step(); }
       this.map.delete(e.pointerId);
-      it.el.classList.remove('dragging');
+      if (it.el) it.el.classList.remove('dragging');
       const win = it.win;
       // If the board's layout size changed mid-drag ("Use this size" here or in another tab),
       // the drop position is in the old space: drop the move rather than save it wrongly.
@@ -1560,6 +1588,120 @@
       }
     }
   };
+
+  // =====================================================================
+  // 9a. Moving windows by their content
+  // ---------------------------------------------------------------------
+  // - Click-only apps (registry window.dragFromContent, default true): drag
+  //   anywhere inside the window with one finger or the mouse. A tap is still
+  //   a tap; a press that turns into a drag moves the window and the click is
+  //   swallowed, so a button you started on doesn't fire.
+  // - Every app: two fingers anywhere inside move the window (for apps that
+  //   need drags themselves: typing/selecting text, drawing).
+  // - Never started from: text fields, sliders, selects, canvas/video, editable
+  //   or explicitly selectable text, scrolling areas, draggable elements,
+  //   anything inside [data-b21-nodrag], or a press the app already handled
+  //   (preventDefault on pointerdown).
+  // Sub-apps are same-origin, so the board listens inside each iframe; nothing
+  // here is needed from the app. Settings → Windows can switch it off.
+  // =====================================================================
+  function noContentDrag(el, cw) {
+    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+      const tag = n.tagName;
+      if (n.hasAttribute('data-b21-nodrag') || n.isContentEditable || n.getAttribute('draggable') === 'true') return true;
+      if (tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'CANVAS' || tag === 'VIDEO' || tag === 'AUDIO' || tag === 'IFRAME') return true;
+      if (tag === 'INPUT' && !/^(button|submit|reset|checkbox|radio|color|file|image)$/i.test(n.type || '')) return true;
+      const cs = cw.getComputedStyle(n);
+      if (cs.userSelect === 'text' || cs.webkitUserSelect === 'text') return true;
+      if ((/(auto|scroll)/.test(cs.overflowY) && n.scrollHeight > n.clientHeight + 1) ||
+          (/(auto|scroll)/.test(cs.overflowX) && n.scrollWidth > n.clientWidth + 1)) return true;
+    }
+    return false;
+  }
+
+  function attachContentDrag(win) {
+    let cw;
+    try { cw = win.iframe.contentWindow; if (!cw || !cw.document) return; } catch (e) { return; } // cross-origin: title bar only
+    const frame = win.iframe;
+    // App point -> board point. Read fresh every time, because the window moves under the finger.
+    const toBoard = (x, y) => {
+      const r = frame.getBoundingClientRect();
+      const k = frame.clientWidth ? r.width / frame.clientWidth : 1;
+      return { x: r.left + x * k, y: r.top + y * k };
+    };
+    const enabled = () => S.settings.dragFromContent !== false;
+    const singles = new Set();       // pointerIds with a one-finger/mouse drag (pending or moving)
+    const touches = new Map();       // touch pointerId -> app point
+    let two = null;                  // { key, ids }
+    let swallowClickUntil = 0;
+    const centroid = () => {
+      const [a, b] = two.ids.map(id => touches.get(id));
+      return toBoard((a.x + b.x) / 2, (a.y + b.y) / 2);
+    };
+
+    cw.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'touch') touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (!enabled()) return;
+      // Second finger down: two-finger drag (any app), unless a one-finger drag is already moving it.
+      if (e.pointerType === 'touch' && touches.size === 2 && !two) {
+        const ids = Array.from(touches.keys());
+        const moving = ids.some(id => singles.has(id) && Inter.map.get(id) && Inter.map.get(id).moved);
+        if (!moving) {
+          ids.forEach(id => { if (singles.has(id)) { Inter.drop(id); singles.delete(id); } });
+          const key = 'two:' + win.ikey;
+          two = { key, ids };
+          const c = centroid();
+          if (!Inter.beginAt(key, win, c.x, c.y)) two = null;
+        }
+        return;
+      }
+      if (two || !win.canDragFromContent()) return;
+      if (e.defaultPrevented || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (noContentDrag(e.target, cw)) return;
+      const p = toBoard(e.clientX, e.clientY);
+      if (Inter.beginAt(e.pointerId, win, p.x, p.y)) singles.add(e.pointerId);
+    }); // bubble phase: runs after the app's own handlers, so e.defaultPrevented is meaningful
+
+    cw.addEventListener('pointermove', e => {
+      if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (two && two.ids.includes(e.pointerId)) { const c = centroid(); Inter.moveTo(two.key, c.x, c.y); return; }
+      if (!singles.has(e.pointerId)) return;
+      const it = Inter.map.get(e.pointerId);
+      if (!it) { singles.delete(e.pointerId); return; }
+      const was = it.moved;
+      const p = toBoard(e.clientX, e.clientY);
+      if (Inter.moveTo(e.pointerId, p.x, p.y) && !was) {
+        try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+        try { cw.getSelection().removeAllRanges(); } catch (err) { /* ignore */ }
+      }
+    }, true);
+
+    const finish = e => {
+      touches.delete(e.pointerId);
+      const cancelled = e.type === 'pointercancel';
+      if (two && two.ids.includes(e.pointerId)) {
+        if (Inter.endFor(two.key, cancelled)) swallowClickUntil = Date.now() + 500;
+        two = null;
+        return;
+      }
+      if (!singles.has(e.pointerId)) return;
+      singles.delete(e.pointerId);
+      if (Inter.endFor(e.pointerId, cancelled)) swallowClickUntil = Date.now() + 500;
+    };
+    cw.addEventListener('pointerup', finish, true);
+    cw.addEventListener('pointercancel', finish, true);
+
+    // A press that became a window drag must not also click whatever it started on.
+    cw.addEventListener('click', e => {
+      if (Date.now() < swallowClickUntil) { swallowClickUntil = 0; e.preventDefault(); e.stopImmediatePropagation(); }
+    }, true);
+    // While a finger is dragging a window, stop the browser scrolling/panning (which would cancel it).
+    cw.addEventListener('touchmove', e => {
+      if (two || (e.touches.length === 1 && singles.size)) { if (e.cancelable) e.preventDefault(); }
+    }, { passive: false, capture: true });
+    // No native image/link drag-and-drop while moving a window with the mouse.
+    cw.addEventListener('dragstart', e => { if (singles.size) e.preventDefault(); }, true);
+  }
 
   // Tapping the empty board deselects every window, hiding all resize grips.
   function deselectAll() {
@@ -1891,6 +2033,7 @@
 
         <h3>Windows</h3>
         <div class="row"><div><div class="lbl">Snap and avoid overlap</div><div class="hint">Windows stop at each other's edges. Keep pushing to overlap anyway.</div></div>${sw('snapping', st.snapping, 'Snap and avoid overlap')}</div>
+        <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Apps without typing move by dragging anywhere in them; any app moves with two fingers. Off: title bar only.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
         <div class="row"><div class="lbl">Push needed to overlap</div>${seg('resistance', st.resistance, [['gentle', 'Light'], ['normal', 'Medium'], ['strong', 'Firm']], !st.snapping)}</div>
         ${scalingSettingsRows(st, sw)}
         <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">Content stays saved for next time.</div></div><button class="btn" data-act="close-all">${svg('windows')}Close all</button></div>
@@ -1980,6 +2123,7 @@
         case 'theme': updateSettings({ theme: val }); break;
         case 'accent': if (accentOf(val)) updateSettings({ accent: val }); break;
         case 'snapping': updateSettings({ snapping: !S.settings.snapping }); break;
+        case 'dragcontent': updateSettings({ dragFromContent: S.settings.dragFromContent === false }); break;
         case 'scale': case 'use-screen': scalingAct(act); this.render(); break;
         case 'resistance': updateSettings({ resistance: val }); break;
         case 'corners': updateSettings({ pickerCorners: val }); if (val !== 'both' && val !== this.side) this.open(val); break;

@@ -49,7 +49,7 @@ include) to the static host. Then:
 | --- | --- |
 | **App Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap an app to open it. Tap ▦ again (or anywhere else) to close. |
 | **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Fullscreen, Settings. |
-| **Move a window** | Drag its title bar. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
+| **Move a window** | Drag its title bar, or drag anywhere inside apps that don't involve typing (Clock, Timer, Calendar, Dice…). In apps with typing (Notes), drag inside with two fingers. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some apps keep a fixed shape. |
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the app's name (⌄) in the title bar: the app's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. |
@@ -63,7 +63,7 @@ include) to the static host. Then:
 
 - **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to sub-apps),
   board background color (or match theme), background pattern (dots, grid, lines).
-- **Windows:** snap & avoid overlap on/off, how hard you must push to overlap, scale the board to fit the screen (on by default) and "use this screen's size", close all windows.
+- **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, scale the board to fit the screen (on by default) and "use this screen's size", close all windows.
 - **App Picker:** show the controls in both corners, or only left/right.
 - **Board:** board name (used for export file names), list of every saved app window with
   open/delete.
