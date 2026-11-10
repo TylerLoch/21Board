@@ -1857,9 +1857,9 @@ const SUITES = [
     await page.locator('.win[data-ikey="notes:1"] .win-label').click(); await page.waitForTimeout(250);
     ok(await page.locator('#menu [data-act="history"]').count() === 1, 'the window menu has “Earlier versions…”');
     await page.click('#menu [data-act="history"]'); await page.waitForTimeout(1200);
-    const versions = await page.locator('#history [data-act="put"]').count();
+    const versions = await page.locator('#history [data-act="put-here"]').count();
     ok(versions >= 2 && /Earlier versions of Notes/.test(await page.locator('#history .hist-intro').textContent()), `it lists that window’s earlier versions (${versions})`);
-    await page.locator('#history [data-act="put"]').first().click(); await page.waitForTimeout(2000);
+    await page.locator('#history [data-act="put-here"]').first().click(); await page.waitForTimeout(2000);
     ok(await noteText('notes:1') !== 'Edited after', 'and puts one back');
 
     // ---- Windows gone? The empty board offers Board history.
@@ -1895,11 +1895,12 @@ const SUITES = [
     // ---- Another tab sees new versions; only the tab that changed the board saves one.
     const p2 = await ctx.newPage(); await p2.goto(BASE); await p2.waitForTimeout(800);
     await p2.evaluate(() => window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }));
-    const before2 = (await metas()).length;
+    const beforeIds = new Set((await metas()).map(x => x.id));
     await H(() => window.__board21.openWidget('clock')); await page.waitForTimeout(2500);
-    const after2 = await metas();
-    ok(after2.length === before2 + 1, 'a change saves exactly one version, though two tabs are open (only the tab that made it saves)');
-    ok(await p2.evaluate(n => window.__board21.history.metas.length === n, after2.length), 'other open tabs see it');
+    const after2 = await metas(), fresh = after2.filter(x => !beforeIds.has(x.id));
+    ok(fresh.length === 1, `a change saves exactly one version, though two tabs are open (only the tab that made it saves) (${fresh.length} new)`);
+    await p2.waitForTimeout(500);
+    ok(await p2.evaluate(id => window.__board21.history.metas.some(m => m.id === id), fresh[0] && fresh[0].id), 'other open tabs see it');
     await p2.close();
 
     // ---- Erase everything keeps board history; going back undoes it.
@@ -1988,6 +1989,75 @@ const SUITES = [
     ok(await C.p.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#t').inputValue() === 'Lesson plan', '“Use” brings that board back on this device');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await C.c.close();
+  }],
+  ['Board history: review fixes', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(600); await freeBoard(page);
+    const H = (fn, arg) => page.evaluate(fn, arg);
+    await H(() => window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }));
+    const note = ik => page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const noteText = ik => note(ik).locator('#t').inputValue();
+    const modal = text => page.locator('#modal.open .btn', { hasText: text }).click();
+    const settings = async () => { await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300); };
+    // Two deletes within 2 minutes, with typing in between: Undo of the second brings back what was typed.
+    await H(() => { window.__board21.openWidget('notes'); window.__board21.openWidget('notes'); }); await page.waitForTimeout(1500);
+    await fillNote(note('notes:1'), 'First'); await fillNote(note('notes:2'), 'Two original'); await page.waitForTimeout(1600);
+    await H(() => window.__board21.deleteInstance('notes:1')); await page.waitForTimeout(500);
+    await fillNote(note('notes:2'), 'homework p.42'); await page.waitForTimeout(500);
+    await settings();
+    await page.click('#settings [data-act="inst-delete"][data-val="notes:2"]'); await page.waitForTimeout(300); await modal('Delete'); await page.waitForTimeout(1500);
+    await page.locator('.toast', { hasText: 'Deleted Notes 2' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(2000);
+    ok(await noteText('notes:2') === 'homework p.42', 'a second delete soon after the first keeps what was typed in between (Undo brings it back)');
+    await page.keyboard.press('Escape');
+    // With automatic versions off, Reset still keeps a copy and can be undone.
+    await H(() => { window.__board21.state.settings.historyEvery = 0; });
+    await page.locator('.win[data-ikey="notes:2"] .win-label').click(); await page.waitForTimeout(250);
+    await page.click('#menu [data-act="reset"]');
+    ok(/Board history keeps a copy/.test(await page.locator('#menu').textContent()), 'the Reset question still promises a copy with automatic versions off…');
+    await page.click('#menu [data-act="reset-yes"]'); await page.waitForTimeout(1500);
+    await page.locator('.toast', { hasText: 'was reset' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(2000);
+    ok(await noteText('notes:2') === 'homework p.42', '…and keeps it: Undo works');
+    await H(() => { window.__board21.state.settings.historyEvery = 10; });
+    // Undo after deleting a closed window keeps it closed (it doesn't pop up in front of the class).
+    await H(() => window.__board21.closeWin('notes:2')); await page.waitForTimeout(600);
+    await settings();
+    await page.click('#settings [data-act="inst-delete"][data-val="notes:2"]'); await page.waitForTimeout(300); await modal('Delete'); await page.waitForTimeout(1500);
+    await page.locator('.toast', { hasText: 'Deleted Notes 2' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(1500);
+    ok(await H(() => { const i = window.__board21.state.insts.get('notes:2'); return !!i && !i.open; }) && await page.locator('.win[data-ikey="notes:2"]').count() === 0, 'Undo after deleting a closed window brings it back closed');
+    await page.keyboard.press('Escape');
+    // Undo after Close all reopens the windows without pausing a running timer.
+    await H(() => window.__board21.openWidget('timer')); await page.waitForTimeout(1200);
+    await note('timer:1').locator('#go').click(); await page.waitForTimeout(500);
+    const ends = await H(() => window.__board21.state.data.get('timer:1').endsAt);
+    await settings(); await page.click('#settings [data-act="close-all"]'); await page.waitForTimeout(1500);
+    await page.locator('.toast', { hasText: 'Closed' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(1500);
+    ok(await page.locator('.win[data-ikey="timer:1"]').count() === 1 && await H(() => window.__board21.state.data.get('timer:1').endsAt) === ends, 'Undo after Close all reopens the windows, and a running timer keeps running');
+    // Dark mode isn't a board change.
+    await page.waitForTimeout(1600);
+    const n0 = await H(async () => { await window.__board21.history.reload(); return window.__board21.history.metas.length; });
+    await settings(); await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(300); await page.keyboard.press('Escape');
+    await H(() => window.__board21.history.capture('open')); await page.waitForTimeout(500);
+    ok(await H(async () => { await window.__board21.history.reload(); return window.__board21.history.metas.length; }) === n0, 'switching to dark mode isn’t saved as a new version (it’s this device’s setting)');
+    // Out of space: gentle thinning keeps the safety versions.
+    const nk = await H(() => window.__board21.openWidget('notes')); await page.waitForTimeout(1200);
+    await fillNote(note(nk), 'Before the wipe, important'); await page.waitForTimeout(1600);
+    await page.locator(`.win[data-ikey="${nk}"] .win-label`).click(); await page.waitForTimeout(250);
+    await page.click('#menu [data-act="reset"]'); await page.click('#menu [data-act="reset-yes"]'); await page.waitForTimeout(1500);
+    await H(() => window.__board21.history.thin()); await page.waitForTimeout(300);
+    ok(await H(async () => { const Hs = window.__board21.history; await Hs.reload(); for (const m of Hs.metas) if (m.keepUntil > Date.now() && JSON.stringify((await Hs.get(m.id)).body.exp).includes('important')) return true; return false; }), 'running out of space thins history but keeps the safety version from before a Reset');
+    // Over its share of storage, automatic versions continue (about hourly), they don't stop.
+    await H(() => { window.__board21.history.paused = 'over'; });
+    ok(!!(await H(() => window.__board21.history.capture('auto'))) || await H(() => window.__board21.history.paused === 'over'), 'over its share of storage, versions are still saved');
+    await H(() => { window.__board21.history.paused = ''; });
+    // Labels are written when shown ("Went back to Today …").
+    const id = await H(() => window.__board21.history.save('L'));
+    await H(i => window.__board21.history.restore(i), id); await page.waitForTimeout(3500);
+    await settings(); await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(1200);
+    ok(await page.locator('#history .hist-row .what', { hasText: /^Went back to Today/ }).count() >= 1 && await page.locator('#history .hist-day').first().textContent() === 'Today', 'the list says “Went back to Today …” under a “Today” heading');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
   }],
   ['Widget dev window', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 760, height: 560 } });

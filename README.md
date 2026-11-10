@@ -197,7 +197,8 @@ on a few real laptops and boards** (how quickly files arrive, and that the folde
 while the board changes (at most every 10 minutes, once it has settled for a minute), when 21Board opens,
 and before every risky action (Reset, Delete, Close all, changing or removing the photo, Import, Load, going
 back, Erase everything, and a widget's content suddenly being emptied, e.g. a note cleared). Identical content
-is never saved twice. *Save this version now* keeps a named version until you delete it.
+is never saved twice. *Save this version now* keeps a named version until you delete it. Turning automatic
+versions off still keeps one before each risky action, so Undo keeps working.
 
 **What's kept:** the newest 20, one an hour for 2 days, the first and last of each day for a month, one a week
 for 3 months (counting only days the board was used, so a summer break doesn't empty it), safety versions for a
