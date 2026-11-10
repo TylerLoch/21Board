@@ -140,9 +140,10 @@ reworked, so it's built to be easy to back out:
 
 | To… | Do this |
 | --- | --- |
-| Compare with and without it | Open 21Board with `?scaling=off` at the end of the address (e.g. `…/21Board/?scaling=off`). Nothing is changed by doing this. |
-| Let a teacher turn it off | Settings → Windows → *Scale the board to fit the screen*. |
-| Switch it off for everyone | In `board.js`, set `SCALING_FEATURE = false` (section **6a. Board scaling**), bump `VERSION` in `sw.js`, deploy. |
+| **Current status** | **Off by default.** Windows keep their size and are pushed inside the edges on a smaller screen, as before. |
+| Try it | Open 21Board with `?scaling=on` at the end of the address (e.g. `…/21Board/?scaling=on`). Only that page load uses it; nothing changes for anyone else. |
+| Turn it on for everyone | In `board.js`, make `SCALING_FEATURE` true (section **6a. Board scaling**), bump `VERSION` in `sw.js`, deploy. |
+| Let a teacher turn it off (when it's on) | Settings → Windows → *Scale the board to fit the screen*. |
 | Take it out entirely | Delete section 6a in `board.js` and follow the checklist at the top of it (a handful of one-line replacements). |
 
 Saved boards work in every case. Turning scaling off, or going back to a build without it, keeps

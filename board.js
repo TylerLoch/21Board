@@ -122,8 +122,8 @@
 
   const ICONS = {
     waffle: '<rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/>',
-    export: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
-    import: '<path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>',
+    export: '<path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>', // arrow leaving the tray
+    import: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>', // arrow coming in
     moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     gear: '<path d="M19.23 9.66L19.41 10.30L21.92 10.75L21.92 13.25L19.41 13.70L18.77 15.46L18.44 16.04L19.90 18.13L18.13 19.90L16.04 18.44L14.34 19.23L13.70 19.41L13.25 21.92L10.75 21.92L10.30 19.41L8.54 18.77L7.96 18.44L5.87 19.90L4.10 18.13L5.56 16.04L4.77 14.34L4.59 13.70L2.08 13.25L2.08 10.75L4.59 10.30L5.23 8.54L5.56 7.96L4.10 5.87L5.87 4.10L7.96 5.56L9.66 4.77L10.30 4.59L10.75 2.08L13.25 2.08L13.70 4.59L15.46 5.23L16.04 5.56L18.13 4.10L19.90 5.87L18.44 7.96Z"/><circle cx="12" cy="12" r="3.2"/>',
@@ -131,7 +131,7 @@
     fullscreenExit: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
     chevron: '<path d="M6 9l6 6 6-6"/>',
     close: '<path d="M18 6L6 18M6 6l12 12"/>',
-    reset: '<path d="M3 12a9 9 0 1 0 2.64-6.36"/><path d="M3 3v6h6"/>',
+    reset: '<path d="M4.6 15.4A8 8 0 1 0 6.3 6.3"/><path d="M6.3 2.3v4h4"/>', // open circle: a gap behind the arrow
     maximize: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>',
     restore: '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
@@ -625,10 +625,11 @@
   // arrangement is kept exactly. All other geometry works in layout space; only drawing
   // (Win.applyRect) and pointer movement (Inter.step) convert, via the Zoom numbers.
   //
-  // SWITCH IT OFF for everyone: set SCALING_FEATURE = false. To compare without deploying,
-  //   open 21Board with ?scaling=off. Off means: zoom fixed at 100% (Zoom is the identity),
-  //   no Settings rows, no layout size written, and smaller screens push windows inside the
-  //   edges, exactly like the build before scaling. Saved boards work either way.
+  // CURRENTLY OFF BY DEFAULT (the team wasn't sold on it). To try it, open 21Board with
+  //   ?scaling=on. To turn it on for everyone, make SCALING_FEATURE true (and bump sw.js VERSION).
+  //   Off means: zoom fixed at 100% (Zoom is the identity), no Settings rows, no layout size
+  //   written, and smaller screens push windows inside the edges, exactly like the build
+  //   before scaling. Saved boards work either way (tested in both directions).
   // REMOVE IT entirely: delete this block, then
   //   - viewRect()        -> return { x: 0, y: 0, w: desk().clientWidth, h: desk().clientHeight }
   //   - toLayout(r)       -> return { x: r.left, y: r.top, w: r.width, h: r.height }
@@ -638,7 +639,7 @@
   //   - drop updateZoom()/ensureLayout() calls, scalingSettingsRows()/scalingAct() in Settings,
   //     and use the screen size in exportViewport()/importPlan() (see their fallbacks).
   // See docs/DATA-FORMAT.md, "Layout space".
-  const SCALING_FEATURE = !/[?&]scaling=off(&|$)/.test(location.search);
+  const SCALING_FEATURE = /[?&]scaling=on(&|$)/.test(location.search); // off unless ?scaling=on
   const scalingOn = () => SCALING_FEATURE && S.settings.scaleToScreen !== false;
   const Zoom = { s: 1, ox: 0, oy: 0, vw: 0, vh: 0 };
 

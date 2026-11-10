@@ -650,7 +650,7 @@ const SUITES = [
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
-    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.goto(BASE + '?scaling=on'); await page.waitForTimeout(500);
     const screenRects = p => p.evaluate(() => Object.fromEntries(Array.from(document.querySelectorAll('.win')).map(e => { const r = e.getBoundingClientRect(); return [e.dataset.ikey, { x: r.left, y: r.top, w: r.width, h: r.height }]; })));
     const layoutRects = p => p.evaluate(() => Object.fromEntries(Array.from(window.__board21.state.wins.values()).sort((a, b) => a.ikey < b.ikey ? -1 : 1).map(w => [w.ikey, Object.assign({}, w.disp)])));
     const setRect = (ik, r) => page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, r]); // saves, like a real move
@@ -689,10 +689,10 @@ const SUITES = [
 
     // A second, bigger tab shows the same layout scaled to its own screen.
     const page2 = await (await browser.newContext({ viewport: { width: 1400, height: 860 } })).newPage();
-    await page2.goto(BASE); await page2.waitForTimeout(300);
+    await page2.goto(BASE + '?scaling=on'); await page2.waitForTimeout(300);
     await page2.close();
     const tabB = await ctx.newPage(); await tabB.setViewportSize({ width: 1400, height: 860 });
-    await tabB.goto(BASE); await tabB.waitForTimeout(1500);
+    await tabB.goto(BASE + '?scaling=on'); await tabB.waitForTimeout(1500);
     const la = await layoutRects(page), lb = await layoutRects(tabB);
     ok(JSON.stringify(lb) === JSON.stringify(la), 'two tabs on different screen sizes agree on the layout' + (JSON.stringify(lb) === JSON.stringify(la) ? '' : ' ' + JSON.stringify({ la, lb })));
     ok(await tabB.evaluate(() => window.__board21.zoom.s) === 1, 'the big tab shows it at 100%');
@@ -776,13 +776,13 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Board scaling switched off (?scaling=off)', async (browser) => {
+  ['Board scaling off (default) and ?scaling=on', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     const onScreen = () => page.evaluate(() => Array.from(document.querySelectorAll('.win')).map(e => { const r = e.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }));
     // A board arranged with scaling on...
-    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.goto(BASE + '?scaling=on'); await page.waitForTimeout(500);
     await page.evaluate(() => { for (const id of ['notes', 'timer']) window.__board21.openApp(id); });
     await page.waitForTimeout(1200);
     await page.evaluate(() => { window.__board21.setRect('notes:1', { x: 900, y: 400, w: 460, h: 420 }); window.__board21.setRect('timer:1', { x: 40, y: 40, w: 600, h: 380 }); });
@@ -790,7 +790,7 @@ const SUITES = [
     const layout = await page.evaluate(() => window.__board21.state.board.layout);
     // ...opened with scaling switched off, on a smaller screen.
     await page.setViewportSize({ width: 1000, height: 620 });
-    await page.goto(BASE + '?scaling=off'); await page.waitForTimeout(1200);
+    await page.goto(BASE); await page.waitForTimeout(1200); // no parameter: scaling is off by default
     ok(await page.evaluate(() => window.__board21.zoom.s) === 1, 'switched off: no zoom');
     const r = await onScreen();
     ok(r.length === 2 && r.every(w => w.x >= 0 && w.y >= 0 && w.x + w.w <= 1000.5 && w.y + w.h <= 620.5), 'switched off: windows are pushed inside the screen, as before scaling');
@@ -801,12 +801,12 @@ const SUITES = [
     await page.keyboard.press('Escape');
     ok(JSON.stringify(await page.evaluate(() => window.__board21.state.board.layout)) === JSON.stringify(layout), 'switched off: the saved layout size is left alone');
     // Back on: the original arrangement returns.
-    await page.goto(BASE); await page.waitForTimeout(1200);
+    await page.goto(BASE + '?scaling=on'); await page.waitForTimeout(1200);
     const back = await page.evaluate(() => Object.assign({}, window.__board21.state.wins.get('notes:1').disp));
     ok(back.x === 900 && back.y === 400, 'switched back on: the arrangement is intact');
     // A brand-new board with scaling switched off never gets a layout size.
     const ctx2 = await browser.newContext({ viewport: { width: 1200, height: 800 } });
-    const p2 = await ctx2.newPage(); await p2.goto(BASE + '?scaling=off'); await p2.waitForTimeout(800);
+    const p2 = await ctx2.newPage(); await p2.goto(BASE); await p2.waitForTimeout(800);
     ok(await p2.evaluate(() => window.__board21.state.board.layout) === null, 'switched off: a new board stores no layout size');
     await ctx2.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
@@ -822,10 +822,10 @@ const SUITES = [
     // 1) Wide second screen: windows opened there stay inside the shared layout, so the first screen has no overlaps.
     const ctx = await browser.newContext({ viewport: { width: 1000, height: 620 } });
     const a = await ctx.newPage(); a.on('pageerror', e => errors.push(e.message));
-    await a.goto(BASE); await a.waitForTimeout(600);
+    await a.goto(BASE + '?scaling=on'); await a.waitForTimeout(600);
     await a.evaluate(() => window.__board21.openApp('clock')); await a.waitForTimeout(600); // first window fixes the layout at 1000x620
     const b = await ctx.newPage(); await b.setViewportSize({ width: 1800, height: 620 });
-    await b.goto(BASE); await b.waitForTimeout(1000);
+    await b.goto(BASE + '?scaling=on'); await b.waitForTimeout(1000);
     for (const id of ['timer', 'calendar', 'notes', 'dice']) { await b.click('.picker-btn.left'); await b.waitForTimeout(100); await b.click(`[data-app="${id}"]`); await b.waitForTimeout(350); }
     await b.waitForTimeout(500); await a.waitForTimeout(800);
     const st = await stored(b);
@@ -874,7 +874,7 @@ const SUITES = [
     // 4) "Use this size" keeps windows apart even when app minimum sizes make them grow.
     const ctx2 = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
     const p = await ctx2.newPage(); p.on('pageerror', e => errors.push(e.message));
-    await p.goto(BASE); await p.waitForTimeout(500);
+    await p.goto(BASE + '?scaling=on'); await p.waitForTimeout(500);
     await p.evaluate(() => { for (const id of ['clock', 'notes', 'timer']) window.__board21.openApp(id); }); await p.waitForTimeout(1200);
     await p.evaluate(() => { const b = window.__board21; b.setRect('clock:1', { x: 40, y: 40, w: 300, h: 340 }); b.setRect('notes:1', { x: 40, y: 388, w: 300, h: 300 }); b.setRect('timer:1', { x: 348, y: 388, w: 250, h: 300 }); });
     await p.setViewportSize({ width: 960, height: 540 }); await p.waitForTimeout(400);
@@ -889,7 +889,7 @@ const SUITES = [
 
     // 5) A never-used board follows the screen: its first window sets the layout size.
     const ctx3 = await browser.newContext({ viewport: { width: 700, height: 500 } });
-    const q = await ctx3.newPage(); await q.goto(BASE); await q.waitForTimeout(500);
+    const q = await ctx3.newPage(); await q.goto(BASE + '?scaling=on'); await q.waitForTimeout(500);
     await q.setViewportSize({ width: 1400, height: 860 }); await q.waitForTimeout(300);
     await q.evaluate(() => window.__board21.openApp('timer')); await q.waitForTimeout(500);
     ok(JSON.stringify(await q.evaluate(() => window.__board21.state.board.layout)) === JSON.stringify({ w: 1400, h: 860 }), 'an empty board takes the screen size its first window is opened on');
@@ -1003,7 +1003,7 @@ const SUITES = [
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 }, hasTouch: true });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
-    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.goto(BASE + '?scaling=on'); await page.waitForTimeout(500);
     await page.evaluate(() => { for (const id of ['clock', 'dice', 'notes', 'timer', 'calendar', 'name-picker']) window.__board21.openApp(id); });
     await page.waitForTimeout(1800);
     const b = await page.evaluate(() => { const r = {}; for (const [k, w] of window.__board21.state.wins) r[k] = Object.assign({}, w.disp); return r; });

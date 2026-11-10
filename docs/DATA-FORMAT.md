@@ -125,8 +125,8 @@ on becomes its layout size. A board saved before `layout` existed gets one on fi
 current screen size, enlarged if needed to contain all of its windows. Exports write `layout`
 (grown to contain every window) as `viewport`.
 
-The whole feature can be switched off (`SCALING_FEATURE` in board.js, or `?scaling=off` to try it):
-the zoom is then always 1 and `layout` is neither written nor used. The format is compatible both
+**The feature is currently off by default** (`SCALING_FEATURE` in board.js; open with `?scaling=on` to try it). When off,
+the zoom is always 1 and `layout` is neither written nor used. The format is compatible both
 ways: builds without scaling read boards saved with it (they ignore `layout` and keep windows on
 screen), and boards saved without it get a `layout` that fits their windows when scaling is on.
 
