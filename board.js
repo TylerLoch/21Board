@@ -4,7 +4,7 @@
  * The "operating system" that hosts widgets. Sections:
  *
  *   1. Constants, icons, helpers
- *   2. App catalog            (apps/registry.js + developer test apps)
+ *   2. Widget catalog            (widgets/registry.js + developer test widgets)
  *   3. Storage                (IndexedDB: one object store of JSON records)
  *   4. Cross-tab sync         (BroadcastChannel, localStorage fallback)
  *   5. Board state + record application
@@ -12,7 +12,7 @@
  *   7. Windows                (Win class, SDK message handling)
  *   8. Window actions         (open / close / focus / maximize / reset / delete)
  *   9. Pointer interactions   (drag + resize, multi-touch aware)
- *  10. App Picker panel
+ *  10. Widget Picker panel
  *  11. Window menu
  *  12. Settings
  *  13. Export / Import       (.21board files)
@@ -67,7 +67,7 @@
     accent: 'blue',          // accent color: a key of ACCENTS
     dragFromContent: true,   // move windows by dragging inside them (see section 9a)
     devMode: false,
-    devApps: [],             // [{ id, name, entry }] test widgets added in Developer mode
+    devWidgets: [],             // [{ id, name, entry }] test widgets added in Developer mode
     activeBoard: 1,
     lastBackupAt: null       // when a full backup was last exported (ms), for backup reminders
   };
@@ -138,7 +138,7 @@
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
     open: '<path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
-    app: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
+    widget: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
     windows: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>'
   };
   const svg = (name, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${cls ? ` class="${cls}"` : ''}>${ICONS[name] || ''}</svg>`;
@@ -150,7 +150,7 @@
   const sleep = ms => new Promise(r => setTimeout(r, ms));
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const num = (v, d) => (typeof v === 'number' && isFinite(v)) ? v : d;
-  const ikeyOf = (appId, n) => `${appId}:${n}`;
+  const ikeyOf = (widgetId, n) => `${widgetId}:${n}`;
   const sameJSON = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
   const fmtBytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`;
 
@@ -186,9 +186,9 @@
   }
 
   // =====================================================================
-  // 2. App catalog
+  // 2. Widget catalog
   // =====================================================================
-  function normalizeApp(a, extra = {}) {
+  function normalizeWidget(a, extra = {}) {
     if (!a || typeof a !== 'object' || !ID_RE.test(a.id || '') || typeof a.entry !== 'string') return null;
     const w = a.window || {};
     const pos = (v, d) => (typeof v === 'number' && v > 0 && isFinite(v)) ? v : d;
@@ -199,7 +199,7 @@
       version: String(a.version || ''),
       entry: a.entry,
       files: Array.isArray(a.files) ? a.files : [a.entry],
-      icon: typeof a.icon === 'string' && /^\s*<svg/i.test(a.icon) ? a.icon : `<svg viewBox="0 0 24 24">${ICONS.app}</svg>`,
+      icon: typeof a.icon === 'string' && /^\s*<svg/i.test(a.icon) ? a.icon : `<svg viewBox="0 0 24 24">${ICONS.widget}</svg>`,
       color: /^#[0-9a-f]{3,8}$/i.test(a.color || '') ? a.color : '#64748b',
       permissions: Array.isArray(a.permissions) ? a.permissions.filter(p => /^[a-z-]+$/.test(p)) : [],
       devOnly: !!a.devOnly,
@@ -209,25 +209,25 @@
         minWidth: pos(w.minWidth, 160), minHeight: pos(w.minHeight, 100),
         maxWidth: pos(w.maxWidth, Infinity), maxHeight: pos(w.maxHeight, Infinity),
         aspectRatio: pos(w.aspectRatio, null), resizable: w.resizable !== false,
-        // true: click-only app, can be moved by dragging anywhere inside it.
-        // false: the app needs drags itself (typing/selecting text, drawing): title bar or two fingers.
+        // true: click-only widget, can be moved by dragging anywhere inside it.
+        // false: the widget needs drags itself (typing/selecting text, drawing): title bar or two fingers.
         dragFromContent: w.dragFromContent !== false
       }
     };
   }
 
-  const REGISTRY = (self.BOARD21_APPS || []).map(a => normalizeApp(a)).filter(Boolean);
+  const REGISTRY = (self.BOARD21_WIDGETS || []).map(a => normalizeWidget(a)).filter(Boolean);
   let catalog = new Map(REGISTRY.map(a => [a.id, a]));
 
   function rebuildCatalog() {
     catalog = new Map(REGISTRY.map(a => [a.id, a]));
-    for (const d of (S.settings.devApps || [])) {
-      const app = normalizeApp({ id: d.id, name: d.name, entry: d.entry, color: '#64748b', description: 'Developer test app' }, { dev: true });
-      if (app && !catalog.has(app.id)) catalog.set(app.id, app);
+    for (const d of (S.settings.devWidgets || [])) {
+      const widget = normalizeWidget({ id: d.id, name: d.name, entry: d.entry, color: '#64748b', description: 'Developer test widget' }, { dev: true });
+      if (widget && !catalog.has(widget.id)) catalog.set(widget.id, widget);
     }
   }
-  const getApp = id => catalog.get(id) || null;
-  const pickerApps = () => Array.from(catalog.values())
+  const getWidget = id => catalog.get(id) || null;
+  const pickerWidgets = () => Array.from(catalog.values())
     .filter(a => S.settings.devMode || (!a.devOnly && !a.dev))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
@@ -239,9 +239,9 @@
   // Keys:
   //   settings                        board-wide preferences
   //   board:<b>                       board <b> (name, background)
-  //   inst:<b>:<appId>:<n>            window/instance n of an app (geometry, open/closed, z)
-  //   data:<b>:<appId>:<n>            that instance's content   (Board21.save)
-  //   conf:<b>:<appId>:<n>            that instance's config    (Board21.saveConfig)
+  //   inst:<b>:<widgetId>:<n>            window/instance n of a widget (geometry, open/closed, z)
+  //   data:<b>:<widgetId>:<n>            that instance's content   (Board21.save)
+  //   conf:<b>:<widgetId>:<n>            that instance's config    (Board21.saveConfig)
   // =====================================================================
   const Keys = {
     settings: 'settings',
@@ -256,7 +256,7 @@
       if (p[0] === 'board' && p.length === 2) return { kind: 'board', board: +p[1] };
       if (p[0] === 'media' && p.length === 3) return { kind: 'media', board: +p[1], name: p[2] };
       if ((p[0] === 'inst' || p[0] === 'data' || p[0] === 'conf') && p.length === 4) {
-        return { kind: p[0], board: +p[1], appId: p[2], n: +p[3], ikey: `${p[2]}:${p[3]}` };
+        return { kind: p[0], board: +p[1], widgetId: p[2], n: +p[3], ikey: `${p[2]}:${p[3]}` };
       }
       return { kind: 'unknown' };
     }
@@ -429,7 +429,7 @@
     settings: Object.assign({}, DEFAULT_SETTINGS),
     boardId: 1,
     board: defaultBoard(1),
-    insts: new Map(),   // ikey -> { appId, n, open, rect:{x,y,w,h}, z, maximized, createdAt }
+    insts: new Map(),   // ikey -> { widgetId, n, open, rect:{x,y,w,h}, z, maximized, createdAt }
     data: new Map(),    // ikey -> content
     media: new Map(),   // name -> { data: 'data:image/…', w, h, bytes, name } (the background photo)
     conf: new Map(),    // ikey -> config
@@ -527,7 +527,7 @@
   function normalizeInst(v, k) {
     const r = v.rect || {};
     return {
-      appId: k ? k.appId : v.appId,
+      widgetId: k ? k.widgetId : v.widgetId,
       n: k ? k.n : v.n,
       open: !!v.open,
       rect: { x: num(r.x, 40), y: num(r.y, 40), w: Math.max(20, num(r.w, 400)), h: Math.max(TITLE_H + 10, num(r.h, 340)) },
@@ -578,7 +578,7 @@
     Picker.btns.left.hidden = corners === 'right';
     Picker.btns.right.hidden = corners === 'left';
     if (Picker.side && Picker.btns[Picker.side].hidden) Picker.close();
-    const sig = JSON.stringify([S.settings.devMode, S.settings.devApps]);
+    const sig = JSON.stringify([S.settings.devMode, S.settings.devWidgets]);
     if (sig !== lastCatalogSig) {
       lastCatalogSig = sig;
       rebuildCatalog();
@@ -730,8 +730,8 @@
   function reconcileWin(ikey) {
     const inst = S.insts.get(ikey);
     let w = S.wins.get(ikey);
-    const app = inst && getApp(inst.appId);
-    if (inst && inst.open && app) {
+    const widget = inst && getWidget(inst.widgetId);
+    if (inst && inst.open && widget) {
       if (!w) { w = new Win(ikey); S.wins.set(ikey, w); }
       w.layout();
     } else if (w) {
@@ -749,7 +749,7 @@
   // ---------------------------------------------------------------------
   // 6a. BOARD SHAPE AND SCALE
   // ---------------------------------------------------------------------
-  // Window rects are stored in "layout space": the CSS px a window's app sees. Drawing converts
+  // Window rects are stored in "layout space": the CSS px a window's widget sees. Drawing converts
   // layout space to the screen with one zoom factor (Win.applyRect and Inter.step use Zoom).
   //
   //   16:9 board (default, board.shape '16:9'): layout space is a fixed 16:9 board of
@@ -760,7 +760,7 @@
   //
   // board.scale (default 80%) is how big windows, title bars and menus are, as on a 1920 × 1080 screen
   // (at 100% a window's CSS px are that screen's px). Changing it keeps every window's footprint (rects
-  // are rescaled) and changes how big its contents are drawn. Menus, the App Picker, Settings, toasts and
+  // are rescaled) and changes how big its contents are drawn. Menus, the Widget Picker, Settings, toasts and
   // dialogs follow it too (CSS zoom: var(--ui)). A board saved before this existed (no board.scale) is
   // converted once, keeping its arrangement as it looks on the screen it's opened on.
   // See docs/DATA-FORMAT.md, "Layout space".
@@ -768,7 +768,7 @@
   const SCALES = [0.5, 0.6, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
   const DEFAULT_SCALE = 0.8;
   const Zoom = { s: 1, ox: 0, oy: 0, vw: 0, vh: 0, ui: 1 };
-  // Menus, the App Picker, Settings, toasts and dialogs are drawn at the board's size, but never bigger than
+  // Menus, the Widget Picker, Settings, toasts and dialogs are drawn at the board's size, but never bigger than
   // fits this screen (a size picked on a smartboard can arrive on a tablet or phone in a backup).
   const UI_FIT_W = 520, UI_FIT_H = 440;
   const validScale = v => (typeof v === 'number' && v >= 0.5 && v <= 2 ? v : null);   // the Settings range
@@ -906,8 +906,8 @@
       const ui = Zoom.ui;
       const side = Zoom.ox;                                  // width of each side margin
       const below = Zoom.vh - bh;                            // height of the margin under the board
-      const corner = 80 * ui;                                // the App Picker buttons in the bottom corners
-      // Put it where there's room, clear of the App Picker buttons: the middle of the space below the
+      const corner = 80 * ui;                                // the Widget Picker buttons in the bottom corners
+      // Put it where there's room, clear of the Widget Picker buttons: the middle of the space below the
       // board, or the right margin above its button.
       const box = below >= side ? { x: corner, y: bh, w: Zoom.vw - 2 * corner, h: below } : { x: Zoom.ox + bw, y: 0, w: side, h: Zoom.vh - corner };
       Object.assign(this.el.style, { left: '0px', top: '0px', maxWidth: Math.max(140, box.w - 24) / ui + 'px' });   // measure unconstrained
@@ -959,7 +959,7 @@
     const shapeHint = freeShape()
       ? 'Any shape: the board fills the window. On a smaller screen, windows are moved to fit.'
       : '16:9: every screen shows the same arrangement, fitted to the window.' + (unused > 0.15 ? ' This window is a different shape, so part of it is shaded.' : '');
-    return `<div class="row"><div><div class="lbl">Size of windows and menus</div><div class="hint">Title bars, menus and app contents. Windows keep their place on the board.</div></div>
+    return `<div class="row"><div><div class="lbl">Size of windows and menus</div><div class="hint">Title bars, menus and widget contents. Windows keep their place on the board.</div></div>
         <div class="stepper" role="group" aria-label="Size of windows and menus">
           <button class="icon" data-act="scale-down" aria-label="Smaller"${sc <= SCALES[0] + 0.001 ? ' disabled' : ''}>−</button>
           <output id="st-scale" aria-live="polite">${Math.round(sc * 100)}%</output>
@@ -1209,9 +1209,9 @@
     return clampToView({ x: anchor.x - s.w / 2 + k * 28, y: anchor.y - s.h / 2 + k * 28, w: s.w, h: s.h }, view);
   }
 
-  function defaultOuterSize(app) {
-    const w = app.win.width;
-    const h = app.win.aspectRatio ? w / app.win.aspectRatio : app.win.height;
+  function defaultOuterSize(widget) {
+    const w = widget.win.width;
+    const h = widget.win.aspectRatio ? w / widget.win.aspectRatio : widget.win.height;
     return { w: Math.round(w), h: Math.round(h + TITLE_H) };
   }
 
@@ -1221,7 +1221,7 @@
   class Win {
     constructor(ikey) {
       this.ikey = ikey;
-      this.app = getApp(this.inst.appId);
+      this.widget = getWidget(this.inst.widgetId);
       this.rt = {};             // runtime constraint overrides set by the widget
       this.menuItems = [];
       this.subtitle = '';
@@ -1238,7 +1238,7 @@
       const el = document.createElement('section');
       el.className = 'win opening';
       el.dataset.ikey = this.ikey;
-      el.setAttribute('aria-label', this.app.name);
+      el.setAttribute('aria-label', this.widget.name);
       el.innerHTML =
         `<div class="win-title"><button class="win-label" aria-haspopup="menu" title="Window menu"><span class="name"></span><span class="num"></span><span class="sub"></span>${svg('chevron')}</button></div>` +
         `<div class="win-body"><div class="win-loading"></div></div>` +
@@ -1258,19 +1258,19 @@
     createFrame() {
       if (this.iframe) this.iframe.remove();
       const f = document.createElement('iframe');
-      f.title = this.app.name;
+      f.title = this.widget.name;
       f.setAttribute('sandbox', SANDBOX);
-      f.setAttribute('allow', ['fullscreen', 'clipboard-read', 'clipboard-write', 'autoplay', ...this.app.permissions].join('; '));
+      f.setAttribute('allow', ['fullscreen', 'clipboard-read', 'clipboard-write', 'autoplay', ...this.widget.permissions].join('; '));
       f.addEventListener('load', () => this.onFrameLoad());
       this.bodyEl.insertBefore(f, this.loadingEl);
       this.iframe = f;
       this.loadingEl.classList.remove('done');
-      f.src = this.app.entry;
+      f.src = this.widget.entry;
     }
 
     onFrameLoad() {
       this.loadingEl.classList.add('done');
-      // Same-origin: catch taps inside the app even if it doesn't use the SDK.
+      // Same-origin: catch taps inside the widget even if it doesn't use the SDK.
       try {
         this.iframe.contentWindow.addEventListener('pointerdown', () => { focusWin(this.ikey); closePopups(); }, true);
       } catch (e) { /* cross-origin: the SDK's 'activate' message covers this */ }
@@ -1293,20 +1293,20 @@
     }
 
     renderTitle() {
-      $('.name', this.labelEl).textContent = this.app.name;
+      $('.name', this.labelEl).textContent = this.widget.name;
       $('.num', this.labelEl).textContent = this.inst && this.inst.n > 1 ? String(this.inst.n) : '';
       $('.sub', this.labelEl).textContent = this.subtitle;
-      this.labelEl.setAttribute('aria-label', `${this.app.name}${this.inst && this.inst.n > 1 ? ' ' + this.inst.n : ''} window menu`);
+      this.labelEl.setAttribute('aria-label', `${this.widget.name}${this.inst && this.inst.n > 1 ? ' ' + this.inst.n : ''} window menu`);
     }
 
-    // One finger / mouse anywhere inside: only for click-only apps (registry or SDK), never when maximized.
+    // One finger / mouse anywhere inside: only for click-only widgets (registry or SDK), never when maximized.
     canDragFromContent() {
       if (S.settings.dragFromContent === false || !this.inst || this.inst.maximized) return false;
-      return this.rt.dragFromContent !== undefined ? this.rt.dragFromContent : this.app.win.dragFromContent;
+      return this.rt.dragFromContent !== undefined ? this.rt.dragFromContent : this.widget.win.dragFromContent;
     }
 
     constraints() {
-      const w = this.app.win, rt = this.rt;
+      const w = this.widget.win, rt = this.rt;
       return {
         minW: rt.minW || w.minWidth,
         minH: (rt.minH || w.minHeight) + TITLE_H,
@@ -1394,7 +1394,7 @@
           this.post('init', {
             context: {
               sdkProtocol: SDK_PROTOCOL, boardVersion: BOARD_VERSION,
-              appId: this.app.id, appName: this.app.name, appVersion: this.app.version, instance: inst.n,
+              widgetId: this.widget.id, widgetName: this.widget.name, widgetVersion: this.widget.version, instance: inst.n,
               data: clone(S.data.get(this.ikey)), config: clone(S.conf.get(this.ikey)),
               theme, palette: paletteFor(theme), window: this.info(),
               locale: navigator.language || 'en-US', devMode: !!S.settings.devMode
@@ -1541,18 +1541,18 @@
     if (cur) { cur.el.classList.add('focused'); cur.post('focus'); cur.notifyInfo(); }
   }
 
-  // Open an app: reopen its lowest-numbered closed instance (restoring its data),
+  // Open a widget: reopen its lowest-numbered closed instance (restoring its data),
   // or create the next instance number if every existing one is already open.
-  function openApp(appId, opts = {}) {
-    const app = getApp(appId);
-    if (!app) return null;
-    const mine = Array.from(S.insts.values()).filter(i => i.appId === appId).sort((a, b) => a.n - b.n);
+  function openWidget(widgetId, opts = {}) {
+    const widget = getWidget(widgetId);
+    if (!widget) return null;
+    const mine = Array.from(S.insts.values()).filter(i => i.widgetId === widgetId).sort((a, b) => a.n - b.n);
     const closed = mine.find(i => !i.open);
     let ikey, inst;
     if (closed) {
-      ikey = ikeyOf(appId, closed.n);
+      ikey = ikeyOf(widgetId, closed.n);
       const view = boundsRect();
-      let rect = fitRect(closed.rect, constraintsFor(app), view);
+      let rect = fitRect(closed.rect, constraintsFor(widget), view);
       const obs = obstacles(null);
       if (obs.some(o => overlaps(rect, o))) {
         const spot = findFreeSpot(rect.w, rect.h, view, obs, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
@@ -1563,9 +1563,9 @@
       const used = new Set(mine.map(i => i.n));
       let n = 1;
       while (used.has(n)) n++;
-      ikey = ikeyOf(appId, n);
-      const rect = placeNew(defaultOuterSize(app), constraintsFor(app), opts.side);
-      inst = { appId, n, open: true, rect, z: maxZ() + 1, maximized: false, createdAt: Date.now() };
+      ikey = ikeyOf(widgetId, n);
+      const rect = placeNew(defaultOuterSize(widget), constraintsFor(widget), opts.side);
+      inst = { widgetId, n, open: true, rect, z: maxZ() + 1, maximized: false, createdAt: Date.now() };
     }
     S.deselected = false;
     saveInst(ikey, inst);
@@ -1577,8 +1577,8 @@
     return ikey;
   }
 
-  function constraintsFor(app) {
-    const w = app.win;
+  function constraintsFor(widget) {
+    const w = widget.win;
     return { minW: w.minWidth, minH: w.minHeight + TITLE_H, maxW: w.maxWidth, maxH: w.maxHeight + TITLE_H, ratio: w.aspectRatio, resizable: w.resizable };
   }
 
@@ -1598,8 +1598,8 @@
       let shown = 0;
       try { shown = +localStorage.getItem('21board-tip-close') || 0; } catch (e) { /* ignore */ }
       if (shown < 3) {
-        const app = getApp(inst.appId);
-        toast(`${app ? app.name : 'App'} closed. Its content is saved — open it again from the App Picker.`);
+        const widget = getWidget(inst.widgetId);
+        toast(`${widget ? widget.name : 'Widget'} closed. Its content is saved — open it again from the Widget Picker.`);
         try { localStorage.setItem('21board-tip-close', String(shown + 1)); } catch (e) { /* ignore */ }
       }
     }
@@ -1617,10 +1617,10 @@
   async function resetWin(ikey) {
     const inst = S.insts.get(ikey);
     if (!inst) return;
-    const app = getApp(inst.appId);
+    const widget = getWidget(inst.widgetId);
     const b = S.boardId;
     S.data.delete(ikey); S.conf.delete(ikey);
-    const def = app ? defaultOuterSize(app) : { w: inst.rect.w, h: inst.rect.h };
+    const def = widget ? defaultOuterSize(widget) : { w: inst.rect.w, h: inst.rect.h };
     const rect = Object.assign({}, inst.rect, { w: def.w, h: def.h });
     await Promise.all([Writer.del(Keys.data(b, ikey)), Writer.del(Keys.conf(b, ikey)), saveInst(ikey, Object.assign({}, inst, { rect, maximized: false }))]);
     Sync.announce([], { op: 'reset', board: b, ikey });
@@ -1673,7 +1673,7 @@
     get active() { return this.map.size > 0; },
     holds(win) { for (const it of this.map.values()) if (it.win === win) return it; return null; },
 
-    // Drags that start inside an app (section 9a), called once the press has moved past the slop.
+    // Drags that start inside a widget (section 9a), called once the press has moved past the slop.
     // `key` is the pointerId, or a string for two-finger drags. Fails if someone else has this window.
     beginAt(key, win, x, y, type) {
       if (this.holds(win)) return false;
@@ -1688,7 +1688,7 @@
     },
     moveTo(key, x, y) { this.move({ pointerId: key, clientX: x, clientY: y }); const it = this.map.get(key); return !!(it && it.moved); },
     endFor(key, cancelled) { const it = this.map.get(key); const moved = !!(it && it.moved); this.end({ pointerId: key }, cancelled); return moved; },
-    // A window's app was reloaded or the window closed mid-gesture: its pointers will never report back.
+    // A window's widget was reloaded or the window closed mid-gesture: its pointers will never report back.
     forget(win, contentOnly) {
       for (const [key, it] of Array.from(this.map)) if (it.win === win && (!contentOnly || it.kind === 'content')) this.end({ pointerId: key }, true);
     },
@@ -1716,7 +1716,7 @@
         if (Math.hypot(it.x - it.sx, it.y - it.sy) < DRAG_THRESHOLD) return;
         it.moved = true;
         document.body.classList.add('busy');
-        // Mouse only: let the pointer pass over app iframes. Touch and pen stay with their element anyway,
+        // Mouse only: let the pointer pass over widget iframes. Touch and pen stay with their element anyway,
         // and other people can keep using (and dragging) the other windows.
         if (it.type === 'mouse') document.body.classList.add('busy-mouse');
         Menu.close();
@@ -1792,30 +1792,30 @@
   // =====================================================================
   // 9a. Moving windows by their content
   // ---------------------------------------------------------------------
-  // - Click-only apps (registry window.dragFromContent, default true): drag
+  // - Click-only widgets (registry window.dragFromContent, default true): drag
   //   anywhere inside the window with one finger or the mouse. A tap is still
   //   a tap: a press only becomes a window drag once it moves past the slop
-  //   (touch uses the browser's own tap allowance), and then the app doesn't
+  //   (touch uses the browser's own tap allowance), and then the widget doesn't
   //   get the click or the release, so a button you started on doesn't fire.
-  // - Every app: two fingers of one hand anywhere inside move the window (for
-  //   apps that need drags themselves: typing/selecting text). Two touches far
+  // - Every widget: two fingers of one hand anywhere inside move the window (for
+  //   widgets that need drags themselves: typing/selecting text). Two touches far
   //   apart are two people, not a drag.
   // - Never started from: text fields, sliders, selects, canvas/video, editable
   //   or explicitly selectable text, scrolling areas (incl. a scrolling page),
   //   elements that handle touch themselves (touch-action other than auto /
   //   manipulation), draggable="true", anything inside [data-b21-nodrag], or a
-  //   press the app already handled (preventDefault on pointerdown or touchstart,
+  //   press the widget already handled (preventDefault on pointerdown or touchstart,
   //   or pointer capture). Two-finger moves skip [data-b21-nodrag], canvas, video
   //   and touch-handling elements.
-  // - A press claims nothing until it moves, so a finger resting in an app
+  // - A press claims nothing until it moves, so a finger resting in a widget
   //   never blocks someone else from moving or resizing that window.
   // Widgets are same-origin, so the board listens inside each iframe; nothing
-  // here is needed from the app. Settings → Windows can switch it off.
+  // here is needed from the widget. Settings → Windows can switch it off.
   // =====================================================================
-  const CONTENT_SLOP = { mouse: 6, pen: 10, touch: 16 };   // screen px before a press inside an app moves the window
+  const CONTENT_SLOP = { mouse: 6, pen: 10, touch: 16 };   // screen px before a press inside a widget moves the window
   const TWO_FINGER_SPAN = 260;                              // farther apart than this = two people
 
-  // Walk up through shadow roots too (apps built from web components).
+  // Walk up through shadow roots too (widgets built from web components).
   const parentOf = n => n.parentElement || (n.parentNode && n.parentNode.host) || null;
   const handlesTouch = cs => !/^(auto|manipulation)$/.test(cs.touchAction) && !/pan-x.*pan-y|pan-y.*pan-x/.test(cs.touchAction);
 
@@ -1855,7 +1855,7 @@
     let cw;
     try { cw = win.iframe.contentWindow; if (!cw || !cw.document) return; } catch (e) { return; } // cross-origin: title bar only
     const frame = win.iframe, doc = cw.document;
-    // App point -> board point. Read when each event arrives (the window moves under the finger).
+    // Widget point -> board point. Read when each event arrives (the window moves under the finger).
     const toBoard = (x, y) => {
       const r = frame.getBoundingClientRect();
       const k = frame.clientWidth ? r.width / frame.clientWidth : 1;
@@ -1875,7 +1875,7 @@
       return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
     };
     const endTwo = cancelled => { const t = two; two = null; if (t && t.started) Inter.endFor(t.key, cancelled); return !!(t && t.started); };
-    // The app no longer gets this pointer (its fingers are moving the window): let it drop what it started.
+    // The widget no longer gets this pointer (its fingers are moving the window): let it drop what it started.
     const cancelForApp = (id, target) => {
       try { target.dispatchEvent(new cw.PointerEvent('pointercancel', { pointerId: id, pointerType: 'touch', bubbles: true, composed: true })); } catch (err) { /* ignore */ }
     };
@@ -1888,7 +1888,7 @@
       for (const [id, s] of singles) if (s.type !== 'mouse') singles.delete(id);
     };
 
-    // Capture phase: see every finger, even in apps that stop propagation.
+    // Capture phase: see every finger, even in widgets that stop propagation.
     cw.addEventListener('pointerdown', e => {
       swallowClickUntil = swallowUpsUntil = 0;   // a new press: whatever click comes next is its own
       // One mouse: an earlier mouse press here is over (its release may have gone to the board).
@@ -1899,7 +1899,7 @@
       const target = origin(e);
       touches.set(e.pointerId, { p: toBoard(e.clientX, e.clientY), target });
       lastTouchDown = e.pointerId;
-      // Second finger: maybe a two-finger move (any app), unless a one-finger drag is already moving it.
+      // Second finger: maybe a two-finger move (any widget), unless a one-finger drag is already moving it.
       if (!enabled() || two || touches.size !== 2) return;
       const ids = Array.from(touches.keys());
       if (ids.some(id => singles.has(id) && singles.get(id).started)) return;
@@ -1912,7 +1912,7 @@
       two.start = centroid();
     }, true);
 
-    // Bubble phase: after the app's own handlers, so e.defaultPrevented is meaningful.
+    // Bubble phase: after the widget's own handlers, so e.defaultPrevented is meaningful.
     cw.addEventListener('pointerdown', e => {
       if (!enabled() || two || !win.canDragFromContent()) return;
       if (e.pointerType === 'touch' && touches.size > 1) return;
@@ -1947,7 +1947,7 @@
         if (Math.hypot(p.x - s.x, p.y - s.y) < (CONTENT_SLOP[s.type] || CONTENT_SLOP.mouse)) return;
         if (!Inter.beginAt(id, win, s.x, s.y, s.type)) { singles.delete(id); return; }
         s.started = true;
-        // Capture on the page itself, which the app can't re-render away mid-drag.
+        // Capture on the page itself, which the widget can't re-render away mid-drag.
         try { doc.documentElement.setPointerCapture(id); } catch (err) { /* ignore */ }
         try { cw.getSelection().removeAllRanges(); } catch (err) { /* ignore */ }
       }
@@ -1957,7 +1957,7 @@
     cw.addEventListener('pointermove', onMove, true);
 
     const finish = e => {
-      if (!e.isTrusted) return;   // our own pointercancel for the app
+      if (!e.isTrusted) return;   // our own pointercancel for the widget
       const id = e.pointerId, cancelled = e.type === 'pointercancel';
       const off = follows.get(id); if (off) { follows.delete(id); off(); }
       touches.delete(id);
@@ -1970,7 +1970,7 @@
       singles.delete(id);
       if (!s.started) return;
       Inter.endFor(id, cancelled);
-      // The release of a window drag is not a tap: the app gets neither it nor (for the mouse) the click.
+      // The release of a window drag is not a tap: the widget gets neither it nor (for the mouse) the click.
       e.stopImmediatePropagation();
       swallowUpsUntil = Date.now() + 80;
       if (s.type === 'mouse') swallowClickUntil = Date.now() + 500;
@@ -1984,7 +1984,7 @@
     const onTouchMove = e => { if (e.cancelable && win.contentBusy()) e.preventDefault(); };
     cw.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
 
-    // A finger's events keep going to the element it pressed, even after the app removes that element
+    // A finger's events keep going to the element it pressed, even after the widget removes that element
     // (re-rendering an icon, say), and then they no longer reach this window. Follow them there too.
     function followPress(e) {
       const n = e.target, id = e.pointerId;
@@ -2009,10 +2009,10 @@
 
     cw.addEventListener('gotpointercapture', e => {
       const s = singles.get(e.pointerId);
-      // Touch is captured to its own element automatically; any other capture is the app's.
+      // Touch is captured to its own element automatically; any other capture is the widget's.
       if (s && !s.started && (s.type === 'mouse' || origin(e) !== s.target)) singles.delete(e.pointerId);
     }, true);
-    // The app cancelled the touch (a swipe widget): it's the app's gesture.
+    // The widget cancelled the touch (a swipe widget): it's the widget's gesture.
     cw.addEventListener('touchstart', e => {
       if (e.defaultPrevented && lastTouchDown !== null) { const s = singles.get(lastTouchDown); if (s && !s.started) singles.delete(lastTouchDown); }
       lastTouchDown = null;
@@ -2032,7 +2032,7 @@
     cw.addEventListener('dragstart', e => { if (Array.from(singles.values()).some(s => s.type === 'mouse')) e.preventDefault(); }, true);
   }
 
-  // A touch that is the only finger on the screen (isPrimary, shared by the board and its apps) means any
+  // A touch that is the only finger on the screen (isPrimary, shared by the board and its widgets) means any
   // finger still remembered from before never reported its release: end those, so nothing stays held.
   function forgetStaleTouches(exceptId) {
     for (const [key, it] of Array.from(Inter.map)) if (it.type === 'touch' && key !== exceptId) Inter.end({ pointerId: key }, false);
@@ -2078,7 +2078,7 @@
   }
 
   // =====================================================================
-  // 10. App Picker panel
+  // 10. Widget Picker panel
   // =====================================================================
   const Picker = {
     side: null,
@@ -2097,12 +2097,12 @@
         const b = e.target.closest('[data-ctl]');
         if (b) this.control(b.dataset.ctl);
       });
-      $('.panel-apps', this.el).addEventListener('click', e => {
-        const t = e.target.closest('[data-app]');
+      $('.panel-widgets', this.el).addEventListener('click', e => {
+        const t = e.target.closest('[data-widget]');
         if (!t) return;
         const side = this.side;
         this.close();
-        openApp(t.dataset.app, { side });
+        openWidget(t.dataset.widget, { side });
       });
     },
 
@@ -2131,17 +2131,17 @@
     render() {
       if (!this.el) return;
       const counts = new Map();
-      for (const inst of S.insts.values()) if (inst.open) counts.set(inst.appId, (counts.get(inst.appId) || 0) + 1);
-      const apps = pickerApps();
+      for (const inst of S.insts.values()) if (inst.open) counts.set(inst.widgetId, (counts.get(inst.widgetId) || 0) + 1);
+      const widgets = pickerWidgets();
       const cols = window.innerWidth / Zoom.ui < 440 ? 3 : 4;   // the panel is drawn at Zoom.ui
       this.el.style.setProperty('--cols', String(cols));
-      $('.panel-apps', this.el).innerHTML = apps.map(a => {
+      $('.panel-widgets', this.el).innerHTML = widgets.map(a => {
         const c = counts.get(a.id) || 0;
-        return `<button class="app-tile" role="listitem" data-app="${esc(a.id)}" title="${esc(a.description || a.name)}">` +
-          `<span class="app-icon" style="--c:${esc(a.color)}">${a.icon}</span><span>${esc(a.name)}</span>` +
+        return `<button class="widget-tile" role="listitem" data-widget="${esc(a.id)}" title="${esc(a.description || a.name)}">` +
+          `<span class="widget-icon" style="--c:${esc(a.color)}">${a.icon}</span><span>${esc(a.name)}</span>` +
           (c ? `<span class="badge" aria-label="${c} open">${c}</span>` : '') +
           (a.dev || a.devOnly ? '<span class="devtag">DEV</span>' : '') + '</button>';
-      }).join('') || '<div class="empty-note" style="grid-column:1/-1;padding:16px">No apps installed.</div>';
+      }).join('') || '<div class="empty-note" style="grid-column:1/-1;padding:16px">No widgets installed.</div>';
     },
 
     renderControls() {
@@ -2227,7 +2227,7 @@
       const item = (act, icon, label, extra = '', cls = '') =>
         `<button class="menu-item ${cls}" role="menuitem" data-act="${act}" ${extra}><span class="icon-slot">${icon}</span><span class="label">${esc(label)}</span></button>`;
       if (this.confirming) {
-        const name = `${w.app.name}${w.inst.n > 1 ? ' ' + w.inst.n : ''}`;
+        const name = `${w.widget.name}${w.inst.n > 1 ? ' ' + w.inst.n : ''}`;
         this.el.innerHTML = `<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything saved in this window and returns it to its starting size.</div>` +
           item('reset-yes', svg('reset'), 'Reset', '', 'danger') + item('reset-no', '', 'Cancel');
         return;
@@ -2240,11 +2240,11 @@
           // A row of color choices; background (optional) shows the color on what it will be used on.
           html += `<div class="menu-swatches" role="group" aria-label="${esc(i.label)}">` + i.swatches.map(s =>
             `<button class="swatch" role="menuitemradio" aria-checked="${s.checked}" aria-label="${esc(s.label)}" title="${esc(s.label)}" ` +
-            `data-act="app" data-id="${esc(s.id)}" style="--sw:${s.color};--swbg:${s.background || s.color}"></button>`).join('') + '</div>';
+            `data-act="widget" data-id="${esc(s.id)}" style="--sw:${s.color};--swbg:${s.background || s.color}"></button>`).join('') + '</div>';
           continue;
         }
         const check = i.checked === true ? svg('check', 'check') : '';
-        html += `<button class="menu-item" role="${i.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" ${i.checked !== undefined ? `aria-checked="${i.checked}"` : ''} data-act="app" data-id="${esc(i.id)}" ${i.disabled ? 'disabled' : ''}>` +
+        html += `<button class="menu-item" role="${i.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" ${i.checked !== undefined ? `aria-checked="${i.checked}"` : ''} data-act="widget" data-id="${esc(i.id)}" ${i.disabled ? 'disabled' : ''}>` +
           `<span class="icon-slot">${i.icon || ''}</span><span class="label">${esc(i.label)}</span>${check}</button>`;
       }
       if (html) html += '<div class="menu-sep"></div>';
@@ -2298,7 +2298,7 @@
       const w = this.win;
       if (!w) return;
       switch (act) {
-        case 'app': w.post('menu', { id }); this.close(); break;
+        case 'widget': w.post('menu', { id }); this.close(); break;
         case 'maximize': this.close(); setMaximized(w.ikey, true); break;
         case 'restore': this.close(); setMaximized(w.ikey, false); break;
         case 'reset': this.confirming = true; this.render(); this.position(); break;
@@ -2447,28 +2447,28 @@
       const photoSet = BoardPhoto.settings(), photoShown = !!(photoSet && photoSet.on && BoardPhoto.media());
 
       const insts = Array.from(S.insts.entries()).sort((a, b) => {
-        const an = (getApp(a[1].appId) || { name: a[1].appId }).name, bn = (getApp(b[1].appId) || { name: b[1].appId }).name;
+        const an = (getWidget(a[1].widgetId) || { name: a[1].widgetId }).name, bn = (getWidget(b[1].widgetId) || { name: b[1].widgetId }).name;
         return an.localeCompare(bn) || a[1].n - b[1].n;
       });
       const instHTML = insts.length ? insts.map(([ikey, i]) => {
-        const app = getApp(i.appId);
+        const widget = getWidget(i.widgetId);
         const size = JSON.stringify(S.data.get(ikey) || '').length + JSON.stringify(S.conf.get(ikey) || '').length;
-        const name = `${app ? app.name : i.appId}${i.n > 1 || !app ? ' ' + i.n : ''}`;
-        const status = !app ? 'App not installed' : i.open ? 'Open' : 'Closed';
-        return `<div class="inst"><span class="app-icon" style="--c:${esc(app ? app.color : '#9ca3af')}">${app ? app.icon : svg('app')}</span>` +
+        const name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
+        const status = !widget ? 'Widget not installed' : i.open ? 'Open' : 'Closed';
+        return `<div class="inst"><span class="widget-icon" style="--c:${esc(widget ? widget.color : '#9ca3af')}">${widget ? widget.icon : svg('widget')}</span>` +
           `<div class="meta"><b>${esc(name)}</b><span>${status} · ${fmtBytes(size)} saved</span></div>` +
-          (app && !i.open ? `<button class="icon" data-act="inst-open" data-val="${esc(ikey)}" title="Open" aria-label="Open ${esc(name)}">${svg('open')}</button>` : '') +
+          (widget && !i.open ? `<button class="icon" data-act="inst-open" data-val="${esc(ikey)}" title="Open" aria-label="Open ${esc(name)}">${svg('open')}</button>` : '') +
           `<button class="icon" data-act="inst-delete" data-val="${esc(ikey)}" title="Delete" aria-label="Delete ${esc(name)} and its content">${svg('trash')}</button></div>`;
-      }).join('') : '<div class="empty-note">No app windows yet. Open one from the App Picker.</div>';
+      }).join('') : '<div class="empty-note">No widget windows yet. Open one from the Widget Picker.</div>';
 
-      const devApps = (st.devApps || []).map(d =>
-        `<div class="inst"><span class="app-icon" style="--c:#64748b">${svg('app')}</span><div class="meta"><b>${esc(d.name)}</b><span>${esc(d.entry)}</span></div>` +
+      const devWidgets = (st.devWidgets || []).map(d =>
+        `<div class="inst"><span class="widget-icon" style="--c:#64748b">${svg('widget')}</span><div class="meta"><b>${esc(d.name)}</b><span>${esc(d.entry)}</span></div>` +
         `<button class="icon" data-act="dev-remove" data-val="${esc(d.id)}" title="Remove" aria-label="Remove ${esc(d.name)}">${svg('trash')}</button></div>`).join('');
 
       this.body.innerHTML = `
         <h3>Appearance</h3>
         <div class="row"><div class="lbl">Theme</div>${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']])}</div>
-        <div class="row stack"><div><div class="lbl">Accent color</div><div class="hint">Buttons, the selected-window outline and highlights, in 21Board and its apps.</div></div>
+        <div class="row stack"><div><div class="lbl">Accent color</div><div class="hint">Buttons, the selected-window outline and highlights, in 21Board and its widgets.</div></div>
           <div class="swatches">${Object.entries(ACCENTS).map(([k, a]) => `<button class="swatch${(st.accent || 'blue') === k ? ' on' : ''}" style="background:${resolvedTheme() === 'dark' ? a[1] : a[0]}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent"></button>`).join('')}</div></div>
         <div class="row stack"><div class="lbl">Board background</div>
           <div class="swatches">
@@ -2482,18 +2482,18 @@
 
         <h3>Windows</h3>
         <div class="row"><div><div class="lbl">Snap and avoid overlap</div><div class="hint">Windows stop at each other's edges. Keep pushing to overlap anyway.</div></div>${sw('snapping', st.snapping, 'Snap and avoid overlap')}</div>
-        <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Apps without typing move by dragging anywhere in them; any app moves with two fingers. Off: title bar only.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
+        <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Widgets without typing move by dragging anywhere in them; any widget moves with two fingers. Off: title bar only.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
         <div class="row"><div class="lbl">Push needed to overlap</div>${seg('resistance', st.resistance, [['gentle', 'Light'], ['normal', 'Medium'], ['strong', 'Firm']], !st.snapping)}</div>
         ${scaleSettingsRows(seg)}
         <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">Content stays saved for next time.</div></div><button class="btn" data-act="close-all">${svg('windows')}Close all</button></div>
 
-        <h3>App Picker</h3>
+        <h3>Widget Picker</h3>
         <div class="row"><div class="lbl">Show controls in</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']])}</div>
 
         <h3>Board</h3>
         <div class="row stack"><label class="lbl" for="set-board-name">Board name <span class="hint">(used for export file names)</span></label>
           <input type="text" class="text-input" id="set-board-name" maxlength="60" value="${esc(S.board.name)}" autocomplete="off"></div>
-        <div class="row stack"><div><div class="lbl">Saved app windows</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
+        <div class="row stack"><div><div class="lbl">Saved widget windows</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
           <div class="inst-list">${instHTML}</div></div>
 
         <h3>Storage &amp; offline</h3>
@@ -2505,8 +2505,8 @@
         <h3>Advanced</h3>
         <div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget by its path.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>
         ${st.devMode ? `<div class="row stack"><div class="lbl">Test a widget</div>
-          <div style="display:flex;gap:8px"><input type="text" class="text-input" id="set-dev-path" placeholder="apps/my-app/index.html" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="dev-add">${svg('plus')}Add</button></div>
-          ${devApps ? `<div class="inst-list">${devApps}</div>` : ''}</div>` : ''}
+          <div style="display:flex;gap:8px"><input type="text" class="text-input" id="set-dev-path" placeholder="widgets/my-widget/index.html" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="dev-add">${svg('plus')}Add</button></div>
+          ${devWidgets ? `<div class="inst-list">${devWidgets}</div>` : ''}</div>` : ''}
         <div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Deletes all windows, content and settings on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase</button></div>
 
         <h3>About</h3>
@@ -2597,8 +2597,8 @@
         case 'inst-delete': {
           const i = S.insts.get(val);
           if (!i) break;
-          const app = getApp(i.appId);
-          const name = `${app ? app.name : i.appId}${i.n > 1 || !app ? ' ' + i.n : ''}`;
+          const widget = getWidget(i.widgetId);
+          const name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
           const ok = await dialog({ title: `Delete ${name}?`, message: 'Its window and everything saved in it will be removed from this device. This can’t be undone.', actions: [{ label: 'Delete', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
           if (ok) { await deleteInstance(val); this.render(); }
           break;
@@ -2614,15 +2614,15 @@
           try { url = new URL(path, location.href); } catch (e) { toast('That path is not valid.'); break; }
           if (url.origin !== location.origin) { toast('Widgets must be served from this same site.'); break; }
           const rel = url.pathname.replace(new RegExp('^' + location.pathname.replace(/[^/]*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '') + url.search;
-          const slug = rel.replace(/\/?index\.html$/, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 50) || 'app';
+          const slug = rel.replace(/\/?index\.html$/, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 50) || 'widget';
           const id = 'dev-' + slug;
-          const name = (slug.split('-').filter(p => p && p !== 'apps').pop() || 'Test app').replace(/^./, c => c.toUpperCase()) + ' (test)';
-          const list = (S.settings.devApps || []).filter(d => d.id !== id).concat([{ id, name, entry: rel }]);
-          updateSettings({ devApps: list });
-          openApp(id, { side: this.side });
+          const name = (slug.split('-').filter(p => p && p !== 'widgets').pop() || 'Test widget').replace(/^./, c => c.toUpperCase()) + ' (test)';
+          const list = (S.settings.devWidgets || []).filter(d => d.id !== id).concat([{ id, name, entry: rel }]);
+          updateSettings({ devWidgets: list });
+          openWidget(id, { side: this.side });
           break;
         }
-        case 'dev-remove': updateSettings({ devApps: (S.settings.devApps || []).filter(d => d.id !== val) }); break;
+        case 'dev-remove': updateSettings({ devWidgets: (S.settings.devWidgets || []).filter(d => d.id !== val) }); break;
         case 'erase': {
           const ok = await dialog({ title: 'Erase everything?', message: 'All windows, their content, and your settings will be deleted from this device. Export a backup first if you might want them later.', actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }, { label: 'Cancel', value: null }] });
           if (ok === 'backup') { await doExport('full'); break; }
@@ -2643,10 +2643,10 @@
     const inst = S.insts.get(ikey);
     if (!inst || inst.open) return;
     // Temporarily make it the lowest closed instance by opening directly.
-    const app = getApp(inst.appId);
-    if (!app) return;
+    const widget = getWidget(inst.widgetId);
+    if (!widget) return;
     const view = boundsRect();
-    let rect = fitRect(inst.rect, constraintsFor(app), view);
+    let rect = fitRect(inst.rect, constraintsFor(widget), view);
     const obs = obstacles(null);
     if (obs.some(o => overlaps(rect, o))) {
       const spot = findFreeSpot(rect.w, rect.h, view, obs, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
@@ -2672,7 +2672,7 @@
       message: 'Save a .21board file you can import later or share with another teacher.',
       actions: [
         { label: 'Full backup', sub: 'Windows, their content, and closed windows', value: 'full', kind: 'primary', choice: true },
-        { label: 'Blank template', sub: 'Window layout and app settings only — no content', value: 'template', choice: true },
+        { label: 'Blank template', sub: 'Window layout and widget settings only — no content', value: 'template', choice: true },
         { label: 'Cancel', value: null }
       ]
     });
@@ -2692,17 +2692,17 @@
     for (const [ik, inst] of S.insts) get(ik).inst = inst;
     const instances = [];
     for (const [ik, parts] of byIkey) {
-      const [appId, nStr] = ik.split(':');
-      const inst = parts.inst ? normalizeInst(parts.inst, { appId, n: +nStr }) : normalizeInst({ open: false }, { appId, n: +nStr });
+      const [widgetId, nStr] = ik.split(':');
+      const inst = parts.inst ? normalizeInst(parts.inst, { widgetId, n: +nStr }) : normalizeInst({ open: false }, { widgetId, n: +nStr });
       if (kind === 'template' && !inst.open) continue;
       instances.push({
-        appId, instance: +nStr, open: inst.open, maximized: inst.maximized, z: inst.z,
+        widgetId, instance: +nStr, open: inst.open, maximized: inst.maximized, z: inst.z,
         rect: inst.rect,
         config: parts.conf === undefined ? null : parts.conf,
         data: kind === 'full' && parts.data !== undefined ? parts.data : null
       });
     }
-    instances.sort((a, b2) => a.appId.localeCompare(b2.appId) || a.instance - b2.instance);
+    instances.sort((a, b2) => a.widgetId.localeCompare(b2.widgetId) || a.instance - b2.instance);
     return {
       format: '21board',
       formatVersion: FORMAT_VERSION,
@@ -2767,14 +2767,14 @@
     if (typeof j.formatVersion === 'number' && j.formatVersion > FORMAT_VERSION) throw new Error('This file was made by a newer version of 21Board. Update 21Board and try again.');
     const seen = new Set();
     const instances = (Array.isArray(j.instances) ? j.instances : []).filter(i => {
-      if (!i || !ID_RE.test(i.appId || '') || !Number.isInteger(i.instance) || i.instance < 1) return false;
-      const k = ikeyOf(i.appId, i.instance);
+      if (!i || !ID_RE.test(i.widgetId || '') || !Number.isInteger(i.instance) || i.instance < 1) return false;
+      const k = ikeyOf(i.widgetId, i.instance);
       if (seen.has(k)) return false;
       seen.add(k);
       return true;
     }).map(i => ({
-      appId: i.appId, n: i.instance, open: !!i.open, maximized: !!i.maximized, z: num(i.z, 1),
-      rect: normalizeInst({ rect: i.rect }, { appId: i.appId, n: i.instance }).rect,
+      widgetId: i.widgetId, n: i.instance, open: !!i.open, maximized: !!i.maximized, z: num(i.z, 1),
+      rect: normalizeInst({ rect: i.rect }, { widgetId: i.widgetId, n: i.instance }).rect,
       config: i.config === undefined ? null : i.config,
       data: i.data === undefined ? null : i.data
     }));
@@ -2806,11 +2806,11 @@
       return;
     }
     const openCount = parsed.instances.filter(i => i.open).length;
-    const missing = new Set(parsed.instances.filter(i => !getApp(i.appId)).map(i => i.appId));
+    const missing = new Set(parsed.instances.filter(i => !getWidget(i.widgetId)).map(i => i.widgetId));
     const what = parsed.kind === 'template' ? 'a blank template' : 'a full backup';
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
-      message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} app${missing.size === 1 ? ' is' : 's are'} not installed here; ${missing.size === 1 ? 'its' : 'their'} content will be kept but not shown.` : ''),
+      message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' is' : 's are'} not installed here; ${missing.size === 1 ? 'its' : 'their'} content will be kept but not shown.` : ''),
       actions: [
         { label: 'Replace my board', sub: 'Your current windows and content are removed', value: 'replace', kind: 'danger', choice: true },
         { label: 'Add to my board', sub: 'Keep what’s here and add these windows', value: 'add', kind: 'primary', choice: true },
@@ -2833,8 +2833,8 @@
     const rev = Date.now();
     const rec = (key, type, value) => ({ key, type, rev, updatedAt: rev, by: TAB_ID, value });
 
-    const used = new Map(); // appId -> Set of instance numbers
-    if (mode === 'add') for (const i of S.insts.values()) { if (!used.has(i.appId)) used.set(i.appId, new Set()); used.get(i.appId).add(i.n); }
+    const used = new Map(); // widgetId -> Set of instance numbers
+    if (mode === 'add') for (const i of S.insts.values()) { if (!used.has(i.widgetId)) used.set(i.widgetId, new Set()); used.get(i.widgetId).add(i.n); }
     const zBase = mode === 'add' ? maxZ() : 0;
     const placed = mode === 'add' ? obstacles(null) : [];
     const out = [];
@@ -2842,13 +2842,13 @@
     for (const i of p.instances.slice().sort((a, b2) => a.z - b2.z)) {
       let n = i.n;
       if (mode === 'add') {
-        const set = used.get(i.appId) || new Set();
+        const set = used.get(i.widgetId) || new Set();
         n = 1; while (set.has(n)) n++;
-        set.add(n); used.set(i.appId, set);
+        set.add(n); used.set(i.widgetId, set);
       }
       let rect = convert(i.rect);
-      const app = getApp(i.appId);
-      if (app) rect = fitRect(rect, constraintsFor(app), view);
+      const widget = getWidget(i.widgetId);
+      if (widget) rect = fitRect(rect, constraintsFor(widget), view);
       if (mode === 'add' && i.open) {
         if (placed.some(o => overlaps(rect, o))) {
           const spot = findFreeSpot(rect.w, rect.h, view, placed, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
@@ -2862,8 +2862,8 @@
         }
         placed.push(rect);
       }
-      const ik = ikeyOf(i.appId, n);
-      out.push(rec(Keys.inst(b, ik), 'inst', { appId: i.appId, n, open: i.open, rect, z: zBase + i.z, maximized: i.maximized, createdAt: rev }));
+      const ik = ikeyOf(i.widgetId, n);
+      out.push(rec(Keys.inst(b, ik), 'inst', { widgetId: i.widgetId, n, open: i.open, rect, z: zBase + i.z, maximized: i.maximized, createdAt: rev }));
       if (i.config !== null) out.push(rec(Keys.conf(b, ik), 'conf', i.config));
       if (i.data !== null && p.kind === 'full') out.push(rec(Keys.data(b, ik), 'data', i.data));
     }
@@ -3098,7 +3098,7 @@
     document.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary) forgetStaleTouches(e.pointerId); }, true);
     document.addEventListener('pointermove', e => Inter.move(e));
     // Touches that started on the board (a title bar, the empty board) carry every later finger's touchmove too,
-    // including fingers moving a window from inside an app: keep the browser from panning those away.
+    // including fingers moving a window from inside a widget: keep the browser from panning those away.
     document.addEventListener('touchmove', e => {
       if (!e.cancelable) return;
       if (Inter.active || Array.from(S.wins.values()).some(w => w.contentBusy && w.contentBusy())) e.preventDefault();
@@ -3114,7 +3114,7 @@
       if (Menu.win && !t.closest('#menu') && !t.closest('.win-label')) Menu.close();
       if (Settings.isOpen && !t.closest('#settings') && !t.closest('#modal') && !t.closest('.picker-btn') && !t.closest('#panel')) Settings.close();
     }, true);
-    // Focus moving into an app iframe (a tap inside it) also closes popups.
+    // Focus moving into a widget iframe (a tap inside it) also closes popups.
     window.addEventListener('blur', () => setTimeout(() => { if (document.activeElement && document.activeElement.tagName === 'IFRAME') { Picker.close(); Menu.close(); } }, 0));
 
     document.addEventListener('keydown', e => {
@@ -3179,7 +3179,7 @@
   window.__board21 = {
     version: BOARD_VERSION, state: S, store: Store, zoom: Zoom, inter: Inter, setBoardScale, setBoardShape, boundsRect,
     setRect: (ikey, rect) => { const i = S.insts.get(ikey); if (!i) return; saveInst(ikey, Object.assign({}, i, { rect })); const w = S.wins.get(ikey); if (w) w.layout(); },
-    openApp, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
+    openWidget, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,
     catalog: () => Array.from(catalog.values())
   };

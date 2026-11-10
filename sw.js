@@ -2,7 +2,7 @@
  * 21Board service worker — makes the whole board work offline.
  *
  * On install it downloads the board shell plus every file listed by every
- * widget in apps/registry.js, so all widgets work with no network.
+ * widget in widgets/registry.js, so all widgets work with no network.
  * After that, files are served from the cache immediately and refreshed in
  * the background when online (stale-while-revalidate).
  *
@@ -10,18 +10,18 @@
  * That forces a clean download of everything and shows teachers an
  * "Update" prompt inside 21Board.
  */
-const VERSION = '2026.11.10-17';
+const VERSION = '2026.11.10-18';
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION;
 
-importScripts('apps/registry.js');
+importScripts('widgets/registry.js');
 
 const SHELL_FILES = [
   './',
   'index.html',
   'board.js',
   'sdk/board21.js',
-  'apps/registry.js',
+  'widgets/registry.js',
   'manifest.webmanifest',
   'icons/icon.svg',
   'icons/icon-192.png',
@@ -30,8 +30,8 @@ const SHELL_FILES = [
   'icons/apple-touch-icon.png'
 ];
 
-const APP_FILES = (self.BOARD21_APPS || []).flatMap(app => (Array.isArray(app.files) && app.files.length ? app.files : [app.entry]));
-const PRECACHE = Array.from(new Set(SHELL_FILES.concat(APP_FILES)));
+const WIDGET_FILES = (self.BOARD21_WIDGETS || []).flatMap(widget => (Array.isArray(widget.files) && widget.files.length ? widget.files : [widget.entry]));
+const PRECACHE = Array.from(new Set(SHELL_FILES.concat(WIDGET_FILES)));
 
 self.addEventListener('install', event => {
   event.waitUntil((async () => {

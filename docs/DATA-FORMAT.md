@@ -37,13 +37,13 @@ Keys (`<b>` = board id, currently always `1`; `<n>` = instance number):
 | --- | --- | --- |
 | `settings` | `settings` | Board-wide preferences (below) |
 | `board:<b>` | `board` | Board name and background |
-| `inst:<b>:<appId>:<n>` | `inst` | One window/instance: geometry, open/closed, stacking |
-| `data:<b>:<appId>:<n>` | `data` | That instance's **content** — whatever the widget passed to `Board21.save()` |
-| `conf:<b>:<appId>:<n>` | `conf` | That instance's **config** — whatever it passed to `Board21.saveConfig()` |
+| `inst:<b>:<widgetId>:<n>` | `inst` | One window/instance: geometry, open/closed, stacking |
+| `data:<b>:<widgetId>:<n>` | `data` | That instance's **content** — whatever the widget passed to `Board21.save()` |
+| `conf:<b>:<widgetId>:<n>` | `conf` | That instance's **config** — whatever it passed to `Board21.saveConfig()` |
 | `media:<b>:background` | `media` | The board's **background photo** on this device (see below). Kept apart from `board:<b>` |
 | `media:<b>:background-look` | `media` | How that photo is shown on this device |
 
-App ids are limited to `a-z 0-9 -`, so keys can be split on `:`.
+Widget ids are limited to `a-z 0-9 -`, so keys can be split on `:`.
 
 The board id is in every key so that **multiple boards** (a planned feature) can be added
 without changing the format: `settings.activeBoard` will choose which board is shown.
@@ -63,8 +63,8 @@ without changing the format: `settings.activeBoard` will choose which board is s
   accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
   lastBackupAt: null,      // ms of the last full backup export, for backup reminders
   devMode: false,
-  devApps: [               // test widgets added in Developer mode
-    { id: "dev-apps-my-app", name: "My-app (test)", entry: "apps/my-app/index.html" }
+  devWidgets: [               // test widgets added in Developer mode
+    { id: "dev-widgets-my-widget", name: "My-widget (test)", entry: "widgets/my-widget/index.html" }
   ],
   activeBoard: 1
 }
@@ -107,11 +107,11 @@ Media records are kept apart from the small records on purpose: anything that co
 devices with tight size limits (for example a sync through a browser extension) can skip `media:*`
 and let each device set its own photo; the board still works without it.
 
-### `inst:<b>:<appId>:<n>`
+### `inst:<b>:<widgetId>:<n>`
 
 ```js
 {
-  appId: "timer",
+  widgetId: "timer",
   n: 2,
   open: true,                               // false = window closed, data kept
   rect: { x: 40, y: 60, w: 380, h: 300 },   // OUTER window rect in CSS px, incl. the 40px title bar
@@ -126,7 +126,7 @@ the window is moved or resized, never because the screen changed.
 
 #### Layout space
 
-Window rects are in **layout px**: the CSS px the window's app sees. They are drawn on screen with one
+Window rects are in **layout px**: the CSS px the window's widget sees. They are drawn on screen with one
 zoom factor, so the board looks the same everywhere:
 
 - **16:9 board** (`shape: "16:9"`, the default): the board is `1920/scale × 1080/scale` layout px
@@ -140,7 +140,7 @@ zoom factor, so the board looks the same everywhere:
   window's CSS px are screen px there). Changing it multiplies every rect's position, width and content
   height by `old/new` (the title bar stays 40 px), so windows keep their place and content area on the
   board, their contents are drawn bigger or smaller, and fixed-shape widgets keep their exact shape. Board chrome (menus,
-  the App Picker, Settings, toasts, dialogs) is drawn at this scale too.
+  the Widget Picker, Settings, toasts, dialogs) is drawn at this scale too.
 - Resize handles and the focus ring stay at the board's scale even when the board is drawn smaller
   (up to 2.5×); snap reach and push-to-overlap are measured in screen px.
 
@@ -158,15 +158,15 @@ widget's script. Missing record = nothing saved (`null` in the SDK).
 
 ## Instances: numbering, closing, reopening
 
-- Opening an app when **no closed instance exists** creates the lowest unused number
+- Opening a widget when **no closed instance exists** creates the lowest unused number
   (`timer:1`, then `timer:2`, …).
 - **Closing** a window only sets `open: false`. Its `data`/`conf` stay.
-- Opening the app again reopens the **lowest-numbered closed instance**, restoring its position,
+- Opening the widget again reopens the **lowest-numbered closed instance**, restoring its position,
   size and content. With `timer:1` and `timer:2` both closed: first open → `timer:1`,
   second → `timer:2`, third → new `timer:3`.
 - **Reset** (window menu) deletes that instance's `data` and `conf` and restores the default size.
-- **Delete** (Settings → Saved app windows) removes the `inst`, `data` and `conf` records.
-- Records for an app that isn't installed are kept (and exported) but not shown.
+- **Delete** (Settings → Saved widget windows) removes the `inst`, `data` and `conf` records.
+- Records for a widget that isn't installed are kept (and exported) but not shown.
 
 ---
 
@@ -195,8 +195,8 @@ then show it.
 
 ## The .21board file
 
-**Export** (App Picker → ⤓) downloads a UTF-8 JSON file with the `.21board` extension.
-**Import** (App Picker → ⤒, dropping a file on the board, or opening one with the installed app
+**Export** (Widget Picker → ⤓) downloads a UTF-8 JSON file with the `.21board` extension.
+**Import** (Widget Picker → ⤒, dropping a file on the board, or opening one with the installed app
 on Chrome) reads it.
 
 ```js
@@ -218,7 +218,7 @@ on Chrome) reads it.
   "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only
   "instances": [
     {
-      "appId": "timer",
+      "widgetId": "timer",
       "instance": 1,
       "open": true,
       "maximized": false,
@@ -244,7 +244,7 @@ Importing offers two choices:
 - **Replace my board** — removes this board's current windows and content, then loads the file
   (including its board name, background, theme and accent color).
 - **Add to my board** — keeps everything and adds the file's windows. Instance numbers are
-  renumbered to the next free number per app, and windows are nudged into free space.
+  renumbered to the next free number per widget, and windows are nudged into free space.
 
 *Replace* keeps this device's background photo unless the file brings one, and takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
 this screen); a file from before board sizes existed is fitted into the 16:9 board. *Add* fits the

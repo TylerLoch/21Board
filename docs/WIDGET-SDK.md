@@ -21,7 +21,7 @@ Widgets talk to the board through one script: `sdk/board21.js`, which defines `w
 
 ## Quick start
 
-Copy `apps/_template/` to `apps/<your-id>/` and edit it. The essentials:
+Copy `widgets/_template/` to `widgets/<your-id>/` and edit it. The essentials:
 
 ```html
 <!DOCTYPE html>
@@ -57,7 +57,7 @@ Copy `apps/_template/` to `apps/<your-id>/` and edit it. The essentials:
 ## Rules for widgets
 
 1. **No external requests.** No CDNs, web fonts, analytics or APIs. Everything must be in your
-   folder so the app works offline and no student data leaves the device.
+   folder so the widget works offline and no student data leaves the device.
 2. **No direct storage.** Don't use IndexedDB, `localStorage`, cookies or `sessionStorage`.
    Use `Board21.save()` / `Board21.saveConfig()`. That's what makes export/import, templates,
    reset, multi-tab sync and multiple instances work.
@@ -92,9 +92,9 @@ The **context**:
 
 ```js
 {
-  appId: 'timer',            // your registry id
-  appName: 'Timer',
-  appVersion: '1.0.0',
+  widgetId: 'timer',            // your registry id
+  widgetName: 'Timer',
+  widgetVersion: '1.0.0',
   instance: 2,               // this window's instance number (1, 2, 3...)
   data: { ... } | null,      // saved content for this instance
   config: { ... } | null,    // saved config for this instance
@@ -130,7 +130,7 @@ Sizes are the **content area** (the iframe), not including the 40px title bar.
 | `Board21.window.setMaxSize(w, h)` | Maximum content size. `null` removes the limit. |
 | `Board21.window.setResizable(bool)` | Show or hide the resize grips. |
 | `Board21.window.setDragFromContent(bool)` | Whether the window can be dragged from anywhere inside it right now (see [Moving windows from inside](#moving-windows-from-inside)). |
-| `Board21.window.setTitle(text)` | Short status shown after the app name in the title bar, e.g. `"Running"`. Hidden in narrow windows. |
+| `Board21.window.setTitle(text)` | Short status shown after the widget name in the title bar, e.g. `"Running"`. Hidden in narrow windows. |
 | `Board21.window.requestAttention()` | Pulse the title bar (e.g. a timer finished). |
 | `Board21.window.focus()` | Select the window and bring it to the front. |
 | `Board21.window.maximize()` / `restore()` | Fill the board / return to normal size. |
@@ -140,7 +140,7 @@ Sizes are the **content area** (the iframe), not including the 40px title bar.
 Defaults for size, minimum size and aspect ratio come from the [registry](#registering-a-widget),
 so the window is the right shape before your page even loads. Runtime calls override them
 until the window is reset or reloaded; call them again in `ready()` if they depend on config
-(see `apps/clock`).
+(see `widgets/clock`).
 
 ### Window menu
 
@@ -158,7 +158,7 @@ Board21.on('menu', id => { /* an item was tapped */ });
 Board21.menu.clear();
 ```
 
-Two extras for grouping choices (see `apps/notes`):
+Two extras for grouping choices (see `widgets/notes`):
 
 ```js
 Board21.menu.set([
@@ -199,7 +199,7 @@ and links are stripped). Up to 24 items (a swatch row counts as one, with up to 
 | --- | --- |
 | `Board21.toast(text)` | Show a short message at the bottom of the board. |
 
-Tapping anywhere inside your app brings its window to the front automatically.
+Tapping anywhere inside your widget brings its window to the front automatically.
 
 ---
 
@@ -224,14 +224,14 @@ content, never config.** (Name Picker keeps its name list in content for exactly
 - A teacher can open the same widget several times. Each window is an **instance** with its own
   number (`context.instance`: 1, 2, 3…) and its own saved content and config. You don't need to
   do anything for this.
-- Closing a window **keeps** its data. Opening the app again reopens the lowest-numbered closed
+- Closing a window **keeps** its data. Opening the widget again reopens the lowest-numbered closed
   instance with its data; when all are open, a new number is created.
 - Several 21Board tabs/windows can be open at once (e.g. the smartboard and the teacher's laptop).
   They all show the same board. When one copy saves, the others receive a `data` (or `config`)
   event with the new value. **Handle `data` by re-rendering from the value you're given.**
-  If you're mid-edit (e.g. the user is typing), merge gracefully — see `apps/notes`.
+  If you're mid-edit (e.g. the user is typing), merge gracefully — see `widgets/notes`.
 - Store time-based state as wall-clock times (e.g. `endsAt: Date.now() + ms`), not ticking
-  counters, so every copy shows the same thing. See `apps/timer`.
+  counters, so every copy shows the same thing. See `widgets/timer`.
 - Saving the same value again is free: 21Board skips writes that don't change anything, so
   re-saving inside a `data` handler won't cause loops.
 
@@ -241,45 +241,45 @@ content, never config.** (Name Picker keeps its name list in content for exactly
 
 Teachers can move a window by its title bar, and also from inside it:
 
-| App type | One finger or mouse inside | Two fingers inside |
+| Widget type | One finger or mouse inside | Two fingers inside |
 | --- | --- | --- |
 | **Click-only** (buttons, taps): the default, `dragFromContent: true` | moves the window | moves the window |
-| **Needs drags itself** (typing or selecting text, drawing, sliders, sortable lists): `dragFromContent: false` | goes to your app | moves the window |
+| **Needs drags itself** (typing or selecting text, drawing, sliders, sortable lists): `dragFromContent: false` | goes to your widget | moves the window |
 
 A tap is always a tap. A press only becomes a window drag once it moves past the tap allowance
 (6 px with a mouse, 16 px with a finger, so a slightly sloppy tap still presses the button). Once it
-does, your app doesn't get the rest of that press: no `pointermove`/`pointerup`, no `click`, and no
+does, your widget doesn't get the rest of that press: no `pointermove`/`pointerup`, no `click`, and no
 `mouseup`/`touchend` right after it, so a button the finger started on doesn't fire. A press resting
-in your app claims nothing until it moves, so someone else can still use the title bar meanwhile.
+in your widget claims nothing until it moves, so someone else can still use the title bar meanwhile.
 
-Even in click-only apps a window drag never starts from: text fields, textareas, selects, range
+Even in click-only widgets a window drag never starts from: text fields, textareas, selects, range
 sliders, `canvas`, `video`/`audio`, editable content, text styled `user-select: text`, scrolling
 areas (including a page that scrolls as a whole), elements whose CSS `touch-action` is anything but
 `auto`/`manipulation` (they handle touch themselves), elements with `draggable="true"`, anything
 inside an element with **`data-b21-nodrag`** (also inside web components / shadow DOM), or a press
-your app already handled: `preventDefault()` on `pointerdown` or `touchstart`, or pointer capture
+your widget already handled: `preventDefault()` on `pointerdown` or `touchstart`, or pointer capture
 on another element.
 
 Two-finger moves need both fingers within about 260 px (one hand; two people far apart are left
 alone) and never start on `canvas`, `video`, `[data-b21-nodrag]` or `touch-action: none` elements.
-When two fingers start moving a window, your app gets a `pointercancel` for each, so it can drop
+When two fingers start moving a window, your widget gets a `pointercancel` for each, so it can drop
 whatever those fingers started. They don't apply to a maximized window.
 
 So:
 
 - **Mostly buttons?** Do nothing. (Re-render only what changes: an element replaced under a finger
   loses its press, so update text/attributes rather than rebuilding a button every tick.)
-- **Your app needs drags everywhere** (a text editor, a drawing board)? Set `dragFromContent: false`
+- **Your widget needs drags everywhere** (a text editor, a drawing board)? Set `dragFromContent: false`
   in the registry.
 - **One area needs drags** (a sketch pad, a slider you built from divs)? Put **`data-b21-nodrag`** on
   it. That works whatever events the widget uses. (Calling `preventDefault()` on `pointerdown` also
   works, but only for widgets written with pointer events: it stops the browser's `mousedown` /
   `mousemove` / `mouseup` too.)
 - **Images and links** are moved like everything else (their built-in drag-and-drop is turned off
-  in click-only apps). If you use HTML drag and drop, give those elements `draggable="true"` or
+  in click-only widgets). If you use HTML drag and drop, give those elements `draggable="true"` or
   `data-b21-nodrag`.
 - **It depends on the view**? Call `Board21.window.setDragFromContent(false)` while the drag-needing
-  view is showing and `true` otherwise (see `apps/name-picker`: editing the list vs. picking).
+  view is showing and `true` otherwise (see `widgets/name-picker`: editing the list vs. picking).
 
 Teachers can switch this off in Settings → Windows → *Drag windows from inside* (then the title bar
 is the only way to move windows).
@@ -305,17 +305,17 @@ Use `[data-b21-theme="dark"] .thing { … }` for anything else that should chang
 
 ## Registering a widget
 
-Add an entry to `apps/registry.js`:
+Add an entry to `widgets/registry.js`:
 
 ```js
 {
   id: 'counter',                       // folder name; lowercase a-z, 0-9, dashes; never change it
-  name: 'Counter',                     // shown in the App Picker and title bar
+  name: 'Counter',                     // shown in the Widget Picker and title bar
   description: 'Count anything.',      // shown as a tooltip
   version: '1.0.0',
-  entry: 'apps/counter/index.html',
-  files: ['apps/counter/index.html'],  // EVERY file the app needs (images, extra scripts...) for offline use
-  color: '#0ea5e9',                    // App Picker tile color
+  entry: 'widgets/counter/index.html',
+  files: ['widgets/counter/index.html'],  // EVERY file the widget needs (images, extra scripts...) for offline use
+  color: '#0ea5e9',                    // Widget Picker tile color
   icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/></svg>', // 24x24 stroke icon, drawn white
   window: {
     width: 320, height: 240,           // default CONTENT size (title bar is added)
@@ -323,7 +323,7 @@ Add an entry to `apps/registry.js`:
     // maxWidth, maxHeight             optional
     // aspectRatio: 16 / 9             optional content aspect-ratio lock
     // resizable: false                optional
-    // dragFromContent: false          if the app needs drags itself (text, drawing): see "Moving windows from inside"
+    // dragFromContent: false          if the widget needs drags itself (text, drawing): see "Moving windows from inside"
   },
   permissions: [],                     // e.g. ['microphone', 'camera'] — added to the iframe's allow=""
   // devOnly: true                     only listed when Developer mode is on
@@ -336,20 +336,20 @@ Then **bump `VERSION` in `sw.js`** so installed copies download the new files.
 
 ## Testing
 
-- **Standalone:** open `apps/<id>/index.html` directly in a browser (from disk or any local web
+- **Standalone:** open `widgets/<id>/index.html` directly in a browser (from disk or any local web
   server). The SDK notices it isn't inside 21Board, saves to `localStorage`, follows the system
   light/dark setting, and shows a small dropdown in the corner for your menu items.
 - **Inside 21Board without registering:** Settings → Advanced → turn on **Developer mode**, then
-  enter the path (e.g. `apps/my-app/index.html`) under **Test a widget**.
-- **SDK Playground:** with Developer mode on, open *SDK Playground* from the App Picker to try
+  enter the path (e.g. `widgets/my-widget/index.html`) under **Test a widget**.
+- **SDK Playground:** with Developer mode on, open *SDK Playground* from the Widget Picker to try
   every call and watch events.
-- **Sync:** open 21Board in two tabs side by side and use your app in one.
+- **Sync:** open 21Board in two tabs side by side and use your widget in one.
 
 ---
 
 ## Submission checklist
 
-- [ ] Folder `apps/<id>/` with `index.html`; `id` is lowercase and unique
+- [ ] Folder `widgets/<id>/` with `index.html`; `id` is lowercase and unique
 - [ ] Includes `<script src="../../sdk/board21.js"></script>` before your own scripts
 - [ ] No external URLs (fonts, CDNs, images, APIs)
 - [ ] No IndexedDB / localStorage / cookies — only `Board21.save` / `saveConfig`
@@ -357,7 +357,7 @@ Then **bump `VERSION` in `sw.js`** so installed copies download the new files.
 - [ ] Handles `data` events (test with two tabs)
 - [ ] Looks right in light and dark mode
 - [ ] Usable from the registry's `minWidth`×`minHeight` up to full screen
-- [ ] Drags: if any part of the app needs dragging (text selection, drawing, custom sliders), it sets
+- [ ] Drags: if any part of the widget needs dragging (text selection, drawing, custom sliders), it sets
       `dragFromContent: false`, or marks that area `data-b21-nodrag`
 - [ ] Every file listed in `files`
 - [ ] Works offline (load once, go offline, reload)

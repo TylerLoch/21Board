@@ -2,7 +2,7 @@
   "id": "./",
   "name": "21Board",
   "short_name": "21Board",
-  "description": "Curate your own suite of smartboard apps and orchestrate your classroom with ease.",
+  "description": "Curate your own suite of smartboard widgets and orchestrate your classroom with ease.",
   "start_url": "./",
   "scope": "./",
   "display": "fullscreen",

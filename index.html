@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>21Board</title>
-  <meta name="description" content="21Board — curate your own suite of smartboard apps.">
+  <meta name="description" content="21Board — curate your own suite of smartboard widgets.">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
@@ -159,7 +159,7 @@
     .win:not(.focused) .win-label { color: var(--muted); }
     .win-label .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 2.5em; }
     .win-label .num { font-weight: 700; opacity: .55; flex: 0 0 auto; }
-    /* The subtitle gives way first in narrow windows so the app name stays readable. */
+    /* The subtitle gives way first in narrow windows so the widget name stays readable. */
     .win-label .sub { font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1000 auto; min-width: 0; }
     .win-label .sub:not(:empty)::before { content: "·"; margin: 0 6px 0 2px; }
     @container (max-width: 260px) { .win-label .sub { display: none; } }
@@ -169,7 +169,7 @@
 
     .win-body { position: relative; flex: 1 1 auto; overflow: hidden; border-radius: 0 0 12px 12px; background: var(--surface); }
     .win-body iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: transparent; color-scheme: normal; }
-    body.busy-mouse iframe { pointer-events: none; } /* mouse drags pass over apps; touch/pen stay with their element */
+    body.busy-mouse iframe { pointer-events: none; } /* mouse drags pass over widgets; touch/pen stay with their element */
     .win-loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface); transition: opacity .2s; }
     .win-loading::after { content: ""; width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--primary); animation: spin .8s linear infinite; }
     .win-loading.done { opacity: 0; pointer-events: none; }
@@ -239,7 +239,7 @@
     .win.maximized, .win.maximized .win-title { border-radius: 0; }
     .win.maximized .win-body { border-radius: 0; }
 
-    /* ---------------------------------------------------------- App Picker */
+    /* ---------------------------------------------------------- Widget Picker */
     .picker-btn {
       position: fixed; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 1001;
       width: 56px; height: 56px; border-radius: 16px;
@@ -265,26 +265,26 @@
     .panel.right { right: calc(4px + env(safe-area-inset-right)); transform-origin: bottom right; }
     .panel.open { display: flex; animation: panel-in .18s cubic-bezier(.2, .9, .3, 1.1); }
     @keyframes panel-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
-    .panel-apps {
+    .panel-widgets {
       display: grid; grid-template-columns: repeat(var(--cols, 4), 92px); gap: 6px;
       overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 2px;
     }
-    .app-tile {
+    .widget-tile {
       position: relative; width: 92px; height: 98px; flex-direction: column; gap: 7px;
       border-radius: 16px; color: var(--text); font-size: 13px; font-weight: 500; line-height: 1.15; text-align: center; padding: 4px;
     }
-    .app-tile:active { background: var(--active-bg); }
-    .app-icon {
+    .widget-tile:active { background: var(--active-bg); }
+    .widget-icon {
       width: 54px; height: 54px; border-radius: 15px; display: grid; place-items: center; color: #fff;
       background: var(--c, #64748b); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .14), 0 2px 6px rgba(0, 0, 0, .12);
     }
-    .app-icon svg { width: 30px; height: 30px; stroke-width: 2; }
-    .app-tile .badge {
+    .widget-icon svg { width: 30px; height: 30px; stroke-width: 2; }
+    .widget-tile .badge {
       position: absolute; top: 2px; right: 12px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
       background: var(--primary); color: var(--on-primary); font-size: 12px; font-weight: 700; display: grid; place-items: center;
       border: 2px solid var(--surface);
     }
-    .app-tile .devtag { position: absolute; top: 4px; left: 8px; font-size: 9px; font-weight: 800; letter-spacing: .04em; color: var(--muted); }
+    .widget-tile .devtag { position: absolute; top: 4px; left: 8px; font-size: 9px; font-weight: 800; letter-spacing: .04em; color: var(--muted); }
     .panel-sep { height: 1px; background: var(--border); margin: 0 6px; flex: 0 0 auto; }
     .panel-controls { display: flex; align-items: center; gap: 6px; flex: 0 0 56px; }
     .panel.right .panel-controls { flex-direction: row-reverse; }
@@ -381,8 +381,8 @@
     @media (hover: hover) { .btn:hover { filter: brightness(.96); } .btn.primary:hover { background: var(--primary); filter: brightness(1.08); } }
     .inst-list { display: flex; flex-direction: column; gap: 6px; }
     .inst { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 12px; background: var(--hover-bg); }
-    .inst .app-icon { width: 34px; height: 34px; border-radius: 10px; flex: 0 0 34px; }
-    .inst .app-icon svg { width: 20px; height: 20px; }
+    .inst .widget-icon { width: 34px; height: 34px; border-radius: 10px; flex: 0 0 34px; }
+    .inst .widget-icon svg { width: 20px; height: 20px; }
     .inst .meta { flex: 1; min-width: 0; }
     .inst .meta b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .inst .meta span { font-size: 12px; color: var(--muted); }
@@ -464,16 +464,16 @@
     <div id="layout-frame" hidden></div>
     <div id="empty-hint">
       <div class="big">Your board is ready</div>
-      <div class="small">Tap <svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/></svg> in either bottom corner to open an app.</div>
+      <div class="small">Tap <svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/></svg> in either bottom corner to open a widget.</div>
     </div>
   </main>
 
   <div id="shape-hint" role="note" hidden></div>
-  <button class="picker-btn left" data-side="left" aria-label="Apps and settings" aria-haspopup="dialog" aria-expanded="false"></button>
-  <button class="picker-btn right" data-side="right" aria-label="Apps and settings" aria-haspopup="dialog" aria-expanded="false"></button>
+  <button class="picker-btn left" data-side="left" aria-label="Widgets and settings" aria-haspopup="dialog" aria-expanded="false"></button>
+  <button class="picker-btn right" data-side="right" aria-label="Widgets and settings" aria-haspopup="dialog" aria-expanded="false"></button>
 
-  <div id="panel" class="panel" role="dialog" aria-label="Apps">
-    <div class="panel-apps" role="list"></div>
+  <div id="panel" class="panel" role="dialog" aria-label="Widgets">
+    <div class="panel-widgets" role="list"></div>
     <div class="panel-sep"></div>
     <div class="panel-controls">
       <span class="picker-spacer" aria-hidden="true"></span>
@@ -499,7 +499,7 @@
 
   <noscript><div style="position:fixed;inset:0;display:grid;place-items:center;background:#fff;color:#111;font:18px system-ui">21Board needs JavaScript turned on.</div></noscript>
 
-  <script src="apps/registry.js"></script>
+  <script src="widgets/registry.js"></script>
   <script src="board.js"></script>
 </body>
 </html>

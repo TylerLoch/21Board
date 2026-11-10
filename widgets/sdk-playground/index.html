@@ -77,8 +77,8 @@
 
   Board21.ready().then(ctx => {
     counter = (ctx.data && ctx.data.counter) || 0;
-    document.getElementById('who').textContent = `${ctx.appId} #${ctx.instance}${ctx.standalone ? ' (standalone)' : ''}`;
-    log('ready: ' + j({ appId: ctx.appId, instance: ctx.instance, theme: ctx.theme, data: ctx.data, config: ctx.config, window: ctx.window }));
+    document.getElementById('who').textContent = `${ctx.widgetId} #${ctx.instance}${ctx.standalone ? ' (standalone)' : ''}`;
+    log('ready: ' + j({ widgetId: ctx.widgetId, instance: ctx.instance, theme: ctx.theme, data: ctx.data, config: ctx.config, window: ctx.window }));
   });
 </script>
 </body>

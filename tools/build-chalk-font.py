@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Builds the chalk font for the Notes app's Chalkboard theme:
-apps/notes/fonts/CrayonLibre-21Board.woff2
+Builds the chalk font for the Notes widget's Chalkboard theme:
+widgets/notes/fonts/CrayonLibre-21Board.woff2
 
 Source: Crayon Libre 1.05 by GGBotNet, CC0 1.0 (public domain):
   https://ggbot.itch.io/crayon-libre-font  (download the zip, use TrueType (.ttf)/CrayonLibre-Regular.ttf)
@@ -41,7 +41,7 @@ ap.add_argument('--l', choices=['loop', 'stick', 'trail', 'tail'], default='trai
                 help='stick: plain print l; trail: the stick curving off to the right at the bottom, like chalk as the hand lifts (--trail)')
 ap.add_argument('--trail', choices=['short', 'medium', 'long'], default='short')
 ap.add_argument('--one', choices=['plain', 'flag'], default='flag')
-ap.add_argument('--out', default=os.path.join(HERE, '..', 'apps', 'notes', 'fonts', 'CrayonLibre-21Board.woff2'))
+ap.add_argument('--out', default=os.path.join(HERE, '..', 'widgets', 'notes', 'fonts', 'CrayonLibre-21Board.woff2'))
 ap.add_argument('--flavor', choices=['woff2', 'ttf'], default='woff2')
 ap.add_argument('--foot', type=float, default=200, help='how far the l foot reaches past the stem (font units)')
 ap.add_argument('--flag', type=float, default=0.88, help='length of the 1 flag, relative to the hyphen')

@@ -1,5 +1,5 @@
 /*
- * 21Board automated browser tests (optional — the app itself has no dependencies).
+ * 21Board automated browser tests (optional — the widget itself has no dependencies).
  *
  *   npm install --no-save playwright && npx playwright install chromium   (once)
  *   node tests/run.js
@@ -44,7 +44,7 @@ const SUITES = [
   }
   async function openFromPicker(page, id, side = 'left') {
     await page.click(`.picker-btn.${side}`); await page.waitForTimeout(120);
-    await page.click(`[data-app="${id}"]`); await page.waitForTimeout(400);
+    await page.click(`[data-widget="${id}"]`); await page.waitForTimeout(400);
   }
   const frameOf = (page, ik) => page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
       const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
@@ -109,7 +109,7 @@ const SUITES = [
     // switch to digital via the window menu → aspect 2.2
     await page.click('.win[data-ikey="clock:1"] .win-label'); await page.waitForTimeout(200);
     await page.screenshot({ path: OUT + '10-window-menu.png' });
-    await page.click('#menu [data-act="app"][data-id="digital"]'); await page.waitForTimeout(500);
+    await page.click('#menu [data-act="widget"][data-id="digital"]'); await page.waitForTimeout(500);
     c = (await wins(page))['clock:1'];
     ok(Math.abs(c.w / (c.h - 40) - 2.2) < 0.03, `digital clock switches aspect to 2.2 (${c.w}x${c.h - 40})`);
 
@@ -145,7 +145,7 @@ const SUITES = [
     await page.waitForTimeout(200);
     const zAfter = (await inst(page, 'timer:1')).z;
     const allZ = await page.evaluate(() => Math.max(...Array.from(window.__board21.state.insts.values()).filter(i => i.open).map(i => i.z)));
-    ok(zAfter === allZ && zAfter > zBefore, 'tapping inside app content brings window to front');
+    ok(zAfter === allZ && zAfter > zBefore, 'tapping inside widget content brings window to front');
 
     // ---- multi-tab sync
     const page2 = await ctx.newPage();
@@ -210,7 +210,7 @@ const SUITES = [
     const a = await ctxA.newPage();
     a.on('pageerror', e => errors.push('[A] ' + e.message));
     await a.goto(BASE); await a.waitForTimeout(600); await freeBoard(a);
-    await a.evaluate(() => { window.__board21.openApp('notes'); window.__board21.openApp('name-picker'); window.__board21.openApp('dice'); });
+    await a.evaluate(() => { window.__board21.openWidget('notes'); window.__board21.openWidget('name-picker'); window.__board21.openWidget('dice'); });
     await a.waitForTimeout(1200);
     await fillNote(frameOf(a, 'notes:1'), 'Secret student info');
     await frameOf(a, 'name-picker:1').locator('textarea').fill('Ana\nBo\nCy');
@@ -231,10 +231,10 @@ const SUITES = [
     ok(/\.21board$/.test(dl.suggestedFilename()), 'export filename ends in .21board: ' + dl.suggestedFilename());
     const full = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
     ok(full.format === '21board' && full.kind === 'full' && full.formatVersion === 1, 'full export header');
-    const fNotes = full.instances.find(i => i.appId === 'notes');
+    const fNotes = full.instances.find(i => i.widgetId === 'notes');
     ok(fNotes && fNotes.data && fNotes.data.text === 'Secret student info', 'full export contains content');
     ok(fNotes && fNotes.config && fNotes.config.color === 'pink', 'full export contains config');
-    ok(full.instances.some(i => i.appId === 'dice' && i.open === false), 'full export includes closed windows');
+    ok(full.instances.some(i => i.widgetId === 'dice' && i.open === false), 'full export includes closed windows');
 
     // Template export
     await a.click('.picker-btn.right'); await a.click('[data-ctl="export"]'); await a.waitForTimeout(150);
@@ -243,8 +243,8 @@ const SUITES = [
     const tpl = JSON.parse(fs.readFileSync(tplPath, 'utf8'));
     ok(tpl.kind === 'template', 'template kind');
     ok(tpl.instances.every(i => i.data === null), 'template has no content');
-    ok(!tpl.instances.some(i => i.appId === 'dice'), 'template excludes closed windows');
-    ok(tpl.instances.find(i => i.appId === 'notes').config.color === 'pink', 'template keeps config');
+    ok(!tpl.instances.some(i => i.widgetId === 'dice'), 'template excludes closed windows');
+    ok(tpl.instances.find(i => i.widgetId === 'notes').config.color === 'pink', 'template keeps config');
     ok(!JSON.stringify(tpl).includes('Secret') && !JSON.stringify(tpl).includes('Ana'), 'no student content in template');
 
     // ---------- Board B: different screen size, import full (replace)
@@ -252,7 +252,7 @@ const SUITES = [
     const b = await ctxB.newPage();
     b.on('pageerror', e => errors.push('[B] ' + e.message));
     await b.goto(BASE); await b.waitForTimeout(600); await freeBoard(b);
-    await b.evaluate(() => window.__board21.openApp('timer'));
+    await b.evaluate(() => window.__board21.openWidget('timer'));
     await b.waitForTimeout(500);
     await b.setInputFiles('#import-input', fullPath);
     await b.waitForTimeout(300);
@@ -311,11 +311,11 @@ const SUITES = [
     await page.reload(); await page.waitForTimeout(800);
     ok(await page.locator('.picker-btn.left').isVisible(), 'board loads offline');
     const ids = await page.evaluate(() => window.__board21.catalog().filter(a => !a.devOnly).map(a => a.id));
-    for (const id of ids) await page.evaluate(id => window.__board21.openApp(id), id);
+    for (const id of ids) await page.evaluate(id => window.__board21.openWidget(id), id);
     await page.waitForTimeout(2500);
     const conn = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).map(w => [w.ikey, w.connected]));
     ok(conn.length === ids.length && conn.every(c => c[1]), 'every widget loads and connects offline: ' + JSON.stringify(conn));
-    await page.screenshot({ path: OUT + '30-offline-all-apps.png' });
+    await page.screenshot({ path: OUT + '30-offline-all-widgets.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Touch and multi-touch', async (browser) => {
@@ -323,12 +323,12 @@ const SUITES = [
       const ctx = await browser.newContext({ viewport: { width: 1600, height: 900 }, hasTouch: true });
     const page = await ctx.newPage();
     await page.goto(BASE + ''); await page.waitForTimeout(600); await freeBoard(page);
-    // tap the waffle with touch → panel opens, tap an app
+    // tap the waffle with touch → panel opens, tap a widget
     await page.touchscreen.tap(44, 900 - 44); await page.waitForTimeout(200);
-    ok(await page.locator('#panel.open').count() === 1, 'touch tap opens App Picker');
-    const tile = await page.locator('[data-app="timer"]').boundingBox();
+    ok(await page.locator('#panel.open').count() === 1, 'touch tap opens Widget Picker');
+    const tile = await page.locator('[data-widget="timer"]').boundingBox();
     await page.touchscreen.tap(tile.x + 40, tile.y + 40); await page.waitForTimeout(400);
-    await page.evaluate(() => window.__board21.openApp('dice', { side: 'right' }));
+    await page.evaluate(() => window.__board21.openWidget('dice', { side: 'right' }));
     await page.waitForTimeout(800);
     const w0 = await wins(page);
     const cdp = await ctx.newCDPSession(page);
@@ -352,14 +352,14 @@ const SUITES = [
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE + ''); await page.waitForTimeout(500); await freeBoard(page);
-    ok(!(await page.evaluate(() => window.__board21.catalog().filter(a => a.devOnly).length && document.querySelector('[data-app="sdk-playground"]'))), 'dev app hidden by default');
+    ok(!(await page.evaluate(() => window.__board21.catalog().filter(a => a.devOnly).length && document.querySelector('[data-widget="sdk-playground"]'))), 'dev widget hidden by default');
     // turn on developer mode in settings
     await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(200);
     await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(200);
     await page.keyboard.press('Escape');
     await page.click('.picker-btn.left'); await page.waitForTimeout(150);
-    ok(await page.locator('[data-app="sdk-playground"]').count() === 1, 'developer mode shows SDK Playground');
-    await page.click('[data-app="sdk-playground"]'); await page.waitForTimeout(1000);
+    ok(await page.locator('[data-widget="sdk-playground"]').count() === 1, 'developer mode shows SDK Playground');
+    await page.click('[data-widget="sdk-playground"]'); await page.waitForTimeout(1000);
     const f = page.frameLocator('.win[data-ikey="sdk-playground:1"] iframe');
     const btn = k => f.locator(`button[data-k="${k}"]`).click();
     const ik = 'sdk-playground:1';
@@ -379,10 +379,10 @@ const SUITES = [
     ok(await page.locator(`.win[data-ikey="${ik}"].attention`).count() === 1, 'requestAttention pulses the title bar');
     await btn('menu.set(3 items)'); await page.waitForTimeout(200);
     await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200);
-    ok(await page.locator('#menu [data-act="app"]').count() === 3, 'custom menu items appear in window menu');
+    ok(await page.locator('#menu [data-act="widget"]').count() === 3, 'custom menu items appear in window menu');
     await page.screenshot({ path: OUT + '40-sdk-menu.png' });
     await page.click('#menu [data-id="a"]'); await page.waitForTimeout(200);
-    ok((await f.locator('#log').textContent()).includes('event menu "a"'), 'menu selection reaches the app');
+    ok((await f.locator('#log').textContent()).includes('event menu "a"'), 'menu selection reaches the widget');
     await btn('save({counter})'); await page.waitForTimeout(300);
     ok((await f.locator('#log').textContent()).includes('save ok'), 'save resolves after commit');
     await btn('getInfo()'); await page.waitForTimeout(200);
@@ -394,19 +394,19 @@ const SUITES = [
     await btn('restore()'); await page.waitForTimeout(400);
     // dev: add a test widget by path
     await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(200);
-    await page.fill('#set-dev-path', 'apps/_template/index.html');
+    await page.fill('#set-dev-path', 'widgets/_template/index.html');
     await page.click('#settings [data-act="dev-add"]'); await page.waitForTimeout(1000);
-    const devWin = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).filter(w => w.app.dev).map(w => [w.ikey, w.connected]));
+    const devWin = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).filter(w => w.widget.dev).map(w => [w.ikey, w.connected]));
     ok(devWin.length === 1 && devWin[0][1], 'developer can load an unregistered widget by path: ' + JSON.stringify(devWin));
     await btn('close()'); await page.waitForTimeout(400);
-    ok(!(await page.evaluate(ik => window.__board21.state.wins.has(ik), ik)), 'close() from the app closes its window');
+    ok(!(await page.evaluate(ik => window.__board21.state.wins.has(ik), ik)), 'close() from the widget closes its window');
 
     // ---- standalone widget
     const sp = await ctx.newPage();
-    await sp.goto(BASE + 'apps/timer/index.html'); await sp.waitForTimeout(600);
+    await sp.goto(BASE + 'widgets/timer/index.html'); await sp.waitForTimeout(600);
     ok(await sp.evaluate(() => Board21.context && Board21.context.standalone === true), 'widget runs standalone when opened directly');
     await sp.click('#go'); await sp.waitForTimeout(300); await sp.reload(); await sp.waitForTimeout(500);
-    ok(await sp.evaluate(() => (JSON.parse(localStorage.getItem('21board:standalone:/apps/timer/index.html')) || {}).data.endsAt > 0), 'standalone save persists to localStorage');
+    ok(await sp.evaluate(() => (JSON.parse(localStorage.getItem('21board:standalone:/widgets/timer/index.html')) || {}).data.endsAt > 0), 'standalone save persists to localStorage');
 
     // ---- phone width: no horizontal overflow of the panel
     const ph = await browser.newContext({ viewport: { width: 375, height: 700 }, hasTouch: true });
@@ -435,7 +435,7 @@ const SUITES = [
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => { window.__board21.openApp('notes'); window.__board21.openApp('timer'); });
+    await page.evaluate(() => { window.__board21.openWidget('notes'); window.__board21.openWidget('timer'); });
     await page.waitForTimeout(1200);
     // ---- #1 grips only on focused window
     ok(await gripVis(page, 'timer:1') === 'visible', 'focused window shows grips');
@@ -516,7 +516,7 @@ const SUITES = [
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
     const disp = ik => page.evaluate(ik => Object.assign({}, window.__board21.state.wins.get(ik).disp), ik);
     const setRect = (ik, r) => page.evaluate(([ik, r]) => { const s = window.__board21.state; s.insts.set(ik, Object.assign({}, s.insts.get(ik), { rect: r })); s.wins.get(ik).layout(); }, [ik, r]);
-    await page.evaluate(() => { window.__board21.openApp('notes'); window.__board21.openApp('timer'); });
+    await page.evaluate(() => { window.__board21.openWidget('notes'); window.__board21.openWidget('timer'); });
     await page.waitForTimeout(1200);
 
     // A second touch on the empty board while the first finger resizes must not deselect the window.
@@ -536,8 +536,8 @@ const SUITES = [
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(200);
 
-    // Widgets are told focused:false after a deselect (a freshly connected app is the case that used to break).
-    await page.evaluate(() => window.__board21.openApp('dice')); await page.waitForTimeout(1200);
+    // Widgets are told focused:false after a deselect (a freshly connected widget is the case that used to break).
+    await page.evaluate(() => window.__board21.openWidget('dice')); await page.waitForTimeout(1200);
     await page.mouse.click(1300, 40); await page.waitForTimeout(400);
     const appFocused = await page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('html').evaluate(() => Board21.context.window.focused);
     ok(appFocused === false, `after tapping the empty board the widget sees focused: false (got ${appFocused})`);
@@ -563,7 +563,7 @@ const SUITES = [
     ok(edge.ringL === '3px' && edge.ringR === '0px', `focus ring drawn inside only on the flush sides (left ${edge.ringL}, right ${edge.ringR})`);
 
     // Snapping an aspect-locked window must not push it into a neighbour.
-    await page.evaluate(() => window.__board21.openApp('clock')); await page.waitForTimeout(800);
+    await page.evaluate(() => window.__board21.openWidget('clock')); await page.waitForTimeout(800);
     await setRect('clock:1', { x: 300, y: 200, w: 300, h: 340 });
     await setRect('notes:1', { x: 608, y: 150, w: 320, h: 416 });
     await page.evaluate(() => window.__board21.focusWin('clock:1')); await page.waitForTimeout(250);
@@ -619,7 +619,7 @@ const SUITES = [
     ok(mbx.left >= mbx.label.right || mbx.right <= mbx.label.left, 'with no room above or below the title, it opens beside the title');
     await page.click('#menu [data-act="close"]'); await page.waitForTimeout(400);
     ok(await page.evaluate(() => !window.__board21.state.wins.has('notes:1')), 'Close is right there to tap');
-    await page.evaluate(() => window.__board21.openApp('notes')); await page.waitForTimeout(600);
+    await page.evaluate(() => window.__board21.openWidget('notes')); await page.waitForTimeout(600);
     await page.setViewportSize({ width: 900, height: 400 }); await page.waitForTimeout(300);
     await setRect('notes:1', { x: 10, y: 10, w: 340, h: 280 });
     await page.evaluate(() => window.__board21.focusWin('notes:1')); await page.waitForTimeout(200);
@@ -635,8 +635,8 @@ const SUITES = [
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    ok(await page.evaluate(() => window.__board21.catalog().some(a => a.id === 'calendar')), 'Calendar is in the App Picker');
-    await page.evaluate(() => { window.__board21.openApp('calendar'); window.__board21.openApp('clock'); });
+    ok(await page.evaluate(() => window.__board21.catalog().some(a => a.id === 'calendar')), 'Calendar is in the Widget Picker');
+    await page.evaluate(() => { window.__board21.openWidget('calendar'); window.__board21.openWidget('clock'); });
     await page.waitForTimeout(1500);
     const cal = page.frameLocator('.win[data-ikey="calendar:1"] iframe');
     const info = await cal.locator('body').evaluate(() => {
@@ -681,7 +681,7 @@ const SUITES = [
     let v = await view(page);
     ok(v.board.scale === 0.8 && v.board.shape === '16:9' && v.bounds.w === 2400 && v.bounds.h === 1350, `a new board is 16:9 at 80% (${v.bounds.w} × ${v.bounds.h})`);
     ok(Math.abs(v.zoom.s - 2 / 3) < 0.001 && !v.frame, 'on a 16:9 window it fills the window, drawn at 80% of 1080p (here 2/3)');
-    await page.evaluate(() => window.__board21.openApp('timer')); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.openWidget('timer')); await page.waitForTimeout(1200);
     await page.evaluate(() => window.__board21.setRect('timer:1', { x: 1200, y: 300, w: 480, h: 360 })); await page.waitForTimeout(200);
     const scr = (p, ik) => p.evaluate(ik => { const r = document.querySelector(`.win[data-ikey="${ik}"]`).getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }, ik);
     let r = await scr(page, 'timer:1');
@@ -734,14 +734,14 @@ const SUITES = [
     ok(Math.abs(inst.w - 480 * 0.8 / 0.9) < 0.5, `and their contents are drawn bigger (the widget now has ${Math.round(inst.w)} px instead of 480)`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     const pick1 = await page.evaluate(() => document.querySelector('.picker-btn.left').getBoundingClientRect().width);
-    ok(v.ui === '0.9' && Math.abs(pick1 / pick0 - 0.9 / 0.8) < 0.02, `the App Picker buttons follow the size (${Math.round(pick0)} → ${Math.round(pick1)}px)`);
+    ok(v.ui === '0.9' && Math.abs(pick1 / pick0 - 0.9 / 0.8) < 0.02, `the Widget Picker buttons follow the size (${Math.round(pick0)} → ${Math.round(pick1)}px)`);
     await page.click('.win[data-ikey="timer:1"] .win-label'); await page.waitForTimeout(300);
     const m = await page.evaluate(() => { const r = document.getElementById('menu').getBoundingClientRect(), l = document.querySelector('.win-label.open').getBoundingClientRect(); return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, lb: l.bottom, lx: l.left + l.width / 2, cx: (r.left + r.right) / 2 }; });
     ok(m.top >= m.lb && m.top - m.lb < 20 && Math.abs(m.cx - m.lx) < 30 && m.right <= 1600 && m.bottom <= 900, 'window menus (drawn at the board size) still open right under their title');
     await page.keyboard.press('Escape');
 
     // Up to 200% and back: windows come back exactly as they were (minimum sizes aren't saved on the way).
-    await page.evaluate(() => window.__board21.openApp('clock')); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.openWidget('clock')); await page.waitForTimeout(1200);
     const c0 = await page.evaluate(() => Object.assign({}, window.__board21.state.insts.get('clock:1').rect));
     await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(400);
     await page.reload(); await page.waitForTimeout(1500);   // the Clock re-sends its shape when it loads
@@ -768,7 +768,7 @@ const SUITES = [
     ok(vb.board.scale === 0.75 && Math.abs(rb.x - inst.x * 0.9 / 0.75) < 1, 'importing it with Replace takes its size, and windows land where they were');
     // An export from before board sizes existed (px of a 1366 × 768 screen) is fitted into the 16:9 board.
     const old = { format: '21board', formatVersion: 1, kind: 'full', viewport: { width: 1366, height: 768 }, board: { name: 'Old', background: { color: null, pattern: 'none' } },
-      instances: [{ appId: 'clock', instance: 1, open: true, maximized: false, z: 1, rect: { x: 683, y: 0, w: 300, h: 300 }, config: null, data: null }] };
+      instances: [{ widgetId: 'clock', instance: 1, open: true, maximized: false, z: 1, rect: { x: 683, y: 0, w: 300, h: 300 }, config: null, data: null }] };
     await b.evaluate(o => window.__board21.applyImport(o, 'replace'), old); await b.waitForTimeout(1500);
     const vo = await view(b), ro = await b.evaluate(() => window.__board21.state.insts.get('clock:1').rect);
     const kk = Math.min(2400 / 1366, 1350 / 768);
@@ -784,7 +784,7 @@ const SUITES = [
       rq.onsuccess = () => {
         const tx = rq.result.transaction('records', 'readwrite'), st = tx.objectStore('records'), now = Date.now();
         st.put({ key: 'board:1', type: 'board', rev: 1, updatedAt: now, by: 'old', value: { id: 1, name: 'Old board', background: { color: null, pattern: 'none' }, layout: null } });
-        st.put({ key: 'inst:1:timer:1', type: 'inst', rev: 1, updatedAt: now, by: 'old', value: { appId: 'timer', n: 1, open: true, rect: { x: 800, y: 300, w: 400, h: 300 }, z: 1, maximized: false, createdAt: now } });
+        st.put({ key: 'inst:1:timer:1', type: 'inst', rev: 1, updatedAt: now, by: 'old', value: { widgetId: 'timer', n: 1, open: true, rect: { x: 800, y: 300, w: 400, h: 300 }, z: 1, maximized: false, createdAt: now } });
         tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error);
       };
       rq.onerror = () => rej(rq.error);
@@ -902,7 +902,7 @@ const SUITES = [
       await page.tap(`.picker-btn.${side}`); await page.waitForTimeout(300);
       const hit = await page.evaluate(() => { const g = document.querySelector('.panel.open [data-ctl="settings"]'), r = g.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
         return { inside: r.left >= 0 && r.right <= innerWidth, top: !!e && g.contains(e) }; });
-      ok(hit.inside && hit.top, `the Settings button in the ${side} App Picker is on screen and not under the other corner's button`);
+      ok(hit.inside && hit.top, `the Settings button in the ${side} Widget Picker is on screen and not under the other corner's button`);
       await page.tap(`.picker-btn.${side}`); await page.waitForTimeout(250);
     }
     await page.tap('.picker-btn.left'); await page.waitForTimeout(250); await page.tap('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(500);
@@ -911,20 +911,20 @@ const SUITES = [
     await page.tap('#settings [data-close]'); await page.waitForTimeout(300);
     // Toasts wrap instead of running off both edges.
     await page.setViewportSize({ width: 1024, height: 768 }); await page.waitForTimeout(400);
-    await page.evaluate(() => { window.__board21.openApp('timer'); }); await page.waitForTimeout(1000);
+    await page.evaluate(() => { window.__board21.openWidget('timer'); }); await page.waitForTimeout(1000);
     await page.evaluate(() => window.__board21.closeWin('timer:1')); await page.waitForTimeout(400);
     const t = await page.evaluate(() => { const r = document.querySelector('#toasts .toast').getBoundingClientRect(); return { l: r.left, r: r.right }; });
     ok(t.l >= 0 && t.r <= 1024, `a long toast wraps to fit the screen (${Math.round(t.l)}–${Math.round(t.r)})`);
     // A two-column window menu stays on screen.
     await page.setViewportSize({ width: 683, height: 400 }); await page.waitForTimeout(400);
-    await page.evaluate(() => { window.__board21.openApp('notes'); }); await page.waitForTimeout(1200);
+    await page.evaluate(() => { window.__board21.openWidget('notes'); }); await page.waitForTimeout(1200);
     await page.evaluate(() => window.__board21.setRect('notes:1', { x: 0, y: 0, w: 400, h: 300 })); await page.waitForTimeout(200);
     // (At the board's top edge the top handle overlaps the name: a tap there still opens the menu.)
     await page.locator('.win[data-ikey="notes:1"] .win-label').click({ force: true }); await page.waitForTimeout(400);
     const m = await page.evaluate(() => { const r = document.querySelector('.menu.open').getBoundingClientRect(); return { l: r.left, r: r.right, b: r.bottom }; });
     ok(m.l >= 0 && m.r <= 683 && m.b <= 400, `the window menu stays on screen (${Math.round(m.l)}–${Math.round(m.r)})`);
     await page.keyboard.press('Escape');
-    // The shape tip never hides under the App Picker buttons or spills off screen.
+    // The shape tip never hides under the Widget Picker buttons or spills off screen.
     for (const [w, h, sc] of [[1100, 400, 1.5], [1600, 600, 2], [600, 800, 2], [800, 720, 1.5], [1000, 900, 2]]) {
       await page.setViewportSize({ width: w, height: h }); await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
       const tip = await page.evaluate(() => { document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); const el = document.getElementById('shape-hint'); if (el.hidden) return { hidden: true };
@@ -933,7 +933,7 @@ const SUITES = [
         const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
         return { hidden: false, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 && r.bottom <= innerHeight, clear: !pick.some(p => hit(p, r)),
           fits: btn.left >= r.left - 0.5 && btn.right <= r.right + 0.5, hideOk: document.elementFromPoint(hide.left + hide.width / 2, hide.top + hide.height / 2)?.closest('.hide') !== null }; });
-      ok(tip.hidden || (tip.inside && tip.clear && tip.fits && tip.hideOk), `${w}×${h} at ${sc * 100}%: the shape tip ${tip.hidden ? 'is left out (no room)' : 'fits in the margin, clear of the App Picker buttons'}`);
+      ok(tip.hidden || (tip.inside && tip.clear && tip.fits && tip.hideOk), `${w}×${h} at ${sc * 100}%: the shape tip ${tip.hidden ? 'is left out (no room)' : 'fits in the margin, clear of the Widget Picker buttons'}`);
     }
     // The top handle doesn't cover the window's name on a laptop screen.
     await page.setViewportSize({ width: 1280, height: 800 }); await page.evaluate(() => window.__board21.setBoardScale(0.8)); await page.waitForTimeout(300);
@@ -953,7 +953,7 @@ const SUITES = [
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => window.__board21.openApp('timer')); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.openWidget('timer')); await page.waitForTimeout(1200);
     const tab2 = await ctx.newPage(); await tab2.goto(BASE); await tab2.waitForTimeout(1200); await freeBoard(tab2);
     await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
     await page.click('#settings [data-act="accent"][data-val="purple"]'); await page.waitForTimeout(500);
@@ -983,7 +983,7 @@ const SUITES = [
     let page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
     await page.clock.setFixedTime(new Date('2026-11-07T10:00:00'));
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => window.__board21.openApp('calendar')); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.openWidget('calendar')); await page.waitForTimeout(1200);
     const cal = page.frameLocator('.win[data-ikey="calendar:1"] iframe');
     const sat = await cal.locator('.day.today').evaluate(el => ({ bg: getComputedStyle(el).backgroundColor, accent: getComputedStyle(document.documentElement).getPropertyValue('--b21-accent').trim(), current: el.getAttribute('aria-current'), text: el.textContent }));
     ok(sat.text === '7' && sat.bg === 'rgb(37, 99, 235)', `today is clearly highlighted on a Saturday (${sat.bg})`);
@@ -1000,7 +1000,7 @@ const SUITES = [
     page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
     await page.clock.install({ time: new Date('2026-10-31T23:58:30') });
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => window.__board21.openApp('calendar'));
+    await page.evaluate(() => window.__board21.openWidget('calendar'));
     await page.clock.runFor(2000); await page.waitForTimeout(800); await page.clock.runFor(2000);
     const cal2 = page.frameLocator('.win[data-ikey="calendar:1"] iframe');
     const before = await cal2.locator('#title').textContent();
@@ -1014,7 +1014,7 @@ const SUITES = [
     page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
     await page.clock.setFixedTime(new Date('2026-09-27T10:00:00')); // a Sunday: "воскресенье"
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => window.__board21.openApp('clock')); await page.waitForTimeout(1000);
+    await page.evaluate(() => window.__board21.openWidget('clock')); await page.waitForTimeout(1000);
     await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="date"]'); await page.waitForTimeout(800);
     const wd = await page.frameLocator('.win[data-ikey="clock:1"] iframe').locator('#weekday').evaluate(el => { const r = el.getBoundingClientRect(); return { text: el.textContent, left: r.left, right: r.right, vw: innerWidth }; });
     ok(wd.left >= -1 && wd.right <= wd.vw + 1, `long weekday name fits the clock (${wd.text})`);
@@ -1042,7 +1042,7 @@ const SUITES = [
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => window.__board21.openApp('timer')); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.openWidget('timer')); await page.waitForTimeout(1200);
     const timer = page.frameLocator('.win[data-ikey="timer:1"] iframe');
     // Count notes played by wrapping the iframe's AudioContext.
     await timer.locator('html').evaluate(() => {
@@ -1051,7 +1051,7 @@ const SUITES = [
       window.AudioContext = function () { const c = new Real(); const mk = c.createOscillator.bind(c); c.createOscillator = () => { window.__notes++; return mk(); }; return c; };
     });
     await page.click('.win[data-ikey="timer:1"] .win-label'); await page.waitForTimeout(200);
-    const labels = await page.locator('#menu [data-act="app"]').allTextContents();
+    const labels = await page.locator('#menu [data-act="widget"]').allTextContents();
     ok(['Beep', 'Chime', 'Bell', 'Marimba', 'Gentle', 'Alarm', 'No sound'].every(l => labels.some(x => x.includes(l))), 'window menu offers several alarm sounds');
     await page.click('#menu [data-id="sound:marimba"]'); await page.waitForTimeout(400);
     ok(await timer.locator('html').evaluate(() => window.__notes) === 4, 'picking a sound plays a preview');
@@ -1077,7 +1077,7 @@ const SUITES = [
     const page = await ctx.newPage(), page2 = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message)); page2.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => window.__board21.openApp('dice')); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.openWidget('dice')); await page.waitForTimeout(1200);
     await page2.goto(BASE); await page2.waitForTimeout(1500); await freeBoard(page2);
     const dice = page.frameLocator('.win[data-ikey="dice:1"] iframe'), dice2 = page2.frameLocator('.win[data-ikey="dice:1"] iframe');
     const look = f => f.locator('html').evaluate(() => ({ pips: document.querySelectorAll('.die circle').length, n: document.querySelectorAll('.die').length,
@@ -1105,7 +1105,7 @@ const SUITES = [
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => { for (const id of ['clock', 'dice', 'notes', 'timer', 'calendar', 'name-picker']) window.__board21.openApp(id); });
+    await page.evaluate(() => { for (const id of ['clock', 'dice', 'notes', 'timer', 'calendar', 'name-picker']) window.__board21.openWidget(id); });
     await page.waitForTimeout(1800);
     const b = await page.evaluate(() => { const r = {}; for (const [k, w] of window.__board21.state.wins) r[k] = Object.assign({}, w.disp); return r; });
     const rect = ik => page.evaluate(ik => { const r = document.querySelector(`.win[data-ikey="${ik}"]`).getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }, ik);
@@ -1132,11 +1132,11 @@ const SUITES = [
     }
     const moved = (a, b2, dx, dy) => Math.abs((b2.x - a.x) - dx) <= 14 && Math.abs((b2.y - a.y) - dy) <= 14;
 
-    // Click-only app, mouse: drag the clock face.
+    // Click-only widget, mouse: drag the clock face.
     let r0 = await rect('clock:1');
     await mouseDrag(r0.x + r0.w / 2, r0.y + r0.h / 2 + 20, 0, 70);
     let r1 = await rect('clock:1');
-    ok(moved(r0, r1, 0, 70), `mouse drag anywhere in a click-only app moves it (Clock moved ${Math.round(r1.x - r0.x)}, ${Math.round(r1.y - r0.y)})`);
+    ok(moved(r0, r1, 0, 70), `mouse drag anywhere in a click-only widget moves it (Clock moved ${Math.round(r1.x - r0.x)}, ${Math.round(r1.y - r0.y)})`);
 
     // A plain tap still works; a press on a button that turns into a drag moves the window and doesn't click.
     const timerLeft = () => page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('#display').textContent();
@@ -1151,7 +1151,7 @@ const SUITES = [
     await page.mouse.click(pb.x + 60, pb.y); await page.waitForTimeout(300);
     ok(await timerLeft() !== before, 'a plain tap on the same button still works');
 
-    // Text app, mouse: dragging inside selects text instead of moving; the title bar still moves it.
+    // Text widget, mouse: dragging inside selects text instead of moving; the title bar still moves it.
     r0 = await rect('notes:1');
     await fillNote(page.frameLocator('.win[data-ikey="notes:1"] iframe'), 'Some words to select');
     await mouseDrag(r0.x + 30, r0.y + 70, 120, 0);
@@ -1161,17 +1161,17 @@ const SUITES = [
     r1 = await rect('notes:1');
     ok(moved(r0, r1, 0, 60), 'Notes still moves by its title bar');
 
-    // Text app, touch: two fingers anywhere move it.
+    // Text widget, touch: two fingers anywhere move it.
     r0 = await rect('notes:1');
     await touchDrag([{ x: r0.x + 80, y: r0.y + 120 }, { x: r0.x + 160, y: r0.y + 150 }], -40, -40);
     r1 = await rect('notes:1');
-    ok(moved(r0, r1, -40, -40), `two-finger drag moves a text app (Notes moved ${Math.round(r1.x - r0.x)}, ${Math.round(r1.y - r0.y)})`);
+    ok(moved(r0, r1, -40, -40), `two-finger drag moves a text widget (Notes moved ${Math.round(r1.x - r0.x)}, ${Math.round(r1.y - r0.y)})`);
 
-    // Click-only app, touch: one finger anywhere.
+    // Click-only widget, touch: one finger anywhere.
     r0 = await rect('calendar:1');
     await touchDrag([{ x: r0.x + r0.w / 2, y: r0.y + r0.h / 2 }], 0, 30);
     r1 = await rect('calendar:1');
-    ok(moved(r0, r1, 0, 30), `one-finger drag moves a click-only app on a touchscreen (Calendar moved ${Math.round(r1.y - r0.y)})`);
+    ok(moved(r0, r1, 0, 30), `one-finger drag moves a click-only widget on a touchscreen (Calendar moved ${Math.round(r1.y - r0.y)})`);
 
     // Name Picker: editing the list = title bar only; picking = anywhere.
     r0 = await rect('name-picker:1');
@@ -1210,7 +1210,7 @@ const SUITES = [
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => { for (const id of ['clock', 'dice', 'notes', 'timer', 'calendar']) window.__board21.openApp(id); });
+    await page.evaluate(() => { for (const id of ['clock', 'dice', 'notes', 'timer', 'calendar']) window.__board21.openWidget(id); });
     await page.waitForTimeout(1800);
     const place = (ik, r) => page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, r]);
     await place('clock:1', { x: 40, y: 40, w: 260, h: 300 });
@@ -1237,17 +1237,17 @@ const SUITES = [
     }
     const timerText = () => page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('#display').textContent();
 
-    // Taps on an element the app re-renders (Timer's Start icon) leave nothing stuck.
+    // Taps on an element the widget re-renders (Timer's Start icon) leave nothing stuck.
     let go = await inApp('timer:1', '#go svg');
     for (let i = 0; i < 3; i++) { await T('touchStart', [{ x: go.x, y: go.y, id: 1 }]); await page.waitForTimeout(450); await T('touchEnd', []); await page.waitForTimeout(150); }
-    ok(await idle(), 'tapping a button the app re-renders leaves no stuck interaction');
+    ok(await idle(), 'tapping a button the widget re-renders leaves no stuck interaction');
     let r0 = await rect('timer:1'); await titleDrag('timer:1', 30, 0); let r1 = await rect('timer:1');
     ok(Math.abs(r1.x - r0.x - 30) <= 12, `and the window still moves by its title bar (moved ${Math.round(r1.x - r0.x)})`);
     if (await page.evaluate(() => /Pause/.test(document.querySelector('.win[data-ikey="timer:1"] iframe').contentDocument.getElementById('go').getAttribute('aria-label')))) {
       await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('#go').click(); await page.waitForTimeout(200);
     }
 
-    // An app that re-renders the very element under the finger: taps leave nothing held, and press-and-drag still moves and saves.
+    // A widget that re-renders the very element under the finger: taps leave nothing held, and press-and-drag still moves and saves.
     await page.evaluate(() => {
       const w = document.querySelector('.win[data-ikey="calendar:1"] iframe').contentWindow, d = w.document;
       const box = d.createElement('div'); box.id = 'rr'; box.style.cssText = 'position:fixed;left:20px;bottom:20px;width:140px;height:70px;z-index:9;background:#fc0';
@@ -1257,7 +1257,7 @@ const SUITES = [
     await page.waitForTimeout(100);
     let rr = await inApp('calendar:1', '#rr');
     await T('touchStart', [{ ...rr, id: 1 }]); await page.waitForTimeout(200); await T('touchEnd', []); await page.waitForTimeout(150);
-    ok(await idle(), 'a tap on an element the app keeps re-rendering leaves nothing held');
+    ok(await idle(), 'a tap on an element the widget keeps re-rendering leaves nothing held');
     r0 = await rect('calendar:1');
     await T('touchStart', [{ ...rr, id: 1 }]); await page.waitForTimeout(120);
     for (let i = 1; i <= 10; i++) { await T('touchMove', [{ x: rr.x, y: rr.y - 8 * i, id: 1 }]); await page.waitForTimeout(30); }
@@ -1341,15 +1341,15 @@ const SUITES = [
     r0 = await rect('timer:1'); await titleDrag('timer:1', 0, -30); r1 = await rect('timer:1');
     ok(Math.abs(r1.y - r0.y + 30) <= 12, 'and it can be moved again');
 
-    // An app page that scrolls as a whole scrolls with one finger instead of moving the window.
+    // A widget page that scrolls as a whole scrolls with one finger instead of moving the window.
     await page.evaluate(() => { const d = document.querySelector('.win[data-ikey="dice:1"] iframe').contentDocument; d.body.style.overflow = 'visible'; d.body.style.height = 'auto'; d.documentElement.style.overflow = 'auto'; const x = d.createElement('div'); x.style.height = '2000px'; d.body.appendChild(x); });
     r0 = await rect('dice:1');
     await touchPath([{ x: r0.x + r0.w / 2, y: r0.y + 200, id: 1, dx: 0, dy: -120 }], 8);
     r1 = await rect('dice:1');
     const sy = await page.evaluate(() => document.querySelector('.win[data-ikey="dice:1"] iframe').contentWindow.scrollY);
-    ok(r1.y === r0.y && sy > 30, `a scrolling app page scrolls instead of moving the window (scrolled ${Math.round(sy)})`);
+    ok(r1.y === r0.y && sy > 30, `a scrolling widget page scrolls instead of moving the window (scrolled ${Math.round(sy)})`);
 
-    // Controls inside web components (shadow DOM) and touch widgets are left to the app.
+    // Controls inside web components (shadow DOM) and touch widgets are left to the widget.
     await page.evaluate(() => {
       const d = document.querySelector('.win[data-ikey="clock:1"] iframe').contentDocument;
       const host = d.createElement('div'); host.style.cssText = 'position:fixed;left:10px;top:10px;width:200px;height:60px;z-index:9';
@@ -1376,7 +1376,7 @@ const SUITES = [
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
-    await page.evaluate(() => window.__board21.openApp('notes')); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.openWidget('notes')); await page.waitForTimeout(1200);
     await page.evaluate(() => window.__board21.setRect('notes:1', { x: 60, y: 60, w: 420, h: 340 })); await page.waitForTimeout(400);
     const f = page.frameLocator('.win[data-ikey="notes:1"] iframe');
     const info = () => f.locator('body').evaluate(() => { const t = document.getElementById('t'), v = document.getElementById('view'); const ed = document.body.classList.contains('editing'); const el = ed ? t : v; return { size: parseFloat(getComputedStyle(t).fontSize), editing: ed, overflowY: el.scrollHeight > el.clientHeight + 1, overflowX: el.scrollWidth > el.clientWidth + 1 }; });
@@ -1476,7 +1476,7 @@ const SUITES = [
     await page.evaluate(() => window.__board21.state.wins.get('notes:1').post('config', { config: { color: 'pink', size: 3 } })); await page.waitForTimeout(400);
     ok(!(await info()).overflowY, 'a note saved before this update fits its text automatically');
     // The chalk font is part of the offline cache.
-    ok(await page.evaluate(() => window.BOARD21_APPS.find(a => a.id === 'notes').files.includes('apps/notes/fonts/CrayonLibre-21Board.woff2') && window.BOARD21_APPS.find(a => a.id === 'notes').files.includes('apps/notes/fonts/Excalifont-Regular.woff2')), 'the chalk and marker fonts are listed for offline use');
+    ok(await page.evaluate(() => window.BOARD21_WIDGETS.find(a => a.id === 'notes').files.includes('widgets/notes/fonts/CrayonLibre-21Board.woff2') && window.BOARD21_WIDGETS.find(a => a.id === 'notes').files.includes('widgets/notes/fonts/Excalifont-Regular.woff2')), 'the chalk and marker fonts are listed for offline use');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -1486,7 +1486,7 @@ const SUITES = [
     const a = await ctx.newPage();
     const errors = []; a.on('pageerror', e => errors.push(e.message));
     await a.goto(url); await a.waitForTimeout(600);
-    await a.evaluate(() => { window.__board21.openApp('notes'); window.__board21.openApp('timer'); });
+    await a.evaluate(() => { window.__board21.openWidget('notes'); window.__board21.openWidget('timer'); });
     await a.waitForTimeout(1500);
     ok((await a.evaluate(() => Array.from(window.__board21.state.wins.values()).every(w => w.connected))), 'widgets connect when index.html is opened from disk');
     const b = await ctx.newPage(); await b.goto(url); await b.waitForTimeout(1500);

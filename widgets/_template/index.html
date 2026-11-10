@@ -2,8 +2,8 @@
 <!--
   21Board widget starter
   =======================
-  1. Copy this folder to apps/<your-app-id>/   (lowercase letters, numbers, dashes)
-  2. Add an entry for it in apps/registry.js
+  1. Copy this folder to widgets/<your-widget-id>/   (lowercase letters, numbers, dashes)
+  2. Add an entry for it in widgets/registry.js
   3. Bump VERSION in sw.js
   You can open this file directly in a browser to try it: the SDK runs in
   "standalone" mode and saves to localStorage instead of 21Board.
@@ -15,7 +15,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>My App</title>
+<title>My Widget</title>
 <script src="../../sdk/board21.js"></script>
 <style>
   html, body { margin: 0; height: 100%; }
@@ -25,7 +25,7 @@
     display: grid; place-items: center; overflow: hidden;
     user-select: none; -webkit-user-select: none; touch-action: manipulation;
   }
-  /* Size things relative to the window (vmin/vw/vh) so the app scales when resized. */
+  /* Size things relative to the window (vmin/vw/vh) so the widget scales when resized. */
   #count { font-size: 30vmin; font-weight: 800; }
   button { font: inherit; font-size: 6vmin; border: 0; border-radius: 999px; padding: 2vmin 6vmin; background: var(--b21-accent); color: var(--b21-on-accent); cursor: pointer; }
 </style>

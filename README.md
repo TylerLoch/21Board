@@ -3,7 +3,7 @@
 **21Board helps teachers curate their own suite of smartboard widgets so they can orchestrate
 their unique classroom with ease.**
 
-21Board is a small "operating system" for the classroom smartboard: an App Picker in both bottom
+21Board is a small "operating system" for the classroom smartboard: an Widget Picker in both bottom
 corners, a windowing system for widgets, and on-device storage with export/import. Widgets are
 built independently and dropped in.
 
@@ -47,14 +47,14 @@ include) to the static host. Then:
 
 | | |
 | --- | --- |
-| **App Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap an app to open it. Tap ▦ again (or anywhere else) to close. |
+| **Widget Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap a widget to open it. Tap ▦ again (or anywhere else) to close. |
 | **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Fullscreen, Settings. |
-| **Move a window** | Drag its title bar, or drag anywhere inside apps that don't involve typing (Clock, Timer, Calendar, Dice…). In apps with typing (Notes), drag inside with two fingers. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
-| **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some apps keep a fixed shape. |
+| **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
+| **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
-| **Window menu** | Tap the app's name (⌄) in the title bar: the app's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. |
-| **Closing** | Closing a window keeps its content. Open the app again to pick up where you left off. If you have several of the same app, they come back in order (1, 2, 3…). |
-| **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and app settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
+| **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. |
+| **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
+| **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
@@ -66,8 +66,8 @@ include) to the static host. Then:
   (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
   in full backups, not in templates).
 - **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, size of windows and menus (default 80%), board shape (16:9 or any shape), close all windows.
-- **App Picker:** show the controls in both corners, or only left/right.
-- **Board:** board name (used for export file names), list of every saved app window with
+- **Widget Picker:** show the controls in both corners, or only left/right.
+- **Board:** board name (used for export file names), list of every saved widget window with
   open/delete.
 - **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
 - **Advanced:** Developer mode (SDK Playground, test unregistered widgets), erase everything.
@@ -81,11 +81,11 @@ index.html              Board shell: markup + all CSS
 board.js                Board shell logic (storage, sync, windows, picker, settings, export/import)
 sw.js                   Service worker (offline cache, updates)  ← bump VERSION on deploy
 manifest.webmanifest    PWA manifest (also lets the installed app open .21board files in Chrome)
-icons/                  App icons
+icons/                  Widget icons
 sdk/board21.js          The SDK every widget includes (window.Board21)
-apps/registry.js        THE list of widgets (used by the picker AND the offline cache)
-apps/<id>/index.html    One folder per widget
-apps/_template/         Starter for new widgets (not registered)
+widgets/registry.js        THE list of widgets (used by the picker AND the offline cache)
+widgets/<id>/index.html    One folder per widget
+widgets/_template/         Starter for new widgets (not registered)
 docs/WIDGET-SDK.md      How to build a widget; SDK reference; submission checklist
 docs/DATA-FORMAT.md     IndexedDB layout, sync protocol, .21board file format
 tests/run.js            Optional automated browser tests
@@ -93,11 +93,11 @@ tests/run.js            Optional automated browser tests
 
 ### Included widgets
 
-| App | Shows off |
+| Widget | Shows off |
 | --- | --- |
 | **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio (no sound files) |
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
-| **Clock** | Analog, digital or date-only; aspect-ratio lock that changes at runtime (analog 1:1, digital/date 2.2:1), config-only app |
+| **Clock** | Analog, digital or date-only; aspect-ratio lock that changes at runtime (analog 1:1, digital/date 2.2:1), config-only widget |
 | **Notes** | Text grows to fill the note, tappable web links, colors incl. Chalkboard and Whiteboard themes (bundled hand-drawn fonts), live text sync without losing the cursor |
 | **Name Picker** | Student names kept as *content* so templates never include them |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
@@ -108,8 +108,8 @@ tests/run.js            Optional automated browser tests
 
 ## Adding a widget
 
-1. Copy `apps/_template/` to `apps/<id>/` and build it (see **[docs/WIDGET-SDK.md](docs/WIDGET-SDK.md)**).
-2. Add an entry to `apps/registry.js` listing every file it needs.
+1. Copy `widgets/_template/` to `widgets/<id>/` and build it (see **[docs/WIDGET-SDK.md](docs/WIDGET-SDK.md)**).
+2. Add an entry to `widgets/registry.js` listing every file it needs.
 3. Bump `VERSION` in `sw.js`.
 
 To try a widget before registering it: Settings → Advanced → Developer mode → *Test a widget*.
@@ -119,8 +119,8 @@ To try a widget before registering it: Settings → Advanced → Developer mode 
 ## How data is kept
 
 See **[docs/DATA-FORMAT.md](docs/DATA-FORMAT.md)**. In short: one IndexedDB object store of small
-JSON records — settings, board, and for every app window an instance record (position, size,
-open/closed), its content, and its config. Each window of the same app has its own sequential
+JSON records — settings, board, and for every widget window an instance record (position, size,
+open/closed), its content, and its config. Each window of the same widget has its own sequential
 instance number and separate data. Other open copies of 21Board are notified of every change and
 re-read just what changed.
 
@@ -141,7 +141,7 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 | --- | --- |
 | **16:9 (default)** | The board is a 16:9 canvas drawn as large as fits the window, centered, with the rest of the window lightly shaded. Every screen (laptop, monitor, smartboard) shows the same arrangement, so a board planned on a laptop looks the same on the board. Windows can't be put in the shaded margin. |
 | **Any shape** | Settings → Windows → *Board shape → Any shape*: the board fills the whole window at the chosen size. On a smaller screen, windows are moved to fit (as in early builds). |
-| **Size of windows and menus** | Settings → Windows, − / + (50%–200%, default **80%**): how big title bars, menus, the App Picker, Settings and app contents are, as on a 1920 × 1080 screen. Windows keep their place and footprint when it changes. Menus, the App Picker, Settings and messages never get bigger than fits the screen (a size picked on a smartboard can arrive on a tablet in a backup). |
+| **Size of windows and menus** | Settings → Windows, − / + (50%–200%, default **80%**): how big title bars, menus, the Widget Picker, Settings and widget contents are, as on a 1920 × 1080 screen. Windows keep their place and footprint when it changes. Menus, the Widget Picker, Settings and messages never get bigger than fits the screen (a size picked on a smartboard can arrive on a tablet in a backup). |
 | **Tip** | When the 16:9 board leaves much of the window unused (a very wide, tall or narrow window), a small tip in the shaded margin offers *Use the whole window* (switches to Any shape). *Hide* keeps it away for the session. It's left out when the margin is too small to hold it. |
 
 Both settings are saved with the board (and in exports). Boards saved before this existed are
@@ -163,13 +163,13 @@ Built for current **Chrome** (and Chromium-based Edge). Kept compatible with **S
 
 ## Third-party files
 
-- `apps/notes/fonts/CrayonLibre-21Board.woff2`: *Crayon Libre* 1.05 by GGBotNet, released under CC0 1.0
-  (public domain, `apps/notes/fonts/CrayonLibre-LICENSE.txt`). It gives the Notes Chalkboard theme
+- `widgets/notes/fonts/CrayonLibre-21Board.woff2`: *Crayon Libre* 1.05 by GGBotNet, released under CC0 1.0
+  (public domain, `widgets/notes/fonts/CrayonLibre-LICENSE.txt`). It gives the Notes Chalkboard theme
   hand-drawn chalk lettering on every device, Chromebooks included. `tools/build-chalk-font.py` makes
   this file from the original, reusing the font's own chalk strokes: a print (non-cursive) lowercase l
   whose bottom trails off like chalk as the hand lifts,
   a flag on the 1 and bars on the capital I (so l, 1 and I differ), a Q with a plain straight tail, a
   two-dot colon (the original's looked like a semicolon), no pictograph emoji, WOFF2 (about 60 KB).
-- `apps/notes/fonts/Excalifont-Regular.woff2`: *Excalifont* by Excalidraw (based on Virgil by Ellinor
-  Rapp), used unmodified under the SIL Open Font License 1.1 (`apps/notes/fonts/Excalifont-OFL.txt`),
+- `widgets/notes/fonts/Excalifont-Regular.woff2`: *Excalifont* by Excalidraw (based on Virgil by Ellinor
+  Rapp), used unmodified under the SIL Open Font License 1.1 (`widgets/notes/fonts/Excalifont-OFL.txt`),
   for the Notes Whiteboard theme.

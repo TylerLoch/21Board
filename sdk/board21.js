@@ -7,7 +7,7 @@
  *
  * Then:
  *
- *     const ctx  = await Board21.ready();      // { appId, instance, data, config, theme, ... }
+ *     const ctx  = await Board21.ready();      // { widgetId, instance, data, config, theme, ... }
  *     render(ctx.data);
  *     Board21.on('data', render);             // content changed in another 21Board tab / import
  *     button.onclick = () => Board21.save({ count: ++count });
@@ -129,10 +129,10 @@
     var s = standaloneStore();
     var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
     var theme = dark ? 'dark' : 'light';
-    var m = location.pathname.match(/apps\/([^/]+)\//);
+    var m = location.pathname.match(/widgets\/([^/]+)\//);
     context = {
       standalone: true, sdkVersion: SDK_VERSION, boardVersion: null,
-      appId: m ? m[1] : 'standalone', appName: document.title || 'Widget', instance: 1,
+      widgetId: m ? m[1] : 'standalone', widgetName: document.title || 'Widget', instance: 1,
       data: s.data === undefined ? null : s.data, config: s.config === undefined ? null : s.config,
       theme: theme, palette: PALETTES[theme], window: windowInfo(),
       locale: navigator.language || 'en-US', devMode: true
@@ -237,7 +237,7 @@
     } catch (e) { /* cross-origin host: wait for init */ }
 
     post('hello', { sdkVersion: SDK_VERSION, protocol: PROTOCOL });
-    // Tapping anywhere in the app brings its window to the front.
+    // Tapping anywhere in the widget brings its window to the front.
     window.addEventListener('pointerdown', function () { post('activate'); }, true);
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape') post('key', { key: 'Escape' }); }, true);
     // If no 21Board answers (e.g. framed by something else), fall back to standalone.
@@ -299,7 +299,7 @@
       setMinSize: function (width, height) { return windowOp('setMinSize', [width, height]); },
       setMaxSize: function (width, height) { return windowOp('setMaxSize', [width || null, height || null]); },
       setResizable: function (resizable) { return windowOp('setResizable', [resizable !== false]); },
-      /** false while your app needs drags itself (e.g. an editing view); true to let the window be dragged from inside. */
+      /** false while your widget needs drags itself (e.g. an editing view); true to let the window be dragged from inside. */
       setDragFromContent: function (on) { return windowOp('setDragFromContent', [on !== false]); },
       setTitle: function (subtitle) { return windowOp('setTitle', [subtitle == null ? '' : String(subtitle)]); },
       focus: function () { return windowOp('focus'); },
