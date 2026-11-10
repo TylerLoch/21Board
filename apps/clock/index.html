@@ -85,7 +85,9 @@
     } else {
       const hh = config.hour24 ? String(h).padStart(2, '0') : String(h % 12 || 12);
       const ampm = config.hour24 ? '' : `<small>${h < 12 ? 'AM' : 'PM'}</small>`;
-      document.getElementById('time').innerHTML = `${hh}:${String(m).padStart(2, '0')}${config.seconds ? ':' + String(s).padStart(2, '0') : ''}${ampm}`;
+      const html = `${hh}:${String(m).padStart(2, '0')}${config.seconds ? ':' + String(s).padStart(2, '0') : ''}${ampm}`;
+      const t = document.getElementById('time');
+      if (t.dataset.html !== html) { t.innerHTML = html; t.dataset.html = html; }   // only when it changes
       const date = document.getElementById('date');
       date.style.display = config.date ? '' : 'none';
       date.textContent = d.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' });

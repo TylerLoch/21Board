@@ -1104,6 +1104,7 @@
     }
 
     reload() {
+      Inter.forget(this, true);
       this.rt = {}; this.menuItems = []; this.subtitle = ''; this.connected = false; this.lastInfo = '';
       if (Menu.win === this) Menu.close();
       this.renderTitle();
@@ -1112,6 +1113,7 @@
     }
 
     destroy() {
+      Inter.forget(this, false);
       if (this.iframe) this.iframe.src = 'about:blank';
       this.el.remove();
     }
@@ -1485,11 +1487,12 @@
     get active() { return this.map.size > 0; },
     holds(win) { for (const it of this.map.values()) if (it.win === win) return it; return null; },
 
-    // Drags that start inside an app (section 9a). `key` is the pointerId, or a string for two-finger drags.
-    beginAt(key, win, x, y) {
+    // Drags that start inside an app (section 9a), called once the press has moved past the slop.
+    // `key` is the pointerId, or a string for two-finger drags. Fails if someone else has this window.
+    beginAt(key, win, x, y, type) {
       if (this.holds(win)) return false;
       this.map.set(key, {
-        id: key, win, kind: 'content', handle: null, el: null,
+        id: key, win, kind: 'content', handle: null, el: null, type,
         sx: x, sy: y, x, y,
         lx0: (x - Zoom.ox) / Zoom.s, ly0: (y - Zoom.oy) / Zoom.s,
         layoutSig: JSON.stringify(S.board.layout),
@@ -1499,12 +1502,15 @@
     },
     moveTo(key, x, y) { this.move({ pointerId: key, clientX: x, clientY: y }); const it = this.map.get(key); return !!(it && it.moved); },
     endFor(key, cancelled) { const it = this.map.get(key); const moved = !!(it && it.moved); this.end({ pointerId: key }, cancelled); return moved; },
-    drop(key) { const it = this.map.get(key); if (it && !it.moved) this.map.delete(key); },
+    // A window's app was reloaded or the window closed mid-gesture: its pointers will never report back.
+    forget(win, contentOnly) {
+      for (const [key, it] of Array.from(this.map)) if (it.win === win && (!contentOnly || it.kind === 'content')) this.end({ pointerId: key }, true);
+    },
 
     begin(e, win, kind, handle, el) {
       for (const it of this.map.values()) if (it.win === win) return;
       const it = {
-        id: e.pointerId, win, kind, handle, el,
+        id: e.pointerId, win, kind, handle, el, type: e.pointerType,
         sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY,
         lx0: (e.clientX - Zoom.ox) / Zoom.s, ly0: (e.clientY - Zoom.oy) / Zoom.s, // grab point in layout space
         layoutSig: JSON.stringify(S.board.layout),
@@ -1524,6 +1530,9 @@
         if (Math.hypot(it.x - it.sx, it.y - it.sy) < DRAG_THRESHOLD) return;
         it.moved = true;
         document.body.classList.add('busy');
+        // Mouse only: let the pointer pass over app iframes. Touch and pen stay with their element anyway,
+        // and other people can keep using (and dragging) the other windows.
+        if (it.type === 'mouse') document.body.classList.add('busy-mouse');
         Menu.close();
         if (it.kind === 'title' && it.win.inst.maximized) {
           // Dragging a maximized window restores it under the pointer.
@@ -1581,6 +1590,7 @@
           else win.lastTitleTap = now;
         }
       }
+      if (![...this.map.values()].some(o => o.moved && o.type === 'mouse')) document.body.classList.remove('busy-mouse');
       if (!this.active) {
         document.body.classList.remove('busy');
         if (this.deferredRebuild) { this.deferredRebuild = this.deferredReload = false; this.deferredKeys.clear(); rebuildAll(); }
@@ -1595,27 +1605,59 @@
   // ---------------------------------------------------------------------
   // - Click-only apps (registry window.dragFromContent, default true): drag
   //   anywhere inside the window with one finger or the mouse. A tap is still
-  //   a tap; a press that turns into a drag moves the window and the click is
-  //   swallowed, so a button you started on doesn't fire.
-  // - Every app: two fingers anywhere inside move the window (for apps that
-  //   need drags themselves: typing/selecting text, drawing).
+  //   a tap: a press only becomes a window drag once it moves past the slop
+  //   (touch uses the browser's own tap allowance), and then the app doesn't
+  //   get the click or the release, so a button you started on doesn't fire.
+  // - Every app: two fingers of one hand anywhere inside move the window (for
+  //   apps that need drags themselves: typing/selecting text). Two touches far
+  //   apart are two people, not a drag.
   // - Never started from: text fields, sliders, selects, canvas/video, editable
-  //   or explicitly selectable text, scrolling areas, draggable elements,
-  //   anything inside [data-b21-nodrag], or a press the app already handled
-  //   (preventDefault on pointerdown).
+  //   or explicitly selectable text, scrolling areas (incl. a scrolling page),
+  //   elements that handle touch themselves (touch-action other than auto /
+  //   manipulation), draggable="true", anything inside [data-b21-nodrag], or a
+  //   press the app already handled (preventDefault on pointerdown or touchstart,
+  //   or pointer capture). Two-finger moves skip [data-b21-nodrag], canvas, video
+  //   and touch-handling elements.
+  // - A press claims nothing until it moves, so a finger resting in an app
+  //   never blocks someone else from moving or resizing that window.
   // Sub-apps are same-origin, so the board listens inside each iframe; nothing
   // here is needed from the app. Settings → Windows can switch it off.
   // =====================================================================
+  const CONTENT_SLOP = { mouse: 6, pen: 10, touch: 16 };   // screen px before a press inside an app moves the window
+  const TWO_FINGER_SPAN = 260;                              // farther apart than this = two people
+
+  // Walk up through shadow roots too (apps built from web components).
+  const parentOf = n => n.parentElement || (n.parentNode && n.parentNode.host) || null;
+  const handlesTouch = cs => !/^(auto|manipulation)$/.test(cs.touchAction) && !/pan-x.*pan-y|pan-y.*pan-x/.test(cs.touchAction);
+
   function noContentDrag(el, cw) {
-    for (let n = el; n && n.nodeType === 1; n = n.parentElement) {
+    const doc = cw.document;
+    for (let n = el; n && n.nodeType === 1; n = parentOf(n)) {
       const tag = n.tagName;
       if (n.hasAttribute('data-b21-nodrag') || n.isContentEditable || n.getAttribute('draggable') === 'true') return true;
       if (tag === 'TEXTAREA' || tag === 'SELECT' || tag === 'CANVAS' || tag === 'VIDEO' || tag === 'AUDIO' || tag === 'IFRAME') return true;
       if (tag === 'INPUT' && !/^(button|submit|reset|checkbox|radio|color|file|image)$/i.test(n.type || '')) return true;
       const cs = cw.getComputedStyle(n);
       if (cs.userSelect === 'text' || cs.webkitUserSelect === 'text') return true;
+      if (handlesTouch(cs)) return true;
       if ((/(auto|scroll)/.test(cs.overflowY) && n.scrollHeight > n.clientHeight + 1) ||
           (/(auto|scroll)/.test(cs.overflowX) && n.scrollWidth > n.clientWidth + 1)) return true;
+    }
+    // A page that scrolls as a whole is a scrolling area too. (The viewport takes html's overflow,
+    // or body's when html's is 'visible'.)
+    const de = doc.documentElement, se = doc.scrollingElement || de;
+    const hs = cw.getComputedStyle(de), bs = doc.body ? cw.getComputedStyle(doc.body) : hs;
+    const vp = a => (hs[a] !== 'visible' ? hs[a] : bs[a]);
+    const clip = v => /hidden|clip/.test(v);
+    if (!clip(vp('overflowY')) && se.scrollHeight > de.clientHeight + 1) return true;
+    if (!clip(vp('overflowX')) && se.scrollWidth > de.clientWidth + 1) return true;
+    return false;
+  }
+
+  function noTwoFingerDrag(el, cw) {
+    for (let n = el; n && n.nodeType === 1; n = parentOf(n)) {
+      if (n.hasAttribute('data-b21-nodrag') || n.tagName === 'CANVAS' || n.tagName === 'VIDEO') return true;
+      if (handlesTouch(cw.getComputedStyle(n))) return true;
     }
     return false;
   }
@@ -1623,85 +1665,189 @@
   function attachContentDrag(win) {
     let cw;
     try { cw = win.iframe.contentWindow; if (!cw || !cw.document) return; } catch (e) { return; } // cross-origin: title bar only
-    const frame = win.iframe;
-    // App point -> board point. Read fresh every time, because the window moves under the finger.
+    const frame = win.iframe, doc = cw.document;
+    // App point -> board point. Read when each event arrives (the window moves under the finger).
     const toBoard = (x, y) => {
       const r = frame.getBoundingClientRect();
       const k = frame.clientWidth ? r.width / frame.clientWidth : 1;
       return { x: r.left + x * k, y: r.top + y * k };
     };
     const enabled = () => S.settings.dragFromContent !== false;
-    const singles = new Set();       // pointerIds with a one-finger/mouse drag (pending or moving)
-    const touches = new Map();       // touch pointerId -> app point
-    let two = null;                  // { key, ids }
-    let swallowClickUntil = 0;
+    const origin = e => (e.composedPath && e.composedPath()[0]) || e.target;
+    const singles = new Map();   // pointerId -> { type, target, x, y (board point at press), started }
+    const touches = new Map();   // touch pointerId -> { p: board point, target }
+    let two = null;              // { key, ids, start, started }
+    let lastTouchDown = null;
+    const follows = new Map();   // pointerId -> remove the listeners on a pressed element (see followPress)
+    let swallowClickUntil = 0, swallowUpsUntil = 0;
+
     const centroid = () => {
-      const [a, b] = two.ids.map(id => touches.get(id));
-      return toBoard((a.x + b.x) / 2, (a.y + b.y) / 2);
+      const [a, b] = two.ids.map(id => touches.get(id).p);
+      return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+    };
+    const endTwo = cancelled => { const t = two; two = null; if (t && t.started) Inter.endFor(t.key, cancelled); return !!(t && t.started); };
+    // The app no longer gets this pointer (its fingers are moving the window): let it drop what it started.
+    const cancelForApp = (id, target) => {
+      try { target.dispatchEvent(new cw.PointerEvent('pointercancel', { pointerId: id, pointerType: 'touch', bubbles: true, composed: true })); } catch (err) { /* ignore */ }
+    };
+    // Is a finger here possibly moving this window? (Used to stop the browser panning it away.)
+    win.contentBusy = () => !!two || Array.from(singles).some(([id, s]) => s.type !== 'mouse' && (!s.started || Inter.map.has(id)));
+    // A new first finger means no other finger is down anywhere: anything still remembered is stale.
+    win.contentReset = () => {
+      follows.forEach(off => off()); follows.clear();
+      touches.clear(); two = null;
+      for (const [id, s] of singles) if (s.type !== 'mouse') singles.delete(id);
     };
 
+    // Capture phase: see every finger, even in apps that stop propagation.
     cw.addEventListener('pointerdown', e => {
-      if (e.pointerType === 'touch') touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (!enabled()) return;
-      // Second finger down: two-finger drag (any app), unless a one-finger drag is already moving it.
-      if (e.pointerType === 'touch' && touches.size === 2 && !two) {
-        const ids = Array.from(touches.keys());
-        const moving = ids.some(id => singles.has(id) && Inter.map.get(id) && Inter.map.get(id).moved);
-        if (!moving) {
-          ids.forEach(id => { if (singles.has(id)) { Inter.drop(id); singles.delete(id); } });
-          const key = 'two:' + win.ikey;
-          two = { key, ids };
-          const c = centroid();
-          if (!Inter.beginAt(key, win, c.x, c.y)) two = null;
-        }
-        return;
-      }
-      if (two || !win.canDragFromContent()) return;
-      if (e.defaultPrevented || (e.pointerType === 'mouse' && e.button !== 0)) return;
-      if (noContentDrag(e.target, cw)) return;
-      const p = toBoard(e.clientX, e.clientY);
-      if (Inter.beginAt(e.pointerId, win, p.x, p.y)) singles.add(e.pointerId);
-    }); // bubble phase: runs after the app's own handlers, so e.defaultPrevented is meaningful
-
-    cw.addEventListener('pointermove', e => {
-      if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      if (two && two.ids.includes(e.pointerId)) { const c = centroid(); Inter.moveTo(two.key, c.x, c.y); return; }
-      if (!singles.has(e.pointerId)) return;
-      const it = Inter.map.get(e.pointerId);
-      if (!it) { singles.delete(e.pointerId); return; }
-      const was = it.moved;
-      const p = toBoard(e.clientX, e.clientY);
-      if (Inter.moveTo(e.pointerId, p.x, p.y) && !was) {
-        try { e.target.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-        try { cw.getSelection().removeAllRanges(); } catch (err) { /* ignore */ }
-      }
+      swallowClickUntil = swallowUpsUntil = 0;   // a new press: whatever click comes next is its own
+      // One mouse: an earlier mouse press here is over (its release may have gone to the board).
+      if (e.pointerType === 'mouse') for (const [id, s] of singles) if (s.type === 'mouse') singles.delete(id);
+      if (e.pointerType === 'touch' && e.isPrimary) forgetStaleTouches(e.pointerId);
+      if (e.pointerType !== 'mouse') followPress(e);
+      if (e.pointerType !== 'touch') return;
+      const target = origin(e);
+      touches.set(e.pointerId, { p: toBoard(e.clientX, e.clientY), target });
+      lastTouchDown = e.pointerId;
+      // Second finger: maybe a two-finger move (any app), unless a one-finger drag is already moving it.
+      if (!enabled() || two || touches.size !== 2) return;
+      const ids = Array.from(touches.keys());
+      if (ids.some(id => singles.has(id) && singles.get(id).started)) return;
+      ids.forEach(id => singles.delete(id));
+      if (!win.inst || win.inst.maximized) return;
+      const [a, b] = ids.map(id => touches.get(id));
+      if (Math.hypot(a.p.x - b.p.x, a.p.y - b.p.y) > TWO_FINGER_SPAN) return;
+      if (ids.some(id => noTwoFingerDrag(touches.get(id).target, cw))) return;
+      two = { key: 'two:' + win.ikey, ids, started: false };
+      two.start = centroid();
     }, true);
 
-    const finish = e => {
-      touches.delete(e.pointerId);
-      const cancelled = e.type === 'pointercancel';
-      if (two && two.ids.includes(e.pointerId)) {
-        if (Inter.endFor(two.key, cancelled)) swallowClickUntil = Date.now() + 500;
-        two = null;
+    // Bubble phase: after the app's own handlers, so e.defaultPrevented is meaningful.
+    cw.addEventListener('pointerdown', e => {
+      if (!enabled() || two || !win.canDragFromContent()) return;
+      if (e.pointerType === 'touch' && touches.size > 1) return;
+      if (e.defaultPrevented || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      const target = origin(e);
+      if (noContentDrag(target, cw)) return;
+      const p = toBoard(e.clientX, e.clientY);
+      singles.set(e.pointerId, { type: e.pointerType, target, x: p.x, y: p.y, started: false });
+    });
+
+    const onMove = e => {
+      const id = e.pointerId;
+      const t = touches.get(id);
+      if (t) t.p = toBoard(e.clientX, e.clientY);
+      if (two && two.ids.includes(id)) {
+        const c = centroid();
+        if (!two.started) {
+          if (Math.hypot(c.x - two.start.x, c.y - two.start.y) < CONTENT_SLOP.touch) return;
+          if (!Inter.beginAt(two.key, win, two.start.x, two.start.y, 'touch')) { two = null; return; }
+          two.started = true;
+          two.ids.forEach(i => cancelForApp(i, touches.get(i).target));
+        }
+        Inter.moveTo(two.key, c.x, c.y);
+        e.stopImmediatePropagation();
         return;
       }
-      if (!singles.has(e.pointerId)) return;
-      singles.delete(e.pointerId);
-      if (Inter.endFor(e.pointerId, cancelled)) swallowClickUntil = Date.now() + 500;
+      const s = singles.get(id);
+      if (!s) return;
+      if (s.started && !Inter.map.has(id)) { singles.delete(id); return; }   // ended on the board side
+      const p = toBoard(e.clientX, e.clientY);
+      if (!s.started) {
+        if (Math.hypot(p.x - s.x, p.y - s.y) < (CONTENT_SLOP[s.type] || CONTENT_SLOP.mouse)) return;
+        if (!Inter.beginAt(id, win, s.x, s.y, s.type)) { singles.delete(id); return; }
+        s.started = true;
+        // Capture on the page itself, which the app can't re-render away mid-drag.
+        try { doc.documentElement.setPointerCapture(id); } catch (err) { /* ignore */ }
+        try { cw.getSelection().removeAllRanges(); } catch (err) { /* ignore */ }
+      }
+      Inter.moveTo(id, p.x, p.y);
+      e.stopImmediatePropagation();
+    };
+    cw.addEventListener('pointermove', onMove, true);
+
+    const finish = e => {
+      if (!e.isTrusted) return;   // our own pointercancel for the app
+      const id = e.pointerId, cancelled = e.type === 'pointercancel';
+      const off = follows.get(id); if (off) { follows.delete(id); off(); }
+      touches.delete(id);
+      if (two && two.ids.includes(id)) {
+        if (endTwo(cancelled)) { e.stopImmediatePropagation(); swallowUpsUntil = Date.now() + 80; }
+        return;
+      }
+      const s = singles.get(id);
+      if (!s) return;
+      singles.delete(id);
+      if (!s.started) return;
+      Inter.endFor(id, cancelled);
+      // The release of a window drag is not a tap: the app gets neither it nor (for the mouse) the click.
+      e.stopImmediatePropagation();
+      swallowUpsUntil = Date.now() + 80;
+      if (s.type === 'mouse') swallowClickUntil = Date.now() + 500;
     };
     cw.addEventListener('pointerup', finish, true);
     cw.addEventListener('pointercancel', finish, true);
 
-    // A press that became a window drag must not also click whatever it started on.
-    cw.addEventListener('click', e => {
-      if (Date.now() < swallowClickUntil) { swallowClickUntil = 0; e.preventDefault(); e.stopImmediatePropagation(); }
+    // While a finger may be moving a window, stop the browser panning (which would cancel it), whatever
+    // other fingers are on the screen. (If the touch sequence began on the board itself, its touch events
+    // go to the board's document instead; the board checks win.contentBusy there.)
+    const onTouchMove = e => { if (e.cancelable && win.contentBusy()) e.preventDefault(); };
+    cw.addEventListener('touchmove', onTouchMove, { passive: false, capture: true });
+
+    // A finger's events keep going to the element it pressed, even after the app removes that element
+    // (re-rendering an icon, say), and then they no longer reach this window. Follow them there too.
+    function followPress(e) {
+      const n = e.target, id = e.pointerId;
+      const gone = ev => !ev.target.isConnected;   // still connected: the window listeners see it anyway
+      const pm = ev => { if (ev.pointerId === id && gone(ev)) onMove(ev); };
+      const tm = ev => { if (gone(ev)) onTouchMove(ev); };
+      const fin = ev => { if (ev.pointerId !== id) return; if (gone(ev)) finish(ev); else off(); };
+      const off = () => {
+        follows.delete(id);
+        n.removeEventListener('pointermove', pm);
+        n.removeEventListener('pointerup', fin);
+        n.removeEventListener('pointercancel', fin);
+        n.removeEventListener('touchmove', tm);
+      };
+      if (follows.has(id)) follows.get(id)();
+      follows.set(id, off);
+      n.addEventListener('pointermove', pm);
+      n.addEventListener('pointerup', fin);
+      n.addEventListener('pointercancel', fin);
+      n.addEventListener('touchmove', tm, { passive: false });
+    }
+
+    cw.addEventListener('gotpointercapture', e => {
+      const s = singles.get(e.pointerId);
+      // Touch is captured to its own element automatically; any other capture is the app's.
+      if (s && !s.started && (s.type === 'mouse' || origin(e) !== s.target)) singles.delete(e.pointerId);
     }, true);
-    // While a finger is dragging a window, stop the browser scrolling/panning (which would cancel it).
-    cw.addEventListener('touchmove', e => {
-      if (two || (e.touches.length === 1 && singles.size)) { if (e.cancelable) e.preventDefault(); }
-    }, { passive: false, capture: true });
-    // No native image/link drag-and-drop while moving a window with the mouse.
-    cw.addEventListener('dragstart', e => { if (singles.size) e.preventDefault(); }, true);
+    // The app cancelled the touch (a swipe widget): it's the app's gesture.
+    cw.addEventListener('touchstart', e => {
+      if (e.defaultPrevented && lastTouchDown !== null) { const s = singles.get(lastTouchDown); if (s && !s.started) singles.delete(lastTouchDown); }
+      lastTouchDown = null;
+    });
+
+    // A press that became a window drag must not also click (or release on) whatever it started on.
+    cw.addEventListener('click', e => {
+      if (Date.now() < swallowClickUntil) { e.preventDefault(); e.stopImmediatePropagation(); }
+      swallowClickUntil = 0;
+      const s = singles.get(e.pointerId);
+      if (s && !s.started) singles.delete(e.pointerId);   // that press ended as a tap
+    }, true);
+    const eatUp = e => { if (Date.now() < swallowUpsUntil) e.stopImmediatePropagation(); };
+    cw.addEventListener('mouseup', eatUp, true);
+    cw.addEventListener('touchend', eatUp, true);
+    // No native image/link drag-and-drop while a mouse press may move the window.
+    cw.addEventListener('dragstart', e => { if (Array.from(singles.values()).some(s => s.type === 'mouse')) e.preventDefault(); }, true);
+  }
+
+  // A touch that is the only finger on the screen (isPrimary, shared by the board and its apps) means any
+  // finger still remembered from before never reported its release: end those, so nothing stays held.
+  function forgetStaleTouches(exceptId) {
+    for (const [key, it] of Array.from(Inter.map)) if (it.type === 'touch' && key !== exceptId) Inter.end({ pointerId: key }, false);
+    for (const w of S.wins.values()) if (w.contentReset) w.contentReset();
   }
 
   // Tapping the empty board deselects every window, hiding all resize grips.
@@ -2630,7 +2776,14 @@
     Menu.init();
     Settings.init();
     $('#desk').addEventListener('pointerdown', onDeskPointerDown);
+    document.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary) forgetStaleTouches(e.pointerId); }, true);
     document.addEventListener('pointermove', e => Inter.move(e));
+    // Touches that started on the board (a title bar, the empty board) carry every later finger's touchmove too,
+    // including fingers moving a window from inside an app: keep the browser from panning those away.
+    document.addEventListener('touchmove', e => {
+      if (!e.cancelable) return;
+      if (Inter.active || Array.from(S.wins.values()).some(w => w.contentBusy && w.contentBusy())) e.preventDefault();
+    }, { passive: false });
     document.addEventListener('pointerup', e => Inter.end(e, false));
     document.addEventListener('pointercancel', e => Inter.end(e, true));
     document.addEventListener('lostpointercapture', e => { if (Inter.map.has(e.pointerId)) Inter.end(e, false); });
@@ -2705,7 +2858,7 @@
 
   // Exposed for debugging in the console and for automated tests.
   window.__board21 = {
-    version: BOARD_VERSION, state: S, store: Store, zoom: Zoom, useScreenAsLayout,
+    version: BOARD_VERSION, state: S, store: Store, zoom: Zoom, useScreenAsLayout, inter: Inter,
     setRect: (ikey, rect) => { const i = S.insts.get(ikey); if (!i) return; saveInst(ikey, Object.assign({}, i, { rect })); const w = S.wins.get(ikey); if (w) w.layout(); },
     openApp, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,

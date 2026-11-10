@@ -83,8 +83,9 @@
     const done = ms <= 0 && state.duration > 0;
     $('display').textContent = fmt(ms);
     $('bar').style.transform = `scaleX(${state.duration ? ms / state.duration : 0})`;
-    $('go').innerHTML = running() ? PAUSE : PLAY;
-    $('go').setAttribute('aria-label', running() ? 'Pause' : 'Start');
+    // Only touch the button when it changes: replacing its icon under a finger would lose the press.
+    const label = running() ? 'Pause' : 'Start';
+    if ($('go').getAttribute('aria-label') !== label || !$('go').firstChild) { $('go').innerHTML = running() ? PAUSE : PLAY; $('go').setAttribute('aria-label', label); }
     document.body.classList.toggle('done', done);
     document.querySelectorAll('#chips button').forEach(b => b.classList.toggle('on', +b.dataset.min * 60000 === state.duration));
     Board21.window.setTitle(done ? 'Done!' : running() ? 'Running' : (ms < state.duration ? 'Paused' : ''));

@@ -168,7 +168,7 @@
 
     .win-body { position: relative; flex: 1 1 auto; overflow: hidden; border-radius: 0 0 12px 12px; background: var(--surface); }
     .win-body iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: transparent; color-scheme: normal; }
-    body.busy iframe { pointer-events: none; }
+    body.busy-mouse iframe { pointer-events: none; } /* mouse drags pass over apps; touch/pen stay with their element */
     .win-loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface); transition: opacity .2s; }
     .win-loading::after { content: ""; width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--primary); animation: spin .8s linear infinite; }
     .win-loading.done { opacity: 0; pointer-events: none; }

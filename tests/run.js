@@ -1145,6 +1145,172 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Drag from inside: review fixes', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 }, hasTouch: true });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => { for (const id of ['clock', 'dice', 'notes', 'timer', 'calendar']) window.__board21.openApp(id); });
+    await page.waitForTimeout(1800);
+    const place = (ik, r) => page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, r]);
+    await place('clock:1', { x: 40, y: 40, w: 260, h: 300 });
+    await place('dice:1', { x: 360, y: 40, w: 360, h: 280 });
+    await place('notes:1', { x: 780, y: 40, w: 320, h: 300 });
+    await place('timer:1', { x: 40, y: 440, w: 380, h: 300 });
+    await place('calendar:1', { x: 480, y: 440, w: 360, h: 340 });
+    await page.waitForTimeout(300);
+    const rect = ik => page.evaluate(ik => { const r = document.querySelector(`.win[data-ikey="${ik}"]`).getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height }; }, ik);
+    const inApp = (ik, sel) => page.evaluate(([ik, sel]) => { const f = document.querySelector(`.win[data-ikey="${ik}"] iframe`); const r = f.getBoundingClientRect(); const k = r.width / f.clientWidth; const b = f.contentDocument.querySelector(sel).getBoundingClientRect(); return { x: r.left + (b.left + b.width / 2) * k, y: r.top + (b.top + b.height / 2) * k }; }, [ik, sel]);
+    const idle = () => page.evaluate(() => window.__board21.inter.map.size === 0 && !document.body.classList.contains('busy'));
+    const cdp = await ctx.newCDPSession(page);
+    const T = (type, pts) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: pts.map(p => ({ x: p.x, y: p.y, id: p.id })) });
+    async function touchPath(pts, steps, ms = 20) {   // pts: [{x,y,id,dx,dy}]: all start together, move together, lift together
+      await T('touchStart', pts.slice(0, 1)); if (pts.length > 1) await T('touchStart', pts);
+      for (let i = 1; i <= steps; i++) { await T('touchMove', pts.map(p => ({ id: p.id, x: p.x + (p.dx || 0) * i / steps, y: p.y + (p.dy || 0) * i / steps }))); await page.waitForTimeout(ms); }
+      await T('touchEnd', []); await page.waitForTimeout(250);
+    }
+    async function titleDrag(ik, dx, dy) {
+      const r = await rect(ik); const x = r.x + 30, y = r.y + 14;
+      await page.mouse.move(x, y); await page.mouse.down();
+      for (let i = 1; i <= 8; i++) { await page.mouse.move(x + dx * i / 8, y + dy * i / 8); await page.waitForTimeout(16); }
+      await page.mouse.up(); await page.waitForTimeout(250);
+    }
+    const timerText = () => page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('#display').textContent();
+
+    // Taps on an element the app re-renders (Timer's Start icon) leave nothing stuck.
+    let go = await inApp('timer:1', '#go svg');
+    for (let i = 0; i < 3; i++) { await T('touchStart', [{ x: go.x, y: go.y, id: 1 }]); await page.waitForTimeout(450); await T('touchEnd', []); await page.waitForTimeout(150); }
+    ok(await idle(), 'tapping a button the app re-renders leaves no stuck interaction');
+    let r0 = await rect('timer:1'); await titleDrag('timer:1', 30, 0); let r1 = await rect('timer:1');
+    ok(Math.abs(r1.x - r0.x - 30) <= 12, `and the window still moves by its title bar (moved ${Math.round(r1.x - r0.x)})`);
+    if (await page.evaluate(() => /Pause/.test(document.querySelector('.win[data-ikey="timer:1"] iframe').contentDocument.getElementById('go').getAttribute('aria-label')))) {
+      await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('#go').click(); await page.waitForTimeout(200);
+    }
+
+    // An app that re-renders the very element under the finger: taps leave nothing held, and press-and-drag still moves and saves.
+    await page.evaluate(() => {
+      const w = document.querySelector('.win[data-ikey="calendar:1"] iframe').contentWindow, d = w.document;
+      const box = d.createElement('div'); box.id = 'rr'; box.style.cssText = 'position:fixed;left:20px;bottom:20px;width:140px;height:70px;z-index:9;background:#fc0';
+      d.body.appendChild(box);
+      w.setInterval(() => { box.innerHTML = '<span style="display:block;width:100%;height:100%">tick</span>'; }, 40);
+    });
+    await page.waitForTimeout(100);
+    let rr = await inApp('calendar:1', '#rr');
+    await T('touchStart', [{ ...rr, id: 1 }]); await page.waitForTimeout(200); await T('touchEnd', []); await page.waitForTimeout(150);
+    ok(await idle(), 'a tap on an element the app keeps re-rendering leaves nothing held');
+    r0 = await rect('calendar:1');
+    await T('touchStart', [{ ...rr, id: 1 }]); await page.waitForTimeout(120);
+    for (let i = 1; i <= 10; i++) { await T('touchMove', [{ x: rr.x, y: rr.y - 8 * i, id: 1 }]); await page.waitForTimeout(30); }
+    await T('touchEnd', []); await page.waitForTimeout(300);
+    r1 = await rect('calendar:1');
+    const saved = await page.evaluate(() => window.__board21.state.insts.get('calendar:1').rect.y);
+    ok(r0.y - r1.y > 60 && Math.abs(saved - r1.y) < 2 && await idle(), `pressing it and dragging still moves the window and saves it (moved ${Math.round(r1.y - r0.y)})`);
+
+    // A sloppy finger tap (10px of slip) is still a tap, and doesn't nudge the window.
+    let before = await timerText(); let plus = await inApp('timer:1', '#plus'); r0 = await rect('timer:1');
+    await touchPath([{ x: plus.x, y: plus.y, id: 1, dx: 10, dy: 3 }], 4, 15);
+    r1 = await rect('timer:1');
+    ok(await timerText() !== before && r1.x === r0.x && r1.y === r0.y, `a tap with 10px of finger slip still presses the button (${before} → ${await timerText()})`);
+
+    // Right after a touch drag, the next tap works.
+    r0 = await rect('timer:1');
+    let disp = await inApp('timer:1', '#display');
+    await touchPath([{ x: disp.x, y: disp.y, id: 1, dx: 0, dy: -60 }], 8);
+    plus = await inApp('timer:1', '#plus'); before = await timerText();
+    await T('touchStart', [{ x: plus.x, y: plus.y, id: 2 }]); await T('touchEnd', []); await page.waitForTimeout(250);
+    ok(await timerText() !== before, 'a tap right after a touch drag is not swallowed');
+
+    // A finger resting inside a window doesn't stop someone else moving it by its title bar.
+    const face = await inApp('clock:1', 'body');
+    r0 = await rect('clock:1');
+    await T('touchStart', [{ x: face.x, y: face.y + 30, id: 1 }]);
+    const tb = { x: r0.x + 40, y: r0.y + 14 };
+    await T('touchStart', [{ x: face.x, y: face.y + 30, id: 1 }, { x: tb.x, y: tb.y, id: 2 }]);
+    for (let i = 1; i <= 8; i++) { await T('touchMove', [{ x: face.x, y: face.y + 30, id: 1 }, { x: tb.x + 8 * i, y: tb.y + 6 * i, id: 2 }]); await page.waitForTimeout(20); }
+    await T('touchEnd', [{ x: face.x, y: face.y + 30, id: 1 }]); await T('touchEnd', []); await page.waitForTimeout(250);
+    r1 = await rect('clock:1');
+    ok(r1.x - r0.x > 40, `a finger resting in Clock doesn't block a title-bar drag (moved ${Math.round(r1.x - r0.x)}, ${Math.round(r1.y - r0.y)})`);
+    ok(await idle(), 'and nothing is left held');
+
+    // Another finger touching the board mid-drag doesn't cancel a one-finger drag.
+    r0 = await rect('calendar:1');
+    const cal = { x: r0.x + r0.w / 2, y: r0.y + r0.h / 2 }, rest = { x: 1300, y: 820, id: 2 };
+    await T('touchStart', [{ ...cal, id: 1 }]);
+    for (let i = 1; i <= 4; i++) { await T('touchMove', [{ x: cal.x, y: cal.y - 15 * i, id: 1 }]); await page.waitForTimeout(20); }
+    await T('touchStart', [{ x: cal.x, y: cal.y - 60, id: 1 }, rest]);
+    for (let i = 5; i <= 8; i++) { await T('touchMove', [{ x: cal.x, y: cal.y - 15 * i, id: 1 }, rest]); await page.waitForTimeout(20); }
+    await T('touchEnd', [rest]); await T('touchEnd', []); await page.waitForTimeout(250);
+    r1 = await rect('calendar:1');
+    ok(r0.y - r1.y > 90, `a second finger elsewhere doesn't cancel the drag (Calendar moved ${Math.round(r1.y - r0.y)})`);
+
+    // Two people at once: one drags Dice by its title bar, the other drags Clock from inside; both move.
+    await place('clock:1', { x: 40, y: 40, w: 260, h: 300 }); await place('timer:1', { x: 40, y: 480, w: 380, h: 300 }); await page.waitForTimeout(200);
+    let d0 = await rect('dice:1'), c0 = await rect('clock:1');
+    const dt = { x: d0.x + 40, y: d0.y + 14 }, cf = { x: c0.x + c0.w / 2, y: c0.y + c0.h / 2 + 20 };
+    await T('touchStart', [{ ...dt, id: 1 }]);
+    for (let i = 1; i <= 3; i++) { await T('touchMove', [{ x: dt.x, y: dt.y + 15 * i, id: 1 }]); await page.waitForTimeout(20); }
+    await T('touchStart', [{ x: dt.x, y: dt.y + 45, id: 1 }, { ...cf, id: 2 }]);
+    for (let i = 1; i <= 6; i++) { await T('touchMove', [{ x: dt.x, y: dt.y + 45 + 10 * i, id: 1 }, { x: cf.x, y: cf.y + 12 * i, id: 2 }]); await page.waitForTimeout(20); }
+    await T('touchEnd', []); await page.waitForTimeout(250);
+    let d1 = await rect('dice:1'), c1 = await rect('clock:1');
+    ok(d1.y - d0.y > 60 && c1.y - c0.y > 40, `two windows can be dragged at once, one from inside (Dice ${Math.round(d1.y - d0.y)}, Clock ${Math.round(c1.y - c0.y)})`);
+
+    // Two-finger drag on a maximized window leaves it maximized with its normal size kept.
+    await place('notes:1', { x: 780, y: 40, w: 320, h: 300 }); await page.waitForTimeout(100);
+    await page.evaluate(() => window.__board21.setMaximized('notes:1', true)); await page.waitForTimeout(300);
+    await touchPath([{ x: 600, y: 400, id: 1, dx: 80, dy: 60 }, { x: 680, y: 430, id: 2, dx: 80, dy: 60 }], 8);
+    let inst = await page.evaluate(() => window.__board21.state.insts.get('notes:1'));
+    ok(inst.maximized && inst.rect.w === 320 && inst.rect.x === 780, 'a two-finger drag on a maximized window keeps it maximized and keeps its normal size');
+    await page.evaluate(() => window.__board21.setMaximized('notes:1', false)); await page.waitForTimeout(300);
+
+    // Two touches far apart in one window are two people, not a drag.
+    r0 = await rect('notes:1');
+    await place('notes:1', { x: 600, y: 40, w: 700, h: 400 }); await page.waitForTimeout(200); r0 = await rect('notes:1');
+    await touchPath([{ x: r0.x + 60, y: r0.y + 120, id: 1, dx: 40, dy: 40 }, { x: r0.x + 640, y: r0.y + 300, id: 2, dx: 40, dy: 40 }], 8);
+    r1 = await rect('notes:1');
+    ok(r1.x === r0.x && r1.y === r0.y, 'two touches far apart (two people) do not move the window');
+    await place('notes:1', { x: 780, y: 40, w: 320, h: 300 });
+
+    // Closing or resetting a window mid-press leaves nothing stuck.
+    disp = await inApp('timer:1', '#display');
+    await T('touchStart', [{ ...disp, id: 1 }]);
+    for (let i = 1; i <= 5; i++) { await T('touchMove', [{ x: disp.x + 10 * i, y: disp.y, id: 1 }]); await page.waitForTimeout(20); }
+    await page.evaluate(() => window.__board21.resetWin('timer:1')); await page.waitForTimeout(600);
+    await T('touchEnd', []); await page.waitForTimeout(250);
+    ok(await idle(), 'resetting a window while it is being dragged from inside leaves nothing stuck');
+    r0 = await rect('timer:1'); await titleDrag('timer:1', 0, -30); r1 = await rect('timer:1');
+    ok(Math.abs(r1.y - r0.y + 30) <= 12, 'and it can be moved again');
+
+    // An app page that scrolls as a whole scrolls with one finger instead of moving the window.
+    await page.evaluate(() => { const d = document.querySelector('.win[data-ikey="dice:1"] iframe').contentDocument; d.body.style.overflow = 'visible'; d.body.style.height = 'auto'; d.documentElement.style.overflow = 'auto'; const x = d.createElement('div'); x.style.height = '2000px'; d.body.appendChild(x); });
+    r0 = await rect('dice:1');
+    await touchPath([{ x: r0.x + r0.w / 2, y: r0.y + 200, id: 1, dx: 0, dy: -120 }], 8);
+    r1 = await rect('dice:1');
+    const sy = await page.evaluate(() => document.querySelector('.win[data-ikey="dice:1"] iframe').contentWindow.scrollY);
+    ok(r1.y === r0.y && sy > 30, `a scrolling app page scrolls instead of moving the window (scrolled ${Math.round(sy)})`);
+
+    // Controls inside web components (shadow DOM) and touch widgets are left to the app.
+    await page.evaluate(() => {
+      const d = document.querySelector('.win[data-ikey="clock:1"] iframe').contentDocument;
+      const host = d.createElement('div'); host.style.cssText = 'position:fixed;left:10px;top:10px;width:200px;height:60px;z-index:9';
+      host.attachShadow({ mode: 'open' }).innerHTML = '<input type="range" style="width:200px;height:40px" min="0" max="100" value="10">';
+      const pad = d.createElement('div'); pad.id = 'pad'; pad.style.cssText = 'position:fixed;left:10px;bottom:10px;width:120px;height:60px;touch-action:none;background:#ccc;z-index:9';
+      d.body.append(host, pad);
+    });
+    c0 = await rect('clock:1');
+    await page.mouse.move(c0.x + 20, c0.y + 40 + 30); await page.mouse.down();
+    for (let i = 1; i <= 8; i++) { await page.mouse.move(c0.x + 20 + 15 * i, c0.y + 70); await page.waitForTimeout(16); }
+    await page.mouse.up(); await page.waitForTimeout(250);
+    c1 = await rect('clock:1');
+    ok(c1.x === c0.x && c1.y === c0.y, 'a slider inside a web component does not move the window');
+    c0 = await rect('clock:1');
+    await touchPath([{ x: c0.x + 60, y: c0.y + c0.h - 40, id: 1, dx: 60, dy: 0 }], 8);
+    c1 = await rect('clock:1');
+    ok(c1.x === c0.x && c1.y === c0.y, 'an area that handles touch itself (touch-action: none) does not move the window');
+    ok(await idle(), 'nothing left held at the end');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');

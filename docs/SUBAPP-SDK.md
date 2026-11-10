@@ -228,21 +228,38 @@ Teachers can move a window by its title bar, and also from inside it:
 | **Click-only** (buttons, taps): the default, `dragFromContent: true` | moves the window | moves the window |
 | **Needs drags itself** (typing or selecting text, drawing, sliders, sortable lists): `dragFromContent: false` | goes to your app | moves the window |
 
-A tap is always a tap. If a press turns into a window drag, 21Board swallows the click, so a
-button the finger started on doesn't fire.
+A tap is always a tap. A press only becomes a window drag once it moves past the tap allowance
+(6 px with a mouse, 16 px with a finger, so a slightly sloppy tap still presses the button). Once it
+does, your app doesn't get the rest of that press: no `pointermove`/`pointerup`, no `click`, and no
+`mouseup`/`touchend` right after it, so a button the finger started on doesn't fire. A press resting
+in your app claims nothing until it moves, so someone else can still use the title bar meanwhile.
 
 Even in click-only apps a window drag never starts from: text fields, textareas, selects, range
 sliders, `canvas`, `video`/`audio`, editable content, text styled `user-select: text`, scrolling
-areas, `draggable` elements, anything inside an element with **`data-b21-nodrag`**, or a press your
-app already handled with **`event.preventDefault()`** on `pointerdown`.
+areas (including a page that scrolls as a whole), elements whose CSS `touch-action` is anything but
+`auto`/`manipulation` (they handle touch themselves), elements with `draggable="true"`, anything
+inside an element with **`data-b21-nodrag`** (also inside web components / shadow DOM), or a press
+your app already handled: `preventDefault()` on `pointerdown` or `touchstart`, or pointer capture
+on another element.
+
+Two-finger moves need both fingers within about 260 px (one hand; two people far apart are left
+alone) and never start on `canvas`, `video`, `[data-b21-nodrag]` or `touch-action: none` elements.
+When two fingers start moving a window, your app gets a `pointercancel` for each, so it can drop
+whatever those fingers started. They don't apply to a maximized window.
 
 So:
 
-- **Mostly buttons?** Do nothing.
+- **Mostly buttons?** Do nothing. (Re-render only what changes: an element replaced under a finger
+  loses its press, so update text/attributes rather than rebuilding a button every tick.)
 - **Your app needs drags everywhere** (a text editor, a drawing board)? Set `dragFromContent: false`
   in the registry.
-- **One area needs drags** (a sketch pad, a slider you built from divs)? Put `data-b21-nodrag` on it,
-  or `preventDefault()` its `pointerdown`.
+- **One area needs drags** (a sketch pad, a slider you built from divs)? Put **`data-b21-nodrag`** on
+  it. That works whatever events the widget uses. (Calling `preventDefault()` on `pointerdown` also
+  works, but only for widgets written with pointer events: it stops the browser's `mousedown` /
+  `mousemove` / `mouseup` too.)
+- **Images and links** are moved like everything else (their built-in drag-and-drop is turned off
+  in click-only apps). If you use HTML drag and drop, give those elements `draggable="true"` or
+  `data-b21-nodrag`.
 - **It depends on the view**? Call `Board21.window.setDragFromContent(false)` while the drag-needing
   view is showing and `true` otherwise (see `apps/name-picker`: editing the list vs. picking).
 
@@ -323,6 +340,6 @@ Then **bump `VERSION` in `sw.js`** so installed copies download the new files.
 - [ ] Looks right in light and dark mode
 - [ ] Usable from the registry's `minWidth`×`minHeight` up to full screen
 - [ ] Drags: if any part of the app needs dragging (text selection, drawing, custom sliders), it sets
-      `dragFromContent: false`, marks that area `data-b21-nodrag`, or `preventDefault()`s its `pointerdown`
+      `dragFromContent: false`, or marks that area `data-b21-nodrag`
 - [ ] Every file listed in `files`
 - [ ] Works offline (load once, go offline, reload)
