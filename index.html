@@ -209,18 +209,22 @@
     .grip.sw { left: -14px; bottom: -14px; cursor: nesw-resize; }
     .grip.se { right: -14px; bottom: -14px; cursor: nwse-resize; }
     /* Handles sit just outside the window edge (and its focus ring) so they read as separate tabs. */
-    .grip.nw::after, .grip.ne::after, .grip.sw::after, .grip.se::after { width: 22px; height: 22px; border: 7px solid var(--grip); }
-    .grip.nw::after { left: 5px; top: 5px; border-right: 0; border-bottom: 0; border-top-left-radius: 18px; }
-    .grip.ne::after { right: 5px; top: 5px; border-left: 0; border-bottom: 0; border-top-right-radius: 18px; }
-    .grip.sw::after { left: 5px; bottom: 5px; border-right: 0; border-top: 0; border-bottom-left-radius: 18px; }
-    .grip.se::after { right: 5px; bottom: 5px; border-left: 0; border-top: 0; border-bottom-right-radius: 18px; }
+    /* Corner handles curve around the same center as the window's rounded corner (12px in from each edge), with
+       an inner radius 1px inside the focus ring's outer edge (12 + 3 = 15), so handle and ring meet with no seam. */
+    .grip.nw::after, .grip.ne::after, .grip.sw::after, .grip.se::after { width: 26px; height: 26px; border: 7px solid var(--grip); }
+    .grip.nw::after { left: 5px; top: 5px; border-right: 0; border-bottom: 0; border-top-left-radius: 21px; }
+    .grip.ne::after { right: 5px; top: 5px; border-left: 0; border-bottom: 0; border-top-right-radius: 21px; }
+    .grip.sw::after { left: 5px; bottom: 5px; border-right: 0; border-top: 0; border-bottom-left-radius: 21px; }
+    .grip.se::after { right: 5px; bottom: 5px; border-left: 0; border-top: 0; border-bottom-right-radius: 21px; }
     /* Sides flush with the board edge (classes set by board.js): the outside is clipped, so draw inside. */
     .win.at-t .grip.n::after { top: 19px; }   .win.at-b .grip.s::after { bottom: 19px; }
     .win.at-l .grip.w::after { left: 19px; }  .win.at-r .grip.e::after { right: 19px; }
-    .win.at-t .grip.nw::after, .win.at-t .grip.ne::after { top: 17px; }
-    .win.at-b .grip.sw::after, .win.at-b .grip.se::after { bottom: 17px; }
-    .win.at-l .grip.nw::after, .win.at-l .grip.sw::after { left: 17px; }
-    .win.at-r .grip.ne::after, .win.at-r .grip.se::after { right: 17px; }
+    /* A corner next to a board edge: the handle goes inside the window and curves around the window's own corner
+       (same center, 12px in), reaching 1px past the window's edge so it overlaps the focus ring with no seam. */
+    .win.at-t .grip.nw::after, .win.at-l .grip.nw::after { left: 13px; top: 13px; border-top-left-radius: 13px; }
+    .win.at-t .grip.ne::after, .win.at-r .grip.ne::after { right: 13px; top: 13px; border-top-right-radius: 13px; }
+    .win.at-b .grip.sw::after, .win.at-l .grip.sw::after { left: 13px; bottom: 13px; border-bottom-left-radius: 13px; }
+    .win.at-b .grip.se::after, .win.at-r .grip.se::after { right: 13px; bottom: 13px; border-bottom-right-radius: 13px; }
     .win::before { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none; border-radius: 12px; border: 0 solid var(--focus-ring); }
     .win.focused:not(.maximized).at-l::before { border-left-width: calc(var(--focus-ring-width) * var(--zi, 1)); }
     .win.focused:not(.maximized).at-t::before { border-top-width: calc(var(--focus-ring-width) * var(--zi, 1)); }
