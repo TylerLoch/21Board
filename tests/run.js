@@ -55,6 +55,33 @@ const DEV_ROUTES = {
   '/__dev/top.html': q => `<!doctype html><body style="margin:0"><iframe src="${BASE.replace('127.0.0.1', 'localhost')}__dev/${q.get('s')}" sandbox="allow-scripts${q.get('opaque') ? '' : ' allow-same-origin'}" style="width:760px;height:560px;border:0"></iframe>`
 };
 
+// Shared Google Drive folder tests. Each "device" is its own browser profile; the folder each one picks is a
+// folder in that browser's private file system, and drive() copies one folder onto the other, as Google Drive
+// would. (Wrapped in a plain object: this headless browser closes the page when it reads a saved folder handle
+// back from IndexedDB, so the stand-in can't be saved and stays linked until the page closes. Real Chrome keeps
+// the handle.)
+const DRIVE_PICK = () => {
+  window.showDirectoryPicker = async () => {
+    const real = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
+    const file = fh => ({ kind: 'file', name: fh.name, getFile: () => fh.getFile(), createWritable: () => fh.createWritable() });
+    return {
+      kind: 'directory', name: '21Board',
+      queryPermission: async () => 'granted', requestPermission: async () => 'granted',
+      getFileHandle: async (n, o) => file(await real.getFileHandle(n, o)),
+      removeEntry: n => real.removeEntry(n),
+      entries: async function* () { for await (const [n, h] of real.entries()) yield [n, h.kind === 'file' ? file(h) : h]; }
+    };
+  };
+};
+async function driveDevice(browser) { const c = await browser.newContext({ viewport: { width: 1280, height: 720 } }); await c.addInitScript(DRIVE_PICK); const p = await c.newPage(); return { c, p }; }
+const readFolder = p => p.evaluate(async () => { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true }); const out = {}; for await (const [n, h] of d.entries()) if (h.kind === 'file') out[n] = await (await h.getFile()).text(); return out; });
+const writeFolder = (p, files) => p.evaluate(async files => {
+  const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
+  for await (const [n] of d.entries()) if (!(n in files)) await d.removeEntry(n);
+  for (const [n, t] of Object.entries(files)) { const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(t); await w.close(); }
+}, files);
+const drive = async (from, to) => writeFolder(to, await readFolder(from));
+
 const SUITES = [
   ['Windows, data and multi-tab sync', async (browser) => {
   const wins = page => page.evaluate(() => Object.fromEntries(Array.from(window.__board21.state.wins.values()).sort((a,b)=>a.ikey<b.ikey?-1:1).map(w => [w.ikey, Object.assign({}, w.disp)])));
@@ -1507,31 +1534,6 @@ const SUITES = [
     await ctx.close();
   }],
   ['Google Drive folder (sharing a board with the smartboard)', async (browser) => {
-    // Each "device" is its own browser profile. The folder each one picks is a folder in the browser's private
-    // file system, and drive() copies one folder onto the other, as Google Drive would. (Wrapped in a plain
-    // object: this headless browser closes the page when it reads a saved folder handle back from IndexedDB,
-    // so the stand-in can't be saved and stays linked until the page closes. Real Chrome keeps the handle.)
-    const pick = () => {
-      window.showDirectoryPicker = async () => {
-        const real = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
-        const file = fh => ({ kind: 'file', name: fh.name, getFile: () => fh.getFile(), createWritable: () => fh.createWritable() });
-        return {
-          kind: 'directory', name: '21Board',
-          queryPermission: async () => 'granted', requestPermission: async () => 'granted',
-          getFileHandle: async (n, o) => file(await real.getFileHandle(n, o)),
-          removeEntry: n => real.removeEntry(n),
-          entries: async function* () { for await (const [n, h] of real.entries()) yield [n, h.kind === 'file' ? file(h) : h]; }
-        };
-      };
-    };
-    const device = async () => { const c = await browser.newContext({ viewport: { width: 1280, height: 720 } }); await c.addInitScript(pick); const p = await c.newPage(); return { c, p }; };
-    const readFolder = p => p.evaluate(async () => { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true }); const out = {}; for await (const [n, h] of d.entries()) if (h.kind === 'file') out[n] = await (await h.getFile()).text(); return out; });
-    const writeFolder = (p, files) => p.evaluate(async files => {
-      const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
-      for await (const [n] of d.entries()) if (!(n in files)) await d.removeEntry(n);
-      for (const [n, t] of Object.entries(files)) { const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(t); await w.close(); }
-    }, files);
-    const drive = async (from, to) => writeFolder(to, await readFolder(from));
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const noteText = p => note(p).locator('#t').inputValue();
     const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(400); };
@@ -1539,7 +1541,7 @@ const SUITES = [
     const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
     const errors = [];
 
-    const A = await device(), B = await device();   // the laptop and the smartboard
+    const A = await driveDevice(browser), B = await driveDevice(browser);   // the laptop and the smartboard
     for (const d of [A, B]) d.p.on('pageerror', e => errors.push(e.message));
     await A.p.goto(BASE); await A.p.waitForTimeout(600);
     await A.p.evaluate(() => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
@@ -1642,6 +1644,79 @@ const SUITES = [
     await settings(pc);
     ok(await pc.locator('#settings [data-act^="link-"]').count() === 0, 'browsers without a folder picker (Safari, Firefox) don’t show the Google Drive folder section');
     await C.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Google Drive folder: never losing a version', async (browser) => {
+    const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
+    const noteText = p => note(p).locator('#t').inputValue();
+    const L = (p, fn, arg) => p.evaluate(fn, arg);
+    const modalOpen = (p, text) => p.locator('#modal.open', { hasText: text }).count();
+    const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
+    const fileHas = async (p, name, text) => { const f = (await readFolder(p))[name]; return !!f && f.includes(text); };
+    const errors = [];
+    const A = await driveDevice(browser), B = await driveDevice(browser);
+    for (const d of [A, B]) { d.p.on('pageerror', e => errors.push(e.message)); await d.p.goto(BASE); await d.p.waitForTimeout(600); }
+    await L(A.p, () => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
+    await fillNote(note(A.p), 'v1'); await A.p.waitForTimeout(300);
+    await L(A.p, async () => { const l = window.__board21.link; await l.choose(); l.saveState({ device: Object.assign({}, l.device(), { label: 'my laptop' }) }); await l.send(); });
+    await A.p.waitForTimeout(500);
+    const file = Object.keys(await readFolder(A.p)).find(n => n.endsWith('.21board'));
+    await drive(A.p, B.p);
+    await L(B.p, async () => { const l = window.__board21.link; await l.choose(); l.saveState({ device: Object.assign({}, l.device(), { label: 'the smartboard' }) }); });
+    await L(B.p, n => { window.__board21.link.load(n); }, file); await B.p.waitForTimeout(500); await modal(B.p, 'Replace this board'); await B.p.waitForTimeout(2000);
+    ok(await noteText(B.p) === 'v1', 'setup: both devices have the same board');
+
+    // 1) A newer version is waiting on the smartboard; a student's change there must not go out over it.
+    await fillNote(note(A.p), 'A v2'); await A.p.waitForTimeout(300); await L(A.p, () => window.__board21.link.send()); await A.p.waitForTimeout(500);
+    await drive(A.p, B.p);
+    await L(B.p, () => { window.__board21.link.saveState({ auto: true }); return window.__board21.link.check(true); }); await B.p.waitForTimeout(400);
+    await fillNote(note(B.p), 'B scribble'); await B.p.waitForTimeout(10000);
+    ok(await fileHas(B.p, file, 'A v2') && !(await fileHas(B.p, file, 'B scribble')) && await L(B.p, () => !!window.__board21.link.offer),
+      '“Send automatically” waits while a newer version from another device is waiting (it never sends over it)');
+    // 2) Send by hand: it asks first, and can keep theirs as a copy.
+    await L(B.p, () => { window.__board21.link.saveState({ auto: false }); window.__board21.link.send(); }); await B.p.waitForTimeout(600);
+    ok(await modalOpen(B.p, 'is in the folder') === 1, 'Send by hand asks first when the folder has a version this device hasn’t loaded');
+    await modal(B.p, 'Send mine'); await B.p.waitForTimeout(1500);
+    let files = await readFolder(B.p);
+    const copyOfA = Object.keys(files).find(n => /copy from my laptop/.test(n));
+    ok(files[file].includes('B scribble') && !!copyOfA && files[copyOfA].includes('A v2'), '“Send mine (keep a copy of theirs)” keeps the other version as its own board');
+
+    // 3) The laptop gets a version made without its last send: Load says so and offers a copy.
+    await drive(B.p, A.p);
+    await L(A.p, () => window.__board21.link.check(true)); await A.p.waitForTimeout(400);
+    ok(await L(A.p, () => !!window.__board21.link.offer), 'the laptop is offered the smartboard’s version');
+    await L(A.p, n => { window.__board21.link.load(n); }, file); await A.p.waitForTimeout(600);
+    ok(await modalOpen(A.p, 'made without the version you sent') === 1, 'Load warns when that version was made without this device’s last send (even with no changes since)');
+    await modal(A.p, 'Keep a copy of mine'); await A.p.waitForTimeout(2200);
+    files = await readFolder(A.p);
+    ok(await noteText(A.p) === 'B scribble' && Object.keys(files).some(n => /copy from computer|copy from my laptop/.test(n) && files[n].includes('A v2')), 'and keeps a copy of the laptop’s version');
+
+    // 4) A pending automatic send never goes out while Load's question is open.
+    await fillNote(note(A.p), 'A v4'); await A.p.waitForTimeout(300); await L(A.p, () => window.__board21.link.send()); await A.p.waitForTimeout(500);
+    await drive(A.p, B.p);
+    await L(B.p, () => { window.__board21.link.saveState({ auto: true }); return window.__board21.link.check(true); }); await B.p.waitForTimeout(400);
+    await fillNote(note(B.p), 'B local'); await B.p.waitForTimeout(300);
+    await L(B.p, n => { window.__board21.link.load(n); }, file); await B.p.waitForTimeout(800);
+    ok(await modalOpen(B.p, 'also changed here') === 1, 'Load asks, since the smartboard was changed');
+    await B.p.waitForTimeout(10000);
+    ok(await fileHas(B.p, file, 'A v4') && !(await fileHas(B.p, file, 'B local')), 'while the question is open, the pending automatic send doesn’t go out');
+    await modal(B.p, 'Cancel'); await B.p.waitForTimeout(500);
+    ok(await noteText(B.p) === 'B local' && await L(B.p, () => !!window.__board21.link.offer), 'Cancel keeps the smartboard’s changes, and the newer version stays offered');
+
+    // 5) A plain Export saved in the folder (it has the board's id, but wasn't sent) isn't offered as a version.
+    const backup = await L(B.p, async () => JSON.stringify(await window.__board21.buildExport('full')));
+    await writeFolder(B.p, Object.assign(await readFolder(B.p), { 'Lesson backup.21board': backup }));
+    await L(B.p, () => window.__board21.link.check(true)); await B.p.waitForTimeout(300);
+    ok(await L(B.p, f => window.__board21.link.offer && window.__board21.link.offer.name === f && window.__board21.link.found.some(x => x.name === 'Lesson backup.21board' && !x.vid), file), 'an Export saved in the folder isn’t treated as a sent version');
+    // 6) A file that can't be read yet (still arriving) keeps its name.
+    await writeFolder(A.p, Object.assign(await readFolder(A.p), { 'Broken.21board': '{"format":"21bo' }));
+    ok(await L(A.p, () => window.__board21.link.fileNameFor('someone-else-123', 'Broken')) === 'Broken (2).21board', 'a file that can’t be read yet is never overwritten (its name is skipped)');
+    // 7) Erase everything forgets the folder (and sends nothing).
+    const before = Object.keys(await readFolder(B.p)).length;
+    await B.p.click('.picker-btn.left'); await B.p.click('[data-ctl="settings"]'); await B.p.waitForTimeout(400);
+    await B.p.click('#settings [data-act="erase"]'); await B.p.waitForTimeout(300); await modal(B.p, 'Erase everything'); await B.p.waitForTimeout(10000);
+    ok(await L(B.p, () => !window.__board21.link.dir && !window.__board21.link.st.auto) && Object.keys(await readFolder(B.p)).length === before, '“Erase everything” unlinks the folder and sends nothing');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],

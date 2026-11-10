@@ -163,7 +163,8 @@ read and write in that one folder only; it can't see anything else.
   2 minutes) it says **“Room 12” was updated on my laptop at 7:42 · Load / Not now**. Nothing changes until
   you tap Load. The first time, pick the board under *Other boards in the folder* in Settings.
 - **Changed on both?** Load says so first and offers *Keep a copy of mine, then load* (the copy goes in the
-  folder as its own board).
+  folder as its own board). A version this device hasn't loaded is never overwritten: *Send automatically*
+  waits until it's loaded, and Send asks (*Load theirs* or *Send mine*, keeping the other as a copy).
 - It works both ways: Send from the smartboard and the laptop offers it.
 
 **21Board keeps the folder in order:** one file per board, named after it (“Room 12.21board”, or

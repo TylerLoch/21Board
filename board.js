@@ -2412,7 +2412,7 @@
     const dev = L.device(), uid = S.board.uid, rec = L.boardRec(uid) || {};
     const status = [rec.sentAt ? `Sent from here ${when(rec.sentAt)}.` : '', rec.loadedSentAt ? `Loaded the version from ${rec.loadedFrom || 'another device'} sent ${when(rec.loadedSentAt)}.` : ''].filter(Boolean).join(' ') || 'Not sent from here yet.';
     const others = L.found.filter(f => f.kind === 'full' && f.uid !== uid);
-    const mine = L.found.find(f => f.uid === uid);
+    const mine = L.found.find(f => f.name === rec.file && f.uid === uid) || L.found.find(f => f.uid === uid && f.vid);
     const perm = L.perm === 'granted' ? '' : `<div class="row"><div><div class="lbl">Allow 21Board to use the folder</div><div class="hint">Chrome asks again after a restart unless 21Board is installed (or you chose “Allow on every visit”).</div></div><button class="btn primary" data-act="link-reconnect">Allow…</button></div>`;
     return `<h3>Google Drive folder</h3>
       <div class="row"><div><div class="lbl">Folder: ${esc(L.dir.name)}</div><div class="hint">${esc(status)}${L.offer ? ` <b>A newer version from ${esc(L.offer.from || 'another device')} is waiting.</b>` : ''}</div></div>
@@ -2732,6 +2732,7 @@
           if (ok === 'backup') { await doExport('full'); break; }
           if (ok !== 'erase') break;
           await Store.tx('readwrite', s => { s.clear(); });
+          Link.forget();
           Sync.announce([], { op: 'reload' });
           await rebuildAll();
           this.render();
@@ -2896,7 +2897,8 @@
         uid: j.board && UID_RE.test(j.board.uid || '') ? j.board.uid : null
       },
       // Set by "Send" (section 13b): when, from which device.
-      sent: j.sent && typeof j.sent === 'object' ? { at: num(j.sent.at, 0), by: String(j.sent.by || '').slice(0, 64), from: String(j.sent.from || '').slice(0, 60) } : null,
+      sent: j.sent && typeof j.sent === 'object' ? { id: j.sent.id ? String(j.sent.id).slice(0, 64) : '', base: j.sent.base ? String(j.sent.base).slice(0, 64) : null,
+        at: num(j.sent.at, 0), by: String(j.sent.by || '').slice(0, 64), from: String(j.sent.from || '').slice(0, 60) } : null,
       viewport: j.viewport && j.viewport.width > 0 && j.viewport.height > 0 ? { w: j.viewport.width, h: j.viewport.height } : null,
       photo: (() => {
         const m = j.kind !== 'template' && j.media && j.media.background;   // templates never carry a photo (it may show the class)
@@ -3010,15 +3012,21 @@
   //
   // 21Board owns the folder's contents:
   // - One file per board: "<board name>.21board", a full backup with the board's uid and a "sent" block
-  //   {at, by: device id, from: device name}. "Room 12 (2).21board" if another board has that name.
-  // - Renaming a board renames its file on the next send (the old one is removed, if it's still ours).
+  //   {id: this version, base: the version it was built on, at, by: device id, from: device name}.
+  //   "Room 12 (2).21board" if any other file has that name (even one still arriving).
+  // - Renaming a board renames its file on the next send (the old one is removed if this device has seen
+  //   the version in it).
+  // Versions are told apart by id, never by time (devices' clocks disagree). Each device remembers the
+  // versions it has sent or loaded ("seen"); a version it hasn't seen is offered, and is never overwritten:
+  // an automatic send waits, a manual one asks (load theirs, or send mine and keep theirs as a copy).
   // - "<name> (copy from …).21board": a copy kept, with a new uid, before loading over local changes.
   // - "About this folder.txt" explains the files to anyone browsing the folder. Other files are left alone.
   // Sending: Settings → Google Drive folder → Send (or "Send automatically", a few seconds after changes). Receiving: the folder is
   // checked when 21Board opens, when it comes back to the front, and every 2 minutes; a newer version of this
   // board from another device is offered with "Load" (never applied silently).
   // On this device only (never exported): link:folder (the folder handle) and link:state
-  // {device: {id, label}, auto, photo, boards: {uid: {file, sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig}}}.
+  // {device: {id, label}, auto, photo, boards: {uid: {file, seen: [version ids], headId, headMine, sentAt, sentSig,
+  //   loadedSentAt, loadedFrom, loadedSig}}}.
   // =====================================================================
   const LINK_CHECK_MS = 2 * 60 * 1000;
   const LINK_AUTO_MS = 8000;
@@ -3030,8 +3038,9 @@
     st: { device: null, auto: false, photo: true, boards: {} },
     found: [],          // boards in the folder: {name, uid, title, sentAt, by, from, kind, size, lastModified}
     cache: new Map(),   // file name -> {lastModified, size, meta}
+    names: new Set(),   // every .21board name in the folder, lowercased
     offer: null, offerToast: null, dismissed: '',
-    scanning: null, busy: false, autoT: 0, lastCheck: 0, started: false, nagged: false,
+    scanning: null, busy: false, loading: false, autoT: 0, lastCheck: 0, started: false, nagged: false,
 
     // ---- this device's records
     applyRecord(name, value) {
@@ -3142,34 +3151,47 @@
       await w.write(text);
       await w.close();
     },
+    async readFile(name) { return (await (await this.dir.getFileHandle(name)).getFile()).text(); },
+    // The version id of a file's "sent" block (files sent before version ids existed: who + when).
+    vidOf(sent) { return sent && (sent.id ? String(sent.id) : sent.by && sent.at ? `${sent.by}@${sent.at}` : '') || ''; },
+    meta(j, name, file) {
+      const sent = j.sent && typeof j.sent === 'object' ? j.sent : null;
+      return { name, uid: j.board && UID_RE.test(j.board.uid || '') ? j.board.uid : null, title: String((j.board && j.board.name) || name.replace(/\.21board$/i, '')).slice(0, 60),
+        vid: this.vidOf(sent), base: sent && sent.base ? String(sent.base) : null,
+        sentAt: num(sent && sent.at, file.lastModified), by: String((sent && sent.by) || ''), from: String((sent && sent.from) || '').slice(0, 60),
+        kind: j.kind === 'template' ? 'template' : 'full', size: file.size, lastModified: file.lastModified };
+    },
     // Every board file in the folder (files that didn't change since the last look aren't read again).
+    // this.names: every .21board name, even files that can't be read yet (still arriving): never reused.
     async scan() {
       if (this.scanning) return this.scanning;
       this.scanning = (async () => {
-        const out = [], names = new Set();
+        const out = [], names = new Set(), lc = new Set();
         for await (const [name, h] of this.dir.entries()) {
           if (h.kind !== 'file' || !/\.21board$/i.test(name)) continue;
-          names.add(name);
+          names.add(name); lc.add(name.toLowerCase());
           let file;
           try { file = await h.getFile(); } catch (e) { continue; }
           const c = this.cache.get(name);
           if (c && c.lastModified === file.lastModified && c.size === file.size) { if (c.meta) out.push(c.meta); continue; }
           let meta = null;
-          if (file.size < 40e6) {
-            try {
+          try {
+            if (file.size < 40e6) {
               const j = JSON.parse(await file.text());
-              if (j && j.format === '21board') {
-                meta = { name, uid: j.board && UID_RE.test(j.board.uid || '') ? j.board.uid : null, title: String((j.board && j.board.name) || name.replace(/\.21board$/i, '')).slice(0, 60),
-                  sentAt: num(j.sent && j.sent.at, file.lastModified), by: String((j.sent && j.sent.by) || ''), from: String((j.sent && j.sent.from) || '').slice(0, 60),
-                  kind: j.kind === 'template' ? 'template' : 'full', size: file.size, lastModified: file.lastModified };
-              }
-            } catch (e) { /* still being written, or not a board: look again next time */ continue; }
-          }
+              if (j && j.format === '21board') meta = this.meta(j, name, file);
+            } else {
+              // A huge file: its "sent" block and board come before the photo and windows, so read just the start.
+              const head = await file.slice(0, 65536).text(), pick = re => { const m = head.match(re); return m ? m[1] : ''; };
+              meta = this.meta({ kind: 'full', board: { uid: pick(/"uid":"([A-Za-z0-9-]{8,64})"/), name: pick(/"name":"([^"]{0,60})"/) },
+                sent: { id: pick(/"sent":\{"id":"([^"]+)"/), base: pick(/"base":"([^"]+)"/), at: +pick(/"at":(\d+)/) || 0, by: pick(/"by":"([^"]+)"/), from: pick(/"from":"([^"]*)"/) } }, name, file);
+            }
+          } catch (e) { continue; }   // still being written, or not a board: look again next time
           this.cache.set(name, { lastModified: file.lastModified, size: file.size, meta });
           if (meta) out.push(meta);
         }
         for (const n of Array.from(this.cache.keys())) if (!names.has(n)) this.cache.delete(n);
-        this.found = out.sort((a, b) => b.sentAt - a.sentAt);
+        this.names = lc;
+        this.found = out.sort((a, b) => b.lastModified - a.lastModified);   // this device's clock: newest arrival first
         return this.found;
       })();
       try { return await this.scanning; } finally { this.scanning = null; }
@@ -3186,17 +3208,20 @@
       this.computeOffer();
       if (Settings.isOpen) Settings.render();
     },
-    // A newer version of this board, sent from another device, not yet loaded here.
-    computeOffer() {
-      const uid = S.board.uid, me = this.st.device && this.st.device.id, rec = this.boardRec(uid) || {};
-      const f = uid ? this.found.find(x => x.uid === uid && x.kind === 'full') : null;
-      this.setOffer(f && f.by && f.by !== me && f.sentAt > (rec.loadedSentAt || 0) && f.sentAt > (rec.sentAt || 0) ? f : null);
+    // The folder's latest version of a board that this device hasn't seen (sent or loaded), if any.
+    // Versions are compared by id, never by time: two devices' clocks can disagree.
+    unseen(uid) {
+      if (!uid) return null;
+      const seen = new Set((this.boardRec(uid) || {}).seen || []);
+      const f = this.found.find(x => x.uid === uid && x.kind === 'full' && x.vid);   // found is newest first
+      return f && !seen.has(f.vid) ? f : null;
     },
+    computeOffer() { this.setOffer(this.unseen(S.board.uid)); },
     setOffer(f) {
-      const key = f ? f.name + '@' + f.sentAt : '';
-      if (this.offer && (this.offer.name + '@' + this.offer.sentAt) === key) return;
+      const key = f ? f.vid : '', cur = this.offer ? this.offer.vid : '';
+      if (key === cur && (!f || key === this.dismissed || (this.offerToast && this.offerToast.isConnected))) return;
       this.offer = f;
-      if (this.offerToast) { this.offerToast.remove2(); this.offerToast = null; }
+      if (this.offerToast) { if (this.offerToast.isConnected) this.offerToast.remove2(); this.offerToast = null; }
       if (!f || key === this.dismissed || typeof document === 'undefined') return;
       this.offerToast = toast(`“${f.title}” was updated on ${f.from || 'another device'} ${when(f.sentAt)}.`, {
         action: 'Load', dismiss: 'Not now', timeout: 0,
@@ -3217,22 +3242,42 @@
       return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
     },
     async sig() { return this.sigOf(await buildExport('full')); },
+    // Changed on this device since it was last sent or loaded here. (Never sent or loaded: anything on it counts.)
     async localChanges() {
       const rec = this.boardRec(S.board.uid);
-      if (!rec) return false;
+      if (!rec || (!rec.sentSig && !rec.loadedSig)) return S.insts.size > 0;
       const sig = await this.sig();
       return sig !== rec.sentSig && sig !== rec.loadedSig;
+    },
+    remember(uid, vid, patch) {
+      const rec = this.boardRec(uid) || {};
+      const seen = (rec.seen || []).filter(v => v !== vid).concat(vid ? [vid] : []).slice(-40);
+      this.setBoardRec(uid, Object.assign({ seen }, patch));
     },
     safeName(name) {
       return String(name || '').replace(/[\u0000-\u001f\\/:*?"<>|]+/g, '').replace(/^[.\s]+|[.\s]+$/g, '').slice(0, 60) || 'Board';
     },
-    // This board's file name: its name, unless another board's file already has it.
+    // A board's file name: its name, unless another file already has it (any .21board file that isn't
+    // known to be this board's counts, even one that can't be read yet).
     async fileNameFor(uid, title) {
       await this.scan();
+      const lc = n => n.toLowerCase();
+      const mine = n => this.found.some(f => lc(f.name) === lc(n) && f.uid === uid);
+      const taken = n => this.names.has(lc(n)) && !mine(n);
       const base = this.safeName(title);
-      const taken = n => this.found.some(f => f.name.toLowerCase() === n.toLowerCase() && f.uid !== uid);
       let name = base + '.21board';
       for (let k = 2; taken(name); k++) name = `${base} (${k}).21board`;
+      return name;
+    },
+    // Another board's file kept as a separate board (a new uid), named "<name> (copy from …)".
+    async writeCopy(exp, fromLabel) {
+      const d = new Date(), dev = this.device();
+      const title = `${exp.board.name || 'Board'} (copy from ${String(fromLabel || dev.label).replace(/^(the|a|an) /i, '')}, ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })})`.replace(/:/g, '.');
+      const uid = newId();
+      exp.board = Object.assign({}, exp.board, { uid, name: title.slice(0, 60) });
+      const out = Object.assign({ format: exp.format, formatVersion: exp.formatVersion, kind: exp.kind, sent: { id: newId(), base: null, at: Date.now(), by: dev.id, from: dev.label } }, exp);
+      const name = await this.fileNameFor(uid, title);
+      await this.writeFile(name, JSON.stringify(out));
       return name;
     },
 
@@ -3249,23 +3294,44 @@
         if (!go || !await this.choose()) return false;
       }
       if (this.perm !== 'granted' && (opts.auto || !await this.ensurePerm())) { if (!opts.auto) toast('21Board can’t use that folder until you allow it.'); return false; }
-      if (this.busy) return false;
+      if (this.busy || this.loading) { if (!opts.auto) toast('Just a moment: 21Board is still sending or loading this board.'); return false; }
       this.busy = true;
+      let then = null;
       try {
         const uid = S.board.uid || (ensureUid(), S.board.uid);
+        await this.scan();
+        // Never replace a version of this board that this device hasn't seen.
+        const theirs = this.unseen(uid);
+        if (theirs) {
+          if (opts.auto) { this.computeOffer(); return false; }   // the offer stays up; the teacher decides
+          const choice = await dialog({
+            title: `A newer “${theirs.title}” is in the folder`,
+            message: `It was sent from ${theirs.from || 'another device'} ${when(theirs.sentAt)}, and this device hasn’t loaded it. Sending now would replace it.`,
+            actions: [{ label: 'Load theirs (keep a copy of mine)', value: 'load', kind: 'primary', choice: true, sub: 'Mine goes in the folder as a separate board' },
+              { label: 'Send mine (keep a copy of theirs)', value: 'send', choice: true, sub: 'Theirs goes in the folder as a separate board' },
+              { label: 'Cancel', value: null }]
+          });
+          if (choice === 'load') { then = () => this.load(theirs.name, { keepMine: true }); return false; }
+          if (choice !== 'send') return false;
+          let j;
+          try { j = JSON.parse(await this.readFile(theirs.name)); } catch (e) { j = null; }
+          if (j && j.format === '21board') await this.writeCopy(j, theirs.from);
+        }
+        const rec = this.boardRec(uid) || {}, dev = this.device();
         const exp = await buildExport('full');
         const sig = this.sigOf(exp);
         if (!this.st.photo) delete exp.media;   // "Include the background photo" off: each device keeps its own
-        const dev = this.device();
-        exp.sent = { at: Date.now(), by: dev.id, from: dev.label };
+        // id: this version; base: the version this board was built on (to spot versions made without it).
+        const sent = { id: newId(), base: rec.headId || null, at: Date.now(), by: dev.id, from: dev.label };
+        const out = Object.assign({ format: exp.format, formatVersion: exp.formatVersion, kind: exp.kind, sent }, exp);
         const name = await this.fileNameFor(uid, S.board.name);
-        await this.writeFile(name, JSON.stringify(exp));
-        const old = (this.boardRec(uid) || {}).file;
-        if (old && old.toLowerCase() !== name.toLowerCase() && this.found.some(f => f.name === old && f.uid === uid)) {
-          try { await this.dir.removeEntry(old); } catch (e) { /* already gone */ }
-        }
+        await this.writeFile(name, JSON.stringify(out));
+        // Renamed: remove the old file, but only if it holds a version this device has seen.
+        const old = rec.file, seen = new Set(rec.seen || []);
+        const of = old && old.toLowerCase() !== name.toLowerCase() ? this.found.find(f => f.name === old && f.uid === uid) : null;
+        if (of && of.vid && seen.has(of.vid)) { try { await this.dir.removeEntry(old); } catch (e) { /* already gone */ } }
         this.cache.delete(name);
-        this.setBoardRec(uid, { file: name, sentAt: exp.sent.at, sentSig: sig });
+        this.remember(uid, sent.id, { file: name, sentAt: sent.at, sentSig: sig, headId: sent.id, headMine: true });
         updateSettings({ lastBackupAt: Date.now() });   // the folder copy is a backup too
         if (!opts.auto) toast(`Sent “${S.board.name}” to your “${this.dir.name}” folder. Google Drive brings it to your other devices.`);
         await this.check(true);
@@ -3275,7 +3341,10 @@
         if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) this.perm = 'prompt';
         if (!opts.auto) toast('Couldn’t send this board: ' + ((err && err.message) || err));
         return false;
-      } finally { this.busy = false; }
+      } finally {
+        this.busy = false;
+        if (then) await then();
+      }
     },
     // A board record changed here: with "Send automatically" on, send a few seconds after the last change.
     changed(keys) {
@@ -3287,62 +3356,84 @@
     },
     async autoSend() {
       clearTimeout(this.autoT); this.autoT = 0;
-      if (!this.st.auto || !this.dir || this.perm !== 'granted') return;
+      if (!this.st.auto || !this.dir || this.perm !== 'granted' || this.loading || this.busy) return;
+      if (this.offer) return;   // a version from another device is waiting: never send over it
       const rec = this.boardRec(S.board.uid), sig = await this.sig();
       if (rec && (sig === rec.sentSig || sig === rec.loadedSig)) return;   // nothing new since it was sent or loaded
       await this.send({ auto: true });
     },
 
-    // ---- receiving (from a tap)
-    async load(name) {
+    // ---- receiving (from a tap). opts.keepMine: a copy of this board was asked for already.
+    async load(name, opts = {}) {
       if (!await this.ensurePerm()) { toast('21Board can’t use that folder until you allow it.'); return false; }
-      let raw, parsed;
-      try { raw = await (await (await this.dir.getFileHandle(name)).getFile()).text(); parsed = parseBoardFile(raw); } catch (err) {
-        toast(`Couldn’t read “${name}”: ${(err && err.message) || err}`);
-        return false;
-      }
-      const uid = parsed.board.uid, sent = parsed.sent || {}, title = parsed.board.name || name.replace(/\.21board$/i, '');
-      const from = sent.from ? ` from ${sent.from}` : '';
-      if (uid && uid === S.board.uid) {
-        if (await this.localChanges()) {
+      if (this.busy || this.loading) { toast('Just a moment: 21Board is still sending or loading this board.'); return false; }
+      this.loading = true;
+      clearTimeout(this.autoT); this.autoT = 0;   // a pending automatic send must not go out over this
+      let loaded = false;
+      try {
+        let raw, parsed;
+        try { raw = await this.readFile(name); parsed = parseBoardFile(raw); } catch (err) {
+          toast(`Couldn’t read “${name}”: ${(err && err.message) || err}`);
+          return false;
+        }
+        const uid = parsed.board.uid, sent = parsed.sent || {}, title = parsed.board.name || name.replace(/\.21board$/i, '');
+        const from = sent.from ? ` from ${sent.from}` : '';
+        if (uid && uid === S.board.uid) {
           const rec = this.boardRec(uid) || {};
-          const since = Math.max(rec.sentAt || 0, rec.loadedSentAt || 0);
+          const changed = await this.localChanges();
+          // This device's last send isn't in it: the other device made this version without it.
+          const lostMine = !!(rec.headMine && parsed.sent && parsed.sent.base !== rec.headId);
+          if (opts.keepMine) { if (!await this.saveCopy()) return false; }
+          else if (changed || lostMine) {
+            const since = Math.max(rec.sentAt || 0, rec.loadedSentAt || 0);
+            const choice = await dialog({
+              title: `Load “${title}”${from}?`,
+              message: changed ? `This board was also changed here${since ? ' since ' + when(since) : ''}. Loading replaces those changes.`
+                : `It was made without the version you sent from here ${when(rec.sentAt)}. Loading replaces that version on this device.`,
+              actions: [{ label: 'Keep a copy of mine, then load', value: 'copy', kind: 'primary' }, { label: 'Load and replace mine', value: 'load', kind: 'danger' }, { label: 'Cancel', value: null }]
+            });
+            if (!choice) return false;
+            if (choice === 'copy' && !await this.saveCopy()) return false;
+          }
+        } else {
           const choice = await dialog({
-            title: `Load “${title}”${from}?`,
-            message: `This board was also changed here${since ? ' since ' + when(since) : ''}. Loading replaces those changes.`,
-            actions: [{ label: 'Keep a copy of mine, then load', value: 'copy', kind: 'primary' }, { label: 'Load and replace my changes', value: 'load', kind: 'danger' }, { label: 'Cancel', value: null }]
+            title: `Replace this board with “${title}”?`,
+            message: `The windows and content on this board are replaced by the board${from}${sent.at ? ', sent ' + when(sent.at) : ''}. After that, this device offers its newer versions as they arrive.`,
+            actions: [{ label: 'Replace this board', value: 'load', kind: 'danger' }].concat(S.insts.size ? [{ label: 'Keep a copy of this board, then replace it', value: 'copy', kind: 'primary' }] : []).concat([{ label: 'Cancel', value: null }])
           });
           if (!choice) return false;
           if (choice === 'copy' && !await this.saveCopy()) return false;
         }
-      } else {
-        const ok = await dialog({
-          title: `Replace this board with “${title}”?`,
-          message: `The windows and content on this board are replaced by the board${from}${sent.at ? ', sent ' + when(sent.at) : ''}. After that, this device offers its newer versions as they arrive.`,
-          actions: [{ label: 'Replace this board', value: true, kind: 'danger' }, { label: 'Cancel', value: false }]
-        });
-        if (!ok) return false;
+        // The file may have changed while the dialog was open: load what's there now.
+        try { const raw2 = await this.readFile(name); if (raw2 !== raw) parsed = parseBoardFile(raw2); } catch (e) { /* keep what was read */ }
+        const s2 = parsed.sent || {}, vid = this.vidOf(parsed.sent);
+        // Only a sent file joins this device to that board (a plain Export saved in the folder doesn't).
+        const newUid = parsed.board.uid && vid ? parsed.board.uid : newId();
+        try { await applyImport(parsed, 'replace', { uid: newUid }); } catch (err) { console.error(err); toast('Couldn’t load the board: ' + ((err && err.message) || err)); return false; }
+        this.remember(newUid, vid, { file: name, loadedSentAt: s2.at || Date.now(), loadedFrom: s2.from || '', loadedSig: await this.sig(), headId: vid || null, headMine: false });
+        loaded = true;
+        this.computeOffer();
+        toast(`Loaded “${S.board.name}”${s2.from ? ' from ' + s2.from : ''}.`);
+        return true;
+      } finally {
+        this.loading = false;
+        if (!loaded && this.st.auto) this.changed([Keys.board(S.boardId)]);   // kept their own changes: send them later
       }
-      try { await applyImport(parsed, 'replace', { uid: uid || newId() }); } catch (err) { console.error(err); toast('Couldn’t load the board: ' + ((err && err.message) || err)); return false; }
-      this.setBoardRec(S.board.uid, { file: name, loadedSentAt: sent.at || Date.now(), loadedFrom: sent.from || '', loadedSig: await this.sig() });
-      this.computeOffer();
-      toast(`Loaded “${S.board.name}”${from}.`);
-      return true;
     },
     // Before loading over changes made here: keep them in the folder as a separate board.
     async saveCopy() {
       try {
-        const exp = await buildExport('full');
-        const dev = this.device(), d = new Date();
-        const title = `${S.board.name} (copy from ${dev.label.replace(/^(the|a|an) /i, '')}, ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })})`.replace(/:/g, '.');
-        exp.board.uid = newId();
-        exp.board.name = title.slice(0, 60);
-        exp.sent = { at: Date.now(), by: dev.id, from: dev.label };
-        const name = await this.fileNameFor(exp.board.uid, title);
-        await this.writeFile(name, JSON.stringify(exp));
+        const name = await this.writeCopy(await buildExport('full'));
         toast(`Kept a copy of this board in your folder: “${name.replace(/\.21board$/i, '')}”.`);
         return true;
       } catch (err) { toast('Couldn’t keep a copy: ' + ((err && err.message) || err)); return false; }
+    },
+    // Erase everything: this device forgets the folder and its bookkeeping.
+    forget() {
+      clearTimeout(this.autoT); this.autoT = 0;
+      this.dir = null; this.perm = 'none'; this.found = []; this.names = new Set(); this.cache.clear();
+      this.st = { device: null, auto: false, photo: true, boards: {} };
+      this.setOffer(null);
     },
 
     // ---- startup: check now, when 21Board comes back to the front, and every few minutes
@@ -3387,7 +3478,7 @@
 
   function toast(text, opts = {}) {
     const host = $('#toasts');
-    while (host.children.length >= 3) host.firstChild.remove();
+    while (host.children.length >= 3) (Array.from(host.children).find(c => !c.sticky) || host.firstChild).remove();   // keep waiting questions
     const t = document.createElement('div');
     t.className = 'toast';
     t.innerHTML = `<span>${esc(text)}</span>`;
@@ -3408,7 +3499,7 @@
     t.remove2 = remove;
     host.appendChild(t);
     const timeout = opts.timeout === undefined ? 4200 : opts.timeout;
-    if (timeout) setTimeout(remove, timeout);
+    if (timeout) setTimeout(remove, timeout); else t.sticky = true;
     return t;
   }
 

@@ -99,9 +99,16 @@ exported. `link:folder` holds the folder handle Chrome gives 21Board (stored as 
   device: { id: "…", label: "my laptop" },   // label: what other devices show ("updated on …")
   auto: false,                               // send a few seconds after each change
   photo: true,                               // include the background photo in sent files
-  boards: { "<board uid>": { file: "Room 12.21board", sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig } }
+  boards: { "<board uid>": {
+    file: "Room 12.21board",
+    seen: ["<version id>", …],     // versions sent or loaded here (newest 40): anything else is new to this device
+    headId, headMine,              // the version this board was built on, and whether this device sent it
+    sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig } }
 }
 ```
+
+Versions are compared by id, never by time (two devices' clocks can disagree). A version this device
+hasn't seen is offered and never overwritten: an automatic send waits; Send asks first.
 
 `sentSig` / `loadedSig` fingerprint the board's content when it was last sent or loaded here, to tell
 whether it was changed on this device since (window stacking order doesn't count).
@@ -242,7 +249,7 @@ on Chrome) reads it.
     "shape": "16:9",
     "uid": "7c1e…"                // full backups only: which board this is
   },
-  "sent": { "at": 1762800000000, "by": "<device id>", "from": "my laptop" },   // only in files sent to a shared folder
+  "sent": { "id": "<version id>", "base": "<the version it was built on>", "at": 1762800000000, "by": "<device id>", "from": "my laptop" },   // only in files sent to a shared folder
   "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only
   "instances": [
     {
