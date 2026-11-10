@@ -10,7 +10,7 @@
  * That forces a clean download of everything and shows teachers an
  * "Update" prompt inside 21Board.
  */
-const VERSION = '2026.11.10-15';
+const VERSION = '2026.11.10-16';
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION;
 
@@ -39,7 +39,8 @@ self.addEventListener('install', event => {
     // cache: 'reload' skips the HTTP cache so a new VERSION really gets new files.
     await cache.addAll(PRECACHE.map(url => new Request(url, { cache: 'reload' })));
     // First install: take over right away. Updates wait for the teacher to tap "Update".
-    if (!self.registration.active) await self.skipWaiting();
+    self.isUpdate = !!self.registration.active;
+    if (!self.isUpdate) await self.skipWaiting();
   })());
 });
 
@@ -48,6 +49,12 @@ self.addEventListener('activate', event => {
     const names = await caches.keys();
     await Promise.all(names.filter(n => n.startsWith(CACHE_PREFIX) && n !== CACHE).map(n => caches.delete(n)));
     await self.clients.claim();
+    // An update: reload every open 21Board tab, not only the one where "Update" was tapped, so no tab keeps
+    // running the old code against data the new version has changed.
+    if (self.isUpdate) {
+      const tabs = await self.clients.matchAll({ type: 'window' });
+      await Promise.all(tabs.map(t => t.navigate(t.url).catch(() => {})));
+    }
   })());
 });
 

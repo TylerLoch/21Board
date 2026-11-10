@@ -729,8 +729,9 @@ const SUITES = [
     const after = await scr(page, 'timer:1');
     const inst = await page.evaluate(() => window.__board21.state.insts.get('timer:1').rect);
     ok(v.board.scale === 0.9 && (await page.locator('#st-scale').textContent()) === '90%', 'the + button steps to 90%');
-    ok(Math.abs(after.x - before.x) < 1.5 && Math.abs(after.w - before.w) < 1.5 && Math.abs(after.h - before.h) < 1.5, 'windows keep their place and size on the board');
-    ok(Math.abs(inst.w - 480 * 0.8 / 0.9) < 0.5, `and their contents are drawn bigger (the app now has ${Math.round(inst.w)} px instead of 480)`);
+    const tb = await page.evaluate(() => document.querySelector('.win[data-ikey="timer:1"] .win-title').getBoundingClientRect().height);
+    ok(Math.abs(after.x - before.x) < 1.5 && Math.abs(after.w - before.w) < 1.5 && Math.abs((after.h - tb) - (before.h - title)) < 1.5, 'windows keep their place, width and content area on the board (the title bar follows the size)');
+    ok(Math.abs(inst.w - 480 * 0.8 / 0.9) < 0.5, `and their contents are drawn bigger (the widget now has ${Math.round(inst.w)} px instead of 480)`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     const pick1 = await page.evaluate(() => document.querySelector('.picker-btn.left').getBoundingClientRect().width);
     ok(v.ui === '0.9' && Math.abs(pick1 / pick0 - 0.9 / 0.8) < 0.02, `the App Picker buttons follow the size (${Math.round(pick0)} → ${Math.round(pick1)}px)`);
@@ -738,6 +739,16 @@ const SUITES = [
     const m = await page.evaluate(() => { const r = document.getElementById('menu').getBoundingClientRect(), l = document.querySelector('.win-label.open').getBoundingClientRect(); return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, lb: l.bottom, lx: l.left + l.width / 2, cx: (r.left + r.right) / 2 }; });
     ok(m.top >= m.lb && m.top - m.lb < 20 && Math.abs(m.cx - m.lx) < 30 && m.right <= 1600 && m.bottom <= 900, 'window menus (drawn at the board size) still open right under their title');
     await page.keyboard.press('Escape');
+
+    // Up to 200% and back: windows come back exactly as they were (minimum sizes aren't saved on the way).
+    await page.evaluate(() => window.__board21.openApp('clock')); await page.waitForTimeout(1200);
+    const c0 = await page.evaluate(() => Object.assign({}, window.__board21.state.insts.get('clock:1').rect));
+    await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(400);
+    await page.reload(); await page.waitForTimeout(1500);   // the Clock re-sends its shape when it loads
+    await page.evaluate(() => window.__board21.setBoardScale(0.9)); await page.waitForTimeout(600);
+    const c1 = await page.evaluate(() => window.__board21.state.insts.get('clock:1').rect);
+    ok(Math.abs(c1.w - c0.w) < 1 && Math.abs(c1.h - c0.h) < 1 && Math.abs(c1.x - c0.x) < 1, `going to 200% and back keeps window sizes (${Math.round(c0.w)}×${Math.round(c0.h)} → ${Math.round(c1.w)}×${Math.round(c1.h)})`);
+    await page.evaluate(() => window.__board21.closeWin('clock:1')); await page.waitForTimeout(400);
 
     // Another tab follows a scale change.
     const p3 = await ctx.newPage(); await p3.setViewportSize({ width: 1600, height: 900 }); await p3.goto(BASE); await p3.waitForTimeout(1200);
@@ -811,7 +822,7 @@ const SUITES = [
     // Choose what stays in view by tapping the preview (the house, bottom-left).
     const th = await page.locator('#photo-thumb').boundingBox();
     await page.mouse.click(th.x + th.width * 0.15, th.y + th.height * 0.8); await page.waitForTimeout(400);
-    const im = await page.evaluate(() => window.__board21.state.board.background.image);
+    const im = await page.evaluate(() => window.__board21.state.media.get('background-look'));
     ok(im.focus.x < 0.3 && im.focus.y > 0.6, `tapping the preview sets the part that stays in view (${im.focus.x.toFixed(2)}, ${im.focus.y.toFixed(2)})`);
     b = await bg();
     const [px, py] = b.pos.split(' ').map(parseFloat);
@@ -839,6 +850,18 @@ const SUITES = [
     await p2.evaluate(o => window.__board21.applyImport(o, 'replace'), full); await p2.waitForTimeout(1500);
     ok(await p2.evaluate(() => !document.getElementById('board-bg').hidden && window.__board21.state.media.get('background').w === 2560), 'importing a full backup brings the photo along');
     await ctxB.close();
+    // Replacing the board with a template (no photo) keeps this device's photo: it's set per device.
+    await page.evaluate(o => window.__board21.applyImport(o, 'replace'), tpl); await page.waitForTimeout(1500);
+    ok(await page.evaluate(() => window.__board21.state.media.has('background') && !document.getElementById('board-bg').hidden), 'replacing the board with a template keeps this device\'s photo');
+    // A file whose "photo" isn't a clean picture is ignored (nothing from it can reach the page as HTML or CSS).
+    const evil = JSON.parse(JSON.stringify(tpl)); evil.kind = 'full';
+    evil.media = { background: { data: 'data:image/png;base64,AAAA"><img src=x onerror="window.__pwned=1">', w: 10, h: 10 } };
+    const ctxE = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const pe = await ctxE.newPage(); await pe.goto(BASE); await pe.waitForTimeout(600);
+    await pe.evaluate(o => window.__board21.applyImport(o, 'replace'), evil); await pe.waitForTimeout(1200);
+    await pe.click('.picker-btn.left'); await pe.click('[data-ctl="settings"]'); await pe.waitForTimeout(500);
+    ok(await pe.evaluate(() => !window.__pwned && !window.__board21.state.media.has('background') && !document.querySelector('#settings img')), 'a malformed photo in a file is refused');
+    await ctxE.close();
     // Remove.
     page.once('dialog', () => {});
     await page.locator('#settings [data-act="photo-remove"]').click(); await page.waitForTimeout(300);
@@ -849,6 +872,13 @@ const SUITES = [
     await ch2.setFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') }); await page.waitForTimeout(600);
     ok(await page.locator('#modal.open').count() === 1, 'a file that isn\'t a picture gets a clear message');
     await page.click('#modal .btn.primary');
+    // A transparent picture (a logo) keeps its transparency instead of turning black.
+    const logo = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 600; c.height = 400; const g = c.getContext('2d'); g.fillStyle = '#2563eb'; g.beginPath(); g.arc(300, 200, 120, 0, 7); g.fill(); return c.toDataURL('image/png'); });
+    const [ch3] = await Promise.all([page.waitForEvent('filechooser'), page.click('#settings [data-act="photo-add"]')]);
+    await ch3.setFiles({ name: 'logo.png', mimeType: 'image/png', buffer: Buffer.from(logo.split(',')[1], 'base64') }); await page.waitForTimeout(1500);
+    const corner = await page.evaluate(async () => { const m = window.__board21.state.media.get('background'); const img = new Image(); img.src = m.data; await img.decode();
+      const c = document.createElement('canvas'); c.width = 10; c.height = 10; const g = c.getContext('2d'); g.drawImage(img, 0, 0, 10, 10); return { type: m.data.slice(5, 15), a: g.getImageData(0, 0, 1, 1).data[3] }; });
+    ok(corner.a === 0 && /webp|png/.test(corner.type), `a transparent logo stays transparent (${corner.type}, corner alpha ${corner.a})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

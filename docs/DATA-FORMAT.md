@@ -40,7 +40,8 @@ Keys (`<b>` = board id, currently always `1`; `<n>` = instance number):
 | `inst:<b>:<appId>:<n>` | `inst` | One window/instance: geometry, open/closed, stacking |
 | `data:<b>:<appId>:<n>` | `data` | That instance's **content** — whatever the widget passed to `Board21.save()` |
 | `conf:<b>:<appId>:<n>` | `conf` | That instance's **config** — whatever it passed to `Board21.saveConfig()` |
-| `media:<b>:background` | `media` | The board's **background photo** (see below). Kept apart from `board:<b>` because it's big |
+| `media:<b>:background` | `media` | The board's **background photo** on this device (see below). Kept apart from `board:<b>` |
+| `media:<b>:background-look` | `media` | How that photo is shown on this device |
 
 App ids are limited to `a-z 0-9 -`, so keys can be split on `:`.
 
@@ -74,10 +75,7 @@ without changing the format: `settings.activeBoard` will choose which board is s
 ```js
 {
   id: 1, name: "My Board",
-  background: {
-    color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines",
-    image: null | { on: true, fit: "fill" | "whole", focus: { x: 0.5, y: 0.5 }, fade: 0 }   // how the photo is shown
-  },
+  background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" },
   scale: 0.8,                    // size of windows and menus (0.5–2), as on a 1920 × 1080 screen; see "Layout space"
   shape: "16:9",                 // "16:9" (default) | "free" (fills any window)
   layout: { w: 2400, h: 1350 }   // the 16:9 board in layout px: 1920/scale × 1080/scale (kept for older readers)
@@ -86,20 +84,23 @@ without changing the format: `settings.activeBoard` will choose which board is s
 
 `color: null` means "match the light/dark theme".
 
-`background.image` only says how the photo is shown: `fill` covers the board (cropped), `whole` fits all
-of it with `color` around it; `focus` (0–1 from the top-left) is the part that stays in view when
-cropped (it's the CSS `background-position`); `fade` (0–0.7) blends it toward the board color. The
-picture itself is in `media:<b>:background`; if that record is missing on a device, the board simply
-shows its color.
-
-### `media:<b>:background`
+### `media:<b>:background` and `media:<b>:background-look`
 
 ```js
+// media:<b>:background — the picture
 { data: "data:image/jpeg;base64,…", w: 2560, h: 1707, bytes: 412345, name: "class.jpg", addedAt: 1762713600000 }
+// media:<b>:background-look — how it's shown
+{ on: true, fit: "fill" | "whole", focus: { x: 0.5, y: 0.5 }, fade: 0 }
 ```
 
-Chosen in Settings → Appearance → Background photo, then shrunk on the device to at most 2560 px on
-the long side and saved as a JPEG (usually 0.2–0.9 MB). It covers the 16:9 board (not the shaded
+`fill` covers the board (cropped), `whole` fits all of it with the board color around it; `focus` (0–1 from
+the top-left) is the part that stays in view when cropped (the CSS `background-position`); `fade` (0–0.7)
+blends it toward the board color. Everything about the photo is in these two records, none of it in
+`board:<b>`: the photo belongs to the device, and without these records the board shows its color.
+
+Chosen in Settings → Appearance → Background photo, then shrunk on the device (long side at most 2560 px,
+short side kept at 1440 px or more so panoramas stay sharp, about 6.5 MP at most) and saved as a JPEG
+(usually 0.2–0.9 MB), or as WebP/PNG if it has transparency (a logo), so the board color shows through. It covers the 16:9 board (not the shaded
 margins), or the whole window when the board shape is unlocked.
 
 Media records are kept apart from the small records on purpose: anything that copies boards between
@@ -136,8 +137,9 @@ zoom factor, so the board looks the same everywhere:
 - **Any shape** (`shape: "free"`): the board is the whole window at zoom = `scale`. Windows that don't
   fit a smaller window are moved inside when drawn (their saved rect is kept).
 - **Scale** (`scale`): how big windows, title bars and menus are, as on a 1920 × 1080 screen (at 1.0, a
-  window's CSS px are screen px there). Changing it multiplies every rect by `old/new`, so windows keep
-  their footprint on the board and their contents are drawn bigger or smaller. Board chrome (menus,
+  window's CSS px are screen px there). Changing it multiplies every rect's position, width and content
+  height by `old/new` (the title bar stays 40 px), so windows keep their place and content area on the
+  board, their contents are drawn bigger or smaller, and fixed-shape widgets keep their exact shape. Board chrome (menus,
   the App Picker, Settings, toasts, dialogs) is drawn at this scale too.
 - Resize handles and the focus ring stay at the board's scale even when the board is drawn smaller
   (up to 2.5×); snap reach and push-to-overlap are measured in screen px.
@@ -213,7 +215,7 @@ on Chrome) reads it.
     "scale": 0.8,
     "shape": "16:9"
   },
-  "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 } },   // full backups only
+  "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only
   "instances": [
     {
       "appId": "timer",
@@ -244,6 +246,6 @@ Importing offers two choices:
 - **Add to my board** — keeps everything and adds the file's windows. Instance numbers are
   renumbered to the next free number per app, and windows are nudged into free space.
 
-*Replace* takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
+*Replace* keeps this device's background photo unless the file brings one, and takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
 this screen); a file from before board sizes existed is fitted into the 16:9 board. *Add* fits the
 file's whole board into this one with one uniform factor, keeping shapes and spacing.

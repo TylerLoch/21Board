@@ -359,7 +359,7 @@
               if (op.del) { s.delete(key); out.push({ key, deleted: true }); continue; }
               const g = s.get(key);
               g.onsuccess = () => {
-                const rec = { key, type: op.type, rev: ((g.result && g.result.rev) || 0) + 1, updatedAt: Date.now(), by: TAB_ID, value: op.value };
+                const rec = { key, type: op.type, rev: Math.max(((g.result && g.result.rev) || 0) + 1, Date.now()), updatedAt: Date.now(), by: TAB_ID, value: op.value };
                 s.put(rec);
                 out.push(rec);
               };
@@ -491,14 +491,14 @@
         if (k.board !== S.boardId) break;
         S.board = Object.assign(defaultBoard(S.boardId), value || {});
         S.board.layout = validLayout(S.board.layout);
-        S.board.background = Object.assign({ color: null, pattern: 'none', image: null }, (value && value.background) || {});
-        S.board.background.image = normalizePhotoSettings(S.board.background.image);
+        S.board.background = Object.assign({ color: null, pattern: 'none' }, (value && value.background) || {});
+        delete S.board.background.image;
         applyBoard();
         break;
       case 'media':
         if (k.board !== S.boardId) break;
         if (value) S.media.set(k.name, value); else S.media.delete(k.name);
-        if (k.name === 'background') BoardPhoto.render();
+        if (k.name === 'background' || k.name === 'background-look') { BoardPhoto.render(); if (Settings.isOpen) Settings.render(); }
         break;
       case 'inst':
         if (k.board !== S.boardId) break;
@@ -530,7 +530,7 @@
       appId: k ? k.appId : v.appId,
       n: k ? k.n : v.n,
       open: !!v.open,
-      rect: { x: num(r.x, 40), y: num(r.y, 40), w: Math.max(80, num(r.w, 400)), h: Math.max(TITLE_H + 40, num(r.h, 340)) },
+      rect: { x: num(r.x, 40), y: num(r.y, 40), w: Math.max(20, num(r.w, 400)), h: Math.max(TITLE_H + 10, num(r.h, 340)) },
       z: num(v.z, 1),
       maximized: !!v.maximized,
       createdAt: num(v.createdAt, Date.now())
@@ -606,12 +606,17 @@
   }
 
   // ---------------------------------------------------------------------
-  // Background photo. The picture is its own record (media:<b>:background), so a future sync can leave
-  // it out and a device can have its own; the board only keeps how it's shown (background.image):
-  //   { on: true, fit: 'fill' | 'whole', focus: { x, y } (0–1, the part that stays in view), fade: 0–0.7 }
-  // No picture on this device → the board shows its color, as if no photo were set.
+  // Background photo. Everything about it is device-local and lives in two media records, apart from
+  // board:<b>, so a sync can skip media:* and each device keeps (or doesn't have) its own photo:
+  //   media:<b>:background       the picture  { data: 'data:image/…;base64,…', w, h, bytes, name, addedAt }
+  //   media:<b>:background-look  how it's shown { on, fit: 'fill' | 'whole', focus: { x, y } (0–1), fade: 0–0.7 }
+  // No picture on this device → the board shows its color.
   // ---------------------------------------------------------------------
-  const PHOTO_MAX_SIDE = 2560;            // longest side kept (enough for a 1440p board; ~0.3–0.9 MB as JPEG)
+  const PHOTO_MAX_SIDE = 2560;            // longest side kept…
+  const PHOTO_MIN_SHORT = 1440;           // …but never less than this on the short side (panoramas stay sharp when filling)
+  const PHOTO_MAX_PIXELS = 6.5e6;
+  const PHOTO_DATA_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
+  const validPhoto = m => !!(m && typeof m.data === 'string' && m.data.length < 16e6 && PHOTO_DATA_RE.test(m.data) && m.w > 0 && m.h > 0);
   function normalizePhotoSettings(im) {
     if (!im || typeof im !== 'object') return null;
     const f = im.focus || {};
@@ -621,8 +626,8 @@
   const BoardPhoto = {
     url: null, src: null,
     el() { return $('#board-bg'); },
-    settings() { return normalizePhotoSettings(S.board.background && S.board.background.image); },
-    media() { const m = S.media.get('background'); return m && typeof m.data === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(m.data) ? m : null; },
+    settings() { return this.media() ? (normalizePhotoSettings(S.media.get('background-look')) || normalizePhotoSettings({})) : null; },
+    media() { const m = S.media.get('background'); return validPhoto(m) ? m : null; },
     // The picture as an object URL (one big data: string in a style would be parsed again on every change).
     async objectUrl(m) {
       if (this.src === m.data && this.url) return this.url;
@@ -638,7 +643,9 @@
       const show = !!(im && im.on && m);
       document.body.classList.toggle('has-photo', show);
       if (!show) { el.hidden = true; el.style.backgroundImage = ''; return; }
-      const url = await this.objectUrl(m);
+      let url;
+      try { url = await this.objectUrl(m); } catch (e) { el.hidden = true; return; }
+      if (this.media() !== m) return;   // changed while loading; the newer render wins
       el.style.backgroundImage = `url("${url}")`;
       el.style.backgroundSize = im.fit === 'whole' ? 'contain' : 'cover';
       el.style.backgroundPosition = `${(im.focus.x * 100).toFixed(1)}% ${(im.focus.y * 100).toFixed(1)}%`;
@@ -660,33 +667,54 @@
       if (!file || !/^image\//.test(file.type || '') && !/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || '')) throw new Error('Choose a picture file (JPG, PNG or WebP).');
       let bmp;
       try { bmp = await createImageBitmap(file); } catch (e) { throw new Error('This picture can’t be opened here. Try a JPG or PNG (iPhone HEIC photos may need converting first).'); }
-      const k = Math.min(1, PHOTO_MAX_SIDE / Math.max(bmp.width, bmp.height));
+      const long = Math.max(bmp.width, bmp.height), short = Math.min(bmp.width, bmp.height);
+      // Long side ≤ 2560, but keep the short side ≥ 1440 (a panorama filling the board stays sharp), within ~6.5 MP.
+      let k = Math.min(1, PHOTO_MAX_SIDE / long);
+      if (short * k < PHOTO_MIN_SHORT) k = Math.min(1, PHOTO_MIN_SHORT / short);
+      k = Math.min(k, Math.sqrt(PHOTO_MAX_PIXELS / (bmp.width * bmp.height)), 1);
       const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
       const c = document.createElement('canvas'); c.width = w; c.height = h;
       const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, w, h);
       if (bmp.close) bmp.close();
-      const enc = q => new Promise(res => c.toBlob(res, 'image/jpeg', q));
-      let blob = await enc(0.85);
-      if (blob && blob.size > 1200000) blob = await enc(0.72);
+      // Transparent (a logo, clip-art)? Keep the transparency (WebP, or PNG where WebP can't be made), so the
+      // board color shows through instead of black. Otherwise JPEG.
+      const probe = document.createElement('canvas'); probe.width = 64; probe.height = 64;
+      const pg = probe.getContext('2d', { willReadFrequently: true }); pg.drawImage(c, 0, 0, 64, 64);
+      const px = pg.getImageData(0, 0, 64, 64).data;
+      let alpha = false;
+      for (let i = 3; i < px.length; i += 4) if (px[i] < 250) { alpha = true; break; }
+      const enc = (type, q) => new Promise(res => c.toBlob(res, type, q));
+      let blob;
+      if (alpha) {
+        blob = await enc('image/webp', 0.9);
+        if (!blob || blob.type !== 'image/webp') blob = await enc('image/png');
+      } else {
+        blob = await enc('image/jpeg', 0.85);
+        if (blob && blob.size > 1200000) blob = await enc('image/jpeg', 0.72);
+      }
       if (!blob) throw new Error('This picture couldn’t be prepared.');
       const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
       return { data, w, h, bytes: blob.size, name: String(file.name || 'Photo').slice(0, 80), addedAt: Date.now() };
     },
     async setFromFile(file) {
       const m = await this.process(file);
-      S.media.set('background', m);
-      Writer.put(Keys.media(S.boardId, 'background'), 'media', m);
       const prev = this.settings();
-      updateBoard({ background: Object.assign({}, S.board.background, { image: { on: true, fit: prev ? prev.fit : 'fill', focus: { x: 0.5, y: 0.5 }, fade: prev ? prev.fade : 0 } }) });
+      const look = { on: true, fit: prev ? prev.fit : 'fill', focus: { x: 0.5, y: 0.5 }, fade: prev ? prev.fade : 0 };
+      S.media.set('background', m); S.media.set('background-look', look);
+      Writer.put(Keys.media(S.boardId, 'background'), 'media', m);
+      Writer.put(Keys.media(S.boardId, 'background-look'), 'media', look);
+      this.render();
     },
     update(patch) {
-      const cur = this.settings() || { on: true, fit: 'fill', focus: { x: 0.5, y: 0.5 }, fade: 0 };
-      updateBoard({ background: Object.assign({}, S.board.background, { image: Object.assign({}, cur, patch) }) });
+      if (!this.media()) return;
+      const look = Object.assign({}, this.settings(), patch);
+      S.media.set('background-look', look);
+      Writer.put(Keys.media(S.boardId, 'background-look'), 'media', look);
+      this.render();
     },
     remove() {
-      S.media.delete('background');
-      Writer.del(Keys.media(S.boardId, 'background'));
-      updateBoard({ background: Object.assign({}, S.board.background, { image: null }) });
+      for (const n of ['background', 'background-look']) { S.media.delete(n); Writer.del(Keys.media(S.boardId, n)); }
+      this.render();
     }
   };
 
@@ -738,7 +766,7 @@
   const SCALES = [0.5, 0.6, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
   const DEFAULT_SCALE = 0.8;
   const Zoom = { s: 1, ox: 0, oy: 0, vw: 0, vh: 0 };
-  const validScale = v => (typeof v === 'number' && v >= 0.25 && v <= 4 ? v : null);
+  const validScale = v => (typeof v === 'number' && v >= 0.5 && v <= 2 ? v : null);   // the Settings range
   const boardScale = () => validScale(S.board.scale) || DEFAULT_SCALE;
   const freeShape = () => S.board.shape === 'free';
   const canvasFor = sc => ({ w: Math.round(BASE_W / sc), h: Math.round(BASE_H / sc) });
@@ -798,7 +826,10 @@
   // A distance that should feel the same on screen at any zoom (snap reach, push-to-overlap), in layout px.
   const screenPx = px => px / Zoom.s;
 
-  const scaleRect = (r, k, dx = 0, dy = 0) => ({ x: Math.round((r.x * k + dx) * 100) / 100, y: Math.round((r.y * k + dy) * 100) / 100, w: Math.round(r.w * k * 100) / 100, h: Math.round(r.h * k * 100) / 100 });
+  // Scale a window's rect by k, keeping its title bar the standard height: the content area is what scales, so
+  // a fixed-shape widget (Clock, Traffic Light) keeps its exact shape and a scale change can be undone.
+  const r2 = v => Math.round(v * 100) / 100;
+  const scaleRect = (r, k, dx = 0, dy = 0) => ({ x: r2(r.x * k + dx), y: r2(r.y * k + dy), w: r2(r.w * k), h: r2(Math.max(10, r.h - TITLE_H) * k + TITLE_H) });
 
   // A board saved before board.scale existed: its rects are screen px (or px of the old optional
   // layout size). Fit that space into the 16:9 board with one factor, keeping shapes and spacing.
@@ -877,8 +908,8 @@
   // Export: the size of the space the saved rects are in (grown to contain every window).
   function exportViewport() {
     const v = viewRect();
-    const L = freeShape() ? { w: Math.round(v.w), h: Math.round(v.h) } : canvas();
-    let w = L.w, h = L.h;
+    if (!freeShape()) { const L = canvas(); return { width: L.w, height: L.h }; }
+    let w = Math.round(v.w), h = Math.round(v.h);
     for (const i of S.insts.values()) { w = Math.max(w, Math.ceil(i.rect.x + i.rect.w)); h = Math.max(h, Math.ceil(i.rect.y + i.rect.h)); }
     return { width: w, height: h };
   }
@@ -914,18 +945,16 @@
       : '16:9: every screen shows the same arrangement, fitted to the window.' + (unused > 0.15 ? ' This window is a different shape, so part of it is shaded.' : '');
     return `<div class="row"><div><div class="lbl">Size of windows and menus</div><div class="hint">Title bars, menus and app contents. Windows keep their place on the board.</div></div>
         <div class="stepper" role="group" aria-label="Size of windows and menus">
-          <button class="icon" data-act="scale-down" aria-label="Smaller"${i === 0 ? ' disabled' : ''}>−</button>
+          <button class="icon" data-act="scale-down" aria-label="Smaller"${sc <= SCALES[0] + 0.001 ? ' disabled' : ''}>−</button>
           <output id="st-scale" aria-live="polite">${Math.round(sc * 100)}%</output>
-          <button class="icon" data-act="scale-up" aria-label="Larger"${i === SCALES.length - 1 ? ' disabled' : ''}>+</button>
+          <button class="icon" data-act="scale-up" aria-label="Larger"${sc >= SCALES[SCALES.length - 1] - 0.001 ? ' disabled' : ''}>+</button>
         </div></div>
       <div class="row stack"><div><div class="lbl">Board shape</div><div class="hint">${esc(shapeHint)}</div></div>${seg('shape', freeShape() ? 'free' : '16:9', [['16:9', '16:9'], ['free', 'Any shape']])}</div>`;
   }
   function scaleStep(dir) {
     const sc = boardScale();
-    let i = SCALES.findIndex(x => Math.abs(x - sc) < 0.001);
-    if (i < 0) i = SCALES.findIndex(x => x > sc) - (dir > 0 ? 1 : 0);
-    const next = SCALES[Math.max(0, Math.min(SCALES.length - 1, i + dir))];
-    return setBoardScale(next);
+    const next = dir > 0 ? SCALES.find(x => x > sc + 0.001) : SCALES.slice().reverse().find(x => x < sc - 0.001);
+    return next ? setBoardScale(next) : false;
   }
   // ------------------------------------------------------- end of board scaling
 
@@ -1429,9 +1458,12 @@
 
     // Re-apply size constraints to the saved rect (e.g. after an aspect-ratio change).
     refit() {
-      const inst = this.inst;
-      const s = fitSize(inst.rect.w, inst.rect.h, this.constraints(), null);
-      if (s.w !== Math.round(inst.rect.w) || s.h !== Math.round(inst.rect.h)) {
+      const inst = this.inst, c = this.constraints(), r = inst.rect;
+      // Save only a change of shape (aspect ratio). Min/max sizes are applied when drawing, so a size
+      // setting that briefly makes a window smaller than its minimum doesn't lose its real size.
+      const ratioOff = c.ratio && Math.abs((r.w / Math.max(1, r.h - TITLE_H)) / c.ratio - 1) > 0.01;
+      const s = ratioOff ? fitSize(r.w, r.h, c, null) : null;
+      if (s && (s.w !== Math.round(r.w) || s.h !== Math.round(r.h))) {
         const cx = inst.rect.x + inst.rect.w / 2;
         saveInst(this.ikey, Object.assign({}, inst, { rect: { x: Math.round(cx - s.w / 2), y: inst.rect.y, w: s.w, h: s.h } }));
         this.layout(true);
@@ -1713,7 +1745,8 @@
       const win = it.win;
       // If the board's layout size changed mid-drag ("Use this size" here or in another tab),
       // the drop position is in the old space: drop the move rather than save it wrongly.
-      const layoutChanged = it.layoutSig !== layoutSig();
+      // (A board change from another tab is held until the gesture ends; it may carry a new size or shape.)
+      const layoutChanged = it.layoutSig !== layoutSig() || this.deferredKeys.has(Keys.board(S.boardId)) || this.deferredReload || this.deferredRebuild;
       if (it.moved && it.result && !cancelled && win.inst && !layoutChanged) {
         const r = it.result, q = v => Math.round(v * 100) / 100; // sub-pixel, so zoomed drags don't drift
         saveInst(win.ikey, Object.assign({}, win.inst, { rect: { x: q(r.x), y: q(r.y), w: q(r.w), h: q(r.h) }, maximized: false }));
@@ -2261,11 +2294,10 @@
         <button class="btn" data-act="photo-add">${svg('image')}Add photo…</button></div>`;
     }
     const g = photoThumbGeometry(m, im);
-    const src = BoardPhoto.src === m.data && BoardPhoto.url ? BoardPhoto.url : m.data;
     return `<div class="row stack"><div><div class="lbl">Background photo</div><div class="hint">${im.fit === 'whole' ? 'The whole photo is shown; the background color fills the rest.' : 'Tap the picture to choose the part that always stays in view.'}</div></div>
       <div class="photo-edit">
         <div class="photo-thumb${im.on ? '' : ' off'}" id="photo-thumb" role="button" tabindex="0" aria-label="Choose the part of the photo that stays in view"
-          style="aspect-ratio:${g.ratio.toFixed(4)};background-image:url('${src}');background-size:${im.fit === 'whole' ? 'contain' : 'cover'};background-position:${(im.focus.x * 100).toFixed(1)}% ${(im.focus.y * 100).toFixed(1)}%;--fade:${im.fade}">
+          style="aspect-ratio:${g.ratio.toFixed(4)};background-size:${im.fit === 'whole' ? 'contain' : 'cover'};background-position:${(im.focus.x * 100).toFixed(1)}% ${(im.focus.y * 100).toFixed(1)}%;--fade:${im.fade}">
           ${im.fit === 'fill' ? `<span class="focus" style="left:${(g.mx * 100).toFixed(2)}%;top:${(g.my * 100).toFixed(2)}%"></span>` : ''}</div>
         <div class="photo-ctrls">
           <div class="line"><span>Show photo</span>${sw('photo-on', im.on, 'Show photo')}</div>
@@ -2433,6 +2465,9 @@
         <h3>About</h3>
         <div class="about">21Board ${BOARD_VERSION} · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
         Everything you make is stored only on this device. Nothing is sent to a server.</div>`;
+      // The photo preview gets its picture here (never as text inside the HTML above).
+      const thumb = $('#photo-thumb', this.body), pm = BoardPhoto.media();
+      if (thumb && pm) BoardPhoto.objectUrl(pm).then(u => { thumb.style.backgroundImage = `url("${u}")`; }, () => {});
       this.refreshStatus(true);
     },
 
@@ -2631,7 +2666,7 @@
       accent: S.settings.accent,
       board: { name: S.board.name, background: S.board.background, scale: boardScale(), shape: freeShape() ? 'free' : '16:9' },
       // The background photo: full backups only (a template is for sharing, and a photo may show the class).
-      media: kind === 'full' && BoardPhoto.media() ? { background: BoardPhoto.media() } : undefined,
+      media: kind === 'full' && BoardPhoto.media() ? { background: BoardPhoto.media(), look: BoardPhoto.settings() } : undefined,
       instances
     };
   }
@@ -2702,16 +2737,16 @@
       accent: accentOf(j.accent) ? j.accent : null,
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
-        background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none', image: normalizePhotoSettings(bg.image) },
+        background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none' },
         scale: j.board && j.board.scale !== undefined ? (validScale(j.board.scale) || null) : undefined,   // undefined: file from before board scale
         shape: j.board && j.board.shape === 'free' ? 'free' : '16:9'
       },
       viewport: j.viewport && j.viewport.width > 0 && j.viewport.height > 0 ? { w: j.viewport.width, h: j.viewport.height } : null,
       photo: (() => {
         const m = j.media && j.media.background;
-        return m && typeof m.data === 'string' && m.data.length < 12e6 && /^data:image\/(jpeg|png|webp);base64,/.test(m.data) && m.w > 0 && m.h > 0
-          ? { data: m.data, w: +m.w, h: +m.h, bytes: +m.bytes || 0, name: String(m.name || 'Photo').slice(0, 80), addedAt: +m.addedAt || Date.now() } : null;
+        return validPhoto(m) ? { data: m.data, w: +m.w, h: +m.h, bytes: +m.bytes || 0, name: String(m.name || 'Photo').slice(0, 80), addedAt: +m.addedAt || Date.now() } : null;
       })(),
+      photoLook: j.media && j.media.background ? normalizePhotoSettings(j.media.look || {}) : null,
       instances
     };
   }
@@ -2788,13 +2823,17 @@
       const board = Object.assign({}, S.board, { background: p.board.background, scale: plan.scale, shape: plan.shape, layout: plan.layout });
       if (p.board.name) board.name = p.board.name;
       out.push(rec(Keys.board(b), 'board', board));
-      if (p.photo) out.push(rec(Keys.media(b, 'background'), 'media', p.photo));
+      if (p.photo) {
+        out.push(rec(Keys.media(b, 'background'), 'media', p.photo));
+        out.push(rec(Keys.media(b, 'background-look'), 'media', p.photoLook || normalizePhotoSettings({})));
+      }
       if (p.theme || p.accent) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, p.theme ? { theme: p.theme } : {}, p.accent ? { accent: p.accent } : {})));
     }
 
     await Store.tx('readwrite', s => {
       if (mode === 'replace') {
-        for (const kind of ['inst', 'data', 'conf', 'media']) s.delete(IDBKeyRange.bound(`${kind}:${b}:`, `${kind}:${b}:￿`));
+        // The background photo belongs to this device: only a file that brings its own photo replaces it.
+        for (const kind of ['inst', 'data', 'conf'].concat(p.photo ? ['media'] : [])) s.delete(IDBKeyRange.bound(`${kind}:${b}:`, `${kind}:${b}:￿`));
       }
       for (const r of out) s.put(r);
     });
