@@ -126,16 +126,21 @@ if args.l == 'stick':
     bx0, by0, bx1, by1 = I0.bounds
     put('l', path(G('I'), Transform().translate(bx0 + bx1, by0 + by1).scale(-1, -1)))
 elif args.l == 'tail':
-    # The plain stick with a small foot: the bottom of the 't' with its long foot shortened.
+    # The straight stick with a small foot: the curved foot of the 't', trimmed to a rounded end
+    # (cut along an ellipse, not a straight line) and joined to the stick's bottom right.
     t = path(G('t'))
     fx0, _, fx1, _ = clip(t, -500, 400, 3000, 430).bounds              # t's stem just below the crossbar
-    stem = clip(t, -500, -500, fx1, 430)
-    # The foot, right of the stem, cut short (keeps the curve and thickness of the original stroke).
-    toe2 = clip(t, fx1 - 60, -500, fx1 + args.foot, 330)
-    sx0, _, sx1, _ = clip(I0, -500, 400, 3000, 430).bounds
-    k = (fx1 - fx0) / (sx1 - sx0)
-    stick = clip(path(G('I'), Transform().translate(fx0, 0).scale(k, 1).translate(-sx0, 0)), -500, 380, 3000, 3000)
-    put('l', union(stem, toe2, stick))
+    def ellipse(cx, cy, rx, ry, n=48):
+        p = pathops.Path(); pen = p.getPen()
+        pts = [(cx + rx * math.cos(2 * math.pi * k / n), cy + ry * math.sin(2 * math.pi * k / n)) for k in range(n)]
+        pen.moveTo(pts[0]); [pen.lineTo(q) for q in pts[1:]]; pen.closePath()
+        return p
+    toe = clip(t, fx1 - 80, -500, 3000, 400)                            # the foot, right of the stem
+    toe = pathops.op(toe, ellipse(fx1 - 80, 160, args.foot + 80, 330), pathops.PathOp.INTERSECTION)
+    bx0, by0, bx1, by1 = I0.bounds
+    stick = path(G('I'), Transform().translate(bx0 + bx1, by0 + by1).scale(-1, -1))
+    sx0, _, sx1, _ = clip(stick, -500, 0, 3000, 200).bounds              # the stick near its bottom
+    put('l', union(stick, moved(toe, sx1 - fx1 + 10, 0)))
 
 # --- The l with accents (Slovak, Polish, Catalan names...): the new l plus the original accent marks,
 #     placed where the font puts them on the capital L. The ł gets a bar cut from the hyphen; the Ł too

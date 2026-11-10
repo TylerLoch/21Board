@@ -163,6 +163,11 @@
   }
 
   // Sub-apps may supply SVG icons for their menu items. Keep only harmless SVG.
+  // A plain CSS color from a sub-app (hex, rgb() or hsl()), safe to put in a style attribute; '' otherwise.
+  function safeColor(c) {
+    return typeof c === 'string' && (/^#[0-9a-f]{3,8}$/i.test(c) || /^(rgb|hsl)a?\([\d\s.,%+-]+\)$/i.test(c)) ? c : '';
+  }
+
   function safeSVG(markup) {
     if (typeof markup !== 'string' || !/^\s*<svg[\s>]/i.test(markup) || markup.length > 8000) return '';
     try {
@@ -1236,10 +1241,20 @@
         case 'getInfo': this.ack(m.reqId, true, this.info()); break;
         case 'window': this.windowOp(String(m.op), Array.isArray(m.args) ? m.args : []); break;
         case 'menu':
-          this.menuItems = (Array.isArray(m.items) ? m.items : []).slice(0, 20).map(i => ({
-            id: String(i.id || '').slice(0, 64), label: String(i.label || '').slice(0, 80), icon: safeSVG(i.icon),
-            checked: typeof i.checked === 'boolean' ? i.checked : undefined, disabled: !!i.disabled, separator: !!i.separator
-          }));
+          this.menuItems = (Array.isArray(m.items) ? m.items : []).slice(0, 24).map(i => {
+            i = i || {};
+            const item = { id: String(i.id || '').slice(0, 64), label: String(i.label || '').slice(0, 80) };
+            if (i.heading) return Object.assign(item, { heading: true });
+            if (Array.isArray(i.swatches)) {
+              return Object.assign(item, {
+                swatches: i.swatches.slice(0, 12).map(s => ({
+                  id: String((s && s.id) || '').slice(0, 64), label: String((s && s.label) || '').slice(0, 40),
+                  color: safeColor(s && s.color), background: safeColor(s && s.background), checked: !!(s && s.checked)
+                })).filter(s => s.id && s.color)
+              });
+            }
+            return Object.assign(item, { icon: safeSVG(i.icon), checked: typeof i.checked === 'boolean' ? i.checked : undefined, disabled: !!i.disabled, separator: !!i.separator });
+          });
           if (Menu.win === this) Menu.render();
           break;
         case 'toast': toast(String(m.text || '').slice(0, 200)); break;
@@ -2038,6 +2053,14 @@
       let html = '';
       for (const i of w.menuItems) {
         if (i.separator) { html += '<div class="menu-sep"></div>'; continue; }
+        if (i.heading) { html += `<div class="menu-heading">${esc(i.label)}</div>`; continue; }
+        if (i.swatches) {
+          // A row of color choices; background (optional) shows the color on what it will be used on.
+          html += `<div class="menu-swatches" role="group" aria-label="${esc(i.label)}">` + i.swatches.map(s =>
+            `<button class="swatch" role="menuitemradio" aria-checked="${s.checked}" aria-label="${esc(s.label)}" title="${esc(s.label)}" ` +
+            `data-act="app" data-id="${esc(s.id)}" style="--sw:${s.color};--swbg:${s.background || s.color}"></button>`).join('') + '</div>';
+          continue;
+        }
         const check = i.checked === true ? svg('check', 'check') : '';
         html += `<button class="menu-item" role="${i.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" ${i.checked !== undefined ? `aria-checked="${i.checked}"` : ''} data-act="app" data-id="${esc(i.id)}" ${i.disabled ? 'disabled' : ''}>` +
           `<span class="icon-slot">${i.icon || ''}</span><span class="label">${esc(i.label)}</span>${check}</button>`;

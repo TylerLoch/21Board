@@ -306,6 +306,19 @@
     .menu-item:disabled { opacity: .45; cursor: default; }
     .menu-sep { height: 1px; flex: 0 0 auto; background: var(--border); margin: 5px 8px; }
     .menu-confirm { flex: 0 0 auto; padding: 10px 12px 6px; font-size: 14px; color: var(--muted); max-width: 280px; line-height: 1.35; }
+    /* Sub-app menu extras: section headings and a row of color swatches. */
+    .menu-heading { flex: 0 0 auto; padding: 8px 14px 2px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+    .menu-swatches { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 12px 8px; max-width: 300px; }
+    .swatch {
+      width: 38px; height: 38px; min-width: 0; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+      background: radial-gradient(circle, var(--sw) 0 45%, var(--swbg) 47%);
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2);
+    }
+    .swatch[aria-checked="true"] { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .2), 0 0 0 2px var(--toolbar-bg), 0 0 0 5px var(--primary); }
+    .menu.compact .swatch { width: 32px; height: 32px; }
+    .menu.compact .menu-heading { padding-top: 4px; }
+    .menu.tight .swatch { width: 26px; height: 26px; }
+    .menu.tight .menu-heading { padding: 2px 12px 0; font-size: 11px; }
     /* Very short screens: tighter rows so the whole menu still fits without scrolling. */
     .menu.compact .menu-item { min-height: 38px; font-size: 14px; }
     .menu.compact .menu-sep { margin: 3px 8px; }

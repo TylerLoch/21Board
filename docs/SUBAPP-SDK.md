@@ -158,8 +158,26 @@ Board21.on('menu', id => { /* an item was tapped */ });
 Board21.menu.clear();
 ```
 
+Two extras for grouping choices (see `apps/notes`):
+
+```js
+Board21.menu.set([
+  { heading: true, label: 'Theme' },                               // a small section label
+  { id: 'theme:plain', label: 'Plain', checked: true },
+  { id: 'theme:dark', label: 'Dark', checked: false },
+  { label: 'Color', swatches: [                                    // one row of color circles
+    { id: 'color:yellow', label: 'Yellow', color: '#fef08a', checked: true },
+    { id: 'color:blue', label: 'Blue', color: '#bfdbfe' },
+    { id: 'chalk:white', label: 'White chalk', color: '#f4f7f2', background: '#2f4a3a' }  // background: shown around the color
+  ] }
+]);
+```
+
+Tapping a swatch sends its `id` to `Board21.on('menu', …)` like any item. Colors must be `#hex`,
+`rgb()` or `hsl()`.
+
 Call `menu.set()` again whenever an item's state changes. Icons must be inline `<svg>` (scripts
-and links are stripped). Up to 20 items.
+and links are stripped). Up to 24 items (a swatch row counts as one, with up to 12 colors).
 
 ### Events
 

@@ -51,7 +51,7 @@
       radial-gradient(ellipse 60% 35% at 72% 78%, rgba(110, 120, 135, .07), transparent 70%),
       radial-gradient(ellipse 45% 25% at 22% 28%, rgba(110, 120, 135, .05), transparent 70%);
   }
-  body.whiteboard .layer { line-height: 1.38; text-shadow: 0 0 .6px rgba(0, 0, 0, .3); }
+  body.whiteboard .layer { line-height: 1.38; text-shadow: 0 0 .6px currentColor; }
 </style>
 </head>
 <body>
@@ -60,26 +60,49 @@
   <div id="sizer" class="layer" aria-hidden="true"></div>
 <script>
   // Content: { text }
-  // Config:  { color, fit, px }
+  // Config:  { theme, color, chalk, marker, fit, px }
+  //   theme:  'sticky' (default) | 'chalkboard' | 'whiteboard'
+  //   color:  the sticky note's paper color; chalk: the chalk color; marker: the marker color
+  //           (each theme keeps its own color, so switching back and forth doesn't lose it)
   //   fit: true  = text is as large as possible while all of it fits in the window (default)
   //   fit: false = fixed size px (set with Larger/Smaller text)
-  //   (older notes saved { color, size }; they now fit automatically)
-  // The bundled chalk font (see @font-face), then chalk-style fonts that come with devices, just in case.
+  //   (older notes saved { color, size }, or color 'chalkboard' / 'whiteboard' for those themes)
+  // The bundled fonts (see @font-face), then look-alikes that come with devices, just in case.
   const CHALK_FONT = '"Crayon Libre", "Chalkboard SE", Chalkboard, "Comic Sans MS", "Comic Neue", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const MARKER_FONT = '"Excalifont", "Segoe Print", "Comic Sans MS", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
-  const COLORS = {
-    yellow:     { light: ['#fef08a', '#1f2937', '#1d4ed8'], dark: ['#4d4416', '#fef9c3', '#93c5fd'], label: 'Yellow' },
-    pink:       { light: ['#fbcfe8', '#1f2937', '#1d4ed8'], dark: ['#4f2240', '#fce7f3', '#93c5fd'], label: 'Pink' },
-    blue:       { light: ['#bfdbfe', '#1f2937', '#1e40af'], dark: ['#1e3a5f', '#dbeafe', '#bfdbfe'], label: 'Blue' },
-    green:      { light: ['#bbf7d0', '#1f2937', '#1d4ed8'], dark: ['#1d4a30', '#dcfce7', '#93c5fd'], label: 'Green' },
-    purple:     { light: ['#e9d5ff', '#1f2937', '#1d4ed8'], dark: ['#3d2a5c', '#f3e8ff', '#93c5fd'], label: 'Purple' },
-    chalkboard: { light: ['#2f4a3a', '#f4f7f2', '#bfe3ff'], dark: ['#223a2c', '#eef3ea', '#bfe3ff'], label: 'Chalkboard', font: CHALK_FONT, look: 'chalk' },
-    whiteboard: { light: ['#fbfcfd', '#1b1f24', '#1d4ed8'], dark: ['#d5d9df', '#121519', '#1e3a8a'], label: 'Whiteboard', font: MARKER_FONT, look: 'whiteboard' },
-    plain:      { light: null, dark: null, label: 'Plain' }
+  // Sticky note paper: [paper, text, link] for the light and dark board themes.
+  const PAPERS = {
+    yellow: { light: ['#fef08a', '#1f2937', '#1d4ed8'], dark: ['#4d4416', '#fef9c3', '#93c5fd'], label: 'Yellow' },
+    pink:   { light: ['#fbcfe8', '#1f2937', '#1d4ed8'], dark: ['#4f2240', '#fce7f3', '#93c5fd'], label: 'Pink' },
+    blue:   { light: ['#bfdbfe', '#1f2937', '#1e40af'], dark: ['#1e3a5f', '#dbeafe', '#bfdbfe'], label: 'Blue' },
+    green:  { light: ['#bbf7d0', '#1f2937', '#1d4ed8'], dark: ['#1d4a30', '#dcfce7', '#93c5fd'], label: 'Green' },
+    purple: { light: ['#e9d5ff', '#1f2937', '#1d4ed8'], dark: ['#3d2a5c', '#f3e8ff', '#93c5fd'], label: 'Purple' },
+    plain:  { light: null, dark: null, label: 'Plain' }
   };
-  const hasColor = k => typeof k === 'string' && Object.prototype.hasOwnProperty.call(COLORS, k);
+  // Chalk and marker colors: [writing, link]. Links get a different color than the writing.
+  const CHALKS = {
+    white:  { ink: '#f4f7f2', link: '#bfe3ff', label: 'White chalk' },
+    yellow: { ink: '#fde68a', link: '#bfe3ff', label: 'Yellow chalk' },
+    pink:   { ink: '#f9b4d6', link: '#bfe3ff', label: 'Pink chalk' },
+    blue:   { ink: '#a8d4ff', link: '#fde68a', label: 'Blue chalk' },
+    green:  { ink: '#a7f0c2', link: '#bfe3ff', label: 'Green chalk' },
+    orange: { ink: '#fdbb8a', link: '#bfe3ff', label: 'Orange chalk' }
+  };
+  const MARKERS = {
+    black:  { ink: '#1b1f24', link: '#1d4ed8', label: 'Black marker' },
+    blue:   { ink: '#1d4ed8', link: '#6d28d9', label: 'Blue marker' },
+    red:    { ink: '#c81e1e', link: '#1d4ed8', label: 'Red marker' },
+    green:  { ink: '#15803d', link: '#1d4ed8', label: 'Green marker' },
+    purple: { ink: '#6d28d9', link: '#1d4ed8', label: 'Purple marker' }
+  };
+  const THEMES = {
+    sticky:     { label: 'Sticky note', colors: PAPERS, key: 'color', fallback: 'yellow', heading: 'Paper color' },
+    chalkboard: { label: 'Chalkboard', colors: CHALKS, key: 'chalk', fallback: 'white', heading: 'Chalk color', font: CHALK_FONT, board: { light: '#2f4a3a', dark: '#223a2c' }, look: 'chalk' },
+    whiteboard: { label: 'Whiteboard', colors: MARKERS, key: 'marker', fallback: 'black', heading: 'Marker color', font: MARKER_FONT, board: { light: '#fbfcfd', dark: '#d5d9df' }, look: 'whiteboard' }
+  };
+  const has = (obj, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(obj, k);
   const MIN_PX = 12, MAX_PX = 400;
-  const DEFAULTS = { color: 'yellow', fit: true, px: null };
+  const DEFAULTS = { theme: 'sticky', color: 'yellow', chalk: 'white', marker: 'black', fit: true, px: null };
   let config = Object.assign({}, DEFAULTS);
   const t = document.getElementById('t'), view = document.getElementById('view'), sizer = document.getElementById('sizer');
   const body = document.body;
@@ -158,25 +181,44 @@
   }
   const currentPx = () => parseFloat(getComputedStyle(t).fontSize) || 32;
 
+  const themeOf = () => THEMES[has(THEMES, config.theme) ? config.theme : 'sticky'];
+  const colorOf = th => (has(th.colors, config[th.key]) ? config[th.key] : th.fallback);
+
   function applyLook() {
-    const c = hasColor(config.color) ? COLORS[config.color] : COLORS.yellow;
-    const set = c[Board21.theme];
-    body.style.setProperty('--note', set ? set[0] : 'var(--b21-bg)');
-    body.style.setProperty('--ink', set ? set[1] : 'var(--b21-text)');
-    body.style.setProperty('--link', set ? set[2] : 'var(--b21-accent)');
-    if (c.font) {
-      body.style.setProperty('--note-font', c.font);
+    const th = themeOf(), dark = Board21.theme === 'dark';
+    if (th.board) {
+      const c = th.colors[colorOf(th)];
+      body.style.setProperty('--note', th.board[dark ? 'dark' : 'light']);
+      body.style.setProperty('--ink', c.ink);
+      body.style.setProperty('--link', c.link);
+      body.style.setProperty('--note-font', th.font);
       // The font file loads the first time it's used: fit the text again once it's in.
-      if (document.fonts && document.fonts.load) document.fonts.load('32px ' + c.font.split(',')[0]).then(fitSoon, () => {});
-    } else body.style.removeProperty('--note-font');
-    body.classList.toggle('chalk', c.look === 'chalk');
-    body.classList.toggle('whiteboard', c.look === 'whiteboard');
+      if (document.fonts && document.fonts.load) document.fonts.load('32px ' + th.font.split(',')[0]).then(fitSoon, () => {});
+    } else {
+      const set = PAPERS[colorOf(th)][dark ? 'dark' : 'light'];
+      body.style.setProperty('--note', set ? set[0] : 'var(--b21-bg)');
+      body.style.setProperty('--ink', set ? set[1] : 'var(--b21-text)');
+      body.style.setProperty('--link', set ? set[2] : 'var(--b21-accent)');
+      body.style.removeProperty('--note-font');
+    }
+    body.classList.toggle('chalk', th.look === 'chalk');
+    body.classList.toggle('whiteboard', th.look === 'whiteboard');
     fitSoon();
   }
 
+  // Window menu: the theme, then that theme's colors as a row of swatches, then text size.
   function setMenu() {
+    const th = themeOf(), cur = colorOf(th), dark = Board21.theme === 'dark';
+    const swatch = k => {
+      if (th.board) return { color: th.colors[k].ink, background: th.board[dark ? 'dark' : 'light'] };
+      const set = PAPERS[k][dark ? 'dark' : 'light'];
+      return { color: set ? set[0] : (dark ? '#1f2937' : '#ffffff') };
+    };
     Board21.menu.set([
-      ...Object.keys(COLORS).map(k => ({ id: 'color:' + k, label: COLORS[k].label, checked: config.color === k })),
+      { heading: true, label: 'Theme' },
+      ...Object.keys(THEMES).map(k => ({ id: 'theme:' + k, label: THEMES[k].label, checked: themeOf() === THEMES[k] })),
+      { heading: true, label: th.heading },
+      { id: 'colors', label: th.heading, swatches: Object.keys(th.colors).map(k => Object.assign({ id: th.key + ':' + k, label: th.colors[k].label, checked: cur === k }, swatch(k))) },
       { separator: true },
       { id: 'fit', label: 'Fit text to the note', checked: !!config.fit },
       { id: 'bigger', label: 'Larger text', disabled: !config.fit && config.px >= MAX_PX },
@@ -195,7 +237,12 @@
   });
 
   Board21.on('menu', id => {
-    if (id.startsWith('color:')) config.color = id.slice(6);
+    const [kind, value] = id.split(':');
+    if (kind === 'theme' && has(THEMES, value)) config.theme = value;
+    else if (value !== undefined && Object.keys(THEMES).some(k => THEMES[k].key === kind)) {
+      const th = Object.values(THEMES).find(x => x.key === kind);
+      if (has(th.colors, value)) config[kind] = value;
+    }
     else if (id === 'fit') config.fit = !config.fit;
     else if (id === 'bigger' || id === 'smaller') {
       const from = config.fit ? currentPx() : (config.px || currentPx());
@@ -220,11 +267,14 @@
   const readConfig = c => {
     const out = Object.assign({}, DEFAULTS, c || {});
     if (!c || c.fit === undefined) out.fit = true; // notes saved before auto-fit
-    if (!hasColor(out.color)) out.color = 'yellow';
+    // Notes saved when Chalkboard and Whiteboard were paper colors.
+    if (c && !has(THEMES, c.theme) && has(THEMES, c.color)) { out.theme = c.color; out.color = DEFAULTS.color; }
+    if (!has(THEMES, out.theme)) out.theme = 'sticky';
+    for (const th of Object.values(THEMES)) if (!has(th.colors, out[th.key])) out[th.key] = th.fallback;
     return out;
   };
   Board21.on('config', c => { config = readConfig(c); applyLook(); setMenu(); });
-  Board21.on('theme', applyLook);
+  Board21.on('theme', () => { applyLook(); setMenu(); });   // the board's light/dark theme
   addEventListener('resize', fitSoon);
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitSoon);
 

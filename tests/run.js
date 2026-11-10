@@ -1352,7 +1352,7 @@ const SUITES = [
     ok((await info()).editing && Math.abs(caret - word.idx) <= 1, `tapping text starts editing with the cursor there (caret ${caret}, expected ~${word.idx})`);
     // Chalkboard theme with the bundled font.
     await page.mouse.click(1000, 700); await page.waitForTimeout(200);
-    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="color:chalkboard"]'); await page.waitForTimeout(800);
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="theme:chalkboard"]'); await page.waitForTimeout(800);
     const chalk = await f.locator('body').evaluate(b => ({ bg: getComputedStyle(b).backgroundColor, font: getComputedStyle(document.getElementById('view')).fontFamily, chalk: b.classList.contains('chalk'), loaded: document.fonts.check('32px "Crayon Libre"') && Array.from(document.fonts).some(x => x.family.replace(/"/g, '') === 'Crayon Libre' && x.status === 'loaded') }));
     ok(chalk.chalk && chalk.bg === 'rgb(47, 74, 58)' && /^"?Crayon Libre/.test(chalk.font), 'Chalkboard theme: green board and the bundled chalk font');
     ok(chalk.loaded, 'the chalk font file loads (works on any device, no system font needed)');
@@ -1367,15 +1367,53 @@ const SUITES = [
     ok(glyphs.l < glyphs.o * 0.55, `the chalk lowercase l is a plain print stick, not the looped cursive one (${Math.round(glyphs.l)}px wide)`);
     ok(glyphs.lacute < glyphs.l * 1.7 && glyphs.Lslash < glyphs.L * 1.25, 'accented l letters (ĺ ľ ł...) and Ł use the print shapes too');
     // Whiteboard theme with its marker font.
-    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="color:whiteboard"]'); await page.waitForTimeout(800);
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="theme:whiteboard"]'); await page.waitForTimeout(800);
     const wb = await f.locator('body').evaluate(async b => { await document.fonts.load('32px "Excalifont"'); return { bg: getComputedStyle(b).backgroundColor, ink: getComputedStyle(b).color, font: getComputedStyle(document.getElementById('view')).fontFamily, cls: b.classList.contains('whiteboard') && !b.classList.contains('chalk'), loaded: document.fonts.check('32px "Excalifont"') }; });
     ok(wb.cls && wb.bg === 'rgb(251, 252, 253)' && wb.ink === 'rgb(27, 31, 36)' && /^"?Excalifont/.test(wb.font) && wb.loaded, 'Whiteboard theme: white board, dark marker ink and the bundled marker font');
     ok(!(await info()).overflowY, 'text fits in the whiteboard font');
-    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="color:chalkboard"]'); await page.waitForTimeout(300);
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="theme:chalkboard"]'); await page.waitForTimeout(300);
+    // Themes are listed apart from colors; each theme has its own color row and remembers its color.
+    const openMenu = async () => { await page.click('.win[data-ikey="notes:1"] .win-label'); await page.waitForTimeout(200); };
+    const menuState = () => page.evaluate(() => ({
+      headings: [...document.querySelectorAll('#menu .menu-heading')].map(h => h.textContent),
+      themes: [...document.querySelectorAll('#menu [data-id^="theme:"]')].map(b => b.textContent.trim() + (b.getAttribute('aria-checked') === 'true' ? '*' : '')),
+      swatches: [...document.querySelectorAll('#menu .swatch')].map(b => b.dataset.id + (b.getAttribute('aria-checked') === 'true' ? '*' : ''))
+    }));
+    const ink = () => f.locator('body').evaluate(b => getComputedStyle(b).color);
+    await openMenu();
+    let ms = await menuState();
+    ok(ms.headings.join('|') === 'Theme|Chalk color' && ms.themes.join('|') === 'Sticky note|Chalkboard*|Whiteboard', `the menu lists themes separately: ${ms.themes.join(', ')}`);
+    ok(ms.swatches.length === 6 && ms.swatches.includes('chalk:white*'), 'Chalkboard offers a row of chalk colors (white chosen)');
+    await page.click('#menu [data-id="chalk:yellow"]'); await page.waitForTimeout(300);
+    ok(await ink() === 'rgb(253, 230, 138)' && (await page.evaluate(() => window.__board21.state.conf.get('notes:1').chalk)) === 'yellow', 'picking yellow chalk writes in yellow chalk');
+    await openMenu(); await page.click('#menu [data-id="theme:whiteboard"]'); await page.waitForTimeout(400);
+    await openMenu(); ms = await menuState();
+    ok(ms.headings[1] === 'Marker color' && ms.swatches.length === 5 && ms.swatches.includes('marker:black*'), 'Whiteboard offers marker colors');
+    await page.click('#menu [data-id="marker:red"]'); await page.waitForTimeout(300);
+    ok(await ink() === 'rgb(200, 30, 30)', 'picking a red marker writes in red');
+    await openMenu(); await page.click('#menu [data-id="theme:sticky"]'); await page.waitForTimeout(400);
+    await openMenu(); ms = await menuState();
+    const bg = await f.locator('body').evaluate(b => getComputedStyle(b).backgroundColor);
+    ok(ms.headings[1] === 'Paper color' && ms.swatches.includes('color:yellow*') && bg === 'rgb(254, 240, 138)' && !(await f.locator('body').evaluate(b => b.classList.contains('chalk') || b.classList.contains('whiteboard'))),
+      'Sticky note is the plain note again: the color is the paper, in the normal font');
+    await page.click('#menu [data-id="color:pink"]'); await page.waitForTimeout(300);
+    await openMenu(); await page.click('#menu [data-id="theme:chalkboard"]'); await page.waitForTimeout(400);
+    ok(await ink() === 'rgb(253, 230, 138)', 'each theme remembers its own color (back to yellow chalk)');
+    // A note saved when Chalkboard/Whiteboard were colors opens in that theme.
+    await page.evaluate(() => window.__board21.state.wins.get('notes:1').post('config', { config: { color: 'whiteboard', fit: true } })); await page.waitForTimeout(400);
+    await openMenu(); ms = await menuState();
+    ok(ms.themes.includes('Whiteboard*') && await f.locator('body').evaluate(b => b.classList.contains('whiteboard')), 'an older note saved with the Whiteboard color opens in the Whiteboard theme');
+    await page.keyboard.press('Escape');
+    // The board only accepts plain colors for swatches (nothing can be smuggled into the page's styles).
+    await f.locator('body').evaluate(() => Board21.menu.set([{ label: 'X', swatches: [{ id: 'a', label: 'A', color: 'red;background:url(https://example.com/x)' }, { id: 'b', label: 'B', color: '#123456' }] }]));
+    await page.waitForTimeout(300); await openMenu();
+    ok((await page.evaluate(() => [...document.querySelectorAll('#menu .swatch')].map(b => b.dataset.id).join(','))) === 'b', 'swatches with anything but a plain color are dropped');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__board21.state.wins.get('notes:1').post('config', { config: { theme: 'chalkboard', chalk: 'white', fit: true } })); await page.waitForTimeout(400);
     // Fixed size; saved config; older notes.
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="smaller"]'); await page.waitForTimeout(300);
     const conf = await page.evaluate(() => window.__board21.state.conf.get('notes:1'));
-    ok(conf.fit === false && conf.px > 0 && conf.color === 'chalkboard', 'Smaller text switches to a fixed size and is saved');
+    ok(conf.fit === false && conf.px > 0 && conf.theme === 'chalkboard', 'Smaller text switches to a fixed size and is saved');
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="fit"]'); await page.waitForTimeout(300);
     ok((await page.evaluate(() => window.__board21.state.conf.get('notes:1'))).fit === true, '"Fit text to the note" turns fitting back on');
     await page.evaluate(() => window.__board21.state.wins.get('notes:1').post('config', { config: { color: 'pink', size: 3 } })); await page.waitForTimeout(400);

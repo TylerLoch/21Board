@@ -144,6 +144,16 @@
     renderStandaloneMenu();
   }
 
+  // A menu item (or a swatch inside a row of swatches) by id.
+  function findMenuItem(id) {
+    for (var k = 0; k < menuItems.length; k++) {
+      var i = menuItems[k];
+      if (i.swatches) { for (var j = 0; j < i.swatches.length; j++) if (i.swatches[j].id === id) return i.swatches[j]; }
+      else if (!i.heading && !i.separator && i.id === id) return i;
+    }
+    return null;
+  }
+
   // A tiny stand-in for the window menu, so custom menu items can be tested standalone.
   var standaloneMenuBtn = null;
   function renderStandaloneMenu() {
@@ -155,13 +165,19 @@
       standaloneMenuBtn.style.cssText = 'position:fixed;top:6px;right:6px;z-index:2147483647;font:12px system-ui;opacity:.85';
       standaloneMenuBtn.addEventListener('change', function () {
         var id = standaloneMenuBtn.value; standaloneMenuBtn.value = '';
-        var item = menuItems.filter(function (i) { return i.id === id; })[0];
+        var item = findMenuItem(id);
         if (item) emit('menu', id, item);
       });
       document.body.appendChild(standaloneMenuBtn);
     }
+    var opt = function (id, label, checked) {
+      return '<option value="' + String(id).replace(/"/g, '&quot;') + '">' + (checked ? '✓ ' : '') + String(label).replace(/</g, '&lt;') + '</option>';
+    };
     standaloneMenuBtn.innerHTML = '<option value="">Menu ▾</option>' + menuItems.map(function (i) {
-      return '<option value="' + String(i.id).replace(/"/g, '&quot;') + '">' + (i.checked ? '✓ ' : '') + String(i.label).replace(/</g, '&lt;') + '</option>';
+      if (i.separator) return '';
+      if (i.heading) return '<option disabled>— ' + String(i.label).replace(/</g, '&lt;') + ' —</option>';
+      if (i.swatches) return i.swatches.map(function (s) { return opt(s.id, i.label + ': ' + s.label, s.checked); }).join('');
+      return opt(i.id, i.label, i.checked);
     }).join('');
   }
 
@@ -205,7 +221,7 @@
       case 'focus': if (context && context.window) context.window.focused = true; emit('focus'); break;
       case 'blur': if (context && context.window) context.window.focused = false; emit('blur'); break;
       case 'menu': {
-        var item = menuItems.filter(function (i) { return i.id === m.id; })[0];
+        var item = findMenuItem(m.id);
         emit('menu', m.id, item || null);
         break;
       }
@@ -297,9 +313,16 @@
 
     // ---- Window menu: extra items shown above Reset / Close.
     menu: {
-      /** items: [{ id, label, icon?: '<svg…>', checked?: bool, disabled?: bool, separator?: bool }] */
+      /** items: [{ id, label, icon?: '<svg…>', checked?: bool, disabled?: bool, separator?: bool }
+       *          | { heading: true, label }                                           (a small section label)
+       *          | { label, swatches: [{ id, label, color: '#hex', background?: '#hex', checked?: bool }] }]  (a row of colors) */
       set: function (items) {
         menuItems = (items || []).map(function (i) {
+          i = i || {};
+          if (i.heading) return { heading: true, label: String(i.label || '') };
+          if (Array.isArray(i.swatches)) return { id: String(i.id || ''), label: String(i.label || ''), swatches: i.swatches.map(function (s) {
+            return { id: String(s.id || ''), label: String(s.label || ''), color: String(s.color || ''), background: s.background ? String(s.background) : undefined, checked: !!s.checked };
+          }) };
           return { id: String(i.id || ''), label: String(i.label || ''), icon: i.icon || '', checked: i.checked == null ? undefined : !!i.checked, disabled: !!i.disabled, separator: !!i.separator };
         });
         return readyPromise.then(function () { post('menu', { items: menuItems }); renderStandaloneMenu(); });
