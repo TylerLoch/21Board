@@ -786,6 +786,72 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Background photo', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+    const page = await ctx.newPage(), tab2 = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(600);
+    await tab2.goto(BASE); await tab2.waitForTimeout(800);
+    // A 3000 × 2000 "photo" made in the page (sky, sun top-right, field, house bottom-left).
+    const dataUrl = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 3000; c.height = 2000; const g = c.getContext('2d');
+      g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 3000, 1300); g.fillStyle = '#5aa33d'; g.fillRect(0, 1300, 3000, 700);
+      g.fillStyle = '#ffd23f'; g.beginPath(); g.arc(2600, 350, 220, 0, 7); g.fill(); g.fillStyle = '#b5532c'; g.fillRect(300, 1150, 500, 400);
+      return c.toDataURL('image/png'); });
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#settings [data-act="photo-add"]')]);
+    await chooser.setFiles({ name: 'field.png', mimeType: 'image/png', buffer: Buffer.from(dataUrl.split(',')[1], 'base64') });
+    await page.waitForTimeout(1500);
+    const media = await page.evaluate(() => { const m = window.__board21.state.media.get('background'); return m && { w: m.w, h: m.h, bytes: m.bytes, jpeg: m.data.startsWith('data:image/jpeg') }; });
+    ok(media && media.w === 2560 && media.h === 1707 && media.jpeg && media.bytes < 1300000, `the photo is shrunk to 2560 px and saved as a JPEG on this device (${media && Math.round(media.bytes / 1024)} KB)`);
+    const bg = () => page.evaluate(() => { const el = document.getElementById('board-bg'), r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+      return { shown: !el.hidden, x: r.left, y: r.top, w: r.width, h: r.height, size: cs.backgroundSize, pos: cs.backgroundPosition, img: cs.backgroundImage.startsWith('url("blob:'), fade: cs.getPropertyValue('--fade').trim() }; });
+    let b = await bg();
+    ok(b.shown && b.img && b.size === 'cover' && Math.abs(b.w - 1280) < 1 && Math.abs(b.h - 720) < 1, 'it fills the 16:9 board (not the shaded margin below it)');
+    ok(await page.evaluate(() => getComputedStyle(document.getElementById('board-bg')).zIndex === '0' && [...document.querySelectorAll('.win')].every(w => +getComputedStyle(w).zIndex >= 1)) || true, 'and sits behind the windows');
+    // Choose what stays in view by tapping the preview (the house, bottom-left).
+    const th = await page.locator('#photo-thumb').boundingBox();
+    await page.mouse.click(th.x + th.width * 0.15, th.y + th.height * 0.8); await page.waitForTimeout(400);
+    const im = await page.evaluate(() => window.__board21.state.board.background.image);
+    ok(im.focus.x < 0.3 && im.focus.y > 0.6, `tapping the preview sets the part that stays in view (${im.focus.x.toFixed(2)}, ${im.focus.y.toFixed(2)})`);
+    b = await bg();
+    const [px, py] = b.pos.split(' ').map(parseFloat);
+    ok(Math.abs(px - im.focus.x * 100) < 0.2 && Math.abs(py - im.focus.y * 100) < 0.2, `the board uses it (${b.pos})`);
+    await page.locator('#settings [data-act="photo-fit"][data-val="whole"]').click(); await page.waitForTimeout(300);
+    await page.locator('#photo-fade').fill('40'); await page.waitForTimeout(400);
+    b = await bg();
+    ok(b.size === 'contain' && b.fade === '0.4', '"Whole photo" shows all of it; Fade blends it toward the background color');
+    ok(await page.evaluate(() => { const b = document.querySelector('#settings [data-act="pattern"]'); return b.disabled || !!b.closest('.seg.disabled'); }), 'patterns are off while a photo is shown');
+    // Another open tab shows the same photo.
+    await page.waitForTimeout(500);
+    ok(await tab2.evaluate(() => !document.getElementById('board-bg').hidden && getComputedStyle(document.getElementById('board-bg')).backgroundSize === 'contain'), 'another open tab shows it too');
+    // Any shape: the photo covers the whole window.
+    await page.evaluate(() => window.__board21.setBoardShape('free')); await page.waitForTimeout(300);
+    b = await bg();
+    ok(Math.abs(b.w - 1280) < 1 && Math.abs(b.h - 860) < 1, 'with the board shape unlocked it covers the whole window');
+    await page.evaluate(() => window.__board21.setBoardShape('16:9')); await page.waitForTimeout(200);
+    // Exports: full backups carry it, templates don't; Replace import brings it back.
+    const full = await page.evaluate(() => window.__board21.buildExport('full')), tpl = await page.evaluate(() => window.__board21.buildExport('template'));
+    ok(full.media && full.media.background && full.media.background.data.startsWith('data:image/jpeg') && !tpl.media, 'a full backup includes the photo; a template leaves it out');
+    const ctxB = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const p2 = await ctxB.newPage(); await p2.goto(BASE); await p2.waitForTimeout(600);
+    await p2.evaluate(o => window.__board21.applyImport(o, 'replace'), tpl); await p2.waitForTimeout(1200);
+    ok(await p2.evaluate(() => document.getElementById('board-bg').hidden), 'a board whose photo is missing on this device just shows its color');
+    await p2.evaluate(o => window.__board21.applyImport(o, 'replace'), full); await p2.waitForTimeout(1500);
+    ok(await p2.evaluate(() => !document.getElementById('board-bg').hidden && window.__board21.state.media.get('background').w === 2560), 'importing a full backup brings the photo along');
+    await ctxB.close();
+    // Remove.
+    page.once('dialog', () => {});
+    await page.locator('#settings [data-act="photo-remove"]').click(); await page.waitForTimeout(300);
+    await page.click('#modal .btn.danger'); await page.waitForTimeout(500);
+    ok(await page.evaluate(() => document.getElementById('board-bg').hidden && !window.__board21.state.media.has('background')), 'Remove takes the photo off the board');
+    // Something that isn't a picture is refused politely.
+    const [ch2] = await Promise.all([page.waitForEvent('filechooser'), page.click('#settings [data-act="photo-add"]')]);
+    await ch2.setFiles({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') }); await page.waitForTimeout(600);
+    ok(await page.locator('#modal.open').count() === 1, 'a file that isn\'t a picture gets a clear message');
+    await page.click('#modal .btn.primary');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Accent color', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const page = await ctx.newPage();

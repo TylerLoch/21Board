@@ -62,7 +62,9 @@ include) to the static host. Then:
 ### Settings
 
 - **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to sub-apps),
-  board background color (or match theme), background pattern (dots, grid, lines).
+  board background color (or match theme), background pattern (dots, grid, lines), background photo
+  (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
+  in full backups, not in templates).
 - **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, size of windows and menus (default 80%), board shape (16:9 or any shape), close all windows.
 - **App Picker:** show the controls in both corners, or only left/right.
 - **Board:** board name (used for export file names), list of every saved app window with

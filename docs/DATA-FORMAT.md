@@ -40,6 +40,7 @@ Keys (`<b>` = board id, currently always `1`; `<n>` = instance number):
 | `inst:<b>:<appId>:<n>` | `inst` | One window/instance: geometry, open/closed, stacking |
 | `data:<b>:<appId>:<n>` | `data` | That instance's **content** — whatever the sub-app passed to `Board21.save()` |
 | `conf:<b>:<appId>:<n>` | `conf` | That instance's **config** — whatever it passed to `Board21.saveConfig()` |
+| `media:<b>:background` | `media` | The board's **background photo** (see below). Kept apart from `board:<b>` because it's big |
 
 App ids are limited to `a-z 0-9 -`, so keys can be split on `:`.
 
@@ -73,7 +74,10 @@ without changing the format: `settings.activeBoard` will choose which board is s
 ```js
 {
   id: 1, name: "My Board",
-  background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" },
+  background: {
+    color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines",
+    image: null | { on: true, fit: "fill" | "whole", focus: { x: 0.5, y: 0.5 }, fade: 0 }   // how the photo is shown
+  },
   scale: 0.8,                    // size of windows and menus (0.5–2), as on a 1920 × 1080 screen; see "Layout space"
   shape: "16:9",                 // "16:9" (default) | "free" (fills any window)
   layout: { w: 2400, h: 1350 }   // the 16:9 board in layout px: 1920/scale × 1080/scale (kept for older readers)
@@ -81,6 +85,26 @@ without changing the format: `settings.activeBoard` will choose which board is s
 ```
 
 `color: null` means "match the light/dark theme".
+
+`background.image` only says how the photo is shown: `fill` covers the board (cropped), `whole` fits all
+of it with `color` around it; `focus` (0–1 from the top-left) is the part that stays in view when
+cropped (it's the CSS `background-position`); `fade` (0–0.7) blends it toward the board color. The
+picture itself is in `media:<b>:background`; if that record is missing on a device, the board simply
+shows its color.
+
+### `media:<b>:background`
+
+```js
+{ data: "data:image/jpeg;base64,…", w: 2560, h: 1707, bytes: 412345, name: "class.jpg", addedAt: 1762713600000 }
+```
+
+Chosen in Settings → Appearance → Background photo, then shrunk on the device to at most 2560 px on
+the long side and saved as a JPEG (usually 0.2–0.9 MB). It covers the 16:9 board (not the shaded
+margins), or the whole window when the board shape is unlocked.
+
+Media records are kept apart from the small records on purpose: anything that copies boards between
+devices with tight size limits (for example a sync through a browser extension) can skip `media:*`
+and let each device set its own photo; the board still works without it.
 
 ### `inst:<b>:<appId>:<n>`
 
@@ -189,6 +213,7 @@ on Chrome) reads it.
     "scale": 0.8,
     "shape": "16:9"
   },
+  "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 } },   // full backups only
   "instances": [
     {
       "appId": "timer",
@@ -210,6 +235,7 @@ on Chrome) reads it.
 | Closed windows | ✅ | ❌ |
 | `config` | ✅ | ✅ |
 | `data` (content) | ✅ | ❌ always `null` |
+| `media.background` (photo) | ✅ | ❌ (a template is for sharing; a photo may show the class) |
 
 Importing offers two choices:
 

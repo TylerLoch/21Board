@@ -120,6 +120,7 @@
   ];
 
   const ICONS = {
+    image: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5.5-5.5L6 20"/>',
     waffle: '<rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/>',
     export: '<path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>', // arrow leaving the tray
     import: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>', // arrow coming in
@@ -248,10 +249,12 @@
     inst: (b, ik) => `inst:${b}:${ik}`,
     data: (b, ik) => `data:${b}:${ik}`,
     conf: (b, ik) => `conf:${b}:${ik}`,
+    media: (b, name) => `media:${b}:${name}`,   // big binary-ish things (the background photo), kept apart so sync can skip them
     parse(key) {
       const p = String(key).split(':');
       if (p[0] === 'settings') return { kind: 'settings' };
       if (p[0] === 'board' && p.length === 2) return { kind: 'board', board: +p[1] };
+      if (p[0] === 'media' && p.length === 3) return { kind: 'media', board: +p[1], name: p[2] };
       if ((p[0] === 'inst' || p[0] === 'data' || p[0] === 'conf') && p.length === 4) {
         return { kind: p[0], board: +p[1], appId: p[2], n: +p[3], ikey: `${p[2]}:${p[3]}` };
       }
@@ -428,6 +431,7 @@
     board: defaultBoard(1),
     insts: new Map(),   // ikey -> { appId, n, open, rect:{x,y,w,h}, z, maximized, createdAt }
     data: new Map(),    // ikey -> content
+    media: new Map(),   // name -> { data: 'data:image/…', w, h, bytes, name } (the background photo)
     conf: new Map(),    // ikey -> config
     wins: new Map(),    // ikey -> Win
     focused: null,
@@ -458,7 +462,7 @@
   async function rebuildAll() {
     Menu.close();
     for (const w of S.wins.values()) w.destroy();
-    S.wins.clear(); S.insts.clear(); S.data.clear(); S.conf.clear(); Known.clear();
+    S.wins.clear(); S.insts.clear(); S.data.clear(); S.conf.clear(); S.media.clear(); Known.clear();
     S.focused = null;
     S.settings = Object.assign({}, DEFAULT_SETTINGS);
     S.board = defaultBoard(S.boardId);
@@ -487,8 +491,14 @@
         if (k.board !== S.boardId) break;
         S.board = Object.assign(defaultBoard(S.boardId), value || {});
         S.board.layout = validLayout(S.board.layout);
-        S.board.background = Object.assign({ color: null, pattern: 'none' }, (value && value.background) || {});
+        S.board.background = Object.assign({ color: null, pattern: 'none', image: null }, (value && value.background) || {});
+        S.board.background.image = normalizePhotoSettings(S.board.background.image);
         applyBoard();
+        break;
+      case 'media':
+        if (k.board !== S.boardId) break;
+        if (value) S.media.set(k.name, value); else S.media.delete(k.name);
+        if (k.name === 'background') BoardPhoto.render();
         break;
       case 'inst':
         if (k.board !== S.boardId) break;
@@ -592,7 +602,93 @@
     desk.style.setProperty('--margin-shade', darkBg ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)');
     const meta = $('meta[name="theme-color"]');
     if (meta) meta.content = bg.color || (resolvedTheme() === 'dark' ? '#121212' : '#f3f4f6');
+    BoardPhoto.render();
   }
+
+  // ---------------------------------------------------------------------
+  // Background photo. The picture is its own record (media:<b>:background), so a future sync can leave
+  // it out and a device can have its own; the board only keeps how it's shown (background.image):
+  //   { on: true, fit: 'fill' | 'whole', focus: { x, y } (0–1, the part that stays in view), fade: 0–0.7 }
+  // No picture on this device → the board shows its color, as if no photo were set.
+  // ---------------------------------------------------------------------
+  const PHOTO_MAX_SIDE = 2560;            // longest side kept (enough for a 1440p board; ~0.3–0.9 MB as JPEG)
+  function normalizePhotoSettings(im) {
+    if (!im || typeof im !== 'object') return null;
+    const f = im.focus || {};
+    const unit = v => (typeof v === 'number' && v >= 0 && v <= 1 ? v : 0.5);
+    return { on: im.on !== false, fit: im.fit === 'whole' ? 'whole' : 'fill', focus: { x: unit(f.x), y: unit(f.y) }, fade: Math.max(0, Math.min(0.7, +im.fade || 0)) };
+  }
+  const BoardPhoto = {
+    url: null, src: null,
+    el() { return $('#board-bg'); },
+    settings() { return normalizePhotoSettings(S.board.background && S.board.background.image); },
+    media() { const m = S.media.get('background'); return m && typeof m.data === 'string' && /^data:image\/(jpeg|png|webp);base64,/.test(m.data) ? m : null; },
+    // The picture as an object URL (one big data: string in a style would be parsed again on every change).
+    async objectUrl(m) {
+      if (this.src === m.data && this.url) return this.url;
+      const blob = await (await fetch(m.data)).blob();
+      if (this.url) URL.revokeObjectURL(this.url);
+      this.src = m.data; this.url = URL.createObjectURL(blob);
+      return this.url;
+    },
+    async render() {
+      const el = this.el();
+      if (!el) return;
+      const im = this.settings(), m = this.media();
+      const show = !!(im && im.on && m);
+      document.body.classList.toggle('has-photo', show);
+      if (!show) { el.hidden = true; el.style.backgroundImage = ''; return; }
+      const url = await this.objectUrl(m);
+      el.style.backgroundImage = `url("${url}")`;
+      el.style.backgroundSize = im.fit === 'whole' ? 'contain' : 'cover';
+      el.style.backgroundPosition = `${(im.focus.x * 100).toFixed(1)}% ${(im.focus.y * 100).toFixed(1)}%`;
+      el.style.setProperty('--fade', String(im.fade));
+      el.style.setProperty('--fade-color', (S.board.background && S.board.background.color) || 'var(--board-bg)');
+      el.hidden = false;
+      this.place();
+    },
+    // The photo covers the board: the 16:9 board (not the shaded margins), or the whole window.
+    place() {
+      const el = this.el();
+      if (!el || el.hidden) return;
+      const L = canvas();
+      const r = freeShape() ? { x: 0, y: 0, w: Zoom.vw, h: Zoom.vh } : { x: Zoom.ox, y: Zoom.oy, w: L.w * Zoom.s, h: L.h * Zoom.s };
+      Object.assign(el.style, { left: r.x + 'px', top: r.y + 'px', width: r.w + 'px', height: r.h + 'px' });
+    },
+    // A picture from the teacher's device: shrunk and re-compressed here (nothing is uploaded anywhere).
+    async process(file) {
+      if (!file || !/^image\//.test(file.type || '') && !/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || '')) throw new Error('Choose a picture file (JPG, PNG or WebP).');
+      let bmp;
+      try { bmp = await createImageBitmap(file); } catch (e) { throw new Error('This picture can’t be opened here. Try a JPG or PNG (iPhone HEIC photos may need converting first).'); }
+      const k = Math.min(1, PHOTO_MAX_SIDE / Math.max(bmp.width, bmp.height));
+      const w = Math.max(1, Math.round(bmp.width * k)), h = Math.max(1, Math.round(bmp.height * k));
+      const c = document.createElement('canvas'); c.width = w; c.height = h;
+      const g = c.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, w, h);
+      if (bmp.close) bmp.close();
+      const enc = q => new Promise(res => c.toBlob(res, 'image/jpeg', q));
+      let blob = await enc(0.85);
+      if (blob && blob.size > 1200000) blob = await enc(0.72);
+      if (!blob) throw new Error('This picture couldn’t be prepared.');
+      const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
+      return { data, w, h, bytes: blob.size, name: String(file.name || 'Photo').slice(0, 80), addedAt: Date.now() };
+    },
+    async setFromFile(file) {
+      const m = await this.process(file);
+      S.media.set('background', m);
+      Writer.put(Keys.media(S.boardId, 'background'), 'media', m);
+      const prev = this.settings();
+      updateBoard({ background: Object.assign({}, S.board.background, { image: { on: true, fit: prev ? prev.fit : 'fill', focus: { x: 0.5, y: 0.5 }, fade: prev ? prev.fade : 0 } }) });
+    },
+    update(patch) {
+      const cur = this.settings() || { on: true, fit: 'fill', focus: { x: 0.5, y: 0.5 }, fade: 0 };
+      updateBoard({ background: Object.assign({}, S.board.background, { image: Object.assign({}, cur, patch) }) });
+    },
+    remove() {
+      S.media.delete('background');
+      Writer.del(Keys.media(S.boardId, 'background'));
+      updateBoard({ background: Object.assign({}, S.board.background, { image: null }) });
+    }
+  };
 
   function updateHint() {
     let open = 0;
@@ -681,6 +777,7 @@
       }
     }
     ShapeHint.update();
+    BoardPhoto.place();
   }
 
   // The visible screen expressed in layout space (may extend past the 16:9 board on one axis).
@@ -2156,6 +2253,38 @@
   // =====================================================================
   // 12. Settings
   // =====================================================================
+  // Settings → Appearance → Background photo.
+  function photoRow(sw, seg) {
+    const m = BoardPhoto.media(), im = BoardPhoto.settings();
+    if (!m || !im) {
+      return `<div class="row"><div><div class="lbl">Background photo</div><div class="hint">A picture from this device (or Google Drive on a Chromebook). It's kept on this device and in full backups, not in templates.</div></div>
+        <button class="btn" data-act="photo-add">${svg('image')}Add photo…</button></div>`;
+    }
+    const g = photoThumbGeometry(m, im);
+    const src = BoardPhoto.src === m.data && BoardPhoto.url ? BoardPhoto.url : m.data;
+    return `<div class="row stack"><div><div class="lbl">Background photo</div><div class="hint">${im.fit === 'whole' ? 'The whole photo is shown; the background color fills the rest.' : 'Tap the picture to choose the part that always stays in view.'}</div></div>
+      <div class="photo-edit">
+        <div class="photo-thumb${im.on ? '' : ' off'}" id="photo-thumb" role="button" tabindex="0" aria-label="Choose the part of the photo that stays in view"
+          style="aspect-ratio:${g.ratio.toFixed(4)};background-image:url('${src}');background-size:${im.fit === 'whole' ? 'contain' : 'cover'};background-position:${(im.focus.x * 100).toFixed(1)}% ${(im.focus.y * 100).toFixed(1)}%;--fade:${im.fade}">
+          ${im.fit === 'fill' ? `<span class="focus" style="left:${(g.mx * 100).toFixed(2)}%;top:${(g.my * 100).toFixed(2)}%"></span>` : ''}</div>
+        <div class="photo-ctrls">
+          <div class="line"><span>Show photo</span>${sw('photo-on', im.on, 'Show photo')}</div>
+          <div class="line"><span>Fit</span>${seg('photo-fit', im.fit, [['fill', 'Fill the board'], ['whole', 'Whole photo']])}</div>
+          <label class="line"><span>Fade</span><input type="range" id="photo-fade" min="0" max="70" step="5" value="${Math.round(im.fade * 100)}" aria-label="Fade the photo"></label>
+          <div class="line end"><button class="btn small" data-act="photo-add">Change…</button><button class="btn small danger" data-act="photo-remove">Remove</button></div>
+        </div>
+      </div></div>`;
+  }
+  // Where the photo sits in a box shaped like the board (fractions of the box), and the focus marker.
+  function photoThumbGeometry(m, im) {
+    const ratio = freeShape() ? (Zoom.vw || 16) / (Zoom.vh || 9) : 16 / 9;
+    const W = 1, H = 1 / ratio, ia = m.w / m.h;
+    const k = im.fit === 'whole' ? Math.min(W / ia, H) : Math.max(W / ia, H);   // image height in box units
+    const dw = k * ia, dh = k;
+    const ox = (W - dw) * im.focus.x, oy = (H - dh) * im.focus.y;
+    return { ratio, dw, dh, ox, oy, W, H, mx: (ox + im.focus.x * dw) / W, my: (oy + im.focus.y * dh) / H };
+  }
+
   const Settings = {
     el: null,
     body: null,
@@ -2180,6 +2309,30 @@
       });
       this.body.addEventListener('input', e => {
         if (e.target.id === 'set-bg-custom') updateBoard({ background: Object.assign({}, S.board.background, { color: e.target.value }) });
+        if (e.target.id === 'photo-fade') {
+          const fade = Math.max(0, Math.min(0.7, e.target.value / 100));
+          BoardPhoto.update({ fade });
+          const th = $('#photo-thumb', this.body); if (th) th.style.setProperty('--fade', String(fade));
+        }
+      });
+      // Tap the preview: that spot of the photo stays in view however the board is shaped.
+      this.body.addEventListener('pointerdown', e => {
+        const th = e.target.closest('#photo-thumb');
+        const m = BoardPhoto.media(), im = BoardPhoto.settings();
+        if (!th || !m || !im || im.fit !== 'fill') return;
+        const r = th.getBoundingClientRect(), g = photoThumbGeometry(m, im);
+        const u = (e.clientX - r.left) / r.width * g.W, v = (e.clientY - r.top) / r.height * g.H;
+        const clamp01 = x => Math.max(0, Math.min(1, x));
+        BoardPhoto.update({ focus: { x: clamp01((u - g.ox) / g.dw), y: clamp01((v - g.oy) / g.dh) } });
+        this.render();
+      });
+      $('#photo-input').addEventListener('change', async e => {
+        const f = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!f) return;
+        try { await BoardPhoto.setFromFile(f); }
+        catch (err) { await dialog({ title: 'Can’t use this picture', message: err.message, actions: [{ label: 'OK', value: true, kind: 'primary' }] }); }
+        if (this.isOpen) this.render();
       });
       this.body.addEventListener('keydown', e => {
         if (e.target.id === 'set-dev-path' && e.key === 'Enter') this.act('dev-add');
@@ -2212,6 +2365,7 @@
         `<button role="radio" aria-checked="${v === cur}" data-act="${act}" data-val="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('')}</div>`;
       const sw = (act, on, label) => `<button class="switch${on ? ' on' : ''}" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}"></button>`;
       const isCustom = bg.color && !BG_SWATCHES.some(([c]) => c === bg.color);
+      const photoSet = BoardPhoto.settings(), photoShown = !!(photoSet && photoSet.on && BoardPhoto.media());
 
       const insts = Array.from(S.insts.entries()).sort((a, b) => {
         const an = (getApp(a[1].appId) || { name: a[1].appId }).name, bn = (getApp(b[1].appId) || { name: b[1].appId }).name;
@@ -2244,7 +2398,8 @@
             <label class="swatch custom${isCustom ? ' on' : ''}" title="Custom color"><input type="color" id="set-bg-custom" value="${esc(isCustom ? bg.color : '#88aacc')}" aria-label="Custom background color"></label>
           </div>
         </div>
-        <div class="row"><div class="lbl">Pattern</div>${seg('pattern', bg.pattern || 'none', [['none', 'None'], ['dots', 'Dots'], ['grid', 'Grid'], ['lines', 'Lines']])}</div>
+        <div class="row"><div class="lbl">Pattern</div>${seg('pattern', bg.pattern || 'none', [['none', 'None'], ['dots', 'Dots'], ['grid', 'Grid'], ['lines', 'Lines']], photoShown)}</div>
+        ${photoRow(sw, seg)}
 
         <h3>Windows</h3>
         <div class="row"><div><div class="lbl">Snap and avoid overlap</div><div class="hint">Windows stop at each other's edges. Keep pushing to overlap anyway.</div></div>${sw('snapping', st.snapping, 'Snap and avoid overlap')}</div>
@@ -2346,6 +2501,14 @@
         case 'devmode': updateSettings({ devMode: !S.settings.devMode }); break;
         case 'bg': updateBoard({ background: Object.assign({}, S.board.background, { color: val || null }) }); this.render(); break;
         case 'pattern': updateBoard({ background: Object.assign({}, S.board.background, { pattern: val }) }); this.render(); break;
+        case 'photo-add': $('#photo-input').click(); break;
+        case 'photo-on': BoardPhoto.update({ on: !(BoardPhoto.settings() || {}).on }); this.render(); break;
+        case 'photo-fit': BoardPhoto.update({ fit: val }); this.render(); break;
+        case 'photo-remove': {
+          const yes = await dialog({ title: 'Remove the background photo?', message: 'It is removed from this board on this device. Your full backups still have it.', actions: [{ label: 'Remove photo', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+          if (yes) { BoardPhoto.remove(); this.render(); }
+          break;
+        }
         case 'close-all': await closeAll(); this.render(); break;
         case 'inst-open': { const i = S.insts.get(val); if (i) openSpecific(val); this.render(); break; }
         case 'inst-delete': {
@@ -2467,6 +2630,8 @@
       theme: S.settings.theme,
       accent: S.settings.accent,
       board: { name: S.board.name, background: S.board.background, scale: boardScale(), shape: freeShape() ? 'free' : '16:9' },
+      // The background photo: full backups only (a template is for sharing, and a photo may show the class).
+      media: kind === 'full' && BoardPhoto.media() ? { background: BoardPhoto.media() } : undefined,
       instances
     };
   }
@@ -2537,11 +2702,16 @@
       accent: accentOf(j.accent) ? j.accent : null,
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
-        background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none' },
+        background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none', image: normalizePhotoSettings(bg.image) },
         scale: j.board && j.board.scale !== undefined ? (validScale(j.board.scale) || null) : undefined,   // undefined: file from before board scale
         shape: j.board && j.board.shape === 'free' ? 'free' : '16:9'
       },
       viewport: j.viewport && j.viewport.width > 0 && j.viewport.height > 0 ? { w: j.viewport.width, h: j.viewport.height } : null,
+      photo: (() => {
+        const m = j.media && j.media.background;
+        return m && typeof m.data === 'string' && m.data.length < 12e6 && /^data:image\/(jpeg|png|webp);base64,/.test(m.data) && m.w > 0 && m.h > 0
+          ? { data: m.data, w: +m.w, h: +m.h, bytes: +m.bytes || 0, name: String(m.name || 'Photo').slice(0, 80), addedAt: +m.addedAt || Date.now() } : null;
+      })(),
       instances
     };
   }
@@ -2618,12 +2788,13 @@
       const board = Object.assign({}, S.board, { background: p.board.background, scale: plan.scale, shape: plan.shape, layout: plan.layout });
       if (p.board.name) board.name = p.board.name;
       out.push(rec(Keys.board(b), 'board', board));
+      if (p.photo) out.push(rec(Keys.media(b, 'background'), 'media', p.photo));
       if (p.theme || p.accent) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, p.theme ? { theme: p.theme } : {}, p.accent ? { accent: p.accent } : {})));
     }
 
     await Store.tx('readwrite', s => {
       if (mode === 'replace') {
-        for (const kind of ['inst', 'data', 'conf']) s.delete(IDBKeyRange.bound(`${kind}:${b}:`, `${kind}:${b}:￿`));
+        for (const kind of ['inst', 'data', 'conf', 'media']) s.delete(IDBKeyRange.bound(`${kind}:${b}:`, `${kind}:${b}:￿`));
       }
       for (const r of out) s.put(r);
     });

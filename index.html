@@ -436,10 +436,25 @@
     .stepper button:disabled { opacity: .35; cursor: default; }
     @media (hover: hover) { .stepper button:not(:disabled):hover { background: var(--surface); } }
     .stepper output { min-width: 52px; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+    /* Background photo: covers the board (not the shaded margins); --fade blends it toward the board color. */
+    #board-bg { position: absolute; z-index: 0; pointer-events: none; background-repeat: no-repeat; background-color: var(--fade-color, transparent); }
+    #board-bg::after { content: ""; position: absolute; inset: 0; background: var(--fade-color, var(--board-bg)); opacity: var(--fade, 0); }
+    #board-bg[hidden] { display: none; }
+    .photo-edit { display: flex; flex-direction: column; gap: 12px; width: 100%; }
+    .photo-thumb { position: relative; width: 100%; border-radius: 10px; background-color: var(--hover-bg); background-repeat: no-repeat; cursor: crosshair; box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; touch-action: none; }
+    .photo-thumb::after { content: ""; position: absolute; inset: 0; background: var(--surface); opacity: var(--fade, 0); pointer-events: none; }
+    .photo-thumb.off { filter: grayscale(1) opacity(.5); }
+    .photo-thumb .focus { position: absolute; z-index: 1; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; border: 2.5px solid #fff; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .55), inset 0 0 0 1.5px rgba(0, 0, 0, .55); pointer-events: none; }
+    .photo-ctrls { display: flex; flex-direction: column; gap: 10px; }
+    .photo-ctrls .line { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
+    .photo-ctrls .line.end { justify-content: flex-end; }
+    .photo-ctrls input[type="range"] { flex: 0 1 220px; accent-color: var(--primary); }
   </style>
 </head>
 <body>
   <main id="desk" aria-label="Board">
+    <div id="board-bg" hidden></div>
     <div id="layout-frame" hidden></div>
     <div id="empty-hint">
       <div class="big">Your board is ready</div>
@@ -474,6 +489,7 @@
   <div id="modal" role="dialog" aria-modal="true"><div class="modal-card"></div></div>
   <div id="toasts" aria-live="polite"></div>
   <input type="file" id="import-input" accept=".21board,application/json" hidden>
+  <input type="file" id="photo-input" accept="image/*" hidden>
 
   <noscript><div style="position:fixed;inset:0;display:grid;place-items:center;background:#fff;color:#111;font:18px system-ui">21Board needs JavaScript turned on.</div></noscript>
 
