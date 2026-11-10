@@ -42,8 +42,9 @@
       return v && v.widget && typeof v.src === 'string' ? v : null;
     } catch (e) { return null; }
   })();
-  // Kiosk mode (?kiosk=yes): ChromeOS kiosk, for users who don't sign in. No Export, Import, Fullscreen (a kiosk
-  // is already full screen), Google Drive folder, install prompt or backup reminders; a Quit control instead.
+  // Kiosk mode (?kiosk=yes): ChromeOS kiosk, for users who don't sign in. No Fullscreen (a kiosk is always full
+  // screen), Google Drive folder, install prompt or backup reminders; a Quit control at the end of the Widget
+  // Picker's controls. Import and Export use ChromeOS's Files dialog (the kiosk's own storage, USB drives).
   // Everything else (windows, widgets, saving on the device, board history) works as usual.
   const KIOSK = !LAB && /^(yes|true|1|on)$/i.test(new URLSearchParams(location.search).get('kiosk') || '');
   const DB_NAME = LAB ? '21Board-dev' : '21Board';
@@ -86,8 +87,7 @@
     activeBoard: 1,
     lastBackupAt: null,      // when a full backup was last exported (ms), for backup reminders
     historyEvery: 10,        // Board history: save a version at most every N minutes while the board changes (0 = off)
-    historyFolder: true,     // Board history: also keep copies in the linked Google Drive folder (about one an hour)
-    kioskFiles: false        // kiosk mode: show Import and Export (the kiosk's own files and USB drives)
+    historyFolder: true      // Board history: also keep copies in the linked Google Drive folder (about one an hour)
   };
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
   const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
@@ -2275,9 +2275,8 @@
       const dark = resolvedTheme() === 'dark';
       const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
       const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
-      const noFiles = KIOSK && !S.settings.kioskFiles;
-      set('export', 'export', 'Export board').hidden = noFiles;
-      set('import', 'import', 'Import board').hidden = noFiles;
+      set('export', 'export', 'Export board');
+      set('import', 'import', 'Import board');
       set('quit', 'quit', 'Quit 21Board').hidden = !KIOSK;
       set('theme', dark ? 'sun' : 'moon', dark ? 'Light mode' : 'Dark mode');
       const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit fullscreen' : 'Fullscreen');
@@ -2686,8 +2685,7 @@
         <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : `<h3>Storage &amp; offline</h3>
         <div class="row"><div class="lbl">Offline</div><div class="hint" id="st-offline" style="text-align:right">Checking…</div></div>
         <div class="row"><div><div class="lbl">Data protection</div><div class="hint" id="st-persist-hint"></div></div><div id="st-persist" style="flex:0 0 auto"></div></div>
-        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so the Google Drive folder isn’t available. The board is kept on this device, and board history keeps earlier versions.</div></div></div>
-        <div class="row"><div><div class="lbl">Import and Export</div><div class="hint">Shows Export and Import in the Widget Picker. Files are saved to and opened from this device or a USB drive.</div></div>${sw('kiosk-files', st.kioskFiles, 'Import and Export')}</div>` : `<div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>`}
+        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so the Google Drive folder isn’t available. Import and Export use this device’s storage or a USB drive. The board is kept on this device, and board history keeps earlier versions.</div></div></div>` : `<div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>`}
         <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>`}
 
         <h3>Advanced</h3>
@@ -2810,7 +2808,6 @@
         case 'install': await Install.run(); this.refreshStatus(); break;
         case 'backup': await doExport('full'); this.refreshStatus(); break;
         case 'hist-open': HistorySheet.open(this.side); break;
-        case 'kiosk-files': updateSettings({ kioskFiles: !S.settings.kioskFiles }); Picker.renderControls(); break;
         case 'hist-every': {
           if (val === '0') {
             const ok = await dialog({ title: 'Turn off automatic versions?', message: '21Board stops saving versions while you work. It still saves one before Reset, Delete, Close all, Import, Load, Erase and going back, so those can be undone. Versions already saved stay until you delete them.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
@@ -4904,7 +4901,7 @@
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (!f) return;
       e.preventDefault();
-      if ((!KIOSK || S.settings.kioskFiles) && /\.21board$|\.json$/i.test(f.name)) importFile(f);
+      if (/\.21board$|\.json$/i.test(f.name)) importFile(f);
     });
 
     window.addEventListener('resize', () => { scheduleLayoutAll(); Picker.render(); });

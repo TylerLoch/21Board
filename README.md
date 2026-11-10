@@ -58,7 +58,7 @@ include) to the static host. Then:
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
-| **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Export, Import or Fullscreen, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
+| **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Google Drive folder, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 
 ### Settings
@@ -197,16 +197,16 @@ on a few real laptops and boards** (how quickly files arrive, and that the folde
 Open 21Board with **`?kiosk=yes`** (for example `https://boardapp.ccsd21.org/?kiosk=yes`) for a ChromeOS kiosk
 app, where no one signs in:
 
-- The Widget Picker leaves out Export, Import and Fullscreen (a kiosk is always full screen) and ends with
-  **Quit**, a red ✕ after the Settings gear. Quit asks first, waits until everything is saved, then closes the app
+- The Widget Picker leaves out Fullscreen (a kiosk is always full screen) and ends with **Quit**, a red ✕ after
+  the Settings gear. Quit asks first, waits until everything is saved, then closes the app
   (`window.close()`, as 21Sketch does). On ChromeOS that ends the kiosk session: an auto-launched kiosk starts
   21Board again; one started from **Apps** on the sign-in screen goes back to the sign-in screen. If the page
   isn't allowed to close (it only can while it hasn't navigated), it says so.
 - Left out: the Google Drive folder (a kiosk has no Google account), the install prompt, backup reminders and
   Developer mode. Settings says it's in kiosk mode.
-- **Import and Export** are off, but Settings › *Import and Export* turns them on: ChromeOS shows its Files dialog
-  in kiosk sessions too, so files can be saved to and opened from the kiosk's own storage or a USB drive. Export
-  uses only the Save dialog (a plain download would land unseen in the kiosk's Downloads).
+- **Import and Export** stay: ChromeOS shows its Files dialog in kiosk sessions too, so files can be saved to and
+  opened from the kiosk's own storage or a USB drive. Export uses only the Save dialog (a plain download would
+  land unseen in the kiosk's Downloads). **Not yet tried on a real kiosk device: test before relying on it.**
 - Links in Notes show as plain text: a kiosk can't open new windows.
 - Everything else works as usual: widgets, saving on the device, board history and Undo. Widgets can check
   `Board21.context.kiosk`. Without the parameter (or with `?kiosk=no`), nothing changes.

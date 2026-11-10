@@ -2067,22 +2067,16 @@ const SUITES = [
     await page.goto(BASE + '?kiosk=yes'); await page.waitForTimeout(800);
     await page.click('.picker-btn.left'); await page.waitForTimeout(250);
     const ctl = await page.evaluate(() => Array.from(document.querySelectorAll('.panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl));
-    ok(JSON.stringify(ctl) === JSON.stringify(['theme', 'settings', 'quit']), `the Widget Picker leaves out Export, Import and Fullscreen and ends with Quit, after Settings (${ctl.join(', ')})`);
+    ok(JSON.stringify(ctl) === JSON.stringify(['export', 'import', 'theme', 'settings', 'quit']), `the Widget Picker keeps Export and Import, leaves out Fullscreen, and ends with Quit after Settings (${ctl.join(', ')})`);
     ok(await page.evaluate(() => getComputedStyle(document.querySelector('[data-ctl="quit"]')).color === 'rgb(220, 38, 38)'), 'Quit is a red X');
     await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
     const set = await page.evaluate(() => { const r = document.getElementById('settings'); return { link: !!r.querySelector('[data-act^="link-"]'), backup: !!r.querySelector('[data-act="backup"]'), dev: !!r.querySelector('[data-act="devmode"]'), install: !!r.querySelector('[data-act="install"]'), kiosk: /Kiosk mode/.test(r.textContent), hist: !!r.querySelector('[data-act="hist-open"]') }; });
     ok(!set.link && !set.backup && !set.dev && !set.install && set.kiosk && set.hist, 'Settings leaves out the Google Drive folder, backups, Developer mode and Install, says it’s kiosk mode, and keeps Board history');
-    // Import and Export can be turned on (the kiosk's own files and USB drives); never the Google Drive folder.
-    await page.click('#settings [data-act="kiosk-files"]'); await page.waitForTimeout(300);
     await page.keyboard.press('Escape');
-    await page.click('.picker-btn.left'); await page.waitForTimeout(250);
-    const ctl2 = await page.evaluate(() => Array.from(document.querySelectorAll('.panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl));
-    ok(JSON.stringify(ctl2) === JSON.stringify(['export', 'import', 'theme', 'settings', 'quit']), `Settings › Import and Export brings them back (${ctl2.join(', ')})`);
-    await page.click('[data-ctl="export"]'); await page.waitForTimeout(300); await page.locator('#modal.open .btn').first().click(); await page.waitForTimeout(600);
+    // Export uses only the Save dialog (a download would land unseen in the kiosk's Downloads).
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="export"]'); await page.waitForTimeout(300);
+    await page.locator('#modal.open .btn').first().click(); await page.waitForTimeout(600);
     ok(await page.locator('.toast', { hasText: 'needs the Save dialog' }).count() === 1, 'without the Save dialog, kiosk Export says so (no download vanishing into the kiosk’s Downloads)');
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
-    await page.click('#settings [data-act="kiosk-files"]'); await page.waitForTimeout(300);
-    await page.keyboard.press('Escape');
     // The board itself works as usual, and is kept on the device.
     await page.evaluate(() => { window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }); window.__board21.openWidget('notes'); }); await page.waitForTimeout(1200);
     await fillNote(page.frameLocator('.win[data-ikey="notes:1"] iframe'), 'Kiosk note'); await page.waitForTimeout(1800);
