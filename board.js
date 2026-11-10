@@ -64,7 +64,6 @@
     snapping: true,          // snap + resist overlap while dragging
     resistance: 'normal',    // 'gentle' | 'normal' | 'strong'
     pickerCorners: 'both',   // 'both' | 'left' | 'right'
-    scaleToScreen: true,     // zoom the whole layout to fit the screen (see Zoom in section 6)
     accent: 'blue',          // accent color: a key of ACCENTS
     dragFromContent: true,   // move windows by dragging inside them (see section 9a)
     devMode: false,
@@ -465,7 +464,7 @@
     S.board = defaultBoard(S.boardId);
     await reloadAll();
     updateZoom();
-    ensureLayout();
+    migrateBoard();
     applySettings(); applyBoard();
   }
 
@@ -622,31 +621,33 @@
   const desk = () => $('#desk');
 
   // ---------------------------------------------------------------------
-  // 6a. BOARD SCALING  (optional feature, kept in this one block)
+  // 6a. BOARD SHAPE AND SCALE
   // ---------------------------------------------------------------------
-  // The board scales like a picture to fit whatever screen it's on. Window rects are stored
-  // in "layout space": CSS px on a board of size S.board.layout (the screen it was arranged
-  // on). Every window is drawn at one zoom factor s, centered left-to-right, so the
-  // arrangement is kept exactly. All other geometry works in layout space; only drawing
-  // (Win.applyRect) and pointer movement (Inter.step) convert, via the Zoom numbers.
+  // Window rects are stored in "layout space": the CSS px a window's app sees. Drawing converts
+  // layout space to the screen with one zoom factor (Win.applyRect and Inter.step use Zoom).
   //
-  // CURRENTLY OFF BY DEFAULT (the team wasn't sold on it). To try it, open 21Board with
-  //   ?scaling=on. To turn it on for everyone, make SCALING_FEATURE true (and bump sw.js VERSION).
-  //   Off means: zoom fixed at 100% (Zoom is the identity), no Settings rows, no layout size
-  //   written, and smaller screens push windows inside the edges, exactly like the build
-  //   before scaling. Saved boards work either way (tested in both directions).
-  // REMOVE IT entirely: delete this block, then
-  //   - viewRect()        -> return { x: 0, y: 0, w: desk().clientWidth, h: desk().clientHeight }
-  //   - toLayout(r)       -> return { x: r.left, y: r.top, w: r.width, h: r.height }
-  //   - boundsRect()      -> viewRect();   screenPx(px) -> px
-  //   - remove #layout-frame (index.html) and the --zi uses in the CSS (or leave them: --zi stays 1)
-  //   - drop the Zoom.* terms in Win.applyRect and Inter (s = 1, ox = oy = 0)
-  //   - drop updateZoom()/ensureLayout() calls, scalingSettingsRows()/scalingAct() in Settings,
-  //     and use the screen size in exportViewport()/importPlan() (see their fallbacks).
+  //   16:9 board (default, board.shape '16:9'): layout space is a fixed 16:9 board of
+  //     BASE_W/scale × BASE_H/scale, drawn as large as fits the screen (centered left-right, top
+  //     aligned; the rest of the screen is lightly shaded). Every screen shows the same arrangement.
+  //   Any shape (board.shape 'free'): the board is the whole screen at the board's scale
+  //     (zoom = scale). Windows that don't fit a smaller screen are moved inside when drawn.
+  //
+  // board.scale (default 80%) is how big windows, title bars and menus are, as on a 1920 × 1080 screen
+  // (at 100% a window's CSS px are that screen's px). Changing it keeps every window's footprint (rects
+  // are rescaled) and changes how big its contents are drawn. Menus, the App Picker, Settings, toasts and
+  // dialogs follow it too (CSS zoom: var(--ui)). A board saved before this existed (no board.scale) is
+  // converted once, keeping its arrangement as it looks on the screen it's opened on.
   // See docs/DATA-FORMAT.md, "Layout space".
-  const SCALING_FEATURE = /[?&]scaling=on(&|$)/.test(location.search); // off unless ?scaling=on
-  const scalingOn = () => SCALING_FEATURE && S.settings.scaleToScreen !== false;
+  const BASE_W = 1920, BASE_H = 1080;
+  const SCALES = [0.5, 0.6, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+  const DEFAULT_SCALE = 0.8;
   const Zoom = { s: 1, ox: 0, oy: 0, vw: 0, vh: 0 };
+  const validScale = v => (typeof v === 'number' && v >= 0.25 && v <= 4 ? v : null);
+  const boardScale = () => validScale(S.board.scale) || DEFAULT_SCALE;
+  const freeShape = () => S.board.shape === 'free';
+  const canvasFor = sc => ({ w: Math.round(BASE_W / sc), h: Math.round(BASE_H / sc) });
+  const canvas = () => canvasFor(boardScale());
+  const layoutSig = () => JSON.stringify([boardScale(), freeShape()]);
 
   function validLayout(l) {
     return l && typeof l.w === 'number' && typeof l.h === 'number' && l.w >= 200 && l.h >= 150 && l.w < 20000 && l.h < 20000 ? { w: Math.round(l.w), h: Math.round(l.h) } : null;
@@ -656,152 +657,178 @@
     const d = desk();
     Zoom.vw = d.clientWidth || window.innerWidth;
     Zoom.vh = d.clientHeight || window.innerHeight;
-    const L = S.board.layout;
-    if (!scalingOn() || !L) { Zoom.s = 1; Zoom.ox = 0; Zoom.oy = 0; }
+    const sc = boardScale();
+    if (freeShape()) { Zoom.s = sc; Zoom.ox = 0; Zoom.oy = 0; }
     else {
+      const L = canvas();
       Zoom.s = Math.min(Zoom.vw / L.w, Zoom.vh / L.h);
       Zoom.ox = (Zoom.vw - L.w * Zoom.s) / 2; // center left/right; keep the top aligned
       Zoom.oy = 0;
     }
-    // Keep resize handles and the focus ring touchable when zoomed out (CSS uses --zi).
-    d.style.setProperty('--zi', String(Math.min(2.5, Math.max(1, 1 / Zoom.s))));
-    // Lightly shade the screen outside the layout, so it's clear why windows stop at its edge.
+    document.documentElement.style.setProperty('--ui', String(sc));
+    // Resize handles and the focus ring stay at the board's scale even when the board is drawn
+    // smaller (CSS uses --zi), so they stay touchable on a small screen.
+    d.style.setProperty('--zi', String(Math.min(2.5, Math.max(1, sc / Zoom.s))));
+    // Lightly shade the screen outside the 16:9 board, so it's clear why windows stop at its edge.
     const fr = document.getElementById('layout-frame');
     if (fr) {
-      const show = !!(scalingOn() && L && (Zoom.ox > 1 || L.h * Zoom.s < Zoom.vh - 1));
+      const L = canvas();
+      const show = !freeShape() && (Zoom.ox > 1 || L.h * Zoom.s < Zoom.vh - 1);
       fr.hidden = !show;
       if (show) {
         fr.style.width = L.w * Zoom.s + 'px'; fr.style.height = L.h * Zoom.s + 'px';
         fr.style.transform = `translate(${Zoom.ox}px, ${Zoom.oy}px)`;
       }
     }
+    ShapeHint.update();
   }
 
-  // The visible screen expressed in layout space (may extend past the layout on one axis).
+  // The visible screen expressed in layout space (may extend past the 16:9 board on one axis).
   const viewRect = () => {
     if (!Zoom.vw) updateZoom();
     return { x: -Zoom.ox / Zoom.s, y: -Zoom.oy / Zoom.s, w: Zoom.vw / Zoom.s, h: Zoom.vh / Zoom.s };
   };
   // Screen rect (e.g. getBoundingClientRect) -> layout space.
   const toLayout = r => ({ x: (r.left - Zoom.ox) / Zoom.s, y: (r.top - Zoom.oy) / Zoom.s, w: r.width / Zoom.s, h: r.height / Zoom.s });
-  // Where windows may be put and are kept: the shared layout when scaling is on (so every screen
-  // agrees and nothing lands in one screen's side margins), otherwise the screen.
-  // viewRect() is only for drawing: maximized windows and the board-edge classes.
-  // (Fallback without scaling: viewRect().)
+  // Where windows may be put and are kept: the 16:9 board (so every screen agrees and nothing lands in
+  // one screen's side margins), or with the shape unlocked, the screen.
   const boundsRect = () => {
     if (!Zoom.vw) updateZoom();
-    const L = scalingOn() && S.board.layout;
-    return L ? { x: 0, y: 0, w: L.w, h: L.h } : viewRect();
+    if (freeShape()) return viewRect();
+    const L = canvas();
+    return { x: 0, y: 0, w: L.w, h: L.h };
   };
   // A distance that should feel the same on screen at any zoom (snap reach, push-to-overlap), in layout px.
-  // (Fallback without scaling: px.)
   const screenPx = px => px / Zoom.s;
 
-  // Give a board without a layout size one: the current screen, or larger if its windows
-  // already extend further (a board arranged on a bigger screen before scaling existed).
-  // A board that has never had a window follows the screen, so its first window sets the size.
-  function ensureLayout() {
-    if (!SCALING_FEATURE) return;
+  const scaleRect = (r, k, dx = 0, dy = 0) => ({ x: Math.round((r.x * k + dx) * 100) / 100, y: Math.round((r.y * k + dy) * 100) / 100, w: Math.round(r.w * k * 100) / 100, h: Math.round(r.h * k * 100) / 100 });
+
+  // A board saved before board.scale existed: its rects are screen px (or px of the old optional
+  // layout size). Fit that space into the 16:9 board with one factor, keeping shapes and spacing.
+  function migrateBoard() {
+    if (validScale(S.board.scale)) return;
     if (!Zoom.vw) updateZoom();
-    const sw = Math.round(Zoom.vw), sh = Math.round(Zoom.vh), L = S.board.layout;
-    const empty = S.insts.size === 0;
-    if (L && !(empty && (L.w !== sw || L.h !== sh))) return;
-    let w = sw, h = sh;
-    for (const i of S.insts.values()) { w = Math.max(w, i.rect.x + i.rect.w + GAP); h = Math.max(h, i.rect.y + i.rect.h + GAP); }
-    updateBoard({ layout: { w: Math.round(w), h: Math.round(h) } });
+    const sc = DEFAULT_SCALE, C = canvasFor(sc);
+    let O = validLayout(S.board.layout) || { w: Math.round(Zoom.vw), h: Math.round(Zoom.vh) };
+    let w = O.w, h = O.h;
+    for (const i of S.insts.values()) { w = Math.max(w, i.rect.x + i.rect.w); h = Math.max(h, i.rect.y + i.rect.h); }
+    O = { w, h };
+    const k = Math.min(C.w / O.w, C.h / O.h), dx = (C.w - O.w * k) / 2;
+    for (const [ikey, inst] of S.insts) saveInst(ikey, Object.assign({}, inst, { rect: scaleRect(inst.rect, k, dx, 0) }));
+    updateBoard({ scale: sc, shape: S.board.shape === 'free' ? 'free' : '16:9', layout: C });
     updateZoom();
   }
 
-  // Make the current screen the layout size, keeping every window where it appears now.
-  function useScreenAsLayout() {
-    if (!SCALING_FEATURE) return false;
+  // Settings → Scale: every window keeps its footprint; its contents are drawn bigger or smaller.
+  function setBoardScale(next) {
+    const s1 = validScale(next), s0 = boardScale();
+    if (!s1) return false;
+    if (Math.abs(s1 - s0) < 0.001) return true;
     if (Inter.active) { toast('Finish moving windows first.'); return false; }
+    const k = s0 / s1;
+    for (const [ikey, inst] of S.insts) saveInst(ikey, Object.assign({}, inst, { rect: scaleRect(inst.rect, k) }));
+    updateBoard({ scale: s1, layout: canvasFor(s1) });
     updateZoom();
-    const { s: z, ox, oy } = Zoom;
-    const view = { x: 0, y: 0, w: Zoom.vw, h: Zoom.vh };
-    const placed = [], placedFootprints = [];
-    // Open windows first, back to front, so the front-most keeps its spot if anything must move.
-    const order = Array.from(S.insts.entries()).sort((a, b) => (b[1].open - a[1].open) || (a[1].z - b[1].z));
-    for (const [ikey, inst] of order) {
-      const app = getApp(inst.appId);
-      const w0 = S.wins.get(ikey);
-      const c = w0 ? w0.constraints() : app ? constraintsFor(app) : null;
-      const r = inst.rect;
-      const fp = { x: ox + r.x * z, y: oy + r.y * z, w: r.w * z, h: r.h * z }; // where it is on screen now
-      let w = fp.w, h = fp.h;
-      if (c && c.ratio) { const ch = Math.max(1, Math.min(fp.h - TITLE_H, fp.w / c.ratio)); w = ch * c.ratio; h = ch + TITLE_H; }
-      const size = c ? fitSize(w, h, c, view) : { w: Math.round(w), h: Math.round(h) };
-      let rect = clampToView({ x: Math.round(fp.x), y: Math.round(fp.y), w: size.w, h: size.h }, view);
-      if (inst.open && !inst.maximized) {
-        // A window that had to grow (app minimum size) mustn't land on a neighbour it didn't touch before.
-        if (!placedFootprints.some(o => overlaps(fp, o)) && placed.some(o => overlaps(rect, o))) {
-          const spot = findFreeSpot(rect.w, rect.h, view, placed, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 });
-          if (spot) rect = spot;
-        }
-        placed.push(rect); placedFootprints.push(fp);
-      }
-      saveInst(ikey, Object.assign({}, inst, { rect }));
-    }
-    updateBoard({ layout: { w: Math.round(Zoom.vw), h: Math.round(Zoom.vh) } });
     return true;
   }
 
-  // Export: the size of the space the saved rects are in. (Fallback without scaling: the screen.)
+  // Settings → Board shape. Windows outside a smaller board are shown inside it (their saved place is kept).
+  function setBoardShape(shape) {
+    if (Inter.active) { toast('Finish moving windows first.'); return false; }
+    updateBoard({ shape: shape === 'free' ? 'free' : '16:9' });
+    updateZoom();
+    return true;
+  }
+
+  // When the 16:9 board leaves much of the window unused (a very wide, tall or narrow window), a small
+  // note in the shaded margin offers to unlock the board's shape. "Hide" keeps it away for this session.
+  const ShapeHint = {
+    el: null,
+    hidden: (() => { try { return sessionStorage.getItem('21board-shape-hint') === 'hidden'; } catch (e) { return false; } })(),
+    init() {
+      this.el = $('#shape-hint');
+      this.el.innerHTML = '<div class="msg"><b>The board keeps a 16:9 shape.</b> This window is a different shape.</div>' +
+        '<div class="acts"><button class="btn primary small" data-act="unlock">Use the whole window</button>' +
+        `<button class="hide" data-act="hide" aria-label="Hide this tip" title="Hide">${svg('close')}</button></div>`;
+      this.el.addEventListener('click', e => {
+        const b = e.target.closest('[data-act]');
+        if (!b) return;
+        if (b.dataset.act === 'unlock') { setBoardShape('free'); if (Settings.isOpen) Settings.render(); toast('The board now fills the window. Settings → Windows → Board shape changes it back.'); }
+        else { this.hidden = true; try { sessionStorage.setItem('21board-shape-hint', 'hidden'); } catch (err) { /* private mode */ } }
+        this.update();
+      });
+    },
+    update() {
+      if (!this.el) return;
+      const L = canvas(), bw = L.w * Zoom.s, bh = L.h * Zoom.s;
+      const unused = Zoom.vw && Zoom.vh ? 1 - (bw * bh) / (Zoom.vw * Zoom.vh) : 0;
+      const show = !freeShape() && !this.hidden && unused > 0.3;
+      this.el.hidden = !show;
+      if (!show) return;
+      const ui = boardScale();
+      const side = Zoom.ox;                                  // width of each side margin
+      const below = Zoom.vh - bh;                            // height of the margin under the board
+      // Put it where there's room: the middle of the space below the board, or the right margin.
+      const box = below >= side ? { x: 0, y: bh, w: Zoom.vw, h: below } : { x: Zoom.ox + bw, y: 0, w: side, h: Zoom.vh };
+      this.el.style.maxWidth = Math.max(140, box.w - 24) / ui + 'px';
+      const r = { w: this.el.offsetWidth * ui, h: this.el.offsetHeight * ui };
+      this.el.style.left = (box.x + (box.w - r.w) / 2) / ui + 'px';
+      this.el.style.top = (box.y + (box.h - r.h) / 2) / ui + 'px';
+    }
+  };
+
+  // Export: the size of the space the saved rects are in (grown to contain every window).
   function exportViewport() {
-    const L = S.board.layout;
-    if (!L) return { width: Math.round(Zoom.vw || viewRect().w), height: Math.round(Zoom.vh || viewRect().h) };
-    let w = L.w, h = L.h; // grown if any window was saved outside it (e.g. while scaling was off)
+    const v = viewRect();
+    const L = freeShape() ? { w: Math.round(v.w), h: Math.round(v.h) } : canvas();
+    let w = L.w, h = L.h;
     for (const i of S.insts.values()) { w = Math.max(w, Math.ceil(i.rect.x + i.rect.w)); h = Math.max(h, Math.ceil(i.rect.y + i.rect.h)); }
     return { width: w, height: h };
   }
 
   // Import: how to map a file's rects into this board, and where to place them.
-  //   Replace + scaling on -> adopt the file's layout (rects unchanged; the zoom fits it to this screen)
-  //   otherwise            -> convert with one uniform factor into this board's layout (or this screen)
-  // (Fallback without scaling: always convert into the screen, newLayout = current.)
+  //   Replace -> take the file's scale and shape; its rects land in the board it was saved from
+  //              (files from before board scale existed are fitted into the 16:9 board).
+  //   Add     -> fit the file's whole board into this one with one factor (shapes and spacing kept).
   function importPlan(p, mode) {
     const F = validLayout(p.viewport);
-    const on = scalingOn();
-    const screen = { w: Math.round(Zoom.vw || viewRect().w), h: Math.round(Zoom.vh || viewRect().h) };
-    let T, newLayout;
+    let sc = boardScale(), shape = freeShape() ? 'free' : '16:9';
     if (mode === 'replace') {
-      T = on && F ? F : screen;
-      // With scaling off the rects land in screen space, so record that as the layout.
-      newLayout = !SCALING_FEATURE ? S.board.layout : on ? (F || S.board.layout || screen) : screen;
-    } else {
-      T = on && S.board.layout ? S.board.layout : screen;
-      newLayout = S.board.layout;
+      sc = validScale(p.board.scale) || (p.board.scale === undefined ? DEFAULT_SCALE : sc);
+      shape = p.board.shape === 'free' ? 'free' : '16:9';
     }
+    const v = viewRect();
+    const screenAt = k => ({ w: Math.round(Zoom.vw / k), h: Math.round(Zoom.vh / k) });
+    const T = shape === 'free' ? (mode === 'replace' && F && validScale(p.board.scale) ? F : (mode === 'replace' ? screenAt(sc) : { w: Math.round(v.w), h: Math.round(v.h) })) : canvasFor(sc);
     const k = F ? Math.min(T.w / F.w, T.h / F.h) : 1; // uniform, so shapes and spacing are kept
-    const offX = F ? (T.w - F.w * k) / 2 : 0;
-    const convert = r => (F && (Math.abs(k - 1) > 0.001 || offX)) ? {
-      x: Math.round(r.x * k + offX), y: Math.round(r.y * k), w: Math.round(r.w * k), h: Math.round(r.h * k)
-    } : Object.assign({}, r);
-    // Where imported windows are placed: the target layout (scaling on) or the screen.
-    const view = on && newLayout ? { x: 0, y: 0, w: newLayout.w, h: newLayout.h } : { x: 0, y: 0, w: screen.w, h: screen.h };
-    return { convert, view, newLayout };
+    const dx = F && shape !== 'free' ? (T.w - F.w * k) / 2 : 0;
+    const convert = r => (F && (Math.abs(k - 1) > 0.001 || Math.abs(dx) > 0.5)) ? scaleRect(r, k, dx, 0) : Object.assign({}, r);
+    const view = { x: 0, y: 0, w: T.w, h: T.h };
+    return { convert, view, scale: sc, shape, layout: canvasFor(sc) };
   }
 
-  // Settings → Windows rows (none when the feature is switched off).
-  function scalingSettingsRows(st, sw) {
-    if (!SCALING_FEATURE) return '';
-    let html = `<div class="row"><div><div class="lbl">Scale the board to fit the screen</div><div class="hint">${esc(zoomHint())}</div></div>${sw('scale', st.scaleToScreen !== false, 'Scale the board to fit the screen')}</div>`;
-    const L = S.board.layout;
-    if (scalingOn() && L && (L.w !== Math.round(Zoom.vw) || L.h !== Math.round(Zoom.vh))) {
-      html += `<div class="row"><div><div class="lbl">Use this screen's size</div><div class="hint">Windows stay where they are now and become full size on this screen.</div></div><button class="btn" data-act="use-screen">Use this size</button></div>`;
-    }
-    return html;
+  // Settings → Windows: scale and board shape.
+  function scaleSettingsRows(seg) {
+    const sc = boardScale(), i = SCALES.findIndex(x => Math.abs(x - sc) < 0.001);
+    const L = canvas(), bw = L.w * Zoom.s, bh = L.h * Zoom.s;
+    const unused = Zoom.vw ? 1 - (bw * bh) / (Zoom.vw * Zoom.vh) : 0;
+    const shapeHint = freeShape()
+      ? 'Any shape: the board fills the window. On a smaller screen, windows are moved to fit.'
+      : '16:9: every screen shows the same arrangement, fitted to the window.' + (unused > 0.15 ? ' This window is a different shape, so part of it is shaded.' : '');
+    return `<div class="row"><div><div class="lbl">Size of windows and menus</div><div class="hint">Title bars, menus and app contents. Windows keep their place on the board.</div></div>
+        <div class="stepper" role="group" aria-label="Size of windows and menus">
+          <button class="icon" data-act="scale-down" aria-label="Smaller"${i === 0 ? ' disabled' : ''}>−</button>
+          <output id="st-scale" aria-live="polite">${Math.round(sc * 100)}%</output>
+          <button class="icon" data-act="scale-up" aria-label="Larger"${i === SCALES.length - 1 ? ' disabled' : ''}>+</button>
+        </div></div>
+      <div class="row stack"><div><div class="lbl">Board shape</div><div class="hint">${esc(shapeHint)}</div></div>${seg('shape', freeShape() ? 'free' : '16:9', [['16:9', '16:9'], ['free', 'Any shape']])}</div>`;
   }
-  function scalingAct(act) {
-    if (act === 'scale') { updateSettings({ scaleToScreen: S.settings.scaleToScreen === false }); updateZoom(); }
-    if (act === 'use-screen' && useScreenAsLayout()) { updateZoom(); toast('This screen is now the board’s layout size.'); }
-  }
-  function zoomHint() {
-    if (!scalingOn()) return 'Off: windows keep their size; on a smaller screen they are moved inside the edges.';
-    const L = S.board.layout;
-    if (!L) return 'Windows keep their arrangement on any screen size.';
-    const same = L.w === Math.round(Zoom.vw) && L.h === Math.round(Zoom.vh);
-    return `Windows keep their arrangement on any screen size. Arranged for ${L.w} × ${L.h}` + (same ? ' (this screen).' : `; shown here at ${Math.round(Zoom.s * 100)}%.`);
+  function scaleStep(dir) {
+    const sc = boardScale();
+    let i = SCALES.findIndex(x => Math.abs(x - sc) < 0.001);
+    if (i < 0) i = SCALES.findIndex(x => x > sc) - (dir > 0 ? 1 : 0);
+    const next = SCALES[Math.max(0, Math.min(SCALES.length - 1, i + dir))];
+    return setBoardScale(next);
   }
   // ------------------------------------------------------- end of board scaling
 
@@ -1374,7 +1401,6 @@
   function openApp(appId, opts = {}) {
     const app = getApp(appId);
     if (!app) return null;
-    if (S.insts.size === 0) ensureLayout(); // a never-used board takes this screen's size
     const mine = Array.from(S.insts.values()).filter(i => i.appId === appId).sort((a, b) => a.n - b.n);
     const closed = mine.find(i => !i.open);
     let ikey, inst;
@@ -1510,7 +1536,7 @@
         id: key, win, kind: 'content', handle: null, el: null, type,
         sx: x, sy: y, x, y,
         lx0: (x - Zoom.ox) / Zoom.s, ly0: (y - Zoom.oy) / Zoom.s,
-        layoutSig: JSON.stringify(S.board.layout),
+        layoutSig: layoutSig(),
         start: Object.assign({}, win.disp), moved: false, result: null, onLabel: false
       });
       return true;
@@ -1528,7 +1554,7 @@
         id: e.pointerId, win, kind, handle, el, type: e.pointerType,
         sx: e.clientX, sy: e.clientY, x: e.clientX, y: e.clientY,
         lx0: (e.clientX - Zoom.ox) / Zoom.s, ly0: (e.clientY - Zoom.oy) / Zoom.s, // grab point in layout space
-        layoutSig: JSON.stringify(S.board.layout),
+        layoutSig: layoutSig(),
         start: Object.assign({}, win.disp), moved: false, result: null,
         onLabel: !!(e.target.closest && e.target.closest('.win-label'))
       };
@@ -1590,7 +1616,7 @@
       const win = it.win;
       // If the board's layout size changed mid-drag ("Use this size" here or in another tab),
       // the drop position is in the old space: drop the move rather than save it wrongly.
-      const layoutChanged = it.layoutSig !== JSON.stringify(S.board.layout);
+      const layoutChanged = it.layoutSig !== layoutSig();
       if (it.moved && it.result && !cancelled && win.inst && !layoutChanged) {
         const r = it.result, q = v => Math.round(v * 100) / 100; // sub-pixel, so zoomed drags don't drift
         saveInst(win.ikey, Object.assign({}, win.inst, { rect: { x: q(r.x), y: q(r.y), w: q(r.w), h: q(r.h) }, maximized: false }));
@@ -2079,7 +2105,8 @@
       const vw = window.innerWidth, vh = window.innerHeight, M = 8, GAP = 6;
       // offsetWidth/Height: layout size, unaffected by the menu's scale-in animation.
       // (The CSS max-height is lifted while measuring so the full height is seen.)
-      const size = () => ({ width: this.el.offsetWidth, height: this.el.offsetHeight });
+      const ui = boardScale();   // the menu is drawn at the board's scale (CSS zoom), so its px are scaled
+      const size = () => ({ width: this.el.offsetWidth * ui, height: this.el.offsetHeight * ui });
       // A menu taller than the whole screen gets tighter rows first (it should never need scrolling).
       this.el.classList.remove('compact', 'tight', 'cols');
       this.el.style.gridTemplateRows = '';
@@ -2107,8 +2134,8 @@
         else if (a.left - GAP - m.width >= M) x = a.left - GAP - m.width;
         else x = clamp(a.left + a.width / 2 - m.width / 2, M, vw - m.width - M);
       }
-      this.el.style.left = Math.round(x) + 'px';
-      this.el.style.top = Math.round(y) + 'px';
+      this.el.style.left = x / ui + 'px';
+      this.el.style.top = y / ui + 'px';
     },
 
     act(act, id) {
@@ -2223,7 +2250,7 @@
         <div class="row"><div><div class="lbl">Snap and avoid overlap</div><div class="hint">Windows stop at each other's edges. Keep pushing to overlap anyway.</div></div>${sw('snapping', st.snapping, 'Snap and avoid overlap')}</div>
         <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Apps without typing move by dragging anywhere in them; any app moves with two fingers. Off: title bar only.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
         <div class="row"><div class="lbl">Push needed to overlap</div>${seg('resistance', st.resistance, [['gentle', 'Light'], ['normal', 'Medium'], ['strong', 'Firm']], !st.snapping)}</div>
-        ${scalingSettingsRows(st, sw)}
+        ${scaleSettingsRows(seg)}
         <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">Content stays saved for next time.</div></div><button class="btn" data-act="close-all">${svg('windows')}Close all</button></div>
 
         <h3>App Picker</h3>
@@ -2312,7 +2339,8 @@
         case 'accent': if (accentOf(val)) updateSettings({ accent: val }); break;
         case 'snapping': updateSettings({ snapping: !S.settings.snapping }); break;
         case 'dragcontent': updateSettings({ dragFromContent: S.settings.dragFromContent === false }); break;
-        case 'scale': case 'use-screen': scalingAct(act); this.render(); break;
+        case 'scale-down': case 'scale-up': scaleStep(act === 'scale-up' ? 1 : -1); this.render(); break;
+        case 'shape': setBoardShape(val); this.render(); break;
         case 'resistance': updateSettings({ resistance: val }); break;
         case 'corners': updateSettings({ pickerCorners: val }); if (val !== 'both' && val !== this.side) this.open(val); break;
         case 'devmode': updateSettings({ devMode: !S.settings.devMode }); break;
@@ -2438,7 +2466,7 @@
       viewport: exportViewport(), // the size of the space the rects are in
       theme: S.settings.theme,
       accent: S.settings.accent,
-      board: { name: S.board.name, background: S.board.background },
+      board: { name: S.board.name, background: S.board.background, scale: boardScale(), shape: freeShape() ? 'free' : '16:9' },
       instances
     };
   }
@@ -2509,7 +2537,9 @@
       accent: accentOf(j.accent) ? j.accent : null,
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
-        background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none' }
+        background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none' },
+        scale: j.board && j.board.scale !== undefined ? (validScale(j.board.scale) || null) : undefined,   // undefined: file from before board scale
+        shape: j.board && j.board.shape === 'free' ? 'free' : '16:9'
       },
       viewport: j.viewport && j.viewport.width > 0 && j.viewport.height > 0 ? { w: j.viewport.width, h: j.viewport.height } : null,
       instances
@@ -2546,7 +2576,7 @@
 
   async function applyImport(p, mode) {
     const b = S.boardId;
-    const { convert, view, newLayout } = importPlan(p, mode); // board scaling decides how rects map
+    const plan = importPlan(p, mode), { convert, view } = plan; // the board's shape and scale decide how rects map
     const rev = Date.now();
     const rec = (key, type, value) => ({ key, type, rev, updatedAt: rev, by: TAB_ID, value });
 
@@ -2585,7 +2615,7 @@
       if (i.data !== null && p.kind === 'full') out.push(rec(Keys.data(b, ik), 'data', i.data));
     }
     if (mode === 'replace') {
-      const board = Object.assign({}, S.board, { background: p.board.background, layout: newLayout });
+      const board = Object.assign({}, S.board, { background: p.board.background, scale: plan.scale, shape: plan.shape, layout: plan.layout });
       if (p.board.name) board.name = p.board.name;
       out.push(rec(Keys.board(b), 'board', board));
       if (p.theme || p.accent) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, p.theme ? { theme: p.theme } : {}, p.accent ? { accent: p.accent } : {})));
@@ -2805,6 +2835,7 @@
     Picker.init();
     Menu.init();
     Settings.init();
+    ShapeHint.init();
     $('#desk').addEventListener('pointerdown', onDeskPointerDown);
     document.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary) forgetStaleTouches(e.pointerId); }, true);
     document.addEventListener('pointermove', e => Inter.move(e));
@@ -2876,7 +2907,7 @@
     }
     await reloadAll();
     updateZoom();
-    ensureLayout();
+    migrateBoard();
     if (!Known.has(Keys.board(S.boardId))) Writer.put(Keys.board(S.boardId), 'board', S.board);
     applySettings();
     applyBoard();
@@ -2888,7 +2919,7 @@
 
   // Exposed for debugging in the console and for automated tests.
   window.__board21 = {
-    version: BOARD_VERSION, state: S, store: Store, zoom: Zoom, useScreenAsLayout, inter: Inter,
+    version: BOARD_VERSION, state: S, store: Store, zoom: Zoom, inter: Inter, setBoardScale, setBoardShape, boundsRect,
     setRect: (ikey, rect) => { const i = S.insts.get(ikey); if (!i) return; saveInst(ikey, Object.assign({}, i, { rect })); const w = S.wins.get(ikey); if (w) w.layout(); },
     openApp, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,

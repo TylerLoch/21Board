@@ -56,14 +56,14 @@ include) to the static host. Then:
 | **Closing** | Closing a window keeps its content. Open the app again to pick up where you left off. If you have several of the same app, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and app settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
-| **Different screens** | The board scales like a picture to fit the screen, so moving from a big monitor to a laptop keeps your arrangement (just smaller) instead of piling windows up. Settings can turn this off or make the current screen the new full size. |
+| **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 
 ### Settings
 
 - **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to sub-apps),
   board background color (or match theme), background pattern (dots, grid, lines).
-- **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, scale the board to fit the screen (on by default) and "use this screen's size", close all windows.
+- **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, size of windows and menus (default 80%), board shape (16:9 or any shape), close all windows.
 - **App Picker:** show the controls in both corners, or only left/right.
 - **Board:** board name (used for export file names), list of every saved app window with
   open/delete.
@@ -133,22 +133,18 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 
 ---
 
-## Board scaling: trying it, switching it off, taking it out
+## Board shape and size
 
-Board scaling (the board zooms to fit each screen, keeping the arrangement) is new and may be
-reworked, so it's built to be easy to back out:
-
-| To… | Do this |
+| | |
 | --- | --- |
-| **Current status** | **Off by default.** Windows keep their size and are pushed inside the edges on a smaller screen, as before. |
-| Try it | Open 21Board with `?scaling=on` at the end of the address (e.g. `…/21Board/?scaling=on`). Only that page load uses it; nothing changes for anyone else. |
-| Turn it on for everyone | In `board.js`, make `SCALING_FEATURE` true (section **6a. Board scaling**), bump `VERSION` in `sw.js`, deploy. |
-| Let a teacher turn it off (when it's on) | Settings → Windows → *Scale the board to fit the screen*. |
-| Take it out entirely | Delete section 6a in `board.js` and follow the checklist at the top of it (a handful of one-line replacements). |
+| **16:9 (default)** | The board is a 16:9 canvas drawn as large as fits the window, centered, with the rest of the window lightly shaded. Every screen (laptop, monitor, smartboard) shows the same arrangement, so a board planned on a laptop looks the same on the board. Windows can't be put in the shaded margin. |
+| **Any shape** | Settings → Windows → *Board shape → Any shape*: the board fills the whole window at the chosen size. On a smaller screen, windows are moved to fit (as in early builds). |
+| **Size of windows and menus** | Settings → Windows, − / + (50%–200%, default **80%**): how big title bars, menus, the App Picker, Settings and app contents are, as on a 1920 × 1080 screen. Windows keep their place and footprint when it changes. |
+| **Tip** | When the 16:9 board leaves much of the window unused (a very wide, tall or narrow window), a small tip in the shaded margin offers *Use the whole window* (switches to Any shape). *Hide* keeps it away for the session. |
 
-Saved boards work in every case. Turning scaling off, or going back to a build without it, keeps
-all windows, positions and content (it was tested both ways). Boards made with scaling on just
-carry one extra field (`layout`) that older builds ignore.
+Both settings are saved with the board (and in exports). Boards saved before this existed are
+converted once when opened, keeping their arrangement as it looks on that screen. The code is
+section **6a. Board shape and scale** in `board.js`; see also docs/DATA-FORMAT.md, "Layout space".
 
 ## Tests
 

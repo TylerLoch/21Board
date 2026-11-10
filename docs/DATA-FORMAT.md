@@ -58,7 +58,6 @@ without changing the format: `settings.activeBoard` will choose which board is s
   snapping: true,          // snap windows together and resist overlap
   resistance: "normal",    // "gentle" | "normal" | "strong" — how hard you push to overlap
   pickerCorners: "both",   // "both" | "left" | "right"
-  scaleToScreen: true,     // zoom the board's layout to fit the screen (see "Layout space")
   accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
   lastBackupAt: null,      // ms of the last full backup export, for backup reminders
   devMode: false,
@@ -75,7 +74,9 @@ without changing the format: `settings.activeBoard` will choose which board is s
 {
   id: 1, name: "My Board",
   background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" },
-  layout: { w: 1920, h: 1080 }   // the screen size (CSS px) the board is arranged for; see "Layout space"
+  scale: 0.8,                    // size of windows and menus (0.5–2), as on a 1920 × 1080 screen; see "Layout space"
+  shape: "16:9",                 // "16:9" (default) | "free" (fills any window)
+  layout: { w: 2400, h: 1350 }   // the 16:9 board in layout px: 1920/scale × 1080/scale (kept for older readers)
 }
 ```
 
@@ -100,35 +101,27 @@ the window is moved or resized, never because the screen changed.
 
 #### Layout space
 
-Window rects are CSS px on a board of size `board.layout` (the screen it was arranged on, set when
-the board is created). On any screen, 21Board draws the whole layout at one zoom factor
-`s = min(screenW / layout.w, screenH / layout.h)`, centered left-to-right, by giving each window
-its layout size and a CSS `transform: translate(…) scale(s)`. So:
+Window rects are in **layout px**: the CSS px the window's app sees. They are drawn on screen with one
+zoom factor, so the board looks the same everywhere:
 
-- Moving to a smaller or larger screen keeps the arrangement exactly (nothing starts overlapping);
-  sub-apps keep the same CSS size and are simply drawn smaller or larger.
-- With scaling on, windows can only be placed **inside the layout** (0…`layout.w`, 0…`layout.h`),
-  on every screen. On a screen of a different shape the layout is centered and the leftover margin
-  is lightly shaded; windows stop at the layout edge, so every screen agrees and nothing ends up in
-  one screen's margin and piles up on another.
-- Resize handles and the focus ring are scaled back up when zoomed out (up to 2.5×) so they stay
-  finger-sized; snap reach and push-to-overlap are measured in screen pixels.
-- Several copies of 21Board on different-sized screens agree on where everything is.
-- Pointer movement is divided by `s` before it's applied, so drags follow the finger.
-- *Settings → Use this screen's size* converts every rect to the current screen's on-screen
-  footprint and sets `layout` to this screen (zoom becomes 100%).
-- With *Settings → Scale the board to fit the screen* off (`settings.scaleToScreen: false`), the zoom
-  is always 1 and windows that don't fit are moved/shrunk inside the screen when displayed.
+- **16:9 board** (`shape: "16:9"`, the default): the board is `1920/scale × 1080/scale` layout px
+  (2400 × 1350 at the default 80%). It is drawn as large as fits the window (zoom
+  `min(screenW / boardW, screenH / boardH)`), centered left-to-right and top-aligned; the rest of the
+  window is lightly shaded. Windows are kept inside the board, so every screen shows the same
+  arrangement. Pointer movement is divided by the zoom, so drags follow the finger.
+- **Any shape** (`shape: "free"`): the board is the whole window at zoom = `scale`. Windows that don't
+  fit a smaller window are moved inside when drawn (their saved rect is kept).
+- **Scale** (`scale`): how big windows, title bars and menus are, as on a 1920 × 1080 screen (at 1.0, a
+  window's CSS px are screen px there). Changing it multiplies every rect by `old/new`, so windows keep
+  their footprint on the board and their contents are drawn bigger or smaller. Board chrome (menus,
+  the App Picker, Settings, toasts, dialogs) is drawn at this scale too.
+- Resize handles and the focus ring stay at the board's scale even when the board is drawn smaller
+  (up to 2.5×); snap reach and push-to-overlap are measured in screen px.
 
-A board that has never had a window follows the screen, so the screen its first window is opened
-on becomes its layout size. A board saved before `layout` existed gets one on first load: the
-current screen size, enlarged if needed to contain all of its windows. Exports write `layout`
-(grown to contain every window) as `viewport`.
-
-**The feature is currently off by default** (`SCALING_FEATURE` in board.js; open with `?scaling=on` to try it). When off,
-the zoom is always 1 and `layout` is neither written nor used. The format is compatible both
-ways: builds without scaling read boards saved with it (they ignore `layout` and keep windows on
-screen), and boards saved without it get a `layout` that fits their windows when scaling is on.
+A board saved before `scale` existed (its rects are screen px, or px of the earlier optional
+`layout`) is converted once on load: that space (grown to contain every window) is fitted into the
+16:9 board with one uniform factor, centered, so the arrangement looks the same on that screen.
+Exports write the board's `scale` and `shape`, and the space the rects are in as `viewport`.
 
 ### `data:…` and `conf:…`
 
@@ -187,12 +180,14 @@ on Chrome) reads it.
   "kind": "full",                 // "full" = backup, "template" = layout only
   "exportedAt": "2026-11-09T18:30:00.000Z",
   "generator": "21Board 1.0.0",
-  "viewport": { "width": 1920, "height": 1080 },   // the board's layout size: the space the rects are in
+  "viewport": { "width": 2400, "height": 1350 },   // the space the rects are in (the 16:9 board, grown to fit every window)
   "theme": "light",
   "accent": "blue",
   "board": {
     "name": "Room 12",
-    "background": { "color": null, "pattern": "dots" }
+    "background": { "color": null, "pattern": "dots" },
+    "scale": 0.8,
+    "shape": "16:9"
   },
   "instances": [
     {
@@ -223,7 +218,6 @@ Importing offers two choices:
 - **Add to my board** — keeps everything and adds the file's windows. Instance numbers are
   renumbered to the next free number per app, and windows are nudged into free space.
 
-With scaling on, *Replace* adopts the file's `viewport` as this board's layout size, so the board
-looks exactly as it did and is zoomed to fit this screen. *Add* (or scaling off) converts the
-file's rects into this board's layout (or this screen) with one uniform scale factor, keeping
-shapes and spacing.
+*Replace* takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
+this screen); a file from before board sizes existed is fitted into the 16:9 board. *Add* fits the
+file's whole board into this one with one uniform factor, keeping shapes and spacing.
