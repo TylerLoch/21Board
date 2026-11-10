@@ -1364,6 +1364,12 @@ const SUITES = [
     });
     ok(glyphs.colonBelow < 3, `the chalk colon is two dots with nothing below the line, so 3:15 doesn't read 3;15 (${glyphs.colonBelow.toFixed(1)}px below)`);
     ok(glyphs.I > glyphs.one * 1.2, 'the chalk capital I has bars, so it differs from 1 and l');
+    // Whiteboard theme with its marker font.
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="color:whiteboard"]'); await page.waitForTimeout(800);
+    const wb = await f.locator('body').evaluate(async b => { await document.fonts.load('32px "Excalifont"'); return { bg: getComputedStyle(b).backgroundColor, ink: getComputedStyle(b).color, font: getComputedStyle(document.getElementById('view')).fontFamily, cls: b.classList.contains('whiteboard') && !b.classList.contains('chalk'), loaded: document.fonts.check('32px "Excalifont"') }; });
+    ok(wb.cls && wb.bg === 'rgb(251, 252, 253)' && wb.ink === 'rgb(27, 31, 36)' && /^"?Excalifont/.test(wb.font) && wb.loaded, 'Whiteboard theme: white board, dark marker ink and the bundled marker font');
+    ok(!(await info()).overflowY, 'text fits in the whiteboard font');
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="color:chalkboard"]'); await page.waitForTimeout(300);
     // Fixed size; saved config; older notes.
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="smaller"]'); await page.waitForTimeout(300);
     const conf = await page.evaluate(() => window.__board21.state.conf.get('notes:1'));
@@ -1373,7 +1379,7 @@ const SUITES = [
     await page.evaluate(() => window.__board21.state.wins.get('notes:1').post('config', { config: { color: 'pink', size: 3 } })); await page.waitForTimeout(400);
     ok(!(await info()).overflowY, 'a note saved before this update fits its text automatically');
     // The chalk font is part of the offline cache.
-    ok(await page.evaluate(() => window.BOARD21_APPS.find(a => a.id === 'notes').files.includes('apps/notes/fonts/CrayonLibre-21Board.woff2')), 'the chalk font is listed for offline use');
+    ok(await page.evaluate(() => window.BOARD21_APPS.find(a => a.id === 'notes').files.includes('apps/notes/fonts/CrayonLibre-21Board.woff2') && window.BOARD21_APPS.find(a => a.id === 'notes').files.includes('apps/notes/fonts/Excalifont-Regular.woff2')), 'the chalk and marker fonts are listed for offline use');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

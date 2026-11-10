@@ -96,7 +96,7 @@ tests/run.js            Optional automated browser tests
 | **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio (no sound files) |
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
 | **Clock** | Analog, digital or date-only; aspect-ratio lock that changes at runtime (analog 1:1, digital/date 2.2:1), config-only app |
-| **Notes** | Text grows to fill the note, tappable web links, colors incl. a Chalkboard theme (bundled font), live text sync without losing the cursor |
+| **Notes** | Text grows to fill the note, tappable web links, colors incl. Chalkboard and Whiteboard themes (bundled hand-drawn fonts), live text sync without losing the cursor |
 | **Name Picker** | Student names kept as *content* so templates never include them |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
@@ -170,3 +170,6 @@ Built for current **Chrome** (and Chromium-based Edge). Kept compatible with **S
   hand-drawn chalk lettering on every device, Chromebooks included. `tools/build-chalk-font.py` makes
   this file from the original: a two-dot colon (the original's looked like a semicolon), a capital I
   with bars (so I, l and 1 differ), no pictograph emoji, WOFF2 (60 KB).
+- `apps/notes/fonts/Excalifont-Regular.woff2`: *Excalifont* by Excalidraw (based on Virgil by Ellinor
+  Rapp), used unmodified under the SIL Open Font License 1.1 (`apps/notes/fonts/Excalifont-OFL.txt`),
+  for the Notes Whiteboard theme.

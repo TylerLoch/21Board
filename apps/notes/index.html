@@ -10,6 +10,8 @@
      device (Chromebooks included) and works offline. CC0 (public domain), see fonts/CrayonLibre-LICENSE.txt.
      Edited for the classroom (two-dot colon, barred capital I) by tools/build-chalk-font.py. */
   @font-face { font-family: "Crayon Libre"; src: url("fonts/CrayonLibre-21Board.woff2") format("woff2"); font-display: swap; }
+  /* Excalifont: hand-drawn marker lettering for the Whiteboard theme. SIL Open Font License, see fonts/Excalifont-OFL.txt. */
+  @font-face { font-family: "Excalifont"; src: url("fonts/Excalifont-Regular.woff2") format("woff2"); font-display: swap; }
   html, body { margin: 0; height: 100%; }
   body {
     background-color: var(--note, #fef08a); color: var(--ink, #1f2937); font-family: var(--note-font, var(--b21-font));
@@ -41,6 +43,15 @@
     background-position: 0 0, 3px 5px, 0 0;
   }
   body.chalk .layer { text-shadow: 0 0 1px rgba(255, 255, 255, .45), 0 0 .08em rgba(255, 255, 255, .15); letter-spacing: .01em; }
+  /* Whiteboard theme: a glossy white board with faint traces of old writing; marker ink bleeds a little.
+     A bit more line spacing, because this font's accented capitals are tall. */
+  body.whiteboard {
+    background-image:
+      linear-gradient(115deg, rgba(255, 255, 255, 0) 28%, rgba(255, 255, 255, .75) 44%, rgba(255, 255, 255, 0) 58%),
+      radial-gradient(ellipse 60% 35% at 72% 78%, rgba(110, 120, 135, .07), transparent 70%),
+      radial-gradient(ellipse 45% 25% at 22% 28%, rgba(110, 120, 135, .05), transparent 70%);
+  }
+  body.whiteboard .layer { line-height: 1.38; text-shadow: 0 0 .6px rgba(0, 0, 0, .3); }
 </style>
 </head>
 <body>
@@ -55,13 +66,15 @@
   //   (older notes saved { color, size }; they now fit automatically)
   // The bundled chalk font (see @font-face), then chalk-style fonts that come with devices, just in case.
   const CHALK_FONT = '"Crayon Libre", "Chalkboard SE", Chalkboard, "Comic Sans MS", "Comic Neue", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const MARKER_FONT = '"Excalifont", "Segoe Print", "Comic Sans MS", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const COLORS = {
     yellow:     { light: ['#fef08a', '#1f2937', '#1d4ed8'], dark: ['#4d4416', '#fef9c3', '#93c5fd'], label: 'Yellow' },
     pink:       { light: ['#fbcfe8', '#1f2937', '#1d4ed8'], dark: ['#4f2240', '#fce7f3', '#93c5fd'], label: 'Pink' },
     blue:       { light: ['#bfdbfe', '#1f2937', '#1e40af'], dark: ['#1e3a5f', '#dbeafe', '#bfdbfe'], label: 'Blue' },
     green:      { light: ['#bbf7d0', '#1f2937', '#1d4ed8'], dark: ['#1d4a30', '#dcfce7', '#93c5fd'], label: 'Green' },
     purple:     { light: ['#e9d5ff', '#1f2937', '#1d4ed8'], dark: ['#3d2a5c', '#f3e8ff', '#93c5fd'], label: 'Purple' },
-    chalkboard: { light: ['#2f4a3a', '#f4f7f2', '#bfe3ff'], dark: ['#223a2c', '#eef3ea', '#bfe3ff'], label: 'Chalkboard', font: CHALK_FONT },
+    chalkboard: { light: ['#2f4a3a', '#f4f7f2', '#bfe3ff'], dark: ['#223a2c', '#eef3ea', '#bfe3ff'], label: 'Chalkboard', font: CHALK_FONT, look: 'chalk' },
+    whiteboard: { light: ['#fbfcfd', '#1b1f24', '#1d4ed8'], dark: ['#d5d9df', '#121519', '#1e3a8a'], label: 'Whiteboard', font: MARKER_FONT, look: 'whiteboard' },
     plain:      { light: null, dark: null, label: 'Plain' }
   };
   const hasColor = k => typeof k === 'string' && Object.prototype.hasOwnProperty.call(COLORS, k);
@@ -154,9 +167,10 @@
     if (c.font) {
       body.style.setProperty('--note-font', c.font);
       // The font file loads the first time it's used: fit the text again once it's in.
-      if (document.fonts && document.fonts.load) document.fonts.load('32px "Crayon Libre"').then(fitSoon, () => {});
+      if (document.fonts && document.fonts.load) document.fonts.load('32px ' + c.font.split(',')[0]).then(fitSoon, () => {});
     } else body.style.removeProperty('--note-font');
-    body.classList.toggle('chalk', config.color === 'chalkboard');
+    body.classList.toggle('chalk', c.look === 'chalk');
+    body.classList.toggle('whiteboard', c.look === 'whiteboard');
     fitSoon();
   }
 
