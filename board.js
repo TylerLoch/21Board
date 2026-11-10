@@ -2207,7 +2207,6 @@
       const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
       set('export', 'export', 'Export board');
       set('import', 'import', 'Import board');
-      set('send', 'send', Link.dir ? `Send to your ${Link.dir.name} folder` : 'Send to your other devices (Google Drive folder)').hidden = !Link.supported;
       set('theme', dark ? 'sun' : 'moon', dark ? 'Light mode' : 'Dark mode');
       const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit fullscreen' : 'Fullscreen');
       fs.hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
@@ -2224,7 +2223,6 @@
       switch (ctl) {
         case 'export': this.close(); exportFlow(); break;
         case 'import': this.close(); $('#import-input').click(); break;
-        case 'send': this.close(); Link.send(); break;
         case 'theme': updateSettings({ theme: resolvedTheme() === 'dark' ? 'light' : 'dark' }); this.renderControls(); break;
         case 'fullscreen': toggleFullscreen(); break;
         case 'settings': this.close(); Settings.open(side); break;
@@ -3016,7 +3014,7 @@
   // - Renaming a board renames its file on the next send (the old one is removed, if it's still ours).
   // - "<name> (copy from …).21board": a copy kept, with a new uid, before loading over local changes.
   // - "About this folder.txt" explains the files to anyone browsing the folder. Other files are left alone.
-  // Sending: the Send button (or "Send automatically", a few seconds after changes). Receiving: the folder is
+  // Sending: Settings → Google Drive folder → Send (or "Send automatically", a few seconds after changes). Receiving: the folder is
   // checked when 21Board opens, when it comes back to the front, and every 2 minutes; a newer version of this
   // board from another device is offered with "Load" (never applied silently).
   // On this device only (never exported): link:folder (the folder handle) and link:state
@@ -3046,7 +3044,6 @@
         this.st = { device: v.device && UID_RE.test(v.device.id || '') ? v.device : null, auto: !!v.auto, photo: v.photo !== false, boards: v.boards && typeof v.boards === 'object' ? v.boards : {} };
         this.computeOffer();
       }
-      Picker.renderControls();
     },
     saveState(patch) {
       this.st = Object.assign({}, this.st, patch);

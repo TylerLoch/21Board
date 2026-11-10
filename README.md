@@ -54,7 +54,6 @@ include) to the static host. Then:
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
-| **Send** | Sends the board to a folder in Google Drive that your other devices (the smartboard) also use: see [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
@@ -70,6 +69,9 @@ include) to the static host. Then:
 - **Widget Picker:** show the controls in both corners, or only left/right.
 - **Board:** board name (used for export file names), list of every saved widget window with
   open/delete.
+- **Google Drive folder:** share boards with your other devices (the smartboard) through a folder in Google
+  Drive: choose the folder, Send, send automatically, include the photo, this device's name, other boards in
+  the folder. See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
 - **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
 - **Advanced:** Developer mode (SDK Playground, test unregistered widgets), erase everything.
 
@@ -155,8 +157,8 @@ read and write in that one folder only; it can't see anything else.
 
 **Then:**
 
-- **Laptop:** tap **Send** (in the Widget Picker next to Export), or turn on *Send automatically* (a few
-  seconds after each change).
+- **Laptop:** Settings → Google Drive folder → **Send**, or turn on *Send automatically* (a few seconds
+  after each change).
 - **Smartboard:** within a minute or two (when 21Board opens, when it comes back to the front, and every
   2 minutes) it says **“Room 12” was updated on my laptop at 7:42 · Load / Not now**. Nothing changes until
   you tap Load. The first time, pick the board under *Other boards in the folder* in Settings.

@@ -1548,11 +1548,13 @@ const SUITES = [
     await A.p.fill('#set-board-name', 'Room 12'); await A.p.press('#set-board-name', 'Tab'); await A.p.waitForTimeout(200);
     ok(await A.p.locator('#settings [data-act="link-choose"]').count() === 1, 'Settings has a Google Drive folder section');
     await closeSettings(A.p);
-    // ---- Send from the laptop: the first time it asks for the folder.
     await A.p.click('.picker-btn.left'); await A.p.waitForTimeout(200);
-    ok(await A.p.locator('[data-ctl="send"]:visible').count() === 1, 'the Widget Picker has a Send button');
-    await A.p.click('[data-ctl="send"]'); await A.p.waitForTimeout(300);
-    await modal(A.p, 'Choose folder'); await A.p.waitForTimeout(1500);
+    ok(await A.p.locator('[data-ctl="send"]').count() === 0, 'sending lives in Settings, not among the Widget Picker\'s controls');
+    await A.p.click('.picker-btn.left'); await A.p.waitForTimeout(200);
+    // ---- Send from the laptop: choose the folder, then Send.
+    await settings(A.p);
+    await A.p.click('#settings [data-act="link-choose"]'); await A.p.waitForTimeout(800);
+    await A.p.click('#settings [data-act="link-send"]'); await A.p.waitForTimeout(1500);
     let files = await readFolder(A.p);
     const sent = files['Room 12.21board'] && JSON.parse(files['Room 12.21board']);
     const uidA = await A.p.evaluate(() => window.__board21.state.board.uid);
@@ -1637,8 +1639,8 @@ const SUITES = [
     const C = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     await C.addInitScript(() => { window.showDirectoryPicker = undefined; });
     const pc = await C.newPage(); await pc.goto(BASE); await pc.waitForTimeout(600);
-    await pc.click('.picker-btn.left'); await pc.waitForTimeout(200);
-    ok(await pc.locator('[data-ctl="send"]:visible').count() === 0, 'browsers without a folder picker (Safari, Firefox) don’t show Send');
+    await settings(pc);
+    ok(await pc.locator('#settings [data-act^="link-"]').count() === 0, 'browsers without a folder picker (Safari, Firefox) don’t show the Google Drive folder section');
     await C.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
