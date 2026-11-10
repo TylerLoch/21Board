@@ -2059,6 +2059,41 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Kiosk mode (?kiosk=yes)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await ctx.addInitScript(() => { window.__closed = 0; window.close = () => { window.__closed++; }; });   // (record Quit instead of closing the test page)
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE + '?kiosk=yes'); await page.waitForTimeout(800);
+    await page.click('.picker-btn.left'); await page.waitForTimeout(250);
+    const ctl = await page.evaluate(() => Array.from(document.querySelectorAll('.panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl));
+    ok(JSON.stringify(ctl) === JSON.stringify(['quit', 'theme', 'settings']), `the Widget Picker shows Quit where Export, Import and Fullscreen were (${ctl.join(', ')})`);
+    await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    const set = await page.evaluate(() => { const r = document.getElementById('settings'); return { link: !!r.querySelector('[data-act^="link-"]'), backup: !!r.querySelector('[data-act="backup"]'), dev: !!r.querySelector('[data-act="devmode"]'), install: !!r.querySelector('[data-act="install"]'), kiosk: /Kiosk mode/.test(r.textContent), hist: !!r.querySelector('[data-act="hist-open"]') }; });
+    ok(!set.link && !set.backup && !set.dev && !set.install && set.kiosk && set.hist, 'Settings leaves out the Google Drive folder, backups, Developer mode and Install, says it’s kiosk mode, and keeps Board history');
+    await page.keyboard.press('Escape');
+    // The board itself works as usual, and is kept on the device.
+    await page.evaluate(() => { window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }); window.__board21.openWidget('notes'); }); await page.waitForTimeout(1200);
+    await fillNote(page.frameLocator('.win[data-ikey="notes:1"] iframe'), 'Kiosk note'); await page.waitForTimeout(1800);
+    ok(await page.evaluate(async () => { await window.__board21.history.reload(); return window.__board21.history.metas.length > 0; }), 'board history works in kiosk mode');
+    await page.reload(); await page.waitForTimeout(1500);
+    ok(await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#t').inputValue() === 'Kiosk note' && await page.evaluate(() => document.body.classList.contains('kiosk')), 'widgets save as usual, and kiosk mode stays on after a reload');
+    // Quit asks first, saves, then closes the app.
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="quit"]'); await page.waitForTimeout(300);
+    ok(await page.locator('#modal.open', { hasText: 'Quit 21Board?' }).count() === 1, 'Quit asks first');
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__closed === 0), 'Cancel keeps 21Board open');
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="quit"]'); await page.waitForTimeout(300);
+    await page.locator('#modal.open .btn', { hasText: 'Quit' }).click(); await page.waitForTimeout(1500);
+    ok(await page.evaluate(() => window.__closed === 1), 'Quit closes the app (window.close)');
+    ok(await page.locator('.toast', { hasText: 'couldn’t close this window' }).count() === 1, 'where the window can’t be closed, it says so instead of doing nothing');
+    // Without ?kiosk=yes, nothing changes.
+    const p2 = await ctx.newPage(); await p2.goto(BASE + '?kiosk=no'); await p2.waitForTimeout(600);
+    await p2.click('.picker-btn.left'); await p2.waitForTimeout(250);
+    ok(await p2.evaluate(() => document.querySelector('[data-ctl="quit"]').hidden && !document.querySelector('[data-ctl="export"]').hidden), 'without ?kiosk=yes the Widget Picker is as usual (no Quit)');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Widget dev window', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 760, height: 560 } });
     const page = await ctx.newPage();

@@ -42,6 +42,10 @@
       return v && v.widget && typeof v.src === 'string' ? v : null;
     } catch (e) { return null; }
   })();
+  // Kiosk mode (?kiosk=yes): ChromeOS kiosk, for users who don't sign in. No Export, Import, Fullscreen (a kiosk
+  // is already full screen), Google Drive folder, install prompt or backup reminders; a Quit control instead.
+  // Everything else (windows, widgets, saving on the device, board history) works as usual.
+  const KIOSK = !LAB && /^(yes|true|1|on)$/i.test(new URLSearchParams(location.search).get('kiosk') || '');
   const DB_NAME = LAB ? '21Board-dev' : '21Board';
   const DB_STORE = 'records';
   const TITLE_H = 40;          // window title bar height (px)
@@ -153,6 +157,7 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     widget: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
     windows: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
+    quit: '<path d="M12 3v8"/><path d="M6.6 6.6a8 8 0 1 0 10.8 0"/>',   // power
     history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 4.5v4h4"/><path d="M12 7.5V12l3 2"/>',   // clock with a back arrow
     send: '<path d="M7 18.5H6.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8.1 4.5 4.5 0 0 1 17.5 18.5H17"/><path d="M12 20.5v-8"/><path d="M8.8 15.2L12 12l3.2 3.2"/>' // cloud with an arrow going up
   };
@@ -2268,11 +2273,12 @@
       const dark = resolvedTheme() === 'dark';
       const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
       const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
-      set('export', 'export', 'Export board');
-      set('import', 'import', 'Import board');
+      set('export', 'export', 'Export board').hidden = KIOSK;
+      set('import', 'import', 'Import board').hidden = KIOSK;
+      set('quit', 'quit', 'Quit 21Board').hidden = !KIOSK;
       set('theme', dark ? 'sun' : 'moon', dark ? 'Light mode' : 'Dark mode');
       const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit fullscreen' : 'Fullscreen');
-      fs.hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+      fs.hidden = KIOSK || !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
       set('settings', 'gear', 'Settings');
       for (const s of ['left', 'right']) {
         let dot = $('.dot', this.btns[s]);
@@ -2285,6 +2291,7 @@
       const side = this.side || 'left';
       switch (ctl) {
         case 'export': this.close(); exportFlow(); break;
+        case 'quit': this.close(); quitApp(); break;
         case 'import': this.close(); $('#import-input').click(); break;
         case 'theme': updateSettings({ theme: resolvedTheme() === 'dark' ? 'light' : 'dark' }); this.renderControls(); break;
         case 'fullscreen': toggleFullscreen(); break;
@@ -2292,6 +2299,19 @@
       }
     }
   };
+
+  // Kiosk mode: Quit closes the app (on ChromeOS this ends the kiosk session; an auto-launched kiosk starts again).
+  // Everything is saved first. A window the browser won't let a page close (a normal tab) gets a message instead.
+  async function quitApp() {
+    const ok = await dialog({ title: 'Quit 21Board?', message: 'Your board is saved on this device and will be here next time.',
+      actions: [{ label: 'Quit', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+    if (!ok) return;
+    closePopups();
+    await Writer.settled(3000);
+    if (BoardHistory.dirty) { try { await Promise.race([BoardHistory.check(true), sleep(2000)]); } catch (e) { /* quit anyway */ } }
+    window.close();
+    setTimeout(() => { if (!window.closed) toast('21Board couldn’t close this window. Close it from the browser, or ask an adult to end the session.', { timeout: 8000 }); }, 800);
+  }
 
   function toggleFullscreen() {
     const d = document, el = d.documentElement;
@@ -2662,11 +2682,11 @@
         <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : `<h3>Storage &amp; offline</h3>
         <div class="row"><div class="lbl">Offline</div><div class="hint" id="st-offline" style="text-align:right">Checking…</div></div>
         <div class="row"><div><div class="lbl">Data protection</div><div class="hint" id="st-persist-hint"></div></div><div id="st-persist" style="flex:0 0 auto"></div></div>
-        <div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
+        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so Export, Import and the Google Drive folder aren’t available. The board is kept on this device, and board history keeps earlier versions.</div></div></div>` : `<div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>`}
         <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>`}
 
         <h3>Advanced</h3>
-        ${LAB ? '' : `<div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget by its path.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>`}
+        ${LAB || KIOSK ? '' : `<div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget by its path.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>`}
         ${st.devMode && !LAB ? `<div class="row stack"><div class="lbl">Test a widget</div>
           <div style="display:flex;gap:8px"><input type="text" class="text-input" id="set-dev-path" placeholder="widgets/my-widget/index.html" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="dev-add">${svg('plus')}Add</button></div>
           ${devWidgets ? `<div class="inst-list">${devWidgets}</div>` : ''}</div>` : ''}
@@ -2717,6 +2737,11 @@
           hint.textContent = '21Board asks for protection automatically every time it starts, but the browser decides. ' +
             (Install.prompt ? 'Installing 21Board as an app usually turns it on. ' : 'Installing 21Board as an app (Install in Chrome’s address bar, or Add to Home Screen/Dock in Safari) usually turns it on. ') +
             'Until then, keep backups.';
+        }
+        // A kiosk can't install or export: say only what applies.
+        if (KIOSK && st !== 'granted') {
+          if (per2.querySelector('[data-act="install"]')) per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Not yet</span>';
+          hint.textContent = 'The browser decides whether to protect 21Board’s data. On a kiosk device, your school’s IT manages this.';
         }
       };
       if (quick && this._statusCache && sto) sto.textContent = this._statusCache.storage;
@@ -2833,8 +2858,8 @@
         case 'dev-remove': updateSettings({ devWidgets: (S.settings.devWidgets || []).filter(d => d.id !== val) }); break;
         case 'erase': {
           const hist = BoardHistory.enabled();
-          const ok = await dialog({ title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + ' Export a backup first if you might want them later.',
-            actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }]
+          const ok = await dialog({ title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + (KIOSK ? '' : ' Export a backup first if you might want them later.'),
+            actions: (KIOSK ? [] : [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }]).concat([{ label: 'Erase everything', value: 'erase', kind: 'danger' }])
               .concat(hist ? [{ label: 'Erase, including board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (ok === 'backup') { await doExport('full'); break; }
           if (ok !== 'erase' && ok !== 'erase-all') break;
@@ -3175,7 +3200,7 @@
   const LINK_AUTO_MS = 8000;
   const LINK_README = 'About this folder.txt';
   const Link = {
-    supported: !LAB && typeof window.showDirectoryPicker === 'function',
+    supported: !LAB && !KIOSK && typeof window.showDirectoryPicker === 'function',
     dir: null,          // FileSystemDirectoryHandle
     perm: 'none',       // 'none' (no folder) | 'granted' | 'prompt' | 'denied'
     st: { device: null, auto: false, photo: true, boards: {} },
@@ -4679,6 +4704,7 @@
 
   // If the browser hasn't promised to keep the data, remind (at most every 3 days) to export a backup.
   function maybeRemindBackup() {
+    if (KIOSK) return; // a kiosk can't export
     if (document.visibilityState !== 'visible') return; // never use up the reminder in a background tab
     if (Persist.state === 'granted' || Store.failed || !S.data.size) return;
     let oldest = Infinity;
@@ -4870,7 +4896,7 @@
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (!f) return;
       e.preventDefault();
-      if (/\.21board$|\.json$/i.test(f.name)) importFile(f);
+      if (!KIOSK && /\.21board$|\.json$/i.test(f.name)) importFile(f);
     });
 
     window.addEventListener('resize', () => { scheduleLayoutAll(); Picker.render(); });
@@ -4886,7 +4912,8 @@
   }
 
   async function boot() {
-    if (!LAB) Install.init(); // before anything async: Chrome can fire beforeinstallprompt early
+    if (!LAB && !KIOSK) Install.init(); // before anything async: Chrome can fire beforeinstallprompt early
+    document.body.classList.toggle('kiosk', KIOSK);
     initUI();
     Sync.init();
     try {
@@ -4909,7 +4936,7 @@
     updateHint();
     if (LAB) { LabBridge.start(); return; }   // test mode: no offline cache, install, file opening or backup reminders
     registerSW();
-    setupFileLaunch();
+    if (!KIOSK) setupFileLaunch();
     Persist.init();
     Link.start();
     BoardHistory.start();
