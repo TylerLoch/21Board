@@ -140,8 +140,8 @@
   const ICONS = {
     image: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5.5-5.5L6 20"/>',
     waffle: '<rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/>',
-    export: '<path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>', // arrow leaving the tray
-    import: '<path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>', // arrow coming in
+    export: '<path d="M6 3h10l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 3v4.5h7V3"/><path d="M7 21v-6.5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1V21"/>', // floppy disk: Save (also Settings > Back up now)
+    import: '<path d="M3 18V7a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v1.5"/><path d="M3 18a2 2 0 0 0 2 2h12.5a2 2 0 0 0 1.9-1.4L22 11H7.6a2 2 0 0 0-1.9 1.4z"/>', // open folder: Open
     moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     gear: '<path d="M19.23 9.66L19.41 10.30L21.92 10.75L21.92 13.25L19.41 13.70L18.77 15.46L18.44 16.04L19.90 18.13L18.13 19.90L16.04 18.44L14.34 19.23L13.70 19.41L13.25 21.92L10.75 21.92L10.30 19.41L8.54 18.77L7.96 18.44L5.87 19.90L4.10 18.13L5.56 16.04L4.77 14.34L4.59 13.70L2.08 13.25L2.08 10.75L4.59 10.30L5.23 8.54L5.56 7.96L4.10 5.87L5.87 4.10L7.96 5.56L9.66 4.77L10.30 4.59L10.75 2.08L13.25 2.08L13.70 4.59L15.46 5.23L16.04 5.56L18.13 4.10L19.90 5.87L18.44 7.96Z"/><circle cx="12" cy="12" r="3.2"/>',
