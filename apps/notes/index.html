@@ -6,9 +6,10 @@
 <title>Notes</title>
 <script src="../../sdk/board21.js"></script>
 <style>
-  /* Cabin Sketch: a chalk-style font, bundled so the Chalkboard theme looks the same on every device
-     (Chromebooks included) and works offline. SIL Open Font License: see fonts/OFL.txt. */
-  @font-face { font-family: "Cabin Sketch"; src: url("fonts/CabinSketch-Regular.ttf") format("truetype"); font-display: swap; }
+  /* Crayon Libre: hand-drawn chalk lettering, bundled so the Chalkboard theme looks the same on every
+     device (Chromebooks included) and works offline. CC0 (public domain), see fonts/CrayonLibre-LICENSE.txt.
+     Edited for the classroom (two-dot colon, barred capital I) by tools/build-chalk-font.py. */
+  @font-face { font-family: "Crayon Libre"; src: url("fonts/CrayonLibre-21Board.woff2") format("woff2"); font-display: swap; }
   html, body { margin: 0; height: 100%; }
   body {
     background-color: var(--note, #fef08a); color: var(--ink, #1f2937); font-family: var(--note-font, var(--b21-font));
@@ -53,7 +54,7 @@
   //   fit: false = fixed size px (set with Larger/Smaller text)
   //   (older notes saved { color, size }; they now fit automatically)
   // The bundled chalk font (see @font-face), then chalk-style fonts that come with devices, just in case.
-  const CHALK_FONT = '"Cabin Sketch", "Chalkboard SE", Chalkboard, "Comic Sans MS", "Comic Neue", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
+  const CHALK_FONT = '"Crayon Libre", "Chalkboard SE", Chalkboard, "Comic Sans MS", "Comic Neue", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
   const COLORS = {
     yellow:     { light: ['#fef08a', '#1f2937', '#1d4ed8'], dark: ['#4d4416', '#fef9c3', '#93c5fd'], label: 'Yellow' },
     pink:       { light: ['#fbcfe8', '#1f2937', '#1d4ed8'], dark: ['#4f2240', '#fce7f3', '#93c5fd'], label: 'Pink' },
@@ -153,7 +154,7 @@
     if (c.font) {
       body.style.setProperty('--note-font', c.font);
       // The font file loads the first time it's used: fit the text again once it's in.
-      if (document.fonts && document.fonts.load) document.fonts.load('32px "Cabin Sketch"').then(fitSoon, () => {});
+      if (document.fonts && document.fonts.load) document.fonts.load('32px "Crayon Libre"').then(fitSoon, () => {});
     } else body.style.removeProperty('--note-font');
     body.classList.toggle('chalk', config.color === 'chalkboard');
     fitSoon();

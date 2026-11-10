@@ -76,7 +76,7 @@ self.BOARD21_APPS = [
     description: 'A sticky note for directions, reminders, or the day\'s agenda.',
     version: '1.1.0',
     entry: 'apps/notes/index.html',
-    files: ['apps/notes/index.html', 'apps/notes/fonts/CabinSketch-Regular.ttf', 'apps/notes/fonts/OFL.txt'],
+    files: ['apps/notes/index.html', 'apps/notes/fonts/CrayonLibre-21Board.woff2', 'apps/notes/fonts/CrayonLibre-LICENSE.txt'],
     color: '#eab308',
     icon: '<svg viewBox="0 0 24 24"><path d="M4 4h16v10l-6 6H4z"/><path d="M14 20v-6h6"/><path d="M8 9h8"/><path d="M8 13h4"/></svg>',
     window: { width: 320, height: 280, minWidth: 180, minHeight: 120, dragFromContent: false }, // typing: title bar or two fingers

@@ -165,6 +165,8 @@ Built for current **Chrome** (and Chromium-based Edge). Kept compatible with **S
 
 ## Third-party files
 
-- `apps/notes/fonts/CabinSketch-Regular.ttf`: *Cabin Sketch* by Pablo Impallari and contributors,
-  used unmodified under the SIL Open Font License 1.1 (`apps/notes/fonts/OFL.txt`). It gives the
-  Notes Chalkboard theme the same chalk look on every device, Chromebooks included.
+- `apps/notes/fonts/CrayonLibre-21Board.woff2`: *Crayon Libre* 1.05 by GGBotNet, released under CC0 1.0
+  (public domain, `apps/notes/fonts/CrayonLibre-LICENSE.txt`). It gives the Notes Chalkboard theme
+  hand-drawn chalk lettering on every device, Chromebooks included. `tools/build-chalk-font.py` makes
+  this file from the original: a two-dot colon (the original's looked like a semicolon), a capital I
+  with bars (so I, l and 1 differ), no pictograph emoji, WOFF2 (60 KB).

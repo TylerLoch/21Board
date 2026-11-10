@@ -16,7 +16,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const OUT = path.join(__dirname, 'output') + path.sep;
 fs.mkdirSync(OUT, { recursive: true });
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.21board': 'application/json' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.21board': 'application/json', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 
 let fails = 0, passes = 0;
 const ok = (cond, msg) => { if (cond) passes++; else fails++; console.log((cond ? '  ✓ ' : '  ✗ FAIL ') + msg); };
@@ -1353,10 +1353,17 @@ const SUITES = [
     // Chalkboard theme with the bundled font.
     await page.mouse.click(1000, 700); await page.waitForTimeout(200);
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="color:chalkboard"]'); await page.waitForTimeout(800);
-    const chalk = await f.locator('body').evaluate(b => ({ bg: getComputedStyle(b).backgroundColor, font: getComputedStyle(document.getElementById('view')).fontFamily, chalk: b.classList.contains('chalk'), loaded: document.fonts.check('32px "Cabin Sketch"') && Array.from(document.fonts).some(x => x.family.replace(/"/g, '') === 'Cabin Sketch' && x.status === 'loaded') }));
-    ok(chalk.chalk && chalk.bg === 'rgb(47, 74, 58)' && /^"?Cabin Sketch/.test(chalk.font), 'Chalkboard theme: green board and the bundled chalk font');
+    const chalk = await f.locator('body').evaluate(b => ({ bg: getComputedStyle(b).backgroundColor, font: getComputedStyle(document.getElementById('view')).fontFamily, chalk: b.classList.contains('chalk'), loaded: document.fonts.check('32px "Crayon Libre"') && Array.from(document.fonts).some(x => x.family.replace(/"/g, '') === 'Crayon Libre' && x.status === 'loaded') }));
+    ok(chalk.chalk && chalk.bg === 'rgb(47, 74, 58)' && /^"?Crayon Libre/.test(chalk.font), 'Chalkboard theme: green board and the bundled chalk font');
     ok(chalk.loaded, 'the chalk font file loads (works on any device, no system font needed)');
     ok(!(await info()).overflowY, 'text still fits in the chalk font');
+    const glyphs = await f.locator('body').evaluate(async () => {
+      await document.fonts.load('200px "Crayon Libre"');
+      const c = document.createElement('canvas').getContext('2d'); c.font = '200px "Crayon Libre"';
+      return { colonBelow: c.measureText(':').actualBoundingBoxDescent, I: c.measureText('I').width, one: c.measureText('1').width };
+    });
+    ok(glyphs.colonBelow < 3, `the chalk colon is two dots with nothing below the line, so 3:15 doesn't read 3;15 (${glyphs.colonBelow.toFixed(1)}px below)`);
+    ok(glyphs.I > glyphs.one * 1.2, 'the chalk capital I has bars, so it differs from 1 and l');
     // Fixed size; saved config; older notes.
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="smaller"]'); await page.waitForTimeout(300);
     const conf = await page.evaluate(() => window.__board21.state.conf.get('notes:1'));
@@ -1366,7 +1373,7 @@ const SUITES = [
     await page.evaluate(() => window.__board21.state.wins.get('notes:1').post('config', { config: { color: 'pink', size: 3 } })); await page.waitForTimeout(400);
     ok(!(await info()).overflowY, 'a note saved before this update fits its text automatically');
     // The chalk font is part of the offline cache.
-    ok(await page.evaluate(() => window.BOARD21_APPS.find(a => a.id === 'notes').files.includes('apps/notes/fonts/CabinSketch-Regular.ttf')), 'the chalk font is listed for offline use');
+    ok(await page.evaluate(() => window.BOARD21_APPS.find(a => a.id === 'notes').files.includes('apps/notes/fonts/CrayonLibre-21Board.woff2')), 'the chalk font is listed for offline use');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
