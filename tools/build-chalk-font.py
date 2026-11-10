@@ -28,6 +28,7 @@ from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
 from fontTools.pens.cu2quPen import Cu2QuPen
+from fontTools.pens.basePen import AbstractPen
 from fontTools.misc.transform import Transform
 from fontTools import subset
 from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphCoordinates
@@ -35,7 +36,9 @@ from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphCoordinates
 HERE = os.path.dirname(os.path.abspath(__file__))
 ap = argparse.ArgumentParser()
 ap.add_argument('src', nargs='?', default='CrayonLibre-Regular.ttf')
-ap.add_argument('--l', choices=['loop', 'stick', 'tail'], default='stick')
+ap.add_argument('--l', choices=['loop', 'stick', 'trail', 'tail'], default='stick',
+                help='stick: plain print l; trail: the stick curving off to the right at the bottom, like chalk as the hand lifts (--trail)')
+ap.add_argument('--trail', choices=['short', 'medium', 'long'], default='medium')
 ap.add_argument('--one', choices=['plain', 'flag'], default='flag')
 ap.add_argument('--out', default=os.path.join(HERE, '..', 'apps', 'notes', 'fonts', 'CrayonLibre-21Board.woff2'))
 ap.add_argument('--flavor', choices=['woff2', 'ttf'], default='woff2')
@@ -109,6 +112,18 @@ def moved(p, dx, dy=0):
     return q
 
 
+class WarpPen(AbstractPen):
+    """Passes outlines through f(x, y): used to bend a stroke while keeping its chalk texture."""
+    def __init__(self, pen, f): self.pen, self.f = pen, f
+    def moveTo(self, p): self.pen.moveTo(self.f(*p))
+    def lineTo(self, p): self.pen.lineTo(self.f(*p))
+    def qCurveTo(self, *ps): self.pen.qCurveTo(*[None if p is None else self.f(*p) for p in ps])
+    def curveTo(self, *ps): self.pen.curveTo(*[self.f(*p) for p in ps])
+    def closePath(self): self.pen.closePath()
+    def endPath(self): self.pen.endPath()
+    def addComponent(self, *a): raise NotImplementedError
+
+
 def box(name):
     g = glyf[name]
     return g.xMin, g.yMin, g.xMax, g.yMax
@@ -125,6 +140,21 @@ if args.l == 'stick':
     # A straight stick: the I's chalk stroke turned upside down, so l and I don't show the same marks.
     bx0, by0, bx1, by1 = I0.bounds
     put('l', path(G('I'), Transform().translate(bx0 + bx1, by0 + by1).scale(-1, -1)))
+elif args.l == 'trail':
+    # The plain stick whose bottom curves off to the right and thins a little, the way chalk trails
+    # off the board as the hand lifts at the end of a down-stroke.
+    y_top, reach, taper, power = {'short': (300, 130, .10, 2.4), 'medium': (400, 190, .14, 2.2), 'long': (480, 250, .18, 2.0)}[args.trail]
+    bx0, by0, bx1, by1 = I0.bounds
+    turn = Transform().translate(bx0 + bx1, by0 + by1).scale(-1, -1)          # the I's stroke upside down, as for 'stick'
+    stick = path(G('I'), turn)
+    cx0, _, cx1, _ = clip(stick, -500, y_top, 3000, y_top + 40).bounds
+    cx = (cx0 + cx1) / 2
+    def bend(x, y):
+        if y >= y_top: return (x, y)
+        t = (y_top - y) / (y_top - by0)            # 0 where the curve starts, 1 at the bottom
+        return (cx + (x - cx) * (1 - taper * t) + reach * t ** power, y + 0.25 * reach * t ** (power + 1))
+    p = pathops.Path(); gs[G('I')].draw(TransformPen(WarpPen(p.getPen(), bend), turn))
+    put('l', p)
 elif args.l == 'tail':
     # The straight stick with a small foot: the curved foot of the 't', trimmed to a rounded end
     # (cut along an ellipse, not a straight line) and joined to the stick's bottom right.
