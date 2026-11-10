@@ -1,7 +1,7 @@
 /*
- * 21Board Sub-app SDK  (window.Board21)
+ * 21Board Widget SDK  (window.Board21)
  * ======================================
- * Include this in every sub-app, before your own scripts:
+ * Include this in every widget, before your own scripts:
  *
  *     <script src="../../sdk/board21.js"></script>
  *
@@ -12,12 +12,12 @@
  *     Board21.on('data', render);             // content changed in another 21Board tab / import
  *     button.onclick = () => Board21.save({ count: ++count });
  *
- * Full reference: docs/SUBAPP-SDK.md
+ * Full reference: docs/WIDGET-SDK.md
  *
- * Talks to the board with window.postMessage, so a sub-app never touches
+ * Talks to the board with window.postMessage, so a widget never touches
  * IndexedDB itself. If the page is opened on its own (not inside 21Board) the
  * SDK runs in "standalone" mode: data goes to localStorage and window calls
- * are ignored, so you can develop and test a sub-app by opening its file.
+ * are ignored, so you can develop and test a widget by opening its file.
  */
 (function () {
   'use strict';
@@ -62,7 +62,7 @@
     try { s = JSON.stringify(v); } catch (err) {
       throw new Error('21Board: ' + what + ' must be JSON-serializable (' + err.message + ')');
     }
-    if (s && s.length > 8 * 1024 * 1024) console.warn('21Board: ' + what + ' is ' + Math.round(s.length / 1048576) + ' MB. Keep sub-app data small.');
+    if (s && s.length > 8 * 1024 * 1024) console.warn('21Board: ' + what + ' is ' + Math.round(s.length / 1048576) + ' MB. Keep widget data small.');
     return s === undefined ? null : JSON.parse(s);
   }
 
@@ -132,7 +132,7 @@
     var m = location.pathname.match(/apps\/([^/]+)\//);
     context = {
       standalone: true, sdkVersion: SDK_VERSION, boardVersion: null,
-      appId: m ? m[1] : 'standalone', appName: document.title || 'Sub-app', instance: 1,
+      appId: m ? m[1] : 'standalone', appName: document.title || 'Widget', instance: 1,
       data: s.data === undefined ? null : s.data, config: s.config === undefined ? null : s.config,
       theme: theme, palette: PALETTES[theme], window: windowInfo(),
       locale: navigator.language || 'en-US', devMode: true

@@ -1,7 +1,7 @@
 /*
  * 21Board — board shell
  * =====================
- * The "operating system" that hosts sub-apps. Sections:
+ * The "operating system" that hosts widgets. Sections:
  *
  *   1. Constants, icons, helpers
  *   2. App catalog            (apps/registry.js + developer test apps)
@@ -20,7 +20,7 @@
  *  15. PWA                   (service worker, persistence, file launch)
  *  16. Boot
  *
- * Data format: docs/DATA-FORMAT.md     Sub-app SDK: docs/SUBAPP-SDK.md
+ * Data format: docs/DATA-FORMAT.md     Widget SDK: docs/WIDGET-SDK.md
  */
 (() => {
   'use strict';
@@ -67,7 +67,7 @@
     accent: 'blue',          // accent color: a key of ACCENTS
     dragFromContent: true,   // move windows by dragging inside them (see section 9a)
     devMode: false,
-    devApps: [],             // [{ id, name, entry }] test sub-apps added in Developer mode
+    devApps: [],             // [{ id, name, entry }] test widgets added in Developer mode
     activeBoard: 1,
     lastBackupAt: null       // when a full backup was last exported (ms), for backup reminders
   };
@@ -89,7 +89,7 @@
   // Only real entries count ("constructor", "__proto__" etc. from a crafted file must not).
   const accentOf = key => (typeof key === 'string' && Object.prototype.hasOwnProperty.call(ACCENTS, key)) ? ACCENTS[key] : null;
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
-  // The palette sub-apps receive (--b21-* variables), with the chosen accent applied.
+  // The palette widgets receive (--b21-* variables), with the chosen accent applied.
   function paletteFor(theme) {
     const base = Object.assign({}, PALETTES[theme]);
     const a = accentOf(S.settings.accent);
@@ -162,8 +162,8 @@
     return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2];
   }
 
-  // Sub-apps may supply SVG icons for their menu items. Keep only harmless SVG.
-  // A plain CSS color from a sub-app (hex, rgb() or hsl()), safe to put in a style attribute; '' otherwise.
+  // Widgets may supply SVG icons for their menu items. Keep only harmless SVG.
+  // A plain CSS color from a widget (hex, rgb() or hsl()), safe to put in a style attribute; '' otherwise.
   function safeColor(c) {
     return typeof c === 'string' && (/^#[0-9a-f]{3,8}$/i.test(c) || /^(rgb|hsl)a?\([\d\s.,%+-]+\)$/i.test(c)) ? c : '';
   }
@@ -1177,7 +1177,7 @@
     constructor(ikey) {
       this.ikey = ikey;
       this.app = getApp(this.inst.appId);
-      this.rt = {};             // runtime constraint overrides set by the sub-app
+      this.rt = {};             // runtime constraint overrides set by the widget
       this.menuItems = [];
       this.subtitle = '';
       this.disp = null;         // rect currently displayed
@@ -1337,7 +1337,7 @@
       this.attT = setTimeout(() => this.el.classList.remove('attention'), 5200);
     }
 
-    // ---- SDK messages from the sub-app
+    // ---- SDK messages from the widget
     handle(m) {
       switch (m.type) {
         case 'hello': {
@@ -1439,7 +1439,7 @@
     }
   }
 
-  // Messages from sub-app iframes.
+  // Messages from widget iframes.
   window.addEventListener('message', e => {
     const m = e.data;
     if (!m || m.b21 !== SDK_PROTOCOL || typeof m.type !== 'string') return;
@@ -1758,7 +1758,7 @@
   //   and touch-handling elements.
   // - A press claims nothing until it moves, so a finger resting in an app
   //   never blocks someone else from moving or resizing that window.
-  // Sub-apps are same-origin, so the board listens inside each iframe; nothing
+  // Widgets are same-origin, so the board listens inside each iframe; nothing
   // here is needed from the app. Settings → Windows can switch it off.
   // =====================================================================
   const CONTENT_SLOP = { mouse: 6, pen: 10, touch: 16 };   // screen px before a press inside an app moves the window
@@ -2424,14 +2424,14 @@
         <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>
 
         <h3>Advanced</h3>
-        <div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a sub-app by its path.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>
-        ${st.devMode ? `<div class="row stack"><div class="lbl">Test a sub-app</div>
+        <div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget by its path.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>
+        ${st.devMode ? `<div class="row stack"><div class="lbl">Test a widget</div>
           <div style="display:flex;gap:8px"><input type="text" class="text-input" id="set-dev-path" placeholder="apps/my-app/index.html" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="dev-add">${svg('plus')}Add</button></div>
           ${devApps ? `<div class="inst-list">${devApps}</div>` : ''}</div>` : ''}
         <div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Deletes all windows, content and settings on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase</button></div>
 
         <h3>About</h3>
-        <div class="about">21Board ${BOARD_VERSION} · Sub-app SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
+        <div class="about">21Board ${BOARD_VERSION} · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
         Everything you make is stored only on this device. Nothing is sent to a server.</div>`;
       this.refreshStatus(true);
     },
@@ -2529,7 +2529,7 @@
           if (!path) break;
           let url;
           try { url = new URL(path, location.href); } catch (e) { toast('That path is not valid.'); break; }
-          if (url.origin !== location.origin) { toast('Sub-apps must be served from this same site.'); break; }
+          if (url.origin !== location.origin) { toast('Widgets must be served from this same site.'); break; }
           const rel = url.pathname.replace(new RegExp('^' + location.pathname.replace(/[^/]*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '') + url.search;
           const slug = rel.replace(/\/?index\.html$/, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 50) || 'app';
           const id = 'dev-' + slug;

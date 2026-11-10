@@ -2,7 +2,7 @@
  * 21Board service worker — makes the whole board work offline.
  *
  * On install it downloads the board shell plus every file listed by every
- * sub-app in apps/registry.js, so all sub-apps work with no network.
+ * widget in apps/registry.js, so all widgets work with no network.
  * After that, files are served from the cache immediately and refreshed in
  * the background when online (stale-while-revalidate).
  *
@@ -10,7 +10,7 @@
  * That forces a clean download of everything and shows teachers an
  * "Update" prompt inside 21Board.
  */
-const VERSION = '2026.11.10-14';
+const VERSION = '2026.11.10-15';
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION;
 

@@ -1,19 +1,19 @@
-# 21Board Sub-app SDK
+# 21Board Widget SDK
 
-A **sub-app** is a small web page that runs inside a 21Board window. 21Board loads it in an
+A **widget** is a small web page that runs inside a 21Board window. 21Board loads it in an
 `<iframe>`, gives it a window the teacher can move and resize, saves its data, and keeps it in
 sync across every open copy of 21Board.
 
-Sub-apps talk to the board through one script: `sdk/board21.js`, which defines `window.Board21`.
+Widgets talk to the board through one script: `sdk/board21.js`, which defines `window.Board21`.
 
 - [Quick start](#quick-start)
-- [Rules for sub-apps](#rules-for-sub-apps)
+- [Rules for widgets](#rules-for-widgets)
 - [API reference](#api-reference)
 - [Content vs. config](#content-vs-config)
 - [Multiple instances and sync](#multiple-instances-and-sync)
 - [Moving windows from inside](#moving-windows-from-inside)
 - [Theming](#theming)
-- [Registering a sub-app](#registering-a-sub-app)
+- [Registering a widget](#registering-a-widget)
 - [Testing](#testing)
 - [Submission checklist](#submission-checklist)
 
@@ -54,7 +54,7 @@ Copy `apps/_template/` to `apps/<your-id>/` and edit it. The essentials:
 
 ---
 
-## Rules for sub-apps
+## Rules for widgets
 
 1. **No external requests.** No CDNs, web fonts, analytics or APIs. Everything must be in your
    folder so the app works offline and no student data leaves the device.
@@ -137,7 +137,7 @@ Sizes are the **content area** (the iframe), not including the 40px title bar.
 | `Board21.window.close()` | Close the window. Its data is kept. |
 | `Board21.window.getInfo()` | Promise of `{ width, height, x, y, maximized, focused }`. |
 
-Defaults for size, minimum size and aspect ratio come from the [registry](#registering-a-sub-app),
+Defaults for size, minimum size and aspect ratio come from the [registry](#registering-a-widget),
 so the window is the right shape before your page even loads. Runtime calls override them
 until the window is reset or reloaded; call them again in `ready()` if they depend on config
 (see `apps/clock`).
@@ -221,7 +221,7 @@ content, never config.** (Name Picker keeps its name list in content for exactly
 
 ## Multiple instances and sync
 
-- A teacher can open the same sub-app several times. Each window is an **instance** with its own
+- A teacher can open the same widget several times. Each window is an **instance** with its own
   number (`context.instance`: 1, 2, 3…) and its own saved content and config. You don't need to
   do anything for this.
 - Closing a window **keeps** its data. Opening the app again reopens the lowest-numbered closed
@@ -303,7 +303,7 @@ Use `[data-b21-theme="dark"] .thing { … }` for anything else that should chang
 
 ---
 
-## Registering a sub-app
+## Registering a widget
 
 Add an entry to `apps/registry.js`:
 
@@ -340,7 +340,7 @@ Then **bump `VERSION` in `sw.js`** so installed copies download the new files.
   server). The SDK notices it isn't inside 21Board, saves to `localStorage`, follows the system
   light/dark setting, and shows a small dropdown in the corner for your menu items.
 - **Inside 21Board without registering:** Settings → Advanced → turn on **Developer mode**, then
-  enter the path (e.g. `apps/my-app/index.html`) under **Test a sub-app**.
+  enter the path (e.g. `apps/my-app/index.html`) under **Test a widget**.
 - **SDK Playground:** with Developer mode on, open *SDK Playground* from the App Picker to try
   every call and watch events.
 - **Sync:** open 21Board in two tabs side by side and use your app in one.

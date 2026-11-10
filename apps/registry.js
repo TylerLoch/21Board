@@ -1,21 +1,21 @@
 /*
- * 21Board — Sub-app registry
+ * 21Board — Widget registry
  * ===========================
- * This file is the single list of every sub-app that ships with 21Board.
+ * This file is the single list of every widget that ships with 21Board.
  * It is loaded by BOTH the board (index.html) and the service worker (sw.js),
  * so anything listed in an app's `files` array is automatically cached for
  * offline use.
  *
- * To add a sub-app:
+ * To add a widget:
  *   1. Put it in its own folder:  apps/<id>/index.html  (id = lowercase, a-z 0-9 -)
  *   2. Add an entry below.
  *   3. Bump VERSION in sw.js so installed copies pick up the change.
  *
- * Field reference (see docs/SUBAPP-SDK.md for details):
+ * Field reference (see docs/WIDGET-SDK.md for details):
  *   id           Unique, stable id. NEVER change it after release: saved data is keyed by it.
  *   name         Shown in the App Picker and in the window title bar.
  *   description  One line, shown in Settings.
- *   version      The sub-app's own version string.
+ *   version      The widget's own version string.
  *   entry        Path of the page loaded into the window's iframe.
  *   files        Every file the app needs, so it works offline (entry included).
  *   icon         Inline SVG (24x24 viewBox, stroke icons render white on `color`).

@@ -38,7 +38,7 @@ Keys (`<b>` = board id, currently always `1`; `<n>` = instance number):
 | `settings` | `settings` | Board-wide preferences (below) |
 | `board:<b>` | `board` | Board name and background |
 | `inst:<b>:<appId>:<n>` | `inst` | One window/instance: geometry, open/closed, stacking |
-| `data:<b>:<appId>:<n>` | `data` | That instance's **content** — whatever the sub-app passed to `Board21.save()` |
+| `data:<b>:<appId>:<n>` | `data` | That instance's **content** — whatever the widget passed to `Board21.save()` |
 | `conf:<b>:<appId>:<n>` | `conf` | That instance's **config** — whatever it passed to `Board21.saveConfig()` |
 | `media:<b>:background` | `media` | The board's **background photo** (see below). Kept apart from `board:<b>` because it's big |
 
@@ -62,7 +62,7 @@ without changing the format: `settings.activeBoard` will choose which board is s
   accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
   lastBackupAt: null,      // ms of the last full backup export, for backup reminders
   devMode: false,
-  devApps: [               // test sub-apps added in Developer mode
+  devApps: [               // test widgets added in Developer mode
     { id: "dev-apps-my-app", name: "My-app (test)", entry: "apps/my-app/index.html" }
   ],
   activeBoard: 1
@@ -149,8 +149,8 @@ Exports write the board's `scale` and `shape`, and the space the rects are in as
 
 ### `data:…` and `conf:…`
 
-Any JSON value the sub-app saved. The format is up to each sub-app; document it at the top of the
-sub-app's script. Missing record = nothing saved (`null` in the SDK).
+Any JSON value the widget saved. The format is up to each widget; document it at the top of the
+widget's script. Missing record = nothing saved (`null` in the SDK).
 
 ---
 
@@ -178,7 +178,7 @@ Several tabs or windows of 21Board can be open on one device. All show the same 
    `BroadcastChannel("21board-sync")` (or, in older browsers, writes it to
    `localStorage["21board-sync"]` to fire a `storage` event — the same trick 21Sketch uses).
 3. Other tabs re-read just those keys and apply any record whose `rev` is newer than the one they
-   last saw. Windows move, open or close; sub-apps get `data` / `config` events.
+   last saw. Windows move, open or close; widgets get `data` / `config` events.
 4. While someone is dragging or resizing, incoming changes are held and applied when the gesture
    ends, so a window never jumps out from under a finger.
 5. When a tab becomes visible again (or is restored from the back/forward cache), it re-reads

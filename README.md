@@ -1,10 +1,10 @@
 # 21Board
 
-**21Board helps teachers curate their own suite of smartboard sub-apps so they can orchestrate
+**21Board helps teachers curate their own suite of smartboard widgets so they can orchestrate
 their unique classroom with ease.**
 
 21Board is a small "operating system" for the classroom smartboard: an App Picker in both bottom
-corners, a windowing system for sub-apps, and on-device storage with export/import. Sub-apps are
+corners, a windowing system for widgets, and on-device storage with export/import. Widgets are
 built independently and dropped in.
 
 - Pure HTML, CSS, JavaScript and SVG — **no libraries, no build step, no server code**
@@ -20,7 +20,7 @@ You don't need a server to try 21Board:
 
 | Option | Setup | Works | Doesn't work |
 | --- | --- | --- | --- |
-| **Open `index.html` from disk** | Download the repo (Code → Download ZIP), unzip, open `index.html` in Chrome | Picker, windows, all sub-apps, saving, export/import, multiple tabs | Offline mode / installing as an app (needs `https://`) |
+| **Open `index.html` from disk** | Download the repo (Code → Download ZIP), unzip, open `index.html` in Chrome | Picker, windows, all widgets, saving, export/import, multiple tabs | Offline mode / installing as an app (needs `https://`) |
 | **GitHub Pages** | Repo Settings → Pages → *Deploy from a branch* → pick the branch, `/ (root)` | Everything, including offline and install. A real URL you can open on a smartboard | — (private repos need a paid GitHub plan for Pages; the site itself is public) |
 | **Local web server** | `python3 -m http.server 8000` in the folder, open <http://localhost:8000> | Everything | — |
 
@@ -61,7 +61,7 @@ include) to the static host. Then:
 
 ### Settings
 
-- **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to sub-apps),
+- **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to widgets),
   board background color (or match theme), background pattern (dots, grid, lines), background photo
   (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
   in full backups, not in templates).
@@ -70,7 +70,7 @@ include) to the static host. Then:
 - **Board:** board name (used for export file names), list of every saved app window with
   open/delete.
 - **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
-- **Advanced:** Developer mode (SDK Playground, test unregistered sub-apps), erase everything.
+- **Advanced:** Developer mode (SDK Playground, test unregistered widgets), erase everything.
 
 ---
 
@@ -82,16 +82,16 @@ board.js                Board shell logic (storage, sync, windows, picker, setti
 sw.js                   Service worker (offline cache, updates)  ← bump VERSION on deploy
 manifest.webmanifest    PWA manifest (also lets the installed app open .21board files in Chrome)
 icons/                  App icons
-sdk/board21.js          The SDK every sub-app includes (window.Board21)
-apps/registry.js        THE list of sub-apps (used by the picker AND the offline cache)
-apps/<id>/index.html    One folder per sub-app
-apps/_template/         Starter for new sub-apps (not registered)
-docs/SUBAPP-SDK.md      How to build a sub-app; SDK reference; submission checklist
+sdk/board21.js          The SDK every widget includes (window.Board21)
+apps/registry.js        THE list of widgets (used by the picker AND the offline cache)
+apps/<id>/index.html    One folder per widget
+apps/_template/         Starter for new widgets (not registered)
+docs/WIDGET-SDK.md      How to build a widget; SDK reference; submission checklist
 docs/DATA-FORMAT.md     IndexedDB layout, sync protocol, .21board file format
 tests/run.js            Optional automated browser tests
 ```
 
-### Included sub-apps
+### Included widgets
 
 | App | Shows off |
 | --- | --- |
@@ -106,13 +106,13 @@ tests/run.js            Optional automated browser tests
 
 ---
 
-## Adding a sub-app
+## Adding a widget
 
-1. Copy `apps/_template/` to `apps/<id>/` and build it (see **[docs/SUBAPP-SDK.md](docs/SUBAPP-SDK.md)**).
+1. Copy `apps/_template/` to `apps/<id>/` and build it (see **[docs/WIDGET-SDK.md](docs/WIDGET-SDK.md)**).
 2. Add an entry to `apps/registry.js` listing every file it needs.
 3. Bump `VERSION` in `sw.js`.
 
-To try a sub-app before registering it: Settings → Advanced → Developer mode → *Test a sub-app*.
+To try a widget before registering it: Settings → Advanced → Developer mode → *Test a widget*.
 
 ---
 

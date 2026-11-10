@@ -6,7 +6,7 @@
  *
  * Starts a static server for the repo, then drives Chromium through the
  * windowing system, storage, multi-tab sync, export/import, offline mode,
- * touch input and the sub-app SDK. Screenshots go to tests/output/.
+ * touch input and the widget SDK. Screenshots go to tests/output/.
  */
 const { chromium } = require('playwright');
 const http = require('http');
@@ -166,7 +166,7 @@ const SUITES = [
     // theme sync
     await page2.click('.picker-btn.right'); await page2.click('[data-ctl="theme"]'); await page2.waitForTimeout(500);
     ok(await page.evaluate(() => document.body.classList.contains('dark')), 'dark mode syncs across tabs');
-    ok(await frameOf(page, 'timer:1').locator('html').getAttribute('data-b21-theme') === 'dark', 'sub-apps receive the theme');
+    ok(await frameOf(page, 'timer:1').locator('html').getAttribute('data-b21-theme') === 'dark', 'widgets receive the theme');
     await page2.keyboard.press('Escape');
     await page.screenshot({ path: OUT + '11-dark.png' });
     await page2.close();
@@ -314,7 +314,7 @@ const SUITES = [
     for (const id of ids) await page.evaluate(id => window.__board21.openApp(id), id);
     await page.waitForTimeout(2500);
     const conn = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).map(w => [w.ikey, w.connected]));
-    ok(conn.length === ids.length && conn.every(c => c[1]), 'every sub-app loads and connects offline: ' + JSON.stringify(conn));
+    ok(conn.length === ids.length && conn.every(c => c[1]), 'every widget loads and connects offline: ' + JSON.stringify(conn));
     await page.screenshot({ path: OUT + '30-offline-all-apps.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
@@ -392,19 +392,19 @@ const SUITES = [
     await btn('maximize()'); await page.waitForTimeout(400);
     d = await disp(page, ik); ok(d.w === 1400 && d.h === 860, 'maximize()');
     await btn('restore()'); await page.waitForTimeout(400);
-    // dev: add a test sub-app by path
+    // dev: add a test widget by path
     await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(200);
     await page.fill('#set-dev-path', 'apps/_template/index.html');
     await page.click('#settings [data-act="dev-add"]'); await page.waitForTimeout(1000);
     const devWin = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).filter(w => w.app.dev).map(w => [w.ikey, w.connected]));
-    ok(devWin.length === 1 && devWin[0][1], 'developer can load an unregistered sub-app by path: ' + JSON.stringify(devWin));
+    ok(devWin.length === 1 && devWin[0][1], 'developer can load an unregistered widget by path: ' + JSON.stringify(devWin));
     await btn('close()'); await page.waitForTimeout(400);
     ok(!(await page.evaluate(ik => window.__board21.state.wins.has(ik), ik)), 'close() from the app closes its window');
 
-    // ---- standalone sub-app
+    // ---- standalone widget
     const sp = await ctx.newPage();
     await sp.goto(BASE + 'apps/timer/index.html'); await sp.waitForTimeout(600);
-    ok(await sp.evaluate(() => Board21.context && Board21.context.standalone === true), 'sub-app runs standalone when opened directly');
+    ok(await sp.evaluate(() => Board21.context && Board21.context.standalone === true), 'widget runs standalone when opened directly');
     await sp.click('#go'); await sp.waitForTimeout(300); await sp.reload(); await sp.waitForTimeout(500);
     ok(await sp.evaluate(() => (JSON.parse(localStorage.getItem('21board:standalone:/apps/timer/index.html')) || {}).data.endsAt > 0), 'standalone save persists to localStorage');
 
@@ -536,11 +536,11 @@ const SUITES = [
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
     await page.waitForTimeout(200);
 
-    // Sub-apps are told focused:false after a deselect (a freshly connected app is the case that used to break).
+    // Widgets are told focused:false after a deselect (a freshly connected app is the case that used to break).
     await page.evaluate(() => window.__board21.openApp('dice')); await page.waitForTimeout(1200);
     await page.mouse.click(1300, 40); await page.waitForTimeout(400);
     const appFocused = await page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('html').evaluate(() => Board21.context.window.focused);
-    ok(appFocused === false, `after tapping the empty board the sub-app sees focused: false (got ${appFocused})`);
+    ok(appFocused === false, `after tapping the empty board the widget sees focused: false (got ${appFocused})`);
     await page.evaluate(() => window.__board21.closeWin('dice:1', { quiet: true })); await page.waitForTimeout(300);
 
     // A tap on a grip with a little finger wobble must not resize (or snap) the window.
@@ -864,7 +864,7 @@ const SUITES = [
     const ring = await page.evaluate(() => getComputedStyle(document.body).getPropertyValue('--focus-ring').trim());
     ok(ring === '#7c3aed', `board accent changes (focus ring ${ring})`);
     const appAccent = await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('html').evaluate(e => e.style.getPropertyValue('--b21-accent'));
-    ok(appAccent === '#7c3aed', `sub-apps get the accent (${appAccent})`);
+    ok(appAccent === '#7c3aed', `widgets get the accent (${appAccent})`);
     await page.screenshot({ path: OUT + 'accent-purple.png' });
     await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(500);
     const darkAccent = await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('html').evaluate(e => e.style.getPropertyValue('--b21-accent'));
@@ -1392,7 +1392,7 @@ const SUITES = [
     await a.goto(url); await a.waitForTimeout(600);
     await a.evaluate(() => { window.__board21.openApp('notes'); window.__board21.openApp('timer'); });
     await a.waitForTimeout(1500);
-    ok((await a.evaluate(() => Array.from(window.__board21.state.wins.values()).every(w => w.connected))), 'sub-apps connect when index.html is opened from disk');
+    ok((await a.evaluate(() => Array.from(window.__board21.state.wins.values()).every(w => w.connected))), 'widgets connect when index.html is opened from disk');
     const b = await ctx.newPage(); await b.goto(url); await b.waitForTimeout(1500);
     await fillNote(a.frameLocator('.win[data-ikey="notes:1"] iframe'), 'from disk');
     await a.waitForTimeout(800);
