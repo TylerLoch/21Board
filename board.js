@@ -844,7 +844,7 @@
     hidden: (() => { try { return sessionStorage.getItem('21board-shape-hint') === 'hidden'; } catch (e) { return false; } })(),
     init() {
       this.el = $('#shape-hint');
-      this.el.innerHTML = '<div class="msg"><b>The board keeps a 16:9 shape.</b> This window is a different shape.</div>' +
+      this.el.innerHTML = '<div class="msg"><b>This board keeps a standard widescreen shape.</b> Do you want to change it to work in any shape?</div>' +
         '<div class="acts"><button class="btn primary small" data-act="unlock">Use the whole window</button>' +
         `<button class="hide" data-act="hide" aria-label="Hide this tip" title="Hide">${svg('close')}</button></div>`;
       this.el.addEventListener('click', e => {
