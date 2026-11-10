@@ -10,7 +10,7 @@
  * That forces a clean download of everything and shows teachers an
  * "Update" prompt inside 21Board.
  */
-const VERSION = '2026.11.10-19';
+const VERSION = '2026.11.10-20';
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION;
 
@@ -21,6 +21,9 @@ const SHELL_FILES = [
   'index.html',
   'board.js',
   'sdk/board21.js',
+  'sdk/board21-dev.js',        // the widget dev window and lab (for widget developers; small)
+  'sdk/dev/board-shell.js',
+  'sdk/lab.html',
   'widgets/registry.js',
   'manifest.webmanifest',
   'icons/icon.svg',

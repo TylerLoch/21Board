@@ -18,6 +18,9 @@ serves static files and never sees any data.
 | Database | `21Board` (version 1) |
 | Object store | `records`, `keyPath: "key"` |
 
+(The widget dev window's test board uses the same layout in a separate database, `21Board-dev`, or in
+memory where storage is blocked, and its own sync channel, `21board-dev-sync`. It never touches `21Board`.)
+
 Every record is a JSON envelope:
 
 ```js

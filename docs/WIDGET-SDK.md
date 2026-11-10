@@ -14,7 +14,7 @@ Widgets talk to the board through one script: `sdk/board21.js`, which defines `w
 - [Moving windows from inside](#moving-windows-from-inside)
 - [Theming](#theming)
 - [Registering a widget](#registering-a-widget)
-- [Testing](#testing)
+- [Testing a widget](#testing-a-widget) (the dev window, building with AI tools, the widget lab)
 - [Submission checklist](#submission-checklist)
 
 ---
@@ -28,9 +28,12 @@ Copy `widgets/_template/` to `widgets/<your-id>/` and edit it. The essentials:
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <script src="../../sdk/board21.js"></script>   <!-- the FIRST script in <head> -->
+  <script type="application/json" id="board21-widget">
+    {"id": "counter", "name": "Counter", "version": "1.0.0", "window": {"width": 320, "height": 240, "minWidth": 200, "minHeight": 160}}
+  </script>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Counter</title>
-  <script src="../../sdk/board21.js"></script>
   <style>
     body { margin: 0; background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font); }
   </style>
@@ -51,6 +54,12 @@ Copy `widgets/_template/` to `widgets/<your-id>/` and edit it. The essentials:
 </body>
 </html>
 ```
+
+The SDK must be the **first script in `<head>`** (a normal `<script src>`: not `async`, `defer` or
+`type="module"`): opened anywhere but inside 21Board, it then shows the widget in a real 21Board
+window (see [Testing a widget](#testing-a-widget)). The `board21-widget` block is the widget's
+**manifest**: its id, name and window size for testing. In 21Board, the entry in
+`widgets/registry.js` is what counts, so keep the two the same.
 
 ---
 
@@ -84,7 +93,7 @@ All methods are safe to call before `ready()` resolves; they wait for it.
 | --- | --- |
 | `Board21.ready()` | Promise that resolves with the **context** once 21Board has introduced itself. |
 | `Board21.context` | The context object (or `null` before ready). |
-| `Board21.embedded` | `true` inside 21Board, `false` in [standalone mode](#testing). |
+| `Board21.embedded` | `true` inside 21Board (or the dev window), `false` in [standalone mode](#testing-a-widget). |
 | `Board21.theme` | `'light'` or `'dark'`. |
 | `Board21.version` | SDK version string. |
 
@@ -105,6 +114,7 @@ The **context**:
   devMode: false,            // Developer mode is on in Settings
   boardVersion: '1.0.0',
   sdkProtocol: 1,
+  host: 'board',             // 'board', 'dev' (the dev window's test board) or 'standalone'
   standalone: false
 }
 ```
@@ -321,7 +331,7 @@ Add an entry to `widgets/registry.js`:
     width: 320, height: 240,           // default CONTENT size (title bar is added)
     minWidth: 200, minHeight: 160,
     // maxWidth, maxHeight             optional
-    // aspectRatio: 16 / 9             optional content aspect-ratio lock
+    // aspectRatio: 16 / 9             optional content aspect-ratio lock (a number, or "16:9")
     // resizable: false                optional
     // dragFromContent: false          if the widget needs drags itself (text, drawing): see "Moving windows from inside"
   },
@@ -334,13 +344,91 @@ Then **bump `VERSION` in `sw.js`** so installed copies download the new files.
 
 ---
 
-## Testing
+## Testing a widget
 
-- **Standalone:** open `widgets/<id>/index.html` directly in a browser (from disk or any local web
-  server). The SDK notices it isn't inside 21Board, saves to `localStorage`, follows the system
-  light/dark setting, and shows a small dropdown in the corner for your menu items.
-- **Inside 21Board without registering:** Settings → Advanced → turn on **Developer mode**, then
-  enter the path (e.g. `widgets/my-widget/index.html`) under **Test a widget**.
+### The dev window
+
+Open a widget anywhere but inside 21Board (its own file, a local web server, GitHub Pages, or an AI
+tool's preview) and the SDK shows it in the **dev window**: the real 21Board, with your widget in an
+ordinary window, drawn as if on a 1920 × 1080 smartboard and scaled to fit. It isn't a look-alike:
+the title bar, resize handles, window menu, *Fill the board*, *Reset*, *Close*, the Widget Picker
+(open a second copy) and Settings (theme, accent, size of windows and menus) are the board's own code
+(`board.js`), so what works here works on the board.
+
+| | |
+| --- | --- |
+| **View** | *Window* (default): follows the window and its open menu. *Board*: the whole screen. |
+| **Screen** | Smartboard 1920 × 1080, laptop 1366 × 768, Chromebook 1280 × 800, tablet 1024 × 768, or the preview's own size. |
+| **Theme, − / +** | Light / dark / auto, and the size of windows and menus (as in Settings). |
+| **Data** | The window's saved content and config as JSON. Edit it and *Send as a change from another tab* (tests your `data` / `config` handlers), copy it, or clear it. |
+| **Events** | Every message between the widget and the board, and the widget's errors (red). |
+| **Checks** | Common problems: the SDK not first, loading files from the internet, localStorage, `alert()`, menu items the board will drop (more than 24, swatches that aren't `#hex`)… Each has *Copy fix request*: a sentence to paste back to the AI. |
+| **⋯** | Reload the widget, reset its window, open another copy, unlock the board shape, show the widget on its own, and *Copy for 21Board* (the HTML with its SDK path set for the `widgets/` folder, plus a `widgets/registry.js` entry). |
+
+The footer shows the window's content size, shape lock, minimum size and board size.
+
+- **Its data is a test copy**, kept apart from real boards (its own database, `21Board-dev`). Where a
+  preview blocks storage, it lasts until the page reloads (the footer says so): *Data ▸ Copy* keeps it.
+- **Errors** from the widget are repeated in the page's console as `[widget] …`, so an AI tool's own
+  error panel sees them.
+- **Just the widget:** *⋯ ▸ Show the widget on its own*, or add `#b21-bare` to the address (or
+  `data-dev="off"` to the SDK's script tag). This is "standalone": data in `localStorage`, window calls
+  ignored, menu items in a small dropdown in the corner.
+- If the SDK **isn't the first script** in `<head>`, the widget runs on its own with a note saying so.
+- Without a manifest block, a widget in this repo's `widgets/` folder uses its `widgets/registry.js`
+  entry; otherwise the window is 400 × 300.
+
+How it works: the SDK keeps the rest of the page as text before any of your code runs
+(`document.write` of an unclosed `<plaintext>`), then loads `sdk/board21-dev.js`. That runs the board
+(`sdk/dev/board-shell.js`: `index.html`'s markup, then `board.js`) in a frame, in **widget test mode**,
+which opens your page in a window as `srcdoc`. Inside 21Board none of this happens: the board names
+each widget's frame before it loads, so the SDK connects at once. After changing `index.html`, run
+`node tools/build-sdk.js` (the tests check it).
+
+### Building with an AI tool (Gemini Canvas, Claude, ChatGPT…)
+
+Ask for **one plain HTML file** whose first script is the SDK at its full address on a 21Board site
+the tool's preview can reach, for example:
+
+```html
+<script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>
+```
+
+(Use a copy that's reachable from where you work: from outside the school network, the GitHub Pages
+test copy.) The preview then shows the widget in the dev window. A prompt that works well:
+
+> Build this as a 21Board widget: ONE plain HTML file (no React, no build step). In `<head>`, right
+> after `<meta charset="utf-8">`, the first script must be exactly `<script src="…/sdk/board21.js"></script>`
+> (no async, defer or type=module). The next line is a manifest:
+> `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
+> Start with `const ctx = await Board21.ready()` and draw from `ctx.data`. Save content with
+> `Board21.save(state)` and preferences with `Board21.saveConfig(cfg)`; handle `Board21.on('data', …)`
+> and `Board21.on('config', …)`. Never use localStorage, sessionStorage, IndexedDB or cookies. Put
+> commands in the window menu with `Board21.menu.set([...])` (at most 24 items, `#hex` colors only)
+> and react in `Board21.on('menu', id => …)`. Style with plain CSS using `var(--b21-bg)`,
+> `--b21-surface`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`.
+> Make NO network requests: no Tailwind or other CDNs, no web fonts, no external images. Fill the
+> window (`html, body {margin:0; height:100%; overflow:hidden}`) with flex/grid and %/vmin so it
+> works at every size without scrolling. Tap targets at least 48px. No alert/confirm/prompt or autofocus.
+
+When it works, *⋯ ▸ Copy for 21Board* gives the file and its registry entry (see
+[Registering a widget](#registering-a-widget)).
+
+Tested so far against stand-ins for how these tools show a preview (the page written into a frame on
+another origin with `document.write`, or opened as a `blob:` address, with and without storage) in
+Chrome and Firefox. Each real tool still needs a quick check.
+
+### The widget lab
+
+`sdk/lab.html` (e.g. `https://boardapp.ccsd21.org/sdk/lab.html`): paste a widget's HTML, or open or
+drop its file, and press **Try it**. Same dev window, for tools whose previews can't load the SDK, and
+for a final check before adding a widget. The pasted code runs in a sandbox with its own empty storage:
+it can't read this site's real boards. *Edit code* goes back to the code.
+
+### Inside 21Board
+
+- **Without registering:** Settings → Advanced → turn on **Developer mode**, then enter the path
+  (e.g. `widgets/my-widget/index.html`) under **Test a widget**.
 - **SDK Playground:** with Developer mode on, open *SDK Playground* from the Widget Picker to try
   every call and watch events.
 - **Sync:** open 21Board in two tabs side by side and use your widget in one.
@@ -350,7 +438,8 @@ Then **bump `VERSION` in `sw.js`** so installed copies download the new files.
 ## Submission checklist
 
 - [ ] Folder `widgets/<id>/` with `index.html`; `id` is lowercase and unique
-- [ ] Includes `<script src="../../sdk/board21.js"></script>` before your own scripts
+- [ ] Includes `<script src="../../sdk/board21.js"></script>` as the first script in `<head>`
+- [ ] If it has a manifest block (`board21-widget`), it matches its registry entry
 - [ ] No external URLs (fonts, CDNs, images, APIs)
 - [ ] No IndexedDB / localStorage / cookies — only `Board21.save` / `saveConfig`
 - [ ] Student-identifying data is **content**, not config

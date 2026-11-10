@@ -5,8 +5,9 @@
   1. Copy this folder to widgets/<your-widget-id>/   (lowercase letters, numbers, dashes)
   2. Add an entry for it in widgets/registry.js
   3. Bump VERSION in sw.js
-  You can open this file directly in a browser to try it: the SDK runs in
-  "standalone" mode and saves to localStorage instead of 21Board.
+  Open this file directly in a browser (or paste it into sdk/lab.html) to try it: the SDK shows it in
+  a real 21Board window, the "dev window". Add #b21-bare to the address for just the widget.
+  Keep the SDK the FIRST script in <head>, and the manifest block below the same as your registry entry.
 
   This folder is NOT in the registry, so it is not shown in 21Board or cached offline.
   Full reference: docs/WIDGET-SDK.md
@@ -14,9 +15,12 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">
+  {"id": "my-widget", "name": "My Widget", "version": "1.0.0", "window": {"width": 320, "height": 240, "minWidth": 200, "minHeight": 160}}
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>My Widget</title>
-<script src="../../sdk/board21.js"></script>
 <style>
   html, body { margin: 0; height: 100%; }
   body {

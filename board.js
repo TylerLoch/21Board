@@ -31,7 +31,18 @@
   const BOARD_VERSION = '1.0.0';
   const SDK_PROTOCOL = 1;
   const FORMAT_VERSION = 1;
-  const DB_NAME = '21Board';
+  // Widget test mode ("lab"): the widget dev window (sdk/board21-dev.js) runs this board in a frame with one
+  // widget given as HTML source, e.g. inside an AI tool's preview. Its data is kept apart from real boards
+  // (another database, or memory where storage is blocked) and nothing is installed or cached.
+  // See section 15 and docs/WIDGET-SDK.md, "Testing a widget".
+  const LAB = (() => {
+    try {
+      const el = location.protocol === 'about:' && document.getElementById('b21-lab');
+      const v = el ? JSON.parse(el.textContent) : null;
+      return v && v.widget && typeof v.src === 'string' ? v : null;
+    } catch (e) { return null; }
+  })();
+  const DB_NAME = LAB ? '21Board-dev' : '21Board';
   const DB_STORE = 'records';
   const TITLE_H = 40;          // window title bar height (px)
   const GAP = 8;               // spacing used when windows snap next to each other
@@ -192,12 +203,14 @@
     if (!a || typeof a !== 'object' || !ID_RE.test(a.id || '') || typeof a.entry !== 'string') return null;
     const w = a.window || {};
     const pos = (v, d) => (typeof v === 'number' && v > 0 && isFinite(v)) ? v : d;
+    const ratio = v => { const m = typeof v === 'string' && v.match(/^\s*(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)\s*$/); return m ? pos(m[1] / m[2], null) : pos(v, null); };   // 1.5 or "4:3"
     return {
       id: a.id,
       name: String(a.name || a.id),
       description: String(a.description || ''),
       version: String(a.version || ''),
       entry: a.entry,
+      srcdoc: typeof a.srcdoc === 'string' ? a.srcdoc : null,   // test mode: the widget's HTML itself
       files: Array.isArray(a.files) ? a.files : [a.entry],
       icon: typeof a.icon === 'string' && /^\s*<svg/i.test(a.icon) ? a.icon : `<svg viewBox="0 0 24 24">${ICONS.widget}</svg>`,
       color: /^#[0-9a-f]{3,8}$/i.test(a.color || '') ? a.color : '#64748b',
@@ -208,7 +221,7 @@
         width: pos(w.width, 400), height: pos(w.height, 300),
         minWidth: pos(w.minWidth, 160), minHeight: pos(w.minHeight, 100),
         maxWidth: pos(w.maxWidth, Infinity), maxHeight: pos(w.maxHeight, Infinity),
-        aspectRatio: pos(w.aspectRatio, null), resizable: w.resizable !== false,
+        aspectRatio: ratio(w.aspectRatio), resizable: w.resizable !== false,
         // true: click-only widget, can be moved by dragging anywhere inside it.
         // false: the widget needs drags itself (typing/selecting text, drawing): title bar or two fingers.
         dragFromContent: w.dragFromContent !== false
@@ -216,12 +229,13 @@
     };
   }
 
-  const REGISTRY = (self.BOARD21_WIDGETS || []).map(a => normalizeWidget(a)).filter(Boolean);
+  const REGISTRY = (LAB ? [Object.assign({}, LAB.widget, { entry: 'about:srcdoc', srcdoc: LAB.src })] : (self.BOARD21_WIDGETS || []))
+    .map(a => normalizeWidget(a)).filter(Boolean);
   let catalog = new Map(REGISTRY.map(a => [a.id, a]));
 
   function rebuildCatalog() {
     catalog = new Map(REGISTRY.map(a => [a.id, a]));
-    for (const d of (S.settings.devWidgets || [])) {
+    for (const d of (LAB ? [] : S.settings.devWidgets || [])) {
       const widget = normalizeWidget({ id: d.id, name: d.name, entry: d.entry, color: '#64748b', description: 'Developer test widget' }, { dev: true });
       if (widget && !catalog.has(widget.id)) catalog.set(widget.id, widget);
     }
@@ -262,10 +276,33 @@
     }
   };
 
+  // Test mode where the preview blocks storage: the same records, kept in memory until the page reloads.
+  const MemDB = {
+    map: new Map(),
+    tx(fn) {
+      return new Promise((resolve, reject) => {
+        const queue = [];
+        let result;
+        const req = run => { const r = { result: undefined, onsuccess: null }; queue.push(() => { r.result = run(); if (r.onsuccess) r.onsuccess(); }); return r; };
+        const hit = (k, q) => (q && typeof q === 'object' && 'lower' in q ? k >= q.lower && k <= q.upper : k === q);
+        const s = {
+          getAll: () => req(() => Array.from(this.map.keys()).sort().map(k => clone(this.map.get(k)))),
+          get: k => req(() => clone(this.map.get(k))),
+          put: v => req(() => { this.map.set(v.key, clone(v)); }),
+          delete: q => req(() => { for (const k of Array.from(this.map.keys())) if (hit(k, q)) this.map.delete(k); }),
+          clear: () => req(() => { this.map.clear(); })
+        };
+        try { fn(s, v => { result = v; }); } catch (err) { reject(err); return; }
+        Promise.resolve().then(() => { while (queue.length) queue.shift()(); resolve(result); });
+      });
+    }
+  };
+
   const Store = {
     db: null,
     opening: null,
     failed: false,
+    mem: null,           // MemDB in test mode when IndexedDB is blocked
 
     open() {
       if (this.db) return Promise.resolve(this.db);
@@ -291,6 +328,7 @@
 
     // Run fn(objectStore, setResult) in a transaction; resolves when it completes.
     async tx(mode, fn, retry = true) {
+      if (this.mem) return this.mem.tx(fn);
       if (this.failed) return mode === 'readonly' ? undefined : null;
       const db = await this.open();
       try {
@@ -392,7 +430,7 @@
     chan: null,
     init() {
       if ('BroadcastChannel' in self) {
-        this.chan = new BroadcastChannel('21board-sync');
+        this.chan = new BroadcastChannel(LAB ? '21board-dev-sync' : '21board-sync');
         this.chan.onmessage = e => this.receive(e.data);
       } else {
         window.addEventListener('storage', e => {
@@ -1262,10 +1300,13 @@
       f.setAttribute('sandbox', SANDBOX);
       f.setAttribute('allow', ['fullscreen', 'clipboard-read', 'clipboard-write', 'autoplay', ...this.widget.permissions].join('; '));
       f.addEventListener('load', () => this.onFrameLoad());
+      // Tells the SDK it's inside 21Board, before any of its code runs. (Set before inserting the frame:
+      // a later change doesn't reach the widget's window.name.)
+      f.name = 'b21-board:' + this.ikey;
       this.bodyEl.insertBefore(f, this.loadingEl);
       this.iframe = f;
       this.loadingEl.classList.remove('done');
-      f.src = this.widget.entry;
+      if (this.widget.srcdoc != null) f.srcdoc = this.widget.srcdoc; else f.src = this.widget.entry;
     }
 
     onFrameLoad() {
@@ -1367,7 +1408,9 @@
 
     post(type, payload) {
       if (!this.connected && type !== 'init') return;
-      try { this.iframe.contentWindow.postMessage(Object.assign({ b21: SDK_PROTOCOL, type }, payload || {}), ORIGIN); } catch (e) { /* frame gone */ }
+      const msg = Object.assign({ b21: SDK_PROTOCOL, type }, payload || {});
+      if (LAB) LabBridge.log('out', this, msg);
+      try { this.iframe.contentWindow.postMessage(msg, ORIGIN); } catch (e) { /* frame gone */ }
     }
 
     ack(reqId, ok, result, error) {
@@ -1384,6 +1427,7 @@
 
     // ---- SDK messages from the widget
     handle(m) {
+      if (LAB) LabBridge.log('in', this, m);
       switch (m.type) {
         case 'hello': {
           if (!this.inst) return;
@@ -1397,7 +1441,8 @@
               widgetId: this.widget.id, widgetName: this.widget.name, widgetVersion: this.widget.version, instance: inst.n,
               data: clone(S.data.get(this.ikey)), config: clone(S.conf.get(this.ikey)),
               theme, palette: paletteFor(theme), window: this.info(),
-              locale: navigator.language || 'en-US', devMode: !!S.settings.devMode
+              locale: navigator.language || 'en-US', devMode: !!S.settings.devMode || !!LAB,
+              host: LAB ? 'dev' : 'board'   // 'dev': the widget dev window (the SDK then reports errors to it)
             }
           });
           this.loadingEl.classList.add('done');
@@ -1427,6 +1472,7 @@
           if (Menu.win === this) Menu.render();
           break;
         case 'toast': toast(String(m.text || '').slice(0, 200)); break;
+        case 'devLog': if (LAB) LabBridge.post('log', { level: String(m.level || 'error'), text: String(m.text || '').slice(0, 4000) }); break;
       }
     }
 
@@ -1490,6 +1536,7 @@
   // Messages from widget iframes.
   window.addEventListener('message', e => {
     const m = e.data;
+    if (LAB) LabBridge.relayUp(e);
     if (!m || m.b21 !== SDK_PROTOCOL || typeof m.type !== 'string') return;
     if (ORIGIN !== '*' && e.origin !== location.origin) return;
     for (const w of S.wins.values()) {
@@ -2496,15 +2543,16 @@
         <div class="row stack"><div><div class="lbl">Saved widget windows</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
           <div class="inst-list">${instHTML}</div></div>
 
-        <h3>Storage &amp; offline</h3>
+        ${LAB ? `<h3>Widget test mode</h3>
+        <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : `<h3>Storage &amp; offline</h3>
         <div class="row"><div class="lbl">Offline</div><div class="hint" id="st-offline" style="text-align:right">Checking…</div></div>
         <div class="row"><div><div class="lbl">Data protection</div><div class="hint" id="st-persist-hint"></div></div><div id="st-persist" style="flex:0 0 auto"></div></div>
         <div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
-        <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>
+        <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>`}
 
         <h3>Advanced</h3>
-        <div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget by its path.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>
-        ${st.devMode ? `<div class="row stack"><div class="lbl">Test a widget</div>
+        ${LAB ? '' : `<div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget by its path.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>`}
+        ${st.devMode && !LAB ? `<div class="row stack"><div class="lbl">Test a widget</div>
           <div style="display:flex;gap:8px"><input type="text" class="text-input" id="set-dev-path" placeholder="widgets/my-widget/index.html" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="dev-add">${svg('plus')}Add</button></div>
           ${devWidgets ? `<div class="inst-list">${devWidgets}</div>` : ''}</div>` : ''}
         <div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Deletes all windows, content and settings on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase</button></div>
@@ -3087,6 +3135,119 @@
   }
 
   // =====================================================================
+  // 15b. Widget test mode: the bridge to the dev window (LAB only)
+  // ---------------------------------------------------------------------
+  // The dev window (sdk/board21-dev.js) shows this board scaled into an AI tool's preview, so a widget can
+  // be tried in a real window: title bar, resize handles, menu, Settings. Messages with {b21lab: 1}:
+  //   to the dev window:   ready {storage}, view {win, menu, info, active} (for its camera),
+  //                        log {dir, mtype, summary, json} (SDK messages), log {level, text} (widget errors),
+  //                        state {instances, focused, settings, scale, shape}, relay {data}
+  //   from the dev window: {cmd, args}: theme, accent, scale, shape, reload, reset, clear, setData, open,
+  //                        state, relay
+  // Messages from anything but the parent frame are ignored. Other messages a widget posts (e.g. an AI
+  // tool's own preview APIs) are relayed up, and the dev window relays the answers back down.
+  // =====================================================================
+  const LabBridge = {
+    viewSig: '',
+    stateT: 0,
+    start() {
+      window.addEventListener('message', e => {
+        const m = e.data;
+        if (e.source !== window.parent || !m || m.b21lab !== 1 || typeof m.cmd !== 'string') return;
+        this.run(m.cmd, m.args && typeof m.args === 'object' ? m.args : {});
+      });
+      const id = REGISTRY[0] && REGISTRY[0].id;
+      const open = Array.from(S.insts.values()).filter(i => i.widgetId === id && i.open);
+      if (id && !open.length) openWidget(id);
+      else if (open.length) focusWin(ikeyOf(id, open[0].n));
+      this.post('ready', { storage: Store.mem ? 'memory' : 'indexeddb', accents: Object.keys(ACCENTS) });
+      this.sendState();
+      const tick = () => { this.view(); setTimeout(tick, 200); };
+      tick();
+    },
+    post(type, payload) {
+      try { window.parent.postMessage(Object.assign({ b21lab: 1, type }, payload || {}), '*'); } catch (e) { /* no dev window */ }
+    },
+    // Where the focused window and its menu are on this board's screen, for the dev window's camera.
+    view() {
+      // The focused window, else the first open one (tapping the empty board shouldn't move the camera).
+      const w = (S.focused && S.wins.get(S.focused)) || Array.from(S.wins.values())[0] || null;
+      const box = el => { const r = el.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), w: Math.round(r.width), h: Math.round(r.height) }; };
+      const menu = $('#menu.open');
+      let info = null;
+      if (w && w.disp) {
+        const c = w.constraints(), d = w.disp;
+        const num = v => (isFinite(v) ? Math.round(v) : null);
+        info = { ikey: w.ikey, w: num(d.w), h: num(d.h - TITLE_H), ratio: c.ratio || null, minW: num(c.minW), minH: num(c.minH - TITLE_H),
+          maxW: num(c.maxW), maxH: num(c.maxH - TITLE_H), resizable: c.resizable !== false, maximized: !!(w.inst && w.inst.maximized) };
+      }
+      const v = { win: w ? box(w.el) : null, menu: menu ? box(menu) : null, info, scale: boardScale(), shape: freeShape() ? 'free' : '16:9', active: Inter.active };
+      const sig = JSON.stringify(v);
+      if (sig === this.viewSig) return;
+      this.viewSig = sig;
+      this.post('view', v);
+    },
+    log(dir, w, m) {
+      let json = '';
+      try { json = JSON.stringify(m); } catch (e) { json = '(not JSON)'; }
+      const t = m && m.type;
+      const sum = t === 'menu' && dir === 'in' ? `${(m.items || []).length} items` : t === 'menu' ? JSON.stringify(m.id)
+        : t === 'window' && dir === 'in' ? `${m.op}(${(m.args || []).map(a => JSON.stringify(a)).join(', ')})`
+        : t === 'window' ? `${m.info && m.info.width}×${m.info && m.info.height}${m.info && m.info.maximized ? ' maximized' : ''}`
+        : (t === 'save' || t === 'saveConfig' || t === 'data' || t === 'config') ? `${json.length} bytes` : t === 'ack' ? (m.ok ? 'ok' : 'failed: ' + m.error) : '';
+      this.post('log', { dir, ikey: w.ikey, mtype: String(t), summary: sum, json: json.length > 3000 ? json.slice(0, 3000) + '…' : json });
+      if (/^(save|saveConfig|hello|data|config)$/.test(t)) this.stateSoon();
+    },
+    stateSoon() { clearTimeout(this.stateT); this.stateT = setTimeout(() => this.sendState(), 120); },
+    sendState() {
+      this.post('state', {
+        instances: Array.from(S.insts.values()).sort((a, b) => a.n - b.n).map(i => {
+          const ik = ikeyOf(i.widgetId, i.n);
+          return { ikey: ik, n: i.n, open: !!i.open, data: S.data.has(ik) ? S.data.get(ik) : null, config: S.conf.has(ik) ? S.conf.get(ik) : null };
+        }),
+        focused: S.focused, settings: { theme: S.settings.theme, accent: S.settings.accent }, scale: boardScale(), shape: freeShape() ? 'free' : '16:9'
+      });
+    },
+    // A message a widget posted that isn't for 21Board: pass it up (e.g. to the AI tool hosting the preview).
+    relayUp(e) {
+      const m = e.data;
+      if ((m && (m.b21 === SDK_PROTOCOL || m.b21lab === 1)) || e.source === window.parent) return;
+      for (const w of S.wins.values()) if (w.iframe && w.iframe.contentWindow === e.source) { try { this.post('relay', { data: m }); } catch (err) { /* not cloneable */ } return; }
+    },
+    async run(cmd, a) {
+      const focused = () => S.wins.get(S.focused) || Array.from(S.wins.values())[0] || null;
+      switch (cmd) {
+        case 'theme': updateSettings({ theme: ['light', 'dark', 'system'].includes(a.value) ? a.value : 'system' }); break;
+        case 'accent': if (accentOf(a.value)) updateSettings({ accent: a.value }); break;
+        case 'scale': if (a.dir) scaleStep(a.dir > 0 ? 1 : -1); else setBoardScale(+a.value); if (Settings.isOpen) Settings.render(); break;
+        case 'shape': setBoardShape(a.value === 'free' ? 'free' : '16:9'); if (Settings.isOpen) Settings.render(); break;
+        case 'reload': for (const w of S.wins.values()) w.reload(); break;
+        case 'reset': { const w = focused(); if (w) await resetWin(w.ikey); break; }
+        case 'clear': {   // forget every test window's content and config
+          const b = S.boardId, keys = Array.from(S.insts.keys());
+          for (const ik of keys) { S.data.delete(ik); S.conf.delete(ik); }
+          await Promise.all(keys.flatMap(ik => [Writer.del(Keys.data(b, ik)), Writer.del(Keys.conf(b, ik))]));
+          for (const w of S.wins.values()) w.reload();
+          break;
+        }
+        case 'setData': {   // as if the content or config changed in another tab
+          const w = S.wins.get(a.ikey) || focused();
+          if (!w) break;
+          const conf = a.kind === 'config', map = conf ? S.conf : S.data, key = (conf ? Keys.conf : Keys.data)(S.boardId, w.ikey);
+          const v = a.value === undefined ? null : clone(a.value);
+          if (v === null) { map.delete(w.ikey); await Writer.del(key); } else { map.set(w.ikey, v); await Writer.put(key, conf ? 'conf' : 'data', v); }
+          w.post(conf ? 'config' : 'data', conf ? { config: v, reason: 'remote' } : { data: v, reason: 'remote' });
+          break;
+        }
+        case 'open': if (REGISTRY[0]) openWidget(REGISTRY[0].id); break;
+        case 'relay': for (const w of S.wins.values()) { try { w.iframe.contentWindow.postMessage(a.data, '*'); } catch (e) { /* gone */ } } break;
+        case 'state': break;
+      }
+      this.stateSoon();
+    }
+  };
+
+  // =====================================================================
   // 16. Boot
   // =====================================================================
   function initUI() {
@@ -3153,15 +3314,18 @@
   }
 
   async function boot() {
-    Install.init(); // before anything async: Chrome can fire beforeinstallprompt early
+    if (!LAB) Install.init(); // before anything async: Chrome can fire beforeinstallprompt early
     initUI();
     Sync.init();
     try {
       await Store.open();
     } catch (err) {
-      console.error('21Board: IndexedDB unavailable', err);
-      Store.failed = true;
-      toast('This browser is blocking storage, so nothing will be saved. Try a normal (not private) window.', { timeout: 10000 });
+      if (LAB) Store.mem = MemDB;   // an AI tool's preview may block storage: keep this session's data in memory
+      else {
+        console.error('21Board: IndexedDB unavailable', err);
+        Store.failed = true;
+        toast('This browser is blocking storage, so nothing will be saved. Try a normal (not private) window.', { timeout: 10000 });
+      }
     }
     await reloadAll();
     updateZoom();
@@ -3170,6 +3334,7 @@
     applySettings();
     applyBoard();
     updateHint();
+    if (LAB) { LabBridge.start(); return; }   // test mode: no offline cache, install, file opening or backup reminders
     registerSW();
     setupFileLaunch();
     Persist.init();

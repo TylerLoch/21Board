@@ -32,6 +32,29 @@ async function freeBoard(page) {
 // Notes shows its text (with tappable links) until tapped; tap it, then type.
 async function fillNote(f, text) { await f.locator('#view').click(); await f.locator('#t').fill(text); }
 
+// Pages for the widget dev window tests: a widget as an AI tool would make it, and stand-ins for how AI previews
+// show it (fetch the code, then document.write it or open it as a blob: URL) on another origin than the page.
+const DEV_WIDGET = sdk => `<!DOCTYPE html><html lang="en"><head><script src="${sdk}"></script>
+<script type="application/json" id="board21-widget">{"id":"counter","name":"Counter","version":"1.0.0","window":{"width":320,"height":240,"minWidth":200,"minHeight":150,"aspectRatio":"4:3"}}</script>
+<meta charset="utf-8"><title>Counter</title><style>html,body{margin:0;height:100%}body{display:grid;place-items:center;font:700 30vmin/1 system-ui;background:var(--b21-bg);color:var(--b21-text)}</style></head>
+<body><div id="n">0</div><script>
+window.__runs = (window.__runs || 0) + 1;
+let st = { count: 0 };
+Board21.ready().then(ctx => { st = Object.assign(st, ctx.data); document.getElementById('n').textContent = st.count;
+  Board21.menu.set([{ id: 'add', label: 'Add one' }, { separator: true }, { label: 'Color', swatches: [{ id: 'red', label: 'Red', color: '#dc2626' }, { id: 'bad', label: 'Bad', color: 'red' }] }]); });
+Board21.on('data', d => { st = Object.assign({ count: 0 }, d); document.getElementById('n').textContent = st.count; });
+Board21.on('menu', id => { if (id === 'add') { st.count++; document.getElementById('n').textContent = st.count; Board21.save(st); } });
+setTimeout(() => { throw new Error('boom from the widget'); }, 400);
+</script></body></html>`;
+const DEV_ROUTES = {
+  '/__dev/widget.html': () => DEV_WIDGET(BASE + 'sdk/board21.js'),
+  '/__dev/late.html': () => DEV_WIDGET(BASE + 'sdk/board21.js').replace(/<script src="[^"]*board21\.js"><\/script>/, '').replace('<body>', `<body><script src="${BASE}sdk/board21.js"></script>`),
+  '/__dev/shim-write.html': () => `<!doctype html><script>fetch('widget.html').then(r => r.text()).then(h => { document.open(); document.write(h); document.close(); });</script>`,
+  '/__dev/shim-blob.html': () => `<!doctype html><script>fetch('widget.html').then(r => r.text()).then(h => location.replace(URL.createObjectURL(new Blob([h], { type: 'text/html' }))));</script>`,
+  // The page around the preview, on another origin (localhost vs 127.0.0.1), like gemini.google.com around its preview.
+  '/__dev/top.html': q => `<!doctype html><body style="margin:0"><iframe src="${BASE.replace('127.0.0.1', 'localhost')}__dev/${q.get('s')}" sandbox="allow-scripts${q.get('opaque') ? '' : ' allow-same-origin'}" style="width:760px;height:560px;border:0"></iframe>`
+};
+
 const SUITES = [
   ['Windows, data and multi-tab sync', async (browser) => {
   const wins = page => page.evaluate(() => Object.fromEntries(Array.from(window.__board21.state.wins.values()).sort((a,b)=>a.ikey<b.ikey?-1:1).map(w => [w.ikey, Object.assign({}, w.disp)])));
@@ -403,10 +426,11 @@ const SUITES = [
 
     // ---- standalone widget
     const sp = await ctx.newPage();
-    await sp.goto(BASE + 'widgets/timer/index.html'); await sp.waitForTimeout(600);
-    ok(await sp.evaluate(() => Board21.context && Board21.context.standalone === true), 'widget runs standalone when opened directly');
+    const t0 = Date.now();
+    await sp.goto(BASE + 'widgets/timer/index.html#b21-bare'); await sp.waitForFunction(() => window.Board21 && Board21.context, null, { timeout: 3000 });
+    ok(await sp.evaluate(() => Board21.context.standalone === true && !document.getElementById('b21-dev')) && Date.now() - t0 < 2500, 'with #b21-bare a widget runs on its own, at once');
     await sp.click('#go'); await sp.waitForTimeout(300); await sp.reload(); await sp.waitForTimeout(500);
-    ok(await sp.evaluate(() => (JSON.parse(localStorage.getItem('21board:standalone:/widgets/timer/index.html')) || {}).data.endsAt > 0), 'standalone save persists to localStorage');
+    ok(await sp.evaluate(() => (JSON.parse(localStorage.getItem('21board:standalone:timer')) || {}).data.endsAt > 0), 'standalone save persists to localStorage (by widget id)');
 
     // ---- phone width: no horizontal overflow of the panel
     const ph = await browser.newContext({ viewport: { width: 375, height: 700 }, hasTouch: true });
@@ -1482,6 +1506,115 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Widget dev window', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 760, height: 560 } });
+    const page = await ctx.newPage();
+    const errors = [], consoleErr = [], requests = [];
+    page.on('pageerror', e => { if (!/boom from the widget/.test(e.message)) errors.push(e.message); });
+    page.on('console', m => { if (m.type() === 'error') consoleErr.push(m.text()); });
+    const kids = f => page.frames().filter(x => x.parentFrame() === f);
+    // A point on the test board -> a point on the page (through the preview frame and the dev window's camera).
+    const at = async (preview, board, sel, fx = 0.5, fy = 0.5) => {
+      const off = preview === page.mainFrame() ? { x: 0, y: 0 } : await page.evaluate(() => { const r = document.querySelector('iframe').getBoundingClientRect(); return { x: r.left, y: r.top }; });
+      const cam = await preview.evaluate(() => { const d = window.__board21DevWindow, r = d.frame.getBoundingClientRect(); return { k: d.camera().k, x: r.left, y: r.top }; });
+      const b = await board.evaluate(([sel, fx, fy]) => { const r = document.querySelector(sel).getBoundingClientRect(); return { x: r.left + r.width * fx, y: r.top + r.height * fy }; }, [sel, fx, fy]);
+      return { x: off.x + cam.x + b.x * cam.k, y: off.y + cam.y + b.y * cam.k, k: cam.k };
+    };
+    const tap = async (preview, board, sel) => { const p = await at(preview, board, sel); await page.mouse.click(p.x, p.y); await page.waitForTimeout(500); };
+
+    // ---- Gemini-like preview: the code is document.write()n into a frame on another origin.
+    await page.goto(BASE + '__dev/top.html?s=shim-write.html'); await page.waitForTimeout(3500);
+    let preview = kids(page.mainFrame())[0], board = kids(preview)[0], widget = board && kids(board)[0];
+    ok(!!board && await preview.evaluate(() => !!document.getElementById('b21-dev') && !window.__runs), 'in an AI-style preview the widget is shown in the dev window (its code doesn\'t run in the preview page)');
+    ok(!!widget && await widget.evaluate(() => window.__runs === 1 && innerWidth === 320 && innerHeight === 240 && Board21.context.host === 'dev'),
+      'the widget runs once, inside a real board window, at the size its manifest asks for (320 × 240)');
+    ok(await board.evaluate(() => window.__board21.state.wins.size === 1 && document.querySelector('.win .win-label .name').textContent === 'Counter'), 'the window has the real title bar with the widget\'s name');
+    await tap(preview, board, '.win-label');
+    const menu = await board.evaluate(() => ({ items: [...document.querySelectorAll('#menu .menu-item')].map(e => e.textContent.trim()), swatches: document.querySelectorAll('#menu .swatch').length }));
+    ok(menu.items.includes('Add one') && menu.items.includes('Fill the board') && menu.items.includes('Close') && menu.swatches === 1, `tapping the name opens the real window menu (${menu.items.join(', ')}; the swatch that isn't a #hex color is left out)`);
+    await page.waitForTimeout(400);
+    await tap(preview, board, '#menu [data-id="add"]');
+    ok(await widget.evaluate(() => document.getElementById('n').textContent === '1') && await board.evaluate(() => JSON.stringify([...window.__board21.state.data.values()]) === '[{"count":1}]'), 'a menu item reaches the widget, and its save is stored');
+    // Resize from the bottom-right handle, through the camera.
+    const w0 = await widget.evaluate(() => innerWidth);
+    await board.evaluate(() => window.__board21.focusWin('counter:1')); await page.waitForTimeout(300);
+    const g = await at(preview, board, '.win .grip.se', 0.5, 0.5);
+    await page.mouse.move(g.x, g.y); await page.mouse.down(); for (let i = 1; i <= 8; i++) { await page.mouse.move(g.x + i * 8, g.y + i * 6); await page.waitForTimeout(16); } await page.mouse.up(); await page.waitForTimeout(800);
+    const w1 = await widget.evaluate(() => [innerWidth, innerHeight]);
+    ok(w1[0] > w0 + 40 && Math.abs(w1[0] / w1[1] - 4 / 3) < 0.03, `the resize handles work through the camera and keep the 4:3 shape (${w0} → ${w1[0]} × ${w1[1]})`);
+    ok(consoleErr.some(t => t.includes('[widget]') && t.includes('boom from the widget')), 'the widget\'s errors show in the preview\'s console as "[widget] …" (where an AI tool sees them)');
+    ok(await preview.evaluate(() => { const r = document.getElementById('b21-dev').shadowRoot; return r.querySelector('[data-k="evn"]').classList.contains('err'); }), 'the Events button shows the error count');
+    // Toolbar: theme and size go to the real board.
+    await preview.evaluate(() => { const s = document.getElementById('b21-dev').shadowRoot.querySelector('[data-k="theme"]'); s.value = 'dark'; s.dispatchEvent(new Event('change', { bubbles: true })); });
+    await page.waitForTimeout(500);
+    ok(await widget.evaluate(() => Board21.theme === 'dark' && getComputedStyle(document.documentElement).getPropertyValue('--b21-bg').trim() === '#1e1e1e'), 'Theme ▸ Dark reaches the widget');
+    await preview.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="larger"]').click()); await page.waitForTimeout(500);
+    ok(await board.evaluate(() => window.__board21.state.board.scale === 0.9), 'Size + changes the board\'s size of windows and menus');
+    // Data panel: shows the save; an edit is sent as a change from another tab.
+    await preview.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-drawer="data"]').click()); await page.waitForTimeout(500);
+    ok(await preview.evaluate(() => JSON.parse(document.getElementById('b21-dev').shadowRoot.querySelector('[data-k="data"]').value).count === 1), 'Data shows what the widget saved');
+    await preview.evaluate(() => { const r = document.getElementById('b21-dev').shadowRoot; r.querySelector('[data-k="data"]').value = '{"count": 7}'; r.querySelector('[data-act="apply"]').click(); });
+    await page.waitForTimeout(500);
+    ok(await widget.evaluate(() => document.getElementById('n').textContent === '7'), 'an edited value is sent to the widget as a change from another tab');
+    await preview.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-drawer="checks"]').click()); await page.waitForTimeout(300);
+    const checks = await preview.evaluate(() => [...document.getElementById('b21-dev').shadowRoot.querySelectorAll('.chk b')].map(b => b.textContent));
+    ok(checks.some(t => /swatch/i.test(t) && /#hex/.test(t)), `Checks point out problems, e.g. the bad swatch color (${checks.length} found)`);
+    // Board view shows the whole screen.
+    await preview.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-view="board"]').click()); await page.waitForTimeout(500);
+    ok(await preview.evaluate(() => { const d = window.__board21DevWindow, r = d.frame.getBoundingClientRect(); return r.width <= 760 + 1 && Math.abs(r.width / r.height - 16 / 9) < 0.01; }), 'Board view shows the whole 1920 × 1080 screen');
+
+    // ---- blob: preview, and a fully sandboxed preview (no storage).
+    await page.goto(BASE + '__dev/top.html?s=shim-blob.html'); await page.waitForTimeout(3500);
+    preview = kids(page.mainFrame())[0]; board = kids(preview)[0]; widget = board && kids(board)[0];
+    ok(!!widget && await widget.evaluate(() => window.__runs === 1 && Board21.context.host === 'dev'), 'it works when the preview is a blob: page too');
+    await page.goto(BASE + '__dev/top.html?s=shim-write.html&opaque=1'); await page.waitForTimeout(3500);
+    preview = kids(page.mainFrame())[0]; board = kids(preview)[0];
+    const opq = board && await board.evaluate(() => ({ mem: !!window.__board21.store.mem, wins: window.__board21.state.wins.size }));
+    const foot = await preview.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('.foot').textContent);
+    ok(opq && opq.mem && opq.wins === 1 && /until this page reloads/.test(foot), `where the preview blocks storage, the test board keeps data in memory and says so (${JSON.stringify(opq)}; "${foot.slice(-60)}")`);
+
+    // ---- A widget's own file, opened directly: its registry entry gives the window size; its files load.
+    page.on('request', r => requests.push(r.url()));
+    await page.goto(BASE + 'widgets/notes/index.html'); await page.waitForTimeout(3000);
+    board = kids(page.mainFrame())[0]; widget = board && kids(board)[0];
+    ok(!!widget && await widget.evaluate(() => Board21.context.widgetId === 'notes' && Board21.context.host === 'dev'), 'opening a widget\'s file shows it in the dev window');
+    ok(await widget.evaluate(async () => { await document.fonts.ready; await new Promise(r => setTimeout(r, 300)); return [...document.fonts].some(f => /Crayon/.test(f.family)) && !!document.getElementById('t'); }), 'its own files (relative paths) still load');
+    // ---- Inside the real board, widgets never load the dev window. (Its own context: the board's offline
+    // cache would answer the other test pages.)
+    const ctxB = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    const pb = await ctxB.newPage(), breq = [];
+    pb.on('request', r => breq.push(r.url()));
+    await pb.goto(BASE); await pb.waitForTimeout(600);
+    await pb.evaluate(() => window.__board21.catalog().forEach(w => window.__board21.openWidget(w.id))); await pb.waitForTimeout(2500);
+    ok(!breq.some(u => /board21-dev\.js|board-shell\.js/.test(u)) && await pb.evaluate(() => [...window.__board21.state.wins.values()].every(w => w.connected && w.iframe.contentWindow.Board21.context.host === 'board')), 'inside 21Board, widgets connect at once and never load the dev window');
+    await ctxB.close();
+    // ---- SDK not first: the widget runs on its own, with a note saying why.
+    await page.goto(BASE + '__dev/late.html'); await page.waitForTimeout(800);
+    ok(await page.evaluate(() => Board21.context && Board21.context.standalone && /first script/.test(document.querySelector('[data-b21-note]').textContent)), 'if the SDK isn\'t the first script, the widget runs on its own with a note saying how to fix it');
+    // ---- ⋯ ▸ Show the widget on its own, and back.
+    await page.goto(BASE + '__dev/widget.html'); await page.waitForTimeout(2500);
+    await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="bare"]').click()); await page.waitForTimeout(1000);
+    const bare = kids(page.mainFrame())[1];   // the second frame: the widget on its own
+    ok(!!bare && await bare.evaluate(() => Board21.context.standalone && window.__runs === 1 && innerWidth > 700), '⋯ ▸ Show the widget on its own');
+    await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="unbare"]').click()); await page.waitForTimeout(1500);
+    ok(await page.evaluate(() => { const r = document.getElementById('b21-dev').shadowRoot; return r.querySelector('.barewrap').hidden && !r.querySelector('.barewrap iframe'); }) && kids(page.mainFrame()).length === 1, '"Back to the window" returns to the dev window');
+
+    // ---- The lab page: paste a widget, try it in a sandbox that can't see real boards.
+    await page.goto(BASE + 'sdk/lab.html'); await page.waitForTimeout(400);
+    await page.click('#sample'); await page.click('#run'); await page.waitForTimeout(3500);
+    board = kids(page.mainFrame())[0]; widget = board && kids(board)[0];
+    ok(!!widget && await board.evaluate(() => self.origin === 'null' && !!window.__board21.store.mem) && await widget.evaluate(() => Board21.context.widgetId === 'counter' && innerWidth === 320),
+      'the lab page runs a pasted widget in a real window, sandboxed with its own empty storage');
+    await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="edit"]').click()); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => !document.getElementById('editor').hidden && !document.getElementById('b21-dev')), '"Edit code" goes back to the code');
+
+    // ---- The board shell is up to date with index.html.
+    let built = true;
+    try { require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tools', 'build-sdk.js'), '--check'], { stdio: 'pipe' }); } catch (e) { built = false; }
+    ok(built, 'sdk/dev/board-shell.js matches index.html (node tools/build-sdk.js)');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');
@@ -1507,6 +1640,7 @@ const SUITES = [
 (async () => {
   const server = http.createServer((req, res) => {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (p.startsWith('/__dev/') && DEV_ROUTES[p]) { res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' }); res.end(DEV_ROUTES[p](new URL(req.url, 'http://x').searchParams)); return; }
     if (p.endsWith('/')) p += 'index.html';
     const file = path.join(ROOT, p);
     if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('Not found'); return; }

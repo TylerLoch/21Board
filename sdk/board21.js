@@ -15,19 +15,42 @@
  * Full reference: docs/WIDGET-SDK.md
  *
  * Talks to the board with window.postMessage, so a widget never touches
- * IndexedDB itself. If the page is opened on its own (not inside 21Board) the
- * SDK runs in "standalone" mode: data goes to localStorage and window calls
- * are ignored, so you can develop and test a widget by opening its file.
+ * IndexedDB itself.
+ *
+ * Opened anywhere else (its own file, a local server, an AI tool's preview such
+ * as Gemini Canvas), the SDK shows the widget inside a real 21Board window: the
+ * "dev window" (sdk/board21-dev.js), with the real title bar, resize handles,
+ * menu and Settings. That needs this script to be the FIRST script in <head>.
+ * Add #b21-bare to the address (or data-dev="off" to this script tag) for just
+ * the widget on its own ("standalone": data in localStorage, window calls ignored).
  */
 (function () {
   'use strict';
-  if (window.Board21) return;
+  // (A page rewritten with document.open() keeps its window and document, but not its <html> element: an SDK
+  // from the old page doesn't count.)
+  if (window.Board21 && window.Board21.page === document.documentElement) return;
 
-  var SDK_VERSION = '1.0.0';
+  var SDK_VERSION = '1.1.0';
   var PROTOCOL = 1;
-  var embedded = window.parent && window.parent !== window;
-  // file:// pages have opaque origins, so messages to the board can't be origin-restricted there.
-  var targetOrigin = (location.protocol !== 'file:' && location.origin && location.origin !== 'null') ? location.origin : '*';
+  var ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+  var me = document.currentScript;
+
+  // ------------------------------------------------------------ where am I?
+  //  'board': inside 21Board. The board names the widget's frame 'b21-board:…' before it loads (older
+  //           boards: a same-origin parent with __board21Host). Talk to it.
+  //  'dev':   anywhere else: show the widget in a real 21Board window (the dev window).
+  //  'bare':  just the widget ("standalone"): #b21-bare, data-dev="off", or the dev window can't start.
+  function inBoard() {
+    if (/^b21-board:/.test(window.name || '')) return true;
+    try { return window.parent !== window && !!(window.parent.__board21Host || window.parent.__board21); } catch (e) { return false; }
+  }
+  var role = inBoard() ? 'board'
+    : (window.name === 'b21-bare' || /(^#|[#&])b21-bare\b/.test(location.hash) || (me && me.getAttribute('data-dev') === 'off')) ? 'bare' : 'dev';
+  if (window.name === 'b21-bare') window.name = '';   // only for this load: the next one tries the dev window again
+  var embedded = role === 'board';
+  // The board's origin. (about:srcdoc and file:// pages report location.origin 'null', so self.origin is used,
+  // and messages can't be origin-restricted when it's opaque.)
+  var targetOrigin = (self.origin && self.origin !== 'null') ? self.origin : '*';
 
   var PALETTES = {
     light: {
@@ -103,10 +126,27 @@
   }
 
   // ------------------------------------------------------- standalone mode
-  var STANDALONE_KEY = '21board:standalone:' + location.pathname;
-
+  // The widget's manifest block, if it has one:
+  //   <script type="application/json" id="board21-widget">{"id": "my-widget", "name": "My Widget", "window": {...}}</script>
+  var manifest = null;
+  function readManifest() {
+    if (manifest) return manifest;
+    try { var el = document.getElementById('board21-widget'); manifest = el ? JSON.parse(el.textContent) || {} : {}; } catch (e) { manifest = {}; }
+    return manifest;
+  }
+  function standaloneId() {
+    var m = readManifest();
+    if (m && ID_RE.test(m.id || '')) return m.id;
+    var p = location.pathname.match(/widgets\/([^/]+)\//);
+    return p ? p[1] : 'widget';
+  }
+  // Kept in localStorage by widget id (an AI tool's preview may change its address on every load, or block
+  // storage: then it lasts until the page reloads).
+  var memStore = null;
+  function standaloneKey() { return '21board:standalone:' + standaloneId(); }
   function standaloneStore() {
-    try { return JSON.parse(localStorage.getItem(STANDALONE_KEY)) || {}; } catch (e) { return {}; }
+    try { var v = localStorage.getItem(standaloneKey()); if (v) return JSON.parse(v) || {}; } catch (e) { /* blocked */ }
+    return memStore ? JSON.parse(memStore) : {};
   }
 
   function standaloneRequest(type, payload) {
@@ -115,7 +155,8 @@
     else if (type === 'saveConfig') s.config = payload.config;
     else if (type === 'getInfo') return Promise.resolve(windowInfo());
     else return Promise.resolve(null);
-    try { localStorage.setItem(STANDALONE_KEY, JSON.stringify(s)); } catch (e) { /* storage blocked */ }
+    memStore = JSON.stringify(s);
+    try { localStorage.setItem(standaloneKey(), memStore); } catch (e) { /* storage blocked: memory only */ }
     return Promise.resolve(true);
   }
 
@@ -127,18 +168,26 @@
     if (context) return;
     standalone = true;
     var s = standaloneStore();
-    var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-    var theme = dark ? 'dark' : 'light';
-    var m = location.pathname.match(/widgets\/([^/]+)\//);
+    var mq = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+    var theme = mq && mq.matches ? 'dark' : 'light';
+    var man = readManifest();
     context = {
       standalone: true, sdkVersion: SDK_VERSION, boardVersion: null,
-      widgetId: m ? m[1] : 'standalone', widgetName: document.title || 'Widget', instance: 1,
+      widgetId: standaloneId(), widgetName: String(man.name || document.title || 'Widget'), widgetVersion: String(man.version || ''), instance: 1,
       data: s.data === undefined ? null : s.data, config: s.config === undefined ? null : s.config,
       theme: theme, palette: PALETTES[theme], window: windowInfo(),
-      locale: navigator.language || 'en-US', devMode: true
+      locale: navigator.language || 'en-US', devMode: true, host: 'standalone'
     };
     applyTheme(theme);
     window.addEventListener('resize', function () { emit('resize', windowInfo()); });
+    // Follow the device's light/dark setting, as the board does with "Auto".
+    if (mq) {
+      var onTheme = function () {
+        var t = mq.matches ? 'dark' : 'light';
+        context.theme = t; context.palette = PALETTES[t]; applyTheme(t); emit('theme', t, PALETTES[t]);
+      };
+      if (mq.addEventListener) mq.addEventListener('change', onTheme); else if (mq.addListener) mq.addListener(onTheme);
+    }
     console.info('21Board SDK: running standalone (not inside 21Board). Data is kept in localStorage.');
     readyResolve(context);
     renderStandaloneMenu();
@@ -166,18 +215,19 @@
       standaloneMenuBtn.addEventListener('change', function () {
         var id = standaloneMenuBtn.value; standaloneMenuBtn.value = '';
         var item = findMenuItem(id);
-        if (item) emit('menu', id, item);
+        if (item && !item.disabled) emit('menu', id, item);
       });
       document.body.appendChild(standaloneMenuBtn);
     }
     var opt = function (id, label, checked) {
-      return '<option value="' + String(id).replace(/"/g, '&quot;') + '">' + (checked ? '✓ ' : '') + String(label).replace(/</g, '&lt;') + '</option>';
+      return '<option value="' + String(id).replace(/"/g, '&quot;') + '">' + (checked ? '\u2713 ' : '') + String(label).replace(/</g, '&lt;') + '</option>';
     };
-    standaloneMenuBtn.innerHTML = '<option value="">Menu ▾</option>' + menuItems.map(function (i) {
-      if (i.separator) return '';
-      if (i.heading) return '<option disabled>— ' + String(i.label).replace(/</g, '&lt;') + ' —</option>';
-      if (i.swatches) return i.swatches.map(function (s) { return opt(s.id, i.label + ': ' + s.label, s.checked); }).join('');
-      return opt(i.id, i.label, i.checked);
+    // As in the board: at most 24 items and 12 swatches per row.
+    standaloneMenuBtn.innerHTML = '<option value="">Menu \u25be</option>' + menuItems.slice(0, 24).map(function (i) {
+      if (i.separator) return '<option disabled>\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500</option>';
+      if (i.heading) return '<option disabled>\u2014 ' + String(i.label).replace(/</g, '&lt;') + ' \u2014</option>';
+      if (i.swatches) return i.swatches.slice(0, 12).map(function (s) { return opt(s.id, i.label + ': ' + s.label, s.checked); }).join('');
+      return i.disabled ? '<option disabled>' + String(i.label).replace(/</g, '&lt;') + '</option>' : opt(i.id, i.label, i.checked);
     }).join('');
   }
 
@@ -192,6 +242,7 @@
         context = m.context;
         context.standalone = false;
         applyTheme(context.theme, context.palette);
+        devReport(context.host === 'dev');
         readyResolve(context);
         break;
       case 'ack': {
@@ -229,6 +280,122 @@
     }
   });
 
+  // ------------------------------------------------- errors, for the dev window
+  // In the dev window the widget runs a frame deeper than the AI tool's preview, so its errors would be out
+  // of the tool's sight. Inside 21Board they're kept from the start and sent once the board says it's the
+  // dev window (init context.host 'dev'); otherwise they're dropped.
+  var devLogs = [], devOn = null, origConsole = {};
+  function devText(args) {
+    return Array.prototype.map.call(args, function (a) {
+      if (a instanceof Error) return a.stack && a.stack.indexOf(a.message) >= 0 ? a.stack : a.name + ': ' + a.message + (a.stack ? '\n' + a.stack : '');
+      if (typeof a === 'string') return a;
+      try { return JSON.stringify(a); } catch (e) { return String(a); }
+    }).join(' ').slice(0, 4000);
+  }
+  function devLog(level, args) {
+    if (devOn === false) return;
+    var entry = { level: level, text: devText(args) };
+    if (devOn) post('devLog', entry); else if (devLogs.length < 50) devLogs.push(entry);
+  }
+  function devReport(on) {
+    devOn = !!on;
+    if (devOn) devLogs.forEach(function (l) { post('devLog', l); });
+    else Object.keys(origConsole).forEach(function (k) { console[k] = origConsole[k]; });
+    devLogs = [];
+  }
+  if (role === 'board') {
+    window.addEventListener('error', function (e) {
+      devLog('error', [e.error instanceof Error ? e.error : e.message + (e.lineno ? ' (line ' + e.lineno + ')' : '')]);
+    });
+    window.addEventListener('unhandledrejection', function (e) { devLog('error', ['Unhandled promise rejection:', e.reason]); });
+    ['error', 'warn'].forEach(function (k) {
+      var orig = origConsole[k] = console[k];
+      console[k] = function () { devLog(k, arguments); return orig.apply(console, arguments); };
+    });
+  }
+
+  // ------------------------------------------------------------ dev window
+  // Not inside 21Board: keep the rest of this page as text (document.write of an unclosed <plaintext>, before
+  // any of the widget's own code runs), then let sdk/board21-dev.js run the real board around it. Needs this
+  // script to be the first script in <head>, loaded normally (not async, defer or module).
+  var devBase = me && me.src ? me.src.replace(/[?#].*$/, '').replace(/sdk\/board21(\.min)?\.js$/, '') : '';
+  function startDev() {
+    if (!me || !me.src || devBase === me.src.replace(/[?#].*$/, '') || me.async || me.defer || me.type === 'module') return 'not-loadable';
+    if (document.readyState !== 'loading' || me.parentNode !== document.head || document.body) return 'not-first';
+    var attrs = Array.prototype.map.call(document.documentElement.attributes, function (a) {
+      return ' ' + a.name + '="' + a.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"';
+    }).join('');
+    var head = document.head.innerHTML;
+    try { document.write('<plaintext hidden style="display:none">'); } catch (e) { return 'no-write'; }
+    document.addEventListener('DOMContentLoaded', function () {
+      var pt = document.querySelector('plaintext');
+      var src = '<!DOCTYPE html>\n<html' + attrs + '>\n<head>' + head + (pt ? pt.textContent : '');
+      if (pt) pt.parentNode.removeChild(pt);
+      var dev = window.__board21Dev = { src: src, base: devBase, sdkUrl: me.src, hostUrl: location.href };
+      var done = false;
+      var fail = function (why) {
+        if (done) return; done = true;
+        console.warn('21Board SDK: the dev window could not start (' + why + '). Showing the widget on its own.');
+        showBare(dev, why);
+      };
+      var t = setTimeout(function () { fail('timed out loading ' + devBase + 'sdk/board21-dev.js'); }, 8000);
+      var s = document.createElement('script');
+      s.charset = 'utf-8';   // the preview's page may not say how it's encoded
+      s.src = devBase + 'sdk/board21-dev.js';
+      s.onload = function () {
+        clearTimeout(t);
+        if (done) return;
+        if (!window.Board21Dev) { fail('sdk/board21-dev.js did not load'); return; }
+        done = true;
+        try { window.Board21Dev.start(dev); } catch (err) { console.error(err); done = false; fail(err.message); }
+      };
+      s.onerror = function () { clearTimeout(t); fail('could not load ' + s.src); };
+      document.head.appendChild(s);
+    });
+    return 'ok';
+  }
+  // Rewrite this page with the widget on its own (standalone), with a note at the top.
+  function showBare(dev, why) {
+    window.name = 'b21-bare';
+    window.__board21DevNote = why || '';
+    document.open();
+    document.write(dev.src);
+    document.close();
+  }
+  var devNote = '';
+  if (role === 'dev') {
+    var started = startDev();
+    if (started === 'ok') return;   // the dev window takes over the page; this copy of the SDK is done
+    role = 'bare';
+    devNote = started === 'not-first'
+      ? 'To try this widget in a 21Board window, make the 21Board SDK script the first script in <head>.'
+      : started === 'not-loadable' ? 'To try this widget in a 21Board window, load the SDK with a normal <script src="\u2026/sdk/board21.js">.' : '';
+  } else if (role === 'bare' && window.__board21DevNote !== undefined) {
+    devNote = window.__board21DevNote ? 'The 21Board dev window could not start: ' + window.__board21DevNote : '';
+  }
+  // A small note at the top of a standalone page saying why it isn't in a 21Board window.
+  function showDevNote() {
+    if (!document.body || !devNote) return;
+    var bar = document.createElement('div');
+    bar.setAttribute('data-b21-note', '');
+    bar.style.cssText = 'position:fixed;left:6px;top:6px;z-index:2147483647;max-width:calc(100% - 120px);display:flex;gap:8px;align-items:center;' +
+      'padding:6px 8px 6px 12px;border-radius:10px;background:#1f2937;color:#fff;font:12.5px/1.35 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25)';
+    var txt = document.createElement('span');
+    txt.textContent = devNote;
+    bar.appendChild(txt);
+    var btn = function (label, fn) {
+      var b = document.createElement('button');
+      b.textContent = label;
+      b.style.cssText = 'font:inherit;font-weight:600;color:#93c5fd;background:none;border:0;padding:2px 4px;cursor:pointer;white-space:nowrap';
+      b.onclick = fn; bar.appendChild(b);
+    };
+    btn('\u2715', function () { bar.remove(); });
+    document.body.appendChild(bar);
+  }
+  if (role === 'bare') {
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', showDevNote); else showDevNote();
+  }
+
   if (embedded) {
     // Avoid a flash of the wrong theme: peek at the host synchronously when same-origin.
     try {
@@ -240,7 +407,7 @@
     // Tapping anywhere in the widget brings its window to the front.
     window.addEventListener('pointerdown', function () { post('activate'); }, true);
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape') post('key', { key: 'Escape' }); }, true);
-    // If no 21Board answers (e.g. framed by something else), fall back to standalone.
+    // Safety net: if the board never answers, run on its own.
     setTimeout(function () { if (!context) startStandalone(); }, 4000);
   } else {
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startStandalone);
@@ -338,5 +505,6 @@
     }
   };
 
+  Object.defineProperty(Board21, 'page', { value: document.documentElement });
   window.Board21 = Board21;
 })();

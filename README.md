@@ -83,6 +83,9 @@ sw.js                   Service worker (offline cache, updates)  ← bump VERSIO
 manifest.webmanifest    PWA manifest (also lets the installed app open .21board files in Chrome)
 icons/                  Widget icons
 sdk/board21.js          The SDK every widget includes (window.Board21)
+sdk/board21-dev.js      The widget dev window: a widget opened outside 21Board runs in the real board
+sdk/dev/board-shell.js  index.html's markup for the dev window (made by tools/build-sdk.js)
+sdk/lab.html            Widget lab: paste a widget's HTML and try it in a real window
 widgets/registry.js        THE list of widgets (used by the picker AND the offline cache)
 widgets/<id>/index.html    One folder per widget
 widgets/_template/         Starter for new widgets (not registered)
@@ -112,7 +115,11 @@ tests/run.js            Optional automated browser tests
 2. Add an entry to `widgets/registry.js` listing every file it needs.
 3. Bump `VERSION` in `sw.js`.
 
-To try a widget before registering it: Settings → Advanced → Developer mode → *Test a widget*.
+To try a widget, open its file in a browser: it appears in the **dev window**, a real 21Board window with
+its title bar, resize handles, menu and Settings, plus panels for its saved data, its messages and common
+problems. This also works in AI tools' previews (Gemini Canvas and others) and in `sdk/lab.html` (paste
+the HTML). See [docs/WIDGET-SDK.md, "Testing a widget"](docs/WIDGET-SDK.md#testing-a-widget). Inside
+21Board: Settings → Advanced → Developer mode → *Test a widget*.
 
 ---
 

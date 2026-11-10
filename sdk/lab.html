@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>21Board widget lab</title>
+<!--
+  21Board widget lab: paste a widget's HTML (or open its file) and try it in a real 21Board window.
+  For AI tools whose previews can't load the SDK, or for a final check before adding a widget to 21Board.
+  The pasted code runs in a sandbox with its own empty storage: it can't read this site's real boards.
+  The same dev window as sdk/board21-dev.js. See docs/WIDGET-SDK.md, "Testing a widget".
+-->
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #23272e; color: #e5e7eb; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  #editor { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 12px; padding: 18px; max-width: 1100px; margin: 0 auto; }
+  #editor[hidden] { display: none; }
+  h1 { margin: 0; font-size: 20px; display: flex; align-items: center; gap: 10px; color: #fff; }
+  h1 i { font-style: normal; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 9px; background: #2563eb; font-size: 13px; }
+  p { margin: 0; color: #9aa4af; }
+  textarea { flex: 1; min-height: 240px; resize: none; box-sizing: border-box; width: 100%; border-radius: 12px; border: 2px dashed #3a414b; background: #111418; color: #e5e7eb; padding: 14px; font: 12.5px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  textarea.drag { border-color: #2563eb; background: #0f1a2e; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  button, label.btn { font: inherit; border: 0; height: 38px; padding: 0 16px; border-radius: 9px; background: #2f3742; color: #fff; cursor: pointer; display: inline-flex; align-items: center; }
+  button.primary { background: #2563eb; font-weight: 600; }
+  button:hover, label.btn:hover { filter: brightness(1.12); }
+  #err { color: #fca5a5; }
+</style>
+</head>
+<body>
+<div id="editor">
+  <h1><i>21</i>Widget lab</h1>
+  <p>Paste a widget’s HTML (the whole file), or drop or open its file, then press <b>Try it</b>. It opens in a real 21Board window: drag it, resize it, open its menu, change the theme. The code runs in a sandbox with its own empty storage, so it can’t see any real boards.</p>
+  <textarea id="code" spellcheck="false" placeholder="&lt;!DOCTYPE html&gt;&#10;&lt;html&gt;&#10;&lt;head&gt;&#10;  &lt;script src=&quot;…/sdk/board21.js&quot;&gt;&lt;/script&gt;&#10;  …"></textarea>
+  <div class="row">
+    <button class="primary" id="run">Try it</button>
+    <label class="btn">Open file…<input type="file" id="file" accept=".html,.htm,text/html" hidden></label>
+    <button id="sample">Load an example</button>
+    <span id="err" role="alert"></span>
+  </div>
+</div>
+<div id="stage" hidden></div>
+<script src="board21-dev.js"></script>
+<script>
+(function () {
+  'use strict';
+  var code = document.getElementById('code'), editor = document.getElementById('editor'), stage = document.getElementById('stage'), err = document.getElementById('err');
+  var base = location.href.replace(/[?#].*$/, '').replace(/sdk\/lab\.html$/, '');
+  var KEY = '21board-lab-code';
+  try { code.value = localStorage.getItem(KEY) || ''; } catch (e) { /* blocked */ }
+  var dev = null;
+
+  function run() {
+    var src = code.value.trim();
+    if (!/<[a-z!]/i.test(src)) { err.textContent = 'Paste the widget’s HTML first.'; return; }
+    err.textContent = '';
+    try { localStorage.setItem(KEY, src); } catch (e) { /* blocked */ }
+    editor.hidden = true; stage.hidden = false;
+    dev = Board21Dev.start({ src: src, base: base, sdkUrl: base + 'sdk/board21.js', hostUrl: location.href, mount: stage, sandbox: true, lab: true, onEdit: edit });
+  }
+  function edit() {
+    if (dev) { dev.destroy(); dev = null; }
+    stage.hidden = true; editor.hidden = false; code.focus();
+  }
+  function load(file) {
+    if (!file) return;
+    var r = new FileReader();
+    r.onload = function () { code.value = String(r.result || ''); run(); };
+    r.readAsText(file);
+  }
+  document.getElementById('run').onclick = run;
+  document.getElementById('file').onchange = function (e) { load(e.target.files && e.target.files[0]); e.target.value = ''; };
+  document.getElementById('sample').onclick = function () {
+    code.value = '<!DOCTYPE html>\n<html lang="en">\n<head>\n<script src="../../sdk/board21.js"><\/script>\n' +
+      '<script type="application/json" id="board21-widget">{"id": "counter", "name": "Counter", "version": "1.0.0", "window": {"width": 320, "height": 240, "minWidth": 200, "minHeight": 150, "aspectRatio": "4:3"}}<\/script>\n' +
+      '<meta charset="UTF-8">\n<title>Counter</title>\n<style>\n  html, body { margin: 0; height: 100%; }\n  body { display: grid; place-items: center; background: var(--b21-bg); color: var(--b21-text); font: 700 30vmin/1 var(--b21-font); }\n</style>\n</head>\n<body>\n<div id="n">0</div>\n<script>\n' +
+      '  let state = { count: 0 };\n  const show = () => { document.getElementById("n").textContent = state.count; };\n' +
+      '  Board21.ready().then(ctx => { state = Object.assign(state, ctx.data); show();\n    Board21.menu.set([{ id: "add", label: "Add one" }, { id: "zero", label: "Back to 0" }]); });\n' +
+      '  Board21.on("data", d => { state = Object.assign({ count: 0 }, d); show(); });\n' +
+      '  Board21.on("menu", id => { state.count = id === "add" ? state.count + 1 : 0; show(); Board21.save(state); });\n<\/script>\n</body>\n</html>\n';
+  };
+  ['dragenter', 'dragover'].forEach(function (t) { code.addEventListener(t, function (e) { e.preventDefault(); code.classList.add('drag'); }); });
+  ['dragleave', 'drop'].forEach(function (t) { code.addEventListener(t, function () { code.classList.remove('drag'); }); });
+  code.addEventListener('drop', function (e) { var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]; if (f) { e.preventDefault(); load(f); } });
+  code.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) run(); });
+})();
+</script>
+</body>
+</html>
