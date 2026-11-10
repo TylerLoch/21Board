@@ -131,7 +131,7 @@
     fullscreenExit: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
     chevron: '<path d="M6 9l6 6 6-6"/>',
     close: '<path d="M18 6L6 18M6 6l12 12"/>',
-    reset: '<path d="M4.6 15.4A8 8 0 1 0 6.3 6.3"/><path d="M6.3 2.3v4h4"/>', // open circle: a gap behind the arrow
+    reset: '<path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/>', // open circle: a gap behind the arrow
     maximize: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>',
     restore: '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>',
     check: '<path d="M20 6L9 17l-5-5"/>',
@@ -1907,21 +1907,32 @@
       const w = this.win;
       if (!w) return;
       const a = w.labelEl.getBoundingClientRect();
-      const vw = window.innerWidth, vh = window.innerHeight;
-      this.el.style.maxHeight = '';
+      const vw = window.innerWidth, vh = window.innerHeight, M = 8, GAP = 6;
       // offsetWidth/Height: layout size, unaffected by the menu's scale-in animation.
-      const m = { width: this.el.offsetWidth, height: this.el.offsetHeight };
-      let x = a.left + a.width / 2 - m.width / 2;
-      x = clamp(x, 8, vw - m.width - 8);
-      // Below the title if it fits, else above; if neither fits, use the roomier side and scroll.
-      const below = vh - a.bottom - 14, above = a.top - 14;
-      let y;
-      if (m.height <= below) y = a.bottom + 6;
-      else if (m.height <= above) y = a.top - m.height - 6;
-      else if (below >= above) { y = a.bottom + 6; this.el.style.maxHeight = Math.max(120, below) + 'px'; }
-      else { const h = Math.max(120, above); this.el.style.maxHeight = h + 'px'; y = a.top - h - 6; }
+      // (The CSS max-height is lifted while measuring so the full height is seen.)
+      const size = () => ({ width: this.el.offsetWidth, height: this.el.offsetHeight });
+      // A menu taller than the whole screen gets tighter rows first (it should never need scrolling).
+      this.el.classList.remove('compact', 'tight');
+      this.el.style.maxHeight = 'none';
+      let m = size();
+      if (m.height > vh - 2 * M) { this.el.classList.add('compact'); m = size(); }
+      if (m.height > vh - 2 * M) { this.el.classList.add('tight'); m = size(); }
+      this.el.style.maxHeight = '';
+      const below = vh - a.bottom - GAP - M, above = a.top - GAP - M;
+      let x, y;
+      if (m.height <= below || m.height <= above) {
+        // Below the title if it fits, else above, centered on the title.
+        x = clamp(a.left + a.width / 2 - m.width / 2, M, vw - m.width - M);
+        y = m.height <= below ? a.bottom + GAP : a.top - m.height - GAP;
+      } else {
+        // Neither fits: open beside the title, as high as it can while staying fully on screen.
+        y = clamp(a.top, M, Math.max(M, vh - m.height - M));
+        if (a.right + GAP + m.width <= vw - M) x = a.right + GAP;
+        else if (a.left - GAP - m.width >= M) x = a.left - GAP - m.width;
+        else x = clamp(a.left + a.width / 2 - m.width / 2, M, vw - m.width - M);
+      }
       this.el.style.left = Math.round(x) + 'px';
-      this.el.style.top = Math.round(Math.max(8, y)) + 'px';
+      this.el.style.top = Math.round(y) + 'px';
     },
 
     act(act, id) {

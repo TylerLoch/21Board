@@ -591,17 +591,32 @@ const SUITES = [
     const saved = await page.evaluate(() => window.__saved);
     ok(saved && /\.21board$/.test(saved.name) && JSON.parse(saved.text).format === '21board', 'saving through the dialog writes a .21board file');
     ok(await page.evaluate(() => typeof window.__board21.state.settings.lastBackupAt === 'number'), 'and records the backup time');
-    // On a short screen a long window menu stays on screen and scrolls, so Close is always reachable.
+    // Window menus never scroll: below or above the title if they fit, else beside it; very short screens get tighter rows.
     await page.keyboard.press('Escape');
+    const menuBox = () => page.evaluate(() => {
+      const m = document.getElementById('menu'), r = m.getBoundingClientRect();
+      const l = document.querySelector('.win-label.open').getBoundingClientRect();
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, scrolls: m.scrollHeight > m.clientHeight + 1, compact: m.classList.contains('compact') || m.classList.contains('tight'),
+        label: { left: l.left, right: l.right, top: l.top, bottom: l.bottom } };
+    });
     await page.setViewportSize({ width: 900, height: 520 }); await page.waitForTimeout(300);
-    await setRect('notes:1', { x: 0, y: 0, w: 340, h: 280 });
+    await setRect('notes:1', { x: 280, y: 200, w: 340, h: 280 });
     await page.evaluate(() => window.__board21.focusWin('notes:1')); await page.waitForTimeout(200);
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.waitForTimeout(300);
-    const mb = await page.evaluate(() => document.getElementById('menu').getBoundingClientRect().bottom);
-    ok(mb <= 520, `long window menu fits a short screen (bottom ${Math.round(mb)} of 520)`);
-    await page.locator('#menu [data-act="close"]').scrollIntoViewIfNeeded();
+    let mbx = await menuBox();
+    ok(mbx.top >= 0 && mbx.bottom <= 520, `a long window menu fits a short screen (${Math.round(mbx.top)}–${Math.round(mbx.bottom)} of 520)`);
+    ok(!mbx.scrolls, 'and does not need scrolling');
+    ok(mbx.left >= mbx.label.right || mbx.right <= mbx.label.left, 'with no room above or below the title, it opens beside the title');
     await page.click('#menu [data-act="close"]'); await page.waitForTimeout(400);
-    ok(await page.evaluate(() => !window.__board21.state.wins.has('notes:1')), 'Close is reachable by scrolling the menu');
+    ok(await page.evaluate(() => !window.__board21.state.wins.has('notes:1')), 'Close is right there to tap');
+    await page.evaluate(() => window.__board21.openApp('notes')); await page.waitForTimeout(600);
+    await page.setViewportSize({ width: 900, height: 400 }); await page.waitForTimeout(300);
+    await setRect('notes:1', { x: 10, y: 10, w: 340, h: 280 });
+    await page.evaluate(() => window.__board21.focusWin('notes:1')); await page.waitForTimeout(200);
+    await page.click('.win[data-ikey="notes:1"] .win-label'); await page.waitForTimeout(300);
+    mbx = await menuBox();
+    ok(mbx.top >= 0 && mbx.bottom <= 400 && !mbx.scrolls, `on a very short screen the menu still fits without scrolling (${Math.round(mbx.top)}–${Math.round(mbx.bottom)} of 400${mbx.compact ? ', tighter rows' : ''})`);
+    await page.keyboard.press('Escape');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -996,6 +1011,34 @@ const SUITES = [
     await page.evaluate(() => { const s = window.__board21.state; s.wins.get('timer:1').post('data', { data: { duration: 60000, remaining: 60000, endsAt: Date.now() + 300 }, reason: 'remote' }); });
     await page.waitForTimeout(1200);
     ok(await timer.locator('html').evaluate(() => window.__notes) === 2, 'when the timer ends it plays the chosen sound');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Dice roll and Reset icon', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    const page = await ctx.newPage(), page2 = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message)); page2.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500);
+    await page.evaluate(() => window.__board21.openApp('dice')); await page.waitForTimeout(1200);
+    await page2.goto(BASE); await page2.waitForTimeout(1500);
+    const dice = page.frameLocator('.win[data-ikey="dice:1"] iframe'), dice2 = page2.frameLocator('.win[data-ikey="dice:1"] iframe');
+    const look = f => f.locator('html').evaluate(() => ({ pips: document.querySelectorAll('.die circle').length, n: document.querySelectorAll('.die').length,
+      labels: [...document.querySelectorAll('.die')].map(d => d.getAttribute('aria-label')).join(','), total: getComputedStyle(document.getElementById('total')).visibility }));
+    await dice.locator('#roll').click();
+    await page.waitForTimeout(250);
+    let a = await look(dice), b = await look(dice2);
+    ok(a.n === 2 && a.pips === 0 && a.total === 'hidden', 'while rolling the dice are blank and the total is hidden');
+    ok(b.n === 2 && b.pips === 0, 'another open copy rolls blank dice too');
+    await dice.locator('#roll').click();   // ignored until the dice land
+    await page.waitForTimeout(1500);
+    a = await look(dice); b = await look(dice2);
+    const vals = await page.evaluate(() => window.__board21.state.data.get('dice:1').values.join(','));
+    ok(a.pips >= 2 && a.labels === vals && a.total === 'visible', `when the dice land they show the saved values (${vals})`);
+    ok(b.labels === vals, 'and the other copy lands on the same values');
+    // The Reset icon is a circular arrow with a solid head.
+    await page.click('.win[data-ikey="dice:1"] .win-label'); await page.waitForTimeout(200);
+    ok(await page.locator('#menu [data-act="reset"] svg path[fill="currentColor"]').count() === 1, 'Reset icon has a solid arrowhead');
+    await page.keyboard.press('Escape');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

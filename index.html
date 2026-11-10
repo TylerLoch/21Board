@@ -306,6 +306,12 @@
     .menu-item:disabled { opacity: .45; cursor: default; }
     .menu-sep { height: 1px; flex: 0 0 auto; background: var(--border); margin: 5px 8px; }
     .menu-confirm { flex: 0 0 auto; padding: 10px 12px 6px; font-size: 14px; color: var(--muted); max-width: 280px; line-height: 1.35; }
+    /* Very short screens: tighter rows so the whole menu still fits without scrolling. */
+    .menu.compact .menu-item { min-height: 38px; font-size: 14px; }
+    .menu.compact .menu-sep { margin: 3px 8px; }
+    .menu.tight { padding: 4px; }
+    .menu.tight .menu-item { min-height: 30px; font-size: 13px; }
+    .menu.tight .menu-sep { margin: 2px 8px; }
 
     /* ------------------------------------------------------------ Settings */
     .sheet {

@@ -13,8 +13,31 @@
   .die rect { fill: #fff; stroke: #d1d5db; stroke-width: 3; }
   .die circle { fill: #111827; }
   [data-b21-theme="dark"] .die rect { fill: #f3f4f6; stroke: #9ca3af; }
-  .die.roll { animation: roll .5s ease-out; }
-  @keyframes roll { 0% { transform: rotate(-25deg) scale(.8); } 40% { transform: rotate(18deg) scale(1.08); } 70% { transform: rotate(-8deg); } 100% { transform: none; } }
+  /* Rolling: blank dice tumble (3D spin + bounce), then each one lands and shows its value. */
+  #tray { perspective: 700px; }
+  .die { --dir: 1; }
+  .die.rolling { animation: tumble var(--t, 900ms) cubic-bezier(.25, .7, .35, 1) both; }
+  .die.rolling rect { fill: #f8fafc; }
+  [data-b21-theme="dark"] .die.rolling rect { fill: #e5e7eb; }
+  @keyframes tumble {
+    0%   { transform: translateY(-38%) rotateX(0deg) rotateY(0deg) rotateZ(0deg) scale(.82); }
+    22%  { transform: translateY(6%) rotateX(calc(var(--dir) * 220deg)) rotateY(calc(var(--dir) * -120deg)) rotateZ(calc(var(--dir) * 120deg)) scale(1); }
+    40%  { transform: translateY(-16%) rotateX(calc(var(--dir) * 330deg)) rotateY(calc(var(--dir) * -230deg)) rotateZ(calc(var(--dir) * 190deg)) scale(1.02); }
+    58%  { transform: translateY(3%) rotateX(calc(var(--dir) * 390deg)) rotateY(calc(var(--dir) * -320deg)) rotateZ(calc(var(--dir) * 240deg)) scale(1); }
+    74%  { transform: translateY(-6%) rotateX(calc(var(--dir) * 372deg)) rotateY(calc(var(--dir) * -352deg)) rotateZ(calc(var(--dir) * 262deg)) scale(1); }
+    88%  { transform: translateY(0) rotateX(calc(var(--dir) * 362deg)) rotateY(calc(var(--dir) * -361deg)) rotateZ(calc(var(--dir) * 268deg)) scale(1); }
+    100% { transform: translateY(0) rotateX(calc(var(--dir) * 360deg)) rotateY(calc(var(--dir) * -360deg)) rotateZ(calc(var(--dir) * 270deg)) scale(1); }
+  }
+  .die.landed { animation: land .28s ease-out; }
+  .die.landed circle { animation: pips .22s ease-out; }
+  @keyframes land { 0% { transform: scale(1.1); } 55% { transform: scale(.95); } 100% { transform: none; } }
+  @keyframes pips { from { opacity: 0; } to { opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) {
+    .die.rolling { animation: wobble var(--t, 600ms) ease-in-out both; }
+    @keyframes wobble { 0%, 100% { transform: none; } 25% { transform: rotate(-6deg); } 75% { transform: rotate(6deg); } }
+    .die.landed { animation: none; }
+  }
+  #total.hide { visibility: hidden; }
   footer { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 12px; padding: 0 12px clamp(8px, 3vh, 16px); }
   button { font: inherit; border: 0; cursor: pointer; border-radius: 999px; background: var(--b21-accent); color: var(--b21-on-accent); height: clamp(34px, 12vh, 60px); padding: 0 clamp(16px, 5vw, 32px); font-size: clamp(14px, 4.6vh, 22px); font-weight: 700; }
   #total { font-size: clamp(14px, 5vh, 26px); font-weight: 700; color: var(--b21-muted); min-width: 3ch; }
@@ -22,7 +45,8 @@
 </style>
 </head>
 <body>
-  <div id="tray" title="Tap to roll" aria-live="polite"></div>
+  <div id="tray" title="Tap to roll"></div>
+  <div id="said" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)"></div>
   <footer><button id="roll">Roll</button><span id="total"></span></footer>
 <script>
   // Content: { values: [..] }     Config: { count, showTotal }
@@ -30,7 +54,12 @@
   let config = { count: 2, showTotal: true };
   let state = { values: [] };
 
-  const die = (v, cls) => `<svg class="die ${cls || ''}" viewBox="0 0 100 100" role="img" aria-label="${v}"><rect x="4" y="4" width="92" height="92" rx="18"/>${PIPS[v].map(([x, y]) => `<circle cx="${x}" cy="${y}" r="9"/>`).join('')}</svg>`;
+  // v = 0 draws a blank die (used while rolling, so nobody sees a value until the dice land).
+  const pips = v => (PIPS[v] || []).map(([x, y]) => `<circle cx="${x}" cy="${y}" r="9"/>`).join('');
+  const die = (v, cls, style) => `<svg class="die ${cls || ''}" viewBox="0 0 100 100" role="img" aria-label="${v || 'Rolling'}"${style ? ` style="${style}"` : ''}><rect x="4" y="4" width="92" height="92" rx="18"/>${pips(v)}</svg>`;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  let rollTimers = [];
+  const rolling = () => rollTimers.length > 0;
 
   function size() {
     const n = config.count, W = innerWidth, H = document.getElementById('tray').clientHeight || innerHeight;
@@ -46,13 +75,38 @@
 
   function render(animate) {
     const vals = state.values.length === config.count ? state.values : Array.from({ length: config.count }, (_, i) => state.values[i] || i % 6 + 1);
-    document.getElementById('tray').innerHTML = vals.map(v => die(v, animate ? 'roll' : '')).join('');
+    const tray = document.getElementById('tray');
     const total = document.getElementById('total');
+    rollTimers.forEach(clearTimeout); rollTimers = [];
     total.textContent = config.showTotal && config.count > 1 ? '= ' + vals.reduce((a, b) => a + b, 0) : '';
+    total.classList.remove('hide');
+    if (!animate) {
+      tray.innerHTML = vals.map(v => die(v)).join('');
+      size();
+      return;
+    }
+    // Blank dice tumble; each lands a little after the one before, then shows its value.
+    const base = reduceMotion.matches ? 550 : 850;
+    const times = vals.map((_, i) => Math.round(base + i * 110 + Math.random() * 120));
+    tray.innerHTML = vals.map((v, i) => die(0, 'rolling', `--t:${times[i]}ms;--dir:${Math.random() < 0.5 ? -1 : 1}`)).join('');
+    total.classList.add('hide');
     size();
+    const dice = [...tray.children];
+    vals.forEach((v, i) => rollTimers.push(setTimeout(() => {
+      const d = dice[i];
+      d.classList.remove('rolling'); d.style.removeProperty('--t');
+      d.innerHTML = '<rect x="4" y="4" width="92" height="92" rx="18"/>' + pips(v);
+      d.setAttribute('aria-label', v);
+      d.classList.add('landed');
+    }, times[i])));
+    rollTimers.push(setTimeout(() => {
+      total.classList.remove('hide'); rollTimers = [];
+      document.getElementById('said').textContent = 'Rolled ' + vals.join(', ') + (vals.length > 1 ? ', total ' + vals.reduce((a, b) => a + b, 0) : '');
+    }, Math.max(...times) + 30));
   }
 
   function roll() {
+    if (rolling()) return;   // let the dice land before the next roll
     state = { values: Array.from({ length: config.count }, () => 1 + Math.floor(Math.random() * 6)) };
     Board21.save(state);
     render(true);
