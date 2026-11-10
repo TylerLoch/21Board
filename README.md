@@ -168,7 +168,8 @@ Built for current **Chrome** (and Chromium-based Edge). Kept compatible with **S
 - `apps/notes/fonts/CrayonLibre-21Board.woff2`: *Crayon Libre* 1.05 by GGBotNet, released under CC0 1.0
   (public domain, `apps/notes/fonts/CrayonLibre-LICENSE.txt`). It gives the Notes Chalkboard theme
   hand-drawn chalk lettering on every device, Chromebooks included. `tools/build-chalk-font.py` makes
-  this file from the original, reusing the font's own chalk strokes: a print (non-cursive) lowercase l,
+  this file from the original, reusing the font's own chalk strokes: a print (non-cursive) lowercase l
+  whose bottom trails off like chalk as the hand lifts,
   a flag on the 1 and bars on the capital I (so l, 1 and I differ), a Q with a plain straight tail, a
   two-dot colon (the original's looked like a semicolon), no pictograph emoji, WOFF2 (about 60 KB).
 - `apps/notes/fonts/Excalifont-Regular.woff2`: *Excalifont* by Excalidraw (based on Virgil by Ellinor

@@ -189,7 +189,7 @@
     .grip.sw { transform-origin: 14px calc(100% - 14px); } .grip.se { transform-origin: calc(100% - 14px) calc(100% - 14px); }
     .win:not(.focused) .grip { opacity: 0; visibility: hidden; pointer-events: none; }
     .win .grip.dragging { opacity: 1; visibility: visible; pointer-events: auto; } /* never vanish under a finger */
-    .grip::after { content: ""; position: absolute; transition: background-color .2s, border-color .2s; }
+    .grip::after { content: ""; position: absolute; pointer-events: none; transition: background-color .2s, border-color .2s; } /* only the grip box takes touches */
     /* Handles take the focus color: side handles are filled bars, corner handles are L-shaped borders. */
     .win.focused .grip::after { border-color: var(--focus-ring); }
     .win.focused .grip.n::after, .win.focused .grip.s::after, .win.focused .grip.e::after, .win.focused .grip.w::after { background-color: var(--focus-ring); }

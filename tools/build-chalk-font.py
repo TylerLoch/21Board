@@ -10,7 +10,8 @@ Changes for classroom use (CC0 allows any changes). New shapes are cut and paste
 own chalk strokes, so they keep its texture:
   - Colon ':' is two plain dots. The original's lower dot has a tail, so "3:15" read as "3;15".
   - Capital 'I' gets top and bottom bars.
-  - Lowercase 'l' is a plain manuscript letter instead of the looped cursive one (--l), and so are
+  - Lowercase 'l' is a print letter instead of the looped cursive one: a straight stroke whose bottom
+    trails off to the right like chalk as the hand lifts (--l, --trail), and so are
     ĺ ļ ľ ŀ ł (their accents re-seated on the new l); Ł is rebuilt as L with a bar.
   - Digit '1' gets a flag (--one), so I, l and 1 all look different ("Il1").
   - Capital 'Q' is the O with a plain straight tail instead of a curly one (--q).
@@ -36,9 +37,9 @@ from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphCoordinates
 HERE = os.path.dirname(os.path.abspath(__file__))
 ap = argparse.ArgumentParser()
 ap.add_argument('src', nargs='?', default='CrayonLibre-Regular.ttf')
-ap.add_argument('--l', choices=['loop', 'stick', 'trail', 'tail'], default='stick',
+ap.add_argument('--l', choices=['loop', 'stick', 'trail', 'tail'], default='trail',
                 help='stick: plain print l; trail: the stick curving off to the right at the bottom, like chalk as the hand lifts (--trail)')
-ap.add_argument('--trail', choices=['short', 'medium', 'long'], default='medium')
+ap.add_argument('--trail', choices=['short', 'medium', 'long'], default='short')
 ap.add_argument('--one', choices=['plain', 'flag'], default='flag')
 ap.add_argument('--out', default=os.path.join(HERE, '..', 'apps', 'notes', 'fonts', 'CrayonLibre-21Board.woff2'))
 ap.add_argument('--flavor', choices=['woff2', 'ttf'], default='woff2')
