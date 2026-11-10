@@ -6,91 +6,210 @@ apps/notes/fonts/CrayonLibre-21Board.woff2
 Source: Crayon Libre 1.05 by GGBotNet, CC0 1.0 (public domain):
   https://ggbot.itch.io/crayon-libre-font  (download the zip, use TrueType (.ttf)/CrayonLibre-Regular.ttf)
 
-Changes for classroom use (CC0 allows any changes):
+Changes for classroom use (CC0 allows any changes). New shapes are cut and pasted from the font's
+own chalk strokes, so they keep its texture:
   - Colon ':' is two plain dots. The original's lower dot has a tail, so "3:15" read as "3;15".
-  - Capital 'I' gets top and bottom bars, so I, l and 1 all look different ("Il1").
+  - Capital 'I' gets top and bottom bars.
+  - Lowercase 'l' is a plain manuscript letter instead of the looped cursive one (--l), and so are
+    ĺ ļ ľ ŀ ł (their accents re-seated on the new l); Ł is rebuilt as L with a bar.
+  - Digit '1' gets a flag (--one), so I, l and 1 all look different ("Il1").
+  - Capital 'Q' is the O with a plain straight tail instead of a curly one (--q).
   - Pictograph emoji (and a few CJK characters) are left out, so the system's color emoji
     and fonts show instead of a few stray chalk drawings (e.g. U+1F6AC, a cigarette).
-  - Hinting dropped and compressed to WOFF2 (about 110 KB instead of 700 KB).
+  - Hinting dropped and compressed to WOFF2 (about 60 KB instead of 700 KB).
 
-Run (needs: pip install fonttools brotli):
+Run (needs: pip install fonttools brotli skia-pathops):
   python3 tools/build-chalk-font.py path/to/CrayonLibre-Regular.ttf
+Options for trying alternatives: --l loop|stick|tail  --one plain|flag  --out FILE  --flavor woff2|ttf
 """
-import sys, os
+import argparse, math, os
+import pathops
 from fontTools.ttLib import TTFont
 from fontTools.pens.ttGlyphPen import TTGlyphPen
 from fontTools.pens.transformPen import TransformPen
-from fontTools.pens.reverseContourPen import ReverseContourPen
+from fontTools.pens.cu2quPen import Cu2QuPen
+from fontTools.misc.transform import Transform
 from fontTools import subset
+from fontTools.ttLib.tables._g_l_y_f import Glyph, GlyphCoordinates
 
-SRC = sys.argv[1] if len(sys.argv) > 1 else 'CrayonLibre-Regular.ttf'
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'apps', 'notes', 'fonts', 'CrayonLibre-21Board.woff2')
+HERE = os.path.dirname(os.path.abspath(__file__))
+ap = argparse.ArgumentParser()
+ap.add_argument('src', nargs='?', default='CrayonLibre-Regular.ttf')
+ap.add_argument('--l', choices=['loop', 'stick', 'tail'], default='stick')
+ap.add_argument('--one', choices=['plain', 'flag'], default='flag')
+ap.add_argument('--out', default=os.path.join(HERE, '..', 'apps', 'notes', 'fonts', 'CrayonLibre-21Board.woff2'))
+ap.add_argument('--flavor', choices=['woff2', 'ttf'], default='woff2')
+ap.add_argument('--foot', type=float, default=200, help='how far the l foot reaches past the stem (font units)')
+ap.add_argument('--flag', type=float, default=0.88, help='length of the 1 flag, relative to the hyphen')
+ap.add_argument('--flag-angle', type=float, default=45)
+ap.add_argument('--q', choices=['orig', 'slash', 'hyphen'], default='hyphen', help='capital Q tail')
+ap.add_argument('--q-len', type=float, default=0.55, help='Q tail length, relative to the O height')
+args = ap.parse_args()
 
-font = TTFont(SRC)
+font = TTFont(args.src)
 assert font['name'].getDebugName(1) == 'Crayon Libre', 'expected Crayon Libre'
 gs = font.getGlyphSet()
 glyf, hmtx = font['glyf'], font['hmtx']
 cmap = font.getBestCmap()
+G = lambda ch: cmap[ord(ch)]
+SB = 50   # the font's usual side bearing
 
 
-def build(parts, advance):
-    """parts: (glyph name, (xx, xy, yx, yy, dx, dy)) drawn into one new outline."""
+def path(name, t=Transform()):
+    p = pathops.Path()
+    gs[name].draw(TransformPen(p.getPen(), t))
+    return p
+
+
+def rect(x0, y0, x1, y1):
+    p = pathops.Path(); pen = p.getPen()
+    pen.moveTo((x0, y0)); pen.lineTo((x0, y1)); pen.lineTo((x1, y1)); pen.lineTo((x1, y0)); pen.closePath()
+    return p
+
+
+def union(*ps):
+    out = pathops.Path()
+    for p in ps: out = pathops.op(out, p, pathops.PathOp.UNION)
+    return out
+
+
+def clip(p, *box): return pathops.op(p, rect(*box), pathops.PathOp.INTERSECTION)
+
+
+def put(ch, p):
+    """Store outline p as the glyph for ch, moved to the usual left side bearing."""
+    x0, y0, x1, y1 = p.bounds
+    p = union(p)                                     # one clean outline
+    p.simplify(fix_winding=True, clockwise=True)     # TrueType direction
     pen = TTGlyphPen(gs)
-    for name, t in parts:
-        target = TransformPen(pen, t)
-        if t[0] * t[3] - t[1] * t[2] < 0:   # mirrored: keep the outline direction right
-            target = ReverseContourPen(target)
-        gs[name].draw(target)
-    g = pen.glyph()
-    g.recalcBounds(glyf)
-    return g, (advance, g.xMin)
+    p.draw(TransformPen(Cu2QuPen(pen, 1.0, reverse_direction=False), Transform().translate(SB - x0, 0)))
+    g = pen.glyph(); g.recalcBounds(glyf)
+    glyf[G(ch)] = g
+    hmtx[G(ch)] = (round(x1 - x0) + 2 * SB, g.xMin)
 
 
-def bbox(name):
+def mark(name):
+    """The accent of an accented letter: its third contour of 10+ points (after the letter's body and counter)."""
+    g = glyf[name]
+    coords, ends, flags = g.getCoordinates(glyf)
+    start, found = 0, []
+    for e in ends:
+        if e - start + 1 >= 10: found.append((start, e))
+        start = e + 1
+    s0, e0 = found[-1]
+    m = Glyph(); m.numberOfContours = 1
+    m.coordinates = GlyphCoordinates(coords[s0:e0 + 1]); m.flags = flags[s0:e0 + 1]; m.endPtsOfContours = [e0 - s0]
+    m.program = None
+    p = pathops.Path(); m.draw(p.getPen(), glyf)
+    return p
+
+
+def moved(p, dx, dy=0):
+    q = pathops.Path(); p.draw(TransformPen(q.getPen(), Transform().translate(dx, dy)))
+    return q
+
+
+def box(name):
     g = glyf[name]
     return g.xMin, g.yMin, g.xMax, g.yMax
 
 
+I0 = path(G('I'))   # the original capital I: a plain chalk stick (used below before 'I' is replaced)
+
 # --- Colon: two dots made from the period (the upper one mirrored, so they aren't identical).
-period = cmap[ord('.')]
-px0, py0, px1, py1 = bbox(period)
-top = 980                                   # where the original colon's upper dot ends
-up = top - py1
-colon, colon_m = build([
-    (period, (1, 0, 0, 1, 0, 0)),
-    (period, (-1, 0, 0, 1, px0 + px1, up)),
-], hmtx[period][0])
+px0, py0, px1, py1 = box(G('.'))
+put(':', union(path(G('.')), path(G('.'), Transform().translate(px0 + px1, 980 - py1).scale(-1, 1))))
 
-# --- Capital I: the original stem plus two bars cut from the hyphen.
-I, hyphen = cmap[ord('I')], cmap[ord('-')]
-ix0, iy0, ix1, iy1 = bbox(I)
-hx0, hy0, hx1, hy1 = bbox(hyphen)
-stem_w = ix1 - ix0
-bar_w = round(stem_w * 2.1)
-bar_h = round((hy1 - hy0) * 0.9)
-left = ix0
-shift = left + (bar_w - stem_w) / 2 - ix0   # center the stem under the bars
+# --- Lowercase l.
+if args.l == 'stick':
+    # A straight stick: the I's chalk stroke turned upside down, so l and I don't show the same marks.
+    bx0, by0, bx1, by1 = I0.bounds
+    put('l', path(G('I'), Transform().translate(bx0 + bx1, by0 + by1).scale(-1, -1)))
+elif args.l == 'tail':
+    # The plain stick with a small foot: the bottom of the 't' with its long foot shortened.
+    t = path(G('t'))
+    fx0, _, fx1, _ = clip(t, -500, 400, 3000, 430).bounds              # t's stem just below the crossbar
+    stem = clip(t, -500, -500, fx1, 430)
+    # The foot, right of the stem, cut short (keeps the curve and thickness of the original stroke).
+    toe2 = clip(t, fx1 - 60, -500, fx1 + args.foot, 330)
+    sx0, _, sx1, _ = clip(I0, -500, 400, 3000, 430).bounds
+    k = (fx1 - fx0) / (sx1 - sx0)
+    stick = clip(path(G('I'), Transform().translate(fx0, 0).scale(k, 1).translate(-sx0, 0)), -500, 380, 3000, 3000)
+    put('l', union(stem, toe2, stick))
+
+# --- The l with accents (Slovak, Polish, Catalan names...): the new l plus the original accent marks,
+#     placed where the font puts them on the capital L. The ł gets a bar cut from the hyphen; the Ł too
+#     (the original draws Ł as a looped cursive letter).
+if args.l != 'loop':
+    lp = pathops.Path(); gs[G('l')].draw(lp.getPen())                 # the new l (already at x = SB)
+    lx0, ly0, lx1, ly1 = lp.bounds
+    def at(cp, name, x, y=None):
+        m = mark(name); mx0, my0, _, _ = m.bounds
+        put(chr(cp), union(lp, moved(m, x - mx0, 0 if y is None else y - my0)))
+    at(0x13A, 'lacute', lx0 + 86)                  # ĺ (Ĺ has its acute 86 units in from the stem)
+    at(0x13C, 'uni013C', lx0 + 150)                # ļ
+    at(0x13E, 'lcaron', lx1 + 70)                  # ľ: just right of the stem top
+    at(0x140, 'ldot', lx1 + 70)                    # ŀ: middle dot right of the stem
+    hx0, hy0, hx1, hy1 = box(G('-'))
+    def bar(cx, cy, length):
+        return path(G('-'), Transform().translate(cx, cy).rotate(math.radians(35))
+                    .scale(length / (hx1 - hx0), 0.8).translate(-(hx0 + hx1) / 2, -(hy0 + hy1) / 2))
+    put(chr(0x142), union(lp, bar((lx0 + lx1) / 2, 0.5 * ly1, 520)))                     # ł
+    L = path(G('L')); Lx0, Ly0, Lx1, Ly1 = clip(L, -500, 600, 3000, 800).bounds         # the L's stem
+    put(chr(0x141), union(L, bar((Lx0 + Lx1) / 2, 0.47 * Ly1 + 0 * Ly0, 560)))           # Ł
+
+# --- Digit 1: a flag on top, cut from the hyphen's stroke.
+if args.one == 'flag':
+    one = path(G('1'))
+    hx0, hy0, hx1, hy1 = box(G('-'))
+    ox0, oy0, ox1, oy1 = clip(one, -500, 1300, 3000, 1400).bounds        # top of the stem
+    length, thick = args.flag * (hx1 - hx0), 0.85 * (hy1 - hy0)
+    flag = path(G('-'), Transform()
+                .translate((ox0 + ox1) / 2 + 70, 1390)                      # end well inside the top of the stem (no notch)
+                .rotate(math.radians(args.flag_angle))                        # rising to the right
+                .scale(length / (hx1 - hx0), thick / (hy1 - hy0))
+                .translate(-hx1, -(hy0 + hy1) / 2))
+    put('1', union(one, flag))
+
+# --- Capital Q: the O with a plain straight tail (the original's tail is a curly squiggle).
+if args.q != 'orig':
+    ox0, oy0, ox1, oy1 = box(G('O'))
+    cx, cy, rx, ry = (ox0 + ox1) / 2, (oy0 + oy1) / 2, (ox1 - ox0) / 2, (oy1 - oy0) / 2
+    # Centre of the tail: just outside the bowl's lower right, so it starts inside and ends outside.
+    tx, ty = cx + rx * math.cos(math.radians(-45)) + 40, cy + ry * math.sin(math.radians(-45)) - 40
+    length = args.q_len * (oy1 - oy0)
+    src = G('-') if args.q == 'hyphen' else G('\\')
+    sx0, sy0, sx1, sy1 = box(src)
+    if args.q == 'hyphen':      # horizontal stroke: scale to length, then turn it to point down-right
+        tail = path(src, Transform().translate(tx, ty).rotate(math.radians(-42))
+                    .scale(length / (sx1 - sx0), 0.95).translate(-(sx0 + sx1) / 2, -(sy0 + sy1) / 2))
+    else:                       # the backslash: shorten it and lean it over to about 45 degrees
+        k = length / math.hypot(sx1 - sx0, sy1 - sy0)
+        tail = path(src, Transform().translate(tx, ty).rotate(math.radians(24))
+                    .scale(k, k).translate(-(sx0 + sx1) / 2, -(sy0 + sy1) / 2))
+    put('Q', union(path(G('O')), tail))
+
+# --- Capital I: the original stick plus two bars cut from the hyphen.
+ix0, iy0, ix1, iy1 = box(G('I'))
+hx0, hy0, hx1, hy1 = box(G('-'))
+bar_w, bar_h = round((ix1 - ix0) * 2.1), round((hy1 - hy0) * 0.9)
 sx, sy = bar_w / (hx1 - hx0), bar_h / (hy1 - hy0)
-Ibar, I_m = build([
-    (I, (1, 0, 0, 1, shift, 0)),
-    (hyphen, (sx, 0, 0, sy, left - hx0 * sx, iy1 - bar_h - hy0 * sy)),              # top bar
-    (hyphen, (-sx, 0, 0, sy, left + bar_w + hx0 * sx, iy0 - hy0 * sy)),           # bottom bar, mirrored
-], left + bar_w + ix0)
-
-colon_name, I_name = cmap[ord(':')], I
-glyf[colon_name], hmtx[colon_name] = colon, colon_m
-glyf[I_name], hmtx[I_name] = Ibar, I_m
+put('I', union(
+    path(G('I'), Transform().translate((bar_w - (ix1 - ix0)) / 2, 0)),
+    path(G('-'), Transform().translate(ix0, iy1 - bar_h).scale(sx, sy).translate(-hx0, -hy0)),            # top bar
+    path(G('-'), Transform().translate(ix0 + bar_w, iy0).scale(-sx, sy).translate(-hx0, -hy0)),           # bottom bar, mirrored
+))
 
 # Say what this is.
 name = font['name']
-name.setName('Crayon Libre (21Board edit: two-dot colon, barred I, no pictographs). Original by GGBotNet, CC0 1.0.', 10, 3, 1, 0x409)
-name.setName('Version 1.05; 21Board edit 1', 5, 3, 1, 0x409)
+name.setName('Crayon Libre (21Board edit: two-dot colon, barred I, manuscript l, flagged 1, no pictographs). '
+             'Original by GGBotNet, CC0 1.0.', 10, 3, 1, 0x409)
+name.setName('Version 1.05; 21Board edit 2', 5, 3, 1, 0x409)
 
 # --- Subset: everything except pictographs and stray CJK.
 drop = {0x2615, 0x3012, 0x5143, 0x5186, 0x8336, 0x9F99}       # coffee, postal mark, CJK
 keep = [c for c in cmap if c < 0x10000 and c not in drop]
 opts = subset.Options()
-opts.flavor = 'woff2'
 opts.layout_features = ['*']
 opts.hinting = False
 opts.name_IDs = ['*']
@@ -98,7 +217,7 @@ opts.notdef_outline = True
 sub = subset.Subsetter(opts)
 sub.populate(unicodes=keep)
 sub.subset(font)
-os.makedirs(os.path.dirname(OUT), exist_ok=True)
-font.flavor = 'woff2'
-font.save(OUT)
-print('wrote', os.path.normpath(OUT), os.path.getsize(OUT), 'bytes,', len(keep), 'characters')
+os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+font.flavor = 'woff2' if args.flavor == 'woff2' else None
+font.save(args.out)
+print('wrote', os.path.normpath(args.out), os.path.getsize(args.out), 'bytes,', len(keep), 'characters', f'(l={args.l}, one={args.one})')

@@ -1360,10 +1360,12 @@ const SUITES = [
     const glyphs = await f.locator('body').evaluate(async () => {
       await document.fonts.load('200px "Crayon Libre"');
       const c = document.createElement('canvas').getContext('2d'); c.font = '200px "Crayon Libre"';
-      return { colonBelow: c.measureText(':').actualBoundingBoxDescent, I: c.measureText('I').width, one: c.measureText('1').width };
+      return { colonBelow: c.measureText(':').actualBoundingBoxDescent, I: c.measureText('I').width, one: c.measureText('1').width, l: c.measureText('l').width, o: c.measureText('o').width, lacute: c.measureText('ĺ').width, Lslash: c.measureText('Ł').width, L: c.measureText('L').width };
     });
     ok(glyphs.colonBelow < 3, `the chalk colon is two dots with nothing below the line, so 3:15 doesn't read 3;15 (${glyphs.colonBelow.toFixed(1)}px below)`);
-    ok(glyphs.I > glyphs.one * 1.2, 'the chalk capital I has bars, so it differs from 1 and l');
+    ok(glyphs.I > glyphs.l * 1.4 && glyphs.one > glyphs.l * 1.3, `the chalk I has bars and the 1 has a flag, so neither looks like the l (I ${Math.round(glyphs.I)}, 1 ${Math.round(glyphs.one)}, l ${Math.round(glyphs.l)}px)`);
+    ok(glyphs.l < glyphs.o * 0.55, `the chalk lowercase l is a plain print stick, not the looped cursive one (${Math.round(glyphs.l)}px wide)`);
+    ok(glyphs.lacute < glyphs.l * 1.7 && glyphs.Lslash < glyphs.L * 1.25, 'accented l letters (ĺ ľ ł...) and Ł use the print shapes too');
     // Whiteboard theme with its marker font.
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="color:whiteboard"]'); await page.waitForTimeout(800);
     const wb = await f.locator('body').evaluate(async b => { await document.fonts.load('32px "Excalifont"'); return { bg: getComputedStyle(b).backgroundColor, ink: getComputedStyle(b).color, font: getComputedStyle(document.getElementById('view')).fontFamily, cls: b.classList.contains('whiteboard') && !b.classList.contains('chalk'), loaded: document.fonts.check('32px "Excalifont"') }; });
