@@ -458,6 +458,42 @@
     .photo-ctrls .line { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
     .photo-ctrls .line.end { justify-content: flex-end; }
     .photo-ctrls input[type="range"] { flex: 0 1 220px; accent-color: var(--primary); }
+
+    /* Board history (section 13c in board.js) */
+    .hist-intro { color: var(--muted); font-size: 14px; margin: 12px 0 8px; }
+    .hist-day { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 18px 0 6px; }
+    .hist-row, .hist-hero { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px; border-radius: 12px; text-align: left; color: var(--text); justify-content: flex-start; }
+    .hist-row:hover, .hist-hero:hover { background: var(--hover-bg); }
+    .hist-row.sel { background: var(--primary-soft); }
+    .hist-row .minimap, .hist-hero .minimap { width: 64px; height: 36px; flex: 0 0 64px; border-radius: 6px; box-shadow: 0 0 0 1px var(--border); }
+    .hist-row .meta2 { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .hist-row .when { font-size: 17px; font-weight: 700; line-height: 1.1; }
+    .hist-row .what { font-size: 13px; color: var(--muted); }
+    .hist-hero { margin: 4px 0 6px; background: var(--hover-bg); border: 1px solid var(--border); padding: 10px; }
+    .hist-hero .minimap { width: 96px; height: 54px; flex-basis: 96px; }
+    .hist-hero > span { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--muted); }
+    .hist-hero b { font-size: 15px; color: var(--text); }
+    .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+    .chip, .tag, .pill { font-size: 11.5px; line-height: 1.5; padding: 1px 8px; border-radius: 9px; background: var(--hover-bg); color: var(--muted); white-space: nowrap; }
+    .hist-row.sel .chip { background: var(--surface); }
+    .tag { background: var(--primary-soft); color: var(--primary); }
+    .tag.big, .pill.diff { background: #fef3c7; color: #92400e; }
+    body.dark .tag.big, body.dark .pill.diff { background: rgba(251, 191, 36, .18); color: #fcd34d; }
+    .hist-detail { margin: 4px 0 12px; padding: 12px; border-radius: 14px; background: var(--hover-bg); display: flex; flex-direction: column; gap: 10px; }
+    .hist-detail .minimap { width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 10px; box-shadow: 0 0 0 1px var(--border); }
+    .hist-detail p { margin: 0; font-size: 14px; }
+    .hist-detail .inst { background: var(--surface); }
+    .hist-detail > .btn.primary { min-height: 48px; justify-content: center; }
+    .hist-undo { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; margin: 6px 0; border-radius: 12px; background: var(--primary-soft); font-size: 14px; }
+    .hist-foot { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
+    .hist-foot .btn { min-height: 48px; justify-content: center; }
+    #history .inst-list { margin: 6px 0; }
+    #history .btn.small { white-space: nowrap; }
+    #empty-hint .rescue { margin-top: 20px; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; font-size: clamp(14px, 1.5vw, 18px); }
+    #empty-hint .rescue[hidden] { display: none; }
+    #empty-hint .rescue button { pointer-events: auto; }
+    #empty-hint[hidden] .rescue { visibility: hidden; }
+    .modal-input { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 14px; font-size: 14px; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -467,6 +503,7 @@
     <div id="empty-hint">
       <div class="big">Your board is ready</div>
       <div class="small">Tap <svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/></svg> in either bottom corner to open a widget.</div>
+      <div class="rescue" hidden>Windows gone? <button class="btn small primary">Go back to an earlier version</button></div>
     </div>
   </main>
 
@@ -491,6 +528,11 @@
 
   <section id="settings" class="sheet" role="dialog" aria-label="Settings">
     <div class="sheet-head"><h2>Settings</h2><button data-close aria-label="Close settings"></button></div>
+    <div class="sheet-body"></div>
+  </section>
+
+  <section id="history" class="sheet" role="dialog" aria-label="Board history">
+    <div class="sheet-head"><h2>Board history</h2><button data-close aria-label="Close board history"></button></div>
     <div class="sheet-body"></div>
   </section>
 

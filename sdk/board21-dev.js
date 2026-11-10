@@ -172,6 +172,7 @@
     for (var i = 0; i < doc.scripts.length; i++) { var s = doc.scripts[i]; if (s.type === 'application/json') continue; sdkFirst = !!(s.src && /board21(\.min)?\.js/.test(s.getAttribute('src'))); break; }
     if (!info.sdkFound) add('err', 'The 21Board SDK isn’t loaded', 'The dev window added it for this test.', 'Add <script src="' + sdkUrl + '"></script> as the first script in <head>, before any other script.');
     else if (!sdkFirst) add('warn', 'The SDK isn’t the first script', 'Scripts before it run before the dev window starts (and run twice).', 'Move the 21Board SDK <script> tag so it is the first script in <head>.');
+    if (!/^\s*(<!--[\s\S]*?-->\s*)*<!doctype html>/i.test(src)) add('warn', 'No <!DOCTYPE html> at the top', 'Without it the board draws the widget in an old compatibility mode (sizes and spacing can differ), which this window can’t show.', 'Make <!DOCTYPE html> the very first line of the file.');
     var hosts = {};
     Array.prototype.forEach.call(doc.querySelectorAll('[src], link[href]'), function (n) {
       var u = n.getAttribute('src') || n.getAttribute('href') || '';

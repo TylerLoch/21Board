@@ -46,7 +46,9 @@
   }
   var role = inBoard() ? 'board'
     : (window.name === 'b21-bare' || /(^#|[#&])b21-bare\b/.test(location.hash) || (me && me.getAttribute('data-dev') === 'off')) ? 'bare' : 'dev';
-  if (window.name === 'b21-bare') window.name = '';   // only for this load: the next one tries the dev window again
+  // showBare's own rewrite: only for this load (the next one tries the dev window again). A frame named so by the
+  // dev window ("the widget on its own") keeps its name, so reloading the widget there stays on its own.
+  if (window.name === 'b21-bare' && window.__board21DevNote !== undefined) window.name = '';
   var embedded = role === 'board';
   // The board's origin. (about:srcdoc and file:// pages report location.origin 'null', so self.origin is used,
   // and messages can't be origin-restricted when it's opaque.)
@@ -284,7 +286,7 @@
   // In the dev window the widget runs a frame deeper than the AI tool's preview, so its errors would be out
   // of the tool's sight. Inside 21Board they're kept from the start and sent once the board says it's the
   // dev window (init context.host 'dev'); otherwise they're dropped.
-  var devLogs = [], devOn = null, origConsole = {};
+  var devLogs = [], devOn = null, origConsole = {}, sdkConsole = {};
   function devText(args) {
     return Array.prototype.map.call(args, function (a) {
       if (a instanceof Error) return a.stack && a.stack.indexOf(a.message) >= 0 ? a.stack : a.name + ': ' + a.message + (a.stack ? '\n' + a.stack : '');
@@ -300,7 +302,7 @@
   function devReport(on) {
     devOn = !!on;
     if (devOn) devLogs.forEach(function (l) { post('devLog', l); });
-    else Object.keys(origConsole).forEach(function (k) { console[k] = origConsole[k]; });
+    else Object.keys(origConsole).forEach(function (k) { if (console[k] === sdkConsole[k]) console[k] = origConsole[k]; });   // (unless the widget wrapped it since)
     devLogs = [];
   }
   if (role === 'board') {
@@ -310,7 +312,7 @@
     window.addEventListener('unhandledrejection', function (e) { devLog('error', ['Unhandled promise rejection:', e.reason]); });
     ['error', 'warn'].forEach(function (k) {
       var orig = origConsole[k] = console[k];
-      console[k] = function () { devLog(k, arguments); return orig.apply(console, arguments); };
+      console[k] = sdkConsole[k] = function () { devLog(k, arguments); return orig.apply(console, arguments); };
     });
   }
 
@@ -326,10 +328,12 @@
       return ' ' + a.name + '="' + a.value.replace(/&/g, '&amp;').replace(/"/g, '&quot;') + '"';
     }).join('');
     var head = document.head.innerHTML;
+    var dt = document.doctype;   // kept as it is (none = quirks mode, as on the board)
+    var doctype = dt ? '<!DOCTYPE ' + dt.name + (dt.publicId ? ' PUBLIC "' + dt.publicId + '"' : '') + (dt.systemId ? (dt.publicId ? '' : ' SYSTEM') + ' "' + dt.systemId + '"' : '') + '>\n' : '';
     try { document.write('<plaintext hidden style="display:none">'); } catch (e) { return 'no-write'; }
     document.addEventListener('DOMContentLoaded', function () {
       var pt = document.querySelector('plaintext');
-      var src = '<!DOCTYPE html>\n<html' + attrs + '>\n<head>' + head + (pt ? pt.textContent : '');
+      var src = doctype + '<html' + attrs + '>\n<head>' + head + (pt ? pt.textContent : '');
       if (pt) pt.parentNode.removeChild(pt);
       var dev = window.__board21Dev = { src: src, base: devBase, sdkUrl: me.src, hostUrl: location.href };
       var done = false;

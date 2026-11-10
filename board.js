@@ -80,7 +80,9 @@
     devMode: false,
     devWidgets: [],             // [{ id, name, entry }] test widgets added in Developer mode
     activeBoard: 1,
-    lastBackupAt: null       // when a full backup was last exported (ms), for backup reminders
+    lastBackupAt: null,      // when a full backup was last exported (ms), for backup reminders
+    historyEvery: 10,        // Board history: save a version at most every N minutes while the board changes (0 = off)
+    historyFolder: true      // Board history: also keep copies in the linked Google Drive folder (about one an hour)
   };
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
   const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
@@ -151,6 +153,7 @@
     plus: '<path d="M12 5v14M5 12h14"/>',
     widget: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
     windows: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
+    history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 4.5v4h4"/><path d="M12 7.5V12l3 2"/>',   // clock with a back arrow
     send: '<path d="M7 18.5H6.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8.1 4.5 4.5 0 0 1 17.5 18.5H17"/><path d="M12 20.5v-8"/><path d="M8.8 15.2L12 12l3.2 3.2"/>' // cloud with an arrow going up
   };
   const svg = (name, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${cls ? ` class="${cls}"` : ''}>${ICONS[name] || ''}</svg>`;
@@ -166,6 +169,21 @@
   const newId = () => (self.crypto && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
   const UID_RE = /^[A-Za-z0-9-]{8,64}$/;
   const sameJSON = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
+  // A short fingerprint of a string (cyrb53; not for security).
+  function hash53(text) {
+    let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+    for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  }
+  // A fingerprint of a board's content (a full export): to tell whether it changed since it was sent, loaded
+  // or saved as a version. Not the window stacking order (tapping a window to bring it forward isn't a change).
+  function boardSig(exp) {
+    const m = exp.media && exp.media.background;
+    return hash53(JSON.stringify([exp.board, exp.theme, exp.accent, exp.instances.map(i => { const o = Object.assign({}, i, { z: 0 }); delete o.createdAt; return o; }),
+      m ? [m.bytes, m.addedAt, m.w, m.h, exp.media.look] : null]));
+  }
   const fmtBytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`;
 
   function luminance(hex) {
@@ -378,6 +396,13 @@
     pending: new Map(),   // key -> { type, value } | { del: true }
     waiters: [],
     running: false,
+    idle: [],             // settled() waiters
+    retried: false,
+    // Resolves (true) once nothing is waiting to be written, or (false) after timeoutMs.
+    settled(timeoutMs = 1000) {
+      if (!this.running && !this.pending.size) return Promise.resolve(true);
+      return new Promise(res => { const t = setTimeout(() => res(false), timeoutMs); this.idle.push(() => { clearTimeout(t); res(true); }); });
+    },
 
     put(key, type, value) { this.pending.set(key, { type, value: clone(value) }); return this.kick(); },
     del(key) { this.pending.set(key, { del: true }); return this.kick(); },
@@ -410,17 +435,31 @@
             set(out);
           }) || [];
           for (const r of written) { if (r.deleted) Known.delete(r.key); else Known.set(r.key, r.rev); }
-          if (written.length) { Sync.announce(written.map(r => r.key)); Link.changed(written.map(r => r.key)); }
+          if (written.length) { const keys = written.map(r => r.key); Sync.announce(keys); Link.changed(keys); BoardHistory.changed(keys); }
+          this.retried = false;
           waiters.forEach(w => w.resolve(true));
         } catch (err) {
+          // Out of space: make room by thinning board history, then try once more.
+          if (err && err.name === 'QuotaExceededError' && !this.retried) {
+            this.retried = true;
+            try { await BoardHistory.shrink(); } catch (e) { /* nothing to free */ }
+            for (const [k, op] of batch) if (!this.pending.has(k)) this.pending.set(k, op);
+            this.waiters.unshift(...waiters);
+            continue;
+          }
+          this.retried = false;
           console.error('21Board: save failed', err);
           toast('Could not save changes. Storage may be full or blocked.');
           waiters.forEach(w => w.reject(err));
         }
       }
       this.running = false;
+      const idle = this.idle; this.idle = [];
+      idle.forEach(f => f());
     }
   };
+  // The newest record revision this tab knows (a write must be newer, even if the clock went back).
+  function maxKnownRev() { let m = 0; for (const v of Known.values()) if (v > m) m = v; return m; }
 
   // =====================================================================
   // 4. Cross-tab sync
@@ -453,7 +492,8 @@
     },
     receive(msg) {
       if (!msg || msg.tab === TAB_ID) return;
-      if (msg.op === 'reload') { if (Inter.active) Inter.deferredRebuild = true; else rebuildAll(); return; }
+      if (msg.op === 'reload') { if (msg.erased) Link.forget(); if (Inter.active) Inter.deferredRebuild = true; else rebuildAll(); return; }
+      if (msg.op === 'history') { BoardHistory.reload().then(() => { HistorySheet.refresh(); updateHint(); }); return; }
       if (msg.op === 'reset' && msg.board === S.boardId && msg.ikey) {
         S.data.delete(msg.ikey); S.conf.delete(msg.ikey);
         const w = S.wins.get(msg.ikey); if (w) w.reload();
@@ -747,6 +787,7 @@
     },
     async setFromFile(file) {
       const m = await this.process(file);
+      if (this.media()) await BoardHistory.before('photo', 'Before changing the background photo');
       const prev = this.settings();
       const look = { on: true, fit: prev ? prev.fit : 'fill', focus: { x: 0.5, y: 0.5 }, fade: prev ? prev.fade : 0 };
       S.media.set('background', m); S.media.set('background-look', look);
@@ -761,9 +802,11 @@
       Writer.put(Keys.media(S.boardId, 'background-look'), 'media', look);
       this.render();
     },
-    remove() {
+    async remove() {
+      const beforeId = await BoardHistory.before('photo', 'Before removing the background photo');
       for (const n of ['background', 'background-look']) { S.media.delete(n); Writer.del(Keys.media(S.boardId, n)); }
       this.render();
+      return beforeId;
     }
   };
 
@@ -771,6 +814,9 @@
     let open = 0;
     for (const w of S.wins.values()) if (w) open++;
     $('#empty-hint').hidden = open > 0;
+    // Windows gone (a student closed everything?): offer Board history.
+    const rescue = $('#empty-hint .rescue');
+    if (rescue) rescue.hidden = !(open === 0 && BoardHistory.metas.some(m => Date.now() - m.at < 7 * 864e5 && m.thumb && m.thumb.wins.length));
   }
 
   // Create, update or remove the window for an instance so it matches S.insts.
@@ -1492,6 +1538,7 @@
       try { v = clone(value); } catch (err) { this.ack(reqId, false, null, 'Value is not JSON-serializable'); return; }
       const has = map.has(this.ikey);
       if (sameJSON(has ? map.get(this.ikey) : null, v) && (v === null || Known.has(key))) { this.ack(reqId, true); return; }
+      if (kind === 'data' && has) BoardHistory.guardEmptied(this.ikey, map.get(this.ikey), v);   // e.g. a note cleared: keep a version first
       let p;
       if (v === null) { map.delete(this.ikey); p = Writer.del(key); }
       else { map.set(this.ikey, v); p = Writer.put(key, kind, v); }
@@ -1670,9 +1717,14 @@
     focusWin(ikey);
   }
 
+  // An instance's name as the teacher sees it: "Notes", "Notes 2".
+  function instName(widgetId, n) { const w = getWidget(widgetId); return `${w ? w.name : widgetId}${n > 1 || !w ? ' ' + n : ''}`; }
+
+  // Returns the id of the Board history version saved first (for Undo), or null.
   async function resetWin(ikey) {
     const inst = S.insts.get(ikey);
-    if (!inst) return;
+    if (!inst) return null;
+    const beforeId = await BoardHistory.before('reset', `Before resetting ${instName(inst.widgetId, inst.n)}`);
     const widget = getWidget(inst.widgetId);
     const b = S.boardId;
     S.data.delete(ikey); S.conf.delete(ikey);
@@ -1682,21 +1734,26 @@
     Sync.announce([], { op: 'reset', board: b, ikey });
     const w = S.wins.get(ikey);
     if (w) w.reload();
+    return beforeId;
   }
 
-  async function deleteInstance(ikey) {
+  async function deleteInstance(ikey, opts = {}) {
+    const i0 = S.insts.get(ikey);
+    const beforeId = i0 && opts.history !== false ? await BoardHistory.before('delete', `Before deleting ${instName(i0.widgetId, i0.n)}`) : null;
     const b = S.boardId;
     const w = S.wins.get(ikey);
     if (w) { if (Menu.win === w) Menu.close(); w.destroy(); S.wins.delete(ikey); }
     S.insts.delete(ikey); S.data.delete(ikey); S.conf.delete(ikey);
     await Promise.all([Writer.del(Keys.inst(b, ikey)), Writer.del(Keys.data(b, ikey)), Writer.del(Keys.conf(b, ikey))]);
     afterBulkApply();
+    return beforeId;
   }
 
   async function closeAll() {
     const open = Array.from(S.insts.entries()).filter(([, i]) => i.open).map(([k]) => k);
+    const beforeId = open.length ? await BoardHistory.before('close-all', 'Before closing all windows') : null;
     await Promise.all(open.map(k => closeWin(k, { quiet: true })));
-    if (open.length) toast(`Closed ${open.length} window${open.length === 1 ? '' : 's'}. Their content is saved.`);
+    if (open.length) toast(`Closed ${open.length} window${open.length === 1 ? '' : 's'}. Their content is saved.`, undoAction(beforeId));
   }
 
   let layoutRaf = 0;
@@ -2284,7 +2341,7 @@
         `<button class="menu-item ${cls}" role="menuitem" data-act="${act}" ${extra}><span class="icon-slot">${icon}</span><span class="label">${esc(label)}</span></button>`;
       if (this.confirming) {
         const name = `${w.widget.name}${w.inst.n > 1 ? ' ' + w.inst.n : ''}`;
-        this.el.innerHTML = `<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything saved in this window and returns it to its starting size.</div>` +
+        this.el.innerHTML = `<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything saved in this window and returns it to its starting size. Board history keeps a copy.</div>` +
           item('reset-yes', svg('reset'), 'Reset', '', 'danger') + item('reset-no', '', 'Cancel');
         return;
       }
@@ -2305,6 +2362,7 @@
       }
       if (html) html += '<div class="menu-sep"></div>';
       html += w.inst.maximized ? item('restore', svg('restore'), 'Restore size') : item('maximize', svg('maximize'), 'Fill the board');
+      if (BoardHistory.hasWindow(w.ikey)) html += item('history', svg('history'), 'Earlier versions…');
       html += item('reset', svg('reset'), 'Reset');
       html += item('close', svg('close'), 'Close');
       this.el.innerHTML = html;
@@ -2358,7 +2416,13 @@
         case 'maximize': this.close(); setMaximized(w.ikey, true); break;
         case 'restore': this.close(); setMaximized(w.ikey, false); break;
         case 'reset': this.confirming = true; this.render(); this.position(); break;
-        case 'reset-yes': this.close(); resetWin(w.ikey); break;
+        case 'reset-yes': {
+          this.close();
+          const ik = w.ikey, name = instName(w.inst.widgetId, w.inst.n);
+          resetWin(ik).then(id => toast(`${name} was reset.`, id ? { action: 'Undo', timeout: 15000, onAction: () => BoardHistory.putBack(id, ik, { exact: true, quiet: true }) } : {}));
+          break;
+        }
+        case 'history': this.close(); HistorySheet.open(Settings.side || 'left', { ikey: w.ikey }); break;
         case 'reset-no': this.confirming = false; this.render(); this.position(); break;
         case 'close': this.close(); closeWin(w.ikey); break;
       }
@@ -2554,6 +2618,8 @@
         `<button class="icon" data-act="dev-remove" data-val="${esc(d.id)}" title="Remove" aria-label="Remove ${esc(d.name)}">${svg('trash')}</button></div>`).join('');
 
       this.body.innerHTML = `
+        ${historySettings(sw, seg)}
+
         <h3>Appearance</h3>
         <div class="row"><div class="lbl">Theme</div>${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']])}</div>
         <div class="row stack"><div><div class="lbl">Accent color</div><div class="hint">Buttons, the selected-window outline and highlights, in 21Board and its widgets.</div></div>
@@ -2679,8 +2745,8 @@
         case 'photo-on': BoardPhoto.update({ on: !(BoardPhoto.settings() || {}).on }); this.render(); break;
         case 'photo-fit': BoardPhoto.update({ fit: val }); this.render(); break;
         case 'photo-remove': {
-          const yes = await dialog({ title: 'Remove the background photo?', message: 'It is removed from this board on this device. Your full backups still have it.', actions: [{ label: 'Remove photo', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
-          if (yes) { BoardPhoto.remove(); this.render(); }
+          const yes = await dialog({ title: 'Remove the background photo?', message: 'It is removed from this board on this device. Your full backups and board history still have it.', actions: [{ label: 'Remove photo', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+          if (yes) { const id = await BoardPhoto.remove(); this.render(); toast('Photo removed.', undoAction(id)); }
           break;
         }
         case 'close-all': await closeAll(); this.render(); break;
@@ -2690,12 +2756,36 @@
           if (!i) break;
           const widget = getWidget(i.widgetId);
           const name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
-          const ok = await dialog({ title: `Delete ${name}?`, message: 'Its window and everything saved in it will be removed from this device. This can’t be undone.', actions: [{ label: 'Delete', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
-          if (ok) { await deleteInstance(val); this.render(); }
+          const ok = await dialog({ title: `Delete ${name}?`, message: 'Its window and everything saved in it will be removed from this board. You can bring it back from Board history for a while.', actions: [{ label: 'Delete', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+          if (ok) {
+            const id = await deleteInstance(val); this.render();
+            toast(`Deleted ${name}.`, id ? { action: 'Undo', timeout: 15000, onAction: () => BoardHistory.putBack(id, val, { exact: true, quiet: true }) } : {});
+          }
           break;
         }
         case 'install': await Install.run(); this.refreshStatus(); break;
         case 'backup': await doExport('full'); this.refreshStatus(); break;
+        case 'hist-open': HistorySheet.open(this.side); break;
+        case 'hist-every': {
+          if (val === '0') {
+            const ok = await dialog({ title: 'Turn off board history?', message: 'Versions already saved stay until you delete them. 21Board still saves one when you go back to an earlier version.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+            if (!ok) break;
+          }
+          updateSettings({ historyEvery: +val });
+          break;
+        }
+        case 'hist-folder': updateSettings({ historyFolder: S.settings.historyFolder === false }); break;
+        case 'hist-delete': {
+          const canFolder = Link.dir && Link.perm === 'granted';
+          const ok = await dialog({ title: 'Delete this board’s history?', message: 'Every earlier version on this device is deleted. The board itself stays as it is.',
+            actions: [{ label: 'Delete from this device', value: 'local', kind: 'danger' }].concat(canFolder ? [{ label: 'Also delete its copies in your Google Drive folder', value: 'folder', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
+          if (!ok) break;
+          await BoardHistory.clearBoard();
+          if (ok === 'folder') await BoardHistory.deleteFolderCopies(S.board.uid);
+          toast('Board history deleted.');
+          this.render();
+          break;
+        }
         case 'link-choose': await Link.choose(); this.render(); break;
         case 'link-unlink': {
           const ok = await dialog({ title: `Unlink the “${Link.dir ? Link.dir.name : ''}” folder?`, message: 'This device stops sending to it and checking it. The files in it are left as they are.', actions: [{ label: 'Unlink', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
@@ -2728,12 +2818,17 @@
         }
         case 'dev-remove': updateSettings({ devWidgets: (S.settings.devWidgets || []).filter(d => d.id !== val) }); break;
         case 'erase': {
-          const ok = await dialog({ title: 'Erase everything?', message: 'All windows, their content, and your settings will be deleted from this device. Export a backup first if you might want them later.', actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }, { label: 'Cancel', value: null }] });
+          const hist = BoardHistory.enabled();
+          const ok = await dialog({ title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + ' Export a backup first if you might want them later.',
+            actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }]
+              .concat(hist ? [{ label: 'Erase, including board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (ok === 'backup') { await doExport('full'); break; }
-          if (ok !== 'erase') break;
+          if (ok !== 'erase' && ok !== 'erase-all') break;
+          if (ok === 'erase') await BoardHistory.before('erase', 'Before erasing everything', { timeout: 3000 });
+          else await BoardHistory.clearAll();
           await Store.tx('readwrite', s => { s.clear(); });
           Link.forget();
-          Sync.announce([], { op: 'reload' });
+          Sync.announce([], { op: 'reload', erased: true });
           await rebuildAll();
           this.render();
           toast('Everything was erased.');
@@ -2882,7 +2977,8 @@
       widgetId: i.widgetId, n: i.instance, open: !!i.open, maximized: !!i.maximized, z: num(i.z, 1),
       rect: normalizeInst({ rect: i.rect }, { widgetId: i.widgetId, n: i.instance }).rect,
       config: i.config === undefined ? null : i.config,
-      data: i.data === undefined ? null : i.data
+      data: i.data === undefined ? null : i.data,
+      createdAt: num(i.createdAt, null)   // board history versions keep it (which window is which)
     }));
     const bg = j.board && j.board.background || {};
     return {
@@ -2898,7 +2994,9 @@
       },
       // Set by "Send" (section 13b): when, from which device.
       sent: j.sent && typeof j.sent === 'object' ? { id: j.sent.id ? String(j.sent.id).slice(0, 64) : '', base: j.sent.base ? String(j.sent.base).slice(0, 64) : null,
-        at: num(j.sent.at, 0), by: String(j.sent.by || '').slice(0, 64), from: String(j.sent.from || '').slice(0, 60) } : null,
+        at: num(j.sent.at, 0), by: String(j.sent.by || '').slice(0, 64), from: String(j.sent.from || '').slice(0, 60),
+        // Each device's latest version that this one includes (device id -> version id).
+        mine: j.sent.mine && typeof j.sent.mine === 'object' ? Object.fromEntries(Object.entries(j.sent.mine).slice(0, 16).filter(([k, v]) => typeof v === 'string').map(([k, v]) => [String(k).slice(0, 64), v.slice(0, 64)])) : null } : null,
       viewport: j.viewport && j.viewport.width > 0 && j.viewport.height > 0 ? { w: j.viewport.width, h: j.viewport.height } : null,
       photo: (() => {
         const m = j.kind !== 'template' && j.media && j.media.background;   // templates never carry a photo (it may show the class)
@@ -2922,15 +3020,16 @@
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
       message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' is' : 's are'} not installed here; ${missing.size === 1 ? 'its' : 'their'} content will be kept but not shown.` : ''),
       actions: [
-        { label: 'Replace my board', sub: 'Your current windows and content are removed', value: 'replace', kind: 'danger', choice: true },
+        { label: 'Replace my board', sub: 'Your current windows and content are replaced. You can undo this.', value: 'replace', kind: 'danger', choice: true },
         { label: 'Add to my board', sub: 'Keep what’s here and add these windows', value: 'add', kind: 'primary', choice: true },
         { label: 'Cancel', value: null }
       ]
     });
     if (!mode) return;
     try {
-      await applyImport(parsed, mode);
-      toast(mode === 'replace' ? 'Board imported.' : `Added ${openCount} window${openCount === 1 ? '' : 's'}.`);
+      const label = `${mode === 'replace' ? 'Before importing' : 'Before adding windows from'} “${file.name.replace(/\.21board$/i, '')}”`;
+      const undoId = await applyImport(parsed, mode, { history: { reason: mode === 'replace' ? 'import' : 'add', label } });
+      toast(mode === 'replace' ? 'Board imported.' : `Added ${openCount} window${openCount === 1 ? '' : 's'}.`, undoAction(undoId));
     } catch (err) {
       console.error(err);
       toast('Import failed: ' + (err.message || err));
@@ -2938,10 +3037,26 @@
   }
 
   // opts.uid: this board becomes that board (loading it from the shared folder), so later versions match.
+  // opts.history: {reason, label} for the version of the board as it is now that's saved first (Board history),
+  //   or false for none. opts.mustSnapshot: if that version can't be saved, ask before going on.
+  // opts.photo: 'file' (default: the file's photo replaces this device's, if it has one), 'exact' (the board
+  //   gets exactly the file's photo, or none), 'keep' (this device's photo is left as it is).
+  // opts.keepCreated: windows keep the file's createdAt. Returns the id of the version saved first (or null),
+  // or false if cancelled.
   async function applyImport(p, mode, opts = {}) {
     const b = S.boardId;
+    let undoId = null;
+    if (opts.history !== false) {
+      const h = opts.history || (mode === 'add' ? { reason: 'add', label: 'Before adding windows from a file' } : { reason: 'import', label: 'Before importing a board' });
+      undoId = await BoardHistory.before(h.reason, h.label, opts.mustSnapshot ? { timeout: 30000 } : {});
+      if (!undoId && opts.mustSnapshot && BoardHistory.enabled() && (S.insts.size || BoardPhoto.media())) {   // (an empty board has nothing to lose)
+        const go = await dialog({ title: 'Go back anyway?', message: '21Board couldn’t save the board as it is now, so this can’t be undone.', actions: [{ label: 'Go back anyway', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+        if (!go) return false;
+      }
+    }
+    const photoMode = opts.photo || 'file';
     const plan = importPlan(p, mode), { convert, view } = plan; // the board's shape and scale decide how rects map
-    const rev = Date.now();
+    const rev = Math.max(Date.now(), maxKnownRev() + 1);
     const rec = (key, type, value) => ({ key, type, rev, updatedAt: rev, by: TAB_ID, value });
 
     const used = new Map(); // widgetId -> Set of instance numbers
@@ -2974,7 +3089,7 @@
         placed.push(rect);
       }
       const ik = ikeyOf(i.widgetId, n);
-      out.push(rec(Keys.inst(b, ik), 'inst', { widgetId: i.widgetId, n, open: i.open, rect, z: zBase + i.z, maximized: i.maximized, createdAt: rev }));
+      out.push(rec(Keys.inst(b, ik), 'inst', { widgetId: i.widgetId, n, open: i.open, rect, z: zBase + i.z, maximized: i.maximized, createdAt: opts.keepCreated && i.createdAt ? i.createdAt : rev }));
       if (i.config !== null) out.push(rec(Keys.conf(b, ik), 'conf', i.config));
       if (i.data !== null && p.kind === 'full') out.push(rec(Keys.data(b, ik), 'data', i.data));
     }
@@ -2983,22 +3098,36 @@
       if (p.board.name) board.name = p.board.name;
       if (opts.uid) board.uid = opts.uid;
       out.push(rec(Keys.board(b), 'board', board));
-      if (p.photo) {
+      if (p.photo && photoMode !== 'keep') {
         out.push(rec(Keys.media(b, 'background'), 'media', p.photo));
         out.push(rec(Keys.media(b, 'background-look'), 'media', p.photoLook || normalizePhotoSettings({})));
       }
       if (p.theme || p.accent) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, p.theme ? { theme: p.theme } : {}, p.accent ? { accent: p.accent } : {})));
     }
 
-    await Store.tx('readwrite', s => {
-      if (mode === 'replace') {
-        // The background photo belongs to this device: only a file that brings its own photo replaces it.
-        for (const kind of ['inst', 'data', 'conf'].concat(p.photo ? ['media'] : [])) s.delete(IDBKeyRange.bound(`${kind}:${b}:`, `${kind}:${b}:￿`));
-      }
-      for (const r of out) s.put(r);
-    });
-    Sync.announce([], { op: 'reload' });
-    await rebuildAll();
+    if (mode === 'replace') {
+      // Stop the running widgets first, so none saves its old content over what's loaded.
+      Menu.close();
+      for (const w of S.wins.values()) w.destroy();
+      S.wins.clear();
+      await Writer.settled(1000);
+    }
+    // The background photo belongs to this device: only a file that brings its own photo replaces it
+    // (or, going back in Board history, the board gets exactly the photo it had then).
+    const clearPhoto = photoMode === 'exact' || (photoMode === 'file' && !!p.photo);
+    try {
+      await Store.tx('readwrite', s => {
+        if (mode === 'replace') {
+          for (const kind of ['inst', 'data', 'conf'].concat(clearPhoto ? ['media'] : [])) s.delete(IDBKeyRange.bound(`${kind}:${b}:`, `${kind}:${b}:￿`));
+        }
+        for (const r of out) s.put(r);
+      });
+    } finally {
+      Sync.announce([], { op: 'reload' });
+      await rebuildAll();
+    }
+    BoardHistory.changed([Keys.board(b)]);
+    return undoId;
   }
 
   // =====================================================================
@@ -3040,7 +3169,7 @@
     cache: new Map(),   // file name -> {lastModified, size, meta}
     names: new Set(),   // every .21board name in the folder, lowercased
     offer: null, offerToast: null, dismissed: '',
-    scanning: null, busy: false, loading: false, autoT: 0, lastCheck: 0, started: false, nagged: false,
+    scanning: null, busy: false, loading: false, autoT: 0, lastCheck: 0, started: false, nagged: false, gen: 0, nagAt: 0,
 
     // ---- this device's records
     applyRecord(name, value) {
@@ -3138,6 +3267,8 @@
         '- Please don’t edit or rename the files. Deleting one stops sharing that board; the board',
         '  itself stays on your devices.',
         '- "… (copy from …)" files are copies 21Board kept before loading a newer version over changes.',
+        '- The "Board history" folder holds earlier versions of your boards, about one an hour. Open one from',
+        '  21Board > Settings > Board history, or with Import.',
         '- These files can include student names and class photos. Share this folder only with',
         '  people who should see them.',
         ''
@@ -3145,19 +3276,19 @@
     },
 
     // ---- the folder
-    async writeFile(name, text) {
-      const fh = await this.dir.getFileHandle(name, { create: true });
+    async writeFile(name, text, dir = this.dir) {
+      const fh = await dir.getFileHandle(name, { create: true });
       const w = await fh.createWritable();
       await w.write(text);
       await w.close();
     },
-    async readFile(name) { return (await (await this.dir.getFileHandle(name)).getFile()).text(); },
+    async readFile(name, dir = this.dir) { return (await (await dir.getFileHandle(name)).getFile()).text(); },
     // The version id of a file's "sent" block (files sent before version ids existed: who + when).
     vidOf(sent) { return sent && (sent.id ? String(sent.id) : sent.by && sent.at ? `${sent.by}@${sent.at}` : '') || ''; },
     meta(j, name, file) {
       const sent = j.sent && typeof j.sent === 'object' ? j.sent : null;
       return { name, uid: j.board && UID_RE.test(j.board.uid || '') ? j.board.uid : null, title: String((j.board && j.board.name) || name.replace(/\.21board$/i, '')).slice(0, 60),
-        vid: this.vidOf(sent), base: sent && sent.base ? String(sent.base) : null,
+        vid: this.vidOf(sent), base: sent && sent.base ? String(sent.base) : null, legacy: !!(sent && !sent.id),
         sentAt: num(sent && sent.at, file.lastModified), by: String((sent && sent.by) || ''), from: String((sent && sent.from) || '').slice(0, 60),
         kind: j.kind === 'template' ? 'template' : 'full', size: file.size, lastModified: file.lastModified };
     },
@@ -3212,18 +3343,25 @@
     // Versions are compared by id, never by time: two devices' clocks can disagree.
     unseen(uid) {
       if (!uid) return null;
-      const seen = new Set((this.boardRec(uid) || {}).seen || []);
       const f = this.found.find(x => x.uid === uid && x.kind === 'full' && x.vid);   // found is newest first
+      const rec = this.boardRec(uid) || {};
+      // A file sent by the first test build (no version ids): if this device sent or loaded exactly that one,
+      // it has seen it.
+      if (f && f.legacy && !rec.seen) {
+        const mine = f.by === (this.st.device || {}).id && f.sentAt === rec.sentAt, loaded = f.sentAt === rec.loadedSentAt;
+        if (mine || loaded) { this.remember(uid, f.vid, { headId: f.vid, headMine: mine && (rec.sentAt || 0) >= (rec.loadedSentAt || 0) }); return null; }
+      }
+      const seen = new Set(rec.seen || []);
       return f && !seen.has(f.vid) ? f : null;
     },
     computeOffer() { this.setOffer(this.unseen(S.board.uid)); },
-    setOffer(f) {
+    setOffer(f, opts = {}) {
       const key = f ? f.vid : '', cur = this.offer ? this.offer.vid : '';
-      if (key === cur && (!f || key === this.dismissed || (this.offerToast && this.offerToast.isConnected))) return;
+      if (!opts.again && key === cur && (!f || key === this.dismissed || (this.offerToast && this.offerToast.isConnected))) return;
       this.offer = f;
       if (this.offerToast) { if (this.offerToast.isConnected) this.offerToast.remove2(); this.offerToast = null; }
       if (!f || key === this.dismissed || typeof document === 'undefined') return;
-      this.offerToast = toast(`“${f.title}” was updated on ${f.from || 'another device'} ${when(f.sentAt)}.`, {
+      this.offerToast = toast(`“${f.title}” was updated on ${f.from || 'another device'} ${when(f.sentAt)}.` + (opts.blocked ? ' Changes made here aren’t sent until you load it (or choose in Settings › Send).' : ''), {
         action: 'Load', dismiss: 'Not now', timeout: 0,
         onAction: () => { this.offerToast = null; this.load(f.name); },
         onDismiss: () => { this.offerToast = null; this.dismissed = key; }
@@ -3231,16 +3369,7 @@
     },
     // A fingerprint of this board's content, to tell whether it changed since it was sent or loaded here.
     // (Not the window stacking order: tapping a window to bring it forward isn't a change.)
-    sigOf(exp) {
-      const m = exp.media && exp.media.background;
-      const text = JSON.stringify([exp.board, exp.theme, exp.accent, exp.instances.map(i => Object.assign({}, i, { z: 0 })),
-        m ? [m.bytes, m.addedAt, m.w, m.h, exp.media.look] : null]);
-      let h1 = 0xdeadbeef, h2 = 0x41c6ce57;   // cyrb53
-      for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
-      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-      return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
-    },
+    sigOf(exp) { return boardSig(exp); },
     async sig() { return this.sigOf(await buildExport('full')); },
     // Changed on this device since it was last sent or loaded here. (Never sent or loaded: anything on it counts.)
     async localChanges() {
@@ -3249,9 +3378,13 @@
       const sig = await this.sig();
       return sig !== rec.sentSig && sig !== rec.loadedSig;
     },
-    remember(uid, vid, patch) {
+    async remember(uid, vid, patch, gen = this.gen) {
+      let stored = null;
+      try { const r = (await Store.getMany([Keys.link('state')]))[0]; stored = r && r.value && r.value.boards && r.value.boards[uid]; } catch (e) { /* use what this window has */ }
+      if (gen !== this.gen) return;   // erased meanwhile: don't write anything back
       const rec = this.boardRec(uid) || {};
-      const seen = (rec.seen || []).filter(v => v !== vid).concat(vid ? [vid] : []).slice(-40);
+      const merged = Array.from(new Set(((stored && stored.seen) || []).concat(rec.seen || [])));
+      const seen = merged.filter(v => v !== vid).concat(vid ? [vid] : []).slice(-40);
       this.setBoardRec(uid, Object.assign({ seen }, patch));
     },
     safeName(name) {
@@ -3317,21 +3450,28 @@
           try { j = JSON.parse(await this.readFile(theirs.name)); } catch (e) { j = null; }
           if (j && j.format === '21board') await this.writeCopy(j, theirs.from);
         }
-        const rec = this.boardRec(uid) || {}, dev = this.device();
+        const rec = this.boardRec(uid) || {}, dev = this.device(), gen = this.gen;
         const exp = await buildExport('full');
         const sig = this.sigOf(exp);
         if (!this.st.photo) delete exp.media;   // "Include the background photo" off: each device keeps its own
-        // id: this version; base: the version this board was built on (to spot versions made without it).
-        const sent = { id: newId(), base: rec.headId || null, at: Date.now(), by: dev.id, from: dev.label };
+        // id: this version; base: the version this board was built on; mine: each device's latest version it
+        // includes (to spot a version made without this device's last send).
+        const sentId = newId();
+        const sent = { id: sentId, base: rec.headId || null, at: Date.now(), by: dev.id, from: dev.label, mine: Object.assign({}, rec.mine || {}, { [dev.id]: sentId }) };
         const out = Object.assign({ format: exp.format, formatVersion: exp.formatVersion, kind: exp.kind, sent }, exp);
         const name = await this.fileNameFor(uid, S.board.name);
         await this.writeFile(name, JSON.stringify(out));
-        // Renamed: remove the old file, but only if it holds a version this device has seen.
+        // Renamed: remove the old file, but only if it holds a version this device has seen. (A rename that only
+        // changes capitals: only where the folder keeps both spellings as two files.)
         const old = rec.file, seen = new Set(rec.seen || []);
-        const of = old && old.toLowerCase() !== name.toLowerCase() ? this.found.find(f => f.name === old && f.uid === uid) : null;
-        if (of && of.vid && seen.has(of.vid)) { try { await this.dir.removeEntry(old); } catch (e) { /* already gone */ } }
+        if (old && old !== name) {
+          const of = this.found.find(f => f.name.toLowerCase() === old.toLowerCase() && f.uid === uid);
+          let separate = old.toLowerCase() !== name.toLowerCase();
+          if (!separate) { const names = []; for await (const [n] of this.dir.entries()) names.push(n); separate = names.includes(old) && names.includes(name); }
+          if (separate && of && of.vid && seen.has(of.vid)) { try { await this.dir.removeEntry(of.name); } catch (e) { /* already gone */ } }
+        }
         this.cache.delete(name);
-        this.remember(uid, sent.id, { file: name, sentAt: sent.at, sentSig: sig, headId: sent.id, headMine: true });
+        await this.remember(uid, sent.id, { file: name, sentAt: sent.at, sentSig: sig, headId: sent.id, headMine: true, mine: sent.mine }, gen);
         updateSettings({ lastBackupAt: Date.now() });   // the folder copy is a backup too
         if (!opts.auto) toast(`Sent “${S.board.name}” to your “${this.dir.name}” folder. Google Drive brings it to your other devices.`);
         await this.check(true);
@@ -3357,9 +3497,12 @@
     async autoSend() {
       clearTimeout(this.autoT); this.autoT = 0;
       if (!this.st.auto || !this.dir || this.perm !== 'granted' || this.loading || this.busy) return;
-      if (this.offer) return;   // a version from another device is waiting: never send over it
       const rec = this.boardRec(S.board.uid), sig = await this.sig();
       if (rec && (sig === rec.sentSig || sig === rec.loadedSig)) return;   // nothing new since it was sent or loaded
+      if (this.offer) {   // a version from another device is waiting: never send over it, but say so (even after "Not now")
+        if (Date.now() - (this.nagAt || 0) > 5 * 60 * 1000) { this.nagAt = Date.now(); this.dismissed = ''; this.setOffer(this.offer, { again: true, blocked: true }); }
+        return;
+      }
       await this.send({ auto: true });
     },
 
@@ -3367,6 +3510,12 @@
     async load(name, opts = {}) {
       if (!await this.ensurePerm()) { toast('21Board can’t use that folder until you allow it.'); return false; }
       if (this.busy || this.loading) { toast('Just a moment: 21Board is still sending or loading this board.'); return false; }
+      // Loading another board: first send this one's pending automatic change, so it isn't lost.
+      try {
+        const peek = parseBoardFile(await this.readFile(name));
+        if (peek.board.uid !== S.board.uid && this.st.auto && (this.autoT || await this.localChanges())) await this.autoSend();
+      } catch (e) { /* read again below */ }
+      const gen = this.gen;
       this.loading = true;
       clearTimeout(this.autoT); this.autoT = 0;   // a pending automatic send must not go out over this
       let loaded = false;
@@ -3382,7 +3531,8 @@
           const rec = this.boardRec(uid) || {};
           const changed = await this.localChanges();
           // This device's last send isn't in it: the other device made this version without it.
-          const lostMine = !!(rec.headMine && parsed.sent && parsed.sent.base !== rec.headId);
+          const me = (this.st.device || {}).id;
+          const lostMine = !!(rec.headMine && parsed.sent && !((parsed.sent.mine && parsed.sent.mine[me] === rec.headId) || parsed.sent.base === rec.headId));
           if (opts.keepMine) { if (!await this.saveCopy()) return false; }
           else if (changed || lostMine) {
             const since = Math.max(rec.sentAt || 0, rec.loadedSentAt || 0);
@@ -3396,10 +3546,12 @@
             if (choice === 'copy' && !await this.saveCopy()) return false;
           }
         } else {
+          const unsent = this.dir && S.insts.size ? await this.localChanges() : false;
+          const copy = { label: 'Keep a copy of this board, then replace it', value: 'copy', kind: 'primary' }, replace = { label: 'Replace this board', value: 'load', kind: 'danger' };
           const choice = await dialog({
             title: `Replace this board with “${title}”?`,
-            message: `The windows and content on this board are replaced by the board${from}${sent.at ? ', sent ' + when(sent.at) : ''}. After that, this device offers its newer versions as they arrive.`,
-            actions: [{ label: 'Replace this board', value: 'load', kind: 'danger' }].concat(S.insts.size ? [{ label: 'Keep a copy of this board, then replace it', value: 'copy', kind: 'primary' }] : []).concat([{ label: 'Cancel', value: null }])
+            message: `The windows and content on this board are replaced by the board${from}${sent.at ? ', sent ' + when(sent.at) : ''}.` + (unsent ? ' This board has changes that weren’t sent to the folder: replacing it loses them unless you keep a copy.' : '') + ' After that, this device offers its newer versions as they arrive.',
+            actions: (unsent ? [copy, replace] : [replace].concat(S.insts.size ? [copy] : [])).concat([{ label: 'Cancel', value: null }])
           });
           if (!choice) return false;
           if (choice === 'copy' && !await this.saveCopy()) return false;
@@ -3409,11 +3561,13 @@
         const s2 = parsed.sent || {}, vid = this.vidOf(parsed.sent);
         // Only a sent file joins this device to that board (a plain Export saved in the folder doesn't).
         const newUid = parsed.board.uid && vid ? parsed.board.uid : newId();
-        try { await applyImport(parsed, 'replace', { uid: newUid }); } catch (err) { console.error(err); toast('Couldn’t load the board: ' + ((err && err.message) || err)); return false; }
-        this.remember(newUid, vid, { file: name, loadedSentAt: s2.at || Date.now(), loadedFrom: s2.from || '', loadedSig: await this.sig(), headId: vid || null, headMine: false });
+        let undoId;
+        try { undoId = await applyImport(parsed, 'replace', { uid: newUid, history: { reason: 'load', label: `Before loading the version from ${s2.from || 'another device'}` } }); } catch (err) { console.error(err); toast('Couldn’t load the board: ' + ((err && err.message) || err)); return false; }
+        await this.remember(newUid, vid, { file: name, loadedSentAt: s2.at || Date.now(), loadedFrom: s2.from || '', loadedSig: await this.sig(), headId: vid || null, headMine: false,
+          mine: Object.assign({}, s2.mine || {}, s2.by && vid ? { [s2.by]: vid } : {}) }, gen);
         loaded = true;
         this.computeOffer();
-        toast(`Loaded “${S.board.name}”${s2.from ? ' from ' + s2.from : ''}.`);
+        toast(`Loaded “${S.board.name}”${s2.from ? ' from ' + s2.from : ''}.`, undoAction(undoId));
         return true;
       } finally {
         this.loading = false;
@@ -3430,6 +3584,7 @@
     },
     // Erase everything: this device forgets the folder and its bookkeeping.
     forget() {
+      this.gen++;   // writes already under way won't save anything back
       clearTimeout(this.autoT); this.autoT = 0;
       this.dir = null; this.perm = 'none'; this.found = []; this.names = new Set(); this.cache.clear();
       this.st = { device: null, auto: false, photo: true, boards: {} };
@@ -3457,22 +3612,842 @@
   }
 
   // =====================================================================
+  // 13c. Board history: earlier versions of a board, to go back to
+  // ---------------------------------------------------------------------
+  // For undoing a big change or recovering after a "disaster" (a curious student). Versions are kept on this
+  // device in their own database ('21Board-history', never in exports or the live board's records), and copies
+  // go to the linked Google Drive folder ("Board history" inside it) about once an hour.
+  // When a version is saved:
+  //  - while the board changes: once it has settled for a minute, at most every 10 minutes (Settings: every
+  //    hour, once a day, or off); also when 21Board is left with unsaved changes;
+  //  - when 21Board opens (if the board changed since the last version);
+  //  - before Reset, Delete, Close all, a photo change, Import, Load from the folder, going back, Erase, and when
+  //    a widget's content is suddenly emptied (e.g. a note cleared);
+  //  - when the teacher taps "Save this version now" (kept until deleted; at most 20 per board).
+  // Identical content is never saved twice. Kept: the newest 20; one an hour for the last 48 active hours; the
+  // first and last of each day for 30 active days; one a week for 12 active weeks; safety versions (before…)
+  // for 7 days; the version before a big change for 30 days. Photos are kept once (by identity), at most 5,
+  // and the whole history stays within a share of the device's storage.
+  // Going back replaces the board (after saving it as it is, so it can be undone) but never this device's
+  // settings; "Put back" brings back one window. Records: see docs/DATA-FORMAT.md, "Board history".
+  // =====================================================================
+  const H_MIN = 60e3, H_HOUR = 60 * H_MIN, H_DAY = 24 * H_HOUR;
+  const HIST = { quiet: 60e3, tick: 60e3, openDelay: 15e3, beforeTimeout: 1500, coalesce: 2 * H_MIN, emptyMin: 200, emptyRatio: 0.25, emptyEvery: 2 * H_MIN,
+    safetyKeep: 7 * H_DAY, bigKeep: 30 * H_DAY, undoMs: 10 * H_MIN, folderEvery: H_HOUR, maxAuto: 5e6, maxBody: 15e6, photos: 5, manualMax: 20 };
+  const T_LOCAL = { newest: 20, hours: 48, days: 30, weeks: 12, firstOfDay: true, cap: 250 };
+  const T_LOW = { newest: 5, hours: 6, days: 7, weeks: 0, firstOfDay: true, cap: 60 };
+  const T_FOLDER = { newest: 6, hours: 8, days: 14, weeks: 12, firstOfDay: false, cap: 60 };
+
+  // Which versions to keep (a pure function, also used for the folder copies). items: {id, at, manual,
+  // keepUntil, beforeBig}. Buckets are local hours/days/Monday-weeks, counted only where there are versions,
+  // so a summer break doesn't empty the history.
+  function historyPlan(items, now, T) {
+    const keep = new Set();
+    const sorted = items.slice().sort((a, b) => b.at - a.at);
+    if (sorted.length && sorted[0].at > now + 10 * H_MIN) { sorted.forEach(i => keep.add(i.id)); return keep; }   // the clock went back: delete nothing
+    sorted.slice(0, T.newest).forEach(i => keep.add(i.id));
+    const tier = (keyOf, n, first) => {
+      const buckets = new Map();
+      for (const i of sorted) { const k = keyOf(new Date(i.at)); if (!buckets.has(k)) buckets.set(k, []); buckets.get(k).push(i); }
+      let count = 0;
+      for (const list of buckets.values()) {
+        if (count++ >= n) break;
+        keep.add(list[0].id);                          // the newest in the bucket
+        if (first) keep.add(list[list.length - 1].id);  // and the first ("how it was when you came in")
+      }
+    };
+    tier(d => `${d.toDateString()} ${d.getHours()}`, T.hours, false);
+    tier(d => d.toDateString(), T.days, !!T.firstOfDay);
+    tier(d => { const m = new Date(d); m.setHours(0, 0, 0, 0); m.setDate(m.getDate() - ((m.getDay() + 6) % 7)); return m.toDateString(); }, T.weeks, false);
+    for (const i of sorted) {
+      if (i.manual || (i.keepUntil && i.keepUntil > now) || (i.beforeBig && now - i.at <= HIST.bigKeep) || i.at > now + 5 * H_MIN) keep.add(i.id);
+    }
+    if (T.cap) {
+      const kept = sorted.filter(i => keep.has(i.id));
+      for (let k = kept.length - 1, over = kept.length - T.cap; k >= T.newest && over > 0; k--) if (!kept[k].manual) { keep.delete(kept[k].id); over--; }
+    }
+    return keep;
+  }
+
+  // "Today 9:42 AM", "Yesterday 9:42 AM", "Mon, Nov 9, 9:42 AM"
+  function dayTime(t) {
+    const d = new Date(t), now = new Date(), y = new Date(now); y.setDate(now.getDate() - 1);
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    if (d.toDateString() === now.toDateString()) return `Today ${time}`;
+    if (d.toDateString() === y.toDateString()) return `Yesterday ${time}`;
+    return `${d.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}, ${time}`;
+  }
+  // Toast options with an Undo that goes back to a Board history version.
+  function undoAction(id) { return id ? { action: 'Undo', timeout: 20000, onAction: () => BoardHistory.restore(id, { undo: true }) } : {}; }
+
+  const BoardHistory = {
+    dbp: null, off: '', paused: '', status: '', low: false, metas: [], dirty: false, lastChangeAt: 0, firstDirtyAt: 0,
+    timer: 0, started: false, capturing: false, undoable: null, guardAt: new Map(), folderStatus: '', budgetCache: null,
+    cfgv: {},   // tests: {quiet, every, budget} in ms / bytes
+    cfg(v) { this.cfgv = Object.assign({}, this.cfgv, v || {}); },
+    enabled() { return !LAB && !Store.mem && !Store.failed && this.off !== 'unavailable' && typeof indexedDB !== 'undefined'; },
+    every() { const m = S.settings.historyEvery; return m === 0 ? 0 : (this.cfgv.every || (+m || 10) * H_MIN); },
+    quiet() { return this.cfgv.quiet || HIST.quiet; },
+
+    // ---- the database
+    db() {
+      if (this.dbp) return this.dbp;
+      this.dbp = new Promise((resolve, reject) => {
+        let req;
+        try { req = indexedDB.open('21Board-history', 1); } catch (e) { reject(e); return; }
+        req.onupgradeneeded = () => {
+          const db = req.result;
+          for (const [n, k] of [['meta', 'id'], ['body', 'id'], ['photo', 'key']]) if (!db.objectStoreNames.contains(n)) db.createObjectStore(n, { keyPath: k });
+        };
+        req.onsuccess = () => { const db = req.result; db.onversionchange = () => { db.close(); this.dbp = null; }; db.onclose = () => { this.dbp = null; }; resolve(db); };
+        req.onerror = () => reject(req.error);
+        req.onblocked = () => console.warn('21Board: the board history database is blocked by another tab.');
+      }).catch(err => { this.dbp = null; this.off = 'unavailable'; console.warn('21Board: board history is unavailable', err); throw err; });
+      return this.dbp;
+    },
+    async tx(stores, mode, fn) {
+      const db = await this.db();
+      return new Promise((resolve, reject) => {
+        let t;
+        try { t = db.transaction(stores, mode, mode === 'readwrite' ? { durability: 'relaxed' } : undefined); } catch (e) { reject(e); return; }
+        const o = {}; let result;
+        for (const n of stores) o[n] = t.objectStore(n);
+        try { fn(o, v => { result = v; }); } catch (e) { try { t.abort(); } catch (x) { /* already done */ } reject(e); return; }
+        t.oncomplete = () => resolve(result);
+        t.onerror = () => reject(t.error);
+        t.onabort = () => reject(t.error || new Error('Transaction aborted'));
+      });
+    },
+    range(b) { return IDBKeyRange.bound(`${b}:`, `${b}:￿`); },
+    async reload() {
+      if (!this.enabled()) { this.metas = []; return; }
+      try { this.metas = (await this.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAll(this.range(S.boardId)); q.onsuccess = () => set(q.result); })) || []; }
+      catch (e) { this.metas = []; return; }
+      this.metas.sort((a, b) => b.at - a.at);
+    },
+    async get(id) {
+      return this.tx(['meta', 'body'], 'readonly', (o, set) => {
+        const m = o.meta.get(id), bd = o.body.get(id), r = {};
+        m.onsuccess = () => { r.meta = m.result; }; bd.onsuccess = () => { r.body = bd.result; set(r.meta && r.body ? r : null); };
+      });
+    },
+    async getPhoto(key) { return key ? this.tx(['photo'], 'readonly', (o, set) => { const g = o.photo.get(key); g.onsuccess = () => set(g.result || null); }) : null; },
+    hasWindow(ikey) { return this.metas.some(m => m.wins && m.wins[ikey]); },
+
+    // ---- what a version looks like (kept in its meta, for the list, previews and comparisons)
+    thumbOf(exp) {
+      const vp = exp.viewport || { width: 2400, height: 1350 }, bg = (exp.board && exp.board.background) || {};
+      const wins = exp.instances.filter(i => i.open).sort((a, b) => a.z - b.z).map(i => [ikeyOf(i.widgetId, i.instance), Math.round(i.rect.x), Math.round(i.rect.y), Math.round(i.rect.w), Math.round(i.rect.h)]);
+      return { bg: bg.color || null, pattern: bg.pattern || 'none', shape: exp.board && exp.board.shape === 'free' ? 'free' : '16:9', vw: vp.width, vh: vp.height, wins };
+    },
+    excerptOf(v) {
+      const out = [];
+      const walk = x => { if (out.join(' ').length > 80) return; if (typeof x === 'string') { if (x.trim()) out.push(x.trim()); } else if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === 'object') Object.values(x).forEach(walk); };
+      walk(v);
+      return out.join(' ').replace(/\s+/g, ' ').slice(0, 80);
+    },
+    winsOf(exp) {
+      const w = {};
+      for (const i of exp.instances) {
+        const d = i.data == null ? '' : JSON.stringify(i.data), c = i.config == null ? '' : JSON.stringify(i.config);
+        w[ikeyOf(i.widgetId, i.instance)] = [i.open ? 1 : 0, i.createdAt || 0, d ? hash53(d) : '', c ? hash53(c) : '', d.length, this.excerptOf(i.data)];
+      }
+      return w;
+    },
+    photoKeyOf(m) { return m ? `${m.addedAt}-${m.bytes}-${m.w}x${m.h}` : null; },
+    // A big change since the version before: most windows gone, windows deleted, content emptied, the photo gone.
+    bigChange(prev, cur) {
+      const pw = prev.wins || {}, cw = cur.wins || {};
+      const prevOpen = Object.keys(pw).filter(k => pw[k][0]).length;
+      const gone = Object.keys(pw).filter(k => pw[k][0] && !(cw[k] && cw[k][0])).length;
+      const deleted = Object.keys(pw).filter(k => !cw[k]).length;
+      const emptied = Object.keys(pw).filter(k => cw[k] && pw[k][4] >= HIST.emptyMin && cw[k][4] < pw[k][4] * HIST.emptyRatio).length;
+      return gone >= 3 || (prevOpen >= 2 && gone >= prevOpen / 2) || deleted >= 2 || emptied >= 1 || (!!prev.photo && prev.photo !== 'gone' && !cur.photo);
+    },
+    // What changed from version a to version b, in a few words.
+    diff(a, b) {
+      if (!a || !b) return [];
+      const aw = a.wins || {}, bw = b.wins || {}, items = [];
+      const nm = k => { const [w, n] = k.split(':'); return instName(w, +n); };
+      const keys = Array.from(new Set(Object.keys(aw).concat(Object.keys(bw))));
+      const opened = keys.filter(k => bw[k] && bw[k][0] && !(aw[k] && aw[k][0]) && aw[k]);
+      const added = keys.filter(k => bw[k] && !aw[k]);
+      const closed = keys.filter(k => aw[k] && aw[k][0] && bw[k] && !bw[k][0]);
+      const deleted = keys.filter(k => aw[k] && !bw[k]);
+      const emptied = keys.filter(k => aw[k] && bw[k] && aw[k][4] >= HIST.emptyMin && bw[k][4] < aw[k][4] * HIST.emptyRatio);
+      const edited = keys.filter(k => aw[k] && bw[k] && !emptied.includes(k) && (aw[k][2] !== bw[k][2] || aw[k][3] !== bw[k][3]));
+      const pos = t => { const o = {}; ((t && t.wins) || []).forEach(r => { o[r[0]] = r.slice(1).join(','); }); return o; };
+      const ap = pos(a.thumb), bp = pos(b.thumb);
+      const moved = keys.filter(k => ap[k] && bp[k] && ap[k] !== bp[k]);
+      const say = (list, one, many) => { if (list.length === 1) items.push(one(nm(list[0]))); else if (list.length) items.push(many(list.length)); };
+      say(emptied, n => `${n} emptied`, c => `${c} windows emptied`);
+      say(deleted, n => `${n} deleted`, c => `${c} windows deleted`);
+      say(closed, n => `${n} closed`, c => `${c} windows closed`);
+      say(added, n => `New: ${n}`, c => `${c} new windows`);
+      say(opened, n => `${n} opened`, c => `${c} windows opened`);
+      say(edited, n => `${n} changed`, c => `${c} windows changed`);
+      say(moved, () => 'A window moved', c => `${c} windows moved`);
+      if (a.thumb && b.thumb && (a.thumb.bg !== b.thumb.bg || a.thumb.pattern !== b.thumb.pattern)) items.push('Background changed');
+      if ((a.photo || null) !== (b.photo || null)) items.push(b.photo ? 'Photo changed' : 'Photo removed');
+      if (a.name !== b.name) items.push('Name changed');
+      return items;
+    },
+
+    // ---- saving a version
+    async capture(kind, opts = {}) {
+      if (!this.enabled()) return null;
+      try { await this.db(); } catch (e) { return null; }
+      if (this.paused && kind !== 'manual' && kind !== 'before') return null;
+      const b = S.boardId, startedAt = Date.now();
+      let exp;
+      try { exp = await buildExport('full'); } catch (e) { return null; }
+      if (opts.patch) { const i = exp.instances.find(x => ikeyOf(x.widgetId, x.instance) === opts.patch.ikey); if (i) i.data = opts.patch.data; }
+      const sig = boardSig(exp);
+      const photoM = exp.media && exp.media.background;
+      if (!exp.instances.length && !photoM && kind !== 'manual') return null;
+      for (const i of exp.instances) { const inst = S.insts.get(ikeyOf(i.widgetId, i.instance)); if (inst && inst.createdAt) i.createdAt = inst.createdAt; }
+      const photoKey = this.photoKeyOf(photoM);
+      if (exp.media) exp.media = photoM ? { ref: photoKey, look: exp.media.look } : undefined;
+      if (!exp.media) delete exp.media;
+      const at = Math.max(Date.now(), (this.metas[0] && this.metas[0].tab === TAB_ID ? this.metas[0].at + 1 : 0));
+      exp.snapshot = { at, kind, label: String(opts.label || '').slice(0, 80) };
+      const bytes = JSON.stringify(exp).length;
+      if (bytes > HIST.maxBody || ((kind === 'auto' || kind === 'open') && bytes > HIST.maxAuto)) { this.status = 'too-big'; return null; }
+      const rec = S.board.uid ? Link.boardRec(S.board.uid) : null;
+      const meta = { v: 1, id: `${b}:${String(at).padStart(13, '0')}:${TAB_ID}`, b, at, kind, reason: opts.reason || null, label: exp.snapshot.label,
+        sig, uid: S.board.uid || null, name: S.board.name, bytes, photo: photoKey, thumb: this.thumbOf(exp), wins: this.winsOf(exp),
+        beforeBig: false, link: rec && sig === rec.sentSig ? 'sent' : rec && sig === rec.loadedSig ? 'loaded' : null,
+        keepUntil: kind === 'before' || kind === 'restored' ? at + HIST.safetyKeep : 0, manual: kind === 'manual', folder: null, tab: TAB_ID };
+      const every = this.every();
+      let id;
+      try {
+        id = await this.tx(['meta', 'body', 'photo'], 'readwrite', (o, set) => {
+          const c = o.meta.openCursor(this.range(b), 'prev');
+          c.onsuccess = () => {
+            const newest = c.result && c.result.value;
+            if (newest && newest.sig === sig) {   // the same as the newest version: nothing new to save
+              if (kind === 'before') { newest.keepUntil = Math.max(newest.keepUntil || 0, at + HIST.safetyKeep); o.meta.put(newest); }
+              if (kind === 'manual') { newest.manual = true; newest.manualLabel = meta.label; o.meta.put(newest); }
+              set(newest.id); return;
+            }
+            // A burst of the same risky action (30 resets): one version, from before the burst.
+            if (newest && kind === 'before' && newest.kind === 'before' && newest.reason === meta.reason && at - newest.at < HIST.coalesce) { set(newest.id); return; }
+            // Another tab just saved one.
+            if (newest && kind === 'auto' && (newest.kind === 'auto' || newest.kind === 'open') && every && at - newest.at < 0.9 * every) { set(null); return; }
+            if (newest && this.bigChange(newest, meta)) { newest.beforeBig = true; o.meta.put(newest); }
+            o.body.put({ id: meta.id, exp });
+            o.meta.put(meta);
+            if (photoKey) {
+              const g = o.photo.get(photoKey);
+              g.onsuccess = () => {
+                const ph = g.result;
+                if (ph) { ph.lastUsed = at; o.photo.put(ph); }
+                else o.photo.put({ key: photoKey, data: photoM.data, w: photoM.w, h: photoM.h, bytes: photoM.bytes, name: photoM.name, addedAt: photoM.addedAt, thumb: null, lastUsed: at });
+              };
+            }
+            set(meta.id);
+          };
+        });
+      } catch (err) {
+        if (err && err.name === 'QuotaExceededError' && !opts.retried) { await this.shrink(); return this.capture(kind, Object.assign({}, opts, { retried: true })); }
+        if (err && err.name === 'QuotaExceededError') this.paused = 'quota';
+        console.warn('21Board: could not save a board version', err);
+        return null;
+      }
+      if (this.lastChangeAt < startedAt) this.dirty = false;
+      await this.reload();
+      this.pruneSoon();
+      if (photoKey) this.makeThumb(photoKey);
+      const saved = this.metas.find(m => m.id === id);
+      if (saved && (id === meta.id || kind === 'manual')) this.maybeFolder(saved, kind === 'manual');
+      Sync.announce([], { op: 'history', board: b });
+      HistorySheet.refresh(); updateHint();
+      if (Settings.isOpen) Settings.render();
+      return id || null;
+    },
+    // A version from just before a risky action. Never holds the action up for long (opts.timeout).
+    async before(reason, label, opts = {}) {
+      if (!this.enabled()) return null;
+      if (!this.every() && reason !== 'restore' && reason !== 'window') return null;
+      const run = (async () => { await Writer.settled(1000); return this.capture('before', { reason, label, patch: opts.patch }); })().catch(() => null);
+      if (opts.wait === false) return run;
+      return Promise.race([run, sleep(opts.timeout || HIST.beforeTimeout).then(() => null)]);
+    },
+    // A widget's content suddenly emptied (a note cleared): keep it first. Not awaited, so saves stay in order.
+    guardEmptied(ikey, old, v) {
+      if (!this.enabled() || !this.every() || old == null) return;
+      const oldLen = JSON.stringify(old).length;
+      if (oldLen < HIST.emptyMin || (v != null && JSON.stringify(v).length >= oldLen * HIST.emptyRatio)) return;
+      if (Date.now() - (this.guardAt.get(ikey) || 0) < HIST.emptyEvery) return;
+      this.guardAt.set(ikey, Date.now());
+      const inst = S.insts.get(ikey);
+      this.before('emptied', `Before ${inst ? instName(inst.widgetId, inst.n) : 'a window'} was emptied`, { wait: false, patch: { ikey, data: clone(old) } });
+    },
+    // The board changed in this tab (other tabs' changes are theirs to save).
+    changed(keys) {
+      if (!this.enabled()) return;
+      const b = S.boardId;
+      if (!keys.some(k => { const p = Keys.parse(k); return p.board === b && /^(board|inst|data|conf|media)$/.test(p.kind); })) return;
+      const now = Date.now();
+      this.dirty = true; this.lastChangeAt = now; this.firstDirtyAt = this.firstDirtyAt || now;
+      clearTimeout(this.timer);
+      this.timer = setTimeout(() => this.check(), this.quiet() + 50);
+    },
+    async check(leaving) {
+      if (!this.enabled() || !this.dirty || !this.every() || this.capturing || (this.low && !leaving)) return;
+      if (Inter.active) { clearTimeout(this.timer); this.timer = setTimeout(() => this.check(), 5000); return; }
+      const now = Date.now(), newest = this.metas.find(m => /^(auto|open|manual|restored)$/.test(m.kind) || m.manual);
+      const every = this.every() * (this.paused === 'over' ? Math.max(1, H_HOUR / this.every()) : 1);
+      if (newest && now - newest.at < every) { clearTimeout(this.timer); this.timer = setTimeout(() => this.check(), newest.at + every - now + 50); return; }
+      const quiet = now - this.lastChangeAt >= this.quiet(), busy = now - this.firstDirtyAt >= this.every() + 5 * H_MIN;
+      if (!quiet && !busy && !leaving) return;   // the settle timer calls again
+      this.capturing = true;
+      try {
+        if (!leaving) await new Promise(r => (window.requestIdleCallback ? requestIdleCallback(r, { timeout: 2000 }) : setTimeout(r, 0)));
+        await this.capture('auto');
+        this.firstDirtyAt = this.dirty ? Date.now() : 0;
+      } finally { this.capturing = false; }
+    },
+    async save(label) { return this.capture('manual', { label }); },
+
+    // ---- keeping it small
+    pruneSoon() { clearTimeout(this.pruneT); this.pruneT = setTimeout(() => this.prune(), 2000); },
+    async budget() {
+      if (this.cfgv.budget) return { B: this.cfgv.budget, low: false };
+      if (this.budgetCache && Date.now() - this.budgetCache.t < 10 * H_MIN) return this.budgetCache;
+      let B = 30e6, low = false;
+      try {
+        const e = navigator.storage && navigator.storage.estimate ? await navigator.storage.estimate() : null;
+        if (e && e.quota) { B = clamp(e.quota * 0.1, 10e6, 50e6); low = e.quota - e.usage < 50e6 || e.usage / e.quota > 0.9; }
+      } catch (err) { /* keep the default */ }
+      this.budgetCache = { B, low, t: Date.now() };
+      return this.budgetCache;
+    },
+    async prune() {
+      if (!this.enabled()) return;
+      try {
+        const { B, low } = await this.budget();
+        this.low = low;
+        const all = (await this.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAll(); q.onsuccess = () => set(q.result); })) || [];
+        const photos = (await this.tx(['photo'], 'readonly', (o, set) => { const q = o.photo.getAll(); q.onsuccess = () => set(q.result.map(p => ({ key: p.key, size: (p.data || '').length, lastUsed: p.lastUsed || 0 }))); })) || [];
+        const now = Date.now(), drop = new Set(), gone = new Set();
+        const byBoard = new Map();
+        for (const m of all) { if (!byBoard.has(m.b)) byBoard.set(m.b, []); byBoard.get(m.b).push(m); }
+        const newest20 = new Set();
+        for (const list of byBoard.values()) {
+          const keep = historyPlan(list, now, low ? T_LOW : T_LOCAL);
+          list.forEach(m => { if (!keep.has(m.id)) drop.add(m.id); });
+          // At most 20 versions saved by the teacher per board: the oldest go back to normal thinning.
+          const manual = list.filter(m => m.manual).sort((a, b) => b.at - a.at);
+          manual.slice(HIST.manualMax).forEach(m => { m.manual = false; gone.add('unpin:' + m.id); });
+          list.slice().sort((a, b) => b.at - a.at).slice(0, 20).forEach(m => newest20.add(m.id));
+        }
+        let live = all.filter(m => !drop.has(m.id));
+        // At most 5 different photos; the least recently used go first.
+        const used = new Map(photos.map(p => [p.key, p]));
+        const refs = Array.from(new Set(live.map(m => m.photo).filter(k => k && k !== 'gone' && used.has(k)))).sort((a, b) => used.get(b).lastUsed - used.get(a).lastUsed);
+        const dropPhotos = new Set(refs.slice(HIST.photos));
+        live.forEach(m => { if (dropPhotos.has(m.photo)) gone.add(m.id); });
+        // Within the byte budget: photos of old versions first, then old versions.
+        const total = () => live.reduce((n, m) => n + (m.bytes || 0), 0) + Array.from(new Set(live.filter(m => !gone.has(m.id)).map(m => m.photo))).reduce((n, k) => n + ((used.get(k) || {}).size || 0), 0);
+        const old = live.filter(m => !m.manual && !newest20.has(m.id)).sort((a, b) => a.at - b.at);
+        for (const m of old) { if (total() <= B) break; if (m.photo && m.photo !== 'gone') gone.add(m.id); }
+        for (const m of old) { if (total() <= B) break; drop.add(m.id); live = live.filter(x => x.id !== m.id); }
+        this.paused = total() > B ? 'over' : (this.paused === 'over' ? '' : this.paused);
+        const stillUsed = new Set(live.filter(m => !gone.has(m.id)).map(m => m.photo).filter(Boolean));
+        if (!drop.size && !gone.size && photos.every(p => stillUsed.has(p.key))) return;
+        await this.tx(['meta', 'body', 'photo'], 'readwrite', o => {
+          drop.forEach(id => { o.meta.delete(id); o.body.delete(id); });
+          for (const m of live) {
+            const unpin = gone.has('unpin:' + m.id), noPhoto = gone.has(m.id) && m.photo && m.photo !== 'gone';
+            if (unpin || noPhoto) { if (noPhoto) m.photo = 'gone'; o.meta.put(m); }
+          }
+          photos.forEach(p => { if (!stillUsed.has(p.key)) o.photo.delete(p.key); });
+        });
+        await this.reload();
+        HistorySheet.refresh();
+      } catch (err) { console.warn('21Board: could not tidy board history', err); }
+    },
+    // Out of space: keep per board the newest 3 and the teacher's saved versions, with a photo only on the newest.
+    async shrink() {
+      if (!this.enabled()) return;
+      try {
+        const all = (await this.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAll(); q.onsuccess = () => set(q.result); })) || [];
+        const byBoard = new Map();
+        for (const m of all) { if (!byBoard.has(m.b)) byBoard.set(m.b, []); byBoard.get(m.b).push(m); }
+        const keepPhoto = new Set();
+        await this.tx(['meta', 'body', 'photo'], 'readwrite', o => {
+          for (const list of byBoard.values()) {
+            list.sort((a, b) => b.at - a.at).forEach((m, i) => {
+              if (i >= 3 && !m.manual) { o.meta.delete(m.id); o.body.delete(m.id); return; }
+              if (i === 0 && m.photo && m.photo !== 'gone') keepPhoto.add(m.photo);
+              else if (m.photo && m.photo !== 'gone') { m.photo = 'gone'; o.meta.put(m); }
+            });
+          }
+          const q = o.photo.getAllKeys();
+          q.onsuccess = () => q.result.forEach(k => { if (!keepPhoto.has(k)) o.photo.delete(k); });
+        });
+        await this.reload();
+      } catch (err) { console.warn('21Board: could not make room', err); }
+    },
+    async clearAll() {
+      if (!this.enabled()) return;
+      try { await this.tx(['meta', 'body', 'photo'], 'readwrite', o => { o.meta.clear(); o.body.clear(); o.photo.clear(); }); } catch (e) { /* nothing to clear */ }
+      this.undoable = null;
+      await this.reload();
+      HistorySheet.refresh(); updateHint();
+    },
+    async clearBoard(b = S.boardId) {
+      const metas = this.metas.slice();
+      await this.tx(['meta', 'body'], 'readwrite', o => { metas.forEach(m => { o.meta.delete(m.id); o.body.delete(m.id); }); });
+      this.undoable = null;
+      await this.reload(); await this.prune();
+      HistorySheet.refresh(); updateHint();
+    },
+    // A small picture of the photo for previews (made once, when there's time).
+    async makeThumb(key) {
+      try {
+        const ph = await this.getPhoto(key);
+        if (!ph || ph.thumb || typeof createImageBitmap !== 'function') return;
+        const blob = await (await fetch(ph.data)).blob();
+        const bmp = await createImageBitmap(blob);
+        const k = Math.min(160 / bmp.width, 90 / bmp.height, 1);
+        const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+        c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+        const thumb = c.toDataURL('image/jpeg', 0.6);
+        await this.tx(['photo'], 'readwrite', o => { const g = o.photo.get(key); g.onsuccess = () => { if (g.result) { g.result.thumb = thumb; o.photo.put(g.result); } }; });
+        HistorySheet.refresh();
+      } catch (e) { /* no preview picture */ }
+    },
+
+    // ---- going back
+    // The built-in Timer: a running timer comes back paused with the time it had left (not ringing at once).
+    fix(exp, at) {
+      for (const i of exp.instances || []) {
+        if (i.widgetId === 'timer' && i.data && typeof i.data.endsAt === 'number') i.data = Object.assign({}, i.data, { remaining: Math.max(0, i.data.endsAt - at), endsAt: null });
+      }
+      return exp;
+    },
+    // src: a version id, or {exp, file} (a copy from the folder). Replaces the whole board; can be undone.
+    async restore(src, opts = {}) {
+      let exp, meta = null;
+      if (typeof src === 'string') {
+        const r = await this.get(src).catch(() => null);
+        if (!r) { toast('That version can’t be found anymore.'); return false; }
+        exp = clone(r.body.exp); meta = r.meta;
+      } else exp = clone(src.exp);
+      const at = (exp.snapshot && exp.snapshot.at) || (exp.history && exp.history.at) || (meta && meta.at) || Date.now();
+      delete exp.theme; delete exp.accent;   // going back never changes this device's settings
+      this.fix(exp, at);
+      const ref = exp.media && exp.media.ref, look = exp.media && exp.media.look;
+      delete exp.media;
+      const p = parseBoardFile(JSON.stringify(exp));
+      let photo = 'exact', gone = false;
+      if (ref) {
+        const ph = await this.getPhoto(ref).catch(() => null);
+        if (ph) { p.photo = { data: ph.data, w: ph.w, h: ph.h, bytes: ph.bytes, name: ph.name, addedAt: ph.addedAt }; p.photoLook = normalizePhotoSettings(look || {}); photo = 'file'; }
+        else { photo = 'keep'; gone = !!BoardPhoto.media(); }
+      } else if ((meta && meta.photo === 'gone') || !meta) { photo = 'keep'; gone = !!(meta && meta.photo === 'gone'); }
+      const label = `Before going back to ${dayTime(at)}`;
+      const undoId = await applyImport(p, 'replace', { uid: p.board.uid || S.board.uid, photo, keepCreated: true, history: { reason: 'restore', label }, mustSnapshot: true });
+      if (undoId === false) return false;
+      await this.capture('restored', { label: opts.undo ? 'Undid going back' : `Went back to ${dayTime(at)}` });
+      Link.changed([Keys.board(S.boardId)]); Link.computeOffer();
+      this.undoable = undoId && !opts.undo ? { id: undoId, label: `Put the board back to how it was ${when(Date.now())}`, until: Date.now() + HIST.undoMs } : null;
+      if (opts.undo) toast('Undone: the board is back as it was.');
+      else toast(`Your board is back to how it was ${when(at)}.` + (gone ? ' The background photo from then wasn’t kept, so your photo stays.' : ''), undoAction(undoId));
+      HistorySheet.refresh();
+      return true;
+    },
+    // Brings back one window from a version (into a free number if a different window has that one now).
+    async putBack(id, ikey, opts = {}) {
+      const r = await this.get(id).catch(() => null);
+      if (!r) { toast('That version can’t be found anymore.'); return false; }
+      const exp = this.fix(clone(r.body.exp), r.meta.at);
+      const src = exp.instances.find(i => ikeyOf(i.widgetId, i.instance) === ikey);
+      if (!src) return false;
+      const widget = getWidget(src.widgetId);
+      if (!widget) { toast('That widget isn’t installed on this device.'); return false; }
+      const beforeId = await this.before('window', `Before putting back ${instName(src.widgetId, src.instance)}`);
+      let target = ikey;
+      const cur = S.insts.get(ikey);
+      if (!opts.exact && cur && !(src.createdAt && cur.createdAt === src.createdAt)) {
+        const used = new Set(Array.from(S.insts.values()).filter(i => i.widgetId === src.widgetId).map(i => i.n));
+        let n = 1; while (used.has(n)) n++;
+        target = ikeyOf(src.widgetId, n);
+      }
+      const n = +target.split(':')[1];
+      const tmp = Object.assign({}, exp); delete tmp.media;
+      const plan = importPlan(parseBoardFile(JSON.stringify(tmp)), 'add');
+      const rect = fitRect(plan.convert(src.rect), constraintsFor(widget), boundsRect());
+      const b = S.boardId;
+      const existed = S.insts.has(target);
+      await saveInst(target, { widgetId: src.widgetId, n, open: true, rect, z: maxZ() + 1, maximized: false, createdAt: src.createdAt || Date.now() });
+      if (src.data == null) { S.data.delete(target); Writer.del(Keys.data(b, target)); } else { S.data.set(target, clone(src.data)); Writer.put(Keys.data(b, target), 'data', src.data); }
+      if (src.config == null) { S.conf.delete(target); Writer.del(Keys.conf(b, target)); } else { S.conf.set(target, clone(src.config)); Writer.put(Keys.conf(b, target), 'conf', src.config); }
+      await Writer.settled(2000);
+      reconcileWin(target);
+      const w = S.wins.get(target);
+      if (w) { if (existed) w.reload(); focusWin(target); w.attention(); }
+      afterBulkApply();
+      const name = instName(src.widgetId, n);
+      if (!opts.quiet) toast(`${name} is back as it was ${when(r.meta.at)}.`, beforeId ? { action: 'Undo', timeout: 20000, onAction: async () => {
+        const prev = await this.get(beforeId).catch(() => null);
+        if (prev && prev.body.exp.instances.some(i => ikeyOf(i.widgetId, i.instance) === target)) this.putBack(beforeId, target, { exact: true, quiet: true });
+        else deleteInstance(target, { history: false });
+      } } : {});
+      else toast(`${name} is back.`);
+      HistorySheet.refresh();
+      return true;
+    },
+
+    // ---- copies in the Google Drive folder ("Board history" inside it), about one an hour
+    async folderDir(create) {
+      if (!Link.dir || Link.perm !== 'granted' || typeof Link.dir.getDirectoryHandle !== 'function') return null;
+      try { return await Link.dir.getDirectoryHandle('Board history', { create: !!create }); } catch (e) { return null; }
+    },
+    tag(s, n) { return String(s || '').toLowerCase().replace(/[^0-9a-z]/g, '').slice(0, n).padEnd(n, '0'); },
+    folderName(meta) {
+      const d = new Date(meta.at), p2 = x => String(x).padStart(2, '0'), dev = Link.device();
+      const label = dev.label.replace(/^(the|a|an) /i, '').replace(/[()[\]]/g, '').trim().slice(0, 40) || 'device';
+      return `${Link.safeName(meta.name)} ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}.${p2(d.getMinutes())}${meta.manual ? ' saved' : ''} (${label}) [${this.tag(meta.uid, 6)}-${this.tag(dev.id, 4)}].21board`;
+    },
+    parseName(name) {
+      const m = /^(.+) (\d{4})-(\d{2})-(\d{2}) (\d{2})\.(\d{2})( saved)? \(([^()]{0,40})\) \[([0-9a-z]{6})-([0-9a-z]{4})\]\.21board$/i.exec(name);
+      return m ? { name, board: m[1], at: new Date(+m[2], +m[3] - 1, +m[4], +m[5], +m[6]).getTime(), saved: !!m[7], device: m[8], uidTag: m[9].toLowerCase(), devTag: m[10].toLowerCase() } : null;
+    },
+    async maybeFolder(meta, force) {
+      if (!S.settings.historyFolder || !Link.supported || !meta) return;
+      if (!/^(auto|open|restored|manual)$/.test(meta.kind) && !meta.manual) return;
+      const rec = meta.uid ? Link.boardRec(meta.uid) : null;
+      if (rec && meta.sig === rec.loadedSig && !meta.manual) return;   // only showing another device's version: that device keeps its copies
+      const last = this.metas.find(m => m.folder);
+      if (last && last.sig === meta.sig && !force) return;
+      if (!force && last && meta.at - last.at < HIST.folderEvery) return;
+      const dir = await this.folderDir(true);
+      if (!dir) return;
+      try {
+        const name = this.folderName(meta);
+        let exists = false;
+        try { await dir.getFileHandle(name); exists = true; } catch (e) { /* not there yet */ }
+        if (!exists) {
+          const r = await this.get(meta.id);
+          if (!r) return;
+          const exp = clone(r.body.exp);
+          delete exp.theme; delete exp.accent; delete exp.sent;
+          const dev = Link.device();
+          exp.history = { at: meta.at, kind: meta.kind, label: meta.label, by: dev.id, from: dev.label };
+          await Link.writeFile(name, JSON.stringify(exp), dir);
+          await this.writeFolderReadme(dir);
+        }
+        await this.tx(['meta'], 'readwrite', o => { const g = o.meta.get(meta.id); g.onsuccess = () => { if (g.result) { g.result.folder = name; o.meta.put(g.result); } }; });
+        updateSettings({ lastBackupAt: Date.now() });   // a copy off this device counts as a backup
+        this.folderStatus = '';
+        await this.folderPrune(dir);
+        await this.reload();
+        HistorySheet.refresh();
+      } catch (err) { this.folderStatus = 'Couldn’t write to your folder just now. 21Board will try again.'; console.warn('21Board: board history copy failed', err); }
+    },
+    async writeFolderReadme(dir) {
+      try { await dir.getFileHandle('About these files.txt'); return; } catch (e) { /* write it */ }
+      await Link.writeFile('About these files.txt', [
+        'Earlier versions of your 21Board boards, kept by 21Board so you can go back after a big change',
+        'or if a device is reset.',
+        '',
+        '- To go back: 21Board > Settings > Board history (at the bottom: "In your Google Drive folder"),',
+        '  or open a file with Import.',
+        '- 21Board removes older copies automatically (about one an hour, then one a day, then one a week).',
+        '  Files whose name ends in "saved" were saved by you and are never removed automatically.',
+        '- These copies leave out the background photo.',
+        '- They can include student names. Share this folder only with people who should see them.',
+        ''
+      ].join('\r\n'), dir);
+    },
+    async folderList(dir) {
+      dir = dir || await this.folderDir(false);
+      if (!dir) return [];
+      const out = [];
+      try { for await (const [name, h] of dir.entries()) if (h.kind === 'file') { const p = this.parseName(name); if (p) out.push(p); } } catch (e) { return []; }
+      return out.sort((a, b) => b.at - a.at);
+    },
+    // Thin this device's copies by name (never reading files); other devices' files and the teacher's saved ones stay.
+    async folderPrune(dir) {
+      const mine = this.tag(Link.device().id, 4), list = (await this.folderList(dir)).filter(f => f.devTag === mine);
+      const byBoard = new Map();
+      for (const f of list) { if (!byBoard.has(f.uidTag)) byBoard.set(f.uidTag, []); byBoard.get(f.uidTag).push(f); }
+      for (const files of byBoard.values()) {
+        const keep = historyPlan(files.map(f => ({ id: f.name, at: f.at, manual: f.saved })), Date.now(), T_FOLDER);
+        for (const f of files) if (!keep.has(f.name) && !f.saved) { try { await dir.removeEntry(f.name); } catch (e) { /* already gone */ } }
+      }
+    },
+    async readFolderFile(name) {
+      const dir = await this.folderDir(false);
+      if (!dir) throw new Error('The folder isn’t available.');
+      return JSON.parse(await Link.readFile(name, dir));
+    },
+    async deleteFolderCopies(uid) {
+      const dir = await this.folderDir(false);
+      if (!dir) return 0;
+      const t = this.tag(uid, 6);
+      let n = 0;
+      for (const f of await this.folderList(dir)) if (f.uidTag === t) { try { await dir.removeEntry(f.name); n++; } catch (e) { /* gone */ } }
+      return n;
+    },
+
+    // ---- startup
+    async start() {
+      if (this.started || !this.enabled()) return;
+      this.started = true;
+      try { await this.db(); } catch (e) { if (Settings.isOpen) Settings.render(); return; }
+      await this.reload();
+      updateHint();
+      this.prune();
+      setTimeout(() => { if (S.insts.size && !this.cfgv.skipOpen) this.capture('open'); }, HIST.openDelay);
+      setInterval(() => this.check(), HIST.tick);
+      setInterval(() => { if (document.visibilityState === 'visible' && this.metas[0] && !this.metas[0].folder) this.maybeFolder(this.metas[0]); }, 15 * H_MIN);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') { if (this.dirty) this.check(true); }
+        else if (this.metas[0] && new Date(this.metas[0].at).toDateString() !== new Date().toDateString()) setTimeout(() => { if (S.insts.size) this.capture('open'); }, 3000);
+      });
+      window.addEventListener('pagehide', () => { if (this.dirty) this.check(true); });
+    }
+  };
+
+  // Settings → Board history (the first section).
+  function historySettings(sw, seg) {
+    const H = BoardHistory;
+    if (LAB) return '';
+    if (!H.enabled()) return `<h3>Board history</h3><div class="row"><div class="hint">Board history isn’t available in this browser window.</div></div>`;
+    const n = H.metas.length, bytes = H.metas.reduce((a, m) => a + (m.bytes || 0), 0), oldest = H.metas[n - 1];
+    const lastFolder = H.metas.find(m => m.folder);
+    const warn = H.paused === 'quota' ? ' Board history is paused: this device is out of space.' : H.low ? ' Space is low on this device, so fewer earlier versions are kept.' : H.status === 'too-big' ? ' This board is too big for automatic versions.' : '';
+    const every = String(S.settings.historyEvery == null ? 10 : S.settings.historyEvery);
+    return `<h3>Board history</h3>
+      <div class="row"><div><div class="lbl">Go back to an earlier version</div><div class="hint">Earlier versions of this board are kept on this device, so you can undo a mistake (or a curious student). ${n ? `${n} version${n === 1 ? '' : 's'} (${fmtBytes(bytes)}), the oldest from ${esc(new Date(oldest.at).toLocaleDateString([], { month: 'short', day: 'numeric' }))}.` : 'None yet.'}${lastFolder && Link.dir ? ` The last copy in your folder was saved ${esc(when(lastFolder.at))}.` : ''}${warn}</div></div>
+        <button class="btn primary" data-act="hist-open">${svg('history')}Board history…</button></div>
+      <div class="row stack"><div><div class="lbl">Save a version</div><div class="hint">While the board is changing. One is also saved before Reset, Delete, Import, Load and going back.</div></div>${seg('hist-every', every, [['10', 'Every 10 min'], ['60', 'Every hour'], ['1440', 'Once a day'], ['0', 'Off']])}</div>
+      ${Link.dir ? `<div class="row"><div><div class="lbl">Copies in your Google Drive folder</div><div class="hint">About one an hour, in “Board history” inside your folder (without the background photo), so you can go back even if this device is reset.${H.folderStatus ? ' ' + esc(H.folderStatus) : ''}</div></div>${sw('hist-folder', S.settings.historyFolder !== false, 'Copies in your Google Drive folder')}</div>` : ''}
+      <div class="row"><div><div class="lbl">Delete board history</div><div class="hint">Deletes the earlier versions. The board itself stays as it is.</div></div><button class="btn small danger" data-act="hist-delete">Delete…</button></div>`;
+  }
+
+  // The Board history sheet: every version of the board, a preview, what changed, Go back / Put back.
+  const HistorySheet = {
+    el: null, body: null, side: 'left', isOpen: false, sel: null, ikey: null, now: null, folder: [], showOthers: false, thumbs: new Map(), rt: 0,
+
+    init() {
+      this.el = $('#history');
+      this.body = $('.sheet-body', this.el);
+      const closeBtn = $('[data-close]', this.el);
+      closeBtn.innerHTML = svg('close');
+      closeBtn.addEventListener('click', () => this.close());
+      this.body.addEventListener('click', e => {
+        const b = e.target.closest('[data-act]');
+        if (b && !b.disabled) this.act(b.dataset.act, b.dataset.val, b);
+      });
+    },
+    async open(side, opts = {}) {
+      closePopups({ keepHistory: true });
+      this.side = side === 'right' ? 'right' : 'left';
+      this.ikey = opts.ikey || null;
+      this.sel = null; this.showOthers = false;
+      this.el.classList.remove('left', 'right');
+      this.el.classList.add(this.side, 'open');
+      this.isOpen = true;
+      this.body.innerHTML = '<p class="hist-intro">Loading…</p>';
+      await BoardHistory.reload();
+      await this.loadExtras();
+      this.render();
+    },
+    close() {
+      if (!this.isOpen) return;
+      this.isOpen = false;
+      this.el.classList.remove('open');
+    },
+    async loadExtras() {
+      try {
+        const exp = await buildExport('full');
+        this.now = { sig: boardSig(exp), wins: BoardHistory.winsOf(exp), thumb: BoardHistory.thumbOf(exp), photo: BoardHistory.photoKeyOf(exp.media && exp.media.background), name: S.board.name };
+      } catch (e) { this.now = null; }
+      for (const k of new Set(BoardHistory.metas.map(m => m.photo).filter(k => k && k !== 'gone'))) {
+        if (this.thumbs.has(k)) continue;
+        const ph = await BoardHistory.getPhoto(k).catch(() => null);
+        if (ph && ph.thumb) this.thumbs.set(k, ph.thumb);
+      }
+      this.folder = S.settings.historyFolder !== false ? await BoardHistory.folderList() : [];
+    },
+    refresh() {
+      if (!this.isOpen) return;
+      clearTimeout(this.rt);
+      this.rt = setTimeout(async () => { await this.loadExtras(); this.render(); }, 150);
+    },
+    label(m) {
+      if (m.manual) { const l = m.kind === 'manual' ? m.label : m.manualLabel; return 'Saved by you' + (l ? ` · ${l}` : ''); }
+      return m.kind === 'auto' ? 'Saved automatically' : m.kind === 'open' ? 'When 21Board opened' : (m.label || 'Saved');
+    },
+    minimap(t, opts = {}) {
+      if (!t) return '';
+      const bg = /^#[0-9a-f]{6}$/i.test(t.bg || '') ? t.bg : 'var(--board-bg)';
+      const img = opts.photo ? `<image href="${esc(opts.photo)}" x="0" y="0" width="${t.vw}" height="${t.vh}" preserveAspectRatio="xMidYMid slice"/>` : '';
+      const wins = (t.wins || []).map(([ik, x, y, w, h]) => {
+        const [wid, n] = ik.split(':'), widget = getWidget(wid), c = widget ? widget.color : '#94a3b8', tb = Math.min(h, 40);
+        return `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="var(--surface)" stroke="${c}" stroke-width="5"/><rect x="${x}" y="${y}" width="${w}" height="${tb}" rx="14" fill="${c}"/>` +
+          (opts.labels && w > 120 ? `<text x="${x + w / 2}" y="${y + tb * 0.72}" font-size="${Math.round(tb * 0.62)}" font-weight="700" text-anchor="middle" fill="#fff">${esc(instName(wid, +n))}</text>` : '') + '</g>';
+      }).join('');
+      return `<svg class="minimap" viewBox="0 0 ${t.vw} ${t.vh}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect width="${t.vw}" height="${t.vh}" fill="${bg}"/>${img}${wins}</svg>`;
+    },
+    chips(items, cls = 'chip') { return items.length ? `<span class="chips">${items.slice(0, 3).map(t => `<span class="${cls}">${esc(t)}</span>`).join('')}${items.length > 3 ? `<span class="${cls}">+${items.length - 3} more</span>` : ''}</span>` : ''; },
+    photoOf(m) { return m.photo && m.photo !== 'gone' ? this.thumbs.get(m.photo) : null; },
+
+    render() {
+      if (!this.isOpen) return;
+      const top = this.body.scrollTop;
+      const H = BoardHistory;
+      if (!H.enabled()) { this.body.innerHTML = '<p class="hist-intro">Board history isn’t available in this browser window.</p>'; return; }
+      this.body.innerHTML = this.ikey ? this.renderWindow() : this.renderBoard();
+      this.body.scrollTop = top;
+    },
+    renderBoard() {
+      const H = BoardHistory, metas = H.metas, now = this.now;
+      let html = '<p class="hist-intro">Tap a time to see how your board looked. Nothing changes until you tap Go back.</p>';
+      if (H.undoable && H.undoable.until > Date.now()) html += `<div class="hist-undo"><span>${esc(H.undoable.label)}</span><button class="btn small primary" data-act="undo">Undo</button></div>`;
+      if (!metas.length) return html + '<p class="empty-note">No earlier versions yet. 21Board saves one when the board changes, and before risky actions like Reset or Import.</p>' + this.renderFoot();
+      // The version most likely wanted after a disaster.
+      const noneOpen = now && !Object.values(now.wins).some(w => w[0]);
+      const hero = noneOpen ? metas.find(m => m.thumb && m.thumb.wins.length && (!now || m.sig !== now.sig))
+        : metas.find(m => m.beforeBig && Date.now() - m.at < 3 * H_DAY && (!now || m.sig !== now.sig));
+      if (hero) {
+        const after = H.diff(hero, metas[metas.indexOf(hero) - 1] || now);
+        html += `<button class="hist-hero" data-act="sel" data-val="${esc(hero.id)}">${this.minimap(hero.thumb, { photo: this.photoOf(hero) })}<span><b>${noneOpen ? 'Before the windows were closed' : 'Before the last big change'}</b><span>${esc(dayTime(hero.at))}${after.length ? '. After it: ' + esc(after.slice(0, 3).join(', ').toLowerCase()) : ''}</span></span></button>`;
+      }
+      let day = '';
+      metas.forEach((m, i) => {
+        const d = new Date(m.at), dk = d.toDateString();
+        if (dk !== day) { day = dk; html += `<div class="hist-day">${esc(dayTime(m.at).replace(/,? \d{1,2}:\d{2}.*$/, '').replace(/ \d{1,2}:\d{2}.*$/, ''))}</div>`; }
+        const older = metas[i + 1];
+        const tags = [];
+        if (m.beforeBig) tags.push('<span class="tag big">Before a big change</span>');
+        if (m.link === 'sent') tags.push('<span class="tag">Sent to your folder</span>');
+        if (m.link === 'loaded') tags.push('<span class="tag">Loaded from another device</span>');
+        if (m.name !== S.board.name) tags.push(`<span class="tag">Then called “${esc(m.name)}”</span>`);
+        const sel = this.sel === m.id;
+        html += `<button class="hist-row${sel ? ' sel' : ''}" data-act="sel" data-val="${esc(m.id)}" aria-expanded="${sel}">${this.minimap(m.thumb, { photo: this.photoOf(m) })}<span class="meta2">` +
+          `<span class="when">${esc(new Date(m.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span><span class="what">${esc(this.label(m))}</span>` +
+          `${this.chips(older ? H.diff(older, m) : [])}${tags.length ? `<span class="chips">${tags.join('')}</span>` : ''}</span></button>`;
+        if (sel) html += this.renderDetail(m, metas[i - 1]);
+      });
+      return html + this.renderFoot();
+    },
+    renderDetail(m, newer) {
+      const H = BoardHistory, now = this.now;
+      const same = now && m.sig === now.sig;
+      const after = newer ? H.diff(m, newer) : null, vsNow = now ? H.diff(m, now) : [];
+      const notes = [];
+      if (m.uid && S.board.uid && m.uid !== S.board.uid) notes.push(`Back then, this board was “${m.name}”. Going back brings that board back.`);
+      if (m.photo === 'gone') notes.push('The background photo from then wasn’t kept, so going back keeps your photo now.');
+      if (Link.st.auto && Link.dir) notes.push('Send automatically is on, so your other devices will be offered this version.');
+      const wins = Object.keys(m.wins || {}).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+      const rows = wins.map(ik => {
+        const [wid, n] = ik.split(':'), widget = getWidget(wid), w = m.wins[ik], cur = now && now.wins[ik];
+        const state = !cur ? 'Not on the board now' : (w[0] && !cur[0]) ? 'Closed now' : (w[2] !== cur[2] || w[3] !== cur[3]) ? 'Different now' : 'Same as now';
+        const differs = state !== 'Same as now';
+        return `<div class="inst"><span class="widget-icon" style="--c:${esc(widget ? widget.color : '#9ca3af')}">${widget ? widget.icon : svg('widget')}</span>` +
+          `<div class="meta"><b>${esc(instName(wid, +n))}${w[0] ? '' : ' (closed then)'}</b><span>${esc(w[5] || (widget ? '' : 'Widget not installed'))}</span></div>` +
+          `<span class="pill${differs ? ' diff' : ''}">${state}</span>` +
+          (differs && widget ? `<button class="btn small" data-act="put" data-val="${esc(m.id + '|' + ik)}">Put back</button>` : '') + '</div>';
+      }).join('');
+      return `<div class="hist-detail">${this.minimap(m.thumb, { photo: this.photoOf(m), labels: true })}
+        <p><b>${esc(dayTime(m.at))}</b> · ${esc(this.label(m))}</p>
+        <p>${after ? (after.length ? 'After this: ' + esc(after.join(', ')) + '.' : 'Nothing changed after this until the next version.') : 'This is the newest version.'}</p>
+        <p>${same ? 'Same as your board now.' : vsNow.length ? 'Compared with now: ' + esc(vsNow.join(', ')) + '.' : 'Small differences from your board now.'}</p>
+        ${notes.map(t => `<p class="hint">${esc(t)}</p>`).join('')}
+        ${rows ? `<div class="inst-list">${rows}</div>` : '<p class="hint">No windows.</p>'}
+        ${same ? '' : `<button class="btn primary" data-act="go" data-val="${esc(m.id)}">${svg('history')}Go back to ${esc(dayTime(m.at))}</button>`}</div>`;
+    },
+    renderFoot() {
+      const H = BoardHistory;
+      let html = `<div class="hist-foot"><button class="btn" data-act="save">${svg('plus')}Save this version now</button>
+        <p class="hint">Kept on this device: every version from the last few hours, then one an hour for 2 days, the first and last of each day for a month, and one a week for 3 months. Versions you save are kept until you delete them. Earlier versions aren’t a backup: if the browser clears 21Board’s data, they go too.</p></div>`;
+      if (Link.dir && Link.perm === 'granted' && S.settings.historyFolder !== false) {
+        const t = H.tag(S.board.uid, 6), mine = this.folder.filter(f => f.uidTag === t).slice(0, 20), others = this.folder.filter(f => f.uidTag !== t);
+        html += `<div class="hist-day">In your Google Drive folder</div>` + (mine.length ? `<div class="inst-list">${mine.map(f => `<div class="inst"><div class="meta"><b>${esc(dayTime(f.at))}${f.saved ? ' · saved by you' : ''}</b><span>From ${esc(f.device)}</span></div><button class="btn small" data-act="folder-go" data-val="${esc(f.name)}">Go back</button></div>`).join('')}</div>` : '<p class="hint">No copies of this board there yet (about one an hour).</p>');
+        if (others.length) {
+          html += `<button class="btn small" data-act="others">${this.showOthers ? 'Hide' : 'Show'} other boards’ copies (${others.length})</button>`;
+          if (this.showOthers) html += `<div class="inst-list">${others.slice(0, 40).map(f => `<div class="inst"><div class="meta"><b>${esc(f.board)}</b><span>${esc(dayTime(f.at))} · from ${esc(f.device)}</span></div><button class="btn small" data-act="folder-go" data-val="${esc(f.name)}">Use</button></div>`).join('')}</div>`;
+        }
+      }
+      return html;
+    },
+    renderWindow() {
+      const H = BoardHistory, ik = this.ikey, [wid, n] = ik.split(':'), cur = this.now && this.now.wins[ik];
+      let html = `<p class="hist-intro"><b>Earlier versions of ${esc(instName(wid, +n))}</b>. Putting one back changes only this window.</p>`;
+      html += `<div class="inst-list"><div class="inst"><div class="meta"><b>Now</b><span>${esc(cur ? cur[5] || '(empty)' : 'Not on the board')}</span></div></div>`;
+      let last = cur ? cur[2] + '|' + cur[3] : null, count = 0;
+      for (const m of H.metas) {
+        const w = m.wins && m.wins[ik];
+        if (!w) continue;
+        const key = w[2] + '|' + w[3];
+        if (key === last) continue;
+        last = key; count++;
+        html += `<div class="inst"><div class="meta"><b>${esc(dayTime(m.at))}</b><span>${esc(w[5] || '(empty)')}</span></div><button class="btn small" data-act="put" data-val="${esc(m.id + '|' + ik)}">Put back this version</button></div>`;
+      }
+      html += '</div>';
+      if (!count) html += '<p class="hint">No different versions of this window yet.</p>';
+      return html + `<p><button class="btn small" data-act="whole">Show the whole board’s history</button></p>`;
+    },
+
+    async act(act, val) {
+      const H = BoardHistory;
+      switch (act) {
+        case 'sel': {
+          this.sel = this.sel === val ? null : val; this.render();
+          const d = $('.hist-detail', this.body);
+          if (d) d.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          break;
+        }
+        case 'go': this.close(); await H.restore(val); break;
+        case 'put': { const [id, ik] = val.split('|'); this.close(); await H.putBack(id, ik); break; }
+        case 'undo': if (H.undoable) { const id = H.undoable.id; H.undoable = null; this.close(); await H.restore(id, { undo: true }); } break;
+        case 'whole': this.ikey = null; this.render(); break;
+        case 'others': this.showOthers = !this.showOthers; this.render(); break;
+        case 'save': {
+          const r = await dialog({ title: 'Save this version', message: 'It’s kept until you delete it.', input: { label: 'Name (optional)', placeholder: 'Monday setup', maxlength: 60 }, actions: [{ label: 'Save', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
+          if (r && r.value) { const id = await H.save(r.text); toast(id ? 'Saved this version of the board.' : 'Couldn’t save a version just now.'); }
+          break;
+        }
+        case 'folder-go': {
+          let exp;
+          try { exp = await H.readFolderFile(val); } catch (e) { toast('Couldn’t read that copy: ' + ((e && e.message) || e)); break; }
+          this.close();
+          await H.restore({ exp });
+          break;
+        }
+      }
+    }
+  };
+
+  // =====================================================================
   // 14. Dialogs and toasts
   // =====================================================================
   let dialogResolve = null;
-  function dialog({ title, message, actions }) {
-    closePopups({ keepSettings: true });
+  // input: {label, placeholder, maxlength}: also asks for a line of text; resolves {value, text} (or null).
+  function dialog({ title, message, actions, input }) {
+    closePopups({ keepSettings: true, keepHistory: true });
     if (dialogResolve) dialogResolve(null);
     const modal = $('#modal'), card = $('.modal-card', modal);
-    card.innerHTML = `<h3>${esc(title)}</h3>${message ? `<p>${esc(message)}</p>` : ''}<div class="modal-actions">` +
+    card.innerHTML = `<h3>${esc(title)}</h3>${message ? `<p>${esc(message)}</p>` : ''}` +
+      (input ? `<label class="modal-input"><span>${esc(input.label || '')}</span><input type="text" class="text-input" maxlength="${+input.maxlength || 60}" placeholder="${esc(input.placeholder || '')}" autocomplete="off"></label>` : '') +
+      `<div class="modal-actions">` +
       actions.map((a, i) => `<button class="btn ${a.kind || ''} ${a.choice ? 'choice' : ''}" data-i="${i}">${esc(a.label)}${a.sub ? `<small>${esc(a.sub)}</small>` : ''}</button>`).join('') + '</div>';
     modal.classList.add('open');
-    const first = $('.btn', card);
+    const field = input ? $('input', card) : null;
+    const first = field || $('.btn', card);
     if (first) first.focus();
     return new Promise(resolve => {
-      dialogResolve = v => { dialogResolve = null; modal.classList.remove('open'); resolve(v); };
+      const answer = v => (field ? (v == null ? null : { value: v, text: field.value.trim() }) : v);
+      dialogResolve = v => { dialogResolve = null; modal.classList.remove('open'); resolve(answer(v)); };
       card.onclick = e => { const b = e.target.closest('[data-i]'); if (b) dialogResolve(actions[+b.dataset.i].value); };
       modal.onclick = e => { if (e.target === modal) dialogResolve(null); };
+      if (field) field.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); dialogResolve(actions[0].value); } };
     });
   }
 
@@ -3507,6 +4482,7 @@
     Picker.close();
     Menu.close();
     if (!opts.keepSettings) Settings.close();
+    if (!opts.keepHistory) HistorySheet.close();
   }
 
   // =====================================================================
@@ -3781,7 +4757,10 @@
     Picker.init();
     Menu.init();
     Settings.init();
+    HistorySheet.init();
     ShapeHint.init();
+    const rescueBtn = $('#empty-hint .rescue button');
+    if (rescueBtn) rescueBtn.addEventListener('click', () => HistorySheet.open('left'));
     $('#desk').addEventListener('pointerdown', onDeskPointerDown);
     document.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary) forgetStaleTouches(e.pointerId); }, true);
     document.addEventListener('pointermove', e => Inter.move(e));
@@ -3801,6 +4780,7 @@
       if (Picker.side && !t.closest('#panel') && !t.closest('.picker-btn')) Picker.close();
       if (Menu.win && !t.closest('#menu') && !t.closest('.win-label')) Menu.close();
       if (Settings.isOpen && !t.closest('#settings') && !t.closest('#modal') && !t.closest('.picker-btn') && !t.closest('#panel')) Settings.close();
+      if (HistorySheet.isOpen && !t.closest('#history') && !t.closest('#modal') && !t.closest('#toasts') && !t.closest('.picker-btn') && !t.closest('#panel') && !t.closest('#empty-hint')) HistorySheet.close();
     }, true);
     // Focus moving into a widget iframe (a tap inside it) also closes popups.
     window.addEventListener('blur', () => setTimeout(() => { if (document.activeElement && document.activeElement.tagName === 'IFRAME') { Picker.close(); Menu.close(); } }, 0));
@@ -3810,6 +4790,7 @@
       if (dialogResolve) dialogResolve(null);
       else if (Menu.win) { const w = Menu.win; Menu.close(); w.labelEl.focus(); }
       else if (Picker.side) Picker.close();
+      else if (HistorySheet.isOpen) HistorySheet.close();
       else if (Settings.isOpen) Settings.close();
     });
 
@@ -3867,6 +4848,7 @@
     setupFileLaunch();
     Persist.init();
     Link.start();
+    BoardHistory.start();
   }
 
   // Exposed for debugging in the console and for automated tests.
@@ -3875,7 +4857,7 @@
     setRect: (ikey, rect) => { const i = S.insts.get(ikey); if (!i) return; saveInst(ikey, Object.assign({}, i, { rect })); const w = S.wins.get(ikey); if (w) w.layout(); },
     openWidget, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,
-    catalog: () => Array.from(catalog.values()), link: Link
+    catalog: () => Array.from(catalog.values()), link: Link, history: BoardHistory, historySheet: HistorySheet, historyPlan
   };
 
   boot();

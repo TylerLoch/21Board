@@ -49,6 +49,8 @@ setTimeout(() => { throw new Error('boom from the widget'); }, 400);
 const DEV_ROUTES = {
   '/__dev/widget.html': () => DEV_WIDGET(BASE + 'sdk/board21.js'),
   '/__dev/late.html': () => DEV_WIDGET(BASE + 'sdk/board21.js').replace(/<script src="[^"]*board21\.js"><\/script>/, '').replace('<body>', `<body><script src="${BASE}sdk/board21.js"></script>`),
+  '/__dev/quirks.html': () => DEV_WIDGET(BASE + 'sdk/board21.js').replace('<!DOCTYPE html>', ''),
+  '/__dev/console.html': () => `<!DOCTYPE html><html><head><script src="${BASE}sdk/board21.js"></script><script>window.__seen = []; const o = console.error; console.error = function () { window.__seen.push(Array.from(arguments).join(' ')); return o.apply(console, arguments); }; Board21.ready().then(() => setTimeout(() => console.error('after ready'), 50));</script></head><body>console</body></html>`,
   '/__dev/shim-write.html': () => `<!doctype html><script>fetch('widget.html').then(r => r.text()).then(h => { document.open(); document.write(h); document.close(); });</script>`,
   '/__dev/shim-blob.html': () => `<!doctype html><script>fetch('widget.html').then(r => r.text()).then(h => location.replace(URL.createObjectURL(new Blob([h], { type: 'text/html' }))));</script>`,
   // The page around the preview, on another origin (localhost vs 127.0.0.1), like gemini.google.com around its preview.
@@ -64,23 +66,31 @@ const DRIVE_PICK = () => {
   window.showDirectoryPicker = async () => {
     const real = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
     const file = fh => ({ kind: 'file', name: fh.name, getFile: () => fh.getFile(), createWritable: () => fh.createWritable() });
-    return {
-      kind: 'directory', name: '21Board',
+    const dir = d => ({
+      kind: 'directory', name: d.name,
       queryPermission: async () => 'granted', requestPermission: async () => 'granted',
-      getFileHandle: async (n, o) => file(await real.getFileHandle(n, o)),
-      removeEntry: n => real.removeEntry(n),
-      entries: async function* () { for await (const [n, h] of real.entries()) yield [n, h.kind === 'file' ? file(h) : h]; }
-    };
+      getFileHandle: async (n, o) => file(await d.getFileHandle(n, o)),
+      getDirectoryHandle: async (n, o) => dir(await d.getDirectoryHandle(n, o)),
+      removeEntry: (n, o) => d.removeEntry(n, o),
+      entries: async function* () { for await (const [n, h] of d.entries()) yield [n, h.kind === 'file' ? file(h) : dir(h)]; }
+    });
+    return dir(real);
   };
 };
 async function driveDevice(browser) { const c = await browser.newContext({ viewport: { width: 1280, height: 720 } }); await c.addInitScript(DRIVE_PICK); const p = await c.newPage(); return { c, p }; }
 const readFolder = p => p.evaluate(async () => { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true }); const out = {}; for await (const [n, h] of d.entries()) if (h.kind === 'file') out[n] = await (await h.getFile()).text(); return out; });
 const writeFolder = (p, files) => p.evaluate(async files => {
   const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
-  for await (const [n] of d.entries()) if (!(n in files)) await d.removeEntry(n);
+  for await (const [n, h] of d.entries()) if (h.kind === 'file' && !(n in files)) await d.removeEntry(n);
   for (const [n, t] of Object.entries(files)) { const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(t); await w.close(); }
 }, files);
 const drive = async (from, to) => writeFolder(to, await readFolder(from));
+// The "Board history" subfolder of the shared folder.
+const readHistory = p => p.evaluate(async () => { const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true })).getDirectoryHandle('Board history', { create: true }); const out = {}; for await (const [n, h] of d.entries()) if (h.kind === 'file') out[n] = await (await h.getFile()).text(); return out; });
+const writeHistory = (p, files) => p.evaluate(async files => {
+  const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true })).getDirectoryHandle('Board history', { create: true });
+  for (const [n, t] of Object.entries(files)) { const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(t); await w.close(); }
+}, files);
 
 const SUITES = [
   ['Windows, data and multi-tab sync', async (browser) => {
@@ -871,6 +881,7 @@ const SUITES = [
     ok(b.shown && b.img && b.size === 'cover' && Math.abs(b.w - 1280) < 1 && Math.abs(b.h - 720) < 1, 'it fills the 16:9 board (not the shaded margin below it)');
     ok(await page.evaluate(() => getComputedStyle(document.getElementById('board-bg')).zIndex === '0' && [...document.querySelectorAll('.win')].every(w => +getComputedStyle(w).zIndex >= 1)) || true, 'and sits behind the windows');
     // Choose what stays in view by tapping the preview (the house, bottom-left).
+    await page.locator('#photo-thumb').scrollIntoViewIfNeeded();
     const th = await page.locator('#photo-thumb').boundingBox();
     await page.mouse.click(th.x + th.width * 0.15, th.y + th.height * 0.8); await page.waitForTimeout(400);
     const im = await page.evaluate(() => window.__board21.state.media.get('background-look'));
@@ -1712,13 +1723,271 @@ const SUITES = [
     // 6) A file that can't be read yet (still arriving) keeps its name.
     await writeFolder(A.p, Object.assign(await readFolder(A.p), { 'Broken.21board': '{"format":"21bo' }));
     ok(await L(A.p, () => window.__board21.link.fileNameFor('someone-else-123', 'Broken')) === 'Broken (2).21board', 'a file that can’t be read yet is never overwritten (its name is skipped)');
-    // 7) Erase everything forgets the folder (and sends nothing).
+    // 8) "Not now" doesn't silently stop automatic sending: the next blocked send says so.
+    await B.p.locator('.toast', { hasText: 'was updated on my laptop' }).locator('button', { hasText: 'Not now' }).click(); await B.p.waitForTimeout(300);
+    await L(B.p, () => { window.__board21.link.nagAt = 0; });   // (said at most every 5 minutes; step 1 already did)
+    await fillNote(note(B.p), 'B more'); await B.p.waitForTimeout(10000);
+    ok(await B.p.locator('.toast', { hasText: 'aren’t sent until you load it' }).count() === 1, 'after “Not now”, a change that can’t be sent brings the message back (saying changes aren’t being sent)');
+    // 9) The other device sending several times in a row isn't a conflict.
+    await L(B.p, n => { window.__board21.link.load(n); }, file); await B.p.waitForTimeout(600); await modal(B.p, 'Load and replace'); await B.p.waitForTimeout(2200);
+    await L(B.p, () => window.__board21.link.saveState({ auto: false }));
+    await fillNote(note(B.p), 'B s1'); await B.p.waitForTimeout(300); await L(B.p, () => window.__board21.link.send()); await B.p.waitForTimeout(600);
+    await fillNote(note(B.p), 'B s2'); await B.p.waitForTimeout(300); await L(B.p, () => window.__board21.link.send()); await B.p.waitForTimeout(600);
+    await drive(B.p, A.p);
+    await L(A.p, () => window.__board21.link.check(true)); await A.p.waitForTimeout(300);
+    await L(A.p, n => { window.__board21.link.load(n); }, file); await A.p.waitForTimeout(2500);
+    ok(await modalOpen(A.p, '') === 0 && await noteText(A.p) === 'B s2', 'two sends in a row from the smartboard load on the laptop without a false warning');
+    // 10) Loading another board first sends this one's pending automatic change.
+    await L(A.p, () => window.__board21.link.saveState({ auto: true }));
+    await fillNote(note(A.p), 'A unsent'); await A.p.waitForTimeout(400);
+    const other = Object.keys(await readFolder(A.p)).find(n => /copy from/.test(n));
+    await L(A.p, n => { window.__board21.link.load(n); }, other); await A.p.waitForTimeout(2000);
+    ok(await modalOpen(A.p, 'Replace this board') === 1 && await fileHas(A.p, file, 'A unsent'), 'loading another board first sends this board’s pending change (nothing is lost)');
+    await modal(A.p, 'Cancel'); await A.p.waitForTimeout(300);
+    await L(A.p, () => window.__board21.link.saveState({ auto: false }));
+    // 7) Erase everything forgets the folder (and sends nothing), in every open window.
+    const B2 = await B.c.newPage(); await B2.goto(BASE); await B2.waitForTimeout(800);
+    await B2.evaluate(async () => { await window.__board21.link.choose(); window.__board21.link.saveState({ auto: true }); });
     const before = Object.keys(await readFolder(B.p)).length;
     await B.p.click('.picker-btn.left'); await B.p.click('[data-ctl="settings"]'); await B.p.waitForTimeout(400);
     await B.p.click('#settings [data-act="erase"]'); await B.p.waitForTimeout(300); await modal(B.p, 'Erase everything'); await B.p.waitForTimeout(10000);
     ok(await L(B.p, () => !window.__board21.link.dir && !window.__board21.link.st.auto) && Object.keys(await readFolder(B.p)).length === before, '“Erase everything” unlinks the folder and sends nothing');
+    ok(await B2.evaluate(() => !window.__board21.link.dir && !window.__board21.link.st.auto), 'other open 21Board windows on that device are unlinked too');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
+  }],
+  ['Board history', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(600); await freeBoard(page);
+    const H = (fn, arg) => page.evaluate(fn, arg);
+    await H(() => window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }));
+    const metas = () => H(async () => { await window.__board21.history.reload(); return window.__board21.history.metas.map(m => ({ id: m.id, kind: m.kind, reason: m.reason, label: m.label, manual: m.manual, beforeBig: m.beforeBig, photo: m.photo, tab: m.tab, wins: Object.keys(m.wins), open: Object.values(m.wins).filter(w => w[0]).length, kept: m.keepUntil > Date.now() })); });
+    // The version kept from just before a risky action: a new one, or the newest (protected) if nothing changed since.
+    const safety = async text => { for (const x of await metas()) if (x.kept && (!text || JSON.stringify(await body(x.id)).includes(text))) return x; return null; };
+    const body = id => H(async id => (await window.__board21.history.get(id)).body.exp, id);
+    const note = (ik = 'notes:1') => page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const noteText = ik => note(ik).locator('#t').inputValue();
+    const settle = () => page.waitForTimeout(1600);
+    const modal = text => page.locator('#modal.open .btn', { hasText: text }).click();
+
+    // ---- Versions are saved as the board changes, in their own database.
+    await H(() => window.__board21.openWidget('notes')); await page.waitForTimeout(1200);
+    await fillNote(note(), 'Version A'); await settle();
+    let m = await metas();
+    const n0 = m.length;
+    ok(n0 >= 1 && m[0].kind === 'auto' && JSON.stringify(await body(m[0].id)).includes('Version A'), 'a version is saved once the board has settled after a change');
+    ok(await H(async () => (await indexedDB.databases()).some(d => d.name === '21Board-history') && (await window.__board21.store.getAll()).every(r => !/hist/.test(r.key))), 'versions are kept in their own database, never with the board');
+    await settle();
+    ok((await metas()).length === n0, 'nothing new is saved while nothing changes');
+    await H(() => window.__board21.focusWin('notes:1')); await settle();
+    ok((await metas()).length === n0, 'bringing a window to the front isn’t a change');
+    await H(() => window.__board21.setRect('notes:1', { x: 300, y: 120, w: 420, h: 320 })); await settle();
+    m = await metas();
+    ok(m.length === n0 + 1, 'moving a window is');
+
+    // ---- Before risky actions, with Undo.
+    await page.locator('.win[data-ikey="notes:1"] .win-label').click(); await page.waitForTimeout(250);
+    await page.click('#menu [data-act="reset"]'); await page.click('#menu [data-act="reset-yes"]'); await page.waitForTimeout(1500);
+    ok(!!(await safety('Version A')), 'Reset keeps a version from just before (kept for at least a week)');
+    await page.locator('.toast', { hasText: 'was reset' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(1500);
+    ok(await noteText() === 'Version A', 'Undo after Reset brings the note back');
+    await H(() => window.__board21.openWidget('timer')); await page.waitForTimeout(1000);
+    await H(() => { window.__board21.state.wins.get('timer:1'); }); await settle();
+    // Close all, then Undo.
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="close-all"]'); await page.waitForTimeout(1500);
+    ok(await page.locator('.win').count() === 0 && (await metas()).some(x => x.kept && x.open === 2), '“Close all windows” keeps a version from just before');
+    await page.locator('.toast', { hasText: 'Closed 2 windows' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(2500);
+    ok(await page.locator('.win').count() === 2 && await noteText() === 'Version A', 'and Undo opens them again');
+
+    // ---- A widget's content suddenly emptied (a cleared note) is kept first.
+    const long = 'The quick brown fox jumps over the lazy dog. '.repeat(6);
+    await fillNote(note(), long); await settle(); await settle();
+    await fillNote(note(), ''); await page.waitForTimeout(1500);
+    ok(!!(await safety('lazy dog')) && await H(() => JSON.stringify(window.__board21.state.data.get('notes:1')).includes('lazy') === false), 'clearing a long note keeps the text in a version first (and the note stays cleared)');
+
+    // ---- Disaster and rescue: the whole board goes back; this device's settings don't.
+    await fillNote(note(), 'Good setup'); await page.waitForTimeout(300);
+    await H(() => window.__board21.openWidget('dice')); await page.waitForTimeout(1000);
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="bg"][data-val="#e0f2fe"]'); await page.waitForTimeout(300);
+    await page.keyboard.press('Escape');
+    const goodId = await H(() => window.__board21.history.save('Good'));
+    ok(!!goodId && (await metas()).find(x => x.id === goodId).manual, '“Save this version now” keeps a named version');
+    // The wreck.
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(200);
+    await page.click('#settings [data-act="bg"][data-val="#0a0a0a"]'); await page.waitForTimeout(200);
+    await page.keyboard.press('Escape');
+    await fillNote(note(), 'scribble'); await page.waitForTimeout(400);
+    await H(() => window.__board21.deleteInstance('dice:1')); await page.waitForTimeout(1500);
+    await H(() => window.__board21.closeWin('timer:1')); await page.waitForTimeout(800);
+    // Find it in Board history (Settings, first section).
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => document.querySelector('#settings .sheet-body h3').textContent) === 'Board history', 'Board history is the first section in Settings');
+    await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(1200);
+    ok(await page.locator('#history.open .hist-row').count() >= 5, 'the Board history sheet lists the versions');
+    await page.screenshot({ path: OUT + '80-history-sheet.png' });
+    await page.click(`#history [data-act="sel"][data-val="${goodId}"]`); await page.waitForTimeout(400);
+    const detail = await page.evaluate(() => { const d = document.querySelector('#history .hist-detail'); return d && { rects: d.querySelectorAll('.minimap g').length, text: d.textContent }; });
+    ok(detail && detail.rects === 3 && /Not on the board now/.test(detail.text) && /Compared with now/.test(detail.text), `tapping a version shows a preview (3 windows), and what’s different now`);
+    await page.screenshot({ path: OUT + '81-history-detail.png' });
+    await page.click('#history .hist-detail [data-act="go"]'); await page.waitForTimeout(3500);
+    const back = await page.evaluate(() => ({ wins: document.querySelectorAll('.win').length, bg: window.__board21.state.board.background.color, theme: window.__board21.state.settings.theme }));
+    ok(back.wins === 3 && await noteText() === 'Good setup' && back.bg === '#e0f2fe', 'Go back brings back the windows, their content and the background');
+    ok(back.theme === 'dark', 'but leaves this device’s settings (dark mode) alone');
+    m = await metas();
+    ok(m[0].kind === 'restored' && !!(await safety('scribble')), 'going back keeps the board as it was first, so it can be undone');
+    await page.locator('.toast', { hasText: 'back to how it was' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(3500);
+    ok(await page.locator('.win').count() === 1 && await noteText() === 'scribble', 'Undo puts the wrecked board back (if that’s what you wanted)');
+    await H(id => window.__board21.history.restore(id), goodId); await page.waitForTimeout(3500);
+
+    // ---- Put back one window, leaving the rest as they are.
+    await H(() => window.__board21.openWidget('notes')); await page.waitForTimeout(1200);
+    await fillNote(note('notes:2'), 'Second note'); await page.waitForTimeout(400);
+    const twoId = await H(() => window.__board21.history.save('Two notes'));
+    await fillNote(note('notes:2'), ''); await fillNote(note('notes:1'), 'Edited after'); await page.waitForTimeout(800);
+    const rect1 = await H(() => JSON.stringify(window.__board21.state.insts.get('notes:1').rect));
+    await H(id => window.__board21.history.putBack(id, 'notes:2'), twoId); await page.waitForTimeout(2000);
+    ok(await noteText('notes:2') === 'Second note' && await noteText('notes:1') === 'Edited after' && await H(() => JSON.stringify(window.__board21.state.insts.get('notes:1').rect)) === rect1,
+      '“Put back” brings back one window (Notes 2) and leaves the others as they are');
+    // The window menu: Earlier versions of this window.
+    await page.locator('.win[data-ikey="notes:1"] .win-label').click(); await page.waitForTimeout(250);
+    ok(await page.locator('#menu [data-act="history"]').count() === 1, 'the window menu has “Earlier versions…”');
+    await page.click('#menu [data-act="history"]'); await page.waitForTimeout(1200);
+    const versions = await page.locator('#history [data-act="put"]').count();
+    ok(versions >= 2 && /Earlier versions of Notes/.test(await page.locator('#history .hist-intro').textContent()), `it lists that window’s earlier versions (${versions})`);
+    await page.locator('#history [data-act="put"]').first().click(); await page.waitForTimeout(2000);
+    ok(await noteText('notes:1') !== 'Edited after', 'and puts one back');
+
+    // ---- Windows gone? The empty board offers Board history.
+    await H(() => Array.from(window.__board21.state.insts.keys()).forEach(k => window.__board21.closeWin(k))); await page.waitForTimeout(800);
+    ok(await page.locator('#empty-hint .rescue:visible').count() === 1, 'with every window closed, the empty board offers “Go back to an earlier version”');
+    await page.click('#empty-hint .rescue button'); await page.waitForTimeout(1000);
+    ok(await page.locator('#history.open .hist-hero', { hasText: 'Before the windows were closed' }).count() === 1, 'and Board history suggests the version from before the windows were closed');
+    await page.keyboard.press('Escape');
+
+    // ---- A running timer comes back paused (it doesn't ring the moment the board comes back).
+    await H(() => window.__board21.openWidget('timer')); await page.waitForTimeout(1200);
+    await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('#go').click(); await page.waitForTimeout(500);
+    const tId = await H(() => window.__board21.history.save('Timer running'));
+    await H(id => window.__board21.history.restore(id), tId); await page.waitForTimeout(3500);
+    const td = await H(() => window.__board21.state.data.get('timer:1'));
+    ok(td && td.endsAt === null && td.remaining > 0, `a running timer comes back paused with its time left (${td && Math.round(td.remaining / 1000)} s)`);
+
+    // ---- Which versions are kept (a pure function).
+    const plan = await H(() => {
+      const P = window.__board21.historyPlan, DAY = 864e5, now = new Date(2026, 10, 10, 12).getTime(), items = [];
+      for (let i = 0; i < 400; i++) items.push({ id: 'a' + i, at: now - i * DAY * 0.9 - (i % 7) * 3600e3 });
+      for (let h = 0; h < 30; h++) items.push({ id: 'h' + h, at: now - h * 1800e3 - 60e3 });
+      items.push({ id: 'manual', at: now - 300 * DAY, manual: true }, { id: 'safe', at: now - 6 * DAY, keepUntil: now + DAY }, { id: 'big', at: now - 20 * DAY, beforeBig: true }, { id: 'oldsafe', at: now - 9 * DAY, keepUntil: now - DAY });
+      const T = { newest: 20, hours: 48, days: 30, weeks: 12, firstOfDay: true, cap: 250 };
+      const keep = P(items, now, T);
+      const gap = P([{ id: 'x1', at: now - 90 * DAY }, { id: 'x2', at: now - 91 * DAY }, { id: 'x3', at: now - 100 * DAY }], now, T);
+      const future = P(items.concat([{ id: 'f', at: now + 2 * DAY }]), now, T);
+      return { n: keep.size, manual: keep.has('manual'), safe: keep.has('safe'), big: keep.has('big'), oldsafe: keep.has('oldsafe'), newest: ['h0', 'h1', 'h2'].every(id => keep.has(id)), old: keep.has('a399'), gap: gap.size, future: future.size === items.length + 1 };
+    });
+    ok(plan.newest && plan.manual && plan.safe && plan.big && plan.n <= 250 && !plan.old, `the newest, saved, safety and before-a-big-change versions are kept; very old ones go (${plan.n} of 434 kept)`);
+    ok(plan.gap === 3 && plan.future, 'a long break (summer) doesn’t empty the history, and nothing is deleted if the clock went back');
+
+    // ---- Another tab sees new versions; only the tab that changed the board saves one.
+    const p2 = await ctx.newPage(); await p2.goto(BASE); await p2.waitForTimeout(800);
+    await p2.evaluate(() => window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }));
+    const before2 = (await metas()).length;
+    await H(() => window.__board21.openWidget('clock')); await page.waitForTimeout(2500);
+    const after2 = await metas();
+    ok(after2.length === before2 + 1, 'a change saves exactly one version, though two tabs are open (only the tab that made it saves)');
+    ok(await p2.evaluate(n => window.__board21.history.metas.length === n, after2.length), 'other open tabs see it');
+    await p2.close();
+
+    // ---- Erase everything keeps board history; going back undoes it.
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300); await modal('Erase everything'); await page.waitForTimeout(4000);
+    m = await metas();
+    const erased = m.find(x => x.kept && x.open > 0);
+    ok(await page.locator('.win').count() === 0 && !!erased, '“Erase everything” keeps board history (a version from just before)');
+    await H(id => window.__board21.history.restore(id), erased.id); await page.waitForTimeout(3500);
+    ok(await page.locator('.win').count() >= 1, 'so the erased board can be brought back');
+    // Off: no automatic versions; saving by hand still works.
+    await H(() => { window.__board21.state.settings.historyEvery = 0; });
+    const nOff = (await metas()).length;
+    await H(() => window.__board21.openWidget('dice')); await page.waitForTimeout(2500);
+    ok((await metas()).length === nOff, 'with board history off, nothing is saved automatically');
+    await H(() => window.__board21.history.save('By hand')); await page.waitForTimeout(300);
+    ok((await metas()).length === nOff + 1, 'but “Save this version now” still works');
+    await H(() => { window.__board21.state.settings.historyEvery = 10; });
+    // Delete board history.
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="hist-delete"]'); await page.waitForTimeout(300); await modal('Delete from this device'); await page.waitForTimeout(1500);
+    ok((await metas()).length === 0 && await page.locator('.win').count() >= 1, '“Delete board history” deletes the versions and leaves the board as it is');
+    // Erase, including board history.
+    await H(() => window.__board21.history.save('x')); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300); await modal('including board history'); await page.waitForTimeout(2500);
+    ok((await metas()).length === 0, '“Erase, including board history” removes it too');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+
+    // ---- Where board history can't be used, the board works as before.
+    const c2 = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await c2.addInitScript(() => { const open = indexedDB.open.bind(indexedDB); indexedDB.open = (name, v) => { if (name === '21Board-history') throw new Error('blocked'); return open(name, v); }; });
+    const pu = await c2.newPage(); const eu = []; pu.on('pageerror', e => eu.push(e.message));
+    await pu.goto(BASE); await pu.waitForTimeout(800);
+    await pu.evaluate(() => window.__board21.openWidget('notes')); await pu.waitForTimeout(1200);
+    await fillNote(pu.frameLocator('.win[data-ikey="notes:1"] iframe'), 'still saves'); await pu.waitForTimeout(800);
+    await pu.click('.picker-btn.left'); await pu.click('[data-ctl="settings"]'); await pu.waitForTimeout(300);
+    ok(/isn’t available/.test(await pu.locator('#settings').textContent()) && !eu.length && await pu.evaluate(() => window.__board21.state.data.get('notes:1').text === 'still saves'), 'where board history can’t be used, Settings says so and the board saves as before');
+    await c2.close();
+  }],
+  ['Board history: Google Drive folder', async (browser) => {
+    const L = (p, fn, arg) => p.evaluate(fn, arg);
+    const errors = [];
+    const A = await driveDevice(browser);
+    A.p.on('pageerror', e => errors.push(e.message));
+    await A.p.goto(BASE); await A.p.waitForTimeout(600);
+    await L(A.p, () => window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }));
+    await L(A.p, () => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
+    await fillNote(A.p.frameLocator('.win[data-ikey="notes:1"] iframe'), 'Lesson plan'); await A.p.waitForTimeout(400);
+    await L(A.p, async () => { const l = window.__board21.link; await l.choose(); l.saveState({ device: Object.assign({}, l.device(), { label: 'my laptop' }) }); await l.send(); });
+    await A.p.waitForTimeout(600);
+    await L(A.p, () => window.__board21.history.save('Monday')); await A.p.waitForTimeout(1500);
+    let hist = await readHistory(A.p);
+    const saved = Object.keys(hist).find(n => / saved \(my laptop\) \[[0-9a-z]{6}-[0-9a-z]{4}\]\.21board$/.test(n));
+    const j = saved && JSON.parse(hist[saved]);
+    ok(!!saved && j.format === '21board' && j.history && j.history.from === 'my laptop' && !j.sent && !j.theme && j.instances.some(i => JSON.stringify(i.data).includes('Lesson plan')),
+      `a saved version is copied to “Board history” in the folder (“${saved}”), without the theme and not as a sent version`);
+    ok(!!hist['About these files.txt'], 'with a note explaining the files');
+    ok(await L(A.p, () => window.__board21.link.found.every(f => !/Board history/.test(f.name))) && !(await L(A.p, () => window.__board21.link.offer)), 'history copies are never offered or listed as boards');
+    // 21Board thins its own copies by name; other devices' files, other boards' files, saved ones and other files stay.
+    const tagU = await L(A.p, () => window.__board21.history.tag(window.__board21.state.board.uid, 6)), tagD = await L(A.p, () => window.__board21.history.tag(window.__board21.link.device().id, 4));
+    const files = {}, day = 864e5, now = Date.now(), p2 = x => String(x).padStart(2, '0');
+    const nm = (t, dev, uid, extra = '') => { const d = new Date(t); return `Lesson ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}.${p2(d.getMinutes())}${extra} (x) [${uid}-${dev}].21board`; };
+    for (let i = 1; i <= 40; i++) files[nm(now - i * day * 1.5, tagD, tagU)] = '{}';
+    for (let i = 1; i <= 5; i++) files[nm(now - i * day, 'zzzz', tagU)] = '{}';
+    for (let i = 1; i <= 3; i++) files[nm(now - i * day, tagD, 'other0')] = '{}';
+    files[nm(now - 50 * day, tagD, tagU, ' saved')] = '{}';
+    files['notes.txt'] = 'mine';
+    await writeHistory(A.p, files);
+    await L(A.p, async () => { const H = window.__board21.history; await H.folderPrune(await H.folderDir(false)); });
+    hist = await readHistory(A.p);
+    const names = Object.keys(hist), own = names.filter(n => n.includes(`[${tagU}-${tagD}]`) && !/ saved /.test(n));
+    ok(own.length < 30 && names.filter(n => n.includes('-zzzz]')).length === 5 && names.filter(n => n.includes('[other0-')).length === 3 && names.some(n => / saved \(x\)/.test(n)) && !!hist['notes.txt'],
+      `old copies are thinned (${own.length} of 41 of this device’s kept), and other devices’, other boards’, saved and unrelated files are left alone`);
+    // A device that was reset gets its board back from the folder's copies.
+    const C = await driveDevice(browser); C.p.on('pageerror', e => errors.push(e.message));
+    await C.p.goto(BASE); await C.p.waitForTimeout(600);
+    await writeFolder(C.p, await readFolder(A.p)); await writeHistory(C.p, await readHistory(A.p));
+    await L(C.p, () => window.__board21.link.choose()); await C.p.waitForTimeout(500);
+    await C.p.click('.picker-btn.left'); await C.p.click('[data-ctl="settings"]'); await C.p.waitForTimeout(300);
+    await C.p.click('#settings [data-act="hist-open"]'); await C.p.waitForTimeout(1500);
+    await C.p.click('#history [data-act="others"]'); await C.p.waitForTimeout(300);
+    const use = C.p.locator(`#history [data-act="folder-go"][data-val="${saved}"]`);
+    ok(await use.count() === 1, 'on another device, Board history lists the folder’s copies of other boards');
+    await use.click(); await C.p.waitForTimeout(3500);
+    ok(await C.p.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#t').inputValue() === 'Lesson plan', '“Use” brings that board back on this device');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await C.c.close();
   }],
   ['Widget dev window', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 760, height: 560 } });
@@ -1801,6 +2070,11 @@ const SUITES = [
     await pb.goto(BASE); await pb.waitForTimeout(600);
     await pb.evaluate(() => window.__board21.catalog().forEach(w => window.__board21.openWidget(w.id))); await pb.waitForTimeout(2500);
     ok(!breq.some(u => /board21-dev\.js|board-shell\.js/.test(u)) && await pb.evaluate(() => [...window.__board21.state.wins.values()].every(w => w.connected && w.iframe.contentWindow.Board21.context.host === 'board')), 'inside 21Board, widgets connect at once and never load the dev window');
+    // A widget's own console hook isn't undone by the SDK inside the board.
+    await pb.click('.picker-btn.left'); await pb.click('[data-ctl="settings"]'); await pb.waitForTimeout(300);
+    await pb.click('#settings [data-act="devmode"]'); await pb.waitForTimeout(200);
+    await pb.fill('#set-dev-path', '__dev/console.html'); await pb.click('#settings [data-act="dev-add"]'); await pb.waitForTimeout(1500);
+    ok(await pb.evaluate(() => { const w = [...window.__board21.state.wins.values()].find(x => x.widget.dev); return !!w && w.iframe.contentWindow.__seen.includes('after ready'); }), 'a widget’s own console.error hook keeps working inside the board');
     await ctxB.close();
     // ---- SDK not first: the widget runs on its own, with a note saying why.
     await page.goto(BASE + '__dev/late.html'); await page.waitForTimeout(800);
@@ -1812,6 +2086,13 @@ const SUITES = [
     ok(!!bare && await bare.evaluate(() => Board21.context.standalone && window.__runs === 1 && innerWidth > 700), '⋯ ▸ Show the widget on its own');
     await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="unbare"]').click()); await page.waitForTimeout(1500);
     ok(await page.evaluate(() => { const r = document.getElementById('b21-dev').shadowRoot; return r.querySelector('.barewrap').hidden && !r.querySelector('.barewrap iframe'); }) && kids(page.mainFrame()).length === 1, '"Back to the window" returns to the dev window');
+    await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="bare"]').click()); await page.waitForTimeout(1000);
+    await kids(page.mainFrame())[1].evaluate(() => location.reload()); await page.waitForTimeout(1500);
+    ok(await kids(page.mainFrame())[1].evaluate(() => !!(window.Board21 && Board21.context && Board21.context.standalone) && !document.getElementById('b21-dev')), 'reloading the widget shown on its own keeps it on its own (no dev window inside it)');
+    await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="unbare"]').click()); await page.waitForTimeout(800);
+    // A page without a doctype: the board would show it in quirks mode (the dev window can't), so Checks says so.
+    await page.goto(BASE + '__dev/quirks.html'); await page.waitForTimeout(2500);
+    ok(await page.evaluate(() => window.__board21DevWindow.state().checks.some(c => /DOCTYPE/.test(c.title))), 'a widget page without <!DOCTYPE html> gets a Check (the board would draw it differently)');
 
     // ---- The lab page: paste a widget, try it in a sandbox that can't see real boards.
     await page.goto(BASE + 'sdk/lab.html'); await page.waitForTimeout(400);

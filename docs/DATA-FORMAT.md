@@ -189,6 +189,36 @@ widget's script. Missing record = nothing saved (`null` in the SDK).
 
 ---
 
+## Board history
+
+Earlier versions of each board, in their own IndexedDB database, `21Board-history` (version 1), never mixed
+with the board's records and never exported. Three object stores:
+
+| Store | Key | Value |
+| --- | --- | --- |
+| `meta` | `id` = `<b>:<at, 13 digits>:<tab id>` | what a version looks like (below), for lists, previews and comparisons |
+| `body` | `id` | `{ id, exp }`: a full export of the board (as in a `.21board` file) with `instances[].createdAt`, `snapshot: {at, kind, label}`, and `media: {ref, look}` instead of the photo |
+| `photo` | `key` = `<addedAt>-<bytes>-<w>x<h>` | each background photo once: `{ key, data, w, h, bytes, name, addedAt, thumb, lastUsed }` |
+
+```js
+// meta
+{ v: 1, id, b, at, kind: "auto" | "open" | "manual" | "before" | "restored",
+  reason: null | "reset" | "delete" | "close-all" | "emptied" | "photo" | "import" | "add" | "load" | "restore" | "window" | "erase",
+  label, sig, uid, name, bytes, photo: "<key>" | null | "gone",
+  thumb: { bg, pattern, shape, vw, vh, wins: [[ikey, x, y, w, h], …] },              // open windows, back to front
+  wins: { "<ikey>": [open, createdAt, dataHash, confHash, dataLength, excerpt] },
+  beforeBig, link: "sent" | "loaded" | null, keepUntil, manual, manualLabel, folder, tab }
+```
+
+`sig` is the same content fingerprint as the shared folder uses (window stacking order doesn't count), so
+identical versions aren't saved twice. Retention is in README, "Board history". Settings (device only):
+`historyEvery` (minutes, 0 = off; default 10) and `historyFolder` (default true).
+
+**Folder copies:** `<shared folder>/Board history/<board name> <YYYY-MM-DD> <HH.MM>[ saved] (<device>) [<uid6>-<dev4>].21board`
+(local time; `uid6` and `dev4` are the first characters of the board's uid and the device id). A valid `.21board`
+file: the version's body plus `history: {at, kind, label, by, from}`, without theme, accent, `sent` or the photo.
+Each device thins only files with its own `dev4` (by name only); files ending in ` saved` are never removed.
+
 ## Instances: numbering, closing, reopening
 
 - Opening a widget when **no closed instance exists** creates the lowest unused number
@@ -273,6 +303,9 @@ on Chrome) reads it.
 | `config` | ✅ | ✅ |
 | `data` (content) | ✅ | ❌ always `null` |
 | `media.background` (photo) | ✅ | ❌ (a template is for sharing; a photo may show the class) |
+
+Optional, ignored by older readers: `instances[].createdAt` (which window is which, kept by board history),
+`history: {at, kind, label, by, from}` (a Board history copy) and `media.ref` (a photo kept in board history).
 
 Importing offers two choices:
 

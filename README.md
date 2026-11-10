@@ -57,10 +57,13 @@ include) to the static host. Then:
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
+| **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 
 ### Settings
 
+- **Board history:** open it, how often a version is saved (every 10 minutes while the board changes,
+  every hour, once a day, off), copies in the Google Drive folder, delete board history.
 - **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to widgets),
   board background color (or match theme), background pattern (dots, grid, lines), background photo
   (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
@@ -187,6 +190,30 @@ ahead of time, so each teacher taps Allow once per device). Smartboards signed i
 account need the folder shared with that account (or a shared drive). Force-installing 21Board keeps the
 permission across restarts. Optional: mark the folder *Available offline* on boards. **Before rollout, try it
 on a few real laptops and boards** (how quickly files arrive, and that the folder stays allowed after a reboot).
+
+## Board history (going back)
+
+21Board keeps earlier versions of the board on the device, in a separate database from the board itself:
+while the board changes (at most every 10 minutes, once it has settled for a minute), when 21Board opens,
+and before every risky action (Reset, Delete, Close all, changing or removing the photo, Import, Load, going
+back, Erase everything, and a widget's content suddenly being emptied, e.g. a note cleared). Identical content
+is never saved twice. *Save this version now* keeps a named version until you delete it.
+
+**What's kept:** the newest 20, one an hour for 2 days, the first and last of each day for a month, one a week
+for 3 months (counting only days the board was used, so a summer break doesn't empty it), safety versions for a
+week, and the version before a big change for a month. Photos are stored once, and history stays within a share
+of the device's storage (less when space is low). **Going back never changes this device's settings** (theme,
+accent) and a running timer comes back paused. *Erase everything* keeps board history (so it can be undone);
+*Erase, including board history* doesn't.
+
+**In the Google Drive folder** (when linked): about one copy an hour (and every version you save) goes to
+“Board history” inside the folder, without the background photo, named like
+`Room 12 2026-11-10 09.45 (smartboard) [7c1e9a-k3j9].21board`. Each device thins only its own copies; files
+ending in “saved” stay. Another device, even one that was reset, can bring a board back from them (Board
+history → *In your Google Drive folder*). They can include student names.
+
+Board history isn't a backup: if the browser clears 21Board's data, it goes too. The code is section **13c**
+in `board.js`; the records are in docs/DATA-FORMAT.md, "Board history".
 
 ## Board shape and size
 
