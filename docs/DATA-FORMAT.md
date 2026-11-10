@@ -77,7 +77,8 @@ without changing the format: `settings.activeBoard` will choose which board is s
 
 ```js
 {
-  id: 1, name: "My Board",
+  id: 1, name: "My Board",       // id: the board's slot on this device
+  uid: "7c1e…",                  // a unique id, made once: files sent from other devices are matched by it
   background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" },
   scale: 0.8,                    // size of windows and menus (0.5–2), as on a 1920 × 1080 screen; see "Layout space"
   shape: "16:9",                 // "16:9" (default) | "free" (fills any window)
@@ -86,6 +87,28 @@ without changing the format: `settings.activeBoard` will choose which board is s
 ```
 
 `color: null` means "match the light/dark theme".
+
+### `link:folder` and `link:state` (this device only)
+
+The link to a shared Google Drive folder (see README, "Sharing a board with the smartboard"). Never
+exported. `link:folder` holds the folder handle Chrome gives 21Board (stored as is, not as JSON).
+`link:state`:
+
+```js
+{
+  device: { id: "…", label: "my laptop" },   // label: what other devices show ("updated on …")
+  auto: false,                               // send a few seconds after each change
+  photo: true,                               // include the background photo in sent files
+  boards: { "<board uid>": { file: "Room 12.21board", sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig } }
+}
+```
+
+`sentSig` / `loadedSig` fingerprint the board's content when it was last sent or loaded here, to tell
+whether it was changed on this device since (window stacking order doesn't count).
+
+In the folder, 21Board writes one `<board name>.21board` per board (a full backup with `board.uid` and a
+`sent` block, below), renames it when the board is renamed, and adds `About this folder.txt`. Other files
+are left alone.
 
 ### `media:<b>:background` and `media:<b>:background-look`
 
@@ -216,8 +239,10 @@ on Chrome) reads it.
     "name": "Room 12",
     "background": { "color": null, "pattern": "dots" },
     "scale": 0.8,
-    "shape": "16:9"
+    "shape": "16:9",
+    "uid": "7c1e…"                // full backups only: which board this is
   },
+  "sent": { "at": 1762800000000, "by": "<device id>", "from": "my laptop" },   // only in files sent to a shared folder
   "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only
   "instances": [
     {

@@ -30,7 +30,7 @@ async function freeBoard(page) {
 }
 
 // Notes shows its text (with tappable links) until tapped; tap it, then type.
-async function fillNote(f, text) { await f.locator('#view').click(); await f.locator('#t').fill(text); }
+async function fillNote(f, text) { const v = f.locator('#view'); if (await v.isVisible()) await v.click(); await f.locator('#t').fill(text); }
 
 // Pages for the widget dev window tests: a widget as an AI tool would make it, and stand-ins for how AI previews
 // show it (fetch the code, then document.write it or open it as a blob: URL) on another origin than the page.
@@ -1505,6 +1505,143 @@ const SUITES = [
     ok(await page.evaluate(() => window.BOARD21_WIDGETS.find(a => a.id === 'notes').files.includes('widgets/notes/fonts/CrayonLibre-21Board.woff2') && window.BOARD21_WIDGETS.find(a => a.id === 'notes').files.includes('widgets/notes/fonts/Excalifont-Regular.woff2')), 'the chalk and marker fonts are listed for offline use');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+  }],
+  ['Google Drive folder (sharing a board with the smartboard)', async (browser) => {
+    // Each "device" is its own browser profile. The folder each one picks is a folder in the browser's private
+    // file system, and drive() copies one folder onto the other, as Google Drive would. (Wrapped in a plain
+    // object: this headless browser closes the page when it reads a saved folder handle back from IndexedDB,
+    // so the stand-in can't be saved and stays linked until the page closes. Real Chrome keeps the handle.)
+    const pick = () => {
+      window.showDirectoryPicker = async () => {
+        const real = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
+        const file = fh => ({ kind: 'file', name: fh.name, getFile: () => fh.getFile(), createWritable: () => fh.createWritable() });
+        return {
+          kind: 'directory', name: '21Board',
+          queryPermission: async () => 'granted', requestPermission: async () => 'granted',
+          getFileHandle: async (n, o) => file(await real.getFileHandle(n, o)),
+          removeEntry: n => real.removeEntry(n),
+          entries: async function* () { for await (const [n, h] of real.entries()) yield [n, h.kind === 'file' ? file(h) : h]; }
+        };
+      };
+    };
+    const device = async () => { const c = await browser.newContext({ viewport: { width: 1280, height: 720 } }); await c.addInitScript(pick); const p = await c.newPage(); return { c, p }; };
+    const readFolder = p => p.evaluate(async () => { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true }); const out = {}; for await (const [n, h] of d.entries()) if (h.kind === 'file') out[n] = await (await h.getFile()).text(); return out; });
+    const writeFolder = (p, files) => p.evaluate(async files => {
+      const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
+      for await (const [n] of d.entries()) if (!(n in files)) await d.removeEntry(n);
+      for (const [n, t] of Object.entries(files)) { const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(t); await w.close(); }
+    }, files);
+    const drive = async (from, to) => writeFolder(to, await readFolder(from));
+    const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
+    const noteText = p => note(p).locator('#t').inputValue();
+    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(400); };
+    const closeSettings = p => p.keyboard.press('Escape');
+    const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
+    const errors = [];
+
+    const A = await device(), B = await device();   // the laptop and the smartboard
+    for (const d of [A, B]) d.p.on('pageerror', e => errors.push(e.message));
+    await A.p.goto(BASE); await A.p.waitForTimeout(600);
+    await A.p.evaluate(() => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
+    await fillNote(note(A.p), 'Hello from the laptop'); await A.p.waitForTimeout(400);
+    await settings(A.p);
+    await A.p.fill('#set-board-name', 'Room 12'); await A.p.press('#set-board-name', 'Tab'); await A.p.waitForTimeout(200);
+    ok(await A.p.locator('#settings [data-act="link-choose"]').count() === 1, 'Settings has a Google Drive folder section');
+    await closeSettings(A.p);
+    // ---- Send from the laptop: the first time it asks for the folder.
+    await A.p.click('.picker-btn.left'); await A.p.waitForTimeout(200);
+    ok(await A.p.locator('[data-ctl="send"]:visible').count() === 1, 'the Widget Picker has a Send button');
+    await A.p.click('[data-ctl="send"]'); await A.p.waitForTimeout(300);
+    await modal(A.p, 'Choose folder'); await A.p.waitForTimeout(1500);
+    let files = await readFolder(A.p);
+    const sent = files['Room 12.21board'] && JSON.parse(files['Room 12.21board']);
+    const uidA = await A.p.evaluate(() => window.__board21.state.board.uid);
+    ok(!!sent && sent.board.uid === uidA && sent.sent && sent.sent.by && sent.instances.some(i => i.data && JSON.stringify(i.data).includes('Hello from the laptop')),
+      'Send writes the whole board to “Room 12.21board” in the folder, with the board’s id and who sent it');
+    ok(!!files['About this folder.txt'] && /21Board keeps your boards here/.test(files['About this folder.txt']), 'the folder gets a short note explaining the files');
+    ok(await A.p.locator('.toast', { hasText: 'Sent “Room 12”' }).count() === 1, 'it says it was sent');
+    // A's device name, as the smartboard will show it.
+    await settings(A.p);
+    await A.p.fill('#set-link-label', 'my laptop'); await A.p.press('#set-link-label', 'Tab'); await A.p.waitForTimeout(200);
+    await closeSettings(A.p);
+
+    // ---- The smartboard links the same folder and loads the board.
+    await B.p.goto(BASE); await B.p.waitForTimeout(800);
+    await drive(A.p, B.p);
+    await settings(B.p);
+    await B.p.click('#settings [data-act="link-choose"]'); await B.p.waitForTimeout(1200);
+    ok(await B.p.locator('#settings [data-act="link-load"][data-val="Room 12.21board"]').count() === 1, 'on the smartboard, linking the same folder lists “Room 12”');
+    await B.p.click('#settings [data-act="link-load"][data-val="Room 12.21board"]'); await B.p.waitForTimeout(300);
+    await modal(B.p, 'Replace this board'); await B.p.waitForTimeout(2000);
+    ok(await noteText(B.p) === 'Hello from the laptop' && await B.p.evaluate(u => window.__board21.state.board.uid === u && window.__board21.state.board.name === 'Room 12', uidA),
+      'Load shows the laptop’s board on the smartboard (it becomes the same board)');
+    await closeSettings(B.p);
+    await B.p.evaluate(() => window.__board21.link.saveState({ device: Object.assign({}, window.__board21.link.device(), { label: 'the smartboard' }) }));
+
+    // ---- A newer version from the laptop is offered on the smartboard.
+    await fillNote(note(A.p), 'Updated on the laptop'); await A.p.waitForTimeout(400);
+    await A.p.evaluate(() => window.__board21.link.send()); await A.p.waitForTimeout(800);
+    ok(!(await A.p.evaluate(() => window.__board21.link.offer)), 'the laptop isn’t offered its own send back');
+    await drive(A.p, B.p);
+    await B.p.evaluate(() => window.__board21.link.check(true)); await B.p.waitForTimeout(600);
+    const offerToast = B.p.locator('.toast', { hasText: 'was updated on my laptop' });
+    ok(await offerToast.count() === 1, 'the smartboard says “Room 12 was updated on my laptop at …” (it isn’t loaded silently)');
+    await B.p.screenshot({ path: OUT + '71-drive-offer.png' });
+    await offerToast.locator('button', { hasText: 'Load' }).click(); await B.p.waitForTimeout(2000);
+    ok(await noteText(B.p) === 'Updated on the laptop', 'Load brings the newer version');
+    await B.p.evaluate(() => window.__board21.link.check(true)); await B.p.waitForTimeout(400);
+    ok(await B.p.locator('.toast', { hasText: 'was updated on' }).count() === 0, 'and it isn’t offered again');
+
+    // ---- Changed on both: Load offers to keep the smartboard's changes as a copy first.
+    await fillNote(note(B.p), 'Changed on the smartboard'); await B.p.waitForTimeout(500);
+    await fillNote(note(A.p), 'Laptop again'); await A.p.waitForTimeout(400);
+    await A.p.evaluate(() => window.__board21.link.send()); await A.p.waitForTimeout(800);
+    await drive(A.p, B.p);
+    await B.p.evaluate(() => window.__board21.link.check(true)); await B.p.waitForTimeout(600);
+    await B.p.locator('.toast', { hasText: 'was updated on my laptop' }).locator('button', { hasText: 'Load' }).click(); await B.p.waitForTimeout(400);
+    ok(await B.p.locator('#modal.open', { hasText: 'also changed here' }).count() === 1, 'if the board was also changed on the smartboard, Load warns first');
+    await modal(B.p, 'Keep a copy of mine'); await B.p.waitForTimeout(2200);
+    files = await readFolder(B.p);
+    const copy = Object.keys(files).find(n => /copy from smartboard/.test(n));
+    ok(await noteText(B.p) === 'Laptop again' && !!copy && JSON.parse(files[copy]).board.uid !== uidA && files[copy].includes('Changed on the smartboard'),
+      `“Keep a copy of mine” saves the smartboard’s version in the folder as a separate board (“${copy}”), then loads`);
+
+    // ---- 21Board keeps the folder tidy: renaming the board renames its file; names never collide.
+    await drive(B.p, A.p);
+    await settings(A.p);
+    await A.p.fill('#set-board-name', 'Room 12 Math'); await A.p.press('#set-board-name', 'Tab'); await A.p.waitForTimeout(200);
+    await A.p.click('#settings [data-act="link-send"]'); await A.p.waitForTimeout(1200);
+    files = await readFolder(A.p);
+    ok(!!files['Room 12 Math.21board'] && !files['Room 12.21board'] && !!copy && !!files[copy], 'renaming the board renames its file on the next send (and leaves other boards’ files alone)');
+    ok(await A.p.evaluate(() => window.__board21.link.fileNameFor('someone-elses-board', 'Room 12 Math')) === 'Room 12 Math (2).21board', 'another board with the same name gets “Room 12 Math (2)”');
+    await A.p.evaluate(() => { const h = [...document.querySelectorAll('#settings h3')].find(x => /Google Drive/.test(x.textContent)); h.scrollIntoView(); });
+    await A.p.screenshot({ path: OUT + '70-drive-settings.png' });
+    // ---- Send automatically.
+    await A.p.click('#settings [data-act="link-auto"]'); await A.p.waitForTimeout(200);
+    await closeSettings(A.p);
+    await fillNote(note(A.p), 'Sent by itself'); await A.p.waitForTimeout(10000);
+    files = await readFolder(A.p);
+    ok(files['Room 12 Math.21board'].includes('Sent by itself'), '“Send automatically” sends a few seconds after a change');
+    // ---- The photo can stay on each device.
+    await A.p.evaluate(() => window.__board21.link.saveState({ photo: false }));
+    const png = await A.p.evaluate(() => { const c = document.createElement('canvas'); c.width = 400; c.height = 300; const g = c.getContext('2d'); g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 400, 300); return c.toDataURL('image/png'); });
+    await A.p.setInputFiles('#photo-input', { name: 'sky.png', mimeType: 'image/png', buffer: Buffer.from(png.split(',')[1], 'base64') }); await A.p.waitForTimeout(1500);
+    await A.p.evaluate(() => window.__board21.link.send()); await A.p.waitForTimeout(1000);
+    files = await readFolder(A.p);
+    ok(!JSON.parse(files['Room 12 Math.21board']).media, 'with “Include the background photo” off, the photo stays on this device');
+    await A.p.evaluate(() => window.__board21.link.saveState({ photo: true })); await A.p.evaluate(() => window.__board21.link.send()); await A.p.waitForTimeout(1000);
+    files = await readFolder(A.p);
+    ok(!!JSON.parse(files['Room 12 Math.21board']).media, 'and with it on, the photo goes too');
+    ok(!JSON.stringify(await A.p.evaluate(() => window.__board21.buildExport('full'))).includes('"link'), 'the folder link itself is never in exports');
+    // ---- Browsers without a folder picker don't show any of it.
+    const C = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await C.addInitScript(() => { window.showDirectoryPicker = undefined; });
+    const pc = await C.newPage(); await pc.goto(BASE); await pc.waitForTimeout(600);
+    await pc.click('.picker-btn.left'); await pc.waitForTimeout(200);
+    ok(await pc.locator('[data-ctl="send"]:visible').count() === 0, 'browsers without a folder picker (Safari, Firefox) don’t show Send');
+    await C.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
   }],
   ['Widget dev window', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 760, height: 560 } });

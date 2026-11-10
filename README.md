@@ -54,6 +54,7 @@ include) to the static host. Then:
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
+| **Send** | Sends the board to a folder in Google Drive that your other devices (the smartboard) also use: see [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
@@ -141,6 +142,48 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 **regular exports remain the real backup.**
 
 ---
+
+## Sharing a board with the smartboard (Google Drive folder)
+
+Build a board on your laptop, show it on the smartboard. 21Board never talks to Google itself: ChromeOS
+already keeps **Google Drive › My Drive** the same on every Chromebook you sign in to, and 21Board just
+keeps a file per board in one folder there that you choose.
+
+**Once on each device** (laptop and smartboard): Settings → **Google Drive folder** → *Choose folder…* →
+Google Drive › My Drive › **21Board** (make the folder first) → *Select* → *Allow*. Chrome then lets 21Board
+read and write in that one folder only; it can't see anything else.
+
+**Then:**
+
+- **Laptop:** tap **Send** (in the Widget Picker next to Export), or turn on *Send automatically* (a few
+  seconds after each change).
+- **Smartboard:** within a minute or two (when 21Board opens, when it comes back to the front, and every
+  2 minutes) it says **“Room 12” was updated on my laptop at 7:42 · Load / Not now**. Nothing changes until
+  you tap Load. The first time, pick the board under *Other boards in the folder* in Settings.
+- **Changed on both?** Load says so first and offers *Keep a copy of mine, then load* (the copy goes in the
+  folder as its own board).
+- It works both ways: Send from the smartboard and the laptop offers it.
+
+**21Board keeps the folder in order:** one file per board, named after it (“Room 12.21board”, or
+“Room 12 (2).21board” if another board has that name); renaming a board renames its file on the next
+send; each board has a hidden id, so files are matched to the right board whatever they're called;
+an *About this folder.txt* explains the files; anything else in the folder is left alone. Each file is a
+full backup (it counts as one), including the background photo unless *Include the background photo* is
+off (then each device keeps its own). *This device's name* is what the other devices show (“updated on …”).
+
+**Good to know:** Chrome and Edge only (Safari and Firefox keep Export/Import). Drive needs the internet
+to carry the file, usually within seconds to a minute. Chrome remembers the folder permission for an
+installed 21Board; in a plain tab it may ask again after a restart (*Allow on every visit* avoids that).
+The files can include student names and class photos: share the folder only with people who should see them.
+
+**For IT (Google Admin console):** nothing to set up beyond leaving these as they are:
+Google Drive on for teachers (`DriveDisabled` not set); Chrome's file-access policies
+(`DefaultFileSystemReadGuardSetting` / `DefaultFileSystemWriteGuardSetting`) not set to *Block* (or add the
+21Board site to `FileSystemReadAskForUrls` / `FileSystemWriteAskForUrls`; no policy can grant the permission
+ahead of time, so each teacher taps Allow once per device). Smartboards signed in with a room or shared
+account need the folder shared with that account (or a shared drive). Force-installing 21Board keeps the
+permission across restarts. Optional: mark the folder *Available offline* on boards. **Before rollout, try it
+on a few real laptops and boards** (how quickly files arrive, and that the folder stays allowed after a reboot).
 
 ## Board shape and size
 

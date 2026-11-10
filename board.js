@@ -150,7 +150,8 @@
     open: '<path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
     widget: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
-    windows: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>'
+    windows: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
+    send: '<path d="M7 18.5H6.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8.1 4.5 4.5 0 0 1 17.5 18.5H17"/><path d="M12 20.5v-8"/><path d="M8.8 15.2L12 12l3.2 3.2"/>' // cloud with an arrow going up
   };
   const svg = (name, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${cls ? ` class="${cls}"` : ''}>${ICONS[name] || ''}</svg>`;
 
@@ -162,6 +163,8 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const num = (v, d) => (typeof v === 'number' && isFinite(v)) ? v : d;
   const ikeyOf = (widgetId, n) => `${widgetId}:${n}`;
+  const newId = () => (self.crypto && typeof crypto.randomUUID === 'function') ? crypto.randomUUID() : 'b' + Date.now().toString(36) + Math.random().toString(36).slice(2, 12);
+  const UID_RE = /^[A-Za-z0-9-]{8,64}$/;
   const sameJSON = (a, b) => JSON.stringify(a === undefined ? null : a) === JSON.stringify(b === undefined ? null : b);
   const fmtBytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`;
 
@@ -264,11 +267,13 @@
     data: (b, ik) => `data:${b}:${ik}`,
     conf: (b, ik) => `conf:${b}:${ik}`,
     media: (b, name) => `media:${b}:${name}`,   // big binary-ish things (the background photo), kept apart so sync can skip them
+    link: name => `link:${name}`,                // this device's link to a shared folder (section 13b); never exported
     parse(key) {
       const p = String(key).split(':');
       if (p[0] === 'settings') return { kind: 'settings' };
       if (p[0] === 'board' && p.length === 2) return { kind: 'board', board: +p[1] };
       if (p[0] === 'media' && p.length === 3) return { kind: 'media', board: +p[1], name: p[2] };
+      if (p[0] === 'link' && p.length === 2) return { kind: 'link', name: p[1] };
       if ((p[0] === 'inst' || p[0] === 'data' || p[0] === 'conf') && p.length === 4) {
         return { kind: p[0], board: +p[1], widgetId: p[2], n: +p[3], ikey: `${p[2]}:${p[3]}` };
       }
@@ -405,7 +410,7 @@
             set(out);
           }) || [];
           for (const r of written) { if (r.deleted) Known.delete(r.key); else Known.set(r.key, r.rev); }
-          if (written.length) Sync.announce(written.map(r => r.key));
+          if (written.length) { Sync.announce(written.map(r => r.key)); Link.changed(written.map(r => r.key)); }
           waiters.forEach(w => w.resolve(true));
         } catch (err) {
           console.error('21Board: save failed', err);
@@ -507,8 +512,11 @@
     await reloadAll();
     updateZoom();
     migrateBoard();
+    ensureUid();
     applySettings(); applyBoard();
   }
+  // Every board has a unique id (board.uid), so a file sent from another device can be matched to it.
+  function ensureUid() { if (!UID_RE.test(S.board.uid || '')) updateBoard({ uid: newId() }); }
 
   function applyRecord(key, rec) {
     if (rec) {
@@ -538,6 +546,7 @@
         if (value) S.media.set(k.name, value); else S.media.delete(k.name);
         if (k.name === 'background' || k.name === 'background-look') { BoardPhoto.render(); if (Settings.isOpen) Settings.render(); }
         break;
+      case 'link': Link.applyRecord(k.name, value); break;
       case 'inst':
         if (k.board !== S.boardId) break;
         if (value) S.insts.set(k.ikey, normalizeInst(value, k)); else S.insts.delete(k.ikey);
@@ -2198,6 +2207,7 @@
       const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
       set('export', 'export', 'Export board');
       set('import', 'import', 'Import board');
+      set('send', 'send', Link.dir ? `Send to your ${Link.dir.name} folder` : 'Send to your other devices (Google Drive folder)').hidden = !Link.supported;
       set('theme', dark ? 'sun' : 'moon', dark ? 'Light mode' : 'Dark mode');
       const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit fullscreen' : 'Fullscreen');
       fs.hidden = !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
@@ -2214,6 +2224,7 @@
       switch (ctl) {
         case 'export': this.close(); exportFlow(); break;
         case 'import': this.close(); $('#import-input').click(); break;
+        case 'send': this.close(); Link.send(); break;
         case 'theme': updateSettings({ theme: resolvedTheme() === 'dark' ? 'light' : 'dark' }); this.renderControls(); break;
         case 'fullscreen': toggleFullscreen(); break;
         case 'settings': this.close(); Settings.open(side); break;
@@ -2392,6 +2403,34 @@
     return { ratio, dw, dh, ox, oy, W, H, mx: (ox + f.x * dw) / W, my: (oy + f.y * dh) / H };
   }
 
+  // Settings → Google Drive folder (section 13b).
+  function linkSettings(sw) {
+    const L = Link;
+    if (!L.dir) {
+      return `<h3>Google Drive folder</h3>
+        <div class="row stack"><div><div class="lbl">Share boards with your other devices</div><div class="hint">Choose the same folder in Google Drive on each device, for example My Drive › 21Board (make it first). Google Drive keeps it the same everywhere: send a board from your laptop, and the smartboard offers to load it. 21Board keeps one file per board there.</div></div>
+          <button class="btn primary" data-act="link-choose">${svg('send')}Choose folder…</button></div>`;
+    }
+    const dev = L.device(), uid = S.board.uid, rec = L.boardRec(uid) || {};
+    const status = [rec.sentAt ? `Sent from here ${when(rec.sentAt)}.` : '', rec.loadedSentAt ? `Loaded the version from ${rec.loadedFrom || 'another device'} sent ${when(rec.loadedSentAt)}.` : ''].filter(Boolean).join(' ') || 'Not sent from here yet.';
+    const others = L.found.filter(f => f.kind === 'full' && f.uid !== uid);
+    const mine = L.found.find(f => f.uid === uid);
+    const perm = L.perm === 'granted' ? '' : `<div class="row"><div><div class="lbl">Allow 21Board to use the folder</div><div class="hint">Chrome asks again after a restart unless 21Board is installed (or you chose “Allow on every visit”).</div></div><button class="btn primary" data-act="link-reconnect">Allow…</button></div>`;
+    return `<h3>Google Drive folder</h3>
+      <div class="row"><div><div class="lbl">Folder: ${esc(L.dir.name)}</div><div class="hint">${esc(status)}${L.offer ? ` <b>A newer version from ${esc(L.offer.from || 'another device')} is waiting.</b>` : ''}</div></div>
+        <div style="display:flex;gap:6px;flex:0 0 auto"><button class="btn small" data-act="link-choose">Change…</button><button class="btn small" data-act="link-unlink">Unlink</button></div></div>
+      ${perm}
+      <div class="row"><div><div class="lbl">Send this board</div><div class="hint">${mine ? `In the folder as “${esc(mine.name)}”.` : 'Saves it into the folder for your other devices.'}</div></div>
+        <div style="display:flex;gap:6px;flex:0 0 auto">${L.offer ? '<button class="btn small" data-act="link-load-offer">Load newer</button>' : ''}<button class="btn small primary" data-act="link-send">${svg('send')}Send</button></div></div>
+      <div class="row"><div><div class="lbl">Send automatically</div><div class="hint">A few seconds after each change, while 21Board is open.</div></div>${sw('link-auto', L.st.auto, 'Send automatically')}</div>
+      <div class="row"><div><div class="lbl">Include the background photo</div><div class="hint">Off: each device keeps its own photo (a received board without one keeps this device's).</div></div>${sw('link-photo', L.st.photo, 'Include the background photo')}</div>
+      <div class="row stack"><label class="lbl" for="set-link-label">This device's name <span class="hint">(shown on your other devices: “updated on …”)</span></label>
+        <input type="text" class="text-input" id="set-link-label" maxlength="40" value="${esc(dev.label)}" autocomplete="off"></div>
+      <div class="row stack"><div><div class="lbl">Other boards in the folder</div><div class="hint">Load one to show it on this device (it replaces this board). After that, this device offers its newer versions.</div></div>
+        <div class="inst-list">${others.length ? others.map(f => `<div class="inst"><span class="widget-icon" style="--c:var(--primary)">${svg('send')}</span><div class="meta"><b>${esc(f.title)}</b><span>From ${esc(f.from || 'another device')} ${esc(when(f.sentAt))}</span></div><button class="btn small" data-act="link-load" data-val="${esc(f.name)}">Load</button></div>`).join('') : `<div class="empty-note">${L.perm === 'granted' ? 'None yet.' : 'Allow 21Board to use the folder to see them.'}</div>`}</div>
+        <div><button class="btn small" data-act="link-check">Check the folder now</button></div></div>`;
+  }
+
   const Settings = {
     el: null,
     body: null,
@@ -2409,6 +2448,10 @@
         if (b && !b.disabled) this.act(b.dataset.act, b.dataset.val, b);
       });
       this.body.addEventListener('change', e => {
+        if (e.target.id === 'set-link-label') {
+          const label = e.target.value.trim().slice(0, 40);
+          if (label) Link.saveState({ device: Object.assign({}, Link.device(), { label }) });
+        }
         if (e.target.id === 'set-board-name') {
           const name = e.target.value.trim().slice(0, 60) || 'My Board';
           updateBoard({ name });
@@ -2543,6 +2586,8 @@
         <div class="row stack"><div><div class="lbl">Saved widget windows</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
           <div class="inst-list">${instHTML}</div></div>
 
+        ${Link.supported ? linkSettings(sw) : ''}
+
         ${LAB ? `<h3>Widget test mode</h3>
         <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : `<h3>Storage &amp; offline</h3>
         <div class="row"><div class="lbl">Offline</div><div class="hint" id="st-offline" style="text-align:right">Checking…</div></div>
@@ -2653,6 +2698,19 @@
         }
         case 'install': await Install.run(); this.refreshStatus(); break;
         case 'backup': await doExport('full'); this.refreshStatus(); break;
+        case 'link-choose': await Link.choose(); this.render(); break;
+        case 'link-unlink': {
+          const ok = await dialog({ title: `Unlink the “${Link.dir ? Link.dir.name : ''}” folder?`, message: 'This device stops sending to it and checking it. The files in it are left as they are.', actions: [{ label: 'Unlink', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+          if (ok) await Link.unlink();
+          break;
+        }
+        case 'link-reconnect': await Link.reconnect(); this.render(); break;
+        case 'link-send': await Link.send(); this.render(); break;
+        case 'link-check': if (await Link.ensurePerm()) await Link.check(true); this.render(); break;
+        case 'link-auto': Link.saveState({ auto: !Link.st.auto }); if (Link.st.auto) Link.changed([Keys.board(S.boardId)]); break;
+        case 'link-photo': Link.saveState({ photo: !Link.st.photo }); break;
+        case 'link-load': await Link.load(val); this.render(); break;
+        case 'link-load-offer': if (Link.offer) await Link.load(Link.offer.name); this.render(); break;
         case 'update': applyUpdate(); break;
         case 'dev-add': {
           const input = $('#set-dev-path', this.body);
@@ -2760,7 +2818,8 @@
       viewport: exportViewport(), // the size of the space the rects are in
       theme: S.settings.theme,
       accent: S.settings.accent,
-      board: { name: S.board.name, background: S.board.background, scale: boardScale(), shape: freeShape() ? 'free' : '16:9' },
+      board: Object.assign({ name: S.board.name, background: S.board.background, scale: boardScale(), shape: freeShape() ? 'free' : '16:9' },
+        kind === 'full' && S.board.uid ? { uid: S.board.uid } : {}),   // which board this is (see section 13b)
       // The background photo: full backups only (a template is for sharing, and a photo may show the class).
       media: kind === 'full' && BoardPhoto.media() ? { background: BoardPhoto.media(), look: BoardPhoto.settings() } : undefined,
       instances
@@ -2835,8 +2894,11 @@
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
         background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none' },
         scale: j.board && j.board.scale !== undefined ? (validScale(j.board.scale) || null) : undefined,   // undefined: file from before board scale
-        shape: j.board && j.board.shape === 'free' ? 'free' : '16:9'
+        shape: j.board && j.board.shape === 'free' ? 'free' : '16:9',
+        uid: j.board && UID_RE.test(j.board.uid || '') ? j.board.uid : null
       },
+      // Set by "Send" (section 13b): when, from which device.
+      sent: j.sent && typeof j.sent === 'object' ? { at: num(j.sent.at, 0), by: String(j.sent.by || '').slice(0, 64), from: String(j.sent.from || '').slice(0, 60) } : null,
       viewport: j.viewport && j.viewport.width > 0 && j.viewport.height > 0 ? { w: j.viewport.width, h: j.viewport.height } : null,
       photo: (() => {
         const m = j.kind !== 'template' && j.media && j.media.background;   // templates never carry a photo (it may show the class)
@@ -2875,7 +2937,8 @@
     }
   }
 
-  async function applyImport(p, mode) {
+  // opts.uid: this board becomes that board (loading it from the shared folder), so later versions match.
+  async function applyImport(p, mode, opts = {}) {
     const b = S.boardId;
     const plan = importPlan(p, mode), { convert, view } = plan; // the board's shape and scale decide how rects map
     const rev = Date.now();
@@ -2918,6 +2981,7 @@
     if (mode === 'replace') {
       const board = Object.assign({}, S.board, { background: p.board.background, scale: plan.scale, shape: plan.shape, layout: plan.layout });
       if (p.board.name) board.name = p.board.name;
+      if (opts.uid) board.uid = opts.uid;
       out.push(rec(Keys.board(b), 'board', board));
       if (p.photo) {
         out.push(rec(Keys.media(b, 'background'), 'media', p.photo));
@@ -2935,6 +2999,373 @@
     });
     Sync.announce([], { op: 'reload' });
     await rebuildAll();
+  }
+
+  // =====================================================================
+  // 13b. Sharing boards through a Google Drive folder
+  // ---------------------------------------------------------------------
+  // A teacher builds a board on a laptop and shows it on the smartboard. Each device links itself once to
+  // the same folder, e.g. Google Drive › My Drive › 21Board (Chrome's folder picker: 21Board can read and
+  // write in that folder only, and the teacher allows it). ChromeOS (and Drive for desktop on Windows)
+  // keeps that folder the same on every device, so 21Board never talks to Google: no sign-in, API keys,
+  // Cloud project or server. Chrome and Edge only (Safari and Firefox keep Export/Import).
+  //
+  // 21Board owns the folder's contents:
+  // - One file per board: "<board name>.21board", a full backup with the board's uid and a "sent" block
+  //   {at, by: device id, from: device name}. "Room 12 (2).21board" if another board has that name.
+  // - Renaming a board renames its file on the next send (the old one is removed, if it's still ours).
+  // - "<name> (copy from …).21board": a copy kept, with a new uid, before loading over local changes.
+  // - "About this folder.txt" explains the files to anyone browsing the folder. Other files are left alone.
+  // Sending: the Send button (or "Send automatically", a few seconds after changes). Receiving: the folder is
+  // checked when 21Board opens, when it comes back to the front, and every 2 minutes; a newer version of this
+  // board from another device is offered with "Load" (never applied silently).
+  // On this device only (never exported): link:folder (the folder handle) and link:state
+  // {device: {id, label}, auto, photo, boards: {uid: {file, sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig}}}.
+  // =====================================================================
+  const LINK_CHECK_MS = 2 * 60 * 1000;
+  const LINK_AUTO_MS = 8000;
+  const LINK_README = 'About this folder.txt';
+  const Link = {
+    supported: !LAB && typeof window.showDirectoryPicker === 'function',
+    dir: null,          // FileSystemDirectoryHandle
+    perm: 'none',       // 'none' (no folder) | 'granted' | 'prompt' | 'denied'
+    st: { device: null, auto: false, photo: true, boards: {} },
+    found: [],          // boards in the folder: {name, uid, title, sentAt, by, from, kind, size, lastModified}
+    cache: new Map(),   // file name -> {lastModified, size, meta}
+    offer: null, offerToast: null, dismissed: '',
+    scanning: null, busy: false, autoT: 0, lastCheck: 0, started: false, nagged: false,
+
+    // ---- this device's records
+    applyRecord(name, value) {
+      if (name === 'folder') {
+        this.dir = value && typeof value === 'object' && value.kind === 'directory' ? value : null;
+        this.found = []; this.cache.clear(); this.setOffer(null);
+        if (this.started) this.refresh();
+      } else if (name === 'state') {
+        const v = value && typeof value === 'object' ? value : {};
+        this.st = { device: v.device && UID_RE.test(v.device.id || '') ? v.device : null, auto: !!v.auto, photo: v.photo !== false, boards: v.boards && typeof v.boards === 'object' ? v.boards : {} };
+        this.computeOffer();
+      }
+      Picker.renderControls();
+    },
+    saveState(patch) {
+      this.st = Object.assign({}, this.st, patch);
+      Writer.put(Keys.link('state'), 'link', this.st);
+      if (Settings.isOpen) Settings.render();
+    },
+    boardRec(uid) { return (this.st.boards || {})[uid] || null; },
+    setBoardRec(uid, patch) { this.saveState({ boards: Object.assign({}, this.st.boards, { [uid]: Object.assign({}, this.boardRec(uid), patch) }) }); },
+    device() {
+      if (!this.st.device) {
+        const touch = navigator.maxTouchPoints > 0, big = Math.max(screen.width, screen.height) >= 1900;
+        this.saveState({ device: { id: newId(), label: touch && big ? 'the smartboard' : /CrOS/.test(navigator.userAgent) ? 'a Chromebook' : 'a computer' } });
+      }
+      return this.st.device;
+    },
+    async saveFolder(handle) {
+      // A folder handle can't go through Writer (which copies values as JSON): write it as is.
+      const key = Keys.link('folder');
+      const rec = { key, type: 'link', rev: Math.max((Known.get(key) || 0) + 1, Date.now()), updatedAt: Date.now(), by: TAB_ID, value: handle };
+      try {
+        await Store.tx('readwrite', s => { s.put(rec); });
+        Known.set(key, rec.rev);
+        Sync.announce([key]);
+      } catch (err) {
+        // This browser can't keep folder handles: linked until 21Board is closed.
+        console.warn('21Board: the folder link can’t be saved on this device', err);
+      }
+      this.applyRecord('folder', handle);
+    },
+
+    // ---- permission (Chrome remembers it for an installed 21Board; in a tab it may ask again after a restart)
+    async refresh() {
+      if (!this.dir) { this.perm = 'none'; return; }
+      try { this.perm = typeof this.dir.queryPermission === 'function' ? await this.dir.queryPermission({ mode: 'readwrite' }) : 'granted'; } catch (e) { this.perm = 'denied'; }
+      if (Settings.isOpen) Settings.render();
+      if (this.perm === 'granted') await this.check();
+      else if (this.perm === 'prompt' && !this.nagged && Object.keys(this.st.boards || {}).length) {
+        this.nagged = true;
+        toast(`Reconnect your “${this.dir.name}” folder to keep this board up to date with your other devices.`, { action: 'Reconnect', timeout: 12000, onAction: () => this.reconnect() });
+      }
+    },
+    // Must run from a tap (Chrome only asks then).
+    async ensurePerm() {
+      if (!this.dir) return false;
+      if (this.perm === 'granted') return true;
+      try { this.perm = typeof this.dir.requestPermission === 'function' ? await this.dir.requestPermission({ mode: 'readwrite' }) : 'granted'; } catch (e) { this.perm = 'denied'; }
+      if (Settings.isOpen) Settings.render();
+      return this.perm === 'granted';
+    },
+    async reconnect() { if (await this.ensurePerm()) await this.check(true); else toast('21Board can’t use that folder until you allow it.'); },
+
+    // ---- linking (from a tap)
+    async choose() {
+      let h;
+      try { h = await window.showDirectoryPicker({ id: '21board', mode: 'readwrite' }); } catch (err) {
+        if (!err || err.name !== 'AbortError') toast('Couldn’t open that folder: ' + ((err && err.message) || err));
+        return false;
+      }
+      this.perm = 'granted';
+      await this.saveFolder(h);
+      this.device();
+      try { await this.writeReadme(); } catch (e) { /* read-only folder: we'll find out on send */ }
+      await this.check(true);
+      return true;
+    },
+    async unlink() {
+      await Writer.del(Keys.link('folder'));
+      this.applyRecord('folder', null);
+      this.perm = 'none';
+      if (Settings.isOpen) Settings.render();
+    },
+    async writeReadme() {
+      try { await this.dir.getFileHandle(LINK_README); return; } catch (e) { /* not there yet */ }
+      await this.writeFile(LINK_README, [
+        '21Board keeps your boards here so your devices can share them through Google Drive.',
+        '',
+        'Each .21board file is one board: its windows, what is in them, and its background photo.',
+        '21Board names these files after your boards and updates them when you press Send (or',
+        'automatically, if you turned that on). Your other devices check this folder and offer to',
+        'load a newer version.',
+        '',
+        '- In 21Board on each device, choose this same folder: Settings > Google Drive folder.',
+        '- Please don’t edit or rename the files. Deleting one stops sharing that board; the board',
+        '  itself stays on your devices.',
+        '- "… (copy from …)" files are copies 21Board kept before loading a newer version over changes.',
+        '- These files can include student names and class photos. Share this folder only with',
+        '  people who should see them.',
+        ''
+      ].join('\r\n'));
+    },
+
+    // ---- the folder
+    async writeFile(name, text) {
+      const fh = await this.dir.getFileHandle(name, { create: true });
+      const w = await fh.createWritable();
+      await w.write(text);
+      await w.close();
+    },
+    // Every board file in the folder (files that didn't change since the last look aren't read again).
+    async scan() {
+      if (this.scanning) return this.scanning;
+      this.scanning = (async () => {
+        const out = [], names = new Set();
+        for await (const [name, h] of this.dir.entries()) {
+          if (h.kind !== 'file' || !/\.21board$/i.test(name)) continue;
+          names.add(name);
+          let file;
+          try { file = await h.getFile(); } catch (e) { continue; }
+          const c = this.cache.get(name);
+          if (c && c.lastModified === file.lastModified && c.size === file.size) { if (c.meta) out.push(c.meta); continue; }
+          let meta = null;
+          if (file.size < 40e6) {
+            try {
+              const j = JSON.parse(await file.text());
+              if (j && j.format === '21board') {
+                meta = { name, uid: j.board && UID_RE.test(j.board.uid || '') ? j.board.uid : null, title: String((j.board && j.board.name) || name.replace(/\.21board$/i, '')).slice(0, 60),
+                  sentAt: num(j.sent && j.sent.at, file.lastModified), by: String((j.sent && j.sent.by) || ''), from: String((j.sent && j.sent.from) || '').slice(0, 60),
+                  kind: j.kind === 'template' ? 'template' : 'full', size: file.size, lastModified: file.lastModified };
+              }
+            } catch (e) { /* still being written, or not a board: look again next time */ continue; }
+          }
+          this.cache.set(name, { lastModified: file.lastModified, size: file.size, meta });
+          if (meta) out.push(meta);
+        }
+        for (const n of Array.from(this.cache.keys())) if (!names.has(n)) this.cache.delete(n);
+        this.found = out.sort((a, b) => b.sentAt - a.sentAt);
+        return this.found;
+      })();
+      try { return await this.scanning; } finally { this.scanning = null; }
+    },
+    async check(force) {
+      if (!this.dir || this.perm !== 'granted') return;
+      if (!force && Date.now() - this.lastCheck < 5000) return;
+      this.lastCheck = Date.now();
+      try { await this.scan(); } catch (err) {
+        console.warn('21Board: could not read the shared folder', err);
+        if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) { this.perm = 'prompt'; }
+        else if (err && err.name === 'NotFoundError') toast(`The “${this.dir.name}” folder can’t be found. Choose it again in Settings.`);
+      }
+      this.computeOffer();
+      if (Settings.isOpen) Settings.render();
+    },
+    // A newer version of this board, sent from another device, not yet loaded here.
+    computeOffer() {
+      const uid = S.board.uid, me = this.st.device && this.st.device.id, rec = this.boardRec(uid) || {};
+      const f = uid ? this.found.find(x => x.uid === uid && x.kind === 'full') : null;
+      this.setOffer(f && f.by && f.by !== me && f.sentAt > (rec.loadedSentAt || 0) && f.sentAt > (rec.sentAt || 0) ? f : null);
+    },
+    setOffer(f) {
+      const key = f ? f.name + '@' + f.sentAt : '';
+      if (this.offer && (this.offer.name + '@' + this.offer.sentAt) === key) return;
+      this.offer = f;
+      if (this.offerToast) { this.offerToast.remove2(); this.offerToast = null; }
+      if (!f || key === this.dismissed || typeof document === 'undefined') return;
+      this.offerToast = toast(`“${f.title}” was updated on ${f.from || 'another device'} ${when(f.sentAt)}.`, {
+        action: 'Load', dismiss: 'Not now', timeout: 0,
+        onAction: () => { this.offerToast = null; this.load(f.name); },
+        onDismiss: () => { this.offerToast = null; this.dismissed = key; }
+      });
+    },
+    // A fingerprint of this board's content, to tell whether it changed since it was sent or loaded here.
+    // (Not the window stacking order: tapping a window to bring it forward isn't a change.)
+    sigOf(exp) {
+      const m = exp.media && exp.media.background;
+      const text = JSON.stringify([exp.board, exp.theme, exp.accent, exp.instances.map(i => Object.assign({}, i, { z: 0 })),
+        m ? [m.bytes, m.addedAt, m.w, m.h, exp.media.look] : null]);
+      let h1 = 0xdeadbeef, h2 = 0x41c6ce57;   // cyrb53
+      for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+      h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+      h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+      return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+    },
+    async sig() { return this.sigOf(await buildExport('full')); },
+    async localChanges() {
+      const rec = this.boardRec(S.board.uid);
+      if (!rec) return false;
+      const sig = await this.sig();
+      return sig !== rec.sentSig && sig !== rec.loadedSig;
+    },
+    safeName(name) {
+      return String(name || '').replace(/[\u0000-\u001f\\/:*?"<>|]+/g, '').replace(/^[.\s]+|[.\s]+$/g, '').slice(0, 60) || 'Board';
+    },
+    // This board's file name: its name, unless another board's file already has it.
+    async fileNameFor(uid, title) {
+      await this.scan();
+      const base = this.safeName(title);
+      const taken = n => this.found.some(f => f.name.toLowerCase() === n.toLowerCase() && f.uid !== uid);
+      let name = base + '.21board';
+      for (let k = 2; taken(name); k++) name = `${base} (${k}).21board`;
+      return name;
+    },
+
+    // ---- sending (from a tap, or automatically)
+    async send(opts = {}) {
+      if (!this.supported) return false;
+      if (!this.dir) {
+        if (opts.auto) return false;
+        const go = await dialog({
+          title: 'Send this board to your other devices',
+          message: 'Choose a folder in Google Drive (for example My Drive › 21Board: make it first if you need to). On the smartboard, choose the same folder in Settings › Google Drive folder. Google Drive keeps it the same on both, and 21Board keeps one file per board in it.',
+          actions: [{ label: 'Choose folder…', value: true, kind: 'primary' }, { label: 'Cancel', value: false }]
+        });
+        if (!go || !await this.choose()) return false;
+      }
+      if (this.perm !== 'granted' && (opts.auto || !await this.ensurePerm())) { if (!opts.auto) toast('21Board can’t use that folder until you allow it.'); return false; }
+      if (this.busy) return false;
+      this.busy = true;
+      try {
+        const uid = S.board.uid || (ensureUid(), S.board.uid);
+        const exp = await buildExport('full');
+        const sig = this.sigOf(exp);
+        if (!this.st.photo) delete exp.media;   // "Include the background photo" off: each device keeps its own
+        const dev = this.device();
+        exp.sent = { at: Date.now(), by: dev.id, from: dev.label };
+        const name = await this.fileNameFor(uid, S.board.name);
+        await this.writeFile(name, JSON.stringify(exp));
+        const old = (this.boardRec(uid) || {}).file;
+        if (old && old.toLowerCase() !== name.toLowerCase() && this.found.some(f => f.name === old && f.uid === uid)) {
+          try { await this.dir.removeEntry(old); } catch (e) { /* already gone */ }
+        }
+        this.cache.delete(name);
+        this.setBoardRec(uid, { file: name, sentAt: exp.sent.at, sentSig: sig });
+        updateSettings({ lastBackupAt: Date.now() });   // the folder copy is a backup too
+        if (!opts.auto) toast(`Sent “${S.board.name}” to your “${this.dir.name}” folder. Google Drive brings it to your other devices.`);
+        await this.check(true);
+        return true;
+      } catch (err) {
+        console.error(err);
+        if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) this.perm = 'prompt';
+        if (!opts.auto) toast('Couldn’t send this board: ' + ((err && err.message) || err));
+        return false;
+      } finally { this.busy = false; }
+    },
+    // A board record changed here: with "Send automatically" on, send a few seconds after the last change.
+    changed(keys) {
+      if (!this.st.auto || !this.dir) return;
+      const b = S.boardId;
+      if (!keys.some(k => { const p = Keys.parse(k); return p.board === b && /^(board|inst|data|conf|media)$/.test(p.kind); })) return;
+      clearTimeout(this.autoT);
+      this.autoT = setTimeout(() => this.autoSend(), LINK_AUTO_MS);
+    },
+    async autoSend() {
+      clearTimeout(this.autoT); this.autoT = 0;
+      if (!this.st.auto || !this.dir || this.perm !== 'granted') return;
+      const rec = this.boardRec(S.board.uid), sig = await this.sig();
+      if (rec && (sig === rec.sentSig || sig === rec.loadedSig)) return;   // nothing new since it was sent or loaded
+      await this.send({ auto: true });
+    },
+
+    // ---- receiving (from a tap)
+    async load(name) {
+      if (!await this.ensurePerm()) { toast('21Board can’t use that folder until you allow it.'); return false; }
+      let raw, parsed;
+      try { raw = await (await (await this.dir.getFileHandle(name)).getFile()).text(); parsed = parseBoardFile(raw); } catch (err) {
+        toast(`Couldn’t read “${name}”: ${(err && err.message) || err}`);
+        return false;
+      }
+      const uid = parsed.board.uid, sent = parsed.sent || {}, title = parsed.board.name || name.replace(/\.21board$/i, '');
+      const from = sent.from ? ` from ${sent.from}` : '';
+      if (uid && uid === S.board.uid) {
+        if (await this.localChanges()) {
+          const rec = this.boardRec(uid) || {};
+          const since = Math.max(rec.sentAt || 0, rec.loadedSentAt || 0);
+          const choice = await dialog({
+            title: `Load “${title}”${from}?`,
+            message: `This board was also changed here${since ? ' since ' + when(since) : ''}. Loading replaces those changes.`,
+            actions: [{ label: 'Keep a copy of mine, then load', value: 'copy', kind: 'primary' }, { label: 'Load and replace my changes', value: 'load', kind: 'danger' }, { label: 'Cancel', value: null }]
+          });
+          if (!choice) return false;
+          if (choice === 'copy' && !await this.saveCopy()) return false;
+        }
+      } else {
+        const ok = await dialog({
+          title: `Replace this board with “${title}”?`,
+          message: `The windows and content on this board are replaced by the board${from}${sent.at ? ', sent ' + when(sent.at) : ''}. After that, this device offers its newer versions as they arrive.`,
+          actions: [{ label: 'Replace this board', value: true, kind: 'danger' }, { label: 'Cancel', value: false }]
+        });
+        if (!ok) return false;
+      }
+      try { await applyImport(parsed, 'replace', { uid: uid || newId() }); } catch (err) { console.error(err); toast('Couldn’t load the board: ' + ((err && err.message) || err)); return false; }
+      this.setBoardRec(S.board.uid, { file: name, loadedSentAt: sent.at || Date.now(), loadedFrom: sent.from || '', loadedSig: await this.sig() });
+      this.computeOffer();
+      toast(`Loaded “${S.board.name}”${from}.`);
+      return true;
+    },
+    // Before loading over changes made here: keep them in the folder as a separate board.
+    async saveCopy() {
+      try {
+        const exp = await buildExport('full');
+        const dev = this.device(), d = new Date();
+        const title = `${S.board.name} (copy from ${dev.label.replace(/^(the|a|an) /i, '')}, ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })})`.replace(/:/g, '.');
+        exp.board.uid = newId();
+        exp.board.name = title.slice(0, 60);
+        exp.sent = { at: Date.now(), by: dev.id, from: dev.label };
+        const name = await this.fileNameFor(exp.board.uid, title);
+        await this.writeFile(name, JSON.stringify(exp));
+        toast(`Kept a copy of this board in your folder: “${name.replace(/\.21board$/i, '')}”.`);
+        return true;
+      } catch (err) { toast('Couldn’t keep a copy: ' + ((err && err.message) || err)); return false; }
+    },
+
+    // ---- startup: check now, when 21Board comes back to the front, and every few minutes
+    start() {
+      if (!this.supported || this.started) return;
+      this.started = true;
+      this.refresh();
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') this.refresh();
+        else if (this.autoT) this.autoSend();   // leaving: send a pending change now
+      });
+      window.addEventListener('focus', () => this.check());
+      setInterval(() => { if (document.visibilityState === 'visible') this.check(true); }, LINK_CHECK_MS);
+    }
+  };
+  // "at 7:42 PM", or "on Nov 9 at 7:42 PM" for another day.
+  function when(t) {
+    const d = new Date(t), now = new Date();
+    const time = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    return d.toDateString() === now.toDateString() ? `at ${time}` : `on ${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} at ${time}`;
   }
 
   // =====================================================================
@@ -2970,6 +3401,14 @@
       b.addEventListener('click', () => { remove(); opts.onAction && opts.onAction(); });
       t.appendChild(b);
     }
+    if (opts.dismiss) {   // a second, quieter button ("Not now")
+      const b = document.createElement('button');
+      b.textContent = opts.dismiss;
+      b.className = 'quiet';
+      b.addEventListener('click', () => { remove(); opts.onDismiss && opts.onDismiss(); });
+      t.appendChild(b);
+    }
+    t.remove2 = remove;
     host.appendChild(t);
     const timeout = opts.timeout === undefined ? 4200 : opts.timeout;
     if (timeout) setTimeout(remove, timeout);
@@ -3331,6 +3770,7 @@
     updateZoom();
     migrateBoard();
     if (!Known.has(Keys.board(S.boardId))) Writer.put(Keys.board(S.boardId), 'board', S.board);
+    if (!LAB) ensureUid();
     applySettings();
     applyBoard();
     updateHint();
@@ -3338,6 +3778,7 @@
     registerSW();
     setupFileLaunch();
     Persist.init();
+    Link.start();
   }
 
   // Exposed for debugging in the console and for automated tests.
@@ -3346,7 +3787,7 @@
     setRect: (ikey, rect) => { const i = S.insts.get(ikey); if (!i) return; saveInst(ikey, Object.assign({}, i, { rect })); const w = S.wins.get(ikey); if (w) w.layout(); },
     openWidget, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,
-    catalog: () => Array.from(catalog.values())
+    catalog: () => Array.from(catalog.values()), link: Link
   };
 
   boot();

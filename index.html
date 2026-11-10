@@ -410,6 +410,8 @@
     body.dark .toast { background: #f3f4f6; color: #111827; }
     .toast button { color: #93c5fd; font-weight: 700; padding: 0 10px; height: 32px; border-radius: 16px; }
     body.dark .toast button { color: #1d4ed8; }
+    .toast button.quiet { color: #cbd5e1; font-weight: 500; }
+    body.dark .toast button.quiet { color: #475569; }
     .toast.out { opacity: 0; transform: translateY(8px); transition: all .25s; }
     @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
 
@@ -479,6 +481,7 @@
       <span class="picker-spacer" aria-hidden="true"></span>
       <button class="ctl" data-ctl="export" title="Export" aria-label="Export"></button>
       <button class="ctl" data-ctl="import" title="Import" aria-label="Import"></button>
+      <button class="ctl" data-ctl="send" title="Send" aria-label="Send" hidden></button>
       <button class="ctl" data-ctl="theme" title="Dark mode" aria-label="Dark mode"></button>
       <button class="ctl" data-ctl="fullscreen" title="Fullscreen" aria-label="Fullscreen"></button>
       <button class="ctl" data-ctl="settings" title="Settings" aria-label="Settings"></button>
