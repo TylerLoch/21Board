@@ -258,7 +258,8 @@ Teachers can move a window by its title bar, and also from inside it:
 | **Needs drags itself** (typing or selecting text, drawing, sliders, sortable lists): `dragFromContent: false` | goes to your widget | moves the window |
 
 A tap is always a tap. A press only becomes a window drag once it moves past the tap allowance
-(6 px with a mouse, 16 px with a finger, so a slightly sloppy tap still presses the button). Once it
+(6 px with a mouse, 10 px with a pen, 16 px with a finger, the same as on the title bar, so a slightly
+sloppy tap still presses the button). Once it
 does, your widget doesn't get the rest of that press: no `pointermove`/`pointerup`, no `click`, and no
 `mouseup`/`touchend` right after it, so a button the finger started on doesn't fire. A press resting
 in your widget claims nothing until it moves, so someone else can still use the title bar meanwhile.

@@ -487,6 +487,38 @@ const SUITES = [
     const lbl = await page.locator('.win[data-ikey="dice:1"] .win-label').boundingBox();
     await page.touchscreen.tap(lbl.x + lbl.width / 2, lbl.y + lbl.height / 2); await page.waitForTimeout(250);
     ok(await page.locator('#menu.open').count() === 1, 'touch tap on title opens window menu');
+    // A finger slides a few millimetres while tapping: on a title bar that is still a tap (as it is on a button).
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { window.__board21.state.settings.snapping = false; window.__board21.setRect('dice:1', { x: 700, y: 300, w: 360, h: 280 }); });   // (no snapping: a moved window is exactly where it was put)
+    await page.waitForTimeout(200);
+    const finger = async (x, y, dx, dy, steps = 1, rest = 250) => {
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 5 }] }); await page.waitForTimeout(20);
+      for (let i = 1; i <= steps; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: x + dx * i / steps, y: y + dy * i / steps, id: 5 }] }); await page.waitForTimeout(20); }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(rest);
+    };
+    const dice = async () => (await wins(page))['dice:1'];
+    const name = await page.locator('.win[data-ikey="dice:1"] .win-label').boundingBox();
+    const d0 = await dice();
+    await finger(name.x + name.width / 2, name.y + name.height / 2, 12, 4);
+    let d1 = await dice();
+    ok(await page.locator('#menu.open').count() === 1 && d1.x === d0.x && d1.y === d0.y, `a touch tap on the name that slides 12 px still opens the menu, and the window stays where it is (moved ${d1.x - d0.x}, ${d1.y - d0.y})`);
+    await page.keyboard.press('Escape');
+    const bar = { x: d0.x + d0.w - 40, y: d0.y + 20 };   // the title bar, beside the name
+    await finger(bar.x, bar.y, 9, 3, 1, 40); await finger(bar.x, bar.y, -8, 4);
+    ok(await page.evaluate(() => window.__board21.state.insts.get('dice:1').maximized === true), 'two touch taps on the title bar that each slide a little still fill the board');
+    await page.evaluate(() => window.__board21.setMaximized('dice:1', false)); await page.waitForTimeout(400);   // (and past the double-tap time)
+    await finger(bar.x, bar.y, -60, 0, 6);
+    d1 = await dice();
+    ok(d1.x === d0.x - 60 && d1.y === d0.y, `a touch drag of the title bar still moves the window, and keeps it under the finger (moved ${d1.x - d0.x}, ${d1.y - d0.y})`);
+    // A mouse doesn't slide while clicking, and a resize handle has no tap to protect: both answer as before.
+    await page.mouse.move(bar.x - 60, bar.y); await page.mouse.down(); await page.mouse.move(bar.x - 50, bar.y); await page.mouse.up(); await page.waitForTimeout(250);
+    const d2 = await dice();
+    ok(d2.x === d1.x + 10, `a 10 px mouse drag of the title bar moves the window 10 px (moved ${d2.x - d1.x})`);
+    const grip = await page.locator('.win[data-ikey="dice:1"] .grip.e').boundingBox();
+    await finger(grip.x + grip.width / 2, grip.y + grip.height / 2, 10, 0, 2);
+    const d3 = await dice();
+    ok(d3.w === d2.w + 10 && d3.x === d2.x, `a 10 px touch drag of a resize handle resizes by 10 px (${d3.w - d2.w})`);
+    await ctx.close();
   }],
   ['SDK, developer mode, standalone', async (browser) => {
   const disp = (page, ik) => page.evaluate(ik => Object.assign({}, window.__board21.state.wins.get(ik).disp), ik);
@@ -2153,7 +2185,10 @@ const SUITES = [
     ok(await page.evaluate(() => getComputedStyle(document.querySelector('[data-ctl="quit"]')).color === 'rgb(220, 38, 38)'), 'Quit is a red X');
     await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
     const set = await page.evaluate(() => { const r = document.getElementById('settings'); return { link: !!r.querySelector('[data-act^="link-"]'), backup: !!r.querySelector('[data-act="backup"]'), dev: !!r.querySelector('[data-act="devmode"]'), install: !!r.querySelector('[data-act="install"]'), kiosk: /Kiosk mode/.test(r.textContent), hist: !!r.querySelector('[data-act="hist-open"]') }; });
-    ok(!set.link && !set.backup && !set.dev && !set.install && set.kiosk && set.hist, 'Settings leaves out the Google Drive folder, backups, Developer mode and Install, says it’s kiosk mode, and keeps Board history');
+    ok(!set.link && !set.dev && !set.install && set.kiosk && set.hist, 'Settings leaves out the Google Drive folder, Developer mode and Install, says it’s kiosk mode, and keeps Board history');
+    ok(set.backup && (await page.locator('#st-backup').textContent()).includes('never'), 'Settings has Backups with “Back up now”, as everywhere else (a kiosk can export)');
+    const protect = await page.evaluate(() => [document.getElementById('st-persist').textContent, document.getElementById('st-persist-hint').textContent]);
+    ok(/Protected/.test(protect[0]) || (/school’s IT/.test(protect[1]) && /back up to a USB drive/.test(protect[1]) && !/[Ii]nstall/.test(protect[1])), `Data protection says what applies to a kiosk: IT manages it, and backups are still worth making (${protect[1]})`);
     await page.keyboard.press('Escape');
     // Export uses only the Save dialog (a download would land unseen in the kiosk's Downloads).
     await page.click('.picker-btn.left'); await page.click('[data-ctl="export"]'); await page.waitForTimeout(300);
@@ -2167,6 +2202,33 @@ const SUITES = [
     ok(await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#t').inputValue() === 'Kiosk note' && await page.evaluate(() => document.body.classList.contains('kiosk')), 'widgets save as usual, and kiosk mode stays on after a reload');
     await fillNote(page.frameLocator('.win[data-ikey="notes:1"] iframe'), 'See https://example.org'); await page.mouse.click(900, 80); await page.waitForTimeout(500);
     ok(await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#view a').count() === 0, 'links in Notes stay plain text (a kiosk can’t open them)');
+    // No backup reminder in a kiosk: no one is signed in to act on it. (The same board in a normal tab gets one.)
+    await page.evaluate(() => {   // not a brand-new board any more: its window was made three days ago
+      const B = window.__board21, i = B.state.insts.get('notes:1');
+      B.state.insts.set('notes:1', Object.assign({}, i, { createdAt: Date.now() - 3 * 24 * 60 * 60 * 1000 }));
+      B.setRect('notes:1', Object.assign({}, i.rect, { x: i.rect.x + 1 }));   // (saves the window as it now is)
+    });
+    await page.waitForTimeout(400);
+    const front = p => p.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); });   // the reminder is looked at 2 s after 21Board comes to the front
+    await front(page); await page.waitForTimeout(2600);
+    const nagged = await page.locator('.toast', { hasText: 'Save a backup file?' }).count();
+    const p0 = await ctx.newPage(); await p0.goto(BASE + ''); await boardUp(p0); await front(p0);
+    const shown = await p0.waitForSelector('.toast:has-text("Save a backup file?")', { timeout: 6000 }).then(() => true, () => false);
+    const safe = await p0.evaluate(() => navigator.storage.persisted());
+    ok(nagged === 0 && (shown || safe), `kiosk mode shows no backup reminder (a normal tab ${shown ? 'does' : 'has protected storage here, so it has none either'})`);
+    await p0.close(); await page.bringToFront();
+    // Erase offers a backup first, as everywhere else. Where the Save dialog works, that saves a full backup
+    // (and erases nothing), and Settings counts it.
+    await page.evaluate(() => { window.showSaveFilePicker = async opts => ({ createWritable: async () => ({ write: async t => { window.__saved = { name: opts.suggestedName, text: t }; }, close: async () => {} }) }); });
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300);
+    const first = page.locator('#modal.open .btn', { hasText: 'Export a backup first' });
+    ok(await first.count() === 1 && /Export a backup first if/.test(await page.locator('#modal.open p').textContent()), 'Erase everything offers “Export a backup first” in kiosk mode too');
+    await first.click(); await page.waitForFunction(() => window.__saved, null, { timeout: 5000 }).catch(() => {});
+    const kept = await page.evaluate(() => ({ saved: window.__saved, note: window.__board21.state.insts.has('notes:1'), at: window.__board21.state.settings.lastBackupAt }));
+    ok(kept.saved && /\.21board$/.test(kept.saved.name) && JSON.parse(kept.saved.text).instances.some(i => i.widgetId === 'notes' && /example\.org/.test(JSON.stringify(i.data))) && kept.note, 'choosing it saves a full backup through the Save dialog, and erases nothing');
+    ok(typeof kept.at === 'number' && (await page.locator('#st-backup').textContent()).includes('today'), 'and Settings says the last full backup was today');
+    await page.keyboard.press('Escape');
     // Quit asks first, saves, then closes the app.
     await page.click('.picker-btn.left'); await page.click('[data-ctl="quit"]'); await page.waitForTimeout(300);
     ok(await page.locator('#modal.open', { hasText: 'Quit 21Board?' }).count() === 1, 'Quit asks first');
@@ -3009,6 +3071,117 @@ const SUITES = [
       await ctx.close();
     }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  ['Dialogs: a name, the keyboard stays inside and goes back where it was', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE + ''); await boardUp(page);
+    await page.evaluate(() => { window.__board21.history.cfg({ skipOpen: true }); window.__board21.openWidget('timer'); window.__board21.openWidget('notes'); });
+    const timer = page.frameLocator('.win[data-ikey="timer:1"] iframe');
+    await timer.locator('button').first().waitFor(); await page.waitForTimeout(400);
+    // Where the keyboard is: in the dialog or not, and on what.
+    const at = () => page.evaluate(() => { const a = document.activeElement, d = a.dataset || {}; return { modal: !!a.closest('#modal'), tag: a.tagName, on: (a.textContent || '').trim(), act: d.act || d.ctl || '', cls: String(a.className), title: a.title || '' }; });
+    const press = async (key, n) => { const seen = []; for (let i = 0; i < n; i++) { await page.keyboard.press(key); seen.push(await at()); } return seen; };
+    const inside = seen => seen.every(s => s.modal), names = seen => seen.map(s => s.tag === 'INPUT' ? 'field' : s.on.replace(/^(Full backup|Blank template).*/, '$1')).join(', ');
+    const open = () => page.waitForSelector('#modal.open'), closed = () => page.waitForSelector('#modal', { state: 'hidden' });
+    const drop = name => page.evaluate(name => {   // a .21board file dropped on the board: a dialog nobody pressed a button for
+      const dt = new DataTransfer();
+      dt.items.add(new File([JSON.stringify({ format: '21board', formatVersion: 1, kind: 'template', board: { name: 'Other board' }, instances: [] })], name));
+      window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, cancelable: true }));
+    }, name);
+
+    // A question with two buttons, opened from Settings by keyboard.
+    await page.focus('.picker-btn.left'); await page.keyboard.press('Enter');
+    await page.focus('[data-ctl="settings"]'); await page.keyboard.press('Enter');
+    await page.waitForSelector('#settings.open [data-act="inst-delete"]');
+    await page.focus('#settings [data-act="inst-delete"]'); await page.keyboard.press('Enter'); await open();
+    ok(await page.getByRole('dialog', { name: 'Delete Notes?', exact: true }).count() === 1, 'a dialog is announced by its title (“Delete Notes?”)');
+    ok(/removed from this board/.test(await page.locator('#modal').evaluate(m => (document.getElementById(m.getAttribute('aria-describedby')) || {}).textContent || '')), 'and its message is read with it');
+    let seen = await press('Tab', 5);
+    ok(inside(seen) && names(seen) === 'Cancel, Delete, Cancel, Delete, Cancel', `Tab goes round the dialog’s buttons and never out to the board behind it (${names(seen)})`);
+    seen = await press('Shift+Tab', 5);
+    ok(inside(seen) && names(seen) === 'Delete, Cancel, Delete, Cancel, Delete', `so does Shift+Tab (${names(seen)})`);
+    await page.click('#modal .modal-card p');   // a click on the dialog's text takes the keyboard off its buttons
+    const off = await at();
+    seen = await press('Tab', 1);
+    await page.evaluate(() => document.activeElement.blur());
+    seen = seen.concat(await press('Shift+Tab', 1));
+    ok(!off.modal && inside(seen) && names(seen) === 'Delete, Cancel', `with the keyboard somewhere else, Tab comes into the dialog (first button) and Shift+Tab too (last) (${names(seen)})`);
+    await page.keyboard.press('Escape'); await closed();
+    let back = await at();
+    ok(back.act === 'inst-delete' && await page.locator('#settings.open').count() === 1 && await page.evaluate(() => window.__board21.state.insts.has('notes:1')), `Escape closes the dialog only, and the keyboard is back on the button that opened it (${back.tag} ${back.act})`);
+
+    // A key held down a moment too long (it repeats) answers nothing.
+    const state = () => page.evaluate(() => ({ open: document.getElementById('modal').classList.contains('open'), notes: window.__board21.state.insts.has('notes:1') }));
+    const hold = async n => { for (let i = 0; i < n; i++) { await page.keyboard.down('Enter'); await page.waitForTimeout(40); } };   // (a key that is down already repeats)
+    await page.keyboard.down('Enter'); await open();   // on the Delete button of Settings: the dialog opens, with its own “Delete” first
+    await hold(3);
+    let st = await state();
+    ok(st.open && st.notes, 'Enter held on the button that opens a dialog doesn’t go on to answer the dialog');
+    await page.keyboard.up('Enter');
+    await page.keyboard.press('Tab');   // to Cancel
+    await page.keyboard.down('Enter'); await closed();
+    await hold(3);
+    st = await state(); back = await at();
+    ok(!st.open && st.notes && back.act === 'inst-delete', 'Enter held on Cancel closes the dialog, and doesn’t press the button behind it again (which would ask again, then delete)');
+    await page.keyboard.up('Enter');
+
+    // A dialog that takes the place of another hands the place on.
+    await page.keyboard.press('Enter'); await open();
+    ok((await at()).modal, 'once the key is let go, Enter opens the dialog again');
+    await drop('Other board.21board');
+    await page.waitForSelector('#modal.open h3:has-text("Import “Other board”?")');
+    ok((await at()).modal, 'a dialog that replaces another takes the keyboard');
+    await page.keyboard.press('Escape'); await closed();
+    back = await at();
+    ok(back.act === 'inst-delete', `and gives it back to where it was before the first one (${back.tag} ${back.act})`);
+
+    // A dialog with a text field (Board history → Save this version now).
+    await page.focus('#settings [data-act="hist-open"]'); await page.keyboard.press('Enter');
+    await page.waitForSelector('#history.open [data-act="save"]');
+    await page.focus('#history [data-act="save"]'); await page.keyboard.press('Enter'); await open();
+    const start = await at();
+    seen = (await press('Tab', 3)).concat(await press('Shift+Tab', 1));
+    ok(start.tag === 'INPUT' && inside(seen) && names(seen) === 'Save, Cancel, field, Cancel', `a dialog’s text field is part of the round (${names(seen)})`);
+    await page.keyboard.press('Escape'); await closed();
+    back = await at();
+    ok(back.act === 'save' && await page.locator('#history.open').count() === 1, `and Escape puts the keyboard back on “Save this version now” (${back.tag} ${back.act})`);
+    await page.keyboard.press('Escape');   // (closes Board history)
+
+    // Opened from the Widget Picker, which closes first: back to the ▦ button that opened the Picker.
+    await page.focus('.picker-btn.right'); await page.keyboard.press('Enter');
+    await page.focus('[data-ctl="export"]'); await page.keyboard.press('Enter'); await open();
+    seen = await press('Tab', 3);
+    ok(inside(seen) && names(seen) === 'Blank template, Cancel, Full backup', `Export’s three choices are a round too (${names(seen)})`);
+    await page.keyboard.press('Escape'); await closed();
+    back = await at();
+    ok(/picker-btn/.test(back.cls) && /right/.test(back.cls), `after a dialog opened from the Widget Picker, the keyboard is on the ▦ button it was opened with (${back.tag}.${back.cls})`);
+
+    // Working in a widget when a dialog comes up: the keyboard goes to the dialog, then back into the widget.
+    await timer.locator('button', { hasText: '1m' }).focus();
+    await drop('Other board.21board'); await open();
+    const took = await at();
+    await page.keyboard.press('Escape'); await closed();
+    back = await at();
+    const inWidget = await page.evaluate(() => document.querySelector('.win[data-ikey="timer:1"] iframe').contentDocument.hasFocus());
+    ok(took.modal && back.tag === 'IFRAME' && back.title === 'Timer' && inWidget, `a dialog takes the keyboard from a widget and gives it back to that widget (in the dialog: ${took.modal}; afterwards: ${back.tag} ${back.title})`);
+    const note = await page.locator('.win[data-ikey="notes:1"] iframe').boundingBox();
+    await page.mouse.click(note.x + note.width / 2, note.y + note.height / 2);
+    back = await at();
+    ok(back.tag === 'IFRAME' && back.title === 'Notes', `and a tap in another widget afterwards is still seen as that widget (${back.tag} ${back.title})`);
+    // Typing in a Settings field when a dialog comes up: the field isn't taken up again afterwards (a tablet would
+    // bring up its keyboard, and Settings leaves a field that is in use alone), so Settings shows what has changed.
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]');
+    await page.waitForSelector('#settings.open #set-board-name'); await page.focus('#set-board-name');
+    await drop('Other board.21board'); await open();
+    await page.locator('#modal.open .btn', { hasText: 'Replace my board' }).click();
+    await page.waitForSelector('.toast:has-text("Board imported.")');
+    back = await at();
+    const shownName = await page.locator('#set-board-name').inputValue();
+    ok(back.tag !== 'INPUT' && shownName === 'Other board', `the keyboard isn’t put back into a text field, so Settings shows the imported board’s name (${shownName})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
   }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });

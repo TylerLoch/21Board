@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.10-30';
-  const BOARD_BUILD = 'd1babbd2';
+  const BOARD_BUILD = '5ba0c942';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -51,14 +51,17 @@
   // Kiosk mode (?kiosk=yes): ChromeOS kiosk, for users who don't sign in. No Fullscreen (a kiosk is always full
   // screen), Google Drive folder, install prompt or backup reminders; a Quit control at the end of the Widget
   // Picker's controls. Import and Export use ChromeOS's Files dialog (the kiosk's own storage, USB drives).
-  // Everything else (windows, widgets, saving on the device, board history) works as usual.
+  // Everything else (windows, widgets, saving on the device, board history, backups when asked for) works as usual.
   const KIOSK = !LAB && /^(yes|true|1|on)$/i.test(new URLSearchParams(location.search).get('kiosk') || '');
   const DB_NAME = LAB ? '21Board-dev' : '21Board';
   const DB_STORE = 'records';
   const TITLE_H = 40;          // window title bar height (px)
   const GAP = 8;               // spacing used when windows snap next to each other
   const ALIGN_SNAP = 12;       // distance at which edges align to neighbours
-  const DRAG_THRESHOLD = 6;    // px of movement before a tap becomes a drag
+  const DRAG_THRESHOLD = 6;    // px of movement before a press on a resize handle becomes a drag
+  // The same where a tap means something (a window's name opens its menu, two taps on a title bar fill the
+  // board, a button inside a widget is pressed): a finger slides a few millimetres while tapping, a mouse doesn't.
+  const TAP_SLOP = { mouse: 6, pen: 10, touch: 16 };   // screen px
   const RESISTANCE = { gentle: 40, normal: 80, strong: 150 }; // px of push needed to overlap
   const TAB_ID = Math.random().toString(36).slice(2, 10);
   // Opened straight from disk (file://), every page has an opaque origin, so messages can't be origin-restricted.
@@ -2027,7 +2030,10 @@
       if (!it) return;
       it.x = e.clientX; it.y = e.clientY;
       if (!it.moved) {
-        if (Math.hypot(it.x - it.sx, it.y - it.sy) < DRAG_THRESHOLD) return;
+        // A press on a title bar (or on the window's name under the top handle) may be a tap that slid a little.
+        // Past that, the window is moved from where the press began, so it is under the pointer at once.
+        const slop = it.kind === 'title' || it.onLabel ? TAP_SLOP[it.type] || DRAG_THRESHOLD : DRAG_THRESHOLD;
+        if (Math.hypot(it.x - it.sx, it.y - it.sy) < slop) return;
         it.moved = true;
         document.body.classList.add('busy');
         // Mouse only: let the pointer pass over widget iframes. Touch and pen stay with their element anyway,
@@ -2126,7 +2132,6 @@
   // Widgets are same-origin, so the board listens inside each iframe; nothing
   // here is needed from the widget. Settings → Windows can switch it off.
   // =====================================================================
-  const CONTENT_SLOP = { mouse: 6, pen: 10, touch: 16 };   // screen px before a press inside a widget moves the window
   const TWO_FINGER_SPAN = 260;                              // farther apart than this = two people
 
   // Walk up through shadow roots too (widgets built from web components).
@@ -2244,7 +2249,7 @@
       if (two && two.ids.includes(id)) {
         const c = centroid();
         if (!two.started) {
-          if (Math.hypot(c.x - two.start.x, c.y - two.start.y) < CONTENT_SLOP.touch) return;
+          if (Math.hypot(c.x - two.start.x, c.y - two.start.y) < TAP_SLOP.touch) return;
           if (!Inter.beginAt(two.key, win, two.start.x, two.start.y, 'touch')) { two = null; return; }
           two.started = true;
           two.ids.forEach(i => cancelForApp(i, touches.get(i).target));
@@ -2258,7 +2263,7 @@
       if (s.started && !Inter.map.has(id)) { singles.delete(id); return; }   // ended on the board side
       const p = toBoard(e.clientX, e.clientY);
       if (!s.started) {
-        if (Math.hypot(p.x - s.x, p.y - s.y) < (CONTENT_SLOP[s.type] || CONTENT_SLOP.mouse)) return;
+        if (Math.hypot(p.x - s.x, p.y - s.y) < (TAP_SLOP[s.type] || TAP_SLOP.mouse)) return;
         if (!Inter.beginAt(id, win, s.x, s.y, s.type)) { singles.delete(id); return; }
         s.started = true;
         // Capture on the page itself, which the widget can't re-render away mid-drag.
@@ -2885,7 +2890,8 @@
         <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : `<h3>Storage &amp; offline</h3>
         <div class="row"><div class="lbl">Offline</div><div class="hint" id="st-offline" style="text-align:right">Checking…</div></div>
         <div class="row"><div><div class="lbl">Data protection</div><div class="hint" id="st-persist-hint"></div></div><div id="st-persist" style="flex:0 0 auto"></div></div>
-        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so the Google Drive folder isn’t available. Import and Export use this device’s storage or a USB drive.${note ? '' : ' The board is kept on this device, and board history keeps earlier versions.'}</div></div></div>` : `<div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>`}
+        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so the Google Drive folder isn’t available. Import and Export use this device’s storage or a USB drive.${note ? '' : ' The board is kept on this device, and board history keeps earlier versions.'}</div></div></div>` : ''}
+        <div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
         <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>`}
 
         <h3>Advanced</h3>
@@ -2944,10 +2950,10 @@
             (Install.prompt ? 'Installing 21Board as an app usually turns it on. ' : 'Installing 21Board as an app (Install in Chrome’s address bar, or Add to Home Screen/Dock in Safari) usually turns it on. ') +
             'Until then, keep backups.';
         }
-        // A kiosk can't install or export: say only what applies.
+        // A kiosk can't be installed, and whether its data is kept is set up by IT: say only what applies.
         if (KIOSK && st !== 'granted') {
           if (per2.querySelector('[data-act="install"]')) per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Not yet</span>';
-          hint.textContent = 'The browser decides whether to protect 21Board’s data. On a kiosk device, your school’s IT manages this.';
+          hint.textContent = 'The browser decides whether to protect 21Board’s data. On a kiosk device, your school’s IT manages this. To be safe, back up to a USB drive now and then.';
         }
       };
       if (quick && this._statusCache && sto) sto.textContent = this._statusCache.storage;
@@ -3069,8 +3075,8 @@
           const temp = Store.failed, saved = temp === 'unopened' ? ' Your saved board isn’t touched: reload 21Board to open it.' : '';
           const ok = await dialog(temp ? { title: 'Empty this board?', message: 'The windows, their content and the settings you see now are cleared.' + saved,
             actions: [{ label: 'Empty this board', value: 'erase', kind: 'danger' }, { label: 'Cancel', value: null }] }
-            : { title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + (KIOSK ? '' : ' Export a backup first if you might want them later.'),
-              actions: (KIOSK ? [] : [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }]).concat([{ label: 'Erase everything', value: 'erase', kind: 'danger' }])
+            : { title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + ' Export a backup first if you might want them later.',
+              actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }]
                 .concat(hist ? [{ label: 'Erase, including board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (ok === 'backup') { await doExport('full'); break; }
           if (ok !== 'erase' && ok !== 'erase-all') break;
@@ -4754,12 +4760,17 @@
   // 14. Dialogs and toasts
   // =====================================================================
   let dialogResolve = null;
+  let dialogHeld = false;   // a dialog has just closed, and the key that answered it may still be down (dialogKey)
   // input: {label, placeholder, maxlength}: also asks for a line of text; resolves {value, text} (or null).
   function dialog({ title, message, actions, input }) {
     closePopups({ keepSettings: true, keepHistory: true });
     if (dialogResolve) dialogResolve(null);
     const modal = $('#modal'), card = $('.modal-card', modal);
-    card.innerHTML = `<h3>${esc(title)}</h3>${message ? `<p>${esc(message)}</p>` : ''}` +
+    const back = document.activeElement;   // where the keyboard was: it goes back there afterwards (dialogBack)
+    // A screen reader says the title as the dialog's name, then reads the message.
+    modal.setAttribute('aria-labelledby', 'modal-title');
+    if (message) modal.setAttribute('aria-describedby', 'modal-text'); else modal.removeAttribute('aria-describedby');
+    card.innerHTML = `<h3 id="modal-title">${esc(title)}</h3>${message ? `<p id="modal-text">${esc(message)}</p>` : ''}` +
       (input ? `<label class="modal-input"><span>${esc(input.label || '')}</span><input type="text" class="text-input" maxlength="${+input.maxlength || 60}" placeholder="${esc(input.placeholder || '')}" autocomplete="off"></label>` : '') +
       `<div class="modal-actions">` +
       actions.map((a, i) => `<button class="btn ${a.kind || ''} ${a.choice ? 'choice' : ''}" data-i="${i}">${esc(a.label)}${a.sub ? `<small>${esc(a.sub)}</small>` : ''}</button>`).join('') + '</div>';
@@ -4769,11 +4780,40 @@
     if (first) first.focus();
     return new Promise(resolve => {
       const answer = v => (field ? (v == null ? null : { value: v, text: field.value.trim() }) : v);
-      dialogResolve = v => { dialogResolve = null; modal.classList.remove('open'); resolve(answer(v)); };
+      dialogResolve = v => { dialogResolve = null; dialogHeld = true; modal.classList.remove('open'); dialogBack(back); resolve(answer(v)); };
       card.onclick = e => { const b = e.target.closest('[data-i]'); if (b) dialogResolve(actions[+b.dataset.i].value); };
       modal.onclick = e => { if (e.target === modal) dialogResolve(null); };
-      if (field) field.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); dialogResolve(actions[0].value); } };
+      if (field) field.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); if (!e.repeat) dialogResolve(actions[0].value); } };
     });
+  }
+  // A key that is held down repeats. Enter held a moment too long would answer the dialog it has just opened;
+  // and now that the keyboard goes back to the button behind a dialog, the key that closed the dialog would
+  // press that button again (Cancel, held, would open the question again and then say yes to it). So a
+  // repeating Enter answers no dialog, and no repeating key does anything after a dialog until it is let go.
+  // Returns true if the key press is to be ignored.
+  function dialogKey(e) {
+    const ignore = e.repeat && (dialogHeld || (!!dialogResolve && e.key === 'Enter'));
+    if (ignore) e.preventDefault(); else dialogHeld = false;
+    return ignore;
+  }
+  // While a dialog is open, Tab and Shift+Tab go round its buttons (and its text field). Left to the browser,
+  // Tab walks on into the board behind the dialog, where Escape no longer closes it.
+  function dialogTab(e) {
+    const items = $$('input, button', $('#modal .modal-card'));
+    if (!items.length || e.ctrlKey || e.altKey || e.metaKey) return;
+    const i = items.indexOf(document.activeElement);   // (-1: the keyboard is somewhere else: bring it in)
+    e.preventDefault();
+    items[e.shiftKey ? (i > 0 ? i : items.length) - 1 : (i + 1) % items.length].focus();
+  }
+  // A dialog has closed: the keyboard goes back to where it was. A control in the Widget Picker isn't there any
+  // more (the Picker closed before the dialog opened): then to the ▦ button that opened the Picker. A widget
+  // gets it back through its own window: after focus() on its frame, Chrome goes on naming that widget as the
+  // one with the keyboard when another is tapped. Never to a text field: a tablet would bring up its on-screen
+  // keyboard, and Settings doesn't redraw while one of its fields is in use.
+  function dialogBack(el) {
+    if (el && el.closest('#panel') && !Picker.side) el = Picker.btns[Picker.el.classList.contains('right') ? 'right' : 'left'];
+    if (!el || el === document.body || !el.isConnected || el.matches('input[type="text"]')) return;
+    try { if (el.tagName === 'IFRAME') el.contentWindow.focus(); else el.focus({ preventScroll: true }); } catch (e) { /* stays where it is */ }
   }
 
   function toast(text, opts = {}) {
@@ -5062,7 +5102,9 @@
 
   // If the browser hasn't promised to keep the data, remind (at most every 3 days) to export a backup.
   function maybeRemindBackup() {
-    if (KIOSK) return; // a kiosk can't export
+    // Not in a kiosk: no one is signed in, so it would reach whoever is at the panel, in a lesson, about something
+    // only IT can settle; and a backup that leaves the device needs a USB drive in hand. (Settings has Back up now.)
+    if (KIOSK) return;
     if (document.visibilityState !== 'visible') return; // never use up the reminder in a background tab
     if (Persist.state === 'granted' || Store.failed || !S.data.size) return;
     let oldest = Infinity;
@@ -5234,6 +5276,8 @@
     window.addEventListener('blur', () => setTimeout(() => { if (document.activeElement && document.activeElement.tagName === 'IFRAME') { Picker.close(); Menu.close(); } }, 0));
 
     document.addEventListener('keydown', e => {
+      if (dialogKey(e)) return;
+      if (e.key === 'Tab' && dialogResolve) dialogTab(e);
       if (e.key !== 'Escape') return;
       if (dialogResolve) dialogResolve(null);
       else if (Menu.win) { const w = Menu.win; Menu.close(); w.labelEl.focus(); }

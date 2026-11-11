@@ -90,7 +90,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
-| **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. |
+| **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
@@ -266,11 +266,14 @@ app, where no one signs in:
   (`window.close()`, as 21Sketch does). On ChromeOS that ends the kiosk session: an auto-launched kiosk starts
   21Board again; one started from **Apps** on the sign-in screen goes back to the sign-in screen. If the page
   isn't allowed to close (it only can while it hasn't navigated), it says so.
-- Left out: the Google Drive folder (a kiosk has no Google account), the install prompt, backup reminders and
-  Developer mode. Settings says it's in kiosk mode.
+- Left out: the Google Drive folder (a kiosk has no Google account), the install prompt, Developer mode and
+  backup reminders (no one is signed in to act on one, and whether a kiosk keeps its data is set up by IT: step
+  3 below). Settings says it's in kiosk mode.
 - **Import and Export** stay: ChromeOS shows its Files dialog in kiosk sessions too, so files can be saved to and
   opened from the kiosk's own storage or a USB drive. Export uses only the Save dialog (a plain download would
-  land unseen in the kiosk's Downloads). **Not yet tried on a real kiosk device: test before relying on it.**
+  land unseen in the kiosk's Downloads). Settings keeps **Back up now**, and *Erase everything* offers *Export a
+  backup first*, as everywhere else. A backup on a USB drive is the only copy that isn't on the kiosk itself.
+  **Not yet tried on a real kiosk device: test before relying on it.**
 - Links in Notes show as plain text: a kiosk can't open new windows.
 - Everything else works as usual: widgets, saving on the device, board history and Undo. Widgets can check
   `Board21.context.kiosk`. Without the parameter (or with `?kiosk=no`), nothing changes.
