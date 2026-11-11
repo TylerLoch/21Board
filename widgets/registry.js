@@ -107,6 +107,18 @@ self.BOARD21_WIDGETS = [
     permissions: []
   },
   {
+    id: 'first-then-board',
+    name: 'First/Then Board',
+    description: 'A First/Then picture schedule: pick two cards and mark each one done.',
+    version: '1.0.0',
+    entry: 'widgets/first-then-board/index.html',
+    files: ['widgets/first-then-board/index.html'],
+    color: '#65a30d',
+    icon: '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="7.5" height="14" rx="1.8"/><rect x="14.5" y="5" width="7.5" height="14" rx="1.8"/><path d="M10.8 12h2.6"/><path d="M12 10.3l1.7 1.7-1.7 1.7"/><path d="M3.9 12.3l1.6 1.6 2.4-3"/></svg>',
+    window: { width: 540, height: 360, minWidth: 280, minHeight: 200, dragFromContent: false }, // a search box to type in
+    permissions: []
+  },
+  {
     id: 'dice',
     name: 'Dice',
     description: 'Roll one to six dice.',

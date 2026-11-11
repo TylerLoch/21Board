@@ -14,16 +14,16 @@
 const VERSION = '2026.11.11-31';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'b65681ab';
+const BUILD = '5a731a20';
 const FILES = {
-  './': '54d94248d5159f75',
-  'index.html': '54d94248d5159f75',
-  'board.js': '42e2db39f31f51af',
+  './': '272b5e8df6e21c70',
+  'index.html': '272b5e8df6e21c70',
+  'board.js': '9ae90f6c907bb72e',
   'sdk/board21.js': '3ec0b3970329642d',
   'sdk/board21-dev.js': '492a193221911878',
   'sdk/dev/board-shell.js': '8a22a3c30b485c6e',
   'sdk/lab.html': '21cda27716334794',
-  'widgets/registry.js': 'ac9e5cdaa2c4af7f',
+  'widgets/registry.js': '6fb4f3546cc597c3',
   'manifest.webmanifest': '3fddd4aac05d7279',
   'icons/icon.svg': '7b5cfc68d4259303',
   'icons/icon-192.png': 'cd8df22014016f08',
@@ -40,6 +40,7 @@ const FILES = {
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
   'widgets/name-picker/index.html': '87f7e6f273c95a4e',
+  'widgets/first-then-board/index.html': '2b6556486bf889bd',
   'widgets/dice/index.html': '868bf3c637359718',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
   'widgets/sdk-playground/index.html': '9d5615e8b0f6f313'

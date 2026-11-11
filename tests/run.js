@@ -1999,6 +1999,101 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['First/Then Board: cards, done marks, two tabs, a crafted file', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    // Counts the chimes each copy plays (each chime makes one AudioContext).
+    await ctx.addInitScript(() => { const A = window.AudioContext; if (A) window.AudioContext = class extends A { constructor(...a) { super(...a); window.__chimes = (window.__chimes || 0) + 1; } }; });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    const KEY = 'first-then-board:1';
+    const ft = (p, k = KEY) => p.frameLocator(`.win[data-ikey="${k}"] iframe`);
+    const connected = (p, k = KEY) => eventually(() => p.evaluate(k => { const w = window.__board21.state.wins.get(k); return !!(w && w.connected); }, k));
+    const saved = p => p.evaluate(k => window.__board21.state.data.get(k) || null, KEY);
+    const look = (p, k) => ft(p, k).locator('html').evaluate(() => {
+      const $ = id => document.getElementById(id);
+      return { first: $('first-label').textContent, then: $('then-label').textContent, badge: $('first-badge').textContent, firstDone: $('first-done-overlay').classList.contains('visible'),
+        thenDone: $('then-done-overlay').classList.contains('visible'), theme: document.body.className, chimes: window.__chimes || 0 };
+    });
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    await page.evaluate(() => window.__board21.openWidget('first-then-board'));
+    ok(await connected(page), 'the First/Then Board opens and connects');
+    ok(await eventually(async () => { const x = await look(page); return x.first === 'Classwork' && x.then === 'Free Choice' && x.theme === 'theme-classic' && !x.firstDone; }), 'it starts with Classwork, then Free Choice');
+    let a;
+    // Pick a card, mark it done, change the theme.
+    const f = ft(page);
+    await f.locator('#btn-first').click({ force: true });   // (the cards bob gently, so they are never "still")
+    await f.locator('#search-input').fill('math');
+    await f.locator('.aac-tile-btn', { hasText: 'Math' }).click();
+    await f.locator('#btn-done-icon').click(); await f.locator('#btn-toggle-first').click();
+    await f.locator('#btn-theme-icon').click(); await f.locator('.theme-pill[data-theme="winter"]').click();
+    ok(await eventually(async () => { const s = await saved(page); return s && s.first.id === 'math' && s.firstDone === true && s.thenDone === false && s.theme === 'winter'; }), 'the chosen card, its done mark and the theme are saved');
+    a = await look(page);
+    ok(a.first === 'Math' && a.firstDone && a.theme === 'theme-winter' && a.chimes === 1, `and shown: Math, done, Winter, one chime (${a.chimes})`);
+    // A second tab shows the same board; a change there comes back here, and the chime plays only where it was tapped.
+    const page2 = await ctx.newPage(); page2.on('pageerror', e => errors.push(e.message));
+    await page2.goto(BASE); await boardUp(page2);
+    ok(await connected(page2), 'the board opens in a second tab');
+    ok(await eventually(async () => { const b = await look(page2); return b.first === 'Math' && b.firstDone && b.theme === 'theme-winter'; }), 'the second tab shows the same cards, done mark and theme');
+    await ft(page2).locator('#btn-done-icon').click(); await ft(page2).locator('#btn-toggle-then').click();
+    ok(await eventually(async () => (await look(page)).thenDone), 'marking Then done in one tab shows it done in the other');
+    const s1 = JSON.stringify(await saved(page)); await page.waitForTimeout(1200);
+    const s2 = JSON.stringify(await saved(page)), s3 = JSON.stringify(await saved(page2));
+    ok(s1 === s2 && s2 === s3 && JSON.parse(s2).thenDone === true, 'the two tabs agree and stay that way (no saving back and forth)');
+    a = await look(page); const b2 = await look(page2);
+    ok(a.chimes === 1 && b2.chimes === 1, `the chime plays once, in the tab where it was tapped (this tab ${a.chimes}, other tab ${b2.chimes})`);
+    await page2.close();
+    // Loaded again, and closed and opened again: still the same.
+    await page.reload(); await boardUp(page);
+    ok(await connected(page), 'after the page is loaded again the widget connects');
+    ok(await eventually(async () => { const x = await look(page); return x.first === 'Math' && x.firstDone && x.thenDone && x.theme === 'theme-winter'; }), 'and shows the saved board (Math, both done, Winter)');
+    await page.evaluate(k => window.__board21.closeWin(k), KEY); await page.waitForTimeout(500);
+    await page.evaluate(() => window.__board21.openWidget('first-then-board'));
+    ok(await connected(page) && await eventually(async () => { const x = await look(page); return x.first === 'Math' && x.thenDone && x.theme === 'theme-winter'; }), 'closing the window and opening it again keeps the board');
+    // The window menu: within the board's limit, and Swap works.
+    await page.click(`.win[data-ikey="${KEY}"] .win-label`); await page.waitForTimeout(200);
+    const items = await page.locator('#menu [data-id]').count();
+    ok(items > 0 && items <= 24, `the window menu has ${items} of the widget's items (24 at most)`);
+    await page.click('#menu [data-id="swap"]');
+    ok(await eventually(async () => { const x = await look(page); const s = await saved(page); return x.first === 'Free Choice' && x.then === 'Math' && s.first.id === 'free-play'; }), 'Swap First & Then swaps the cards and saves');
+    // The smallest window: the buttons and both cards fit.
+    await page.evaluate(k => window.__board21.setRect(k, { x: 40, y: 40, w: 100, h: 100 }), KEY);
+    ok(await eventually(() => ft(page).locator('html').evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect(); return innerWidth <= 300 && innerHeight <= 220 && r('btn-swap').right <= innerWidth && r('btn-then').right <= innerWidth && r('btn-then').bottom <= innerHeight; })), 'in the smallest window the buttons and both cards fit');
+
+    // A file made on purpose: markup and javascript: addresses in every saved field. Nothing runs, no element is
+    // made, and damaged values fall back to the usual board.
+    const evil = '"><img src=x onerror="top.document.title=\'PWNED\'"><svg onload="top.document.title=\'PWNED\'">';
+    const js = 'javascript:top.document.title=\'PWNED\'';
+    const win = (instance, data) => ({ widgetId: 'first-then-board', instance, open: true, z: instance, rect: { x: 20 + (instance - 1) * 300, y: 20, w: 290, h: 300 }, data, config: { theme: evil, sound: js } });
+    const crafted = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Schedules' }, instances: [
+      win(1, { first: { id: evil, label: evil, icon: evil, category: evil }, then: { id: js, label: js, icon: js, category: '__proto__' }, firstDone: evil, thenDone: js, isDone: true,
+        sound: evil, theme: evil, motion: evil, themeTrayOpen: evil, doneTrayOpen: js }),
+      win(2, { first: evil, then: [evil], firstDone: 1, theme: 'constructor', sound: js }),
+      win(3, { first: { id: 'math', label: evil, icon: evil, category: 'toString' }, then: { id: 'snack', label: js, icon: js, category: js }, theme: 'calm', firstDone: true })
+    ] };
+    fs.writeFileSync(OUT + 'crafted-first-then.21board', JSON.stringify(crafted));
+    await page.setInputFiles('#import-input', OUT + 'crafted-first-then.21board'); await page.waitForTimeout(300);
+    await page.click('#modal .btn[data-i="0"]');   // Replace my board
+    const keys = [1, 2, 3].map(i => 'first-then-board:' + i);
+    ok(await eventually(async () => (await Promise.all(keys.map(k => connected(page, k)))).every(Boolean)), 'a crafted file opens: all its windows start');
+    await page.waitForTimeout(500);
+    const made = () => Promise.all(keys.map(k => ft(page, k).locator('html').evaluate(() => document.querySelectorAll('img, svg, iframe, object, embed, a, [onerror], [onload]').length)));
+    let marks = await made();
+    ok(await page.title() !== 'PWNED' && marks.every(n => n === 0), `nothing in the file runs as script or becomes markup (page title: ${await page.title()}; elements made: ${marks.join(',')})`);
+    const shown = await Promise.all(keys.map(k => look(page, k)));
+    ok(shown.slice(0, 2).every(x => x.first === 'Classwork' && x.then === 'Free Choice' && x.badge === 'Academic' && x.theme === 'theme-classic' && !x.firstDone && !x.thenDone),
+      `damaged cards, done marks and themes fall back to the usual board (${shown.slice(0, 2).map(x => [x.first, x.then, x.theme, x.firstDone].join('/')).join('; ')})`);
+    ok(shown[2].first === 'Math' && shown[2].then === 'Snack Time' && shown[2].theme === 'theme-calm' && shown[2].firstDone, `a card is drawn from the card library, not from the file's text (${shown[2].first}, ${shown[2].then})`);
+    // The same through a change from another tab (the 'data' event).
+    await page.evaluate(([k, d]) => window.__board21.state.wins.get(k).post('data', { data: d, reason: 'remote' }), [keys[2], crafted.instances[0].data]);
+    ok(await eventually(async () => { const x = await look(page, keys[2]); return x.first === 'Classwork' && x.theme === 'theme-classic'; }), 'a damaged change from another tab falls back to the usual board too');
+    // The card picker draws its cards as text.
+    await ft(page, keys[0]).locator('#btn-first').click({ force: true });
+    ok(await ft(page, keys[0]).locator('html').evaluate(() => { const t = [...document.querySelectorAll('.aac-tile-btn')]; return t.length > 50 && t.every(b => b.children.length === 2 && [...b.children].every(c => c.tagName === 'SPAN')); }), 'the card picker shows its cards (icon and label as text)');
+    marks = await made();
+    ok(await page.title() !== 'PWNED' && marks.every(n => n === 0), 'still nothing made after the change and with the picker open');
+    ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+    await ctx.close();
+  }],
   ['Google Drive folder (sharing a board with the smartboard)', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const noteText = p => note(p).locator('#t').inputValue();

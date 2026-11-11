@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script src="../../sdk/board21.js"></script>
+  <script type="application/json" id="board21-widget">{"id":"first-then-board","name":"First/Then Board","version":"1.0.0","window":{"width":540,"height":360,"minWidth":280,"minHeight":200,"dragFromContent":false}}</script>
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: system-ui, -apple-system, "Comic Sans MS", "Chalkboard SE", "Comic Neue", cursive, sans-serif;
+      background: var(--b21-bg, #f0f7ff);
+      color: var(--b21-text, #0f172a);
+      transition: background 0.3s ease, color 0.3s ease;
+      touch-action: manipulation;
+    }
+    /* (iPad Safari won't type into a box that can't be selected) */
+    input {
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    /* Seasonal & Playful Kid Themes */
+    body.theme-classic {
+      background: radial-gradient(circle at 50% 20%, #e0f2fe 0%, #dbeafe 50%, #eff6ff 100%);
+      --strip-border: #3b82f6;
+      --strip-bg: rgba(255, 255, 255, 0.7);
+      --first-head-bg: #2563eb;
+      --then-head-bg: #10b981;
+    }
+    body.theme-autumn {
+      background: radial-gradient(circle at 50% 20%, #ffedd5 0%, #fed7aa 50%, #fff7ed 100%);
+      --strip-border: #f97316;
+      --strip-bg: rgba(255, 255, 255, 0.75);
+      --first-head-bg: #ea580c;
+      --then-head-bg: #d97706;
+    }
+    body.theme-winter {
+      background: radial-gradient(circle at 50% 20%, #e0f2fe 0%, #bae6fd 50%, #f0f9ff 100%);
+      --strip-border: #0ea5e9;
+      --strip-bg: rgba(255, 255, 255, 0.8);
+      --first-head-bg: #0284c7;
+      --then-head-bg: #0d9488;
+    }
+    body.theme-spring {
+      background: radial-gradient(circle at 50% 20%, #fce7f3 0%, #dcfce7 60%, #f0fdf4 100%);
+      --strip-border: #ec4899;
+      --strip-bg: rgba(255, 255, 255, 0.75);
+      --first-head-bg: #db2777;
+      --then-head-bg: #16a34a;
+    }
+    body.theme-summer {
+      background: radial-gradient(circle at 50% 20%, #fef08a 0%, #fed7aa 60%, #fffbeb 100%);
+      --strip-border: #f59e0b;
+      --strip-bg: rgba(255, 255, 255, 0.75);
+      --first-head-bg: #ea580c;
+      --then-head-bg: #0284c7;
+    }
+    body.theme-calm {
+      background: radial-gradient(circle at 50% 20%, #f3e8ff 0%, #e9d5ff 50%, #faf5ff 100%);
+      --strip-border: #a855f7;
+      --strip-bg: rgba(255, 255, 255, 0.8);
+      --first-head-bg: #7c3aed;
+      --then-head-bg: #6366f1;
+    }
+    /* The same themes when the board is dark: deep colors behind dark cards */
+    [data-b21-theme="dark"] body[class] { --strip-bg: rgba(38, 38, 38, 0.75); }
+    [data-b21-theme="dark"] body.theme-classic { background: radial-gradient(circle at 50% 20%, #1e3a5f 0%, #172033 55%, #1e1e1e 100%); }
+    [data-b21-theme="dark"] body.theme-autumn { background: radial-gradient(circle at 50% 20%, #4a2a12 0%, #2f1f14 55%, #1e1e1e 100%); }
+    [data-b21-theme="dark"] body.theme-winter { background: radial-gradient(circle at 50% 20%, #0c3a52 0%, #132a36 55%, #1e1e1e 100%); }
+    [data-b21-theme="dark"] body.theme-spring { background: radial-gradient(circle at 50% 20%, #4a1d3a 0%, #1d3326 60%, #1e1e1e 100%); }
+    [data-b21-theme="dark"] body.theme-summer { background: radial-gradient(circle at 50% 20%, #4a3d0d 0%, #3d2a12 60%, #1e1e1e 100%); }
+    [data-b21-theme="dark"] body.theme-calm { background: radial-gradient(circle at 50% 20%, #3b2160 0%, #2a1f3d 55%, #1e1e1e 100%); }
+
+    .schedule-board {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+      padding: 1.2vmin;
+      gap: 1vmin;
+      position: relative;
+    }
+
+    /* Compact Top Navigation with Small Icon Controls */
+    .top-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 48px;
+      padding: 0 4px;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 30;
+    }
+    .board-title-pill {
+      font-size: clamp(13px, 2.4vmin, 16px);
+      font-weight: 900;
+      letter-spacing: 0.05em;
+      color: var(--b21-text, #1e293b);
+      background: var(--b21-surface, rgba(255, 255, 255, 0.85));
+      border: 2px solid var(--b21-border, #cbd5e1);
+      padding: 6px 14px;
+      border-radius: 20px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* Small 48px Icon Buttons */
+    .icon-menu-wrap {
+      position: relative;
+    }
+    .mini-icon-btn {
+      width: 48px;
+      height: 48px;
+      min-width: 48px;
+      min-height: 48px;
+      border-radius: 50%;
+      background: var(--b21-surface, #ffffff);
+      border: 2px solid var(--b21-border, #cbd5e1);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      cursor: pointer;
+      color: var(--b21-text, #1e293b);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+      position: relative;
+      outline: none;
+      transition: transform 0.12s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+    .mini-icon-btn:hover {
+      transform: translateY(-2px) scale(1.05);
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.14);
+      border-color: var(--b21-accent, #2563eb);
+    }
+    .mini-icon-btn:active {
+      transform: translateY(1px) scale(0.97);
+    }
+    .mini-icon-btn:focus-visible {
+      outline: 3px solid var(--b21-accent, #2563eb);
+      outline-offset: 2px;
+    }
+    .mini-icon-btn.is-active {
+      border-color: var(--b21-accent, #2563eb);
+      background: var(--b21-accent-soft, #eff6ff);
+    }
+    .status-badge-dot {
+      position: absolute;
+      top: -2px;
+      right: -2px;
+      font-size: 14px;
+      line-height: 1;
+      filter: drop-shadow(0 1px 2px rgba(0,0,0,0.25));
+    }
+
+    /* Floating Popovers for Themes and Done Controls */
+    .popover-menu {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: var(--b21-surface, #ffffff);
+      border: 2px solid var(--b21-border, #cbd5e1);
+      border-radius: 18px;
+      padding: 10px;
+      box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+      z-index: 50;
+      display: none;
+      animation: popIn 0.18s ease-out;
+      max-height: calc(100vh - 64px);  /* scrolls in a short window instead of being cut off */
+      overflow-y: auto;
+    }
+    .popover-menu.open {
+      display: flex;
+    }
+    #theme-popover {
+      flex-direction: column;
+      gap: 6px;
+      min-width: 175px;
+    }
+    #done-popover {
+      flex-direction: column;
+      gap: 8px;
+      min-width: 190px;
+    }
+
+    /* Seasonal Pills in Popover */
+    .theme-pill-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .theme-pill {
+      min-height: 48px;
+      padding: 0 14px;
+      border-radius: 24px;
+      border: 2px solid transparent;
+      background: var(--b21-bg, #f1f5f9);
+      font-size: clamp(12px, 1.9vmin, 14px);
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--b21-text, #1e293b);
+      box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+      transition: transform 0.12s ease, background 0.15s ease;
+      width: 100%;
+    }
+    .theme-pill:hover {
+      transform: translateX(3px);
+    }
+    .theme-pill.active {
+      background: var(--b21-accent, #2563eb);
+      color: var(--b21-on-accent, #ffffff);
+      border-color: var(--b21-accent, #2563eb);
+      box-shadow: 0 4px 10px rgba(37, 99, 235, 0.35);
+    }
+
+    /* Playful Felt Schedule Board */
+    .board-strip {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
+      gap: 1.6vmin;
+      min-height: 0;
+      align-items: stretch;
+      background: var(--strip-bg, rgba(255, 255, 255, 0.8));
+      border: 3px dashed var(--strip-border, #3b82f6);
+      border-radius: 20px;
+      padding: 1.5vmin;
+      position: relative;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+      transition: background 0.3s ease, border-color 0.3s ease;
+    }
+
+    /* Column Panels */
+    .panel-column {
+      display: flex;
+      flex-direction: column;
+      gap: 1vmin;
+      min-height: 0;
+      position: relative;
+    }
+    .panel-heading {
+      padding: 0.9vmin 1.4vmin;
+      font-weight: 900;
+      font-size: clamp(15px, 3.6vmin, 24px);
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-align: center;
+      border-radius: 14px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.8vmin;
+      flex-shrink: 0;
+      transition: background 0.3s ease;
+    }
+    .first-heading {
+      background: var(--first-head-bg, #2563eb);
+      color: #ffffff;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.25);
+    }
+    .then-heading {
+      background: var(--then-head-bg, #10b981);
+      color: #ffffff;
+      text-shadow: 0 2px 4px rgba(0,0,0,0.25);
+    }
+
+    /* Playful Center Transition Arrow */
+    .arrow-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 0 0.2vmin;
+      gap: 0.5vmin;
+    }
+    .arrow-sparkle {
+      font-size: clamp(14px, 3vmin, 24px);
+      animation: gentlePulse 2s infinite ease-in-out;
+    }
+    .arrow-symbol {
+      font-size: clamp(28px, 7vmin, 54px);
+      font-weight: 900;
+      color: var(--b21-accent, #2563eb);
+      line-height: 1;
+      filter: drop-shadow(0 3px 6px rgba(0,0,0,0.15));
+      animation: arrowBounce 1.8s infinite ease-in-out;
+    }
+    @keyframes arrowBounce {
+      0%, 100% { transform: translateX(0); }
+      50% { transform: translateX(4px); }
+    }
+    @keyframes gentlePulse {
+      0%, 100% { transform: scale(0.9); opacity: 0.7; }
+      50% { transform: scale(1.15); opacity: 1; }
+    }
+
+    /* Kid-Friendly Tactile Card */
+    .pecs-card {
+      flex: 1;
+      background: var(--b21-surface, #ffffff);
+      border: 5px solid var(--pecs-border, #3b82f6);
+      border-radius: 18px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.4vmin;
+      cursor: pointer;
+      position: relative;
+      box-shadow: 0 8px 0 rgba(0, 0, 0, 0.08), 0 16px 24px rgba(0, 0, 0, 0.1);
+      outline: none;
+      min-height: 48px;
+      transition: transform 0.12s ease, box-shadow 0.12s ease;
+    }
+    .pecs-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 0 rgba(0, 0, 0, 0.09), 0 20px 30px rgba(0, 0, 0, 0.14);
+    }
+    .pecs-card:focus-visible {
+      outline: 4px solid var(--b21-accent, #2563eb);
+      outline-offset: 3px;
+    }
+
+    .pecs-category-badge {
+      font-size: clamp(10px, 1.8vmin, 13px);
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      padding: 4px 12px;
+      border-radius: 14px;
+      background: var(--pecs-badge-bg, #eff6ff);
+      color: var(--pecs-border, #1e40af);
+      margin-top: 4px;
+      margin-bottom: 0.5vmin;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+    }
+    .pecs-icon-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 0;
+    }
+    .pecs-icon {
+      font-size: clamp(32px, 19vmin, 128px);  /* (smaller in a small window, so it fits between the badge and the label) */
+      line-height: 1;
+      filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.18));
+      display: inline-block;
+      transform-origin: center center;
+      animation: gentleFloat 3.2s ease-in-out infinite;
+      will-change: transform;
+    }
+    .pecs-card:hover .pecs-icon {
+      animation: playfulWiggle 0.5s ease-in-out infinite;
+    }
+    @keyframes gentleFloat {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-7px) scale(1.06); }
+    }
+    @keyframes playfulWiggle {
+      0%, 100% { transform: rotate(0deg) scale(1.08); }
+      25% { transform: rotate(-6deg) scale(1.12); }
+      75% { transform: rotate(6deg) scale(1.12); }
+    }
+    body.no-motion .pecs-icon,
+    body.no-motion .arrow-symbol,
+    body.no-motion .arrow-sparkle {
+      animation: none !important;
+    }
+    .pecs-label {
+      font-size: clamp(15px, 3.4vmin, 26px);
+      font-weight: 900;
+      text-align: center;
+      color: var(--b21-text, #0f172a);
+      line-height: 1.15;
+      margin-top: 0.5vmin;
+      word-break: break-word;
+      padding: 0 0.5vmin;
+    }
+    .pecs-tap-hint {
+      font-size: clamp(10px, 1.6vmin, 12px);
+      font-weight: 800;
+      color: var(--b21-muted, #64748b);
+      margin-top: 0.4vmin;
+      background: rgba(0, 0, 0, 0.04);
+      padding: 2px 8px;
+      border-radius: 8px;
+    }
+
+    /* "All Done" Celebration Stamp */
+    .done-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(16, 185, 129, 0.94);
+      border-radius: 13px;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #ffffff;
+      z-index: 5;
+      backdrop-filter: blur(2px);
+      cursor: pointer;
+    }
+    #then-done-overlay {
+      background: rgba(13, 148, 136, 0.94);
+    }
+    .done-overlay.visible {
+      display: flex;
+      animation: popIn 0.28s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+    @keyframes popIn {
+      0% { transform: scale(0.7) rotate(-4deg); opacity: 0; }
+      100% { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+    .done-stamp-icon {
+      font-size: clamp(28px, 12vmin, 80px);
+      line-height: 1;
+      margin-bottom: 0.4vmin;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.25));
+    }
+    .done-stamp-text {
+      font-size: clamp(18px, 4vmin, 30px);
+      font-weight: 900;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      text-shadow: 0 2px 6px rgba(0,0,0,0.3);
+    }
+    .done-tap-hint {
+      font-size: clamp(10px, 1.6vmin, 12px);
+      opacity: 0.9;
+      margin-top: 6px;
+      font-weight: 800;
+      background: rgba(0, 0, 0, 0.18);
+      padding: 3px 10px;
+      border-radius: 12px;
+    }
+
+    /* Pulse effect when First is done and waiting for Then */
+    .then-card.ready-pulse {
+      animation: thenPulse 1.6s infinite ease-in-out;
+      border-color: #10b981 !important;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.5), 0 8px 0 rgba(0,0,0,0.08);
+    }
+    @keyframes thenPulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.03); }
+    }
+
+    /* Popover Action Buttons */
+    .action-btn {
+      min-height: 48px;
+      padding: 0 14px;
+      border-radius: 14px;
+      font-size: clamp(12px, 2vmin, 15px);
+      font-weight: 900;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      border: 2px solid transparent;
+      outline: none;
+      transition: background 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
+      white-space: nowrap;
+      box-shadow: 0 3px 6px rgba(0,0,0,0.08);
+      width: 100%;
+    }
+    .action-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.12);
+    }
+    .action-btn:active {
+      transform: translateY(1px);
+    }
+    .action-btn:focus-visible {
+      outline: 3px solid var(--b21-accent, #2563eb);
+    }
+    .btn-done-toggle {
+      background: var(--b21-surface, #ffffff);
+      color: var(--b21-text, #1e293b);
+      border-color: var(--b21-border, #cbd5e1);
+    }
+    .btn-done-toggle.is-done {
+      background: #10b981;
+      color: #ffffff;
+      border-color: #059669;
+      box-shadow: 0 4px 10px rgba(16, 185, 129, 0.35);
+    }
+    #btn-toggle-then.is-done {
+      background: #0d9488;
+      border-color: #0f766e;
+      box-shadow: 0 4px 10px rgba(13, 148, 136, 0.35);
+    }
+    .btn-both-done {
+      background: #8b5cf6;
+      color: #ffffff;
+      border-color: #7c3aed;
+      box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3);
+    }
+    .btn-both-done.all-done {
+      background: #f59e0b;
+      border-color: #d97706;
+      box-shadow: 0 4px 10px rgba(245, 158, 11, 0.35);
+    }
+
+    /* AAC Picker Modal Drawer */
+    .modal-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(3px);
+      display: none;
+      flex-direction: column;
+      z-index: 99;
+      padding: 1.5vmin;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+    .picker-box {
+      background: var(--b21-surface, #ffffff);
+      border-radius: 18px;
+      border: 3px solid var(--b21-border, #cbd5e1);
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      width: 100%;
+      overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+    }
+    .picker-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1.2vmin 1.8vmin;
+      border-bottom: 2px solid var(--b21-border, #e2e8f0);
+      background: var(--b21-bg, #f8fafc);
+      gap: 1vmin;
+      flex-shrink: 0;
+    }
+    .picker-title {
+      font-size: clamp(15px, 2.8vmin, 20px);
+      font-weight: 900;
+      margin: 0;
+      white-space: nowrap;
+    }
+    .picker-search-wrap {
+      flex: 1;
+      max-width: 260px;
+      display: flex;
+      align-items: center;
+      background: var(--b21-surface, #ffffff);
+      border: 2px solid var(--b21-border, #cbd5e1);
+      border-radius: 20px;
+      padding: 2px 10px;
+      min-height: 40px;
+    }
+    .picker-search-input {
+      border: none;
+      outline: none;
+      background: transparent;
+      width: 100%;
+      font-size: clamp(12px, 1.8vmin, 14px);
+      color: var(--b21-text, #0f172a);
+      font-family: inherit;
+    }
+    .close-btn {
+      min-width: 48px;
+      min-height: 48px;
+      background: var(--b21-surface, #ffffff);
+      border: 2px solid var(--b21-border, #cbd5e1);
+      font-size: 20px;
+      font-weight: 900;
+      cursor: pointer;
+      color: var(--b21-muted, #475569);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      outline: none;
+    }
+    .close-btn:hover {
+      background: var(--b21-surface-2, #f1f5f9);
+      color: var(--b21-text, #0f172a);
+    }
+
+    /* Category Filter Tabs */
+    .filter-tabs {
+      display: flex;
+      gap: 0.8vmin;
+      padding: 1vmin 1.6vmin;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--b21-border, #e2e8f0);
+      scrollbar-width: none;
+      flex-shrink: 0;
+      background: var(--b21-bg, #f8fafc);
+    }
+    .filter-tabs::-webkit-scrollbar {
+      display: none;
+    }
+    .filter-tab-btn {
+      min-height: 48px;
+      padding: 0 14px;
+      border-radius: 24px;
+      background: var(--b21-surface, #ffffff);
+      border: 2px solid var(--b21-border, #cbd5e1);
+      color: var(--b21-text, #334155);
+      font-size: clamp(12px, 1.8vmin, 14px);
+      font-weight: 800;
+      cursor: pointer;
+      white-space: nowrap;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .filter-tab-btn.active {
+      background: var(--b21-accent, #2563eb);
+      color: var(--b21-on-accent, #ffffff);
+      border-color: var(--b21-accent, #2563eb);
+    }
+
+    /* Grid of AAC PECS Options */
+    .aac-grid {
+      flex: 1;
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+      gap: 1.2vmin;
+      padding: 1.6vmin;
+      overflow-y: auto;
+    }
+    .aac-tile-btn {
+      min-height: 96px;
+      background: var(--b21-surface, #ffffff);
+      border: 3px solid var(--tile-border, #cbd5e1);
+      border-radius: 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 6px 4px;
+      cursor: pointer;
+      outline: none;
+      position: relative;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06);
+      transition: transform 0.1s ease, box-shadow 0.1s ease;
+    }
+    .aac-tile-btn:hover,
+    .aac-tile-btn:focus-visible {
+      transform: translateY(-2px) scale(1.03);
+      box-shadow: 0 8px 16px rgba(0, 0, 0, 0.12);
+      border-color: var(--b21-accent, #2563eb);
+    }
+    .aac-tile-icon {
+      font-size: clamp(34px, 6.5vmin, 50px);
+      line-height: 1;
+      margin-bottom: 4px;
+      transition: transform 0.18s ease;
+    }
+    .aac-tile-btn:hover .aac-tile-icon {
+      transform: scale(1.2);
+    }
+    .aac-tile-label {
+      font-size: clamp(10px, 1.7vmin, 12px);
+      font-weight: 800;
+      text-align: center;
+      color: var(--b21-text, #1e293b);
+      line-height: 1.15;
+    }
+  </style>
+</head>
+<body>
+  <div class="schedule-board">
+    <!-- COMPACT TOP NAVIGATION WITH SMALL ICON BUTTONS -->
+    <div class="top-nav">
+      <div class="board-title-pill">
+        <span>⭐ FIRST ➔ THEN</span>
+      </div>
+      <div class="nav-actions">
+        <!-- THEME ICON & POPOVER -->
+        <div class="icon-menu-wrap">
+          <button type="button" class="mini-icon-btn" id="btn-theme-icon" aria-label="Theme menu" title="Theme and Colors">
+            <span id="theme-season-icon">🍂</span>
+          </button>
+          <div class="popover-menu" id="theme-popover">
+            <div class="theme-pill-group">
+              <button type="button" class="theme-pill" data-theme="classic" title="Classic Blue & Green">🌈 Classic</button>
+              <button type="button" class="theme-pill" data-theme="autumn" title="Autumn Warmth">🍂 Autumn</button>
+              <button type="button" class="theme-pill" data-theme="winter" title="Winter Snow">❄️ Winter</button>
+              <button type="button" class="theme-pill" data-theme="spring" title="Spring Bloom">🌸 Spring</button>
+              <button type="button" class="theme-pill" data-theme="summer" title="Summer Sunshine">☀️ Summer</button>
+              <button type="button" class="theme-pill" data-theme="calm" title="Calm Lavender Low-Stim">💜 Calm</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- DONE CONTROLS ICON & POPOVER -->
+        <div class="icon-menu-wrap">
+          <button type="button" class="mini-icon-btn" id="btn-done-icon" aria-label="Done controls menu" title="Task Done Controls">
+            <span>⭐</span>
+            <span class="status-badge-dot" id="done-status-badge"></span>
+          </button>
+          <div class="popover-menu" id="done-popover">
+            <button type="button" class="action-btn btn-done-toggle" id="btn-toggle-first" title="Mark First Task as Done">
+              <span id="first-done-icon">✔️</span>
+              <span id="first-done-text">First Done</span>
+            </button>
+            <button type="button" class="action-btn btn-done-toggle" id="btn-toggle-then" title="Mark Then Task as Done">
+              <span id="then-done-icon">🌟</span>
+              <span id="then-done-text">Then Done</span>
+            </button>
+            <button type="button" class="action-btn btn-both-done" id="btn-toggle-both" title="Mark both tasks as complete">
+              <span id="both-done-icon">🎉</span>
+              <span id="both-done-text">Both Done</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- SWAP ICON BUTTON -->
+        <button type="button" class="mini-icon-btn" id="btn-swap" aria-label="Swap Cards" title="Swap First and Then">
+          <span>⇄</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Visual schedule area with simulated felt board -->
+    <div class="board-strip">
+      <!-- FIRST COLUMN (NO NUMBER) -->
+      <div class="panel-column">
+        <div class="panel-heading first-heading" id="first-heading">FIRST</div>
+        <button type="button" class="pecs-card first-card" id="btn-first" aria-label="First task card">
+          <div class="pecs-category-badge" id="first-badge">Academic</div>
+          <div class="pecs-icon-wrap">
+            <span class="pecs-icon" id="first-icon">📝</span>
+          </div>
+          <div class="pecs-label" id="first-label">Classwork</div>
+
+          <!-- First Checkmark Stamp Overlay -->
+          <div class="done-overlay" id="first-done-overlay" aria-label="First task marked done">
+            <span class="done-stamp-icon">✔️</span>
+            <span class="done-stamp-text">ALL DONE!</span>
+            <span class="done-tap-hint">Tap to undo</span>
+          </div>
+        </button>
+      </div>
+
+      <!-- CENTER TRANSITION ARROW WITH SPARKLES -->
+      <div class="arrow-container" aria-hidden="true">
+        <span class="arrow-sparkle">✨</span>
+        <span class="arrow-symbol">➔</span>
+        <span class="arrow-sparkle">⭐</span>
+      </div>
+
+      <!-- THEN COLUMN (NO NUMBER) -->
+      <div class="panel-column">
+        <div class="panel-heading then-heading" id="then-heading">THEN</div>
+        <button type="button" class="pecs-card then-card" id="btn-then" aria-label="Then reward card">
+          <div class="pecs-category-badge" id="then-badge">Reward</div>
+          <div class="pecs-icon-wrap">
+            <span class="pecs-icon" id="then-icon">🧩</span>
+          </div>
+          <div class="pecs-label" id="then-label">Free Choice</div>
+
+          <!-- Then Checkmark Stamp Overlay -->
+          <div class="done-overlay" id="then-done-overlay" aria-label="Then task marked done">
+            <span class="done-stamp-icon">🌟</span>
+            <span class="done-stamp-text">ALL DONE!</span>
+            <span class="done-tap-hint">Tap to undo</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- AAC SYMBOL PICKER MODAL -->
+  <div class="modal-overlay" id="picker-modal" role="dialog" aria-modal="true">
+    <div class="picker-box">
+      <div class="picker-topbar">
+        <h2 class="picker-title" id="picker-title">Select Card</h2>
+        <div class="picker-search-wrap">
+          <input type="text" class="picker-search-input" id="search-input" placeholder="🔍 Search PECS..." aria-label="Search PECS symbols">
+        </div>
+        <button type="button" class="close-btn" id="picker-close" aria-label="Close">✕</button>
+      </div>
+      <div class="filter-tabs" id="filter-tabs"></div>
+      <div class="aac-grid" id="aac-grid"></div>
+    </div>
+  </div>
+
+  <script>
+    (async () => {
+      // Only real entries count ("constructor", "__proto__" etc. from a crafted file must not).
+      const own = (o, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(o, k);
+
+      // AAC Fitzgerald-Key standard color coding for visual supports:
+      // Blue = Academic/Work, Pink = Sensory/Regulation, Yellow = Routines/Self-Care,
+      // Purple = Food/Snacks, Green = Rewards/Fun, Orange = Social/Communication
+      const CAT_CONFIG = {
+        'Academic': { border: '#2563eb', badgeBg: '#dbeafe', label: 'Academic' },
+        'Sensory':  { border: '#db2777', badgeBg: '#fce7f3', label: 'Sensory' },
+        'Routine':  { border: '#d97706', badgeBg: '#fef3c7', label: 'Routine' },
+        'Snack':    { border: '#9333ea', badgeBg: '#f3e8ff', label: 'Food/Snack' },
+        'Reward':   { border: '#16a34a', badgeBg: '#dcfce7', label: 'Reward' },
+        'Social':   { border: '#ea580c', badgeBg: '#ffedd5', label: 'Social' },
+        'Seasonal': { border: '#e11d48', badgeBg: '#ffe4e6', label: 'Seasonal' }
+      };
+
+      // Comprehensive library of 50+ PECS & AAC visual supports including seasonal activities
+      const AAC_LIBRARY = [
+        // ACADEMIC & SCHOOL WORK
+        { id: 'classwork', label: 'Classwork', icon: '📝', category: 'Academic' },
+        { id: 'math', label: 'Math', icon: '🔢', category: 'Academic' },
+        { id: 'reading', label: 'Reading Book', icon: '📖', category: 'Academic' },
+        { id: 'writing', label: 'Writing', icon: '✏️', category: 'Academic' },
+        { id: 'circle-time', label: 'Circle Time', icon: '⭕', category: 'Academic' },
+        { id: 'desk', label: 'Sit at Table', icon: '🪑', category: 'Academic' },
+        { id: 'art', label: 'Art & Coloring', icon: '🎨', category: 'Academic' },
+        { id: 'music', label: 'Music Class', icon: '🎵', category: 'Academic' },
+        { id: 'science', label: 'Science', icon: '🔬', category: 'Academic' },
+        { id: 'computer', label: 'Computer Work', icon: '💻', category: 'Academic' },
+        { id: 'speech', label: 'Speech Therapy', icon: '🗣️', category: 'Academic' },
+        { id: 'listen', label: 'Listening Ears', icon: '👂', category: 'Academic' },
+
+        // SENSORY & EMOTIONAL REGULATION
+        { id: 'quiet-corner', label: 'Quiet Corner', icon: '🛋️', category: 'Sensory' },
+        { id: 'headphones', label: 'Noise Headphones', icon: '🎧', category: 'Sensory' },
+        { id: 'deep-breaths', label: 'Deep Breaths', icon: '🌬️', category: 'Sensory' },
+        { id: 'fidget', label: 'Fidget Toy', icon: '🌀', category: 'Sensory' },
+        { id: 'trampoline', label: 'Bounce / Jump', icon: '🤸', category: 'Sensory' },
+        { id: 'heavy-work', label: 'Heavy Blanket', icon: '🛏️', category: 'Sensory' },
+        { id: 'dim-lights', label: 'Dim Lights', icon: '💡', category: 'Sensory' },
+        { id: 'calm-walk', label: 'Calming Walk', icon: '👣', category: 'Sensory' },
+        { id: 'chewelry', label: 'Chewelry', icon: '📿', category: 'Sensory' },
+        { id: 'stress-ball', label: 'Squeeze Ball', icon: '🏐', category: 'Sensory' },
+
+        // ROUTINES & SELF-CARE
+        { id: 'wash-hands', label: 'Wash Hands', icon: '🧼', category: 'Routine' },
+        { id: 'restroom', label: 'Bathroom', icon: '🚻', category: 'Routine' },
+        { id: 'unpack', label: 'Unpack Bag', icon: '🎒', category: 'Routine' },
+        { id: 'clean-up', label: 'Clean Up', icon: '🧹', category: 'Routine' },
+        { id: 'shoes', label: 'Put on Shoes', icon: '👟', category: 'Routine' },
+        { id: 'coat', label: 'Put on Coat', icon: '🧥', category: 'Routine' },
+        { id: 'line-up', label: 'Line Up', icon: '🚶', category: 'Routine' },
+        { id: 'bus', label: 'Bus Ride', icon: '🚌', category: 'Routine' },
+
+        // FOOD & SNACKS
+        { id: 'snack', label: 'Snack Time', icon: '🍎', category: 'Snack' },
+        { id: 'lunch', label: 'Lunch Box', icon: '🥪', category: 'Snack' },
+        { id: 'water', label: 'Drink Water', icon: '💧', category: 'Snack' },
+        { id: 'juice', label: 'Juice Box', icon: '🧃', category: 'Snack' },
+        { id: 'crackers', label: 'Crackers', icon: '🍘', category: 'Snack' },
+        { id: 'fruit', label: 'Fresh Fruit', icon: '🍌', category: 'Snack' },
+
+        // REWARDS & REINFORCERS
+        { id: 'tablet', label: 'iPad / Tablet', icon: '📱', category: 'Reward' },
+        { id: 'free-play', label: 'Free Choice', icon: '🧩', category: 'Reward' },
+        { id: 'playground', label: 'Playground / Swings', icon: '🛝', category: 'Reward' },
+        { id: 'blocks', label: 'Building Blocks', icon: '🧱', category: 'Reward' },
+        { id: 'bubbles', label: 'Bubble Popping', icon: '🫧', category: 'Reward' },
+        { id: 'ball', label: 'Ball Game', icon: '⚽', category: 'Reward' },
+        { id: 'sticker', label: 'Star Sticker', icon: '⭐', category: 'Reward' },
+        { id: 'trains', label: 'Toy Trains & Cars', icon: '🚂', category: 'Reward' },
+        { id: 'playdough', label: 'Play Dough', icon: '🟣', category: 'Reward' },
+        { id: 'video', label: 'Watch Video', icon: '🎬', category: 'Reward' },
+
+        // SOCIAL & COMMUNICATION
+        { id: 'ask-help', label: 'Ask for Help', icon: '🙋', category: 'Social' },
+        { id: 'wait', label: 'Wait / Timer', icon: '⏳', category: 'Social' },
+        { id: 'share', label: 'Take Turns', icon: '🤝', category: 'Social' },
+        { id: 'high-five', label: 'High Five', icon: '✋', category: 'Social' },
+        { id: 'stop', label: 'Stop & Look', icon: '🛑', category: 'Social' },
+        { id: 'gentle', label: 'Gentle Hands', icon: '🤲', category: 'Social' },
+
+        // SEASONAL THEMED ACTIVITIES & SUPPORTS
+        { id: 'pumpkin', label: 'Pumpkin Craft', icon: '🎃', category: 'Seasonal' },
+        { id: 'leaves', label: 'Play in Leaves', icon: '🍂', category: 'Seasonal' },
+        { id: 'snowman', label: 'Build Snowman', icon: '⛄', category: 'Seasonal' },
+        { id: 'hot-cocoa', label: 'Warm Cocoa', icon: '☕', category: 'Seasonal' },
+        { id: 'mittens', label: 'Warm Mittens', icon: '🧤', category: 'Seasonal' },
+        { id: 'plant-seed', label: 'Plant Seeds', icon: '🌱', category: 'Seasonal' },
+        { id: 'puddle-boots', label: 'Rain Boots', icon: '🌧️', category: 'Seasonal' },
+        { id: 'sunhat', label: 'Sun Hat', icon: '👒', category: 'Seasonal' },
+        { id: 'beach', label: 'Sand Castle', icon: '🏖️', category: 'Seasonal' },
+        { id: 'swimming', label: 'Swim Time', icon: '🏊', category: 'Seasonal' }
+      ];
+
+      const CATEGORIES = ['All', 'Academic', 'Sensory', 'Routine', 'Snack', 'Reward', 'Social', 'Seasonal'];
+
+      let state = {
+        first: AAC_LIBRARY[0], // Classwork
+        then: AAC_LIBRARY.find(i => i.id === 'free-play') || AAC_LIBRARY[37],
+        firstDone: false,
+        thenDone: false,
+        sound: true,
+        theme: 'classic',
+        motion: true,
+        themeTrayOpen: true,
+        doneTrayOpen: true
+      };
+
+      let activeTarget = 'first';
+      let activeCategory = 'All';
+      let searchQuery = '';
+
+      // Elements
+      const btnFirst = document.getElementById('btn-first');
+      const btnThen = document.getElementById('btn-then');
+      const btnToggleFirst = document.getElementById('btn-toggle-first');
+      const btnToggleThen = document.getElementById('btn-toggle-then');
+      const btnToggleBoth = document.getElementById('btn-toggle-both');
+      const firstDoneOverlay = document.getElementById('first-done-overlay');
+      const thenDoneOverlay = document.getElementById('then-done-overlay');
+      const firstDoneIcon = document.getElementById('first-done-icon');
+      const firstDoneText = document.getElementById('first-done-text');
+      const thenDoneIcon = document.getElementById('then-done-icon');
+      const thenDoneText = document.getElementById('then-done-text');
+      const bothDoneIcon = document.getElementById('both-done-icon');
+      const bothDoneText = document.getElementById('both-done-text');
+      const btnSwap = document.getElementById('btn-swap');
+      const modal = document.getElementById('picker-modal');
+      const modalClose = document.getElementById('picker-close');
+      const modalTitle = document.getElementById('picker-title');
+      const filterTabs = document.getElementById('filter-tabs');
+      const aacGrid = document.getElementById('aac-grid');
+      const searchInput = document.getElementById('search-input');
+      const themePills = document.querySelectorAll('.theme-pill');
+      const themeSeasonIcon = document.getElementById('theme-season-icon');
+      const firstHeading = document.getElementById('first-heading');
+      const thenHeading = document.getElementById('then-heading');
+      const btnThemeIcon = document.getElementById('btn-theme-icon');
+      const themePopover = document.getElementById('theme-popover');
+      const btnDoneIcon = document.getElementById('btn-done-icon');
+      const donePopover = document.getElementById('done-popover');
+      const doneStatusBadge = document.getElementById('done-status-badge');
+
+      const THEME_NAMES = {
+        classic: { name: 'Classic', icon: '🌈' },
+        autumn:  { name: 'Autumn',  icon: '🍂' },
+        winter:  { name: 'Winter',  icon: '❄️' },
+        spring:  { name: 'Spring',  icon: '🌸' },
+        summer:  { name: 'Summer',  icon: '☀️' },
+        calm:    { name: 'Calm',    icon: '💜' }
+      };
+
+      function closeAllPopovers() {
+        themePopover.classList.remove('open');
+        btnThemeIcon.classList.remove('is-active');
+        donePopover.classList.remove('open');
+        btnDoneIcon.classList.remove('is-active');
+      }
+
+      btnThemeIcon.onclick = (e) => {
+        e.stopPropagation();
+        const isOpen = themePopover.classList.contains('open');
+        closeAllPopovers();
+        if (!isOpen) {
+          themePopover.classList.add('open');
+          btnThemeIcon.classList.add('is-active');
+        }
+      };
+
+      btnDoneIcon.onclick = (e) => {
+        e.stopPropagation();
+        const isOpen = donePopover.classList.contains('open');
+        closeAllPopovers();
+        if (!isOpen) {
+          donePopover.classList.add('open');
+          btnDoneIcon.classList.add('is-active');
+        }
+      };
+
+      themePopover.onclick = (e) => e.stopPropagation();
+      donePopover.onclick = (e) => e.stopPropagation();
+
+      document.addEventListener('click', () => {
+        closeAllPopovers();
+      });
+
+      function applyTheme(themeName) {
+        state.theme = own(THEME_NAMES, themeName) ? themeName : 'classic';
+        document.body.className = `theme-${state.theme}`;
+        if (!state.motion) {
+          document.body.classList.add('no-motion');
+        }
+
+        themePills.forEach(pill => {
+          pill.classList.toggle('active', pill.getAttribute('data-theme') === state.theme);
+        });
+
+        const meta = THEME_NAMES[state.theme] || { name: 'Classic', icon: '🌈' };
+        themeSeasonIcon.textContent = meta.icon;
+
+        // Clean headings without numbers 1 and 2
+        if (state.theme === 'autumn') {
+          firstHeading.textContent = '🍂 FIRST';
+          thenHeading.textContent = '🍁 THEN';
+        } else if (state.theme === 'winter') {
+          firstHeading.textContent = '❄️ FIRST';
+          thenHeading.textContent = '⛄ THEN';
+        } else if (state.theme === 'spring') {
+          firstHeading.textContent = '🌸 FIRST';
+          thenHeading.textContent = '🌱 THEN';
+        } else if (state.theme === 'summer') {
+          firstHeading.textContent = '☀️ FIRST';
+          thenHeading.textContent = '🏖️ THEN';
+        } else if (state.theme === 'calm') {
+          firstHeading.textContent = '💜 FIRST';
+          thenHeading.textContent = '✨ THEN';
+        } else {
+          firstHeading.textContent = 'FIRST';
+          thenHeading.textContent = 'THEN';
+        }
+      }
+
+      themePills.forEach(pill => {
+        pill.onclick = () => {
+          const t = pill.getAttribute('data-theme');
+          applyTheme(t);
+          closeAllPopovers();
+          Board21.save(state);
+        };
+      });
+
+      // Synthesized gentle Web Audio chime
+      function playChime(type = 'first') {
+        if (!state.sound) return;
+        try {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (!AudioContext) return;
+          const ctx = new AudioContext();
+          const notes = type === 'celebration'
+            ? [523.25, 659.25, 783.99, 1046.50] // C5, E5, G5, C6 fanfare
+            : (type === 'then' ? [587.33, 739.99, 880.00] : [523.25, 659.25, 783.99]);
+
+          notes.forEach((freq, index) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(freq, ctx.currentTime + index * 0.11);
+            gain.gain.setValueAtTime(0, ctx.currentTime + index * 0.11);
+            gain.gain.linearRampToValueAtTime(0.22, ctx.currentTime + index * 0.11 + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + index * 0.11 + 0.38);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(ctx.currentTime + index * 0.11);
+            osc.stop(ctx.currentTime + index * 0.11 + 0.42);
+          });
+          setTimeout(() => ctx.close().catch(() => {}), 1500);   // let the sound go once it has played (as the Timer does)
+        } catch (e) {
+          // Audio safe catch
+        }
+      }
+
+      function updateCardDisplay(target, item) {
+        const card = document.getElementById(`btn-${target}`);
+        const badge = document.getElementById(`${target}-badge`);
+        const icon = document.getElementById(`${target}-icon`);
+        const label = document.getElementById(`${target}-label`);
+        const conf = own(CAT_CONFIG, item.category) ? CAT_CONFIG[item.category] : { border: '#64748b', badgeBg: '#f1f5f9', label: '' };
+
+        card.style.setProperty('--pecs-border', conf.border);
+        card.style.setProperty('--pecs-badge-bg', conf.badgeBg);
+        badge.textContent = conf.label;
+        icon.textContent = item.icon;
+        label.textContent = item.label;
+      }
+
+      function renderBoard() {
+        if (state.first) updateCardDisplay('first', state.first);
+        if (state.then) updateCardDisplay('then', state.then);
+
+        applyTheme(state.theme);
+
+        // First Done status
+        if (state.firstDone) {
+          firstDoneOverlay.classList.add('visible');
+          btnToggleFirst.classList.add('is-done');
+          firstDoneIcon.textContent = '✔️';
+          firstDoneText.textContent = 'First: Done';
+        } else {
+          firstDoneOverlay.classList.remove('visible');
+          btnToggleFirst.classList.remove('is-done');
+          firstDoneIcon.textContent = '⭕';
+          firstDoneText.textContent = 'First Done';
+        }
+
+        // Then Done status
+        if (state.thenDone) {
+          thenDoneOverlay.classList.add('visible');
+          btnToggleThen.classList.add('is-done');
+          thenDoneIcon.textContent = '🌟';
+          thenDoneText.textContent = 'Then: Done';
+        } else {
+          thenDoneOverlay.classList.remove('visible');
+          btnToggleThen.classList.remove('is-done');
+          thenDoneIcon.textContent = '⭕';
+          thenDoneText.textContent = 'Then Done';
+        }
+
+        // Pulse Then Card when First is Done and waiting for Then
+        if (state.firstDone && !state.thenDone) {
+          btnThen.classList.add('ready-pulse');
+        } else {
+          btnThen.classList.remove('ready-pulse');
+        }
+
+        // Both Done button & icon badge indicator
+        const bothDone = state.firstDone && state.thenDone;
+        if (bothDone) {
+          btnToggleBoth.classList.add('all-done');
+          bothDoneIcon.textContent = '↺';
+          bothDoneText.textContent = 'Reset Done';
+          doneStatusBadge.textContent = '🎉';
+        } else if (state.firstDone || state.thenDone) {
+          btnToggleBoth.classList.remove('all-done');
+          bothDoneIcon.textContent = '🎉';
+          bothDoneText.textContent = 'Both Done';
+          doneStatusBadge.textContent = '✔️';
+        } else {
+          btnToggleBoth.classList.remove('all-done');
+          bothDoneIcon.textContent = '🎉';
+          bothDoneText.textContent = 'Both Done';
+          doneStatusBadge.textContent = '';
+        }
+      }
+
+      function toggleFirstDone() {
+        state.firstDone = !state.firstDone;
+        if (state.firstDone) {
+          if (state.thenDone) {
+            playChime('celebration');
+          } else {
+            playChime('first');
+          }
+        }
+        renderBoard();
+        Board21.save(state);
+      }
+
+      function toggleThenDone() {
+        state.thenDone = !state.thenDone;
+        if (state.thenDone) {
+          if (state.firstDone) {
+            playChime('celebration');
+          } else {
+            playChime('then');
+          }
+        }
+        renderBoard();
+        Board21.save(state);
+      }
+
+      function toggleBothDone() {
+        const allDone = state.firstDone && state.thenDone;
+        if (allDone) {
+          state.firstDone = false;
+          state.thenDone = false;
+        } else {
+          state.firstDone = true;
+          state.thenDone = true;
+          playChime('celebration');
+        }
+        renderBoard();
+        Board21.save(state);
+      }
+
+      function openPicker(target) {
+        activeTarget = target;
+        modalTitle.textContent = `Choose "${target === 'first' ? 'FIRST' : 'THEN'}" Card`;
+        modal.classList.add('active');
+        searchInput.value = '';
+        searchQuery = '';
+        renderCategories();
+        renderGrid();
+      }
+
+      function closePicker() {
+        modal.classList.remove('active');
+      }
+
+      function selectItem(item) {
+        state[activeTarget] = { ...item };
+        if (activeTarget === 'first') {
+          state.firstDone = false;
+        } else {
+          state.thenDone = false;
+        }
+        renderBoard();
+        closePicker();
+        Board21.save(state);
+      }
+
+      function swapCards() {
+        const temp = state.first;
+        state.first = state.then;
+        state.then = temp;
+        const tempDone = state.firstDone;
+        state.firstDone = state.thenDone;
+        state.thenDone = tempDone;
+        renderBoard();
+        Board21.save(state);
+      }
+
+      function setPreset(firstId, thenId) {
+        const f = AAC_LIBRARY.find(i => i.id === firstId);
+        const t = AAC_LIBRARY.find(i => i.id === thenId);
+        if (f) state.first = { ...f };
+        if (t) state.then = { ...t };
+        state.firstDone = false;
+        state.thenDone = false;
+        renderBoard();
+        Board21.save(state);
+      }
+
+      // Card clicks: tapping when stamped done untoggles completion; otherwise opens symbol picker
+      btnFirst.onclick = () => {
+        if (state.firstDone) {
+          toggleFirstDone();
+        } else {
+          openPicker('first');
+        }
+      };
+
+      btnThen.onclick = () => {
+        if (state.thenDone) {
+          toggleThenDone();
+        } else {
+          openPicker('then');
+        }
+      };
+
+      btnToggleFirst.onclick = toggleFirstDone;
+      btnToggleThen.onclick = toggleThenDone;
+      btnToggleBoth.onclick = toggleBothDone;
+      btnSwap.onclick = swapCards;
+      modalClose.onclick = closePicker;
+
+      searchInput.oninput = (e) => {
+        searchQuery = e.target.value;
+        renderGrid();
+      };
+
+      function renderCategories() {
+        filterTabs.innerHTML = '';
+        CATEGORIES.forEach(cat => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `filter-tab-btn ${cat === activeCategory ? 'active' : ''}`;
+          btn.textContent = cat;
+          btn.onclick = () => {
+            activeCategory = cat;
+            renderCategories();
+            renderGrid();
+          };
+          filterTabs.appendChild(btn);
+        });
+      }
+
+      function renderGrid() {
+        aacGrid.innerHTML = '';
+        const q = searchQuery.toLowerCase().trim();
+        let items = AAC_LIBRARY;
+
+        if (activeCategory !== 'All') {
+          items = items.filter(i => i.category === activeCategory);
+        }
+
+        if (q) {
+          items = items.filter(i => 
+            i.label.toLowerCase().includes(q) || 
+            i.category.toLowerCase().includes(q)
+          );
+        }
+
+        if (items.length === 0) {
+          const empty = document.createElement('div');
+          empty.style.gridColumn = '1 / -1';
+          empty.style.textAlign = 'center';
+          empty.style.padding = '20px';
+          empty.style.color = 'var(--b21-muted, #64748b)';
+          empty.textContent = 'No matching PECS symbols found.';
+          aacGrid.appendChild(empty);
+          return;
+        }
+
+        items.forEach(item => {
+          const conf = CAT_CONFIG[item.category] || { border: '#cbd5e1' };
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'aac-tile-btn';
+          btn.style.setProperty('--tile-border', conf.border);
+          const tileIcon = document.createElement('span');
+          tileIcon.className = 'aac-tile-icon';
+          tileIcon.textContent = item.icon;
+          const tileLabel = document.createElement('span');
+          tileLabel.className = 'aac-tile-label';
+          tileLabel.textContent = item.label;
+          btn.append(tileIcon, tileLabel);
+          btn.onclick = () => selectItem(item);
+          aacGrid.appendChild(btn);
+        });
+      }
+
+      // Saved content can come from an imported file, so it is checked before it is used: a card is one
+      // from the library (found by its id), the done marks and options are true/false, the theme is one of
+      // the six. Anything else falls back to the usual board.
+      function readState(d) {
+        const ok = !!d && typeof d === 'object';
+        const card = (c, defId) => {
+          const id = c && typeof c === 'object' && typeof c.id === 'string' ? c.id : defId;
+          return { ...(AAC_LIBRARY.find(i => i.id === id) || AAC_LIBRARY.find(i => i.id === defId)) };
+        };
+        return {
+          first: card(ok && d.first, 'classwork'),
+          then: card(ok && d.then, 'free-play'),
+          firstDone: ok && (d.firstDone !== undefined ? d.firstDone === true : d.isDone === true),
+          thenDone: ok && d.thenDone === true,
+          sound: !ok || d.sound !== false,
+          theme: ok && own(THEME_NAMES, d.theme) ? d.theme : 'classic',
+          motion: !ok || d.motion !== false,
+          themeTrayOpen: !ok || d.themeTrayOpen !== false,
+          doneTrayOpen: !ok || d.doneTrayOpen !== false
+        };
+      }
+
+      // Initialize 21Board SDK
+      const ctx = await Board21.ready();
+
+      state = readState(ctx && ctx.data);
+      renderBoard();
+
+      // Configure Window Menu Items
+      Board21.menu.set([
+        { id: 'toggle_first', label: '✔️ Toggle First Done' },
+        { id: 'toggle_then', label: '🌟 Toggle Then Done' },
+        { id: 'mark_both', label: '🎉 Mark Both Tasks as Done' },
+        { id: 'clear_both', label: '↺ Clear Done Status' },
+        { id: 'open_theme_menu', label: '🎨 Open Theme Menu' },
+        { id: 'open_done_menu', label: '⭐ Open Done Menu' },
+        { id: 'swap', label: '⇄ Swap First & Then' },
+        { id: 'toggle_sound', label: '🔔 Toggle Chime Sound' },
+        { id: 'toggle_motion', label: '✨ Toggle Symbol Animation' },
+        { id: 'theme_autumn', label: 'Theme: 🍂 Autumn Season' },
+        { id: 'theme_winter', label: 'Theme: ❄️ Winter Snow' },
+        { id: 'theme_spring', label: 'Theme: 🌸 Spring Bloom' },
+        { id: 'theme_summer', label: 'Theme: ☀️ Summer Sunshine' },
+        { id: 'theme_calm', label: 'Theme: 💜 Calm Lavender' },
+        { id: 'theme_classic', label: 'Theme: 🌈 Classic Board' },
+        { id: 'preset_work_ipad', label: 'Preset: Classwork ➔ iPad' },
+        { id: 'preset_desk_break', label: 'Preset: Sit at Table ➔ Quiet Corner' },
+        { id: 'preset_clean_recess', label: 'Preset: Clean Up ➔ Playground' },
+        { id: 'preset_work_snack', label: 'Preset: Math ➔ Snack Time' },
+        { id: 'reset_default', label: '↺ Reset Defaults' }
+      ]);
+
+      Board21.on('menu', id => {
+        if (id === 'toggle_first') {
+          toggleFirstDone();
+        } else if (id === 'toggle_then') {
+          toggleThenDone();
+        } else if (id === 'mark_both') {
+          state.firstDone = true;
+          state.thenDone = true;
+          playChime('celebration');
+          renderBoard();
+          Board21.save(state);
+        } else if (id === 'clear_both') {
+          state.firstDone = false;
+          state.thenDone = false;
+          renderBoard();
+          Board21.save(state);
+        } else if (id === 'open_theme_menu') {
+          closeAllPopovers();
+          themePopover.classList.add('open');
+          btnThemeIcon.classList.add('is-active');
+        } else if (id === 'open_done_menu') {
+          closeAllPopovers();
+          donePopover.classList.add('open');
+          btnDoneIcon.classList.add('is-active');
+        } else if (id === 'swap') {
+          swapCards();
+        } else if (id === 'toggle_sound') {
+          state.sound = !state.sound;
+          Board21.save(state);
+        } else if (id === 'toggle_motion') {
+          state.motion = !state.motion;
+          applyTheme(state.theme);
+          Board21.save(state);
+        } else if (id === 'theme_autumn') {
+          applyTheme('autumn');
+          Board21.save(state);
+        } else if (id === 'theme_winter') {
+          applyTheme('winter');
+          Board21.save(state);
+        } else if (id === 'theme_spring') {
+          applyTheme('spring');
+          Board21.save(state);
+        } else if (id === 'theme_summer') {
+          applyTheme('summer');
+          Board21.save(state);
+        } else if (id === 'theme_calm') {
+          applyTheme('calm');
+          Board21.save(state);
+        } else if (id === 'theme_classic') {
+          applyTheme('classic');
+          Board21.save(state);
+        } else if (id === 'preset_work_ipad') {
+          setPreset('classwork', 'tablet');
+        } else if (id === 'preset_desk_break') {
+          setPreset('desk', 'quiet-corner');
+        } else if (id === 'preset_clean_recess') {
+          setPreset('clean-up', 'playground');
+        } else if (id === 'preset_work_snack') {
+          setPreset('math', 'snack');
+        } else if (id === 'reset_default') {
+          setPreset('classwork', 'free-play');
+        }
+      });
+
+      // Changed in another copy of 21Board (or an import): show it. (The chime plays only where it was tapped.)
+      Board21.on('data', data => {
+        state = readState(data);
+        renderBoard();
+      });
+    })();
+  </script>
+</body>
+</html>
