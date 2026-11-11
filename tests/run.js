@@ -130,6 +130,49 @@ const storedRecords = page => page.evaluate(() => new Promise((res, rej) => {
   o.onsuccess = () => { const q = window.__idbRaw.getAll.call(o.result.transaction('records').objectStore('records')); q.onsuccess = () => { o.result.close(); res(Object.fromEntries(q.result.map(r => [r.key, r.value]))); }; q.onerror = () => rej(q.error); };
 }));
 
+// Releases of 21Board at their own addresses (BASE + '__site/<name>/'), for the update tests: the repo's files
+// with some of them changed, stamped by tools/release.js as a real release is. deploy() under the same name
+// again is the next release on that server. Options: version (VERSION in sw.js); change {file: text => text};
+// stamp: false (the changed files go up over the release that is there, with no new stamp: the mistake the
+// stamp is there to catch); sw (another sw.js altogether: the one from before builds). Each site also has
+// asked (every file requested) and fault {file: res => ...}: answer it and return true, or wait and return
+// nothing (the file is then served as usual).
+const release = require(path.join(ROOT, 'tools', 'release.js'));
+// Does the release stamp in sw.js, board.js and index.html match the files? (A device saves its offline copy only if it does.)
+const stamped = () => { try { require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tools', 'release.js'), '--check'], { stdio: 'pipe' }); return true; } catch (e) { return false; } };
+const STAMPED = 'the release stamp matches the files (after changing a file the app ships: node tools/release.js)';
+const SITES = {};
+function deploy(name, { version, change = {}, stamp = true, sw } = {}) {
+  const was = SITES[name] || { files: {}, asked: [], fault: {} };
+  const read = f => {
+    let t = (!stamp && was.files[f]) || fs.readFileSync(path.join(ROOT, f));
+    if (f === 'sw.js' && version) t = Buffer.from(String(t).replace(/const VERSION = '[^']*'/, `const VERSION = '${version}'`));
+    return change[f] ? Buffer.from(change[f](String(t))) : t;
+  };
+  const files = stamp ? {} : Object.assign({}, was.files);
+  for (const f of Object.keys(change)) files[f] = read(f);
+  let build = was.build;
+  if (stamp) { const r = release.stamp(read); for (const f in r.out) files[f] = Buffer.from(r.out[f]); build = r.build; }
+  if (sw) files['sw.js'] = Buffer.from(sw);
+  return (SITES[name] = { files, build, asked: was.asked, fault: was.fault });
+}
+// A release that can be told apart: its board.js, page, Dice widget and SDK each carry its name.
+const marked = v => ({
+  'board.js': t => `window.__rel = '${v}';\n` + t.replace(/^window\.__rel = '[^']*';\n/, ''),
+  'index.html': t => t.replace(/<body[^>]*>/, `<body data-rel="${v}">`),
+  'widgets/dice/index.html': t => t.replace(/<head>(<meta name="rel"[^>]*>)?/, `<head><meta name="rel" content="${v}">`),
+  'sdk/board21.js': t => t.replace(/\nwindow\.__sdkRel = '[^']*';\n$/, '') + `\nwindow.__sdkRel = '${v}';\n`
+});
+// Which release each part of a tab is from: "script page widget sdk" (the last two from its open Dice window).
+const parts = async page => {
+  const top = await page.evaluate(() => [window.__rel, document.body.dataset.rel]);
+  const dice = page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('html');
+  const inside = await page.locator('.win[data-ikey="dice:1"]').count() ? await dice.evaluate(() => [(document.querySelector('meta[name="rel"]') || {}).content, window.__sdkRel]) : [];
+  return top.concat(inside).join(' ');
+};
+const updateCheck = page => page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r.update()).then(() => true, () => false));
+const boardUp = page => page.waitForFunction(() => window.__board21 && window.__board21.store.loaded && !document.getElementById('startup'), null, { timeout: 20000 });
+
 const SUITES = [
   ['Windows, data and multi-tab sync', async (browser) => {
   const wins = page => page.evaluate(() => Object.fromEntries(Array.from(window.__board21.state.wins.values()).sort((a,b)=>a.ikey<b.ikey?-1:1).map(w => [w.ikey, Object.assign({}, w.disp)])));
@@ -396,7 +439,8 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Offline', async (browser) => {
-
+    ok(stamped(), STAMPED);
+    if (!stamped()) return;   // (no offline copy is saved then)
       const ctx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
     const page = await ctx.newPage();
     const errors = [];
@@ -2588,6 +2632,285 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Updating: the prompt, Update in every tab, the version in Settings', async (browser) => {
+    ok(stamped(), STAMPED);
+
+    deploy('up', { version: 'TEST-1', change: marked('v1') });
+    const url = BASE + '__site/up/';
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await ctx.addInitScript(STORAGE_FAULTS);
+    const a = await ctx.newPage(), b = await ctx.newPage();
+    const errors = []; for (const p of [a, b]) p.on('pageerror', e => errors.push(e.message));
+    const both = fn => Promise.all([a, b].map(fn));
+    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForSelector('#st-version'); };
+    const shown = async p => { await settings(p); const t = await p.locator('#settings .about').innerText(); await p.keyboard.press('Escape'); return t; };
+    const prompt = p => p.locator('.toast', { hasText: 'A new version of 21Board is ready.' });
+    const offered = () => both(p => p.waitForFunction(() => !!window.__board21.state.sw.updateReady && !!document.querySelector('.toast'), null, { timeout: 20000 }));
+    // Every tab on that release, in all four parts, with the board up. Returns how long it took.
+    const allOn = async (v, ms = 20000) => {
+      const t0 = Date.now(), want = `${v} ${v} ${v} ${v}`;
+      for (;;) {
+        const now = await both(p => parts(p).catch(() => 'starting'));
+        if (now.every(x => x === want) && (await both(p => p.evaluate(() => !!window.__board21 && window.__board21.store.loaded && !document.getElementById('startup')).catch(() => false))).every(Boolean)) return Date.now() - t0;
+        if (Date.now() - t0 > ms) return `never (${now.join(' | ')})`;
+        await a.waitForTimeout(100);
+      }
+    };
+    const noteText = p => p.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#t').inputValue();
+
+    await a.goto(url); await a.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 });
+    await b.goto(url); await b.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 });
+    await a.evaluate(() => { window.__board21.openWidget('notes'); window.__board21.openWidget('dice'); });
+    await fillNote(a.frameLocator('.win[data-ikey="notes:1"] iframe'), 'kept through the update');
+    await b.waitForSelector('.win[data-ikey="dice:1"] iframe');
+    await allOn('v1');
+    const build1 = SITES.up.build;
+    ok(/^[0-9a-f]{8}$/.test(build1) && (await shown(a)).startsWith(`21Board TEST-1 (${build1}) · `) && !(await shown(a)).includes('Offline copy'),
+      'Settings → About shows the release’s name and build, the same as the offline copy’s: ' + (await shown(a)).split('\n')[0]);
+    ok(await a.evaluate(async () => (await window.__board21.buildExport('full')).generator) === `21Board TEST-1 (${build1})`, 'and an exported file says which release made it');
+
+    // ---- a new release: the prompt, Later, Update
+    deploy('up', { version: 'TEST-2', change: marked('v2') });
+    await both(p => p.evaluate(() => { window.__same = 1; }));
+    await updateCheck(a);
+    await offered();
+    ok((await both(p => prompt(p).locator('button').allTextContents())).every(t => t.join() === 'Update,Later'), 'a new release is offered in every open tab, with Update and Later');
+    await prompt(a).locator('button', { hasText: 'Later' }).click();
+    await a.waitForFunction(() => !document.querySelector('.toast'));
+    await b.evaluate(() => window.__board21.closeWin('dice:1')); await b.waitForSelector('.win[data-ikey="dice:1"]', { state: 'detached' });
+    await b.evaluate(() => window.__board21.openWidget('dice')); await b.waitForFunction(() => { const w = window.__board21.state.wins.get('dice:1'); return w && w.connected; });
+    ok(typeof await allOn('v1', 5000) === 'number' && await a.evaluate(() => window.__same === 1) && await a.locator('.picker-btn.left .dot').count() === 1,
+      'Later puts it off: nothing restarts, a dot stays on the Widget Picker button, and both tabs stay wholly on the old release (a widget opened now is the old one too)');
+    await settings(a);
+    await a.locator('#settings [data-act="update"]').click();
+    const took = await allOn('v2');
+    ok(took < 8000, `Settings → Update now takes effect in seconds, and every open tab restarts on the new release (${typeof took === 'number' ? (took / 1000).toFixed(1) + ' s' : took})`);
+    const build2 = SITES.up.build;
+    ok(build2 !== build1 && (await shown(a)).startsWith(`21Board TEST-2 (${build2}) · `) && (await shown(b)).startsWith(`21Board TEST-2 (${build2}) · `) && await a.evaluate(() => caches.keys().then(k => k.join())) === `21board-TEST-2-${build2}`,
+      'both tabs then say the new release in Settings, and only its offline copy is kept');
+    ok((await both(noteText)).join() === 'kept through the update,kept through the update' && (await both(p => p.locator('.win').count())).join() === '2,2' && (await both(p => p.locator('.toast').count())).join() === '0,0',
+      'the windows and their content are as they were, and the prompt is gone');
+
+    // ---- the waiting release was put to sleep by the browser before Update is tapped (the usual case)
+    deploy('up', { version: 'TEST-3', change: marked('v3') });
+    await updateCheck(b);
+    await offered();
+    const cdp = await ctx.newCDPSession(a);
+    await cdp.send('ServiceWorker.enable'); await cdp.send('ServiceWorker.stopAllWorkers');
+    await prompt(b).locator('button', { hasText: 'Update' }).click();
+    const took3 = await allOn('v3');
+    ok(took3 < 8000, `Update on the prompt works the same after the browser put the waiting release to sleep, in both tabs (${typeof took3 === 'number' ? (took3 / 1000).toFixed(1) + ' s' : took3})`);
+
+    // ---- a tab whose board isn't saved is not restarted under the teacher's hands
+    deploy('up', { version: 'TEST-4', change: marked('v4') });
+    await updateCheck(a);
+    await offered();
+    await b.evaluate(() => { window.__same = 1; window.__failPut = 'unnamed'; window.__board21.setRect('notes:1', { x: 140, y: 90, w: 420, h: 320 }); });
+    await b.waitForSelector('.save-note.left:visible');
+    await prompt(a).locator('button', { hasText: 'Update' }).click();
+    await a.waitForFunction(() => window.__rel === 'v4', null, { timeout: 15000 }); await boardUp(a);
+    const left = await b.waitForFunction(() => window.__board21.state.sw.updateReady === true, null, { timeout: 10000 }).then(() => true, () => false);
+    ok(left && await b.evaluate(() => window.__same === 1 && window.__rel === 'v3') && await b.locator('.picker-btn.left .dot').count() === 1,
+      'a tab with changes that couldn’t be saved isn’t restarted when another tab updates: it keeps its board, and Update stays on offer');
+    if (left) {
+      await settings(b); await b.locator('#settings [data-act="update"]').click();
+      await b.waitForSelector('#modal.open');
+      const warn = await b.locator('#modal.open').innerText();
+      await b.locator('#modal.open .btn', { hasText: 'Later' }).click();
+      ok(/Update 21Board now\?/.test(warn) && warn.includes('aren’t saved on this device yet') && await b.evaluate(() => window.__same === 1), 'Update there first says the changes would be lost; Later leaves the board as it is');
+      await b.evaluate(() => { window.__failPut = null; });
+      await b.locator('#settings [data-act="update"]').click();
+      await b.waitForFunction(() => window.__rel === 'v4' && !window.__same, null, { timeout: 15000 }); await boardUp(b);
+      ok(await b.evaluate(() => window.__board21.state.insts.get('notes:1').rect.x) === 140 && await allOn('v4') < 8000, 'once the changes can be saved, Update saves them and restarts the tab on the new release');
+      // Update tapped in the tab that can't save, and confirmed: it goes ahead at once.
+      deploy('up', { version: 'TEST-5', change: marked('v5') });
+      await updateCheck(a);
+      await offered();
+      await b.evaluate(() => { window.__failPut = 'unnamed'; window.__board21.setRect('notes:1', { x: 200, y: 90, w: 420, h: 320 }); });
+      await b.waitForSelector('.save-note.left:visible');
+      await prompt(b).locator('button', { hasText: 'Update' }).click();
+      await b.locator('#modal.open .btn', { hasText: 'Update' }).click();
+      const took5 = await allOn('v5');
+      ok(took5 < 3500, `Update confirmed there restarts that tab without more waiting, and the other one with it (${typeof took5 === 'number' ? (took5 / 1000).toFixed(1) + ' s' : took5})`);
+    }
+    // A tab still running release 2026.11.10-30 doesn't restart by itself when another tab updates; its own
+    // Update button then asks the release that has already taken over.
+    await a.evaluate(() => { window.__same = 1; navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' }); });
+    ok(await a.waitForFunction(() => !window.__same && !!window.__board21 && window.__board21.store.loaded, null, { timeout: 8000 }).then(() => true, () => false), 'a tab left behind on the release before this one is restarted when its Update is tapped');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Updating: never part old and part new', async (browser) => {
+    const errors = [];
+    const watch = p => { p.on('pageerror', e => errors.push(e.message)); return p; };
+    const controlled = p => p.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 });
+    const offered = p => p.waitForFunction(() => !!window.__board21 && !!window.__board21.state.sw.updateReady, null, { timeout: 20000 });
+    const idle = p => p.waitForFunction(() => navigator.serviceWorker.getRegistration().then(r => !!r && !r.installing), null, { timeout: 20000 });   // no download going on
+    // Has the device look for a new release and waits until its download has asked for that file and ended.
+    const tried = async (p, site, file) => {
+      site.asked.length = 0;
+      await updateCheck(p);
+      for (const t0 = Date.now(); !site.asked.includes(file) && Date.now() - t0 < 10000;) await p.waitForTimeout(50);
+      await idle(p); await p.waitForTimeout(300);
+      return site.asked.includes(file);
+    };
+    const withDice = async p => { await p.evaluate(() => window.__board21.openWidget('dice')); await p.waitForFunction(() => { const w = window.__board21.state.wins.get('dice:1'); return w && w.connected; }); };
+    const on = async (p, v, ms = 15000) => { const want = `${v} ${v} ${v} ${v}`; let now; for (const t0 = Date.now(); Date.now() - t0 < ms; await p.waitForTimeout(100)) { now = await parts(p).catch(() => 'starting'); if (now === want) { await boardUp(p); return true; } } console.log('    ' + now); return false; };
+    const label = p => p.evaluate(() => `${window.__board21.version} (${window.__board21.build})`);
+
+    // ---- kiosk address: reloads stay on the old release; the next launch is the new one
+    {
+      deploy('kiosk', { version: 'TEST-1', change: marked('v1') });
+      const url = BASE + '__site/kiosk/?kiosk=yes';
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      let page = watch(await ctx.newPage());
+      await page.goto(url); await controlled(page); await withDice(page);
+      deploy('kiosk', { version: 'TEST-2', change: marked('v2') });
+      const seen = [];
+      for (let i = 0; i < 3; i++) {
+        await page.reload(); await boardUp(page);
+        if (i) await offered(page).catch(() => {});   // (by the second reload the new release has been saved)
+        await page.waitForFunction(() => { const w = window.__board21.state.wins.get('dice:1'); return w && w.connected; });
+        seen.push(await parts(page));
+      }
+      ok(seen.join() === 'v1 v1 v1 v1,v1 v1 v1 v1,v1 v1 v1 v1' && await page.locator('.toast', { hasText: 'A new version' }).count() === 1,
+        'at the kiosk address (?kiosk=yes), reloading after a release keeps the page, board.js, widgets and SDK all on the old release, with Update on offer: ' + seen.join(', '));
+      await page.close();
+      page = watch(await ctx.newPage());
+      await page.goto(url);
+      ok(await on(page, 'v2') && await page.evaluate(() => document.body.classList.contains('kiosk')) && await label(page) === `TEST-2 (${SITES.kiosk.build})`,
+        'the next time the kiosk starts, it is wholly on the new release without anyone tapping Update');
+
+      // ---- files changed on the server with no new stamp (tools/release.js wasn't run)
+      const before = SITES.kiosk.build;
+      const site = deploy('kiosk', { change: marked('v3'), stamp: false });
+      await page.reload(); await boardUp(page); await page.reload(); await boardUp(page);
+      await page.waitForFunction(() => { const w = window.__board21.state.wins.get('dice:1'); return w && w.connected; });
+      const looked = await tried(page, site, 'sw.js');
+      ok(looked && await parts(page) === 'v2 v2 v2 v2' && await label(page) === `TEST-2 (${before})` && !(await page.evaluate(() => window.__board21.state.sw.updateReady)) && site.asked.every(f => f === 'sw.js' || f === 'widgets/registry.js'),
+        'files changed on the server without a new stamp don’t reach a device in pieces: it stays wholly on the release it has (it asked the server only for: ' + Array.from(new Set(site.asked)).join(', ') + ')');
+      const r = release.stamp(f => site.files[f] || fs.readFileSync(path.join(ROOT, f)));
+      ok(r.out['sw.js'] !== String(site.files['sw.js']) && ['board.js', 'index.html', 'widgets/dice/index.html', 'sdk/board21.js'].every(f => r.changed.includes(f)),
+        'and tools/release.js --check would have failed for that deploy, naming the changed files: ' + r.changed.filter(f => f !== './').join(', '));
+      const fresh = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      const f = watch(await fresh.newPage());
+      await f.goto(BASE + '__site/kiosk/'); await boardUp(f); await withDice(f);
+      await f.waitForFunction(() => window.__board21.state.sw.state === 'error', null, { timeout: 15000 }).catch(() => {});
+      await f.click('.picker-btn.left'); await f.click('[data-ctl="settings"]');
+      ok(await parts(f) === 'v3 v3 v3 v3' && await f.evaluate(async () => !navigator.serviceWorker.controller && !(await caches.keys()).length) && (await f.locator('#st-offline').innerText()).includes('Offline copy unavailable'),
+        'a device new to that deploy runs it from the network, saves no offline copy of it, and says so in Settings');
+      await fresh.close();
+
+      // ---- a release that doesn't download whole
+      const s4 = deploy('kiosk', { version: 'TEST-4', change: marked('v4') });
+      s4.fault['widgets/notes/index.html'] = res => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<html>Sign in to this network</html>'); return true; };
+      const portal = await tried(page, s4, 'widgets/notes/index.html') && !(await page.evaluate(() => window.__board21.state.sw.updateReady));
+      s4.fault['widgets/notes/index.html'] = res => { res.destroy(); return true; };
+      const dropped = await tried(page, s4, 'widgets/notes/index.html') && !(await page.evaluate(() => window.__board21.state.sw.updateReady));
+      await ctx.setOffline(true);
+      await page.reload(); await boardUp(page);
+      await page.evaluate(() => window.__board21.openWidget('notes'));
+      await page.waitForFunction(() => { const w = window.__board21.state.wins.get('notes:1'); return w && w.connected; });
+      ok(portal && dropped && await parts(page) === 'v2 v2 v2 v2' && await page.evaluate(() => caches.keys().then(k => k.length)) === 1,
+        'a release with one file that doesn’t arrive right (a sign-in page in its place, then a dropped connection) is not taken: no prompt, and offline the device still runs the whole old release');
+      await ctx.setOffline(false);
+      delete s4.fault['widgets/notes/index.html'];
+      await updateCheck(page); await offered(page);
+      await page.locator('.toast button', { hasText: 'Update' }).click();
+      ok(await on(page, 'v4') && await label(page) === `TEST-4 (${s4.build})`, 'once every file arrives, the release is offered and Update moves the device to it whole');
+
+      // ---- a release with one more file, while the server still hands out the widget list from before
+      const listBefore = fs.readFileSync(path.join(ROOT, 'widgets', 'registry.js'));
+      const s5 = deploy('kiosk', { version: 'TEST-5', change: Object.assign(marked('v5'), { 'widgets/registry.js': t => t.replace("files: ['widgets/timer/index.html']", "files: ['widgets/timer/index.html', 'widgets/_template/index.html']") }) });
+      let stale = true;
+      s5.fault['widgets/registry.js'] = res => { if (!stale) return; stale = false; res.writeHead(200, { 'Content-Type': 'text/javascript' }); res.end(listBefore); return true; };
+      ok(String(s5.files['widgets/registry.js']).includes('_template') && await tried(page, s5, 'widgets/registry.js') && !stale && !(await page.evaluate(() => window.__board21.state.sw.updateReady)),
+        'a release isn’t taken either while its list of files arrives out of date (it would have been saved with a file missing)');
+      await updateCheck(page); await offered(page);
+      await page.locator('.toast button', { hasText: 'Update' }).click();
+      ok(await on(page, 'v5') && await page.evaluate(() => caches.match('widgets/_template/index.html').then(r => !!r)), 'and is taken, with every file, once the list is the right one');
+
+      // ---- VERSION not changed, but the files were stamped again
+      const build5 = s5.build;
+      const s6 = deploy('kiosk', { version: 'TEST-5', change: marked('v6') });
+      await updateCheck(page); await offered(page);
+      await page.locator('.toast button', { hasText: 'Update' }).click();
+      ok(await on(page, 'v6') && s6.build !== build5 && await label(page) === `TEST-5 (${s6.build})`, 'a release stamped without a new VERSION still arrives whole, and Settings tells it apart by its build');
+      await ctx.close();
+    }
+
+    // ---- a first visit while a release is being put on the server
+    {
+      const s1 = deploy('race', { version: 'TEST-1', change: marked('v1') });
+      let go; const hold = new Promise(res => { go = res; });
+      s1.fault['sw.js'] = () => hold;
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      const page = watch(await ctx.newPage());
+      await page.goto(BASE + '__site/race/'); await boardUp(page); await withDice(page);
+      deploy('race', { version: 'TEST-2', change: marked('v2') });
+      delete SITES.race.fault['sw.js']; go();
+      await offered(page);
+      ok(await page.evaluate(async () => !navigator.serviceWorker.controller && (await caches.keys()).length === 1) && (await parts(page)).startsWith('v1 v1') && await page.locator('.toast', { hasText: 'A new version' }).count() === 1,
+        'a tab that opened just before a release isn’t handed to the offline copy of the new one: it stays as it is and offers Update');
+      await page.locator('.toast button', { hasText: 'Update' }).click();
+      ok(await on(page, 'v2') && await page.evaluate(() => !!navigator.serviceWorker.controller), 'Update restarts it on the new release, from its offline copy');
+      await ctx.close();
+    }
+
+    // ---- the offline copy saved by the release before builds (it replaced its files one at a time)
+    {
+      const oldSw = fs.readFileSync(path.join(__dirname, 'fixtures', 'sw-2026.11.10-30.js'), 'utf8').replace("'2026.11.10-30'", "'OLD-1'");
+      ok(oldSw.includes("'OLD-1'") && oldSw.includes('refresh in the background'), '(the fixture is the service worker of release 2026.11.10-30)');
+      deploy('old', { version: 'TEST-1', change: marked('v1'), sw: oldSw });
+      const url = BASE + '__site/old/?kiosk=yes';
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      // Each time the board comes up in this tab, which release its page and its script are from.
+      await ctx.addInitScript(() => {
+        if (window.top !== window) return;
+        const t = setInterval(() => {
+          if (!window.__board21 || !window.__board21.store.loaded || document.getElementById('startup')) return;
+          clearInterval(t);
+          const ups = JSON.parse(sessionStorage.getItem('test-ups') || '[]');
+          ups.push(`${document.body.dataset.rel}+${window.__rel}`);
+          sessionStorage.setItem('test-ups', JSON.stringify(ups));
+        }, 20);
+      });
+      const page = watch(await ctx.newPage());
+      await page.goto(url); await controlled(page); await withDice(page);
+      ok(await page.evaluate(() => caches.keys().then(k => k.join())) === '21board-OLD-1', '(a device with that release’s offline copy)');
+      deploy('old', { version: 'TEST-2', change: marked('v2') });
+      await page.reload(); await boardUp(page); await offered(page);
+      // By now the old copy has fetched the new board.js for next time, but at this address not the new page.
+      await page.reload();
+      const whole = await on(page, 'v2');
+      const ups = await page.evaluate(() => JSON.parse(sessionStorage.getItem('test-ups') || '[]'));
+      ok(whole && ups.every(u => u === 'v1+v1' || u === 'v2+v2') && await page.evaluate(() => caches.keys().then(k => k.join())) === `21board-TEST-2-${SITES.old.build}`,
+        'updating from the release before builds, at the kiosk address: the board never comes up on an old page with new code; it takes the complete new release and starts again (came up on: ' + ups.join(', ') + ')');
+      ok(await page.locator('.win[data-ikey="dice:1"]').count() === 1 && await page.locator('#startup').count() === 0 && await page.evaluate(() => document.body.classList.contains('kiosk')), 'and the board is there afterwards, still in kiosk mode');
+      await ctx.close();
+    }
+
+    // ---- no offline copy at all (it is blocked here): the browser's own cache hands out an old page with new code
+    {
+      deploy('plain', { version: 'TEST-1', change: marked('v1') });
+      const url = BASE + '__site/plain/';
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, serviceWorkers: 'block' });
+      const page = watch(await ctx.newPage());
+      const html = String(SITES.plain.files['index.html']);
+      let loads = 0, stale = 1;
+      page.on('framenavigated', fr => { if (fr === page.mainFrame()) loads++; });
+      await page.route(url, r => stale-- > 0 ? r.fulfill({ contentType: 'text/html', body: html.replace(/data-build="[^"]*"/, 'data-build="00000000"') }) : r.continue());
+      await page.goto(url); await boardUp(page);
+      ok(loads === 2 && await page.evaluate(() => document.documentElement.dataset.build === window.__board21.build), 'a page from another build than board.js isn’t started on: both are fetched afresh and 21Board starts again, once');
+      loads = 0; stale = Infinity;
+      await page.evaluate(() => sessionStorage.clear());
+      await page.goto(url); await boardUp(page);
+      await page.evaluate(() => window.__board21.openWidget('notes'));
+      ok(loads === 2 && await page.evaluate(() => document.documentElement.dataset.build === '00000000') && await page.locator('.win').count() === 1, 'if they still differ after that, it doesn’t go round in circles: the board starts with what there is');
+      await ctx.close();
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');
@@ -2605,16 +2928,28 @@ const SUITES = [
     ok(await a.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').inputValue() === 'from disk', 'content persists when opened from disk');
     await a.click('.picker-btn.left'); await a.click('[data-ctl="settings"]'); await a.waitForTimeout(500);
     ok((await a.locator('#st-persist').textContent()).includes('Not available') && !(await a.locator('#st-persist-hint').textContent()).includes('address bar'), 'data-protection status is accurate for a copy opened from a file');
+    const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    ok((await a.locator('#settings .about').innerText()).startsWith(`21Board ${/const VERSION = '([^']+)'/.exec(sw)[1]} (${/const BUILD = '([0-9a-f]{8})'/.exec(sw)[1]}) · `), 'Settings → About names the release and build there too, where there is no offline copy to ask');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }]
 ];
 
 (async () => {
-  const server = http.createServer((req, res) => {
+  const server = http.createServer(async (req, res) => {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p.startsWith('/__dev/') && DEV_ROUTES[p]) { res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' }); res.end(DEV_ROUTES[p](new URL(req.url, 'http://x').searchParams)); return; }
+    const sm = /^\/__site\/([^/]+)(\/.*)$/.exec(p);   // a release under test: see deploy()
+    if (sm) p = sm[2];
     if (p.endsWith('/')) p += 'index.html';
+    if (sm) {
+      const f = p.slice(1), site = SITES[sm[1]];
+      if (!site) { res.writeHead(404); res.end('Not found'); return; }
+      site.asked.push(f);
+      if (site.fault[f] && await site.fault[f](res) === true) return;
+      const body = SITES[sm[1]].files[f];   // (the release may have changed while a fault waited)
+      if (body) { res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-cache' }); res.end(body); return; }
+    }
     const file = path.join(ROOT, p);
     if (!file.startsWith(ROOT) || !fs.existsSync(file) || fs.statSync(file).isDirectory()) { res.writeHead(404); res.end('Not found'); return; }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });

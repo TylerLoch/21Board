@@ -297,7 +297,7 @@ on Chrome) reads it.
   "formatVersion": 1,             // files from a newer version are refused with a message
   "kind": "full",                 // "full" = backup, "template" = layout only
   "exportedAt": "2026-11-09T18:30:00.000Z",
-  "generator": "21Board 1.0.0",
+  "generator": "21Board 2026.11.12-1 (3fa9c1d2)",   // the release that wrote the file: name and build (for people; never read back)
   "viewport": { "width": 2400, "height": 1350 },   // the space the rects are in (the 16:9 board, grown to fit every window)
   "theme": "light",
   "accent": "blue",

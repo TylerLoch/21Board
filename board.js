@@ -28,7 +28,13 @@
   // =====================================================================
   // 1. Constants, icons, helpers
   // =====================================================================
-  const BOARD_VERSION = '1.0.0';
+  // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
+  // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
+  // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
+  const BOARD_VERSION = '2026.11.10-30';
+  const BOARD_BUILD = 'e162f0be';
+  const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
+  const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
   const FORMAT_VERSION = 1;
   // Widget test mode ("lab"): the widget dev window (sdk/board21-dev.js) runs this board in a frame with one
@@ -671,7 +677,7 @@
     focused: null,
     deselected: false,  // true after tapping the empty board: no window is focused (and no grips show)
     appliedTheme: null,
-    sw: { state: 'checking', version: null, updateReady: null }
+    sw: { state: 'checking', version: null, build: null, updateReady: null }   // the offline copy in charge of this tab (section 15)
   };
 
   // Counts rebuildAll(): what was being read when the whole board was read afresh is left to that read.
@@ -2885,7 +2891,7 @@
         : `<div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Deletes all windows, content and settings on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase</button></div>`}
 
         <h3>About</h3>
-        <div class="about">21Board ${BOARD_VERSION} · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
+        <div class="about">21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
         ${note ? '' : 'Everything you make is stored only on this device. '}Nothing is sent to a server.</div>`;
       // The photo preview gets its picture here (never as text inside the HTML above).
       const thumb = $('#photo-thumb', this.body), pm = BoardPhoto.media();
@@ -2905,7 +2911,8 @@
           : '<span class="status-dot"></span>Saving an offline copy…';
         if (S.sw.updateReady) off.innerHTML += ' · <button class="btn small" data-act="update">Update now</button>';
       }
-      if (cache && S.sw.version) cache.textContent = ` · Offline copy ${S.sw.version}`;
+      // (The offline copy is named only when it isn't the version this tab runs: see section 15.)
+      if (cache) cache.textContent = S.sw.version && S.sw.build !== BOARD_BUILD ? ` · Offline copy ${S.sw.version}${S.sw.build ? ` (${S.sw.build})` : ''}` : '';
       const renderPersist = () => {
         const per2 = $('#st-persist', this.body), hint = $('#st-persist-hint', this.body), bk = $('#st-backup', this.body);
         if (bk) bk.textContent = backupAgo();
@@ -3030,7 +3037,7 @@
         case 'link-photo': Link.saveState({ photo: !Link.st.photo }); break;
         case 'link-load': await Link.load(val); this.render(); break;
         case 'link-load-offer': if (Link.offer) await Link.load(Link.offer.name); this.render(); break;
-        case 'update': applyUpdate(); break;
+        case 'update': askUpdate(); break;
         case 'dev-add': {
           const input = $('#set-dev-path', this.body);
           const path = (input && input.value || '').trim();
@@ -3156,7 +3163,7 @@
       formatVersion: FORMAT_VERSION,
       kind,
       exportedAt: new Date().toISOString(),
-      generator: `21Board ${BOARD_VERSION}`,
+      generator: `21Board ${RELEASE}`,
       viewport: exportViewport(), // the size of the space the rects are in
       theme: S.settings.theme,
       accent: S.settings.accent,
@@ -4851,51 +4858,112 @@
   // =====================================================================
   // 15. PWA: service worker, persistent storage, file launch
   // =====================================================================
+  // Versions. sw.js keeps one complete copy of 21Board for offline use and answers this tab from it; a new
+  // version arrives as a whole new copy, which waits. This side of it:
+  //   - offers "Update" when a new copy is waiting ("Later" leaves it: it takes over by itself the next time
+  //     21Board starts);
+  //   - starts again when a new copy takes over: "Update" was tapped, in this tab or in another one (a tab
+  //     whose board isn't saved is left alone, with "Update" still on offer: nothing is lost unasked);
+  //   - a tab that was opened before there was a copy (the first visit) is handed to the copy only when both
+  //     are the same build: until then it keeps using the network, and is never part one, part the other.
   function registerSW() {
-    if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) { S.sw.state = 'unsupported'; return; }
-    let reloadOnChange = false;
-    S.sw.applyUpdate = sw => { reloadOnChange = true; sw.postMessage({ type: 'SKIP_WAITING' }); };
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (reloadOnChange) { location.reload(); return; }
-      S.sw.state = 'ready';
-      querySWVersion();
-      if (Settings.isOpen) Settings.refreshStatus();
+    const sws = navigator.serviceWorker;
+    if (!sws || !/^https?:$/.test(location.protocol)) { S.sw.state = 'unsupported'; return; }
+    const status = () => { if (Settings.isOpen) Settings.refreshStatus(); };
+    // update: the copy that is waiting, or true when starting again is all it takes.
+    const offer = update => {
+      const first = !S.sw.updateReady;
+      S.sw.updateReady = update;
+      Picker.renderControls();
+      status();
+      if (first) toast('A new version of 21Board is ready.', { action: 'Update', onAction: askUpdate, dismiss: 'Later', timeout: 20000 });
+    };
+    // A copy's {version, build}. (null: it didn't answer. No build: a copy saved by a version from before builds.)
+    const ask = sw => new Promise(resolve => {
+      const ch = new MessageChannel(), t = setTimeout(() => resolve(null), 3000);
+      ch.port1.onmessage = e => { clearTimeout(t); resolve(e.data || null); };
+      sw.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
     });
-    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(reg => {
-      const offer = sw => {
-        S.sw.updateReady = sw;
-        Picker.renderControls();
-        if (Settings.isOpen) Settings.refreshStatus();
-        toast('A new version of 21Board is ready.', { action: 'Update', timeout: 0, onAction: applyUpdate });
-      };
+    const same = v => !!v && v.build === BOARD_BUILD && pageBuild() === BOARD_BUILD;
+    // The copy this tab is answered from. If the tab isn't that build (another tab had it take over), starting
+    // again puts that right.
+    const controlled = async () => {
+      if (!sws.controller) return;
+      S.sw.state = 'ready';
+      const v = await ask(sws.controller);
+      if (v) { S.sw.version = v.version; S.sw.build = v.build || null; }
+      status();
+      if (v && v.build && !same(v)) offer(S.sw.updateReady || true);
+    };
+    // A copy that is in use, while this tab still runs on the network. newest: it has only just been saved.
+    const meet = async (sw, newest) => {
+      S.sw.state = 'ready';
+      status();
+      const v = await ask(sw);
+      if (sws.controller || !v) return;
+      if (same(v)) sw.postMessage({ type: 'CLAIM' });
+      else if (newest) offer(S.sw.updateReady || true);
+    };
+    let had = !!sws.controller;
+    sws.addEventListener('controllerchange', () => {
+      if (!had) { had = true; controlled(); }
+      else if (SaveNote.state() && !updating) offer(true);   // (Update was tapped in another tab)
+      else restart();
+    });
+    let reg = null;
+    const start = () => sws.register('sw.js', { updateViaCache: 'none' }).then(r => {
+      reg = r;
       const watch = sw => {
         if (!sw) return;
         sw.addEventListener('statechange', () => {
-          if (sw.state === 'installed' && navigator.serviceWorker.controller) offer(sw);
-          if (sw.state === 'activated' && !navigator.serviceWorker.controller) S.sw.state = 'ready';
+          if (sw.state === 'installed' && sws.controller) offer(sw);
+          if (sw.state === 'activated' && !sws.controller) meet(sw, true);
+          // It couldn't be saved (a file didn't download, or wasn't this version's). The browser tries again later.
+          if (sw.state === 'redundant' && !reg.active && !reg.installing && !reg.waiting) { S.sw.state = 'error'; status(); }
         });
       };
-      if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
-      watch(reg.installing);
+      if (reg.waiting && sws.controller) offer(reg.waiting);
+      [reg.installing, reg.waiting, reg.active].forEach(watch);
       reg.addEventListener('updatefound', () => watch(reg.installing));
-      if (navigator.serviceWorker.controller) { S.sw.state = 'ready'; querySWVersion(); }
-      setInterval(() => reg.update().catch(() => {}), 60 * 60 * 1000); // boards stay open all day
+      if (sws.controller) controlled();
+      else if (reg.active && reg.active.state === 'activated') meet(reg.active, false);
     }).catch(err => {
       console.warn('21Board: service worker registration failed', err);
       S.sw.state = 'error';
+      status();
     });
+    start();
+    // Boards stay open all day: look for a new version every hour (and if no copy could be saved, try again).
+    setInterval(() => { if (reg && (reg.active || reg.waiting || reg.installing)) reg.update().catch(() => {}); else start(); }, 60 * 60 * 1000);
+  }
+
+  // Starts this tab again, on the version that is in charge by then. What is waiting to be saved goes first.
+  let updating = false, restarting = false;
+  async function restart() {
+    if (restarting) return;
+    restarting = true;
+    try { await Writer.settled(1500); } catch (e) { /* start again anyway */ }
+    location.reload();
   }
 
   function applyUpdate() {
-    if (S.sw.updateReady && S.sw.applyUpdate) S.sw.applyUpdate(S.sw.updateReady);
+    const sw = S.sw.updateReady;
+    if (!sw) return;
+    updating = true;
+    if (sw === true) { restart(); return; }
+    // The waiting copy takes over, and every open 21Board tab then starts again by itself (controllerchange).
+    sw.postMessage({ type: 'SKIP_WAITING' });
+    setTimeout(restart, 4000);   // (if it can't take over, e.g. a still newer copy has replaced it: start again and see)
   }
 
-  function querySWVersion() {
-    const ctrl = navigator.serviceWorker && navigator.serviceWorker.controller;
-    if (!ctrl || typeof MessageChannel === 'undefined') return;
-    const ch = new MessageChannel();
-    ch.port1.onmessage = e => { S.sw.version = e.data && e.data.version; if (Settings.isOpen) Settings.refreshStatus(); };
-    ctrl.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
+  // "Update" was tapped. Starting again would lose a board that isn't saved: ask first.
+  async function askUpdate() {
+    if (Writer.failing) { Writer.retry(); await Writer.settled(3000); }   // (one more try)
+    const unsaved = SaveNote.state();
+    if (unsaved && !await dialog({ title: 'Update 21Board now?',
+      message: unsaved === 'unsaved' ? 'Your latest changes aren’t saved on this device yet. If you update now, they will be gone.' : 'This board isn’t being saved. If you update now, it will be gone.',
+      actions: [{ label: 'Update', value: true, kind: 'danger' }, { label: 'Later', value: false }] })) return;
+    applyUpdate();
   }
 
   /*
@@ -5190,13 +5258,13 @@
   // can't be opened or read, or start-up throws, the cover says so: never an empty board that looks ready.
   // It is made here, not in index.html, so it also shows when the page and this script are different versions.
   const Startup = {
-    el: null, ready: false, failed: null,
+    el: null, ready: false, failed: null, says: 'Opening your board…',
     cover() {
       const el = this.el = document.createElement('div');
       el.id = 'startup';
       el.style.cssText = 'position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;padding:16px;color:var(--muted,#6b7280);font-size:18px';
       document.body.appendChild(el);
-      setTimeout(() => { if (this.el === el && !this.failed) el.textContent = 'Opening your board…'; }, 1500);
+      setTimeout(() => { if (this.el === el && !this.failed) el.textContent = this.says; }, 1500);
     },
     done() { if (this.el) this.el.remove(); this.el = null; this.failed = null; this.ready = true; },
     // opts.storage: the board couldn't be opened or read. The teacher can try again (a reload), or carry on
@@ -5215,7 +5283,7 @@
         <p>Nothing has been changed: your board is still saved on this device. Try again. If this keeps happening, restart the device or tell your school’s IT.</p>
         <div class="modal-actions"><button class="btn primary" data-go="retry">Try again</button>
           ${opts.storage ? '<button class="btn choice" data-go="on">Use 21Board without saving<small>An empty board for now. Your saved board isn’t touched.</small></button>' : ''}</div>
-        <p style="font-size:12px;margin:14px 0 0;overflow-wrap:anywhere">Details for IT: ${esc(why)}</p></div>`;
+        <p style="font-size:12px;margin:14px 0 0;overflow-wrap:anywhere">Details for IT: ${esc(why)} · 21Board ${esc(RELEASE)}${pageBuild() === BOARD_BUILD ? '' : esc(` on a page from ${pageBuild() || 'an earlier version'}`)}</p></div>`;
       $('[data-go="retry"]', el).focus();
       return (this.failed = new Promise(resolve => {
         el.onclick = e => {
@@ -5223,7 +5291,7 @@
           if (!b) return;
           if (b.dataset.go === 'retry') {
             // (A new version that is ready is taken first: it may be the fix.)
-            if (S.sw.updateReady) { applyUpdate(); setTimeout(() => location.reload(), 4000); } else location.reload();
+            if (S.sw.updateReady) applyUpdate(); else location.reload();
             return;
           }
           // Carry on without the stored board: this session's board is kept in memory only (see SaveNote).
@@ -5237,10 +5305,45 @@
     }
   };
 
+  // The page (index.html) and this script must be the same build. They can differ for a launch or two after an
+  // update where the offline copy was saved by a version from before builds (it replaced its files one at a
+  // time), and where there is no offline copy and the browser's own cache hands out an old page with a new
+  // script. The board isn't opened on such a mix: the complete version that is waiting takes over, or both
+  // are fetched afresh, and 21Board starts again. Once per tab for each mix, so it can't go round in circles.
+  async function mixedStart() {
+    const mix = `${pageBuild()}/${BOARD_BUILD}`;
+    try {
+      if (sessionStorage.getItem('21board-mixed') === mix) return false;   // tried already: start with what there is
+      sessionStorage.setItem('21board-mixed', mix);
+    } catch (e) { return false; }
+    console.warn(`21Board: the page (${pageBuild() || 'an earlier version'}) and board.js (${BOARD_BUILD}) are different builds: starting again`);
+    Startup.says = 'Updating 21Board…';
+    const soon = (p, ms) => Promise.race([p, sleep(ms)]);
+    try {
+      const sws = /^https?:$/.test(location.protocol) && navigator.serviceWorker;
+      const reg = sws && await soon(sws.getRegistration(), 3000);
+      if (reg && !reg.waiting && !reg.installing) await soon(reg.update().catch(() => {}), 5000);
+      const sw = reg && (reg.waiting || reg.installing);
+      if (sw) {
+        await soon(new Promise(res => { const on = () => { if (sw.state !== 'installing') res(); }; sw.addEventListener('statechange', on); on(); }), 20000);
+        if (sw.state === 'installed') {
+          const taken = new Promise(res => sws.addEventListener('controllerchange', res));
+          sw.postMessage({ type: 'SKIP_WAITING' });
+          await soon(taken, 4000);
+        }
+      } else {
+        await Promise.all(['./', 'board.js'].map(u => soon(fetch(u, { cache: 'reload' }).catch(() => {}), 5000)));
+      }
+    } catch (e) { /* start again anyway */ }
+    location.reload();
+    return true;
+  }
+
   async function boot() {
     const late = $('#boot-note');
     if (late) late.remove();   // (index.html's "taking a long time to start")
     Startup.cover();
+    if (pageBuild() !== BOARD_BUILD && await mixedStart()) return;
     if (!LAB && !KIOSK) Install.init(); // before anything async: Chrome can fire beforeinstallprompt early
     document.body.classList.toggle('kiosk', KIOSK);
     initUI();
@@ -5281,7 +5384,7 @@
 
   // Exposed for debugging in the console and for automated tests.
   window.__board21 = {
-    version: BOARD_VERSION, state: S, store: Store, zoom: Zoom, inter: Inter, setBoardScale, setBoardShape, boundsRect,
+    version: BOARD_VERSION, build: BOARD_BUILD, state: S, store: Store, zoom: Zoom, inter: Inter, setBoardScale, setBoardShape, boundsRect,
     setRect: (ikey, rect) => { const i = S.insts.get(ikey); if (!i) return; saveInst(ikey, Object.assign({}, i, { rect })); const w = S.wins.get(ikey); if (w) w.layout(); },
     openWidget, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,

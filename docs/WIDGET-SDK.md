@@ -112,7 +112,7 @@ The **context**:
   window: { width, height, x, y, maximized, focused },  // content size in CSS px; focused = selected
   locale: 'en-US',
   devMode: false,            // Developer mode is on in Settings
-  boardVersion: '1.0.0',
+  boardVersion: '2026.11.12-1',  // the 21Board release's name (for display; don't compare)
   sdkProtocol: 1,
   host: 'board',             // 'board', 'dev' (the dev window's test board) or 'standalone'
   kiosk: false,              // ChromeOS kiosk mode (?kiosk=yes): links can't open new windows
@@ -341,7 +341,9 @@ Add an entry to `widgets/registry.js`:
 }
 ```
 
-Then **bump `VERSION` in `sw.js`** so installed copies download the new files.
+Then **bump `VERSION` in `sw.js` and run `node tools/release.js`** so installed copies download the new
+files (README, "Deploying"). Devices save a release for offline use only as a whole, so a widget file that
+changes without that never reaches them.
 
 ---
 
@@ -429,7 +431,11 @@ it can't read this site's real boards. *Edit code* goes back to the code.
 ### Inside 21Board
 
 - **Without registering:** Settings → Advanced → turn on **Developer mode**, then enter the path
-  (e.g. `widgets/my-widget/index.html`) under **Test a widget**.
+  (e.g. `widgets/my-widget/index.html`) under **Test a widget**. A widget tested this way always comes
+  from the server (it needs a connection): only registered widgets are part of the offline copy.
+- **Changing a registered widget:** 21Board runs from its offline copy, which only changes as a whole
+  release. To see your change inside 21Board, run `node tools/release.js`, then reload with Shift held
+  (Ctrl+Shift+R), or reload and tap *Update*.
 - **SDK Playground:** with Developer mode on, open *SDK Playground* from the Widget Picker to try
   every call and watch events.
 - **Sync:** open 21Board in two tabs side by side and use your widget in one.

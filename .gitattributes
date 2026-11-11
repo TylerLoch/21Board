@@ -1,0 +1,3 @@
+# Never convert line endings: every file is served exactly as it is stored here, and tools/release.js
+# fingerprints those bytes (a device saves its offline copy only if each download matches).
+* -text

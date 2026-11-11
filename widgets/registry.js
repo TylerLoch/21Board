@@ -9,7 +9,7 @@
  * To add a widget:
  *   1. Put it in its own folder:  widgets/<id>/index.html  (id = lowercase, a-z 0-9 -)
  *   2. Add an entry below.
- *   3. Bump VERSION in sw.js so installed copies pick up the change.
+ *   3. Bump VERSION in sw.js and run `node tools/release.js`, so installed copies pick up the change.
  *
  * Field reference (see docs/WIDGET-SDK.md for details):
  *   id           Unique, stable id. NEVER change it after release: saved data is keyed by it.

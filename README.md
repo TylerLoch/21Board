@@ -33,13 +33,41 @@ You don't need a server to try 21Board:
 
 ### Deploying
 
-Copy the repository's files (everything except `tests/` and `docs/`, which are harmless to
-include) to the static host. Then:
+A release is a complete set of files with one name and one fingerprint. Every time, before the files go to
+the host:
 
-1. **Bump `VERSION` in `sw.js` on every deploy.** Open copies of 21Board will show a
-   "new version is ready — Update" message and download the new files.
-2. Serve `manifest.webmanifest` as `application/manifest+json` (most servers already do).
-3. Recommended: serve `sw.js` with `Cache-Control: no-cache`.
+1. **Change `VERSION` in `sw.js`** (the release's name: the date and a counter, e.g. `2026.11.12-1`).
+2. **Run `node tools/release.js`.** It stamps the release: the name and a fingerprint of all the files (the
+   *build*) go into `sw.js`, `board.js` and `index.html`. Run it again after any later change.
+3. **Run the tests** (`node tests/run.js`). They fail if a file changed after the stamp was made.
+4. Copy the repository's files (everything except `tests/` and `docs/`, which are harmless to include) to
+   the static host, all of them together.
+
+On the host: serve `manifest.webmanifest` as `application/manifest+json` (most servers already do), and
+preferably `sw.js` with `Cache-Control: no-cache`. The host must serve the files exactly as they are in the
+repository (no minifying or rewriting on the way).
+
+What devices do with a release:
+
+- A device keeps **one complete release** for offline use and runs only that: the page, `board.js`, the SDK
+  and the widgets always belong together. The copy is saved only if every file downloaded matches the stamp,
+  so a half-finished upload, a dropped connection or a Wi-Fi sign-in page can't leave a device with part of
+  a release. It keeps the release it has and tries again later (hourly, and each time 21Board starts).
+- When a new release has been saved, open boards show **“A new version of 21Board is ready.”** with *Update*
+  and *Later* (also Settings → Storage & offline → *Update now*, and a dot on the ▦ buttons). *Update* takes a
+  second or two and restarts every open 21Board tab on the new release; the board and its content stay.
+  *Later*, or no answer, is fine: the new release takes over by itself the next time 21Board starts (after
+  every tab or the app was closed; in a kiosk, after Quit or a restart).
+- **Settings → About** shows the release the device is really running, name and build, e.g.
+  `21Board 2026.11.12-1 (3fa9c1d2)`. Exported files carry the same text. That is the answer to “which version
+  are you on?”.
+- If files are uploaded **without a new stamp** (step 2 forgotten), devices that already have 21Board keep
+  the release they have, whole, and devices new to it run from the network without an offline copy
+  (Settings says *Offline copy unavailable*). Nothing breaks, and the tests in step 3 catch it first.
+  Forgetting only step 1 is harmless: the build still changes, so devices update, under the old name.
+
+While working on the files on a local server, the offline copy keeps serving the release it saved. To see a
+change: run `node tools/release.js`, then reload with Shift held (Ctrl+Shift+R), or reload and tap *Update*.
 
 ---
 
@@ -60,6 +88,7 @@ include) to the static host. Then:
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Google Drive folder, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
+| **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts. Settings → About shows the version in use. |
 
 ### Settings
 
@@ -76,8 +105,9 @@ include) to the static host. Then:
 - **Google Drive folder:** share boards with your other devices (the smartboard) through a folder in Google
   Drive: choose the folder, Send, send automatically, include the photo, this device's name, other boards in
   the folder. See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
-- **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
+- **Storage & offline:** offline readiness (and *Update now* when a new version is ready), whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
 - **Advanced:** Developer mode (SDK Playground, test unregistered widgets), erase everything.
+- **About:** the version this device is running (release name and build), to read out to IT.
 
 ---
 
@@ -86,7 +116,7 @@ include) to the static host. Then:
 ```
 index.html              Board shell: markup + all CSS
 board.js                Board shell logic (storage, sync, windows, picker, settings, export/import)
-sw.js                   Service worker (offline cache, updates)  ← bump VERSION on deploy
+sw.js                   Service worker (offline copy, updates)  ← bump VERSION, run tools/release.js
 manifest.webmanifest    PWA manifest (also lets the installed app open .21board files in Chrome)
 icons/                  Widget icons
 sdk/board21.js          The SDK every widget includes (window.Board21)
@@ -98,6 +128,7 @@ widgets/<id>/index.html    One folder per widget
 widgets/_template/         Starter for new widgets (not registered)
 docs/WIDGET-SDK.md      How to build a widget; SDK reference; submission checklist
 docs/DATA-FORMAT.md     IndexedDB layout, sync protocol, .21board file format
+tools/release.js        Stamps a release: its name and a fingerprint of the files (see Deploying)
 tests/run.js            Optional automated browser tests
 ```
 
@@ -120,7 +151,7 @@ tests/run.js            Optional automated browser tests
 
 1. Copy `widgets/_template/` to `widgets/<id>/` and build it (see **[docs/WIDGET-SDK.md](docs/WIDGET-SDK.md)**).
 2. Add an entry to `widgets/registry.js` listing every file it needs.
-3. Bump `VERSION` in `sw.js`.
+3. Bump `VERSION` in `sw.js` and run `node tools/release.js` (see [Deploying](#deploying)).
 
 To try a widget, open its file in a browser: it appears in the **dev window**, a real 21Board window with
 its title bar, resize handles, menu and Settings, plus panels for its saved data, its messages and common
@@ -232,6 +263,8 @@ app, where no one signs in:
 - Links in Notes show as plain text: a kiosk can't open new windows.
 - Everything else works as usual: widgets, saving on the device, board history and Undo. Widgets can check
   `Board21.context.kiosk`. Without the parameter (or with `?kiosk=no`), nothing changes.
+- A new version of 21Board arrives as everywhere else: the board offers *Update* / *Later*, and the new
+  version takes over by itself the next time the kiosk starts (see [Deploying](#deploying)).
 
 **Admin console setup** (from Google's documentation and Chromium's source; try it on one device first):
 
@@ -296,6 +329,10 @@ npm install --no-save playwright && npx playwright install chromium
 node tests/run.js            # all suites
 node tests/run.js offline    # just one suite (matches the suite title)
 ```
+
+The tests check that the release stamp matches the files (`node tools/release.js --check`); if that fails,
+run `node tools/release.js`. The *Updating* suites serve one release, then a changed one, and check the
+prompt, *Update* in every open tab, and that a device never runs part of each.
 
 ## Browser support
 

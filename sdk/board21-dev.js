@@ -540,7 +540,7 @@
           var html = String(opts.src || '').replace(SDK_TAG_RE, function (all, a, q) { return a + q + '../../sdk/board21.js' + q; });
           var entry = { id: w.id, name: w.name, description: w.description || '', version: w.version || '1.0.0', color: w.color, entry: 'widgets/' + w.id + '/index.html', files: ['widgets/' + w.id + '/index.html'], window: w.window };
           if (st.drawer !== 'checks') openDrawer('checks');   // (where the text is shown if copying is blocked)
-          copyText('<!-- Save as widgets/' + w.id + '/index.html -->\n' + html + '\n\n<!-- Add to widgets/registry.js (BOARD21_WIDGETS), then bump VERSION in sw.js: -->\n' + JSON.stringify(entry, null, 2) + ',\n', 'Copied the HTML and its registry entry');
+          copyText('<!-- Save as widgets/' + w.id + '/index.html -->\n' + html + '\n\n<!-- Add to widgets/registry.js (BOARD21_WIDGETS), then bump VERSION in sw.js and run node tools/release.js: -->\n' + JSON.stringify(entry, null, 2) + ',\n', 'Copied the HTML and its registry entry');
           break;
         }
       }
