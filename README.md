@@ -245,13 +245,17 @@ hasn't loaded holds up that device's own automatic sends (they would replace it)
   and windows opened in class then don't each become a version that the laptop has to load before it can
   send again. With *After each change* on the smartboard they do.
 - Either way, a change that wasn't sent before 21Board was closed (or while the folder couldn't be used) goes
-  out the next time 21Board opens and checks the folder.
+  out after 21Board opens again. Not at once: Google Drive first gets two minutes (ten with *When left
+  alone*) to bring anything your other device sent in the meantime, so that its version is offered here
+  instead of being replaced. The same wait follows waking the device up or coming back online. A change you
+  make once 21Board is open again is sent as usual, and takes the earlier one with it.
 
 **If the folder can't be used,** a small note stays above the ▦ button until it works again, so sharing is
 never off for a whole day unnoticed: *Reconnect folder* (Chrome wants to be asked again: one tap on the note
 and *Allow*), *Folder unavailable* (it can't be found: 21Board keeps looking, and a tap says what to do) or
 *Not sent* (an automatic send failed, for example because the folder is shared with you for viewing only: a
-tap says why). Settings → Google Drive folder says the same, and when the folder was last checked.
+tap says why; the note goes once the send works or nothing is left to send). Settings → Google Drive folder
+says the same, and when the folder was last checked.
 
 **21Board keeps the folder in order:** one file per board, named after it (“Room 12.21board”, or
 “Room 12 (2).21board” if another board has that name); renaming a board renames its file on the next
@@ -260,17 +264,22 @@ an *About this folder.txt* explains the files; anything else in the folder is le
 full backup (it counts as one). *This device's name* is what the other devices show (“updated on …”).
 
 - **The background photo** goes with the board while *Include the background photo* is on, and so does
-  removing it: the smartboard's photo goes when it loads a version sent after the photo was removed. Off:
-  this device puts no photo in the folder (not in copies either), and a device that loads its boards keeps
-  its own photo.
+  removing it: once a board has been sent or loaded with its photo, taking the photo off on one device takes
+  it off the others when they load the next version. A photo that only the smartboard has stays there when
+  it loads the laptop's boards: a board that never had a photo says nothing about one, and a photo put on at
+  the smartboard after the old one was taken off is its own. Off: this device puts no photo in the folder
+  (not in copies either), and a device that loads its boards keeps its own photo.
 - **Opening another board** (Import → *Replace my board*, or a `.21board` file opened from the Files app)
   never renames, removes or replaces the file of the board that was showing: the board that was opened gets
   its own file. Only a file that was itself sent to the folder (or a backup of the very board that is
   showing) carries on as that board. A blank template keeps the board it is applied to if it has the
-  board's name.
+  board's name (a new board is called “My Board” until you rename it). Import says which it is under
+  *Replace my board*: “Math” stays in your Google Drive folder, or its copy there is replaced the next time
+  the board is sent.
 - **A file that is still arriving** (listed in the folder, but Google Drive hasn't brought its content yet)
-  isn't taken for no file: a send waits for it (an automatic one for up to 10 minutes), and if Drive leaves
-  two files for one board, the version in each is offered before anything replaces it.
+  isn't taken for no file: a send waits for it (an automatic one for up to 10 minutes from when this device
+  finds it so, or wakes up, however old the file is), and if Drive leaves two files for one board, the
+  version in each is offered before anything replaces it.
 
 **Good to know:** Chrome and Edge only (Safari and Firefox keep Export/Import). Drive needs the internet
 to carry the file, usually within seconds to a minute. Chrome remembers the folder permission for an
@@ -284,7 +293,9 @@ Google Drive on for teachers (`DriveDisabled` not set); Chrome's file-access pol
 ahead of time, so each teacher taps Allow once per device). Smartboards signed in with a room or shared
 account need the folder shared with that account (or a shared drive). Force-installing 21Board keeps the
 permission across restarts. Optional: mark the folder *Available offline* on boards. **Before rollout, try it
-on a few real laptops and boards** (how quickly files arrive, and that the folder stays allowed after a reboot).
+on a few real laptops and boards**: how quickly files arrive, that the folder stays allowed after a reboot,
+how a file shows up before Drive has brought its content, and what Drive keeps if two devices send the same
+board before either has received the other's version (21Board waits to avoid that, but can't rule it out).
 
 ## Kiosk mode (ChromeOS kiosk, no sign-in)
 

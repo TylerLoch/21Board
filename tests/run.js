@@ -65,14 +65,20 @@ const DEV_ROUTES = {
 // A test can make the folder misbehave through window.__drive: {perm: 'prompt' | 'denied' (what Chrome answers
 // when asked whether the folder may be used; asking for it from a tap then gives `grant`, if set), gone: true (the
 // folder can't be found), readOnly: true (files can't be written), unreadable: [names of files that are listed but
-// can't be read yet]}.
+// can't be read yet], noContent: {name: ms} (files whose size and date can be read, the date that long ago, but
+// whose content can't yet), slow: ms (the folder takes that long to list)}.
 const DRIVE_PICK = () => {
   const F = () => window.__drive || {};
   window.showDirectoryPicker = async () => {
     const real = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
     const gone = () => { if (F().gone) throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError'); };
+    const unread = () => { throw new DOMException('The requested file could not be read.', 'NotReadableError'); };
     const file = fh => ({ kind: 'file', name: fh.name,
-      getFile: async () => { if ((F().unreadable || []).includes(fh.name)) throw new DOMException('The requested file could not be read.', 'NotReadableError'); return fh.getFile(); },
+      getFile: async () => {
+        if ((F().unreadable || []).includes(fh.name)) unread();
+        const f = await fh.getFile(), age = (F().noContent || {})[fh.name];
+        return age === undefined ? f : { size: f.size, lastModified: f.lastModified - age, text: async () => unread(), slice: () => ({ text: async () => unread() }) };
+      },
       createWritable: async () => { if (F().readOnly) throw new DOMException('An attempt was made to modify an object where modifications are not allowed.', 'NoModificationAllowedError'); return fh.createWritable(); } });
     const dir = d => ({
       kind: 'directory', name: d.name,
@@ -81,7 +87,7 @@ const DRIVE_PICK = () => {
       getFileHandle: async (n, o) => { gone(); return file(await d.getFileHandle(n, o)); },
       getDirectoryHandle: async (n, o) => { gone(); return dir(await d.getDirectoryHandle(n, o)); },
       removeEntry: (n, o) => d.removeEntry(n, o),
-      entries: async function* () { gone(); for await (const [n, h] of d.entries()) yield [n, h.kind === 'file' ? file(h) : dir(h)]; }
+      entries: async function* () { gone(); if (F().slow) await new Promise(r => setTimeout(r, F().slow)); for await (const [n, h] of d.entries()) yield [n, h.kind === 'file' ? file(h) : dir(h)]; }
     });
     return dir(real);
   };
@@ -3232,13 +3238,23 @@ const SUITES = [
     const board = p => p.evaluate(() => ({ uid: window.__board21.state.board.uid, name: window.__board21.state.board.name }));
     const hasPhoto = p => p.evaluate(() => window.__board21.state.media.has('background'));
     // Import: pick the file, then answer the dialog. Returns what the "Replace my board" button said.
-    const importFile = async (p, name, content, answer = 'Replace my board') => {
+    const pickFile = async (p, name, content) => {
       await p.setInputFiles('#import-input', { name, mimeType: 'application/json', buffer: Buffer.from(typeof content === 'string' ? content : JSON.stringify(content)) });
       await p.waitForSelector('#modal.open');
-      const said = await p.locator('#modal.open .btn', { hasText: 'Replace my board' }).innerText();
+      return p.locator('#modal.open .btn', { hasText: 'Replace my board' }).innerText();
+    };
+    const importFile = async (p, name, content, answer = 'Replace my board') => {
+      const said = await pickFile(p, name, content);
       await modal(p, answer); await p.waitForTimeout(1500);
       return said;
     };
+    // How far the small text under "Replace my board" reaches past the dialog's card (0: it is inside).
+    const overflow = p => p.evaluate(() => {
+      const card = document.querySelector('#modal .modal-card').getBoundingClientRect(), r = document.createRange();
+      r.selectNodeContents(Array.from(document.querySelectorAll('#modal .btn')).find(b => /Replace my board/.test(b.textContent)).querySelector('small'));
+      const t = r.getBoundingClientRect();
+      return Math.max(0, Math.round(t.right - card.right), Math.round(t.bottom - card.bottom));
+    });
     const win = text => [{ widgetId: 'notes', instance: 1, open: true, z: 1, rect: { x: 40, y: 40, w: 400, h: 300 }, config: null, data: text === null ? null : { text } }];
     const backup = (name, text, uid) => ({ format: '21board', formatVersion: 1, kind: 'full', board: Object.assign({ name, background: { color: null, pattern: 'none' } }, uid ? { uid } : {}), instances: win(text) });
     const template = name => ({ format: '21board', formatVersion: 1, kind: 'template', board: { name, background: { color: null, pattern: 'none' } }, instances: win(null) });
@@ -3273,6 +3289,7 @@ const SUITES = [
     await fillNote(note(A.p), 'Science, changed'); await A.p.waitForTimeout(300);
     said = await importFile(A.p, 'Science backup.21board', own);
     ok((await board(A.p)).uid === science.uid && await note(A.p).locator('#t').inputValue() === 'Science notes' && !said.includes('stays in your'), 'a backup of this same board brings it back as the same board');
+    ok(said.includes('The copy in your Google Drive folder is replaced too, the next time this board is sent.'), 'and Import says that its copy in the folder is replaced at the next send');
     // ---- 3) A file that was sent to the folder, opened with Import (or from the Files app), is that board: as after Load.
     said = await importFile(A.p, 'Math.21board', files['Math.21board']);
     await L(A.p, () => window.__board21.link.check(true)); await A.p.waitForTimeout(300);
@@ -3286,10 +3303,11 @@ const SUITES = [
     await drive(A.p, B.p); await L(B.p, () => window.__board21.link.check(true)); await B.p.waitForTimeout(400);
     ok(await B.p.locator('.toast', { hasText: '“Math” was updated on my laptop' }).count() === 1, 'and the smartboard is offered the newer “Math”');
     // The smartboard opens that file from the Files app instead of tapping Load: it has that version then.
-    await importFile(B.p, 'Math.21board', (await readFolder(B.p))['Math.21board']);
+    said = await importFile(B.p, 'Math.21board', (await readFolder(B.p))['Math.21board']);
     await L(B.p, () => window.__board21.link.check(true)); await B.p.waitForTimeout(400);
     ok(await note(B.p).locator('#t').inputValue() === 'Math, second lesson' && (await board(B.p)).uid === math && await L(B.p, () => !window.__board21.link.offer) && await B.p.locator('.toast', { hasText: 'was updated on' }).count() === 0,
       'opening the newer file with Import instead of Load brings that version, and it isn’t offered again');
+    ok(!/Google Drive folder/.test(said), 'Import says nothing about the folder then (the file is the folder’s own version)');
 
     // ---- The background photo goes with the board, and so does removing it.
     const png = await L(A.p, () => { const c = document.createElement('canvas'); c.width = 400; c.height = 300; const g = c.getContext('2d'); g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 400, 300); return c.toDataURL('image/png'); });
@@ -3301,6 +3319,12 @@ const SUITES = [
       if (answer) { await B.p.waitForSelector('#modal.open'); await modal(B.p, answer); }
       await B.p.waitForTimeout(1800);
     };
+    // A photo put on at the smartboard only, and a laptop that never had one: its boards say nothing about a photo.
+    await B.p.setInputFiles('#photo-input', photo); await B.p.waitForTimeout(1500);
+    await toBoard('Load and replace mine');
+    files = await readFolder(A.p);
+    ok(!('media' in JSON.parse(files['Math.21board'])) && !(await hasPhoto(A.p)) && await hasPhoto(B.p),
+      'a board that never had a photo says nothing about one, so the smartboard’s own photo stays when it loads that board (it was taken off without a word)');
     await A.p.setInputFiles('#photo-input', photo); await A.p.waitForTimeout(1500);
     await toBoard();
     ok(await hasPhoto(A.p) && await hasPhoto(B.p), 'setup: the photo went to the smartboard with the board');
@@ -3311,6 +3335,13 @@ const SUITES = [
     await toBoard();
     files = await readFolder(A.p);
     ok((JSON.parse(files['Math.21board']).media || {}).background === null && !(await hasPhoto(B.p)), 'a board sent after its photo was removed says so, and loading it takes the photo off the smartboard too (it used to stay)');
+    await L(A.p, () => window.__board21.link.send()); await A.p.waitForTimeout(600);
+    ok((JSON.parse((await readFolder(A.p))['Math.21board']).media || {}).background === null, 'the versions sent after that go on saying so (a device that skips one still learns of it)');
+    // The smartboard, which has loaded "taken off", then gets a photo of its own: a later version that repeats it leaves that photo.
+    await B.p.setInputFiles('#photo-input', photo); await B.p.waitForTimeout(1500);
+    await fillNote(note(A.p), 'Math, third lesson'); await A.p.waitForTimeout(300);
+    await toBoard('Load and replace mine');
+    ok(await note(B.p).locator('#t').inputValue() === 'Math, third lesson' && await hasPhoto(B.p), 'a photo put on at the smartboard after that stays when it loads the laptop’s later versions (they repeat “taken off”, which the smartboard has already followed)');
     // "Include the background photo" off: the photo stays on each device, in copies too.
     await L(A.p, () => window.__board21.link.saveState({ photo: false }));
     await A.p.setInputFiles('#photo-input', photo); await A.p.waitForTimeout(1500);
@@ -3322,6 +3353,15 @@ const SUITES = [
     ok(!('media' in JSON.parse(files['Math.21board'])) && !!copy && !('media' in JSON.parse(files[copy])), 'with “Include the background photo” off, no photo goes to the folder: not with Send, and not with “Keep a copy” either');
     ok(await hasPhoto(B.p), 'and a board sent that way leaves the smartboard’s own photo alone');
 
+    // ---- A board put back to exactly what was loaded here is still a change to send.
+    const inFile = async text => JSON.parse((await readFolder(B.p))['Math.21board']).instances.some(i => i.data && i.data.text === text);
+    await L(B.p, () => { const l = window.__board21.link; l.waits.now = 800; l.saveState({ auto: true }); });
+    await fillNote(note(B.p), 'Smartboard, in class');
+    const went = await eventually(() => inFile('Smartboard, in class'));
+    await fillNote(note(B.p), 'Math, third lesson');
+    ok(went && await eventually(() => inFile('Math, third lesson')), 'a board changed, sent, and then changed back to exactly what this device had loaded is sent again (the folder used to keep the version in between)');
+    await L(B.p, () => window.__board21.link.saveState({ auto: false }));
+
     // ---- 4) "Send automatically": the board being replaced is sent first, and the imported one is sent by itself.
     await L(A.p, () => { const l = window.__board21.link; if (l.waits) l.waits.now = 1500; l.saveState({ auto: true, photo: true }); });
     await fillNote(note(A.p), 'Math, last change'); await A.p.waitForTimeout(300);
@@ -3330,12 +3370,44 @@ const SUITES = [
       'with “Send automatically” on, the last change to the board being replaced is sent first, and the imported board is then sent without waiting for an edit');
     // ---- 5) A blank template: this board with a new layout if it keeps the board's name, another board otherwise.
     const art = (await board(A.p)).uid;
-    await importFile(A.p, 'Art template.21board', template('Art'));
+    said = await importFile(A.p, 'Art template.21board', template('Art'));
     const same = (await board(A.p)).uid === art;
+    ok(said.includes('The copy in your Google Drive folder is replaced too'), 'Import says so when a template keeps this board, whose copy in the folder the next send replaces');
     await importFile(A.p, 'Fractions template.21board', template('Fractions'));
     const fractions = await board(A.p);
     ok(same && fractions.uid !== art && fractions.name === 'Fractions', 'a blank template with this board’s name gives the board a new layout; one with another name is another board');
     ok(await eventually(async () => /Art\.21board \| Fractions\.21board/.test(await boards(A.p))), 'so “Art” stays in the folder when “Fractions” is sent');
+    // ---- 6) "Replace my board" answered while an automatic send is under way (the folder is slow to list): the
+    // send finishes first, as the board it began with. It used to go on as the new board under the old board's
+    // id, and remove the old board's file.
+    const has = async (name, text) => ((await readFolder(A.p))[name] || '').includes(text);
+    await L(A.p, () => { window.__board21.link.waits.now = 60000; });   // (only the send started below is under way)
+    await fillNote(note(A.p), 'Fractions, last change'); await A.p.waitForTimeout(300);
+    await pickFile(A.p, 'Music.21board', backup('Music', 'Music notes', 'music-board-000001'));
+    await L(A.p, () => { window.__drive = { slow: 2500 }; window.__board21.link.autoSend(); });
+    let flying = await eventually(() => L(A.p, () => window.__board21.link.busy), 3000);
+    await modal(A.p, 'Replace my board');
+    await L(A.p, () => { window.__drive = {}; window.__board21.link.waits.now = 1000; });
+    ok(flying && await eventually(async () => await has('Fractions.21board', 'Fractions, last change') && await has('Music.21board', 'Music notes'), 12000),
+      '“Replace my board” answered while an automatic send is under way: the send finishes first, so the old board keeps its file, with its last change, and the new board gets its own');
+    // ---- 7) Undo, the same: undoing the import while “Music” is being sent.
+    await L(A.p, () => { window.__board21.link.waits.now = 60000; });
+    await fillNote(note(A.p), 'Music, changed'); await A.p.waitForTimeout(300);
+    await L(A.p, () => { window.__drive = { slow: 2500 }; window.__board21.link.autoSend(); });
+    flying = await eventually(() => L(A.p, () => window.__board21.link.busy), 3000);
+    await A.p.locator('.toast', { hasText: 'Board imported.' }).last().locator('button', { hasText: 'Undo' }).click();
+    await L(A.p, () => { window.__drive = {}; });
+    ok(flying && await eventually(async () => (await board(A.p)).name === 'Fractions' && await has('Music.21board', 'Music, changed'), 12000) && await has('Fractions.21board', 'Fractions, last change') && !/\(2\)/.test(await boards(A.p)),
+      'Undo while the imported board is being sent: it is sent as itself first, and the board that comes back keeps its own file (no “Fractions (2)”, and “Music” isn’t removed)');
+    // ---- The small print in the Import dialog stays inside the dialog, however long the board's name is.
+    await settings(A.p);
+    await A.p.fill('#set-board-name', 'Fractions and decimals, second semester, periods 3 and 4'); await A.p.press('#set-board-name', 'Tab'); await A.p.keyboard.press('Escape');
+    await L(A.p, () => window.__board21.link.send()); await A.p.waitForTimeout(800);
+    said = await pickFile(A.p, 'Science.21board', backup('Science', 'Science notes', 'science-board-0001'));
+    ok(said.includes('periods 3 and 4” stays in your Google Drive folder') && await overflow(A.p) === 0, 'the small print under “Replace my board” wraps inside the dialog, even with a long board name (it ran out of the dialog and over the board)');
+    await A.p.waitForTimeout(300);
+    await A.p.screenshot({ path: OUT + '74-drive-import-dialog.png' });
+    await modal(A.p, 'Cancel');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
@@ -3368,7 +3440,12 @@ const SUITES = [
     await settings(p);
     ok(/Reconnect your “21Board” folder/.test(await warning()) && /isn’t sent to your other devices or updated from them/.test(await warning()) && await p.locator('#settings .save-warn [data-act="link-reconnect"]').count() === 1, 'Settings says the same, with Allow…');
     await p.keyboard.press('Escape');
+    // (The message at start, shown afresh: it stays 12 seconds.)
+    await L(p, () => { for (const t of document.querySelectorAll('.toast')) if (/Reconnect your/.test(t.textContent)) t.remove(); const l = window.__board21.link; l.nagged = false; return l.refresh(); });
+    const asked = await toasts('Reconnect your “21Board” folder to keep this board up to date');
     await p.click('.folder-note.left');
+    ok(asked === 1 && await eventually(async () => await toasts('folder is connected again') === 1 && await toasts('Reconnect your “21Board” folder to keep this board up to date') === 0, 2500),
+      'once reconnected, the message from the start that asked for it goes at once (it stayed for seconds beside “connected again”)');
     ok(await eventually(() => sent('written while not connected')) && await folderNote() === '' && await toasts('folder is connected again') === 1, 'one tap on the note reconnects: the note goes, and what couldn’t be sent goes out');
     await L(p, () => { window.__drive = { perm: 'denied' }; return window.__board21.link.refresh(); });
     ok(await folderNote() === 'Reconnect folder', 'the note also shows when Chrome has blocked the folder (there was no message at all)');
@@ -3410,6 +3487,14 @@ const SUITES = [
     await p.locator('#settings .save-warn').scrollIntoViewIfNeeded();
     await p.screenshot({ path: OUT + '73-drive-settings-not-sent.png' });
     await p.keyboard.press('Escape');
+    // The change is taken back: nothing is left to send.
+    await fillNote(note(p), 'written while not connected');
+    const cleared = await eventually(async () => await folderNote() === '');
+    await settings(p);
+    ok(cleared && await warning() === '', 'when the change is taken back, so that the board is what the folder has, the “Not sent” note goes, in Settings too (it used to stay, still saying that 21Board keeps trying)');
+    await p.keyboard.press('Escape');
+    await fillNote(note(p), 'still can’t');
+    ok(await eventually(async () => await folderNote() === 'Not sent'), 'and it comes back with the next change that can’t be sent');
     await L(p, () => { window.__drive = {}; return window.__board21.link.check(true); });
     ok(await eventually(() => sent('still can’t')) && await eventually(async () => await folderNote() === ''), 'once the folder can be written to, the change goes out at the next check, and the note goes');
     await settings(p);
@@ -3440,9 +3525,13 @@ const SUITES = [
     // ---- A change made just before 21Board was closed.
     await L(A.p, () => { const l = window.__board21.link; if (l.waits) l.waits.now = 1000; l.saveState({ auto: true }); });
     await fillNote(note(A.p), 'A last touch'); await A.p.waitForTimeout(400);
-    // (Closed before the send went out, then opened again: no timer is left, and nothing is known about the change.)
-    await L(A.p, () => { const l = window.__board21.link; clearTimeout(l.autoT); l.autoT = 0; l.unsent = false; l.comparedAt = 0; return l.check(true); });
-    ok(await eventually(() => fileHas(A.p, file, 'A last touch')), 'a change made just before 21Board was closed is sent when it opens again (the check at start catches up; it used to wait for the next change)');
+    // (Closed before the send went out, then opened again: no timer is left, nothing is known about the change,
+    // and this is 21Board's first look at the folder. Google Drive's two minutes are shortened to 5 seconds.)
+    const closed = await version(A.p, file);
+    await L(A.p, () => { const l = window.__board21.link; clearTimeout(l.autoT); l.autoT = 0; l.unsent = false; l.comparedAt = 0; l.beatAt = 0; l.waits.settle = 5000; return l.check(true); });
+    await A.p.waitForTimeout(4500);
+    ok(await version(A.p, file) === closed, 'a change from before 21Board was closed isn’t sent the moment it opens: Google Drive first gets time to bring what another device sent meanwhile (it went out after 3 seconds, over a folder that could be a day behind)');
+    ok(await eventually(() => fileHas(A.p, file, 'A last touch')), 'it is sent once that time is up (it used to wait for the next change)');
     // ---- A version this device wrote but didn't get to note (closed just then).
     const mine = JSON.parse((await readFolder(A.p))[file]);
     mine.sent = Object.assign({}, mine.sent, { id: 'written-but-not-noted' });
@@ -3452,19 +3541,29 @@ const SUITES = [
 
     // ---- The laptop's newer version is listed on the smartboard, but can't be read yet.
     await drive(A.p, B.p);
-    await L(B.p, n => { window.__drive = { unreadable: [n] }; const l = window.__board21.link; l.saveState({ auto: true }); return l.check(true); }, file);
+    // (Sent the evening before: its size and date can be read, 12 hours old, but not its content.)
+    await L(B.p, n => { window.__drive = { noContent: { [n]: 12 * 3600e3 } }; const l = window.__board21.link; l.saveState({ auto: true }); return l.check(true); }, file);
     await fillNote(note(B.p), 'B meanwhile'); await B.p.waitForTimeout(400);
     await L(B.p, () => window.__board21.link.autoSend());
     ok(await boards(B.p) === file && await fileHas(B.p, file, 'A last touch') && !(await fileHas(B.p, file, 'B meanwhile')),
-      'while a file that may be this board’s newer version can’t be read yet, an automatic send waits (it used to go in beside it as “(2)”, and replace it at the next send)');
+      'while a file that may be this board’s newer version can’t be read yet, an automatic send waits, also for a file dated hours ago (it used to go in beside it as “(2)”, and replace it at the next send)');
     await settings(B.p);
     ok(await B.p.locator('#settings', { hasText: 'Waiting for Google Drive: “My Board.21board” is still arriving' }).count() === 1, 'Settings says what it is waiting for');
     await B.p.click('#settings [data-act="link-send"]'); await B.p.waitForSelector('#modal.open');
     ok(await B.p.locator('#modal.open', { hasText: 'hasn’t finished bringing “My Board.21board” to this device' }).count() === 1 && await B.p.locator('#modal.open .btn', { hasText: 'Send now' }).count() === 1, 'Send by hand says so too, and lets the teacher wait or send beside it');
     await modal(B.p, 'Cancel'); await B.p.keyboard.press('Escape');
-    // It never becomes readable: after 10 minutes automatic sends go on, beside it and never over it.
+    // (It was first found so 11 minutes ago, but the smartboard slept until a moment ago: Google Drive has had no time yet.)
     await L(B.p, n => { const l = window.__board21.link; l.unread.get(n.toLowerCase()).since = Date.now() - 11 * 60 * 1000; return l.autoSend(); }, file);
+    ok(await boards(B.p) === file, 'the 10 minutes it is given don’t run while the device is asleep or 21Board is closed');
+    // It never becomes readable: after 10 minutes automatic sends go on, beside it and never over it.
+    await L(B.p, () => { const l = window.__board21.link; l.freshAt -= 11 * 60 * 1000; return l.autoSend(); });
     ok(await boards(B.p) === `My Board (2).21board | ${file}` && await fileHas(B.p, 'My Board (2).21board', 'B meanwhile') && await fileHas(B.p, file, 'A last touch'), 'a file that stays unreadable doesn’t stop automatic sends for good: after 10 minutes this device’s version goes in beside it');
+    // (21Board is closed and opened again: nothing is left of what it knew while it ran.)
+    await L(B.p, () => { const l = window.__board21.link; l.unread.clear(); l.beatAt = 0; return l.check(true); });
+    await fillNote(note(B.p), 'B after opening again'); await B.p.waitForTimeout(400);
+    await L(B.p, () => window.__board21.link.autoSend());
+    ok(await fileHas(B.p, 'My Board (2).21board', 'B after opening again') && await fileHas(B.p, file, 'A last touch'),
+      'and it isn’t waited for all over again the next time 21Board opens, as long as the file stays as it is');
     await L(B.p, () => { window.__drive = {}; return window.__board21.link.check(true); }); await B.p.waitForTimeout(400);
     ok(await L(B.p, n => !!window.__board21.link.offer && window.__board21.link.offer.name === n, file) && await B.p.locator('.toast', { hasText: 'was updated on my laptop' }).count() === 1,
       'when it can be read after all, the laptop’s version is offered, although this device’s own newer file is there too (every file of the board counts)');
@@ -3506,10 +3605,29 @@ const SUITES = [
     ok(await L(A.p, () => window.__board21.link.st.auto && window.__board21.link.st.calm) && await A.p.locator('#settings [data-act="link-auto"][data-val="calm"][aria-checked="true"]').count() === 1, 'Settings › Send automatically has “When left alone”, beside Off and “After each change”');
     await A.p.keyboard.press('Escape');
     await L(A.p, () => { window.__board21.link.waits.calm = 12000; });   // (10 minutes, shortened)
+    // (The teacher switches to another tab, or back: as Chrome tells the page.)
+    const tab = (p, state) => L(p, state => { if (state === 'hidden') Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); else delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange')); }, state);
     const before = await version(A.p, file);
-    await fillNote(note(A.p), 'dice rolled'); await A.p.waitForTimeout(9500);
+    await fillNote(note(A.p), 'dice rolled'); await A.p.waitForTimeout(500);
+    await tab(A.p, 'hidden'); await A.p.waitForTimeout(1500);
+    ok(await version(A.p, file) === before, 'with “When left alone”, switching to another tab doesn’t send the change either (every switch would make a version)');
+    await tab(A.p, 'visible'); await A.p.waitForTimeout(7500);
     ok(await version(A.p, file) === before, 'with “When left alone”, a change isn’t sent a few seconds later');
     ok(await eventually(() => fileHas(A.p, file, 'dice rolled'), 6000), 'it is sent once the board has been left alone for the time (10 minutes; shortened here)');
+    // The next morning: a tap at the end of class wasn't sent before the board went to sleep. (16 hours pass.)
+    await L(A.p, () => { const w = window.__board21.link.waits; w.calm = 5000; w.settle = 1000; });
+    await fillNote(note(A.p), 'last tap of the day'); await A.p.waitForTimeout(400);
+    const evening = await version(A.p, file);
+    await L(A.p, () => { const l = window.__board21.link; clearTimeout(l.autoT); l.autoT = 0; l.unsent = false; l.comparedAt = 0; const real = Date.now.bind(Date); Date.now = () => real() + 16 * 3600e3; return l.check(true); });
+    await A.p.waitForTimeout(4500);
+    ok(await version(A.p, file) === evening, 'after a night’s sleep, “When left alone” counts its time from when the board woke up, not from yesterday’s tap (which sent it within seconds of waking, before Google Drive had brought the laptop’s evening version)');
+    ok(await eventually(() => fileHas(A.p, file, 'last tap of the day')), 'and then sends it');
+    // "After each change": leaving the tab sends a pending change at once.
+    await L(A.p, () => { const l = window.__board21.link; l.waits.now = 60000; l.saveState({ auto: true, calm: false }); });
+    await fillNote(note(A.p), 'tab closed'); await A.p.waitForTimeout(400);
+    await tab(A.p, 'hidden');
+    ok(await eventually(() => fileHas(A.p, file, 'tab closed'), 4000), 'with “After each change”, a pending change is sent when the tab is left');
+    await tab(A.p, 'visible');
     // ---- An emptied board says so when it is offered.
     await L(A.p, async () => { const b = window.__board21; for (const k of Array.from(b.state.insts.keys())) await b.closeWin(k); await b.link.send(); });
     await drive(A.p, B.p); await L(B.p, () => window.__board21.link.check(true)); await B.p.waitForTimeout(400);

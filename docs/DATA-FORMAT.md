@@ -105,7 +105,9 @@ exported. `link:folder` holds the folder handle Chrome gives 21Board (stored as 
     also: ["Room 12 (2).21board"], // files it used for the board before that are still there (removed at its next send)
     seen: ["<version id>", …],     // versions sent or loaded here (newest 40): anything else is new to this device
     headId, headMine,              // the version this board was built on, and whether this device sent it
-    sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig } }
+    sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig,
+    photo: true } },               // what the version last sent or loaded here said about the photo: true (it had one), false ("background": null), absent (nothing)
+  late: { "room 12.21board": { size, lastModified } }   // files that couldn't be read and were waited for in full (not waited for again while they stay as they are)
 }
 ```
 
@@ -116,7 +118,9 @@ isn't taken for no file: a send waits for one that may be this board's. A versio
 device is its own, even if it didn't get to note it.
 
 `sentSig` / `loadedSig` fingerprint the board's content when it was last sent or loaded here, to tell
-whether it was changed on this device since (window stacking order doesn't count).
+whether it was changed on this device since (window stacking order doesn't count). Only the later of the two
+is kept (sending clears `loadedSig`, loading clears `sentSig`), so a board changed back to what was loaded
+before the last send still counts as changed.
 
 In the folder, 21Board writes one `<board name>.21board` per board (a full backup with `board.uid` and a
 `sent` block, below), renames it when the board is renamed (the files this device used for the board before
@@ -314,7 +318,7 @@ on Chrome) reads it.
     "uid": "7c1e…"                // full backups only: which board this is
   },
   "sent": { "id": "<version id>", "base": "<the version it was built on>", "at": 1762800000000, "by": "<device id>", "from": "my laptop" },   // only in files sent to a shared folder
-  "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only; in a sent file, "background": null says the board has no photo
+  "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only; in a sent file, "background": null says the board's photo was taken off
   "instances": [
     {
       "widgetId": "timer",
@@ -352,6 +356,6 @@ Importing offers two choices:
 - **Add to my board** — keeps everything and adds the file's windows. Instance numbers are
   renumbered to the next free number per widget, and windows are nudged into free space.
 
-*Replace* keeps this device's background photo unless the file brings one (or is a sent file that says its board has none: `"media": { "background": null }`), and takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
+*Replace* keeps this device's background photo unless the file brings one (or is a sent file that says the board's photo was taken off: `"media": { "background": null }`, written only by a device whose last sent or loaded version of the board said something about a photo; a device that has already loaded or sent "taken off" keeps a photo put on there since), and takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
 this screen); a file from before board sizes existed is fitted into the 16:9 board. *Add* fits the
 file's whole board into this one with one uniform factor, keeping shapes and spacing.
