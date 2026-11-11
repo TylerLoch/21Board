@@ -1429,8 +1429,8 @@ const SUITES = [
     ok(/Reading$/.test(a.name) && a.time === '01:00' && a.btn.includes('Start'), `the schedule is made in its editor (${a.name}, ${a.time})`);
     ok(await audio(fA).then(au => au.length === 0), 'no sound is prepared before Start');
     await fA.locator('#btn-playpause').click();
-    let d = JSON.parse(await saved(A));
-    ok(d.running === true && Math.abs(d.endsAt - Date.now() - 60000) < 3000 && d.tasks.length === 2, 'Start saves when the activity ends (a wall-clock time)');
+    // (The save reaches the board a moment after the tap: wait for it.)
+    ok(await eventually(async () => { const d = JSON.parse(await saved(A)); return d.running === true && Math.abs(d.endsAt - Date.now() - 60000) < 3000 && d.tasks.length === 2; }), 'Start saves when the activity ends (a wall-clock time)');
     let au = await audio(fA);
     ok(au.length === 1 && au[0].state === 'running' && au[0].ahead.length === 2 && au[0].ahead.every(s => s > 55 && s <= 60), `tapping Start gets the sound ready and sets the alarm for the end of the activity (${au[0] && au[0].ahead.join(', ')} s ahead)`);
     // Loaded again while it runs: it carries on from the saved end time.
