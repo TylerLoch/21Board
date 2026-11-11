@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.11-32';
-  const BOARD_BUILD = 'dc1b1f58';
+  const BOARD_BUILD = '87a72103';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -68,6 +68,9 @@
   const ORIGIN = (location.protocol !== 'file:' && location.origin && location.origin !== 'null') ? location.origin : '*';
   const ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads';
+  // A test widget uploaded as a file (Developer mode) gets the widget lab's sandbox: no allow-same-origin, so it
+  // has an origin of its own and can't reach the board, its storage or other boards. See DevFiles.
+  const SEALED_SANDBOX = 'allow-scripts allow-forms allow-modals allow-popups allow-downloads';
 
   const PALETTES = {
     light: {
@@ -253,6 +256,7 @@
       permissions: Array.isArray(a.permissions) ? a.permissions.filter(p => /^[a-z-]+$/.test(p)) : [],
       devOnly: !!a.devOnly,
       dev: !!extra.dev,
+      sealed: !!extra.sealed,   // an uploaded file (see DevFiles): runs sealed off from the board
       win: {
         width: pos(w.width, 400), height: pos(w.height, 300),
         minWidth: pos(w.minWidth, 160), minHeight: pos(w.minHeight, 100),
@@ -271,6 +275,11 @@
 
   function rebuildCatalog() {
     catalog = new Map(REGISTRY.map(a => [a.id, a]));
+    // (Uploaded files first: one is never hidden by a widget added by its path with the same id.)
+    for (const f of (LAB ? [] : S.devFiles.values())) {
+      const widget = normalizeWidget({ id: f.id, name: f.name, entry: 'about:srcdoc', version: f.version, window: f.window, color: '#64748b', description: 'Uploaded test widget' }, { dev: true, sealed: true });
+      if (widget && !catalog.has(widget.id)) catalog.set(widget.id, widget);
+    }
     for (const d of (LAB ? [] : S.settings.devWidgets || [])) {
       const widget = normalizeWidget({ id: d.id, name: d.name, entry: d.entry, color: '#64748b', description: 'Developer test widget' }, { dev: true });
       if (widget && !catalog.has(widget.id)) catalog.set(widget.id, widget);
@@ -280,6 +289,94 @@
   const pickerWidgets = () => Array.from(catalog.values())
     .filter(a => S.settings.devMode || (!a.devOnly && !a.dev))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+
+  // ---------------------------------------------------------------------
+  // Test widgets uploaded as a file (Settings → Developer mode → Test a widget → Upload file…). The browser
+  // won't let a page from the web load a file:/// address, so the file's text is read and kept on this device
+  // in a record of its own (devfile:<id>). Its window shows it sealed off from the board (SEALED_SANDBOX: it
+  // can't reach the board's page, its storage, the Drive folder or other boards), with a Content Security
+  // Policy first in the page, so it makes no network requests either. The record never leaves the device:
+  // export, board history and the Drive folder carry windows and their content only (buildExport), and an
+  // import never writes one, so a .21board file can never bring code that runs.
+  // ---------------------------------------------------------------------
+  const DEV_FILE_MAX = 5 * 1048576;
+  const SEALED_CSP = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data: blob:; " +
+    "img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src data: blob:; form-action 'none'";
+  // The widget's SDK tags, whole (as SDK_TAG_RE in sdk/board21-dev.js).
+  const SDK_TAGS_RE = /<script\b[^>]*?\bsrc\s*=\s*(["'])[^"']*?board21(?:\.min)?\.js(?:[?#][^"']*)?\1[^>]*>\s*<\/script\s*>/gi;
+  const DevFiles = {
+    sdkP: null,
+    // 21Board's own SDK, from the offline copy. A sealed-off frame isn't served by the offline copy, so a
+    // <script src> in it would fail offline: the SDK's text goes into the page instead.
+    sdk() {
+      if (!this.sdkP) {
+        this.sdkP = fetch('sdk/board21.js').then(r => { if (!r.ok) throw new Error(`sdk/board21.js: ${r.status}`); return r.text(); });
+        this.sdkP.catch(() => { this.sdkP = null; });   // (tried again next time)
+      }
+      return this.sdkP;
+    },
+    note: (title, text) => `<!DOCTYPE html><meta charset="utf-8"><body style="margin:0;height:100vh;display:grid;place-items:center;font:15px system-ui;color:#6b7280;text-align:center;padding:16px;box-sizing:border-box"><div><b style="color:#1f2937">${esc(title)}</b><br>${esc(text)}</div>`,
+    // The page its window shows: the policy before anything of the file's (after its doctype, which must come
+    // first), then the SDK in place of the file's SDK tag (each one: the first may be in a comment), or ahead of
+    // everything if it has none. (The SDK runs once however often it is in a page.)
+    async page(id) {
+      const f = S.devFiles.get(id);
+      let sdk;
+      try { sdk = await this.sdk(); } catch (err) { return this.note('This widget can’t start', '21Board couldn’t read its own copy of the widget SDK. Connect to the internet, then reload.'); }
+      const tag = `<script>${sdk.replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '<\\!--')}</script>`;
+      let src = f ? f.src : '', found = false;
+      src = src.replace(SDK_TAGS_RE, () => { found = true; return tag; });
+      // (Only HTML's own white space may come before the doctype: after anything else the policy would land in
+      // the page's body, where browsers may ignore it.)
+      const dt = /^[\t\n\f\r ]*<!doctype[^>]*>/i.exec(src);
+      const top = dt ? dt[0] : /^[\t\n\f\r ]*(<!--[\s\S]*?-->[\t\n\f\r ]*)+<!doctype html[\t\n\f\r ]*>/i.test(src) ? '<!DOCTYPE html>' : '';
+      return top + `<meta http-equiv="Content-Security-Policy" content="${SEALED_CSP}">` + (found ? '' : tag) + src.slice(dt ? top.length : 0);
+    },
+    // Reads an uploaded file and keeps it; its window opens, or its open windows start again with it.
+    // Throws, with a message to show, if the file can't be used.
+    async add(file, side) {
+      if (location.protocol === 'file:') throw new Error('Uploading a widget works in 21Board opened from its web address, not from a file.');
+      if (!/\.html?$/i.test(file.name || '') && file.type !== 'text/html') throw new Error('Choose the widget’s .html file.');
+      if (file.size > DEV_FILE_MAX) throw new Error(`This file is ${fmtBytes(file.size)}. A widget file can be at most 5 MB.`);
+      const src = await file.text();
+      if (src.includes('\0') || !/<[a-z!]/i.test(src)) throw new Error('This file isn’t a web page. Choose the widget’s .html file.');
+      // Its manifest block, if it has one. (A parsed copy: nothing in it runs or loads.)
+      const doc = new DOMParser().parseFromString(src, 'text/html');
+      let m = null;
+      try { const el = doc.getElementById('board21-widget'); m = el && JSON.parse(el.textContent); } catch (e) { /* not valid JSON: as if there were none */ }
+      if (!m || typeof m !== 'object' || Array.isArray(m)) m = {};
+      const label = String(m.name || doc.title || file.name.replace(/\.html?$/i, '')).trim().slice(0, 60) || 'Test widget';
+      // 'dev-' and the widget's own id (or its name). (A registered widget with the same id would win: an upload
+      // never stands in for one.)
+      const slug = String(ID_RE.test(m.id || '') ? m.id : label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+/, '') || 'widget';
+      const id = ('dev-' + slug).slice(0, 64).replace(/-+$/, '');
+      const rec = { id, name: label + ' (test)', file: String(file.name).slice(0, 120), size: file.size, src, version: String(m.version || '').slice(0, 40),
+        window: m.window && typeof m.window === 'object' && !Array.isArray(m.window) ? m.window : null, at: Date.now() };
+      Writer.put(Keys.devfile(id), 'devfile', rec);
+      this.apply(id, rec);
+      // One test widget per id: one added by its path with this id makes way.
+      if ((S.settings.devWidgets || []).some(d => d.id === id)) updateSettings({ devWidgets: S.settings.devWidgets.filter(d => d.id !== id) });
+      if (Array.from(S.insts.values()).some(i => i.widgetId === id && i.open)) toast(`${rec.name} is updated.`);
+      else openWidget(id, { side });
+    },
+    remove(id) {
+      if (!S.devFiles.has(id)) return;
+      Writer.del(Keys.devfile(id));
+      this.apply(id, null);
+    },
+    // Its record arrived (an upload here or in another tab, or a reload) or went: the catalog follows, and
+    // its open windows start again with the new file.
+    apply(id, value) {
+      const open = Array.from(S.wins.values()).filter(w => w.widget.id === id);
+      if (ID_RE.test(id) && value && typeof value === 'object' && typeof value.src === 'string') S.devFiles.set(id, Object.assign({}, value, { id }));
+      else S.devFiles.delete(id);
+      updateCatalog();
+      const widget = getWidget(id);
+      for (const w of open) if (widget && S.wins.get(w.ikey) === w) { w.widget = widget; w.el.setAttribute('aria-label', widget.name); w.reload(); }
+      Picker.render();
+      if (Settings.isOpen) Settings.render();
+    }
+  };
 
   // =====================================================================
   // 3. Storage — IndexedDB
@@ -292,6 +389,7 @@
   //   inst:<b>:<widgetId>:<n>            window/instance n of a widget (geometry, open/closed, z)
   //   data:<b>:<widgetId>:<n>            that instance's content   (Board21.save)
   //   conf:<b>:<widgetId>:<n>            that instance's config    (Board21.saveConfig)
+  //   devfile:<widgetId>              a test widget uploaded as a file (DevFiles; this device only)
   // =====================================================================
   const Keys = {
     settings: 'settings',
@@ -301,9 +399,11 @@
     conf: (b, ik) => `conf:${b}:${ik}`,
     media: (b, name) => `media:${b}:${name}`,   // big binary-ish things (the background photo), kept apart so sync can skip them
     link: name => `link:${name}`,                // this device's link to a shared folder (section 13b); never exported
+    devfile: id => `devfile:${id}`,              // a test widget uploaded as a file (DevFiles); this device only, never exported
     parse(key) {
       const p = String(key).split(':');
       if (p[0] === 'settings') return { kind: 'settings' };
+      if (p[0] === 'devfile' && p.length === 2) return { kind: 'devfile', id: p[1] };
       if (p[0] === 'board' && p.length === 2) return { kind: 'board', board: +p[1] };
       if (p[0] === 'media' && p.length === 3) return { kind: 'media', board: +p[1], name: p[2] };
       if (p[0] === 'link' && p.length === 2) return { kind: 'link', name: p[1] };
@@ -443,7 +543,7 @@
       for (const key of keys) {
         try { const r = (await this.getMany([key]))[0]; if (r) recs.push(r); } catch (err) { skipped.push(key); }
       }
-      if (skipped.some(k => !/^(media|data|conf):/.test(k))) throw first;
+      if (skipped.some(k => !/^(media|data|conf|devfile):/.test(k))) throw first;
       return { recs, skipped };
     }
   };
@@ -608,7 +708,7 @@
     const out = new Map(), b = S.boardId;
     for (const key of Known.keys()) {
       const k = Keys.parse(key);
-      const value = k.kind === 'settings' ? S.settings : k.kind === 'link' ? (k.name === 'folder' ? Link.dir : k.name === 'state' ? Link.st : null)
+      const value = k.kind === 'settings' ? S.settings : k.kind === 'link' ? (k.name === 'folder' ? Link.dir : k.name === 'state' ? Link.st : null) : k.kind === 'devfile' ? S.devFiles.get(k.id)
         : k.board !== b ? null : k.kind === 'board' ? S.board : k.kind === 'inst' ? S.insts.get(k.ikey)
         : k.kind === 'data' ? S.data.get(k.ikey) : k.kind === 'conf' ? S.conf.get(k.ikey) : k.kind === 'media' ? S.media.get(k.name) : null;
       if (value !== undefined && value !== null) out.set(key, { type: k.kind, value, absent: true });
@@ -679,6 +779,7 @@
     data: new Map(),    // ikey -> content
     media: new Map(),   // name -> { data: 'data:image/…', w, h, bytes, name } (the background photo)
     conf: new Map(),    // ikey -> config
+    devFiles: new Map(),   // widget id -> a test widget uploaded as a file (see DevFiles): { id, name, file, src, ... }
     wins: new Map(),    // ikey -> Win
     focused: null,
     deselected: false,  // true after tapping the empty board: no window is focused (and no grips show)
@@ -706,7 +807,7 @@
     // The database was found gone: what was read (nothing) isn't the board; what this tab holds is, and is
     // being written back (see Writer.restore).
     if (Store.lost || (!must && n !== rebuilds)) return;
-    const order = { settings: 0, board: 1, conf: 2, data: 2, inst: 3 };
+    const order = { settings: 0, devfile: 0, board: 1, conf: 2, data: 2, inst: 3 };
     recs.sort((a, b) => (order[Keys.parse(a.key).kind] ?? 9) - (order[Keys.parse(b.key).kind] ?? 9));
     const present = new Set(skipped);   // (a record that couldn't be read isn't a deleted one)
     // A record that changed since this tab last saw it is another tab's newer change (not when the whole board
@@ -739,7 +840,7 @@
     rebuilds++;
     Menu.close();
     for (const w of S.wins.values()) w.destroy();
-    S.wins.clear(); S.insts.clear(); S.data.clear(); S.conf.clear(); S.media.clear(); Known.clear();
+    S.wins.clear(); S.insts.clear(); S.data.clear(); S.conf.clear(); S.media.clear(); S.devFiles.clear(); Known.clear();
     S.focused = null;
     S.settings = Object.assign({}, DEFAULT_SETTINGS);
     S.board = defaultBoard(S.boardId);
@@ -785,6 +886,7 @@
         if (k.name === 'background' || k.name === 'background-look') { BoardPhoto.render(); if (Settings.isOpen) Settings.render(); }
         break;
       case 'link': Link.applyRecord(k.name, value); break;
+      case 'devfile': DevFiles.apply(k.id, value); break;
       case 'inst':
         if (k.board !== S.boardId) break;
         if (value) S.insts.set(k.ikey, normalizeInst(value, k)); else S.insts.delete(k.ikey);
@@ -847,6 +949,14 @@
   const resolvedTheme = () => S.settings.theme === 'system' ? (mqDark.matches ? 'dark' : 'light') : (S.settings.theme === 'dark' ? 'dark' : 'light');
 
   let lastCatalogSig = '';
+  // The catalog follows the test widgets: those added by their path (settings) and uploaded files (DevFiles).
+  function updateCatalog() {
+    const sig = JSON.stringify([S.settings.devMode, S.settings.devWidgets, Array.from(S.devFiles.values(), f => [f.id, f.at])]);
+    if (sig === lastCatalogSig) return;
+    lastCatalogSig = sig;
+    rebuildCatalog();
+    for (const ikey of S.insts.keys()) reconcileWin(ikey);
+  }
   function applySettings() {
     const theme = resolvedTheme();
     document.body.classList.toggle('dark', theme === 'dark');
@@ -865,12 +975,7 @@
     Picker.btns.right.hidden = corners === 'left';
     if (Picker.side && Picker.btns[Picker.side].hidden) Picker.close();
     SaveNote.update();   // (it sits above the Widget Picker buttons)
-    const sig = JSON.stringify([S.settings.devMode, S.settings.devWidgets]);
-    if (sig !== lastCatalogSig) {
-      lastCatalogSig = sig;
-      rebuildCatalog();
-      for (const ikey of S.insts.keys()) reconcileWin(ikey);
-    }
+    updateCatalog();
     Picker.renderControls();
     Picker.render();
     scheduleLayoutAll(); // "Scale the board to fit the screen" may have changed
@@ -1551,13 +1656,21 @@
     createFrame() {
       if (this.iframe) this.iframe.remove();
       const f = document.createElement('iframe');
+      const sealed = this.widget.sealed;
       f.title = this.widget.name;
-      f.setAttribute('sandbox', SANDBOX);
-      f.setAttribute('allow', ['fullscreen', 'clipboard-read', 'clipboard-write', 'autoplay', ...this.widget.permissions].join('; '));
+      f.setAttribute('sandbox', sealed ? SEALED_SANDBOX : SANDBOX);
+      f.setAttribute('allow', (sealed ? ['fullscreen', 'clipboard-write', 'autoplay'] : ['fullscreen', 'clipboard-read', 'clipboard-write', 'autoplay', ...this.widget.permissions]).join('; '));
       f.addEventListener('load', () => this.onFrameLoad());
       // Tells the SDK it's inside 21Board, before any of its code runs. (Set before inserting the frame:
       // a later change doesn't reach the widget's window.name.)
       f.name = 'b21-board:' + this.ikey;
+      if (sealed) {
+        // An uploaded file: its page is put together first (DevFiles.page), then the frame goes in.
+        this.iframe = f;
+        this.loadingEl.classList.remove('done');
+        DevFiles.page(this.widget.id).then(html => { if (this.iframe !== f) return; f.srcdoc = html; this.bodyEl.insertBefore(f, this.loadingEl); });
+        return;
+      }
       this.bodyEl.insertBefore(f, this.loadingEl);
       this.iframe = f;
       this.loadingEl.classList.remove('done');
@@ -1665,7 +1778,8 @@
       if (!this.connected && type !== 'init') return;
       const msg = Object.assign({ b21: SDK_PROTOCOL, type }, payload || {});
       if (LAB) LabBridge.log('out', this, msg);
-      try { this.iframe.contentWindow.postMessage(msg, ORIGIN); } catch (e) { /* frame gone */ }
+      // (A sealed-off frame's origin is opaque: '*', which still reaches only this window's frame.)
+      try { this.iframe.contentWindow.postMessage(msg, this.widget.sealed ? '*' : ORIGIN); } catch (e) { /* frame gone */ }
     }
 
     ack(reqId, ok, result, error) {
@@ -1723,7 +1837,8 @@
                 })).filter(s => s.id && s.color)
               });
             }
-            return Object.assign(item, { icon: safeSVG(i.icon), checked: typeof i.checked === 'boolean' ? i.checked : undefined, disabled: !!i.disabled, separator: !!i.separator });
+            // (No icon from an uploaded file: markup in the board's own menu would be outside its seal.)
+            return Object.assign(item, { icon: this.widget.sealed ? '' : safeSVG(i.icon), checked: typeof i.checked === 'boolean' ? i.checked : undefined, disabled: !!i.disabled, separator: !!i.separator });
           });
           if (Menu.win === this) Menu.render();
           break;
@@ -1795,9 +1910,11 @@
     const m = e.data;
     if (LAB) LabBridge.relayUp(e);
     if (!m || m.b21 !== SDK_PROTOCOL || typeof m.type !== 'string') return;
-    if (ORIGIN !== '*' && e.origin !== location.origin) return;
+    // An uploaded file's window (sealed off, see DevFiles) has an opaque origin, 'null': heard only from its own frame.
+    const sealed = ORIGIN !== '*' && e.origin === 'null';
+    if (ORIGIN !== '*' && e.origin !== location.origin && !sealed) return;
     for (const w of S.wins.values()) {
-      if (w.iframe && w.iframe.contentWindow === e.source) { w.handle(m); return; }
+      if (w.iframe && w.iframe.contentWindow === e.source) { if (!sealed || w.widget.sealed) w.handle(m); return; }
     }
   });
 
@@ -2806,6 +2923,18 @@
         catch (err) { await dialog({ title: 'Can’t use this picture', message: err.message, actions: [{ label: 'OK', value: true, kind: 'primary' }] }); }
         if (this.isOpen) this.render();
       });
+      // Developer mode's Upload file… (made here, so a page from another build can't be without it).
+      const wi = document.createElement('input');
+      Object.assign(wi, { type: 'file', id: 'widget-input', accept: '.html,.htm,text/html', hidden: true });
+      document.body.appendChild(wi);
+      wi.addEventListener('change', async e => {
+        const f = e.target.files && e.target.files[0];
+        e.target.value = '';
+        if (!f) return;
+        try { await DevFiles.add(f, this.side); }
+        catch (err) { await dialog({ title: 'Can’t use this file', message: err.message, actions: [{ label: 'OK', value: true, kind: 'primary' }] }); }
+        if (this.isOpen) this.render();
+      });
       this.body.addEventListener('keydown', e => {
         if (e.target.id === 'set-dev-path' && e.key === 'Enter') this.act('dev-add');
         if (e.target.id === 'set-board-name' && e.key === 'Enter') e.target.blur();
@@ -2855,9 +2984,11 @@
           `<button class="icon" data-act="inst-delete" data-val="${esc(ikey)}" title="Delete" aria-label="Delete ${esc(name)} and its content">${svg('trash')}</button></div>`;
       }).join('') : '<div class="empty-note">No widget windows yet. Open one from the Widget Picker.</div>';
 
-      const devWidgets = (st.devWidgets || []).map(d =>
-        `<div class="inst"><span class="widget-icon" style="--c:#64748b">${svg('widget')}</span><div class="meta"><b>${esc(d.name)}</b><span>${esc(d.entry)}</span></div>` +
-        `<button class="icon" data-act="dev-remove" data-val="${esc(d.id)}" title="Remove" aria-label="Remove ${esc(d.name)}">${svg('trash')}</button></div>`).join('');
+      const devRow = (id, name, where) =>
+        `<div class="inst"><span class="widget-icon" style="--c:#64748b">${svg('widget')}</span><div class="meta"><b>${esc(name)}</b><span>${esc(where)}</span></div>` +
+        `<button class="icon" data-act="dev-remove" data-val="${esc(id)}" title="Remove" aria-label="Remove ${esc(name)}">${svg('trash')}</button></div>`;
+      const devWidgets = (st.devWidgets || []).map(d => devRow(d.id, d.name, d.entry))
+        .concat(Array.from(S.devFiles.values(), d => devRow(d.id, d.name, `Uploaded file: ${d.file}`))).join('');
 
       const note = SaveNote.state() ? SaveNote.info() : null;
       this.body.innerHTML = `
@@ -2906,9 +3037,9 @@
         <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>`}
 
         <h3>Advanced</h3>
-        ${LAB || KIOSK ? '' : `<div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget by its path.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>`}
-        ${st.devMode && !LAB ? `<div class="row stack"><div class="lbl">Test a widget</div>
-          <div style="display:flex;gap:8px"><input type="text" class="text-input" id="set-dev-path" placeholder="widgets/my-widget/index.html" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="dev-add">${svg('plus')}Add</button></div>
+        ${LAB || KIOSK ? '' : `<div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget by its path or its file.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>`}
+        ${st.devMode && !LAB && !KIOSK ? `<div class="row stack"><div><div class="lbl">Test a widget</div><div class="hint">An uploaded file runs sealed off from your boards. It is kept on this device only, never in exports.</div></div>
+          <div style="display:flex;gap:8px"><input type="text" class="text-input" id="set-dev-path" placeholder="widgets/my-widget/index.html" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="dev-add">${svg('plus')}Add</button><button class="btn" data-act="dev-upload">Upload file…</button></div>
           ${devWidgets ? `<div class="inst-list">${devWidgets}</div>` : ''}</div>` : ''}
         ${Store.failed ? `<div class="row"><div><div class="lbl">Empty this board</div><div class="hint">Clears the windows, content and settings you see now.${Store.failed === 'unopened' ? ' Your saved board isn’t touched.' : ''}</div></div><button class="btn danger" data-act="erase">${svg('trash')}Empty</button></div>`
         : `<div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Deletes all windows, content and settings on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase</button></div>`}
@@ -3075,10 +3206,12 @@
           const name = (slug.split('-').filter(p => p && p !== 'widgets').pop() || 'Test widget').replace(/^./, c => c.toUpperCase()) + ' (test)';
           const list = (S.settings.devWidgets || []).filter(d => d.id !== id).concat([{ id, name, entry: rel }]);
           updateSettings({ devWidgets: list });
+          DevFiles.remove(id);   // (one test widget per id: an uploaded file with this id makes way)
           openWidget(id, { side: this.side });
           break;
         }
-        case 'dev-remove': updateSettings({ devWidgets: (S.settings.devWidgets || []).filter(d => d.id !== val) }); break;
+        case 'dev-upload': $('#widget-input').click(); break;
+        case 'dev-remove': updateSettings({ devWidgets: (S.settings.devWidgets || []).filter(d => d.id !== val) }); DevFiles.remove(val); break;
         case 'erase': {
           const hist = BoardHistory.enabled();
           // Where nothing is stored (see SaveNote), only the board on screen can be emptied: the saved board,

@@ -45,6 +45,7 @@ Keys (`<b>` = board id, currently always `1`; `<n>` = instance number):
 | `conf:<b>:<widgetId>:<n>` | `conf` | That instance's **config** — whatever it passed to `Board21.saveConfig()` |
 | `media:<b>:background` | `media` | The board's **background photo** on this device (see below). Kept apart from `board:<b>` |
 | `media:<b>:background-look` | `media` | How that photo is shown on this device |
+| `devfile:<widgetId>` | `devfile` | A test widget uploaded as a file in Developer mode (below). This device only |
 
 Widget ids are limited to `a-z 0-9 -`, so keys can be split on `:`.
 
@@ -87,6 +88,26 @@ without changing the format: `settings.activeBoard` will choose which board is s
 ```
 
 `color: null` means "match the light/dark theme".
+
+### `devfile:<widgetId>` (this device only)
+
+A test widget uploaded under Settings → Developer mode → *Test a widget* → *Upload file…* (see
+[docs/WIDGET-SDK.md, "Inside 21Board"](WIDGET-SDK.md#inside-21board)). `widgetId` is `dev-` and the id in the
+file's manifest block (or its name). Never exported, and never written by an import, so a `.21board` file
+can't bring code that runs; *Erase everything* deletes it.
+
+```js
+{
+  id: "dev-my-widget",
+  name: "My Widget (test)",      // from the manifest block (or the page's title, or the file name)
+  file: "index.html",            // the file's name, as picked
+  size: 18234,                   // bytes
+  src: "<!DOCTYPE html>…",       // the file's text (at most 5 MB)
+  version: "1.0.0",              // from the manifest block
+  window: { width: 320, height: 240, … },   // from the manifest block, or null
+  at: 1762713600000              // when it was uploaded
+}
+```
 
 ### `link:folder` and `link:state` (this device only)
 

@@ -4175,6 +4175,221 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
+  ['Developer mode: upload a widget file', async (browser) => {
+    ok(stamped(), STAMPED);
+    if (!stamped()) return;   // (no offline copy is saved then)
+    // Every uploaded file carries this mark in its code: it must never turn up in anything that leaves the device.
+    const MARK = 'UPLOADED-CODE-7f3a91';
+    const dir = OUT + 'upload' + path.sep; fs.mkdirSync(dir, { recursive: true });
+    const W = (name, html) => { fs.writeFileSync(dir + name, html); return dir + name; };
+    // Tries everything a sealed-off widget must not reach, says what it reached, and saves that with Board21.save.
+    const probe = W('probe.html', `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">{"id":"probe","name":"Probe","version":"1.0.0","window":{"width":460,"height":320}}</script>
+<title>Probe</title></head><body><pre id="out">waiting</pre><script>
+/* ${MARK} */
+(async () => {
+  const r = { origin: self.origin, mode: document.compatMode };
+  const now = (k, fn) => { try { r[k] = fn() ? 'reached' : 'blocked'; } catch (e) { r[k] = 'blocked'; } };
+  now('parentDocument', () => !!parent.document);
+  now('parentBoard', () => !!parent.__board21);
+  now('topBoard', () => !!top.__board21);
+  now('localStorage', () => !!localStorage);
+  now('cookie', () => document.cookie.includes('b21secret'));
+  now('serviceWorker', () => !!navigator.serviceWorker.controller);
+  now('otherWindows', () => Array.from({ length: parent.frames.length }, (_, i) => parent.frames[i]).some(f => { if (f === window) return false; try { return !!f.document; } catch (e) { return false; } }));
+  const later = (k, fn) => Promise.race([(async () => fn())().then(v => v ? 'reached' : 'blocked', () => 'blocked'), new Promise(res => setTimeout(() => res('blocked'), 2500))]).then(v => { r[k] = v; });
+  const idb = name => new Promise((res, rej) => { const o = indexedDB.open(name); o.onsuccess = () => res(o.result.objectStoreNames.length > 0); o.onerror = () => rej(o.error); });
+  await Promise.all([
+    later('boardDatabase', () => idb('21Board')),
+    later('historyDatabase', () => idb('21Board-history')),
+    later('fetchBoard', () => fetch(document.baseURI).then(x => x.ok)),
+    later('fetchSdk', () => fetch(new URL('sdk/board21.js', document.baseURI)).then(x => x.ok)),
+    later('image', () => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(true); i.onerror = rej; i.src = new URL('icons/icon-192.png', document.baseURI); })),
+    later('caches', async () => (await caches.keys()).length > 0),
+    later('folder', async () => !!(await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')))
+  ]);
+  // Pretends to be another 21Board tab that erased the board; puts markup in the board's own menu.
+  try { new BroadcastChannel('21board-sync').postMessage({ tab: 'probe', keys: ['settings'], op: 'reload', erased: true }); } catch (e) { /* not even that */ }
+  r.connected = await Board21.ready().then(ctx => !ctx.standalone);
+  Board21.menu.set([{ id: 'a', label: 'A <i>', icon: '<svg viewBox="0 0 24 24"><style>#desk{outline:9px solid red}</style><img src="https://example.com/x.png"/><circle cx="12" cy="12" r="4"/></svg>' }]);
+  window.__probe = r;
+  document.getElementById('out').textContent = JSON.stringify(r, null, 1);
+  await Board21.save({ probe: r });
+})();
+</script></body></html>`);
+    const PROBES = ['parentDocument', 'parentBoard', 'topBoard', 'localStorage', 'cookie', 'serviceWorker', 'otherWindows', 'boardDatabase', 'historyDatabase', 'fetchBoard', 'fetchSdk', 'image', 'caches', 'folder'];
+    const noSdk = W('no-sdk.html', `<!DOCTYPE html><html><head><meta charset="utf-8"><title>No SDK tag</title></head><body><b id="s">waiting</b><script>
+/* ${MARK} */ Board21.ready().then(ctx => { document.getElementById('s').textContent = ctx.standalone ? 'standalone' : 'connected'; Board21.save({ hi: 1 }); });
+</script></body></html>`);
+    const counter = v => W(`counter-${v}.html`, `<!DOCTYPE html><html><head><!-- Load it with <script src="../../sdk/board21.js"></script> --><script src="https://example.com/sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">{"id":"counter","name":"Counter <b>","window":{"width":300,"height":200}}</script>
+</head><body><b id="v">${v}</b><script>/* ${MARK} */ Board21.ready().then(ctx => { document.body.dataset.on = ctx.standalone ? 'no' : 'yes'; });</script></body></html>`);
+    const errors = [], csp = [];
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 }, acceptDownloads: true });
+    await ctx.addInitScript(DRIVE_PICK);
+    const page = await ctx.newPage();
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('console', m => { if (/Content Security Policy/.test(m.text())) csp.push(m.text()); });
+    const B = (fn, arg) => page.evaluate(fn, arg);
+    const frame = (p, ik) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const records = p => p.evaluate(() => new Promise((res, rej) => { const o = indexedDB.open('21Board'); o.onerror = () => rej(o.error); o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').getAll(); q.onsuccess = () => { o.result.close(); res(Object.fromEntries(q.result.map(r => [r.key, r.value]))); }; }; }));
+    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(300); };
+    const dialogSays = async () => { const t = await page.locator('#modal.open').innerText().catch(() => ''); await page.click('#modal.open .btn').catch(() => {}); await page.waitForTimeout(150); return t; };
+    await page.goto(BASE); await freeBoard(page);
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 });   // the offline copy is ready
+    await B(() => { document.cookie = 'b21secret=1'; window.__board21.openWidget('notes'); });
+    await page.waitForTimeout(1200);
+    await fillNote(frame(page, 'notes:1'), 'Secret class note'); await page.waitForTimeout(500);
+
+    // ---- Settings → Developer mode → Test a widget has Upload file… beside Add.
+    await settings(page);
+    ok(await page.locator('#settings [data-act="dev-upload"]').count() === 0, 'Upload file… is hidden until Developer mode is on');
+    await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(200);
+    ok(await page.locator('#settings [data-act="dev-add"] + [data-act="dev-upload"]').count() === 1, 'with Developer mode on, Test a widget has Upload file… beside Add');
+    // ---- Files that can't be used are refused, with a plain message.
+    const txt = W('notes.txt', 'just text'), big = W('big.html', '<!DOCTYPE html><p>' + 'x'.repeat(5 * 1048576)), plain = W('plain.html', 'hello there');
+    await page.setInputFiles('#widget-input', txt); await page.waitForTimeout(300);
+    ok((await dialogSays()).includes('Choose the widget’s .html file.'), 'a file that isn’t .html is refused: “Choose the widget’s .html file.”');
+    await page.setInputFiles('#widget-input', big); await page.waitForTimeout(500);
+    ok((await dialogSays()).includes('at most 5 MB'), 'a file over 5 MB is refused, saying how big a widget file can be');
+    await page.setInputFiles('#widget-input', plain); await page.waitForTimeout(300);
+    ok((await dialogSays()).includes('isn’t a web page'), 'a file that isn’t a web page is refused');
+    ok(await B(() => window.__board21.state.devFiles.size) === 0, 'nothing is kept from a refused file');
+
+    // ---- Upload the probe with the button.
+    await B(() => { window.__bc = 0; new BroadcastChannel('21board-sync').onmessage = e => { if (e.data && e.data.tab === 'probe') window.__bc++; }; });
+    const before = await records(page);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#settings [data-act="dev-upload"]')]);
+    await chooser.setFiles(probe);
+    const ik = 'dev-probe:1';
+    ok(await eventually(() => B(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected && !!(window.__board21.state.data.get(ik) || {}).probe; }, ik)),
+      'the uploaded file opens in a window as “dev-probe”, connects, and its Board21.save reaches the board');
+    const info = await B(ik => { const w = window.__board21.state.wins.get(ik); return { name: w.widget.name, sandbox: w.iframe.getAttribute('sandbox'), head: w.iframe.getAttribute('srcdoc').slice(0, 80), w: w.disp.w, h: w.disp.h, item: Array.from(document.querySelectorAll('#settings .inst-list')).pop().innerText }; }, ik);
+    ok(info.name === 'Probe (test)' && info.w === 460 && info.h === 360, `it is named and sized from its manifest block (${info.name}, ${info.w}×${info.h - 40})`);
+    ok(/Probe \(test\)\s*Uploaded file: probe\.html/.test(info.item), 'Settings lists it as an uploaded file by its file name: ' + JSON.stringify(info.item));
+    ok(!/allow-same-origin/.test(info.sandbox) && info.head.startsWith('<!DOCTYPE html><meta http-equiv="Content-Security-Policy"'), `it runs sealed off (sandbox “${info.sandbox}”), the policy first in its page`);
+    const r = await frame(page, ik).locator('html').evaluate(() => window.__probe);
+    const reached = PROBES.filter(k => r[k] !== 'blocked');
+    ok(r.origin === 'null' && reached.length === 0 && r.mode === 'CSS1Compat',
+      `sealed off: parent.document, the board's globals, its databases (boards and board history), localStorage, cookies, the offline copy, other windows, the folder, and requests to the board's own address are all out of reach (${reached.length ? 'REACHED: ' + reached.join(', ') : 'all blocked'})`);
+    const after = await records(page);
+    const others = recs => JSON.stringify(Object.keys(recs).filter(k => !k.includes('dev-probe')).sort().map(k => [k, recs[k]]));
+    ok(others(before) === others(after) && after['data:1:notes:1'].text === 'Secret class note', 'the board’s other records are unchanged');
+    ok(await B(() => window.__bc) === 0 && await B(() => window.__board21.state.insts.has('notes:1')), 'it can’t talk to the board’s other tabs (pretending to be one that erased the board)');
+    await page.keyboard.press('Escape');
+    await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(300);
+    ok(await page.locator('#menu [data-id="a"]').innerText() === 'A <i>' && await page.locator('#menu img, #menu style, #menu [data-id="a"] svg').count() === 0 &&
+      await B(() => getComputedStyle(document.getElementById('desk')).outlineStyle) !== 'solid', 'its menu items are shown as text, without icons: nothing it sends becomes markup in the board');
+    await page.keyboard.press('Escape');
+    await settings(page);
+    ok(after['devfile:dev-probe'] && after['devfile:dev-probe'].src.includes(MARK), 'the file’s text is kept on this device (its own record, devfile:dev-probe)');
+
+    // ---- A file with no SDK tag still connects.
+    await page.setInputFiles('#widget-input', noSdk);
+    ok(await eventually(async () => await frame(page, 'dev-no-sdk-tag:1').locator('#s').textContent() === 'connected'), 'a file with no SDK tag still connects (the SDK is put in for it)');
+
+    // ---- A second tab picks up an upload, a new version of it and its removal.
+    const page2 = await ctx.newPage();
+    page2.on('pageerror', e => errors.push('[tab 2] ' + e.message));
+    await page2.goto(BASE); await page2.waitForTimeout(1500); await freeBoard(page2);
+    await page.setInputFiles('#widget-input', counter('v1'));
+    ok(await eventually(async () => await frame(page, 'dev-counter:1').locator('#v').textContent() === 'v1' && await frame(page, 'dev-counter:1').locator('body').getAttribute('data-on') === 'yes'),
+      'a file whose SDK tag points elsewhere (after one in a comment) gets 21Board’s own SDK, and connects');
+    ok(await eventually(async () => await frame(page2, 'dev-counter:1').locator('#v').textContent() === 'v1'), 'another tab shows the uploaded widget’s window too');
+    ok(await B(() => window.__board21.state.wins.get('dev-counter:1').el.querySelector('.name').textContent) === 'Counter <b> (test)' &&
+      await page.locator('.win[data-ikey="dev-counter:1"] .name b').count() === 0, 'its name is shown as text, never as markup');
+    await page.setInputFiles('#widget-input', counter('v2'));
+    ok(await eventually(async () => await frame(page, 'dev-counter:1').locator('#v').textContent() === 'v2'), 'uploading the same widget again replaces it: its open window shows the new version');
+    ok(await eventually(async () => await frame(page2, 'dev-counter:1').locator('#v').textContent() === 'v2'), 'and so does the other tab’s');
+    ok(await B(() => !window.__board21.state.insts.has('dev-counter:2') && window.__board21.state.devFiles.get('dev-counter').src.includes('v2')) &&
+      await page.locator('.toast', { hasText: 'Counter <b> (test) is updated.' }).count() === 1, 'the same window, not a second one, and it says so');
+
+    // ---- Nothing of the code leaves the device: Export (full and template), board history, the Drive folder.
+    await page.keyboard.press('Escape');
+    const download = async i => {
+      await page.click(`.picker-btn.${i ? 'right' : 'left'}`); await page.click('[data-ctl="export"]'); await page.waitForTimeout(200);
+      const [dl] = await Promise.all([page.waitForEvent('download'), page.click(`#modal .btn[data-i="${i}"]`)]);
+      const p = dir + `export-${i}.21board`; await dl.saveAs(p); return fs.readFileSync(p, 'utf8');
+    };
+    const full = await download(0), tpl = await download(1);
+    ok(JSON.parse(full).instances.some(i => i.widgetId === 'dev-probe' && i.data && i.data.probe) && JSON.parse(tpl).kind === 'template', 'the exports have the uploaded widgets’ windows (and, in a full backup, their content)');
+    ok(![full, tpl].some(t => t.includes(MARK) || t.includes('devfile') || t.includes('probe.html')), 'but no trace of their code, in a full backup or a blank template');
+    await B(async () => { const l = window.__board21.link; await l.choose(); await l.send(); });
+    const vid = await B(() => window.__board21.history.save('With uploads'));
+    await page.waitForTimeout(1500);
+    const version = await B(async id => JSON.stringify((await window.__board21.history.get(id)).body), vid);
+    const folder = JSON.stringify(await readFolder(page)), copies = JSON.stringify(await readHistory(page));
+    ok(!!vid && version.includes('dev-probe') && !version.includes(MARK) && !version.includes('devfile'), 'a Board history version has the window but no trace of the code');
+    ok(folder.includes('dev-probe') && copies.includes('dev-probe') && !folder.includes(MARK) && !copies.includes(MARK), 'nor does the board sent to the Google Drive folder, or its history copy there');
+
+    // ---- After a reload: the window reopens, connects, and has what it saved.
+    await page.reload(); await page.waitForTimeout(1500);
+    ok(await eventually(() => frame(page, ik).locator('html').evaluate(() => !!(window.Board21 && Board21.context && !Board21.context.standalone && Board21.context.data.probe))),
+      'after a reload the uploaded widget opens again, connects and gets what it saved');
+
+    // ---- Remove: the widget and its stored text go, here and in the other tab.
+    await settings(page);
+    await page.click('#settings [data-act="dev-remove"][data-val="dev-counter"]'); await page.waitForTimeout(800);
+    const gone = p => p.evaluate(() => !window.__board21.catalog().some(a => a.id === 'dev-counter') && !window.__board21.state.wins.has('dev-counter:1') && !window.__board21.state.devFiles.has('dev-counter'));
+    ok(await gone(page) && !('devfile:dev-counter' in await records(page)), 'Remove takes the widget away and deletes its stored text');
+    ok(await eventually(() => gone(page2)), 'in the other tab too');
+    await page.keyboard.press('Escape');
+    await page2.close();
+
+    // ---- The new widgets, and the starter, uploaded as files: they work under the policy.
+    ok(csp.some(t => t.includes('connect-src')) && csp.some(t => t.includes('img-src')), 'the policy is in force: the probe’s requests were refused by it');
+    csp.length = 0;
+    for (const [f, id] of [['widgets/task-timer/index.html', 'dev-task-timer'], ['widgets/first-then-board/index.html', 'dev-first-then-board'], ['widgets/_template/index.html', 'dev-my-widget']]) {
+      await page.setInputFiles('#widget-input', path.join(ROOT, f));
+      ok(await eventually(() => B(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, id + ':1')) &&
+        await frame(page, id + ':1').locator('html').evaluate(() => !!document.documentElement.getAttribute('data-b21-theme') && document.body.innerText.trim().length > 0),
+        `${f} uploaded as a file opens, connects and shows itself`);
+    }
+    await page.waitForTimeout(800);
+    await page.screenshot({ path: OUT + '95-uploaded-widgets.png' });
+    ok(csp.length === 0, 'and nothing they do is refused by the policy: ' + csp.slice(0, 3).join(' | '));
+
+    // ---- A crafted .21board file never brings code that runs.
+    await B(() => { window.__pwned = 0; addEventListener('message', e => { if (e.data && e.data.pwned) window.__pwned++; }); });
+    const EVIL = `<script>try { top.document.title = 'PWNED'; } catch (e) {} parent.postMessage({ pwned: 1 }, '*'); top.postMessage({ pwned: 1 }, '*');</script><img src=x onerror="parent.postMessage({ pwned: 1 }, '*')">`;
+    const win = (widgetId, i, data, config) => ({ widgetId, instance: 1, open: true, z: i + 1, rect: { x: 20 + i * 300, y: 20, w: 280, h: 300 }, data, config });
+    const crafted = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Crafted', devfile: EVIL, srcdoc: EVIL },
+      devFiles: { 'dev-evil': { id: 'dev-evil', name: 'Evil', src: EVIL } }, records: [{ key: 'devfile:dev-evil', type: 'devfile', value: { id: 'dev-evil', name: 'Evil', src: EVIL, at: 1 } }],
+      settings: { devMode: true, devWidgets: [{ id: 'dev-evil', name: 'Evil', entry: 'data:text/html,' + encodeURIComponent(EVIL) }] },
+      instances: [win('dev-evil', 0, { src: EVIL, srcdoc: EVIL }, { src: EVIL }), win('dev-probe', 1, { src: EVIL }, { srcdoc: EVIL }), win('notes', 2, { text: 'from the file' }, null)] };
+    fs.writeFileSync(dir + 'crafted.21board', JSON.stringify(crafted));
+    await page.setInputFiles('#import-input', dir + 'crafted.21board'); await page.waitForTimeout(300);
+    await page.click('#modal .btn[data-i="0"]');   // Replace my board
+    ok(await eventually(async () => await frame(page, 'notes:1').locator('#view').textContent() === 'from the file'), 'the crafted file is imported');
+    await page.waitForTimeout(1500);
+    const st = await B(() => { const b = window.__board21, s = b.state; return { pwned: window.__pwned, title: document.title, evil: b.catalog().some(a => a.id === 'dev-evil') || s.devFiles.has('dev-evil') || s.wins.has('dev-evil:1') || (s.settings.devWidgets || []).some(d => d.id === 'dev-evil'), probe: s.devFiles.has('dev-probe') && s.wins.has('dev-probe:1') }; });
+    const recs = await records(page);
+    ok(st.pwned === 0 && st.title !== 'PWNED' && !st.evil && !('devfile:dev-evil' in recs),
+      `nothing in it runs, and it can’t add a widget or a test widget’s code (${JSON.stringify(st)})`);
+    ok(st.probe && recs['devfile:dev-probe'] && recs['inst:1:dev-evil:1'], 'the uploaded widgets stay (an import replaces the board, not this device’s test widgets); the file’s unknown widget is kept but not shown');
+
+    // ---- Kiosk mode shows no Developer mode, even with it on.
+    const kp = await ctx.newPage(); await kp.goto(BASE + '?kiosk=yes'); await kp.waitForTimeout(1200);
+    await settings(kp);
+    ok(await kp.locator('#settings [data-act="dev-upload"], #settings [data-act="devmode"]').count() === 0, 'kiosk mode has no Developer mode or Upload file…, even where it is on');
+    await kp.close();
+
+    // ---- Offline: the uploaded widget still opens and connects (its SDK comes from 21Board's offline copy).
+    await ctx.setOffline(true);
+    await page.reload(); await page.waitForTimeout(1500);
+    ok(await eventually(() => B(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik)) &&
+      await eventually(() => frame(page, ik).locator('html').evaluate(() => !!window.__probe && window.__probe.connected)), 'offline, an uploaded widget opens and connects');
+    await ctx.setOffline(false);
+
+    // ---- Erase everything removes uploaded widgets like the rest.
+    await settings(page);
+    await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(200);
+    await page.locator('#modal.open .btn', { hasText: /^Erase everything$/ }).click(); await page.waitForTimeout(1500);
+    ok(!Object.keys(await records(page)).some(k => k.startsWith('devfile:')) && await B(() => window.__board21.state.devFiles.size === 0 && !window.__board21.catalog().some(a => a.sealed)), 'Erase everything deletes the uploaded widgets too');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const url = 'file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/');

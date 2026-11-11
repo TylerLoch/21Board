@@ -438,6 +438,30 @@ it can't read this site's real boards. *Edit code* goes back to the code.
   (e.g. `widgets/my-widget/index.html`) under **Test a widget**. A widget tested this way always comes
   from the server: only registered widgets are part of the offline copy. Without a connection its window
   says *This widget needs a connection*.
+- **From a file on your computer:** under **Test a widget**, tap **Upload file…** and pick the widget's
+  `.html` file (Chromebooks, Chrome on Windows and Mac, iPad Safari). It opens in a window named after its
+  manifest block (*My Widget (test)*, sized from its `window`), and its id is `dev-` and the manifest's `id`
+  (or its name). To see an edit, upload the file again: it replaces the one kept, and its open windows start
+  again with it. **Remove** in the list deletes it. Typing a `file:///` address can't work: the browser
+  doesn't let a web page load files from your computer.
+  - **Sealed off.** The file runs in a sandbox with an origin of its own. It can't reach the board's page, its
+    saved boards, board history, the Google Drive folder, localStorage or cookies, and it sees only what the
+    board sends its own window. It has no storage of its own either (localStorage throws): save with
+    `Board21.save`. A Content Security Policy goes first in its page, so it can't fetch or load anything
+    from the network (no CDN scripts, web fonts or images by address). Like any page, it can still open a
+    link.
+  - **Kept on this device only.** The file's text is stored on this device, apart from boards, so the
+    window comes back after a reload, offline and in other tabs. It is never in an export (full or
+    template), board history or the Google Drive folder: those carry the window and its content only, and
+    another device shows *Widget not installed* for it. Importing a `.21board` file never brings code that
+    runs. **Erase everything** deletes it.
+  - **Works offline.** 21Board puts its own copy of the SDK into the page in place of your SDK tag (or first,
+    if the file has none), so the tag's address doesn't matter.
+  - **Limits:** one self-contained file of at most 5 MB: images, CSS and fonts next to it don't come along
+    (relative addresses don't resolve), so put them inline or as `data:` URLs. Window menu items show without
+    their icons. Dragging inside the widget doesn't move its window: use its title bar. Its colors may flash
+    for a moment as it opens, until the board sends the theme. Not in kiosk mode, and not in a copy of
+    21Board opened from a file.
 - **Changing a registered widget:** 21Board runs from its offline copy, which only changes as a whole
   release. To see your change inside 21Board, run `node tools/release.js`, reload, and tap *Update* when
   it is offered a few seconds later. (Reloading with Shift held, Ctrl+Shift+R, shows the page from the
