@@ -2206,6 +2206,143 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Board history: Off, a full device, and when it can’t go back or be read', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await ctx.addInitScript(STORAGE_FAULTS);
+    // Board history's own database fails while window.__failHist is 'read' or 'write'.
+    await ctx.addInitScript(() => { const T = IDBDatabase.prototype.transaction; IDBDatabase.prototype.transaction = function (stores, mode) { if (this.name === '21Board-history' && window.__failHist === (mode === 'readwrite' ? 'write' : 'read')) throw new DOMException('board history can’t be used (test)', 'UnknownError'); return T.apply(this, arguments); }; });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => { if (!/Not saved yet/.test(e.message)) errors.push(e.message); });   // (Notes doesn't catch a failed save())
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const H = (fn, arg) => page.evaluate(fn, arg);
+    await H(() => window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }));
+    const note = page.frameLocator('.win[data-ikey="notes:1"] iframe');
+    const until = async (fn, ms = 8000) => { for (const t = Date.now(); Date.now() - t < ms; await page.waitForTimeout(100)) if (await fn().catch(() => false)) return true; return false; };
+    const noteIs = text => until(async () => await note.locator('#t').inputValue() === text);
+    const count = () => H(async () => { await window.__board21.history.reload(); return window.__board21.history.metas.length; });
+    const settings = async () => { await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300); };
+    const modal = text => page.locator('#modal.open .btn', { hasText: text }).click();
+    const toasts = text => page.locator('.toast', { hasText: text }).count();
+    // Versions written straight into board history's database, as if saved days ago: [{at, label, meta, exp, photo}].
+    const DAY = 864e5, t0 = Date.now(), idOf = at => `1:${String(at).padStart(13, '0')}:seed`;
+    const seed = list => H(list => new Promise((res, rej) => {
+      const o = indexedDB.open('21Board-history');
+      o.onerror = () => rej(o.error);
+      o.onsuccess = () => {
+        const t = o.result.transaction(['meta', 'body', 'photo'], 'readwrite');
+        for (const v of list) {
+          const id = `1:${String(v.at).padStart(13, '0')}:seed`;
+          if (v.photo) t.objectStore('photo').put({ key: v.photo, data: 'data:image/png;base64,AAAA', w: 1, h: 1, bytes: 3, name: 'p', addedAt: 1, thumb: null, lastUsed: v.at });
+          t.objectStore('meta').put(Object.assign({ v: 1, id, b: 1, at: v.at, kind: 'auto', reason: null, label: v.label, sig: 'seed' + v.at, uid: null, name: 'Board', bytes: 100, photo: v.photo || null,
+            thumb: { bg: null, pattern: 'none', shape: '16:9', vw: 2400, vh: 1350, wins: [] }, wins: {}, target: null, beforeBig: false, link: null, keepUntil: 0, manual: false, folder: null, tab: 'seed' }, v.meta || {}));
+          t.objectStore('body').put({ id, exp: v.exp || { format: '21board', formatVersion: 1, kind: 'full', instances: [] } });
+        }
+        t.oncomplete = () => { o.result.close(); res(); }; t.onabort = () => rej(t.error);
+      };
+    }), list);
+
+    // ---- Off: nothing is saved when 21Board opens either.
+    await H(() => window.__board21.openWidget('notes')); await page.waitForTimeout(1200);
+    await fillNote(note, 'Class list: Ada, Ben');
+    ok(await until(async () => await count() >= 1), 'a version is saved while the board changes (automatic versions are on)');
+    const goodId = await H(() => window.__board21.history.save('Good'));
+    await settings();
+    await page.click('#settings [data-act="hist-every"][data-val="0"]');
+    const asked = await page.locator('#modal.open').textContent();
+    await modal('Turn off');
+    ok(/when it opens/.test(asked) && /before Reset, Delete, Close all/.test(asked) && /when 21Board opens/.test(await page.locator('#settings .sheet-body').textContent()),
+      'the Off question and Settings say what Off stops (also the version saved when 21Board opens) and what is still saved');
+    await page.keyboard.press('Escape');
+    const nOff = await count();
+    await fillNote(note, 'Class list: Ada, Ben, Cy'); await page.waitForTimeout(1500);
+    ok(await H(() => window.__board21.history.capture('open')) === null && await count() === nOff, 'with automatic versions Off, no copy of the board is saved when 21Board opens (or while it changes)');
+    await settings(); await page.click('#settings [data-act="hist-every"][data-val="10"]'); await page.keyboard.press('Escape');
+    ok(!!(await H(() => window.__board21.history.capture('open'))) && await count() === nOff + 1, 'with them on again, one is');
+
+    // ---- “Go back” that can't finish says so, and the board is as it was.
+    await fillNote(note, 'wrecked');
+    await until(async () => (await storedRecords(page))['data:1:notes:1'].text === 'wrecked');
+    await H(() => { window.__failPut = 'unnamed'; });
+    const went = await H(id => window.__board21.history.restore(id).catch(() => 'threw'), goodId);
+    await H(() => { window.__failPut = null; });
+    ok(went === false && await toasts('Couldn’t go back') === 1 && await noteIs('wrecked') && await page.locator('.win').count() === 1, 'Go back on a device that refuses the save: the teacher is told, and the board is as it was');
+    await page.waitForSelector('.save-note.left', { state: 'hidden', timeout: 10000 });
+    // A copy made by a newer 21Board (as in the Google Drive folder), for the whole board and for one window.
+    const newer = { at: t0 - DAY, label: 'newer', meta: { wins: { 'notes:1': [1, 0, 'x', '', 30, 'from a newer 21Board', 0] } },
+      exp: { format: '21board', formatVersion: 99, kind: 'full', instances: [{ widgetId: 'notes', instance: 1, open: true, z: 1, rect: { x: 100, y: 100, w: 320, h: 240 }, data: { text: 'from a newer 21Board' }, config: null }] } };
+    await seed([newer]);
+    const went2 = await H(id => window.__board21.history.restore(id).catch(() => 'threw'), idOf(newer.at));
+    ok(went2 === false && await toasts('Couldn’t go back: This file was made by a newer version') === 1 && await noteIs('wrecked'), 'Go back to a copy this 21Board can’t read says so (it used to do nothing)');
+    const put = await H(id => window.__board21.history.putBack(id, 'notes:1').catch(() => 'threw'), idOf(newer.at));
+    ok(put === false && await toasts('Couldn’t put that window back') === 1 && await noteIs('wrecked'), 'and so does “Put back”');
+
+    // ---- History that can't be read is shown as that, not as “No earlier versions yet”.
+    await H(() => { window.__failHist = 'read'; });
+    await settings(); await page.click('#settings [data-act="hist-open"]');
+    await page.waitForSelector('#history.open [data-act="retry"]');
+    const sheet = await page.locator('#history .sheet-body').textContent();
+    ok(/couldn’t read board history/.test(sheet) && /haven’t been deleted/.test(sheet) && !/No earlier versions yet/.test(sheet), 'when board history can’t be read, the sheet says so (not “No earlier versions yet”)');
+    await page.keyboard.press('Escape'); await settings();
+    const st = await page.locator('#settings .sheet-body').textContent();
+    ok(/couldn’t be read just now/.test(st) && !/None yet/.test(st), 'and so does Settings (not “None yet”)');
+    await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open [data-act="retry"]');
+    await H(() => { window.__failHist = null; });
+    await page.click('#history [data-act="retry"]');
+    ok(await until(async () => await page.locator('#history.open .hist-row').count() >= 2), '“Try again” lists the versions once they can be read');
+    await page.keyboard.press('Escape');
+
+    // ---- “Erase everything” promises a way back: it asks again if the board as it is couldn't be kept.
+    await H(() => { window.__failHist = 'write'; });
+    await settings(); await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300); await modal('Erase everything');
+    const again = await until(() => page.locator('#modal.open', { hasText: 'Erase anyway?' }).count().then(n => n === 1));
+    if (again) await modal('Cancel');
+    await H(() => { window.__failHist = null; });
+    ok(again && await page.locator('.win').count() === 1 && await noteIs('wrecked'), '“Erase everything” asks “Erase anyway?” when the version from just before couldn’t be saved, and Cancel leaves the board alone');
+    await page.keyboard.press('Escape');
+
+    // ---- Out of space: history gives up a little at a time, and only until the save goes through.
+    // 60 old versions (2 a day), 3 of them with a photo the board no longer has; one saved by the teacher and one safety version, older still.
+    const olds = [];
+    for (let d = 8; d < 38; d++) for (const h of [0, 3]) olds.push({ at: t0 - d * DAY - h * 36e5, label: 'old' });
+    olds.sort((a, b) => a.at - b.at).slice(-3).forEach(v => { v.photo = 'oldphoto'; });
+    await seed(olds.concat([{ at: t0 - 200 * DAY, label: 'mine', meta: { kind: 'manual', manual: true } }, { at: t0 - 90 * DAY, label: 'safety', meta: { kind: 'before', reason: 'reset', keepUntil: t0 + DAY } }]));
+    await H(() => window.__board21.history.prune());   // (the usual tidying first, so that it doesn't change the count below)
+    const left = () => H(async () => {
+      const h = window.__board21.history; await h.reload();
+      const s = h.metas.filter(m => m.tab === 'seed'), old = s.filter(m => m.label === 'old').sort((a, b) => a.at - b.at);
+      return { old: old.length, oldest: old.length ? old[0].at : 0, newest: old.length ? old[old.length - 1].at : 0, withPhoto: s.filter(m => m.photo === 'oldphoto').length, photo: !!(await h.getPhoto('oldphoto')),
+        mine: s.some(m => m.label === 'mine'), safety: s.some(m => m.label === 'safety'), today: h.metas.filter(m => m.tab !== 'seed').length };
+    });
+    const was = await left();
+    await H(() => { const h = window.__board21.history, thin = h.thin.bind(h); window.__thins = 0; h.thin = async () => { window.__thins++; const r = await thin(); if (window.__once) window.__failPut = null; return r; }; });
+    // The device has room again after the first step.
+    await H(() => { window.__once = true; window.__failPut = 'quota'; });
+    await fillNote(note, 'typed on a nearly full device');
+    ok(await until(async () => (await storedRecords(page))['data:1:notes:1'].text === 'typed on a nearly full device'), 'a save refused for lack of space goes through once board history has made room');
+    let now = await left();
+    ok(await H(() => window.__thins) === 1 && was.photo && !now.photo && now.withPhoto === 0 && now.old === was.old && was.old >= 50 && await page.locator('.save-note.left:visible').count() === 0,
+      `it gave up only the photo kept with old versions, and stopped there (${now.old} of ${was.old} old versions still there)`);
+    ok(await toasts('almost out of space') === 1, 'and says that some of the oldest board history was removed, and to make room');
+    // The device stays full.
+    await H(() => { window.__once = false; window.__thins = 0; window.__failPut = 'quota'; });
+    await fillNote(note, 'typed on a full device');
+    await page.waitForSelector('.save-note.left:visible');
+    now = await left();
+    ok(await H(() => window.__thins) <= 5 && now.old < was.old && now.old >= 10 && now.oldest > was.oldest && now.newest === was.newest,
+      `a device that stays full costs a few steps of the oldest versions, not all but the last three (${now.old} of ${was.old} old versions left, after ${await H(() => window.__thins)} steps)`);
+    ok(now.mine && now.safety && now.today >= was.today, 'the version the teacher saved, the safety version and today’s versions are all still there');
+    await page.click('.save-note.left'); await modal('Try again now');
+    ok(await until(() => toasts('Still not saved').then(n => n === 1)) && (await left()).old === now.old, 'trying again while the device is still full takes no more history');
+    await settings();
+    ok(/Space is low on this device, so some of the oldest board history was removed/.test(await page.locator('#settings .sheet-body').textContent()), 'Settings → Board history says space is low (after a refused save: the sign that Chrome gives too)');
+    await page.keyboard.press('Escape');
+    await H(() => { window.__failPut = null; });
+    await page.click('.save-note.left'); await modal('Try again now');
+    await page.waitForSelector('.save-note.left', { state: 'hidden' });
+    ok((await storedRecords(page))['data:1:notes:1'].text === 'typed on a full device', 'with room again, what was typed is saved');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Kiosk mode (?kiosk=yes)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     await ctx.addInitScript(() => { window.__closed = 0; window.close = () => { window.__closed++; }; });   // (record Quit instead of closing the test page)
@@ -2507,7 +2644,7 @@ const SUITES = [
     ok(await noteIs('A week of lesson notes') && await B(() => document.body.classList.contains('dark')), 'a damaged settings record doesn’t stop the board from opening');
 
     // ---- a save fails: kept, shown, tried again
-    await B(() => { const h = window.__board21.history, thin = h.thin.bind(h), shrink = h.shrink.bind(h); window.__room = { thin: 0, shrink: 0 }; h.thin = () => { window.__room.thin++; return thin(); }; h.shrink = () => { window.__room.shrink++; return shrink(); }; });
+    await B(() => { const h = window.__board21.history, thin = h.thin.bind(h); window.__room = { thin: 0 }; h.thin = () => { window.__room.thin++; return thin(); }; });
     const said = () => page.locator('.toast', { hasText: 'couldn’t save' }).count();
     await B(() => { window.__failPut = 'unnamed'; });
     await fillNote(note, 'typed while saving failed');
@@ -2541,11 +2678,11 @@ const SUITES = [
     let now = JSON.parse(await stored());
     ok(now['data:1:notes:1'].text === 'typed while saving failed, and more' && now['inst:1:timer:1'].open === false && await page.locator('.toast', { hasText: 'saved again' }).count() === 1,
       'once saving works again, everything that was waiting is saved, and the note goes away');
-    // "Full", however the browser says it: make room (thin board history, then shrink it), then keep trying.
+    // "Full", however the browser says it: board history is asked to make room (see the Board history suites), then keep trying.
     await B(() => { window.__failPut = 'quota'; });
     await fillNote(note, 'typed on a full device');
     await page.waitForSelector('.save-note.left:visible');
-    ok(await B(() => window.__room.thin === 1 && window.__room.shrink === 1), 'out of space (QuotaExceededError): board history is thinned, then shrunk, to make room');
+    ok(await B(() => window.__room.thin === 1), 'out of space (QuotaExceededError): board history is asked to make room (once: it has nothing old to give up here)');
     await page.click('.save-note.left');
     ok(await page.locator('#modal.open', { hasText: 'This device is out of space' }).count() === 1, 'and the note says the device is out of space');
     await B(() => { window.__failPut = null; });
@@ -2554,7 +2691,7 @@ const SUITES = [
     await B(() => { window.__failPut = 'disk'; });
     await fillNote(note, 'typed on a full disk');
     await page.waitForSelector('.save-note.left:visible');
-    ok(await B(() => window.__room.thin === 2 && window.__room.shrink === 2), 'a full disk reported another way (“Failed to write blobs”) is treated the same');
+    ok(await B(() => window.__room.thin === 2), 'a full disk reported another way (“Failed to write blobs”) is treated the same');
     await B(() => { window.__failPut = null; });
     await page.waitForSelector('.save-note.left', { state: 'hidden', timeout: 8000 });   // (tried again by itself after 5 seconds)
     await page.reload(); await started();

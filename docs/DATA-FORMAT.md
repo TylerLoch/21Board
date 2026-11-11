@@ -277,9 +277,10 @@ if it was still waiting to be saved (see below), so the older change is never wr
 - **A failed write is kept.** The changes stay queued in the tab (a newer change to the same record wins) and
   are tried again with the next change, after 5 seconds, then every 30. Meanwhile the board shows *Not saved*,
   and Export includes the queued changes. An error that means "out of space" (`QuotaExceededError`, or a
-  message about quota, no space or a failed blob write) first thins board history, then shrinks it, and
-  retries each time. If the transaction still fails, its records are written one at a time, so only the
-  ones that can't be stored stay queued.
+  message about quota, no space or a failed blob write) first makes room in board history, a little at a
+  time (the photos kept with older versions, then the 10 oldest versions; see README, "Board history"), and
+  retries after each step, up to 4 times. If the transaction still fails, its records are written one at a
+  time, so only the ones that can't be stored stay queued.
 - **Export doesn't need the database.** It reads the stored records, but what the tab holds stands in for
   any record that can't be read, and for all of them if the read fails or takes longer than 8 seconds.
 - **A database that is gone under an open board is written back.** If reopening the database creates it

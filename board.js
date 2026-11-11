@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.10-30';
-  const BOARD_BUILD = '355358af';
+  const BOARD_BUILD = '4a543aab';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -551,7 +551,7 @@
         this.dropped.clear();
         let err = null;
         try { await this.write(batch); batch.clear(); } catch (e) { err = e; }
-        const makeRoom = !!err && isFull(err) && this.retried < 2;   // (first, see below)
+        const makeRoom = !!err && isFull(err) && this.retried < 4;   // (first, see below)
         // One record that can't be written (a long note on a nearly full device) must not hold back the others:
         // they are tried one at a time, and only those that still fail stay queued. (Not while storage can't
         // even be opened.)
@@ -579,10 +579,13 @@
         for (const [k, op] of this.pending) batch.set(k, op);
         this.pending = batch;
         this.waiters.unshift(...waiters);
-        // Out of space: make room by thinning board history, then try once more.
+        // Out of space: board history gives up a little (BoardHistory.thin), then the save is tried again. A few
+        // times at most, and not at all once it has nothing left to give, so a full device costs only a few
+        // steps of history, never all of it.
         if (makeRoom) {
-          this.retried++;
-          try { await (this.retried === 1 ? BoardHistory.thin() : BoardHistory.shrink()); } catch (e2) { /* nothing to free */ }
+          let freed = false;
+          try { freed = await BoardHistory.thin(); } catch (e2) { /* nothing to free */ }
+          this.retried = freed ? this.retried + 1 : 4;
           continue;
         }
         console.error('21Board: save failed', err);
@@ -3027,7 +3030,7 @@
         case 'hist-open': HistorySheet.open(this.side); break;
         case 'hist-every': {
           if (val === '0') {
-            const ok = await dialog({ title: 'Turn off automatic versions?', message: '21Board stops saving versions while you work. It still saves one before Reset, Delete, Close all, Import, Load, Erase and going back, so those can be undone. Versions already saved stay until you delete them.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+            const ok = await dialog({ title: 'Turn off automatic versions?', message: '21Board stops saving versions while you work, when it opens and when a note is suddenly cleared. It still saves one before Reset, Delete, Close all, a photo change, Import, Load, Erase and going back, so those can be undone, and when you tap “Save this version now”. Versions already saved stay until you delete them.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
             if (!ok) break;
           }
           updateSettings({ historyEvery: +val });
@@ -3088,8 +3091,12 @@
                 .concat(hist ? [{ label: 'Erase, including board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (ok === 'backup') { await doExport('full'); break; }
           if (ok !== 'erase' && ok !== 'erase-all') break;
-          if (ok === 'erase') await BoardHistory.before('erase', temp ? 'Before emptying the board' : 'Before erasing everything', { timeout: 3000 });
-          else await BoardHistory.clearAll();
+          if (ok === 'erase') {
+            // (The question promised a way back: if the board as it is couldn't be kept, ask once more.)
+            const kept = await BoardHistory.before('erase', temp ? 'Before emptying the board' : 'Before erasing everything', { timeout: 3000 });
+            if (!kept && hist && (S.insts.size || BoardPhoto.media()) && !await dialog({ title: temp ? 'Empty it anyway?' : 'Erase anyway?', message: '21Board couldn’t save the board as it is now in board history, so this can’t be undone.',
+              actions: [{ label: temp ? 'Empty it anyway' : 'Erase anyway', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] })) break;
+          } else await BoardHistory.clearAll();
           await Store.tx('readwrite', s => { s.clear(); });
           Writer.forget();
           Link.forget();
@@ -4230,14 +4237,16 @@
   //  - while the board changes: once it has settled for a minute, at most every 10 minutes (Settings: every
   //    hour, once a day, or off); also when 21Board is left with unsaved changes;
   //  - when 21Board opens (if the board changed since the last version);
-  //  - before Reset, Delete, Close all, a photo change, Import, Load from the folder, going back, Erase, and when
-  //    a widget's content is suddenly emptied (e.g. a note cleared);
+  //  - when a widget's content is suddenly emptied (e.g. a note cleared);
+  //  - before Reset, Delete, Close all, a photo change, Import, Load from the folder, going back and Erase;
   //  - when the teacher taps "Save this version now" (kept until deleted).
-  // Off (Settings) stops only the automatic versions: the ones before risky actions are always saved.
+  // Off (Settings) stops the first three (the automatic ones): the versions before risky actions are always
+  // saved, because Undo depends on them.
   // Identical content is never saved twice. Kept: the newest 20; one an hour for the last 48 active hours; the
   // first and last of each day for 30 active days; one a week for 12 active weeks; safety versions (before…)
   // for 7 days; the version before a big change for 30 days. Photos are kept once (by identity), at most 5,
-  // and the whole history stays within a share of the device's storage.
+  // and the whole history stays within a share of the device's storage. When the browser refuses a save for
+  // lack of space, history gives up a little at a time (see thin), never because a number looks low.
   // Going back replaces the board (after saving it as it is, so it can be undone) but never this device's
   // settings; "Put back" brings back one window. Records: see docs/DATA-FORMAT.md, "Board history".
   // =====================================================================
@@ -4293,6 +4302,8 @@
   const BoardHistory = {
     dbp: null, off: '', paused: '', status: '', low: false, metas: [], dirty: false, lastChangeAt: 0, firstDirtyAt: 0,
     timer: 0, started: false, capturing: false, undoable: null, guardAt: new Map(), folderStatus: '', budgetCache: null,
+    tight: false, thinned: false,   // a save was refused for lack of space since 21Board opened; history gave some up (see thin)
+    unread: false,                  // the last read of the list failed (see reload): it isn't empty, it's unknown
     cfgv: {},   // tests: {quiet, every, budget} in ms / bytes
     cfg(v) { this.cfgv = Object.assign({}, this.cfgv, v || {}); },
     // (Also where the saved board couldn't be opened and the teacher went on without it: its earlier versions
@@ -4335,8 +4346,14 @@
     async reload() {
       if (!this.enabled()) { this.metas = []; return; }
       try { this.metas = (await this.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAll(this.range(S.boardId)); q.onsuccess = () => set(q.result); })) || []; }
-      catch (e) { this.metas = []; return; }
+      catch (e) { this.metas = []; this.unread = true; console.warn('21Board: could not read board history', e); return; }
+      this.unread = false;
       this.metas.sort((a, b) => b.at - a.at);
+    },
+    // A version to go back to, or null after saying why not: it is gone, or history can't be read just now.
+    async find(id) {
+      try { const r = await this.get(id); if (!r) toast('That version can’t be found anymore.'); return r; }
+      catch (e) { toast('Couldn’t read board history just now. Try again in a moment.'); return null; }
     },
     async get(id) {
       return this.tx(['meta', 'body'], 'readonly', (o, set) => {
@@ -4426,6 +4443,7 @@
       try { await this.db(); } catch (e) { return null; }
       if (this.paused === 'quota' && Date.now() - (this.pausedAt || 0) > 30 * H_MIN) this.paused = '';   // try again now and then
       if (this.paused === 'quota' && kind !== 'manual' && kind !== 'before') return null;
+      if ((kind === 'auto' || kind === 'open') && !this.every()) return null;   // Off: no copy when 21Board opens either
       const b = S.boardId, startedAt = Date.now();
       let exp;
       try { exp = await buildExport('full'); } catch (e) { return null; }
@@ -4480,7 +4498,7 @@
           };
         });
       } catch (err) {
-        if (isFull(err) && !opts.retried) { await this.thin(); return this.capture(kind, Object.assign({}, opts, { retried: true })); }
+        if (isFull(err) && !opts.retried && await this.thin()) return this.capture(kind, Object.assign({}, opts, { retried: true }));
         if (isFull(err)) { this.paused = 'quota'; this.pausedAt = Date.now(); }
         console.warn('21Board: could not save a board version', err);
         return null;
@@ -4527,7 +4545,7 @@
       this.timer = setTimeout(() => this.check(), this.quiet() + 50);
     },
     async check(leaving) {
-      if (!this.enabled() || !this.dirty || !this.every() || this.capturing || (this.low && !leaving)) return;
+      if (!this.enabled() || !this.dirty || !this.every() || this.capturing) return;
       if (Inter.active) { clearTimeout(this.timer); this.timer = setTimeout(() => this.check(), 5000); return; }
       const now = Date.now(), newest = this.metas.find(m => /^(auto|open|manual|restored)$/.test(m.kind) || m.manual);
       const every = this.every() * (this.paused === 'over' ? Math.max(1, H_HOUR / this.every()) : 1);
@@ -4568,7 +4586,7 @@
         for (const m of all) { if (!byBoard.has(m.b)) byBoard.set(m.b, []); byBoard.get(m.b).push(m); }
         const newest20 = new Set();
         for (const list of byBoard.values()) {
-          const keep = historyPlan(list, now, low ? T_LOW : T_LOCAL);
+          const keep = historyPlan(list, now, T_LOCAL);
           list.forEach(m => { if (!keep.has(m.id)) drop.add(m.id); });
           list.slice().sort((a, b) => b.at - a.at).slice(0, 20).forEach(m => newest20.add(m.id));
         }
@@ -4595,51 +4613,41 @@
         HistorySheet.refresh();
       } catch (err) { console.warn('21Board: could not tidy board history', err); }
     },
-    // Out of space, gently: thin as when space is low (saved, safety and before-a-big-change versions stay) and keep
-    // photos only on each board's newest version.
+    // Out of space: the browser refused a save (of the board: Writer; of a version: capture). Gives up a little
+    // board history and says whether there was any to give; the save is then tried again, so no more goes than
+    // is needed. First the photos kept with older versions (each board's newest version keeps its photo), then
+    // the 10 oldest versions. Never what historyPlan keeps with T_LOW: the newest, the first and last of each
+    // of the last 7 days the board was used, the teacher's saved versions, the safety versions and the one
+    // before a big change.
+    // (A refused save is also the only sign of a nearly full device that Chrome gives: its storage estimate is
+    // a fixed allowance, not the free space. Hence tight, for Settings.)
     async thin() {
-      if (!this.enabled()) return;
+      if (!this.enabled()) return false;
+      this.tight = true;
       try {
         const all = (await this.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAll(); q.onsuccess = () => set(q.result); })) || [];
-        const byBoard = new Map(), keepPhoto = new Set();
+        const byBoard = new Map(), keep = new Set(), keepPhoto = new Set();
         for (const m of all) { if (!byBoard.has(m.b)) byBoard.set(m.b, []); byBoard.get(m.b).push(m); }
+        for (const list of byBoard.values()) {
+          historyPlan(list, Date.now(), T_LOW).forEach(id => keep.add(id));
+          const newest = list.reduce((a, m) => (m.at > a.at ? m : a));
+          if (newest.photo && newest.photo !== 'gone') keepPhoto.add(newest.photo);
+        }
+        const photos = all.filter(m => m.photo && m.photo !== 'gone' && !keepPhoto.has(m.photo));
+        const old = photos.length ? [] : all.filter(m => !keep.has(m.id)).sort((a, b) => a.at - b.at).slice(0, 10);
+        if (!photos.length && !old.length) return false;
         await this.tx(['meta', 'body', 'photo'], 'readwrite', o => {
-          for (const list of byBoard.values()) {
-            const keep = historyPlan(list, Date.now(), T_LOW);
-            list.sort((a, b) => b.at - a.at).forEach((m, i) => {
-              if (!keep.has(m.id)) { o.meta.delete(m.id); o.body.delete(m.id); return; }
-              if (i === 0 && m.photo && m.photo !== 'gone') keepPhoto.add(m.photo);
-              else if (m.photo && m.photo !== 'gone') { m.photo = 'gone'; o.meta.put(m); }
-            });
-          }
-          const q = o.photo.getAllKeys();
-          q.onsuccess = () => q.result.forEach(k => { if (!keepPhoto.has(k)) o.photo.delete(k); });
+          for (const m of photos) { o.photo.delete(m.photo); m.photo = 'gone'; o.meta.put(m); }
+          for (const m of old) { o.meta.delete(m.id); o.body.delete(m.id); }
         });
+        // Said once: history is never given up silently.
+        if (!this.thinned) toast('This device is almost out of space, so some of the oldest board history was removed. Make room on this device.', { timeout: 12000 });
+        this.thinned = true;
         await this.reload();
-      } catch (err) { console.warn('21Board: could not make room', err); }
-    },
-    // Out of space for the board itself (after thin() wasn't enough): keep per board the newest 3 and the
-    // teacher's saved versions, with a photo only on the newest.
-    async shrink() {
-      if (!this.enabled()) return;
-      try {
-        const all = (await this.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAll(); q.onsuccess = () => set(q.result); })) || [];
-        const byBoard = new Map();
-        for (const m of all) { if (!byBoard.has(m.b)) byBoard.set(m.b, []); byBoard.get(m.b).push(m); }
-        const keepPhoto = new Set();
-        await this.tx(['meta', 'body', 'photo'], 'readwrite', o => {
-          for (const list of byBoard.values()) {
-            list.sort((a, b) => b.at - a.at).forEach((m, i) => {
-              if (i >= 3 && !m.manual) { o.meta.delete(m.id); o.body.delete(m.id); return; }
-              if (i === 0 && m.photo && m.photo !== 'gone') keepPhoto.add(m.photo);
-              else if (m.photo && m.photo !== 'gone') { m.photo = 'gone'; o.meta.put(m); }
-            });
-          }
-          const q = o.photo.getAllKeys();
-          q.onsuccess = () => q.result.forEach(k => { if (!keepPhoto.has(k)) o.photo.delete(k); });
-        });
-        await this.reload();
-      } catch (err) { console.warn('21Board: could not make room', err); }
+        HistorySheet.refresh(); updateHint();
+        if (Settings.isOpen) Settings.render();
+        return true;
+      } catch (err) { console.warn('21Board: could not make room', err); return false; }
     },
     async clearAll() {
       if (!this.enabled()) return;
@@ -4681,11 +4689,17 @@
     },
     // src: a version id, or {exp, file} (a copy from the folder). Replaces the whole board; can be undone.
     // opts.undo: undoing an action just taken (a running timer keeps running); opts.what: what is undone.
+    // Whatever stops it (a copy made by a newer 21Board, a device that can't save), the teacher is told, and
+    // the board is as it was: applyImport stores the whole board or nothing.
     async restore(src, opts = {}) {
+      try { return await this.restoreNow(src, opts); }
+      catch (err) { console.error(err); toast(`Couldn’t ${opts.undo ? 'undo that' : 'go back'}: ` + ((err && err.message) || err)); return false; }
+    },
+    async restoreNow(src, opts) {
       let exp, meta = null;
       if (typeof src === 'string') {
-        const r = await this.get(src).catch(() => null);
-        if (!r) { toast('That version can’t be found anymore.'); return false; }
+        const r = await this.find(src);
+        if (!r) return false;
         exp = clone(r.body.exp); meta = r.meta;
       } else exp = clone(src.exp);
       const at = (exp.snapshot && exp.snapshot.at) || (exp.history && exp.history.at) || (meta && meta.at) || Date.now();
@@ -4700,12 +4714,9 @@
         if (ph) { p.photo = { data: ph.data, w: ph.w, h: ph.h, bytes: ph.bytes, name: ph.name, addedAt: ph.addedAt }; p.photoLook = normalizePhotoSettings(look || {}); photo = 'file'; }
         else { photo = 'keep'; gone = !!BoardPhoto.media(); }
       } else if ((meta && meta.photo === 'gone') || !meta) { photo = 'keep'; gone = !!(meta && meta.photo === 'gone'); }
-      let undoId;
-      try {
-        // (The version may be another board, e.g. undoing an Import: no send runs across the change. See Link.swap.)
-        undoId = await Link.swap(() => applyImport(p, 'replace', { uid: p.board.uid || S.board.uid, photo, keepCreated: true, mustSnapshot: true,
-          history: opts.undo ? { reason: 'undo', label: `Before undoing ${opts.what || 'a change'}` } : { reason: 'restore', label: 'Before going back', target: at } }));
-      } catch (err) { console.error(err); toast(`Couldn’t ${opts.undo ? 'undo that' : 'go back'}: ` + ((err && err.message) || err)); return false; }
+      // (The version may be another board, e.g. undoing an Import: no send runs across the change. See Link.swap.)
+      const undoId = await Link.swap(() => applyImport(p, 'replace', { uid: p.board.uid || S.board.uid, photo, keepCreated: true, mustSnapshot: true,
+        history: opts.undo ? { reason: 'undo', label: `Before undoing ${opts.what || 'a change'}` } : { reason: 'restore', label: 'Before going back', target: at } }));
       if (undoId === false) return false;
       await this.capture('restored', opts.undo ? { label: `Undid ${opts.what || 'a change'}` } : { label: 'Went back', target: at });
       Link.changed([Keys.board(S.boardId)]); Link.computeOffer();
@@ -4716,9 +4727,14 @@
       return true;
     },
     // Brings back one window from a version (into a free number if a different window has that one now).
+    // (As with restore: if it can't, it says so.)
     async putBack(id, ikey, opts = {}) {
-      const r = await this.get(id).catch(() => null);
-      if (!r) { toast('That version can’t be found anymore.'); return false; }
+      try { return await this.putBackNow(id, ikey, opts); }
+      catch (err) { console.error(err); toast('Couldn’t put that window back: ' + ((err && err.message) || err)); return false; }
+    },
+    async putBackNow(id, ikey, opts) {
+      const r = await this.find(id);
+      if (!r) return false;
       const exp = clone(r.body.exp);
       if (!opts.exact) this.fix(exp, r.meta.at);   // (undoing an action just taken: a running timer keeps running)
       const src = exp.instances.find(i => ikeyOf(i.widgetId, i.instance) === ikey);
@@ -4879,12 +4895,12 @@
     if (!H.enabled()) return `<h3>Board history</h3><div class="row"><div class="hint">Board history isn’t available in this browser window.</div></div>`;
     const n = H.metas.length, bytes = H.metas.reduce((a, m) => a + (m.bytes || 0), 0), oldest = H.metas[n - 1];
     const lastFolder = H.metas.find(m => m.folder);
-    const warn = H.paused === 'quota' ? ' Board history is paused: this device is out of space.' : H.paused === 'over' ? ' Board history is using its share of this device’s storage, so a version is saved about once an hour.' : H.low ? ' Space is low on this device, so fewer earlier versions are kept.' : H.status === 'too-big' ? ' This board is too big for automatic versions.' : '';
+    const warn = H.paused === 'quota' ? ' Board history is paused: this device is out of space.' : H.paused === 'over' ? ' Board history is using its share of this device’s storage, so a version is saved about once an hour.' : H.low || H.tight ? ` Space is low on this device${H.thinned ? ', so some of the oldest board history was removed' : ''}. Make room on the device so 21Board can keep saving.` : H.status === 'too-big' ? ' This board is too big for automatic versions.' : '';
     const every = String(S.settings.historyEvery == null ? 10 : S.settings.historyEvery);
     return `<h3>Board history</h3>
-      <div class="row"><div><div class="lbl">Go back to an earlier version</div><div class="hint">Earlier versions of this board are kept on this device, so you can undo a mistake (or a curious student). ${n ? `${n} version${n === 1 ? '' : 's'} (${fmtBytes(bytes)}), the oldest from ${esc(new Date(oldest.at).toLocaleDateString([], { month: 'short', day: 'numeric' }))}.` : 'None yet.'}${lastFolder && Link.dir ? ` The last copy in your folder was saved ${esc(when(lastFolder.at))}.` : ''}${warn}</div></div>
+      <div class="row"><div><div class="lbl">Go back to an earlier version</div><div class="hint">Earlier versions of this board are kept on this device, so you can undo a mistake (or a curious student). ${n ? `${n} version${n === 1 ? '' : 's'} (${fmtBytes(bytes)}), the oldest from ${esc(new Date(oldest.at).toLocaleDateString([], { month: 'short', day: 'numeric' }))}.` : H.unread ? 'They couldn’t be read just now.' : 'None yet.'}${lastFolder && Link.dir ? ` The last copy in your folder was saved ${esc(when(lastFolder.at))}.` : ''}${warn}</div></div>
         <button class="btn primary" data-act="hist-open">${svg('history')}Board history…</button></div>
-      <div class="row stack"><div><div class="lbl">Save a version automatically</div><div class="hint">While the board is changing. One is always saved before Reset, Delete, Close all, Import, Load and going back.</div></div>${seg('hist-every', every, [['10', 'Every 10 min'], ['60', 'Every hour'], ['1440', 'Once a day'], ['0', 'Off']])}</div>
+      <div class="row stack"><div><div class="lbl">Save a version automatically</div><div class="hint">While the board is changing, when 21Board opens and when a note is suddenly cleared. Off stops these. One is still saved before Reset, Delete, Close all, a photo change, Import, Load, Erase and going back, so those can be undone.</div></div>${seg('hist-every', every, [['10', 'Every 10 min'], ['60', 'Every hour'], ['1440', 'Once a day'], ['0', 'Off']])}</div>
       ${Link.dir ? `<div class="row"><div><div class="lbl">Copies in your Google Drive folder</div><div class="hint">About one an hour, in “Board history” inside your folder (without the background photo), so you can go back even if this device is reset.${H.folderStatus ? ' ' + esc(H.folderStatus) : ''}</div></div>${sw('hist-folder', S.settings.historyFolder !== false, 'Copies in your Google Drive folder')}</div>` : ''}
       <div class="row"><div><div class="lbl">Delete board history</div><div class="hint">Deletes the earlier versions. The board itself stays as it is.</div></div><button class="btn small danger" data-act="hist-delete">Delete…</button></div>`;
   }
@@ -4975,6 +4991,7 @@
       const H = BoardHistory, metas = H.metas, now = this.now;
       let html = '<p class="hist-intro">Tap a time to see how your board looked. Nothing changes until you tap Go back.</p>';
       if (H.undoable && H.undoable.until > Date.now()) html += `<div class="hist-undo"><span>${esc(H.undoable.label)}</span><button class="btn small primary" data-act="undo">Undo</button></div>`;
+      if (H.unread) return html + '<p class="empty-note">21Board couldn’t read board history just now. Your earlier versions haven’t been deleted.</p><p><button class="btn" data-act="retry">Try again</button></p>' + this.renderFoot();
       if (!metas.length) return html + '<p class="empty-note">No earlier versions yet. 21Board saves one when the board changes, and before risky actions like Reset or Import.</p>' + this.renderFoot();
       // The version most likely wanted after a disaster.
       const noneOpen = now && !Object.values(now.wins).some(w => w[0]);
@@ -5056,7 +5073,7 @@
         html += `<div class="inst"><div class="meta"><b>${esc(dayTime(m.at))}</b><span>${esc(w[5] || '(empty)')}</span></div><button class="btn small" data-act="put-here" data-val="${esc(m.id + '|' + ik)}">Put back this version</button></div>`;
       }
       html += '</div>';
-      if (!count) html += '<p class="hint">No different versions of this window yet.</p>';
+      if (!count) html += `<p class="hint">${H.unread ? '21Board couldn’t read board history just now. Close this and try again.' : 'No different versions of this window yet.'}</p>`;
       return html + `<p><button class="btn small" data-act="whole">Show the whole board’s history</button></p>`;
     },
 
@@ -5074,6 +5091,7 @@
         case 'put-here': { const [id, ik] = val.split('|'); this.close(); await H.putBack(id, ik, { here: true }); break; }
         case 'undo': if (H.undoable) { const id = H.undoable.id; H.undoable = null; this.close(); await H.restore(id, { undo: true, what: 'going back' }); } break;
         case 'whole': this.ikey = null; this.render(); break;
+        case 'retry': await H.reload(); await this.loadExtras(); this.render(); break;
         case 'others': this.showOthers = !this.showOthers; this.render(); break;
         case 'save': {
           const r = await dialog({ title: 'Save this version', message: 'It’s kept until you delete it.', input: { label: 'Name (optional)', placeholder: 'Monday setup', maxlength: 60 }, actions: [{ label: 'Save', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });

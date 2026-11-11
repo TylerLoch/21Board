@@ -202,7 +202,8 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 - **A save fails** (the device is full, for example): the change stays on the board and 21Board keeps trying
   (with the next change, after 5 seconds, then every 30). Until everything is saved, a **Not saved** note stays
   above the ▦ buttons; tap it for the reason, *Try again now* and *Export a backup*. Settings says the same
-  at the top. When the device is out of space, 21Board first makes room by thinning board history. One
+  at the top. When the device is out of space, 21Board first makes a little room in board history (see
+  [Board history](#board-history-going-back)) and tries again. One
   record that doesn't fit (a very long note, the photo) doesn't hold back the rest: the other changes are
   still saved. *Export a backup* doesn't depend on the device's storage: it works from what is on screen.
 - **The device loses what was saved while 21Board is open** (Chrome can throw its storage away after the disk
@@ -343,17 +344,28 @@ touch-only panel, and that the board is still there after airplane mode and a re
 
 21Board keeps earlier versions of the board on the device, in a separate database from the board itself:
 while the board changes (at most every 10 minutes, once it has settled for a minute), when 21Board opens,
-and before every risky action (Reset, Delete, Close all, changing or removing the photo, Import, Load, going
-back, Erase everything, and a widget's content suddenly being emptied, e.g. a note cleared). Identical content
-is never saved twice. *Save this version now* keeps a named version until you delete it. Turning automatic
-versions off still keeps one before each risky action, so Undo keeps working.
+when a widget's content is suddenly emptied (e.g. a note cleared), and before every risky action (Reset,
+Delete, Close all, changing or removing the photo, Import, Load, going back, Erase everything). Identical
+content is never saved twice. *Save this version now* keeps a named version until you delete it.
+
+**Off** (Settings → *Save a version automatically*) stops the first three: nothing is saved while you work,
+when 21Board opens or when a note is cleared. One is still saved before each risky action, so Undo keeps
+working, and when you tap *Save this version now*. Versions already saved stay until you delete them.
 
 **What's kept:** the newest 20, one an hour for 2 days, the first and last of each day for a month, one a week
 for 3 months (counting only days the board was used, so a summer break doesn't empty it), safety versions for a
 week, and the version before a big change for a month. Photos are stored once, and history stays within a share
-of the device's storage (less when space is low). **Going back never changes this device's settings** (theme,
-accent) and a running timer comes back paused. *Erase everything* keeps board history (so it can be undone);
-*Erase, including board history* doesn't.
+of the device's storage. **Going back never changes this device's settings** (theme, accent) and a running
+timer comes back paused. If going back can't finish, 21Board says why and the board stays as it was.
+*Erase everything* keeps board history (so it can be undone; if the board as it is can't be kept first,
+21Board asks before erasing); *Erase, including board history* doesn't.
+
+**When the device runs out of space** (the browser refuses a save), history gives up a little at a time and
+the save is tried again after each step, a few times at most: first the photos kept with older versions, then
+the 10 oldest versions. The newest versions, the first and last of each of the last 7 days the board was used,
+the versions you saved, the safety versions and the one before a big change are never given up for this. A
+message says so once, and Settings → Board history shows *Space is low on this device*. (Chrome doesn't tell
+a page how much space is left, so a refused save is the sign 21Board goes by.)
 
 **In the Google Drive folder** (when linked): about one copy an hour (and every version you save) goes to
 “Board history” inside the folder, without the background photo, named like
