@@ -2681,15 +2681,23 @@ const SUITES = [
     await b.evaluate(() => window.__board21.openWidget('dice')); await b.waitForFunction(() => { const w = window.__board21.state.wins.get('dice:1'); return w && w.connected; });
     ok(typeof await allOn('v1', 5000) === 'number' && await a.evaluate(() => window.__same === 1) && await a.locator('.picker-btn.left .dot').count() === 1,
       'Later puts it off: nothing restarts, a dot stays on the Widget Picker button, and both tabs stay wholly on the old release (a widget opened now is the old one too)');
-    await settings(a);
+    await a.click('.picker-btn.left');
+    const marks = await a.evaluate(() => { const g = document.querySelector('[data-ctl="settings"]'), w = document.querySelector('.picker-btn.left'); return [!!g.querySelector('.dot'), g.getAttribute('aria-label'), w.getAttribute('aria-label')].join(' | '); });
+    await a.click('[data-ctl="settings"]'); await a.waitForSelector('#st-version');
+    const note = a.locator('#settings #st-update'), box = await note.boundingBox({ timeout: 2000 }).catch(() => null);
+    ok(marks === 'true | Settings (a new version is ready) | Widgets and settings (a new version is ready)' && !!box && box.y > 0 && box.y + box.height < 400 && (await note.innerText()).startsWith('A new version of 21Board is ready') && await a.locator('#settings [data-act="update"]').count() === 1,
+      'after Later, how to update stays in view: the ▦ button and the Settings gear carry a dot and say why, and Settings opens with “A new version of 21Board is ready” and Update now at the top (' + marks + ')');
     await a.locator('#settings [data-act="update"]').click();
     const took = await allOn('v2');
     ok(took < 8000, `Settings → Update now takes effect in seconds, and every open tab restarts on the new release (${typeof took === 'number' ? (took / 1000).toFixed(1) + ' s' : took})`);
     const build2 = SITES.up.build;
     ok(build2 !== build1 && (await shown(a)).startsWith(`21Board TEST-2 (${build2}) · `) && (await shown(b)).startsWith(`21Board TEST-2 (${build2}) · `) && await a.evaluate(() => caches.keys().then(k => k.join())) === `21board-TEST-2-${build2}`,
       'both tabs then say the new release in Settings, and only its offline copy is kept');
-    ok((await both(noteText)).join() === 'kept through the update,kept through the update' && (await both(p => p.locator('.win').count())).join() === '2,2' && (await both(p => p.locator('.toast').count())).join() === '0,0',
-      'the windows and their content are as they were, and the prompt is gone');
+    await settings(a);
+    ok((await both(noteText)).join() === 'kept through the update,kept through the update' && (await both(p => p.locator('.win').count())).join() === '2,2' && (await both(p => p.locator('.toast').count())).join() === '0,0' &&
+      (await both(p => p.locator('.picker-btn .dot').count())).join() === '0,0' && await a.locator('#settings #st-update').isHidden() && await a.locator('.picker-btn.left').getAttribute('aria-label') === 'Widgets and settings',
+      'the windows and their content are as they were, and the prompt, the dots and the line in Settings are gone');
+    await a.keyboard.press('Escape');
 
     // ---- the waiting release was put to sleep by the browser before Update is tapped (the usual case)
     deploy('up', { version: 'TEST-3', change: marked('v3') });
@@ -2737,6 +2745,20 @@ const SUITES = [
     // Update button then asks the release that has already taken over.
     await a.evaluate(() => { window.__same = 1; navigator.serviceWorker.controller.postMessage({ type: 'SKIP_WAITING' }); });
     ok(await a.waitForFunction(() => !window.__same && !!window.__board21 && window.__board21.store.loaded, null, { timeout: 8000 }).then(() => true, () => false), 'a tab left behind on the release before this one is restarted when its Update is tapped');
+
+    // ---- the release in charge is busy with another tab at the moment Update is tapped. (It then can't hand
+    // over at once, and Chromium has been seen to leave the tab's reload unanswered when it finally does. Last
+    // in this suite: a tab in that state answers nothing more.)
+    await boardUp(a);
+    deploy('up', { version: 'TEST-6', change: marked('v6') });
+    await updateCheck(a);
+    await offered();
+    // (Tab B sends the release in charge a message about every millisecond for 0.4 s, by a loop that isn't slowed down like a timer.)
+    await b.evaluate(() => { const t0 = Date.now(), ch = new MessageChannel(); let last = 0; ch.port1.onmessage = () => { const t = performance.now(); if (t - last >= 1) { last = t; navigator.serviceWorker.controller.postMessage({ type: 'BUSY' }); } if (Date.now() - t0 < 400) ch.port2.postMessage(0); }; ch.port2.postMessage(0); });
+    await a.waitForTimeout(30);
+    await a.evaluate(() => Array.from(document.querySelectorAll('.toast button')).find(x => x.textContent === 'Update').click());
+    const took6 = await Promise.race([allOn('v6', 25000), new Promise(res => setTimeout(() => res('never: a tab’s reload went unanswered'), 40000))]);
+    ok(took6 < 15000, `Update still reaches every open tab when the release in charge was busy as it was tapped (${typeof took6 === 'number' ? (took6 / 1000).toFixed(1) + ' s' : took6})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -2854,6 +2876,83 @@ const SUITES = [
         'a tab that opened just before a release isn’t handed to the offline copy of the new one: it stays as it is and offers Update');
       await page.locator('.toast button', { hasText: 'Update' }).click();
       ok(await on(page, 'v2') && await page.evaluate(() => !!navigator.serviceWorker.controller), 'Update restarts it on the new release, from its offline copy');
+      await ctx.close();
+    }
+
+    // ---- a still newer release finishes downloading just as the one before it takes over
+    {
+      const copies = p => p.evaluate(async () => { const out = []; for (const k of await caches.keys()) out.push(k.replace('21board-', '') + ':' + (await (await caches.open(k)).keys()).length); return out.join(' '); });
+      const offline = p => p.locator('#st-offline').innerText();
+      const start = async p => { await p.reload().catch(() => {}); await boardUp(p).catch(() => {}); };   // (it may not start: that is what is checked)
+      const now = p => parts(p).catch(() => 'not started');
+      deploy('three', { version: 'TEST-1', change: marked('v1') });
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      const page = watch(await ctx.newPage());
+      await page.goto(BASE + '__site/three/'); await controlled(page); await withDice(page);
+      const s2 = deploy('three', { version: 'TEST-2', change: marked('v2') });
+      const n = (String(s2.files['sw.js']).match(/^  '[^']+': '[0-9a-f]{16}',?$/gm) || []).length;   // the files of a copy
+      await updateCheck(page); await offered(page);
+      await page.locator('.toast button', { hasText: 'Later' }).click();
+      // Release 3 is published; its last file is slow to arrive. Update is tapped (release 2 takes over), and
+      // the file arrives a moment later, before release 2 has tidied up (Chromium does that about a second on).
+      const s3 = deploy('three', { version: 'TEST-3', change: marked('v3') });
+      let go; const hold = new Promise(res => { go = res; });
+      s3.fault['widgets/notes/index.html'] = () => hold;
+      s3.asked.length = 0;
+      await updateCheck(page);
+      for (const t0 = Date.now(); !s3.asked.includes('widgets/notes/index.html') && Date.now() - t0 < 10000;) await page.waitForTimeout(50);
+      await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]');
+      await page.locator('#settings [data-act="update"]').click();
+      await page.waitForTimeout(150);
+      delete s3.fault['widgets/notes/index.html']; go();
+      const on2 = await on(page, 'v2');
+      await page.waitForFunction(() => navigator.serviceWorker.getRegistration().then(r => !!r && !!r.waiting && !r.installing && r.active.state === 'activated'), null, { timeout: 15000 }).catch(() => {});   // (tidied up by then)
+      const kept = await copies(page);
+      ok(on2 && n > 20 && kept === `TEST-2-${s2.build}:${n} TEST-3-${s3.build}:${n}`,
+        'a release that takes over removes the copies saved before its own, and never the copy of a still newer release that finished downloading meanwhile: ' + kept);
+      await offered(page);
+      await page.locator('.toast button', { hasText: 'Update' }).click();
+      const on3 = await on(page, 'v3');
+      await ctx.setOffline(true);
+      await start(page);
+      await page.waitForFunction(() => { const w = window.__board21.state.wins.get('dice:1'); return w && w.connected; }, null, { timeout: 8000 }).catch(() => {});
+      ok(on3 && await now(page) === 'v3 v3 v3 v3' && await copies(page) === `TEST-3-${s3.build}:${n}`, 'that release then takes over whole, and starts with no connection: ' + await copies(page));
+      await ctx.setOffline(false);
+
+      // ---- a release whose saved copy has gone missing (release 2026.11.10-30 could delete it as above)
+      await page.evaluate(async () => { for (const k of await caches.keys()) await caches.delete(k); });
+      let drop; const held = new Promise(res => { drop = res; });
+      s3.fault['widgets/notes/index.html'] = async res => { await held; res.destroy(); return true; };
+      s3.asked.length = 0;
+      await start(page);
+      for (const t0 = Date.now(); !s3.asked.includes('widgets/notes/index.html') && Date.now() - t0 < 10000;) await page.waitForTimeout(50);
+      await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]');
+      const during = await offline(page);
+      drop();
+      await page.waitForFunction(() => window.__board21.state.sw.state === 'error', null, { timeout: 10000 }).catch(() => {});
+      const failed = await offline(page);
+      ok(during.includes('Saving an offline copy') && failed.includes('Offline copy unavailable') && await now(page) === 'v3 v3 v3 v3',
+        `a release whose saved copy has gone missing doesn’t say “Ready to work offline”: it runs from the network and saves its copy again (“${during}”), and says so if that fails (“${failed}”)`);
+      delete s3.fault['widgets/notes/index.html'];
+      await start(page);
+      await page.waitForFunction(() => window.__board21.state.sw.state === 'ready', null, { timeout: 15000 }).catch(() => {});
+      await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]');
+      const saved = await copies(page), says = await offline(page);
+      // A widget under test in Developer mode is not part of the copy.
+      await page.click('#settings [data-act="devmode"]');
+      await page.fill('#set-dev-path', 'widgets/_template/index.html'); await page.click('#settings [data-act="dev-add"]');
+      await page.waitForFunction(() => window.__board21.state.wins.size === 2 && Array.from(window.__board21.state.wins.values()).every(w => w.connected), null, { timeout: 8000 }).catch(() => {});   // (adding it opens it)
+      await page.keyboard.press('Escape');
+      const testWin = page.frameLocator('.win:not([data-ikey="dice:1"]) iframe').locator('body');
+      const online = await page.evaluate(() => window.__board21.state.wins.size === 2 && Array.from(window.__board21.state.wins.values()).every(w => w.connected));
+      await ctx.setOffline(true);
+      await start(page);
+      await page.waitForFunction(() => { const w = window.__board21.state.wins.get('dice:1'); return w && w.connected; }, null, { timeout: 8000 }).catch(() => {});
+      ok(saved === `TEST-3-${s3.build}:${n}` && says.includes('Ready to work offline') && await now(page) === 'v3 v3 v3 v3',
+        'the next time it starts with a connection, the copy is saved again, and 21Board works offline as before: ' + saved);
+      const empty = (await testWin.innerText({ timeout: 8000 }).catch(e => String(e))).replace(/\n/g, ' / ');
+      ok(online && empty === 'This widget needs a connection / Only the widgets in 21Board’s own list are kept for offline use.',
+        'offline, the window of a widget under test (Developer mode) says that it needs a connection, not that connecting once will save it: ' + empty);
       await ctx.close();
     }
 

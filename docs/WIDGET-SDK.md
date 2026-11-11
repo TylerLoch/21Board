@@ -432,10 +432,13 @@ it can't read this site's real boards. *Edit code* goes back to the code.
 
 - **Without registering:** Settings → Advanced → turn on **Developer mode**, then enter the path
   (e.g. `widgets/my-widget/index.html`) under **Test a widget**. A widget tested this way always comes
-  from the server (it needs a connection): only registered widgets are part of the offline copy.
+  from the server: only registered widgets are part of the offline copy. Without a connection its window
+  says *This widget needs a connection*.
 - **Changing a registered widget:** 21Board runs from its offline copy, which only changes as a whole
-  release. To see your change inside 21Board, run `node tools/release.js`, then reload with Shift held
-  (Ctrl+Shift+R), or reload and tap *Update*.
+  release. To see your change inside 21Board, run `node tools/release.js`, reload, and tap *Update* when
+  it is offered a few seconds later. (Reloading with Shift held, Ctrl+Shift+R, shows the page from the
+  server at once, but a widget window that is open still comes from the saved copy: reload once more, or
+  close and open the widget.)
 - **SDK Playground:** with Developer mode on, open *SDK Playground* from the Widget Picker to try
   every call and watch events.
 - **Sync:** open 21Board in two tabs side by side and use your widget in one.

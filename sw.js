@@ -14,14 +14,14 @@
 const VERSION = '2026.11.10-30';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'e162f0be';
+const BUILD = 'd1babbd2';
 const FILES = {
-  './': 'c4d3c8fd6f083156',
-  'index.html': 'c4d3c8fd6f083156',
-  'board.js': '17326b2d6aa3d5df',
+  './': 'cbc836236746469d',
+  'index.html': 'cbc836236746469d',
+  'board.js': '7d04b706c49f3ddf',
   'sdk/board21.js': '3ec0b3970329642d',
   'sdk/board21-dev.js': '492a193221911878',
-  'sdk/dev/board-shell.js': '9488037c455e2836',
+  'sdk/dev/board-shell.js': 'af1469cb7f530e03',
   'sdk/lab.html': '21cda27716334794',
   'widgets/registry.js': '21973030f0746579',
   'manifest.webmanifest': '3fddd4aac05d7279',
@@ -70,39 +70,51 @@ const PRECACHE = Array.from(new Set(SHELL_FILES.concat(WIDGET_FILES)));
 
 const fingerprint = async buf => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)), b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
 
+// Downloads this version's offline copy: every file, each one checked, and only then saved. (One download at a time.)
+let saving = null;
+const saveCopy = () => saving || (saving = (async () => {
+  // A file that isn't the one this version was released with (the server has a newer or half-uploaded one, or
+  // the network answered with a sign-in page) means no copy: when a new version is being installed, the
+  // version in use stays, and the browser tries again at its next check.
+  const wrong = why => { why = `21Board ${VERSION} (${BUILD}) wasn’t saved for offline use: ${why}`; console.error(why); throw new Error(why); };
+  // (The list itself comes from widgets/registry.js as the server has it now.)
+  if (PRECACHE.length !== Object.keys(FILES).length) wrong('the list of files on the server is not the one this version was released with');
+  const files = await Promise.all(PRECACHE.map(async url => {
+    const res = await fetch(new Request(url, { cache: 'reload' }));   // 'reload' skips the HTTP cache
+    const body = res.ok ? await res.arrayBuffer() : null;
+    if (!body) wrong(`${url} on the server answered ${res.status}`);
+    if (await fingerprint(body) !== FILES[url]) wrong(`${url} on the server is not the file this version was released with`);
+    // A fresh Response (one that followed a redirect can't answer a page load), without the headers that
+    // described the download: the body is saved unpacked, and this copy answers whatever the request says.
+    const headers = new Headers(res.headers);
+    ['Content-Encoding', 'Content-Length', 'Vary'].forEach(h => headers.delete(h));
+    return [url, new Response(body, { headers })];
+  }));
+  const cache = await caches.open(CACHE);
+  await Promise.all(files.map(([url, res]) => cache.put(url, res)));
+})().finally(() => { saving = null; }));
+
+// Is every file of the copy there? A copy can go missing after it was saved: release 2026.11.10-30 deletes
+// every copy but its own when it takes over, and a browser can drop one. GET_VERSION (below) then saves it again.
+const address = file => new URL(file, self.location.href).href;
+const copyWhole = async () => {
+  const have = new Set((await (await caches.open(CACHE)).keys()).map(req => req.url));
+  return PRECACHE.every(file => have.has(address(file)));
+};
+
 self.addEventListener('install', event => {
-  event.waitUntil((async () => {
-    // Every file is downloaded and checked before any of it is saved. A file that isn't the one this version
-    // was released with (the server has a newer or half-uploaded one, or the network answered with a sign-in
-    // page) fails the install: the version in use stays, and the browser tries again at its next check.
-    const wrong = why => { why = `21Board ${VERSION} (${BUILD}) wasn’t saved for offline use: ${why}`; console.error(why); throw new Error(why); };
-    // (The list itself comes from widgets/registry.js as the server has it now.)
-    if (PRECACHE.length !== Object.keys(FILES).length) wrong('the list of files on the server is not the one this version was released with');
-    const files = await Promise.all(PRECACHE.map(async url => {
-      const res = await fetch(new Request(url, { cache: 'reload' }));   // 'reload' skips the HTTP cache
-      const body = res.ok ? await res.arrayBuffer() : null;
-      if (!body) wrong(`${url} on the server answered ${res.status}`);
-      if (await fingerprint(body) !== FILES[url]) wrong(`${url} on the server is not the file this version was released with`);
-      // A fresh Response (one that followed a redirect can't answer a page load), without the headers that
-      // described the download: the body is saved unpacked, and this copy answers whatever the request says.
-      const headers = new Headers(res.headers);
-      ['Content-Encoding', 'Content-Length', 'Vary'].forEach(h => headers.delete(h));
-      return [url, new Response(body, { headers })];
-    }));
-    const cache = await caches.open(CACHE);
-    await Promise.all(files.map(([url, res]) => cache.put(url, res)));
-    // No skipWaiting() here. A first install has nothing to wait for; an update waits until "Update" is
-    // tapped (SKIP_WAITING below) or every 21Board tab has closed.
-  })());
+  // No skipWaiting() here. A first install has nothing to wait for; an update waits until "Update" is
+  // tapped (SKIP_WAITING below) or every 21Board tab has closed.
+  event.waitUntil(saveCopy());
 });
 
 self.addEventListener('activate', event => {
   event.waitUntil((async () => {
-    // The copies of earlier versions go. (Not while a still newer version is downloading: its copy would go
-    // with them. It tidies up when it takes over.)
-    if (self.registration.installing) return;
-    const names = await caches.keys();
-    await Promise.all(names.filter(n => n.startsWith(CACHE_PREFIX) && n !== CACHE).map(n => caches.delete(n)));
+    // The copies of earlier versions go: the ones made before this version's (the browser lists copies in the
+    // order they were made). Never a later one: a still newer version may have finished downloading while
+    // this one was taking over, and it needs its copy when its turn comes.
+    const names = (await caches.keys()).filter(n => n.startsWith(CACHE_PREFIX));
+    await Promise.all(names.slice(0, Math.max(0, names.indexOf(CACHE))).map(n => caches.delete(n)));
     // No clients.claim() and no reloading of tabs here. Tabs that ran the previous version are handed to this
     // one by the browser and reload themselves (board.js, section 15). A tab that was opened before there was
     // any copy asks to be taken over (CLAIM) once it knows it is the same build.
@@ -118,13 +130,24 @@ self.addEventListener('message', event => {
     self.skipWaiting();
     if (!waiting && tab && tab.navigate) event.waitUntil(tab.navigate(tab.url).catch(() => {}));
   }
+  // (CLAIM takes every 21Board tab that has no copy yet, not only the one that asks. One that runs another
+  // build offers "Update" as soon as it sees this: board.js, section 15.)
   if (msg.type === 'CLAIM') event.waitUntil(self.clients.claim().catch(() => {}));
-  if (msg.type === 'GET_VERSION' && event.ports && event.ports[0]) event.ports[0].postMessage({ version: VERSION, build: BUILD, files: PRECACHE.length });
+  if (msg.type === 'GET_VERSION' && event.ports && event.ports[0]) {
+    // copy: are this version's files all saved? If not, they are saved again now, and a second answer says
+    // whether that worked (until then, board.js doesn't say "Ready to work offline").
+    const port = event.ports[0], answer = copy => port.postMessage({ version: VERSION, build: BUILD, files: PRECACHE.length, copy });
+    event.waitUntil((async () => {
+      const copy = await copyWhole().catch(() => false);
+      answer(copy);
+      if (!copy) answer(await saveCopy().then(() => true, () => false));
+    })());
+  }
 });
 
-const OFFLINE_PAGE = `<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
+const offlinePage = (title, text) => new Response(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <body style="margin:0;height:100vh;display:grid;place-items:center;font:16px system-ui;color:#6b7280;background:transparent;text-align:center;padding:16px">
-<div><b style="color:#1f2937">Not available offline yet</b><br>Connect to the internet once so 21Board can save this for offline use.</div></body>`;
+<div><b style="color:#1f2937">${title}</b><br>${text}</div></body>`, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 
 self.addEventListener('fetch', event => {
   const req = event.request;
@@ -146,7 +169,11 @@ self.addEventListener('fetch', event => {
       if (req.mode !== 'navigate') return new Response('', { status: 504, statusText: 'Offline' });
       // Offline: a page address inside the board's scope gets the board itself; a widget window says why it is empty.
       const board = req.destination === 'document' && await cache.match('index.html');
-      return board || new Response(OFFLINE_PAGE, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      if (board) return board;
+      // One of this version's own files, or the board: the copy isn't there. Anything else in a window is a
+      // widget that was never part of it (one under test in Developer mode).
+      return req.destination === 'document' || PRECACHE.some(file => address(file) === url.origin + url.pathname) ? offlinePage('Not available offline yet', 'Connect to the internet once so 21Board can save this for offline use.')
+        : offlinePage('This widget needs a connection', 'Only the widgets in 21Board’s own list are kept for offline use.');
     }
   })());
 });

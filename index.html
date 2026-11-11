@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="e162f0be">
+<html lang="en" data-build="d1babbd2">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -257,7 +257,7 @@
     .picker-btn svg { width: 28px; height: 28px; }
     .picker-btn.active { background: var(--active-bg); color: var(--primary); box-shadow: none; border-color: transparent; backdrop-filter: none; }
     .picker-btn[hidden] { display: none; }
-    .picker-btn .dot { position: absolute; top: 7px; right: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid var(--surface); }
+    .picker-btn .dot, .ctl .dot { position: absolute; top: 7px; right: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid var(--surface); }
     /* "Not saved" (SaveNote in board.js): stays above the Widget Picker button while the board isn't stored. */
     .save-note, .save-note:hover {
       position: fixed; z-index: 999; bottom: calc(86px + env(safe-area-inset-bottom)); height: 40px; padding: 0 14px 0 12px;   /* (an open panel or Settings covers it) */
@@ -305,7 +305,7 @@
     .panel-controls { display: flex; align-items: center; gap: 6px; flex: 0 0 56px; }
     .panel.right .panel-controls { flex-direction: row-reverse; }
     .picker-spacer { width: 56px; height: 56px; flex: 0 0 56px; }
-    .ctl { width: 50px; height: 50px; border-radius: 14px; }
+    .ctl { position: relative; width: 50px; height: 50px; border-radius: 14px; }
     .ctl svg { width: 26px; height: 26px; }
     .ctl[hidden] { display: none; }
     .ctl[data-ctl="quit"] { color: var(--danger); } /* kiosk mode: a plain red X */
@@ -374,6 +374,9 @@
     .row.save-warn { margin-top: 14px; padding: 10px 12px; border-radius: 12px; background: #fef3c7; color: #78350f; }
     .row.save-warn .hint { color: inherit; }
     body.dark .row.save-warn { background: rgba(251, 191, 36, .14); color: #fcd34d; }
+    /* "A new version of 21Board is ready" (Settings.refreshStatus in board.js). */
+    .row.update-note { margin-top: 14px; padding: 10px 12px; border: 0; border-radius: 12px; background: var(--active-bg); }
+    .row.update-note[hidden] { display: none; }
     .row .lbl { font-size: 15px; font-weight: 500; }
     .row .hint { font-size: 12.5px; color: var(--muted); margin-top: 2px; font-weight: 400; line-height: 1.35; }
     .row.stack { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px 0; }

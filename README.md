@@ -54,10 +54,11 @@ What devices do with a release:
   so a half-finished upload, a dropped connection or a Wi-Fi sign-in page can't leave a device with part of
   a release. It keeps the release it has and tries again later (hourly, and each time 21Board starts).
 - When a new release has been saved, open boards show **“A new version of 21Board is ready.”** with *Update*
-  and *Later* (also Settings → Storage & offline → *Update now*, and a dot on the ▦ buttons). *Update* takes a
-  second or two and restarts every open 21Board tab on the new release; the board and its content stay.
-  *Later*, or no answer, is fine: the new release takes over by itself the next time 21Board starts (after
-  every tab or the app was closed; in a kiosk, after Quit or a restart).
+  and *Later*. *Update* takes a second or two and restarts every open 21Board tab on the new release; the
+  board and its content stay. *Later*, or no answer, is fine: the new release takes over by itself the next
+  time 21Board starts (after every tab or the app was closed; in a kiosk, after Quit or a restart). Until
+  then a dot stays on the ▦ buttons and on the Settings gear, and Settings opens with the same line and
+  *Update now* at the top.
 - **Settings → About** shows the release the device is really running, name and build, e.g.
   `21Board 2026.11.12-1 (3fa9c1d2)`. Exported files carry the same text. That is the answer to “which version
   are you on?”.
@@ -65,9 +66,18 @@ What devices do with a release:
   the release they have, whole, and devices new to it run from the network without an offline copy
   (Settings says *Offline copy unavailable*). Nothing breaks, and the tests in step 3 catch it first.
   Forgetting only step 1 is harmless: the build still changes, so devices update, under the old name.
+- If a device's offline copy goes missing (a browser can drop it), the release saves it again the next
+  time 21Board starts with a connection. Until that has worked, Settings says *Saving an offline copy…* or
+  *Offline copy unavailable* instead of *Ready to work offline*.
+- The one exception to “one complete release”: a tab that has no offline copy yet (a first visit whose copy
+  couldn't be saved) takes each file from the server when it needs it. If a release is published while such
+  a tab is open, a widget opened afterwards is the new one. The tab offers *Update* once the new release has
+  been saved on the device.
 
 While working on the files on a local server, the offline copy keeps serving the release it saved. To see a
-change: run `node tools/release.js`, then reload with Shift held (Ctrl+Shift+R), or reload and tap *Update*.
+change: run `node tools/release.js`, reload, and tap *Update* when it is offered a few seconds later.
+(Reloading with Shift held, Ctrl+Shift+R, shows the page from the server at once, but widget windows that
+are open still come from the saved copy: reload once more, or close and open the widget.)
 
 ---
 
@@ -88,10 +98,11 @@ change: run `node tools/release.js`, then reload with Shift held (Ctrl+Shift+R),
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Google Drive folder, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
-| **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts. Settings → About shows the version in use. |
+| **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → About shows the version in use. |
 
 ### Settings
 
+- **At the top, when it applies:** *A new version of 21Board is ready* with *Update now*.
 - **Board history:** open it, how often a version is saved (every 10 minutes while the board changes,
   every hour, once a day, off), copies in the Google Drive folder, delete board history.
 - **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to widgets),
@@ -105,7 +116,7 @@ change: run `node tools/release.js`, then reload with Shift held (Ctrl+Shift+R),
 - **Google Drive folder:** share boards with your other devices (the smartboard) through a folder in Google
   Drive: choose the folder, Send, send automatically, include the photo, this device's name, other boards in
   the folder. See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
-- **Storage & offline:** offline readiness (and *Update now* when a new version is ready), whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
+- **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
 - **Advanced:** Developer mode (SDK Playground, test unregistered widgets), erase everything.
 - **About:** the version this device is running (release name and build), to read out to IT.
 
@@ -332,7 +343,8 @@ node tests/run.js offline    # just one suite (matches the suite title)
 
 The tests check that the release stamp matches the files (`node tools/release.js --check`); if that fails,
 run `node tools/release.js`. The *Updating* suites serve one release, then a changed one, and check the
-prompt, *Update* in every open tab, and that a device never runs part of each.
+prompt, *Update* in every open tab, that a device never runs part of each, and that an offline copy is
+never lost to a clean-up (or is saved again if it is).
 
 ## Browser support
 

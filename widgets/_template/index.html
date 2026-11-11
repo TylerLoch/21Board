@@ -4,7 +4,7 @@
   =======================
   1. Copy this folder to widgets/<your-widget-id>/   (lowercase letters, numbers, dashes)
   2. Add an entry for it in widgets/registry.js
-  3. Bump VERSION in sw.js
+  3. Bump VERSION in sw.js and run `node tools/release.js`   (README, "Deploying")
   Open this file directly in a browser (or paste it into sdk/lab.html) to try it: the SDK shows it in
   a real 21Board window, the "dev window". Add #b21-bare to the address for just the widget.
   Keep the SDK the FIRST script in <head>, and the manifest block below the same as your registry entry.

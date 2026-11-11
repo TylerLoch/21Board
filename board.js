@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.10-30';
-  const BOARD_BUILD = 'e162f0be';
+  const BOARD_BUILD = 'd1babbd2';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2469,11 +2469,16 @@
       set('theme', dark ? 'sun' : 'moon', dark ? 'Light mode' : 'Dark mode');
       const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit fullscreen' : 'Fullscreen');
       fs.hidden = KIOSK || !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
-      set('settings', 'gear', 'Settings');
-      for (const s of ['left', 'right']) {
-        let dot = $('.dot', this.btns[s]);
-        if (S.sw.updateReady && !dot) { dot = document.createElement('span'); dot.className = 'dot'; this.btns[s].appendChild(dot); }
-        if (!S.sw.updateReady && dot) dot.remove();
+      // A new version is waiting (section 15): a dot on the ▦ buttons and on Settings, where "Update now" is.
+      const update = !!S.sw.updateReady, ready = update ? ' (a new version is ready)' : '';
+      const gear = set('settings', 'gear', 'Settings' + ready);
+      for (const b of [this.btns.left, this.btns.right, gear]) {
+        let dot = $('.dot', b);
+        if (update && !dot) { dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
+        if (!update && dot) dot.remove();
+        if (b === gear) continue;
+        b.setAttribute('aria-label', 'Widgets and settings' + ready);
+        if (update) b.title = 'A new version of 21Board is ready: see Settings'; else b.removeAttribute('title');
       }
     },
 
@@ -2841,6 +2846,7 @@
       const note = SaveNote.state() ? SaveNote.info() : null;
       this.body.innerHTML = `
         ${note ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(note.title)}</div><div class="hint">${esc(note.text)}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>` : ''}
+        <div class="row update-note" id="st-update" hidden><div><div class="lbl">A new version of 21Board is ready</div><div class="hint">Updating takes a second or two, and the board stays as it is. Or leave it: 21Board updates by itself the next time it starts.</div></div><button class="btn small primary" data-act="update">Update now</button></div>
         ${historySettings(sw, seg)}
 
         <h3>Appearance</h3>
@@ -2903,13 +2909,14 @@
     async refreshStatus(quick) {
       if (!this.isOpen) return;
       const off = $('#st-offline', this.body), sto = $('#st-storage', this.body), per = $('#st-persist', this.body), cache = $('#st-cache', this.body);
+      const up = $('#st-update', this.body);
+      if (up) up.hidden = !S.sw.updateReady;   // (at the top, where it is seen: the prompt on the board goes away by itself)
       if (off) {
         const s = S.sw.state;
         off.innerHTML = s === 'ready' ? '<span class="status-dot ok"></span>Ready to work offline'
           : s === 'unsupported' ? '<span class="status-dot warn"></span>Needs https to work offline'
           : s === 'error' ? '<span class="status-dot warn"></span>Offline copy unavailable'
           : '<span class="status-dot"></span>Saving an offline copy…';
-        if (S.sw.updateReady) off.innerHTML += ' · <button class="btn small" data-act="update">Update now</button>';
       }
       // (The offline copy is named only when it isn't the version this tab runs: see section 15.)
       if (cache) cache.textContent = S.sw.version && S.sw.build !== BOARD_BUILD ? ` · Offline copy ${S.sw.version}${S.sw.build ? ` (${S.sw.build})` : ''}` : '';
@@ -4865,7 +4872,9 @@
   //   - starts again when a new copy takes over: "Update" was tapped, in this tab or in another one (a tab
   //     whose board isn't saved is left alone, with "Update" still on offer: nothing is lost unasked);
   //   - a tab that was opened before there was a copy (the first visit) is handed to the copy only when both
-  //     are the same build: until then it keeps using the network, and is never part one, part the other.
+  //     are the same build: until then it keeps using the network. (Handing over takes every such tab at
+  //     once. One that runs another build offers "Update" there and then; until it is tapped, a widget it
+  //     opens comes from the copy, as it came from the server before.)
   function registerSW() {
     const sws = navigator.serviceWorker;
     if (!sws || !/^https?:$/.test(location.protocol)) { S.sw.state = 'unsupported'; return; }
@@ -4878,10 +4887,15 @@
       status();
       if (first) toast('A new version of 21Board is ready.', { action: 'Update', onAction: askUpdate, dismiss: 'Later', timeout: 20000 });
     };
-    // A copy's {version, build}. (null: it didn't answer. No build: a copy saved by a version from before builds.)
+    // A copy's {version, build, copy}. (null: it didn't answer. No build: a copy saved by a version from before
+    // builds.) copy false: its files aren't all saved any more. It saves them again and then answers once more;
+    // until that says it worked, Settings doesn't say "Ready to work offline".
     const ask = sw => new Promise(resolve => {
-      const ch = new MessageChannel(), t = setTimeout(() => resolve(null), 3000);
-      ch.port1.onmessage = e => { clearTimeout(t); resolve(e.data || null); };
+      const ch = new MessageChannel();
+      let answers = 0;
+      const say = v => { S.sw.state = !v || v.copy !== false ? 'ready' : answers > 1 ? 'error' : 'checking'; status(); resolve(v); };
+      const t = setTimeout(() => say(null), 3000);
+      ch.port1.onmessage = e => { clearTimeout(t); answers++; say(e.data || null); };
       sw.postMessage({ type: 'GET_VERSION' }, [ch.port2]);
     });
     const same = v => !!v && v.build === BOARD_BUILD && pageBuild() === BOARD_BUILD;
@@ -4889,7 +4903,6 @@
     // again puts that right.
     const controlled = async () => {
       if (!sws.controller) return;
-      S.sw.state = 'ready';
       const v = await ask(sws.controller);
       if (v) { S.sw.version = v.version; S.sw.build = v.build || null; }
       status();
@@ -4897,8 +4910,6 @@
     };
     // A copy that is in use, while this tab still runs on the network. newest: it has only just been saved.
     const meet = async (sw, newest) => {
-      S.sw.state = 'ready';
-      status();
       const v = await ask(sw);
       if (sws.controller || !v) return;
       if (same(v)) sw.postMessage({ type: 'CLAIM' });
@@ -4944,6 +4955,9 @@
     restarting = true;
     try { await Writer.settled(1500); } catch (e) { /* start again anyway */ }
     location.reload();
+    // Still here some seconds on? The browser can leave a reload unanswered (seen when the copy it asked for
+    // the page was being replaced at that moment), and the tab would stay on the old version: ask again.
+    for (const ms of [5000, 20000]) setTimeout(() => location.reload(), ms);
   }
 
   function applyUpdate() {
@@ -4953,7 +4967,9 @@
     if (sw === true) { restart(); return; }
     // The waiting copy takes over, and every open 21Board tab then starts again by itself (controllerchange).
     sw.postMessage({ type: 'SKIP_WAITING' });
-    setTimeout(restart, 4000);   // (if it can't take over, e.g. a still newer copy has replaced it: start again and see)
+    // Not by then? The copy in charge was busy at that moment (the browser then leaves the new one waiting
+    // until a page loads), or a still newer copy has replaced this one: starting again gets things moving.
+    setTimeout(restart, 4000);
   }
 
   // "Update" was tapped. Starting again would lose a board that isn't saved: ask first.
