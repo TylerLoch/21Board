@@ -94,7 +94,8 @@ const writeHistory = (p, files) => p.evaluate(async files => {
 
 // Storage failures, for the "When storage fails" suite. The ones that must be in place before board.js starts
 // are switched on through localStorage: {open: n (the first n tries fail) | 'blocked' | 'hang', read: n | 'all',
-// readKey: one record that can't be read}. Saves fail while window.__failPut is 'quota', 'disk' or 'unnamed'.
+// readKey: one record that can't be read}. Saves fail while window.__failPut is 'quota', 'disk' or 'unnamed', or
+// for one record only ('key:<record key>'); reads fail in one tab only while its window.__failRead is set.
 const STORAGE_FAULTS = () => {
   const cfg = () => { try { return JSON.parse(localStorage.getItem('test-faults') || '{}'); } catch (e) { return {}; } };
   const F = IDBFactory.prototype, O = IDBObjectStore.prototype;
@@ -110,11 +111,12 @@ const STORAGE_FAULTS = () => {
     return raw.open.apply(this, arguments);
   };
   const reading = s => s.name === 'records' && s.transaction.mode === 'readonly';   // (the page reading its board)
-  O.getAll = function () { const r = raw.getAll.apply(this, arguments), c = cfg(); if (reading(this) && (c.read === 'all' || c.readKey || reads++ < c.read)) this.transaction.abort(); return r; };
-  O.getAllKeys = function () { const r = raw.getAllKeys.apply(this, arguments); if (reading(this) && cfg().read === 'all') this.transaction.abort(); return r; };
-  O.get = function (key) { const r = raw.get.apply(this, arguments), c = cfg(); if (reading(this) && (c.read === 'all' || c.readKey === key)) this.transaction.abort(); return r; };
-  O.put = function () {
+  O.getAll = function () { const r = raw.getAll.apply(this, arguments), c = cfg(); if (reading(this) && (c.read === 'all' || window.__failRead || c.readKey || reads++ < c.read)) this.transaction.abort(); return r; };
+  O.getAllKeys = function () { const r = raw.getAllKeys.apply(this, arguments); if (reading(this) && (cfg().read === 'all' || window.__failRead)) this.transaction.abort(); return r; };
+  O.get = function (key) { const r = raw.get.apply(this, arguments), c = cfg(); if (reading(this) && (c.read === 'all' || window.__failRead || c.readKey === key)) this.transaction.abort(); return r; };
+  O.put = function (rec) {
     const f = this.name === 'records' && window.__failPut;
+    if (f && f.startsWith('key:') && rec.key !== f.slice(4)) return raw.put.apply(this, arguments);
     if (f === 'quota') throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
     if (f === 'disk') throw new DOMException('Failed to write blobs (IOError)', 'DataError');
     if (f) throw new Error('');
@@ -2273,12 +2275,16 @@ const SUITES = [
     const stored = async () => JSON.stringify(await storedRecords(page));
     const noteShown = () => page.locator('.save-note.left:visible').count();
     const settingsText = async () => { await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); const t = await page.locator('#settings .sheet-body').innerText(); await page.keyboard.press('Escape'); return t; };
+    const toastGone = text => page.waitForFunction(text => !Array.from(document.querySelectorAll('#toasts .toast')).some(t => t.textContent.includes(text)), text, { timeout: 15000 });
+    // The database disappears behind the open board (as when the browser throws its damaged storage away).
+    const loseDatabase = () => page.evaluate(() => new Promise(res => { const r = indexedDB.deleteDatabase('21Board'); r.onsuccess = r.onerror = r.onblocked = () => res(); }));
 
     await page.goto(BASE); await started(); await freeBoard(page);
     ok(await B(() => !document.getElementById('empty-hint').hidden && !document.getElementById('boot-note')), 'a new board says “Your board is ready” only once it has really been opened');
     await B(() => { window.__board21.openWidget('notes'); window.__board21.openWidget('timer'); });
     await fillNote(note, 'A week of lesson notes');
     await until(async () => (await storedRecords(page))['data:1:notes:1'].text === 'A week of lesson notes');
+    await until(() => B(async () => !!(await window.__board21.history.save('my saved version'))));
     const before = await stored(), uid = JSON.parse(before)['board:1'].uid;
 
     // ---- start-up: the stored board can't be read
@@ -2304,7 +2310,18 @@ const SUITES = [
     ok(await stored() === before, 'what is done there never touches the stored board');
     ok(await B(async () => (await window.__board21.buildExport('full')).instances.some(i => i.data && i.data.text === 'typed without saving')), 'and can still be exported');
     let st = await settingsText();
-    ok(/This board isn’t being saved/.test(st) && /not saved/.test(st) && !/stays saved|B saved/.test(st), 'Settings says the board isn’t being saved (and nowhere that it is)');
+    ok(/This board isn’t being saved/.test(st) && /not saved/.test(st) && !/stays saved|B saved|stored only on this device/.test(st), 'Settings says the board isn’t being saved (and nowhere that it is)');
+    ok(await until(() => B(() => window.__board21.history.enabled() && window.__board21.history.metas.some(m => m.manual))) && !/history isn’t available/.test(st),
+      'Board history still works there: the saved board’s earlier versions can be reached');
+    await B(async () => { const h = window.__board21.history; await h.restore(h.metas.find(m => m.manual).id); });
+    ok(await noteIs('A week of lesson notes') && await noteShown() === 1 && await stored() === before, 'going back to one shows it on this unsaved board (and can be exported); the stored board is still untouched');
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.click('#settings [data-act="erase"]');
+    ok(await page.locator('#modal.open', { hasText: 'Empty this board?' }).filter({ hasText: 'Your saved board isn’t touched' }).count() === 1 && await page.locator('#modal.open .btn', { hasText: 'history' }).count() === 0,
+      'there, Erase only offers to empty the board on screen, and says the saved board isn’t touched');
+    await page.locator('#modal.open .btn', { hasText: 'Empty this board' }).click();
+    await page.waitForSelector('.toast:has-text("This board was emptied. Your saved board wasn’t touched.")');
+    ok(await B(() => window.__board21.state.wins.size === 0) && await stored() === before, 'and that is all it does');
+    await page.keyboard.press('Escape');
     await faults(null); await page.reload(); await started();
     ok(await noteIs('A week of lesson notes') && await noteShown() === 0, 'after a reload the stored board is back, untouched');
 
@@ -2324,11 +2341,16 @@ const SUITES = [
     await fillNote(note, 'in a private window');
     await until(() => B(() => JSON.stringify([...window.__board21.state.data.values()]).includes('in a private window')));
     st = await settingsText();
-    ok(/This board isn’t being saved/.test(st) && /Notes[\s\S]*not saved/.test(st) && !/stays saved|B saved/.test(st), 'Settings doesn’t call that content saved');
+    ok(/This board isn’t being saved/.test(st) && /Notes[\s\S]*not saved/.test(st) && !/stays saved|B saved|stored only on this device/.test(st) && /Empty this board/.test(st) && !/Erase everything/.test(st),
+      'Settings doesn’t call that content saved, and offers to empty the board (there is nothing stored to erase)');
     await page.click('.save-note.left');
     ok(await page.locator('#modal.open', { hasText: 'normal (not private) window' }).count() === 1 && await page.locator('#modal.open .btn', { hasText: 'Export a backup' }).count() === 1, 'tapping the note says why, and offers a backup');
     await page.locator('#modal.open .btn', { hasText: 'Close' }).click();
     ok(await B(async () => (await window.__board21.buildExport('full')).instances.some(i => i.data && i.data.text === 'in a private window')) && await stored() === before, 'the backup has the session’s content; the stored board is untouched');
+    await page.goto(BASE + '?kiosk=yes'); await started();
+    st = await settingsText();
+    ok(/This board isn’t being saved/.test(st) && /Kiosk mode/.test(st) && !/is kept on this device|stored only on this device/.test(st), 'in kiosk mode too, Settings doesn’t say the board is kept on this device');
+    await page.goto(BASE);
 
     // ---- start-up throws: a page from another version than board.js (here: from before Board history)
     await faults(null);
@@ -2363,6 +2385,17 @@ const SUITES = [
     ok(await B(async () => (await window.__board21.buildExport('full')).instances.find(i => i.widgetId === 'notes').data.text === 'typed while saving failed, and more'), 'an export made now has the unsaved changes');
     ok(await B(async () => { try { await window.__board21.applyImport(await window.__board21.buildExport('full'), 'replace'); return ''; } catch (e) { return e.message; } }).then(m => /can’t save/.test(m)) && await B(() => window.__board21.state.wins.size === 1),
       'importing is refused while changes can’t be saved (they would land on the imported board later)');
+    // The backup must not depend on storage: here it can't be read either.
+    await faults({ read: 'all' });
+    await page.click('.save-note.left');
+    ok(await page.locator('#modal.open', { hasText: 'may be out of space' }).count() === 1, 'the note’s message mentions space even when the error doesn’t say “full” (a full disk isn’t always reported as one)');
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#modal.open .btn', { hasText: 'Export a backup' }).click()]);
+    const backup = OUT + 'storage-broken.21board'; await dl.saveAs(backup);
+    ok(JSON.parse(fs.readFileSync(backup, 'utf8')).instances.find(i => i.widgetId === 'notes').data.text === 'typed while saving failed, and more' && await page.locator('.toast', { hasText: 'Export failed' }).count() === 0,
+      'with storage neither writable nor readable, “Export a backup” still gives a file with the unsaved work');
+    await faults(null);
+    await toastGone('couldn’t save');
+    ok(await noteShown() === 1 && await said() === 0, 'the “Not saved” note is still there after the message has gone');
     await B(() => { window.__failPut = null; });
     await page.click('.save-note.left'); await page.locator('#modal.open .btn', { hasText: 'Try again now' }).click();
     await page.waitForSelector('.save-note.left', { state: 'hidden' });
@@ -2375,7 +2408,7 @@ const SUITES = [
     await page.waitForSelector('.save-note.left:visible');
     ok(await B(() => window.__room.thin === 1 && window.__room.shrink === 1), 'out of space (QuotaExceededError): board history is thinned, then shrunk, to make room');
     await page.click('.save-note.left');
-    ok(await page.locator('#modal.open', { hasText: 'out of space' }).count() === 1, 'and the note says the device is out of space');
+    ok(await page.locator('#modal.open', { hasText: 'This device is out of space' }).count() === 1, 'and the note says the device is out of space');
     await B(() => { window.__failPut = null; });
     await page.locator('#modal.open .btn', { hasText: 'Try again now' }).click();
     await page.waitForSelector('.save-note.left', { state: 'hidden' });
@@ -2388,8 +2421,115 @@ const SUITES = [
     await page.reload(); await started();
     ok(await noteIs('typed on a full disk'), '21Board tries again by itself, and the text is there after a reload');
 
-    // ---- another tab replaces the board while this one has changes it couldn't save
+    // ---- one record that can't be written doesn't hold back the others
+    await B(() => { window.__failPut = 'key:data:1:notes:1'; });
+    await fillNote(note, 'a note too long for what is left on the device');
+    await page.waitForSelector('.save-note.left:visible');
+    await B(() => { window.__board21.setRect('notes:1', { x: 80, y: 90, w: 420, h: 320 }); window.__board21.openWidget('timer'); });
+    ok(await until(async () => { const r = await storedRecords(page); return r['inst:1:notes:1'].rect.x === 80 && r['inst:1:timer:1'].open && r['data:1:notes:1'].text === 'typed on a full disk'; }),
+      'while one record can’t be saved, later changes to others are still saved (a moved window, a reopened one)');
+    st = await settingsText();
+    ok(await noteShown() === 1 && /Notes\s*[^\n]*not saved/.test(st) && /Timer\s*[^\n,]* saved/.test(st), 'the note stays, and Settings shows which window isn’t saved');
+    ok(await note.locator('body').evaluate(async () => Board21.saveConfig(Object.assign({}, await Board21.loadConfig(), { checked: 1 })).then(() => true, () => false)) && (await storedRecords(page))['conf:1:notes:1'].checked === 1,
+      'a widget whose save is stored is told so, even while another record is still waiting');
+    await B(() => { window.__failPut = null; });
+    await page.click('.save-note.left'); await page.locator('#modal.open .btn', { hasText: 'Try again now' }).click();
+    await page.waitForSelector('.save-note.left', { state: 'hidden' });
+    ok((await storedRecords(page))['data:1:notes:1'].text === 'a note too long for what is left on the device', 'and it is saved once it fits');
+    // A stored record that can't be read any more, while its window is still open: the export has what the window holds.
+    await faults({ readKey: 'data:1:notes:1' });
+    ok(await B(async () => (await window.__board21.buildExport('full')).instances.find(i => i.widgetId === 'notes').data.text === 'a note too long for what is left on the device'), 'a record that can no longer be read is exported from what its window holds');
+    await faults(null);
+
+    // ---- the browser throws the stored board away under the open board (Chrome can, after the disk filled up)
+    const whole = await stored();
+    await loseDatabase();
+    await fillNote(note, 'typed after the database was lost');
+    ok(await until(async () => { const r = await B(() => !window.__board21.store.lost && !!window.__board21.store.db) && await storedRecords(page); return r && r['data:1:notes:1'].text === 'typed after the database was lost' && JSON.stringify(Object.keys(r)) === JSON.stringify(Object.keys(JSON.parse(whole))); }),
+      'the stored board vanishes under the open board: with the next change, every record is written back (not just that change)');
+    ok(await noteShown() === 0 && await B(() => window.__board21.state.wins.size === 2), 'the board stays as it was, with nothing left unsaved');
+    await loseDatabase();
+    await B(() => window.__board21.reloadAll());   // (as when the teacher comes back to the tab)
+    ok(await until(async () => await B(() => !window.__board21.store.lost && !!window.__board21.store.db) && Object.keys(await storedRecords(page)).length === Object.keys(JSON.parse(whole)).length) && await B(() => window.__board21.state.wins.size === 2),
+      'coming back to the tab then doesn’t empty the board to match: it is written back');
+    await B(() => { window.__failPut = 'unnamed'; });
+    await loseDatabase();
+    await B(() => window.__board21.setRect('notes:1', { x: 100, y: 90, w: 420, h: 320 }));
+    await page.waitForSelector('.save-note.left:visible');
+    await page.click('.save-note.left');
+    ok(await page.locator('#modal.open', { hasText: 'isn’t saved on this device right now' }).count() === 1 && await B(() => window.__board21.store.lost), 'if it can’t be written back yet, “Not saved” says the board isn’t saved, and it keeps trying');
+    await B(() => window.__board21.rebuildAll());   // (as when another tab has added windows from a file)
+    ok(await B(() => window.__board21.state.wins.size === 2 && window.__board21.state.board.uid) === uid, 'meanwhile the board isn’t read afresh from the empty storage either');
+    await B(() => { window.__failPut = null; });
+    await page.locator('#modal.open .btn', { hasText: 'Try again now' }).click();
+    await page.waitForSelector('.save-note.left', { state: 'hidden' });
+    await page.reload(); await started();
+    ok(await noteIs('typed after the database was lost') && await B(() => window.__board21.state.wins.size === 2 && window.__board21.state.insts.get('notes:1').rect.x === 100) && JSON.parse(await stored())['board:1'].uid === uid,
+      'the next start opens the whole board (not an empty one that says “Your board is ready”)');
+    // An import is the first thing to find the stored board gone (no version is saved first here): the board is
+    // written back before it is replaced, so nothing of the old board is written into the imported one afterwards.
+    const noTimer = await B(async () => { const e = await window.__board21.buildExport('full'); e.instances = e.instances.filter(i => i.widgetId !== 'timer'); return e; });
+    await loseDatabase();
+    await page.evaluate(async e => { const h = window.__board21.history; h.off = 'unavailable'; try { await window.__board21.applyImport(e, 'replace'); } finally { h.off = ''; } }, noTimer);
+    ok(await until(async () => await B(() => !window.__board21.store.lost && window.__board21.state.wins.size === 1 && !window.__board21.state.insts.has('timer:1')) && !('inst:1:timer:1' in await storedRecords(page)) && JSON.parse(await stored())['board:1'].uid === uid, 3000),
+      'an import that finds the stored board gone replaces it all the same (the old windows don’t come back into the imported board)');
+    await B(() => window.__board21.openWidget('timer'));
+    await until(async () => !!(await storedRecords(page))['inst:1:timer:1']);
+
+    // ---- two tabs, one of them with changes it couldn't save
     const page2 = await ctx.newPage(); await page2.goto(BASE); await started(page2);
+    const note2 = page2.frameLocator('.win[data-ikey="notes:1"] iframe');
+    await B(() => { window.__failPut = 'unnamed'; });
+    await fillNote(note, 'older, typed here and not saved');
+    const moveTimer = () => B(() => { const r = window.__board21.state.insts.get('timer:1').rect; window.__board21.setRect('timer:1', Object.assign({}, r, { x: r.x + 30 })); return r.x + 30; });
+    let timerX = await moveTimer();   // (another record, which the other tab doesn't touch)
+    await page.waitForSelector('.save-note.left:visible');
+    await fillNote(note2, 'newer, typed in the other tab');
+    ok(await noteIs('newer, typed in the other tab'), 'the other tab saves a newer change to the same note: this tab shows it');
+    await B(() => { window.__failPut = null; });
+    await page.click('.save-note.left'); await page.locator('#modal.open .btn', { hasText: 'Try again now' }).click();
+    await page.waitForSelector('.save-note.left', { state: 'hidden' });
+    now = JSON.parse(await stored());
+    ok(now['data:1:notes:1'].text === 'newer, typed in the other tab' && now['inst:1:timer:1'].rect.x === timerX && await note2.locator('#t').inputValue() === 'newer, typed in the other tab',
+      'and when saving works again its older change isn’t written over the newer one (its other changes are saved)');
+    // The same when this tab only catches up later (as when it comes back from the background).
+    await B(() => { window.__failPut = 'unnamed'; window.__failRead = true; });
+    await fillNote(note, 'older again, not saved');
+    await page.waitForSelector('.save-note.left:visible');
+    await fillNote(note2, 'newer again, from the other tab');
+    await until(async () => (await storedRecords(page))['data:1:notes:1'].text === 'newer again, from the other tab');
+    await B(() => { window.__failRead = false; return window.__board21.reloadAll(); });
+    await B(() => { window.__failPut = null; });
+    timerX = await moveTimer();
+    await until(async () => (await storedRecords(page))['inst:1:timer:1'].rect.x === timerX);
+    ok(await noteIs('newer again, from the other tab') && await noteShown() === 0 && (await storedRecords(page))['data:1:notes:1'].text === 'newer again, from the other tab', 'the same when this tab catches up on the other tab’s change later');
+    // The stored board vanishes while this tab can't save: when it writes its board back later, it doesn't
+    // write over what the other tab has saved meanwhile.
+    const count = Object.keys(await storedRecords(page)).length;
+    await B(() => { window.__failPut = 'unnamed'; });
+    await loseDatabase();
+    timerX = await moveTimer();
+    await page.waitForSelector('.save-note.left:visible');
+    await fillNote(note2, 'saved by the other tab after the loss');
+    await until(async () => ((await storedRecords(page))['data:1:notes:1'] || {}).text === 'saved by the other tab after the loss');
+    await B(() => { window.__failPut = null; });
+    await page.click('.save-note.left'); await page.locator('#modal.open .btn', { hasText: 'Try again now' }).click();
+    await page.waitForSelector('.save-note.left', { state: 'hidden' });
+    now = JSON.parse(await stored());
+    ok(Object.keys(now).length === count && now['inst:1:timer:1'].rect.x === timerX && now['data:1:notes:1'].text === 'saved by the other tab after the loss' && await noteIs('saved by the other tab after the loss'),
+      'a board written back after it vanished fills in what is missing, and never replaces what another tab saved meanwhile');
+    // An import that fails in the other tab replaced nothing: this tab keeps what it couldn't save yet.
+    await B(() => { window.__failPut = 'unnamed'; });
+    await fillNote(note, 'not saved yet when the other tab’s import failed');
+    await page.waitForSelector('.save-note.left:visible');
+    const refused = await page2.evaluate(async () => { window.__failPut = 'unnamed'; try { await window.__board21.applyImport(await window.__board21.buildExport('full'), 'replace'); return false; } catch (e) { return true; } finally { window.__failPut = null; } });
+    await page.waitForTimeout(400);
+    ok(refused && await noteIs('not saved yet when the other tab’s import failed') && await noteShown() === 1, 'an import that fails in another tab doesn’t make this tab drop its unsaved changes');
+    await B(() => { window.__failPut = null; });
+    await page.click('.save-note.left'); await page.locator('#modal.open .btn', { hasText: 'Try again now' }).click();
+    await page.waitForSelector('.save-note.left', { state: 'hidden' });
+    ok(JSON.parse(await stored())['data:1:notes:1'].text === 'not saved yet when the other tab’s import failed', 'they are saved once saving works again');
+    // The other tab replaces the board.
     await B(() => { window.__failPut = 'unnamed'; });
     await fillNote(note, 'left over from the old board');
     await page.waitForSelector('.save-note.left:visible');
@@ -2398,6 +2538,16 @@ const SUITES = [
     await B(() => { window.__failPut = null; window.__board21.setRect('notes:1', { x: 60, y: 60, w: 420, h: 320 }); });
     await until(async () => JSON.parse(await stored())['inst:1:notes:1'].rect.x === 60);
     ok(JSON.parse(await stored())['data:1:notes:1'].text === 'the imported board', 'so they are never written over the new board later');
+    // A read that fails later, not at start-up: this tab can't read the board another tab has just replaced.
+    await B(() => { window.__failRead = true; });
+    await page2.evaluate(async () => { const e = await window.__board21.buildExport('full'); e.instances.find(i => i.widgetId === 'notes').data = { text: 'imported again' }; await window.__board21.applyImport(e, 'replace'); });
+    await failed();
+    const replaced = await stored();
+    await B(() => { window.__board21.openWidget('timer'); window.__board21.setBoardShape('16:9'); });
+    await page.waitForTimeout(400);
+    ok(/couldn’t open your board/.test(await page.locator('#startup h3').innerText()) && await stored() === replaced, 'a board that can’t be read after another tab replaced it gets the same message, and nothing is saved over it');
+    await page.click('#startup [data-go="retry"]'); await started();
+    ok(await noteIs('imported again'), 'Try again opens it');
     await page2.close();
 
     // ---- one record that can't be read (the background photo's file is gone)
@@ -2405,9 +2555,36 @@ const SUITES = [
     await page.evaluate(async px => { const e = await window.__board21.buildExport('full'); e.media = { background: { data: px, w: 1, h: 1, bytes: 70, name: 'p.png', addedAt: 1 }, look: { on: true, fit: 'fill', focus: { x: 0.5, y: 0.5 }, fade: 0 } }; await window.__board21.applyImport(e, 'replace'); }, px);
     await until(() => B(() => document.body.classList.contains('has-photo')));
     await faults({ readKey: 'media:1:background' }); await page.reload(); await started();
-    ok(await noteIs('the imported board') && await page.locator('.toast', { hasText: 'couldn’t be read' }).filter({ hasText: 'the background photo' }).count() === 1 && await B(() => !document.body.classList.contains('has-photo')),
+    ok(await noteIs('imported again') && await page.locator('.toast', { hasText: 'couldn’t be read' }).filter({ hasText: 'the background photo' }).count() === 1 && await B(() => !document.body.classList.contains('has-photo')),
       'one unreadable record (the photo) doesn’t hide the board: the rest opens, and a message says what is missing');
     ok(await B(async () => (await window.__board21.buildExport('full')).instances.length === 2) && !!(await storedRecords(page))['media:1:background'], 'the board can still be exported, and the unreadable record is left as it is');
+
+    // ---- the page and board.js from different versions (the offline copy refreshes its files one by one)
+    await faults(null);
+    const bootNote = () => B(() => { const n = document.getElementById('boot-note'), cs = n && getComputedStyle(n); return n ? `${cs.animationName} ${cs.visibility}` : 'removed'; });
+    await page.route('**/board.js', r => r.abort());
+    await page.reload();
+    ok(await bootNote() === 'boot-note hidden' && await B(() => { const n = document.getElementById('boot-note'); n.getAnimations().forEach(a => a.finish()); return getComputedStyle(n).visibility === 'visible'; }),
+      'if board.js never starts, the page says so after a few seconds');
+    await page.unroute('**/board.js');
+    const boardJs = fs.readFileSync(path.join(ROOT, 'board.js'), 'utf8');
+    await page.route('**/board.js', r => r.fulfill({ contentType: 'text/javascript', body: boardJs.replace('if (late) late.remove();', '') }));
+    await page.reload(); await started();
+    ok(boardJs.includes('if (late) late.remove();') && await bootNote() === 'none hidden', 'a board.js from before that message (it doesn’t remove it) never gets it shown over a working board');
+    await page.unroute('**/board.js');
+    await page.route(BASE, r => r.fulfill({ contentType: 'text/html', body: fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').replace(/\.save-note/g, '.no-such-note') }));
+    await page.reload(); await started();
+    const shownBefore = await noteShown();
+    await B(() => { window.__failPut = 'unnamed'; window.__board21.setRect('notes:1', { x: 140, y: 90, w: 420, h: 320 }); });
+    await page.waitForSelector('.save-note.left:visible');
+    const box = await page.locator('.save-note.left').boundingBox(), pick = await page.locator('.picker-btn.left').boundingBox();
+    ok(shownBefore === 0 && box.x >= 0 && box.x < 60 && box.y > 500 && box.y + box.height <= pick.y && await page.locator('.save-note.left').evaluate(b => getComputedStyle(b).backgroundColor !== 'rgba(0, 0, 0, 0)'),
+      'on a page from before the “Not saved” note (no styles for it), the note still shows above the Widget Picker button');
+    await B(() => { window.__failPut = null; });
+    await page.click('.save-note.left'); await page.locator('#modal.open .btn', { hasText: 'Try again now' }).click();
+    await page.waitForSelector('.save-note.left', { state: 'hidden' });
+    ok(JSON.parse(await stored())['inst:1:notes:1'].rect.x === 140, 'and goes away again once the change is saved');
+    await page.unroute(BASE);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

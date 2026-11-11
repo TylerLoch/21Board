@@ -124,8 +124,10 @@
     #empty-hint .small { font-size: clamp(14px, 1.5vw, 18px); opacity: .7; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
     #empty-hint .small svg { width: 22px; height: 22px; }
     #empty-hint[hidden] { display: flex; opacity: 0; }
-    /* Shown only if board.js never gets going (it removes this as it starts): files missing, a browser too old. */
-    #boot-note { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); font-size: 18px; line-height: 1.4; visibility: hidden; animation: boot-note 0s 6s forwards; }
+    /* Shown only if board.js never gets going (files missing, a browser too old): after 6 seconds, while the Widget
+       Picker buttons are still empty. Any version of board.js fills them as its first step. */
+    #boot-note { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); font-size: 18px; line-height: 1.4; pointer-events: none; visibility: hidden; }
+    .picker-btn:empty ~ #boot-note { animation: boot-note 0s 6s forwards; }
     @keyframes boot-note { to { visibility: visible; } }
 
     /* ------------------------------------------------------------- Windows */
@@ -523,12 +525,12 @@
       <div class="small">Tap <svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/></svg> in either bottom corner to open a widget.</div>
       <div class="rescue" hidden>Windows gone? <button class="btn small primary">Go back to an earlier version</button></div>
     </div>
-    <div id="boot-note">21Board is taking a long time to start. Check the connection, then reload the page.</div>
   </main>
 
   <div id="shape-hint" role="note" hidden></div>
   <button class="picker-btn left" data-side="left" aria-label="Widgets and settings" aria-haspopup="dialog" aria-expanded="false"></button>
   <button class="picker-btn right" data-side="right" aria-label="Widgets and settings" aria-haspopup="dialog" aria-expanded="false"></button>
+  <div id="boot-note">21Board is taking a long time to start. Check the connection, then reload the page.</div>
 
   <div id="panel" class="panel" role="dialog" aria-label="Widgets">
     <div class="panel-widgets" role="list"></div>

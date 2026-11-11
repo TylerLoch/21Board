@@ -151,13 +151,21 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 
 - **The board can't be opened** (the device's storage doesn't answer or can't be read, or 21Board fails to
   start): 21Board says so, with *Try again*, instead of showing an empty board. Nothing is saved until the
-  stored board has been read, so an empty board can never replace a real one. *Use 21Board without saving*
-  gives an empty board for the lesson, kept only until 21Board closes. If just one record is unreadable (in
-  practice a big one, the background photo), the rest of the board opens and a message says what is missing.
+  stored board has been read, so a board that failed to open is never replaced by an empty one. *Use 21Board
+  without saving* gives an empty board for the lesson, kept only until 21Board closes; Board history still
+  works there, so an earlier version can be brought back and exported, and *Erase* only empties the board on
+  screen. If just one record is unreadable (in practice a big one, the background photo), the rest of the
+  board opens and a message says what is missing.
 - **A save fails** (the device is full, for example): the change stays on the board and 21Board keeps trying
   (with the next change, after 5 seconds, then every 30). Until everything is saved, a **Not saved** note stays
   above the ▦ buttons; tap it for the reason, *Try again now* and *Export a backup*. Settings says the same
-  at the top. When the device is out of space, 21Board first makes room by thinning board history.
+  at the top. When the device is out of space, 21Board first makes room by thinning board history. One
+  record that doesn't fit (a very long note, the photo) doesn't hold back the rest: the other changes are
+  still saved. *Export a backup* doesn't depend on the device's storage: it works from what is on screen.
+- **The device loses what was saved while 21Board is open** (Chrome can throw its storage away after the disk
+  filled up): 21Board notices, and writes the whole board back from what it holds. If that doesn't work at
+  once, **Not saved** stays on until it does. It can't notice while it is closed: then the board starts empty,
+  and Board history's copies in the Google Drive folder and exported backups are what bring it back.
 - **The browser blocks storage** (some private windows, site data turned off): the board works for that
   session, the **Not saved** note stays on, and Export still gives a backup file.
 

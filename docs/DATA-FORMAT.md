@@ -249,13 +249,15 @@ Several tabs or windows of 21Board can be open on one device. All show the same 
    ends, so a window never jumps out from under a finger.
 5. When a tab becomes visible again (or is restored from the back/forward cache), it re-reads
    everything, in case it missed messages while frozen.
-6. Import and Erase post `{ op: "reload" }`; other tabs rebuild from IndexedDB. With `replaced: true`
-   (the board was replaced: Import ▸ Replace, Load, going back) or `erased: true`, they first drop any
-   change of their own that wasn't saved yet, so it can't land on the new board.
+6. Import and Erase post `{ op: "reload" }` once their transaction is stored (a failed one changed
+   nothing and posts nothing); other tabs rebuild from IndexedDB. With `replaced: true` (the board was
+   replaced: Import ▸ Replace, Load, going back) or `erased: true`, they first drop any change of their
+   own that wasn't saved yet, so it can't land on the new board.
    Reset posts `{ op: "reset", board, ikey }`; other tabs reload that window.
 
 Two copies editing the *same* record at the *same* moment: the later write wins, and both copies
-then show it.
+then show it. A tab that takes over another tab's newer record drops its own change to that record
+if it was still waiting to be saved (see below), so the older change is never written over the newer.
 
 ### When storage fails
 
@@ -267,9 +269,19 @@ then show it.
   are tried again with the next change, after 5 seconds, then every 30. Meanwhile the board shows *Not saved*,
   and Export includes the queued changes. An error that means "out of space" (`QuotaExceededError`, or a
   message about quota, no space or a failed blob write) first thins board history, then shrinks it, and
-  retries each time.
+  retries each time. If the transaction still fails, its records are written one at a time, so only the
+  ones that can't be stored stay queued.
+- **Export doesn't need the database.** It reads the stored records, but what the tab holds stands in for
+  any record that can't be read, and for all of them if the read fails or takes longer than 8 seconds.
+- **A database that is gone under an open board is written back.** If reopening the database creates it
+  anew (`upgradeneeded`) after the board was read, the browser has thrown the old one away. The tab queues
+  every record it knows of, with the value it holds, to be written where the record is missing (never over
+  a record another tab has written since), ignores what it reads until that is done, and shows *Not saved*
+  for as long as it can't be done. Board history is in the same browser storage and may be gone too.
 - **Where the browser blocks IndexedDB**, or the teacher chooses *Use 21Board without saving* after a failed
   start, the same records are kept in memory for that session and nothing is announced to other tabs.
+  After a failed start, Board history (its own database) still works: earlier versions can be gone back to
+  on that unsaved board, and versions of it are saved as usual.
 
 ---
 

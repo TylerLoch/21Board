@@ -341,6 +341,8 @@
     failed: '',          // why nothing is stored this session: 'blocked' (the browser won't allow it) or 'unopened'
                          // (the saved board couldn't be opened and the teacher went on without it). See SaveNote.
     mem: null,           // MemDB: the records are kept in memory (test mode where storage is blocked, or failed)
+    lost: false,         // the database was found gone under an open board, and what this tab holds isn't all
+                         // written back yet (see Writer.restore): until then, nothing read from it is believed
 
     open() {
       if (this.db) return Promise.resolve(this.db);
@@ -351,12 +353,16 @@
         req.onupgradeneeded = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'key' });
+          // A new, empty database under a board that was read from the old one: the browser threw the old one
+          // away (Chrome does when its storage is damaged, for example after the disk filled up).
+          if (this.loaded) { this.lost = true; console.error('21Board: the stored board is gone from this device; writing back what this window holds'); }
         };
         req.onsuccess = () => {
           const db = req.result;
           db.onversionchange = () => { db.close(); this.db = null; };
           db.onclose = () => { this.db = null; };
           this.db = db; this.opening = null; resolve(db);
+          if (this.lost) Writer.restore();
         };
         req.onerror = () => reject(req.error);
         req.onblocked = () => console.warn('21Board: database upgrade blocked by another tab.');
@@ -439,16 +445,20 @@
   // Coalescing writer: every change is queued, then written in one transaction.
   // Rapid saves of the same key collapse into one write; order is preserved.
   // A change that can't be saved is never dropped: it stays queued and is tried again (with the next change,
-  // and every so often), while SaveNote shows "Not saved" on the board. put() and del() resolve true once the
+  // and every so often), while SaveNote shows "Not saved" on the board. (Only a newer change to the same
+  // record replaces it: this tab's, or another tab's, see drop.) put() and del() resolve true once the
   // change is stored, false if it isn't (yet): the board carries on either way.
   const Writer = {
-    pending: new Map(),   // key -> { type, value } | { del: true }
+    pending: new Map(),   // key -> { type, value } | { del: true } | { type, value, absent: true } (see restore)
+    batch: new Map(),     // the changes being written right now (while running)
     waiters: [],
     running: false,
     idle: [],             // settled() waiters
     retried: 0,
     failing: null,        // the error, while saves aren't working (the changes wait in pending)
     fails: 0, retryT: 0, gen: 0,
+    alone: new Map(),     // key -> a change that failed when written on its own (not tried alone again until retry())
+    dropped: new Set(),   // keys another tab saved something newer for, while a batch with them was being written
     // Resolves (true) once nothing is waiting to be written, or (false) after timeoutMs, or at once while
     // saves aren't working.
     settled(timeoutMs = 1000) {
@@ -457,11 +467,12 @@
     },
 
     // (Before the stored board has been read there is nothing to save a change against: see Startup.)
-    put(key, type, value) { if (!Store.loaded) return Promise.resolve(false); this.pending.set(key, { type, value: clone(value) }); return this.kick(); },
-    del(key) { if (!Store.loaded) return Promise.resolve(false); this.pending.set(key, { del: true }); return this.kick(); },
+    put(key, type, value) { if (!Store.loaded) return Promise.resolve(false); this.pending.set(key, { type, value: clone(value) }); return this.kick(key); },
+    del(key) { if (!Store.loaded) return Promise.resolve(false); this.pending.set(key, { del: true }); return this.kick(key); },
 
-    kick() {
+    kick(key) {
       return new Promise(resolve => {
+        resolve.key = key;
         this.waiters.push(resolve);
         if (!this.running) Promise.resolve().then(() => this.run());
       });
@@ -471,9 +482,53 @@
     forget() {
       this.gen++;
       this.pending = new Map();
+      this.alone.clear();
+      Store.lost = false;
       const waiters = this.waiters; this.waiters = [];
       waiters.forEach(w => w(false));
-      if (!this.running) { clearTimeout(this.retryT); this.failing = null; this.fails = 0; SaveNote.update(); }
+      if (!this.running) this.clear();
+    },
+    // Nothing is waiting to be saved any more.
+    clear() { clearTimeout(this.retryT); this.failing = null; this.fails = 0; SaveNote.update(); },
+    // Another tab has saved a newer change to this record (or deleted it), and this tab shows that now: its own
+    // change to it, if one is still waiting, is the older one and must not be written over the newer one later.
+    drop(key) {
+      if (this.running) this.dropped.add(key);
+      if (this.pending.delete(key) && !this.pending.size && !this.running) this.clear();
+    },
+    // The database is gone (see Store.open) while this tab still holds the board: every record it holds is
+    // queued, to be written back where it is missing, so the next start doesn't find an empty board.
+    restore() {
+      for (const [key, op] of heldRecords()) if (!this.pending.has(key) && !(this.running && this.batch.has(key))) this.pending.set(key, op);
+      if (this.running) return;   // (it goes on with these)
+      if (!this.pending.size) { Store.lost = false; return; }   // this tab holds nothing: an empty board is all there is
+      Promise.resolve().then(() => this.run());
+    },
+    // Try again now (and by itself, every so often) what couldn't be saved.
+    retry() { this.alone.clear(); return this.run(); },
+
+    // One transaction: all of the batch is stored, or none of it.
+    async write(batch) {
+      let thrown = null;
+      let written;
+      try {
+        written = await Store.tx('readwrite', (s, set) => {
+          const out = [];
+          for (const [key, op] of batch) {
+            if (op.del) { s.delete(key); out.push({ key, deleted: true }); continue; }
+            const g = s.get(key);
+            g.onsuccess = () => {
+              if (op.absent && g.result) return;   // (putting the board back: never over what is there)
+              const rec = { key, type: op.type, rev: Math.max(((g.result && g.result.rev) || 0) + 1, Date.now()), updatedAt: Date.now(), by: TAB_ID, value: op.value };
+              // (A put the browser refuses outright ends the whole batch: keep its reason.)
+              try { s.put(rec); out.push(rec); } catch (err) { thrown = thrown || err; try { s.transaction.abort(); } catch (e) { /* already ended */ } }
+            };
+          }
+          set(out);
+        }) || [];
+      } catch (e) { throw thrown || e; }
+      for (const r of written) { if (r.deleted) Known.delete(r.key); else Known.set(r.key, r.rev); }
+      if (written.length) { const keys = written.map(r => r.key); Sync.announce(keys); Link.changed(keys); BoardHistory.changed(keys); }
     },
 
     async run() {
@@ -481,51 +536,53 @@
       this.running = true;
       clearTimeout(this.retryT);
       while (this.pending.size) {
-        const batch = this.pending; this.pending = new Map();
+        const batch = this.batch = this.pending; this.pending = new Map();
         const waiters = this.waiters; this.waiters = [];
         const gen = this.gen;
-        let thrown = null;
-        try {
-          const written = await Store.tx('readwrite', (s, set) => {
-            const out = [];
-            for (const [key, op] of batch) {
-              if (op.del) { s.delete(key); out.push({ key, deleted: true }); continue; }
-              const g = s.get(key);
-              g.onsuccess = () => {
-                const rec = { key, type: op.type, rev: Math.max(((g.result && g.result.rev) || 0) + 1, Date.now()), updatedAt: Date.now(), by: TAB_ID, value: op.value };
-                // (A put the browser refuses outright ends the whole batch: keep its reason.)
-                try { s.put(rec); out.push(rec); } catch (err) { thrown = thrown || err; try { s.transaction.abort(); } catch (e) { /* already ended */ } }
-              };
-            }
-            set(out);
-          }) || [];
-          for (const r of written) { if (r.deleted) Known.delete(r.key); else Known.set(r.key, r.rev); }
-          if (written.length) { const keys = written.map(r => r.key); Sync.announce(keys); Link.changed(keys); BoardHistory.changed(keys); }
-          this.retried = 0;
-          if (this.failing && !this.pending.size) { this.failing = null; this.fails = 0; toast('Your changes are saved again.'); }
-          waiters.forEach(w => w(true));
-        } catch (e) {
-          const err = thrown || e;
-          if (gen !== this.gen) { waiters.forEach(w => w(false)); continue; }   // forget() meanwhile: these went with the old board
-          // Not saved: the changes go back in the queue (a newer change to the same record wins).
-          const keep = new Map(batch);
-          for (const [k, op] of this.pending) keep.set(k, op);
-          this.pending = keep;
-          this.waiters.unshift(...waiters);
-          // Out of space: make room by thinning board history, then try once more.
-          if (isFull(err) && this.retried < 2) {
-            this.retried++;
-            try { await (this.retried === 1 ? BoardHistory.thin() : BoardHistory.shrink()); } catch (e2) { /* nothing to free */ }
-            continue;
+        this.dropped.clear();
+        let err = null;
+        try { await this.write(batch); batch.clear(); } catch (e) { err = e; }
+        const makeRoom = !!err && isFull(err) && this.retried < 2;   // (first, see below)
+        // One record that can't be written (a long note on a nearly full device) must not hold back the others:
+        // they are tried one at a time, and only those that still fail stay queued. (Not while storage can't
+        // even be opened.)
+        if (err && !makeRoom && batch.size > 1 && (Store.db || Store.mem)) {
+          for (const [key, op] of Array.from(batch)) {
+            if (gen !== this.gen) break;
+            if (this.dropped.has(key) || this.alone.get(key) === op) continue;
+            try { await this.write(new Map([[key, op]])); batch.delete(key); } catch (e) { err = e; this.alone.set(key, op); }
           }
-          console.error('21Board: save failed', err);
-          const left = this.waiters; this.waiters = [];
-          left.forEach(w => w(false));
-          if (!this.failing) toast('21Board couldn’t save your latest changes. It keeps trying.', { action: 'Details', timeout: 8000, onAction: () => SaveNote.explain() });
-          this.failing = err; this.fails++;
-          this.retryT = setTimeout(() => this.run(), this.fails === 1 ? 5000 : 30000);
-          break;
         }
+        if (gen !== this.gen) { waiters.forEach(w => w(false)); continue; }   // forget() meanwhile: these went with the old board
+        for (const key of this.dropped) batch.delete(key);
+        if (!batch.size) {
+          this.retried = 0;
+          this.alone.clear();
+          if (!this.pending.size) {
+            if (this.failing) { this.failing = null; this.fails = 0; toast('Your changes are saved again.'); }
+            // The board is all written back: catch up on what other tabs saved meanwhile.
+            if (Store.lost) { Store.lost = false; reloadAll(); }
+          }
+          waiters.forEach(w => w(true));
+          continue;
+        }
+        // Not saved: the changes go back in the queue (a newer change to the same record wins).
+        for (const [k, op] of this.pending) batch.set(k, op);
+        this.pending = batch;
+        this.waiters.unshift(...waiters);
+        // Out of space: make room by thinning board history, then try once more.
+        if (makeRoom) {
+          this.retried++;
+          try { await (this.retried === 1 ? BoardHistory.thin() : BoardHistory.shrink()); } catch (e2) { /* nothing to free */ }
+          continue;
+        }
+        console.error('21Board: save failed', err);
+        const left = this.waiters; this.waiters = [];
+        left.forEach(w => w(!this.pending.has(w.key)));   // (true for a change that was stored on its own)
+        if (!this.failing) toast('21Board couldn’t save your latest changes. It keeps trying.', { action: 'Details', timeout: 8000, onAction: () => SaveNote.explain() });
+        this.failing = err; this.fails++;
+        this.retryT = setTimeout(() => this.retry(), this.fails === 1 ? 5000 : 30000);
+        break;
       }
       this.running = false;
       if (!this.pending.size && this.failing) { this.failing = null; this.fails = 0; }   // (forget() while this ran)
@@ -534,6 +591,18 @@
       idle.forEach(f => f());
     }
   };
+  // Every stored record this tab knows of, as the tab holds it now (for Writer.restore).
+  function heldRecords() {
+    const out = new Map(), b = S.boardId;
+    for (const key of Known.keys()) {
+      const k = Keys.parse(key);
+      const value = k.kind === 'settings' ? S.settings : k.kind === 'link' ? (k.name === 'folder' ? Link.dir : k.name === 'state' ? Link.st : null)
+        : k.board !== b ? null : k.kind === 'board' ? S.board : k.kind === 'inst' ? S.insts.get(k.ikey)
+        : k.kind === 'data' ? S.data.get(k.ikey) : k.kind === 'conf' ? S.conf.get(k.ikey) : k.kind === 'media' ? S.media.get(k.name) : null;
+      if (value !== undefined && value !== null) out.set(key, { type: k.kind, value, absent: true });
+    }
+    return out;
+  }
   // The newest record revision this tab knows (a write must be newer, even if the clock went back).
   function maxKnownRev() { let m = 0; for (const v of Known.values()) if (v > m) m = v; return m; }
 
@@ -605,10 +674,14 @@
     sw: { state: 'checking', version: null, updateReady: null }
   };
 
+  // Counts rebuildAll(): what was being read when the whole board was read afresh is left to that read.
+  let rebuilds = 0;
   async function applyKeys(keys) {
     let recs;
+    const n = rebuilds;
     try { recs = await Store.getMany(keys); } catch (err) { console.warn('21Board: sync read failed', err); return; }
-    keys.forEach((k, i) => applyRecord(k, recs[i]));
+    if (Store.lost || n !== rebuilds) return;   // (lost: what this tab holds is being written back, see Writer.restore)
+    keys.forEach((k, i) => { if (applyRecord(k, recs[i])) Writer.drop(k); });
     afterBulkApply();
   }
 
@@ -616,12 +689,19 @@
   // (must: and the caller is told, by the error).
   async function reloadAll(must) {
     let recs, skipped;
+    const n = rebuilds;
     try { ({ recs, skipped } = await Store.readAll()); } catch (err) { console.warn('21Board: reload failed', err); if (must) throw err; return; }
+    // The database was found gone: what was read (nothing) isn't the board; what this tab holds is, and is
+    // being written back (see Writer.restore).
+    if (Store.lost || (!must && n !== rebuilds)) return;
     const order = { settings: 0, board: 1, conf: 2, data: 2, inst: 3 };
     recs.sort((a, b) => (order[Keys.parse(a.key).kind] ?? 9) - (order[Keys.parse(b.key).kind] ?? 9));
     const present = new Set(skipped);   // (a record that couldn't be read isn't a deleted one)
-    for (const r of recs) { present.add(r.key); applyRecord(r.key, r); }
-    for (const key of Array.from(Known.keys())) if (!present.has(key)) applyRecord(key, undefined);
+    // A record that changed since this tab last saw it is another tab's newer change (not when the whole board
+    // is read afresh: must).
+    const apply = (key, rec) => { if (applyRecord(key, rec) && !must) Writer.drop(key); };
+    for (const r of recs) { present.add(r.key); apply(r.key, r); }
+    for (const key of Array.from(Known.keys())) if (!present.has(key)) apply(key, undefined);
     afterBulkApply();
     sayUnread(skipped);
   }
@@ -643,6 +723,8 @@
   }
 
   async function rebuildAll() {
+    if (Store.lost) return;   // (there is nothing to read: what this tab holds is the board, see Writer.restore)
+    rebuilds++;
     Menu.close();
     for (const w of S.wins.values()) w.destroy();
     S.wins.clear(); S.insts.clear(); S.data.clear(); S.conf.clear(); S.media.clear(); Known.clear();
@@ -660,12 +742,13 @@
   // Every board has a unique id (board.uid), so a file sent from another device can be matched to it.
   function ensureUid() { if (!UID_RE.test(S.board.uid || '')) updateBoard({ uid: newId() }); }
 
+  // Returns true if the record was news to this tab (false: it already had this revision, or a newer one).
   function applyRecord(key, rec) {
     if (rec) {
-      if (Known.has(key) && rec.rev <= Known.get(key)) return;
+      if (Known.has(key) && rec.rev <= Known.get(key)) return false;
       Known.set(key, rec.rev);
     } else {
-      if (!Known.has(key)) return;
+      if (!Known.has(key)) return false;
       Known.delete(key);
     }
     const k = Keys.parse(key);
@@ -705,6 +788,7 @@
         break;
       }
     }
+    return true;
   }
 
   function afterBulkApply() {
@@ -2409,7 +2493,7 @@
       actions: [{ label: 'Quit', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
     if (!ok) return;
     closePopups();
-    if (Writer.failing) Writer.run();   // (one more try before leaving)
+    if (Writer.failing) Writer.retry();   // (one more try before leaving)
     await Writer.settled(3000);
     if (BoardHistory.dirty) { try { await Promise.race([BoardHistory.check(true), sleep(2000)]); } catch (e) { /* quit anyway */ } }
     window.close();
@@ -2566,7 +2650,7 @@
   function photoRow(sw, seg) {
     const m = BoardPhoto.media(), im = BoardPhoto.settings();
     if (!m || !im) {
-      return `<div class="row"><div><div class="lbl">Background photo</div><div class="hint">A picture from this device (or Google Drive on a Chromebook). It's kept on this device and in full backups, not in templates.</div></div>
+      return `<div class="row"><div><div class="lbl">Background photo</div><div class="hint">A picture from this device (or Google Drive on a Chromebook). ${Store.failed ? 'It goes into full backups, not into templates.' : 'It’s kept on this device and in full backups, not in templates.'}</div></div>
         <button class="btn" data-act="photo-add">${svg('image')}Add photo…</button></div>`;
     }
     const g = photoThumbGeometry(m, im), fill = im.fit === 'fill';
@@ -2789,7 +2873,7 @@
         <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : `<h3>Storage &amp; offline</h3>
         <div class="row"><div class="lbl">Offline</div><div class="hint" id="st-offline" style="text-align:right">Checking…</div></div>
         <div class="row"><div><div class="lbl">Data protection</div><div class="hint" id="st-persist-hint"></div></div><div id="st-persist" style="flex:0 0 auto"></div></div>
-        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so the Google Drive folder isn’t available. Import and Export use this device’s storage or a USB drive. The board is kept on this device, and board history keeps earlier versions.</div></div></div>` : `<div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>`}
+        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so the Google Drive folder isn’t available. Import and Export use this device’s storage or a USB drive.${note ? '' : ' The board is kept on this device, and board history keeps earlier versions.'}</div></div></div>` : `<div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>`}
         <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>`}
 
         <h3>Advanced</h3>
@@ -2797,11 +2881,12 @@
         ${st.devMode && !LAB ? `<div class="row stack"><div class="lbl">Test a widget</div>
           <div style="display:flex;gap:8px"><input type="text" class="text-input" id="set-dev-path" placeholder="widgets/my-widget/index.html" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="dev-add">${svg('plus')}Add</button></div>
           ${devWidgets ? `<div class="inst-list">${devWidgets}</div>` : ''}</div>` : ''}
-        <div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Deletes all windows, content and settings on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase</button></div>
+        ${Store.failed ? `<div class="row"><div><div class="lbl">Empty this board</div><div class="hint">Clears the windows, content and settings you see now.${Store.failed === 'unopened' ? ' Your saved board isn’t touched.' : ''}</div></div><button class="btn danger" data-act="erase">${svg('trash')}Empty</button></div>`
+        : `<div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Deletes all windows, content and settings on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase</button></div>`}
 
         <h3>About</h3>
         <div class="about">21Board ${BOARD_VERSION} · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
-        Everything you make is stored only on this device. Nothing is sent to a server.</div>`;
+        ${note ? '' : 'Everything you make is stored only on this device. '}Nothing is sent to a server.</div>`;
       // The photo preview gets its picture here (never as text inside the HTML above).
       const thumb = $('#photo-thumb', this.body), pm = BoardPhoto.media();
       if (thumb) thumb.style.setProperty('--fade-color', (S.board.background && S.board.background.color) || 'var(--board-bg)');   // as on the board
@@ -2965,12 +3050,17 @@
         case 'dev-remove': updateSettings({ devWidgets: (S.settings.devWidgets || []).filter(d => d.id !== val) }); break;
         case 'erase': {
           const hist = BoardHistory.enabled();
-          const ok = await dialog({ title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + (KIOSK ? '' : ' Export a backup first if you might want them later.'),
-            actions: (KIOSK ? [] : [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }]).concat([{ label: 'Erase everything', value: 'erase', kind: 'danger' }])
-              .concat(hist ? [{ label: 'Erase, including board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
+          // Where nothing is stored (see SaveNote), only the board on screen can be emptied: the saved board,
+          // if there is one, and its history are left alone.
+          const temp = Store.failed, saved = temp === 'unopened' ? ' Your saved board isn’t touched: reload 21Board to open it.' : '';
+          const ok = await dialog(temp ? { title: 'Empty this board?', message: 'The windows, their content and the settings you see now are cleared.' + saved,
+            actions: [{ label: 'Empty this board', value: 'erase', kind: 'danger' }, { label: 'Cancel', value: null }] }
+            : { title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + (KIOSK ? '' : ' Export a backup first if you might want them later.'),
+              actions: (KIOSK ? [] : [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }]).concat([{ label: 'Erase everything', value: 'erase', kind: 'danger' }])
+                .concat(hist ? [{ label: 'Erase, including board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (ok === 'backup') { await doExport('full'); break; }
           if (ok !== 'erase' && ok !== 'erase-all') break;
-          if (ok === 'erase') await BoardHistory.before('erase', 'Before erasing everything', { timeout: 3000 });
+          if (ok === 'erase') await BoardHistory.before('erase', temp ? 'Before emptying the board' : 'Before erasing everything', { timeout: 3000 });
           else await BoardHistory.clearAll();
           await Store.tx('readwrite', s => { s.clear(); });
           Writer.forget();
@@ -2978,7 +3068,7 @@
           Sync.announce([], { op: 'reload', erased: true });
           await rebuildAll();
           this.render();
-          toast('Everything was erased.');
+          toast(temp ? 'This board was emptied.' + (temp === 'unopened' ? ' Your saved board wasn’t touched.' : '') : 'Everything was erased.');
           break;
         }
       }
@@ -3027,7 +3117,12 @@
   }
 
   async function buildExport(kind) {
-    const recs = (await Store.readAll()).recs;
+    // The stored records, with what this tab holds for any that can't be read: single ones (unread), or all of
+    // them (unread stays null) when storage is in trouble, which is when a backup is wanted most. Not waited
+    // for long, for the same reason.
+    let recs = [], unread = null;
+    try { ({ recs, skipped: unread } = await Promise.race([Store.readAll(), sleep(8000).then(() => { throw new Error('Storage didn’t answer'); })])); }
+    catch (err) { console.warn('21Board: the stored board can’t be read; exporting what this window holds', err); }
     const b = S.boardId;
     const byIkey = new Map();
     const get = ik => { if (!byIkey.has(ik)) byIkey.set(ik, {}); return byIkey.get(ik); };
@@ -3036,6 +3131,9 @@
       if ((k.kind === 'inst' || k.kind === 'data' || k.kind === 'conf') && k.board === b) { if (value === undefined) delete get(k.ikey)[k.kind]; else get(k.ikey)[k.kind] = value; }
     };
     for (const r of recs) each(r.key, r.value);
+    for (const kd of ['data', 'conf']) {
+      for (const [ik, v] of (kd === 'data' ? S.data : S.conf)) if (!unread || unread.includes(Keys[kd](b, ik))) get(ik)[kd] = v;
+    }
     // Changes not saved yet (still queued, or waiting to be tried again): what's on the board is what's exported.
     for (const [key, op] of Writer.pending) each(key, op.del ? undefined : op.value);
     for (const [ik, inst] of S.insts) get(ik).inst = inst;
@@ -3196,8 +3294,10 @@
   // opts.keepCreated: windows keep the file's createdAt. Returns the id of the version saved first (or null),
   // or false if cancelled.
   async function applyImport(p, mode, opts = {}) {
-    // Changes that couldn't be saved yet would be written over the new board later: save them first, or stop.
-    if (Writer.failing) { Writer.run(); if (!await Writer.settled(5000)) throw new Error('21Board can’t save on this device right now, so nothing was changed.'); }
+    // Changes that couldn't be saved yet (or a board that has to be written back first: Writer.restore, found
+    // out by opening the database) would be written over the new board later: save them first, or stop.
+    if (!Store.mem) await Store.open().catch(() => {});
+    if (Writer.failing || Store.lost) { Writer.retry(); if (!await Writer.settled(5000) || Store.lost) throw new Error('21Board can’t save on this device right now, so nothing was changed.'); }
     const b = S.boardId;
     let undoId = null;
     if (opts.history !== false) {
@@ -3276,8 +3376,9 @@
         }
         for (const r of out) s.put(r);
       });
-    } finally {
+      // (Only once it is stored: a failed import changed nothing, and other tabs must keep what they hold.)
       Sync.announce([], { op: 'reload', replaced: mode === 'replace' });
+    } finally {
       await rebuildAll();
     }
     BoardHistory.changed([Keys.board(b)]);
@@ -3840,7 +3941,9 @@
     timer: 0, started: false, capturing: false, undoable: null, guardAt: new Map(), folderStatus: '', budgetCache: null,
     cfgv: {},   // tests: {quiet, every, budget} in ms / bytes
     cfg(v) { this.cfgv = Object.assign({}, this.cfgv, v || {}); },
-    enabled() { return !LAB && !Store.mem && !Store.failed && this.off !== 'unavailable' && typeof indexedDB !== 'undefined'; },
+    // (Also where the saved board couldn't be opened and the teacher went on without it: its earlier versions
+    // may be all that can be reached, and they are in a database of their own.)
+    enabled() { return !LAB && Store.failed !== 'blocked' && this.off !== 'unavailable' && typeof indexedDB !== 'undefined'; },
     every() { const m = S.settings.historyEvery; return m === 0 ? 0 : (this.cfgv.every || (+m || 10) * H_MIN); },
     quiet() { return this.cfgv.quiet || HIST.quiet; },
 
@@ -4701,22 +4804,30 @@
         b.setAttribute('aria-label', 'Not saved: what to do');
         b.addEventListener('click', () => this.explain());
         document.body.appendChild(b);
-        return { b, side };
+        // A page from before this note has no styles for it (for a launch or two after an update, the page and
+        // this script can be from different versions): the essentials, so that it still shows, and still hides.
+        const bare = getComputedStyle(b).position !== 'fixed';
+        if (bare) b.style.cssText = `position:fixed;z-index:999;bottom:86px;${side}:16px;height:40px;padding:0 14px;border-radius:20px;border:1px solid #f59e0b;background:#fef3c7;color:#92400e;font-size:14px;font-weight:600;white-space:nowrap;display:none`;
+        return { b, side, bare };
       });
     },
     update() {
       if (!this.els) return;
       const st = this.state();
-      for (const { b, side } of this.els) b.hidden = !st || Picker.btns[side].hidden;
+      for (const { b, side, bare } of this.els) { b.hidden = !st || Picker.btns[side].hidden; if (bare) b.style.display = b.hidden ? 'none' : ''; }
       if (st !== this.shown) { this.shown = st; if (Settings.isOpen) Settings.render(); }
     },
     // What happened and what to do (the note's dialog, and the top of Settings).
     info() {
       const st = this.state();
       if (st === 'blocked') return { title: 'This board isn’t being saved', text: 'This browser window doesn’t let 21Board keep anything, so the board is gone when the window closes. Use a normal (not private) window, or export a backup to keep what’s here.' };
-      if (st === 'unopened') return { title: 'This board isn’t being saved', text: '21Board couldn’t open your saved board, so it started an empty one that isn’t kept. Your saved board hasn’t been changed: reload 21Board to open it. Export a backup first to keep what’s here now.' };
-      return { title: 'Your latest changes aren’t saved yet', text: (isFull(Writer.failing) ? 'This device is out of space, so 21Board can’t save.' : '21Board couldn’t save to this device.') +
-        ' Your changes stay on the board while 21Board is open, and it keeps trying. ' + (isFull(Writer.failing) ? 'Make room on this device, or export a backup to keep them.' : 'If this goes on, export a backup to keep them, then restart the device.') };
+      if (st === 'unopened') return { title: 'This board isn’t being saved', text: '21Board couldn’t open your saved board, so it started an empty one that isn’t kept. Your saved board hasn’t been changed: reload 21Board to open it.' +
+        (BoardHistory.metas.length ? ' Board history still has its earlier versions.' : '') + ' Export a backup first to keep what’s here now.' };
+      if (Store.lost) return { title: 'This board isn’t saved on this device right now', text: 'This device lost what 21Board had saved (it may be out of space). The board stays here while 21Board is open, and 21Board keeps trying to save it again. Export a backup now to keep it.' };
+      // (A full device isn't always reported as one, so the other wording mentions space too.)
+      const full = isFull(Writer.failing);
+      return { title: 'Your latest changes aren’t saved yet', text: (full ? 'This device is out of space, so 21Board can’t save.' : '21Board couldn’t save to this device (it may be out of space).') +
+        ' Your changes stay on the board while 21Board is open, and it keeps trying. ' + (full ? 'Make room on this device, or export a backup to keep them.' : 'If this goes on, export a backup to keep them, then make room on the device or restart it.') };
     },
     async explain() {
       const st = this.state();
@@ -4726,7 +4837,7 @@
         actions: (st === 'blocked' ? [Object.assign(backup, { kind: 'primary' })] : [Object.assign(retry, { kind: 'primary' }), backup]).concat([{ label: 'Close', value: null }]) });
       if (go === 'export') doExport('full');
       else if (go === 'retry' && st !== 'unsaved') location.reload();
-      else if (go === 'retry') { Writer.run(); if (!await Writer.settled(5000)) toast('Still not saved. 21Board keeps trying.'); }
+      else if (go === 'retry') { Writer.retry(); if (!await Writer.settled(5000)) toast('Still not saved. 21Board keeps trying.'); }
     }
   };
 
