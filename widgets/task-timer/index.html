@@ -1,0 +1,2180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <script src="../../sdk/board21.js"></script>
+  <script type="application/json" id="board21-widget">
+    {
+      "id": "task-timer",
+      "name": "Task Timer",
+      "version": "1.0.0",
+      "window": {
+        "width": 420,
+        "height": 480,
+        "minWidth": 300,
+        "minHeight": 350
+      }
+    }
+  </script>
+  <style>
+    /* The --b21-* colours come from 21Board (light or dark theme, and the accent the teacher chose). */
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+      background: var(--b21-bg);
+      color: var(--b21-text);
+      touch-action: manipulation;
+    }
+
+    #app-container {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      width: 100%;
+      position: relative;
+    }
+
+    /* Views */
+    .view {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      width: 100%;
+      min-height: 0;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    /* Canvas View */
+    #canvas-wrapper {
+      flex: 1;
+      width: 100%;
+      min-height: 0;
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+
+    /* Running Clock & Task Title Bar Underneath Canvas - Slimmed Down */
+    .running-clock-bar {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: clamp(2px, 0.7vmin, 5px) clamp(8px, 2vmin, 16px);
+      background: var(--b21-surface);
+      border-top: 1px solid var(--b21-border);
+      gap: clamp(1px, 0.3vmin, 3px);
+      flex-shrink: 0;
+    }
+
+    .clock-main {
+      display: flex;
+      align-items: baseline;
+      justify-content: center;
+      gap: clamp(4px, 1.5vmin, 12px);
+      width: 100%;
+    }
+
+    .clock-task-name {
+      font-size: clamp(0.84rem, 2.4vmin, 1.15rem);
+      font-weight: 700;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 55%;
+    }
+
+    .digital-clock-time {
+      font-size: clamp(1.15rem, 3.8vmin, 1.85rem);
+      font-weight: 800;
+      font-family: monospace;
+      letter-spacing: 0.05em;
+      color: var(--b21-accent);
+    }
+
+    .clock-sub {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      font-size: clamp(0.66rem, 1.7vmin, 0.82rem);
+      color: var(--b21-muted);
+    }
+
+    .clock-sub-badge {
+      background: var(--b21-bg);
+      padding: clamp(1px, 0.3vmin, 3px) clamp(5px, 1.2vmin, 10px);
+      border-radius: clamp(3px, 0.8vmin, 6px);
+      border: 1px solid var(--b21-border);
+    }
+
+    /* Bottom Control Bar - Fluid scaling & spacing */
+    .controls-bar {
+      display: flex;
+      gap: clamp(4px, 1.5vmin, 10px);
+      padding: clamp(6px, 1.8vmin, 12px) clamp(8px, 2.5vmin, 16px);
+      background: var(--b21-surface);
+      border-top: 1px solid var(--b21-border);
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    /* Standardized Touch Targets (>= 48px) with dynamic scaling */
+    button {
+      min-height: max(48px, 6.5vmin);
+      min-width: max(48px, 6.5vmin);
+      border: 1px solid var(--b21-border);
+      border-radius: clamp(8px, 1.8vmin, 14px);
+      background: var(--b21-bg);
+      color: var(--b21-text);
+      font-size: clamp(0.85rem, 2.4vmin, 1.15rem);
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 clamp(8px, 2.5vmin, 20px);
+      transition: background 0.15s ease, transform 0.05s ease;
+      white-space: nowrap;
+    }
+
+    button:active {
+      transform: scale(0.97);
+      background: var(--b21-border);
+    }
+
+    button.primary {
+      background: var(--b21-accent);
+      color: var(--b21-on-accent);
+      border: none;
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    button.primary:active {
+      opacity: 0.9;
+    }
+
+    button.icon-btn {
+      padding: 0;
+      width: max(48px, 6.5vmin);
+      height: max(48px, 6.5vmin);
+      flex-shrink: 0;
+    }
+
+    /* Schedule Editor View - Responsive Inputs */
+    #view-edit {
+      background: var(--b21-surface);
+    }
+
+    .edit-header {
+      padding: clamp(3px, 0.8vmin, 6px) clamp(10px, 2.5vmin, 16px);
+      font-size: clamp(0.86rem, 2.3vmin, 1.08rem);
+      font-weight: bold;
+      border-bottom: 1px solid var(--b21-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+
+    .edit-header-title {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    #tasks-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: clamp(8px, 2vmin, 16px);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(6px, 1.8vmin, 12px);
+      min-height: 0;
+    }
+
+    .task-card {
+      background: var(--b21-bg);
+      border: 1px solid var(--b21-border);
+      border-radius: clamp(8px, 1.8vmin, 12px);
+      padding: clamp(8px, 1.8vmin, 12px);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(6px, 1.5vmin, 10px);
+    }
+
+    .task-row-main {
+      display: flex;
+      align-items: center;
+      gap: clamp(4px, 1.5vmin, 10px);
+      width: 100%;
+    }
+
+    .task-row-details {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: clamp(6px, 1.8vmin, 12px);
+      font-size: clamp(0.75rem, 2vmin, 0.95rem);
+      color: var(--b21-muted);
+    }
+
+    /* Total Time Setting Card */
+    .total-time-card {
+      background: var(--b21-bg);
+      border: 1px solid var(--b21-accent);
+      border-radius: clamp(8px, 1.8vmin, 12px);
+      padding: clamp(8px, 1.8vmin, 14px);
+      display: flex;
+      flex-direction: column;
+      gap: clamp(6px, 1.6vmin, 12px);
+      margin: clamp(8px, 2vmin, 14px) clamp(8px, 2vmin, 14px) 2px clamp(8px, 2vmin, 14px);
+      flex-shrink: 0;
+    }
+
+    .total-time-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+    }
+
+    .total-time-label {
+      font-weight: 700;
+      font-size: clamp(0.85rem, 2.4vmin, 1.05rem);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .total-mode-group {
+      display: flex;
+      gap: clamp(4px, 1.5vmin, 10px);
+      width: 100%;
+    }
+
+    .mode-toggle-btn {
+      flex: 1;
+      min-height: max(48px, 6.5vmin);
+      border-radius: clamp(6px, 1.5vmin, 10px);
+      font-size: clamp(0.75rem, 2.1vmin, 0.95rem);
+      font-weight: 600;
+      background: var(--b21-surface);
+      color: var(--b21-muted);
+      border: 1px solid var(--b21-border);
+      padding: 0 clamp(4px, 1.5vmin, 12px);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+
+    .mode-toggle-btn.active {
+      background: var(--b21-accent);
+      color: var(--b21-on-accent);
+      border-color: var(--b21-accent);
+    }
+
+    .custom-time-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding-top: clamp(3px, 1vmin, 6px);
+      border-top: 1px dashed var(--b21-border);
+      font-size: clamp(0.78rem, 2.1vmin, 0.95rem);
+    }
+
+    input {
+      min-height: max(48px, 6.5vmin);
+      border: 1px solid var(--b21-border);
+      border-radius: clamp(6px, 1.5vmin, 10px);
+      background: var(--b21-surface);
+      color: var(--b21-text);
+      font-size: clamp(0.82rem, 2.3vmin, 1.05rem);
+      padding: 0 clamp(6px, 1.8vmin, 12px);
+      outline: none;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    input:focus {
+      border-color: var(--b21-accent);
+    }
+
+    input[type="color"] {
+      width: clamp(30px, 4vmin, 36px);
+      height: clamp(30px, 4vmin, 36px);
+      min-width: clamp(30px, 4vmin, 36px);
+      min-height: clamp(30px, 4vmin, 36px);
+      padding: 1px;
+      cursor: pointer;
+      flex-shrink: 0;
+      border-radius: clamp(6px, 1.2vmin, 8px);
+      background: var(--b21-surface);
+    }
+
+    input[type="color"]::-webkit-color-swatch-wrapper {
+      padding: 0;
+      border-radius: clamp(4px, 1vmin, 6px);
+    }
+
+    input[type="color"]::-webkit-color-swatch {
+      border: none;
+      border-radius: clamp(4px, 1vmin, 6px);
+    }
+
+    input[type="text"] {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .number-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: clamp(4px, 1vmin, 8px);
+      flex: 1;
+      min-width: 110px;
+    }
+
+    .number-input-wrap label {
+      font-size: clamp(0.72rem, 1.9vmin, 0.88rem);
+      color: var(--b21-muted);
+      white-space: nowrap;
+    }
+
+    .number-input-wrap input {
+      width: clamp(50px, 9.5vmin, 72px);
+      text-align: center;
+      flex-shrink: 0;
+    }
+
+    .btn-delete {
+      color: var(--b21-danger);
+      width: clamp(30px, 4vmin, 36px);
+      height: clamp(30px, 4vmin, 36px);
+      min-width: clamp(30px, 4vmin, 36px);
+      min-height: clamp(30px, 4vmin, 36px);
+      padding: 0;
+      flex-shrink: 0;
+      font-size: clamp(0.9rem, 2.3vmin, 1.1rem);
+      border-radius: clamp(6px, 1.2vmin, 8px);
+    }
+
+    /* Google Emoji Keyboard & Trigger Button */
+    .btn-emoji-picker {
+      width: clamp(30px, 4vmin, 36px);
+      height: clamp(30px, 4vmin, 36px);
+      min-width: clamp(30px, 4vmin, 36px);
+      min-height: clamp(30px, 4vmin, 36px);
+      padding: 0;
+      font-size: clamp(1rem, 2.7vmin, 1.25rem);
+      background: var(--b21-surface);
+      border: 1px solid var(--b21-border);
+      border-radius: clamp(6px, 1.2vmin, 8px);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: transform 0.1s ease, border-color 0.15s ease;
+    }
+
+    .btn-emoji-picker:hover {
+      border-color: var(--b21-accent);
+    }
+
+    .btn-emoji-picker:active {
+      transform: scale(0.95);
+    }
+
+    .emoji-keyboard-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      backdrop-filter: blur(3px);
+    }
+
+    .emoji-keyboard-panel {
+      background: var(--b21-surface);
+      border-top: 1px solid var(--b21-border);
+      border-radius: clamp(12px, 3vmin, 20px) clamp(12px, 3vmin, 20px) 0 0;
+      display: flex;
+      flex-direction: column;
+      max-height: 80%;
+      height: clamp(220px, 50vmin, 330px);
+      box-shadow: 0 -4px 24px rgba(0,0,0,0.45);
+      overflow: hidden;
+    }
+
+    .gboard-search-bar {
+      display: flex;
+      align-items: center;
+      gap: clamp(4px, 1.2vmin, 8px);
+      padding: clamp(4px, 1vmin, 8px) clamp(8px, 1.8vmin, 12px);
+      background: var(--b21-bg);
+      border-bottom: 1px solid var(--b21-border);
+      flex-shrink: 0;
+    }
+
+    .gboard-search-bar input {
+      flex: 1;
+      min-height: clamp(34px, 4.8vmin, 40px);
+      height: clamp(34px, 4.8vmin, 40px);
+      border-radius: 20px;
+      background: var(--b21-surface);
+      border: 1px solid var(--b21-border);
+      padding: 0 clamp(8px, 2vmin, 14px);
+      font-size: clamp(0.78rem, 2vmin, 0.92rem);
+    }
+
+    .gboard-close-btn {
+      width: clamp(34px, 4.8vmin, 40px);
+      height: clamp(34px, 4.8vmin, 40px);
+      min-width: clamp(34px, 4.8vmin, 40px);
+      min-height: clamp(34px, 4.8vmin, 40px);
+      padding: 0;
+      border-radius: 50%;
+      background: var(--b21-surface);
+      border: 1px solid var(--b21-border);
+      font-size: clamp(0.85rem, 2.2vmin, 1rem);
+      flex-shrink: 0;
+    }
+
+    .gboard-tabs {
+      display: flex;
+      overflow-x: auto;
+      scrollbar-width: none;
+      background: var(--b21-bg);
+      border-bottom: 1px solid var(--b21-border);
+      flex-shrink: 0;
+      padding: clamp(2px, 0.5vmin, 4px);
+      gap: clamp(2px, 0.5vmin, 4px);
+    }
+    .gboard-tabs::-webkit-scrollbar {
+      display: none;
+    }
+
+    .gboard-tab-btn {
+      min-width: clamp(36px, 5vmin, 42px);
+      min-height: clamp(34px, 4.8vmin, 38px);
+      height: clamp(34px, 4.8vmin, 38px);
+      padding: 0 clamp(4px, 1vmin, 8px);
+      font-size: clamp(0.95rem, 2.6vmin, 1.25rem);
+      border: none;
+      border-radius: clamp(5px, 1.2vmin, 8px);
+      background: transparent;
+      color: var(--b21-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+    }
+
+    .gboard-tab-btn.active {
+      color: var(--b21-text);
+      background: var(--b21-surface);
+    }
+
+    .gboard-tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: 2px;
+      left: 10px;
+      right: 10px;
+      height: 3px;
+      background: var(--b21-accent);
+      border-radius: 2px;
+    }
+
+    .gboard-grid {
+      flex: 1;
+      overflow-y: auto;
+      padding: clamp(4px, 1vmin, 10px);
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(clamp(34px, 4.8vmin, 42px), 1fr));
+      gap: clamp(2px, 0.8vmin, 6px);
+      align-content: start;
+    }
+
+    .gboard-emoji-btn {
+      min-width: clamp(34px, 4.8vmin, 42px);
+      min-height: clamp(34px, 4.8vmin, 42px);
+      width: 100%;
+      height: clamp(34px, 4.8vmin, 42px);
+      font-size: clamp(1.1rem, 3vmin, 1.4rem);
+      border: 1px solid transparent;
+      border-radius: clamp(5px, 1.2vmin, 8px);
+      background: transparent;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.1s ease, transform 0.08s ease;
+      padding: 0;
+    }
+
+    .gboard-emoji-btn:hover {
+      background: var(--b21-bg);
+      border-color: var(--b21-border);
+    }
+
+    .gboard-emoji-btn:active {
+      transform: scale(1.2);
+    }
+
+    .gboard-custom-banner {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: clamp(6px, 1.5vmin, 10px) clamp(8px, 2vmin, 14px);
+      background: var(--b21-bg);
+      border: 1px solid var(--b21-accent);
+      border-radius: clamp(6px, 1.5vmin, 10px);
+      font-size: clamp(0.78rem, 2vmin, 0.95rem);
+      margin-bottom: 6px;
+    }
+
+    .editor-footer {
+      padding: clamp(8px, 2vmin, 16px);
+      background: var(--b21-surface);
+      border-top: 1px solid var(--b21-border);
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    /* In a very wide window (filling the board) the buttons stay together in the middle, clear of the
+       board's ▦ buttons in the bottom corners. */
+    .controls-bar, .editor-footer { justify-content: center; }
+    .controls-bar button.primary, .editor-footer button.primary { max-width: 36rem; }
+
+    /* Repeating Alarm Animations & Styles: it pulses for about 10 seconds, then stays red
+       (and doesn't pulse at all when the device asks for less motion). */
+    @keyframes alarmPulse {
+      0% { transform: scale(1); filter: drop-shadow(0 0 0px #ff3b30); }
+      50% { transform: scale(1.05); filter: drop-shadow(0 0 10px #ff3b30); }
+      100% { transform: scale(1); filter: drop-shadow(0 0 0px #ff3b30); }
+    }
+
+    .is-alarming {
+      animation: alarmPulse 0.75s 13 ease-in-out;
+      color: var(--b21-danger) !important;
+    }
+
+    button.btn-alarming {
+      background: #ff3b30 !important;
+      color: #ffffff !important;
+      border-color: #ff453a !important;
+      animation: alarmPulse 0.75s 13 ease-in-out;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .is-alarming, button.btn-alarming { animation: none; }
+    }
+
+    .btn-test-sound {
+      background: var(--b21-surface);
+      border: 1px solid var(--b21-border);
+      font-size: clamp(0.78rem, 2vmin, 0.92rem);
+      padding: 0 clamp(8px, 2vmin, 14px);
+    }
+  </style>
+</head>
+<body>
+  <div id="app-container">
+    <!-- View 1: Canvas Circular Timer -->
+    <div id="view-timer" class="view">
+      <div id="canvas-wrapper">
+        <canvas id="timer-canvas"></canvas>
+      </div>
+
+      <!-- Running Clock Dashboard Underneath the Whole Pie -->
+      <div id="running-clock-container" class="running-clock-bar">
+        <div class="clock-main">
+          <div id="clock-task-name" class="clock-task-name">--</div>
+          <div id="clock-task-time" class="digital-clock-time">00:00</div>
+        </div>
+        <div class="clock-sub">
+          <span id="clock-total-left" class="clock-sub-badge">Total Left: --:--</span>
+          <span id="clock-next-task">Next: --</span>
+        </div>
+      </div>
+
+      <div class="controls-bar">
+        <button id="btn-playpause" class="primary" onclick="togglePlay()">▶ Start</button>
+        <button id="btn-start-over" class="icon-btn" onclick="startOver()" title="Start Over (Restart All)" aria-label="Start Over">⏮</button>
+        <button id="btn-skip" class="icon-btn" onclick="skipToNext()" title="Next Activity" aria-label="Next Activity">⏭</button>
+        <button id="btn-reset" class="icon-btn" onclick="resetCurrentTask()" title="Reset Current Task" aria-label="Reset Current Task">↺</button>
+        <button id="btn-edit" class="icon-btn" onclick="showEditView()" title="Edit Schedule" aria-label="Edit Schedule">⚙</button>
+      </div>
+    </div>
+
+    <!-- View 2: Schedule & Time Editor -->
+    <div id="view-edit" class="view hidden">
+      <div class="edit-header">
+        <div class="edit-header-title">📅 Customize Schedule</div>
+        <button onclick="saveAndCloseEditor()" style="min-height: max(48px, 5.5vmin); padding: 0 clamp(8px, 2vmin, 14px);">Done</button>
+      </div>
+
+      <!-- Total Time Setting with Mode Option -->
+      <div class="total-time-card">
+        <div class="total-time-header">
+          <div class="total-time-label">⏱ Total Session Time</div>
+          <span id="edit-total-summary" style="font-size: 0.85rem; color: var(--b21-accent); font-weight: 700;">60 min</span>
+        </div>
+        <div class="total-mode-group">
+          <button type="button" id="btn-mode-sum" class="mode-toggle-btn" onclick="setTotalMode('sum')">Σ Sum of Tasks</button>
+          <button type="button" id="btn-mode-custom" class="mode-toggle-btn" onclick="setTotalMode('custom')">⏱ Fixed Time</button>
+        </div>
+        <div id="custom-time-input-row" class="custom-time-row">
+          <label style="font-size: 0.85rem; color: var(--b21-text);">Set duration:</label>
+          <div class="number-input-wrap" style="flex:0;">
+            <input type="number" id="edit-total-time" min="1" max="1440" value="60" aria-label="Total Session Minutes">
+            <span>min</span>
+          </div>
+        </div>
+      </div>
+
+      <div id="tasks-list"></div>
+      <div class="editor-footer">
+        <button class="primary" onclick="addNewTask()">+ Add Activity</button>
+        <button type="button" class="btn-test-sound" onclick="testAlarmSound()" title="Preview Timer Alarm Noise" aria-label="Test Alarm Noise">🔊 Test Alarm</button>
+      </div>
+    </div>
+
+    <!-- Google Emoji Keyboard Modal Sheet -->
+    <div id="emoji-keyboard-modal" class="emoji-keyboard-overlay hidden" onclick="handleKeyboardOverlayClick(event)">
+      <div class="emoji-keyboard-panel" onclick="event.stopPropagation()">
+        <div class="gboard-search-bar">
+          <input type="text" id="gboard-search-input" placeholder="🔍 Search emojis (math, snack, run)..." oninput="filterEmojiKeyboard()" aria-label="Search Emojis">
+          <button type="button" class="gboard-close-btn" onclick="closeEmojiKeyboard()" aria-label="Close Emoji Keyboard">✕</button>
+        </div>
+        <div class="gboard-tabs" id="gboard-tabs"></div>
+        <div class="gboard-grid" id="gboard-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // --- Application State ---
+    // Saved with Board21.save (all but `view`). While an activity runs, endsAt is the wall-clock time (ms)
+    // when it ends, so every open copy of 21Board shows the same countdown and a reload carries on.
+    // alarm is true from the end of an activity until someone stops the alarm.
+    let state = {
+      totalMode: 'sum', // 'sum' (sum of all activities) or 'custom' (fixed total time)
+      totalMinutes: 60, // Customizable total session time (when totalMode === 'custom')
+      tasks: [],
+      activeIndex: 0,
+      secondsLeft: 0,   // time left (s) while paused
+      running: false,
+      endsAt: null,     // while running
+      alarm: false,
+      view: 'timer'
+    };
+
+    let canvas, ctx;
+    let finishedAlerted = false;
+    let lastTickSecs = null;
+
+    // Saved content can come from an imported file, so it is checked before it is used: anything
+    // the wrong type, too long or out of range falls back to the usual value.
+    const MAX_TASKS = 50;
+    const MAX_MINUTES = 720;
+    const HEX = /^#[0-9a-f]{6}$/i;
+    const TASK_COLORS = ["#ff5e57", "#ffc048", "#0be881", "#4bcffa", "#a55eea", "#fd79a8"];
+    const whole = (v, lo, hi, or) => Number.isInteger(v) && v >= lo && v <= hi ? v : or;
+    const isEmoji = v => typeof v === 'string' && v.length <= 16 && /\p{Extended_Pictographic}/u.test(v);
+    function readTask(t, i) {
+      t = t && typeof t === 'object' ? t : {};
+      const name = typeof t.name === 'string' && t.name.trim() ? t.name.slice(0, 100) : 'Activity';
+      return {
+        emoji: isEmoji(t.emoji) ? t.emoji : extractFirstEmoji(name) || '⭐',
+        name,
+        minutes: whole(t.minutes, 1, MAX_MINUTES, 5),
+        color: typeof t.color === 'string' && HEX.test(t.color) ? t.color : TASK_COLORS[i % TASK_COLORS.length]
+      };
+    }
+    function readState(d) {
+      d = d && typeof d === 'object' ? d : {};
+      const tasks = Array.isArray(d.tasks) ? d.tasks.slice(0, MAX_TASKS).map(readTask) : [];
+      const activeIndex = whole(d.activeIndex, 0, Math.max(0, tasks.length - 1), 0);
+      const full = tasks.length ? tasks[activeIndex].minutes * 60 : 0;
+      const running = d.running === true && typeof d.endsAt === 'number' && isFinite(d.endsAt) && d.endsAt - Date.now() <= full * 1000 + 1000;
+      const alarm = !running && d.alarm === true && tasks.length > 0;
+      return {
+        totalMode: d.totalMode === 'custom' ? 'custom' : 'sum',
+        totalMinutes: whole(d.totalMinutes, 1, MAX_TASKS * MAX_MINUTES, 60),
+        tasks,
+        activeIndex,
+        secondsLeft: alarm ? 0 : whole(d.secondsLeft, 0, full, full),
+        running,
+        endsAt: running ? d.endsAt : null,
+        alarm,
+        view: state.view
+      };
+    }
+
+    // Time left in the current activity, in ms and in whole seconds.
+    const leftMs = () => state.running ? Math.max(0, state.endsAt - Date.now()) : state.secondsLeft * 1000;
+    const secsLeft = () => Math.ceil(leftMs() / 1000);
+    // Sets the time left in the current activity (it keeps running if it was).
+    function setLeft(secs) {
+      state.secondsLeft = secs;
+      if (state.running) state.endsAt = Date.now() + secs * 1000;
+    }
+
+    // Cache of current slice geometry for click collision detection
+    let sliceSectors = [];
+
+    // Google Emoji Keyboard Categories & Data
+    let currentEditingTaskIndex = -1;
+    let activeEmojiTab = 'school';
+
+    const EMOJI_CATEGORIES = [
+      {
+        id: 'school',
+        icon: '🏫',
+        label: 'Class & Study',
+        emojis: [
+          { char: '📚', keywords: 'books study read math library learning' },
+          { char: '📖', keywords: 'book reading open story literature' },
+          { char: '✏️', keywords: 'pencil write drawing test quiz' },
+          { char: '📝', keywords: 'memo notes writing homework paper' },
+          { char: '📐', keywords: 'triangle ruler math geometry drafting' },
+          { char: '📏', keywords: 'straight ruler math measuring measure' },
+          { char: '🔬', keywords: 'microscope science biology lab test' },
+          { char: '🧪', keywords: 'test tube chemistry science experiment' },
+          { char: '🧮', keywords: 'abacus math calculate calculation count' },
+          { char: '📊', keywords: 'chart graph statistics presentation economics' },
+          { char: '💻', keywords: 'computer laptop coding tech typing' },
+          { char: '🎒', keywords: 'backpack bag school trip' },
+          { char: '🎨', keywords: 'palette art paint drawing creative color' },
+          { char: '🎵', keywords: 'music note band choir singing' },
+          { char: '🎶', keywords: 'musical notes melody song music' },
+          { char: '🎸', keywords: 'guitar music practice play instrument' },
+          { char: '🌍', keywords: 'globe earth geography world social studies' },
+          { char: '🏛️', keywords: 'classical museum history architecture' },
+          { char: '🗣️', keywords: 'speaking debate discussion speech presentation' },
+          { char: '👥', keywords: 'group team project collaboration partners' },
+          { char: '🧩', keywords: 'puzzle problem solving logic math' },
+          { char: '♟️', keywords: 'chess strategy club logic thinking' }
+        ]
+      },
+      {
+        id: 'smileys',
+        icon: '😃',
+        label: 'Smileys & Feelings',
+        emojis: [
+          { char: '😀', keywords: 'grinning happy smile face joy' },
+          { char: '😃', keywords: 'happy joy smile big' },
+          { char: '😄', keywords: 'smile laughing happy grin' },
+          { char: '😁', keywords: 'beaming smile grin teeth' },
+          { char: '😆', keywords: 'laughing excited grin closed eyes' },
+          { char: '😅', keywords: 'sweat smile relief nervous' },
+          { char: '🤣', keywords: 'rofl rolling laughing funny' },
+          { char: '😂', keywords: 'joy tears laugh happy crying' },
+          { char: '🙂', keywords: 'slightly smiling calm fine' },
+          { char: '😉', keywords: 'wink playful fun' },
+          { char: '😊', keywords: 'blush happy warm friendly' },
+          { char: '😇', keywords: 'angel halo good innocent' },
+          { char: '🥰', keywords: 'love hearts happy affection' },
+          { char: '😍', keywords: 'heart eyes love adore' },
+          { char: '🤩', keywords: 'star struck excited amazing wow' },
+          { char: '😎', keywords: 'cool sunglasses chill boss' },
+          { char: '🤓', keywords: 'nerd glasses smart clever studying' },
+          { char: '🧐', keywords: 'monocle examining curious inspect' },
+          { char: '🥳', keywords: 'partying celebration party horns hat' },
+          { char: '🤔', keywords: 'thinking ponder wonder consider' },
+          { char: '😴', keywords: 'sleeping sleep tired nap rest' },
+          { char: '🤫', keywords: 'quiet shh silent secret' },
+          { char: '🤗', keywords: 'hug welcoming open hands' },
+          { char: '🙌', keywords: 'raising hands celebration praise hooray' }
+        ]
+      },
+      {
+        id: 'activities',
+        icon: '⚽',
+        label: 'Activities & Recess',
+        emojis: [
+          { char: '🏃', keywords: 'running runner jog recess physical pe exercise' },
+          { char: '🏃‍♂️', keywords: 'man running recess pe sports' },
+          { char: '🏃‍♀️', keywords: 'woman running recess pe sports' },
+          { char: '🚶', keywords: 'walking stroll break hall transition' },
+          { char: '🧘', keywords: 'meditation calm mindfulness quiet breath rest' },
+          { char: '⚽', keywords: 'soccer football ball sport outdoor' },
+          { char: '🏀', keywords: 'basketball ball hoop gym sports' },
+          { char: '🏈', keywords: 'football sport gym game' },
+          { char: '⚾', keywords: 'baseball softball game sports' },
+          { char: '🎾', keywords: 'tennis racket ball sports' },
+          { char: '🏐', keywords: 'volleyball beach gym sports' },
+          { char: '🥏', keywords: 'frisbee flying disc toss playground' },
+          { char: '🏓', keywords: 'ping pong table tennis paddle' },
+          { char: '🏸', keywords: 'badminton shuttlecock racket game' },
+          { char: '🛹', keywords: 'skateboard park ride cruising' },
+          { char: '🚴', keywords: 'bike cycling bicycle ride ride' },
+          { char: '🏊', keywords: 'swimming pool water sports' },
+          { char: '🧗', keywords: 'climbing rock wall sports adventure' },
+          { char: '🎮', keywords: 'gaming video game controller play recess' },
+          { char: '🎲', keywords: 'game die dice board game play' },
+          { char: '🎯', keywords: 'target bullseye aim focus goal' },
+          { char: '🎳', keywords: 'bowling pin ball game fun' }
+        ]
+      },
+      {
+        id: 'food',
+        icon: '🥪',
+        label: 'Food & Snacks',
+        emojis: [
+          { char: '🥪', keywords: 'sandwich lunch snack meal food' },
+          { char: '🍎', keywords: 'red apple fruit healthy snack teacher' },
+          { char: '🍌', keywords: 'banana fruit snack yellow' },
+          { char: '🍇', keywords: 'grapes fruit sweet snack' },
+          { char: '🍓', keywords: 'strawberry fruit sweet snack' },
+          { char: '🥕', keywords: 'carrot veggie healthy snack' },
+          { char: '🍕', keywords: 'pizza slice lunch food party' },
+          { char: '🍔', keywords: 'hamburger burger fast food lunch' },
+          { char: '🌮', keywords: 'taco mexican food lunch dinner' },
+          { char: '🥗', keywords: 'salad healthy greens lunch' },
+          { char: '🍱', keywords: 'bento box lunch box japanese meal' },
+          { char: '🥐', keywords: 'croissant bakery breakfast pastry' },
+          { char: '🥞', keywords: 'pancakes breakfast brunch maple' },
+          { char: '🥨', keywords: 'pretzel snack salt bakery' },
+          { char: '🍿', keywords: 'popcorn movie snack theatre' },
+          { char: '🍩', keywords: 'doughnut donut sweet treat snack' },
+          { char: '🍪', keywords: 'cookie chocolate chip sweet biscuit' },
+          { char: '🧁', keywords: 'cupcake cake dessert sweet frosting' },
+          { char: '🍫', keywords: 'chocolate bar sweet treat candy' },
+          { char: '🥤', keywords: 'cup with straw drink soda water' },
+          { char: '🧃', keywords: 'beverage box juice drink straw' },
+          { char: '🥛', keywords: 'glass of milk drink calcium' },
+          { char: '☕', keywords: 'coffee hot drink tea break' },
+          { char: '🍵', keywords: 'tea green matcha drink warm' }
+        ]
+      },
+      {
+        id: 'objects',
+        icon: '💡',
+        label: 'Objects & Tools',
+        emojis: [
+          { char: '⏰', keywords: 'alarm clock time timer morning wake' },
+          { char: '⏱️', keywords: 'stopwatch timer sprint countdown' },
+          { char: '⌛', keywords: 'hourglass sand time waiting' },
+          { char: '📅', keywords: 'calendar date schedule event appointment' },
+          { char: '🗓️', keywords: 'calendar spiral schedule day plan' },
+          { char: '🔔', keywords: 'bell ring alert notice notification class' },
+          { char: '💡', keywords: 'light bulb idea creative thinking solution' },
+          { char: '📌', keywords: 'pushpin pin board reminder notice' },
+          { char: '📎', keywords: 'paperclip attach clip organize' },
+          { char: '📂', keywords: 'open folder files organize paperwork' },
+          { char: '📁', keywords: 'file folder archive documents' },
+          { char: '📋', keywords: 'clipboard checklist tasks assignment survey' },
+          { char: '🔍', keywords: 'magnifying glass search inspect research' },
+          { char: '✂️', keywords: 'scissors craft cut art class' },
+          { char: '🧹', keywords: 'broom clean cleanup chores tidy' },
+          { char: '🧼', keywords: 'soap wash hands clean hygiene' },
+          { char: '🛠️', keywords: 'tools hammer wrench project build repair' },
+          { char: '🔋', keywords: 'battery power energy charge recharge' },
+          { char: '🏷️', keywords: 'label tag name categorize' },
+          { char: '🔒', keywords: 'lock private secure quiet' }
+        ]
+      },
+      {
+        id: 'symbols',
+        icon: '⭐',
+        label: 'Symbols & Awards',
+        emojis: [
+          { char: '⭐', keywords: 'star favorite gold excellence award' },
+          { char: '🌟', keywords: 'glowing star sparkle bright shine' },
+          { char: '✨', keywords: 'sparkles clean magic special new shine' },
+          { char: '💥', keywords: 'boom explosion impact power' },
+          { char: '💫', keywords: 'dizzy star burst magic' },
+          { char: '🏆', keywords: 'trophy champion win first award' },
+          { char: '🥇', keywords: 'first place gold medal prize winner' },
+          { char: '🥈', keywords: 'second place silver medal prize' },
+          { char: '🥉', keywords: 'third place bronze medal prize' },
+          { char: '🎖️', keywords: 'military medal honor achievement' },
+          { char: '🏅', keywords: 'sports medal award ribbon honor' },
+          { char: '💯', keywords: 'hundred 100 points perfect score test' },
+          { char: '❤️', keywords: 'red heart love health favorite' },
+          { char: '💙', keywords: 'blue heart calm favorite' },
+          { char: '💚', keywords: 'green heart nature clean' },
+          { char: '💛', keywords: 'yellow heart warm friendship' },
+          { char: '💜', keywords: 'purple heart creative' },
+          { char: '🤍', keywords: 'white heart clean peace' },
+          { char: '🚩', keywords: 'red flag goal marker checkpoint milestone' },
+          { char: '🏁', keywords: 'checkered flag finish finishline done end' },
+          { char: '🚀', keywords: 'rocket blast launch fast progress science' },
+          { char: '🔥', keywords: 'fire hot streak energy warm' },
+          { char: '🌈', keywords: 'rainbow colorful weather hope joy' },
+          { char: '☀️', keywords: 'sun sunny bright morning outdoor' }
+        ]
+      }
+    ];
+
+    function getTaskEmoji(task) {
+      if (task && task.emoji) return task.emoji;
+      if (task && task.name) {
+        const extracted = extractFirstEmoji(task.name);
+        if (extracted) return extracted;
+      }
+      return "⭐";
+    }
+
+    function getCleanTaskName(task) {
+      if (!task || !task.name) return "Activity";
+      const em = getTaskEmoji(task);
+      let n = task.name;
+      if (em && n.startsWith(em)) {
+        n = n.slice(em.length).trim();
+      }
+      return n || "Activity";
+    }
+
+    // --- Audio Feedback & Repeating Timer Alarm ---
+    // One cycle of the repeating electronic timer noise (Beep-Beep-Beep-BEEP), every 1.35 s.
+    // Two voices (sine 880 Hz, triangle 1174.66 Hz); each note: [voice, start (s), length (s), volume].
+    const VOICES = [['sine', 880], ['triangle', 1174.66]];
+    const CYCLE_NOTES = [[0, 0.00, 0.08, 0.35], [0, 0.13, 0.08, 0.35], [0, 0.26, 0.08, 0.35], [1, 0.40, 0.22, 0.4]];
+    const CYCLE = 1.35;
+    const AHEAD = 75;   // seconds of alarm kept set ahead (a page behind another tab may only run once a minute)
+
+    // Puts a repeating alarm on the sound `ac`, starting at its time `at`. Answers { at, next, out, voices }:
+    // `out` carries it to the speakers (disconnect it to call the alarm off).
+    function addAlarm(ac, at) {
+      const out = ac.createGain();
+      out.connect(ac.destination);
+      const voices = VOICES.map(([type, freq]) => {
+        const o = ac.createOscillator(), g = ac.createGain();
+        o.type = type; o.frequency.value = freq; g.gain.value = 0;
+        o.connect(g).connect(out); o.start(at);
+        return { o, g };
+      });
+      return { at, next: at, out, voices };
+    }
+    // Adds cycles to an alarm until `until` (on the sound's clock).
+    function extendAlarm(al, until) {
+      for (; al.next < until; al.next += CYCLE) {
+        for (const [v, t, len, vol] of CYCLE_NOTES) {
+          const p = al.voices[v].g.gain, at = al.next + t;
+          p.setValueAtTime(vol, at);
+          p.exponentialRampToValueAtTime(0.001, at + len);
+          p.setValueAtTime(0, at + len);
+        }
+      }
+    }
+
+    // Plays one cycle now (🔔 Test Alarm).
+    function testAlarmSound() {
+      try {
+        const ac = new (window.AudioContext || window.webkitAudioContext)();
+        const al = addAlarm(ac, ac.currentTime);
+        extendAlarm(al, ac.currentTime + 0.1);
+        setTimeout(() => ac.close(), 1500);
+      } catch (err) { /* audio unavailable */ }
+    }
+
+    // ---- The alarm at the end of an activity (as in the Timer widget).
+    // Browsers only let a page make sound once it has been tapped, and run its clock late while it is behind
+    // another tab or window. So the tap on Start gets the sound ready and sets the alarm ahead, on the sound's own
+    // clock: it rings on time even while 21Board isn't the tab or window on screen, and keeps ringing until the
+    // alarm is stopped. An alarm that can't sound yet (the page was loaded again and hasn't been tapped since)
+    // rings as soon as 21Board is tapped.
+    // Several copies of 21Board can be open, and only one should ring: the copy with the alarm set holds a lock
+    // (shared by the copies) until its alarm is called off, and another copy rings at the end only if nobody holds it.
+    const LOCK = () => '21Board task timer alarm ' + (Board21.context ? Board21.context.instance : '');
+    let audio = null;    // the sound, from the tap on Start until the alarm is stopped
+    let alarm = null;    // the alarm that is set (see addAlarm)
+    let unlock = null;   // lets go of the lock
+    const tapped = () => !navigator.userActivation || navigator.userActivation.hasBeenActive;
+
+    function openAudio() {
+      try {
+        audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+        if (audio.state !== 'running') audio.resume().catch(() => {});
+      } catch (e) { audio = null; /* audio unavailable */ }
+      return !!audio;
+    }
+    function setAlarm(at) {   // (null calls it off)
+      if (alarm) {
+        alarm.out.disconnect();
+        alarm.voices.forEach(v => { try { v.o.stop(); } catch (e) {} });
+      }
+      alarm = at === null || !audio ? null : addAlarm(audio, at);
+      if (alarm) extendAlarm(alarm, at + AHEAD);
+    }
+    function closeAudio() {
+      setAlarm(null);
+      if (audio) audio.close().catch(() => {});
+      audio = null;
+    }
+    // The tap on Start, in this copy of 21Board.
+    function arm() {
+      if (!openAudio()) return;
+      // (Taken from whoever has it: Start was tapped here last.)
+      if (!unlock && navigator.locks) navigator.locks.request(LOCK(), { steal: true }, () => audio && new Promise(r => { unlock = r; })).catch(() => {});
+      plan();
+    }
+    // Keeps the alarm set for the moment the activity ends, and ringing until it is stopped. Called after every
+    // change and on every tick: the sound's clock stops while the device sleeps, so it can fall behind.
+    function plan() {
+      if (audio) {
+        const now = audio.currentTime;
+        if (audio.state === 'suspended' && tapped()) audio.resume().catch(() => {});
+        if (state.running) {
+          if (leftMs() > 0 && (!alarm || Math.abs(alarm.at - now - leftMs() / 1000) > 0.5)) setAlarm(now + leftMs() / 1000);
+        } else if (state.alarm) {
+          if (alarm) extendAlarm(alarm, Math.max(now, alarm.at) + AHEAD);
+        } else {
+          closeAudio();   // paused, reset, or the alarm was stopped
+        }
+      }
+      if (unlock && !audio && !state.alarm) { unlock(); unlock = null; }
+    }
+    addEventListener('pointerdown', () => { if (audio && audio.state !== 'running') audio.resume().catch(() => {}); }, true);
+
+    // The activity has just ended (seen here, or in another copy of 21Board).
+    function alertDone() {
+      if (finishedAlerted) return;
+      finishedAlerted = true;
+      Board21.window.requestAttention();
+      if (alarm && alarm.at <= audio.currentTime + 0.5) return;   // set ahead here: ringing already
+      // The alarm wasn't set ahead here (Start was tapped in another copy of 21Board, or before the page was
+      // loaded again): ring now, unless another copy is the one to ring.
+      const ring = () => { if (!state.alarm || !openAudio()) return false; setAlarm(audio.currentTime + 0.05); return true; };
+      const ask = () => navigator.locks.request(LOCK(), { ifAvailable: true }, lock => lock && ring() ? new Promise(r => { unlock = r; }) : null).catch(() => {});
+      if (audio || unlock || !navigator.locks) ring();
+      else if (tapped()) ask();
+      else setTimeout(ask, 1500);   // a copy that can't make sound yet lets one that can go first
+    }
+
+    // Stops the alarm (the caller saves).
+    function stopAlarm() {
+      state.alarm = false;
+      finishedAlerted = false;
+    }
+
+    // --- 21Board SDK Initialization ---
+    async function init() {
+      canvas = document.getElementById('timer-canvas');
+      ctx = canvas.getContext('2d');
+
+      const appData = await Board21.ready();
+      state = readState(appData && appData.data);
+      // Ended while 21Board was closed (or the alarm was already going): show it, but don't ring.
+      if (state.alarm || (state.running && leftMs() <= 0)) finishedAlerted = true;
+
+      // Another 21Board tab (or an import) changed this timer.
+      Board21.on('data', incoming => {
+        const was = state.running, wasAlarm = state.alarm;
+        state = readState(incoming);
+        if (!state.alarm) finishedAlerted = false;
+        if (state.running && !was) closeAudio();   // started in the other copy: the alarm is set there
+        else if (was && state.alarm && !wasAlarm) alertDone();   // the other copy saw it end first
+        plan();
+        updateMenu();
+        drawCanvas();
+      });
+
+      Board21.on('menu', handleMenuAction);
+      Board21.on('theme', () => drawCanvas());
+
+      window.addEventListener('resize', handleResize);
+      setupCanvasInteractions();
+
+      updateMenu();
+      handleResize();
+
+      setInterval(tick, 250);
+    }
+
+    // Four times a second: notices the end of the activity, keeps the alarm set, and redraws when the time shown changes.
+    function tick() {
+      if (state.running && leftMs() <= 0) {
+        // Activity reached 00:00 - trigger repeating alarm!
+        state.running = false;
+        state.endsAt = null;
+        state.secondsLeft = 0;
+        state.alarm = state.tasks.length > 0;
+        persistState();
+        alertDone();
+        updateMenu();
+      }
+      plan();
+      const s = secsLeft();
+      if (s !== lastTickSecs) {
+        lastTickSecs = s;
+        drawCanvas();
+      }
+    }
+
+    // --- 21Board Window Menu ---
+    function updateMenu() {
+      if (state.view === 'edit') {
+        Board21.menu.set([
+          { id: 'done_edit', label: 'Done Editing', color: '#30d158' }
+        ]);
+      } else if (state.alarm) {
+        Board21.menu.set([
+          { id: 'stop_alarm', label: 'Stop Alarm 🔔', color: '#ff3b30' },
+          { id: 'skip_next', label: 'Next Task', color: '#0a84ff' },
+          { id: 'start_over', label: 'Start Over', color: '#8e8e93' }
+        ]);
+      } else {
+        Board21.menu.set([
+          { id: 'play_pause', label: state.running ? 'Pause' : 'Start', color: state.running ? '#ff9f0a' : '#30d158' },
+          { id: 'start_over', label: 'Start Over', color: '#ff453a' },
+          { id: 'skip_next', label: 'Next Task', color: '#0a84ff' },
+          { id: 'reset_task', label: 'Reset Task', color: '#8e8e93' },
+          { id: 'open_edit', label: 'Edit Schedule', color: '#5856d6' }
+        ]);
+      }
+
+      // Update in-app play/pause / stop alarm button state
+      const playBtn = document.getElementById('btn-playpause');
+      if (playBtn) {
+        if (state.alarm) {
+          playBtn.innerText = '🔔 Stop Alarm';
+          playBtn.className = 'primary btn-alarming';
+          playBtn.style.background = '#ff3b30';
+          playBtn.style.color = '#ffffff';
+        } else if (state.tasks.length === 0) {
+          playBtn.innerText = '➕ Create Activity';
+          playBtn.className = 'primary';
+          playBtn.style.background = 'var(--b21-accent)';
+          playBtn.style.color = 'var(--b21-on-accent)';
+        } else if (state.running) {
+          playBtn.innerText = '⏸ Pause';
+          playBtn.className = 'primary';
+          playBtn.style.background = 'var(--b21-surface)';
+          playBtn.style.color = 'var(--b21-text)';
+        } else {
+          playBtn.innerText = '▶ Start';
+          playBtn.className = 'primary';
+          playBtn.style.background = 'var(--b21-accent)';
+          playBtn.style.color = 'var(--b21-on-accent)';
+        }
+      }
+    }
+
+    function handleMenuAction(id) {
+      if (id === 'stop_alarm') dismissAlarm();
+      else if (id === 'play_pause') togglePlay();
+      else if (id === 'start_over') startOver();
+      else if (id === 'skip_next') skipToNext();
+      else if (id === 'reset_task') resetCurrentTask();
+      else if (id === 'open_edit') showEditView();
+      else if (id === 'done_edit') saveAndCloseEditor();
+    }
+
+    // --- Timer Engine ---
+    function togglePlay() {
+      if (state.alarm) {
+        dismissAlarm();
+        return;
+      }
+      if (state.tasks.length === 0) {
+        showEditView();
+        return;
+      }
+      if (state.running) {
+        pauseTimer();
+      } else {
+        startTimer();
+      }
+      updateMenu();
+      drawCanvas();
+    }
+
+    function dismissAlarm() {
+      stopAlarm();
+      // If there are more tasks, advance to next, otherwise stay finished
+      if (state.tasks.length > 1 && state.activeIndex < state.tasks.length - 1) {
+        skipToNext();
+      } else {
+        persistState();
+        updateMenu();
+        drawCanvas();
+      }
+    }
+
+    function startTimer() {
+      stopAlarm();
+      if (secsLeft() <= 0) state.secondsLeft = state.tasks[state.activeIndex].minutes * 60;   // finished: run it again
+      state.running = true;
+      state.endsAt = Date.now() + state.secondsLeft * 1000;
+      arm();
+      persistState();
+    }
+
+    function pauseTimer() {
+      state.secondsLeft = secsLeft();
+      state.running = false;
+      state.endsAt = null;
+      persistState();
+    }
+
+    function skipToNext() {
+      stopAlarm();
+      if (state.tasks.length === 0) return;
+      state.activeIndex = (state.activeIndex + 1) % state.tasks.length;
+      setLeft(state.tasks[state.activeIndex].minutes * 60);
+      drawCanvas();
+      persistState();
+      updateMenu();
+    }
+
+    function resetCurrentTask() {
+      stopAlarm();
+      if (state.tasks.length === 0) return;
+      setLeft(state.tasks[state.activeIndex].minutes * 60);
+      drawCanvas();
+      persistState();
+      updateMenu();
+    }
+
+    function startOver() {
+      stopAlarm();
+      if (state.tasks.length === 0) return;
+      pauseTimer();
+      state.activeIndex = 0;
+      state.secondsLeft = state.tasks[0].minutes * 60;
+      drawCanvas();
+      persistState();
+      updateMenu();
+    }
+
+    function persistState() {
+      Board21.save({
+        totalMode: state.totalMode || 'sum',
+        totalMinutes: state.totalMinutes,
+        tasks: state.tasks,
+        activeIndex: state.activeIndex,
+        secondsLeft: state.secondsLeft,
+        running: state.running,
+        endsAt: state.endsAt,
+        alarm: state.alarm
+      });
+      plan();
+    }
+
+    // Helper: Compute cumulative session times
+    function getScheduleMetrics() {
+      if (state.tasks.length === 0) {
+        return {
+          totalMinutes: 0,
+          totalSessionSec: 0,
+          tasksSum: 0,
+          totalElapsedSec: 0,
+          totalRemainingSec: 0
+        };
+      }
+
+      const tasksSum = state.tasks.reduce((sum, t) => sum + Math.max(1, Number(t.minutes) || 1), 0);
+      const totalMinutes = state.totalMode === 'sum'
+        ? Math.max(1, tasksSum)
+        : Math.max(tasksSum, Number(state.totalMinutes) || tasksSum || 60);
+      const totalSessionSec = totalMinutes * 60;
+
+      // Calculate elapsed seconds prior to the current active task
+      let priorElapsedSec = 0;
+      for (let i = 0; i < state.activeIndex && i < state.tasks.length; i++) {
+        priorElapsedSec += Math.max(1, Number(state.tasks[i].minutes) || 1) * 60;
+      }
+
+      const currentTask = state.tasks[state.activeIndex];
+      const currentTaskTotalSec = currentTask ? Math.max(1, Number(currentTask.minutes) || 1) * 60 : 0;
+      const currentTaskElapsedSec = Math.max(0, currentTaskTotalSec - secsLeft());
+
+      const totalElapsedSec = Math.min(totalSessionSec, priorElapsedSec + currentTaskElapsedSec);
+      const totalRemainingSec = Math.max(0, totalSessionSec - totalElapsedSec);
+
+      return {
+        totalMinutes,
+        totalSessionSec,
+        tasksSum,
+        totalElapsedSec,
+        totalRemainingSec
+      };
+    }
+
+    // --- Canvas Resize & Rendering ---
+    function handleResize() {
+      const wrapper = document.getElementById('canvas-wrapper');
+      if (!wrapper || !canvas) return;
+
+      const rect = wrapper.getBoundingClientRect();
+      const dpr = window.devicePixelRatio || 1;
+
+      canvas.width = Math.floor(rect.width * dpr);
+      canvas.height = Math.floor(rect.height * dpr);
+      canvas.style.width = rect.width + 'px';
+      canvas.style.height = rect.height + 'px';
+
+      ctx.resetTransform();
+      ctx.scale(dpr, dpr);
+
+      drawCanvas();
+    }
+
+    function drawCanvas() {
+      if (!ctx || !canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const width = rect.width;
+      const height = rect.height;
+
+      ctx.clearRect(0, 0, width, height);
+
+      if (width <= 0 || height <= 0) return;
+
+      const cx = width / 2;
+      const cy = height / 2;
+      const outerRadius = Math.min(width, height) * 0.44;
+
+      sliceSectors = [];
+
+      const metrics = getScheduleMetrics();
+
+      if (state.tasks.length === 0) {
+        drawEmptyState(cx, cy, outerRadius);
+        updateRunningClock(metrics);
+        return;
+      }
+
+      let startAngle = -Math.PI / 2; // 12 o'clock start
+
+      // 1. Draw Whole Pie Slices (Splitting the Total Session Time)
+      state.tasks.forEach((task, index) => {
+        const sliceMinutes = Math.max(1, Number(task.minutes) || 1);
+        const sliceAngle = (sliceMinutes / metrics.totalMinutes) * (Math.PI * 2);
+        const endAngle = startAngle + sliceAngle;
+        const isActive = index === state.activeIndex;
+
+        sliceSectors.push({
+          index,
+          startAngle,
+          endAngle,
+          cx,
+          cy,
+          outerRadius
+        });
+
+        ctx.save();
+
+        // Draw solid whole pie wedge (from center cx, cy to edge)
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, outerRadius, startAngle, endAngle);
+        ctx.closePath();
+
+        // Wedge fill
+        ctx.fillStyle = task.color;
+        ctx.globalAlpha = isActive ? 1.0 : 0.45;
+        ctx.fill();
+
+        // Crisp wedge boundary
+        ctx.strokeStyle = getThemeColor('--b21-bg', '#1c1c1e');
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        // Active task highlight rim (white in the dark theme, dark in the light one)
+        if (isActive) {
+          ctx.beginPath();
+          ctx.arc(cx, cy, outerRadius + 1, startAngle, endAngle);
+          ctx.strokeStyle = getThemeColor('--b21-text', '#ffffff');
+          ctx.lineWidth = 3.5;
+          ctx.stroke();
+        }
+
+        ctx.restore();
+
+        // Draw adaptive fitted emoji and text label for this section
+        drawSectionLabel(ctx, task, startAngle, endAngle, sliceAngle, outerRadius, cx, cy);
+
+        startAngle = endAngle;
+      });
+
+      // 2. Unassigned / Buffer Time Slice (if tasks sum to less than total time)
+      if (metrics.tasksSum < metrics.totalMinutes) {
+        const remainingBufferAngle = ((metrics.totalMinutes - metrics.tasksSum) / metrics.totalMinutes) * (Math.PI * 2);
+        const bufferEnd = startAngle + remainingBufferAngle;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.arc(cx, cy, outerRadius, startAngle, bufferEnd);
+        ctx.closePath();
+        ctx.fillStyle = getThemeColor('--b21-surface', '#2c2c2e');
+        ctx.globalAlpha = 0.6;
+        ctx.fill();
+        ctx.strokeStyle = getThemeColor('--b21-bg', '#1c1c1e');
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 3. Clock Dial Rim & Minute Ticks
+      drawClockTicks(cx, cy, outerRadius);
+
+      // 4. Clock Hand: Line showing exact progress & remaining total time
+      drawClockProgressHand(cx, cy, outerRadius, metrics);
+
+      // 5. Update the running clock underneath
+      updateRunningClock(metrics);
+    }
+
+    // --- Adaptive Section Label Fitting ---
+    function drawSectionLabel(ctx, task, startAngle, endAngle, sliceAngle, outerRadius, cx, cy) {
+      if (sliceAngle < 0.14) return; // Too narrow to fit content
+
+      const midAngle = startAngle + sliceAngle / 2;
+      const isWholeCircle = sliceAngle >= Math.PI * 1.95;
+
+      // Position label at optimal radius (widest safe area of the wedge)
+      const halfAngle = Math.min(Math.PI / 2, sliceAngle / 2);
+      const sinHalf = Math.sin(halfAngle);
+      const rRatio = isWholeCircle ? 0.52 : Math.min(0.72, Math.max(0.52, 1 / (1 + sinHalf * 1.1)));
+      const labelDist = outerRadius * rRatio;
+
+      const lx = isWholeCircle ? cx : cx + Math.cos(midAngle) * labelDist;
+      const ly = isWholeCircle ? cy - outerRadius * 0.28 : cy + Math.sin(midAngle) * labelDist;
+
+      // Safe bounds strictly inside the slice geometry
+      const chord = isWholeCircle ? outerRadius * 1.6 : 2 * labelDist * sinHalf;
+      const radialSpace = outerRadius - 16;
+      const maxSafeWidth = Math.max(16, Math.min(chord * 0.86, outerRadius * 0.85));
+      const maxSafeHeight = Math.max(16, Math.min(chord * 0.86, radialSpace * 0.65));
+
+      const emoji = getTaskEmoji(task);
+      const cleanName = getCleanTaskName(task);
+
+      ctx.save();
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      // White on a dark shadow in the dark theme; dark on a light shadow in the light one (pale slices)
+      const light = Board21.theme === 'light';
+      ctx.fillStyle = light ? getThemeColor('--b21-text', '#1f2937') : '#ffffff';
+      ctx.shadowColor = light ? 'rgba(255, 255, 255, 0.9)' : 'rgba(0, 0, 0, 0.85)';
+      ctx.shadowBlur = 5;
+
+      // Compute fitted text layout
+      let textLayout = null;
+      const minTextSize = 9;
+      const maxTextSize = Math.max(minTextSize, Math.min(20, Math.floor(maxSafeWidth * 0.24), Math.floor(maxSafeHeight * 0.28)));
+
+      if (cleanName && maxSafeWidth >= 32 && maxSafeHeight >= 24 && sliceAngle >= 0.28) {
+        textLayout = computeFittedTextLayout(ctx, cleanName, maxSafeWidth, maxSafeHeight, maxTextSize, minTextSize);
+      }
+
+      // Compute emoji size and total vertical span
+      let emojiSize;
+      let totalContentHeight;
+      const gap = 3;
+
+      if (textLayout) {
+        const availForEmoji = Math.max(12, maxSafeHeight - textLayout.totalHeight - gap);
+        emojiSize = Math.max(12, Math.min(32, availForEmoji, maxSafeWidth * 0.5));
+        totalContentHeight = emojiSize + gap + textLayout.totalHeight;
+      } else {
+        emojiSize = Math.max(12, Math.min(36, maxSafeHeight * 0.75, maxSafeWidth * 0.75));
+        totalContentHeight = emojiSize;
+      }
+
+      // Draw Emoji
+      const topY = ly - totalContentHeight / 2;
+      const emojiCenterY = topY + emojiSize / 2;
+
+      ctx.font = `${Math.round(emojiSize)}px -apple-system, "Segoe UI Emoji", "Apple Color Emoji", sans-serif`;
+      ctx.fillText(emoji || '⭐', lx, emojiCenterY);
+
+      // Draw Fitted Text
+      if (textLayout && textLayout.lines.length > 0) {
+        ctx.font = `700 ${textLayout.fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+        let curLineY = topY + emojiSize + gap + textLayout.fontSize / 2;
+        const lineSpacing = textLayout.fontSize + 2;
+
+        for (let i = 0; i < textLayout.lines.length; i++) {
+          ctx.fillText(textLayout.lines[i], lx, curLineY);
+          curLineY += lineSpacing;
+        }
+      }
+
+      ctx.restore();
+    }
+
+    function computeFittedTextLayout(ctx, text, maxWidth, maxHeight, maxTextSize, minTextSize) {
+      if (!text) return null;
+
+      const fontFor = (sz) => `700 ${sz}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      const availHeight = Math.max(minTextSize, maxHeight - 16);
+
+      // 1. Single line: try font sizes from max down to min
+      for (let sz = Math.min(maxTextSize, Math.floor(availHeight)); sz >= minTextSize; sz--) {
+        ctx.font = fontFor(sz);
+        if (ctx.measureText(text).width <= maxWidth) {
+          return { lines: [text], fontSize: sz, totalHeight: sz };
+        }
+      }
+
+      // 2. Two lines: split words evenly if there is vertical room
+      const words = text.split(/\s+/).filter(Boolean);
+      if (words.length >= 2 && availHeight >= minTextSize * 2 + 2) {
+        let bestSplit = 1;
+        let minDiff = Infinity;
+        for (let i = 1; i < words.length; i++) {
+          const l1 = words.slice(0, i).join(' ');
+          const l2 = words.slice(i).join(' ');
+          const diff = Math.abs(l1.length - l2.length);
+          if (diff < minDiff) {
+            minDiff = diff;
+            bestSplit = i;
+          }
+        }
+        const line1 = words.slice(0, bestSplit).join(' ');
+        const line2 = words.slice(bestSplit).join(' ');
+
+        const max2LineSize = Math.min(maxTextSize, Math.floor((availHeight - 2) / 2));
+        for (let sz = max2LineSize; sz >= minTextSize; sz--) {
+          ctx.font = fontFor(sz);
+          const w1 = ctx.measureText(line1).width;
+          const w2 = ctx.measureText(line2).width;
+          if (w1 <= maxWidth && w2 <= maxWidth) {
+            return { lines: [line1, line2], fontSize: sz, totalHeight: sz * 2 + 2 };
+          }
+        }
+      }
+
+      // 3. Fallback: single line truncated with ellipsis at minTextSize measured precisely
+      const sz = minTextSize;
+      ctx.font = fontFor(sz);
+      let truncated = text;
+      while (truncated.length > 1 && ctx.measureText(truncated + '…').width > maxWidth) {
+        truncated = truncated.slice(0, -1);
+      }
+      if (truncated.length > 0 && ctx.measureText(truncated + '…').width <= maxWidth) {
+        return { lines: [truncated + '…'], fontSize: sz, totalHeight: sz };
+      }
+
+      return null;
+    }
+
+    // Draw clock minute tick marks around the perimeter
+    function drawClockTicks(cx, cy, radius) {
+      ctx.save();
+      ctx.strokeStyle = getThemeColor('--b21-border', '#3a3a3c');
+      ctx.lineWidth = 1;
+
+      // 12 clock hour/section marks
+      for (let i = 0; i < 12; i++) {
+        const angle = -Math.PI / 2 + (i / 12) * (Math.PI * 2);
+        const innerTick = radius * 0.94;
+        const x1 = cx + Math.cos(angle) * innerTick;
+        const y1 = cy + Math.sin(angle) * innerTick;
+        const x2 = cx + Math.cos(angle) * radius;
+        const y2 = cy + Math.sin(angle) * radius;
+
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+
+      // Outer bezel line
+      ctx.beginPath();
+      ctx.arc(cx, cy, outerRadiusBound(radius), 0, Math.PI * 2);
+      ctx.strokeStyle = getThemeColor('--b21-border', '#3a3a3c');
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    function outerRadiusBound(r) {
+      return r + 2;
+    }
+
+    // Draw the clock hand as a red arrow showing current session position and remaining time
+    function drawClockProgressHand(cx, cy, radius, metrics) {
+      const progressFraction = Math.min(1, Math.max(0, metrics.totalElapsedSec / (metrics.totalSessionSec || 1)));
+      const handAngle = -Math.PI / 2 + progressFraction * (Math.PI * 2);
+
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(handAngle);
+
+      // Shadow for depth above the pie chart
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.65)';
+      ctx.shadowBlur = 6;
+      ctx.shadowOffsetX = 1;
+      ctx.shadowOffsetY = 2;
+
+      const handLength = radius * 0.95;
+      const headLength = Math.max(16, radius * 0.16);
+      const headWidth = Math.max(14, radius * 0.12);
+      const shaftWidth = Math.max(4, radius * 0.035);
+
+      // Red Arrow Shape with arrowhead and counterweight tail
+      ctx.beginPath();
+      ctx.moveTo(-radius * 0.08, -shaftWidth / 2);
+      ctx.lineTo(handLength - headLength, -shaftWidth / 2);
+      ctx.lineTo(handLength - headLength, -headWidth / 2);
+      ctx.lineTo(handLength, 0); // Arrow tip
+      ctx.lineTo(handLength - headLength, headWidth / 2);
+      ctx.lineTo(handLength - headLength, shaftWidth / 2);
+      ctx.lineTo(-radius * 0.08, shaftWidth / 2);
+      ctx.closePath();
+
+      // Bold red fill
+      ctx.fillStyle = '#ff3b30';
+      ctx.fill();
+
+      // High-contrast white border to stay distinct across all slice colors
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 1.8;
+      ctx.lineJoin = 'round';
+      ctx.stroke();
+
+      // Center Pivot Pin
+      ctx.beginPath();
+      ctx.arc(0, 0, Math.max(6, radius * 0.055), 0, Math.PI * 2);
+      ctx.fillStyle = '#ff3b30';
+      ctx.fill();
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Center pivot highlight
+      ctx.beginPath();
+      ctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+
+      ctx.restore();
+    }
+
+    // Update the running clock underneath the canvas
+    function updateRunningClock(metrics) {
+      const taskNameEl = document.getElementById('clock-task-name');
+      const taskTimeEl = document.getElementById('clock-task-time');
+      const totalLeftEl = document.getElementById('clock-total-left');
+      const nextTaskEl = document.getElementById('clock-next-task');
+
+      if (!taskNameEl) return;
+
+      if (state.tasks.length === 0) {
+        taskNameEl.innerText = "No Activities";
+        taskNameEl.style.color = 'var(--b21-muted)';
+        taskTimeEl.innerText = "00:00";
+        taskTimeEl.classList.remove('is-alarming');
+        totalLeftEl.innerText = "Total: 0m";
+        nextTaskEl.innerText = "Tap ⚙ or ➕ to create";
+        return;
+      }
+
+      const activeTask = state.tasks[state.activeIndex] || state.tasks[0];
+      const emoji = getTaskEmoji(activeTask);
+      const cleanName = getCleanTaskName(activeTask);
+
+      if (state.alarm) {
+        taskNameEl.innerText = `🔔 TIME'S UP! ${emoji} ${cleanName}`.trim();
+        taskNameEl.style.color = 'var(--b21-danger)';
+        taskTimeEl.innerText = "00:00";
+        taskTimeEl.classList.add('is-alarming');
+      } else {
+        taskNameEl.innerText = `${emoji} ${cleanName}`.trim();
+        taskNameEl.style.color = textColor(activeTask.color);
+        taskTimeEl.classList.remove('is-alarming');
+
+        // Active task digital countdown
+        const left = secsLeft();
+        const actM = Math.floor(left / 60);
+        const actS = left % 60;
+        taskTimeEl.innerText = `${String(actM).padStart(2, '0')}:${String(actS).padStart(2, '0')}`;
+      }
+
+      // Total session countdown
+      const totM = Math.floor(metrics.totalRemainingSec / 60);
+      const totS = metrics.totalRemainingSec % 60;
+      totalLeftEl.innerText = `Total Left: ${String(totM).padStart(2, '0')}:${String(totS).padStart(2, '0')}`;
+
+      // Next task or status
+      if (state.alarm) {
+        nextTaskEl.innerText = "Tap 'Stop Alarm' to continue";
+      } else if (state.tasks.length > 1) {
+        const nextIdx = (state.activeIndex + 1) % state.tasks.length;
+        const nextEmoji = getTaskEmoji(state.tasks[nextIdx]);
+        const nextClean = getCleanTaskName(state.tasks[nextIdx]);
+        nextTaskEl.innerText = `Next: ${nextEmoji} ${nextClean}`;
+      } else {
+        nextTaskEl.innerText = state.running ? "In Progress" : "Paused";
+      }
+    }
+
+    function drawEmptyState(cx, cy, radius) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = getThemeColor('--b21-surface', '#2c2c2e');
+      ctx.fill();
+      ctx.strokeStyle = getThemeColor('--b21-border', '#3a3a3c');
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = getThemeColor('--b21-muted', '#8e8e93');
+      ctx.font = 'bold 16px -apple-system, sans-serif';
+      ctx.fillText('No activities yet', cx, cy - 14);
+      ctx.font = '13px -apple-system, sans-serif';
+      ctx.fillText('Tap here to create schedule', cx, cy + 10);
+      ctx.font = '22px -apple-system, sans-serif';
+      ctx.fillText('➕', cx, cy + 38);
+      ctx.restore();
+    }
+
+    function extractFirstEmoji(str) {
+      if (!str) return '';
+      const match = str.match(/\p{Extended_Pictographic}/u);
+      return match ? match[0] : '';
+    }
+
+    function getThemeColor(varName, fallback) {
+      const val = getComputedStyle(document.body).getPropertyValue(varName).trim();
+      return val || fallback;
+    }
+
+    // An activity's colour (#rrggbb) as text: as it is in the dark theme, darker in the light one so it stays readable.
+    function textColor(hex) {
+      if (Board21.theme !== 'light') return hex;
+      const n = parseInt(hex.slice(1), 16), dim = c => Math.round(c * 0.55);
+      return `rgb(${dim((n >> 16) & 255)}, ${dim((n >> 8) & 255)}, ${dim(n & 255)})`;
+    }
+
+    // --- Interactive Canvas Events ---
+    function setupCanvasInteractions() {
+      canvas.addEventListener('click', (e) => {
+        // If the alarm is currently ringing, any tap on the canvas silences it
+        if (state.alarm) {
+          dismissAlarm();
+          return;
+        }
+
+        const rect = canvas.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const clickY = e.clientY - rect.top;
+
+        const cx = rect.width / 2;
+        const cy = rect.height / 2;
+        const dx = clickX - cx;
+        const dy = clickY - cy;
+        const dist = Math.hypot(dx, dy);
+        const outerR = Math.min(rect.width, rect.height) * 0.44;
+
+        // If no tasks exist, tapping the canvas opens the creator
+        if (state.tasks.length === 0) {
+          if (dist <= outerR * 1.05) {
+            showEditView();
+          }
+          return;
+        }
+
+        // Center tap -> Play / Pause
+        if (dist <= 22) {
+          togglePlay();
+          return;
+        }
+
+        // Tap on whole pie wedge -> select that activity
+        if (dist <= outerR * 1.05) {
+          let angle = Math.atan2(dy, dx);
+          if (angle < -Math.PI / 2) angle += Math.PI * 2;
+
+          for (const sector of sliceSectors) {
+            if (angle >= sector.startAngle && angle < sector.endAngle) {
+              selectTask(sector.index);
+              break;
+            }
+          }
+        }
+      });
+    }
+
+    function selectTask(index) {
+      if (index === state.activeIndex || index < 0 || index >= state.tasks.length) return;
+      stopAlarm();
+      state.activeIndex = index;
+      setLeft(state.tasks[index].minutes * 60);
+      drawCanvas();
+      persistState();
+      updateMenu();
+    }
+
+    // --- Schedule & Time Editor Logic ---
+    function showEditView() {
+      stopAlarm();
+      state.view = 'edit';
+      pauseTimer();
+      renderEditForm();
+      document.getElementById('view-timer').classList.add('hidden');
+      document.getElementById('view-edit').classList.remove('hidden');
+      updateMenu();
+    }
+
+    function saveAndCloseEditor() {
+      readEditForm();
+      state.view = 'timer';
+      document.getElementById('view-edit').classList.add('hidden');
+      document.getElementById('view-timer').classList.remove('hidden');
+      handleResize();
+      updateMenu();
+      persistState();
+    }
+
+    function renderEditForm() {
+      const tasksSum = state.tasks.reduce((sum, t) => sum + Math.max(1, Number(t.minutes) || 1), 0);
+      const isCustom = state.totalMode === 'custom';
+
+      // Update mode toggle buttons
+      const sumBtn = document.getElementById('btn-mode-sum');
+      const customBtn = document.getElementById('btn-mode-custom');
+      if (sumBtn && customBtn) {
+        sumBtn.classList.toggle('active', !isCustom);
+        customBtn.classList.toggle('active', isCustom);
+        sumBtn.innerText = `Σ Sum of Tasks (${tasksSum}m)`;
+      }
+
+      // Show/hide fixed duration input row
+      const customRow = document.getElementById('custom-time-input-row');
+      if (customRow) {
+        customRow.style.display = isCustom ? 'flex' : 'none';
+      }
+
+      // Update total summary text
+      const summaryEl = document.getElementById('edit-total-summary');
+      if (summaryEl) {
+        const effectiveTotal = isCustom ? Math.max(tasksSum, state.totalMinutes || 60) : tasksSum;
+        summaryEl.innerText = `${effectiveTotal} min total`;
+      }
+
+      // Sync Total Time input
+      const totalInput = document.getElementById('edit-total-time');
+      if (totalInput) {
+        totalInput.value = state.totalMinutes || Math.max(60, tasksSum);
+      }
+
+      const container = document.getElementById('tasks-list');
+      container.innerHTML = '';
+
+      if (state.tasks.length === 0) {
+        const emptyNotice = document.createElement('div');
+        emptyNotice.style.textAlign = 'center';
+        emptyNotice.style.padding = 'clamp(16px, 4vmin, 32px) clamp(8px, 2vmin, 16px)';
+        emptyNotice.style.color = 'var(--b21-muted)';
+        emptyNotice.style.fontSize = 'clamp(0.85rem, 2.2vmin, 1rem)';
+        emptyNotice.innerHTML = `
+          <div style="font-size: clamp(1.8rem, 5vmin, 2.4rem); margin-bottom: 8px;">📋</div>
+          <strong>No activities added yet</strong>
+          <div style="font-size: clamp(0.75rem, 1.8vmin, 0.88rem); margin-top: 4px;">Tap "+ Add Activity" below to start creating your schedule!</div>
+        `;
+        container.appendChild(emptyNotice);
+      }
+
+      // Each card is built from elements, with the saved name, emoji and colour set as text and attributes
+      // (never as HTML: they can come from an imported file).
+      const make = (tag, attrs, text) => {
+        const el = document.createElement(tag);
+        for (const k in attrs) el.setAttribute(k, attrs[k]);
+        if (text !== undefined) el.textContent = text;
+        return el;
+      };
+      const minutesInput = (label, cls, value, max, aria) => {
+        const wrap = make('div', { class: 'number-input-wrap' });
+        wrap.append(make('label', {}, label), make('input', { type: 'number', class: cls, value, min: cls === 'task-mins' ? 1 : 0, max, 'aria-label': aria }), make('span', {}, 'min'));
+        return wrap;
+      };
+
+      state.tasks.forEach((task, index) => {
+        const card = document.createElement('div');
+        card.className = 'task-card';
+        card.dataset.index = index;
+        card.dataset.emoji = getTaskEmoji(task);
+
+        const isCurrent = index === state.activeIndex;
+        const currentRemainingMinutes = isCurrent ? Math.ceil(secsLeft() / 60) : task.minutes;
+        const emoji = getTaskEmoji(task);
+        const cleanName = getCleanTaskName(task);
+
+        const main = make('div', { class: 'task-row-main' });
+        const emojiBtn = make('button', { type: 'button', class: 'btn-emoji-picker', id: 'emoji-btn-' + index, title: 'Choose Emoji', 'aria-label': 'Choose Emoji' }, emoji);
+        emojiBtn.onclick = () => openEmojiKeyboard(index);
+        const delBtn = make('button', { class: 'btn-delete', title: 'Delete', 'aria-label': 'Delete' }, '✕');
+        delBtn.onclick = () => removeTask(index);
+        main.append(
+          emojiBtn,
+          make('input', { type: 'color', class: 'task-color', value: task.color, title: 'Color', 'aria-label': 'Color' }),
+          make('input', { type: 'text', class: 'task-name', value: cleanName, maxlength: 80, placeholder: 'Activity Name', 'aria-label': 'Activity Name' }),
+          delBtn
+        );
+        const details = make('div', { class: 'task-row-details' });
+        details.append(minutesInput('Duration:', 'task-mins', task.minutes, MAX_MINUTES, 'Duration Minutes'));
+        if (isCurrent) details.append(minutesInput('Left now:', 'task-left-mins', currentRemainingMinutes, task.minutes, 'Remaining Minutes Left'));
+        card.append(main, details);
+        container.appendChild(card);
+      });
+    }
+
+    function readEditForm() {
+      // Read Total Session Time
+      const totalInput = document.getElementById('edit-total-time');
+      if (totalInput) {
+        state.totalMinutes = Math.min(MAX_TASKS * MAX_MINUTES, Math.max(1, parseInt(totalInput.value, 10) || 60));
+      }
+
+      const cards = document.querySelectorAll('.task-card');
+      const updatedTasks = [];
+
+      cards.forEach((card, i) => {
+        const color = card.querySelector('.task-color').value;
+        const emoji = card.dataset.emoji || getTaskEmoji(state.tasks[i]) || '⭐';
+        const rawName = card.querySelector('.task-name').value.trim().slice(0, 80) || 'Activity';
+        const name = `${emoji} ${rawName}`.trim();
+        const minutes = Math.min(MAX_MINUTES, Math.max(1, parseInt(card.querySelector('.task-mins').value, 10) || 5));
+
+        // Handle edit of time left (only when it was changed: the box shows whole minutes)
+        const leftInput = card.querySelector('.task-left-mins');
+        if (i === state.activeIndex) {
+          const userLeftMins = leftInput ? parseInt(leftInput.value, 10) : NaN;
+          if (!isNaN(userLeftMins) && leftInput.value !== leftInput.defaultValue) {
+            setLeft(Math.min(minutes * 60, Math.max(0, userLeftMins * 60)));
+          } else if (secsLeft() > minutes * 60) {
+            setLeft(minutes * 60);
+          }
+        }
+
+        updatedTasks.push({ emoji, name, minutes, color });
+      });
+
+      state.tasks = updatedTasks;
+
+      // Ensure totalMinutes accommodates the sum of activities when in custom mode
+      const sum = state.tasks.reduce((acc, t) => acc + t.minutes, 0);
+      if (state.totalMode === 'custom' && state.totalMinutes < sum) {
+        state.totalMinutes = sum;
+      }
+
+      // Safe bounds adjustment
+      if (state.activeIndex >= state.tasks.length) {
+        state.activeIndex = Math.max(0, state.tasks.length - 1);
+        if (state.tasks.length > 0) {
+          setLeft(state.tasks[state.activeIndex].minutes * 60);
+        } else {
+          state.secondsLeft = 0;
+        }
+      }
+      if (state.tasks.length === 0) {
+        state.running = false;
+        state.endsAt = null;
+      }
+    }
+
+    function setTotalMode(mode) {
+      readEditForm();
+      state.totalMode = mode;
+      renderEditForm();
+    }
+
+    function addNewTask() {
+      readEditForm();
+      if (state.tasks.length >= MAX_TASKS) {
+        Board21.toast(`At most ${MAX_TASKS} activities.`);
+        return;
+      }
+      const palette = TASK_COLORS;
+      const defaultEmojis = ["✨", "🎨", "⚽", "📖", "🥪", "🔬"];
+      const randomColor = palette[state.tasks.length % palette.length];
+      const randomEmoji = defaultEmojis[state.tasks.length % defaultEmojis.length];
+      state.tasks.push({
+        emoji: randomEmoji,
+        name: "New Task",
+        minutes: 15,
+        color: randomColor
+      });
+      if (state.tasks.length === 1) setLeft(15 * 60);   // the first activity starts full
+      renderEditForm();
+    }
+
+    function removeTask(index) {
+      readEditForm();
+      if (index >= 0 && index < state.tasks.length) {
+        state.tasks.splice(index, 1);
+        if (state.activeIndex >= state.tasks.length) {
+          state.activeIndex = Math.max(0, state.tasks.length - 1);
+        }
+        if (state.tasks.length > 0) {
+          setLeft(state.tasks[state.activeIndex].minutes * 60);
+        } else {
+          state.secondsLeft = 0;
+          state.running = false;
+          state.endsAt = null;
+        }
+        renderEditForm();
+      }
+    }
+
+    // --- Google Emoji Keyboard Controller ---
+    function openEmojiKeyboard(taskIndex) {
+      currentEditingTaskIndex = taskIndex;
+      const searchInput = document.getElementById('gboard-search-input');
+      if (searchInput) searchInput.value = '';
+      
+      const modal = document.getElementById('emoji-keyboard-modal');
+      if (modal) modal.classList.remove('hidden');
+
+      renderEmojiTabs();
+      renderEmojiGrid();
+    }
+
+    function closeEmojiKeyboard() {
+      const modal = document.getElementById('emoji-keyboard-modal');
+      if (modal) modal.classList.add('hidden');
+      currentEditingTaskIndex = -1;
+    }
+
+    function handleKeyboardOverlayClick(e) {
+      if (e.target.id === 'emoji-keyboard-modal') {
+        closeEmojiKeyboard();
+      }
+    }
+
+    function renderEmojiTabs() {
+      const tabsContainer = document.getElementById('gboard-tabs');
+      if (!tabsContainer) return;
+      tabsContainer.innerHTML = '';
+
+      EMOJI_CATEGORIES.forEach(cat => {
+        const tabBtn = document.createElement('button');
+        tabBtn.type = 'button';
+        tabBtn.className = `gboard-tab-btn ${cat.id === activeEmojiTab ? 'active' : ''}`;
+        tabBtn.title = cat.label;
+        tabBtn.innerText = cat.icon;
+        tabBtn.onclick = () => {
+          activeEmojiTab = cat.id;
+          const searchInput = document.getElementById('gboard-search-input');
+          if (searchInput) searchInput.value = '';
+          renderEmojiTabs();
+          renderEmojiGrid();
+        };
+        tabsContainer.appendChild(tabBtn);
+      });
+    }
+
+    function renderEmojiGrid() {
+      const grid = document.getElementById('gboard-grid');
+      if (!grid) return;
+      grid.innerHTML = '';
+
+      const searchInput = document.getElementById('gboard-search-input');
+      const searchVal = searchInput ? searchInput.value.trim().toLowerCase() : '';
+      let list = [];
+
+      if (searchVal) {
+        // Direct emoji check if typed or pasted in search
+        const directEmoji = extractFirstEmoji(searchVal);
+        if (directEmoji) {
+          const banner = document.createElement('div');
+          banner.className = 'gboard-custom-banner';
+          banner.innerHTML = `
+            <span>Use emoji: <strong>${directEmoji}</strong></span>
+            <button type="button" class="primary" style="min-height:36px; padding:0 12px; font-size:0.85rem;" onclick="selectEmoji('${directEmoji}')">Apply</button>
+          `;
+          grid.appendChild(banner);
+        }
+
+        // Search across all categories
+        EMOJI_CATEGORIES.forEach(cat => {
+          cat.emojis.forEach(item => {
+            if (item.keywords.includes(searchVal) || item.char === searchVal) {
+              list.push(item.char);
+            }
+          });
+        });
+      } else {
+        const currentCat = EMOJI_CATEGORIES.find(c => c.id === activeEmojiTab) || EMOJI_CATEGORIES[0];
+        list = currentCat.emojis.map(e => e.char);
+      }
+
+      if (list.length === 0 && !extractFirstEmoji(searchVal)) {
+        const emptyMsg = document.createElement('div');
+        emptyMsg.style.gridColumn = '1 / -1';
+        emptyMsg.style.textAlign = 'center';
+        emptyMsg.style.padding = '20px';
+        emptyMsg.style.color = 'var(--b21-muted)';
+        emptyMsg.innerText = 'No matching emojis found. Try searching for "book", "lunch", "game", or paste an emoji!';
+        grid.appendChild(emptyMsg);
+        return;
+      }
+
+      list.forEach(emojiChar => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'gboard-emoji-btn';
+        btn.innerText = emojiChar;
+        btn.onclick = () => selectEmoji(emojiChar);
+        grid.appendChild(btn);
+      });
+    }
+
+    function filterEmojiKeyboard() {
+      renderEmojiGrid();
+    }
+
+    function selectEmoji(emojiChar) {
+      if (currentEditingTaskIndex >= 0 && currentEditingTaskIndex < state.tasks.length) {
+        state.tasks[currentEditingTaskIndex].emoji = emojiChar;
+        
+        // Immediately reflect in edit row
+        const card = document.querySelector(`.task-card[data-index="${currentEditingTaskIndex}"]`);
+        if (card) {
+          card.dataset.emoji = emojiChar;
+          const btn = card.querySelector('.btn-emoji-picker');
+          if (btn) btn.innerText = emojiChar;
+        }
+      }
+      closeEmojiKeyboard();
+    }
+
+    // Launch Widget
+    window.addEventListener('load', init);
+  </script>
+</body>
+</html>

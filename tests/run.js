@@ -1390,6 +1390,124 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx3.close();
   }],
+  ['Task Timer: schedule, reload, two tabs, the alarm, a crafted file', async (browser) => {
+    const errors = [];
+    // Every AudioContext the widget makes is noted, with how far ahead (s) each oscillator was started.
+    const SPY = () => {
+      const Real = window.AudioContext;
+      window.__audio = [];
+      window.AudioContext = function () {
+        const c = new Real(), rec = { ctx: c, ahead: [] };
+        window.__audio.push(rec);
+        const mk = c.createOscillator.bind(c);
+        c.createOscillator = () => { const o = mk(), start = o.start.bind(o); o.start = at => { rec.ahead.push(Math.round((at - c.currentTime) * 10) / 10); return start(at); }; return o; };
+        return c;
+      };
+    };
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await ctx.addInitScript(SPY);
+    const A = await ctx.newPage(); A.on('pageerror', e => errors.push(e.message));
+    await A.goto(BASE); await boardUp(A); await freeBoard(A);
+    await A.evaluate(() => window.__board21.openWidget('task-timer'));
+    const tt = page => page.frameLocator('.win[data-ikey="task-timer:1"] iframe');
+    const started = f => f.locator('html').evaluate(() => typeof lastTickSecs !== 'undefined' && lastTickSecs !== null);   // (its first tick has run)
+    const look = f => f.locator('html').evaluate(() => ({ name: document.getElementById('clock-task-name').textContent, time: document.getElementById('clock-task-time').textContent,
+      btn: document.getElementById('btn-playpause').textContent, alarm: document.getElementById('clock-task-time').classList.contains('is-alarming') }));
+    const secs = t => +t.split(':')[0] * 60 + +t.split(':')[1];
+    const audio = f => f.locator('html').evaluate(() => (window.__audio || []).map(r => ({ state: r.ctx.state, ahead: r.ahead })));
+    const saved = page => page.evaluate(() => JSON.stringify(window.__board21.state.data.get('task-timer:1')));
+    const fA = tt(A);
+    ok(await eventually(() => started(fA)) && await A.evaluate(() => window.__board21.state.wins.get('task-timer:1').connected), 'Task Timer opens and connects');
+    // A schedule, made in its editor: Reading (1 min), Snack (2 min).
+    await fA.locator('#btn-edit').click();
+    await fA.locator('.editor-footer button.primary').click();
+    await fA.locator('.editor-footer button.primary').click();
+    await fA.locator('.task-name').nth(0).fill('Reading'); await fA.locator('.task-mins').nth(0).fill('1');
+    await fA.locator('.task-name').nth(1).fill('Snack'); await fA.locator('.task-mins').nth(1).fill('2');
+    await fA.locator('#view-edit .edit-header button').click();
+    let a = await look(fA);
+    ok(/Reading$/.test(a.name) && a.time === '01:00' && a.btn.includes('Start'), `the schedule is made in its editor (${a.name}, ${a.time})`);
+    ok(await audio(fA).then(au => au.length === 0), 'no sound is prepared before Start');
+    await fA.locator('#btn-playpause').click();
+    let d = JSON.parse(await saved(A));
+    ok(d.running === true && Math.abs(d.endsAt - Date.now() - 60000) < 3000 && d.tasks.length === 2, 'Start saves when the activity ends (a wall-clock time)');
+    let au = await audio(fA);
+    ok(au.length === 1 && au[0].state === 'running' && au[0].ahead.length === 2 && au[0].ahead.every(s => s > 55 && s <= 60), `tapping Start gets the sound ready and sets the alarm for the end of the activity (${au[0] && au[0].ahead.join(', ')} s ahead)`);
+    // Loaded again while it runs: it carries on from the saved end time.
+    await A.waitForTimeout(2200);
+    await A.reload(); await boardUp(A);
+    ok(await eventually(() => started(fA)), 'it starts again after a reload');
+    a = await look(fA);
+    const expect = Math.ceil((JSON.parse(await saved(A)).endsAt - Date.now()) / 1000);
+    ok(a.btn.includes('Pause') && secs(a.time) <= 58 && Math.abs(secs(a.time) - expect) <= 1, `after a reload it is still running and the time has gone on (${a.time})`);
+    // A second copy of the board shows the same time, and the copies don't fight.
+    const B = await ctx.newPage(); B.on('pageerror', e => errors.push(e.message));
+    await B.goto(BASE); await boardUp(B);
+    const fB = tt(B);
+    ok(await eventually(() => started(fB)), 'it opens in a second copy of the board');
+    let b; [a, b] = [await look(fA), await look(fB)];
+    ok(a.name === b.name && Math.abs(secs(a.time) - secs(b.time)) <= 1 && b.btn.includes('Pause'), `both copies show the same activity and time (${a.time} / ${b.time})`);
+    const before = await saved(A);
+    await A.waitForTimeout(1300);
+    ok(await saved(A) === before && await saved(B) === before, 'while it runs, neither copy saves again (no back and forth)');
+    await fB.locator('#btn-playpause').click();   // Pause, in the second copy
+    ok(await eventually(async () => (await look(fA)).btn.includes('Start')), 'pausing in one copy pauses the other');
+    [a, b] = [await look(fA), await look(fB)];
+    ok(a.time === b.time, `and both show the same time left (${a.time} / ${b.time})`);
+    // Started again in the first copy; the activity ends 1.5 s from now.
+    await fA.locator('#btn-playpause').click();
+    const ends = (page, ms) => page.evaluate(ms => { const s = window.__board21.state; s.wins.get('task-timer:1').post('data', { data: Object.assign({}, s.data.get('task-timer:1'), { running: true, endsAt: Date.now() + ms }), reason: 'remote' }); }, ms);
+    await ends(A, 1500); await ends(B, 1500);
+    ok(await eventually(async () => (await look(fA)).alarm && (await look(fB)).alarm), 'when the activity ends, both copies show the alarm');
+    a = await look(fA);
+    ok(/TIME'S UP/.test(a.name) && a.time === '00:00' && a.btn.includes('Stop Alarm'), `it says so (${a.name})`);
+    ok(await A.evaluate(() => { const m = window.__board21.state.wins.get('task-timer:1').menuItems; return m.length <= 24 && m[0].id === 'stop_alarm'; }), 'the window menu offers Stop Alarm');
+    await A.waitForTimeout(1500);
+    au = await audio(fA);
+    const auB = await audio(fB);
+    ok(au.length === 1 && au[0].state === 'running' && au[0].ahead.length === 4 && au[0].ahead.slice(2).every(s => s > 0.5 && s <= 1.5), `the alarm had been set ahead for that moment in the copy where Start was tapped, and is ringing (${au[0] && au[0].ahead.join(', ')} s ahead)`);
+    ok(auB.length === 0, 'the other copy leaves the ringing to it (one alarm per board)');
+    // The alarm pulses for a short while (not at all with "reduce motion"), and stays red.
+    const pulse = () => fA.locator('#clock-task-time').evaluate(e => { const c = getComputedStyle(e); return { anim: c.animationName, secs: parseFloat(c.animationDuration) * +c.animationIterationCount, color: c.color }; });
+    let p = await pulse();
+    ok(p.anim === 'alarmPulse' && p.secs <= 12, `the alarm pulses for about 10 seconds, not for ever (${p.secs} s)`);
+    await A.emulateMedia({ reducedMotion: 'reduce' });
+    p = await pulse();
+    ok(p.anim === 'none' && p.color === 'rgb(220, 38, 38)', `with “reduce motion” on it doesn't pulse, and the time stays red (${p.color})`);
+    await A.emulateMedia({ reducedMotion: 'no-preference' });
+    // Stopped in the other copy: the alarm stops, and both go on to the next activity.
+    await fB.locator('#btn-playpause').click();
+    ok(await eventually(async () => (await audio(fA))[0].state === 'closed'), 'stopping the alarm in one copy silences the copy that rang');
+    [a, b] = [await look(fA), await look(fB)];
+    ok(/Snack$/.test(a.name) && /Snack$/.test(b.name) && a.time === '02:00' && !a.alarm && !b.alarm && a.btn.includes('Start'), `both go on to the next activity (${a.name} ${a.time} / ${b.name} ${b.time})`);
+    await B.close();
+
+    // A file made on purpose: whatever it says the Task Timer saved, nothing becomes markup or runs as script.
+    const evil = '"><img src=x onerror="top.document.title=\'PWNED\';document.title=\'PWNED\'"><svg onload="top.document.title=\'PWNED\'">';
+    const js = 'javascript:top.document.title=\'PWNED\'';
+    const crafted = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Schedule' }, instances: [
+      { widgetId: 'task-timer', instance: 1, open: true, z: 1, rect: { x: 20, y: 20, w: 420, h: 520 }, config: { color: evil },
+        data: { totalMode: evil, totalMinutes: evil, activeIndex: evil, secondsLeft: evil, running: evil, endsAt: evil, alarm: evil, view: 'edit',
+          tasks: [{ emoji: evil, name: evil, minutes: evil, color: evil }, { emoji: js, name: js, minutes: 1e9, color: 'red;background:url(' + js + ')' },
+            { emoji: '<b>⭐</b>', name: ['x'], minutes: -5, color: '#12345g' }, 'not a task', null, 7].concat(Array(100).fill({ name: 'x', minutes: 1, color: '#000000' })) } }
+    ] };
+    fs.writeFileSync(OUT + 'crafted-task-timer.21board', JSON.stringify(crafted));
+    await A.setInputFiles('#import-input', OUT + 'crafted-task-timer.21board'); await A.waitForTimeout(300);
+    await A.click('#modal .btn[data-i="0"]');   // Replace my board
+    ok(await eventually(() => fA.locator('html').evaluate(() => typeof lastTickSecs !== 'undefined' && lastTickSecs !== null && state.tasks.length > 2)), 'a crafted file opens: the Task Timer starts');
+    const marks = () => fA.locator('html').evaluate(() => document.querySelectorAll('img, svg, b, [onerror], [onload], [src^="javascript"], [href^="javascript"]').length + (document.title === 'PWNED' ? 100 : 0));
+    a = await look(fA);
+    ok(await A.title() !== 'PWNED' && await marks() === 0, `nothing in the file runs as script or becomes markup (page title: ${await A.title()})`);
+    ok(a.name === '⭐ ' + evil.slice(0, 100) && a.time === '05:00' && a.btn.includes('Start') && !a.alarm, `names are shown as plain text (100 characters at most), and the rest falls back to the usual values (${a.time})`);
+    ok(await fA.locator('html').evaluate(() => state.tasks.length === 50 && state.tasks.every(t => /^#[0-9a-f]{6}$/i.test(t.color) && Number.isInteger(t.minutes) && t.minutes >= 1 && t.minutes <= 720) && state.view === 'timer'), 'at most 50 activities are kept, each with a #hex colour and 1 to 720 minutes');
+    await fA.locator('#btn-edit').click();   // the editor builds a card for each activity
+    ok(await marks() === 0 && await A.title() !== 'PWNED', 'the editor shows them without making markup either');
+    ok(await fA.locator('.task-name').first().inputValue() === evil.slice(0, 100) && (await fA.locator('.task-color').evaluateAll(els => els.every(e => /^#[0-9a-f]{6}$/.test(e.value)))) && await fA.locator('.btn-emoji-picker').first().textContent() === '⭐',
+      'the editor shows the name as typed text, and ordinary colours and emoji');
+    await fA.locator('#view-edit .edit-header button').click();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Dice roll and Reset icon', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
     const page = await ctx.newPage(), page2 = await ctx.newPage();

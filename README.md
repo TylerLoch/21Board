@@ -149,6 +149,7 @@ tests/run.js            Optional automated browser tests
 | Widget | Shows off |
 | --- | --- |
 | **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio (no sound files) |
+| **Task Timer** | A schedule of activities as a pie with a countdown kept in step across tabs; a repeating alarm set ahead on the sound's own clock, rung by one copy of the board |
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
 | **Clock** | Analog, digital or date-only; aspect-ratio lock that changes at runtime (analog 1:1, digital/date 2.2:1), config-only widget |
 | **Notes** | Text grows to fill the note, tappable web links, colors incl. Chalkboard and Whiteboard themes (bundled hand-drawn fonts), live text sync without losing the cursor |

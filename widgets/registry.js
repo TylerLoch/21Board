@@ -47,6 +47,18 @@ self.BOARD21_WIDGETS = [
     permissions: []
   },
   {
+    id: 'task-timer',
+    name: 'Task Timer',
+    description: 'A schedule of activities as a pie, with a countdown and an alarm.',
+    version: '1.0.0',
+    entry: 'widgets/task-timer/index.html',
+    files: ['widgets/task-timer/index.html'],
+    color: '#0891b2',
+    icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 12V3.5a8.5 8.5 0 0 1 8.5 8.5z" fill="currentColor"/><path d="M12 12l-6 6"/></svg>',
+    window: { width: 420, height: 480, minWidth: 300, minHeight: 350, dragFromContent: false }, // typing in its editor: title bar or two fingers
+    permissions: []
+  },
+  {
     id: 'calendar',
     name: 'Calendar',
     description: 'Month calendar with today highlighted.',

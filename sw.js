@@ -14,16 +14,16 @@
 const VERSION = '2026.11.11-31';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '4017e4cc';
+const BUILD = 'b65681ab';
 const FILES = {
-  './': '60aeb53d033825cf',
-  'index.html': '60aeb53d033825cf',
-  'board.js': '2c53abb4e878b3a1',
+  './': '54d94248d5159f75',
+  'index.html': '54d94248d5159f75',
+  'board.js': '42e2db39f31f51af',
   'sdk/board21.js': '3ec0b3970329642d',
   'sdk/board21-dev.js': '492a193221911878',
   'sdk/dev/board-shell.js': '8a22a3c30b485c6e',
   'sdk/lab.html': '21cda27716334794',
-  'widgets/registry.js': '21973030f0746579',
+  'widgets/registry.js': 'ac9e5cdaa2c4af7f',
   'manifest.webmanifest': '3fddd4aac05d7279',
   'icons/icon.svg': '7b5cfc68d4259303',
   'icons/icon-192.png': 'cd8df22014016f08',
@@ -31,6 +31,7 @@ const FILES = {
   'icons/icon-maskable-512.png': 'f657800c74fa000f',
   'icons/apple-touch-icon.png': '40c6305b7794812a',
   'widgets/timer/index.html': '519a447651242d8e',
+  'widgets/task-timer/index.html': 'c3ffc89c8475cf71',
   'widgets/calendar/index.html': '7b3d6a2ac35e8999',
   'widgets/clock/index.html': '21a98aa1d345b489',
   'widgets/notes/index.html': 'c906b2da71b6f6d4',
