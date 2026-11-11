@@ -124,7 +124,7 @@ The **context**:
 
 | Call | Description |
 | --- | --- |
-| `Board21.save(data)` | Save this instance's **content**. Returns a Promise that resolves once it's stored. Call it whenever the state changes; 21Board batches rapid writes. `save(null)` clears it. |
+| `Board21.save(data)` | Save this instance's **content**. Returns a Promise that resolves once it's stored. Call it whenever the state changes; 21Board batches rapid writes. `save(null)` clears it. If the device can't store it right now, the Promise rejects ("Not saved yet"), but 21Board keeps the data, shows the teacher *Not saved* and tries again by itself: the widget doesn't need to retry or show an error. |
 | `Board21.load()` | Promise of the saved content (same as `context.data`). |
 | `Board21.saveConfig(config)` | Save this instance's **config** (preferences). |
 | `Board21.loadConfig()` | Promise of the saved config. |

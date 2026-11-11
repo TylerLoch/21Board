@@ -124,6 +124,9 @@
     #empty-hint .small { font-size: clamp(14px, 1.5vw, 18px); opacity: .7; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
     #empty-hint .small svg { width: 22px; height: 22px; }
     #empty-hint[hidden] { display: flex; opacity: 0; }
+    /* Shown only if board.js never gets going (it removes this as it starts): files missing, a browser too old. */
+    #boot-note { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); font-size: 18px; line-height: 1.4; visibility: hidden; animation: boot-note 0s 6s forwards; }
+    @keyframes boot-note { to { visibility: visible; } }
 
     /* ------------------------------------------------------------- Windows */
     .win {
@@ -252,6 +255,16 @@
     .picker-btn.active { background: var(--active-bg); color: var(--primary); box-shadow: none; border-color: transparent; backdrop-filter: none; }
     .picker-btn[hidden] { display: none; }
     .picker-btn .dot { position: absolute; top: 7px; right: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid var(--surface); }
+    /* "Not saved" (SaveNote in board.js): stays above the Widget Picker button while the board isn't stored. */
+    .save-note, .save-note:hover {
+      position: fixed; z-index: 999; bottom: calc(86px + env(safe-area-inset-bottom)); height: 40px; padding: 0 14px 0 12px;   /* (an open panel or Settings covers it) */
+      border-radius: 20px; font-size: 14px; font-weight: 600; white-space: nowrap;
+      background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; box-shadow: var(--shadow);
+    }
+    body.dark .save-note, body.dark .save-note:hover { background: #3b2a06; color: #fcd34d; border-color: #b45309; }
+    .save-note.left { left: calc(16px + env(safe-area-inset-left)); }
+    .save-note.right { right: calc(16px + env(safe-area-inset-right)); }
+    .save-note[hidden] { display: none; }
 
     .panel {
       position: fixed; bottom: calc(4px + env(safe-area-inset-bottom)); z-index: 1000;
@@ -355,6 +368,9 @@
     .sheet h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 22px 0 10px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 48px; padding: 4px 0; }
     .row + .row { border-top: 1px solid var(--border); }
+    .row.save-warn { margin-top: 14px; padding: 10px 12px; border-radius: 12px; background: #fef3c7; color: #78350f; }
+    .row.save-warn .hint { color: inherit; }
+    body.dark .row.save-warn { background: rgba(251, 191, 36, .14); color: #fcd34d; }
     .row .lbl { font-size: 15px; font-weight: 500; }
     .row .hint { font-size: 12.5px; color: var(--muted); margin-top: 2px; font-weight: 400; line-height: 1.35; }
     .row.stack { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px 0; }
@@ -422,7 +438,7 @@
     }
 
     /* Board chrome is drawn at the board's scale (Settings → Size of windows and menus; board.js sets --ui). */
-    .picker-btn, .panel, .menu, .sheet, #toasts, .modal-card, #shape-hint { zoom: var(--ui, 1); }
+    .picker-btn, .save-note, .panel, .menu, .sheet, #toasts, .modal-card, #shape-hint { zoom: var(--ui, 1); }
     .sheet { top: calc(16px / var(--ui, 1)); }
 
     /* A note in the shaded margin when the 16:9 board leaves much of the window unused. */
@@ -502,11 +518,12 @@
   <main id="desk" aria-label="Board">
     <div id="board-bg" hidden></div>
     <div id="layout-frame" hidden></div>
-    <div id="empty-hint">
+    <div id="empty-hint" hidden>
       <div class="big">Your board is ready</div>
       <div class="small">Tap <svg class="fill" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/></svg> in either bottom corner to open a widget.</div>
       <div class="rescue" hidden>Windows gone? <button class="btn small primary">Go back to an earlier version</button></div>
     </div>
+    <div id="boot-note">21Board is taking a long time to start. Check the connection, then reload the page.</div>
   </main>
 
   <div id="shape-hint" role="note" hidden></div>

@@ -238,7 +238,8 @@ Each device thins only files with its own `dev4` (by name only); files ending in
 Several tabs or windows of 21Board can be open on one device. All show the same board.
 
 1. Every change is written to IndexedDB first. Rapid changes are coalesced into one transaction,
-   and each record's `rev` is read and incremented **inside** that transaction.
+   and each record's `rev` is read and incremented **inside** that transaction. A transaction that
+   fails stays queued and is tried again (see "When storage fails" below).
 2. When the transaction commits, the tab posts `{ tab, keys: [...] }` on the
    `BroadcastChannel("21board-sync")` (or, in older browsers, writes it to
    `localStorage["21board-sync"]` to fire a `storage` event — the same trick 21Sketch uses).
@@ -248,11 +249,27 @@ Several tabs or windows of 21Board can be open on one device. All show the same 
    ends, so a window never jumps out from under a finger.
 5. When a tab becomes visible again (or is restored from the back/forward cache), it re-reads
    everything, in case it missed messages while frozen.
-6. Import and Erase post `{ op: "reload" }`; other tabs rebuild from IndexedDB.
+6. Import and Erase post `{ op: "reload" }`; other tabs rebuild from IndexedDB. With `replaced: true`
+   (the board was replaced: Import ▸ Replace, Load, going back) or `erased: true`, they first drop any
+   change of their own that wasn't saved yet, so it can't land on the new board.
    Reset posts `{ op: "reset", board, ikey }`; other tabs reload that window.
 
 Two copies editing the *same* record at the *same* moment: the later write wins, and both copies
 then show it.
+
+### When storage fails
+
+- **Nothing is written before the stored board has been read.** At start-up the database is opened (tried up
+  to three times, 10 seconds at most each) and every record is read (tried twice; then one by one, so a single
+  unreadable `media`, `data` or `conf` record is left out, and left as it is, instead of hiding the board).
+  If that fails, or start-up throws, the tab shows a message with *Try again* and stays read-only.
+- **A failed write is kept.** The changes stay queued in the tab (a newer change to the same record wins) and
+  are tried again with the next change, after 5 seconds, then every 30. Meanwhile the board shows *Not saved*,
+  and Export includes the queued changes. An error that means "out of space" (`QuotaExceededError`, or a
+  message about quota, no space or a failed blob write) first thins board history, then shrinks it, and
+  retries each time.
+- **Where the browser blocks IndexedDB**, or the teacher chooses *Use 21Board without saving* after a failed
+  start, the same records are kept in memory for that session and nothing is announced to other tabs.
 
 ---
 

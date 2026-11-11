@@ -147,6 +147,20 @@ unless they're added to the Home Screen/Dock. While storage isn't protected, 21B
 status in Settings and reminds teachers (at most every 3 days) to save a backup, and
 **regular exports remain the real backup.**
 
+### If the board can't be opened or saved
+
+- **The board can't be opened** (the device's storage doesn't answer or can't be read, or 21Board fails to
+  start): 21Board says so, with *Try again*, instead of showing an empty board. Nothing is saved until the
+  stored board has been read, so an empty board can never replace a real one. *Use 21Board without saving*
+  gives an empty board for the lesson, kept only until 21Board closes. If just one record is unreadable (in
+  practice a big one, the background photo), the rest of the board opens and a message says what is missing.
+- **A save fails** (the device is full, for example): the change stays on the board and 21Board keeps trying
+  (with the next change, after 5 seconds, then every 30). Until everything is saved, a **Not saved** note stays
+  above the ▦ buttons; tap it for the reason, *Try again now* and *Export a backup*. Settings says the same
+  at the top. When the device is out of space, 21Board first makes room by thinning board history.
+- **The browser blocks storage** (some private windows, site data turned off): the board works for that
+  session, the **Not saved** note stays on, and Export still gives a backup file.
+
 ---
 
 ## Sharing a board with the smartboard (Google Drive folder)

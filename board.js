@@ -327,18 +327,27 @@
     }
   };
 
+  // "Out of space", however the browser says it (Chrome on a full disk reports DataError or UnknownError).
+  const isFull = err => !!err && (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED' || err.code === 22 ||
+    /quota|no.?space|disk.{0,12}full|write blobs|IOError/i.test(String(err.message || '')));
+  // The browser won't let this window store anything (site data blocked, a private window in some browsers).
+  const isBlocked = err => typeof indexedDB === 'undefined' || !indexedDB ||
+    (!!err && (/^(SecurityError|InvalidStateError|NotSupportedError)$/.test(err.name || '') || /denied|insecure|not allowed/i.test(String(err.message || ''))));
+
   const Store = {
     db: null,
     opening: null,
-    failed: false,
-    mem: null,           // MemDB in test mode when IndexedDB is blocked
+    loaded: false,       // the stored board has been read into this tab: nothing is written before that (see Startup)
+    failed: '',          // why nothing is stored this session: 'blocked' (the browser won't allow it) or 'unopened'
+                         // (the saved board couldn't be opened and the teacher went on without it). See SaveNote.
+    mem: null,           // MemDB: the records are kept in memory (test mode where storage is blocked, or failed)
 
     open() {
       if (this.db) return Promise.resolve(this.db);
       if (this.opening) return this.opening;
-      this.opening = new Promise((resolve, reject) => {
+      const p = this.opening = new Promise((resolve, reject) => {
         let req;
-        try { req = indexedDB.open(DB_NAME, 1); } catch (err) { this.opening = null; reject(err); return; }
+        try { req = indexedDB.open(DB_NAME, 1); } catch (err) { reject(err); return; }
         req.onupgradeneeded = () => {
           const db = req.result;
           if (!db.objectStoreNames.contains(DB_STORE)) db.createObjectStore(DB_STORE, { keyPath: 'key' });
@@ -349,25 +358,39 @@
           db.onclose = () => { this.db = null; };
           this.db = db; this.opening = null; resolve(db);
         };
-        req.onerror = () => { this.opening = null; reject(req.error); };
+        req.onerror = () => reject(req.error);
         req.onblocked = () => console.warn('21Board: database upgrade blocked by another tab.');
       });
-      return this.opening;
+      p.catch(() => { if (this.opening === p) this.opening = null; });   // (so that the next try really tries again)
+      return p;
     },
 
-    // Run fn(objectStore, setResult) in a transaction; resolves when it completes.
+    // At start-up. Opening can fail for a moment (a busy disk, the browser still starting), so it is tried a
+    // few times; and it can hang, so it is never waited for forever.
+    async openSoon() {
+      let last;
+      for (const wait of [0, 300, 1200]) {
+        if (wait) await sleep(wait);
+        try {
+          return await Promise.race([this.open(), sleep(10000).then(() => { throw Object.assign(new Error('Storage didn’t answer'), { name: 'TimeoutError' }); })]);
+        } catch (err) { last = err; if (isBlocked(err) || (err && err.name === 'TimeoutError')) break; }
+      }
+      throw last;
+    },
+
+    // Run fn(objectStore, setResult) in a transaction; resolves when it completes (all of it is stored, or none).
     async tx(mode, fn, retry = true) {
+      if (mode === 'readwrite' && !this.loaded) throw new Error('21Board hasn’t opened your board yet.');
       if (this.mem) return this.mem.tx(fn);
-      if (this.failed) return mode === 'readonly' ? undefined : null;
       const db = await this.open();
       try {
         return await new Promise((resolve, reject) => {
           const t = db.transaction(DB_STORE, mode);
-          let result;
-          fn(t.objectStore(DB_STORE), v => { result = v; });
+          let result, reqErr = null;
           t.oncomplete = () => resolve(result);
-          t.onerror = () => reject(t.error);
-          t.onabort = () => reject(t.error || new Error('Transaction aborted'));
+          t.onerror = e => { reqErr = e.target && e.target.error; };   // a request failed: the abort that follows says why
+          t.onabort = () => reject(t.error || reqErr || new Error('Transaction aborted'));
+          try { fn(t.objectStore(DB_STORE), v => { result = v; }); } catch (err) { try { t.abort(); } catch (e) { /* already ended */ } reject(err); }
         });
       } catch (err) {
         if (retry && err && (err.name === 'InvalidStateError' || /clos/i.test(err.message || ''))) {
@@ -390,6 +413,23 @@
         set(out);
       });
       return r || new Array(keys.length);
+    },
+
+    // Every record, to (re)load the board. A failed read is tried once more. If the records still can't be read
+    // in one go (one damaged record, in practice a big one such as the photo), they are read one by one:
+    // content that can't be read is left out and listed in skipped; anything else unreadable is an error.
+    async readAll() {
+      let first;
+      for (let i = 0; i < 2; i++) {
+        try { return { recs: await this.getAll(), skipped: [] }; } catch (err) { if (first) break; first = err; await sleep(250); }
+      }
+      const keys = (await this.tx('readonly', (s, set) => { const q = s.getAllKeys(); q.onsuccess = () => set(q.result); })) || [];
+      const recs = [], skipped = [];
+      for (const key of keys) {
+        try { const r = (await this.getMany([key]))[0]; if (r) recs.push(r); } catch (err) { skipped.push(key); }
+      }
+      if (skipped.some(k => !/^(media|data|conf):/.test(k))) throw first;
+      return { recs, skipped };
     }
   };
 
@@ -398,34 +438,53 @@
 
   // Coalescing writer: every change is queued, then written in one transaction.
   // Rapid saves of the same key collapse into one write; order is preserved.
+  // A change that can't be saved is never dropped: it stays queued and is tried again (with the next change,
+  // and every so often), while SaveNote shows "Not saved" on the board. put() and del() resolve true once the
+  // change is stored, false if it isn't (yet): the board carries on either way.
   const Writer = {
     pending: new Map(),   // key -> { type, value } | { del: true }
     waiters: [],
     running: false,
     idle: [],             // settled() waiters
     retried: 0,
-    // Resolves (true) once nothing is waiting to be written, or (false) after timeoutMs.
+    failing: null,        // the error, while saves aren't working (the changes wait in pending)
+    fails: 0, retryT: 0, gen: 0,
+    // Resolves (true) once nothing is waiting to be written, or (false) after timeoutMs, or at once while
+    // saves aren't working.
     settled(timeoutMs = 1000) {
-      if (!this.running && !this.pending.size) return Promise.resolve(true);
-      return new Promise(res => { const t = setTimeout(() => res(false), timeoutMs); this.idle.push(() => { clearTimeout(t); res(true); }); });
+      if (!this.running && (!this.pending.size || this.failing)) return Promise.resolve(!this.pending.size);
+      return new Promise(res => { const t = setTimeout(() => res(false), timeoutMs); this.idle.push(() => { clearTimeout(t); res(!this.pending.size); }); });
     },
 
-    put(key, type, value) { this.pending.set(key, { type, value: clone(value) }); return this.kick(); },
-    del(key) { this.pending.set(key, { del: true }); return this.kick(); },
+    // (Before the stored board has been read there is nothing to save a change against: see Startup.)
+    put(key, type, value) { if (!Store.loaded) return Promise.resolve(false); this.pending.set(key, { type, value: clone(value) }); return this.kick(); },
+    del(key) { if (!Store.loaded) return Promise.resolve(false); this.pending.set(key, { del: true }); return this.kick(); },
 
     kick() {
-      return new Promise((resolve, reject) => {
-        this.waiters.push({ resolve, reject });
+      return new Promise(resolve => {
+        this.waiters.push(resolve);
         if (!this.running) Promise.resolve().then(() => this.run());
       });
     },
+    // The board was erased or replaced as a whole (here, or in another tab): changes to the old one that
+    // weren't saved yet went with it, and must not be written over the new one.
+    forget() {
+      this.gen++;
+      this.pending = new Map();
+      const waiters = this.waiters; this.waiters = [];
+      waiters.forEach(w => w(false));
+      if (!this.running) { clearTimeout(this.retryT); this.failing = null; this.fails = 0; SaveNote.update(); }
+    },
 
     async run() {
-      if (this.running) return;
+      if (this.running || !Store.loaded) return;
       this.running = true;
+      clearTimeout(this.retryT);
       while (this.pending.size) {
         const batch = this.pending; this.pending = new Map();
         const waiters = this.waiters; this.waiters = [];
+        const gen = this.gen;
+        let thrown = null;
         try {
           const written = await Store.tx('readwrite', (s, set) => {
             const out = [];
@@ -434,8 +493,8 @@
               const g = s.get(key);
               g.onsuccess = () => {
                 const rec = { key, type: op.type, rev: Math.max(((g.result && g.result.rev) || 0) + 1, Date.now()), updatedAt: Date.now(), by: TAB_ID, value: op.value };
-                s.put(rec);
-                out.push(rec);
+                // (A put the browser refuses outright ends the whole batch: keep its reason.)
+                try { s.put(rec); out.push(rec); } catch (err) { thrown = thrown || err; try { s.transaction.abort(); } catch (e) { /* already ended */ } }
               };
             }
             set(out);
@@ -443,23 +502,34 @@
           for (const r of written) { if (r.deleted) Known.delete(r.key); else Known.set(r.key, r.rev); }
           if (written.length) { const keys = written.map(r => r.key); Sync.announce(keys); Link.changed(keys); BoardHistory.changed(keys); }
           this.retried = 0;
-          waiters.forEach(w => w.resolve(true));
-        } catch (err) {
+          if (this.failing && !this.pending.size) { this.failing = null; this.fails = 0; toast('Your changes are saved again.'); }
+          waiters.forEach(w => w(true));
+        } catch (e) {
+          const err = thrown || e;
+          if (gen !== this.gen) { waiters.forEach(w => w(false)); continue; }   // forget() meanwhile: these went with the old board
+          // Not saved: the changes go back in the queue (a newer change to the same record wins).
+          const keep = new Map(batch);
+          for (const [k, op] of this.pending) keep.set(k, op);
+          this.pending = keep;
+          this.waiters.unshift(...waiters);
           // Out of space: make room by thinning board history, then try once more.
-          if (err && err.name === 'QuotaExceededError' && (this.retried || 0) < 2) {
-            this.retried = (this.retried || 0) + 1;
-            try { await (this.retried === 1 ? BoardHistory.thin() : BoardHistory.shrink()); } catch (e) { /* nothing to free */ }
-            for (const [k, op] of batch) if (!this.pending.has(k)) this.pending.set(k, op);
-            this.waiters.unshift(...waiters);
+          if (isFull(err) && this.retried < 2) {
+            this.retried++;
+            try { await (this.retried === 1 ? BoardHistory.thin() : BoardHistory.shrink()); } catch (e2) { /* nothing to free */ }
             continue;
           }
-          this.retried = 0;
           console.error('21Board: save failed', err);
-          toast('Could not save changes. Storage may be full or blocked.');
-          waiters.forEach(w => w.reject(err));
+          const left = this.waiters; this.waiters = [];
+          left.forEach(w => w(false));
+          if (!this.failing) toast('21Board couldn’t save your latest changes. It keeps trying.', { action: 'Details', timeout: 8000, onAction: () => SaveNote.explain() });
+          this.failing = err; this.fails++;
+          this.retryT = setTimeout(() => this.run(), this.fails === 1 ? 5000 : 30000);
+          break;
         }
       }
       this.running = false;
+      if (!this.pending.size && this.failing) { this.failing = null; this.fails = 0; }   // (forget() while this ran)
+      SaveNote.update();
       const idle = this.idle; this.idle = [];
       idle.forEach(f => f());
     }
@@ -490,6 +560,7 @@
       }
     },
     announce(keys, extra) {
+      if (Store.failed) return;   // a board that isn't stored is this window's alone
       const msg = Object.assign({ tab: TAB_ID, keys: keys || [], t: Date.now() }, extra || {});
       try {
         if (this.chan) this.chan.postMessage(msg);
@@ -497,8 +568,13 @@
       } catch (err) { /* sync is best-effort; visibility resync covers gaps */ }
     },
     receive(msg) {
-      if (!msg || msg.tab === TAB_ID) return;
-      if (msg.op === 'reload') { if (msg.erased) Link.forget(); if (Inter.active) Inter.deferredRebuild = true; else rebuildAll(); return; }
+      if (!msg || msg.tab === TAB_ID || !Store.loaded || Store.failed) return;   // (not loaded yet: the load itself will read it)
+      if (msg.op === 'reload') {
+        if (msg.erased) Link.forget();
+        if (msg.erased || msg.replaced) Writer.forget();
+        if (Inter.active) Inter.deferredRebuild = true; else rebuildAll();
+        return;
+      }
       if (msg.op === 'history') { BoardHistory.reload().then(() => { HistorySheet.refresh(); updateHint(); }); return; }
       if (msg.op === 'reset' && msg.board === S.boardId && msg.ikey) {
         S.data.delete(msg.ikey); S.conf.delete(msg.ikey);
@@ -536,16 +612,34 @@
     afterBulkApply();
   }
 
-  // Bring this tab in line with whatever is in IndexedDB.
-  async function reloadAll() {
-    let recs;
-    try { recs = await Store.getAll(); } catch (err) { console.warn('21Board: reload failed', err); return; }
+  // Bring this tab in line with whatever is in IndexedDB. If that can't be read, nothing here changes
+  // (must: and the caller is told, by the error).
+  async function reloadAll(must) {
+    let recs, skipped;
+    try { ({ recs, skipped } = await Store.readAll()); } catch (err) { console.warn('21Board: reload failed', err); if (must) throw err; return; }
     const order = { settings: 0, board: 1, conf: 2, data: 2, inst: 3 };
     recs.sort((a, b) => (order[Keys.parse(a.key).kind] ?? 9) - (order[Keys.parse(b.key).kind] ?? 9));
-    const present = new Set();
+    const present = new Set(skipped);   // (a record that couldn't be read isn't a deleted one)
     for (const r of recs) { present.add(r.key); applyRecord(r.key, r); }
     for (const key of Array.from(Known.keys())) if (!present.has(key)) applyRecord(key, undefined);
     afterBulkApply();
+    sayUnread(skipped);
+  }
+  // Content that couldn't be read (see Store.readAll) isn't shown: say which, once.
+  let unreadSig = '';
+  function sayUnread(keys) {
+    const sig = keys.join('|');
+    if (sig === unreadSig) return;
+    unreadSig = sig;
+    const names = new Set();
+    for (const key of keys) {
+      const k = Keys.parse(key);
+      if (k.board === S.boardId) names.add(k.kind === 'media' ? 'the background photo' : instName(k.widgetId, k.n));
+    }
+    if (!names.size) return;
+    const hist = BoardHistory.enabled();
+    toast(`Part of this board couldn’t be read on this device, so it isn’t shown: ${Array.from(names).join(', ')}.` + (hist ? ' Board history may still have it.' : ''),
+      hist ? { timeout: 0, action: 'Board history', onAction: () => HistorySheet.open('left'), dismiss: 'OK' } : { timeout: 0, action: 'OK' });
   }
 
   async function rebuildAll() {
@@ -555,7 +649,9 @@
     S.focused = null;
     S.settings = Object.assign({}, DEFAULT_SETTINGS);
     S.board = defaultBoard(S.boardId);
-    await reloadAll();
+    // Couldn't be read: this tab no longer knows what the board holds, so it saves nothing and says so
+    // (it goes on only if the teacher chooses to carry on without saving).
+    try { await reloadAll(true); } catch (err) { await Startup.fail(err, { storage: true }); await reloadAll(true); }
     updateZoom();
     migrateBoard();
     ensureUid();
@@ -577,6 +673,7 @@
     switch (k.kind) {
       case 'settings':
         S.settings = Object.assign({}, DEFAULT_SETTINGS, value || {});
+        S.settings.devWidgets = Array.isArray(S.settings.devWidgets) ? S.settings.devWidgets.filter(d => d && typeof d === 'object') : [];   // (a damaged record must not stop the board opening)
         applySettings();
         break;
       case 'board':
@@ -671,6 +768,7 @@
     Picker.btns.left.hidden = corners === 'right';
     Picker.btns.right.hidden = corners === 'left';
     if (Picker.side && Picker.btns[Picker.side].hidden) Picker.close();
+    SaveNote.update();   // (it sits above the Widget Picker buttons)
     const sig = JSON.stringify([S.settings.devMode, S.settings.devWidgets]);
     if (sig !== lastCatalogSig) {
       lastCatalogSig = sig;
@@ -1544,12 +1642,12 @@
       let v;
       try { v = clone(value); } catch (err) { this.ack(reqId, false, null, 'Value is not JSON-serializable'); return; }
       const has = map.has(this.ikey);
-      if (sameJSON(has ? map.get(this.ikey) : null, v) && (v === null || Known.has(key))) { this.ack(reqId, true); return; }
+      if (sameJSON(has ? map.get(this.ikey) : null, v) && (v === null || Known.has(key)) && !Writer.pending.has(key)) { this.ack(reqId, true); return; }   // (pending: not saved yet)
       if (kind === 'data' && has) BoardHistory.guardEmptied(this.ikey, map.get(this.ikey), v);   // e.g. a note cleared: keep a version first
       let p;
       if (v === null) { map.delete(this.ikey); p = Writer.del(key); }
       else { map.set(this.ikey, v); p = Writer.put(key, kind, v); }
-      p.then(() => this.ack(reqId, true), err => this.ack(reqId, false, null, err && err.message));
+      p.then(ok => (ok === false ? this.ack(reqId, false, null, 'Not saved yet') : this.ack(reqId, true)));   // (not saved: the board keeps it and tries again)
     }
 
     windowOp(op, args) {
@@ -1655,7 +1753,7 @@
   // or create the next instance number if every existing one is already open.
   function openWidget(widgetId, opts = {}) {
     const widget = getWidget(widgetId);
-    if (!widget) return null;
+    if (!widget || !Store.loaded) return null;   // (not before the stored board has been read: its windows aren't known yet)
     const mine = Array.from(S.insts.values()).filter(i => i.widgetId === widgetId).sort((a, b) => a.n - b.n);
     const closed = mine.find(i => !i.open);
     let ikey, inst;
@@ -1709,7 +1807,7 @@
       try { shown = +localStorage.getItem('21board-tip-close') || 0; } catch (e) { /* ignore */ }
       if (shown < 3) {
         const widget = getWidget(inst.widgetId);
-        toast(`${widget ? widget.name : 'Widget'} closed. Its content is saved — open it again from the Widget Picker.`);
+        toast(`${widget ? widget.name : 'Widget'} closed. ` + (SaveNote.state() ? 'Open it again from the Widget Picker.' : 'Its content is saved — open it again from the Widget Picker.'));
         try { localStorage.setItem('21board-tip-close', String(shown + 1)); } catch (e) { /* ignore */ }
       }
     }
@@ -1762,7 +1860,7 @@
     const was = new Map(open.map(k => [k, Object.assign({}, S.insts.get(k))]));
     await Promise.all(open.map(k => closeWin(k, { quiet: true })));
     // Undo reopens those windows where they were (their content was never touched; a running timer keeps running).
-    if (open.length) toast(`Closed ${open.length} window${open.length === 1 ? '' : 's'}. Their content is saved.`, { action: 'Undo', timeout: 20000, onAction: async () => {
+    if (open.length) toast(`Closed ${open.length} window${open.length === 1 ? '' : 's'}.` + (SaveNote.state() ? '' : ' Their content is saved.'), { action: 'Undo', timeout: 20000, onAction: async () => {
       for (const [k, inst] of was) { const cur = S.insts.get(k); if (cur && !cur.open) await saveInst(k, Object.assign({}, cur, { open: true, rect: inst.rect, maximized: inst.maximized, z: maxZ() + 1 })); reconcileWin(k); }
       afterBulkApply();
       void beforeId;
@@ -2305,14 +2403,17 @@
   // Kiosk mode: Quit closes the app (on ChromeOS this ends the kiosk session; an auto-launched kiosk starts again).
   // Everything is saved first. A window the browser won't let a page close (a normal tab) gets a message instead.
   async function quitApp() {
-    const ok = await dialog({ title: 'Quit 21Board?', message: 'Your board is saved on this device and will be here next time.',
+    const unsaved = SaveNote.state();
+    const ok = await dialog({ title: 'Quit 21Board?', message: !unsaved ? 'Your board is saved on this device and will be here next time.'
+      : unsaved === 'unsaved' ? 'Your latest changes aren’t saved on this device yet. If you quit now, they will be gone.' : 'This board isn’t being saved. If you quit now, it will be gone.',
       actions: [{ label: 'Quit', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
     if (!ok) return;
     closePopups();
+    if (Writer.failing) Writer.run();   // (one more try before leaving)
     await Writer.settled(3000);
     if (BoardHistory.dirty) { try { await Promise.race([BoardHistory.check(true), sleep(2000)]); } catch (e) { /* quit anyway */ } }
     window.close();
-    const refused = () => toast('21Board can’t close itself right now. Your board is saved. To leave, restart the device or ask your school’s IT.', { timeout: 10000 });
+    const refused = () => toast(`21Board can’t close itself right now.${SaveNote.state() ? '' : ' Your board is saved.'} To leave, restart the device or ask your school’s IT.`, { timeout: 10000 });
     if (!window.closed) setTimeout(() => { if (!window.closed) refused(); }, 600);
   }
 
@@ -2636,8 +2737,9 @@
         const size = JSON.stringify(S.data.get(ikey) || '').length + JSON.stringify(S.conf.get(ikey) || '').length;
         const name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
         const status = !widget ? 'Widget not installed' : i.open ? 'Open' : 'Closed';
+        const unsaved = Store.failed || (Writer.failing && ['inst', 'data', 'conf'].some(k => Writer.pending.has(Keys[k](S.boardId, ikey))));
         return `<div class="inst"><span class="widget-icon" style="--c:${esc(widget ? widget.color : '#9ca3af')}">${widget ? widget.icon : svg('widget')}</span>` +
-          `<div class="meta"><b>${esc(name)}</b><span>${status} · ${fmtBytes(size)} saved</span></div>` +
+          `<div class="meta"><b>${esc(name)}</b><span>${status} · ${fmtBytes(size)}${unsaved ? ', not saved' : ' saved'}</span></div>` +
           (widget && !i.open ? `<button class="icon" data-act="inst-open" data-val="${esc(ikey)}" title="Open" aria-label="Open ${esc(name)}">${svg('open')}</button>` : '') +
           `<button class="icon" data-act="inst-delete" data-val="${esc(ikey)}" title="Delete" aria-label="Delete ${esc(name)} and its content">${svg('trash')}</button></div>`;
       }).join('') : '<div class="empty-note">No widget windows yet. Open one from the Widget Picker.</div>';
@@ -2646,7 +2748,9 @@
         `<div class="inst"><span class="widget-icon" style="--c:#64748b">${svg('widget')}</span><div class="meta"><b>${esc(d.name)}</b><span>${esc(d.entry)}</span></div>` +
         `<button class="icon" data-act="dev-remove" data-val="${esc(d.id)}" title="Remove" aria-label="Remove ${esc(d.name)}">${svg('trash')}</button></div>`).join('');
 
+      const note = SaveNote.state() ? SaveNote.info() : null;
       this.body.innerHTML = `
+        ${note ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(note.title)}</div><div class="hint">${esc(note.text)}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>` : ''}
         ${historySettings(sw, seg)}
 
         <h3>Appearance</h3>
@@ -2668,7 +2772,7 @@
         <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Widgets without typing move by dragging anywhere in them; any widget moves with two fingers. Off: title bar only.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
         <div class="row"><div class="lbl">Push needed to overlap</div>${seg('resistance', st.resistance, [['gentle', 'Light'], ['normal', 'Medium'], ['strong', 'Firm']], !st.snapping)}</div>
         ${scaleSettingsRows(seg)}
-        <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">Content stays saved for next time.</div></div><button class="btn" data-act="close-all">${svg('windows')}Close all</button></div>
+        <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">${note ? 'Their content is kept while 21Board stays open.' : 'Content stays saved for next time.'}</div></div><button class="btn" data-act="close-all">${svg('windows')}Close all</button></div>
 
         <h3>Widget Picker</h3>
         <div class="row"><div class="lbl">Show controls in</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']])}</div>
@@ -2676,7 +2780,7 @@
         <h3>Board</h3>
         <div class="row stack"><label class="lbl" for="set-board-name">Board name <span class="hint">(used for export file names)</span></label>
           <input type="text" class="text-input" id="set-board-name" maxlength="60" value="${esc(S.board.name)}" autocomplete="off"></div>
-        <div class="row stack"><div><div class="lbl">Saved widget windows</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
+        <div class="row stack"><div><div class="lbl">${note ? 'Widget windows' : 'Saved widget windows'}</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
           <div class="inst-list">${instHTML}</div></div>
 
         ${Link.supported ? linkSettings(sw) : ''}
@@ -2869,6 +2973,7 @@
           if (ok === 'erase') await BoardHistory.before('erase', 'Before erasing everything', { timeout: 3000 });
           else await BoardHistory.clearAll();
           await Store.tx('readwrite', s => { s.clear(); });
+          Writer.forget();
           Link.forget();
           Sync.announce([], { op: 'reload', erased: true });
           await rebuildAll();
@@ -2922,18 +3027,21 @@
   }
 
   async function buildExport(kind) {
-    const recs = await Store.getAll();
+    const recs = (await Store.readAll()).recs;
     const b = S.boardId;
     const byIkey = new Map();
     const get = ik => { if (!byIkey.has(ik)) byIkey.set(ik, {}); return byIkey.get(ik); };
-    for (const r of recs) {
-      const k = Keys.parse(r.key);
-      if ((k.kind === 'inst' || k.kind === 'data' || k.kind === 'conf') && k.board === b) get(k.ikey)[k.kind] = r.value;
-    }
-    // Records not yet committed (if any) — prefer in-memory state.
+    const each = (key, value) => {
+      const k = Keys.parse(key);
+      if ((k.kind === 'inst' || k.kind === 'data' || k.kind === 'conf') && k.board === b) { if (value === undefined) delete get(k.ikey)[k.kind]; else get(k.ikey)[k.kind] = value; }
+    };
+    for (const r of recs) each(r.key, r.value);
+    // Changes not saved yet (still queued, or waiting to be tried again): what's on the board is what's exported.
+    for (const [key, op] of Writer.pending) each(key, op.del ? undefined : op.value);
     for (const [ik, inst] of S.insts) get(ik).inst = inst;
     const instances = [];
     for (const [ik, parts] of byIkey) {
+      if (!parts.inst && parts.data === undefined && parts.conf === undefined) continue;   // (deleted, not saved yet)
       const [widgetId, nStr] = ik.split(':');
       const inst = parts.inst ? normalizeInst(parts.inst, { widgetId, n: +nStr }) : normalizeInst({ open: false }, { widgetId, n: +nStr });
       if (kind === 'template' && !inst.open) continue;
@@ -3088,6 +3196,8 @@
   // opts.keepCreated: windows keep the file's createdAt. Returns the id of the version saved first (or null),
   // or false if cancelled.
   async function applyImport(p, mode, opts = {}) {
+    // Changes that couldn't be saved yet would be written over the new board later: save them first, or stop.
+    if (Writer.failing) { Writer.run(); if (!await Writer.settled(5000)) throw new Error('21Board can’t save on this device right now, so nothing was changed.'); }
     const b = S.boardId;
     let undoId = null;
     if (opts.history !== false) {
@@ -3167,7 +3277,7 @@
         for (const r of out) s.put(r);
       });
     } finally {
-      Sync.announce([], { op: 'reload' });
+      Sync.announce([], { op: 'reload', replaced: mode === 'replace' });
       await rebuildAll();
     }
     BoardHistory.changed([Keys.board(b)]);
@@ -3758,9 +3868,10 @@
         const o = {}; let result;
         for (const n of stores) o[n] = t.objectStore(n);
         try { fn(o, v => { result = v; }); } catch (e) { try { t.abort(); } catch (x) { /* already done */ } reject(e); return; }
+        let reqErr = null;
         t.oncomplete = () => resolve(result);
-        t.onerror = () => reject(t.error);
-        t.onabort = () => reject(t.error || new Error('Transaction aborted'));
+        t.onerror = e => { reqErr = e.target && e.target.error; };   // a request failed: the abort that follows says why
+        t.onabort = () => reject(t.error || reqErr || new Error('Transaction aborted'));
       });
     },
     range(b) { return IDBKeyRange.bound(`${b}:`, `${b}:￿`); },
@@ -3912,8 +4023,8 @@
           };
         });
       } catch (err) {
-        if (err && err.name === 'QuotaExceededError' && !opts.retried) { await this.thin(); return this.capture(kind, Object.assign({}, opts, { retried: true })); }
-        if (err && err.name === 'QuotaExceededError') { this.paused = 'quota'; this.pausedAt = Date.now(); }
+        if (isFull(err) && !opts.retried) { await this.thin(); return this.capture(kind, Object.assign({}, opts, { retried: true })); }
+        if (isFull(err)) { this.paused = 'quota'; this.pausedAt = Date.now(); }
         console.warn('21Board: could not save a board version', err);
         return null;
       }
@@ -4132,8 +4243,11 @@
         if (ph) { p.photo = { data: ph.data, w: ph.w, h: ph.h, bytes: ph.bytes, name: ph.name, addedAt: ph.addedAt }; p.photoLook = normalizePhotoSettings(look || {}); photo = 'file'; }
         else { photo = 'keep'; gone = !!BoardPhoto.media(); }
       } else if ((meta && meta.photo === 'gone') || !meta) { photo = 'keep'; gone = !!(meta && meta.photo === 'gone'); }
-      const undoId = await applyImport(p, 'replace', { uid: p.board.uid || S.board.uid, photo, keepCreated: true, mustSnapshot: true,
-        history: opts.undo ? { reason: 'undo', label: `Before undoing ${opts.what || 'a change'}` } : { reason: 'restore', label: 'Before going back', target: at } });
+      let undoId;
+      try {
+        undoId = await applyImport(p, 'replace', { uid: p.board.uid || S.board.uid, photo, keepCreated: true, mustSnapshot: true,
+          history: opts.undo ? { reason: 'undo', label: `Before undoing ${opts.what || 'a change'}` } : { reason: 'restore', label: 'Before going back', target: at } });
+      } catch (err) { console.error(err); toast(`Couldn’t ${opts.undo ? 'undo that' : 'go back'}: ` + ((err && err.message) || err)); return false; }
       if (undoId === false) return false;
       await this.capture('restored', opts.undo ? { label: `Undid ${opts.what || 'a change'}` } : { label: 'Went back', target: at });
       Link.changed([Keys.board(S.boardId)]); Link.computeOffer();
@@ -4572,6 +4686,50 @@
     return t;
   }
 
+  // "Not saved": a small note above the Widget Picker buttons, for as long as this board isn't (all) stored on
+  // the device: a save failed (Writer.failing: the changes wait and are tried again), or nothing is stored in
+  // this window at all (Store.failed). It stays until saving works; tapping it says why and what to do.
+  const SaveNote = {
+    els: null, shown: '',
+    state() { return Store.failed || (Writer.failing ? 'unsaved' : ''); },
+    init() {
+      this.els = ['left', 'right'].map(side => {
+        const b = document.createElement('button');
+        b.className = 'save-note ' + side;
+        b.hidden = true;
+        b.innerHTML = '<span class="status-dot warn"></span>Not saved';
+        b.setAttribute('aria-label', 'Not saved: what to do');
+        b.addEventListener('click', () => this.explain());
+        document.body.appendChild(b);
+        return { b, side };
+      });
+    },
+    update() {
+      if (!this.els) return;
+      const st = this.state();
+      for (const { b, side } of this.els) b.hidden = !st || Picker.btns[side].hidden;
+      if (st !== this.shown) { this.shown = st; if (Settings.isOpen) Settings.render(); }
+    },
+    // What happened and what to do (the note's dialog, and the top of Settings).
+    info() {
+      const st = this.state();
+      if (st === 'blocked') return { title: 'This board isn’t being saved', text: 'This browser window doesn’t let 21Board keep anything, so the board is gone when the window closes. Use a normal (not private) window, or export a backup to keep what’s here.' };
+      if (st === 'unopened') return { title: 'This board isn’t being saved', text: '21Board couldn’t open your saved board, so it started an empty one that isn’t kept. Your saved board hasn’t been changed: reload 21Board to open it. Export a backup first to keep what’s here now.' };
+      return { title: 'Your latest changes aren’t saved yet', text: (isFull(Writer.failing) ? 'This device is out of space, so 21Board can’t save.' : '21Board couldn’t save to this device.') +
+        ' Your changes stay on the board while 21Board is open, and it keeps trying. ' + (isFull(Writer.failing) ? 'Make room on this device, or export a backup to keep them.' : 'If this goes on, export a backup to keep them, then restart the device.') };
+    },
+    async explain() {
+      const st = this.state();
+      if (!st) return;
+      const i = this.info(), retry = { label: st === 'unsaved' ? 'Try again now' : 'Reload 21Board', value: 'retry' }, backup = { label: 'Export a backup', value: 'export' };
+      const go = await dialog({ title: i.title, message: i.text,
+        actions: (st === 'blocked' ? [Object.assign(backup, { kind: 'primary' })] : [Object.assign(retry, { kind: 'primary' }), backup]).concat([{ label: 'Close', value: null }]) });
+      if (go === 'export') doExport('full');
+      else if (go === 'retry' && st !== 'unsaved') location.reload();
+      else if (go === 'retry') { Writer.run(); if (!await Writer.settled(5000)) toast('Still not saved. 21Board keeps trying.'); }
+    }
+  };
+
   function closePopups(opts = {}) {
     Picker.close();
     Menu.close();
@@ -4911,27 +5069,90 @@
     mqDark.addEventListener && mqDark.addEventListener('change', () => applySettings());
 
     // Catch up on anything another tab changed while this one was hidden or frozen.
-    const resync = () => { if (Inter.active) Inter.deferredReload = true; else reloadAll(); };
+    const resync = () => { if (!Store.loaded) return; if (Inter.active) Inter.deferredReload = true; else reloadAll(); };
     document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') resync(); });
     window.addEventListener('pageshow', e => { if (e.persisted) resync(); });
   }
 
+  // Start-up. Until the stored board has been read, a see-through cover keeps taps off the board (a window
+  // opened too early could be saved over a stored one) and nothing is written (Store.loaded). If the board
+  // can't be opened or read, or start-up throws, the cover says so: never an empty board that looks ready.
+  // It is made here, not in index.html, so it also shows when the page and this script are different versions.
+  const Startup = {
+    el: null, ready: false, failed: null,
+    cover() {
+      const el = this.el = document.createElement('div');
+      el.id = 'startup';
+      el.style.cssText = 'position:fixed;inset:0;z-index:5000;display:flex;align-items:center;justify-content:center;padding:16px;color:var(--muted,#6b7280);font-size:18px';
+      document.body.appendChild(el);
+      setTimeout(() => { if (this.el === el && !this.failed) el.textContent = 'Opening your board…'; }, 1500);
+    },
+    done() { if (this.el) this.el.remove(); this.el = null; this.failed = null; this.ready = true; },
+    // opts.storage: the board couldn't be opened or read. The teacher can try again (a reload), or carry on
+    // with an empty board that isn't saved: the promise resolves only then. Otherwise: Try again only.
+    fail(err, opts = {}) {
+      if (this.failed) return this.failed;
+      console.error('21Board: couldn’t open the board', err);
+      Store.loaded = false;   // nothing is saved from here on
+      if (!this.el) this.cover();
+      const el = this.el;
+      const why = String((err && [err.name, err.message].filter(Boolean).join(': ')) || err || 'Unknown').slice(0, 200);
+      el.style.background = 'rgba(0, 0, 0, .45)';
+      el.setAttribute('role', 'alertdialog');
+      el.setAttribute('aria-label', '21Board couldn’t open your board');
+      el.innerHTML = `<div class="modal-card"><h3>${opts.storage ? '21Board couldn’t open your board' : '21Board couldn’t start'}</h3>
+        <p>Nothing has been changed: your board is still saved on this device. Try again. If this keeps happening, restart the device or tell your school’s IT.</p>
+        <div class="modal-actions"><button class="btn primary" data-go="retry">Try again</button>
+          ${opts.storage ? '<button class="btn choice" data-go="on">Use 21Board without saving<small>An empty board for now. Your saved board isn’t touched.</small></button>' : ''}</div>
+        <p style="font-size:12px;margin:14px 0 0;overflow-wrap:anywhere">Details for IT: ${esc(why)}</p></div>`;
+      $('[data-go="retry"]', el).focus();
+      return (this.failed = new Promise(resolve => {
+        el.onclick = e => {
+          const b = e.target.closest('[data-go]');
+          if (!b) return;
+          if (b.dataset.go === 'retry') {
+            // (A new version that is ready is taken first: it may be the fix.)
+            if (S.sw.updateReady) { applyUpdate(); setTimeout(() => location.reload(), 4000); } else location.reload();
+            return;
+          }
+          // Carry on without the stored board: this session's board is kept in memory only (see SaveNote).
+          Writer.forget(); Link.forget();
+          Store.mem = MemDB; Store.failed = 'unopened'; Store.loaded = true;
+          this.done();
+          SaveNote.update();
+          resolve();
+        };
+      }));
+    }
+  };
+
   async function boot() {
+    const late = $('#boot-note');
+    if (late) late.remove();   // (index.html's "taking a long time to start")
+    Startup.cover();
     if (!LAB && !KIOSK) Install.init(); // before anything async: Chrome can fire beforeinstallprompt early
     document.body.classList.toggle('kiosk', KIOSK);
     initUI();
+    SaveNote.init();
     Sync.init();
+    if (!LAB) registerSW();   // before the board is opened: a version that can't start can still receive its fix
     try {
-      await Store.open();
-    } catch (err) {
-      if (LAB) Store.mem = MemDB;   // an AI tool's preview may block storage: keep this session's data in memory
-      else {
-        console.error('21Board: IndexedDB unavailable', err);
-        Store.failed = true;
-        toast('This browser is blocking storage, so nothing will be saved. Try a normal (not private) window.', { timeout: 10000 });
+      try { await Store.openSoon(); } catch (err) {
+        if (!LAB && !isBlocked(err)) throw err;
+        // Storage is blocked (in test mode: by an AI tool's preview): this session's board is kept in memory.
+        Store.mem = MemDB;
+        if (!LAB) {
+          console.error('21Board: storage is blocked', err);
+          Store.failed = 'blocked';
+          toast('This browser is blocking storage, so nothing will be saved. Try a normal (not private) window.', { timeout: 10000 });
+        }
       }
+      await reloadAll(true);
+    } catch (err) {
+      await Startup.fail(err, { storage: true });   // comes back only if the teacher carries on without saving
+      await reloadAll(true);
     }
-    await reloadAll();
+    Store.loaded = true;
     updateZoom();
     migrateBoard();
     if (!Known.has(Keys.board(S.boardId))) Writer.put(Keys.board(S.boardId), 'board', S.board);
@@ -4939,8 +5160,8 @@
     applySettings();
     applyBoard();
     updateHint();
+    Startup.done();
     if (LAB) { LabBridge.start(); return; }   // test mode: no offline cache, install, file opening or backup reminders
-    registerSW();
     if (!KIOSK) setupFileLaunch();
     Persist.init();
     Link.start();
@@ -4956,5 +5177,6 @@
     catalog: () => Array.from(catalog.values()), link: Link, history: BoardHistory, historySheet: HistorySheet, historyPlan
   };
 
-  boot();
+  // (A problem after the board is up is logged, as before; before that, the teacher is told.)
+  boot().catch(err => { if (Startup.ready) console.error('21Board: start-up problem', err); else Startup.fail(err); });
 })();
