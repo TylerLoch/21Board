@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.10-30';
-  const BOARD_BUILD = '5ba0c942';
+  const BOARD_BUILD = '7519a130';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4783,7 +4783,9 @@
       dialogResolve = v => { dialogResolve = null; dialogHeld = true; modal.classList.remove('open'); dialogBack(back); resolve(answer(v)); };
       card.onclick = e => { const b = e.target.closest('[data-i]'); if (b) dialogResolve(actions[+b.dataset.i].value); };
       modal.onclick = e => { if (e.target === modal) dialogResolve(null); };
-      if (field) field.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); if (!e.repeat) dialogResolve(actions[0].value); } };
+      // (Enter in the field goes no further: dialogKey, on the document, would take it for a new key press after
+      // the dialog it has just closed, and let the held key go on to press the button behind the dialog.)
+      if (field) field.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); if (!e.repeat) dialogResolve(actions[0].value); } };
     });
   }
   // A key that is held down repeats. Enter held a moment too long would answer the dialog it has just opened;

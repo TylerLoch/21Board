@@ -518,6 +518,22 @@ const SUITES = [
     await finger(grip.x + grip.width / 2, grip.y + grip.height / 2, 10, 0, 2);
     const d3 = await dice();
     ok(d3.w === d2.w + 10 && d3.x === d2.x, `a 10 px touch drag of a resize handle resizes by 10 px (${d3.w - d2.w})`);
+    // At the board's top edge the top handle lies over part of the window's name. A tap there that slides is still
+    // a tap on the name; a pull from the same spot still resizes.
+    await page.evaluate(() => { window.__board21.setRect('dice:1', { x: 700, y: 0, w: 360, h: 280 }); window.__board21.focusWin('dice:1'); }); await page.waitForTimeout(200);
+    const under = await page.evaluate(() => {   // a point of the name that the handle covers
+      const w = document.querySelector('.win[data-ikey="dice:1"]'), g = w.querySelector('.grip.n'), r = w.querySelector('.win-label').getBoundingClientRect(), x = r.left + r.width / 2;
+      for (let y = Math.ceil(r.top) + 1; y < r.bottom; y++) if (g.contains(document.elementFromPoint(x, y))) return { x, y };
+      return null;
+    });
+    const d4 = await dice();
+    if (under) await finger(under.x, under.y, 3, 12);
+    const d5 = await dice();
+    ok(under && await page.locator('#menu.open').count() === 1 && d5.y === d4.y && d5.h === d4.h, `a touch tap on the name under the top handle that slides 12 px opens the menu, and doesn’t resize the window (${under ? `top ${d5.y - d4.y}, height ${d5.h - d4.h}` : 'the handle doesn’t cover the name'})`);
+    await page.keyboard.press('Escape');
+    if (under) await finger(under.x, under.y, 0, 40, 4);
+    const d6 = await dice();
+    ok(under && await page.locator('#menu.open').count() === 0 && d6.y === d5.y + 40 && d6.h === d5.h - 40, `a 40 px touch pull down from there resizes the window by 40 px (top ${d6.y - d5.y}, height ${d6.h - d5.h})`);
     await ctx.close();
   }],
   ['SDK, developer mode, standalone', async (browser) => {
@@ -3147,6 +3163,19 @@ const SUITES = [
     await page.keyboard.press('Escape'); await closed();
     back = await at();
     ok(back.act === 'save' && await page.locator('#history.open').count() === 1, `and Escape puts the keyboard back on “Save this version now” (${back.tag} ${back.act})`);
+    // Held keys there too: in this dialog Enter is answered by the text field itself, not by a button.
+    const kept = () => page.evaluate(() => window.__board21.history.metas.filter(m => m.manual).length);   // versions saved by hand
+    await page.keyboard.down('Enter'); await open();   // on “Save this version now”
+    await hold(3);
+    st = await state();
+    ok(st.open && (await at()).tag === 'INPUT' && await kept() === 0, 'Enter held on “Save this version now” opens its dialog and doesn’t go on to answer it: nothing is saved yet');
+    await page.keyboard.up('Enter');
+    await page.keyboard.type('Monday setup');
+    await page.keyboard.down('Enter'); await hold(3);   // (it repeats at once: the keyboard is back on the button, which is still there until the version is saved)
+    await page.keyboard.up('Enter');
+    await page.waitForSelector('.toast:has-text("Saved this version of the board.")');
+    st = await state();
+    ok(!st.open && await kept() === 1, 'Enter held in the name field saves the version once, and doesn’t press “Save this version now” again behind the dialog (which would ask again)');
     await page.keyboard.press('Escape');   // (closes Board history)
 
     // Opened from the Widget Picker, which closes first: back to the ▦ button that opened the Picker.
