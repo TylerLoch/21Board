@@ -44,6 +44,10 @@
   // restored when the window is reopened. It is left out of template exports.
   let state = { count: 0 };
 
+  // Saved content can come from a file someone imported, so check it before you use it, and put it on the
+  // page as text (textContent), never as HTML (innerHTML).
+  const read = data => ({ count: data && Number.isFinite(data.count) ? data.count : 0 });
+
   function render() { document.getElementById('count').textContent = state.count; }
 
   document.getElementById('add').onclick = () => {
@@ -54,10 +58,10 @@
 
   // Fired when this window's content was changed somewhere else
   // (another open 21Board tab, an import, or a reset).
-  Board21.on('data', data => { state = Object.assign({ count: 0 }, data || {}); render(); });
+  Board21.on('data', data => { state = read(data); render(); });
 
   Board21.ready().then(ctx => {
-    state = Object.assign(state, ctx.data || {});
+    state = read(ctx.data);
     render();
   });
 </script>

@@ -52,12 +52,22 @@
       radial-gradient(ellipse 45% 25% at 22% 28%, rgba(110, 120, 135, .05), transparent 70%);
   }
   body.whiteboard .layer { line-height: 1.38; text-shadow: 0 0 .6px currentColor; }
+  /* "Note cleared. Undo", shown for a while after Clear note. */
+  #undo {
+    position: absolute; left: 50%; bottom: var(--pad); transform: translateX(-50%); display: flex; align-items: center; gap: 12px;
+    max-width: calc(100% - 16px); box-sizing: border-box; padding: 6px 6px 6px 16px; border-radius: 999px; white-space: nowrap;
+    background: #1f2937; color: #fff; font: 500 clamp(13px, 4.5vmin, 17px) var(--b21-font); box-shadow: 0 2px 10px rgba(0, 0, 0, .3);
+  }
+  #undo[hidden] { display: none; }
+  #undo span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* (in a very small note the words give way to the button) */
+  #undo button { font: inherit; font-weight: 700; border: 0; border-radius: 999px; min-height: 36px; padding: 0 16px; background: #fff; color: #1f2937; cursor: pointer; }
 </style>
 </head>
 <body>
   <div id="view" class="layer" tabindex="0" role="textbox" aria-multiline="true" aria-readonly="true" aria-label="Note (tap to edit)"></div>
   <textarea id="t" class="layer" placeholder="Type a note…" spellcheck="true" aria-label="Note"></textarea>
   <div id="sizer" class="layer" aria-hidden="true"></div>
+  <div id="undo" role="status" hidden><span>Note cleared.</span><button type="button">Undo</button></div>
 <script>
   // Content: { text }
   // Config:  { theme, color, chalk, marker, fit, px }
@@ -229,8 +239,21 @@
     ]);
   }
 
+  // ---- Clear note: the text can be put back for a while (as after Reset and Close all).
+  const undo = document.getElementById('undo');
+  let cleared = '', undoTimer;
+  function offerUndo(text) {
+    cleared = text;
+    undo.hidden = !text;
+    clearTimeout(undoTimer);
+    if (text) undoTimer = setTimeout(offerUndo, 20000, '');
+  }
+  function setText(text) { t.value = text; Board21.save({ text }); renderView(); fitSoon(); setMenu(); }
+  undo.querySelector('button').onclick = () => { const text = cleared; offerUndo(''); if (!t.value) setText(text); };
+
   let menuTimer;
   t.addEventListener('input', () => {
+    offerUndo('');   // typing a new note: the cleared one is not put back over it
     Board21.save({ text: t.value });
     fitSoon();
     clearTimeout(menuTimer);
@@ -249,15 +272,16 @@
       const from = config.fit ? currentPx() : (config.px || currentPx());
       config.px = Math.round(Math.max(MIN_PX, Math.min(MAX_PX, id === 'bigger' ? from * 1.2 : from / 1.2)));
       config.fit = false;
-    } else if (id === 'clear') { t.value = ''; Board21.save({ text: '' }); renderView(); fitSoon(); setMenu(); return; }
+    } else if (id === 'clear') { const text = t.value; setText(''); offerUndo(text); return; }
     Board21.saveConfig(config);
     applyLook(); setMenu();
   });
 
   // Edited in another 21Board tab: update without losing the cursor if we're typing here too.
   Board21.on('data', data => {
-    const text = (data && data.text) || '';
+    const text = readText(data);
     if (text === t.value) return;
+    offerUndo('');
     const focused = document.activeElement === t;
     const s = t.selectionStart, e = t.selectionEnd;
     t.value = text;
@@ -265,9 +289,12 @@
     else renderView();
     fitSoon(); setMenu();
   });
+  // Saved content and settings can come from an imported file, so they are checked before they are used.
+  const readText = data => (data && typeof data.text === 'string' ? data.text : '');
   const readConfig = c => {
     const out = Object.assign({}, DEFAULTS, c || {});
-    if (!c || c.fit === undefined) out.fit = true; // notes saved before auto-fit
+    out.fit = !c || c.fit !== false; // (notes saved before auto-fit have no `fit`)
+    out.px = typeof out.px === 'number' && out.px >= MIN_PX && out.px <= MAX_PX ? out.px : null;
     // Notes saved when Chalkboard and Whiteboard were paper colors.
     if (c && !has(THEMES, c.theme) && has(THEMES, c.color)) { out.theme = c.color; out.color = DEFAULTS.color; }
     if (!has(THEMES, out.theme)) out.theme = 'sticky';
@@ -280,7 +307,7 @@
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitSoon);
 
   Board21.ready().then(ctx => {
-    t.value = (ctx.data && ctx.data.text) || '';
+    t.value = readText(ctx.data);
     linksOn = !ctx.kiosk;
     config = readConfig(ctx.config);
     renderView(); applyLook(); setMenu();

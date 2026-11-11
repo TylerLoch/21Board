@@ -45,8 +45,10 @@
     if (b) set(state.active === b.dataset.c ? null : b.dataset.c);
   });
   Board21.on('menu', id => set(id === 'off' ? null : id));
-  Board21.on('data', d => { state = Object.assign({ active: null }, d || {}); render(); });
-  Board21.ready().then(ctx => { state = Object.assign(state, ctx.data || {}); render(); });
+  // (Saved content can come from an imported file: a lamp is on only if it names one of the three.)
+  const readState = d => ({ active: d && Object.prototype.hasOwnProperty.call(LABELS, d.active) ? d.active : null });
+  Board21.on('data', d => { state = readState(d); render(); });
+  Board21.ready().then(ctx => { state = readState(ctx.data); render(); });
 </script>
 </body>
 </html>

@@ -80,6 +80,9 @@ window (see [Testing a widget](#testing-a-widget)). The `board21-widget` block i
    smartboard.
 7. **One folder, few files.** Prefer a single `index.html` with inline CSS/JS.
 8. **Never change your `id`** after release; saved data is keyed by it.
+9. **Check what you load.** Content and settings (`ctx.data`, `ctx.config`, the `data` and `config`
+   events) can come from a `.21board` file someone imported. Check types and ranges before you use
+   them, and put them on the page as text (`textContent`, `setAttribute`), never as HTML (`innerHTML`).
 
 ---
 

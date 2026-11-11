@@ -40,11 +40,23 @@
   </section>
 <script>
   // Content: { names: [...], left: [...] | null, current }   (names are content, so templates never include them)
+  //   The same name can be in the list more than once (two Emmas are two students); `left` holds the names
+  //   not picked yet in this round, once for each student still to go.
   // Config:  { noRepeats }
   let state = { names: [], left: null, current: null };
   let config = { noRepeats: true };
   let rolling = false;
   const $ = id => document.getElementById(id);
+
+  // `list` without one of each name in `gone`.
+  const without = (list, gone) => { const out = list.slice(); for (const n of gone) { const i = out.indexOf(n); if (i >= 0) out.splice(i, 1); } return out; };
+  // Saved content can come from an imported file, so it is checked before it is used: names are lines of
+  // text, and `left` can only hold names that are in the list.
+  function readState(d) {
+    const texts = v => Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : null;
+    const names = texts(d && d.names) || [], left = texts(d && d.left);
+    return { names, left: left && without(names, without(names, left)), current: d && names.includes(d.current) ? d.current : null };
+  }
 
   const pool = () => config.noRepeats ? (state.left || state.names.slice()) : state.names;
 
@@ -107,26 +119,29 @@
 
   $('go').onclick = pick;
   $('round').onclick = () => { state.left = state.names.slice(); state.current = null; Board21.save(state); render(); };
-  $('done').onclick = () => {
-    const names = Array.from(new Set($('list').value.split('\n').map(s => s.trim()).filter(Boolean)));
-    const changed = names.join('\n') !== state.names.join('\n');
-    state.names = names;
-    if (changed) { state.left = names.slice(); state.current = null; }
+  // The list is saved as it is typed, so it isn't lost if Done is never pressed. Editing it doesn't start the
+  // round again: whoever was picked already stays picked, and new names join the ones still to go.
+  function readList() {
+    const names = $('list').value.split('\n').map(s => s.trim()).filter(Boolean);
+    if (names.join('\n') === state.names.join('\n')) return;
+    const picked = without(state.names, state.left || state.names);
+    state = { names, left: without(names, picked), current: names.includes(state.current) ? state.current : null };
     Board21.save(state);
-    show('pick'); render();
-  };
+  }
+  $('list').oninput = readList;
+  $('done').onclick = () => { readList(); show('pick'); render(); };
 
   Board21.on('menu', id => {
     if (id === 'edit') show('edit', true);
     if (id === 'norepeat') { config.noRepeats = !config.noRepeats; if (config.noRepeats) state.left = state.names.slice(); Board21.saveConfig(config); Board21.save(state); render(); }
     if (id === 'round') $('round').onclick();
   });
-  Board21.on('data', d => { state = Object.assign({ names: [], left: null, current: null }, d || {}); if ($('edit').classList.contains('on')) $('list').value = state.names.join('\n'); render(); });
-  Board21.on('config', c => { config = Object.assign({ noRepeats: true }, c || {}); render(); });
+  Board21.on('data', d => { state = readState(d); if ($('edit').classList.contains('on')) $('list').value = state.names.join('\n'); render(); });
+  Board21.on('config', c => { config = { noRepeats: !c || c.noRepeats !== false }; render(); });
 
   Board21.ready().then(ctx => {
-    state = Object.assign(state, ctx.data || {});
-    config = Object.assign(config, ctx.config || {});
+    state = readState(ctx.data);
+    config = { noRepeats: !ctx.config || ctx.config.noRepeats !== false };
     show(state.names.length ? 'pick' : 'edit');
     render();
   });

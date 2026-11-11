@@ -16,7 +16,7 @@
   #analog .hand { stroke: var(--b21-text); stroke-linecap: round; }
   #analog .second { stroke: var(--b21-danger); }
   #analog .hub { fill: var(--b21-danger); }
-  #digital { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; }
+  #digital { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; padding: 0 3vw; }
   #time { font-size: min(24vw, 62vh); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
   #time small { font-size: .38em; font-weight: 600; color: var(--b21-muted); margin-left: .15em; }
   #date { font-size: min(6vw, 14vh); color: var(--b21-muted); font-weight: 500; }
@@ -44,6 +44,13 @@
   const DEFAULTS = { style: 'analog', hour24: false, seconds: true, date: true };
   let config = Object.assign({}, DEFAULTS);
   const ASPECT = { analog: 1, digital: 2.2, date: 2.2 };
+  // Saved settings can come from an imported file, so they are checked before they are used.
+  const readConfig = c => {
+    const out = {};
+    for (const k in DEFAULTS) out[k] = c && typeof c[k] === typeof DEFAULTS[k] ? c[k] : DEFAULTS[k];
+    if (!Object.prototype.hasOwnProperty.call(ASPECT, out.style)) out.style = DEFAULTS.style;
+    return out;
+  };
 
   const ticks = document.getElementById('ticks');
   let html = '';
@@ -55,10 +62,11 @@
   }
   ticks.innerHTML = html;
 
-  // Long day names (e.g. "воскресенье", "quinta-feira") shrink to fit the window instead of being cut off.
+  // Long day names (e.g. "воскресенье", "quinta-feira") and long times (12:38:52 PM) shrink to fit the window
+  // instead of being cut off.
   function fit(el) {
     el.style.fontSize = '';
-    const box = document.getElementById('dateonly');
+    const box = el.parentNode;
     const avail = box.clientWidth - parseFloat(getComputedStyle(box).paddingLeft) * 2;
     if (el.scrollWidth > avail && avail > 0) el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) * avail / el.scrollWidth * 0.98) + 'px';
   }
@@ -66,7 +74,8 @@
     const el = document.getElementById(id);
     if (el.textContent !== text) { el.textContent = text; fit(el); }
   }
-  addEventListener('resize', () => { if (config.style === 'date') { fit(document.getElementById('weekday')); fit(document.getElementById('fulldate')); } });
+  const fitAll = () => ['weekday', 'fulldate', 'time'].forEach(id => fit(document.getElementById(id)));
+  addEventListener('resize', fitAll);
 
   const rot = (id, deg) => document.getElementById(id).setAttribute('transform', `rotate(${deg} 100 100)`);
 
@@ -87,7 +96,12 @@
       const ampm = config.hour24 ? '' : `<small>${h < 12 ? 'AM' : 'PM'}</small>`;
       const html = `${hh}:${String(m).padStart(2, '0')}${config.seconds ? ':' + String(s).padStart(2, '0') : ''}${ampm}`;
       const t = document.getElementById('time');
-      if (t.dataset.html !== html) { t.innerHTML = html; t.dataset.html = html; }   // only when it changes
+      if (t.dataset.html !== html) {   // only when it changes
+        t.innerHTML = html; t.dataset.html = html;
+        // Fitted again only when the time gets longer or shorter (every digit is as wide as "0"), so it doesn't flicker.
+        const shape = html.replace(/\d/g, '0');
+        if (t.dataset.shape !== shape) { t.dataset.shape = shape; fit(t); }
+      }
       const date = document.getElementById('date');
       date.style.display = config.date ? '' : 'none';
       date.textContent = d.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' });
@@ -97,7 +111,7 @@
   function apply() {
     document.body.classList.toggle('digital', config.style === 'digital');
     document.body.classList.toggle('date', config.style === 'date');
-    Board21.window.setAspectRatio(ASPECT[config.style] || 1);
+    Board21.window.setAspectRatio(ASPECT[config.style]);
     Board21.menu.set([
       { id: 'analog', label: 'Analog', checked: config.style === 'analog' },
       { id: 'digital', label: 'Digital', checked: config.style === 'digital' },
@@ -108,6 +122,7 @@
       { id: 'showdate', label: 'Show date', checked: !!config.date, disabled: config.style !== 'digital' }
     ]);
     render();
+    fitAll();
   }
 
   Board21.on('menu', id => {
@@ -118,10 +133,10 @@
     Board21.saveConfig(config);
     apply();
   });
-  Board21.on('config', c => { config = Object.assign({}, DEFAULTS, c || {}); apply(); });
+  Board21.on('config', c => { config = readConfig(c); apply(); });
 
   Board21.ready().then(ctx => {
-    config = Object.assign({}, DEFAULTS, ctx.config || {});
+    config = readConfig(ctx.config);
     apply();
     setInterval(render, 250);
   });

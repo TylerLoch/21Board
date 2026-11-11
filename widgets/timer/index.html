@@ -34,9 +34,11 @@
   .chips button.on { box-shadow: inset 0 0 0 2px var(--b21-accent); color: var(--b21-accent); }
   @media (max-height: 210px) { .chips { display: none; } }
   @media (max-height: 130px) { .controls { display: none; } }
-  body.done { background: var(--b21-danger); color: #fff; animation: flash 1s steps(2) infinite; }
+  /* Finished: flashes for 10 seconds, then stays red (and doesn't flash at all when the device asks for less motion). */
+  body.done { background: var(--b21-danger); color: #fff; animation: flash 1s steps(2) 10; }
   body.done .bar { visibility: hidden; }
   @keyframes flash { 50% { background: var(--b21-bg); color: var(--b21-danger); } }
+  @media (prefers-reduced-motion: reduce) { body.done { animation: none; } }
   body.done button { background: rgba(255,255,255,.25); color: inherit; }
   body.done .chips button { box-shadow: inset 0 0 0 1.5px currentColor; background: transparent; }
 </style>
@@ -66,6 +68,15 @@
   let state = { duration: 5 * 60000, remaining: 5 * 60000, endsAt: null };
   let config = { sound: 'beep' };
   let finishedAlerted = false;
+  const DAY = 24 * 3600000;
+
+  // Saved content can come from an imported file, so it is checked before it is used: times are numbers of
+  // milliseconds, a day at most.
+  function readState(d) {
+    const ms = (v, or) => typeof v === 'number' && v >= 0 && v <= DAY ? v : or;
+    const duration = ms(d && d.duration, state.duration);
+    return { duration, remaining: ms(d && d.remaining, duration), endsAt: d && typeof d.endsAt === 'number' && d.endsAt - Date.now() <= DAY ? d.endsAt : null };
+  }
 
   const running = () => state.endsAt !== null;
   const left = () => running() ? Math.max(0, state.endsAt - Date.now()) : state.remaining;
@@ -97,6 +108,7 @@
       save();
       alertDone();
     }
+    plan();
     render();
   }
 
@@ -104,7 +116,14 @@
     if (finishedAlerted) return;
     finishedAlerted = true;
     Board21.window.requestAttention();
-    if (soundName() !== 'off' && document.visibilityState === 'visible') playSound(soundName());
+    if (soundName() === 'off' || (alarm && alarm.at <= audio.currentTime + 0.5)) return;   // silent, or ringing already
+    // The alarm wasn't set ahead here (Start was tapped in another copy of 21Board, or before the page was
+    // loaded again), or the sound's clock fell behind: ring now, unless another copy is the one to ring.
+    const ring = () => { if (running() || left() > 0 || !openAudio()) return false; setAlarm(soundName(), audio.currentTime + 0.05); return true; };
+    const ask = () => navigator.locks.request(LOCK(), { ifAvailable: true }, lock => lock && ring() ? new Promise(r => { unlock = r; }) : null).catch(() => {});
+    if (audio || unlock || !navigator.locks) ring();
+    else if (tapped()) ask();
+    else setTimeout(ask, 1500);   // a copy that can't make sound yet lets one that can go first
   }
 
   // Alarm sounds, made with Web Audio (no sound files, so they work offline).
@@ -120,30 +139,93 @@
   const soundName = () => config.sound === true || config.sound === undefined ? 'beep' : config.sound === false ? 'off'
     : (Object.prototype.hasOwnProperty.call(SOUNDS, config.sound) || config.sound === 'off') ? config.sound : 'beep';
 
+  // Puts a sound's notes on `ctx`, to start at its time `when`. Answers { name, at, end, out }: `out` carries
+  // the notes to the speakers (disconnect it to call the sound off).
+  function addNotes(ctx, name, when) {
+    const snd = SOUNDS[name], out = ctx.createGain();
+    let end = 0;
+    for (const [t, f, len, wave, vol] of snd.notes) {
+      const o = ctx.createOscillator(), g = ctx.createGain(), at = when + t;
+      o.type = wave; o.frequency.value = f;
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(vol, at + (snd.slowAttack ? 0.25 : 0.015));
+      g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      o.connect(g).connect(out); o.start(at); o.stop(at + len + 0.05);
+      end = Math.max(end, t + len);
+    }
+    out.connect(ctx.destination);
+    return { name, at: when, end: when + end, out };
+  }
+
+  // Plays a sound now (picking one in the menu).
   function playSound(name) {
-    const snd = SOUNDS[name];
-    if (!snd) return;
+    if (!SOUNDS[name]) return;
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      let end = 0;
-      for (const [t, f, len, wave, vol] of snd.notes) {
-        const o = ctx.createOscillator(), g = ctx.createGain(), at = ctx.currentTime + t;
-        o.type = wave; o.frequency.value = f;
-        g.gain.setValueAtTime(0.0001, at);
-        g.gain.exponentialRampToValueAtTime(vol, at + (snd.slowAttack ? 0.25 : 0.015));
-        g.gain.exponentialRampToValueAtTime(0.0001, at + len);
-        o.connect(g).connect(ctx.destination); o.start(at); o.stop(at + len + 0.05);
-        end = Math.max(end, t + len);
-      }
-      setTimeout(() => ctx.close(), (end + 0.5) * 1000);
+      const snd = addNotes(ctx, name, ctx.currentTime);
+      setTimeout(() => ctx.close(), (snd.end - snd.at + 0.5) * 1000);
     } catch (e) { /* audio unavailable */ }
   }
 
+  // ---- The alarm at the end of the countdown.
+  // Browsers only let a page make sound once it has been tapped, and run its clock late while it is behind
+  // another tab or window. So the tap on Start gets the sound ready and sets the alarm ahead, on the sound's own
+  // clock: it rings on time even while 21Board isn't the tab or window on screen. An alarm that can't sound yet
+  // (the page was loaded again and hasn't been tapped since) rings as soon as 21Board is tapped.
+  // Several copies of 21Board can be open, and only one should ring: the copy with the alarm set holds a lock
+  // (shared by the copies) until its timer is started again or reset, and another copy rings at the end only
+  // if nobody holds it.
+  const LOCK = () => '21Board timer alarm ' + (Board21.context ? Board21.context.instance : '');
+  let audio = null;    // the sound, from the tap on Start until the alarm has rung
+  let alarm = null;    // the alarm that is set: { name, at, end, out } (times on the sound's clock)
+  let unlock = null;   // lets go of the lock
+  const tapped = () => !navigator.userActivation || navigator.userActivation.hasBeenActive;
+
+  function openAudio() {
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      if (audio.state !== 'running') audio.resume().catch(() => {});
+    } catch (e) { audio = null; /* audio unavailable */ }
+    return !!audio;
+  }
+  function setAlarm(name, at) {
+    if (alarm) alarm.out.disconnect();
+    alarm = SOUNDS[name] ? addNotes(audio, name, at) : null;
+  }
+  function closeAudio() {
+    setAlarm(null);
+    if (audio) audio.close().catch(() => {});
+    audio = null;
+  }
+  // The tap on Start, in this copy of 21Board.
+  function arm() {
+    if (!openAudio()) return;
+    // (Taken from whoever has it: Start was tapped here last.)
+    if (!unlock && navigator.locks) navigator.locks.request(LOCK(), { steal: true }, () => audio && new Promise(r => { unlock = r; })).catch(() => {});
+    plan();
+  }
+  // Keeps the alarm set for the moment the countdown ends. Called after every change and on every tick: the
+  // sound's clock stops while the device sleeps, so it can fall behind.
+  function plan() {
+    if (audio) {
+      const now = audio.currentTime, name = soundName();
+      if (audio.state === 'suspended' && navigator.userActivation && navigator.userActivation.hasBeenActive) audio.resume().catch(() => {});
+      if (running() && left() > 0) {
+        if (!alarm || alarm.name !== name || Math.abs(alarm.at - now - left() / 1000) > 0.5) setAlarm(name, now + left() / 1000);
+      } else if (!running()) {
+        if (alarm && (left() > 0 || now > alarm.end)) setAlarm(null);   // paused or reset, or it has rung
+        if (!alarm) closeAudio();
+      }
+    }
+    if (unlock && !audio && (running() || left() > 0 || !state.duration)) { unlock(); unlock = null; }   // (kept while it says Done)
+  }
+  addEventListener('pointerdown', () => { if (audio && audio.state !== 'running') audio.resume().catch(() => {}); }, true);
+
   function setDuration(ms) {
-    ms = Math.max(0, Math.min(ms, 24 * 3600000));
+    ms = Math.max(0, Math.min(ms, DAY));
     finishedAlerted = false;
     state = { duration: ms, remaining: ms, endsAt: null };
-    save(); render();
+    save(); plan(); render();
   }
 
   $('go').onclick = () => {
@@ -153,8 +235,9 @@
       if (state.remaining <= 0) return;
       finishedAlerted = false;
       state = { duration: state.duration, remaining: state.remaining, endsAt: Date.now() + state.remaining };
+      arm();
     }
-    save(); render();
+    save(); plan(); render();
   };
   $('reset').onclick = () => setDuration(state.duration);
   $('plus').onclick = () => adjust(60000);
@@ -170,7 +253,7 @@
       const r = Math.max(0, (state.remaining <= 0 ? state.duration : state.remaining) + delta);
       state = { duration: fresh ? r : Math.max(state.duration + delta, r), remaining: r, endsAt: null };
     }
-    save(); render();
+    save(); plan(); render();
   }
 
   $('chips').innerHTML = PRESETS.map(m => `<button data-min="${m}">${m}m</button>`).join('');
@@ -190,7 +273,7 @@
   Board21.on('menu', id => {
     if (id.startsWith('sound:')) {
       config.sound = id.slice(6);
-      Board21.saveConfig(config); setMenu();
+      Board21.saveConfig(config); setMenu(); plan();
       if (config.sound !== 'off') playSound(config.sound);
     }
     if (id === 'test') playSound(soundName());
@@ -198,15 +281,22 @@
 
   // Another 21Board tab (or an import) changed this timer.
   Board21.on('data', data => {
-    if (data) { state = Object.assign(state, data); if (left() > 0) finishedAlerted = false; }
+    if (data) {
+      const was = running();
+      state = readState(data);
+      if (left() > 0) finishedAlerted = false;
+      if (running() && !was) closeAudio();   // started in the other copy: the alarm is set there
+      else if (was && !running() && left() <= 0 && state.duration > 0) alertDone();   // the other copy saw it end first
+      plan();
+    }
     render();
   });
-  Board21.on('config', c => { config = Object.assign({ sound: 'beep' }, c || {}); setMenu(); });
+  Board21.on('config', c => { config = { sound: c ? c.sound : 'beep' }; setMenu(); plan(); });
 
   Board21.ready().then(ctx => {
-    if (ctx.data) state = Object.assign(state, ctx.data);
-    if (ctx.config) config = Object.assign(config, ctx.config);
-    if (!running() && state.remaining <= 0 && state.duration > 0) finishedAlerted = true; // finished while closed
+    if (ctx.data) state = readState(ctx.data);
+    if (ctx.config) config = { sound: ctx.config.sound };
+    if (left() <= 0 && state.duration > 0) finishedAlerted = true; // finished while closed
     setMenu();
     render();
     setInterval(tick, 200);

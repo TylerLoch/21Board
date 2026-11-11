@@ -114,10 +114,12 @@
     Board21.saveConfig(config);
     setMenu(); render();
   });
-  Board21.on('config', c => { config = Object.assign({ weekStart: 0 }, c || {}); setMenu(); render(); });
+  // (Saved settings can come from an imported file: the week starts on Monday only if they say exactly that.)
+  const readConfig = c => ({ weekStart: c && c.weekStart === 1 ? 1 : 0 });
+  Board21.on('config', c => { config = readConfig(c); setMenu(); render(); });
 
   Board21.ready().then(ctx => {
-    config = Object.assign(config, ctx.config || {});
+    config = readConfig(ctx.config);
     setMenu(); render();
     // Keep "today" right if the board stays open past midnight.
     let day = new Date();

@@ -76,7 +76,7 @@
     Board21.on(ev, (...args) => log(`event ${ev} ${args.map(a => j(a && a.accent ? '…palette' : a)).join(' ')}`, 'ev')));
 
   Board21.ready().then(ctx => {
-    counter = (ctx.data && ctx.data.counter) || 0;
+    counter = ctx.data && Number.isFinite(ctx.data.counter) ? ctx.data.counter : 0;
     document.getElementById('who').textContent = `${ctx.widgetId} #${ctx.instance}${ctx.standalone ? ' (standalone)' : ''}`;
     log('ready: ' + j({ widgetId: ctx.widgetId, instance: ctx.instance, theme: ctx.theme, data: ctx.data, config: ctx.config, window: ctx.window }));
   });

@@ -1231,6 +1231,32 @@ const SUITES = [
     ok(wd.left >= -1 && wd.right <= wd.vw + 1, `long weekday name fits the clock (${wd.text})`);
     await ctx.close();
 
+    // Digital clock with seconds: the whole time shows at 10, 11 and 12 o'clock, whatever the window's size.
+    ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.clock.setFixedTime(new Date('2026-11-09T09:05:13'));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    await page.evaluate(() => window.__board21.openWidget('clock'));
+    const dig = page.frameLocator('.win[data-ikey="clock:1"] iframe');
+    await dig.locator('#analog').waitFor();
+    await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="digital"]');
+    const timeBox = () => dig.locator('#time').evaluate(el => { const r = el.getBoundingClientRect(); return { text: el.textContent, vw: innerWidth, fits: r.width > 0 && r.left >= 0 && r.right <= innerWidth }; });
+    const cut = [];
+    for (const [iso, text] of [['2026-11-09T10:05:13', '10:05:13AM'], ['2026-11-09T11:38:52', '11:38:52AM'], ['2026-11-09T12:59:59', '12:59:59PM']]) {
+      await page.clock.setFixedTime(new Date(iso));
+      if (!await eventually(async () => (await timeBox()).text === text, 3000)) cut.push(text + ' is not shown');
+      for (const rect of [{ x: 20, y: 20, w: 200, h: 120 }, { x: 20, y: 20, w: 620, h: 300 }, { x: 20, y: 20, w: 420, h: 560 }, null]) {
+        const was = (await timeBox()).vw;
+        if (rect) await page.evaluate(r => window.__board21.setRect('clock:1', r), rect);
+        else await dig.locator('html').evaluate(() => Board21.window.maximize());
+        await eventually(async () => (await timeBox()).vw !== was, 2000);
+        if (!await eventually(async () => (await timeBox()).fits, 1500)) cut.push(text + (rect ? ` in a ${rect.w}×${rect.h} window` : ' filling the board'));
+      }
+      await dig.locator('html').evaluate(() => Board21.window.restore());
+    }
+    ok(cut.length === 0, `the digital clock with seconds fits at 10, 11 and 12 o’clock, small, large and filling the board${cut.length ? ' (cut off: ' + cut.join('; ') + ')' : ''}`);
+    await ctx.close();
+
     // Accent: crafted names are rejected; dark-theme buttons get dark text on the light accent.
     ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
     page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
@@ -1280,8 +1306,89 @@ const SUITES = [
     await page.evaluate(() => { const s = window.__board21.state; s.wins.get('timer:1').post('data', { data: { duration: 60000, remaining: 60000, endsAt: Date.now() + 300 }, reason: 'remote' }); });
     await page.waitForTimeout(1200);
     ok(await timer.locator('html').evaluate(() => window.__notes) === 2, 'when the timer ends it plays the chosen sound');
+    // A finished timer flashes for a short while, then stays red; with "reduce motion" on it never flashes.
+    const doneLook = () => timer.locator('body').evaluate(b => { const c = getComputedStyle(b); return { done: b.classList.contains('done'), anim: c.animationName, secs: parseFloat(c.animationDuration) * +c.animationIterationCount, bg: c.backgroundColor }; });
+    let fl = await doneLook();
+    ok(fl.done && fl.anim === 'flash' && fl.secs <= 15, `a finished timer flashes for a short while, not for ever (${fl.secs} s)`);
+    await timer.locator('body').evaluate(() => document.getAnimations().forEach(a => a.finish()));
+    fl = await doneLook();
+    ok(fl.bg === 'rgb(220, 38, 38)' && await page.locator('.win[data-ikey="timer:1"] .win-label .sub').textContent() === 'Done!', 'then it stays red and says Done!');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    fl = await doneLook();
+    ok(fl.done && fl.anim === 'none' && fl.bg === 'rgb(220, 38, 38)', 'with “reduce motion” on, a finished timer is steady red and never flashes');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+
+    // ---- The alarm when 21Board isn't the tab or window on screen, and with several copies open.
+    // Every AudioContext a page makes is noted: its state when made and since, and how far ahead each note was set.
+    const SPY = () => {
+      const Real = window.AudioContext;
+      window.__audio = [];
+      window.AudioContext = function () {
+        const c = new Real(), rec = { ctx: c, states: [c.state], ahead: [] };
+        window.__audio.push(rec);
+        console.log('audio made ' + c.state);
+        c.addEventListener('statechange', () => { rec.states.push(c.state); console.log('audio ' + c.state); });
+        const mk = c.createOscillator.bind(c);
+        c.createOscillator = () => { const o = mk(), start = o.start.bind(o); o.start = at => { rec.ahead.push(Math.round((at - c.currentTime) * 10) / 10); return start(at); }; return o; };
+        return c;
+      };
+      // (This headless browser never hides a page, so a test says when the timer's page is behind another tab.)
+      Object.defineProperty(document, 'visibilityState', { get: () => (window.__hidden ? 'hidden' : 'visible') });
+    };
+    const ctx2 = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    await ctx2.addInitScript(SPY);
+    const A = await ctx2.newPage(); A.on('pageerror', e => errors.push(e.message));
+    await A.goto(BASE); await boardUp(A); await freeBoard(A);
+    await A.evaluate(() => window.__board21.openWidget('timer'));
+    const tA = A.frameLocator('.win[data-ikey="timer:1"] iframe');
+    await tA.locator('#chips button[data-min="1"]').click();
+    const audio = f => f.locator('html').evaluate(() => (window.__audio || []).map(r => ({ state: r.ctx.state, ahead: r.ahead })));
+    const ends = (page, ms) => page.evaluate(ms => window.__board21.state.wins.get('timer:1').post('data', { data: { duration: 60000, remaining: 60000, endsAt: Date.now() + ms }, reason: 'remote' }), ms);
+    ok((await audio(tA)).length === 0, 'no sound is prepared before Start');
+    await tA.locator('#go').click();
+    let au = await audio(tA);
+    ok(au.length === 1 && au[0].state === 'running' && au[0].ahead.length === 3 && au[0].ahead[0] > 59 && au[0].ahead[0] <= 60, `tapping Start gets the sound ready and sets the alarm for the end of the countdown (notes ${au[0] && au[0].ahead.join(', ')} s ahead)`);
+    await tA.locator('#go').click();   // Pause
+    ok(await eventually(async () => (await audio(tA))[0].state === 'closed', 3000), 'pausing calls the alarm off');
+    await tA.locator('#go').click();   // Start again
+    // A second copy of the board, and the first one goes behind another tab; the countdown ends 1.5 s from now.
+    const B = await ctx2.newPage(); B.on('pageerror', e => errors.push(e.message));
+    await B.goto(BASE); await boardUp(B);
+    const tB = B.frameLocator('.win[data-ikey="timer:1"] iframe');
+    await tB.locator('#go').waitFor();
+    await tA.locator('html').evaluate(() => { window.__hidden = true; });
+    await ends(A, 1500); await ends(B, 1500);
+    ok(await eventually(async () => await tA.locator('body.done').count() === 1 && (await audio(tA))[1].state === 'closed'), 'the countdown ends while 21Board is behind another tab');
+    au = await audio(tA);
+    ok(au.length === 2 && au[1].ahead.length === 6 && au[1].ahead[3] > 0.8 && au[1].ahead[3] <= 1.5, `its alarm had been set ahead for that moment, and rang once (notes ${au[1].ahead.slice(3).join(', ')} s ahead)`);
+    ok((await audio(tB)).length === 0 && await tB.locator('body.done').count() === 1, 'the other copy shows Done! too, and leaves the ringing to the copy where Start was tapped');
+    await ctx2.close();
+
+    // The page was loaded again while the timer ran, and nobody has tapped it since: the browser lets it make
+    // no sound, so the alarm rings at the first tap.
+    const ctx3 = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    await ctx3.addInitScript(SPY);
+    const C = await ctx3.newPage(); C.on('pageerror', e => errors.push(e.message));
+    const said = [], hear = text => new Promise(res => { const look = () => (said.includes(text) ? res(true) : setTimeout(look, 100)); look(); setTimeout(() => res(false), 15000); });
+    C.on('console', m => said.push(m.text()));
+    await C.goto(BASE); await boardUp(C); await freeBoard(C);
+    await C.evaluate(() => window.__board21.openWidget('timer'));
+    const tC = C.frameLocator('.win[data-ikey="timer:1"] iframe');
+    await tC.locator('#chips button[data-min="1"]').click();
+    await tC.locator('html').evaluate(() => Board21.save({ duration: 60000, remaining: 60000, endsAt: Date.now() + 5000 }));
+    said.length = 0;
+    await C.reload();   // (from here on the test only listens, until its tap: looking into the page would count as a tap)
+    const made = await hear('audio made suspended');
+    await new Promise(r => setTimeout(r, 500));
+    ok(made && !said.includes('audio running'), 'after the page is loaded again, the alarm can’t sound until the page is tapped');
+    await C.mouse.click(900, 600);   // anywhere on the board
+    ok(await hear('audio running'), 'and it rings at the first tap');
+    au = await audio(C.frameLocator('.win[data-ikey="timer:1"] iframe'));
+    ok(au.length === 1 && au[0].ahead.length === 3, `once (${au.length} alarm of ${au[0] && au[0].ahead.length} notes)`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx3.close();
   }],
   ['Dice roll and Reset icon', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
@@ -1308,6 +1415,74 @@ const SUITES = [
     await page.click('.win[data-ikey="dice:1"] .win-label'); await page.waitForTimeout(200);
     ok(await page.locator('#menu [data-act="reset"] svg path[fill="currentColor"]').count() === 1, 'Reset icon has a solid arrowhead');
     await page.keyboard.press('Escape');
+    await page2.close();
+
+    // A file made on purpose (imported from "a colleague", or put in a shared folder): what it says the widgets
+    // saved is never turned into markup, and no script in it runs.
+    const evil = '"><img src=x onerror="top.document.title=\'PWNED\'"><svg onload="top.document.title=\'PWNED\'">';
+    const win = (widgetId, i, data, config, instance = 1) => ({ widgetId, instance, open: true, z: i + 1, rect: { x: 20 + (i % 4) * 290, y: 20 + Math.floor(i / 4) * 330, w: 280, h: 300 }, data, config });
+    const crafted = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Math games' }, instances: [
+      win('dice', 0, { values: [evil, 3] }, null),
+      win('dice', 7, { values: ['<b>6</b>', 7, { toString: 1 }, 4, 5, 6, 1, 2] }, { count: evil, showTotal: evil }, 2),
+      win('name-picker', 1, { names: [evil, 'Ana', 5, null, ['x']], left: [evil, 'Zed', 7], current: evil }, { noRepeats: evil }),
+      win('notes', 2, { text: evil }, { theme: evil, color: evil, chalk: evil, px: evil, fit: evil }),
+      win('timer', 3, { duration: evil, remaining: evil, endsAt: evil }, { sound: evil }),
+      win('clock', 4, null, { style: 'digital', hour24: evil, seconds: evil, date: evil }),
+      win('calendar', 5, null, { weekStart: evil }),
+      win('traffic-light', 6, { active: evil }, null)
+    ] };
+    fs.writeFileSync(OUT + 'crafted.21board', JSON.stringify(crafted));
+    await page.setInputFiles('#import-input', OUT + 'crafted.21board'); await page.waitForTimeout(300);
+    await page.click('#modal .btn[data-i="0"]');   // Replace my board
+    const inFrame = (id, fn) => page.frameLocator(`.win[data-ikey="${id.includes(':') ? id : id + ':1'}"] iframe`).locator('html').evaluate(fn);
+    const ids = crafted.instances.map(i => i.widgetId + ':' + i.instance);
+    ok(await eventually(async () => (await Promise.all(ids.map(id => inFrame(id, () => !!(window.Board21 && Board21.context))))).every(Boolean)), 'a crafted file opens: all its windows start');
+    await page.waitForTimeout(700);
+    const marks = await Promise.all(ids.map(id => inFrame(id, () => document.querySelectorAll('img, [onerror], [onload], b').length)));
+    ok(await page.title() !== 'PWNED' && marks.every(n => n === 0), `nothing in the file runs as script or becomes markup in any widget (page title: ${await page.title()}; elements made: ${marks.join(',')})`);
+    a = await look(dice); b = await look(page.frameLocator('.win[data-ikey="dice:2"] iframe'));
+    ok(a.n === 2 && a.labels === '1,3' && await inFrame('dice', () => document.getElementById('total').textContent) === '= 4', `Dice shows ordinary dice: only whole numbers 1 to 6 count as rolled (${a.labels})`);
+    ok(b.n === 2 && b.labels === '1,2', `and the number of dice is 1 to 6, or the usual 2 (${b.labels})`);
+    const shown = await Promise.all([
+      inFrame('name-picker', () => [document.getElementById('name').textContent, document.getElementById('name').children.length, document.getElementById('status').textContent].join(' | ')),
+      inFrame('notes', () => document.getElementById('view').textContent),
+      inFrame('timer', () => document.getElementById('display').textContent),
+      inFrame('clock', () => document.getElementById('time').textContent),
+      inFrame('calendar', () => document.querySelectorAll('.dow')[0].textContent),
+      inFrame('traffic-light', () => document.querySelectorAll('.lamp.on').length)
+    ]);
+    ok(shown[0] === evil + ' | 0 | 1 of 2 left' && shown[1] === evil, 'Name Picker and Notes show such text as plain text (a name is whatever was typed)');
+    ok(shown[2] === '05:00' && /^\d\d?:\d\d:\d\d[AP]M$/.test(shown[3]) && /^Sun/.test(shown[4]) && shown[5] === 0, `Timer, Clock, Calendar and Traffic Light fall back to their usual settings (${shown.slice(2).join(', ')})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Name Picker: two students with one name, typing is kept, adding a name', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(500); await freeBoard(page);
+    await page.evaluate(() => window.__board21.openWidget('name-picker')); await page.waitForTimeout(1000);
+    let np = page.frameLocator('.win[data-ikey="name-picker:1"] iframe');
+    const saved = () => page.evaluate(() => window.__board21.state.data.get('name-picker:1') || null);
+    await np.locator('#list').fill('Emma\nLiam\nEmma');
+    ok(await eventually(async () => ((await saved()) || { names: [] }).names.join() === 'Emma,Liam,Emma'), 'the list is saved as it is typed, both Emmas in it, without pressing Done');
+    await page.waitForTimeout(300); await page.reload(); await boardUp(page);
+    np = page.frameLocator('.win[data-ikey="name-picker:1"] iframe');
+    ok(await eventually(async () => await np.locator('#status').textContent() === '3 of 3 left'), 'after the page is loaded again the list is still there (3 of 3 left)');
+    // No repeats: a pick takes one student out; adding a name later keeps who was picked.
+    const pick = async left => { await np.locator('#go').click(); await eventually(async () => (await saved()).left.length === left, 3000); return (await saved()).current; };
+    const first = await pick(2);
+    ok((await saved()).left.length === 2, `a pick takes one student out of the round (${first})`);
+    await page.click('.win[data-ikey="name-picker:1"] .win-label'); await page.click('#menu [data-id="edit"]');
+    await np.locator('#list').fill('Emma\nLiam\nEmma\nNoah');
+    await np.locator('#done').click();
+    let st = await saved();
+    ok(st.names.length === 4 && st.left.length === 3 && st.left.includes('Noah') && st.current === first, `adding a name doesn’t start the round again (${st.left.length} of 4 left, ${first} stays picked)`);
+    // Everyone is picked once, each Emma too.
+    const picks = [first];
+    for (let left = 2; left >= 0; left--) picks.push(await pick(left));
+    ok(picks.slice().sort().join() === 'Emma,Emma,Liam,Noah', `in a round every student is picked once, both Emmas too (${picks.join(', ')})`);
+    ok(await eventually(async () => await np.locator('#status').textContent() === '0 of 4 left'), 'and the count shows the whole class (0 of 4 left)');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -1686,6 +1861,21 @@ const SUITES = [
     ok((await page.evaluate(() => window.__board21.state.conf.get('notes:1'))).fit === true, '"Fit text to the note" turns fitting back on');
     await page.evaluate(() => window.__board21.state.wins.get('notes:1').post('config', { config: { color: 'pink', size: 3 } })); await page.waitForTimeout(400);
     ok(!(await info()).overflowY, 'a note saved before this update fits its text automatically');
+    // Clear note can be undone, from a bar inside the note.
+    const agenda = 'Morning work:\n1. Read chapter 4\n2. Math page 31';
+    const savedNote = () => page.evaluate(() => (window.__board21.state.data.get('notes:1') || {}).text);
+    const clearNote = async () => { await page.mouse.click(1000, 700); await page.waitForTimeout(500); await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="clear"]'); };
+    await f.locator('#view').click({ position: { x: 4, y: 4 } }); await f.locator('#t').fill(agenda);   // (in the margin: the note has links in it)
+    await clearNote();
+    ok(await eventually(async () => await savedNote() === '') && await f.locator('#undo').isVisible() && await f.locator('#undo').textContent() === 'Note cleared.Undo', 'Clear note empties the note and offers Undo inside it');
+    await page.evaluate(() => window.__board21.setRect('notes:1', { x: 60, y: 60, w: 180, h: 120 }));   // the smallest a note can be
+    ok(await eventually(() => f.locator('#undo button').evaluate(b => { const r = b.getBoundingClientRect(); return innerWidth < 200 && r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight; }), 3000), 'the Undo button fits in the smallest note');
+    await f.locator('#undo button').click();
+    ok(await eventually(async () => await savedNote() === agenda) && await f.locator('#view').textContent() === agenda && await f.locator('#undo').isHidden(), 'Undo puts the note back, and the bar goes away');
+    await page.evaluate(() => window.__board21.setRect('notes:1', { x: 60, y: 60, w: 420, h: 340 }));
+    await clearNote();
+    await f.locator('#view').click({ position: { x: 4, y: 4 } }); await f.locator('#t').pressSequentially('New');
+    ok(await eventually(async () => await savedNote() === 'New') && await f.locator('#undo').isHidden(), 'typing a new note after Clear note takes the Undo away (the old note is not put back over the new one)');
     // The chalk font is part of the offline cache.
     ok(await page.evaluate(() => window.BOARD21_WIDGETS.find(a => a.id === 'notes').files.includes('widgets/notes/fonts/CrayonLibre-21Board.woff2') && window.BOARD21_WIDGETS.find(a => a.id === 'notes').files.includes('widgets/notes/fonts/Excalifont-Regular.woff2')), 'the chalk and marker fonts are listed for offline use');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));

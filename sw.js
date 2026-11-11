@@ -14,11 +14,11 @@
 const VERSION = '2026.11.10-30';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '4a543aab';
+const BUILD = 'adea449e';
 const FILES = {
-  './': '03f70036804d5203',
-  'index.html': '03f70036804d5203',
-  'board.js': '04571e2976392337',
+  './': 'a2d4f60673cc0eee',
+  'index.html': 'a2d4f60673cc0eee',
+  'board.js': 'd6b4a1b3d6ca3271',
   'sdk/board21.js': '3ec0b3970329642d',
   'sdk/board21-dev.js': '492a193221911878',
   'sdk/dev/board-shell.js': '8a22a3c30b485c6e',
@@ -30,18 +30,18 @@ const FILES = {
   'icons/icon-512.png': 'f36bcfa6f75f9518',
   'icons/icon-maskable-512.png': 'f657800c74fa000f',
   'icons/apple-touch-icon.png': '40c6305b7794812a',
-  'widgets/timer/index.html': '964893c44ba4c60b',
-  'widgets/calendar/index.html': '56e1d403a0c343e0',
-  'widgets/clock/index.html': 'abb749c6c6d67c3c',
-  'widgets/notes/index.html': '4e164b401637ecd5',
+  'widgets/timer/index.html': '519a447651242d8e',
+  'widgets/calendar/index.html': '7b3d6a2ac35e8999',
+  'widgets/clock/index.html': '21a98aa1d345b489',
+  'widgets/notes/index.html': 'c906b2da71b6f6d4',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': '5655767818633849',
-  'widgets/dice/index.html': '34939aea1f6c7f45',
-  'widgets/traffic-light/index.html': '5fcf0d01a1519cef',
-  'widgets/sdk-playground/index.html': 'b2f632fc184c3324'
+  'widgets/name-picker/index.html': '87f7e6f273c95a4e',
+  'widgets/dice/index.html': '868bf3c637359718',
+  'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
+  'widgets/sdk-playground/index.html': '9d5615e8b0f6f313'
 };
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION + '-' + BUILD;
