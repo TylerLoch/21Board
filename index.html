@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="7519a130">
+<html lang="en" data-build="c61d8c2e">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -258,16 +258,17 @@
     .picker-btn.active { background: var(--active-bg); color: var(--primary); box-shadow: none; border-color: transparent; backdrop-filter: none; }
     .picker-btn[hidden] { display: none; }
     .picker-btn .dot, .ctl .dot { position: absolute; top: 7px; right: 7px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid var(--surface); }
-    /* "Not saved" (SaveNote in board.js): stays above the Widget Picker button while the board isn't stored. */
-    .save-note, .save-note:hover {
+    /* "Not saved" (SaveNote in board.js): stays above the Widget Picker button while the board isn't stored.
+       "Reconnect folder" and the like (FolderNote): the same, while the linked Google Drive folder can't be used. */
+    .save-note, .save-note:hover, .folder-note, .folder-note:hover {
       position: fixed; z-index: 999; bottom: calc(86px + env(safe-area-inset-bottom)); height: 40px; padding: 0 14px 0 12px;   /* (an open panel or Settings covers it) */
       border-radius: 20px; font-size: 14px; font-weight: 600; white-space: nowrap;
       background: #fef3c7; color: #92400e; border: 1px solid #f59e0b; box-shadow: var(--shadow);
     }
-    body.dark .save-note, body.dark .save-note:hover { background: #3b2a06; color: #fcd34d; border-color: #b45309; }
-    .save-note.left { left: calc(16px + env(safe-area-inset-left)); }
-    .save-note.right { right: calc(16px + env(safe-area-inset-right)); }
-    .save-note[hidden] { display: none; }
+    body.dark .save-note, body.dark .save-note:hover, body.dark .folder-note, body.dark .folder-note:hover { background: #3b2a06; color: #fcd34d; border-color: #b45309; }
+    .save-note.left, .folder-note.left { left: calc(16px + env(safe-area-inset-left)); }
+    .save-note.right, .folder-note.right { right: calc(16px + env(safe-area-inset-right)); }
+    .save-note[hidden], .folder-note[hidden] { display: none; }
 
     .panel {
       position: fixed; bottom: calc(4px + env(safe-area-inset-bottom)); z-index: 1000;
@@ -444,7 +445,7 @@
     }
 
     /* Board chrome is drawn at the board's scale (Settings → Size of windows and menus; board.js sets --ui). */
-    .picker-btn, .save-note, .panel, .menu, .sheet, #toasts, .modal-card, #shape-hint { zoom: var(--ui, 1); }
+    .picker-btn, .save-note, .folder-note, .panel, .menu, .sheet, #toasts, .modal-card, #shape-hint { zoom: var(--ui, 1); }
     .sheet { top: calc(16px / var(--ui, 1)); }
 
     /* A note in the shaded margin when the 16:9 board leaves much of the window unused. */

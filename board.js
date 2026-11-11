@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.10-30';
-  const BOARD_BUILD = '7519a130';
+  const BOARD_BUILD = 'c61d8c2e';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2696,7 +2696,7 @@
   }
 
   // Settings → Google Drive folder (section 13b).
-  function linkSettings(sw) {
+  function linkSettings(sw, seg) {
     const L = Link;
     if (!L.dir) {
       return `<h3>Google Drive folder</h3>
@@ -2704,22 +2704,30 @@
           <button class="btn primary" data-act="link-choose">${svg('send')}Choose folder…</button></div>`;
     }
     const dev = L.device(), uid = S.board.uid, rec = L.boardRec(uid) || {};
-    const status = [rec.sentAt ? `Sent from here ${when(rec.sentAt)}.` : '', rec.loadedSentAt ? `Loaded the version from ${rec.loadedFrom || 'another device'} sent ${when(rec.loadedSentAt)}.` : ''].filter(Boolean).join(' ') || 'Not sent from here yet.';
-    const others = L.found.filter(f => f.kind === 'full' && f.uid !== uid);
+    // What is wrong, if anything (as the note on the board says), then how things stand: the last send and
+    // load, the last look at the folder, and a send that didn't work.
+    const prob = L.problem(), info = FolderNote.info(), late = L.arriving(uid);
+    const fix = { allow: ['link-reconnect', 'Allow…'], missing: ['link-check', 'Look again'], send: ['link-send', 'Try again'] }[prob];
+    const warn = info ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(info.title)}</div><div class="hint">${esc(info.text)}</div></div><button class="btn small primary" data-act="${fix[0]}">${fix[1]}</button></div>` : '';
+    const status = ([rec.sentAt ? `Sent from here ${when(rec.sentAt)}.` : '', rec.loadedSentAt ? `Loaded the version from ${rec.loadedFrom || 'another device'} sent ${when(rec.loadedSentAt)}.` : ''].filter(Boolean).join(' ') || 'Not sent from here yet.') +
+      (L.failed && prob !== 'send' ? ` Couldn’t send ${when(L.failed.at)}: ${LINK_SAY[L.failed.code][0]}.` : '') + (L.checkedAt && !prob ? ` Folder checked ${when(L.checkedAt)}.` : '');
     const mine = L.found.find(f => f.name === rec.file && f.uid === uid) || L.found.find(f => f.uid === uid && f.vid);
-    const perm = L.perm === 'granted' ? '' : `<div class="row"><div><div class="lbl">Allow 21Board to use the folder</div><div class="hint">Chrome asks again after a restart unless 21Board is installed (or you chose “Allow on every visit”).</div></div><button class="btn primary" data-act="link-reconnect">Allow…</button></div>`;
+    // (Another file of this board is listed too: Drive can leave two, and each may hold a version.)
+    const others = L.found.filter(f => f.kind === 'full' && f !== mine && (f.uid !== uid || f.vid));
+    const auto = !L.st.auto ? 'off' : L.st.calm ? 'calm' : 'now';
     return `<h3>Google Drive folder</h3>
+      ${warn}
       <div class="row"><div><div class="lbl">Folder: ${esc(L.dir.name)}</div><div class="hint">${esc(status)}${L.offer ? ` <b>A newer version from ${esc(L.offer.from || 'another device')} is waiting.</b>` : ''}</div></div>
         <div style="display:flex;gap:6px;flex:0 0 auto"><button class="btn small" data-act="link-choose">Change…</button><button class="btn small" data-act="link-unlink">Unlink</button></div></div>
-      ${perm}
-      <div class="row"><div><div class="lbl">Send this board</div><div class="hint">${mine ? `In the folder as “${esc(mine.name)}”.` : 'Saves it into the folder for your other devices.'}</div></div>
+      <div class="row"><div><div class="lbl">Send this board</div><div class="hint">${mine ? `In the folder as “${esc(mine.name)}”.` : 'Saves it into the folder for your other devices.'}${late ? ` Waiting for Google Drive: “${esc(late.name)}” is still arriving.` : ''}</div></div>
         <div style="display:flex;gap:6px;flex:0 0 auto">${L.offer ? '<button class="btn small" data-act="link-load-offer">Load newer</button>' : ''}<button class="btn small primary" data-act="link-send">${svg('send')}Send</button></div></div>
-      <div class="row"><div><div class="lbl">Send automatically</div><div class="hint">A few seconds after each change, while 21Board is open.</div></div>${sw('link-auto', L.st.auto, 'Send automatically')}</div>
-      <div class="row"><div><div class="lbl">Include the background photo</div><div class="hint">Off: each device keeps its own photo (a received board without one keeps this device's).</div></div>${sw('link-photo', L.st.photo, 'Include the background photo')}</div>
+      <div class="row stack"><div><div class="lbl">Send automatically</div><div class="hint">After each change: a few seconds later, best where you prepare your boards. When left alone: once the board hasn’t changed for 10 minutes, best on the smartboard, so that taps in class (dice, timers) don’t each make a version for your laptop to load.</div></div>
+        ${seg('link-auto', auto, [['off', 'Off'], ['now', 'After each change'], ['calm', 'When left alone']])}</div>
+      <div class="row"><div><div class="lbl">Include the background photo</div><div class="hint">On: the photo goes with the board, and so does removing it. Off: this device sends no photo, and your other devices keep theirs.</div></div>${sw('link-photo', L.st.photo, 'Include the background photo')}</div>
       <div class="row stack"><label class="lbl" for="set-link-label">This device's name <span class="hint">(shown on your other devices: “updated on …”)</span></label>
         <input type="text" class="text-input" id="set-link-label" maxlength="40" value="${esc(dev.label)}" autocomplete="off"></div>
       <div class="row stack"><div><div class="lbl">Other boards in the folder</div><div class="hint">Load one to show it on this device (it replaces this board). After that, this device offers its newer versions.</div></div>
-        <div class="inst-list">${others.length ? others.map(f => `<div class="inst"><span class="widget-icon" style="--c:var(--primary)">${svg('send')}</span><div class="meta"><b>${esc(f.title)}</b><span>From ${esc(f.from || 'another device')} ${esc(when(f.sentAt))}</span></div><button class="btn small" data-act="link-load" data-val="${esc(f.name)}">Load</button></div>`).join('') : `<div class="empty-note">${L.perm === 'granted' ? 'None yet.' : 'Allow 21Board to use the folder to see them.'}</div>`}</div>
+        <div class="inst-list">${others.length ? others.map(f => `<div class="inst"><span class="widget-icon" style="--c:var(--primary)">${svg('send')}</span><div class="meta"><b>${esc(f.title)}</b><span>From ${esc(f.from || 'another device')} ${esc(when(f.sentAt))}${f.uid === uid ? ' · another file of this board' : ''}</span></div><button class="btn small" data-act="link-load" data-val="${esc(f.name)}">Load</button></div>`).join('') : `<div class="empty-note">${L.perm === 'granted' ? 'None yet.' : 'Allow 21Board to use the folder to see them.'}</div>`}</div>
         <div><button class="btn small" data-act="link-check">Check the folder now</button></div></div>`;
   }
 
@@ -2884,7 +2892,7 @@
         <div class="row stack"><div><div class="lbl">${note ? 'Widget windows' : 'Saved widget windows'}</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
           <div class="inst-list">${instHTML}</div></div>
 
-        ${Link.supported ? linkSettings(sw) : ''}
+        ${Link.supported ? linkSettings(sw, seg) : ''}
 
         ${LAB ? `<h3>Widget test mode</h3>
         <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : `<h3>Storage &amp; offline</h3>
@@ -2988,7 +2996,7 @@
         case 'photo-on': BoardPhoto.update({ on: !(BoardPhoto.settings() || {}).on }); this.render(); break;
         case 'photo-fit': BoardPhoto.update({ fit: val }); this.render(); break;
         case 'photo-remove': {
-          const yes = await dialog({ title: 'Remove the background photo?', message: 'It is removed from this board on this device. Your full backups' + (BoardHistory.enabled() ? ' and board history' : '') + ' still have it.', actions: [{ label: 'Remove photo', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+          const yes = await dialog({ title: 'Remove the background photo?', message: 'It is removed from this board on this device' + (Link.dir && Link.st.photo ? ', and on your other devices when they load the next version you send' : '') + '. Your full backups' + (BoardHistory.enabled() ? ' and board history' : '') + ' still have it.', actions: [{ label: 'Remove photo', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
           if (yes) {
             const m = BoardPhoto.media(), look = BoardPhoto.settings();
             await BoardPhoto.remove(); this.render();
@@ -3046,7 +3054,7 @@
         case 'link-reconnect': await Link.reconnect(); this.render(); break;
         case 'link-send': await Link.send(); this.render(); break;
         case 'link-check': if (await Link.ensurePerm()) await Link.check(true); this.render(); break;
-        case 'link-auto': Link.saveState({ auto: !Link.st.auto }); if (Link.st.auto) Link.changed([Keys.board(S.boardId)]); break;
+        case 'link-auto': Link.saveState({ auto: val !== 'off', calm: val === 'calm' }); if (Link.st.auto) Link.changed([Keys.board(S.boardId)]); break;   // (the wait starts again)
         case 'link-photo': Link.saveState({ photo: !Link.st.photo }); break;
         case 'link-load': await Link.load(val); this.render(); break;
         case 'link-load-offer': if (Link.offer) await Link.load(Link.offer.name); this.render(); break;
@@ -3273,8 +3281,20 @@
         return validPhoto(m) ? { data: m.data, w: +m.w, h: +m.h, bytes: +m.bytes || 0, name: String(m.name || 'Photo').slice(0, 80), addedAt: +m.addedAt || Date.now() } : null;
       })(),
       photoLook: j.media && j.media.background ? normalizePhotoSettings(j.media.look || {}) : null,
+      // A file sent to a shared folder says so when its board has no photo ("background": null): loading it
+      // takes the photo off here too. (No "media" at all: the file says nothing, and this device's photo stays.)
+      noPhoto: j.kind !== 'template' && !!j.media && j.media.background === null,
       instances
     };
+  }
+
+  // Which board a file opened with "Replace my board" is, from then on (its uid). This board: its own backup,
+  // or a file that doesn't say which board it is (a template, an old backup) and keeps this board's name. The
+  // board in the file: a file sent to a shared folder (as Load does). Anything else is another board with an
+  // id of its own, so that sending it later never renames, removes or overwrites this board's file there.
+  function importedUid(p) {
+    if (!p.board.uid) return !p.board.name || p.board.name === S.board.name ? S.board.uid : newId();
+    return p.board.uid === S.board.uid || Link.vidOf(p.sent) ? p.board.uid : newId();
   }
 
   async function importFile(file) {
@@ -3286,11 +3306,15 @@
     const openCount = parsed.instances.filter(i => i.open).length;
     const missing = new Set(parsed.instances.filter(i => !getWidget(i.widgetId)).map(i => i.widgetId));
     const what = parsed.kind === 'template' ? 'a blank template' : 'a full backup';
+    // Replace: the file may be another board (see importedUid). This board's file in the shared folder is then
+    // left as it is, and the dialog says so.
+    const uid = importedUid(parsed);
+    const stays = uid !== S.board.uid && Link.dir && Link.found.some(f => f.uid === S.board.uid && f.kind === 'full');
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
       message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' is' : 's are'} not installed here; ${missing.size === 1 ? 'its' : 'their'} content will be kept but not shown.` : ''),
       actions: [
-        { label: 'Replace my board', sub: 'Your current windows and content are replaced.' + (BoardHistory.enabled() ? ' You can undo this.' : ''), value: 'replace', kind: 'danger', choice: true },
+        { label: 'Replace my board', sub: 'Your current windows and content are replaced.' + (BoardHistory.enabled() ? ' You can undo this.' : '') + (stays ? ` “${S.board.name}” stays in your Google Drive folder.` : ''), value: 'replace', kind: 'danger', choice: true },
         { label: 'Add to my board', sub: 'Keep what’s here and add these windows', value: 'add', kind: 'primary', choice: true },
         { label: 'Cancel', value: null }
       ]
@@ -3298,8 +3322,14 @@
     if (!mode) return;
     try {
       const label = `${mode === 'replace' ? 'Before importing' : 'Before adding windows from'} “${file.name.replace(/\.21board$/i, '')}”`;
-      const undoId = await applyImport(parsed, mode, { keepCreated: mode === 'replace', history: { reason: mode === 'replace' ? 'import' : 'add', label } });
-      toast(mode === 'replace' ? 'Board imported.' : `Added ${openCount} window${openCount === 1 ? '' : 's'}.`, undoAction(undoId, mode === 'replace' ? 'the import' : 'adding windows'));
+      const replace = mode === 'replace', shared = Link.supported;
+      if (replace && shared) await Link.leaving(uid);
+      const undoId = await applyImport(parsed, mode, { uid: replace ? uid : null, keepCreated: replace, history: { reason: replace ? 'import' : 'add', label } });
+      // A file that was sent to a shared folder: this device now has that version, as after Load.
+      if (replace && shared && Link.vidOf(parsed.sent)) await Link.loaded(uid, parsed.sent);
+      // "Send automatically" sends what was imported; a version waiting in the folder is offered for the board that is here now.
+      if (shared) { Link.changed([Keys.board(S.boardId)]); Link.computeOffer(); }
+      toast(replace ? 'Board imported.' : `Added ${openCount} window${openCount === 1 ? '' : 's'}.`, undoAction(undoId, replace ? 'the import' : 'adding windows'));
     } catch (err) {
       console.error(err);
       toast('Import failed: ' + (err.message || err));
@@ -3309,8 +3339,9 @@
   // opts.uid: this board becomes that board (loading it from the shared folder), so later versions match.
   // opts.history: {reason, label} for the version of the board as it is now that's saved first (Board history),
   //   or false for none. opts.mustSnapshot: if that version can't be saved, ask before going on.
-  // opts.photo: 'file' (default: the file's photo replaces this device's, if it has one), 'exact' (the board
-  //   gets exactly the file's photo, or none), 'keep' (this device's photo is left as it is).
+  // opts.photo: 'file' (default: the file's photo replaces this device's, if it has one; a sent file that says
+  //   its board has none removes it), 'exact' (the board gets exactly the file's photo, or none), 'keep' (this
+  //   device's photo is left as it is).
   // opts.keepCreated: windows keep the file's createdAt. Returns the id of the version saved first (or null),
   // or false if cancelled.
   async function applyImport(p, mode, opts = {}) {
@@ -3386,9 +3417,10 @@
       S.wins.clear();
       await Writer.settled(1000);
     }
-    // The background photo belongs to this device: only a file that brings its own photo replaces it
-    // (or, going back in Board history, the board gets exactly the photo it had then).
-    const clearPhoto = photoMode === 'exact' || (photoMode === 'file' && !!p.photo);
+    // The background photo belongs to this device: only a file that brings its own photo replaces it, and
+    // only a sent file that says its board has none removes it (or, going back in Board history, the board
+    // gets exactly the photo it had then).
+    const clearPhoto = photoMode === 'exact' || (photoMode === 'file' && (!!p.photo || !!p.noPhoto));
     try {
       await Store.tx('readwrite', s => {
         if (mode === 'replace') {
@@ -3422,47 +3454,77 @@
   //   the version in it).
   // Versions are told apart by id, never by time (devices' clocks disagree). Each device remembers the
   // versions it has sent or loaded ("seen"); a version it hasn't seen is offered, and is never overwritten:
-  // an automatic send waits, a manual one asks (load theirs, or send mine and keep theirs as a copy).
+  // an automatic send waits, a manual one asks (load theirs, or send mine and keep theirs as a copy). Every
+  // file with the board's uid counts (Drive can leave two), and a file that can't be read yet isn't taken
+  // for no file: a send waits for one that may be this board's.
   // - "<name> (copy from …).21board": a copy kept, with a new uid, before loading over local changes.
   // - "About this folder.txt" explains the files to anyone browsing the folder. Other files are left alone.
-  // Sending: Settings → Google Drive folder → Send (or "Send automatically", a few seconds after changes). Receiving: the folder is
+  // Sending: Settings → Google Drive folder → Send, or "Send automatically", once the board has been left
+  // alone: for a few seconds ("After each change", where boards are prepared) or for 10 minutes ("When left
+  // alone", for a smartboard: a version that another device hasn't loaded holds up that device's own
+  // automatic sends, so taps in class must not each make one). What wasn't sent (21Board was closed first, the
+  // folder couldn't be used) goes out at the next look at the folder. Receiving: the folder is
   // checked when 21Board opens, when it comes back to the front, and every 2 minutes; a newer version of this
   // board from another device is offered with "Load" (never applied silently).
+  // While the folder can't be used (Chrome wants to be asked again, the folder is gone, an automatic send
+  // failed), a note stays on the board: see FolderNote.
   // On this device only (never exported): link:folder (the folder handle) and link:state
-  // {device: {id, label}, auto, photo, boards: {uid: {file, seen: [version ids], headId, headMine, sentAt, sentSig,
-  //   loadedSentAt, loadedFrom, loadedSig}}}.
+  // {device: {id, label}, auto, calm, photo, boards: {uid: {file, also: [files used before], seen: [version ids],
+  //   headId, headMine, sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig}}}.
   // =====================================================================
   const LINK_CHECK_MS = 2 * 60 * 1000;
-  const LINK_AUTO_MS = 8000;
+  const LINK_AUTO_MS = 8000;                 // "After each change"
+  const LINK_CALM_MS = 10 * 60 * 1000;       // "When left alone"
+  const LINK_ARRIVE_MS = 10 * 60 * 1000;     // how long automatic sends wait for a file that can't be read yet
+  const LINK_LOST_MS = 5 * 60 * 1000;        // a folder missing this long was probably renamed, moved or deleted
   const LINK_README = 'About this folder.txt';
+  // Folder problems in plain words: what happened, and what to do. (The browser's own wording goes to the console.)
+  const LINK_SAY = {
+    missing: ['the folder can’t be found', 'If it was renamed, moved or deleted, choose it again in Settings › Google Drive folder.'],
+    allow: ['Chrome needs you to allow the folder again', 'Tap “Reconnect folder” on the board.'],
+    readonly: ['the folder can only be viewed, not changed', 'Ask its owner to let you edit it, or choose another folder in Settings › Google Drive folder.'],
+    full: ['there’s no room left', 'Make room in Google Drive (or on this device).'],
+    other: ['the file couldn’t be saved in the folder', 'If this goes on, check that Google Drive is working on this device.']
+  };
   const Link = {
     supported: !LAB && !KIOSK && typeof window.showDirectoryPicker === 'function',
     dir: null,          // FileSystemDirectoryHandle
     perm: 'none',       // 'none' (no folder) | 'granted' | 'prompt' | 'denied'
-    st: { device: null, auto: false, photo: true, boards: {} },
+    st: { device: null, auto: false, calm: false, photo: true, boards: {} },
     found: [],          // boards in the folder: {name, uid, title, sentAt, by, from, kind, size, lastModified}
     cache: new Map(),   // file name -> {lastModified, size, meta}
     names: new Set(),   // every .21board name in the folder, lowercased
+    unread: new Map(),  // board files that couldn't be read at the last look: lowercased name -> {name, since, uid (if read before)}
     offer: null, offerToast: null, dismissed: '',
     scanning: null, busy: false, loading: false, autoT: 0, lastCheck: 0, started: false, nagged: false, gen: 0, nagAt: 0,
+    waits: { now: LINK_AUTO_MS, calm: LINK_CALM_MS },   // (tests shorten them)
+    trouble: null,      // why the folder can't be used right now: {kind: 'missing' | 'send', code, since, at, said}
+    failed: null,       // the last send that didn't work: {at, code}
+    checkedAt: 0, retryT: 0,
+    unsent: false, comparedAt: 0,   // "Send automatically": a change may be waiting; when the board was last found the same as what was sent
+    owned: new Set(),   // this device's own versions found in the folder without a note of them (noted once)
 
     // ---- this device's records
     applyRecord(name, value) {
       if (name === 'folder') {
         this.dir = value && typeof value === 'object' && value.kind === 'directory' ? value : null;
-        this.found = []; this.cache.clear(); this.setOffer(null);
-        if (this.started) this.refresh();
+        this.found = []; this.cache.clear(); this.unread.clear(); this.names = new Set(); this.setOffer(null);
+        clearTimeout(this.retryT); this.trouble = this.failed = null; this.checkedAt = 0;
+        if (this.started) this.refresh(); else FolderNote.update();
       } else if (name === 'state') {
         const v = value && typeof value === 'object' ? value : {};
-        this.st = { device: v.device && UID_RE.test(v.device.id || '') ? v.device : null, auto: !!v.auto, photo: v.photo !== false, boards: v.boards && typeof v.boards === 'object' ? v.boards : {} };
+        this.st = { device: v.device && UID_RE.test(v.device.id || '') ? v.device : null, auto: !!v.auto, calm: !!v.calm, photo: v.photo !== false, boards: v.boards && typeof v.boards === 'object' ? v.boards : {} };
         this.computeOffer();
+        FolderNote.update();
       }
     },
     saveState(patch) {
       this.st = Object.assign({}, this.st, patch);
       Writer.put(Keys.link('state'), 'link', this.st);
-      if (Settings.isOpen) Settings.render();
+      this.redraw();
     },
+    // The note on the board and Settings show how the folder is doing.
+    redraw() { FolderNote.update(); if (Settings.isOpen) Settings.render(); },
     boardRec(uid) { return (this.st.boards || {})[uid] || null; },
     setBoardRec(uid, patch) { this.saveState({ boards: Object.assign({}, this.st.boards, { [uid]: Object.assign({}, this.boardRec(uid), patch) }) }); },
     device() {
@@ -3489,12 +3551,12 @@
 
     // ---- permission (Chrome remembers it for an installed 21Board; in a tab it may ask again after a restart)
     async refresh() {
-      if (!this.dir) { this.perm = 'none'; return; }
+      if (!this.dir) { this.perm = 'none'; this.redraw(); return; }
       try { this.perm = typeof this.dir.queryPermission === 'function' ? await this.dir.queryPermission({ mode: 'readwrite' }) : 'granted'; } catch (e) { this.perm = 'denied'; }
-      if (Settings.isOpen) Settings.render();
+      this.redraw();
       if (this.perm === 'granted') await this.check();
       else if (this.perm === 'prompt' && !this.nagged && Object.keys(this.st.boards || {}).length) {
-        this.nagged = true;
+        this.nagged = true;   // (said once; the note on the board stays: see FolderNote)
         toast(`Reconnect your “${this.dir.name}” folder to keep this board up to date with your other devices.`, { action: 'Reconnect', timeout: 12000, onAction: () => this.reconnect() });
       }
     },
@@ -3503,16 +3565,68 @@
       if (!this.dir) return false;
       if (this.perm === 'granted') return true;
       try { this.perm = typeof this.dir.requestPermission === 'function' ? await this.dir.requestPermission({ mode: 'readwrite' }) : 'granted'; } catch (e) { this.perm = 'denied'; }
-      if (Settings.isOpen) Settings.render();
+      this.redraw();
       return this.perm === 'granted';
     },
-    async reconnect() { if (await this.ensurePerm()) await this.check(true); else toast('21Board can’t use that folder until you allow it.'); },
+    // From a tap (the note on the board, the message at start, Settings). Once allowed, the folder is checked,
+    // and what "Send automatically" couldn't send goes out.
+    async reconnect() {
+      if (this.perm === 'granted') { await this.check(true); return; }
+      if (await this.ensurePerm()) { toast(`Your “${this.dir.name}” folder is connected again.`); await this.check(true); }
+      else if (this.perm === 'denied') FolderNote.explain();   // Chrome refused without asking
+      else toast('21Board can’t use that folder until you allow it.');
+    },
+    // What keeps the folder from being used right now, if anything: 'allow' (Chrome wants to be asked again),
+    // 'missing' (it can't be found or read), 'send' (an automatic send failed).
+    problem() {
+      if (!this.dir) return '';
+      if (this.perm === 'prompt' || this.perm === 'denied') return 'allow';
+      const t = this.trouble;
+      return t && (t.kind !== 'send' || this.st.auto) ? t.kind : '';
+    },
+    // What went wrong with the folder: a key of LINK_SAY. Chrome's "not allowed" is either its own permission
+    // (then this.perm says so, and the teacher is asked again from a tap) or a folder shared for viewing only.
+    async codeOf(err) {
+      const n = err && err.name;
+      if (n === 'NotFoundError') return 'missing';
+      if (n === 'QuotaExceededError') return 'full';
+      if (n === 'NoModificationAllowedError') return 'readonly';
+      if (n === 'NotAllowedError' || n === 'SecurityError') {
+        try { this.perm = typeof this.dir.queryPermission === 'function' ? await this.dir.queryPermission({ mode: 'readwrite' }) : 'granted'; } catch (e) { this.perm = 'prompt'; }
+        return this.perm === 'granted' ? 'readonly' : 'allow';
+      }
+      return 'other';
+    },
+    // The folder can't be found or read. The note on the board says so at once and stays; a message says it
+    // once, and only when it has been gone for a minute (at sign-in, Google Drive may still be starting).
+    // 21Board looks again by itself: every 20 seconds at first, then with the usual checks. told: the teacher
+    // has just been told.
+    lost(told) {
+      const t = this.trouble && this.trouble.kind === 'missing' ? this.trouble : (this.trouble = { kind: 'missing', code: 'missing', since: Date.now(), said: false });
+      t.at = Date.now();
+      if (told) t.said = true;
+      if (!t.said && t.at - t.since >= 60 * 1000) {
+        t.said = true;
+        toast(`21Board can’t find your “${this.dir.name}” folder, so this board isn’t shared right now. It keeps looking.`, { action: 'Details', timeout: 10000, onAction: () => FolderNote.explain() });
+      }
+      clearTimeout(this.retryT);
+      if (Date.now() - t.since < 2 * 60 * 1000) this.retryT = setTimeout(() => this.check(true), 20000);
+    },
+    // An automatic send didn't work: said the first time. The note on the board stays until one works (it is
+    // tried again at each look at the folder).
+    stuck(code) {
+      const t = this.trouble && this.trouble.kind === 'send' ? this.trouble : (this.trouble = { kind: 'send', since: Date.now(), said: false });
+      t.code = code; t.at = Date.now();
+      if (t.said) return;
+      t.said = true;
+      toast(`Couldn’t send this board to your folder: ${LINK_SAY[code][0]}. 21Board keeps trying.`, { action: 'Details', timeout: 10000, onAction: () => FolderNote.explain() });
+    },
 
     // ---- linking (from a tap)
     async choose() {
       let h;
       try { h = await window.showDirectoryPicker({ id: '21board', mode: 'readwrite' }); } catch (err) {
-        if (!err || err.name !== 'AbortError') toast('Couldn’t open that folder: ' + ((err && err.message) || err));
+        if (!err || err.name !== 'AbortError') { console.warn('21Board: the folder couldn’t be chosen', err); toast('That folder couldn’t be opened. Try again, or choose another folder.'); }
         return false;
       }
       this.perm = 'granted';
@@ -3526,7 +3640,7 @@
       await Writer.del(Keys.link('folder'));
       this.applyRecord('folder', null);
       this.perm = 'none';
-      if (Settings.isOpen) Settings.render();
+      this.redraw();
     },
     async writeReadme() {
       try { await this.dir.getFileHandle(LINK_README); return; } catch (e) { /* not there yet */ }
@@ -3565,19 +3679,26 @@
       return { name, uid: j.board && UID_RE.test(j.board.uid || '') ? j.board.uid : null, title: String((j.board && j.board.name) || name.replace(/\.21board$/i, '')).slice(0, 60),
         vid: this.vidOf(sent), base: sent && sent.base ? String(sent.base) : null, legacy: !!(sent && !sent.id),
         sentAt: num(sent && sent.at, file.lastModified), by: String((sent && sent.by) || ''), from: String((sent && sent.from) || '').slice(0, 60),
+        open: Array.isArray(j.instances) ? j.instances.filter(i => i && i.open).length : null,   // open windows (null: not known)
         kind: j.kind === 'template' ? 'template' : 'full', size: file.size, lastModified: file.lastModified };
     },
     // Every board file in the folder (files that didn't change since the last look aren't read again).
     // this.names: every .21board name, even files that can't be read yet (still arriving): never reused.
+    // this.unread: those files, since when, and whose they were if they could be read before (see arriving).
     async scan() {
       if (this.scanning) return this.scanning;
       this.scanning = (async () => {
-        const out = [], names = new Set(), lc = new Set();
+        const out = [], names = new Set(), lc = new Set(), unread = new Map();
+        // (since: when it was first found unreadable, or last changed if that is known: an old damaged file isn't arriving.)
+        const miss = (name, file) => {
+          const was = this.unread.get(name.toLowerCase()), c = this.cache.get(name);
+          unread.set(name.toLowerCase(), { name, since: Math.min(was ? was.since : Date.now(), file ? file.lastModified : Infinity), uid: c && c.meta ? c.meta.uid : was ? was.uid : null });
+        };
         for await (const [name, h] of this.dir.entries()) {
           if (h.kind !== 'file' || !/\.21board$/i.test(name)) continue;
           names.add(name); lc.add(name.toLowerCase());
           let file;
-          try { file = await h.getFile(); } catch (e) { continue; }
+          try { file = await h.getFile(); } catch (e) { miss(name); continue; }
           const c = this.cache.get(name);
           if (c && c.lastModified === file.lastModified && c.size === file.size) { if (c.meta) out.push(c.meta); continue; }
           let meta = null;
@@ -3591,12 +3712,13 @@
               meta = this.meta({ kind: 'full', board: { uid: pick(/"uid":"([A-Za-z0-9-]{8,64})"/), name: pick(/"name":"([^"]{0,60})"/) },
                 sent: { id: pick(/"sent":\{"id":"([^"]+)"/), base: pick(/"base":"([^"]+)"/), at: +pick(/"at":(\d+)/) || 0, by: pick(/"by":"([^"]+)"/), from: pick(/"from":"([^"]*)"/) } }, name, file);
             }
-          } catch (e) { continue; }   // still being written, or not a board: look again next time
+          } catch (e) { miss(name, file); continue; }   // still arriving, or damaged: look again next time
           this.cache.set(name, { lastModified: file.lastModified, size: file.size, meta });
           if (meta) out.push(meta);
         }
         for (const n of Array.from(this.cache.keys())) if (!names.has(n)) this.cache.delete(n);
         this.names = lc;
+        this.unread = unread;
         this.found = out.sort((a, b) => b.lastModified - a.lastModified);   // this device's clock: newest arrival first
         return this.found;
       })();
@@ -3606,28 +3728,52 @@
       if (!this.dir || this.perm !== 'granted') return;
       if (!force && Date.now() - this.lastCheck < 5000) return;
       this.lastCheck = Date.now();
-      try { await this.scan(); } catch (err) {
+      clearTimeout(this.retryT);
+      const dir = this.dir;
+      let ok = false;
+      try { await this.scan(); ok = true; } catch (err) {
+        if (dir !== this.dir) return;   // unlinked meanwhile
         console.warn('21Board: could not read the shared folder', err);
-        if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) { this.perm = 'prompt'; }
-        else if (err && err.name === 'NotFoundError') toast(`The “${this.dir.name}” folder can’t be found. Choose it again in Settings.`);
+        if (await this.codeOf(err) !== 'allow') this.lost();   // ('allow': Chrome wants to be asked again, see problem)
       }
+      if (ok) { this.checkedAt = Date.now(); if (this.trouble && this.trouble.kind === 'missing') this.trouble = null; }
       this.computeOffer();
-      if (Settings.isOpen) Settings.render();
+      this.redraw();
+      if (ok) this.catchUp();
     },
-    // The folder's latest version of a board that this device hasn't seen (sent or loaded), if any.
-    // Versions are compared by id, never by time: two devices' clocks can disagree.
-    unseen(uid) {
-      if (!uid) return null;
-      const f = this.found.find(x => x.uid === uid && x.kind === 'full' && x.vid);   // found is newest first
-      const rec = this.boardRec(uid) || {};
+    // The folder's versions of a board that this device hasn't seen (sent or loaded), newest first.
+    // Versions are compared by id, never by time: two devices' clocks can disagree. Every file with the
+    // board's uid counts, not only the newest: Drive can leave two ("Room 12 (1)"), and a version sent beside a
+    // file that couldn't be read yet must not hide the version in that file.
+    unseenAll(uid) {
+      if (!uid) return [];
+      const files = this.found.filter(x => x.uid === uid && x.kind === 'full' && x.vid);   // found is newest first
+      const rec = this.boardRec(uid) || {}, me = (this.st.device || {}).id, seen = new Set(rec.seen || []);
       // A file sent by the first test build (no version ids): if this device sent or loaded exactly that one,
       // it has seen it.
+      const f = files[0];
       if (f && f.legacy && !rec.seen) {
-        const mine = f.by === (this.st.device || {}).id && f.sentAt === rec.sentAt, loaded = f.sentAt === rec.loadedSentAt;
-        if (mine || loaded) { this.remember(uid, f.vid, { headId: f.vid, headMine: mine && (rec.sentAt || 0) >= (rec.loadedSentAt || 0) }); return null; }
+        const mine = f.by === me && f.sentAt === rec.sentAt, loaded = f.sentAt === rec.loadedSentAt;
+        if (mine || loaded) { seen.add(f.vid); this.remember(uid, f.vid, { headId: f.vid, headMine: mine && (rec.sentAt || 0) >= (rec.loadedSentAt || 0) }); }
       }
-      const seen = new Set(rec.seen || []);
-      return f && !seen.has(f.vid) ? f : null;
+      return files.filter(x => {
+        if (seen.has(x.vid)) return false;
+        if (!me || x.by !== me || x.legacy) return true;
+        // Sent from this device, but 21Board was closed before it could note that: its own version, not news.
+        if (!this.owned.has(x.vid)) { this.owned.add(x.vid); this.remember(uid, x.vid, {}); }
+        return false;
+      });
+    },
+    unseen(uid) { return this.unseenAll(uid)[0] || null; },
+    // A board file that can't be read yet (still arriving from Google Drive) and may hold a newer version of
+    // this board: one that was this board's when it could last be read, the file this device last used for
+    // it, or one named after the board. A send waits for it rather than go in beside it.
+    arriving(uid) {
+      const file = ((this.boardRec(uid) || {}).file || '').toLowerCase(), base = this.safeName(S.board.name).toLowerCase();
+      for (const [n, u] of this.unread) {
+        if (u.uid ? u.uid === uid : n === file || (n.startsWith(base) && /^( \(\d+\))?\.21board$/.test(n.slice(base.length)))) return u;
+      }
+      return null;
     },
     computeOffer() { this.setOffer(this.unseen(S.board.uid)); },
     setOffer(f, opts = {}) {
@@ -3636,7 +3782,9 @@
       this.offer = f;
       if (this.offerToast) { if (this.offerToast.isConnected) this.offerToast.remove2(); this.offerToast = null; }
       if (!f || key === this.dismissed || typeof document === 'undefined') return;
-      this.offerToast = toast(`“${f.title}” was updated on ${f.from || 'another device'} ${when(f.sentAt)}.` + (opts.blocked ? ' Changes made here aren’t sent until you load it (or choose in Settings › Send).' : ''), {
+      // (An emptied board, e.g. after a student's "Close all", says so: it isn't loaded by reflex.)
+      const empty = f.open === 0 && Array.from(S.insts.values()).some(i => i.open);
+      this.offerToast = toast(`“${f.title}” was updated on ${f.from || 'another device'} ${when(f.sentAt)}.` + (empty ? ' That version has no open windows.' : '') + (opts.blocked ? ' Changes made here aren’t sent until you load it (or choose in Settings › Send).' : ''), {
         action: 'Load', dismiss: 'Not now', timeout: 0,
         onAction: () => { this.offerToast = null; this.load(f.name); },
         onDismiss: () => { this.offerToast = null; this.dismissed = key; }
@@ -3709,7 +3857,7 @@
         const uid = S.board.uid || (ensureUid(), S.board.uid);
         await this.scan();
         // Never replace a version of this board that this device hasn't seen.
-        const theirs = this.unseen(uid);
+        const theirs = this.unseen(uid), kept = new Set();   // kept: the versions put aside as copies ("Send mine")
         if (theirs) {
           if (opts.auto) { this.computeOffer(); return false; }   // the offer stays up; the teacher decides
           const choice = await dialog({
@@ -3721,85 +3869,170 @@
           });
           if (choice === 'load') { then = () => this.load(theirs.name, { keepMine: true }); return false; }
           if (choice !== 'send') return false;
-          let j;
-          try { j = JSON.parse(await this.readFile(theirs.name)); } catch (e) { j = null; }
-          if (j && j.format === '21board') await this.writeCopy(j, theirs.from);
+          // Theirs is kept first (each of them, if the board has two files): if one can't be read just now,
+          // nothing is sent over it.
+          for (const f of this.unseenAll(uid)) {
+            let j;
+            try { j = JSON.parse(await this.readFile(f.name)); } catch (e) { j = null; }
+            if (!j || j.format !== '21board') { toast('Their version can’t be read just now, so nothing was sent. Try again in a moment.', { timeout: 8000 }); return false; }
+            kept.add(this.vidOf(j.sent));
+            await this.writeCopy(j, f.from);
+          }
         }
-        const rec = this.boardRec(uid) || {}, dev = this.device(), gen = this.gen;
+        // A file that may be a newer version of this board can't be read yet: wait for it rather than send
+        // beside it. (Not for ever: one that never becomes readable must not stop automatic sends for good.)
+        const late = this.arriving(uid);
+        if (late && opts.auto && Date.now() - late.since < LINK_ARRIVE_MS) return false;
+        if (late && !opts.auto) {
+          const go = await dialog({
+            title: 'A file for this board is still arriving',
+            message: `Google Drive hasn’t finished bringing “${late.name}” to this device, and it may be a newer version of this board. Wait a moment, then try again. Or send now: your version goes in the folder beside it, and nothing is replaced.`,
+            actions: [{ label: 'Try again', value: 'retry', kind: 'primary' }, { label: 'Send now', value: 'send' }, { label: 'Cancel', value: null }]
+          });
+          if (go === 'retry') { then = () => this.send(); return false; }
+          if (go !== 'send') return false;
+        }
+        const rec = this.boardRec(uid) || {}, dev = this.device(), gen = this.gen, at = Date.now();
         const exp = await buildExport('full');
         const sig = this.sigOf(exp);
-        if (!this.st.photo) delete exp.media;   // "Include the background photo" off: each device keeps its own
+        this.photoRule(exp);
         // id: this version; base: the version this board was built on; mine: each device's latest version it
         // includes (to spot a version made without this device's last send).
         const sentId = newId();
         const sent = { id: sentId, base: rec.headId || null, at: Date.now(), by: dev.id, from: dev.label, mine: Object.assign({}, rec.mine || {}, { [dev.id]: sentId }) };
         const out = Object.assign({ format: exp.format, formatVersion: exp.formatVersion, kind: exp.kind, sent }, exp);
         const name = await this.fileNameFor(uid, S.board.name);
+        // (The folder was just looked at again, for the name.) A version that arrived while a question was open
+        // or the board was being read is never written over: the teacher is asked again.
+        if (this.unseenAll(uid).some(f => !kept.has(f.vid))) { if (opts.auto) this.computeOffer(); else then = () => this.send(); return false; }
         await this.writeFile(name, JSON.stringify(out));
-        // Renamed: remove the old file, but only if it holds a version this device has seen. (A rename that only
-        // changes capitals: only where the folder keeps both spellings as two files.)
-        const old = rec.file, seen = new Set(rec.seen || []);
-        if (old && old !== name) {
-          const of = this.found.find(f => f.name.toLowerCase() === old.toLowerCase() && f.uid === uid);
-          let separate = old.toLowerCase() !== name.toLowerCase();
-          if (!separate) { const names = []; for await (const [n] of this.dir.entries()) names.push(n); separate = names.includes(old) && names.includes(name); }
-          if (separate && of && of.vid && seen.has(of.vid)) { try { await this.dir.removeEntry(of.name); } catch (e) { /* already gone */ } }
+        // One file per board. The files this device used for it before are removed (the board was renamed, or a
+        // send had to go in beside a file that couldn't be read), but only with a version this device has seen in
+        // them; and so are the files whose version was just kept as a copy. Any other file is left alone. (A
+        // name that differs only in capitals: only where the folder keeps both spellings as two files.)
+        const olds = (rec.also || []).concat(rec.file || []).filter(n => n !== name).map(n => n.toLowerCase()), seen = new Set(rec.seen || []);
+        const also = [];
+        for (const f of this.found) {
+          if (f.uid !== uid || f.kind !== 'full' || !f.vid || f.name === name) continue;
+          const old = olds.includes(f.name.toLowerCase());
+          if (!kept.has(f.vid) && !(old && seen.has(f.vid))) { if (old) also.push(f.name); continue; }
+          if (f.name.toLowerCase() === name.toLowerCase()) {
+            const names = [];
+            for await (const [n] of this.dir.entries()) names.push(n);
+            if (!names.includes(f.name) || !names.includes(name)) continue;
+          }
+          try { await this.dir.removeEntry(f.name); } catch (e) { /* already gone */ }
         }
         this.cache.delete(name);
-        await this.remember(uid, sent.id, { file: name, sentAt: sent.at, sentSig: sig, headId: sent.id, headMine: true, mine: sent.mine }, gen);
+        for (const vid of kept) await this.remember(uid, vid, {}, gen);   // (decided: they aren't offered again)
+        await this.remember(uid, sent.id, { file: name, also, sentAt: sent.at, sentSig: sig, headId: sent.id, headMine: true, mine: sent.mine }, gen);
+        if (gen === this.gen) { this.comparedAt = at; this.failed = null; if (this.trouble && this.trouble.kind === 'send') this.trouble = null; }
         updateSettings({ lastBackupAt: Date.now() });   // the folder copy is a backup too
         if (!opts.auto) toast(`Sent “${S.board.name}” to your “${this.dir.name}” folder. Google Drive brings it to your other devices.`);
         await this.check(true);
         return true;
       } catch (err) {
         console.error(err);
-        if (err && (err.name === 'NotAllowedError' || err.name === 'SecurityError')) this.perm = 'prompt';
-        if (!opts.auto) toast('Couldn’t send this board: ' + ((err && err.message) || err));
+        if (!this.dir) return false;   // erased or unlinked meanwhile
+        // Said in plain words: at once for a send by hand; for an automatic one the first time, and by the note
+        // on the board until one works (Settings says it too).
+        const code = await this.codeOf(err);
+        this.failed = { at: Date.now(), code };
+        if (code === 'missing') this.lost(!opts.auto);
+        else if (opts.auto && code !== 'allow') this.stuck(code);
+        if (!opts.auto) toast(`Couldn’t send this board: ${LINK_SAY[code][0]}. ${LINK_SAY[code][1]}`, { timeout: 10000 });
         return false;
       } finally {
         this.busy = false;
+        this.redraw();
         if (then) await then();
       }
     },
-    // A board record changed here: with "Send automatically" on, send a few seconds after the last change.
+    // "Include the background photo" (for a file that goes to the folder). Off: the file says nothing about
+    // the photo, and a device that loads it keeps its own. On: a board without a photo says so, and loading it
+    // takes the photo off there too.
+    photoRule(exp) {
+      if (!this.st.photo) delete exp.media;
+      else if (!exp.media) exp.media = { background: null };
+      return exp;
+    },
+    // "Send automatically" sends once the board has been left alone for this long.
+    wait() { return this.st.calm ? this.waits.calm : this.waits.now; },
+    // When this board last changed on this device, in any tab or session (a record's revision is the time it
+    // was written).
+    lastChange() {
+      let t = 0;
+      const b = S.boardId;
+      for (const [key, rev] of Known) { const p = Keys.parse(key); if (rev > t && p.board === b && /^(board|inst|data|conf|media)$/.test(p.kind)) t = rev; }
+      return t;
+    },
+    // A board record changed here: with "Send automatically" on, send once the board has been left alone.
     changed(keys) {
       if (!this.st.auto || !this.dir) return;
       const b = S.boardId;
       if (!keys.some(k => { const p = Keys.parse(k); return p.board === b && /^(board|inst|data|conf|media)$/.test(p.kind); })) return;
+      this.unsent = true;
       clearTimeout(this.autoT);
-      this.autoT = setTimeout(() => this.autoSend(), LINK_AUTO_MS);
+      this.autoT = setTimeout(() => this.autoSend(), this.wait());
+    },
+    // After a look at the folder: what "Send automatically" hasn't sent yet goes out (21Board was closed before
+    // it could, the change was made in another tab, the folder couldn't be used, the send was held up), still
+    // only once the board has been left alone. (Not while another device's version waits: the teacher decides,
+    // and the next change here says so.)
+    catchUp() {
+      if (!this.st.auto || this.autoT || this.busy || this.loading || this.offer) return;
+      const last = this.lastChange(), wait = this.wait();
+      if (!this.unsent && last <= this.comparedAt) return;   // nothing changed since the board was last found the same as what was sent
+      // (A moment later than the tab the change was made in, so that only one of them sends it.)
+      this.autoT = setTimeout(() => this.autoSend(), Math.max(0, Math.min(wait, last + wait - Date.now())) + 3000);
     },
     async autoSend() {
       clearTimeout(this.autoT); this.autoT = 0;
       if (!this.st.auto || !this.dir || this.perm !== 'granted' || this.loading || this.busy) return;
+      const at = Date.now();
+      this.unsent = false;   // (a change made from here on sets it again)
       const rec = this.boardRec(S.board.uid), sig = await this.sig();
-      if (rec && (sig === rec.sentSig || sig === rec.loadedSig)) return;   // nothing new since it was sent or loaded
+      if (rec && (sig === rec.sentSig || sig === rec.loadedSig)) { this.comparedAt = at; return; }   // nothing new since it was sent or loaded
       if (this.offer) {   // a version from another device is waiting: never send over it, but say so (even after "Not now")
+        this.unsent = true;
         if (Date.now() - (this.nagAt || 0) > 5 * 60 * 1000) { this.nagAt = Date.now(); this.dismissed = ''; this.setOffer(this.offer, { again: true, blocked: true }); }
         return;
       }
-      await this.send({ auto: true });
+      if (!await this.send({ auto: true })) this.unsent = true;   // tried again after the next look at the folder
+    },
+    // Another board is about to take this one's place (Load, Import): first send this one's pending automatic
+    // change, so it isn't lost.
+    async leaving(uid) {
+      if (uid !== S.board.uid && this.st.auto && this.dir && (this.autoT || await this.localChanges())) await this.autoSend();
+    },
+    // This board is now the version in a sent file (after Load, or after the file was opened with Import).
+    async loaded(uid, sent, patch, gen) {
+      const s = sent || {}, vid = this.vidOf(sent);
+      const loadedSig = await this.sig();
+      await this.remember(uid, vid, Object.assign({ loadedSentAt: s.at || Date.now(), loadedFrom: s.from || '', loadedSig, headId: vid || null, headMine: !!vid && s.by === (this.st.device || {}).id,
+        mine: Object.assign({}, s.mine || {}, s.by && vid ? { [s.by]: vid } : {}) }, patch), gen);
+      this.comparedAt = Date.now();
     },
 
     // ---- receiving (from a tap). opts.keepMine: a copy of this board was asked for already.
     async load(name, opts = {}) {
       if (!await this.ensurePerm()) { toast('21Board can’t use that folder until you allow it.'); return false; }
       if (this.busy || this.loading) { toast('Just a moment: 21Board is still sending or loading this board.'); return false; }
-      // Loading another board: first send this one's pending automatic change, so it isn't lost.
-      try {
-        const peek = parseBoardFile(await this.readFile(name));
-        if (peek.board.uid !== S.board.uid && this.st.auto && (this.autoT || await this.localChanges())) await this.autoSend();
-      } catch (e) { /* read again below */ }
+      try { await this.leaving(parseBoardFile(await this.readFile(name)).board.uid); } catch (e) { /* read again below */ }
       const gen = this.gen;
       this.loading = true;
       clearTimeout(this.autoT); this.autoT = 0;   // a pending automatic send must not go out over this
       let loaded = false;
       try {
         let raw, parsed;
-        try { raw = await this.readFile(name); parsed = parseBoardFile(raw); } catch (err) {
-          toast(`Couldn’t read “${name}”: ${(err && err.message) || err}`);
+        try { raw = await this.readFile(name); } catch (err) {
+          console.warn('21Board: could not read a board file', err);
+          const gone = err && err.name === 'NotFoundError';
+          toast(gone ? `“${name.replace(/\.21board$/i, '')}” isn’t in the folder any more.` : `“${name.replace(/\.21board$/i, '')}” can’t be opened yet. Google Drive may still be bringing it to this device: try again in a moment.`, { timeout: 8000 });
+          if (gone) this.check(true);
           return false;
         }
+        try { parsed = parseBoardFile(raw); } catch (err) { toast(`Couldn’t read “${name}”: ${err.message}`); return false; }
         const uid = parsed.board.uid, sent = parsed.sent || {}, title = parsed.board.name || name.replace(/\.21board$/i, '');
         const from = sent.from ? ` from ${sent.from}` : '';
         if (uid && uid === S.board.uid) {
@@ -3838,8 +4071,9 @@
         const newUid = parsed.board.uid && vid ? parsed.board.uid : newId();
         let undoId;
         try { undoId = await applyImport(parsed, 'replace', { uid: newUid, keepCreated: true, history: { reason: 'load', label: `Before loading the version from ${s2.from || 'another device'}` } }); } catch (err) { console.error(err); toast('Couldn’t load the board: ' + ((err && err.message) || err)); return false; }
-        await this.remember(newUid, vid, { file: name, loadedSentAt: s2.at || Date.now(), loadedFrom: s2.from || '', loadedSig: await this.sig(), headId: vid || null, headMine: false,
-          mine: Object.assign({}, s2.mine || {}, s2.by && vid ? { [s2.by]: vid } : {}) }, gen);
+        // (The file this device used for the board until now is remembered: its next send tidies it away.)
+        const was = this.boardRec(newUid) || {};
+        await this.loaded(newUid, parsed.sent, { file: name, also: Array.from(new Set((was.also || []).concat(was.file || []))).filter(n => n !== name) }, gen);
         loaded = true;
         this.computeOffer();
         toast(`Loaded “${S.board.name}”${s2.from ? ' from ' + s2.from : ''}.`, undoAction(undoId, 'loading it'));
@@ -3852,18 +4086,27 @@
     // Before loading over changes made here: keep them in the folder as a separate board.
     async saveCopy() {
       try {
-        const name = await this.writeCopy(await buildExport('full'));
+        const name = await this.writeCopy(this.photoRule(await buildExport('full')));
         toast(`Kept a copy of this board in your folder: “${name.replace(/\.21board$/i, '')}”.`);
         return true;
-      } catch (err) { toast('Couldn’t keep a copy: ' + ((err && err.message) || err)); return false; }
+      } catch (err) {
+        console.error(err);
+        const say = LINK_SAY[await this.codeOf(err)];
+        toast(`Couldn’t keep a copy, so nothing was changed: ${say[0]}. ${say[1]}`, { timeout: 10000 });
+        this.redraw();
+        return false;
+      }
     },
     // Erase everything: this device forgets the folder and its bookkeeping.
     forget() {
       this.gen++;   // writes already under way won't save anything back
       clearTimeout(this.autoT); this.autoT = 0;
-      this.dir = null; this.perm = 'none'; this.found = []; this.names = new Set(); this.cache.clear();
-      this.st = { device: null, auto: false, photo: true, boards: {} };
+      clearTimeout(this.retryT);
+      this.dir = null; this.perm = 'none'; this.found = []; this.names = new Set(); this.cache.clear(); this.unread.clear();
+      this.trouble = this.failed = null; this.unsent = false; this.comparedAt = this.checkedAt = 0; this.owned.clear();
+      this.st = { device: null, auto: false, calm: false, photo: true, boards: {} };
       this.setOffer(null);
+      FolderNote.update();
     },
 
     // ---- startup: check now, when 21Board comes back to the front, and every few minutes
@@ -3873,7 +4116,7 @@
       this.refresh();
       document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') this.refresh();
-        else if (this.autoT) this.autoSend();   // leaving: send a pending change now
+        else if (this.autoT && !this.st.calm) this.autoSend();   // leaving: send a pending change now ("When left alone" waits its time)
       });
       window.addEventListener('focus', () => this.check());
       setInterval(() => { if (document.visibilityState === 'visible') this.check(true); }, LINK_CHECK_MS);
@@ -4845,6 +5088,22 @@
     return t;
   }
 
+  // A small note above the Widget Picker buttons, one in each corner (SaveNote, FolderNote). A page from before
+  // a note has no styles for it (for a launch or two after an update, the page and this script can be from
+  // different versions): the essentials, so that it still shows, and still hides.
+  function cornerNotes(cls, onTap) {
+    return ['left', 'right'].map(side => {
+      const b = document.createElement('button');
+      b.className = cls + ' ' + side;
+      b.hidden = true;
+      b.addEventListener('click', onTap);
+      document.body.appendChild(b);
+      const bare = getComputedStyle(b).position !== 'fixed';
+      if (bare) b.style.cssText = `position:fixed;z-index:999;bottom:86px;${side}:16px;height:40px;padding:0 14px;border-radius:20px;border:1px solid #f59e0b;background:#fef3c7;color:#92400e;font-size:14px;font-weight:600;white-space:nowrap;display:none`;
+      return { b, side, bare };
+    });
+  }
+
   // "Not saved": a small note above the Widget Picker buttons, for as long as this board isn't (all) stored on
   // the device: a save failed (Writer.failing: the changes wait and are tried again), or nothing is stored in
   // this window at all (Store.failed). It stays until saving works; tapping it says why and what to do.
@@ -4852,26 +5111,15 @@
     els: null, shown: '',
     state() { return Store.failed || (Writer.failing ? 'unsaved' : ''); },
     init() {
-      this.els = ['left', 'right'].map(side => {
-        const b = document.createElement('button');
-        b.className = 'save-note ' + side;
-        b.hidden = true;
-        b.innerHTML = '<span class="status-dot warn"></span>Not saved';
-        b.setAttribute('aria-label', 'Not saved: what to do');
-        b.addEventListener('click', () => this.explain());
-        document.body.appendChild(b);
-        // A page from before this note has no styles for it (for a launch or two after an update, the page and
-        // this script can be from different versions): the essentials, so that it still shows, and still hides.
-        const bare = getComputedStyle(b).position !== 'fixed';
-        if (bare) b.style.cssText = `position:fixed;z-index:999;bottom:86px;${side}:16px;height:40px;padding:0 14px;border-radius:20px;border:1px solid #f59e0b;background:#fef3c7;color:#92400e;font-size:14px;font-weight:600;white-space:nowrap;display:none`;
-        return { b, side, bare };
-      });
+      this.els = cornerNotes('save-note', () => this.explain());
+      for (const { b } of this.els) { b.innerHTML = '<span class="status-dot warn"></span>Not saved'; b.setAttribute('aria-label', 'Not saved: what to do'); }
     },
     update() {
       if (!this.els) return;
       const st = this.state();
       for (const { b, side, bare } of this.els) { b.hidden = !st || Picker.btns[side].hidden; if (bare) b.style.display = b.hidden ? 'none' : ''; }
       if (st !== this.shown) { this.shown = st; if (Settings.isOpen) Settings.render(); }
+      FolderNote.update();   // (it sits above this one, when both show)
     },
     // What happened and what to do (the note's dialog, and the top of Settings).
     info() {
@@ -4894,6 +5142,59 @@
       if (go === 'export') doExport('full');
       else if (go === 'retry' && st !== 'unsaved') location.reload();
       else if (go === 'retry') { Writer.retry(); if (!await Writer.settled(5000)) toast('Still not saved. 21Board keeps trying.'); }
+    }
+  };
+
+  // The linked Google Drive folder can't be used (Link.problem): a note above the Widget Picker buttons, for
+  // as long as that lasts, so that sharing is never off for a whole day unnoticed. "Reconnect folder": Chrome
+  // wants to be asked again (after a restart, in a plain tab), and asks only from a tap: one tap on the note.
+  // "Folder unavailable" (it can't be found or read) and "Not sent" (an automatic send failed): a tap says
+  // what happened and what to do.
+  const FolderNote = {
+    els: null,
+    init() { this.els = cornerNotes('folder-note', () => this.tap()); this.update(); },
+    update() {
+      if (!this.els) return;
+      const p = Link.problem(), up = !!SaveNote.state();
+      const text = { allow: 'Reconnect folder', missing: 'Folder unavailable', send: 'Not sent' }[p];
+      const label = { allow: 'Reconnect your Google Drive folder', missing: 'Your Google Drive folder is unavailable: what to do', send: 'This board wasn’t sent to your folder: what to do' }[p];
+      for (const { b, side, bare } of this.els) {
+        b.hidden = !p || Picker.btns[side].hidden;
+        if (p && b.dataset.is !== p) { b.dataset.is = p; b.innerHTML = `<span class="status-dot warn"></span>${text}`; b.setAttribute('aria-label', label); }
+        b.style.bottom = up ? 'calc(132px + env(safe-area-inset-bottom))' : bare ? '86px' : '';   // above "Not saved", when both show
+        if (bare) b.style.display = b.hidden ? 'none' : '';
+      }
+    },
+    tap() { if (Link.problem() === 'allow') Link.reconnect(); else this.explain(); },
+    // What happened and what to do (the note's dialog, and Settings).
+    info() {
+      const p = Link.problem(), t = Link.trouble, name = Link.dir ? Link.dir.name : '';
+      const off = ', this board isn’t sent to your other devices or updated from them.';
+      if (p === 'allow') {
+        return Link.perm === 'denied' ? { title: `21Board isn’t allowed to use your “${name}” folder`, text: 'Chrome is blocking it. Choose the folder again to allow it. If Chrome still refuses, ask your school’s IT. Until it is allowed' + off }
+          : { title: `Reconnect your “${name}” folder`, text: 'Chrome asks again after a restart unless 21Board is installed (or you chose “Allow on every visit”). Until you allow it' + off };
+      }
+      if (p === 'missing') {
+        // (Choosing it again is suggested only once it has been gone a while: Google Drive may just be starting.)
+        return { title: `21Board can’t find your “${name}” folder`, text: (Date.now() - t.since >= LINK_LOST_MS ? `It went missing ${when(t.since)}. If it was renamed, moved or deleted, choose it again.` : 'Google Drive may still be starting, or this device may be offline.') +
+          ' 21Board keeps looking, and carries on by itself when the folder is back. Until then' + off };
+      }
+      if (p !== 'send') return null;
+      const say = LINK_SAY[t.code] || LINK_SAY.other;
+      return { title: 'This board isn’t being sent to your folder', text: `“Send automatically” couldn’t send it ${when(t.at)}: ${say[0]}. ${say[1]} 21Board keeps trying.` };
+    },
+    async explain() {
+      const p = Link.problem(), i = this.info();
+      if (!i) return;
+      if (Link.trouble) Link.trouble.said = true;
+      const acts = p === 'send' ? [{ label: 'Try again now', value: 'send', kind: 'primary' }]
+        : p === 'missing' ? [{ label: 'Look again now', value: 'check', kind: 'primary' }, { label: 'Choose the folder again…', value: 'choose' }]
+        : Link.perm === 'denied' ? [{ label: 'Choose the folder again…', value: 'choose', kind: 'primary' }] : [{ label: 'Allow…', value: 'allow', kind: 'primary' }];
+      const go = await dialog({ title: i.title, message: i.text, actions: acts.concat([{ label: 'Close', value: null }]) });
+      if (go === 'choose') await Link.choose();
+      else if (go === 'allow') await Link.reconnect();
+      else if (go === 'send') await Link.send();
+      else if (go === 'check') { await Link.check(true); toast(Link.problem() === 'missing' ? 'Still not there. 21Board keeps looking.' : 'The folder is back.'); }
     }
   };
 
@@ -5410,6 +5711,7 @@
     document.body.classList.toggle('kiosk', KIOSK);
     initUI();
     SaveNote.init();
+    if (Link.supported) FolderNote.init();
     Sync.init();
     if (!LAB) registerSW();   // before the board is opened: a version that can't start can still receive its fix
     try {

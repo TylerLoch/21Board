@@ -93,7 +93,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
-| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. |
+| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. A backup of another board opened with *Replace my board* is another board from then on: in a shared Google Drive folder it gets its own file, and the board it replaced stays there. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Google Drive folder, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
@@ -114,8 +114,9 @@ are open still come from the saved copy: reload once more, or close and open the
 - **Board:** board name (used for export file names), list of every saved widget window with
   open/delete.
 - **Google Drive folder:** share boards with your other devices (the smartboard) through a folder in Google
-  Drive: choose the folder, Send, send automatically, include the photo, this device's name, other boards in
-  the folder. See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
+  Drive: choose the folder, Send, send automatically (off, after each change, or when left alone), include
+  the photo, this device's name, other boards in the folder; and what is wrong when the folder can't be used.
+  See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
 - **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
 - **Advanced:** Developer mode (SDK Playground, test unregistered widgets), erase everything.
 - **About:** the version this device is running (release name and build), to read out to IT.
@@ -225,8 +226,8 @@ read and write in that one folder only; it can't see anything else.
 
 **Then:**
 
-- **Laptop:** Settings → Google Drive folder → **Send**, or turn on *Send automatically* (a few seconds
-  after each change).
+- **Laptop:** Settings → Google Drive folder → **Send**, or set *Send automatically* to *After each change*
+  (a few seconds after the last change).
 - **Smartboard:** within a minute or two (when 21Board opens, when it comes back to the front, and every
   2 minutes) it says **“Room 12” was updated on my laptop at 7:42 · Load / Not now**. Nothing changes until
   you tap Load. The first time, pick the board under *Other boards in the folder* in Settings.
@@ -235,12 +236,41 @@ read and write in that one folder only; it can't see anything else.
   waits until it's loaded, and Send asks (*Load theirs* or *Send mine*, keeping the other as a copy).
 - It works both ways: Send from the smartboard and the laptop offers it.
 
+**Send automatically, and which device should do it.** A board is shared whole, and a version one device
+hasn't loaded holds up that device's own automatic sends (they would replace it). So:
+
+- *After each change* is for the device where you prepare boards (the laptop).
+- On the smartboard, leave it *Off* (tap Send after class if you want the board's work back on the laptop),
+  or choose *When left alone*: the board is sent once it hasn't changed for 10 minutes. Dice rolls, timers
+  and windows opened in class then don't each become a version that the laptop has to load before it can
+  send again. With *After each change* on the smartboard they do.
+- Either way, a change that wasn't sent before 21Board was closed (or while the folder couldn't be used) goes
+  out the next time 21Board opens and checks the folder.
+
+**If the folder can't be used,** a small note stays above the ▦ button until it works again, so sharing is
+never off for a whole day unnoticed: *Reconnect folder* (Chrome wants to be asked again: one tap on the note
+and *Allow*), *Folder unavailable* (it can't be found: 21Board keeps looking, and a tap says what to do) or
+*Not sent* (an automatic send failed, for example because the folder is shared with you for viewing only: a
+tap says why). Settings → Google Drive folder says the same, and when the folder was last checked.
+
 **21Board keeps the folder in order:** one file per board, named after it (“Room 12.21board”, or
 “Room 12 (2).21board” if another board has that name); renaming a board renames its file on the next
 send; each board has a hidden id, so files are matched to the right board whatever they're called;
 an *About this folder.txt* explains the files; anything else in the folder is left alone. Each file is a
-full backup (it counts as one), including the background photo unless *Include the background photo* is
-off (then each device keeps its own). *This device's name* is what the other devices show (“updated on …”).
+full backup (it counts as one). *This device's name* is what the other devices show (“updated on …”).
+
+- **The background photo** goes with the board while *Include the background photo* is on, and so does
+  removing it: the smartboard's photo goes when it loads a version sent after the photo was removed. Off:
+  this device puts no photo in the folder (not in copies either), and a device that loads its boards keeps
+  its own photo.
+- **Opening another board** (Import → *Replace my board*, or a `.21board` file opened from the Files app)
+  never renames, removes or replaces the file of the board that was showing: the board that was opened gets
+  its own file. Only a file that was itself sent to the folder (or a backup of the very board that is
+  showing) carries on as that board. A blank template keeps the board it is applied to if it has the
+  board's name.
+- **A file that is still arriving** (listed in the folder, but Google Drive hasn't brought its content yet)
+  isn't taken for no file: a send waits for it (an automatic one for up to 10 minutes), and if Drive leaves
+  two files for one board, the version in each is offered before anything replaces it.
 
 **Good to know:** Chrome and Edge only (Safari and Firefox keep Export/Import). Drive needs the internet
 to carry the file, usually within seconds to a minute. Chrome remembers the folder permission for an
