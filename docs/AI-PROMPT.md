@@ -131,9 +131,11 @@ the widget I describe after this prompt. If I haven't described one, ask me what
   .stage { flex: 1; min-height: 0; display: grid; place-items: center; text-align: center;
            border-radius: 16px; background: var(--b21-surface); box-shadow: inset 0 0 0 1px var(--b21-border); }
   .big { font-size: min(13vw, 24vh); font-weight: 800; line-height: 1.05; }
+  .fit { white-space: nowrap; min-width: 0; max-width: 100%; }  /* one line, shrunk by fitAll() to fit */
   button { font: inherit; font-weight: 650; min-height: 48px; padding: 0 clamp(12px, 4vmin, 28px); border: 0;
            border-radius: 999px; background: var(--b21-surface-2); color: var(--b21-text); cursor: pointer; }
-  button.primary { background: var(--b21-accent); color: var(--b21-on-accent); }
+  button.primary { background: var(--b21-accent); color: var(--b21-on-accent);  /* grows with the window too */
+                   font-size: clamp(17px, 5vmin, 40px); min-height: max(48px, 1.8em); padding: 0 1.2em; }
 </style>
 </head>
 <body>
@@ -146,12 +148,20 @@ the widget I describe after this prompt. If I haven't described one, ask me what
   const readState = d => ({ items: Array.isArray(d && d.items) ? d.items.filter(x => typeof x === 'string').slice(0, 200) : [] });
   const readConfig = c => ({ big: !!(c && c.big === true) });
 
-  function render() { /* set textContent / attributes / classes; never innerHTML with saved text */ }
+  function render() { /* set textContent / attributes / classes (never innerHTML with saved text), then fitAll() */ }
+  // Shrink a long word in a .fit box to fit rather than cut it off; never below 14px.
+  function fitAll() {
+    document.querySelectorAll('.fit').forEach(el => {
+      el.style.fontSize = '';
+      if (el.scrollWidth > el.clientWidth) el.style.fontSize = Math.max(14, parseFloat(getComputedStyle(el).fontSize) * el.clientWidth / el.scrollWidth * 0.97) + 'px';
+    });
+  }
+  addEventListener('resize', fitAll);
   function setMenu() {
     Board21.menu.set([{ id: 'edit', label: 'Edit…' }, { id: 'big', label: 'Big text', checked: config.big }]);
   }
   Board21.on('menu', id => { /* change state or config, save it, render(), setMenu() */ });
-  Board21.on('data', d => { state = readState(d); render(); });
+  Board21.on('data', d => { state = readState(d); render(); setMenu(); });  // the menu can depend on content too
   Board21.on('config', c => { config = readConfig(c); render(); setMenu(); });
 
   async function start() {
@@ -170,16 +180,21 @@ the widget I describe after this prompt. If I haven't described one, ask me what
 
 - Start with `const ctx = await Board21.ready()` and draw from `ctx.data` and `ctx.config` (both `null`
   the first time).
-- **Content**, `Board21.save(state)`: the work (names, lists, scores, answers, text, timer state).
+- **Content**, `Board21.save(state)`: the work (names, scores, answers, text, timer state).
   **Config**, `Board21.saveConfig(cfg)`: preferences (mode, colors, options). Teachers share boards as
-  templates, which keep config and leave content out, so **anything about students is content, never
-  config.** The window menu's Reset clears both.
+  templates, which keep config and leave content out, so **anything that names, scores or records a
+  student is content, never config.** Setup that names no student (job titles, word lists, categories)
+  can go in config, so a shared template keeps it; content then refers to those items by a stable id,
+  not by position.
+- The window menu's *Reset* clears both and reloads the widget at its manifest size: `start()` sees
+  `ctx.data` and `ctx.config` as `null` again, as the first time.
 - Save the whole small JSON object whenever it changes (no need to await; 21Board batches writes, skips
   unchanged ones and retries by itself). Keep it to kilobytes.
 - Handle `Board21.on('data', d => …)` and `Board21.on('config', c => …)` by re-rendering from the value
   given: the board can be open in several tabs (smartboard and teacher laptop), and an import or an earlier
-  version can replace it. If a text box is being typed in, update it only if the text differs, and keep
-  the cursor.
+  version can replace it. Your own `save()` / `saveConfig()` never come back as events. If a text box is
+  being typed in, update it only if its value differs (for a box read as a list, one name per line,
+  compare the lists, not the raw text), and keep the cursor.
 - **Check what you load**: `ctx.data`, `ctx.config` and both events can come from a file someone
   imported. Check every field's type and range. Show text with `textContent` (or `setAttribute`),
   never `innerHTML`.
@@ -214,8 +229,9 @@ Sizes are the window's content area (without its 40px title bar), in the same px
   (a number or `"16:9"`: a fixed shape, e.g. `1` for a dial), `"resizable": false`,
   `"dragFromContent": false` (see *Dragging*).
 - **The teacher owns the size.** Never resize on load or by yourself. Change it only after a tap.
-- **A bigger view for a while** (settings, an editor): when it opens, `Board21.window.setMinSize(520, 400)`
-  (whatever it needs); when it closes, `Board21.window.setMinSize(null, null)`. The window grows to at
+- **A bigger view for a while** (settings, an editor): when it opens, `Board21.window.setMinSize(560, 460)`
+  (room for the editor's fixed parts and about 5 list rows; a longer list scrolls inside); when it
+  closes, `Board21.window.setMinSize(null, null)`. The window grows to at
   least that size (never beyond the board) without changing its saved size, then goes back to the
   manifest's minimum and the teacher's own size by itself. If the teacher moves or resizes it while it
   is bigger, it keeps that. A reload shows the normal size again.
@@ -230,10 +246,14 @@ Sizes are the window's content area (without its 40px title bar), in the same px
   `setMaxSize(w, h)` (`null` removes it); `setResizable(false)` hides the resize grips.
 - `setMinSize`, `setMaxSize`, `setAspectRatio`, `setResizable`, `setDragFromContent`, `setTitle` and
   the menu last until the widget reloads: set them again in `start()` from config and state.
+- **At *Fill the board*** the board's two Widget Picker buttons cover the window's bottom-left and
+  bottom-right corners (up to about 140px in from each side on a small screen): centre the main button
+  and any bottom row of buttons.
 - `Board21.window.maximize()` / `restore()`: *Fill the board* and back (the menu already offers it; use
   it only for a widget's own "Present" kind of button). `focus()` and `close()` also exist.
-- Lay out with CSS so a resize needs no code. `Board21.on('resize', info => …)` is for redrawing a
-  `<canvas>` or switching to a compact layout. `Board21.context.window` always holds the current size.
+- Lay out with CSS so a resize needs no code beyond the skeleton's `fitAll()`.
+  `Board21.on('resize', info => …)` is for redrawing a `<canvas>` or switching to a compact layout.
+  `Board21.context.window` always holds the current size.
 
 ## Status, attention, messages, events
 
@@ -267,14 +287,19 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 ## Look and feel
 
 - **Readable from the back of the classroom**: the main thing is big and bold and grows with the window
-  (`min(13vw, 24vh)`, `clamp(…, …vmin, …)`). Secondary text in `var(--b21-muted)`. No tiny text.
-- **One obvious main action**: a big accent button. Other buttons are quieter (`--b21-surface-2`).
+  (`min(13vw, 24vh)`, `clamp(…, …vmin, …)`). Secondary text in `var(--b21-muted)`. No text under 14px.
+- **One obvious main action**: a big accent button that grows with the window too (`button.primary`).
+  Other buttons are quieter (`--b21-surface-2`).
 - **Settings and rarely used commands in the window menu; editing in its own view** with a clear *Done*
-  button, so the main view stays clean for students. Save edits as they're typed.
+  button, so the main view stays clean for students (a small, quiet *Edit* button on it is fine). Save
+  edits as they're typed.
 - **An empty state that says what to do**, with the button that does it ("Add names to get started").
-- **Works from the minimum size to Fill the board** without scrolling or cut-off text: flex/grid with
-  `min-height: 0`, %, `vmin`, `clamp()`; hide extras in tiny windows (`@media (max-height: 220px)`);
-  shrink long words to fit rather than cut them.
+- **Works from the minimum size to Fill the board**: the main view never scrolls or cuts off text (an
+  editor's long list may scroll inside). Flex/grid with `min-height: 0`, %, `vmin`, `clamp()`; size text
+  in a grid of cards by the card (`.card { container-type: size }`, `font-size: min(18cqw, 40cqh)`);
+  a long word in a `.fit` box, which shrinks it; extras hidden in tiny windows
+  (`@media (max-height: 220px)`). Set a limit on how many items it takes, and pick
+  `minWidth`/`minHeight` so that many still read well.
 - **Calm colors from the variables**, so light and dark mode and the teacher's accent color just work:
   `--b21-bg`, `--b21-surface`, `--b21-surface-2`, `--b21-text`, `--b21-muted`, `--b21-border`,
   `--b21-accent`, `--b21-on-accent`, `--b21-accent-soft`, `--b21-danger`, `--b21-success`,
@@ -291,10 +316,10 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 
 - [ ] `<!DOCTYPE html>` first; the SDK tag exactly as given, the first script, right after `<meta charset="utf-8">`; the manifest next, valid JSON, its id and name replaced.
 - [ ] No address, CDN, font, image or fetch from the internet; no `http(s)://` in your own script code; no localStorage, sessionStorage, IndexedDB or cookies (not even in comments); no alert/confirm/prompt; no autofocus; no React.
-- [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render.
-- [ ] Student information saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
+- [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render and call `setMenu()`.
+- [ ] Anything about a student saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
 - [ ] Menu: at most 24 items, each with its own id, swatches `#hex` (at most 12 per row); `menu.set()` called again when state changes.
-- [ ] Works and reads well at `minWidth` × `minHeight` and at Fill the board, in light and dark, without scrolling; 48px tap targets.
+- [ ] Works and reads well at `minWidth` × `minHeight` with the most items (no text under 14px) and at Fill the board (no buttons in the bottom corners), in light and dark; only an editor's list scrolls; 48px tap targets.
 - [ ] Typing, drawing or dragging areas: `dragFromContent: false`, `data-b21-nodrag` or `setDragFromContent`.
 - [ ] A bigger editor uses `setMinSize(…)` and `setMinSize(null, null)`; `setSize` only after a tap and never when maximized.
 
@@ -318,11 +343,11 @@ The next line is a manifest:
 `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
 Replace "my-widget" and "My Widget" with the name the user chose for the widget. Add `"dragFromContent":false` to `window` if the widget needs typing, drawing or dragging.
 
-Start with `const ctx = await Board21.ready()` and draw from `ctx.data`. Save content with `Board21.save(state)` and preferences with `Board21.saveConfig(cfg)`; anything about students (names, scores) is content, never config. Handle `Board21.on('data', …)` and `Board21.on('config', …)` by re-rendering from the value given. Check the type of every loaded field and show text with `textContent`, never `innerHTML`. Save timers as wall-clock times (`endsAt`). Never use localStorage, sessionStorage, IndexedDB or cookies (don't even name them in comments).
+Start with `const ctx = await Board21.ready()` and draw from `ctx.data`. Save content with `Board21.save(state)` and preferences with `Board21.saveConfig(cfg)`; anything about students (names, scores) is content, never config. Handle `Board21.on('data', …)` and `Board21.on('config', …)` by re-rendering from the value given and setting the menu again (your own saves don't come back as events). Check the type of every loaded field and show text with `textContent`, never `innerHTML`. Save timers as wall-clock times (`endsAt`). Never use localStorage, sessionStorage, IndexedDB or cookies (don't even name them in comments).
 
 Put settings and rarely used commands in the window menu with `Board21.menu.set([...])` (at most 24 items, each with an id; `checked: true/false` for options; `#hex` colors only; call it again when state changes) and react in `Board21.on('menu', id => …)`. Do editing in a separate view with a Done button: while it shows, call `Board21.window.setMinSize(w, h)` for room and `setDragFromContent(false)`; when done, `setMinSize(null, null)` and `setDragFromContent(true)`. Never resize the window on load. Use `Board21.window.setTitle('…')` for status and `requestAttention()` when a timer ends. Don't pause anything on `blur`.
 
-Style with plain CSS using `var(--b21-bg)`, `--b21-surface`, `--b21-surface-2`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`, `--b21-font` (they switch for dark mode). Big, bold, kid-readable text that grows with the window (`min(13vw, 24vh)`), one obvious main button, and an empty state that says what to do.
-Make NO network requests: no Tailwind or other CDNs, no web fonts, no external images, no `http(s)://` in scripts. Fill the window (`html, body {margin:0; height:100%; overflow:hidden}`) with flex/grid and %/vmin so it works at every size without scrolling. Tap targets at least 48px. No alert/confirm/prompt or autofocus.
+Style with plain CSS using `var(--b21-bg)`, `--b21-surface`, `--b21-surface-2`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`, `--b21-font` (they switch for dark mode). Big, bold, kid-readable text that grows with the window (`min(13vw, 24vh)`), one obvious main button that grows with the window too (`font-size: clamp(17px, 5vmin, 40px)`), and an empty state that says what to do. When the window fills the board, the board's own buttons cover its bottom corners: centre the main button.
+Make NO network requests: no Tailwind or other CDNs, no web fonts, no external images, no `http(s)://` in scripts. Fill the window (`html, body {margin:0; height:100%; overflow:hidden}`) with flex/grid and %/vmin so it works at every size without scrolling (an editor's long list may scroll), with no text under 14px. Tap targets at least 48px. No alert/confirm/prompt or autofocus.
 Output the whole file in one code block.
 ````
