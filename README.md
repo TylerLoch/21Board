@@ -244,7 +244,8 @@ read and write in that one folder only; it can't see anything else.
   (a few seconds after the last change).
 - **Smartboard:** within a minute or two (when 21Board opens, when it comes back to the front, and every
   2 minutes) it says **“Room 12” was updated on my laptop at 7:42 · Load / Not now**. Nothing changes until
-  you tap Load. The first time, pick the board under *Other boards in the folder* in Settings.
+  you tap Load. The first time, pick the board under *Other boards in the folder* in Settings. (A board that
+  is already one of this device's pages shows *Go to page* there instead of Load.)
 - **Changed on both?** Load says so first and offers *Keep a copy of mine, then load* (the copy goes in the
   folder as its own board). A version this device hasn't loaded is never overwritten: *Send automatically*
   waits until it's loaded, and Send asks (*Load theirs* or *Send mine*, keeping the other as a copy).

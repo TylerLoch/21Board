@@ -4912,6 +4912,140 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok((await st()).id === first && await frame('notes:1').locator('textarea').inputValue() === 'Page one, edited just before leaving', 'going back to a version after switching pages restores this page');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+  }],
+  ['Pages (multiple boards): nothing lost when things go wrong', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, acceptDownloads: true });
+    await ctx.addInitScript(DRIVE_PICK);
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const B = (fn, arg) => page.evaluate(fn, arg);
+    const st = (p = page) => p.evaluate(() => { const b = window.__board21, s = b.state; return { id: s.boardId, name: s.board.name, uid: s.board.uid, wins: Array.from(s.wins.keys()).sort(), ids: b.pages.ids() }; });
+    const frame = (ik, p = page) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const recs = (p = page) => p.evaluate(() => new Promise((res, rej) => { const o = indexedDB.open('21Board'); o.onerror = () => rej(o.error);
+      o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').getAll(); q.onsuccess = () => { o.result.close(); res(Object.fromEntries(q.result.map(r => [r.key, r.value]))); }; }; }));
+    const settle = (ms = 700) => page.waitForTimeout(ms);
+    const openPicker = async () => { if (!await page.locator('#panel.open').count()) { await page.click('.picker-btn.left'); await settle(250); } };
+    const settings = async () => { await openPicker(); await page.click('[data-ctl="settings"]'); await settle(400); };
+    const go = async b => { await B(b => window.__board21.pages.go(b), b); await page.waitForFunction(b => window.__board21.state.boardId === b, b); await settle(900); };
+    const noteText = async () => frame('notes:1').locator('textarea').inputValue();
+    // Page 1 “Math” and page 2 “Reading”, a note on each.
+    await B(() => { window.__board21.updateBoard({ name: 'Math' }); window.__board21.openWidget('notes'); }); await settle(1200);
+    await fillNote(frame('notes:1'), 'Math plan'); await settle(500);
+    await B(() => window.__board21.pages.add()); await page.waitForFunction(() => window.__board21.state.boardId === 2); await settle(800);
+    await B(() => { window.__board21.updateBoard({ name: 'Reading' }); window.__board21.openWidget('notes'); }); await settle(1200);
+    await fillNote(frame('notes:1'), 'Reading plan'); await settle(800);
+
+    // The browser throws the stored board away while 21Board is open: every page is written back, not only this one.
+    await B(() => new Promise(res => { const r = indexedDB.deleteDatabase('21Board'); r.onsuccess = r.onerror = r.onblocked = () => res(); }));
+    await fillNote(frame('notes:1'), 'Reading plan, typed after the loss');
+    await page.waitForFunction(() => !window.__board21.store.lost && !!window.__board21.store.db, null, { timeout: 10000 }).catch(() => {});
+    ok(await eventually(async () => { const R = await recs(); return R['board:1'] && R['board:1'].name === 'Math' && R['data:1:notes:1'].text === 'Math plan' && R['inst:1:notes:1'] && R['data:2:notes:1'].text === 'Reading plan, typed after the loss'; }),
+      'when the browser loses the stored board, the other pages are written back too (not just the one shown)');
+
+    // A backup while storage can't be read: the other pages come from what this window holds, and it counts as a backup.
+    await B(() => { const s = window.__board21.store; s.readAll0 = s.readAll; s.readAll = async () => { throw new Error('Storage didn’t answer'); }; });
+    await settings();
+    let [dl] = await Promise.all([page.waitForEvent('download'), page.click('#settings [data-act="backup"]')]);
+    let file = OUT + 'pages-unreadable.21board'; await dl.saveAs(file);
+    let j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const p1 = (j.pages || []).find(p => !p.main) || { board: {}, instances: [] };
+    ok(p1.board.name === 'Math' && p1.instances.length === 1 && p1.instances[0].data.text === 'Math plan' && await B(() => !!window.__board21.state.settings.lastBackupAt),
+      `with storage unreadable, Back up now still has the other page’s windows and content (${p1.board.name}, ${p1.instances.length} window)`);
+    // One whose content isn't held here either: the file is made, the teacher is told, and it doesn't count as a backup.
+    await B(() => { window.__board21.state.settings.lastBackupAt = null; window.__board21.pages.held.delete('board:1'); });
+    await page.keyboard.press('Escape'); await settings();
+    [dl] = await Promise.all([page.waitForEvent('download'), page.click('#settings [data-act="backup"]')]);
+    await settle(300);
+    const told = (await page.locator('.toast').allInnerTexts()).join(' | ');
+    ok(/couldn’t be read/.test(told) && /“Math”/.test(told) && !await B(() => window.__board21.state.settings.lastBackupAt), `a page that can’t be read is named, and the reminders go on (${told.slice(0, 140)})`);
+    await B(() => { const s = window.__board21.store; s.readAll = s.readAll0; });
+    await page.keyboard.press('Escape');
+    await page.reload(); await boardUp(page); await settle(900);
+
+    // An Undo offered on one page is never applied to another: it goes when the page changes.
+    await settings();
+    await page.click('#settings [data-act="inst-delete"][data-val="notes:1"]'); await page.click('#modal .btn.danger'); await settle(400);
+    ok(await page.locator('#toasts button:has-text("Undo")').count() === 1, 'deleting a window offers Undo');
+    const vid = await B(() => window.__board21.history.capture('manual', { label: 'Reading version' }));
+    await go(1);
+    ok(await page.locator('#toasts button:has-text("Undo")').count() === 0, 'going to another page takes that Undo away');
+    const back = await B(id => window.__board21.history.restore(id), vid); await settle(600);
+    let s = await st();
+    ok(back === false && s.name === 'Math' && s.wins.join() === 'notes:1' && await noteText() === 'Math plan', `a version of another page is never put on this one (${JSON.stringify(s)})`);
+
+    // A page name being typed in Settings is saved to its own page, even if the page changes before the field is left.
+    await settings();
+    await page.fill('#set-board-name', 'Morning meeting');
+    await B(() => window.__board21.pages.go(2)); await page.waitForFunction(() => window.__board21.state.boardId === 2); await settle(600);
+    ok(await B(() => window.__board21.pages.name(1)) === 'Morning meeting' && (await st()).name === 'Reading', 'a name typed in Settings goes to the page it was typed on');
+    await go(1); await B(() => window.__board21.updateBoard({ name: 'Math' })); await settle(300);
+
+    // From the keyboard, the Pages menu takes the keyboard to this page's item.
+    await openPicker();
+    await page.focus('[data-ctl="pages"]'); await page.keyboard.press('Enter'); await settle(200);
+    ok(await B(() => document.activeElement.dataset.act === 'go' && document.activeElement.getAttribute('aria-checked') === 'true'), 'Enter on the page indicator takes the keyboard into the menu, at this page');
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+
+    // Google Drive folder: a file sent from another page here is that page (Go to page), and loading it never gives
+    // two pages one board id (both would send to the same file).
+    await settings();
+    await page.click('#settings [data-act="link-choose"]'); await settle(800);
+    await page.click('#settings [data-act="link-send"]'); await settle(1500);
+    await page.keyboard.press('Escape');
+    await go(2);
+    await settings();
+    await page.click('#settings [data-act="link-check"]').catch(() => {}); await settle(1500);
+    ok(await page.locator('#settings [data-act="page-go"]').count() === 1 && await page.locator('#settings [data-act="link-load"]').count() === 0, 'Other boards in the folder: page 1’s file offers Go to page, not Load');
+    const name = await B(() => { const L = window.__board21.link, u = window.__board21.pages.info.get(1).uid; return (L.found.find(f => f.uid === u) || {}).name; });
+    await page.keyboard.press('Escape');
+    const loading = B(n => window.__board21.link.load(n), name); await settle(500);
+    await page.locator('#modal.open .btn', { hasText: 'Replace this board' }).first().click().catch(() => {}); await loading; await settle(1000);
+    const uids = await B(() => [window.__board21.pages.info.get(1).uid, window.__board21.state.board.uid]);
+    ok(name && (await st()).name === 'Math' && uids[0] !== uids[1], `loading another page’s file here keeps the two pages’ board ids apart (${uids.map(u => u.slice(0, 8)).join(' ≠ ')})`);
+    await B(() => window.__board21.updateBoard({ name: 'Reading' })); await settle(400);
+
+    // Undo of a deleted page, after another tab started meanwhile: the page comes back with its content.
+    await openPicker(); await page.click('[data-ctl="pages"]'); await page.click('#pages-menu [data-act="delete"]'); await page.click('#modal .btn.danger');
+    await page.waitForFunction(() => window.__board21.state.boardId !== 2); await settle(300);
+    const tab2 = await ctx.newPage(); tab2.on('pageerror', e => errors.push('[tab 2] ' + e.message));
+    await tab2.goto(BASE); await boardUp(tab2); await tab2.waitForTimeout(4000);
+    await page.click('#toasts button:has-text("Undo")'); await page.waitForFunction(() => window.__board21.state.boardId === 2, null, { timeout: 8000 }).catch(() => {}); await settle(1000);
+    s = await st();
+    ok(s.id === 2 && s.name === 'Reading' && s.wins.join() === 'notes:1' && /Math plan/.test(await noteText()) && !!(await recs())['data:2:notes:1'], `Undo brings the page back with its content although another tab started (${JSON.stringify(s)})`);
+    await tab2.close();
+
+    // Replace all pages with your own backup: the pages keep their board ids (the same boards in the Google Drive folder).
+    const before = await B(() => window.__board21.pages.ids().map(b => window.__board21.pages.info.get(b).uid).join());
+    await openPicker(); await page.click('[data-ctl="export"]'); await settle(200);
+    [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="0"]')]);
+    file = OUT + 'pages-replace.21board'; await dl.saveAs(file);
+    await page.setInputFiles('#import-input', file); await settle(300);
+    await page.click('#modal .btn[data-i="1"]'); await settle(200); await page.click('#modal .btn.danger');
+    await page.waitForFunction(() => window.__board21.pages.ids().every(b => b > 2) && window.__board21.pages.ids().length === 2, null, { timeout: 20000 }).catch(() => {});
+    await settle(800);
+    const after = await B(() => window.__board21.pages.ids().map(b => window.__board21.pages.info.get(b).uid).join());
+    ok(after === before, 'Replace all pages with a backup of them keeps each page’s board id');
+
+    // Erase everything from a page other than the first: board history still has that page, to go back to.
+    await go(await B(() => window.__board21.pages.ids()[1]));
+    const shown = (await st()).id;
+    await settings();
+    await page.click('#settings [data-act="erase"]'); await page.locator('#modal .btn', { hasText: /^Erase everything$/ }).click(); await settle(1500);
+    const metas = () => B(() => window.__board21.history.metas.map(m => m.b));
+    s = await st();
+    let m = await metas();
+    ok(s.id === shown && s.ids.join() === String(shown) && !s.wins.length && m.length && m.every(b => b === shown), `after Erase everything, the page shown stays, and board history still has its versions (page ${s.id}: ${m.length})`);
+    await page.reload(); await boardUp(page); await settle(900);
+    m = await metas();
+    ok((await st()).id === shown && m.length && m.every(b => b === shown), 'and still after a reload');
+    await B(() => { window.__board21.history.restore(window.__board21.history.metas[0].id); }); await settle(1500);
+    const asked = await page.locator('#modal.open').innerText().catch(() => '');
+    ok((await st()).wins.join() === 'notes:1', `going back brings its window back${asked ? ' (asked: ' + asked.slice(0, 80) + ')' : ''}`);
+    const leftover = (await B(() => window.__board21.history.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAllKeys(); q.onsuccess = () => set(q.result.map(String)); }))).filter(k => !k.startsWith(shown + ':'));
+    ok(!leftover.length, `no other page’s board history is left behind, not even a page whose Undo was still offered (${leftover.join(', ')})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
   }]
 ];
 

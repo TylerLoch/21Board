@@ -53,9 +53,17 @@ The board id is in every key: each **page** is a board of its own (`board:<b>`, 
 `settings.activeBoard` is the page every tab on the device shows, and `settings.boards` their order.
 Page ids are never used again: `settings.lastBoard` is the highest one used, and a new page also skips any id
 that still has records or Board history. A deleted page waits in `settings.deletedBoards` while its Undo is
-offered (its records stay until then); then its records and its Board history are deleted. One left there
-(21Board was closed before the Undo ended) is cleared the next time 21Board opens. A record of a page that is
-missing from `settings.boards` (and not deleted) is shown as a page at the end, never hidden.
+offered (its records stay until then; `settings.deletedAt` says when it was deleted); then its records and its
+Board history are deleted. One left there (21Board was closed before the Undo ended) is cleared the next time
+21Board opens, once 20 seconds (and a little more) have passed since it was deleted: a tab opened meanwhile never
+clears a page whose Undo another tab still offers. A record of a page that is missing from `settings.boards`
+(and not deleted) is shown as a page at the end, never hidden. Two pages never share a `board.uid` (see Load and
+Import below). *Erase everything* keeps the id of the page shown, so that its Board history ("Before erasing
+everything") is still that page's; the other pages' Board history goes.
+
+While 21Board is open, each tab also holds the other pages' records in memory: if the browser throws the
+database away under an open board, every page is written back, not just the one shown, and a backup made when
+storage can't be read still has every page.
 
 ---
 
@@ -78,6 +86,7 @@ missing from `settings.boards` (and not deleted) is shown as a page at the end, 
   activeBoard: 1,          // the page shown, in every tab (start-up falls back to the first page if it is gone)
   boards: [1, 3, 2],       // the pages in order (board ids)
   deletedBoards: [],       // pages deleted while their Undo is offered
+  deletedAt: {},           // when each of those was deleted (ms), e.g. { "2": 1794460416170 }
   lastBoard: 3             // the highest page id used so far (never used again)
 }
 ```
@@ -404,7 +413,9 @@ file above. With more, it is **still `formatVersion: 1`**: the file is the page 
 ```
 
 A copy of 21Board from before pages ignores `pages` and opens the file as one board (the page that was shown).
-Only an all-pages export (or one of a device with a single page) counts as a backup for the reminders.
+Only an all-pages export (or one of a device with a single page) counts as a backup for the reminders. If
+storage can't be read, the other pages come from what the open tab holds; if part of a page still can't be had,
+the file is made anyway, the teacher is told which pages are incomplete, and it doesn't count as a backup.
 *Export → This page* writes the one-page file exactly as before.
 
 Importing a one-page file offers three choices:
@@ -412,6 +423,8 @@ Importing a one-page file offers three choices:
 - **Open as a new page** (suggested) — the file becomes a new page right after the page shown, with the file's
   name, background, photo, size and shape (not its theme or accent color). It keeps the file's `board.uid`
   unless a page on this device already has it (then it gets a new one). Undo takes the page away again.
+  (*Replace this page* and Load in the Google Drive folder also give a new `uid` when the file's is another page's
+  on this device; the folder lists such a file with **Go to page** instead of Load.)
 - **Replace this page** — removes this page's current windows and content, then loads the file
   (including its board name, background, theme and accent color). Which board it is from then on
   (`board.uid`): the same board, if the file is its own backup (the same `uid`) or says nothing (no `uid`: a
@@ -423,7 +436,10 @@ Importing a one-page file offers three choices:
 
 Importing an all-pages file offers **Add these pages** (each becomes a new page, after this device's pages,
 as with *Open as a new page*) or **Replace all pages** (asked again; the file's pages are added, then this
-device's pages are deleted, with Undo for 20 seconds, which brings them back and takes the new ones away).
+device's pages are deleted, with Undo for 20 seconds, which brings them back and takes the new ones away). With
+*Replace all pages* the file's pages keep their `board.uid` even though the pages they replace have it, so a
+restored backup is the same boards in the Google Drive folder. Either way it is all or nothing: if a page can't
+be added, those that were go again and this device's pages stay.
 
 *Replace* keeps this device's background photo unless the file brings one (or is a sent file that says the board's photo was taken off: `"media": { "background": null }`, written only by a device whose last sent or loaded version of the board said something about a photo; a device that has already loaded or sent "taken off" keeps a photo put on there since), and takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
 this screen); a file from before board sizes existed is fitted into the 16:9 board. *Add* fits the

@@ -102,6 +102,7 @@
     activeBoard: 1,          // the page every tab shows (section 11b)
     boards: [1],             // the pages, in order (board ids)
     deletedBoards: [],       // pages deleted while their Undo is offered (their records go after it: Pages.purge)
+    deletedAt: {},           // when each of those was deleted (ms), so that a tab started meanwhile waits for its Undo
     lastBoard: 1,            // the highest page id used so far: a deleted page's id is never used again
     lastBackupAt: null,      // when a full backup was last exported (ms), for backup reminders
     historyEvery: 10,        // Board history: save a version at most every N minutes while the board changes (0 = off)
@@ -711,7 +712,7 @@
           set(out);
         }) || [];
       } catch (e) { throw thrown || e; }
-      for (const r of written) { if (r.deleted) Known.delete(r.key); else Known.set(r.key, r.rev); }
+      for (const r of written) { if (r.deleted) Known.delete(r.key); else Known.set(r.key, r.rev); Pages.hold(r.key, r.deleted ? null : r); }
       if (written.length) { const keys = written.map(r => r.key); Sync.announce(keys); Link.changed(keys); BoardHistory.changed(keys); }
     },
 
@@ -784,7 +785,7 @@
     for (const key of Known.keys()) {
       const k = Keys.parse(key);
       const value = k.kind === 'settings' ? S.settings : k.kind === 'link' ? (k.name === 'folder' ? Link.dir : k.name === 'state' ? Link.st : null) : k.kind === 'devfile' ? S.devFiles.get(k.id)
-        : k.board !== b ? null : k.kind === 'board' ? S.board : k.kind === 'inst' ? S.insts.get(k.ikey)
+        : k.board !== b ? (Pages.held.get(key) || {}).value : k.kind === 'board' ? S.board : k.kind === 'inst' ? S.insts.get(k.ikey)
         : k.kind === 'data' ? S.data.get(k.ikey) : k.kind === 'conf' ? S.conf.get(k.ikey) : k.kind === 'media' ? S.media.get(k.name) : null;
       if (value !== undefined && value !== null) out.set(key, { type: k.kind, value, absent: true });
     }
@@ -932,17 +933,20 @@
     rebuilds++;
     Menu.close();
     for (const w of S.wins.values()) w.destroy();
-    S.wins.clear(); S.insts.clear(); S.data.clear(); S.conf.clear(); S.media.clear(); S.devFiles.clear(); Known.clear(); Pages.info.clear();
+    S.wins.clear(); S.insts.clear(); S.data.clear(); S.conf.clear(); S.media.clear(); S.devFiles.clear(); Known.clear(); Pages.info.clear(); Pages.held.clear();
     S.focused = null;
     S.settings = Object.assign({}, DEFAULT_SETTINGS);
     S.board = defaultBoard(S.boardId);
     // Couldn't be read: this tab no longer knows what the board holds, so it saves nothing and says so
     // (it goes on only if the teacher chooses to carry on without saving).
+    const was = S.boardId;
     try { await reloadAll(true, opts); } catch (err) { await Startup.fail(err, { storage: true }); await reloadAll(true, opts); }
     updateZoom();
     migrateBoard();
     ensureUid();
     applySettings(); applyBoard();
+    // Another page is shown now (opts.pick): board history is that page's.
+    if (S.boardId !== was) { BoardHistory.switched(); await BoardHistory.reload(); HistorySheet.refresh(); updateHint(); Picker.renderControls(); }
   }
   // Every board has a unique id (board.uid), so a file sent from another device can be matched to it.
   function ensureUid() { if (!UID_RE.test(S.board.uid || '')) updateBoard({ uid: newId() }); }
@@ -956,6 +960,7 @@
       if (!Known.has(key)) return false;
       Known.delete(key);
     }
+    Pages.hold(key, rec);
     const k = Keys.parse(key);
     const value = rec ? rec.value : null;
     switch (k.kind) {
@@ -1186,8 +1191,11 @@
       return { data, w, h, bytes: blob.size, name: String(file.name || 'Photo').slice(0, 80), addedAt: Date.now() };
     },
     async setFromFile(file) {
+      // (Preparing it takes a moment: if another page is shown by then, the photo isn't put on that one.)
+      const b = S.boardId, still = () => { if (b !== S.boardId) throw new Error('Another page is shown now. Choose the photo again on the page you want it on.'); };
       const m = await this.process(file);
-      if (this.media()) await BoardHistory.before('photo', 'Before changing the background photo');
+      still();
+      if (this.media()) { await BoardHistory.before('photo', 'Before changing the background photo'); still(); }
       const prev = this.settings();
       const look = { on: true, fit: prev ? prev.fit : 'fill', focus: { x: 0.5, y: 0.5 }, fade: prev ? prev.fade : 0 };
       S.media.set('background', m); S.media.set('background-look', look);
@@ -2976,7 +2984,8 @@
   // records are read. A widget on a page that isn't shown doesn't run (a Timer's end time is a time of day: it
   // shows the right time when its page comes back, but its alarm doesn't ring while away).
   // A deleted page waits in settings.deletedBoards while its Undo is offered; then its records and board history
-  // go (purge). One left there (21Board closed meanwhile) goes at the next start. A page's id is never used again
+  // go (purge). One left there goes at the next start, once its Undo is over (another tab may still offer it:
+  // settings.deletedAt says when it was deleted). A page's id is never used again
   // (settings.lastBoard): nothing left of a deleted page can turn up in a new one.
   // =====================================================================
   const PAGE_UNDO_MS = 20000;
@@ -2985,10 +2994,23 @@
     busy: false,       // going to another page (or adding or deleting one) now
     gen: 0,            // counts page changes: what was read before one isn't used after it (buildExport)
     purges: new Map(), // board id -> timer: its records go once its Undo is over
+    // key -> { type, value }: the other pages' records, as last read. If the browser throws the database away
+    // (Store.lost), they are written back with the page shown (heldRecords); a backup uses them for what can't
+    // be read (buildAllExport). Kept up to date by applyRecord.
+    held: new Map(),
+    hold(key, rec) { const k = Keys.parse(key); if (rec && k.board && k.board !== S.boardId) this.held.set(key, { type: rec.type || k.kind, value: rec.value }); else this.held.delete(key); },
     menuEl: null, open: false,
     enabled() { return !LAB; },
     note(b, value) { if (!Number.isInteger(b) || b < 1) return; if (value) this.info.set(b, { name: String(value.name || 'My Board'), uid: value.uid || null }); else this.info.delete(b); },
     gone(st = S.settings) { return new Set((Array.isArray(st.deletedBoards) ? st.deletedBoards : []).map(Number)); },
+    // The settings for these pages deleted now (add) or not deleted after all, or gone for good (remove).
+    goneWith(add = [], remove = []) {
+      const gone = this.gone(), at = Object.assign({}, S.settings.deletedAt), now = Date.now();
+      add.forEach(b => { gone.add(b); at[b] = now; });
+      remove.forEach(b => gone.delete(b));
+      for (const k of Object.keys(at)) if (!gone.has(+k)) delete at[k];
+      return { deletedBoards: Array.from(gone), deletedAt: at };
+    },
     // The pages, in order: those in settings.boards that exist, then any other this device has (a page whose
     // place in the order was lost is shown, never hidden).
     ids(st = S.settings, have = b => this.info.has(b) || b === S.boardId) {
@@ -2998,15 +3020,19 @@
       Array.from(this.info.keys()).sort((a, b) => a - b).forEach(add);
       return out;
     },
-    // At start-up (and after Erase): the page to show, from the records just read.
+    // At start-up (and after Erase): the page to show, from the records just read. With none (all erased), the
+    // page shown stays, so that its board history ("Before erasing everything") is still this page's.
     pick(recs) {
       const sr = recs.find(r => r.key === Keys.settings), st = Object.assign({}, DEFAULT_SETTINGS, (sr && sr.value) || {});
       const have = new Set();
       for (const r of recs) { const k = Keys.parse(r.key); if (k.kind === 'board') have.add(k.board); }
       const ids = this.ids(st, b => have.has(b));
-      return ids.includes(+st.activeBoard) ? +st.activeBoard : ids[0] || (have.size ? Math.min(...have) : 1);
+      return ids.includes(+st.activeBoard) ? +st.activeBoard : ids[0] || (have.size ? Math.min(...have) : S.boardId);
     },
     pos(b = S.boardId) { return this.ids().indexOf(b); },
+    // The other page here that is this board (board.uid), if any: two pages never share one, or both would send
+    // to the same file in the Google Drive folder.
+    owner(uid) { if (!uid) return 0; for (const b of this.ids()) if (b !== S.boardId && (this.info.get(b) || {}).uid === uid) return b; return 0; },
     name(b) { return b === S.boardId ? S.board.name : (this.info.get(b) || {}).name || 'Page'; },
     // "Page 2 · Math" (just "Page 2" for a page with that name).
     label(b = S.boardId) { const n = this.pos(b) + 1, nm = this.name(b); return nm === `Page ${n}` ? nm : `Page ${n} · ${nm}`; },
@@ -3036,7 +3062,11 @@
       return S.boardId === b;
     },
     async leave() {
+      // (A field being typed in, such as this page's name in Settings, is saved first, to this page.)
+      const typing = document.activeElement;
+      if (typing && typing.matches('input, textarea, select')) typing.blur();
       Menu.close(); this.closeMenu(); Settings.close(); HistorySheet.close();
+      Array.from($('#toasts').children).forEach(t => { if (t.board) t.remove2(); });   // (their Undo was for this page)
       // Each widget saves what it holds, as when its window closes (see closeWin).
       const live = Array.from(S.wins.values()).filter(w => w.connected);
       live.forEach(w => w.post('beforeclose'));
@@ -3095,7 +3125,9 @@
       this.note(id, board);
       updateSettings({ boards: order, lastBoard: Math.max(id, +S.settings.lastBoard || 1) });
       await Writer.put(Keys.board(id), 'board', board);
-      return await this.go(id, { inner: true, quiet: opts.quiet }) ? id : null;
+      if (await this.go(id, { inner: true, quiet: opts.quiet })) return id;
+      await this.discard([id]);   // (it couldn't be shown, e.g. a window was being moved: not left behind, empty)
+      return null;
     },
     async add() {
       if (this.busy) return;
@@ -3103,29 +3135,35 @@
       try { if (await this.create()) toast(`${this.label()} is ready.`); } finally { this.busy = false; }
       Picker.renderControls();
     },
-    // Pages from a file (Import: "Open as a new page", an all-pages backup): each one a new page. Returns their ids.
+    // Pages from a file (Import: "Open as a new page", an all-pages backup): each one a new page. Returns their ids
+    // (also in opts.made as they are made, so that a page made before a failure is known). opts.reuse: pages
+    // about to be replaced, whose board ids (board.uid) the file's pages may take over: a restored backup is
+    // the same boards as before (in the Google Drive folder, too).
     async addFrom(list, opts = {}) {
-      const made = [];
+      const made = opts.made || [], reuse = opts.reuse || [];
       let after = opts.end ? null : S.boardId;
       for (const p of list) {
-        const uid = p.board.uid && !Array.from(this.info.values()).some(i => i.uid === p.board.uid) ? p.board.uid : newId();   // (one page per board id here)
+        const uid = p.board.uid && !Array.from(this.info).some(([b, i]) => i.uid === p.board.uid && !reuse.includes(b)) ? p.board.uid : newId();   // (one page per board id here)
         const id = await this.create({ after, end: !after, name: p.board.name || null, uid, quiet: true });
         if (!id) break;
-        await applyImport(Object.assign({}, p, { theme: null, accent: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
         made.push(id); after = id;
+        await applyImport(Object.assign({}, p, { theme: null, accent: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
       }
       return made;
     },
     async duplicate() {
       if (this.busy) return;
       this.busy = true;
+      const made = [], from = S.boardId;
+      let failed = null;
       try {
         const p = parseBoardFile(JSON.stringify(await buildExport('full')));
         p.board.name = `${S.board.name} (copy)`.slice(0, 60);
-        const made = await this.addFrom([p]);   // (a new board id: another board, as far as the Google Drive folder is concerned)
+        await this.addFrom([p], { made });   // (a new board id: another board, as far as the Google Drive folder is concerned)
         if (made.length) { this.flash(); toast(`${this.label()} is a copy.`); }
-      } catch (err) { console.error(err); toast('Couldn’t copy this page: ' + ((err && err.message) || err)); }
+      } catch (err) { console.error(err); failed = err; }
       finally { this.busy = false; }
+      if (failed) { if (made.length) await this.discard(made, from); toast('Couldn’t copy this page: ' + ((failed && failed.message) || failed)); }   // (no half-made copy is left)
       Picker.renderControls();
     },
     async rename() {
@@ -3167,18 +3205,18 @@
     // places, and onUndo then runs (an import of several pages takes its own pages away again).
     drop(list, say, onUndo) {
       const before = this.ids();
-      updateSettings({ boards: before.filter(x => !list.includes(x)), deletedBoards: Array.from(new Set(Array.from(this.gone()).concat(list))) });
+      updateSettings(Object.assign({ boards: before.filter(x => !list.includes(x)) }, this.goneWith(list)));
       Picker.renderControls();
       for (const b of list) { clearTimeout(this.purges.get(b)); this.purges.set(b, setTimeout(() => this.purge([b]), PAGE_UNDO_MS + 3000)); }
-      if (say) toast(say, { action: 'Undo', timeout: PAGE_UNDO_MS, onAction: () => this.undrop(list, before, onUndo) });
+      if (say) toast(say, { action: 'Undo', pages: true, timeout: PAGE_UNDO_MS, onAction: () => this.undrop(list, before, onUndo) });
     },
     async undrop(list, order, onUndo) {
-      if (list.some(b => !this.purges.has(b))) { toast('That can’t be undone anymore.'); return; }
+      // (Its records must still be there: never an empty page in its place.)
+      if (list.some(b => !this.purges.has(b)) || !await this.stored(list)) { toast('That can’t be undone anymore.'); return; }
       list.forEach(b => { clearTimeout(this.purges.get(b)); this.purges.delete(b); });
-      const gone = this.gone(); list.forEach(b => gone.delete(b));
       const now = this.ids(), back = order.filter(b => list.includes(b) || now.includes(b));
       now.forEach(b => { if (!back.includes(b)) back.push(b); });
-      updateSettings({ boards: back, deletedBoards: Array.from(gone) });
+      updateSettings(Object.assign({ boards: back }, this.goneWith([], list)));
       if (onUndo) await onUndo();
       if (!this.ids().includes(S.boardId) || !onUndo) await this.go(list[0]);
       Picker.renderControls();
@@ -3188,7 +3226,7 @@
       const left = this.ids().filter(b => !list.includes(b));
       if (!left.length) return;
       if (list.includes(S.boardId) && !await this.go(left.includes(back) ? back : left[0])) return;
-      updateSettings({ boards: left, deletedBoards: Array.from(new Set(Array.from(this.gone()).concat(list))) });
+      updateSettings(Object.assign({ boards: left }, this.goneWith(list)));
       Picker.renderControls();
       await this.purge(list);
     },
@@ -3207,11 +3245,23 @@
           }
         });
       } catch (err) { console.warn('21Board: a deleted page couldn’t be cleared yet', err); return; }
-      keys.forEach(k => Known.delete(k)); list.forEach(b => this.info.delete(b));
+      keys.forEach(k => { Known.delete(k); this.held.delete(k); }); list.forEach(b => this.info.delete(b));
       if (keys.length) Sync.announce(keys);
       for (const b of list) await BoardHistory.purgeBoard(b);
-      const gone = this.gone(); list.forEach(b => gone.delete(b));
-      updateSettings({ deletedBoards: Array.from(gone) });
+      updateSettings(this.goneWith([], list));
+    },
+    // At start-up: pages deleted before (in a tab that may still be offering their Undo) go once it is over.
+    purgeLater() {
+      const at = S.settings.deletedAt || {};
+      for (const b of this.gone()) {
+        if (this.purges.has(b)) continue;
+        this.purges.set(b, setTimeout(() => { this.purges.delete(b); this.purge([b]); }, Math.max(3000, (+at[b] || 0) + PAGE_UNDO_MS + 3000 - Date.now())));
+      }
+    },
+    // Whether these pages' board records are all still stored (another tab may have cleared them).
+    async stored(list) {
+      try { return (await Store.getMany(list.map(b => Keys.board(b)))).every(Boolean); }
+      catch (e) { return list.every(b => Known.has(Keys.board(b))); }
     },
 
     // ---- the Pages menu (above the page indicator in the Widget Picker)
@@ -3250,6 +3300,8 @@
       const ind = $('[data-ctl="pages"]', Picker.el);
       if (ind) ind.setAttribute('aria-expanded', 'true');
       this.place();
+      // Opened from the keyboard: it goes into the menu, at this page (as the window menu does).
+      if (ind && document.activeElement === ind) ($('[aria-checked="true"]', this.menuEl) || $('button', this.menuEl)).focus();
     },
     closeMenu() {
       if (!this.open) return;
@@ -3367,7 +3419,7 @@
       <div class="row stack"><label class="lbl" for="set-link-label">This device's name <span class="hint">(shown on your other devices: “updated on …”)</span></label>
         <input type="text" class="text-input" id="set-link-label" maxlength="40" value="${esc(dev.label)}" autocomplete="off"></div>
       <div class="row stack"><div><div class="lbl">Other boards in the folder</div><div class="hint">Load one to show it on this device (it replaces this board). After that, this device offers its newer versions.</div></div>
-        <div class="inst-list">${others.length ? others.map(f => `<div class="inst"><span class="widget-icon" style="--c:var(--primary)">${svg('send')}</span><div class="meta"><b>${esc(f.title)}</b><span>From ${esc(f.from || 'another device')} ${esc(when(f.sentAt))}${f.uid === uid ? ' · another file of this board' : ''}</span></div><button class="btn small" data-act="link-load" data-val="${esc(f.name)}">Load</button></div>`).join('') : `<div class="empty-note">${L.perm === 'granted' ? 'None yet.' : 'Allow 21Board to use the folder to see them.'}</div>`}</div>
+        <div class="inst-list">${others.length ? others.map(f => { const pg = Pages.owner(f.uid); return `<div class="inst"><span class="widget-icon" style="--c:var(--primary)">${svg('send')}</span><div class="meta"><b>${esc(f.title)}</b><span>From ${esc(f.from || 'another device')} ${esc(when(f.sentAt))}${f.uid === uid ? ' · another file of this board' : pg ? ` · page ${Pages.pos(pg) + 1} here` : ''}</span></div>${pg ? `<button class="btn small" data-act="page-go" data-val="${pg}">Go to page</button>` : `<button class="btn small" data-act="link-load" data-val="${esc(f.name)}">Load</button>`}</div>`; }).join('') : `<div class="empty-note">${L.perm === 'granted' ? 'None yet.' : 'Allow 21Board to use the folder to see them.'}</div>`}</div>
         <div><button class="btn small" data-act="link-check">Check the folder now</button></div></div>`;
   }
 
@@ -3716,6 +3768,7 @@
         case 'link-auto': Link.saveState({ auto: val !== 'off', calm: val === 'calm' }); if (Link.st.auto) Link.changed([Keys.board(S.boardId)]); break;   // (the wait starts again)
         case 'link-photo': Link.saveState({ photo: !Link.st.photo }); break;
         case 'link-load': await Link.load(val); this.render(); break;
+        case 'page-go': this.close(); await Pages.go(+val); break;
         case 'link-load-offer': if (Link.offer) await Link.load(Link.offer.name); this.render(); break;
         case 'update': askUpdate(); break;
         case 'dev-add': {
@@ -3759,13 +3812,15 @@
               actions: [{ label: temp ? 'Empty it anyway' : 'Erase anyway', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] })) break;
           } else await BoardHistory.clearAll();
           await Store.tx('readwrite', s => { s.clear(); });
-          // (The other pages are gone, and their ids may be used again: their versions go too. See Pages.)
-          for (const b of others) await BoardHistory.purgeBoard(b);
+          // (The other pages are gone, and their ids may be used again: their versions go too, also those of pages
+          // deleted with their Undo still offered. See Pages.)
+          if (!temp) for (const b of new Set(others.concat(Array.from(Pages.gone())))) if (b !== S.boardId) await BoardHistory.purgeBoard(b);
           Array.from(Pages.purges.values()).forEach(t => clearTimeout(t)); Pages.purges.clear();
           Writer.forget();
           Link.forget();
           Sync.announce([], { op: 'reload', erased: true });
           await rebuildAll({ pick: true });
+          if (!temp && Pages.enabled()) updateSettings({ boards: [S.boardId], activeBoard: S.boardId });   // (the page shown stays: see Pages.pick)
           Picker.renderControls();
           this.render();
           toast(temp ? 'This board was emptied.' + (temp === 'unopened' ? ' Your saved board wasn’t touched.' : '') : 'Everything was erased.');
@@ -3907,11 +3962,21 @@
   // page's full backup, exactly as before pages. With more, it is still a formatVersion 1 file whose board is the
   // page shown, and "pages" lists every page in order ({ main: true } where that one is): a copy of 21Board from
   // before pages opens it as that one board, and ignores the rest. See docs/DATA-FORMAT.md.
-  async function buildAllExport() {
+  // The other pages' records that can't be read now come from what this tab holds (Pages.held); a page that
+  // still lacks some is named in missing (and the file isn't counted as a backup: see doExport).
+  async function buildAllExport(missing = []) {
     const ids = Pages.ids(), gen = Pages.gen, read = await readForExport();
     if (gen !== Pages.gen) throw new Error('The page changed while it was being read.');
     const main = pageExport('full', S.boardId, read);
     if (ids.length < 2) return main;
+    const have = new Set(read.recs.map(r => r.key).concat(Array.from(Writer.pending.keys()))), lacking = new Set();
+    for (const key of read.unread || Pages.held.keys()) {
+      const b = Keys.parse(key).board;
+      if (!b || b === S.boardId || have.has(key)) continue;
+      if (Pages.held.has(key)) { read.recs.push({ key, value: Pages.held.get(key).value }); have.add(key); } else lacking.add(b);
+    }
+    // (Every page has a board record: one that wasn't read, nor held here, is missing too.)
+    for (const b of ids) if (b !== S.boardId && (lacking.has(b) || !have.has(Keys.board(b)))) missing.push(b);
     main.pages = ids.map(b => {
       if (b === S.boardId) return { main: true };
       const e = pageExport('full', b, read);
@@ -3942,8 +4007,9 @@
     }
     // A kiosk shows no downloads, so a download would vanish into its Downloads folder unseen: only the Save dialog.
     if (KIOSK && !handle) { toast('Export needs the Save dialog, which this kiosk doesn’t allow.'); return false; }
+    const missing = [];
     try {
-      const text = JSON.stringify(kind === 'all' ? await buildAllExport() : await buildExport(kind), null, 2);
+      const text = JSON.stringify(kind === 'all' ? await buildAllExport(missing) : await buildExport(kind), null, 2);
       if (handle) {
         const writable = await handle.createWritable();
         await writable.write(text);
@@ -3955,7 +4021,13 @@
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
       }
-      // (A backup of one page out of several isn't a backup of everything: the reminders go on.)
+      // (A backup of one page out of several isn't a backup of everything: the reminders go on. Nor is one
+      // that lacks part of a page that couldn't be read.)
+      if (missing.length) {
+        const names = missing.map(b => `“${Pages.name(b)}”`).join(', ');
+        toast(`Exported, but part of ${missing.length === 1 ? 'the page' : 'the pages'} ${names} couldn’t be read on this device, so ${missing.length === 1 ? 'it isn’t' : 'they aren’t'} all in the file.`, { timeout: 0, action: 'OK' });
+        return true;
+      }
       if (kind === 'all' || (kind === 'full' && pages < 2)) updateSettings({ lastBackupAt: Date.now() });
       toast(kind === 'template' ? 'Template exported.' : kind === 'all' ? `All ${pages} pages exported.` : pages > 1 ? 'Page exported.' : 'Board exported.');
       return true;
@@ -4031,10 +4103,11 @@
   // Which board a file opened with "Replace my board" is, from then on (its uid). This board: its own backup,
   // or a file that doesn't say which board it is (a template, an old backup) and keeps this board's name. The
   // board in the file: a file sent to a shared folder (as Load does). Anything else is another board with an
-  // id of its own, so that sending it later never renames, removes or overwrites this board's file there.
+  // id of its own, so that sending it later never renames, removes or overwrites this board's file there. (So is
+  // a board that is another page here: Pages.owner.)
   function importedUid(p) {
     if (!p.board.uid) return !p.board.name || p.board.name === S.board.name ? S.board.uid : newId();
-    return p.board.uid === S.board.uid || Link.vidOf(p.sent) ? p.board.uid : newId();
+    return (p.board.uid === S.board.uid || Link.vidOf(p.sent)) && !Pages.owner(p.board.uid) ? p.board.uid : newId();
   }
 
   async function importFile(file) {
@@ -4106,19 +4179,26 @@
   // pages that were here are deleted, with Undo (it brings them back and takes the new ones away).
   async function openAsPages(list, file, replace) {
     if (Pages.busy) return;
-    const was = Pages.ids(), from = S.boardId;
+    const was = Pages.ids(), from = S.boardId, made = [];
     Pages.busy = true;
-    let made = [];
-    try { made = await Pages.addFrom(list, { end: list.length > 1 }); }
-    catch (err) { console.error(err); toast('Import failed: ' + ((err && err.message) || err)); }
+    let failed = null;
+    try { await Pages.addFrom(list, { end: list.length > 1, made, reuse: replace ? was : [] }); }
+    catch (err) { console.error(err); failed = err; }
     finally { Pages.busy = false; }
-    if (made.length && made[0] !== S.boardId) await Pages.go(made[0], { quiet: true });
-    if (!made.length) { Picker.renderControls(); return; }
+    // All or nothing: if a page couldn't be added (a window was being moved, say), those that were go again, and
+    // (Replace) the pages here stay.
+    if (made.length < list.length || failed) {
+      if (made.length) await Pages.discard(made, from);
+      toast((failed ? 'Import failed: ' + ((failed && failed.message) || failed) : 'The import didn’t finish.') + (replace ? ' Your pages are as they were.' : ''));
+      Picker.renderControls();
+      return;
+    }
+    if (made[0] !== S.boardId) await Pages.go(made[0], { quiet: true });
     Pages.flash();
     const name = file ? file.name.replace(/\.21board$/i, '') : '';
     if (replace) { Pages.drop(was, `Replaced your pages with the ${made.length} in “${name}”.`, () => Pages.discard(made)); return; }
     const say = made.length > 1 ? `Added ${made.length} pages.` : `Opened “${name}” as a new page.`;
-    toast(say, { action: 'Undo', timeout: PAGE_UNDO_MS, onAction: async () => { await Pages.discard(made, from); } });
+    toast(say, { action: 'Undo', pages: true, timeout: PAGE_UNDO_MS, onAction: async () => { await Pages.discard(made, from); } });
     Picker.renderControls();
   }
 
@@ -4937,7 +5017,8 @@
         try { const raw2 = await this.readFile(name); if (raw2 !== raw) parsed = parseBoardFile(raw2); } catch (e) { /* keep what was read */ }
         const s2 = parsed.sent || {}, vid = this.vidOf(parsed.sent);
         // Only a sent file joins this device to that board (a plain Export saved in the folder doesn't).
-        const newUid = parsed.board.uid && vid ? parsed.board.uid : newId();
+        // (Nor a board that is another page here: this page becomes a copy of it, with an id of its own.)
+        const newUid = parsed.board.uid && vid && !Pages.owner(parsed.board.uid) ? parsed.board.uid : newId();
         let undoId;
         try { undoId = await applyImport(parsed, 'replace', { uid: newUid, keepCreated: true, photo: this.ownPhoto(newUid, parsed) ? 'keep' : 'file', history: { reason: 'load', label: `Before loading the version from ${s2.from || 'another device'}` } }); } catch (err) { console.error(err); toast('Couldn’t load the board: ' + ((err && err.message) || err)); return false; }
         // (The file this device used for the board until now is remembered: its next send tidies it away.)
@@ -5123,6 +5204,8 @@
       this.unread = false;
       this.metas.sort((a, b) => b.at - a.at);
     },
+    // A version of another page is never put on this one (an Undo offered there, say): false after saying so.
+    ours(meta) { if (!meta || meta.b === undefined || +meta.b === S.boardId) return true; toast('That was on another page, so it can’t be done here.'); return false; },
     // A version to go back to, or null after saying why not: it is gone, or history can't be read just now.
     async find(id) {
       try { const r = await this.get(id); if (!r) toast('That version can’t be found anymore.'); return r; }
@@ -5490,7 +5573,7 @@
       let exp, meta = null;
       if (typeof src === 'string') {
         const r = await this.find(src);
-        if (!r) return false;
+        if (!r || !this.ours(r.meta)) return false;
         exp = clone(r.body.exp); meta = r.meta;
       } else exp = clone(src.exp);
       const at = (exp.snapshot && exp.snapshot.at) || (exp.history && exp.history.at) || (meta && meta.at) || Date.now();
@@ -5525,7 +5608,7 @@
     },
     async putBackNow(id, ikey, opts) {
       const r = await this.find(id);
-      if (!r) return false;
+      if (!r || !this.ours(r.meta)) return false;
       const exp = clone(r.body.exp);
       if (!opts.exact) this.fix(exp, r.meta.at);   // (undoing an action just taken: a running timer keeps running)
       const src = exp.instances.find(i => ikeyOf(i.widgetId, i.instance) === ikey);
@@ -5983,6 +6066,9 @@
       t.appendChild(b);
     }
     t.remove2 = remove;
+    // An Undo acts on the page shown: it goes when another page is shown (Pages.leave). (opts.pages: it undoes a
+    // change to the pages themselves, and stays.)
+    if (opts.action === 'Undo' && !opts.pages) t.board = S.boardId;
     host.appendChild(t);
     const timeout = opts.timeout === undefined ? 4200 : opts.timeout;
     if (timeout) setTimeout(remove, timeout); else t.sticky = true;
@@ -6654,7 +6740,7 @@
     updateHint();
     Startup.done();
     if (!LAB && S.settings.activeBoard !== S.boardId) updateSettings({ activeBoard: S.boardId });   // (its page was gone)
-    if (!LAB && Pages.gone().size) setTimeout(() => Pages.purge(Array.from(Pages.gone())), 3000);   // deleted while 21Board was last open: their Undo is over
+    if (!LAB) Pages.purgeLater();   // deleted pages whose Undo is (or will soon be) over
     if (LAB) { LabBridge.start(); return; }   // test mode: no offline cache, install, file opening or backup reminders
     if (!KIOSK) setupFileLaunch();
     Persist.init();
