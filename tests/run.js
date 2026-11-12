@@ -1919,6 +1919,399 @@ const SUITES = [
   // ---- Name Picker style suite: Spotlight
   // ---- (end of Spotlight slot)
   // ---- Name Picker style suite: Lotto
+  ['Name Picker: Lotto', async (browser) => {
+    // Counts, in every frame, the timers and animation frames a page asks for, and the sounds it starts and the notes
+    // it plays (as in 'Name Picker: styles, winners, menu').
+    const AUDIO_SPY = () => {
+      window.__calls = 0;
+      for (const fn of ['setTimeout', 'setInterval', 'requestAnimationFrame']) { const f = window[fn]; window[fn] = function () { window.__calls++; return f.apply(this, arguments); }; }
+      if (!window.AudioContext) return;
+      window.__audio = 0; window.__notes = 0;
+      const A = window.AudioContext, base = (window.BaseAudioContext || A).prototype;
+      window.AudioContext = class extends A { constructor(o) { super(o); window.__audio++; } };
+      for (const fn of ['createOscillator', 'createBufferSource']) { const f = base[fn]; base[fn] = function () { window.__notes++; return f.apply(this, arguments); }; }
+    };
+    // When each show starts and ends (body.showing), timed inside the widget.
+    const TIMES = () => {
+      window.__shows = [];
+      new MutationObserver(() => {
+        const on = document.body.classList.contains('showing'), last = window.__shows[window.__shows.length - 1];
+        if (on && (!last || last.end)) window.__shows.push({ start: performance.now() });
+        else if (!on && last && !last.end) last.end = performance.now();
+      }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    };
+    // What the Lotto stage shows, measured on screen: each socket's name (its size, on one or two lines, how far it
+    // sticks out of its place or the stage, how much of its place it fills), each ball (in a socket, in the drum, on its
+    // way, or gone), and whether the drum and the tray overlap.
+    const LOOK = () => {
+      const R = e => e.getBoundingClientRect(), st = R(document.getElementById('stage'));
+      const g = R(document.querySelector('.lotto-globe')), gc = { x: g.left + g.width / 2, y: g.top + g.height / 2, r: g.width / 2 };
+      const socks = [...document.querySelectorAll('.lotto-sock')];
+      const sr = socks.map(R);
+      const names = [...document.querySelectorAll('.lotto-name')].map(n => {
+        const t = n.querySelector('.lotto-text');
+        if (!t) return null;
+        const r = document.createRange(); r.selectNodeContents(t);
+        const tr = r.getBoundingClientRect(), nb = R(n), fs = parseFloat(getComputedStyle(t).fontSize);
+        return { text: t.textContent, fs, lines: t.classList.contains('lotto-two') ? 2 : 1, font: getComputedStyle(t).fontFamily,
+          out: Math.max(0, nb.left - tr.left, tr.right - nb.right, nb.top - tr.top - fs * 0.05, tr.bottom - nb.bottom - fs * 0.05),
+          outStage: Math.max(0, st.left - tr.left, tr.right - st.right, st.top - tr.top, tr.bottom - st.bottom),
+          // (one line is at most about 0.6 of its place's height: the rest is room around it)
+          fill: Math.max(tr.width / nb.width, t.offsetHeight / (nb.height * (t.classList.contains('lotto-two') ? 1 : 0.6))), top: tr.top, bottom: tr.bottom };
+      });
+      const balls = [...document.querySelectorAll('.lotto-ball')].map((b, i) => {
+        if (b.hidden) return { i, where: 'out' };
+        const r = R(b), c = { x: r.left + r.width / 2, y: r.top + r.height / 2 }, d = b.offsetWidth;
+        const s = sr.findIndex(k => c.x > k.left && c.x < k.right && c.y > k.top && c.y < k.bottom);
+        const inStage = c.x - d / 2 >= st.left - 1 && c.x + d / 2 <= st.right + 1 && c.y - d / 2 >= st.top - 1 && c.y + d / 2 <= st.bottom + 1;
+        return { i, where: s >= 0 ? 'sock' + s : Math.hypot(c.x - gc.x, c.y - gc.y) + d / 2 <= gc.r + 1 ? 'drum' : 'loose', label: b.textContent, d, inStage,
+          at: b.style.transform, font: getComputedStyle(b.firstChild).fontFamily };
+      });
+      const tray = R(document.querySelector('.lotto-tray'));
+      return { stage: { w: st.width, h: st.height }, socks: socks.length, open: socks.filter(s => !s.classList.contains('lotto-full') && s.textContent === '?').length,
+        names, balls, overlap: !(g.right <= tray.left || g.bottom <= tray.top || g.left >= tray.right),
+        trayIn: tray.left >= st.left - 0.5 && tray.right <= st.right + 0.5 && tray.top >= st.top - 0.5 && tray.bottom <= st.bottom + 0.5,
+        head: (document.querySelector('.lotto-head:not([hidden])') || {}).textContent || '' };
+    };
+    const initials = name => { const first = s => (Array.from(s)[0] || '?').toUpperCase(), parts = name.split(/[\s\-‐-―.]+/).filter(Boolean); return parts.length > 1 ? first(parts[0]) + first(parts[1]) : first(name); };
+    const C12 = ['Ava', 'Mateo', 'Sofia', 'Liam', 'Amara', 'Noah', 'Isabella', 'Kenji', 'Zoe', 'Elijah', 'Anne-Sophie', 'Leo'];
+    const C24 = C12.concat(['Priya', 'Lucas', 'Mia', 'Oluwaseun', 'Harper', 'Diego', 'Chloe', 'Ethan', 'Fatima', 'Owen', 'Grace', 'Maximiliano']);
+    const C45 = C24.concat(['Benjamin', 'Valentina', 'Hiroshi', 'Siobhan', 'Jean-Baptiste', 'Kai', 'Yusuf', 'Ingrid', 'Tomas', 'Aiyana', 'Rafael', 'Nadia', 'Ezra',
+      'Leila', 'Mason', 'Sakura', 'Theo', 'Amelie', 'Kofi', 'Ximena', 'Lars']);
+    const LONG = ['Maximiliana-Guadalupe Fernández-Oyelaran', 'Christopher Alexander Montgomery', 'Oluwaseun Adebayo-Williams', 'Wolfgang Bartholomew', 'Bo'];
+
+    const errors = [];
+    const watch = (p, tab) => { p.on('pageerror', e => errors.push(`[${tab}] ${e.message}`)); p.on('console', m => { if (m.type() === 'error' && /name-picker/.test(m.location().url || '')) errors.push(`[${tab} console] ${m.text()}`); }); };
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await ctx.addInitScript(AUDIO_SPY);
+    const page = await ctx.newPage(); watch(page, 'tab 1');
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const IK = 'name-picker:1';
+    const np = (p = page, ik = IK) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const saved = (p = page, ik = IK) => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
+    const conf = (p = page, ik = IK) => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
+    const menu = async (id, p = page, ik = IK) => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const showing = (p = page, ik) => np(p, ik).locator('body').evaluate(b => b.classList.contains('showing'));
+    const idle = (p = page, ik) => eventually(async () => !(await showing(p, ik)), 12000);
+    const inFrame = (fn, p = page, ik, arg) => np(p, ik).locator('html').evaluate(fn, arg);
+    const look = (p = page, ik) => inFrame(LOOK, p, ik);
+    const said = (p = page, ik) => np(p, ik).locator('#said').textContent();
+    const pickNow = async (p = page, ik) => {
+      const was = ((await saved(p, ik)) || {}).pickId;
+      await np(p, ik).locator('#go').click();
+      await eventually(async () => ((await saved(p, ik)) || {}).pickId !== was, 3000);
+      return saved(p, ik);
+    };
+    const setNames = async (list, p = page) => { await menu('edit', p); await np(p).locator('#list').fill(list.join('\n')); await np(p).locator('#done').click(); await p.waitForTimeout(300); };
+    // Content size w×h (the window adds its 40 px title bar), or the whole board.
+    const size = (w, h, p = page) => p.evaluate(([ik, w, h]) => { const b = window.__board21; if (w) { b.setMaximized(ik, false); b.setRect(ik, { x: 30, y: 30, w, h: h + 40 }); } else b.setMaximized(ik, true); }, [IK, w, h]).then(() => p.waitForTimeout(500));
+    // The stage shows exactly this pick: the winners' names in the sockets in pick order, each winner's own ball in its
+    // socket, everyone still in the round in the drum, and the ones picked earlier in the round gone.
+    const landsOn = async (st, names, p = page) => {
+      const L = await look(p), bad = [];
+      if (JSON.stringify(L.names.map(n => n && n.text)) !== JSON.stringify(st.picked)) bad.push(`tray: ${L.names.map(n => n && n.text)}`);
+      st.picked.forEach((n, j) => { const b = L.balls[names.indexOf(n)]; if (!b || b.where !== 'sock' + j) bad.push(`${n}'s ball is ${b && b.where}`); });
+      const inDrum = L.balls.filter(b => b.where === 'drum').length, gone = L.balls.filter(b => b.where === 'out').length;
+      const drum = (await conf(p)).noRepeats ? st.left.length : names.length - st.picked.length;
+      if (inDrum !== drum || gone !== names.length - drum - st.picked.length) bad.push(`${inDrum} balls in the drum, ${gone} gone (expected ${drum}, ${names.length - drum - st.picked.length})`);
+      if (L.balls.some(b => b.where === 'loose' || b.inStage === false)) bad.push('a ball is outside the drum and the tray');
+      if (L.open) bad.push(L.open + ' sockets still empty');
+      return bad;
+    };
+
+    // ---- A new picker as Lotto: a ball with initials for each student, one "?" socket in the Picked tray.
+    await page.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf()) || {}).style === 'wheel');
+    await np().locator('#list').fill(C12.join('\n')); await np().locator('#done').click();
+    await menu('style:lotto');
+    await size(640, 400);
+    let L = await look();
+    ok((await conf()).style === 'lotto' && await np().locator('.style-root[data-style="lotto"] .lotto').count() === 1, 'Lotto is chosen from the menu and saved');
+    ok(L.balls.length === 12 && L.balls.every((b, i) => b.where === 'drum' && b.label === initials(C12[i])) && L.balls[10].label === 'AS',
+      `the drum holds a ball for each of the 12 students, with their initials (${L.balls.map(b => b.label).join(' ')})`);
+    ok(L.socks === 1 && L.open === 1 && L.head === 'Picked' && !L.overlap && L.trayIn, 'the Picked tray shows one “?” socket for the name to come');
+    const calls0 = await inFrame(() => window.__calls); await page.waitForTimeout(1200);
+    ok(await inFrame(() => window.__calls) === calls0, 'nothing runs while it waits for a pick (no timers or animation frames)');
+
+    // ---- One winner, at the usual speed: about 3½ s, landing on the saved winner.
+    await inFrame(TIMES);
+    let snaps = [];
+    let st = await pickNow();
+    for (let i = 0; i < 80 && await showing(); i++) { snaps.push(await look()); await page.waitForTimeout(60); }
+    await idle();
+    let shows = await inFrame(() => window.__shows);
+    ok(shows.length === 1 && shows[0].end - shows[0].start > 3000 && shows[0].end - shows[0].start < 4300, `one name takes about 3½ s (${Math.round(shows[0].end - shows[0].start)} ms)`);
+    ok(snaps.length > 5 && snaps[0].open === 1 && snaps.some(s => s.balls.some(b => b.where === 'loose' && b.i === C12.indexOf(st.picked[0]))) && snaps.every(s => s.balls.every(b => b.where !== 'loose' || b.i === C12.indexOf(st.picked[0]))),
+      `during the show the balls tumble and only the winner’s ball (${st.picked[0]}) rolls out of the drum`);
+    let bad = await landsOn(st, C12);
+    ok(!bad.length, `it lands on the saved winner, ${st.picked[0]}: the name in the tray, its ball in the socket, 11 balls left in the drum${bad.length ? ': ' + bad.join('; ') : ''}`);
+    ok(await eventually(async () => await said() === 'Picked: ' + st.picked[0]), 'screen readers hear the winner (the host’s “Picked: …”)');
+    const calls1 = await inFrame(() => window.__calls); await page.waitForTimeout(1500);
+    ok(await inFrame(() => window.__calls) === calls1, 'once the show is over nothing runs (no timers or animation frames)');
+
+    // ---- Five winners: five "?" sockets first, then the balls come out about a second apart, in turn order; about 6 s.
+    await menu('winners:5');
+    L = await look();
+    ok(L.socks === 1 && L.open === 0 && L.names[0].text === st.picked[0] && await np().locator('#go').textContent() === 'Pick 5', 'choosing 5 winners keeps the last pick on show until the next pick (“Pick 5”)');
+    snaps = [];
+    const t0 = Date.now();
+    st = await pickNow();
+    for (let i = 0; i < 150 && await showing(); i++) { const s = await look(); s.t = Date.now() - t0; snaps.push(s); await page.waitForTimeout(50); }
+    await idle();
+    shows = await inFrame(() => window.__shows);
+    const took5 = shows[1].end - shows[1].start;
+    ok(snaps[0].socks === 5 && snaps[0].open === 5 && snaps[0].names.every(n => !n), 'the tray first shows five “?” sockets, one for each name to come');
+    const filled = snaps.map(s => s.names.filter(Boolean).map(n => n.text));
+    const inOrder = filled.every(f => f.every((n, j) => n === st.picked[j]) && f.length <= 5) && snaps.every(s => s.names.every((n, j) => !n || j < s.names.filter(Boolean).length));
+    const landedAt = [1, 2, 3, 4, 5].map(c => (snaps.find(s => s.names.filter(Boolean).length >= c) || {}).t);
+    const gaps = landedAt.slice(1).map((t, j) => t - landedAt[j]);
+    ok(inOrder && landedAt.every(Boolean) && gaps.every(g => g > 450 && g < 1200), `the names fill the tray from the top in turn order, about a second apart (${gaps.join(', ')} ms)`);
+    ok(snaps.every(s => s.balls.every(b => b.where !== 'loose' || st.picked.slice(s.names.filter(Boolean).length, s.names.filter(Boolean).length + 2).includes(C12[b.i]))),
+      'only the next winners’ balls are ever on their way down the chute');
+    ok(took5 > 5300 && took5 < 7000, `five names take about 6 s (${Math.round(took5)} ms)`);
+    bad = await landsOn(st, C12);
+    ok(!bad.length, `it lands on the five saved winners in order (${st.picked.join(', ')})${bad.length ? ': ' + bad.join('; ') : ''}`);
+
+    // ---- Many picks (Quick): No repeats until everyone is picked, then Start over; one winner and five.
+    await menu('quick');
+    await menu('round');
+    L = await look();
+    ok(L.balls.every(b => b.where === 'drum') && L.socks === 5 && L.open === 5, 'Start over: every ball back in the drum and five empty sockets');
+    for (const k of [1, 5]) {
+      await menu('winners:' + k);
+      const fails = [], seen = [];
+      for (let n = 0; n < 20; n++) {
+        await idle();
+        if (await np().locator('#go').textContent() === 'Everyone picked — start over') break;
+        const s = await pickNow(); await idle();
+        seen.push(...s.picked);
+        const b = await landsOn(s, C12);
+        if (b.length) fails.push(`${s.picked}: ${b.join('; ')}`);
+      }
+      ok(!fails.length && seen.slice().sort().join() === C12.slice().sort().join(),
+        `${k} winner${k > 1 ? 's' : ''} at a time, No repeats: every pick lands on exactly the saved winners and the drum empties as the class is picked, everyone once (${seen.length} picks)${fails.length ? ': ' + fails.join(' | ') : ''}`);
+      L = await look();
+      ok(L.balls.filter(b => b.where === 'drum').length === 0, 'when everyone has been picked the drum is empty');
+      await np().locator('#go').click(); await page.waitForTimeout(300);
+      L = await look();
+      ok(L.balls.every(b => b.where === 'drum') && L.open === k && (await saved()).left.length === 12, `the button then starts over: all 12 balls back in the drum, ${k} “?” socket${k > 1 ? 's' : ''}`);
+    }
+
+    // ---- Quick: about 1½ s, one winner or five.
+    for (const k of [1, 5]) {
+      await menu('winners:' + k);
+      await pickNow(); await idle();
+      shows = await inFrame(() => window.__shows);
+      const q = shows[shows.length - 1].end - shows[shows.length - 1].start;
+      ok(q > 1100 && q < 2100, `Quick: ${k} winner${k > 1 ? 's take' : ' takes'} about 1½ s (${Math.round(q)} ms)`);
+    }
+    await menu('quick');
+
+    // ---- No repeats off: the winners' balls go back into the drum at the next pick; every ball is always on show.
+    await menu('norepeat'); await menu('winners:3');
+    for (let n = 0; n < 3; n++) {
+      await idle(); await np().locator('#go').click(); await page.waitForTimeout(700); await np().locator('#stage').click(); await page.waitForTimeout(200);
+      st = await saved();
+      bad = await landsOn(st, C12);
+      if (bad.length) break;
+    }
+    ok(!bad.length, `No repeats off: the three winners in the tray, the other 9 balls in the drum, none gone${bad.length ? ': ' + bad.join('; ') : ''}`);
+    await menu('norepeat'); await menu('winners:1');
+
+    // ---- A tap during the show skips to the result; nothing is left running.
+    await menu('winners:3');
+    st = await pickNow();
+    await page.waitForTimeout(700);
+    await np().locator('#stage').click(); await page.waitForTimeout(150);
+    bad = await landsOn(st, C12);
+    ok(!(await showing()) && !bad.length, `a tap during the show skips straight to the three winners${bad.length ? ': ' + bad.join('; ') : ''}`);
+    await page.waitForTimeout(300);
+    let c = await inFrame(() => window.__calls); L = await look(); await page.waitForTimeout(1000);
+    ok(await inFrame(() => window.__calls) === c && JSON.stringify((await look()).balls.map(b => b.at)) === JSON.stringify(L.balls.map(b => b.at)), 'and nothing moves or runs after it');
+    // A page that can't be seen ends the show at once.
+    st = await pickNow(); await page.waitForTimeout(400);
+    await inFrame(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    bad = await landsOn(st, C12);
+    await page.waitForTimeout(300); c = await inFrame(() => window.__calls); await page.waitForTimeout(800);
+    ok(!(await showing()) && !bad.length && await inFrame(() => window.__calls) === c, 'a show ends at once when the page is hidden, the winners in the tray, nothing left running');
+    await inFrame(() => { delete document.hidden; });
+    // Another style chosen during the show: the drum stops; choosing Lotto again shows the same pick.
+    st = await pickNow(); await page.waitForTimeout(500);
+    await menu('style:name');
+    await page.waitForTimeout(300); c = await inFrame(() => window.__calls); await page.waitForTimeout(800);
+    ok(await inFrame(() => window.__calls) === c && await np().locator('.lotto').count() === 0, 'choosing Big name during the show stops the drum (nothing left running)');
+    await menu('style:lotto');
+    bad = await landsOn(st, C12);
+    ok(!bad.length, `and choosing Lotto again shows that pick straight away${bad.length ? ': ' + bad.join('; ') : ''}`);
+
+    // ---- A resize during the show: it carries on and still lands on the winners, fitted to the new size.
+    st = await pickNow(); await page.waitForTimeout(1600);
+    await size(420, 320);
+    await idle();
+    bad = await landsOn(st, C12);
+    L = await look();
+    ok(!bad.length && L.names.every(n => n.out <= 1 && !n.outStage) && !L.overlap, `a window resized during the show still lands on the winners, fitted to the new size${bad.length ? ': ' + bad.join('; ') : ''}`);
+
+    // ---- Another copy: a pick in one tab plays the show in the other, which lands on the same winners in the same order.
+    await size(640, 400); await menu('round');   // (the round was used up: everyone back in)
+    const page2 = await ctx.newPage(); watch(page2, 'tab 2');
+    await page2.goto(BASE); await boardUp(page2); await freeBoard(page2);
+    await eventually(async () => (await np(page2).locator('.lotto').count()) === 1);
+    st = await pickNow();
+    ok(await eventually(() => showing(page2), 1500), 'a pick in one tab puts on the Lotto show in the other tab too');
+    await idle(); await idle(page2);
+    bad = await landsOn(st, C12, page2);
+    ok(!bad.length, `and both end on the same winners, in the same order (${st.picked.join(', ')})${bad.length ? ': ' + bad.join('; ') : ''}`);
+    // A reload shows the result straight away, after the show and during it.
+    await page2.reload(); await boardUp(page2);
+    ok(await eventually(async () => !(await landsOn(st, C12, page2)).length, 3000) && !(await showing(page2)), 'after a reload the winners are in the tray straight away, with no show');
+    await page2.close();
+    st = await pickNow(); await page.waitForTimeout(600);
+    await page.reload(); await boardUp(page);
+    ok(await eventually(async () => !(await landsOn(st, C12)).length, 3000) && !(await showing()) && (await saved()).pickId === st.pickId, 'a reload during the show shows its result straight away');
+
+    // ---- Sound: off, a show plays nothing; ticked, the balls clack, pop out and a chime plays at the end.
+    await menu('winners:1'); await menu('quick');
+    let n0 = await inFrame(() => window.__notes);
+    await pickNow(); await idle();
+    ok(await inFrame(() => window.__notes) === n0 && await inFrame(() => window.__audio) === 0, 'with Sound off the show makes no sound (none is even started)');
+    await menu('sound');
+    n0 = await inFrame(() => window.__notes);
+    await pickNow(); await idle();
+    const notes = await inFrame(() => window.__notes) - n0;
+    ok(await inFrame(() => window.__audio) === 1 && notes >= 8, `with Sound ticked the show plays its sounds (${notes} notes)`);
+    await menu('sound'); await menu('quick');
+
+    // ---- Fits and stays readable: the smallest window, the usual one, and the whole board at 1366×768 and 1920×1080,
+    // with 1, 3, 24 and 45 names and very long ones. The longest names are put in the tray (as an older pick from
+    // another copy arrives), then measured: nothing sticks out of its place or the stage, no ball is outside the drum
+    // or the tray, the drum and the tray don't overlap, every name fills its place, and is at least this large (px).
+    // ([size]: 1 winner, 3 winners, then a very long name on two lines: 1 winner, 3 winners; five winners.)
+    const FLOOR = { '260x200': [16, 13, 9, 7], '420x320': [24, 18, 13, 10], '1366x768': [85, 65, 45, 35, 40], '1920x1080': [120, 95, 65, 50, 60] };
+    const CASES = [['1 name', ['Ava'], [[], ['Ava']]], ['3 names', ['Ava', 'Mateo', 'Anne-Sophie'], [[], ['Anne-Sophie'], ['Anne-Sophie', 'Mateo', 'Ava']]],
+      ['24 names', C24, [[], ['Maximiliano'], ['Maximiliano', 'Anne-Sophie', 'Oluwaseun']]], ['45 names', C45, [[], ['Jean-Baptiste'], ['Jean-Baptiste', 'Maximiliano', 'Anne-Sophie']]],
+      ['long names', LONG, [[], [LONG[0]], LONG.slice(0, 3)]]];
+    let stamp = Date.now() - 60000;
+    const put = (names, picked, k) => page.evaluate(([ik, data, k]) => {
+      const w = window.__board21.state.wins.get(ik);
+      w.post('config', { config: Object.assign({}, window.__board21.state.conf.get(ik), { winners: k }), reason: 'remote' });
+      w.post('data', { data, reason: 'remote' });
+    }, [IK, { names, left: names.filter(n => !picked.includes(n)), picked, pickId: (stamp++).toString(36) + '-fit', current: picked[0] || null }, k]);
+    const fitBad = [];
+    let fitCount = 0;
+    const checkFit = async (where, names, picked, k) => {
+      await put(names, picked, k); await page.waitForTimeout(450);
+      const L = await look(), sz = where.split(' ')[0], f = FLOOR[sz], tag = `${where}, ${names.length} names, ${picked.length ? picked.length + ' winner' + (picked.length > 1 ? 's' : '') : 'before a pick'}`;
+      fitCount++;
+      if (JSON.stringify(L.names.map(n => n && n.text)) !== JSON.stringify(picked.length ? picked : Array(k).fill(null))) fitBad.push(`${tag}: tray shows ${L.names.map(n => n && n.text)}`);
+      if (L.socks !== (picked.length || k)) fitBad.push(`${tag}: ${L.socks} sockets`);
+      for (const n of L.names.filter(Boolean)) {
+        const long = n.text.length > 20, floor = picked.length > 3 ? f[4] : f[(long ? 2 : 0) + (picked.length > 1 ? 1 : 0)];
+        if (n.out > 1 || n.outStage > 0) fitBad.push(`${tag}: “${n.text}” sticks out by ${Math.round(Math.max(n.out, n.outStage))} px`);
+        if (n.fs < floor) fitBad.push(`${tag}: “${n.text}” is only ${Math.round(n.fs)} px (at least ${floor})`);
+        if (n.fill < 0.85) fitBad.push(`${tag}: “${n.text}” fills only ${Math.round(n.fill * 100)}% of its place`);
+        if (long && n.lines !== 2) fitBad.push(`${tag}: “${n.text}” isn’t on two lines`);
+      }
+      const rows = L.names.filter(Boolean).sort((a, b) => a.top - b.top);
+      if (rows.some((n, j) => j && n.top < rows[j - 1].bottom - 1)) fitBad.push(`${tag}: names overlap`);
+      if (L.balls.some(b => b.where === 'loose' || b.inStage === false)) fitBad.push(`${tag}: a ball is outside the drum and the tray`);
+      if (L.overlap || !L.trayIn) fitBad.push(`${tag}: the drum and the tray overlap or the tray is cut off`);
+      return L;
+    };
+    let small = null;   // (the smallest window with 45 names)
+    const fitAll = async where => {
+      for (const [, names, picks] of CASES) for (const picked of picks) {
+        const L = await checkFit(where, names, picked, Math.max(1, picked.length));
+        if (where.startsWith('260') && names.length === 45 && !picked.length) small = L;
+      }
+    };
+    await size(260, 200); await fitAll('260x200 window');
+    await size(420, 320); await fitAll('420x320 window');
+    await size(0, 0); await fitAll('1366x768 board');
+    for (const k of [5]) await checkFit('1366x768 board', C45, ['Jean-Baptiste', 'Maximiliano', 'Anne-Sophie', 'Oluwaseun', 'Valentina'].slice(0, k), k);
+    await page.screenshot({ path: OUT + 'name-picker-lotto-5-winners.png' });
+    await page.setViewportSize({ width: 1920, height: 1080 }); await page.waitForTimeout(600);
+    await fitAll('1920x1080 board');
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.waitForTimeout(400);
+    ok(!fitBad.length, `it fits and stays readable at 260×200, 420×320 and filling the board at 1366×768 and 1920×1080, with 1, 3, 24, 45 and very long names (${fitCount} cases)${fitBad.length ? ': ' + fitBad.join(' | ') : ''}`);
+    ok(small.balls.filter(b => b.where === 'drum').length === 45 && small.balls.every(b => b.d < 10), `in the smallest window a class of 45 still fits in the drum (balls ${Math.round(Math.max(...small.balls.map(b => b.d || 0)))} px: only decoration there)`);
+
+    // ---- Dark theme: the board's dark colours; the initials stay dark on the light balls.
+    await size(640, 400);
+    await put(C24, ['Maximiliano', 'Anne-Sophie', 'Oluwaseun'], 3); await page.waitForTimeout(400);
+    const colours = () => inFrame(() => {
+      const c = s => getComputedStyle(document.querySelector(s));
+      return { theme: document.documentElement.getAttribute('data-b21-theme'), tray: c('.lotto-tray').backgroundColor, name: c('.lotto-name').color, ink: c('.lotto-face').color,
+        row: c('.lotto-row.lotto-on').boxShadow, bg: getComputedStyle(document.documentElement).getPropertyValue('--b21-bg').trim(), text: getComputedStyle(document.documentElement).getPropertyValue('--b21-text').trim() };
+    });
+    const light = await colours();
+    await page.click('.picker-btn.right'); await page.click('[data-ctl="theme"]'); await page.waitForTimeout(500); await page.keyboard.press('Escape');
+    const dark = await colours();
+    const rgb = h => 'rgb(' + [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ') + ')';
+    ok(dark.theme === 'dark' && dark.tray === rgb(dark.bg) && dark.name === rgb(dark.text) && dark.tray !== light.tray && dark.name !== light.name && dark.ink === 'rgb(17, 24, 39)' && light.ink === dark.ink && /251, 191, 36/.test(dark.row),
+      `dark theme: the tray and names take the board’s dark colours (${dark.tray}, ${dark.name}), the winners’ rows dark-theme gold, the initials stay dark on the balls`);
+    L = await look();
+    ok(L.names.every(n => n.out <= 1) && !L.overlap, 'and everything still fits');
+    await page.mouse.click(1000, 400);   // (an empty part of the board: no window selected, so no grips in the picture)
+    await page.locator(`.win[data-ikey="${IK}"]`).screenshot({ path: OUT + 'name-picker-lotto-dark.png' });
+    await page.click('.picker-btn.right'); await page.click('[data-ctl="theme"]'); await page.waitForTimeout(500); await page.keyboard.press('Escape');
+
+    // ---- Letters: Settings → Letters → Easier to read reaches the names, the initials, the "?" and the tray's heading,
+    // and the names are fitted again in the new letters.
+    await size(420, 320);
+    await put(C24, ['Maximiliano'], 1); await page.waitForTimeout(400);
+    const w0 = (await look()).names[0];
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="letters"][data-val="legible"]');
+    await page.keyboard.press('Escape');
+    ok(await eventually(async () => await inFrame(() => Array.from(document.fonts).some(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible' && f.status === 'loaded'))), 'Easier to read: the letters load in the widget');
+    await page.waitForTimeout(500);
+    const fonts = await inFrame(() => ['.lotto-name .lotto-text', '.lotto-face', '.lotto-head', '.lotto-sock'].map(s => getComputedStyle(document.querySelector(s)).fontFamily));
+    L = await look();
+    ok(fonts.every(f => f.startsWith('"Atkinson Hyperlegible"')), `its names, initials, “?” and heading are in them (${fonts.map(f => f.split(',')[0]).join(', ')})`);
+    ok(L.names[0].out <= 1 && L.names[0].fill >= 0.85 && L.names[0].fs !== w0.fs, `and the name is fitted again in the new letters (${Math.round(w0.fs)} px, now ${Math.round(L.names[0].fs)} px, filling ${Math.round(L.names[0].fill * 100)}%)`);
+    await page.mouse.click(1000, 400);
+    await page.locator(`.win[data-ikey="${IK}"]`).screenshot({ path: OUT + 'name-picker-lotto-letters.png' });
+    if (errors.length) ok(false, 'no page errors or console errors: ' + errors.join(' | '));
+    await ctx.close();
+
+    // ---- Reduce motion: no show, the winners fade straight in and nothing moves. Sound ticked while the device
+    // refuses sound: nothing goes wrong.
+    errors.length = 0;
+    const rctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' });
+    await rctx.addInitScript(() => { window.AudioContext = function () { throw new Error('no sound here'); }; window.webkitAudioContext = window.AudioContext; });
+    const rp = await rctx.newPage(); watch(rp, 'reduce motion');
+    await rp.goto(BASE); await boardUp(rp); await freeBoard(rp);
+    await rp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(rp)) || {}).style === 'wheel');
+    await np(rp).locator('#list').fill(C12.join('\n')); await np(rp).locator('#done').click();
+    await menu('style:lotto', rp); await menu('sound', rp); await size(640, 400, rp);
+    for (const k of [1, 5]) {
+      await menu('winners:' + k, rp);
+      const s = await pickNow(rp), was = await showing(rp);
+      const L0 = await look(rp); await rp.waitForTimeout(500); const L1 = await look(rp);
+      const fade = await inFrame(() => [...document.querySelectorAll('.lotto-name')].filter(n => n.querySelector('.lotto-text')).every(n => n.classList.contains('lotto-fade')), rp);
+      bad = await landsOn(s, C12, rp);
+      ok(!was && !bad.length && fade && JSON.stringify(L0.balls.map(b => b.at)) === JSON.stringify(L1.balls.map(b => b.at)),
+        `with reduce motion, ${k} winner${k > 1 ? 's' : ''}: no show, the names fade straight into the tray and no ball moves${bad.length ? ': ' + bad.join('; ') : ''}`);
+    }
+    await menu('style:name', rp); await menu('style:lotto', rp);
+    ok(!(await landsOn(await saved(rp), C12, rp)).length, 'and a Lotto mounted again shows the same pick');
+    await rctx.close();
+    const actx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await actx.addInitScript(() => { window.AudioContext = function () { throw new Error('no sound here'); }; window.webkitAudioContext = window.AudioContext; });
+    const ap = await actx.newPage(); watch(ap, 'no sound');
+    await ap.goto(BASE); await boardUp(ap); await freeBoard(ap);
+    await ap.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(ap)) || {}).style === 'wheel');
+    await np(ap).locator('#list').fill(C12.join('\n')); await np(ap).locator('#done').click();
+    await menu('style:lotto', ap); await menu('sound', ap); await menu('winners:3', ap); await menu('quick', ap);
+    st = await pickNow(ap); await idle(ap);
+    ok(!(await landsOn(st, C12, ap)).length, 'Sound ticked on a device that refuses sound: the show runs and lands on the winners');
+    if (errors.length) ok(false, 'no page errors or console errors (and none from sound that can’t start): ' + errors.join(' | '));
+    else ok(true, 'no page errors or console errors, in any of it (and none from sound that can’t start)');
+    await actx.close();
+  }],
   // ---- (end of Lotto slot)
   ['Drag windows from inside', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 }, hasTouch: true });
