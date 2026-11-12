@@ -91,6 +91,8 @@ storage can't be read still has every page.
 }
 ```
 
+`locked` (default false): Settings → Classroom → *Lock windows in place*. This device only: never in exports or the Google Drive folder.
+
 ### `board:<b>`
 
 ```js

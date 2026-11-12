@@ -607,6 +607,31 @@
 
     /* ------------------------------------------- Classroom features (board.js section 12b) */
     /* Lock windows in place */
+    body.windows-locked .win .grip { display: none; }   /* no resizing */
+    body.windows-locked .win-title { cursor: default; }
+    .picker-btn { -webkit-touch-callout: none; }   /* press and hold ▦ to unlock: no long-press menu on an iPad */
+    /* A padlock on ▦, on the side toward the middle of the screen (the update dot is at the top). */
+    .lock-badge {
+      position: absolute; bottom: -6px; right: -6px; width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center;
+      background: var(--text); color: var(--surface); border: 2px solid var(--surface); pointer-events: none; z-index: 1;   /* (over the ring) */
+    }
+    .picker-btn.right .lock-badge { right: auto; left: -6px; }
+    .lock-badge svg { width: 14px; height: 14px; stroke-width: 2.5; }
+    /* The ring that fills while ▦ is held (board.js draws it: it shows progress, so less motion keeps it, in steps). */
+    .lock-ring { position: absolute; inset: -7px; pointer-events: none; }
+    .lock-ring svg { width: 100%; height: 100%; overflow: visible; }
+    .lock-ring path { fill: none; stroke: var(--primary); stroke-width: 4; stroke-linecap: round; }
+    .lock-ring .track { opacity: .22; }
+    .lock-waffle { width: 1.15em; height: 1.15em; vertical-align: -0.22em; }   /* ▦ in a sentence */
+    /* In the Widget Picker (in place of the widgets) and at the end of a window's menu. */
+    .lock-note { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 16px; background: var(--hover-bg); color: var(--text); font-size: 15px; line-height: 1.4; }
+    .lock-note > svg { width: 26px; height: 26px; color: var(--muted); }
+    .lock-note.in-menu { flex: 0 0 auto; max-width: 280px; margin: 0; padding: 8px 12px; gap: 10px; background: none; color: var(--muted); font-size: 14px; }
+    .lock-note.in-menu > svg { width: 20px; height: 20px; }
+    #empty-hint .lock-hint { display: none; }
+    body.windows-locked #empty-hint .small:not(.lock-hint) { display: none; }
+    body.windows-locked #empty-hint .lock-hint { display: block; }
+    #settings [data-act="close-all"]:disabled { opacity: .45; cursor: default; filter: none; }
 
     /* Keep the screen on */
 

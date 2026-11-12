@@ -5129,6 +5129,293 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   // ---- Classroom features (board.js section 12b): one or more suites each, in this order
 
   // Lock windows in place
+  ['Lock windows in place: windows stay put, widgets still work', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 }, hasTouch: true });
+    // (District apps: a stand-in page here, never the real site.)
+    await ctx.route(/^https?:\/\/([^/]*\.)?ccsd21\.org(:\d+)?\//, route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<!doctype html><title>21Timer stand-in</title><body>21Timer stand-in</body>' }));
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const B = (fn, arg) => page.evaluate(fn, arg);
+    const disp = ik => B(ik => Object.assign({}, window.__board21.state.wins.get(ik).disp), ik);
+    const inst = ik => B(ik => window.__board21.state.insts.get(ik), ik);
+    const lockedToasts = () => page.locator('.toast', { hasText: 'Windows are locked' }).count();
+    const cdp = await ctx.newCDPSession(page);
+    const touch = async (points, dx, dy, steps = 8) => {
+      const at = i => points.map((p, n) => ({ x: p.x + dx * i / steps, y: p.y + dy * i / steps, id: n + 1 }));
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: at(0) }); await page.waitForTimeout(20);
+      for (let i = 1; i <= steps; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: at(i) }); await page.waitForTimeout(20); }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(250);
+    };
+    const mouseDrag = async (x, y, dx, dy) => {
+      await page.mouse.move(x, y); await page.mouse.down();
+      for (let i = 1; i <= 8; i++) { await page.mouse.move(x + dx * i / 8, y + dy * i / 8); await page.waitForTimeout(16); }
+      await page.mouse.up(); await page.waitForTimeout(250);
+    };
+    // Two pages, the first with a few windows (and a district app's), each with room around it.
+    await B(async () => { await window.__board21.pages.add(); await window.__board21.pages.go(1); });
+    await B(() => { for (const id of ['clock', 'dice', 'notes', 'timer', '21timer']) window.__board21.openWidget(id); });
+    await page.waitForTimeout(1500);
+    const place = { 'clock:1': { x: 40, y: 40, w: 260, h: 300 }, 'dice:1': { x: 360, y: 40, w: 360, h: 280 }, 'notes:1': { x: 780, y: 40, w: 320, h: 300 }, 'timer:1': { x: 40, y: 420, w: 380, h: 300 }, '21timer:1': { x: 500, y: 420, w: 460, h: 340 } };
+    await B(place => { window.__board21.state.settings.snapping = false; for (const [ik, r] of Object.entries(place)) window.__board21.setRect(ik, r); }, place);
+    await page.waitForTimeout(300);
+
+    // ---- Settings → Classroom: the switch, with how to unlock.
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    const row = await B(() => { const b = document.querySelector('#settings [data-act="lock-windows"]'), r = b && b.closest('.row'); let h = r && r.previousElementSibling; while (h && h.tagName !== 'H3') h = h.previousElementSibling; return b && { on: b.getAttribute('aria-checked'), role: b.getAttribute('role'), text: r.textContent, section: h && h.textContent }; });
+    ok(row && row.section === 'Classroom' && row.role === 'switch' && row.on === 'false' && /^Lock windows in place/.test(row.text) && /hold .*for 2 seconds/.test(row.text), `Settings → Classroom has “Lock windows in place”, off, saying how to unlock (${row && row.text})`);
+    await page.click('#settings [data-act="lock-windows"]'); await page.waitForTimeout(300);
+    ok(await B(() => window.__board21.state.settings.locked === true && document.body.classList.contains('windows-locked') && document.querySelector('#settings [data-act="lock-windows"]').getAttribute('aria-checked') === 'true'), 'turning it on locks the windows (saved in the settings)');
+    ok(await B(() => ['left', 'right'].every(s => document.querySelector(`.picker-btn.${s} .lock-badge svg`))), 'a padlock shows on both ▦ buttons');
+    const closeAll = await B(() => { const b = document.querySelector('#settings [data-act="close-all"]'); return { disabled: b.disabled, why: b.closest('.row').querySelector('.hint').textContent }; });
+    ok(closeAll.disabled && /locked/.test(closeAll.why), `Close all is turned off, saying why (${closeAll.why})`);
+    await page.mouse.click(1300, 820); await page.waitForTimeout(300);   // (the empty board: Settings closes)
+
+    // ---- No moving: title bar (mouse, touch), from inside (one finger, two fingers).
+    let d0 = await disp('dice:1');
+    await mouseDrag(d0.x + d0.w - 40, d0.y + 20, 80, 60);
+    let d1 = await disp('dice:1');
+    ok(d1.x === d0.x && d1.y === d0.y && await lockedToasts() === 1, `dragging a title bar with the mouse doesn’t move the window, and says why (moved ${d1.x - d0.x}, ${d1.y - d0.y})`);
+    const t0 = await disp('timer:1');
+    await touch([{ x: t0.x + t0.w - 40, y: t0.y + 20 }], 90, 40);
+    const c0 = await disp('clock:1');
+    await mouseDrag(c0.x + c0.w / 2, c0.y + c0.h / 2 + 20, 0, 80);
+    const n0 = await disp('notes:1');
+    await touch([{ x: n0.x + 80, y: n0.y + 120 }, { x: n0.x + 160, y: n0.y + 150 }], -60, 50);
+    const moved = [];
+    for (const [ik, r] of [['timer:1', t0], ['clock:1', c0], ['notes:1', n0]]) { const r2 = await disp(ik); if (r2.x !== r.x || r2.y !== r.y) moved.push(ik); }
+    ok(!moved.length, `a touch drag of a title bar, a drag from inside a widget and a two-finger drag move nothing (${moved.join(', ') || 'none moved'})`);
+    ok(await lockedToasts() === 1, 'the message isn’t repeated for every try (once every few seconds)');
+    await page.waitForTimeout(5200);
+    await mouseDrag(d0.x + d0.w - 40, d0.y + 20, -80, 0);
+    ok(await lockedToasts() >= 1 && await B(() => document.querySelector('#toasts .toast:last-child .lock-waffle') !== null), 'a few seconds later it says so again, with the ▦ button’s picture');
+
+    // ---- No resizing: no handles, and a pull where they were does nothing.
+    await B(() => window.__board21.focusWin('dice:1')); await page.waitForTimeout(150);
+    ok(await B(() => Array.from(document.querySelectorAll('.win[data-ikey="dice:1"] .grip')).every(g => getComputedStyle(g).display === 'none')), 'the selected window shows no resize handles');
+    d0 = await disp('dice:1');
+    await mouseDrag(d0.x + d0.w + 4, d0.y + d0.h / 2, 80, 0);
+    await touch([{ x: d0.x + d0.w + 4, y: d0.y + d0.h + 4 }], 60, 60);
+    d1 = await disp('dice:1');
+    ok(d1.w === d0.w && d1.h === d0.h && d1.x === d0.x, `pulling where a handle was doesn’t resize it (${d1.w - d0.w}, ${d1.h - d0.h})`);
+
+    // ---- No Fill the board by two taps on a title bar (mouse or touch).
+    const bar = { x: d0.x + d0.w - 40, y: d0.y + 20 };
+    await page.mouse.click(bar.x, bar.y); await page.waitForTimeout(60); await page.mouse.click(bar.x, bar.y); await page.waitForTimeout(250);
+    await page.touchscreen.tap(bar.x, bar.y); await page.waitForTimeout(60); await page.touchscreen.tap(bar.x, bar.y); await page.waitForTimeout(300);
+    ok(!(await inst('dice:1')).maximized, 'two taps on the title bar don’t fill the board');
+
+    // ---- The window menu: the widget's own items only, and a tap that slides a little still opens it.
+    const lbl = await page.locator('.win[data-ikey="clock:1"] .win-label').boundingBox();
+    await touch([{ x: lbl.x + lbl.width / 2, y: lbl.y + lbl.height / 2 }], 10, 4, 1);
+    const menu = () => B(() => ({ open: document.getElementById('menu').classList.contains('open'), acts: Array.from(document.querySelectorAll('#menu [data-act]')).map(b => b.dataset.act), items: Array.from(document.querySelectorAll('#menu .menu-item')).map(b => b.textContent.trim()), note: (document.querySelector('#menu .lock-note') || {}).textContent || '' }));
+    let m = await menu();
+    ok(m.open && m.items.includes('Analog') && m.acts.every(a => a === 'widget') && /Windows are locked/.test(m.note), `the window menu keeps the widget’s own items, with no Fill the board, Earlier versions, Reset or Close, and says why (${m.items.join(', ')})`);
+    await page.keyboard.press('Escape');
+    await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('html').evaluate(() => Board21.menu.set([])); await page.waitForTimeout(200);
+    await page.click('.win[data-ikey="timer:1"] .win-label'); await page.waitForTimeout(250);
+    m = await menu();
+    ok(m.open && m.acts.length === 0 && /Hold .*for 2 seconds to unlock/.test(m.note), 'a widget with no items of its own: the menu only says the windows are locked, and how to unlock');
+    await page.keyboard.press('Escape');
+    await page.click('.win[data-ikey="21timer:1"] .win-label'); await page.waitForTimeout(250);
+    m = await menu();
+    ok(m.open && m.acts.join() === 'reload,own' && /locked/.test(m.note), `a district app keeps Reload and Open … on its own (${m.items.join(', ')})`);
+    await page.keyboard.press('Escape');
+
+    // ---- A widget's own calls: close, fill and restore are refused; setMinSize and setSize still work.
+    const dice = page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('html');
+    await dice.evaluate(() => { Board21.window.maximize(); Board21.window.close(); }); await page.waitForTimeout(500);
+    let di = await inst('dice:1');
+    ok(di.open && !di.maximized && await B(() => window.__board21.state.wins.has('dice:1')), 'a widget can’t close or fill its own window');
+    await B(() => window.__board21.setMaximized('timer:1', true)); await page.waitForTimeout(300);
+    await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('html').evaluate(() => Board21.window.restore()); await page.waitForTimeout(400);
+    ok((await inst('timer:1')).maximized, '… nor restore it');
+    await B(() => window.__board21.setMaximized('timer:1', false)); await page.waitForTimeout(300);
+    d0 = await disp('dice:1');
+    await dice.evaluate(() => Board21.window.setMinSize(520, 400)); await page.waitForTimeout(400);
+    d1 = await disp('dice:1');
+    await dice.evaluate(() => Board21.window.setMinSize(null, null)); await page.waitForTimeout(400);
+    await dice.evaluate(() => Board21.window.setSize(400, 300)); await page.waitForTimeout(500);
+    di = await inst('dice:1');
+    ok(d1.w >= 520 && d1.h >= 400 + 40 && Math.round(di.rect.w) === 400 && Math.round(di.rect.h) === 340, `its editor still gets room: setMinSize (${d0.w}×${d0.h} → ${d1.w}×${d1.h}) and setSize (${Math.round(di.rect.w)}×${Math.round(di.rect.h)}) still work`);
+    // Widgets still work: a roll.
+    await page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('#roll').click(); await page.waitForTimeout(1800);
+    ok(/Rolled/.test(await page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('#said').textContent()), 'and widgets still work (the dice roll)');
+
+    // ---- The Widget Picker: no widgets and no Import, the rest as usual.
+    await page.click('.picker-btn.right'); await page.waitForTimeout(250);
+    const pick = await B(() => ({ open: document.getElementById('panel').classList.contains('open'), tiles: document.querySelectorAll('.widget-tile').length, note: document.querySelector('.panel-widgets').textContent.trim(),
+      ctl: Array.from(document.querySelectorAll('.panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl) }));
+    ok(pick.open && pick.tiles === 0 && /Windows are locked\. Hold .*for 2 seconds to unlock\./.test(pick.note), `the Widget Picker opens, with no widgets: “${pick.note}”`);
+    ok(!pick.ctl.includes('import') && ['export', 'theme', 'settings'].every(c => pick.ctl.includes(c)), `Import is left out; Export, the theme and Settings stay (${pick.ctl.join(', ')})`);
+    await page.click('[data-ctl="theme"]'); await page.waitForTimeout(200);
+    const dark = await B(() => document.body.classList.contains('dark'));
+    await page.click('[data-ctl="theme"]'); await page.waitForTimeout(200);
+    ok(dark && !await B(() => document.body.classList.contains('dark')), 'the theme button still works');
+    // ‹ Page ›: flipping works; on the last page › is no + (no new page); the Pages menu only goes to a page.
+    await page.click('[data-ctl="next"]'); await page.waitForFunction(() => window.__board21.state.boardId === 2 && !window.__board21.pages.busy, null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
+    if (!await page.locator('#panel.open').count()) await page.click('.picker-btn.right');
+    await page.waitForTimeout(200);
+    const nx = await B(() => { const b = document.querySelector('[data-ctl="next"]'); return { page: window.__board21.state.boardId, disabled: b.disabled, add: b.classList.contains('add'), label: b.getAttribute('aria-label'), title: b.title }; });
+    ok(nx.page === 2 && nx.disabled && !nx.add && nx.label === 'Next page', `› goes to the next page; on the last page it is no “New page” (${JSON.stringify(nx)})`);
+    await B(() => window.__board21.pages.step(1)); await page.waitForTimeout(400);
+    ok(await B(() => window.__board21.pages.ids().length === 2 && window.__board21.state.boardId === 2), 'and going on from there makes no page');
+    ok(await B(() => { const h = document.getElementById('empty-hint'); return !h.hidden && getComputedStyle(h.querySelector('.lock-hint')).display !== 'none' && Array.from(h.querySelectorAll('.small:not(.lock-hint)')).every(s => getComputedStyle(s).display === 'none'); }), 'an empty page says the windows are locked (not “Tap ▦ to open a widget”)');
+    if (!await page.locator('#panel.open').count()) await page.click('.picker-btn.right');
+    await page.click('[data-ctl="pages"]'); await page.waitForTimeout(250);
+    const pm = await B(() => ({ acts: Array.from(document.querySelectorAll('#pages-menu [data-act]')).map(b => b.dataset.act), sep: !!document.querySelector('#pages-menu .menu-sep') }));
+    ok(pm.acts.length === 2 && pm.acts.every(a => a === 'go') && !pm.sep, `the Pages menu only lists the pages to go to (${pm.acts.join(', ')})`);
+    await page.click('#pages-menu [data-act="go"][data-id="1"]'); await page.waitForFunction(() => window.__board21.state.boardId === 1 && window.__board21.state.wins.size === 5, null, { timeout: 8000 }).catch(() => {});
+    ok(await B(() => window.__board21.state.boardId === 1 && window.__board21.state.wins.size === 5), 'going to a page from it works');
+    await page.keyboard.press('Escape');
+
+    // ---- A file opened onto the board: unlock first?
+    const drop = () => B(async () => {
+      const text = JSON.stringify(await window.__board21.buildExport('template'));
+      const dt = new DataTransfer(); dt.items.add(new File([text], 'Science.21board', { type: 'application/json' }));
+      window.dispatchEvent(new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true }));
+    });
+    await drop(); await page.waitForTimeout(400);
+    const ask = await B(() => ({ title: (document.querySelector('#modal.open h3') || {}).textContent, text: (document.querySelector('#modal.open p') || {}).textContent, btns: Array.from(document.querySelectorAll('#modal.open .btn')).map(b => b.textContent.trim()) }));
+    ok(ask.title === 'Windows are locked' && /Science/.test(ask.text) && ask.btns.join() === 'Unlock and open,Cancel', `a file dropped on the board asks to unlock first (${ask.title}: ${ask.text})`);
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(400);
+    ok(await B(() => window.__board21.state.settings.locked && !document.querySelector('#modal.open')), 'Cancel: nothing opens, and the windows stay locked');
+    await drop(); await page.waitForTimeout(400);
+    await page.locator('#modal.open .btn', { hasText: 'Unlock and open' }).click(); await page.waitForTimeout(500);
+    ok(await B(() => !window.__board21.state.settings.locked && /Import “Science”/.test((document.querySelector('#modal.open h3') || {}).textContent || '')), '“Unlock and open” unlocks, then asks how to open it, as usual');
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(300);
+
+    // ---- Unlocked: everything is as before.
+    d0 = await disp('dice:1');
+    await mouseDrag(d0.x + d0.w - 40, d0.y + 20, 60, 0);
+    d1 = await disp('dice:1');
+    await page.click('.win[data-ikey="clock:1"] .win-label'); await page.waitForTimeout(250);
+    m = await menu();
+    ok(d1.x === d0.x + 60 && m.acts.includes('maximize') && m.acts.includes('close') && !m.note && !await B(() => document.querySelector('.lock-badge')), 'unlocked, windows move again, the menu is whole and the padlocks are gone');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+
+  ['Lock windows in place: hold ▦ to unlock, every tab, reload, kiosk', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, hasTouch: true });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const locked = (p = page) => p.evaluate(() => window.__board21.state.settings.locked === true && document.body.classList.contains('windows-locked') && document.querySelectorAll('.picker-btn .lock-badge').length === 2);
+    const pickerOpen = (p = page) => p.evaluate(() => document.getElementById('panel').classList.contains('open'));
+    const closePicker = async (p = page) => { if (await pickerOpen(p)) { await p.mouse.click(683, 300); await p.waitForTimeout(200); } };
+    const setLock = async (on, p = page) => {
+      await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(250);
+      if ((await p.getAttribute('#settings [data-act="lock-windows"]', 'aria-checked')) !== String(on)) await p.click('#settings [data-act="lock-windows"]');
+      await p.mouse.click(683, 300); await p.waitForTimeout(250);
+    };
+    const center = async (side, p = page) => { const r = await p.locator(`.picker-btn.${side}`).boundingBox(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; };
+    await page.evaluate(() => window.__board21.openWidget('dice')); await page.waitForTimeout(800);
+    await setLock(true);
+    ok(await locked(), 'locked from Settings');
+
+    // ---- A short press is a tap, as before: the Widget Picker opens (mouse, touch, keyboard).
+    let c = await center('left');
+    await page.mouse.click(c.x, c.y); await page.waitForTimeout(250);
+    ok(await pickerOpen() && await locked(), 'a click on ▦ opens the Widget Picker (still locked)');
+    await page.mouse.click(c.x, c.y); await page.waitForTimeout(250);
+    ok(!await pickerOpen(), 'and another click closes it');
+    await page.touchscreen.tap(c.x, c.y); await page.waitForTimeout(300);
+    ok(await pickerOpen(), 'a touch tap opens it too');
+    await closePicker();
+    await page.focus('.picker-btn.left'); await page.keyboard.press('Enter'); await page.waitForTimeout(250);
+    ok(await pickerOpen() && await locked(), 'so does Enter on ▦ (the keyboard’s way to unlock is the switch in Settings)');
+    await closePicker();
+    // Let go after a second: a ring was filling; it's a tap.
+    await page.mouse.move(c.x, c.y); await page.mouse.down(); await page.waitForTimeout(1000);
+    const mid = await page.evaluate(() => { const p = document.querySelector('.picker-btn.left .lock-ring .fill'); return p ? parseFloat(p.style.strokeDasharray) : null; });
+    await page.mouse.up(); await page.waitForTimeout(300);
+    ok(mid > 35 && mid < 65, `holding ▦ fills a ring around it (half-way after a second: ${mid})`);
+    ok(await pickerOpen() && await locked() && !await page.locator('.lock-ring').count(), 'let go sooner, it’s a tap: the Widget Picker opens, the windows stay locked and the ring goes');
+    await closePicker();
+    // Slide off the button: no unlock, and no tap.
+    await page.mouse.move(c.x, c.y); await page.mouse.down(); await page.waitForTimeout(300);
+    await page.mouse.move(c.x + 90, c.y - 90, { steps: 4 }); await page.waitForTimeout(2200); await page.mouse.up(); await page.waitForTimeout(300);
+    ok(await locked() && !await pickerOpen() && !await page.locator('.lock-ring').count(), 'sliding off ▦ while holding cancels: still locked, and no Widget Picker');
+
+    // ---- Hold for 2 seconds: unlocked (mouse, left corner).
+    await page.mouse.move(c.x, c.y); await page.mouse.down(); await page.waitForTimeout(2300);
+    const during = await page.evaluate(() => window.__board21.state.settings.locked);
+    await page.mouse.up(); await page.waitForTimeout(500);
+    ok(during === false && !await page.evaluate(() => document.body.classList.contains('windows-locked') || !!document.querySelector('.lock-badge')), 'holding the left ▦ for 2 seconds unlocks, without waiting for the release; the padlocks go');
+    ok(!await pickerOpen() && await page.locator('.toast', { hasText: 'Windows are unlocked' }).count() === 1, 'letting go then doesn’t open the Widget Picker, and a message says the windows are unlocked');
+    // The right corner, with a finger (no long-press menu: it is turned away).
+    await setLock(true);
+    const cdp = await ctx.newCDPSession(page);
+    c = await center('right');
+    const menuWay = await page.evaluate(() => { const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); document.querySelector('.picker-btn.right').dispatchEvent(e); return e.defaultPrevented; });
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: c.x, y: c.y, id: 1 }] });
+    await page.waitForTimeout(1000);
+    const ringR = await page.locator('.picker-btn.right .lock-ring').count();
+    await page.waitForTimeout(1300);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(500);
+    ok(menuWay && ringR === 1 && !await page.evaluate(() => window.__board21.state.settings.locked) && !await pickerOpen(), 'holding the right ▦ with a finger unlocks too (with its ring, and no long-press menu)');
+    ok(require('fs').readFileSync(require('path').join(ROOT, 'index.html'), 'utf8').includes('.picker-btn { -webkit-touch-callout: none; }'), 'and no callout on an iPad (-webkit-touch-callout: none on ▦)');
+    // One corner only (Settings → Widget Picker: Right), with a pen.
+    await setLock(true);
+    const corners = async val => { await page.click('.picker-btn.right'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(250); await page.click(`#settings [data-act="corners"][data-val="${val}"]`); await page.mouse.click(683, 300); await page.waitForTimeout(250); };
+    await corners('right');
+    ok(await page.evaluate(() => document.querySelector('.picker-btn.left').hidden && !document.querySelector('.picker-btn.right').hidden) && await locked(), 'Settings → Widget Picker: Right (▦ in one corner only), still locked');
+    c = await center('right');
+    const pen = async (type, x, y) => cdp.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1, pointerType: 'pen' });
+    await pen('mousePressed', c.x, c.y); await page.waitForTimeout(150); await pen('mouseReleased', c.x, c.y); await page.waitForTimeout(300);
+    ok(await pickerOpen() && await page.evaluate(() => window.__board21.state.settings.locked), 'with ▦ in one corner only: a pen tap opens the Widget Picker');
+    await closePicker();
+    await pen('mousePressed', c.x, c.y); await page.waitForTimeout(2300); await pen('mouseReleased', c.x, c.y); await page.waitForTimeout(400);
+    ok(!await page.evaluate(() => window.__board21.state.settings.locked) && !await pickerOpen(), 'and holding it with a pen unlocks');
+    await corners('both');
+
+    // ---- Every tab follows; a reload keeps it.
+    await setLock(true);
+    const p2 = await ctx.newPage(); p2.on('pageerror', e => errors.push('tab 2: ' + e.message));
+    await p2.goto(BASE); await boardUp(p2); await p2.waitForTimeout(600);
+    ok(await locked(p2), 'a tab opened later is locked too');
+    await setLock(false); await p2.waitForTimeout(800);
+    ok(!await p2.evaluate(() => window.__board21.state.settings.locked || document.body.classList.contains('windows-locked')), 'unlocking in one tab unlocks the others');
+    await setLock(true); await p2.waitForTimeout(800);
+    ok(await locked(p2), 'and so does locking');
+    const r0 = await p2.evaluate(() => Object.assign({}, window.__board21.state.wins.get('dice:1').disp));
+    const t = await p2.locator('.win[data-ikey="dice:1"] .win-title').boundingBox();
+    await p2.mouse.move(t.x + t.width - 30, t.y + 20); await p2.mouse.down(); await p2.mouse.move(t.x + t.width + 60, t.y + 80, { steps: 6 }); await p2.mouse.up(); await p2.waitForTimeout(300);
+    const r1 = await p2.evaluate(() => Object.assign({}, window.__board21.state.wins.get('dice:1').disp));
+    ok(r1.x === r0.x && r1.y === r0.y, 'there, windows stay put as well');
+    const c2 = await center('right', p2);
+    await p2.mouse.move(c2.x, c2.y); await p2.mouse.down(); await p2.waitForTimeout(2300); await p2.mouse.up(); await page.waitForTimeout(800);
+    ok(!await page.evaluate(() => window.__board21.state.settings.locked), 'holding ▦ in the other tab unlocks this one');
+    await p2.close();
+    await setLock(true);
+    await page.reload(); await boardUp(page); await page.waitForTimeout(300);
+    ok(await locked(), 'a reload keeps the windows locked');
+
+    // ---- Kiosk mode keeps it (and the hold works there).
+    const k = await ctx.newPage(); k.on('pageerror', e => errors.push('kiosk: ' + e.message));
+    await page.close();
+    await k.goto(BASE + '?kiosk=yes'); await boardUp(k);
+    ok(await locked(k), 'kiosk mode keeps the windows locked');
+    await k.click('.picker-btn.left'); await k.waitForTimeout(250);
+    const ctl = await k.evaluate(() => Array.from(document.querySelectorAll('.panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl));
+    ok(JSON.stringify(ctl) === JSON.stringify(['export', 'theme', 'settings', 'quit']) && await k.locator('.widget-tile').count() === 0, `its Widget Picker: no widgets and no Import (${ctl.join(', ')})`);
+    await k.mouse.click(683, 300); await k.waitForTimeout(250);
+    const ck = await center('left', k);
+    await k.mouse.move(ck.x, ck.y); await k.mouse.down(); await k.waitForTimeout(2300); await k.mouse.up(); await k.waitForTimeout(400);
+    ok(!await k.evaluate(() => window.__board21.state.settings.locked), 'holding ▦ unlocks in kiosk mode too');
+
+    // ---- Not offered in the widget dev window.
+    const dev = await ctx.newPage(); dev.on('pageerror', e => { if (!/boom from the widget/.test(e.message)) errors.push('dev window: ' + e.message); });
+    await dev.goto(BASE + '__dev/top.html?s=shim-write.html'); await dev.waitForTimeout(3500);
+    const kids = f => dev.frames().filter(x => x.parentFrame() === f);
+    const board = (kids(kids(dev.mainFrame())[0] || dev.mainFrame()) || [])[0];
+    const lab = board && await board.evaluate(() => { document.querySelector('.picker-btn.left').click(); document.querySelector('[data-ctl="settings"]').click(); return { row: !!document.querySelector('#settings [data-act="lock-windows"]'), settings: document.getElementById('settings').classList.contains('open') }; });
+    ok(lab && lab.settings && !lab.row, 'the widget dev window’s Settings has no “Lock windows in place”');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
 
   // Keep the screen on
 

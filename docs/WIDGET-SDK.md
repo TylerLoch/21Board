@@ -151,6 +151,8 @@ Sizes are the **content area** (the iframe), not including the 40px title bar.
 | `Board21.window.close()` | Close the window. Its data is kept. |
 | `Board21.window.getInfo()` | Promise of `{ width, height, x, y, maximized, focused }`. |
 
+While the teacher has locked the windows (Settings → *Lock windows in place*), `maximize()`, `restore()` and `close()` do nothing; the other calls work as usual.
+
 Defaults for size, minimum size and aspect ratio come from the [registry](#registering-a-widget),
 so the window is the right shape before your page even loads. Runtime calls override them
 until the window is reset or reloaded; call them again in `ready()` if they depend on config
