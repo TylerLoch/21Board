@@ -4424,7 +4424,10 @@ const SUITES = [
     const rp = await rc.newPage(); await rp.goto(BASE); await rp.waitForTimeout(800);
     const seen = AWAY.length;
     await rp.evaluate(() => window.__board21.openWidget('elsewhere'));
-    ok(await eventually(async () => AWAY.length > seen) && await rp.evaluate(() => document.querySelector('meta[http-equiv="Content-Security-Policy"]').content) === `frame-src 'self' ${new URL(away).origin}`,
+    // (The registry's other sites are in the list too: the district apps.)
+    const policy = await rp.evaluate(() => document.querySelector('meta[http-equiv="Content-Security-Policy"]').content.split(' '));
+    ok(await eventually(async () => AWAY.length > seen) && policy[0] === 'frame-src' && policy[1] === "'self'" && policy.includes(new URL(away).origin) &&
+      ['https://sketchapp.ccsd21.org', 'https://timerapp.ccsd21.org', 'https://doccamapp.ccsd21.org'].every(o => policy.includes(o)),
       'a registered widget from another site still opens: the board allows its own site and the sites in its registry');
     await rc.close();
 
