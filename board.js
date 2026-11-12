@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.12-37';
-  const BOARD_BUILD = '928fb907';
+  const BOARD_VERSION = '2026.11.12-38';
+  const BOARD_BUILD = 'd7a6ff0d';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3202,7 +3202,7 @@
       const b = S.boardId, name = S.board.name, at = order.indexOf(b);
       const n = Array.from(S.insts.values()).filter(i => i.open).length, saved = S.insts.size - n;
       const ok = await dialog({ title: `Delete “${name}”?`,
-        message: `This page and its ${n ? `${n} window${n === 1 ? '' : 's'}` : 'background'}${saved ? ` (and ${saved} closed window${saved === 1 ? '' : 's'})` : ''} are deleted from this device. You can undo this for a few seconds.` + appsOwnWork('deleted here', 'Clear it'),
+        message: `This page and its ${n ? `${n} window${n === 1 ? '' : 's'}` : 'background'}${saved ? ` (and ${saved} closed window${saved === 1 ? '' : 's'})` : ''} are deleted from this device.` + appsOwnWork('deleted here', 'Clear it'),
         actions: [{ label: 'Delete page', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
       if (!ok) return;
       this.busy = true;
