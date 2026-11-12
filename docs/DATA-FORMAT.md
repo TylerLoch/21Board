@@ -82,7 +82,7 @@ storage can't be read still has every page.
   awake: "off",            // Keep the screen on: "off" | "on" (while 21Board is showing) | "hours" (school hours, Mon–Fri)
   awakeFrom: "07:30",      //   school hours, "HH:MM" by this device's clock (not kept on while awakeTo isn't later)
   awakeTo: "15:30",
-  clock: "time",           // Clock in the corner: "off" | "time" | "date" (time and date)
+  clock: "date",           // Clock in the corner: "off" | "time" | "date" (time and date, the default)
   lastBackupAt: null,      // ms of the last full backup export, for backup reminders
   devMode: false,
   devWidgets: [               // test widgets added in Developer mode

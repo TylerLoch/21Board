@@ -117,7 +117,7 @@ are open still come from the saved copy: reload once more, or close and open the
   (dots, grid, lines, handwriting rows, graph paper; not shown under a photo, and Settings says so), background photo
   (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
   in full backups, not in templates).
-- **Appearance → Clock in the corner:** *Off*, *Time* (the default) or *Time and date*. A small clock beside the ▦
+- **Appearance → Clock in the corner:** *Off*, *Time* or *Time and date* (the default). A small clock beside the ▦
   button in the bottom right corner (beside the only ▦ when the controls are in one corner), on every page and in
   kiosk mode, as tall as ▦. Taps go through it to the windows under it. It hides while that corner's Widget Picker
   is open, and where the window is too narrow for it (*Time and date* shows only the time first). This device only.

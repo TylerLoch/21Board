@@ -5632,7 +5632,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
     let c = await cornerClock(page);
     const btn = await page.evaluate(() => { const r = document.querySelector('.picker-btn.right').getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height }; });
-    ok(await page.evaluate(() => window.__board21.state.settings.clock) === 'time' && c.shown && c.text === '9:41AM', `on by default, showing the time (${c.text})`);
+    ok(await page.evaluate(() => window.__board21.state.settings.clock) === 'date' && c.shown && c.text === 'Thu, Nov 12 9:41AM', `on by default, showing the time and date (${c.text})`);
+    // (The checks below were written for the time alone: the narrower clock.)
+    await setClock(page, 'time'); await page.waitForTimeout(250); c = await cornerClock(page);
+    ok(c.shown && c.text === '9:41AM', `Time shows only the time (${c.text})`);
     ok(c.side === 'right' && c.r.right <= btn.left && btn.left - c.r.right < 12 && Math.abs(c.r.height - btn.height) < 1 && Math.abs(c.r.bottom - btn.bottom) < 1,
       'beside the right-hand ▦ button on its inner side, as tall as it');
     ok(c.pe === 'none' && c.fontPx >= 24, `taps go through it, and it is big enough to read across the room (${c.fontPx.toFixed(1)} px)`);
@@ -5688,7 +5691,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await zone.send('Emulation.setTimezoneOverride', { timezoneId: 'America/New_York' });
     await page.clock.runFor(31000); await page.waitForTimeout(200);
     const newYork = (await cornerClock(page)).text;
-    ok(chicago === '9:41AM' && newYork === '10:42AM', `a new time zone shows from the next minute (Chicago ${chicago}, then New York ${newYork})`);
+    ok(chicago === 'Thu, Nov 12 9:41AM' && newYork === 'Thu, Nov 12 10:42AM', `a new time zone shows from the next minute (Chicago ${chicago}, then New York ${newYork})`);
     await ctx.close();
 
     // Never in the way.

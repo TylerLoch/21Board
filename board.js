@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.12-41';
-  const BOARD_BUILD = 'c2d52a61';
+  const BOARD_VERSION = '2026.11.12-42';
+  const BOARD_BUILD = 'd0a4f5f1';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -115,7 +115,7 @@
     awakeFrom: '07:30',      //   school hours start (HH:MM, this device's time)
     awakeTo: '15:30',        //   school hours end
 
-    clock: 'time',           // Clock in the corner: 'off' | 'time' | 'date' (time and date)
+    clock: 'date',           // Clock in the corner: 'off' | 'time' | 'date' (time and date, the default)
 
     letters: 'standard'      // Letters: 'standard' (the device's own font) | 'legible' (Atkinson Hyperlegible) | 'early' (Andika)
   };
@@ -3833,7 +3833,7 @@
 
   function clockSettings(sw, seg) {
     if (LAB) return '';
-    const st = S.settings, mode = ['off', 'time', 'date'].includes(st.clock) ? st.clock : 'time';
+    const st = S.settings, mode = ['off', 'time', 'date'].includes(st.clock) ? st.clock : 'date';
     const where = st.pickerCorners === 'left' ? 'bottom left' : 'bottom right';
     return `<div class="row stack"><div><div class="lbl">Clock in the corner</div><div class="hint">A small clock beside the Widget Picker button in the ${where} corner, on every page. <span id="set-clock-fit">${esc(CornerClock.fitNote())}</span></div></div>
       ${seg('clock', mode, [['off', 'Off'], ['time', 'Time'], ['date', 'Time and date']])}</div>`;
