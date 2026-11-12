@@ -448,8 +448,11 @@ it can't read this site's real boards. *Edit code* goes back to the code.
     saved boards, board history, the Google Drive folder, localStorage or cookies, and it sees only what the
     board sends its own window. It has no storage of its own either (localStorage throws): save with
     `Board21.save`. A Content Security Policy goes first in its page, so it can't fetch or load anything
-    from the network (no CDN scripts, web fonts or images by address). Like any page, it can still open a
-    link.
+    from the network (no CDN scripts, web fonts or images by address), and 21Board's own page doesn't let
+    its window go to another site. If its page leaves all the same (to another page of this site, or by
+    reloading itself), the board stops talking to it and the window says *This test widget left its page*:
+    upload the file again to start it. Like any page, it can still open a link in a new tab when tapped, and
+    the link's address can carry anything the widget holds: what it shows and its window's saved content.
   - **Kept on this device only.** The file's text is stored on this device, apart from boards, so the
     window comes back after a reload, offline and in other tabs. It is never in an export (full or
     template), board history or the Google Drive folder: those carry the window and its content only, and
@@ -457,11 +460,17 @@ it can't read this site's real boards. *Edit code* goes back to the code.
     runs. **Erase everything** deletes it.
   - **Works offline.** 21Board puts its own copy of the SDK into the page in place of your SDK tag (or first,
     if the file has none), so the tag's address doesn't matter.
+  - **If it freezes 21Board.** Some browsers, iPad Safari among them, run the widget in the board's own
+    process, so an endless loop in it freezes the whole board. The next start leaves it stopped, and its
+    window says *This test widget wasn't started*: fix it, then upload it again. If it froze the board after
+    running for a while, open 21Board with `?nodev` at the end of its address (for example
+    `https://boardapp.ccsd21.org/?nodev`): no test widget starts, and you can remove it in Settings.
   - **Limits:** one self-contained file of at most 5 MB: images, CSS and fonts next to it don't come along
-    (relative addresses don't resolve), so put them inline or as `data:` URLs. Window menu items show without
-    their icons. Dragging inside the widget doesn't move its window: use its title bar. Its colors may flash
-    for a moment as it opens, until the board sends the theme. Not in kiosk mode, and not in a copy of
-    21Board opened from a file.
+    (relative addresses don't resolve), so put them inline or as `data:` URLs. Its page has to stay put:
+    reloading itself, or `document.write` after it has loaded, counts as leaving it. Window menu items show
+    without their icons. Dragging inside the widget doesn't move its window: use its title bar. Its colors
+    may flash for a moment as it opens, until the board sends the theme. Not in kiosk mode, and not in a copy
+    of 21Board opened from a file.
 - **Changing a registered widget:** 21Board runs from its offline copy, which only changes as a whole
   release. To see your change inside 21Board, run `node tools/release.js`, reload, and tap *Update* when
   it is offered a few seconds later. (Reloading with Shift held, Ctrl+Shift+R, shows the page from the

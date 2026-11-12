@@ -46,7 +46,10 @@ Board21.on('data', d => { st = Object.assign({ count: 0 }, d); document.getEleme
 Board21.on('menu', id => { if (id === 'add') { st.count++; document.getElementById('n').textContent = st.count; Board21.save(st); } });
 setTimeout(() => { throw new Error('boom from the widget'); }, 400);
 </script></body></html>`;
+// Every visit to /__dev/away.html: a page an uploaded widget tries to take its window to (on another site).
+const AWAY = [];
 const DEV_ROUTES = {
+  '/__dev/away.html': q => { AWAY.push(q.toString()); return `<!doctype html><body>away<script>parent.postMessage({ b21: 1, type: 'hello' }, '*');</script>`; },
   '/__dev/widget.html': () => DEV_WIDGET(BASE + 'sdk/board21.js'),
   '/__dev/late.html': () => DEV_WIDGET(BASE + 'sdk/board21.js').replace(/<script src="[^"]*board21\.js"><\/script>/, '').replace('<body>', `<body><script src="${BASE}sdk/board21.js"></script>`),
   '/__dev/quirks.html': () => DEV_WIDGET(BASE + 'sdk/board21.js').replace('<!DOCTYPE html>', ''),
@@ -4289,6 +4292,23 @@ const SUITES = [
     await page.setInputFiles('#widget-input', noSdk);
     ok(await eventually(async () => await frame(page, 'dev-no-sdk-tag:1').locator('#s').textContent() === 'connected'), 'a file with no SDK tag still connects (the SDK is put in for it)');
 
+    // ---- It can't take its window to another site (where its policy wouldn't follow), and a page that takes its
+    // place isn't the widget: the board stops talking to it.
+    const away = BASE.replace('127.0.0.1', 'localhost') + '__dev/away.html';
+    const leaver = (id, go) => W(id + '.html', `<!DOCTYPE html><html><head><script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">{"id":"${id}","name":"${id}"}</script></head><body>${id}<script>
+/* ${MARK} */ Board21.ready().then(async () => { await Board21.save({ note: 'class roster' }); setTimeout(() => { ${go} }, 300); });
+</script></body></html>`);
+    await page.setInputFiles('#widget-input', leaver('away', `location.href = ${JSON.stringify(away)} + '?' + encodeURIComponent(JSON.stringify(Board21.context.data));`));
+    await page.setInputFiles('#widget-input', leaver('same-site', `location.href = 'widgets/notes/index.html';`));
+    await page.setInputFiles('#widget-input', leaver('reloads', `location.reload();`));
+    const left = ik => B(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.left && !w.connected && w.iframe.getAttribute('srcdoc').includes('This test widget left its page'); }, ik);
+    ok(await eventually(() => left('dev-away:1')) && AWAY.length === 0, `a widget that sends its window to another site doesn’t get there (the other site isn’t even asked, ${AWAY.length} visits), and its window says it left its page`);
+    ok(await eventually(() => left('dev-same-site:1')) && await eventually(() => left('dev-reloads:1')), 'one that goes to a page of this site, or reloads itself, gets the same note: the page in its place isn’t talked to');
+    await page.waitForTimeout(500);
+    ok(AWAY.length === 0 && await B(() => ['dev-away:1', 'dev-same-site:1', 'dev-reloads:1'].every(ik => window.__board21.state.data.get(ik).note === 'class roster')), 'their windows keep what the widget saved, and nothing more reaches the other site');
+    await B(async () => { for (const ik of ['dev-away:1', 'dev-same-site:1', 'dev-reloads:1']) await window.__board21.deleteInstance(ik); });
+
     // ---- A second tab picks up an upload, a new version of it and its removal.
     const page2 = await ctx.newPage();
     page2.on('pageerror', e => errors.push('[tab 2] ' + e.message));
@@ -4389,6 +4409,55 @@ const SUITES = [
     ok(!Object.keys(await records(page)).some(k => k.startsWith('devfile:')) && await B(() => window.__board21.state.devFiles.size === 0 && !window.__board21.catalog().some(a => a.sealed)), 'Erase everything deletes the uploaded widgets too');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+
+    // ---- The board's policy follows its registry: a registered widget from another site still opens.
+    const rc = await browser.newContext({ viewport: { width: 1400, height: 860 }, serviceWorkers: 'block' });
+    await rc.route('**/widgets/registry.js', async r => r.fulfill({ status: 200, contentType: 'text/javascript',
+      body: (await (await r.fetch()).text()) + `\nself.BOARD21_WIDGETS.push({ id: 'elsewhere', name: 'Elsewhere', entry: ${JSON.stringify(away + '?registered')} });` }));
+    const rp = await rc.newPage(); await rp.goto(BASE); await rp.waitForTimeout(800);
+    const seen = AWAY.length;
+    await rp.evaluate(() => window.__board21.openWidget('elsewhere'));
+    ok(await eventually(async () => AWAY.length > seen) && await rp.evaluate(() => document.querySelector('meta[http-equiv="Content-Security-Policy"]').content) === `frame-src 'self' ${new URL(away).origin}`,
+      'a registered widget from another site still opens: the board allows its own site and the sites in its registry');
+    await rc.close();
+
+    // ---- A file that hangs (an endless loop). This browser, like iPad Safari, runs it in the board's own process,
+    // so it freezes the board; its window would reopen, and freeze it, on every start.
+    const hang = fixed => W('hang.html', `<!DOCTYPE html><html><head><script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">{"id":"hang","name":"Hang"}</script></head><body><b id="b">running</b><script>
+setTimeout(() => { let i = 0; while (i < 10) { ${fixed ? 'i++;' : '/* forgot i++ */'} } document.getElementById('b').textContent = 'fixed'; }, 300);
+</script></body></html>`);
+    const answers = (p, ms = 3000) => Promise.race([p.evaluate(() => true), new Promise(r => setTimeout(() => r(false), ms))]).catch(() => false);
+    const hc = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    const hp = await hc.newPage();
+    await hp.goto(BASE); await hp.waitForTimeout(1200);
+    await settings(hp); await hp.click('#settings [data-act="devmode"]'); await hp.waitForTimeout(200);
+    await hp.setInputFiles('#widget-input', hang(false)); await hp.waitForTimeout(2500);
+    if (await answers(hp)) ok(true, '(this browser keeps an uploaded widget in its own process: a hang can’t freeze the board, so nothing to check)');
+    else {
+      await hp.close({ runBeforeUnload: false }).catch(() => {});
+      // The teacher gives up and opens 21Board again a minute later (the minute is pretended).
+      const p2 = await hc.newPage();
+      await p2.addInitScript(() => { try { const s = JSON.parse(localStorage.getItem('21board-devfile-starts') || '{}'); for (const k in s) s[k] -= 60000; localStorage.setItem('21board-devfile-starts', JSON.stringify(s)); } catch (e) { /* none */ } });
+      await p2.goto(BASE); await p2.waitForTimeout(2500);
+      const shows = (p, text) => p.evaluate(text => { const w = window.__board21.state.wins.get('dev-hang:1'); return !!w && (w.iframe.getAttribute('srcdoc') || '').includes(text); }, text);
+      ok(await answers(p2) && await shows(p2, 'wasn’t started') && await shows(p2, 'stopped responding last time'),
+        'after it froze the board, the next start leaves it stopped, and its window says so (the board can be used)');
+      await settings(p2);
+      ok(await p2.locator('#settings [data-act="dev-remove"][data-val="dev-hang"]').count() === 1, 'so it can be removed in Settings');
+      await p2.setInputFiles('#widget-input', hang(true));
+      ok(await eventually(async () => await p2.frameLocator('.win[data-ikey="dev-hang:1"] iframe').locator('#b').textContent() === 'fixed' && await p2.evaluate(() => window.__board21.state.wins.get('dev-hang:1').connected)),
+        'uploading it again (fixed) starts it');
+      await p2.close();
+      // ?nodev: test widgets don't start, for a freeze the next start doesn't catch.
+      const p3 = await hc.newPage();
+      await p3.goto(BASE + '?nodev'); await p3.waitForTimeout(1500);
+      ok(await p3.evaluate(() => !window.__board21.state.wins.has('dev-hang:1') && window.__board21.state.devFiles.has('dev-hang') && !window.__board21.catalog().some(a => a.sealed)), 'with ?nodev, uploaded widgets don’t start');
+      await settings(p3);
+      await p3.click('#settings [data-act="dev-remove"][data-val="dev-hang"]'); await p3.waitForTimeout(500);
+      ok(await p3.evaluate(() => !window.__board21.state.devFiles.has('dev-hang') && localStorage.getItem('21board-devfile-starts') === '{}'), 'and one can be removed there');
+    }
+    await hc.close();
   }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });

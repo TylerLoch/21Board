@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.11-32';
-  const BOARD_BUILD = '87a72103';
+  const BOARD_BUILD = '96b68c35';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -53,6 +53,9 @@
   // Picker's controls. Import and Export use ChromeOS's Files dialog (the kiosk's own storage, USB drives).
   // Everything else (windows, widgets, saving on the device, board history, backups when asked for) works as usual.
   const KIOSK = !LAB && /^(yes|true|1|on)$/i.test(new URLSearchParams(location.search).get('kiosk') || '');
+  // ?nodev: test widgets don't start (Settings still lists them, to remove one). The way out when an uploaded one
+  // freezes the board on every start (see DevFiles.begin).
+  const NODEV = !LAB && new URLSearchParams(location.search).has('nodev');
   const DB_NAME = LAB ? '21Board-dev' : '21Board';
   const DB_STORE = 'records';
   const TITLE_H = 40;          // window title bar height (px)
@@ -272,15 +275,28 @@
   const REGISTRY = (LAB ? [Object.assign({}, LAB.widget, { entry: 'about:srcdoc', srcdoc: LAB.src })] : (self.BOARD21_WIDGETS || []))
     .map(a => normalizeWidget(a)).filter(Boolean);
   let catalog = new Map(REGISTRY.map(a => [a.id, a]));
+  // Windows may show this site's pages, and registered widgets from another site, only: a test widget uploaded as a
+  // file (sealed off, see DevFiles) can't send its window to another address, away from its own policy. (Written
+  // here, before any window, so it follows the registry.)
+  if (!LAB) {
+    const sites = new Set();
+    for (const a of REGISTRY) {
+      try { const u = new URL(a.entry, location.href); if (/^https?:$/.test(u.protocol) && u.origin !== location.origin) sites.add(u.origin); } catch (e) { /* not an address */ }
+    }
+    const csp = document.createElement('meta');
+    csp.httpEquiv = 'Content-Security-Policy';
+    csp.content = ["frame-src 'self'", ...sites].join(' ');
+    document.head.appendChild(csp);
+  }
 
   function rebuildCatalog() {
     catalog = new Map(REGISTRY.map(a => [a.id, a]));
     // (Uploaded files first: one is never hidden by a widget added by its path with the same id.)
-    for (const f of (LAB ? [] : S.devFiles.values())) {
+    for (const f of (LAB || NODEV ? [] : S.devFiles.values())) {
       const widget = normalizeWidget({ id: f.id, name: f.name, entry: 'about:srcdoc', version: f.version, window: f.window, color: '#64748b', description: 'Uploaded test widget' }, { dev: true, sealed: true });
       if (widget && !catalog.has(widget.id)) catalog.set(widget.id, widget);
     }
-    for (const d of (LAB ? [] : S.settings.devWidgets || [])) {
+    for (const d of (LAB || NODEV ? [] : S.settings.devWidgets || [])) {
       const widget = normalizeWidget({ id: d.id, name: d.name, entry: d.entry, color: '#64748b', description: 'Developer test widget' }, { dev: true });
       if (widget && !catalog.has(widget.id)) catalog.set(widget.id, widget);
     }
@@ -295,11 +311,14 @@
   // won't let a page from the web load a file:/// address, so the file's text is read and kept on this device
   // in a record of its own (devfile:<id>). Its window shows it sealed off from the board (SEALED_SANDBOX: it
   // can't reach the board's page, its storage, the Drive folder or other boards), with a Content Security
-  // Policy first in the page, so it makes no network requests either. The record never leaves the device:
-  // export, board history and the Drive folder carry windows and their content only (buildExport), and an
-  // import never writes one, so a .21board file can never bring code that runs.
+  // Policy first in the page, so it makes no network requests either; the board's frame-src (section 2) keeps
+  // its window on this site's pages (see Win.onFrameLoad). The record never leaves the device: export, board
+  // history and the Drive folder carry windows and their content only (buildExport), and an import never writes
+  // one, so a .21board file can never bring code that runs.
   // ---------------------------------------------------------------------
   const DEV_FILE_MAX = 5 * 1048576;
+  const DEV_GRACE = 10000;   // a start is noted until the widget has run this long (see DevFiles.begin)
+  const DEV_STALE = 15000;   // a note older than this wasn't left by a start still in progress in another tab
   const SEALED_CSP = "default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' data: blob:; style-src 'unsafe-inline' data: blob:; " +
     "img-src data: blob:; font-src data: blob:; media-src data: blob:; connect-src data: blob:; form-action 'none'";
   // The widget's SDK tags, whole (as SDK_TAG_RE in sdk/board21-dev.js).
@@ -332,6 +351,46 @@
       const top = dt ? dt[0] : /^[\t\n\f\r ]*(<!--[\s\S]*?-->[\t\n\f\r ]*)+<!doctype html[\t\n\f\r ]*>/i.test(src) ? '<!DOCTYPE html>' : '';
       return top + `<meta http-equiv="Content-Security-Policy" content="${SEALED_CSP}">` + (found ? '' : tag) + src.slice(dt ? top.length : 0);
     },
+    // What its window shows: its page, or a note if its page left (see Win.onFrameLoad) or it stopped
+    // responding last time (see begin).
+    async start(id, left) {
+      if (left) return this.note('This test widget left its page', 'An uploaded widget can’t go to another address or reload itself. Upload its file again to start it.');
+      const html = await this.page(id);
+      return this.begin(id) ? html : this.note('This test widget wasn’t started', 'It stopped responding last time. Fix it, then upload it again.');
+    },
+    // A file that hangs (an endless loop) can freeze the whole board where the browser runs it in the board's own
+    // process (iPad Safari; Chrome where sandboxed frames aren't kept apart), and its window reopens on every
+    // start. So each start is noted on this device until the widget has run for a while or the tab closes; a
+    // note found later means the board froze, and that upload isn't started again here (uploading it again
+    // starts it). False if it isn't to start. (?nodev is the way out of a freeze that comes later.)
+    held: new Map(),   // widget id -> the upload (its time) not started in this tab
+    hooked: false,     // (the tab closing clears its notes)
+    begin(id) {
+      const at = (S.devFiles.get(id) || {}).at, mine = TAB_ID + ':' + id, now = Date.now();
+      if (this.held.has(id) && this.held.get(id) === at) return false;
+      let froze = false;
+      this.starts(s => {
+        for (const [k, t] of Object.entries(s)) if (k.slice(k.indexOf(':') + 1) === id && now - t > DEV_STALE) { delete s[k]; froze = true; }
+        if (!froze) s[mine] = now;
+      });
+      if (froze) { this.held.set(id, at); return false; }
+      if (!this.hooked) {
+        this.hooked = true;
+        addEventListener('pagehide', () => this.starts(s => { for (const k of Object.keys(s)) if (k.startsWith(TAB_ID + ':')) delete s[k]; }));
+      }
+      setTimeout(() => this.starts(s => { if (s[mine] === now) delete s[mine]; }), DEV_GRACE);
+      return true;
+    },
+    forget(id) { this.starts(s => { for (const k of Object.keys(s)) if (k.slice(k.indexOf(':') + 1) === id) delete s[k]; }); },
+    // Starts being noted: { '<tab>:<widget id>': when }. (localStorage, written at once: it is there even if the
+    // board freezes right after.)
+    starts(change) {
+      try {
+        const s = JSON.parse(localStorage.getItem('21board-devfile-starts') || '{}') || {};
+        if (change) { change(s); localStorage.setItem('21board-devfile-starts', JSON.stringify(s)); }
+        return s;
+      } catch (e) { return {}; }   // (no storage: no guard)
+    },
     // Reads an uploaded file and keeps it; its window opens, or its open windows start again with it.
     // Throws, with a message to show, if the file can't be used.
     async add(file, side) {
@@ -353,6 +412,7 @@
       const rec = { id, name: label + ' (test)', file: String(file.name).slice(0, 120), size: file.size, src, version: String(m.version || '').slice(0, 40),
         window: m.window && typeof m.window === 'object' && !Array.isArray(m.window) ? m.window : null, at: Date.now() };
       Writer.put(Keys.devfile(id), 'devfile', rec);
+      this.forget(id);   // (a new upload starts, even if the last one froze the board)
       this.apply(id, rec);
       // One test widget per id: one added by its path with this id makes way.
       if ((S.settings.devWidgets || []).some(d => d.id === id)) updateSettings({ devWidgets: S.settings.devWidgets.filter(d => d.id !== id) });
@@ -362,6 +422,7 @@
     remove(id) {
       if (!S.devFiles.has(id)) return;
       Writer.del(Keys.devfile(id));
+      this.forget(id);
       this.apply(id, null);
     },
     // Its record arrived (an upload here or in another tab, or a reload) or went: the catalog follows, and
@@ -1625,6 +1686,7 @@
       this.subtitle = '';
       this.disp = null;         // rect currently displayed
       this.connected = false;   // SDK handshake done
+      this.left = false;        // an uploaded file's page went elsewhere (see onFrameLoad)
       this.lastInfo = '';
       this.lastTitleTap = 0;
       this.build();
@@ -1665,10 +1727,10 @@
       // a later change doesn't reach the widget's window.name.)
       f.name = 'b21-board:' + this.ikey;
       if (sealed) {
-        // An uploaded file: its page is put together first (DevFiles.page), then the frame goes in.
-        this.iframe = f;
+        // An uploaded file: its page is put together first (DevFiles.start), then the frame goes in.
+        this.iframe = f; this.loads = 0; this.helloed = false;
         this.loadingEl.classList.remove('done');
-        DevFiles.page(this.widget.id).then(html => { if (this.iframe !== f) return; f.srcdoc = html; this.bodyEl.insertBefore(f, this.loadingEl); });
+        DevFiles.start(this.widget.id, this.left).then(html => { if (this.iframe !== f) return; f.srcdoc = html; this.bodyEl.insertBefore(f, this.loadingEl); });
         return;
       }
       this.bodyEl.insertBefore(f, this.loadingEl);
@@ -1679,6 +1741,10 @@
 
     onFrameLoad() {
       this.loadingEl.classList.add('done');
+      // An uploaded file's frame loads once. Another load is another page in it (it went to another address, or
+      // reloaded or rewrote itself), which isn't sealed by the file's policy: the board stops talking to it, and
+      // a note takes its place. (Not a new start: it might leave again at once.)
+      if (this.widget.sealed && ++this.loads > 1) return this.reload(true);
       // Same-origin: catch taps inside the widget even if it doesn't use the SDK.
       try {
         this.iframe.contentWindow.addEventListener('pointerdown', () => { focusWin(this.ikey); closePopups(); }, true);
@@ -1686,9 +1752,9 @@
       attachContentDrag(this);
     }
 
-    reload() {
+    reload(left = false) {
       Inter.forget(this, true);
-      this.rt = {}; this.menuItems = []; this.subtitle = ''; this.connected = false; this.lastInfo = '';
+      this.rt = {}; this.menuItems = []; this.subtitle = ''; this.connected = false; this.lastInfo = ''; this.left = left;
       if (Menu.win === this) Menu.close();
       this.renderTitle();
       this.createFrame();
@@ -1800,6 +1866,10 @@
       switch (m.type) {
         case 'hello': {
           if (!this.inst) return;
+          // An uploaded file's page says hello once: another hello is another page in its frame (see onFrameLoad),
+          // often heard before that page's load.
+          if (this.widget.sealed && this.helloed) return this.reload(true);
+          this.helloed = true;
           this.connected = true;
           this.lastInfo = '';
           const theme = resolvedTheme();

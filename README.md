@@ -174,7 +174,8 @@ the HTML). See [docs/WIDGET-SDK.md, "Testing a widget"](docs/WIDGET-SDK.md#testi
 21Board: Settings → Advanced → Developer mode → *Test a widget*: enter its path, or **Upload file…** to try
 the `.html` file on your computer in your own board. An uploaded file runs sealed off from your boards (it
 can't reach their data), is kept on this device only (never in exports, board history or the Google Drive
-folder) and works offline; upload it again to see an edit. See
+folder) and works offline; upload it again to see an edit. If one freezes 21Board, open it with `?nodev` at
+the end of its address: no test widget starts, and you can remove it in Settings. See
 [docs/WIDGET-SDK.md, "Inside 21Board"](docs/WIDGET-SDK.md#inside-21board).
 
 ---

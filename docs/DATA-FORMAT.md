@@ -94,7 +94,9 @@ without changing the format: `settings.activeBoard` will choose which board is s
 A test widget uploaded under Settings → Developer mode → *Test a widget* → *Upload file…* (see
 [docs/WIDGET-SDK.md, "Inside 21Board"](WIDGET-SDK.md#inside-21board)). `widgetId` is `dev-` and the id in the
 file's manifest block (or its name). Never exported, and never written by an import, so a `.21board` file
-can't bring code that runs; *Erase everything* deletes it.
+can't bring code that runs; *Erase everything* deletes it. While one starts, `localStorage["21board-devfile-starts"]`
+notes it for a few seconds (`{"<tab>:<widgetId>": time}`), so a widget that froze the board isn't started again
+by itself.
 
 ```js
 {
