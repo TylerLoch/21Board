@@ -1145,14 +1145,17 @@ const SUITES = [
     await page.evaluate(o => window.__board21.applyImport(o, 'replace'), exp); await page.waitForTimeout(1000);
     // Any color: the board, the previews and the name follow while the color picker is open.
     await openSettings();
-    await page.locator('#set-bg-custom').evaluate(el => { el.value = '#123456'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.locator('#set-bg-custom').evaluate(el => { el.dataset.same = 1; el.value = '#123456'; el.dispatchEvent(new Event('input', { bubbles: true })); });
     await page.waitForTimeout(500);   // (the board's color fades over .3 s)
     const live = await page.evaluate(() => ({ desk: getComputedStyle(document.getElementById('desk')).backgroundColor, pv: getComputedStyle(document.getElementById('bg-preview')).backgroundColor,
-      name: document.getElementById('bg-color-name').textContent, open: !!document.getElementById('set-bg-custom') }));
+      name: document.getElementById('bg-color-name').textContent, open: document.getElementById('set-bg-custom').dataset.same === '1' }));   // (the same picker: not rebuilt)
     ok(live.desk === 'rgb(18, 52, 86)' && live.pv === live.desk && live.name === 'Custom color' && live.open, `a custom color shows at once, Settings staying as it is while choosing (${live.name})`);
     await page.locator('#set-bg-custom').evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true }))); await page.waitForTimeout(300);
     pk = await picked();
     ok(await page.evaluate(() => document.querySelector('#bg-block .swatch.custom').matches('.on') && !!document.querySelector('#bg-block .swatch.custom .tick')) && pk.colors.length === 0, 'then Custom… is marked as the choice');
+    // Its color input is invisible, so the pill shows where the keyboard is.
+    await page.focus('#bg-block [data-act="bg"][data-val="#0a0a0a"]'); await page.keyboard.press('Tab');
+    ok(await page.evaluate(() => document.activeElement.id === 'set-bg-custom' && getComputedStyle(document.activeElement.closest('.swatch')).outlineStyle === 'solid'), 'Tab reaches Custom…, and it shows the keyboard focus');
     // With a photo shown, the patterns say why they're off; hiding the photo brings them back.
     const png = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1600; c.height = 900; const g = c.getContext('2d'); g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 1600, 900); return c.toDataURL('image/png'); });
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#settings [data-act="photo-add"]')]);
