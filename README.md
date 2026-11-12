@@ -108,7 +108,8 @@ are open still come from the saved copy: reload once more, or close and open the
 - **Board history:** open it, how often a version is saved (every 10 minutes while the board changes,
   every hour, once a day, off), copies in the Google Drive folder, delete board history.
 - **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to widgets),
-  board background color (or match theme), background pattern (dots, grid, lines), background photo
+  board background (with a preview of the board): color in a Light and a Dark row (or match the theme), pattern
+  (dots, grid, lines, handwriting rows, graph paper; not shown under a photo, and Settings says so), background photo
   (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
   in full backups, not in templates).
 - **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, size of windows and menus (default 80%), board shape (16:9 or any shape), close all windows.
