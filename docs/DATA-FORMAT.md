@@ -80,14 +80,16 @@ without changing the format: `settings.activeBoard` will choose which board is s
 {
   id: 1, name: "My Board",       // id: the board's slot on this device
   uid: "7c1e…",                  // a unique id, made once: files sent from other devices are matched by it
-  background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" },
+  background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" | "handwriting" | "graph" },
   scale: 0.8,                    // size of windows and menus (0.5–2), as on a 1920 × 1080 screen; see "Layout space"
   shape: "16:9",                 // "16:9" (default) | "free" (fills any window)
   layout: { w: 2400, h: 1350 }   // the 16:9 board in layout px: 1920/scale × 1080/scale (kept for older readers)
 }
 ```
 
-`color: null` means "match the light/dark theme".
+`color: null` means "match the light/dark theme". `"handwriting"` (rows for young writers: solid top and base
+lines, a dashed midline) and `"graph"` (graph paper: fine squares, a stronger line every 5) were added later; an older
+21Board shows no pattern for them, and an import there turns them into `"none"`.
 
 ### `devfile:<widgetId>` (this device only)
 

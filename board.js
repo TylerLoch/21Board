@@ -147,10 +147,20 @@
     st.setProperty('--label-open', dark ? rgba(c, 0.32) : mixHex(c, '#ffffff', 0.8));
   }
 
-  const BG_SWATCHES = [
-    ['#ffffff', 'White'], ['#faf7f0', 'Paper'], ['#e0f2fe', 'Sky'], ['#dcfce7', 'Mint'], ['#fce7f3', 'Blush'],
-    ['#ede9fe', 'Lavender'], ['#fef3c7', 'Sand'], ['#334155', 'Slate'], ['#1f3a2c', 'Chalkboard'], ['#1e293b', 'Navy'], ['#0a0a0a', 'Black']
-  ];
+  // Board background colors (Settings shows them in two rows) and patterns (.pattern-<id> in index.html).
+  const BG_LIGHT = [['#ffffff', 'White'], ['#faf7f0', 'Paper'], ['#e0f2fe', 'Sky'], ['#dcfce7', 'Mint'], ['#fce7f3', 'Blush'], ['#ede9fe', 'Lavender'], ['#fef3c7', 'Sand']];
+  const BG_DARK = [['#334155', 'Slate'], ['#1f3a2c', 'Chalkboard'], ['#1e293b', 'Navy'], ['#0a0a0a', 'Black']];
+  const BG_SWATCHES = BG_LIGHT.concat(BG_DARK);
+  // Handwriting and Graph paper came later: an older 21Board shows no pattern for them (and an import there makes it "none").
+  const PATTERNS = [['none', 'None'], ['dots', 'Dots'], ['grid', 'Grid'], ['lines', 'Lines'], ['handwriting', 'Handwriting'], ['graph', 'Graph paper']];
+  const PATTERN_IDS = PATTERNS.map(p => p[0]);
+  const bgColorName = c => !c ? 'Matches the theme' : (BG_SWATCHES.find(([h]) => h === c) || [0, 'Custom color'])[1];
+  // Pattern lines and the hint's text, in shades that suit the board color (light, dark, or the theme's).
+  function bgInk(color) {
+    const dark = color ? luminance(color) < 0.3 : resolvedTheme() === 'dark';
+    return dark ? { dark, pattern: 'rgba(255,255,255,0.11)', strong: 'rgba(255,255,255,0.24)', hint: 'rgba(255,255,255,0.7)', margin: 'rgba(255,255,255,0.05)' }
+      : { dark, pattern: 'rgba(0,0,0,0.09)', strong: 'rgba(0,0,0,0.2)', hint: 'rgba(0,0,0,0.55)', margin: 'rgba(0,0,0,0.05)' };
+  }
 
   const ICONS = {
     image: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5.5-5.5L6 20"/>',
@@ -1053,12 +1063,13 @@
     const bg = S.board.background || {};
     const desk = $('#desk');
     desk.style.backgroundColor = bg.color || '';
-    desk.classList.remove('pattern-dots', 'pattern-grid', 'pattern-lines');
-    if (['dots', 'grid', 'lines'].includes(bg.pattern)) desk.classList.add('pattern-' + bg.pattern);
-    const darkBg = bg.color ? luminance(bg.color) < 0.3 : resolvedTheme() === 'dark';
-    desk.style.setProperty('--pattern', darkBg ? 'rgba(255,255,255,0.11)' : 'rgba(0,0,0,0.09)');
-    desk.style.setProperty('--hint', darkBg ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.55)');
-    desk.style.setProperty('--margin-shade', darkBg ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)');
+    PATTERN_IDS.forEach(p => desk.classList.remove('pattern-' + p));
+    if (bg.pattern !== 'none' && PATTERN_IDS.includes(bg.pattern)) desk.classList.add('pattern-' + bg.pattern);
+    const ink = bgInk(bg.color);
+    desk.style.setProperty('--pattern', ink.pattern);
+    desk.style.setProperty('--pattern-strong', ink.strong);
+    desk.style.setProperty('--hint', ink.hint);
+    desk.style.setProperty('--margin-shade', ink.margin);
     const meta = $('meta[name="theme-color"]');
     if (meta) meta.content = bg.color || (resolvedTheme() === 'dark' ? '#121212' : '#f3f4f6');
     BoardPhoto.render();
@@ -2931,16 +2942,51 @@
   // =====================================================================
   // 12. Settings
   // =====================================================================
-  // Settings → Appearance → Background photo.
+  // Settings → Appearance → Background: a preview shaped like the board, then Color, Pattern and Photo. It's this
+  // board's background (board.background, and its photo in media:<b>:background*).
+  function backgroundSettings(sw, seg) {
+    const bg = S.board.background || {}, color = bg.color || null;
+    const pattern = PATTERN_IDS.includes(bg.pattern) ? bg.pattern : 'none';
+    const isCustom = !!color && !BG_SWATCHES.some(([c]) => c === color);
+    const photoSet = BoardPhoto.settings(), m = BoardPhoto.media(), photoShown = !!(photoSet && photoSet.on && m);
+    const ink = bgInk(color), fill = color || 'var(--board-bg)';
+    const look = `background-color:${fill};--pattern:${ink.pattern};--pattern-strong:${ink.strong}`;
+    const tick = on => on ? `<span class="tick" aria-hidden="true">${svg('check')}</span>` : '';
+    const swatch = ([c, n]) => `<button class="swatch${color === c ? ' on' : ''}" style="background:${c}" role="radio" aria-checked="${color === c}" data-act="bg" data-val="${c}" title="${n}" aria-label="${n}">${tick(color === c)}</button>`;
+    const sunMoon = '<svg viewBox="0 0 24 24" aria-hidden="true"><g stroke="#4b5563"><circle cx="7.6" cy="7.6" r="1.9"/><path d="M7.6 3.4v.7M7.6 11.1v.7M3.4 7.6h.7M11.1 7.6h.7M4.6 4.6l.5.5M10.1 10.1l.5.5M4.6 10.6l.5-.5M10.1 5.1l.5-.5"/></g>' +
+      '<path stroke="#e5e7eb" transform="translate(11.2 11.2) scale(.36)" d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>';
+    const ratio = freeShape() ? (Zoom.vw || 16) / (Zoom.vh || 9) : 16 / 9;
+    return `<div class="row stack bg-block" id="bg-block">
+      <div class="bg-top"><div><div class="lbl">Background</div><div class="hint">The color, pattern and photo behind this board's windows.</div></div>
+        <div class="bg-preview${photoShown || pattern === 'none' ? '' : ' pattern-' + pattern}" id="bg-preview" role="img" aria-label="Preview of the board" style="aspect-ratio:${ratio.toFixed(4)};${look}">${photoShown
+          ? `<span class="ph" style="background-size:${photoSet.fit === 'whole' ? 'contain' : 'cover'};background-position:${photoPosition(photoSet)};--fade:${photoSet.fade}"></span>` : ''}</div></div>
+      <div class="bg-part"><div class="bg-sub"><span class="lbl">Color</span><span class="bg-now" id="bg-color-name">${esc(bgColorName(color))}</span></div>
+        <div class="bg-cap" id="bg-cap-light">Light</div>
+        <div class="swatches" role="radiogroup" aria-labelledby="bg-cap-light">
+          <button class="swatch auto${!color ? ' on' : ''}" role="radio" aria-checked="${!color}" data-act="bg" data-val="" title="Match the theme (light or dark)" aria-label="Match the theme (light or dark)">${sunMoon}${tick(!color)}</button>
+          ${BG_LIGHT.map(swatch).join('')}</div>
+        <div class="bg-cap" id="bg-cap-dark">Dark</div>
+        <div class="swatches" role="radiogroup" aria-labelledby="bg-cap-dark">${BG_DARK.map(swatch).join('')}
+          <label class="swatch pill custom${isCustom ? ' on' : ''}" title="Choose any color"><span class="dot"${isCustom ? ` style="background:${color}"` : ''}></span>Custom…${tick(isCustom)}<input type="color" id="set-bg-custom" value="${esc(isCustom ? color : '#88aacc')}" aria-label="Custom background color"></label></div></div>
+      <div class="bg-part"><div class="bg-sub"><span class="lbl">Pattern</span><span class="bg-now">${photoShown ? 'Not shown with a photo' : esc(PATTERNS.find(p => p[0] === pattern)[1])}</span></div>
+        ${photoShown ? '<div class="bg-note" id="bg-pattern-note">The photo covers the pattern. To use a pattern, turn off <b>Show photo</b> below.</div>' : ''}
+        <div class="pat-tiles${photoShown ? ' disabled' : ''}" role="radiogroup" aria-label="Pattern">${PATTERNS.map(([p, n]) => { const on = p === pattern;
+          return `<button class="pat-tile${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="pattern" data-val="${p}"${photoShown ? ' disabled' : ''}><span class="pv${p === 'none' ? '' : ' pattern-' + p}" style="${look}"></span>${n}${tick(on)}</button>`; }).join('')}</div></div>
+      <div class="bg-part">${photoRow(sw, seg)}</div>
+    </div>`;
+  }
+  // Settings → Appearance → Background → Photo.
   function photoRow(sw, seg) {
     const m = BoardPhoto.media(), im = BoardPhoto.settings();
     if (!m || !im) {
-      return `<div class="row"><div><div class="lbl">Background photo</div><div class="hint">A picture from this device (or Google Drive on a Chromebook). ${Store.failed ? 'It goes into full backups, not into templates.' : 'It’s kept on this device and in full backups, not in templates.'}</div></div>
+      return `<div class="bg-sub"><span class="lbl">Photo</span><span class="bg-now">None</span></div>
+        <div class="row"><div class="hint">A picture from this device (or Google Drive on a Chromebook), shown over the color. ${Store.failed ? 'It goes into full backups, not into templates.' : 'It’s kept on this device and in full backups, not in templates.'}</div>
         <button class="btn" data-act="photo-add">${svg('image')}Add photo…</button></div>`;
     }
     const g = photoThumbGeometry(m, im), fill = im.fit === 'fill';
     // Shaped like the board, but never taller than about 200 px (a portrait window would make it huge).
-    return `<div class="row stack"><div><div class="lbl">Background photo</div><div class="hint">${fill ? 'Tap the picture to choose the part that always stays in view.' : 'The whole photo is shown; the background color fills the rest.'}</div></div>
+    return `<div class="bg-sub"><span class="lbl">Photo</span><span class="bg-now">${im.on ? 'Shown' : 'Hidden'}</span></div>
+      <div class="hint">${fill ? 'Tap the picture to choose the part that always stays in view.' : 'The whole photo is shown; the background color fills the rest.'}</div>
       <div class="photo-edit">
         <div class="photo-thumb${im.on ? '' : ' off'}${fill ? ' pick' : ''}" id="photo-thumb"${fill ? ' role="button" tabindex="0" aria-label="Choose the part of the photo that stays in view (tap, or use the arrow keys)"' : ' role="img" aria-label="Background photo"'}
           style="aspect-ratio:${g.ratio.toFixed(4)};width:min(100%, ${Math.round(200 * g.ratio)}px);background-size:${fill ? 'cover' : 'contain'};background-position:${photoPosition(im)};--fade:${im.fade}">
@@ -2951,7 +2997,7 @@
           <label class="line"><span>Fade</span><input type="range" id="photo-fade" min="0" max="70" step="5" value="${Math.round(im.fade * 100)}" aria-label="Fade the photo"></label>
           <div class="line end"><button class="btn small" data-act="photo-add">Change…</button><button class="btn small danger" data-act="photo-remove">Remove</button></div>
         </div>
-      </div></div>`;
+      </div>`;
   }
   // Where the photo sits in a box shaped like the board (fractions of the box), and the focus marker.
   function photoThumbGeometry(m, im) {
@@ -3025,9 +3071,19 @@
           const name = e.target.value.trim().slice(0, 60) || 'My Board';
           updateBoard({ name });
         }
+        if (e.target.id === 'set-bg-custom') this.render();   // (the picker has closed: mark the choice)
       });
       this.body.addEventListener('input', e => {
-        if (e.target.id === 'set-bg-custom') updateBoard({ background: Object.assign({}, S.board.background, { color: e.target.value }) });
+        if (e.target.id === 'set-bg-custom') {
+          // While the color picker is open: the board, the previews and the name follow (rebuilding Settings would close it).
+          const color = e.target.value, ink = bgInk(color);
+          updateBoard({ background: Object.assign({}, S.board.background, { color }) });
+          for (const el of this.body.querySelectorAll('#bg-preview, .pat-tile .pv')) {
+            el.style.backgroundColor = color; el.style.setProperty('--pattern', ink.pattern); el.style.setProperty('--pattern-strong', ink.strong);
+          }
+          const nm = $('#bg-color-name', this.body); if (nm) nm.textContent = bgColorName(color);
+          const dot = e.target.parentNode.querySelector('.dot'); if (dot) dot.style.background = color;
+        }
         if (e.target.id === 'photo-fade') {
           const fade = Math.max(0, Math.min(0.7, e.target.value / 100));
           BoardPhoto.update({ fade });
@@ -3110,12 +3166,10 @@
       if (!this.isOpen) return;
       // Don't yank a text field out from under someone who is typing in it.
       if (this.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"]')) return;
-      const st = S.settings, bg = S.board.background || {};
+      const st = S.settings;
       const seg = (act, cur, opts, disabled) => `<div class="seg${disabled ? ' disabled' : ''}" role="radiogroup">${opts.map(([v, l]) =>
         `<button role="radio" aria-checked="${v === cur}" data-act="${act}" data-val="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('')}</div>`;
       const sw = (act, on, label) => `<button class="switch${on ? ' on' : ''}" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}"></button>`;
-      const isCustom = bg.color && !BG_SWATCHES.some(([c]) => c === bg.color);
-      const photoSet = BoardPhoto.settings(), photoShown = !!(photoSet && photoSet.on && BoardPhoto.media());
 
       const insts = Array.from(S.insts.entries()).sort((a, b) => {
         const an = (getWidget(a[1].widgetId) || { name: a[1].widgetId }).name, bn = (getWidget(b[1].widgetId) || { name: b[1].widgetId }).name;
@@ -3150,15 +3204,7 @@
         <div class="row"><div class="lbl">Theme</div>${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']])}</div>
         <div class="row stack"><div><div class="lbl">Accent color</div><div class="hint">Buttons, the selected-window outline and highlights, in 21Board and its widgets.</div></div>
           <div class="swatches">${Object.entries(ACCENTS).map(([k, a]) => `<button class="swatch${(st.accent || 'blue') === k ? ' on' : ''}" style="background:${resolvedTheme() === 'dark' ? a[1] : a[0]}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent"></button>`).join('')}</div></div>
-        <div class="row stack"><div class="lbl">Board background</div>
-          <div class="swatches">
-            <button class="swatch auto${!bg.color ? ' on' : ''}" data-act="bg" data-val="" title="Match theme" aria-label="Match theme"></button>
-            ${BG_SWATCHES.map(([c, n]) => `<button class="swatch${bg.color === c ? ' on' : ''}" style="background:${c}" data-act="bg" data-val="${c}" title="${n}" aria-label="${n}"></button>`).join('')}
-            <label class="swatch custom${isCustom ? ' on' : ''}" title="Custom color"><input type="color" id="set-bg-custom" value="${esc(isCustom ? bg.color : '#88aacc')}" aria-label="Custom background color"></label>
-          </div>
-        </div>
-        <div class="row"><div class="lbl">Pattern</div>${seg('pattern', bg.pattern || 'none', [['none', 'None'], ['dots', 'Dots'], ['grid', 'Grid'], ['lines', 'Lines']], photoShown)}</div>
-        ${photoRow(sw, seg)}
+        ${backgroundSettings(sw, seg)}
 
         <h3>Windows</h3>
         <div class="row"><div><div class="lbl">Snap and avoid overlap</div><div class="hint">Windows stop at each other's edges. Keep pushing to overlap anyway.</div></div>${sw('snapping', st.snapping, 'Snap and avoid overlap')}</div>
@@ -3198,9 +3244,11 @@
         <div class="about">21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
         ${note ? '' : 'Everything you make is stored only on this device. '}Nothing is sent to a server.</div>`;
       // The photo preview gets its picture here (never as text inside the HTML above).
-      const thumb = $('#photo-thumb', this.body), pm = BoardPhoto.media();
-      if (thumb) thumb.style.setProperty('--fade-color', (S.board.background && S.board.background.color) || 'var(--board-bg)');   // as on the board
-      if (thumb && pm) BoardPhoto.objectUrl(pm).then(u => { thumb.style.backgroundImage = `url("${u}")`; }, () => {});
+      const pm = BoardPhoto.media(), fadeTo = (S.board.background && S.board.background.color) || 'var(--board-bg)';   // as on the board
+      const shows = [$('#photo-thumb', this.body), $('#bg-preview .ph', this.body)].filter(Boolean);
+      shows.forEach(el => el.style.setProperty('--fade-color', fadeTo));
+      // (One call: a second one at the same time would make a new URL and revoke the first one's.)
+      if (shows.length && pm) BoardPhoto.objectUrl(pm).then(u => shows.forEach(el => { el.style.backgroundImage = `url("${u}")`; }), () => {});
       this.refreshStatus(true);
     },
 
@@ -3557,7 +3605,7 @@
       accent: accentOf(j.accent) ? j.accent : null,
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
-        background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: ['none', 'dots', 'grid', 'lines'].includes(bg.pattern) ? bg.pattern : 'none' },
+        background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: PATTERN_IDS.includes(bg.pattern) ? bg.pattern : 'none' },
         scale: j.board && j.board.scale !== undefined ? (validScale(j.board.scale) || null) : undefined,   // undefined: file from before board scale
         shape: j.board && j.board.shape === 'free' ? 'free' : '16:9',
         uid: j.board && UID_RE.test(j.board.uid || '') ? j.board.uid : null

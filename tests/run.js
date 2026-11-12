@@ -1051,7 +1051,7 @@ const SUITES = [
     b = await bg();
     ok(b.size === 'contain' && b.fade === '0.4', '"Whole photo" shows all of it; Fade blends it toward the background color');
     ok(b.pos === '50% 50%', `a whole photo is centered (the Fill spot doesn't push it to one side) (${b.pos})`);
-    ok(await page.evaluate(() => { const b = document.querySelector('#settings [data-act="pattern"]'); return b.disabled || !!b.closest('.seg.disabled'); }), 'patterns are off while a photo is shown');
+    ok(await page.evaluate(() => { const b = document.querySelector('#settings [data-act="pattern"]'); return b.disabled && /Show photo/.test(document.getElementById('bg-pattern-note').textContent); }), 'patterns are off while a photo is shown, and Settings says why');
     ok(await page.evaluate(() => { const d = document.getElementById('desk'), had = d.className; d.classList.add('pattern-dots'); const none = getComputedStyle(d).backgroundImage === 'none'; d.className = had; return none; }), 'even in the shaded margins');
     // Another open tab shows the same photo.
     await page.waitForTimeout(500);
@@ -1102,6 +1102,81 @@ const SUITES = [
     const corner = await page.evaluate(async () => { const m = window.__board21.state.media.get('background'); const img = new Image(); img.src = m.data; await img.decode();
       const c = document.createElement('canvas'); c.width = 10; c.height = 10; const g = c.getContext('2d'); g.drawImage(img, 0, 0, 10, 10); return { type: m.data.slice(5, 15), a: g.getImageData(0, 0, 1, 1).data[3] }; });
     ok(corner.a === 0 && /webp|png/.test(corner.type), `a transparent logo stays transparent (${corner.type}, corner alpha ${corner.a})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Background options', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(600);
+    const openSettings = async () => { await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300); };
+    await openSettings();
+    const desk = () => page.evaluate(() => { const d = document.getElementById('desk'), cs = getComputedStyle(d);
+      return { color: cs.backgroundColor, img: cs.backgroundImage, cls: d.className, strong: d.style.getPropertyValue('--pattern-strong') }; });
+    const picked = () => page.evaluate(() => ({ name: document.getElementById('bg-color-name').textContent,
+      colors: [...document.querySelectorAll('#bg-block [data-act="bg"][aria-checked="true"]')].map(b => b.dataset.val + (b.querySelector('.tick') ? '✓' : '')),
+      patterns: [...document.querySelectorAll('#bg-block [data-act="pattern"][aria-checked="true"]')].map(b => b.dataset.val + (b.querySelector('.tick') ? '✓' : '')) }));
+    // Colors: two labelled rows; the choice is marked with a check, and named in words.
+    const rows = await page.evaluate(() => [...document.querySelectorAll('#bg-block .bg-cap')].map(c => c.textContent + ':' + c.nextElementSibling.querySelectorAll('.swatch').length));
+    ok(rows.join() === 'Light:8,Dark:5', `colors come in a Light and a Dark row (${rows.join(', ')})`);
+    let pk = await picked();
+    ok(pk.name === 'Matches the theme' && pk.colors.join() === '✓' && pk.patterns.join() === 'none✓', `a new board matches the theme, with no pattern (${pk.name})`);
+    await page.click('#settings [data-act="bg"][data-val="#1f3a2c"]'); await page.waitForTimeout(500);
+    pk = await picked(); let d = await desk();
+    ok(d.color === 'rgb(31, 58, 44)' && pk.name === 'Chalkboard' && pk.colors.join() === '#1f3a2c✓', `Chalkboard: the board turns green, its swatch gets a check and its name is shown (${pk.name})`);
+    // The new patterns, on a dark color: light lines.
+    await page.click('#settings [data-act="pattern"][data-val="handwriting"]'); await page.waitForTimeout(300);
+    d = await desk(); pk = await picked();
+    ok(/pattern-handwriting/.test(d.cls) && /conic-gradient/.test(d.img) && (d.img.match(/gradient\(/g) || []).length === 2 && pk.patterns.join() === 'handwriting✓', 'Handwriting: solid top and base lines with a dashed midline');
+    ok(/255, ?255, ?255/.test(d.strong), `its lines are light on a dark board (${d.strong})`);
+    const pv = await page.evaluate(() => { const p = document.getElementById('bg-preview'); return { cls: p.className, color: getComputedStyle(p).backgroundColor, ratio: p.getBoundingClientRect().width / p.getBoundingClientRect().height }; });
+    ok(/pattern-handwriting/.test(pv.cls) && pv.color === 'rgb(31, 58, 44)' && Math.abs(pv.ratio - 16 / 9) < 0.05, `the preview shows the board's color and pattern, shaped like the board (${pv.ratio.toFixed(2)})`);
+    await page.click('#settings [data-act="bg"][data-val="#ffffff"]'); await page.click('#settings [data-act="pattern"][data-val="graph"]'); await page.waitForTimeout(300);
+    d = await desk();
+    ok(/pattern-graph/.test(d.cls) && (d.img.match(/linear-gradient/g) || []).length === 4 && /0, ?0, ?0/.test(d.strong), 'Graph paper: fine squares with a stronger line every 5, dark on a light board');
+    // Kept with the board, and in its files; an older 21Board's import turns a pattern it doesn't know into none.
+    await page.reload(); await page.waitForTimeout(1000);
+    ok(await page.evaluate(() => window.__board21.state.board.background.pattern === 'graph' && document.getElementById('desk').classList.contains('pattern-graph')), 'the pattern is kept after a reload');
+    const exp = await page.evaluate(() => window.__board21.buildExport('template'));
+    ok(exp.board.background.pattern === 'graph', 'and goes into the board\'s files');
+    await page.evaluate(o => window.__board21.applyImport(o, 'replace'), Object.assign({}, exp, { board: Object.assign({}, exp.board, { background: { color: '#ffffff', pattern: 'zigzag' } }) })); await page.waitForTimeout(1000);
+    ok(await page.evaluate(() => window.__board21.state.board.background.pattern === 'none' && !/pattern-/.test(document.getElementById('desk').className)), 'a pattern this version doesn\'t know shows as none');
+    await page.evaluate(o => window.__board21.applyImport(o, 'replace'), exp); await page.waitForTimeout(1000);
+    // Any color: the board, the previews and the name follow while the color picker is open.
+    await openSettings();
+    await page.locator('#set-bg-custom').evaluate(el => { el.value = '#123456'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.waitForTimeout(500);   // (the board's color fades over .3 s)
+    const live = await page.evaluate(() => ({ desk: getComputedStyle(document.getElementById('desk')).backgroundColor, pv: getComputedStyle(document.getElementById('bg-preview')).backgroundColor,
+      name: document.getElementById('bg-color-name').textContent, open: !!document.getElementById('set-bg-custom') }));
+    ok(live.desk === 'rgb(18, 52, 86)' && live.pv === live.desk && live.name === 'Custom color' && live.open, `a custom color shows at once, Settings staying as it is while choosing (${live.name})`);
+    await page.locator('#set-bg-custom').evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true }))); await page.waitForTimeout(300);
+    pk = await picked();
+    ok(await page.evaluate(() => document.querySelector('#bg-block .swatch.custom').matches('.on') && !!document.querySelector('#bg-block .swatch.custom .tick')) && pk.colors.length === 0, 'then Custom… is marked as the choice');
+    // With a photo shown, the patterns say why they're off; hiding the photo brings them back.
+    const png = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1600; c.height = 900; const g = c.getContext('2d'); g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 1600, 900); return c.toDataURL('image/png'); });
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#settings [data-act="photo-add"]')]);
+    await chooser.setFiles({ name: 'sky.png', mimeType: 'image/png', buffer: Buffer.from(png.split(',')[1], 'base64') });
+    await page.waitForTimeout(1500);
+    const ph = await page.evaluate(() => ({ note: (document.getElementById('bg-pattern-note') || {}).textContent || '', off: [...document.querySelectorAll('#bg-block [data-act="pattern"]')].every(b => b.disabled),
+      desk: getComputedStyle(document.getElementById('desk')).backgroundImage, prev: getComputedStyle(document.querySelector('#bg-preview .ph')).backgroundImage }));
+    ok(ph.off && /photo/.test(ph.note) && /Show photo/.test(ph.note) && ph.desk === 'none', `with a photo, Pattern is off and says why: “${ph.note}”`);
+    const thumb = await page.evaluate(() => getComputedStyle(document.getElementById('photo-thumb')).backgroundImage);
+    ok(ph.prev.startsWith('url("blob:') && thumb === ph.prev, 'the preview shows the photo, and so does the photo\'s own picture below');
+    await page.click('#settings [data-act="photo-on"]'); await page.waitForTimeout(400);
+    ok(await page.evaluate(() => !document.getElementById('bg-pattern-note') && [...document.querySelectorAll('#bg-block [data-act="pattern"]')].every(b => !b.disabled) && getComputedStyle(document.getElementById('desk')).backgroundImage !== 'none'), 'with the photo hidden, the pattern is back');
+    // Nothing spills out of Settings, at 80% and at 200%; the swatches stay big enough to tap.
+    for (const sc of [0.8, 2]) {
+      await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
+      if (!await page.locator('#settings.open').count()) await openSettings();
+      await page.evaluate(() => document.getElementById('bg-block').scrollIntoView());
+      const fit = await page.evaluate(() => { const body = document.querySelector('#settings .sheet-body'), r = body.getBoundingClientRect(), ui = +getComputedStyle(document.documentElement).getPropertyValue('--ui');
+        const out = [...document.querySelectorAll('#bg-block *')].filter(e => { const b = e.getBoundingClientRect(); return b.width && (b.left < r.left - 0.5 || b.right > r.right + 0.5); });
+        const small = [...document.querySelectorAll('#bg-block .swatch, #bg-block .pat-tile')].filter(e => { const b = e.getBoundingClientRect(); return b.width / ui < 43.5 || b.height / ui < 43.5; });
+        return { wide: body.scrollWidth > body.clientWidth + 1, out: out.length, small: small.length, ui }; });
+      ok(!fit.wide && !fit.out && !fit.small, `at ${sc * 100}% (menus drawn at ${fit.ui.toFixed(2)}×), the Background block fits Settings and its choices are at least 44 px`);
+      await page.screenshot({ path: OUT + `bg-options-${sc * 100}.png` });
+    }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
