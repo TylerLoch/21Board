@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.12-39';
-  const BOARD_BUILD = 'd4f0ec93';
+  const BOARD_VERSION = '2026.11.12-40';
+  const BOARD_BUILD = '7c8c73f7';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -106,7 +106,18 @@
     lastBoard: 1,            // the highest page id used so far: a deleted page's id is never used again
     lastBackupAt: null,      // when a full backup was last exported (ms), for backup reminders
     historyEvery: 10,        // Board history: save a version at most every N minutes while the board changes (0 = off)
-    historyFolder: true      // Board history: also keep copies in the linked Google Drive folder (about one an hour)
+    historyFolder: true,     // Board history: also keep copies in the linked Google Drive folder (about one an hour)
+
+    // Classroom features (this device only: never exported or sent to the Drive folder). See section 12b.
+    locked: false,           // Lock windows in place
+
+    awake: 'off',            // Keep the screen on: 'off' | 'on' (while 21Board shows) | 'hours' (school hours only)
+    awakeFrom: '07:30',      //   school hours start (HH:MM, this device's time)
+    awakeTo: '15:30',        //   school hours end
+
+    clock: 'time',           // Clock in the corner: 'off' | 'time' | 'date' (time and date)
+
+    letters: 'standard'      // Letters: 'standard' (the device's own) or a bundled easier-to-read font
   };
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
   const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
@@ -1085,6 +1096,7 @@
     Picker.btns.right.hidden = corners === 'left';
     if (Picker.side && Picker.btns[Picker.side].hidden) Picker.close();
     SaveNote.update();   // (it sits above the Widget Picker buttons)
+    applyClassroom();    // section 12b: lock, screen, clock, letters
     updateCatalog();
     Picker.renderControls();
     Picker.render();
@@ -3367,6 +3379,56 @@
   // =====================================================================
   // Settings → Appearance → Background: a preview shaped like the board, then Color, Pattern and Photo. It's this
   // board's background (board.background, and its photo in media:<b>:background*).
+  // =====================================================================
+  // 12b. Classroom features: lock windows, keep the screen on, clock in the corner, letters
+  // ---------------------------------------------------------------------
+  // Each feature keeps its code in its own part below and is wired in through these hooks:
+  // applySettings() calls applyClassroom(); Settings.render shows the rows; Settings.act and its change
+  // listener pass actions on. All four settings belong to this device (DEFAULT_SETTINGS, "Classroom features").
+
+  function applyClassroom() {
+    applyLock();
+    applyAwake();
+    applyClock();
+    applyLetters();
+  }
+
+  function classroomSettings(sw, seg) {
+    const rows = lockSettings(sw, seg) + awakeSettings(sw, seg);
+    return rows ? `<h3>Classroom</h3>${rows}` : '';
+  }
+
+  function classroomAct(act, val) {
+    return lockAct(act, val) || awakeAct(act, val) || clockAct(act, val) || letterAct(act, val);
+  }
+
+  function classroomChange(el) {
+    awakeChange(el);
+  }
+
+  // ---- Lock windows in place
+  function applyLock() {}
+  function lockSettings(sw, seg) { return ''; }
+  function lockAct(act, val) { return false; }
+
+  // ---- Keep the screen on
+  function applyAwake() {}
+  function awakeSettings(sw, seg) { return ''; }
+  function awakeAct(act, val) { return false; }
+  function awakeChange(el) {}
+
+  // ---- Clock in the corner
+  function applyClock() {}
+  function clockSettings(sw, seg) { return ''; }
+  function clockAct(act, val) { return false; }
+
+  // ---- Letters (easier-to-read fonts)
+  function applyLetters() {}
+  function letterSettings(sw, seg) { return ''; }
+  function letterAct(act, val) { return false; }
+
+  // ---- (end of section 12b)
+
   function backgroundSettings(sw, seg) {
     const bg = S.board.background || {}, color = bg.color || null;
     const pattern = PATTERN_IDS.includes(bg.pattern) ? bg.pattern : 'none';
@@ -3496,6 +3558,7 @@
           Picker.renderControls();
         }
         if (e.target.id === 'set-bg-custom') this.render();   // (the picker has closed: mark the choice)
+        classroomChange(e.target);   // section 12b
       });
       this.body.addEventListener('input', e => {
         if (e.target.id === 'set-bg-custom') {
@@ -3628,7 +3691,11 @@
         <div class="row"><div class="lbl">Theme</div>${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']])}</div>
         <div class="row stack"><div><div class="lbl">Accent color</div><div class="hint">Buttons, the selected-window outline and highlights, in 21Board and its widgets.</div></div>
           <div class="swatches">${Object.entries(ACCENTS).map(([k, a]) => `<button class="swatch${(st.accent || 'blue') === k ? ' on' : ''}" style="background:${resolvedTheme() === 'dark' ? a[1] : a[0]}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent"></button>`).join('')}</div></div>
+        ${letterSettings(sw, seg)}
+        ${clockSettings(sw, seg)}
         ${backgroundSettings(sw, seg)}
+
+        ${classroomSettings(sw, seg)}
 
         <h3>Windows</h3>
         <div class="row"><div><div class="lbl">Snap and avoid overlap</div><div class="hint">Windows stop at each other's edges. Keep pushing to overlap anyway.</div></div>${sw('snapping', st.snapping, 'Snap and avoid overlap')}</div>
@@ -3738,6 +3805,7 @@
     },
 
     async act(act, val) {
+      if (classroomAct(act, val)) { this.render(); return; }   // section 12b
       switch (act) {
         case 'theme': updateSettings({ theme: val }); break;
         case 'accent': if (accentOf(val)) updateSettings({ accent: val }); break;

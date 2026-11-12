@@ -5124,7 +5124,19 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(!leftover.length, `no other page’s board history is left behind, not even a page whose Undo was still offered (${leftover.join(', ')})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
-  }]
+  }],
+
+  // ---- Classroom features (board.js section 12b): one or more suites each, in this order
+
+  // Lock windows in place
+
+  // Keep the screen on
+
+  // Clock in the corner
+
+  // Letters
+
+  // (end of classroom features)
 ];
 
 (async () => {
