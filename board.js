@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.13-35';
-  const BOARD_BUILD = '973eb6ff';
+  const BOARD_VERSION = '2026.11.13-36';
+  const BOARD_BUILD = '0fb05ea8';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3380,7 +3380,7 @@
       '<path stroke="#e5e7eb" transform="translate(11.2 11.2) scale(.36)" d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>';
     const ratio = freeShape() ? (Zoom.vw || 16) / (Zoom.vh || 9) : 16 / 9;
     return `<div class="row stack bg-block" id="bg-block">
-      <div class="bg-top"><div><div class="lbl">Background</div><div class="hint">The color, pattern and photo behind this board's windows.</div></div>
+      <div class="bg-top"><div><div class="lbl">Background</div><div class="hint">The color, pattern and photo behind ${Pages.enabled() ? 'this page’s' : 'this board’s'} windows.</div></div>
         <div class="bg-preview${photoShown || pattern === 'none' ? '' : ' pattern-' + pattern}" id="bg-preview" role="img" aria-label="Preview of the board" style="aspect-ratio:${ratio.toFixed(4)};${look}">${photoShown
           ? `<span class="ph" style="background-size:${photoSet.fit === 'whole' ? 'contain' : 'cover'};background-position:${photoPosition(photoSet)};--fade:${photoSet.fade}"></span>` : ''}</div></div>
       <div class="bg-part"><div class="bg-sub"><span class="lbl">Color</span><span class="bg-now" id="bg-color-name">${esc(bgColorName(color))}</span></div>
