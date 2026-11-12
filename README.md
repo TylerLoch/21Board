@@ -89,13 +89,14 @@ are open still come from the saved copy: reload once more, or close and open the
 | --- | --- |
 | **Widget Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap a widget to open it. Tap ▦ again (or anywhere else) to close. |
 | **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Fullscreen, Settings. |
+| **Pages** | Each page is a board of its own (its own windows, content, background and name), for lessons or parts of the day. At the far end of the Widget Picker's bottom row: **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after; on the last page › is **+** (a new page). Tap *Page* for the Pages menu: every page by name (tap one to go there), **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** and **Delete this page…** (with Undo). A new page takes this page's size, shape, color and pattern. Every tab on the device shows the same page, and 21Board opens on the page it was showing. Widgets on other pages don't run while their page isn't shown: a Timer shows the right time when you come back, but its alarm doesn't ring on another page. |
 | **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close** (21Sketch, 21Timer and 21DocCam: **Reload** and **Open … on its own** instead of Reset). Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
-| **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
-| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. A backup of another board opened with *Replace my board* is another board from then on: in a shared Google Drive folder it gets its own file, and the board it replaced stays there. |
+| **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). With several pages: *All pages* (a backup of every page in one file), *This page*, or *This page as a blank template*. Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). *Back up now* (Settings) and the backup reminders always save every page. |
+| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). A backup of another board opened with *Replace this page* is another board from then on: in a shared Google Drive folder it gets its own file, and the board it replaced stays there. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Google Drive folder, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
@@ -114,14 +115,14 @@ are open still come from the saved copy: reload once more, or close and open the
   in full backups, not in templates).
 - **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, size of windows and menus (default 80%), board shape (16:9 or any shape), close all windows.
 - **Widget Picker:** show the controls in both corners, or only left/right.
-- **Board:** board name (used for export file names), list of every saved widget window with
-  open/delete.
+- **This page:** a word about pages, the page's name (used for export file names and in the Google Drive
+  folder), list of every saved widget window on this page with open/delete.
 - **Google Drive folder:** share boards with your other devices (the smartboard) through a folder in Google
   Drive: choose the folder, Send, send automatically (off, after each change, or when left alone), include
   the photo, this device's name, other boards in the folder; and what is wrong when the folder can't be used.
   See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
 - **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
-- **Advanced:** Developer mode (SDK Playground, test unregistered widgets by their path or by uploading the file), erase everything.
+- **Advanced:** Developer mode (SDK Playground, test unregistered widgets by their path or by uploading the file), erase everything (every page).
 - **About:** the version this device is running (release name and build), to read out to IT.
 
 ---
@@ -246,7 +247,8 @@ read and write in that one folder only; it can't see anything else.
   (a few seconds after the last change).
 - **Smartboard:** within a minute or two (when 21Board opens, when it comes back to the front, and every
   2 minutes) it says **“Room 12” was updated on my laptop at 7:42 · Load / Not now**. Nothing changes until
-  you tap Load. The first time, pick the board under *Other boards in the folder* in Settings.
+  you tap Load. The first time, pick the board under *Other boards in the folder* in Settings. (A board that
+  is already one of this device's pages shows *Go to page* there instead of Load.)
 - **Changed on both?** Load says so first and offers *Keep a copy of mine, then load* (the copy goes in the
   folder as its own board). A version this device hasn't loaded is never overwritten: *Send automatically*
   waits until it's loaded, and Send asks (*Load theirs* or *Send mine*, keeping the other as a copy).

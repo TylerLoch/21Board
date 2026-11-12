@@ -418,7 +418,7 @@ const SUITES = [
     await b.setInputFiles('#import-input', fullPath);
     await b.waitForTimeout(300);
     await b.screenshot({ path: OUT + '21-import-dialog.png' });
-    await b.click('#modal .btn[data-i="0"]'); // replace
+    await b.click('#modal .btn:has-text("Replace this page")'); // replace
     await b.waitForTimeout(1500);
     ok(JSON.stringify(await wins(b)) === JSON.stringify(['name-picker:1', 'notes:1']), 'replace import: windows match file (' + (await wins(b)).join(',') + ')');
     ok(await frameOf(b, 'notes:1').locator('textarea').inputValue() === 'Secret student info', 'replace import: content restored');
@@ -429,7 +429,7 @@ const SUITES = [
     // Add template on top → instances renumbered
     await b.setInputFiles('#import-input', tplPath);
     await b.waitForTimeout(300);
-    await b.click('#modal .btn[data-i="1"]'); // add
+    await b.click('#modal .btn:has-text("Add to this page")'); // add
     await b.waitForTimeout(1500);
     const after = await wins(b);
     ok(after.includes('notes:2') && after.includes('name-picker:2'), 'add import renumbers instances: ' + after.join(','));
@@ -1576,7 +1576,7 @@ const SUITES = [
     ] };
     fs.writeFileSync(OUT + 'crafted-task-timer.21board', JSON.stringify(crafted));
     await A.setInputFiles('#import-input', OUT + 'crafted-task-timer.21board'); await A.waitForTimeout(300);
-    await A.click('#modal .btn[data-i="0"]');   // Replace my board
+    await A.click('#modal .btn:has-text("Replace this page")');   // Replace this page
     ok(await eventually(() => fA.locator('html').evaluate(() => typeof lastTickSecs !== 'undefined' && lastTickSecs !== null && state.tasks.length > 2)), 'a crafted file opens: the Task Timer starts');
     const marks = () => fA.locator('html').evaluate(() => document.querySelectorAll('img, svg, b, [onerror], [onload], [src^="javascript"], [href^="javascript"]').length + (document.title === 'PWNED' ? 100 : 0));
     a = await look(fA);
@@ -1634,7 +1634,7 @@ const SUITES = [
     ] };
     fs.writeFileSync(OUT + 'crafted.21board', JSON.stringify(crafted));
     await page.setInputFiles('#import-input', OUT + 'crafted.21board'); await page.waitForTimeout(300);
-    await page.click('#modal .btn[data-i="0"]');   // Replace my board
+    await page.click('#modal .btn:has-text("Replace this page")');   // Replace this page
     const inFrame = (id, fn) => page.frameLocator(`.win[data-ikey="${id.includes(':') ? id : id + ':1'}"] iframe`).locator('html').evaluate(fn);
     const ids = crafted.instances.map(i => i.widgetId + ':' + i.instance);
     ok(await eventually(async () => (await Promise.all(ids.map(id => inFrame(id, () => !!(window.Board21 && Board21.context))))).every(Boolean)), 'a crafted file opens: all its windows start');
@@ -2155,7 +2155,7 @@ const SUITES = [
     ] };
     fs.writeFileSync(OUT + 'crafted-first-then.21board', JSON.stringify(crafted));
     await page.setInputFiles('#import-input', OUT + 'crafted-first-then.21board'); await page.waitForTimeout(300);
-    await page.click('#modal .btn[data-i="0"]');   // Replace my board
+    await page.click('#modal .btn:has-text("Replace this page")');   // Replace this page
     const keys = [1, 2, 3].map(i => 'first-then-board:' + i);
     ok(await eventually(async () => (await Promise.all(keys.map(k => connected(page, k)))).every(Boolean)), 'a crafted file opens: all its windows start');
     await page.waitForTimeout(500);
@@ -3849,7 +3849,7 @@ const SUITES = [
     await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]');
     await page.waitForSelector('#settings.open #set-board-name'); await page.focus('#set-board-name');
     await drop('Other board.21board'); await open();
-    await page.locator('#modal.open .btn', { hasText: 'Replace my board' }).click();
+    await page.locator('#modal.open .btn', { hasText: 'Replace this page' }).click();
     await page.waitForSelector('.toast:has-text("Board imported.")');
     back = await at();
     const shownName = await page.locator('#set-board-name').inputValue();
@@ -3865,21 +3865,21 @@ const SUITES = [
     const boards = async p => Object.keys(await readFolder(p)).filter(n => n.endsWith('.21board')).sort().join(' | ');
     const board = p => p.evaluate(() => ({ uid: window.__board21.state.board.uid, name: window.__board21.state.board.name }));
     const hasPhoto = p => p.evaluate(() => window.__board21.state.media.has('background'));
-    // Import: pick the file, then answer the dialog. Returns what the "Replace my board" button said.
+    // Import: pick the file, then answer the dialog. Returns what the "Replace this page" button said.
     const pickFile = async (p, name, content) => {
       await p.setInputFiles('#import-input', { name, mimeType: 'application/json', buffer: Buffer.from(typeof content === 'string' ? content : JSON.stringify(content)) });
       await p.waitForSelector('#modal.open');
-      return p.locator('#modal.open .btn', { hasText: 'Replace my board' }).innerText();
+      return p.locator('#modal.open .btn', { hasText: 'Replace this page' }).innerText();
     };
-    const importFile = async (p, name, content, answer = 'Replace my board') => {
+    const importFile = async (p, name, content, answer = 'Replace this page') => {
       const said = await pickFile(p, name, content);
       await modal(p, answer); await p.waitForTimeout(1500);
       return said;
     };
-    // How far the small text under "Replace my board" reaches past the dialog's card (0: it is inside).
+    // How far the small text under "Replace this page" reaches past the dialog's card (0: it is inside).
     const overflow = p => p.evaluate(() => {
       const card = document.querySelector('#modal .modal-card').getBoundingClientRect(), r = document.createRange();
-      r.selectNodeContents(Array.from(document.querySelectorAll('#modal .btn')).find(b => /Replace my board/.test(b.textContent)).querySelector('small'));
+      r.selectNodeContents(Array.from(document.querySelectorAll('#modal .btn')).find(b => /Replace this page/.test(b.textContent)).querySelector('small'));
       const t = r.getBoundingClientRect();
       return Math.max(0, Math.round(t.right - card.right), Math.round(t.bottom - card.bottom));
     });
@@ -3900,10 +3900,10 @@ const SUITES = [
     await B.p.waitForSelector('#modal.open'); await modal(B.p, 'Replace this board'); await B.p.waitForTimeout(2000);
     ok(await boards(A.p) === 'Math.21board' && (await board(B.p)).uid === math, 'setup: “Math” is in the folder, and on the smartboard');
 
-    // ---- 1) A backup of another board, opened with "Replace my board", is another board.
+    // ---- 1) A backup of another board, opened with "Replace this page", is another board.
     let said = await importFile(A.p, 'Science.21board', backup('Science', 'Science notes', 'science-board-0001'));
     const science = await board(A.p);
-    ok(science.name === 'Science' && science.uid !== math && science.uid !== 'science-board-0001', 'a backup of another board opened with “Replace my board” is another board from then on (an id of its own, not the id of the board it replaced)');
+    ok(science.name === 'Science' && science.uid !== math && science.uid !== 'science-board-0001', 'a backup of another board opened with “Replace this page” is another board from then on (an id of its own, not the id of the board it replaced)');
     ok(said.includes('“Math” stays in your Google Drive folder'), 'and Import says that “Math” stays in the folder');
     await L(A.p, () => window.__board21.link.send()); await A.p.waitForTimeout(800);
     let files = await readFolder(A.p);
@@ -4005,7 +4005,7 @@ const SUITES = [
     const fractions = await board(A.p);
     ok(same && fractions.uid !== art && fractions.name === 'Fractions', 'a blank template with this board’s name gives the board a new layout; one with another name is another board');
     ok(await eventually(async () => /Art\.21board \| Fractions\.21board/.test(await boards(A.p))), 'so “Art” stays in the folder when “Fractions” is sent');
-    // ---- 6) "Replace my board" answered while an automatic send is under way (the folder is slow to list): the
+    // ---- 6) "Replace this page" answered while an automatic send is under way (the folder is slow to list): the
     // send finishes first, as the board it began with. It used to go on as the new board under the old board's
     // id, and remove the old board's file.
     const has = async (name, text) => ((await readFolder(A.p))[name] || '').includes(text);
@@ -4014,10 +4014,10 @@ const SUITES = [
     await pickFile(A.p, 'Music.21board', backup('Music', 'Music notes', 'music-board-000001'));
     await L(A.p, () => { window.__drive = { slow: 2500 }; window.__board21.link.autoSend(); });
     let flying = await eventually(() => L(A.p, () => window.__board21.link.busy), 3000);
-    await modal(A.p, 'Replace my board');
+    await modal(A.p, 'Replace this page');
     await L(A.p, () => { window.__drive = {}; window.__board21.link.waits.now = 1000; });
     ok(flying && await eventually(async () => await has('Fractions.21board', 'Fractions, last change') && await has('Music.21board', 'Music notes'), 12000),
-      '“Replace my board” answered while an automatic send is under way: the send finishes first, so the old board keeps its file, with its last change, and the new board gets its own');
+      '“Replace this page” answered while an automatic send is under way: the send finishes first, so the old board keeps its file, with its last change, and the new board gets its own');
     // ---- 7) Undo, the same: undoing the import while “Music” is being sent.
     await L(A.p, () => { window.__board21.link.waits.now = 60000; });
     await fillNote(note(A.p), 'Music, changed'); await A.p.waitForTimeout(300);
@@ -4032,7 +4032,7 @@ const SUITES = [
     await A.p.fill('#set-board-name', 'Fractions and decimals, second semester, periods 3 and 4'); await A.p.press('#set-board-name', 'Tab'); await A.p.keyboard.press('Escape');
     await L(A.p, () => window.__board21.link.send()); await A.p.waitForTimeout(800);
     said = await pickFile(A.p, 'Science.21board', backup('Science', 'Science notes', 'science-board-0001'));
-    ok(said.includes('periods 3 and 4” stays in your Google Drive folder') && await overflow(A.p) === 0, 'the small print under “Replace my board” wraps inside the dialog, even with a long board name (it ran out of the dialog and over the board)');
+    ok(said.includes('periods 3 and 4” stays in your Google Drive folder') && await overflow(A.p) === 0, 'the small print under “Replace this page” wraps inside the dialog, even with a long board name (it ran out of the dialog and over the board)');
     await A.p.waitForTimeout(300);
     await A.p.screenshot({ path: OUT + '74-drive-import-dialog.png' });
     await modal(A.p, 'Cancel');
@@ -4465,7 +4465,7 @@ const SUITES = [
       instances: [win('dev-evil', 0, { src: EVIL, srcdoc: EVIL }, { src: EVIL }), win('dev-probe', 1, { src: EVIL }, { srcdoc: EVIL }), win('notes', 2, { text: 'from the file' }, null)] };
     fs.writeFileSync(dir + 'crafted.21board', JSON.stringify(crafted));
     await page.setInputFiles('#import-input', dir + 'crafted.21board'); await page.waitForTimeout(300);
-    await page.click('#modal .btn[data-i="0"]');   // Replace my board
+    await page.click('#modal .btn:has-text("Replace this page")');   // Replace this page
     ok(await eventually(async () => await frame(page, 'notes:1').locator('#view').textContent() === 'from the file'), 'the crafted file is imported');
     await page.waitForTimeout(1500);
     const st = await B(() => { const b = window.__board21, s = b.state; return { pwned: window.__pwned, title: document.title, evil: b.catalog().some(a => a.id === 'dev-evil') || s.devFiles.has('dev-evil') || s.wins.has('dev-evil:1') || (s.settings.devWidgets || []).some(d => d.id === 'dev-evil'), probe: s.devFiles.has('dev-probe') && s.wins.has('dev-probe:1') }; });
@@ -4696,12 +4696,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(Object.values(APPS).every(([, url]) => srcs.includes(url)) && !srcs.some(s => /evil/.test(s)), 'a crafted .21board file with another address still opens the real ones: ' + srcs.join(' '));
     ok(await B(() => Array.from(window.__board21.state.wins.values()).every(w => !w.connected)), 'and the windows still take no messages (the data it carried is never handed to the app)');
 
-    // ---- "Add to my board" adds no second window of an app the board has.
+    // ---- "Add to this page" adds no second window of an app the board has.
     const addFile = JSON.parse(JSON.stringify(tpl));
     addFile.instances.push(Object.assign({}, inExp(tpl, '21doccam'), { widgetId: 'dice', n: 1 }));
     fs.writeFileSync(OUT + 'district-apps-add.21board', JSON.stringify(addFile));
     await page.setInputFiles('#import-input', OUT + 'district-apps-add.21board'); await page.waitForTimeout(300);
-    await page.locator('#modal.open .btn', { hasText: 'Add to my board' }).click(); await page.waitForTimeout(1500);
+    await page.locator('#modal.open .btn', { hasText: 'Add to this page' }).click(); await page.waitForTimeout(1500);
     const keys = await B(() => Array.from(window.__board21.state.insts.keys()).sort().join());
     ok(keys === '21doccam:1,21sketch:1,21timer:1,dice:1' && await page.locator('.toast', { hasText: 'Added 1 window.' }).count() === 1, 'adding a file with the three apps and Dice adds only Dice (“Added 1 window.”): ' + keys);
     await B(() => window.__board21.closeWin('dice:1', { quiet: true })); await page.waitForTimeout(300);
@@ -4789,6 +4789,339 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok((await a.locator('#st-persist').textContent()).includes('Not available') && !(await a.locator('#st-persist-hint').textContent()).includes('address bar'), 'data-protection status is accurate for a copy opened from a file');
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
     ok((await a.locator('#settings .about').innerText()).startsWith(`21Board ${/const VERSION = '([^']+)'/.exec(sw)[1]} (${/const BUILD = '([0-9a-f]{8})'/.exec(sw)[1]}) · `), 'Settings → About names the release and build there too, where there is no offline copy to ask');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Pages (multiple boards)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, acceptDownloads: true });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const st = (p = page) => p.evaluate(() => { const b = window.__board21, s = b.state; return { id: s.boardId, name: s.board.name, uid: s.board.uid, wins: Array.from(s.wins.keys()).sort(), ids: b.pages.ids(), active: s.settings.activeBoard,
+      ind: (document.querySelector('[data-ctl="pages"]') || {}).textContent, picker: document.getElementById('panel').classList.contains('open') }; });
+    const frame = (ik, p = page) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const recs = (p = page) => p.evaluate(() => new Promise((res, rej) => { const o = indexedDB.open('21Board'); o.onerror = () => rej(o.error);
+      o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').getAll(); q.onsuccess = () => { o.result.close(); res(Object.fromEntries(q.result.map(r => [r.key, r.value]))); }; }; }));
+    const settle = (ms = 700) => page.waitForTimeout(ms);
+    const openPicker = async (side = 'left') => { if (!await page.locator('#panel.open').count()) { await page.click(`.picker-btn.${side}`); await settle(250); } };
+    // The Widget Picker: five columns where there's room, ‹ Page › after Settings at the far end (mirrored on the right, ‹ still on the left).
+    const geo = (side, p = page) => p.evaluate(side => {
+      const P = document.getElementById('panel'), q = s => P.querySelector(s).getBoundingClientRect(), g = q('.panel-widgets'), c = q('.panel-controls'), r = P.getBoundingClientRect();
+      const prev = q('[data-ctl="prev"]'), ind = q('[data-ctl="pages"]'), next = q('[data-ctl="next"]'), gear = q('[data-ctl="settings"]');
+      const other = document.querySelector(`.picker-btn.${side === 'left' ? 'right' : 'left'}`).getBoundingClientRect();
+      const hit = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+      return { cols: +getComputedStyle(P).getPropertyValue('--cols'), narrow: P.classList.contains('narrow'), inside: r.left >= -0.5 && r.right <= innerWidth + 0.5,
+        noScroll: document.documentElement.scrollWidth <= innerWidth && P.scrollWidth <= P.clientWidth + 1 && c.right <= r.right && c.left >= r.left,
+        rowFits: c.right <= g.right + 1.5 && c.left >= g.left - 1.5, order: prev.right <= ind.left + 0.5 && ind.right <= next.left + 0.5,
+        far: side === 'left' ? next.right >= g.right - 8 : prev.left <= g.left + 8, sameRow: Math.abs(prev.top - gear.top) < 3, above: prev.bottom <= gear.top + 0.5,
+        gearFirst: side === 'left' ? gear.right <= prev.left : gear.left >= next.right, clear: ![prev, ind, next].some(b => hit(b, other)),
+        ui: Math.round(window.__board21.zoom.ui * 100) / 100, big: [prev, ind, next].every(b => b.width >= 44 * window.__board21.zoom.ui - 0.5 && b.height >= 44 * window.__board21.zoom.ui - 0.5) };
+    }, side);
+    for (const [w, h] of [[1366, 768], [1920, 1080]]) {
+      await page.setViewportSize({ width: w, height: h }); await settle(300);
+      for (const side of ['left', 'right']) {
+        await page.click(`.picker-btn.${side}`); await settle(300);
+        const g = await geo(side);
+        ok(g.cols === 5 && !g.narrow && g.rowFits && g.sameRow && g.gearFirst && g.far && g.order && g.inside && g.noScroll && g.clear && g.big,
+          `${w}×${h}, ${side} corner: five columns, ‹ Page › after Settings at the far end, ‹ on the left, all on screen (${JSON.stringify(g)})`);
+        await page.click(`.picker-btn.${side}`); await settle(200);
+      }
+    }
+    let narrowSeen = 0;
+    for (const [w, h] of [[800, 600], [560, 760], [375, 700]]) {
+      await page.setViewportSize({ width: w, height: h }); await settle(300);
+      for (const side of ['left', 'right']) {
+        await page.click(`.picker-btn.${side}`); await settle(300);
+        const g = await geo(side);
+        if (g.cols === 5) ok(!g.narrow && g.rowFits && g.sameRow && g.far && g.order && g.inside && g.noScroll && g.clear && g.big, `${w}×${h}, ${side} corner: five columns (drawn at ${g.ui}), ‹ Page › fits after Settings`);
+        else { narrowSeen++; ok(g.narrow && g.above && g.order && g.inside && g.noScroll && g.big, `${w}×${h}, ${side} corner: ${g.cols} columns, ‹ Page › gets a row of its own above the controls, with no overflow (${JSON.stringify(g)})`); }
+        await page.click(`.picker-btn.${side}`); await settle(200);
+      }
+    }
+    ok(narrowSeen >= 2, 'a narrow window was among them');
+    await page.setViewportSize({ width: 1366, height: 768 }); await settle(300);
+
+    // One page: ‹ is off and › is + (New page).
+    await page.evaluate(() => { const b = window.__board21; b.setBoardScale(1.25); b.updateBoard({ background: { color: '#1f3a2c', pattern: 'grid' } }); b.openWidget('notes'); });
+    await settle(1200);
+    await fillNote(frame('notes:1'), 'Page one note');
+    await openPicker();
+    const one = await page.evaluate(() => ({ prev: document.querySelector('[data-ctl="prev"]').disabled, next: document.querySelector('[data-ctl="next"]').getAttribute('aria-label'), ind: document.querySelector('[data-ctl="pages"]').textContent }));
+    ok(one.prev && one.next === 'New page' && one.ind === 'Page1 of 1', `with one page, ‹ is off, › is + (New page), and it reads “Page 1 of 1” (${JSON.stringify(one)})`);
+    // New page.
+    await page.click('[data-ctl="next"]');
+    await page.waitForFunction(() => window.__board21.state.boardId !== 1 && !document.getElementById('page-flash').hidden, null, { timeout: 8000 });
+    const flash = await page.evaluate(() => { const f = document.getElementById('page-flash'); return { on: !f.hidden, text: f.textContent }; });
+    await settle(400);
+    let s = await st();
+    const look = await page.evaluate(() => { const b = window.__board21.state.board; return [b.scale, b.shape, b.background.color, b.background.pattern]; });
+    ok(s.id === 2 && s.name === 'Page 2' && !s.wins.length && s.ids.join() === '1,2' && s.active === 2 && s.ind === 'Page2 of 2' && s.picker,
+      `+ makes a blank “Page 2”, goes there, and the Widget Picker stays open (${JSON.stringify(s)})`);
+    ok(look.join() === '1.25,16:9,#1f3a2c,grid', `a new page takes this page’s size, shape, color and pattern (${look.join()})`);
+    ok(flash.on && flash.text === 'Page 2', `“Page 2” shows in the middle of the board (${JSON.stringify(flash)})`);
+    ok(await page.locator('#empty-hint').isVisible(), 'a blank page says “Your board is ready”');
+    ok(!(await page.evaluate(() => document.querySelector('[data-ctl="prev"]').disabled)), '‹ works on the second page');
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { window.__board21.openWidget('timer'); window.__board21.openWidget('dice'); }); await settle(1200);
+    await openPicker(); await page.click('[data-ctl="prev"]');
+    await page.waitForFunction(() => window.__board21.state.boardId === 1); await settle(1200);
+    s = await st();
+    ok(s.wins.join() === 'notes:1' && await frame('notes:1').locator('textarea').inputValue() === 'Page one note', `‹ goes back to page 1 with its own window and content (${s.wins.join()})`);
+    await fillNote(frame('notes:1'), 'Page one, edited just before leaving');
+    await openPicker(); await page.click('[data-ctl="next"]'); await page.waitForFunction(() => window.__board21.state.boardId === 2); await settle(1000);
+    s = await st();
+    let R = await recs();
+    ok(s.wins.join() === 'dice:1,timer:1' && R['data:1:notes:1'] && R['data:1:notes:1'].text === 'Page one, edited just before leaving' && !Object.keys(R).some(k => /^(inst|data):2:notes/.test(k)) && R['inst:2:timer:1'] && !R['inst:1:timer:1'],
+      'the pages keep their windows and content apart, and what was typed just before leaving is stored under its own page');
+
+    // Reload: the same page. A second tab follows.
+    await page.reload(); await boardUp(page); await settle(800);
+    s = await st();
+    ok(s.id === 2 && s.wins.join() === 'dice:1,timer:1', `reload opens the page that was shown (${s.id})`);
+    const tab2 = await ctx.newPage(); tab2.on('pageerror', e => errors.push('[tab 2] ' + e.message));
+    await tab2.goto(BASE); await boardUp(tab2); await tab2.waitForTimeout(800);
+    ok((await st(tab2)).id === 2, 'a second tab opens on the same page');
+    await openPicker(); await page.click('[data-ctl="prev"]'); await page.waitForFunction(() => window.__board21.state.boardId === 1);
+    ok(await eventually(async () => (await st(tab2)).id === 1 && (await st(tab2)).wins.join() === 'notes:1'), 'the other tab goes to the same page');
+    await frame('notes:1', tab2).locator('#view').waitFor({ timeout: 5000 }).catch(() => {});
+    await page.click('[data-ctl="next"]'); await page.waitForFunction(() => window.__board21.state.boardId === 2);
+    ok(await eventually(async () => (await st(tab2)).id === 2), 'and back again');
+    await tab2.close();
+
+    // Rename (from the Pages menu).
+    await page.click('[data-ctl="pages"]'); await settle(250);
+    const menu = await page.evaluate(() => { const m = document.getElementById('pages-menu'), r = m.getBoundingClientRect(), i = document.querySelector('[data-ctl="pages"]').getBoundingClientRect();
+      return { open: m.classList.contains('open'), items: Array.from(m.querySelectorAll('.menu-item')).map(b => b.textContent.trim()), checked: (m.querySelector('[aria-checked="true"]') || {}).textContent, above: r.bottom <= i.top + 1, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 }; });
+    ok(menu.open && menu.above && menu.inside && menu.checked === '2Page 2' && menu.items.join('|') === '1My Board|2Page 2|New page|Duplicate this page|Rename this page…|Move left|Move right|Delete this page…',
+      `the Pages menu opens above the indicator, lists the pages with this one checked, then what can be done (${menu.items.join(' | ')})`);
+    await page.click('#pages-menu [data-act="rename"]'); await settle(200);
+    ok(await page.locator('#modal input').inputValue() === 'Page 2', 'Rename starts from the page’s name');
+    await page.fill('#modal input', 'Math'); await page.keyboard.press('Enter'); await settle(500);
+    R = await recs();
+    ok((await st()).name === 'Math' && R['board:2'].name === 'Math', 'Rename names the page (its board name)');
+
+    // Duplicate.
+    await page.keyboard.press('Escape'); await openPicker('right'); await page.click('[data-ctl="pages"]'); await settle(200);
+    await page.click('#pages-menu [data-act="dup"]');
+    await page.waitForFunction(() => window.__board21.state.boardId === 3, null, { timeout: 10000 }); await settle(1200);
+    s = await st(); R = await recs();
+    ok(s.name === 'Math (copy)' && s.wins.join() === 'dice:1,timer:1' && s.ids.join() === '1,2,3' && R['board:3'].uid && R['board:3'].uid !== R['board:2'].uid && R['board:3'].background.color === '#1f3a2c',
+      `Duplicate makes “Math (copy)” after it, with its windows and background, and a board id of its own (${JSON.stringify(s)})`);
+
+    // Delete, then Undo: the page comes back where it was.
+    await openPicker(); await page.click('[data-ctl="prev"]'); await page.waitForFunction(() => window.__board21.state.boardId === 2); await settle(800);
+    await openPicker(); await page.click('[data-ctl="pages"]'); await page.click('#pages-menu [data-act="delete"]'); await settle(250);
+    const dtext = await page.locator('#modal').textContent();
+    ok(/Delete “Math”\?/.test(dtext) && /2 windows/.test(dtext), `the delete question names the page and its windows (${dtext.slice(0, 120)})`);
+    await page.click('#modal .btn.danger'); await page.waitForFunction(() => window.__board21.state.boardId !== 2); await settle(600);
+    s = await st();
+    ok(s.ids.join() === '1,3' && s.id === 3, `the page is gone and the next one is shown (${s.ids.join()})`);
+    await page.click('#toasts button:has-text("Undo")'); await page.waitForFunction(() => window.__board21.state.boardId === 2); await settle(1000);
+    s = await st();
+    ok(s.ids.join() === '1,2,3' && s.name === 'Math' && s.wins.join() === 'dice:1,timer:1', `Undo brings it back in its place, as it was (${JSON.stringify(s)})`);
+    // Deleted for good: its records and its board history go (once its Undo is over); its id isn't used again.
+    await page.evaluate(() => window.__board21.history.capture('manual', { label: 'kept' })); await settle(300);
+    await openPicker(); await page.click('[data-ctl="pages"]'); await page.click('#pages-menu [data-act="delete"]'); await page.click('#modal .btn.danger');
+    await page.waitForFunction(() => window.__board21.state.boardId !== 2); await settle(400);
+    await page.evaluate(() => window.__board21.pages.purge([2])); await settle(400);
+    R = await recs();
+    const hist2 = await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board-history'); o.onsuccess = () => { const q = o.result.transaction('meta').objectStore('meta').getAllKeys(); q.onsuccess = () => { o.result.close(); res(q.result.filter(k => String(k).startsWith('2:')).length); }; }; }));
+    ok(!Object.keys(R).some(k => /^(board|inst|data|conf|media):2(:|$)/.test(k)) && hist2 === 0 && !(R.settings.deletedBoards || []).length, 'after its Undo, a deleted page’s records and board history are gone');
+    await openPicker(); await page.click('[data-ctl="pages"]'); await page.click('#pages-menu [data-act="new"]');
+    await page.waitForFunction(() => window.__board21.state.boardId === 4, null, { timeout: 8000 }).catch(() => {});
+    ok((await st()).id === 4, 'a new page never gets a deleted page’s id');
+    // The only page can't be deleted.
+    // Move left.
+    await openPicker(); await page.click('[data-ctl="pages"]'); await page.click('#pages-menu [data-act="left"]'); await settle(300);
+    ok((await st()).ids.join() === '1,4,3', 'Move left changes the order');
+
+    // Export: this page (the same file as before pages), and all pages.
+    await page.evaluate(() => window.__board21.pages.go(1)); await settle(800);
+    await openPicker(); await page.click('[data-ctl="export"]'); await settle(200);
+    const labels = await page.locator('#modal .btn').allTextContents();
+    ok(/^All 3 pages/.test(labels[0]) && /^This page/.test(labels[1]) && /blank template/.test(labels[2]), `Export asks: all pages or this page (${labels.map(l => l.split(/A full|Window/)[0]).join(' | ')})`);
+    let [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="1"]')]);
+    const oneP = OUT + 'page-one.21board'; await dl.saveAs(oneP);
+    const single = JSON.parse(fs.readFileSync(oneP, 'utf8'));
+    ok(Object.keys(single).join() === 'format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,board,instances' && single.formatVersion === 1 && !single.pages && single.board.name === 'My Board' && single.instances.length === 1,
+      `“This page” is a .21board file exactly as before pages (${Object.keys(single).join(',')})`);
+    await openPicker(); await page.click('[data-ctl="export"]'); await settle(200);
+    [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="0"]')]);
+    const allP = OUT + 'all-pages.21board'; await dl.saveAs(allP);
+    const all = JSON.parse(fs.readFileSync(allP, 'utf8'));
+    ok(all.formatVersion === 1 && all.board.name === 'My Board' && Array.isArray(all.pages) && all.pages.length === 3 && all.pages[0].main && all.pages[2].board.name === 'Math (copy)' && all.pages[2].instances.length === 2 && /3 pages/.test(dl.suggestedFilename()),
+      `“All pages” is a version 1 file of the page shown, with every page in order in “pages” (${dl.suggestedFilename()})`);
+    ok(await page.evaluate(() => Date.now() - window.__board21.state.settings.lastBackupAt < 60000), 'an all-pages export counts as a backup');
+
+    // Import: an all-pages file adds its pages; a one-page file opens as a new page (the suggested choice).
+    await page.setInputFiles('#import-input', allP); await settle(300);
+    const it = await page.locator('#modal .btn').allTextContents();
+    ok(/^Add these 3 pages/.test(it[0]) && /^Replace all pages/.test(it[1]), `an all-pages file offers to add its pages or replace all pages (${it.map(t => t.slice(0, 22)).join(' | ')})`);
+    await page.click('#modal .btn[data-i="0"]');
+    await page.waitForFunction(() => window.__board21.pages.ids().length === 6, null, { timeout: 20000 }).catch(() => {});
+    await settle(1200);
+    s = await st();
+    ok(s.ids.length === 6 && s.name === 'My Board' && s.ids.indexOf(s.id) === 3 && s.wins.join() === 'notes:1', `its 3 pages are added after this device’s, and the first is shown (${s.ids.join()})`);
+    ok(await frame('notes:1').locator('textarea').inputValue() === 'Page one, edited just before leaving', 'with their content');
+    await page.setInputFiles('#import-input', oneP); await settle(300);
+    const it1 = await page.locator('#modal .btn').allTextContents();
+    ok(/^Open as a new page/.test(it1[0]) && await page.locator('#modal .btn[data-i="0"]').evaluate(b => b.classList.contains('primary')) && /^Replace this page/.test(it1[1]) && /^Add to this page/.test(it1[2]),
+      `a one-page file: “Open as a new page” (suggested), “Replace this page” or “Add to this page” (${it1.map(t => t.slice(0, 20)).join(' | ')})`);
+    await page.click('#modal .btn[data-i="0"]');
+    await page.waitForFunction(() => window.__board21.pages.ids().length === 7, null, { timeout: 10000 }).catch(() => {});
+    await settle(800);
+    s = await st();
+    ok(s.ids.length === 7 && s.ids.indexOf(s.id) === 4 && s.wins.join() === 'notes:1', `it opens as a new page after this one (${s.ids.join()})`);
+    await page.locator('#toasts button:has-text("Undo")').last().click();
+    await page.waitForFunction(() => window.__board21.pages.ids().length === 6, null, { timeout: 10000 }).catch(() => {});
+    ok((await st()).ids.length === 6, 'Undo takes that page away again');
+    // Board history after going to other pages: the history is this page's, and going back still works.
+    await page.keyboard.press('Escape');
+    const first = (await st()).ids[0];
+    await page.evaluate(b => window.__board21.pages.go(b), first); await settle(1500);
+    const vid = await page.evaluate(() => window.__board21.history.capture('manual', { label: 'before the change' }));
+    await fillNote(frame('notes:1'), 'changed after the version'); await settle(900);
+    await page.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[1])); await settle(1000);
+    const otherMetas = await page.evaluate(() => window.__board21.history.metas.map(m => m.b));
+    await page.evaluate(b => window.__board21.pages.go(b), first); await settle(1200);
+    const metas = await page.evaluate(() => window.__board21.history.metas.map(m => m.b));
+    ok(!!vid && metas.length > 0 && metas.every(b => b === first) && otherMetas.every(b => b !== first), `Board history lists the page shown’s versions only (${metas.length} here, ${otherMetas.length} on the other page)`);
+    await page.evaluate(id => window.__board21.history.restore(id), vid); await settle(1800);
+    ok((await st()).id === first && await frame('notes:1').locator('textarea').inputValue() === 'Page one, edited just before leaving', 'going back to a version after switching pages restores this page');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Pages (multiple boards): nothing lost when things go wrong', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, acceptDownloads: true });
+    await ctx.addInitScript(DRIVE_PICK);
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const B = (fn, arg) => page.evaluate(fn, arg);
+    const st = (p = page) => p.evaluate(() => { const b = window.__board21, s = b.state; return { id: s.boardId, name: s.board.name, uid: s.board.uid, wins: Array.from(s.wins.keys()).sort(), ids: b.pages.ids() }; });
+    const frame = (ik, p = page) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const recs = (p = page) => p.evaluate(() => new Promise((res, rej) => { const o = indexedDB.open('21Board'); o.onerror = () => rej(o.error);
+      o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').getAll(); q.onsuccess = () => { o.result.close(); res(Object.fromEntries(q.result.map(r => [r.key, r.value]))); }; }; }));
+    const settle = (ms = 700) => page.waitForTimeout(ms);
+    const openPicker = async () => { if (!await page.locator('#panel.open').count()) { await page.click('.picker-btn.left'); await settle(250); } };
+    const settings = async () => { await openPicker(); await page.click('[data-ctl="settings"]'); await settle(400); };
+    const go = async b => { await B(b => window.__board21.pages.go(b), b); await page.waitForFunction(b => window.__board21.state.boardId === b, b); await settle(900); };
+    const noteText = async () => frame('notes:1').locator('textarea').inputValue();
+    // Page 1 “Math” and page 2 “Reading”, a note on each.
+    await B(() => { window.__board21.updateBoard({ name: 'Math' }); window.__board21.openWidget('notes'); }); await settle(1200);
+    await fillNote(frame('notes:1'), 'Math plan'); await settle(500);
+    await B(() => window.__board21.pages.add()); await page.waitForFunction(() => window.__board21.state.boardId === 2); await settle(800);
+    await B(() => { window.__board21.updateBoard({ name: 'Reading' }); window.__board21.openWidget('notes'); }); await settle(1200);
+    await fillNote(frame('notes:1'), 'Reading plan'); await settle(800);
+
+    // The browser throws the stored board away while 21Board is open: every page is written back, not only this one.
+    await B(() => new Promise(res => { const r = indexedDB.deleteDatabase('21Board'); r.onsuccess = r.onerror = r.onblocked = () => res(); }));
+    await fillNote(frame('notes:1'), 'Reading plan, typed after the loss');
+    await page.waitForFunction(() => !window.__board21.store.lost && !!window.__board21.store.db, null, { timeout: 10000 }).catch(() => {});
+    ok(await eventually(async () => { const R = await recs(); return R['board:1'] && R['board:1'].name === 'Math' && R['data:1:notes:1'].text === 'Math plan' && R['inst:1:notes:1'] && R['data:2:notes:1'].text === 'Reading plan, typed after the loss'; }),
+      'when the browser loses the stored board, the other pages are written back too (not just the one shown)');
+
+    // A backup while storage can't be read: the other pages come from what this window holds, and it counts as a backup.
+    await B(() => { const s = window.__board21.store; s.readAll0 = s.readAll; s.readAll = async () => { throw new Error('Storage didn’t answer'); }; });
+    await settings();
+    let [dl] = await Promise.all([page.waitForEvent('download'), page.click('#settings [data-act="backup"]')]);
+    let file = OUT + 'pages-unreadable.21board'; await dl.saveAs(file);
+    let j = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const p1 = (j.pages || []).find(p => !p.main) || { board: {}, instances: [] };
+    ok(p1.board.name === 'Math' && p1.instances.length === 1 && p1.instances[0].data.text === 'Math plan' && await B(() => !!window.__board21.state.settings.lastBackupAt),
+      `with storage unreadable, Back up now still has the other page’s windows and content (${p1.board.name}, ${p1.instances.length} window)`);
+    // One whose content isn't held here either: the file is made, the teacher is told, and it doesn't count as a backup.
+    await B(() => { window.__board21.state.settings.lastBackupAt = null; window.__board21.pages.held.delete('board:1'); });
+    await page.keyboard.press('Escape'); await settings();
+    [dl] = await Promise.all([page.waitForEvent('download'), page.click('#settings [data-act="backup"]')]);
+    await settle(300);
+    const told = (await page.locator('.toast').allInnerTexts()).join(' | ');
+    ok(/couldn’t be read/.test(told) && /“Math”/.test(told) && !await B(() => window.__board21.state.settings.lastBackupAt), `a page that can’t be read is named, and the reminders go on (${told.slice(0, 140)})`);
+    await B(() => { const s = window.__board21.store; s.readAll = s.readAll0; });
+    await page.keyboard.press('Escape');
+    await page.reload(); await boardUp(page); await settle(900);
+
+    // An Undo offered on one page is never applied to another: it goes when the page changes.
+    await settings();
+    await page.click('#settings [data-act="inst-delete"][data-val="notes:1"]'); await page.click('#modal .btn.danger'); await settle(400);
+    ok(await page.locator('#toasts button:has-text("Undo")').count() === 1, 'deleting a window offers Undo');
+    const vid = await B(() => window.__board21.history.capture('manual', { label: 'Reading version' }));
+    await go(1);
+    ok(await page.locator('#toasts button:has-text("Undo")').count() === 0, 'going to another page takes that Undo away');
+    const back = await B(id => window.__board21.history.restore(id), vid); await settle(600);
+    let s = await st();
+    ok(back === false && s.name === 'Math' && s.wins.join() === 'notes:1' && await noteText() === 'Math plan', `a version of another page is never put on this one (${JSON.stringify(s)})`);
+
+    // A page name being typed in Settings is saved to its own page, even if the page changes before the field is left.
+    await settings();
+    await page.fill('#set-board-name', 'Morning meeting');
+    await B(() => window.__board21.pages.go(2)); await page.waitForFunction(() => window.__board21.state.boardId === 2); await settle(600);
+    ok(await B(() => window.__board21.pages.name(1)) === 'Morning meeting' && (await st()).name === 'Reading', 'a name typed in Settings goes to the page it was typed on');
+    await go(1); await B(() => window.__board21.updateBoard({ name: 'Math' })); await settle(300);
+
+    // From the keyboard, the Pages menu takes the keyboard to this page's item.
+    await openPicker();
+    await page.focus('[data-ctl="pages"]'); await page.keyboard.press('Enter'); await settle(200);
+    ok(await B(() => document.activeElement.dataset.act === 'go' && document.activeElement.getAttribute('aria-checked') === 'true'), 'Enter on the page indicator takes the keyboard into the menu, at this page');
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
+
+    // Google Drive folder: a file sent from another page here is that page (Go to page), and loading it never gives
+    // two pages one board id (both would send to the same file).
+    await settings();
+    await page.click('#settings [data-act="link-choose"]'); await settle(800);
+    await page.click('#settings [data-act="link-send"]'); await settle(1500);
+    await page.keyboard.press('Escape');
+    await go(2);
+    await settings();
+    await page.click('#settings [data-act="link-check"]').catch(() => {}); await settle(1500);
+    ok(await page.locator('#settings [data-act="page-go"]').count() === 1 && await page.locator('#settings [data-act="link-load"]').count() === 0, 'Other boards in the folder: page 1’s file offers Go to page, not Load');
+    const name = await B(() => { const L = window.__board21.link, u = window.__board21.pages.info.get(1).uid; return (L.found.find(f => f.uid === u) || {}).name; });
+    await page.keyboard.press('Escape');
+    const loading = B(n => window.__board21.link.load(n), name); await settle(500);
+    await page.locator('#modal.open .btn', { hasText: 'Replace this board' }).first().click().catch(() => {}); await loading; await settle(1000);
+    const uids = await B(() => [window.__board21.pages.info.get(1).uid, window.__board21.state.board.uid]);
+    ok(name && (await st()).name === 'Math' && uids[0] !== uids[1], `loading another page’s file here keeps the two pages’ board ids apart (${uids.map(u => u.slice(0, 8)).join(' ≠ ')})`);
+    await B(() => window.__board21.updateBoard({ name: 'Reading' })); await settle(400);
+
+    // Undo of a deleted page, after another tab started meanwhile: the page comes back with its content.
+    await openPicker(); await page.click('[data-ctl="pages"]'); await page.click('#pages-menu [data-act="delete"]'); await page.click('#modal .btn.danger');
+    await page.waitForFunction(() => window.__board21.state.boardId !== 2); await settle(300);
+    const tab2 = await ctx.newPage(); tab2.on('pageerror', e => errors.push('[tab 2] ' + e.message));
+    await tab2.goto(BASE); await boardUp(tab2); await tab2.waitForTimeout(4000);
+    await page.click('#toasts button:has-text("Undo")'); await page.waitForFunction(() => window.__board21.state.boardId === 2, null, { timeout: 8000 }).catch(() => {}); await settle(1000);
+    s = await st();
+    ok(s.id === 2 && s.name === 'Reading' && s.wins.join() === 'notes:1' && /Math plan/.test(await noteText()) && !!(await recs())['data:2:notes:1'], `Undo brings the page back with its content although another tab started (${JSON.stringify(s)})`);
+    await tab2.close();
+
+    // Replace all pages with your own backup: the pages keep their board ids (the same boards in the Google Drive folder).
+    const before = await B(() => window.__board21.pages.ids().map(b => window.__board21.pages.info.get(b).uid).join());
+    await openPicker(); await page.click('[data-ctl="export"]'); await settle(200);
+    [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="0"]')]);
+    file = OUT + 'pages-replace.21board'; await dl.saveAs(file);
+    await page.setInputFiles('#import-input', file); await settle(300);
+    await page.click('#modal .btn[data-i="1"]'); await settle(200); await page.click('#modal .btn.danger');
+    await page.waitForFunction(() => window.__board21.pages.ids().every(b => b > 2) && window.__board21.pages.ids().length === 2, null, { timeout: 20000 }).catch(() => {});
+    await settle(800);
+    const after = await B(() => window.__board21.pages.ids().map(b => window.__board21.pages.info.get(b).uid).join());
+    ok(after === before, 'Replace all pages with a backup of them keeps each page’s board id');
+
+    // Erase everything from a page other than the first: board history still has that page, to go back to.
+    await go(await B(() => window.__board21.pages.ids()[1]));
+    const shown = (await st()).id;
+    await settings();
+    await page.click('#settings [data-act="erase"]'); await page.locator('#modal .btn', { hasText: /^Erase everything$/ }).click(); await settle(1500);
+    const metas = () => B(() => window.__board21.history.metas.map(m => m.b));
+    s = await st();
+    let m = await metas();
+    ok(s.id === shown && s.ids.join() === String(shown) && !s.wins.length && m.length && m.every(b => b === shown), `after Erase everything, the page shown stays, and board history still has its versions (page ${s.id}: ${m.length})`);
+    await page.reload(); await boardUp(page); await settle(900);
+    m = await metas();
+    ok((await st()).id === shown && m.length && m.every(b => b === shown), 'and still after a reload');
+    await B(() => { window.__board21.history.restore(window.__board21.history.metas[0].id); }); await settle(1500);
+    const asked = await page.locator('#modal.open').innerText().catch(() => '');
+    ok((await st()).wins.join() === 'notes:1', `going back brings its window back${asked ? ' (asked: ' + asked.slice(0, 80) + ')' : ''}`);
+    const leftover = (await B(() => window.__board21.history.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAllKeys(); q.onsuccess = () => set(q.result.map(String)); }))).filter(k => !k.startsWith(shown + ':'));
+    ok(!leftover.length, `no other page’s board history is left behind, not even a page whose Undo was still offered (${leftover.join(', ')})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }]
