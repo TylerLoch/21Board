@@ -1917,6 +1917,367 @@ const SUITES = [
   // ---- Name Picker style suite: Spinning wheel
   // ---- (end of Spinning wheel slot)
   // ---- Name Picker style suite: Spotlight
+  ['Name Picker: Spotlight', async (browser) => {
+    // Counts, in every frame, the sounds a page starts and the notes it plays, and the timers and animation frames it asks for.
+    const AUDIO_SPY = () => {
+      window.__calls = 0;
+      for (const fn of ['setTimeout', 'setInterval', 'requestAnimationFrame']) { const f = window[fn]; window[fn] = function () { window.__calls++; return f.apply(this, arguments); }; }
+      if (!window.AudioContext) return;
+      window.__audio = 0; window.__notes = 0;
+      const A = window.AudioContext, base = (window.BaseAudioContext || A).prototype;
+      window.AudioContext = class extends A { constructor(o) { super(o); window.__audio++; } };
+      for (const fn of ['createOscillator', 'createBufferSource']) { const f = base[fn]; base[fn] = function () { window.__notes++; return f.apply(this, arguments); }; }
+    };
+    const IK = 'name-picker:1';
+    const errors = [];
+    const watch = (p, tab) => { p.on('pageerror', e => errors.push(`[${tab}] ${e.message}`)); p.on('console', m => { if (m.type() === 'error' && /name-picker/.test(m.location().url || '')) errors.push(`[${tab} console] ${m.text()}`); }); };
+    const np = p => p.frameLocator(`.win[data-ikey="${IK}"] iframe`);
+    const saved = p => p.evaluate(ik => window.__board21.state.data.get(ik) || null, IK);
+    const menu = async (p, id) => { await p.click(`.win[data-ikey="${IK}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const inFrame = (p, fn, arg) => np(p).locator('html').evaluate(fn, arg);
+    const showing = p => np(p).locator('body').evaluate(b => b.classList.contains('showing'));
+    const idle = p => eventually(async () => !(await showing(p)), 12000);
+    const text = (p, sel) => np(p).locator(sel).textContent();
+    const said = p => text(p, '#said');
+    const pickNow = async p => {
+      const was = ((await saved(p)) || {}).pickId;
+      await np(p).locator('#go').click();
+      await eventually(async () => ((await saved(p)) || {}).pickId !== was, 3000);
+      return saved(p);
+    };
+    const setNames = async (p, list) => {
+      await menu(p, 'edit');
+      await np(p).locator('#list').fill(list.join('\n')); await np(p).locator('#done').click(); await p.waitForTimeout(250);
+    };
+    // The window's content at w × h (its title bar is 40 px).
+    const size = (p, w, h) => p.evaluate(([ik, w, h]) => { window.__board21.setMaximized(ik, false); window.__board21.setRect(ik, { x: 30, y: 30, w, h: h + 40 }); }, [IK, w, h]);
+    // What the light does, as it happens: every tile it lights ("hot"), and every winner it stops on ("lock"), with
+    // whether that tile was crossed out then and the number on its badge. (Watched again after the style starts again.)
+    const spy = p => inFrame(p, () => {
+      const grid = document.querySelector('.spotlight-grid');
+      if (!grid || window.__spyOn === grid) { window.__spot = []; return !!grid; }
+      window.__spyOn = grid; window.__spot = [];
+      new MutationObserver(list => {
+        for (const m of list) {
+          const el = m.target;
+          if (!el.classList.contains('spotlight-tile')) continue;
+          const was = (m.oldValue || '').split(' '), i = Array.prototype.indexOf.call(el.parentNode.querySelectorAll(':scope > .spotlight-tile'), el);
+          const got = c => el.classList.contains(c) && !was.includes(c);
+          if (got('spotlight-hot')) window.__spot.push({ e: 'hot', i, done: el.classList.contains('spotlight-done') });
+          if (got('spotlight-locked')) window.__spot.push({ e: 'lock', i, badge: el.querySelector('.spotlight-badge').textContent });
+        }
+      }).observe(grid, { subtree: true, attributes: true, attributeFilter: ['class'], attributeOldValue: true });
+      return true;
+    });
+    const seen = p => inFrame(p, () => window.__spot || []);
+    // The stage as it is: the tiles (in list order) and the cards.
+    const stage = p => inFrame(p, () => {
+      const st = document.getElementById('stage').getBoundingClientRect();
+      const box = r => ({ x: r.left - st.left, y: r.top - st.top, w: r.width, h: r.height });
+      const tiles = [...document.querySelectorAll('.spotlight-tile')].map(el => {
+        const nm = el.querySelector('.spotlight-nm');
+        // (Its place in the grid: a lit tile is drawn a little larger on purpose.)
+        return { r: { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight }, name: el.getAttribute('aria-label'), text: nm.textContent, fs: parseFloat(nm.style.fontSize || getComputedStyle(nm).fontSize),
+          over: nm.scrollWidth > nm.clientWidth + 1, done: el.classList.contains('spotlight-done'), locked: el.classList.contains('spotlight-locked'),
+          hot: el.classList.contains('spotlight-hot'), badge: el.querySelector('.spotlight-badge').textContent };
+      });
+      const cards = [...document.querySelectorAll('.spotlight-card')].map(el => {
+        const nm = el.querySelector('.spotlight-cname'), num = el.querySelector('.spotlight-cnum');
+        return { r: box(el.getBoundingClientRect()), name: nm.textContent, num: num ? num.textContent : '', fs: parseFloat(getComputedStyle(el).fontSize), over: nm.scrollWidth > nm.clientWidth + 1,
+          fade: el.classList.contains('spotlight-fade'), font: getComputedStyle(nm).fontFamily };
+      });
+      const root = document.querySelector('.spotlight-box');
+      const badges = [...document.querySelectorAll('.spotlight-badge')].filter(b => b.textContent).map(b => box(b.getBoundingClientRect()));
+      return { W: st.width, H: st.height, tiles, cards, badges, live: !!root && root.classList.contains('spotlight-live'), shown: !!root && root.classList.contains('spotlight-shown') };
+    });
+    // Checks a finished pick against what was saved: the light stopped on exactly the saved winners, in order (and,
+    // unless it was cut short, it was on each one just before it stopped); it never lit a crossed-out tile; the cards
+    // show the winners in order, numbered when there are several; with No repeats the earlier picks are crossed out.
+    const landed = async (p, st, { skipped = false } = {}) => {
+      const ev = await seen(p), s = await stage(p), bad = [];
+      const want = st.picked.map(n => st.names.indexOf(n));
+      const locks = ev.filter(e => e.e === 'lock');
+      if (locks.map(e => e.i).join() !== want.join()) bad.push(`stopped on ${locks.map(e => st.names[e.i]).join(',')} not ${st.picked.join(',')}`);
+      if (want.length > 1 && locks.map(e => e.badge).join() !== want.map((_, j) => j + 1).join()) bad.push(`badges ${locks.map(e => e.badge).join(',')}`);
+      if (!skipped) locks.forEach(l => { const k = ev.indexOf(l), hot = ev.slice(0, k).filter(e => e.e === 'hot').pop(); if (!hot || hot.i !== l.i) bad.push(`it stopped on ${st.names[l.i]} without lighting it first`); });
+      if (ev.some(e => e.e === 'hot' && e.done)) bad.push('it lit a crossed-out tile');
+      if (s.cards.map(c => c.name).join() !== st.picked.join()) bad.push(`cards ${s.cards.map(c => c.name).join(',')}`);
+      if (want.length > 1 && s.cards.map(c => c.num).join() !== want.map((_, j) => j + 1).join()) bad.push(`card numbers ${s.cards.map(c => c.num).join(',')}`);
+      if (s.tiles.map((t, i) => t.locked ? i : -1).filter(i => i >= 0).sort((a, b) => a - b).join() !== want.slice().sort((a, b) => a - b).join()) bad.push('the lit tiles aren’t the winners');
+      const out = st.left ? st.names.filter(n => !st.left.includes(n) && !st.picked.includes(n)) : [];
+      if (s.tiles.filter(t => t.done).map(t => t.name.replace(/, picked$/, '')).sort().join() !== out.sort().join()) bad.push(`crossed out: ${s.tiles.filter(t => t.done).map(t => t.name).join(',')} (expected ${out.join(',')})`);
+      if (s.live || !s.shown || s.cards.some(c => c.over)) bad.push('the show isn’t over, or a card cuts its name');
+      return bad;
+    };
+
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await ctx.addInitScript(AUDIO_SPY);
+    const page = await ctx.newPage(); watch(page, 'tab 1');
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    await page.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => await np(page).locator('#list').isVisible());
+    await size(page, 420, 320);
+    const CLASS = ['Ava', 'Mateo', 'Sofia', 'Liam', 'Amara', 'Noah', 'Isabella', 'Kenji', 'Zoe', 'Elijah', 'Priya', 'Lucas', 'Mia', 'Oluwaseun', 'Harper', 'Diego', 'Chloe', 'Ethan', 'Anne-Sophie', 'Leo', 'Fatima', 'Owen', 'Grace', 'Maximiliano'];
+    await setNames(page, CLASS);
+    await menu(page, 'style:spotlight');
+    ok(await np(page).locator('.style-root[data-style="spotlight"]').count() === 1 && await spy(page), 'Spotlight can be chosen from the menu');
+    let s = await stage(page);
+    ok(s.tiles.length === 24 && s.tiles.map(t => t.text).join() === CLASS.join() && !s.cards.length && s.tiles.every(t => !t.done && !t.locked && !t.over),
+      'the whole class is on the stage, a tile for each name, in list order, every name whole');
+    ok(await text(page, '#status') === '24 of 24 left' && await text(page, '#go') === 'Pick a name', 'with No repeats: “24 of 24 left”');
+
+    // ---- One winner at the usual speed: about 4 s, the class dims, the light hops and slows, and lands on the saved winner.
+    let t0 = Date.now();
+    let st = await pickNow(page);
+    await page.waitForTimeout(700);
+    s = await stage(page);
+    ok(await showing(page) && s.live && s.tiles.filter(t => t.hot).length >= 1 && !s.cards.length, `during the show the class is dimmed and the light is on a tile (${s.tiles.filter(t => t.hot).map(t => t.text)})`);
+    await idle(page);
+    let took = Date.now() - t0;
+    let bad = await landed(page, st);
+    const hops = (await seen(page)).filter(e => e.e === 'hot').length;
+    ok(!bad.length && hops >= 8, `one winner: the light hops ${hops} times and stops on the saved winner, ${st.picked} (${bad.join('; ') || 'ok'})`);
+    ok(took > 3300 && took < 5200, `one winner takes about 4 s (${took} ms)`);
+    ok(await eventually(async () => await said(page) === 'Picked: ' + st.picked[0]) && await text(page, '#status') === '23 of 24 left', `screen readers hear “Picked: ${st.picked[0]}”; 23 of 24 left`);
+    s = await stage(page);
+    const winTile = s.tiles[CLASS.indexOf(st.picked[0])];
+    ok(s.cards.length === 1 && s.cards[0].fs > winTile.fs * 2 && s.cards[0].r.w > winTile.r.w, `its tile grows into a big name card (${Math.round(s.cards[0].fs)} px, the tile ${Math.round(winTile.fs)} px)`);
+    await page.waitForTimeout(300);
+    let c0 = await inFrame(page, () => window.__calls);
+    await page.waitForTimeout(1500);
+    ok(await inFrame(page, () => window.__calls) === c0, `then nothing runs: no timers or animation frames (${await inFrame(page, () => window.__calls) - c0})`);
+
+    // ---- Five winners: one light collects them in turn, numbered, in about 6 s. Last pick's winner is crossed out.
+    await menu(page, 'winners:5');
+    ok(await text(page, '#go') === 'Pick 5', 'Winners each time 5: “Pick 5”');
+    await spy(page);
+    t0 = Date.now(); st = await pickNow(page); await idle(page); took = Date.now() - t0;
+    bad = await landed(page, st);
+    ok(!bad.length, `five winners: it stops on each saved winner in turn, numbered 1 to 5, and the earlier winner is crossed out (${st.picked}; ${bad.join('; ') || 'ok'})`);
+    ok(took > 4800 && took < 7300, `five winners take about 6 s (${took} ms)`);
+    ok(await eventually(async () => await said(page) === 'Picked: ' + st.picked.join(', ')) && await text(page, '#status') === '18 of 24 left', `“Picked: ${st.picked.join(', ')}”; 18 of 24 left`);
+
+    // ---- A tap skips: the result at once, and nothing left running. (A tap in the first moment doesn't count.)
+    await spy(page);
+    let was = (await saved(page)).pickId;
+    await np(page).locator('#go').click(); await np(page).locator('#go').click();
+    await eventually(async () => (await saved(page)).pickId !== was, 3000);
+    st = await saved(page);
+    ok(await showing(page) && st.pickId !== was, 'a double tap picks once, and the show goes on');
+    await page.waitForTimeout(700);
+    await np(page).locator('#stage').click(); await page.waitForTimeout(120);
+    bad = await landed(page, st, { skipped: true });
+    ok(!(await showing(page)) && !bad.length && (await saved(page)).pickId === st.pickId, `a tap on the stage after that ends the show at once, on the saved winners (${st.picked}; ${bad.join('; ') || 'ok'})`);
+    c0 = await inFrame(page, () => window.__calls); await page.waitForTimeout(1000);
+    ok(await inFrame(page, () => window.__calls) === c0, 'and nothing is left running');
+
+    // ---- Quick: about 1½ s, for one winner and for five.
+    await menu(page, 'quick');
+    for (const n of [1, 5]) {
+      await menu(page, 'winners:' + n); await spy(page);
+      t0 = Date.now(); st = await pickNow(page); await idle(page); took = Date.now() - t0;
+      bad = await landed(page, st);
+      ok(took > 900 && took < 2300 && !bad.length, `Quick, ${n} winner${n > 1 ? 's' : ''}: about 1½ s (${took} ms), on the saved winners (${bad.join('; ') || 'ok'})`);
+    }
+
+    // ---- Many picks with No repeats until everyone is picked, then Start over: always the saved winners, never a
+    // crossed-out tile, tiles never move, each student once.
+    await menu(page, 'round');
+    s = await stage(page);
+    ok(!s.cards.length && s.tiles.every(t => !t.done && !t.locked) && await text(page, '#status') === '24 of 24 left', 'Start over: the cards go, nobody is crossed out, 24 of 24 left');
+    const places = s.tiles.map(t => [Math.round(t.r.x), Math.round(t.r.y)].join()).join(' ');
+    let all = [], wrong = [], moved = false;
+    for (let i = 0; i < 5; i++) {
+      await spy(page); st = await pickNow(page); await idle(page);
+      bad = await landed(page, st);
+      if (bad.length) wrong.push(`pick ${i + 1}: ${bad.join('; ')}`);
+      all = all.concat(st.picked);
+      if ((await stage(page)).tiles.map(t => [Math.round(t.r.x), Math.round(t.r.y)].join()).join(' ') !== places) moved = true;
+    }
+    ok(!wrong.length && all.length === 24 && new Set(all).size === 24, `5 at a time with No repeats: five picks, each on the saved winners, everyone picked once (${wrong.join(' | ') || all.length + ' picked'})`);
+    ok(!moved, 'the tiles never move during the round');
+    ok(await text(page, '#status') === '0 of 24 left' && await text(page, '#go') === 'Everyone picked — start over', '“0 of 24 left”, and the button offers to start over');
+    await np(page).locator('#go').click(); await page.waitForTimeout(300);
+    s = await stage(page);
+    ok(!s.cards.length && s.tiles.every(t => !t.done) && await text(page, '#status') === '24 of 24 left', 'which brings everyone back');
+    // One at a time through a small class.
+    const SIX = ['Ava', 'Leo', 'Mia', 'Noah', 'Zoe', 'Ethan'];
+    await setNames(page, SIX); await menu(page, 'winners:1');
+    all = []; wrong = [];
+    for (let i = 0; i < 6; i++) {
+      await spy(page); st = await pickNow(page); await idle(page);
+      bad = await landed(page, st);
+      if (bad.length) wrong.push(`pick ${i + 1}: ${bad.join('; ')}`);
+      all.push(st.picked[0]);
+    }
+    s = await stage(page);
+    ok(!wrong.length && all.slice().sort().join() === SIX.slice().sort().join() && s.tiles.filter(t => t.done).length === 5, `1 at a time with No repeats: six picks on the saved winners, everyone once (${wrong.join(' | ') || all.join(', ')})`);
+    await menu(page, 'round');
+    // No repeats off: anyone, any time; nobody is crossed out.
+    await menu(page, 'norepeat'); await menu(page, 'winners:3');
+    wrong = [];
+    for (let i = 0; i < 4; i++) {
+      await spy(page); st = await pickNow(page); await idle(page);
+      st.left = null;
+      bad = await landed(page, st);
+      if (bad.length) wrong.push(`pick ${i + 1}: ${bad.join('; ')}`);
+    }
+    ok(!wrong.length && (await stage(page)).tiles.every(t => !t.done) && await text(page, '#status') === '6 names', `No repeats off, 3 at a time: four picks on the saved winners, nobody crossed out (${wrong.join(' | ') || 'ok'})`);
+    await menu(page, 'norepeat');
+
+    // ---- The same pick in another tab: the show there too, on the same winners. A reload shows the result straight away.
+    await menu(page, 'quick');
+    await setNames(page, CLASS);
+    const page2 = await ctx.newPage(); watch(page2, 'tab 2');
+    await page2.goto(BASE); await boardUp(page2); await freeBoard(page2);
+    await eventually(async () => (await stage(page2)).tiles.length === 24);
+    await spy(page2);
+    st = await pickNow(page);
+    ok(await eventually(() => showing(page2), 2000), 'a pick in one tab puts on the show in the other tab too');
+    await idle(page); await idle(page2);
+    bad = await landed(page2, st);
+    ok(!bad.length, `and the other tab’s light stops on the same winners, in the same order (${st.picked}; ${bad.join('; ') || 'ok'})`);
+    await page2.reload(); await boardUp(page2);
+    ok(await eventually(async () => (await stage(page2)).cards.map(c => c.name).join() === st.picked.join()), 'after a reload the winners’ cards are there');
+    s = await stage(page2);
+    ok(!(await showing(page2)) && !s.live && s.tiles.every(t => !t.hot || t.locked) && s.cards.every(c => !c.fade), 'straight away, with no show');
+    st = await pickNow(page2);
+    await page2.waitForTimeout(400);
+    await page2.reload(); await boardUp(page2);
+    ok(await eventually(async () => (await stage(page2)).cards.map(c => c.name).join() === st.picked.join()) && !(await showing(page2)), `a reload during the show shows its result (${st.picked})`);
+    await page2.close();
+    await menu(page, 'quick');
+
+    // ---- Sound: ticks for the light and a chime for the winner (made in the page, only when ticked).
+    await menu(page, 'sound'); await menu(page, 'winners:1');
+    let n0 = await inFrame(page, () => window.__notes);
+    await np(page).locator('#go').click(); await idle(page);
+    ok(await inFrame(page, () => window.__audio) === 1 && await inFrame(page, () => window.__notes) - n0 >= 10, `with Sound ticked the light ticks and the winner gets a chime (${await inFrame(page, () => window.__notes) - n0} notes)`);
+    await menu(page, 'sound');
+
+    // ---- Choosing another style during the show ends it; the spotlight leaves nothing running.
+    await np(page).locator('#go').click(); await page.waitForTimeout(500);
+    await menu(page, 'style:name');
+    await page.waitForTimeout(300);
+    c0 = await inFrame(page, () => window.__calls); await page.waitForTimeout(800);
+    ok(!(await showing(page)) && await np(page).locator('.spotlight-box').count() === 0 && await inFrame(page, () => window.__calls) === c0, 'choosing Big name during the show ends it, and the spotlight leaves nothing running');
+    await menu(page, 'style:spotlight'); await spy(page);
+
+    // ---- Fits and stays readable: small and maximised windows, from 1 to 45 names, and very long names.
+    const LONG = ['Maximiliana-Guadalupe Hernández', 'Bartholomew Christopherson', 'Anne-Sophie', 'Oluwaseun Adebayo-Okafor', 'Jean-Baptiste Alexandre', 'Wolfgang'];
+    const MORE = ['Yusuf', 'Hannah', 'Mohammed', 'Valentina', 'Theo', 'Siobhan', 'Aisha', 'Mateus', 'Freya', 'Ibrahim', 'Camila', 'Rowan', 'Hiroshi', 'Nadia', 'Felix', 'Esperanza', 'Tobias', 'Ingrid', 'Rafael', 'Lucía', 'Kwame'];
+    const SETS = { 1: ['Zoe'], 3: ['Ava', 'Maximiliano', 'Leo'], 24: CLASS, 30: CLASS.concat(MORE.slice(0, 6)), 45: CLASS.concat(MORE), long: LONG };
+    const SIZES = [['260×200', 260, 200], ['420×320', 420, 320], ['maximised at 1366×768', 1366, 768], ['maximised at 1920×1080', 1920, 1080]];
+    let k = 0;
+    const problems = [], notes = [];
+    for (const [label, w, h] of SIZES) {
+      if (w > 1366) await page.setViewportSize({ width: w, height: h });
+      for (const [set, names] of Object.entries(SETS)) {
+        if (set === '30' && w !== 420) continue;
+        for (const n of [1, 5]) {
+          if (w > 420) await page.evaluate(ik => window.__board21.setMaximized(ik, true), IK); else await size(page, w, h);
+          // A pick from a while ago (another copy): it is shown as it is, with no show.
+          const picked = names.slice(0, n).reverse();
+          await page.evaluate(([ik, d]) => window.__board21.state.wins.get(ik).post('data', { data: d, reason: 'remote' }), [IK, { names, left: null, picked, pickId: '1-test' + (k++), current: picked[0] }]);
+          await page.waitForTimeout(250);
+          const g = await stage(page), where = `${label}, ${set === 'long' ? 'long names' : set + ' name' + (set === '1' ? '' : 's')}, ${picked.length} winner${picked.length > 1 ? 's' : ''}`;
+          const off = (r, pad = 0.5) => r.x < -pad || r.y < -pad || r.x + r.w > g.W + pad || r.y + r.h > g.H + pad;
+          const ts = g.tiles, fsAll = ts.map(t => t.fs).sort((a, b) => a - b), mid = fsAll[Math.floor(fsAll.length / 2)];
+          if (ts.length !== names.length) problems.push(`${where}: ${ts.length} tiles`);
+          if (ts.some(t => off(t.r))) problems.push(`${where}: a tile is off the stage`);
+          if (g.badges.length !== (picked.length > 1 ? picked.length : 0) || g.badges.some(b => off(b))) problems.push(`${where}: a winner’s number is cut off by the stage’s edge`);
+          if (ts.some((a, i) => ts.some((b, j) => j > i && a.r.x < b.r.x + b.r.w - 0.5 && b.r.x < a.r.x + a.r.w - 0.5 && a.r.y < b.r.y + b.r.h - 0.5 && b.r.y < a.r.y + a.r.h - 0.5))) problems.push(`${where}: tiles overlap`);
+          if (ts.some(t => t.over)) problems.push(`${where}: a tile’s name sticks out (${ts.filter(t => t.over).map(t => t.text)})`);
+          if (fsAll[0] < 7) problems.push(`${where}: names at ${fsAll[0]} px`);
+          // Names are shortened only near the smallest size, and only the longest.
+          const short = ts.filter(t => t.text !== names[ts.indexOf(t)]);
+          if (short.some(t => t.fs > 10.01)) problems.push(`${where}: ${short.map(t => t.text)} shortened at ${short.map(t => t.fs)} px`);
+          if (g.cards.map(c => c.name).join() !== picked.join() || g.cards.some(c => c.over || off(c.r) || !c.fade)) problems.push(`${where}: the cards don’t show every whole name on the stage (${g.cards.map(c => c.name + (c.over ? ' cut' : '') + (off(c.r) ? ' off' : '')).join(', ')})`);
+          // The cards: one winner's card is bigger than its tile, and in a big class every card is much bigger than the
+          // tiles. (When nearly the whole class is picked, the tiles already fill the stage and the cards are about their
+          // size.) Never tiny: the smallest window with five very long names is as small as they get.
+          const cardFs = Math.min(...g.cards.map(c => c.fs)), grows = picked.length === 1 ? 1.15 : names.length >= 24 ? 1.5 : 0.8;
+          if (cardFs < (w < 400 ? 9.5 : 14) || (names.length > 1 && g.cards.some(c => c.fs < grows * ts[names.indexOf(c.name)].fs))) problems.push(`${where}: card names at ${Math.round(cardFs)} px`);
+          if (set === '24' || set === '30' || set === 'long') notes.push(`${label}, ${set === 'long' ? 'long names' : set + ' names'}, ${picked.length} winner${picked.length > 1 ? 's' : ''}: tiles ${Math.round(fsAll[0])}–${Math.round(fsAll[fsAll.length - 1])} px (most ${Math.round(mid)}), ${short.length} shortened; cards ${Math.round(cardFs)} px`);
+          if ((set === '30' || set === '24') && w === 420 && (short.length || mid < 12)) problems.push(`${where}: ${set} names should read whole at 420×320 (most at ${mid} px, ${short.length} shortened)`);
+          if (w >= 1366 && set === '24' && mid < 30) problems.push(`${where}: names only ${mid} px in a maximised window`);
+          if (set === '1' && picked.length === 1 && w === 420) await page.screenshot({ path: OUT + 'name-picker-spotlight-1-name.png' });
+        }
+      }
+    }
+    ok(!problems.length, `it fits and stays readable at 260×200, 420×320 and maximised at 1366×768 and 1920×1080, with 1, 3, 24, 30 and 45 names and very long names: tiles on the stage, never overlapping or cut, shortened only near the smallest size; the winners’ cards whole and large${problems.length ? ': ' + problems.join(' | ') : ''}`);
+    console.log('    (' + notes.join('; ') + ')');
+    await page.setViewportSize({ width: 1366, height: 768 }); await size(page, 420, 320);
+
+    // ---- Dark theme and the Letters (Settings → Letters → Easier to read) reach the stage.
+    await page.evaluate(([ik, d]) => window.__board21.state.wins.get(ik).post('data', { data: d, reason: 'remote' }), [IK, { names: CLASS, left: CLASS.slice(3), picked: ['Liam'], pickId: '1-dark', current: 'Liam' }]);
+    await page.waitForTimeout(300);
+    const colours = () => inFrame(page, () => {
+      const v = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim(), c = e => getComputedStyle(e);
+      const probe = document.createElement('i'); document.body.appendChild(probe);
+      const rgb = x => { probe.style.color = x; const r = getComputedStyle(probe).color; return r; };
+      const tile = document.querySelector('.spotlight-tile:not(.spotlight-done):not(.spotlight-locked)'), card = document.querySelector('.spotlight-card');
+      const out = { theme: document.documentElement.dataset.b21Theme || 'light', tileBg: c(tile).backgroundColor, tileText: c(tile).color, text: rgb(v('--b21-text')), s2: rgb(v('--b21-surface-2')), bg: rgb(v('--b21-bg')),
+        cardBg: c(card).backgroundColor, win: rgb(v('--np-win')), cardText: c(card).color, ink: rgb(v('--np-ink')) };
+      probe.remove();
+      return out;
+    });
+    let col = await colours();
+    ok(col.theme === 'light' && col.tileBg === col.bg && col.tileText === col.text && col.cardBg === col.win && col.cardText === col.ink, `light theme: white tiles, the board’s text colour, gold cards (${col.tileBg}, ${col.cardBg})`);
+    await page.click('.picker-btn.right'); await page.click('[data-ctl="theme"]'); await page.waitForTimeout(500);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    col = await colours();
+    ok(col.theme === 'dark' && col.tileBg === col.s2 && col.tileText === col.text && col.cardBg === col.win && col.cardText === col.ink, `dark theme: the stage follows (tiles ${col.tileBg}, text ${col.tileText}, cards ${col.cardBg})`);
+    await page.screenshot({ path: OUT + 'name-picker-spotlight-dark.png' });
+    await page.click('.picker-btn.right'); await page.click('[data-ctl="theme"]'); await page.waitForTimeout(300); await page.keyboard.press('Escape');
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="letters"][data-val="legible"]');
+    await page.waitForTimeout(400); await inFrame(page, () => document.fonts.ready); await page.waitForTimeout(500);
+    s = await stage(page);
+    const tileFont = await inFrame(page, () => getComputedStyle(document.querySelector('.spotlight-nm')).fontFamily);
+    ok(tileFont.startsWith('"Atkinson Hyperlegible"') && s.cards[0].font.startsWith('"Atkinson Hyperlegible"') && await inFrame(page, () => [...document.fonts].some(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible' && f.status === 'loaded')),
+      `Easier to read letters reach the tiles and the cards (${tileFont.split(',')[0]})`);
+    ok(!s.tiles.some(t => t.over) && !s.cards.some(c => c.over) && s.tiles.every((t, i) => t.text === CLASS[i]), 'and the names are measured again in them: every name whole, none cut');
+    await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.waitForTimeout(500); await page.keyboard.press('Escape');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+
+    // ---- Reduce motion: no show at all, the winners fade in. Sound ticked where sound is blocked: no error.
+    errors.length = 0;
+    const rctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+    await rctx.addInitScript(() => { window.AudioContext = window.webkitAudioContext = function () { throw new Error('no sound here'); }; });
+    const rp = await rctx.newPage(); watch(rp, 'reduce motion');
+    await rp.goto(BASE); await boardUp(rp); await freeBoard(rp);
+    await rp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => await np(rp).locator('#list').isVisible());
+    await setNames(rp, CLASS); await menu(rp, 'style:spotlight'); await menu(rp, 'sound'); await spy(rp);
+    for (const n of [1, 3]) {
+      await menu(rp, 'winners:' + n);
+      st = await pickNow(rp);
+      const was = await showing(rp);
+      await rp.waitForTimeout(400);
+      s = await stage(rp);
+      const ev = await seen(rp);
+      ok(!was && !ev.some(e => e.e === 'hot') && s.cards.map(c => c.name).join() === st.picked.join() && s.cards.every(c => c.fade)
+        && await eventually(async () => (await said(rp)) === 'Picked: ' + st.picked.join(', '), 1000),
+        `with reduce motion, ${n} winner${n > 1 ? 's' : ''}: no show and no light hopping; the cards fade straight in (${st.picked})`);
+    }
+    ok(!errors.length, 'and Sound ticked where sound can’t start makes no error' + (errors.length ? ': ' + errors.join(' | ') : ''));
+    await rctx.close();
+    // Sound blocked with motion on: the show plays, silently, with no error.
+    errors.length = 0;
+    const bctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    await bctx.addInitScript(() => { window.AudioContext = window.webkitAudioContext = function () { throw new Error('no sound here'); }; });
+    const bp = await bctx.newPage(); watch(bp, 'sound blocked');
+    await bp.goto(BASE); await boardUp(bp); await freeBoard(bp);
+    await bp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => await np(bp).locator('#list').isVisible());
+    await setNames(bp, SIX); await menu(bp, 'style:spotlight'); await menu(bp, 'sound'); await menu(bp, 'quick'); await spy(bp);
+    st = await pickNow(bp); await idle(bp);
+    bad = await landed(bp, st);
+    ok(!bad.length && !errors.length, `with Sound ticked and sound blocked, the show plays and lands with no error (${bad.concat(errors).join(' | ') || st.picked})`);
+    await bctx.close();
+  }],
   // ---- (end of Spotlight slot)
   // ---- Name Picker style suite: Lotto
   // ---- (end of Lotto slot)
