@@ -35,8 +35,9 @@
   }
   // Where the arrows go for n winners on a wheel of K slices: whole slices back from the arrow at 3 o'clock (0, -1, …),
   // left to right, which is how they are numbered. Several arrows fan out over the top half, 9 o'clock to 3 o'clock,
-  // so the banner over the bottom never hides one (unless there are too few slices for that). Each arrow points at
-  // the middle of a slice, so all of them can stop inside their slices at once.
+  // so the banner over the bottom never hides one. With too few slices for that (the last few names of a round, or
+  // fewer names than winners) they go all round the wheel, and the banner moves beside or under it (see layout()).
+  // Each arrow points at the middle of a slice, so all of them can stop inside their slices at once.
   function pointerOffsets(K, n) {
     if (K < 1) return [0];
     n = clamp(n, 1, K);
@@ -47,6 +48,10 @@
     return out;
   }
   const pointerAngles = (K, n) => pointerOffsets(K, n).map(e => TAU + e * TAU / Math.max(1, K));
+  const allRound = (K, n) => n > 1 && Math.floor(K / 2) < Math.min(n, K) - 1;   // (pointerOffsets' second case)
+  // A name as the letters a reader sees, so that shortening it never cuts an emoji or an accented letter in half.
+  const SEG = (() => { try { return new Intl.Segmenter(undefined, { granularity: 'grapheme' }); } catch (e) { return null; } })();
+  const letters = text => SEG ? Array.from(SEG.segment(text), x => x.segment) : Array.from(text);
   // On the wheel: everyone still in the draw, and the last winners (they leave as the next spin starts).
   const onWheel = view => view.names.map((_, i) => i).filter(i => !view.picked[i] || view.winners.includes(i));
 
@@ -67,14 +72,15 @@
 .wheel-hubsub:empty { display: none; }
 .wheel-again { letter-spacing: 0; }
 .wheel-again .wheel-hubtxt { font-size: .62em; white-space: normal; max-width: 4.6em; text-align: center; line-height: 1.05; }
-/* The winners' banner, over the bottom of the wheel (under it in a tall, narrow window) */
+/* The winners' banner, over the bottom of the wheel; "apart" from it (under it in a tall, narrow window, or beside or
+   under it when the arrows go all round) it shows, dashed, before the winners are in. */
 .wheel-banner { position: absolute; display: flex; padding: .35% 3%; border-radius: calc(var(--wheel-u) * 3); background: var(--b21-bg);
   border: max(2px, calc(var(--wheel-u) * .8)) solid var(--np-win); box-shadow: 0 4px 16px rgba(0, 0, 0, .2);
   box-shadow: 0 var(--wheel-u) calc(var(--wheel-u) * 5) color-mix(in srgb, var(--b21-text) 28%, transparent);
   pointer-events: none; opacity: 0; visibility: hidden; transform: translateY(6%) scale(.97);
   transition: opacity .22s ease-out, transform .22s ease-out, visibility 0s linear .22s; }
-.wheel-banner.wheel-show, .wheel-under .wheel-banner.wheel-hinting { opacity: 1; visibility: visible; transform: none; transition: opacity .22s ease-out, transform .22s ease-out; }
-.wheel-under .wheel-banner.wheel-hinting { border-color: var(--b21-border); border-style: dashed; box-shadow: none; background: transparent; }
+.wheel-banner.wheel-show, .wheel-apart .wheel-banner.wheel-hinting { opacity: 1; visibility: visible; transform: none; transition: opacity .22s ease-out, transform .22s ease-out; }
+.wheel-apart .wheel-banner.wheel-hinting { border-color: var(--b21-border); border-style: dashed; box-shadow: none; background: transparent; }
 .wheel-banner.wheel-pop { animation: wheel-pop .5s ease-out; }
 .wheel-fitbox { position: relative; flex: 1; overflow: hidden; }
 .wheel-fit { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; text-align: center; }
@@ -82,6 +88,11 @@
 .wheel-name { display: inline-flex; align-items: center; gap: .22em; white-space: nowrap; font-weight: 800; line-height: 1.12; color: var(--b21-text); }
 .wheel-num { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 1.2em; height: 1.2em; border-radius: 50%;
   background: var(--np-win); color: var(--np-ink); font-size: .48em; font-weight: 800; }
+/* A long full name that would be small on one line may go onto two, at a space; one too long for any line breaks
+   anywhere rather than being cut off (see fitBanner()). The number stays beside its first line. */
+.wheel-wrap .wheel-name { white-space: normal; align-items: flex-start; }
+.wheel-wrap .wheel-num { margin-top: .57em; }
+.wheel-anywhere .wheel-nm { overflow-wrap: anywhere; }
 .wheel-note { margin-top: .2em; font-size: .34em; font-weight: 700; color: var(--b21-muted); white-space: nowrap; }
 .wheel-hint { font-size: .42em; font-weight: 600; color: var(--b21-muted); white-space: nowrap; }
 @keyframes wheel-pop { 0% { transform: scale(.8); opacity: 0; } 55% { transform: scale(1.05); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
@@ -118,11 +129,14 @@
       hub.type = 'button'; hub.tabIndex = -1; hub.setAttribute('aria-hidden', 'true');
       const hubTxt = host.el('span', 'wheel-hubtxt', hub, 'SPIN'), hubSub = host.el('span', 'wheel-hubsub', hub);
       hub.addEventListener('click', () => host.pick());
+      // (A key held down on SPIN, once a tap has put the focus there, picks once and not again and again.)
+      hub.addEventListener('keydown', e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); });
 
       let view = null;             // what the host gave last
       let slots = [];              // the wheel, in order: { idx (entry), name, w (share of the wheel), lab (label opacity), col, gone }
       let rot = 0;                 // the wheel's turn, radians clockwise
       let ptrs = [], ptrT0 = 0, ptrDur = 0;   // arrows: { a (angle), al (opacity), num, kickT, kickAmp, under }, moving for ptrDur ms
+      let ring = false;            // the arrows go all round the wheel (too few slices to fan them over the top half)
       let current = [];            // the winners on show (entries), in arrow order
       let everyone = false;        // No repeats: everyone has been picked
       let hl = 0, pop = 0;         // the winners lit up (0-1), and their little bounce
@@ -199,7 +213,9 @@
       function underPointers() { const gs = geoms(); return ptrs.filter(p => p.al1 > 0).map(p => { const s = sliceAt(p.a, gs); return s ? s.idx : -1; }); }
 
       // ---- Layout: the wheel as big as the stage allows, with room above it for the arrows over the top; the banner
-      // over the bottom of the wheel, never over SPIN or the arrows at 3 and 9 o'clock.
+      // over the bottom of the wheel, never over SPIN or the arrows at 3 and 9 o'clock (in a tall, narrow window, under
+      // the wheel). When the arrows go all round, there is room for them below the wheel too, and the banner goes
+      // beside the wheel (or under it, if that leaves the wheel bigger), so that every arrow can be seen.
       function place(el, r) {
         el.style.left = r.x + 'px'; el.style.top = r.y + 'px';
         el.style.width = Math.max(0, r.w) + 'px'; el.style.height = Math.max(0, r.h) + 'px';
@@ -207,23 +223,29 @@
       function layout() {
         const W = box.clientWidth, H = box.clientHeight;
         if (W < 2 || H < 2) { geo.R = 0; return; }
-        const dpr = clamp(window.devicePixelRatio || 1, 1, 3);
+        // (The board may draw the window bigger than its size here: more pixels then, so the names stay sharp.)
+        const dpr = clamp((window.devicePixelRatio || 1) * host.zoom(), 1, 3);
         const u = Math.min(W, H) / 100, pad = clamp(u * 3, 4, 24);
         box.style.setProperty('--wheel-u', u.toFixed(2) + 'px');
-        const under = H >= W * 1.15;   // tall and narrow: the banner goes under the wheel
-        const areaH = under ? H * 0.73 : H, tall = G.over + 1 + G.track;
-        const R = Math.max(0, Math.min((W - 2 * pad) / (2 * G.over), (areaH - 2 * pad) / tall));
-        const cx = W / 2, cy = (areaH - tall * R) / 2 + G.over * R;
+        const tall = G.over + (ring ? G.over : 1 + G.track);   // the wheel's height with its arrows, in radii
+        const fitR = (w, h) => Math.max(0, Math.min((w - 2 * pad) / (2 * G.over), (h - 2 * pad) / tall));
+        const where = ring ? (fitR(W * 0.6, H) >= fitR(W, H * 0.73) ? 'beside' : 'under') : H >= W * 1.15 ? 'under' : 'over';
+        const areaH = where === 'under' ? H * 0.73 : H;
+        const R = fitR(where === 'beside' ? W * 0.6 : W, areaH), wide = 2 * G.over * R;
+        // Beside: the wheel on the left, the banner on the right, the two together in the middle of the stage.
+        const bannerW = where === 'beside' ? Math.min(W - wide - 3 * pad, wide * 1.5) : 0;
+        const cx = where === 'beside' ? (W - wide - pad - bannerW) / 2 + wide / 2 : W / 2, cy = (areaH - tall * R) / 2 + G.over * R;
         // The picture covers the wheel and its arrows only, so a spin repaints no more than it must (slow Chromebooks).
         const side = Math.ceil(2 * G.over * R + 4), ox = Math.round(cx - side / 2), oy = Math.round(cy - side / 2);
         place(canvas, { x: ox, y: oy, w: side, h: side });
-        geo = { W, H, dpr, u, pad, R, cx, cy, ox, oy, side, scale: 1 };
+        geo = { W, H, dpr, u, pad, R, cx, cy, ox, oy, side, scale: 1, where };
         const hr = R * G.hub;
         hub.hidden = hr < 10;
         place(hub, { x: cx - hr, y: cy - hr, w: 2 * hr, h: 2 * hr });
         hub.style.fontSize = Math.max(8, hr * 0.5) + 'px';
-        box.classList.toggle('wheel-under', under);
-        if (under) place(banner, { x: pad, y: areaH, w: W - 2 * pad, h: H - areaH - pad });
+        box.classList.toggle('wheel-apart', where !== 'over');
+        if (where === 'under') place(banner, { x: pad, y: areaH, w: W - 2 * pad, h: H - areaH - pad });
+        else if (where === 'beside') { const bh = Math.min(H - 2 * pad, 2 * R); place(banner, { x: cx + wide / 2 + pad, y: cy - bh / 2, w: bannerW, h: bh }); }
         else {
           const bh = H * (current.length > 1 ? 0.4 : everyone ? 0.34 : 0.3);
           const top = Math.max(H - pad - bh, cy + hr + Math.max(2, u));
@@ -233,17 +255,33 @@
         labelsDirty = true;
         fitBanner();
       }
-      // The biggest letters at which the banner's names fit it (they wrap, a whole name to a line at most).
+      // The biggest letters at which the banner's names fit it (they wrap, a whole name to a line at most). If that
+      // leaves them small (a long full name), a name may go onto two lines at a space, when that makes the letters
+      // clearly bigger; and a name too long for any line breaks anywhere, rather than being cut off.
       function fitBanner() {
         const bw = fitbox.clientWidth, bh = fitbox.clientHeight;
         if (bw < 4 || bh < 4 || !fit.firstChild) return;
-        let lo = 6, hi = Math.max(lo, Math.min(bh, geo.H * (current.length > 1 ? 0.16 : 0.2)));
-        for (let i = 0; i < 9; i++) {
-          const mid = (lo + hi) / 2;
-          fitbox.style.fontSize = mid + 'px';
-          if (fit.scrollWidth <= bw + 0.5 && fit.offsetHeight <= bh + 0.5) lo = mid; else hi = mid;
-        }
-        fitbox.style.fontSize = Math.floor(lo * 10) / 10 + 'px';
+        const top = Math.max(6, Math.min(bh, geo.H * (current.length > 1 ? 0.16 : 0.2)));
+        const fits = () => fit.scrollWidth <= bw + 0.5 && fit.offsetHeight <= bh + 0.5;
+        const use = (wrap, px) => {
+          fitbox.classList.toggle('wheel-wrap', wrap > 0); fitbox.classList.toggle('wheel-anywhere', wrap > 1);
+          fitbox.style.fontSize = px + 'px';
+        };
+        const biggest = wrap => {
+          let lo = 6, hi = top;
+          for (let i = 0; i < 9; i++) {
+            const mid = (lo + hi) / 2;
+            use(wrap, mid);
+            if (fits()) lo = mid; else hi = mid;
+          }
+          const px = Math.floor(lo * 10) / 10;
+          use(wrap, px);
+          return { wrap, px, ok: fits() };
+        };
+        let best = biggest(0);
+        if (!best.ok || best.px < top * 0.6) { const b = biggest(1); if (b.ok && (!best.ok || b.px > best.px * 1.15)) best = b; }
+        if (!best.ok) best = biggest(2);
+        use(best.wrap, best.px);
       }
 
       // ---- The names on the slices: as big as the slices allow, all about one size. Names much longer than most, or
@@ -276,9 +314,12 @@
           let text = sl.name, m = ms[i], f = Math.min(F, thick(m), len(m));
           if (f < floor) {
             f = floor;
+            // (A whole letter at a time, and never ending in a space or a joiner.)
+            const parts = letters(text);
             let cut = text;
-            while (cut.length > 2 && (f > thick(m) + 0.01 || f > len(m) + 0.01)) {
-              cut = cut.slice(0, -1).trimEnd();
+            while (parts.length > 2 && (f > thick(m) + 0.01 || f > len(m) + 0.01)) {
+              do parts.pop(); while (parts.length > 1 && /^[\s\u200d\ufe0e\ufe0f]*$/.test(parts[parts.length - 1]));
+              cut = parts.join('');
               m = ctx.measureText(cut + '…').width / 100;
             }
             text = cut + '…';
@@ -456,7 +497,7 @@
           banner.classList.add('wheel-show'); banner.classList.remove('wheel-hinting');
           if (popIt) { void banner.offsetWidth; banner.classList.add('wheel-pop'); }
         } else {
-          // (Only seen under the wheel, in a tall window: an empty banner waiting for the winners.)
+          // (Only seen when the banner is apart from the wheel, under or beside it: an empty banner waiting for the winners.)
           host.el('div', 'wheel-hint', fit, spinning ? '' : view && !view.next ? 'Everyone has been picked' : 'Tap SPIN to pick');
           banner.classList.remove('wheel-show'); banner.classList.add('wheel-hinting');
         }
@@ -573,9 +614,15 @@
         return angles.every((a, k) => { const s = sliceAt(a, gs); return s && s.idx === win[k]; });
       }
 
-      // For the tests: what is on the wheel (entries), what the arrows point at (left to right), and the names' sizes.
-      root._wheel = () => ({ under: underPointers(), wheel: slots.map(s => s.idx), current: current.slice(), spinning: !!anim, raf: !!raf,
-        R: geo.R, cx: geo.cx, cy: geo.cy, labels: Object.assign({}, labelInfo), font: tok && tok.font, hub: hub.hidden ? '' : hub.textContent });
+      // For the tests: what is on the wheel (entries), what the arrows point at (left to right), where the arrows are
+      // (angles) and how far each is from the middle of its slice (radians), where the banner is, and the names' sizes.
+      root._wheel = () => {
+        const gs = geoms(), live = ptrs.filter(p => p.al1 > 0);
+        const aim = live.map(p => { const s = sliceAt(p.a, gs), g = gs.find(x => x.s === s); return g ? Math.abs(mod(p.a - g.a0 - g.sp / 2 + Math.PI, TAU) - Math.PI) : -1; });
+        return { under: underPointers(), wheel: slots.map(s => s.idx), current: current.slice(), spinning: !!anim, raf: !!raf,
+          R: geo.R, cx: geo.cx, cy: geo.cy, where: geo.where, arrows: live.map(p => p.a), aim, dpr: geo.dpr, canvasScale: geo.scale,
+          labels: Object.assign({}, labelInfo), font: tok && tok.font, hub: hub.hidden ? '' : hub.textContent };
+      };
 
       return {
         show(v, how) {
@@ -589,12 +636,13 @@
           if (win.length) {
             if (!(same && current.join() === win.join() && landedOn(win))) deal(entries, win);
             current = win; hl = 1;
-            aimPointers(pointerAngles(slots.length, win.length), 0);
           } else {
             if (!same) { setSlots(entries); rot = entries.length ? -TAU / entries.length / 2 : 0; }
             current = []; hl = 0;
-            aimPointers(pointerAngles(slots.length, Math.max(1, Math.min(v.next || 1, slots.length))), 0);
           }
+          const n = win.length || Math.max(1, Math.min(v.next || 1, slots.length));
+          aimPointers(pointerAngles(slots.length, n), 0);
+          ring = allRound(slots.length, n);
           everyone = v.noRepeats && !v.next && win.length > 0;
           slots.forEach(s => { s.w = 1; s.lab = 1; s.gone = false; });
           pop = 0;
@@ -631,10 +679,12 @@
             finalSlots = arr.map((idx, p) => ({ idx, name: v.names[idx], w: 1, lab: 0, col: cols[p], gone: false }));
           } else p0 = keep.findIndex(s => s.idx === win[0]);
           const T = v.quick ? SPEED.quick : SPEED.normal, span = TAU / K;
-          // Where in its slice the arrow stops: anywhere but right on a peg (decoration: Math.random).
-          const delta = K > 1 ? (Math.random() * 2 - 1) * 0.36 * span : Math.random() * TAU;
+          // Where in its slice the arrow stops: anywhere but right on a peg (decoration: Math.random). A wheel of one
+          // name stops with it at the arrow, reading left to right.
+          const delta = (Math.random() * 2 - 1) * (K > 1 ? 0.36 * span : 0.2);
           const target = -(p0 * span + span / 2) + delta;
           current = []; everyone = false; hl = 0; pop = 0;
+          ring = allRound(K, n);
           renderBanner(false, true);
           layout();
           aimPointers(pointerAngles(K, n), T.layout);

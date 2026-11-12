@@ -1900,13 +1900,15 @@
 
     info() {
       const d = this.disp || { x: 0, y: 0, w: 0, h: TITLE_H };
-      return { width: Math.round(d.w), height: Math.round(d.h - TITLE_H), x: Math.round(d.x), y: Math.round(d.y), maximized: !!(this.inst && this.inst.maximized), focused: S.focused === this.ikey };
+      // zoom: how much bigger the window is drawn than its CSS size (the board's Size, the screen), so a canvas can stay sharp.
+      return { width: Math.round(d.w), height: Math.round(d.h - TITLE_H), x: Math.round(d.x), y: Math.round(d.y), maximized: !!(this.inst && this.inst.maximized), focused: S.focused === this.ikey,
+        zoom: Math.round(Zoom.s * 100) / 100 };
     }
 
     notifyInfo() {
       if (!this.connected) return;
       const i = this.info();
-      const sig = [i.width, i.height, i.maximized, i.focused].join();
+      const sig = [i.width, i.height, i.maximized, i.focused, i.zoom].join();
       if (sig === this.lastInfo) return;
       this.lastInfo = sig;
       this.post('window', { info: i });

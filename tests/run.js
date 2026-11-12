@@ -1961,6 +1961,19 @@ const SUITES = [
       && w.under.every((i, k) => st.names[i] === st.picked[k]) && JSON.stringify(w.banner) === JSON.stringify(st.picked)
       && w.nums === (st.picked.length > 1 ? st.picked.map((_, k) => k + 1).join() : '') && w.shown;
     const said = w => w ? `arrows ${w.under.join('/')}, banner ${w.banner.join('/')}${w.spinning ? ', still spinning' : ''}` : 'no wheel';
+    // What can't be seen: an arrow (its numbered pivot, or its tip) cut off by the edge of the stage or under the banner,
+    // or SPIN covered. '' when everything can be seen.
+    const unseen = w => {
+      const b = w.bannerBox, h = w.hubBox, r = Math.max(7, w.R * 0.064), out = [];
+      const gap = (x, y) => Math.hypot(Math.max(b.x - x, 0, x - b.x - b.w), Math.max(b.y - y, 0, y - b.y - b.h));
+      w.arrows.forEach((a, k) => {
+        const x = w.cx + Math.cos(a) * w.R * 1.07, y = w.cy + Math.sin(a) * w.R * 1.07, tx = w.cx + Math.cos(a) * w.R * 0.91, ty = w.cy + Math.sin(a) * w.R * 0.91;
+        if (x - r < -1 || y - r < -1 || x + r > w.W + 1 || y + r > w.H + 1) out.push(`arrow ${k + 1} is cut off by the edge`);
+        else if (gap(x, y) < r - 1 || gap(tx, ty) < 1) out.push(`arrow ${k + 1} is under the banner`);
+      });
+      if (!w.hubShown || (b.x < h.x + h.w - 1 && h.x < b.x + b.w - 1 && b.y < h.y + h.h - 1 && h.y < b.y + b.h - 1)) out.push('SPIN is covered');
+      return out.join(', ');
+    };
     // Taps Pick (or SPIN) and answers the pick once the board has it, with when the tap was.
     const pick = async (p, on = '#go', ik = IK) => {
       const was = ((await saved(p, ik)) || {}).pickId, t0 = Date.now();
@@ -1991,6 +2004,7 @@ const SUITES = [
       await idle(page); times.push(Date.now() - p.t0);
       w = await look(page);
       if (!landed(w, p.st)) bad.push(`pick ${k + 1}: saved ${p.st.picked}, ${said(w)}`);
+      else if (w.wheel.length === 1 && !(w.aim[0] < 0.25)) bad.push(`pick ${k + 1}: the last name stopped ${Math.round(w.aim[0] * 57.3)}° from the arrow`);
       if (w.wheel.map(i => p.st.names[i]).sort().join() !== inDraw) bad.push(`pick ${k + 1}: the wheel had ${w.wheel.length} names, not the ${inDraw.split(',').length} in the draw`);
     }
     ok(!bad.length, `1 winner, No repeats: 8 picks (SPIN or the main button) land on exactly the saved winner, and the wheel holds just the names still in the draw${bad.length ? ': ' + bad.join(' | ') : ''}`);
@@ -2001,6 +2015,21 @@ const SUITES = [
     await np(page).locator('.wheel-hub').click(); await page.waitForTimeout(300);
     st = await saved(page); w = await look(page);
     ok(st.left.length === 8 && !st.picked.length && w.wheel.length === 8 && !w.shown && w.hub === 'SPIN' && w.labels.shown === 8, 'a tap on it starts over: all 8 names back on the wheel, no banner');
+
+    // ---- The last student of a round is spun on a wheel of one name: it stops with that name at the arrow (3 o'clock),
+    // reading left to right, not anywhere round the wheel.
+    await setNames(page, ['Ava', 'Leo']);
+    bad = [];
+    for (let r = 0; r < 2; r++) {
+      for (let k = 0; k < 2; k++) {
+        const p = await pick(page); await idle(page);
+        w = await look(page);
+        if (!landed(w, p.st)) bad.push(`round ${r + 1}, pick ${k + 1}: saved ${p.st.picked}, ${said(w)}`);
+        else if (w.wheel.length === 1 && !(w.aim[0] < 0.25)) bad.push(`round ${r + 1}: ${p.st.picked[0]} stopped ${Math.round(w.aim[0] * 57.3)}° from the arrow`);
+      }
+      await np(page).locator('#go').click(); await page.waitForTimeout(300);   // (“Everyone picked — start over”)
+    }
+    ok(!bad.length, `a wheel of one name (the last of a round) stops with the name at the arrow${bad.length ? ': ' + bad.join(' | ') : ''}`);
 
     // ---- Five winners at a time: one spin, five numbered arrows, rounds of 5, 5 and the last 2; then Start over and
     // again, skipping each show with a tap on the stage.
@@ -2032,6 +2061,33 @@ const SUITES = [
     }
     ok(!bad.length, `5 winners, No repeats: two rounds (5, 5, the last 2), played to the end and skipped with a tap, land on exactly the saved winners, arrows 1-5 in pick order${bad.length ? ': ' + bad.join(' | ') : ''}`);
 
+    // ---- Fewer names on the wheel than 2 × winners − 1 (the last picks of a No repeats round, or fewer names than
+    // winners): the numbered arrows go all round the wheel, so the banner moves beside it. Every arrow can be seen,
+    // during the spin and after it, and the banner lists them 1, 2, 3 in arrow order.
+    const TWENTY4 = TWELVE.concat(['Olivia', 'Lucas', 'Chloé', 'Mateo', 'Priya', 'Yusuf', 'Hana', 'Omar', 'Isla', 'Jack', 'Nora', 'Ravi']);
+    bad = [];
+    const layouts = [];
+    for (const [names, picks] of [[TWENTY4, [5, 5, 5, 5, 4]], [TWELVE.slice(0, 7), [5, 2]], [TWELVE.slice(0, 3), [3]]]) {
+      await setNames(page, names);
+      if ((await saved(page)).left.length < names.length) await menu(page, 'round');
+      for (const n of picks) {
+        const K = (await saved(page)).left.length, ring = n > 1 && Math.floor(K / 2) < n - 1;
+        const p = await pick(page);
+        await page.waitForTimeout(500);
+        const mid = await look(page);
+        await idle(page);
+        w = await look(page);
+        const where = `${names.length} names, ${n} of ${K}`;
+        layouts.push(`${n} of ${K}: ${w.where}`);
+        if (p.st.picked.length !== n || !landed(w, p.st)) bad.push(`${where}: saved ${p.st.picked}, ${said(w)}`);
+        if (mid.spinning && unseen(mid)) bad.push(`${where}, spinning: ${unseen(mid)}`);
+        if (unseen(w)) bad.push(`${where}: ${unseen(w)}`);
+        if (w.where !== (ring ? 'beside' : 'over')) bad.push(`${where}: the banner is ${w.where} the wheel`);
+      }
+    }
+    ok(!bad.length, `the last few names of a round, and fewer names than winners: every numbered arrow can be seen, with the banner beside the wheel (${layouts.join('; ')})${bad.length ? ': ' + bad.join(' | ') : ''}`);
+    await setNames(page, TWELVE); await menu(page, 'round');
+
     // ---- The same with No repeats off: the whole class is on the wheel every time.
     await menu(page, 'norepeat');
     bad = [];
@@ -2061,6 +2117,28 @@ const SUITES = [
     await page.waitForTimeout(300);
     const r1 = await page.evaluate(ik => window.__board21.state.insts.get(ik).rect, IK);
     ok(r1.x < r0.x - 40 && (await saved(page)).pickId === st2.pickId, `the window can be dragged by the wheel picture (moved ${Math.round(r1.x - r0.x)}, ${Math.round(r1.y - r0.y)})`);
+
+    // ---- Enter held down on the main button, or on SPIN after a tap there, picks once: the key's repeats don't pick,
+    // skip and pick again (a presenter remote or a key held a moment too long).
+    const cdp = await ctx.newCDPSession(page);
+    const holdEnter = async () => {
+      const ev = (type, again) => cdp.send('Input.dispatchKeyEvent', { type, key: 'Enter', code: 'Enter', windowsVirtualKeyCode: 13, autoRepeat: !!again,
+        text: type === 'keyUp' ? undefined : '\r', unmodifiedText: type === 'keyUp' ? undefined : '\r' });
+      await ev('keyDown');
+      for (let i = 0; i < 45; i++) { await page.waitForTimeout(33); await ev('keyDown', true); }
+      await ev('keyUp');
+    };
+    const countPicks = () => inFrame(page, () => { window.__picks = []; const save = Board21.save; Board21.save = d => { window.__picks.push(d && d.pickId); return save.call(Board21, d); }; });
+    const picksMade = () => inFrame(page, () => new Set(window.__picks).size);
+    await countPicks();
+    await np(page).locator('#go').focus(); await holdEnter();
+    const heldGo = await picksMade();
+    await idle(page); await page.waitForTimeout(300);
+    await countPicks();
+    await np(page).locator('.wheel-hub').click(); await holdEnter();
+    const heldHub = await picksMade();
+    await idle(page);
+    ok(heldGo === 1 && heldHub === 1, `Enter held down for 1½ s picks once, on the main button (${heldGo} picks) and on SPIN after a tap (${heldHub})`);
 
     // ---- A normal spin: about 4 seconds; with Sound on, the clicker and a chime; nothing runs between picks.
     await menu(page, 'round'); await menu(page, 'quick'); await menu(page, 'sound');
@@ -2103,6 +2181,14 @@ const SUITES = [
     ok(await eventually(async () => landed(await look(page), p4.st)) && !(await showing(page)) && !(await look(page)).raf, `a reload during the spin shows its result (${p4.st.picked})`);
     await page2.close();
 
+    // ---- Settings → Size 150%: the board draws the window half as big again (it tells the window its zoom), and the
+    // wheel has the pixels for that, so the names on its slices stay as sharp as SPIN and the banner.
+    const sharp = () => inFrame(page, () => { const c = document.querySelector('.wheel-canvas'); return { zoom: Board21.context.window.zoom, px: c.width / c.getBoundingClientRect().width }; });
+    await page.evaluate(() => window.__board21.setBoardScale(1.5));
+    ok(await eventually(async () => { const z = await sharp(); return z.zoom === 1.5 && Math.abs(z.px - 1.5) < 0.02; }, 4000), `with Size 150% the wheel is drawn with 1.5 pixels for each of its own (${JSON.stringify(await sharp())})`);
+    await page.evaluate(() => window.__board21.setBoardScale(1));
+    ok(await eventually(async () => { const z = await sharp(); return z.zoom === 1 && Math.abs(z.px - 1) < 0.02; }, 4000), `and with Size 100% again, 1 (${JSON.stringify(await sharp())})`);
+
     // ---- Sizes: 260×200, 420×320 and maximised at 1366×768 and 1920×1080, with 1, 3, 24, 30 and 45 names and very
     // long names. The wheel, SPIN and the banner fit; the banner never covers SPIN or an arrow at 3 or 9 o'clock.
     const CLASS = ['Ava', 'Mateo', 'Sofia', 'Liam', 'Amara', 'Noah', 'Isabella', 'Kenji', 'Zoe', 'Elijah', 'Priya', 'Lucas', 'Mia', 'Oluwaseun', 'Harper', 'Diego',
@@ -2121,7 +2207,7 @@ const SUITES = [
         const w = await look(p), where = `${what}, ${n} winner${n > 1 ? 's' : ''}`, b = w.bannerBox, h = w.hubBox;
         if (w.cx - 1.14 * w.R < -1 || w.cx + 1.14 * w.R > w.W + 1 || w.cy - 1.14 * w.R < -1 || w.cy + 1.035 * w.R > w.H + 1) bad.push(`${where}: the wheel sticks out`);
         if (b.x < -1 || b.y < -1 || b.x + b.w > w.W + 1 || b.y + b.h > w.H + 1) bad.push(`${where}: the banner sticks out`);
-        if (!w.hubShown || b.y < h.y + h.h - 1 || b.y < w.cy + w.R * 0.07) bad.push(`${where}: the banner covers SPIN or an arrow`);
+        if (unseen(w)) bad.push(`${where}: ${unseen(w)}`);
         if (!w.fits || JSON.stringify(w.banner) !== JSON.stringify(names.slice(0, n))) bad.push(`${where}: the banner doesn’t show the whole names (${w.banner.join('/')})`);
         if (w.under.map(i => names[i]).join('|') !== names.slice(0, n).join('|')) bad.push(`${where}: the arrows point at ${w.under.map(i => names[i])}`);
         if (w.labels.shown && w.labels.min < 7.99) bad.push(`${where}: names on the slices at ${w.labels.min.toFixed(1)} px`);
@@ -2140,6 +2226,14 @@ const SUITES = [
       || (/^(1|3|24|30) name/.test(what) && w.labels.shown !== w.wheel.length ? `${what} aren’t all written on the wheel` : '')
       || (what === '45 names' && w.labels.shown ? '45 names in a small window should be colour only' : '')
       || (what === 'long names' && !w.labels.cut ? 'very long names should be shortened on the slices' : ''));
+    // A long full name that would be small on one line goes onto two at a space; a name with no space too long for
+    // any line breaks anywhere rather than being cut off.
+    await showList(page, ['Siddharthanarayanan Venkataramanaswamy'].concat(EIGHT), 1); await page.waitForTimeout(350);
+    const twoLines = await look(page);
+    await showList(page, ['Bartholomew'.repeat(9), 'Ava', 'Leo'].concat(EIGHT), 3); await page.waitForTimeout(350);
+    const noSpace = await look(page);
+    ok(twoLines.fits && twoLines.bannerPx >= 20 && noSpace.fits && twoLines.banner[0] === 'Siddharthanarayanan Venkataramanaswamy' && noSpace.banner[0] === 'Bartholomew'.repeat(9),
+      `420×320: a long full name in the banner goes onto two lines, at ${twoLines.bannerPx} px, and a 99-letter name with no space fits (${noSpace.fits ? 'yes' : 'no'}, ${noSpace.bannerPx} px)`);
     await setSize(page, { x: 300, y: 60, w: 300, h: 560 });
     await fitting(page, 'a tall window, 300×560', (what, n, w) => (w.bannerBox.y < w.cy + w.R ? 'the banner should be under the wheel' : '')
       || (w.bannerPx < (what === 'long names' ? 8 : n === 1 ? 24 : 14) ? `banner names at ${w.bannerPx} px` : ''));
@@ -2149,6 +2243,27 @@ const SUITES = [
       || (what === '24 names' && w.labels.min < 18 ? `24 names at ${w.labels.min.toFixed(1)} px` : '')
       || (what === '45 names' && w.labels.min < 11 ? `45 names at ${w.labels.min.toFixed(1)} px` : ''));
     await page.screenshot({ path: OUT + 'name-picker-wheel-maximised.png' });
+    // Names shortened on the slices lose whole letters: never half an emoji (a broken-character box), or part of a
+    // family emoji, or a space before the “…”.
+    await inFrame(page, () => { const c = CanvasRenderingContext2D.prototype, fill = c.fillText; window.__cut = []; c.fillText = function (t) { if (/…$/.test(t)) window.__cut.push(String(t)); return fill.apply(this, arguments); }; });
+    const EMOJI = ['Ava', '🦄🦄🦄🦄🦄🦄🦄🦄🦄🦄 Ana', 'Mia 👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦👨‍👩‍👧‍👦 Rose', 'Leo', 'Noah', 'Sofía', 'José', 'Zoe', 'Kai', 'Ethan'];
+    const cuts = [];
+    for (const size of [null, { x: 300, y: 60, w: 260, h: 200 }]) {
+      await setSize(page, size);
+      await showList(page, EMOJI, 0); await page.waitForTimeout(350);
+      cuts.push(...await inFrame(page, (html, names) => {
+        const seg = new Intl.Segmenter(undefined, { granularity: 'grapheme' }), bad = [];
+        for (const t of new Set(window.__cut)) {
+          const cut = t.slice(0, -1), name = names.find(n => n.startsWith(cut)), parts = name ? Array.from(seg.segment(name), x => x.segment) : [];
+          const whole = parts.some((_, j) => parts.slice(0, j + 1).join('') === cut);
+          if (!name || !whole || /[\ud800-\udbff]$|[\s\u200d\ufe0f]$/.test(cut)) bad.push(JSON.stringify(t));
+        }
+        window.__cut = [];
+        return bad;
+      }, EMOJI));
+    }
+    ok(!cuts.length, `names with emoji are shortened on the slices a whole letter at a time${cuts.length ? ': ' + cuts.join(', ') : ''}`);
+    await setSize(page, null);
 
     // ---- Dark theme: the wheel is drawn in the dark colours (the slices, the middle, the banner).
     const pixels = p => inFrame(p, () => {

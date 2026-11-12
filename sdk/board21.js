@@ -207,7 +207,7 @@
   }
 
   function windowInfo() {
-    return { width: window.innerWidth, height: window.innerHeight, maximized: false, focused: document.hasFocus() };
+    return { width: window.innerWidth, height: window.innerHeight, maximized: false, focused: document.hasFocus(), zoom: 1 };
   }
 
   function startStandalone() {
