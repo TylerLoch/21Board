@@ -3429,9 +3429,10 @@
   // not a "dyslexia font". The files are in fonts/, cut down to the letters 21Board needs (tools/build-letter-fonts.py;
   // the cut-down Andika is renamed "21Board Early Readers", as its licence asks) and part of the offline copy (sw.js).
   // @font-face rules fetch nothing until text uses them, so a font is loaded only once it's chosen (or Settings
-  // shows it). They point next to this file, so they also work in the widget dev window. Widgets get the font in
-  // their palette (--b21-font, paletteFor) and the SDK adds the same rules in their frames (sdk/board21.js,
-  // LETTER_FACES), then fires a resize, so text that is fitted to its window fits again in the new letters.
+  // shows it). They point next to this file, so they also work in the widget dev window on 21Board's own site (not
+  // on another one: see LETTERS_HERE). Widgets get the font in their palette (--b21-font, paletteFor) and the SDK
+  // adds the same rules in their frames (sdk/board21.js, LETTER_FACES), then fires a resize, so text that is fitted
+  // to its window fits again in the new letters.
   // Weights 600 to 800 (headings, names) come out in the Bold face, 500 in the Regular one.
   // This device only, like the other classroom settings: never exported (unlike the theme and accent) or sent to the
   // Drive folder, so a board opened on the smartboard keeps the smartboard's letters.
@@ -3446,13 +3447,19 @@
   const LETTER_SAMPLE = 'Il1 ag';
   // The folder this file came from (the dev window's page is somewhere else).
   const FONT_BASE = (() => { const s = document.currentScript; return s && s.src ? s.src.replace(/[?#].*$/, '').replace(/[^/]*$/, '') : ''; })();
-  const letterKey = () => Object.prototype.hasOwnProperty.call(LETTERS, S.settings.letters) ? S.settings.letters : 'standard';
+  // Whether the fonts can load here. A font from another site loads only if that site allows it (CORS); if it
+  // doesn't, the browser logs errors and the text stays as it was. 21Board itself is always on the fonts' own site
+  // (or on disk). The widget dev window may not be: in an AI tool's preview it runs on the tool's site, and in the
+  // widget lab it is sealed off (no site at all). There the letters stay Standard and nothing is fetched, so the
+  // preview's console only shows the widget's own errors, and Settings says where to try them.
+  const LETTERS_HERE = !LAB || (() => { try { const u = new URL(FONT_BASE); return u.protocol === 'file:' || u.origin === self.origin; } catch (e) { return false; } })();
+  const letterKey = () => LETTERS_HERE && Object.prototype.hasOwnProperty.call(LETTERS, S.settings.letters) ? S.settings.letters : 'standard';
   // The font stack: the chosen font, then the device's own for anything it doesn't have (▦, ✓, emoji, Cyrillic…).
   const letterFont = (key = letterKey()) => (LETTERS[key].family ? `"${LETTERS[key].family}", ` : '') + PALETTES.light.font;
 
   let letterFaces = null;
   function applyLetters() {
-    if (!letterFaces) {   // (once: the rules load nothing by themselves)
+    if (!letterFaces && LETTERS_HERE) {   // (once: the rules load nothing by themselves)
       letterFaces = document.createElement('style');
       letterFaces.id = 'letter-faces';
       letterFaces.textContent = Object.values(LETTERS).filter(l => l.files).map(l => l.files.map((file, i) =>
@@ -3465,6 +3472,7 @@
 
   // Each choice is shown in its own letters, with a sample of the look-alikes.
   function letterSettings() {
+    if (!LETTERS_HERE) return `<div class="row"><div><div class="lbl">Letters</div><div class="hint">Easier-to-read letters can’t load in this test board. Try them in 21Board itself.</div></div></div>`;
     const cur = letterKey();
     const opt = key => {
       const l = LETTERS[key], on = key === cur;

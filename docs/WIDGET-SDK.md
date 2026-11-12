@@ -333,6 +333,9 @@ The SDK sets these CSS variables on your `<html>` element and keeps them updated
 folder (a widget on another site gets it only if the board's site allows it, CORS; otherwise its text stays in the
 device's own font). If you fit text to the window, fit it on the window's `resize` event: one fires when the
 letters change, and again once the new font has loaded.
+A widget uploaded as a file in Developer mode is sealed off from the board's files, so it stays in the device's
+own font. Form controls don't take the page's font by themselves: give `button`, `input` and `textarea`
+`font-family: inherit` (or `font: inherit`) so their text follows the letters too.
 
 Use `[data-b21-theme="dark"] .thing { … }` for anything else that should change in dark mode.
 
@@ -444,6 +447,10 @@ The footer shows the window's content size, shape lock, minimum size and board s
 - If the SDK **isn't the first script** in `<head>`, the widget runs on its own with a note saying so.
 - Without a manifest block, a widget in this repo's `widgets/` folder uses its `widgets/registry.js`
   entry; otherwise the window is 400 × 300.
+- **Letters** (Settings → Appearance) can be tried only in a dev window on 21Board's own site (a widget's
+  file there, or opened from disk). In an AI tool's preview and in the widget lab the test board isn't on
+  21Board's site (the lab's is sealed off), and fonts from another site need that site's permission (CORS),
+  so there the letters stay Standard and Settings says so.
 
 How it works: the SDK keeps the rest of the page as text before any of your code runs
 (`document.write` of an unclosed `<plaintext>`), then loads `sdk/board21-dev.js`. That runs the board

@@ -5142,7 +5142,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page); await freeBoard(page);
-    for (const id of ['clock', 'timer', 'notes', 'task-timer']) await page.evaluate(id => window.__board21.openWidget(id), id);
+    for (const id of ['clock', 'timer', 'notes', 'task-timer', 'first-then-board']) await page.evaluate(id => window.__board21.openWidget(id), id);
     await page.waitForTimeout(1500);
     const tab2 = await ctx.newPage(); tab2.on('pageerror', e => errors.push('second tab: ' + e.message));
     await tab2.goto(BASE); await boardUp(tab2); await tab2.waitForTimeout(1200);
@@ -5184,6 +5184,21 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const wf = {};
       for (const ik of ['clock:1', 'timer:1', 'notes:1', 'task-timer:1']) wf[ik] = await widgetFont(page, ik);
       ok(Object.values(wf).every(f => f.startsWith(`"${fam}", system-ui`)), `${key}: widgets’ text is in it (${Object.entries(wf).map(([k, f]) => k + ' ' + f.split(',')[0]).join(', ')})`);
+      // Every word in them, on buttons and in boxes too (they don't take the page's font by themselves: First/Then's
+      // cards, Task Timer's buttons). Only the Task Timer's countdown keeps its fixed-width digits.
+      const notIn = [];
+      for (const ik of ['clock:1', 'timer:1', 'notes:1', 'task-timer:1', 'first-then-board:1']) {
+        const off = await inWidget(page, ik, (html, fam) => {
+          const out = new Set(), words = /[A-Za-z]/;
+          const check = (el, text) => { if (!getComputedStyle(el).fontFamily.startsWith(`"${fam}"`) && !el.closest('.digital-clock-time')) out.add(`${el.tagName.toLowerCase()} “${text.trim().slice(0, 20)}”`); };
+          const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          for (let n; (n = walk.nextNode());) { const el = n.parentElement; if (el && el.getBoundingClientRect().width && words.test(n.textContent)) check(el, n.textContent); }
+          for (const el of document.querySelectorAll('button, input, textarea, select')) { const t = el.value || el.placeholder || el.textContent || ''; if (words.test(t)) check(el, t); }
+          return Array.from(out);
+        }, fam);
+        if (off.length) notIn.push(`${ik}: ${off.slice(0, 4).join(', ')}`);
+      }
+      ok(!notIn.length, `${key}: every word in the widgets is in it, buttons and boxes included (Clock, Timer, Notes, Task Timer, First/Then Board)${notIn.length ? ': ' + notIn.join(' | ') : ''}`);
       ok(await eventually(async () => (await loadedInWidget(page, 'timer:1', fam)).includes('700') && (await loadedInWidget(page, 'notes:1', fam)).includes('400')),
         `${key}: and the font is loaded in their frames (Timer ${await loadedInWidget(page, 'timer:1', fam)}, Notes ${await loadedInWidget(page, 'notes:1', fam)})`);
       ok(await eventually(async () => (await font(tab2, 'body')).startsWith(`"${fam}"`) && (await widgetFont(tab2, 'clock:1')).startsWith(`"${fam}"`)), `${key}: another tab follows, its widgets too`);
@@ -5308,6 +5323,54 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await page.screenshot({ path: OUT + `letters-fit-${key}.png` });
     }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+
+  ['Letters: the widget dev window (on 21Board’s site, in an AI tool’s preview, in the widget lab)', async (browser) => {
+    // The dev window's test board loads the fonts from 21Board's site. On that site they load; on another site (an AI
+    // tool's preview) or sealed off (the widget lab) they would need the site's permission (CORS): there the letters
+    // stay Standard, nothing is fetched and the preview's console gets no font errors, and Settings says so.
+    const ctx = await browser.newContext({ viewport: { width: 1100, height: 760 } });
+    const page = await ctx.newPage();
+    const fontErrors = [], asked = [];
+    page.on('console', m => { if (m.type() === 'error' && /font|woff2|CORS/i.test(m.text())) fontErrors.push(m.text().slice(0, 120)); });
+    page.on('request', r => { if (r.url().includes('/fonts/')) asked.push(r.url()); });
+    const kids = f => page.frames().filter(x => x.parentFrame() === f);
+    const testBoard = async () => {
+      const board = kids(page.mainFrame())[0];
+      await board.evaluate(() => document.querySelector('.picker-btn.left').click()); await page.waitForTimeout(300);
+      await board.evaluate(() => document.querySelector('[data-ctl="settings"]').click()); await page.waitForTimeout(800);
+      return board;
+    };
+    const lettersRow = board => board.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('#settings .row')).find(r => /^Letters/.test(r.textContent.trim()));
+      return { cards: document.querySelectorAll('#settings .letter-opt').length, text: row ? row.textContent.trim() : '' };
+    });
+
+    // On 21Board's own site: the three choices, and they work (in the test board and its widget).
+    await page.goto(BASE + '__dev/widget.html'); await page.waitForTimeout(2500);
+    let board = await testBoard();
+    ok((await lettersRow(board)).cards === 3, 'a dev window on 21Board’s own site has the Letters choices');
+    await board.evaluate(() => document.querySelector('#settings [data-act="letters"][data-val="legible"]').click());
+    ok(await eventually(async () => {
+      const b = await board.evaluate(() => getComputedStyle(document.body).fontFamily.startsWith('"Atkinson Hyperlegible"') && Array.from(document.fonts).some(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible' && f.status === 'loaded'));
+      const w = await kids(board)[0].evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--b21-font').trim().startsWith('"Atkinson Hyperlegible"'));
+      return b && w;
+    }), 'and choosing one loads it there, for the test board and its widget');
+
+    // In an AI tool's preview (another site) and in the widget lab (sealed off): no choices, no fonts, no errors.
+    const before = asked.length; fontErrors.length = 0;
+    await page.goto(BASE.replace('127.0.0.1', 'localhost') + '__dev/widget.html'); await page.waitForTimeout(2500);
+    board = await testBoard();
+    let row = await lettersRow(board);
+    ok(row.cards === 0 && /can’t load in this test board\. Try them in 21Board itself\./.test(row.text), `in an AI tool’s preview Settings says the letters can’t load there (“${row.text}”)`);
+    ok(await board.evaluate(() => getComputedStyle(document.body).fontFamily.startsWith('system-ui') && !document.getElementById('letter-faces')), 'and the test board stays in the device’s own font');
+    await page.goto(BASE + 'sdk/lab.html'); await page.waitForTimeout(400);
+    await page.click('#sample'); await page.click('#run'); await page.waitForTimeout(3500);
+    board = await testBoard();
+    row = await lettersRow(board);
+    ok(await board.evaluate(() => self.origin) === 'null' && row.cards === 0 && /can’t load in this test board/.test(row.text), 'the same in the widget lab (its test board is sealed off)');
+    ok(asked.length === before && !fontErrors.length, `neither fetches a font or logs a font error in the preview’s console (${asked.length - before} fetched${fontErrors.length ? ': ' + fontErrors.join(' | ') : ''})`);
     await ctx.close();
   }],
 
