@@ -138,9 +138,9 @@ Sizes are the **content area** (the iframe), not including the 40px title bar.
 
 | Call | Description |
 | --- | --- |
-| `Board21.window.setSize(w, h)` | Resize the window. It stays on screen and avoids other windows where it can. |
+| `Board21.window.setSize(w, h)` | Resize the window: fitted to its minimum and maximum size, shape lock and the board, keeping its top-left corner where it can (it stays on screen and avoids other windows where it can). It takes a maximized window out of *Fill the board*, and it is saved with the board, like a teacher's resize (kept after a reload, the same in every tab). |
 | `Board21.window.setAspectRatio(ratio)` | Lock the content to `width / height` (e.g. `16/9`). `null` unlocks. |
-| `Board21.window.setMinSize(w, h)` | Minimum content size. |
+| `Board21.window.setMinSize(w, h)` | Minimum content size. `null` goes back to the registry's. A window smaller than the minimum is drawn bigger, without changing its saved size (see below). |
 | `Board21.window.setMaxSize(w, h)` | Maximum content size. `null` removes the limit. |
 | `Board21.window.setResizable(bool)` | Show or hide the resize grips. |
 | `Board21.window.setDragFromContent(bool)` | Whether the window can be dragged from anywhere inside it right now (see [Moving windows from inside](#moving-windows-from-inside)). |
@@ -155,6 +155,20 @@ Defaults for size, minimum size and aspect ratio come from the [registry](#regis
 so the window is the right shape before your page even loads. Runtime calls override them
 until the window is reset or reloaded; call them again in `ready()` if they depend on config
 (see `widgets/clock`).
+
+**Room for a settings or editing view.** The teacher chooses the window's size, so a widget doesn't resize
+it by itself. To make room for a view that needs more space for a while, raise the minimum while it shows:
+
+```js
+function openEditor() { Board21.window.setMinSize(520, 400); /* … show the editor … */ }
+function closeEditor() { Board21.window.setMinSize(null, null); /* … back to the main view … */ }
+```
+
+A smaller window grows to that size (never past the board), but its saved size doesn't change: when the
+minimum goes back, so does the teacher's size. If the teacher moves or resizes the window while it is
+bigger, it keeps that. A reload shows the normal size (runtime calls don't last). Use `setSize` for a lasting
+change the teacher asked for (a layout that needs another shape); to undo it, keep `getInfo()`'s size first
+and set it back, unless it changed since. Skip `setSize` when `Board21.context.window.maximized`.
 
 ### Window menu
 
@@ -442,21 +456,11 @@ the tool's preview can reach, for example:
 ```
 
 (Use a copy that's reachable from where you work: from outside the school network, the GitHub Pages
-test copy.) The preview then shows the widget in the dev window. A prompt that works well:
+test copy.) The preview then shows the widget in the dev window.
 
-> Build this as a 21Board widget: ONE plain HTML file (no React, no build step). In `<head>`, right
-> after `<meta charset="utf-8">`, the first script must be exactly `<script src="…/sdk/board21.js"></script>`
-> (no async, defer or type=module). The next line is a manifest:
-> `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
-> Start with `const ctx = await Board21.ready()` and draw from `ctx.data`. Save content with
-> `Board21.save(state)` and preferences with `Board21.saveConfig(cfg)`; handle `Board21.on('data', …)`
-> and `Board21.on('config', …)`. Never use localStorage, sessionStorage, IndexedDB or cookies. Put
-> commands in the window menu with `Board21.menu.set([...])` (at most 24 items, `#hex` colors only)
-> and react in `Board21.on('menu', id => …)`. Style with plain CSS using `var(--b21-bg)`,
-> `--b21-surface`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`.
-> Make NO network requests: no Tailwind or other CDNs, no web fonts, no external images. Fill the
-> window (`html, body {margin:0; height:100%; overflow:hidden}`) with flex/grid and %/vmin so it
-> works at every size without scrolling. Tap targets at least 48px. No alert/confirm/prompt or autofocus.
+**[docs/AI-PROMPT.md](AI-PROMPT.md)** has a prompt to paste before describing the widget (a full one that
+covers this guide's rules, window menu, window size, dragging, theming and the house look, and a short one),
+and how staff use it: the preview, *Checks* → *Copy fix request*, and *Upload file…* in Developer mode.
 
 When it works, *⋯ ▸ Copy for 21Board* gives the file and its registry entry (see
 [Registering a widget](#registering-a-widget)).

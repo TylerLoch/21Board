@@ -141,6 +141,7 @@ widgets/registry.js        THE list of widgets (used by the picker AND the offli
 widgets/<id>/index.html    One folder per widget
 widgets/_template/         Starter for new widgets (not registered)
 docs/WIDGET-SDK.md      How to build a widget; SDK reference; submission checklist
+docs/AI-PROMPT.md       For staff: a prompt to build a widget with an AI tool (Gemini, ChatGPT, Claude)
 docs/DATA-FORMAT.md     IndexedDB layout, sync protocol, .21board file format
 tools/release.js        Stamps a release: its name and a fingerprint of the files (see Deploying)
 tests/run.js            Optional automated browser tests
@@ -175,7 +176,8 @@ tests/run.js            Optional automated browser tests
 To try a widget, open its file in a browser: it appears in the **dev window**, a real 21Board window with
 its title bar, resize handles, menu and Settings, plus panels for its saved data, its messages and common
 problems. This also works in AI tools' previews (Gemini Canvas and others) and in `sdk/lab.html` (paste
-the HTML). See [docs/WIDGET-SDK.md, "Testing a widget"](docs/WIDGET-SDK.md#testing-a-widget). Inside
+the HTML). To have an AI tool write one, start with the prompt in [docs/AI-PROMPT.md](docs/AI-PROMPT.md).
+See [docs/WIDGET-SDK.md, "Testing a widget"](docs/WIDGET-SDK.md#testing-a-widget). Inside
 21Board: Settings → Advanced → Developer mode → *Test a widget*: enter its path, or **Upload file…** to try
 the `.html` file on your computer in your own board. An uploaded file runs sealed off from your boards (it
 can't reach their data), is kept on this device only (never in exports, board history or the Google Drive
