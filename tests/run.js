@@ -472,7 +472,9 @@ const SUITES = [
     await ctx.setOffline(true);
     await page.reload(); await page.waitForTimeout(800);
     ok(await page.locator('.picker-btn.left').isVisible(), 'board loads offline');
-    const ids = await page.evaluate(() => window.__board21.catalog().filter(a => !a.devOnly).map(a => a.id));
+    // (Not the district apps: they come from their own sites, keep their own offline copies and have no SDK to
+    // connect with. Their suite, "District apps", covers them.)
+    const ids = await page.evaluate(() => window.__board21.catalog().filter(a => !a.devOnly && !a.external).map(a => a.id));
     for (const id of ids) await page.evaluate(id => window.__board21.openWidget(id), id);
     await page.waitForTimeout(2500);
     const conn = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).map(w => [w.ikey, w.connected]));
@@ -2900,7 +2902,8 @@ const SUITES = [
     const pb = await ctxB.newPage(), breq = [];
     pb.on('request', r => breq.push(r.url()));
     await pb.goto(BASE); await pb.waitForTimeout(600);
-    await pb.evaluate(() => window.__board21.catalog().forEach(w => window.__board21.openWidget(w.id))); await pb.waitForTimeout(2500);
+    // (Not the district apps: their sites are never reached from the tests, and they have no SDK. See "District apps".)
+    await pb.evaluate(() => window.__board21.catalog().filter(w => !w.external).forEach(w => window.__board21.openWidget(w.id))); await pb.waitForTimeout(2500);
     ok(!breq.some(u => /board21-dev\.js|board-shell\.js/.test(u)) && await pb.evaluate(() => [...window.__board21.state.wins.values()].every(w => w.connected && w.iframe.contentWindow.Board21.context.host === 'board')), 'inside 21Board, widgets connect at once and never load the dev window');
     // A widget's own console hook isn't undone by the SDK inside the board.
     await pb.click('.picker-btn.left'); await pb.click('[data-ctl="settings"]'); await pb.waitForTimeout(300);
@@ -3598,7 +3601,11 @@ const SUITES = [
     {
       const oldSw = fs.readFileSync(path.join(__dirname, 'fixtures', 'sw-2026.11.10-30.js'), 'utf8').replace("'2026.11.10-30'", "'OLD-1'");
       ok(oldSw.includes("'OLD-1'") && oldSw.includes('refresh in the background'), '(the fixture is the service worker of release 2026.11.10-30)');
-      deploy('old', { version: 'TEST-1', change: marked('v1'), sw: oldSw });
+      // (That release had no district apps: its worker would try to save their pages, on another site, with its own
+      // files, and never install. A device that has it keeps the list it installed with.)
+      const noApps = t => t.replace(/\n  \/\/ The district's own apps[\s\S]*?(?=\n  \{\n    id: 'sdk-playground')/, '');
+      ok(!/external: true/.test(noApps(fs.readFileSync(path.join(ROOT, 'widgets', 'registry.js'), 'utf8'))), '(and its list of widgets is from before the district apps)');
+      deploy('old', { version: 'TEST-1', change: Object.assign(marked('v1'), { 'widgets/registry.js': noApps }), sw: oldSw });
       const url = BASE + '__site/old/?kiosk=yes';
       const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
       // Each time the board comes up in this tab, which release its page and its script are from.
@@ -4458,6 +4465,229 @@ setTimeout(() => { let i = 0; while (i < 10) { ${fixed ? 'i++;' : '/* forgot i++
       ok(await p3.evaluate(() => !window.__board21.state.devFiles.has('dev-hang') && localStorage.getItem('21board-devfile-starts') === '{}'), 'and one can be removed there');
     }
     await hc.close();
+  }],
+  ['District apps (21Sketch, 21Timer, 21DocCam)', async (browser) => {
+    // The tests never reach the real sites: every ccsd21.org address gets a stand-in from here, or nothing (and is
+    // counted in `stray`). Each stand-in counts the taps that reach it and, on loading, tries what any page from
+    // another site could: the SDK's "hello" and a "save" to the board. 21Sketch's (like the real one) keeps every
+    // press on its drawing surface to itself, so the keyboard focus never moves into it; 21Timer's 'load' never
+    // comes (an image that never answers; the real one waits on a video of its own).
+    const APPS = { '21sketch': ['21Sketch', 'https://sketchapp.ccsd21.org/'], '21timer': ['21Timer', 'https://timerapp.ccsd21.org/'], '21doccam': ['21DocCam', 'https://doccamapp.ccsd21.org/'] };
+    const SANDBOX = 'allow-scripts allow-same-origin allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-downloads';
+    const STANDIN = name => `<!doctype html><html><head><meta charset="utf-8"><title>${name} stand-in</title>
+<style>html,body{margin:0;height:100%;background:#fde68a;font:700 24px system-ui;color:#1f2937}body{display:grid;place-items:center}canvas{position:fixed;inset:0;width:100%;height:100%}</style></head>
+<body><div>${name} stand-in</div>${name === '21Sketch' ? '<canvas id="board"></canvas>' : ''}${name === '21Timer' ? '<img src="slow.png" alt="">' : ''}${name === '21DocCam' ? '<button style="position:fixed;left:8px;top:8px;width:140px;height:48px">Take a picture</button>' : ''}<script>
+window.__taps = 0; addEventListener('pointerdown', e => { window.__taps++; if (e.target.id === 'board') e.preventDefault(); }, true);
+try { localStorage.setItem('standin', '${name}'); } catch (e) { /* ignore */ }
+parent.postMessage({ b21: 1, type: 'hello' }, '*');
+parent.postMessage({ b21: 1, type: 'save', data: { from: '${name}' }, reqId: 1 }, '*');
+parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
+</script></body></html>`;
+    const stray = [], down = new Set();   // down: apps whose site can't be reached
+    const standIns = async c => {
+      await c.route(/^https?:\/\/([^/]*\.)?(ccsd21\.org|evil\.example)(:\d+)?\//, route => {
+        const u = new URL(route.request().url()), id = Object.keys(APPS).find(k => APPS[k][1] === u.origin + '/'), app = APPS[id];
+        if (app && down.has(id)) return route.abort('internetdisconnected');
+        if (app && u.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: STANDIN(app[0]) });
+        if (app && u.pathname === '/slow.png') return;   // never answers
+        if (app && u.pathname === '/favicon.ico') return route.fulfill({ status: 404, body: '' });
+        stray.push(u.href); return route.abort();
+      });
+    };
+    const ctx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+    await standIns(ctx);
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const B = (fn, arg) => page.evaluate(fn, arg);
+    const frameOf = (p, id) => p.frames().find(f => f.url() === APPS[id][1]);
+    const focused = () => B(() => window.__board21.state.focused);
+    const taps = id => frameOf(page, id).evaluate(() => window.__taps);
+    const center = async ik => { const r = await page.locator(`.win[data-ikey="${ik}"] .win-body`).boundingBox(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; };
+    const onTop = (ik, p = page) => center(ik).then(c => p.evaluate(([ik, c]) => { const e = document.elementFromPoint(c.x, c.y); return !!e && e.tagName === 'IFRAME' && e.closest('.win').dataset.ikey === ik; }, [ik, c]));
+
+    // ---- In the Widget Picker, each opens a window showing its own site, sandboxed as any widget is.
+    await page.click('.picker-btn.left'); await page.waitForTimeout(200);
+    ok(await B(names => names.every(n => Array.from(document.querySelectorAll('.widget-tile')).some(t => t.textContent.trim() === n)), Object.values(APPS).map(a => a[0])), 'the Widget Picker lists 21Sketch, 21Timer and 21DocCam');
+    await page.keyboard.press('Escape');
+    for (const id of Object.keys(APPS)) { await page.click('.picker-btn.left'); await page.click(`[data-widget="${id}"]`); await page.waitForTimeout(250); }
+    await page.waitForTimeout(1500);
+    const frames = await B(() => Object.fromEntries(Array.from(document.querySelectorAll('.win iframe')).map(f => [f.closest('.win').dataset.ikey, { src: f.getAttribute('src'), sandbox: f.getAttribute('sandbox'), allow: f.getAttribute('allow').split('; '), name: f.name }])));
+    ok(Object.entries(APPS).every(([id, [, url]]) => { const f = frames[id + ':1']; return f && f.src === url && f.sandbox === SANDBOX && f.allow.includes('camera') === (id === '21doccam') && f.allow.includes('fullscreen') && f.allow.includes('clipboard-write') && f.name === ''; }),
+      'each opens at its live address, in the same sandbox as every widget, with the camera allowed for 21DocCam only: ' + JSON.stringify(frames));
+    ok(await Promise.all(Object.keys(APPS).map(id => frameOf(page, id) && frameOf(page, id).title())).then(t => t.every((x, i) => x === Object.values(APPS)[i][0] + ' stand-in')), 'the windows show the apps (stand-ins here)');
+    // No endless loading: the page goes over the spinner, even though 21Timer's 'load' never comes.
+    await B(() => { const b = window.__board21; b.setRect('21sketch:1', { x: 20, y: 20, w: 720, h: 500 }); b.setRect('21timer:1', { x: 760, y: 20, w: 420, h: 330 }); b.setRect('21doccam:1', { x: 760, y: 370, w: 600, h: 440 }); b.focusWin('21timer:1'); });
+    await page.waitForTimeout(400);
+    ok(!(await B(() => document.querySelector('.win[data-ikey="21timer:1"] .win-loading').classList.contains('done'))) && await onTop('21timer:1'),
+      'a page whose ‘load’ never comes still shows: the spinner is under it, not over it');
+    ok(await B(() => document.querySelector('.win[data-ikey="21sketch:1"] .win-loading').classList.contains('done')) && !(await page.locator('.toast').count()), 'no error, and the spinner goes once a page has loaded');
+    // The board takes nothing from them (they posted hello, save and maximize when they loaded) and sends them nothing.
+    const recs = await B(async () => (await window.__board21.store.getAll()).map(r => r.key));
+    ok(await B(() => Array.from(window.__board21.state.wins.values()).every(w => !w.connected && !w.inst.maximized && !window.__board21.state.data.has(w.ikey))) && !recs.some(k => /^(data|conf):.*:21/.test(k)),
+      'the board takes no SDK messages from them: never connected, nothing saved, nothing maximized');
+
+    // ---- Taps inside (a page from another site doesn't tell the board it was tapped).
+    // Nothing over it: every tap reaches the app at once (two people can draw in 21Sketch and use another window).
+    let c = await center('21sketch:1');
+    await page.mouse.click(c.x, c.y); await page.waitForTimeout(300);
+    ok(await taps('21sketch') === 1 && await onTop('21sketch:1') && await focused() === '21timer:1', 'a tap inside 21Sketch, behind but with nothing over it, reaches the app at once (the board doesn’t see it)');
+    // A tap on one of its buttons moves the focus into it: that the board sees, and brings its window forward.
+    await B(() => document.activeElement && document.activeElement.blur());
+    const btn = await page.locator('.win[data-ikey="21doccam:1"] iframe').boundingBox();
+    await page.mouse.click(btn.x + 60, btn.y + 30); await page.waitForTimeout(300);
+    ok(await focused() === '21doccam:1' && await taps('21doccam') === 1, 'a tap on a button in 21DocCam reaches it and brings its window to the front');
+    // Partly behind another window: the first tap only brings it forward.
+    await B(() => { window.__board21.setRect('21doccam:1', { x: 600, y: 300, w: 600, h: 440 }); window.__board21.focusWin('21doccam:1'); });
+    await page.waitForTimeout(300);
+    await page.mouse.click(c.x, c.y); await page.waitForTimeout(300);
+    ok(await focused() === '21sketch:1' && await taps('21sketch') === 1, 'tapping inside 21Sketch while 21DocCam is partly over it brings it to the front; that tap goes no further');
+    await page.mouse.click(c.x, c.y); await page.waitForTimeout(300);
+    ok(await focused() === '21sketch:1' && await taps('21sketch') === 2 && await onTop('21sketch:1'), 'in front, the next tap reaches the app, with nothing over it');
+    await B(() => window.__board21.setRect('21doccam:1', { x: 760, y: 370, w: 600, h: 440 })); await page.waitForTimeout(300);
+    c = await center('21doccam:1');
+    await page.click('.picker-btn.left'); await page.waitForTimeout(200);
+    await page.mouse.click(c.x, c.y); await page.waitForTimeout(300);
+    ok(!(await B(() => document.getElementById('panel').classList.contains('open'))) && await taps('21doccam') === 1, 'with the Widget Picker open, a tap on an app closes it (and goes no further)');
+
+    // ---- One window per app: the Widget Picker brings it forward, or opens it again.
+    await page.click('.picker-btn.left'); await page.click('[data-widget="21sketch"]'); await page.waitForTimeout(400);
+    ok(await page.locator('.win[data-ikey^="21sketch:"]').count() === 1 && await focused() === '21sketch:1' && await page.locator('.win[data-ikey="21sketch:1"].attention').count() === 1,
+      'choosing 21Sketch again brings its window forward (and shows which it is) instead of opening a second one');
+    await B(() => window.__board21.closeWin('21sketch:1')); await page.waitForTimeout(400);
+    await page.click('.picker-btn.left'); await page.click('[data-widget="21sketch"]'); await page.waitForTimeout(800);
+    ok(await B(() => Array.from(window.__board21.state.insts.keys()).filter(k => k.startsWith('21sketch:')).join()) === '21sketch:1' && await page.locator('.win[data-ikey="21sketch:1"]').count() === 1, 'closed, it opens again as the same window');
+    ok(await page.locator('.toast', { hasText: '21Sketch closed. Open it again' }).count() === 1, 'closing it doesn’t claim the board saved its content');
+
+    // ---- The window menu: open it on its own; nothing to reset or go back to.
+    await page.click('.win[data-ikey="21sketch:1"] .win-label'); await page.waitForTimeout(250);
+    await page.screenshot({ path: OUT + '90-district-apps-light.png' });
+    const acts = await B(() => Array.from(document.querySelectorAll('#menu [data-act]')).map(b => b.dataset.act + ':' + b.textContent.trim()));
+    ok(JSON.stringify(acts) === JSON.stringify(['maximize:Fill the board', 'reload:Reload 21Sketch', 'own:Open 21Sketch on its own', 'close:Close']), 'its menu: Fill the board, “Reload 21Sketch”, “Open 21Sketch on its own”, Close (no Reset, no Earlier versions): ' + acts.join(', '));
+    const popup = ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null);
+    await page.click('#menu [data-act="own"]');
+    const pop = await popup;
+    if (pop) await pop.waitForLoadState().catch(() => {});
+    ok(!!pop && pop.url() === APPS['21sketch'][1] && await pop.evaluate(() => window.opener === null), '“Open 21Sketch on its own” opens its site in a new tab, cut off from the board');
+    if (pop) await pop.close();
+    // A window that opened while its site couldn't be reached stays on the browser's error page: Reload loads it again.
+    down.add('21timer');
+    await page.click('.win[data-ikey="21timer:1"] .win-label'); await page.click('#menu [data-act="reload"]'); await page.waitForTimeout(800);
+    ok(!frameOf(page, '21timer') && page.frames().some(f => /^chrome-error:/.test(f.url())), '(while 21Timer’s site can’t be reached, its window shows the browser’s error page)');
+    down.delete('21timer');
+    await page.click('.win[data-ikey="21timer:1"] .win-label'); await page.click('#menu [data-act="reload"]'); await page.waitForTimeout(800);
+    ok(!!frameOf(page, '21timer') && await frameOf(page, '21timer').title() === '21Timer stand-in' && await focused() === '21timer:1', '“Reload 21Timer” in its menu loads it again once the site answers');
+
+    // ---- Settings says the app keeps its own work; deleting the window leaves that work alone.
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    const row = await page.locator('#settings .inst', { hasText: '21Sketch' }).first().innerText();
+    ok(/21Sketch keeps its own work on this device/.test(row) && !/\d B|saved/.test(row), 'Settings’ window list says 21Sketch keeps its own work on this device (no size, no “saved”): ' + row.replace(/\n/g, ' '));
+    await page.locator('#settings .inst', { hasText: '21Timer' }).locator('[data-act="inst-delete"]').click(); await page.waitForTimeout(300);
+    ok(/Your work in 21Timer isn’t touched/.test(await page.locator('#modal.open').innerText()), 'deleting its window says the work in 21Timer isn’t touched');
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(200);
+    // Erase everything and Export don't reach the apps' work, and say so.
+    const allNamed = t => Object.values(APPS).every(([name]) => t.includes(name));
+    await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300);
+    let said = await page.locator('#modal.open').innerText();
+    ok(allNamed(said) && /keep their own work: it isn’t erased here\. Clear it in each app itself\./.test(said), 'Erase everything says the apps keep their own work, which it doesn’t erase: ' + said.replace(/\n/g, ' '));
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="export"]'); await page.waitForTimeout(300);
+    said = await page.locator('#modal.open').innerText();
+    ok(allNamed(said) && /keep their own work: it isn’t in the file\. Save it in each app itself\./.test(said), 'so does Export: their work isn’t in the file');
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(200);
+
+    // ---- Exports and Board history keep the window, never content.
+    const full = await B(() => window.__board21.buildExport('full')), tpl = await B(() => window.__board21.buildExport('template'));
+    const inExp = (e, id) => e.instances.find(i => i.widgetId === id);
+    ok(Object.keys(APPS).every(id => { const i = inExp(full, id); return i && i.open && i.rect.w > 0 && i.data === null && i.config === null; }) && Object.keys(APPS).every(id => inExp(tpl, id)) && !/ccsd21/.test(JSON.stringify(full)),
+      'a full backup and a template keep each window (where, open), with no content and no address');
+    await B(() => window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }));
+    const hid = await B(() => window.__board21.history.save('District apps'));
+    const hexp = hid && await B(async id => (await window.__board21.history.get(id)).body.exp, hid);
+    ok(!!hexp && Object.keys(APPS).every(id => { const i = inExp(hexp, id); return i && i.data === null; }), 'a Board history version keeps the windows too, with no content');
+
+    // ---- A crafted file can't point a window anywhere else: the address comes from the registry only.
+    const crafted = JSON.parse(JSON.stringify(full));
+    crafted.instances.forEach(i => { if (APPS[i.widgetId]) Object.assign(i, { entry: 'https://evil.example/', src: 'https://evil.example/', url: 'https://evil.example/', data: { entry: 'https://evil.example/' } }); });
+    crafted.widgets = [{ id: '21sketch', entry: 'https://evil.example/', external: true }];
+    await B(o => window.__board21.applyImport(o, 'replace'), crafted); await page.waitForTimeout(1500);
+    const srcs = await B(() => Array.from(document.querySelectorAll('.win iframe')).map(f => f.getAttribute('src')));
+    ok(Object.values(APPS).every(([, url]) => srcs.includes(url)) && !srcs.some(s => /evil/.test(s)), 'a crafted .21board file with another address still opens the real ones: ' + srcs.join(' '));
+    ok(await B(() => Array.from(window.__board21.state.wins.values()).every(w => !w.connected)), 'and the windows still take no messages (the data it carried is never handed to the app)');
+
+    // ---- "Add to my board" adds no second window of an app the board has.
+    const addFile = JSON.parse(JSON.stringify(tpl));
+    addFile.instances.push(Object.assign({}, inExp(tpl, '21doccam'), { widgetId: 'dice', n: 1 }));
+    fs.writeFileSync(OUT + 'district-apps-add.21board', JSON.stringify(addFile));
+    await page.setInputFiles('#import-input', OUT + 'district-apps-add.21board'); await page.waitForTimeout(300);
+    await page.locator('#modal.open .btn', { hasText: 'Add to my board' }).click(); await page.waitForTimeout(1500);
+    const keys = await B(() => Array.from(window.__board21.state.insts.keys()).sort().join());
+    ok(keys === '21doccam:1,21sketch:1,21timer:1,dice:1' && await page.locator('.toast', { hasText: 'Added 1 window.' }).count() === 1, 'adding a file with the three apps and Dice adds only Dice (“Added 1 window.”): ' + keys);
+    await B(() => window.__board21.closeWin('dice:1', { quiet: true })); await page.waitForTimeout(300);
+
+    // ---- Offline: a hint beside the name and once in a toast, never over the app; gone when back online.
+    await B(() => { const b = window.__board21; b.openWidget('dice'); b.setRect('dice:1', { x: 1200, y: 20, w: 360, h: 280 }); b.focusWin('21sketch:1'); });
+    await page.waitForTimeout(600);
+    const subs = () => B(() => Object.fromEntries(Array.from(document.querySelectorAll('.win')).map(w => [w.dataset.ikey, w.querySelector('.sub').textContent])));
+    await ctx.setOffline(true); await page.waitForTimeout(800);
+    let s = await subs();
+    ok(s['21sketch:1'] === 'Offline' && s['21timer:1'] === 'Offline' && s['21doccam:1'] === 'Offline' && s['dice:1'] === '', 'offline, each district app’s title bar says Offline (not other widgets’): ' + JSON.stringify(s));
+    const told = page.locator('.toast', { hasText: 'need a connection, unless they’re saved on this device for offline use' });
+    const toldText = await told.count() === 1 ? await told.innerText() : '';
+    ok(Object.values(APPS).every(([name]) => toldText.includes(name)) && / and /.test(toldText), 'and one toast says they need a connection unless they’re saved on this device for offline use: ' + toldText);
+    ok(await onTop('21sketch:1'), 'nothing covers the app (it may well work offline)');
+    await page.screenshot({ path: OUT + '91-district-apps-offline.png' });
+    await ctx.setOffline(false); await page.waitForTimeout(800);
+    s = await subs();
+    ok(Object.values(s).every(v => v === ''), 'back online, the hint goes');
+
+    // ---- Not part of 21Board's offline copy or its release stamp.
+    const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    const listed = Object.keys(require('vm').runInNewContext('(' + /\bconst FILES = (\{[^}]*\});/.exec(sw)[1] + ')'));
+    ok(stamped() && listed.length > 10 && !listed.some(f => /ccsd21|^https?:/.test(f)), 'the release stamp lists none of their addresses (and matches the files)');
+    const ctl = await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 }).then(() => true, () => false);
+    const cached = ctl ? await B(async () => { const out = []; for (const k of await caches.keys()) for (const r of await (await caches.open(k)).keys()) out.push(r.url); return out; }) : [];
+    ok(ctl && cached.length === listed.length && !cached.some(u => /ccsd21/.test(u)), `the offline copy saves without them (${cached.length} files)`);
+
+    // ---- Dark theme: the board’s chrome follows it; the apps keep their own look.
+    await B(() => window.__board21.focusWin('21doccam:1'));
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="theme"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+    await page.screenshot({ path: OUT + '92-district-apps-dark.png' });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+
+    // ---- Kiosk on a flat panel (touch): one person draws in 21Sketch while another uses Dice; no “Open … on its own”
+    // (a kiosk can’t open tabs).
+    const kctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, hasTouch: true });
+    await standIns(kctx);
+    const k = await kctx.newPage();
+    await k.goto(BASE + '?kiosk=yes'); await boardUp(k); await freeBoard(k);
+    await k.evaluate(() => { const b = window.__board21; b.openWidget('21sketch'); b.openWidget('dice'); b.setRect('21sketch:1', { x: 20, y: 20, w: 700, h: 480 }); b.setRect('dice:1', { x: 760, y: 20, w: 360, h: 280 }); b.focusWin('dice:1'); });
+    await k.waitForTimeout(1500);
+    const kr = await k.locator('.win[data-ikey="21sketch:1"] .win-body').boundingBox(), kd = await k.locator('.win[data-ikey="dice:1"] .win-body').boundingBox();
+    const ktaps = () => frameOf(k, '21sketch').evaluate(() => window.__taps);
+    for (let i = 0; i < 2; i++) {
+      await k.touchscreen.tap(kd.x + kd.width / 2, kd.y + kd.height / 2); await k.waitForTimeout(250);
+      await k.touchscreen.tap(kr.x + kr.width / 2, kr.y + kr.height / 2); await k.waitForTimeout(250);
+    }
+    ok(await ktaps() === 2 && await k.evaluate(() => window.__board21.state.focused) === 'dice:1', 'with nothing over 21Sketch, each touch in it reaches the app, however often Dice is touched in between');
+    await k.evaluate(() => { const b = window.__board21; b.setRect('dice:1', { x: 600, y: 20, w: 360, h: 280 }); b.focusWin('dice:1'); }); await k.waitForTimeout(300);
+    await k.touchscreen.tap(kr.x + kr.width / 2, kr.y + kr.height / 2); await k.waitForTimeout(300);
+    ok(await k.evaluate(() => window.__board21.state.focused) === '21sketch:1' && await ktaps() === 2, 'with Dice partly over it, a touch inside 21Sketch brings it to the front');
+    await k.tap('.win[data-ikey="21sketch:1"] .win-label'); await k.waitForTimeout(250);
+    ok(await k.locator('#menu [data-act="own"]').count() === 0 && await k.locator('#menu [data-act="reload"]').count() === 1 && await k.locator('#menu [data-act="close"]').count() === 1, 'in kiosk mode its menu has “Reload 21Sketch” but no “Open 21Sketch on its own”');
+    await kctx.close();
+
+    // ---- Opened from disk there is no origin to check messages by: the board still takes none from these apps.
+    const fctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    await standIns(fctx);
+    const fp = await fctx.newPage();
+    await fp.goto('file://' + path.join(ROOT, 'index.html').split(path.sep).join('/').replace(/^\/?/, '/')); await fp.waitForTimeout(600);
+    await fp.evaluate(() => { window.__board21.openWidget('21sketch'); window.__board21.openWidget('notes'); }); await fp.waitForTimeout(2000);
+    ok(!!frameOf(fp, '21sketch') && await fp.evaluate(() => { const w = window.__board21.state.wins; return !w.get('21sketch:1').connected && !w.get('21sketch:1').inst.maximized && !window.__board21.state.data.has('21sketch:1') && w.get('notes:1').connected; }),
+      'opened from disk, Notes connects as usual but 21Sketch’s hello, save and maximize are ignored');
+    await fctx.close();
+    ok(!stray.length, 'nothing went to the real sites (or anywhere else): ' + stray.join(' '));
   }],
   ['Opened from disk (file://)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });

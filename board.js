@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.11-33';
-  const BOARD_BUILD = '90266f0f';
+  const BOARD_BUILD = '800569c8';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -175,7 +175,9 @@
     windows: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
     quit: '<path d="M18 6L6 18M6 6l12 12"/>',   // a plain X (kiosk mode: Quit)
     history: '<path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 4.5v4h4"/><path d="M12 7.5V12l3 2"/>',   // clock with a back arrow
-    send: '<path d="M7 18.5H6.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8.1 4.5 4.5 0 0 1 17.5 18.5H17"/><path d="M12 20.5v-8"/><path d="M8.8 15.2L12 12l3.2 3.2"/>' // cloud with an arrow going up
+    send: '<path d="M7 18.5H6.5a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 17.6 8.1 4.5 4.5 0 0 1 17.5 18.5H17"/><path d="M12 20.5v-8"/><path d="M8.8 15.2L12 12l3.2 3.2"/>', // cloud with an arrow going up
+    external: '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/>', // a box with an arrow out: open in its own tab
+    reload: '<path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M21 4.5v4h-4"/>' // a clockwise arrow (history's, mirrored)
   };
   const svg = (name, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true"${cls ? ` class="${cls}"` : ''}>${ICONS[name] || ''}</svg>`;
 
@@ -260,6 +262,10 @@
       devOnly: !!a.devOnly,
       dev: !!extra.dev,
       sealed: !!extra.sealed,   // an uploaded file (see DevFiles): runs sealed off from the board
+      single: !!a.single,   // one window only (see openWidget)
+      // A district app from its own site (registry only: a test widget never is). Its address comes from the
+      // registry and nowhere else; it has no SDK, so the board takes no messages from it and sends it nothing.
+      external: a.external === true && !extra.dev && /^https:\/\//i.test(a.entry),
       win: {
         width: pos(w.width, 400), height: pos(w.height, 300),
         minWidth: pos(w.minWidth, 160), minHeight: pos(w.minHeight, 100),
@@ -1701,18 +1707,20 @@
       el.setAttribute('aria-label', this.widget.name);
       el.innerHTML =
         `<div class="win-title"><button class="win-label" aria-haspopup="menu" title="Window menu"><span class="name"></span><span class="num"></span><span class="sub"></span>${svg('chevron')}</button></div>` +
-        `<div class="win-body"><div class="win-loading"></div></div>` +
+        `<div class="win-body"><div class="win-loading"></div>${this.widget.external ? '<div class="win-shield" hidden></div>' : ''}</div>` +
         ['n', 's', 'e', 'w', 'nw', 'ne', 'sw', 'se'].map(h => `<div class="grip ${h}" data-h="${h}"></div>`).join('');
       this.el = el;
       this.titleEl = $('.win-title', el);
       this.labelEl = $('.win-label', el);
       this.bodyEl = $('.win-body', el);
       this.loadingEl = $('.win-loading', el);
+      this.shieldEl = $('.win-shield', el);   // (district apps: see coverApps)
       el.addEventListener('animationend', e => { if (e.target === el) el.classList.remove('opening'); });
       this.labelEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); Menu.toggle(this); } });
       this.renderTitle();
       this.createFrame();
       desk().appendChild(el);
+      if (this.widget.external) AppsOffline.soon();
     }
 
     createFrame() {
@@ -1724,8 +1732,9 @@
       f.setAttribute('allow', (sealed ? ['fullscreen', 'clipboard-write', 'autoplay'] : ['fullscreen', 'clipboard-read', 'clipboard-write', 'autoplay', ...this.widget.permissions]).join('; '));
       f.addEventListener('load', () => this.onFrameLoad());
       // Tells the SDK it's inside 21Board, before any of its code runs. (Set before inserting the frame:
-      // a later change doesn't reach the widget's window.name.)
-      f.name = 'b21-board:' + this.ikey;
+      // a later change doesn't reach the widget's window.name.) Not for a district app: it's another site's page,
+      // with no SDK. (Its address is the registry's, never saved data.)
+      if (!this.widget.external) f.name = 'b21-board:' + this.ikey;
       if (sealed) {
         // An uploaded file: its page is put together first (DevFiles.start), then the frame goes in.
         this.iframe = f; this.loads = 0; this.helloed = false;
@@ -1733,7 +1742,9 @@
         DevFiles.start(this.widget.id, this.left).then(html => { if (this.iframe !== f) return; f.srcdoc = html; this.bodyEl.insertBefore(f, this.loadingEl); });
         return;
       }
-      this.bodyEl.insertBefore(f, this.loadingEl);
+      // (A district app's page goes over the spinner, not under it: the board can't see when it is drawn, and its
+      // 'load' can come very late or not at all: 21Timer's waits on a hidden video of its own.)
+      this.bodyEl.insertBefore(f, this.widget.external ? this.shieldEl : this.loadingEl);
       this.iframe = f;
       this.loadingEl.classList.remove('done');
       if (this.widget.srcdoc != null) f.srcdoc = this.widget.srcdoc; else f.src = this.widget.entry;
@@ -1770,7 +1781,7 @@
     renderTitle() {
       $('.name', this.labelEl).textContent = this.widget.name;
       $('.num', this.labelEl).textContent = this.inst && this.inst.n > 1 ? String(this.inst.n) : '';
-      $('.sub', this.labelEl).textContent = this.subtitle;
+      $('.sub', this.labelEl).textContent = this.subtitle || (this.widget.external && navigator.onLine === false ? 'Offline' : '');   // (AppsOffline)
       this.labelEl.setAttribute('aria-label', `${this.widget.name}${this.inst && this.inst.n > 1 ? ' ' + this.inst.n : ''} window menu`);
     }
 
@@ -1824,6 +1835,7 @@
       s.width = Math.round(r.w) + 'px';
       s.height = Math.round(r.h) + 'px';
       this.notifyInfo();
+      coverApps();   // (what overlaps a district app may have changed)
     }
 
     info() {
@@ -1984,9 +1996,46 @@
     const sealed = ORIGIN !== '*' && e.origin === 'null';
     if (ORIGIN !== '*' && e.origin !== location.origin && !sealed) return;
     for (const w of S.wins.values()) {
-      if (w.iframe && w.iframe.contentWindow === e.source) { if (!sealed || w.widget.sealed) w.handle(m); return; }
+      // (Never from a district app's page: it is another site, even where the origin can't be checked: file://.)
+      if (w.iframe && w.iframe.contentWindow === e.source) { if (!w.widget.external && (!sealed || w.widget.sealed)) w.handle(m); return; }
     }
   });
+
+  // "21Sketch", "21Sketch and 21Timer", "21DocCam, 21Sketch and 21Timer".
+  const andList = names => names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || '';
+
+  // District apps (registry `external`) come from their own sites. Without a connection, a window shows one only if
+  // the app saved its own copy on this device, and the board can't tell whether it did (the page is another site's:
+  // the app or the browser's "no connection" page, it can't see which). So it only says so, beside the window's
+  // name and once in a toast, never over the app, and it never asks the sites whether they are there.
+  const AppsOffline = {
+    told: new Set(),   // the apps the toast named since the connection went
+    init() {
+      const update = () => {
+        if (navigator.onLine !== false) this.told.clear();
+        for (const w of S.wins.values()) if (w.widget.external) w.renderTitle();
+        this.soon();
+      };
+      window.addEventListener('offline', update);
+      window.addEventListener('online', update);
+    },
+    soon() { clearTimeout(this.t); this.t = setTimeout(() => this.tell(), 300); },   // (windows opened together: one toast)
+    tell() {
+      if (navigator.onLine !== false) return;
+      const names = Array.from(new Set(Array.from(S.wins.values()).filter(w => w.widget.external && !this.told.has(w.widget.name)).map(w => w.widget.name)));
+      if (!names.length) return;
+      names.forEach(n => this.told.add(n));
+      toast(`${andList(names)} ${names.length > 1 ? 'need' : 'needs'} a connection, unless ${names.length > 1 ? 'they’re' : 'it’s'} saved on this device for offline use.`, { timeout: 8000 });
+    }
+  };
+
+  // Erasing or exporting the board doesn't reach a district app's work (the app keeps it on the device): a sentence
+  // that says so, for those dialogs, when the board has a window of one. Else ''.
+  function appsOwnWork(notHere, todo) {
+    const names = Array.from(new Set(Array.from(S.insts.values()).map(i => getWidget(i.widgetId)).filter(w => w && w.external).map(w => w.name)));
+    if (!names.length) return '';
+    return ` ${andList(names)} ${names.length > 1 ? 'keep their' : 'keeps its'} own work: it isn’t ${notHere}. ${todo} in ${names.length > 1 ? 'each app' : names[0]} itself.`;
+  }
 
   // =====================================================================
   // 8. Window actions
@@ -2023,6 +2072,7 @@
       w.el.style.zIndex = Math.max(1, Math.round(z));
       if (z > topZ) { topZ = z; top = ikey; }
     }
+    coverApps();
     if (S.deselected) top = null;
     if (S.focused === top) return;
     const prev = S.wins.get(S.focused);
@@ -2032,12 +2082,32 @@
     if (cur) { cur.el.classList.add('focused'); cur.post('focus'); cur.notifyInfo(); }
   }
 
+  // A district app's page doesn't tell the board it was tapped (21Sketch's drawing surface keeps even the keyboard
+  // focus out). So one that a window in front of it overlaps is covered: a tap there brings it forward and goes no
+  // further. One that nothing overlaps takes every tap itself (two people drawing in it and using another window
+  // lose no strokes), though the board's outline may then stay on the other window.
+  function coverApps() {
+    const z = w => (w.inst && w.inst.z) || 0;
+    for (const w of S.wins.values()) {
+      if (w.shieldEl) w.shieldEl.hidden = !w.disp || !Array.from(S.wins.values()).some(o => o !== w && o.disp && z(o) > z(w) && overlaps(o.disp, w.disp));
+    }
+  }
+
   // Open a widget: reopen its lowest-numbered closed instance (restoring its data),
   // or create the next instance number if every existing one is already open.
   function openWidget(widgetId, opts = {}) {
     const widget = getWidget(widgetId);
     if (!widget || !Store.loaded) return null;   // (not before the stored board has been read: its windows aren't known yet)
     const mine = Array.from(S.insts.values()).filter(i => i.widgetId === widgetId).sort((a, b) => a.n - b.n);
+    // One window only (registry `single`, e.g. a district app: a second 21Sketch would show the same drawing, a
+    // second 21DocCam would start the camera again): the one there is comes forward, or opens again.
+    const shown = widget.single && mine.find(i => i.open);
+    if (shown) {
+      const ik = ikeyOf(widgetId, shown.n), w = S.wins.get(ik);
+      focusWin(ik);
+      if (w) w.attention();
+      return ik;
+    }
     const closed = mine.find(i => !i.open);
     let ikey, inst;
     if (closed) {
@@ -2090,7 +2160,7 @@
       try { shown = +localStorage.getItem('21board-tip-close') || 0; } catch (e) { /* ignore */ }
       if (shown < 3) {
         const widget = getWidget(inst.widgetId);
-        toast(`${widget ? widget.name : 'Widget'} closed. ` + (SaveNote.state() ? 'Open it again from the Widget Picker.' : 'Its content is saved — open it again from the Widget Picker.'));
+        toast(`${widget ? widget.name : 'Widget'} closed. ` + (SaveNote.state() || (widget && widget.external) ? 'Open it again from the Widget Picker.' : 'Its content is saved — open it again from the Widget Picker.'));
         try { localStorage.setItem('21board-tip-close', String(shown + 1)); } catch (e) { /* ignore */ }
       }
     }
@@ -2782,8 +2852,15 @@
       }
       if (html) html += '<div class="menu-sep"></div>';
       html += w.inst.maximized ? item('restore', svg('restore'), 'Restore size') : item('maximize', svg('maximize'), 'Fill the board');
-      if (BoardHistory.hasWindow(w.ikey)) html += item('history', svg('history'), 'Earlier versions…');
-      html += item('reset', svg('reset'), 'Reset');
+      if (w.widget.external) {
+        // A district app keeps its own work: there is none here to reset or to go back to. Reload: a window that
+        // opened while the site couldn't be reached stays on the browser's error page. (A kiosk can't open tabs.)
+        html += item('reload', svg('reload'), `Reload ${w.widget.name}`);
+        if (!KIOSK) html += item('own', svg('external'), `Open ${w.widget.name} on its own`);
+      } else {
+        if (BoardHistory.hasWindow(w.ikey)) html += item('history', svg('history'), 'Earlier versions…');
+        html += item('reset', svg('reset'), 'Reset');
+      }
       html += item('close', svg('close'), 'Close');
       this.el.innerHTML = html;
     },
@@ -2843,6 +2920,8 @@
           break;
         }
         case 'history': this.close(); HistorySheet.open(Settings.side || 'left', { ikey: w.ikey }); break;
+        case 'own': this.close(); if (w.widget.external) window.open(w.widget.entry, '_blank', 'noopener'); break;
+        case 'reload': this.close(); if (w.widget.external) { w.reload(); focusWin(w.ikey); } break;
         case 'reset-no': this.confirming = false; this.render(); this.position(); break;
         case 'close': this.close(); closeWin(w.ikey); break;
       }
@@ -3048,10 +3127,11 @@
         const name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
         const status = !widget ? 'Widget not installed' : i.open ? 'Open' : 'Closed';
         const unsaved = Store.failed || (Writer.failing && ['inst', 'data', 'conf'].some(k => Writer.pending.has(Keys[k](S.boardId, ikey))));
+        const app = widget && widget.external;   // a district app: its work isn't the board's (README, "District apps")
         return `<div class="inst"><span class="widget-icon" style="--c:${esc(widget ? widget.color : '#9ca3af')}">${widget ? widget.icon : svg('widget')}</span>` +
-          `<div class="meta"><b>${esc(name)}</b><span>${status} · ${fmtBytes(size)}${unsaved ? ', not saved' : ' saved'}</span></div>` +
+          `<div class="meta"><b>${esc(name)}</b><span>${status} · ${app ? `${esc(widget.name)} keeps its own work on this device${unsaved ? ' · window not saved' : ''}` : `${fmtBytes(size)}${unsaved ? ', not saved' : ' saved'}`}</span></div>` +
           (widget && !i.open ? `<button class="icon" data-act="inst-open" data-val="${esc(ikey)}" title="Open" aria-label="Open ${esc(name)}">${svg('open')}</button>` : '') +
-          `<button class="icon" data-act="inst-delete" data-val="${esc(ikey)}" title="Delete" aria-label="Delete ${esc(name)} and its content">${svg('trash')}</button></div>`;
+          `<button class="icon" data-act="inst-delete" data-val="${esc(ikey)}" title="Delete" aria-label="${app ? `Delete the ${esc(name)} window` : `Delete ${esc(name)} and its content`}">${svg('trash')}</button></div>`;
       }).join('') : '<div class="empty-note">No widget windows yet. Open one from the Widget Picker.</div>';
 
       const devRow = (id, name, where) =>
@@ -3219,7 +3299,8 @@
           if (!i) break;
           const widget = getWidget(i.widgetId);
           const name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
-          const ok = await dialog({ title: `Delete ${name}?`, message: 'Its window and everything saved in it will be removed from this board. ' + (BoardHistory.enabled() ? 'You can bring it back from Board history for a while.' : 'This can’t be undone.'), actions: [{ label: 'Delete', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+          const ok = await dialog({ title: `Delete ${name}?`, message: (widget && widget.external ? `Its window will be removed from this board. Your work in ${widget.name} isn’t touched: ${widget.name} keeps it on this device. `
+            : 'Its window and everything saved in it will be removed from this board. ') + (BoardHistory.enabled() ? 'You can bring it back from Board history for a while.' : 'This can’t be undone.'), actions: [{ label: 'Delete', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
           if (ok) {
             const id = await deleteInstance(val); this.render();
             toast(`Deleted ${name}.`, id ? { action: 'Undo', timeout: 15000, onAction: () => BoardHistory.putBack(id, val, { exact: true, quiet: true }) } : {});
@@ -3287,9 +3368,10 @@
           // Where nothing is stored (see SaveNote), only the board on screen can be emptied: the saved board,
           // if there is one, and its history are left alone.
           const temp = Store.failed, saved = temp === 'unopened' ? ' Your saved board isn’t touched: reload 21Board to open it.' : '';
-          const ok = await dialog(temp ? { title: 'Empty this board?', message: 'The windows, their content and the settings you see now are cleared.' + saved,
+          const apps = appsOwnWork('erased here', 'Clear it');
+          const ok = await dialog(temp ? { title: 'Empty this board?', message: 'The windows, their content and the settings you see now are cleared.' + saved + apps,
             actions: [{ label: 'Empty this board', value: 'erase', kind: 'danger' }, { label: 'Cancel', value: null }] }
-            : { title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + ' Export a backup first if you might want them later.',
+            : { title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + ' Export a backup first if you might want them later.' + apps,
               actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }]
                 .concat(hist ? [{ label: 'Erase, including board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (ok === 'backup') { await doExport('full'); break; }
@@ -3344,7 +3426,7 @@
   async function exportFlow() {
     const kind = await dialog({
       title: 'Export board',
-      message: 'Save a .21board file you can import later or share with another teacher.',
+      message: 'Save a .21board file you can import later or share with another teacher.' + appsOwnWork('in the file', 'Save it'),
       actions: [
         { label: 'Full backup', sub: 'Windows, their content, and closed windows', value: 'full', kind: 'primary', choice: true },
         { label: 'Blank template', sub: 'Window layout and widget settings only — no content', value: 'template', choice: true },
@@ -3538,6 +3620,7 @@
     try {
       const label = `${mode === 'replace' ? 'Before importing' : 'Before adding windows from'} “${file.name.replace(/\.21board$/i, '')}”`;
       const replace = mode === 'replace', shared = Link.supported;
+      const opened = () => Array.from(S.insts.values()).filter(i => i.open).length, before = opened();   // (Add: a district app's window isn't added twice)
       if (replace && shared) await Link.leaving(uid);
       const undoId = await Link.swap(async () => {
         const id = await applyImport(parsed, mode, { uid: replace ? uid : null, keepCreated: replace, photo: replace && Link.ownPhoto(uid, parsed) ? 'keep' : 'file', history: { reason: replace ? 'import' : 'add', label } });
@@ -3547,7 +3630,8 @@
       });
       // "Send automatically" sends what was imported; a version waiting in the folder is offered for the board that is here now.
       if (shared) { Link.changed([Keys.board(S.boardId)]); Link.computeOffer(); }
-      toast(replace ? 'Board imported.' : `Added ${openCount} window${openCount === 1 ? '' : 's'}.`, undoAction(undoId, replace ? 'the import' : 'adding windows'));
+      const added = opened() - before;
+      toast(replace ? 'Board imported.' : `Added ${added} window${added === 1 ? '' : 's'}.`, undoAction(undoId, replace ? 'the import' : 'adding windows'));
     } catch (err) {
       console.error(err);
       toast('Import failed: ' + (err.message || err));
@@ -3590,13 +3674,15 @@
 
     for (const i of p.instances.slice().sort((a, b2) => a.z - b2.z)) {
       let n = i.n;
+      const widget = getWidget(i.widgetId);
       if (mode === 'add') {
+        // One window per `single` widget (a district app): a file adds none where the board has one (or added one).
+        if (widget && widget.single && used.has(i.widgetId)) continue;
         const set = used.get(i.widgetId) || new Set();
         n = 1; while (set.has(n)) n++;
         set.add(n); used.set(i.widgetId, set);
       }
       let rect = convert(i.rect);
-      const widget = getWidget(i.widgetId);
       if (widget) rect = fitRect(rect, constraintsFor(widget), view);
       if (mode === 'add' && i.open) {
         if (placed.some(o => overlaps(rect, o))) {
@@ -5863,6 +5949,7 @@
     Picker.init();
     Menu.init();
     Settings.init();
+    AppsOffline.init();
     HistorySheet.init();
     ShapeHint.init();
     const rescueBtn = $('#empty-hint .rescue button');
@@ -5888,8 +5975,16 @@
       if (Settings.isOpen && !t.closest('#settings') && !t.closest('#modal') && !t.closest('.picker-btn') && !t.closest('#panel')) Settings.close();
       if (HistorySheet.isOpen && !t.closest('#history') && !t.closest('#modal') && !t.closest('#toasts') && !t.closest('.picker-btn') && !t.closest('#panel') && !t.closest('#empty-hint')) HistorySheet.close();
     }, true);
-    // Focus moving into a widget iframe (a tap inside it) also closes popups.
-    window.addEventListener('blur', () => setTimeout(() => { if (document.activeElement && document.activeElement.tagName === 'IFRAME') { Picker.close(); Menu.close(); } }, 0));
+    // Focus moving into a widget iframe (a tap inside it) also closes popups. For a district app it's all the board
+    // learns of a tap inside (one on its buttons, not on 21Sketch's drawing surface), so its window comes forward.
+    // (The iframe itself gets no 'focus' event.)
+    window.addEventListener('blur', () => setTimeout(() => {
+      const f = document.activeElement;
+      if (!f || f.tagName !== 'IFRAME') return;
+      Picker.close(); Menu.close();
+      const w = S.wins.get((f.closest('.win') || { dataset: {} }).dataset.ikey);
+      if (w && w.widget.external) focusWin(w.ikey);
+    }, 0));
 
     document.addEventListener('keydown', e => {
       if (dialogKey(e)) return;

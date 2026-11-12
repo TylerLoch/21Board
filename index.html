@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="90266f0f">
+<html lang="en" data-build="800569c8">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -179,6 +179,8 @@
     .win-loading { position: absolute; inset: 0; display: grid; place-items: center; background: var(--surface); transition: opacity .2s; }
     .win-loading::after { content: ""; width: 28px; height: 28px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--primary); animation: spin .8s linear infinite; }
     .win-loading.done { opacity: 0; pointer-events: none; }
+    .win-shield { position: absolute; inset: 0; } /* over a district app that a window in front overlaps: a tap brings it forward (board.js, coverApps) */
+    body:has(#panel.open, #menu.open, .sheet.open) .win-shield { display: block; } /* and while a panel or menu is open: a tap closes it */
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .win.attention .win-title { animation: attention 1s ease-in-out 5; }

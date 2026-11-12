@@ -219,6 +219,10 @@ Exports write the board's `scale` and `shape`, and the space the rects are in as
 Any JSON value the widget saved. The format is up to each widget; document it at the top of the
 widget's script. Missing record = nothing saved (`null` in the SDK).
 
+The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
+their own work in their own site's storage on the device. Their windows have an `inst` record like any other,
+and exports and Board history carry that (with `data` and `config` null), never an address.
+
 ---
 
 ## Board history
@@ -262,6 +266,10 @@ Each device thins only files with its own `dev4` (by name only); files ending in
 - **Reset** (window menu) deletes that instance's `data` and `conf` and restores the default size.
 - **Delete** (Settings → Saved widget windows) removes the `inst`, `data` and `conf` records.
 - Records for a widget that isn't installed are kept (and exported) but not shown.
+- A widget marked `single` in the registry (the district apps) has one window: opening it while it is open
+  brings that window forward instead of creating a second instance, and *Add to my board* leaves out the
+  file's instances of it when the board has one (open or closed). (*Replace my board* with a file that has more
+  than one shows them all.)
 
 ---
 

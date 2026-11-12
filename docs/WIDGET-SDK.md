@@ -342,12 +342,52 @@ Add an entry to `widgets/registry.js`:
   },
   permissions: [],                     // e.g. ['microphone', 'camera'] — added to the iframe's allow=""
   // devOnly: true                     only listed when Developer mode is on
+  // single: true                      one window only: the Widget Picker brings it forward (or opens it again)
+  //                                   instead of opening a second one, and "Add to my board" adds none
 }
 ```
 
 Then **bump `VERSION` in `sw.js` and run `node tools/release.js`** so installed copies download the new
 files (README, "Deploying"). Devices save a release for offline use only as a whole, so a widget file that
 changes without that never reaches them.
+
+### The district's own apps (`external`)
+
+21Sketch, 21Timer and 21DocCam are separate websites, each with its own data on the device. They appear in
+21Board as windows that show the live site, not as copies:
+
+```js
+{
+  id: '21sketch', name: '21Sketch', description: '…',
+  entry: 'https://sketchapp.ccsd21.org/',   // the app's own https address
+  files: [],                                // nothing for 21Board to save for offline use
+  color: '#4f46e5', icon: '<svg …>',
+  window: { width: 900, height: 560, minWidth: 520, minHeight: 360, dragFromContent: false },
+  permissions: [],                          // 21DocCam: ['camera']
+  single: true,                             // one window: a second would show the same work
+  external: true
+}
+```
+
+What `external: true` changes:
+
+- **No SDK.** The page is another site's: the board takes no messages from it and sends it nothing (not even
+  the theme), and it never connects. Nothing is saved for it on the board: the app keeps its own work
+  (IndexedDB, localStorage) on the device, as it does when opened on its own.
+- **Not in 21Board's offline copy or release stamp** (`sw.js` leaves it out). Offline, the window shows the app
+  only if the app keeps its own offline copy (its own service worker). 21Board shows "Offline" beside the
+  window's name and says so once in a toast; it can't tell whether the app loaded.
+- **The window:** the page loads over the spinner (the board can't see when it is drawn). The board sees no
+  taps inside it, only focus moving into it (a tap on one of its buttons): a window that a window in front of it
+  overlaps is covered, so that a tap brings it forward (that tap goes no further); one that nothing overlaps
+  takes every tap itself. It moves by its title bar only. Its menu has "Reload …", "Open … on its own" (not in
+  kiosk mode) and no Reset or Earlier versions. Settings says the app keeps its own work; *Erase everything*
+  and *Export* say they don't reach it.
+- **Same sandbox** as every widget (scripts, its own storage, forms, alerts and printing, pop-ups, downloads),
+  and the same `allow` list plus `permissions`. That is everything the three apps use; the sandbox still keeps
+  the page from navigating the board away.
+- The address comes from the registry only: a `.21board` file names the widget (`21sketch`), never an address.
+- Only for `https` addresses in the registry; test widgets added in Developer mode can't be external.
 
 ---
 

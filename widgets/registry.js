@@ -32,6 +32,12 @@
  *                                      two fingers. Default true: drag from anywhere inside.
  *   permissions  Browser features the iframe may use, e.g. ["microphone"].
  *   devOnly      true = only listed when Developer mode is on (Settings).
+ *   single       true = one window only: the Widget Picker brings it to the front (or opens it again)
+ *                instead of opening a second one, and "Add to my board" adds none from a file if the board
+ *                has one.
+ *   external     true = one of the district's own apps, shown from its own site: `entry` is its https
+ *                address and `files` is empty. The app keeps its own work on the device (and its own offline
+ *                copy, once it has one); 21Board saves only where its window is. No SDK. (README, "District apps")
  */
 self.BOARD21_WIDGETS = [
   {
@@ -141,6 +147,47 @@ self.BOARD21_WIDGETS = [
     icon: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="7" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="17" r="1.6"/></svg>',
     window: { width: 170, height: 380, minWidth: 90, minHeight: 200, aspectRatio: 170 / 380 },
     permissions: []
+  },
+  // The district's own apps, each from its own site (they keep their own work; see `external` above). Their pages
+  // are another site's, so their windows move by the title bar only: dragFromContent false.
+  {
+    id: '21sketch',
+    name: '21Sketch',
+    description: 'The district’s drawing whiteboard, from its own site.',
+    entry: 'https://sketchapp.ccsd21.org/',
+    files: [],
+    color: '#4f46e5',
+    icon: '<svg viewBox="0 0 24 24"><path d="M4.5 19.5l.8-4.3L15.6 4.9a2 2 0 0 1 2.8 0l.7.7a2 2 0 0 1 0 2.8L8.8 18.7z"/><path d="M13.8 6.7l3.5 3.5"/><path d="M12.5 20.5h7"/></svg>',
+    window: { width: 900, height: 560, minWidth: 520, minHeight: 360, dragFromContent: false }, // room for its two toolbars (taller than wide, it hides one)
+    permissions: [],
+    single: true,
+    external: true
+  },
+  {
+    id: '21timer',
+    name: '21Timer',
+    description: 'The district’s classroom timer, from its own site.',
+    entry: 'https://timerapp.ccsd21.org/',
+    files: [],
+    color: '#b45309',
+    icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12"/><path d="M6 21h12"/><path d="M7.5 3c0 4.5 4.5 5.5 4.5 9s-4.5 4.5-4.5 9"/><path d="M16.5 3c0 4.5-4.5 5.5-4.5 9s4.5 4.5 4.5 9"/></svg>',
+    window: { width: 400, height: 300, minWidth: 200, minHeight: 170, dragFromContent: false }, // (the minimum is its own manifest's)
+    permissions: [],
+    single: true,
+    external: true
+  },
+  {
+    id: '21doccam',
+    name: '21DocCam',
+    description: 'The district’s document camera, from its own site.',
+    entry: 'https://doccamapp.ccsd21.org/',
+    files: [],
+    color: '#0d9488',
+    icon: '<svg viewBox="0 0 24 24"><path d="M3 20.5h18"/><path d="M6.5 20.5V5h6.5"/><rect x="12.5" y="3.5" width="7" height="4.5" rx="1.3"/><path d="M16 8v1.8"/><path d="M11.5 20.5l1-3.5h7l1 3.5"/></svg>',
+    window: { width: 720, height: 480, minWidth: 360, minHeight: 260, dragFromContent: false },
+    permissions: ['camera'],
+    single: true,
+    external: true
   },
   {
     id: 'sdk-playground',

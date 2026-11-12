@@ -8,8 +8,10 @@ corners, a windowing system for widgets, and on-device storage with export/impor
 built independently and dropped in.
 
 - Pure HTML, CSS, JavaScript and SVG — **no libraries, no build step, no server code**
-- Installable PWA that **works entirely offline**
-- All data stays **on the device** (IndexedDB); nothing is sent anywhere
+- Installable PWA that **works entirely offline** (the district apps' windows: see
+  [District apps](#district-apps-21sketch-21timer-21doccam))
+- All data stays **on the device** (IndexedDB); 21Board sends nothing anywhere (the district apps' windows
+  load those apps from their own sites)
 - Production: <https://boardapp.ccsd21.org>
 
 ---
@@ -90,7 +92,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
-| **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close**. Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. |
+| **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close** (21Sketch, 21Timer and 21DocCam: **Reload** and **Open … on its own** instead of Reset). Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Replace my board* or *Add to my board*. A backup of another board opened with *Replace my board* is another board from then on: in a shared Google Drive folder it gets its own file, and the board it replaced stays there. |
@@ -157,6 +159,9 @@ tests/run.js            Optional automated browser tests
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
+| **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps-21sketch-21timer-21doccam) |
+| **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
+| **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
 | **SDK Playground** | Developer mode only: every SDK call and event |
 
 ---
@@ -323,7 +328,8 @@ app, where no one signs in:
   land unseen in the kiosk's Downloads). Settings keeps **Back up now**, and *Erase everything* offers *Export a
   backup first*, as everywhere else. A backup on a USB drive is the only copy that isn't on the kiosk itself.
   **Not yet tried on a real kiosk device: test before relying on it.**
-- Links in Notes show as plain text: a kiosk can't open new windows.
+- Links in Notes show as plain text: a kiosk can't open new windows. For the same reason the district apps'
+  window menu has no *Open … on its own* ([District apps](#district-apps-21sketch-21timer-21doccam)).
 - Everything else works as usual: widgets, saving on the device, board history and Undo. Widgets can check
   `Board21.context.kiosk`. Without the parameter (or with `?kiosk=no`), nothing changes.
 - A new version of 21Board arrives as everywhere else: the board offers *Update* / *Later*, and the new
@@ -346,6 +352,84 @@ app, where no one signs in:
 
 Check on a real device: Quit (auto-launched and from Apps), Import/Export to the device and to USB, typing on a
 touch-only panel, and that the board is still there after airplane mode and a restart.
+
+## District apps (21Sketch, 21Timer, 21DocCam)
+
+21Sketch, 21Timer and 21DocCam are the district's own apps, each a separate website. In the Widget Picker they
+open in a window like any widget, but the window shows the live site (`https://sketchapp.ccsd21.org/` and so
+on): 21Board doesn't copy the apps or their work.
+
+**For teachers**
+
+- **Each app keeps its own work on the device**: the drawing in 21Sketch, 21Timer's settings and running
+  timer, 21DocCam's camera choice. 21Board keeps only where the window is and whether it's open. Closing or
+  deleting the window doesn't touch the app's work, and neither does *Erase everything* in 21Board's Settings
+  (it says so). Whether it's the same work as in the app opened on its own depends on the browser: see
+  *Production and the test site* below.
+- **One window per app.** Choosing it again in the Widget Picker brings its window forward (or opens it again),
+  and *Add to my board* doesn't add a second one from a file. A second 21Sketch window would only show the same
+  drawing, and a second 21DocCam would start the camera again.
+- **A window partly behind another: tap it once** to bring it forward. That first tap doesn't draw or press
+  anything (21Board can't see taps inside another site's page). A window that nothing covers takes every tap
+  straight away, so two people can draw in 21Sketch and use another window at once; its blue outline may then
+  stay on the other window. Move the window by its title bar.
+- **The window menu** has *Reload 21Sketch* (loads the app again, e.g. after the connection came back), *Open
+  21Sketch on its own* (a new tab) and no *Reset* or *Earlier versions*: the app's work isn't 21Board's to reset
+  or bring back.
+- **Backups, templates, the Google Drive folder and Board history** keep the window (where it is, open or
+  closed), never the app's work. A board opened on another device opens that device's 21Sketch, with whatever
+  is saved there. To move a drawing, use 21Sketch's own project file (`.json`).
+- 21Board's theme, accent color and size don't reach these apps; they have their own settings.
+
+**Production and the test site.** At `boardapp.ccsd21.org`, 21Board and the apps are the same site
+(ccsd21.org), so Chrome (Chromebooks, the smartboards) treats the app in the window as the same app as on its
+own: the same saved work, the same offline copy, and the two stay in step (a line drawn in one appears in the
+other). On the GitHub test site (`tylerloch.github.io/21Board`) the apps are another site, so Chrome keeps their
+storage apart inside 21Board: separate work from the app opened on its own, and a separate offline copy.
+**On iPads (Safari), even at `boardapp.ccsd21.org`, the window keeps its work apart from the app opened on its
+own** (Safari keeps a framed app's storage apart whenever the page around it has another address, even on the
+same site), and it needs its own first visit online inside 21Board before it can work offline.
+
+**Offline.** 21Board saves its own offline copy, but it can't save another site's pages, so an app's window
+works offline only once **that app saves its own offline copy** (a service worker of its own) and the device
+has opened it online since. Today none of the three does: **21Sketch's offline worker is ready in its
+repository (`sw.js`) but not yet on its server; 21Timer and 21DocCam need one deployed too.** Nothing in
+21Board needs to change when they are. (Tried with a copy of 21Sketch and its worker: offline, the window opens
+21Sketch with the same drawing.)
+
+- Offline, the window's title says **Offline**, and a message says once that the app needs a connection unless
+  it's saved on this device for offline use. 21Board can't tell whether the app loaded (another site's page
+  is closed to it), so it covers nothing: an app with its own offline copy works as usual; one without shows
+  the browser's "no connection" page. When the connection is back, choose *Reload 21Sketch* (or 21Timer,
+  21DocCam) in the window's menu. The same goes for a window that opened while the site couldn't be reached
+  (Wi-Fi not up yet, a sign-in page, the server down): 21Board can't tell, and doesn't load it again by itself.
+  *Ready to work offline* in Settings is about 21Board itself.
+- 21Board never checks on the sites by itself: nothing is sent to them but opening the window.
+
+**For IT**
+
+- **Framing.** Today the three sites send no `X-Frame-Options` and no `Content-Security-Policy`, so 21Board can
+  show them. If they ever do, they must allow 21Board: `Content-Security-Policy: frame-ancestors 'self'
+  https://boardapp.ccsd21.org` (add `https://tylerloch.github.io` for the test site), and no `X-Frame-Options`
+  (it can't name another site). If 21Board's own host ever sends a CSP, it needs `frame-src
+  https://sketchapp.ccsd21.org https://timerapp.ccsd21.org https://doccamapp.ccsd21.org`.
+- **Camera (21DocCam).** Chrome asks for the camera on behalf of the page in the address bar,
+  `boardapp.ccsd21.org`: its prompt names that site and remembers the answer for it. On managed devices, allow
+  the camera for `https://boardapp.ccsd21.org` (Admin console: *Video input allowed URLs*, policy
+  `VideoCaptureAllowedUrls`) as well as for `https://doccamapp.ccsd21.org` (the app on its own). Only the
+  21DocCam window is given the camera.
+- **What the windows allow:** the same sandbox as every widget (scripts, the app's own storage, forms, alerts
+  and printing, pop-ups, downloads) plus fullscreen, the clipboard and sound, and the camera for 21DocCam.
+  Tried with copies of the apps: saving PNG and project files, fullscreen, copying a picture, the camera, sound,
+  alerts, printing and the app's own offline copy all work. The sandbox stops an app from taking 21Board's tab
+  elsewhere; 21Board takes no messages from them and sends them none.
+- **Kiosk.** They work in a kiosk 21Board like any widget, without *Open … on its own* (a kiosk can't open
+  tabs). An app saves its offline copy only when its page loads, which in a kiosk happens only in its window:
+  for a kiosk to use them offline, launch it online once **with each app's window open**, after that app's
+  offline worker is deployed. The camera policy above applies to the kiosk's organizational unit too.
+- The addresses are in `widgets/registry.js` (`external: true`; docs/WIDGET-SDK.md, "The district's own apps").
+  They come only from there: a `.21board` file names the app, never an address. They aren't part of 21Board's
+  offline copy or its release stamp.
 
 ## Board history (going back)
 
@@ -403,6 +487,8 @@ npm install --no-save playwright && npx playwright install chromium
 node tests/run.js            # all suites
 node tests/run.js offline    # just one suite (matches the suite title)
 ```
+
+The *District apps* suite uses stand-ins for 21Sketch, 21Timer and 21DocCam; the tests never reach their real sites.
 
 The tests check that the release stamp matches the files (`node tools/release.js --check`); if that fails,
 run `node tools/release.js`. The *Updating* suites serve one release, then a changed one, and check the

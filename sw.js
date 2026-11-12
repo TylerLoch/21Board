@@ -14,16 +14,16 @@
 const VERSION = '2026.11.11-33';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '90266f0f';
+const BUILD = '800569c8';
 const FILES = {
-  './': '0bf76251eac595b8',
-  'index.html': '0bf76251eac595b8',
-  'board.js': 'de01bce30d74dcdb',
+  './': 'e675101b23367bca',
+  'index.html': 'e675101b23367bca',
+  'board.js': 'fc459fcfeb07ed26',
   'sdk/board21.js': '3ec0b3970329642d',
   'sdk/board21-dev.js': '492a193221911878',
-  'sdk/dev/board-shell.js': '8a22a3c30b485c6e',
+  'sdk/dev/board-shell.js': '738bb92b6e139d35',
   'sdk/lab.html': '21cda27716334794',
-  'widgets/registry.js': '6fb4f3546cc597c3',
+  'widgets/registry.js': '62fbc7a4c8e2c8e2',
   'manifest.webmanifest': '3fddd4aac05d7279',
   'icons/icon.svg': '7b5cfc68d4259303',
   'icons/icon-192.png': 'cd8df22014016f08',
@@ -67,7 +67,10 @@ const SHELL_FILES = [
   'icons/apple-touch-icon.png'
 ];
 
-const WIDGET_FILES = (self.BOARD21_WIDGETS || []).flatMap(widget => (Array.isArray(widget.files) && widget.files.length ? widget.files : [widget.entry]));
+// (Not the district's own apps, `external`: they come from their own sites, which keep their own offline copies.
+// Another site's page can't be part of this copy, and a window couldn't be given it from here anyway.)
+const WIDGET_FILES = (self.BOARD21_WIDGETS || []).filter(widget => !widget.external)
+  .flatMap(widget => (Array.isArray(widget.files) && widget.files.length ? widget.files : [widget.entry]));
 const PRECACHE = Array.from(new Set(SHELL_FILES.concat(WIDGET_FILES)));
 
 const fingerprint = async buf => Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)), b => b.toString(16).padStart(2, '0')).join('').slice(0, 16);
