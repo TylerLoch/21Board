@@ -2005,6 +2005,7 @@
     windowOp(op, args) {
       const inst = this.inst;
       if (!inst) return;
+      if ((op === 'maximize' || op === 'restore' || op === 'close') && Lock.on()) return;   // windows locked (section 12b)
       const posOrNull = v => (typeof v === 'number' && v > 0 && isFinite(v)) ? v : null;
       switch (op) {
         case 'setSize': {
@@ -2013,7 +2014,8 @@
           const view = boundsRect();
           const s = fitSize(cw, ch + TITLE_H, this.constraints(), view);
           const r = resolveMove({ x: inst.rect.x, y: inst.rect.y, w: s.w, h: s.h }, obstacles(this), view, screenPx(RESISTANCE.strong), S.settings.snapping);
-          saveInst(this.ikey, Object.assign({}, inst, { rect: r, maximized: false }));
+          // (Windows locked: one that fills the board keeps filling it, and gets this size when restored. Section 12b.)
+          saveInst(this.ikey, Object.assign({}, inst, { rect: r, maximized: !!inst.maximized && Lock.on() }));
           this.layout(true);
           break;
         }
@@ -2312,7 +2314,7 @@
     // Drags that start inside a widget (section 9a), called once the press has moved past the slop.
     // `key` is the pointerId, or a string for two-finger drags. Fails if someone else has this window.
     beginAt(key, win, x, y, type) {
-      if (this.holds(win)) return false;
+      if (this.holds(win) || Lock.refuse()) return false;   // (windows locked: the widget keeps the press, section 12b)
       this.map.set(key, {
         id: key, win, kind: 'content', handle: null, el: null, type,
         sx: x, sy: y, x, y,
@@ -2353,6 +2355,7 @@
         // Past that, the window is moved from where the press began, so it is under the pointer at once.
         const slop = it.kind === 'title' || it.onLabel ? TAP_SLOP[it.type] || DRAG_THRESHOLD : DRAG_THRESHOLD;
         if (Math.hypot(it.x - it.sx, it.y - it.sy) < slop) return;
+        if (it.refused || Lock.refuse()) { it.refused = true; return; }   // windows locked (section 12b)
         it.moved = true;
         document.body.classList.add('busy');
         // Mouse only: let the pointer pass over widget iframes. Touch and pen stay with their element anyway,
@@ -2396,6 +2399,7 @@
       if (!it) return;
       if (this.raf) { cancelAnimationFrame(this.raf); this.raf = 0; this.step(); }
       this.map.delete(e.pointerId);
+      if (it.refused) cancelled = true;   // (a refused drag is no tap either)
       if (it.el) it.el.classList.remove('dragging');
       const win = it.win;
       // If the board's layout size changed mid-drag ("Use this size" here or in another tab),
@@ -2414,7 +2418,7 @@
         if (it.onLabel) Menu.toggle(win);
         else {
           const now = Date.now();
-          if (now - win.lastTitleTap < 350) { win.lastTitleTap = 0; setMaximized(win.ikey, !win.inst.maximized); }
+          if (now - win.lastTitleTap < 350) { win.lastTitleTap = 0; if (!Lock.refuse()) setMaximized(win.ikey, !win.inst.maximized); }
           else win.lastTitleTap = now;
         }
       }
@@ -2778,6 +2782,7 @@
       const room = window.innerWidth / Zoom.ui, cols = room >= 600 ? 5 : room < 440 ? 3 : 4;
       this.el.style.setProperty('--cols', String(cols));
       this.el.classList.toggle('narrow', cols < 5);
+      if (Lock.on()) { $('.panel-widgets', this.el).innerHTML = Lock.pickerNote(); return; }   // windows locked: none opens (section 12b)
       $('.panel-widgets', this.el).innerHTML = widgets.map(a => {
         const c = counts.get(a.id) || 0;
         return `<button class="widget-tile" role="listitem" data-widget="${esc(a.id)}" title="${esc(a.description || a.name)}">` +
@@ -2794,7 +2799,7 @@
       const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
       Pages.renderControls(this.el);
       set('export', 'export', 'Export board');
-      set('import', 'import', 'Import board');
+      set('import', 'import', 'Import board').hidden = Lock.on();   // (windows locked: section 12b)
       set('quit', 'quit', 'Quit 21Board').hidden = !KIOSK;
       set('theme', dark ? 'sun' : 'moon', dark ? 'Light mode' : 'Dark mode');
       const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit fullscreen' : 'Fullscreen');
@@ -2919,17 +2924,18 @@
           `<span class="icon-slot">${i.icon || ''}</span><span class="label">${esc(i.label)}</span>${check}</button>`;
       }
       if (html) html += '<div class="menu-sep"></div>';
-      html += w.inst.maximized ? item('restore', svg('restore'), 'Restore size') : item('maximize', svg('maximize'), 'Fill the board');
+      const locked = Lock.on();   // (windows locked: the widget's own items, and a district app's, section 12b)
+      if (!locked) html += w.inst.maximized ? item('restore', svg('restore'), 'Restore size') : item('maximize', svg('maximize'), 'Fill the board');
       if (w.widget.external) {
         // A district app keeps its own work: there is none here to reset or to go back to. Reload: a window that
         // opened while the site couldn't be reached stays on the browser's error page. (A kiosk can't open tabs.)
         html += item('reload', svg('reload'), `Reload ${w.widget.name}`);
         if (!KIOSK) html += item('own', svg('external'), `Open ${w.widget.name} on its own`);
-      } else {
+      } else if (!locked) {
         if (BoardHistory.hasWindow(w.ikey)) html += item('history', svg('history'), 'Earlier versions…');
         html += item('reset', svg('reset'), 'Reset');
       }
-      html += item('close', svg('close'), 'Close');
+      html += locked ? (w.widget.external ? '<div class="menu-sep"></div>' : '') + Lock.menuNote() : item('close', svg('close'), 'Close');
       this.el.innerHTML = html;
     },
 
@@ -2976,6 +2982,7 @@
     act(act, id) {
       const w = this.win;
       if (!w) return;
+      if (Lock.on() && /^(maximize|restore|reset|reset-yes|history|close)$/.test(act)) { this.close(); return; }   // (locked meanwhile)
       switch (act) {
         case 'widget': w.post('menu', { id }); this.close(); break;
         case 'maximize': this.close(); setMaximized(w.ikey, true); break;
@@ -3318,6 +3325,7 @@
         item('new', svg('plus'), 'New page') + item('dup', svg('copy'), 'Duplicate this page') + item('rename', svg('pencil'), 'Rename this page…') +
         (ids.length > 1 ? item('left', svg('back'), 'Move left', i < 1 ? 'disabled' : '') + item('right', svg('open'), 'Move right', i >= ids.length - 1 ? 'disabled' : '') : '') +
         item('delete', svg('trash'), 'Delete this page…', ids.length < 2 ? 'disabled' : '', 'danger');
+      Lock.trimPages(this.menuEl);   // (windows locked: only going to a page, section 12b)
       this.open = true;
       this.menuEl.classList.add('open');
       const ind = $('[data-ctl="pages"]', Picker.el);
@@ -3356,19 +3364,19 @@
       if (!g) return;
       g.hidden = !this.enabled();
       if (g.hidden) return;
-      const ids = this.ids(), i = Math.max(0, ids.indexOf(S.boardId)), last = i >= ids.length - 1;
+      const ids = this.ids(), i = Math.max(0, ids.indexOf(S.boardId)), last = i >= ids.length - 1, add = last && !Lock.on();   // (locked: no new page, section 12b)
       const prev = $('[data-ctl="prev"]', g), next = $('[data-ctl="next"]', g), ind = $('[data-ctl="pages"]', g);
       prev.innerHTML = svg('chevLeft'); prev.disabled = i === 0;
       prev.title = i === 0 ? 'This is the first page' : `Go to page ${i}`; prev.setAttribute('aria-label', 'Previous page');
-      next.innerHTML = svg(last ? 'plus' : 'chevRight');
-      next.title = last ? 'New page' : `Go to page ${i + 2}`; next.setAttribute('aria-label', last ? 'New page' : 'Next page');
-      next.classList.toggle('add', last);
+      next.innerHTML = svg(add ? 'plus' : 'chevRight'); next.disabled = last && !add;
+      next.title = add ? 'New page' : last ? 'This is the last page' : `Go to page ${i + 2}`; next.setAttribute('aria-label', add ? 'New page' : 'Next page');
+      next.classList.toggle('add', add);
       ind.innerHTML = `<small>Page</small><b>${i + 1} of ${ids.length}</b>`;
       ind.title = `Pages: ${this.name(S.boardId)}`; ind.setAttribute('aria-label', `Page ${i + 1} of ${ids.length}, ${this.name(S.boardId)}. Pages menu`);
     },
     step(dir) {
       const ids = this.ids(), i = ids.indexOf(S.boardId);
-      if (dir > 0 && i >= ids.length - 1) return this.add();
+      if (dir > 0 && i >= ids.length - 1) return Lock.on() ? null : this.add();
       const to = ids[i + dir];
       if (to) this.go(to);
     }
@@ -3407,9 +3415,183 @@
   }
 
   // ---- Lock windows in place
-  function applyLock() {}
-  function lockSettings(sw, seg) { return ''; }
-  function lockAct(act, val) { return false; }
+  // settings.locked: the windows stay where the teacher put them, and students still use what's in them (start a
+  // timer, roll the dice, type in a note). It's in the settings record, so every tab on this device follows it, and
+  // a reload and kiosk mode keep it. While it's on:
+  // - no moving windows (title bar, from inside, two fingers: Inter refuses them), no resizing (no handles), no Fill
+  //   the board by two taps on a title bar. A refused gesture says why, at most every few seconds (refuse).
+  // - a window's menu keeps the widget's own items (and a district app's Reload and Open … on its own), nothing that
+  //   fills, resets, goes back or closes. A widget's own calls to close, fill or restore its window are refused, as
+  //   other window calls it can't make are (setSize and setMinSize still work: its editor still gets room).
+  // - the Widget Picker opens no windows and has no Import: it says how to unlock instead. ‹ Page › still flips
+  //   pages (teachers do, mid-lesson), but there's no new page, and the Pages menu only goes to a page.
+  // - a file dropped on the board or opened with 21Board asks to unlock first (it would change the windows).
+  // - Settings (where the switch is) and Board history stay the teacher's: only Close all, one tap with no question,
+  //   waits. (Opening or deleting a saved window there, or going back to a version, still works.)
+  // To unlock: press and hold ▦ for 2 seconds, with a ring filling around it (let go sooner: a tap, as before; slide
+  // off: nothing), or turn the switch off in Settings (the keyboard's way). Not in the widget dev window.
+  const LOCK_HOLD_MS = 2000;
+  const LOCK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10.5" rx="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>';
+  // ▦ in a sentence: the button's own picture.
+  const LOCK_KEY = `<svg class="fill lock-waffle" viewBox="0 0 24 24" role="img" aria-label="the Widget Picker button">${ICONS.waffle}</svg>`;
+  const LOCK_HOW = `Hold ${LOCK_KEY} for 2 seconds to unlock.`;
+  // The ring around ▦: a rounded square around the button's (3 px out, the same curve), from the top middle, clockwise.
+  const LOCK_RING = 'M34 3H46A19 19 0 0 1 65 22V46A19 19 0 0 1 46 65H22A19 19 0 0 1 3 46V22A19 19 0 0 1 22 3Z';
+  const Lock = {
+    ready: false,
+    was: false,      // what applyLock last saw
+    hold: null,      // a press on ▦ while locked: { id, side, btn, at, state: 'holding' | 'off' | 'done', timer, raf, ring }
+    eat: false,      // the browser's click after such a press (the press was answered when it ended)
+    toldAt: 0,
+    letting: false,  // "Unlock and open" a file: the lock goes once the teacher picks how to open it (letGo)
+    on() { return !LAB && !!S.settings.locked; },
+    // A move, resize or fill of a window: refused while locked (true), and said why, at most every 5 seconds.
+    refuse() {
+      if (!this.on()) return false;
+      if (Date.now() - this.toldAt > 5000) {
+        this.toldAt = Date.now();
+        $('span', toast('Windows are locked. Hold ▦ for 2 seconds to unlock.')).innerHTML = 'Windows are locked. ' + LOCK_HOW;
+      }
+      return true;
+    },
+    // In the Widget Picker, in place of the widgets.
+    pickerNote() { return `<div class="lock-note" role="note">${LOCK_ICON}<span><b>Windows are locked.</b> ${LOCK_HOW}</span></div>`; },
+    // At the end of a window's menu, in place of Fill the board, Reset and Close.
+    menuNote() { return `<div class="lock-note in-menu" role="note">${LOCK_ICON}<span>Windows are locked. ${LOCK_HOW}</span></div>`; },
+    // The Pages menu: only going to a page (no new, copied, renamed, moved or deleted pages).
+    trimPages(el) { if (this.on()) $$('.menu-sep, [data-act]:not([data-act="go"])', el).forEach(n => n.remove()); },
+    // A file opened onto the board (dropped on it, or opened with 21Board) changes its windows: unlock first. The
+    // lock goes when the teacher then picks how to open it (letGo): backing out of that question leaves it locked.
+    async letIn(file) {
+      this.letting = false;
+      if (!this.on()) return true;
+      const yes = await dialog({ title: 'Windows are locked', message: `To open “${String(file && file.name || 'this file').replace(/\.21board$/i, '')}”, unlock the windows first. You can lock them again in Settings.`,
+        actions: [{ label: 'Unlock and open', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
+      this.letting = !!yes;
+      return !!yes;
+    },
+    letGo() {
+      if (this.letting && this.on()) updateSettings({ locked: false });
+      this.letting = false;
+    },
+
+    // ---- press and hold ▦ to unlock
+    init() {
+      if (this.ready) return;
+      this.ready = true;
+      for (const side of ['left', 'right']) {
+        const b = Picker.btns[side];
+        b.addEventListener('pointerdown', e => this.press(e, side));
+        b.addEventListener('contextmenu', e => { if (this.on() || this.hold) e.preventDefault(); });   // (a long press: no menu)
+        b.addEventListener('lostpointercapture', e => this.release(e, true));   // (the browser took the press away: it ends here)
+      }
+      // (On the window: the press is captured by its button, and a release elsewhere must still be heard.)
+      window.addEventListener('pointermove', e => this.slide(e), true);
+      window.addEventListener('pointerup', e => this.release(e, false), true);
+      window.addEventListener('pointercancel', e => this.release(e, true), true);
+      window.addEventListener('click', e => {
+        if (!this.eat || !e.target.closest || !e.target.closest('.picker-btn')) return;
+        this.eat = false;
+        e.preventDefault(); e.stopImmediatePropagation();
+      }, true);
+      // A locked empty page says so, in place of "Tap ▦ … to open a widget".
+      const hint = $('#empty-hint .small');
+      if (hint) hint.insertAdjacentHTML('afterend', `<div class="small lock-hint">Windows are locked. ${LOCK_HOW}</div>`);
+    },
+    press(e, side) {
+      if (!e.isTrusted) return;   // (a script's press is no hold)
+      this.eat = false;
+      if (!this.on() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (this.hold && this.hold.state !== 'holding') this.hold = null;   // (over, but its release never came)
+      if (this.hold) return;
+      const btn = Picker.btns[side];
+      try { btn.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+      const h = this.hold = { id: e.pointerId, side, btn, at: performance.now(), state: 'holding' };
+      h.timer = setTimeout(() => this.done(h), LOCK_HOLD_MS);
+      h.raf = requestAnimationFrame(() => this.draw(h));
+    },
+    // Sliding off the button: not a hold, and not a tap.
+    slide(e) {
+      const h = this.hold;
+      if (!h || e.pointerId !== h.id || h.state !== 'holding') return;
+      const r = h.btn.getBoundingClientRect(), m = 8;
+      if (e.clientX < r.left - m || e.clientX > r.right + m || e.clientY < r.top - m || e.clientY > r.bottom + m) { h.state = 'off'; this.stop(h); }
+    },
+    release(e, cancelled) {
+      const h = this.hold;
+      if (!h || e.pointerId !== h.id) return;
+      this.hold = null;
+      if (h.state !== 'done') this.stop(h);
+      // Answered here, whatever the browser makes of it (a click, or none after a long touch).
+      this.eat = true;
+      clearTimeout(this.eatT); this.eatT = setTimeout(() => { this.eat = false; }, 800);
+      if (h.state === 'holding' && !cancelled) Picker.toggle(h.side);   // let go sooner: a tap, as before
+    },
+    done(h) {
+      if (this.hold !== h || h.state !== 'holding') return;
+      h.state = 'done';
+      cancelAnimationFrame(h.raf);
+      this.ring(h, 1);
+      setTimeout(() => this.stop(h), 400);
+      updateSettings({ locked: false });
+      toast('Windows are unlocked. Lock them again in Settings.');
+    },
+    draw(h) {
+      if (this.hold !== h || h.state !== 'holding') return;
+      const t = Math.min(1, (performance.now() - h.at) / LOCK_HOLD_MS);
+      // (None for a quick tap. With less motion: in four steps.)
+      const calm = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+      if (t > 0.1) this.ring(h, calm ? Math.floor(t * 4) / 4 : t);
+      h.raf = requestAnimationFrame(() => this.draw(h));
+    },
+    ring(h, t) {
+      if (!h.ring) {
+        h.ring = document.createElement('span');
+        h.ring.className = 'lock-ring';
+        h.ring.innerHTML = `<svg viewBox="0 0 68 68" aria-hidden="true"><path class="track" d="${LOCK_RING}"/><path class="fill" pathLength="100" d="${LOCK_RING}"/></svg>`;
+        h.btn.appendChild(h.ring);
+      }
+      $('.fill', h.ring).style.strokeDasharray = `${(t * 100).toFixed(2)} 100`;
+    },
+    stop(h) {
+      clearTimeout(h.timer); cancelAnimationFrame(h.raf);
+      if (h.ring) { h.ring.remove(); h.ring = null; }
+    }
+  };
+
+  function applyLock() {
+    const on = Lock.on();
+    Lock.init();
+    document.body.classList.toggle('windows-locked', on);
+    // A padlock on each ▦.
+    for (const b of [Picker.btns.left, Picker.btns.right]) {
+      let badge = $('.lock-badge', b);
+      if (on && !badge) { badge = document.createElement('span'); badge.className = 'lock-badge'; badge.innerHTML = LOCK_ICON; b.appendChild(badge); }
+      if (!on && badge) badge.remove();
+      if (on) b.setAttribute('aria-description', 'Windows are locked. Press and hold for 2 seconds to unlock.'); else b.removeAttribute('aria-description');
+    }
+    if (on === Lock.was) return;
+    Lock.was = on;
+    const h = Lock.hold;
+    if (!on && h && h.state === 'holding') { h.state = 'off'; Lock.stop(h); }   // (unlocked meanwhile: that press is nothing now)
+    if (on) {
+      for (const key of Array.from(Inter.map.keys())) Inter.end({ pointerId: key }, true);   // (being moved here: it goes back)
+      Menu.confirming = false;   // (Reset?)
+    }
+    if (Menu.win) { Menu.render(); Menu.position(); }
+    Pages.closeMenu();
+  }
+
+  function lockSettings(sw) {
+    if (LAB) return '';   // (the widget dev window: one widget, whose window its developer moves and resizes)
+    return `<div class="row"><div><div class="lbl">Lock windows in place</div><div class="hint">Widgets still work, but windows can’t be moved, resized, closed or added from the board until you turn this off or hold ${LOCK_KEY} for 2 seconds.</div></div>${sw('lock-windows', Lock.on(), 'Lock windows in place')}</div>`;
+  }
+
+  function lockAct(act) {
+    if (act !== 'lock-windows' || LAB) return false;
+    updateSettings({ locked: !Lock.on() });
+    return true;
+  }
 
   // ---- Keep the screen on
   function applyAwake() {}
@@ -3702,7 +3884,7 @@
         <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Widgets without typing move by dragging anywhere in them; any widget moves with two fingers. Off: title bar only.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
         <div class="row"><div class="lbl">Push needed to overlap</div>${seg('resistance', st.resistance, [['gentle', 'Light'], ['normal', 'Medium'], ['strong', 'Firm']], !st.snapping)}</div>
         ${scaleSettingsRows(seg)}
-        <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">${note ? 'Their content is kept while 21Board stays open.' : 'Content stays saved for next time.'}</div></div><button class="btn" data-act="close-all">${svg('windows')}Close all</button></div>
+        <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">${Lock.on() ? 'Windows are locked: turn off “Lock windows in place” first.' : note ? 'Their content is kept while 21Board stays open.' : 'Content stays saved for next time.'}</div></div><button class="btn" data-act="close-all"${Lock.on() ? ' disabled' : ''}>${svg('windows')}Close all</button></div>
 
         <h3>Widget Picker</h3>
         <div class="row"><div class="lbl">Show controls in</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']])}</div>
@@ -4227,6 +4409,7 @@
   }
 
   async function importFile(file) {
+    if (!await Lock.letIn(file)) return;   // windows locked: unlock first (section 12b)
     let parsed;
     try { parsed = parseBoardFile(await file.text()); } catch (err) {
       await dialog({ title: 'Can’t import this file', message: err.message, actions: [{ label: 'OK', value: true, kind: 'primary' }] });
@@ -4254,6 +4437,7 @@
       ])
     });
     if (!mode) return;
+    Lock.letGo();   // ("Unlock and open": now, section 12b)
     if (mode === 'page') return openAsPages(parsed.pages || [parsed], file, false);
     try {
       const label = `${mode === 'replace' ? 'Before importing' : 'Before adding windows from'} “${file.name.replace(/\.21board$/i, '')}”`;
@@ -4289,6 +4473,7 @@
     if (!mode) return;
     if (mode === 'replace' && !await dialog({ title: 'Replace all pages?', message: `${mine === 1 ? `“${S.board.name}” is` : `All ${mine} pages are`} deleted from this device, and the ${n} pages in “${name}” take ${mine === 1 ? 'its' : 'their'} place.`,
       actions: [{ label: 'Replace all pages', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] })) return;
+    Lock.letGo();   // ("Unlock and open": now, section 12b)
     return openAsPages(p.pages, file, mode === 'replace');
   }
   // Each page in a file becomes a new page (after this one; or, for several, after the last). replace: then the

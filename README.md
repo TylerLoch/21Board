@@ -113,6 +113,7 @@ are open still come from the saved copy: reload once more, or close and open the
   (dots, grid, lines, handwriting rows, graph paper; not shown under a photo, and Settings says so), background photo
   (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
   in full backups, not in templates).
+- **Classroom:** lock windows in place: widgets still work, but windows can't be moved, resized, closed or added from the board and the Widget Picker (Close all is off too), in every tab on this device. Unlock by holding ▦ for 2 seconds, or with the switch.
 - **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, size of windows and menus (default 80%), board shape (16:9 or any shape), close all windows.
 - **Widget Picker:** show the controls in both corners, or only left/right.
 - **This page:** a word about pages, the page's name (used for export file names and in the Google Drive
