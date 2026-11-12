@@ -78,6 +78,10 @@ storage can't be read still has every page.
   resistance: "normal",    // "gentle" | "normal" | "strong" — how hard you push to overlap
   pickerCorners: "both",   // "both" | "left" | "right"
   accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
+  awake: "off",            // Keep the screen on: "off" | "on" (while 21Board is showing) | "hours" (school hours, Mon–Fri)
+  awakeFrom: "07:30",      //   school hours, "HH:MM" by this device's clock (not kept on while awakeTo isn't later)
+  awakeTo: "15:30",
+  clock: "time",           // Clock in the corner: "off" | "time" | "date" (time and date)
   lastBackupAt: null,      // ms of the last full backup export, for backup reminders
   devMode: false,
   devWidgets: [               // test widgets added in Developer mode

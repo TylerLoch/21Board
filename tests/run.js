@@ -5454,8 +5454,329 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   }],
 
   // Keep the screen on
+  ['Keep the screen on (Off, while showing, hidden and shown again, the device saying no, school hours)', async (browser) => {
+    // A stand-in for navigator.wakeLock (headless Chromium has no screen to keep on). It counts requests and
+    // releases, lets the lock go when the page is hidden (as browsers do), and can say no ('refuse') or be missing
+    // ('none', or 'http': a page served over plain http, which browsers give none).
+    // window.__show(false) hides the page (document.visibilityState), __show(true) shows it again.
+    const WAKE_LOCK = mode => {
+      const W = window.__wl = { requests: 0, releases: 0, held: new Set() };
+      let vis = 'visible';
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => vis });
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => vis !== 'visible' });
+      window.__show = on => { vis = on ? 'visible' : 'hidden'; if (!on) for (const l of Array.from(W.held)) l.release(); document.dispatchEvent(new Event('visibilitychange')); };
+      if (mode === 'http') Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
+      if (mode === 'none' || mode === 'http') { Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: undefined }); return; }
+      Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async type => {
+        W.requests++;
+        if (mode === 'refuse') throw new DOMException('Wake Lock permission request denied', 'NotAllowedError');
+        if (type !== 'screen' || vis !== 'visible') throw new DOMException('The requesting page is not visible', 'NotAllowedError');
+        const l = new EventTarget();
+        l.type = 'screen'; l.released = false;
+        l.release = async () => { if (l.released) return; l.released = true; W.held.delete(l); W.releases++; l.dispatchEvent(new Event('release')); };
+        W.held.add(l);
+        return l;
+      } } });
+    };
+    const errors = [];
+    const W = page => page.evaluate(() => ({ requests: window.__wl.requests, releases: window.__wl.releases, held: window.__wl.held.size }));
+    const status = page => page.evaluate(() => { const s = document.getElementById('set-awake-status'); return s.hidden ? '' : (s.querySelector('.status-dot.ok') ? '(ok) ' : s.querySelector('.status-dot.warn') ? '(warn) ' : '') + s.textContent.replace(/\s/g, ' '); });
+    const settings = async page => { await page.click('.picker-btn.right'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300); };
+    const fresh = async mode => {
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      await ctx.addInitScript(WAKE_LOCK, mode || 'ok');
+      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      return { ctx, page };
+    };
+    let { ctx, page } = await fresh();
+    await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
+    let w = await W(page);
+    ok(w.requests === 0 && await page.evaluate(() => window.__board21.state.settings.awake) === 'off', 'off by default: nothing is asked of the device');
+    await settings(page);
+    const row = await page.evaluate(() => { const r = document.querySelector('#settings .awake-row'), h = [...document.querySelectorAll('#settings h3')].find(e => e.textContent === 'Classroom');
+      return r && { under: !!h && !!(h.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING), label: r.querySelector('.lbl').textContent, choices: [...r.querySelectorAll('[data-act="awake"]')].map(b => b.textContent + (b.classList.contains('on') ? ' (chosen)' : '')).join(', '), quiet: document.getElementById('set-awake-status').hidden }; });
+    ok(row && row.under && row.label === 'Keep the screen on' && row.choices === 'Off (chosen), While 21Board is showing, School hours' && row.quiet,
+      `Settings → Classroom → “Keep the screen on”: ${row && row.choices}; no status line while it’s off`);
+    await page.click('#settings [data-act="awake"][data-val="on"]'); await page.waitForTimeout(300);
+    w = await W(page);
+    ok(w.requests === 1 && w.held === 1, 'While 21Board is showing: one screen wake lock is held');
+    ok(await status(page) === '(ok) The screen stays on while 21Board is showing.', `Settings says so (${await status(page)})`);
+    // Hidden (another tab, the lid closed): the browser lets the lock go. Shown again: 21Board asks again.
+    await page.evaluate(() => window.__show(false)); await page.waitForTimeout(250);
+    w = await W(page);
+    ok(w.held === 0 && w.requests === 1, 'hidden: the browser lets it go, and 21Board doesn’t ask while hidden');
+    await page.evaluate(() => window.__show(true)); await page.waitForTimeout(300);
+    w = await W(page);
+    ok(w.held === 1 && w.requests === 2, `shown again: it is asked for again (${w.requests} requests)`);
+    // The device takes it back while 21Board is showing (some browsers do on leaving fullscreen): asked for again.
+    await page.evaluate(() => { [...window.__wl.held][0].release(); document.dispatchEvent(new Event('fullscreenchange')); }); await page.waitForTimeout(300);
+    w = await W(page);
+    ok(w.held === 1 && w.requests === 3, 'taken back by the device: asked for again on fullscreenchange');
+    // Remembered; this device only.
+    await page.reload(); await boardUp(page); await page.waitForTimeout(400);
+    w = await W(page);
+    ok(w.held === 1 && w.requests === 1, 'after a reload the screen is kept on from the start');
+    const file = await page.evaluate(async () => JSON.stringify(await window.__board21.buildExport('full')));
+    ok(!/"awake(From|To)?"\s*:/.test(file), 'the setting belongs to this device: it isn’t in exports');
+    await settings(page);
+    await page.click('#settings [data-act="awake"][data-val="off"]'); await page.waitForTimeout(300);
+    w = await W(page);
+    ok(w.held === 0 && w.releases === 1 && await status(page) === '', 'Off lets it go, and the status line goes');
+    await page.evaluate(() => window.__show(false)); await page.evaluate(() => window.__show(true)); await page.waitForTimeout(300);
+    ok((await W(page)).requests === 1, 'and nothing is asked for when 21Board shows again');
+    await ctx.close();
+
+    // The device says no (IT's policy, a battery saver): Settings says so, nothing breaks, and it tries again each minute.
+    ({ ctx, page } = await fresh('refuse'));
+    await page.clock.install({ time: new Date('2026-11-12T10:00:00') });
+    await page.goto(BASE); await boardUp(page);
+    await settings(page);
+    await page.click('#settings [data-act="awake"][data-val="on"]'); await page.waitForTimeout(400);
+    ok(/^\(warn\) The device didn’t allow it\. Its settings, or your school’s IT, may turn this off\.$/.test(await status(page)), `refused: Settings says the device didn’t allow it (${await status(page)})`);
+    const tries = (await W(page)).requests;
+    await page.clock.runFor(61000); await page.waitForTimeout(300);
+    ok(tries === 1 && (await W(page)).requests === 2, 'and it tries again on the next minute');
+    await ctx.close();
+
+    // A browser that can't do it: the row explains, its choices can't be chosen, and nothing throws.
+    ({ ctx, page } = await fresh('none'));
+    await page.goto(BASE); await boardUp(page);
+    await settings(page);
+    const none = await page.evaluate(() => ({ dis: document.querySelector('#settings .awake-row .seg').classList.contains('disabled'), text: document.getElementById('set-awake-status').textContent }));
+    ok(none.dis && none.text === 'This browser can’t keep the screen on.', `unsupported: “${none.text}”, and the choices are greyed out`);
+    await page.evaluate(() => document.querySelector('#settings [data-act="awake"][data-val="on"]').click()); await page.waitForTimeout(300);
+    await page.reload(); await boardUp(page); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__board21.state.settings.awake) === 'on' && await page.locator('.picker-btn.right').isVisible(), 'a setting left on from before still starts the board without trouble');
+    await ctx.close();
+
+    // Served over plain http (a school server without https): the browser gives no wake lock there. It's https that
+    // is missing, not the browser that can't.
+    ({ ctx, page } = await fresh('http'));
+    await page.goto(BASE); await boardUp(page);
+    await settings(page);
+    const http = await page.evaluate(() => ({ dis: document.querySelector('#settings .awake-row .seg').classList.contains('disabled'), text: document.getElementById('set-awake-status').textContent }));
+    ok(http.dis && http.text === 'Needs https to keep the screen on.', `over http: “${http.text}”, and the choices are greyed out`);
+    await ctx.close();
+
+    // School hours: From and To, Monday to Friday, by the device's clock.
+    ({ ctx, page } = await fresh());
+    await page.clock.install({ time: new Date('2026-11-12T07:29:00') });   // a Thursday, just before school
+    await page.goto(BASE); await boardUp(page);
+    await page.click('.picker-btn.right'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="awake"][data-val="hours"]'); await page.waitForTimeout(300);
+    const boxes = await page.evaluate(() => [...document.querySelectorAll('#settings .awake-time input')].map(i => [i.type, i.value, Math.round(i.getBoundingClientRect().height / (+getComputedStyle(document.documentElement).getPropertyValue('--ui') || 1))]));
+    ok(JSON.stringify(boxes) === '[["time","07:30",44],["time","15:30",44]]', `School hours: From and To time boxes, 44 px tall (${JSON.stringify(boxes)})`);
+    ok(/Monday to Friday/.test(await page.locator('#settings .awake-row').textContent()), 'the hint says school days are Monday to Friday');
+    ok((await W(page)).held === 0 && await status(page) === 'Not now: outside school hours (7:30 AM–3:30 PM, Mon–Fri).', `before 7:30 nothing is held, and Settings says why (${await status(page)})`);
+    await page.clock.runFor(61000); await page.waitForTimeout(300);
+    ok((await W(page)).held === 1 && await status(page) === '(ok) The screen stays on until 3:30 PM, while 21Board is showing.', `at 7:30 the screen is kept on (${await status(page)})`);
+    // The end of the school day, on the minute.
+    await page.clock.setSystemTime(new Date('2026-11-12T15:29:58')); await page.evaluate(() => document.dispatchEvent(new Event('fullscreenchange')));
+    await page.clock.runFor(1500); await page.waitForTimeout(200);
+    const late = (await W(page)).held;
+    await page.clock.runFor(1000); await page.waitForTimeout(300);
+    ok(late === 1 && (await W(page)).held === 0 && /^Not now: outside school hours/.test(await status(page)), 'kept on until 3:29:59, let go at 3:30 (a device left on overnight can sleep)');
+    // Weekends are outside school hours.
+    await page.clock.setSystemTime(new Date('2026-11-14T10:00:00')); await page.clock.runFor(61000); await page.waitForTimeout(300);
+    ok((await W(page)).held === 0 && /^Not now/.test(await status(page)), 'Saturday at 10:00: not kept on');
+    await page.clock.setSystemTime(new Date('2026-11-16T10:00:00')); await page.clock.runFor(61000); await page.waitForTimeout(300);
+    ok((await W(page)).held === 1, 'Monday at 10:00: kept on');
+    // A "To" not after "From": a clear hint, nothing kept on, nothing broken; the box isn't taken away while in use.
+    await page.fill('#set-awake-to', '07:00'); await page.waitForTimeout(300);
+    const bad = await page.evaluate(() => ({ focus: document.activeElement && document.activeElement.id, invalid: document.getElementById('set-awake-to').getAttribute('aria-invalid'), saved: window.__board21.state.settings.awakeTo }));
+    ok(bad.saved === '07:00' && bad.invalid === 'true' && bad.focus === 'set-awake-to', 'To 7:00 (before From): kept, marked as not right, and the time box stays under the finger');
+    ok((await W(page)).held === 0 && await status(page) === '(warn) Not on: “To” needs to be later than “From”.', `nothing is kept on, and Settings says why (${await status(page)})`);
+    await page.fill('#set-awake-to', '16:00'); await page.waitForTimeout(300);
+    ok((await W(page)).held === 1 && /until 4:00 PM/.test(await status(page)), 'To 4:00 PM: kept on again, until 4:00 PM');
+    // Typed with a keyboard (a Chromebook in laptop mode): Chrome sends a change as each part of the time is typed, as
+    // it moves on to the next part (when the box doesn't have the focus for a moment). The rest still goes in the box.
+    const typed = async (id, keys) => {
+      await page.focus('#' + id);   // (the hour part)
+      await page.keyboard.type(keys, { delay: 60 }); await page.waitForTimeout(300);
+      return page.evaluate(id => ({ box: document.getElementById(id).value, saved: window.__board21.state.settings[id === 'set-awake-from' ? 'awakeFrom' : 'awakeTo'], focus: document.activeElement.id }), id);
+    };
+    const from8 = await typed('set-awake-from', '800A'), to250 = await typed('set-awake-to', '250P');
+    ok(from8.saved === '08:00' && from8.box === '08:00' && from8.focus === 'set-awake-from' && to250.saved === '14:50' && to250.box === '14:50' && to250.focus === 'set-awake-to',
+      `typed with a keyboard: From “800A” is 8:00 AM, To “250P” is 2:50 PM, and the box keeps the focus (${JSON.stringify(from8)}, ${JSON.stringify(to250)})`);
+    ok((await W(page)).held === 1 && /until 2:50 PM/.test(await status(page)), `and the screen is kept on until 2:50 PM (${await status(page)})`);
+    await page.fill('#set-awake-from', ''); await page.waitForTimeout(200);
+    ok(await page.evaluate(() => window.__board21.state.settings.awakeFrom) === '08:00', 'a time box emptied halfway keeps the time it had');
+    await page.click('#settings [data-close]'); await page.waitForTimeout(200);
+    await page.reload(); await boardUp(page); await page.waitForTimeout(300);
+    ok((await W(page)).held === 1 && await page.evaluate(() => { const s = window.__board21.state.settings; return s.awake === 'hours' && s.awakeFrom === '08:00' && s.awakeTo === '14:50'; }), 'school hours are remembered after a reload');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
 
   // Clock in the corner
+  ['Clock in the corner (on by default, the minute, Time and date, Off, dark, corners, never in the way, LAB, kiosk)', async (browser) => {
+    const errors = [];
+    // The clock as drawn: shown (not hidden or covered), its text without spaces between the time and AM/PM, where it is.
+    const cornerClock = page => page.evaluate(() => {
+      const c = document.querySelector('.corner-clock');
+      if (!c || c.hidden) return { shown: false };
+      const r = c.getBoundingClientRect(), cs = getComputedStyle(c), t = c.querySelector('.t');
+      return { shown: cs.display !== 'none' && cs.visibility !== 'hidden', text: c.textContent.replace(/\s+(?=[AP]M)/g, '').replace(/\s+/g, ' ').trim(), side: c.classList.contains('right') ? 'right' : 'left',
+        r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }, bg: cs.backgroundColor, color: cs.color, pe: cs.pointerEvents,
+        fontPx: t ? t.getBoundingClientRect().height : 0 };
+    });
+    const setClock = async (page, mode) => {   // through Settings, as a teacher would
+      await page.keyboard.press('Escape');
+      await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(250);
+      await page.click(`#settings [data-act="clock"][data-val="${mode}"]`); await page.waitForTimeout(200);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(100);
+    };
+    let ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    let page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.clock.install({ time: new Date('2026-11-12T09:41:00') });
+    await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
+    let c = await cornerClock(page);
+    const btn = await page.evaluate(() => { const r = document.querySelector('.picker-btn.right').getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height }; });
+    ok(await page.evaluate(() => window.__board21.state.settings.clock) === 'time' && c.shown && c.text === '9:41AM', `on by default, showing the time (${c.text})`);
+    ok(c.side === 'right' && c.r.right <= btn.left && btn.left - c.r.right < 12 && Math.abs(c.r.height - btn.height) < 1 && Math.abs(c.r.bottom - btn.bottom) < 1,
+      'beside the right-hand ▦ button on its inner side, as tall as it');
+    ok(c.pe === 'none' && c.fontPx >= 24, `taps go through it, and it is big enough to read across the room (${c.fontPx.toFixed(1)} px)`);
+    // Exactly on the minute.
+    await page.clock.pauseAt(new Date('2026-11-12T09:41:58'));
+    await page.clock.runFor(1900);
+    const before = (await cornerClock(page)).text;
+    await page.clock.runFor(200);
+    const after = (await cornerClock(page)).text;
+    ok(before === '9:41AM' && after === '9:42AM', `it changes exactly on the minute (9:41:59.9 ${before}, 9:42:00.1 ${after})`);
+    await page.clock.resume();
+    // Settings → Appearance: Off / Time / Time and date.
+    await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300);
+    const row = await page.evaluate(() => { const b = document.querySelector('#settings [data-act="clock"]'), r = b && b.closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      return r && { section: h && h.textContent, label: r.querySelector('.lbl').textContent, choices: [...r.querySelectorAll('[data-act="clock"]')].map(x => x.textContent + (x.classList.contains('on') ? ' (chosen)' : '')).join(', ') }; });
+    ok(row && row.section === 'Appearance' && row.label === 'Clock in the corner' && row.choices === 'Off, Time (chosen), Time and date', `Settings → Appearance → “Clock in the corner”: ${row && row.choices}`);
+    await page.click('#settings [data-act="clock"][data-val="date"]'); await page.waitForTimeout(300);
+    c = await cornerClock(page);
+    ok(c.shown && c.text === 'Thu, Nov 12 9:42AM' && c.r.right <= btn.left, `Time and date: “${c.text}”, still beside ▦`);
+    await page.click('#settings [data-act="clock"][data-val="off"]'); await page.waitForTimeout(300);
+    ok(!(await cornerClock(page)).shown && !await page.evaluate(() => document.body.classList.contains('clock-on')), 'Off: no clock');
+    await page.click('#settings [data-act="clock"][data-val="time"]'); await page.waitForTimeout(300);
+    ok((await cornerClock(page)).text === '9:42AM', 'Time: back again');
+    // Drawn like the toolbar in both themes.
+    const light = (await cornerClock(page)).bg;
+    await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(300);
+    c = await cornerClock(page);
+    ok(light === 'rgba(255, 255, 255, 0.95)' && c.bg === 'rgba(30, 30, 30, 0.95)' && c.color === 'rgb(249, 250, 251)', `drawn like the ▦ button, light and dark (${light} → ${c.bg})`);
+    await page.click('#settings [data-act="theme"][data-val="light"]'); await page.waitForTimeout(200);
+    // Settings → Widget Picker → Show controls in.
+    const side = async () => { const k = await cornerClock(page), b = await page.evaluate(s => { const r = document.querySelector('.picker-btn.' + s).getBoundingClientRect(); return { left: r.left, right: r.right }; }, k.side);
+      return k.side + (k.side === 'left' ? (k.r.left >= b.right && k.r.left - b.right < 12 ? ' beside ▦' : ' away from ▦') : (k.r.right <= b.left && b.left - k.r.right < 12 ? ' beside ▦' : ' away from ▦')); };
+    const corners = [];
+    for (const v of ['left', 'right', 'both']) { await page.click(`#settings [data-act="corners"][data-val="${v}"]`); await page.waitForTimeout(400); corners.push(`${v}: ${await side()}`); }
+    ok(corners.join('; ') === 'left: left beside ▦; right: right beside ▦; both: right beside ▦', `it follows “Show controls in” (${corners.join('; ')})`);
+    // Pages: on every page.
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => window.__board21.pages.add && window.__board21.pages.add());
+    await page.waitForTimeout(800);
+    ok((await cornerClock(page)).shown, 'and on every page');
+    await ctx.close();
+
+    // The device's time zone changes while 21Board is open (a Chromebook setting its zone after start-up, IT's policy,
+    // an iPad that travelled): the clock follows it from the next minute on, like the rest of 21Board.
+    ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    const zone = await ctx.newCDPSession(page);
+    await zone.send('Emulation.setTimezoneOverride', { timezoneId: 'America/Chicago' });
+    await page.clock.install({ time: new Date('2026-11-12T15:41:30Z') });   // 9:41 AM in Chicago
+    await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
+    const chicago = (await cornerClock(page)).text;
+    await zone.send('Emulation.setTimezoneOverride', { timezoneId: '' });   // (one override at a time)
+    await zone.send('Emulation.setTimezoneOverride', { timezoneId: 'America/New_York' });
+    await page.clock.runFor(31000); await page.waitForTimeout(200);
+    const newYork = (await cornerClock(page)).text;
+    ok(chicago === '9:41AM' && newYork === '10:42AM', `a new time zone shows from the next minute (Chicago ${chicago}, then New York ${newYork})`);
+    await ctx.close();
+
+    // Never in the way.
+    ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    page = await ctx.newPage(); page.on('pageerror', e => { if (!/boom from the widget/.test(e.message)) errors.push(e.message); });   // (the dev window's test widget throws on purpose)
+    await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
+    const clear = () => page.evaluate(() => {
+      const c = document.querySelector('.corner-clock');
+      if (!c || c.hidden || getComputedStyle(c).visibility === 'hidden') return { shown: false };
+      const r = c.getBoundingClientRect(), hit = b => r.left < b.right && b.left < r.right && r.top < b.bottom && b.top < r.bottom;
+      const names = { 'picker-btn': '▦', 'save-note': 'Not saved', 'folder-note': 'the folder note', toast: 'a toast', 'shape-hint': 'the shape tip' };
+      const over = [...document.querySelectorAll('.picker-btn, .save-note, .folder-note, #toasts .toast, #shape-hint')].filter(e => !e.hidden && e.getBoundingClientRect().width && hit(e.getBoundingClientRect()))
+        .map(e => names[e.id] || names[[...e.classList].find(k => names[k])]);
+      return { shown: true, inside: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, over, text: c.textContent };
+    });
+    // Everything that can sit in the bottom corners and the bottom middle at once: both notes and a long toast.
+    const crowd = () => page.evaluate(() => {
+      document.querySelectorAll('.save-note, .folder-note').forEach(b => { b.hidden = false; b.innerHTML = '<span class="status-dot warn"></span>' + (b.classList.contains('save-note') ? 'Not saved' : 'Reconnect folder'); b.style.bottom = b.classList.contains('folder-note') ? 'calc(132px + env(safe-area-inset-bottom))' : ''; });
+      document.querySelectorAll('#toasts .toast').forEach(t => t.remove());
+      const t = document.createElement('div'); t.className = 'toast';
+      t.innerHTML = '<span>21Board can’t close itself right now. Your board is saved. To leave, restart the device or ask your school’s IT.</span><button>Undo</button>';
+      document.getElementById('toasts').appendChild(t);
+    });
+    const report = [];
+    for (const [w, h, size, mode] of [[1366, 768, 0.8, 'time'], [1366, 768, 0.8, 'date'], [1024, 768, 0.8, 'time'], [1024, 768, 0.8, 'date'], [1920, 1080, 0.8, 'date'], [768, 1024, 0.8, 'date'], [683, 768, 0.8, 'time'], [480, 800, 0.8, 'time'], [1366, 768, 2, 'date'], [1920, 1080, 2, 'time']]) {
+      await page.setViewportSize({ width: w, height: h });
+      await page.evaluate(size => { document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); window.__board21.setBoardScale(size); }, size);
+      await setClock(page, mode); await page.waitForTimeout(250);
+      await crowd(); await page.waitForTimeout(100);
+      const r = await clear();
+      report.push(`${w}×${h} ${size * 100}% ${mode}: ${r.shown ? (r.over.length ? 'over ' + r.over.join(', ') : r.inside ? 'clear' : 'off screen') : 'hidden'}`);
+      ok(!r.shown || (r.inside && !r.over.length), report[report.length - 1] + (r.shown ? ` (“${r.text}”)` : ''));
+    }
+    ok(/^768×1024 80% date: clear/.test(report[5]) && /^480×800 80% time: hidden/.test(report[7]), 'it shows on an upright iPad, and hides in a window too narrow for it');
+    await page.evaluate(() => document.querySelectorAll('#toasts .toast').forEach(t => t.remove()));
+    // Settings says what doesn't fit right now.
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(2)); await setClock(page, 'date'); await page.waitForTimeout(300);
+    await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300);
+    const fit = await page.locator('#set-clock-fit').textContent(), only = (await cornerClock(page)).text;
+    ok(fit === 'Only the time fits in this window right now.' && /^\d{1,2}:\d\d[AP]M$/.test(only), `at 200% on 1366×768, “Time and date” shows the time only (${only}), and Settings says so (${fit})`);
+    await page.keyboard.press('Escape');
+    // The shape tip never sits under it.
+    for (const [w, h, sc] of [[1100, 400, 1.5], [1600, 600, 2], [600, 800, 2], [800, 720, 1.5], [1000, 900, 2], [1000, 820, 0.8]]) {
+      await page.setViewportSize({ width: w, height: h }); await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
+      const r = await clear(), tip = await page.evaluate(() => !document.getElementById('shape-hint').hidden);
+      ok(!r.shown || (r.inside && !r.over.length), `${w}×${h} at ${sc * 100}%${tip ? ' with the shape tip' : ''}: the clock is ${r.shown ? (r.over.length ? 'over ' + r.over.join(', ') : 'clear of everything') : 'left out'}`);
+    }
+    // The Widget Picker: the clock hides while its corner's Picker is open, and stays while the other corner's is.
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(0.8)); await setClock(page, 'time'); await page.waitForTimeout(300);
+    await page.click('.picker-btn.right'); await page.waitForTimeout(400);
+    const underPanel = (await clear()).shown;
+    await page.click('.picker-btn.right'); await page.waitForTimeout(300);
+    const back = (await clear()).shown;
+    await page.click('.picker-btn.left'); await page.waitForTimeout(400);
+    const otherSide = (await clear()).shown;
+    await page.click('.picker-btn.left'); await page.waitForTimeout(300);
+    ok(!underPanel && back && otherSide, `hidden while the right-hand Widget Picker is open, back when it closes, and shown while the left one is open (${underPanel}, ${back}, ${otherSide})`);
+    // (Where the clock has room, the other corner's Picker doesn't reach it today. Should it ever, the clock hides:
+    // here the Picker is made wider than any screen it fits on would give it.)
+    await page.evaluate(() => { document.getElementById('panel').style.minWidth = 'calc(100vw / var(--ui) - 200px)'; });
+    await page.click('.picker-btn.left'); await page.waitForTimeout(600);
+    const reach = await page.evaluate(() => { const c = document.querySelector('.corner-clock'), r = c.getBoundingClientRect(), p = document.getElementById('panel').getBoundingClientRect(); return { over: p.right > r.left, hidden: getComputedStyle(c).visibility === 'hidden' }; });
+    await page.click('.picker-btn.left'); await page.waitForTimeout(300);
+    await page.evaluate(() => { document.getElementById('panel').style.minWidth = ''; });
+    ok(reach.over && reach.hidden && (await clear()).shown, 'a Widget Picker in the other corner that reaches it hides it too, until it closes');
+    // A window under it can still be moved: taps go through the clock.
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.waitForTimeout(200);
+    await freeBoard(page);
+    await page.evaluate(() => window.__board21.openWidget('clock')); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.setRect('clock:1', { x: 960, y: 420, w: 380, h: 330 })); await page.waitForTimeout(400);
+    const k = (await cornerClock(page)).r, cx = k.left + k.width / 2, cy = k.top + k.height / 2;
+    const under = await page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y); return !!e && !!e.closest('.win[data-ikey="clock:1"]'); }, [cx, cy]);
+    const w0 = await page.evaluate(() => Object.assign({}, window.__board21.state.wins.get('clock:1').disp));
+    await page.mouse.move(cx, cy); await page.mouse.down();
+    for (let i = 1; i <= 10; i++) { await page.mouse.move(cx - 30 * i, cy - 25 * i); await page.waitForTimeout(16); }
+    await page.mouse.up(); await page.waitForTimeout(400);
+    const w1 = await page.evaluate(() => Object.assign({}, window.__board21.state.wins.get('clock:1').disp));
+    ok(under && w1.x < w0.x - 200 && w1.y < w0.y - 150, `a window under the clock gets the tap, and drags from there (moved ${Math.round(w1.x - w0.x)}, ${Math.round(w1.y - w0.y)})`);
+    // Kiosk mode: shown. The widget dev window (LAB): never.
+    await page.goto(BASE + '?kiosk=yes'); await boardUp(page); await page.waitForTimeout(300);
+    ok((await cornerClock(page)).shown, 'kiosk mode shows the clock');
+    await page.goto(BASE + '__dev/widget.html'); await page.waitForTimeout(3000);
+    const board = page.frames().find(f => f.parentFrame() === page.mainFrame());
+    ok(!!board && await board.evaluate(() => !!window.__board21 && !document.querySelector('.corner-clock:not([hidden])') && !document.body.classList.contains('clock-on') && !document.querySelector('#settings [data-act="clock"]')),
+      'the widget dev window has no clock');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
 
   // Letters
 
