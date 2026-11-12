@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.12-38';
-  const BOARD_BUILD = 'd7a6ff0d';
+  const BOARD_VERSION = '2026.11.12-39';
+  const BOARD_BUILD = 'd4f0ec93';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4215,7 +4215,7 @@
     const mode = await dialog({ title: `Import “${name}”?`, message: `This is a backup of ${n} pages with ${wins} window${wins === 1 ? '' : 's'}.`,
       actions: [
         { label: `Add these ${n} pages`, sub: `Your ${mine === 1 ? 'page stays' : `${mine} pages stay`} as ${mine === 1 ? 'it is' : 'they are'}. These are added after ${mine === 1 ? 'it' : 'them'}.`, value: 'add', kind: 'primary', choice: true },
-        { label: 'Replace all pages', sub: `Your ${mine === 1 ? 'page is' : `${mine} pages are`} deleted and these take ${mine === 1 ? 'its' : 'their'} place. You can undo this for a few seconds.`, value: 'replace', kind: 'danger', choice: true },
+        { label: 'Replace all pages', sub: `Your ${mine === 1 ? 'page is' : `${mine} pages are`} deleted and these take ${mine === 1 ? 'its' : 'their'} place.`, value: 'replace', kind: 'danger', choice: true },
         { label: 'Cancel', value: null }
       ] });
     if (!mode) return;
