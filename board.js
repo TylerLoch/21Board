@@ -1336,6 +1336,7 @@
     }
     ShapeHint.update();
     BoardPhoto.place();
+    CornerClock.place();   // section 12b: beside a Widget Picker button, at --ui
   }
 
   // The visible screen expressed in layout space (may extend past the 16:9 board on one axis).
@@ -3412,15 +3413,246 @@
   function lockAct(act, val) { return false; }
 
   // ---- Keep the screen on
-  function applyAwake() {}
-  function awakeSettings(sw, seg) { return ''; }
-  function awakeAct(act, val) { return false; }
-  function awakeChange(el) {}
+  // Settings → Classroom → "Keep the screen on": Off, While 21Board is showing, or School hours (From–To, Monday to
+  // Friday, by this device's clock). A 20-minute reading timer or the day's schedule shouldn't vanish because a
+  // Chromebook dims, and teachers can't change a managed device's power settings. So 21Board asks the browser for a
+  // screen wake lock (navigator.wakeLock), which keeps the screen on while this page is on it. The browser lets the
+  // lock go whenever the page is hidden (another tab, the lid closed), so it is asked for again when 21Board shows
+  // again (visibilitychange, fullscreenchange), and every minute (the start and end of the school day, and a lock
+  // the device took back). Outside school hours, when turned off and in the widget dev window it is let go: a
+  // device left on overnight can sleep. It can't overrule IT's policy or a panel's own power settings, and some
+  // browsers can't do it at all: Settings says what is true right now (Awake.status).
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const minutesOf = t => +t.slice(0, 2) * 60 + +t.slice(3, 5);
+  // "7:30 AM" (this device's way of writing a time) for minutes after midnight.
+  const clockTime = m => new Date(2000, 0, 3, Math.floor(m / 60), m % 60).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const Awake = {
+    lock: null,        // the WakeLockSentinel while the screen is kept on
+    asking: false,     // a request is on its way
+    refused: false,    // the device said no to the last request
+    timer: 0,
+    listening: false,
+    supported: () => !!(navigator.wakeLock && typeof navigator.wakeLock.request === 'function'),
+    mode: () => !LAB && (S.settings.awake === 'on' || S.settings.awake === 'hours') ? S.settings.awake : 'off',
+    // School hours in minutes after midnight, or null while "To" isn't later than "From".
+    hours() {
+      const t = k => minutesOf(HHMM.test(S.settings[k]) ? S.settings[k] : DEFAULT_SETTINGS[k]);
+      const from = t('awakeFrom'), to = t('awakeTo');
+      return to > from ? { from, to } : null;
+    },
+    inHours(d = new Date()) {
+      const h = this.hours(), m = d.getHours() * 60 + d.getMinutes(), day = d.getDay();
+      return !!h && day >= 1 && day <= 5 && m >= h.from && m < h.to;
+    },
+    wanted() { const m = this.mode(); return m === 'on' || (m === 'hours' && this.inHours()); },
+    check() {
+      clearTimeout(this.timer);
+      if (!this.listening && this.mode() !== 'off') {
+        this.listening = true;
+        const again = () => this.check();
+        document.addEventListener('visibilitychange', again);
+        document.addEventListener('fullscreenchange', again);
+        document.addEventListener('webkitfullscreenchange', again);
+      }
+      // Again on the next minute: the school day may start or end, or the device may have taken the lock back.
+      if (this.mode() !== 'off') this.timer = setTimeout(() => this.check(), 60000 - Date.now() % 60000);
+      const want = this.wanted() && document.visibilityState === 'visible';
+      if (want && !this.lock && !this.asking && this.supported()) this.request();
+      else if (!want && this.lock) this.release();
+      this.paint();
+    },
+    async request() {
+      this.asking = true;
+      let lock = null;
+      try { lock = await navigator.wakeLock.request('screen'); this.refused = false; }
+      catch (err) { this.refused = true; }   // (IT's policy, a battery saver, or a page that isn't showing)
+      this.asking = false;
+      if (lock) {
+        // (Turned off, or hidden, while it was being asked for: let it go straight away.)
+        if (this.lock || !this.wanted() || document.visibilityState !== 'visible') this.drop(lock);
+        else {
+          this.lock = lock;
+          try { lock.addEventListener('release', () => { if (this.lock === lock) { this.lock = null; this.paint(); } }); } catch (e) { /* noticed on the next check */ }
+        }
+      }
+      this.paint();
+    },
+    release() { const l = this.lock; this.lock = null; this.drop(l); },
+    drop(l) { try { Promise.resolve(l.release()).catch(() => {}); } catch (e) { /* gone already */ } },
+    // What is happening right now, for Settings: { dot: 'ok' | 'warn' | '', text }, or null (Off).
+    status() {
+      const m = this.mode(), h = this.hours();
+      if (!this.supported()) return { dot: 'warn', text: 'This browser can’t keep the screen on.' };
+      if (m === 'off') return null;
+      if (m === 'hours' && !h) return { dot: 'warn', text: 'Not on: “To” needs to be later than “From”.' };
+      if (m === 'hours' && !this.inHours()) return { dot: '', text: `Not now: outside school hours (${clockTime(h.from)}–${clockTime(h.to)}, Mon–Fri).` };
+      if (this.lock) return { dot: 'ok', text: m === 'on' ? 'The screen stays on while 21Board is showing.' : `The screen stays on until ${clockTime(h.to)}, while 21Board is showing.` };
+      if (this.refused) return { dot: 'warn', text: 'The device didn’t allow it. Its settings, or your school’s IT, may turn this off.' };
+      return { dot: '', text: 'Turning on…' };
+    },
+    statusHTML() { const s = this.status(); return s ? `<span class="status-dot ${s.dot}"></span>${esc(s.text)}` : ''; },
+    // Settings, while open: the status line and the "To" box, in place (not drawn again: a finger may be in a time box).
+    paint() {
+      if (!Settings.isOpen) return;
+      const line = $('#set-awake-status', Settings.body), to = $('#set-awake-to', Settings.body);
+      const html = this.statusHTML();   // (only when it changes: a screen reader reads the line out again)
+      if (line && line.innerHTML !== html) { line.innerHTML = html; line.hidden = !html; }
+      if (to) to.setAttribute('aria-invalid', String(!this.hours()));
+    }
+  };
+
+  function applyAwake() { Awake.check(); }
+
+  function awakeSettings(sw, seg) {
+    if (LAB) return '';
+    const st = S.settings, mode = Awake.mode(), status = Awake.statusHTML();
+    const time = (id, key, label) => `<label class="awake-time"><span>${label}</span><input type="time" class="text-input" id="${id}" value="${esc(HHMM.test(st[key]) ? st[key] : DEFAULT_SETTINGS[key])}" required${key === 'awakeTo' && !Awake.hours() ? ' aria-invalid="true"' : ''}></label>`;
+    return `<div class="row stack awake-row"><div><div class="lbl">Keep the screen on</div><div class="hint">Stops this device from dimming and going to sleep while 21Board is showing. With school hours, it can sleep at night and on weekends.</div></div>
+      ${seg('awake', mode, [['off', 'Off'], ['on', 'While 21Board is showing'], ['hours', 'School hours']], !Awake.supported())}
+      ${mode === 'hours' ? `<div class="awake-hours">${time('set-awake-from', 'awakeFrom', 'From')}${time('set-awake-to', 'awakeTo', 'To')}</div>
+      <div class="hint">School days, Monday to Friday, by this device’s clock.</div>` : ''}
+      <div class="awake-status" id="set-awake-status" aria-live="polite"${status ? '' : ' hidden'}>${status}</div></div>`;
+  }
+
+  function awakeAct(act, val) {
+    if (act !== 'awake') return false;
+    if (['off', 'on', 'hours'].includes(val)) updateSettings({ awake: val });
+    return true;
+  }
+
+  // A time box: kept as soon as it holds a whole time. (Settings isn't drawn again under a finger that is still in
+  // the box, see Settings.render: Awake.paint says what changed.)
+  function awakeChange(el) {
+    const key = { 'set-awake-from': 'awakeFrom', 'set-awake-to': 'awakeTo' }[el.id];
+    if (!key || !HHMM.test(el.value) || el.value === S.settings[key]) return;   // (a box emptied halfway keeps the time it had)
+    updateSettings({ [key]: el.value });
+    Awake.paint();
+  }
 
   // ---- Clock in the corner
-  function applyClock() {}
-  function clockSettings(sw, seg) { return ''; }
-  function clockAct(act, val) { return false; }
+  // Settings → Appearance → "Clock in the corner": Off, Time (the default) or Time and date. A small clock beside a
+  // Widget Picker button, on every board and page, without taking a window: teachers and students check the time all
+  // day, a Clock window would have to be on every page, and in fullscreen the device's own clock is hidden.
+  // Where: on the inner side of the ▦ button in the bottom right corner, or of the only one when Settings → Widget
+  // Picker shows the controls in one corner. Bottom right is where Chromebooks (and Windows) show the time, so it's
+  // where people already look for it. Drawn like ▦ and as tall, at the board's size (--ui, like the other chrome).
+  // It never covers anything: taps go through it to the windows under it (pointer-events: none); toasts keep clear
+  // of it (body.clock-on in index.html); it hides while its corner's Widget Picker is open or the other corner's
+  // reaches it; and where the screen is too narrow, "Time and date" shows only the time, and the time hides
+  // (CornerClock.place). It changes exactly on the minute, in this device's way of writing times.
+  const CLOCK_GAP = 8;          // CSS px between the clock and what it must keep clear of
+  const CLOCK_TOASTS = 320;     // CSS px of the bottom middle always left for toasts
+  const CornerClock = {
+    el: null, timer: 0, side: 'right', fit: '', bare: false, fmt: null,
+    on: () => !LAB && (S.settings.clock === 'time' || S.settings.clock === 'date'),
+    init() {
+      const el = this.el = document.createElement('div');
+      el.className = 'corner-clock';
+      el.hidden = true;
+      document.body.appendChild(el);
+      // A page from before the clock (the page and this script can be from different versions for a launch or
+      // two) has no styles for it: leave it out rather than show the time in the middle of nowhere.
+      this.bare = getComputedStyle(el).position !== 'fixed';
+      // The Widget Picker opening (and growing to its full size), and the shape tip coming and going: look again.
+      const panel = $('#panel'), tip = $('#shape-hint');
+      if (window.MutationObserver) {
+        new MutationObserver(() => this.cover()).observe(panel, { attributes: true, attributeFilter: ['class'] });
+        if (tip) new MutationObserver(() => this.place()).observe(tip, { attributes: true, attributeFilter: ['hidden', 'style'] });
+      }
+      panel.addEventListener('animationend', () => this.cover());
+      // Timers sleep while the page is hidden or the device is asleep: the right time as soon as it shows again.
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && this.on()) this.tick(); });
+    },
+    apply() {
+      if (!this.on()) {
+        clearTimeout(this.timer);
+        if (this.el) this.el.hidden = true;
+        this.fit = '';
+        document.body.classList.remove('clock-on');
+        return;
+      }
+      if (!this.el) this.init();
+      this.tick();
+    },
+    tick() {
+      clearTimeout(this.timer);
+      this.place();
+      this.timer = setTimeout(() => this.tick(), 60000 - Date.now() % 60000);   // the next minute, on the dot
+    },
+    // "9:41 AM" (AM smaller), and "Thu, Nov 12" before it with the date.
+    html(now, withDate) {
+      if (!this.fmt) this.fmt = { time: new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }), date: new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric' }) };
+      const time = this.fmt.time.formatToParts(now).map(p => p.type === 'dayPeriod' ? `<span class="ap">${esc(p.value)}</span>` : esc(p.value)).join('');
+      // (The space between the two is for screen readers: the layout keeps its own gap.)
+      return (withDate ? `<span class="d">${esc(this.fmt.date.format(now))}</span> ` : '') + `<span class="t">${time}</span>`;
+    },
+    // Which corner, what fits there, and what toasts keep clear of. Called on every change that can move it: the
+    // settings, the screen and the board's size (updateZoom), the shape tip, and each minute.
+    place() {
+      const el = this.el;
+      if (!el || !this.on()) return;
+      this.side = S.settings.pickerCorners === 'left' ? 'left' : 'right';
+      el.classList.toggle('left', this.side === 'left');
+      el.classList.toggle('right', this.side === 'right');
+      const now = new Date();
+      let reach = 0;
+      this.fit = '';
+      if (!this.bare) {
+        for (const withDate of S.settings.clock === 'date' ? [true, false] : [false]) {
+          el.innerHTML = this.html(now, withDate);
+          el.hidden = false;
+          reach = this.room();
+          if (reach) { this.fit = withDate ? 'date' : 'time'; break; }
+        }
+      }
+      el.hidden = !reach;
+      document.body.classList.toggle('clock-on', !!reach);
+      if (reach) document.body.style.setProperty('--clock-room', Math.ceil(reach) + 'px');
+      this.cover();
+      const note = Settings.isOpen && $('#set-clock-fit', Settings.body);
+      if (note) note.textContent = this.fitNote();
+    },
+    // How far in from its edge the clock reaches (CSS px at the board's size, with a gap), or 0 if it doesn't fit:
+    // toasts need room in the middle (they stay that far from both edges), and it must not touch ▦, the save
+    // and folder notes or the shape tip. (The notes sit above the ▦ buttons, so only a crowded screen gets here.)
+    room() {
+      const r = this.el.getBoundingClientRect(), vw = window.innerWidth, ui = Zoom.ui || 1;
+      if (!r.width) return 0;
+      const reach = (this.side === 'right' ? vw - r.left : r.right) / ui + CLOCK_GAP;
+      if (vw / ui - 2 * reach < CLOCK_TOASTS) return 0;
+      const g = CLOCK_GAP / 2 * ui;
+      const hit = b => b.width > 0 && r.left - g < b.right && b.left < r.right + g && r.top - g < b.bottom && b.top < r.bottom + g;
+      return $$('.picker-btn:not([hidden]), .save-note:not([hidden]), .folder-note:not([hidden]), #shape-hint:not([hidden])').some(e => hit(e.getBoundingClientRect())) ? 0 : reach;
+    },
+    // While the Widget Picker is open in its corner, or open in the other and reaching it (a narrow screen), it hides.
+    cover() {
+      const el = this.el;
+      if (!el || el.hidden) return;
+      const side = Picker.side, r = el.getBoundingClientRect(), p = side && Picker.el.getBoundingClientRect();
+      el.classList.toggle('covered', !!side && (side === this.side || (r.left < p.right && p.left < r.right && r.top < p.bottom && p.top < r.bottom)));
+    },
+    // For Settings: what doesn't fit in this window right now ('' when it all does).
+    fitNote() {
+      if (!this.on() || this.bare) return '';
+      return !this.fit ? 'There isn’t room for it in this window right now.' : S.settings.clock === 'date' && this.fit === 'time' ? 'Only the time fits in this window right now.' : '';
+    }
+  };
+
+  function applyClock() { CornerClock.apply(); }
+
+  function clockSettings(sw, seg) {
+    if (LAB) return '';
+    const st = S.settings, mode = ['off', 'time', 'date'].includes(st.clock) ? st.clock : 'time';
+    const where = st.pickerCorners === 'left' ? 'bottom left' : 'bottom right';
+    return `<div class="row stack"><div><div class="lbl">Clock in the corner</div><div class="hint">A small clock beside the Widget Picker button in the ${where} corner, on every page. <span id="set-clock-fit">${esc(CornerClock.fitNote())}</span></div></div>
+      ${seg('clock', mode, [['off', 'Off'], ['time', 'Time'], ['date', 'Time and date']])}</div>`;
+  }
+
+  function clockAct(act, val) {
+    if (act !== 'clock') return false;
+    if (['off', 'time', 'date'].includes(val)) updateSettings({ clock: val });
+    return true;
+  }
 
   // ---- Letters (easier-to-read fonts)
   function applyLetters() {}
@@ -3651,8 +3883,8 @@
 
     render() {
       if (!this.isOpen) return;
-      // Don't yank a text field out from under someone who is typing in it.
-      if (this.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"]')) return;
+      // Don't yank a text field (or a time box) out from under someone who is typing in it.
+      if (this.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"], input[type="time"]')) return;
       const st = S.settings;
       const seg = (act, cur, opts, disabled) => `<div class="seg${disabled ? ' disabled' : ''}" role="radiogroup">${opts.map(([v, l]) =>
         `<button role="radio" aria-checked="${v === cur}" data-act="${act}" data-val="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('')}</div>`;

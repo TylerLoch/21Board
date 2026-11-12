@@ -609,8 +609,32 @@
     /* Lock windows in place */
 
     /* Keep the screen on */
+    .awake-hours { display: flex; flex-wrap: wrap; gap: 10px 20px; }
+    .awake-time { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
+    .awake-time span { min-width: 2.6em; }
+    .awake-time input { width: 150px; height: 44px; }
+    .awake-time input[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
+    .awake-status { font-size: 13.5px; line-height: 1.35; color: var(--text); }
+    .awake-status[hidden] { display: none; }
 
     /* Clock in the corner */
+    /* (board.js: CornerClock.) Beside a Widget Picker button on its inner side, as tall as it and drawn like it. Taps
+       go through it to the windows under it. Toasts keep clear of it (--clock-room: how far in from the edge it reaches). */
+    .corner-clock {
+      position: fixed; z-index: 998; bottom: calc(16px + env(safe-area-inset-bottom)); height: 56px; padding: 0 18px;
+      display: flex; align-items: center; gap: 14px; white-space: nowrap; pointer-events: none; zoom: var(--ui, 1);
+      border-radius: 16px; background: var(--toolbar-bg); border: 1px solid var(--border); box-shadow: var(--shadow);
+      backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+      color: var(--text); font-variant-numeric: tabular-nums; line-height: 1;
+    }
+    .corner-clock.left { left: calc(80px + env(safe-area-inset-left)); }
+    .corner-clock.right { right: calc(80px + env(safe-area-inset-right)); }
+    .corner-clock[hidden] { display: none; }
+    .corner-clock.covered { visibility: hidden; }   /* (its corner's Widget Picker is open) */
+    .corner-clock .t { font-size: 31px; font-weight: 700; letter-spacing: -.01em; }
+    .corner-clock .ap { font-size: 17px; font-weight: 700; }   /* AM / PM */
+    .corner-clock .d { font-size: 22px; font-weight: 600; padding-right: 14px; border-right: 2px solid var(--border); }
+    body.clock-on #toasts { max-width: calc(100vw / var(--ui, 1) - 2 * var(--clock-room, 90px)); }
 
     /* Letters */
 

@@ -113,6 +113,15 @@ are open still come from the saved copy: reload once more, or close and open the
   (dots, grid, lines, handwriting rows, graph paper; not shown under a photo, and Settings says so), background photo
   (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
   in full backups, not in templates).
+- **Appearance → Clock in the corner:** *Off*, *Time* (the default) or *Time and date*. A small clock beside the ▦
+  button in the bottom right corner (beside the only ▦ when the controls are in one corner), on every page and in
+  kiosk mode, as tall as ▦. Taps go through it to the windows under it. It hides while that corner's Widget Picker
+  is open, and where the window is too narrow for it (*Time and date* shows only the time first). This device only.
+- **Classroom → Keep the screen on:** *Off* (the default), *While 21Board is showing*, or *School hours* (From and
+  To, Monday to Friday, by the device's clock). Stops the Chromebook, iPad or panel from dimming and sleeping while
+  21Board is on screen (the browser's screen wake lock). A line says whether it is working right now, or why not:
+  outside school hours, a browser that can't (Chrome 84+, Safari 16.4+ in a tab, 18.4+ as a Home Screen app;
+  https only), or a device that doesn't allow it (IT can turn it off by policy). This device only.
 - **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, size of windows and menus (default 80%), board shape (16:9 or any shape), close all windows.
 - **Widget Picker:** show the controls in both corners, or only left/right.
 - **This page:** a word about pages, the page's name (used for export file names and in the Google Drive
