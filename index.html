@@ -452,16 +452,16 @@
 
     /* A note in the shaded margin when the 16:9 board leaves much of the window unused. */
     #shape-hint {
-      position: fixed; z-index: 900; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 12px;
-      padding: 10px 10px 10px 16px; border-radius: 16px; background: var(--toolbar-bg); border: 1px solid var(--border);
+      position: fixed; z-index: 900; display: flex; flex-direction: column; align-items: flex-start; gap: 14px;
+      padding: 16px 18px 18px; border-radius: 18px; background: var(--toolbar-bg); border: 1px solid var(--border);
       box-shadow: 0 8px 24px rgba(0, 0, 0, .12); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-      color: var(--muted); font-size: 14px; line-height: 1.35; max-width: 420px;
+      color: var(--muted); font-size: 14px; line-height: 1.4; width: max-content; max-width: 290px; box-sizing: border-box;
     }
     #shape-hint[hidden] { display: none; }
-    #shape-hint .msg { flex: 1 1 160px; }
-    #shape-hint .msg b { color: var(--text); font-weight: 600; }
+    #shape-hint .msg { padding-right: 26px; text-wrap: balance; }   /* (clear of the ✕) */
+    #shape-hint .msg b { display: block; margin-bottom: 6px; color: var(--text); font-size: 15px; font-weight: 600; text-wrap: balance; }
     #shape-hint .acts { display: flex; gap: 6px; align-items: center; }
-    #shape-hint .hide { width: 36px; height: 36px; border-radius: 10px; color: var(--muted); }
+    #shape-hint .hide { position: absolute; top: 8px; right: 8px; width: 36px; height: 36px; border-radius: 10px; color: var(--muted); }
     #shape-hint .hide svg { width: 18px; height: 18px; }
 
     /* − 80% + */

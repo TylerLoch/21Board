@@ -1346,9 +1346,9 @@
     hidden: (() => { try { return sessionStorage.getItem('21board-shape-hint') === 'hidden'; } catch (e) { return false; } })(),
     init() {
       this.el = $('#shape-hint');
-      this.el.innerHTML = '<div class="msg"><b>This board keeps a standard widescreen shape.</b> Do you want to change it to work in any shape?</div>' +
-        '<div class="acts"><button class="btn primary small" data-act="unlock">Use the whole window</button>' +
-        `<button class="hide" data-act="hide" aria-label="Hide this tip" title="Hide">${svg('close')}</button></div>`;
+      this.el.innerHTML = '<div class="msg"><b>This board keeps a<br>standard widescreen shape.</b>Do you want it to work<br>in any shape?</div>' +
+        '<div class="acts"><button class="btn primary small" data-act="unlock">Use the whole window</button></div>' +
+        `<button class="hide" data-act="hide" aria-label="Hide this tip" title="Hide">${svg('close')}</button>`;
       this.el.addEventListener('click', e => {
         const b = e.target.closest('[data-act]');
         if (!b) return;
@@ -1375,10 +1375,10 @@
       // Put it where there's room, clear of the Widget Picker buttons: the middle of the space below the
       // board, or the right margin above its button.
       const box = below >= side ? { x: corner, y: bh, w: Zoom.vw - 2 * corner, h: below } : { x: Zoom.ox + bw, y: 0, w: side, h: Zoom.vh - corner };
-      Object.assign(this.el.style, { left: '0px', top: '0px', maxWidth: Math.max(140, box.w - 24) / ui + 'px' });   // measure unconstrained
+      Object.assign(this.el.style, { left: '0px', top: '0px', maxWidth: Math.min(290, Math.max(200, box.w / ui - 24)) + 'px' });   // measure unconstrained (a short, tall card)
       const r = { w: this.el.offsetWidth * ui, h: this.el.offsetHeight * ui };
       // No room for it at this size (its button would spill out or Hide would go off screen): leave it out.
-      show = box.w - 16 >= Math.max(r.w, 250 * ui) && box.h - 16 >= r.h;
+      show = box.w - 16 >= Math.max(r.w, 200 * ui) && box.h - 16 >= r.h;
       this.el.hidden = !show;
       if (!show) return;
       this.el.style.left = (box.x + (box.w - r.w) / 2) / ui + 'px';
