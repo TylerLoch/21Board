@@ -5134,14 +5134,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   ['Keep the screen on (Off, while showing, hidden and shown again, the device saying no, school hours)', async (browser) => {
     // A stand-in for navigator.wakeLock (headless Chromium has no screen to keep on). It counts requests and
     // releases, lets the lock go when the page is hidden (as browsers do), and can say no ('refuse') or be missing
-    // ('none'). window.__show(false) hides the page (document.visibilityState), __show(true) shows it again.
+    // ('none', or 'http': a page served over plain http, which browsers give none).
+    // window.__show(false) hides the page (document.visibilityState), __show(true) shows it again.
     const WAKE_LOCK = mode => {
       const W = window.__wl = { requests: 0, releases: 0, held: new Set() };
       let vis = 'visible';
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => vis });
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => vis !== 'visible' });
       window.__show = on => { vis = on ? 'visible' : 'hidden'; if (!on) for (const l of Array.from(W.held)) l.release(); document.dispatchEvent(new Event('visibilitychange')); };
-      if (mode === 'none') { Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: undefined }); return; }
+      if (mode === 'http') Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
+      if (mode === 'none' || mode === 'http') { Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: undefined }); return; }
       Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async type => {
         W.requests++;
         if (mode === 'refuse') throw new DOMException('Wake Lock permission request denied', 'NotAllowedError');
@@ -5224,6 +5226,15 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await page.evaluate(() => window.__board21.state.settings.awake) === 'on' && await page.locator('.picker-btn.right').isVisible(), 'a setting left on from before still starts the board without trouble');
     await ctx.close();
 
+    // Served over plain http (a school server without https): the browser gives no wake lock there. It's https that
+    // is missing, not the browser that can't.
+    ({ ctx, page } = await fresh('http'));
+    await page.goto(BASE); await boardUp(page);
+    await settings(page);
+    const http = await page.evaluate(() => ({ dis: document.querySelector('#settings .awake-row .seg').classList.contains('disabled'), text: document.getElementById('set-awake-status').textContent }));
+    ok(http.dis && http.text === 'Needs https to keep the screen on.', `over http: “${http.text}”, and the choices are greyed out`);
+    await ctx.close();
+
     // School hours: From and To, Monday to Friday, by the device's clock.
     ({ ctx, page } = await fresh());
     await page.clock.install({ time: new Date('2026-11-12T07:29:00') });   // a Thursday, just before school
@@ -5254,11 +5265,22 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok((await W(page)).held === 0 && await status(page) === '(warn) Not on: “To” needs to be later than “From”.', `nothing is kept on, and Settings says why (${await status(page)})`);
     await page.fill('#set-awake-to', '16:00'); await page.waitForTimeout(300);
     ok((await W(page)).held === 1 && /until 4:00 PM/.test(await status(page)), 'To 4:00 PM: kept on again, until 4:00 PM');
+    // Typed with a keyboard (a Chromebook in laptop mode): Chrome sends a change as each part of the time is typed, as
+    // it moves on to the next part (when the box doesn't have the focus for a moment). The rest still goes in the box.
+    const typed = async (id, keys) => {
+      await page.focus('#' + id);   // (the hour part)
+      await page.keyboard.type(keys, { delay: 60 }); await page.waitForTimeout(300);
+      return page.evaluate(id => ({ box: document.getElementById(id).value, saved: window.__board21.state.settings[id === 'set-awake-from' ? 'awakeFrom' : 'awakeTo'], focus: document.activeElement.id }), id);
+    };
+    const from8 = await typed('set-awake-from', '800A'), to250 = await typed('set-awake-to', '250P');
+    ok(from8.saved === '08:00' && from8.box === '08:00' && from8.focus === 'set-awake-from' && to250.saved === '14:50' && to250.box === '14:50' && to250.focus === 'set-awake-to',
+      `typed with a keyboard: From “800A” is 8:00 AM, To “250P” is 2:50 PM, and the box keeps the focus (${JSON.stringify(from8)}, ${JSON.stringify(to250)})`);
+    ok((await W(page)).held === 1 && /until 2:50 PM/.test(await status(page)), `and the screen is kept on until 2:50 PM (${await status(page)})`);
     await page.fill('#set-awake-from', ''); await page.waitForTimeout(200);
-    ok(await page.evaluate(() => window.__board21.state.settings.awakeFrom) === '07:30', 'a time box emptied halfway keeps the time it had');
+    ok(await page.evaluate(() => window.__board21.state.settings.awakeFrom) === '08:00', 'a time box emptied halfway keeps the time it had');
     await page.click('#settings [data-close]'); await page.waitForTimeout(200);
     await page.reload(); await boardUp(page); await page.waitForTimeout(300);
-    ok((await W(page)).held === 1 && await page.evaluate(() => { const s = window.__board21.state.settings; return s.awake === 'hours' && s.awakeFrom === '07:30' && s.awakeTo === '16:00'; }), 'school hours are remembered after a reload');
+    ok((await W(page)).held === 1 && await page.evaluate(() => { const s = window.__board21.state.settings; return s.awake === 'hours' && s.awakeFrom === '08:00' && s.awakeTo === '14:50'; }), 'school hours are remembered after a reload');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -5328,6 +5350,22 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.evaluate(() => window.__board21.pages.add && window.__board21.pages.add());
     await page.waitForTimeout(800);
     ok((await cornerClock(page)).shown, 'and on every page');
+    await ctx.close();
+
+    // The device's time zone changes while 21Board is open (a Chromebook setting its zone after start-up, IT's policy,
+    // an iPad that travelled): the clock follows it from the next minute on, like the rest of 21Board.
+    ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    const zone = await ctx.newCDPSession(page);
+    await zone.send('Emulation.setTimezoneOverride', { timezoneId: 'America/Chicago' });
+    await page.clock.install({ time: new Date('2026-11-12T15:41:30Z') });   // 9:41 AM in Chicago
+    await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
+    const chicago = (await cornerClock(page)).text;
+    await zone.send('Emulation.setTimezoneOverride', { timezoneId: '' });   // (one override at a time)
+    await zone.send('Emulation.setTimezoneOverride', { timezoneId: 'America/New_York' });
+    await page.clock.runFor(31000); await page.waitForTimeout(200);
+    const newYork = (await cornerClock(page)).text;
+    ok(chicago === '9:41AM' && newYork === '10:42AM', `a new time zone shows from the next minute (Chicago ${chicago}, then New York ${newYork})`);
     await ctx.close();
 
     // Never in the way.

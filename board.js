@@ -3482,7 +3482,8 @@
     // What is happening right now, for Settings: { dot: 'ok' | 'warn' | '', text }, or null (Off).
     status() {
       const m = this.mode(), h = this.hours();
-      if (!this.supported()) return { dot: 'warn', text: 'This browser can’t keep the screen on.' };
+      // (Browsers only offer it to pages served over https, or from this device: a school server on plain http gets none.)
+      if (!this.supported()) return { dot: 'warn', text: window.isSecureContext === false ? 'Needs https to keep the screen on.' : 'This browser can’t keep the screen on.' };
       if (m === 'off') return null;
       if (m === 'hours' && !h) return { dot: 'warn', text: 'Not on: “To” needs to be later than “From”.' };
       if (m === 'hours' && !this.inHours()) return { dot: '', text: `Not now: outside school hours (${clockTime(h.from)}–${clockTime(h.to)}, Mon–Fri).` };
@@ -3520,12 +3521,15 @@
     return true;
   }
 
-  // A time box: kept as soon as it holds a whole time. (Settings isn't drawn again under a finger that is still in
-  // the box, see Settings.render: Awake.paint says what changed.)
+  // A time box: kept as soon as it holds a whole time, without drawing Settings again (Settings.keep), so the
+  // teacher stays in the box: Awake.paint says what changed. (Typing with a keyboard, Chrome sends this change as
+  // it moves on to the next part of the time, while the box doesn't have the focus, so Settings.render's own
+  // "not under a time box" rule can't tell.)
   function awakeChange(el) {
     const key = { 'set-awake-from': 'awakeFrom', 'set-awake-to': 'awakeTo' }[el.id];
     if (!key || !HHMM.test(el.value) || el.value === S.settings[key]) return;   // (a box emptied halfway keeps the time it had)
-    updateSettings({ [key]: el.value });
+    Settings.keep = true;
+    try { updateSettings({ [key]: el.value }); } finally { Settings.keep = false; }
     Awake.paint();
   }
 
@@ -3576,6 +3580,9 @@
     },
     tick() {
       clearTimeout(this.timer);
+      // (The formatters are made again each minute: one keeps the time zone it was made in, and the device's can
+      // change while 21Board is open: a Chromebook setting its zone after start-up, IT's policy, an iPad that travelled.)
+      this.fmt = null;
       this.place();
       this.timer = setTimeout(() => this.tick(), 60000 - Date.now() % 60000);   // the next minute, on the dot
     },
@@ -3768,6 +3775,7 @@
     body: null,
     side: 'left',
     isOpen: false,
+    keep: false,   // section 12b: a time box is being saved, and is still being typed in (awakeChange)
 
     init() {
       this.el = $('#settings');
@@ -3882,7 +3890,7 @@
     },
 
     render() {
-      if (!this.isOpen) return;
+      if (!this.isOpen || this.keep) return;
       // Don't yank a text field (or a time box) out from under someone who is typing in it.
       if (this.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"], input[type="time"]')) return;
       const st = S.settings;
