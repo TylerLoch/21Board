@@ -49,8 +49,13 @@ Keys (`<b>` = board id, currently always `1`; `<n>` = instance number):
 
 Widget ids are limited to `a-z 0-9 -`, so keys can be split on `:`.
 
-The board id is in every key so that **multiple boards** (a planned feature) can be added
-without changing the format: `settings.activeBoard` will choose which board is shown.
+The board id is in every key: each **page** is a board of its own (`board:<b>`, `inst:<b>:…` and so on).
+`settings.activeBoard` is the page every tab on the device shows, and `settings.boards` their order.
+Page ids are never used again: `settings.lastBoard` is the highest one used, and a new page also skips any id
+that still has records or Board history. A deleted page waits in `settings.deletedBoards` while its Undo is
+offered (its records stay until then); then its records and its Board history are deleted. One left there
+(21Board was closed before the Undo ended) is cleared the next time 21Board opens. A record of a page that is
+missing from `settings.boards` (and not deleted) is shown as a page at the end, never hidden.
 
 ---
 
@@ -70,7 +75,10 @@ without changing the format: `settings.activeBoard` will choose which board is s
   devWidgets: [               // test widgets added in Developer mode
     { id: "dev-widgets-my-widget", name: "My-widget (test)", entry: "widgets/my-widget/index.html" }
   ],
-  activeBoard: 1
+  activeBoard: 1,          // the page shown, in every tab (start-up falls back to the first page if it is gone)
+  boards: [1, 3, 2],       // the pages in order (board ids)
+  deletedBoards: [],       // pages deleted while their Undo is offered
+  lastBoard: 3             // the highest page id used so far (never used again)
 }
 ```
 
@@ -375,18 +383,47 @@ on Chrome) reads it.
 | `media.background` (photo) | ✅ | ❌ (a template is for sharing; a photo may show the class) |
 
 Optional, ignored by older readers: `instances[].createdAt` (which window is which, kept by board history),
-`history: {at, kind, label, by, from}` (a Board history copy) and `media.ref` (a photo kept in board history).
+`history: {at, kind, label, by, from}` (a Board history copy), `media.ref` (a photo kept in board history) and
+`pages` (below).
 
-Importing offers two choices:
+### Every page in one file
 
-- **Replace my board** — removes this board's current windows and content, then loads the file
+*Export → All pages*, *Back up now* and the backup reminders save every page. With one page that is exactly the
+file above. With more, it is **still `formatVersion: 1`**: the file is the page that was shown, as above, plus
+`pages`, every page in order, with `{ "main": true }` in that page's place:
+
+```js
+{
+  "format": "21board", "formatVersion": 1, "kind": "full", "viewport": …, "board": { "name": "Math", … }, "media": …, "instances": [ … ],
+  "pages": [
+    { "viewport": …, "board": { "name": "Morning meeting", "uid": "…", … }, "media": …, "instances": [ … ] },
+    { "main": true },
+    { "viewport": …, "board": { "name": "Reading groups", … }, "instances": [ … ] }
+  ]
+}
+```
+
+A copy of 21Board from before pages ignores `pages` and opens the file as one board (the page that was shown).
+Only an all-pages export (or one of a device with a single page) counts as a backup for the reminders.
+*Export → This page* writes the one-page file exactly as before.
+
+Importing a one-page file offers three choices:
+
+- **Open as a new page** (suggested) — the file becomes a new page right after the page shown, with the file's
+  name, background, photo, size and shape (not its theme or accent color). It keeps the file's `board.uid`
+  unless a page on this device already has it (then it gets a new one). Undo takes the page away again.
+- **Replace this page** — removes this page's current windows and content, then loads the file
   (including its board name, background, theme and accent color). Which board it is from then on
   (`board.uid`): the same board, if the file is its own backup (the same `uid`) or says nothing (no `uid`: a
   template, an old backup) and keeps the board's name; the file's board, if the file was sent to a shared
   folder (it has a `sent` block), as with Load; otherwise a new board with a new `uid`, so that sending it
   never touches the file of the board it replaced.
-- **Add to my board** — keeps everything and adds the file's windows. Instance numbers are
+- **Add to this page** — keeps everything and adds the file's windows. Instance numbers are
   renumbered to the next free number per widget, and windows are nudged into free space.
+
+Importing an all-pages file offers **Add these pages** (each becomes a new page, after this device's pages,
+as with *Open as a new page*) or **Replace all pages** (asked again; the file's pages are added, then this
+device's pages are deleted, with Undo for 20 seconds, which brings them back and takes the new ones away).
 
 *Replace* keeps this device's background photo unless the file brings one (or is a sent file that says the board's photo was taken off: `"media": { "background": null }`, written only by a device whose last sent or loaded version of the board said something about a photo; a device that has already loaded or sent "taken off" keeps a photo put on there since), and takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
 this screen); a file from before board sizes existed is fitted into the 16:9 board. *Add* fits the

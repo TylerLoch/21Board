@@ -99,7 +99,10 @@
     dragFromContent: true,   // move windows by dragging inside them (see section 9a)
     devMode: false,
     devWidgets: [],             // [{ id, name, entry }] test widgets added in Developer mode
-    activeBoard: 1,
+    activeBoard: 1,          // the page every tab shows (section 11b)
+    boards: [1],             // the pages, in order (board ids)
+    deletedBoards: [],       // pages deleted while their Undo is offered (their records go after it: Pages.purge)
+    lastBoard: 1,            // the highest page id used so far: a deleted page's id is never used again
     lastBackupAt: null,      // when a full backup was last exported (ms), for backup reminders
     historyEvery: 10,        // Board history: save a version at most every N minutes while the board changes (0 = off)
     historyFolder: true      // Board history: also keep copies in the linked Google Drive folder (about one an hour)
@@ -171,6 +174,11 @@
     trash: '<path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>',
     open: '<path d="M5 12h14"/><path d="M12 5l7 7-7 7"/>',
     plus: '<path d="M12 5v14M5 12h14"/>',
+    back: '<path d="M19 12H5"/><path d="M12 19l-7-7 7-7"/>',
+    chevLeft: '<path d="M15 5l-7 7 7 7"/>',
+    chevRight: '<path d="M9 5l7 7-7 7"/>',
+    copy: '<rect x="8" y="8" width="13" height="13" rx="2"/><path d="M4 16V5a1 1 0 0 1 1-1h11"/>',
+    pencil: '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
     widget: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18"/>',
     windows: '<rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/>',
     quit: '<path d="M18 6L6 18M6 6l12 12"/>',   // a plain X (kiosk mode: Quit)
@@ -452,7 +460,7 @@
   //   { key, type, rev, updatedAt, by, value }
   // Keys:
   //   settings                        board-wide preferences
-  //   board:<b>                       board <b> (name, background)
+  //   board:<b>                       board <b> (name, background): a page (section 11b)
   //   inst:<b>:<widgetId>:<n>            window/instance n of a widget (geometry, open/closed, z)
   //   data:<b>:<widgetId>:<n>            that instance's content   (Board21.save)
   //   conf:<b>:<widgetId>:<n>            that instance's config    (Board21.saveConfig)
@@ -820,7 +828,7 @@
       if (msg.op === 'reload') {
         if (msg.erased) Link.forget();
         if (msg.erased || msg.replaced) Writer.forget();
-        if (Inter.active) Inter.deferredRebuild = true; else rebuildAll();
+        if (Inter.active) Inter.deferredRebuild = true; else rebuildAll({ pick: !!msg.erased });
         return;
       }
       if (msg.op === 'history') { BoardHistory.reload().then(() => { HistorySheet.refresh(); updateHint(); }); return; }
@@ -866,14 +874,31 @@
   }
 
   // Bring this tab in line with whatever is in IndexedDB. If that can't be read, nothing here changes
-  // (must: and the caller is told, by the error).
-  async function reloadAll(must) {
+  // (must: and the caller is told, by the error). opts.pick: show the page the settings name (start-up, Erase).
+  // opts.pending: this tab's changes that aren't stored yet are what it shows (going to another page: one whose
+  // saves are still being tried keeps its newest content, and no widget saves the older one over it).
+  async function reloadAll(must, opts = {}) {
     let recs, skipped;
     const n = rebuilds;
     try { ({ recs, skipped } = await Store.readAll()); } catch (err) { console.warn('21Board: reload failed', err); if (must) throw err; return; }
     // The database was found gone: what was read (nothing) isn't the board; what this tab holds is, and is
     // being written back (see Writer.restore).
     if (Store.lost || (!must && n !== rebuilds)) return;
+    if (must && (opts.pending || Writer.pending.has(Keys.settings))) {
+      const mine = new Map(Writer.batch);
+      for (const [k, op] of Writer.pending) mine.set(k, op);
+      const at = new Map(recs.map((r, i) => [r.key, i]));
+      for (const [key, op] of mine) {
+        if (!opts.pending && key !== Keys.settings) continue;
+        const i = at.get(key);
+        if (op.del) { if (i !== undefined) recs[i] = null; continue; }
+        if (op.absent && i !== undefined) continue;
+        const r = { key, type: op.type, rev: i !== undefined ? recs[i].rev : 0, value: op.value };
+        if (i !== undefined) recs[i] = r; else recs.push(r);
+      }
+      recs = recs.filter(Boolean);
+    }
+    if (opts.pick) S.boardId = Pages.pick(recs);
     const order = { settings: 0, devfile: 0, board: 1, conf: 2, data: 2, inst: 3 };
     recs.sort((a, b) => (order[Keys.parse(a.key).kind] ?? 9) - (order[Keys.parse(b.key).kind] ?? 9));
     const present = new Set(skipped);   // (a record that couldn't be read isn't a deleted one)
@@ -902,18 +927,18 @@
       hist ? { timeout: 0, action: 'Board history', onAction: () => HistorySheet.open('left'), dismiss: 'OK' } : { timeout: 0, action: 'OK' });
   }
 
-  async function rebuildAll() {
+  async function rebuildAll(opts = {}) {
     if (Store.lost) return;   // (there is nothing to read: what this tab holds is the board, see Writer.restore)
     rebuilds++;
     Menu.close();
     for (const w of S.wins.values()) w.destroy();
-    S.wins.clear(); S.insts.clear(); S.data.clear(); S.conf.clear(); S.media.clear(); S.devFiles.clear(); Known.clear();
+    S.wins.clear(); S.insts.clear(); S.data.clear(); S.conf.clear(); S.media.clear(); S.devFiles.clear(); Known.clear(); Pages.info.clear();
     S.focused = null;
     S.settings = Object.assign({}, DEFAULT_SETTINGS);
     S.board = defaultBoard(S.boardId);
     // Couldn't be read: this tab no longer knows what the board holds, so it saves nothing and says so
     // (it goes on only if the teacher chooses to carry on without saving).
-    try { await reloadAll(true); } catch (err) { await Startup.fail(err, { storage: true }); await reloadAll(true); }
+    try { await reloadAll(true, opts); } catch (err) { await Startup.fail(err, { storage: true }); await reloadAll(true, opts); }
     updateZoom();
     migrateBoard();
     ensureUid();
@@ -940,6 +965,7 @@
         applySettings();
         break;
       case 'board':
+        Pages.note(k.board, value);   // (every page's name, for the Pages menu)
         if (k.board !== S.boardId) break;
         S.board = Object.assign(defaultBoard(S.boardId), value || {});
         S.board.layout = validLayout(S.board.layout);
@@ -974,6 +1000,7 @@
 
   function afterBulkApply() {
     updateFocus();
+    Pages.follow();   // another tab went to another page
     Picker.render();
     updateHint();
     if (Settings.isOpen) Settings.render();
@@ -1008,6 +1035,7 @@
 
   function updateBoard(patch) {
     S.board = Object.assign({}, S.board, patch);
+    Pages.note(S.boardId, S.board);
     applyBoard();
     Writer.put(Keys.board(S.boardId), 'board', S.board);
   }
@@ -2701,6 +2729,7 @@
     },
 
     close() {
+      Pages.closeMenu();
       if (!this.side) return;
       this.side = null;
       this.el.classList.remove('open');
@@ -2712,8 +2741,12 @@
       const counts = new Map();
       for (const inst of S.insts.values()) if (inst.open) counts.set(inst.widgetId, (counts.get(inst.widgetId) || 0) + 1);
       const widgets = pickerWidgets();
-      const cols = window.innerWidth / Zoom.ui < 440 ? 3 : 4;   // the panel is drawn at Zoom.ui
+      // The panel is drawn at Zoom.ui. Five columns where the screen has room for them and the row below (the
+      // controls, then ‹ Page ›) beside the other corner's ▦ button; else four or three, with ‹ Page › on a row of
+      // its own above the controls.
+      const room = window.innerWidth / Zoom.ui, cols = room >= 600 ? 5 : room < 440 ? 3 : 4;
       this.el.style.setProperty('--cols', String(cols));
+      this.el.classList.toggle('narrow', cols < 5);
       $('.panel-widgets', this.el).innerHTML = widgets.map(a => {
         const c = counts.get(a.id) || 0;
         return `<button class="widget-tile" role="listitem" data-widget="${esc(a.id)}" title="${esc(a.description || a.name)}">` +
@@ -2728,6 +2761,7 @@
       const dark = resolvedTheme() === 'dark';
       const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
       const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
+      Pages.renderControls(this.el);
       set('export', 'export', 'Export board');
       set('import', 'import', 'Import board');
       set('quit', 'quit', 'Quit 21Board').hidden = !KIOSK;
@@ -2756,6 +2790,9 @@
         case 'theme': updateSettings({ theme: resolvedTheme() === 'dark' ? 'light' : 'dark' }); this.renderControls(); break;
         case 'fullscreen': toggleFullscreen(); break;
         case 'settings': this.close(); Settings.open(side); break;
+        case 'prev': Pages.step(-1); break;
+        case 'next': Pages.step(1); break;
+        case 'pages': Pages.toggleMenu(); break;
       }
     }
   };
@@ -2929,6 +2966,340 @@
   };
 
   // =====================================================================
+  // 11b. Pages: more than one board
+  // ---------------------------------------------------------------------
+  // Each page is a board of its own (board:<b>, inst:<b>:…, see section 3); the teacher flips between them with
+  // ‹ Page › in the Widget Picker. Every tab on this device shows the same page (settings.activeBoard): a tab that
+  // sees it change goes there too. settings.boards keeps their order. Going to another page: its widgets save what
+  // they hold (as when a window closes), the Writer stores it under the page left (every change carries its board's
+  // key, so none can land on the other page), board history keeps a version if one is due, and the other page's
+  // records are read. A widget on a page that isn't shown doesn't run (a Timer's end time is a time of day: it
+  // shows the right time when its page comes back, but its alarm doesn't ring while away).
+  // A deleted page waits in settings.deletedBoards while its Undo is offered; then its records and board history
+  // go (purge). One left there (21Board closed meanwhile) goes at the next start. A page's id is never used again
+  // (settings.lastBoard): nothing left of a deleted page can turn up in a new one.
+  // =====================================================================
+  const PAGE_UNDO_MS = 20000;
+  const Pages = {
+    info: new Map(),   // board id -> { name, uid }: every page whose board record this tab has read
+    busy: false,       // going to another page (or adding or deleting one) now
+    gen: 0,            // counts page changes: what was read before one isn't used after it (buildExport)
+    purges: new Map(), // board id -> timer: its records go once its Undo is over
+    menuEl: null, open: false,
+    enabled() { return !LAB; },
+    note(b, value) { if (!Number.isInteger(b) || b < 1) return; if (value) this.info.set(b, { name: String(value.name || 'My Board'), uid: value.uid || null }); else this.info.delete(b); },
+    gone(st = S.settings) { return new Set((Array.isArray(st.deletedBoards) ? st.deletedBoards : []).map(Number)); },
+    // The pages, in order: those in settings.boards that exist, then any other this device has (a page whose
+    // place in the order was lost is shown, never hidden).
+    ids(st = S.settings, have = b => this.info.has(b) || b === S.boardId) {
+      const gone = this.gone(st), out = [];
+      const add = b => { if (Number.isInteger(b) && b > 0 && !gone.has(b) && !out.includes(b) && have(b)) out.push(b); };
+      (Array.isArray(st.boards) ? st.boards : []).forEach(add);
+      Array.from(this.info.keys()).sort((a, b) => a - b).forEach(add);
+      return out;
+    },
+    // At start-up (and after Erase): the page to show, from the records just read.
+    pick(recs) {
+      const sr = recs.find(r => r.key === Keys.settings), st = Object.assign({}, DEFAULT_SETTINGS, (sr && sr.value) || {});
+      const have = new Set();
+      for (const r of recs) { const k = Keys.parse(r.key); if (k.kind === 'board') have.add(k.board); }
+      const ids = this.ids(st, b => have.has(b));
+      return ids.includes(+st.activeBoard) ? +st.activeBoard : ids[0] || (have.size ? Math.min(...have) : 1);
+    },
+    pos(b = S.boardId) { return this.ids().indexOf(b); },
+    name(b) { return b === S.boardId ? S.board.name : (this.info.get(b) || {}).name || 'Page'; },
+    // "Page 2 · Math" (just "Page 2" for a page with that name).
+    label(b = S.boardId) { const n = this.pos(b) + 1, nm = this.name(b); return nm === `Page ${n}` ? nm : `Page ${n} · ${nm}`; },
+    async nextId() {
+      let m = Math.max(1, +S.settings.lastBoard || 1, S.boardId, ...this.info.keys(), ...this.gone(), await BoardHistory.maxBoard());
+      for (const key of Known.keys()) { const k = Keys.parse(key); if (k.board > m) m = k.board; }
+      return m + 1;
+    },
+
+    // ---- going to another page
+    // opts.follow: another tab went there (this one doesn't say so again); opts.quiet: no label on the board.
+    async go(b, opts = {}) {
+      if (!Store.loaded || (this.busy && !opts.inner)) return false;
+      if (b === S.boardId) return true;
+      if (Inter.active) { toast('Finish moving windows first.'); return false; }
+      const own = !opts.inner;
+      if (own) this.busy = true;
+      try {
+        // (Google Drive folder: a change waiting to be sent automatically goes first; no send starts with one page
+        // and writes as another: see Link.leaving and Link.swap.)
+        if (Link.supported) await Link.leaving((this.info.get(b) || {}).uid || null);
+        await Link.swap(async () => { await this.leave(); await this.show(b, opts); });
+      } finally { if (own) this.busy = false; }
+      if (!opts.follow && S.settings.activeBoard !== S.boardId) updateSettings({ activeBoard: S.boardId });
+      if (Link.supported) { Link.computeOffer(); if (Link.st.auto) Link.changed([Keys.board(S.boardId)]); }
+      this.follow();   // (another tab may have gone elsewhere meanwhile)
+      return S.boardId === b;
+    },
+    async leave() {
+      Menu.close(); this.closeMenu(); Settings.close(); HistorySheet.close();
+      // Each widget saves what it holds, as when its window closes (see closeWin).
+      const live = Array.from(S.wins.values()).filter(w => w.connected);
+      live.forEach(w => w.post('beforeclose'));
+      if (live.length) await sleep(120);
+      await Writer.settled(2000);
+      if (BoardHistory.dirty) { try { await Promise.race([BoardHistory.check(true), sleep(2000)]); } catch (e) { /* go on */ } }
+    },
+    async show(b, opts) {
+      this.gen++;
+      S.boardId = b;
+      BoardHistory.switched();
+      await rebuildAll({ pending: true });
+      if (!Known.has(Keys.board(b)) && !Writer.pending.has(Keys.board(b))) Writer.put(Keys.board(b), 'board', S.board);
+      await BoardHistory.reload();
+      HistorySheet.refresh(); updateHint();
+      Picker.renderControls();
+      if (!opts.quiet) this.flash();
+    },
+    // Another tab went to another page: this one goes too (once nothing is being moved).
+    follow() {
+      if (!this.enabled() || !Store.loaded || this.busy || this.followT) return;
+      const to = +S.settings.activeBoard;
+      if (to === S.boardId || !this.ids().includes(to)) return;
+      this.followT = setTimeout(async () => {
+        this.followT = 0;
+        if (Inter.active) { setTimeout(() => this.follow(), 500); return; }
+        const t = +S.settings.activeBoard;
+        if (t !== S.boardId && this.ids().includes(t)) await this.go(t, { follow: true });
+      }, 0);
+    },
+    // "Page 2 · Math" in the middle of the board for a moment.
+    flash() {
+      const el = $('#page-flash');
+      if (!el) return;
+      el.textContent = this.label();
+      const v = viewRect();
+      el.style.left = (Zoom.ox + (v.x + v.w / 2) * Zoom.s) / Zoom.ui + 'px';
+      el.style.top = (Zoom.oy + (v.y + v.h / 2) * Zoom.s) / Zoom.ui + 'px';
+      el.hidden = false;
+      void el.offsetWidth;
+      el.classList.add('on');
+      clearTimeout(this.flashT); clearTimeout(this.flashT2);
+      this.flashT = setTimeout(() => { el.classList.remove('on'); this.flashT2 = setTimeout(() => { el.hidden = true; }, 400); }, 1100);
+    },
+
+    // ---- adding, duplicating, renaming, moving, deleting
+    // A new page right after this one (opts.after: after that page; opts.end: at the end), and go there. It gets
+    // this page's size of windows and menus, shape and background color and pattern (not the photo).
+    async create(opts = {}) {
+      if (!Store.loaded || Store.failed === 'unopened') return null;
+      const id = await this.nextId(), order = this.ids();
+      const at = opts.end ? order.length : order.indexOf(opts.after || S.boardId) + 1;
+      order.splice(at, 0, id);
+      const board = Object.assign(defaultBoard(id), { name: opts.name || `Page ${at + 1}`, uid: opts.uid || newId(),
+        background: clone(S.board.background) || { color: null, pattern: 'none' }, scale: boardScale(), shape: freeShape() ? 'free' : '16:9', layout: canvasFor(boardScale()) });
+      this.note(id, board);
+      updateSettings({ boards: order, lastBoard: Math.max(id, +S.settings.lastBoard || 1) });
+      await Writer.put(Keys.board(id), 'board', board);
+      return await this.go(id, { inner: true, quiet: opts.quiet }) ? id : null;
+    },
+    async add() {
+      if (this.busy) return;
+      this.busy = true;
+      try { if (await this.create()) toast(`${this.label()} is ready.`); } finally { this.busy = false; }
+      Picker.renderControls();
+    },
+    // Pages from a file (Import: "Open as a new page", an all-pages backup): each one a new page. Returns their ids.
+    async addFrom(list, opts = {}) {
+      const made = [];
+      let after = opts.end ? null : S.boardId;
+      for (const p of list) {
+        const uid = p.board.uid && !Array.from(this.info.values()).some(i => i.uid === p.board.uid) ? p.board.uid : newId();   // (one page per board id here)
+        const id = await this.create({ after, end: !after, name: p.board.name || null, uid, quiet: true });
+        if (!id) break;
+        await applyImport(Object.assign({}, p, { theme: null, accent: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
+        made.push(id); after = id;
+      }
+      return made;
+    },
+    async duplicate() {
+      if (this.busy) return;
+      this.busy = true;
+      try {
+        const p = parseBoardFile(JSON.stringify(await buildExport('full')));
+        p.board.name = `${S.board.name} (copy)`.slice(0, 60);
+        const made = await this.addFrom([p]);   // (a new board id: another board, as far as the Google Drive folder is concerned)
+        if (made.length) { this.flash(); toast(`${this.label()} is a copy.`); }
+      } catch (err) { console.error(err); toast('Couldn’t copy this page: ' + ((err && err.message) || err)); }
+      finally { this.busy = false; }
+      Picker.renderControls();
+    },
+    async rename() {
+      const asked = dialog({ title: 'Rename this page', input: { label: 'Name', maxlength: 60, placeholder: `Page ${this.pos() + 1}` },
+        actions: [{ label: 'Rename', value: true, kind: 'primary' }, { label: 'Cancel', value: null }] });
+      const field = $('#modal input');
+      if (field) { field.value = S.board.name; field.select(); }
+      const r = await asked;
+      if (!r || !r.value || !r.text) return;
+      updateBoard({ name: r.text.slice(0, 60) });
+      Picker.renderControls();
+      if (Settings.isOpen) Settings.render();
+    },
+    move(dir) {
+      const order = this.ids(), i = order.indexOf(S.boardId), j = i + dir;
+      if (i < 0 || j < 0 || j >= order.length) return;
+      [order[i], order[j]] = [order[j], order[i]];
+      updateSettings({ boards: order });
+      Picker.renderControls();
+      this.flash();
+    },
+    async remove() {
+      const order = this.ids();
+      if (order.length < 2 || this.busy) return;
+      const b = S.boardId, name = S.board.name, at = order.indexOf(b);
+      const n = Array.from(S.insts.values()).filter(i => i.open).length, saved = S.insts.size - n;
+      const ok = await dialog({ title: `Delete “${name}”?`,
+        message: `This page and its ${n ? `${n} window${n === 1 ? '' : 's'}` : 'background'}${saved ? ` (and ${saved} closed window${saved === 1 ? '' : 's'})` : ''} are deleted from this device. You can undo this for a few seconds.` + appsOwnWork('deleted here', 'Clear it'),
+        actions: [{ label: 'Delete page', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+      if (!ok) return;
+      this.busy = true;
+      try {
+        if (!await this.go(order[at + 1] || order[at - 1], { inner: true })) return;
+        this.drop([b], `Deleted “${name}”.`);
+      } finally { this.busy = false; }
+      Picker.renderControls();
+    },
+    // These pages are deleted (their records stay until the Undo is over: see purge). Undo puts them back in their
+    // places, and onUndo then runs (an import of several pages takes its own pages away again).
+    drop(list, say, onUndo) {
+      const before = this.ids();
+      updateSettings({ boards: before.filter(x => !list.includes(x)), deletedBoards: Array.from(new Set(Array.from(this.gone()).concat(list))) });
+      Picker.renderControls();
+      for (const b of list) { clearTimeout(this.purges.get(b)); this.purges.set(b, setTimeout(() => this.purge([b]), PAGE_UNDO_MS + 3000)); }
+      if (say) toast(say, { action: 'Undo', timeout: PAGE_UNDO_MS, onAction: () => this.undrop(list, before, onUndo) });
+    },
+    async undrop(list, order, onUndo) {
+      if (list.some(b => !this.purges.has(b))) { toast('That can’t be undone anymore.'); return; }
+      list.forEach(b => { clearTimeout(this.purges.get(b)); this.purges.delete(b); });
+      const gone = this.gone(); list.forEach(b => gone.delete(b));
+      const now = this.ids(), back = order.filter(b => list.includes(b) || now.includes(b));
+      now.forEach(b => { if (!back.includes(b)) back.push(b); });
+      updateSettings({ boards: back, deletedBoards: Array.from(gone) });
+      if (onUndo) await onUndo();
+      if (!this.ids().includes(S.boardId) || !onUndo) await this.go(list[0]);
+      Picker.renderControls();
+    },
+    // Pages taken away again (the Undo of an import): deleted at once, with no question and no Undo of their own.
+    async discard(list, back) {
+      const left = this.ids().filter(b => !list.includes(b));
+      if (!left.length) return;
+      if (list.includes(S.boardId) && !await this.go(left.includes(back) ? back : left[0])) return;
+      updateSettings({ boards: left, deletedBoards: Array.from(new Set(Array.from(this.gone()).concat(list))) });
+      Picker.renderControls();
+      await this.purge(list);
+    },
+    // A deleted page's records and its board history go for good (its Undo is over). Its id is never used again.
+    async purge(list) {
+      list = list.filter(b => b !== S.boardId && !this.ids().includes(b));
+      if (!list.length || !Store.loaded || Store.failed) return;
+      list.forEach(b => { clearTimeout(this.purges.get(b)); this.purges.delete(b); });
+      for (const key of Array.from(Writer.pending.keys())) if (list.includes(Keys.parse(key).board)) Writer.drop(key);   // (never written back after)
+      const keys = Array.from(Known.keys()).filter(k => list.includes(Keys.parse(k).board));
+      try {
+        await Store.tx('readwrite', s => {
+          for (const b of list) {
+            s.delete(Keys.board(b));
+            for (const kind of ['inst', 'data', 'conf', 'media']) s.delete(IDBKeyRange.bound(`${kind}:${b}:`, `${kind}:${b}:￿`));
+          }
+        });
+      } catch (err) { console.warn('21Board: a deleted page couldn’t be cleared yet', err); return; }
+      keys.forEach(k => Known.delete(k)); list.forEach(b => this.info.delete(b));
+      if (keys.length) Sync.announce(keys);
+      for (const b of list) await BoardHistory.purgeBoard(b);
+      const gone = this.gone(); list.forEach(b => gone.delete(b));
+      updateSettings({ deletedBoards: Array.from(gone) });
+    },
+
+    // ---- the Pages menu (above the page indicator in the Widget Picker)
+    initMenu() {
+      this.menuEl = $('#pages-menu');
+      if (!this.menuEl) return;
+      this.menuEl.addEventListener('click', e => {
+        const t = e.target.closest('[data-act]');
+        if (!t || t.disabled) return;
+        this.closeMenu();
+        const act = t.dataset.act;
+        if (act === 'go') this.go(+t.dataset.id);
+        else if (act === 'new') this.add();
+        else if (act === 'dup') this.duplicate();
+        else if (act === 'rename') this.rename();
+        else if (act === 'left') this.move(-1);
+        else if (act === 'right') this.move(1);
+        else if (act === 'delete') this.remove();
+      });
+    },
+    toggleMenu() { if (this.open) this.closeMenu(); else this.openMenu(); },
+    openMenu() {
+      if (!this.menuEl) return;
+      Menu.close();
+      const ids = this.ids(), i = ids.indexOf(S.boardId);
+      const item = (act, icon, label, extra = '', cls = '') =>
+        `<button class="menu-item ${cls}" role="menuitem" data-act="${act}" ${extra}><span class="icon-slot">${icon}</span><span class="label">${esc(label)}</span></button>`;
+      this.menuEl.innerHTML = '<div class="menu-heading">Pages</div>' + ids.map((b, n) =>
+        `<button class="menu-item page-item" role="menuitemradio" aria-checked="${b === S.boardId}" data-act="go" data-id="${b}"><span class="icon-slot page-num">${n + 1}</span><span class="label">${esc(this.name(b))}</span>${b === S.boardId ? svg('check', 'check') : ''}</button>`).join('') +
+        '<div class="menu-sep"></div>' +
+        item('new', svg('plus'), 'New page') + item('dup', svg('copy'), 'Duplicate this page') + item('rename', svg('pencil'), 'Rename this page…') +
+        (ids.length > 1 ? item('left', svg('back'), 'Move left', i < 1 ? 'disabled' : '') + item('right', svg('open'), 'Move right', i >= ids.length - 1 ? 'disabled' : '') : '') +
+        item('delete', svg('trash'), 'Delete this page…', ids.length < 2 ? 'disabled' : '', 'danger');
+      this.open = true;
+      this.menuEl.classList.add('open');
+      const ind = $('[data-ctl="pages"]', Picker.el);
+      if (ind) ind.setAttribute('aria-expanded', 'true');
+      this.place();
+    },
+    closeMenu() {
+      if (!this.open) return;
+      this.open = false;
+      this.menuEl.classList.remove('open');
+      const ind = Picker.el && $('[data-ctl="pages"]', Picker.el);
+      if (ind) ind.setAttribute('aria-expanded', 'false');
+    },
+    // Above the indicator, as the window menu sits by its window's name (on screen, never scrolled).
+    place() {
+      const ind = $('[data-ctl="pages"]', Picker.el), el = this.menuEl;
+      if (!ind || !el) return;
+      const ui = Zoom.ui, a = ind.getBoundingClientRect(), vw = window.innerWidth, vh = window.innerHeight, M = 8, GAP = 6;
+      el.classList.remove('compact', 'tight');
+      el.style.maxHeight = 'none';
+      const size = () => ({ w: el.offsetWidth * ui, h: el.offsetHeight * ui });
+      let m = size();
+      if (m.h > a.top - GAP - M) { el.classList.add('compact'); m = size(); }
+      if (m.h > a.top - GAP - M) { el.classList.add('tight'); m = size(); }
+      el.style.maxHeight = '';
+      const x = clamp(a.left + a.width / 2 - m.w / 2, M, vw - m.w - M);
+      const y = Math.max(M, a.top - GAP - m.h);
+      el.style.left = x / ui + 'px';
+      el.style.top = Math.min(y, vh - m.h - M) / ui + 'px';
+    },
+    // The Widget Picker's ‹ Page › controls.
+    renderControls(root) {
+      const g = $('.page-ctl', root);
+      if (!g) return;
+      g.hidden = !this.enabled();
+      if (g.hidden) return;
+      const ids = this.ids(), i = Math.max(0, ids.indexOf(S.boardId)), last = i >= ids.length - 1;
+      const prev = $('[data-ctl="prev"]', g), next = $('[data-ctl="next"]', g), ind = $('[data-ctl="pages"]', g);
+      prev.innerHTML = svg('chevLeft'); prev.disabled = i === 0;
+      prev.title = i === 0 ? 'This is the first page' : `Go to page ${i}`; prev.setAttribute('aria-label', 'Previous page');
+      next.innerHTML = svg(last ? 'plus' : 'chevRight');
+      next.title = last ? 'New page' : `Go to page ${i + 2}`; next.setAttribute('aria-label', last ? 'New page' : 'Next page');
+      next.classList.toggle('add', last);
+      ind.innerHTML = `<small>Page</small><b>${i + 1} of ${ids.length}</b>`;
+      ind.title = `Pages: ${this.name(S.boardId)}`; ind.setAttribute('aria-label', `Page ${i + 1} of ${ids.length}, ${this.name(S.boardId)}. Pages menu`);
+    },
+    step(dir) {
+      const ids = this.ids(), i = ids.indexOf(S.boardId);
+      if (dir > 0 && i >= ids.length - 1) return this.add();
+      const to = ids[i + dir];
+      if (to) this.go(to);
+    }
+  };
+
+  // =====================================================================
   // 12. Settings
   // =====================================================================
   // Settings → Appearance → Background photo.
@@ -3022,8 +3393,9 @@
           if (label) Link.saveState({ device: Object.assign({}, Link.device(), { label }) });
         }
         if (e.target.id === 'set-board-name') {
-          const name = e.target.value.trim().slice(0, 60) || 'My Board';
+          const name = e.target.value.trim().slice(0, 60) || S.board.name || 'My Board';
           updateBoard({ name });
+          Picker.renderControls();
         }
       });
       this.body.addEventListener('input', e => {
@@ -3170,10 +3542,12 @@
         <h3>Widget Picker</h3>
         <div class="row"><div class="lbl">Show controls in</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']])}</div>
 
-        <h3>Board</h3>
-        <div class="row stack"><label class="lbl" for="set-board-name">Board name <span class="hint">(used for export file names)</span></label>
+        ${Pages.enabled() ? `<h3>This page</h3>
+        <div class="row"><div class="hint">Each page is a board of its own, with its own windows and background. Go to another page, or add, copy and delete pages, with ‹ Page › in the Widget Picker.</div></div>
+        <div class="row stack"><label class="lbl" for="set-board-name">Page name <span class="hint">(used for export file names${Link.supported ? ' and in your Google Drive folder' : ''})</span></label>` : `<h3>Board</h3>
+        <div class="row stack"><label class="lbl" for="set-board-name">Board name <span class="hint">(used for export file names)</span></label>`}
           <input type="text" class="text-input" id="set-board-name" maxlength="60" value="${esc(S.board.name)}" autocomplete="off"></div>
-        <div class="row stack"><div><div class="lbl">${note ? 'Widget windows' : 'Saved widget windows'}</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
+        <div class="row stack"><div><div class="lbl">${note ? 'Widget windows' : Pages.enabled() ? 'Saved windows on this page' : 'Saved widget windows'}</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
           <div class="inst-list">${instHTML}</div></div>
 
         ${Link.supported ? linkSettings(sw, seg) : ''}
@@ -3308,7 +3682,7 @@
           break;
         }
         case 'install': await Install.run(); this.refreshStatus(); break;
-        case 'backup': await doExport('full'); this.refreshStatus(); break;
+        case 'backup': await doExport('all'); this.refreshStatus(); break;
         case 'hist-open': HistorySheet.open(this.side); break;
         case 'hist-every': {
           if (val === '0') {
@@ -3369,12 +3743,14 @@
           // if there is one, and its history are left alone.
           const temp = Store.failed, saved = temp === 'unopened' ? ' Your saved board isn’t touched: reload 21Board to open it.' : '';
           const apps = appsOwnWork('erased here', 'Clear it');
+          const others = temp ? [] : Pages.ids().filter(b => b !== S.boardId);
           const ok = await dialog(temp ? { title: 'Empty this board?', message: 'The windows, their content and the settings you see now are cleared.' + saved + apps,
             actions: [{ label: 'Empty this board', value: 'erase', kind: 'danger' }, { label: 'Cancel', value: null }] }
-            : { title: 'Erase everything?', message: 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '') + ' Export a backup first if you might want them later.' + apps,
+            : { title: 'Erase everything?', message: (others.length ? `All ${others.length + 1} pages, their windows and content, and your settings are deleted from this device.` + (hist ? ' Board history keeps the page you’re on, so you can still go back to it.' : '')
+                : 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '')) + ' Export a backup first if you might want them later.' + apps,
               actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }]
                 .concat(hist ? [{ label: 'Erase, including board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
-          if (ok === 'backup') { await doExport('full'); break; }
+          if (ok === 'backup') { await doExport('all'); break; }
           if (ok !== 'erase' && ok !== 'erase-all') break;
           if (ok === 'erase') {
             // (The question promised a way back: if the board as it is couldn't be kept, ask once more.)
@@ -3383,10 +3759,14 @@
               actions: [{ label: temp ? 'Empty it anyway' : 'Erase anyway', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] })) break;
           } else await BoardHistory.clearAll();
           await Store.tx('readwrite', s => { s.clear(); });
+          // (The other pages are gone, and their ids may be used again: their versions go too. See Pages.)
+          for (const b of others) await BoardHistory.purgeBoard(b);
+          Array.from(Pages.purges.values()).forEach(t => clearTimeout(t)); Pages.purges.clear();
           Writer.forget();
           Link.forget();
           Sync.announce([], { op: 'reload', erased: true });
-          await rebuildAll();
+          await rebuildAll({ pick: true });
+          Picker.renderControls();
           this.render();
           toast(temp ? 'This board was emptied.' + (temp === 'unopened' ? ' Your saved board wasn’t touched.' : '') : 'Everything was erased.');
           break;
@@ -3424,7 +3804,8 @@
   // "template" keeps the open windows' layout and config but no content.
   // =====================================================================
   async function exportFlow() {
-    const kind = await dialog({
+    const n = Pages.ids().length;
+    const kind = await dialog(n < 2 ? {
       title: 'Export board',
       message: 'Save a .21board file you can import later or share with another teacher.' + appsOwnWork('in the file', 'Save it'),
       actions: [
@@ -3432,31 +3813,58 @@
         { label: 'Blank template', sub: 'Window layout and widget settings only — no content', value: 'template', choice: true },
         { label: 'Cancel', value: null }
       ]
+    } : {
+      title: 'Export',
+      message: 'Save a .21board file you can import later or share with another teacher.' + appsOwnWork('in the file', 'Save it'),
+      actions: [
+        { label: `All ${n} pages`, sub: 'A full backup of every page: windows, their content, and closed windows', value: 'all', kind: 'primary', choice: true },
+        { label: 'This page', sub: `A full backup of “${S.board.name}” only`, value: 'full', choice: true },
+        { label: 'This page as a blank template', sub: 'Window layout and widget settings only — no content', value: 'template', choice: true },
+        { label: 'Cancel', value: null }
+      ]
     });
     if (kind) await doExport(kind);
   }
 
-  async function buildExport(kind) {
-    // The stored records, with what this tab holds for any that can't be read: single ones (unread), or all of
-    // them (unread stays null) when storage is in trouble, which is when a backup is wanted most. Not waited
-    // for long, for the same reason.
+  // The page shown (b: another page, from its stored records). Throws if the page shown changed meanwhile.
+  async function buildExport(kind, b = S.boardId) {
+    const gen = Pages.gen, read = await readForExport();
+    if (gen !== Pages.gen) throw new Error('The page changed while it was being read.');
+    return pageExport(kind, b, read);
+  }
+  // The stored records, with what this tab holds for any that can't be read: single ones (unread), or all of
+  // them (unread stays null) when storage is in trouble, which is when a backup is wanted most. Not waited
+  // for long, for the same reason.
+  async function readForExport() {
     let recs = [], unread = null;
     try { ({ recs, skipped: unread } = await Promise.race([Store.readAll(), sleep(8000).then(() => { throw new Error('Storage didn’t answer'); })])); }
     catch (err) { console.warn('21Board: the stored board can’t be read; exporting what this window holds', err); }
-    const b = S.boardId;
+    return { recs, unread };
+  }
+  function pageExport(kind, b, { recs, unread }) {
+    const here = b === S.boardId;
     const byIkey = new Map();
+    let board = here ? S.board : null, photo = null, look = null;
     const get = ik => { if (!byIkey.has(ik)) byIkey.set(ik, {}); return byIkey.get(ik); };
     const each = (key, value) => {
       const k = Keys.parse(key);
       if ((k.kind === 'inst' || k.kind === 'data' || k.kind === 'conf') && k.board === b) { if (value === undefined) delete get(k.ikey)[k.kind]; else get(k.ikey)[k.kind] = value; }
+      if (!here && k.board === b && k.kind === 'board') board = value || null;
+      if (!here && k.board === b && k.kind === 'media') { if (k.name === 'background') photo = value || null; if (k.name === 'background-look') look = value || null; }
     };
     for (const r of recs) each(r.key, r.value);
-    for (const kd of ['data', 'conf']) {
-      for (const [ik, v] of (kd === 'data' ? S.data : S.conf)) if (!unread || unread.includes(Keys[kd](b, ik))) get(ik)[kd] = v;
+    if (here) {
+      for (const kd of ['data', 'conf']) {
+        for (const [ik, v] of (kd === 'data' ? S.data : S.conf)) if (!unread || unread.includes(Keys[kd](b, ik))) get(ik)[kd] = v;
+      }
     }
     // Changes not saved yet (still queued, or waiting to be tried again): what's on the board is what's exported.
     for (const [key, op] of Writer.pending) each(key, op.del ? undefined : op.value);
-    for (const [ik, inst] of S.insts) get(ik).inst = inst;
+    if (here) for (const [ik, inst] of S.insts) get(ik).inst = inst;
+    board = Object.assign(defaultBoard(b), board || (Pages.info.get(b) || {}));
+    const sc = here ? boardScale() : validScale(board.scale) || DEFAULT_SCALE, free = here ? freeShape() : board.shape === 'free';
+    if (here) { photo = BoardPhoto.media(); look = photo ? BoardPhoto.settings() : null; }
+    else { photo = validPhoto(photo) ? photo : null; look = photo ? normalizePhotoSettings(look) || normalizePhotoSettings({}) : null; }
     const instances = [];
     for (const [ik, parts] of byIkey) {
       if (!parts.inst && parts.data === undefined && parts.conf === undefined) continue;   // (deleted, not saved yet)
@@ -3477,22 +3885,49 @@
       kind,
       exportedAt: new Date().toISOString(),
       generator: `21Board ${RELEASE}`,
-      viewport: exportViewport(), // the size of the space the rects are in
+      viewport: here ? exportViewport() : storedViewport(sc, free, instances), // the size of the space the rects are in
       theme: S.settings.theme,
       accent: S.settings.accent,
-      board: Object.assign({ name: S.board.name, background: S.board.background, scale: boardScale(), shape: freeShape() ? 'free' : '16:9' },
-        kind === 'full' && S.board.uid ? { uid: S.board.uid } : {}),   // which board this is (see section 13b)
+      board: Object.assign({ name: board.name, background: board.background || { color: null, pattern: 'none' }, scale: sc, shape: free ? 'free' : '16:9' },
+        kind === 'full' && board.uid ? { uid: board.uid } : {}),   // which board this is (see section 13b)
       // The background photo: full backups only (a template is for sharing, and a photo may show the class).
-      media: kind === 'full' && BoardPhoto.media() ? { background: BoardPhoto.media(), look: BoardPhoto.settings() } : undefined,
+      media: kind === 'full' && photo ? { background: photo, look } : undefined,
       instances
     };
   }
+  // exportViewport() for a page that isn't shown: its 16:9 board, or (any shape) the space its windows use.
+  function storedViewport(sc, free, instances) {
+    const L = canvasFor(sc);
+    if (!free) return { width: L.w, height: L.h };
+    let w = Math.round(Zoom.vw / sc) || L.w, h = Math.round(Zoom.vh / sc) || L.h;
+    for (const i of instances) { w = Math.max(w, Math.ceil(i.rect.x + i.rect.w)); h = Math.max(h, Math.ceil(i.rect.y + i.rect.h)); }
+    return { width: w, height: h };
+  }
+  // Every page in one file (Back up now, the backup reminders, Export → All pages). With one page it is that
+  // page's full backup, exactly as before pages. With more, it is still a formatVersion 1 file whose board is the
+  // page shown, and "pages" lists every page in order ({ main: true } where that one is): a copy of 21Board from
+  // before pages opens it as that one board, and ignores the rest. See docs/DATA-FORMAT.md.
+  async function buildAllExport() {
+    const ids = Pages.ids(), gen = Pages.gen, read = await readForExport();
+    if (gen !== Pages.gen) throw new Error('The page changed while it was being read.');
+    const main = pageExport('full', S.boardId, read);
+    if (ids.length < 2) return main;
+    main.pages = ids.map(b => {
+      if (b === S.boardId) return { main: true };
+      const e = pageExport('full', b, read);
+      return { viewport: e.viewport, board: e.board, media: e.media, instances: e.instances };
+    });
+    return main;
+  }
 
+  // kind: 'full' or 'template' (this page), or 'all' (every page: a backup; with one page, the same as 'full').
   async function doExport(kind) {
+    const pages = Pages.ids().length;
+    if (kind === 'all' && pages < 2) kind = 'full';
     const d = new Date();
     const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}${String(d.getMinutes()).padStart(2, '0')}`;
     const safeName = (S.board.name || '21Board').replace(/[\\/:*?"<>|]+/g, '').trim() || '21Board';
-    const filename = `${safeName} ${stamp}${kind === 'template' ? ' template' : ''}.21board`;
+    const filename = kind === 'all' ? `21Board ${pages} pages ${stamp}.21board` : `${safeName} ${stamp}${kind === 'template' ? ' template' : ''}.21board`;
     // Where the browser has a native Save dialog (Chrome/Edge on desktop and ChromeOS), use it: the teacher
     // chooses where the file goes (e.g. Google Drive), and a backup is only recorded once it's really written.
     // Elsewhere, fall back to a normal download (which can't confirm the file was kept).
@@ -3508,7 +3943,7 @@
     // A kiosk shows no downloads, so a download would vanish into its Downloads folder unseen: only the Save dialog.
     if (KIOSK && !handle) { toast('Export needs the Save dialog, which this kiosk doesn’t allow.'); return false; }
     try {
-      const text = JSON.stringify(await buildExport(kind), null, 2);
+      const text = JSON.stringify(kind === 'all' ? await buildAllExport() : await buildExport(kind), null, 2);
       if (handle) {
         const writable = await handle.createWritable();
         await writable.write(text);
@@ -3520,8 +3955,9 @@
         document.body.appendChild(a); a.click(); a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 30000);
       }
-      if (kind === 'full') updateSettings({ lastBackupAt: Date.now() });
-      toast(kind === 'template' ? 'Template exported.' : 'Board exported.');
+      // (A backup of one page out of several isn't a backup of everything: the reminders go on.)
+      if (kind === 'all' || (kind === 'full' && pages < 2)) updateSettings({ lastBackupAt: Date.now() });
+      toast(kind === 'template' ? 'Template exported.' : kind === 'all' ? `All ${pages} pages exported.` : pages > 1 ? 'Page exported.' : 'Board exported.');
       return true;
     } catch (err) {
       console.error(err);
@@ -3551,7 +3987,7 @@
       createdAt: num(i.createdAt, null)   // board history versions keep it (which window is which)
     }));
     const bg = j.board && j.board.background || {};
-    return {
+    const out = {
       kind: j.kind === 'template' ? 'template' : 'full',
       theme: ['light', 'dark', 'system'].includes(j.theme) ? j.theme : null,
       accent: accentOf(j.accent) ? j.accent : null,
@@ -3577,8 +4013,19 @@
       // loading it takes the photo off here too (see Link.photoRule and ownPhoto). No "media" at all: the file
       // says nothing, and this device's photo stays.
       noPhoto: j.kind !== 'template' && !!j.media && j.media.background === null,
-      instances
+      instances,
+      pages: null
     };
+    // Every page (an all-pages backup, see buildAllExport): each one read as a file of its own; the board above
+    // is the one marked main. (A page that can't be read is left out, never the others.)
+    if (Array.isArray(j.pages) && j.pages.length > 1 && j.kind !== 'template') {
+      out.pages = j.pages.slice(0, 200).map(e => {
+        if (e && e.main) return out;
+        try { return parseBoardFile(JSON.stringify({ format: '21board', formatVersion: 1, kind: 'full', viewport: e.viewport, board: e.board, media: e.media, instances: e.instances })); } catch (err) { return null; }
+      }).filter(Boolean);
+      if (out.pages.length < 2) out.pages = null;
+    }
+    return out;
   }
 
   // Which board a file opened with "Replace my board" is, from then on (its uid). This board: its own backup,
@@ -3596,6 +4043,7 @@
       await dialog({ title: 'Can’t import this file', message: err.message, actions: [{ label: 'OK', value: true, kind: 'primary' }] });
       return;
     }
+    if (parsed.pages && Pages.enabled()) return importPages(file, parsed);
     const openCount = parsed.instances.filter(i => i.open).length;
     const missing = new Set(parsed.instances.filter(i => !getWidget(i.widgetId)).map(i => i.widgetId));
     const what = parsed.kind === 'template' ? 'a blank template' : 'a full backup';
@@ -3610,13 +4058,14 @@
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
       message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' is' : 's are'} not installed here; ${missing.size === 1 ? 'its' : 'their'} content will be kept but not shown.` : ''),
-      actions: [
-        { label: 'Replace my board', sub: 'Your current windows and content are replaced.' + (BoardHistory.enabled() ? ' You can undo this.' : '') + folder, value: 'replace', kind: 'danger', choice: true },
-        { label: 'Add to my board', sub: 'Keep what’s here and add these windows', value: 'add', kind: 'primary', choice: true },
+      actions: (Pages.enabled() ? [{ label: 'Open as a new page', sub: 'Your pages stay as they are. This one is added after the page you’re on.', value: 'page', kind: 'primary', choice: true }] : []).concat([
+        { label: Pages.enabled() ? 'Replace this page' : 'Replace my board', sub: `${Pages.enabled() ? 'This page’s' : 'Your current'} windows and content are replaced.` + (BoardHistory.enabled() ? ' You can undo this.' : '') + folder, value: 'replace', kind: 'danger', choice: true },
+        { label: Pages.enabled() ? 'Add to this page' : 'Add to my board', sub: 'Keep what’s here and add these windows', value: 'add', kind: Pages.enabled() ? '' : 'primary', choice: true },
         { label: 'Cancel', value: null }
-      ]
+      ])
     });
     if (!mode) return;
+    if (mode === 'page') return openAsPages(parsed.pages || [parsed], file, false);
     try {
       const label = `${mode === 'replace' ? 'Before importing' : 'Before adding windows from'} “${file.name.replace(/\.21board$/i, '')}”`;
       const replace = mode === 'replace', shared = Link.supported;
@@ -3636,6 +4085,41 @@
       console.error(err);
       toast('Import failed: ' + (err.message || err));
     }
+  }
+
+  // A file of several pages (an all-pages backup): add its pages after this device's, or put them in their place.
+  async function importPages(file, p) {
+    const n = p.pages.length, wins = p.pages.reduce((t, x) => t + x.instances.filter(i => i.open).length, 0), mine = Pages.ids().length;
+    const name = file.name.replace(/\.21board$/i, '');
+    const mode = await dialog({ title: `Import “${name}”?`, message: `This is a backup of ${n} pages with ${wins} window${wins === 1 ? '' : 's'}.`,
+      actions: [
+        { label: `Add these ${n} pages`, sub: `Your ${mine === 1 ? 'page stays' : `${mine} pages stay`} as ${mine === 1 ? 'it is' : 'they are'}. These are added after ${mine === 1 ? 'it' : 'them'}.`, value: 'add', kind: 'primary', choice: true },
+        { label: 'Replace all pages', sub: `Your ${mine === 1 ? 'page is' : `${mine} pages are`} deleted and these take ${mine === 1 ? 'its' : 'their'} place. You can undo this for a few seconds.`, value: 'replace', kind: 'danger', choice: true },
+        { label: 'Cancel', value: null }
+      ] });
+    if (!mode) return;
+    if (mode === 'replace' && !await dialog({ title: 'Replace all pages?', message: `${mine === 1 ? `“${S.board.name}” is` : `All ${mine} pages are`} deleted from this device, and the ${n} pages in “${name}” take ${mine === 1 ? 'its' : 'their'} place.`,
+      actions: [{ label: 'Replace all pages', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] })) return;
+    return openAsPages(p.pages, file, mode === 'replace');
+  }
+  // Each page in a file becomes a new page (after this one; or, for several, after the last). replace: then the
+  // pages that were here are deleted, with Undo (it brings them back and takes the new ones away).
+  async function openAsPages(list, file, replace) {
+    if (Pages.busy) return;
+    const was = Pages.ids(), from = S.boardId;
+    Pages.busy = true;
+    let made = [];
+    try { made = await Pages.addFrom(list, { end: list.length > 1 }); }
+    catch (err) { console.error(err); toast('Import failed: ' + ((err && err.message) || err)); }
+    finally { Pages.busy = false; }
+    if (made.length && made[0] !== S.boardId) await Pages.go(made[0], { quiet: true });
+    if (!made.length) { Picker.renderControls(); return; }
+    Pages.flash();
+    const name = file ? file.name.replace(/\.21board$/i, '') : '';
+    if (replace) { Pages.drop(was, `Replaced your pages with the ${made.length} in “${name}”.`, () => Pages.discard(made)); return; }
+    const say = made.length > 1 ? `Added ${made.length} pages.` : `Opened “${name}” as a new page.`;
+    toast(say, { action: 'Undo', timeout: PAGE_UNDO_MS, onAction: async () => { await Pages.discard(made, from); } });
+    Picker.renderControls();
   }
 
   // opts.uid: this board becomes that board (loading it from the shared folder), so later versions match.
@@ -3733,7 +4217,7 @@
         for (const r of out) s.put(r);
       });
       // (Only once it is stored: a failed import changed nothing, and other tabs must keep what they hold.)
-      Sync.announce([], { op: 'reload', replaced: mode === 'replace' });
+      Sync.announce([], { op: 'reload', replaced: mode === 'replace' && !opts.fresh });   // (fresh: a new page, nothing of the others' to forget)
     } finally {
       await rebuildAll();
     }
@@ -4945,6 +5429,24 @@
       await this.reload();
       HistorySheet.refresh(); updateHint();
     },
+    // Another page is shown now (Pages.show): what was waiting to be saved as a version was saved, or waits for
+    // that page to come back (its changes are older than the newest version's: see check).
+    switched() {
+      clearTimeout(this.timer);
+      this.dirty = false; this.firstDirtyAt = 0; this.undoable = null; this.guardAt.clear();
+    },
+    // A deleted page's versions go with it (its Undo is over: Pages.purge). Photos no version uses go too (prune).
+    async purgeBoard(b) {
+      if (!this.enabled()) return;
+      try { await this.tx(['meta', 'body'], 'readwrite', o => { o.meta.delete(this.range(b)); o.body.delete(this.range(b)); }); } catch (e) { console.warn('21Board: a deleted page’s board history couldn’t be cleared', e); return; }
+      this.pruneSoon();
+    },
+    // The highest page id board history has versions of (a new page never gets one of those ids: Pages.nextId).
+    async maxBoard() {
+      if (!this.enabled()) return 0;
+      try { const keys = (await this.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAllKeys(); q.onsuccess = () => set(q.result); })) || []; return keys.reduce((m, k) => Math.max(m, parseInt(String(k), 10) || 0), 0); }
+      catch (e) { return 0; }
+    },
     async clearBoard(b = S.boardId) {
       const metas = this.metas.slice();
       await this.tx(['meta', 'body'], 'readwrite', o => { metas.forEach(m => { o.meta.delete(m.id); o.body.delete(m.id); }); });
@@ -5538,7 +6040,7 @@
       const i = this.info(), retry = { label: st === 'unsaved' ? 'Try again now' : 'Reload 21Board', value: 'retry' }, backup = { label: 'Export a backup', value: 'export' };
       const go = await dialog({ title: i.title, message: i.text,
         actions: (st === 'blocked' ? [Object.assign(backup, { kind: 'primary' })] : [Object.assign(retry, { kind: 'primary' }), backup]).concat([{ label: 'Close', value: null }]) });
-      if (go === 'export') doExport('full');
+      if (go === 'export') doExport('all');
       else if (go === 'retry' && st !== 'unsaved') location.reload();
       else if (go === 'retry') { Writer.retry(); if (!await Writer.settled(5000)) toast('Still not saved. 21Board keeps trying.'); }
     }
@@ -5599,6 +6101,7 @@
 
   function closePopups(opts = {}) {
     Picker.close();
+    Pages.closeMenu();
     Menu.close();
     if (!opts.keepSettings) Settings.close();
     if (!opts.keepHistory) HistorySheet.close();
@@ -5817,7 +6320,7 @@
     try { nagged = +localStorage.getItem('21board-backup-reminder') || 0; } catch (e) { /* ignore */ }
     if (Date.now() - nagged < 3 * DAY) return;
     try { localStorage.setItem('21board-backup-reminder', String(Date.now())); } catch (e) { /* ignore */ }
-    toast('This browser hasn’t promised to keep 21Board’s data yet. Save a backup file?', { action: 'Back up', timeout: 15000, onAction: () => doExport('full') });
+    toast('This browser hasn’t promised to keep 21Board’s data yet. Save a backup file?', { action: 'Back up', timeout: 15000, onAction: () => doExport('all') });
   }
 
   function setupFileLaunch() {
@@ -5947,6 +6450,7 @@
   // =====================================================================
   function initUI() {
     Picker.init();
+    Pages.initMenu();
     Menu.init();
     Settings.init();
     AppsOffline.init();
@@ -5970,7 +6474,8 @@
     // Tapping outside a popup closes it.
     document.addEventListener('pointerdown', e => {
       const t = e.target;
-      if (Picker.side && !t.closest('#panel') && !t.closest('.picker-btn')) Picker.close();
+      if (Pages.open && !t.closest('#pages-menu') && !t.closest('[data-ctl="pages"]')) Pages.closeMenu();
+      if (Picker.side && !t.closest('#panel') && !t.closest('.picker-btn') && !t.closest('#pages-menu')) Picker.close();
       if (Menu.win && !t.closest('#menu') && !t.closest('.win-label')) Menu.close();
       if (Settings.isOpen && !t.closest('#settings') && !t.closest('#modal') && !t.closest('.picker-btn') && !t.closest('#panel')) Settings.close();
       if (HistorySheet.isOpen && !t.closest('#history') && !t.closest('#modal') && !t.closest('#toasts') && !t.closest('.picker-btn') && !t.closest('#panel') && !t.closest('#empty-hint')) HistorySheet.close();
@@ -5992,6 +6497,7 @@
       if (e.key !== 'Escape') return;
       if (dialogResolve) dialogResolve(null);
       else if (Menu.win) { const w = Menu.win; Menu.close(); w.labelEl.focus(); }
+      else if (Pages.open) { Pages.closeMenu(); const ind = $('[data-ctl="pages"]', Picker.el); if (ind) ind.focus(); }
       else if (Picker.side) Picker.close();
       else if (HistorySheet.isOpen) HistorySheet.close();
       else if (Settings.isOpen) Settings.close();
@@ -6012,7 +6518,7 @@
       if (/\.21board$|\.json$/i.test(f.name)) importFile(f);
     });
 
-    window.addEventListener('resize', () => { scheduleLayoutAll(); Picker.render(); });
+    window.addEventListener('resize', () => { scheduleLayoutAll(); Picker.render(); Pages.closeMenu(); });
     const onFs = () => Picker.renderControls();
     document.addEventListener('fullscreenchange', onFs);
     document.addEventListener('webkitfullscreenchange', onFs);
@@ -6133,10 +6639,10 @@
           toast('This browser is blocking storage, so nothing will be saved. Try a normal (not private) window.', { timeout: 10000 });
         }
       }
-      await reloadAll(true);
+      await reloadAll(true, { pick: !LAB });
     } catch (err) {
       await Startup.fail(err, { storage: true });   // comes back only if the teacher carries on without saving
-      await reloadAll(true);
+      await reloadAll(true, { pick: !LAB });
     }
     Store.loaded = true;
     updateZoom();
@@ -6147,6 +6653,8 @@
     applyBoard();
     updateHint();
     Startup.done();
+    if (!LAB && S.settings.activeBoard !== S.boardId) updateSettings({ activeBoard: S.boardId });   // (its page was gone)
+    if (!LAB && Pages.gone().size) setTimeout(() => Pages.purge(Array.from(Pages.gone())), 3000);   // deleted while 21Board was last open: their Undo is over
     if (LAB) { LabBridge.start(); return; }   // test mode: no offline cache, install, file opening or backup reminders
     if (!KIOSK) setupFileLaunch();
     Persist.init();
@@ -6160,7 +6668,7 @@
     setRect: (ikey, rect) => { const i = S.insts.get(ikey); if (!i) return; saveInst(ikey, Object.assign({}, i, { rect })); const w = S.wins.get(ikey); if (w) w.layout(); },
     openWidget, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,
-    catalog: () => Array.from(catalog.values()), link: Link, history: BoardHistory, historySheet: HistorySheet, historyPlan
+    catalog: () => Array.from(catalog.values()), link: Link, history: BoardHistory, historySheet: HistorySheet, historyPlan, pages: Pages, updateBoard
   };
 
   // (A problem after the board is up is logged, as before; before that, the teacher is told.)
