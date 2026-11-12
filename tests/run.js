@@ -5238,6 +5238,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await dice.evaluate(() => Board21.window.setSize(400, 300)); await page.waitForTimeout(500);
     di = await inst('dice:1');
     ok(d1.w >= 520 && d1.h >= 400 + 40 && Math.round(di.rect.w) === 400 && Math.round(di.rect.h) === 340, `its editor still gets room: setMinSize (${d0.w}×${d0.h} → ${d1.w}×${d1.h}) and setSize (${Math.round(di.rect.w)}×${Math.round(di.rect.h)}) still work`);
+    // A window that fills the board keeps filling it: setSize is the size it gets back when restored (else a restore).
+    await B(() => window.__board21.setMaximized('dice:1', true)); await page.waitForTimeout(300);
+    await dice.evaluate(() => Board21.window.setSize(360, 240)); await page.waitForTimeout(500);
+    di = await inst('dice:1');
+    ok(di.maximized && Math.round(di.rect.w) === 360 && Math.round(di.rect.h) === 280, `setSize on a window that fills the board leaves it filling the board, and sets the size it gets back (${di.maximized ? 'filling' : 'not filling'}, ${Math.round(di.rect.w)}×${Math.round(di.rect.h)})`);
+    await B(() => window.__board21.setMaximized('dice:1', false)); await page.waitForTimeout(300);
     // Widgets still work: a roll.
     await page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('#roll').click(); await page.waitForTimeout(1800);
     ok(/Rolled/.test(await page.frameLocator('.win[data-ikey="dice:1"] iframe').locator('#said').textContent()), 'and widgets still work (the dice roll)');
@@ -5261,7 +5267,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(nx.page === 2 && nx.disabled && !nx.add && nx.label === 'Next page', `› goes to the next page; on the last page it is no “New page” (${JSON.stringify(nx)})`);
     await B(() => window.__board21.pages.step(1)); await page.waitForTimeout(400);
     ok(await B(() => window.__board21.pages.ids().length === 2 && window.__board21.state.boardId === 2), 'and going on from there makes no page');
-    ok(await B(() => { const h = document.getElementById('empty-hint'); return !h.hidden && getComputedStyle(h.querySelector('.lock-hint')).display !== 'none' && Array.from(h.querySelectorAll('.small:not(.lock-hint)')).every(s => getComputedStyle(s).display === 'none'); }), 'an empty page says the windows are locked (not “Tap ▦ to open a widget”)');
+    ok(await B(() => { const h = document.getElementById('empty-hint'); return !h.hidden && getComputedStyle(h.querySelector('.lock-hint')).display !== 'none' && Array.from(h.querySelectorAll(':scope > .small:not(.lock-hint)')).every(s => getComputedStyle(s).display === 'none'); }), 'an empty page says the windows are locked (not “Tap ▦ to open a widget”)');
     if (!await page.locator('#panel.open').count()) await page.click('.picker-btn.right');
     await page.click('[data-ctl="pages"]'); await page.waitForTimeout(250);
     const pm = await B(() => ({ acts: Array.from(document.querySelectorAll('#pages-menu [data-act]')).map(b => b.dataset.act), sep: !!document.querySelector('#pages-menu .menu-sep') }));
@@ -5283,8 +5289,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await B(() => window.__board21.state.settings.locked && !document.querySelector('#modal.open')), 'Cancel: nothing opens, and the windows stay locked');
     await drop(); await page.waitForTimeout(400);
     await page.locator('#modal.open .btn', { hasText: 'Unlock and open' }).click(); await page.waitForTimeout(500);
-    ok(await B(() => !window.__board21.state.settings.locked && /Import “Science”/.test((document.querySelector('#modal.open h3') || {}).textContent || '')), '“Unlock and open” unlocks, then asks how to open it, as usual');
-    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(300);
+    ok(await B(() => /Import “Science”/.test((document.querySelector('#modal.open h3') || {}).textContent || '')), '“Unlock and open” asks how to open it, as usual');
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(400);
+    ok(await B(() => window.__board21.state.settings.locked && document.querySelectorAll('.picker-btn .lock-badge').length === 2 && window.__board21.pages.ids().length === 2), 'Cancel there: nothing opens, and the windows stay locked');
+    await drop(); await page.waitForTimeout(400);
+    await page.locator('#modal.open .btn', { hasText: 'Unlock and open' }).click(); await page.waitForTimeout(500);
+    await page.locator('#modal.open .btn', { hasText: 'Open as a new page' }).click();
+    await page.waitForFunction(() => window.__board21.pages.ids().length === 3 && !window.__board21.pages.busy, null, { timeout: 8000 }).catch(() => {});
+    ok(await B(() => !window.__board21.state.settings.locked && window.__board21.pages.ids().length === 3), 'picking how to open it unlocks the windows, and opens it');
+    await B(() => window.__board21.pages.go(1)); await page.waitForFunction(() => window.__board21.state.boardId === 1 && window.__board21.state.wins.size === 5 && !window.__board21.pages.busy, null, { timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(300);
 
     // ---- Unlocked: everything is as before.
     d0 = await disp('dice:1');
@@ -5311,6 +5325,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await p.mouse.click(683, 300); await p.waitForTimeout(250);
     };
     const center = async (side, p = page) => { const r = await p.locator(`.picker-btn.${side}`).boundingBox(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; };
+    // A locked empty page says how to unlock, and still offers Board history (“Windows gone? Go back to …”).
+    await page.evaluate(() => window.__board21.openWidget('clock')); await page.waitForTimeout(800);
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(250);
+    await page.click('#settings [data-act="close-all"]'); await page.waitForTimeout(1200);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(250);
+    await setLock(true);
+    const empty = await page.evaluate(() => { const h = document.getElementById('empty-hint'), shown = el => !!el && !el.closest('[hidden]') && getComputedStyle(el).display !== 'none';
+      return { tap: shown(h.querySelector(':scope > .small:not(.lock-hint)')), lock: shown(h.querySelector('.lock-hint')), rescue: shown(h.querySelector('.rescue')), button: shown(h.querySelector('.rescue button')) }; });
+    ok(!empty.tap && empty.lock && empty.rescue && empty.button, `a locked empty page says how to unlock, and keeps “Go back to an earlier version” (${JSON.stringify(empty)})`);
+    await setLock(false);
     await page.evaluate(() => window.__board21.openWidget('dice')); await page.waitForTimeout(800);
     await setLock(true);
     ok(await locked(), 'locked from Settings');
@@ -5338,6 +5362,18 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.mouse.move(c.x, c.y); await page.mouse.down(); await page.waitForTimeout(300);
     await page.mouse.move(c.x + 90, c.y - 90, { steps: 4 }); await page.waitForTimeout(2200); await page.mouse.up(); await page.waitForTimeout(300);
     ok(await locked() && !await pickerOpen() && !await page.locator('.lock-ring').count(), 'sliding off ▦ while holding cancels: still locked, and no Widget Picker');
+    // A script's press is no hold; neither is a press the browser takes away (its release won't come here).
+    await page.evaluate(() => document.querySelector('.picker-btn.left').dispatchEvent(new PointerEvent('pointerdown', { pointerId: 77, pointerType: 'touch', isPrimary: true, bubbles: true, clientX: 30, clientY: 700 })));
+    await page.waitForTimeout(2300);
+    ok(await locked() && !await page.locator('.lock-ring').count(), 'a script’s press on ▦ doesn’t unlock 2 seconds later');
+    await page.evaluate(() => document.querySelector('.picker-btn.left').addEventListener('pointerdown', e => { window.__lockPid = e.pointerId; }, { once: true }));
+    await page.mouse.move(c.x, c.y); await page.mouse.down(); await page.waitForTimeout(300);
+    await page.evaluate(() => document.querySelector('.picker-btn.left').releasePointerCapture(window.__lockPid));
+    await page.mouse.move(c.x + 1, c.y); await page.waitForTimeout(2000);   // (the browser says so with the next move)
+    const lost = await locked() && !await page.locator('.lock-ring').count();
+    await page.mouse.up(); await page.waitForTimeout(300);
+    ok(lost, 'a press on ▦ that the browser takes away doesn’t unlock 2 seconds later');
+    await closePicker();
 
     // ---- Hold for 2 seconds: unlocked (mouse, left corner).
     await page.mouse.move(c.x, c.y); await page.mouse.down(); await page.waitForTimeout(2300);

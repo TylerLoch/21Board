@@ -2014,7 +2014,8 @@
           const view = boundsRect();
           const s = fitSize(cw, ch + TITLE_H, this.constraints(), view);
           const r = resolveMove({ x: inst.rect.x, y: inst.rect.y, w: s.w, h: s.h }, obstacles(this), view, screenPx(RESISTANCE.strong), S.settings.snapping);
-          saveInst(this.ikey, Object.assign({}, inst, { rect: r, maximized: false }));
+          // (Windows locked: one that fills the board keeps filling it, and gets this size when restored. Section 12b.)
+          saveInst(this.ikey, Object.assign({}, inst, { rect: r, maximized: !!inst.maximized && Lock.on() }));
           this.layout(true);
           break;
         }
@@ -3442,6 +3443,7 @@
     hold: null,      // a press on ▦ while locked: { id, side, btn, at, state: 'holding' | 'off' | 'done', timer, raf, ring }
     eat: false,      // the browser's click after such a press (the press was answered when it ended)
     toldAt: 0,
+    letting: false,  // "Unlock and open" a file: the lock goes once the teacher picks how to open it (letGo)
     on() { return !LAB && !!S.settings.locked; },
     // A move, resize or fill of a window: refused while locked (true), and said why, at most every 5 seconds.
     refuse() {
@@ -3458,13 +3460,19 @@
     menuNote() { return `<div class="lock-note in-menu" role="note">${LOCK_ICON}<span>Windows are locked. ${LOCK_HOW}</span></div>`; },
     // The Pages menu: only going to a page (no new, copied, renamed, moved or deleted pages).
     trimPages(el) { if (this.on()) $$('.menu-sep, [data-act]:not([data-act="go"])', el).forEach(n => n.remove()); },
-    // A file opened onto the board (dropped on it, or opened with 21Board) changes its windows: unlock first.
+    // A file opened onto the board (dropped on it, or opened with 21Board) changes its windows: unlock first. The
+    // lock goes when the teacher then picks how to open it (letGo): backing out of that question leaves it locked.
     async letIn(file) {
+      this.letting = false;
       if (!this.on()) return true;
       const yes = await dialog({ title: 'Windows are locked', message: `To open “${String(file && file.name || 'this file').replace(/\.21board$/i, '')}”, unlock the windows first. You can lock them again in Settings.`,
         actions: [{ label: 'Unlock and open', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
-      if (yes && this.on()) updateSettings({ locked: false });
+      this.letting = !!yes;
       return !!yes;
+    },
+    letGo() {
+      if (this.letting && this.on()) updateSettings({ locked: false });
+      this.letting = false;
     },
 
     // ---- press and hold ▦ to unlock
@@ -3475,6 +3483,7 @@
         const b = Picker.btns[side];
         b.addEventListener('pointerdown', e => this.press(e, side));
         b.addEventListener('contextmenu', e => { if (this.on() || this.hold) e.preventDefault(); });   // (a long press: no menu)
+        b.addEventListener('lostpointercapture', e => this.release(e, true));   // (the browser took the press away: it ends here)
       }
       // (On the window: the press is captured by its button, and a release elsewhere must still be heard.)
       window.addEventListener('pointermove', e => this.slide(e), true);
@@ -3490,8 +3499,11 @@
       if (hint) hint.insertAdjacentHTML('afterend', `<div class="small lock-hint">Windows are locked. ${LOCK_HOW}</div>`);
     },
     press(e, side) {
+      if (!e.isTrusted) return;   // (a script's press is no hold)
       this.eat = false;
-      if (!this.on() || this.hold || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (!this.on() || (e.pointerType === 'mouse' && e.button !== 0)) return;
+      if (this.hold && this.hold.state !== 'holding') this.hold = null;   // (over, but its release never came)
+      if (this.hold) return;
       const btn = Picker.btns[side];
       try { btn.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       const h = this.hold = { id: e.pointerId, side, btn, at: performance.now(), state: 'holding' };
@@ -4425,6 +4437,7 @@
       ])
     });
     if (!mode) return;
+    Lock.letGo();   // ("Unlock and open": now, section 12b)
     if (mode === 'page') return openAsPages(parsed.pages || [parsed], file, false);
     try {
       const label = `${mode === 'replace' ? 'Before importing' : 'Before adding windows from'} “${file.name.replace(/\.21board$/i, '')}”`;
@@ -4460,6 +4473,7 @@
     if (!mode) return;
     if (mode === 'replace' && !await dialog({ title: 'Replace all pages?', message: `${mine === 1 ? `“${S.board.name}” is` : `All ${mine} pages are`} deleted from this device, and the ${n} pages in “${name}” take ${mine === 1 ? 'its' : 'their'} place.`,
       actions: [{ label: 'Replace all pages', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] })) return;
+    Lock.letGo();   // ("Unlock and open": now, section 12b)
     return openAsPages(p.pages, file, mode === 'replace');
   }
   // Each page in a file becomes a new page (after this one; or, for several, after the last). replace: then the

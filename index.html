@@ -629,7 +629,7 @@
     .lock-note.in-menu { flex: 0 0 auto; max-width: 280px; margin: 0; padding: 8px 12px; gap: 10px; background: none; color: var(--muted); font-size: 14px; }
     .lock-note.in-menu > svg { width: 20px; height: 20px; }
     #empty-hint .lock-hint { display: none; }
-    body.windows-locked #empty-hint .small:not(.lock-hint) { display: none; }
+    body.windows-locked #empty-hint > .small:not(.lock-hint) { display: none; }   /* (not the rescue's button: btn small) */
     body.windows-locked #empty-hint .lock-hint { display: block; }
     #settings [data-act="close-all"]:disabled { opacity: .45; cursor: default; filter: none; }
 
