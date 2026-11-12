@@ -110,7 +110,7 @@ are open still come from the saved copy: reload once more, or close and open the
   every hour, once a day, off), copies in the Google Drive folder, delete board history.
 - **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to widgets),
   letters for 21Board and its widgets (*Standard*: the device's own font; *Easier to read*: Atkinson Hyperlegible,
-  made for low vision, with I, l and 1 all different; *Early readers*: Andika by SIL, with a and g the way children
+  made for low vision, with I, l and 1 all different and a line through 0; *Early readers*: Andika by SIL, with a and g the way children
   learn to write them; easier reading, not a dyslexia font; this device only; Notes' Chalkboard and Whiteboard
   keep their own lettering),
   board background (with a preview of the board): color in a Light and a Dark row (or match the theme), pattern
@@ -121,7 +121,7 @@ are open still come from the saved copy: reload once more, or close and open the
   button in the bottom right corner (beside the only ▦ when the controls are in one corner), on every page and in
   kiosk mode, as tall as ▦. Taps go through it to the windows under it. It hides while that corner's Widget Picker
   is open, and where the window is too narrow for it (*Time and date* shows only the time first). This device only.
-- **Classroom → Lock windows in place:** widgets still work, but windows can't be moved, resized, closed or added from the board and the Widget Picker (Close all is off too), in every tab on this device. Unlock by holding ▦ for 2 seconds, or with the switch.
+- **Classroom → Lock windows in place:** widgets still work, but windows can't be moved, resized, closed or added from the board and the Widget Picker (Close all is off too), in every tab on this device. A file dropped on the board, or Load on the Google Drive folder's message, asks to unlock first. Unlock by holding ▦ for 2 seconds, or with the switch.
 - **Classroom → Keep the screen on:** *Off* (the default), *While 21Board is showing*, or *School hours* (From and
   To, Monday to Friday, by the device's clock). Stops the Chromebook, iPad or panel from dimming and sleeping while
   21Board is on screen (the browser's screen wake lock). A line says whether it is working right now, or why not:
@@ -149,7 +149,7 @@ board.js                Board shell logic (storage, sync, windows, picker, setti
 sw.js                   Service worker (offline copy, updates)  ← bump VERSION, run tools/release.js
 manifest.webmanifest    PWA manifest (also lets the installed app open .21board files in Chrome)
 icons/                  Widget icons
-fonts/                  Easier-to-read letters (Settings → Appearance → Letters), loaded only once chosen
+fonts/                  Easier-to-read letters (Settings → Appearance → Letters): part of the offline copy, used only once chosen
 sdk/board21.js          The SDK every widget includes (window.Board21)
 sdk/board21-dev.js      The widget dev window: a widget opened outside 21Board runs in the real board
 sdk/dev/board-shell.js  index.html's markup for the dev window (made by tools/build-sdk.js)
@@ -262,7 +262,7 @@ read and write in that one folder only; it can't see anything else.
   (a few seconds after the last change).
 - **Smartboard:** within a minute or two (when 21Board opens, when it comes back to the front, and every
   2 minutes) it says **“Room 12” was updated on my laptop at 7:42 · Load / Not now**. Nothing changes until
-  you tap Load. The first time, pick the board under *Other boards in the folder* in Settings. (A board that
+  you tap Load (if the windows are locked, Load asks to unlock them first). The first time, pick the board under *Other boards in the folder* in Settings. (A board that
   is already one of this device's pages shows *Go to page* there instead of Load.)
 - **Changed on both?** Load says so first and offers *Keep a copy of mine, then load* (the copy goes in the
   folder as its own board). A version this device hasn't loaded is never overwritten: *Send automatically*
@@ -399,7 +399,7 @@ on): 21Board doesn't copy the apps or their work.
 - **Backups, templates, the Google Drive folder and Board history** keep the window (where it is, open or
   closed), never the app's work. A board opened on another device opens that device's 21Sketch, with whatever
   is saved there. To move a drawing, use 21Sketch's own project file (`.json`).
-- 21Board's theme, accent color and size don't reach these apps; they have their own settings.
+- 21Board's theme, accent color, letters and size don't reach these apps; they have their own settings.
 
 **Production and the test site.** At `boardapp.ccsd21.org`, 21Board and the apps are the same site
 (ccsd21.org), so Chrome (Chromebooks, the smartboards) treats the app in the window as the same app as on its
@@ -540,4 +540,5 @@ Built for current **Chrome** (and Chromium-based Edge). Kept compatible with **S
   Font License 1.1 (`fonts/EarlyReaders-OFL.txt`), for *Early readers*. Made the same way, and renamed
   “21Board Early Readers”: Andika is a Reserved Font Name, which a cut-down copy may not use. Its line height is
   brought down from 1.61 to 1.36 em (room for these letters' accents only). The four fonts add about 83 KB
-  (92 KB with the licences) to the offline copy; a device fetches one only once it is chosen.
+  (92 KB with the licences) to the offline copy, which every device saves; 21Board uses one only once it is
+  chosen.

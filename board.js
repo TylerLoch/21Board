@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.12-42';
-  const BOARD_BUILD = 'd0a4f5f1';
+  const BOARD_VERSION = '2026.11.12-43';
+  const BOARD_BUILD = '6ad14e8e';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3426,7 +3426,8 @@
   //   other window calls it can't make are (setSize and setMinSize still work: its editor still gets room).
   // - the Widget Picker opens no windows and has no Import: it says how to unlock instead. ‹ Page › still flips
   //   pages (teachers do, mid-lesson), but there's no new page, and the Pages menu only goes to a page.
-  // - a file dropped on the board or opened with 21Board asks to unlock first (it would change the windows).
+  // - a file dropped on the board or opened with 21Board asks to unlock first (it would change the windows), and so
+  //   does Load on the Google Drive folder's message on the board ("“Room 12” was updated on my laptop").
   // - Settings (where the switch is) and Board history stay the teacher's: only Close all, one tap with no question,
   //   waits. (Opening or deleting a saved window there, or going back to a version, still works.)
   // To unlock: press and hold ▦ for 2 seconds, with a ring filling around it (let go sooner: a tap, as before; slide
@@ -3463,17 +3464,29 @@
     trimPages(el) { if (this.on()) $$('.menu-sep, [data-act]:not([data-act="go"])', el).forEach(n => n.remove()); },
     // A file opened onto the board (dropped on it, or opened with 21Board) changes its windows: unlock first. The
     // lock goes when the teacher then picks how to open it (letGo): backing out of that question leaves it locked.
-    async letIn(file) {
+    // So does Load on the Google Drive folder's message on the board (verb 'load'; Link.load), which anyone can
+    // tap. (Settings' own Load buttons are the teacher's, like the switch: they don't ask, and leave it locked.)
+    async letIn(file, verb = 'open') {
       this.letting = false;
       if (!this.on()) return true;
-      const yes = await dialog({ title: 'Windows are locked', message: `To open “${String(file && file.name || 'this file').replace(/\.21board$/i, '')}”, unlock the windows first. You can lock them again in Settings.`,
-        actions: [{ label: 'Unlock and open', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
+      const yes = await dialog({ title: 'Windows are locked', message: `To ${verb} “${String(file && file.name || 'this file').replace(/\.21board$/i, '')}”, unlock the windows first. You can lock them again in Settings.`,
+        actions: [{ label: `Unlock and ${verb}`, value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
       this.letting = !!yes;
       return !!yes;
     },
     letGo() {
       if (this.letting && this.on()) updateSettings({ locked: false });
       this.letting = false;
+    },
+    // Settings, while open: the switch and Close all, in place. Settings isn't drawn again while someone is in one of
+    // its text or time boxes (Settings.render), but the lock can change meanwhile: ▦ held with a finger (which leaves
+    // the focus in the box until it lets go), or another tab. Tapped, a switch showing the wrong state would do the
+    // opposite of what it shows.
+    paint() {
+      if (!Settings.isOpen) return;
+      const on = this.on(), sw = $('[data-act="lock-windows"]', Settings.body), all = $('[data-act="close-all"]', Settings.body);
+      if (sw) { sw.classList.toggle('on', on); sw.setAttribute('aria-checked', String(on)); }
+      if (all) { all.disabled = on; const hint = $('.hint', all.closest('.row')); if (hint) hint.textContent = closeAllHint(); }
     },
 
     // ---- press and hold ▦ to unlock
@@ -3571,6 +3584,7 @@
       if (!on && badge) badge.remove();
       if (on) b.setAttribute('aria-description', 'Windows are locked. Press and hold for 2 seconds to unlock.'); else b.removeAttribute('aria-description');
     }
+    Lock.paint();
     if (on === Lock.was) return;
     Lock.was = on;
     const h = Lock.hold;
@@ -3586,6 +3600,11 @@
   function lockSettings(sw) {
     if (LAB) return '';   // (the widget dev window: one widget, whose window its developer moves and resizes)
     return `<div class="row"><div><div class="lbl">Lock windows in place</div><div class="hint">Widgets still work, but windows can’t be moved, resized, closed or added from the board until you turn this off or hold ${LOCK_KEY} for 2 seconds.</div></div>${sw('lock-windows', Lock.on(), 'Lock windows in place')}</div>`;
+  }
+
+  // Settings → Close all: off while the windows are locked, saying why (Settings.render, Lock.paint).
+  function closeAllHint() {
+    return Lock.on() ? 'Windows are locked: turn off “Lock windows in place” first.' : SaveNote.state() ? 'Their content is kept while 21Board stays open.' : 'Content stays saved for next time.';
   }
 
   function lockAct(act) {
@@ -3716,7 +3735,7 @@
   }
 
   // ---- Clock in the corner
-  // Settings → Appearance → "Clock in the corner": Off, Time (the default) or Time and date. A small clock beside a
+  // Settings → Appearance → "Clock in the corner": Off, Time or Time and date (the default). A small clock beside a
   // Widget Picker button, on every board and page, without taking a window: teachers and students check the time all
   // day, a Clock window would have to be on every page, and in fullscreen the device's own clock is hidden.
   // Where: on the inner side of the ▦ button in the bottom right corner, or of the only one when Settings → Widget
@@ -3728,9 +3747,12 @@
   // (CornerClock.place). It changes exactly on the minute, in this device's way of writing times.
   const CLOCK_GAP = 8;          // CSS px between the clock and what it must keep clear of
   const CLOCK_TOASTS = 320;     // CSS px of the bottom middle always left for toasts
+  // Off, Time or Time and date. A value this release doesn't know (another release's: the page and this script can
+  // be from different versions for a launch or two; or a damaged record) is the default, on the board and in Settings.
+  const clockMode = () => ['off', 'time', 'date'].includes(S.settings.clock) ? S.settings.clock : DEFAULT_SETTINGS.clock;
   const CornerClock = {
     el: null, timer: 0, side: 'right', fit: '', bare: false, fmt: null,
-    on: () => !LAB && (S.settings.clock === 'time' || S.settings.clock === 'date'),
+    on: () => !LAB && clockMode() !== 'off',
     init() {
       const el = this.el = document.createElement('div');
       el.className = 'corner-clock';
@@ -3789,7 +3811,7 @@
       let reach = 0;
       this.fit = '';
       if (!this.bare) {
-        for (const withDate of S.settings.clock === 'date' ? [true, false] : [false]) {
+        for (const withDate of clockMode() === 'date' ? [true, false] : [false]) {
           el.innerHTML = this.html(now, withDate);
           el.hidden = false;
           reach = this.room();
@@ -3825,7 +3847,7 @@
     // For Settings: what doesn't fit in this window right now ('' when it all does).
     fitNote() {
       if (!this.on() || this.bare) return '';
-      return !this.fit ? 'There isn’t room for it in this window right now.' : S.settings.clock === 'date' && this.fit === 'time' ? 'Only the time fits in this window right now.' : '';
+      return !this.fit ? 'There isn’t room for it in this window right now.' : clockMode() === 'date' && this.fit === 'time' ? 'Only the time fits in this window right now.' : '';
     }
   };
 
@@ -3833,7 +3855,7 @@
 
   function clockSettings(sw, seg) {
     if (LAB) return '';
-    const st = S.settings, mode = ['off', 'time', 'date'].includes(st.clock) ? st.clock : 'date';
+    const st = S.settings, mode = clockMode();
     const where = st.pickerCorners === 'left' ? 'bottom left' : 'bottom right';
     return `<div class="row stack"><div><div class="lbl">Clock in the corner</div><div class="hint">A small clock beside the Widget Picker button in the ${where} corner, on every page. <span id="set-clock-fit">${esc(CornerClock.fitNote())}</span></div></div>
       ${seg('clock', mode, [['off', 'Off'], ['time', 'Time'], ['date', 'Time and date']])}</div>`;
@@ -3848,26 +3870,29 @@
   // ---- Letters (easier-to-read fonts)
   // Settings → Appearance → Letters: the device's own font (as before), or one that comes with 21Board for easier
   // reading from across the room: Atkinson Hyperlegible (the Braille Institute's font for low vision: I, l and 1
-  // differ) or Andika (SIL's font for beginning readers: a and g as children learn to write them). Easier reading,
-  // not a "dyslexia font". The files are in fonts/, cut down to the letters 21Board needs (tools/build-letter-fonts.py;
-  // the cut-down Andika is renamed "21Board Early Readers", as its licence asks) and part of the offline copy (sw.js).
-  // @font-face rules fetch nothing until text uses them, so a font is loaded only once it's chosen (or Settings
-  // shows it). They point next to this file, so they also work in the widget dev window on 21Board's own site (not
-  // on another one: see LETTERS_HERE). Widgets get the font in their palette (--b21-font, paletteFor) and the SDK
-  // adds the same rules in their frames (sdk/board21.js, LETTER_FACES), then fires a resize, so text that is fitted
-  // to its window fits again in the new letters.
+  // differ, and 0 has a line through it) or Andika (SIL's font for beginning readers: a and g as children learn to
+  // write them). Easier reading, not a "dyslexia font". The files are in fonts/, cut down to the letters 21Board
+  // needs (tools/build-letter-fonts.py; the cut-down Andika is renamed "21Board Early Readers", as its licence asks)
+  // and part of the offline copy (sw.js), which every device saves. @font-face rules fetch nothing until text uses
+  // them, so the page loads a font only once it's chosen (or Settings shows it). They point next to this file, so
+  // they also work in the widget dev window on 21Board's own site (not on another one: see LETTERS_HERE). Widgets
+  // get the font in their palette (--b21-font, paletteFor) and the SDK adds the same rules in their frames
+  // (sdk/board21.js, LETTER_FACES), then fires a resize (the window's and Board21's), so text that is fitted to its
+  // window fits again in the new letters.
   // Weights 600 to 800 (headings, names) come out in the Bold face, 500 in the Regular one.
   // This device only, like the other classroom settings: never exported (unlike the theme and accent) or sent to the
   // Drive folder, so a board opened on the smartboard keeps the smartboard's letters.
   // (\u00a0, a no-break space, keeps “I, l and 1” and “a and g” on one line in the hints.)
   const LETTERS = {
     standard: { name: 'Standard', hint: 'This device’s own letters.' },
-    legible: { name: 'Easier to read', hint: 'Atkinson Hyperlegible, made for people with low vision: I,\u00a0l\u00a0and\u00a01 all look different.',
+    legible: { name: 'Easier to read', hint: 'Atkinson Hyperlegible, made for people with low vision: I,\u00a0l\u00a0and\u00a01 all look different, and 0 has a line through it.',
       family: 'Atkinson Hyperlegible', files: ['AtkinsonHyperlegible-Regular.woff2', 'AtkinsonHyperlegible-Bold.woff2'] },
     early: { name: 'Early readers', hint: 'Based on Andika by SIL, for children learning to read: a\u00a0and\u00a0g look the way they learn to write them.',
       family: '21Board Early Readers', files: ['EarlyReaders-Regular.woff2', 'EarlyReaders-Bold.woff2'] }
   };
-  const LETTER_SAMPLE = 'Il1 ag';
+  // (With a 0: Atkinson Hyperlegible draws it with a line through it, on every clock and timer too. Better seen
+  // here first.)
+  const LETTER_SAMPLE = 'Il1 0 ag';
   // The folder this file came from (the dev window's page is somewhere else).
   const FONT_BASE = (() => { const s = document.currentScript; return s && s.src ? s.src.replace(/[?#].*$/, '').replace(/[^/]*$/, '') : ''; })();
   // Whether the fonts can load here. A font from another site loads only if that site allows it (CORS); if it
@@ -4189,7 +4214,7 @@
         <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Widgets without typing move by dragging anywhere in them; any widget moves with two fingers. Off: title bar only.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
         <div class="row"><div class="lbl">Push needed to overlap</div>${seg('resistance', st.resistance, [['gentle', 'Light'], ['normal', 'Medium'], ['strong', 'Firm']], !st.snapping)}</div>
         ${scaleSettingsRows(seg)}
-        <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">${Lock.on() ? 'Windows are locked: turn off “Lock windows in place” first.' : note ? 'Their content is kept while 21Board stays open.' : 'Content stays saved for next time.'}</div></div><button class="btn" data-act="close-all"${Lock.on() ? ' disabled' : ''}>${svg('windows')}Close all</button></div>
+        <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">${closeAllHint()}</div></div><button class="btn" data-act="close-all"${Lock.on() ? ' disabled' : ''}>${svg('windows')}Close all</button></div>
 
         <h3>Widget Picker</h3>
         <div class="row"><div class="lbl">Show controls in</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']])}</div>
@@ -5303,7 +5328,7 @@
       const empty = f.open === 0 && Array.from(S.insts.values()).some(i => i.open);
       this.offerToast = toast(`“${f.title}” was updated on ${f.from || 'another device'} ${when(f.sentAt)}.` + (empty ? ' That version has no open windows.' : '') + (opts.blocked ? ' Changes made here aren’t sent until you load it (or choose in Settings › Send).' : ''), {
         action: 'Load', dismiss: 'Not now', timeout: 0,
-        onAction: () => { this.offerToast = null; this.load(f.name); },
+        onAction: () => { this.offerToast = null; this.load(f.name, { unlock: f.title }); },   // (windows locked: unlock first, section 12b)
         onDismiss: () => { this.offerToast = null; this.dismissed = key; }
       });
     },
@@ -5571,6 +5596,7 @@
 
     // ---- receiving (from a tap). opts.keepMine: a copy of this board was asked for already.
     async load(name, opts = {}) {
+      if (opts.unlock !== undefined && !await Lock.letIn({ name: opts.unlock }, 'load')) return false;   // windows locked (section 12b)
       if (!await this.ensurePerm()) { toast('21Board can’t use that folder until you allow it.'); return false; }
       if (this.busy || this.loading) { toast('Just a moment: 21Board is still sending or loading this board.'); return false; }
       try { await this.leaving(parseBoardFile(await this.readFile(name)).board.uid); } catch (e) { /* read again below */ }
@@ -5625,6 +5651,7 @@
         // Only a sent file joins this device to that board (a plain Export saved in the folder doesn't).
         // (Nor a board that is another page here: this page becomes a copy of it, with an id of its own.)
         const newUid = parsed.board.uid && vid && !Pages.owner(parsed.board.uid) ? parsed.board.uid : newId();
+        if (opts.unlock !== undefined) Lock.letGo();   // ("Unlock and load": now, section 12b)
         let undoId;
         try { undoId = await applyImport(parsed, 'replace', { uid: newUid, keepCreated: true, photo: this.ownPhoto(newUid, parsed) ? 'keep' : 'file', history: { reason: 'load', label: `Before loading the version from ${s2.from || 'another device'}` } }); } catch (err) { console.error(err); toast('Couldn’t load the board: ' + ((err && err.message) || err)); return false; }
         // (The file this device used for the board until now is remembered: its next send tidies it away.)

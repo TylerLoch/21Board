@@ -5393,6 +5393,23 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(500);
     ok(menuWay && ringR === 1 && !await page.evaluate(() => window.__board21.state.settings.locked) && !await pickerOpen(), 'holding the right ▦ with a finger unlocks too (with its ring, and no long-press menu)');
     ok(require('fs').readFileSync(require('path').join(ROOT, 'index.html'), 'utf8').includes('.picker-btn { -webkit-touch-callout: none; }'), 'and no callout on an iPad (-webkit-touch-callout: none on ▦)');
+    // Settings open with a school-hours time box in use: Settings isn't drawn again under it, but its switch and
+    // Close all still follow the lock. (A finger on ▦ leaves the focus in the box until it lets go.)
+    await setLock(true);
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(250);
+    await page.click('#settings [data-act="awake"][data-val="hours"]'); await page.waitForTimeout(250);
+    await page.focus('#set-awake-to');
+    c = await center('right');
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: c.x, y: c.y, id: 1 }] });
+    await page.waitForTimeout(2400);
+    const lockRow = p => p.evaluate(() => { const sw = document.querySelector('#settings [data-act="lock-windows"]'), all = document.querySelector('#settings [data-act="close-all"]');
+      return { focus: document.activeElement.id, locked: window.__board21.state.settings.locked === true, sw: sw.getAttribute('aria-checked') + (sw.classList.contains('on') ? ' (on)' : ''), all: all.disabled ? 'off' : 'on', hint: all.closest('.row').querySelector('.hint').textContent }; });
+    const held = await lockRow(page);
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(400);
+    ok(held.focus === 'set-awake-to' && !held.locked && held.sw === 'false' && held.all === 'on' && !/locked/.test(held.hint),
+      `held with a time box in use: the switch shows off and Close all is back (${JSON.stringify(held)})`);
+    await page.click('#settings [data-act="awake"][data-val="off"]'); await page.waitForTimeout(200);
+    await page.mouse.click(683, 300); await page.waitForTimeout(250);
     // One corner only (Settings → Widget Picker: Right), with a pen.
     await setLock(true);
     const corners = async val => { await page.click('.picker-btn.right'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(250); await page.click(`#settings [data-act="corners"][data-val="${val}"]`); await page.mouse.click(683, 300); await page.waitForTimeout(250); };
@@ -5412,10 +5429,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const p2 = await ctx.newPage(); p2.on('pageerror', e => errors.push('tab 2: ' + e.message));
     await p2.goto(BASE); await boardUp(p2); await p2.waitForTimeout(600);
     ok(await locked(p2), 'a tab opened later is locked too');
+    // (The other tab with Settings open, someone typing in its page name box.)
+    await p2.click('.picker-btn.left'); await p2.click('[data-ctl="settings"]'); await p2.waitForTimeout(250);
+    await p2.focus('#set-board-name');
     await setLock(false); await p2.waitForTimeout(800);
     ok(!await p2.evaluate(() => window.__board21.state.settings.locked || document.body.classList.contains('windows-locked')), 'unlocking in one tab unlocks the others');
+    const typing = await lockRow(p2);
+    ok(typing.focus === 'set-board-name' && typing.sw === 'false' && typing.all === 'on', `and Settings there shows it, while someone types in a box (${JSON.stringify(typing)})`);
     await setLock(true); await p2.waitForTimeout(800);
-    ok(await locked(p2), 'and so does locking');
+    ok(await locked(p2) && (await lockRow(p2)).sw === 'true (on)', 'and so does locking');
+    await p2.keyboard.press('Escape'); await p2.waitForTimeout(250);
     const r0 = await p2.evaluate(() => Object.assign({}, window.__board21.state.wins.get('dice:1').disp));
     const t = await p2.locator('.win[data-ikey="dice:1"] .win-title').boundingBox();
     await p2.mouse.move(t.x + t.width - 30, t.y + 20); await p2.mouse.down(); await p2.mouse.move(t.x + t.width + 60, t.y + 80, { steps: 6 }); await p2.mouse.up(); await p2.waitForTimeout(300);
@@ -5451,6 +5474,67 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(lab && lab.settings && !lab.row, 'the widget dev window’s Settings has no “Lock windows in place”');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+  }],
+
+  ['Lock windows in place: Load on the Google Drive folder’s message asks to unlock first (Settings’ Load doesn’t)', async (browser) => {
+    const errors = [];
+    const A = await driveDevice(browser), B = await driveDevice(browser);   // the laptop and the smartboard
+    for (const d of [A, B]) d.p.on('pageerror', e => errors.push(e.message));
+    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(300); };
+    const closeSettings = async p => { await p.keyboard.press('Escape'); await p.waitForTimeout(250); };
+    const wins = p => p.evaluate(() => Array.from(window.__board21.state.insts.entries()).filter(([, i]) => i.open).map(([k]) => k).sort().join());
+    const locked = () => B.p.evaluate(() => window.__board21.state.settings.locked === true && document.body.classList.contains('windows-locked'));
+    const asked = () => B.p.evaluate(() => { const m = document.querySelector('#modal.open'); return m ? { title: m.querySelector('h3').textContent, text: m.querySelector('p').textContent, btns: Array.from(m.querySelectorAll('.btn')).map(b => b.textContent.trim()).join() } : null; });
+    const offer = () => B.p.locator('.toast', { hasText: '“Room 12” was updated on my laptop' });
+    // The laptop sends a new version of "Room 12" (the windows given), and the smartboard sees it.
+    const sendNew = async ids => {
+      await A.p.evaluate(async ids => { const b = window.__board21; for (const [k, i] of b.state.insts) if (i.open) b.closeWin(k); for (const id of ids) await b.openWidget(id); }, ids);
+      await A.p.waitForTimeout(800);
+      await A.p.evaluate(() => window.__board21.link.send()); await A.p.waitForTimeout(1000);
+      await drive(A.p, B.p);
+      await B.p.evaluate(() => window.__board21.link.check(true)); await B.p.waitForTimeout(600);
+    };
+    await A.p.goto(BASE); await boardUp(A.p);
+    await A.p.evaluate(() => { window.__board21.updateBoard({ name: 'Room 12' }); window.__board21.openWidget('notes'); }); await A.p.waitForTimeout(1000);
+    await settings(A.p);
+    await A.p.click('#settings [data-act="link-choose"]'); await A.p.waitForTimeout(800);
+    await A.p.fill('#set-link-label', 'my laptop'); await A.p.press('#set-link-label', 'Tab'); await A.p.waitForTimeout(200);
+    await A.p.click('#settings [data-act="link-send"]'); await A.p.waitForTimeout(1500);
+    await closeSettings(A.p);
+    // The smartboard loads it, then the teacher locks its windows.
+    await B.p.goto(BASE); await boardUp(B.p);
+    await drive(A.p, B.p);
+    await settings(B.p);
+    await B.p.click('#settings [data-act="link-choose"]'); await B.p.waitForTimeout(1200);
+    await B.p.click('#settings [data-act="link-load"][data-val="Room 12.21board"]'); await B.p.waitForTimeout(300);
+    await B.p.locator('#modal.open .btn', { hasText: 'Replace this board' }).click(); await B.p.waitForTimeout(2000);
+    await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(300);
+    await closeSettings(B.p);
+    ok(await locked() && await wins(B.p) === 'notes:1', `the smartboard shows “Room 12” with its windows locked (${await wins(B.p)})`);
+
+    // ---- The message on the board: Load asks first, as a file dropped on the board does.
+    await sendNew(['timer']);
+    ok(await offer().count() === 1, 'a newer “Room 12” from the laptop is offered on the locked board');
+    await offer().locator('button', { hasText: 'Load' }).click(); await B.p.waitForTimeout(500);
+    let q = await asked();
+    ok(q && q.title === 'Windows are locked' && q.text === 'To load “Room 12”, unlock the windows first. You can lock them again in Settings.' && q.btns === 'Unlock and load,Cancel',
+      `Load asks to unlock first (${q && q.title}: ${q && q.text} [${q && q.btns}])`);
+    await B.p.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await B.p.waitForTimeout(800);
+    ok(await locked() && await wins(B.p) === 'notes:1' && !await asked(), `Cancel: nothing is loaded, and the windows stay locked (${await wins(B.p)})`);
+    await B.p.evaluate(() => window.__board21.link.computeOffer()); await B.p.waitForTimeout(300);
+    await offer().locator('button', { hasText: 'Load' }).click(); await B.p.waitForTimeout(500);
+    await B.p.locator('#modal.open .btn', { hasText: 'Unlock and load' }).click(); await B.p.waitForTimeout(2000);
+    ok(!await locked() && await wins(B.p) === 'timer:1' && await B.p.locator('.toast', { hasText: 'Loaded “Room 12”' }).count() === 1,
+      `“Unlock and load” unlocks the windows and loads it (${await wins(B.p)})`);
+
+    // ---- Settings is the teacher's: its Load works as before, and the windows stay locked.
+    await settings(B.p); await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(300); await closeSettings(B.p);
+    await sendNew(['dice']);
+    await settings(B.p);
+    await B.p.click('#settings [data-act="link-load-offer"]'); await B.p.waitForTimeout(2000);
+    ok(!await asked() && await locked() && await wins(B.p) === 'dice:1', `Settings → Google Drive folder → Load newer doesn’t ask, and the windows stay locked (${await wins(B.p)})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
   }],
 
   // Keep the screen on
@@ -5777,6 +5861,52 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const board = page.frames().find(f => f.parentFrame() === page.mainFrame());
     ok(!!board && await board.evaluate(() => !!window.__board21 && !document.querySelector('.corner-clock:not([hidden])') && !document.body.classList.contains('clock-on') && !document.querySelector('#settings [data-act="clock"]')),
       'the widget dev window has no clock');
+    await ctx.close();
+
+    // A clock setting this release doesn't know (another release's, or a damaged record): the default, on the board
+    // and in Settings alike.
+    ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const putSettings = patch => page.evaluate(patch => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'), st = t.objectStore('records'), g = st.get('settings');
+      g.onsuccess = () => st.put({ key: 'settings', type: 'settings', rev: Date.now() + 1e6, updatedAt: Date.now(), by: 'test', value: Object.assign({}, g.result && g.result.value, patch) }); t.oncomplete = () => { o.result.close(); res(); }; }; }), patch);
+    const agree = [];
+    for (const junk of ['analog', 7, null]) {
+      await putSettings({ clock: junk }); await page.reload(); await boardUp(page); await page.waitForTimeout(300);
+      const shown = (await cornerClock(page)).text || 'no clock';
+      await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(250);
+      agree.push(`${JSON.stringify(junk)}: ${shown} / ${await page.evaluate(() => (document.querySelector('#settings [data-act="clock"].on') || {}).textContent)}`);
+      await page.keyboard.press('Escape');
+    }
+    ok(agree.every(a => /: \w{3}, \w{3} \d+ \d{1,2}:\d\d[AP]M \/ Time and date$/.test(a)), `the board shows Time and date (the default), and Settings says so (${agree.join('; ')})`);
+
+    await ctx.close();
+
+    // Letters: the clock measures itself (and the room toasts keep clear of) in the letters it shows. A font still on
+    // its way measures again once it arrives (here each takes 0.7 s); a change to letters already loaded, or to
+    // Standard, is measured in them straight away.
+    ctx = await browser.newContext({ viewport: { width: 1100, height: 700 } });
+    await ctx.route(/\.woff2$/, async r => { await new Promise(res => setTimeout(res, 700)); await r.continue(); });
+    // The room the clock says it takes (--clock-room), and how far in from its edge it really reaches (with its gap).
+    await ctx.addInitScript(() => { window.__clockRoom = () => { const c = document.querySelector('.corner-clock');
+      return { room: parseFloat(document.body.style.getPropertyValue('--clock-room')), real: !c || c.hidden ? 0 : Math.ceil((innerWidth - c.getBoundingClientRect().left) / window.__board21.zoom.ui + 8) }; }; });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.clock.install({ time: new Date('2026-11-12T09:41:05') });   // (no new minute meanwhile: it measures again too)
+    await page.goto(BASE); await boardUp(page);
+    const rooms = [];
+    for (const key of ['legible', 'early']) {
+      await putSettings({ letters: key }); await page.reload(); await boardUp(page);
+      await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(300);
+      const m = await page.evaluate(() => window.__clockRoom()); rooms.push(`opened in ${key}: ${m.room}/${m.real}`);
+    }
+    await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.evaluate(() => document.fonts.ready);   // (Settings shows each choice in its own letters: all loaded now)
+    for (const key of ['standard', 'legible', 'early', 'standard']) {
+      // (Read in the same task as the tap: before anything else gets the chance to measure again.)
+      const m = await page.evaluate(key => { document.querySelector(`#settings [data-act="letters"][data-val="${key}"]`).click(); return window.__clockRoom(); }, key);
+      rooms.push(`${key}: ${m.room}/${m.real}`);
+    }
+    ok(rooms.every(r => { const [a, b] = r.split(': ')[1].split('/'); return a === b && +a > 0; }), `--clock-room is how far the clock really reaches, in each of the letters (${rooms.join('; ')})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -5816,8 +5946,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const opts = await page.$$eval('#settings .letter-opt', els => els.map(e => ({ val: e.dataset.val, on: e.getAttribute('aria-checked'), font: getComputedStyle(e).fontFamily, text: e.textContent })));
     ok(opts.length === 3 && opts.map(o => o.val).join() === 'standard,legible,early' && opts[0].on === 'true' && opts.slice(1).every(o => o.on === 'false'),
       `Settings → Appearance → Letters: Standard, Easier to read, Early readers; Standard is chosen (${opts.map(o => o.val + ':' + o.on).join(' ')})`);
-    ok(opts[0].font === SYSTEM && opts[1].font.startsWith('"Atkinson Hyperlegible"') && opts[2].font.startsWith('"21Board Early Readers"') && opts.every(o => o.text.includes('Il1 ag')),
-      'each choice is shown in its own letters, with a sample of the look-alikes');
+    ok(opts[0].font === SYSTEM && opts[1].font.startsWith('"Atkinson Hyperlegible"') && opts[2].font.startsWith('"21Board Early Readers"') && opts.every(o => o.text.includes('Il1 0 ag')),
+      'each choice is shown in its own letters, with a sample of the look-alikes and a 0');
+    ok(/I,\u00a0l\u00a0and\u00a01 all look different, and 0 has a line through it\./.test(opts[1].text), `Easier to read says its 0 has a line through it, as on every clock and timer (${opts[1].text})`);
     await page.screenshot({ path: OUT + 'letters-settings.png' });
 
     for (const key of ['legible', 'early']) {
@@ -5970,8 +6101,27 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(!!pie, `${key}: the Task Timer draws its pie again in these letters once they have loaded (${pie})`);
       await page.screenshot({ path: OUT + `letters-fit-${key}.png` });
     }
-    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+
+    // Board21's own 'resize' (where a widget may fit or draw its text) fires again once the new letters have loaded,
+    // as the window's does: here each font file takes 0.7 s to arrive.
+    const slow = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await slow.route(/\.woff2$/, async r => { await new Promise(res => setTimeout(res, 700)); await r.continue(); });
+    const sp = await slow.newPage(); sp.on('pageerror', e => errors.push(e.message));
+    await sp.goto(BASE); await boardUp(sp); await freeBoard(sp);
+    await sp.evaluate(() => window.__board21.openWidget('clock')); await sp.waitForTimeout(1500);
+    const cw = sp.frameLocator('.win[data-ikey="clock:1"] iframe').locator('html');
+    await cw.evaluate(() => { window.__heard = []; const at = () => Math.round(performance.now());
+      Board21.on('resize', () => window.__heard.push(['Board21 resize', at()]));
+      document.fonts.addEventListener('loadingdone', () => window.__heard.push(['font loaded', at()])); });
+    await sp.click('.picker-btn.left'); await sp.click('[data-ctl="settings"]');
+    await sp.click('#settings [data-act="letters"][data-val="legible"]');
+    await eventually(async () => (await cw.evaluate(() => window.__heard)).some(h => h[0] === 'font loaded'));
+    await sp.waitForTimeout(400);
+    const heard = await cw.evaluate(() => window.__heard), fontAt = Math.max(...heard.filter(h => h[0] === 'font loaded').map(h => h[1]));
+    ok(isFinite(fontAt) && heard.some(h => h[0] === 'Board21 resize' && h[1] >= fontAt), `a widget’s Board21.on('resize') fires again once the new letters have loaded (${heard.map(h => h.join(' ')).join(', ')})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await slow.close();
   }],
 
   ['Letters: the widget dev window (on 21Board’s site, in an AI tool’s preview, in the widget lab)', async (browser) => {

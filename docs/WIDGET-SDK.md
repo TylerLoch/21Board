@@ -218,7 +218,7 @@ and links are stripped). Up to 24 items (a swatch row counts as one, with up to 
 | `data` | `(data, { reason })` | This instance's content changed outside this page: another 21Board tab, an import, or a reset. |
 | `config` | `(config, { reason })` | Same, for config. |
 | `theme` | `(theme, palette)` | Light/dark, the accent color or the letters changed. CSS variables are already updated. |
-| `resize` | `(info)` | The window's content size, maximized or focused state changed. (Native `resize` events also fire.) |
+| `resize` | `(info)` | The window's content size, maximized or focused state changed. Also when the teacher's letters change, and again once their font has loaded (text may need fitting again). (Native `resize` events also fire.) |
 | `focus` / `blur` | — | The window was selected / deselected. Selecting a window brings it to the front. **`blur` also fires when the teacher taps the empty board to deselect everything; the window stays in front and visible**, so don't treat `blur` as "covered" (e.g. don't pause a timer on blur). |
 | `menu` | `(id, item)` | One of your menu items was tapped. |
 | `beforeclose` | — | The window is about to close. Save anything pending *synchronously* (call `save()`). |
@@ -333,11 +333,11 @@ The SDK sets these CSS variables on your `<html>` element and keeps them updated
 `--b21-font` is the device's own font unless the teacher chose easier-to-read letters (Settings → Appearance →
 *Letters*): then it starts with a font that comes with 21Board, which the SDK loads from the board's `fonts/`
 folder (a widget on another site gets it only if the board's site allows it, CORS; otherwise its text stays in the
-device's own font). If you fit text to the window, fit it on the window's `resize` event: one fires when the
-letters change, and again once the new font has loaded.
+device's own font). If you fit text to the window, fit it on `resize` (the window's, or `Board21.on('resize')`):
+one fires when the letters change, and again once the new font has loaded.
 A widget uploaded as a file in Developer mode is sealed off from the board's files, so it stays in the device's
-own font. Form controls don't take the page's font by themselves: give `button`, `input` and `textarea`
-`font-family: inherit` (or `font: inherit`) so their text follows the letters too.
+own font. Form controls don't take the page's font by themselves: give `button`, `input`, `textarea` and
+`select` `font-family: inherit` (or `font: inherit`) so their text follows the letters too.
 
 Use `[data-b21-theme="dark"] .thing { … }` for anything else that should change in dark mode.
 

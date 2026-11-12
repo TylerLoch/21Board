@@ -115,7 +115,8 @@
   // script from the board gets them only if the board's site allows it (CORS), and one with its own copy of
   // the SDK only if a fonts/ folder is next to it. Otherwise its text stays in the device's own font, the
   // next one in --b21-font. Text a widget fits to its window must be fitted again in the new letters: a
-  // window resize event fires when they change, and again once the font has loaded.
+  // resize event (the window's, and Board21.on('resize')) fires when they change, and again once the font has
+  // loaded.
   var LETTER_FACES = {
     'Atkinson Hyperlegible': ['AtkinsonHyperlegible-Regular.woff2', 'AtkinsonHyperlegible-Bold.woff2'],
     '21Board Early Readers': ['EarlyReaders-Regular.woff2', 'EarlyReaders-Bold.woff2']
@@ -144,6 +145,9 @@
     setTimeout(function () {
       refitSoon = false;
       try { window.dispatchEvent(new Event('resize')); } catch (e) { /* (a very old browser) */ }
+      // Board21's own 'resize' too, for a widget that fits or draws its text there: inside 21Board it otherwise
+      // comes only from the board, once, before the new font has arrived. (Standalone, the line above does it.)
+      if (context && !standalone) emit('resize', context.window || windowInfo());
     }, 30);
   }
   if (document.fonts && document.fonts.addEventListener) {

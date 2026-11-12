@@ -305,6 +305,10 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
   `--b21-accent`, `--b21-on-accent`, `--b21-accent-soft`, `--b21-danger`, `--b21-success`,
   `--b21-warning`, `--b21-font`, `--b21-radius`. Any color of your own gets a dark version under
   `[data-b21-theme="dark"]`. Strong colors only for meaning (done, warning) or a theme the teacher picks.
+- **The teacher's letters**: `--b21-font` can change while the widget is open (21Board's Settings →
+  *Letters*). Give `button`, `input`, `textarea` and `select` `font: inherit` (as the skeleton's do), so they
+  follow it too. A resize event comes after a change, and again once the new letters have loaded, so text
+  fitted on `addEventListener('resize', …)` (the skeleton's `fitAll()`) fits again by itself.
 - **Touch first**: tap targets at least 48px, no hover-only controls, `touch-action: manipulation`, no
   double-tap or long-press-only actions.
 - **Motion**: short and purposeful; none under `@media (prefers-reduced-motion: reduce)`.
@@ -347,7 +351,7 @@ Start with `const ctx = await Board21.ready()` and draw from `ctx.data`. Save co
 
 Put settings and rarely used commands in the window menu with `Board21.menu.set([...])` (at most 24 items, each with an id; `checked: true/false` for options; `#hex` colors only; call it again when state changes) and react in `Board21.on('menu', id => …)`. Do editing in a separate view with a Done button: while it shows, call `Board21.window.setMinSize(w, h)` for room and `setDragFromContent(false)`; when done, `setMinSize(null, null)` and `setDragFromContent(true)`. Never resize the window on load. Use `Board21.window.setTitle('…')` for status and `requestAttention()` when a timer ends. Don't pause anything on `blur`.
 
-Style with plain CSS using `var(--b21-bg)`, `--b21-surface`, `--b21-surface-2`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`, `--b21-font` (they switch for dark mode). Big, bold, kid-readable text that grows with the window (`min(13vw, 24vh)`), one obvious main button that grows with the window too (`font-size: clamp(17px, 5vmin, 40px)`), and an empty state that says what to do. When the window fills the board, the board's own buttons cover its bottom corners: centre the main button.
+Style with plain CSS using `var(--b21-bg)`, `--b21-surface`, `--b21-surface-2`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`, `--b21-font` (they switch for dark mode). Give `button`, `input`, `textarea` and `select` `font: inherit`, so they use the letters the teacher picked too. Big, bold, kid-readable text that grows with the window (`min(13vw, 24vh)`), one obvious main button that grows with the window too (`font-size: clamp(17px, 5vmin, 40px)`), and an empty state that says what to do. When the window fills the board, the board's own buttons cover its bottom corners: centre the main button.
 Make NO network requests: no Tailwind or other CDNs, no web fonts, no external images, no `http(s)://` in scripts. Fill the window (`html, body {margin:0; height:100%; overflow:hidden}`) with flex/grid and %/vmin so it works at every size without scrolling (an editor's long list may scroll), with no text under 14px. Tap targets at least 48px. No alert/confirm/prompt or autofocus.
 Output the whole file in one code block.
 ````

@@ -78,11 +78,12 @@ storage can't be read still has every page.
   resistance: "normal",    // "gentle" | "normal" | "strong" — how hard you push to overlap
   pickerCorners: "both",   // "both" | "left" | "right"
   accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
-  letters: "standard",     // Settings → Letters: "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika)
-  awake: "off",            // Keep the screen on: "off" | "on" (while 21Board is showing) | "hours" (school hours, Mon–Fri)
+  locked: false,           // Settings → Classroom → Lock windows in place
+  awake: "off",            // Settings → Classroom → Keep the screen on: "off" | "on" (while 21Board is showing) | "hours" (school hours, Mon–Fri)
   awakeFrom: "07:30",      //   school hours, "HH:MM" by this device's clock (not kept on while awakeTo isn't later)
   awakeTo: "15:30",
-  clock: "date",           // Clock in the corner: "off" | "time" | "date" (time and date, the default)
+  clock: "date",           // Settings → Appearance → Clock in the corner: "off" | "time" | "date" (time and date, the default)
+  letters: "standard",     // Settings → Appearance → Letters: "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
   lastBackupAt: null,      // ms of the last full backup export, for backup reminders
   devMode: false,
   devWidgets: [               // test widgets added in Developer mode
@@ -96,7 +97,9 @@ storage can't be read still has every page.
 }
 ```
 
-`locked` (default false): Settings → Classroom → *Lock windows in place*. This device only: never in exports or the Google Drive folder.
+Only `theme` and `accent` go into exported files (and so into the Google Drive folder). `locked`, `awake`,
+`awakeFrom`, `awakeTo`, `clock` and `letters` belong to this device: never in exports, Board history or the Google
+Drive folder, and an import or Load leaves them as they are.
 
 ### `board:<b>`
 
