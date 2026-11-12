@@ -1645,7 +1645,7 @@ const SUITES = [
     ok(a.n === 2 && a.labels === '1,3' && await inFrame('dice', () => document.getElementById('total').textContent) === '= 4', `Dice shows ordinary dice: only whole numbers 1 to 6 count as rolled (${a.labels})`);
     ok(b.n === 2 && b.labels === '1,2', `and the number of dice is 1 to 6, or the usual 2 (${b.labels})`);
     const shown = await Promise.all([
-      inFrame('name-picker', () => [document.getElementById('name').textContent, document.getElementById('name').children.length, document.getElementById('status').textContent].join(' | ')),
+      inFrame('name-picker', () => { const n = [...document.querySelectorAll('.bn-name')]; return [n.map(e => e.textContent).join(), n.reduce((k, e) => k + e.children.length, 0), document.getElementById('status').textContent].join(' | '); }),
       inFrame('notes', () => document.getElementById('view').textContent),
       inFrame('timer', () => document.getElementById('display').textContent),
       inFrame('clock', () => document.getElementById('time').textContent),
@@ -1671,7 +1671,9 @@ const SUITES = [
     np = page.frameLocator('.win[data-ikey="name-picker:1"] iframe');
     ok(await eventually(async () => await np.locator('#status').textContent() === '3 of 3 left'), 'after the page is loaded again the list is still there (3 of 3 left)');
     // No repeats: a pick takes one student out; adding a name later keeps who was picked.
-    const pick = async left => { await np.locator('#go').click(); await eventually(async () => (await saved()).left.length === left, 3000); return (await saved()).current; };
+    // (A tap during a show skips to its end, so each pick waits until the last show is over.)
+    const idle = () => eventually(async () => !(await np.locator('body').evaluate(b => b.classList.contains('showing'))), 12000);
+    const pick = async left => { await idle(); await np.locator('#go').click(); await eventually(async () => (await saved()).left.length === left, 3000); return (await saved()).current; };
     const first = await pick(2);
     ok((await saved()).left.length === 2, `a pick takes one student out of the round (${first})`);
     await page.click('.win[data-ikey="name-picker:1"] .win-label'); await page.click('#menu [data-id="edit"]');
@@ -1687,6 +1689,237 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Name Picker: styles, winners, menu', async (browser) => {
+    // Counts, in every frame, the sounds a page starts (AudioContexts) and the notes it plays, and the timers and
+    // animation frames it asks for.
+    const AUDIO_SPY = () => {
+      window.__calls = 0;
+      for (const fn of ['setTimeout', 'setInterval', 'requestAnimationFrame']) { const f = window[fn]; window[fn] = function () { window.__calls++; return f.apply(this, arguments); }; }
+      if (!window.AudioContext) return;
+      window.__audio = 0; window.__notes = 0;
+      const A = window.AudioContext, base = (window.BaseAudioContext || A).prototype;
+      window.AudioContext = class extends A { constructor(o) { super(o); window.__audio++; } };
+      for (const fn of ['createOscillator', 'createBufferSource']) { const f = base[fn]; base[fn] = function () { window.__notes++; return f.apply(this, arguments); }; }
+    };
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+    await ctx.addInitScript(AUDIO_SPY);
+    const page = await ctx.newPage();
+    const errors = [];
+    const watch = (p, tab) => { p.on('pageerror', e => errors.push(`[${tab}] ${e.message}`)); p.on('console', m => { if (m.type() === 'error' && /name-picker/.test(m.location().url || '')) errors.push(`[${tab} console] ${m.text()}`); }); };
+    watch(page, 'tab 1');
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const np = (p = page, ik = 'name-picker:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const saved = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
+    const conf = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
+    const menu = async (id, p = page, ik = 'name-picker:1') => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    // The window's menu as the board has it: "Label", "Label ✓" (ticked), "Label (off)" (can't be used), "# Heading", "—" (a line).
+    const items = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems
+      .map(i => i.separator ? '—' : i.heading ? '# ' + i.label : i.label + (i.checked ? ' ✓' : '') + (i.disabled ? ' (off)' : '')).join(' | '), ik);
+    const MENU = (style, n, { noRepeats = true, startOver = false, sound = false, quick = false } = {}) => ['# Pick with',
+      ...[['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto']].map(([id, label]) => label + (id === style ? ' ✓' : '')),
+      '# Winners each time', ...[1, 2, 3, 4, 5].map(k => k + (k === n ? ' ✓' : '')), '—',
+      'No repeats' + (noRepeats ? ' ✓' : ''), 'Start over' + (startOver ? '' : ' (off)'), 'Edit names', 'Sound' + (sound ? ' ✓' : ''), 'Quick' + (quick ? ' ✓' : '')].join(' | ');
+    const showing = (p = page, ik) => np(p, ik).locator('body').evaluate(b => b.classList.contains('showing'));
+    const idle = (p = page, ik) => eventually(async () => !(await showing(p, ik)), 12000);
+    const text = (sel, p = page, ik) => np(p, ik).locator(sel).textContent();
+    const said = (p = page, ik) => text('#said', p, ik);
+    const bigNames = (p = page, ik) => np(p, ik).locator('html').evaluate(() => [...document.querySelectorAll('.bn-name')].map(e => e.textContent));
+    const fits = (p = page, ik) => np(p, ik).locator('.bn').evaluate(b => b.scrollWidth <= b.clientWidth + 1 && b.scrollHeight <= b.clientHeight + 1);
+    const inFrame = (fn, p = page, ik) => np(p, ik).locator('html').evaluate(fn);
+    const sameList = (a, b) => a.slice().sort().join() === b.slice().sort().join();
+    // Taps Pick and answers the pick once the board has it.
+    const pickNow = async (p = page, ik) => {
+      const was = ((await saved(p, ik)) || {}).pickId;
+      await np(p, ik).locator('#go').click();
+      await eventually(async () => ((await saved(p, ik)) || {}).pickId !== was, 3000);
+      return saved(p, ik);
+    };
+
+    // ---- A new Name Picker opens as the Spinning wheel; the menu has everything (option A).
+    await page.evaluate(() => window.__board21.openWidget('name-picker'));
+    ok(await eventually(async () => ((await conf()) || {}).style === 'wheel'), `a new Name Picker opens as the Spinning wheel, and saves that (${JSON.stringify(await conf())})`);
+    ok(await eventually(async () => await items() === MENU('wheel', 1)), 'its menu: “Pick with” the four styles, “Winners each time” 1 to 5, then No repeats, Start over, Edit names, Sound, Quick: ' + await items());
+    await np().locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan');
+    await np().locator('#done').click(); await page.waitForTimeout(300);
+    ok(await text('#status') === '6 of 6 left' && await text('#go') === 'Pick a name' && await np().locator('#round').isHidden(), 'with names: “6 of 6 left”, “Pick a name”, and no Start over yet');
+
+    // ---- Sound is off: a pick makes none (no sound is even started). A double tap picks once; a tap during the show (after
+    // the guard) skips to the result.
+    let before = (await saved()).pickId;
+    await np().locator('#go').click(); await np().locator('#go').click();
+    await eventually(async () => (await saved()).pickId !== before, 3000);
+    const one = await saved();
+    ok(one.pickId !== before && one.picked.length === 1 && one.left.length === 5 && await showing() && await text('#go') === 'Show now',
+      `a pick is saved as the show starts (${one.picked}), and the button reads “Show now”; the second tap of a double tap is ignored`);
+    await page.waitForTimeout(700);
+    await np().locator('#stage').click(); await page.waitForTimeout(150);
+    ok(!(await showing()) && (await saved()).pickId === one.pickId && await eventually(async () => await said() === 'Picked: ' + one.picked[0]),
+      'a tap during the show skips straight to the result, without picking again; screen readers hear “Picked: …”');
+    ok(await text('#status') === '5 of 6 left' && await text('#go') === 'Pick again' && await np().locator('#round').isVisible(), 'then “5 of 6 left”, “Pick again” and Start over');
+    ok(await inFrame(() => window.__audio) === 0 && await inFrame(() => window.__notes) === 0, 'with Sound off nothing is started or played');
+
+    // ---- Quick: a tick in the menu that shortens the show.
+    const timed = async () => { await idle(); const t = Date.now(); await np().locator('#go').click(); await page.waitForTimeout(50); await idle(); return Date.now() - t; };
+    const usual = await timed();
+    await menu('quick');
+    ok((await conf()).quick === true && await items() === MENU('wheel', 1, { quick: true, startOver: true }), 'Quick is ticked in the menu and saved');
+    const quick = await timed();
+    ok(quick < 2500 && quick < usual, `Quick makes the show shorter (${usual} ms, with Quick ${quick} ms)`);
+    await menu('quick');
+
+    // ---- Nothing runs between picks, and a show ends when the page can't be seen.
+    await idle(); await page.waitForTimeout(300);
+    const c0 = await inFrame(() => window.__calls);
+    await page.waitForTimeout(1500);
+    ok(await inFrame(() => window.__calls) === c0, `nothing runs between picks: no timers or animation frames (${await inFrame(() => window.__calls) - c0})`);
+    await pickNow();
+    await inFrame(() => { Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    ok(!(await showing()) && await eventually(async () => (await said()).startsWith('Picked: ' + (await saved()).picked.join(', ')), 1000), 'a show ends at once when the page is hidden, with the winners on screen');
+    await inFrame(() => { delete document.hidden; });
+
+    // ---- Changing the style during a show ends it, with the result on screen.
+    const mid = await pickNow();
+    await menu('style:name');
+    ok((await conf()).style === 'name' && !(await showing()) && sameList(await bigNames(), mid.picked) && await np().locator('.style-root[data-style="name"]').count() === 1,
+      `choosing Big name during the show ends it and shows the winners (${mid.picked})`);
+    ok(await items() === MENU('name', 1, { startOver: true }), 'the menu ticks Big name');
+
+    // ---- Start over: everyone back in.
+    await menu('round');
+    let st = await saved();
+    ok(st.left.length === 6 && !st.picked.length && st.current === null && await text('#status') === '6 of 6 left' && await np().locator('#round').isHidden()
+      && JSON.stringify(await bigNames()) === '["?"]' && await items() === MENU('name', 1), 'Start over puts everyone back (6 of 6 left), clears the stage, and can’t be chosen again until a pick');
+
+    // ---- Several winners in Big name. No repeats across picks; fewer left than asked.
+    await menu('winners:3');
+    ok((await conf()).winners === 3 && await text('#go') === 'Pick 3' && await items() === MENU('name', 3), 'Winners each time: 3 is saved, ticked, and the button says “Pick 3”');
+    let t0 = Date.now();
+    const p1 = await pickNow();
+    ok(p1.picked.length === 3 && new Set(p1.picked).size === 3 && p1.left.length === 3 && p1.picked.every(n => !p1.left.includes(n)) && p1.current === p1.picked[0] && typeof p1.pickId === 'string',
+      `three different winners, saved before the show, out of the round (${p1.picked})`);
+    await idle();
+    const took = Date.now() - t0;
+    ok(took > 1100 && took < 2700, `Big name shuffles for about 1½ s (${took} ms)`);
+    ok(JSON.stringify(await bigNames()) === JSON.stringify(p1.picked) && (await np().locator('.bn-num').allTextContents()).join() === '1,2,3' && await fits(),
+      'they stack in pick order, numbered 1, 2, 3, and fit the window');
+    ok(await eventually(async () => await said() === 'Picked: ' + p1.picked.join(', ')) && await text('#status') === '3 of 6 left', `screen readers hear “${await said()}”; 3 of 6 left`);
+    await menu('winners:5');
+    ok(await text('#go') === 'Pick the last 3', 'asking for 5 with 3 left: the button says “Pick the last 3”');
+    const p2 = await pickNow(); await idle();
+    ok(p2.picked.length === 3 && !p2.left.length && sameList(p1.picked.concat(p2.picked), ['Ava', 'Leo', 'Mia', 'Noah', 'Zoe', 'Ethan']),
+      `it picks the 3 left; over the two picks everyone was picked once (${p1.picked} / ${p2.picked})`);
+    ok(await text('#status') === '0 of 6 left' && await text('#go') === 'Everyone picked — start over' && await eventually(async () => /^Picked: .*\. Everyone has been picked\.$/.test(await said())),
+      '“0 of 6 left”, the button offers to start over, and screen readers hear that everyone has been picked');
+    await np().locator('#go').click(); await page.waitForTimeout(200);
+    ok((await saved()).left.length === 6 && await text('#status') === '6 of 6 left', 'the button starts over');
+    for (const n of [1, 5]) {
+      await menu('winners:' + n);
+      const p = await pickNow(); await idle();
+      ok(p.picked.length === n && JSON.stringify(await bigNames()) === JSON.stringify(p.picked) && await np().locator('.bn-num').count() === (n > 1 ? n : 0) && await fits(),
+        `${n} winner${n > 1 ? 's' : ''} in Big name: ${p.picked.join(', ')} (${n > 1 ? 'numbered' : 'no number'}), fitting the window`);
+    }
+    await page.screenshot({ path: OUT + 'name-picker-5-winners.png' });
+
+    // ---- Two tabs show the same winners; a reload, even mid-show, shows the result.
+    await menu('round'); await menu('winners:3');
+    const page2 = await ctx.newPage(); watch(page2, 'tab 2');
+    await page2.goto(BASE); await boardUp(page2); await freeBoard(page2);
+    await eventually(async () => await text('#status', page2) === '6 of 6 left');
+    const p3 = await pickNow();
+    ok(await eventually(() => showing(page2), 1500), 'a pick in one tab puts on the show in the other tab too');
+    await idle(); await idle(page2);
+    ok(JSON.stringify(await bigNames(page2)) === JSON.stringify(p3.picked) && JSON.stringify(await bigNames()) === JSON.stringify(p3.picked)
+      && await eventually(async () => await said(page2) === 'Picked: ' + p3.picked.join(', ')) && await text('#status', page2) === '3 of 6 left',
+      `and both tabs end on the same winners, in the same order (${p3.picked})`);
+    await page2.reload(); await boardUp(page2);
+    ok(await eventually(async () => JSON.stringify(await bigNames(page2)) === JSON.stringify(p3.picked)) && !(await showing(page2)), 'after a reload the winners are still on screen, with no show');
+    const p4 = await pickNow();
+    await page.waitForTimeout(300);
+    await page.reload(); await boardUp(page);
+    ok(await eventually(async () => JSON.stringify(await bigNames()) === JSON.stringify(p4.picked)) && !(await showing()) && (await saved()).pickId === p4.pickId,
+      `a reload during the show shows its result (${p4.picked})`);
+    ok(await eventually(async () => JSON.stringify(await bigNames(page2)) === JSON.stringify(p4.picked)), 'and so does the other tab');
+    await page2.close();
+
+    // ---- Sound: ticked in the menu, it starts with the next tap and the show plays it.
+    await menu('round');
+    await menu('sound');
+    ok((await conf()).sound === true && await items() === MENU('name', 3, { sound: true }), 'Sound is ticked in the menu and saved');
+    const n0 = await inFrame(() => window.__notes);
+    await np().locator('#go').click(); await idle();
+    const snd = await inFrame(() => [window.__audio, window.__notes]);
+    ok(snd[0] === 1 && snd[1] - n0 >= 5, `then a tap starts the sound and the show plays (${snd[1] - n0} notes)`);
+    await menu('sound');
+    ok((await conf()).sound === false, 'and it can be turned off again');
+
+    // ---- No repeats off: picks from everyone, never more names than the list has; two students with one name are two.
+    await menu('edit');
+    await np().locator('#list').fill('Ava\nAva'); await np().locator('#done').click();
+    await menu('norepeat');
+    ok((await conf()).noRepeats === false && await text('#status') === '2 names' && await text('#go') === 'Pick 2' && await items() === MENU('name', 3, { noRepeats: false }),
+      'No repeats off: “2 names”, Start over can’t be chosen, and asking for 3 of 2 names: “Pick 2”');
+    st = await pickNow(); await idle();
+    ok(JSON.stringify(st.picked) === '["Ava","Ava"]' && JSON.stringify(await bigNames()) === '["Ava","Ava"]', 'both Avas are picked: two students with one name are two entries');
+
+    // ---- Templates keep the style and the number of winners, never the names.
+    await menu('edit');
+    await np().locator('#list').fill('Secretname One\nSecretname Two'); await np().locator('#done').click();
+    await page.click('.picker-btn.right'); await page.click('[data-ctl="export"]'); await page.waitForTimeout(200);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="1"]')]);
+    await dl.saveAs(OUT + 'name-picker-template.21board');
+    const tpl = JSON.parse(fs.readFileSync(OUT + 'name-picker-template.21board', 'utf8')), tp = tpl.instances.find(i => i.widgetId === 'name-picker');
+    ok(tpl.kind === 'template' && tp && tp.data === null && tp.config.style === 'name' && tp.config.winners === 3 && tp.config.noRepeats === false && !JSON.stringify(tpl).includes('Secretname'),
+      `a template keeps the style and Winners each time, not the names (${JSON.stringify(tp && tp.config)})`);
+
+    // ---- A board from a file: pickers from before styles keep Big name; older content loads; junk falls back.
+    const win = (instance, data, config) => ({ widgetId: 'name-picker', instance, open: true, z: instance, rect: { x: 20 + (instance - 1) * 430, y: 20, w: 420, h: 360 }, data, config });
+    const file = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Pickers' }, instances: [
+      win(1, { names: ['Ava', 'Leo', 'Mia'], left: ['Leo', 'Mia'], current: 'Ava' }, null),
+      win(2, null, { noRepeats: false }),
+      win(3, { names: ['Ava', 7, '  ', 'Leo', null], left: ['Zed', 'Leo', 5, 'Leo'], picked: ['Leo', 'Zed', {}, 'Leo', 'Ava', 'Ava'], pickId: '<b>x</b>', current: 3 },
+        { style: 'disco', winners: 9, quick: 'yes', sound: 1, noRepeats: 'no' })
+    ] };
+    fs.writeFileSync(OUT + 'name-pickers.21board', JSON.stringify(file));
+    await page.setInputFiles('#import-input', OUT + 'name-pickers.21board'); await page.waitForTimeout(300);
+    await page.click('#modal .btn:has-text("Replace this page")');
+    ok(await eventually(async () => (await Promise.all([1, 2, 3].map(n => items(page, 'name-picker:' + n).catch(() => '')))).every(Boolean)), 'the board from the file opens with its three pickers');
+    await page.waitForTimeout(500);
+    ok(JSON.stringify(await bigNames(page, 'name-picker:1')) === '["Ava"]' && await text('#status', page, 'name-picker:1') === '2 of 3 left' && await items(page, 'name-picker:1') === MENU('name', 1, { startOver: true })
+      && await conf(page, 'name-picker:1') === null, 'one with names from before styles (only `current`) keeps Big name and shows its pick: Ava, 2 of 3 left');
+    ok(await items(page, 'name-picker:2') === MENU('name', 1, { noRepeats: false }) && await np(page, 'name-picker:2').locator('#list').isVisible(),
+      'one with settings from before styles and no names keeps Big name too (and asks for names)');
+    ok(await items(page, 'name-picker:3') === MENU('name', 1, { startOver: true }) && JSON.stringify(await bigNames(page, 'name-picker:3')) === '["Leo","Ava"]'
+      && await text('#status', page, 'name-picker:3') === '1 of 2 left', 'junk in a file falls back: Big name, 1 winner, Quick and Sound off; only names in the list, each student once');
+    st = await pickNow(page, 'name-picker:3'); await idle(page, 'name-picker:3');
+    ok(JSON.stringify(st.names) === '["Ava","Leo"]' && JSON.stringify(st.picked) === '["Leo"]' && !st.left.length && st.current === 'Leo' && /^[a-z0-9]+-[a-z0-9]+$/.test(st.pickId),
+      `and its next pick is saved clean (${JSON.stringify(st)})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+
+    // ---- Reduce motion: no show, the winners fade in. Sound that can't start makes no error.
+    const rctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+    await rctx.addInitScript(() => { window.AudioContext = function () { throw new Error('no sound here'); }; });
+    const rp = await rctx.newPage(); watch(rp, 'reduce motion');
+    await rp.goto(BASE); await boardUp(rp); await freeBoard(rp);
+    await rp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(rp)) || {}).style === 'wheel');
+    await np(rp).locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan\nSofia\nLiam'); await np(rp).locator('#done').click();
+    await menu('sound', rp); await menu('winners:2', rp);
+    for (const style of ['wheel', 'spotlight', 'lotto', 'name']) {
+      if (style !== 'wheel') await menu('style:' + style, rp);
+      const p = await pickNow(rp), was = await showing(rp);
+      ok(!was && await eventually(async () => (await said(rp)).startsWith('Picked: ' + p.picked.join(', ')), 1000), `with reduce motion, the ${style} style has no show: the winners are on screen at once (${p.picked})`);
+    }
+    ok(await np(rp).locator('.bn-list').evaluate(e => e.classList.contains('bn-fade')) && JSON.stringify(await bigNames(rp)) === JSON.stringify((await saved(rp)).picked), 'Big name fades them in');
+    if (errors.length) ok(false, 'no page errors (and none from sound that can’t start): ' + errors.join(' | '));
+    await rctx.close();
+  }],
+  // ---- Name Picker style suite: Spinning wheel
+  // ---- (end of Spinning wheel slot)
+  // ---- Name Picker style suite: Spotlight
+  // ---- (end of Spotlight slot)
+  // ---- Name Picker style suite: Lotto
+  // ---- (end of Lotto slot)
   ['Drag windows from inside', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 }, hasTouch: true });
     const page = await ctx.newPage();
@@ -1768,7 +2001,8 @@ const SUITES = [
     await page.frameLocator('.win[data-ikey="name-picker:1"] iframe').locator('textarea').fill('Ana\nBo');
     await page.frameLocator('.win[data-ikey="name-picker:1"] iframe').locator('#done').click(); await page.waitForTimeout(300);
     r0 = await rect('name-picker:1');
-    await mouseDrag(r0.x + r0.w / 2, r0.y + 100, -40, 0);
+    const st = await page.evaluate(() => { const f = document.querySelector('.win[data-ikey="name-picker:1"] iframe'); const r = f.getBoundingClientRect(); const k = r.width / f.clientWidth; const b = f.contentDocument.getElementById('status').getBoundingClientRect(); return { x: r.left + (b.left + b.width / 2) * k, y: r.top + (b.top + b.height / 2) * k }; });
+    await mouseDrag(st.x, st.y, -40, 0);   // (on its status line: the stage can be a style's canvas, which never moves a window)
     r1 = await rect('name-picker:1');
     ok(moved(r0, r1, -40, 0), `Name Picker while picking moves from anywhere (moved ${Math.round(r1.x - r0.x)})`);
 
@@ -5922,6 +6156,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const s = b.state.wins;
       s.get('timer:1').post('data', { data: { duration: 7200000, remaining: 7199000, endsAt: null }, reason: 'remote' });
       s.get('notes:1').post('data', { data: { text: 'Line up quietly at the door. Bring your library book!' }, reason: 'remote' });
+      s.get('name-picker:1').post('config', { config: { style: 'name' }, reason: 'remote' });   // (Big name: a new picker is the wheel)
       s.get('name-picker:1').post('data', { data: { names: ['Maximiliana-Guadalupe'], left: null, current: 'Maximiliana-Guadalupe' }, reason: 'remote' });
     });
     await page.waitForTimeout(1200);
@@ -5959,7 +6194,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       fits('Calendar month', await where('calendar:1', '#title', true));
       const note = await w('notes:1').evaluate(() => { const v = document.getElementById('view'); return { sh: v.scrollHeight, ch: v.clientHeight, sw: v.scrollWidth, cw: v.clientWidth, fs: parseFloat(getComputedStyle(v).fontSize) }; });
       if (note.sh > note.ch + 1 || note.sw > note.cw + 1) bad.push(`the note doesn’t fit (${note.sw}×${note.sh} in ${note.cw}×${note.ch})`);
-      const np = await w('name-picker:1').evaluate(() => { const s = document.querySelector('.stage'); return { sh: s.scrollHeight, ch: s.clientHeight, sw: s.scrollWidth, cw: s.clientWidth }; });
+      const np = await w('name-picker:1').evaluate(() => { const s = document.querySelector('.bn'); return { sh: s.scrollHeight, ch: s.clientHeight, sw: s.scrollWidth, cw: s.clientWidth }; });
       if (np.sh > np.ch + 1 || np.sw > np.cw + 1) bad.push(`the picked name doesn’t fit (${np.sw}×${np.sh} in ${np.cw}×${np.ch})`);
       ok(!bad.length, `${key}: Clock, Timer, Calendar, a note and Name Picker fit their windows${bad.length ? ': ' + bad.join(' | ') : ` (note ${Math.round(note.fs)} px)`}`);
       const fam = { legible: '"Atkinson Hyperlegible"', early: '"21Board Early Readers"', standard: 'system-ui' }[key];

@@ -5,145 +5,528 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Name Picker</title>
 <script src="../../sdk/board21.js"></script>
+<script>
+/*
+ * Name Picker: this page (the "host") and the pick styles that plug into it
+ * ==========================================================================
+ * The host owns everything except the stage: the names and the edit view, saving and syncing between copies,
+ * the fair draw, the window menu, the main button, the status line, Start over, Sound, Quick, reduce motion,
+ * the double-tap guard and what screen readers hear. A style owns only the stage: it draws the names, and puts
+ * on the show that lands on the winners the host has already drawn and saved. A style never draws winners.
+ *
+ * Each style is one file in this folder, style-<name>.js (Big name: style-bigname.js), loaded by a <script>
+ * tag below and listed in widgets/registry.js (so it is in the offline copy). Its CSS goes in the same file, as
+ * `css`, with every class starting with its id ("wheel-…"). The file registers the style:
+ *
+ *   NamePicker.register('wheel', {           // id: 'name' | 'wheel' | 'spotlight' | 'lotto' (config.style)
+ *     css: `.wheel-hub { … }`,               // optional; added to the page once
+ *     mount(root, host) {                    // root: an empty <div> that fills the stage (position: absolute; inset: 0)
+ *       …build the stage inside root…
+ *       return { show, play, skip, resize, theme, destroy };
+ *     }
+ *   });
+ *
+ * What the host calls (show and play are needed; the others if the style has a use for them):
+ *   show(view, how)  Draw `view` as it is, with no show. The first draw; after a reload; after a change of style,
+ *                    names, No repeats, Winners each time or Start over; and a pick that gets no show here.
+ *                    how.fade is true for a NEW pick shown without its show (reduce motion is on, or it was
+ *                    picked in another copy a while ago): fade the winners in, about 0.3 s, nothing moving.
+ *                    Only called while the stage is on screen and there is at least one name.
+ *   play(view)       The show for a pick that has just been drawn. Start from what is on the stage (the last
+ *                    show() or play()) and land on view.winners, then call host.done() (within 10 s, or 4 s with
+ *                    Quick, or the host calls skip()). Never called with reduce motion on.
+ *   skip()           Jump to the end of the show at once: the winners on screen, nothing left running. The host
+ *                    calls it for a tap after the double-tap guard, a menu change, a pick from another copy, the
+ *                    page being hidden, or a show that ran too long. No need to call host.done() after it.
+ *   resize()         The stage changed size, or the letters did (Settings → Letters): fit the names again.
+ *   theme()          Light/dark or the accent colour changed. CSS has the new colours already; redraw a canvas.
+ *   destroy()        Another style was chosen: stop every timer and animation frame. (The host removes root.)
+ *
+ * `view`, a fresh object for each call (read it, don't change it):
+ *   names      every name, in list order. Two students with the same name are two entries.
+ *   picked     one true/false for each entry: picked in this round of No repeats, so out of the draw for the next
+ *              pick. The last pick's winners are included. All false when No repeats is off.
+ *              (So in play(view) the names that were in the draw are the ones not picked, plus the winners.)
+ *   winners    the entries picked last time, in pick order (number 1 first): 1 to 5 of them, or none before the
+ *              first pick and after Start over.
+ *   pickId     changes with every pick (null before the first). The same pickId is the same pick.
+ *   count      "Winners each time", 1 to 5, as the teacher chose it.
+ *   next       how many the next pick will take: count, or fewer when fewer names are left (0: everyone has been
+ *              picked, and the main button starts over).
+ *   noRepeats, quick   the menu's ticks. quick: make the show about 1.5 s long.
+ *   reduced    the device asks for less motion (play() is never called then).
+ *
+ * `host`, one for each mount (its calls do nothing once the style is destroyed):
+ *   host.done()                 the show has finished: the winners are on screen.
+ *   host.pick()                 pick, as the main button does (for a control of the style's own, like SPIN).
+ *   host.sound(name, opts)      'tick' (a soft tick: the hopping light), 'click' (the wheel's clicker), 'clack'
+ *                               (lotto balls knocking), 'pop' (a ball rolling out, a name landing), 'chime' (the
+ *                               winners). opts: { volume: 0-1, pitch: 0.5-2 }. Silent unless Sound is ticked
+ *                               and the window has been tapped; never throws. Don't call it more than ~30 times a
+ *                               second.
+ *   host.el(tag, cls, parent, text)   a new element; text goes in as text (a name is never markup).
+ *   host.fitText(el, box, max, min)   sets el's font-size (px) to the largest at which el fits inside box's content
+ *                               area, from max down to min. el must be as wide as its text (display: inline-block or
+ *                               width: max-content; white-space: nowrap). Returns the size.
+ *   host.token(name)            a theme value for a canvas: host.token('accent') is --b21-accent, host.token('font')
+ *                               --b21-font, host.token('np-win') --np-win.
+ *
+ * Colours and letters: use the board's CSS tokens (--b21-bg, -surface, -surface-2, -text, -muted, -border, -accent,
+ * -on-accent, -accent-soft, -danger, -success, -warning, -radius, -font) and these extras, set below for light and
+ * dark: --np-win (gold, for winners) with --np-ink (text on gold), and --np-c1 … --np-c8 (eight soft colours for
+ * slices, tiles and balls). The demo page's names --np-bg, -surface, -text, -muted, -border, -accent, -on-accent,
+ * -font-body and -font-display are the board's tokens too. Canvas text: host.token('font'), redrawn in resize().
+ * The host handles taps on the stage during a show (skip, after the guard). Math.random is fine for decoration;
+ * the winners come only from the host. A canvas on the stage can't be used to drag the window (the board's rule).
+ */
+window.NamePicker = {
+  styles: {},
+  register(id, style) {
+    if (typeof id !== 'string' || !style || typeof style.mount !== 'function') return;
+    this.styles[id] = style;
+    if (style.css) { const s = document.createElement('style'); s.dataset.style = id; s.textContent = style.css; document.head.appendChild(s); }
+  }
+};
+</script>
+<script src="style-bigname.js"></script>
+<script src="style-wheel.js"></script>
+<script src="style-spotlight.js"></script>
+<script src="style-lotto.js"></script>
 <style>
+  :root {
+    --np-bg: var(--b21-bg); --np-surface: var(--b21-surface); --np-text: var(--b21-text); --np-muted: var(--b21-muted); --np-border: var(--b21-border);
+    --np-accent: var(--b21-accent); --np-on-accent: var(--b21-on-accent); --np-font-body: var(--b21-font); --np-font-display: var(--b21-font);
+    --np-win: #f59e0b; --np-ink: #111827;
+    --np-c1: #fca5a5; --np-c2: #fdba74; --np-c3: #fde047; --np-c4: #86efac; --np-c5: #67e8f9; --np-c6: #93c5fd; --np-c7: #c4b5fd; --np-c8: #f9a8d4;
+  }
+  [data-b21-theme="dark"] {
+    --np-win: #fbbf24; --np-ink: #111827;
+    --np-c1: #f87171; --np-c2: #fb923c; --np-c3: #facc15; --np-c4: #4ade80; --np-c5: #22d3ee; --np-c6: #60a5fa; --np-c7: #a78bfa; --np-c8: #f472b6;
+  }
   html, body { margin: 0; height: 100%; }
   body { background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+  button, input, textarea { font-family: inherit; }
   .view { position: absolute; inset: 0; display: none; flex-direction: column; padding: clamp(8px, 3vmin, 20px); box-sizing: border-box; gap: clamp(6px, 2vmin, 14px); }
   .view.on { display: flex; }
-  .stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; text-align: center; border-radius: 16px; background: var(--b21-surface); box-shadow: inset 0 0 0 1px var(--b21-border); padding: 8px; }
-  #name { font-size: min(13vw, 24vh); font-weight: 800; line-height: 1.05; word-break: break-word; }
-  #name.rolling { opacity: .55; }
-  #name.landed { animation: pop .35s ease-out; color: var(--b21-accent); }
-  @keyframes pop { 0% { transform: scale(.85); } 60% { transform: scale(1.06); } 100% { transform: scale(1); } }
-  .muted { color: var(--b21-muted); font-weight: 500; font-size: min(5vw, 7vh); }
-  .row { display: flex; gap: 8px; align-items: center; justify-content: center; flex-wrap: wrap; }
+  .stage { position: relative; flex: 1; min-height: 0; border-radius: 16px; background: var(--b21-surface); box-shadow: inset 0 0 0 1px var(--b21-border); overflow: hidden; }
+  .showing .stage { cursor: pointer; }
+  .style-root { position: absolute; inset: 0; }
+  .style-root[hidden], #empty[hidden] { display: none; }
+  #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; color: var(--b21-muted); font-weight: 600; font-size: clamp(14px, min(5vw, 8vh), 40px); }
+  /* The main button in the middle (in reach from either side of a flat panel), the status and Start over beside it, all
+     kept off the bottom corners, where the board's own buttons and clock sit over a window that fills the board. */
+  .foot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; max-width: 680px; margin: 0 auto; }
   button { font: inherit; border: 0; cursor: pointer; border-radius: 999px; background: var(--b21-surface-2); color: var(--b21-text); height: clamp(36px, 12vh, 64px); padding: 0 clamp(12px, 4vw, 28px); font-size: clamp(14px, 4.5vh, 22px); font-weight: 650; }
-  button.primary { background: var(--b21-accent); color: var(--b21-on-accent); min-width: 40%; }
+  button.primary { background: var(--b21-accent); color: var(--b21-on-accent); min-width: min(40vw, 320px); white-space: nowrap; }
   button:disabled { opacity: .45; cursor: default; }
-  button.small { height: clamp(30px, 9vh, 44px); font-size: clamp(12px, 3.4vh, 16px); padding: 0 14px; font-weight: 600; }
-  #status { font-size: clamp(12px, 3.6vh, 17px); color: var(--b21-muted); }
+  button.small { height: auto; min-height: clamp(30px, 9vh, 44px); font-size: clamp(12px, 3.4vh, 16px); padding: 4px 14px; font-weight: 600; line-height: 1.1; }
+  #status { justify-self: end; text-align: right; font-size: clamp(12px, 3.6vh, 17px); color: var(--b21-muted); line-height: 1.2; }
+  #round { justify-self: start; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   textarea { flex: 1; min-height: 0; resize: none; border-radius: 12px; border: 1px solid var(--b21-border); background: var(--b21-surface); color: var(--b21-text); font: inherit; font-size: clamp(14px, 4vh, 20px); padding: 10px 12px; outline: none; line-height: 1.4; }
   textarea:focus { border-color: var(--b21-accent); }
   .edit-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-weight: 700; font-size: clamp(14px, 4vh, 19px); }
-  @media (max-height: 200px) { #status, .muted { display: none; } }
+  @media (max-height: 200px) { #status { visibility: hidden; } }
 </style>
 </head>
 <body>
   <section class="view" id="pick">
-    <div class="stage"><div id="name"></div></div>
-    <div class="row"><button class="primary" id="go">Pick a name</button></div>
-    <div class="row"><span id="status"></span><button class="small" id="round" hidden>Start over</button></div>
+    <div class="stage" id="stage"><div id="empty">Add names to get started</div></div>
+    <div class="foot"><span id="status"></span><button class="primary" id="go">Pick a name</button><button class="small" id="round" hidden>Start over</button></div>
+    <div class="sr" id="said" role="status" aria-live="polite" aria-atomic="true"></div>
   </section>
   <section class="view" id="edit">
     <div class="edit-head"><span>Names — one per line</span><button class="small primary" id="done" style="min-width:0">Done</button></div>
     <textarea id="list" placeholder="Ada&#10;Grace&#10;Katherine&#10;…" spellcheck="false" aria-label="Names, one per line"></textarea>
   </section>
 <script>
-  // Content: { names: [...], left: [...] | null, current }   (names are content, so templates never include them)
-  //   The same name can be in the list more than once (two Emmas are two students); `left` holds the names
-  //   not picked yet in this round, once for each student still to go.
-  // Config:  { noRepeats }
-  let state = { names: [], left: null, current: null };
-  let config = { noRepeats: true };
-  let rolling = false;
+  // Content (Board21.save): { names, left, picked, pickId, current }. Names are content, so templates never carry them.
+  //   names   the list. The same name can be in it more than once: two Emmas are two students.
+  //   left    with No repeats: the names not picked yet in this round, once for each student still to go (null: all).
+  //   picked  the winners of the last pick, in pick order; [] before the first pick and after Start over.
+  //   pickId  a new one with every pick: when it was made (ms, base 36), a dash and a random part. A copy of the board
+  //           that sees a new one shows the same winners: with the show if the pick is new and that copy is on screen
+  //           and not busy, otherwise straight away.
+  //   current picked[0], for copies of 21Board from before several winners (they only know names, left and current).
+  // Config (Board21.saveConfig): { noRepeats, style: 'name' | 'wheel' | 'spotlight' | 'lotto', winners: 1-5, quick, sound }
+  //   Settings, so templates keep them. A new Name Picker starts as the wheel; one from before styles keeps Big name.
+  const STYLES = [['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto']];
+  const MOST = 5;           // winners at a time
+  const GUARD = 600;        // ms: a second tap this soon after Pick is a double tap, not "skip to the result"
+  const FRESH = 10000;      // ms: a pick made in another copy this recently gets its show here too
   const $ = id => document.getElementById(id);
+  const motion = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const reduced = () => !!(motion && motion.matches);
+
+  let state = { names: [], left: null, picked: [], pickId: null, current: null };
+  let config = readConfig(null);
+  let mounted = null;       // the style on the stage: { id, root, api, live }
+  let showing = null;       // the show running: { at (when it started), timer (ends it if the style never says) }
 
   // `list` without one of each name in `gone`.
   const without = (list, gone) => { const out = list.slice(); for (const n of gone) { const i = out.indexOf(n); if (i >= 0) out.splice(i, 1); } return out; };
-  // Saved content can come from an imported file, so it is checked before it is used: names are lines of
-  // text, and `left` can only hold names that are in the list.
+  // The names of `list` that are in `names`, each student at most once, in the order of `list`.
+  const among = (names, list) => { const room = names.slice(), out = []; for (const n of list) { const i = room.indexOf(n); if (i >= 0) { room.splice(i, 1); out.push(n); } } return out; };
+
+  // Saved content can come from an imported file, so it is checked before it is used: names are lines of text,
+  // `left` and `picked` can only hold names that are in the list, and a pick is 1 to 5 names.
   function readState(d) {
     const texts = v => Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : null;
-    const names = texts(d && d.names) || [], left = texts(d && d.left);
-    return { names, left: left && without(names, without(names, left)), current: d && names.includes(d.current) ? d.current : null };
+    d = d && typeof d === 'object' ? d : {};
+    const names = texts(d.names) || [], left = texts(d.left);
+    // (Content from before several winners has only `current`.)
+    const picked = among(names, texts(d.picked) || texts([d.current]) || []).slice(0, MOST);
+    const pickId = typeof d.pickId === 'string' && /^[a-z0-9-]{1,40}$/i.test(d.pickId) ? d.pickId : null;
+    return { names, left: left && without(names, without(names, left)), picked, pickId, current: picked[0] || null };
   }
-
-  const pool = () => config.noRepeats ? (state.left || state.names.slice()) : state.names;
-
-  function show(view, focus) {
-    $('pick').classList.toggle('on', view === 'pick');
-    $('edit').classList.toggle('on', view === 'edit');
-    // Picking is tap-only, so the window can be dragged from anywhere; editing the list needs text selection.
-    Board21.window.setDragFromContent(view === 'pick');
-    if (view === 'edit') { $('list').value = state.names.join('\n'); if (focus) setTimeout(() => $('list').focus(), 50); }
+  function readConfig(c) {
+    c = c && typeof c === 'object' ? c : {};
+    return {
+      noRepeats: c.noRepeats !== false,
+      style: STYLES.some(s => s[0] === c.style) ? c.style : 'name',
+      winners: Number.isInteger(c.winners) && c.winners >= 1 && c.winners <= MOST ? c.winners : 1,
+      quick: c.quick === true,
+      sound: c.sound === true
+    };
   }
+  const save = () => Promise.resolve(Board21.save(state)).catch(() => {});        // (21Board keeps trying by itself)
+  const saveConfig = () => Promise.resolve(Board21.saveConfig(config)).catch(() => {});
+  const pool = () => config.noRepeats ? (state.left || state.names) : state.names;
+  const pickVisible = () => $('pick').classList.contains('on');
+  const canStartOver = () => config.noRepeats && state.names.length > 0 && pool().length < state.names.length;
 
-  function render() {
-    if (rolling) return;
-    const n = $('name');
-    n.classList.remove('rolling');
-    if (!state.names.length) {
-      n.innerHTML = '<span class="muted">Add names to get started</span>';
-      $('go').textContent = 'Add names';
-    } else {
-      n.textContent = state.current || '?';
-      $('go').textContent = state.current ? 'Pick again' : 'Pick a name';
+  // ---- The fair draw: every name still in has the same chance, and one pick never takes the same student twice.
+  // Uniform 0 … n-1 (crypto where there is one, without the small bias a plain remainder would give).
+  function random(n) {
+    if (n <= 1) return 0;
+    if (!(window.crypto && crypto.getRandomValues)) return Math.floor(Math.random() * n);
+    const buf = new Uint32Array(1), limit = Math.floor(0x100000000 / n) * n;
+    do crypto.getRandomValues(buf); while (buf[0] >= limit);
+    return buf[0] % n;
+  }
+  // k different places of n, in a random order (the first k steps of a shuffle).
+  function draw(n, k) {
+    const at = Array.from({ length: n }, (_, i) => i);
+    for (let i = 0; i < k; i++) { const j = i + random(n - i); [at[i], at[j]] = [at[j], at[i]]; }
+    return at.slice(0, k);
+  }
+  const newPickId = () => Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+  const pickedAt = id => parseInt(String(id).split('-')[0], 36) || 0;
+
+  // ---- What a style is given (see the top of the page). Names are matched to entries of the list: students picked
+  // earlier in the round take the first entries with their name, so a picked Emma stays the same Emma all round.
+  function view() {
+    const names = state.names, free = names.map(() => true);
+    const take = n => { const i = names.findIndex((x, j) => free[j] && x === n); if (i >= 0) free[i] = false; return i; };
+    const gone = config.noRepeats && state.left ? without(names, state.left) : [];   // picked in this round
+    const earlier = without(gone, state.picked);
+    const last = without(gone, earlier);   // the last pick's winners that are out of the round (all, unless it started again)
+    const picked = names.map(() => false), winners = [];
+    for (const n of earlier) { const i = take(n); if (i >= 0) picked[i] = true; }
+    for (const n of state.picked) {
+      const i = take(n);
+      if (i < 0) continue;
+      winners.push(i);
+      const j = last.indexOf(n);
+      if (j >= 0) { picked[i] = true; last.splice(j, 1); }
     }
-    const p = pool();
-    const showRound = config.noRepeats && state.names.length > 0;
-    $('status').textContent = !state.names.length ? '' : config.noRepeats ? `${p.length} of ${state.names.length} left` : `${state.names.length} names`;
-    $('round').hidden = !showRound || p.length === state.names.length;
-    if (state.names.length && config.noRepeats && p.length === 0) $('go').textContent = 'Everyone picked — start over';
+    return { names: names.slice(), picked, winners, pickId: state.pickId, count: config.winners, next: Math.min(config.winners, pool().length),
+      noRepeats: config.noRepeats, quick: config.quick, reduced: reduced() };
+  }
+
+  // ---- Helpers for styles
+  function el(tag, cls, parent, text) {
+    const e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text != null) e.textContent = text;
+    if (parent) parent.appendChild(e);
+    return e;
+  }
+  function fitText(e, box, max = 400, min = 8) {
+    const cs = getComputedStyle(box);
+    const W = box.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const H = box.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    if (!(W > 0 && H > 0)) return 0;
+    let fs = Math.max(min, Math.min(max, H));
+    e.style.fontSize = fs + 'px';
+    for (let i = 0; i < 5; i++) {   // (sizes grow with the font, so one or two steps get there)
+      const r = Math.min(W / (e.offsetWidth || 1), H / (e.offsetHeight || 1));
+      if (r >= 1 && (r < 1.03 || fs >= max)) break;
+      const next = Math.max(min, Math.min(max, Math.floor(fs * r * 0.98 * 10) / 10));
+      if (next === fs) break;
+      fs = next; e.style.fontSize = fs + 'px';
+    }
+    for (let i = 0; i < 20 && fs > min && (e.offsetWidth > W || e.offsetHeight > H); i++) { fs = Math.max(min, fs * 0.94); e.style.fontSize = fs + 'px'; }
+    return fs;
+  }
+  const token = name => getComputedStyle(document.documentElement).getPropertyValue('--' + (/^np-/.test(name) ? name : 'b21-' + name)).trim();
+
+  // A style's own call; a mistake in a style shows in the console and doesn't stop the picker.
+  function call(fn, ...args) {
+    const m = mounted;
+    if (!m || typeof m.api[fn] !== 'function') return false;
+    try { m.api[fn](...args); return true; } catch (e) { console.error(`Name Picker: the ${m.id} style’s ${fn}() failed`, e); return false; }
+  }
+  function mountStyle() {
+    const id = NamePicker.styles[config.style] ? config.style : 'name';
+    if (mounted && mounted.id === id) return;
+    skipShow();
+    if (mounted) { call('destroy'); mounted.live = false; mounted.root.remove(); }
+    const m = { id, root: el('div', 'style-root', $('stage')), api: {}, live: true };
+    m.root.dataset.style = id;
+    const host = {
+      done: () => { if (m.live) finishShow(); },
+      pick: () => { if (m.live) pick(); },
+      sound: (name, opts) => { if (m.live) Sound.play(name, opts); },
+      el, fitText, token
+    };
+    mounted = m;
+    try { m.api = (NamePicker.styles[id] && NamePicker.styles[id].mount(m.root, host)) || {}; } catch (e) { console.error(`Name Picker: the ${id} style didn’t start`, e); }
+  }
+
+  // ---- Drawing
+  function render(how) { renderChrome(); renderStage(how); }
+  function renderStage(how) {
+    const has = state.names.length > 0;
+    $('empty').hidden = has;
+    if (mounted) mounted.root.hidden = !has;
+    if (has && !showing && pickVisible()) call('show', view(), how || {});
+  }
+  function renderChrome() {
+    const N = state.names.length, p = pool(), k = Math.min(config.winners, p.length);
+    // The button says how many it will pick ("Pick 3"), and when fewer are left than that ("Pick the last 2").
+    $('go').textContent = !N ? 'Add names' : showing ? 'Show now' : !p.length ? 'Everyone picked — start over'
+      : k < config.winners && config.noRepeats ? (k === 1 ? 'Pick the last one' : `Pick the last ${k}`)
+      : k > 1 ? `Pick ${k}` : state.picked.length ? 'Pick again' : 'Pick a name';
+    // (The count changes once the winners are on screen, so it gives nothing away during the show.)
+    if (!showing) {
+      $('status').textContent = !N ? '' : config.noRepeats ? `${p.length} of ${N} left` : N === 1 ? '1 name' : `${N} names`;
+      $('round').hidden = !canStartOver();
+    }
     setMenu();
   }
-
   function setMenu() {
     Board21.menu.set([
+      { heading: true, label: 'Pick with' },
+      ...STYLES.map(([id, label]) => ({ id: 'style:' + id, label, checked: config.style === id })),
+      { heading: true, label: 'Winners each time' },
+      ...Array.from({ length: MOST }, (_, i) => ({ id: 'winners:' + (i + 1), label: String(i + 1), checked: config.winners === i + 1 })),
+      { separator: true },
+      { id: 'norepeat', label: 'No repeats', checked: config.noRepeats },
+      { id: 'round', label: 'Start over', disabled: !canStartOver() },
       { id: 'edit', label: 'Edit names' },
-      { id: 'norepeat', label: 'No repeats', checked: !!config.noRepeats },
-      { id: 'round', label: 'Start over', disabled: !config.noRepeats }
+      { id: 'sound', label: 'Sound', checked: config.sound },
+      { id: 'quick', label: 'Quick', checked: config.quick }
     ]);
   }
+  // Screen readers hear the winners once they are on screen ("Picked: Ava, Leo").
+  let sayTimer = 0;
+  function say(text) {
+    clearTimeout(sayTimer);
+    $('said').textContent = '';
+    if (text) sayTimer = setTimeout(() => { $('said').textContent = text; }, 80);   // (a change, even for the same words)
+  }
+  function announce() {
+    if (state.picked.length) say('Picked: ' + state.picked.join(', ') + (config.noRepeats && !pool().length ? '. Everyone has been picked.' : ''));
+  }
 
+  function setView(v, focus) {
+    if (v === 'edit') skipShow();
+    $('pick').classList.toggle('on', v === 'pick');
+    $('edit').classList.toggle('on', v === 'edit');
+    // Picking is tap-only, so the window can be dragged from anywhere; editing the list needs text selection.
+    Board21.window.setDragFromContent(v === 'pick');
+    if (v === 'edit') { $('list').value = state.names.join('\n'); if (focus) setTimeout(() => $('list').focus(), 50); }
+    render();
+  }
+
+  // ---- Picking. The winners are drawn and saved first; the show only lands on them.
   function pick() {
-    if (!state.names.length) { show('edit', true); return; }
-    let p = pool();
-    if (!p.length) { state.left = state.names.slice(); state.current = null; Board21.save(state); render(); return; }
-    const choice = p[Math.floor(Math.random() * p.length)];
-    if (config.noRepeats) state.left = p.filter((x, i) => i !== p.indexOf(choice));
-    state.current = choice;
-    Board21.save(state);
-    // Little drum-roll, then land on the saved choice.
-    rolling = true;
-    const n = $('name');
-    n.classList.remove('landed'); n.classList.add('rolling');
-    let delay = 40, t = 0;
-    const step = () => {
-      n.textContent = state.names[Math.floor(Math.random() * state.names.length)];
-      t += delay; delay *= 1.12;
-      if (t < 1300) setTimeout(step, delay);
-      else { rolling = false; render(); void n.offsetWidth; n.classList.add('landed'); }
-    };
-    step();
+    if (!state.names.length) { setView('edit', true); return; }
+    if (showing) { if (performance.now() - showing.at >= GUARD) skipShow(); return; }
+    const p = pool();
+    if (!p.length) { startOver(); return; }   // (the button reads "Everyone picked — start over")
+    const k = Math.min(config.winners, p.length), at = draw(p.length, k);
+    if (config.noRepeats) state.left = p.filter((x, i) => !at.includes(i));
+    state.picked = at.map(i => p[i]);
+    state.current = state.picked[0];
+    state.pickId = newPickId();
+    save();   // before the show: every copy of the board shows these winners, and a reload shows them too
+    startShow();
+  }
+  function startShow() {
+    say('');
+    if (reduced() || document.hidden || !pickVisible() || !mounted || typeof mounted.api.play !== 'function') {
+      render({ fade: true }); announce(); return;
+    }
+    showing = { at: performance.now(), timer: setTimeout(skipShow, config.quick ? 4000 : 10000) };
+    document.body.classList.add('showing');
+    render();
+    if (!call('play', view())) { finishShow(); renderStage(); }
+  }
+  function finishShow() {
+    if (!showing) return;
+    clearTimeout(showing.timer);
+    showing = null;
+    document.body.classList.remove('showing');
+    renderChrome();
+    announce();
+  }
+  function skipShow() {
+    if (!showing) return;
+    const ok = call('skip');
+    finishShow();
+    if (!ok) renderStage();   // (the style couldn't jump to the end: draw the result as it is)
+  }
+  function startOver() {
+    skipShow();
+    state.left = state.names.slice(); state.picked = []; state.current = null;
+    save(); say(''); render();
   }
 
   $('go').onclick = pick;
-  $('round').onclick = () => { state.left = state.names.slice(); state.current = null; Board21.save(state); render(); };
+  $('round').onclick = startOver;
+  // A tap on the stage during the show skips to the result (not a second tap of a double tap, though).
+  $('stage').addEventListener('click', () => { if (showing && performance.now() - showing.at >= GUARD) skipShow(); });
+  // Nothing runs while the page can't be seen: a show ends there and then.
+  document.addEventListener('visibilitychange', () => { if (document.hidden) skipShow(); });
+
   // The list is saved as it is typed, so it isn't lost if Done is never pressed. Editing it doesn't start the
   // round again: whoever was picked already stays picked, and new names join the ones still to go.
   function readList() {
     const names = $('list').value.split('\n').map(s => s.trim()).filter(Boolean);
     if (names.join('\n') === state.names.join('\n')) return;
-    const picked = without(state.names, state.left || state.names);
-    state = { names, left: without(names, picked), current: names.includes(state.current) ? state.current : null };
-    Board21.save(state);
+    const gone = without(state.names, state.left || state.names), picked = among(names, state.picked);
+    state = { names, left: without(names, gone), picked, pickId: state.pickId, current: picked[0] || null };
+    save();
   }
   $('list').oninput = readList;
-  $('done').onclick = () => { readList(); show('pick'); render(); };
+  $('done').onclick = () => { readList(); setView('pick'); };
 
+  // ---- Sound: off until a teacher ticks it. Made here with Web Audio (no sound files); the sound is started by
+  // the first tap in the window (browsers allow sound only after one), and stays silent wherever it can't be.
+  const Sound = (() => {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ctx = null, woke = 0, noiseBuf = null;
+    const last = {};
+    // One note from f0 to f1 Hz, `len` seconds long: a quick start, then it dies away.
+    function tone(at, f0, f1, len, wave, vol) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = wave; o.frequency.setValueAtTime(f0, at);
+      if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(f1, at + len);
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(vol, at + 0.004);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      o.connect(g).connect(ctx.destination); o.start(at); o.stop(at + len + 0.02);
+    }
+    // A short burst of noise around one pitch: clicks and knocks.
+    function noise(at, freq, q, len, vol) {
+      if (!noiseBuf) {
+        noiseBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * 0.1), ctx.sampleRate);
+        const d = noiseBuf.getChannelData(0);
+        for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      s.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
+      g.gain.setValueAtTime(vol, at); g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      s.connect(f).connect(g).connect(ctx.destination); s.start(at); s.stop(at + len + 0.02);
+    }
+    // (v: volume 0-1, p: pitch)
+    const SOUNDS = {
+      tick: (t, v, p) => tone(t, 1900 * p, 1700 * p, 0.035, 'triangle', 0.08 * v),
+      click: (t, v, p) => { noise(t, 2800 * p, 1.6, 0.025, 0.45 * v); tone(t, 1200 * p, 700 * p, 0.02, 'square', 0.025 * v); },
+      clack: (t, v, p) => { tone(t, 950 * p, 620 * p, 0.06, 'triangle', 0.14 * v); noise(t, 1600 * p, 3, 0.03, 0.22 * v); },
+      pop: (t, v, p) => tone(t, 640 * p, 260 * p, 0.12, 'sine', 0.3 * v),
+      chime: (t, v, p) => { tone(t, 1046.5 * p, 1046.5 * p, 0.8, 'sine', 0.2 * v); tone(t + 0.12, 1318.5 * p, 1318.5 * p, 1, 'sine', 0.18 * v); tone(t + 0.24, 1568 * p, 1568 * p, 1.3, 'sine', 0.15 * v); }
+    };
+    const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+    return {
+      // A tap in the window: the sound can start now (only if Sound is ticked).
+      wake() {
+        if (!config.sound || !AC || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) return;
+        try {
+          if (!ctx || ctx.state === 'closed') ctx = new AC();
+          if (ctx.state !== 'running') { woke = performance.now(); ctx.resume().catch(() => {}); }
+        } catch (e) { ctx = null; /* no sound on this device */ }
+      },
+      play(name, opts) {
+        // (A sound that has just been started may still be getting ready: notes wait for it.)
+        if (!config.sound || !ctx || document.hidden || !SOUNDS[name]) return;
+        if (ctx.state !== 'running' && !(ctx.state === 'suspended' && performance.now() - woke < 1000)) return;
+        const o = opts || {}, v = clamp(o.volume == null ? 1 : Number(o.volume) || 0, 0, 1), p = clamp(Number(o.pitch) || 1, 0.5, 2);
+        const t = ctx.currentTime;
+        if (!(v > 0) || t - (last[name] == null ? -1 : last[name]) < 0.015) return;   // (no pile-up of one sound)
+        last[name] = t;
+        try { SOUNDS[name](t + 0.005, v, p); } catch (e) { /* no sound on this device */ }
+      },
+      // What it sounds like, when Sound is ticked.
+      sample() {
+        this.wake();
+        if (ctx) Promise.resolve(ctx.state === 'running' || ctx.resume()).then(() => this.play('chime'), () => {});
+      },
+      stop() { if (ctx) ctx.close().catch(() => {}); ctx = null; }
+    };
+  })();
+  for (const type of ['pointerdown', 'click', 'keydown']) addEventListener(type, () => Sound.wake(), true);
+
+  // ---- The window menu: everything is here, nothing on the window for students to change.
   Board21.on('menu', id => {
-    if (id === 'edit') show('edit', true);
-    if (id === 'norepeat') { config.noRepeats = !config.noRepeats; if (config.noRepeats) state.left = state.names.slice(); Board21.saveConfig(config); Board21.save(state); render(); }
-    if (id === 'round') $('round').onclick();
+    const [what, val] = String(id).split(':');
+    if (what === 'style' && STYLES.some(s => s[0] === val)) {
+      config.style = val; saveConfig();
+      mountStyle();   // (ends a show, with the result on screen)
+      render();
+    } else if (what === 'winners' && +val >= 1 && +val <= MOST) {
+      skipShow(); config.winners = +val; saveConfig(); render();
+    } else if (id === 'norepeat') {
+      skipShow();
+      config.noRepeats = !config.noRepeats;
+      if (config.noRepeats) state.left = state.names.slice();   // a new round
+      saveConfig(); save(); render();
+    } else if (id === 'round') startOver();
+    else if (id === 'edit') setView('edit', true);
+    else if (id === 'sound') {
+      config.sound = !config.sound; saveConfig(); setMenu();
+      if (config.sound) Sound.sample(); else Sound.stop();
+    } else if (id === 'quick') { config.quick = !config.quick; saveConfig(); setMenu(); }
   });
-  Board21.on('data', d => { state = readState(d); if ($('edit').classList.contains('on')) $('list').value = state.names.join('\n'); render(); });
-  Board21.on('config', c => { config = { noRepeats: !c || c.noRepeats !== false }; render(); });
+
+  // ---- Changed in another copy of the board (another tab, the smartboard), or by an import.
+  Board21.on('data', d => {
+    const next = readState(d), was = state.pickId;
+    if (JSON.stringify(next) === JSON.stringify(state)) return;   // (nothing new: a show running goes on)
+    skipShow();
+    state = next;
+    if ($('edit').classList.contains('on')) $('list').value = state.names.join('\n');
+    const isNew = !!state.pickId && state.pickId !== was && state.picked.length > 0;
+    // A pick made just now gets its show here too (if this copy is on screen); an older one is shown as it is.
+    if (isNew && Math.abs(Date.now() - pickedAt(state.pickId)) < FRESH) startShow();
+    else { render(isNew ? { fade: true } : undefined); if (isNew) announce(); }
+  });
+  Board21.on('config', c => {
+    const was = config;
+    config = readConfig(c);
+    if (!c && !state.names.length) config.style = 'wheel';   // (reset in another copy: it starts again as a new one)
+    if (!config.sound) Sound.stop();
+    if (config.style !== was.style || config.winners !== was.winners || config.noRepeats !== was.noRepeats) { skipShow(); mountStyle(); render(); }
+    else renderChrome();
+  });
+  Board21.on('theme', () => call('theme'));
+  // Names fit the stage: again when the window changes size, or the letters change (the SDK fires 'resize' then).
+  let refitting = 0;
+  const refit = () => { if (!refitting) refitting = requestAnimationFrame(() => { refitting = 0; if (pickVisible() && state.names.length) call('resize'); }); };
+  addEventListener('resize', refit);
+  if (window.ResizeObserver) new ResizeObserver(refit).observe($('stage'));
 
   Board21.ready().then(ctx => {
     state = readState(ctx.data);
-    config = { noRepeats: !ctx.config || ctx.config.noRepeats !== false };
-    show(state.names.length ? 'pick' : 'edit');
-    render();
+    config = readConfig(ctx.config);
+    // A brand-new Name Picker opens as the Spinning wheel. One that already has names or settings (from before there
+    // were styles) keeps Big name, as it looked before.
+    if (!ctx.config && !state.names.length) { config.style = 'wheel'; saveConfig(); }
+    mountStyle();
+    setView(state.names.length ? 'pick' : 'edit');
+    announce();
   });
 </script>
 </body>

@@ -173,7 +173,7 @@ tests/run.js            Optional automated browser tests
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
 | **Clock** | Analog, digital or date-only; aspect-ratio lock that changes at runtime (analog 1:1, digital/date 2.2:1), config-only widget |
 | **Notes** | Text grows to fill the note, tappable web links, colors incl. Chalkboard and Whiteboard themes (bundled hand-drawn fonts), live text sync without losing the cursor |
-| **Name Picker** | Student names kept as *content* so templates never include them |
+| **Name Picker** | Student names kept as *content* so templates never include them; four ways to pick (Big name, Spinning wheel, Spotlight, Lotto), each in its own file, and one to five winners at a time, chosen in the window menu and kept by templates; the pick is drawn and saved before the show, so every open copy lands on the same names |
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
