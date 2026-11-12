@@ -5779,6 +5779,244 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   }],
 
   // Letters
+  ['Letters: Settings, 21Board’s text and widgets’, another tab, reload, nothing from another site', async (browser) => {
+    const FAMS = { legible: 'Atkinson Hyperlegible', early: '21Board Early Readers' };
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const asked = []; ctx.on('request', r => asked.push(r.url()));
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    for (const id of ['clock', 'timer', 'notes', 'task-timer', 'first-then-board']) await page.evaluate(id => window.__board21.openWidget(id), id);
+    await page.waitForTimeout(1500);
+    const tab2 = await ctx.newPage(); tab2.on('pageerror', e => errors.push('second tab: ' + e.message));
+    await tab2.goto(BASE); await boardUp(tab2); await tab2.waitForTimeout(1200);
+    const font = (p, sel) => p.evaluate(sel => getComputedStyle(document.querySelector(sel)).fontFamily, sel);
+    const inWidget = (p, ik, fn, arg) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('html').evaluate(fn, arg);
+    const widgetFont = (p, ik) => inWidget(p, ik, () => getComputedStyle(document.body).fontFamily);
+    // The weights of a family that document.fonts reports loaded (in the board, or in a widget's frame).
+    const loadedIn = fam => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').map(f => f.weight).sort().join(',');
+    const loaded = (p, fam) => p.evaluate(loadedIn, fam);
+    const loadedInWidget = (p, ik, fam) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('html').evaluate((html, fam) =>
+      Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').map(f => f.weight).sort().join(','), fam);
+
+    // By default: the device's own font, as before, and no font file is fetched.
+    const SYSTEM = await font(page, 'body');
+    ok(await page.evaluate(() => window.__board21.state.settings.letters) === 'standard' && /^system-ui,/.test(SYSTEM) && await page.evaluate(() => document.body.style.fontFamily) === '',
+      `by default 21Board’s text is in the device’s own font, as before (${SYSTEM})`);
+    ok(await widgetFont(page, 'clock:1') === SYSTEM && await inWidget(page, 'clock:1', () => getComputedStyle(document.documentElement).getPropertyValue('--b21-font').trim()) === SYSTEM,
+      'and so is a widget’s (--b21-font unchanged)');
+    ok(/^system-ui,/.test(await widgetFont(page, 'task-timer:1')), `Task Timer follows --b21-font too (${await widgetFont(page, 'task-timer:1')})`);
+    ok(!asked.some(u => u.includes('/fonts/')), 'no font file is fetched while the letters are Standard');
+
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    const opts = await page.$$eval('#settings .letter-opt', els => els.map(e => ({ val: e.dataset.val, on: e.getAttribute('aria-checked'), font: getComputedStyle(e).fontFamily, text: e.textContent })));
+    ok(opts.length === 3 && opts.map(o => o.val).join() === 'standard,legible,early' && opts[0].on === 'true' && opts.slice(1).every(o => o.on === 'false'),
+      `Settings → Appearance → Letters: Standard, Easier to read, Early readers; Standard is chosen (${opts.map(o => o.val + ':' + o.on).join(' ')})`);
+    ok(opts[0].font === SYSTEM && opts[1].font.startsWith('"Atkinson Hyperlegible"') && opts[2].font.startsWith('"21Board Early Readers"') && opts.every(o => o.text.includes('Il1 ag')),
+      'each choice is shown in its own letters, with a sample of the look-alikes');
+    await page.screenshot({ path: OUT + 'letters-settings.png' });
+
+    for (const key of ['legible', 'early']) {
+      const fam = FAMS[key];
+      await page.click(`#settings [data-act="letters"][data-val="${key}"]`);
+      ok(await eventually(async () => await loaded(page, fam) === '400,700'), `${key}: document.fonts reports “${fam}” loaded in 21Board, regular and bold (${await loaded(page, fam)})`);
+      const parts = { page: 'body', 'title bar': '.win-label .name', 'Widget Picker': '.widget-tile', Settings: '#settings .row .lbl', 'page label': '.page-ind', 'window menu': '#menu', toasts: '#toasts', 'shape tip': '#shape-hint', dialogs: '#modal' };
+      const wrong = [];
+      for (const [what, sel] of Object.entries(parts)) { const f = await font(page, sel); if (!f.startsWith(`"${fam}", system-ui`)) wrong.push(`${what}: ${f}`); }
+      ok(!wrong.length, `${key}: 21Board’s own text is in it (page, title bars, Widget Picker, Settings, page label, menus, messages, shape tip, dialogs)${wrong.length ? ': ' + wrong.join(' | ') : ''}`);
+      ok(await page.evaluate(() => window.__board21.state.settings.letters) === key && await page.getAttribute(`#settings [data-val="${key}"]`, 'aria-checked') === 'true', `${key}: the choice is saved and marked`);
+      const wf = {};
+      for (const ik of ['clock:1', 'timer:1', 'notes:1', 'task-timer:1']) wf[ik] = await widgetFont(page, ik);
+      ok(Object.values(wf).every(f => f.startsWith(`"${fam}", system-ui`)), `${key}: widgets’ text is in it (${Object.entries(wf).map(([k, f]) => k + ' ' + f.split(',')[0]).join(', ')})`);
+      // Every word in them, on buttons and in boxes too (they don't take the page's font by themselves: First/Then's
+      // cards, Task Timer's buttons). Only the Task Timer's countdown keeps its fixed-width digits.
+      const notIn = [];
+      for (const ik of ['clock:1', 'timer:1', 'notes:1', 'task-timer:1', 'first-then-board:1']) {
+        const off = await inWidget(page, ik, (html, fam) => {
+          const out = new Set(), words = /[A-Za-z]/;
+          const check = (el, text) => { if (!getComputedStyle(el).fontFamily.startsWith(`"${fam}"`) && !el.closest('.digital-clock-time')) out.add(`${el.tagName.toLowerCase()} “${text.trim().slice(0, 20)}”`); };
+          const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          for (let n; (n = walk.nextNode());) { const el = n.parentElement; if (el && el.getBoundingClientRect().width && words.test(n.textContent)) check(el, n.textContent); }
+          for (const el of document.querySelectorAll('button, input, textarea, select')) { const t = el.value || el.placeholder || el.textContent || ''; if (words.test(t)) check(el, t); }
+          return Array.from(out);
+        }, fam);
+        if (off.length) notIn.push(`${ik}: ${off.slice(0, 4).join(', ')}`);
+      }
+      ok(!notIn.length, `${key}: every word in the widgets is in it, buttons and boxes included (Clock, Timer, Notes, Task Timer, First/Then Board)${notIn.length ? ': ' + notIn.join(' | ') : ''}`);
+      ok(await eventually(async () => (await loadedInWidget(page, 'timer:1', fam)).includes('700') && (await loadedInWidget(page, 'notes:1', fam)).includes('400')),
+        `${key}: and the font is loaded in their frames (Timer ${await loadedInWidget(page, 'timer:1', fam)}, Notes ${await loadedInWidget(page, 'notes:1', fam)})`);
+      ok(await eventually(async () => (await font(tab2, 'body')).startsWith(`"${fam}"`) && (await widgetFont(tab2, 'clock:1')).startsWith(`"${fam}"`)), `${key}: another tab follows, its widgets too`);
+      await page.screenshot({ path: OUT + `letters-${key}.png` });
+    }
+
+    // This device's own: not in an exported file (unlike the theme and accent).
+    const exp = JSON.stringify(await page.evaluate(() => window.__board21.buildExport('full')));
+    ok(!/letters|Early Readers|Atkinson/.test(exp), 'the letters stay on this device: an exported file doesn’t carry them');
+    // Kept after a reload.
+    await page.reload(); await boardUp(page); await page.waitForTimeout(1500);
+    ok(await page.evaluate(() => window.__board21.state.settings.letters) === 'early' && (await font(page, 'body')).startsWith('"21Board Early Readers"') && (await widgetFont(page, 'clock:1')).startsWith('"21Board Early Readers"'),
+      'a reload keeps the letters (21Board and widgets)');
+    // Standard again: everything as it was.
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.waitForTimeout(800);
+    ok(await page.evaluate(() => document.body.style.fontFamily) === '' && await font(page, 'body') === SYSTEM && await widgetFont(page, 'clock:1') === SYSTEM && await eventually(async () => await font(tab2, 'body') === SYSTEM),
+      'Standard puts the device’s own font back everywhere (both tabs)');
+
+    const away = asked.filter(u => !u.startsWith(BASE) && !/^(data|blob|about):/.test(u));
+    ok(!away.length, `no request leaves 21Board’s own site (${away.slice(0, 3).join(' ')})`);
+    const fonts = Array.from(new Set(asked.filter(u => u.includes('/fonts/')).map(u => u.slice(BASE.length)))).sort();
+    ok(fonts.length && fonts.every(f => /^fonts\/[\w-]+\.woff2$/.test(f)), `the fonts come from 21Board’s own fonts/ folder (${fonts.join(', ')})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Letters: text fitted to its window still fits; the fonts are in the offline copy', async (browser) => {
+    // The offline copy: every file in fonts/ is in the list sw.js saves (and tools/release.js fingerprints), and
+    // the files board.js and the SDK name are there.
+    const vm = require('vm');
+    const box = { addEventListener() {} }; box.self = box;
+    box.importScripts = (...files) => files.forEach(f => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), box));
+    vm.createContext(box);
+    const list = vm.runInContext(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8') + '\n;PRECACHE;', box);
+    const shipped = fs.readdirSync(path.join(ROOT, 'fonts')).map(f => 'fonts/' + f);
+    ok(shipped.length === 6 && shipped.every(f => list.includes(f)), `the font files and their licences are in the offline copy (${shipped.filter(f => list.includes(f)).length} of ${shipped.length})`);
+    const named = f => Array.from(new Set(fs.readFileSync(path.join(ROOT, f), 'utf8').match(/[\w-]+\.woff2/g))).sort();
+    const inBoard = named('board.js'), inSdk = named('sdk/board21.js');
+    ok(inBoard.length === 4 && inBoard.join() === inSdk.join() && inBoard.every(f => shipped.includes('fonts/' + f)), `board.js and the SDK name the same font files, all shipped (${inBoard.join(', ')})`);
+
+    // A stamped release, offline: the chosen font still loads (from the offline copy).
+    deploy('letters');
+    const off = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const op = await off.newPage();
+    await op.goto(BASE + '__site/letters/'); await boardUp(op);
+    await op.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 });
+    ok(await eventually(async () => { const c = await op.evaluate(async () => { const k = (await caches.keys()).filter(n => n.startsWith('21board-')); const c = await caches.open(k[0]); return (await c.keys()).map(r => new URL(r.url).pathname); }); return shipped.every(f => c.includes('/__site/letters/' + f)); }, 15000),
+      'a device saves the fonts with the rest of its offline copy');
+    await op.click('.picker-btn.left'); await op.click('[data-ctl="settings"]'); await op.waitForTimeout(300);
+    await op.click('#settings [data-act="letters"][data-val="legible"]'); await op.waitForTimeout(500);
+    await off.setOffline(true);
+    await op.reload(); await boardUp(op);
+    await op.evaluate(() => window.__board21.openWidget('clock')); await op.waitForTimeout(1500);
+    const offFonts = await op.evaluate(() => document.fonts.ready.then(() => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible').map(f => f.status).join()));
+    const offWidget = await op.frameLocator('.win[data-ikey="clock:1"] iframe').locator('html').evaluate(() => document.fonts.ready.then(() => Array.from(document.fonts).some(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible' && f.status === 'loaded')));
+    ok(/loaded/.test(offFonts) && !/error/.test(offFonts) && offWidget, `offline, the letters load in 21Board (${offFonts}) and in a widget (${offWidget})`);
+    await off.close();
+
+    // Fitting: the Clock (digital and date only), Calendar's month, a note that fits its text, and the Timer and
+    // Name Picker (sized by CSS) in narrow windows. After each change (to a font not yet loaded, and back to
+    // one that is), the text fits: nothing sticks out, and text that was shrunk to fit fills its room again.
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    for (const id of ['clock', 'clock', 'timer', 'calendar', 'notes', 'name-picker', 'task-timer']) await page.evaluate(id => window.__board21.openWidget(id), id);
+    await page.waitForTimeout(1500);
+    await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="digital"]'); await page.waitForTimeout(300);
+    await page.click('.win[data-ikey="clock:2"] .win-label'); await page.click('#menu [data-id="date"]'); await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      const b = window.__board21;
+      b.setRect('clock:1', { x: 10, y: 10, w: 300, h: 176 }); b.setRect('clock:2', { x: 330, y: 10, w: 300, h: 176 });
+      b.setRect('timer:1', { x: 650, y: 10, w: 250, h: 210 }); b.setRect('calendar:1', { x: 920, y: 10, w: 230, h: 260 });
+      b.setRect('notes:1', { x: 10, y: 300, w: 300, h: 220 }); b.setRect('name-picker:1', { x: 330, y: 300, w: 270, h: 220 });
+      b.setRect('task-timer:1', { x: 620, y: 300, w: 380, h: 420 });
+      const s = b.state.wins;
+      s.get('timer:1').post('data', { data: { duration: 7200000, remaining: 7199000, endsAt: null }, reason: 'remote' });
+      s.get('notes:1').post('data', { data: { text: 'Line up quietly at the door. Bring your library book!' }, reason: 'remote' });
+      s.get('name-picker:1').post('data', { data: { names: ['Maximiliana-Guadalupe'], left: null, current: 'Maximiliana-Guadalupe' }, reason: 'remote' });
+    });
+    await page.waitForTimeout(1200);
+    const w = ik => page.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('html');
+    // An element's text: how far it sticks out of the room it has (inside its parent's padding, or its own with
+    // own, and the window), how wide it is, and whether it was shrunk to fit.
+    const where = (ik, sel, own) => w(ik).evaluate((html, [sel, own]) => {
+      const el = document.querySelector(sel), r = document.createRange(); r.selectNodeContents(el);
+      const t = r.getBoundingClientRect(), box = own ? el : el.parentNode, b = box.getBoundingClientRect(), cs = getComputedStyle(box);
+      const left = Math.max(0, b.left + parseFloat(cs.paddingLeft)), right = Math.min(innerWidth, b.right - parseFloat(cs.paddingRight));
+      return { out: Math.max(0, left - t.left, t.right - right), room: right - left, w: t.width, shrunk: !!el.style.fontSize };
+    }, [sel, !!own]);
+    // A spy on the Task Timer's pie: the font of each label it draws, and when (and when fonts finished loading).
+    await w('task-timer:1').evaluate(() => {
+      const c = document.querySelector('canvas').getContext('2d'), fill = c.fillText;
+      window.__drawn = []; window.__fontsIn = 0;
+      c.fillText = function () { window.__drawn.push({ font: c.font, at: performance.now() }); return fill.apply(this, arguments); };
+      document.fonts.addEventListener('loadingdone', () => { window.__fontsIn = performance.now(); });
+    });
+    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    for (const key of ['legible', 'early', 'standard', 'legible']) {
+      await page.click(`#settings [data-act="letters"][data-val="${key}"]`);
+      await page.waitForTimeout(400);
+      for (const ik of ['clock:1', 'clock:2', 'timer:1', 'calendar:1', 'notes:1', 'name-picker:1', 'task-timer:1']) await w(ik).evaluate(() => document.fonts.ready);
+      await page.waitForTimeout(400);
+      const bad = [];
+      const fits = (what, p, fill = true) => {
+        if (p.out > 1) bad.push(`${what} sticks out by ${Math.round(p.out)} px`);
+        else if (fill && p.shrunk && p.w < p.room * 0.95) bad.push(`${what} was shrunk for other letters (${Math.round(p.w)} px in ${Math.round(p.room)})`);
+      };
+      fits('Clock time', await where('clock:1', '#time'));
+      fits('Clock weekday', await where('clock:2', '#weekday'));
+      fits('Clock date', await where('clock:2', '#fulldate'));
+      fits('Timer', await where('timer:1', '#display'), false);
+      fits('Calendar month', await where('calendar:1', '#title', true));
+      const note = await w('notes:1').evaluate(() => { const v = document.getElementById('view'); return { sh: v.scrollHeight, ch: v.clientHeight, sw: v.scrollWidth, cw: v.clientWidth, fs: parseFloat(getComputedStyle(v).fontSize) }; });
+      if (note.sh > note.ch + 1 || note.sw > note.cw + 1) bad.push(`the note doesn’t fit (${note.sw}×${note.sh} in ${note.cw}×${note.ch})`);
+      const np = await w('name-picker:1').evaluate(() => { const s = document.querySelector('.stage'); return { sh: s.scrollHeight, ch: s.clientHeight, sw: s.scrollWidth, cw: s.clientWidth }; });
+      if (np.sh > np.ch + 1 || np.sw > np.cw + 1) bad.push(`the picked name doesn’t fit (${np.sw}×${np.sh} in ${np.cw}×${np.ch})`);
+      ok(!bad.length, `${key}: Clock, Timer, Calendar, a note and Name Picker fit their windows${bad.length ? ': ' + bad.join(' | ') : ` (note ${Math.round(note.fs)} px)`}`);
+      const fam = { legible: '"Atkinson Hyperlegible"', early: '"21Board Early Readers"', standard: 'system-ui' }[key];
+      const pie = await w('task-timer:1').evaluate((html, fam) => window.__drawn.filter(d => d.at >= window.__fontsIn && d.font.includes(fam)).map(d => d.font).pop(), fam);
+      ok(!!pie, `${key}: the Task Timer draws its pie again in these letters once they have loaded (${pie})`);
+      await page.screenshot({ path: OUT + `letters-fit-${key}.png` });
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+
+  ['Letters: the widget dev window (on 21Board’s site, in an AI tool’s preview, in the widget lab)', async (browser) => {
+    // The dev window's test board loads the fonts from 21Board's site. On that site they load; on another site (an AI
+    // tool's preview) or sealed off (the widget lab) they would need the site's permission (CORS): there the letters
+    // stay Standard, nothing is fetched and the preview's console gets no font errors, and Settings says so.
+    const ctx = await browser.newContext({ viewport: { width: 1100, height: 760 } });
+    const page = await ctx.newPage();
+    const fontErrors = [], asked = [];
+    page.on('console', m => { if (m.type() === 'error' && /font|woff2|CORS/i.test(m.text())) fontErrors.push(m.text().slice(0, 120)); });
+    page.on('request', r => { if (r.url().includes('/fonts/')) asked.push(r.url()); });
+    const kids = f => page.frames().filter(x => x.parentFrame() === f);
+    const testBoard = async () => {
+      const board = kids(page.mainFrame())[0];
+      await board.evaluate(() => document.querySelector('.picker-btn.left').click()); await page.waitForTimeout(300);
+      await board.evaluate(() => document.querySelector('[data-ctl="settings"]').click()); await page.waitForTimeout(800);
+      return board;
+    };
+    const lettersRow = board => board.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('#settings .row')).find(r => /^Letters/.test(r.textContent.trim()));
+      return { cards: document.querySelectorAll('#settings .letter-opt').length, text: row ? row.textContent.trim() : '' };
+    });
+
+    // On 21Board's own site: the three choices, and they work (in the test board and its widget).
+    await page.goto(BASE + '__dev/widget.html'); await page.waitForTimeout(2500);
+    let board = await testBoard();
+    ok((await lettersRow(board)).cards === 3, 'a dev window on 21Board’s own site has the Letters choices');
+    await board.evaluate(() => document.querySelector('#settings [data-act="letters"][data-val="legible"]').click());
+    ok(await eventually(async () => {
+      const b = await board.evaluate(() => getComputedStyle(document.body).fontFamily.startsWith('"Atkinson Hyperlegible"') && Array.from(document.fonts).some(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible' && f.status === 'loaded'));
+      const w = await kids(board)[0].evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--b21-font').trim().startsWith('"Atkinson Hyperlegible"'));
+      return b && w;
+    }), 'and choosing one loads it there, for the test board and its widget');
+
+    // In an AI tool's preview (another site) and in the widget lab (sealed off): no choices, no fonts, no errors.
+    const before = asked.length; fontErrors.length = 0;
+    await page.goto(BASE.replace('127.0.0.1', 'localhost') + '__dev/widget.html'); await page.waitForTimeout(2500);
+    board = await testBoard();
+    let row = await lettersRow(board);
+    ok(row.cards === 0 && /can’t load in this test board\. Try them in 21Board itself\./.test(row.text), `in an AI tool’s preview Settings says the letters can’t load there (“${row.text}”)`);
+    ok(await board.evaluate(() => getComputedStyle(document.body).fontFamily.startsWith('system-ui') && !document.getElementById('letter-faces')), 'and the test board stays in the device’s own font');
+    await page.goto(BASE + 'sdk/lab.html'); await page.waitForTimeout(400);
+    await page.click('#sample'); await page.click('#run'); await page.waitForTimeout(3500);
+    board = await testBoard();
+    row = await lettersRow(board);
+    ok(await board.evaluate(() => self.origin) === 'null' && row.cards === 0 && /can’t load in this test board/.test(row.text), 'the same in the widget lab (its test board is sealed off)');
+    ok(asked.length === before && !fontErrors.length, `neither fetches a font or logs a font error in the preview’s console (${asked.length - before} fetched${fontErrors.length ? ': ' + fontErrors.join(' | ') : ''})`);
+    await ctx.close();
+  }],
 
   // (end of classroom features)
 ];

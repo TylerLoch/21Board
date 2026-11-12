@@ -661,7 +661,17 @@
     .corner-clock .d { font-size: 22px; font-weight: 600; padding-right: 14px; border-right: 2px solid var(--border); }
     body.clock-on #toasts { max-width: calc(100vw / var(--ui, 1) - 2 * var(--clock-room, 90px)); }
 
-    /* Letters */
+    /* Letters: Settings → Appearance, one card per choice, each in its own letters (letterSettings in board.js) */
+    .letter-opts { display: flex; flex-direction: column; gap: 8px; }
+    .letter-opt { position: relative; justify-content: space-between; gap: 12px; min-height: 58px; padding: 8px 14px; border-radius: 12px; background: var(--hover-bg); color: var(--text); text-align: left; }
+    .letter-opt .txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .letter-opt b { font-size: 16px; font-weight: 700; }
+    .letter-opt small { font-size: 12.5px; line-height: 1.35; color: var(--muted); }
+    .letter-opt .sample { flex: 0 0 auto; font-size: 26px; line-height: 1.1; }
+    .letter-opt.on { background: var(--primary-soft); box-shadow: inset 0 0 0 2px var(--primary); }
+    .letter-opt.on b { color: var(--primary); }
+    .letter-opt .tick { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); box-shadow: 0 0 0 2px var(--surface); display: grid; place-items: center; pointer-events: none; }
+    .letter-opt .tick svg { width: 13px; height: 13px; stroke-width: 3.5; }
 
     /* (end of classroom features) */
   </style>

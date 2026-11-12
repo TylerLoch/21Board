@@ -28,7 +28,8 @@
       margin: 0;
       height: 100%;
       overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+      /* --b21-font: the letters chosen in 21Board's Settings (the device's own unless the teacher picked easier ones) */
+      font-family: var(--b21-font, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif), "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
       background: var(--b21-bg);
       color: var(--b21-text);
       touch-action: manipulation;
@@ -147,6 +148,7 @@
       border-radius: clamp(8px, 1.8vmin, 14px);
       background: var(--b21-bg);
       color: var(--b21-text);
+      font-family: inherit;   /* (buttons and input boxes don't take the page's font by themselves: Settings → Letters) */
       font-size: clamp(0.85rem, 2.4vmin, 1.15rem);
       font-weight: 600;
       cursor: pointer;
@@ -315,6 +317,7 @@
       border-radius: clamp(6px, 1.5vmin, 10px);
       background: var(--b21-surface);
       color: var(--b21-text);
+      font-family: inherit;
       font-size: clamp(0.82rem, 2.3vmin, 1.05rem);
       padding: 0 clamp(6px, 1.8vmin, 12px);
       outline: none;
@@ -1520,7 +1523,7 @@
 
       // Draw Fitted Text
       if (textLayout && textLayout.lines.length > 0) {
-        ctx.font = `700 ${textLayout.fontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+        ctx.font = `700 ${textLayout.fontSize}px ${textFont()}`;
         let curLineY = topY + emojiSize + gap + textLayout.fontSize / 2;
         const lineSpacing = textLayout.fontSize + 2;
 
@@ -1536,7 +1539,8 @@
     function computeFittedTextLayout(ctx, text, maxWidth, maxHeight, maxTextSize, minTextSize) {
       if (!text) return null;
 
-      const fontFor = (sz) => `700 ${sz}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+      const family = textFont();
+      const fontFor = (sz) => `700 ${sz}px ${family}`;
       const availHeight = Math.max(minTextSize, maxHeight - 16);
 
       // 1. Single line: try font sizes from max down to min
@@ -1753,9 +1757,9 @@
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = getThemeColor('--b21-muted', '#8e8e93');
-      ctx.font = 'bold 16px -apple-system, sans-serif';
+      ctx.font = `bold 16px ${textFont()}`;
       ctx.fillText('No activities yet', cx, cy - 14);
-      ctx.font = '13px -apple-system, sans-serif';
+      ctx.font = `13px ${textFont()}`;
       ctx.fillText('Tap here to create schedule', cx, cy + 10);
       ctx.font = '22px -apple-system, sans-serif';
       ctx.fillText('➕', cx, cy + 38);
@@ -1771,6 +1775,12 @@
     function getThemeColor(varName, fallback) {
       const val = getComputedStyle(document.body).getPropertyValue(varName).trim();
       return val || fallback;
+    }
+
+    // The letters for text drawn on the pie: the ones chosen in 21Board's Settings (--b21-font). A font that is
+    // still loading draws in the device's own; the SDK fires a resize once it's in, and the pie is drawn again.
+    function textFont() {
+      return getThemeColor('--b21-font', '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif');
     }
 
     // An activity's colour (#rrggbb) as text: as it is in the dark theme, darker in the light one so it stays readable.

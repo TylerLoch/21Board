@@ -109,6 +109,10 @@ are open still come from the saved copy: reload once more, or close and open the
 - **Board history:** open it, how often a version is saved (every 10 minutes while the board changes,
   every hour, once a day, off), copies in the Google Drive folder, delete board history.
 - **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to widgets),
+  letters for 21Board and its widgets (*Standard*: the device's own font; *Easier to read*: Atkinson Hyperlegible,
+  made for low vision, with I, l and 1 all different; *Early readers*: Andika by SIL, with a and g the way children
+  learn to write them; easier reading, not a dyslexia font; this device only; Notes' Chalkboard and Whiteboard
+  keep their own lettering),
   board background (with a preview of the board): color in a Light and a Dark row (or match the theme), pattern
   (dots, grid, lines, handwriting rows, graph paper; not shown under a photo, and Settings says so), background photo
   (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
@@ -145,6 +149,7 @@ board.js                Board shell logic (storage, sync, windows, picker, setti
 sw.js                   Service worker (offline copy, updates)  ← bump VERSION, run tools/release.js
 manifest.webmanifest    PWA manifest (also lets the installed app open .21board files in Chrome)
 icons/                  Widget icons
+fonts/                  Easier-to-read letters (Settings → Appearance → Letters), loaded only once chosen
 sdk/board21.js          The SDK every widget includes (window.Board21)
 sdk/board21-dev.js      The widget dev window: a widget opened outside 21Board runs in the real board
 sdk/dev/board-shell.js  index.html's markup for the dev window (made by tools/build-sdk.js)
@@ -527,3 +532,12 @@ Built for current **Chrome** (and Chromium-based Edge). Kept compatible with **S
 - `widgets/notes/fonts/Excalifont-Regular.woff2`: *Excalifont* by Excalidraw (based on Virgil by Ellinor
   Rapp), used unmodified under the SIL Open Font License 1.1 (`widgets/notes/fonts/Excalifont-OFL.txt`),
   for the Notes Whiteboard theme.
+- `fonts/AtkinsonHyperlegible-Regular.woff2` and `-Bold.woff2`: *Atkinson Hyperlegible* 1.006 by the Braille
+  Institute, under the SIL Open Font License 1.1 (`fonts/AtkinsonHyperlegible-OFL.txt`), for Settings → Letters →
+  *Easier to read*. `tools/build-letter-fonts.py` makes them from the originals in the google/fonts repository:
+  cut down to Latin letters (Basic Latin, Latin-1, Latin Extended-A) and the punctuation 21Board uses, WOFF2.
+- `fonts/EarlyReaders-Regular.woff2` and `-Bold.woff2`: *Andika* 6.101 by SIL International, under the SIL Open
+  Font License 1.1 (`fonts/EarlyReaders-OFL.txt`), for *Early readers*. Made the same way, and renamed
+  “21Board Early Readers”: Andika is a Reserved Font Name, which a cut-down copy may not use. Its line height is
+  brought down from 1.61 to 1.36 em (room for these letters' accents only). The four fonts add about 83 KB
+  (92 KB with the licences) to the offline copy; a device fetches one only once it is chosen.

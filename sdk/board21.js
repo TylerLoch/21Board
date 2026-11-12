@@ -104,6 +104,50 @@
     root.setAttribute('data-b21-theme', theme);
     root.style.colorScheme = theme;
     Object.keys(palette).forEach(function (k) { root.style.setProperty('--b21-' + k, palette[k]); });
+    applyLetters(palette.font);
+  }
+
+  // ---------------------------------------------------------------- letters
+  // The teacher can choose easier-to-read letters (21Board's Settings → Appearance → Letters): --b21-font then
+  // starts with a font that comes with 21Board, in its fonts/ folder. Its @font-face rules are added here,
+  // pointing at that folder next to this script (…/sdk/board21.js), and fetch the files only once text uses
+  // them. For the built-in widgets that's the board's own site; a widget on another site that loads this
+  // script from the board gets them only if the board's site allows it (CORS), and one with its own copy of
+  // the SDK only if a fonts/ folder is next to it. Otherwise its text stays in the device's own font, the
+  // next one in --b21-font. Text a widget fits to its window must be fitted again in the new letters: a
+  // window resize event fires when they change, and again once the font has loaded.
+  var LETTER_FACES = {
+    'Atkinson Hyperlegible': ['AtkinsonHyperlegible-Regular.woff2', 'AtkinsonHyperlegible-Bold.woff2'],
+    '21Board Early Readers': ['EarlyReaders-Regular.woff2', 'EarlyReaders-Bold.woff2']
+  };
+  var sdkFile = me && me.src ? me.src.replace(/[?#].*$/, '') : '';
+  var fontBase = /sdk\/board21(\.min)?\.js$/.test(sdkFile) ? sdkFile.replace(/sdk\/board21(\.min)?\.js$/, '') + 'fonts/' : '';
+  var lettersNow = null, lettersAdded = {}, refitSoon = false;
+  function applyLetters(font) {
+    font = String(font || '');
+    var fam = (/^\s*"([^"]+)"/.exec(font) || [])[1];
+    if (fam && fontBase && LETTER_FACES.hasOwnProperty(fam) && !lettersAdded[fam]) {
+      lettersAdded[fam] = true;
+      var css = document.createElement('style');
+      css.setAttribute('data-b21-letters', fam);
+      css.textContent = LETTER_FACES[fam].map(function (file, i) {   // (the UI's weights 600–800 come out in the Bold one)
+        return '@font-face { font-family: "' + fam + '"; src: url("' + fontBase + file + '") format("woff2"); font-weight: ' + (i ? 700 : 400) + '; font-display: swap; }';
+      }).join('\n');
+      (document.head || document.documentElement).appendChild(css);
+    }
+    if (lettersNow !== null && font !== lettersNow) refit();
+    lettersNow = font;
+  }
+  function refit() {
+    if (refitSoon) return;
+    refitSoon = true;
+    setTimeout(function () {
+      refitSoon = false;
+      try { window.dispatchEvent(new Event('resize')); } catch (e) { /* (a very old browser) */ }
+    }, 30);
+  }
+  if (document.fonts && document.fonts.addEventListener) {
+    document.fonts.addEventListener('loadingdone', function () { if (Object.keys(lettersAdded).length) refit(); });
   }
 
   function post(type, payload) {
