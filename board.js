@@ -117,7 +117,7 @@
 
     clock: 'time',           // Clock in the corner: 'off' | 'time' | 'date' (time and date)
 
-    letters: 'standard'      // Letters: 'standard' (the device's own) or a bundled easier-to-read font
+    letters: 'standard'      // Letters: 'standard' (the device's own font) | 'legible' (Atkinson Hyperlegible) | 'early' (Andika)
   };
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
   const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
@@ -139,7 +139,7 @@
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
   // The palette widgets receive (--b21-* variables), with the chosen accent applied.
   function paletteFor(theme) {
-    const base = Object.assign({}, PALETTES[theme]);
+    const base = Object.assign({}, PALETTES[theme], { font: letterFont() });   // Settings → Letters (section 12b)
     const a = accentOf(S.settings.accent);
     if (!a || S.settings.accent === 'blue') return base; // blue is the built-in default
     const c = theme === 'dark' ? a[1] : a[0];
@@ -1084,7 +1084,7 @@
     applyAccent(theme);
     const palette = paletteFor(theme);
     window.__board21Host = { theme, palette, version: BOARD_VERSION };
-    const themeSig = theme + '|' + S.settings.accent;
+    const themeSig = theme + '|' + S.settings.accent + '|' + letterKey();   // (the letters go to widgets with the theme)
     if (themeSig !== S.appliedTheme) {
       const themeChanged = !S.appliedTheme || S.appliedTheme.split('|')[0] !== theme;
       S.appliedTheme = themeSig;
@@ -3423,9 +3423,64 @@
   function clockAct(act, val) { return false; }
 
   // ---- Letters (easier-to-read fonts)
-  function applyLetters() {}
-  function letterSettings(sw, seg) { return ''; }
-  function letterAct(act, val) { return false; }
+  // Settings → Appearance → Letters: the device's own font (as before), or one that comes with 21Board for easier
+  // reading from across the room: Atkinson Hyperlegible (the Braille Institute's font for low vision: I, l and 1
+  // differ) or Andika (SIL's font for beginning readers: a and g as children learn to write them). Easier reading,
+  // not a "dyslexia font". The files are in fonts/, cut down to the letters 21Board needs (tools/build-letter-fonts.py;
+  // the cut-down Andika is renamed "21Board Early Readers", as its licence asks) and part of the offline copy (sw.js).
+  // @font-face rules fetch nothing until text uses them, so a font is loaded only once it's chosen (or Settings
+  // shows it). They point next to this file, so they also work in the widget dev window. Widgets get the font in
+  // their palette (--b21-font, paletteFor) and the SDK adds the same rules in their frames (sdk/board21.js,
+  // LETTER_FACES), then fires a resize, so text that is fitted to its window fits again in the new letters.
+  // Weights 600 to 800 (headings, names) come out in the Bold face, 500 in the Regular one.
+  // This device only, like the other classroom settings: never exported (unlike the theme and accent) or sent to the
+  // Drive folder, so a board opened on the smartboard keeps the smartboard's letters.
+  // (\u00a0, a no-break space, keeps “I, l and 1” and “a and g” on one line in the hints.)
+  const LETTERS = {
+    standard: { name: 'Standard', hint: 'This device’s own letters.' },
+    legible: { name: 'Easier to read', hint: 'Atkinson Hyperlegible, made for people with low vision: I,\u00a0l\u00a0and\u00a01 all look different.',
+      family: 'Atkinson Hyperlegible', files: ['AtkinsonHyperlegible-Regular.woff2', 'AtkinsonHyperlegible-Bold.woff2'] },
+    early: { name: 'Early readers', hint: 'Based on Andika by SIL, for children learning to read: a\u00a0and\u00a0g look the way they learn to write them.',
+      family: '21Board Early Readers', files: ['EarlyReaders-Regular.woff2', 'EarlyReaders-Bold.woff2'] }
+  };
+  const LETTER_SAMPLE = 'Il1 ag';
+  // The folder this file came from (the dev window's page is somewhere else).
+  const FONT_BASE = (() => { const s = document.currentScript; return s && s.src ? s.src.replace(/[?#].*$/, '').replace(/[^/]*$/, '') : ''; })();
+  const letterKey = () => Object.prototype.hasOwnProperty.call(LETTERS, S.settings.letters) ? S.settings.letters : 'standard';
+  // The font stack: the chosen font, then the device's own for anything it doesn't have (▦, ✓, emoji, Cyrillic…).
+  const letterFont = (key = letterKey()) => (LETTERS[key].family ? `"${LETTERS[key].family}", ` : '') + PALETTES.light.font;
+
+  let letterFaces = null;
+  function applyLetters() {
+    if (!letterFaces) {   // (once: the rules load nothing by themselves)
+      letterFaces = document.createElement('style');
+      letterFaces.id = 'letter-faces';
+      letterFaces.textContent = Object.values(LETTERS).filter(l => l.files).map(l => l.files.map((file, i) =>
+        `@font-face { font-family: "${l.family}"; src: url("${FONT_BASE}fonts/${file}") format("woff2"); font-weight: ${i ? 700 : 400}; font-display: swap; }`).join('\n')).join('\n');
+      document.head.appendChild(letterFaces);
+    }
+    const key = letterKey();
+    document.body.style.fontFamily = key === 'standard' ? '' : letterFont(key);   // (everything else inherits it)
+  }
+
+  // Each choice is shown in its own letters, with a sample of the look-alikes.
+  function letterSettings() {
+    const cur = letterKey();
+    const opt = key => {
+      const l = LETTERS[key], on = key === cur;
+      return `<button class="letter-opt${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="letters" data-val="${key}" style="font-family:${esc(letterFont(key))}">` +
+        `<span class="txt"><b>${esc(l.name)}</b><small>${esc(l.hint)}</small></span><span class="sample" aria-hidden="true">${LETTER_SAMPLE}</span>` +
+        (on ? `<span class="tick" aria-hidden="true">${svg('check')}</span>` : '') + '</button>';
+    };
+    return `<div class="row stack"><div><div class="lbl">Letters</div><div class="hint">The letters in 21Board and its widgets, on this device.</div></div>
+          <div class="letter-opts" role="radiogroup" aria-label="Letters">${Object.keys(LETTERS).map(opt).join('')}</div></div>`;
+  }
+
+  function letterAct(act, val) {
+    if (act !== 'letters') return false;
+    if (Object.prototype.hasOwnProperty.call(LETTERS, val)) updateSettings({ letters: val });
+    return true;
+  }
 
   // ---- (end of section 12b)
 

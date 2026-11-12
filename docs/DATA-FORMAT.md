@@ -78,6 +78,7 @@ storage can't be read still has every page.
   resistance: "normal",    // "gentle" | "normal" | "strong" — how hard you push to overlap
   pickerCorners: "both",   // "both" | "left" | "right"
   accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
+  letters: "standard",     // Settings → Letters: "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika)
   lastBackupAt: null,      // ms of the last full backup export, for backup reminders
   devMode: false,
   devWidgets: [               // test widgets added in Developer mode

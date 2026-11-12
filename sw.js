@@ -64,7 +64,14 @@ const SHELL_FILES = [
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/icon-maskable-512.png',
-  'icons/apple-touch-icon.png'
+  'icons/apple-touch-icon.png',
+  // Settings → Letters (board.js section 12b): loaded only when chosen, but always in the copy, so they work offline
+  'fonts/AtkinsonHyperlegible-Regular.woff2',
+  'fonts/AtkinsonHyperlegible-Bold.woff2',
+  'fonts/AtkinsonHyperlegible-OFL.txt',
+  'fonts/EarlyReaders-Regular.woff2',
+  'fonts/EarlyReaders-Bold.woff2',
+  'fonts/EarlyReaders-OFL.txt'
 ];
 
 // (Not the district's own apps, `external`: they come from their own sites, which keep their own offline copies.
