@@ -136,13 +136,17 @@ NamePicker.register('spotlight', {
       if (v === undefined) { measure.font = weight + ' 100px ' + fam; v = measure.measureText(text).width / 100; widths.set(key, v); }
       return v;
     }
+    // The letters of a name as a reader sees them: a flag, an emoji with a skin tone, or a letter with an accent
+    // is one, so a shortened name never cuts one in two. (Older browsers without Intl.Segmenter: by code point.)
+    const seg = window.Intl && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+    const letters = s => seg ? Array.from(seg.segment(s), x => x.segment) : Array.from(s);
     // A name that fits `room` px at `fs` px: whole if it can be, else "Anne-S.", else "Maximil…".
     function shorten(name, fs, room) {
       const fits = s => em(s, 700) * fs <= room;
       if (fits(name)) return name;
-      const parts = name.split(/([\s\-‐–]+)/);
-      if (parts.length >= 3) { const s = parts[0] + parts[1] + Array.from(parts[2])[0] + '.'; if (fits(s)) return s; }
-      const ch = Array.from(name);
+      const parts = name.split(/([\s\-‐–]+)/), initial = parts.length >= 3 ? letters(parts[2])[0] || '' : '';
+      if (/^\p{L}/u.test(initial)) { const s = parts[0] + parts[1] + initial + '.'; if (fits(s)) return s; }   // (only a letter: never "José 🇲.")
+      const ch = letters(name);
       for (let n = ch.length - 1; n >= 2; n--) {
         const s = ch.slice(0, n).join('').replace(/[\s\-‐–.]+$/, '') + '…';
         if (fits(s)) return s;
