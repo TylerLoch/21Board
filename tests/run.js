@@ -5782,7 +5782,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   ['Letters: Settings, 21Board’s text and widgets’, another tab, reload, nothing from another site', async (browser) => {
     const FAMS = { legible: 'Atkinson Hyperlegible', early: '21Board Early Readers' };
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-    const asked = []; ctx.on('request', r => asked.push(r.url()));
+    // (What the pages ask for, not the offline worker saving its copy of every file, fonts included, in the background.)
+    const asked = []; ctx.on('request', r => { if (!r.serviceWorker()) asked.push(r.url()); });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page); await freeBoard(page);
