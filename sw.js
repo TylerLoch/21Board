@@ -11,17 +11,17 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.12-40';
+const VERSION = '2026.11.12-41';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '7c8c73f7';
+const BUILD = 'c2d52a61';
 const FILES = {
-  './': '4ed10ee7721df9f3',
-  'index.html': '4ed10ee7721df9f3',
-  'board.js': '935e170ce1864456',
-  'sdk/board21.js': '3ec0b3970329642d',
+  './': '41ad66e200856c0b',
+  'index.html': '41ad66e200856c0b',
+  'board.js': 'b981d22fa57c7f7a',
+  'sdk/board21.js': '6715363546d4f39a',
   'sdk/board21-dev.js': '492a193221911878',
-  'sdk/dev/board-shell.js': '35f765af7f36514a',
+  'sdk/dev/board-shell.js': 'e9dbd60830541e72',
   'sdk/lab.html': '21cda27716334794',
   'widgets/registry.js': '62fbc7a4c8e2c8e2',
   'manifest.webmanifest': '3fddd4aac05d7279',
@@ -30,8 +30,14 @@ const FILES = {
   'icons/icon-512.png': 'f36bcfa6f75f9518',
   'icons/icon-maskable-512.png': 'f657800c74fa000f',
   'icons/apple-touch-icon.png': '40c6305b7794812a',
+  'fonts/AtkinsonHyperlegible-Regular.woff2': '57f2debe054cd288',
+  'fonts/AtkinsonHyperlegible-Bold.woff2': '21b2f082b7390e74',
+  'fonts/AtkinsonHyperlegible-OFL.txt': 'f32d22b3908fcad2',
+  'fonts/EarlyReaders-Regular.woff2': 'e96901beca9ae308',
+  'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
+  'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
   'widgets/timer/index.html': '519a447651242d8e',
-  'widgets/task-timer/index.html': 'c3ffc89c8475cf71',
+  'widgets/task-timer/index.html': '4ee701b977da15e1',
   'widgets/calendar/index.html': '7b3d6a2ac35e8999',
   'widgets/clock/index.html': '21a98aa1d345b489',
   'widgets/notes/index.html': 'c906b2da71b6f6d4',
@@ -40,7 +46,7 @@ const FILES = {
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
   'widgets/name-picker/index.html': '87f7e6f273c95a4e',
-  'widgets/first-then-board/index.html': '2b6556486bf889bd',
+  'widgets/first-then-board/index.html': 'a10c7d4ab528ae1d',
   'widgets/dice/index.html': '868bf3c637359718',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
   'widgets/sdk-playground/index.html': '9d5615e8b0f6f313'

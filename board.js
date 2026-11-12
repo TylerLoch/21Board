@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.12-40';
-  const BOARD_BUILD = '7c8c73f7';
+  const BOARD_VERSION = '2026.11.12-41';
+  const BOARD_BUILD = 'c2d52a61';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3398,8 +3398,8 @@
   function applyClassroom() {
     applyLock();
     applyAwake();
+    applyLetters();   // (before the clock, which measures its text)
     applyClock();
-    applyLetters();
   }
 
   function classroomSettings(sw, seg) {
@@ -3748,6 +3748,8 @@
       panel.addEventListener('animationend', () => this.cover());
       // Timers sleep while the page is hidden or the device is asleep: the right time as soon as it shows again.
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && this.on()) this.tick(); });
+      // A font for Letters finishing loading changes its width: measure again.
+      if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => this.place());
     },
     apply() {
       if (!this.on()) {
@@ -4319,7 +4321,7 @@
           }
           break;
         }
-        case 'close-all': await closeAll(); this.render(); break;
+        case 'close-all': if (!Lock.on()) await closeAll(); this.render(); break;   // (its button is off while locked)
         case 'inst-open': { const i = S.insts.get(val); if (i) openSpecific(val); this.render(); break; }
         case 'inst-delete': {
           const i = S.insts.get(val);
