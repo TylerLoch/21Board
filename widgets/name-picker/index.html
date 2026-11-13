@@ -70,6 +70,9 @@
  *                               width: max-content; white-space: nowrap). Returns the size.
  *   host.token(name)            a theme value for a canvas: host.token('accent') is --b21-accent, host.token('font')
  *                               --b21-font, host.token('np-win') --np-win.
+ *   host.zoom()                 how much bigger the board draws the window than its size here (1: the same; 1.5 with
+ *                               Size 150%). A canvas wants devicePixelRatio × zoom pixels per CSS px to stay sharp;
+ *                               resize() is called when it changes.
  *
  * Colours and letters: use the board's CSS tokens (--b21-bg, -surface, -surface-2, -text, -muted, -border, -accent,
  * -on-accent, -accent-soft, -danger, -success, -warning, -radius, -font) and these extras, set below for light and
@@ -260,6 +263,7 @@ window.NamePicker = {
     return fs;
   }
   const token = name => getComputedStyle(document.documentElement).getPropertyValue('--' + (/^np-/.test(name) ? name : 'b21-' + name)).trim();
+  const zoom = () => { const w = Board21.context && Board21.context.window, z = w && Number(w.zoom); return z > 0 ? z : 1; };
 
   // A style's own call; a mistake in a style shows in the console and doesn't stop the picker.
   function call(fn, ...args) {
@@ -278,7 +282,7 @@ window.NamePicker = {
       done: () => { if (m.live) finishShow(); },
       pick: () => { if (m.live) pick(); },
       sound: (name, opts) => { if (m.live) Sound.play(name, opts); },
-      el, fitText, token
+      el, fitText, token, zoom
     };
     mounted = m;
     try { m.api = (NamePicker.styles[id] && NamePicker.styles[id].mount(m.root, host)) || {}; } catch (e) { console.error(`Name Picker: the ${id} style didn’t start`, e); }
@@ -385,6 +389,8 @@ window.NamePicker = {
   }
 
   $('go').onclick = pick;
+  // A key held down on the button picks once (its repeats would pick, skip and pick again).
+  $('go').addEventListener('keydown', e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); });
   $('round').onclick = startOver;
   // A tap on the stage during the show skips to the result (not a second tap of a double tap, though).
   $('stage').addEventListener('click', () => { if (showing && performance.now() - showing.at >= GUARD) skipShow(); });
@@ -512,10 +518,13 @@ window.NamePicker = {
     else renderChrome();
   });
   Board21.on('theme', () => call('theme'));
-  // Names fit the stage: again when the window changes size, or the letters change (the SDK fires 'resize' then).
+  // Names fit the stage: again when the window changes size, or the letters change (the SDK fires 'resize' then),
+  // or the board draws the window at another size (Board21's 'resize': host.zoom() changed).
   let refitting = 0;
   const refit = () => { if (!refitting) refitting = requestAnimationFrame(() => { refitting = 0; if (pickVisible() && state.names.length) call('resize'); }); };
   addEventListener('resize', refit);
+  let zoomWas = 0;
+  Board21.on('resize', () => { if (zoom() !== zoomWas) { zoomWas = zoom(); refit(); } });
   if (window.ResizeObserver) new ResizeObserver(refit).observe($('stage'));
 
   Board21.ready().then(ctx => {
