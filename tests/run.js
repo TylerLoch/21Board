@@ -2870,6 +2870,13 @@ const SUITES = [
     ok(L.socks === 1 && L.open === 1 && L.head === 'Picked' && !L.overlap && L.trayIn, 'the Picked tray shows one “?” socket for the name to come');
     const calls0 = await inFrame(() => window.__calls); await page.waitForTimeout(1200);
     ok(await inFrame(() => window.__calls) === calls0, 'nothing runs while it waits for a pick (no timers or animation frames)');
+    // A first character made of several codes is whole on the ball: an emoji with a skin tone, a flag, an accent typed
+    // as a letter and a mark.
+    const ODD = ['👩🏽‍🚀 Astro', '🇺🇸 Flag', 'Émilie', 'Zoë', 'Anne-Sophie'];
+    await setNames(ODD);
+    const odd = (await look()).balls.map(b => b.label);
+    ok(JSON.stringify(odd) === JSON.stringify(['👩🏽‍🚀A', '🇺🇸F', 'É', 'Z', 'AS']), `the initials on a ball are whole characters (${odd.join(' ')})`);
+    await setNames(C12);
 
     // ---- One winner, at the usual speed: about 3½ s, landing on the saved winner.
     await inFrame(TIMES);
@@ -2943,6 +2950,69 @@ const SUITES = [
       const q = shows[shows.length - 1].end - shows[shows.length - 1].start;
       ok(q > 1100 && q < 2100, `Quick: ${k} winner${k > 1 ? 's take' : ' takes'} about 1½ s (${Math.round(q)} ms)`);
     }
+
+    // ---- A ball on its way to the tray never passes over the "Picked" heading or a name already there, in a tall
+    // window (it drops down the column of balls) or a wide one. Every frame of the show is checked, on the letters.
+    const COVER = () => {
+      window.__cover = { frames: 0, head: 0, names: 0 };
+      let began = false;
+      const text = e => { const r = document.createRange(); r.selectNodeContents(e); return r.getBoundingClientRect(); };
+      const f = () => {
+        const on = document.body.classList.contains('showing');
+        if (on) began = true;
+        if (!on) { if (!began) requestAnimationFrame(f); return; }
+        const head = document.querySelector('.lotto-head:not([hidden])'), hr = head && text(head);
+        const nameRs = [...document.querySelectorAll('.lotto-name .lotto-text')].map(text);
+        for (const b of document.querySelectorAll('.lotto-ball.lotto-top')) {
+          // (A ball is round, and its box turns with it: it is measured from its middle.)
+          const r = b.getBoundingClientRect(), x = (r.left + r.right) / 2, y = (r.top + r.bottom) / 2, rad = b.offsetWidth / 2;
+          const over = q => !!q && Math.hypot(x - Math.max(q.left, Math.min(x, q.right)), y - Math.max(q.top, Math.min(y, q.bottom))) < rad - 1;
+          if (over(hr)) window.__cover.head++;
+          if (nameRs.some(over)) window.__cover.names++;
+        }
+        window.__cover.frames++;
+        requestAnimationFrame(f);
+      };
+      requestAnimationFrame(f);
+    };
+    const covered = [];
+    let coverBad = false;
+    for (const [w, h] of [[320, 560], [420, 320]]) {
+      await size(w, h); await menu('round');
+      await inFrame(COVER);
+      await pickNow(); await idle();
+      const c = await inFrame(() => window.__cover);
+      covered.push(`${w}×${h}: ${c.head} frames over the heading, ${c.names} over a name, of ${c.frames}`);
+      if (c.frames < 20 || c.head || c.names) coverBad = true;
+    }
+    ok(!coverBad, `five balls coming into the tray never pass over the heading or a name already there (${covered.join('; ')})`);
+    // ---- A name popping up as it lands grows a little for a moment, but never past its place: long names that fill
+    // their places, checked in every frame until the last one has popped up.
+    const POPS = () => {
+      const P = window.__pops = { popping: 0, out: [], stop: false };
+      const f = () => {
+        if (P.stop) return;
+        for (const n of document.querySelectorAll('.lotto-name')) {
+          const t = n.querySelector('.lotto-text');
+          if (!t) continue;
+          if (t.getAnimations().length) P.popping++;
+          const r = document.createRange(); r.selectNodeContents(t);
+          const tr = r.getBoundingClientRect(), nb = n.getBoundingClientRect(), fs = parseFloat(getComputedStyle(t).fontSize);
+          const out = Math.max(nb.left - tr.left, tr.right - nb.right, nb.top - tr.top - fs * 0.05, tr.bottom - nb.bottom - fs * 0.05);
+          if (out > 1 && P.out.length < 5) P.out.push(`${t.textContent} by ${Math.round(out)} px`);
+        }
+        requestAnimationFrame(f);
+      };
+      requestAnimationFrame(f);
+    };
+    await setNames(['Anne-Sophie', 'Oluwaseun', 'Maximiliano', 'Isabella', 'Valentina', 'Bartholomew']);
+    await menu('winners:3');
+    await inFrame(POPS);
+    await pickNow(); await idle(); await page.waitForTimeout(800);
+    const pops = await inFrame(() => { window.__pops.stop = true; return window.__pops; });
+    ok(pops.popping > 20 && !pops.out.length, `a long name popping up never grows past its place (${pops.popping} frames of a name popping up${pops.out.length ? '; sticks out: ' + pops.out.join(', ') : ''})`);
+    await setNames(C12);
+    await size(640, 400);
     await menu('quick');
 
     // ---- No repeats off: the winners' balls go back into the drum at the next pick; every ball is always on show.
@@ -2982,13 +3052,16 @@ const SUITES = [
     bad = await landsOn(st, C12);
     ok(!bad.length, `and choosing Lotto again shows that pick straight away${bad.length ? ': ' + bad.join('; ') : ''}`);
 
-    // ---- A resize during the show: it carries on and still lands on the winners, fitted to the new size.
+    // ---- A resize during the show: it carries on and still lands on the winners, fitted to the new size. (Measured once
+    // the last name has popped up: the show ends while its pop, which grows it a little for a moment, is still going.)
     st = await pickNow(); await page.waitForTimeout(1600);
     await size(420, 320);
-    await idle();
-    bad = await landsOn(st, C12);
+    if (!(await showing())) bad = ['the show was over before the resize'];
+    else { await idle(); await inFrame(() => Promise.all(document.querySelector('.lotto').getAnimations({ subtree: true }).map(a => a.finished.catch(() => {})))); bad = await landsOn(st, C12); }
     L = await look();
-    ok(!bad.length && L.names.every(n => n.out <= 1 && !n.outStage) && !L.overlap, `a window resized during the show still lands on the winners, fitted to the new size${bad.length ? ': ' + bad.join('; ') : ''}`);
+    for (const n of L.names) if (n && (n.out > 1 || n.outStage)) bad.push(`“${n.text}” sticks out by ${Math.round(Math.max(n.out, n.outStage))} px`);
+    if (L.overlap) bad.push('the drum and the tray overlap');
+    ok(!bad.length, `a window resized during the show still lands on the winners, fitted to the new size${bad.length ? ': ' + bad.join('; ') : ''}`);
 
     // ---- Another copy: a pick in one tab plays the show in the other, which lands on the same winners in the same order.
     await size(640, 400); await menu('round');   // (the round was used up: everyone back in)
@@ -3018,6 +3091,16 @@ const SUITES = [
     await pickNow(); await idle();
     const notes = await inFrame(() => window.__notes) - n0;
     ok(await inFrame(() => window.__audio) === 1 && notes >= 8, `with Sound ticked the show plays its sounds (${notes} notes)`);
+    // Unticked and ticked again: heard again straight away. (The new sound's clock starts at 0, so the times kept from
+    // the last one must not hold its notes back.)
+    await menu('sound');
+    n0 = await inFrame(() => window.__notes);
+    await menu('sound'); await page.waitForTimeout(600);
+    const sample = await inFrame(() => window.__notes) - n0;
+    n0 = await inFrame(() => window.__notes);
+    await pickNow(); await idle();
+    const again = await inFrame(() => window.__notes) - n0;
+    ok(sample >= 3 && again >= 8, `Sound unticked and ticked again: the sample chime plays (${sample} notes), and so does the next show (${again} notes)`);
     await menu('sound'); await menu('quick');
 
     // ---- Fits and stays readable: the smallest window, the usual one, and the whole board at 1366×768 and 1920×1080,
@@ -3064,6 +3147,23 @@ const SUITES = [
       }
     };
     await size(260, 200); await fitAll('260x200 window');
+    // A long name with no space doesn't run off the tray in the smallest window: it goes onto two lines at a hyphen,
+    // or with no hyphen either, in the middle of the word. A name too long even for that gets smaller letters still.
+    const NOSPACE = ['Wolfeschlegelsteinhausenbergerdorff', 'Maximiliana-Guadalupe-Fernández', 'Christopher-Alexander', 'Bo', 'Ava'];
+    const HUGE = ['Wolfeschlegelsteinhausenbergerdorffwelchevoralternwarengewissenhaftschafers', 'Maximiliana-Guadalupe-Fernández-Oyelaran-Montgomery-Williams', 'Bo'];
+    const cutOff = [];
+    for (const [list, k] of [[NOSPACE, 1], [NOSPACE, 3], [NOSPACE, 5], [HUGE, 1], [HUGE, 3]]) {
+      await put(list, list.slice(0, k), k); await page.waitForTimeout(450);
+      const L = await look();
+      if (JSON.stringify(L.names.map(n => n && n.text)) !== JSON.stringify(list.slice(0, k))) cutOff.push(`${k}: tray shows ${L.names.map(n => n && n.text)}`);
+      for (const n of L.names.filter(Boolean)) {
+        if (n.out > 1 || n.outStage > 0) cutOff.push(`${k}: “${n.text}” sticks out by ${Math.round(Math.max(n.out, n.outStage))} px`);
+        if (list === NOSPACE && k === 3 && n.fs < 7) cutOff.push(`${k}: “${n.text}” is only ${n.fs.toFixed(1)} px`);   // (with 5, the rows are too low for more)
+      }
+      if (k === 3 && L.names[1].lines !== 2) cutOff.push(`“${list[1]}” isn’t on two lines`);
+      if (list === HUGE && k === 3 && !/-$/.test(await inFrame(() => (document.querySelectorAll('.lotto-name')[1].querySelector('.lotto-two > span') || {}).textContent || ''))) cutOff.push(`“${HUGE[1]}” isn’t broken at a hyphen`);
+    }
+    ok(!cutOff.length, `in the smallest window a long name with no space breaks onto two lines, never cut off at the edge${cutOff.length ? ': ' + cutOff.join(' | ') : ''}`);
     await size(420, 320); await fitAll('420x320 window');
     await size(0, 0); await fitAll('1366x768 board');
     for (const k of [5]) await checkFit('1366x768 board', C45, ['Jean-Baptiste', 'Maximiliano', 'Anne-Sophie', 'Oluwaseun', 'Valentina'].slice(0, k), k);

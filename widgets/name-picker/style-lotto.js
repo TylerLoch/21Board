@@ -37,7 +37,8 @@ NamePicker.register('lotto', {
 .lotto-mid .lotto-text { transform-origin: 50% 50%; }
 .lotto-two { line-height: 1.15; }
 .lotto-two > span { display: block; }
-.lotto-name.lotto-pop .lotto-text { animation: lotto-pop .55s cubic-bezier(.2, 1.5, .4, 1) both; }
+/* (A name popping up grows a little past its size for a moment, but only as far as its place has room: --lotto-pop.) */
+.lotto-name.lotto-pop .lotto-text { animation: lotto-pop .55s cubic-bezier(.2, .9, .3, 1) both; }
 .lotto-name.lotto-fade .lotto-text { animation: lotto-fade .3s ease-out both; }
 .lotto-bar { display: block; border-radius: 999px; background: var(--b21-border); }
 .lotto-head { position: absolute; z-index: 1; white-space: nowrap; line-height: 1.15; color: var(--b21-muted); font-family: var(--b21-font); font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
@@ -56,7 +57,7 @@ NamePicker.register('lotto', {
 .lotto-ball.lotto-land .lotto-face { animation: lotto-ring .8s ease-out; }
 .lotto-ball.lotto-fadein { animation: lotto-fade .3s ease-out both; }
 
-@keyframes lotto-pop { 0% { opacity: 0; transform: scale(.55); } 60% { opacity: 1; transform: scale(1.08); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes lotto-pop { 0% { opacity: 0; transform: scale(.55); } 60% { opacity: 1; transform: scale(var(--lotto-pop, 1)); } 100% { opacity: 1; transform: scale(1); } }
 @keyframes lotto-fade { from { opacity: 0; } to { opacity: 1; } }
 @keyframes lotto-ring {
   0% { box-shadow: inset 0 0 0 max(1px, calc(var(--lotto-d, 20px) * .035)) rgba(17, 24, 39, .3), 0 0 0 0 var(--np-win); }
@@ -91,22 +92,28 @@ NamePicker.register('lotto', {
       const last = ats[k - 1];
       return { T, ats, jetsUntil: last + (quick ? 0.08 : 0.2), end: last + T.fly + (quick ? 0.12 : 0.25) };
     }
+    // The characters of a name as a reader sees them: an emoji with a skin tone, a flag, or a letter with its accent
+    // is one character, though it is made of several codes (where the browser can tell; otherwise one code each).
+    const seg = window.Intl && Intl.Segmenter ? new Intl.Segmenter(undefined, { granularity: 'grapheme' }) : null;
+    const chars = s => (seg ? Array.from(seg.segment(s), x => x.segment) : Array.from(s));
     // The letters on a ball: the first letter of the first two parts of the name ("Anne-Sophie" AS, "Leo" L).
     function initials(name) {
-      const first = s => (Array.from(s)[0] || '?').toUpperCase();
+      const first = s => (chars(s.normalize('NFC'))[0] || '?').toUpperCase();
       const parts = name.split(/[\s\-‐-―.]+/).filter(Boolean);
       return parts.length > 1 ? first(parts[0]) + first(parts[1]) : first(name);
     }
-    // Where a long name can go onto two lines: the space nearest its middle (-1: none).
+    // Where a long name can go onto two lines: just after the space or hyphen nearest its middle (0: neither).
     function splitAt(text) {
-      let best = -1, most = Infinity;
+      let best = 0, most = Infinity;
       for (let i = 1; i < text.length - 1; i++) {
-        if (!/\s/.test(text[i])) continue;
-        const m = Math.max(i, text.length - i - 1);
-        if (m < most) { most = m; best = i; }
+        if (!/[\s\-‐-―]/.test(text[i])) continue;
+        const m = Math.max(i + 1, text.length - i - 1);
+        if (m < most) { most = m; best = i + 1; }
       }
       return best;
     }
+    // The middle of a name, between two whole characters (for a long name with no space or hyphen).
+    const middle = text => { const c = chars(text); return c.slice(0, Math.ceil(c.length / 2)).join('').length; };
 
     // ---------- the stage ----------
     const box = host.el('div', 'lotto', root);
@@ -215,12 +222,17 @@ NamePicker.register('lotto', {
       const bd = 2 * RN * R;
       const E = { x: cx + ux * R, y: cy + uy * R };
       const Ein = { x: cx + ux * R * (1 - RN), y: cy + uy * R * (1 - RN) };
+      const slots = computeSlots(trayBox, k);
+      // (A ball coming into the tray stays below the heading.)
+      const below = slots.head.h ? slots.head.y + slots.head.h : trayBox.y;
       let M, C;
       if (type === 'side') {
-        M = { x: trayBox.x + 4, y: clamp(E.y + R * 0.32, trayBox.y + bd, trayBox.y + trayBox.h - bd) };
+        M = { x: trayBox.x + 4, y: clamp(E.y + R * 0.32, below + bd, trayBox.y + trayBox.h - bd) };
         C = { x: lerp(E.x, M.x, 0.3), y: lerp(E.y, M.y, 0.92) };
       } else {
-        M = { x: cx, y: trayBox.y + 4 };
+        // The chute ends over the column of balls, and a ball drops down that column: never across a name. (It ends
+        // high enough that a ball arriving along it doesn't touch the heading's letters.)
+        M = { x: slots.list[0].bx, y: slots.head.h ? Math.min(trayBox.y + 4, slots.head.y - bd / 2) : trayBox.y + 4 };
         C = { x: cx, y: (E.y + M.y) / 2 };
       }
       // The chute's length, so a ball rolls down it a whole number of turns and comes out with its letters upright.
@@ -231,7 +243,7 @@ NamePicker.register('lotto', {
         chuteLen += Math.hypot(qx - px, qy - py); px = qx; py = qy;
       }
       const turns = Math.max(1, Math.round(chuteLen / (Math.PI * bd)));
-      return { W, H, k, type, R, cx, cy, bd, E, Ein, M, C, turns, trayBox, slots: computeSlots(trayBox, k) };
+      return { W, H, k, type, R, cx, cy, bd, E, Ein, M, C, turns, trayBox, slots, below };
     }
 
     // The sockets in the tray. One name: the ball beside it in a wide tray, above it in a tall one. Several: rows.
@@ -263,7 +275,10 @@ NamePicker.register('lotto', {
             row: { x: tb.x + ip * 0.35, y: y + rh * 0.06, w: tb.w - ip * 0.7, h: rh * 0.88 } });
         }
       }
-      return { ip, list, head: { x: tb.x + ip, y: tb.y + ip, w: aw, h: headH } };
+      // The heading sits over the names (or over the tray, for one name under its ball), not over the column of balls
+      // the winners' balls come in by.
+      const hx = list[0].mid ? tb.x + ip : list[0].name.x;
+      return { ip, list, head: { x: hx, y: tb.y + ip, w: tb.x + tb.w - ip - hx, h: headH } };
     }
 
     const place = (e, b) => { e.style.left = fmt(b.x) + 'px'; e.style.top = fmt(b.y) + 'px'; e.style.width = fmt(Math.max(0, b.w)) + 'px'; e.style.height = fmt(Math.max(0, b.h)) + 'px'; };
@@ -351,18 +366,27 @@ NamePicker.register('lotto', {
       if (!L) return;
       L.slots.list.forEach((s, j) => { if (slotEls[j] && slotEls[j].id !== slotId(j)) renderSlot(j, ''); });
     }
-    // A name as large as its place allows, on one line; a long name with a space goes onto two lines when that
-    // makes it clearly larger (in a small window, "Maximiliano Rodriguez" reads better on two lines than tiny on one).
+    // A name as large as its place allows, on one line; a long name goes onto two lines, at a space or a hyphen, when
+    // that makes it clearly larger (in a small window, "Maximiliano Rodriguez" reads better on two lines than tiny on
+    // one). A name that can't fit on one line even in the smallest letters always goes onto two: at a space or hyphen
+    // if that fits, otherwise in the middle of the word. A name too long even for that gets smaller letters still. It
+    // is never cut off at the edge.
     function fitName(where, text, max) {
-      const one = host.el('span', 'lotto-text', where, text);
-      const fs1 = host.fitText(one, where, max, 6);
-      const at = splitAt(text);
-      if (at < 0 || fs1 >= max * 0.98) return;
-      one.remove();
-      const two = host.el('span', 'lotto-text lotto-two', where);
-      host.el('span', '', two, text.slice(0, at + 1));
-      host.el('span', '', two, text.slice(at + 1));
-      if (host.fitText(two, where, max, 6) < fs1 * 1.15) { two.remove(); where.appendChild(one); }
+      // (at: where the second line starts, 0 for one line; min: the smallest letters allowed)
+      const put = (at, min) => {
+        where.replaceChildren();
+        const e = host.el('span', at ? 'lotto-text lotto-two' : 'lotto-text', where, at ? null : text);
+        if (at) { host.el('span', '', e, text.slice(0, at)); host.el('span', '', e, text.slice(at)); }
+        return host.fitText(e, where, max, min);
+      };
+      const fits = () => { const e = where.firstChild; return e.offsetWidth <= where.clientWidth + 0.5 && e.offsetHeight <= where.clientHeight + 0.5; };
+      const fs1 = put(0, 6), at = splitAt(text);
+      if (fs1 >= max * 0.98) return;
+      if (fits()) { if (at && put(at, 6) < fs1 * 1.15) put(0, 6); return; }
+      if (at) { put(at, 6); if (fits()) return; }
+      // (Smaller than the smallest letters either way: the break at a space or hyphen, unless it is much smaller.)
+      const mid = middle(text), fsMid = put(mid, 1);
+      if (at && fsMid < 6 && put(at, 1) < fsMid * 0.9) put(mid, 1);
     }
     // Socket j: the winner's name (never cut off), or an empty "?" socket with a grey bar for the name to come.
     function renderSlot(j, anim) {
@@ -376,6 +400,11 @@ NamePicker.register('lotto', {
       se.name.classList.remove('lotto-pop', 'lotto-fade');
       if (id >= 0) {
         fitName(se.name, names[id], s.name.h * s.cap);
+        if (anim === 'pop') {
+          // (How far the pop may grow the name: up to 8%, as far as its place has room.)
+          const r = se.name.getBoundingClientRect(), tr = se.name.firstChild.getBoundingClientRect();
+          se.name.style.setProperty('--lotto-pop', String(clamp(Math.floor((Math.min(r.width / tr.width, r.height / tr.height) || 1) * 1000) / 1000, 1, 1.08)));
+        }
         if (anim) { void se.name.offsetWidth; se.name.classList.add('lotto-' + anim); }
       } else {
         const bar = host.el('span', 'lotto-bar', se.name);
@@ -403,8 +432,8 @@ NamePicker.register('lotto', {
       }
       const u = clamp((t - T.exit - T.chute) / T.drop, 0, 1), e = easeOutBack(u), d = lerp(l.bd, s.d, easeOut(u));
       const hop = Math.min(Math.hypot(s.bx - l.M.x, s.by - l.M.y) * 0.3, l.R * 0.6) * Math.sin(Math.PI * Math.min(1, u * 1.1));
-      // (The hop stays inside the tray: not over its top edge, nor back up the chute.)
-      const top = l.type === 'side' ? l.trayBox.y + d / 2 + 2 : l.M.y;
+      // (The hop stays inside the tray: not over the heading or the tray's top edge, nor back up the chute.)
+      const top = l.type === 'side' ? l.below + d / 2 + 2 : l.M.y;
       return { x: lerp(l.M.x, s.bx, e), y: Math.max(top, lerp(l.M.y, s.by, e) - hop), d, rot: 0 };
     }
     function drawRibs() {
