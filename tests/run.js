@@ -2594,6 +2594,15 @@ const SUITES = [
     await np(page).locator('#go').click(); await idle(page);
     ok(await inFrame(page, () => window.__audio) === 1 && await inFrame(page, () => window.__notes) - n0 >= 10, `with Sound ticked the light ticks and the winner gets a chime (${await inFrame(page, () => window.__notes) - n0} notes)`);
     await menu(page, 'sound');
+    // Unticked and ticked again: the new sound's clock starts at 0, and nothing from the old one keeps it quiet.
+    n0 = await inFrame(page, () => window.__notes);
+    await menu(page, 'sound'); await page.waitForTimeout(600);
+    const sample = await inFrame(page, () => window.__notes) - n0;
+    n0 = await inFrame(page, () => window.__notes);
+    await np(page).locator('#go').click(); await idle(page);
+    const again = await inFrame(page, () => window.__notes) - n0;
+    ok(await inFrame(page, () => window.__audio) === 2 && sample >= 3 && again >= 10, `Sound unticked and ticked again: the sample chime plays (${sample} notes), and so does the next pick (${again} notes)`);
+    await menu(page, 'sound');
 
     // ---- Choosing another style during the show ends it; the spotlight leaves nothing running.
     await np(page).locator('#go').click(); await page.waitForTimeout(500);
@@ -2647,7 +2656,18 @@ const SUITES = [
     }
     ok(!problems.length, `it fits and stays readable at 260×200, 420×320 and maximised at 1366×768 and 1920×1080, with 1, 3, 24, 30 and 45 names and very long names: tiles on the stage, never overlapping or cut, shortened only near the smallest size; the winners’ cards whole and large${problems.length ? ': ' + problems.join(' | ') : ''}`);
     console.log('    (' + notes.join('; ') + ')');
-    await page.setViewportSize({ width: 1366, height: 768 }); await size(page, 420, 320);
+    await page.setViewportSize({ width: 1366, height: 768 });
+    // Shortened names never cut a flag, an emoji or an accented letter in two ("José 🇲🇽" → "José…", never "José 🇲.").
+    const EMOJI = ['Zoë 🦄', 'José 🇲🇽', 'Ana 👩‍👩‍👧‍👦', 'Søren', 'Nguyễn Thị Minh Khai', 'Ébène', 'François', 'Łukasz', 'Ćiril', 'İlkay', 'Ångström', 'محمد', 'Ζωή', 'Даша', '김민준', '陈伟', 'Kai 🇺🇸🇯🇵', '🦄🦄🦄🦄🦄🦄🦄🦄 Ana', 'Mia 👍🏽', 'José Luis', 'Lily 👨🏽‍🚀'];
+    await size(page, 260, 200);
+    await page.evaluate(([ik, d]) => window.__board21.state.wins.get(ik).post('data', { data: d, reason: 'remote' }), [IK, { names: EMOJI, left: null, picked: [], pickId: null, current: null }]);
+    await page.waitForTimeout(300);
+    const letters = t => Array.from(new Intl.Segmenter('en', { granularity: 'grapheme' }).segment(t), x => x.segment);
+    const cut = (await stage(page)).tiles.filter(t => t.text !== t.name);
+    const split = cut.filter(t => { const own = new Set(letters(t.name)); return !letters(t.text.replace(/[….]$/, '')).every(x => own.has(x)); });
+    ok(cut.some(t => t.name === 'José 🇲🇽') && cut.some(t => t.name === 'Kai 🇺🇸🇯🇵') && !split.length,
+      `names shortened in the smallest window never cut a flag or an emoji in two (${cut.map(t => t.name + ' → ' + t.text).join(', ')})`);
+    await size(page, 420, 320);
 
     // ---- Dark theme and the Letters (Settings → Letters → Easier to read) reach the stage.
     await page.evaluate(([ik, d]) => window.__board21.state.wins.get(ik).post('data', { data: d, reason: 'remote' }), [IK, { names: CLASS, left: CLASS.slice(3), picked: ['Liam'], pickId: '1-dark', current: 'Liam' }]);
@@ -2704,6 +2724,23 @@ const SUITES = [
     }
     ok(!errors.length, 'and Sound ticked where sound can’t start makes no error' + (errors.length ? ': ' + errors.join(' | ') : ''));
     await rctx.close();
+    // Reduce motion with Sound ticked (and working): no show, but the winners still get their chime.
+    errors.length = 0;
+    const mctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+    await mctx.addInitScript(AUDIO_SPY);
+    const mp = await mctx.newPage(); watch(mp, 'reduce motion, sound');
+    await mp.goto(BASE); await boardUp(mp); await freeBoard(mp);
+    await mp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => await np(mp).locator('#list').isVisible());
+    await setNames(mp, SIX); await menu(mp, 'style:spotlight'); await menu(mp, 'sound'); await mp.waitForTimeout(600);
+    n0 = await inFrame(mp, () => window.__notes);
+    st = await pickNow(mp);
+    const still = !(await showing(mp));
+    await mp.waitForTimeout(500);
+    const chime = await inFrame(mp, () => window.__notes) - n0;
+    ok(still && chime >= 3 && (await stage(mp)).cards.map(c => c.name).join() === st.picked.join() && !errors.length,
+      `with reduce motion and Sound ticked, a pick has no show, but the winner still gets a chime (${chime} notes${errors.length ? '; ' + errors.join(' | ') : ''})`);
+    await mctx.close();
     // Sound blocked with motion on: the show plays, silently, with no error.
     errors.length = 0;
     const bctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
