@@ -408,7 +408,7 @@ window.NamePicker = {
   const Sound = (() => {
     const AC = window.AudioContext || window.webkitAudioContext;
     let ctx = null, woke = 0, noiseBuf = null;
-    const last = {};
+    let last = {};   // when each sound last played, on ctx's clock
     // One note from f0 to f1 Hz, `len` seconds long: a quick start, then it dies away.
     function tone(at, f0, f1, len, wave, vol) {
       const o = ctx.createOscillator(), g = ctx.createGain();
@@ -445,7 +445,8 @@ window.NamePicker = {
       wake() {
         if (!config.sound || !AC || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) return;
         try {
-          if (!ctx || ctx.state === 'closed') ctx = new AC();
+          // (A new sound's clock starts again at 0, so the times kept from the last one mean nothing to it.)
+          if (!ctx || ctx.state === 'closed') { ctx = new AC(); last = {}; }
           if (ctx.state !== 'running') { woke = performance.now(); ctx.resume().catch(() => {}); }
         } catch (e) { ctx = null; /* no sound on this device */ }
       },
