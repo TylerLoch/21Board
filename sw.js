@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.12-43';
+const VERSION = '2026.11.13-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '6ad14e8e';
+const BUILD = '6c5de82f';
 const FILES = {
-  './': '9e812f4e01515ed5',
-  'index.html': '9e812f4e01515ed5',
-  'board.js': 'bfdf5b6e21ad784a',
-  'sdk/board21.js': '7e19a853c5b41fa3',
+  './': 'ef45314399e5f5eb',
+  'index.html': 'ef45314399e5f5eb',
+  'board.js': '4e79c079ef69ad94',
+  'sdk/board21.js': 'ed09079b03d3c364',
   'sdk/board21-dev.js': '492a193221911878',
-  'sdk/dev/board-shell.js': 'e9dbd60830541e72',
+  'sdk/dev/board-shell.js': 'dfe3a951be3d6402',
   'sdk/lab.html': '21cda27716334794',
-  'widgets/registry.js': '62fbc7a4c8e2c8e2',
+  'widgets/registry.js': '7b03391a40c34670',
   'manifest.webmanifest': '3fddd4aac05d7279',
   'icons/icon.svg': '7b5cfc68d4259303',
   'icons/icon-192.png': 'cd8df22014016f08',
@@ -45,7 +45,11 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': '87f7e6f273c95a4e',
+  'widgets/name-picker/index.html': '50c9a187fd181455',
+  'widgets/name-picker/style-bigname.js': 'f8620d2f1d12c8c5',
+  'widgets/name-picker/style-wheel.js': 'bd3793376cdfc9e7',
+  'widgets/name-picker/style-spotlight.js': '4a7f5ff537d61d52',
+  'widgets/name-picker/style-lotto.js': 'fc46b85bc0bf5ff7',
   'widgets/first-then-board/index.html': 'a10c7d4ab528ae1d',
   'widgets/dice/index.html': '868bf3c637359718',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
