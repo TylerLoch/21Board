@@ -112,7 +112,7 @@ The **context**:
   config: { ... } | null,    // saved config for this instance
   theme: 'light' | 'dark',
   palette: { bg, text, accent, ... },   // same values as the --b21-* CSS variables
-  window: { width, height, x, y, maximized, focused, zoom },  // content size in CSS px; focused = selected; zoom below
+  window: { width, height, x, y, maximized, focused, zoom, corners },  // content size in CSS px; focused = selected; zoom, corners below
   locale: 'en-US',
   devMode: false,            // Developer mode is on in Settings
   boardVersion: '2026.11.12-1',  // the 21Board release's name (for display; don't compare)
@@ -149,7 +149,7 @@ Sizes are the **content area** (the iframe), not including the 40px title bar.
 | `Board21.window.focus()` | Select the window and bring it to the front. |
 | `Board21.window.maximize()` / `restore()` | Fill the board / return to normal size. |
 | `Board21.window.close()` | Close the window. Its data is kept. |
-| `Board21.window.getInfo()` | Promise of `{ width, height, x, y, maximized, focused, zoom }`. `zoom` is how much bigger the board draws the window than its CSS size (1.5 with Size 150%, or on a big screen; below 1 when it's drawn smaller). A canvas that wants sharp lines and letters uses `devicePixelRatio × zoom` pixels per CSS px (capped: about 3 is plenty). |
+| `Board21.window.getInfo()` | Promise of `{ width, height, x, y, maximized, focused, zoom, corners }`. `zoom` is how much bigger the board draws the window than its CSS size: the board's Size times how much the screen enlarges the 16:9 board (0.57 at Size 80% on a 1366×768 Chromebook, 1.5 at Size 150% on a 1920×1080 panel; on the *Any shape* board, the Size). A canvas that wants sharp lines and letters uses `devicePixelRatio × zoom` pixels per CSS px (capped: about 3 is plenty). An older 21Board doesn't send `zoom`: treat a missing one as 1. `corners`, only while the window fills the board: `{ left, right, height }`, how far the board's own buttons in the bottom corners (▦, and the clock beside one) reach in from the window's left and right edges and up from its bottom, in its CSS px. Keep buttons and text out of those corners, or put them where nothing covers them. (Missing on an older 21Board.) |
 
 While the teacher has locked the windows (Settings → *Lock windows in place*), `maximize()`, `restore()` and `close()` do nothing, and `setSize()` on a window that fills the board only sets the size it gets back when restored; the other calls work as usual.
 
@@ -204,7 +204,10 @@ Board21.menu.set([
 ```
 
 Tapping a swatch sends its `id` to `Board21.on('menu', …)` like any item. Colors must be `#hex`,
-`rgb()` or `hsl()`.
+`rgb()` or `hsl()`. A heading and the items under it (up to a separator or the next heading) are one group
+for screen readers, named by the heading ("Theme, Dark, not checked"), so a short label like `'3'` is fine
+under a heading that says what it is. The menu works from the keyboard too: the arrow keys, Home and End go
+from item to item, and Enter chooses one.
 
 Call `menu.set()` again whenever an item's state changes. Icons must be inline `<svg>` (scripts
 and links are stripped). Up to 24 items (a swatch row counts as one, with up to 12 colors).
@@ -218,7 +221,7 @@ and links are stripped). Up to 24 items (a swatch row counts as one, with up to 
 | `data` | `(data, { reason })` | This instance's content changed outside this page: another 21Board tab, an import, or a reset. |
 | `config` | `(config, { reason })` | Same, for config. |
 | `theme` | `(theme, palette)` | Light/dark, the accent color or the letters changed. CSS variables are already updated. |
-| `resize` | `(info)` | The window's content size, maximized or focused state, or `zoom` changed. Also when the teacher's letters change, and again once their font has loaded (text may need fitting again). (Native `resize` events also fire when the size changes.) |
+| `resize` | `(info)` | The window's content size, maximized or focused state, `zoom` or `corners` changed. Also when the teacher's letters change, and again once their font has loaded (text may need fitting again). (Native `resize` events also fire when the size changes.) On the 16:9 board `zoom` changes at almost every step while the browser window is being resized, so keep the work here light, or wait until it stops (about 150 ms). |
 | `focus` / `blur` | — | The window was selected / deselected. Selecting a window brings it to the front. **`blur` also fires when the teacher taps the empty board to deselect everything; the window stays in front and visible**, so don't treat `blur` as "covered" (e.g. don't pause a timer on blur). |
 | `menu` | `(id, item)` | One of your menu items was tapped. |
 | `beforeclose` | — | The window is about to close. Save anything pending *synchronously* (call `save()`). |

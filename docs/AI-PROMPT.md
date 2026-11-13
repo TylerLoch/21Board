@@ -222,8 +222,10 @@ board's own *Fill the board*, *Reset* and *Close*. Set it with `Board21.menu.set
 ## Window size
 
 Sizes are the window's content area (without its 40px title bar), in the same px as `ctx.window` and
-`await Board21.window.getInfo()`: `{ width, height, x, y, maximized, focused, zoom }` (`zoom`: how much bigger the
-board draws the window, so a canvas uses `devicePixelRatio × zoom` pixels per CSS px to stay sharp).
+`await Board21.window.getInfo()`: `{ width, height, x, y, maximized, focused, zoom, corners }` (`zoom`: how much bigger
+the board draws the window, so a canvas uses `devicePixelRatio × zoom` pixels per CSS px to stay sharp; cap it at about 3,
+and treat a missing `zoom` as 1. `corners`, only while the window fills the board: `{ left, right, height }`, how far the
+board's own buttons reach into its bottom corners, in CSS px; keep your buttons out of them).
 
 - **Manifest `window`**: `width`, `height` (the size it opens at), `minWidth`, `minHeight` (the smallest
   it can be: the widget must still work there), and optionally `maxWidth`, `maxHeight`, `aspectRatio`

@@ -31,6 +31,8 @@ NamePicker.register('name', {
 
     function draw(names, cls, numbered) {
       list.className = 'bn-list ' + cls;
+      // (The names flickering during the shuffle are not the winners: screen readers hear the winners from the host.)
+      if (/bn-rolling/.test(cls)) list.setAttribute('aria-hidden', 'true'); else list.removeAttribute('aria-hidden');
       list.replaceChildren(...names.map((n, i) => {
         const row = host.el('div', 'bn-row');
         if (numbered) host.el('span', 'bn-num', row, String(i + 1));

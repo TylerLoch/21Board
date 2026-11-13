@@ -1901,14 +1901,17 @@
     info() {
       const d = this.disp || { x: 0, y: 0, w: 0, h: TITLE_H };
       // zoom: how much bigger the window is drawn than its CSS size (the board's Size, the screen), so a canvas can stay sharp.
-      return { width: Math.round(d.w), height: Math.round(d.h - TITLE_H), x: Math.round(d.x), y: Math.round(d.y), maximized: !!(this.inst && this.inst.maximized), focused: S.focused === this.ikey,
+      const i = { width: Math.round(d.w), height: Math.round(d.h - TITLE_H), x: Math.round(d.x), y: Math.round(d.y), maximized: !!(this.inst && this.inst.maximized), focused: S.focused === this.ikey,
         zoom: Math.round(Zoom.s * 100) / 100 };
+      // corners: in a window that fills the board, the room the board's own buttons and clock take over its bottom corners.
+      if (i.maximized) i.corners = cornerReach();
+      return i;
     }
 
     notifyInfo() {
       if (!this.connected) return;
-      const i = this.info();
-      const sig = [i.width, i.height, i.maximized, i.focused, i.zoom].join();
+      const i = this.info(), c = i.corners;
+      const sig = [i.width, i.height, i.maximized, i.focused, i.zoom, c ? [c.left, c.right, c.height].join('/') : ''].join();
       if (sig === this.lastInfo) return;
       this.lastInfo = sig;
       this.post('window', { info: i });
@@ -2875,7 +2878,22 @@
       this.el.addEventListener('click', e => {
         const b = e.target.closest('[data-act]');
         if (!b || b.disabled) return;
-        this.act(b.dataset.act, b.dataset.id);
+        const w = this.win, act = b.dataset.act, keys = e.detail === 0;   // (0: Enter or Space, not a tap)
+        this.act(act, b.dataset.id);
+        if (!keys || !w) return;
+        // Chosen from the keyboard: the keyboard goes on from the menu's first item if it stays open (Reset asks first),
+        // or from the window's name, as after Escape (Earlier versions… opens a sheet that takes it).
+        if (this.win === w) { if (!this.el.contains(document.activeElement)) { const f = $('button:not(:disabled)', this.el); if (f) f.focus(); } }
+        else if (S.wins.get(w.ikey) === w && act !== 'history') w.labelEl.focus();
+      });
+      // The arrow keys (and Home, End) go from item to item, as in any menu. Tab goes on working too.
+      this.el.addEventListener('keydown', e => {
+        if (!/^(ArrowDown|ArrowUp|Home|End)$/.test(e.key)) return;
+        const all = $$('button:not(:disabled)', this.el);
+        if (!all.length) return;
+        e.preventDefault();
+        const i = all.indexOf(document.activeElement), last = all.length - 1;
+        all[e.key === 'Home' ? 0 : e.key === 'End' ? last : e.key === 'ArrowDown' ? (i < last ? i + 1 : 0) : (i > 0 ? i - 1 : last)].focus();
       });
     },
 
@@ -2911,10 +2929,13 @@
           item('reset-yes', svg('reset'), 'Reset', '', 'danger') + item('reset-no', '', 'Cancel');
         return;
       }
-      let html = '';
+      // A heading and the items under it (up to a line or the next heading) are one group, named by the heading, so a
+      // screen reader says "Winners each time, 3, checked". (The group takes no room: .menu-group is display: contents.)
+      let html = '', group = false;
+      const endGroup = () => { if (group) html += '</div>'; group = false; };
       for (const i of w.menuItems) {
-        if (i.separator) { html += '<div class="menu-sep"></div>'; continue; }
-        if (i.heading) { html += `<div class="menu-heading">${esc(i.label)}</div>`; continue; }
+        if (i.separator) { endGroup(); html += '<div class="menu-sep"></div>'; continue; }
+        if (i.heading) { endGroup(); html += `<div class="menu-group" role="group" aria-label="${esc(i.label)}"><div class="menu-heading" aria-hidden="true">${esc(i.label)}</div>`; group = true; continue; }
         if (i.swatches) {
           // A row of color choices; background (optional) shows the color on what it will be used on.
           html += `<div class="menu-swatches" role="group" aria-label="${esc(i.label)}">` + i.swatches.map(s =>
@@ -2926,6 +2947,7 @@
         html += `<button class="menu-item" role="${i.checked === undefined ? 'menuitem' : 'menuitemcheckbox'}" ${i.checked !== undefined ? `aria-checked="${i.checked}"` : ''} data-act="widget" data-id="${esc(i.id)}" ${i.disabled ? 'disabled' : ''}>` +
           `<span class="icon-slot">${i.icon || ''}</span><span class="label">${esc(i.label)}</span>${check}</button>`;
       }
+      endGroup();
       if (html) html += '<div class="menu-sep"></div>';
       const locked = Lock.on();   // (windows locked: the widget's own items, and a district app's, section 12b)
       if (!locked) html += w.inst.maximized ? item('restore', svg('restore'), 'Restore size') : item('maximize', svg('maximize'), 'Fill the board');
@@ -2961,7 +2983,7 @@
       if (m.height > vh - 2 * M) {
         // Still too tall: two columns.
         this.el.classList.add('cols');
-        this.el.style.gridTemplateRows = `repeat(${Math.ceil(this.el.children.length / 2)}, auto)`;
+        this.el.style.gridTemplateRows = `repeat(${Math.ceil($$(':scope > :not(.menu-group), .menu-group > *', this.el).length / 2)}, auto)`;
         m = size();
       }
       this.el.style.maxHeight = '';
@@ -3781,6 +3803,7 @@
         if (this.el) this.el.hidden = true;
         this.fit = '';
         document.body.classList.remove('clock-on');
+        notifyCorners();
         return;
       }
       if (!this.el) this.init();
@@ -3824,6 +3847,7 @@
       document.body.classList.toggle('clock-on', !!reach);
       if (reach) document.body.style.setProperty('--clock-room', Math.ceil(reach) + 'px');
       this.cover();
+      notifyCorners();
       const note = Settings.isOpen && $('#set-clock-fit', Settings.body);
       if (note) note.textContent = this.fitNote();
     },
@@ -3854,6 +3878,29 @@
   };
 
   function applyClock() { CornerClock.apply(); }
+
+  // What a window that fills the board is told about its bottom corners (its info's `corners`): how far in from its
+  // left and right edges, and up from its bottom, the board's own buttons there reach (▦, and the clock beside one),
+  // in its CSS px. Such a window's content ends at the bottom of the screen, and its sides are the screen's sides.
+  function cornerReach() {
+    const vw = window.innerWidth, vh = window.innerHeight, s = Zoom.s || 1;
+    let left = 0, right = 0, top = vh;
+    for (const e of $$('.picker-btn:not([hidden]), .corner-clock:not([hidden])')) {
+      const r = e.getBoundingClientRect();
+      if (!r.width) continue;
+      if (r.left + r.width / 2 < vw / 2) left = Math.max(left, r.right); else right = Math.max(right, vw - r.left);
+      top = Math.min(top, r.top);
+    }
+    return { left: Math.ceil(left / s), right: Math.ceil(right / s), height: Math.ceil((vh - top) / s) };
+  }
+  // The clock or a ▦ button came, went or changed width: tell the windows that fill the board. (Once the code running
+  // now is done: when the screen changed size the windows are laid out again first, and one message tells it all.)
+  let cornersDue = false;
+  function notifyCorners() {
+    if (cornersDue) return;
+    cornersDue = true;
+    Promise.resolve().then(() => { cornersDue = false; for (const w of S.wins.values()) if (w.inst && w.inst.maximized) w.notifyInfo(); });
+  }
 
   function clockSettings(sw, seg) {
     if (LAB) return '';

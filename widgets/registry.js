@@ -103,7 +103,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'name-picker',
     name: 'Name Picker',
-    description: 'Pick names from your list at random, one to five at a time: big name, spinning wheel, spotlight or lotto.',
+    description: 'Pick names from your list at random, one to five at a time: Big name, Spinning wheel, Spotlight, or Lotto.',
     version: '2.0.0',
     entry: 'widgets/name-picker/index.html',
     // (One file for each pick style: the page loads them all.)

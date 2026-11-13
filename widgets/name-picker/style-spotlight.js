@@ -182,11 +182,13 @@ NamePicker.register('spotlight', {
       result = '';
     }
     const sameNames = list => list.length === names.length && list.every((n, i) => n === names[i]);
+    // What a screen reader hears for a tile: "Liam, just picked" (with several: "Mia, just picked, number 2"), or
+    // "Ava, picked" for someone picked earlier in the round.
     function setDone(t, on) {
       if (t.done === on) return;
       t.done = on;
       t.el.classList.toggle(P + 'done', on);
-      t.el.setAttribute('aria-label', names[t.i] + (on ? ', picked' : ''));
+      if (!t.lock) t.el.setAttribute('aria-label', names[t.i] + (on ? ', picked' : ''));
     }
     function setLock(t, on, order, k) {
       t.lock = on;
@@ -194,6 +196,7 @@ NamePicker.register('spotlight', {
       t.el.classList.remove(P + 'pulse');
       const b = on && k > 1 ? String(order) : '';
       if (t.badge.textContent !== b) t.badge.textContent = b;
+      t.el.setAttribute('aria-label', names[t.i] + (on ? ', just picked' + (k > 1 ? ', number ' + order : '') : t.done ? ', picked' : ''));
     }
     // The light's heat on a tile, as a CSS variable (only written when it changes).
     function paintHeat(t) {

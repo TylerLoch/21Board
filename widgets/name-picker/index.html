@@ -70,9 +70,11 @@
  *                               width: max-content; white-space: nowrap). Returns the size.
  *   host.token(name)            a theme value for a canvas: host.token('accent') is --b21-accent, host.token('font')
  *                               --b21-font, host.token('np-win') --np-win.
- *   host.zoom()                 how much bigger the board draws the window than its size here (1: the same; 1.5 with
- *                               Size 150%). A canvas wants devicePixelRatio × zoom pixels per CSS px to stay sharp;
- *                               resize() is called when it changes.
+ *   host.zoom()                 how much bigger the board draws the window than its size here (1: the same). It is the
+ *                               board's Size times how much the screen enlarges the 16:9 board: 0.57 at Size 80% on a
+ *                               1366×768 Chromebook, 1.5 at Size 150% on a 1920×1080 panel. A canvas wants
+ *                               devicePixelRatio × zoom pixels per CSS px to stay sharp (up to about 3); resize() is
+ *                               called when it changes (once it stops changing: 150 ms after the last change).
  *
  * Colours and letters: use the board's CSS tokens (--b21-bg, -surface, -surface-2, -text, -muted, -border, -accent,
  * -on-accent, -accent-soft, -danger, -success, -warning, -radius, -font) and these extras, set below for light and
@@ -117,8 +119,14 @@ window.NamePicker = {
   .style-root[hidden], #empty[hidden] { display: none; }
   #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; color: var(--b21-muted); font-weight: 600; font-size: clamp(14px, min(5vw, 8vh), 40px); }
   /* The main button in the middle (in reach from either side of a flat panel), the status and Start over beside it, all
-     kept off the bottom corners, where the board's own buttons and clock sit over a window that fills the board. */
-  .foot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; max-width: 680px; margin: 0 auto; }
+     kept off the bottom corners, where the board's own buttons and clock sit over a window that fills the board
+     (--np-corners: how far in they reach, from fitFoot()). Where that leaves too little room beside the main button,
+     the status and Start over go on a row above it. */
+  .foot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; max-width: min(680px, 100vw - 2 * var(--np-corners, 0px)); margin: 0 auto; }
+  .foot.stack { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); row-gap: 4px; }
+  .foot.stack #go { grid-row: 2; grid-column: 1 / -1; justify-self: center; }
+  .foot.stack:has(#round[hidden]) #status { grid-column: 1 / -1; justify-self: center; text-align: center; }
+  .foot.measure #status, .foot.measure #round { white-space: nowrap; }
   button { font: inherit; border: 0; cursor: pointer; border-radius: 999px; background: var(--b21-surface-2); color: var(--b21-text); height: clamp(36px, 12vh, 64px); padding: 0 clamp(12px, 4vw, 28px); font-size: clamp(14px, 4.5vh, 22px); font-weight: 650; }
   button.primary { background: var(--b21-accent); color: var(--b21-on-accent); min-width: min(40vw, 320px); white-space: nowrap; }
   button:disabled { opacity: .45; cursor: default; }
@@ -165,6 +173,7 @@ window.NamePicker = {
   let config = readConfig(null);
   let mounted = null;       // the style on the stage: { id, root, api, live }
   let showing = null;       // the show running: { at (when it started), timer (ends it if the style never says) }
+  let editAsked = false;    // the names list was opened here on purpose (Edit names, Add names), not just for a new picker
 
   // `list` without one of each name in `gone`.
   const without = (list, gone) => { const out = list.slice(); for (const n of gone) { const i = out.indexOf(n); if (i >= 0) out.splice(i, 1); } return out; };
@@ -308,6 +317,25 @@ window.NamePicker = {
       $('round').hidden = !canStartOver();
     }
     setMenu();
+    fitFoot();
+  }
+  // How far in the board's buttons and clock reach over this window's bottom corners (Board21 says so for a window that
+  // fills the board): the foot keeps that far in from both sides, so the main button stays in the middle.
+  let footReach = 0;
+  function fitFoot() {
+    const w = Board21.context && Board21.context.window, c = w && w.maximized && w.corners;
+    const reach = c ? Math.min(2000, Math.max(0, Number(c.left) || 0, Number(c.right) || 0)) : 0;
+    const foot = $('go').parentNode;
+    if (!reach && !footReach) return;
+    footReach = reach;
+    if (reach) foot.style.setProperty('--np-corners', reach + 'px'); else foot.style.removeProperty('--np-corners');
+    foot.classList.remove('stack');
+    if (!reach) return;
+    // The status and Start over each get half of what the main button leaves; not enough for either on one line: stack.
+    foot.classList.add('measure');
+    const need = Math.max($('status').offsetWidth, $('round').hidden ? 0 : $('round').offsetWidth);
+    foot.classList.remove('measure');
+    if (need > (foot.clientWidth - $('go').offsetWidth) / 2 - 8) foot.classList.add('stack');
   }
   function setMenu() {
     Board21.menu.set([
@@ -334,14 +362,15 @@ window.NamePicker = {
     if (state.picked.length) say('Picked: ' + state.picked.join(', ') + (config.noRepeats && !pool().length ? '. Everyone has been picked.' : ''));
   }
 
-  function setView(v, focus) {
+  function setView(v, focus, draw = true) {
     if (v === 'edit') skipShow();
+    editAsked = v === 'edit' && !!focus;
     $('pick').classList.toggle('on', v === 'pick');
     $('edit').classList.toggle('on', v === 'edit');
     // Picking is tap-only, so the window can be dragged from anywhere; editing the list needs text selection.
     Board21.window.setDragFromContent(v === 'pick');
     if (v === 'edit') { $('list').value = state.names.join('\n'); if (focus) setTimeout(() => $('list').focus(), 50); }
-    render();
+    if (draw) render();
   }
 
   // ---- Picking. The winners are drawn and saved first; the show only lands on them.
@@ -386,9 +415,11 @@ window.NamePicker = {
     if (!ok) renderStage();   // (the style couldn't jump to the end: draw the result as it is)
   }
   function startOver() {
+    const had = document.activeElement === $('round');   // (it hides itself: the keyboard goes on from the main button)
     skipShow();
     state.left = state.names.slice(); state.picked = []; state.current = null;
     save(); say(''); render();
+    if (had && $('round').hidden) $('go').focus();
   }
 
   $('go').onclick = pick;
@@ -410,7 +441,7 @@ window.NamePicker = {
     save();
   }
   $('list').oninput = readList;
-  $('done').onclick = () => { readList(); setView('pick'); };
+  $('done').onclick = () => { const had = document.activeElement === $('done'); readList(); setView('pick'); if (had) $('go').focus(); };
 
   // ---- Sound: off until a teacher ticks it. Made here with Web Audio (no sound files); the sound is started by
   // the first tap in the window (browsers allow sound only after one), and stays silent wherever it can't be.
@@ -507,7 +538,12 @@ window.NamePicker = {
     if (JSON.stringify(next) === JSON.stringify(state)) return;   // (nothing new: a show running goes on)
     skipShow();
     state = next;
-    if ($('edit').classList.contains('on')) $('list').value = state.names.join('\n');
+    if ($('edit').classList.contains('on')) {
+      // Names from another copy close a names list that opened here only because there were none (a new picker, or one
+      // reset in another copy), unless someone is typing in it here or opened it from the menu. (Drawn below.)
+      if (state.names.length && !editAsked && !(document.hasFocus() && document.activeElement === $('list'))) setView('pick', false, false);
+      else $('list').value = state.names.join('\n');
+    }
     const isNew = !!state.pickId && state.pickId !== was && state.picked.length > 0;
     // A pick made just now gets its show here too (if this copy is on screen); an older one is shown as it is.
     if (isNew && Math.abs(Date.now() - pickedAt(state.pickId)) < FRESH) startShow();
@@ -523,12 +559,15 @@ window.NamePicker = {
   });
   Board21.on('theme', () => call('theme'));
   // Names fit the stage: again when the window changes size, or the letters change (the SDK fires 'resize' then),
-  // or the board draws the window at another size (Board21's 'resize': host.zoom() changed).
-  let refitting = 0;
+  // or the board draws the window at another size (Board21's 'resize': host.zoom() changed). On the 16:9 board the
+  // zoom changes with almost every step of resizing the browser window: that refit waits until it stops (150 ms).
+  let refitting = 0, zoomWas = 0, zoomTimer = 0;
   const refit = () => { if (!refitting) refitting = requestAnimationFrame(() => { refitting = 0; if (pickVisible() && state.names.length) call('resize'); }); };
-  addEventListener('resize', refit);
-  let zoomWas = 0;
-  Board21.on('resize', () => { if (zoom() !== zoomWas) { zoomWas = zoom(); refit(); } });
+  addEventListener('resize', () => { refit(); fitFoot(); });
+  Board21.on('resize', () => {
+    fitFoot();
+    if (zoom() !== zoomWas) { zoomWas = zoom(); clearTimeout(zoomTimer); zoomTimer = setTimeout(refit, 150); }
+  });
   if (window.ResizeObserver) new ResizeObserver(refit).observe($('stage'));
 
   Board21.ready().then(ctx => {

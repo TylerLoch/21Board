@@ -459,6 +459,27 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Offline', async (browser) => {
+    // The offline copy holds the files each widget lists in widgets/registry.js (`files`), with the board's own (sw.js
+    // SHELL_FILES). Every script, stylesheet and picture a widget's page loads from 21Board's site must be among them:
+    // a Name Picker style left out, say, would quietly be Big name offline.
+    {
+      const reg = { self: {} };
+      require('vm').runInNewContext(fs.readFileSync(path.join(ROOT, 'widgets', 'registry.js'), 'utf8'), reg);
+      const shell = (/const SHELL_FILES = \[([\s\S]*?)\];/.exec(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8')) || ['', ''])[1].match(/'[^']+'/g).map(x => x.slice(1, -1));
+      const missing = [];
+      let seen = 0;
+      for (const w of reg.self.BOARD21_WIDGETS.filter(w => !w.external)) {
+        const have = new Set(shell.concat(w.files && w.files.length ? w.files : [w.entry]));
+        const html = fs.readFileSync(path.join(ROOT, w.entry), 'utf8');
+        for (const m of html.matchAll(/<(?:script|img|link|source)\b[^>]*?\s(?:src|href)="([^"#?]+)/gi)) {
+          if (/^([a-z]+:|\/\/)/i.test(m[1])) continue;   // (another site, data:, blob:)
+          const f = path.posix.normalize(path.posix.join(path.posix.dirname(w.entry), m[1]));
+          seen++;
+          if (!have.has(f)) missing.push(`${w.id}: ${f}`);
+        }
+      }
+      ok(seen > 5 && !missing.length, `every file a widget’s page loads from 21Board’s site is in the offline copy’s list (${missing.join(', ') || seen + ' files checked'})`);
+    }
     ok(stamped(), STAMPED);
     if (!stamped()) return;   // (no offline copy is saved then)
       const ctx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
@@ -479,6 +500,8 @@ const SUITES = [
     await page.waitForTimeout(2500);
     const conn = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).map(w => [w.ikey, w.connected]));
     ok(conn.length === ids.length && conn.every(c => c[1]), 'every widget loads and connects offline: ' + JSON.stringify(conn));
+    const styles = await page.frameLocator('.win[data-ikey="name-picker:1"] iframe').locator('html').evaluate(() => Object.keys(NamePicker.styles).sort().join());
+    ok(styles === 'lotto,name,spotlight,wheel', `the Name Picker has all four of its styles offline (${styles})`);
     await page.screenshot({ path: OUT + '30-offline-all-widgets.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
@@ -1795,6 +1818,7 @@ const SUITES = [
     ok((await conf()).winners === 3 && await text('#go') === 'Pick 3' && await items() === MENU('name', 3), 'Winners each time: 3 is saved, ticked, and the button says “Pick 3”');
     let t0 = Date.now();
     const p1 = await pickNow();
+    const rolling = await np().locator('.bn-list').getAttribute('aria-hidden');
     ok(p1.picked.length === 3 && new Set(p1.picked).size === 3 && p1.left.length === 3 && p1.picked.every(n => !p1.left.includes(n)) && p1.current === p1.picked[0] && typeof p1.pickId === 'string',
       `three different winners, saved before the show, out of the round (${p1.picked})`);
     await idle();
@@ -1802,6 +1826,8 @@ const SUITES = [
     ok(took > 1100 && took < 2700, `Big name shuffles for about 1½ s (${took} ms)`);
     ok(JSON.stringify(await bigNames()) === JSON.stringify(p1.picked) && (await np().locator('.bn-num').allTextContents()).join() === '1,2,3' && await fits(),
       'they stack in pick order, numbered 1, 2, 3, and fit the window');
+    ok(rolling === 'true' && await np().locator('.bn-list').getAttribute('aria-hidden') === null,
+      `screen readers can’t come across the names flickering during the shuffle (they aren’t the winners), only the winners once they land (${rolling})`);
     ok(await eventually(async () => await said() === 'Picked: ' + p1.picked.join(', ')) && await text('#status') === '3 of 6 left', `screen readers hear “${await said()}”; 3 of 6 left`);
     await menu('winners:5');
     ok(await text('#go') === 'Pick the last 3', 'asking for 5 with 3 left: the button says “Pick the last 3”');
@@ -1913,6 +1939,123 @@ const SUITES = [
     ok(await np(rp).locator('.bn-list').evaluate(e => e.classList.contains('bn-fade')) && JSON.stringify(await bigNames(rp)) === JSON.stringify((await saved(rp)).picked), 'Big name fades them in');
     if (errors.length) ok(false, 'no page errors (and none from sound that can’t start): ' + errors.join(' | '));
     await rctx.close();
+
+    // ---- A second copy of the board (another tab, the window on the projector): a new picker opens on its names list
+    // in both, and the names are typed in one. The other shows the picker as soon as there are names, and its picks.
+    errors.length = 0;
+    const sctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const A = await sctx.newPage(); watch(A, 'copy A');
+    await A.goto(BASE); await boardUp(A); await freeBoard(A);
+    await A.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(A)) || {}).style === 'wheel');
+    const B = await sctx.newPage(); watch(B, 'copy B');
+    await B.goto(BASE); await boardUp(B); await freeBoard(B);
+    const onList = p => np(p).locator('#edit').evaluate(e => e.classList.contains('on'));
+    ok(await eventually(() => onList(B)) && await onList(A), 'a new Name Picker opens on its names list in both copies of the board');
+    await np(A).locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan'); await np(A).locator('#done').click();
+    ok(await eventually(async () => !(await onList(B)) && await text('#status', B) === '6 of 6 left' && await np(B).locator('.style-root[data-style="wheel"]:not([hidden])').count() === 1),
+      'names typed in one copy: the other leaves its names list and shows the wheel (6 of 6 left)');
+    const sp = await pickNow(A);
+    ok(await eventually(async () => await said(B) === 'Picked: ' + sp.picked[0], 12000) && !(await onList(B)), `and it shows the pick made in the first (${sp.picked})`);
+    await idle(A); await idle(B);
+    // A names list opened from the menu stays open (with the new names), even when nobody is typing in it.
+    await menu('edit', B); await B.waitForTimeout(200); await np(B).locator('#list').evaluate(e => e.blur());
+    await menu('edit', A); await np(A).locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan\nSofia'); await np(A).locator('#done').click();
+    ok(await eventually(async () => await np(B).locator('#list').inputValue() === 'Ava\nLeo\nMia\nNoah\nZoe\nEthan\nSofia') && await onList(B),
+      'a names list opened from the menu stays open when the names change in another copy, and shows the new list');
+    await np(B).locator('#done').click();
+    // Reset in one copy, then Undo on its toast: the other copy shows the picker again too.
+    await A.click('.win[data-ikey="name-picker:1"] .win-label'); await A.click('#menu [data-act="reset"]'); await A.click('#menu [data-act="reset-yes"]');
+    ok(await eventually(() => onList(B)), 'Reset in one copy: the other shows a new picker’s names list');
+    await A.locator('.toast', { hasText: 'was reset' }).locator('button', { hasText: 'Undo' }).click();
+    ok(await eventually(async () => !(await onList(B)) && await text('#status', B) === '6 of 7 left' && await np(B).locator('.style-root[data-style="wheel"]:not([hidden])').count() === 1),
+      `Undo there: the other copy shows the picker again (${await text('#status', B)})`);
+    await B.close();
+
+    // ---- The keyboard stays in the picker when the button it is on goes away: Start over, and Done in the names list.
+    const focused = p => np(p).locator('html').evaluate(() => document.activeElement.id || document.activeElement.tagName);
+    await eventually(async () => await np(A).locator('#round').isVisible());
+    await np(A).locator('#round').focus(); await A.keyboard.press('Enter');
+    ok(await np(A).locator('#round').isHidden() && await text('#status', A) === '7 of 7 left' && await focused(A) === 'go', `Enter on Start over: it goes away, and the keyboard is on the main button (${await focused(A)})`);
+    await menu('edit', A); await np(A).locator('#done').focus(); await A.keyboard.press('Enter');
+    ok(!(await onList(A)) && await focused(A) === 'go', `Enter on Done: the names list closes, and the keyboard is on the main button (${await focused(A)})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await sctx.close();
+
+    // ---- On the 16:9 board the zoom changes at almost every step of resizing the browser window: the names are fitted
+    // again once it stops, not at every step, and the wheel is then drawn sharp for the new zoom.
+    errors.length = 0;
+    const RESIZE_SPY = () => {   // counts the calls of every style's resize()
+      let np;
+      Object.defineProperty(window, 'NamePicker', { configurable: true, get: () => np, set: v => {
+        np = v;
+        const register = v.register;
+        v.register = function (id, style) {
+          const mount = style.mount;
+          style.mount = function () {
+            const api = mount.apply(this, arguments) || {}, r = api.resize;
+            if (r) api.resize = function () { window.__resizes = (window.__resizes || 0) + 1; return r.apply(this, arguments); };
+            return api;
+          };
+          return register.call(this, id, style);
+        };
+      } });
+    };
+    const zctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 2 });
+    await zctx.addInitScript(RESIZE_SPY);
+    const zp = await zctx.newPage(); watch(zp, 'zoom');
+    await zp.goto(BASE); await boardUp(zp);   // (the 16:9 board, as it is by default)
+    await zp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(zp)) || {}).style === 'wheel');
+    await np(zp).locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan'); await np(zp).locator('#done').click(); await zp.waitForTimeout(600);
+    const r0 = await inFrame(() => window.__resizes || 0, zp), z0 = await inFrame(() => Board21.context.window.zoom, zp);
+    for (let i = 1; i <= 20; i++) { await zp.setViewportSize({ width: 1366 + i * 12, height: 768 + Math.round(i * 6.75) }); await zp.waitForTimeout(20); }
+    await zp.waitForTimeout(600);
+    const fitted = await inFrame(() => window.__resizes || 0, zp) - r0;
+    const sharp = await inFrame(() => { const w = document.querySelector('.style-root')._wheel(); return { dpr: w.dpr, want: Math.min(3, Math.max(1, devicePixelRatio * Board21.context.window.zoom)), zoom: Board21.context.window.zoom }; }, zp);
+    ok(sharp.zoom > z0 && fitted >= 1 && fitted <= 2 && Math.abs(sharp.dpr - sharp.want) < 0.02,
+      `resizing the browser window in 20 steps (zoom ${z0} → ${sharp.zoom}) fits the names again ${fitted} time${fitted === 1 ? '' : 's'}, once it stops; the wheel is drawn at ${sharp.dpr.toFixed(2)} px per px`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await zctx.close();
+
+    // ---- Filling the board at a big Size, the board's ▦ buttons and clock sit over the picker's bottom corners: the
+    // main button, the status and Start over keep clear of them (on a row above the main button where there isn't room
+    // beside it). At the usual Size they stay on one row.
+    errors.length = 0;
+    const cctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+    const cp = await cctx.newPage(); watch(cp, 'corners');
+    await cp.goto(BASE); await boardUp(cp);
+    await cp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(cp)) || {}).style === 'wheel');
+    await np(cp).locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan\nSofia\nLiam\nAmara\nKenji\nDiego\nFatima'); await np(cp).locator('#done').click();
+    await cp.evaluate(() => window.__board21.setMaximized('name-picker:1', true));
+    await menu('style:name', cp); await menu('winners:3', cp);
+    await pickNow(cp); await idle(cp);
+    // What of the main button, the status and Start over is under the clock or a ▦ button (in screen px).
+    const underCorners = async () => {
+      const z = await cp.evaluate(() => window.__board21.zoom.s);
+      const fr = await cp.evaluate(() => { const r = document.querySelector('.win[data-ikey="name-picker:1"] iframe').getBoundingClientRect(); return { x: r.left, y: r.top }; });
+      const own = await inFrame(() => ['go', 'status', 'round'].map(id => { const e = document.getElementById(id), r = e.getBoundingClientRect(); return { id, hidden: e.hidden || !r.width, x: r.left, y: r.top, w: r.width, h: r.height }; }), cp);
+      const board = await cp.evaluate(() => [...document.querySelectorAll('.corner-clock:not([hidden]), .picker-btn:not([hidden])')].map(e => { const r = e.getBoundingClientRect(); return { what: e.classList.contains('corner-clock') ? 'clock' : '▦', x: r.left, y: r.top, w: r.width, h: r.height }; }));
+      const over = [];
+      for (const e of own) if (!e.hidden) for (const c of board) {
+        const x = fr.x + e.x * z, y = fr.y + e.y * z;
+        if (x < c.x + c.w - 1 && c.x < x + e.w * z - 1 && y < c.y + c.h - 1 && c.y < y + e.h * z - 1) over.push(`${c.what} over ${e.id}`);
+      }
+      return { over, clock: board.some(c => c.what === 'clock'), round: own.some(e => e.id === 'round' && !e.hidden), stack: await np(cp).locator('.foot').evaluate(f => f.classList.contains('stack')) };
+    };
+    const seenCorners = [];
+    for (const [w, h, shape, sc] of [[1920, 1080, '16:9', 0.8], [1920, 1080, '16:9', 1.75], [1920, 1080, '16:9', 2], [1366, 768, '16:9', 1.25], [1366, 768, '16:9', 2], [1366, 768, 'free', 1.75]]) {
+      await cp.setViewportSize({ width: w, height: h });
+      await cp.evaluate(([shape, sc]) => { window.__board21.setBoardShape(shape); window.__board21.setBoardScale(sc); }, [shape, sc]);
+      await cp.waitForTimeout(700);
+      const u = await underCorners();
+      seenCorners.push(`${w}×${h} ${shape} ${sc * 100}%: ${u.over.length ? u.over.join(', ') : 'clear'}${u.stack ? ' (stacked)' : ''}`);
+      ok(u.clock && u.round && !u.over.length && (sc > 1 || !u.stack), `${seenCorners[seenCorners.length - 1]}: the clock is there, and nothing of the picker’s is under it or ▦${sc > 1 ? '' : ', all on one row'}`);
+      if (w === 1920 && sc === 1.75) await cp.screenshot({ path: OUT + 'name-picker-corners-175.png' });
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await cctx.close();
   }],
   // ---- Name Picker style suite: Spinning wheel
   ['Name Picker: Spinning wheel', async (browser) => {
@@ -2552,6 +2695,8 @@ const SUITES = [
     }
     s = await stage(page);
     ok(!wrong.length && all.slice().sort().join() === SIX.slice().sort().join() && s.tiles.filter(t => t.done).length === 5, `1 at a time with No repeats: six picks on the saved winners, everyone once (${wrong.join(' | ') || all.join(', ')})`);
+    ok(s.tiles.filter(t => t.locked).map(t => t.name).join() === st.picked[0] + ', just picked' && s.tiles.filter(t => t.done).every(t => / picked$/.test(t.name)),
+      `in the class list screen readers hear who was just picked, and who was picked before (${s.tiles.filter(t => t.locked || t.done).map(t => t.name).join('; ')})`);
     await menu(page, 'round');
     // No repeats off: anyone, any time; nobody is crossed out.
     await menu(page, 'norepeat'); await menu(page, 'winners:3');
@@ -2563,6 +2708,8 @@ const SUITES = [
       if (bad.length) wrong.push(`pick ${i + 1}: ${bad.join('; ')}`);
     }
     ok(!wrong.length && (await stage(page)).tiles.every(t => !t.done) && await text(page, '#status') === '6 names', `No repeats off, 3 at a time: four picks on the saved winners, nobody crossed out (${wrong.join(' | ') || 'ok'})`);
+    const heard = (await stage(page)).tiles.filter(t => t.locked).map(t => t.name);
+    ok(heard.length === 3 && st.picked.every((n, j) => heard.includes(`${n}, just picked, number ${j + 1}`)), `with several winners, each one’s number too (${heard.join('; ')})`);
     await menu(page, 'norepeat');
 
     // ---- The same pick in another tab: the show there too, on the same winners. A reload shows the result straight away.
@@ -5419,8 +5566,40 @@ const SUITES = [
     back = await at();
     const shownName = await page.locator('#set-board-name').inputValue();
     ok(back.tag !== 'INPUT' && shownName === 'Other board', `the keyboard isn’t put back into a text field, so Settings shows the imported board’s name (${shownName})`);
-    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+
+    // A window menu by keyboard: the arrow keys, Home and End go from item to item (Tab too); Enter chooses one and
+    // leaves the keyboard on the window's name, as Escape does; a heading names the items under it for screen readers.
+    const mctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const mp = await mctx.newPage(); mp.on('pageerror', e => errors.push(e.message));
+    await mp.goto(BASE); await boardUp(mp); await freeBoard(mp);
+    await mp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await mp.waitForFunction(() => (window.__board21.state.conf.get('name-picker:1') || {}).style === 'wheel');
+    await mp.waitForTimeout(400);
+    const where = () => mp.evaluate(() => { const a = document.activeElement; return a.closest('#menu') ? (a.querySelector('.label') || a).textContent.trim() : a.classList.contains('win-label') ? 'the window’s name' : a.tagName; });
+    const style = () => mp.evaluate(() => window.__board21.state.conf.get('name-picker:1').style);
+    await mp.focus('.win[data-ikey="name-picker:1"] .win-label'); await mp.keyboard.press('Enter');
+    const walk = [await where()];
+    for (const key of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'End', 'ArrowDown', 'Home', 'ArrowUp']) { await mp.keyboard.press(key); walk.push(await where()); }
+    ok(walk.join(', ') === 'Big name, Spinning wheel, Spotlight, Spinning wheel, Close, Big name, Big name, Close', `the arrow keys, Home and End go from item to item, round from the last to the first (${walk.join(', ')})`);
+    await mp.keyboard.press('Home'); await mp.keyboard.press('ArrowDown'); await mp.keyboard.press('ArrowDown'); await mp.keyboard.press('Enter');
+    ok(await eventually(async () => await style() === 'spotlight') && await mp.locator('#menu.open').count() === 0 && await where() === 'the window’s name', `Enter chooses one (Spotlight), closes the menu and leaves the keyboard on the window’s name (${await where()})`);
+    await mp.keyboard.press('Enter');
+    ok(await mp.getByRole('group', { name: 'Winners each time' }).getByRole('menuitemcheckbox').count() === 5
+      && await mp.getByRole('group', { name: 'Pick with' }).getByRole('menuitemcheckbox', { name: 'Spotlight', checked: true }).count() === 1,
+      'screen readers hear each heading with the items under it (“Winners each time”: 1 to 5; “Pick with”: Spotlight, checked)');
+    await mp.keyboard.press('End'); await mp.keyboard.press('ArrowUp'); await mp.keyboard.press('Enter');
+    ok(await mp.locator('#menu.open .menu-confirm').count() === 1 && await where() === 'Reset', `Reset by keyboard asks first, with the keyboard on its answer (${await where()})`);
+    await mp.keyboard.press('Escape');
+    ok(await where() === 'the window’s name' && await mp.evaluate(() => window.__board21.state.insts.has('name-picker:1')), 'Escape leaves it as it was');
+    // A widget that takes the keyboard for what was chosen still gets it: Edit names puts it in the names list.
+    await mp.keyboard.press('Enter'); await mp.keyboard.press('End');
+    for (let i = 0; i < 9 && await where() !== 'Edit names'; i++) await mp.keyboard.press('ArrowUp');
+    await mp.keyboard.press('Enter'); await mp.waitForTimeout(300);
+    const inList = await mp.frameLocator('.win[data-ikey="name-picker:1"] iframe').locator('html').evaluate(() => document.hasFocus() && document.activeElement.id === 'list');
+    ok(inList, 'choosing Edit names by keyboard puts the keyboard in the names list, as a tap does');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await mctx.close();
   }],
   ['Google Drive folder: opening another board, and the photo', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
@@ -7426,6 +7605,35 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const board = page.frames().find(f => f.parentFrame() === page.mainFrame());
     ok(!!board && await board.evaluate(() => !!window.__board21 && !document.querySelector('.corner-clock:not([hidden])') && !document.body.classList.contains('clock-on') && !document.querySelector('#settings [data-act="clock"]')),
       'the widget dev window has no clock');
+    await ctx.close();
+
+    // A window that fills the board is told how far ▦ and the clock reach into its bottom corners (`corners` in Board21's
+    // window info, in its CSS px), so it can keep its own buttons clear of them. A window that doesn't fill it isn't.
+    ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    await page.evaluate(() => window.__board21.openWidget('notes'));
+    const noteWin = page.frameLocator('.win[data-ikey="notes:1"] iframe');
+    await noteWin.locator('body').waitFor(); await page.waitForTimeout(500);
+    const told = () => noteWin.locator('html').evaluate(() => (Board21.context && Board21.context.window && Board21.context.window.corners) || null);
+    const measured = () => page.evaluate(() => {   // on the board, in the window's CSS px
+      const s = window.__board21.zoom.s, r = e => e.getBoundingClientRect(), clock = document.querySelector('.corner-clock:not([hidden])');
+      const L = r(document.querySelector('.picker-btn.left')), R = r(document.querySelector('.picker-btn.right')), C = clock ? r(clock) : null;
+      return { left: Math.ceil(L.right / s), right: Math.ceil((innerWidth - Math.min(R.left, C ? C.left : Infinity)) / s), height: Math.ceil((innerHeight - Math.min(L.top, R.top, C ? C.top : Infinity)) / s) };
+    });
+    const sameReach = (a, b) => !!a && !!b && ['left', 'right', 'height'].every(k => Math.abs(a[k] - b[k]) <= 1);
+    ok(await told() === null, 'a window that doesn’t fill the board isn’t told about the corners');
+    await page.evaluate(() => window.__board21.setMaximized('notes:1', true));
+    ok(await eventually(async () => sameReach(await told(), await measured())), `filling the board, it is told how far ▦ and the clock reach in (${JSON.stringify(await told())})`);
+    const withClock = await told();
+    await setClock(page, 'off');
+    ok(await eventually(async () => { const t = await told(); return sameReach(t, await measured()) && t.right < withClock.right - 100 && Math.abs(t.right - t.left) <= 1; }),
+      `with the clock off, only as far as ▦ (${JSON.stringify(await told())})`);
+    await setClock(page, 'date');
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(1.5));
+    ok(await eventually(async () => sameReach(await told(), await measured())), `and again when the screen or the board’s Size changes (${JSON.stringify(await told())} at 150% on 1366×768)`);
+    await page.evaluate(() => window.__board21.setMaximized('notes:1', false));
+    ok(await eventually(async () => await told() === null), 'and not once it no longer fills the board');
     await ctx.close();
 
     // A clock setting this release doesn't know (another release's, or a damaged record): the default, on the board
