@@ -502,8 +502,7 @@ it can't read this site's real boards. *Edit code* goes back to the code.
   widget by its address. It opens in a window named after its manifest block (*My Widget (test)*, sized from
   its `window`), and its id is `dev-` and the manifest's `id` (or its name). To see an edit, upload the file
   again: it replaces the one kept, and its open windows start again with it. **Remove** in the list deletes
-  it. Typing a `file:///` address can't work: the browser doesn't let a web page load files from your
-  computer.
+  it.
   - **Sealed off.** The file runs in a sandbox with an origin of its own. It can't reach the board's page, its
     saved boards, board history, the Google Drive folder, localStorage or cookies, and it sees only what the
     board sends its own window. It has no storage of its own either (localStorage throws): save with

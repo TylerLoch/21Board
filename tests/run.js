@@ -6075,6 +6075,10 @@ const SUITES = [
   }],
   ['Developer mode: upload a widget file', async (browser) => {
     ok(stamped(), STAMPED);
+    // The docs offer Upload file… only too: no path or address to type (the board has nowhere to type one now).
+    const typed = ['README.md', 'docs/WIDGET-SDK.md', 'docs/AI-PROMPT.md', 'docs/DATA-FORMAT.md'].flatMap(f =>
+      (fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\s+/g, ' ').match(/\b(enter|entering|type|typing)\b[^.]{0,40}?\b(path|address)\b/gi) || []).map(m => `${f}: ${m}`));
+    ok(typed.length === 0, 'the docs don’t tell anyone to type or enter a widget’s path or address (' + JSON.stringify(typed) + ')');
     if (!stamped()) return;   // (no offline copy is saved then)
     // Every uploaded file carries this mark in its code: it must never turn up in anything that leaves the device.
     const MARK = 'UPLOADED-CODE-7f3a91';
