@@ -627,12 +627,12 @@ const SUITES = [
     await btn('maximize()'); await page.waitForTimeout(400);
     d = await disp(page, ik); ok(d.w === 1400 && d.h === 860, 'maximize()');
     await btn('restore()'); await page.waitForTimeout(400);
-    // dev: add a test widget by path
+    // dev: test an unregistered widget by uploading its file (Settings → Developer mode → Test a widget → Upload file…)
     await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(200);
-    await page.fill('#set-dev-path', 'widgets/_template/index.html');
-    await page.click('#settings [data-act="dev-add"]'); await page.waitForTimeout(1000);
-    const devWin = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).filter(w => w.widget.dev).map(w => [w.ikey, w.connected]));
-    ok(devWin.length === 1 && devWin[0][1], 'developer can load an unregistered widget by path: ' + JSON.stringify(devWin));
+    await page.setInputFiles('#widget-input', path.join(ROOT, 'widgets', '_template', 'index.html'));
+    await eventually(() => page.evaluate(() => Array.from(window.__board21.state.wins.values()).some(w => w.widget.dev && w.connected)));
+    const devWin = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).filter(w => w.widget.dev).map(w => [w.ikey, w.connected, w.widget.sealed]));
+    ok(devWin.length === 1 && devWin[0][1] && devWin[0][2], 'developer can test an unregistered widget by uploading its file (it runs sealed off): ' + JSON.stringify(devWin));
     await btn('close()'); await page.waitForTimeout(400);
     ok(!(await page.evaluate(ik => window.__board21.state.wins.has(ik), ik)), 'close() from the widget closes its window');
 
@@ -652,6 +652,59 @@ const SUITES = [
     ok(pb.x >= 0 && pb.x + pb.width <= 375, `panel fits at phone width (${Math.round(pb.x)}..${Math.round(pb.x + pb.width)})`);
     await pp.screenshot({ path: OUT + '41-phone-panel.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+
+    // ---- A device from before Upload file… was the only way: its settings still list a widget added by its path
+    // on the site (settings.devWidgets), and that widget's window is open, with content.
+    {
+      const oc = await browser.newContext({ viewport: { width: 1400, height: 860 }, serviceWorkers: 'block' });   // (every request is seen below)
+      const op = await oc.newPage(), oerr = [], asked = [];
+      op.on('pageerror', e => oerr.push(e.message));
+      op.on('request', r => asked.push(r.url()));
+      await op.goto(BASE); await op.waitForTimeout(600);
+      await op.goto(BASE + 'icons/icon.svg');   // (the board isn't running while its records are written)
+      await op.evaluate(() => new Promise((res, rej) => {
+        const o = indexedDB.open('21Board');
+        o.onerror = () => rej(o.error);
+        o.onsuccess = () => {
+          const t = o.result.transaction('records', 'readwrite'), s = t.objectStore('records'), at = Date.now();
+          const rec = (key, type, value) => s.put({ key, type, rev: at, updatedAt: at, by: 'older-release', value });
+          rec('settings', 'settings', { theme: 'light', devMode: true, devWidgets: [{ id: 'dev-widgets-template', name: 'Template (test)', entry: 'widgets/_template/index.html' }], activeBoard: 1, boards: [1] });
+          rec('inst:1:dev-widgets-template:1', 'inst', { widgetId: 'dev-widgets-template', n: 1, open: true, rect: { x: 40, y: 40, w: 400, h: 340 }, z: 1, maximized: false, createdAt: at });
+          rec('data:1:dev-widgets-template:1', 'data', { text: 'from the older release' });
+          t.oncomplete = () => { o.result.close(); res(); };
+          t.onerror = () => rej(t.error);
+        };
+      }));
+      asked.length = 0;
+      await op.goto(BASE); await op.waitForFunction(() => window.__board21 && window.__board21.store.loaded); await op.waitForTimeout(1200);
+      const st = await op.evaluate(() => { const b = window.__board21, s = b.state; return { listed: b.catalog().some(a => a.id === 'dev-widgets-template'), win: s.wins.has('dev-widgets-template:1') || !!document.querySelector('.win[data-ikey^="dev-"]'),
+        opened: !!b.openWidget('dev-widgets-template'), kept: 'devWidgets' in s.settings, devMode: s.settings.devMode, inst: s.insts.has('dev-widgets-template:1') }; });
+      await op.click('.picker-btn.left'); await op.waitForTimeout(200);
+      const inPicker = await op.locator('[data-widget="dev-widgets-template"]').count() + await op.locator('#panel', { hasText: 'Template (test)' }).count();
+      await op.keyboard.press('Escape');
+      ok(!st.listed && !inPicker && !st.win && !st.opened && !asked.some(u => u.includes('widgets/_template/')) && !st.kept && st.devMode,
+        `an older board’s widget added by its path isn’t in the catalog or the Widget Picker (Developer mode on), doesn’t open (its page isn’t even asked for), and the list is dropped (${JSON.stringify(st)})`);
+      // Its window is kept like any window whose widget isn't installed: Settings lists it, to delete.
+      await op.click('.picker-btn.left'); await op.click('[data-ctl="settings"]'); await op.waitForTimeout(300);
+      const row = op.locator('#settings .inst', { has: op.locator('[data-act="inst-delete"][data-val="dev-widgets-template:1"]') });
+      ok(st.inst && /dev-widgets-template 1\s*Widget not installed/.test(await row.innerText().catch(() => '')) && await row.locator('[data-act="inst-open"]').count() === 0 &&
+        await op.locator('#settings [data-act="dev-remove"]').count() === 0, 'its window is listed in Settings as Widget not installed (with Delete, no Open), and not under Test a widget');
+      await op.click('#settings [data-act="theme"][data-val="dark"]'); await op.waitForTimeout(400);
+      const stored = () => op.evaluate(() => new Promise((res, rej) => { const o = indexedDB.open('21Board'); o.onerror = () => rej(o.error); o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').getAll(); q.onsuccess = () => { o.result.close(); res(Object.fromEntries(q.result.map(r => [r.key, r.value]))); }; }; }));
+      let recs = await stored();
+      const exp = JSON.stringify(await op.evaluate(() => window.__board21.buildExport('full')));
+      ok(recs.settings.theme === 'dark' && !('devWidgets' in recs.settings) && !exp.includes('devWidgets') && !exp.includes('_template'),
+        'the next time the settings are saved, the old list is left out (and an export never has it)');
+      await row.locator('[data-act="inst-delete"]').click(); await op.waitForTimeout(200);
+      await op.locator('#modal.open .btn', { hasText: /^Delete$/ }).click(); await op.waitForTimeout(600);
+      recs = await stored();
+      ok(!('inst:1:dev-widgets-template:1' in recs) && !('data:1:dev-widgets-template:1' in recs) && await op.evaluate(() => !window.__board21.state.insts.has('dev-widgets-template:1')),
+        'and Delete there removes the window and its content');
+      await op.reload(); await op.waitForTimeout(1000);
+      ok(await op.evaluate(() => !window.__board21.catalog().some(a => a.dev) && !window.__board21.state.wins.size), 'after a reload nothing of it comes back');
+      if (oerr.length) ok(false, 'no page errors on the older board: ' + oerr.join(' | '));
+      await oc.close();
+    }
   }],
   ['Focus, grips, resize snapping, storage protection', async (browser) => {
   const disp = (p, ik) => p.evaluate(ik => Object.assign({}, window.__board21.state.wins.get(ik).disp), ik);
@@ -4695,12 +4748,18 @@ const SUITES = [
     // (Not the district apps: their sites are never reached from the tests, and they have no SDK. See "District apps".)
     await pb.evaluate(() => window.__board21.catalog().filter(w => !w.external).forEach(w => window.__board21.openWidget(w.id))); await pb.waitForTimeout(2500);
     ok(!breq.some(u => /board21-dev\.js|board-shell\.js/.test(u)) && await pb.evaluate(() => [...window.__board21.state.wins.values()].every(w => w.connected && w.iframe.contentWindow.Board21.context.host === 'board')), 'inside 21Board, widgets connect at once and never load the dev window');
-    // A widget's own console hook isn't undone by the SDK inside the board.
-    await pb.click('.picker-btn.left'); await pb.click('[data-ctl="settings"]'); await pb.waitForTimeout(300);
-    await pb.click('#settings [data-act="devmode"]'); await pb.waitForTimeout(200);
-    await pb.fill('#set-dev-path', '__dev/console.html'); await pb.click('#settings [data-act="dev-add"]'); await pb.waitForTimeout(1500);
-    ok(await pb.evaluate(() => { const w = [...window.__board21.state.wins.values()].find(x => x.widget.dev); return !!w && w.iframe.contentWindow.__seen.includes('after ready'); }), 'a widget’s own console.error hook keeps working inside the board');
     await ctxB.close();
+    // A widget's own console hook isn't undone by the SDK inside the board. (The test page is put in the registry
+    // here: the board takes no other page as a widget. No offline copy, so the registry can be swapped.)
+    const ctxC = await browser.newContext({ viewport: { width: 1400, height: 860 }, serviceWorkers: 'block' });
+    await ctxC.route('**/widgets/registry.js', async r => r.fulfill({ status: 200, contentType: 'text/javascript',
+      body: (await (await r.fetch()).text()) + `\nself.BOARD21_WIDGETS.push({ id: 'console-hook', name: 'Console hook', entry: '__dev/console.html' });` }));
+    const pc = await ctxC.newPage();
+    await pc.goto(BASE); await pc.waitForFunction(() => window.__board21 && window.__board21.store.loaded);
+    await pc.evaluate(() => window.__board21.openWidget('console-hook'));
+    ok(await eventually(() => pc.evaluate(() => { const w = window.__board21.state.wins.get('console-hook:1'); return !!w && w.connected && w.iframe.contentWindow.__seen.includes('after ready'); })),
+      'a widget’s own console.error hook keeps working inside the board');
+    await ctxC.close();
     // ---- SDK not first: the widget runs on its own, with a note saying why.
     await page.goto(BASE + '__dev/late.html'); await page.waitForTimeout(800);
     ok(await page.evaluate(() => Board21.context && Board21.context.standalone && /first script/.test(document.querySelector('[data-b21-note]').textContent)), 'if the SDK isn\'t the first script, the widget runs on its own with a note saying how to fix it');
@@ -4840,7 +4899,7 @@ const SUITES = [
     // A damaged settings record (this one used to stop start-up: "number 5 is not iterable").
     await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'); t.objectStore('records').put({ key: 'settings', type: 'settings', rev: Date.now() + 1e6, updatedAt: Date.now(), by: 'test', value: { theme: 'dark', devWidgets: 5 } }); t.oncomplete = () => { o.result.close(); res(); }; }; }));
     await page.reload(); await started();
-    ok(await noteIs('A week of lesson notes') && await B(() => document.body.classList.contains('dark')), 'a damaged settings record doesn’t stop the board from opening');
+    ok(await noteIs('A week of lesson notes') && await B(() => document.body.classList.contains('dark') && !('devWidgets' in window.__board21.state.settings)), 'a damaged settings record doesn’t stop the board from opening (its old devWidgets is dropped)');
 
     // ---- a save fails: kept, shown, tried again
     await B(() => { const h = window.__board21.history, thin = h.thin.bind(h); window.__room = { thin: 0 }; h.thin = () => { window.__room.thin++; return thin(); }; });
@@ -5369,21 +5428,24 @@ const SUITES = [
       await page.waitForFunction(() => window.__board21.state.sw.state === 'ready', null, { timeout: 15000 }).catch(() => {});
       await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]');
       const saved = await copies(page), says = await offline(page);
-      // A widget under test in Developer mode is not part of the copy.
+      // A widget under test in Developer mode (uploaded as a file) is not part of the copy: its file is kept on this device.
       await page.click('#settings [data-act="devmode"]');
-      await page.fill('#set-dev-path', 'widgets/_template/index.html'); await page.click('#settings [data-act="dev-add"]');
-      await page.waitForFunction(() => window.__board21.state.wins.size === 2 && Array.from(window.__board21.state.wins.values()).every(w => w.connected), null, { timeout: 8000 }).catch(() => {});   // (adding it opens it)
+      await page.setInputFiles('#widget-input', path.join(ROOT, 'widgets', '_template', 'index.html'));
+      const both = () => window.__board21.state.wins.size === 2 && Array.from(window.__board21.state.wins.values()).every(w => w.connected);
+      await page.waitForFunction(both, null, { timeout: 8000 }).catch(() => {});   // (uploading it opens it)
       await page.keyboard.press('Escape');
-      const testWin = page.frameLocator('.win:not([data-ikey="dice:1"]) iframe').locator('body');
-      const online = await page.evaluate(() => window.__board21.state.wins.size === 2 && Array.from(window.__board21.state.wins.values()).every(w => w.connected));
+      const online = await page.evaluate(both);
       await ctx.setOffline(true);
       await start(page);
       await page.waitForFunction(() => { const w = window.__board21.state.wins.get('dice:1'); return w && w.connected; }, null, { timeout: 8000 }).catch(() => {});
       ok(saved === `TEST-3-${s3.build}:${n}` && says.includes('Ready to work offline') && await now(page) === 'v3 v3 v3 v3',
         'the next time it starts with a connection, the copy is saved again, and 21Board works offline as before: ' + saved);
-      const empty = (await testWin.innerText({ timeout: 8000 }).catch(e => String(e))).replace(/\n/g, ' / ');
-      ok(online && empty === 'This widget needs a connection / Only the widgets in 21Board’s own list are kept for offline use.',
-        'offline, the window of a widget under test (Developer mode) says that it needs a connection, not that connecting once will save it: ' + empty);
+      const tested = await page.waitForFunction(() => { const w = window.__board21.state.wins.get('dev-my-widget:1'); return w && w.connected && !w.left; }, null, { timeout: 8000 }).then(() => true, () => false);
+      ok(online && tested, 'offline, a widget under test (Developer mode, uploaded as a file) opens and connects: its file is kept on this device, and the SDK put into it comes from the copy');
+      // A page of the site that isn't in the copy, shown in a frame (as when a widget's window goes to one).
+      const unlisted = await page.evaluate(() => new Promise(res => { const f = document.createElement('iframe'); f.onload = () => { try { res(f.contentDocument.body.innerText.replace(/\n/g, ' / ')); } catch (e) { res(String(e)); } }; f.src = 'widgets/not-in-the-copy/index.html'; document.body.appendChild(f); setTimeout(() => res('(not loaded)'), 8000); }));
+      ok(unlisted === 'This widget needs a connection / Only the widgets in 21Board’s own list are kept for offline use.',
+        'offline, a page of the site that isn’t in the copy says in its window that it needs a connection, not that connecting once will save it: ' + unlisted);
       await ctx.close();
     }
 
@@ -6074,11 +6136,14 @@ const SUITES = [
     await page.waitForTimeout(1200);
     await fillNote(frame(page, 'notes:1'), 'Secret class note'); await page.waitForTimeout(500);
 
-    // ---- Settings → Developer mode → Test a widget has Upload file… beside Add.
+    // ---- Settings → Developer mode → Test a widget offers Upload file… only (no path to type).
     await settings(page);
     ok(await page.locator('#settings [data-act="dev-upload"]').count() === 0, 'Upload file… is hidden until Developer mode is on');
     await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(200);
-    ok(await page.locator('#settings [data-act="dev-add"] + [data-act="dev-upload"]').count() === 1, 'with Developer mode on, Test a widget has Upload file… beside Add');
+    const devRows = await page.locator('#settings .row', { has: page.locator('[data-act="devmode"], [data-act="dev-upload"]') }).allInnerTexts();
+    ok(await page.locator('#settings [data-act="dev-upload"].primary').count() === 1 && await page.locator('#set-dev-path, #settings [data-act="dev-add"]').count() === 0 &&
+      await page.locator('#settings .row', { has: page.locator('[data-act="dev-upload"]') }).locator('input').count() === 0 && devRows.length === 2 && !/\bpath\b/i.test(devRows.join(' ')),
+      'with Developer mode on, Test a widget offers Upload file… only: no path to type and no Add (' + JSON.stringify(devRows) + ')');
     // ---- Files that can't be used are refused, with a plain message.
     const txt = W('notes.txt', 'just text'), big = W('big.html', '<!DOCTYPE html><p>' + 'x'.repeat(5 * 1048576)), plain = W('plain.html', 'hello there');
     await page.setInputFiles('#widget-input', txt); await page.waitForTimeout(300);
@@ -6212,7 +6277,7 @@ const SUITES = [
     await page.click('#modal .btn:has-text("Replace this page")');   // Replace this page
     ok(await eventually(async () => await frame(page, 'notes:1').locator('#view').textContent() === 'from the file'), 'the crafted file is imported');
     await page.waitForTimeout(1500);
-    const st = await B(() => { const b = window.__board21, s = b.state; return { pwned: window.__pwned, title: document.title, evil: b.catalog().some(a => a.id === 'dev-evil') || s.devFiles.has('dev-evil') || s.wins.has('dev-evil:1') || (s.settings.devWidgets || []).some(d => d.id === 'dev-evil'), probe: s.devFiles.has('dev-probe') && s.wins.has('dev-probe:1') }; });
+    const st = await B(() => { const b = window.__board21, s = b.state; return { pwned: window.__pwned, title: document.title, evil: b.catalog().some(a => a.id === 'dev-evil') || s.devFiles.has('dev-evil') || s.wins.has('dev-evil:1') || 'devWidgets' in s.settings, probe: s.devFiles.has('dev-probe') && s.wins.has('dev-probe:1') }; });
     const recs = await records(page);
     ok(st.pwned === 0 && st.title !== 'PWNED' && !st.evil && !('devfile:dev-evil' in recs),
       `nothing in it runs, and it can’t add a widget or a test widget’s code (${JSON.stringify(st)})`);

@@ -98,7 +98,6 @@
     accent: 'blue',          // accent color: a key of ACCENTS
     dragFromContent: true,   // move windows by dragging inside them (see section 9a)
     devMode: false,
-    devWidgets: [],             // [{ id, name, entry }] test widgets added in Developer mode
     activeBoard: 1,          // the page every tab shows (section 11b)
     boards: [1],             // the pages, in order (board ids)
     deletedBoards: [],       // pages deleted while their Undo is offered (their records go after it: Pages.purge)
@@ -327,13 +326,8 @@
 
   function rebuildCatalog() {
     catalog = new Map(REGISTRY.map(a => [a.id, a]));
-    // (Uploaded files first: one is never hidden by a widget added by its path with the same id.)
     for (const f of (LAB || NODEV ? [] : S.devFiles.values())) {
       const widget = normalizeWidget({ id: f.id, name: f.name, entry: 'about:srcdoc', version: f.version, window: f.window, color: '#64748b', description: 'Uploaded test widget' }, { dev: true, sealed: true });
-      if (widget && !catalog.has(widget.id)) catalog.set(widget.id, widget);
-    }
-    for (const d of (LAB || NODEV ? [] : S.settings.devWidgets || [])) {
-      const widget = normalizeWidget({ id: d.id, name: d.name, entry: d.entry, color: '#64748b', description: 'Developer test widget' }, { dev: true });
       if (widget && !catalog.has(widget.id)) catalog.set(widget.id, widget);
     }
   }
@@ -450,8 +444,6 @@
       Writer.put(Keys.devfile(id), 'devfile', rec);
       this.forget(id);   // (a new upload starts, even if the last one froze the board)
       this.apply(id, rec);
-      // One test widget per id: one added by its path with this id makes way.
-      if ((S.settings.devWidgets || []).some(d => d.id === id)) updateSettings({ devWidgets: S.settings.devWidgets.filter(d => d.id !== id) });
       if (Array.from(S.insts.values()).some(i => i.widgetId === id && i.open)) toast(`${rec.name} is updated.`);
       else openWidget(id, { side });
     },
@@ -987,7 +979,11 @@
     switch (k.kind) {
       case 'settings':
         S.settings = Object.assign({}, DEFAULT_SETTINGS, value || {});
-        S.settings.devWidgets = Array.isArray(S.settings.devWidgets) ? S.settings.devWidgets.filter(d => d && typeof d === 'object') : [];   // (a damaged record must not stop the board opening)
+        // A record from an older 21Board may still list test widgets added by their address (devWidgets). That way
+        // of testing a widget is gone: the list is ignored, whatever it holds, and dropped here so it is never saved
+        // again. Their windows are kept like any window whose widget isn't in the catalog: not shown, and listed in
+        // Settings as Widget not installed, to delete.
+        delete S.settings.devWidgets;
         applySettings();
         break;
       case 'board':
@@ -1070,9 +1066,9 @@
   const resolvedTheme = () => S.settings.theme === 'system' ? (mqDark.matches ? 'dark' : 'light') : (S.settings.theme === 'dark' ? 'dark' : 'light');
 
   let lastCatalogSig = '';
-  // The catalog follows the test widgets: those added by their path (settings) and uploaded files (DevFiles).
+  // The catalog follows the test widgets uploaded as files (DevFiles).
   function updateCatalog() {
-    const sig = JSON.stringify([S.settings.devMode, S.settings.devWidgets, Array.from(S.devFiles.values(), f => [f.id, f.at])]);
+    const sig = JSON.stringify([S.settings.devMode, Array.from(S.devFiles.values(), f => [f.id, f.at])]);
     if (sig === lastCatalogSig) return;
     lastCatalogSig = sig;
     rebuildCatalog();
@@ -4189,7 +4185,6 @@
         if (this.isOpen) this.render();
       });
       this.body.addEventListener('keydown', e => {
-        if (e.target.id === 'set-dev-path' && e.key === 'Enter') this.act('dev-add');
         if (e.target.id === 'set-board-name' && e.key === 'Enter') e.target.blur();
       });
     },
@@ -4236,11 +4231,10 @@
           `<button class="icon" data-act="inst-delete" data-val="${esc(ikey)}" title="Delete" aria-label="${app ? `Delete the ${esc(name)} window` : `Delete ${esc(name)} and its content`}">${svg('trash')}</button></div>`;
       }).join('') : '<div class="empty-note">No widget windows yet. Open one from the Widget Picker.</div>';
 
-      const devRow = (id, name, where) =>
-        `<div class="inst"><span class="widget-icon" style="--c:#64748b">${svg('widget')}</span><div class="meta"><b>${esc(name)}</b><span>${esc(where)}</span></div>` +
-        `<button class="icon" data-act="dev-remove" data-val="${esc(id)}" title="Remove" aria-label="Remove ${esc(name)}">${svg('trash')}</button></div>`;
-      const devWidgets = (st.devWidgets || []).map(d => devRow(d.id, d.name, d.entry))
-        .concat(Array.from(S.devFiles.values(), d => devRow(d.id, d.name, `Uploaded file: ${d.file}`))).join('');
+      // Test widgets uploaded as a file (Developer mode).
+      const devList = Array.from(S.devFiles.values(), d =>
+        `<div class="inst"><span class="widget-icon" style="--c:#64748b">${svg('widget')}</span><div class="meta"><b>${esc(d.name)}</b><span>${esc(`Uploaded file: ${d.file}`)}</span></div>` +
+        `<button class="icon" data-act="dev-remove" data-val="${esc(d.id)}" title="Remove" aria-label="Remove ${esc(d.name)}">${svg('trash')}</button></div>`).join('');
 
       const note = SaveNote.state() ? SaveNote.info() : null;
       this.body.innerHTML = `
@@ -4287,10 +4281,10 @@
         <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>`}
 
         <h3>Advanced</h3>
-        ${LAB || KIOSK ? '' : `<div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget by its path or its file.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>`}
+        ${LAB || KIOSK ? '' : `<div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget from its file.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>`}
         ${st.devMode && !LAB && !KIOSK ? `<div class="row stack"><div><div class="lbl">Test a widget</div><div class="hint">An uploaded file runs sealed off from your boards. It is kept on this device only, never in exports.</div></div>
-          <div style="display:flex;gap:8px"><input type="text" class="text-input" id="set-dev-path" placeholder="widgets/my-widget/index.html" autocomplete="off" spellcheck="false"><button class="btn primary" data-act="dev-add">${svg('plus')}Add</button><button class="btn" data-act="dev-upload">Upload file…</button></div>
-          ${devWidgets ? `<div class="inst-list">${devWidgets}</div>` : ''}</div>` : ''}
+          <button class="btn primary" data-act="dev-upload">${svg('import')}Upload file…</button>
+          ${devList ? `<div class="inst-list">${devList}</div>` : ''}</div>` : ''}
         ${Store.failed ? `<div class="row"><div><div class="lbl">Empty this board</div><div class="hint">Clears the windows, content and settings you see now.${Store.failed === 'unopened' ? ' Your saved board isn’t touched.' : ''}</div></div><button class="btn danger" data-act="erase">${svg('trash')}Empty</button></div>`
         : `<div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Deletes all windows, content and settings on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase</button></div>`}
 
@@ -4448,25 +4442,8 @@
         case 'page-go': this.close(); await Pages.go(+val); break;
         case 'link-load-offer': if (Link.offer) await Link.load(Link.offer.name); this.render(); break;
         case 'update': askUpdate(); break;
-        case 'dev-add': {
-          const input = $('#set-dev-path', this.body);
-          const path = (input && input.value || '').trim();
-          if (!path) break;
-          let url;
-          try { url = new URL(path, location.href); } catch (e) { toast('That path is not valid.'); break; }
-          if (url.origin !== location.origin) { toast('Widgets must be served from this same site.'); break; }
-          const rel = url.pathname.replace(new RegExp('^' + location.pathname.replace(/[^/]*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), '') + url.search;
-          const slug = rel.replace(/\/?index\.html$/, '').replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').toLowerCase().slice(0, 50) || 'widget';
-          const id = 'dev-' + slug;
-          const name = (slug.split('-').filter(p => p && p !== 'widgets').pop() || 'Test widget').replace(/^./, c => c.toUpperCase()) + ' (test)';
-          const list = (S.settings.devWidgets || []).filter(d => d.id !== id).concat([{ id, name, entry: rel }]);
-          updateSettings({ devWidgets: list });
-          DevFiles.remove(id);   // (one test widget per id: an uploaded file with this id makes way)
-          openWidget(id, { side: this.side });
-          break;
-        }
         case 'dev-upload': $('#widget-input').click(); break;
-        case 'dev-remove': updateSettings({ devWidgets: (S.settings.devWidgets || []).filter(d => d.id !== val) }); DevFiles.remove(val); break;
+        case 'dev-remove': DevFiles.remove(val); break;
         case 'erase': {
           const hist = BoardHistory.enabled();
           // Where nothing is stored (see SaveNote), only the board on screen can be emptied: the saved board,

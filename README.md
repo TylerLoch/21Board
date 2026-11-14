@@ -136,7 +136,7 @@ are open still come from the saved copy: reload once more, or close and open the
   the photo, this device's name, other boards in the folder; and what is wrong when the folder can't be used.
   See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
 - **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
-- **Advanced:** Developer mode (SDK Playground, test unregistered widgets by their path or by uploading the file), erase everything (every page).
+- **Advanced:** Developer mode (SDK Playground, test an unregistered widget by uploading its file), erase everything (every page).
 - **About:** the version this device is running (release name and build), to read out to IT.
 
 ---
@@ -195,10 +195,10 @@ its title bar, resize handles, menu and Settings, plus panels for its saved data
 problems. This also works in AI tools' previews (Gemini Canvas and others) and in `sdk/lab.html` (paste
 the HTML). To have an AI tool write one, start with the prompt in [docs/AI-PROMPT.md](docs/AI-PROMPT.md).
 See [docs/WIDGET-SDK.md, "Testing a widget"](docs/WIDGET-SDK.md#testing-a-widget). Inside
-21Board: Settings → Advanced → Developer mode → *Test a widget*: enter its path, or **Upload file…** to try
-the `.html` file on your computer in your own board. An uploaded file runs sealed off from your boards (it
-can't reach their data), is kept on this device only (never in exports, board history or the Google Drive
-folder) and works offline; upload it again to see an edit. If one freezes 21Board, open it with `?nodev` at
+21Board: Settings → Advanced → Developer mode → *Test a widget* → **Upload file…** to try the `.html`
+file on your computer in your own board. An uploaded file runs sealed off from your boards (it can't reach
+their data), is kept on this device only (never in exports, board history or the Google Drive folder) and
+works offline; upload it again to see an edit. If one freezes 21Board, open it with `?nodev` at
 the end of its address: no test widget starts, and you can remove it in Settings. See
 [docs/WIDGET-SDK.md, "Inside 21Board"](docs/WIDGET-SDK.md#inside-21board).
 

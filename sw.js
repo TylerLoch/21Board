@@ -183,7 +183,7 @@ self.addEventListener('fetch', event => {
     // now may be a newer version. ("?kiosk=yes" and the like are the same file.)
     const saved = await cache.match(req, { ignoreSearch: true });
     if (saved) return saved;
-    // Anything else (a widget under test in Developer mode, a page that isn't part of 21Board) comes from the
+    // Anything else (a page that isn't part of 21Board, such as one a widget's window went to) comes from the
     // network and isn't kept.
     try {
       return await fetch(req);
@@ -192,8 +192,8 @@ self.addEventListener('fetch', event => {
       // Offline: a page address inside the board's scope gets the board itself; a widget window says why it is empty.
       const board = req.destination === 'document' && await cache.match('index.html');
       if (board) return board;
-      // One of this version's own files, or the board: the copy isn't there. Anything else in a window is a
-      // widget that was never part of it (one under test in Developer mode).
+      // One of this version's own files, or the board: the copy isn't there. Anything else in a window was never
+      // part of it.
       return req.destination === 'document' || PRECACHE.some(file => address(file) === url.origin + url.pathname) ? offlinePage('Not available offline yet', 'Connect to the internet once so 21Board can save this for offline use.')
         : offlinePage('This widget needs a connection', 'Only the widgets in 21Board’s own list are kept for offline use.');
     }

@@ -415,7 +415,7 @@ What `external: true` changes:
   and the same `allow` list plus `permissions`. That is everything the three apps use; the sandbox still keeps
   the page from navigating the board away.
 - The address comes from the registry only: a `.21board` file names the widget (`21sketch`), never an address.
-- Only for `https` addresses in the registry; test widgets added in Developer mode can't be external.
+- Only for `https` addresses in the registry; a test widget uploaded in Developer mode can't be external.
 
 ---
 
@@ -496,16 +496,14 @@ it can't read this site's real boards. *Edit code* goes back to the code.
 
 ### Inside 21Board
 
-- **Without registering:** Settings → Advanced → turn on **Developer mode**, then enter the path
-  (e.g. `widgets/my-widget/index.html`) under **Test a widget**. A widget tested this way always comes
-  from the server: only registered widgets are part of the offline copy. Without a connection its window
-  says *This widget needs a connection*.
-- **From a file on your computer:** under **Test a widget**, tap **Upload file…** and pick the widget's
-  `.html` file (Chromebooks, Chrome on Windows and Mac, iPad Safari). It opens in a window named after its
-  manifest block (*My Widget (test)*, sized from its `window`), and its id is `dev-` and the manifest's `id`
-  (or its name). To see an edit, upload the file again: it replaces the one kept, and its open windows start
-  again with it. **Remove** in the list deletes it. Typing a `file:///` address can't work: the browser
-  doesn't let a web page load files from your computer.
+- **Without registering:** Settings → Advanced → turn on **Developer mode**, then under **Test a widget** tap
+  **Upload file…** and pick the widget's `.html` file (Chromebooks, Chrome on Windows and Mac, iPad Safari).
+  Inside 21Board this is the only way to try a widget that isn't in the registry: the board never takes a
+  widget by its address. It opens in a window named after its manifest block (*My Widget (test)*, sized from
+  its `window`), and its id is `dev-` and the manifest's `id` (or its name). To see an edit, upload the file
+  again: it replaces the one kept, and its open windows start again with it. **Remove** in the list deletes
+  it. Typing a `file:///` address can't work: the browser doesn't let a web page load files from your
+  computer.
   - **Sealed off.** The file runs in a sandbox with an origin of its own. It can't reach the board's page, its
     saved boards, board history, the Google Drive folder, localStorage or cookies, and it sees only what the
     board sends its own window. It has no storage of its own either (localStorage throws): save with
@@ -533,6 +531,9 @@ it can't read this site's real boards. *Edit code* goes back to the code.
     without their icons. Dragging inside the widget doesn't move its window: use its title bar. Its colors
     may flash for a moment as it opens, until the board sends the theme. Not in kiosk mode, and not in a copy
     of 21Board opened from a file.
+  - **Older boards:** earlier versions of 21Board could also add a test widget by its path on the site. That
+    is gone: a board that still lists one opens without it, and its window shows in Settings as *Widget not
+    installed*, where you can delete it.
 - **Changing a registered widget:** 21Board runs from its offline copy, which only changes as a whole
   release. To see your change inside 21Board, run `node tools/release.js`, reload, and tap *Update* when
   it is offered a few seconds later. (Reloading with Shift held, Ctrl+Shift+R, shows the page from the

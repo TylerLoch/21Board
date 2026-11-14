@@ -85,10 +85,7 @@ storage can't be read still has every page.
   clock: "date",           // Settings → Appearance → Clock in the corner: "off" | "time" | "date" (time and date, the default)
   letters: "standard",     // Settings → Appearance → Letters: "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
   lastBackupAt: null,      // ms of the last full backup export, for backup reminders
-  devMode: false,
-  devWidgets: [               // test widgets added in Developer mode
-    { id: "dev-widgets-my-widget", name: "My-widget (test)", entry: "widgets/my-widget/index.html" }
-  ],
+  devMode: false,          // Settings → Advanced → Developer mode
   activeBoard: 1,          // the page shown, in every tab (start-up falls back to the first page if it is gone)
   boards: [1, 3, 2],       // the pages in order (board ids)
   deletedBoards: [],       // pages deleted while their Undo is offered
@@ -100,6 +97,12 @@ storage can't be read still has every page.
 Only `theme` and `accent` go into exported files (and so into the Google Drive folder). `locked`, `awake`,
 `awakeFrom`, `awakeTo`, `clock` and `letters` belong to this device: never in exports, Board history or the Google
 Drive folder, and an import or Load leaves them as they are.
+
+Older versions also kept `devWidgets` here: test widgets added in Developer mode by their path on the site
+(`[{ id, name, entry }]`). That way of testing a widget is gone, so 21Board ignores `devWidgets`, whatever it
+holds, and drops it when it reads the record (the next save of the settings leaves it out). Windows of those
+widgets are kept like any window whose widget isn't installed: not shown, and listed in Settings as *Widget not
+installed*. Test widgets are now uploaded as a file: see [`devfile:<widgetId>`](#devfilewidgetid-this-device-only).
 
 ### `board:<b>`
 
