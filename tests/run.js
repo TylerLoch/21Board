@@ -627,9 +627,11 @@ const SUITES = [
     await btn('maximize()'); await page.waitForTimeout(400);
     d = await disp(page, ik); ok(d.w === 1400 && d.h === 860, 'maximize()');
     await btn('restore()'); await page.waitForTimeout(400);
-    // dev: test an unregistered widget by uploading its file (Settings → Developer mode → Test a widget → Upload file…)
+    // dev: test an unregistered widget by uploading its file, with the button (Settings → Developer mode → Test a widget → Upload file…)
     await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(200);
-    await page.setInputFiles('#widget-input', path.join(ROOT, 'widgets', '_template', 'index.html'));
+    const devChooser = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }), page.click('#settings [data-act="dev-upload"]', { timeout: 3000 })]).then(([c]) => c, () => null);
+    ok(!!devChooser, 'Upload file… in Settings opens the file chooser');
+    if (devChooser) await devChooser.setFiles(path.join(ROOT, 'widgets', '_template', 'index.html'));
     await eventually(() => page.evaluate(() => Array.from(window.__board21.state.wins.values()).some(w => w.widget.dev && w.connected)));
     const devWin = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).filter(w => w.widget.dev).map(w => [w.ikey, w.connected, w.widget.sealed]));
     ok(devWin.length === 1 && devWin[0][1] && devWin[0][2], 'developer can test an unregistered widget by uploading its file (it runs sealed off): ' + JSON.stringify(devWin));
@@ -694,14 +696,15 @@ const SUITES = [
       let recs = await stored();
       const exp = JSON.stringify(await op.evaluate(() => window.__board21.buildExport('full')));
       ok(recs.settings.theme === 'dark' && !('devWidgets' in recs.settings) && !exp.includes('devWidgets') && !exp.includes('_template'),
-        'the next time the settings are saved, the old list is left out (and an export never has it)');
+        'the next time the settings are saved, the old list is left out (exports never carried it)');
       await row.locator('[data-act="inst-delete"]').click(); await op.waitForTimeout(200);
       await op.locator('#modal.open .btn', { hasText: /^Delete$/ }).click(); await op.waitForTimeout(600);
       recs = await stored();
       ok(!('inst:1:dev-widgets-template:1' in recs) && !('data:1:dev-widgets-template:1' in recs) && await op.evaluate(() => !window.__board21.state.insts.has('dev-widgets-template:1')),
         'and Delete there removes the window and its content');
-      await op.reload(); await op.waitForTimeout(1000);
-      ok(await op.evaluate(() => !window.__board21.catalog().some(a => a.dev) && !window.__board21.state.wins.size), 'after a reload nothing of it comes back');
+      await op.reload(); await op.waitForFunction(() => window.__board21 && window.__board21.store.loaded); await op.waitForTimeout(500);
+      ok(await op.evaluate(() => { const b = window.__board21, s = b.state; return !b.catalog().some(a => a.dev) && !s.wins.size && !s.insts.has('dev-widgets-template:1') && !('devWidgets' in s.settings); }),
+        'after a reload nothing of it comes back');
       if (oerr.length) ok(false, 'no page errors on the older board: ' + oerr.join(' | '));
       await oc.close();
     }
@@ -4896,10 +4899,11 @@ const SUITES = [
     ok(await stored() === before, 'and saves nothing');
     await page.unroute(BASE); await page.click('#startup [data-go="retry"]'); await started();
     ok(await noteIs('A week of lesson notes'), 'with the right files again, Try again opens the board');
-    // A damaged settings record (this one used to stop start-up: "number 5 is not iterable").
-    await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'); t.objectStore('records').put({ key: 'settings', type: 'settings', rev: Date.now() + 1e6, updatedAt: Date.now(), by: 'test', value: { theme: 'dark', devWidgets: 5 } }); t.oncomplete = () => { o.result.close(); res(); }; }; }));
+    // A damaged settings record (one like it used to stop start-up: "number 5 is not iterable"): the pages' settings
+    // are damaged, and it has an older release's devWidgets.
+    await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'); t.objectStore('records').put({ key: 'settings', type: 'settings', rev: Date.now() + 1e6, updatedAt: Date.now(), by: 'test', value: { theme: 'dark', devWidgets: 5, boards: 5, deletedBoards: 5, deletedAt: 5, lastBoard: 'x' } }); t.oncomplete = () => { o.result.close(); res(); }; }; }));
     await page.reload(); await started();
-    ok(await noteIs('A week of lesson notes') && await B(() => document.body.classList.contains('dark') && !('devWidgets' in window.__board21.state.settings)), 'a damaged settings record doesn’t stop the board from opening (its old devWidgets is dropped)');
+    ok(await noteIs('A week of lesson notes') && await B(() => document.body.classList.contains('dark') && !('devWidgets' in window.__board21.state.settings)), 'a damaged settings record doesn’t stop the board from opening (and an old devWidgets is dropped)');
 
     // ---- a save fails: kept, shown, tried again
     await B(() => { const h = window.__board21.history, thin = h.thin.bind(h); window.__room = { thin: 0 }; h.thin = () => { window.__room.thin++; return thin(); }; });
