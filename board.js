@@ -5571,8 +5571,8 @@
           if (bg && e.board && PHOTO_FILE_RE.test(bg.file || '')) refs.push({ uid: e.board.uid, ref: bg, look: e.media.look || null });
         }
         this.files.set(name, Object.assign(meta, { seq: num(s.seq, 0), at: num(s.at, 0), folder: String(s.folder || ''), left: s.left && typeof s.left === 'object' ? s.left : null,
-          write: String(s.write || ''), merged: s.merged && typeof s.merged === 'object' ? s.merged : {}, peer: dec.peer, refs,
-          pages: Object.keys(dec.peer.pages || {}).length || 1 + (Array.isArray(obj.pages) ? obj.pages.length - 1 : 0) }));
+          write: String(s.write || ''), merged: s.merged && typeof s.merged === 'object' ? s.merged : {}, peer: dec.peer, refs, uids: [obj].concat(Array.isArray(obj.pages) ? obj.pages : []).map(e => e && e.board && e.board.uid).filter(Boolean),
+          pages: Array.isArray(obj.pages) && obj.pages.length > 1 ? obj.pages.length : 1 }));
         changed = true;
       }));
       if (gen !== this.gen) return false;
@@ -5705,10 +5705,9 @@
         catch (err) { skipped.push(key); this.media.delete(key); }   // (a photo record that can't be read: left out of the file, see Merge.read)
       }
       recs = recs.concat(Array.from(this.media.values()));
-      const by = new Map(recs.map(r => [r.key, r])), pages = {};
-      for (const r of recs) if (r.key.startsWith('link:mine-') && r.value && r.value.uid) pages[r.value.uid] = r.value;
+      const by = new Map(recs.map(r => [r.key, r])), mines = recs.filter(r => r.key.startsWith('link:mine-') && r.value && r.value.uid).map(r => r.value);
       const sr = by.get(Keys.settings), sync = (by.get(Keys.link('sync')) || {}).value || null;
-      return { recs: recs.filter(r => !r.key.startsWith('link:')), by, skipped, settings: Object.assign({}, DEFAULT_SETTINGS, (sr && sr.value) || {}), sync, ledger: { sync, pages } };
+      return { recs: recs.filter(r => !r.key.startsWith('link:')), by, skipped, settings: Object.assign({}, DEFAULT_SETTINGS, (sr && sr.value) || {}), sync, ledger: Merge.ledger(sync, mines) };
     },
     // Board history keeps pages deleted while their Undo is offered entirely as they are: they aren't stamped or merged.
     undoPages(st, now) {
@@ -5753,32 +5752,35 @@
       const local = this.local(r, now);
       let st = { ledger, ctr: sync.ctr || 0, fixes: [], partsChanged: false };
       if (mode !== 'take') st = Merge.stamp(ledger, local, { dev: me, ctr: sync.ctr || 0, maxSeen: sync.maxSeen || 0, first: !!sync.first, now });
+      const fixes = { writes: (st.fixes || []).map(f => Object.assign({ type: Keys.parse(f.key).kind }, f)), ifRev: this.ifRevOf(r, st.fixes || []), settings: st.settings ? stored => Merge.patchSettings(stored, st.settings) : null };
       sync = Object.assign({}, sync, { ctr: st.ctr }, st.partsChanged ? { localAt: now } : {});
       // (Two devices that each set up a folder "first" at once gave it two ids: every device takes the smaller one.)
       for (const f of Object.values(this.good())) if (f.folder && sync.folder && f.folder < sync.folder) sync.folder = f.folder;
-      ledger = { sync, pages: st.ledger.pages };
+      ledger = Object.assign({}, st.ledger, { sync });
       this.noteFiles(sync, now);
       // A send round, or someone is using the board (a gesture, a dialog, a menu): this device's changes go, nothing
       // comes in. (The round runs again at the next look.)
       if (send || this.gate()) {
-        const done = await this.commit(gen, r, { writes: (st.fixes || []).filter(w => w.key), ifRev: this.ifRevOf(r, st.fixes || []) }, ledger, sync, false, now);
+        const done = await this.commit(gen, r, fixes, ledger, sync, false, now);
         if (done === 'again' || !done) return done;
         if (!send && !this.timers.full) this.want('full', this.waits.quiet);
         return this.afterRound(this.afterOf(r, done), { send: true, urgent: kind === 'send', left: opts.left });
       }
-      // Merge.
-      const peers = {}, files = this.good(), own = files[me];
+      // Merge: each other device's newest file that isn't older than the one merged, and in a first round this
+      // device's own (§3.5); a file another install wrote under this device's id (cloneOf) too.
+      const peers = [], files = this.good(), own = files[me], merging = [];
       for (const [d, f] of Object.entries(files)) {
         if (d === me) continue;
         const was = (sync.peers || {})[d] || {};
-        if (f.seq >= (was.seq || 0)) peers[d] = f.peer;
+        if (f.seq >= (was.seq || 0)) { peers.push(f.peer); merging.push(f); }
       }
-      if (sync.first && own) peers[me + '#own'] = own.peer;
+      if (sync.first && own) peers.push(own.peer);
       const clone = this.cloneOf(sync, me);
-      if (clone) peers[me + '#clone'] = clone.peer;
+      if (clone) peers.push(clone.peer);
       const idle = d => { const p = (sync.peers || {})[d] || {}; return !!p.left || now - (p.changedAt || 0) >= this.waits.idle; };
-      const state = Merge.join(ledger, peers, { dev: me, now, idle, left: d => !!((sync.peers || {})[d] || {}).left, mode, first: !!sync.first, aheadMax: now + LINK_AHEAD_MS });
-      const photos = await this.photosFor(r, Object.keys(peers).filter(d => files[d]).map(d => files[d]), deadline);
+      const state = Merge.join(ledger, peers, { dev: me, now, idle, left: d => !!((sync.peers || {})[d] || {}).left, mode, first: !!sync.first, aheadMax: LINK_AHEAD_MS,
+        isLater: id => (getWidget(id) || {}).clash === 'later' });
+      const photos = await this.photosFor(r, state, local, merging, deadline);
       const hmax = await BoardHistory.maxBoard().catch(() => 0);
       const T = Date.now(), histFailed = new Set();
       const planOf = () => Merge.plan(state, local, ledger, { dev: me, n: st.ctr, now: T, mode, holds: this.holds(r, local), place: (uid, rect, near) => placeCopy(uid, rect, near), zTop: uid => zTop(uid),
@@ -5793,7 +5795,7 @@
         const names = andList(plan.summary.from.map(d => this.names()[d] || 'another device'));
         const label = mode === 'join' ? `Before joining “${this.dir.name}”` : mode === 'take' ? `Before switching to “${this.dir.name}”` : `Before changes from ${names}`;
         const histOf = {};
-        for (const uid of Object.keys(pages)) histOf[uid] = (ledger.pages[uid] || {}).hist || null;
+        for (const uid of Object.keys(pages)) histOf[uid] = (ledger.mine[uid] || {}).hist || null;
         let res = {};
         try { res = await within(BoardHistory.beforeMerge(pages, label, histOf), Math.max(1000, Math.min(10000, deadline - Date.now()))) || {}; } catch (e) { res = {}; }
         for (const [uid, x] of Object.entries(res)) { if (x === 'failed') histFailed.add(uid); hist[uid] = x; }
@@ -5804,33 +5806,29 @@
       // Board history may have taken seconds: someone may be using the board now.
       if (this.gate() || this.busyChanged(r, plan)) {
         if (mode) { this.want('full', this.waits.quiet); return; }
-        const done = await this.commit(gen, r, { writes: (st.fixes || []).filter(w => w.key), ifRev: this.ifRevOf(r, st.fixes || []) }, ledger, sync, false, T);
+        const done = await this.commit(gen, r, fixes, ledger, sync, false, T);
         if (done && done !== 'again') { this.want('full', this.waits.quiet); return this.afterRound(this.afterOf(r, done), { send: true }); }
         return done;
       }
-      // The ledger after the merge, the peers' bookkeeping, the mode applied.
-      const putRecs = {};
-      for (const L of Object.values(st.ledger.pages)) putRecs[L.uid] = L;
-      for (const L of (plan.ledger && plan.ledger.put) || []) putRecs[L.uid] = L;
-      for (const [uid, x] of Object.entries(hist)) if (x === 'saved' && putRecs[uid]) putRecs[uid] = Object.assign({}, putRecs[uid], { hist: { at: T, local: false } });
-      const dels = new Set(((plan.ledger && plan.ledger.del) || []).map(k => String(k).replace(/^link:mine-/, '')));
+      // The ledger after the merge (plan.next), the peers' bookkeeping, the mode applied.
+      const next = { sync, mine: Object.assign({}, plan.next.mine) };
+      for (const [uid, x] of Object.entries(hist)) if (x === 'saved' && next.mine[uid]) next.mine[uid] = Object.assign({}, next.mine[uid], { hist: { at: T, local: false } });
       const merged = Object.assign({}, sync.peers);
+      for (const [d, p] of Object.entries((plan.sync && plan.sync.peers) || {})) merged[d] = Object.assign({}, merged[d], p);
       for (const d of Object.keys(peers)) {
         if (!files[d]) continue;
         const f = files[d];
         merged[d] = Object.assign({}, merged[d], { seq: f.seq, name: f.devName, file: f.name, at: f.at, left: f.left, missingSince: 0, folder: f.folder });
       }
-      const heldShown = !!(plan.summary.pages[S.board.uid] || {}).held;
+      const heldShown = plan.summary.leave === S.board.uid || !!(plan.summary.pages[S.board.uid] || {}).held;
       sync = Object.assign({}, sync, plan.sync || {}, { peers: merged, ctr: Math.max(st.ctr, (plan.sync || {}).ctr || 0) },
-        heldShown ? {} : { mode: null, first: false, lost: false, linking: null });
+        heldShown ? { mode, first: sync.first } : { mode: null, first: false, lost: false, linking: null });
       if (plan.sync && plan.sync.maxSeen) sync.maxSeen = Math.max(sync.maxSeen || 0, Math.min(plan.sync.maxSeen, now + LINK_AHEAD_MS));
       if (plan.summary.from.length && plan.writes.length) { const d = plan.summary.from[0]; sync.last = { dev: d, name: (files[d] || {}).devName || this.names()[d] || '', at: now }; }
-      const next = { sync, pages: Object.assign({}, st.ledger.pages) };
-      for (const [uid, L] of Object.entries(putRecs)) next.pages[uid] = L;
-      for (const uid of dels) delete next.pages[uid];
+      next.sync = sync;
       const seed = {};
       for (const w of plan.writes) seed[w.key] = r.by.get(w.key) || null;   // (the Undo's: the records as they were)
-      const done = await this.commit(gen, r, plan, next, sync, true, T, dels);
+      const done = await this.commit(gen, r, plan, next, sync, true, T);
       if (done === 'again' || !done) return done;
       for (const x of done.written) if (x.key.startsWith('media:')) { if (x.deleted) this.media.delete(x.key); else this.media.set(x.key, x); }
       if (this.waits.afterCommit === 'stop') return;   // (tests: as if 21Board closed here)
@@ -5845,7 +5843,7 @@
         try { MergeUI.shown(plan.summary, { at: now, from: plan.summary.from, ops: done.written.filter(x => Keys.parse(x.key).board === S.boardId).map(x => ({ key: x.key, rev: x.rev || 0, prev: seed[x.key] })), swaps: (plan.undo || {}).swaps || [] }); }
         catch (err) { console.warn('21Board: the merge message couldn’t be shown', err); }
       }
-      for (const [uid, L] of Object.entries(next.pages)) this.quiet[uid] = L.quiet || null;
+      for (const [uid, L] of Object.entries(next.mine)) this.quiet[uid] = L.quiet || null;
       if (mode) this.linked = this.linkedSay(mode, sync, st.ledger);
       if (clone) await this.fork();
       const after = await this.afterRound(this.afterOf(r, done), { urgent: !!mode || !!clone || this.urgent, mode });
@@ -5874,29 +5872,30 @@
       const keep = { v: 1, dev: me, ctr: sync.ctr || 0, maxSeen: sync.maxSeen || 0, seq: Math.max(sync.seq || 0, this.ownSeq(me)), writes: sync.writes || [], wseqs: sync.wseqs || [], peers: sync.peers || {},
         dir: this.dir, folderName: this.dir.name, first: true, linkAt: sync.linkAt || now, other: null, switched: false };
       const ids = all.map(f => f.folder).filter(Boolean).sort();
-      const fresh = (mode, extra) => ({ mode, ledger: { sync: null, pages: {} }, sync: Object.assign({}, keep, { mode, folder: ids[0] || randomId(12), file: null, sum: null, partsH: null, last: null, gcAt: 0, refs: {} }, extra) });
-      const pages = r.ledger.pages, has = Object.keys(pages).length > 0;
+      const fresh = (mode, extra) => { const s = Object.assign({}, keep, { mode, folder: ids[0] || randomId(12), file: null, sum: null, partsH: null, last: null, gcAt: 0, refs: {} }, extra); return { mode, ledger: Merge.ledger(s, []), sync: s }; };
+      const has = Object.keys(r.ledger.mine).length > 0;
       // The ledger lost (the database thrown away under an open board): rebuilt from this device's own file.
       if (sync.lost && files[me]) {
-        const own = files[me], rebuilt = typeof Merge.rebuild === 'function' ? Merge.rebuild(own.peer, { dev: me, now }) : { pages: {} };
-        const s = Object.assign({}, keep, { mode: 'carry', folder: own.folder, seq: Math.max(keep.seq, own.seq), writes: [own.write], wseqs: [own.seq], file: own.name, peers: Object.fromEntries(Object.entries(own.merged).map(([d, q]) => [d, { seq: num(q, 0) }])) });
-        return { mode: 'carry', ledger: { sync: s, pages: rebuilt.pages || {} }, sync: s };
+        const own = files[me], rebuilt = Merge.rebuild(own.peer, { dev: me, now });
+        const s = Object.assign({}, rebuilt.sync, keep, { mode: 'carry', folder: own.folder, ctr: Math.max(keep.ctr, num(rebuilt.sync && rebuilt.sync.ctr, 0)), seq: Math.max(keep.seq, own.seq), writes: [own.write], wseqs: [own.seq], file: own.name,
+          peers: Object.fromEntries(Object.entries(own.merged).map(([d, q]) => [d, { seq: num(q, 0) }])) });
+        return { mode: 'carry', ledger: Merge.ledger(s, Object.values(rebuilt.mine)), sync: s };
       }
       let same = false;
       try { same = !!sync.dir && typeof this.dir.isSameEntry === 'function' && await this.dir.isSameEntry(sync.dir); } catch (e) { /* not comparable */ }
       if (sync.folder && has && (same || ids.includes(sync.folder))) return { mode: 'carry', ledger: r.ledger, sync: Object.assign({}, sync, keep, { mode: 'carry', folder: sync.folder }) };
       if (!all.length) return fresh('seed', { folder: randomId(12) });
       // (Has this device only the untouched placeholder? Stamped with an empty ledger, nothing is in it.)
-      const trial = Merge.stamp({ sync: null, pages: {} }, this.local(r, now), { dev: me, ctr: 0, maxSeen: 0, first: true, now });
-      const placeholder = !Object.values(trial.ledger.pages).some(p => !p.gone);
+      const trial = Merge.stamp(Merge.ledger(null, []), this.local(r, now), { dev: me, ctr: 0, maxSeen: 0, first: true, now });
+      const placeholder = !Object.values(trial.ledger.mine).some(p => !p.gone);
       if (!has || sync.lost) return placeholder ? fresh('take') : fresh('join');
       return fresh('take', { other: sync.folderName || null, switched: true });
     },
     // What the set-up's last step says the first round did (see welcome).
     linkedSay(mode, sync, stamped) {
       const others = Object.values(this.good()).filter(f => f.dev !== this.dev()).sort((a, b) => b.at - a.at), top = others[0];
-      const mine = Object.keys(stamped.pages || {}).filter(uid => !stamped.pages[uid].gone);
-      const theirs = new Set(others.flatMap(f => Object.keys((f.peer && f.peer.pages) || {})));
+      const mine = Object.keys(stamped.mine || {}).filter(uid => !stamped.mine[uid].gone);
+      const theirs = new Set(others.flatMap(f => (f.uids || [])));
       return { mode, from: top ? top.devName || 'another device' : '', pages: top ? top.pages : 0, empty: !mine.length,
         added: mode === 'join' ? mine.filter(uid => !theirs.has(uid)).length : 0, other: sync.other || null, switched: !!sync.switched };
     },
@@ -5951,12 +5950,12 @@
       return !!(Inter.active || document.querySelector('#modal.open') || Menu.win || Pages.open || Pages.busy);
     },
     // Windows that keep this device's version this round (busy: being typed in, a show running), and pages held
-    // whole (their Undo is offered). {pages: Set<uid>, wins: Set<"uid wid">}.
+    // whole (their Undo is offered). {pages: Set<page uid>, wins: Set<"<page id>:<ikey>">}.
     holds(r, local) {
       const now = Date.now(), wins = new Set(), uidOf = new Map(), pages = new Set();
       for (const rec of r.recs) { const k = Keys.parse(rec.key); if (k.kind === 'board' && rec.value) uidOf.set(k.board, rec.value.uid); }
       for (const b of this.undoPages(r.settings, now)) if (uidOf.get(b)) pages.add(uidOf.get(b));
-      for (const [key, w] of this.busyWins(r, now)) wins.add(w);
+      for (const key of this.busyWins(r, now).keys()) { const k = Keys.parse(key); wins.add(`${k.board}:${k.ikey}`); }
       return { pages, wins, gate: false, photos: null };
     },
     busyWins(r, now) {
@@ -5997,19 +5996,20 @@
       };
     },
     ifRevOf(r, writes) { const out = {}; for (const w of writes) out[w.key] = ((r.by.get(w.key) || {}).rev) || 0; return out; },
-    // The photos the other devices' files name for pages here that show another one: each read from Photos (null:
-    // not here yet, or not good: that part is held, and the page keeps its photo). By the photo's key.
-    async photosFor(r, files, deadline) {
-      const out = {}, have = new Map(), now = Date.now();
+    // The pictures for pages whose winning photo is another device's (Merge.photosWanted), each read from Photos:
+    // {page uid: picture, or null while it isn't here or isn't good (that part is held, and the page keeps its photo)}.
+    async photosFor(r, state, local, files, deadline) {
+      const out = {}, have = new Map(), now = Date.now(), live = new Set();
       for (const rec of r.recs) { const k = Keys.parse(rec.key); if (k.kind === 'board' && rec.value) have.set(rec.value.uid, BoardHistory.photoKeyOf(validPhoto((r.by.get(Keys.media(k.board, 'background')) || {}).value) ? r.by.get(Keys.media(k.board, 'background')).value : null)); }
-      const live = new Set();
-      for (const f of files) for (const { uid, ref } of f.refs || []) {
+      const wanted = typeof Merge.photosWanted === 'function' ? Merge.photosWanted(state, local).filter(x => x.ref)
+        : files.flatMap(f => f.refs || []).filter(x => have.get(x.uid) !== BoardHistory.photoKeyOf(x.ref));
+      for (const { uid, ref } of wanted) {
         const key = BoardHistory.photoKeyOf(ref);
-        if (have.get(uid) === key || key in out) continue;
+        if (uid in out) continue;
         let m = null;
         if (Date.now() < deadline) { try { m = await within(this.photoFor(ref), Math.max(500, deadline - Date.now())); } catch (e) { m = null; } }
-        out[key] = m && BoardHistory.photoKeyOf(m) === key ? m : null;
-        if (!out[key]) {
+        out[uid] = m && BoardHistory.photoKeyOf(m) === key ? m : null;
+        if (!out[uid]) {
           live.add(ref.file);
           if (!this.waiting.has(ref.file)) this.waiting.set(ref.file, { since: now, uid, page: (Array.from(Pages.info.values()).find(i => i.uid === uid) || {}).name || '' });
         }
@@ -6029,9 +6029,9 @@
     // Returns {written, sync, ledger}, 'again' (a record changed: run the round again) or null (it failed).
     async commit(gen, r, plan, next, sync, full, T = Date.now(), dels = new Set()) {
       const writes = plan.writes || [], skey = Keys.link('sync');
-      const mine = Object.values(next.pages || {}), before = new Map(Object.entries(r.ledger.pages || {}));
+      const mine = Object.values(next.mine || {}), before = new Map(Object.entries(r.ledger.mine || {}));
       const puts = mine.filter(L => !sameJSON(before.get(L.uid), L));
-      for (const uid of before.keys()) if (!(next.pages || {})[uid]) dels.add(uid);
+      for (const uid of before.keys()) if (!(next.mine || {})[uid]) dels.add(uid);
       let stale = false, written = [], srec = null;
       try {
         srec = await Store.tx('readwrite', (s, set) => {
@@ -6046,7 +6046,7 @@
               const rec = { key: w.key, type: w.type, rev: Math.max(((cur[w.key] && cur[w.key].rev) || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value: w.value };
               s.put(rec); out.push(rec);
             }
-            if (full && typeof plan.settings === 'function') {
+            if (typeof plan.settings === 'function') {
               const st = cur[Keys.settings] || { key: Keys.settings, type: 'settings', rev: 0, value: {} }, patch = plan.settings(Object.assign({}, DEFAULT_SETTINGS, st.value || {}));
               if (patch && Object.keys(patch).some(k => !sameJSON(patch[k], (st.value || {})[k]))) {
                 const rec = { key: Keys.settings, type: 'settings', rev: Math.max((st.rev || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value: Object.assign({}, st.value, patch) };
@@ -6071,7 +6071,7 @@
       if (!srec) return null;
       Known.set(skey, srec.rev); this.sync = srec.value;
       Sync.announce([skey]);
-      return { written, sync: srec.value, ledger: { sync: srec.value, pages: next.pages } };
+      return { written, sync: srec.value, ledger: Merge.ledger(srec.value, Object.values(next.mine || {})) };
     },
     // After the transaction: this device's file is written if its parts changed (at most every LINK_GAP_MS, at once
     // in a send round, after an Undo and at set-up), then the daily tidying.
@@ -6093,7 +6093,7 @@
       const meta = { dev: me, folder: sync.folder, name: this.device().label, seq: sync.seq || 0, write: '', at: now, merged: this.mergedOf(sync, me), left: opts.left || null,
         refs: this.refsOf(ledger), skipped: r.skipped };
       const trial = Merge.encode(ledger, local, meta);
-      const empty = !Object.values(ledger.pages || {}).length;
+      const empty = !Object.values(ledger.mine || {}).length;
       if (empty && !own.exists) return;   // (only the untouched placeholder: nothing to write yet)
       if (trial.partsH === sync.partsH && own.ok && sync.file === name && !opts.left) { this.unstuck(); return; }
       // (Not before LINK_GAP_MS since the last write, or LINK_RETRY_MS since one failed. A clock set back counts as time passed.)
@@ -6163,7 +6163,7 @@
       const refs = {}, had = this.refsOf(ledger);
       for (const rec of r.recs) {
         const k = Keys.parse(rec.key);
-        if (k.kind !== 'board' || !rec.value || !(ledger.pages || {})[rec.value.uid]) continue;
+        if (k.kind !== 'board' || !rec.value || !(ledger.mine || {})[rec.value.uid]) continue;
         const m = (r.by.get(Keys.media(k.board, 'background')) || {}).value;
         if (!validPhoto(m)) continue;
         const key = BoardHistory.photoKeyOf(m), was = had[rec.value.uid];
@@ -6193,9 +6193,9 @@
         try { await this.dir.removeEntry(f.name); this.files.delete(f.name); } catch (e) { /* gone already */ }
       }
       if (now - (sync.gcAt || 0) >= 20 * 36e5 && !Array.from(this.files.values()).some(f => f.bad)) {
-        const before = r.ledger, after = Merge.gc(before, this.good(), Array.from(this.files.values()), { now, dev: this.dev(), gone: this.waits.gone, peerGone: LINK_PEER_GONE_MS, keep: this.waits.keep });
+        const before = r.ledger, after = Merge.gc(before, Object.values(this.good()).map(f => f.peer), Array.from(this.files.values()), { now, dev: this.dev(), gone: this.waits.gone, peerGone: LINK_PEER_GONE_MS, keep: this.waits.keep });
         const next = Object.assign({}, sync, { gcAt: now });
-        await this.commit(this.gen, r, { writes: [] }, { sync: next, pages: (after || before).pages }, next, false);
+        await this.commit(this.gen, r, { writes: [] }, { sync: next, mine: (after || before).mine }, next, false);
       }
       if (sync.file) await this.tidyOwn(sync.file, this.dev(), r.ledger);
       this.tidyPhotos();
@@ -7330,6 +7330,9 @@
       size: { scale: validScale(v.scale) || DEFAULT_SCALE, shape: v.shape === 'free' ? 'free' : '16:9' },
       photo: photo || null, photoLook: photo ? normalizePhotoSettings(look || {}) : null });
     return {
+      // The ledger in memory, as Part A has it: {sync, mine: {page uid: link:mine-<uid>}, base: as read}.
+      ledger(sync, mines) { const mine = {}; for (const m of mines || []) if (m && m.uid) mine[m.uid] = m; return { sync: Object.assign({ v: 1 }, sync || {}), mine, base: Object.assign({}, mine) }; },
+      patchSettings(stored, patch) { return Object.assign({}, stored, patch); },
       read(recs, o) {
         const st = o.settings || {}, gone = new Set((st.deletedBoards || []).map(Number)), hold = o.holdPages || new Set();
         const by = new Map(recs.map(r => [r.key, r])), pages = {}, byB = new Map();
@@ -7357,7 +7360,7 @@
       },
       stamp(ledger, local, o) {
         let ctr = o.ctr || 0, changed = false;
-        const pages = clone(ledger.pages || {}) || {}, dev = o.dev, now = o.now;
+        const pages = clone(ledger.mine || {}) || {}, dev = o.dev, now = o.now;
         const next = at => (ctr = Math.max(at || 0, ctr + 1, (o.maxSeen || 0) + 1));
         const bump = (P, part, hv, at, rev) => {
           const cur = P[part];
@@ -7390,7 +7393,7 @@
           L.gone = { exists: [dev, Object.assign({}, L.p.exists ? L.p.exists.v[1] : {}, { [dev]: next(now) }), now], cover: {}, seq: 0, seen: now };
           L.p = {}; L.w = {}; changed = true;
         }
-        return { ledger: { sync: ledger.sync, pages }, ctr, fixes: [], stamped: [], partsChanged: changed };
+        return { ledger: { sync: ledger.sync, mine: pages, base: ledger.base || {} }, ctr, fixes: [], stamped: 0, partsChanged: changed };
       },
       sumText(obj) { return JSON.stringify(Object.assign({}, obj, { sync: Object.assign({}, obj.sync, { sum: '' }) })); },
       decode(obj, o) {
@@ -7398,7 +7401,8 @@
         if (!s) return null;
         if (s.v !== 1) return typeof s.v === 'number' && s.v > 1 ? { peer: null, skipped: [], newer: true } : null;
         if (!/^[0-9a-z]{12}$/.test(s.dev || '')) return null;
-        const peer = { dev: s.dev, name: String(s.name || '').slice(0, 60), pages: {}, gone: { pages: {}, windows: {} } }, skipped = [];
+        const peer = { dev: s.dev, name: String(s.name || '').slice(0, 60), seq: num(s.seq, 0), at: num(s.at, 0), folder: String(s.folder || ''), left: s.left || null, merged: s.merged || {}, write: String(s.write || ''),
+          pages: {}, gone: { pages: {}, windows: {} } }, skipped = [];
         const list = [obj].concat(Array.isArray(obj.pages) ? obj.pages.filter(e => e && !e.main) : []);
         for (const e of list) {
           const b = e.board || {}, v = b.v || {};
@@ -7425,26 +7429,27 @@
           for (const W of Object.values(P.wins)) { const w = L.w[W.wid] = { ikey: '', p: {} }; for (const part of WIN_PARTS) if (W.v[part]) w.p[part] = { h: hOf(part, W.vals[part], P.vals.size.scale), v: W.v[part], rev: 0 }; }
         }
         for (const [uid, v] of Object.entries(peer.gone.pages)) pages[uid] = { uid, b: 0, p: {}, w: {}, hist: null, quiet: null, gone: { exists: v, cover: {}, seq: 0, seen: Date.now() }, wgone: {} };
-        return { pages };
+        return Merge.ledger({ dev: peer.dev, folder: peer.folder, seq: peer.seq, merged: peer.merged }, Object.values(pages));
       },
       join(ledger, peers, o) {
-        const pages = {}, at = (o.aheadMax || Infinity);
+        const pages = {}, at = o.now + (o.aheadMax || Infinity);
         let maxSeen = 0;
         const unit = uid => pages[uid] || (pages[uid] = { parts: {}, wins: {} });
         const take = (slots, part, v, src, val, scale) => {
           if (!v) return;
           const s = slots[part];
-          if (src !== 'local') maxSeen = Math.max(maxSeen, Math.min(at, ...Object.values(v[1])));
+          if (src !== 'local' && src !== 'self') maxSeen = Math.max(maxSeen, Math.min(at, ...Object.values(v[1])));
           if (!s || later(v, s.v) || (o.mode === 'join' && s.src === 'local' && src !== 'local')) slots[part] = { v, src, val, scale };
         };
-        for (const [uid, L] of Object.entries(ledger.pages || {})) {
+        for (const [uid, L] of Object.entries(ledger.mine || {})) {
           const U = unit(uid);
           if (L.gone) take(U.parts, 'exists', L.gone.exists, 'local', false);
           for (const [part, x] of Object.entries(L.p)) take(U.parts, part, x.v, 'local');
           for (const [wid, W] of Object.entries(L.w)) { const s = U.wins[wid] || (U.wins[wid] = {}); for (const [part, x] of Object.entries(W.p)) take(s, part, x.v, 'local'); }
           for (const [wid, g] of Object.entries(L.wgone || {})) take(U.wins[wid] || (U.wins[wid] = {}), 'exists', g.exists, 'local', false);
         }
-        for (const [src, peer] of Object.entries(peers)) {
+        for (const peer of peers) {
+          const src = peer.dev === o.dev ? 'self' : peer.dev;
           for (const P of Object.values(peer.pages)) {
             const U = unit(P.uid);
             U.from = U.from || P;
@@ -7458,7 +7463,15 @@
           for (const [uid, v] of Object.entries(peer.gone.pages)) take(unit(uid).parts, 'exists', v, src, false);
           for (const [k, v] of Object.entries(peer.gone.windows)) { const [uid, wid] = k.split(' '); const U = unit(uid); take(U.wins[wid] || (U.wins[wid] = {}), 'exists', v, src, false); }
         }
-        return { pages, maxSeen, mode: o.mode };
+        return { pages, maxSeen, mode: o.mode, peers: peers.filter(x => x.dev !== o.dev).map(x => ({ dev: x.dev, seq: x.seq, name: x.name, at: x.at, left: x.left })) };
+      },
+      photosWanted(state, local) {
+        const out = [];
+        for (const [uid, U] of Object.entries(state.pages)) {
+          const ph = U.parts.photo, L = local.pages[uid];
+          if (ph && ph.src !== 'local' && ph.val && (!L || hOf('photo', L.vals.photo) !== hOf('photo', ph.val))) out.push({ uid, key: hOf('photo', ph.val), ref: ph.val });
+        }
+        return out;
       },
       shown(state) {
         const pages = new Set(), wins = new Map();
@@ -7476,7 +7489,7 @@
         const pg = (uid, x) => (sum.pages[uid] = Object.assign(sum.pages[uid] || { b: x.b, name: x.name, changed: false, added: false, deleted: false, back: false, renamed: false, risky: false, undone: false, mineUndone: false, clashes: [], quiet: uid !== o.pageShown }, x));
         const vs = Merge.shown(state);
         for (const [uid, U] of Object.entries(state.pages)) {
-          const L = local.pages[uid], led = (ledger.pages || {})[uid], ex = U.parts.exists;
+          const L = local.pages[uid], led = (ledger.mine || {})[uid], ex = U.parts.exists;
           if ((holds.pages && holds.pages.has(uid)) || (L && L.held) || !ex) continue;
           const out = clone(led) || { uid, b: L ? L.b : 0, p: {}, w: {}, hist: null, quiet: null, gone: null, wgone: {} };
           let touched = false;
@@ -7484,7 +7497,7 @@
             if (!L) { if (ex.src !== 'local' && (!out.gone || later(ex.v, out.gone.exists))) { out.gone = { exists: ex.v, cover: {}, seq: 0, seen: T }; out.p = {}; out.w = {}; put.push(out); } continue; }
             if (ex.src === 'local') continue;
             from.add(ex.src);
-            if (uid === o.pageShown) { pg(uid, { b: L.b, name: L.vals.name, deleted: true, held: true }); continue; }
+            if (uid === o.pageShown) { sum.leave = uid; continue; }
             gone.push(L.b);
             out.gone = { exists: ex.v, cover: {}, seq: 0, seen: T }; out.p = {}; out.w = {}; put.push(out);
             pg(uid, { b: L.b, name: L.vals.name, deleted: true, changed: true });
@@ -7516,7 +7529,7 @@
           }
           const ph = U.parts.photo, lk = U.parts.photoLook;
           if (ph && ph.src !== 'local' && (!led || !led.p.photo || led.p.photo.h !== hOf('photo', ph.val))) {
-            const m = ph.val ? (o.photos || {})[hOf('photo', ph.val)] : null;
+            const m = ph.val ? (o.photos || {})[uid] : null;
             if (!ph.val || m) {
               w8(Keys.media(b, 'background'), 'media', ph.val ? m : undefined, o.rec(Keys.media(b, 'background')));
               w8(Keys.media(b, 'background-look'), 'media', ph.val ? (lk && lk.val) || normalizePhotoSettings({}) : undefined, o.rec(Keys.media(b, 'background-look')));
@@ -7532,8 +7545,8 @@
           // Its windows.
           const taken = new Set(L ? Object.values(L.wins).map(w => w.ikey) : []);
           for (const [wid, Sw] of Object.entries(U.wins)) {
-            if (holds.wins && holds.wins.has(uid + ' ' + wid)) continue;
             const LW = L && L.wins[wid], ledW = out.w[wid], e = Sw.exists;
+            if (LW && holds.wins && holds.wins.has(`${b}:${LW.ikey}`)) continue;
             if (!e) continue;
             if (e.val === false) {
               if (!LW || e.src === 'local') { if (e.src !== 'local' && !LW) { out.wgone = out.wgone || {}; out.wgone[wid] = { exists: e.v, cover: {}, seq: 0, seen: T }; delete out.w[wid]; } continue; }
@@ -7583,15 +7596,15 @@
         // This device's pages the board doesn't have, deleted here only (no tombstone: no other device has them): in
         // take, all of them; otherwise an untouched placeholder, once the board has a page of its own. The page shown
         // waits (the round shows another page first).
-        const others = Array.from(vs.pages).some(u => local.pages[u] ? !!(ledger.pages || {})[u] || !placeholder(local.pages[u]) : true);
+        const others = Array.from(vs.pages).some(u => local.pages[u] ? !!(ledger.mine || {})[u] || !placeholder(local.pages[u]) : true);
         for (const [uid, L] of Object.entries(local.pages)) {
-          if (L.held || (ledger.pages || {})[uid] || vs.pages.has(uid) && o.mode !== 'take') continue;
+          if (L.held || (ledger.mine || {})[uid] || vs.pages.has(uid) && o.mode !== 'take') continue;
           if (!(o.mode === 'take' && !vs.pages.has(uid)) && !(placeholder(L) && others)) continue;
-          if (uid === o.pageShown) { pg(uid, { b: L.b, name: L.vals.name, deleted: true, held: true }); continue; }
+          if (uid === o.pageShown) { sum.leave = uid; continue; }
           gone.push(L.b);
           pg(uid, { b: L.b, name: L.vals.name, deleted: true, changed: true });
         }
-        const fromList = Array.from(from).filter(d => !d.includes('#'));   // (not this device's own file, merged in a first round)
+        const fromList = Array.from(from).filter(d => d !== 'self' && !d.includes('#'));   // (not this device's own file, merged in a first round)
         sum.from = fromList;
         return {
           writes, ifRev,
@@ -7601,12 +7614,13 @@
             const boards = (Array.isArray(st.boards) ? st.boards : []).filter(b => !gone.includes(b)).concat(add);
             return { boards, deletedBoards: Array.from(goneNow), deletedAt: at, lastBoard: Math.max(+st.lastBoard || 1, ...add) };
           },
-          ledger: { put, del }, sync: { maxSeen: state.maxSeen }, summary: sum, undo: { swaps: [] }, gone, added: add
+          ledger: { put, del }, sync: { maxSeen: state.maxSeen }, summary: sum, undo: { swaps: [] }, gone, added: add,
+          next: { sync: ledger.sync, mine: Object.assign({}, ledger.mine, Object.fromEntries(put.map(x => [x.uid, x]))) }
         };
       },
       encode(ledger, local, m) {
         const pageOf = uid => {
-          const p = local.pages[uid], L = ledger.pages[uid], vv = P => Object.fromEntries(Object.entries(P).map(([k, x]) => [k, x.v]));
+          const p = local.pages[uid], L = ledger.mine[uid], vv = P => Object.fromEntries(Object.entries(P).map(([k, x]) => [k, x.v]));
           const v = p.vals, ref = v.photo ? (m.refs || {})[uid] : null;
           const instances = Object.values(p.wins).filter(w => L.w[w.wid]).map(w => Object.assign({ widgetId: w.widgetId, instance: w.n, wid: w.wid, open: w.vals.open, maximized: w.vals.rect.maximized,
             z: num(w.inst.z, 1), rect: w.vals.rect.rect, createdAt: w.inst.createdAt, config: w.vals.conf, data: w.vals.data }, w.vals.label ? { copyOf: w.vals.label } : {}, { v: vv(L.w[w.wid].p) }))
@@ -7616,9 +7630,9 @@
             board: { name: v.name, background: { color: v.look.color, pattern: v.look.pattern }, scale: v.size.scale, shape: v.size.shape, uid, v: vv(L.p) } },
             ref ? { media: { background: ref, look: v.photoLook } } : {}, { instances });
         };
-        const uids = local.order.filter(u => ledger.pages[u] && !ledger.pages[u].gone && local.pages[u]);
+        const uids = local.order.filter(u => ledger.mine[u] && !ledger.mine[u].gone && local.pages[u]);
         const goneP = [], goneW = [];
-        for (const [uid, L] of Object.entries(ledger.pages)) {
+        for (const [uid, L] of Object.entries(ledger.mine)) {
           if (L.gone) goneP.push({ uid, exists: L.gone.exists, cover: L.gone.cover || {} });
           for (const [wid, g] of Object.entries(L.wgone || {})) goneW.push({ page: uid, wid, exists: g.exists, cover: g.cover || {} });
         }
@@ -7633,7 +7647,7 @@
       gc(ledger) { return ledger; },
       includes(ledger, peer) {
         for (const P of Object.values(peer.pages)) {
-          const L = (ledger.pages || {})[P.uid];
+          const L = (ledger.mine || {})[P.uid];
           if (!L) return false;
           for (const part of PAGE_PARTS) if (P.v[part] && (!L.p[part] || later(P.v[part], L.p[part].v)) && !L.gone) return false;
           for (const W of Object.values(P.wins)) for (const part of WIN_PARTS) if (W.v[part] && !L.gone && !(L.wgone || {})[W.wid] && (!L.w[W.wid] || !L.w[W.wid].p[part] || later(W.v[part], L.w[W.wid].p[part].v))) return false;
