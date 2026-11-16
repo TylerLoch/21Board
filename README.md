@@ -305,7 +305,12 @@ your devices show up on the others by themselves, usually within a minute: Googl
   same import) keeps the folder's values, and this device's different content is kept beside it as a copy.
 - **A folder with another board** (*Change…* to another class's folder, or linking again after *Unlink* with
   another folder): this device switches to that board. Its own pages stay in the other folder, and under Board
-  history › Deleted pages for 30 days. Two boards are never combined.
+  history › Deleted pages for 30 days. Two boards are never combined. *Change…* first writes this device's file
+  in the folder it leaves once more, with what was changed here since its last write and saying that it left (as
+  *Unlink* does), so the devices still on that folder get that work and stop listing this one. When both
+  folders have the same name, the last step says "…the “21Board” folder this device used before". Switching
+  back within 20 seconds, while the Undo of the pages it left is still offered, waits until that is over, so
+  those pages come back with the work this device's file there holds.
 - **The same folder again** (after *Unlink*, or the folder renamed or moved): it carries on. Changes made here
   while unlinked are added to the board, and nothing is deleted anywhere because of how this device looked
   while it wasn't syncing.
@@ -314,7 +319,9 @@ your devices show up on the others by themselves, usually within a minute: Googl
 
 **Then it just syncs.** A few seconds after you change something (at most every 20 seconds while changes keep
 coming), and at once when 21Board is hidden or the lid is closed, this device writes its file; every 5 seconds
-while 21Board is in front it looks for the other devices' files and merges what changed:
+while 21Board is in front it looks for the other devices' files and merges what changed. A look that finds
+nothing new does nothing else: nothing is read, written or redrawn until a file changes (or something held
+back, such as a window being typed in, is due again):
 
 - **Part by part:** a page's name, background, size, place and photo, and each window's place, open or closed,
   content and settings are merged separately. A window moved on the laptop and typed in on the smartboard keeps
@@ -327,17 +334,22 @@ while 21Board is in front it looks for the other devices' files and merges what 
   on a device that hadn't seen the deletion yet brings it back, so no one's work disappears unseen.
 - **Never under your hands:** nothing moves while you drag, while a menu or dialog is open, or in a window
   that is being typed in; the change lands a moment later. A window menu left open for a minute closes.
-- **The page shown** says "Updated from the laptop." (with Undo); other pages change quietly and say so once
-  when you next go to them. **Undo** puts the page back on every device. While windows are locked, merges still
-  apply (Lock stops hands on this screen, not your own changes from another device), but without Undo.
+- **The page shown** says "Updated from the laptop." (with Undo; a new message at most once a minute, the one up
+  updated in place meanwhile); other pages change quietly and say so once when you next go to them, with when
+  they were changed there. **Undo** puts the page back on every device. While windows are locked, merges still
+  apply (Lock stops hands on this screen, not your own changes from another device), but without Undo: locking
+  takes away an Undo already shown. A clash where your text stayed in the window says so without an Undo (the
+  other device kept its own version as the copy). Several pages deleted at once on another device are one
+  message ("3 pages were deleted on the laptop.") with one Undo, which leaves you on the page you're on.
 - **Theme and accent color stay on each device** (a laptop in dark mode doesn't turn the smartboard dark), and
   so do the page shown, Lock, Stay awake, the clock and the letters. Settings says "This device only." beside
   them, and "This page, on all your devices." beside the page's own settings.
 
 **Settings → Board Sync** has three rows: **Synced through “21Board”** with how syncing is going ("Up to date.
 This device’s latest changes went to your folder at 9:42 AM. Shared with the smartboard (last change at 9:40
-AM).") and *Change…* and *Unlink*; **This device’s name** (shown on your other devices, and in its file's
-name); and **Keep history copies in the folder**.
+AM)."; "Syncing…" only while changes made here are on their way; the line is updated in place, so Settings
+isn't redrawn under a screen reader or a name being typed) and *Change…* and *Unlink*; **This device’s name**
+(shown on your other devices, and in its file's name); and **Keep history copies in the folder**.
 
 **What's in the folder:**
 
@@ -352,7 +364,9 @@ name); and **Keep history copies in the folder**.
 - **Board history:** about hourly copies of this device's own changes. **About this folder.txt** explains it all.
 - A file that is half-delivered, mixes old and new bytes, or is older than one already merged is never
   merged; the status says when one has been arriving for a while. A device whose file says it is from a newer
-  21Board shows **Update 21Board** on the board, and nothing from that file is merged until this device updates.
+  21Board shows **Update 21Board** on the board (its Update button appears once the update has downloaded), and
+  nothing from that file is merged until this device updates. A folder holding only such a file is not set up
+  with this device's board meanwhile, so two boards are never combined.
 
 **Unlink** (Settings → Board Sync) writes this device's file once more, saying it left, then stops; the board
 stays here, and linking the same folder again carries on. An unlinked device's file is deleted by the others
@@ -511,8 +525,9 @@ when a widget's content is suddenly emptied (e.g. a note cleared), and before ev
 Delete, Close all, changing or removing the photo, Import, going back, Erase everything). With Board Sync, it
 also keeps a version of a page before changes from your other devices change it, at most about one an hour
 while nothing is changed on that page here, and always before a merge deletes something or settles a clash.
-Pages deleted on any device are kept 30 days under *Deleted pages*, with *Bring back*. Identical content is
-never saved twice. *Save this version now* keeps a named version until you delete it.
+Pages deleted on any device are kept 30 days under *Deleted pages*, with *Bring back* (listed at once, while
+their Undo is still offered too), and the time they were deleted on the device that deleted them. Identical
+content is never saved twice. *Save this version now* keeps a named version until you delete it.
 
 **Off** (Settings → Advanced → *Save a version automatically*) stops the first three: nothing is saved while you work,
 when 21Board opens or when a note is cleared. One is still saved before each risky action, so Undo keeps

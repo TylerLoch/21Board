@@ -57,7 +57,11 @@ let rnd = () => Math.random();
 const pick = a => a[Math.floor(rnd() * a.length)];
 const token = v => (v && typeof v === 'object' ? (typeof v.text === 'string' ? v.text : Array.isArray(v.tasks) ? v.tasks[0] : null) : null);
 let LOG;
-const newLog = () => ({ typed: new Set(), gone: new Set(), dels: [], edits: [], sig: new Map(), writes: 0, fileKnow: new Map() });
+const newLog = () => ({ typed: new Set(), gone: new Set(), dels: [], edits: [], sig: new Map(), writes: 0, fileKnow: new Map(),
+  replaced: new Set(), repl: new Map(), spur: [], udels: [], published: new Set(), resetCopies: new Set() });
+// A name, color, place, setting or Timer state that a device changed while it showed it (folder|unit|mark): it must
+// never come back (oracle 7). Typed text is the "lost" oracle's.
+const LWW_MARK = /^(n|l|r|c|dur):/;
 // Every edit leaves a mark in its value (a unique text, theme, place, name or color), so the oracle can tell which
 // edits a device has had on screen: its own, and those a merge wrote here.
 const sigsOf = (key, v) => {
@@ -89,7 +93,7 @@ class Device {
     this.peers = new Map();      // dev -> decoded peer (the newest good file of each)
     this.decoded = new Map();    // text -> decode result
     this.busy = new Set(); this.stale = new Map(); this.staleBase = new Map(); this.heard = new Set(); this.know = new Set(); this.applied = new Set();
-    this.lastWid = 0; this.writes = 0; this.away = false;
+    this.lastWid = 0; this.writes = 0; this.away = false; this.blinded = new Set();
     this.put('settings', 'settings', { boards: [], deletedBoards: [], deletedAt: {}, lastBoard: 0, activeBoard: 1 });
     if (opts.pages !== false) this.placeholder();
   }
@@ -97,9 +101,18 @@ class Device {
   put(key, type, value, opts = {}) {
     const cur = this.recs.get(key);
     const rec = { key, type, rev: Math.max((cur ? cur.rev : 0) + 1, this.now()), updatedAt: this.now(), by: 't', value: clone(value) };
+    if (!opts.blind && opts.was === undefined) this.stale.delete(key);   // (another tab's later write: the stale tab's waiting change is dropped)
     // (a tab that skipped a merged write keeps its old base for that record until it shows one: see Writer)
-    rec.base = opts.base !== undefined ? opts.base : this.staleBase.has(key) ? this.staleBase.get(key) : cur ? cur.rev : 0;
+    // (a record made again after a Reset is based on the one deleted: Raced.gone)
+    rec.base = opts.base !== undefined ? opts.base : this.staleBase.has(key) ? this.staleBase.get(key) : cur ? cur.rev : (this.goneRev && this.goneRev.get(key)) || 0;
     if (opts.u) rec.u = 1;
+    // (what this change replaced, as the tab that made it showed it: opts.was for a stale tab; nothing for a stale tab
+    // writing back what it showed, or a rescale, which doesn't move windows)
+    const before = opts.was !== undefined ? opts.was : cur && cur.value;
+    if (LOG && !opts.quiet && !opts.blind && !opts.rescale && before) {
+      const now = new Set(sigsOf(key, value)), unit = this.unitsOf(key)[0];
+      for (const sg of sigsOf(key, before)) if (LWW_MARK.test(sg) && !now.has(sg)) LOG.replaced.add(`${this.folderName}|${unit}|${sg}`);
+    }
     this.recs.set(key, rec);
     if (LOG && !opts.quiet) for (const sg of sigsOf(key, value)) if (!LOG.sig.has(sg)) { const e = { id: LOG.edits.length + 1, units: this.unitsOf(key), by: this.dev, folder: this.folderName }; LOG.edits.push(e); LOG.sig.set(sg, e.id); this.applied.add(e.id); }
     return rec;
@@ -110,7 +123,7 @@ class Device {
     const r = this.recs.get(`inst:${b}:${p[2]}:${p[3]}`);
     return r ? [`${uid} ${r.value.wid}`, uid] : [uid];
   }
-  del(key) { this.recs.delete(key); }
+  del(key) { const r = this.recs.get(key); if (r) (this.goneRev || (this.goneRev = new Map())).set(key, r.rev); this.recs.delete(key); }
   get settings() { return this.recs.get('settings').value; }
   patch(p) { this.put('settings', 'settings', Merge.patchSettings(this.settings, p)); }
   // ---- the board's own actions (what Pages, openWidget, Notes... do)
@@ -157,6 +170,7 @@ class Device {
   type(b, ik, fresh) {
     const key = `data:${b}:${ik}`, old = this.shownValue(key);
     if (old && !fresh) LOG.gone.add(old);   // this device showed it, and replaced it
+    if (old && !fresh && !LOG.repl.has(old)) LOG.repl.set(old, { dev: this.dev, folder: this.folderName });
     this.put(key, 'data', this.value(ik.split(':')[0]));
     const iv = this.winVal(b, ik);   // (a copy whose content is changed is an ordinary window: Win.saveContent)
     if (iv.copyOf) { iv.copyOf = null; this.put(`inst:${b}:${ik}`, 'inst', iv, { quiet: true }); }
@@ -167,22 +181,30 @@ class Device {
   moveWin(b, ik) { const v = this.winVal(b, ik); v.rect = { x: Math.round(rnd() * 1500) + (++LOG.n % 1000) / 1000, y: Math.round(rnd() * 800), w: 300 + Math.round(rnd() * 300), h: 200 + Math.round(rnd() * 300) }; v.copyOf = null; this.put(`inst:${b}:${ik}`, 'inst', v); this.touchWin(b, ik); }
   confWin(b, ik) { this.put(`conf:${b}:${ik}`, 'conf', { theme: 'c' + (++LOG.n) }); this.touchWin(b, ik); }
   openWin(b, ik, open) { const v = this.winVal(b, ik); v.open = open; if (open) v.z = 999; this.put(`inst:${b}:${ik}`, 'inst', v, { quiet: true }); if (open) { this.markless(b, ik); this.touchWin(b, ik); } }
-  resetWin(b, ik) { const old = this.shownValue(`data:${b}:${ik}`); if (old) LOG.gone.add(old); this.del(`data:${b}:${ik}`); this.del(`conf:${b}:${ik}`); this.markless(b, ik); this.touchWin(b, ik); }
+  resetWin(b, ik) {
+    const old = this.shownValue(`data:${b}:${ik}`), iv = this.winVal(b, ik); if (old) LOG.gone.add(old);
+    if (iv.copyOf) LOG.resetCopies.add(iv.wid);   // (an empty copy is fine once it was emptied on purpose)
+    this.del(`data:${b}:${ik}`); this.del(`conf:${b}:${ik}`); this.markless(b, ik); this.touchWin(b, ik);
+  }
   delWin(b, ik) {
     const iv = this.winVal(b, ik), old = this.shownValue(`data:${b}:${ik}`);
     if (old) LOG.gone.add(old);
     for (const k of ['inst', 'data', 'conf']) this.del(`${k}:${b}:${ik}`);
     if (this.linked) this.deleted(`${this.pageUnit(b)} ${iv.wid}`);
+    else if (this.folderName) { const unit = `${this.pageUnit(b)} ${iv.wid}`; LOG.udels.push({ unit, by: this.dev, folder: this.folderName, elsewhere: this.elsewhere(unit) }); }
   }
   deleted(unit) {
     // (the edits of it this device never had on screen: any of them may bring it back)
     const unseen = LOG.edits.filter(e => e.units.includes(unit) && e.folder === this.folderName && !this.applied.has(e.id)).length;
-    const d = { id: LOG.dels.length + 1, unit, by: this.dev, folder: this.folderName, justified: false, unseen }; LOG.dels.push(d); this.know.add(d.id); return d;
+    const d = { id: LOG.dels.length + 1, unit, by: this.dev, folder: this.folderName, justified: false, unseen, elsewhere: this.elsewhere(unit) }; LOG.dels.push(d); this.know.add(d.id); return d;
   }
+  // Another device of this folder shows it too (its board is the folder's).
+  elsewhere(unit) { return (global.__devs || []).some(o => o !== this && o.folderName === this.folderName && o.shows(unit)); }
   delPage(b) {
     for (const r of this.insts(b)) { const t = this.shownValue(`data:${b}:${r.value.widgetId}:${r.value.n}`); if (t) LOG.gone.add(t); }
     this.patch({ gone: [['add', b, this.now()]], set: { boards: this.ids().filter(x => x !== b) } });
     if (this.linked) this.deleted(this.pageUnit(b)).page = b;
+    else if (this.folderName) LOG.udels.push({ unit: this.pageUnit(b), by: this.dev, folder: this.folderName, elsewhere: this.elsewhere(this.pageUnit(b)) });
     if (this.settings.activeBoard === b) this.patch({ set: { activeBoard: this.ids()[0] } });
   }
   undoDel(b) {   // the page's Undo (within its 20 s): as if it had never gone
@@ -208,7 +230,7 @@ class Device {
     else if (what === 'size') {
       const s0 = v.scale || 0.8, s1 = pick([0.6, 0.8, 1, 1.25]);
       if (s1 === s0) return;
-      for (const r of this.insts(b)) { const iv = clone(r.value); iv.rect = H.scaleRect(iv.rect, s0 / s1); this.put(r.key, 'inst', iv); }
+      for (const r of this.insts(b)) { const iv = clone(r.value); iv.rect = H.scaleRect(iv.rect, s0 / s1); this.put(r.key, 'inst', iv, { rescale: true }); }
       v.scale = s1; v.layout = H.canvasFor(s1);
     } else if (what === 'pos') {
       const ids = this.ids().filter(x => x !== b), at = Math.floor(rnd() * (ids.length + 1));
@@ -276,8 +298,11 @@ class Device {
   round(kind = 'full', opts = {}) {
     if (!this.linked || this.away) return;
     // (a stale tab's write lands before the next round: Writer writes at once, rounds wait for quiet)
-    const stale = this.stale; this.stale = new Map(); if (kind === 'full' || kind === 'send') this.blindSince = false;
-    void stale;
+    // (a stale tab's write lands before the next round, unless its writes are held up: then it may still miss the
+    // next merge too, and its change is based on the record before the first)
+    if (rnd() < 0.8) this.stale = new Map();
+    else for (const [k, v] of Array.from(this.stale)) if ((v.rounds = (v.rounds || 0) + 1) > 1) this.stale.delete(k);   // (one more round at most)
+    if (kind === 'full' || kind === 'send') { this.blindSince = false; this.blinded = new Set(); }
     this.purge();
     this.seenGone = new Set(this.settings.deletedBoards || []);
     const now = this.now();
@@ -294,12 +319,14 @@ class Device {
       for (const P of this.readLocal().pages.values()) for (const W2 of P.all) { const t = token(W2.parts.data.val); if (t) LOG.gone.add(t); }
     }
     let local = this.readLocal();
-    const st = Merge.stamp(L, local, { dev: this.dev, ctr: L.sync.ctr || 0, maxSeen: L.sync.maxSeen || 0, first: this.first, now, mode: this.mode });
+    const dropHere = new Set(L.sync.dropHere || []);
+    const st = Merge.stamp(L, local, { dev: this.dev, ctr: L.sync.ctr || 0, maxSeen: L.sync.maxSeen || 0, first: this.first, now, mode: this.mode, dropHere });
     const apply = (writes, set) => {
+      const unitWas = new Map(writes.map(w => [w.key, this.recs.has(w.key) ? this.unitsOf(w.key)[0] : null]));   // (before any of them: window numbers are used again)
       for (const w of writes) {
         if (w.del) { this.del(w.key); continue; }
         const was = this.recs.get(w.key);
-        if (was && w.type === 'data') this.stale.set(w.key, clone(was));   // what a stale tab still shows
+        if (was && /^(data|inst|board)$/.test(w.type) && !this.stale.has(w.key)) this.stale.set(w.key, Object.assign(clone(was), { unit: unitWas.get(w.key) }));   // what a stale tab still shows (and of which window or page)
         this.recs.set(w.key, { key: w.key, type: w.type, rev: w.rev, updatedAt: now, by: 'm', m: 1, value: clone(w.value) });
         this.staleBase.delete(w.key);
         for (const sg of sigsOf(w.key, w.value)) if (LOG.sig.has(sg)) this.applied.add(LOG.sig.get(sg));   // on screen here now
@@ -313,19 +340,29 @@ class Device {
       return;
     }
     const { peers, files } = this.look(st.ledger);
-    const state = Merge.join(st.ledger, peers, { dev: this.dev, now, mode: this.mode, first: this.first, aheadMax: DAY, isLater,
-      idle: d => { const p = (st.ledger.sync.peers || {})[d]; return !p || now - (p.changedAt || 0) >= IDLE; },
-      left: d => { const p = this.peers.get(d); return !!(p && p.left); } });
+    // (Link's noteFiles: a device whose file's seq went up changed just now, a device that left is idle)
+    const seen = st.ledger.sync.peers = Object.assign({}, st.ledger.sync.peers);
+    for (const [d, p] of this.peers) { const q = seen[d] = Object.assign({}, seen[d]); if (p.seq > (q.seen || 0)) { q.seen = p.seq; q.changedAt = now; } q.left = p.left; }
+    const idle = d => { const q = seen[d] || {}; return !!q.left || now - (q.changedAt || 0) >= IDLE; };
+    const state = Merge.join(st.ledger, peers, { dev: this.dev, now, mode: this.mode, first: this.first, aheadMax: DAY, isLater, idle, left: d => !!(seen[d] || {}).left });
     const photos = {};
     for (const w of Merge.photosWanted(state, local)) if (rnd() > (opts.photoMiss || 0) && PHOTOS.has(w.key)) photos[w.uid] = PHOTOS.get(w.key);
     const holds = { wins: Array.from(this.busy) };
     const names = d => { const p = this.peers.get(d); return p ? p.name : d === this.dev ? this.name : 'another device'; };
-    const plan = Merge.plan(state, local, st.ledger, { dev: this.dev, now, mode: this.mode, holds, isLater, isSingle, names, pageShown: this.pageShown(), photos, freeIds: this.nextB(),
-      zTop: () => 500, place: (uid, r) => ({ x: r.x + 32, y: r.y + 32, w: r.w, h: r.h }) });
+    // (as Link calls it: n is the stamp's counter, which plan must not reuse)
+    const plan = Merge.plan(state, local, st.ledger, { dev: this.dev, n: st.ctr, now, mode: this.mode, holds, isLater, isSingle, names, pageShown: this.pageShown(), photos, freeIds: this.nextB(),
+      zTop: () => 500, place: (uid, r) => ({ x: r.x + 32, y: r.y + 32, w: r.w, h: r.h }), dropHere });
+    // (oracle 7: a copy this device made of its own version: never of text it had itself typed over)
+    for (const sw of plan.undo.swaps) {
+      const b = (plan.summary.pages[sw.page] || {}).b;   // (by page: two pages can have windows with the same wid)
+      const iw = plan.writes.find(x => x.type === 'inst' && !x.del && x.key.startsWith(`inst:${b}:`) && x.value.wid === sw.copyWid), dw = iw && plan.writes.find(x => x.key === iw.key.replace(/^inst:/, 'data:'));
+      const t = dw && !dw.del && token(dw.value), rp = t && LOG.repl.get(t);
+      if (rp && rp.dev === this.dev && rp.folder === this.folderName) LOG.spur.push({ unit: `${sw.page} ${sw.wid}`, say: `${this.label} copied its own ${t}, which it had typed over` });
+    }
     // (the transaction)
     apply(plan.writes, plan.settings);
     if (plan.summary.leave) this.leave(plan.summary.leave);
-    const L2 = Merge.ledger(plan.sync, []);
+    const L2 = Merge.ledger(Object.assign({}, plan.sync, { dropHere: (plan.summary.dropHere || []).length ? plan.summary.dropHere : null }), []);
     L2.mine = Object.assign({}, plan.next.mine);
     let L3 = L2;
     if (opts.gc !== false) L3 = (opts.gcFn || Merge.gc)(L2, Array.from(this.peers.values()), files, { now, dev: this.dev });
@@ -360,16 +397,23 @@ class Device {
     for (const d of LOG.dels) {
       if (d.by !== this.dev || d.folder !== this.folderName || d.undone) continue;
       const [uid, wid] = d.unit.split(' '), M = this.link.mines.get(uid);
-      if (M && !M.gone && (!wid || M.w[wid])) d.undone = true;
+      if (M && !M.gone && (!wid || M.w[wid])) { d.undone = true; d.relink = true; }
     }
+    // (and with its own file missing too: its deletions that no other device has had are gone, as §3.4 accepts)
+    if (!this.view.has(this.fileName())) for (const x of LOG.dels) if (x.by === this.dev && !(global.__devs || []).some(o => o !== this && o.know.has(x.id))) { x.undone = true; x.relink = true; }
     this.link = null; this.lostLedger = true; this.restamp = true; this.lostAt = LOG.dels.length;
   }
   // A lost ledger's first round stamps everything shown here again: for the oracle, an edit of each of them.
   restamped(lost) {
     this.restamp = false;
-    if (lost) for (const d of LOG.dels.slice(this.lostAt || 0)) if (d.by === this.dev) d.undone = true;   // (deleted since: not stamped either)
+    if (lost) for (const d of LOG.dels.slice(this.lostAt || 0)) if (d.by === this.dev) { d.undone = true; d.relink = true; }   // (deleted since: not stamped either)
     for (const b of this.ids()) {
       const uid = this.pageUnit(b);
+      // (its values are stamped as new: one replaced elsewhere meanwhile may win again, as §3.4 accepts)
+      for (const key of [`board:${b}`].concat(this.insts(b).flatMap(r => ['inst', 'data', 'conf'].map(k => `${k}:${b}:${r.value.widgetId}:${r.value.n}`)))) {
+        const r = this.recs.get(key);
+        if (r) for (const sg of sigsOf(key, r.value)) LOG.replaced.delete(`${this.folderName}|${this.unitsOf(key)[0]}|${sg}`);
+      }
       const units = [uid].concat(this.insts(b).map(r => `${uid} ${r.value.wid}`));
       for (const u of units) { const e = { id: LOG.edits.length + 1, units: [u], by: this.dev, folder: this.folderName }; LOG.edits.push(e); this.applied.add(e.id); this.touch(u); }
     }
@@ -393,6 +437,7 @@ class Device {
     obj.sync.write = 'w' + this.link.sync.seq.toString(36);
     obj.sync.sum = crypto.createHash('sha256').update(Merge.sumText(obj)).digest('hex').slice(0, 32);
     const text = JSON.stringify(obj);
+    for (const pg of [obj].concat((obj.pages || []).filter(x => !x.main))) if (pg.board) { LOG.published.add(`${this.folderName}|${pg.board.uid}`); for (const i of pg.instances || []) LOG.published.add(`${this.folderName}|${pg.board.uid} ${i.wid}`); }
     this.view.set(name, text);
     this.folder.write(name, text);
     this.link.sync.partsH = partsH;
@@ -477,7 +522,8 @@ function run(seed, nDev, steps, variant = {}) {
     NOW += rnd() < (variant.jumps || 0.03) ? Math.floor(rnd() * 40) * DAY : Math.floor(rnd() * 30000);
     const d = pick(devs), r = rnd();
     if (d.away && rnd() < (variant.back || 0.15)) d.away = false;
-    if (variant.awayMore && !d.away && rnd() < variant.awayMore) { d.away = true; NOW += 90 * DAY; continue; }
+    if (d.away) continue;   // (closed: it does nothing until it is back)
+    if (variant.awayMore && rnd() < variant.awayMore) { d.away = true; NOW += 90 * DAY; continue; }
     if (r < 0.40) edit(d);
     else if (r < 0.62) roundOf(d);
     else if (r < 0.85) { const o = pick(devs.filter(x => x !== d)); d.deliver(o, rnd() < 0.15 ? 'old' : rnd() < 0.05 ? 'copy' : 'latest'); }
@@ -485,7 +531,11 @@ function run(seed, nDev, steps, variant = {}) {
     else if (r < 0.90) { const w = pick(d.liveWins()); if (w && d.linked) { d.busy.clear(); d.busy.add(`${w[0]}:${w[1]}`); } }
     else if (r < 0.91) d.busy.clear();
     else if (r < 0.925) blind(d);
-    else if (r < 0.93) { if (d.folder) { d.view.delete(d.fileName()); d.folder.remove(d.fileName()); } }   // its own file lost
+    else if (r < 0.93) {   // its own file lost
+      if (d.folder) { d.view.delete(d.fileName()); d.folder.remove(d.fileName()); }
+      // (with its ledger lost too, before a round rebuilt it: its deletions that no other device has had are gone, as §3.4 accepts)
+      if (d.folder && !d.link) for (const x of LOG.dels) if (x.by === d.dev && !devs.some(o => o !== d && o.know.has(x.id))) { x.undone = true; x.relink = true; }
+    }
     else if (r < 0.935) { if (d.link && d.linked && !d.blindSince) { d.loseLedger(); } }   // its ledger lost (not in the seconds a stale tab's write waits for a round: a rebuilt ledger can't tell it from an edit)
     else if (r < 0.945) { if (d.linked && d.folder === folder && !variant.noUnlink) d.unlink(); else if (!d.linked) { d.view = new Map(folder.files); d.linkTo(folder); } }
     else if (r < 0.95) { if (d.linked && d.folder === folder && !variant.noChange) { d.round('send'); d.linkTo(other); } else if (d.linked && d.folder === other) { d.round('send'); d.view = new Map(folder.files); d.linkTo(folder); } }
@@ -519,40 +569,77 @@ function run(seed, nDev, steps, variant = {}) {
   const back = LOG.dels.filter(d => d.folder === folder.name && !d.undone && !d.justified && !d.unseen && devs[0].shows(d.unit)).map(d => d.unit);
   const wins = devs[0].liveWins().length;
   const copies = devs[0].liveWins().filter(w => w[2].copyOf).length;
+  // (oracle 7: no needless copies, nothing reverted. A device never copies its own text that it had typed over; a copy is
+  // never empty unless it was emptied after it was made; a name, color, place, setting or Timer state that a device
+  // changed while it showed it never comes back)
+  // (a page or window deleted and back again has the values of the files that brought it back, as §4.3 says, and may
+  // bring back a version its own device had typed over, as a copy: clutter, never a loss)
+  const wasGone = new Set(LOG.dels.concat(LOG.udels).filter(d => d.folder === folder.name).map(d => d.unit));
+  const L0 = devs[0].ledger(), needless = LOG.spur.filter(x => !wasGone.has(x.unit) && !wasGone.has(x.unit.split(' ')[0])).map(x => x.say), reverted = [];
+  for (const P of devs[0].readLocal().pages.values()) {
+    if (P.gone || P.held || !L0.mine[P.uid] || L0.mine[P.uid].gone) continue;
+    const chk = (unit, kind, v) => { if (wasGone.has(unit) || wasGone.has(unit.split(' ')[0])) return; for (const sg of sigsOf(kind + ':0', v)) if (LOG.replaced.has(`${folder.name}|${unit}|${sg}`)) reverted.push(`${unit} ${sg}`); };
+    chk(P.uid, 'board', P.value);
+    for (const W2 of P.wins.values()) {
+      const u = `${P.uid} ${W2.wid}`;
+      chk(u, 'inst', W2.inst); chk(u, 'data', W2.parts.data.val); chk(u, 'conf', W2.parts.conf.val);
+      if (W2.parts.label.val && W2.parts.data.val === null && !W2.parts.data.skipped && !LOG.resetCopies.has(W2.wid)) needless.push(`${u} is an empty copy`);
+    }
+  }
+  // (oracle 8: a deletion made while unlinked, or that a lost ledger never stamped, deletes nothing that another device
+  // of the folder showed: the unit is still shown, unless a deletion made while linked removed it)
+  const pageOf = u => u.split(' ')[0];
+  const excused = u => LOG.dels.some(d => d.folder === folder.name && !d.undone && !d.relink && (d.unit === u || d.unit === pageOf(u)));
+  const unlinked = LOG.udels.concat(LOG.dels.filter(d => d.relink)).filter(d => d.folder === folder.name && d.elsewhere && LOG.published.has(`${folder.name}|${d.unit}`) && !devs[0].shows(d.unit) && !excused(d.unit)).map(d => d.unit);
   // (a device that lost its ledger and its file stamps its edits again under new counters: §3.4 accepts that this may
   // copy one of them twice, so oracle 4 holds only in runs where no ledger was lost)
-  return { converged, quiet, lost, twice: LOG.lostLedger ? [] : twice, twiceLost: LOG.lostLedger ? twice : [], pending, back, wins, copies, writes: LOG.writes, lostLedger: !!LOG.lostLedger };
+  return { converged, quiet, lost, twice: LOG.lostLedger ? [] : twice, twiceLost: LOG.lostLedger ? twice : [], pending, back, wins, copies, writes: LOG.writes, lostLedger: !!LOG.lostLedger,
+    needless, reverted, unlinked };
 }
 function edit(d) {
   if (d.away) return;
   const ids = d.ids(), b = pick(ids), r = rnd();
   if (!ids.length) return;
+  // (not this device's own page that a take is removing here: it was left at once, see Link's step 11)
+  if (d.link && (d.link.sync.dropHere || []).includes(d.pageUnit(b))) return;
   const wins = d.insts(b).map(x => `${x.value.widgetId}:${x.value.n}`);
   if (r < 0.06 || !wins.length) { if (r < 0.03 && ids.length < 6) d.addPage(); else if (wins.length < 8) d.addWindow(b, pick([W.NOTES, W.NOTES, W.NOTES, W.TASK, W.TIMER, W.SKETCH])); return; }
-  if (r < 0.08 && ids.length > 2) { d.delPage(b); return; }
+  // (not a window or page a stale tab has just written over a merge, before a round: see blinded. The teacher deleting it
+  // then may not have seen what the merge brought, and the deletion would cover it: a sub-second race the spec leaves.)
+  if (r < 0.08 && ids.length > 2) { if (!d.blinded.has(`${b}`)) d.delPage(b); return; }
   if (r < 0.085) { const gone = d.settings.deletedBoards || []; if (gone.length) d.undoDel(pick(gone)); return; }
   if (r < 0.11) { d.editPage(b, pick(['name', 'look', 'size', 'pos', 'name'])); return; }
   if (r < 0.12) { d.photo(b, rnd() < 0.7); return; }
   const ik = pick(wins), iv = d.winVal(b, ik);
-  if (r < 0.17) d.delWin(b, ik);
+  if (r < 0.17) { if (!d.blinded.has(`${b}:${ik}`)) d.delWin(b, ik); }
   else if (r < 0.30) d.moveWin(b, ik);
   else if (r < 0.34) d.confWin(b, ik);
   else if (r < 0.39) d.openWin(b, ik, !iv.open);
-  else if (r < 0.42) d.resetWin(b, ik);
+  else if (r < 0.42) { if (!d.blinded.has(`${b}:${ik}`)) d.resetWin(b, ik); }
   else if (iv.widgetId !== W.SKETCH) d.type(b, ik);
 }
-// A stale tab: a widget there saves what it showed before the merge (its old content), or a change made on top of it.
+// A stale tab: a widget there saves what it showed before the merge (its old content), or a change made on top of it;
+// or a window or the page, as that tab showed them (its old place, name or color), or moved or renamed there.
 function blind(d) {
   if (!d.linked || !d.link) return;   // (nor while its ledger is lost, before the round that rebuilds it: see loseLedger)
   const gone = new Set(d.settings.deletedBoards || []);   // (no tab shows a deleted page)
-  const keys = Array.from(d.stale.keys()).filter(k => d.recs.has(k) && d.recs.get(k).m && !gone.has(+k.split(':')[1]));
+  // (still as a merge wrote it, and still the window or page the stale tab shows: window numbers are used again)
+  const keys = Array.from(d.stale.keys()).filter(k => d.recs.has(k) && d.recs.get(k).m && !gone.has(+k.split(':')[1]) && d.unitsOf(k)[0] === d.stale.get(k).unit);
   if (!keys.length) return;
   const key = pick(keys), old = d.stale.get(key);
   d.stale.delete(key);
-  const [, b, wg, n] = key.split(':');
-  d.staleBase.set(key, old.rev); d.blindSince = true;
-  if (rnd() < 0.5) d.put(key, 'data', old.value, { base: old.rev });
-  else { const shown = token(old.value); if (shown) LOG.gone.add(shown); d.put(key, 'data', d.value(wg), { base: old.rev }); d.touchWin(+b, `${wg}:${n}`); }
+  const [kind, b, wg, n] = key.split(':');
+  d.staleBase.set(key, old.rev); d.blindSince = true; d.blinded.add(`${b}:${wg}:${n}`).add(`${b}`);
+  if (rnd() < 0.5) { d.put(key, kind, old.value, { base: old.rev, blind: true }); return; }
+  if (kind === 'data') { const shown = token(old.value); if (shown) LOG.gone.add(shown); d.put(key, 'data', d.value(wg), { base: old.rev, was: old.value }); d.touchWin(+b, `${wg}:${n}`); }
+  else if (kind === 'inst') {
+    const v = clone(old.value); v.rect = { x: Math.round(rnd() * 1500) + (++LOG.n % 1000) / 1000, y: Math.round(rnd() * 800), w: 300 + Math.round(rnd() * 300), h: 200 + Math.round(rnd() * 300) }; v.copyOf = null;
+    d.put(key, 'inst', v, { base: old.rev, was: old.value }); d.touchWin(+b, `${wg}:${n}`);
+  } else {
+    const v = clone(old.value);
+    if (rnd() < 0.5) v.name = 'n' + (++LOG.n); else v.background = { color: '#' + (0x100000 + (++LOG.n)).toString(16).slice(-6), pattern: 'none' };
+    d.put(key, 'board', v, { base: old.rev, was: old.value }); d.touch(v.uid);
+  }
 }
 
 // ---------------------------------------------------------------------
@@ -576,9 +663,11 @@ const winsOf = (d, uid) => d.insts(bOf(d, uid)).map(r => r.value);
 const dataOf = (d, uid, wid) => { const b = bOf(d, uid), i = d.insts(b).find(r => r.value.wid === wid); return i ? (d.recs.get(`data:${b}:${i.value.widgetId}:${i.value.n}`) || {}).value : undefined; };
 const ikOf = (d, uid, wid) => { const i = winsOf(d, uid).find(v => v.wid === wid); return i ? `${i.widgetId}:${i.n}` : null; };
 
+// (one case that fails or throws doesn't stop the others, nor the randomized run)
+function block(f) { try { f(); } catch (err) { ok(false, 'a case threw: ' + (err && err.stack || err).toString().split('\n').slice(0, 3).join(' | ')); } }
 function rules() {
   console.log('The rules table (§4.1)');
-  {
+  block(() => {
     const { A, B, b, ik, sync } = pair();
     const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
     ok(B.canon() === A.canon() && dataOf(B, uid, wid).text === dataOf(A, uid, wid).text, 'a board set up on one device arrives whole on the other (take: the placeholder goes)');
@@ -607,8 +696,8 @@ function rules() {
     A.type(b, cik); NOW += 2000; B.type(bOf(B, uid), ikOf(B, uid, copy.wid)); sync(4);
     const cc = winsOf(A, uid).find(x => x.copyOf && x.copyOf.wid === copy.wid);
     ok(cc && cc.wid.length === copy.wid.length, `a copy of a copy is no longer than the first copy (${cc && cc.wid})`);
-  }
-  {
+  });
+  block(() => {
     // the null rule: one side emptied, the other typed: the content wins
     const { A, B, b, ik, sync } = pair();
     const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
@@ -630,8 +719,8 @@ function rules() {
     const w0 = A.writes + B.writes;
     const iv = A.winVal(b, ik); iv.z = 55; A.put(`inst:${b}:${ik}`, 'inst', iv); sync(3);
     ok(A.writes + B.writes === w0 && B.winVal(bOf(B, uid), ikOf(B, uid, wid)).z !== 55, 'z alone isn’t a change: no write, and another device’s z is never taken');
-  }
-  {
+  });
+  block(() => {
     // timer: later wins (no copy), Board history summary says risky
     const { A, B, b, sync } = pair();
     const uid = A.boardOf(b).uid;
@@ -651,8 +740,8 @@ function rules() {
     const s1 = A.addWindow(b, W.SKETCH); NOW += 1000; B.addWindow(bOf(B, uid), W.SKETCH); sync(4);
     const open = winsOf(A, uid).filter(x => x.widgetId === W.SKETCH && x.open);
     ok(open.length === 1 && open[0].wid === A.winVal(b, s1).wid && same(winsOf(B, uid).filter(x => x.widgetId === W.SKETCH && x.open).map(x => x.wid), open.map(x => x.wid)), '21Sketch opened on both: one window open after the merge, the earliest');
-  }
-  {
+  });
+  block(() => {
     // edits beat deletions
     const { A, B, b, ik, sync } = pair();
     const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
@@ -676,8 +765,8 @@ function rules() {
     const b2 = A.ids()[0], k2 = A.addWindow(b2, W.NOTES), u2 = A.boardOf(b2).uid, w2 = A.winVal(b2, k2).wid; sync();
     A.delWin(b2, k2); B.delWin(bOf(B, u2), ikOf(B, u2, w2)); sync(4);
     ok(!winsOf(A, u2).some(x => x.wid === w2) && !winsOf(B, u2).some(x => x.wid === w2), 'the same window deleted on both: deleted');
-  }
-  {
+  });
+  block(() => {
     // pages: rename on one, color on the other; both renamed: the later, summary names it; order
     const { A, B, b, sync } = pair();
     const uid = A.boardOf(b).uid;
@@ -700,8 +789,8 @@ function rules() {
     // settings.boards is rebuilt from pos, never the reverse
     const st = clone(A.settings); st.boards = st.boards.slice().reverse(); A.put('settings', 'settings', st); sync(3);
     ok(same(order(A), order(B)), 'a stale settings.boards is put right from pos, and reorders nothing elsewhere');
-  }
-  {
+  });
+  block(() => {
     // n and maxSeen; the blind-write rule; skipped parts
     const { A, B, b, ik, sync } = pair();
     const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
@@ -727,8 +816,8 @@ function rules() {
     A.put(key, 'data', { text: 'stale-edit' }, { base: old2.rev }); LOG.typed.add('stale-edit'); sync(4);
     const toks = winsOf(A, uid).map(x => token(dataOf(A, uid, x.wid)));
     ok(toks.includes(tb2) && toks.includes('stale-edit'), 'a change from a stale tab after a merge: both kept (the merge’s and the tab’s)');
-  }
-  {
+  });
+  block(() => {
     // first rounds: no tombstones; join keeps the folder's values; take deletes nothing elsewhere
     const { A, B, b, ik, sync, folder } = pair();
     const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
@@ -753,7 +842,161 @@ function rules() {
     const D = new Device('cart2'); D.view = new Map(folder.files); D.folder = folder; D.linkTo(folder);
     D.round();   // (the placeholder was the page shown: it goes once another page is shown)
     ok(D.mode === null && bOf(D, uid) && !D.ids().some(x => D.boardOf(x).name === 'My Board'), 'take: a device with only the placeholder shows the folder’s board, and the placeholder goes');
-  }
+  });
+}
+
+// The review's cases (CORE-1…6, CORR-2, CORR-6), one block each.
+function review() {
+  console.log('\nThe review’s cases');
+  const ver = (by, vv, t) => [by, vv, t];
+  block(() => {
+    // CORE-1: the later device keeps typing after the other made the copy: no second copy of its own older text
+    const { A, B, b, ik, sync } = pair();
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+    A.type(b, ik); const a1 = token(dataOf(A, uid, wid)); NOW += 1000; A.round();
+    const bb = bOf(B, uid), bik = ikOf(B, uid, wid);
+    B.type(bb, bik); NOW += 1000; B.round();
+    A.deliver(B); A.round();                       // A, a1's author, keeps a1 as a copy
+    B.type(bb, bik); NOW += 1000; B.round();       // B keeps typing before A's file arrives
+    B.deliver(A); B.round(); A.deliver(B); A.round();
+    NOW += 3 * MIN; sync(4);
+    const copies = winsOf(A, uid).filter(w => w.copyOf);
+    ok(copies.length === 1 && token(dataOf(A, uid, copies[0].wid)) === a1 && !A.pending() && !B.pending() && A.canon() === B.canon(),
+      `a clash, then the device whose text stayed keeps typing: one copy, of the other device’s text (${copies.map(c => token(dataOf(A, uid, c.wid))).join(', ')})`);
+  });
+  for (const mode of ['same', 'new']) block(() => {
+    // CORE-2: a stale tab saves twice within the race guard: once over the merge, once over the round's put-back
+    const { A, B, b, ik, sync } = pair();
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid, key = `data:${b}:${ik}`;
+    B.type(bOf(B, uid), ikOf(B, uid, wid)); const tb = token(dataOf(B, uid, wid)); NOW += 1000;
+    B.round(); A.deliver(B); A.round();
+    const pre = A.stale.get(key);
+    const w1 = A.put(key, 'data', pre.value, { base: pre.rev, blind: true }); NOW += 1000;
+    A.round();
+    const v2 = mode === 'same' ? pre.value : { text: 'tab2-typing' };
+    if (mode !== 'same') LOG.typed.add('tab2-typing');
+    A.put(key, 'data', v2, { base: w1.rev, blind: true }); NOW += 1000;   // (Raced: based on its own first save)
+    A.round(); sync(4);
+    const shown = winsOf(A, uid).map(w => token(dataOf(A, uid, w.wid)));
+    ok(shown.includes(tb) && (mode === 'same' || shown.includes('tab2-typing')) && A.canon() === B.canon(),
+      `a stale tab saving ${mode === 'same' ? 'its old text' : 'new text'} twice, the second time over the round’s put-back: the other device’s text is kept (${shown.join(', ')})`);
+  });
+  block(() => {
+    // CORE-3: a stale tab's change to the page lands after two merges wrote its record (a rename, then a move)
+    const { A, B, b, sync } = pair();
+    const uid = A.boardOf(b).uid, key = `board:${b}`;
+    A.addPage('Other'); sync(3);
+    const before = clone(A.recs.get(key)), bb = bOf(B, uid);
+    B.editPage(bb, 'name'); const newName = B.boardOf(bb).name; NOW += 1000; B.round(); A.deliver(B); A.round();
+    const mv = clone(B.boardOf(bb)); mv.pos = (mv.pos || 0) + 50; B.put(`board:${bb}`, 'board', mv); B.patch({ order: B.orderNow() });   // (moved to the end)
+    NOW += 1000; B.round(); A.deliver(B); A.round();
+    ok(A.boardOf(b).pos === mv.pos && A.recs.get(key).rev > before.rev, '(two merges wrote the page’s record)');
+    const v = clone(before.value); v.background = { color: '#123456', pattern: 'none' };
+    A.put(key, 'board', v, { base: before.rev, blind: true }); NOW += 1000;
+    A.round(); sync(4);
+    ok(A.boardOf(b).name === newName && B.boardOf(bb).name === newName && A.boardOf(b).background.color === '#123456' && B.boardOf(bb).background.color === '#123456',
+      `a stale tab’s color change after two merges wrote the page: the other device’s rename stays, and the color applies (${A.boardOf(b).name}, ${A.boardOf(b).background.color})`);
+  });
+  block(() => {
+    // CORE-4: rescaling a page is never a move, however its places round
+    const A = new Device('scale', { pages: false }); A.addPage('Big'); const b = A.ids()[0];
+    A.folder = new Folder('Room 12'); A.view = new Map(); A.linkTo(A.folder);
+    const r2 = v => Math.round(v * 100) / 100;
+    for (let i = 0; i < 20; i++) { const k = A.addWindow(b, W.NOTES), iv = A.winVal(b, k); iv.rect = { x: r2(rnd() * 1800), y: r2(rnd() * 900), w: r2(200 + rnd() * 500), h: r2(150 + rnd() * 400) }; A.put(`inst:${b}:${k}`, 'inst', iv); }
+    const setScale = s1 => { const v = clone(A.boardOf(b)), s0 = v.scale || 0.8; for (const r of A.insts(b)) { const iv = clone(r.value); iv.rect = H.scaleRect(iv.rect, s0 / s1); A.put(r.key, 'inst', iv, { rescale: true }); } v.scale = s1; v.layout = H.canvasFor(s1); A.put(`board:${b}`, 'board', v); };
+    NOW += 1000; A.round();
+    const versions = () => { const M = A.link.mines.get(A.boardOf(b).uid); return JSON.stringify(Object.values(M.w).map(w => w.p.rect.v)); };
+    const v0 = versions(), scales = [0.5, 0.6, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+    let moved = 0;
+    for (let i = 0; i < 40; i++) { setScale(scales[i % scales.length]); if (i % 3) setScale(scales[(i * 7) % scales.length]); NOW += 1000; A.round(); if (versions() !== v0) moved++; }
+    ok(!moved, `a page rescaled 60 times, sometimes twice between rounds: no window gets a new place version (${moved} rounds did)`);
+  });
+  block(() => {
+    // CORE-4: a window moved on one device while the other rescales its page: the move lands
+    const { A, B, b, ik, sync } = pair();
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+    const set = (d, k, f) => { const v = clone(d.recs.get(k).value); f(v); d.put(k, k.split(':')[0], v, { rescale: true }); };
+    set(A, `board:${b}`, v => { v.scale = 0.67; v.layout = H.canvasFor(0.67); });
+    set(A, `inst:${b}:${ik}`, v => { v.rect = { x: 246.9, y: 467.9, w: 330.19, h: 243.92 }; });
+    NOW += 1000; sync(3);
+    const bb = bOf(B, uid), bik = ikOf(B, uid, wid);
+    B.put(`inst:${bb}:${bik}`, 'inst', Object.assign(B.winVal(bb, bik), { rect: { x: 600, y: 300, w: 330.19, h: 243.92 } })); NOW += 2000;
+    set(A, `board:${b}`, v => { v.scale = 1.75; v.layout = H.canvasFor(1.75); });
+    set(A, `inst:${b}:${ik}`, v => { v.rect = H.scaleRect(v.rect, 0.67 / 1.75); });
+    NOW += 1000; sync(4);
+    const ra = A.winVal(b, ik).rect, want = H.scaleRect({ x: 600, y: 300, w: 330.19, h: 243.92 }, 0.67 / 1.75);
+    ok(Math.abs(ra.x - want.x) < 1 && Math.abs(ra.y - want.y) < 1, `a page rescaled on one device while the other moved a window on it: the move lands (${ra.x}, ${ra.y})`);
+  });
+  block(() => {
+    // CORE-5: a version the plan makes (closing a second 21Sketch) never reuses a counter already published
+    const { A, B, b } = pair();
+    const uid = A.boardOf(b).uid;
+    B.addWindow(bOf(B, uid), W.SKETCH); NOW += 1000; B.round();
+    const k = A.addWindow(b, W.SKETCH), sk = A.winVal(b, k).wid; NOW += 1000; A.round();
+    const fileOf = d => JSON.parse(d.folder.files.get(d.fileName()));
+    const verOf = f => { for (const p of [f].concat((f.pages || []).filter(x => !x.main))) for (const i of p.instances || []) if (i.wid === sk) return { open: i.open, vv: JSON.stringify(i.v.open[1]) }; return null; };
+    const before = verOf(fileOf(A));
+    NOW += 1000; A.deliver(B); A.round();
+    const after = verOf(fileOf(A));
+    ok(before && after && before.open && !after.open && before.vv !== after.vv, `a window the plan closes gets a version of its own, not the stamp’s counter (${before && before.vv} → ${after && after.vv})`);
+  });
+  block(() => {
+    // CORE-6: includes() never calls a file included when merging it would bring a deleted page back
+    const uid = 'page00000001', wid = 'notes@100', a = 'aaaaaaaaaaaa';
+    const L = Merge.ledger({ v: 1, dev: a, peers: {} }, [{ uid, b: 1, p: {}, w: {}, hist: { at: 0, local: false }, quiet: null, wgone: {},
+      gone: { exists: ver(a, { [a]: 9 }, 9), cover: { name: { [a]: 1 }, look: { [a]: 1 }, size: { [a]: 1 }, pos: { [a]: 1 }, [`${wid}/exists`]: { [a]: 1 }, [`${wid}/rect`]: { [a]: 1 },
+        [`${wid}/open`]: { [a]: 1 }, [`${wid}/data`]: { [a]: 2 }, [`${wid}/conf`]: { [a]: 1 }, [`${wid}/label`]: { [a]: 1 } }, seq: 5, seen: 0 } }]);
+    const v1 = ver(a, { [a]: 1 }, 1);
+    const file = (pending, exists) => ({ format: '21board', formatVersion: 1, kind: 'full',
+      board: { name: 'P', background: { color: null, pattern: 'none' }, scale: 0.8, shape: '16:9', uid, pos: 1, v: { exists: v1, name: v1, look: v1, size: v1, pos: v1 } },
+      instances: [{ widgetId: 'notes', instance: 1, wid, open: true, maximized: false, z: 1, rect: { x: 1, y: 1, w: 300, h: 200 }, createdAt: 100, data: { text: 'a2' },
+        v: { exists: exists || v1, rect: v1, open: v1, data: ver(a, { [a]: 2 }, 2) }, pending: pending ? { data: [{ v: ver('cccccccccccc', { cccccccccccc: 3 }, 3), val: { text: 'only in this file' } }] } : undefined }],
+      sync: { v: 1, dev: 'bbbbbbbbbbbb', folder: 'f', name: 'the board', seq: 7, write: 'w', at: 7, merged: {}, gone: { pages: [], windows: [] }, left: { at: 1 }, sum: '' } });
+    const verdict = f => { const peer = Merge.decode(f, H).peer; return [Merge.shown(Merge.join(L, [peer], { dev: a, now: 10 })).pages.has(uid), Merge.includes(L, peer)]; };
+    const [back1, inc1] = verdict(file(true)), [back2, inc2] = verdict(file(false, ver('cccccccccccc', { cccccccccccc: 1 }, 1))), [back3, inc3] = verdict(file(false));
+    ok(back1 && !inc1 && back2 && !inc2 && !back3 && inc3, `a file with a pending version, or a window version, that the deletion didn’t cover isn’t “included”; one within it is (${[back1, inc1, back2, inc2, back3, inc3]})`);
+  });
+  block(() => {
+    // CORR-6: a device that never synced joins with an old copy of a page and a window the folder deleted
+    const { A, b, ik, sync, folder } = pair(1);
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+    const b2 = A.addPage('Week 0'), k2 = A.addWindow(b2, W.NOTES), uid2 = A.boardOf(b2).uid; sync();
+    const C = new Device('cart');   // (it imported both pages before they were deleted)
+    for (const [pb, pk] of [[b, ik], [b2, k2]]) {
+      const cb = C.nextB(); C.put(`board:${cb}`, 'board', Object.assign(clone(A.boardOf(pb)), { id: cb }));
+      C.put(`inst:${cb}:${pk}`, 'inst', clone(A.winVal(pb, pk))); C.put(`data:${cb}:${pk}`, 'data', clone(A.recs.get(`data:${pb}:${pk}`).value));
+    }
+    C.patch({ set: { boards: C.ids() } });
+    A.delWin(b, ik); NOW += 1000; A.round();
+    A.delPage(b2); NOW += UNDO + 5000; A.round(); A.round();
+    C.view = new Map(folder.files); C.folder = folder; C.linkTo(folder); C.round();
+    A.deliver(C); A.round(); NOW += 3 * MIN; C.deliver(A); C.round(); A.deliver(C); A.round();
+    ok(!winsOf(A, uid).some(w => w.wid === wid) && !bOf(A, uid2) && !winsOf(C, uid).some(w => w.wid === wid) && !bOf(C, uid2),
+      'a device joining with an old copy of a window and a page the folder deleted: both stay deleted, there and everywhere');
+    // (the same, with that page shown on the joining device, and its windows given new ids by the import)
+    const D = new Device('desk');
+    const db2 = D.nextB(); D.put(`board:${db2}`, 'board', Object.assign(clone(A.recs.get(`board:${b}`) ? { name: 'x' } : {}), { id: db2, name: 'Week 0', background: { color: null, pattern: 'none' }, scale: 0.8, shape: '16:9', uid: uid2, pos: 9 }));
+    const dk = 'notes:1'; D.put(`inst:${db2}:${dk}`, 'inst', { widgetId: 'notes', n: 1, open: true, rect: { x: 5, y: 5, w: 300, h: 200 }, z: 1, createdAt: 77, wid: 'notes@77' }); D.put(`data:${db2}:${dk}`, 'data', { text: 'old week 0' }); LOG.typed.add('old week 0'); LOG.gone.add('old week 0');
+    D.patch({ set: { boards: D.ids(), activeBoard: db2 } });
+    D.view = new Map(folder.files); D.folder = folder; D.linkTo(folder);
+    for (let i = 0; i < 3; i++) { D.round(); A.deliver(D); A.round(); C.deliver(D); C.round(); D.deliver(A); D.deliver(C); NOW += MIN; }
+    ok(!bOf(A, uid2) && !bOf(C, uid2) && !bOf(D, uid2), `and with that page shown on the joining device, its windows imported under new ids: still deleted everywhere (${[A, C, D].map(d => !!bOf(d, uid2))})`);
+  });
+  block(() => {
+    // CORR-2: Change… to a folder with a board: the second round stamps, and this device's old page goes there only
+    const { A, B, b, sync, folder } = pair();
+    const other = new Folder('Room 14'), D = new Device('desk', { pages: false });
+    D.addPage('Room 14 page'); const db = D.ids()[0]; D.addWindow(db, W.NOTES); D.patch({ set: { activeBoard: db } });
+    D.folder = other; D.view = new Map(); D.linkTo(other); D.round();
+    D.view = new Map(folder.files); D.linkTo(folder);   // (take: its page was shown; the round goes to another page first)
+    const ub = A.boardOf(b).uid, mb = bOf(D, ub);
+    const nk = D.addWindow(mb, W.NOTES), nt = token(dataOf(D, ub, D.winVal(mb, nk).wid));
+    const gone = winsOf(D, ub).find(w => w.wid !== D.winVal(mb, nk).wid); D.delWin(mb, `${gone.widgetId}:${gone.n}`);
+    NOW += 1000; D.round(); A.deliver(D); B.deliver(D); sync(3);
+    ok(token(dataOf(A, ub, D.winVal(mb, nk).wid)) === nt && !winsOf(A, ub).some(w => w.wid === gone.wid) && !A.ids().some(x => A.boardOf(x).name === 'Room 14 page'),
+      'Change… to a folder with a board, then a window opened and one deleted right away: both reach the other devices, and the old page doesn’t');
+    ok(!D.ids().some(x => D.boardOf(x).name === 'Room 14 page'), 'and the old page is gone here (it is still in the other folder)');
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -835,9 +1078,10 @@ function runRange({ from, to, nDev, steps, variant }) {
     out.runs++; out.copies += r.copies; out.wins += r.wins;
     if (r.lost.length) out.lost++;
     if (r.back.length || !r.converged) out.back++;
-    const why = [!r.converged && 'converged', !r.quiet && 'quiet', r.lost.length && 'lost', r.twice.length && 'twice', r.pending && 'pending', r.back.length && 'back'].filter(Boolean);
+    const why = [!r.converged && 'converged', !r.quiet && 'quiet', r.lost.length && 'lost', r.twice.length && 'twice', r.pending && 'pending', r.back.length && 'back',
+      r.needless.length && 'needless', r.reverted.length && 'reverted', r.unlinked.length && 'unlinked'].filter(Boolean);
     for (const w of why) out.bad[w] = (out.bad[w] || 0) + 1;
-    if (why.length && !out.first) out.first = `seed ${i}: ${why.join(', ')} ${JSON.stringify({ lost: r.lost.slice(0, 5), twice: r.twice.slice(0, 3), back: r.back.slice(0, 3) })}`;
+    if (why.length && !out.first) out.first = `seed ${i}: ${why.join(', ')} ${JSON.stringify({ lost: r.lost.slice(0, 5), twice: r.twice.slice(0, 3), back: r.back.slice(0, 3), needless: r.needless.slice(0, 2), reverted: r.reverted.slice(0, 3), unlinked: r.unlinked.slice(0, 3) })}`;
   }
   return out;
 }
@@ -930,6 +1174,7 @@ if (!isMainThread) parentPort.postMessage(runRange(workerData));
 else (async () => {
   const scale = +process.argv[2] || 1;
   rules();
+  review();
   files();
   await randomized(scale);
   await bites(scale);

@@ -187,6 +187,7 @@ fingerprints and versions of the board's parts, never the board's values:
   folder: "f7q2m9x0c1d4", folderName: "21Board",   // the folder's id (made by the first device, taken by the others: the smaller wins), and its name
   dir: <FileSystemDirectoryHandle>,                // where the browser can store one (linking the same folder again carries on)
   mode: null, first: false, linkAt,                // a folder just linked: 'wait' until the first look decides 'seed' | 'join' | 'take' | 'carry'; first: that round deletes nothing anywhere
+  dropHere: null | ["<page uid>"],                 // after a take's round: this device's own page that was shown then, removed here (only) once another page is shown
   ctr, maxSeen,                                    // the last counter given out; the highest merged from other devices (at most a day ahead of this clock)
   seq, writes: ["q7c2m0x1", …], wseqs: [ … ],      // the last write's sequence number (never goes back), the last 20 write ids and their seqs, noted before each write
   file, sum, partsH, wroteAt, refs: { "<page uid>": { file, w, h, bytes, name, addedAt, key } },   // the last file written, its checksum, a fingerprint of its parts, when, and the photos it names
@@ -197,14 +198,20 @@ fingerprints and versions of the board's parts, never the board's values:
 
 // link:mine-<page uid>: the page's parts and its windows' parts, each { h: fingerprint, v: [by, {dev: n}, t], rev }
 { uid, b, p: { exists, name, look, size, pos, photo, photoLook }, w: { "<wid>": { ikey, p: { exists, rect, open, data, conf, label } } },
-  hist: { at, local }, quiet: { from: ["<dev>"], at } | null, gone: null | { exists, cover, seq, seen }, wgone: { "<wid>": { exists, cover, seq, seen } } }
+  hist: { at, local }, quiet: { from: ["<dev>"], at, t } | null, gone: null | { exists, cover, seq, seen }, wgone: { "<wid>": { exists, cover, seq, seen } } }
+// (quiet.at: when a merge changed the page here, for "shown since"; t: when the newest of those changes was made, which the note says)
 ```
 
 A part's entry may also hold `pending` (content versions kept beside the main one, with their values, until a copy
 is made), `applied`, `prevH`, `prevV` and `val` (what a merge wrote to it, the fingerprint and version it had before,
-and the value written: kept until a change based on that write is written, see "Keeping several open copies in
-sync"), `lh` (a place written at this page's scale from another's: not a move) and, for the photo, `ref` and `put`
-(its file in `Photos/`) or `hold` (a photo not here yet). `keep` (on a page) is a fingerprint of the page as shown
+and the value written: kept until a change based on that write is written, and kept by a later merge that writes
+another part of the same record, see "Keeping several open copies in sync"), `prevHs` (when merges wrote the part
+again before any change here was based on them: the fingerprints it had in between, all of them old values, while
+`prevH`/`prevV` stay the first), `prevSc` (a place a merge converted to a new page scale: the scale it was at, so
+the old place written back by a tab that hadn't seen it is known by its fingerprint there), `lh` (a place written
+at this page's scale from another's, or rescaled here: not a move), `s1` (a place's version at scale 1, unrounded:
+a place rescaled here that rounds to another whole pixel is the same place if it is within half a pixel of it) and,
+for the photo, `ref` and `put` (its file in `Photos/`) or `hold` (a photo not here yet). `keep` (on a page) is a fingerprint of the page as shown
 here when it was deleted elsewhere while shown here and this device had no entry of its own for it: only an edit
 made here brings it back. A tombstone's `seq` is the first write of this device's file that carried it, and `seen`
 when this device first held it.
@@ -212,6 +219,17 @@ when this device first held it.
 The parts, versions and rules belong to the merge (`board.js` section 13d, the region `Board Sync merge`). A lost
 ledger (the browser threw the database away) is rebuilt from this device's own file in the folder; with no file
 there, the folder's board is joined as on a first set-up.
+
+Comparing versions: one is older than another when the other's vector includes it, or when the other includes a
+later change to that part by the device that made it (a device's changes to a part follow one another, each made on
+what it showed then; one that lost was kept as a copy by that device at once). So a version that joined other
+devices' vectors in (made when a copy was kept, content emptied on one side, or equal values met) is replaced by
+its device's next change, which is no clash with that device's own older value; its vector joins that change's.
+A deletion covers a version the same way (its device's change at that counter, or a later one, was seen). A
+labelled copy's versions are the copy's own: made by `cp<hash of the copy's wid>` (14 characters, so no device's,
+which has 12), with the copied version's counter and time, the same on every device that makes it. In a first
+round (linking again, a rebuilt ledger), a page or window missing here is taken from the other devices' files,
+not from this device's own, whose older version of it mustn't come back as a clash.
 
 **Deletions are forgotten** (`gc`, at most once a day, when every device file in the folder could be read): a
 tombstone goes once this device has held it 30 days and every device it has seen in the folder shows it (its file
@@ -450,7 +468,7 @@ at the board finds both and keeps both. Each record a tab writes also says what 
 
 | Field | Meaning |
 | --- | --- |
-| `base` | the record's `rev` this tab knew when the change was queued (the earliest, when several coalesce). Missing: written around the queue (Import, a deleted page's purge), not tracked. Within 1.5 s of showing a merged write of a record it already had (timed on a clock that never goes back), a widget's save gets the revision before the merge; a tab that didn't show one (it had a change waiting) gives every save of that record that revision until it shows a merged write of it. Either way the save counts as made without the merge. |
+| `base` | the record's `rev` this tab knew when the change was queued (the earliest, when several coalesce). Missing: written around the queue (Import, a deleted page's purge), not tracked. Within 1.5 s of showing a merged write of a record it already had (timed on a clock that never goes back), a widget's save gets the revision before the merge; a tab that didn't show one (it had a change waiting) gives every save of that record that revision until it shows a merged write of it. Either way the save counts as made without the merge. A record made again after this tab saw it deleted (a Reset, then typing) is based on the revision deleted, not on "absent", which would look like a save made without a merge. |
 | `m` | `1`: written by a Board Sync merge, never by a tab's own change. |
 | `u` | `1`: written by the Undo of a merge, so that other devices can say "The laptop undid …". |
 
