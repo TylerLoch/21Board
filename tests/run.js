@@ -2447,6 +2447,7 @@ const SUITES = [
     errors.length = 0;
     const cctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
     const cp = await cctx.newPage(); watch(cp, 'corners');
+    await cp.clock.install({ time: new Date('2026-11-12T09:41:00') });   // (the clock's width depends on the time: see Clock in the corner)
     await cp.goto(BASE); await boardUp(cp);
     await cp.evaluate(() => window.__board21.openWidget('name-picker'));
     await eventually(async () => ((await conf(cp)) || {}).style === 'wheel');
@@ -4385,6 +4386,8 @@ const SUITES = [
     const lastB = await said(B.p);
     ok(lastB.includes('This device now syncs through your “21Board” folder. The board from the laptop (1 page) is here now. ' + ENDING) && !await B.p.locator('#modal.open input').count(),
       `the smartboard says the board from the laptop is here (“${lastB}”)`);
+    const setupToasts = await B.p.locator('#toasts .toast span').allInnerTexts();
+    ok(!setupToasts.some(t => /added on|is here|Updated from/.test(t)), `and no merge message besides (${setupToasts.join(' | ') || 'none'})`);
     await B.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
     ok(await eventually(async () => await B.p.evaluate(() => window.__board21.state.board.name) === 'Morning' && (await notesText(B.p)).includes('Spelling words') && Object.keys(await shownBoard(B.p)).length === 1, 10000),
       'it shows the laptop’s page, and its own untouched first page is gone');
@@ -4395,6 +4398,15 @@ const SUITES = [
     await openSettings(A.p);
     ok(/Shared with the smartboard \(last change at \d/.test(await A.p.locator('#set-link-status').innerText()), `the laptop’s status names the smartboard (“${await A.p.locator('#set-link-status').innerText()}”)`);
     await A.p.keyboard.press('Escape');
+    // A fresh device set up before the laptop's file arrived: the board that arrives later is taken, and said.
+    const Late = await dev('the reading corner');
+    await openSettings(Late.p); await Late.p.click('#settings [data-act="link-setup"]'); await Late.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
+    await Late.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
+    await Late.p.locator('#modal.open .btn', { hasText: 'Done' }).click(); await Late.p.keyboard.press('Escape');
+    await hear(Late.p); await deliver(A.p, Late.p); await syncNow(Late.p);
+    ok(await eventually(async () => { await syncNow(Late.p); return await Late.p.evaluate(() => window.__board21.state.board.name) === 'Morning' && Object.keys(await shownBoard(Late.p)).length === 1; }, 10000)
+      && (await heard(Late.p)).includes('The board from the laptop is here.'), `the board that arrives after set-up is taken: “The board from the laptop is here.” (${(await heard(Late.p)).join(' | ')})`);
+    await Late.c.close();
     // Two devices both called "a Chromebook": the last step asks for this one's name.
     const D = await dev('a Chromebook'), F = await dev('a Chromebook');
     await addNote(D.p, 'Twins');
@@ -6990,7 +7002,7 @@ const SUITES = [
   }],
   ['Dialogs: a name, the keyboard stays inside and goes back where it was', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-    await ctx.addInitScript(DRIVE_PICK);   // (for a text field in Settings: Board Sync → Folder settings → This device’s name)
+    await ctx.addInitScript(DRIVE_PICK);   // (for a text field in Settings: Board Sync → This device’s name)
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE + ''); await boardUp(page);
@@ -8207,7 +8219,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
 
   ['Lock windows in place: hold ▦ to unlock, every tab, reload, kiosk', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, hasTouch: true });
-    await ctx.addInitScript(DRIVE_PICK);   // (a text box in Settings: Board Sync → Folder settings → This device’s name)
+    await ctx.addInitScript(DRIVE_PICK);   // (a text box in Settings: Board Sync → This device’s name)
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page);
@@ -8600,9 +8612,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(chicago === 'Thu, Nov 12 9:41AM' && newYork === 'Thu, Nov 12 10:42AM', `a new time zone shows from the next minute (Chicago ${chicago}, then New York ${newYork})`);
     await ctx.close();
 
-    // Never in the way.
+    // Never in the way. (At 9:41: what fits depends on the time's width, and "12:59 PM" is wider than "9:41 AM".)
     ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     page = await ctx.newPage(); page.on('pageerror', e => { if (!/boom from the widget/.test(e.message)) errors.push(e.message); });   // (the dev window's test widget throws on purpose)
+    await page.clock.install({ time: new Date('2026-11-12T09:41:00') });
     await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
     const clear = () => page.evaluate(() => {
       const c = document.querySelector('.corner-clock');
@@ -9284,6 +9297,14 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await round('locked', false); await settle(500);
     ok(await page.locator('#toasts button:has-text("Undo")').count() === 0, 'while windows are locked, the toast has no Undo');
     await page.evaluate(() => { window.__board21.state.settings.locked = false; });
+    // One merge toast at a time: a page deleted on another device is said, and the next round's message replaces it.
+    await page.evaluate(() => { window.__board21.mergeUI.drop(); document.querySelector('#toasts').innerHTML = ''; });
+    await page.evaluate(() => window.__board21.mergeUI.shown({ from: ['bbbbbbbbbbbb'], pages: { gone: { b: 999, name: 'Science', changed: false, deleted: true, here: false, from: ['bbbbbbbbbbbb'], clashes: [] } } }, { ops: [], swaps: [] }));
+    await settle(300);
+    ok((await toasts()).includes('“Science” was deleted on the smartboard.'), `another page deleted: said, with Undo (${(await toasts()).join(' | ')})`);
+    await round('next', false); await settle(500);
+    ok((await toasts()).join(' | ') === 'Updated from the smartboard.', `the next round’s message takes its place: one merge toast at a time (${(await toasts()).join(' | ')})`);
+    await page.evaluate(() => { window.__board21.mergeUI.drop(); document.querySelector('#toasts').innerHTML = ''; });
     // a page that changed quietly says so once when it is shown
     await page.evaluate(b2 => { const L = window.__board21.link, quiet = window.__board21.pages.info.get(b2).uid, said = new Set(); L.quietNote = uid => (uid !== quiet || said.has(uid) ? null : (said.add(uid), { from: ['bbbbbbbbbbbb'], at: Date.now() - 120e3 })); }, b2);
     await page.evaluate(b2 => window.__board21.pages.go(b2), b2); await settle(1200);

@@ -312,7 +312,7 @@ your devices show up on the others by themselves, usually within a minute: Googl
 - **Google Drive still bringing the folder or its files:** linked anyway; nothing is merged or written until
   the files can be read (up to 10 minutes), so a slow Drive can never combine two boards.
 
-**Then it just syncs.** A few seconds after you change something (at least every 15 seconds while changes keep
+**Then it just syncs.** A few seconds after you change something (at most every 20 seconds while changes keep
 coming), and at once when 21Board is hidden or the lid is closed, this device writes its file; every 5 seconds
 while 21Board is in front it looks for the other devices' files and merges what changed:
 

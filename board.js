@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.16-3';
-  const BOARD_BUILD = '05aedc12';
+  const BOARD_BUILD = 'e49d919d';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -5357,6 +5357,7 @@
     waiting: new Map(), // photo file -> {since, uid, page}: a photo a device file names that isn't here, or isn't good
     histWait: new Map(),   // page uid -> {name, from}: its changes wait until Board history can save a version
     linked: null,       // what the first round after linking did (see welcome)
+    welcoming: false,   // set-up's last step will say what the first round did: that round shows no merge message
     prints: new Map(),  // photo data URL -> {file, size, w, h}: its name in Photos, worked out once (see photoName)
     got: new Map(),     // photo file -> the picture read from Photos (the last few)
     badPhotos: new Map(),   // photo file -> {size, lastModified, at}: found not good as it is
@@ -5658,7 +5659,7 @@
       this.perm = 'granted';
       this.device();
       await this.locked(() => this.noteSync(s => Object.assign(s, { dev: this.dev(), mode: 'wait', first: true, linkAt: Date.now(), linking: h.name, left: null })));
-      this.linked = null;
+      this.linked = null; this.welcoming = true;
       await this.saveFolder(h);
       this.saveState({ tidy: {} });   // (what was found unused in Photos was another folder's)
       let readOnly = false, had = false;   // had: the note about the files was there (another device set this folder up)
@@ -5671,6 +5672,7 @@
       if (!this.dir) return;   // (unlinked meanwhile)
       for (let i = 0; i < 300 && this.running; i++) await sleep(100);
       const say = [`This device now syncs through your “${this.dir.name}” folder.`], L = this.linked || {};
+      this.welcoming = false;   // (a board that arrives after this is said with a toast)
       const pages = n => `${n} page${n === 1 ? '' : 's'}`;
       const board = L.from ? `The board from ${L.from}${L.pages ? ` (${pages(L.pages)})` : ''} is here now.` : '';
       if (this.problem() === 'missing') say.push('Google Drive is still bringing the folder to this device. 21Board keeps looking.');
@@ -6044,11 +6046,7 @@
       for (const [uid, x] of Object.entries(hist)) if (x === 'saved' && next.mine[uid]) next.mine[uid] = Object.assign({}, next.mine[uid], { hist: { at: T, local: false } });
       const merged = Object.assign({}, sync.peers);
       for (const [d, p] of Object.entries((plan.sync && plan.sync.peers) || {})) merged[d] = Object.assign({}, merged[d], p);
-      for (const d of Object.keys(peers)) {
-        if (!files[d]) continue;
-        const f = files[d];
-        merged[d] = Object.assign({}, merged[d], { seq: f.seq, name: f.devName, file: f.name, at: f.at, left: f.left, missingSince: 0, folder: f.folder });
-      }
+      for (const f of merging) merged[f.dev] = Object.assign({}, merged[f.dev], { seq: f.seq, name: f.devName, file: f.name, at: f.at, left: f.left, missingSince: 0, folder: f.folder });
       const heldShown = plan.summary.leave === S.board.uid || !!(plan.summary.pages[S.board.uid] || {}).held;
       sync = Object.assign({}, sync, plan.sync || {}, { peers: merged, ctr: Math.max(st.ctr, (plan.sync || {}).ctr || 0) },
         heldShown ? { mode, first: sync.first } : { mode: null, first: false, lost: false, linking: null });
@@ -6070,11 +6068,14 @@
         if (gone.length) Pages.goneByMerge(gone);
         const back = Object.values(plan.summary.pages).filter(p => p.back).map(p => p.b);
         if (back.length) Pages.backByMerge(back);
-        try { MergeUI.shown(plan.summary, { at: now, from: plan.summary.from, ops: done.written.filter(x => Keys.parse(x.key).board === S.boardId).map(x => ({ key: x.key, rev: x.rev || 0, prev: seed[x.key] })), swaps: plan.undo.swaps, skip: plan.undo.skip }); }
-        catch (err) { console.warn('21Board: the merge message couldn’t be shown', err); }
+        // (Not the round that applies set-up's mode: its last step says what it did.)
+        if (!(mode && this.welcoming)) {
+          try { MergeUI.shown(plan.summary, { at: now, from: plan.summary.from, ops: done.written.filter(x => Keys.parse(x.key).board === S.boardId).map(x => ({ key: x.key, rev: x.rev || 0, prev: seed[x.key] })), swaps: plan.undo.swaps, skip: plan.undo.skip }); }
+          catch (err) { console.warn('21Board: the merge message couldn’t be shown', err); }
+        }
       }
       for (const [uid, L] of Object.entries(next.mine)) this.quiet[uid] = L.quiet || null;
-      if (mode) this.linked = this.linkedSay(mode, sync, st.ledger);
+      if (mode) { this.linked = this.linkedSay(mode, sync, st.ledger); this.welcoming = false; }
       if (clone) await this.fork();
       const after = await this.afterRound(this.afterOf(r, done), { urgent: !!mode || !!clone || this.urgent, mode });
       // The page shown was deleted (or was a placeholder the board replaces): another page is shown first, then a
@@ -6584,7 +6585,7 @@
       this.gen++;   // a round under way (here or in another tab) doesn't save anything back
       this.stopTimers();
       this.dir = null; this.perm = 'none'; this.files.clear(); this.listed = new Set(); this.peers = {}; this.badPhotos.clear(); this.got.clear(); this.media.clear();
-      this.trouble = this.failed = this.newer = this.sync = this.linked = null; this.unsent = false; this.checkedAt = 0; this.quiet = {}; this.waiting.clear(); this.histWait.clear(); this.fresh = true;
+      this.trouble = this.failed = this.newer = this.sync = this.linked = null; this.unsent = this.welcoming = false; this.checkedAt = 0; this.quiet = {}; this.waiting.clear(); this.histWait.clear(); this.fresh = true;
       this.st = { device: null, tidy: {}, shown: {} };
       FolderNote.update();
     },
@@ -7416,7 +7417,7 @@
         <button class="btn" data-act="hist-open">${svg('history')}Board history…</button></div>`;
   }
   // Settings → Advanced → Board history: how often a version is saved, and deleting them. (Copies in the Google Drive
-  // folder: Settings → Board Sync → Folder settings, linkSettings.)
+  // folder: Settings → Board Sync → Keep history copies in the folder, linkSettings.)
   function historySettings(sw, seg) {
     if (LAB || !BoardHistory.enabled()) return '';
     const every = String(S.settings.historyEvery == null ? 10 : S.settings.historyEvery);
@@ -8203,7 +8204,7 @@
       const free = Array.isArray(o.freeIds) ? o.freeIds.slice() : [];
       let nextB = typeof o.freeIds === 'number' ? o.freeIds : Math.max(0, fin(+local.settings.lastBoard, 0), ...Array.from(local.byB.keys())) + 1;
       const newB = () => (o.freeIds && typeof o.freeIds.board === 'function' ? o.freeIds.board() : free.length ? free.shift() : nextB++);
-      const sum = { from: [], pages: {}, leave: null }, from = new Set();
+      const sum = { from: [], pages: {}, leave: null, placeholder: false }, from = new Set();
       const undo = { swaps: [], skip: [] };
       const sp = { gone: [], order: {}, lastBoard: 0 };
       const ps = (uid, b) => sum.pages[uid] || (sum.pages[uid] = { b, name: '', changed: false, added: false, deleted: false, back: false, here: false, placeholder: false,
@@ -8239,7 +8240,7 @@
           // switching to another folder's board, this device's own pages (deleted here only, and kept in Board history)
           if (!LP || LP.gone) continue;
           if ((LP.placeholder && anyShown) || mode === 'take') {
-            if (uid === o.pageShown) { sum.leave = uid; sp.order[LP.b] = [LP.parts.pos.val, uid]; continue; }
+            if (uid === o.pageShown) { sum.leave = uid; sum.placeholder = !!LP.placeholder; sp.order[LP.b] = [LP.parts.pos.val, uid]; continue; }
             sp.gone.push(['add', LP.b, now]);
             Object.assign(ps(uid, LP.b), { deleted: true, here: true, placeholder: LP.placeholder, risky: !LP.placeholder, name: LP.parts.name.val });
           } else sp.order[LP.b] = [LP.parts.pos.val, uid];
@@ -8773,17 +8774,18 @@
   // again) and its Undo then covers every round it has shown; a plain "Updated from …" gets a new node at most once a
   // minute. The page shown only: other pages change quietly and say so once when next shown (pageShown).
   const MergeUI = {
-    t: null, text: '', newAt: 0, ops: [], swaps: [], from: [], timer: 0,
+    t: null, text: '', newAt: 0, ops: [], swaps: [], from: [], timer: 0, said: [], round: 0,
     nameOf(d) {
       return String(Link.names()[d] || 'another device');
     },
     names(list, cap) { const s = andList(Array.from(new Set(list)).map(d => this.nameOf(d))); return cap ? s.charAt(0).toUpperCase() + s.slice(1) : s; },
     shown(summary, seed = {}) {
       if (!summary || !summary.pages) return;
+      this.round++;
       const pages = summary.pages, mine = S.board.uid, here = pages[mine], locked = Lock.on();
       // pages added and deleted (not the untouched placeholder, nor this device's own pages when switching boards)
       const added = Object.values(pages).filter(p => p.added), deleted = Object.entries(pages).filter(([, p]) => p.deleted && !p.here);
-      if (Object.values(pages).some(p => p.placeholder) && added.length) this.say(`The board from ${this.names(summary.from)} is here.`);
+      if ((summary.placeholder || Object.values(pages).some(p => p.placeholder)) && added.length) this.say(`The board from ${this.names(summary.from)} is here.`);
       else if (added.length) this.say(added.length === 1 ? `“${added[0].name}” was added on ${this.names(added[0].from.length ? added[0].from : summary.from)}.` : `${added.length} pages were added on ${this.names(summary.from)}.`);
       for (const [, p] of deleted) {
         const by = this.names(p.from.length ? p.from : summary.from);
@@ -8809,9 +8811,11 @@
       if (locked || !button) { this.merge(text, null, seedHere); return; }   // (windows locked: no Undo; Board history has it)
       this.merge(text, button, seedHere);
     },
-    // Another merge toast, shown at once (and replacing a merge toast that is up).
-    say(text, opts = {}) { this.drop(); return toast(text, opts); },
+    // Another merge toast, shown at once: it replaces the merge toasts of earlier rounds that are up. (One round that
+    // deletes or adds pages and changes the page shown says each.)
+    say(text, opts = {}) { this.drop(); this.dropSaid(); const t = toast(text, opts); t.round = this.round; this.said.push(t); return t; },
     drop() { if (this.t && this.t.isConnected) this.t.remove2(); this.t = null; this.ops = []; this.swaps = []; this.from = []; clearTimeout(this.timer); },
+    dropSaid() { this.said = this.said.filter(t => { if (t.round === this.round) return t.isConnected; if (t.isConnected) t.remove2(); return false; }); },
     // The merge toast of the page shown: updated in place, or a new one. (A plain "Updated from …" gets a new node at
     // most once a minute: until then it joins the toast that is up, which keeps its text if it says more.)
     merge(text, button, seed) {
@@ -8821,7 +8825,7 @@
         if (/^Updated from /.test(this.text)) { $('span', this.t).textContent = text; this.text = text; }
         this.ops = this.ops.concat(seed.ops); this.swaps = this.swaps.concat(seed.swaps); this.from = this.from.concat(seed.from);
       } else {
-        this.drop();
+        this.drop(); this.dropSaid();
         this.ops = seed.ops; this.swaps = seed.swaps; this.from = seed.from; this.text = text; this.newAt = Date.now();
         const ops = () => this.ops, swaps = () => this.swaps, from = () => this.from;
         this.t = toast(text, button ? { action: button, timeout: 0, onAction: () => { const o = ops(), w = swaps(), f = from(); this.drop(); this.undo(o, w, f); } } : { timeout: 0 });
