@@ -301,8 +301,9 @@ quick look inside the folder picked, so that every device ends up with the same 
   *Use this folder anyway* or *Choose another…*. A folder you can only view can't have one made in it: 21Board
   says so and offers *Choose another…*.
 - A folder that Google Drive is slow to list is used as it is: the look never holds up the setting up.
-- 21Board's own *Board history* folder (inside the 21Board folder, picked by mistake) isn't used: 21Board says
-  what it is and offers *Choose another…*, to pick the folder it's in.
+- 21Board's own *Board history* or *Photos* folder (inside the 21Board folder, picked by mistake) isn't used:
+  21Board says what it is and offers *Choose another…*, to pick the folder it's in. (A *Photos* folder inside
+  the folder picked is left out of the look: My Drive may have one of its own.)
 
 The last step says which folder this device uses and what comes next: for a new, empty folder, *Now set up
 Board Sync on your other devices and pick this same folder*, with *Send this board now* (it sends the board at
@@ -350,15 +351,32 @@ says the same, and when the folder was last checked.
 **21Board keeps the folder in order:** one file per board, named after it (“Room 12.21board”, or
 “Room 12 (2).21board” if another board has that name); renaming a board renames its file on the next
 send; each board has a hidden id, so files are matched to the right board whatever they're called;
-an *About this folder.txt* explains the files; anything else in the folder is left alone. Each file is a
-full backup (it counts as one). *This device's name* is what the other devices show (“updated on …”).
+an *About this folder.txt* explains the files; anything else in the folder is left alone. Each file, with its
+photo, is a full backup (it counts as one). *This device's name* is what the other devices show (“updated on …”).
 
 - **The background photo** goes with the board while *Send the background photo* is on (Settings → Board Sync → *Folder settings*), and so does
   removing it: once a board has been sent or loaded with its photo, taking the photo off on one device takes
   it off the others when they load the next version. A photo that only the smartboard has stays there when
   it loads the laptop's boards: a board that never had a photo says nothing about one, and a photo put on at
   the smartboard after the old one was taken off is its own. Off: this device puts no photo in the folder
-  (not in copies either), and a device that loads its boards keeps its own photo.
+  (not in copies either: no photo file is written, and the board file says nothing about one), and a device
+  that loads its boards keeps its own photo.
+- **Background photos are kept in a *Photos* folder** inside it, each photo once, as a picture file named by
+  its content (“3fa9c1d2….jpg”; two boards with the same photo share one). A board's file only names its photo,
+  so sending a board takes a few KB, not the 1–3 MB of the photo: the photo is written once, when it is added
+  or changed (and again when a board names it after it has sat there a day, or if it has gone missing).
+  A photo that no board file names any more is deleted after about a week (once a day at most, and only when
+  every board file in the folder could be read, and the device has found it unused twice, an hour or more apart).
+  Exports and backups still have the photo inside the file (one file for a USB stick or an email); a file from
+  the folder opened with Import gets its photo from *Photos*.
+- **The photo can arrive after the board:** Google Drive often brings the small board file before the photo.
+  Load then shows the board with the photo this device had, says *Its background photo follows once Google Drive
+  brings it*, and puts the new photo on as soon as it is there (Settings → Board Sync says *the background
+  photo is still arriving* meanwhile). That isn't a change to send, and a send from this device meanwhile names
+  the new photo, not the one it kept. A device that already has the photo reads nothing more. The photo file
+  is checked like any picture from outside: a JPEG, PNG or WebP (by its content, not its name), whole (its
+  content matches its name), no bigger than a photo added here, and one that opens. One that isn't is never
+  used: the board still loads, and the device keeps its own photo.
 - **Opening another board** (Import → *Replace my board*, or a `.21board` file opened from the Files app)
   never renames, removes or replaces the file of the board that was showing: the board that was opened gets
   its own file. Only a file that was itself sent to the folder (or a backup of the very board that is

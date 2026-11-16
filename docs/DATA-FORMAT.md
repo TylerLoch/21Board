@@ -174,8 +174,11 @@ exported. `link:folder` holds the folder handle Chrome gives 21Board (stored as 
     seen: ["<version id>", …],     // versions sent or loaded here (newest 40): anything else is new to this device
     headId, headMine,              // the version this board was built on, and whether this device sent it
     sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig,
-    photo: true } },               // what the version last sent or loaded here said about the photo: true (it had one), false ("background": null), absent (nothing)
-  late: { "room 12.21board": { size, lastModified } }   // files that couldn't be read and were waited for in full (not waited for again while they stay as they are)
+    photo: true,                   // what the version last sent or loaded here said about the photo: true (it had one), false ("background": null), absent (nothing)
+    want: { ref: { file, w, h, bytes, name, addedAt }, look, keep: "<addedAt>-<bytes>-<w>x<h>" | "", since } | null } },
+                                   // the photo the version loaded here names, not here yet (see below)
+  late: { "room 12.21board": { size, lastModified } },  // files that couldn't be read and were waited for in full (not waited for again while they stay as they are)
+  tidy: { at, seen: { "<photo file>": <when first found unused> } }   // the last tidying of Photos (see below)
 }
 ```
 
@@ -191,8 +194,31 @@ is kept (sending clears `loadedSig`, loading clears `sentSig`), so a board chang
 before the last send still counts as changed.
 
 In the folder, 21Board writes one `<board name>.21board` per board (a full backup with `board.uid` and a
-`sent` block, below), renames it when the board is renamed (the files this device used for the board before
-are removed once it has seen the versions in them), and adds `About this folder.txt`. Other files are left alone.
+`sent` block, below, that names its photo instead of holding it), renames it when the board is renamed (the
+files this device used for the board before are removed once it has seen the versions in them), keeps the
+photos in `Photos/` (below), and adds `About this folder.txt`. Other files are left alone.
+
+**`Photos/`**: each background photo once, as the picture file itself (JPEG, PNG or WebP bytes, not base64),
+named `<the first 32 hex digits of the SHA-256 of its bytes>.jpg` (or `.png`, `.webp`). Boards with the same
+photo share the file. A send writes the photo there first if it isn't there whole (and again if it is over a
+day old, so tidying can't take it), then the board file; if writing the photo fails, the send fails and no
+board file names it. The fingerprint is worked out once per photo (kept in memory, by the photo's data URL).
+A device that loads a board file reads the photo only if it hasn't that photo already. The file is checked as
+an imported photo is: a plain fingerprint name (no paths), JPEG, PNG or WebP by its first bytes, its bytes'
+SHA-256 matching its name (so half a file still arriving isn't used), under 16e6 characters as a data URL,
+about 6.5 MP at most, and it must open. One that isn't is not read again until its size or date changes.
+
+`want`: Google Drive often brings the board file before the photo. The board is then loaded with the photo this
+device had (`keep`: which one), and the photo it names (`ref`, `look`) is looked for at each check (once a
+minute after `LINK_ARRIVE_MS` from `since`) and put on when it is there; the board's `sentSig`/`loadedSig`
+follows, so that isn't a change to send. While it waits, a send from this device names `ref` (the board's photo),
+not the photo it kept. A photo put on or removed here meanwhile (no longer `keep`) is this device's own: `want`
+is dropped.
+
+`tidy`: a photo that no `.21board` file in the folder names (Google Drive's own copies, `<fingerprint> (1).jpg`,
+never are) is deleted when its date is over 7 days old and this device has found it so on two looks at least an
+hour apart (`seen`). A look happens at most once in 20 hours (`at`), after a good check of the folder, and not
+while any board file in the folder can't be read. Other files in `Photos/` are left alone.
 
 ### `media:<b>:background` and `media:<b>:background-look`
 
@@ -397,7 +423,7 @@ on Chrome) reads it.
     "uid": "7c1e…"                // full backups only: which board this is
   },
   "sent": { "id": "<version id>", "base": "<the version it was built on>", "at": 1762800000000, "by": "<device id>", "from": "my laptop" },   // only in files sent to a shared folder
-  "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only; in a sent file, "background": null says the board's photo was taken off
+  "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only; a sent file names the photo instead (below), and "background": null says the board's photo was taken off
   "instances": [
     {
       "widgetId": "timer",
@@ -420,6 +446,21 @@ on Chrome) reads it.
 | `config` | ✅ | ✅ |
 | `data` (content) | ✅ | ❌ always `null` |
 | `media.background` (photo) | ✅ | ❌ (a template is for sharing; a photo may show the class) |
+
+**A file sent to a shared folder** (Board Sync) names its photo in the folder's `Photos/` instead of holding it,
+so it stays a few KB:
+
+```js
+"media": {
+  "background": { "file": "3fa9c1d2e4b5a6f70123456789abcdef.jpg", "w": 2560, "h": 1707, "bytes": 412345, "name": "class.jpg", "addedAt": 1762713600000 },
+  "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 }
+}
+```
+
+`file` must be exactly 32 lowercase hex digits and `.jpg`, `.png` or `.webp`; anything else (a path, `..`, another
+name) is read as saying nothing about the photo, and the device keeps its own. Opened with Import, such a file
+gets the photo from `Photos/` of the folder this device is linked to, if it is there (or the device has it).
+Exports, backups and Board history keep doing as before (the photo inside, or left out).
 
 Optional, ignored by older readers: `instances[].createdAt` (which window is which, kept by board history),
 `history: {at, kind, label, by, from}` (a Board history copy), `media.ref` (a photo kept in board history) and
