@@ -216,13 +216,22 @@ about 6.5 MP at most, and it must open. One that isn't is not read again until i
 device had (`keep`: which one), and the photo it names (`ref`, `look`) is looked for at each check (once a
 minute after `LINK_ARRIVE_MS` from `since`) and put on when it is there; the board's `sentSig`/`loadedSig`
 follows, so that isn't a change to send. While it waits, a send from this device names `ref` (the board's photo),
-not the photo it kept. A photo put on or removed here meanwhile (no longer `keep`) is this device's own: `want`
-is dropped.
+not the photo it kept, shown as `look` (a change to how the photo is shown, made here meanwhile, goes into `look`).
+A photo put on or removed here meanwhile (no longer `keep`) is this device's own: `want` is dropped. So it is
+when the board's content is replaced otherwise (Undo, going back in Board history, Import), when the folder is
+unlinked or another is chosen, and a week after `since`. Once `ref` has had `LINK_ARRIVE_MS` and isn't in
+`Photos/` at all (deleted, or the board file came from another folder), a send names this device's own photo
+instead (or nothing, without one) and `want` is dropped. Only Load waits for a photo: a sent file opened with
+Import that names a photo this device can't find is taken as saying nothing about it (`photo` absent).
+Undo after Load (or after Import of a sent file) puts the board's record back as it was before, without the
+version loaded in `seen`, so that version is offered again and nothing is sent over it.
 
 `tidy`: a photo that no `.21board` file in the folder names (Google Drive's own copies, `<fingerprint> (1).jpg`,
 never are) is deleted when its date is over 7 days old and this device has found it so on two looks at least an
-hour apart (`seen`). A look happens at most once in 20 hours (`at`), after a good check of the folder, and not
-while any board file in the folder can't be read. Other files in `Photos/` are left alone.
+hour apart (`seen`; a note over 2 days old is taken afresh). A look happens at most once in 20 hours (`at`), after
+a good check of the folder, not while any board file in the folder can't be read or none was found, and not in
+the first `LINK_ARRIVE_MS` (10 minutes) after 21Board opens, the device wakes or the folder comes back (Google
+Drive may still be bringing board files that name the photo). Other files in `Photos/` are left alone.
 
 ### `media:<b>:background` and `media:<b>:background-look`
 
@@ -467,7 +476,9 @@ so it stays a few KB:
 
 `file` must be exactly 32 lowercase hex digits and `.jpg`, `.png` or `.webp`; anything else (a path, `..`, another
 name) is read as saying nothing about the photo, and the device keeps its own. Opened with Import, such a file
-gets the photo from `Photos/` of the folder this device is linked to, if it is there (or the device has it).
+gets the photo from `Photos/` of the folder this device is linked to, if it is there (or the device has it);
+otherwise the device keeps its own. (To give a board to someone, use Export: the board files in the folder don't
+hold their photos.)
 Exports, backups and Board history keep doing as before (the photo inside, or left out).
 
 Optional, ignored by older readers: `instances[].createdAt` (which window is which, kept by board history),

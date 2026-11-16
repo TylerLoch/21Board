@@ -307,7 +307,10 @@ quick look inside the folder picked, so that every device ends up with the same 
 
 The last step says which folder this device uses and what comes next: for a new, empty folder, *Now set up
 Board Sync on your other devices and pick this same folder*, with *Send this board now* (it sends the board at
-once); for one with boards from your other devices, that they are there (Settings → Board Sync → *Boards from
+once; *Done* sends nothing, and the step says so: *Tap Send this board now so your other devices can load it.
+After that, changes you make here are sent automatically*); for a folder another device has set up but sent no
+board to yet, that the other device hasn't sent its board yet (tap Send there, or change its board), with *Done*
+only; for one with boards from your other devices, that they are there (Settings → Board Sync → *Boards from
 other devices* lists them, with Load), and when there is one, *Load “…”* shows it here at once (after the usual
 question); for a folder you can only view (also one that another teacher set up and shared for viewing), that
 boards can be loaded from it but not sent. Setting up turns *Send automatically* on (not for a folder you can only
@@ -324,7 +327,10 @@ without the first dialog, and leave *Send automatically* as it was.
   is in front, and when it opens or comes back to the front) it says **“Room 12” was updated on my laptop at
   7:42 · Load / Not now**. Nothing changes until you tap Load (if the windows are locked, Load asks to unlock
   them first). The first time, pick the board under *Boards from other devices* in Settings → Board Sync. (A board that
-  is already one of this device's pages shows *Go to page* there instead of Load.)
+  is already one of this device's pages shows *Go to page* there instead of Load.) *Cancel* at Load's question is
+  *Not now*: the message stays away, and Settings → Board Sync keeps *Load newer*.
+- **Undo** on *Loaded “…”* puts the board back as it was, and the version loaded is offered again: *Send
+  automatically* doesn't send the board you went back to over it.
 - **Changed on both?** Load says so first and offers *Keep a copy of mine, then load* (the copy goes in the
   folder as its own board). A version this device hasn't loaded is never overwritten: *Send automatically*
   waits until it's loaded, and Send asks (*Load theirs* or *Send mine*, keeping the other as a copy).
@@ -351,7 +357,7 @@ never off for a whole day unnoticed: *Reconnect folder* (Chrome wants to be aske
 and *Allow*), *Folder unavailable* (it can't be found: 21Board keeps looking, and a tap says what to do) or
 *Not sent* (an automatic send failed, for example because the folder is shared with you for viewing only: a
 tap says why; the note goes once the send works or nothing is left to send). Settings → Board Sync
-says the same (and when the folder was last checked, once that is over a minute ago).
+says the same (and when the folder was last checked, while a look at it is taking long).
 
 **21Board keeps the folder in order:** one file per board, named after it (“Room 12.21board”, or
 “Room 12 (2).21board” if another board has that name); renaming a board renames its file on the next
@@ -371,17 +377,23 @@ photo in *Photos*, is a full backup (it counts as one). *This device's name* is 
   so sending a board takes a few KB, not the 1–3 MB of the photo: the photo is written once, when it is added
   or changed (and again when a board names it after it has sat there a day, or if it has gone missing).
   A photo that no board file names any more is deleted after about a week (once a day at most, and only when
-  every board file in the folder could be read, and the device has found it unused twice, an hour or more apart).
-  Exports and backups still have the photo inside the file (one file for a USB stick or an email); a file from
-  the folder opened with Import gets its photo from *Photos*.
+  every board file in the folder could be read, and the device has found it unused twice, an hour or more apart;
+  never in the first 10 minutes after 21Board opens or the device wakes, while Google Drive may still be bringing
+  boards that name it). Exports and backups still have the photo inside the file (one file for a USB stick or an
+  email: to give a board to someone, use Export); a file from the folder opened with Import gets its photo from
+  *Photos* if it is there, and otherwise the device keeps its own.
 - **The photo can arrive after the board:** Google Drive often brings the small board file before the photo.
   Load then shows the board with the photo this device had, says *Its background photo follows once Google Drive
   brings it*, and puts the new photo on as soon as it is there (Settings → Board Sync says *the background
   photo is still arriving* meanwhile). That isn't a change to send, and a send from this device meanwhile names
-  the new photo, not the one it kept. A device that already has the photo reads nothing more. The photo file
+  the new photo, not the one it kept (shown as you set it meanwhile: fit, fade and focus are kept). Undo, going
+  back in Board history or Import stops the waiting, and so do Unlink and *Change…*. A photo that isn't coming
+  (it was deleted from *Photos*): after 10 minutes a send names this device's own photo instead, and after a
+  week the board stops waiting. A device that already has the photo reads nothing more. The photo file
   is checked like any picture from outside: a JPEG, PNG or WebP (by its content, not its name), whole (its
   content matches its name), no bigger than a photo added here, and one that opens. One that isn't is never
-  used: the board still loads, and the device keeps its own photo.
+  used: the board still loads, the device keeps its own photo, and after 10 minutes Settings says *The
+  background photo in the folder can’t be used*.
 - **Opening another board** (Import → *Replace my board*, or a `.21board` file opened from the Files app)
   never renames, removes or replaces the file of the board that was showing: the board that was opened gets
   its own file. Only a file that was itself sent to the folder (or a backup of the very board that is

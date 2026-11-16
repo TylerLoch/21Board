@@ -6353,6 +6353,7 @@ const SUITES = [
     const inPhotos = async () => Object.keys(await readPhotos(A.p)).sort();
     const tidy = (seenAgo = null) => L(A.p, async ago => {
       const l = window.__board21.link, t = l.st.tidy || {};
+      l.freshAt = Math.min(l.freshAt, Date.now() - 11 * 60e3);   // (21Board has been open for Google Drive's 10 minutes)
       const seen = ago === null ? t.seen || {} : Object.fromEntries(Object.keys(t.seen || {}).map(k => [k, Date.now() - ago]));
       l.saveState({ tidy: { at: 0, seen } });
       await l.scan(); await l.tidyPhotos();
@@ -6551,8 +6552,13 @@ const SUITES = [
     ok(await eventually(() => sent('still can’t')) && await eventually(async () => await folderNote() === ''), 'once the folder can be written to, the change goes out at a later look at the folder, and the note goes');
     await settings(p, ['folder']);
     ok(await warning() === '' && await p.locator('#settings', { hasText: 'last checked' }).count() === 0, 'Settings then says nothing about when the folder was last checked: it is looked at every few seconds');
-    ok(await L(p, () => { const l = window.__board21.link; l.checkedAt -= 2 * 60e3; l.redraw(true); return /Folder last checked at/.test(document.querySelector('#settings').textContent); }), 'it says so once the last good look is a while ago (a look that is taking long)');
-    ok(await eventually(async () => await p.locator('#settings', { hasText: 'last checked' }).count() === 0, 8000), 'and the next look takes that away');
+    ok(await L(p, () => { const l = window.__board21.link; l.checkedAt -= 2 * 60e3; l.redraw(true); return !/last checked/.test(document.querySelector('#settings').textContent); }), 'nor when the last good look is a while ago only because there were no looks (21Board was hidden)');
+    // (A look that Google Drive takes long over: 3 seconds here, taken for more than 15.)
+    await L(p, () => { window.__drive = { slow: 3000 }; const l = window.__board21.link; l.check(true); });
+    ok(await L(p, async () => { const l = window.__board21.link; await new Promise(r => setTimeout(r, 300)); l.lookingSince -= 20e3; l.checkedAt -= 2 * 60e3; l.redraw(true); return /Folder last checked at/.test(document.querySelector('#settings').textContent); }),
+      'it says so while a look is taking long and the last good one is a while ago');
+    ok(await eventually(async () => await p.locator('#settings', { hasText: 'last checked' }).count() === 0, 8000), 'and the look, once done, takes that away');
+    await L(p, () => { window.__drive = {}; });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close();
   }],
@@ -6851,8 +6857,8 @@ const SUITES = [
     await setUp(p);
     ok(await asking(p, 'Board Sync is set up'), 'an empty folder is linked straight away, and the last step follows');
     ok(/This device now syncs through your “Empty” folder\./.test(await said(p)) && /Now set up Board Sync on your other devices and pick this same folder\./.test(await said(p)), 'it says which folder, and to pick the same one on the other devices');
-    ok(await L(p, () => window.__board21.link.st.auto) && /Changes you make here are sent automatically\. You can turn this off in Settings › Board Sync\./.test(await said(p)),
-      'setting up turns Send automatically on, and the last step says so, and where to turn it off');
+    ok(await L(p, () => window.__board21.link.st.auto) && /Tap Send this board now so your other devices can load it\. After that, changes you make here are sent automatically\. You can turn this off in Settings › Board Sync\./.test(await said(p)),
+      'setting up turns Send automatically on, and the last step says so, and where to turn it off: after Send this board now (Done sends nothing; Send automatically sends changes)');
     ok(await buttons(p) === 'Send this board now|Done' && await linked(p) === 'Empty', 'with Send this board now and Done');
     await modal(p, 'Send this board now');
     ok(await eventually(async () => await names('Empty') === 'About this folder.txt,My Board.21board') && await eventually(async () => await toasts('Sent “My Board” to your “Empty” folder') === 1),
@@ -7055,6 +7061,316 @@ const SUITES = [
       'set up again with a newer version of this board in the folder: the last step points to Load on the message (and offers no Send)');
     ok(await B.p.locator('.toast', { hasText: '“My Board” was updated on a computer' }).count() === 1, 'and the message offers it, as before');
     await modal(B.p, 'Done');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: Undo of a Load, and photos still arriving or never coming (Undo, going back, Import, Unlink, a photo shown another way, tidying after a gap)', async (browser) => {
+    const L = (p, fn, arg) => p.evaluate(fn, arg);
+    const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
+    const noteText = p => note(p).locator('#t').inputValue();
+    const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
+    const boardFile = async p => JSON.parse((await readFolder(p))['Math.21board']);
+    const photoData = p => L(p, () => (window.__board21.state.media.get('background') || {}).data || null);
+    const look = p => L(p, () => (window.__board21.state.media.get('background-look') || {}).fit);
+    const rec = p => L(p, () => window.__board21.link.boardRec(window.__board21.state.board.uid) || {});
+    const check = p => L(p, () => window.__board21.link.check(true));
+    const settingsText = async p => { await openSettings(p); const t = await p.locator('#settings').innerText(); await p.keyboard.press('Escape'); return t; };
+    const picture = async (p, color) => Buffer.from((await L(p, c => { const k = document.createElement('canvas'); k.width = 400; k.height = 300; const g = k.getContext('2d'); g.fillStyle = c; g.fillRect(0, 0, 400, 300); return k.toDataURL('image/png'); }, color)).split(',')[1], 'base64');
+    const addPhoto = async (p, color, name) => { const was = await photoData(p); await p.setInputFiles('#photo-input', { name, mimeType: 'image/png', buffer: await picture(p, color) }); return eventually(async () => (await photoData(p)) !== was); };
+    // The photo as the board shows it (#board-bg): there, and its URL still opens (one revoked under it shows nothing).
+    const shown = p => L(p, async () => {
+      const el = document.getElementById('board-bg'), m = /url\("([^"]+)"\)/.exec(el.style.backgroundImage || '');
+      if (el.hidden || !m) return false;
+      try { await (await fetch(m[1])).blob(); return true; } catch (e) { return false; }
+    });
+    // Load "Math" from the folder (answering the question, if one is asked), and wait until it is loaded.
+    const load = async (p, answer = 'Load and replace mine') => {
+      const id = (await boardFile(p)).sent.id;
+      await L(p, () => { window.__board21.link.load('Math.21board'); });
+      if (await p.locator('#modal.open').waitFor({ timeout: 1500 }).then(() => true, () => false)) await modal(p, answer);
+      const done = await eventually(async () => (await rec(p)).headId === id, 8000);
+      await p.waitForTimeout(300);
+      return done;
+    };
+    // The laptop sends a new version of "Math" with a new photo (Google Drive brings the board file first: see drive).
+    const sendNew = async (color, text) => {
+      await addPhoto(A.p, color, color.slice(1) + '.png');
+      await fillNote(note(A.p), text); await A.p.waitForTimeout(300);
+      await L(A.p, () => window.__board21.link.send());
+      const f = await boardFile(A.p);
+      return { id: f.sent.id, photo: f.media.background.file, data: await photoData(A.p) };
+    };
+    const errors = [];
+    const A = await driveDevice(browser), B = await driveDevice(browser);   // the laptop and the smartboard
+    for (const d of [A, B]) { d.p.on('pageerror', e => errors.push(e.message)); await d.p.goto(BASE); await boardUp(d.p); await L(d.p, () => { const l = window.__board21.link; l.waits.now = 1000; l.waits.settle = 1000; }); }
+
+    // ---- Both set up from Settings, as teachers do (Send automatically on). The smartboard shows the laptop's board.
+    await L(A.p, () => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
+    await fillNote(note(A.p), 'v1 notes'); await A.p.waitForTimeout(300);
+    await renamePage(A.p, 'Math');
+    await addPhoto(A.p, '#4f9be0', 'blue.png');
+    await openSettings(A.p); await setUpSync(A.p); await A.p.keyboard.press('Escape');
+    await L(A.p, () => { const l = window.__board21.link; l.saveState({ auto: false, device: Object.assign({}, l.device(), { label: 'the laptop' }) }); return l.send(); });   // (the laptop sends by hand here)
+    const blueData = await photoData(A.p), blue = (await boardFile(A.p)).media.background.file;
+    await drive(A.p, B.p);
+    await openSettings(B.p); await setUpSync(B.p); await B.p.keyboard.press('Escape');
+    ok(await load(B.p, 'Replace this board') && await noteText(B.p) === 'v1 notes' && await photoData(B.p) === blueData && await L(B.p, () => window.__board21.link.st.auto),
+      'setup: the smartboard, set up from Settings (Send automatically on), shows the laptop’s board with its photo');
+
+    // ---- Undo of a Load: the board goes back, and Board Sync's note of the load goes with it.
+    const v2 = await sendNew('#2e9b4f', 'v2 notes');
+    await drive(A.p, B.p, { photos: false }); await check(B.p);
+    ok(await load(B.p) && await noteText(B.p) === 'v2 notes' && await photoData(B.p) === blueData && !!(await rec(B.p)).want, 'the smartboard loads the next version before its photo arrives (keeping its own photo meanwhile)');
+    await B.p.locator('.toast', { hasText: 'Loaded “Math”' }).last().locator('button', { hasText: 'Undo' }).click();
+    ok(await eventually(async () => await noteText(B.p) === 'v1 notes') && await photoData(B.p) === blueData, 'Undo on “Loaded …” puts the board back as it was');
+    await B.p.waitForTimeout(500);
+    ok(!(await rec(B.p)).want, 'and the photo of the version undone isn’t waited for any more');
+    ok(await L(B.p, id => { const l = window.__board21.link; return !!l.offer && l.offer.vid === id; }, v2.id), 'the version undone is offered again: this device hasn’t loaded it, as far as Board Sync knows');
+    await B.p.waitForTimeout(5000);
+    ok((await boardFile(B.p)).sent.id === v2.id, 'and Send automatically doesn’t send the older board back over it (it went out within seconds, as a version built on the one undone)');
+    ok(/A newer version from the laptop is waiting\./.test(await settingsText(B.p)), 'Settings says the newer version is waiting');
+    await writePhotos(B.p, await readPhotos(A.p)); await check(B.p); await B.p.waitForTimeout(800);
+    ok(await photoData(B.p) === blueData, 'when the undone version’s photo arrives, it isn’t put on the board (it used to be, with the older board)');
+
+    // ---- Going back in Board history while a loaded version's photo is still arriving.
+    await load(B.p);   // (v2, whose photo is here now)
+    const v3 = await sendNew('#d62828', 'v3 notes');
+    await drive(A.p, B.p, { photos: false }); await check(B.p);
+    ok(await load(B.p) && await noteText(B.p) === 'v3 notes' && !!(await rec(B.p)).want, 'the smartboard loads a version whose photo is still arriving');
+    const greenData = await photoData(B.p);
+    await L(B.p, async () => { const h = window.__board21.history; await h.reload(); const m = h.metas.find(x => x.reason === 'load'); await h.restore(m.id); });
+    ok(await eventually(async () => await noteText(B.p) === 'v2 notes') && !(await rec(B.p)).want, 'going back in Board history: that photo isn’t waited for any more');
+    ok(await eventually(async () => JSON.stringify(await boardFile(B.p)).includes('v2 notes'), 8000) && (await boardFile(B.p)).media.background.file === v2.photo,
+      'the board gone back to is sent (Send automatically), naming the photo it has, not the one that was arriving');
+    await writePhotos(B.p, await readPhotos(A.p)); await check(B.p); await B.p.waitForTimeout(800);
+    ok(await photoData(B.p) === greenData, 'and when that photo arrives, it isn’t put on');
+
+    // ---- Import › Replace this page with a backup (not a file from the folder), while a photo is arriving.
+    const backup = await L(B.p, () => window.__board21.buildExport('full'));
+    const v4 = await sendNew('#7b2cbf', 'v4 notes');
+    await drive(A.p, B.p, { photos: false }); await check(B.p);
+    ok(await load(B.p) && !!(await rec(B.p)).want, 'the smartboard loads a version whose photo is still arriving');
+    await B.p.setInputFiles('#import-input', { name: 'Math backup.21board', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup)) });
+    await modal(B.p, 'Replace this page');
+    ok(await eventually(async () => await noteText(B.p) === 'v2 notes') && !(await rec(B.p)).want, 'importing a backup over it: that photo isn’t waited for any more');
+    await writePhotos(B.p, await readPhotos(A.p)); await check(B.p); await B.p.waitForTimeout(800);
+    ok(await photoData(B.p) === greenData, 'and when it arrives, it isn’t put on');
+    void v3; void v4;
+
+    // ---- How the photo is shown, changed while it is still arriving: kept, and sent.
+    const v5 = await sendNew('#f77f00', 'v5 notes');
+    await drive(A.p, B.p, { photos: false }); await check(B.p);
+    ok(await load(B.p) && !!(await rec(B.p)).want && await look(B.p) === 'fill', 'the smartboard loads a version whose photo is still arriving (shown to fill the board)');
+    await openSettings(B.p, ['bg']); await B.p.click('#settings [data-act="photo-fit"][data-val="whole"]'); await B.p.waitForTimeout(300);
+    ok((await rec(B.p)).want.look.fit === 'whole', 'the teacher shows the photo whole meanwhile: the photo waited for will come that way');
+    ok(await eventually(async () => { const f = await boardFile(B.p); return JSON.stringify(f).includes('v5 notes') && f.sent.id !== v5.id && f.media.look.fit === 'whole' && f.media.background.file === v5.photo; }, 8000),
+      'Send automatically sends that: the photo the board waits for, shown whole (it sent the other device’s way)');
+    // (Settings is open: the photo put on then is on the board, not a blank board: see BoardPhoto.objectUrl.)
+    await writePhotos(B.p, await readPhotos(A.p));
+    ok(await eventually(async () => await photoData(B.p) === v5.data, 12000) && await look(B.p) === 'whole', 'when it arrives, it is shown whole (it used to be set back to the other device’s way)');
+    await B.p.waitForTimeout(1500);
+    ok(await shown(B.p), 'the photo that arrives with Settings open is on the board (the URL it was shown with was revoked by Settings’ own, at once)');
+    await B.p.keyboard.press('Escape');
+    await openSettings(A.p, ['bg']);
+    await addPhoto(A.p, '#00bbf9', 'cyan.png'); await A.p.waitForTimeout(1500);
+    ok(await shown(A.p), 'and so is a photo added with Settings open (Add photo…)');
+    await A.p.keyboard.press('Escape');
+
+    // ---- A photo that isn't coming (deleted from the folder): after Google Drive's time, a send names this device's own.
+    const v6 = await sendNew('#ffd166', 'v6 notes');
+    await drive(A.p, B.p, { photos: false }); await check(B.p);
+    ok(await load(B.p) && !!(await rec(B.p)).want, 'the smartboard loads a version whose photo never comes');
+    const orange = await photoData(B.p);
+    await L(B.p, () => { const l = window.__board21.link, u = window.__board21.state.board.uid, r = l.boardRec(u); l.setBoardRec(u, { want: Object.assign({}, r.want, { since: Date.now() - 11 * 60e3 }) }); l.freshAt -= 11 * 60e3; });
+    await fillNote(note(B.p), 'v6, from the smartboard');
+    ok(await eventually(async () => JSON.stringify(await boardFile(B.p)).includes('v6, from the smartboard'), 8000), 'a change on the smartboard is sent');
+    const named = (await boardFile(B.p)).media.background.file;
+    ok(named !== v6.photo && !!(await readPhotos(B.p))[named] && await photoData(B.p) === orange && !(await rec(B.p)).want,
+      'it names the smartboard’s own photo (written in Photos), not the one that isn’t there, and the board stops waiting (it named a missing photo for ever)');
+    ok(!/background photo is still arriving/.test(await settingsText(B.p)), 'Settings no longer says the photo is still arriving');
+
+    // ---- A photo in the folder that can't be used: Settings says so once Google Drive has had its time.
+    const bad = Buffer.from('This is not a picture.').toString('base64'), badName = require('crypto').createHash('sha256').update(Buffer.from(bad, 'base64')).digest('hex').slice(0, 32) + '.jpg';
+    const j = await boardFile(A.p);
+    j.sent = Object.assign({}, j.sent, { id: 'with-a-bad-photo' }); j.media = { background: Object.assign({}, j.media.background, { file: badName }), look: j.media.look };
+    await writeFolder(B.p, Object.assign(await readFolder(B.p), { 'Math.21board': JSON.stringify(j) }));
+    await writePhotos(B.p, Object.assign(await readPhotos(B.p), { [badName]: bad }));
+    await check(B.p);
+    ok(await load(B.p) && await photoData(B.p) === orange && await L(B.p, n => window.__board21.link.badPhotos.has(n), badName), 'a version whose photo in the folder isn’t a picture loads, with the smartboard’s photo');
+    ok(/Waiting for Google Drive: the background photo is still arriving\./.test(await settingsText(B.p)), 'at first Settings says it is still arriving (it may be: half a photo isn’t used either)');
+    await L(B.p, () => { const l = window.__board21.link, u = window.__board21.state.board.uid, r = l.boardRec(u); l.setBoardRec(u, { want: Object.assign({}, r.want, { since: Date.now() - 11 * 60e3 }) }); l.freshAt -= 11 * 60e3; });
+    const said = await settingsText(B.p);
+    ok(/The background photo in the folder can’t be used, so this device keeps its own\./.test(said) && !/still arriving/.test(said), 'after Google Drive’s time it says the photo can’t be used, and this device keeps its own (it said “still arriving” for ever)');
+
+    // ---- A file from another teacher's folder, opened with Import (no folder linked): the photo it names isn't waited for.
+    const C = await driveDevice(browser);   // a colleague's laptop, with a folder of its own
+    C.p.on('pageerror', e => errors.push(e.message)); await C.p.goto(BASE); await boardUp(C.p);
+    await L(C.p, () => { const l = window.__board21.link; l.waits.now = 1000; l.waits.settle = 1000; });
+    const theirs = (await readFolder(A.p))['Math.21board'], P = JSON.parse(theirs).media.background.file;
+    await C.p.setInputFiles('#import-input', { name: 'Math.21board', mimeType: 'application/json', buffer: Buffer.from(theirs) });
+    await modal(C.p, 'Replace this page');
+    ok(await eventually(async () => (await noteText(C.p)) === 'v6 notes') && !await photoData(C.p) && !(await rec(C.p)).want, 'a colleague imports “Math.21board” copied from the teacher’s folder: the board, without its photo, and nothing waited for');
+    await openSettings(C.p); await setUpSync(C.p); await C.p.keyboard.press('Escape');
+    await fillNote(note(C.p), 'v6, the colleague’s');
+    ok(await eventually(async () => JSON.stringify(await boardFile(C.p)).includes('v6, the colleague’s'), 8000), 'once the colleague sets up a folder of their own, a change is sent there');
+    const cf = await boardFile(C.p);
+    ok(!JSON.stringify(cf.media || {}).includes(P) && !(cf.media && cf.media.background === null) && !/still arriving/.test(await settingsText(C.p)),
+      `it doesn’t name the photo that isn’t in that folder, nor say the photo was taken off (other devices keep theirs), and Settings waits for nothing (${JSON.stringify(cf.media || null)})`);
+    // A board still waiting for a photo stops when the folder is unlinked (or another is chosen), or after a week.
+    const waitFor = (p, ago) => L(p, ([P, ago]) => { const l = window.__board21.link; l.setBoardRec(window.__board21.state.board.uid, { want: { ref: { file: P, w: 400, h: 300 }, look: { on: true, fit: 'fill', focus: { x: 0.5, y: 0.5 }, fade: 0 }, keep: '', since: Date.now() - ago } }); }, [P, ago]);
+    await waitFor(C.p, 0);
+    ok(/still arriving/.test(await settingsText(C.p)), '(a board waiting for a photo)');
+    await L(C.p, () => window.__board21.link.unlink());
+    ok(!(await rec(C.p)).want, 'Unlink: the board stops waiting for a photo from that folder');
+    await waitFor(C.p, 8 * 864e5);
+    ok(await L(C.p, () => { const l = window.__board21.link; return !l.wanted(l.boardRec(window.__board21.state.board.uid)); }), 'and a photo waited for over a week isn’t waited for any more');
+    await C.c.close();
+
+    // ---- Tidying Photos: not on the first look after the device wakes from a week asleep, from a note taken before it.
+    await L(A.p, b => {
+      const l = window.__board21.link, wk = 7 * 864e5;
+      window.__drive = { noContent: { [b]: 8 * 864e5 } };   // (its date: 8 days ago)
+      l.saveState({ tidy: { at: Date.now() - wk, seen: { [b]: Date.now() - wk } } });
+      l.beatAt = Date.now() - wk;   // no heartbeat for a week: asleep
+    }, blue);
+    const has = () => L(A.p, async b => { const l = window.__board21.link; while (l.tidying) await l.tidying; try { await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getDirectoryHandle('Photos')).getFileHandle(b); return true; } catch (e) { return false; } }, blue);
+    await check(A.p);
+    ok(await has(), 'the first look after a week asleep deletes no photo (it deleted one at once, from the note taken a week before, before Google Drive brought the boards that name it again)');
+    await L(A.p, () => { window.__board21.link.freshAt -= 11 * 60e3; }); await check(A.p);
+    ok(await has() && Date.now() - (await L(A.p, b => window.__board21.link.st.tidy.seen[b], blue)) < 60e3, 'once Google Drive has had its 10 minutes, the week-old note is taken afresh (nothing deleted yet)');
+    await L(A.p, b => { const l = window.__board21.link; l.saveState({ tidy: { at: 0, seen: { [b]: Date.now() - 2 * 3600e3 } } }); }, blue);
+    await check(A.p);
+    ok(!await has(), 'and a look an hour or more after that recent note deletes it');
+    await L(A.p, () => { window.__drive = {}; });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: the last step of setting up, a damaged board file, Load’s message and question, and Settings drawn less (a color picker, the name field, coming back to the front)', async (browser) => {
+    const L = (p, fn, arg) => p.evaluate(fn, arg);
+    const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
+    const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
+    const asking = (p, text) => p.locator('#modal.open', { hasText: text }).waitFor({ timeout: 6000 }).then(() => true, () => false);
+    const said = async p => (await p.locator('#modal.open').count()) ? p.locator('#modal.open .modal-card').innerText() : '';
+    const buttons = async p => (await p.locator('#modal.open .modal-actions .btn').allInnerTexts()).map(t => t.trim()).join('|');
+    const boardFile = async p => JSON.parse((await readFolder(p))['Math.21board'] || 'null');
+    const toasts = (p, text) => p.locator('.toast', { hasText: text }).count();
+    const check = p => L(p, () => window.__board21.link.check(true));
+    // Counts, from now: Settings drawn again (its content replaced), and file contents read.
+    const count = p => L(p, () => {
+      const n = window.__n = { drawn: 0, reads: 0, hint: 0 };
+      if (!window.__counting) {
+        window.__counting = true;
+        const t = Blob.prototype.text; Blob.prototype.text = function () { window.__n.reads++; return t.apply(this, arguments); };
+        new MutationObserver(() => { window.__n.drawn++; if (/last checked/.test(document.querySelector('#settings').textContent)) window.__n.hint++; }).observe(document.querySelector('#settings .sheet-body'), { childList: true });
+      }
+      return n;
+    });
+    const counts = p => L(p, () => Object.assign({}, window.__n));
+    const errors = [];
+    const A = await driveDevice(browser), B = await driveDevice(browser);   // the laptop and the smartboard
+    for (const d of [A, B]) { d.p.on('pageerror', e => errors.push(e.message)); await d.p.goto(BASE); await boardUp(d.p); await L(d.p, () => { const l = window.__board21.link; l.waits.now = 1000; l.waits.settle = 1000; }); }
+    await L(A.p, () => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
+    await fillNote(note(A.p), 'Lesson'); await A.p.waitForTimeout(300);
+    await renamePage(A.p, 'Math');
+
+    // ---- The laptop is set up first, and Done is tapped: nothing is sent. The last step said so.
+    await openSettings(A.p);
+    await A.p.click('#settings [data-act="link-setup"]'); await modal(A.p, 'Choose folder…');
+    ok(await asking(A.p, 'Board Sync is set up') && /Tap Send this board now so your other devices can load it\. After that, changes you make here are sent automatically\./.test(await said(A.p)) && await buttons(A.p) === 'Send this board now|Done',
+      'the first device’s last step says to tap Send this board now so the other devices can load the board, and that changes are sent after that (Done sends nothing)');
+    await modal(A.p, 'Done'); await A.p.waitForTimeout(1500); await A.p.keyboard.press('Escape');
+    ok(Object.keys(await readFolder(A.p)).join() === 'About this folder.txt', 'Done: only the note about the files is in the folder');
+    // The smartboard then finds 21Board's note there but no board: it is told the other device hasn't sent its board yet.
+    await drive(A.p, B.p);
+    await openSettings(B.p);
+    await B.p.click('#settings [data-act="link-setup"]'); await modal(B.p, 'Choose folder…');
+    ok(await asking(B.p, 'Board Sync is set up') && /Your other device hasn’t sent its board yet\. On it, tap Send in Settings › Board Sync \(or change its board\), and it shows up here\./.test(await said(B.p)) && !/Now set up Board Sync on your other devices/.test(await said(B.p)),
+      'the second device, finding a folder another device set up but no board, says that device hasn’t sent its board yet (it said to set up the other devices, which were)');
+    ok(await buttons(B.p) === 'Done', 'with Done only: no Send this board now (it sent the smartboard’s own board as a separate one)');
+    await modal(B.p, 'Done'); await B.p.waitForTimeout(500); await B.p.keyboard.press('Escape');
+    // Once the laptop has sent it, setting up again finds it: Settings › Board Sync is named once.
+    await L(A.p, () => { const l = window.__board21.link; l.saveState({ device: Object.assign({}, l.device(), { label: 'the laptop' }) }); return l.send(); });
+    await drive(A.p, B.p);
+    await L(B.p, () => window.__board21.link.unlink());
+    await openSettings(B.p);
+    await B.p.click('#settings [data-act="link-setup"]'); await modal(B.p, 'Choose folder…');
+    ok(await asking(B.p, 'Board Sync is set up') && /It already has “Math” from the laptop\. Load it here now, or later from Settings › Board Sync\. Changes you make here are sent automatically \(you can turn this off there\)\./.test(await said(B.p)) && (await said(B.p)).split('Settings › Board Sync').length === 2,
+      `with the laptop’s board there, Settings › Board Sync is named once (${(await said(B.p)).replace(/\s+/g, ' ')})`);
+    await modal(B.p, 'Load “Math”'); await asking(B.p, 'Replace this board'); await modal(B.p, 'Replace this board');
+    ok(await eventually(async () => await note(B.p).locator('#t').inputValue() === 'Lesson'), '(the smartboard shows the laptop’s board)');
+    await B.p.keyboard.press('Escape');
+
+    // ---- A damaged board file in the folder: read once, not at every look.
+    await count(B.p);
+    await seedFolder(B.p, '21Board', { 'Broken.21board': '{"format":"21board","kind":"full","board":{"name":"Bro' });
+    await B.p.waitForTimeout(16000);
+    let n = await counts(B.p);
+    ok(n.reads === 1 && await L(B.p, () => window.__board21.link.unread.has('broken.21board')), `a board file that can be read but is damaged is read once, not again at each look while it stays as it is (${n.reads} reads in 16 seconds), and still counts as one that can’t be read`);
+    await seedFolder(B.p, '21Board', { 'Broken.21board': JSON.stringify({ format: '21board', formatVersion: 1, kind: 'full', viewport: { width: 2400, height: 1350 }, board: { name: 'Fixed', uid: 'fffffff1-2222-3333', background: { color: null, pattern: 'none' } }, instances: [], sent: { id: 'v-fixed', at: Date.now(), by: 'dev-other-0003', from: 'Ms. B’s laptop' } }) });
+    ok(await eventually(async () => await L(B.p, () => window.__board21.link.found.some(f => f.name === 'Broken.21board') && !window.__board21.link.unread.has('broken.21board')), 8000), 'once it changes it is read again (and here it is a board)');
+    await L(B.p, async () => { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board'); await d.removeEntry('Broken.21board'); });
+
+    // ---- The message offering a newer version: tapping Load opens the question; the message doesn't come back behind it.
+    await L(B.p, () => window.__board21.link.saveState({ auto: false }));
+    await fillNote(note(B.p), 'Smartboard scribble'); await B.p.waitForTimeout(300);
+    await fillNote(note(A.p), 'Lesson, part 2'); await A.p.waitForTimeout(300);
+    await L(A.p, () => window.__board21.link.send());
+    await drive(A.p, B.p); await check(B.p);
+    const offer = B.p.locator('.toast', { hasText: '“Math” was updated on the laptop' });
+    ok(await eventually(async () => await offer.count() === 1), '(the smartboard offers the newer version)');
+    await offer.locator('button', { hasText: 'Load' }).click();
+    ok(await asking(B.p, 'Load “Math” from the laptop?'), 'Load on the message asks first (the board was changed here too)');
+    ok(/This board was also changed here since \d{1,2}:\d{2}\W*(AM|PM)?\. Loading replaces those changes\./.test(await said(B.p)) && !/since at|since on/.test(await said(B.p)),
+      `and says since when, in plain words (“since at 5:53 AM” before) (${(await said(B.p)).replace(/\s+/g, ' ')})`);
+    await B.p.waitForTimeout(6000);
+    ok(await offer.count() === 0, 'while the question is open, the message doesn’t come back behind it (it did, within 5 seconds)');
+    await modal(B.p, 'Cancel'); await B.p.waitForTimeout(6000);
+    ok(await offer.count() === 0, 'Cancel is “Not now”: the message doesn’t come back');
+    await openSettings(B.p);
+    ok(await B.p.locator('#settings [data-act="link-load-offer"]').count() === 1, 'Settings › Board Sync still offers Load newer');
+    await B.p.click('#settings [data-act="link-load-offer"]'); await asking(B.p, 'Load “Math” from the laptop?'); await modal(B.p, 'Load and replace mine');
+    ok(await eventually(async () => await note(B.p).locator('#t').inputValue() === 'Lesson, part 2'), '(Load newer loads it)');
+    await B.p.keyboard.press('Escape');
+    await L(B.p, () => window.__board21.link.saveState({ auto: true }));
+
+    // ---- This device's name: Tab and Shift+Tab move on as usual (the keyboard went back to the top of the page).
+    await openSettings(B.p, ['folder']);
+    await B.p.fill('#set-link-label', 'the smartboard'); await B.p.keyboard.press('Tab'); await B.p.waitForTimeout(400);
+    let at = await L(B.p, () => ({ act: document.activeElement.dataset.act || document.activeElement.tagName, label: window.__board21.link.st.device.label }));
+    ok(at.act === 'link-photo' && at.label === 'the smartboard', `Tab from This device’s name saves it and goes on to the next control (${JSON.stringify(at)})`);
+    await B.p.focus('#set-link-label'); await B.p.fill('#set-link-label', 'the big smartboard'); await B.p.keyboard.press('Shift+Tab'); await B.p.waitForTimeout(400);
+    at = await L(B.p, () => ({ act: document.activeElement.dataset.act || document.activeElement.tagName, label: window.__board21.link.st.device.label }));
+    ok(at.act === 'link-unlink' && at.label === 'the big smartboard', `and Shift+Tab to the one before (${JSON.stringify(at)})`);
+
+    // ---- Coming back to 21Board after more than a minute hidden: Settings isn't drawn again for nothing, and doesn't
+    // flash "Folder last checked at …".
+    const tab = (p, state) => L(p, state => { if (state === 'hidden') Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); else delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange')); }, state);
+    await B.p.waitForTimeout(500);
+    await tab(B.p, 'hidden'); await B.p.waitForTimeout(1500); await count(B.p);   // (once Board history has saved the board as 21Board was left)
+    await L(B.p, () => { window.__board21.link.checkedAt -= 66e3; });
+    await tab(B.p, 'visible'); await B.p.waitForTimeout(2500);
+    n = await counts(B.p);
+    ok(n.drawn <= 1 && n.hint === 0 && !/last checked/.test(await B.p.locator('#settings').innerText()),
+      `back to the front after a minute hidden: Settings is drawn again once (the board is read afresh, for what other tabs changed), not three times, and never says when the folder was last checked (${JSON.stringify(n)})`);
+
+    // ---- Send automatically with Settings open: Settings is drawn again at most once per send, and never under the
+    // color picker (it closes).
+    await B.p.keyboard.press('Escape');
+    await openSettings(B.p, ['bg']);
+    await L(B.p, () => { const i = document.getElementById('set-bg-custom'); i.dataset.open = '1'; i.focus(); });
+    for (const c of ['#336699', '#3a7bd5', '#2e8b57']) { await L(B.p, c => { const i = document.getElementById('set-bg-custom'); i.value = c; i.dispatchEvent(new Event('input', { bubbles: true })); }, c); await B.p.waitForTimeout(400); }
+    ok(await eventually(async () => ((await boardFile(B.p)) || { board: {} }).board.background.color === '#2e8b57', 10000), 'with the color picker open, the color tried is sent by itself');
+    await B.p.waitForTimeout(1500);
+    ok(await L(B.p, () => { const i = document.getElementById('set-bg-custom'); return !!i && i.dataset.open === '1' && document.activeElement === i; }), 'and Settings isn’t drawn again under the open picker (it was, which closes it)');
+    await L(B.p, () => { const i = document.getElementById('set-bg-custom'); i.dispatchEvent(new Event('change', { bubbles: true })); i.blur(); });
+    await B.p.waitForTimeout(300);
+    ok(await L(B.p, () => !document.getElementById('set-bg-custom').dataset.open), 'once the picker closes (its change), Settings is drawn again to mark the choice');
+    await count(B.p);
+    await L(B.p, () => { const b = window.__board21; b.updateBoard({ background: Object.assign({}, b.state.board.background, { color: '#5b8c5a' }) }); });   // (a change, with Settings still open)
+    ok(await eventually(async () => ((await boardFile(B.p)) || { board: {} }).board.background.color === '#5b8c5a', 10000), '(a change is sent by itself)');
+    await B.p.waitForTimeout(1500);
+    n = await counts(B.p);
+    ok(await B.p.locator('#settings.open').count() === 1 && n.drawn <= 1, `Settings is drawn again at most once for an automatic send (it was 3 or 4 times within 15 ms) (${JSON.stringify(n)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
@@ -8323,7 +8639,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       `Load asks to unlock first (${q && q.title}: ${q && q.text} [${q && q.btns}])`);
     await B.p.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await B.p.waitForTimeout(800);
     ok(await locked() && await wins(B.p) === 'notes:1' && !await asked(), `Cancel: nothing is loaded, and the windows stay locked (${await wins(B.p)})`);
-    await B.p.evaluate(() => window.__board21.link.computeOffer()); await B.p.waitForTimeout(300);
+    await B.p.evaluate(() => window.__board21.link.check(true)); await B.p.waitForTimeout(300);
+    ok(await offer().count() === 0, 'Cancel is “Not now”: the message doesn’t come back at the next look (Settings keeps Load newer)');
+    await B.p.evaluate(() => { const l = window.__board21.link; l.dismissed = ''; l.computeOffer(); }); await B.p.waitForTimeout(300);   // (as the reminder does: see autoSend)
     await offer().locator('button', { hasText: 'Load' }).click(); await B.p.waitForTimeout(500);
     await B.p.locator('#modal.open .btn', { hasText: 'Unlock and load' }).click(); await B.p.waitForTimeout(2000);
     ok(!await locked() && await wins(B.p) === 'timer:1' && await B.p.locator('.toast', { hasText: 'Loaded “Room 12”' }).count() === 1,
