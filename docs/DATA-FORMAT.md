@@ -115,7 +115,7 @@ installed*. Test widgets are now uploaded as a file: see [`devfile:<widgetId>`](
 ```js
 {
   id: 1, name: "My Board",       // id: the board's slot on this device
-  uid: "7c1e…",                  // a unique id, made once: files sent from other devices are matched by it
+  uid: "7c1e…",                  // a unique id, made once: the same page on every device (Board Sync)
   background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" | "handwriting" | "graph" },
   scale: 0.8,                    // size of windows and menus (0.5–2), as on a 1920 × 1080 screen; see "Layout space"
   shape: "16:9",                 // "16:9" (Widescreen, the default) | "free" (Fill: fills any window)
@@ -192,16 +192,33 @@ fingerprints and versions of the board's parts, never the board's values:
   file, sum, partsH, wroteAt, refs: { "<page uid>": { file, w, h, bytes, name, addedAt, key } },   // the last file written, its checksum, a fingerprint of its parts, when, and the photos it names
   localAt,                                         // when a change made here was last found (for "Not synced" in a folder that can only be viewed)
   peers: { "<dev>": { seq, seen, changedAt, name, file, at, left, missingSince, folder } },   // every device seen in the folder; changedAt and missingSince are this device's clock
-  last: { dev, name, at }, gcAt, left: null }      // the last merge that changed something here; Unlink or Erase's last write
+  last: { dev, name, at }, gcAt, left: null,       // the last merge that changed something here; Unlink or Erase's last write
+  dropped: { "<page uid>" | "<page uid> <wid>": { vv, at } } }   // deletions collected here (gc) in the last 30 days
 
 // link:mine-<page uid>: the page's parts and its windows' parts, each { h: fingerprint, v: [by, {dev: n}, t], rev }
 { uid, b, p: { exists, name, look, size, pos, photo, photoLook }, w: { "<wid>": { ikey, p: { exists, rect, open, data, conf, label } } },
   hist: { at, local }, quiet: { from: ["<dev>"], at } | null, gone: null | { exists, cover, seq, seen }, wgone: { "<wid>": { exists, cover, seq, seen } } }
 ```
 
+A part's entry may also hold `pending` (content versions kept beside the main one, with their values, until a copy
+is made), `applied`, `prevH`, `prevV` and `val` (what a merge wrote to it, the fingerprint and version it had before,
+and the value written: kept until a change based on that write is written, see "Keeping several open copies in
+sync"), `lh` (a place written at this page's scale from another's: not a move) and, for the photo, `ref` and `put`
+(its file in `Photos/`) or `hold` (a photo not here yet). `keep` (on a page) is a fingerprint of the page as shown
+here when it was deleted elsewhere while shown here and this device had no entry of its own for it: only an edit
+made here brings it back. A tombstone's `seq` is the first write of this device's file that carried it, and `seen`
+when this device first held it.
+
 The parts, versions and rules belong to the merge (`board.js` section 13d, the region `Board Sync merge`). A lost
 ledger (the browser threw the database away) is rebuilt from this device's own file in the folder; with no file
 there, the folder's board is joined as on a first set-up.
+
+**Deletions are forgotten** (`gc`, at most once a day, when every device file in the folder could be read): a
+tombstone goes once this device has held it 30 days and every device it has seen in the folder shows it (its file
+has the same deletion, or doesn't have the page or window and has merged this device's write that first carried
+it, or the device was erased and its file is gone, or its file has been missing for a year). It is then noted in
+`link:sync.dropped` for 30 days more, so the files that still hold it don't bring it back here, and it counts as in
+this device's board when deciding whether an old device file can go.
 
 **The folder** holds one file per device, `21Board (<this device's name>) [<4 id characters>].21board` (8 when
 another device's file has that name; Google Drive's copies, `… (1).21board`, are read too), each written only by
@@ -360,7 +377,7 @@ with the board's records and never exported. Three object stores:
   label, sig, uid, name, bytes, photo: "<key>" | null | "gone",
   thumb: { bg, pattern, shape, vw, vh, wins: [[ikey, x, y, w, h], …] },              // open windows, back to front
   wins: { "<ikey>": [open, createdAt, dataHash, confHash, dataLength, excerpt] },
-  beforeBig, link: "sent" | "loaded" | null, keepUntil, manual, manualLabel, folder, tab,
+  beforeBig, keepUntil, manual, manualLabel, folder, tab,
   deletedAt }                                                                         // the page was deleted then (ms)
 ```
 
@@ -371,17 +388,16 @@ undoing the changes from …" (`undo`) comes before the Undo of a merge. When a 
 over), its versions stay, marked with `deletedAt`, for 30 days: Board history › *Deleted pages* lists them, and *Bring
 back* adds the page again from its newest version, under its old `uid`. Then they go.
 
-`sig` is the content fingerprint the shared folder uses (window stacking order doesn't count), without this
-device's theme and accent (going back never changes them), so identical versions aren't saved twice. `link`:
-the board was, when the version was saved, as this device last sent it to the shared folder (`"sent"`) or loaded
-it from there (`"loaded"`, compared with the folder's own fingerprints). A `"loaded"` version is another device's,
-and isn't copied to the folder (that device keeps the copies) unless it was saved by hand. Retention is in
-README, "Board history". Settings (device only): `historyEvery` (minutes, 0 = off; default 10) and
-`historyFolder` (default true).
+`sig` is the content fingerprint (window stacking order doesn't count), without this device's theme and accent
+(going back never changes them), so identical versions aren't saved twice. Versions saved before Board Sync merged
+boards may have `reason: "load"` and `link: "sent" | "loaded"`; `link` is ignored now. While the board is linked to
+a folder, versions saved when 21Board opens aren't copied to it (they may hold only work merged from other devices,
+which those devices copy themselves), unless saved by hand. Retention is in README, "Board history". Settings
+(device only): `historyEvery` (minutes, 0 = off; default 10) and `historyFolder` (default true).
 
 **Folder copies:** `<shared folder>/Board history/<board name> <YYYY-MM-DD> <HH.MM>[ saved] (<device>) [<uid6>-<dev4>].21board`
 (local time; `uid6` and `dev4` are the first characters of the board's uid and the device id). A valid `.21board`
-file: the version's body plus `history: {at, kind, label, by, from}`, without theme, accent, `sent` or the photo.
+file: the version's body plus `history: {at, kind, label, by, from}`, without theme, accent or the photo.
 Each device thins only files with its own `dev4` (by name only); files ending in ` saved` are never removed.
 
 ## Instances: numbering, closing, reopening
@@ -420,7 +436,7 @@ Several tabs or windows of 21Board can be open on one device. All show the same 
    everything, in case it missed messages while frozen.
 6. Import and Erase post `{ op: "reload" }` once their transaction is stored (a failed one changed
    nothing and posts nothing); other tabs rebuild from IndexedDB. With `replaced: true` (the board was
-   replaced: Import ▸ Replace, Load, going back) or `erased: true`, they first drop any change of their
+   replaced: Import ▸ Replace, going back) or `erased: true`, they first drop any change of their
    own that wasn't saved yet, so it can't land on the new board.
    Reset posts `{ op: "reset", board, ikey }`; other tabs reload that window.
 
@@ -434,14 +450,19 @@ at the board finds both and keeps both. Each record a tab writes also says what 
 
 | Field | Meaning |
 | --- | --- |
-| `base` | the record's `rev` this tab knew when the change was queued (the earliest, when several coalesce). Missing: written around the queue (Import, a deleted page's purge), not tracked. Within 1.5 s of showing a merged write, a widget's save gets the revision before the merge; a tab that didn't show one (it had a change waiting) gives every save of that record that revision until it shows a merged write of it. Either way the save counts as made without the merge. |
+| `base` | the record's `rev` this tab knew when the change was queued (the earliest, when several coalesce). Missing: written around the queue (Import, a deleted page's purge), not tracked. Within 1.5 s of showing a merged write of a record it already had (timed on a clock that never goes back), a widget's save gets the revision before the merge; a tab that didn't show one (it had a change waiting) gives every save of that record that revision until it shows a merged write of it. Either way the save counts as made without the merge. |
 | `m` | `1`: written by a Board Sync merge, never by a tab's own change. |
 | `u` | `1`: written by the Undo of a merge, so that other devices can say "The laptop undid …". |
 
 `settings` is written as a **patch**: only the keys a change gave are put over the stored record, inside the
 transaction (and the keys an older 21Board used, `devWidgets`, `awakeFrom` and `awakeTo`, are dropped), and
 `deletedBoards`/`deletedAt` change only by adding or removing a page, so a tab with an old copy of the settings can't
-write its old lists (or `boards`) over newer ones.
+write its old lists (or `boards`) over newer ones. For the same reason a settings patch still waiting in a tab is
+never dropped when another tab's settings arrive: the tab shows them with its patch over them, then writes it.
+
+The ledger (`link:mine-<uid>`, below) remembers what a merge wrote to a part (`applied`) until a change based on it
+is written, so a change another tab made without the merge is found to be one whenever it is written: it becomes a
+clash, both kept, never an overwrite.
 
 ### When storage fails
 
@@ -565,15 +586,12 @@ Importing a one-page file offers three choices:
 
 - **Open as a new page** (suggested) — the file becomes a new page right after the page shown, with the file's
   name, background, photo, size and shape (not its theme or accent color). It keeps the file's `board.uid`
-  unless a page on this device already has it (then it gets a new one). Undo takes the page away again.
-  (*Replace this page* and Load in the Google Drive folder also give a new `uid` when the file's is another page's
-  on this device; the folder lists such a file with **Go to page** instead of Load.)
+  unless a page on this device already has it (then it gets a new one), so the same file opened on two linked
+  devices is one page. Undo takes the page away again.
 - **Replace this page** — removes this page's current windows and content, then loads the file
-  (including its board name, background, theme and accent color). Which board it is from then on
-  (`board.uid`): the same board, if the file is its own backup (the same `uid`) or says nothing (no `uid`: a
-  template, an old backup) and keeps the board's name; the file's board, if the file was sent to a shared
-  folder (it has a `sent` block), as with Load; otherwise a new board with a new `uid`, so that sending it
-  never touches the file of the board it replaced.
+  (including its board name, background, theme and accent color). The page stays this page (its `board.uid`),
+  whatever board the file was: with Board Sync, the new content reaches the same page on the other devices, as
+  edits.
 - **Add to this page** — keeps everything and adds the file's windows. Instance numbers are
   renumbered to the next free number per widget, and windows are nudged into free space. Each added window gets a
   new `wid` and a `createdAt` of its own; *Replace this page* keeps the file's `wid`s (or makes the default from
@@ -586,6 +604,6 @@ device's pages are deleted, with Undo for 20 seconds, which brings them back and
 restored backup is the same boards in the Google Drive folder. Either way it is all or nothing: if a page can't
 be added, those that were go again and this device's pages stay.
 
-*Replace* keeps this device's background photo unless the file brings one (or is a sent file that says the board's photo was taken off: `"media": { "background": null }`, written only by a device whose last sent or loaded version of the board said something about a photo; a device that has already loaded or sent "taken off" keeps a photo put on there since), and takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
+*Replace* keeps this page's background photo unless the file brings one, and takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
 this screen); a file from before board sizes existed is fitted into the 16:9 board. *Add* fits the
 file's whole board into this one with one uniform factor, keeping shapes and spacing.

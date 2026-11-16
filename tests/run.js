@@ -147,7 +147,17 @@ const CLOCK = () => {
 };
 const setClock = (p, ms) => p.evaluate(ms => localStorage.setItem('test-clock', String(ms)), ms);
 async function driveDevice(browser) { const c = await browser.newContext({ viewport: { width: 1280, height: 720 } }); await c.addInitScript(DRIVE_PICK); await c.addInitScript(CLOCK); const p = await c.newPage(); return { c, p }; }
-const readFolder = p => p.evaluate(async () => { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true }); const out = {}; for await (const [n, h] of d.entries()) if (h.kind === 'file') out[n] = await (await h.getFile()).text(); return out; });
+// (A file the page is writing just then can't be read for a moment: read again. One removed meanwhile is left out.)
+const readFolder = p => p.evaluate(async () => {
+  const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true }), out = {};
+  for await (const [n, h] of d.entries()) {
+    if (h.kind !== 'file') continue;
+    for (let i = 0; ; i++) {
+      try { out[n] = await (await h.getFile()).text(); break; } catch (e) { if (e.name === 'NotFoundError') break; if (i > 8) throw e; await new Promise(r => setTimeout(r, 100)); }
+    }
+  }
+  return out;
+});
 // One file's text in a device's folder (null: not there), and a file written there (an older revision arriving, say).
 const fileText = async (p, name) => (await readFolder(p))[name] ?? null;
 const putText = (p, name, text) => p.evaluate(async ([name, text]) => {
@@ -271,14 +281,18 @@ const sameBoards = async (...ps) => { const all = (await Promise.all(ps.map(show
 const notesText = async p => Object.values(await shownBoard(p)).flatMap(pg => Object.values(pg.wins).map(w => (w.data && w.data.text) || '')).join('\n');
 // The ledger lost (the database thrown away under an open board; Erase does it on purpose).
 const loseLedger = p => p.evaluate(() => window.__board21.store.tx('readwrite', s => { s.delete(IDBKeyRange.bound('link:mine-', 'link:mine-￿')); s.delete('link:sync'); }));
-// Types in a Notes window (by its ikey), as a teacher does, then waits until it is no longer busy (Link.waits.busy). (A
+// Types in a Notes window (by its ikey), as a teacher does, then leaves it and waits until it is no longer busy (Link.waits.busy). (A
 // round landing between the tap and the typing can show the note's text again: tried again then.)
 const typeNote = async (p, ik, text) => {
   const f = p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+  // (a teacher starts typing a moment after a merge changed the note, not within Link.waits.race: a save that soon
+  // counts as one made without the merge, see scenario 48)
+  await p.evaluate(async ik => { const W = window.__board21, r = W.raced.recent.get(`data:${W.state.boardId}:${ik}`); if (r && r.until > performance.now()) await new Promise(res => setTimeout(res, r.until - performance.now() + 50)); }, ik);
   for (let i = 0; ; i++) {
     try { if (await f.locator('#view').isVisible()) await f.locator('#view').click({ timeout: 3000 }); await f.locator('#t').fill(text, { timeout: 3000 }); break; }
     catch (e) { if (i > 3) throw e; await p.waitForTimeout(400); }
   }
+  await p.evaluate(() => { const a = document.activeElement; if (a && a.tagName === 'IFRAME') a.blur(); });   // (a window with the keyboard stays busy longer: Link.waits.focus)
   await p.waitForTimeout(1000);
 };
 // A Notes window with this text on the page shown (returns its ikey).
@@ -289,16 +303,34 @@ const addNote = async (p, text) => {
   return ik;
 };
 const noteOf = (p, ik) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('#t').inputValue();
+// A window of this widget on the page shown (returns its ikey).
+const addWin = (p, id) => p.evaluate(async id => { const before = new Set(window.__board21.state.insts.keys()); window.__board21.openWidget(id); await new Promise(r => setTimeout(r, 900)); return Array.from(window.__board21.state.insts.keys()).find(k => !before.has(k)); }, id);
+// The windows a device has (on pages not deleted), from its records: {uid, b, wid, ikey, widgetId, open, z, copyOf, data, rect}.
+const winList = p => p.evaluate(async () => {
+  const recs = await window.__board21.store.getAll(), by = new Map(recs.map(r => [r.key, r])), st = (by.get('settings') || {}).value || {};
+  const gone = new Set((st.deletedBoards || []).map(Number)), out = [];
+  for (const r of recs) {
+    const k = /^inst:(\d+):([^:]+):(\d+)$/.exec(r.key), bd = k && by.get('board:' + k[1]);
+    if (!k || gone.has(+k[1]) || !r.value || !bd) continue;
+    const d = by.get(`data:${k[1]}:${k[2]}:${k[3]}`);
+    out.push({ uid: bd.value.uid, b: +k[1], wid: r.value.wid, ikey: `${k[2]}:${k[3]}`, widgetId: k[2], open: !!r.value.open, z: r.value.z, copyOf: r.value.copyOf || null, data: d ? d.value : null, rect: r.value.rect });
+  }
+  return out;
+});
+const copiesOf = async p => (await winList(p)).filter(x => x.copyOf);
+// The window with this wid on the page shown: its ikey there (window numbers differ between devices).
+const ikOf = (p, wid) => p.evaluate(wid => { for (const [k, i] of window.__board21.state.insts) if (i.wid === wid) return k; return null; }, wid);
+// Content saved for a window on the page shown, as its widget saves it (Writer); then it is no longer busy.
+const saveData = async (p, ik, value) => { await p.evaluate(([ik, v]) => { const B = window.__board21; return B.writer.put(`data:${B.state.boardId}:${ik}`, 'data', v); }, [ik, value]); await p.waitForTimeout(1000); };
 // A device for the Board Sync suites: its own browser profile, named label, with short waits; page errors go to errors.
 const syncDev = async (browser, label, errors, w) => { const d = await driveDevice(browser); d.p.on('pageerror', e => errors.push(label + ': ' + e.message)); await d.p.goto(BASE); await boardUp(d.p); await nameDevice(d.p, label); await syncWaits(d.p, w); return d; };
 // Every device's file to every other device, with a round on each, twice (so everything has gone both ways).
 const exchange = async (...ds) => { for (let k = 0; k < 2; k++) for (const a of ds) { for (const b of ds) if (a !== b) await deliver(b.p, a.p); await syncNow(a.p); } };
 // The device file of a device (its sync block, parsed), as it is in its own folder.
 const ownJSON = async p => { const n = await ownFile(p); const t = n && await fileText(p, n); return t ? JSON.parse(t) : null; };
-// Part A (the merge core, section 13d) adds window.__board21.merge. Until it lands, Board Sync runs on Part B's stand-in,
-// which has no clashes, copies, page order or merge messages: the checks that need them wait (and say so).
-const realMerge = p => p.evaluate(() => !!window.__board21.merge);
-const okA = async (p, fn, msg) => { if (await realMerge(p)) ok(await fn(), msg); else console.log('  · (waits for Part A) ' + msg); };
+// Every toast text a device shows from now on, also those updated in place or gone again (heard() reads them).
+const hear = p => p.evaluate(() => { window.__heard = []; const t = document.getElementById('toasts'); new MutationObserver(() => { for (const s of t.querySelectorAll('.toast span')) if (window.__heard[window.__heard.length - 1] !== s.textContent && !window.__heard.includes(s.textContent)) window.__heard.push(s.textContent); }).observe(t, { childList: true, subtree: true, characterData: true }); });
+const heard = p => p.evaluate(() => window.__heard || []);
 // Waits (up to ms) until fn, run here, answers true; false if it never does.
 const eventually = async (fn, ms = 8000) => { for (const end = Date.now() + ms; Date.now() < end; await new Promise(r => setTimeout(r, 150))) if (await fn().catch(() => false)) return true; return false; };
 // The "Board history" subfolder of the shared folder.
@@ -4280,7 +4312,7 @@ const SUITES = [
     ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
     await ctx.close();
   }],
-  // ---- Board Sync suites (Part B) ----
+  // ---- Board Sync suites ----
   ['Board Sync: setting up (scenarios 1–4: the first device, a fresh smartboard, a device with its own pages, two set up at once)', async (browser) => {
     const errors = [];
     const said = async p => (await p.locator('#modal.open').count()) ? (await p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ') : '';
@@ -4398,7 +4430,7 @@ const SUITES = [
     const names = async p => Object.values(await shownBoard(p)).map(x => x.name).sort().join();
     ok(await names(A.p) === 'Art,Morning,Music,Science' && await names(G.p) === 'Art,Morning,Music,Science', `both end with every page (${await names(A.p)} / ${await names(G.p)})`);
     ok(/Science, from the laptop/.test(await notesText(G.p)) && /Science, from the laptop/.test(await notesText(A.p)), 'the page both had from one import keeps the folder’s values');
-    await okA(G.p, async () => /Science, from the projector/.test(await notesText(A.p)), 'and the projector’s different note on it becomes a labelled copy on both');
+    ok(/Science, from the projector/.test(await notesText(A.p)) && /Science, from the projector/.test(await notesText(G.p)) && (await copiesOf(A.p)).length === 1, 'and the projector’s different note on it becomes a labelled copy on both');
     await G.c.close();
 
     // ---- 4. Two devices set up "first" before either file arrives: the union, no placeholder, one folder id.
@@ -4433,6 +4465,13 @@ const SUITES = [
     // ---- 5. Unlink the smartboard; on the laptop delete a window and fix a note; link the smartboard again.
     let A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
     const fix = await addNote(A.p, 'Spelling: becuase'), gone = await addNote(A.p, 'Delete me');
+    const fixWid = await A.p.evaluate(ik => window.__board21.state.insts.get(ik).wid, fix);
+    // (the page with that window shown, and its window number there: switching boards and back gives pages new ids)
+    const showWid = (p, w) => p.evaluate(async w => {
+      const B = window.__board21, r = (await B.store.getAll()).find(x => /^inst:/.test(x.key) && x.value && x.value.wid === w), [, b, wg, n] = r.key.split(':');
+      if (+b !== B.state.boardId) { await B.pages.go(+b); await new Promise(res => setTimeout(res, 800)); }
+      return `${wg}:${n}`;
+    }, w);
     await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
     ok(await sameBoards(A.p, B.p) && await wins(B.p) === 2, 'the laptop and the smartboard show the same board');
     const unlinkSaid = await unlinkUI(B.p);
@@ -4528,15 +4567,16 @@ const SUITES = [
     ok(!(await shownBoard(D.p))[art.uid], 'when the third device opens, the page stays deleted');
     await deliver(D.p, A.p); await deliver(D.p, B.p); await deliver(A.p, B.p); await syncNow(B.p); await syncNow(A.p);
     ok(!(await shownBoard(B.p))[art.uid] && !(await shownBoard(A.p))[art.uid], 'everywhere');
-    await setClock(A.p, 106 * DAY); await syncNow(A.p);
-    await okA(A.p, async () => !(await ownJSON(A.p)).sync.gone.pages.some(t => t.uid === art.uid), '30 days after every device’s file shows the deletion, the laptop drops it');
+    await deliver(B.p, A.p);   // (the smartboard's file, with the deletion)
+    await setClock(A.p, 106 * DAY); await syncNow(A.p); await syncNow(A.p);   // (the daily tidying runs after a round's write: the next one writes without it)
+    ok(!(await ownJSON(A.p)).sync.gone.pages.some(t => t.uid === art.uid), '30 days after every device’s file shows the deletion, the laptop drops it');
     for (const x of [A, D]) await setClock(x.p, 0);
     await D.c.close();
 
     // ---- 10. A lost ledger on the smartboard: rebuilt from its own file. No copies, nothing lost, nothing deleted.
     await exchange(A, B);
     const n10 = await wins(A.p);
-    await fillNote(A.p.frameLocator(`.win[data-ikey="${fix}"] iframe`), 'Changed on the laptop meanwhile'); await A.p.waitForTimeout(400); await syncNow(A.p);
+    await fillNote(A.p.frameLocator(`.win[data-ikey="${await showWid(A.p, fixWid)}"] iframe`), 'Changed on the laptop meanwhile'); await A.p.waitForTimeout(400); await syncNow(A.p);
     await loseLedger(B.p);
     await deliver(A.p, B.p); await syncNow(B.p);
     ok(await B.p.evaluate(() => !!window.__board21.link.sync && !window.__board21.link.sync.mode), 'the smartboard rebuilds its ledger from its own file');
@@ -4601,11 +4641,13 @@ const SUITES = [
     // ---- 25, 26. Names and colors.
     await renamePage(A.p, 'Laptop name'); await A.p.waitForTimeout(200);
     await renamePage(B.p, 'Smartboard name');   // (the later one)
+    await syncNow(A.p); await syncNow(B.p);   // (each in its own device's file before either reaches the other)
+    await hear(A.p);
     await exchange(A, B);
     const nm = async p => Object.values(await shownBoard(p))[0].name;
     ok(await nm(A.p) === 'Smartboard name' && await nm(B.p) === 'Smartboard name', `the same page renamed on both: the later name on both (“${await nm(A.p)}”)`);
-    await okA(A.p, async () => await A.p.locator('.toast', { hasText: 'This page was also renamed on the smartboard: it’s called “Smartboard name” now.' }).count() === 1, 'the laptop says the page was also renamed, with its new name');
-    await okA(A.p, async () => A.p.evaluate(() => window.__board21.history.metas.some(m => m.name === 'Laptop name' && /Before changes from the smartboard/.test(m.label))), 'and Board history keeps a version with the other name');
+    ok((await heard(A.p)).includes('This page was also renamed on the smartboard: it’s called “Smartboard name” now.'), `the laptop says the page was also renamed, with its new name (${(await heard(A.p)).join(' | ')})`);
+    ok(await A.p.evaluate(() => window.__board21.history.metas.some(m => m.name === 'Laptop name' && /Before changes from the smartboard/.test(m.label))), 'and Board history keeps a version with the other name');
     await renamePage(A.p, 'Morning');
     await B.p.evaluate(() => window.__board21.updateBoard({ background: { color: '#dbeafe', pattern: 'none' } })); await B.p.waitForTimeout(300);
     await exchange(A, B);
@@ -4619,12 +4661,10 @@ const SUITES = [
     ok(await timers(A.p) === 2 && await timers(B.p) === 2 && await sameBoards(A.p, B.p), 'a new Timer on both: two Timers on both');
 
     // ---- 28. 21Sketch opened on both: one window open after the merge.
-    await okA(A.p, async () => {
-      for (const p of [A.p, B.p]) await p.evaluate(async () => { window.__board21.openWidget('21sketch'); await new Promise(r => setTimeout(r, 600)); });
-      await exchange(A, B);
-      const open = async p => Object.values((await pg(p)).wins).filter(w => w.widgetId === '21sketch' && w.open).length;
-      return await open(A.p) === 1 && await open(B.p) === 1;
-    }, '21Sketch opened on both: one window open after the merge');
+    for (const p of [A.p, B.p]) await p.evaluate(async () => { window.__board21.openWidget('21sketch'); await new Promise(r => setTimeout(r, 600)); });
+    await exchange(A, B);
+    const sketches = async p => Object.values((await pg(p)).wins).filter(w => w.widgetId === '21sketch' && w.open).length;
+    ok(await sketches(A.p) === 1 && await sketches(B.p) === 1, '21Sketch opened on both: one window open after the merge');
 
     // ---- 29. A scale change on the laptop and a move on the smartboard: the window moved is where it was put, in the
     // laptop's scale, and the others are rescaled, not moved.
@@ -4650,7 +4690,8 @@ const SUITES = [
     for (const p of [A.p, B.p]) { await p.evaluate(() => window.__board21.pages.create({ end: true, name: 'New ' + window.__board21.link.device().label })); await p.waitForTimeout(600); }
     await exchange(A, B);
     ok(Object.keys(await shownBoard(A.p)).length === 6 && await sameBoards(A.p, B.p), 'pages added at the end on both: both pages, on both');
-    await okA(A.p, async () => await order(A.p) === await order(B.p) && /^Morning,Three,Four,Two,/.test(await order(A.p)), `moves of different pages both apply, and both devices have one order (${await order(A.p)} / ${await order(B.p)})`);
+    // (Two goes between Three and Four, Four between Two and Three: each page's place, pos, is the later move's)
+    ok(await order(A.p) === await order(B.p) && /^Morning,Four,Three,Two,/.test(await order(A.p)), `moves of different pages both apply, and both devices have one order (${await order(A.p)} / ${await order(B.p)})`);
 
     // ---- 30. Three devices with deliveries in different orders: identical boards.
     const C = await syncDev(browser, 'the cart Chromebook', errors);
@@ -4693,7 +4734,7 @@ const SUITES = [
     const mv = async (p, dx) => { const ik = await ikOf(p, w1); await p.evaluate(([ik, dx]) => { const r = window.__board21.state.insts.get(ik).rect; window.__board21.setRect(ik, Object.assign({}, r, { x: 40 + dx })); }, [ik, dx]); await p.waitForTimeout(300); await syncNow(p); };
     await mv(A.p, 100); await mv(B.p, 300);
     await exchange(A, B);
-    ok(await sameBoards(A.p, B.p) && await wins(A.p) === 2, 'a window moved on both with clocks an hour apart: the same place on both, and nothing lost');
+    ok(await sameBoards(A.p, B.p) && await wins(A.p) === 2, `a window moved on both with clocks an hour apart: the same place on both, and nothing lost (${await wins(A.p)} windows)`);
     await setClock(B.p, 0);
     // A device a year ahead: the smartboard believes its counters at most a day ahead of its own clock.
     const C = await syncDev(browser, 'the clock-wrong Chromebook', errors);
@@ -4702,7 +4743,16 @@ const SUITES = [
     await deliver(C.p, B.p); await syncNow(B.p);
     const ms = await B.p.evaluate(() => ({ seen: window.__board21.link.sync.maxSeen, now: Date.now() }));
     ok(/From a year ahead/.test(await notesText(B.p)) && ms.seen <= ms.now + DAY + 5000, `a device a year ahead: its change arrives, and the smartboard’s counters stay within a day of its clock (${Math.round((ms.seen - ms.now) / H)} h ahead)`);
-    await okA(B.p, async () => true, 'copy labels show the version’s own time (scenario 33, with a clash)');
+    // (a clash with it: its version, a year ahead, is the later and stays in the window; the smartboard's copy is
+    // labelled with the smartboard's own time for its version, not the counter or the other device's clock)
+    const wy = (await winList(B.p)).find(x => x.data && x.data.text === 'From a year ahead').wid;
+    const put = async (p, text) => { const x = (await winList(p)).find(y => y.wid === wy); await p.evaluate(([b, ik, text]) => window.__board21.writer.put(`data:${b}:${ik}`, 'data', { text }), [x.b, x.ikey, text]); await p.waitForTimeout(1000); };
+    await put(C.p, 'From a year ahead, edited there'); await syncNow(C.p);
+    await put(B.p, 'From a year ahead, edited on the smartboard'); await syncNow(B.p);
+    await deliver(C.p, B.p); await syncNow(B.p);
+    const cpy = (await copiesOf(B.p)).find(x => x.copyOf.wid === wy), nowB = await B.p.evaluate(() => Date.now());
+    ok(!!cpy && cpy.data.text === 'From a year ahead, edited on the smartboard' && Math.abs(cpy.copyOf.at - nowB) < 5 * 60e3,
+      `a copy label shows its version’s own time (${cpy ? Math.round((cpy.copyOf.at - nowB) / 1000) + ' s from now' : 'no copy'})`);
     await C.c.close();
     await exchange(A, B);
 
@@ -4975,12 +5025,14 @@ const SUITES = [
     ok(!await photoKey(B.p) && !await named(B.p) && !await named(A.p), 'removed on the laptop, it is removed on the smartboard');
     const photos = async () => Object.keys(await readPhotos(A.p) || {}).sort();
     ok((await photos()).length === 2, 'both photos are still in Photos for now');
-    for (const [d, wait] of [[8, true], [9, true]]) { await setClock(A.p, d * DAY); await A.p.waitForTimeout(2700); await syncNow(A.p); }
+    // (days later the device "wakes up" (Link.awake): Google Drive gets Link.waits.arrive from then before anything is tidied)
+    const later = async d => { await setClock(A.p, d * DAY); await A.p.evaluate(() => window.__board21.link.awake()); await A.p.waitForTimeout(2700); await syncNow(A.p); };
+    for (const d of [8, 9]) await later(d);
     ok(await eventually(async () => { await syncNow(A.p); return (await photos()).length === 0; }), 'a week later, photos no device file names are tidied away (found unnamed on two looks a day apart)');
     await setClock(A.p, 0);
     await setPhoto(A.p, '#2563eb'); await syncNow(A.p);
     ok((await photos()).length === 1 && await named(A.p) === (await photos())[0], 'a photo named again is put in Photos again');
-    for (const d of [10, 11]) { await setClock(A.p, d * DAY); await A.p.waitForTimeout(2700); await syncNow(A.p); }
+    for (const d of [10, 11]) await later(d);
     ok((await photos()).length === 1, 'and a photo a device file names is never tidied away');
     await setClock(A.p, 0);
     await exchange(A, B);
@@ -5051,15 +5103,21 @@ const SUITES = [
     await A.p.evaluate(b => window.__board21.pages.purge(b), math);   // (as when its Undo is over)
     await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
     ok(Object.values(await shownBoard(B.p)).map(x => x.name).join() === 'Morning' && await sameBoards(A.p, B.p), 'the page deleted on the laptop is deleted on the smartboard');
-    await okA(B.p, async () => await B.p.locator('.toast', { hasText: '“Math” was deleted on the laptop.' }).count() === 1, 'the smartboard says so, with Undo');
-    await okA(B.p, async () => B.p.evaluate(() => window.__board21.history.deleted && window.__board21.history.deleted().some(x => x.name === 'Math')), 'after the Undo time the page is under Board history › Deleted pages on both, and Bring back brings it back on both');
+    ok(await B.p.locator('.toast', { hasText: '“Math” was deleted on the laptop.' }).locator('button', { hasText: 'Undo' }).count() === 1, 'the smartboard says so, with Undo');
+    await B.p.evaluate(async () => { const P = window.__board21.pages; await P.purge(Array.from(P.gone())); });   // (as when its Undo is over)
+    const deleted = async p => (await p.evaluate(() => window.__board21.history.deletedPages())).map(x => x.name);
+    ok((await deleted(A.p)).includes('Math') && (await deleted(B.p)).includes('Math'), `after the Undo time the page is under Board history › Deleted pages on both (${await deleted(A.p)} / ${await deleted(B.p)})`);
 
     // ---- 60. Import › Replace all pages on the laptop: the smartboard gets the same pages and windows, as edits.
     // Replace this page keeps the page.
     await A.p.evaluate(() => window.__board21.pages.create({ end: true, name: 'Science' })); await A.p.waitForTimeout(700); await addNote(A.p, 'Science note');
     await exchange(A, B);
-    fs.writeFileSync(OUT + 'all-pages.21board', await fileText(A.p, await ownFile(A.p)));   // (a device file: every page)
-    const before = await uids(A.p);
+    const all = JSON.parse(await fileText(A.p, await ownFile(A.p)));   // (a device file: every page)
+    for (const e of [all].concat(all.pages || [])) for (const i of e.instances || []) if (i.data && i.data.text === 'Science note') i.data.text = 'Science note, from the file';
+    fs.writeFileSync(OUT + 'all-pages.21board', JSON.stringify(all));
+    const before = await uids(A.p), science = (await winList(B.p)).find(x => x.data && x.data.text === 'Science note');
+    // (meanwhile the smartboard changes that note: its file hasn't reached the laptop)
+    await B.p.evaluate(([b, ik]) => window.__board21.writer.put(`data:${b}:${ik}`, 'data', { text: 'Science note, the smartboard’s' }), [science.b, science.ikey]); await B.p.waitForTimeout(1000); await syncNow(B.p);
     await A.p.setInputFiles('#import-input', OUT + 'all-pages.21board'); await A.p.waitForTimeout(400);
     await A.p.locator('#modal.open .btn', { hasText: 'Replace all pages' }).click(); await A.p.waitForTimeout(300);
     const second = await said(A.p);
@@ -5067,9 +5125,11 @@ const SUITES = [
     await A.p.locator('#modal.open .btn', { hasText: 'Replace all pages' }).click(); await A.p.waitForTimeout(2500);
     ok(await uids(A.p) === before, 'Replace all pages keeps the pages’ ids (the same boards)');
     await exchange(A, B);
-    ok(await uids(B.p) === before && await sameBoards(A.p, B.p) && Object.values(await shownBoard(B.p)).reduce((n, x) => n + Object.keys(x.wins).length, 0) === 2,
+    ok(await uids(B.p) === before && await sameBoards(A.p, B.p) && (await winList(B.p)).filter(x => !x.copyOf).length === 2,
       'the smartboard gets the same pages and windows, as edits (nothing deleted and added again)');
-    await okA(B.p, async () => true, 'and the smartboard’s concurrent edits become labelled copies');
+    const cp60 = await copiesOf(B.p);
+    ok(cp60.length === 1 && cp60[0].copyOf.wid === science.wid && cp60[0].data.text === 'Science note, the smartboard’s' && /Science note, from the file/.test(await notesText(B.p)) && (await copiesOf(A.p)).length === 1,
+      'and the smartboard’s concurrent edit becomes a labelled copy, on both');
     const page = JSON.parse(JSON.stringify(await A.p.evaluate(() => window.__board21.buildExport('full'))));
     const shown = await A.p.evaluate(() => window.__board21.state.board.uid);
     page.instances.forEach(i => { if (i.data && i.data.text) i.data.text += ', from a file'; });
@@ -5092,7 +5152,480 @@ const SUITES = [
     await A.p.evaluate(id => window.__board21.history.restore(id), v); await A.p.waitForTimeout(2000);
     await exchange(A, B);
     ok(/Before going back/.test(await notesText(B.p)) && !/After the version/.test(await notesText(B.p)) && await uids(B.p) === before && await sameBoards(A.p, B.p), 'going back on the laptop reaches the smartboard as edits to the same windows');
-    await okA(A.p, async () => true, 'going back to a version of another page keeps this page’s id (restoreNow, Part A)');
+    // Going back to a version of another page (Science's, say, as a folder copy may be) keeps this page: its windows
+    // come onto it, and no page is added or deleted anywhere.
+    const here = await A.p.evaluate(() => window.__board21.state.board.uid);
+    await A.p.evaluate(async () => { const P = window.__board21.pages; await P.go(P.ids()[1]); await new Promise(r => setTimeout(r, 800)); });
+    const other = await A.p.evaluate(() => window.__board21.buildExport('full'));
+    await A.p.evaluate(async () => { const P = window.__board21.pages; await P.go(P.ids()[0]); await new Promise(r => setTimeout(r, 800)); });
+    await A.p.evaluate(e => window.__board21.history.restore({ exp: e }), other); await A.p.waitForTimeout(2000);
+    await exchange(A, B);
+    ok(await A.p.evaluate(() => window.__board21.state.board.uid) === here && await uids(A.p) === before && await uids(B.p) === before && await sameBoards(A.p, B.p),
+      'going back to a version of another page keeps this page’s id: no page is added or deleted on either device');
+
+    // ---- 59, continued: Bring back on the smartboard brings Math back on both.
+    const mathId = ((await B.p.evaluate(() => window.__board21.history.deletedPages())).find(x => x.name === 'Math') || {}).id;
+    await B.p.evaluate(id => window.__board21.history.bringBack(id), mathId); await B.p.waitForTimeout(800);
+    await exchange(A, B);
+    ok(Object.values(await shownBoard(A.p)).some(x => x.name === 'Math' && Object.values(x.wins).some(w => w.data && w.data.text === 'Math note')) && await sameBoards(A.p, B.p), 'Bring back on the smartboard brings Math back, on both');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: an update and its Undo, clashes and copies (scenarios 13, 16–19)', async (browser) => {
+    const errors = [];
+    // (a window with the keyboard in it stays busy while typing goes on, as with the real LINK_FOCUS_MS: see 17)
+    const A = await syncDev(browser, 'the laptop', errors, { focus: 30000 }), B = await syncDev(browser, 'the smartboard', errors, { focus: 30000 });
+    const n = await addNote(A.p, 'Homework: page 12');
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    const w = (await winList(A.p))[0].wid, nB = await ikOf(B.p, w);
+    ok(await sameBoards(A.p, B.p) && !!nB, 'the smartboard has the laptop’s note');
+
+    // ---- 13. An edit on the laptop only: the page shown on the smartboard updates by itself, with Undo. Undo on the
+    // smartboard puts it back there and then on the laptop, which says so, with Redo.
+    await typeNote(A.p, n, 'Homework: page 14'); await syncNow(A.p);
+    await hear(B.p);
+    await deliver(A.p, B.p); await syncNow(B.p);
+    ok(/page 14/.test(await notesText(B.p)) && /page 14/.test(await noteOf(B.p, nB)), 'an edit on the laptop shows on the smartboard’s page by itself');
+    ok((await heard(B.p)).includes('Updated from the laptop.') && await B.p.locator('#toasts button', { hasText: 'Undo' }).count() === 1, `and it says “Updated from the laptop.”, with Undo (${(await heard(B.p)).join(' | ')})`);
+    await B.p.locator('#toasts .toast', { hasText: 'Updated from the laptop.' }).locator('button', { hasText: 'Undo' }).click();
+    ok(await eventually(async () => /page 12/.test(await notesText(B.p)) && /page 12/.test(await noteOf(B.p, nB))), 'Undo on the smartboard puts the note back there');
+    ok(await eventually(async () => (await heard(B.p)).includes('Undone. Your other devices get this too.')), 'and says the other devices get it too');
+    await syncNow(B.p); await hear(A.p);
+    await deliver(B.p, A.p); await syncNow(A.p);
+    ok(/page 12/.test(await notesText(A.p)) && !/page 14/.test(await notesText(A.p)) && await sameBoards(A.p, B.p), 'then on the laptop');
+    ok((await heard(A.p)).includes('The smartboard undid the changes from this device.') && await A.p.locator('#toasts button', { hasText: 'Redo' }).count() === 1,
+      `which says “The smartboard undid the changes from this device.”, with Redo (${(await heard(A.p)).join(' | ')})`);
+    await exchange(A, B);
+
+    // ---- 16. The same Notes content changed on both: the later text stays in the window and the other is kept in one
+    // labelled copy, on both. Another round makes no more copies. The label is short; its title and the window
+    // name's label say whose it is. Moving the copy clears the label on both.
+    await typeNote(A.p, n, 'Homework: page 20 (laptop)'); await syncNow(A.p);
+    await typeNote(B.p, nB, 'Homework: page 21 (smartboard)'); await syncNow(B.p);   // (the later one)
+    await exchange(A, B);
+    const kept = async p => { const all = await winList(p), cp = all.filter(x => x.copyOf && x.copyOf.wid === w); return { main: ((all.find(x => x.wid === w) || {}).data || {}).text, copies: cp.map(x => (x.data || {}).text), cp }; };
+    let kA = await kept(A.p), kB = await kept(B.p);
+    ok(kA.main === 'Homework: page 21 (smartboard)' && kB.main === kA.main && kA.copies.join() === 'Homework: page 20 (laptop)' && kB.copies.join() === kA.copies.join() && await sameBoards(A.p, B.p),
+      `the later text stays in the window and the other is in one labelled copy, on both (${JSON.stringify([kA.main, kA.copies, kB.main, kB.copies])})`);
+    const devA = await A.p.evaluate(() => window.__board21.link.dev());
+    ok(kA.cp[0].copyOf.from === devA && kA.cp[0].copyOf.name === 'the laptop', 'the copy says it is the laptop’s version');
+    await exchange(A, B);
+    ok((await copiesOf(A.p)).length === 1 && (await copiesOf(B.p)).length === 1, 'another round makes no more copies');
+    const time = await B.p.evaluate(at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), kB.cp[0].copyOf.at);
+    const label = (p, ik) => p.evaluate(ik => { const w = document.querySelector(`.win[data-ikey="${ik}"] .win-label`), c = w && w.querySelector('.copy-label'); return c ? { text: c.textContent, hidden: c.hidden, title: c.title, aria: w.getAttribute('aria-label') } : null; }, ik);
+    const lB = await label(B.p, kB.cp[0].ikey), lA = await label(A.p, kA.cp[0].ikey);
+    ok(lB && !lB.hidden && lB.text === `Copy · ${time}`, `the copy’s label is short: “${lB && lB.text}”`);
+    ok(lB.title === `The laptop’s version from ${time}, kept because this window was changed on two devices at once.` && lB.aria === `Notes ${kB.cp[0].ikey.split(':')[1]}, the laptop’s version from ${time}, window menu`,
+      `on the smartboard its title and the window name’s label name the laptop (“${lB.title}” / “${lB.aria}”)`);
+    ok(lA && lA.title === `This device’s version from ${time}, kept because this window was changed on two devices at once.`, `on the laptop they say it is this device’s (“${lA && lA.title}”)`);
+    const box = await B.p.locator(`.win[data-ikey="${kB.cp[0].ikey}"] .win-title`).boundingBox();
+    await B.p.mouse.move(box.x + box.width - 30, box.y + 12); await B.p.mouse.down(); await B.p.mouse.move(box.x + box.width - 110, box.y + 70, { steps: 6 }); await B.p.mouse.up();
+    await B.p.waitForTimeout(1000);
+    await exchange(A, B);
+    ok(!(await winList(A.p)).some(x => x.copyOf) && !(await winList(B.p)).some(x => x.copyOf) && await sameBoards(A.p, B.p), 'moving the copy on the smartboard clears its label on both: it is an ordinary window now');
+
+    // ---- 17. Typing in the same note on both for a while, files delivered every couple of seconds: at most one
+    // copy per pause, and the last text typed on each device is in the window or the copy.
+    const typing = async (rounds, lagged) => {
+      const fA = A.p.frameLocator(`.win[data-ikey="${n}"] iframe`), fB = B.p.frameLocator(`.win[data-ikey="${nB}"] iframe`), late = [];
+      let tA = 'Laptop typing:', tB = 'Smartboard typing:';
+      for (let i = 0; i < rounds; i++) {
+        tA += ` a${i}`; tB += ` b${i}`;
+        await fillNote(fA, tA); await fillNote(fB, tB);   // (the keyboard stays in each window: they are busy)
+        await A.p.waitForTimeout(250);
+        await syncNow(A.p); await syncNow(B.p);
+        if (lagged) { late.push(await fileText(A.p, await ownFile(A.p))); if (late.length > 2) await putText(B.p, await ownFile(A.p), late.shift()); }
+        else await deliver(A.p, B.p);
+        await deliver(B.p, A.p);
+        await syncNow(A.p); await syncNow(B.p);
+      }
+      // (a pause: both leave the note)
+      for (const p of [A.p, B.p]) await p.evaluate(() => { const a = document.activeElement; if (a && a.tagName === 'IFRAME') a.blur(); });
+      await A.p.waitForTimeout(2300);
+      await exchange(A, B); await exchange(A, B);
+      return [tA, tB];
+    };
+    const c17 = (await copiesOf(A.p)).length;
+    const [tA, tB] = await typing(8, false);
+    const all17 = await notesText(A.p), c17b = (await copiesOf(A.p)).length;
+    ok(c17b - c17 <= 1 && all17.includes(tA) && all17.includes(tB) && (await notesText(B.p)).includes(tA) && await sameBoards(A.p, B.p),
+      `typing on both with files delivered every couple of seconds: at most one copy for the pause (${c17b - c17}), and both last texts are kept`);
+    await setClock(B.p, -5 * 60e3);
+    const [tA2, tB2] = await typing(8, true);
+    const all17b = await notesText(B.p), c17c = (await copiesOf(B.p)).length;
+    ok(c17c - c17b <= 1 && all17b.includes(tA2) && all17b.includes(tB2) && await sameBoards(A.p, B.p),
+      `again with the laptop’s files arriving late and the smartboard’s clock 5 minutes slow: no copy per save (${c17c - c17b})`);
+    await setClock(B.p, 0);
+
+    // ---- 18. A clash while the laptop, its author, is closed: the smartboard makes the copy once it has seen no change
+    // to the laptop's file for a while (Link.waits.idle). The laptop then makes no second one.
+    for (const x of await copiesOf(A.p)) await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), x.ikey);
+    await A.p.waitForTimeout(400); await exchange(A, B);
+    const c18 = (await copiesOf(B.p)).length;
+    await typeNote(A.p, n, 'Spelling: the laptop’s list'); await syncNow(A.p);
+    await typeNote(B.p, nB, 'Spelling: the smartboard’s list'); await syncNow(B.p);   // (the later one)
+    await deliver(A.p, B.p); await syncNow(B.p);
+    ok((await copiesOf(B.p)).length === c18 && /the smartboard’s list/.test(await noteOf(B.p, nB)), 'the smartboard keeps its text in the window and leaves the copy to the laptop for now');
+    await B.p.waitForTimeout(2800); await syncNow(B.p);
+    ok((await copiesOf(B.p)).length === c18 + 1 && /the laptop’s list/.test(await notesText(B.p)), 'once it has seen no change to the laptop’s file for a while, the smartboard makes the copy');
+    await deliver(B.p, A.p); await syncNow(A.p); await exchange(A, B);
+    ok((await copiesOf(A.p)).length === c18 + 1 && (await copiesOf(B.p)).length === c18 + 1 && await sameBoards(A.p, B.p), 'when the laptop opens, it makes no second copy');
+    // (16, continued) Closing a copy and tapping Notes in the Widget Picker opens a new note.
+    const cp18 = (await copiesOf(A.p))[0];
+    await A.p.evaluate(ik => window.__board21.closeWin(ik, { quiet: true }), cp18.ikey); await A.p.waitForTimeout(400);
+    const opened = await A.p.evaluate(() => window.__board21.openWidget('notes')); await A.p.waitForTimeout(600);
+    ok(opened && opened !== cp18.ikey && !(await winList(A.p)).find(x => x.ikey === cp18.ikey).open, `closing the copy and tapping Notes opens a new note (${opened}), not the copy`);
+    await exchange(A, B);
+
+    // ---- 19. State widgets: a Traffic light and a running Timer changed on both make no copy (the later state on both,
+    // and Board history keeps the other on the device whose state lost). A Task Timer changed on both makes one
+    // copy, paused, so only one alarm rings.
+    const tl = await addWin(A.p, 'traffic-light'), tm = await addWin(A.p, 'timer'), tt = await addWin(A.p, 'task-timer');
+    await exchange(A, B);
+    const wids = {}; for (const [k, ik] of Object.entries({ tl, tm, tt })) wids[k] = await A.p.evaluate(ik => window.__board21.state.insts.get(ik).wid, ik);
+    const at = Date.now(), task = { totalMode: 'sum', totalMinutes: 60, tasks: [{ emoji: '⭐', name: 'Reading', minutes: 10, color: '#ff5e57' }], activeIndex: 0, secondsLeft: 600, running: true, endsAt: at + 540e3, alarm: false };
+    await saveData(A.p, tl, { active: 'red' }); await saveData(A.p, tm, { duration: 300e3, remaining: 300e3, endsAt: at + 300e3 }); await saveData(A.p, tt, task);
+    await syncNow(A.p);
+    await saveData(B.p, await ikOf(B.p, wids.tl), { active: 'green' }); await saveData(B.p, await ikOf(B.p, wids.tm), { duration: 120e3, remaining: 120e3, endsAt: at + 120e3 });
+    await saveData(B.p, await ikOf(B.p, wids.tt), Object.assign({}, task, { endsAt: at + 300e3, secondsLeft: 300 }));
+    await syncNow(B.p);
+    const before19 = await A.p.evaluate(() => window.__board21.history.metas.filter(m => m.reason === 'merge').length);
+    await exchange(A, B);
+    const of = async (p, id) => (await winList(p)).filter(x => x.widgetId === id);
+    const [lA19, lB19, mA19, mB19] = [await of(A.p, 'traffic-light'), await of(B.p, 'traffic-light'), await of(A.p, 'timer'), await of(B.p, 'timer')];
+    ok(lA19.length === 1 && lB19.length === 1 && lA19[0].data.active === 'green' && lB19[0].data.active === 'green', `a Traffic light changed on both: no copy, the later state on both (${lA19.map(x => x.data.active)})`);
+    ok(mA19.length === 1 && mB19.length === 1 && mA19[0].data.endsAt === at + 120e3 && mB19[0].data.endsAt === at + 120e3, 'a running Timer changed on both: no copy, the later state on both');
+    ok(await A.p.evaluate(() => window.__board21.history.metas.filter(m => m.reason === 'merge').length) > before19, 'the laptop, whose state lost, keeps it in a Board history version first');
+    const [tA19, tB19] = [await of(A.p, 'task-timer'), await of(B.p, 'task-timer')], cpT = tB19.find(x => x.copyOf);
+    ok(tA19.length === 2 && tB19.length === 2 && !!cpT && cpT.data.running === false && cpT.data.endsAt === null && cpT.data.alarm === false && cpT.data.secondsLeft > 0,
+      `a Task Timer changed on both: one copy, paused, so only one alarm rings (${JSON.stringify(cpT && cpT.data && { running: cpT.data.running, secondsLeft: cpT.data.secondsLeft })})`);
+    ok(await sameBoards(A.p, B.p), 'and the boards match');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: deletions and edits, and stacking (scenarios 20–23, 31)', async (browser) => {
+    const errors = [], DAY = 864e5;
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    await renamePage(A.p, 'Morning');
+    const n1 = await addNote(A.p, 'Seating plan'), n2 = await addNote(A.p, 'Lunch list');
+    for (const [name, notes] of [['Math', ['Math warm-up']], ['Art', ['Art: paints', 'Art: brushes']]]) {
+      await A.p.evaluate(name => window.__board21.pages.create({ end: true, name }), name); await A.p.waitForTimeout(700);
+      for (const t of notes) await addNote(A.p, t);
+    }
+    const first = p => p.evaluate(async () => { const P = window.__board21.pages; if (P.ids()[0] !== window.__board21.state.boardId) { await P.go(P.ids()[0]); await new Promise(r => setTimeout(r, 800)); } });
+    await first(A.p);
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B); await first(B.p);
+    const names = async p => Object.values(await shownBoard(p)).map(x => x.name).sort().join();
+    ok(await names(B.p) === 'Art,Math,Morning' && await sameBoards(A.p, B.p), 'three pages on both');
+    const wins = await winList(A.p), widOf = t => wins.find(x => x.data && x.data.text === t).wid;
+    const pageOf = async (p, name) => p.evaluate(name => { const P = window.__board21.pages; const b = P.ids().find(b => P.name(b) === name); return { b, uid: P.info.get(b).uid }; }, name);
+    // Content saved for a window on any page (its records, as a merge or another tab would find them).
+    const putData = async (p, wid, text) => { const x = (await winList(p)).find(y => y.wid === wid); await p.evaluate(([b, ik, text]) => window.__board21.writer.put(`data:${b}:${ik}`, 'data', { text }), [x.b, x.ikey, text]); await p.waitForTimeout(1000); };
+    const dropPage = async (p, name) => { const { b } = await pageOf(p, name); await p.evaluate(async b => { const P = window.__board21.pages; P.drop([b]); await P.purge([b]); }, b); await p.waitForTimeout(300); };
+
+    // ---- 20. A window deleted on the laptop and edited on the smartboard: it stays everywhere, with the edit.
+    const w1 = widOf('Seating plan');
+    await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), n1); await A.p.waitForTimeout(300); await syncNow(A.p);
+    await typeNote(B.p, await ikOf(B.p, w1), 'Seating plan, fixed on the smartboard'); await syncNow(B.p);
+    await exchange(A, B);
+    ok((await winList(A.p)).some(x => x.wid === w1 && x.data.text === 'Seating plan, fixed on the smartboard') && await sameBoards(A.p, B.p), 'a window deleted on the laptop and edited on the smartboard stays everywhere, with the edit');
+
+    // ---- 21. A page deleted on the laptop while a window on it is edited on the smartboard: the whole page comes back
+    // on the laptop, which says why.
+    const math = await pageOf(A.p, 'Math');
+    await dropPage(A.p, 'Math'); await syncNow(A.p);
+    ok(!(await shownBoard(A.p))[math.uid], 'the laptop deletes Math');
+    await putData(B.p, widOf('Math warm-up'), 'Math warm-up: 7 × 8'); await syncNow(B.p);
+    await hear(A.p);
+    await exchange(A, B);
+    const m21 = (await shownBoard(A.p))[math.uid];
+    ok(!!m21 && Object.values(m21.wins).some(x => x.data && x.data.text === 'Math warm-up: 7 × 8') && await sameBoards(A.p, B.p), 'the whole page comes back on the laptop, with the smartboard’s edit');
+    ok((await heard(A.p)).includes('“Math” is back: it was changed on the smartboard before the deletion reached it.'), `and the laptop says why (${(await heard(A.p)).join(' | ')})`);
+
+    // ---- 22. A page deleted on the laptop while the smartboard only taps one window on it (z) and closes another: it
+    // stays deleted.
+    const art = await pageOf(B.p, 'Art');
+    await B.p.evaluate(async b => { const W = window.__board21; await W.pages.go(b); await new Promise(r => setTimeout(r, 800)); const ks = Array.from(W.state.insts.keys()); for (let i = 0; i < 5; i++) W.focusWin(ks[0]); W.closeWin(ks[1], { quiet: true }); }, art.b);
+    await B.p.waitForTimeout(600); await syncNow(B.p);
+    await dropPage(A.p, 'Art'); await syncNow(A.p);
+    for (let i = 0; i < 2; i++) await exchange(A, B);
+    ok(await eventually(async () => { await syncNow(B.p); return !(await shownBoard(B.p))[art.uid] && !(await shownBoard(A.p))[art.uid]; }, 15000) && await names(A.p) === 'Math,Morning',
+      'a page deleted on the laptop stays deleted when the smartboard only tapped or closed windows on it');
+    await exchange(A, B);
+    ok(await sameBoards(A.p, B.p), 'and the boards match');
+    await first(A.p); await first(B.p);
+
+    // ---- 23. The same window deleted on both: deleted. Its deletion is forgotten only once both files show it and 30
+    // days have passed; a stale file arriving afterwards doesn't bring it back.
+    const w2 = widOf('Lunch list'), nameA = await ownFile(A.p), stale = await fileText(A.p, nameA);
+    await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), n2); await A.p.waitForTimeout(300); await syncNow(A.p);
+    await B.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), await ikOf(B.p, w2)); await B.p.waitForTimeout(300); await syncNow(B.p);
+    await exchange(A, B);
+    const holds = async p => (await ownJSON(p)).sync.gone.windows.some(t => t.wid === w2);
+    ok(!(await winList(A.p)).some(x => x.wid === w2) && !(await winList(B.p)).some(x => x.wid === w2) && await holds(A.p) && await holds(B.p), 'the same window deleted on both: deleted, and both files say so');
+    for (const p of [A.p, B.p]) await setClock(p, 29 * DAY);
+    await exchange(A, B);
+    ok(await holds(A.p) && await holds(B.p), 'after 29 days both still remember the deletion');
+    for (const p of [A.p, B.p]) await setClock(p, 31 * DAY);
+    await exchange(A, B); await exchange(A, B);
+    ok(!await holds(A.p) && !await holds(B.p), 'after 30 days, with both files showing it, both forget it');
+    await putText(B.p, nameA.replace(/\.21board$/, ' (1).21board'), stale); await putText(B.p, nameA, stale);
+    await syncNow(B.p); await syncNow(B.p);
+    ok(!(await winList(B.p)).some(x => x.wid === w2), 'a stale file of the laptop’s arriving afterwards doesn’t bring it back');
+    for (const p of [A.p, B.p]) await setClock(p, 0);
+    await putText(B.p, nameA.replace(/\.21board$/, ' (1).21board'), null);
+    await exchange(A, B);
+
+    // ---- 31. Stacking: the smartboard's windows climb into the hundreds (z isn't synced). A Timer opened on the laptop
+    // and a window moved there show on top on the smartboard. A copy with no free spot goes just under its original.
+    await addNote(B.p, 'Tapped all day');
+    const ks = await B.p.evaluate(() => Array.from(window.__board21.state.insts.entries()).filter(([, i]) => i.open).map(([k]) => k));
+    await B.p.evaluate(ks => { for (let i = 0; i < 300; i++) window.__board21.focusWin(ks[i % ks.length]); }, ks);
+    await B.p.waitForTimeout(800); await syncNow(B.p);
+    const zTopB = Math.max(...(await B.p.evaluate(() => Array.from(window.__board21.state.insts.values()).map(i => i.z))));
+    ok(zTopB >= 100, `the smartboard’s windows are stacked in the hundreds (${zTopB})`);
+    const tm = await addWin(A.p, 'timer'), tmWid = await A.p.evaluate(ik => window.__board21.state.insts.get(ik).wid, tm);
+    const mv = (await winList(A.p)).find(x => x.wid === w1);
+    await A.p.evaluate(([ik, r]) => window.__board21.setRect(ik, Object.assign({}, r, { x: r.x + 120 })), [await ikOf(A.p, w1), mv.rect]); await A.p.waitForTimeout(400);
+    await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    const zB = await B.p.evaluate(([a, b]) => { const z = w => { for (const i of window.__board21.state.insts.values()) if (i.wid === w) return i.z; return null; }; return [z(a), z(b)]; }, [tmWid, w1]);
+    ok(zB[0] > zTopB && zB[1] > zTopB, `a Timer opened on the laptop and a window moved there show on top on the smartboard (${zB.join(', ')} over ${zTopB})`);
+    // (the note fills the board, so its copy has no free spot)
+    const big = await A.p.evaluate(ik => { const W = window.__board21, v = W.boundsRect(); W.setRect(ik, { x: v.x, y: v.y, w: v.w, h: v.h }); return W.state.insts.get(ik).rect; }, await ikOf(A.p, w1));
+    await A.p.waitForTimeout(400); await exchange(A, B);
+    await typeNote(A.p, await ikOf(A.p, w1), 'Seating plan, the laptop’s'); await syncNow(A.p);
+    await typeNote(B.p, await ikOf(B.p, w1), 'Seating plan, the smartboard’s'); await syncNow(B.p);   // (the later one: the laptop makes the copy)
+    await deliver(B.p, A.p); await syncNow(A.p);
+    const z31 = await A.p.evaluate(w => { let o = null, c = null; for (const i of window.__board21.state.insts.values()) { if (i.wid === w) o = i; else if (i.copyOf && i.copyOf.wid === w) c = i; } return o && c ? { o: [o.z, o.rect], c: [c.z, c.rect] } : null; }, w1);
+    ok(!!z31 && z31.c[0] < z31.o[0] && big.w > 0, `a copy with no free spot goes just under its original (${JSON.stringify(z31 && [z31.o[0], z31.c[0]])})`);
+    await exchange(A, B);
+    ok(await sameBoards(A.p, B.p), 'and the boards match');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: typing, a Name Picker show, two tabs, and the race guard (scenarios 44, 46–48)', async (browser) => {
+    const errors = [];
+    const blur = p => p.evaluate(() => { const a = document.activeElement; if (a && a.tagName === 'IFRAME') a.blur(); });
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors, { focus: 30000 });
+    const n = await addNote(A.p, 'Story: once upon a time');
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    const w = (await winList(A.p))[0].wid, nB = await ikOf(B.p, w);
+    const keyB = `data:${(await winList(B.p)).find(x => x.wid === w).b}:${nB}`;
+    ok(!!nB && await sameBoards(A.p, B.p), 'the smartboard has the laptop’s note');
+
+    // ---- 44. Typing on the smartboard in a note the laptop changes: the change waits while the smartboard types, then
+    // the clash rule keeps both; nothing typed is lost.
+    await typeNote(A.p, n, 'Story: once upon a time, on the laptop'); await syncNow(A.p);
+    await fillNote(B.p.frameLocator(`.win[data-ikey="${nB}"] iframe`), 'Story: typed on the smartboard');   // (the keyboard stays in it)
+    await B.p.waitForTimeout(300);
+    await deliver(A.p, B.p); await syncNow(B.p);
+    ok(await noteOf(B.p, nB) === 'Story: typed on the smartboard' && !(await copiesOf(B.p)).length, 'while the smartboard types in the note, the laptop’s change to it waits');
+    await blur(B.p); await B.p.waitForTimeout(1200);
+    await exchange(A, B);
+    const all44 = await notesText(B.p);
+    ok(all44.includes('Story: typed on the smartboard') && all44.includes('Story: once upon a time, on the laptop') && (await copiesOf(B.p)).length === 1 && await sameBoards(A.p, B.p),
+      'once it is left alone, both versions are kept (one in a labelled copy): nothing typed is lost');
+    for (const x of await copiesOf(A.p)) await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), x.ikey);
+    await A.p.waitForTimeout(400); await exchange(A, B);
+    // A Name Picker show saves first and runs up to 10 s: its window stays busy for LINK_BUSY_MS (12 s) after a save,
+    // so a merge doesn't cut the show short.
+    const np = await addWin(A.p, 'name-picker'), npWid = await A.p.evaluate(ik => window.__board21.state.insts.get(ik).wid, np);
+    const names = { names: ['Ana', 'Ben', 'Cy'], left: null, picked: [], pickId: null, current: null };
+    await saveData(A.p, np, names); await exchange(A, B);
+    const npB = await ikOf(B.p, npWid);
+    await syncWaits(B.p, { busy: 12000, focus: 30000 });
+    await saveData(A.p, np, Object.assign({}, names, { names: ['Ana', 'Ben', 'Cy', 'Dee'] })); await syncNow(A.p);
+    await B.p.evaluate(([ik, v]) => { const W = window.__board21; return W.writer.put(`data:${W.state.boardId}:${ik}`, 'data', v); }, [npB, Object.assign({}, names, { picked: ['Ben'], pickId: 'p1', current: 'Ben' })]);   // (the show starts: saved first)
+    await B.p.waitForTimeout(1500);
+    await deliver(A.p, B.p); await syncNow(B.p);
+    const npData = async () => ((await winList(B.p)).find(x => x.wid === npWid) || {}).data || {};
+    ok((await npData()).current === 'Ben' && (await npData()).names.length === 3, 'a merge that arrives during a Name Picker show leaves that window alone');
+    await syncWaits(B.p, { focus: 30000 });
+    await B.p.waitForTimeout(1000); await exchange(A, B);
+    ok((await winList(B.p)).filter(x => x.widgetId === 'name-picker').some(x => x.data && x.data.names && x.data.names.length === 4), 'after the show, the laptop’s change arrives (the clash rule: both kept)');
+    for (const x of await copiesOf(A.p)) await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), x.ikey);
+    await A.p.waitForTimeout(400); await exchange(A, B);
+
+    // ---- 46. Two tabs on the smartboard, one with a change waiting as a merge lands: not dropped, and a clash keeps both.
+    const B2 = await B.c.newPage(); B2.on('pageerror', e => errors.push('smartboard tab 2: ' + e.message));
+    await B2.goto(BASE); await boardUp(B2); await B2.waitForTimeout(800);
+    await typeNote(A.p, n, 'Story: the laptop’s ending'); await syncNow(A.p); await deliver(A.p, B.p);
+    await B2.evaluate(([key, text]) => { const W = window.__board21.writer; W.pending.set(key, W.based(key, { type: 'data', value: { text } })); }, [keyB, 'Story: typed in the other tab']);
+    await syncNow(B.p); await B2.waitForTimeout(1000);
+    ok(await B2.evaluate(k => window.__board21.writer.pending.has(k), keyB), 'the other tab’s waiting change isn’t dropped when the merge lands');
+    await B2.evaluate(() => window.__board21.writer.run()); await B2.waitForTimeout(1200);
+    await exchange(A, B);
+    const all46 = await notesText(A.p);
+    ok(all46.includes('Story: typed in the other tab') && all46.includes('Story: the laptop’s ending') && await sameBoards(A.p, B.p), 'it is written, and the clash keeps both versions, on both devices');
+    for (const x of await copiesOf(A.p)) await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), x.ikey);
+    await A.p.waitForTimeout(400); await exchange(A, B);
+
+    // ---- 47. Two tabs on the smartboard, one with a settings change waiting (Lock), as a merge deletes one page and adds
+    // another: the deleted page stays deleted, and the order is the same on both devices.
+    await A.p.evaluate(() => window.__board21.pages.create({ end: true, name: 'Extra' })); await A.p.waitForTimeout(700);
+    await A.p.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[0])); await A.p.waitForTimeout(800);
+    await exchange(A, B);
+    const order = p => p.evaluate(() => window.__board21.pages.ids().map(b => window.__board21.pages.name(b)).join(','));
+    ok(await order(B.p) === await order(A.p) && /Extra/.test(await order(B.p)), 'two pages on both');
+    const extra = await A.p.evaluate(() => { const P = window.__board21.pages; return P.ids().find(b => P.name(b) === 'Extra'); });
+    await A.p.evaluate(async b => { const P = window.__board21.pages; P.drop([b]); await P.purge([b]); P.create({ end: true, name: 'Added' }); }, extra);
+    await A.p.waitForTimeout(800);
+    await A.p.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[0])); await A.p.waitForTimeout(800); await syncNow(A.p);
+    await B2.evaluate(() => { const W = window.__board21.writer; W.pending.set('settings', W.based('settings', { type: 'settings', patch: { set: { locked: true } } })); });
+    await deliver(A.p, B.p); await syncNow(B.p); await B2.waitForTimeout(600);
+    await B2.evaluate(() => window.__board21.writer.run()); await B2.waitForTimeout(1200);
+    const st = await B.p.evaluate(async () => (await window.__board21.store.getMany(['settings']))[0].value);
+    await exchange(A, B);
+    ok(st.locked === true && !/Extra/.test(await order(B.p)) && /Added/.test(await order(B.p)) && await order(B.p) === await order(A.p),
+      `the other tab’s Lock is saved, the deleted page stays deleted, and the order is the same on both (${await order(B.p)} / ${await order(A.p)})`);
+    await B.p.evaluate(() => { const W = window.__board21; W.state.settings.locked = false; return W.writer.patch('settings', 'settings', { set: { locked: false } }); });
+    await B2.close(); await B.p.waitForTimeout(600);
+
+    // ---- 48. The race guard: a widget save just after a merged write (within LINK_RACE_MS) makes a copy, not an
+    // overwrite. An Undo tapped within a second of the merge sticks.
+    const c48 = (await copiesOf(B.p)).length;
+    await typeNote(A.p, n, 'Story: the laptop’s new start'); await syncNow(A.p); await deliver(A.p, B.p);
+    await syncNow(B.p);
+    await fillNote(B.p.frameLocator(`.win[data-ikey="${nB}"] iframe`), 'Story: typed on the smartboard just then');   // (saved just after the merge's write, by a note that hadn't shown it yet)
+    await blur(B.p); await B.p.waitForTimeout(1000);
+    await exchange(A, B);
+    const all48 = await notesText(A.p);
+    ok(all48.includes('Story: typed on the smartboard just then') && all48.includes('Story: the laptop’s new start') && (await copiesOf(A.p)).length === c48 + 1 && await sameBoards(A.p, B.p),
+      'a widget save just after a merged write makes a copy, not an overwrite');
+    for (const x of await copiesOf(A.p)) await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), x.ikey);
+    await A.p.waitForTimeout(400); await exchange(A, B);
+    const textB = async () => ((await winList(B.p)).find(x => x.wid === w).data || {}).text, shownB = await textB();
+    await B.p.evaluate(() => window.__board21.mergeUI.drop());
+    await typeNote(A.p, n, 'Story: undone on the smartboard'); await syncNow(A.p); await deliver(A.p, B.p);
+    await syncNow(B.p);
+    await B.p.locator('#toasts .toast', { hasText: 'Updated from the laptop.' }).locator('button', { hasText: 'Undo' }).click();   // (at once)
+    ok(await eventually(async () => await textB() === shownB && await noteOf(B.p, nB) === shownB), 'an Undo tapped at once puts the note back');
+    await B.p.waitForTimeout(800);
+    await exchange(A, B);
+    ok(await textB() === shownB && !/undone on the smartboard/.test(await notesText(A.p)) && !(await copiesOf(A.p)).length && await sameBoards(A.p, B.p), 'and it sticks, on both, with no copy');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: Undo, Board history and messages (scenarios 56–58)', async (browser) => {
+    const errors = [], MIN = 60e3;
+    // (typing here starts at once after a merge: race, the guard of scenario 48, is kept short so it isn't taken for a save of the old text)
+    const A = await syncDev(browser, 'the laptop', errors, { race: 200 }), B = await syncDev(browser, 'the smartboard', errors, { race: 200 });
+    await renamePage(A.p, 'Morning');
+    const m1 = await addNote(A.p, 'Morning note'), gone = await addNote(A.p, 'Delete me later');
+    for (const [name, text] of [['Math', 'Math note'], ['Art', 'Art note'], ['Music', 'Music note']]) {
+      await A.p.evaluate(name => window.__board21.pages.create({ end: true, name }), name); await A.p.waitForTimeout(700); await addNote(A.p, text);
+    }
+    const go = (p, name) => p.evaluate(async name => { const P = window.__board21.pages, b = P.ids().find(b => P.name(b) === name); if (b !== window.__board21.state.boardId) { await P.go(b); await new Promise(r => setTimeout(r, 800)); } return P.info.get(b).uid; }, name);
+    await go(A.p, 'Morning');
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    const morning = await go(B.p, 'Morning');
+    ok(Object.keys(await shownBoard(B.p)).length === 4 && await sameBoards(A.p, B.p), 'four pages on both');
+    const all = await winList(A.p), widOf = t => all.find(x => x.data && x.data.text === t).wid;
+    const textOf = async (p, wid) => (((await winList(p)).find(x => x.wid === wid) || {}).data || {}).text;
+    const putData = async (p, wid, text) => { const x = (await winList(p)).find(y => y.wid === wid); await p.evaluate(([b, ik, text]) => window.__board21.writer.put(`data:${b}:${ik}`, 'data', { text }), [x.b, x.ikey, text]); await p.waitForTimeout(1000); };
+    const dropPage = async (p, name) => { await p.evaluate(async name => { const P = window.__board21.pages, b = P.ids().find(b => P.name(b) === name); P.drop([b]); await P.purge([b]); }, name); await p.waitForTimeout(300); };
+    const toastOf = (p, text) => p.locator('#toasts .toast', { hasText: text });
+    const fresh = async () => { await B.p.evaluate(() => { window.__board21.mergeUI.drop(); document.getElementById('toasts').innerHTML = ''; }); await hear(B.p); };
+    const lock = (p, on) => p.evaluate(on => { const W = window.__board21; W.state.settings.locked = on; return W.writer.patch('settings', 'settings', { set: { locked: on } }); }, on);
+    const wMorning = widOf('Morning note'), wMath = widOf('Math note');
+
+    // ---- 56. Undo of a merge on the smartboard undoes the page shown only.
+    await typeNote(A.p, m1, 'Morning note, from the laptop'); await putData(A.p, wMath, 'Math note, from the laptop'); await syncNow(A.p);
+    await fresh(); await deliver(A.p, B.p); await syncNow(B.p);
+    await toastOf(B.p, 'Updated from the laptop.').locator('button', { hasText: 'Undo' }).click();
+    ok(await eventually(async () => await textOf(B.p, wMorning) === 'Morning note') && await textOf(B.p, wMath) === 'Math note, from the laptop', 'Undo of a merge undoes the page shown only (Math keeps the laptop’s change)');
+    await B.p.waitForTimeout(600); await exchange(A, B);
+    ok(await textOf(A.p, wMorning) === 'Morning note' && await sameBoards(A.p, B.p), 'and the laptop gets the Undo');
+    // Pages the merge added have no Undo.
+    await A.p.evaluate(() => window.__board21.pages.create({ end: true, name: 'Added on the laptop' })); await A.p.waitForTimeout(700); await go(A.p, 'Morning'); await syncNow(A.p);
+    await fresh(); await deliver(A.p, B.p); await syncNow(B.p);
+    ok((await heard(B.p)).includes('“Added on the laptop” was added on the laptop.') && await toastOf(B.p, 'was added on the laptop').locator('button').count() === 0, `a page added on the laptop: said, with no Undo (${(await heard(B.p)).join(' | ')})`);
+    // Undo of a clash swaps: this device's version goes back in the window, and the laptop's stays, as the copy.
+    await typeNote(B.p, await ikOf(B.p, wMorning), 'Morning: the smartboard’s plan'); await syncNow(B.p);
+    await typeNote(A.p, m1, 'Morning: the laptop’s plan'); await syncNow(A.p);   // (the later one)
+    await fresh(); await deliver(A.p, B.p); await syncNow(B.p);
+    ok((await heard(B.p)).includes('Notes was changed here and on the laptop at once, so both versions are kept.'), `a clash on the page shown says both versions are kept (${(await heard(B.p)).join(' | ')})`);
+    const devA = await A.p.evaluate(() => window.__board21.link.dev());
+    let cp = (await copiesOf(B.p)).find(x => x.copyOf.wid === wMorning);
+    ok(await textOf(B.p, wMorning) === 'Morning: the laptop’s plan' && cp && cp.data.text === 'Morning: the smartboard’s plan', 'the laptop’s text is in the window, the smartboard’s in the copy');
+    await toastOf(B.p, 'at once, so both versions are kept').locator('button', { hasText: 'Undo' }).click();
+    ok(await eventually(async () => { cp = (await copiesOf(B.p)).find(x => x.copyOf.wid === wMorning); return await textOf(B.p, wMorning) === 'Morning: the smartboard’s plan' && cp && cp.data.text === 'Morning: the laptop’s plan' && cp.copyOf.from === devA; }),
+      'Undo swaps them: the smartboard’s text back in the window, and the laptop’s kept as the copy, labelled as the laptop’s');
+    await B.p.waitForTimeout(600); await exchange(A, B);
+    ok(await textOf(A.p, wMorning) === 'Morning: the smartboard’s plan' && (await copiesOf(A.p)).some(x => x.data.text === 'Morning: the laptop’s plan') && await sameBoards(A.p, B.p), 'the same on the laptop: its version is never removed');
+    for (const x of await copiesOf(A.p)) await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), x.ikey);
+    await A.p.waitForTimeout(400); await exchange(A, B);
+    // No Undo while windows are locked.
+    await lock(B.p, true);
+    await typeNote(A.p, m1, 'Morning note, locked board'); await syncNow(A.p);
+    await fresh(); await deliver(A.p, B.p); await syncNow(B.p);
+    ok((await heard(B.p)).includes('Updated from the laptop.') && await toastOf(B.p, 'Updated from the laptop.').locator('button').count() === 0, `while windows are locked, the update has no Undo (${(await heard(B.p)).join(' | ')})`);
+    // The page shown deleted on a locked board: the message points to Board history › Deleted pages.
+    const art = await go(B.p, 'Art'); await fresh();
+    await dropPage(A.p, 'Art'); await syncNow(A.p); await deliver(A.p, B.p);
+    ok(await eventually(async () => { await syncNow(B.p); return (await heard(B.p)).includes('“Art” was deleted on the laptop. Board history › Deleted pages has it.'); }, 15000) && !(await shownBoard(B.p))[art],
+      `the page shown, deleted on a locked board: “… Board history › Deleted pages has it.” (${(await heard(B.p)).join(' | ')})`);
+    ok(await toastOf(B.p, 'Deleted pages has it').locator('button').count() === 0, 'with no Undo');
+    // Unlocked: the Undo of a deleted page brings it back, and goes back to it.
+    await lock(B.p, false);
+    const music = await go(B.p, 'Music'); await fresh();
+    await dropPage(A.p, 'Music'); await syncNow(A.p); await deliver(A.p, B.p);
+    ok(await eventually(async () => { await syncNow(B.p); return (await heard(B.p)).includes('“Music” was deleted on the laptop.'); }, 15000), 'unlocked, the page shown deleted on the laptop: said, with Undo');
+    await toastOf(B.p, '“Music” was deleted on the laptop.').locator('button', { hasText: 'Undo' }).click();
+    ok(await eventually(async () => await B.p.evaluate(() => window.__board21.state.board.uid) === music), 'its Undo brings it back and goes back to it');
+    await B.p.waitForTimeout(800); await exchange(A, B);
+    ok(!!(await shownBoard(A.p))[music] && await sameBoards(A.p, B.p), 'and it is back on the laptop too');
+    await go(A.p, 'Morning'); await go(B.p, 'Morning');
+
+    // ---- 57. Board history: a version before a merge that deletes a window. An hour of typing on the laptop with
+    // nothing changed on the smartboard: at most two versions of that page before changes from the laptop.
+    const merges = () => B.p.evaluate(uid => window.__board21.history.metas.filter(m => m.uid === uid && m.label === 'Before changes from the laptop'), morning);
+    const ikGoneB = await ikOf(B.p, widOf('Delete me later')), c57 = (await merges()).length;
+    await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), gone); await A.p.waitForTimeout(300); await syncNow(A.p);
+    await deliver(A.p, B.p); await syncNow(B.p);
+    const v57 = (await merges())[0];
+    ok((await merges()).length === c57 + 1 && !!v57 && !!v57.wins[ikGoneB], 'a merge that deletes a window: a version with it first');
+    const c57b = (await merges()).length;
+    for (let i = 1; i <= 7; i++) {
+      for (const p of [A.p, B.p]) await setClock(p, i * 10 * MIN);
+      await typeNote(A.p, m1, `Morning note, typed for ${i * 10} minutes`); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    }
+    const n57 = (await merges()).length - c57b;
+    ok(n57 >= 1 && n57 <= 2 && /typed for 70 minutes/.test(await textOf(B.p, wMorning)), `an hour of typing on the laptop, nothing changed on the smartboard: ${n57} version(s) of the page there, at most two`);
+    // With Board history full on the smartboard, a rename clash on that page waits, the status says so, and it applies
+    // once a version can be saved.
+    await B.p.evaluate(() => { const H = window.__board21.history; H.__tx = H.tx; H.tx = function (stores, mode, fn) { if (mode === 'readwrite' && stores.includes('body')) return Promise.reject(new DOMException('The quota has been exceeded.', 'QuotaExceededError')); return H.__tx.call(this, stores, mode, fn); }; H.__thin = H.thin; H.thin = async () => false; });
+    await renamePage(B.p, 'Morning (smartboard)'); await syncNow(B.p);
+    await renamePage(A.p, 'Morning (laptop)'); await syncNow(A.p);   // (the later one)
+    await deliver(A.p, B.p); await syncNow(B.p);
+    const status = () => B.p.evaluate(() => window.__board21.link.status());
+    ok((await shownBoard(B.p))[morning].name === 'Morning (smartboard)' && /Changes to “Morning \(smartboard\)” from the laptop wait until Board history can save a version on this device\. It may be full\./.test(await status(B.p)),
+      `with Board history full, the rename clash waits, and the status says so (“${await status(B.p)}”)`);
+    await B.p.evaluate(() => { const H = window.__board21.history; H.tx = H.__tx; H.thin = H.__thin; H.paused = ''; });
+    await syncNow(B.p);
+    ok((await shownBoard(B.p))[morning].name === 'Morning (laptop)' && !/wait until Board history/.test(await status(B.p)), 'once a version can be saved, it applies');
+    await exchange(A, B);
+
+    // ---- 58. A co-teacher typing on the laptop for a while: one message on the smartboard, updated in place (not a new
+    // one each time). Another page changed quietly says so once when it is next shown.
+    await syncWaits(B.p, { toast: 60000 });
+    await fresh();
+    await B.p.evaluate(() => { window.__nodes = []; new MutationObserver(ms => { for (const m of ms) for (const n of m.addedNodes) if (n.classList && n.classList.contains('toast')) window.__nodes.push(n.textContent); }).observe(document.getElementById('toasts'), { childList: true }); });
+    const nodes = re => B.p.evaluate(src => window.__nodes.filter(t => new RegExp(src).test(t)).length, re.source);
+    for (let i = 0; i < 6; i++) { await typeNote(A.p, m1, `Co-teacher typing, part ${i}`); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p); }
+    ok(/part 5/.test(await textOf(B.p, wMorning)) && await nodes(/^Updated from the laptop/) === 1 && await B.p.locator('#toasts .toast').count() === 1, `six updates: one message, updated in place (${await nodes(/^Updated from/)} new)`);
+    await putData(A.p, wMath, 'Math note, changed quietly'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    ok(await textOf(B.p, wMath) === 'Math note, changed quietly' && await nodes(/Math|^Changed on/) === 0, 'another page changed: nothing said while it isn’t shown');
+    await go(B.p, 'Math');
+    ok(await eventually(async () => await nodes(/^Changed on the laptop (at|on) /) === 1) && await toastOf(B.p, 'Changed on the laptop').locator('button', { hasText: 'Board history' }).count() === 1, 'shown, it says “Changed on the laptop …”, with Board history');
+    await go(B.p, 'Morning (laptop)'); await go(B.p, 'Math');
+    await B.p.waitForTimeout(600);
+    ok(await nodes(/^Changed on the laptop/) === 1, 'once only');
+    for (const p of [A.p, B.p]) await setClock(p, 0);
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
@@ -5331,7 +5864,7 @@ const SUITES = [
     ok(await use.count() === 1, 'on another device, Board history lists the folder’s copies of other boards');
     await use.click(); await C.p.waitForTimeout(3500);
     ok(await C.p.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#t').inputValue() === 'Lesson plan', '“Use” brings that board back on this device');
-    // (Versions of work merged from another device aren't copied to the folder: Part A's maybeFolder, §9.)
+    // (Versions of work merged from another device aren't copied to the folder: see BoardHistory.maybeFolder.)
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await C.c.close();
   }],

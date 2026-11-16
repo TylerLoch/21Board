@@ -567,6 +567,13 @@ node tests/run.js offline    # just one suite (matches the suite title)
 
 The *District apps* suite uses stand-ins for 21Sketch, 21Timer and 21DocCam; the tests never reach their real sites.
 
+The *Board Sync* suites play two or three devices sharing a Google Drive folder, in numbered scenarios (1–61):
+each device is a browser profile of its own, and the tests bring files from one device's folder to another's as
+Google Drive would, late, cut short, out of order or twice, with clocks that disagree. `node tests/merge.js` tests
+the merge itself (`board.js` section 13d) in Node, with no browser: the rules, reading device files, and a
+randomized run of devices changing and merging one board (a couple of minutes; `tests/run.js` runs it as a suite
+too). A whole `node tests/run.js` takes over half an hour.
+
 The tests check that the release stamp matches the files (`node tools/release.js --check`); if that fails,
 run `node tools/release.js`. The *Updating* suites serve one release, then a changed one, and check the
 prompt, *Update* in every open tab, that a device never runs part of each, and that an offline copy is
