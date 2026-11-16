@@ -105,7 +105,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). A backup of another board opened with *Replace this page* is another board from then on: in a shared Google Drive folder it gets its own file, and the board it replaced stays there. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
-| **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Google Drive folder, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
+| **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Board Sync, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 | **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → About shows the version in use. |
 
@@ -137,10 +137,11 @@ are open still come from the saved copy: reload once more, or close and open the
 - **Widget Picker:** show the controls in both corners, or only left/right.
 - **This page:** a word about pages, the page's name (used for export file names and in the Google Drive
   folder), list of every saved widget window on this page with open/delete.
-- **Google Drive folder:** share boards with your other devices (the smartboard) through a folder in Google
-  Drive: choose the folder, Send, send automatically (off, after each change, or when left alone), include
-  the photo, this device's name, other boards in the folder; and what is wrong when the folder can't be used.
-  See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
+- **Board Sync:** share boards with your other devices (the smartboard) through a folder in Google
+  Drive: set up (or change the folder), Send, send automatically (off, after each change, or when left
+  alone), include the photo, this device's name, other boards in the folder; and what is wrong when the
+  folder can't be used.
+  See [Board Sync](#board-sync-sharing-boards-with-the-smartboard).
 - **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
 - **Advanced:** Developer mode (SDK Playground, test an unregistered widget by uploading its file), erase everything (every page).
 - **About:** the version this device is running (release name and build), to read out to IT.
@@ -252,19 +253,42 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 
 ---
 
-## Sharing a board with the smartboard (Google Drive folder)
+## Board Sync (sharing boards with the smartboard)
 
 Build a board on your laptop, show it on the smartboard. 21Board never talks to Google itself: ChromeOS
 already keeps **Google Drive › My Drive** the same on every Chromebook you sign in to, and 21Board just
 keeps a file per board in one folder there that you choose.
 
-**Once on each device** (laptop and smartboard): Settings → **Google Drive folder** → *Choose folder…* →
-Google Drive › My Drive › **21Board** (make the folder first) → *Select* → *Allow*. Chrome then lets 21Board
-read and write in that one folder only; it can't see anything else.
+**Set it up once on each device** (laptop and smartboard): Settings → **Board Sync** → *Set up…*. A dialog
+says in a sentence what Board Sync does and how to make its folder, with a picture of it; *Choose folder…*
+then opens Chrome's folder picker:
+
+1. Go to **Google Drive › My Drive**.
+2. On the first device, tap *New folder* and name it **21Board**. On your other devices, pick that 21Board folder.
+3. Open the folder, then tap *Select* (or *Open*) and *Allow*.
+
+Chrome then lets 21Board read and write in that one folder only; it can't see anything else. 21Board takes a
+quick look inside the folder picked, so that every device ends up with the same one:
+
+- A folder called 21Board, one with 21Board's files in it (boards sent from another device, *About this
+  folder.txt*), or an empty one, is used as it is.
+- A folder with a **21Board** folder in it (My Drive, when the teacher didn't open the 21Board folder) asks
+  *Use 21Board folder* or *Use “My Drive” itself*.
+- A folder with other things in it (My Drive itself) offers *Make a 21Board folder here* (it does, and uses it),
+  *Use this folder anyway* or *Choose another…*. A folder you can only view can't have one made in it: 21Board
+  says so and offers *Choose another…*.
+- A folder that Google Drive is slow to list is used as it is: the look never holds up the setting up.
+
+The last step says which folder this device uses and what comes next: for a new, empty folder, *Now set up
+Board Sync on your other devices and pick this same folder*; for one with boards from your other devices, that
+they are there (Settings → Board Sync lists them, with Load); for a folder you can only view, that boards can
+be loaded from it but not sent. *Send this board now* sends the board at once. *Change…* (Settings → Board
+Sync) and *Choose the folder again…* (on the note on the board) take the same look inside the folder picked,
+without the first dialog.
 
 **Then:**
 
-- **Laptop:** Settings → Google Drive folder → **Send**, or set *Send automatically* to *After each change*
+- **Laptop:** Settings → Board Sync → **Send**, or set *Send automatically* to *After each change*
   (a few seconds after the last change).
 - **Smartboard:** within a minute or two (when 21Board opens, when it comes back to the front, and every
   2 minutes) it says **“Room 12” was updated on my laptop at 7:42 · Load / Not now**. Nothing changes until
@@ -293,7 +317,7 @@ hasn't loaded holds up that device's own automatic sends (they would replace it)
 never off for a whole day unnoticed: *Reconnect folder* (Chrome wants to be asked again: one tap on the note
 and *Allow*), *Folder unavailable* (it can't be found: 21Board keeps looking, and a tap says what to do) or
 *Not sent* (an automatic send failed, for example because the folder is shared with you for viewing only: a
-tap says why; the note goes once the send works or nothing is left to send). Settings → Google Drive folder
+tap says why; the note goes once the send works or nothing is left to send). Settings → Board Sync
 says the same, and when the folder was last checked.
 
 **21Board keeps the folder in order:** one file per board, named after it (“Room 12.21board”, or
@@ -346,7 +370,7 @@ app, where no one signs in:
   (`window.close()`, as 21Sketch does). On ChromeOS that ends the kiosk session: an auto-launched kiosk starts
   21Board again; one started from **Apps** on the sign-in screen goes back to the sign-in screen. If the page
   isn't allowed to close (it only can while it hasn't navigated), it says so.
-- Left out: the Google Drive folder (a kiosk has no Google account), the install prompt, Developer mode and
+- Left out: Board Sync (a kiosk has no Google account), the install prompt, Developer mode and
   backup reminders (no one is signed in to act on one, and whether a kiosk keeps its data is set up by IT: step
   3 below). Settings says it's in kiosk mode.
 - **Import and Export** stay: ChromeOS shows its Files dialog in kiosk sessions too, so files can be saved to and

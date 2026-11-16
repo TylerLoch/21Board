@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="63c74017">
+<html lang="en" data-build="b47aa7cd">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -514,6 +514,17 @@
     .modal-actions .btn { height: 46px; font-size: 15px; justify-content: center; }
     .modal-actions .choice { height: auto; min-height: 60px; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 16px; text-align: left; }
     .modal-actions .choice small { font-weight: 400; font-size: 13px; opacity: .8; white-space: normal; line-height: 1.35; }
+    /* Setting up Board Sync (Link.setup in board.js): a picture of the folder between two devices, and numbered steps. */
+    .modal-card.setup { width: min(460px, 100%); max-height: calc((100vh - 32px) / var(--ui, 1)); overflow-y: auto; }   /* (large sizes of windows and menus: it scrolls) */
+    .setup-art { display: block; width: 100%; max-width: 320px; height: auto; margin: 0 auto 16px; stroke: none; }
+    .setup-art .dev { fill: var(--hover-bg); stroke: var(--icon-color); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
+    .setup-art .fold { fill: var(--primary-soft); stroke: var(--primary); stroke-width: 2.5; stroke-linejoin: round; }
+    .setup-art .arr { fill: none; stroke: var(--primary); stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .setup-art text { font-size: 12.5px; font-weight: 600; fill: var(--muted); text-anchor: middle; }
+    .setup-art .fold-t { font-size: 12px; font-weight: 700; fill: var(--primary); }
+    .setup-steps { list-style: none; counter-reset: step; display: flex; flex-direction: column; gap: 10px; margin: 0 0 22px; padding: 0; }
+    .setup-steps li { counter-increment: step; position: relative; padding-left: 36px; font-size: 15px; line-height: 1.45; }
+    .setup-steps li::before { content: counter(step); position: absolute; left: 0; top: -1px; width: 25px; height: 25px; border-radius: 50%; background: var(--primary); color: var(--on-primary); font-size: 13.5px; font-weight: 700; line-height: 25px; text-align: center; }
 
     /* -------------------------------------------------------------- Toast */
     #toasts { position: fixed; left: 50%; bottom: calc(24px + env(safe-area-inset-bottom)); transform: translateX(-50%); z-index: 3000; display: flex; flex-direction: column; align-items: center; gap: 8px; pointer-events: none; width: max-content; max-width: calc(100vw / var(--ui, 1) - 180px); }

@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.14-1';
-  const BOARD_BUILD = '63c74017';
+  const BOARD_VERSION = '2026.11.16-1';
+  const BOARD_BUILD = 'b47aa7cd';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4057,7 +4057,7 @@
     if (!L.dir) {
       return `<h3>Google Drive folder</h3>
         <div class="row stack"><div><div class="lbl">Share boards with your other devices</div><div class="hint">Choose the same folder in Google Drive on each device, for example My Drive › 21Board (make it first). Google Drive keeps it the same everywhere: send a board from your laptop, and the smartboard offers to load it. 21Board keeps one file per board there.</div></div>
-          <button class="btn primary" data-act="link-choose">${svg('send')}Choose folder…</button></div>`;
+          <button class="btn primary" data-act="link-setup">${svg('send')}Choose folder…</button></div>`;
     }
     const dev = L.device(), uid = S.board.uid, rec = L.boardRec(uid) || {};
     // What is wrong, if anything (as the note on the board says), then how things stand: the last send and
@@ -4427,6 +4427,7 @@
           this.render();
           break;
         }
+        case 'link-setup': await Link.setup(); this.render(); break;
         case 'link-choose': await Link.choose(); this.render(); break;
         case 'link-unlink': {
           const ok = await dialog({ title: `Unlink the “${Link.dir ? Link.dir.name : ''}” folder?`, message: 'This device stops sending to it and checking it. The files in it are left as they are.', actions: [{ label: 'Unlink', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
@@ -4963,13 +4964,16 @@
   }
 
   // =====================================================================
-  // 13b. Sharing boards through a Google Drive folder
+  // 13b. Board Sync: sharing boards through a Google Drive folder
   // ---------------------------------------------------------------------
   // A teacher builds a board on a laptop and shows it on the smartboard. Each device links itself once to
   // the same folder, e.g. Google Drive › My Drive › 21Board (Chrome's folder picker: 21Board can read and
   // write in that folder only, and the teacher allows it). ChromeOS (and Drive for desktop on Windows)
   // keeps that folder the same on every device, so 21Board never talks to Google: no sign-in, API keys,
   // Cloud project or server. Chrome and Edge only (Safari and Firefox keep Export/Import).
+  // Setting up (Settings › Board Sync › Set up…, see setup): what it is and how to make the folder, then
+  // Chrome's folder picker, then a look inside the folder picked (see choose): a teacher who picks My Drive
+  // itself, or the folder around their 21Board folder, is offered the right one.
   //
   // 21Board owns the folder's contents:
   // - One file per board: "<board name>.21board", a full backup with the board's uid and a "sent" block
@@ -4984,7 +4988,7 @@
   // for no file: a send waits for one that may be this board's.
   // - "<name> (copy from …).21board": a copy kept, with a new uid, before loading over local changes.
   // - "About this folder.txt" explains the files to anyone browsing the folder. Other files are left alone.
-  // Sending: Settings → Google Drive folder → Send, or "Send automatically", once the board has been left
+  // Sending: Settings → Board Sync → Send, or "Send automatically", once the board has been left
   // alone: for a few seconds ("After each change", where boards are prepared) or for 10 minutes ("When left
   // alone", for a smartboard: a version that another device hasn't loaded holds up that device's own
   // automatic sends, so taps in class must not each make one). What wasn't sent (21Board was closed first, the
@@ -5009,12 +5013,20 @@
   const LINK_README = 'About this folder.txt';
   // Folder problems in plain words: what happened, and what to do. (The browser's own wording goes to the console.)
   const LINK_SAY = {
-    missing: ['the folder can’t be found', 'If it was renamed, moved or deleted, choose it again in Settings › Google Drive folder.'],
+    missing: ['the folder can’t be found', 'If it was renamed, moved or deleted, choose it again in Settings › Board Sync.'],
     allow: ['Chrome needs you to allow the folder again', 'Tap “Reconnect folder” on the board.'],
-    readonly: ['the folder can only be viewed, not changed', 'Ask its owner to let you edit it, or choose another folder in Settings › Google Drive folder.'],
+    readonly: ['the folder can only be viewed, not changed', 'Ask its owner to let you edit it, or choose another folder in Settings › Board Sync.'],
     full: ['there’s no room left', 'Make room in Google Drive (or on this device).'],
     other: ['the file couldn’t be saved in the folder', 'If this goes on, check that Google Drive is working on this device.']
   };
+  // Setting up Board Sync (setup): a laptop and a smartboard on either side of the 21Board folder in Google Drive.
+  const SYNC_ART = '<svg class="setup-art" viewBox="0 0 320 104" aria-hidden="true">' +
+    '<rect class="dev" x="20" y="22" width="60" height="40" rx="4"/><path class="dev" d="M10 66h80l-6 8H16z"/>' +
+    '<rect class="dev" x="232" y="14" width="80" height="50" rx="4"/><path class="dev" d="M272 64v12m-14 0h28"/>' +
+    '<path class="fold" d="M124 28a4 4 0 0 1 4-4h17l6 7h37a4 4 0 0 1 4 4v38a4 4 0 0 1-4 4h-60a4 4 0 0 1-4-4z"/>' +
+    '<text class="fold-t" x="158" y="59">21Board</text>' +
+    '<path class="arr" d="M94 50h22M100 44l-6 6 6 6M110 44l6 6-6 6M200 50h22M206 44l-6 6 6 6M216 44l6 6-6 6"/>' +
+    '<text x="50" y="98">Laptop</text><text x="158" y="98">Google Drive</text><text x="272" y="98">Smartboard</text></svg>';
   const Link = {
     supported: !LAB && !KIOSK && typeof window.showDirectoryPicker === 'function',
     dir: null,          // FileSystemDirectoryHandle
@@ -5169,18 +5181,108 @@
     },
 
     // ---- linking (from a tap)
+    // Board Sync, the first time (Settings › Board Sync › Set up…, or Send before a folder is linked). Step 1
+    // says what it is and how to make the folder; its button opens Chrome's folder picker (choose); step 3
+    // says which folder is linked and what to do next (welcome). sending: Send goes on by itself, without
+    // step 3. True once a folder is linked.
+    async setup(opts = {}) {
+      if (!this.supported) return false;
+      const go = await dialog({
+        title: 'Set up Board Sync', cls: 'setup',
+        message: 'Board Sync keeps your boards in a Google Drive folder, so your laptop and smartboard can share them.',
+        html: SYNC_ART + '<ol class="setup-steps">' +
+          '<li>Tap <b>Choose folder…</b> below. In the window that opens, go to <b>Google Drive › My Drive</b>.</li>' +
+          '<li>The first time, tap <b>New folder</b> and name it <b>21Board</b>. On your other devices, pick the 21Board folder you made.</li>' +
+          '<li>Open the folder, then tap <b>Select</b> (or <b>Open</b>) and <b>Allow</b>.</li></ol>',
+        actions: [{ label: 'Choose folder…', value: true, kind: 'primary' }, { label: 'Cancel', value: false }]
+      });
+      // (Straight on to the picker, with nothing to wait for first: Chrome opens it only from a tap.)
+      const got = go && await this.choose();
+      if (got && !opts.sending) await this.welcome(got);
+      return !!got;
+    },
+    // Chrome's folder picker (from a tap: Set up…, Change…, the note on the board), then a quick look inside
+    // the folder picked (peek): a 21Board folder inside it is offered instead, and a folder with other things
+    // in it (My Drive itself) can have one made. Then it is linked, and looked at for boards. Returns
+    // {readOnly} once linked; false when nothing changed (cancelled, or the folder couldn't be used).
     async choose() {
-      let h;
-      try { h = await window.showDirectoryPicker({ id: '21board', mode: 'readwrite' }); } catch (err) {
-        if (!err || err.name !== 'AbortError') { console.warn('21Board: the folder couldn’t be chosen', err); toast('That folder couldn’t be opened. Try again, or choose another folder.'); }
-        return false;
+      for (;;) {
+        let h;
+        try { h = await window.showDirectoryPicker({ id: '21board', mode: 'readwrite' }); } catch (err) {
+          if (!err || err.name !== 'AbortError') { console.warn('21Board: the folder couldn’t be chosen', err); toast('That folder couldn’t be opened. Try again, or choose another folder.'); }
+          return false;
+        }
+        const look = await this.peek(h);
+        if (look.sub) {
+          const pick = await dialog({ title: `Use the ${look.sub.name} folder inside “${h.name}”?`, message: 'Pick the same folder on each of your devices.',
+            actions: [{ label: `Use ${look.sub.name} folder`, value: 'sub', kind: 'primary' }, { label: `Use “${h.name}” itself`, value: 'this' }, { label: 'Cancel', value: null }] });
+          if (!pick) return false;
+          if (pick === 'sub') h = look.sub;
+        } else if (look.other) {
+          const pick = await dialog({ title: `Make a 21Board folder in “${h.name}”?`, message: 'This folder has other files in it. 21Board works best in a folder of its own.',
+            actions: [{ label: 'Make a 21Board folder here', value: 'make', kind: 'primary' }, { label: 'Use this folder anyway', value: 'this' }, { label: 'Choose another…', value: 'again' }, { label: 'Cancel', value: null }] });
+          if (!pick) return false;
+          if (pick === 'again') continue;   // (this tap opens the picker again)
+          if (pick === 'make') {
+            try { h = await h.getDirectoryHandle('21Board', { create: true }); } catch (err) {
+              console.warn('21Board: couldn’t make a folder in the folder chosen', err);
+              const n = err && err.name, view = /^(NoModificationAllowed|NotAllowed|Security)Error$/.test(n);
+              const again = await dialog({ title: `21Board can’t make a folder in “${h.name}”`,
+                message: view ? 'You can only view this folder, not change it. Choose a folder you can change, such as one in My Drive.' : n === 'QuotaExceededError' ? 'There’s no room left in Google Drive. Make room, or choose another folder.' : 'Something went wrong. Try again, or choose another folder.',
+                actions: [{ label: 'Choose another…', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
+              if (again) continue;
+              return false;
+            }
+          }
+        }
+        this.perm = 'granted';
+        await this.saveFolder(h);
+        this.device();
+        let readOnly = false;
+        try { await this.writeReadme(); } catch (err) { readOnly = await this.codeOf(err) === 'readonly'; }   // (a send says so too)
+        await this.check(true);
+        return { readOnly };
       }
-      this.perm = 'granted';
-      await this.saveFolder(h);
-      this.device();
-      try { await this.writeReadme(); } catch (e) { /* read-only folder: we'll find out on send */ }
-      await this.check(true);
-      return true;
+    },
+    // A quick look inside a folder just picked: {ours} (21Board's files are in it, or it is called 21Board),
+    // {sub} (no files of 21Board's, but a folder called 21Board, in any capitals), {other} (other files or
+    // folders, as in My Drive itself), or {} (empty, or it couldn't be read). Google Drive may be slow to list
+    // a folder, or not have it yet: what has been seen after a second and a half is all there is, and the
+    // folder is linked as it is if that is nothing (never held up by the look).
+    async peek(h) {
+      if (/^21board$/i.test(h.name)) return { ours: true };
+      const seen = {};
+      let stop = false;
+      const look = (async () => {
+        for await (const [name, e] of h.entries()) {
+          if (stop) break;
+          if (e.kind === 'file' ? /\.21board$/i.test(name) || name === LINK_README : name === 'Board history') { seen.ours = true; break; }
+          if (e.kind === 'directory' && /^21board$/i.test(name)) seen.sub = seen.sub || e;
+          else if (!/^\.|^desktop\.ini$/i.test(name)) seen.other = true;   // (not hidden files that a computer adds)
+        }
+      })();
+      await Promise.race([look.catch(() => {}), sleep(1500)]);
+      stop = true;
+      return seen.ours ? { ours: true } : seen.sub ? { sub: seen.sub } : seen.other ? { other: true } : {};
+    },
+    // Step 3 of setup: the folder is linked (and was just looked at). What comes next.
+    async welcome(got) {
+      if (!this.dir) return;   // (unlinked meanwhile)
+      const me = (this.st.device || {}).id, n = this.found.filter(f => f.kind === 'full' && f.uid !== S.board.uid && f.by !== me).length;
+      const say = [`This device now syncs through your “${this.dir.name}” folder.`];
+      if (got.readOnly) say.push('You can only view this folder, not change it, so boards can be loaded from it but not sent. Ask its owner to let you edit it.');
+      if (this.problem() === 'missing') say.push('Google Drive is still bringing the folder to this device. 21Board keeps looking.');
+      else if (n) say.push(`It already has ${n === 1 ? 'a board' : n + ' boards'} from your other devices: you’ll find ${n === 1 ? 'it' : 'them'} in Settings › Board Sync.`);
+      else if (got.readOnly) { /* (nothing in it to load, and nothing can be sent to it) */ }
+      else if (!this.names.size) say.push('Now set up Board Sync on your other devices and pick this same folder.');
+      else say.push('On your other devices, set up Board Sync and pick this same folder.');
+      // (A newer version of this board is in it: the message on the board offers it, as usual. Sending would
+      // only ask about it.)
+      if (this.offer) say.push(`A newer version of this board, from ${this.offer.from || 'another device'}, is in it: tap Load on the message below to show it here.`);
+      const send = !got.readOnly && !this.offer;
+      const go = await dialog({ title: 'Board Sync is set up', message: say.join(' '),
+        actions: (send ? [{ label: 'Send this board now', value: 'send', kind: 'primary' }] : []).concat([{ label: 'Done', value: null, kind: send ? '' : 'primary' }]) });
+      if (go === 'send') await this.send();
     },
     async unlink() {
       await Writer.del(Keys.link('folder'));
@@ -5191,14 +5293,15 @@
     async writeReadme() {
       try { await this.dir.getFileHandle(LINK_README); return; } catch (e) { /* not there yet */ }
       await this.writeFile(LINK_README, [
-        '21Board keeps your boards here so your devices can share them through Google Drive.',
+        '21Board keeps your boards here so your devices can share them through Google Drive (Board Sync).',
         '',
         'Each .21board file is one board: its windows, what is in them, and its background photo.',
         '21Board names these files after your boards and updates them when you press Send (or',
         'automatically, if you turned that on). Your other devices check this folder and offer to',
         'load a newer version.',
         '',
-        '- In 21Board on each device, choose this same folder: Settings > Google Drive folder.',
+        '- To add a device: in 21Board on that device, go to Settings > Board Sync > Set up, and',
+        '  pick this same folder.',
         '- Please don’t edit or rename the files. Deleting one stops sharing that board; the board',
         '  itself stays on your devices.',
         '- "… (copy from …)" files are copies 21Board kept before loading a newer version over changes.',
@@ -5408,15 +5511,7 @@
     // ---- sending (from a tap, or automatically)
     async send(opts = {}) {
       if (!this.supported) return false;
-      if (!this.dir) {
-        if (opts.auto) return false;
-        const go = await dialog({
-          title: 'Send this board to your other devices',
-          message: 'Choose a folder in Google Drive (for example My Drive › 21Board: make it first if you need to). On the smartboard, choose the same folder in Settings › Google Drive folder. Google Drive keeps it the same on both, and 21Board keeps one file per board in it.',
-          actions: [{ label: 'Choose folder…', value: true, kind: 'primary' }, { label: 'Cancel', value: false }]
-        });
-        if (!go || !await this.choose()) return false;
-      }
+      if (!this.dir && (opts.auto || !await this.setup({ sending: true }))) return false;   // (Board Sync isn't set up yet)
       if (this.perm !== 'granted' && (opts.auto || !await this.ensurePerm())) { if (!opts.auto) toast('21Board can’t use that folder until you allow it.'); return false; }
       if (this.busy || this.loading) { if (!opts.auto) toast('Just a moment: 21Board is still sending or loading this board.'); return false; }
       this.busy = true;
@@ -6648,15 +6743,18 @@
   let dialogResolve = null;
   let dialogHeld = false;   // a dialog has just closed, and the key that answered it may still be down (dialogKey)
   // input: {label, placeholder, maxlength}: also asks for a line of text; resolves {value, text} (or null).
-  function dialog({ title, message, actions, input }) {
+  // html: more under the message, as markup (the caller escapes what goes in it). cls: a class for the card.
+  function dialog({ title, message, actions, input, html, cls }) {
     closePopups({ keepSettings: true, keepHistory: true });
     if (dialogResolve) dialogResolve(null);
     const modal = $('#modal'), card = $('.modal-card', modal);
     const back = document.activeElement;   // where the keyboard was: it goes back there afterwards (dialogBack)
     // A screen reader says the title as the dialog's name, then reads the message.
     modal.setAttribute('aria-labelledby', 'modal-title');
-    if (message) modal.setAttribute('aria-describedby', 'modal-text'); else modal.removeAttribute('aria-describedby');
-    card.innerHTML = `<h3 id="modal-title">${esc(title)}</h3>${message ? `<p id="modal-text">${esc(message)}</p>` : ''}` +
+    const desc = [message ? 'modal-text' : '', html ? 'modal-more' : ''].filter(Boolean).join(' ');
+    if (desc) modal.setAttribute('aria-describedby', desc); else modal.removeAttribute('aria-describedby');
+    card.className = 'modal-card' + (cls ? ' ' + cls : '');
+    card.innerHTML = `<h3 id="modal-title">${esc(title)}</h3>${message ? `<p id="modal-text">${esc(message)}</p>` : ''}` + (html ? `<div id="modal-more">${html}</div>` : '') +
       (input ? `<label class="modal-input"><span>${esc(input.label || '')}</span><input type="text" class="text-input" maxlength="${+input.maxlength || 60}" placeholder="${esc(input.placeholder || '')}" autocomplete="off"></label>` : '') +
       `<div class="modal-actions">` +
       actions.map((a, i) => `<button class="btn ${a.kind || ''} ${a.choice ? 'choice' : ''}" data-i="${i}">${esc(a.label)}${a.sub ? `<small>${esc(a.sub)}</small>` : ''}</button>`).join('') + '</div>';
@@ -6791,7 +6889,7 @@
     }
   };
 
-  // The linked Google Drive folder can't be used (Link.problem): a note above the Widget Picker buttons, for
+  // Board Sync's folder in Google Drive can't be used (Link.problem): a note above the Widget Picker buttons, for
   // as long as that lasts, so that sharing is never off for a whole day unnoticed. "Reconnect folder": Chrome
   // wants to be asked again (after a restart, in a plain tab), and asks only from a tap: one tap on the note.
   // "Folder unavailable" (it can't be found or read) and "Not sent" (an automatic send failed): a tap says
@@ -6803,7 +6901,7 @@
       if (!this.els) return;
       const p = Link.problem(), up = !!SaveNote.state();
       const text = { allow: 'Reconnect folder', missing: 'Folder unavailable', send: 'Not sent' }[p];
-      const label = { allow: 'Reconnect your Google Drive folder', missing: 'Your Google Drive folder is unavailable: what to do', send: 'This board wasn’t sent to your folder: what to do' }[p];
+      const label = { allow: 'Reconnect your Board Sync folder', missing: 'Your Board Sync folder is unavailable: what to do', send: 'This board wasn’t sent to your Board Sync folder: what to do' }[p];
       for (const { b, side, bare } of this.els) {
         b.hidden = !p || Picker.btns[side].hidden;
         if (p && b.dataset.is !== p) { b.dataset.is = p; b.innerHTML = `<span class="status-dot warn"></span>${text}`; b.setAttribute('aria-label', label); }
