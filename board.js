@@ -5112,7 +5112,7 @@
     nagged: false, nagToast: null,
     waits: { quiet: LINK_QUIET_MS, max: LINK_MAX_MS, gap: LINK_GAP_MS, retry: LINK_RETRY_MS, idle: LINK_IDLE_MS, arrive: LINK_ARRIVE_MS, busy: LINK_BUSY_MS, focus: LINK_FOCUS_MS,
       race: LINK_RACE_MS, hold: LINK_HOLD_MS, read: LINK_READ_MS, round: LINK_ROUND_MS, reread: LINK_REREAD_MS, toast: LINK_TOAST_MS, keep: LINK_DEVICE_KEEP_MS,
-      gone: LINK_GONE_MS, afterCommit: null },   // (tests shorten them; afterCommit 'stop': a crash between a round's transaction and its write)
+      gone: LINK_GONE_MS, maxFile: LINK_MAX_FILE, bigFile: LINK_BIG, afterCommit: null },   // (tests shorten them; afterCommit 'stop': a crash between a round's transaction and its write)
     beatAt: 0, freshAt: 0,   // when 21Board was last seen running here; when it opened, or the device woke up or came back online (see awake)
     trouble: null,      // why the folder can't be used right now: {kind: 'missing' | 'send', code, since, at, said}
     failed: null,       // the last write that didn't work: {at, code}
@@ -6112,8 +6112,8 @@
         obj.sync.sum = '';
         obj.sync.sum = await this.digest(new TextEncoder().encode(Merge.sumText(obj)));
         const text = JSON.stringify(obj);
-        if (text.length > LINK_MAX_FILE) throw Object.assign(new Error('The board is too big to sync'), { code: 'big' });
-        this.big = text.length > LINK_BIG ? text.length : 0;
+        if (text.length > this.waits.maxFile) throw Object.assign(new Error('The board is too big to sync'), { code: 'big' });
+        this.big = text.length > this.waits.bigFile ? text.length : 0;
         await this.writeFile(name, text);
         let stamp = null;
         try { const f = await (await this.dir.getFileHandle(name)).getFile(); stamp = { size: f.size, lastModified: f.lastModified }; } catch (e) { /* read at the next look */ }
@@ -6285,7 +6285,7 @@
     // with no device file found at all (Drive may be listing the folder short).
     async tidyPhotos() {
       const t = this.st.tidy || {}, now = Date.now(), gen = this.gen, files = Array.from(this.files.values());
-      if (now - (t.at || 0) < 20 * 36e5 || now - this.freshAt < LINK_ARRIVE_MS || !files.some(f => f.peer || f.dev === this.dev()) || this.tidying || files.some(f => f.bad)) return;
+      if (now - (t.at || 0) < 20 * 36e5 || now - this.freshAt < this.waits.arrive || !files.some(f => f.peer || f.dev === this.dev()) || this.tidying || files.some(f => f.bad)) return;
       const named = new Set(files.flatMap(f => (f.refs || []).map(x => x.ref.file)).concat(Object.values((this.sync || {}).refs || {}).map(x => x.file))), was = t.seen || {}, seen = {};
       let done, missing = false;
       this.tidying = new Promise(r => { done = r; });   // (a write that names a photo meanwhile waits: see putPhoto)

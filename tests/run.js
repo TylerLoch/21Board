@@ -4775,6 +4775,261 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
+  ['Board Sync: writing only when needed, a read that hangs, Photos (1), a newer 21Board (scenarios 39–42)', async (browser) => {
+    const errors = [];
+    const ikOf = async (p, w) => p.evaluate(w => { for (const [k, i] of window.__board21.state.insts) if ((i.wid || `${i.widgetId}@${i.createdAt}`) === w) return k; return null; }, w);
+    const widOf = async (p, ik) => p.evaluate(ik => { const i = window.__board21.state.insts.get(ik); return i.wid || `${i.widgetId}@${i.createdAt}`; }, ik);
+    const seqOf = async p => { const j = await ownJSON(p); return j ? j.sync.seq : 0; };
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    const w1 = await widOf(A.p, await addNote(A.p, 'One')), w2 = await widOf(A.p, await addNote(A.p, 'Two'));
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+
+    // ---- 39. Nothing changing: no writes. Moving windows for a while: at most one write per LINK_GAP_MS.
+    const s0 = [await seqOf(A.p), await seqOf(B.p)];
+    for (let i = 0; i < 4; i++) { await exchange(A, B); await A.p.waitForTimeout(1500); }
+    ok(await seqOf(A.p) === s0[0] && await seqOf(B.p) === s0[1], 'two devices looking at each other’s files with nothing changing write nothing (no ping-pong)');
+    await syncWaits(A.p, { gap: 2000 });
+    const seqs = new Set(), k1 = await ikOf(A.p, w1), t0 = Date.now();
+    for (let i = 0; i < 40; i++) {
+      await A.p.evaluate(([ik, i]) => { const r = window.__board21.state.insts.get(ik).rect; window.__board21.setRect(ik, Object.assign({}, r, { x: 40 + (i % 10) * 20 })); }, [k1, i]);
+      await A.p.waitForTimeout(150); seqs.add(await seqOf(A.p));
+    }
+    const span = Date.now() - t0;
+    await A.p.waitForTimeout(2500); seqs.add(await seqOf(A.p));
+    ok(seqs.size - 1 <= Math.ceil(span / 2000) + 1 && seqs.size > 1, `moving a window over and over for ${Math.round(span / 1000)} s: ${seqs.size - 1} writes, at most one per LINK_GAP_MS, and the last move is written`);
+    await syncWaits(A.p);
+
+    // ---- 40. A read that never settles: the smartboard's own changes are still written, the round gives up in time,
+    // and another tab on the smartboard isn't held up.
+    const aName = await ownFile(A.p);
+    await typeNote(A.p, await ikOf(A.p, w2), 'Two, changed on the laptop'); await syncNow(A.p); await deliver(A.p, B.p);
+    await syncWaits(B.p, { read: 1500, round: 3000 });
+    await B.p.evaluate(n => { window.__drive = { hang: [n] }; }, aName);
+    const B2 = await B.c.newPage(); await B2.goto(BASE); await boardUp(B2);
+    await typeNote(B.p, await ikOf(B.p, w1), 'One, typed while a read hangs');
+    const t1 = Date.now();
+    await syncNow(B.p);
+    const took = Date.now() - t1, bj = await ownJSON(B.p);
+    ok(!!bj && bj.instances.some(i => i.data && i.data.text === 'One, typed while a read hangs') && took < 9000, `a read that never settles: the smartboard’s own change is still written, and its round gives up in time (${took} ms)`);
+    ok(await B2.evaluate(() => new Promise(r => { const t = Date.now(); setTimeout(() => r(Date.now() - t < 1000), 50); })) && await B2.evaluate(() => navigator.locks.query()).then(q => q.held.length === 0),
+      'another tab on the smartboard isn’t held up (the lock is free again)');
+    await B2.close();
+    await B.p.evaluate(() => { window.__drive = {}; }); await syncWaits(B.p);
+    await syncNow(B.p);
+    ok(await eventually(async () => { await syncNow(B.p); return /Two, changed on the laptop/.test(await notesText(B.p)); }), 'once the file can be read, it merges');
+    await exchange(A, B);
+
+    // ---- 41. Two Photos folders ("Photos" and "Photos (1)"): a photo in either is found and shown.
+    const png = await A.p.evaluate(() => { const c = document.createElement('canvas'); c.width = 400; c.height = 300; const g = c.getContext('2d'); g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 400, 300); return c.toDataURL('image/png'); });
+    await A.p.setInputFiles('#photo-input', { name: 'sky.png', mimeType: 'image/png', buffer: Buffer.from(png.split(',')[1], 'base64') }); await A.p.waitForTimeout(1500);
+    await syncNow(A.p);
+    ok(Object.keys(await readPhotos(A.p) || {}).length === 1 && !!(await ownJSON(A.p)).media, 'the laptop puts the photo in Photos, and its file names it');
+    await deliver(A.p, B.p); await dupFolder(B.p, 'Photos');
+    ok(!Object.keys(await readPhotos(B.p) || {}).length && Object.keys(await readPhotos(B.p, 'Photos (1)') || {}).length === 1, 'on the smartboard the photo is in a second “Photos (1)” folder only');
+    ok(await eventually(async () => { await syncNow(B.p); return B.p.evaluate(() => !!window.__board21.state.media.get('background')); }), 'it is found there, and shown');
+
+    // ---- 42. A file from a newer 21Board: the note and the status say so; nothing in it is merged; others still merge.
+    const fut = '21Board (new laptop) [zzzz].21board';
+    await putText(B.p, fut, JSON.stringify({ format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Future', uid: 'aaaaaaaa-0000-4000-8000-000000000000' }, instances: [], sync: { v: 2, dev: 'zzzzzzzzzzzz', name: 'the new laptop', seq: Date.now(), sum: '' } }));
+    await syncNow(B.p);
+    ok(await B.p.locator('.folder-note:not([hidden])', { hasText: 'Update 21Board' }).count() >= 1 && await B.p.evaluate(() => window.__board21.link.problem()) === 'newer', 'a device with a newer 21Board: the note on the board says “Update 21Board”');
+    ok(/The new laptop uses a newer 21Board\. Update 21Board on this device to keep syncing\./.test(await B.p.evaluate(() => window.__board21.link.status())), 'and the status says so');
+    await B.p.locator('.folder-note.left').click();
+    const dlg = (await B.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
+    ok(/^Update 21Board on this device The new laptop uses a newer 21Board, so its changes can’t show here until this device is updated too\./.test(dlg), `tapping it says why (“${dlg}”)`);
+    await B.p.keyboard.press('Escape');
+    ok(!Object.values(await shownBoard(B.p)).some(x => x.name === 'Future'), 'nothing in that file is merged');
+    await typeNote(A.p, await ikOf(A.p, w1), 'One, still merging'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    ok(/One, still merging/.test(await notesText(B.p)), 'and the other devices’ files still merge');
+    await putText(B.p, fut, null); await syncNow(B.p);
+    ok(await B.p.evaluate(() => window.__board21.link.problem()) === '', 'once it is gone, so is the note');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: not disturbing anyone, and races (scenarios 43, 45, 49–51)', async (browser) => {
+    const errors = [];
+    const ikOf = async (p, w) => p.evaluate(w => { for (const [k, i] of window.__board21.state.insts) if ((i.wid || `${i.widgetId}@${i.createdAt}`) === w) return k; return null; }, w);
+    const widOf = async (p, ik) => p.evaluate(ik => { const i = window.__board21.state.insts.get(ik); return i.wid || `${i.widgetId}@${i.createdAt}`; }, ik);
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    await freeBoard(A.p);   // (the smartboard takes this shape with the board)
+    const w1 = await widOf(A.p, await addNote(A.p, 'One')), w2 = await widOf(A.p, await addNote(A.p, 'Two'));
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    const textOn = async (p, w) => ((await shownBoard(p))[Object.keys(await shownBoard(p))[0]].wins[w].data || {}).text;
+    const change = async text => { await typeNote(A.p, await ikOf(A.p, w2), text); await syncNow(A.p); await deliver(A.p, B.p); };
+
+    // ---- 43. Mid-drag on the smartboard when the laptop's change arrives: applied after the drop; the drop is kept.
+    const box = await B.p.locator(`.win[data-ikey="${await ikOf(B.p, w1)}"] .win-title`).boundingBox();
+    await B.p.mouse.move(box.x + 20, box.y + 8); await B.p.mouse.down(); await B.p.mouse.move(box.x + 60, box.y + 40, { steps: 5 });
+    await change('Two, while dragging'); await syncNow(B.p);
+    ok(await textOn(B.p, w2) !== 'Two, while dragging' && await B.p.evaluate(() => window.__board21.inter.active), 'during a drag, nothing from the other device lands on the board');
+    await B.p.mouse.move(box.x + 120, box.y + 80, { steps: 5 }); await B.p.mouse.up(); await B.p.waitForTimeout(300);
+    const dropped = await B.p.evaluate(ik => window.__board21.state.insts.get(ik).rect, await ikOf(B.p, w1));
+    ok(await eventually(async () => { await syncNow(B.p); return await textOn(B.p, w2) === 'Two, while dragging'; }), 'after the drop, it is applied');
+    const kept = await B.p.evaluate(ik => window.__board21.state.insts.get(ik).rect, await ikOf(B.p, w1));
+    ok(Math.round(kept.x) === Math.round(dropped.x) && Math.round(kept.y) === Math.round(dropped.y), 'and the drop is kept');
+    await exchange(A, B);
+    // A drag that starts while the round waits for Board history: nothing moves under it.
+    await B.p.evaluate(() => { const H = window.__board21.history, was = H.beforeMerge; H.beforeMerge = async (...a) => { window.__waiting = true; await new Promise(r => setTimeout(r, 1500)); window.__waiting = false; return was.apply(H, a); }; window.__undoHB = () => { H.beforeMerge = was; }; });
+    await change('Two, during Board history');
+    const round = B.p.evaluate(() => window.__board21.link.round('full'));
+    await B.p.waitForFunction(() => window.__waiting, null, { timeout: 5000 }).catch(() => {});
+    const box2 = await B.p.locator(`.win[data-ikey="${await ikOf(B.p, w1)}"] .win-title`).boundingBox();
+    await B.p.mouse.move(box2.x + 20, box2.y + 8); await B.p.mouse.down(); await B.p.mouse.move(box2.x + 40, box2.y + 30, { steps: 4 });
+    await round;
+    ok(await textOn(B.p, w2) !== 'Two, during Board history', 'a drag that starts while the round waits for Board history: nothing lands under it');
+    await B.p.mouse.up(); await B.p.evaluate(() => window.__undoHB());
+    ok(await eventually(async () => { await syncNow(B.p); return await textOn(B.p, w2) === 'Two, during Board history'; }), 'it lands once the drag is over');
+    await exchange(A, B);
+
+    // ---- 45. A window menu or a dialog open: nothing moves until it closes; a menu left open closes after a while.
+    // The Widget Picker open doesn't hold merges.
+    await B.p.click(`.win[data-ikey="${await ikOf(B.p, w1)}"] .win-label`); await B.p.waitForTimeout(200);
+    ok(await B.p.locator('#menu.open, #menu:not([hidden])').count() >= 1, 'a window menu is open on the smartboard');
+    await syncWaits(B.p, { hold: 60000 });
+    await change('Two, behind a menu'); await syncNow(B.p);
+    ok(await textOn(B.p, w2) !== 'Two, behind a menu', 'while a window menu is open, nothing moves on the board');
+    await syncWaits(B.p, { hold: 1500 });
+    ok(await eventually(async () => { await syncNow(B.p); return await textOn(B.p, w2) === 'Two, behind a menu' && !await B.p.evaluate(() => !!document.querySelector('#menu.open')); }, 20000), 'a menu left open for a while closes, and the change applies');
+    await syncWaits(B.p);
+    const asked = B.p.evaluate(() => window.__board21.pages.rename());
+    await B.p.waitForSelector('#modal.open');
+    await change('Two, behind a dialog'); await syncNow(B.p); await B.p.waitForTimeout(800); await syncNow(B.p);
+    ok(await textOn(B.p, w2) !== 'Two, behind a dialog', 'while a dialog is open, nothing moves');
+    await B.p.keyboard.press('Escape'); await asked;
+    ok(await eventually(async () => { await syncNow(B.p); return await textOn(B.p, w2) === 'Two, behind a dialog'; }), 'once it closes, the change applies');
+    await B.p.click('.picker-btn.left'); await B.p.waitForTimeout(300);
+    await change('Two, with the Widget Picker open'); await syncNow(B.p);
+    ok(await textOn(B.p, w2) === 'Two, with the Widget Picker open' && await B.p.locator('#panel.open').count() === 1, 'the Widget Picker open doesn’t hold merges');
+    await B.p.click('.picker-btn.left'); await B.p.waitForTimeout(200);
+    await exchange(A, B);
+
+    // ---- 49. A change here between the round's read and its transaction: the transaction aborts, the round runs
+    // again, and both are kept.
+    await renamePage(A.p, 'Renamed on the laptop'); await syncNow(A.p); await deliver(A.p, B.p);
+    await B.p.evaluate(() => { const H = window.__board21.history, was = H.beforeMerge; H.beforeMerge = async (...a) => { H.beforeMerge = was; window.__board21.updateBoard({ background: { color: '#dcfce7', pattern: 'none' } }); await new Promise(r => setTimeout(r, 600)); return was.apply(H, a); }; });
+    await syncNow(B.p); await syncNow(B.p);
+    const pg = Object.values(await shownBoard(B.p))[0];
+    ok(pg.name === 'Renamed on the laptop' && pg.color === '#dcfce7', `a change made here while a round was merging: both the change and the merge are kept (${pg.name}, ${pg.color})`);
+    await exchange(A, B);
+    ok(await sameBoards(A.p, B.p), 'and they reach the laptop too');
+
+    // ---- 50. A crash after the round's transaction, before the file is written: written after a reload, nothing lost.
+    await syncWaits(B.p, { afterCommit: 'stop' });
+    await change('Two, before a crash'); await syncNow(B.p);
+    const before = JSON.stringify(await ownJSON(B.p));
+    ok(await textOn(B.p, w2) === 'Two, before a crash' && !before.includes('Two, before a crash'), 'the merge is saved on the smartboard, but 21Board closes before writing its file');
+    await B.p.reload(); await boardUp(B.p);
+    await linkFolder(B.p);   // (the stand-in folder handle can't be kept across a reload: see DRIVE_PICK)
+    ok(await eventually(async () => JSON.stringify(await ownJSON(B.p)).includes('Two, before a crash')), 'after the reload, its file is written, with nothing lost');
+
+    // ---- 51. The lid closed right after an edit: the send round writes the laptop's file before reading any other.
+    const bName = await ownFile(B.p);
+    await typeNote(B.p, await ikOf(B.p, w1), 'One, changed on the smartboard'); await syncNow(B.p); await deliver(B.p, A.p);
+    await A.p.evaluate(n => { window.__drive = { hang: [n] }; }, bName);
+    await A.p.evaluate(ik => { const r = window.__board21.state.insts.get(ik).rect; window.__board21.setRect(ik, Object.assign({}, r, { y: r.y + 30 })); }, await ikOf(A.p, w2));
+    const s1 = (await ownJSON(A.p)).sync.seq;
+    await A.p.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+    ok(await eventually(async () => (await ownJSON(A.p)).sync.seq > s1, 2500), 'hidden right after a change: the laptop writes its file at once, without waiting on another device’s file');
+    await A.p.evaluate(() => { delete document.visibilityState; window.__drive = {}; });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: photos, a folder that can only be viewed, a full folder, and when the folder can’t be used (scenarios 52–55)', async (browser) => {
+    const errors = [], DAY = 864e5;
+    const status = p => p.evaluate(() => window.__board21.link.status());
+    const photoKey = p => p.evaluate(() => { const m = window.__board21.state.media.get('background'); return m ? `${m.addedAt}-${m.bytes}` : null; });
+    const pic = (p, color) => p.evaluate(c => { const cv = document.createElement('canvas'); cv.width = 400; cv.height = 300; const g = cv.getContext('2d'); g.fillStyle = c; g.fillRect(0, 0, 400, 300); return cv.toDataURL('image/png'); }, color);
+    const setPhoto = async (p, color) => { const png = await pic(p, color); await p.setInputFiles('#photo-input', { name: color + '.png', mimeType: 'image/png', buffer: Buffer.from(png.split(',')[1], 'base64') }); await p.waitForTimeout(1500); };
+    const named = async p => { const j = await ownJSON(p); return j && j.media && j.media.background ? j.media.background.file : null; };
+    const note = p => p.evaluate(() => { const b = document.querySelector('.folder-note.left'); return b && !b.hidden ? b.textContent : ''; });
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    await addNote(A.p, 'One');
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+
+    // ---- 52. A photo set on the laptop: the board file reaches the smartboard before the photo.
+    await setPhoto(A.p, '#dc2626'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    const red = await photoKey(A.p), redFile = await named(A.p);
+    ok(!!red && await photoKey(B.p) === red && await named(B.p) === redFile, 'a photo set on the laptop shows on the smartboard, and both files name it');
+    await setPhoto(A.p, '#2563eb'); await syncNow(A.p);
+    const blue = await photoKey(A.p);
+    await deliver(A.p, B.p, { photos: false }); await syncNow(B.p);
+    ok(await photoKey(B.p) === red && await named(B.p) === redFile, 'the file arrives before the new photo: the smartboard keeps its photo, and its file still names it (no flipping)');
+    await B.p.waitForTimeout(2700); await syncNow(B.p);
+    ok(/The background photo of “My Board” is still arriving\./.test(await status(B.p)), `after a while the status says the photo is still arriving (“${await status(B.p)}”)`);
+    await B.p.reload(); await boardUp(B.p); await linkFolder(B.p, null);
+    ok(await photoKey(B.p) === red, 'reloaded while it waits, the smartboard still shows its photo');
+    await deliver(A.p, B.p);
+    ok(await eventually(async () => { await syncNow(B.p); return await photoKey(B.p) === blue; }), 'once the photo arrives, it shows');
+    ok(await eventually(async () => { await syncNow(B.p); return await named(B.p) === await named(A.p) && !/still arriving/.test(await status(B.p)); }), 'the smartboard’s file names it too, and the status no longer waits');
+
+    // ---- 53. A photo removed on the laptop: removed on the smartboard; the photo nobody names goes later; a photo
+    // named again after days is put again, and stays.
+    await openSettings(A.p, ['bg']);
+    await A.p.click('#settings [data-act="photo-remove"]');
+    const rm = (await A.p.locator('#modal.open p').innerText()).replace(/\s+/g, ' ');
+    ok(rm === 'It is removed from this page here and on your other devices. Your full backups and board history still have it.', `removing the photo says it goes on the other devices too (“${rm}”)`);
+    await A.p.locator('#modal.open .btn', { hasText: 'Remove photo' }).click(); await A.p.waitForTimeout(500); await A.p.keyboard.press('Escape');
+    await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    ok(!await photoKey(B.p) && !await named(B.p) && !await named(A.p), 'removed on the laptop, it is removed on the smartboard');
+    const photos = async () => Object.keys(await readPhotos(A.p) || {}).sort();
+    ok((await photos()).length === 2, 'both photos are still in Photos for now');
+    for (const [d, wait] of [[8, true], [9, true]]) { await setClock(A.p, d * DAY); await A.p.waitForTimeout(2700); await syncNow(A.p); }
+    ok(await eventually(async () => { await syncNow(A.p); return (await photos()).length === 0; }), 'a week later, photos no device file names are tidied away (found unnamed on two looks a day apart)');
+    await setClock(A.p, 0);
+    await setPhoto(A.p, '#2563eb'); await syncNow(A.p);
+    ok((await photos()).length === 1 && await named(A.p) === (await photos())[0], 'a photo named again is put in Photos again');
+    for (const d of [10, 11]) { await setClock(A.p, d * DAY); await A.p.waitForTimeout(2700); await syncNow(A.p); }
+    ok((await photos()).length === 1, 'and a photo a device file names is never tidied away');
+    await setClock(A.p, 0);
+    await exchange(A, B);
+
+    // ---- 54. A folder the smartboard can only view: it shows the laptop's changes, with no "Not synced" until a
+    // change is made on it; given write access, its changes merge.
+    await B.p.evaluate(() => { window.__drive = { readOnly: true }; });
+    await renamePage(A.p, 'From the laptop'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    ok(Object.values(await shownBoard(B.p))[0].name === 'From the laptop' && await note(B.p) === '', 'a folder that can only be viewed: the laptop’s changes still show, and there is no note');
+    ok(/^This folder can only be viewed: changes from your other devices show here, but changes made here stay on this device\./.test(await status(B.p)), `the status says so (“${await status(B.p)}”)`);
+    await B.p.evaluate(() => window.__board21.updateBoard({ background: { color: '#fef9c3', pattern: 'none' } })); await syncNow(B.p);
+    ok(await eventually(async () => await note(B.p) === 'Not synced'), 'once a change is made here, the note says “Not synced”');
+    await B.p.evaluate(() => { window.__drive = {}; });
+    await B.p.waitForTimeout(1600);
+    ok(await eventually(async () => { await syncNow(B.p); return await note(B.p) === ''; }), 'given write access, the next write goes, and the note goes');
+    await deliver(B.p, A.p); await syncNow(A.p);
+    ok(Object.values(await shownBoard(A.p))[0].color === '#fef9c3', 'and the change merges on the laptop');
+
+    // ---- 55. A full folder: the note, a retry after a while, nothing lost. A board too big to sync: its own note.
+    await A.p.evaluate(() => { window.__drive = { full: true }; });
+    await renamePage(A.p, 'While full'); await syncNow(A.p);
+    ok(await note(A.p) === 'Not synced' && await A.p.locator('.toast', { hasText: 'Couldn’t sync this board with your folder: there’s no room left. 21Board keeps trying.' }).count() === 1, 'writing fails for lack of room: “Not synced”, and a message the first time');
+    await A.p.locator('.folder-note.left').click();
+    const full = (await A.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
+    ok(/^Your changes aren’t reaching your other devices 21Board couldn’t save them in your folder at .+?: there’s no room left\. Make room in Google Drive \(or on this device\)\. 21Board keeps trying, and changes from your other devices still show here\. Try again now Close$/.test(full), `tapping it says what happened (“${full}”)`);
+    await A.p.keyboard.press('Escape');
+    await A.p.evaluate(() => { window.__drive = {}; });
+    ok(await eventually(async () => { await A.p.evaluate(() => window.__board21.link.check(true)); return await note(A.p) === '' && (await ownJSON(A.p)).board.name === 'While full'; }), 'it is tried again after a while, and nothing was lost');
+    await syncWaits(A.p, { maxFile: 500 });
+    await renamePage(A.p, 'Too big'); await syncNow(A.p);
+    await A.p.locator('.folder-note.left').click();
+    const big = (await A.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
+    ok(await A.p.evaluate(() => window.__board21.link.trouble.code) === 'big' && /: the board is too big to sync\. Remove some big content, such as long notes or large pictures in widgets, then try again\./.test(big), `a board too big to sync: “Not synced”, and why (“${big}”)`);
+    await A.p.keyboard.press('Escape');
+    await syncWaits(A.p);
+
+    // ---- When the folder can't be used: missing, and Chrome wanting to be asked again.
+    await A.p.evaluate(() => { window.__drive = { gone: true }; }); await A.p.evaluate(() => window.__board21.link.check(true));
+    ok(await note(A.p) === 'Folder unavailable', 'a folder that can’t be found: “Folder unavailable”');
+    await A.p.evaluate(() => { window.__drive = {}; }); await A.p.evaluate(() => window.__board21.link.check(true));
+    ok(await note(A.p) === '', 'back: the note goes');
+    await A.p.evaluate(() => { window.__drive = { perm: 'prompt', grant: 'granted' }; const l = window.__board21.link; l.nagged = false; return l.refresh(); });
+    ok(await note(A.p) === 'Reconnect folder' && await A.p.locator('.toast', { hasText: 'Reconnect your “21Board” folder to keep this board in sync with your other devices.' }).count() === 1, 'Chrome wants to be asked again: “Reconnect folder”, and a message for a device that has synced');
+    await A.p.locator('.folder-note.left').click(); await A.p.waitForTimeout(500);
+    ok(await note(A.p) === '' && await A.p.locator('.toast', { hasText: 'Your “21Board” folder is connected again.' }).count() === 1, 'one tap reconnects it');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
   // ---- end of Board Sync suites ----
   ['Board history', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
