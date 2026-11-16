@@ -4233,8 +4233,10 @@ const SUITES = [
     ok(await A.p.evaluate(() => window.__board21.link.fileNameFor('someone-elses-board', 'Room 12 Math')) === 'Room 12 Math (2).21board', 'another board with the same name gets “Room 12 Math (2)”');
     await A.p.evaluate(() => { const h = [...document.querySelectorAll('#settings h3')].find(x => /Board Sync/.test(x.textContent)); h.scrollIntoView(); });
     await A.p.screenshot({ path: OUT + '70-drive-settings.png' });
-    // ---- Send automatically.
-    await A.p.click('#settings [data-act="link-auto"][data-val="now"]'); await A.p.waitForTimeout(200);
+    // ---- Send automatically: a switch, turned on when Board Sync was set up.
+    const autoRow = await A.p.evaluate(() => { const b = document.querySelector('#settings [data-act="link-auto"]'); return b && { role: b.getAttribute('role'), on: b.getAttribute('aria-checked'), label: b.getAttribute('aria-label'), text: b.closest('.row').innerText.replace(/\s+/g, ' ').trim() }; });
+    ok(!!autoRow && autoRow.role === 'switch' && autoRow.on === 'true' && autoRow.label === 'Send automatically' && autoRow.text === 'Send automatically A few seconds after you stop making changes.',
+      `Settings › Board Sync › Send automatically is a switch, on since Board Sync was set up (${JSON.stringify(autoRow)})`);
     await closeSettings(A.p);
     await fillNote(note(A.p), 'Sent by itself'); await A.p.waitForTimeout(10000);
     files = await readFolder(A.p);
@@ -4622,8 +4624,31 @@ const SUITES = [
     ok(await use.count() === 1, 'on another device, Board history lists the folder’s copies of other boards');
     await use.click(); await C.p.waitForTimeout(3500);
     ok(await C.p.frameLocator('.win[data-ikey="notes:1"] iframe').locator('#t').inputValue() === 'Lesson plan', '“Use” brings that board back on this device');
+    // ---- A board loaded from another device: its versions here aren't copied to the folder (the device that sent it
+    // keeps its own copies), and Board history knows the board as it is now. (A version leaves out the theme and
+    // accent, which the folder's fingerprints include: the two never matched.)
+    const B = await driveDevice(browser); B.p.on('pageerror', e => errors.push(e.message));
+    await B.p.goto(BASE); await boardUp(B.p);
+    await L(B.p, () => window.__board21.history.cfg({ quiet: 300, every: 900, skipOpen: true }));
+    await drive(A.p, B.p);
+    const sentFile = Object.keys(await readFolder(B.p)).find(n => n.endsWith('.21board'));
+    await L(B.p, async n => { const l = window.__board21.link; await l.choose(); l.load(n); }, sentFile);
+    await B.p.locator('#modal.open .btn', { hasText: 'Replace this board' }).click(); await B.p.waitForTimeout(2000);
+    const loadedV = await L(B.p, () => window.__board21.history.capture('open')); await B.p.waitForTimeout(1500);
+    const bm = await L(B.p, async id => { const H = window.__board21.history; await H.reload(); const m = H.metas.find(x => x.id === id); return m && { link: m.link, folder: m.folder }; }, loadedV);
+    const copiesB = async () => Object.keys(await readHistory(B.p)).filter(n => n.endsWith('.21board'));
+    ok(!!bm && bm.link === 'loaded' && !bm.folder && (await copiesB()).length === 0,
+      `on a device showing the version it loaded from another device, that version isn’t copied to the folder’s Board history (${JSON.stringify(bm)}, ${(await copiesB()).length} copies)`);
+    await openSettings(B.p); await B.p.click('#settings [data-act="hist-open"]'); await B.p.waitForTimeout(1500);
+    await B.p.click(`#history [data-act="sel"][data-val="${loadedV}"]`); await B.p.waitForTimeout(400);
+    const nowSame = await B.p.evaluate(() => { const d = document.querySelector('#history .hist-detail'); return d && { text: d.textContent, go: !!d.querySelector('[data-act="go"]') }; });
+    ok(!!nowSame && /Same as your board now\./.test(nowSame.text) && !nowSame.go, `Board history knows that version is the board as it is now: “Same as your board now.”, and no Go back (${nowSame && nowSame.text.replace(/\s+/g, ' ').slice(0, 90)})`);
+    await B.p.keyboard.press('Escape'); await B.p.waitForTimeout(300);
+    await L(B.p, () => window.__board21.openWidget('dice')); await B.p.waitForTimeout(1000);
+    await L(B.p, () => window.__board21.history.capture('open'));
+    ok(await eventually(async () => (await copiesB()).length === 1), 'once the board is changed here, its versions are copied as before');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
-    await A.c.close(); await C.c.close();
+    await A.c.close(); await B.c.close(); await C.c.close();
   }],
   ['Board history: review fixes', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
@@ -6103,7 +6128,7 @@ const SUITES = [
     const warning = async () => (await p.locator('#settings .save-warn').count()) ? p.locator('#settings .save-warn').innerText() : '';
     await L(p, () => window.__board21.openWidget('notes')); await p.waitForTimeout(1200);
     await fillNote(note(p), 'v1'); await p.waitForTimeout(300);
-    await L(p, async () => { const l = window.__board21.link; await l.choose(); await l.send(); if (l.waits) l.waits.now = 1000; l.saveState({ auto: true }); });
+    await L(p, async () => { const l = window.__board21.link; await l.choose(); await l.send(); if (l.waits) { l.waits.now = 1000; l.waits.retry = 1000; } l.saveState({ auto: true }); });
     ok(await sent('v1') && await folderNote() === '', 'setup: the board is in the folder, “Send automatically” is on, and nothing is said on the board');
 
     // ---- Chrome wants to be asked again (after a restart, 21Board in a plain tab).
@@ -6172,14 +6197,17 @@ const SUITES = [
     await p.keyboard.press('Escape');
     await fillNote(note(p), 'still can’t');
     ok(await eventually(async () => await folderNote() === 'Not sent'), 'and it comes back with the next change that can’t be sent');
+    // (A send that didn't work is tried again a minute later, not at every look at the folder: shortened here.)
     await L(p, () => { window.__drive = {}; return window.__board21.link.check(true); });
-    ok(await eventually(() => sent('still can’t')) && await eventually(async () => await folderNote() === ''), 'once the folder can be written to, the change goes out at the next check, and the note goes');
-    await settings(p);
-    ok(await warning() === '' && await p.locator('#settings', { hasText: 'Folder checked at' }).count() === 1, 'Settings then says when the folder was last checked');
+    ok(await eventually(() => sent('still can’t')) && await eventually(async () => await folderNote() === ''), 'once the folder can be written to, the change goes out at a later look at the folder, and the note goes');
+    await settings(p, ['folder']);
+    ok(await warning() === '' && await p.locator('#settings', { hasText: 'last checked' }).count() === 0, 'Settings then says nothing about when the folder was last checked: it is looked at every few seconds');
+    ok(await L(p, () => { const l = window.__board21.link; l.checkedAt -= 2 * 60e3; l.redraw(true); return /Folder last checked at/.test(document.querySelector('#settings').textContent); }), 'it says so once the last good look is a while ago (a look that is taking long)');
+    ok(await eventually(async () => await p.locator('#settings', { hasText: 'last checked' }).count() === 0, 8000), 'and the next look takes that away');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close();
   }],
-  ['Board Sync: catching up, files still arriving, sending when left alone', async (browser) => {
+  ['Board Sync: catching up, files still arriving, Send automatically', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const L = (p, fn, arg) => p.evaluate(fn, arg);
     const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
@@ -6276,34 +6304,37 @@ const SUITES = [
       'if the file becomes readable while that question is open, “Send now” doesn’t write over it: the folder is looked at again, and Send asks');
     await modal(B.p, 'Cancel'); await B.p.waitForTimeout(300);
 
-    // ---- "When left alone": the smartboard's choice. Taps in class don't each become a version.
+    // ---- Send automatically is a switch: off, nothing is sent; on, a few seconds after the changes stop.
     await settings(A.p);
-    await A.p.click('#settings [data-act="link-auto"][data-val="calm"]'); await A.p.waitForTimeout(200);
-    ok(await L(A.p, () => window.__board21.link.st.auto && window.__board21.link.st.calm) && await A.p.locator('#settings [data-act="link-auto"][data-val="calm"][aria-checked="true"]').count() === 1, 'Settings › Send automatically has “When left alone”, beside Off and “After each change”');
+    await A.p.click('#settings [data-act="link-auto"]'); await A.p.waitForTimeout(200);
+    ok(await L(A.p, () => !window.__board21.link.st.auto) && await A.p.getAttribute('#settings [data-act="link-auto"]', 'aria-checked') === 'false', 'Settings › Send automatically switches off');
     await A.p.keyboard.press('Escape');
-    await L(A.p, () => { window.__board21.link.waits.calm = 12000; });   // (10 minutes, shortened)
-    // (The teacher switches to another tab, or back: as Chrome tells the page.)
-    const tab = (p, state) => L(p, state => { if (state === 'hidden') Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); else delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange')); }, state);
     const before = await version(A.p, file);
-    await fillNote(note(A.p), 'dice rolled'); await A.p.waitForTimeout(500);
-    await tab(A.p, 'hidden'); await A.p.waitForTimeout(1500);
-    ok(await version(A.p, file) === before, 'with “When left alone”, switching to another tab doesn’t send the change either (every switch would make a version)');
-    await tab(A.p, 'visible'); await A.p.waitForTimeout(7500);
-    ok(await version(A.p, file) === before, 'with “When left alone”, a change isn’t sent a few seconds later');
-    ok(await eventually(() => fileHas(A.p, file, 'dice rolled'), 6000), 'it is sent once the board has been left alone for the time (10 minutes; shortened here)');
+    await fillNote(note(A.p), 'typed while off'); await A.p.waitForTimeout(3000);
+    ok(await version(A.p, file) === before, 'off, a change isn’t sent');
+    await settings(A.p);
+    await A.p.click('#settings [data-act="link-auto"]'); await A.p.waitForTimeout(200);
+    await A.p.keyboard.press('Escape');
+    ok(await L(A.p, () => window.__board21.link.st.auto) && await eventually(() => fileHas(A.p, file, 'typed while off')), 'switched on again, what is waiting goes a few seconds later');
+    await L(A.p, () => { window.__board21.link.waits.now = 3000; });
+    const typing = await version(A.p, file);
+    for (const t of ['dice', 'dice rolled', 'dice rolled twice']) { await fillNote(note(A.p), t); await A.p.waitForTimeout(1500); }
+    ok(await version(A.p, file) === typing, 'while changes go on, nothing is sent');
+    ok(await eventually(() => fileHas(A.p, file, 'dice rolled twice')), 'it is sent once they stop for a few seconds (8; shortened here)');
     // The next morning: a tap at the end of class wasn't sent before the board went to sleep. (16 hours pass.)
-    await L(A.p, () => { const w = window.__board21.link.waits; w.calm = 5000; w.settle = 1000; });
+    await L(A.p, () => { const w = window.__board21.link.waits; w.now = 5000; w.settle = 4000; });
     await fillNote(note(A.p), 'last tap of the day'); await A.p.waitForTimeout(400);
     const evening = await version(A.p, file);
     await L(A.p, () => { const l = window.__board21.link; clearTimeout(l.autoT); l.autoT = 0; l.unsent = false; l.comparedAt = 0; const real = Date.now.bind(Date); Date.now = () => real() + 16 * 3600e3; return l.check(true); });
-    await A.p.waitForTimeout(4500);
-    ok(await version(A.p, file) === evening, 'after a night’s sleep, “When left alone” counts its time from when the board woke up, not from yesterday’s tap (which sent it within seconds of waking, before Google Drive had brought the laptop’s evening version)');
-    ok(await eventually(() => fileHas(A.p, file, 'last tap of the day')), 'and then sends it');
-    // "After each change": leaving the tab sends a pending change at once.
-    await L(A.p, () => { const l = window.__board21.link; l.waits.now = 60000; l.saveState({ auto: true, calm: false }); });
+    await A.p.waitForTimeout(3500);
+    ok(await version(A.p, file) === evening, 'after a night’s sleep, a change that wasn’t sent waits for Google Drive’s time, counted from when the board woke up (not sent within seconds of waking, before Drive has brought the laptop’s evening version)');
+    ok(await eventually(() => fileHas(A.p, file, 'last tap of the day'), 12000), 'and then it is sent');
+    // Leaving 21Board (another tab, or closing it) sends a pending change at once.
+    const tab = (p, state) => L(p, state => { if (state === 'hidden') Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); else delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange')); }, state);
+    await L(A.p, () => { window.__board21.link.waits.now = 60000; });
     await fillNote(note(A.p), 'tab closed'); await A.p.waitForTimeout(400);
     await tab(A.p, 'hidden');
-    ok(await eventually(() => fileHas(A.p, file, 'tab closed'), 4000), 'with “After each change”, a pending change is sent when the tab is left');
+    ok(await eventually(() => fileHas(A.p, file, 'tab closed'), 4000), 'a pending change is sent at once when 21Board is left');
     await tab(A.p, 'visible');
     // ---- An emptied board says so when it is offered.
     await L(A.p, async () => { const b = window.__board21; for (const k of Array.from(b.state.insts.keys())) await b.closeWin(k); await b.link.send(); });
@@ -6311,6 +6342,105 @@ const SUITES = [
     ok(await B.p.locator('.toast', { hasText: 'That version has no open windows.' }).count() === 1, 'a version in which every window is closed says so when it is offered (it isn’t loaded by reflex)');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: Send automatically from setting up (nothing sent by itself), a look every 5 seconds, a device that slept', async (browser) => {
+    const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
+    const L = (p, fn, arg) => p.evaluate(fn, arg);
+    const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
+    const settings = openSettings;
+    const boards = async p => Object.keys(await readFolder(p)).filter(n => n.endsWith('.21board')).sort().join(' | ');
+    const fileHas = async (p, name, text) => ((await readFolder(p))[name] || '').includes(text);
+    const version = async (p, name) => JSON.parse((await readFolder(p))[name]).sent.id;
+    const file = 'Room 12.21board';
+    const errors = [];
+    const A = await driveDevice(browser), B = await driveDevice(browser), C = await driveDevice(browser);   // the laptop, the smartboard, another device
+    for (const d of [A, B, C]) { d.p.on('pageerror', e => errors.push(e.message)); await d.p.goto(BASE); await boardUp(d.p); }
+
+    // ---- The laptop sets Board Sync up. Send automatically goes on, and sends nothing until the board is changed.
+    await L(A.p, async () => { const b = window.__board21; await b.openWidget('notes'); await b.openWidget('dice'); b.link.waits.now = 1000; }); await A.p.waitForTimeout(1200);
+    await fillNote(note(A.p), 'Lesson'); await A.p.waitForTimeout(300);
+    await renamePage(A.p, 'Room 12');
+    await settings(A.p); await setUpSync(A.p); await A.p.keyboard.press('Escape');
+    await A.p.waitForTimeout(5000);
+    ok(await L(A.p, () => window.__board21.link.st.auto) && await boards(A.p) === '', 'after setting up (Done, not Send this board now), Send automatically is on, but the board isn’t sent by itself');
+    await L(A.p, () => window.__board21.focusWin('notes:1')); await A.p.waitForTimeout(4000);
+    ok(await boards(A.p) === '', 'nor when a window is brought to the front (that isn’t a change)');
+    await fillNote(note(A.p), 'Lesson plan');
+    ok(await eventually(() => fileHas(A.p, file, 'Lesson plan')), 'a real change is sent a few seconds later');
+    const v1 = await version(A.p, file);
+
+    // ---- The smartboard, with a board of its own, sets up against the folder that holds the laptop's board.
+    await L(B.p, async () => { const b = window.__board21; await b.openWidget('notes'); b.link.waits.now = 1000; b.link.waits.settle = 1000; }); await B.p.waitForTimeout(1200);
+    await fillNote(note(B.p), 'The smartboard’s own'); await B.p.waitForTimeout(300);
+    await drive(A.p, B.p);
+    await settings(B.p); await setUpSync(B.p);
+    await B.p.waitForTimeout(5000);
+    ok(await L(B.p, () => window.__board21.link.st.auto) && await boards(B.p) === file && await version(B.p, file) === v1,
+      `on the smartboard too, Send automatically is on, and its own board isn’t sent by itself (${await boards(B.p)})`);
+    await L(B.p, () => { const l = window.__board21.link; clearTimeout(l.autoT); l.autoT = 0; l.unsent = false; l.comparedAt = 0; l.beatAt = 0; return l.check(true); });   // (21Board opened again)
+    await B.p.waitForTimeout(6000);
+    ok(await boards(B.p) === file, 'nor after 21Board opens again');
+    await B.p.click(`#settings [data-act="link-load"][data-val="${file}"]`); await B.p.waitForSelector('#modal.open');
+    ok(await B.p.locator('#modal.open', { hasText: 'This board has changes that weren’t sent to the folder' }).count() === 1, 'Load still says the smartboard’s own board was never sent, and offers to keep a copy');
+    await modal(B.p, 'Replace this board'); await B.p.waitForTimeout(2500);
+    ok(await note(B.p).locator('#t').inputValue() === 'Lesson plan' && await boards(B.p) === file && await version(B.p, file) === v1,
+      'loading the laptop’s board sends nothing first (the smartboard’s own board wasn’t a change waiting to be sent)');
+    await B.p.keyboard.press('Escape');
+
+    // ---- A newer version from the laptop: seen within seconds, and never sent over.
+    await fillNote(note(A.p), 'Lesson v2');
+    ok(await eventually(() => fileHas(A.p, file, 'Lesson v2')), 'the laptop sends its change by itself');
+    await drive(A.p, B.p);
+    const offer = B.p.locator('.toast', { hasText: '“Room 12” was updated on' });
+    ok(await eventually(async () => await offer.count() === 1, 7000), 'the smartboard offers it within seconds, without being asked to look (the folder is looked at every 5 seconds)');
+    await fillNote(note(B.p), 'B scribble'); await B.p.waitForTimeout(4000);
+    ok(await fileHas(B.p, file, 'Lesson v2') && !await fileHas(B.p, file, 'B scribble') && await B.p.locator('.toast', { hasText: 'aren’t sent until you load it' }).count() === 1,
+      'a change on the smartboard isn’t sent over the version it hasn’t loaded, and it says so');
+    await offer.locator('button', { hasText: 'Load' }).click(); await B.p.waitForSelector('#modal.open');
+    await modal(B.p, 'Load and replace mine'); await B.p.waitForTimeout(2000);
+    await fillNote(note(B.p), 'From the smartboard');
+    ok(await note(B.p).locator('#t').inputValue() === 'From the smartboard' && await eventually(() => fileHas(B.p, file, 'From the smartboard')), 'once it is loaded, the smartboard’s changes are sent by themselves');
+
+    // ---- A look that finds nothing new is cheap: no file read, no subfolder, nothing written, nothing redrawn.
+    await drive(B.p, C.p);
+    await L(C.p, () => window.__board21.link.choose());
+    await settings(C.p, ['boards', 'folder']);
+    ok(await C.p.locator('#settings [data-act="link-load"]').count() === 1 && await C.p.locator('#settings [data-act="link-check"]').count() === 0, 'Boards from other devices lists the board, with no “Check the folder now” (the folder is looked at every 5 seconds)');
+    await L(C.p, () => {
+      const l = window.__board21.link, d = l.dir, n = window.__n = { looks: 0, subfolders: 0, reads: 0, writes: 0, drawn: 0, note: 0 };
+      const e = d.entries, g = d.getDirectoryHandle;
+      d.entries = function () { n.looks++; return e.apply(this, arguments); };
+      d.getDirectoryHandle = function () { n.subfolders++; return g.apply(this, arguments); };
+      const t = Blob.prototype.text; Blob.prototype.text = function () { n.reads++; return t.apply(this, arguments); };
+      for (const m of ['put', 'delete', 'add', 'clear']) { const f = IDBObjectStore.prototype[m]; IDBObjectStore.prototype[m] = function () { n.writes++; return f.apply(this, arguments); }; }
+      new MutationObserver(() => n.drawn++).observe(document.querySelector('#settings .sheet-body'), { childList: true });
+      for (const b of document.querySelectorAll('.folder-note')) new MutationObserver(() => n.note++).observe(b, { childList: true, subtree: true, characterData: true });
+    });
+    const counts = () => L(C.p, () => Object.assign({}, window.__n));
+    const reset = () => L(C.p, () => { for (const k in window.__n) window.__n[k] = 0; });
+    await C.p.waitForTimeout(11500);
+    let n = await counts();
+    ok(n.looks >= 2 && !n.reads && !n.subfolders && !n.writes && !n.drawn && !n.note,
+      `with Settings open, the folder is looked at every 5 seconds; a look that finds nothing new reads no file, looks in no subfolder, writes nothing to IndexedDB, and doesn’t redraw Settings or the note on the board (${JSON.stringify(n)})`);
+    await reset();
+    await seedFolder(C.p, '21Board', { 'Science.21board': JSON.stringify({ format: '21board', formatVersion: 1, kind: 'full', viewport: { width: 2400, height: 1350 }, board: { name: 'Science', uid: 'sssssss1-2222-3333', background: { color: null, pattern: 'none' } }, instances: [], sent: { id: 'v-science', at: Date.now(), by: 'dev-other-0002', from: 'Ms. B’s laptop' } }) });
+    ok(await eventually(async () => await C.p.locator('#settings [data-act="link-load"][data-val="Science.21board"]').count() === 1, 7000), 'a board that arrives shows up in Settings within seconds');
+    n = await counts();
+    ok(n.drawn === 1 && n.reads === 1, `Settings is drawn again once, for what changed, and only the new file is read (${JSON.stringify(n)})`);
+
+    // ---- While 21Board is hidden there are no looks; shown again, it looks at once. Neither is taken for sleep.
+    const tab = (p, state) => L(p, state => { if (state === 'hidden') Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); else delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange')); }, state);
+    const fresh = await L(C.p, () => window.__board21.link.freshAt);
+    await tab(C.p, 'hidden'); await reset(); await C.p.waitForTimeout(11000);
+    n = await counts();
+    ok(n.looks === 0, `hidden, the folder isn’t looked at (${n.looks} looks in 11 seconds)`);
+    await tab(C.p, 'visible');
+    ok(await eventually(async () => (await counts()).looks >= 1, 2000), 'shown again, it is looked at straight away');
+    ok(await L(C.p, () => window.__board21.link.freshAt) === fresh, 'and those seconds without a look aren’t taken for the device having slept (Google Drive isn’t given its two minutes again)');
+    const slept = await L(C.p, () => { const l = window.__board21.link, was = l.freshAt; l.beatAt = Date.now() - 90e3; l.awake(); const minute = l.freshAt === was; l.beatAt = Date.now() - 4 * 60e3; l.awake(); return { minute, long: Date.now() - l.freshAt < 1000 }; });
+    ok(slept.minute && slept.long, `a minute and a half between heartbeats (Chrome may run a hidden tab’s timers once a minute) isn’t sleep; four minutes is (${JSON.stringify(slept)})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close(); await C.c.close();
   }],
   ['Board Sync: setting up (the steps, what is in the folder picked, Change…, a read-only folder, the new names)', async (browser) => {
     const L = (p, fn, arg) => p.evaluate(fn, arg);
@@ -6372,6 +6502,8 @@ const SUITES = [
     await setUp(p);
     ok(await asking(p, 'Board Sync is set up'), 'an empty folder is linked straight away, and the last step follows');
     ok(/This device now syncs through your “Empty” folder\./.test(await said(p)) && /Now set up Board Sync on your other devices and pick this same folder\./.test(await said(p)), 'it says which folder, and to pick the same one on the other devices');
+    ok(await L(p, () => window.__board21.link.st.auto) && /Changes you make here are sent automatically\. You can turn this off in Settings › Board Sync\./.test(await said(p)),
+      'setting up turns Send automatically on, and the last step says so, and where to turn it off');
     ok(await buttons(p) === 'Send this board now|Done' && await linked(p) === 'Empty', 'with Send this board now and Done');
     await modal(p, 'Send this board now');
     ok(await eventually(async () => await names('Empty') === 'About this folder.txt,My Board.21board') && await eventually(async () => await toasts('Sent “My Board” to your “Empty” folder') === 1),
@@ -6401,14 +6533,18 @@ const SUITES = [
     ok(inside === 'About this folder.txt' && around === '21Board,Lesson plan.docx,Photos', `21Board’s files go in the new folder, and My Drive keeps only what it had, and the folder (${around})`);
 
     // ---- Change…: the same look at the folder picked, without step 1. My Drive now has a 21Board folder in it.
+    // (It leaves Send automatically as the teacher had it: off here, then on.)
+    await L(p, () => window.__board21.link.saveState({ auto: false }));
     await change(p);
     ok(await asking(p, 'Use the 21Board folder inside “My Drive”?') && !/Set up Board Sync|Google Drive › My Drive/.test(await said(p)), 'Change… looks inside the folder picked too, without step 1: My Drive with a 21Board folder in it offers that folder');
     ok(await buttons(p) === 'Use 21Board folder|Use “My Drive” itself|Cancel', 'Use 21Board folder, or Use “My Drive” itself');
     await modal(p, 'Use 21Board folder'); await p.waitForTimeout(600);
     ok(await linked(p) === '21Board' && !await p.locator('#modal.open').count(), 'Use 21Board folder links the folder inside (and Change… ends there: no last step)');
+    ok(await L(p, () => !window.__board21.link.st.auto), 'Change… leaves Send automatically off');
+    await L(p, () => window.__board21.link.saveState({ auto: true }));
     await change(p); await asking(p, 'inside “My Drive”');
     await modal(p, 'Use “My Drive” itself'); await p.waitForTimeout(600);
-    ok(await linked(p) === 'My Drive', 'Use “My Drive” itself links My Drive');
+    ok(await linked(p) === 'My Drive' && await L(p, () => window.__board21.link.st.auto), 'Use “My Drive” itself links My Drive (and Send automatically stays on)');
     await seedFolder(p, 'Class', { 'notes.txt': 'x', '21board': { 'Math.21board': '{}' } });
     await L(p, () => { window.__drive.pick = 'Class'; });
     await change(p);
@@ -6455,6 +6591,7 @@ const SUITES = [
     await unlink(p);
 
     // ---- A folder that can only be viewed (shared with the teacher for viewing).
+    await L(p, () => window.__board21.link.saveState({ auto: false }));
     await seedFolder(p, 'Team folder', { 'Worksheet.pdf': 'x' });
     await L(p, () => { window.__drive = { pick: 'Team folder', readOnly: true }; });
     await setUp(p); await asking(p, 'Make a 21Board folder');
@@ -6465,8 +6602,9 @@ const SUITES = [
     ok(await linked(p) === '' && await names('Team folder') === 'Worksheet.pdf' && await toasts('modifications are not allowed') === 0, 'Cancel: nothing linked, nothing made, and none of the browser’s own wording');
     await setUp(p); await asking(p, 'Make a 21Board folder');
     await modal(p, 'Use this folder anyway');
-    ok(await asking(p, 'Board Sync is set up') && /You can only view this folder, not change it, so boards can be loaded from it but not sent\./.test(await said(p)) && !/other devices/.test(await said(p)) && await buttons(p) === 'Done',
+    ok(await asking(p, 'Board Sync is set up') && /You can only view this folder, not change it, so boards can be loaded from it but not sent\./.test(await said(p)) && !/other devices|sent automatically/.test(await said(p)) && await buttons(p) === 'Done',
       'Use this folder anyway links it, and the last step says boards can be loaded from it but not sent (no Send button)');
+    ok(await L(p, () => !window.__board21.link.st.auto), 'and Send automatically isn’t turned on: there is nothing it could send to');
     await modal(p, 'Done');
     // The new name where the feature is named: what to do when the folder can't be used.
     await L(p, () => { window.__board21.link.send(); });
@@ -6497,6 +6635,7 @@ const SUITES = [
     await modal(p, 'Choose folder…');
     ok(await eventually(async () => (await names('Later')).includes('My Board.21board')) && await eventually(async () => await toasts('Sent “My Board” to your “Later” folder') === 1) && !/Board Sync is set up/.test(await said(p)),
       'once the folder is picked, the board is sent (without the last step)');
+    ok(await L(p, () => window.__board21.link.st.auto), 'and Send automatically is on from then on, as at the end of the other steps');
     await unlink(p);
 
     // ---- The laptop sets Board Sync up and sends; then the smartboard, which finds the laptop's board.
@@ -7356,8 +7495,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.click('#settings [data-act="link-send"]'); await settle(1500);
     await page.keyboard.press('Escape');
     await go(2);
-    await settings(['boards']);
-    await page.click('#settings [data-act="link-check"]').catch(() => {}); await settle(1500);
+    await settings(['boards']); await settle(1500);
     ok(await page.locator('#settings [data-act="page-go"]').count() === 1 && await page.locator('#settings [data-act="link-load"]').count() === 0, 'Other boards in the folder: page 1’s file offers Go to page, not Load');
     const name = await B(() => { const L = window.__board21.link, u = window.__board21.pages.info.get(1).uid; return (L.found.find(f => f.uid === u) || {}).name; });
     await page.keyboard.press('Escape');
