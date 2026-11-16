@@ -95,16 +95,16 @@ are open still come from the saved copy: reload once more, or close and open the
 | --- | --- |
 | **Widget Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap a widget to open it. Tap ▦ again (or anywhere else) to close. |
 | **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Fullscreen, Settings. |
-| **Pages** | Each page is a board of its own (its own windows, content, background and name), for lessons or parts of the day. At the far end of the Widget Picker's bottom row: **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after; on the last page › is **+** (a new page). Tap *Page* for the Pages menu: every page by name (tap one to go there), **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** and **Delete this page…** (with Undo). A new page takes this page's size, shape and background color. Every tab on the device shows the same page, and 21Board opens on the page it was showing. Widgets on other pages don't run while their page isn't shown: a Timer shows the right time when you come back, but its alarm doesn't ring on another page. |
+| **Pages** | Each page is a board of its own (its own windows, content, background and name), for lessons or parts of the day. At the far end of the Widget Picker's bottom row: **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after; on the last page › is **+** (a new page). Tap *Page* for the Pages menu: every page by name (tap one to go there), **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** and **Delete this page…** (with Undo). A new page takes this page's size, shape and background color. Every tab on the device shows the same page, and 21Board opens on the page it was showing. With Board Sync, pages and their order are the same on every device, and each device shows its own page. Widgets on other pages don't run while their page isn't shown: a Timer shows the right time when you come back, but its alarm doesn't ring on another page. |
 | **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close** (21Sketch, 21Timer and 21DocCam: **Reload** and **Open … on its own** instead of Reset). Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. From the keyboard: Enter on the window's name opens it, the arrow keys move between its items, Enter chooses one and Escape closes it. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). With several pages: *All pages* (a backup of every page in one file), *This page*, or *This page as a blank template*. Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). *Back up now* (Settings) and the backup reminders always save every page. |
-| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). A backup of another board opened with *Replace this page* is another board from then on: in a shared Google Drive folder it gets its own file, and the board it replaced stays there. |
+| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). *Replace this page* keeps the page (with Board Sync, its windows and content change on your other devices too). A Board Sync device file opens as a backup of every page. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (*Fill*: any window) and change the size of windows and menus. |
-| **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → Classroom → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
+| **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → Classroom → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Board Sync, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 | **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → Advanced shows the version in use. |
@@ -117,7 +117,7 @@ Settings opens.
 
 - **At the top, when it applies:** a save problem (with *Back up now*), or *A new version is ready* with *Update now*.
 - **Classroom**
-  - **Lock windows in place:** widgets still work, but windows can't be moved, resized, closed or added from the board and the Widget Picker (Close all is off too), in every tab on this device. A file dropped on the board, or Load on Board Sync's message on the board, asks to unlock first. Unlock by holding ▦ for 2 seconds, or with the switch.
+  - **Lock windows in place:** widgets still work, but windows can't be moved, resized, closed or added from the board and the Widget Picker (Close all is off too), in every tab on this device. A file dropped on the board asks to unlock first. (Board Sync's changes from your other devices still apply.) Unlock by holding ▦ for 2 seconds, or with the switch.
   - **Go back to an earlier version:** *Board history…* (see [Board history](#board-history-going-back)). A line here says when history is paused or short of space.
   - **Close all windows** on this page (their content is kept).
   - **Stay awake:** a switch. On, it stops the Chromebook, iPad or panel from dimming and sleeping while 21Board
@@ -147,11 +147,10 @@ Settings opens.
     templates.
   - **Board shape** (this page): *Widescreen* (16:9, the same on every screen; the default) or *Fill* (the whole
     window). See [Board shape and size](#board-shape-and-size).
-- **Board Sync** (Chrome and Edge): sync your boards with your other devices (the smartboard) through a folder in
-  Google Drive: *Set up…* (a few steps that show how to make the folder, then pick it); once linked, *Send this board*, *Send automatically*
-  (a switch, on from the end of setting up), **Boards from other devices ▸** and **Folder settings ▸** (the folder, *Change…* and *Unlink*,
-  this device's name, *Send the background photo*, *Keep history copies in the folder*); and what is wrong when
-  the folder can't be used. See [Board Sync](#board-sync-sharing-boards-with-the-smartboard).
+- **Board Sync** (Chrome and Edge): one board on all your devices (the smartboard), through a folder in Google
+  Drive: *Set up…* (a few steps that show how to make the folder, then pick it); once linked, three rows: the
+  folder with how syncing is going, *Change…* and *Unlink*; this device's name; *Keep history copies in the
+  folder*; and what is wrong when the board can't sync. See [Board Sync](#board-sync-one-board-on-all-your-devices).
 - **Advanced ▸** (an amber dot on it when there has been no backup for a week, or the browser hasn't promised to
   keep 21Board's data):
   - **Widget Picker:** both corners, or only left or right.
@@ -276,140 +275,101 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 
 ---
 
-## Board Sync (sharing boards with the smartboard)
+## Board Sync (one board on all your devices)
 
-Build a board on your laptop, show it on the smartboard. 21Board never talks to Google itself: ChromeOS
-already keeps **Google Drive › My Drive** the same on every Chromebook you sign in to, and 21Board just
-keeps a file per board in one folder there that you choose.
+Build the board on your laptop, show it on the smartboard: every page, on every device, kept the same by
+itself. 21Board never talks to Google itself: ChromeOS already keeps **Google Drive › My Drive** the same on
+every Chromebook you sign in to, and 21Board keeps its files in one folder there that you choose.
 
 **Set it up once on each device** (laptop and smartboard): Settings → **Board Sync** → *Set up…*. A dialog
 says in a sentence what Board Sync does and how to make its folder, with a picture of it; *Choose folder…*
 then opens Chrome's folder picker:
 
 1. Go to **Google Drive › My Drive**.
-2. On the first device, tap *New folder* and name it **21Board**. On your other devices, pick that 21Board folder.
+2. The first time, tap *New folder* and name it **21Board**. On your other devices, wait until it shows up
+   there, then pick it. (To share the board with a co-teacher, share this folder with them in Google Drive as
+   an Editor; they add a shortcut to it in their My Drive, then pick it.)
 3. Open the folder, then tap *Select* (or *Open*) and *Allow*.
 
-Chrome then lets 21Board read and write in that one folder only; it can't see anything else. 21Board takes a
-quick look inside the folder picked, so that every device ends up with the same one:
+A quick look inside the folder picked catches the usual slips: My Drive itself offers to make a 21Board folder
+(or use the one already there), the *Board history* or *Photos* folder inside it points to the folder around it,
+and a folder holding two 21Board folders (`21Board` and `21Board (1)`, made by two devices at once) asks which.
 
-- A folder called 21Board, one with 21Board's files in it (boards sent from another device, *About this
-  folder.txt*), or an empty one, is used as it is.
-- A folder with a **21Board** folder in it (My Drive, when the teacher didn't open the 21Board folder) asks
-  *Use 21Board folder* or *Use “My Drive” itself*.
-- A folder with other things in it (My Drive itself) offers *Make a 21Board folder here* (it does, and uses it),
-  *Use this folder anyway* or *Choose another…*. A folder you can only view can't have one made in it: 21Board
-  says so and offers *Choose another…*.
-- A folder that Google Drive is slow to list is used as it is: the look never holds up the setting up.
-- 21Board's own *Board history* or *Photos* folder (inside the 21Board folder, picked by mistake) isn't used:
-  21Board says what it is and offers *Choose another…*, to pick the folder it's in. (A *Photos* folder inside
-  the folder picked is left out of the look: My Drive may have one of its own.)
+**What happens when you link a folder** (the last step says which, and ends with "Changes you make on any of
+your devices show up on the others by themselves, usually within a minute: Google Drive decides when."):
 
-The last step says which folder this device uses and what comes next: for a new, empty folder, *Now set up
-Board Sync on your other devices and pick this same folder*, with *Send this board now* (it sends the board at
-once; *Done* sends nothing, and the step says so: *Tap Send this board now so your other devices can load it.
-After that, changes you make here are sent automatically*); for a folder another device has set up but sent no
-board to yet, that the other device hasn't sent its board yet (tap Send there, or change its board), with *Done*
-only; for one with boards from your other devices, that they are there (Settings → Board Sync → *Boards from
-other devices* lists them, with Load), and when there is one, *Load “…”* shows it here at once (after the usual
-question); for a folder you can only view (also one that another teacher set up and shared for viewing), that
-boards can be loaded from it but not sent. Setting up turns *Send automatically* on (not for a folder you can only
-view), and the last step says so: *Changes you make here are sent automatically. You can turn this off in
-Settings › Board Sync.* (Send tapped before Board Sync was set up turns it on too.) *Change…* (Settings → Board
-Sync → *Folder settings*) and *Choose the folder again…* (on the note on the board) take the same look inside the folder picked,
-without the first dialog, and leave *Send automatically* as it was.
+- **An empty folder:** this device's board goes there at once. (A device with only its untouched first page,
+  "My Board", writes nothing yet: the board comes from your other device.)
+- **A folder with a board, on a device that has never synced:** its board is shown here. Pages of this device's
+  own are added after the board's ("This device’s 2 pages were added after them."); a page both have (from the
+  same import) keeps the folder's values, and this device's different content is kept beside it as a copy.
+- **A folder with another board** (*Change…* to another class's folder, or linking again after *Unlink* with
+  another folder): this device switches to that board. Its own pages stay in the other folder, and under Board
+  history › Deleted pages for 30 days. Two boards are never combined.
+- **The same folder again** (after *Unlink*, or the folder renamed or moved): it carries on. Changes made here
+  while unlinked are added to the board, and nothing is deleted anywhere because of how this device looked
+  while it wasn't syncing.
+- **Google Drive still bringing the folder or its files:** linked anyway; nothing is merged or written until
+  the files can be read (up to 10 minutes), so a slow Drive can never combine two boards.
 
-**Then:**
+**Then it just syncs.** A few seconds after you change something (at least every 15 seconds while changes keep
+coming), and at once when 21Board is hidden or the lid is closed, this device writes its file; every 5 seconds
+while 21Board is in front it looks for the other devices' files and merges what changed:
 
-- **Laptop:** just change the board: *Send automatically* sends it a few seconds after you stop. Or tap
-  Settings → Board Sync → **Send**.
-- **Smartboard:** as soon as Google Drive brings the file (21Board looks in the folder every 5 seconds while it
-  is in front, and when it opens or comes back to the front) it says **“Room 12” was updated on my laptop at
-  7:42 · Load / Not now**. Nothing changes until you tap Load (if the windows are locked, Load asks to unlock
-  them first). The first time, pick the board under *Boards from other devices* in Settings → Board Sync. (A board that
-  is already one of this device's pages shows *Go to page* there instead of Load.) *Cancel* at Load's question is
-  *Not now*: the message stays away, and Settings → Board Sync keeps *Load newer*.
-- **Undo** on *Loaded “…”* puts the board back as it was, and the version loaded is offered again: *Send
-  automatically* doesn't send the board you went back to over it.
-- **Changed on both?** Load says so first and offers *Keep a copy of mine, then load* (the copy goes in the
-  folder as its own board). A version this device hasn't loaded is never overwritten: *Send automatically*
-  waits until it's loaded, and Send asks (*Load theirs* or *Send mine*, keeping the other as a copy).
-- It works both ways: Send from the smartboard and the laptop offers it.
+- **Part by part:** a page's name, background, size, place and photo, and each window's place, open or closed,
+  content and settings are merged separately. A window moved on the laptop and typed in on the smartboard keeps
+  both changes. Changes to different windows never clash.
+- **The same content changed on both** (two edits to one note): both are kept. The later one stays in the
+  window, and the other appears beside it as a labelled copy ("Copy · 9:41 AM"). For the Timer, Dice and
+  Traffic light, whose content is a setting, the later one wins. Anything else changed on both (a window
+  moved on both) takes the later change, and Board history keeps a version from before it.
+- **Deleting** a page or window on any device deletes it everywhere (with Undo, and Board history). An edit made
+  on a device that hadn't seen the deletion yet brings it back, so no one's work disappears unseen.
+- **Never under your hands:** nothing moves while you drag, while a menu or dialog is open, or in a window
+  that is being typed in; the change lands a moment later. A window menu left open for a minute closes.
+- **The page shown** says "Updated from the laptop." (with Undo); other pages change quietly and say so once
+  when you next go to them. **Undo** puts the page back on every device. While windows are locked, merges still
+  apply (Lock stops hands on this screen, not your own changes from another device), but without Undo.
+- **Theme and accent color stay on each device** (a laptop in dark mode doesn't turn the smartboard dark), and
+  so do the page shown, Lock, Stay awake, the clock and the letters. Settings says "This device only." beside
+  them, and "This page, on all your devices." beside the page's own settings.
 
-**Send automatically** (Settings → Board Sync, a switch; on from the end of setting up, on each device) sends
-the board a few seconds after you stop changing it, and at once when 21Board is hidden or you go to another
-page. It sends only what you change: setting up sends nothing by itself, and neither does bringing a window to
-the front.
+**Settings → Board Sync** has three rows: **Synced through “21Board”** with how syncing is going ("Up to date.
+This device’s latest changes went to your folder at 9:42 AM. Shared with the smartboard (last change at 9:40
+AM).") and *Change…* and *Unlink*; **This device’s name** (shown on your other devices, and in its file's
+name); and **Keep history copies in the folder**.
 
-- A board is shared whole, and a version another device sent that this one hasn't loaded holds up this device's
-  automatic sends until you load it (the message on the board says so): they never replace it. A dice roll or a
-  timer on the smartboard is a change too, so the laptop is offered that version first. To keep a device from
-  sending, turn *Send automatically* off there (and tap Send when you want its board on the others).
-- A change that wasn't sent before 21Board was closed (or while the folder couldn't be used) goes
-  out after 21Board opens again. Not at once: Google Drive first gets two minutes to bring anything your other
-  device sent in the meantime, so that its version is offered here instead of being replaced. The same wait
-  follows waking the device up or coming back online. A change you make once 21Board is open again is sent as
-  usual, and takes the earlier one with it.
-- An automatic send that didn't work is tried again about a minute later (and with each change).
+**What's in the folder:**
 
-**If the folder can't be used,** a small note stays above the ▦ button until it works again, so sharing is
-never off for a whole day unnoticed: *Reconnect folder* (Chrome wants to be asked again: one tap on the note
-and *Allow*), *Folder unavailable* (it can't be found: 21Board keeps looking, and a tap says what to do) or
-*Not sent* (an automatic send failed, for example because the folder is shared with you for viewing only: a
-tap says why; the note goes once the send works or nothing is left to send). Settings → Board Sync
-says the same (and when the folder was last checked, while a look at it is taking long).
+- **One file per device**, named after it: `21Board (laptop) [k3j9].21board`. Each is the whole board as that
+  device has it, and a full backup of every page (Import opens it). No file ever has two writers, so Google
+  Drive can't drop one of two saves made seconds apart, and a laptop closed overnight still brings the
+  evening's work to the smartboard in the morning.
+- **Photos:** each background photo once, named by its content. The device files only name their photos. A
+  photo can arrive after the board: the page keeps its photo until the new one is here ("still arriving"
+  after 10 minutes). Photos no device names any more are deleted after about a week. A second `Photos (1)`
+  folder that Google Drive may make is read too.
+- **Board history:** about hourly copies of this device's own changes. **About this folder.txt** explains it all.
+- A file that is half-delivered, mixes old and new bytes, or is older than one already merged is never
+  merged; the status says when one has been arriving for a while. A device whose file says it is from a newer
+  21Board shows **Update 21Board** on the board, and nothing from that file is merged until this device updates.
 
-**21Board keeps the folder in order:** one file per board, named after it (“Room 12.21board”, or
-“Room 12 (2).21board” if another board has that name); renaming a board renames its file on the next
-send; each board has a hidden id, so files are matched to the right board whatever they're called;
-an *About this folder.txt* explains the files; anything else in the folder is left alone. Each file, with its
-photo in *Photos*, is a full backup (it counts as one). *This device's name* is what the other devices show (“updated on …”).
+**Unlink** (Settings → Board Sync) writes this device's file once more, saying it left, then stops; the board
+stays here, and linking the same folder again carries on. An unlinked device's file is deleted by the others
+two months later (a laptop put away for the summer still has its file in September). **Erase everything** says
+so in its file the same way, and this device forgets the folder.
 
-- **The background photo** goes with the board while *Send the background photo* is on (Settings → Board Sync → *Folder settings*), and so does
-  removing it: once a board has been sent or loaded with its photo, taking the photo off on one device takes
-  it off the others when they load the next version. A photo that only the smartboard has stays there when
-  it loads the laptop's boards: a board that never had a photo says nothing about one, and a photo put on at
-  the smartboard after the old one was taken off is its own. Off: this device puts no photo in the folder
-  (not in copies either: no photo file is written, and the board file says nothing about one), and a device
-  that loads its boards keeps its own photo.
-- **Background photos are kept in a *Photos* folder** inside it, each photo once, as a picture file named by
-  its content (“3fa9c1d2….jpg”; two boards with the same photo share one). A board's file only names its photo,
-  so sending a board takes a few KB, not the 1–3 MB of the photo: the photo is written once, when it is added
-  or changed (and again when a board names it after it has sat there a day, or if it has gone missing).
-  A photo that no board file names any more is deleted after about a week (once a day at most, and only when
-  every board file in the folder could be read, and the device has found it unused twice, an hour or more apart;
-  never in the first 10 minutes after 21Board opens or the device wakes, while Google Drive may still be bringing
-  boards that name it). Exports and backups still have the photo inside the file (one file for a USB stick or an
-  email: to give a board to someone, use Export); a file from the folder opened with Import gets its photo from
-  *Photos* if it is there, and otherwise the device keeps its own.
-- **The photo can arrive after the board:** Google Drive often brings the small board file before the photo.
-  Load then shows the board with the photo this device had, says *Its background photo follows once Google Drive
-  brings it*, and puts the new photo on as soon as it is there (Settings → Board Sync says *the background
-  photo is still arriving* meanwhile). That isn't a change to send, and a send from this device meanwhile names
-  the new photo, not the one it kept (shown as you set it meanwhile: fit, fade and focus are kept). Undo, going
-  back in Board history or Import stops the waiting, and so do Unlink and *Change…*. A photo that isn't coming
-  (it was deleted from *Photos*): after 10 minutes a send names this device's own photo instead, and after a
-  week the board stops waiting. A device that already has the photo reads nothing more. The photo file
-  is checked like any picture from outside: a JPEG, PNG or WebP (by its content, not its name), whole (its
-  content matches its name), no bigger than a photo added here, and one that opens. One that isn't is never
-  used: the board still loads, the device keeps its own photo, and after 10 minutes Settings says *The
-  background photo in the folder can’t be used*.
-- **Opening another board** (Import → *Replace my board*, or a `.21board` file opened from the Files app)
-  never renames, removes or replaces the file of the board that was showing: the board that was opened gets
-  its own file. Only a file that was itself sent to the folder (or a backup of the very board that is
-  showing) carries on as that board. A blank template keeps the board it is applied to if it has the
-  board's name (a new board is called “My Board” until you rename it). Import says which it is under
-  *Replace my board*: “Math” stays in your Google Drive folder, or its copy there is replaced the next time
-  the board is sent.
-- **A file that is still arriving** (listed in the folder, but Google Drive hasn't brought its content yet)
-  isn't taken for no file: a send waits for it (an automatic one for up to 10 minutes from when this device
-  finds it so, or wakes up, however old the file is), and if Drive leaves two files for one board, the
-  version in each is offered before anything replaces it.
+**If the board can't sync,** a small note stays above the ▦ button until it works again: *Reconnect folder*
+(Chrome wants to be asked again: one tap), *Folder unavailable* (it can't be found: 21Board keeps looking),
+*Not synced* (this device's changes can't be written: no room, or the board is too big; tapped, it says what
+to do, and 21Board keeps trying), or *Update 21Board*. A folder you can only view keeps showing your other
+devices' changes; *Not synced* appears only once something is changed here.
 
-**Good to know:** Chrome and Edge only (Safari and Firefox keep Export/Import). Drive needs the internet
-to carry the file, usually within seconds to a minute. Chrome remembers the folder permission for an
-installed 21Board; in a plain tab it may ask again after a restart (*Allow on every visit* avoids that).
-The files can include student names and class photos: share the folder only with people who should see them.
+**Good to know:** Chrome and Edge only (Safari and Firefox keep Export/Import). Drive needs the internet to
+carry the files, usually within seconds to a minute. Chrome remembers the folder permission for an installed
+21Board; in a plain tab it may ask again after a restart (*Allow on every visit* avoids that). The files can
+include student names and class photos: share the folder only with people who should see them. Every device
+must run a release with this Board Sync: an older one doesn't understand the device files.
 
 **For IT (Google Admin console):** nothing to set up beyond leaving these as they are:
 Google Drive on for teachers (`DriveDisabled` not set); Chrome's file-access policies
@@ -419,8 +379,8 @@ ahead of time, so each teacher taps Allow once per device). Smartboards signed i
 account need the folder shared with that account (or a shared drive). Force-installing 21Board keeps the
 permission across restarts. Optional: mark the folder *Available offline* on boards. **Before rollout, try it
 on a few real laptops and boards**: how quickly files arrive, that the folder stays allowed after a reboot,
-how a file shows up before Drive has brought its content, and what Drive keeps if two devices send the same
-board before either has received the other's version (21Board waits to avoid that, but can't rule it out).
+how a file shows up before Drive has brought its content, and how DriveFS records a file written again (as a
+new revision, or as a deleted file plus a new one: each write would then leave a board in Drive's trash).
 
 ## Kiosk mode (ChromeOS kiosk, no sign-in)
 
@@ -548,8 +508,11 @@ repository (`sw.js`) but not yet on its server; 21Timer and 21DocCam need one de
 21Board keeps earlier versions of the board on the device, in a separate database from the board itself:
 while the board changes (at most every 10 minutes, once it has settled for a minute), when 21Board opens,
 when a widget's content is suddenly emptied (e.g. a note cleared), and before every risky action (Reset,
-Delete, Close all, changing or removing the photo, Import, Load, going back, Erase everything). Identical
-content is never saved twice. *Save this version now* keeps a named version until you delete it.
+Delete, Close all, changing or removing the photo, Import, going back, Erase everything). With Board Sync, it
+also keeps a version of a page before changes from your other devices change it, at most about one an hour
+while nothing is changed on that page here, and always before a merge deletes something or settles a clash.
+Pages deleted on any device are kept 30 days under *Deleted pages*, with *Bring back*. Identical content is
+never saved twice. *Save this version now* keeps a named version until you delete it.
 
 **Off** (Settings → Advanced → *Save a version automatically*) stops the first three: nothing is saved while you work,
 when 21Board opens or when a note is cleared. One is still saved before each risky action, so Undo keeps
@@ -571,10 +534,10 @@ message says so once, and Settings → Classroom → *Go back to an earlier vers
 a page how much space is left, so a refused save is the sign 21Board goes by.)
 
 **In the Google Drive folder** (when Board Sync is set up, and *Keep history copies in the folder* is on: Settings →
-Board Sync → *Folder settings*): about one copy an hour (and every version you save) goes to
+Board Sync): about one copy an hour (and every version you save) goes to
 “Board history” inside the folder, without the background photo, named like
-`Room 12 2026-11-10 09.45 (smartboard) [7c1e9a-k3j9].21board`. A device showing a version it loaded from
-another device leaves the copies of it to that device. Each device thins only its own copies; files
+`Room 12 2026-11-10 09.45 (smartboard) [7c1e9a-k3j9].21board`. Copies come only from this device's own
+changes: work merged from another device is in that device's copies. Each device thins only its own copies; files
 ending in “saved” stay. Another device, even one that was reset, can bring a board back from them (Board
 history → *In your Google Drive folder*). They can include student names.
 

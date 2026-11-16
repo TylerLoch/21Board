@@ -57,7 +57,7 @@ offered (its records stay until then; `settings.deletedAt` says when it was dele
 Board history are deleted. One left there (21Board was closed before the Undo ended) is cleared the next time
 21Board opens, once 20 seconds (and a little more) have passed since it was deleted: a tab opened meanwhile never
 clears a page whose Undo another tab still offers. A record of a page that is missing from `settings.boards`
-(and not deleted) is shown as a page at the end, never hidden. Two pages never share a `board.uid` (see Load and
+(and not deleted) is shown as a page at the end, never hidden. Two pages never share a `board.uid` (see
 Import below). *Erase everything* keeps the id of the page shown, so that its Board history ("Before erasing
 everything") is still that page's; the other pages' Board history goes.
 
@@ -96,9 +96,9 @@ storage can't be read still has every page.
 }
 ```
 
-Only `theme` and `accent` go into exported files (and so into the Google Drive folder). `locked`, `awake`,
-`clock` and `letters` belong to this device: never in exports, Board history or the Google Drive folder, and an
-import or Load leaves them as they are.
+Only `theme` and `accent` go into exported files (and so into the device files in the Google Drive folder), and Board
+Sync never applies them: each device keeps its own. `locked`, `awake`, `clock` and `letters` belong to this device:
+never in exports, Board history or the Google Drive folder, and an import leaves them as they are.
 
 Older versions had a third choice for `awake`, `"hours"` (school hours, Monday to Friday, from `awakeFrom` to
 `awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"` (the teacher wanted the screen on in class) and drops
@@ -163,82 +163,89 @@ by itself.
 }
 ```
 
-### `link:folder` and `link:state` (this device only)
+### `link:folder`, `link:state`, `link:sync` and `link:mine-<uid>` (this device only)
 
-Board Sync's link to a shared Google Drive folder (see README, "Board Sync"). Never
-exported. `link:folder` holds the folder handle Chrome gives 21Board (stored as is, not as JSON).
+Board Sync's link to a shared Google Drive folder, and its bookkeeping (see README, "Board Sync"). Never exported,
+never in Board history. `link:folder` holds the folder handle Chrome gives 21Board (stored as is, not as JSON).
 `link:state`:
 
 ```js
 {
-  device: { id: "…", label: "my laptop" },   // label: what other devices show ("updated on …")
-  auto: false,                               // "Send automatically" (a switch, on from the end of setting up): a few seconds after the changes stop
-  photo: true,                               // include the background photo in sent files
-  boards: { "<board uid>": {
-    file: "Room 12.21board",       // the board's file in the folder, as this device last wrote or loaded it
-    also: ["Room 12 (2).21board"], // files it used for the board before that are still there (removed at its next send)
-    seen: ["<version id>", …],     // versions sent or loaded here (newest 40): anything else is new to this device
-    headId, headMine,              // the version this board was built on, and whether this device sent it
-    sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig,
-    setupSig,                      // the board as it was when Board Sync was set up here (see below)
-    photo: true,                   // what the version last sent or loaded here said about the photo: true (it had one), false ("background": null), absent (nothing)
-    want: { ref: { file, w, h, bytes, name, addedAt }, look, keep: "<addedAt>-<bytes>-<w>x<h>" | "", since } | null } },
-                                   // the photo the version loaded here names, not here yet (see below)
-  late: { "room 12.21board": { size, lastModified } },  // files that couldn't be read and were waited for in full (not waited for again while they stay as they are)
-  tidy: { at, seen: { "<photo file>": <when first found unused> } }   // the last tidying of Photos (see below)
+  device: { id: "…", label: "the laptop" },   // label: "This device's name", shown on the other devices and in this device's file name
+  tidy: { at, seen: { "Photos/<photo file>": <when first found unused> } },   // the last tidying of Photos (see below)
+  shown: { "<page uid>": <when last shown here> }   // for the note on a page changed while it wasn't shown
 }
 ```
 
-Versions are compared by id, never by time (two devices' clocks can disagree). A version this device
-hasn't seen is offered and never overwritten: an automatic send waits; Send asks first. Every file in the
-folder with the board's `uid` counts (Drive can leave two), and a file that is listed but can't be read yet
-isn't taken for no file: a send waits for one that may be this board's. A version whose `sent.by` is this
-device is its own, even if it didn't get to note it.
+`link:sync` (the ledger's head) and `link:mine-<page uid>` (one per page, deleted pages too) are written only by
+the tab that holds the Web Lock `21board-link`, in the transaction of a round, never through the Writer. They hold
+fingerprints and versions of the board's parts, never the board's values:
 
-`sentSig` / `loadedSig` fingerprint the board's content when it was last sent or loaded here, to tell
-whether it was changed on this device since (window stacking order doesn't count). Only the later of the two
-is kept (sending clears `loadedSig`, loading clears `sentSig`), so a board changed back to what was loaded
-before the last send still counts as changed. `setupSig` is the same fingerprint of each page as it was when
-Board Sync was set up on this device (which turns *Send automatically* on): *Send automatically* doesn't send a
-board that is still as it was then, so setting up sends nothing by itself (and a board never sent from here isn't
-sent for a tap that brings a window to the front). Sending or loading clears it. (A state saved with
-`calm: true`, the old *When left alone*, reads as `auto` alone.)
+```js
+// link:sync
+{ v: 1, dev: "k3j9a1b2c3d4",                       // this device's key: its id without dashes, 12 characters
+  folder: "f7q2m9x0c1d4", folderName: "21Board",   // the folder's id (made by the first device, taken by the others: the smaller wins), and its name
+  dir: <FileSystemDirectoryHandle>,                // where the browser can store one (linking the same folder again carries on)
+  mode: null, first: false, linkAt,                // a folder just linked: 'wait' until the first look decides 'seed' | 'join' | 'take' | 'carry'; first: that round deletes nothing anywhere
+  ctr, maxSeen,                                    // the last counter given out; the highest merged from other devices (at most a day ahead of this clock)
+  seq, writes: ["q7c2m0x1", …], wseqs: [ … ],      // the last write's sequence number (never goes back), the last 20 write ids and their seqs, noted before each write
+  file, sum, partsH, wroteAt, refs: { "<page uid>": { file, w, h, bytes, name, addedAt, key } },   // the last file written, its checksum, a fingerprint of its parts, when, and the photos it names
+  localAt,                                         // when a change made here was last found (for "Not synced" in a folder that can only be viewed)
+  peers: { "<dev>": { seq, seen, changedAt, name, file, at, left, missingSince, folder } },   // every device seen in the folder; changedAt and missingSince are this device's clock
+  last: { dev, name, at }, gcAt, left: null }      // the last merge that changed something here; Unlink or Erase's last write
 
-In the folder, 21Board writes one `<board name>.21board` per board (a full backup with `board.uid` and a
-`sent` block, below, that names its photo instead of holding it), renames it when the board is renamed (the
-files this device used for the board before are removed once it has seen the versions in them), keeps the
-photos in `Photos/` (below), and adds `About this folder.txt`. Other files are left alone.
+// link:mine-<page uid>: the page's parts and its windows' parts, each { h: fingerprint, v: [by, {dev: n}, t], rev }
+{ uid, b, p: { exists, name, look, size, pos, photo, photoLook }, w: { "<wid>": { ikey, p: { exists, rect, open, data, conf, label } } },
+  hist: { at, local }, quiet: { from: ["<dev>"], at } | null, gone: null | { exists, cover, seq, seen }, wgone: { "<wid>": { exists, cover, seq, seen } } }
+```
+
+The parts, versions and rules belong to the merge (`board.js` section 13d, the region `Board Sync merge`). A lost
+ledger (the browser threw the database away) is rebuilt from this device's own file in the folder; with no file
+there, the folder's board is joined as on a first set-up.
+
+**The folder** holds one file per device, `21Board (<this device's name>) [<4 id characters>].21board` (8 when
+another device's file has that name; Google Drive's copies, `… (1).21board`, are read too), each written only by
+its own device; `Photos/`; `Board history/`; and `About this folder.txt`. Other files are left alone.
+
+**A device file** is an all-pages backup (see "The .21board file": Import opens it) with, for each page's `board`
+and each instance, `v`: the version of each part; instances also carry `wid` (and `copyOf` on a labelled copy),
+boards `pos`; content clash versions not yet settled go in an instance's `pending`; and a top-level `sync` block:
+
+```js
+"sync": { "v": 1, "dev": "k3j9a1b2c3d4", "folder": "f7q2m9x0c1d4", "name": "the laptop",
+          "seq": 1794460416170, "write": "q7c2m0x1", "at": 1794460416170,      // seq orders this device's writes; at is its clock, shown to people only
+          "merged": { "<dev>": <seq> },                                        // the newest seq of each other device this file includes
+          "gone": { "pages": [{ "uid", "exists", "cover" }], "windows": [{ "page", "wid", "exists", "cover" }] },   // deletions
+          "left": null | { "at": … } | { "at": …, "erased": true },              // Unlink, Erase everything
+          "sum": "9be0c3…" }                                                   // the first 32 hex digits of SHA-256 of the file with "sum": ""
+```
+
+A device file is merged only if it parses, `sync.v` is 1 (a newer one shows *Update 21Board*), its parts have the
+expected shapes (a malformed page or window is skipped, never taken for a deletion), its checksum matches (a file
+cut short, or mixing old and new bytes, can still parse), and its `seq` isn't older than the one merged from that
+device. One that fails is read again 30 seconds later even if its size and date stay the same. A device's file is
+written only when its parts changed (never for bookkeeping alone), at most every 20 seconds, at once when 21Board
+is hidden; its photos are put in `Photos/` first. A file with this device's key that this device didn't write (a
+copied profile) is merged, and both installs take new ids. Another device's file is deleted only once it says it
+left, 60 days after, and everything in it is merged here.
 
 **`Photos/`**: each background photo once, as the picture file itself (JPEG, PNG or WebP bytes, not base64),
-named `<the first 32 hex digits of the SHA-256 of its bytes>.jpg` (or `.png`, `.webp`). Boards with the same
-photo share the file. A send writes the photo there first if it isn't there whole (and again if it is over a
-day old, so tidying can't take it), then the board file; if writing the photo fails, the send fails and no
-board file names it. The fingerprint is worked out once per photo (kept in memory, by the photo's data URL).
-A device that loads a board file reads the photo only if it hasn't that photo already. The file is checked as
-an imported photo is: a plain fingerprint name (no paths), JPEG, PNG or WebP by its first bytes, its bytes'
-SHA-256 matching its name (so half a file still arriving isn't used), under 16e6 characters as a data URL,
-about 6.5 MP at most, and it must open. One that isn't is not read again until its size or date changes.
+named `<the first 32 hex digits of the SHA-256 of its bytes>.jpg` (or `.png`, `.webp`). Pages with the same photo
+share the file. A write puts the photo there first if it isn't there whole (and again if it is over 3 days old and
+this device has just started naming it, so tidying can't take it); if that fails, the write fails and no file
+names it. The fingerprint is worked out once per photo. A device reads a photo another device's file names when
+that photo wins, from `Photos/` or a `Photos (n)` beside it; the file is checked as an imported photo is: a plain
+fingerprint name (no paths), JPEG, PNG or WebP by its first bytes, its bytes' SHA-256 matching its name (so half a
+file still arriving isn't used), under 16e6 characters as a data URL, about 6.5 MP at most, and it must open.
+Until it can be used the page keeps its photo; one that isn't good is read again 30 seconds later, or once its
+size or date changes.
 
-`want`: Google Drive often brings the board file before the photo. The board is then loaded with the photo this
-device had (`keep`: which one), and the photo it names (`ref`, `look`) is looked for at each check (once a
-minute after `LINK_ARRIVE_MS` from `since`) and put on when it is there; the board's `sentSig`/`loadedSig`
-follows, so that isn't a change to send. While it waits, a send from this device names `ref` (the board's photo),
-not the photo it kept, shown as `look` (a change to how the photo is shown, made here meanwhile, goes into `look`).
-A photo put on or removed here meanwhile (no longer `keep`) is this device's own: `want` is dropped. So it is
-when the board's content is replaced otherwise (Undo, going back in Board history, Import), when the folder is
-unlinked or another is chosen, and a week after `since`. Once `ref` has had `LINK_ARRIVE_MS` and isn't in
-`Photos/` at all (deleted, or the board file came from another folder), a send names this device's own photo
-instead (or nothing, without one) and `want` is dropped. Only Load waits for a photo: a sent file opened with
-Import that names a photo this device can't find is taken as saying nothing about it (`photo` absent).
-Undo after Load (or after Import of a sent file) puts the board's record back as it was before, without the
-version loaded in `seen`, so that version is offered again and nothing is sent over it.
-
-`tidy`: a photo that no `.21board` file in the folder names (Google Drive's own copies, `<fingerprint> (1).jpg`,
-never are) is deleted when its date is over 7 days old and this device has found it so on two looks at least an
-hour apart (`seen`; a note over 2 days old is taken afresh). A look happens at most once in 20 hours (`at`), after
-a good check of the folder, not while any board file in the folder can't be read or none was found, and not in
-the first `LINK_ARRIVE_MS` (10 minutes) after 21Board opens, the device wakes or the folder comes back (Google
-Drive may still be bringing board files that name the photo). Other files in `Photos/` are left alone.
+`tidy`: a photo that no device file in the folder names (Google Drive's own copies, `<fingerprint> (1).jpg`, never
+are) is deleted when its date is over 7 days old and this device has found it so on two looks at least an hour
+apart (`seen`; a note over 2 days old is taken afresh). A look happens at most once in 20 hours (`at`), after a
+full round, not while any device file in the folder can't be read or none was found, and not in the first
+`LINK_ARRIVE_MS` (10 minutes) after 21Board opens, the device wakes or the folder comes back. A photo this device's
+pages name that is missing from `Photos/` is put again at the next write. Other files in `Photos/` are left alone.
 
 ### `media:<b>:background` and `media:<b>:background-look`
 
@@ -254,7 +261,9 @@ choices, so picking a color hides the photo and picking *Photo* shows it again (
 `fill` covers the board (cropped), `whole` fits all of it with the board color around it; `focus` (0–1 from
 the top-left) is the part that stays in view when cropped (the CSS `background-position`); `fade` (0–0.7)
 blends it toward the board color. Everything about the photo is in these two records, none of it in
-`board:<b>`: the photo belongs to the device, and without these records the board shows its color.
+`board:<b>`; without these records the board shows its color. With Board Sync the photo is part of the page, like
+its color: putting one on, changing how it is shown or removing it reaches the other devices (the picture itself
+goes through the folder's `Photos/`).
 
 Chosen in Settings → Appearance → Background → *Add photo…*, then shrunk on the device (long side at most 2560 px,
 short side kept at 1440 px or more so panoramas stay sharp, about 6.5 MP at most) and saved as a JPEG
@@ -484,8 +493,7 @@ on Chrome) reads it.
     "shape": "16:9",
     "uid": "7c1e…"                // full backups only: which board this is
   },
-  "sent": { "id": "<version id>", "base": "<the version it was built on>", "at": 1762800000000, "by": "<device id>", "from": "my laptop" },   // only in files sent to a shared folder
-  "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only; a sent file names the photo instead (below), and "background": null says the board's photo was taken off
+  "media": { "background": { "data": "data:image/jpeg;base64,…", "w": 2560, "h": 1707 }, "look": { "on": true, "fit": "fill", "focus": { "x": 0.5, "y": 0.5 }, "fade": 0 } },   // full backups only; a device file names the photo instead (below)
   "instances": [
     {
       "widgetId": "timer",
@@ -509,8 +517,8 @@ on Chrome) reads it.
 | `data` (content) | ✅ | ❌ always `null` |
 | `media.background` (photo) | ✅ | ❌ (a template is for sharing; a photo may show the class) |
 
-**A file sent to a shared folder** (Board Sync) names its photo in the folder's `Photos/` instead of holding it,
-so it stays a few KB:
+**A device file** (Board Sync, see `link:sync` above) names each page's photo in the folder's `Photos/` instead of
+holding it, so it stays small (a page with no photo has no `media`):
 
 ```js
 "media": {
