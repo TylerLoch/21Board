@@ -21,7 +21,7 @@ const FILES = {
   'board.js': '8fc7f9c4d74918ec',
   'sdk/board21.js': 'ed09079b03d3c364',
   'sdk/board21-dev.js': '95479bed48fa2ec3',
-  'sdk/dev/board-shell.js': '650ae9b02dafa41d',
+  'sdk/dev/board-shell.js': '958d8ef00faff375',
   'sdk/lab.html': '21cda27716334794',
   'widgets/registry.js': '7a66e1e4c46b6d1e',
   'manifest.webmanifest': '3fddd4aac05d7279',

@@ -154,8 +154,10 @@ Settings opens.
     open, and where the window is too narrow for it (*Time and date* shows only the time first). This device only.
   - **Board shape** (this page): *Widescreen* (16:9, the same on every screen; the default) or *Fill* (the whole
     window). See [Board shape and size](#board-shape-and-size).
-- **Advanced ▸** (an amber dot on it when there has been no backup for a week, or the browser hasn't promised to
-  keep 21Board's data):
+- **Advanced ▸** (an amber dot on it only when a backup is overdue: none for a week, or none yet and the board has
+  had windows for a week. *Back up now* clears it, and so does Board Sync writing this device's file, a full backup
+  too. Whether the browser has promised to keep 21Board's data is said inside, under *Protected storage*, not with
+  the dot):
   - **Widget Picker:** both corners, or only left or right.
   - **Size of windows and menus** (this page; default 80%).
   - **Moving windows:** *Windows stop at each other's edges* (Off, or Light, Medium and Firm: how hard you push to
@@ -371,11 +373,13 @@ back, such as a window being typed in, is due again):
 
 **Settings → Board Sync** has three rows: **Synced through “21Board”** with how syncing is going ("Up to date.
 This device’s latest changes went to your folder at 9:42 AM. Shared with the smartboard (last change at 9:40
-AM)."; "Syncing…" only while changes made here are on their way; "Not synced: …" while they can't be written;
-which device stopped syncing through the folder, and when, once the only other one has left it; the line is updated
-in place and never gets shorter while Settings is open, so Settings isn't redrawn under a screen reader or a name
-being typed, and the rows below it don't move) and *Change…* and *Unlink*; **This device’s name**
-(shown on your other devices, and in its file's name); and **Keep history copies in the folder**.
+AM)."; "Not synced: …" while changes made here can't be written; which device stopped syncing through the folder,
+and when, once the only other one has left it) and *Change…* and *Unlink*; **This device’s name** (shown on your
+other devices, and in its file's name); and **Keep history copies in the folder**. While changes made here are on
+their way, "Syncing…" shows after the folder's name (its room is kept while it's hidden), not in the line below, so
+the rows below Board Sync stay put as changes go out and come in (only a new day moves them once: times from the day
+before read "on Nov 16 at 3:00 PM" until the first change of the day). The line and "Syncing…" are updated in place,
+so Settings isn't redrawn under a screen reader or a name being typed, and "Syncing…" isn't announced each time.
 
 **What's in the folder:**
 

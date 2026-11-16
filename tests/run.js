@@ -1626,10 +1626,10 @@ const SUITES = [
     await openSettings(page);
     sh = await shape();
     ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden', 'and every group is closed again the next time Settings opens');
-    // The amber dot on Advanced: shown while there's no backup from the last week, or the browser hasn't promised to
-    // keep 21Board's data. (Here it hasn't, so it shows.)
+    // The amber dot on Advanced: only while a backup is overdue. Not on a new board, though the browser hasn't promised
+    // to keep 21Board's data here: Advanced › Backups and storage says that.
     const dot = (p = page) => p.evaluate(() => { const d = document.getElementById('grp-advanced-warn'); return !!d && !d.hidden && getComputedStyle(d).display !== 'none'; });
-    ok(await dot(), 'Advanced has an amber dot: no backup yet, and storage isn’t protected');
+    ok(!await dot(), 'no amber dot on Advanced on a new board, though storage isn’t protected');
     // A device from before Auto was the default that never saved a setting (an older 21Board with no settings record,
     // only its board and windows) was showing Light: it keeps Light, and it's saved.
     await page.keyboard.press('Escape'); await page.waitForTimeout(300);
@@ -1638,18 +1638,41 @@ const SUITES = [
     const older = await page.evaluate(() => ({ theme: window.__board21.state.settings.theme, dark: document.body.classList.contains('dark'), notes: window.__board21.state.insts.has('notes:1') }));
     ok(older.theme === 'light' && !older.dark && older.notes && await storedTheme() === 'light', `a device from before with no saved settings keeps Light, even on a dark device (${JSON.stringify(older)})`);
     await ctx.close();
+    // Days passing (the device's clock moved on), storage not protected: no dot on an empty board, nor 3 days after its
+    // first window; a dot 8 days in with no backup, gone at once with Back up now. Advanced still says the storage isn't
+    // protected, on its own.
+    const days = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await days.addInitScript(CLOCK);
+    await days.addInitScript(() => { const s = navigator.storage; s.persisted = async () => false; s.persist = async () => false; });
+    const dp = await days.newPage(); dp.on('pageerror', e => errors.push(e.message));
+    await dp.goto(BASE); await boardUp(dp);
+    const after = async n => { await setClock(dp, n * 864e5); await dp.keyboard.press('Escape'); await openSettings(dp); await dp.waitForTimeout(300); return dot(dp); };
+    const empty = await after(30);
+    await setClock(dp, 0); await dp.evaluate(() => window.__board21.openWidget('notes')); await dp.waitForTimeout(1200);
+    const day0 = await after(0), day3 = await after(3), day8 = await after(8);
+    ok(!empty && !day0 && !day3 && day8, `storage not protected and no backup: no dot on an empty board (30 days), nor on the day of its first window or 3 days in; a dot 8 days in (${[empty, day0, day3, day8].join(', ')})`);
+    await openSettings(dp, ['advanced']);
+    const said = await dp.evaluate(() => ({ persist: document.getElementById('st-persist').textContent, hint: document.getElementById('st-persist-hint').textContent, backup: document.getElementById('st-backup').textContent }));
+    ok(said.persist === 'Not yet' && /^The browser could clear your boards to free up space\. Installing 21Board as an app usually prevents that/.test(said.hint) && /Until then, keep backups\.$/.test(said.hint) && said.backup === 'Last backup: never',
+      `Advanced › Backups and storage still says the storage isn’t protected (“${said.persist}”: “${said.hint}”; ${said.backup})`);
+    await Promise.all([dp.waitForEvent('download'), dp.click('#settings [data-act="backup"]')]);
+    ok(await eventually(async () => !await dot(dp), 1000) && await dp.locator('#st-backup').textContent() === 'Last backup: today', 'Back up now: the dot goes at once');
+    ok(!await after(14), 'and comes back only once that backup is a week old: none 6 days later (the clock 14 days on), though storage still isn’t protected');
+    ok(await after(16), 'a dot 8 days after it');
+    await days.close();
+    // Storage protected: a backup overdue still shows the dot.
     const kept = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     await kept.addInitScript(() => { const s = navigator.storage; s.persisted = async () => true; s.persist = async () => true; });
     const kp = await kept.newPage(); kp.on('pageerror', e => errors.push(e.message));
     await kp.goto(BASE); await boardUp(kp);
     await openSettings(kp, ['advanced']); await kp.waitForTimeout(300);
-    const none = await dot(kp), why = await kp.locator('#st-backup').textContent();
-    const [dl] = await Promise.all([kp.waitForEvent('download'), kp.click('#settings [data-act="backup"]')]); await kp.waitForTimeout(400);
-    const after = await dot(kp);
+    const none = await dot(kp), why = await kp.locator('#st-backup').textContent(), prot = await kp.locator('#st-persist').textContent();
     await kp.evaluate(() => window.__board21.state.settings.lastBackupAt = Date.now() - 8 * 864e5);
-    await kp.keyboard.press('Escape'); await openSettings(kp); await kp.waitForTimeout(300);
-    ok(none && why === 'Last backup: never' && /\.21board$/.test(dl.suggestedFilename()) && !after && await dot(kp),
-      'with storage protected: a dot while there has been no backup, none once there is one, and a dot again a week later');
+    await kp.keyboard.press('Escape'); await openSettings(kp, ['advanced']); await kp.waitForTimeout(300);
+    const overdue = await dot(kp);
+    const [dl] = await Promise.all([kp.waitForEvent('download'), kp.click('#settings [data-act="backup"]')]);
+    ok(!none && why === 'Last backup: never' && prot === 'Protected' && overdue && /\.21board$/.test(dl.suggestedFilename()) && await eventually(async () => !await dot(kp), 2000),
+      `with storage protected: no dot on a new board; a dot when the last backup is 8 days old, gone once there is a new one (${[none, why, prot, overdue].join(', ')})`);
     await kept.close();
     // The widget dev window: no Classroom features but Close all, no Board Sync; Saved widgets sits under Widget test mode.
     const lab = await browser.newContext({ viewport: { width: 1100, height: 760 } });
@@ -9979,31 +10002,57 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     }
 
     // Settings open on a 1366 × 768 smartboard while a change made here goes out and one from the laptop comes in:
-    // the status line ("Syncing…", "Up to date…") never gets shorter, so the rows below it stay put (Board Sync is the
-    // first section); a merge that changes nothing Settings shows doesn't draw it again.
+    // "Syncing…" shows beside the folder's name and hides again, the grey line under it never says it, and the rows
+    // below stay put (Board Sync is the first section). Settings isn't drawn again for either, nor for a merge that
+    // changes nothing it shows.
     {
       const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
       await B.p.setViewportSize({ width: 1366, height: 768 });
       const n = await addNote(A.p, 'Homework: page 12');
       await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
       await openSettings(B.p);
-      await eventually(async () => /^Up to date\./.test(await B.p.locator('#set-link-status').innerText()), 10000);
+      // (once nothing has been on its way for 2 s, and the smartboard's own first page, deleted as it joined, has gone
+      // for good: that is a change here too)
+      const idle = () => B.p.evaluate(() => !window.__board21.link.syncing() && !window.__board21.pages.purges.size);
+      await eventually(async () => /^Up to date\./.test(await B.p.locator('#set-link-status').innerText()) && await idle() && !await B.p.waitForTimeout(2000) && await idle(), 40000);
       await B.p.evaluate(() => {
         const body = document.querySelector('#settings .sheet-body');
-        window.__ys = []; window.__said = []; window.__drawn = 0;
-        new MutationObserver(ms => { for (const m of ms) if (m.target === body) window.__drawn++; }).observe(body, { childList: true });
-        window.__poll = setInterval(() => {
+        window.__ys = []; window.__said = []; window.__lines = []; window.__drawn = 0; window.__what = [];
+        // (what was drawn again: where it differs from what was there)
+        let was = body.innerHTML;
+        new MutationObserver(ms => {
+          if (ms.some(m => m.target === body)) { window.__drawn++; const now = body.innerHTML; let i = 0; while (i < now.length && now[i] === was[i]) i++; window.__what.push(now.slice(Math.max(0, i - 60), i + 60)); }
+          was = body.innerHTML;
+        }).observe(body, { childList: true, subtree: true, characterData: true, attributes: true });
+        const look = () => {
           window.__ys.push(Math.round(document.querySelector('#settings [data-act="lock-windows"]').getBoundingClientRect().top));
-          const t = document.getElementById('set-link-status').textContent, k = /^Syncing…/.test(t) ? 'Syncing…' : /^Up to date/.test(t) ? 'Up to date' : t;
+          const s = document.getElementById('set-link-syncing'), t = document.getElementById('set-link-status').textContent;
+          const k = s && getComputedStyle(s).visibility === 'visible' ? 'Syncing…' : 'not syncing';
           if (window.__said[window.__said.length - 1] !== k) window.__said.push(k);
-        }, 40);
+          if (!window.__lines.includes(t)) window.__lines.push(t);
+        };
+        look(); window.__poll = setInterval(look, 40);
       });
-      // (a write waits out LINK_GAP_MS after the last one, here 12 s: "Syncing…" meanwhile, put in place at each look)
+      // (a write waits out LINK_GAP_MS after the last one, here 12 s: "Syncing…" meanwhile)
       await syncWaits(B.p, { gap: 12000 });
+      const ik = await B.p.evaluate(() => Array.from(window.__board21.state.insts.keys())[0]);
+      await B.p.evaluate(ik => { const r = window.__board21.state.insts.get(ik).rect; window.__board21.setRect(ik, Object.assign({}, r, { x: r.x + 60 })); }, ik);
+      ok(await eventually(() => B.p.evaluate(() => window.__said[window.__said.length - 1] === 'Syncing…'), 3000), 'a window moved here: “Syncing…” shows beside the folder’s name at once');
+      const live = await B.p.evaluate(() => { for (let e = document.getElementById('set-link-syncing'); e; e = e.parentElement) if (e.getAttribute('aria-live') || /^(status|alert|log)$/.test(e.getAttribute('role') || '') || e.tagName === 'OUTPUT') return e.id || e.tagName; return ''; });
+      const title = await B.p.locator('#settings .row:has(#set-link-status) .lbl').innerText();
+      ok(!live && /^Synced through “21Board” Syncing…$/.test(title.trim()), `in the title, not in a live region (read as “${title.trim()}”)`);
+      await eventually(() => B.p.evaluate(() => window.__said.join() === 'not syncing,Syncing…,not syncing'), 25000);
+      await B.p.waitForTimeout(500);
+      let out = await B.p.evaluate(() => ({ ys: Array.from(new Set(window.__ys)), said: window.__said.slice(), lines: window.__lines.slice(), drawn: window.__drawn, what: window.__what.slice() }));
+      ok(out.said.join() === 'not syncing,Syncing…,not syncing' && out.ys.length === 1, `then it hides once the change is in the folder, and Classroom’s first row stays put (${out.said.join(' → ')}; y ${out.ys.join(' → ')})`);
+      ok(out.lines.length && out.lines.every(t => /^Up to date\. This device’s latest changes went to your folder at \d/.test(t)), `the grey line never says “Syncing…”: it says how things stand (${out.lines.join(' | ')})`);
+      ok(out.drawn === 0, `and Settings isn’t drawn again (${out.drawn} drawings${out.what.length ? ': ' + out.what.join(' | ') : ''})`);
+      // Close all tapped while syncing (as JOIN-3): the same, but for the drawing Close all does itself.
+      await B.p.evaluate(() => { window.__ys = []; window.__said = []; window.__lines = []; });
       await B.p.click('#settings [data-act="close-all"]');
-      await eventually(() => B.p.evaluate(() => window.__said.includes('Syncing…') && window.__said[window.__said.length - 1] === 'Up to date'), 25000);
-      const out = await B.p.evaluate(() => ({ ys: Array.from(new Set(window.__ys)), said: window.__said.slice() }));
-      ok(out.said.includes('Syncing…') && out.ys.length === 1, `Close all tapped: “Syncing…”, then “Up to date…”, and Classroom’s first row stays put (${out.said.join(' → ')}; y ${out.ys.join(' → ')})`);
+      await eventually(() => B.p.evaluate(() => window.__said.includes('Syncing…') && window.__said[window.__said.length - 1] === 'not syncing'), 25000);
+      out = await B.p.evaluate(() => ({ ys: Array.from(new Set(window.__ys)), said: window.__said.slice(), lines: window.__lines.slice() }));
+      ok(out.said.includes('Syncing…') && out.ys.length === 1 && !out.lines.some(t => /Syncing/.test(t)), `Close all tapped: “Syncing…” beside the folder’s name, then not, and Classroom’s first row stays put (${out.said.join(' → ')}; y ${out.ys.join(' → ')})`);
       await syncWaits(B.p);
       await B.p.focus('#settings [data-act="lock-windows"]');
       await B.p.evaluate(() => { window.__ys = []; window.__drawn = 0; });

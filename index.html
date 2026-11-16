@@ -486,6 +486,13 @@
     .sheet h4 { font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 18px 0 2px; }
     .sheet-body .gap { height: 14px; }
     .row .btns { display: flex; gap: 6px; flex: 0 0 auto; }
+    /* Board Sync's folder row (linkSettings in board.js): the title across the row, then the grey line beside Change…
+       and Unlink. "Syncing…" after the folder's name while changes made here go out; hidden, it keeps its room, so
+       the title never changes height. */
+    .row.link-folder { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 14px; }
+    .row.link-folder > .lbl { grid-column: 1 / -1; }
+    .row .link-syncing { margin-left: 2px; font-size: 12.5px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+    .row .link-syncing:not(.on) { visibility: hidden; }
     .row > .seg, .row > .switch, .row > .stepper, .row > .btn { flex-shrink: 0; }   /* (the text beside them wraps instead) */
     .row .hint.warn-line, .row .awake-status { color: var(--text); }
     #set-clock-fit:empty { display: none; }
