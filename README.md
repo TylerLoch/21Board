@@ -104,7 +104,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). With several pages: *All pages* (a backup of every page in one file), *This page*, or *This page as a blank template*. Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). *Back up now* (Settings) and the backup reminders always save every page. |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). *Replace this page* keeps the page (with Board Sync, its windows and content change on your other devices too). A Board Sync device file opens as a backup of every page. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (*Fill*: any window) and change the size of windows and menus. |
-| **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → Classroom → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
+| **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → Classroom → **Board history…** opens the earlier versions of the board as a column beside Settings; tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Board Sync, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 | **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → Advanced shows the version in use. |
@@ -116,9 +116,16 @@ set to (a small preview, "Standard", "3 widgets"), which opens in place. Every g
 Settings opens.
 
 - **At the top, when it applies:** a save problem (with *Back up now*), or *A new version is ready* with *Update now*.
+- **Board Sync** (Chrome and Edge): one board on all your devices (the smartboard), through a folder in Google
+  Drive: *Set up…* (a few steps that show how to make the folder, then pick it); once linked, three rows: the
+  folder with how syncing is going, *Change…* and *Unlink*; this device's name; *Keep history copies in the
+  folder*; and what is wrong when the board can't sync. See [Board Sync](#board-sync-one-board-on-all-your-devices).
+  (Not in kiosk mode, the widget dev window or browsers without it.)
 - **Classroom**
   - **Lock windows in place:** widgets still work, but windows can't be moved, resized, closed or added from the board and the Widget Picker (Close all is off too), in every tab on this device. A file dropped on the board asks to unlock first. (Board Sync's changes from your other devices still apply.) Unlock by holding ▦ for 2 seconds, or with the switch.
-  - **Go back to an earlier version:** *Board history…* (see [Board history](#board-history-going-back)). A line here says when history is paused or short of space.
+  - **Go back to an earlier version:** *Board history…* opens Board history as a column beside Settings, which
+    stays open (tap it again to close it; see [Board history](#board-history-going-back)). A line here says when
+    history is paused or short of space.
   - **Close all windows** on this page (their content is kept).
   - **Stay awake:** a switch. On, it stops the Chromebook, iPad or panel from dimming and sleeping while 21Board
     is on screen (the browser's screen wake lock). A screen that never sleeps never locks either, so while it's on
@@ -130,6 +137,12 @@ Settings opens.
   Open and Delete. (The page's name is changed from the Pages menu: ‹ Page › → *Rename this page…*.)
 - **Appearance**
   - **Theme:** Light, Dark or Auto (the device's own; the default).
+  - **Background ▸** (this page): one set of choices: match the theme and six light colors (White, Paper, Sky,
+    Mint, Blush, Lavender); then four dark ones (Slate, Chalkboard, Navy, Black), *Custom…* (any color) and
+    *Photo…* on the same row. Once there is a photo it is one of the choices, *Photo* (with a tiny picture):
+    picking a color hides it (it's kept), and picking *Photo* shows it again. While it shows: tap its picture to
+    choose what stays in view, *Fill the board* or *Whole photo*, fade, *Change…* and *Remove*. The photo is kept
+    on the device and in full backups, not in templates.
   - **Accent color** (8 choices; also passed to widgets).
   - **Letters ▸** for 21Board and its widgets: *Standard* (the device's own font), *Easier to read* (Atkinson
     Hyperlegible, made for low vision, with I, l and 1 all different and a line through 0) or *Early readers*
@@ -139,18 +152,8 @@ Settings opens.
     the bottom right corner (beside the only ▦ when the Widget Picker is in one corner), on every page and in kiosk
     mode, as tall as ▦. Taps go through it to the windows under it. It hides while that corner's Widget Picker is
     open, and where the window is too narrow for it (*Time and date* shows only the time first). This device only.
-  - **Background ▸** (this page): one set of choices: match the theme, six light colors (White, Paper, Sky, Mint,
-    Blush, Lavender), four dark ones (Slate, Chalkboard, Navy, Black), *Custom…* (any color) and *Add photo…*.
-    Once there is a photo it is one of the choices, *Photo*: picking a color hides it (it's kept), and picking
-    *Photo* shows it again. While it shows: tap its picture to choose what stays in view, *Fill the board* or
-    *Whole photo*, fade, *Change…* and *Remove*. The photo is kept on the device and in full backups, not in
-    templates.
   - **Board shape** (this page): *Widescreen* (16:9, the same on every screen; the default) or *Fill* (the whole
     window). See [Board shape and size](#board-shape-and-size).
-- **Board Sync** (Chrome and Edge): one board on all your devices (the smartboard), through a folder in Google
-  Drive: *Set up…* (a few steps that show how to make the folder, then pick it); once linked, three rows: the
-  folder with how syncing is going, *Change…* and *Unlink*; this device's name; *Keep history copies in the
-  folder*; and what is wrong when the board can't sync. See [Board Sync](#board-sync-one-board-on-all-your-devices).
 - **Advanced ▸** (an amber dot on it when there has been no backup for a week, or the browser hasn't promised to
   keep 21Board's data):
   - **Widget Picker:** both corners, or only left or right.
@@ -514,13 +517,30 @@ while nothing is changed on that page here, and always before a merge deletes so
 Pages deleted on any device are kept 30 days under *Deleted pages*, with *Bring back*. Identical content is
 never saved twice. *Save this version now* keeps a named version until you delete it.
 
+**Columns.** Opened from Settings (Classroom → *Board history…*), Board history is a column beside Settings, on
+the side away from the screen edge, and Settings stays open and usable. Tapping a version opens it in a third
+column beside the list (the version stays marked there): its time as the heading, a preview with each window, what
+changed after it and how it differs from now, then *Go back to …*, then each window of that version with *Put
+back* where it differs. Tap the version again, or its ✕, to close that column. The Undo strip, the suggestion
+(*Before the last big change*), *Deleted pages*, *Save this version now*, what's kept and the copies in the Google
+Drive folder stay in the list's column. From a window's menu (*Earlier versions…*), a message or the empty board,
+Board history opens on its own at the screen edge, and a version is the second column. Each column is as wide as
+Settings, at the size of windows and menus chosen; on a 1366 × 768 Chromebook all three fit side by side at the
+usual size. Where one doesn't fit (an iPad, or a large size), it covers the column before it, with *‹ Settings*
+or *‹ Board history* to go back. Escape closes the outermost column first; closing Settings closes Board history
+too. *Go back*, *Put back*, *Undo*, *Bring back* and a folder copy close every column, Settings too, so you see
+the board.
+
 **Off** (Settings → Advanced → *Save a version automatically*) stops the first three: nothing is saved while you work,
 when 21Board opens or when a note is cleared. One is still saved before each risky action, so Undo keeps
 working, and when you tap *Save this version now*. Versions already saved stay until you delete them.
 
-**What's kept:** the newest 20, one an hour for 2 days, the first and last of each day for a month, one a week
-for 3 months (counting only days the board was used, so a summer break doesn't empty it), safety versions for a
-week, and the version before a big change for a month. Photos are stored once, and history stays within a share
+**What's kept** (Board history says it the same way, a line each: *The 20 most recent versions*, *Hourly versions
+for the past 2 days*, *Daily versions for the past 30 days*, *Weekly versions for the past 12 weeks*): the newest 20,
+one an hour for 48 hours, the first and last of each day for 30 days, one a week for 12 weeks (counting only
+hours, days and weeks the board was used, so a summer break doesn't empty it), safety versions for a week, and
+the version before a big change for a month. When space runs low, the oldest versions go first; versions you
+save are never deleted for space. Photos are stored once, and history stays within a share
 of the device's storage. **Going back never changes this device's settings** (theme, accent) and a running
 timer comes back paused. If going back can't finish, 21Board says why and the board stays as it was.
 *Erase everything* keeps board history (so it can be undone; if the board as it is can't be kept first,

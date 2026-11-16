@@ -1238,10 +1238,10 @@ const SUITES = [
     const shapeRow = () => page.evaluate(() => { const r = document.querySelector('#settings [data-act="shape"]').closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
       return { section: h.textContent, label: r.querySelector('.lbl').textContent, hint: r.querySelector('.hint').textContent, choices: [...r.querySelectorAll('[data-act="shape"]')].map(b => b.textContent + (b.getAttribute('aria-checked') === 'true' ? ' (chosen)' : '')).join(', ') }; });
     let sr = await shapeRow();
-    ok(sr.section === 'Appearance' && sr.label === 'Board shape' && sr.choices === 'Widescreen, Fill (chosen)' && sr.hint === 'Uses the whole window. This page only.', `Settings → Appearance → Board shape: ${sr.choices} (“${sr.hint}”)`);
+    ok(sr.section === 'Appearance' && sr.label === 'Board shape' && sr.choices === 'Widescreen, Fill (chosen)' && sr.hint === 'Uses the whole window.', `Settings → Appearance → Board shape: ${sr.choices}, with only what the choice does (“${sr.hint}”: no “This page only.”)`);
     await page.click('#settings [data-act="shape"][data-val="16:9"]'); await page.waitForTimeout(300);
     sr = await shapeRow();
-    ok((await view(page)).board.shape === '16:9' && sr.choices === 'Widescreen (chosen), Fill' && sr.hint === 'Looks the same on every screen. This page only.', `Widescreen makes the board 16:9 again (“${sr.hint}”)`);
+    ok((await view(page)).board.shape === '16:9' && sr.choices === 'Widescreen (chosen), Fill' && sr.hint === 'Looks the same on every screen.', `Widescreen makes the board 16:9 again (“${sr.hint}”)`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await page.evaluate(() => window.__board21.setBoardShape('16:9')); await page.waitForTimeout(300);
     await page.click('#shape-hint [data-act="hide"]'); await page.waitForTimeout(200);
@@ -1434,15 +1434,26 @@ const SUITES = [
     const picked = () => page.evaluate(() => ({ name: document.getElementById('bg-color-name').textContent,
       chosen: [...document.querySelectorAll('#bg-block .swatches [role="radio"][aria-checked="true"]')].map(b => (b.dataset.act === 'bg' ? b.dataset.val : b.dataset.act) + (b.querySelector('.tick') ? '✓' : '')),
       custom: document.querySelector('#bg-block .swatch.custom').matches('.on') }));
-    // One set of choices: the theme's, the light colors, the dark colors, Custom… and Add photo… (no Color, Pattern
+    // One set of choices: the theme's, the light colors, the dark colors, Custom… and Photo… (no Color, Pattern
     // or Photo parts, no Light / Dark captions, no patterns). Paper and Sand are one Paper now.
     const set = await page.evaluate(() => { const g = document.querySelector('#bg-block [role="radiogroup"]');
       return { names: [...g.querySelectorAll('[data-act="bg"]')].map(b => b.getAttribute('aria-label') + (b.dataset.val ? ' ' + b.dataset.val : '')), pills: [...g.querySelectorAll('.pill')].map(b => b.textContent.trim()),
         parts: document.querySelectorAll('#bg-block .bg-sub, #bg-block .bg-cap, #bg-block .bg-part').length, patterns: document.querySelectorAll('#settings [data-act="pattern"]').length,
         scope: document.querySelector('#bg-block .bg-scope').textContent, groups: document.querySelectorAll('#bg-block [role="radiogroup"]').length }; });
     ok(set.groups === 1 && set.names.join() === 'Match the theme (light or dark),White #ffffff,Paper #f3ede1,Sky #e0f2fe,Mint #dcfce7,Blush #fce7f3,Lavender #ede9fe,Slate #334155,Chalkboard #1f3a2c,Navy #1e293b,Black #0a0a0a' &&
-      set.pills.join() === 'Custom…,Add photo…' && !set.parts && !set.patterns && set.scope === 'This page only.',
-      `Background is one set of choices, then Custom… and Add photo…; Paper is #f3ede1 and Sand is gone; no patterns (${set.names.length} colors, ${set.pills.join(', ')})`);
+      set.pills.join() === 'Custom…,Photo…' && !set.parts && !set.patterns && set.scope === 'This page only.',
+      `Background is one set of choices, then Custom… and Photo…; Paper is #f3ede1 and Sand is gone; no patterns (${set.names.length} colors, ${set.pills.join(', ')})`);
+    // Custom… and Photo… are two more choices on the dark colors' row: as tall as the swatches, after Black, inside
+    // Settings, in the same radio group (a screen reader hears one set). (row: where each sits, in screen px.)
+    const row = (p = page) => p.evaluate(() => { const g = document.querySelector('#bg-block [role="radiogroup"]'), box = e => e.getBoundingClientRect();
+      const black = box(g.querySelector('[data-val="#0a0a0a"]')), slate = box(g.querySelector('[data-val="#334155"]')), white = box(g.querySelector('[data-val="#ffffff"]')), body = box(document.querySelector('#settings .sheet-body'));
+      const pills = [...g.querySelectorAll('.pill')].map(e => { const b = box(e); return { name: e.textContent.trim(), top: b.top, h: b.height, left: b.left, right: b.right, inGroup: e.closest('[role="radiogroup"]') === g }; });
+      return { pills, black: { top: black.top, h: black.height, right: black.right }, slateLeft: slate.left, whiteTop: white.top, bodyRight: body.right };
+    });
+    const inLine = r => r.pills.length === 2 && r.pills.every(x => x.inGroup && Math.abs(x.top - r.black.top) < 1 && Math.abs(x.h - r.black.h) < 1 && x.right <= r.bodyRight) &&
+      r.pills[0].left > r.black.right && r.pills[1].left > r.pills[0].right && r.black.top > r.whiteTop;
+    let rw = await row();
+    ok(inLine(rw), `Custom… and Photo… sit on the dark colors' row, after Black, as tall as the swatches and in the same radio group (${JSON.stringify(rw.pills.map(x => [x.name, Math.round(x.left), Math.round(x.top), Math.round(x.h)]))}; Black at ${Math.round(rw.black.top)})`);
     let pk = await picked();
     ok(pk.name === 'Matches the theme' && pk.chosen.join() === '✓', `a new board matches the theme (${pk.name})`);
     await page.click('#settings [data-act="bg"][data-val="#1f3a2c"]'); await page.waitForTimeout(500);
@@ -1491,7 +1502,7 @@ const SUITES = [
     // Its color input is invisible, so the pill shows where the keyboard is.
     await page.focus('#bg-block [data-act="bg"][data-val="#0a0a0a"]'); await page.keyboard.press('Tab');
     ok(await page.evaluate(() => document.activeElement.id === 'set-bg-custom' && getComputedStyle(document.activeElement.closest('.swatch')).outlineStyle === 'solid'), 'Tab reaches Custom…, and it shows the keyboard focus');
-    // The photo is one of the choices. Add photo… sits beside Custom…; once there is a photo it's “Photo”, chosen while it shows.
+    // The photo is one of the choices. Photo… sits beside Custom…; once there is a photo it's “Photo”, chosen while it shows.
     const png = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1600; c.height = 900; const g = c.getContext('2d'); g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 1600, 900); return c.toDataURL('image/png'); });
     await page.click('#settings [data-act="bg"][data-val="#e0f2fe"]'); await page.waitForTimeout(200);
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#bg-block .pill.photo[data-act="photo-add"]')]);
@@ -1528,7 +1539,18 @@ const SUITES = [
         const small = [...document.querySelectorAll('#bg-block .swatch')].filter(e => { const b = e.getBoundingClientRect(); return b.width / ui < 43.5 || b.height / ui < 43.5; });
         return { wide: body.scrollWidth > body.clientWidth + 1, out: out.length, small: small.length, ui }; });
       ok(!fit.wide && !fit.out && !fit.small, `at ${sc * 100}% (menus drawn at ${fit.ui.toFixed(2)}×), Background fits Settings and its choices are at least 44 px`);
+      rw = await row();
+      ok(inLine(rw), `and Custom… and Photo (with its picture) are still on the dark colors' row (${JSON.stringify(rw.pills.map(x => [x.name, Math.round(x.top), Math.round(x.h)]))})`);
       await page.screenshot({ path: OUT + `bg-options-${sc * 100}.png` });
+    }
+    // In dark mode, and on a small screen (where menus are drawn smaller), the same.
+    for (const [vp, dark] of [[{ width: 1366, height: 768 }, true], [{ width: 768, height: 1024 }, false], [{ width: 1920, height: 1080 }, true]]) {
+      const c2 = await browser.newContext({ viewport: vp, colorScheme: dark ? 'dark' : 'light' }), p2 = await c2.newPage();
+      p2.on('pageerror', e => errors.push(e.message));
+      await p2.goto(BASE); await boardUp(p2); await openSettings(p2, ['bg']);
+      rw = await row(p2);
+      ok(inLine(rw), `${vp.width} × ${vp.height}${dark ? ', dark' : ''}: Custom… and Photo… are on the dark colors' row (${JSON.stringify(rw.pills.map(x => [x.name, Math.round(x.top), Math.round(x.h)]))})`);
+      await c2.close();
     }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
@@ -1552,9 +1574,14 @@ const SUITES = [
       last: document.querySelector('#settings .sheet-body').lastElementChild.id, name: document.querySelectorAll('#set-board-name').length,
       missing: ['st-offline', 'st-persist', 'st-storage', 'st-backup', 'st-version', 'st-scale'].filter(id => !document.getElementById(id)) }));
     let sh = await shape();
-    ok(sh.heads.join() === 'Classroom,This page,Appearance,Board Sync' && sh.last === 'grp-advanced' && sh.theme === 'Auto',
+    ok(sh.heads.join() === 'Board Sync,Classroom,This page,Appearance' && sh.last === 'grp-advanced' && sh.theme === 'Auto',
       `Settings: ${sh.heads.join(', ')}, then Advanced at the bottom; Theme shows Auto`);
-    ok(sh.groups.join() === 'saved hidden,letters hidden,bg hidden,advanced hidden' && !sh.missing.length && !sh.name,
+    // Appearance: Theme, Background, Accent color, Letters, Clock in the corner, Board shape.
+    const looks = await page.evaluate(() => { const h = [...document.querySelectorAll('#settings .sheet-body > h3')].find(x => x.textContent === 'Appearance'), out = [];
+      for (let e = h.nextElementSibling; e && e.tagName !== 'H3' && !e.classList.contains('gap'); e = e.nextElementSibling) if (e.matches('.row')) out.push(e.querySelector('.lbl').textContent);
+      return out; });
+    ok(looks.join() === 'Theme,Background,Accent color,Letters,Clock in the corner,Board shape', `Appearance: ${looks.join(', ')}`);
+    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden' && !sh.missing.length && !sh.name,
       `every group starts closed, and is in the page, hidden (${sh.groups.join(', ')}); no page name field`);
     // Saved widgets: how many there are, open or closed; open, the list says Open or Closed (no sizes).
     const saved = () => page.evaluate(() => ({ value: document.querySelector('#settings [data-val="saved"] .v').textContent, label: document.querySelector('#settings [data-val="saved"] .lbl').textContent,
@@ -1582,11 +1609,11 @@ const SUITES = [
       `Off turns snapping off; Light, Medium and Firm turn it on with that push (${seen.join(', ')})`);
     await page.evaluate(() => { window.__board21.updateBoard({}); }); await page.waitForTimeout(150);
     sh = await shape();
-    ok(sh.groups.join() === 'saved open,letters hidden,bg hidden,advanced open', `open groups stay open while Settings is drawn again (${sh.groups.join(', ')})`);
+    ok(sh.groups.join() === 'saved open,bg hidden,letters hidden,advanced open', `open groups stay open while Settings is drawn again (${sh.groups.join(', ')})`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await openSettings(page);
     sh = await shape();
-    ok(sh.groups.join() === 'saved hidden,letters hidden,bg hidden,advanced hidden', 'and every group is closed again the next time Settings opens');
+    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden', 'and every group is closed again the next time Settings opens');
     // The amber dot on Advanced: shown while there's no backup from the last week, or the browser hasn't promised to
     // keep 21Board's data. (Here it hasn't, so it shows.)
     const dot = (p = page) => p.evaluate(() => { const d = document.getElementById('grp-advanced-warn'); return !!d && !d.hidden && getComputedStyle(d).display !== 'none'; });
@@ -5713,17 +5740,19 @@ const SUITES = [
     await H(() => window.__board21.closeWin('timer:1')); await page.waitForTimeout(800);
     // Find it in Board history (Settings → Classroom, the second row: Go back to an earlier version).
     await openSettings(page);
-    const goBack = await page.evaluate(() => { const b = document.querySelector('#settings [data-act="hist-open"]'), r = b.closest('.row'), first = document.querySelector('#settings .sheet-body h3');
-      return { section: first.textContent, second: [...document.querySelectorAll('#settings .row')].filter(x => !x.matches('.update-note')).indexOf(r), label: r.querySelector('.lbl').textContent, plain: !b.classList.contains('primary') }; });
+    const goBack = await page.evaluate(() => { const b = document.querySelector('#settings [data-act="hist-open"]'), r = b.closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      const rows = []; for (let e = h.nextElementSibling; e && e.tagName !== 'H3'; e = e.nextElementSibling) if (e.matches('.row')) rows.push(e);
+      return { section: h.textContent, second: rows.indexOf(r), label: r.querySelector('.lbl').textContent, plain: !b.classList.contains('primary') }; });
     ok(goBack.section === 'Classroom' && goBack.second === 1 && goBack.label === 'Go back to an earlier version' && goBack.plain, `Settings → Classroom → “Go back to an earlier version” (Board history…) is the second row (${JSON.stringify(goBack)})`);
     await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(1200);
     ok(await page.locator('#history.open .hist-row').count() >= 5, 'the Board history sheet lists the versions');
     await page.screenshot({ path: OUT + '80-history-sheet.png' });
     await page.click(`#history [data-act="sel"][data-val="${goodId}"]`); await page.waitForTimeout(400);
-    const detail = await page.evaluate(() => { const d = document.querySelector('#history .hist-detail'); return d && { rects: d.querySelectorAll('.minimap g').length, text: d.textContent }; });
+    const detail = await page.evaluate(() => { const d = document.querySelector('#history-detail.open .hist-detail'); return d && { rects: d.querySelectorAll('.minimap g').length, text: d.textContent }; });
     ok(detail && detail.rects === 3 && /Not on the board now/.test(detail.text) && /Compared with now/.test(detail.text), `tapping a version shows a preview (3 windows), and what’s different now`);
     await page.screenshot({ path: OUT + '81-history-detail.png' });
-    await page.click('#history .hist-detail [data-act="go"]'); await page.waitForTimeout(3500);
+    await page.click('#history-detail [data-act="go"]'); await page.waitForTimeout(3500);
+    ok(await page.locator('#settings.open, #history.open, #history-detail.open').count() === 0, 'Go back closes Board history and Settings, so the board can be seen');
     const back = await page.evaluate(() => ({ wins: document.querySelectorAll('.win').length, bg: window.__board21.state.board.background.color, theme: window.__board21.state.settings.theme }));
     ok(back.wins === 3 && await noteText() === 'Good setup' && back.bg === '#e0f2fe', 'Go back brings back the windows, their content and the background');
     ok(back.theme === 'dark', 'but leaves this device’s settings (dark mode) alone');
@@ -6085,6 +6114,160 @@ const SUITES = [
     ok((await storedRecords(page))['data:1:notes:1'].text === 'typed on a full device', 'with room again, what was typed is saved');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+  }],
+  ['Board history: columns beside Settings (1366 × 768 from either side, 1920 × 1080, a window’s menu, iPad), what’s kept', async (browser) => {
+    const errors = [];
+    // The columns shown (open and not covered), in screen px; whether none overlaps another; whether all are on screen.
+    const cols = p => p.evaluate(() => ['settings', 'history', 'history-detail'].map(id => { const e = document.getElementById(id), r = e.getBoundingClientRect();
+      return { id, shown: e.classList.contains('open') && getComputedStyle(e).visibility !== 'hidden', l: r.left, r: r.right, t: r.top, b: r.bottom }; }).filter(c => c.shown));
+    const apart = cs => cs.every((a, i) => cs.every((b, j) => i >= j || a.r <= b.l + 0.5 || b.r <= a.l + 0.5));
+    const onScreen = (cs, vp) => cs.every(c => c.l >= 0 && c.r <= vp.width && c.t >= 0 && c.b <= vp.height);
+    const ids = cs => cs.map(c => c.id).join();
+    const say = cs => cs.map(c => `${c.id} ${Math.round(c.l)}–${Math.round(c.r)}`).join(', ');
+    // Where the keyboard is: in which column, and on what.
+    const focus = p => p.evaluate(() => { const a = document.activeElement; return { col: (a.closest('#history-detail, #history, #settings') || {}).id || a.tagName, act: (a.dataset && a.dataset.act) || '', val: (a.dataset && a.dataset.val) || '', cls: String(a.className) }; });
+    // A board with a few versions (each window opened, then a version saved by hand).
+    const start = async (vp, opts = {}) => {
+      const ctx = await browser.newContext(Object.assign({ viewport: vp }, opts));
+      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE); await boardUp(page);
+      await page.evaluate(async () => {
+        const b = window.__board21, wait = ms => new Promise(r => setTimeout(r, ms));
+        b.history.cfg({ skipOpen: true });
+        b.openWidget('notes'); await wait(900); await b.history.save('Monday setup');
+        b.openWidget('timer'); await wait(700); await b.history.save('With a timer');
+        b.openWidget('dice'); await wait(700); await b.history.save('');
+      });
+      return { ctx, page };
+    };
+    const history = async (page, side) => { await openSettings(page, [], side); await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open .hist-row'); await page.waitForTimeout(300); };
+    const row = (page, n) => page.locator('#history .hist-row').nth(n);
+
+    // ---- 1366 × 768, from the left: Board history is a second column, Settings stays open beside it.
+    const vp = { width: 1366, height: 768 };
+    let { ctx, page } = await start(vp);
+    await history(page, 'left');
+    let c = await cols(page), f = await focus(page);
+    ok(ids(c) === 'settings,history' && apart(c) && onScreen(c, vp) && c[1].l > c[0].r, `from the left, Board history opens as a column beside Settings, which stays open: nothing overlaps, all on screen (${say(c)})`);
+    ok(f.col === 'history' && await page.locator('#settings [data-act="hist-open"][aria-expanded="true"]').count() === 1, `the keyboard goes into Board history, and Settings’ “Board history…” is marked as open (${JSON.stringify(f)})`);
+    const heads = await page.evaluate(() => ['settings', 'history', 'history-detail'].map(id => { const e = document.getElementById(id); return [e.querySelector('h2').tagName, e.querySelector('[data-close]').getAttribute('aria-label')]; }));
+    ok(heads.map(h => h[1]).join() === 'Close settings,Close board history,Close this version', `each column has a heading and a close button that says what it closes (${heads.map(h => h[1]).join(', ')})`);
+    // What's kept: a list a screen reader reads as one, a tier a line.
+    const keeps = page.getByRole('list', { name: 'Board history keeps, on this device:' });
+    const tiers = await keeps.getByRole('listitem').allTextContents();
+    ok(tiers.join(' | ') === 'The 20 most recent versions | Hourly versions for the past 2 days | Daily versions for the past 30 days | Weekly versions for the past 12 weeks',
+      `what's kept is a list, a tier a line (${tiers.join(' | ')})`);
+    const foot = await page.locator('#history .hist-keeps').innerText();
+    ok(/Versions you save are kept until you delete them\. When space runs low, the oldest versions are deleted first\./.test(foot) && /Board history isn’t a backup: if this browser’s data for 21Board is cleared, it’s cleared too\./.test(foot) && !/Kept on this device/.test(foot),
+      'then what you save, what goes first when space runs low, and that it isn’t a backup');
+    const tierTops = await page.evaluate(() => [...document.querySelectorAll('#history .hist-keeps li')].map(li => Math.round(li.getBoundingClientRect().top)));
+    ok(new Set(tierTops).size === 4, `each tier is on its own line (${tierTops.join(', ')})`);
+    // Settings is still usable: a choice there leaves Board history open.
+    await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__board21.state.settings.theme === 'dark') && ids(await cols(page)) === 'settings,history', 'a choice in Settings works, and Board history stays open beside it');
+    await page.click('#settings [data-act="theme"][data-val="light"]'); await page.waitForTimeout(200);
+    // A version: its own column, the version still marked in the list.
+    await row(page, 1).click(); await page.waitForTimeout(400);
+    c = await cols(page); f = await focus(page);
+    const sel = await page.evaluate(() => { const r = document.querySelectorAll('#history .hist-row')[1]; return { sel: r.classList.contains('sel'), exp: r.getAttribute('aria-expanded'), id: r.dataset.val, marked: document.querySelectorAll('#history .hist-row.sel').length }; });
+    ok(ids(c) === 'settings,history,history-detail' && apart(c) && onScreen(c, vp) && c[2].l > c[1].r, `a version opens a third column beside the list: three side by side on a 1366 × 768 screen (${say(c)})`);
+    ok(sel.sel && sel.exp === 'true' && sel.marked === 1 && f.col === 'history-detail', `the version stays marked in the list, and the keyboard goes into its column (${JSON.stringify(sel)}; ${f.col})`);
+    // In it: the summary, then Go back, then each window.
+    const order = await page.evaluate(() => {
+      const d = document.querySelector('#history-detail .sheet-body'), parts = [['summary with its preview', '.hist-sum:has(> .minimap:first-child)'], ['go back', '[data-act="go"]'], ['windows', '.inst-list']];
+      const at = parts.map(([n, q]) => [n, d.querySelector(q)]), all = [...d.querySelectorAll('*')];
+      return { order: at.filter(x => x[1]).sort((a, b) => all.indexOf(a[1]) - all.indexOf(b[1])).map(x => x[0]).join(', '), sum: d.querySelector('.hist-sum').innerText.replace(/\s+/g, ' '), go: (d.querySelector('[data-act="go"]') || {}).textContent,
+        rows: d.querySelectorAll('.inst-list .inst').length, title: document.querySelector('#history-detail h2').textContent, put: [...d.querySelectorAll('.inst-list .inst')].some(i => /Not on the board now|Closed now|Different now/.test(i.textContent) && i.querySelector('[data-act="put"]')) };
+    });
+    ok(order.order === 'summary with its preview, go back, windows' && /^Today \d/.test(order.title) && /^Go back to Today \d/.test(order.go) && /Saved by you · With a timer/.test(order.sum) && /After this: /.test(order.sum) && /Compared with now: /.test(order.sum),
+      `the version’s column: its time as the heading, then the preview and what changed, then Go back, then each window (${order.order}; “${order.title}”; ${order.sum})`);
+    ok(order.rows === 2 && !order.put, `each window of that version is listed with how it compares with now (${order.rows} windows)`);
+    await page.screenshot({ path: OUT + '82-history-columns.png' });
+    // Tapping it again closes the column; so does its ✕ (the keyboard goes back to the version in the list).
+    await row(page, 1).click(); await page.waitForTimeout(300);
+    ok(ids(await cols(page)) === 'settings,history' && await page.locator('#history .hist-row.sel').count() === 0, 'tapping the version again closes its column');
+    await row(page, 1).click(); await page.waitForTimeout(300);
+    await page.click('#history-detail [data-close]'); await page.waitForTimeout(300);
+    f = await focus(page);
+    ok(ids(await cols(page)) === 'settings,history' && f.col === 'history' && f.act === 'sel' && f.val === sel.id, `its ✕ closes it, and the keyboard goes back to the version (${JSON.stringify(f)})`);
+    // Escape: the outermost column first, the keyboard going back to what opened each.
+    await page.keyboard.press('Enter'); await page.waitForTimeout(400);   // (the version, from the keyboard)
+    ok(ids(await cols(page)) === 'settings,history,history-detail' && (await focus(page)).col === 'history-detail', 'Enter on a version opens it, with the keyboard in its column');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    f = await focus(page);
+    ok(ids(await cols(page)) === 'settings,history' && f.col === 'history' && f.val === sel.id, `Escape closes the version first, the keyboard back on it in the list (${JSON.stringify(f)})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    f = await focus(page);
+    ok(ids(await cols(page)) === 'settings' && f.col === 'settings' && f.act === 'hist-open' && await page.locator('#settings [data-act="hist-open"][aria-expanded="false"]').count() === 1,
+      `then Board history, the keyboard back on “Board history…” in Settings (${JSON.stringify(f)})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    ok(!(await cols(page)).length, 'then Settings');
+    // Board history… again closes it; closing Settings closes its columns; so does a tap on the board.
+    await history(page, 'left');
+    await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(200);
+    ok(ids(await cols(page)) === 'settings', 'tapping “Board history…” again closes it');
+    await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open .hist-row'); await row(page, 0).click(); await page.waitForTimeout(300);
+    await page.click('#settings [data-close]'); await page.waitForTimeout(200);
+    ok(!(await cols(page)).length, 'closing Settings closes Board history’s columns with it');
+    await history(page, 'left'); await row(page, 0).click(); await page.waitForTimeout(300);
+    const empty = await page.evaluate(() => { for (let y = 60; y < 700; y += 20) for (let x = 1350; x > 1150; x -= 20) { const e = document.elementFromPoint(x, y); if (e && (e.id === 'desk' || e.closest('#layout-frame') || e === document.body)) return [x, y]; } return null; });
+    await page.mouse.click(empty[0], empty[1]); await page.waitForTimeout(200);
+    ok(!(await cols(page)).length, 'and a tap on the board closes them all');
+    // A window's menu: that window's versions, without Settings, at the screen edge; a version beside it.
+    await page.locator('.win[data-ikey="notes:1"] .win-label').click(); await page.waitForTimeout(250);
+    await page.click('#menu [data-act="history"]'); await page.waitForSelector('#history.open [data-act="whole"]'); await page.waitForTimeout(300);
+    c = await cols(page);
+    ok(ids(c) === 'history' && c[0].l < 20 && /Earlier versions of Notes/.test(await page.locator('#history .hist-intro').textContent()), `from a window’s menu, Board history opens on its own at the edge, Settings closed (${say(c)})`);
+    await page.click('#history [data-act="whole"]'); await page.waitForSelector('#history .hist-row');
+    await row(page, 0).click(); await page.waitForTimeout(300);
+    c = await cols(page);
+    ok(ids(c) === 'history,history-detail' && apart(c) && onScreen(c, vp) && c[1].l > c[0].r, `and a version opens as the second column (${say(c)})`);
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    f = await page.evaluate(() => document.activeElement.classList.contains('win-label') && document.activeElement.closest('.win').dataset.ikey);
+    ok(!(await cols(page)).length && f === 'notes:1', `Escape twice closes both, and the keyboard goes back to the window’s name (${f})`);
+    await ctx.close();
+
+    // ---- 1366 × 768, from the right: the same, mirrored.
+    ({ ctx, page } = await start(vp));
+    await history(page, 'right'); await row(page, 0).click(); await page.waitForTimeout(400);
+    c = await cols(page);
+    ok(ids(c) === 'settings,history,history-detail' && apart(c) && onScreen(c, vp) && c[0].r > vp.width - 20 && c[1].r <= c[0].l && c[2].r <= c[1].l,
+      `from the right, the columns go leftwards: Settings at the edge, then Board history, then the version (${say(c)})`);
+    await page.screenshot({ path: OUT + '83-history-columns-right.png' });
+    await ctx.close();
+
+    // ---- A 1920 × 1080 flat panel (touch), from the right.
+    const big = { width: 1920, height: 1080 };
+    ({ ctx, page } = await start(big, { hasTouch: true }));
+    await history(page, 'right'); await row(page, 0).click(); await page.waitForTimeout(400);
+    c = await cols(page);
+    ok(ids(c) === 'settings,history,history-detail' && apart(c) && onScreen(c, big), `1920 × 1080: three columns side by side (${say(c)})`);
+    await ctx.close();
+
+    // ---- iPads: a column that doesn't fit covers the one before it, with a Back button; nothing goes off screen.
+    for (const ipad of [{ width: 768, height: 1024 }, { width: 1024, height: 768 }]) {
+      ({ ctx, page } = await start(ipad, { hasTouch: true }));
+      const portrait = ipad.width < ipad.height;
+      await history(page, 'left');
+      c = await cols(page);
+      const backOf = id => page.evaluate(id => { const b = document.querySelector(`#${id} [data-back]`), x = document.querySelector(`#${id} [data-close]`); return b.hidden ? (x.hidden ? 'none' : '✕') : `${b.textContent} (${b.getAttribute('aria-label')})`; }, id);
+      if (portrait) ok(ids(c) === 'history' && onScreen(c, ipad) && await backOf('history') === 'Settings (Back to Settings)', `iPad portrait: Board history covers Settings, with ‹ Settings in place of ✕ (${say(c)}; ${await backOf('history')})`);
+      else ok(ids(c) === 'settings,history' && apart(c) && onScreen(c, ipad) && await backOf('history') === '✕', `iPad landscape: Settings and Board history side by side (${say(c)})`);
+      await row(page, 0).click(); await page.waitForTimeout(400);
+      c = await cols(page);
+      ok(ids(c) === (portrait ? 'history-detail' : 'settings,history-detail') && apart(c) && onScreen(c, ipad) && await backOf('history-detail') === 'Board history (Back to Board history)',
+        `${portrait ? 'portrait' : 'landscape'}: the version covers Board history, with ‹ Board history; nothing off screen (${say(c)})`);
+      if (portrait) await page.screenshot({ path: OUT + '84-history-ipad-portrait.png' });
+      await page.locator('#history-detail [data-back]').tap(); await page.waitForTimeout(300);
+      c = await cols(page);
+      ok(ids(c) === (portrait ? 'history' : 'settings,history') && await page.locator('#history .hist-row.sel').count() === 0, `‹ Board history goes back to the list (${say(c)})`);
+      if (portrait) {
+        await page.locator('#history [data-back]').tap(); await page.waitForTimeout(300);
+        ok(ids(await cols(page)) === 'settings', '‹ Settings goes back to Settings');
+      }
+      await ctx.close();
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Kiosk mode (?kiosk=yes)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });

@@ -1481,6 +1481,7 @@
     ShapeHint.update();
     BoardPhoto.place();
     CornerClock.place();   // section 12b: beside a Widget Picker button, at --ui
+    HistorySheet.place();  // section 13c: Board history's columns, at --ui
   }
 
   // The visible screen expressed in layout space (may extend past the 16:9 board on one axis).
@@ -1632,10 +1633,11 @@
           <button class="icon" data-act="scale-up" aria-label="Larger"${sc >= SCALES[SCALES.length - 1] - 0.001 ? ' disabled' : ''}>+</button>
         </div></div>`;
   }
-  // Widescreen (16:9) or Fill (the whole window). The hint is the chosen one's.
+  // Widescreen (16:9) or Fill (the whole window). The hint is the chosen one's, and only that (Background, in the same
+  // section, says what a page's own look reaches).
   function shapeSettingsRow(seg) {
     const hint = freeShape() ? 'Uses the whole window.' : 'Looks the same on every screen.';
-    return `<div class="row"><div><div class="lbl">Board shape</div><div class="hint">${hint} ${pageScope()}</div></div>${seg('shape', freeShape() ? 'free' : '16:9', [['16:9', 'Widescreen'], ['free', 'Fill']])}</div>`;
+    return `<div class="row"><div><div class="lbl">Board shape</div><div class="hint">${hint}</div></div>${seg('shape', freeShape() ? 'free' : '16:9', [['16:9', 'Widescreen'], ['free', 'Fill']])}</div>`;
   }
   function scaleStep(dir) {
     const sc = boardScale();
@@ -3221,7 +3223,7 @@
           resetWin(ik).then(id => toast(`${name} was reset.`, id ? { action: 'Undo', timeout: 15000, onAction: () => BoardHistory.putBack(id, ik, { exact: true, quiet: true }) } : {}));
           break;
         }
-        case 'history': this.close(); HistorySheet.open(Settings.side || 'left', { ikey: w.ikey }); break;
+        case 'history': this.close(); HistorySheet.open(Settings.side || 'left', { ikey: w.ikey, back: () => w.labelEl }); break;
         case 'own': this.close(); if (w.widget.external) window.open(w.widget.entry, '_blank', 'noopener'); break;
         case 'reload': this.close(); if (w.widget.external) { w.reload(); focusWin(w.ikey); } break;
         case 'reset-no': this.confirming = false; this.render(); this.position(); break;
@@ -3666,17 +3668,18 @@
   // =====================================================================
   // One sheet, opened from the gear in either Widget Picker, on that side. Top to bottom:
   //   (banners: a save problem, a new version ready)
-  //   Classroom    Lock windows in place, Go back to an earlier version, Close all windows, Stay awake
-  //   This page    Saved widgets ▸
-  //   Appearance   Theme, Accent color, Letters ▸, Clock in the corner, Background ▸, Board shape
   //   Board Sync   (Chrome and Edge: section 13b) the folder and how syncing is going (Change…, Unlink), this
   //                device's name, history copies in the folder
+  //   Classroom    Lock windows in place, Go back to an earlier version (Board history, as a column beside
+  //                Settings: section 13c), Close all windows, Stay awake
+  //   This page    Saved widgets ▸
+  //   Appearance   Theme, Background ▸, Accent color, Letters ▸, Clock in the corner, Board shape
   //   Advanced ▸   Widget Picker, Size of windows and menus, moving windows, board history, backups and storage,
   //                Developer mode, About
   // ▸ is a group shown as one row with its value, that opens in place (settingsGroup; Settings.groups). A group that
   // is closed is still in the page, hidden, so whatever looks for its parts (refreshStatus, the clock's fit note)
   // finds them.
-  // Settings → Appearance → Background: one row of choices (the theme's, colors, Custom…, the photo). It's this
+  // Settings → Appearance → Background: one set of choices (the theme's, colors, Custom…, the photo). It's this
   // page's background (board.background, and its photo in media:<b>:background*).
   // =====================================================================
   // 12b. Classroom features: lock windows, stay awake, clock in the corner, letters
@@ -4247,10 +4250,10 @@
   }
 
   // Settings → Appearance → Background: a group whose row shows a small preview shaped like the board and what the
-  // background is. Open, it's one set of choices (one radio group): match the theme, the light colors, the dark
-  // colors, Custom…, then the photo (Add photo… until there is one). Picking a color hides the photo, which is kept
-  // (BoardPhoto `on: false`); picking the photo shows it again, over the color picked last ("Whole photo" shows that
-  // color around it). While the photo is picked, its controls follow (photoRow).
+  // background is. Open, it's one set of choices (one radio group): match the theme and the light colors; then the
+  // dark colors, Custom… and the photo (Photo…, until there is one), all on one row. Picking a color hides the photo,
+  // which is kept (BoardPhoto `on: false`); picking the photo shows it again, over the color picked last ("Whole
+  // photo" shows that color around it). While the photo is picked, its controls follow (photoRow).
   function backgroundSettings() {
     const bg = S.board.background || {}, color = bg.color || null;
     const isCustom = !!color && !BG_SWATCHES.some(([c]) => c === color);
@@ -4267,10 +4270,10 @@
     const content = `<div class="bg-block" id="bg-block"><div class="hint bg-scope">${pageScope()}</div>
       <div class="swatches" role="radiogroup" aria-label="Background">
         <button class="swatch auto${auto ? ' on' : ''}" ${radio(auto)} data-act="bg" data-val="" title="Match the theme" aria-label="Match the theme (light or dark)">${sunMoon}${tick(auto)}</button>
-        ${BG_LIGHT.map(swatch).join('')}<span class="break"></span>${BG_DARK.map(swatch).join('')}<span class="break"></span>
-        <label class="swatch pill custom${custom ? ' on' : ''}" title="Choose any color"><span class="dot"${isCustom ? ` style="background:${color}"` : ''}></span>Custom…${tick(custom)}<input type="color" id="set-bg-custom" value="${esc(isCustom ? color : '#88aacc')}" aria-label="Custom background color"></label>
+        ${BG_LIGHT.map(swatch).join('')}<span class="break"></span>${BG_DARK.map(swatch).join('')}
+        <span class="bg-more"><label class="swatch pill custom${custom ? ' on' : ''}" title="Choose any color"><span class="dot"${isCustom ? ` style="background:${color}"` : ''}></span>Custom…${tick(custom)}<input type="color" id="set-bg-custom" value="${esc(isCustom ? color : '#88aacc')}" aria-label="Custom background color"></label>
         ${m ? `<button class="swatch pill photo${photoShown ? ' on' : ''}" ${radio(photoShown)} data-act="photo-show" aria-label="Photo"><span class="pic bg-pic"></span>Photo${tick(photoShown)}</button>`
-          : `<button class="swatch pill photo" data-act="photo-add">${svg('image')}Add photo…</button>`}
+          : `<button class="swatch pill photo" data-act="photo-add" title="Add a photo">${svg('image')}Photo…</button>`}</span>
       </div>
       ${photoShown ? photoRow() : ''}</div>`;
     return settingsGroup('bg', 'Background', esc(photoShown ? 'Photo' : bgColorName(color)), content, { preview, valueId: 'bg-color-name' });
@@ -4454,6 +4457,7 @@
       if (!this.isOpen) return;
       this.isOpen = false;
       this.el.classList.remove('open');
+      if (HistorySheet.beside) HistorySheet.close(true);   // (Board history's columns beside it go with it)
     },
 
     // force: drawn even while a field has the keyboard (the color picker has just closed).
@@ -4523,6 +4527,7 @@
         ${note ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(note.title)}</div><div class="hint">${esc(note.text)}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>` : ''}
         <div class="row update-note" id="st-update" hidden><div><div class="lbl">A new version is ready</div><div class="hint">Takes a second. Your board stays as it is.</div></div><button class="btn small primary" data-act="update">Update now</button></div>
 
+        ${link}
         ${classroomSettings(sw, seg)}
 
         ${LAB ? `<h3>Widget test mode</h3>
@@ -4531,15 +4536,13 @@
 
         <h3>Appearance</h3>
         <div class="row">${labelled('Theme')}${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']])}</div>
+        ${backgroundSettings()}
         <div class="row accent-row">${labelled('Accent color')}
           <div class="swatches" role="radiogroup" aria-label="Accent color">${Object.entries(ACCENTS).map(([k, a]) => { const on = (st.accent || 'blue') === k;
             return `<button class="swatch${on ? ' on' : ''}" style="background:${resolvedTheme() === 'dark' ? a[1] : a[0]}" role="radio" aria-checked="${on}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent"></button>`; }).join('')}</div></div>
         ${letterSettings()}
         ${clockSettings(sw, seg)}
-        ${backgroundSettings()}
         ${shapeSettingsRow(seg)}
-
-        ${link}
 
         <div class="gap"></div>
         ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), inset: true })}`;
@@ -4696,7 +4699,7 @@
         }
         case 'install': await Install.run(); this.refreshStatus(); break;
         case 'backup': await doExport('all'); this.refreshStatus(); break;
-        case 'hist-open': HistorySheet.open(this.side); break;
+        case 'hist-open': if (HistorySheet.beside) HistorySheet.close(); else HistorySheet.open(this.side, { beside: true }); break;
         case 'hist-every': {
           if (val === '0') {
             const ok = await dialog({ title: 'Turn off automatic versions?', message: '21Board stops saving versions while you work, when it opens and when a note is suddenly cleared. It still saves one before Reset, Delete, Close all, a photo change, Import, Erase and going back, so those can be undone, and when you tap “Save this version now”. Versions already saved stay until you delete them.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
@@ -7406,7 +7409,8 @@
     }
   };
 
-  // Settings → Classroom → Go back to an earlier version: opens the Board history sheet (which lists the versions).
+  // Settings → Classroom → Go back to an earlier version: opens Board history (which lists the versions) as a column
+  // beside Settings, and closes it again (HistorySheet: the button is marked while it's open).
   // Only something wrong is said here, in one line: history paused or short of space, or unreadable just now.
   function historyOpenRow() {
     const H = BoardHistory;
@@ -7414,7 +7418,7 @@
     if (!H.enabled()) return `<div class="row"><div><div class="lbl">Go back to an earlier version</div><div class="hint">Board history isn’t available in this browser window.</div></div></div>`;
     const warn = H.paused === 'quota' ? 'Board history is paused: this device is out of space.' : H.paused === 'over' ? 'Board history is using its share of this device’s storage, so a version is saved about once an hour.' : H.low || H.tight ? `Space is low on this device${H.thinned ? ', so some of the oldest board history was removed' : ''}. Make room on the device so 21Board can keep saving.` : H.status === 'too-big' ? 'This page is too big for automatic versions.' : H.unread ? 'Board history couldn’t be read just now.' : '';
     return `<div class="row"><div><div class="lbl">Go back to an earlier version</div>${warn ? `<div class="hint warn-line"><span class="status-dot warn"></span>${warn}</div>` : ''}</div>
-        <button class="btn" data-act="hist-open">${svg('history')}Board history…</button></div>`;
+        <button class="btn" data-act="hist-open" aria-controls="history" aria-expanded="${HistorySheet.beside}">${svg('history')}Board history…</button></div>`;
   }
   // Settings → Advanced → Board history: how often a version is saved, and deleting them. (Copies in the Google Drive
   // folder: Settings → Board Sync → Keep history copies in the folder, linkSettings.)
@@ -7426,38 +7430,95 @@
       <div class="row"><div><div class="lbl">Delete board history</div><div class="hint">The board itself stays.</div></div><button class="btn small danger" data-act="hist-delete">Delete…</button></div>`;
   }
 
-  // The Board history sheet: every version of the board, a preview, what changed, Go back / Put back.
+  // Board history: every version of the board, in columns from a screen edge, each as wide as Settings (place):
+  //   Settings (when Board history was opened from it: Settings → Classroom → Board history…; it stays open and
+  //   usable), the list of versions (#history), and the version tapped in it (#history-detail: a preview and what
+  //   changed, Go back, then each window with Put back). Opened from elsewhere (a window's menu, a message, the empty
+  //   board), the list is the first column. Escape closes the outermost column; the keyboard goes into a column as
+  //   it opens, and back to what opened it as it closes.
   const HistorySheet = {
     el: null, body: null, side: 'left', isOpen: false, sel: null, ikey: null, now: null, folder: [], showOthers: false, thumbs: new Map(), rt: 0, deleted: [],
+    beside: false,   // opened from Settings, as the column next to it (closing Settings closes it)
+    det: null, detBody: null, selFrom: 'hist-row',   // the version's column, and what opened it (its row, or the suggestion above the list)
+    back: null,      // what the keyboard goes back to when Board history closes (a function: Settings is drawn afresh)
 
     init() {
       this.el = $('#history');
       this.body = $('.sheet-body', this.el);
-      const closeBtn = $('[data-close]', this.el);
-      closeBtn.innerHTML = svg('close');
-      closeBtn.addEventListener('click', () => this.close());
-      this.body.addEventListener('click', e => {
-        const b = e.target.closest('[data-act]');
-        if (b && !b.disabled) this.act(b.dataset.act, b.dataset.val, b);
-      });
+      this.det = $('#history-detail');
+      this.detBody = $('.sheet-body', this.det);
+      // ✕, or ‹ Back where a column covers the one before it (place): both close that column.
+      for (const [el, shut] of [[this.el, () => this.close()], [this.det, () => this.select(null)]]) {
+        $('[data-close]', el).innerHTML = svg('close');
+        $$('[data-close], [data-back]', el).forEach(b => b.addEventListener('click', shut));
+        $('.sheet-body', el).addEventListener('click', e => {
+          const b = e.target.closest('[data-act]');
+          if (b && !b.disabled) this.act(b.dataset.act, b.dataset.val, b);
+        });
+      }
     },
+    // opts: ikey (one window's versions), beside (from Settings, which stays open), back (a function: what the
+    // keyboard goes back to afterwards; otherwise where it was).
     async open(side, opts = {}) {
-      closePopups({ keepHistory: true });
+      const from = document.activeElement;
+      closePopups({ keepHistory: true, keepSettings: !!opts.beside });
       this.side = side === 'right' ? 'right' : 'left';
+      this.beside = !!opts.beside && Settings.isOpen;
+      this.back = opts.back || (this.beside ? () => $('[data-act="hist-open"]', Settings.body) : from && from !== document.body ? () => from : null);
       this.ikey = opts.ikey || null;
       this.sel = null; this.showOthers = false;
-      this.el.classList.remove('left', 'right');
-      this.el.classList.add(this.side, 'open');
+      for (const el of [this.el, this.det]) { el.classList.remove('left', 'right', 'open'); el.classList.add(this.side); }
+      this.el.classList.add('open');
       this.isOpen = true;
+      this.marked();
+      this.place();
       this.body.innerHTML = '<p class="hist-intro">Loading…</p>';
+      this.el.focus({ preventScroll: true });
       await BoardHistory.reload();
       await this.loadExtras();
       this.render();
+      if (this.beside) Settings.render();   // (its Go back row says when history can't be read: now it's known)
     },
-    close() {
+    // quiet: Settings closed it, or something else is opening (the keyboard isn't put back).
+    close(quiet) {
       if (!this.isOpen) return;
-      this.isOpen = false;
-      this.el.classList.remove('open');
+      const a = document.activeElement, mine = !a || a === document.body || this.el.contains(a) || this.det.contains(a);
+      this.isOpen = false; this.beside = false; this.sel = null;
+      this.el.classList.remove('open'); this.det.classList.remove('open');
+      this.marked();
+      this.place();
+      const back = !quiet && mine && this.back && this.back();
+      if (back && back.isConnected && back.getClientRects().length) back.focus({ preventScroll: true });
+    },
+    // Escape: the outermost column first.
+    escape() { if (this.sel) this.select(null); else this.close(); },
+    // Settings' Board history… is marked while its column is open.
+    marked() { const b = Settings.isOpen && $('[data-act="hist-open"]', Settings.body); if (b) b.setAttribute('aria-expanded', String(this.beside)); },
+    // Where the columns go: Settings (when beside), the list, the version. Each is as wide as Settings and drawn at
+    // its size (--ui), so in its own px each is 460 wide (less on a very narrow screen), 16 in from the edge and 12
+    // from the next. One that doesn't fit the screen covers the one before it (hidden meanwhile), with ‹ Back in
+    // place of ✕: on a 1366 × 768 Chromebook at the usual size all three fit; on an iPad the version covers the list.
+    place() {
+      if (!this.el) return;
+      const cols = [this.beside ? Settings.el : null, this.isOpen ? this.el : null, this.isOpen && this.sel ? this.det : null].filter(Boolean);
+      const room = window.innerWidth / (Zoom.ui || 1), W = Math.min(460, room - 32);
+      const fit = Math.max(1, Math.floor((room - 32 + 12) / (W + 12)));
+      for (const el of [Settings.el, this.el, this.det]) {
+        el.classList.remove('covered');
+        el.style.removeProperty('--col');
+        const bk = $('[data-back]', el);
+        if (bk) { bk.hidden = true; $('[data-close]', el).hidden = false; }
+      }
+      cols.forEach((el, k) => {
+        const at = Math.min(k, fit - 1);
+        el.style.setProperty('--col', String(at));
+        if (at === k) return;
+        const under = cols[k - 1], to = under === Settings.el ? 'Settings' : 'Board history', bk = $('[data-back]', el);
+        under.classList.add('covered');
+        bk.innerHTML = `${svg('chevLeft')}<span>${to}</span>`;
+        bk.setAttribute('aria-label', `Back to ${to}`);
+        bk.hidden = false; $('[data-close]', el).hidden = true;
+      });
     },
     async loadExtras() {
       try {
@@ -7504,11 +7565,46 @@
 
     render() {
       if (!this.isOpen) return;
-      const top = this.body.scrollTop;
       const H = BoardHistory;
-      if (!H.enabled()) { this.body.innerHTML = '<p class="hist-intro">Board history isn’t available in this browser window.</p>'; return; }
-      this.body.innerHTML = this.ikey ? this.renderWindow() : this.renderBoard();
-      this.body.scrollTop = top;
+      if (!H.enabled()) { this.body.innerHTML = '<p class="hist-intro">Board history isn’t available in this browser window.</p>'; this.sel = null; this.renderSel(); return; }
+      this.fill(this.body, this.ikey ? this.renderWindow() : this.renderBoard());
+      this.renderSel();
+    },
+    // A column drawn afresh, where it was scrolled to, with the keyboard still on the control it was on.
+    fill(body, html, top = body.scrollTop) {
+      const a = document.activeElement, on = body.contains(a) && a.dataset.act ? a : null;
+      body.innerHTML = html;
+      body.scrollTop = top;
+      const again = on && $$(`[data-act="${CSS.escape(on.dataset.act)}"]`, body).find(b => b.dataset.val === on.dataset.val && b.classList[0] === on.classList[0]);
+      if (again) again.focus({ preventScroll: true });
+    },
+    // The version tapped (this.sel), in the column beside the list; none: that column closes.
+    renderSel() {
+      const metas = BoardHistory.metas, i = this.ikey || !this.sel ? -1 : metas.findIndex(m => m.id === this.sel);
+      const m = metas[i], open = !!m, was = this.det.classList.contains('open') ? this.det.dataset.id : null;
+      if (!open && this.det.contains(document.activeElement)) this.el.focus({ preventScroll: true });   // (the version has gone)
+      this.sel = open ? m.id : null;
+      if (open) {
+        $('h2', this.det).textContent = dayTime(m.at);
+        this.det.dataset.id = m.id;
+        this.fill(this.detBody, this.renderDetail(m, metas[i - 1]), was === m.id ? this.detBody.scrollTop : 0);
+      }
+      this.det.classList.toggle('open', open);
+      this.place();
+    },
+    // Tapping a version opens it beside the list (the keyboard goes into it); tapping it again, ✕ or Escape closes it
+    // (the keyboard goes back to the version in the list).
+    select(id, from) {
+      const was = this.sel;
+      if (from) this.selFrom = from.classList.contains('hist-hero') ? 'hist-hero' : 'hist-row';
+      this.sel = id || null;
+      const a = document.activeElement, mine = !a || a === document.body || this.det.contains(a);
+      this.render();
+      if (this.sel && !was) this.det.focus({ preventScroll: true });
+      else if (!this.sel && was && mine) {
+        const b = $(`.${this.selFrom}[data-val="${CSS.escape(was)}"]`, this.body) || $(`[data-val="${CSS.escape(was)}"]`, this.body);
+        (b || this.el).focus({ preventScroll: true });
+      }
     },
     renderBoard() {
       const H = BoardHistory, metas = H.metas, now = this.now;
@@ -7522,7 +7618,7 @@
         : metas.find(m => m.beforeBig && Date.now() - m.at < 3 * H_DAY && (!now || !now.sigs.includes(m.sig)));
       if (hero) {
         const after = H.diff(hero, metas[metas.indexOf(hero) - 1] || now);
-        html += `<button class="hist-hero" data-act="sel" data-val="${esc(hero.id)}">${this.minimap(hero.thumb, { photo: this.photoOf(hero) })}<span><b>${noneOpen ? 'Before the windows were closed' : 'Before the last big change'}</b><span>${esc(dayTime(hero.at))}${after.length ? '. After it: ' + esc(after.slice(0, 3).join(', ').toLowerCase()) : ''}</span></span></button>`;
+        html += `<button class="hist-hero${this.sel === hero.id ? ' sel' : ''}" data-act="sel" data-val="${esc(hero.id)}" aria-controls="history-detail" aria-expanded="${this.sel === hero.id}">${this.minimap(hero.thumb, { photo: this.photoOf(hero) })}<span><b>${noneOpen ? 'Before the windows were closed' : 'Before the last big change'}</b><span>${esc(dayTime(hero.at))}${after.length ? '. After it: ' + esc(after.slice(0, 3).join(', ').toLowerCase()) : ''}</span></span></button>`;
       }
       let day = '';
       metas.forEach((m, i) => {
@@ -7533,10 +7629,9 @@
         if (m.beforeBig) tags.push('<span class="tag big">Before a big change</span>');
         if (m.name !== S.board.name) tags.push(`<span class="tag">Then called “${esc(m.name)}”</span>`);
         const sel = this.sel === m.id;
-        html += `<button class="hist-row${sel ? ' sel' : ''}" data-act="sel" data-val="${esc(m.id)}" aria-expanded="${sel}">${this.minimap(m.thumb, { photo: this.photoOf(m) })}<span class="meta2">` +
+        html += `<button class="hist-row${sel ? ' sel' : ''}" data-act="sel" data-val="${esc(m.id)}" aria-controls="history-detail" aria-expanded="${sel}">${this.minimap(m.thumb, { photo: this.photoOf(m) })}<span class="meta2">` +
           `<span class="when">${esc(new Date(m.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span><span class="what">${esc(this.label(m))}</span>` +
           `${this.chips(older ? H.diff(older, m) : [])}${tags.length ? `<span class="chips">${tags.join('')}</span>` : ''}</span></button>`;
-        if (sel) html += this.renderDetail(m, metas[i - 1]);
       });
       return html + this.renderFoot();
     },
@@ -7558,21 +7653,30 @@
           `<span class="pill${differs ? ' diff' : ''}">${state}</span>` +
           (differs && widget ? `<button class="btn small" data-act="put" data-val="${esc(m.id + '|' + ik)}">Put back</button>` : '') + '</div>';
       }).join('');
-      return `<div class="hist-detail">${this.minimap(m.thumb, { photo: this.photoOf(m), labels: true })}
-        <p><b>${esc(dayTime(m.at))}</b> · ${esc(this.label(m))}</p>
+      // (The column's heading is its date and time: dayTime.)
+      return `<div class="hist-detail"><div class="hist-sum">${this.minimap(m.thumb, { photo: this.photoOf(m), labels: true })}
+        <p><b>${esc(this.label(m))}</b></p>
         <p>${after ? (after.length ? 'After this: ' + esc(after.join(', ')) + '.' : 'Nothing changed after this until the next version.') : 'This is the newest version.'}</p>
         <p>${same ? 'Same as your board now.' : vsNow.length ? 'Compared with now: ' + esc(vsNow.join(', ')) + '.' : 'Small differences from your board now.'}</p>
-        ${notes.map(t => `<p class="hint">${esc(t)}</p>`).join('')}
-        ${rows ? `<div class="inst-list">${rows}</div>` : '<p class="hint">No windows.</p>'}
-        ${same ? '' : `<button class="btn primary" data-act="go" data-val="${esc(m.id)}">${svg('history')}Go back to ${esc(dayTime(m.at))}</button>`}</div>`;
+        ${notes.map(t => `<p class="hint">${esc(t)}</p>`).join('')}</div>
+        ${same ? '' : `<button class="btn primary" data-act="go" data-val="${esc(m.id)}">${svg('history')}Go back to ${esc(dayTime(m.at))}</button>`}
+        <div class="hist-day">Windows in this version</div>
+        ${rows ? `<div class="inst-list">${rows}</div>` : '<p class="hint">No windows.</p>'}</div>`;
     },
     renderFoot() {
       const H = BoardHistory;
       // Pages deleted in the last 30 days (here, or on another device through Board Sync), to bring back.
       const del = this.deleted.length ? `<div class="hist-day">Deleted pages</div><p class="hint">Pages deleted in the last 30 days, here or on your other devices.</p><div class="inst-list">` +
         this.deleted.map(d => `<div class="inst"><div class="meta"><b>“${esc(d.name)}” · deleted ${esc(when(d.deletedAt))}</b></div><button class="btn small" data-act="bring" data-val="${esc(d.id)}">Bring back</button></div>`).join('') + '</div>' : '';
+      // What's kept (T_LOCAL, as historyPlan keeps it: "Daily" is the first and last of each day). Counted only where
+      // there are versions, so each "past …" is at least that long. The byte budget (prune) and a full device (thin)
+      // give up the oldest first, never what you saved.
+      const T = T_LOCAL;
       let html = del + `<div class="hist-foot"><button class="btn" data-act="save">${svg('plus')}Save this version now</button>
-        <p class="hint">Kept on this device: every version from the last few hours, then one an hour for 2 days, the first and last of each day for a month, and one a week for 3 months. Versions you save are kept until you delete them. Earlier versions aren’t a backup: if the browser clears 21Board’s data, they go too.</p></div>`;
+        <div class="hist-keeps"><p id="hist-keeps">Board history keeps, on this device:</p>
+          <ul aria-labelledby="hist-keeps"><li>The ${T.newest} most recent versions</li><li>Hourly versions for the past ${T.hours / 24} days</li><li>Daily versions for the past ${T.days} days</li><li>Weekly versions for the past ${T.weeks} weeks</li></ul>
+          <p>Versions you save are kept until you delete them. When space runs low, the oldest versions are deleted first.</p>
+          <p>Board history isn’t a backup: if this browser’s data for 21Board is cleared, it’s cleared too.</p></div></div>`;
       if (Link.dir && Link.perm === 'granted' && S.settings.historyFolder !== false) {
         const t = H.tag(S.board.uid, 6), mine = this.folder.filter(f => f.uidTag === t).slice(0, 20), others = this.folder.filter(f => f.uidTag !== t);
         html += `<div class="hist-day">In your Google Drive folder</div>` + (mine.length ? `<div class="inst-list">${mine.map(f => `<div class="inst"><div class="meta"><b>${esc(dayTime(f.at))}${f.saved ? ' · saved by you' : ''}</b><span>From ${esc(f.device)}</span></div><button class="btn small" data-act="folder-go" data-val="${esc(f.name)}">Go back</button></div>`).join('')}</div>` : '<p class="hint">No copies of this board there yet (about one an hour).</p>');
@@ -7601,22 +7705,19 @@
       return html + `<p><button class="btn small" data-act="whole">Show the whole board’s history</button></p>`;
     },
 
-    async act(act, val) {
+    async act(act, val, el) {
       const H = BoardHistory;
       switch (act) {
-        case 'sel': {
-          this.sel = this.sel === val ? null : val; this.render();
-          const d = $('.hist-detail', this.body);
-          if (d) d.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-          break;
-        }
-        case 'go': this.close(); await H.restore(val); break;
-        case 'put': { const [id, ik] = val.split('|'); this.close(); await H.putBack(id, ik); break; }
-        case 'put-here': { const [id, ik] = val.split('|'); this.close(); await H.putBack(id, ik, { here: true }); break; }
-        case 'undo': if (H.undoable) { const id = H.undoable.id; H.undoable = null; this.close(); await H.restore(id, { undo: true, what: 'going back' }); } break;
+        case 'sel': this.select(this.sel === val ? null : val, el); break;
+        // (These change the board: every column closes, Settings too, so it can be seen. As before, when Board
+        // history took Settings' place.)
+        case 'go': closePopups(); await H.restore(val); break;
+        case 'put': { const [id, ik] = val.split('|'); closePopups(); await H.putBack(id, ik); break; }
+        case 'put-here': { const [id, ik] = val.split('|'); closePopups(); await H.putBack(id, ik, { here: true }); break; }
+        case 'undo': if (H.undoable) { const id = H.undoable.id; H.undoable = null; closePopups(); await H.restore(id, { undo: true, what: 'going back' }); } break;
         case 'whole': this.ikey = null; this.render(); break;
-        case 'bring': this.close(); await H.bringBack(val); break;
-        case 'retry': await H.reload(); await this.loadExtras(); this.render(); break;
+        case 'bring': closePopups(); await H.bringBack(val); break;
+        case 'retry': await H.reload(); await this.loadExtras(); this.render(); if (this.beside) Settings.render(); break;
         case 'others': this.showOthers = !this.showOthers; this.render(); break;
         case 'save': {
           const r = await dialog({ title: 'Save this version', message: 'It’s kept until you delete it.', input: { label: 'Name (optional)', placeholder: 'Monday setup', maxlength: 60 }, actions: [{ label: 'Save', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
@@ -7626,7 +7727,7 @@
         case 'folder-go': {
           let exp;
           try { exp = await H.readFolderFile(val); } catch (e) { toast('Couldn’t read that copy: ' + ((e && e.message) || e)); break; }
-          this.close();
+          closePopups();
           await H.restore({ exp });
           break;
         }
@@ -9479,8 +9580,10 @@
       if (Pages.open && !t.closest('#pages-menu') && !t.closest('[data-ctl="pages"]')) Pages.closeMenu();
       if (Picker.side && !t.closest('#panel') && !t.closest('.picker-btn') && !t.closest('#pages-menu')) Picker.close();
       if (Menu.win && !t.closest('#menu') && !t.closest('.win-label')) Menu.close();
-      if (Settings.isOpen && !t.closest('#settings') && !t.closest('#modal') && !t.closest('.picker-btn') && !t.closest('#panel')) Settings.close();
-      if (HistorySheet.isOpen && !t.closest('#history') && !t.closest('#modal') && !t.closest('#toasts') && !t.closest('.picker-btn') && !t.closest('#panel') && !t.closest('#empty-hint')) HistorySheet.close();
+      // (Settings and Board history's columns beside it count as one: a tap in either leaves both open.)
+      const cols = HistorySheet.beside && t.closest('#settings, #history, #history-detail');
+      if (Settings.isOpen && !cols && !t.closest('#settings') && !t.closest('#modal') && !t.closest('.picker-btn') && !t.closest('#panel')) Settings.close();
+      if (HistorySheet.isOpen && !cols && !t.closest('#history, #history-detail') && !t.closest('#modal') && !t.closest('#toasts') && !t.closest('.picker-btn') && !t.closest('#panel') && !t.closest('#empty-hint')) HistorySheet.close();
     }, true);
     // Focus moving into a widget iframe (a tap inside it) also closes popups. For a district app it's all the board
     // learns of a tap inside (one on its buttons, not on 21Sketch's drawing surface), so its window comes forward.
@@ -9501,7 +9604,7 @@
       else if (Menu.win) { const w = Menu.win; Menu.close(); w.labelEl.focus(); }
       else if (Pages.open) { Pages.closeMenu(); const ind = $('[data-ctl="pages"]', Picker.el); if (ind) ind.focus(); }
       else if (Picker.side) Picker.close();
-      else if (HistorySheet.isOpen) HistorySheet.close();
+      else if (HistorySheet.isOpen) HistorySheet.escape();   // (a version's column, then the list, then Settings)
       else if (Settings.isOpen) Settings.close();
     });
 

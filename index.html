@@ -424,12 +424,20 @@
       background: var(--surface); border: 1px solid var(--border); border-radius: 20px;
       box-shadow: 0 20px 60px rgba(0, 0, 0, .25); overflow: hidden;
     }
-    .sheet.left { left: calc(16px + env(safe-area-inset-left)); transform-origin: bottom left; }
-    .sheet.right { right: calc(16px + env(safe-area-inset-right)); transform-origin: bottom right; }
+    /* --col: Settings, Board history and a version are columns from that edge, each as wide as a sheet and 12 px
+       apart (HistorySheet.place in board.js: one that doesn't fit covers the one before it, which is hidden). */
+    .sheet.left { left: calc(16px + env(safe-area-inset-left) + var(--col, 0) * (min(460px, calc(100vw / var(--ui, 1) - 32px)) + 12px)); transform-origin: bottom left; }
+    .sheet.right { right: calc(16px + env(safe-area-inset-right) + var(--col, 0) * (min(460px, calc(100vw / var(--ui, 1) - 32px)) + 12px)); transform-origin: bottom right; }
     .sheet.open { display: flex; animation: panel-in .18s ease-out; }
+    .sheet.covered { visibility: hidden; }
+    .sheet:focus { outline: none; }   /* (the keyboard is put on a column as it opens: Tab goes on into it) */
     .sheet-head { display: flex; align-items: center; gap: 10px; padding: 14px 12px 12px 20px; border-bottom: 1px solid var(--border); }
     .sheet-head h2 { flex: 1; font-size: 20px; }
     .sheet-head button { width: 44px; height: 44px; }
+    .sheet-head button[hidden] { display: none; }
+    .sheet-head:has(.back:not([hidden])) { padding-left: 8px; }
+    .sheet-head button.back { width: auto; padding: 0 10px 0 2px; gap: 2px; border-radius: 10px; color: var(--primary); font-size: 15px; font-weight: 600; }
+    .sheet-head .back svg { width: 22px; height: 22px; stroke-width: 2.4; }
     .sheet-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 6px 20px 24px; }
     .sheet h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 22px 0 10px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 48px; padding: 4px 0; }
@@ -498,7 +506,7 @@
     .bg-mini .ph::after { content: ""; position: absolute; inset: 0; background: var(--fade-color, var(--board-bg)); opacity: var(--fade, 0); }
     .bg-block { display: flex; flex-direction: column; gap: 12px; }
     .bg-block .hint { margin: 0; }
-    .bg-block .swatches { gap: 6px; }
+    .bg-block .swatches { gap: 5px; }
     .bg-block .swatches .break { flex-basis: 100%; height: 0; }
     .bg-block .swatch { width: 44px; height: 44px; flex: 0 0 auto; }
     .bg-block .swatch.on { box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .35), 0 0 0 2px var(--surface), 0 0 0 4.5px var(--primary); }
@@ -508,11 +516,14 @@
     /* "Match the theme": half light (sun), half dark (moon), so it reads as "follows light or dark". */
     .bg-block .swatch.auto { background: linear-gradient(135deg, #f3f4f6 50%, #121212 50%); }
     .bg-block .swatch.auto > svg { width: 44px; height: 44px; stroke-width: 1.5; }
-    /* "Custom…" and the photo ("Add photo…", then "Photo" with a tiny picture): labelled pills. */
-    .bg-block .swatch.pill { display: inline-flex; align-items: center; width: auto; padding: 0 14px 0 9px; gap: 7px; border-radius: 22px; background: var(--hover-bg); color: var(--text); font-size: 13.5px; font-weight: 600; cursor: pointer; }
-    .bg-block .pill .dot { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 26px; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .45); background: conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444); }
-    .bg-block .pill.photo > svg { width: 22px; height: 22px; color: var(--icon-color); }
-    .bg-block .pill .pic { width: 26px; height: 26px; border-radius: 7px; flex: 0 0 26px; background: var(--border) center / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .45); }
+    /* "Custom…" and the photo ("Photo…", then "Photo" with a tiny picture): two more choices after the dark colors,
+       as tall as the swatches and round-ended like them, with a short label. Settings has room for both there, also
+       beside a scroll bar that takes room (Windows); where it hasn't, the two go on to the next row together. */
+    .bg-block .bg-more { display: inline-flex; gap: inherit; }
+    .bg-block .swatch.pill { display: inline-flex; align-items: center; width: auto; padding: 0 10px 0 7px; gap: 5px; border-radius: 22px; background: var(--hover-bg); color: var(--text); font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+    .bg-block .pill .dot { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 24px; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .45); background: conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444); }
+    .bg-block .pill.photo > svg { width: 20px; height: 20px; color: var(--icon-color); }
+    .bg-block .pill .pic { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 24px; background: var(--border) center / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .45); }
     .bg-block .custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
     .bg-block .custom:has(:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }   /* (its input can't show it: it's invisible) */
     /* Patterns (removed 2026-11-16; uncomment to bring them back): their tiles in the Background group.
@@ -628,7 +639,7 @@
     .hist-day { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 18px 0 6px; }
     .hist-row, .hist-hero { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 56px; padding: 8px; border-radius: 12px; text-align: left; color: var(--text); justify-content: flex-start; }
     .hist-row:hover, .hist-hero:hover { background: var(--hover-bg); }
-    .hist-row.sel { background: var(--primary-soft); }
+    .hist-row.sel, .hist-hero.sel { background: var(--primary-soft); }
     .hist-row .minimap, .hist-hero .minimap { width: 64px; height: 36px; flex: 0 0 64px; border-radius: 6px; box-shadow: 0 0 0 1px var(--border); }
     .hist-row .meta2 { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
     .hist-row .when { font-size: 17px; font-weight: 700; line-height: 1.1; }
@@ -643,16 +654,25 @@
     .tag { background: var(--primary-soft); color: var(--primary); }
     .tag.big, .pill.diff { background: #fef3c7; color: #92400e; }
     body.dark .tag.big, body.dark .pill.diff { background: rgba(251, 191, 36, .18); color: #fcd34d; }
-    .hist-detail { margin: 4px 0 12px; padding: 12px; border-radius: 14px; background: var(--hover-bg); display: flex; flex-direction: column; gap: 10px; }
+    /* A version's column (#history-detail): the summary, Go back, then each window. */
+    .hist-detail { margin: 14px 0 0; display: flex; flex-direction: column; gap: 14px; }
+    .hist-sum { display: flex; flex-direction: column; gap: 8px; }
     .hist-detail .minimap { width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 10px; box-shadow: 0 0 0 1px var(--border); }
-    .hist-detail p { margin: 0; font-size: 14px; }
-    .hist-detail .inst { background: var(--surface); }
+    .hist-detail p { margin: 0; font-size: 14px; line-height: 1.4; }
+    .hist-detail .hist-day { margin: 6px 0 -6px; }
     .hist-detail > .btn.primary { min-height: 48px; justify-content: center; }
+    #settings [data-act="hist-open"][aria-expanded="true"] { background: var(--primary-soft); color: var(--primary); }   /* (its column is open) */
+    /* What's kept: one tier a line. */
+    .hist-keeps { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; font-size: 13px; line-height: 1.45; color: var(--muted); }
+    .hist-keeps p { margin: 0; }
+    .hist-keeps ul { margin: 0; padding: 0 0 0 18px; list-style: disc; color: var(--text); }
+    .hist-keeps li { margin: 1px 0; }
     .hist-undo { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 12px; margin: 6px 0; border-radius: 12px; background: var(--primary-soft); font-size: 14px; }
     .hist-foot { margin-top: 18px; display: flex; flex-direction: column; gap: 8px; }
     .hist-foot .btn { min-height: 48px; justify-content: center; }
-    #history .inst-list { margin: 6px 0; }
-    #history .btn.small { white-space: nowrap; }
+    #history .inst-list, #history-detail .inst-list { margin: 6px 0; }
+    #history .btn.small, #history-detail .btn.small { white-space: nowrap; }
+    #history .inst .btn, #history-detail .inst .btn { background: var(--surface); box-shadow: 0 0 0 1px var(--border); }   /* (on a grey row) */
     #empty-hint .rescue { margin-top: 20px; display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap; font-size: clamp(14px, 1.5vw, 18px); }
     #empty-hint .rescue[hidden] { display: none; }
     #empty-hint .rescue button { pointer-events: auto; }
@@ -769,8 +789,13 @@
     <div class="sheet-body"></div>
   </section>
 
-  <section id="history" class="sheet" role="dialog" aria-label="Board history">
-    <div class="sheet-head"><h2>Board history</h2><button data-close aria-label="Close board history"></button></div>
+  <!-- Board history: the list of versions, and a version's own column beside it (HistorySheet in board.js). -->
+  <section id="history" class="sheet" role="dialog" aria-label="Board history" tabindex="-1">
+    <div class="sheet-head"><button class="back" data-back hidden></button><h2>Board history</h2><button data-close aria-label="Close board history"></button></div>
+    <div class="sheet-body"></div>
+  </section>
+  <section id="history-detail" class="sheet" role="dialog" aria-labelledby="history-detail-title" tabindex="-1">
+    <div class="sheet-head"><button class="back" data-back hidden></button><h2 id="history-detail-title"></h2><button data-close aria-label="Close this version"></button></div>
     <div class="sheet-body"></div>
   </section>
 
