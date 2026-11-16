@@ -23,10 +23,34 @@ const ok = (cond, msg) => { if (cond) passes++; else fails++; console.log((cond 
 let BASE;
 
 // Most suites test window behavior on a board that is simply the screen at 100% (Settings →
-// Board shape: Any shape, size 100%), so window px are screen px. The 16:9 board has its own suite.
+// Board shape: Fill, size 100%), so window px are screen px. The 16:9 board has its own suite.
 async function freeBoard(page) {
   await page.evaluate(() => { window.__board21.setBoardShape('free'); window.__board21.setBoardScale(1); });
   await page.waitForTimeout(100);
+}
+
+// Settings, opened from the ▦ in that corner (left or right), with the groups named open: Settings starts with every
+// group closed, and a control inside one can't be tapped until it is open. The groups: 'saved' (This page → Saved
+// widgets), 'letters' and 'bg' (Appearance → Letters, Background), 'boards' and 'folder' (Board Sync → Boards from
+// other devices, Folder settings) and 'advanced'. Settings already open on that side stays open (its open groups too).
+async function openSettings(p, groups = [], side = 'left') {
+  if (!await p.locator(`#settings.open.${side}`).count()) {
+    if (!await p.locator(`#panel.open.${side}`).count()) await p.click(`.picker-btn.${side}`);
+    await p.click('.panel.open [data-ctl="settings"]');
+    await p.waitForSelector('#settings.open');
+  }
+  for (const g of [].concat(groups)) {
+    const b = p.locator(`#settings [data-act="group"][data-val="${g}"]`);
+    if (await b.getAttribute('aria-expanded') !== 'true') await b.click();
+  }
+  await p.waitForTimeout(250);
+}
+
+// Renames the page shown, as a teacher does (‹ Page › → Rename this page…: Settings has no name field).
+async function renamePage(p, name) {
+  await p.evaluate(() => { window.__board21.pages.rename(); });
+  await p.waitForSelector('#modal.open input'); await p.fill('#modal.open input', name);
+  await p.click('#modal.open .btn.primary'); await p.waitForTimeout(250);
 }
 
 // Notes shows its text (with tappable links) until tapped; tap it, then type.
@@ -443,12 +467,13 @@ const SUITES = [
     await b.click('#modal .btn');
 
     // ---------- Settings sheet
-    await b.click('.picker-btn.right'); await b.click('[data-ctl="settings"]'); await b.waitForTimeout(400);
+    await openSettings(b, [], 'right');
     await b.screenshot({ path: OUT + '22-settings.png' });
+    await openSettings(b, ['bg'], 'right');
     await b.click('#settings [data-act="bg"][data-val="#1f3a2c"]');
-    await b.click('#settings [data-act="pattern"][data-val="grid"]');
     await b.waitForTimeout(600);
     ok(await b.evaluate(() => getComputedStyle(document.getElementById('desk')).backgroundColor) === 'rgb(31, 58, 44)', 'background color applied');
+    await openSettings(b, ['advanced'], 'right');
     await b.locator('#settings .sheet-body').evaluate(el => el.scrollTop = 99999);
     await b.waitForTimeout(150);
     await b.screenshot({ path: OUT + '23-settings-bottom.png' });
@@ -589,7 +614,7 @@ const SUITES = [
     await page.goto(BASE + ''); await page.waitForTimeout(500); await freeBoard(page);
     ok(!(await page.evaluate(() => window.__board21.catalog().filter(a => a.devOnly).length && document.querySelector('[data-widget="sdk-playground"]'))), 'dev widget hidden by default');
     // turn on developer mode in settings
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(200);
+    await openSettings(page, ['advanced']);
     await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(200);
     await page.keyboard.press('Escape');
     await page.click('.picker-btn.left'); await page.waitForTimeout(150);
@@ -628,7 +653,7 @@ const SUITES = [
     d = await disp(page, ik); ok(d.w === 1400 && d.h === 860, 'maximize()');
     await btn('restore()'); await page.waitForTimeout(400);
     // dev: test an unregistered widget by uploading its file, with the button (Settings → Developer mode → Test a widget → Upload file…)
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(200);
+    await openSettings(page, ['advanced']);
     const devChooser = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }), page.click('#settings [data-act="dev-upload"]', { timeout: 3000 })]).then(([c]) => c, () => null);
     ok(!!devChooser, 'Upload file… in Settings opens the file chooser');
     if (devChooser) await devChooser.setFiles(path.join(ROOT, 'widgets', '_template', 'index.html'));
@@ -687,7 +712,7 @@ const SUITES = [
       ok(!st.listed && !inPicker && !st.win && !st.opened && !asked.some(u => u.includes('widgets/_template/')) && !st.kept && st.devMode,
         `an older board’s widget added by its path isn’t in the catalog or the Widget Picker (Developer mode on), doesn’t open (its page isn’t even asked for), and the list is dropped (${JSON.stringify(st)})`);
       // Its window is kept like any window whose widget isn't installed: Settings lists it, to delete.
-      await op.click('.picker-btn.left'); await op.click('[data-ctl="settings"]'); await op.waitForTimeout(300);
+      await openSettings(op, ['saved']);
       const row = op.locator('#settings .inst', { has: op.locator('[data-act="inst-delete"][data-val="dev-widgets-template:1"]') });
       ok(st.inst && /dev-widgets-template 1\s*Widget not installed/.test(await row.innerText().catch(() => '')) && await row.locator('[data-act="inst-open"]').count() === 0 &&
         await op.locator('#settings [data-act="dev-remove"]').count() === 0, 'its window is listed in Settings as Widget not installed (with Delete, no Open), and not under Test a widget');
@@ -779,8 +804,8 @@ const SUITES = [
     await page.evaluate(() => { window.__board21.state.settings.snapping = true; });
 
     // ---- #4 storage protection UI
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(600);
-    await page.locator('#settings .sheet-body').evaluate(el => { const h = [...el.querySelectorAll('h3')].find(x => x.textContent.includes('Storage')); el.scrollTop = h.offsetTop - 10; });
+    await openSettings(page, ['advanced']); await page.waitForTimeout(350);
+    await page.locator('#st-persist').scrollIntoViewIfNeeded();
     await page.waitForTimeout(300);
     const persistText = await page.locator('#st-persist').textContent();
     const hint = await page.locator('#st-persist-hint').textContent();
@@ -875,7 +900,7 @@ const SUITES = [
 
     // "Today/yesterday" use calendar days.
     await page.evaluate(() => { const d = new Date(); d.setHours(0, 0, 0, 0); window.__board21.state.settings.lastBackupAt = d.getTime() - 60000; });
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(500);
+    await openSettings(page, ['advanced']);
     ok((await page.locator('#st-backup').textContent()).includes('yesterday'), 'a backup from 23:59 last night says "yesterday"');
 
     // Native Save dialog: cancelling records nothing; saving records the backup and writes a real file.
@@ -1003,6 +1028,17 @@ const SUITES = [
     await page.click('#shape-hint [data-act="unlock"]'); await page.waitForTimeout(500);
     v = await view(page);
     ok(v.board.shape === 'free' && Math.abs(v.zoom.s - 0.8) < 0.001 && !v.hint && !v.frame && Math.abs(v.bounds.h - 1250) < 1, 'unlocking: the board fills the window at 80%, no shading, no tip');
+    ok(await page.locator('#toasts', { hasText: 'Settings → Appearance → Board shape → Widescreen changes it back' }).count() === 1, 'and a message says how to change it back (Settings → Appearance → Board shape)');
+    // Settings → Appearance → Board shape: Widescreen or Fill, with what the chosen one does (it's saved with the page).
+    await openSettings(page);
+    const shapeRow = () => page.evaluate(() => { const r = document.querySelector('#settings [data-act="shape"]').closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      return { section: h.textContent, label: r.querySelector('.lbl').textContent, hint: r.querySelector('.hint').textContent, choices: [...r.querySelectorAll('[data-act="shape"]')].map(b => b.textContent + (b.getAttribute('aria-checked') === 'true' ? ' (chosen)' : '')).join(', ') }; });
+    let sr = await shapeRow();
+    ok(sr.section === 'Appearance' && sr.label === 'Board shape' && sr.choices === 'Widescreen, Fill (chosen)' && sr.hint === 'Uses the whole window. This page only.', `Settings → Appearance → Board shape: ${sr.choices} (“${sr.hint}”)`);
+    await page.click('#settings [data-act="shape"][data-val="16:9"]'); await page.waitForTimeout(300);
+    sr = await shapeRow();
+    ok((await view(page)).board.shape === '16:9' && sr.choices === 'Widescreen (chosen), Fill' && sr.hint === 'Looks the same on every screen. This page only.', `Widescreen makes the board 16:9 again (“${sr.hint}”)`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await page.evaluate(() => window.__board21.setBoardShape('16:9')); await page.waitForTimeout(300);
     await page.click('#shape-hint [data-act="hide"]'); await page.waitForTimeout(200);
     ok(!(await view(page)).hint, '"Hide" hides the tip');
@@ -1014,7 +1050,7 @@ const SUITES = [
     await page.evaluate(() => window.__board21.setRect('timer:1', { x: 1200, y: 300, w: 480, h: 360 })); await page.waitForTimeout(200);
     const before = await scr(page, 'timer:1');
     const pick0 = await page.evaluate(() => document.querySelector('.picker-btn.left').getBoundingClientRect().width);
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    await openSettings(page, ['advanced']);
     ok((await page.locator('#st-scale').textContent()) === '80%', 'Settings shows the size of windows and menus (80%)');
     await page.click('#settings [data-act="scale-up"]'); await page.waitForTimeout(500);
     v = await view(page);
@@ -1100,7 +1136,7 @@ const SUITES = [
       g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 3000, 1300); g.fillStyle = '#5aa33d'; g.fillRect(0, 1300, 3000, 700);
       g.fillStyle = '#ffd23f'; g.beginPath(); g.arc(2600, 350, 220, 0, 7); g.fill(); g.fillStyle = '#b5532c'; g.fillRect(300, 1150, 500, 400);
       return c.toDataURL('image/png'); });
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    await openSettings(page, ['bg']);
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#settings [data-act="photo-add"]')]);
     await chooser.setFiles({ name: 'field.png', mimeType: 'image/png', buffer: Buffer.from(dataUrl.split(',')[1], 'base64') });
     await page.waitForTimeout(1500);
@@ -1130,12 +1166,11 @@ const SUITES = [
     b = await bg();
     ok(b.size === 'contain' && b.fade === '0.4', '"Whole photo" shows all of it; Fade blends it toward the background color');
     ok(b.pos === '50% 50%', `a whole photo is centered (the Fill spot doesn't push it to one side) (${b.pos})`);
-    ok(await page.evaluate(() => { const b = document.querySelector('#settings [data-act="pattern"]'); return b.disabled && /Show photo/.test(document.getElementById('bg-pattern-note').textContent); }), 'patterns are off while a photo is shown, and Settings says why');
-    ok(await page.evaluate(() => { const d = document.getElementById('desk'), had = d.className; d.classList.add('pattern-dots'); const none = getComputedStyle(d).backgroundImage === 'none'; d.className = had; return none; }), 'even in the shaded margins');
+    ok(await page.evaluate(() => document.querySelector('#bg-block .pill.photo').getAttribute('aria-checked') === 'true' && !document.querySelector('#bg-block [data-act="bg"][aria-checked="true"]')), 'while the photo shows, Photo is the background chosen (no color is)');
     // Another open tab shows the same photo.
     await page.waitForTimeout(500);
     ok(await tab2.evaluate(() => !document.getElementById('board-bg').hidden && getComputedStyle(document.getElementById('board-bg')).backgroundSize === 'contain'), 'another open tab shows it too');
-    // Any shape: the photo covers the whole window.
+    // Board shape Fill: the photo covers the whole window.
     await page.evaluate(() => window.__board21.setBoardShape('free')); await page.waitForTimeout(300);
     b = await bg();
     ok(Math.abs(b.w - 1280) < 1 && Math.abs(b.h - 860) < 1, 'with the board shape unlocked it covers the whole window');
@@ -1161,7 +1196,7 @@ const SUITES = [
     const ctxE = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const pe = await ctxE.newPage(); await pe.goto(BASE); await pe.waitForTimeout(600);
     await pe.evaluate(o => window.__board21.applyImport(o, 'replace'), evil); await pe.waitForTimeout(1200);
-    await pe.click('.picker-btn.left'); await pe.click('[data-ctl="settings"]'); await pe.waitForTimeout(500);
+    await openSettings(pe, ['bg']);
     ok(await pe.evaluate(() => !window.__pwned && !window.__board21.state.media.has('background') && !document.querySelector('#settings img')), 'a malformed photo in a file is refused');
     await ctxE.close();
     // Remove.
@@ -1189,41 +1224,58 @@ const SUITES = [
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(600);
-    const openSettings = async () => { await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300); };
-    await openSettings();
-    const desk = () => page.evaluate(() => { const d = document.getElementById('desk'), cs = getComputedStyle(d);
-      return { color: cs.backgroundColor, img: cs.backgroundImage, cls: d.className, strong: d.style.getPropertyValue('--pattern-strong') }; });
+    await openSettings(page, ['bg']);
+    const desk = () => page.evaluate(() => { const d = document.getElementById('desk'), cs = getComputedStyle(d); return { color: cs.backgroundColor, img: cs.backgroundImage, cls: d.className }; });
+    // What Background's row says, and which choice is marked (a check, not only a ring).
     const picked = () => page.evaluate(() => ({ name: document.getElementById('bg-color-name').textContent,
-      colors: [...document.querySelectorAll('#bg-block [data-act="bg"][aria-checked="true"]')].map(b => b.dataset.val + (b.querySelector('.tick') ? '✓' : '')),
-      patterns: [...document.querySelectorAll('#bg-block [data-act="pattern"][aria-checked="true"]')].map(b => b.dataset.val + (b.querySelector('.tick') ? '✓' : '')) }));
-    // Colors: two labelled rows; the choice is marked with a check, and named in words.
-    const rows = await page.evaluate(() => [...document.querySelectorAll('#bg-block .bg-cap')].map(c => c.textContent + ':' + c.nextElementSibling.querySelectorAll('.swatch').length));
-    ok(rows.join() === 'Light:8,Dark:5', `colors come in a Light and a Dark row (${rows.join(', ')})`);
+      chosen: [...document.querySelectorAll('#bg-block .swatches [role="radio"][aria-checked="true"]')].map(b => (b.dataset.act === 'bg' ? b.dataset.val : b.dataset.act) + (b.querySelector('.tick') ? '✓' : '')),
+      custom: document.querySelector('#bg-block .swatch.custom').matches('.on') }));
+    // One set of choices: the theme's, the light colors, the dark colors, Custom… and Add photo… (no Color, Pattern
+    // or Photo parts, no Light / Dark captions, no patterns). Paper and Sand are one Paper now.
+    const set = await page.evaluate(() => { const g = document.querySelector('#bg-block [role="radiogroup"]');
+      return { names: [...g.querySelectorAll('[data-act="bg"]')].map(b => b.getAttribute('aria-label') + (b.dataset.val ? ' ' + b.dataset.val : '')), pills: [...g.querySelectorAll('.pill')].map(b => b.textContent.trim()),
+        parts: document.querySelectorAll('#bg-block .bg-sub, #bg-block .bg-cap, #bg-block .bg-part').length, patterns: document.querySelectorAll('#settings [data-act="pattern"]').length,
+        scope: document.querySelector('#bg-block .bg-scope').textContent, groups: document.querySelectorAll('#bg-block [role="radiogroup"]').length }; });
+    ok(set.groups === 1 && set.names.join() === 'Match the theme (light or dark),White #ffffff,Paper #f3ede1,Sky #e0f2fe,Mint #dcfce7,Blush #fce7f3,Lavender #ede9fe,Slate #334155,Chalkboard #1f3a2c,Navy #1e293b,Black #0a0a0a' &&
+      set.pills.join() === 'Custom…,Add photo…' && !set.parts && !set.patterns && set.scope === 'This page only.',
+      `Background is one set of choices, then Custom… and Add photo…; Paper is #f3ede1 and Sand is gone; no patterns (${set.names.length} colors, ${set.pills.join(', ')})`);
     let pk = await picked();
-    ok(pk.name === 'Matches the theme' && pk.colors.join() === '✓' && pk.patterns.join() === 'none✓', `a new board matches the theme, with no pattern (${pk.name})`);
+    ok(pk.name === 'Matches the theme' && pk.chosen.join() === '✓', `a new board matches the theme (${pk.name})`);
     await page.click('#settings [data-act="bg"][data-val="#1f3a2c"]'); await page.waitForTimeout(500);
     pk = await picked(); let d = await desk();
-    ok(d.color === 'rgb(31, 58, 44)' && pk.name === 'Chalkboard' && pk.colors.join() === '#1f3a2c✓', `Chalkboard: the board turns green, its swatch gets a check and its name is shown (${pk.name})`);
-    // The new patterns, on a dark color: light lines.
-    await page.click('#settings [data-act="pattern"][data-val="handwriting"]'); await page.waitForTimeout(300);
-    d = await desk(); pk = await picked();
-    ok(/pattern-handwriting/.test(d.cls) && /conic-gradient/.test(d.img) && (d.img.match(/gradient\(/g) || []).length === 2 && pk.patterns.join() === 'handwriting✓', 'Handwriting: solid top and base lines with a dashed midline');
-    ok(/255, ?255, ?255/.test(d.strong), `its lines are light on a dark board (${d.strong})`);
-    const pv = await page.evaluate(() => { const p = document.getElementById('bg-preview'); return { cls: p.className, color: getComputedStyle(p).backgroundColor, ratio: p.getBoundingClientRect().width / p.getBoundingClientRect().height }; });
-    ok(/pattern-handwriting/.test(pv.cls) && pv.color === 'rgb(31, 58, 44)' && Math.abs(pv.ratio - 16 / 9) < 0.05, `the preview shows the board's color and pattern, shaped like the board (${pv.ratio.toFixed(2)})`);
-    await page.click('#settings [data-act="bg"][data-val="#ffffff"]'); await page.click('#settings [data-act="pattern"][data-val="graph"]'); await page.waitForTimeout(300);
+    ok(d.color === 'rgb(31, 58, 44)' && pk.name === 'Chalkboard' && pk.chosen.join() === '#1f3a2c✓', `Chalkboard: the board turns green, its swatch gets a check and its name is on Background's row (${pk.name})`);
+    const pv = await page.evaluate(() => { const p = document.getElementById('bg-preview'); return { color: getComputedStyle(p).backgroundColor, ratio: p.getBoundingClientRect().width / p.getBoundingClientRect().height, row: !!p.closest('[data-act="group"][data-val="bg"]') }; });
+    ok(pv.row && pv.color === 'rgb(31, 58, 44)' && Math.abs(pv.ratio - 16 / 9) < 0.08, `Background's row shows a small preview of the board, shaped like it (${pv.ratio.toFixed(2)})`);
+    // Patterns aren't drawn any more, but a board keeps its pattern: it's read, saved, exported and imported as before.
+    // (storedBg: the page's background as saved on the device, to reload only once a change is saved.)
+    const storedBg = () => page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').get('board:1');
+      q.onsuccess = () => { o.result.close(); res(JSON.stringify(((q.result || {}).value || {}).background || null)); }; }; }));
+    await page.evaluate(() => window.__board21.updateBoard({ background: { color: '#ffffff', pattern: 'graph' } })); await page.waitForTimeout(300);
+    await eventually(async () => await storedBg() === '{"color":"#ffffff","pattern":"graph"}');
     d = await desk();
-    ok(/pattern-graph/.test(d.cls) && (d.img.match(/linear-gradient/g) || []).length === 4 && /0, ?0, ?0/.test(d.strong), 'Graph paper: fine squares with a stronger line every 5, dark on a light board');
-    // Kept with the board, and in its files; an older 21Board's import turns a pattern it doesn't know into none.
+    ok(!/pattern-/.test(d.cls) && d.img === 'none', 'a board with a pattern shows none (patterns are off)');
     await page.reload(); await page.waitForTimeout(1000);
-    ok(await page.evaluate(() => window.__board21.state.board.background.pattern === 'graph' && document.getElementById('desk').classList.contains('pattern-graph')), 'the pattern is kept after a reload');
+    ok(await page.evaluate(() => window.__board21.state.board.background.pattern === 'graph' && !/pattern-/.test(document.getElementById('desk').className)), 'the pattern is still kept after a reload (not shown)');
     const exp = await page.evaluate(() => window.__board21.buildExport('template'));
-    ok(exp.board.background.pattern === 'graph', 'and goes into the board\'s files');
+    ok(exp.board.background.pattern === 'graph', 'and goes into the board\'s files, for a 21Board that shows it');
     await page.evaluate(o => window.__board21.applyImport(o, 'replace'), Object.assign({}, exp, { board: Object.assign({}, exp.board, { background: { color: '#ffffff', pattern: 'zigzag' } }) })); await page.waitForTimeout(1000);
-    ok(await page.evaluate(() => window.__board21.state.board.background.pattern === 'none' && !/pattern-/.test(document.getElementById('desk').className)), 'a pattern this version doesn\'t know shows as none');
+    ok(await page.evaluate(() => window.__board21.state.board.background.pattern === 'none'), 'a pattern this version doesn\'t know becomes none');
     await page.evaluate(o => window.__board21.applyImport(o, 'replace'), exp); await page.waitForTimeout(1000);
-    // Any color: the board, the previews and the name follow while the color picker is open.
-    await openSettings();
+    ok(await page.evaluate(() => window.__board21.state.board.background.pattern === 'graph'), 'and one it knows comes back from a file');
+    // The old Paper and Sand read as the new Paper: on the board itself (here, after a reload) and from a file.
+    await page.evaluate(() => window.__board21.updateBoard({ background: { color: '#FAF7F0', pattern: 'none' } }));
+    await eventually(async () => await storedBg() === '{"color":"#FAF7F0","pattern":"none"}');
+    await page.reload(); await page.waitForTimeout(1000);
+    const old = await page.evaluate(() => [window.__board21.state.board.background.color, getComputedStyle(document.getElementById('desk')).backgroundColor]);
+    await page.evaluate(o => window.__board21.applyImport(o, 'replace'), Object.assign({}, exp, { board: Object.assign({}, exp.board, { background: { color: '#fef3c7', pattern: 'none' } }) })); await page.waitForTimeout(1000);
+    const sand = await page.evaluate(() => window.__board21.state.board.background.color);
+    await openSettings(page, ['bg']);
+    pk = await picked();
+    ok(old[0] === '#f3ede1' && old[1] === 'rgb(243, 237, 225)' && sand === '#f3ede1' && pk.name === 'Paper' && pk.chosen.join() === '#f3ede1✓', `a board with the old Paper or Sand shows the new Paper, and Settings marks Paper (${old.join(', ')}; ${sand})`);
+    await page.evaluate(o => window.__board21.applyImport(o, 'replace'), Object.assign({}, exp, { board: Object.assign({}, exp.board, { background: { color: '#123456', pattern: 'none' } }) })); await page.waitForTimeout(1000);
+    ok(await page.evaluate(() => window.__board21.state.board.background.color) === '#123456', 'any other color is kept as it is');
+    // Any color: the board, the preview and the name follow while the color picker is open.
+    await page.click('#settings [data-act="bg"][data-val=""]'); await page.waitForTimeout(300);
     await page.locator('#set-bg-custom').evaluate(el => { el.dataset.same = 1; el.value = '#123456'; el.dispatchEvent(new Event('input', { bubbles: true })); });
     await page.waitForTimeout(500);   // (the board's color fades over .3 s)
     const live = await page.evaluate(() => ({ desk: getComputedStyle(document.getElementById('desk')).backgroundColor, pv: getComputedStyle(document.getElementById('bg-preview')).backgroundColor,
@@ -1231,36 +1283,131 @@ const SUITES = [
     ok(live.desk === 'rgb(18, 52, 86)' && live.pv === live.desk && live.name === 'Custom color' && live.open, `a custom color shows at once, Settings staying as it is while choosing (${live.name})`);
     await page.locator('#set-bg-custom').evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true }))); await page.waitForTimeout(300);
     pk = await picked();
-    ok(await page.evaluate(() => document.querySelector('#bg-block .swatch.custom').matches('.on') && !!document.querySelector('#bg-block .swatch.custom .tick')) && pk.colors.length === 0, 'then Custom… is marked as the choice');
+    ok(pk.custom && await page.evaluate(() => !!document.querySelector('#bg-block .swatch.custom .tick')) && pk.chosen.length === 0, 'then Custom… is marked as the choice');
     // Its color input is invisible, so the pill shows where the keyboard is.
     await page.focus('#bg-block [data-act="bg"][data-val="#0a0a0a"]'); await page.keyboard.press('Tab');
     ok(await page.evaluate(() => document.activeElement.id === 'set-bg-custom' && getComputedStyle(document.activeElement.closest('.swatch')).outlineStyle === 'solid'), 'Tab reaches Custom…, and it shows the keyboard focus');
-    // With a photo shown, the patterns say why they're off; hiding the photo brings them back.
+    // The photo is one of the choices. Add photo… sits beside Custom…; once there is a photo it's “Photo”, chosen while it shows.
     const png = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1600; c.height = 900; const g = c.getContext('2d'); g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 1600, 900); return c.toDataURL('image/png'); });
-    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#settings [data-act="photo-add"]')]);
+    await page.click('#settings [data-act="bg"][data-val="#e0f2fe"]'); await page.waitForTimeout(200);
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#bg-block .pill.photo[data-act="photo-add"]')]);
     await chooser.setFiles({ name: 'sky.png', mimeType: 'image/png', buffer: Buffer.from(png.split(',')[1], 'base64') });
     await page.waitForTimeout(1500);
-    const ph = await page.evaluate(() => ({ note: (document.getElementById('bg-pattern-note') || {}).textContent || '', off: [...document.querySelectorAll('#bg-block [data-act="pattern"]')].every(b => b.disabled),
-      desk: getComputedStyle(document.getElementById('desk')).backgroundImage, prev: getComputedStyle(document.querySelector('#bg-preview .ph')).backgroundImage }));
-    ok(ph.off && /photo/.test(ph.note) && /Show photo/.test(ph.note) && ph.desk === 'none', `with a photo, Pattern is off and says why: “${ph.note}”`);
-    const thumb = await page.evaluate(() => getComputedStyle(document.getElementById('photo-thumb')).backgroundImage);
-    ok(ph.prev.startsWith('url("blob:') && thumb === ph.prev, 'the preview shows the photo, and so does the photo\'s own picture below');
-    await page.click('#settings [data-act="photo-on"]'); await page.waitForTimeout(400);
-    ok(await page.evaluate(() => !document.getElementById('bg-pattern-note') && [...document.querySelectorAll('#bg-block [data-act="pattern"]')].every(b => !b.disabled) && getComputedStyle(document.getElementById('desk')).backgroundImage !== 'none'), 'with the photo hidden, the pattern is back');
-    // Nothing spills out of Settings, at 80% and at 200%; the swatches stay big enough to tap.
+    const photo = () => page.evaluate(() => { const pill = document.querySelector('#bg-block .pill.photo'), look = window.__board21.state.media.get('background-look') || {};
+      return { pill: pill.textContent.trim(), act: pill.dataset.act, pic: getComputedStyle(pill.querySelector('.pic') || pill).backgroundImage.startsWith('url("blob:'), shown: !document.getElementById('board-bg').hidden, on: look.on,
+        kept: window.__board21.state.media.has('background'), ctrls: !!document.getElementById('photo-thumb') && !!document.querySelector('#settings [data-act="photo-fit"]') && !!document.getElementById('photo-fade') && !!document.querySelector('#settings [data-act="photo-remove"]'),
+        mini: (getComputedStyle(document.querySelector('#bg-preview .ph') || document.body).backgroundImage || '').startsWith('url("blob:'), fadeTo: document.getElementById('board-bg').style.getPropertyValue('--fade-color') }; });
+    let ph = await photo(); pk = await picked();
+    ok(ph.shown && ph.pill === 'Photo' && ph.act === 'photo-show' && ph.pic && pk.chosen.join() === 'photo-show✓' && pk.name === 'Photo' && ph.mini && ph.ctrls,
+      `a photo added shows on the board; its pill (with a tiny picture) is the choice, Background's row says Photo with the photo in its preview, and its controls follow (${JSON.stringify(ph)}; ${JSON.stringify(pk)})`);
+    const thumb = await page.evaluate(() => [getComputedStyle(document.getElementById('photo-thumb')).backgroundImage, getComputedStyle(document.querySelector('#bg-preview .ph')).backgroundImage]);
+    ok(thumb[0] === thumb[1], 'the photo\'s own picture below shows the same photo');
+    // A color tapped hides the photo (it's kept); the Photo pill shows it again, over the color picked last.
+    await page.click('#settings [data-act="bg"][data-val="#dcfce7"]'); await page.waitForTimeout(400);
+    ph = await photo(); pk = await picked(); d = await desk();
+    ok(!ph.shown && ph.on === false && ph.kept && ph.pill === 'Photo' && !ph.ctrls && pk.chosen.join() === '#dcfce7✓' && pk.name === 'Mint' && d.color === 'rgb(220, 252, 231)',
+      `tapping a color shows that color and hides the photo, which is kept (${JSON.stringify(ph)}; ${pk.name})`);
+    await page.click('#bg-block .pill.photo'); await page.waitForTimeout(400);
+    ph = await photo(); pk = await picked();
+    ok(ph.shown && ph.on === true && pk.chosen.join() === 'photo-show✓' && ph.fadeTo === '#dcfce7' && ph.ctrls, `tapping Photo shows it again, over the color picked last (${ph.fadeTo})`);
+    await page.locator('#set-bg-custom').evaluate(el => { el.value = '#654321'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }); await page.waitForTimeout(400);
+    ph = await photo(); pk = await picked();
+    ok(!ph.shown && ph.kept && pk.custom && !pk.chosen.length, 'a custom color hides it too');
+    await page.click('#bg-block .pill.photo'); await page.waitForTimeout(400);
+    // Nothing spills out of Settings, at 80% and at 200%; the choices stay big enough to tap.
     for (const sc of [0.8, 2]) {
       await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
-      if (!await page.locator('#settings.open').count()) await openSettings();
+      await openSettings(page, ['bg']);
       await page.evaluate(() => document.getElementById('bg-block').scrollIntoView());
       const fit = await page.evaluate(() => { const body = document.querySelector('#settings .sheet-body'), r = body.getBoundingClientRect(), ui = +getComputedStyle(document.documentElement).getPropertyValue('--ui');
-        const out = [...document.querySelectorAll('#bg-block *')].filter(e => { const b = e.getBoundingClientRect(); return b.width && (b.left < r.left - 0.5 || b.right > r.right + 0.5); });
-        const small = [...document.querySelectorAll('#bg-block .swatch, #bg-block .pat-tile')].filter(e => { const b = e.getBoundingClientRect(); return b.width / ui < 43.5 || b.height / ui < 43.5; });
+        const out = [...document.querySelectorAll('#bg-block *, [data-act="group"][data-val="bg"] *')].filter(e => { const b = e.getBoundingClientRect(); return b.width && (b.left < r.left - 0.5 || b.right > r.right + 0.5); });
+        const small = [...document.querySelectorAll('#bg-block .swatch')].filter(e => { const b = e.getBoundingClientRect(); return b.width / ui < 43.5 || b.height / ui < 43.5; });
         return { wide: body.scrollWidth > body.clientWidth + 1, out: out.length, small: small.length, ui }; });
-      ok(!fit.wide && !fit.out && !fit.small, `at ${sc * 100}% (menus drawn at ${fit.ui.toFixed(2)}×), the Background block fits Settings and its choices are at least 44 px`);
+      ok(!fit.wide && !fit.out && !fit.small, `at ${sc * 100}% (menus drawn at ${fit.ui.toFixed(2)}×), Background fits Settings and its choices are at least 44 px`);
       await page.screenshot({ path: OUT + `bg-options-${sc * 100}.png` });
     }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+  }],
+  ['Settings: sections and groups, Auto theme, Saved widgets, windows stopping at edges, the dot on Advanced', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: 'dark' });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    // A new device follows the device's own light or dark: Theme is Auto.
+    ok(await page.evaluate(() => window.__board21.state.settings.theme === 'system' && document.body.classList.contains('dark')), 'a new device’s theme is Auto: this device is dark, and so is the board');
+    await openSettings(page);
+    const shape = () => page.evaluate(() => ({ heads: [...document.querySelectorAll('#settings .sheet-body > h3')].map(h => h.textContent), theme: (document.querySelector('#settings [data-act="theme"].on') || {}).textContent,
+      groups: [...document.querySelectorAll('#settings [data-act="group"]')].map(b => b.dataset.val + (b.getAttribute('aria-expanded') === 'true' ? ' open' : '') + (document.getElementById(b.getAttribute('aria-controls')).hidden ? ' hidden' : '')),
+      last: document.querySelector('#settings .sheet-body').lastElementChild.id, name: document.querySelectorAll('#set-board-name').length,
+      missing: ['st-offline', 'st-persist', 'st-storage', 'st-backup', 'st-version', 'st-scale'].filter(id => !document.getElementById(id)) }));
+    let sh = await shape();
+    ok(sh.heads.join() === 'Classroom,This page,Appearance,Board Sync' && sh.last === 'grp-advanced' && sh.theme === 'Auto',
+      `Settings: ${sh.heads.join(', ')}, then Advanced at the bottom; Theme shows Auto`);
+    ok(sh.groups.join() === 'saved hidden,letters hidden,bg hidden,advanced hidden' && !sh.missing.length && !sh.name,
+      `every group starts closed, and is in the page, hidden (${sh.groups.join(', ')}); no page name field`);
+    // Saved widgets: how many there are, open or closed; open, the list says Open or Closed (no sizes).
+    const saved = () => page.evaluate(() => ({ value: document.querySelector('#settings [data-val="saved"] .v').textContent, label: document.querySelector('#settings [data-val="saved"] .lbl').textContent,
+      items: [...document.querySelectorAll('#grp-saved .inst')].map(i => i.querySelector('.meta').innerText.replace(/\s+/g, ' ')) }));
+    let sv = await saved();
+    ok(sv.label === 'Saved widgets' && sv.value === 'None', `Saved widgets on an empty page: ${sv.value}`);
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => { const b = window.__board21; b.openWidget('notes'); b.openWidget('timer'); b.openWidget('dice'); }); await page.waitForTimeout(1200);
+    await page.evaluate(() => window.__board21.closeWin('dice:1')); await page.waitForTimeout(400);
+    await openSettings(page, ['saved']);
+    sv = await saved();
+    ok(sv.value === '3 widgets' && sv.items.join(' | ') === 'Dice Closed | Notes Open | Timer Open' && await page.locator('#grp-saved .hint').first().textContent() === 'Closed widgets keep their content until you delete them here.',
+      `three widgets, one closed: “${sv.value}” (${sv.items.join(' | ')})`);
+    await page.evaluate(() => window.__board21.deleteInstance('dice:1')); await page.waitForTimeout(400);
+    ok((await saved()).value === '2 widgets', 'one deleted: “2 widgets”');
+    await page.evaluate(() => window.__board21.deleteInstance('timer:1')); await page.waitForTimeout(400);
+    ok((await saved()).value === '1 widget', 'and then “1 widget”');
+    // Windows stop at each other's edges: Off, or how hard a push overlaps them anyway (the old Snap switch and Push).
+    await openSettings(page, ['advanced']);
+    const snap = async v => { await page.click(`#settings [data-act="snap"][data-val="${v}"]`); await page.waitForTimeout(150);
+      return page.evaluate(() => { const s = window.__board21.state.settings; return `${s.snapping}/${s.resistance}/${document.querySelector('#settings [data-act="snap"].on').dataset.val}`; }); };
+    const seen = [];
+    for (const v of ['off', 'light', 'medium', 'firm', 'off']) seen.push(v + ': ' + await snap(v));
+    ok(seen.join(', ') === 'off: false/normal/off, light: true/gentle/light, medium: true/normal/medium, firm: true/strong/firm, off: false/strong/off',
+      `Off turns snapping off; Light, Medium and Firm turn it on with that push (${seen.join(', ')})`);
+    await page.evaluate(() => { window.__board21.updateBoard({}); }); await page.waitForTimeout(150);
+    sh = await shape();
+    ok(sh.groups.join() === 'saved open,letters hidden,bg hidden,advanced open', `open groups stay open while Settings is drawn again (${sh.groups.join(', ')})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await openSettings(page);
+    sh = await shape();
+    ok(sh.groups.join() === 'saved hidden,letters hidden,bg hidden,advanced hidden', 'and every group is closed again the next time Settings opens');
+    // The amber dot on Advanced: shown while there's no backup from the last week, or the browser hasn't promised to
+    // keep 21Board's data. (Here it hasn't, so it shows.)
+    const dot = (p = page) => p.evaluate(() => { const d = document.getElementById('grp-advanced-warn'); return !!d && !d.hidden && getComputedStyle(d).display !== 'none'; });
+    ok(await dot(), 'Advanced has an amber dot: no backup yet, and storage isn’t protected');
+    await ctx.close();
+    const kept = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await kept.addInitScript(() => { const s = navigator.storage; s.persisted = async () => true; s.persist = async () => true; });
+    const kp = await kept.newPage(); kp.on('pageerror', e => errors.push(e.message));
+    await kp.goto(BASE); await boardUp(kp);
+    await openSettings(kp, ['advanced']); await kp.waitForTimeout(300);
+    const none = await dot(kp), why = await kp.locator('#st-backup').textContent();
+    const [dl] = await Promise.all([kp.waitForEvent('download'), kp.click('#settings [data-act="backup"]')]); await kp.waitForTimeout(400);
+    const after = await dot(kp);
+    await kp.evaluate(() => window.__board21.state.settings.lastBackupAt = Date.now() - 8 * 864e5);
+    await kp.keyboard.press('Escape'); await openSettings(kp); await kp.waitForTimeout(300);
+    ok(none && why === 'Last backup: never' && /\.21board$/.test(dl.suggestedFilename()) && !after && await dot(kp),
+      'with storage protected: a dot while there has been no backup, none once there is one, and a dot again a week later');
+    await kept.close();
+    // The widget dev window: no Classroom features but Close all, no Board Sync; Saved widgets sits under Widget test mode.
+    const lab = await browser.newContext({ viewport: { width: 1100, height: 760 } });
+    const lp = await lab.newPage();   // (its test widget throws on purpose)
+    await lp.goto(BASE + '__dev/widget.html'); await lp.waitForTimeout(2500);
+    const board = lp.frames().find(f => f.parentFrame() === lp.mainFrame());
+    const labShape = board && await board.evaluate(() => { document.querySelector('.picker-btn.left').click(); document.querySelector('[data-ctl="settings"]').click();
+      const heads = [...document.querySelectorAll('#settings .sheet-body > h3')].map(h => h.textContent), saved = document.querySelector('#settings [data-val="saved"]');
+      const h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(saved) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      return { heads, under: h && h.textContent, dot: !!document.getElementById('grp-advanced-warn') && !document.getElementById('grp-advanced-warn').hidden, rows: ['lock-windows', 'awake', 'hist-open', 'close-all', 'backup', 'devmode'].filter(a => document.querySelector(`#settings [data-act="${a}"]`)) }; });
+    ok(labShape && labShape.heads.join() === 'Classroom,Widget test mode,Appearance' && labShape.under === 'Widget test mode' && labShape.rows.join() === 'close-all' && !labShape.dot,
+      `the widget dev window’s Settings: ${labShape && labShape.heads.join(', ')}, with only Close all in Classroom (${JSON.stringify(labShape)})`);
+    await lab.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Large sizes on small screens', async (browser) => {
     // A size chosen on a smartboard can arrive on a tablet in a backup: menus, Settings and toasts must still fit.
@@ -2494,7 +2641,7 @@ const SUITES = [
       c.fillText = function () { window.__drawn.push({ font: this.font, at: performance.now() }); return fill.apply(this, arguments); };
       document.fonts.addEventListener('loadingdone', () => { window.__fontsIn = performance.now(); });
     });
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await openSettings(page, ['letters']);
     await page.click('#settings [data-act="letters"][data-val="legible"]'); await page.keyboard.press('Escape');
     const FAM = '"Atkinson Hyperlegible"';
     ok(await eventually(async () => {
@@ -2893,7 +3040,7 @@ const SUITES = [
     ok(col.theme === 'dark' && col.tileBg === col.s2 && col.tileText === col.text && col.cardBg === col.win && col.cardText === col.ink, `dark theme: the stage follows (tiles ${col.tileBg}, text ${col.tileText}, cards ${col.cardBg})`);
     await page.screenshot({ path: OUT + 'name-picker-spotlight-dark.png' });
     await page.click('.picker-btn.right'); await page.click('[data-ctl="theme"]'); await page.waitForTimeout(300); await page.keyboard.press('Escape');
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await openSettings(page, ['letters']);
     await page.click('#settings [data-act="letters"][data-val="legible"]');
     await page.waitForTimeout(400); await inFrame(page, () => document.fonts.ready); await page.waitForTimeout(500);
     s = await stage(page);
@@ -3402,7 +3549,7 @@ const SUITES = [
     await size(420, 320);
     await put(C24, ['Maximiliano'], 1); await page.waitForTimeout(400);
     const w0 = (await look()).names[0];
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await openSettings(page, ['letters']);
     await page.click('#settings [data-act="letters"][data-val="legible"]');
     await page.keyboard.press('Escape');
     ok(await eventually(async () => await inFrame(() => Array.from(document.fonts).some(f => f.family.replace(/"/g, '') === 'Atkinson Hyperlegible' && f.status === 'loaded'))), 'Easier to read: the letters load in the widget');
@@ -3948,7 +4095,7 @@ const SUITES = [
   ['Google Drive folder (sharing a board with the smartboard)', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const noteText = p => note(p).locator('#t').inputValue();
-    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(400); };
+    const settings = openSettings;
     const closeSettings = p => p.keyboard.press('Escape');
     const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
     const errors = [];
@@ -3958,16 +4105,18 @@ const SUITES = [
     await A.p.goto(BASE); await A.p.waitForTimeout(600);
     await A.p.evaluate(() => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
     await fillNote(note(A.p), 'Hello from the laptop'); await A.p.waitForTimeout(400);
+    await renamePage(A.p, 'Room 12');
     await settings(A.p);
-    await A.p.fill('#set-board-name', 'Room 12'); await A.p.press('#set-board-name', 'Tab'); await A.p.waitForTimeout(200);
-    ok(await A.p.locator('#settings [data-act="link-choose"]').count() === 1, 'Settings has a Google Drive folder section');
+    const sync = await A.p.evaluate(() => { const b = document.querySelector('#settings [data-act="link-setup"]'), r = b && b.closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => r && e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      return b && { section: h && h.textContent, text: r.innerText.replace(/\s+/g, ' ').trim(), primary: b.classList.contains('primary') }; });
+    ok(sync && sync.section === 'Board Sync' && sync.text === 'Sync your board with your other devices Set up…' && sync.primary, `Settings has a Board Sync section: “${sync && sync.text}”`);
     await closeSettings(A.p);
     await A.p.click('.picker-btn.left'); await A.p.waitForTimeout(200);
     ok(await A.p.locator('[data-ctl="send"]').count() === 0, 'sending lives in Settings, not among the Widget Picker\'s controls');
     await A.p.click('.picker-btn.left'); await A.p.waitForTimeout(200);
     // ---- Send from the laptop: choose the folder, then Send.
     await settings(A.p);
-    await A.p.click('#settings [data-act="link-choose"]'); await A.p.waitForTimeout(800);
+    await A.p.click('#settings [data-act="link-setup"]'); await A.p.waitForTimeout(800);
     await A.p.click('#settings [data-act="link-send"]'); await A.p.waitForTimeout(1500);
     let files = await readFolder(A.p);
     const sent = files['Room 12.21board'] && JSON.parse(files['Room 12.21board']);
@@ -3977,7 +4126,7 @@ const SUITES = [
     ok(!!files['About this folder.txt'] && /21Board keeps your boards here/.test(files['About this folder.txt']), 'the folder gets a short note explaining the files');
     ok(await A.p.locator('.toast', { hasText: 'Sent “Room 12”' }).count() === 1, 'it says it was sent');
     // A's device name, as the smartboard will show it.
-    await settings(A.p);
+    await settings(A.p, ['folder']);
     await A.p.fill('#set-link-label', 'my laptop'); await A.p.press('#set-link-label', 'Tab'); await A.p.waitForTimeout(200);
     await closeSettings(A.p);
 
@@ -3985,7 +4134,8 @@ const SUITES = [
     await B.p.goto(BASE); await B.p.waitForTimeout(800);
     await drive(A.p, B.p);
     await settings(B.p);
-    await B.p.click('#settings [data-act="link-choose"]'); await B.p.waitForTimeout(1200);
+    await B.p.click('#settings [data-act="link-setup"]'); await B.p.waitForTimeout(1200);
+    await settings(B.p, ['boards']);
     ok(await B.p.locator('#settings [data-act="link-load"][data-val="Room 12.21board"]').count() === 1, 'on the smartboard, linking the same folder lists “Room 12”');
     await B.p.click('#settings [data-act="link-load"][data-val="Room 12.21board"]'); await B.p.waitForTimeout(300);
     await modal(B.p, 'Replace this board'); await B.p.waitForTimeout(2000);
@@ -4024,13 +4174,13 @@ const SUITES = [
 
     // ---- 21Board keeps the folder tidy: renaming the board renames its file; names never collide.
     await drive(B.p, A.p);
+    await renamePage(A.p, 'Room 12 Math');
     await settings(A.p);
-    await A.p.fill('#set-board-name', 'Room 12 Math'); await A.p.press('#set-board-name', 'Tab'); await A.p.waitForTimeout(200);
     await A.p.click('#settings [data-act="link-send"]'); await A.p.waitForTimeout(1200);
     files = await readFolder(A.p);
     ok(!!files['Room 12 Math.21board'] && !files['Room 12.21board'] && !!copy && !!files[copy], 'renaming the board renames its file on the next send (and leaves other boards’ files alone)');
     ok(await A.p.evaluate(() => window.__board21.link.fileNameFor('someone-elses-board', 'Room 12 Math')) === 'Room 12 Math (2).21board', 'another board with the same name gets “Room 12 Math (2)”');
-    await A.p.evaluate(() => { const h = [...document.querySelectorAll('#settings h3')].find(x => /Google Drive/.test(x.textContent)); h.scrollIntoView(); });
+    await A.p.evaluate(() => { const h = [...document.querySelectorAll('#settings h3')].find(x => /Board Sync/.test(x.textContent)); h.scrollIntoView(); });
     await A.p.screenshot({ path: OUT + '70-drive-settings.png' });
     // ---- Send automatically.
     await A.p.click('#settings [data-act="link-auto"][data-val="now"]'); await A.p.waitForTimeout(200);
@@ -4054,7 +4204,7 @@ const SUITES = [
     await C.addInitScript(() => { window.showDirectoryPicker = undefined; });
     const pc = await C.newPage(); await pc.goto(BASE); await pc.waitForTimeout(600);
     await settings(pc);
-    ok(await pc.locator('#settings [data-act^="link-"]').count() === 0, 'browsers without a folder picker (Safari, Firefox) don’t show the Google Drive folder section');
+    ok(await pc.locator('#settings [data-act^="link-"]').count() === 0, 'browsers without a folder picker (Safari, Firefox) don’t show the Board Sync section');
     await C.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
@@ -4150,7 +4300,7 @@ const SUITES = [
     const B2 = await B.c.newPage(); await B2.goto(BASE); await B2.waitForTimeout(800);
     await B2.evaluate(async () => { await window.__board21.link.choose(); window.__board21.link.saveState({ auto: true }); });
     const before = Object.keys(await readFolder(B.p)).length;
-    await B.p.click('.picker-btn.left'); await B.p.click('[data-ctl="settings"]'); await B.p.waitForTimeout(400);
+    await openSettings(B.p, ['advanced']);
     await B.p.click('#settings [data-act="erase"]'); await B.p.waitForTimeout(300); await modal(B.p, 'Erase everything'); await B.p.waitForTimeout(10000);
     ok(await L(B.p, () => !window.__board21.link.dir && !window.__board21.link.st.auto) && Object.keys(await readFolder(B.p)).length === before, '“Erase everything” unlinks the folder and sends nothing');
     ok(await B2.evaluate(() => !window.__board21.link.dir && !window.__board21.link.st.auto), 'other open 21Board windows on that device are unlinked too');
@@ -4212,22 +4362,24 @@ const SUITES = [
     // ---- Disaster and rescue: the whole board goes back; this device's settings don't.
     await fillNote(note(), 'Good setup'); await page.waitForTimeout(300);
     await H(() => window.__board21.openWidget('dice')); await page.waitForTimeout(1000);
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await openSettings(page, ['bg']);
     await page.click('#settings [data-act="bg"][data-val="#e0f2fe"]'); await page.waitForTimeout(300);
     await page.keyboard.press('Escape');
     const goodId = await H(() => window.__board21.history.save('Good'));
     ok(!!goodId && (await metas()).find(x => x.id === goodId).manual, '“Save this version now” keeps a named version');
     // The wreck.
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await openSettings(page, ['bg']);
     await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(200);
     await page.click('#settings [data-act="bg"][data-val="#0a0a0a"]'); await page.waitForTimeout(200);
     await page.keyboard.press('Escape');
     await fillNote(note(), 'scribble'); await page.waitForTimeout(400);
     await H(() => window.__board21.deleteInstance('dice:1')); await page.waitForTimeout(1500);
     await H(() => window.__board21.closeWin('timer:1')); await page.waitForTimeout(800);
-    // Find it in Board history (Settings, first section).
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
-    ok(await page.evaluate(() => document.querySelector('#settings .sheet-body h3').textContent) === 'Board history', 'Board history is the first section in Settings');
+    // Find it in Board history (Settings → Classroom, the second row: Go back to an earlier version).
+    await openSettings(page);
+    const goBack = await page.evaluate(() => { const b = document.querySelector('#settings [data-act="hist-open"]'), r = b.closest('.row'), first = document.querySelector('#settings .sheet-body h3');
+      return { section: first.textContent, second: [...document.querySelectorAll('#settings .row')].filter(x => !x.matches('.update-note')).indexOf(r), label: r.querySelector('.lbl').textContent, plain: !b.classList.contains('primary') }; });
+    ok(goBack.section === 'Classroom' && goBack.second === 1 && goBack.label === 'Go back to an earlier version' && goBack.plain, `Settings → Classroom → “Go back to an earlier version” (Board history…) is the second row (${JSON.stringify(goBack)})`);
     await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(1200);
     ok(await page.locator('#history.open .hist-row').count() >= 5, 'the Board history sheet lists the versions');
     await page.screenshot({ path: OUT + '80-history-sheet.png' });
@@ -4305,7 +4457,7 @@ const SUITES = [
     await p2.close();
 
     // ---- Erase everything keeps board history; going back undoes it.
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await openSettings(page, ['advanced']);
     await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300); await modal('Erase everything'); await page.waitForTimeout(4000);
     m = await metas();
     const erased = m.find(x => x.kept && x.open > 0);
@@ -4321,7 +4473,7 @@ const SUITES = [
     ok((await metas()).length === nOff + 1, 'but “Save this version now” still works');
     await H(() => { window.__board21.state.settings.historyEvery = 10; });
     // Delete board history.
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await openSettings(page, ['advanced']);
     await page.click('#settings [data-act="hist-delete"]'); await page.waitForTimeout(300); await modal('Delete from this device'); await page.waitForTimeout(1500);
     ok((await metas()).length === 0 && await page.locator('.win').count() >= 1, '“Delete board history” deletes the versions and leaves the board as it is');
     // Erase, including board history.
@@ -4401,13 +4553,13 @@ const SUITES = [
     const note = ik => page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
     const noteText = ik => note(ik).locator('#t').inputValue();
     const modal = text => page.locator('#modal.open .btn', { hasText: text }).click();
-    const settings = async () => { await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300); };
+    const settings = groups => openSettings(page, groups);
     // Two deletes within 2 minutes, with typing in between: Undo of the second brings back what was typed.
     await H(() => { window.__board21.openWidget('notes'); window.__board21.openWidget('notes'); }); await page.waitForTimeout(1500);
     await fillNote(note('notes:1'), 'First'); await fillNote(note('notes:2'), 'Two original'); await page.waitForTimeout(1600);
     await H(() => window.__board21.deleteInstance('notes:1')); await page.waitForTimeout(500);
     await fillNote(note('notes:2'), 'homework p.42'); await page.waitForTimeout(500);
-    await settings();
+    await settings(['saved']);
     await page.click('#settings [data-act="inst-delete"][data-val="notes:2"]'); await page.waitForTimeout(300); await modal('Delete'); await page.waitForTimeout(1500);
     await page.locator('.toast', { hasText: 'Deleted Notes 2' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(2000);
     ok(await noteText('notes:2') === 'homework p.42', 'a second delete soon after the first keeps what was typed in between (Undo brings it back)');
@@ -4423,7 +4575,7 @@ const SUITES = [
     await H(() => { window.__board21.state.settings.historyEvery = 10; });
     // Undo after deleting a closed window keeps it closed (it doesn't pop up in front of the class).
     await H(() => window.__board21.closeWin('notes:2')); await page.waitForTimeout(600);
-    await settings();
+    await settings(['saved']);
     await page.click('#settings [data-act="inst-delete"][data-val="notes:2"]'); await page.waitForTimeout(300); await modal('Delete'); await page.waitForTimeout(1500);
     await page.locator('.toast', { hasText: 'Deleted Notes 2' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(1500);
     ok(await H(() => { const i = window.__board21.state.insts.get('notes:2'); return !!i && !i.open; }) && await page.locator('.win[data-ikey="notes:2"]').count() === 0, 'Undo after deleting a closed window brings it back closed');
@@ -4474,7 +4626,7 @@ const SUITES = [
     const until = async (fn, ms = 8000) => { for (const t = Date.now(); Date.now() - t < ms; await page.waitForTimeout(100)) if (await fn().catch(() => false)) return true; return false; };
     const noteIs = text => until(async () => await note.locator('#t').inputValue() === text);
     const count = () => H(async () => { await window.__board21.history.reload(); return window.__board21.history.metas.length; });
-    const settings = async () => { await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300); };
+    const settings = groups => openSettings(page, groups);
     const modal = text => page.locator('#modal.open .btn', { hasText: text }).click();
     const toasts = text => page.locator('.toast', { hasText: text }).count();
     // Versions written straight into board history's database, as if saved days ago: [{at, label, meta, exp, photo}].
@@ -4500,17 +4652,17 @@ const SUITES = [
     await fillNote(note, 'Class list: Ada, Ben');
     ok(await until(async () => await count() >= 1), 'a version is saved while the board changes (automatic versions are on)');
     const goodId = await H(() => window.__board21.history.save('Good'));
-    await settings();
+    await settings(['advanced']);
     await page.click('#settings [data-act="hist-every"][data-val="0"]');
     const asked = await page.locator('#modal.open').textContent();
     await modal('Turn off');
-    ok(/when it opens/.test(asked) && /before Reset, Delete, Close all/.test(asked) && /when 21Board opens/.test(await page.locator('#settings .sheet-body').textContent()),
-      'the Off question and Settings say what Off stops (also the version saved when 21Board opens) and what is still saved');
+    ok(/when it opens/.test(asked) && /before Reset, Delete, Close all/.test(asked) && /One is still saved before big changes, like Close all\./.test(await page.locator('#settings .sheet-body').textContent()),
+      'the Off question says what Off stops (also the version saved when 21Board opens) and what is still saved; Settings says one is still saved before big changes');
     await page.keyboard.press('Escape');
     const nOff = await count();
     await fillNote(note, 'Class list: Ada, Ben, Cy'); await page.waitForTimeout(1500);
     ok(await H(() => window.__board21.history.capture('open')) === null && await count() === nOff, 'with automatic versions Off, no copy of the board is saved when 21Board opens (or while it changes)');
-    await settings(); await page.click('#settings [data-act="hist-every"][data-val="10"]'); await page.keyboard.press('Escape');
+    await settings(['advanced']); await page.click('#settings [data-act="hist-every"][data-val="10"]'); await page.keyboard.press('Escape');
     ok(!!(await H(() => window.__board21.history.capture('open'))) && await count() === nOff + 1, 'with them on again, one is');
 
     // ---- “Go back” that can't finish says so, and the board is as it was.
@@ -4547,7 +4699,7 @@ const SUITES = [
 
     // ---- “Erase everything” promises a way back: it asks again if the board as it is couldn't be kept.
     await H(() => { window.__failHist = 'write'; });
-    await settings(); await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300); await modal('Erase everything');
+    await settings(['advanced']); await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300); await modal('Erase everything');
     const again = await until(() => page.locator('#modal.open', { hasText: 'Erase anyway?' }).count().then(n => n === 1));
     if (again) await modal('Cancel');
     await H(() => { window.__failHist = null; });
@@ -4609,7 +4761,7 @@ const SUITES = [
     ok(await page.evaluate(() => getComputedStyle(document.querySelector('[data-ctl="quit"]')).color === 'rgb(220, 38, 38)'), 'Quit is a red X');
     await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
     const set = await page.evaluate(() => { const r = document.getElementById('settings'); return { link: !!r.querySelector('[data-act^="link-"]'), backup: !!r.querySelector('[data-act="backup"]'), dev: !!r.querySelector('[data-act="devmode"]'), install: !!r.querySelector('[data-act="install"]'), kiosk: /Kiosk mode/.test(r.textContent), hist: !!r.querySelector('[data-act="hist-open"]') }; });
-    ok(!set.link && !set.dev && !set.install && set.kiosk && set.hist, 'Settings leaves out the Google Drive folder, Developer mode and Install, says it’s kiosk mode, and keeps Board history');
+    ok(!set.link && !set.dev && !set.install && set.kiosk && set.hist, 'Settings leaves out Board Sync, Developer mode and Install, says it’s kiosk mode, and keeps Board history');
     ok(set.backup && (await page.locator('#st-backup').textContent()).includes('never'), 'Settings has Backups with “Back up now”, as everywhere else (a kiosk can export)');
     const protect = await page.evaluate(() => [document.getElementById('st-persist').textContent, document.getElementById('st-persist-hint').textContent]);
     ok(/Protected/.test(protect[0]) || (/school’s IT/.test(protect[1]) && /back up to a USB drive/.test(protect[1]) && !/[Ii]nstall/.test(protect[1])), `Data protection says what applies to a kiosk: IT manages it, and backups are still worth making (${protect[1]})`);
@@ -4644,7 +4796,7 @@ const SUITES = [
     // Erase offers a backup first, as everywhere else. Where the Save dialog works, that saves a full backup
     // (and erases nothing), and Settings counts it.
     await page.evaluate(() => { window.showSaveFilePicker = async opts => ({ createWritable: async () => ({ write: async t => { window.__saved = { name: opts.suggestedName, text: t }; }, close: async () => {} }) }); });
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    await openSettings(page, ['advanced']);
     await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300);
     const first = page.locator('#modal.open .btn', { hasText: 'Export a backup first' });
     ok(await first.count() === 1 && /Export a backup first if/.test(await page.locator('#modal.open p').textContent()), 'Erase everything offers “Export a backup first” in kiosk mode too');
@@ -4811,7 +4963,7 @@ const SUITES = [
     const B = fn => page.evaluate(fn);
     const stored = async () => JSON.stringify(await storedRecords(page));
     const noteShown = () => page.locator('.save-note.left:visible').count();
-    const settingsText = async () => { await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); const t = await page.locator('#settings .sheet-body').innerText(); await page.keyboard.press('Escape'); return t; };
+    const settingsText = async () => { await openSettings(page, ['saved', 'advanced']); const t = await page.locator('#settings .sheet-body').innerText(); await page.keyboard.press('Escape'); return t; };
     const toastGone = text => page.waitForFunction(text => !Array.from(document.querySelectorAll('#toasts .toast')).some(t => t.textContent.includes(text)), text, { timeout: 15000 });
     // The database disappears behind the open board (as when the browser throws its damaged storage away).
     const loseDatabase = () => page.evaluate(() => new Promise(res => { const r = indexedDB.deleteDatabase('21Board'); r.onsuccess = r.onerror = r.onblocked = () => res(); }));
@@ -4852,7 +5004,7 @@ const SUITES = [
       'Board history still works there: the saved board’s earlier versions can be reached');
     await B(async () => { const h = window.__board21.history; await h.restore(h.metas.find(m => m.manual).id); });
     ok(await noteIs('A week of lesson notes') && await noteShown() === 1 && await stored() === before, 'going back to one shows it on this unsaved board (and can be exported); the stored board is still untouched');
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.click('#settings [data-act="erase"]');
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="erase"]');
     ok(await page.locator('#modal.open', { hasText: 'Empty this board?' }).filter({ hasText: 'Your saved board isn’t touched' }).count() === 1 && await page.locator('#modal.open .btn', { hasText: 'history' }).count() === 0,
       'there, Erase only offers to empty the board on screen, and says the saved board isn’t touched');
     await page.locator('#modal.open .btn', { hasText: 'Empty this board' }).click();
@@ -4967,7 +5119,7 @@ const SUITES = [
     ok(await until(async () => { const r = await storedRecords(page); return r['inst:1:notes:1'].rect.x === 80 && r['inst:1:timer:1'].open && r['data:1:notes:1'].text === 'typed on a full disk'; }),
       'while one record can’t be saved, later changes to others are still saved (a moved window, a reopened one)');
     st = await settingsText();
-    ok(await noteShown() === 1 && /Notes\s*[^\n]*not saved/.test(st) && /Timer\s*[^\n,]* saved/.test(st), 'the note stays, and Settings shows which window isn’t saved');
+    ok(await noteShown() === 1 && /Notes\s*[^\n]*not saved/.test(st) && /Timer\s*Open/.test(st) && !/Timer\s*[^\n]*not saved/.test(st), 'the note stays, and Settings shows which window isn’t saved');
     ok(await note.locator('body').evaluate(async () => Board21.saveConfig(Object.assign({}, await Board21.loadConfig(), { checked: 1 })).then(() => true, () => false)) && (await storedRecords(page))['conf:1:notes:1'].checked === 1,
       'a widget whose save is stored is told so, even while another record is still waiting');
     await B(() => { window.__failPut = null; });
@@ -5136,7 +5288,7 @@ const SUITES = [
     const a = await ctx.newPage(), b = await ctx.newPage();
     const errors = []; for (const p of [a, b]) p.on('pageerror', e => errors.push(e.message));
     const both = fn => Promise.all([a, b].map(fn));
-    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForSelector('#st-version'); };
+    const settings = async p => { await openSettings(p, ['advanced']); await p.waitForSelector('#st-version'); };
     const shown = async p => { await settings(p); const t = await p.locator('#settings .about').innerText(); await p.keyboard.press('Escape'); return t; };
     const prompt = p => p.locator('.toast', { hasText: 'A new version of 21Board is ready.' });
     const offered = () => both(p => p.waitForFunction(() => !!window.__board21.state.sw.updateReady && !!document.querySelector('.toast'), null, { timeout: 20000 }));
@@ -5177,10 +5329,10 @@ const SUITES = [
       'Later puts it off: nothing restarts, a dot stays on the Widget Picker button, and both tabs stay wholly on the old release (a widget opened now is the old one too)');
     await a.click('.picker-btn.left');
     const marks = await a.evaluate(() => { const g = document.querySelector('[data-ctl="settings"]'), w = document.querySelector('.picker-btn.left'); return [!!g.querySelector('.dot'), g.getAttribute('aria-label'), w.getAttribute('aria-label')].join(' | '); });
-    await a.click('[data-ctl="settings"]'); await a.waitForSelector('#st-version');
+    await a.click('[data-ctl="settings"]'); await a.waitForSelector('#st-version', { state: 'attached' });
     const note = a.locator('#settings #st-update'), box = await note.boundingBox({ timeout: 2000 }).catch(() => null);
-    ok(marks === 'true | Settings (a new version is ready) | Widgets and settings (a new version is ready)' && !!box && box.y > 0 && box.y + box.height < 400 && (await note.innerText()).startsWith('A new version of 21Board is ready') && await a.locator('#settings [data-act="update"]').count() === 1,
-      'after Later, how to update stays in view: the ▦ button and the Settings gear carry a dot and say why, and Settings opens with “A new version of 21Board is ready” and Update now at the top (' + marks + ')');
+    ok(marks === 'true | Settings (a new version is ready) | Widgets and settings (a new version is ready)' && !!box && box.y > 0 && box.y + box.height < 400 && (await note.innerText()).startsWith('A new version is ready') && await a.locator('#settings [data-act="update"]').count() === 1,
+      'after Later, how to update stays in view: the ▦ button and the Settings gear carry a dot and say why, and Settings opens with “A new version is ready” and Update now at the top (' + marks + ')');
     await a.locator('#settings [data-act="update"]').click();
     const took = await allOn('v2');
     ok(took < 8000, `Settings → Update now takes effect in seconds, and every open tab restarts on the new release (${typeof took === 'number' ? (took / 1000).toFixed(1) + ' s' : took})`);
@@ -5430,7 +5582,7 @@ const SUITES = [
       delete s3.fault['widgets/notes/index.html'];
       await start(page);
       await page.waitForFunction(() => window.__board21.state.sw.state === 'ready', null, { timeout: 15000 }).catch(() => {});
-      await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]');
+      await openSettings(page, ['advanced']);
       const saved = await copies(page), says = await offline(page);
       // A widget under test in Developer mode (uploaded as a file) is not part of the copy: its file is kept on this device.
       await page.click('#settings [data-act="devmode"]');
@@ -5513,6 +5665,7 @@ const SUITES = [
   }],
   ['Dialogs: a name, the keyboard stays inside and goes back where it was', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await ctx.addInitScript(DRIVE_PICK);   // (for a text field in Settings: Board Sync → Folder settings → This device’s name)
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE + ''); await boardUp(page);
@@ -5533,6 +5686,9 @@ const SUITES = [
     // A question with two buttons, opened from Settings by keyboard.
     await page.focus('.picker-btn.left'); await page.keyboard.press('Enter');
     await page.focus('[data-ctl="settings"]'); await page.keyboard.press('Enter');
+    await page.waitForSelector('#settings.open [data-act="group"][data-val="saved"]');
+    await page.focus('#settings [data-act="group"][data-val="saved"]'); await page.keyboard.press('Enter');   // (This page → Saved widgets opens)
+    ok((await at()).act === 'group' && await page.locator('#settings [data-val="saved"][aria-expanded="true"]').count() === 1, 'a group in Settings opens by keyboard, and the keyboard stays on its row');
     await page.waitForSelector('#settings.open [data-act="inst-delete"]');
     await page.focus('#settings [data-act="inst-delete"]'); await page.keyboard.press('Enter'); await open();
     ok(await page.getByRole('dialog', { name: 'Delete Notes?', exact: true }).count() === 1, 'a dialog is announced by its title (“Delete Notes?”)');
@@ -5624,14 +5780,17 @@ const SUITES = [
     ok(back.tag === 'IFRAME' && back.title === 'Notes', `and a tap in another widget afterwards is still seen as that widget (${back.tag} ${back.title})`);
     // Typing in a Settings field when a dialog comes up: the field isn't taken up again afterwards (a tablet would
     // bring up its keyboard, and Settings leaves a field that is in use alone), so Settings shows what has changed.
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]');
-    await page.waitForSelector('#settings.open #set-board-name'); await page.focus('#set-board-name');
+    await page.evaluate(() => window.__board21.link.choose());
+    await openSettings(page, ['saved', 'folder']);
+    const count = () => page.locator('#settings [data-act="group"][data-val="saved"] .v').textContent();
+    const before = await count();
+    await page.focus('#set-link-label');
     await drop('Other board.21board'); await open();
     await page.locator('#modal.open .btn', { hasText: 'Replace this page' }).click();
     await page.waitForSelector('.toast:has-text("Board imported.")');
     back = await at();
-    const shownName = await page.locator('#set-board-name').inputValue();
-    ok(back.tag !== 'INPUT' && shownName === 'Other board', `the keyboard isn’t put back into a text field, so Settings shows the imported board’s name (${shownName})`);
+    const after = await count();
+    ok(back.tag !== 'INPUT' && before === '2 widgets' && after === 'None', `the keyboard isn’t put back into a text field, so Settings shows the imported board (Saved widgets: ${before} → ${after})`);
     await ctx.close();
 
     // A window menu by keyboard: the arrow keys, Home and End go from item to item (Tab too); Enter chooses one and
@@ -5671,7 +5830,7 @@ const SUITES = [
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const L = (p, fn, arg) => p.evaluate(fn, arg);
     const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
-    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(400); };
+    const settings = openSettings;
     const boards = async p => Object.keys(await readFolder(p)).filter(n => n.endsWith('.21board')).sort().join(' | ');
     const board = p => p.evaluate(() => ({ uid: window.__board21.state.board.uid, name: window.__board21.state.board.name }));
     const hasPhoto = p => p.evaluate(() => window.__board21.state.media.has('background'));
@@ -5701,8 +5860,7 @@ const SUITES = [
     for (const d of [A, B]) { d.p.on('pageerror', e => errors.push(e.message)); await d.p.goto(BASE); await boardUp(d.p); }
     await L(A.p, () => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
     await fillNote(note(A.p), 'Math notes'); await A.p.waitForTimeout(300);
-    await settings(A.p);
-    await A.p.fill('#set-board-name', 'Math'); await A.p.press('#set-board-name', 'Tab'); await A.p.keyboard.press('Escape');
+    await renamePage(A.p, 'Math');
     await L(A.p, async () => { const l = window.__board21.link; await l.choose(); l.saveState({ device: Object.assign({}, l.device(), { label: 'my laptop' }) }); await l.send(); });
     const math = (await board(A.p)).uid;
     await drive(A.p, B.p);
@@ -5766,7 +5924,7 @@ const SUITES = [
     await A.p.setInputFiles('#photo-input', photo); await A.p.waitForTimeout(1500);
     await toBoard();
     ok(await hasPhoto(A.p) && await hasPhoto(B.p), 'setup: the photo went to the smartboard with the board');
-    await settings(A.p);
+    await settings(A.p, ['bg']);
     await A.p.click('#settings [data-act="photo-remove"]'); await A.p.waitForSelector('#modal.open');
     ok(/on your other devices when they load the next version you send/.test(await A.p.locator('#modal.open').innerText()), 'removing the photo says that it goes from the other devices too');
     await modal(A.p, 'Remove photo'); await A.p.waitForTimeout(600); await A.p.keyboard.press('Escape');
@@ -5838,8 +5996,7 @@ const SUITES = [
     ok(flying && await eventually(async () => (await board(A.p)).name === 'Fractions' && await has('Music.21board', 'Music, changed'), 12000) && await has('Fractions.21board', 'Fractions, last change') && !/\(2\)/.test(await boards(A.p)),
       'Undo while the imported board is being sent: it is sent as itself first, and the board that comes back keeps its own file (no “Fractions (2)”, and “Music” isn’t removed)');
     // ---- The small print in the Import dialog stays inside the dialog, however long the board's name is.
-    await settings(A.p);
-    await A.p.fill('#set-board-name', 'Fractions and decimals, second semester, periods 3 and 4'); await A.p.press('#set-board-name', 'Tab'); await A.p.keyboard.press('Escape');
+    await renamePage(A.p, 'Fractions and decimals, second semester, periods 3 and 4');
     await L(A.p, () => window.__board21.link.send()); await A.p.waitForTimeout(800);
     said = await pickFile(A.p, 'Science.21board', backup('Science', 'Science notes', 'science-board-0001'));
     ok(said.includes('periods 3 and 4” stays in your Google Drive folder') && await overflow(A.p) === 0, 'the small print under “Replace this page” wraps inside the dialog, even with a long board name (it ran out of the dialog and over the board)');
@@ -5853,7 +6010,7 @@ const SUITES = [
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const L = (p, fn, arg) => p.evaluate(fn, arg);
     const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
-    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(400); };
+    const settings = openSettings;
     const errors = [];
     const A = await driveDevice(browser), p = A.p;
     p.on('pageerror', e => errors.push(e.message));
@@ -5944,7 +6101,7 @@ const SUITES = [
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const L = (p, fn, arg) => p.evaluate(fn, arg);
     const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
-    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(400); };
+    const settings = openSettings;
     const boards = async p => Object.keys(await readFolder(p)).filter(n => n.endsWith('.21board')).sort().join(' | ');
     const fileHas = async (p, name, text) => ((await readFolder(p))[name] || '').includes(text);
     const version = async (p, name) => JSON.parse((await readFolder(p))[name]).sent.id;
@@ -6136,7 +6293,7 @@ const SUITES = [
     const B = (fn, arg) => page.evaluate(fn, arg);
     const frame = (p, ik) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
     const records = p => p.evaluate(() => new Promise((res, rej) => { const o = indexedDB.open('21Board'); o.onerror = () => rej(o.error); o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').getAll(); q.onsuccess = () => { o.result.close(); res(Object.fromEntries(q.result.map(r => [r.key, r.value]))); }; }; }));
-    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(300); };
+    const settings = p => openSettings(p, ['advanced']);
     const dialogSays = async () => { const t = await page.locator('#modal.open').innerText().catch(() => ''); await page.click('#modal.open .btn').catch(() => {}); await page.waitForTimeout(150); return t; };
     await page.goto(BASE); await freeBoard(page);
     await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 });   // the offline copy is ready
@@ -6477,7 +6634,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(!!frameOf(page, '21timer') && await frameOf(page, '21timer').title() === '21Timer stand-in' && await focused() === '21timer:1', '“Reload 21Timer” in its menu loads it again once the site answers');
 
     // ---- Settings says the app keeps its own work; deleting the window leaves that work alone.
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    await openSettings(page, ['saved', 'advanced']);
     const row = await page.locator('#settings .inst', { hasText: '21Sketch' }).first().innerText();
     ok(/21Sketch keeps its own work on this device/.test(row) && !/\d B|saved/.test(row), 'Settings’ window list says 21Sketch keeps its own work on this device (no size, no “saved”): ' + row.replace(/\n/g, ' '));
     await page.locator('#settings .inst', { hasText: '21Timer' }).locator('[data-act="inst-delete"]').click(); await page.waitForTimeout(300);
@@ -6602,7 +6759,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await b.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').inputValue() === 'from disk', 'tabs opened from disk stay in sync');
     await a.reload(); await a.waitForTimeout(1500);
     ok(await a.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').inputValue() === 'from disk', 'content persists when opened from disk');
-    await a.click('.picker-btn.left'); await a.click('[data-ctl="settings"]'); await a.waitForTimeout(500);
+    await openSettings(a, ['advanced']);
     ok((await a.locator('#st-persist').textContent()).includes('Not available') && !(await a.locator('#st-persist-hint').textContent()).includes('address bar'), 'data-protection status is accurate for a copy opened from a file');
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
     ok((await a.locator('#settings .about').innerText()).startsWith(`21Board ${/const VERSION = '([^']+)'/.exec(sw)[1]} (${/const BUILD = '([0-9a-f]{8})'/.exec(sw)[1]}) · `), 'Settings → About names the release and build there too, where there is no offline copy to ask');
@@ -6821,7 +6978,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').getAll(); q.onsuccess = () => { o.result.close(); res(Object.fromEntries(q.result.map(r => [r.key, r.value]))); }; }; }));
     const settle = (ms = 700) => page.waitForTimeout(ms);
     const openPicker = async () => { if (!await page.locator('#panel.open').count()) { await page.click('.picker-btn.left'); await settle(250); } };
-    const settings = async () => { await openPicker(); await page.click('[data-ctl="settings"]'); await settle(400); };
+    const settings = groups => openSettings(page, groups);
     const go = async b => { await B(b => window.__board21.pages.go(b), b); await page.waitForFunction(b => window.__board21.state.boardId === b, b); await settle(900); };
     const noteText = async () => frame('notes:1').locator('textarea').inputValue();
     // Page 1 “Math” and page 2 “Reading”, a note on each.
@@ -6840,7 +6997,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
 
     // A backup while storage can't be read: the other pages come from what this window holds, and it counts as a backup.
     await B(() => { const s = window.__board21.store; s.readAll0 = s.readAll; s.readAll = async () => { throw new Error('Storage didn’t answer'); }; });
-    await settings();
+    await settings(['advanced']);
     let [dl] = await Promise.all([page.waitForEvent('download'), page.click('#settings [data-act="backup"]')]);
     let file = OUT + 'pages-unreadable.21board'; await dl.saveAs(file);
     let j = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -6849,7 +7006,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       `with storage unreadable, Back up now still has the other page’s windows and content (${p1.board.name}, ${p1.instances.length} window)`);
     // One whose content isn't held here either: the file is made, the teacher is told, and it doesn't count as a backup.
     await B(() => { window.__board21.state.settings.lastBackupAt = null; window.__board21.pages.held.delete('board:1'); });
-    await page.keyboard.press('Escape'); await settings();
+    await page.keyboard.press('Escape'); await settings(['advanced']);
     [dl] = await Promise.all([page.waitForEvent('download'), page.click('#settings [data-act="backup"]')]);
     await settle(300);
     const told = (await page.locator('.toast').allInnerTexts()).join(' | ');
@@ -6859,7 +7016,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.reload(); await boardUp(page); await settle(900);
 
     // An Undo offered on one page is never applied to another: it goes when the page changes.
-    await settings();
+    await settings(['saved']);
     await page.click('#settings [data-act="inst-delete"][data-val="notes:1"]'); await page.click('#modal .btn.danger'); await settle(400);
     ok(await page.locator('#toasts button:has-text("Undo")').count() === 1, 'deleting a window offers Undo');
     const vid = await B(() => window.__board21.history.capture('manual', { label: 'Reading version' }));
@@ -6869,11 +7026,11 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     let s = await st();
     ok(back === false && s.name === 'Math' && s.wins.join() === 'notes:1' && await noteText() === 'Math plan', `a version of another page is never put on this one (${JSON.stringify(s)})`);
 
-    // A page name being typed in Settings is saved to its own page, even if the page changes before the field is left.
+    // Settings has no page name: the Pages menu renames a page (‹ Page › → Rename this page…).
     await settings();
-    await page.fill('#set-board-name', 'Morning meeting');
-    await B(() => window.__board21.pages.go(2)); await page.waitForFunction(() => window.__board21.state.boardId === 2); await settle(600);
-    ok(await B(() => window.__board21.pages.name(1)) === 'Morning meeting' && (await st()).name === 'Reading', 'a name typed in Settings goes to the page it was typed on');
+    ok(await page.locator('#set-board-name, #settings input[type="text"]').count() === 0, 'Settings has no page name field');
+    await page.keyboard.press('Escape'); await renamePage(page, 'Morning meeting');
+    ok(await B(() => window.__board21.pages.name(1)) === 'Morning meeting' && (await st()).name === 'Morning meeting', 'Rename this page… in the Pages menu names it');
     await go(1); await B(() => window.__board21.updateBoard({ name: 'Math' })); await settle(300);
 
     // From the keyboard, the Pages menu takes the keyboard to this page's item.
@@ -6885,11 +7042,11 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     // Google Drive folder: a file sent from another page here is that page (Go to page), and loading it never gives
     // two pages one board id (both would send to the same file).
     await settings();
-    await page.click('#settings [data-act="link-choose"]'); await settle(800);
+    await page.click('#settings [data-act="link-setup"]'); await settle(800);
     await page.click('#settings [data-act="link-send"]'); await settle(1500);
     await page.keyboard.press('Escape');
     await go(2);
-    await settings();
+    await settings(['boards']);
     await page.click('#settings [data-act="link-check"]').catch(() => {}); await settle(1500);
     ok(await page.locator('#settings [data-act="page-go"]').count() === 1 && await page.locator('#settings [data-act="link-load"]').count() === 0, 'Other boards in the folder: page 1’s file offers Go to page, not Load');
     const name = await B(() => { const L = window.__board21.link, u = window.__board21.pages.info.get(1).uid; return (L.found.find(f => f.uid === u) || {}).name; });
@@ -6925,7 +7082,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     // Erase everything from a page other than the first: board history still has that page, to go back to.
     await go(await B(() => window.__board21.pages.ids()[1]));
     const shown = (await st()).id;
-    await settings();
+    await settings(['advanced']);
     await page.click('#settings [data-act="erase"]'); await page.locator('#modal .btn', { hasText: /^Erase everything$/ }).click(); await settle(1500);
     const metas = () => B(() => window.__board21.history.metas.map(m => m.b));
     s = await st();
@@ -6985,7 +7142,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await B(() => window.__board21.state.settings.locked === true && document.body.classList.contains('windows-locked') && document.querySelector('#settings [data-act="lock-windows"]').getAttribute('aria-checked') === 'true'), 'turning it on locks the windows (saved in the settings)');
     ok(await B(() => ['left', 'right'].every(s => document.querySelector(`.picker-btn.${s} .lock-badge svg`))), 'a padlock shows on both ▦ buttons');
     const closeAll = await B(() => { const b = document.querySelector('#settings [data-act="close-all"]'); return { disabled: b.disabled, why: b.closest('.row').querySelector('.hint').textContent }; });
-    ok(closeAll.disabled && /locked/.test(closeAll.why), `Close all is turned off, saying why (${closeAll.why})`);
+    ok(closeAll.disabled && closeAll.why === 'Unlock windows first.', `Close all is turned off, saying why (${closeAll.why})`);
     await page.mouse.click(1300, 820); await page.waitForTimeout(300);   // (the empty board: Settings closes)
 
     // ---- No moving: title bar (mouse, touch), from inside (one finger, two fingers).
@@ -7130,6 +7287,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
 
   ['Lock windows in place: hold ▦ to unlock, every tab, reload, kiosk', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, hasTouch: true });
+    await ctx.addInitScript(DRIVE_PICK);   // (a text box in Settings: Board Sync → Folder settings → This device’s name)
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page);
@@ -7210,12 +7368,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(500);
     ok(menuWay && ringR === 1 && !await page.evaluate(() => window.__board21.state.settings.locked) && !await pickerOpen(), 'holding the right ▦ with a finger unlocks too (with its ring, and no long-press menu)');
     ok(require('fs').readFileSync(require('path').join(ROOT, 'index.html'), 'utf8').includes('.picker-btn { -webkit-touch-callout: none; }'), 'and no callout on an iPad (-webkit-touch-callout: none on ▦)');
-    // Settings open with a school-hours time box in use: Settings isn't drawn again under it, but its switch and
-    // Close all still follow the lock. (A finger on ▦ leaves the focus in the box until it lets go.)
+    // Settings open with a text box in use (this device's name): Settings isn't drawn again under it, but its switch
+    // and Close all still follow the lock. (A finger on ▦ leaves the focus in the box until it lets go.)
     await setLock(true);
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(250);
-    await page.click('#settings [data-act="awake"][data-val="hours"]'); await page.waitForTimeout(250);
-    await page.focus('#set-awake-to');
+    await page.evaluate(() => window.__board21.link.choose());
+    await openSettings(page, ['folder']);
+    await page.focus('#set-link-label');
     c = await center('right');
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: c.x, y: c.y, id: 1 }] });
     await page.waitForTimeout(2400);
@@ -7223,15 +7381,14 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       return { focus: document.activeElement.id, locked: window.__board21.state.settings.locked === true, sw: sw.getAttribute('aria-checked') + (sw.classList.contains('on') ? ' (on)' : ''), all: all.disabled ? 'off' : 'on', hint: all.closest('.row').querySelector('.hint').textContent }; });
     const held = await lockRow(page);
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await page.waitForTimeout(400);
-    ok(held.focus === 'set-awake-to' && !held.locked && held.sw === 'false' && held.all === 'on' && !/locked/.test(held.hint),
-      `held with a time box in use: the switch shows off and Close all is back (${JSON.stringify(held)})`);
-    await page.click('#settings [data-act="awake"][data-val="off"]'); await page.waitForTimeout(200);
+    ok(held.focus === 'set-link-label' && !held.locked && held.sw === 'false' && held.all === 'on' && held.hint === 'On this page. Their content is kept.',
+      `held with a text box in use: the switch shows off and Close all is back (${JSON.stringify(held)})`);
     await page.mouse.click(683, 300); await page.waitForTimeout(250);
     // One corner only (Settings → Widget Picker: Right), with a pen.
     await setLock(true);
-    const corners = async val => { await page.click('.picker-btn.right'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(250); await page.click(`#settings [data-act="corners"][data-val="${val}"]`); await page.mouse.click(683, 300); await page.waitForTimeout(250); };
+    const corners = async val => { await openSettings(page, ['advanced'], 'right'); await page.click(`#settings [data-act="corners"][data-val="${val}"]`); await page.mouse.click(683, 300); await page.waitForTimeout(250); };
     await corners('right');
-    ok(await page.evaluate(() => document.querySelector('.picker-btn.left').hidden && !document.querySelector('.picker-btn.right').hidden) && await locked(), 'Settings → Widget Picker: Right (▦ in one corner only), still locked');
+    ok(await page.evaluate(() => document.querySelector('.picker-btn.left').hidden && !document.querySelector('.picker-btn.right').hidden) && await locked(), 'Settings → Advanced → Widget Picker: Right (▦ in one corner only), still locked');
     c = await center('right');
     const pen = async (type, x, y) => cdp.send('Input.dispatchMouseEvent', { type, x, y, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1, pointerType: 'pen' });
     await pen('mousePressed', c.x, c.y); await page.waitForTimeout(150); await pen('mouseReleased', c.x, c.y); await page.waitForTimeout(300);
@@ -7246,13 +7403,14 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const p2 = await ctx.newPage(); p2.on('pageerror', e => errors.push('tab 2: ' + e.message));
     await p2.goto(BASE); await boardUp(p2); await p2.waitForTimeout(600);
     ok(await locked(p2), 'a tab opened later is locked too');
-    // (The other tab with Settings open, someone typing in its page name box.)
-    await p2.click('.picker-btn.left'); await p2.click('[data-ctl="settings"]'); await p2.waitForTimeout(250);
-    await p2.focus('#set-board-name');
+    // (The other tab with Settings open, someone typing in its box for this device's name.)
+    await p2.evaluate(() => window.__board21.link.choose());
+    await openSettings(p2, ['folder']);
+    await p2.focus('#set-link-label');
     await setLock(false); await p2.waitForTimeout(800);
     ok(!await p2.evaluate(() => window.__board21.state.settings.locked || document.body.classList.contains('windows-locked')), 'unlocking in one tab unlocks the others');
     const typing = await lockRow(p2);
-    ok(typing.focus === 'set-board-name' && typing.sw === 'false' && typing.all === 'on', `and Settings there shows it, while someone types in a box (${JSON.stringify(typing)})`);
+    ok(typing.focus === 'set-link-label' && typing.sw === 'false' && typing.all === 'on', `and Settings there shows it, while someone types in a box (${JSON.stringify(typing)})`);
     await setLock(true); await p2.waitForTimeout(800);
     ok(await locked(p2) && (await lockRow(p2)).sw === 'true (on)', 'and so does locking');
     await p2.keyboard.press('Escape'); await p2.waitForTimeout(250);
@@ -7297,7 +7455,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const errors = [];
     const A = await driveDevice(browser), B = await driveDevice(browser);   // the laptop and the smartboard
     for (const d of [A, B]) d.p.on('pageerror', e => errors.push(e.message));
-    const settings = async p => { await p.click('.picker-btn.left'); await p.click('[data-ctl="settings"]'); await p.waitForTimeout(300); };
+    const settings = openSettings;
     const closeSettings = async p => { await p.keyboard.press('Escape'); await p.waitForTimeout(250); };
     const wins = p => p.evaluate(() => Array.from(window.__board21.state.insts.entries()).filter(([, i]) => i.open).map(([k]) => k).sort().join());
     const locked = () => B.p.evaluate(() => window.__board21.state.settings.locked === true && document.body.classList.contains('windows-locked'));
@@ -7314,7 +7472,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await A.p.goto(BASE); await boardUp(A.p);
     await A.p.evaluate(() => { window.__board21.updateBoard({ name: 'Room 12' }); window.__board21.openWidget('notes'); }); await A.p.waitForTimeout(1000);
     await settings(A.p);
-    await A.p.click('#settings [data-act="link-choose"]'); await A.p.waitForTimeout(800);
+    await A.p.click('#settings [data-act="link-setup"]'); await A.p.waitForTimeout(800); await settings(A.p, ['folder']);
     await A.p.fill('#set-link-label', 'my laptop'); await A.p.press('#set-link-label', 'Tab'); await A.p.waitForTimeout(200);
     await A.p.click('#settings [data-act="link-send"]'); await A.p.waitForTimeout(1500);
     await closeSettings(A.p);
@@ -7322,7 +7480,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await B.p.goto(BASE); await boardUp(B.p);
     await drive(A.p, B.p);
     await settings(B.p);
-    await B.p.click('#settings [data-act="link-choose"]'); await B.p.waitForTimeout(1200);
+    await B.p.click('#settings [data-act="link-setup"]'); await B.p.waitForTimeout(1200); await settings(B.p, ['boards']);
     await B.p.click('#settings [data-act="link-load"][data-val="Room 12.21board"]'); await B.p.waitForTimeout(300);
     await B.p.locator('#modal.open .btn', { hasText: 'Replace this board' }).click(); await B.p.waitForTimeout(2000);
     await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(300);
@@ -7349,13 +7507,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await sendNew(['dice']);
     await settings(B.p);
     await B.p.click('#settings [data-act="link-load-offer"]'); await B.p.waitForTimeout(2000);
-    ok(!await asked() && await locked() && await wins(B.p) === 'dice:1', `Settings → Google Drive folder → Load newer doesn’t ask, and the windows stay locked (${await wins(B.p)})`);
+    ok(!await asked() && await locked() && await wins(B.p) === 'dice:1', `Settings → Board Sync → Load newer doesn’t ask, and the windows stay locked (${await wins(B.p)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
 
-  // Keep the screen on
-  ['Keep the screen on (Off, while showing, hidden and shown again, the device saying no, school hours)', async (browser) => {
+  // Stay awake
+  ['Stay awake (off, on, hidden and shown again, the device saying no, an older school-hours setting, kiosk)', async (browser) => {
     // A stand-in for navigator.wakeLock (headless Chromium has no screen to keep on). It counts requests and
     // releases, lets the lock go when the page is hidden (as browsers do), and can say no ('refuse') or be missing
     // ('none', or 'http': a page served over plain http, which browsers give none).
@@ -7381,27 +7539,30 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     };
     const errors = [];
     const W = page => page.evaluate(() => ({ requests: window.__wl.requests, releases: window.__wl.releases, held: window.__wl.held.size }));
-    const status = page => page.evaluate(() => { const s = document.getElementById('set-awake-status'); return s.hidden ? '' : (s.querySelector('.status-dot.ok') ? '(ok) ' : s.querySelector('.status-dot.warn') ? '(warn) ' : '') + s.textContent.replace(/\s/g, ' '); });
-    const settings = async page => { await page.click('.picker-btn.right'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300); };
-    const fresh = async mode => {
+    // The row as Settings shows it: the switch, the warning while it's on, and a status line only when it isn't working.
+    const row = page => page.evaluate(() => { const r = document.querySelector('#settings .awake-row'), sw = r.querySelector('[data-act="awake"]'), warn = r.querySelector('#set-awake-warn'), st = document.getElementById('set-awake-status');
+      const h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      return { section: h && h.textContent, label: r.querySelector('.lbl').textContent, role: sw.getAttribute('role'), on: sw.getAttribute('aria-checked') === 'true', disabled: sw.disabled, choices: r.querySelectorAll('.seg, input').length,
+        warn: warn ? (warn.querySelector('.status-dot.warn') ? '(warn) ' : '') + warn.textContent.trim() : '', status: st.hidden ? '' : (st.querySelector('.status-dot.warn') ? '(warn) ' : '') + st.textContent.trim() }; });
+    const settings = page => openSettings(page, [], 'right');
+    const fresh = async (mode, opts = {}) => {
       const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
       await ctx.addInitScript(WAKE_LOCK, mode || 'ok');
       const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE + (opts.kiosk ? '?kiosk=yes' : '')); await boardUp(page); await page.waitForTimeout(300);
       return { ctx, page };
     };
     let { ctx, page } = await fresh();
-    await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
     let w = await W(page);
     ok(w.requests === 0 && await page.evaluate(() => window.__board21.state.settings.awake) === 'off', 'off by default: nothing is asked of the device');
     await settings(page);
-    const row = await page.evaluate(() => { const r = document.querySelector('#settings .awake-row'), h = [...document.querySelectorAll('#settings h3')].find(e => e.textContent === 'Classroom');
-      return r && { under: !!h && !!(h.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING), label: r.querySelector('.lbl').textContent, choices: [...r.querySelectorAll('[data-act="awake"]')].map(b => b.textContent + (b.classList.contains('on') ? ' (chosen)' : '')).join(', '), quiet: document.getElementById('set-awake-status').hidden }; });
-    ok(row && row.under && row.label === 'Keep the screen on' && row.choices === 'Off (chosen), While 21Board is showing, School hours' && row.quiet,
-      `Settings → Classroom → “Keep the screen on”: ${row && row.choices}; no status line while it’s off`);
-    await page.click('#settings [data-act="awake"][data-val="on"]'); await page.waitForTimeout(300);
-    w = await W(page);
-    ok(w.requests === 1 && w.held === 1, 'While 21Board is showing: one screen wake lock is held');
-    ok(await status(page) === '(ok) The screen stays on while 21Board is showing.', `Settings says so (${await status(page)})`);
+    let r = await row(page);
+    ok(r.section === 'Classroom' && r.label === 'Stay awake' && r.role === 'switch' && !r.on && !r.disabled && !r.choices && !r.warn && !r.status,
+      `Settings → Classroom → “Stay awake” is a switch, off, with no school hours, warning or status line (${JSON.stringify(r)})`);
+    await page.click('#settings [data-act="awake"]'); await page.waitForTimeout(300);
+    w = await W(page); r = await row(page);
+    ok(w.requests === 1 && w.held === 1 && await page.evaluate(() => window.__board21.state.settings.awake) === 'on', 'On: one screen wake lock is held while 21Board is showing');
+    ok(r.on && r.warn === '(warn) This makes your account less secure.' && !r.status, `and Settings warns, with an amber dot: “${r.warn}” (no status line: it works)`);
     // Hidden (another tab, the lid closed): the browser lets the lock go. Shown again: 21Board asks again.
     await page.evaluate(() => window.__show(false)); await page.waitForTimeout(250);
     w = await W(page);
@@ -7420,91 +7581,62 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const file = await page.evaluate(async () => JSON.stringify(await window.__board21.buildExport('full')));
     ok(!/"awake(From|To)?"\s*:/.test(file), 'the setting belongs to this device: it isn’t in exports');
     await settings(page);
-    await page.click('#settings [data-act="awake"][data-val="off"]'); await page.waitForTimeout(300);
-    w = await W(page);
-    ok(w.held === 0 && w.releases === 1 && await status(page) === '', 'Off lets it go, and the status line goes');
+    await page.click('#settings [data-act="awake"]'); await page.waitForTimeout(300);
+    w = await W(page); r = await row(page);
+    ok(w.held === 0 && w.releases === 1 && !r.on && !r.warn && !r.status, 'Off lets it go, and the warning goes');
     await page.evaluate(() => window.__show(false)); await page.evaluate(() => window.__show(true)); await page.waitForTimeout(300);
     ok((await W(page)).requests === 1, 'and nothing is asked for when 21Board shows again');
+    // A device that had school hours (an older 21Board: 'hours', with a From and To) keeps the screen on: the times go.
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'), st = t.objectStore('records'), g = st.get('settings');
+      g.onsuccess = () => { const rec = g.result; rec.value = Object.assign({}, rec.value, { awake: 'hours', awakeFrom: '07:30', awakeTo: '15:30' }); rec.rev += 1000; st.put(rec); }; t.oncomplete = () => { o.result.close(); res(); }; }; }));
+    await page.reload(); await boardUp(page); await page.waitForTimeout(400);
+    const st = await page.evaluate(() => { const s = window.__board21.state.settings; return { awake: s.awake, from: 'awakeFrom' in s, to: 'awakeTo' in s }; });
+    w = await W(page);
+    await settings(page); r = await row(page);
+    ok(st.awake === 'on' && !st.from && !st.to && w.held === 1 && r.on, `an older “School hours” reads as on, and its times are dropped (${JSON.stringify(st)}, ${w.held} held)`);
+    await page.click('#settings [data-act="awake"]'); await page.waitForTimeout(800);
+    const kept = await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').get('settings'); q.onsuccess = () => { o.result.close(); res(q.result.value); }; }; }));
+    ok(kept.awake === 'off' && !('awakeFrom' in kept) && !('awakeTo' in kept), 'and they are gone from the saved settings once they change');
     await ctx.close();
 
     // The device says no (IT's policy, a battery saver): Settings says so, nothing breaks, and it tries again each minute.
     ({ ctx, page } = await fresh('refuse'));
     await page.clock.install({ time: new Date('2026-11-12T10:00:00') });
-    await page.goto(BASE); await boardUp(page);
+    await page.reload(); await boardUp(page);
     await settings(page);
-    await page.click('#settings [data-act="awake"][data-val="on"]'); await page.waitForTimeout(400);
-    ok(/^\(warn\) The device didn’t allow it\. Its settings, or your school’s IT, may turn this off\.$/.test(await status(page)), `refused: Settings says the device didn’t allow it (${await status(page)})`);
+    await page.click('#settings [data-act="awake"]'); await page.waitForTimeout(400);
+    r = await row(page);
+    ok(r.status === '(warn) This device didn’t allow it. Its settings or your school’s IT may block it.' && r.on, `refused: Settings says the device didn’t allow it (${r.status})`);
     const tries = (await W(page)).requests;
     await page.clock.runFor(61000); await page.waitForTimeout(300);
     ok(tries === 1 && (await W(page)).requests === 2, 'and it tries again on the next minute');
     await ctx.close();
 
-    // A browser that can't do it: the row explains, its choices can't be chosen, and nothing throws.
+    // A browser that can't do it: the row explains, its switch can't be turned on, and nothing throws.
     ({ ctx, page } = await fresh('none'));
-    await page.goto(BASE); await boardUp(page);
     await settings(page);
-    const none = await page.evaluate(() => ({ dis: document.querySelector('#settings .awake-row .seg').classList.contains('disabled'), text: document.getElementById('set-awake-status').textContent }));
-    ok(none.dis && none.text === 'This browser can’t keep the screen on.', `unsupported: “${none.text}”, and the choices are greyed out`);
-    await page.evaluate(() => document.querySelector('#settings [data-act="awake"][data-val="on"]').click()); await page.waitForTimeout(300);
-    await page.reload(); await boardUp(page); await page.waitForTimeout(300);
-    ok(await page.evaluate(() => window.__board21.state.settings.awake) === 'on' && await page.locator('.picker-btn.right').isVisible(), 'a setting left on from before still starts the board without trouble');
+    r = await row(page);
+    ok(r.disabled && r.status === '(warn) This browser can’t keep the screen on.' && !r.warn, `unsupported: “${r.status}”, and the switch is greyed out`);
+    await page.evaluate(() => window.__board21.state.settings.awake = 'on');   // (left on from another browser's 21Board)
+    await page.evaluate(() => document.querySelector('#settings [data-act="awake"]').click()); await page.waitForTimeout(300);
+    ok(await page.locator('.picker-btn.right').isVisible() && !errors.length, 'a setting left on starts nothing and breaks nothing');
     await ctx.close();
 
     // Served over plain http (a school server without https): the browser gives no wake lock there. It's https that
     // is missing, not the browser that can't.
     ({ ctx, page } = await fresh('http'));
-    await page.goto(BASE); await boardUp(page);
     await settings(page);
-    const http = await page.evaluate(() => ({ dis: document.querySelector('#settings .awake-row .seg').classList.contains('disabled'), text: document.getElementById('set-awake-status').textContent }));
-    ok(http.dis && http.text === 'Needs https to keep the screen on.', `over http: “${http.text}”, and the choices are greyed out`);
+    r = await row(page);
+    ok(r.disabled && r.status === '(warn) Needs https to keep the screen on.', `over http: “${r.status}”, and the switch is greyed out`);
     await ctx.close();
 
-    // School hours: From and To, Monday to Friday, by the device's clock.
-    ({ ctx, page } = await fresh());
-    await page.clock.install({ time: new Date('2026-11-12T07:29:00') });   // a Thursday, just before school
-    await page.goto(BASE); await boardUp(page);
-    await page.click('.picker-btn.right'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300);
-    await page.click('#settings [data-act="awake"][data-val="hours"]'); await page.waitForTimeout(300);
-    const boxes = await page.evaluate(() => [...document.querySelectorAll('#settings .awake-time input')].map(i => [i.type, i.value, Math.round(i.getBoundingClientRect().height / (+getComputedStyle(document.documentElement).getPropertyValue('--ui') || 1))]));
-    ok(JSON.stringify(boxes) === '[["time","07:30",44],["time","15:30",44]]', `School hours: From and To time boxes, 44 px tall (${JSON.stringify(boxes)})`);
-    ok(/Monday to Friday/.test(await page.locator('#settings .awake-row').textContent()), 'the hint says school days are Monday to Friday');
-    ok((await W(page)).held === 0 && await status(page) === 'Not now: outside school hours (7:30 AM–3:30 PM, Mon–Fri).', `before 7:30 nothing is held, and Settings says why (${await status(page)})`);
-    await page.clock.runFor(61000); await page.waitForTimeout(300);
-    ok((await W(page)).held === 1 && await status(page) === '(ok) The screen stays on until 3:30 PM, while 21Board is showing.', `at 7:30 the screen is kept on (${await status(page)})`);
-    // The end of the school day, on the minute.
-    await page.clock.setSystemTime(new Date('2026-11-12T15:29:58')); await page.evaluate(() => document.dispatchEvent(new Event('fullscreenchange')));
-    await page.clock.runFor(1500); await page.waitForTimeout(200);
-    const late = (await W(page)).held;
-    await page.clock.runFor(1000); await page.waitForTimeout(300);
-    ok(late === 1 && (await W(page)).held === 0 && /^Not now: outside school hours/.test(await status(page)), 'kept on until 3:29:59, let go at 3:30 (a device left on overnight can sleep)');
-    // Weekends are outside school hours.
-    await page.clock.setSystemTime(new Date('2026-11-14T10:00:00')); await page.clock.runFor(61000); await page.waitForTimeout(300);
-    ok((await W(page)).held === 0 && /^Not now/.test(await status(page)), 'Saturday at 10:00: not kept on');
-    await page.clock.setSystemTime(new Date('2026-11-16T10:00:00')); await page.clock.runFor(61000); await page.waitForTimeout(300);
-    ok((await W(page)).held === 1, 'Monday at 10:00: kept on');
-    // A "To" not after "From": a clear hint, nothing kept on, nothing broken; the box isn't taken away while in use.
-    await page.fill('#set-awake-to', '07:00'); await page.waitForTimeout(300);
-    const bad = await page.evaluate(() => ({ focus: document.activeElement && document.activeElement.id, invalid: document.getElementById('set-awake-to').getAttribute('aria-invalid'), saved: window.__board21.state.settings.awakeTo }));
-    ok(bad.saved === '07:00' && bad.invalid === 'true' && bad.focus === 'set-awake-to', 'To 7:00 (before From): kept, marked as not right, and the time box stays under the finger');
-    ok((await W(page)).held === 0 && await status(page) === '(warn) Not on: “To” needs to be later than “From”.', `nothing is kept on, and Settings says why (${await status(page)})`);
-    await page.fill('#set-awake-to', '16:00'); await page.waitForTimeout(300);
-    ok((await W(page)).held === 1 && /until 4:00 PM/.test(await status(page)), 'To 4:00 PM: kept on again, until 4:00 PM');
-    // Typed with a keyboard (a Chromebook in laptop mode): Chrome sends a change as each part of the time is typed, as
-    // it moves on to the next part (when the box doesn't have the focus for a moment). The rest still goes in the box.
-    const typed = async (id, keys) => {
-      await page.focus('#' + id);   // (the hour part)
-      await page.keyboard.type(keys, { delay: 60 }); await page.waitForTimeout(300);
-      return page.evaluate(id => ({ box: document.getElementById(id).value, saved: window.__board21.state.settings[id === 'set-awake-from' ? 'awakeFrom' : 'awakeTo'], focus: document.activeElement.id }), id);
-    };
-    const from8 = await typed('set-awake-from', '800A'), to250 = await typed('set-awake-to', '250P');
-    ok(from8.saved === '08:00' && from8.box === '08:00' && from8.focus === 'set-awake-from' && to250.saved === '14:50' && to250.box === '14:50' && to250.focus === 'set-awake-to',
-      `typed with a keyboard: From “800A” is 8:00 AM, To “250P” is 2:50 PM, and the box keeps the focus (${JSON.stringify(from8)}, ${JSON.stringify(to250)})`);
-    ok((await W(page)).held === 1 && /until 2:50 PM/.test(await status(page)), `and the screen is kept on until 2:50 PM (${await status(page)})`);
-    await page.fill('#set-awake-from', ''); await page.waitForTimeout(200);
-    ok(await page.evaluate(() => window.__board21.state.settings.awakeFrom) === '08:00', 'a time box emptied halfway keeps the time it had');
-    await page.click('#settings [data-close]'); await page.waitForTimeout(200);
-    await page.reload(); await boardUp(page); await page.waitForTimeout(300);
-    ok((await W(page)).held === 1 && await page.evaluate(() => { const s = window.__board21.state.settings; return s.awake === 'hours' && s.awakeFrom === '08:00' && s.awakeTo === '14:50'; }), 'school hours are remembered after a reload');
+    // Kiosk mode: no one is signed in, so there's no account to make less secure: no warning.
+    ({ ctx, page } = await fresh('ok', { kiosk: true }));
+    await settings(page);
+    await page.click('#settings [data-act="awake"]'); await page.waitForTimeout(300);
+    r = await row(page);
+    ok(r.on && !r.warn && !r.status && (await W(page)).held === 1, 'in kiosk mode it keeps the screen on with no warning (no one is signed in)');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -7566,12 +7698,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     c = await cornerClock(page);
     ok(light === 'rgba(255, 255, 255, 0.95)' && c.bg === 'rgba(30, 30, 30, 0.95)' && c.color === 'rgb(249, 250, 251)', `drawn like the ▦ button, light and dark (${light} → ${c.bg})`);
     await page.click('#settings [data-act="theme"][data-val="light"]'); await page.waitForTimeout(200);
-    // Settings → Widget Picker → Show controls in.
+    // Settings → Advanced → Widget Picker: Both corners, Left or Right (Settings moves to that side, Advanced still open).
+    await openSettings(page, ['advanced']);
     const side = async () => { const k = await cornerClock(page), b = await page.evaluate(s => { const r = document.querySelector('.picker-btn.' + s).getBoundingClientRect(); return { left: r.left, right: r.right }; }, k.side);
       return k.side + (k.side === 'left' ? (k.r.left >= b.right && k.r.left - b.right < 12 ? ' beside ▦' : ' away from ▦') : (k.r.right <= b.left && b.left - k.r.right < 12 ? ' beside ▦' : ' away from ▦')); };
     const corners = [];
     for (const v of ['left', 'right', 'both']) { await page.click(`#settings [data-act="corners"][data-val="${v}"]`); await page.waitForTimeout(400); corners.push(`${v}: ${await side()}`); }
-    ok(corners.join('; ') === 'left: left beside ▦; right: right beside ▦; both: right beside ▦', `it follows “Show controls in” (${corners.join('; ')})`);
+    ok(corners.join('; ') === 'left: left beside ▦; right: right beside ▦; both: right beside ▦', `it follows Settings → Advanced → Widget Picker (${corners.join('; ')})`);
     // Pages: on every page.
     await page.keyboard.press('Escape');
     await page.evaluate(() => window.__board21.pages.add && window.__board21.pages.add());
@@ -7745,8 +7878,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(300);
       const m = await page.evaluate(() => window.__clockRoom()); rooms.push(`opened in ${key}: ${m.room}/${m.real}`);
     }
-    await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300);
-    await page.evaluate(() => document.fonts.ready);   // (Settings shows each choice in its own letters: all loaded now)
+    await openSettings(page, ['letters']);
+    await page.evaluate(() => document.fonts.ready);   // (Settings shows each choice in its own letters, once Letters is open: all loaded now)
     for (const key of ['standard', 'legible', 'early', 'standard']) {
       // (Read in the same task as the tap: before anything else gets the chance to measure again.)
       const m = await page.evaluate(key => { document.querySelector(`#settings [data-act="letters"][data-val="${key}"]`).click(); return window.__clockRoom(); }, key);
@@ -7788,7 +7921,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(/^system-ui,/.test(await widgetFont(page, 'task-timer:1')), `Task Timer follows --b21-font too (${await widgetFont(page, 'task-timer:1')})`);
     ok(!asked.some(u => u.includes('/fonts/')), 'no font file is fetched while the letters are Standard');
 
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
+    await openSettings(page, ['letters']);
     const opts = await page.$$eval('#settings .letter-opt', els => els.map(e => ({ val: e.dataset.val, on: e.getAttribute('aria-checked'), font: getComputedStyle(e).fontFamily, text: e.textContent })));
     ok(opts.length === 3 && opts.map(o => o.val).join() === 'standard,legible,early' && opts[0].on === 'true' && opts.slice(1).every(o => o.on === 'false'),
       `Settings → Appearance → Letters: Standard, Easier to read, Early readers; Standard is chosen (${opts.map(o => o.val + ':' + o.on).join(' ')})`);
@@ -7838,7 +7971,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await page.evaluate(() => window.__board21.state.settings.letters) === 'early' && (await font(page, 'body')).startsWith('"21Board Early Readers"') && (await widgetFont(page, 'clock:1')).startsWith('"21Board Early Readers"'),
       'a reload keeps the letters (21Board and widgets)');
     // Standard again: everything as it was.
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await openSettings(page, ['letters']);
     await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.waitForTimeout(800);
     ok(await page.evaluate(() => document.body.style.fontFamily) === '' && await font(page, 'body') === SYSTEM && await widgetFont(page, 'clock:1') === SYSTEM && await eventually(async () => await font(tab2, 'body') === SYSTEM),
       'Standard puts the device’s own font back everywhere (both tabs)');
@@ -7872,7 +8005,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await op.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 });
     ok(await eventually(async () => { const c = await op.evaluate(async () => { const k = (await caches.keys()).filter(n => n.startsWith('21board-')); const c = await caches.open(k[0]); return (await c.keys()).map(r => new URL(r.url).pathname); }); return shipped.every(f => c.includes('/__site/letters/' + f)); }, 15000),
       'a device saves the fonts with the rest of its offline copy');
-    await op.click('.picker-btn.left'); await op.click('[data-ctl="settings"]'); await op.waitForTimeout(300);
+    await openSettings(op, ['letters']);
     await op.click('#settings [data-act="letters"][data-val="legible"]'); await op.waitForTimeout(500);
     await off.setOffline(true);
     await op.reload(); await boardUp(op);
@@ -7922,7 +8055,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       c.fillText = function () { window.__drawn.push({ font: c.font, at: performance.now() }); return fill.apply(this, arguments); };
       document.fonts.addEventListener('loadingdone', () => { window.__fontsIn = performance.now(); });
     });
-    await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
+    await openSettings(page, ['letters']);
     for (const key of ['legible', 'early', 'standard', 'legible']) {
       await page.click(`#settings [data-act="letters"][data-val="${key}"]`);
       await page.waitForTimeout(400);
@@ -7961,7 +8094,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await cw.evaluate(() => { window.__heard = []; const at = () => Math.round(performance.now());
       Board21.on('resize', () => window.__heard.push(['Board21 resize', at()]));
       document.fonts.addEventListener('loadingdone', () => window.__heard.push(['font loaded', at()])); });
-    await sp.click('.picker-btn.left'); await sp.click('[data-ctl="settings"]');
+    await openSettings(sp, ['letters']);
     await sp.click('#settings [data-act="letters"][data-val="legible"]');
     await eventually(async () => (await cw.evaluate(() => window.__heard)).some(h => h[0] === 'font loaded'));
     await sp.waitForTimeout(400);

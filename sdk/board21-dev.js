@@ -254,7 +254,7 @@
         '<button data-act="reload">Reload the widget</button>' +
         '<button data-act="reset">Reset the window (default size, no data)</button>' +
         '<button data-act="open2">Open another copy (instance 2)</button>' +
-        '<button data-act="shape">Board shape: any shape / 16:9</button>' +
+        '<button data-act="shape">Board shape: Fill / Widescreen</button>' +
         '<hr>' +
         '<button data-act="bare">Show the widget on its own</button>' +
         '<button data-act="copy21">Copy for 21Board (HTML + registry entry)</button>' +

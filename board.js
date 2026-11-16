@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.14-1';
-  const BOARD_BUILD = '63c74017';
+  const BOARD_VERSION = '2026.11.16-1';
+  const BOARD_BUILD = '8f2b22e2';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -91,7 +91,7 @@
   };
 
   const DEFAULT_SETTINGS = {
-    theme: 'light',          // 'light' | 'dark' | 'system'
+    theme: 'system',         // 'light' | 'dark' | 'system' (Auto: the device's own; devices from before keep what they had)
     snapping: true,          // snap + resist overlap while dragging
     resistance: 'normal',    // 'gentle' | 'normal' | 'strong'
     pickerCorners: 'both',   // 'both' | 'left' | 'right'
@@ -110,9 +110,7 @@
     // Classroom features (this device only: never exported or sent to the Drive folder). See section 12b.
     locked: false,           // Lock windows in place
 
-    awake: 'off',            // Keep the screen on: 'off' | 'on' (while 21Board shows) | 'hours' (school hours only)
-    awakeFrom: '07:30',      //   school hours start (HH:MM, this device's time)
-    awakeTo: '15:30',        //   school hours end
+    awake: 'off',            // Stay awake: 'off' | 'on' (while 21Board shows). An older 'hours' (school hours) reads as 'on'.
 
     clock: 'date',           // Clock in the corner: 'off' | 'time' | 'date' (time and date, the default)
 
@@ -162,14 +160,22 @@
   }
 
   // Board background colors (Settings shows them in two rows) and patterns (.pattern-<id> in index.html).
-  const BG_LIGHT = [['#ffffff', 'White'], ['#faf7f0', 'Paper'], ['#e0f2fe', 'Sky'], ['#dcfce7', 'Mint'], ['#fce7f3', 'Blush'], ['#ede9fe', 'Lavender'], ['#fef3c7', 'Sand']];
+  const BG_LIGHT = [['#ffffff', 'White'], ['#f3ede1', 'Paper'], ['#e0f2fe', 'Sky'], ['#dcfce7', 'Mint'], ['#fce7f3', 'Blush'], ['#ede9fe', 'Lavender']];
   const BG_DARK = [['#334155', 'Slate'], ['#1f3a2c', 'Chalkboard'], ['#1e293b', 'Navy'], ['#0a0a0a', 'Black']];
   const BG_SWATCHES = BG_LIGHT.concat(BG_DARK);
+  // The old Paper (#faf7f0) and Sand (#fef3c7) are now one Paper, a little darker than the old one: a board that has
+  // either reads as the new Paper (where its record is applied, and where a file is read). Any other color is kept.
+  const BG_RENAMED = { '#faf7f0': '#f3ede1', '#fef3c7': '#f3ede1' };
+  const bgColor = c => (/^#[0-9a-f]{6}$/i.test(c || '') ? BG_RENAMED[c.toLowerCase()] || c : null);
+  // Patterns (removed from Settings 2026-11-16; uncomment the parts marked "Patterns" to bring them back). A board
+  // still keeps its background.pattern: it is read, checked, saved, exported and imported as before, so turning
+  // them back on brings back each board's choice, and an older 21Board keeps showing it. They just aren't drawn.
   // Handwriting and Graph paper came later: an older 21Board shows no pattern for them (and an import there makes it "none").
   const PATTERNS = [['none', 'None'], ['dots', 'Dots'], ['grid', 'Grid'], ['lines', 'Lines'], ['handwriting', 'Handwriting'], ['graph', 'Graph paper']];
   const PATTERN_IDS = PATTERNS.map(p => p[0]);
   const bgColorName = c => !c ? 'Matches the theme' : (BG_SWATCHES.find(([h]) => h === c) || [0, 'Custom color'])[1];
-  // Pattern lines and the hint's text, in shades that suit the board color (light, dark, or the theme's).
+  // The hint's text and the shaded margins, in shades that suit the board color (light, dark, or the theme's), and
+  // the pattern lines (pattern, strong: for the patterns, not drawn for now).
   function bgInk(color) {
     const dark = color ? luminance(color) < 0.3 : resolvedTheme() === 'dark';
     return dark ? { dark, pattern: 'rgba(255,255,255,0.11)', strong: 'rgba(255,255,255,0.24)', hint: 'rgba(255,255,255,0.7)', margin: 'rgba(255,255,255,0.05)' }
@@ -337,7 +343,7 @@
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 
   // ---------------------------------------------------------------------
-  // Test widgets uploaded as a file (Settings → Developer mode → Test a widget → Upload file…). The browser
+  // Test widgets uploaded as a file (Settings → Advanced → Developer mode → Test a widget → Upload file…). The browser
   // won't let a page from the web load a file:/// address, so the file's text is read and kept on this device
   // in a record of its own (devfile:<id>). Its window shows it sealed off from the board (SEALED_SANDBOX: it
   // can't reach the board's page, its storage, the Drive folder or other boards), with a Content Security
@@ -984,6 +990,10 @@
         // again. Their windows are kept like any window whose widget isn't in the catalog: not shown, and listed in
         // Settings as Widget not installed, to delete.
         delete S.settings.devWidgets;
+        // Stay awake (section 12b) used to have school hours: 'hours' with a From and To. Now it's on or off, and a
+        // device that kept the screen on in school hours keeps it on (the teacher wanted it awake in class).
+        if (S.settings.awake === 'hours') S.settings.awake = 'on';
+        delete S.settings.awakeFrom; delete S.settings.awakeTo;
         applySettings();
         break;
       case 'board':
@@ -992,6 +1002,7 @@
         S.board = Object.assign(defaultBoard(S.boardId), value || {});
         S.board.layout = validLayout(S.board.layout);
         S.board.background = Object.assign({ color: null, pattern: 'none' }, (value && value.background) || {});
+        S.board.background.color = bgColor(S.board.background.color);   // (the old Paper and Sand: the new Paper)
         delete S.board.background.image;
         applyBoard();
         break;
@@ -1104,11 +1115,12 @@
     const bg = S.board.background || {};
     const desk = $('#desk');
     desk.style.backgroundColor = bg.color || '';
-    PATTERN_IDS.forEach(p => desk.classList.remove('pattern-' + p));
-    if (bg.pattern !== 'none' && PATTERN_IDS.includes(bg.pattern)) desk.classList.add('pattern-' + bg.pattern);
+    // Patterns (removed 2026-11-16; uncomment to bring them back, with their CSS in index.html and Settings' tiles):
+    // PATTERN_IDS.forEach(p => desk.classList.remove('pattern-' + p));
+    // if (bg.pattern !== 'none' && PATTERN_IDS.includes(bg.pattern)) desk.classList.add('pattern-' + bg.pattern);
     const ink = bgInk(bg.color);
-    desk.style.setProperty('--pattern', ink.pattern);
-    desk.style.setProperty('--pattern-strong', ink.strong);
+    // desk.style.setProperty('--pattern', ink.pattern);
+    // desk.style.setProperty('--pattern-strong', ink.strong);
     desk.style.setProperty('--hint', ink.hint);
     desk.style.setProperty('--margin-shade', ink.margin);
     const meta = $('meta[name="theme-color"]');
@@ -1149,16 +1161,17 @@
       this.src = m.data; this.url = URL.createObjectURL(blob);
       return this.url;
     },
+    renders: 0,
     async render() {
       const el = this.el();
       if (!el) return;
-      const im = this.settings(), m = this.media();
+      const n = ++this.renders, im = this.settings(), m = this.media();
       const show = !!(im && im.on && m);
       document.body.classList.toggle('has-photo', show);
       if (!show) { el.hidden = true; el.style.backgroundImage = ''; return; }
       let url;
       try { url = await this.objectUrl(m); } catch (e) { el.hidden = true; return; }
-      if (this.media() !== m) return;   // changed while loading; the newer render wins
+      if (n !== this.renders) return;   // changed while loading (another photo, or hidden): the newer render wins
       el.style.backgroundImage = `url("${url}")`;
       el.style.backgroundSize = im.fit === 'whole' ? 'contain' : 'cover';
       el.style.backgroundPosition = photoPosition(im);
@@ -1272,10 +1285,10 @@
   // Window rects are stored in "layout space": the CSS px a window's widget sees. Drawing converts
   // layout space to the screen with one zoom factor (Win.applyRect and Inter.step use Zoom).
   //
-  //   16:9 board (default, board.shape '16:9'): layout space is a fixed 16:9 board of
+  //   Widescreen, a 16:9 board (default, board.shape '16:9'): layout space is a fixed 16:9 board of
   //     BASE_W/scale × BASE_H/scale, drawn as large as fits the screen (centered left-right, top
   //     aligned; the rest of the screen is lightly shaded). Every screen shows the same arrangement.
-  //   Any shape (board.shape 'free'): the board is the whole screen at the board's scale
+  //   Fill (board.shape 'free'; Settings → Appearance → Board shape): the board is the whole screen at the board's scale
   //     (zoom = scale). Windows that don't fit a smaller screen are moved inside when drawn.
   //
   // board.scale (default 80%) is how big windows, title bars and menus are, as on a 1920 × 1080 screen
@@ -1402,7 +1415,7 @@
     hidden: (() => { try { return sessionStorage.getItem('21board-shape-hint') === 'hidden'; } catch (e) { return false; } })(),
     init() {
       this.el = $('#shape-hint');
-      this.el.innerHTML = '<div class="msg"><b>This board keeps a<br>standard widescreen shape.</b>Do you want it to work<br>in any shape?</div>' +
+      this.el.innerHTML = '<div class="msg"><b>This board keeps a<br>standard widescreen shape.</b>Do you want it to fill<br>the whole window?</div>' +
         '<div class="acts"><button class="btn primary small" data-act="unlock">Use the whole window</button></div>' +
         `<button class="hide" data-act="hide" aria-label="Hide this tip" title="Hide">${svg('close')}</button>`;
       this.el.addEventListener('click', e => {
@@ -1411,7 +1424,7 @@
         if (b.dataset.act === 'unlock') {
           if (!setBoardShape('free')) return;   // refused (someone is moving a window); it said why
           if (Settings.isOpen) Settings.render();
-          toast('The board now fills the window. Settings → Windows → Board shape changes it back.');
+          toast('The board now fills the window. Settings → Appearance → Board shape → Widescreen changes it back.');
         }
         else { this.hidden = true; try { sessionStorage.setItem('21board-shape-hint', 'hidden'); } catch (err) { /* private mode */ } }
         this.update();
@@ -1472,21 +1485,20 @@
     return { convert, view, scale: sc, shape, layout: canvasFor(sc) };
   }
 
-  // Settings → Windows: scale and board shape.
-  function scaleSettingsRows(seg) {
-    const sc = boardScale(), i = SCALES.findIndex(x => Math.abs(x - sc) < 0.001);
-    const L = canvas(), bw = L.w * Zoom.s, bh = L.h * Zoom.s;
-    const unused = Zoom.vw ? 1 - (bw * bh) / (Zoom.vw * Zoom.vh) : 0;
-    const shapeHint = freeShape()
-      ? 'Any shape: the board fills the window. On a smaller screen, windows are moved to fit.'
-      : '16:9: every screen shows the same arrangement, fitted to the window.' + (unused > 0.15 ? ' This window is a different shape, so part of it is shaded.' : '');
-    return `<div class="row"><div><div class="lbl">Size of windows and menus</div><div class="hint">Title bars, menus and widget contents. Windows keep their place on the board.</div></div>
+  // Settings → Advanced → Size of windows and menus, and Settings → Appearance → Board shape (both saved with the page).
+  function scaleSettingsRow() {
+    const sc = boardScale();
+    return `<div class="row"><div><div class="lbl">Size of windows and menus</div><div class="hint">This page only.</div></div>
         <div class="stepper" role="group" aria-label="Size of windows and menus">
           <button class="icon" data-act="scale-down" aria-label="Smaller"${sc <= SCALES[0] + 0.001 ? ' disabled' : ''}>−</button>
           <output id="st-scale" aria-live="polite">${Math.round(sc * 100)}%</output>
           <button class="icon" data-act="scale-up" aria-label="Larger"${sc >= SCALES[SCALES.length - 1] - 0.001 ? ' disabled' : ''}>+</button>
-        </div></div>
-      <div class="row stack"><div><div class="lbl">Board shape</div><div class="hint">${esc(shapeHint)}</div></div>${seg('shape', freeShape() ? 'free' : '16:9', [['16:9', '16:9'], ['free', 'Any shape']])}</div>`;
+        </div></div>`;
+  }
+  // Widescreen (16:9) or Fill (the whole window). The hint is the chosen one's.
+  function shapeSettingsRow(seg) {
+    const hint = freeShape() ? 'Uses the whole window.' : 'Looks the same on every screen.';
+    return `<div class="row"><div><div class="lbl">Board shape</div><div class="hint">${hint} This page only.</div></div>${seg('shape', freeShape() ? 'free' : '16:9', [['16:9', 'Widescreen'], ['free', 'Fill']])}</div>`;
   }
   function scaleStep(dir) {
     const sc = boardScale();
@@ -2455,7 +2467,7 @@
   // - A press claims nothing until it moves, so a finger resting in a widget
   //   never blocks someone else from moving or resizing that window.
   // Widgets are same-origin, so the board listens inside each iframe; nothing
-  // here is needed from the widget. Settings → Windows can switch it off.
+  // here is needed from the widget. Settings → Advanced → Drag windows from inside can switch it off.
   // =====================================================================
   const TWO_FINGER_SPAN = 260;                              // farther apart than this = two people
 
@@ -3113,7 +3125,7 @@
       return S.boardId === b;
     },
     async leave() {
-      // (A field being typed in, such as this page's name in Settings, is saved first, to this page.)
+      // (A field being typed in, such as this device's name in Settings, is saved first.)
       const typing = document.activeElement;
       if (typing && typing.matches('input, textarea, select')) typing.blur();
       Menu.close(); this.closeMenu(); Settings.close(); HistorySheet.close();
@@ -3406,14 +3418,26 @@
   // =====================================================================
   // 12. Settings
   // =====================================================================
-  // Settings → Appearance → Background: a preview shaped like the board, then Color, Pattern and Photo. It's this
-  // board's background (board.background, and its photo in media:<b>:background*).
+  // One sheet, opened from the gear in either Widget Picker, on that side. Top to bottom:
+  //   (banners: a save problem, a new version ready)
+  //   Classroom    Lock windows in place, Go back to an earlier version, Close all windows, Stay awake
+  //   This page    Saved widgets ▸
+  //   Appearance   Theme, Accent color, Letters ▸, Clock in the corner, Background ▸, Board shape
+  //   Board Sync   (Chrome and Edge: section 13b) Send this board, Send automatically, Boards from other devices ▸,
+  //                Folder settings ▸
+  //   Advanced ▸   Widget Picker, Size of windows and menus, moving windows, board history, backups and storage,
+  //                Developer mode, About
+  // ▸ is a group shown as one row with its value, that opens in place (settingsGroup; Settings.groups). A group that
+  // is closed is still in the page, hidden, so whatever looks for its parts (refreshStatus, the clock's fit note)
+  // finds them.
+  // Settings → Appearance → Background: one row of choices (the theme's, colors, Custom…, the photo). It's this
+  // page's background (board.background, and its photo in media:<b>:background*).
   // =====================================================================
-  // 12b. Classroom features: lock windows, keep the screen on, clock in the corner, letters
+  // 12b. Classroom features: lock windows, stay awake, clock in the corner, letters
   // ---------------------------------------------------------------------
   // Each feature keeps its code in its own part below and is wired in through these hooks:
-  // applySettings() calls applyClassroom(); Settings.render shows the rows; Settings.act and its change
-  // listener pass actions on. All four settings belong to this device (DEFAULT_SETTINGS, "Classroom features").
+  // applySettings() calls applyClassroom(); Settings.render shows the rows; Settings.act passes actions on.
+  // All four settings belong to this device (DEFAULT_SETTINGS, "Classroom features").
 
   function applyClassroom() {
     applyLock();
@@ -3422,17 +3446,14 @@
     applyClock();
   }
 
+  // Settings → Classroom: lock, go back (board history, section 13c), close all, stay awake.
   function classroomSettings(sw, seg) {
-    const rows = lockSettings(sw, seg) + awakeSettings(sw, seg);
+    const rows = lockSettings(sw, seg) + historyOpenRow() + closeAllRow() + awakeSettings(sw, seg);
     return rows ? `<h3>Classroom</h3>${rows}` : '';
   }
 
   function classroomAct(act, val) {
     return lockAct(act, val) || awakeAct(act, val) || clockAct(act, val) || letterAct(act, val);
-  }
-
-  function classroomChange(el) {
-    awakeChange(el);
   }
 
   // ---- Lock windows in place
@@ -3499,8 +3520,8 @@
       this.letting = false;
     },
     // Settings, while open: the switch and Close all, in place. Settings isn't drawn again while someone is in one of
-    // its text or time boxes (Settings.render), but the lock can change meanwhile: ▦ held with a finger (which leaves
-    // the focus in the box until it lets go), or another tab. Tapped, a switch showing the wrong state would do the
+    // its text boxes (Settings.render), but the lock can change meanwhile: ▦ held with a finger (which leaves the
+    // focus in the box until it lets go), or another tab. Tapped, a switch showing the wrong state would do the
     // opposite of what it shows.
     paint() {
       if (!Settings.isOpen) return;
@@ -3619,12 +3640,15 @@
 
   function lockSettings(sw) {
     if (LAB) return '';   // (the widget dev window: one widget, whose window its developer moves and resizes)
-    return `<div class="row"><div><div class="lbl">Lock windows in place</div><div class="hint">Widgets still work, but windows can’t be moved, resized, closed or added from the board until you turn this off or hold ${LOCK_KEY} for 2 seconds.</div></div>${sw('lock-windows', Lock.on(), 'Lock windows in place')}</div>`;
+    return `<div class="row"><div><div class="lbl">Lock windows in place</div><div class="hint">Widgets still work. To unlock, hold ${LOCK_KEY} for 2 seconds.</div></div>${sw('lock-windows', Lock.on(), 'Lock windows in place')}</div>`;
   }
 
-  // Settings → Close all: off while the windows are locked, saying why (Settings.render, Lock.paint).
+  // Settings → Classroom → Close all: off while the windows are locked, saying why (Settings.render, Lock.paint).
   function closeAllHint() {
-    return Lock.on() ? 'Windows are locked: turn off “Lock windows in place” first.' : SaveNote.state() ? 'Their content is kept while 21Board stays open.' : 'Content stays saved for next time.';
+    return Lock.on() ? 'Unlock windows first.' : SaveNote.state() ? 'On this page. Their content is kept while 21Board stays open.' : 'On this page. Their content is kept.';
+  }
+  function closeAllRow() {
+    return `<div class="row"><div><div class="lbl">Close all windows</div><div class="hint">${closeAllHint()}</div></div><button class="btn" data-act="close-all"${Lock.on() ? ' disabled' : ''}>${svg('windows')}Close all</button></div>`;
   }
 
   function lockAct(act) {
@@ -3633,20 +3657,18 @@
     return true;
   }
 
-  // ---- Keep the screen on
-  // Settings → Classroom → "Keep the screen on": Off, While 21Board is showing, or School hours (From–To, Monday to
-  // Friday, by this device's clock). A 20-minute reading timer or the day's schedule shouldn't vanish because a
-  // Chromebook dims, and teachers can't change a managed device's power settings. So 21Board asks the browser for a
-  // screen wake lock (navigator.wakeLock), which keeps the screen on while this page is on it. The browser lets the
-  // lock go whenever the page is hidden (another tab, the lid closed), so it is asked for again when 21Board shows
-  // again (visibilitychange, fullscreenchange), and every minute (the start and end of the school day, and a lock
-  // the device took back). Outside school hours, when turned off and in the widget dev window it is let go: a
-  // device left on overnight can sleep. It can't overrule IT's policy or a panel's own power settings, and some
-  // browsers can't do it at all: Settings says what is true right now (Awake.status).
-  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-  const minutesOf = t => +t.slice(0, 2) * 60 + +t.slice(3, 5);
-  // "7:30 AM" (this device's way of writing a time) for minutes after midnight.
-  const clockTime = m => new Date(2000, 0, 3, Math.floor(m / 60), m % 60).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  // ---- Stay awake
+  // Settings → Classroom → "Stay awake": a switch. A 20-minute reading timer or the day's schedule shouldn't vanish
+  // because a Chromebook dims, and teachers can't change a managed device's power settings. So, while it's on,
+  // 21Board asks the browser for a screen wake lock (navigator.wakeLock), which keeps the screen on while this page
+  // is on it. The browser lets the lock go whenever the page is hidden (another tab, the lid closed), so it is asked
+  // for again when 21Board shows again (visibilitychange, fullscreenchange), and every minute (a lock the device took
+  // back, or refused). Turned off, and in the widget dev window, it is let go. A screen that never sleeps never
+  // locks either, so a signed-in teacher's account stays open to whoever walks up: Settings says so while it's on
+  // (not in kiosk mode, where no one is signed in). It can't overrule IT's policy or a panel's own power settings,
+  // and some browsers can't do it at all: Settings says so, only when it isn't working (Awake.status).
+  // (There used to be a third choice, school hours: settings.awake 'hours' with awakeFrom/awakeTo. A device that
+  // had it reads it as on: see applyRecord.)
   const Awake = {
     lock: null,        // the WakeLockSentinel while the screen is kept on
     asking: false,     // a request is on its way
@@ -3654,29 +3676,19 @@
     timer: 0,
     listening: false,
     supported: () => !!(navigator.wakeLock && typeof navigator.wakeLock.request === 'function'),
-    mode: () => !LAB && (S.settings.awake === 'on' || S.settings.awake === 'hours') ? S.settings.awake : 'off',
-    // School hours in minutes after midnight, or null while "To" isn't later than "From".
-    hours() {
-      const t = k => minutesOf(HHMM.test(S.settings[k]) ? S.settings[k] : DEFAULT_SETTINGS[k]);
-      const from = t('awakeFrom'), to = t('awakeTo');
-      return to > from ? { from, to } : null;
-    },
-    inHours(d = new Date()) {
-      const h = this.hours(), m = d.getHours() * 60 + d.getMinutes(), day = d.getDay();
-      return !!h && day >= 1 && day <= 5 && m >= h.from && m < h.to;
-    },
-    wanted() { const m = this.mode(); return m === 'on' || (m === 'hours' && this.inHours()); },
+    mode: () => !LAB && S.settings.awake === 'on' ? 'on' : 'off',
+    wanted() { return this.mode() === 'on'; },
     check() {
       clearTimeout(this.timer);
-      if (!this.listening && this.mode() !== 'off') {
+      if (!this.listening && this.wanted()) {
         this.listening = true;
         const again = () => this.check();
         document.addEventListener('visibilitychange', again);
         document.addEventListener('fullscreenchange', again);
         document.addEventListener('webkitfullscreenchange', again);
       }
-      // Again on the next minute: the school day may start or end, or the device may have taken the lock back.
-      if (this.mode() !== 'off') this.timer = setTimeout(() => this.check(), 60000 - Date.now() % 60000);
+      // Again on the next minute: the device may have taken the lock back, or may allow it now.
+      if (this.wanted()) this.timer = setTimeout(() => this.check(), 60000 - Date.now() % 60000);
       const want = this.wanted() && document.visibilityState === 'visible';
       if (want && !this.lock && !this.asking && this.supported()) this.request();
       else if (!want && this.lock) this.release();
@@ -3700,66 +3712,47 @@
     },
     release() { const l = this.lock; this.lock = null; this.drop(l); },
     drop(l) { try { Promise.resolve(l.release()).catch(() => {}); } catch (e) { /* gone already */ } },
-    // What is happening right now, for Settings: { dot: 'ok' | 'warn' | '', text }, or null (Off).
+    // For Settings, only when it isn't working: { dot: 'warn', text }, or null (off, on, or still being asked for).
     status() {
-      const m = this.mode(), h = this.hours();
       // (Browsers only offer it to pages served over https, or from this device: a school server on plain http gets none.)
       if (!this.supported()) return { dot: 'warn', text: window.isSecureContext === false ? 'Needs https to keep the screen on.' : 'This browser can’t keep the screen on.' };
-      if (m === 'off') return null;
-      if (m === 'hours' && !h) return { dot: 'warn', text: 'Not on: “To” needs to be later than “From”.' };
-      if (m === 'hours' && !this.inHours()) return { dot: '', text: `Not now: outside school hours (${clockTime(h.from)}–${clockTime(h.to)}, Mon–Fri).` };
-      if (this.lock) return { dot: 'ok', text: m === 'on' ? 'The screen stays on while 21Board is showing.' : `The screen stays on until ${clockTime(h.to)}, while 21Board is showing.` };
-      if (this.refused) return { dot: 'warn', text: 'The device didn’t allow it. Its settings, or your school’s IT, may turn this off.' };
-      return { dot: '', text: 'Turning on…' };
+      if (this.mode() === 'off' || this.lock) return null;
+      if (this.refused) return { dot: 'warn', text: 'This device didn’t allow it. Its settings or your school’s IT may block it.' };
+      return null;
     },
     statusHTML() { const s = this.status(); return s ? `<span class="status-dot ${s.dot}"></span>${esc(s.text)}` : ''; },
-    // Settings, while open: the status line and the "To" box, in place (not drawn again: a finger may be in a time box).
+    // Settings, while open: the status line, in place (Settings isn't drawn again for it).
     paint() {
       if (!Settings.isOpen) return;
-      const line = $('#set-awake-status', Settings.body), to = $('#set-awake-to', Settings.body);
+      const line = $('#set-awake-status', Settings.body);
       const html = this.statusHTML();   // (only when it changes: a screen reader reads the line out again)
       if (line && line.innerHTML !== html) { line.innerHTML = html; line.hidden = !html; }
-      if (to) to.setAttribute('aria-invalid', String(!this.hours()));
     }
   };
 
   function applyAwake() { Awake.check(); }
 
-  function awakeSettings(sw, seg) {
+  function awakeSettings(sw) {
     if (LAB) return '';
-    const st = S.settings, mode = Awake.mode(), status = Awake.statusHTML();
-    const time = (id, key, label) => `<label class="awake-time"><span>${label}</span><input type="time" class="text-input" id="${id}" value="${esc(HHMM.test(st[key]) ? st[key] : DEFAULT_SETTINGS[key])}" required${key === 'awakeTo' && !Awake.hours() ? ' aria-invalid="true"' : ''}></label>`;
-    return `<div class="row stack awake-row"><div><div class="lbl">Keep the screen on</div><div class="hint">Stops this device from dimming and going to sleep while 21Board is showing. With school hours, it can sleep at night and on weekends.</div></div>
-      ${seg('awake', mode, [['off', 'Off'], ['on', 'While 21Board is showing'], ['hours', 'School hours']], !Awake.supported())}
-      ${mode === 'hours' ? `<div class="awake-hours">${time('set-awake-from', 'awakeFrom', 'From')}${time('set-awake-to', 'awakeTo', 'To')}</div>
-      <div class="hint">School days, Monday to Friday, by this device’s clock.</div>` : ''}
-      <div class="awake-status" id="set-awake-status" aria-live="polite"${status ? '' : ' hidden'}>${status}</div></div>`;
+    const on = Awake.mode() === 'on', ok = Awake.supported(), status = Awake.statusHTML();
+    return `<div class="row awake-row"><div><div class="lbl">Stay awake</div>
+        ${on && ok && !KIOSK ? '<div class="hint warn-line" id="set-awake-warn"><span class="status-dot warn"></span>This makes your account less secure.</div>' : ''}
+        <div class="hint awake-status" id="set-awake-status" aria-live="polite"${status ? '' : ' hidden'}>${status}</div></div>
+      ${sw('awake', on, 'Stay awake', !ok)}</div>`;
   }
 
-  function awakeAct(act, val) {
-    if (act !== 'awake') return false;
-    if (['off', 'on', 'hours'].includes(val)) updateSettings({ awake: val });
+  function awakeAct(act) {
+    if (act !== 'awake' || LAB) return false;
+    if (Awake.supported()) updateSettings({ awake: Awake.mode() === 'on' ? 'off' : 'on' });
     return true;
-  }
-
-  // A time box: kept as soon as it holds a whole time, without drawing Settings again (Settings.keep), so the
-  // teacher stays in the box: Awake.paint says what changed. (Typing with a keyboard, Chrome sends this change as
-  // it moves on to the next part of the time, while the box doesn't have the focus, so Settings.render's own
-  // "not under a time box" rule can't tell.)
-  function awakeChange(el) {
-    const key = { 'set-awake-from': 'awakeFrom', 'set-awake-to': 'awakeTo' }[el.id];
-    if (!key || !HHMM.test(el.value) || el.value === S.settings[key]) return;   // (a box emptied halfway keeps the time it had)
-    Settings.keep = true;
-    try { updateSettings({ [key]: el.value }); } finally { Settings.keep = false; }
-    Awake.paint();
   }
 
   // ---- Clock in the corner
   // Settings → Appearance → "Clock in the corner": Off, Time or Time and date (the default). A small clock beside a
   // Widget Picker button, on every board and page, without taking a window: teachers and students check the time all
   // day, a Clock window would have to be on every page, and in fullscreen the device's own clock is hidden.
-  // Where: on the inner side of the ▦ button in the bottom right corner, or of the only one when Settings → Widget
-  // Picker shows the controls in one corner. Bottom right is where Chromebooks (and Windows) show the time, so it's
+  // Where: on the inner side of the ▦ button in the bottom right corner, or of the only one when Settings → Advanced
+  // → Widget Picker shows the controls in one corner. Bottom right is where Chromebooks (and Windows) show the time, so it's
   // where people already look for it. Drawn like ▦ and as tall, at the board's size (--ui, like the other chrome).
   // It never covers anything: taps go through it to the windows under it (pointer-events: none); toasts keep clear
   // of it (body.clock-on in index.html); it hides while its corner's Widget Picker is open or the other corner's
@@ -3898,12 +3891,11 @@
     Promise.resolve().then(() => { cornersDue = false; for (const w of S.wins.values()) if (w.inst && w.inst.maximized) w.notifyInfo(); });
   }
 
+  // (No hint: the clock shows the moment it's chosen. Only what doesn't fit right now is said, by CornerClock.place.)
   function clockSettings(sw, seg) {
     if (LAB) return '';
-    const st = S.settings, mode = clockMode();
-    const where = st.pickerCorners === 'left' ? 'bottom left' : 'bottom right';
-    return `<div class="row stack"><div><div class="lbl">Clock in the corner</div><div class="hint">A small clock beside the Widget Picker button in the ${where} corner, on every page. <span id="set-clock-fit">${esc(CornerClock.fitNote())}</span></div></div>
-      ${seg('clock', mode, [['off', 'Off'], ['time', 'Time'], ['date', 'Time and date']])}</div>`;
+    return `<div class="row"><div><div class="lbl">Clock in the corner</div><div class="hint" id="set-clock-fit">${esc(CornerClock.fitNote())}</div></div>
+      ${seg('clock', clockMode(), [['off', 'Off'], ['time', 'Time'], ['date', 'Time and date']])}</div>`;
   }
 
   function clockAct(act, val) {
@@ -3973,8 +3965,8 @@
         `<span class="txt"><b>${esc(l.name)}</b><small>${esc(l.hint)}</small></span><span class="sample" aria-hidden="true">${LETTER_SAMPLE}</span>` +
         (on ? `<span class="tick" aria-hidden="true">${svg('check')}</span>` : '') + '</button>';
     };
-    return `<div class="row stack"><div><div class="lbl">Letters</div><div class="hint">The letters in 21Board and its widgets, on this device.</div></div>
-          <div class="letter-opts" role="radiogroup" aria-label="Letters">${Object.keys(LETTERS).map(opt).join('')}</div></div>`;
+    // (A group: one row showing the choice, that opens to the three cards.)
+    return settingsGroup('letters', 'Letters', esc(LETTERS[cur].name), `<div class="letter-opts" role="radiogroup" aria-label="Letters">${Object.keys(LETTERS).map(opt).join('')}</div>`);
   }
 
   function letterAct(act, val) {
@@ -3985,56 +3977,75 @@
 
   // ---- (end of section 12b)
 
-  function backgroundSettings(sw, seg) {
+  // Settings' controls: a segmented choice (radio buttons) and an on/off switch.
+  const segHTML = (act, cur, opts, disabled) => `<div class="seg${disabled ? ' disabled' : ''}" role="radiogroup">${opts.map(([v, l]) =>
+    `<button role="radio" aria-checked="${v === cur}" data-act="${act}" data-val="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('')}</div>`;
+  const switchHTML = (act, on, label, disabled) => `<button class="switch${on ? ' on' : ''}" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}"${disabled ? ' disabled' : ''}></button>`;
+
+  // A group in Settings: one row (a button) with its name and what it's set to, that opens the group in place, below
+  // it. Which groups are open is Settings.groups: it lasts while Settings stays open (Settings is drawn again on every
+  // change), and every group starts closed each time Settings opens. A closed group is still in the page, hidden.
+  // opts: sub (a grey line under the name), preview (HTML before the value), valueId, warn (an amber dot, shown while
+  // true: something inside needs a look), inset (drawn indented, with a line beside it).
+  function settingsGroup(key, label, value, content, opts = {}) {
+    const open = Settings.groups.has(key), id = 'grp-' + key;
+    return `<button class="row disc" data-act="group" data-val="${key}" aria-expanded="${open}" aria-controls="${id}">` +
+      `<span class="txt"><span class="lbl">${label}</span>${opts.sub ? `<span class="hint">${opts.sub}</span>` : ''}</span>` +
+      `<span class="val">${'warn' in opts ? `<span class="status-dot warn" id="${id}-warn" role="img" aria-label="(needs a look)"${opts.warn ? '' : ' hidden'}></span>` : ''}${opts.preview || ''}` +
+      `${value ? `<span class="v"${opts.valueId ? ` id="${opts.valueId}"` : ''}>${value}</span>` : ''}<span class="chev" aria-hidden="true">${svg('chevRight')}</span></span></button>` +
+      `<div class="drawer${opts.inset ? ' inset' : ''}" id="${id}" role="group" aria-label="${label}"${open ? '' : ' hidden'}>${content}</div>`;
+  }
+
+  // Settings → Appearance → Background: a group whose row shows a small preview shaped like the board and what the
+  // background is. Open, it's one set of choices (one radio group): match the theme, the light colors, the dark
+  // colors, Custom…, then the photo (Add photo… until there is one). Picking a color hides the photo, which is kept
+  // (BoardPhoto `on: false`); picking the photo shows it again, over the color picked last ("Whole photo" shows that
+  // color around it). While the photo is picked, its controls follow (photoRow).
+  function backgroundSettings() {
     const bg = S.board.background || {}, color = bg.color || null;
-    const pattern = PATTERN_IDS.includes(bg.pattern) ? bg.pattern : 'none';
     const isCustom = !!color && !BG_SWATCHES.some(([c]) => c === color);
-    const photoSet = BoardPhoto.settings(), m = BoardPhoto.media(), photoShown = !!(photoSet && photoSet.on && m);
-    const ink = bgInk(color), fill = color || 'var(--board-bg)';
-    const look = `background-color:${fill};--pattern:${ink.pattern};--pattern-strong:${ink.strong}`;
+    const m = BoardPhoto.media(), im = BoardPhoto.settings(), photoShown = !!(m && im && im.on);
     const tick = on => on ? `<span class="tick" aria-hidden="true">${svg('check')}</span>` : '';
-    const swatch = ([c, n]) => `<button class="swatch${color === c ? ' on' : ''}" style="background:${c}" role="radio" aria-checked="${color === c}" data-act="bg" data-val="${c}" title="${n}" aria-label="${n}">${tick(color === c)}</button>`;
+    const radio = on => `role="radio" aria-checked="${on}"`;
+    const swatch = ([c, n]) => { const on = !photoShown && color === c; return `<button class="swatch${on ? ' on' : ''}" style="background:${c}" ${radio(on)} data-act="bg" data-val="${c}" title="${n}" aria-label="${n}">${tick(on)}</button>`; };
+    const auto = !photoShown && !color, custom = !photoShown && isCustom;
     const sunMoon = '<svg viewBox="0 0 24 24" aria-hidden="true"><g stroke="#4b5563"><circle cx="7.6" cy="7.6" r="1.9"/><path d="M7.6 3.4v.7M7.6 11.1v.7M3.4 7.6h.7M11.1 7.6h.7M4.6 4.6l.5.5M10.1 10.1l.5.5M4.6 10.6l.5-.5M10.1 5.1l.5-.5"/></g>' +
       '<path stroke="#e5e7eb" transform="translate(11.2 11.2) scale(.36)" d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/></svg>';
     const ratio = freeShape() ? (Zoom.vw || 16) / (Zoom.vh || 9) : 16 / 9;
-    return `<div class="row stack bg-block" id="bg-block">
-      <div class="bg-top"><div><div class="lbl">Background</div><div class="hint">The color, pattern and photo behind ${Pages.enabled() ? 'this page’s' : 'this board’s'} windows.</div></div>
-        <div class="bg-preview${photoShown || pattern === 'none' ? '' : ' pattern-' + pattern}" id="bg-preview" role="img" aria-label="Preview of the board" style="aspect-ratio:${ratio.toFixed(4)};${look}">${photoShown
-          ? `<span class="ph" style="background-size:${photoSet.fit === 'whole' ? 'contain' : 'cover'};background-position:${photoPosition(photoSet)};--fade:${photoSet.fade}"></span>` : ''}</div></div>
-      <div class="bg-part"><div class="bg-sub"><span class="lbl">Color</span><span class="bg-now" id="bg-color-name">${esc(bgColorName(color))}</span></div>
-        <div class="bg-cap" id="bg-cap-light">Light</div>
-        <div class="swatches" role="radiogroup" aria-labelledby="bg-cap-light">
-          <button class="swatch auto${!color ? ' on' : ''}" role="radio" aria-checked="${!color}" data-act="bg" data-val="" title="Match the theme (light or dark)" aria-label="Match the theme (light or dark)">${sunMoon}${tick(!color)}</button>
-          ${BG_LIGHT.map(swatch).join('')}</div>
-        <div class="bg-cap" id="bg-cap-dark">Dark</div>
-        <div class="swatches" role="radiogroup" aria-labelledby="bg-cap-dark">${BG_DARK.map(swatch).join('')}
-          <label class="swatch pill custom${isCustom ? ' on' : ''}" title="Choose any color"><span class="dot"${isCustom ? ` style="background:${color}"` : ''}></span>Custom…${tick(isCustom)}<input type="color" id="set-bg-custom" value="${esc(isCustom ? color : '#88aacc')}" aria-label="Custom background color"></label></div></div>
-      <div class="bg-part"><div class="bg-sub"><span class="lbl">Pattern</span><span class="bg-now">${photoShown ? 'Not shown with a photo' : esc(PATTERNS.find(p => p[0] === pattern)[1])}</span></div>
-        ${photoShown ? '<div class="bg-note" id="bg-pattern-note">The photo covers the pattern. To use a pattern, turn off <b>Show photo</b> below.</div>' : ''}
-        <div class="pat-tiles${photoShown ? ' disabled' : ''}" role="radiogroup" aria-label="Pattern">${PATTERNS.map(([p, n]) => { const on = p === pattern;
-          return `<button class="pat-tile${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="pattern" data-val="${p}"${photoShown ? ' disabled' : ''}><span class="pv${p === 'none' ? '' : ' pattern-' + p}" style="${look}"></span>${n}${tick(on)}</button>`; }).join('')}</div></div>
-      <div class="bg-part">${photoRow(sw, seg)}</div>
-    </div>`;
+    const preview = `<span class="bg-mini" id="bg-preview" style="aspect-ratio:${ratio.toFixed(4)};background-color:${color || 'var(--board-bg)'}">${photoShown
+      ? `<span class="ph" style="background-size:${im.fit === 'whole' ? 'contain' : 'cover'};background-position:${photoPosition(im)};--fade:${im.fade}"></span>` : ''}</span>`;
+    const content = `<div class="bg-block" id="bg-block"><div class="hint bg-scope">This page only.</div>
+      <div class="swatches" role="radiogroup" aria-label="Background">
+        <button class="swatch auto${auto ? ' on' : ''}" ${radio(auto)} data-act="bg" data-val="" title="Match the theme" aria-label="Match the theme (light or dark)">${sunMoon}${tick(auto)}</button>
+        ${BG_LIGHT.map(swatch).join('')}<span class="break"></span>${BG_DARK.map(swatch).join('')}<span class="break"></span>
+        <label class="swatch pill custom${custom ? ' on' : ''}" title="Choose any color"><span class="dot"${isCustom ? ` style="background:${color}"` : ''}></span>Custom…${tick(custom)}<input type="color" id="set-bg-custom" value="${esc(isCustom ? color : '#88aacc')}" aria-label="Custom background color"></label>
+        ${m ? `<button class="swatch pill photo${photoShown ? ' on' : ''}" ${radio(photoShown)} data-act="photo-show" aria-label="Photo"><span class="pic bg-pic"></span>Photo${tick(photoShown)}</button>`
+          : `<button class="swatch pill photo" data-act="photo-add">${svg('image')}Add photo…</button>`}
+      </div>
+      ${photoShown ? photoRow() : ''}</div>`;
+    return settingsGroup('bg', 'Background', esc(photoShown ? 'Photo' : bgColorName(color)), content, { preview, valueId: 'bg-color-name' });
   }
-  // Settings → Appearance → Background → Photo.
-  function photoRow(sw, seg) {
+  /* Patterns (removed 2026-11-16; uncomment to bring them back): their tiles in the Background group, after the
+     swatches, with a "pattern" case in Settings.act. (PATTERNS still names them; their CSS is in index.html.)
+    const pattern = PATTERN_IDS.includes(bg.pattern) ? bg.pattern : 'none';
+    const ink = bgInk(color), look = `background-color:${color || 'var(--board-bg)'};--pattern:${ink.pattern};--pattern-strong:${ink.strong}`;
+    `<div class="pat-tiles${photoShown ? ' disabled' : ''}" role="radiogroup" aria-label="Pattern">${PATTERNS.map(([p, n]) => { const on = p === pattern;
+      return `<button class="pat-tile${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="pattern" data-val="${p}"${photoShown ? ' disabled' : ''}><span class="pv${p === 'none' ? '' : ' pattern-' + p}" style="${look}"></span>${n}${tick(on)}</button>`; }).join('')}</div>`
+  */
+  // Settings → Appearance → Background, with the photo picked: the picture (tap it to choose the part that stays in
+  // view), Fit, Fade, and Change… / Remove.
+  function photoRow() {
     const m = BoardPhoto.media(), im = BoardPhoto.settings();
-    if (!m || !im) {
-      return `<div class="bg-sub"><span class="lbl">Photo</span><span class="bg-now">None</span></div>
-        <div class="row"><div class="hint">A picture from this device (or Google Drive on a Chromebook), shown over the color. ${Store.failed ? 'It goes into full backups, not into templates.' : 'It’s kept on this device and in full backups, not in templates.'}</div>
-        <button class="btn" data-act="photo-add">${svg('image')}Add photo…</button></div>`;
-    }
+    if (!m || !im) return '';
     const g = photoThumbGeometry(m, im), fill = im.fit === 'fill';
     // Shaped like the board, but never taller than about 200 px (a portrait window would make it huge).
-    return `<div class="bg-sub"><span class="lbl">Photo</span><span class="bg-now">${im.on ? 'Shown' : 'Hidden'}</span></div>
-      <div class="hint">${fill ? 'Tap the picture to choose the part that always stays in view.' : 'The whole photo is shown; the background color fills the rest.'}</div>
-      <div class="photo-edit">
-        <div class="photo-thumb${im.on ? '' : ' off'}${fill ? ' pick' : ''}" id="photo-thumb"${fill ? ' role="button" tabindex="0" aria-label="Choose the part of the photo that stays in view (tap, or use the arrow keys)"' : ' role="img" aria-label="Background photo"'}
+    return `<div class="photo-edit">
+        ${fill ? '<div class="hint">Tap the picture to pick the part that stays in view.</div>' : ''}
+        <div class="photo-thumb${fill ? ' pick' : ''}" id="photo-thumb"${fill ? ' role="button" tabindex="0" aria-label="Choose the part of the photo that stays in view (tap, or use the arrow keys)"' : ' role="img" aria-label="Background photo"'}
           style="aspect-ratio:${g.ratio.toFixed(4)};width:min(100%, ${Math.round(200 * g.ratio)}px);background-size:${fill ? 'cover' : 'contain'};background-position:${photoPosition(im)};--fade:${im.fade}">
           ${fill ? `<span class="focus" style="left:${(g.mx * 100).toFixed(2)}%;top:${(g.my * 100).toFixed(2)}%"></span>` : ''}</div>
         <div class="photo-ctrls">
-          <div class="line"><span>Show photo</span>${sw('photo-on', im.on, 'Show photo')}</div>
-          <div class="line"><span>Fit</span>${seg('photo-fit', im.fit, [['fill', 'Fill the board'], ['whole', 'Whole photo']])}</div>
+          <div class="line"><span>Fit</span>${segHTML('photo-fit', im.fit, [['fill', 'Fill the board'], ['whole', 'Whole photo']])}</div>
           <label class="line"><span>Fade</span><input type="range" id="photo-fade" min="0" max="70" step="5" value="${Math.round(im.fade * 100)}" aria-label="Fade the photo"></label>
           <div class="line end"><button class="btn small" data-act="photo-add">Change…</button><button class="btn small danger" data-act="photo-remove">Remove</button></div>
         </div>
@@ -4051,13 +4062,16 @@
     return { ratio, dw, dh, ox, oy, W, H, mx: (ox + f.x * dw) / W, my: (oy + f.y * dh) / H };
   }
 
-  // Settings → Google Drive folder (section 13b).
+  // Settings → Board Sync (section 13b): the board on this device and the others, through a folder in Google Drive.
+  // Not linked: one row, whose Set up… starts the setup (Link.setup, or the folder picker where there is none).
+  // Linked: Send this board, Send automatically, then two groups: Boards from other devices, and Folder settings
+  // (the folder, this device's name, the photo, history copies).
   function linkSettings(sw, seg) {
     const L = Link;
     if (!L.dir) {
-      return `<h3>Google Drive folder</h3>
-        <div class="row stack"><div><div class="lbl">Share boards with your other devices</div><div class="hint">Choose the same folder in Google Drive on each device, for example My Drive › 21Board (make it first). Google Drive keeps it the same everywhere: send a board from your laptop, and the smartboard offers to load it. 21Board keeps one file per board there.</div></div>
-          <button class="btn primary" data-act="link-choose">${svg('send')}Choose folder…</button></div>`;
+      return `<h3>Board Sync</h3>
+        <div class="row"><div class="lbl">Sync your board with your other devices</div>
+          <button class="btn primary" data-act="link-setup">${svg('send')}Set up…</button></div>`;
     }
     const dev = L.device(), uid = S.board.uid, rec = L.boardRec(uid) || {};
     // What is wrong, if anything (as the note on the board says), then how things stand: the last send and
@@ -4065,26 +4079,33 @@
     const prob = L.problem(), info = FolderNote.info(), late = L.arriving(uid);
     const fix = { allow: ['link-reconnect', 'Allow…'], missing: ['link-check', 'Look again'], send: ['link-send', 'Try again'] }[prob];
     const warn = info ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(info.title)}</div><div class="hint">${esc(info.text)}</div></div><button class="btn small primary" data-act="${fix[0]}">${fix[1]}</button></div>` : '';
-    const status = ([rec.sentAt ? `Sent from here ${when(rec.sentAt)}.` : '', rec.loadedSentAt ? `Loaded the version from ${rec.loadedFrom || 'another device'} sent ${when(rec.loadedSentAt)}.` : ''].filter(Boolean).join(' ') || 'Not sent from here yet.') +
-      (L.failed && prob !== 'send' ? ` Couldn’t send ${when(L.failed.at)}: ${LINK_SAY[L.failed.code][0]}.` : '') + (L.checkedAt && !prob ? ` Folder checked ${when(L.checkedAt)}.` : '');
     const mine = L.found.find(f => f.name === rec.file && f.uid === uid) || L.found.find(f => f.uid === uid && f.vid);
+    const status = [mine ? `In the folder as “${mine.name}”.` : 'Not in the folder yet.', rec.sentAt ? `Sent from here ${when(rec.sentAt)}.` : '',
+      rec.loadedSentAt ? `Loaded the version from ${rec.loadedFrom || 'another device'} sent ${when(rec.loadedSentAt)}.` : '',
+      L.failed && prob !== 'send' ? `Couldn’t send ${when(L.failed.at)}: ${LINK_SAY[L.failed.code][0]}.` : '',
+      late ? `Waiting for Google Drive: “${late.name}” is still arriving.` : ''].filter(Boolean).join(' ');
     // (Another file of this board is listed too: Drive can leave two, and each may hold a version.)
     const others = L.found.filter(f => f.kind === 'full' && f !== mine && (f.uid !== uid || f.vid));
     const auto = !L.st.auto ? 'off' : L.st.calm ? 'calm' : 'now';
-    return `<h3>Google Drive folder</h3>
-      ${warn}
-      <div class="row"><div><div class="lbl">Folder: ${esc(L.dir.name)}</div><div class="hint">${esc(status)}${L.offer ? ` <b>A newer version from ${esc(L.offer.from || 'another device')} is waiting.</b>` : ''}</div></div>
-        <div style="display:flex;gap:6px;flex:0 0 auto"><button class="btn small" data-act="link-choose">Change…</button><button class="btn small" data-act="link-unlink">Unlink</button></div></div>
-      <div class="row"><div><div class="lbl">Send this board</div><div class="hint">${mine ? `In the folder as “${esc(mine.name)}”.` : 'Saves it into the folder for your other devices.'}${late ? ` Waiting for Google Drive: “${esc(late.name)}” is still arriving.` : ''}</div></div>
-        <div style="display:flex;gap:6px;flex:0 0 auto">${L.offer ? '<button class="btn small" data-act="link-load-offer">Load newer</button>' : ''}<button class="btn small primary" data-act="link-send">${svg('send')}Send</button></div></div>
-      <div class="row stack"><div><div class="lbl">Send automatically</div><div class="hint">After each change: a few seconds later, best where you prepare your boards. When left alone: once the board hasn’t changed for 10 minutes, best on the smartboard, so that taps in class (dice, timers) don’t each make a version for your laptop to load.</div></div>
-        ${seg('link-auto', auto, [['off', 'Off'], ['now', 'After each change'], ['calm', 'When left alone']])}</div>
-      <div class="row"><div><div class="lbl">Include the background photo</div><div class="hint">On: the photo goes with the board, and so does removing it. A photo that only another device has stays there. Off: this device sends no photo, and your other devices keep theirs.</div></div>${sw('link-photo', L.st.photo, 'Include the background photo')}</div>
-      <div class="row stack"><label class="lbl" for="set-link-label">This device's name <span class="hint">(shown on your other devices: “updated on …”)</span></label>
+    const boards = `<div class="hint">Load one to show it on this device. It replaces this page.</div>
+      <div class="inst-list">${others.length ? others.map(f => { const pg = Pages.owner(f.uid); return `<div class="inst"><span class="widget-icon" style="--c:var(--primary)">${svg('send')}</span><div class="meta"><b>${esc(f.title)}</b><span>From ${esc(f.from || 'another device')} ${esc(when(f.sentAt))}${f.uid === uid ? ' · another file of this board' : pg ? ` · page ${Pages.pos(pg) + 1} here` : ''}</span></div>${pg ? `<button class="btn small" data-act="page-go" data-val="${pg}">Go to page</button>` : `<button class="btn small" data-act="link-load" data-val="${esc(f.name)}">Load</button>`}</div>`; }).join('') : `<div class="empty-note">${L.perm === 'granted' ? 'None yet.' : 'Allow 21Board to use the folder to see them.'}</div>`}</div>
+      <div><button class="btn small" data-act="link-check">Check the folder now</button></div>`;
+    const H = BoardHistory;
+    const folder = `<div class="row"><div><div class="lbl">Folder: ${esc(L.dir.name)}</div>${L.checkedAt && !prob ? `<div class="hint">Folder checked ${esc(when(L.checkedAt))}.</div>` : ''}</div>
+        <div class="btns"><button class="btn small" data-act="link-choose">Change…</button><button class="btn small" data-act="link-unlink">Unlink</button></div></div>
+      <div class="row stack"><label class="lbl" for="set-link-label">This device’s name <span class="hint">(shown on your other devices)</span></label>
         <input type="text" class="text-input" id="set-link-label" maxlength="40" value="${esc(dev.label)}" autocomplete="off"></div>
-      <div class="row stack"><div><div class="lbl">Other boards in the folder</div><div class="hint">Load one to show it on this device (it replaces this board). After that, this device offers its newer versions.</div></div>
-        <div class="inst-list">${others.length ? others.map(f => { const pg = Pages.owner(f.uid); return `<div class="inst"><span class="widget-icon" style="--c:var(--primary)">${svg('send')}</span><div class="meta"><b>${esc(f.title)}</b><span>From ${esc(f.from || 'another device')} ${esc(when(f.sentAt))}${f.uid === uid ? ' · another file of this board' : pg ? ` · page ${Pages.pos(pg) + 1} here` : ''}</span></div>${pg ? `<button class="btn small" data-act="page-go" data-val="${pg}">Go to page</button>` : `<button class="btn small" data-act="link-load" data-val="${esc(f.name)}">Load</button>`}</div>`; }).join('') : `<div class="empty-note">${L.perm === 'granted' ? 'None yet.' : 'Allow 21Board to use the folder to see them.'}</div>`}</div>
-        <div><button class="btn small" data-act="link-check">Check the folder now</button></div></div>`;
+      <div class="row"><div><div class="lbl">Send the background photo</div><div class="hint">Off: your other devices keep their own.</div></div>${sw('link-photo', L.st.photo, 'Send the background photo')}</div>
+      ${H.enabled() ? `<div class="row"><div><div class="lbl">Keep history copies in the folder</div><div class="hint">About hourly, so you can go back even if this device is reset.${H.folderStatus ? ' ' + esc(H.folderStatus) : ''}</div></div>${sw('hist-folder', S.settings.historyFolder !== false, 'Keep history copies in the folder')}</div>` : ''}`;
+    const n = others.length;
+    return `<h3>Board Sync</h3>
+      ${warn}
+      <div class="row"><div><div class="lbl">Send this board</div><div class="hint">${esc(status)}${L.offer ? ` <b>A newer version from ${esc(L.offer.from || 'another device')} is waiting.</b>` : ''}</div></div>
+        <div class="btns">${L.offer ? '<button class="btn small" data-act="link-load-offer">Load newer</button>' : ''}<button class="btn small primary" data-act="link-send">${svg('send')}Send</button></div></div>
+      <div class="row stack"><div><div class="lbl">Send automatically</div><div class="hint">Laptop: After each change. Smartboard: When left alone.</div></div>
+        ${seg('link-auto', auto, [['off', 'Off'], ['now', 'After each change'], ['calm', 'When left alone']])}</div>
+      ${settingsGroup('boards', 'Boards from other devices', n ? `${n} board${n === 1 ? '' : 's'}` : 'None', boards)}
+      ${settingsGroup('folder', 'Folder settings', esc(L.dir.name), folder, { inset: true })}`;
   }
 
   const Settings = {
@@ -4092,7 +4113,7 @@
     body: null,
     side: 'left',
     isOpen: false,
-    keep: false,   // section 12b: a time box is being saved, and is still being typed in (awakeChange)
+    groups: new Set(),   // the groups open now (settingsGroup): none each time Settings opens
 
     init() {
       this.el = $('#settings');
@@ -4109,22 +4130,17 @@
           const label = e.target.value.trim().slice(0, 40);
           if (label) Link.saveState({ device: Object.assign({}, Link.device(), { label }) });
         }
-        if (e.target.id === 'set-board-name') {
-          const name = e.target.value.trim().slice(0, 60) || S.board.name || 'My Board';
-          updateBoard({ name });
-          Picker.renderControls();
-        }
         if (e.target.id === 'set-bg-custom') this.render();   // (the picker has closed: mark the choice)
-        classroomChange(e.target);   // section 12b
       });
       this.body.addEventListener('input', e => {
         if (e.target.id === 'set-bg-custom') {
-          // While the color picker is open: the board, the previews and the name follow (rebuilding Settings would close it).
-          const color = e.target.value, ink = bgInk(color);
+          // While the color picker is open: the board, the preview and the name follow (rebuilding Settings would
+          // close it). A color picked hides the photo, as the other colors do (it's kept: see backgroundSettings).
+          const color = e.target.value;
           updateBoard({ background: Object.assign({}, S.board.background, { color }) });
-          for (const el of this.body.querySelectorAll('#bg-preview, .pat-tile .pv')) {
-            el.style.backgroundColor = color; el.style.setProperty('--pattern', ink.pattern); el.style.setProperty('--pattern-strong', ink.strong);
-          }
+          if ((BoardPhoto.settings() || {}).on) BoardPhoto.update({ on: false });
+          const pv = $('#bg-preview', this.body);
+          if (pv) { pv.style.backgroundColor = color; const ph = $('.ph', pv); if (ph) ph.remove(); }
           const nm = $('#bg-color-name', this.body); if (nm) nm.textContent = bgColorName(color);
           const dot = e.target.parentNode.querySelector('.dot'); if (dot) dot.style.background = color;
         }
@@ -4184,18 +4200,19 @@
         catch (err) { await dialog({ title: 'Can’t use this file', message: err.message, actions: [{ label: 'OK', value: true, kind: 'primary' }] }); }
         if (this.isOpen) this.render();
       });
-      this.body.addEventListener('keydown', e => {
-        if (e.target.id === 'set-board-name' && e.key === 'Enter') e.target.blur();
-      });
     },
 
-    open(side) {
+    // opts.again: moved to the other side (Widget Picker: Left or Right), with the same groups open, where it was.
+    open(side, opts = {}) {
+      const groups = new Set(this.groups), top = this.body.scrollTop;
       closePopups();
       this.side = side === 'right' ? 'right' : 'left';
       this.el.classList.remove('left', 'right');
       this.el.classList.add(this.side, 'open');
+      this.groups = opts.again ? groups : new Set();   // (every group starts closed)
       this.isOpen = true;
       this.render();
+      if (opts.again) this.body.scrollTop = top;
       this.refreshStatus();
     },
 
@@ -4206,98 +4223,117 @@
     },
 
     render() {
-      if (!this.isOpen || this.keep) return;
-      // Don't yank a text field (or a time box) out from under someone who is typing in it.
-      if (this.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"], input[type="time"]')) return;
-      const st = S.settings;
-      const seg = (act, cur, opts, disabled) => `<div class="seg${disabled ? ' disabled' : ''}" role="radiogroup">${opts.map(([v, l]) =>
-        `<button role="radio" aria-checked="${v === cur}" data-act="${act}" data-val="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-      const sw = (act, on, label) => `<button class="switch${on ? ' on' : ''}" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}"></button>`;
+      if (!this.isOpen) return;
+      // Don't yank a text field out from under someone who is typing in it.
+      if (this.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"]')) return;
+      const st = S.settings, seg = segHTML, sw = switchHTML;
+      const note = SaveNote.state() ? SaveNote.info() : null;
 
+      // This page → Saved widgets: every widget window of this page, open or closed, to open or delete.
       const insts = Array.from(S.insts.entries()).sort((a, b) => {
         const an = (getWidget(a[1].widgetId) || { name: a[1].widgetId }).name, bn = (getWidget(b[1].widgetId) || { name: b[1].widgetId }).name;
         return an.localeCompare(bn) || a[1].n - b[1].n;
       });
       const instHTML = insts.length ? insts.map(([ikey, i]) => {
         const widget = getWidget(i.widgetId);
-        const size = JSON.stringify(S.data.get(ikey) || '').length + JSON.stringify(S.conf.get(ikey) || '').length;
         const name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
         const status = !widget ? 'Widget not installed' : i.open ? 'Open' : 'Closed';
         const unsaved = Store.failed || (Writer.failing && ['inst', 'data', 'conf'].some(k => Writer.pending.has(Keys[k](S.boardId, ikey))));
         const app = widget && widget.external;   // a district app: its work isn't the board's (README, "District apps")
         return `<div class="inst"><span class="widget-icon" style="--c:${esc(widget ? widget.color : '#9ca3af')}">${widget ? widget.icon : svg('widget')}</span>` +
-          `<div class="meta"><b>${esc(name)}</b><span>${status} · ${app ? `${esc(widget.name)} keeps its own work on this device${unsaved ? ' · window not saved' : ''}` : `${fmtBytes(size)}${unsaved ? ', not saved' : ' saved'}`}</span></div>` +
+          `<div class="meta"><b>${esc(name)}</b><span>${status}${app ? ` · ${esc(widget.name)} keeps its own work on this device${unsaved ? ' · window not saved' : ''}` : unsaved ? ' · not saved' : ''}</span></div>` +
           (widget && !i.open ? `<button class="icon" data-act="inst-open" data-val="${esc(ikey)}" title="Open" aria-label="Open ${esc(name)}">${svg('open')}</button>` : '') +
           `<button class="icon" data-act="inst-delete" data-val="${esc(ikey)}" title="Delete" aria-label="${app ? `Delete the ${esc(name)} window` : `Delete ${esc(name)} and its content`}">${svg('trash')}</button></div>`;
-      }).join('') : '<div class="empty-note">No widget windows yet. Open one from the Widget Picker.</div>';
+      }).join('') : '<div class="empty-note">No widgets yet. Open one from the Widget Picker.</div>';
+      const saved = settingsGroup('saved', note ? 'Widget windows' : 'Saved widgets', insts.length ? `${insts.length} widget${insts.length === 1 ? '' : 's'}` : 'None',
+        `<div class="hint">${note ? 'Closed widgets keep their content while 21Board stays open.' : 'Closed widgets keep their content until you delete them here.'}</div><div class="inst-list">${instHTML}</div>`);
 
-      // Test widgets uploaded as a file (Developer mode).
-      const devList = Array.from(S.devFiles.values(), d =>
+      // Advanced: rare and IT-level things, in one group. Its grey line says what's in it.
+      const snap = !st.snapping ? 'off' : { gentle: 'light', strong: 'firm' }[st.resistance] || 'medium';
+      const devList = Array.from(S.devFiles.values(), d =>   // test widgets uploaded as a file (Developer mode)
         `<div class="inst"><span class="widget-icon" style="--c:#64748b">${svg('widget')}</span><div class="meta"><b>${esc(d.name)}</b><span>${esc(`Uploaded file: ${d.file}`)}</span></div>` +
         `<button class="icon" data-act="dev-remove" data-val="${esc(d.id)}" title="Remove" aria-label="Remove ${esc(d.name)}">${svg('trash')}</button></div>`).join('');
+      const dev = !LAB && !KIOSK;
+      const advanced = `
+        <div class="row"><div class="lbl">Widget Picker</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']])}</div>
+        ${scaleSettingsRow()}
+        <h4>Moving windows</h4>
+        <div class="row stack"><div class="lbl">Windows stop at each other’s edges</div>${seg('snap', snap, [['off', 'Off'], ['light', 'Light'], ['medium', 'Medium'], ['firm', 'Firm']])}</div>
+        <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Off: only by the title bar.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
+        ${historySettings(sw, seg)}
+        ${LAB ? '' : `<h4>Backups and storage</h4>
+        <div class="row"><div><div class="lbl">Back up every page</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
+        <div class="row status-block">
+          <div class="st"><span class="k">Offline</span><span class="hint" id="st-offline">Checking…</span></div>
+          <div class="st"><span class="k">Protected storage</span><span id="st-persist"></span></div>
+          <div class="hint" id="st-persist-hint"></div>
+          <div class="st"><span class="k">Storage used</span><span class="hint" id="st-storage">Checking…</span></div></div>
+        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so there’s no Board Sync. Import and Export use this device or a USB drive.${note ? '' : ' Boards stay on this device.'}</div></div></div>` : ''}`}
+        ${Store.failed ? `<div class="row"><div><div class="lbl">Empty this board</div><div class="hint">Clears the windows, content and settings you see now.${Store.failed === 'unopened' ? ' Your saved board isn’t touched.' : ''}</div></div><button class="btn danger" data-act="erase">${svg('trash')}Empty…</button></div>`
+          : `<div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Every page, window and setting on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase…</button></div>`}
+        ${dev ? `<h4>Developer</h4>
+        <div class="row"><div><div class="lbl">Developer mode</div><div class="hint">For people who build widgets.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>
+        ${st.devMode ? `<div class="row stack"><div><div class="lbl">Test a widget</div><div class="hint">An uploaded file runs sealed off from your boards. It is kept on this device only, never in exports.</div></div>
+          <button class="btn primary" data-act="dev-upload">${svg('import')}Upload file…</button>
+          ${devList ? `<div class="inst-list">${devList}</div>` : ''}</div>` : ''}` : ''}
+        <div class="about">21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
+        ${note ? '' : Link.dir ? 'Boards stay on this device and in your Drive folder. ' : 'Everything you make stays on this device. '}21Board sends nothing to a server.</div>`;
+      // The keyboard stays on the control it was on (a group's row, a choice): Settings is drawn afresh below.
+      const was = this.body.contains(document.activeElement) && document.activeElement.dataset.act ? document.activeElement : null;
+      const inside = ['Widget Picker', 'size', 'moving windows'].concat(!LAB && BoardHistory.enabled() ? ['history'] : [], LAB ? [] : ['backups'], dev ? ['developer'] : [], ['erase']);
 
-      const note = SaveNote.state() ? SaveNote.info() : null;
       this.body.innerHTML = `
         ${note ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(note.title)}</div><div class="hint">${esc(note.text)}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>` : ''}
-        <div class="row update-note" id="st-update" hidden><div><div class="lbl">A new version of 21Board is ready</div><div class="hint">Updating takes a second or two, and the board stays as it is. Or leave it: 21Board updates by itself the next time it starts.</div></div><button class="btn small primary" data-act="update">Update now</button></div>
-        ${historySettings(sw, seg)}
-
-        <h3>Appearance</h3>
-        <div class="row"><div class="lbl">Theme</div>${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']])}</div>
-        <div class="row stack"><div><div class="lbl">Accent color</div><div class="hint">Buttons, the selected-window outline and highlights, in 21Board and its widgets.</div></div>
-          <div class="swatches">${Object.entries(ACCENTS).map(([k, a]) => `<button class="swatch${(st.accent || 'blue') === k ? ' on' : ''}" style="background:${resolvedTheme() === 'dark' ? a[1] : a[0]}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent"></button>`).join('')}</div></div>
-        ${letterSettings(sw, seg)}
-        ${clockSettings(sw, seg)}
-        ${backgroundSettings(sw, seg)}
+        <div class="row update-note" id="st-update" hidden><div><div class="lbl">A new version is ready</div><div class="hint">Takes a second. Your board stays as it is.</div></div><button class="btn small primary" data-act="update">Update now</button></div>
 
         ${classroomSettings(sw, seg)}
 
-        <h3>Windows</h3>
-        <div class="row"><div><div class="lbl">Snap and avoid overlap</div><div class="hint">Windows stop at each other's edges. Keep pushing to overlap anyway.</div></div>${sw('snapping', st.snapping, 'Snap and avoid overlap')}</div>
-        <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Widgets without typing move by dragging anywhere in them; any widget moves with two fingers. Off: title bar only.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
-        <div class="row"><div class="lbl">Push needed to overlap</div>${seg('resistance', st.resistance, [['gentle', 'Light'], ['normal', 'Medium'], ['strong', 'Firm']], !st.snapping)}</div>
-        ${scaleSettingsRows(seg)}
-        <div class="row"><div><div class="lbl">Close all windows</div><div class="hint">${closeAllHint()}</div></div><button class="btn" data-act="close-all"${Lock.on() ? ' disabled' : ''}>${svg('windows')}Close all</button></div>
+        ${LAB ? `<h3>Widget test mode</h3>
+        <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : '<h3>This page</h3>'}
+        ${saved}
 
-        <h3>Widget Picker</h3>
-        <div class="row"><div class="lbl">Show controls in</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']])}</div>
-
-        ${Pages.enabled() ? `<h3>This page</h3>
-        <div class="row"><div class="hint">Each page is a board of its own, with its own windows and background. Go to another page, or add, copy and delete pages, with ‹ Page › in the Widget Picker.</div></div>
-        <div class="row stack"><label class="lbl" for="set-board-name">Page name <span class="hint">(used for export file names${Link.supported ? ' and in your Google Drive folder' : ''})</span></label>` : `<h3>Board</h3>
-        <div class="row stack"><label class="lbl" for="set-board-name">Board name <span class="hint">(used for export file names)</span></label>`}
-          <input type="text" class="text-input" id="set-board-name" maxlength="60" value="${esc(S.board.name)}" autocomplete="off"></div>
-        <div class="row stack"><div><div class="lbl">${note ? 'Widget windows' : Pages.enabled() ? 'Saved windows on this page' : 'Saved widget windows'}</div><div class="hint">Closing a window keeps its content. Delete it here to remove it for good.</div></div>
-          <div class="inst-list">${instHTML}</div></div>
+        <h3>Appearance</h3>
+        <div class="row"><div class="lbl">Theme</div>${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']])}</div>
+        <div class="row accent-row"><div class="lbl">Accent color</div>
+          <div class="swatches" role="radiogroup" aria-label="Accent color">${Object.entries(ACCENTS).map(([k, a]) => { const on = (st.accent || 'blue') === k;
+            return `<button class="swatch${on ? ' on' : ''}" style="background:${resolvedTheme() === 'dark' ? a[1] : a[0]}" role="radio" aria-checked="${on}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent"></button>`; }).join('')}</div></div>
+        ${letterSettings()}
+        ${clockSettings(sw, seg)}
+        ${backgroundSettings()}
+        ${shapeSettingsRow(seg)}
 
         ${Link.supported ? linkSettings(sw, seg) : ''}
 
-        ${LAB ? `<h3>Widget test mode</h3>
-        <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : `<h3>Storage &amp; offline</h3>
-        <div class="row"><div class="lbl">Offline</div><div class="hint" id="st-offline" style="text-align:right">Checking…</div></div>
-        <div class="row"><div><div class="lbl">Data protection</div><div class="hint" id="st-persist-hint"></div></div><div id="st-persist" style="flex:0 0 auto"></div></div>
-        ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so the Google Drive folder isn’t available. Import and Export use this device’s storage or a USB drive.${note ? '' : ' The board is kept on this device, and board history keeps earlier versions.'}</div></div></div>` : ''}
-        <div class="row"><div><div class="lbl">Backups</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
-        <div class="row"><div class="lbl">Storage used</div><div class="hint" id="st-storage" style="text-align:right">Checking…</div></div>`}
-
-        <h3>Advanced</h3>
-        ${LAB || KIOSK ? '' : `<div class="row"><div><div class="lbl">Developer mode</div><div class="hint">Shows developer tools and lets you test a widget from its file.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>`}
-        ${st.devMode && !LAB && !KIOSK ? `<div class="row stack"><div><div class="lbl">Test a widget</div><div class="hint">An uploaded file runs sealed off from your boards. It is kept on this device only, never in exports.</div></div>
-          <button class="btn primary" data-act="dev-upload">${svg('import')}Upload file…</button>
-          ${devList ? `<div class="inst-list">${devList}</div>` : ''}</div>` : ''}
-        ${Store.failed ? `<div class="row"><div><div class="lbl">Empty this board</div><div class="hint">Clears the windows, content and settings you see now.${Store.failed === 'unopened' ? ' Your saved board isn’t touched.' : ''}</div></div><button class="btn danger" data-act="erase">${svg('trash')}Empty</button></div>`
-        : `<div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Deletes all windows, content and settings on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase</button></div>`}
-
-        <h3>About</h3>
-        <div class="about">21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
-        ${note ? '' : 'Everything you make is stored only on this device. '}Nothing is sent to a server.</div>`;
-      // The photo preview gets its picture here (never as text inside the HTML above).
+        <div class="gap"></div>
+        ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), inset: true })}`;
+      if (was) {
+        const again = $$(`[data-act="${CSS.escape(was.dataset.act)}"]`, this.body).find(b => b.dataset.val === was.dataset.val);
+        if (again) again.focus({ preventScroll: true });
+      }
+      // The photo's pictures get it here (never as text inside the HTML above).
       const pm = BoardPhoto.media(), fadeTo = (S.board.background && S.board.background.color) || 'var(--board-bg)';   // as on the board
-      const shows = [$('#photo-thumb', this.body), $('#bg-preview .ph', this.body)].filter(Boolean);
+      const shows = [$('#photo-thumb', this.body), $('#bg-preview .ph', this.body)].filter(Boolean), pics = $$('.bg-pic', this.body);
       shows.forEach(el => el.style.setProperty('--fade-color', fadeTo));
       // (One call: a second one at the same time would make a new URL and revoke the first one's.)
-      if (shows.length && pm) BoardPhoto.objectUrl(pm).then(u => shows.forEach(el => { el.style.backgroundImage = `url("${u}")`; }), () => {});
+      if (pm && (shows.length || pics.length)) BoardPhoto.objectUrl(pm).then(u => shows.concat(pics).forEach(el => { el.style.backgroundImage = `url("${u}")`; }), () => {});
       this.refreshStatus(true);
+    },
+
+    // The amber dot on Advanced: no backup in the last week, or the browser hasn't promised to keep 21Board's data
+    // (once it has answered). Settings → Advanced → Backups and storage says which.
+    needsLook() {
+      if (LAB) return false;
+      const t = S.settings.lastBackupAt;
+      return !t || Date.now() - t > 7 * DAY || !['granted', 'unknown'].includes(Persist.state);
+    },
+
+    // A group opened: as much of it in view as fits, with its own row still showing.
+    reveal(key) {
+      const row = $(`[data-act="group"][data-val="${key}"]`, this.body), box = $('#grp-' + key, this.body);
+      if (!row || !box || box.hidden) return;
+      const b = this.body.getBoundingClientRect(), r = row.getBoundingClientRect(), d = box.getBoundingClientRect();
+      const by = Math.min(d.bottom - b.bottom, r.top - b.top);
+      if (by > 0) this.body.scrollTop += by / (Zoom.ui || 1);   // (the sheet is drawn zoomed: see --ui)
     },
 
     async refreshStatus(quick) {
@@ -4321,28 +4357,30 @@
         const st = Persist.state;
         if (st === 'granted') {
           per2.innerHTML = '<span class="hint"><span class="status-dot ok"></span>Protected</span>';
-          hint.textContent = 'This browser has agreed never to clear 21Board’s data to free up space.';
+          hint.textContent = 'The browser won’t clear your boards to free up space.';
         } else if (st === 'unsupported') {
           per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Unavailable</span>';
-          hint.textContent = 'This browser can’t promise to keep 21Board’s data. Export backups regularly.';
+          hint.textContent = 'This browser might clear your boards to free up space. Back up regularly.';
         } else if (st === 'insecure') {
           per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Needs https</span>';
-          hint.textContent = 'Browsers only protect data for sites served over https. Ask whoever hosts 21Board to enable https; until then, export backups regularly.';
+          hint.textContent = 'Browsers protect data only on https sites. Ask whoever hosts 21Board to turn on https; until then, back up regularly.';
         } else if (st === 'file') {
           per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Not available</span>';
-          hint.textContent = 'A copy of 21Board opened from a file can’t be protected. Use the hosted (https) 21Board for real use, or export backups regularly.';
+          hint.textContent = 'A copy opened from a file can’t be protected. Use 21Board’s web address, or back up regularly.';
         } else {
           per2.innerHTML = Install.prompt ? `<button class="btn small primary" data-act="install">${svg('plus')}Install app</button>`
             : '<span class="hint"><span class="status-dot warn"></span>Not yet</span>';
-          hint.textContent = '21Board asks for protection automatically every time it starts, but the browser decides. ' +
-            (Install.prompt ? 'Installing 21Board as an app usually turns it on. ' : 'Installing 21Board as an app (Install in Chrome’s address bar, or Add to Home Screen/Dock in Safari) usually turns it on. ') +
+          hint.textContent = 'The browser could clear your boards to free up space. ' +
+            (Install.prompt ? 'Installing 21Board as an app usually prevents that. ' : 'Installing 21Board as an app usually prevents that (Chrome: Install in the address bar; iPad: Share › Add to Home Screen). ') +
             'Until then, keep backups.';
         }
         // A kiosk can't be installed, and whether its data is kept is set up by IT: say only what applies.
         if (KIOSK && st !== 'granted') {
           if (per2.querySelector('[data-act="install"]')) per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Not yet</span>';
-          hint.textContent = 'The browser decides whether to protect 21Board’s data. On a kiosk device, your school’s IT manages this. To be safe, back up to a USB drive now and then.';
+          hint.textContent = 'On a kiosk device, your school’s IT manages this. To be safe, back up to a USB drive now and then.';
         }
+        const dot = $('#grp-advanced-warn', this.body);   // (the amber dot on Advanced)
+        if (dot) dot.hidden = !this.needsLook();
       };
       if (quick && this._statusCache && sto) sto.textContent = this._statusCache.storage;
       renderPersist();
@@ -4362,19 +4400,34 @@
     async act(act, val) {
       if (classroomAct(act, val)) { this.render(); return; }   // section 12b
       switch (act) {
+        case 'group':   // a group opens or closes (settingsGroup)
+          if (this.groups.has(val)) this.groups.delete(val); else this.groups.add(val);
+          this.render();
+          this.reveal(val);
+          break;
         case 'theme': updateSettings({ theme: val }); break;
         case 'accent': if (accentOf(val)) updateSettings({ accent: val }); break;
-        case 'snapping': updateSettings({ snapping: !S.settings.snapping }); break;
+        // Windows stop at each other's edges: Off (no snapping), or how hard a push overlaps them anyway.
+        case 'snap': {
+          const r = { light: 'gentle', medium: 'normal', firm: 'strong' }[val];
+          if (val === 'off') updateSettings({ snapping: false }); else if (r) updateSettings({ snapping: true, resistance: r });
+          break;
+        }
         case 'dragcontent': updateSettings({ dragFromContent: S.settings.dragFromContent === false }); break;
         case 'scale-down': case 'scale-up': scaleStep(act === 'scale-up' ? 1 : -1); this.render(); break;
         case 'shape': setBoardShape(val); this.render(); break;
-        case 'resistance': updateSettings({ resistance: val }); break;
-        case 'corners': updateSettings({ pickerCorners: val }); if (val !== 'both' && val !== this.side) this.open(val); break;
+        case 'corners': updateSettings({ pickerCorners: val }); if (val !== 'both' && val !== this.side) this.open(val, { again: true }); break;
         case 'devmode': updateSettings({ devMode: !S.settings.devMode }); break;
-        case 'bg': updateBoard({ background: Object.assign({}, S.board.background, { color: val || null }) }); this.render(); break;
-        case 'pattern': updateBoard({ background: Object.assign({}, S.board.background, { pattern: val }) }); this.render(); break;
+        // Background: a color hides the photo (kept, to show again); the photo shows it again.
+        case 'bg':
+          updateBoard({ background: Object.assign({}, S.board.background, { color: val || null }) });
+          if ((BoardPhoto.settings() || {}).on) BoardPhoto.update({ on: false });
+          this.render();
+          break;
+        // Patterns (removed 2026-11-16; uncomment to bring them back):
+        // case 'pattern': updateBoard({ background: Object.assign({}, S.board.background, { pattern: val }) }); this.render(); break;
         case 'photo-add': $('#photo-input').click(); break;
-        case 'photo-on': BoardPhoto.update({ on: !(BoardPhoto.settings() || {}).on }); this.render(); break;
+        case 'photo-show': BoardPhoto.update({ on: true }); this.render(); break;
         case 'photo-fit': BoardPhoto.update({ fit: val }); this.render(); break;
         case 'photo-remove': {
           const yes = await dialog({ title: 'Remove the background photo?', message: 'It is removed from this board on this device' + (Link.dir && Link.st.photo && typeof (Link.boardRec(S.board.uid) || {}).photo === 'boolean' ? ', and on your other devices when they load the next version you send' : '') + '. Your full backups' + (BoardHistory.enabled() ? ' and board history' : '') + ' still have it.', actions: [{ label: 'Remove photo', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
@@ -4427,6 +4480,7 @@
           this.render();
           break;
         }
+        case 'link-setup': await (Link.setup ? Link.setup() : Link.choose()); this.render(); break;   // (Board Sync's setup, section 13b)
         case 'link-choose': await Link.choose(); this.render(); break;
         case 'link-unlink': {
           const ok = await dialog({ title: `Unlink the “${Link.dir ? Link.dir.name : ''}” folder?`, message: 'This device stops sending to it and checking it. The files in it are left as they are.', actions: [{ label: 'Unlink', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
@@ -4719,7 +4773,7 @@
       accent: accentOf(j.accent) ? j.accent : null,
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
-        background: { color: /^#[0-9a-f]{6}$/i.test(bg.color || '') ? bg.color : null, pattern: PATTERN_IDS.includes(bg.pattern) ? bg.pattern : 'none' },
+        background: { color: bgColor(bg.color), pattern: PATTERN_IDS.includes(bg.pattern) ? bg.pattern : 'none' },
         scale: j.board && j.board.scale !== undefined ? (validScale(j.board.scale) || null) : undefined,   // undefined: file from before board scale
         shape: j.board && j.board.shape === 'free' ? 'free' : '16:9',
         uid: j.board && UID_RE.test(j.board.uid || '') ? j.board.uid : null
@@ -6421,21 +6475,24 @@
     }
   };
 
-  // Settings → Board history (the first section).
-  function historySettings(sw, seg) {
+  // Settings → Classroom → Go back to an earlier version: opens the Board history sheet (which lists the versions).
+  // Only something wrong is said here, in one line: history paused or short of space, or unreadable just now.
+  function historyOpenRow() {
     const H = BoardHistory;
     if (LAB) return '';
-    if (!H.enabled()) return `<h3>Board history</h3><div class="row"><div class="hint">Board history isn’t available in this browser window.</div></div>`;
-    const n = H.metas.length, bytes = H.metas.reduce((a, m) => a + (m.bytes || 0), 0), oldest = H.metas[n - 1];
-    const lastFolder = H.metas.find(m => m.folder);
-    const warn = H.paused === 'quota' ? ' Board history is paused: this device is out of space.' : H.paused === 'over' ? ' Board history is using its share of this device’s storage, so a version is saved about once an hour.' : H.low || H.tight ? ` Space is low on this device${H.thinned ? ', so some of the oldest board history was removed' : ''}. Make room on the device so 21Board can keep saving.` : H.status === 'too-big' ? ' This board is too big for automatic versions.' : '';
+    if (!H.enabled()) return `<div class="row"><div><div class="lbl">Go back to an earlier version</div><div class="hint">Board history isn’t available in this browser window.</div></div></div>`;
+    const warn = H.paused === 'quota' ? 'Board history is paused: this device is out of space.' : H.paused === 'over' ? 'Board history is using its share of this device’s storage, so a version is saved about once an hour.' : H.low || H.tight ? `Space is low on this device${H.thinned ? ', so some of the oldest board history was removed' : ''}. Make room on the device so 21Board can keep saving.` : H.status === 'too-big' ? 'This page is too big for automatic versions.' : H.unread ? 'Board history couldn’t be read just now.' : '';
+    return `<div class="row"><div><div class="lbl">Go back to an earlier version</div>${warn ? `<div class="hint warn-line"><span class="status-dot warn"></span>${warn}</div>` : ''}</div>
+        <button class="btn" data-act="hist-open">${svg('history')}Board history…</button></div>`;
+  }
+  // Settings → Advanced → Board history: how often a version is saved, and deleting them. (Copies in the Google Drive
+  // folder: Settings → Board Sync → Folder settings, linkSettings.)
+  function historySettings(sw, seg) {
+    if (LAB || !BoardHistory.enabled()) return '';
     const every = String(S.settings.historyEvery == null ? 10 : S.settings.historyEvery);
-    return `<h3>Board history</h3>
-      <div class="row"><div><div class="lbl">Go back to an earlier version</div><div class="hint">Earlier versions of this board are kept on this device, so you can undo a mistake (or a curious student). ${n ? `${n} version${n === 1 ? '' : 's'} (${fmtBytes(bytes)}), the oldest from ${esc(new Date(oldest.at).toLocaleDateString([], { month: 'short', day: 'numeric' }))}.` : H.unread ? 'They couldn’t be read just now.' : 'None yet.'}${lastFolder && Link.dir ? ` The last copy in your folder was saved ${esc(when(lastFolder.at))}.` : ''}${warn}</div></div>
-        <button class="btn primary" data-act="hist-open">${svg('history')}Board history…</button></div>
-      <div class="row stack"><div><div class="lbl">Save a version automatically</div><div class="hint">While the board is changing, when 21Board opens and when a note is suddenly cleared. Off stops these. One is still saved before Reset, Delete, Close all, a photo change, Import, Load, Erase and going back, so those can be undone.</div></div>${seg('hist-every', every, [['10', 'Every 10 min'], ['60', 'Every hour'], ['1440', 'Once a day'], ['0', 'Off']])}</div>
-      ${Link.dir ? `<div class="row"><div><div class="lbl">Copies in your Google Drive folder</div><div class="hint">About one an hour, in “Board history” inside your folder (without the background photo), so you can go back even if this device is reset.${H.folderStatus ? ' ' + esc(H.folderStatus) : ''}</div></div>${sw('hist-folder', S.settings.historyFolder !== false, 'Copies in your Google Drive folder')}</div>` : ''}
-      <div class="row"><div><div class="lbl">Delete board history</div><div class="hint">Deletes the earlier versions. The board itself stays as it is.</div></div><button class="btn small danger" data-act="hist-delete">Delete…</button></div>`;
+    return `<h4>Board history</h4>
+      <div class="row stack"><div><div class="lbl">Save a version automatically</div>${every === '0' ? '<div class="hint">One is still saved before big changes, like Close all.</div>' : ''}</div>${seg('hist-every', every, [['10', 'Every 10 min'], ['60', 'Every hour'], ['1440', 'Once a day'], ['0', 'Off']])}</div>
+      <div class="row"><div><div class="lbl">Delete board history</div><div class="hint">The board itself stays.</div></div><button class="btn small danger" data-act="hist-delete">Delete…</button></div>`;
   }
 
   // The Board history sheet: every version of the board, a preview, what changed, Go back / Put back.
@@ -7044,10 +7101,10 @@
   const DAY = 24 * 60 * 60 * 1000;
   function backupAgo() {
     const t = S.settings.lastBackupAt;
-    if (!t) return 'Last full backup: never';
+    if (!t) return 'Last backup: never';
     const midnight = d => { const x = new Date(d); x.setHours(0, 0, 0, 0); return x.getTime(); };
     const days = Math.round((midnight(Date.now()) - midnight(t)) / DAY); // calendar days, DST-safe
-    return 'Last full backup: ' + (days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`);
+    return 'Last backup: ' + (days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`);
   }
 
   // If the browser hasn't promised to keep the data, remind (at most every 3 days) to export a backup.
