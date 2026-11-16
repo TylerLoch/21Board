@@ -73,7 +73,9 @@ storage can't be read still has every page.
 
 ```js
 {
-  theme: "system",         // "light" | "dark" | "system" (Auto, the default for a new device; a device keeps what it has)
+  theme: "system",         // "light" | "dark" | "system" (Auto, the default for a new device; a device keeps what it has,
+                           //   and one from before 2026.11.16-1 with no settings record yet keeps "light": its settings
+                           //   are saved when 21Board starts and finds none)
   snapping: true,          // snap windows together and resist overlap
   resistance: "normal",    // "gentle" | "normal" | "strong" — how hard you push to overlap
                            //   (Settings → Advanced → Windows stop at each other's edges: Off = snapping false;

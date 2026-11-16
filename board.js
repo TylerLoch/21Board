@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.16-1';
-  const BOARD_BUILD = '5dda58dc';
+  const BOARD_BUILD = '4641ab80';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -241,6 +241,16 @@
     const m = exp.media && exp.media.background;
     return hash53(JSON.stringify([exp.board, exp.theme, exp.accent, exp.instances.map(i => { const o = Object.assign({}, i, { z: 0 }); delete o.createdAt; return o; }),
       m ? [m.bytes, m.addedAt, m.w, m.h, exp.media.look] : null]));
+  }
+  // The fingerprints (sigOf: boardSig, or Board history's) the board may have been sent, loaded or saved as a version
+  // with: as it is, and, with the new Paper, as it was stored before the old Paper and Sand became it (BG_RENAMED).
+  // Reading the old color as the new one isn't a change: nothing is sent again, and Load asks nothing.
+  function boardSigs(exp, sigOf = boardSig) {
+    const bg = exp.board && exp.board.background, sigs = [sigOf(exp)];
+    for (const [old, now] of Object.entries(BG_RENAMED)) {
+      if (bg && bg.color === now) sigs.push(sigOf(Object.assign({}, exp, { board: Object.assign({}, exp.board, { background: Object.assign({}, bg, { color: old }) }) })));
+    }
+    return sigs;
   }
   const fmtBytes = n => n < 1024 ? `${n} B` : n < 1048576 ? `${(n / 1024).toFixed(1)} KB` : n < 1073741824 ? `${(n / 1048576).toFixed(1)} MB` : `${(n / 1073741824).toFixed(1)} GB`;
 
@@ -3734,11 +3744,12 @@
 
   function awakeSettings(sw) {
     if (LAB) return '';
-    const on = Awake.mode() === 'on', ok = Awake.supported(), status = Awake.statusHTML();
+    const on = Awake.mode() === 'on', ok = Awake.supported(), status = Awake.statusHTML(), warn = on && ok && !KIOSK;
+    // (The warning is read with the switch: Settings is drawn afresh when it is turned on, with the keyboard back on it.)
     return `<div class="row awake-row"><div><div class="lbl">Stay awake</div>
-        ${on && ok && !KIOSK ? '<div class="hint warn-line" id="set-awake-warn"><span class="status-dot warn"></span>This makes your account less secure.</div>' : ''}
+        ${warn ? '<div class="hint warn-line" id="set-awake-warn"><span class="status-dot warn"></span>This makes your account less secure.</div>' : ''}
         <div class="hint awake-status" id="set-awake-status" aria-live="polite"${status ? '' : ' hidden'}>${status}</div></div>
-      ${sw('awake', on, 'Stay awake', !ok)}</div>`;
+      ${sw('awake', on, 'Stay awake', !ok, warn ? 'set-awake-warn' : '')}</div>`;
   }
 
   function awakeAct(act) {
@@ -3980,7 +3991,8 @@
   // Settings' controls: a segmented choice (radio buttons) and an on/off switch.
   const segHTML = (act, cur, opts, disabled) => `<div class="seg${disabled ? ' disabled' : ''}" role="radiogroup">${opts.map(([v, l]) =>
     `<button role="radio" aria-checked="${v === cur}" data-act="${act}" data-val="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('')}</div>`;
-  const switchHTML = (act, on, label, disabled) => `<button class="switch${on ? ' on' : ''}" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}" data-act="${act}"${disabled ? ' disabled' : ''}></button>`;
+  // (describedBy: the id of a line a screen reader reads with the switch, such as a warning that comes with it on.)
+  const switchHTML = (act, on, label, disabled, describedBy) => `<button class="switch${on ? ' on' : ''}" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}"${describedBy ? ` aria-describedby="${describedBy}"` : ''} data-act="${act}"${disabled ? ' disabled' : ''}></button>`;
 
   // A group in Settings: one row (a button) with its name and what it's set to, that opens the group in place, below
   // it. Which groups are open is Settings.groups: it lasts while Settings stays open (Settings is drawn again on every
@@ -4261,8 +4273,8 @@
         <div class="row stack"><div class="lbl">Windows stop at each other’s edges</div>${seg('snap', snap, [['off', 'Off'], ['light', 'Light'], ['medium', 'Medium'], ['firm', 'Firm']])}</div>
         <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Off: only by the title bar.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
         ${historySettings(sw, seg)}
-        ${LAB ? '' : `<h4>Backups and storage</h4>
-        <div class="row"><div><div class="lbl">Back up every page</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
+        <h4>${LAB ? 'Storage' : 'Backups and storage'}</h4>
+        ${LAB ? '' : `<div class="row"><div><div class="lbl">Back up every page</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
         <div class="row status-block">
           <div class="st"><span class="k">Offline</span><span class="hint" id="st-offline">Checking…</span></div>
           <div class="st"><span class="k">Protected storage</span><span id="st-persist"></span></div>
@@ -5272,6 +5284,12 @@
           return false;
         }
         const look = await this.peek(h);
+        if (look.history) {   // (a folder can't reach the one it's in: the teacher picks that)
+          const again = await dialog({ title: `“${h.name}” is 21Board’s Board history folder`, message: 'It holds earlier versions of your boards. Choose the folder it’s in instead, such as 21Board.',
+            actions: [{ label: 'Choose another…', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
+          if (again) continue;   // (this tap opens the picker again)
+          return false;
+        }
         if (look.sub) {
           const pick = await dialog({ title: `Use the ${look.sub.name} folder inside “${h.name}”?`, message: 'Pick the same folder on each of your devices.',
             actions: [{ label: `Use ${look.sub.name} folder`, value: 'sub', kind: 'primary' }, { label: `Use “${h.name}” itself`, value: 'this' }, { label: 'Cancel', value: null }] });
@@ -5304,7 +5322,8 @@
       }
     },
     // A quick look inside a folder just picked: {ours} (21Board's files are in it, or it is called 21Board),
-    // {sub} (no files of 21Board's, but a folder called 21Board, in any capitals), {other} (other files or
+    // {history} (the Board history folder inside 21Board's: only its copies and note, or its name and nothing
+    // else), {sub} (no files of 21Board's, but a folder called 21Board, in any capitals), {other} (other files or
     // folders, as in My Drive itself), or {} (empty, or it couldn't be read). Google Drive may be slow to list
     // a folder, or not have it yet: what has been seen after a second and a half is all there is, and the
     // folder is linked as it is if that is nothing (never held up by the look).
@@ -5315,33 +5334,41 @@
       const look = (async () => {
         for await (const [name, e] of h.entries()) {
           if (stop) break;
-          if (e.kind === 'file' ? /\.21board$/i.test(name) || name === LINK_README : name === 'Board history') { seen.ours = true; break; }
+          if (e.kind === 'file' && (name === 'About these files.txt' || BoardHistory.parseName(name))) seen.history = true;
+          else if (e.kind === 'file' ? /\.21board$/i.test(name) || name === LINK_README : name === 'Board history') { seen.ours = true; break; }
           if (e.kind === 'directory' && /^21board$/i.test(name)) seen.sub = seen.sub || e;
           else if (!/^\.|^desktop\.ini$/i.test(name)) seen.other = true;   // (not hidden files that a computer adds)
         }
       })();
       await Promise.race([look.catch(() => {}), sleep(1500)]);
       stop = true;
-      return seen.ours ? { ours: true } : seen.sub ? { sub: seen.sub } : seen.other ? { other: true } : {};
+      return seen.ours ? { ours: true } : seen.history || (h.name === 'Board history' && !seen.other && !seen.sub) ? { history: true }
+        : seen.sub ? { sub: seen.sub } : seen.other ? { other: true } : {};
     },
     // Step 3 of setup: the folder is linked (and was just looked at). What comes next.
     async welcome(got) {
       if (!this.dir) return;   // (unlinked meanwhile)
-      const me = (this.st.device || {}).id, n = this.found.filter(f => f.kind === 'full' && f.uid !== S.board.uid && f.by !== me).length;
+      const me = (this.st.device || {}).id, theirs = this.found.filter(f => f.kind === 'full' && f.uid !== S.board.uid && f.by !== me), n = theirs.length;
       const say = [`This device now syncs through your “${this.dir.name}” folder.`];
       if (got.readOnly) say.push('You can only view this folder, not change it, so boards can be loaded from it but not sent. Ask its owner to let you edit it.');
-      if (this.problem() === 'missing') say.push('Google Drive is still bringing the folder to this device. 21Board keeps looking.');
-      else if (n) say.push(`It already has ${n === 1 ? 'a board' : n + ' boards'} from your other devices: you’ll find ${n === 1 ? 'it' : 'them'} in Settings › Board Sync.`);
+      const missing = this.problem() === 'missing';
+      if (missing) say.push('Google Drive is still bringing the folder to this device. 21Board keeps looking.');
+      else if (n === 1) say.push(`It already has “${theirs[0].title}” from ${theirs[0].from || 'another device'}. Load it here now, or later from Settings › Board Sync.`);
+      else if (n) say.push(`It already has ${n} boards from your other devices: you’ll find them in Settings › Board Sync.`);
       else if (got.readOnly) { /* (nothing in it to load, and nothing can be sent to it) */ }
       else if (!this.names.size) say.push('Now set up Board Sync on your other devices and pick this same folder.');
       else say.push('On your other devices, set up Board Sync and pick this same folder.');
       // (A newer version of this board is in it: the message on the board offers it, as usual. Sending would
       // only ask about it.)
       if (this.offer) say.push(`A newer version of this board, from ${this.offer.from || 'another device'}, is in it: tap Load on the message below to show it here.`);
-      const send = !got.readOnly && !this.offer;
+      // What comes next: the other device's board, shown here (Load), or this board, sent for the other devices. Not
+      // both: a device that finds a board there is usually the second one set up, with nothing on it yet to send.
+      const load = n === 1 && !missing && !this.offer, send = !got.readOnly && !this.offer && !n;
       const go = await dialog({ title: 'Board Sync is set up', message: say.join(' '),
-        actions: (send ? [{ label: 'Send this board now', value: 'send', kind: 'primary' }] : []).concat([{ label: 'Done', value: null, kind: send ? '' : 'primary' }]) });
+        actions: (load ? [{ label: `Load “${theirs[0].title}”`, value: 'load', kind: 'primary' }] : send ? [{ label: 'Send this board now', value: 'send', kind: 'primary' }] : [])
+          .concat([{ label: 'Done', value: null, kind: load || send ? '' : 'primary' }]) });
       if (go === 'send') await this.send();
+      if (go === 'load') await this.load(theirs[0].name);
     },
     async unlink() {
       await Writer.del(Keys.link('folder'));
@@ -5349,8 +5376,12 @@
       this.perm = 'none';
       this.redraw();
     },
+    // The note about the files, unless it's there. Throws as a send would where the folder can only be viewed (one
+    // another teacher set up and shared for viewing has the note already: it is opened to be changed, and left).
     async writeReadme() {
-      try { await this.dir.getFileHandle(LINK_README); return; } catch (e) { /* not there yet */ }
+      let fh = null;
+      try { fh = await this.dir.getFileHandle(LINK_README); } catch (e) { /* not there yet */ }
+      if (fh) { const w = await fh.createWritable({ keepExistingData: true }); await w.abort(); return; }
       await this.writeFile(LINK_README, [
         '21Board keeps your boards here so your devices can share them through Google Drive (Board Sync).',
         '',
@@ -5524,12 +5555,16 @@
     // (Not the window stacking order: tapping a window to bring it forward isn't a change.)
     sigOf(exp) { return boardSig(exp); },
     async sig() { return this.sigOf(await buildExport('full')); },
+    // The board is as it was sent or loaded here (rec: its boardRec). (Also as an older 21Board stored it: boardSigs.)
+    async same(rec) {
+      if (!rec || (!rec.sentSig && !rec.loadedSig)) return false;
+      return boardSigs(await buildExport('full')).some(s => s === rec.sentSig || s === rec.loadedSig);
+    },
     // Changed on this device since it was last sent or loaded here. (Never sent or loaded: anything on it counts.)
     async localChanges() {
       const rec = this.boardRec(S.board.uid);
       if (!rec || (!rec.sentSig && !rec.loadedSig)) return S.insts.size > 0;
-      const sig = await this.sig();
-      return sig !== rec.sentSig && sig !== rec.loadedSig;
+      return !await this.same(rec);
     },
     async remember(uid, vid, patch, gen = this.gen) {
       let stored = null;
@@ -5737,8 +5772,7 @@
       if (hold > 0) { this.unsent = true; this.autoT = setTimeout(() => this.autoSend(), hold); return; }
       const at = Date.now();
       this.unsent = false;   // (a change made from here on sets it again)
-      const rec = this.boardRec(S.board.uid), sig = await this.sig();
-      if (rec && (sig === rec.sentSig || sig === rec.loadedSig)) { this.comparedAt = at; this.unstuck(); return; }   // nothing new since it was sent or loaded
+      if (await this.same(this.boardRec(S.board.uid))) { this.comparedAt = at; this.unstuck(); return; }   // nothing new since it was sent or loaded
       if (this.offer) {   // a version from another device is waiting: never send over it, but say so (even after "Not now")
         this.unsent = true;
         if (Date.now() - (this.nagAt || 0) > 5 * 60 * 1000) { this.nagAt = Date.now(); this.dismissed = ''; this.setOffer(this.offer, { again: true, blocked: true }); }
@@ -6100,7 +6134,7 @@
       const filled = keys.filter(k => aw[k] && bw[k] && bw[k][0] && !aw[k][6] && bw[k][6]), unfilled = keys.filter(k => aw[k] && bw[k] && bw[k][0] && aw[k][6] && !bw[k][6]);
       say(filled, n => `${n} filled the board`, c => `${c} windows filled the board`);
       say(unfilled, n => `${n} back to normal size`, c => `${c} windows back to normal size`);
-      if (a.thumb && b.thumb && (a.thumb.bg !== b.thumb.bg || a.thumb.pattern !== b.thumb.pattern)) items.push('Background changed');
+      if (a.thumb && b.thumb && (bgColor(a.thumb.bg) !== bgColor(b.thumb.bg) || a.thumb.pattern !== b.thumb.pattern)) items.push('Background changed');   // (the old Paper and Sand: the new Paper)
       if ((a.photo || null) !== (b.photo || null)) items.push(b.photo ? 'Photo changed' : 'Photo removed');
       if (a.name !== b.name) items.push('Name changed');
       return items;
@@ -6118,7 +6152,9 @@
       try { exp = await buildExport('full'); } catch (e) { return null; }
       if (opts.token && opts.token.late) return null;   // gave up waiting (see before()): this would show the board after the action
       if (opts.patch) { const i = exp.instances.find(x => ikeyOf(x.widgetId, x.instance) === opts.patch.ikey); if (i) i.data = opts.patch.data; }
-      const linkSig = boardSig(exp), sig = this.sigOf(exp);
+      // (linkSigs, sigs: also as an older 21Board stored the board, see boardSigs. Reading the old Paper as the new
+      // one isn't a change worth a version.)
+      const linkSigs = boardSigs(exp), sig = this.sigOf(exp), sigs = boardSigs(exp, e => this.sigOf(e));
       const photoM = exp.media && exp.media.background;
       if (!exp.instances.length && !photoM && kind !== 'manual') return null;
       for (const i of exp.instances) { const inst = S.insts.get(ikeyOf(i.widgetId, i.instance)); if (inst && inst.createdAt) i.createdAt = inst.createdAt; }
@@ -6133,7 +6169,7 @@
       const meta = { v: 1, id: `${b}:${String(at).padStart(13, '0')}:${TAB_ID}`, b, at, kind, reason: opts.reason || null, label: exp.snapshot.label,
         sig, uid: S.board.uid || null, name: S.board.name, bytes, photo: photoKey, thumb: this.thumbOf(exp), wins: this.winsOf(exp),
         target: opts.target || null,   // going back: the time gone back to (labels are written when shown)
-        beforeBig: false, link: rec && linkSig === rec.sentSig ? 'sent' : rec && linkSig === rec.loadedSig ? 'loaded' : null,
+        beforeBig: false, link: rec && linkSigs.includes(rec.sentSig) ? 'sent' : rec && linkSigs.includes(rec.loadedSig) ? 'loaded' : null,
         keepUntil: kind === 'before' || kind === 'restored' ? at + HIST.safetyKeep : 0, manual: kind === 'manual', folder: null, tab: TAB_ID };
       const every = this.every();
       let id;
@@ -6142,7 +6178,7 @@
           const c = o.meta.openCursor(this.range(b), 'prev');
           c.onsuccess = () => {
             const newest = c.result && c.result.value;
-            if (newest && newest.sig === sig) {   // the same as the newest version: nothing new to save
+            if (newest && sigs.includes(newest.sig)) {   // the same as the newest version: nothing new to save
               if (kind === 'before') { newest.keepUntil = Math.max(newest.keepUntil || 0, at + HIST.safetyKeep); o.meta.put(newest); }
               if (kind === 'manual') { newest.manual = true; newest.manualLabel = meta.label; o.meta.put(newest); }
               set(newest.id); return;
@@ -7550,6 +7586,10 @@
       await reloadAll(true, { pick: !LAB });
     }
     Store.loaded = true;
+    // Theme Auto is the default for new devices (since 2026.11.16-1). A device from before that never saved a setting
+    // was showing Light: it keeps it. (It has records already; a new device, or one just erased, has none.) The
+    // settings are saved either way, so that the next start can tell.
+    if (!LAB && !Store.failed && !Known.has(Keys.settings)) updateSettings(Known.size ? { theme: 'light' } : {});
     updateZoom();
     migrateBoard();
     if (!Known.has(Keys.board(S.boardId))) Writer.put(Keys.board(S.boardId), 'board', S.board);

@@ -1371,6 +1371,12 @@ const SUITES = [
     await page.goto(BASE); await boardUp(page);
     // A new device follows the device's own light or dark: Theme is Auto.
     ok(await page.evaluate(() => window.__board21.state.settings.theme === 'system' && document.body.classList.contains('dark')), 'a new device’s theme is Auto: this device is dark, and so is the board');
+    // (Saved at once: by the next start the device has a board saved, and is still a new one, not one from before.)
+    const storedTheme = () => page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').get('settings'); q.onsuccess = () => { o.result.close(); res(q.result ? q.result.value.theme : '(no settings record)'); }; }; }));
+    await page.waitForTimeout(300);
+    const stored = await storedTheme();
+    await page.reload(); await boardUp(page);
+    ok(stored === 'system' && await page.evaluate(() => window.__board21.state.settings.theme === 'system' && document.body.classList.contains('dark')), `and it stays Auto after a reload (saved: ${stored})`);
     await openSettings(page);
     const shape = () => page.evaluate(() => ({ heads: [...document.querySelectorAll('#settings .sheet-body > h3')].map(h => h.textContent), theme: (document.querySelector('#settings [data-act="theme"].on') || {}).textContent,
       groups: [...document.querySelectorAll('#settings [data-act="group"]')].map(b => b.dataset.val + (b.getAttribute('aria-expanded') === 'true' ? ' open' : '') + (document.getElementById(b.getAttribute('aria-controls')).hidden ? ' hidden' : '')),
@@ -1416,6 +1422,13 @@ const SUITES = [
     // keep 21Board's data. (Here it hasn't, so it shows.)
     const dot = (p = page) => p.evaluate(() => { const d = document.getElementById('grp-advanced-warn'); return !!d && !d.hidden && getComputedStyle(d).display !== 'none'; });
     ok(await dot(), 'Advanced has an amber dot: no backup yet, and storage isn’t protected');
+    // A device from before Auto was the default that never saved a setting (an older 21Board with no settings record,
+    // only its board and windows) was showing Light: it keeps Light, and it's saved.
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'); t.objectStore('records').delete('settings'); t.oncomplete = () => { o.result.close(); res(); }; }; }));
+    await page.reload(); await boardUp(page); await page.waitForTimeout(300);
+    const older = await page.evaluate(() => ({ theme: window.__board21.state.settings.theme, dark: document.body.classList.contains('dark'), notes: window.__board21.state.insts.has('notes:1') }));
+    ok(older.theme === 'light' && !older.dark && older.notes && await storedTheme() === 'light', `a device from before with no saved settings keeps Light, even on a dark device (${JSON.stringify(older)})`);
     await ctx.close();
     const kept = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     await kept.addInitScript(() => { const s = navigator.storage; s.persisted = async () => true; s.persist = async () => true; });
@@ -1438,9 +1451,12 @@ const SUITES = [
     const labShape = board && await board.evaluate(() => { document.querySelector('.picker-btn.left').click(); document.querySelector('[data-ctl="settings"]').click();
       const heads = [...document.querySelectorAll('#settings .sheet-body > h3')].map(h => h.textContent), saved = document.querySelector('#settings [data-val="saved"]');
       const h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(saved) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
-      return { heads, under: h && h.textContent, dot: !!document.getElementById('grp-advanced-warn') && !document.getElementById('grp-advanced-warn').hidden, rows: ['lock-windows', 'awake', 'hist-open', 'close-all', 'backup', 'devmode'].filter(a => document.querySelector(`#settings [data-act="${a}"]`)) }; });
+      const erase = document.querySelector('#settings [data-act="erase"]'), eh = [...document.querySelectorAll('#grp-advanced h4')].filter(e => e.compareDocumentPosition(erase) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      return { heads, under: h && h.textContent, dot: !!document.getElementById('grp-advanced-warn') && !document.getElementById('grp-advanced-warn').hidden, rows: ['lock-windows', 'awake', 'hist-open', 'close-all', 'backup', 'devmode'].filter(a => document.querySelector(`#settings [data-act="${a}"]`)),
+        adv: [...document.querySelectorAll('#grp-advanced h4')].map(e => e.textContent), erase: eh && eh.textContent }; });
     ok(labShape && labShape.heads.join() === 'Classroom,Widget test mode,Appearance' && labShape.under === 'Widget test mode' && labShape.rows.join() === 'close-all' && !labShape.dot,
       `the widget dev window’s Settings: ${labShape && labShape.heads.join(', ')}, with only Close all in Classroom (${JSON.stringify(labShape)})`);
+    ok(labShape && labShape.adv.join() === 'Moving windows,Storage' && labShape.erase === 'Storage', `and in Advanced, Erase everything is under Storage, not under Moving windows (${labShape && labShape.adv.join(', ')})`);
     await lab.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
@@ -4234,6 +4250,37 @@ const SUITES = [
     files = await readFolder(A.p);
     ok(!!JSON.parse(files['Room 12 Math.21board']).media, 'and with it on, the photo goes too');
     ok(!JSON.stringify(await A.p.evaluate(() => window.__board21.buildExport('full'))).includes('"link'), 'the folder link itself is never in exports');
+    // ---- A board sent in the old Paper or Sand (before they became the new Paper) reads as the new Paper after the
+    // update, and that isn't a change: it isn't sent again by itself, Board history saves no version for it, and
+    // loading the other device's newer version asks nothing about changes made here.
+    for (const old of ['#faf7f0', '#fef3c7']) {
+      const L = (p, fn, arg) => p.evaluate(fn, arg), D = await driveDevice(browser), E = await driveDevice(browser);
+      for (const d of [D, E]) { d.p.on('pageerror', e => errors.push(e.message)); await d.p.goto(BASE); await boardUp(d.p); }
+      await L(D.p, () => window.__board21.openWidget('notes')); await D.p.waitForTimeout(1200);
+      await fillNote(note(D.p), 'On paper'); await D.p.waitForTimeout(300);
+      await L(D.p, c => window.__board21.updateBoard({ background: { color: c, pattern: 'none' } }), old); await D.p.waitForTimeout(500);   // (stored as an older 21Board had it)
+      await L(D.p, async () => { const l = window.__board21.link; await l.choose(); l.waits.now = 800; l.waits.settle = 500; l.saveState({ device: Object.assign({}, l.device(), { label: 'my laptop' }), auto: true }); await l.send(); });
+      await D.p.waitForTimeout(800);
+      const file = Object.keys(await readFolder(D.p)).find(n => n.endsWith('.21board')), v1 = JSON.parse((await readFolder(D.p))[file]).sent.id;
+      const version = await L(D.p, () => window.__board21.history.capture('open'));
+      await L(D.p, () => window.__board21.rebuildAll()); await D.p.waitForTimeout(800);   // (as when 21Board starts after the update)
+      const now = await L(D.p, async () => ({ color: window.__board21.state.board.background.color, changed: await window.__board21.link.localChanges(), version: await window.__board21.history.capture('open') }));
+      await L(D.p, async () => { const l = window.__board21.link; l.comparedAt = 0; l.freshAt = Date.now(); await l.check(true); }); await D.p.waitForTimeout(4000);
+      const v2 = JSON.parse((await readFolder(D.p))[file]).sent.id;
+      ok(now.color === '#f3ede1' && !now.changed && !!version && now.version === version && v2 === v1,
+        `a board sent in the old ${old === '#faf7f0' ? 'Paper' : 'Sand'} shows the new Paper, and isn’t changed: no automatic send, no new version in Board history (${JSON.stringify(now)}, ${v2 === v1 ? 'same' : 'another'} version in the folder)`);
+      await drive(D.p, E.p);
+      await L(E.p, async () => { const l = window.__board21.link; await l.choose(); l.saveState({ device: Object.assign({}, l.device(), { label: 'the smartboard' }) }); });
+      await L(E.p, n => { window.__board21.link.load(n); }, file); await modal(E.p, 'Replace this board'); await E.p.waitForTimeout(2000);
+      await fillNote(note(E.p), 'Changed on the smartboard'); await E.p.waitForTimeout(400);
+      await L(E.p, () => window.__board21.link.send()); await E.p.waitForTimeout(800);
+      await drive(E.p, D.p);
+      await L(D.p, () => window.__board21.link.check(true)); await D.p.waitForTimeout(500);
+      await L(D.p, n => { window.__board21.link.load(n); }, file); await D.p.waitForTimeout(2000);
+      ok(!await D.p.locator('#modal.open').count() && await noteText(D.p) === 'Changed on the smartboard' && Object.keys(await readFolder(D.p)).filter(n => /copy from/.test(n)).length === 0,
+        'and the laptop loads the smartboard’s newer version straight away (no question about changes, no copy kept)');
+      await D.c.close(); await E.c.close();
+    }
     // ---- Browsers without a folder picker don't show any of it.
     const C = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     await C.addInitScript(() => { window.showDirectoryPicker = undefined; });
@@ -6385,6 +6432,28 @@ const SUITES = [
     await L(p, () => { window.__drive = {}; });
     await unlink(p);
 
+    // ---- 21Board's own Board history folder, picked by mistake (it is inside the 21Board folder): not linked, or
+    // this device would sync through another folder than the other devices, with history copies as its boards.
+    const histCopy = JSON.stringify({ format: '21board', formatVersion: 1, kind: 'full', viewport: { width: 2400, height: 1350 }, board: { name: 'Math', uid: 'aaaaaaaa-bbbb-cccc', background: { color: null, pattern: 'none' } }, instances: [], history: { at: Date.now() - 3600e3, kind: 'auto', label: '', by: 'x', from: 'a computer' } });
+    await seedFolder(p, 'Kept', { 'About this folder.txt': 'x', 'Board history': { 'Math 2026-11-15 10.00 (a computer) [aaaaaa-xxxx].21board': histCopy, 'About these files.txt': 'x' } });
+    await L(p, () => { window.__drive = { pick: 'Kept/Board history' }; window.__picks = []; });
+    await setUp(p);
+    ok(await asking(p, '“Board history” is 21Board’s Board history folder') && await linked(p) === '', 'the Board history folder inside 21Board’s folder isn’t linked');
+    ok(/It holds earlier versions of your boards\. Choose the folder it’s in instead, such as 21Board\./.test(await said(p)) && await buttons(p) === 'Choose another…|Cancel' && await names('Kept/Board history') === 'About these files.txt,Math 2026-11-15 10.00 (a computer) [aaaaaa-xxxx].21board',
+      'it says what the folder is and to choose the one it’s in, with Choose another… and Cancel (and nothing is written in it)');
+    await L(p, () => { window.__drive.pick = 'Kept'; });
+    await modal(p, 'Choose another…');
+    ok(await asking(p, 'Board Sync is set up') && await linked(p) === 'Kept' && await L(p, () => window.__picks.join()) === 'true,true', 'Choose another… opens the folder picker again, from its own tap, and links the 21Board folder picked then');
+    await modal(p, 'Done');
+    await seedFolder(p, 'Other/Board history');
+    await L(p, () => { window.__drive = { pick: 'Other/Board history' }; });
+    await change(p);
+    ok(await asking(p, 'is 21Board’s Board history folder'), 'an empty folder called “Board history” (Google Drive still bringing its files) is taken for one too');
+    await modal(p, 'Cancel'); await p.waitForTimeout(300);
+    ok(await linked(p) === 'Kept', 'and Cancel leaves the folder that was linked');
+    await L(p, () => { window.__drive = {}; });
+    await unlink(p);
+
     // ---- A folder that can only be viewed (shared with the teacher for viewing).
     await seedFolder(p, 'Team folder', { 'Worksheet.pdf': 'x' });
     await L(p, () => { window.__drive = { pick: 'Team folder', readOnly: true }; });
@@ -6406,6 +6475,18 @@ const SUITES = [
     ok(await eventually(async () => await toasts('If it was renamed, moved or deleted, choose it again in Settings › Board Sync.') === 1), 'and where to choose it again when it can’t be found');
     await L(p, () => { window.__drive = { perm: 'prompt' }; return window.__board21.link.refresh(); });
     ok(await eventually(async () => await p.locator('.folder-note.left').getAttribute('aria-label') === 'Reconnect your Board Sync folder'), 'the note on the board names Board Sync to a screen reader');
+    await L(p, () => { window.__drive = {}; }); await unlink(p);
+    // One another teacher set up and shared for viewing: 21Board's note is in it already (nothing to write), with
+    // their boards. It is found to be view-only all the same.
+    const theirs = (name, uid) => JSON.stringify({ format: '21board', formatVersion: 1, kind: 'full', viewport: { width: 2400, height: 1350 }, board: { name, uid, background: { color: null, pattern: 'none' } }, instances: [], sent: { id: 'v-' + uid, at: Date.now() - 3600e3, by: 'dev-other-0001', from: 'Ms. B’s laptop' } });
+    await seedFolder(p, 'Team 21Board', { 'About this folder.txt': 'Their note', 'Math.21board': theirs('Math', 'aaaaaaaa-bbbb-cccc'), 'Reading.21board': theirs('Reading', 'dddddddd-eeee-ffff') });
+    await L(p, () => { window.__drive = { pick: 'Team 21Board', readOnly: true }; });
+    await setUp(p);
+    ok(await asking(p, 'Board Sync is set up') && /You can only view this folder, not change it, so boards can be loaded from it but not sent\./.test(await said(p)) && /It already has 2 boards from your other devices: you’ll find them in Settings › Board Sync\./.test(await said(p)) && await buttons(p) === 'Done',
+      'a view-only folder that already has 21Board’s note is found to be view-only too: the last step says so, points to its boards, and offers no Send');
+    await modal(p, 'Done'); await p.waitForTimeout(300);
+    ok(await names('Team 21Board') === 'About this folder.txt,Math.21board,Reading.21board' && (await seedFolder(p, 'Team 21Board', {})).length === 3 && await L(p, async () => (await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle('Team 21Board')).getFileHandle('About this folder.txt')).getFile()).text()) === 'Their note',
+      'and nothing in it was changed');
     await L(p, () => { window.__drive = {}; }); await unlink(p);
     ok(!/Settings [›>] Google Drive folder/.test(fs.readFileSync(path.join(ROOT, 'board.js'), 'utf8')), 'no message sends the teacher to “Settings › Google Drive folder” any more');
 
@@ -6431,14 +6512,22 @@ const SUITES = [
     await settings(B.p);
     await setUp(B.p);
     ok(await asking(B.p, 'Board Sync is set up'), 'on the smartboard, the 21Board folder (with the laptop’s board in it) is linked straight away');
-    ok(/It already has a board from your other devices: you’ll find it in Settings › Board Sync\./.test(await said(B.p)) && !/Now set up/.test(await said(B.p)), 'and the last step says that a board from the other device is there');
+    ok(/It already has “My Board” from a computer\. Load it here now, or later from Settings › Board Sync\./.test(await said(B.p)) && !/Now set up/.test(await said(B.p)), 'and the last step names the board from the other device');
+    ok(await buttons(B.p) === 'Load “My Board”|Done' && await B.p.locator('#modal.open .btn.primary').innerText() === 'Load “My Board”',
+      'its main button loads that board here; there’s no Send this board now (it would send the smartboard’s own empty board into the folder)');
     await B.p.screenshot({ path: OUT + '97-board-sync-found.png' });
     await modal(B.p, 'Done'); await B.p.waitForTimeout(400);
     ok(await B.p.locator('#settings [data-act="group"][data-val="boards"]').getAttribute('aria-expanded') === 'true' && await B.p.locator('#settings [data-act="link-load"][data-val="My Board.21board"]').isVisible(),
-      'Settings then shows it, open under Boards from other devices, with Load');
+      'Done: Settings then shows it, open under Boards from other devices, with Load');
+    // Load “My Board” in the last step: the board is shown here, after the usual question, and nothing is sent.
+    await unlink(B.p); await setUp(B.p); await asking(B.p, 'Board Sync is set up');
+    await modal(B.p, 'Load “My Board”');
+    ok(await asking(B.p, 'Replace this board with “My Board”?'), 'Load “My Board” asks first, as Load in Settings does');
+    await modal(B.p, 'Replace this board'); await B.p.waitForTimeout(1500);
+    ok(await L(B.p, () => window.__board21.state.board.uid) === await L(p, () => window.__board21.state.board.uid) && Object.keys(await readFolder(B.p)).sort().join() === 'About this folder.txt,My Board.21board',
+      'then the smartboard shows the laptop’s board, and nothing new is in the folder');
     // Set up again with a newer version of the board on screen waiting in the folder: the message on the board
     // offers it as usual, and the last step points to it (and doesn't offer to send over it).
-    await L(B.p, () => { window.__board21.link.load('My Board.21board'); }); await modal(B.p, 'Replace this board'); await B.p.waitForTimeout(1500);
     await L(p, () => window.__board21.openWidget('dice')); await p.waitForTimeout(800);
     await L(p, () => window.__board21.link.send()); await p.waitForTimeout(800);
     await drive(p, B.p);
@@ -7763,7 +7852,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     // The row as Settings shows it: the switch, the warning while it's on, and a status line only when it isn't working.
     const row = page => page.evaluate(() => { const r = document.querySelector('#settings .awake-row'), sw = r.querySelector('[data-act="awake"]'), warn = r.querySelector('#set-awake-warn'), st = document.getElementById('set-awake-status');
       const h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
-      return { section: h && h.textContent, label: r.querySelector('.lbl').textContent, role: sw.getAttribute('role'), on: sw.getAttribute('aria-checked') === 'true', disabled: sw.disabled, choices: r.querySelectorAll('.seg, input').length,
+      return { section: h && h.textContent, label: r.querySelector('.lbl').textContent, role: sw.getAttribute('role'), on: sw.getAttribute('aria-checked') === 'true', disabled: sw.disabled, choices: r.querySelectorAll('.seg, input').length, describedBy: sw.getAttribute('aria-describedby') || '',
         warn: warn ? (warn.querySelector('.status-dot.warn') ? '(warn) ' : '') + warn.textContent.trim() : '', status: st.hidden ? '' : (st.querySelector('.status-dot.warn') ? '(warn) ' : '') + st.textContent.trim() }; });
     const settings = page => openSettings(page, [], 'right');
     const fresh = async (mode, opts = {}) => {
@@ -7804,9 +7893,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await settings(page);
     await page.click('#settings [data-act="awake"]'); await page.waitForTimeout(300);
     w = await W(page); r = await row(page);
-    ok(w.held === 0 && w.releases === 1 && !r.on && !r.warn && !r.status, 'Off lets it go, and the warning goes');
+    ok(w.held === 0 && w.releases === 1 && !r.on && !r.warn && !r.status && !r.describedBy, 'Off lets it go, and the warning goes (the switch is described by nothing)');
     await page.evaluate(() => window.__show(false)); await page.evaluate(() => window.__show(true)); await page.waitForTimeout(300);
     ok((await W(page)).requests === 1, 'and nothing is asked for when 21Board shows again');
+    // A screen reader hears the warning too: turned on from the keyboard, Settings is drawn afresh with the keyboard
+    // back on the switch, and the switch is described by the warning.
+    await page.focus('#settings [data-act="awake"]'); await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+    const a11y = await page.evaluate(() => { const sw = document.activeElement, d = sw && document.getElementById(sw.getAttribute('aria-describedby') || '-');
+      return { act: sw && sw.dataset.act, on: sw && sw.getAttribute('aria-checked'), said: d ? d.textContent.trim() : '' }; });
+    ok(a11y.act === 'awake' && a11y.on === 'true' && a11y.said === 'This makes your account less secure.', `turned on from the keyboard, the switch keeps the keyboard and is described by the warning (${JSON.stringify(a11y)})`);
+    await page.keyboard.press('Enter'); await page.waitForTimeout(300);
     // A device that had school hours (an older 21Board: 'hours', with a From and To) keeps the screen on: the times go.
     await page.keyboard.press('Escape');
     await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'), st = t.objectStore('records'), g = st.get('settings');
@@ -7839,9 +7935,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await settings(page);
     r = await row(page);
     ok(r.disabled && r.status === '(warn) This browser can’t keep the screen on.' && !r.warn, `unsupported: “${r.status}”, and the switch is greyed out`);
-    await page.evaluate(() => window.__board21.state.settings.awake = 'on');   // (left on from another browser's 21Board)
-    await page.evaluate(() => document.querySelector('#settings [data-act="awake"]').click()); await page.waitForTimeout(300);
-    ok(await page.locator('.picker-btn.right').isVisible() && !errors.length, 'a setting left on starts nothing and breaks nothing');
+    // Left on, and saved, where it could be done (this device's browser before an update, or IT's policy, took it
+    // away): 21Board starts as usual, the switch shows it on, greyed out, with the reason, and nothing breaks.
+    await page.keyboard.press('Escape');
+    await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'), st = t.objectStore('records'), g = st.get('settings');
+      g.onsuccess = () => { const rec = g.result || { key: 'settings', type: 'settings', rev: 0, value: {} }; rec.value = Object.assign({}, rec.value, { awake: 'on' }); rec.rev += 1000; st.put(rec); }; t.oncomplete = () => { o.result.close(); res(); }; }; }));
+    await page.reload(); await boardUp(page); await page.waitForTimeout(400);
+    const left = await page.evaluate(() => window.__board21.state.settings.awake);
+    await settings(page); r = await row(page);
+    ok(left === 'on' && r.on && r.disabled && r.status === '(warn) This browser can’t keep the screen on.' && !r.warn && !r.describedBy && (await W(page)).requests === 0 && await page.locator('.picker-btn.right').isVisible() && !errors.length,
+      `a setting left on starts nothing and breaks nothing: 21Board opens, and the switch shows on, greyed out, with the reason (${JSON.stringify(r)})`);
     await ctx.close();
 
     // Served over plain http (a school server without https): the browser gives no wake lock there. It's https that

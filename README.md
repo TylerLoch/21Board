@@ -301,11 +301,15 @@ quick look inside the folder picked, so that every device ends up with the same 
   *Use this folder anyway* or *Choose another…*. A folder you can only view can't have one made in it: 21Board
   says so and offers *Choose another…*.
 - A folder that Google Drive is slow to list is used as it is: the look never holds up the setting up.
+- 21Board's own *Board history* folder (inside the 21Board folder, picked by mistake) isn't used: 21Board says
+  what it is and offers *Choose another…*, to pick the folder it's in.
 
 The last step says which folder this device uses and what comes next: for a new, empty folder, *Now set up
-Board Sync on your other devices and pick this same folder*; for one with boards from your other devices, that
-they are there (Settings → Board Sync → *Boards from other devices* lists them, with Load); for a folder you can only view, that boards can
-be loaded from it but not sent. *Send this board now* sends the board at once. *Change…* (Settings → Board
+Board Sync on your other devices and pick this same folder*, with *Send this board now* (it sends the board at
+once); for one with boards from your other devices, that they are there (Settings → Board Sync → *Boards from
+other devices* lists them, with Load), and when there is one, *Load “…”* shows it here at once (after the usual
+question); for a folder you can only view (also one that another teacher set up and shared for viewing), that
+boards can be loaded from it but not sent. *Change…* (Settings → Board
 Sync → *Folder settings*) and *Choose the folder again…* (on the note on the board) take the same look inside the folder picked,
 without the first dialog.
 
