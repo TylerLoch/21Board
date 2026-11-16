@@ -4403,8 +4403,8 @@ const SUITES = [
     ok(await A.p.locator('#settings [data-act="link-send"], #settings [data-act="link-auto"], #settings [data-act="link-photo"], #settings [data-act="group"][data-val="boards"], #settings [data-act="group"][data-val="folder"]').count() === 0,
       'no Send, Send automatically, Send the background photo, Boards from other devices or Folder settings');
     const hints = await A.p.evaluate(() => Array.from(document.querySelectorAll('#settings .hint')).map(h => h.textContent));
-    ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 4 && !hints.some(h => /This page only\./.test(h)),
-      'while linked, the page’s own settings say “This page, on all your devices.”, and the device’s own say “This device only.”');
+    ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 2 && hints.filter(h => h === 'On all your devices.').length === 2 && !hints.some(h => /This page only\./.test(h)),
+      'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme and Accent color “On all your devices.”');
     ok(/Your board stays on this device and in your Drive folder\. 21Board sends nothing to a server\./.test(await A.p.locator('#settings .about').innerText()), 'the footer says the board stays here and in the Drive folder');
     await A.p.keyboard.press('Escape');
     // A placeholder-only device writes nothing, even after a Timer was opened and closed on it with no content.
@@ -10173,6 +10173,110 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const hint = await C.p.evaluate(async () => { window.__board21.historySheet.open('left'); await new Promise(r => setTimeout(r, 1500)); const h = document.getElementById('history'), d = Array.from(h.querySelectorAll('.hist-day')).find(x => /Deleted pages/.test(x.textContent)); const t = d && d.nextElementSibling.textContent; window.__board21.historySheet.close(); return t; });
     ok(hint === 'Pages deleted in the last 30 days.', `not linked: “Pages deleted in the last 30 days.” (${hint})`);
     ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+    await A.c.close(); await B.c.close(); await C.c.close();
+  }],
+
+  // Tyler's decision 5: the theme and accent color are the board's, on every device linked to the folder (the later
+  // change wins, as for a page's name); Letters, the clock, Lock and Stay awake stay on each device.
+  ['Board Sync: theme and accent color on every device (a change and what it says, Settings open, Auto back, locked, another tab, kiosk, a fresh smartboard, the hints)', async (browser) => {
+    const errors = [];
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    // theme, accent, and what the board shows: dark or light, and its accent shade
+    const look = p => p.evaluate(() => { const s = window.__board21.state.settings; return `${s.theme} ${s.accent} ${document.body.classList.contains('dark') ? 'dark' : 'light'} ${document.body.style.getPropertyValue('--focus-ring').trim() || 'built-in'}`; });
+    const hints = p => p.evaluate(() => {
+      const hint = act => { const b = document.querySelector(`#settings [data-act="${act}"]`), r = b && b.closest('.row'), h = r && r.querySelector('.hint'); return h ? h.textContent.trim() : ''; };
+      return { theme: hint('theme'), accent: hint('accent'), lock: hint('lock-windows'), clock: hint('clock'), awake: hint('awake') };
+    });
+    const pick = async (p, act, val) => { await p.click(`#settings [data-act="${act}"][data-val="${val}"]`); await p.waitForTimeout(300); };
+    const said = (p, text) => p.locator('#toasts .toast', { hasText: text });
+
+    await openSettings(A.p);
+    const h0 = await hints(A.p);
+    ok(h0.theme === '' && h0.accent === '' && !/This device only/.test(h0.lock), `not linked: no hint beside Theme or Accent color (${JSON.stringify(h0)})`);
+    await A.p.keyboard.press('Escape');
+    await addNote(A.p, 'Morning meeting');
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    await openSettings(A.p);
+    const h1 = await hints(A.p);
+    ok(h1.theme === 'On all your devices.' && h1.accent === 'On all your devices.' && /This device only\.$/.test(h1.lock) && h1.clock === 'This device only.',
+      `linked: “On all your devices.” beside Theme and Accent color; Lock and the clock still “This device only.” (${JSON.stringify(h1)})`);
+    ok(await look(A.p) === 'system blue light built-in' && await look(B.p) === 'system blue light built-in', '(both start with Auto and Blue)');
+
+    // The laptop sets Dark and Green while Settings is open on the smartboard, scrolled down, the keyboard on Auto.
+    await openSettings(B.p);
+    await B.p.evaluate(() => { const body = document.querySelector('#settings .sheet-body'); body.scrollTop = 0; body.scrollTop = Math.min(220, body.scrollHeight - body.clientHeight); });
+    await B.p.focus('#settings [data-act="theme"][data-val="system"]');
+    const top0 = await B.p.evaluate(() => document.querySelector('#settings .sheet-body').scrollTop);
+    await hear(B.p);
+    await pick(A.p, 'theme', 'dark'); await pick(A.p, 'accent', 'green');
+    ok(await look(A.p) === 'dark green dark #4ade80', `(the laptop is dark and green: ${await look(A.p)})`);
+    await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    ok(await look(B.p) === 'dark green dark #4ade80', `the smartboard turns dark and green within a round (${await look(B.p)})`);
+    const nb = (await winList(B.p))[0].ikey;
+    const wAccent = await B.p.frameLocator(`.win[data-ikey="${nb}"] iframe`).locator('html').evaluate(e => e.style.getPropertyValue('--b21-accent'));
+    ok(wAccent === '#4ade80', `and its widgets get the new accent (${wAccent})`);
+    ok((await heard(B.p)).includes('The laptop changed the theme to Dark and the accent color to Green.'), `it says “The laptop changed the theme to Dark and the accent color to Green.” (${(await heard(B.p)).join(' | ')})`);
+    ok(await said(B.p, 'The laptop changed the theme').locator('button').count() === 0, 'with no Undo (changing it back in Settings is one tap)');
+    const sb = await B.p.evaluate(() => ({ dark: document.querySelector('#settings [data-act="theme"][data-val="dark"]').getAttribute('aria-checked'), green: document.querySelector('#settings [data-act="accent"][data-val="green"]').getAttribute('aria-checked'),
+      focus: `${document.activeElement.dataset.act}=${document.activeElement.dataset.val}`, top: document.querySelector('#settings .sheet-body').scrollTop }));
+    ok(sb.dark === 'true' && sb.green === 'true' && sb.focus === 'theme=system' && Math.abs(sb.top - top0) <= 2,
+      `Settings open on the smartboard shows Dark and Green chosen, with the keyboard where it was and the same scroll (${JSON.stringify(sb)}; was ${top0})`);
+    const fileA = await ownJSON(A.p), devA = await A.p.evaluate(() => window.__board21.link.dev());
+    ok(fileA.theme === 'dark' && fileA.accent === 'green' && fileA.sync.style.theme[0] === devA && fileA.sync.style.accent[0] === devA, `the laptop’s file has them, and their versions (${JSON.stringify(fileA.sync.style)})`);
+
+    // The smartboard sets Auto: the laptop follows, and says so.
+    await hear(A.p);
+    await pick(B.p, 'theme', 'system');
+    await syncNow(B.p); await deliver(B.p, A.p); await syncNow(A.p);
+    ok(await look(A.p) === 'system green light #15803d' && await look(B.p) === 'system green light #15803d', `the smartboard sets Auto: the laptop follows (${await look(A.p)})`);
+    ok((await heard(A.p)).includes('The smartboard changed the theme to Auto.'), `and says “The smartboard changed the theme to Auto.” (${(await heard(A.p)).join(' | ')})`);
+    ok(await A.p.evaluate(() => document.querySelector('#settings [data-act="theme"][data-val="system"]').getAttribute('aria-checked')) === 'true', 'Settings open on the laptop shows Auto');
+    await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    ok(await look(B.p) === 'system green light #15803d', 'nothing changes back');
+
+    // Locked, with another tab and a kiosk tab of the smartboard open: the change still applies everywhere.
+    const B2 = await B.c.newPage(); B2.on('pageerror', e => errors.push('smartboard tab 2: ' + e.message)); await B2.goto(BASE); await boardUp(B2);
+    const K = await B.c.newPage(); K.on('pageerror', e => errors.push('smartboard kiosk: ' + e.message)); await K.goto(BASE + '?kiosk=yes'); await boardUp(K);
+    await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(400);
+    ok(await B.p.evaluate(() => window.__board21.state.settings.locked === true), '(the smartboard’s windows are locked)');
+    await hear(B.p);
+    await pick(A.p, 'theme', 'dark'); await pick(A.p, 'accent', 'pink');
+    await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    ok(await look(B.p) === 'dark pink dark #f472b6', `locked: the change applies (${await look(B.p)})`);
+    ok((await heard(B.p)).includes('The laptop changed the theme to Dark and the accent color to Pink.') && await said(B.p, 'The laptop changed the theme').locator('button').count() === 0, 'and is said, with no button');
+    ok(await eventually(async () => await look(B2) === 'dark pink dark #f472b6'), `another tab of the smartboard follows (${await look(B2)})`);
+    ok(await eventually(async () => await look(K) === 'dark pink dark #f472b6'), `and so does one in kiosk mode (${await look(K)})`);
+    await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(400);
+    await B2.close(); await K.close();
+
+    // A fresh smartboard, set up against this folder: it takes the folder's Dark and Pink, and changes nobody's.
+    const C = await syncDev(browser, 'the hall smartboard', errors);
+    await openSettings(C.p);
+    await pick(C.p, 'theme', 'light'); await pick(C.p, 'accent', 'teal');
+    const h2 = await hints(C.p);
+    ok(h2.theme === '' && h2.accent === '', 'a device not linked yet: no hint beside them');
+    await C.p.keyboard.press('Escape');
+    await deliver(A.p, C.p); await deliver(B.p, C.p); await linkFolder(C.p);
+    ok(await look(C.p) === 'dark pink dark #f472b6', `a fresh smartboard set up against a folder whose board is Dark and Pink becomes Dark and Pink (${await look(C.p)})`);
+    const devC = await C.p.evaluate(() => window.__board21.link.dev()), fileC = await ownJSON(C.p);
+    ok(!fileC || !fileC.sync.style || ['theme', 'accent'].every(k => !fileC.sync.style[k] || fileC.sync.style[k][0] !== devC), `its file holds no change of its own to them (${fileC && JSON.stringify(fileC.sync.style)})`);
+    await exchange(A, B, C);
+    ok(await look(A.p) === 'dark pink dark #f472b6' && await look(B.p) === 'dark pink dark #f472b6', 'the laptop and the smartboard keep theirs');
+    await openSettings(C.p);
+    const h3 = await hints(C.p);
+    ok(h3.theme === 'On all your devices.' && h3.accent === 'On all your devices.', 'and once linked, it says “On all your devices.” beside them');
+    await C.p.keyboard.press('Escape');
+
+    // Import › Replace this page takes the file's theme and accent, as before: a change made here, so it syncs.
+    await hear(B.p);
+    await A.p.evaluate(async () => { const W = window.__board21, exp = await W.buildExport('full'); exp.theme = 'light'; exp.accent = 'orange'; await W.applyImport(exp, 'replace'); });
+    await A.p.waitForTimeout(400);
+    await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p); await deliver(A.p, C.p); await syncNow(C.p);
+    ok(await look(A.p) === 'light orange light #c2410c' && await look(B.p) === 'light orange light #c2410c' && await look(C.p) === 'light orange light #c2410c',
+      `Import › Replace this page with a file in Light and Orange: every device takes them (${await look(B.p)})`);
+    ok((await heard(B.p)).includes('The laptop changed the theme to Light and the accent color to Orange.'), `and says so (${(await heard(B.p)).join(' | ')})`);
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close(); await C.c.close();
   }],
 

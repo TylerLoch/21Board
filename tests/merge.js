@@ -4,14 +4,16 @@
  * Loads the "// #region Board Sync merge" region of board.js (and hash53, clone and sameJSON, by name) into a vm,
  * then checks:
  *   - the rules table (spec §4.1), case by case, with two or three simulated devices;
+ *   - the theme and accent color, the board's on every device: the later change wins, a device that never changed
+ *     them never overwrites, joining, an empty folder, switching, linking again, files from 2026.11.16-3;
  *   - reading a device file: cut, mixed and edited files are refused, a whole one is read, a bad unit is skipped;
  *   - a randomized run: devices editing pages and windows, Google Drive delivering files late, out of order, twice,
  *     as conflict copies or not at all, devices unlinked, linked again, switched to another folder and back, away
- *     for months, busy windows, stale tabs writing over a merge, lost files and ledgers. After a final full
- *     exchange, an oracle checks that every device shows the same board, that nothing anyone typed is lost unless
- *     a device that showed it changed or deleted it, that no clash is left, that no version is copied twice, that
- *     nobody writes again, and that nothing deleted comes back unless someone edited it without having seen the
- *     deletion;
+ *     for months, busy windows, stale tabs writing over a merge, lost files and ledgers, the theme and accent
+ *     changed now and then. After a final full exchange, an oracle checks that every device shows the same board
+ *     (and theme and accent), that nothing anyone typed is lost unless a device that showed it changed or deleted
+ *     it, that no clash is left, that no version is copied twice, that nobody writes again, and that nothing
+ *     deleted comes back unless someone edited it without having seen the deletion;
  *   - that the oracle bites: the same run with plain "later wins" content, and with the first draft's rules for
  *     removing old device files and tombstones, must fail.
  * Options: node tests/merge.js [runs-scale] (0.1 for a quick look; default 1).
@@ -54,7 +56,7 @@ const isLater = w => w === 'timer' || w === 'dice' || w === 'traffic-light';
 const isSingle = w => w === '21sketch';
 let NOW = Date.UTC(2026, 10, 2, 13);
 let rnd = () => Math.random();
-const pick = a => a[Math.floor(rnd() * a.length)];
+const pick = (a, r = rnd) => a[Math.floor(r() * a.length)];
 const token = v => (v && typeof v === 'object' ? (typeof v.text === 'string' ? v.text : Array.isArray(v.tasks) ? v.tasks[0] : null) : null);
 let LOG;
 const newLog = () => ({ typed: new Set(), gone: new Set(), dels: [], edits: [], sig: new Map(), writes: 0, fileKnow: new Map(),
@@ -243,6 +245,10 @@ class Device {
     this.put(`board:${b}`, 'board', v);
     this.touch(v.uid);
   }
+  // Settings → Theme, Accent color: the board's on every device linked to the folder (updateSettings notes when each
+  // was chosen here: themeAt, accentAt)
+  setStyle(p) { const set = {}; for (const [k, v] of Object.entries(p)) { set[k] = v; set[k + 'At'] = this.now(); } this.patch({ set }); }
+  styleNow() { return [this.settings.theme || 'system', this.settings.accent || 'blue'].join(' '); }
   photo(b, on) {
     if (on) {
       const m = { data: 'data:image/jpeg;base64,AAAA', w: 2000 + Math.floor(rnd() * 500), h: 1200, bytes: 1000 + Math.floor(rnd() * 1e5), name: 'p.jpg', addedAt: this.now() };
@@ -373,7 +379,7 @@ class Device {
     // knowledge of deletions: applied ones only
     for (const id of this.heard) if (!this.know.has(id)) { const d = LOG.dels[id - 1]; if (!this.shows(d.unit)) this.know.add(id); }
     this.writeFile(L3);
-    this.lastSum = plan.summary;
+    this.lastSum = plan.summary; (this.sums || (this.sums = [])).push(plan.summary);
     return plan;
   }
   leave(uid) {
@@ -494,7 +500,7 @@ class Device {
       for (const W2 of Array.from(P.wins.values()).sort((a, c) => (a.wid < c.wid ? -1 : 1))) wins.push([W2.wid, W2.widgetId, W2.parts.open.val, W2.parts.rect.h, W2.parts.data.val, W2.parts.conf.val, W2.parts.label.val]);
       out.push([P.uid, P.parts.name.val, P.parts.look.val, P.parts.size.val, P.parts.pos.val, P.parts.photo.val, P.parts.photoLook.val, wins]);
     }
-    return JSON.stringify(out.sort((a, c) => (a[0] < c[0] ? -1 : 1)));
+    return JSON.stringify([this.styleNow(), out.sort((a, c) => (a[0] < c[0] ? -1 : 1))]);   // (and the board's theme and accent)
   }
   pending() {
     for (const M of this.link.mines.values()) for (const mw of Object.values(M.w || {})) if (mw.p.data && mw.p.data.pending && mw.p.data.pending.length) return true;
@@ -518,12 +524,15 @@ function run(seed, nDev, steps, variant = {}) {
   for (const d of devs.slice(1)) { if (rnd() < 0.3) { const b = d.addPage(); d.addWindow(b, W.NOTES); } for (const o of devs) if (o !== d) d.deliver(o); d.linkTo(folder); }
   for (const d of devs) for (const o of devs) if (o !== d) d.deliver(o);
   const roundOf = d => d.round('full', gcOpts);
+  // (the theme and accent changed now and then: a stream of numbers of their own, so that the rest of each run is as it was)
+  const srnd = seeded(seed * 104729 + 3);
   for (let s = 0; s < steps; s++) {
     NOW += rnd() < (variant.jumps || 0.03) ? Math.floor(rnd() * 40) * DAY : Math.floor(rnd() * 30000);
     const d = pick(devs), r = rnd();
     if (d.away && rnd() < (variant.back || 0.15)) d.away = false;
     if (d.away) continue;   // (closed: it does nothing until it is back)
     if (variant.awayMore && rnd() < variant.awayMore) { d.away = true; NOW += 90 * DAY; continue; }
+    if (srnd() < 0.04) d.setStyle(srnd() < 0.5 ? { theme: pick(['light', 'dark', 'system'], srnd) } : { accent: pick(['blue', 'green', 'pink', 'teal'], srnd) });
     if (r < 0.40) edit(d);
     else if (r < 0.62) roundOf(d);
     else if (r < 0.85) { const o = pick(devs.filter(x => x !== d)); d.deliver(o, rnd() < 0.15 ? 'old' : rnd() < 0.05 ? 'copy' : 'latest'); }
@@ -1034,6 +1043,126 @@ function review() {
   });
 }
 
+// Theme and accent color: the board's, on every device linked to the folder (Tyler's decision 5: synced like
+// everything else), the later change winning as for a page's name. One block each.
+function styles() {
+  console.log('\nTheme and accent color (§4.6)');
+  const fileOf = d => JSON.parse(d.folder.files.get(d.fileName()));
+  const resum = o => { o.sync.sum = ''; o.sync.sum = crypto.createHash('sha256').update(Merge.sumText(o)).digest('hex').slice(0, 32); return JSON.stringify(o); };
+  block(() => {
+    const { A, B, sync } = pair();
+    ok(A.styleNow() === 'system blue' && B.styleNow() === 'system blue', '(both start with Auto and Blue)');
+    A.setStyle({ theme: 'dark', accent: 'green' }); NOW += 2000; A.round(); B.deliver(A);
+    const plan = B.round();
+    ok(B.styleNow() === 'dark green', `the theme and accent changed on the laptop: the smartboard takes them at its next round (${B.styleNow()})`);
+    ok(plan && same(plan.summary.style, [{ by: A.dev, theme: 'dark', accent: 'green' }]), `and its summary says which device changed what (${plan && JSON.stringify(plan.summary.style)})`);
+    sync();
+    ok(A.styleNow() === 'dark green' && B.styleNow() === 'dark green' && A.canon() === B.canon(), 'both show them, and nothing changes back');
+    const quiet = B.round();
+    ok(quiet && same(quiet.summary.style, []), 'a round with nothing new says nothing about them');
+    B.setStyle({ theme: 'system' }); NOW += 2000; sync();
+    ok(A.styleNow() === 'system green' && B.styleNow() === 'system green', `then Auto chosen on the smartboard reaches the laptop, and the accent stays (${A.styleNow()})`);
+    const f = fileOf(A);
+    ok(f.theme === 'system' && f.accent === 'green' && f.sync.style && f.sync.style.theme[0] === B.dev && f.sync.style.accent[0] === A.dev,
+      `a device file has them as any export does, and their versions in sync.style (${JSON.stringify(f.sync.style)})`);
+  });
+  for (const first of ['earlier', 'later']) block(() => {
+    // changed on both before either has the other's: the later change, on both, whichever round runs first
+    const { A, B, sync } = pair();
+    A.setStyle({ theme: 'dark' }); NOW += 5000; B.setStyle({ theme: 'light' }); NOW += 1000;
+    const [x, y] = first === 'earlier' ? [A, B] : [B, A];
+    x.round(); y.deliver(x); y.round(); x.deliver(y); x.round(); sync();
+    ok(A.styleNow() === 'light blue' && B.styleNow() === 'light blue', `the theme changed on both, the ${first} change’s round first: the later change on both (${A.styleNow()} / ${B.styleNow()})`);
+  });
+  block(() => {
+    // made apart: one while unlinked, stamped when linked again together with a later page change; the later wins
+    const { A, B, sync, folder } = pair();
+    B.unlink(); NOW += 1000;
+    B.setStyle({ accent: 'pink' }); NOW += 60000;
+    A.setStyle({ accent: 'teal' }); NOW += 1000; A.round();
+    NOW += 60000; B.addPage('After both'); NOW += 1000;   // (a change later than both, stamped with B's accent when it links again)
+    B.view = new Map(folder.files); B.linkTo(folder); sync();
+    ok(A.styleNow() === 'system teal' && B.styleNow() === 'system teal', `an accent chosen while unlinked, then one on the other device: the later wins on both, though the first was stamped with a later change (${A.styleNow()} / ${B.styleNow()})`);
+    B.unlink(); NOW += 1000;
+    A.setStyle({ accent: 'green' }); NOW += 1000; A.round(); NOW += 60000;
+    B.setStyle({ accent: 'red' }); NOW += 1000;
+    B.view = new Map(folder.files); B.linkTo(folder); sync();
+    ok(A.styleNow() === 'system red' && B.styleNow() === 'system red', `and the other way round: the one chosen while unlinked is the later, and wins on both (${A.styleNow()} / ${B.styleNow()})`);
+  });
+  block(() => {
+    // a device that never changed them never overwrites: its own before it joined, or a value it only received
+    const { A, B, folder } = pair();
+    A.setStyle({ theme: 'dark' });
+    const C = new Device('cart'); C.setStyle({ theme: 'light', accent: 'pink' }); C.addPage('Mine');   // (chosen before it ever synced)
+    const D = new Device('desk'); D.setStyle({ accent: 'teal' });   // (only the untouched first page: a take)
+    const all = [A, B, C, D], each = () => { for (let k = 0; k < 3; k++) { for (const d of all) { if (!d.linked) continue; for (const o of all) if (o !== d && o.linked) d.deliver(o); d.round(); } NOW += MIN; } };
+    each();
+    C.view = new Map(folder.files); C.folder = folder; C.linkTo(folder);
+    D.view = new Map(folder.files); D.folder = folder; D.linkTo(folder);
+    each();
+    ok(C.mode === null && D.mode === null && all.every(d => d.styleNow() === 'dark blue'), `a device joining (pages of its own) and one taking (only its first page) show the folder’s theme and accent, and change nobody’s (${all.map(d => d.styleNow()).join(', ')})`);
+    ok(same(C.sums[0].style, []) && same(D.sums[0].style, []), `and say nothing about them: nobody has just changed them (${JSON.stringify([C.sums[0].style, D.sums[0].style])})`);
+    ok(!!bOf(A, C.boardOf(C.ids().find(x => C.boardOf(x).name === 'Mine')).uid), '(the joining device’s own page was added)');
+    for (let i = 0; i < 4; i++) { B.addPage(); NOW += 1000; each(); }
+    const v = B.link.sync.style || {};
+    ok(v.theme && v.theme.v[0] === A.dev && v.accent && v.accent.v[0] === A.dev && fileOf(B).sync.style.theme[0] === A.dev,
+      'a device that only received them makes no version of its own, however many rounds it runs');
+  });
+  block(() => {
+    // an empty folder: this device's go there; a device set up after it takes them
+    const D = new Device('desk', { pages: false }); D.addPage('Home'); D.setStyle({ theme: 'dark', accent: 'teal' });
+    const f = new Folder('Room 9'); D.folder = f; D.view = new Map(); D.linkTo(f);
+    const o = fileOf(D);
+    ok(o.theme === 'dark' && o.accent === 'teal' && o.sync.style.theme[0] === D.dev && o.sync.style.accent[0] === D.dev, 'an empty folder (seed): this device’s theme and accent go there');
+    const E = new Device('wall', { pages: false }); E.addPage('Wall page'); E.setStyle({ theme: 'light' });
+    E.view = new Map(f.files); E.folder = f; E.linkTo(f); E.round(); D.deliver(E); D.round();
+    ok(E.styleNow() === 'dark teal' && D.styleNow() === 'dark teal', `and a device set up there after it takes them (${E.styleNow()})`);
+  });
+  block(() => {
+    // Change… to a folder with another board: that board's theme and accent apply here, and nothing there changes
+    const { A, B, sync, folder } = pair();
+    A.setStyle({ theme: 'light', accent: 'red' }); sync();
+    const other = new Folder('Room 14'), D = new Device('desk', { pages: false }); D.addPage('Room 14 page'); D.setStyle({ theme: 'dark', accent: 'teal' });
+    D.folder = other; D.view = new Map(); D.linkTo(other); D.round();
+    D.round('send'); D.view = new Map(folder.files); D.linkTo(folder); D.round();
+    A.deliver(D); A.round(); B.deliver(D); B.round(); sync();
+    ok([A, B, D].every(d => d.styleNow() === 'light red'), `switching to a folder with another board: its theme and accent here, and the others keep theirs (${[A, B, D].map(d => d.styleNow()).join(', ')})`);
+  });
+  block(() => {
+    // a device file from 2026.11.16-3 (no sync.style): read without error, and nothing about the theme changes
+    const { A, B, sync } = pair();
+    A.setStyle({ theme: 'dark' }); sync();
+    const old = fileOf(A); delete old.sync.style; old.theme = 'light'; old.accent = 'pink'; old.sync.seq += 1000;
+    const text = resum(old), r = Merge.decode(JSON.parse(text), H);
+    ok(r && r.peer && !r.newer && !r.skipped.length && !Object.keys(r.peer.style || {}).length, 'a 2026.11.16-3 device file (no sync.style) reads without error, with no version of the theme or accent');
+    B.view.set(A.fileName(), text); B.round();
+    ok(B.styleNow() === 'dark blue', `merged, it changes nothing about them, whatever its own theme and accent say (${B.styleNow()})`);
+    // and both devices as 2026.11.16-3 left them: their own theme each, no versions anywhere
+    const C = new Device('cart', { pages: false }), E = new Device('wall', { pages: false }), f = new Folder('Room 3');
+    C.addPage('C page'); C.folder = f; C.view = new Map(); C.linkTo(f);
+    E.view = new Map(f.files); E.folder = f; E.linkTo(f);
+    for (const d of [C, E]) { delete d.link.sync.style; d.peers.clear(); }
+    for (const [n, t] of Array.from(f.files)) { const o = JSON.parse(t); delete o.sync.style; f.write(n, resum(o)); }
+    for (const d of [C, E]) d.view = new Map(f.files);
+    C.patch({ set: { theme: 'light' } }); E.patch({ set: { theme: 'dark', accent: 'green' } });
+    const each = () => { for (let k = 0; k < 3; k++) { for (const d of [C, E]) { for (const o of [C, E]) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } };
+    each();
+    ok(C.styleNow() === 'light blue' && E.styleNow() === 'dark green', `two devices that synced with 2026.11.16-3 keep their own until one is changed (${C.styleNow()} / ${E.styleNow()})`);
+    C.setStyle({ accent: 'slate' }); each();
+    ok(C.styleNow() === 'light slate' && E.styleNow() === 'dark slate', `then that change reaches the other, and only it (${C.styleNow()} / ${E.styleNow()})`);
+  });
+  block(() => {
+    // a lost ledger is rebuilt from this device's file with the versions it held
+    const { A, B, sync } = pair();
+    B.setStyle({ accent: 'pink' }); sync();
+    const rb = Merge.rebuild(Merge.decode(fileOf(A), H).peer, { now: NOW });
+    ok(rb.sync.style && rb.sync.style.accent.v[0] === B.dev && rb.sync.style.accent.h === Merge.read([], { settings: { accent: 'pink' } }).style.accent.h,
+      'a ledger rebuilt from a device file has the theme and accent versions in it');
+    ok(Merge.includes(A.ledger(), Merge.decode(fileOf(B), H).peer) && !Merge.includes(Merge.ledger({ v: 1, dev: A.dev }, Array.from(A.link.mines.values())), Merge.decode(fileOf(B), H).peer),
+      'a file is “included” only if the ledger has its theme and accent versions too');
+  });
+}
+
 // ---------------------------------------------------------------------
 // 2. Reading device files
 // ---------------------------------------------------------------------
@@ -1210,6 +1339,7 @@ else (async () => {
   const scale = +process.argv[2] || 1;
   rules();
   review();
+  styles();
   files();
   await randomized(scale);
   await bites(scale);

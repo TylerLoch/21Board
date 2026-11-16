@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.16-3';
-  const BOARD_BUILD = '4d4e74b5';
+  const BOARD_VERSION = '2026.11.16-4';
+  const BOARD_BUILD = '277b6b58';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -133,6 +133,7 @@
   }
   // Only real entries count ("constructor", "__proto__" etc. from a crafted file must not).
   const accentOf = key => (typeof key === 'string' && Object.prototype.hasOwnProperty.call(ACCENTS, key)) ? ACCENTS[key] : null;
+  const accentOk = key => !!accentOf(key);   // (Board Sync's merge takes only these from another device's file)
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
   // The palette widgets receive (--b21-* variables), with the chosen accent applied.
   function paletteFor(theme) {
@@ -805,12 +806,12 @@
       } catch (e) { throw thrown || e; }
       for (const r of written) { if (r.deleted) { if (Known.get(r.key)) Raced.gone.set(r.key, Known.get(r.key)); Known.delete(r.key); } else Known.set(r.key, r.rev); Pages.hold(r.key, r.deleted ? null : r); }
       // (a settings patch was put over what was stored, which may hold another tab's or a merge's pages added, moved or
-      // deleted: those lists are shown here too)
+      // deleted, or a merge's theme and accent, which this tab didn't show while its patch waited: shown here too)
       const st = written.find(r => r.key === Keys.settings && batch.get(r.key) && batch.get(r.key).patch);
       if (st) {
         const w = this.pending.get(Keys.settings), v = w && w.patch ? Merge.patchSettings(st.value, w.patch) : st.value;
         const next = Object.assign({}, S.settings);
-        for (const k of ['boards', 'deletedBoards', 'deletedAt', 'lastBoard']) if (k in v) next[k] = v[k];
+        for (const k of ['boards', 'deletedBoards', 'deletedAt', 'lastBoard', 'theme', 'accent']) if (k in v) next[k] = v[k];
         if (!sameJSON(next, S.settings)) { S.settings = next; applySettings(); afterBulkApply(); }
       }
       if (written.length) { const keys = written.map(r => r.key); Sync.announce(keys); Link.changed(keys); BoardHistory.changed(keys); }
@@ -1187,6 +1188,8 @@
   function updateSettings(patch, quiet) {
     const p = { set: {}, drop: OLD_SETTINGS };
     for (const [k, v] of Object.entries(patch)) { if (k === 'gone') p.gone = v; else p.set[k] = v; }
+    // (when the theme or accent was chosen here: with Board Sync the later choice wins on every device, see Merge.stamp)
+    for (const k of ['theme', 'accent']) if (k in p.set) p.set[k + 'At'] = Date.now();
     S.settings = Merge.patchSettings(S.settings, p);
     applySettings();
     Writer.patch(Keys.settings, 'settings', p);
@@ -3705,9 +3708,10 @@
 
   // Settings → Classroom: lock, go back (board history, section 13c), close all, stay awake.
   // While Board Sync is set up (section 13b), the settings that stay on this device say so (the board's own ones
-  // say "This page, on all your devices.": pageScope).
+  // say "This page, on all your devices.": pageScope; the theme and accent color, the whole board's, "On all your
+  // devices.": labelled).
   const deviceOnly = (pre = '') => (Link.dir ? pre + 'This device only.' : '');
-  const labelled = lbl => (Link.dir ? `<div><div class="lbl">${lbl}</div><div class="hint">${deviceOnly()}</div></div>` : `<div class="lbl">${lbl}</div>`);
+  const labelled = lbl => (Link.dir ? `<div><div class="lbl">${lbl}</div><div class="hint">On all your devices.</div></div>` : `<div class="lbl">${lbl}</div>`);
   function classroomSettings(sw, seg) {
     const rows = lockSettings(sw, seg) + historyOpenRow() + closeAllRow() + awakeSettings(sw, seg);
     return rows ? `<h3>Classroom</h3>${rows}` : '';
@@ -5285,7 +5289,10 @@
         out.push(rec(Keys.media(b, 'background'), 'media', p.photo));
         out.push(rec(Keys.media(b, 'background-look'), 'media', p.photoLook || normalizePhotoSettings({})));
       }
-      if (p.theme || p.accent) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, p.theme ? { theme: p.theme } : {}, p.accent ? { accent: p.accent } : {})));
+      // (the file's theme and accent: chosen here now, so with Board Sync they reach the other devices, see updateSettings)
+      const look = {};
+      for (const k of ['theme', 'accent']) if (p[k]) Object.assign(look, { [k]: p[k], [k + 'At']: rev });
+      if (Object.keys(look).length) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, look)));
     }
 
     if (mode === 'replace') {
@@ -5905,7 +5912,7 @@
         const s = obj && obj.format === '21board' && obj.sync && typeof obj.sync === 'object' ? obj.sync : null;
         if (!s) { if (devish) return fail(file); this.files.set(name, { name, size: file.size, lastModified: file.lastModified, other: true }); return; }
         const meta = { name, size: file.size, lastModified: file.lastModified, readAt: now, dev: String(s.dev || ''), devName: String(s.name || '').slice(0, 60) };
-        const dec = (() => { try { return Merge.decode(obj, { UID_RE, PHOTO_FILE_RE }); } catch (e) { console.warn('21Board: a device file couldn’t be read', e); return null; } })();
+        const dec = (() => { try { return Merge.decode(obj, { UID_RE, PHOTO_FILE_RE, accentOk }); } catch (e) { console.warn('21Board: a device file couldn’t be read', e); return null; } })();
         if (dec && dec.newer) { this.files.set(name, Object.assign(meta, { newer: true })); changed = true; return; }
         let sum = '';
         try { sum = await this.digest(new TextEncoder().encode(Merge.sumText(obj))); } catch (e) { /* no checksum: not merged */ }
@@ -6065,7 +6072,7 @@
     },
     local(r, now) {
       return Merge.read(r.recs, { settings: r.settings, skipped: r.skipped, holdPages: this.undoPages(r.settings, now), photoKeyOf: m => BoardHistory.photoKeyOf(m),
-        scaleRect, bgColor, normalizePhotoSettings, now, hcache: this.hcache });
+        scaleRect, bgColor, normalizePhotoSettings, accentOk, now, hcache: this.hcache });
     },
     // One go at a round. 'again': a record changed under it (its transaction aborted): run it again.
     async attempt(kind, gen, opts = {}) {
@@ -6101,9 +6108,10 @@
       // Stamp: what changed here since the last round (not in take: this device's pages aren't the board's).
       const local = this.local(r, now), dropHere = new Set(mode === 'take' ? [] : sync.dropHere || []);
       let st = { ledger, ctr: sync.ctr || 0, fixes: [], partsChanged: false };
-      if (mode !== 'take') st = Merge.stamp(ledger, local, { dev: me, ctr: sync.ctr || 0, maxSeen: sync.maxSeen || 0, first: !!sync.first, now, dropHere });
+      if (mode !== 'take') st = Merge.stamp(ledger, local, { dev: me, ctr: sync.ctr || 0, maxSeen: sync.maxSeen || 0, first: !!sync.first, now, dropHere, mode });
       const fixes = { writes: (st.fixes || []).map(f => Object.assign({ type: Keys.parse(f.key).kind }, f)), ifRev: this.ifRevOf(r, st.fixes || []), settings: st.settings ? stored => Merge.patchSettings(stored, st.settings) : null };
-      sync = Object.assign({}, sync, { ctr: st.ctr }, st.partsChanged ? { localAt: now } : {});
+      // (the theme and accent's versions are in link:sync: the stamp's, see Merge.stamp)
+      sync = Object.assign({}, sync, { ctr: st.ctr }, (st.ledger.sync || {}).style ? { style: st.ledger.sync.style } : {}, st.partsChanged ? { localAt: now } : {});
       // (Two devices that each set up a folder "first" at once gave it two ids: every device takes the smaller one.)
       for (const f of Object.values(this.good())) if (f.folder && sync.folder && f.folder < sync.folder) sync.folder = f.folder;
       ledger = Object.assign({}, st.ledger, { sync });
@@ -6439,7 +6447,7 @@
               const rec = { key: w.key, type: w.type, rev: Math.max(((cur[w.key] && cur[w.key].rev) || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value: w.value };
               s.put(rec); out.push(rec);
             }
-            if (typeof plan.settings === 'function') {   // (a patch: only boards, deletedBoards, deletedAt and lastBoard)
+            if (typeof plan.settings === 'function') {   // (a patch: only boards, deletedBoards, deletedAt, lastBoard, theme and accent)
               const st = cur[Keys.settings] || { key: Keys.settings, type: 'settings', rev: 0, value: {} }, value = plan.settings(st.value || {});
               if (value && !sameJSON(value, st.value || {})) {
                 const rec = { key: Keys.settings, type: 'settings', rev: Math.max((st.rev || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value };
@@ -6484,7 +6492,7 @@
       const me = this.dev(), now = Date.now(), local = this.local(r, now), name = this.fileName(this.wideName(me));
       const own = this.ownCheck(sync, me, name);
       const meta = { dev: me, folder: sync.folder, name: this.device().label, seq: sync.seq || 0, write: '', at: now, merged: this.mergedOf(sync, me), left: opts.left || null,
-        refs: this.byPhoto(this.refsOf(ledger)), skipped: r.skipped, theme: r.settings.theme, accent: r.settings.accent, generator: `21Board ${RELEASE}` };
+        refs: this.byPhoto(this.refsOf(ledger)), skipped: r.skipped, generator: `21Board ${RELEASE}` };   // (the theme and accent: Merge.read's, from r.settings)
       const trial = Merge.encode(ledger, local, meta);
       const empty = !Object.values(ledger.mine || {}).length;
       if (empty && !own.exists) return;   // (only the untouched placeholder: nothing to write yet)
@@ -6514,7 +6522,7 @@
         await this.noteSync(s => Object.assign(s, { file: name, sum: obj.sync.sum, partsH, wroteAt: Date.now(), left: opts.left || null, refs }), gen);
         await this.noteGone(ledger, seq, gen);
         // (So that the next look doesn't read it back as news.)
-        const dec = Merge.decode(obj, { UID_RE, PHOTO_FILE_RE });
+        const dec = Merge.decode(obj, { UID_RE, PHOTO_FILE_RE, accentOk });
         this.files.set(name, Object.assign({ name, readAt: Date.now(), dev: me, devName: this.device().label, seq, at: obj.sync.at, folder: sync.folder, left: opts.left || null, write,
           merged: obj.sync.merged, peer: (dec && dec.peer) || null, refs: [], pages: 0 }, stamp || { size: -1, lastModified: -1 }));
         this.unstuck();
@@ -7953,6 +7961,9 @@
     const PAGE_PARTS = ['name', 'look', 'size', 'pos', 'photo', 'photoLook'];
     const PAGE_BACK = ['name', 'look', 'size', 'photo', 'photoLook'];   // an unseen edit to one brings a deleted page back (moving it doesn't)
     const WIN_PARTS = ['rect', 'open', 'data', 'conf', 'label'];
+    // The board's theme and accent color (settings.theme, settings.accent): on every device linked to the folder, the
+    // later change winning, as for a page's name. (The device's other settings, and the page shown, stay its own.)
+    const STYLE_PARTS = ['theme', 'accent'], THEMES = ['light', 'dark', 'system'], STYLE_DEF = { theme: 'system', accent: 'blue' };
     const WID_RE = /^[\w.@~-]{1,120}$/, DEV_RE = /^[0-9a-z]{12}$/, KEY_RE = /^[0-9a-z]{1,40}$/, WIDGET_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
     const DAY = 864e5;
     const DEF = { goneMs: 30 * DAY, peerGoneMs: 365 * DAY, aheadMs: DAY, undoMs: 20000, scale: 0.8 };
@@ -8001,6 +8012,7 @@
         photoKeyOf: o.photoKeyOf || (m => (m ? `${m.addedAt}-${m.bytes}-${m.w}x${m.h}` : null)),
         canvasFor: o.canvasFor || (sc => ({ w: Math.round(1920 / sc), h: Math.round(1080 / sc) })),
         scale: o.defaultScale || DEF.scale,
+        accentOk: o.accentOk || (k => typeof k === 'string' && /^[a-z][a-z0-9-]{0,23}$/.test(k)),   // (the board passes: a key of ACCENTS)
         UID_RE: o.UID_RE || /^[A-Za-z0-9-]{8,64}$/, PHOTO_FILE_RE: o.PHOTO_FILE_RE || /^[0-9a-f]{32}\.(jpg|png|webp)$/
       };
     }
@@ -8108,7 +8120,14 @@
         else if (p[0] === 'media' && p.length === 3) slot(b).media[p[2]] = r;
         else if ((p[0] === 'inst' || p[0] === 'data' || p[0] === 'conf') && p.length === 4) slot(b)[p[0]].set(`${p[2]}:${p[3]}`, r);
       }
-      const local = { H, pages: new Map(), byB: new Map(), nouid: [], settings: st, revs, recs: byKey, skipped, now, fixes: [] };
+      const local = { H, pages: new Map(), byB: new Map(), nouid: [], settings: st, revs, recs: byKey, skipped, now, fixes: [], style: {} };
+      // The theme and accent, and when each was chosen here (themeAt, accentAt: see updateSettings; for one chosen
+      // before 2026.11.16-4, the settings record's own time)
+      const sr = byKey.get('settings'), sAt = sr ? fin(sr.updatedAt, now) : now;
+      for (const k of STYLE_PARTS) {
+        const val = (k === 'theme' ? THEMES.includes(st.theme) : H.accentOk(st.accent)) ? st[k] : STYLE_DEF[k];
+        local.style[k] = { val, h: hj(val), at: fin(st[k + 'At'], sAt) };
+      }
       const lp = (key, val, h, rec, x) => Object.assign({ key, val, h, rev: rec ? fin(rec.rev, 0) : 0, at: rec ? fin(rec.updatedAt, null) : null,
         base: rec && typeof rec.base === 'number' ? rec.base : undefined, u: !!(rec && rec.u), m: !!(rec && rec.m), skipped: skipped.has(key) }, x);
       // (o.hcache, a Map the caller keeps between rounds: a record's fingerprints are worked out again only when its revision changes)
@@ -8336,8 +8355,25 @@
           M.p = {}; M.w = {}; touched.add(M);
         });
       }
+      // 3. the theme and accent. A change made here is a version whose counter is when it was made (themeAt, accentAt),
+      // not the newest change stamped with it, so that two made apart (one while unlinked, say) resolve to the later on
+      // every device. A value this device had before it synced with this folder (joining it, switching to it, a
+      // ledger from before 2026.11.16-4) is no change: only its fingerprint is noted, and the folder's applies. An
+      // empty folder (seed) gets this device's.
+      const style = Object.assign({}, L.sync.style);
+      let sn = 0, styled = 0;
+      for (const k of STYLE_PARTS) {
+        const lp = local.style && local.style[k], E = style[k];
+        if (!lp || (E && E.h === lp.h)) continue;
+        if (!E && o.mode !== 'seed') { style[k] = { h: lp.h }; continue; }
+        const n = Math.max(fin(lp.at, now), fin(o.ctr, 0) + 1, fin(o.maxSeen, 0) + 1);
+        style[k] = { h: lp.h, v: arr({ by: dev, vv: vjoin(E && E.v ? E.v[1] : {}, { [dev]: n }), t: fin(lp.at, now), u: false }) };
+        sn = Math.max(sn, n); styled++;
+      }
+      if (!sameJSON(style, L.sync.style || {})) L.sync = Object.assign({}, L.sync, { style });
       let ctr = fin(o.ctr, 0);
       if (items.length) { ctr = Math.max(maxAt, ctr + 1, fin(o.maxSeen, 0) + 1); for (const f of items) f(ctr); }
+      ctr = Math.max(ctr, sn);
       for (const M of touched) M.hist = Object.assign({}, M.hist, { local: true });
       for (const uid of cloned) if (L.mine[uid] && ledger0.mine[uid] && sameJSON(L.mine[uid], ledger0.mine[uid])) L.mine[uid] = ledger0.mine[uid];   // (unchanged: not written again)
       L.sync.ctr = ctr;
@@ -8350,7 +8386,7 @@
       for (const f of fixes) { const r = local.recs.get(f.key); if (r && !f.del) local.recs.set(f.key, Object.assign({}, r, { value: f.value, rev: f.rev })); }
       const rr = records(L);
       if (dropped1.size) L.dropped1 = dropped1;
-      return { ledger: L, ctr, fixes, settings: sp, stamped: items.length, partsChanged: items.length > 0 || fixes.length > 0, put: rr.put, del: rr.del };
+      return { ledger: L, ctr, fixes, settings: sp, stamped: items.length + styled, partsChanged: items.length > 0 || fixes.length > 0 || styled > 0, put: rr.put, del: rr.del };
     }
 
     // ---- join: the ledger and the peers' files → for each part, the versions no other includes (the later main, and
@@ -8461,6 +8497,7 @@
         const see = v => { if (v && v.by !== dev) { const n = nOf(v); if (n > m) m = n; } };
         for (const pp of peer.pages.values()) { see(pp.exists); for (const k in pp.parts) see(pp.parts[k]); for (const pw of pp.wins.values()) { see(pw.exists); for (const k in pw.parts) see(pw.parts[k]); pw.pending.forEach(see); } }
         for (const T of peer.gone.pages.values()) see(T);
+        for (const k in peer.style || {}) see(peer.style[k]);
         state.maxSeen = Math.max(state.maxSeen, Math.min(m, now + fin(o.aheadMax, DEF.aheadMs)));
       }
       for (const [uid, p] of views) {
@@ -8497,6 +8534,14 @@
           S.wins.set(wid, SW);
         }
         state.pages.set(uid, S);
+      }
+      // the theme and accent: the later change ('join': the folder's before this device's)
+      state.style = {};
+      for (const k of STYLE_PARTS) {
+        const E = ((ledger0.sync || {}).style || {})[k], list = (peers || []).map(p => p.style && p.style[k]).filter(Boolean);
+        if (E && E.v) list.push(ver(E.v, { h: E.h, src: 'local' }));
+        const J = joinVers(list, 'lww', dev, mode === 'join' ? v => (v.by === dev && v.src === 'local' ? 0 : 1) : null);
+        if (J) state.style[k] = J;
       }
       return state;
     }
@@ -8555,7 +8600,7 @@
       const free = Array.isArray(o.freeIds) ? o.freeIds.slice() : [];
       let nextB = typeof o.freeIds === 'number' ? o.freeIds : Math.max(0, fin(+local.settings.lastBoard, 0), ...Array.from(local.byB.keys())) + 1;
       const newB = () => (o.freeIds && typeof o.freeIds.board === 'function' ? o.freeIds.board() : free.length ? free.shift() : nextB++);
-      const sum = { from: [], pages: {}, leave: null, placeholder: false, dropHere: [], held: 0 }, from = new Set();
+      const sum = { from: [], pages: {}, leave: null, placeholder: false, dropHere: [], held: 0, style: [] }, from = new Set();
       const undo = { swaps: [], skip: [] };
       const sp = { gone: [], order: {}, lastBoard: 0 };
       const ps = (uid, b) => sum.pages[uid] || (sum.pages[uid] = { b, name: '', changed: false, added: false, deleted: false, back: false, here: false, placeholder: false,
@@ -8899,6 +8944,23 @@
         if (!sumP.changed && !sumP.deleted) delete sum.pages[uid];
       }
       sum.from = Array.from(from);
+      // the theme and accent: another device's change is written to settings (a patch of those keys only), and said
+      // (sum.style: [{by, theme, accent}], by device; not when joining or switching to the folder's board, whose theme
+      // and accent nobody has just changed). With no version anywhere, this device's own is only noted.
+      const style = {};
+      for (const k of STYLE_PARTS) {
+        const J = state.style && state.style[k], lp = local.style && local.style[k], E = (L.sync.style || {})[k];
+        if (!J || !lp) { if (E || lp) style[k] = E || { h: lp.h }; continue; }
+        if (J.main.src !== 'local' && J.main.h !== lp.h && J.main.has) {
+          (sp.set || (sp.set = {}))[k] = J.main.val;
+          if (mode === 'join' || mode === 'take') { style[k] = { h: J.main.h, v: arr(J.main) }; continue; }
+          let said = sum.style.find(x => x.by === J.main.by);
+          if (!said) sum.style.push(said = { by: J.main.by });
+          said[k] = J.main.val;
+        }
+        style[k] = { h: J.main.h, v: arr(J.main) };
+      }
+      L.sync.style = style;
       const peers = Object.assign({}, L.sync.peers);
       for (const p of state.peers) {
         const was = peers[p.dev] || {};
@@ -8958,15 +9020,18 @@
       }
       pages.sort((a, c) => a.board.pos - c.board.pos || (a.board.uid < c.board.uid ? -1 : 1));
       const main = pages[0] || { viewport: { width: 2400, height: 1350 }, board: null, instances: [] };
+      // the theme and accent, as any export has them, and their versions (sync.style) while the values are the ones stamped
+      const ls = local.style || {}, val = k => (ls[k] ? ls[k].val : m[k] || null), style = {};
+      for (const k of STYLE_PARTS) { const E = ((ledger0.sync || {}).style || {})[k]; if (E && E.v && ls[k] && E.h === ls[k].h) style[k] = E.v; }
       const obj = { format: '21board', formatVersion: 1, kind: 'full', exportedAt: new Date(fin(m.at, 0)).toISOString(), generator: m.generator || '21Board',
-        viewport: main.viewport, theme: m.theme || null, accent: m.accent || null, board: main.board };
+        viewport: main.viewport, theme: val('theme'), accent: val('accent'), board: main.board };
       if (main.media) obj.media = main.media;
       obj.instances = main.instances;
       if (pages.length > 1) obj.pages = pages.map((p, i) => (i === 0 ? { main: true } : p));
       obj.sync = { v: 1, dev: m.dev, folder: m.folder || null, name: m.name || '', seq: m.seq || 0, write: m.write || '', at: fin(m.at, 0), merged: m.merged || {},
-        gone: { pages: goneP, windows: goneW }, left: m.left || null, sum: '' };
+        gone: { pages: goneP, windows: goneW }, style, left: m.left || null, sum: '' };
       // Bookkeeping (seq, write, at, merged) and z never make a write: only the parts do.
-      const partsH = hash53(JSON.stringify([m.name || '', m.folder || null, m.left || null, goneP, goneW, canon]));
+      const partsH = hash53(JSON.stringify([m.name || '', m.folder || null, m.left || null, goneP, goneW, canon, [obj.theme, obj.accent, style]]));
       return { obj, partsH };
     }
     // The text a file's checksum is taken over: the file with its sum left empty (as its writer had it).
@@ -9050,6 +9115,15 @@
         const x = t && H.UID_RE.test(t.page || '') && WID_RE.test(t.wid || '') ? V(t.exists, { h: '0', val: false, cover: cover(t.cover) }) : null;
         if (x && !(peer.pages.get(t.page) && peer.pages.get(t.page).wins.has(t.wid))) peer.gone.wins.set(`${t.page} ${t.wid}`, { page: t.page, wid: t.wid, exists: x }); else skipped.push('deleted window');
       }
+      // the theme and accent: a version in sync.style, with a value this release knows (a file from before 2026.11.16-4
+      // has none: it says nothing about them)
+      peer.style = {};
+      const sv = s.style && typeof s.style === 'object' ? s.style : {};
+      for (const k of STYLE_PARTS) {
+        if (!sv[k]) continue;
+        const val = obj[k], x = (k === 'theme' ? THEMES.includes(val) : H.accentOk(val)) ? V(sv[k], { h: hj(val), val }) : null;
+        if (x) peer.style[k] = x; else skipped.push(k);
+      }
       if (newer) return { peer: null, skipped, newer: true };
       return { peer, skipped, newer: false };
     }
@@ -9090,6 +9164,7 @@
     // Does this ledger hold everything in that file (so the file can go)?
     function includes(ledger0, peer) {
       const inV = (v, E) => !!E && !!E.v && [E.v].concat((E.pending || []).map(q => q.v)).some(a => leq(v.vv, a[1]) || superseded(v, ver(a)));
+      for (const k in peer.style || {}) if (!inV(peer.style[k], ((ledger0.sync || {}).style || {})[k])) return false;
       const dropped = (ledger0.sync && ledger0.sync.dropped) || {}, collected = (k, vv) => !!dropped[k] && leq(vv, dropped[k].vv);   // (deletions collected here, see gc)
       for (const [uid, pp] of peer.pages) {
         const M = ledger0.mine[uid];
@@ -9153,6 +9228,7 @@
       }
       for (const [uid, T] of peer.gone.pages) { const M = newMine(uid, 0); M.gone = { exists: arr(T), cover: T.cover || {}, seq: peer.seq, seen: fin(o.now, 0) }; L.mine[uid] = M; ctr = Math.max(ctr, T.vv[peer.dev] || 0); }
       for (const T of peer.gone.wins.values()) { const M = L.mine[T.page] || (L.mine[T.page] = newMine(T.page, 0)); M.wgone[T.wid] = { exists: arr(T.exists), cover: T.exists.cover || {}, seq: peer.seq, seen: fin(o.now, 0) }; }
+      for (const k in peer.style || {}) { const v = peer.style[k]; L.sync.style = Object.assign({}, L.sync.style, { [k]: { h: v.h, v: arr(v) } }); ctr = Math.max(ctr, v.vv[peer.dev] || 0); }
       L.sync.ctr = ctr;
       L.sync.merged = Object.assign({}, peer.merged);
       L.base = {};
@@ -9160,7 +9236,7 @@
     }
 
     return { read, stamp, decode, sumText, join, shown, plan, encode, gc, includes, rebuild, photosWanted, ledger, records, patchSettings, joinPatches, newWid, copyWid,
-      partH, okV, leq, vjoin, PAGE_PARTS, WIN_PARTS, WID_RE, DEV_RE };
+      partH, okV, leq, vjoin, PAGE_PARTS, WIN_PARTS, STYLE_PARTS, WID_RE, DEV_RE };
   })();
   // #endregion
 
@@ -9194,6 +9270,7 @@
         else this.say(one, { action: 'Undo', pages: true, timeout: PAGE_UNDO_MS, onAction: () => Pages.undrop(bs, Pages.ids().concat(bs), left ? undefined : () => {}) });
       }
       for (const [uid, p] of Object.entries(pages)) if (p.back && uid !== mine && !p.added) this.say(this.back(p, p.from.length ? p.from : summary.from));
+      for (const x of summary.style || []) { const t = this.style(x); if (t) this.say(t); }
       if (!here || !here.changed || here.deleted) return;
       const by = here.from.length ? here.from : summary.from, ops = (seed.ops || []).filter(o => Keys.parse(o.key).board === S.boardId);
       const skip = new Set((seed.skip || (summary.undo && summary.undo.skip) || []));
@@ -9213,6 +9290,13 @@
       if (!seedHere.ops.length && !seedHere.swaps.length) button = null;
       if (locked || !button) { this.merge(text, null, seedHere); return; }   // (windows locked: no Undo; Board history has it)
       this.merge(text, button, seedHere);
+    },
+    // The theme or accent color changed on another device ({by, theme, accent}): they are the whole board's, on every
+    // device. No Undo: changing it back in Settings is one tap, and syncs.
+    style(x) {
+      const theme = { light: 'Light', dark: 'Dark', system: 'Auto' }[x.theme], accent = x.accent && (accentOf(x.accent) || [])[2];
+      const what = [theme && `the theme to ${theme}`, accent && `the accent color to ${accent}`].filter(Boolean).join(' and ');
+      return what ? `${this.names([x.by], true)} changed ${what}.` : '';
     },
     // A page deleted here is back: brought back on another device (its Undo, Bring back), or changed there before the
     // deletion reached it (Merge.plan's back).

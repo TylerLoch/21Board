@@ -82,6 +82,8 @@ storage can't be read still has every page.
                            //   Light / Medium / Firm = snapping true with "gentle" / "normal" / "strong")
   pickerCorners: "both",   // Settings → Advanced → Widget Picker: "both" | "left" | "right"
   accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
+  themeAt: 1794460416170,  // when the theme and the accent were last chosen on this device (ms; set by a change made
+  accentAt: 1794460410000, //   here, never by Board Sync): of two choices made apart, the later wins on every device
   locked: false,           // Settings → Classroom → Lock windows in place
   awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
   clock: "date",           // Settings → Appearance → Clock in the corner: "off" | "time" | "date" (time and date, the default)
@@ -96,9 +98,11 @@ storage can't be read still has every page.
 }
 ```
 
-Only `theme` and `accent` go into exported files (and so into the device files in the Google Drive folder), and Board
-Sync never applies them: each device keeps its own. `locked`, `awake`, `clock` and `letters` belong to this device:
-never in exports, Board history or the Google Drive folder, and an import leaves them as they are.
+Only `theme` and `accent` go into exported files (and so into the device files in the Google Drive folder). With Board
+Sync they are the board's, on every device linked to the folder: the later choice wins, as for a page's name (see
+`link:sync.style` below). *Import › Replace this page* takes the file's (a choice made here, so it syncs); going back
+in Board history never changes them. `locked`, `awake`, `clock` and `letters` belong to this device: never in
+exports, Board history or the Google Drive folder, and an import leaves them as they are.
 
 Older versions had a third choice for `awake`, `"hours"` (school hours, Monday to Friday, from `awakeFrom` to
 `awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"` (the teacher wanted the screen on in class) and drops
@@ -194,7 +198,8 @@ fingerprints and versions of the board's parts, never the board's values:
   localAt,                                         // when a change made here was last found (for "Not synced" in a folder that can only be viewed)
   peers: { "<dev>": { seq, seen, changedAt, name, file, at, left, missingSince, folder } },   // every device seen in the folder; changedAt and missingSince are this device's clock
   last: { dev, name, at }, gcAt, left: null,       // the last merge that changed something here; Unlink or Erase's last write
-  dropped: { "<page uid>" | "<page uid> <wid>": { vv, at } } }   // deletions collected here (gc) in the last 30 days
+  dropped: { "<page uid>" | "<page uid> <wid>": { vv, at } },   // deletions collected here (gc) in the last 30 days
+  style: { theme: { h, v: [by, {dev: n}, t] }, accent: { h, v } } }   // the board's theme and accent: their parts (below)
 
 // link:mine-<page uid>: the page's parts and its windows' parts, each { h: fingerprint, v: [by, {dev: n}, t], rev }
 { uid, b, p: { exists, name, look, size, pos, photo, photoLook }, w: { "<wid>": { ikey, p: { exists, rect, open, data, conf, label } } },
@@ -219,6 +224,16 @@ when this device first held it.
 The parts, versions and rules belong to the merge (`board.js` section 13d, the region `Board Sync merge`). A lost
 ledger (the browser threw the database away) is rebuilt from this device's own file in the folder; with no file
 there, the folder's board is joined as on a first set-up.
+
+**The theme and accent** (`settings.theme`, `settings.accent`) are two more parts, of the board as a whole, in
+`link:sync.style`: `h` is the fingerprint of the value this device has, `v` its version. They take the later change,
+as a page's name does, with no copy and no Board history version. A change made here is a version whose counter is
+when it was chosen (`themeAt`, `accentAt`), not the newest change stamped with it, so that two made apart (one while
+unlinked, say) resolve to the later on every device. An entry with no `v` is a value this device had before it
+synced with this folder: joining it or switching to it (the folder's then applies), or a ledger from before
+2026.11.16-4 (each device keeps its own until one is chosen again). It is no change, and never replaces another
+device's. Linking an empty folder (`seed`) makes this device's a version; linking the same folder again (`carry`)
+keeps the entries, so a choice made while unlinked counts.
 
 Comparing versions: one is older than another when the other's vector includes it, or when the other includes a
 later change to that part by the device that made it (a device's changes to a part follow one another, each made on
@@ -254,6 +269,7 @@ boards `pos`; content clash versions not yet settled go in an instance's `pendin
           "merged": { "<dev>": <seq> },                                        // the newest seq of each other device this file includes
           "gone": { "pages": [{ "uid", "exists", "cover" }], "windows": [{ "page", "wid", "exists", "cover" }] },   // deletions
           "left": null | { "at": … } | { "at": …, "erased": true },              // Unlink, Erase everything
+          "style": { "theme": [by, {dev: n}, t], "accent": [ … ] },             // the versions of the top-level theme and accent (one with none says nothing about it)
           "sum": "9be0c3…" }                                                   // the first 32 hex digits of SHA-256 of the file with "sum": ""
 ```
 
@@ -408,8 +424,8 @@ undoing the changes from …" (`undo`) comes before the Undo of a merge. When a 
 over), its versions stay, marked with `deletedAt`, for 30 days: Board history › *Deleted pages* lists them, and *Bring
 back* adds the page again from its newest version, under its old `uid`. Then they go.
 
-`sig` is the content fingerprint (window stacking order doesn't count), without this device's theme and accent
-(going back never changes them), so identical versions aren't saved twice. Versions saved before Board Sync merged
+`sig` is the content fingerprint (window stacking order doesn't count), without the theme and accent (going back
+never changes them), so identical versions aren't saved twice. Versions saved before Board Sync merged
 boards may have `reason: "load"` and `link: "sent" | "loaded"`; `link` is ignored now. While the board is linked to
 a folder, versions saved when 21Board opens aren't copied to it (they may hold only work merged from other devices,
 which those devices copy themselves), unless saved by hand. Retention is in README, "Board history". Settings
@@ -611,7 +627,7 @@ Importing a one-page file offers three choices:
 - **Replace this page** — removes this page's current windows and content, then loads the file
   (including its board name, background, theme and accent color). The page stays this page (its `board.uid`),
   whatever board the file was: with Board Sync, the new content reaches the same page on the other devices, as
-  edits.
+  edits, and the theme and accent color are a choice made on this device, which reaches them too.
 - **Add to this page** — keeps everything and adds the file's windows. Instance numbers are
   renumbered to the next free number per widget, and windows are nudged into free space. Each added window gets a
   new `wid` and a `createdAt` of its own; *Replace this page* keeps the file's `wid`s (or makes the default from

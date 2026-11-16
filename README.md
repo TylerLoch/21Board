@@ -102,7 +102,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close** (21Sketch, 21Timer and 21DocCam: **Reload** and **Open … on its own** instead of Reset). Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. From the keyboard: Enter on the window's name opens it, the arrow keys move between its items, Enter chooses one and Escape closes it. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). With several pages: *All pages* (a backup of every page in one file), *This page*, or *This page as a blank template*. Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). *Back up now* (Settings) and the backup reminders always save every page. |
-| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). *Replace this page* keeps the page (with Board Sync, its windows and content change on your other devices too). A Board Sync device file opens as a backup of every page. |
+| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). *Replace this page* keeps the page and takes the file's theme and accent color (with Board Sync, its windows and content, and the theme and accent color, change on your other devices too). A Board Sync device file opens as a backup of every page. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (*Fill*: any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → Classroom → **Board history…** opens the earlier versions of the board as a column beside Settings; tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Board Sync, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
@@ -136,14 +136,14 @@ Settings opens.
 - **This page ▸ Saved widgets:** how many widget windows this page has, open or closed; open, each one with
   Open and Delete. (The page's name is changed from the Pages menu: ‹ Page › → *Rename this page…*.)
 - **Appearance**
-  - **Theme:** Light, Dark or Auto (the device's own; the default).
+  - **Theme:** Light, Dark or Auto (the device's own; the default). With Board Sync, on all your devices.
   - **Background ▸** (this page): one set of choices: match the theme and six light colors (White, Paper, Sky,
     Mint, Blush, Lavender); then four dark ones (Slate, Chalkboard, Navy, Black), *Custom…* (any color) and
     *Photo…* on the same row. Once there is a photo it is one of the choices, *Photo* (with a tiny picture):
     picking a color hides it (it's kept), and picking *Photo* shows it again. While it shows: tap its picture to
     choose what stays in view, *Fill the board* or *Whole photo*, fade, *Change…* and *Remove*. The photo is kept
     on the device and in full backups, not in templates.
-  - **Accent color** (8 choices; also passed to widgets).
+  - **Accent color** (8 choices; also passed to widgets). With Board Sync, on all your devices.
   - **Letters ▸** for 21Board and its widgets: *Standard* (the device's own font), *Easier to read* (Atkinson
     Hyperlegible, made for low vision, with I, l and 1 all different and a line through 0) or *Early readers*
     (Andika by SIL, with a and g the way children learn to write them). Easier reading, not a dyslexia font; this
@@ -310,21 +310,24 @@ keyboard doesn't pop up by itself: tap the field to type. The name can be change
 **What happens when you link a folder** (the last step says which, and ends with "Changes you make on any of
 your devices show up on the others by themselves, usually within a minute: Google Drive decides when."):
 
-- **An empty folder:** this device's board goes there at once. (A device with only its untouched first page,
-  "My Board", writes nothing yet: the board comes from your other device.)
-- **A folder with a board, on a device that has never synced:** its board is shown here. Pages of this device's
-  own are added after the board's ("This device’s 2 pages were added after them."); a page both have (from the
-  same import) keeps the folder's values, and this device's different content is kept beside it as a copy.
+- **An empty folder:** this device's board goes there at once, with its theme and accent color. (A device with
+  only its untouched first page, "My Board", writes nothing yet: the board comes from your other device.)
+- **A folder with a board, on a device that has never synced:** its board is shown here, in its theme and accent
+  color. Pages of this device's own are added after the board's ("This device’s 2 pages were added after them."); a
+  page both have (from the same import) keeps the folder's values, and this device's different content is kept
+  beside it as a copy. This device's own theme and accent color don't count as a change, so they never replace the
+  board's.
 - **A folder with another board** (*Change…* to another class's folder, or linking again after *Unlink* with
-  another folder): this device switches to that board. Its own pages stay in the other folder, and under Board
-  history › Deleted pages for 30 days. Two boards are never combined. *Change…* first writes this device's file
-  in the folder it leaves once more, with what was changed here since its last write and saying that it left (as
-  *Unlink* does), so the devices still on that folder get that work and stop listing this one. When both
-  folders have the same name, the last step says "…the “21Board” folder this device used before". Switching
-  back within 20 seconds, while the Undo of the pages it left is still offered, waits until that is over, so
-  those pages come back with the work this device's file there holds.
+  another folder): this device switches to that board, and to its theme and accent color. Its own pages stay in
+  the other folder, and under Board history › Deleted pages for 30 days. Two boards are never combined. *Change…*
+  first writes this device's file in the folder it leaves once more, with what was changed here since its last
+  write and saying that it left (as *Unlink* does), so the devices still on that folder get that work and stop
+  listing this one. When both folders have the same name, the last step says "…the “21Board” folder this device
+  used before". Switching back within 20 seconds, while the Undo of the pages it left is still offered, waits
+  until that is over, so those pages come back with the work this device's file there holds.
 - **The same folder again** (after *Unlink*, or the folder renamed or moved): it carries on. Changes made here
-  while unlinked are added to the board, and nothing is deleted anywhere because of how this device looked
+  while unlinked are added to the board (a theme or accent color chosen here meanwhile too: if another device
+  chose one since, the later choice wins), and nothing is deleted anywhere because of how this device looked
   while it wasn't syncing.
 - **Google Drive still bringing the folder or its files:** linked anyway; nothing is merged or written until
   the files can be read (up to 10 minutes), so a slow Drive can never combine two boards.
@@ -355,9 +358,16 @@ back, such as a window being typed in, is due again):
   takes away an Undo already shown. A clash where your text stayed in the window says so without an Undo (the
   other device kept its own version as the copy). Several pages deleted at once on another device are one
   message ("3 pages were deleted on the laptop.") with one Undo, which leaves you on the page you're on.
-- **Theme and accent color stay on each device** (a laptop in dark mode doesn't turn the smartboard dark), and
-  so do the page shown, Lock, Stay awake, the clock and the letters. Settings says "This device only." beside
-  them, and "This page, on all your devices." beside the page's own settings.
+- **Theme and accent color are the board's:** the later choice, made on any device, shows on all of them (the
+  laptop set to Dark turns the smartboard dark), at once, even while windows are locked, and the device that
+  shows it says who changed it ("The laptop changed the theme to Dark and the accent color to Green.", with no
+  Undo: changing it back in Settings is one tap, and syncs). Auto stays Auto everywhere: each device then follows
+  its own light or dark setting. A device that only ever had the defaults, or the folder's, never replaces
+  another's choice; one made while unlinked counts when the same folder is linked again, and of two made apart
+  the later wins on every device. Board history never changes them, and the Undo of an update doesn't either.
+  The page shown, Lock, Stay awake, the clock, the letters and the Widget Picker's corners stay on each device.
+  Settings says "On all your devices." beside Theme and Accent color, "This device only." beside Lock, Stay
+  awake, the clock and the letters, and "This page, on all your devices." beside the page's own settings.
 
 **Settings → Board Sync** has three rows: **Synced through “21Board”** with how syncing is going ("Up to date.
 This device’s latest changes went to your folder at 9:42 AM. Shared with the smartboard (last change at 9:40
@@ -570,7 +580,7 @@ one an hour for 48 hours, the first and last of each day for 30 days, one a week
 hours, days and weeks the board was used, so a summer break doesn't empty it), safety versions for a week, and
 the version before a big change for a month. When board history needs more room (it has used its share of the
 device's storage, or the device is full), the oldest versions go first; versions you save are never deleted to make
-room. Photos are stored once. **Going back never changes this device's settings** (theme, accent) and a running
+room. Photos are stored once. **Going back never changes the theme or accent color** and a running
 timer comes back paused. If going back can't finish, 21Board says why and the board stays as it was.
 *Erase everything* keeps board history (so it can be undone; if the board as it is can't be kept first,
 21Board asks before erasing); *Erase, including board history* doesn't.
