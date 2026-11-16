@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="63c74017">
+<html lang="en" data-build="8f2b22e2">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -107,17 +107,18 @@
       background-color: var(--board-bg);
       transition: background-color .3s ease;
     }
-    /* Board patterns: in CSS px on the whole desk, margins included. --pu scales them down for the previews in
-       Settings (lines stay 1–2 px). --pattern / --pattern-strong suit the board color (applyBoard in board.js). */
+    /* Patterns (removed 2026-11-16; uncomment to bring them back, with applyBoard's and Settings' parts in board.js).
+    Board patterns: in CSS px on the whole desk, margins included. --pu scales them down for the previews in
+       Settings (lines stay 1–2 px). --pattern / --pattern-strong suit the board color (applyBoard in board.js).
     .pattern-dots { background-image: radial-gradient(var(--pattern) max(1.1px, calc(1.6 * var(--pu, 1px))), transparent max(1.4px, calc(1.8 * var(--pu, 1px)))); background-size: calc(32 * var(--pu, 1px)) calc(32 * var(--pu, 1px)); background-position: calc(16 * var(--pu, 1px)) calc(16 * var(--pu, 1px)); }
     .pattern-grid {
       background-image: linear-gradient(to right, var(--pattern) 1px, transparent 1px), linear-gradient(to bottom, var(--pattern) 1px, transparent 1px);
       background-size: calc(48 * var(--pu, 1px)) calc(48 * var(--pu, 1px));
     }
     .pattern-lines { background-image: linear-gradient(to bottom, var(--pattern) 1px, transparent 1px); background-size: 100% calc(48 * var(--pu, 1px)); }
-    /* Handwriting: rows of 128 px for big writing on a smartboard. A solid top line, a dashed midline and a solid
+    Handwriting: rows of 128 px for big writing on a smartboard. A solid top line, a dashed midline and a solid
        base line 64 px below the top, then room for descenders. (The dash is a conic-gradient corner: one gradient
-       can't be dashed across and repeat down.) */
+       can't be dashed across and repeat down.)
     .pattern-handwriting {
       --r: calc(128 * var(--pu, 1px));
       background-image: conic-gradient(at calc(14 * var(--pu, 1px)) 2px, transparent 75%, var(--pattern-strong) 0),
@@ -126,13 +127,14 @@
       background-size: calc(24 * var(--pu, 1px)) var(--r), 100% var(--r);
       background-position: 0 calc(var(--r) * .5 - 1px), 0 0;
     }
-    /* Graph paper: 24 px squares, a stronger line every 5 squares. */
+    Graph paper: 24 px squares, a stronger line every 5 squares.
     .pattern-graph {
       background-image: linear-gradient(to right, var(--pattern-strong) 1px, transparent 1px), linear-gradient(to bottom, var(--pattern-strong) 1px, transparent 1px),
         linear-gradient(to right, var(--pattern) 1px, transparent 1px), linear-gradient(to bottom, var(--pattern) 1px, transparent 1px);
       background-size: calc(120 * var(--pu, 1px)) calc(120 * var(--pu, 1px)), calc(120 * var(--pu, 1px)) calc(120 * var(--pu, 1px)), calc(24 * var(--pu, 1px)) calc(24 * var(--pu, 1px)), calc(24 * var(--pu, 1px)) calc(24 * var(--pu, 1px));
     }
-    body.has-photo #desk { background-image: none; } /* no pattern while a photo is shown (not even in the margins) */
+    body.has-photo #desk { background-image: none; }   (no pattern while a photo is shown, not even in the margins)
+    */
 
     /* Board scaling: the area outside the board's layout (letterbox margins) is lightly shaded. */
     #layout-frame { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; box-shadow: 0 0 0 100vmax var(--margin-shade, rgba(0, 0, 0, 0.05)); }
@@ -448,40 +450,76 @@
     .swatches { display: flex; flex-wrap: wrap; gap: 8px; }
     .swatch { width: 36px; height: 36px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .35); position: relative; }
     .swatch.on { box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--primary); }
-    /* Settings → Appearance → Background (backgroundSettings in board.js): a live preview, then Color, Pattern, Photo. */
-    .bg-block { gap: 14px; }
-    .bg-top { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
-    .bg-preview { position: relative; flex: 0 0 auto; width: 136px; border-radius: 8px; overflow: hidden; --pu: .25px; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .35); }
-    .bg-preview .ph { position: absolute; inset: 0; background-repeat: no-repeat; }
-    .bg-preview .ph::after { content: ""; position: absolute; inset: 0; background: var(--fade-color, var(--board-bg)); opacity: var(--fade, 0); }
-    .bg-part { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--border); }
-    .bg-sub { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-    .bg-sub .lbl { font-size: 14px; font-weight: 600; }
-    .bg-now { font-size: 13.5px; color: var(--muted); }
-    .bg-cap { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin-top: 2px; }
+    .switch:disabled { opacity: .45; cursor: default; }
+    .status-dot[hidden] { display: none; }
+    /* Groups (settingsGroup in board.js): a row with the group's name, its value and a chevron, that opens the group
+       in place below it. A closed group is hidden, not left out. */
+    .row.disc { width: 100%; color: var(--text); text-align: left; border-radius: 0; flex-wrap: nowrap; }
+    @media (hover: hover) { .row.disc:hover { background: none; } .row.disc:hover .chev { color: var(--text); } }
+    .row.disc .txt { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+    .row.disc .val { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; min-width: 0; font-size: 13.5px; color: var(--muted); }
+    .row.disc .val .v { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row.disc .chev { display: inline-flex; color: var(--muted); transition: transform .15s; }
+    .row.disc .chev svg { width: 20px; height: 20px; }
+    .row.disc[aria-expanded="true"] .chev { transform: rotate(90deg); }
+    .row.disc[aria-expanded="true"] .lbl { font-weight: 600; }
+    .row.disc .status-dot { margin: 0; }
+    .row.disc .val > :not(.v) { flex-shrink: 0; }
+    .drawer { display: flex; flex-direction: column; gap: 10px; padding: 2px 0 14px; }
+    .drawer.inset { display: block; margin: 0 0 10px 2px; padding: 0 0 2px 14px; border-left: 2px solid var(--border); }
+    .drawer[hidden] { display: none; }
+    .drawer .hint { font-size: 12.5px; color: var(--muted); font-weight: 400; line-height: 1.35; }
+    .drawer + .row { border-top: 1px solid var(--border); }
+    .sheet h4 { font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 18px 0 2px; }
+    .sheet-body .gap { height: 14px; }
+    .row .btns { display: flex; gap: 6px; flex: 0 0 auto; }
+    .row > .seg, .row > .switch, .row > .stepper, .row > .btn { flex-shrink: 0; }   /* (the text beside them wraps instead) */
+    .row .hint.warn-line, .row .awake-status { color: var(--text); }
+    #set-clock-fit:empty { display: none; }
+    /* Accent color: the swatches beside the label. */
+    .accent-row .swatches { gap: 7px; justify-content: flex-end; }
+    .accent-row .swatch { width: 30px; height: 30px; }
+    .accent-row .swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary); }
+    /* Advanced → Backups and storage: Offline, Protected storage and Storage used in one block. */
+    .row.status-block { flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 0; }
+    .status-block .st { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; }
+    .status-block .k { font-size: 14px; font-weight: 500; }
+    .status-block .hint { margin: 0; }
+    .status-block .st .hint { text-align: right; }
+    /* Settings → Appearance → Background (backgroundSettings in board.js): a small preview on the group's row; open,
+       one set of choices (the theme's, light, dark, Custom…, the photo), then the photo's own controls. */
+    .bg-mini { position: relative; flex: 0 0 auto; width: 40px; border-radius: 5px; overflow: hidden; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .4); }
+    .bg-mini .ph { position: absolute; inset: 0; background-repeat: no-repeat; }
+    .bg-mini .ph::after { content: ""; position: absolute; inset: 0; background: var(--fade-color, var(--board-bg)); opacity: var(--fade, 0); }
+    .bg-block { display: flex; flex-direction: column; gap: 12px; }
+    .bg-block .hint { margin: 0; }
     .bg-block .swatches { gap: 6px; }
+    .bg-block .swatches .break { flex-basis: 100%; height: 0; }
     .bg-block .swatch { width: 44px; height: 44px; flex: 0 0 auto; }
     .bg-block .swatch.on { box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .35), 0 0 0 2px var(--surface), 0 0 0 4.5px var(--primary); }
-    /* The chosen color, theme or pattern also gets a check (not only the ring's color). */
+    /* The chosen one also gets a check (not only the ring's color). */
     .bg-block .tick { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); box-shadow: 0 0 0 2px var(--surface); display: grid; place-items: center; pointer-events: none; }
     .bg-block .tick svg { width: 13px; height: 13px; stroke-width: 3.5; }
-    /* "Theme": half light (sun), half dark (moon), so it reads as "follows light or dark". */
+    /* "Match the theme": half light (sun), half dark (moon), so it reads as "follows light or dark". */
     .bg-block .swatch.auto { background: linear-gradient(135deg, #f3f4f6 50%, #121212 50%); }
     .bg-block .swatch.auto > svg { width: 44px; height: 44px; stroke-width: 1.5; }
-    /* "Custom…": a labelled pill with a rainbow dot (the chosen color once there is one). */
+    /* "Custom…" and the photo ("Add photo…", then "Photo" with a tiny picture): labelled pills. */
     .bg-block .swatch.pill { display: inline-flex; align-items: center; width: auto; padding: 0 14px 0 9px; gap: 7px; border-radius: 22px; background: var(--hover-bg); color: var(--text); font-size: 13.5px; font-weight: 600; cursor: pointer; }
     .bg-block .pill .dot { width: 26px; height: 26px; border-radius: 50%; flex: 0 0 26px; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .45); background: conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444); }
+    .bg-block .pill.photo > svg { width: 22px; height: 22px; color: var(--icon-color); }
+    .bg-block .pill .pic { width: 26px; height: 26px; border-radius: 7px; flex: 0 0 26px; background: var(--border) center / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .45); }
     .bg-block .custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
     .bg-block .custom:has(:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }   /* (its input can't show it: it's invisible) */
+    /* Patterns (removed 2026-11-16; uncomment to bring them back): their tiles in the Background group.
     .pat-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .pat-tile { position: relative; flex-direction: column; align-items: stretch; gap: 4px; padding: 4px 4px 6px; min-height: 44px; border-radius: 12px; color: var(--text); font-size: 13px; font-weight: 500; }
     .pat-tile .pv { height: 48px; border-radius: 8px; --pu: .5px; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .35); }
     .pat-tile.on { background: var(--primary-soft); color: var(--primary); font-weight: 700; box-shadow: inset 0 0 0 2px var(--primary); }
     .pat-tile .tick { top: -4px; right: -4px; }
-    .pat-tile .pv.pattern-handwriting { background-position: 0 calc(var(--r) * .5 - 9px), 0 -8px; }   /* one whole row in view */
+    .pat-tile .pv.pattern-handwriting { background-position: 0 calc(var(--r) * .5 - 9px), 0 -8px; }   (one whole row in view)
     .pat-tiles.disabled { opacity: .45; }
     .pat-tiles.disabled .pat-tile { cursor: default; }
-    .bg-note { font-size: 13px; line-height: 1.35; color: var(--text); background: var(--hover-bg); border-radius: 10px; padding: 8px 10px; }
+    */
     .text-input { width: 100%; height: 42px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface); font-size: 15px; }
     .text-input:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
     .btn { height: 40px; padding: 0 16px; border-radius: 10px; font-weight: 600; font-size: 14px; background: var(--hover-bg); color: var(--text); gap: 8px; white-space: nowrap; }
@@ -563,7 +601,6 @@
     .photo-thumb { position: relative; width: 100%; margin: 0 auto; border-radius: 10px; background-color: var(--hover-bg); background-repeat: no-repeat; box-shadow: inset 0 0 0 1px var(--border); overflow: hidden; }
     .photo-thumb.pick { cursor: crosshair; touch-action: pan-y; } /* a swipe over it still scrolls Settings */
     .photo-thumb::after { content: ""; position: absolute; inset: 0; background: var(--fade-color, var(--board-bg)); opacity: var(--fade, 0); pointer-events: none; }
-    .photo-thumb.off { filter: grayscale(1) opacity(.5); }
     .photo-thumb .focus { position: absolute; z-index: 1; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; border: 2.5px solid #fff; box-shadow: 0 0 0 1.5px rgba(0, 0, 0, .55), inset 0 0 0 1.5px rgba(0, 0, 0, .55); pointer-events: none; }
     .photo-ctrls { display: flex; flex-direction: column; gap: 10px; }
     .photo-ctrls .line { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 14px; }
@@ -634,13 +671,7 @@
     body.windows-locked #empty-hint .lock-hint { display: block; }
     #settings [data-act="close-all"]:disabled { opacity: .45; cursor: default; filter: none; }
 
-    /* Keep the screen on */
-    .awake-hours { display: flex; flex-wrap: wrap; gap: 10px 20px; }
-    .awake-time { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 500; }
-    .awake-time span { min-width: 2.6em; }
-    .awake-time input { width: 150px; height: 44px; }
-    .awake-time input[aria-invalid="true"] { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger); }
-    .awake-status { font-size: 13.5px; line-height: 1.35; color: var(--text); }
+    /* Stay awake: its warning and status lines (only when they apply) */
     .awake-status[hidden] { display: none; }
 
     /* Clock in the corner */

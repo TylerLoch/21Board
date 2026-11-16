@@ -65,9 +65,9 @@ What devices do with a release:
   and *Later*. *Update* takes a second or two and restarts every open 21Board tab on the new release; the
   board and its content stay. *Later*, or no answer, is fine: the new release takes over by itself the next
   time 21Board starts (after every tab or the app was closed; in a kiosk, after Quit or a restart). Until
-  then a dot stays on the ▦ buttons and on the Settings gear, and Settings opens with the same line and
-  *Update now* at the top.
-- **Settings → About** shows the release the device is really running, name and build, e.g.
+  then a dot stays on the ▦ buttons and on the Settings gear, and Settings opens with *A new version is ready*
+  and *Update now* at the top.
+- **Settings → Advanced**, at the bottom, shows the release the device is really running, name and build, e.g.
   `21Board 2026.11.12-1 (3fa9c1d2)`. Exported files carry the same text. That is the answer to “which version
   are you on?”.
 - If files are uploaded **without a new stamp** (step 2 forgotten), devices that already have 21Board keep
@@ -95,7 +95,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | --- | --- |
 | **Widget Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap a widget to open it. Tap ▦ again (or anywhere else) to close. |
 | **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Fullscreen, Settings. |
-| **Pages** | Each page is a board of its own (its own windows, content, background and name), for lessons or parts of the day. At the far end of the Widget Picker's bottom row: **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after; on the last page › is **+** (a new page). Tap *Page* for the Pages menu: every page by name (tap one to go there), **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** and **Delete this page…** (with Undo). A new page takes this page's size, shape, color and pattern. Every tab on the device shows the same page, and 21Board opens on the page it was showing. Widgets on other pages don't run while their page isn't shown: a Timer shows the right time when you come back, but its alarm doesn't ring on another page. |
+| **Pages** | Each page is a board of its own (its own windows, content, background and name), for lessons or parts of the day. At the far end of the Widget Picker's bottom row: **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after; on the last page › is **+** (a new page). Tap *Page* for the Pages menu: every page by name (tap one to go there), **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** and **Delete this page…** (with Undo). A new page takes this page's size, shape and background color. Every tab on the device shows the same page, and 21Board opens on the page it was showing. Widgets on other pages don't run while their page isn't shown: a Timer shows the right time when you come back, but its alarm doesn't ring on another page. |
 | **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
@@ -103,47 +103,71 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). With several pages: *All pages* (a backup of every page in one file), *This page*, or *This page as a blank template*. Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). *Back up now* (Settings) and the backup reminders always save every page. |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). A backup of another board opened with *Replace this page* is another board from then on: in a shared Google Drive folder it gets its own file, and the board it replaced stays there. |
-| **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (fill any window) and change the size of windows and menus. |
+| **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (*Fill*: any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → **Board history…** shows earlier versions of the board with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, Import and Load. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Google Drive folder, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
-| **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → About shows the version in use. |
+| **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → Advanced shows the version in use. |
 
 ### Settings
 
-- **At the top, when it applies:** *A new version of 21Board is ready* with *Update now*.
-- **Board history:** open it, how often a version is saved (every 10 minutes while the board changes,
-  every hour, once a day, off), copies in the Google Drive folder, delete board history.
-- **Appearance:** Light / Dark / Auto theme, accent color (8 choices; also passed to widgets),
-  letters for 21Board and its widgets (*Standard*: the device's own font; *Easier to read*: Atkinson Hyperlegible,
-  made for low vision, with I, l and 1 all different and a line through 0; *Early readers*: Andika by SIL, with a and g the way children
-  learn to write them; easier reading, not a dyslexia font; this device only; Notes' Chalkboard and Whiteboard
-  keep their own lettering),
-  board background (with a preview of the board): color in a Light and a Dark row (or match the theme), pattern
-  (dots, grid, lines, handwriting rows, graph paper; not shown under a photo, and Settings says so), background photo
-  (fill the board or show the whole photo, tap to choose what stays in view, fade; kept on the device and
-  in full backups, not in templates).
-- **Appearance → Clock in the corner:** *Off*, *Time* or *Time and date* (the default). A small clock beside the ▦
-  button in the bottom right corner (beside the only ▦ when the controls are in one corner), on every page and in
-  kiosk mode, as tall as ▦. Taps go through it to the windows under it. It hides while that corner's Widget Picker
-  is open, and where the window is too narrow for it (*Time and date* shows only the time first). This device only.
-- **Classroom → Lock windows in place:** widgets still work, but windows can't be moved, resized, closed or added from the board and the Widget Picker (Close all is off too), in every tab on this device. A file dropped on the board, or Load on the Google Drive folder's message, asks to unlock first. Unlock by holding ▦ for 2 seconds, or with the switch.
-- **Classroom → Keep the screen on:** *Off* (the default), *While 21Board is showing*, or *School hours* (From and
-  To, Monday to Friday, by the device's clock). Stops the Chromebook, iPad or panel from dimming and sleeping while
-  21Board is on screen (the browser's screen wake lock). A line says whether it is working right now, or why not:
-  outside school hours, a browser that can't (Chrome 84+, Safari 16.4+ in a tab, 18.4+ as a Home Screen app),
-  a 21Board not served over https, or a device that doesn't allow it (IT can turn it off by policy). This device only.
-- **Windows:** snap & avoid overlap on/off, drag windows from inside on/off, how hard you must push to overlap, size of windows and menus (default 80%), board shape (16:9 or any shape), close all windows.
-- **Widget Picker:** show the controls in both corners, or only left/right.
-- **This page:** a word about pages, the page's name (used for export file names and in the Google Drive
-  folder), list of every saved widget window on this page with open/delete.
-- **Google Drive folder:** share boards with your other devices (the smartboard) through a folder in Google
-  Drive: choose the folder, Send, send automatically (off, after each change, or when left alone), include
-  the photo, this device's name, other boards in the folder; and what is wrong when the folder can't be used.
-  See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
-- **Storage & offline:** offline readiness, whether the browser has agreed to protect 21Board's data (with an *Install app* button when that would help), last backup and *Back up now*, storage used.
-- **Advanced:** Developer mode (SDK Playground, test an unregistered widget by uploading its file), erase everything (every page).
-- **About:** the version this device is running (release name and build), to read out to IT.
+The gear in either Widget Picker opens Settings on that side. Rows marked ▸ are groups: one row with what they are
+set to (a small preview, "Standard", "3 widgets"), which opens in place. Every group starts closed each time
+Settings opens.
+
+- **At the top, when it applies:** a save problem (with *Back up now*), or *A new version is ready* with *Update now*.
+- **Classroom**
+  - **Lock windows in place:** widgets still work, but windows can't be moved, resized, closed or added from the board and the Widget Picker (Close all is off too), in every tab on this device. A file dropped on the board, or Load on the Google Drive folder's message, asks to unlock first. Unlock by holding ▦ for 2 seconds, or with the switch.
+  - **Go back to an earlier version:** *Board history…* (see [Board history](#board-history)). A line here says when history is paused or short of space.
+  - **Close all windows** on this page (their content is kept).
+  - **Stay awake:** a switch. On, it stops the Chromebook, iPad or panel from dimming and sleeping while 21Board
+    is on screen (the browser's screen wake lock). A screen that never sleeps never locks either, so while it's on
+    Settings warns *This makes your account less secure.* (not in kiosk mode, where no one is signed in). A line
+    says when it isn't working: a browser that can't (Chrome 84+, Safari 16.4+ in a tab, 18.4+ as a Home Screen
+    app), a 21Board not served over https, or a device that doesn't allow it (IT can turn it off by policy). This
+    device only. (An older *School hours* setting reads as on.)
+- **This page ▸ Saved widgets:** how many widget windows this page has, open or closed; open, each one with
+  Open and Delete. (The page's name is changed from the Pages menu: ‹ Page › → *Rename this page…*.)
+- **Appearance**
+  - **Theme:** Light, Dark or Auto (the device's own; the default).
+  - **Accent color** (8 choices; also passed to widgets).
+  - **Letters ▸** for 21Board and its widgets: *Standard* (the device's own font), *Easier to read* (Atkinson
+    Hyperlegible, made for low vision, with I, l and 1 all different and a line through 0) or *Early readers*
+    (Andika by SIL, with a and g the way children learn to write them). Easier reading, not a dyslexia font; this
+    device only; Notes' Chalkboard and Whiteboard keep their own lettering.
+  - **Clock in the corner:** *Off*, *Time* or *Time and date* (the default). A small clock beside the ▦ button in
+    the bottom right corner (beside the only ▦ when the Widget Picker is in one corner), on every page and in kiosk
+    mode, as tall as ▦. Taps go through it to the windows under it. It hides while that corner's Widget Picker is
+    open, and where the window is too narrow for it (*Time and date* shows only the time first). This device only.
+  - **Background ▸** (this page): one set of choices: match the theme, six light colors (White, Paper, Sky, Mint,
+    Blush, Lavender), four dark ones (Slate, Chalkboard, Navy, Black), *Custom…* (any color) and *Add photo…*.
+    Once there is a photo it is one of the choices, *Photo*: picking a color hides it (it's kept), and picking
+    *Photo* shows it again. While it shows: tap its picture to choose what stays in view, *Fill the board* or
+    *Whole photo*, fade, *Change…* and *Remove*. The photo is kept on the device and in full backups, not in
+    templates.
+  - **Board shape** (this page): *Widescreen* (16:9, the same on every screen; the default) or *Fill* (the whole
+    window). See [Board shape and size](#board-shape-and-size).
+- **Board Sync** (Chrome and Edge): sync your boards with your other devices (the smartboard) through a folder in
+  Google Drive: *Set up…*; once linked, *Send this board*, *Send automatically* (off, after each change, or when
+  left alone), **Boards from other devices ▸** and **Folder settings ▸** (the folder, *Change…* and *Unlink*,
+  this device's name, *Send the background photo*, *Keep history copies in the folder*); and what is wrong when
+  the folder can't be used. See [Sharing a board with the smartboard](#sharing-a-board-with-the-smartboard-google-drive-folder).
+- **Advanced ▸** (an amber dot on it when there has been no backup for a week, or the browser hasn't promised to
+  keep 21Board's data):
+  - **Widget Picker:** both corners, or only left or right.
+  - **Size of windows and menus** (this page; default 80%).
+  - **Moving windows:** *Windows stop at each other's edges* (Off, or Light, Medium and Firm: how hard you push to
+    overlap them anyway) and *Drag windows from inside*.
+  - **Board history:** how often a version is saved (every 10 minutes while the board changes, every hour, once a
+    day, off) and *Delete board history*.
+  - **Backups and storage:** *Back up every page* (*Back up now*, with the last backup), whether 21Board works
+    offline, whether the browser has agreed to protect its data (*Protected storage*, with an *Install app* button
+    when that would help), storage used, kiosk mode, and *Erase everything* (every page).
+  - **Developer:** Developer mode (SDK Playground, test an unregistered widget by uploading its file).
+  - **About:** the version this device is running (release name and build), to read out to IT.
+
+(Patterns behind the board, Dots to Graph paper, are switched off for now: each page keeps its choice, and
+uncommenting the parts marked "Patterns" in `board.js` and `index.html` brings them back.)
 
 ---
 
@@ -465,7 +489,7 @@ when a widget's content is suddenly emptied (e.g. a note cleared), and before ev
 Delete, Close all, changing or removing the photo, Import, Load, going back, Erase everything). Identical
 content is never saved twice. *Save this version now* keeps a named version until you delete it.
 
-**Off** (Settings → *Save a version automatically*) stops the first three: nothing is saved while you work,
+**Off** (Settings → Advanced → *Save a version automatically*) stops the first three: nothing is saved while you work,
 when 21Board opens or when a note is cleared. One is still saved before each risky action, so Undo keeps
 working, and when you tap *Save this version now*. Versions already saved stay until you delete them.
 
@@ -481,7 +505,7 @@ timer comes back paused. If going back can't finish, 21Board says why and the bo
 the save is tried again after each step, a few times at most: first the photos kept with older versions, then
 the 10 oldest versions. The newest versions, the first and last of each of the last 7 days the board was used,
 the versions you saved, the safety versions and the one before a big change are never given up for this. A
-message says so once, and Settings → Board history shows *Space is low on this device*. (Chrome doesn't tell
+message says so once, and Settings → Classroom → *Go back to an earlier version* says *Space is low on this device*. (Chrome doesn't tell
 a page how much space is left, so a refused save is the sign 21Board goes by.)
 
 **In the Google Drive folder** (when linked): about one copy an hour (and every version you save) goes to
@@ -497,10 +521,10 @@ in `board.js`; the records are in docs/DATA-FORMAT.md, "Board history".
 
 | | |
 | --- | --- |
-| **16:9 (default)** | The board is a 16:9 canvas drawn as large as fits the window, centered, with the rest of the window lightly shaded. Every screen (laptop, monitor, smartboard) shows the same arrangement, so a board planned on a laptop looks the same on the board. Windows can't be put in the shaded margin. |
-| **Any shape** | Settings → Windows → *Board shape → Any shape*: the board fills the whole window at the chosen size. On a smaller screen, windows are moved to fit (as in early builds). |
-| **Size of windows and menus** | Settings → Windows, − / + (50%–200%, default **80%**): how big title bars, menus, the Widget Picker, Settings and widget contents are, as on a 1920 × 1080 screen. Windows keep their place and footprint when it changes. Menus, the Widget Picker, Settings and messages never get bigger than fits the screen (a size picked on a smartboard can arrive on a tablet in a backup). |
-| **Tip** | When the 16:9 board leaves much of the window unused (a very wide, tall or narrow window), a small tip in the shaded margin offers *Use the whole window* (switches to Any shape). *Hide* keeps it away for the session. It's left out when the margin is too small to hold it. |
+| **Widescreen (default)** | The board is a 16:9 canvas drawn as large as fits the window, centered, with the rest of the window lightly shaded. Every screen (laptop, monitor, smartboard) shows the same arrangement, so a board planned on a laptop looks the same on the board. Windows can't be put in the shaded margin. |
+| **Fill** | Settings → Appearance → *Board shape → Fill*: the board fills the whole window at the chosen size. On a smaller screen, windows are moved to fit (as in early builds). |
+| **Size of windows and menus** | Settings → Advanced, − / + (50%–200%, default **80%**): how big title bars, menus, the Widget Picker, Settings and widget contents are, as on a 1920 × 1080 screen. Windows keep their place and footprint when it changes. Menus, the Widget Picker, Settings and messages never get bigger than fits the screen (a size picked on a smartboard can arrive on a tablet in a backup). |
+| **Tip** | When the 16:9 board leaves much of the window unused (a very wide, tall or narrow window), a small tip in the shaded margin offers *Use the whole window* (switches to Fill). *Hide* keeps it away for the session. It's left out when the margin is too small to hold it. |
 
 Both settings are saved with the board (and in exports). Boards saved before this existed are
 converted once when opened, keeping their arrangement as it looks on that screen. The code is

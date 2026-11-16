@@ -73,15 +73,15 @@ storage can't be read still has every page.
 
 ```js
 {
-  theme: "light",          // "light" | "dark" | "system"
+  theme: "system",         // "light" | "dark" | "system" (Auto, the default for a new device; a device keeps what it has)
   snapping: true,          // snap windows together and resist overlap
   resistance: "normal",    // "gentle" | "normal" | "strong" — how hard you push to overlap
-  pickerCorners: "both",   // "both" | "left" | "right"
+                           //   (Settings → Advanced → Windows stop at each other's edges: Off = snapping false;
+                           //   Light / Medium / Firm = snapping true with "gentle" / "normal" / "strong")
+  pickerCorners: "both",   // Settings → Advanced → Widget Picker: "both" | "left" | "right"
   accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
   locked: false,           // Settings → Classroom → Lock windows in place
-  awake: "off",            // Settings → Classroom → Keep the screen on: "off" | "on" (while 21Board is showing) | "hours" (school hours, Mon–Fri)
-  awakeFrom: "07:30",      //   school hours, "HH:MM" by this device's clock (not kept on while awakeTo isn't later)
-  awakeTo: "15:30",
+  awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
   clock: "date",           // Settings → Appearance → Clock in the corner: "off" | "time" | "date" (time and date, the default)
   letters: "standard",     // Settings → Appearance → Letters: "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
   lastBackupAt: null,      // ms of the last full backup export, for backup reminders
@@ -95,8 +95,12 @@ storage can't be read still has every page.
 ```
 
 Only `theme` and `accent` go into exported files (and so into the Google Drive folder). `locked`, `awake`,
-`awakeFrom`, `awakeTo`, `clock` and `letters` belong to this device: never in exports, Board history or the Google
-Drive folder, and an import or Load leaves them as they are.
+`clock` and `letters` belong to this device: never in exports, Board history or the Google Drive folder, and an
+import or Load leaves them as they are.
+
+Older versions had a third choice for `awake`, `"hours"` (school hours, Monday to Friday, from `awakeFrom` to
+`awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"` (the teacher wanted the screen on in class) and drops
+`awakeFrom` and `awakeTo` when it reads the record, so the next save of the settings leaves them out.
 
 Older versions also kept `devWidgets` here: test widgets added in Developer mode by their path on the site
 (`[{ id, name, entry }]`). That way of testing a widget is gone, so 21Board ignores `devWidgets`, whatever it
@@ -112,18 +116,25 @@ installed*. Test widgets are now uploaded as a file: see [`devfile:<widgetId>`](
   uid: "7c1e…",                  // a unique id, made once: files sent from other devices are matched by it
   background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" | "handwriting" | "graph" },
   scale: 0.8,                    // size of windows and menus (0.5–2), as on a 1920 × 1080 screen; see "Layout space"
-  shape: "16:9",                 // "16:9" (default) | "free" (fills any window)
+  shape: "16:9",                 // "16:9" (Widescreen, the default) | "free" (Fill: fills any window)
   layout: { w: 2400, h: 1350 }   // the 16:9 board in layout px: 1920/scale × 1080/scale (kept for older readers)
 }
 ```
 
-`color: null` means "match the light/dark theme". `"handwriting"` (rows for young writers: solid top and base
-lines, a dashed midline) and `"graph"` (graph paper: fine squares, a stronger line every 5) were added later; an older
-21Board shows no pattern for them, and an import there turns them into `"none"`.
+`color: null` means "match the light/dark theme". Settings offers White `#ffffff`, Paper `#f3ede1`, Sky `#e0f2fe`,
+Mint `#dcfce7`, Blush `#fce7f3`, Lavender `#ede9fe`, Slate `#334155`, Chalkboard `#1f3a2c`, Navy `#1e293b`, Black
+`#0a0a0a`, or any color (Custom…). Older versions had a lighter Paper `#faf7f0` and a Sand `#fef3c7`: a board or file
+with either reads as the new Paper `#f3ede1` (21Board writes that back the next time it saves the board).
+
+`pattern` is kept but not shown: Settings no longer offers patterns, and the board draws none. It is still read,
+checked, saved, exported and imported as before, so an older 21Board (which shows them) and a later one that brings
+them back keep each board's choice. `"handwriting"` (rows for young writers: solid top and base lines, a dashed
+midline) and `"graph"` (graph paper: fine squares, a stronger line every 5) were added later; an older 21Board shows
+no pattern for them, and an import there turns them into `"none"`. Any other value reads as `"none"`.
 
 ### `devfile:<widgetId>` (this device only)
 
-A test widget uploaded under Settings → Developer mode → *Test a widget* → *Upload file…* (see
+A test widget uploaded under Settings → Advanced → Developer mode → *Test a widget* → *Upload file…* (see
 [docs/WIDGET-SDK.md, "Inside 21Board"](WIDGET-SDK.md#inside-21board)). `widgetId` is `dev-` and the id in the
 file's manifest block (or its name). Never exported, and never written by an import, so a `.21board` file
 can't bring code that runs; *Erase everything* deletes it. While one starts, `localStorage["21board-devfile-starts"]`
@@ -190,12 +201,14 @@ are removed once it has seen the versions in them), and adds `About this folder.
 { on: true, fit: "fill" | "whole", focus: { x: 0.5, y: 0.5 }, fade: 0 }
 ```
 
+`on: false` keeps the photo but doesn't show it: Settings → Appearance → Background treats the photo as one of its
+choices, so picking a color hides the photo and picking *Photo* shows it again (over the color picked last).
 `fill` covers the board (cropped), `whole` fits all of it with the board color around it; `focus` (0–1 from
 the top-left) is the part that stays in view when cropped (the CSS `background-position`); `fade` (0–0.7)
 blends it toward the board color. Everything about the photo is in these two records, none of it in
 `board:<b>`: the photo belongs to the device, and without these records the board shows its color.
 
-Chosen in Settings → Appearance → Background photo, then shrunk on the device (long side at most 2560 px,
+Chosen in Settings → Appearance → Background → *Add photo…*, then shrunk on the device (long side at most 2560 px,
 short side kept at 1440 px or more so panoramas stay sharp, about 6.5 MP at most) and saved as a JPEG
 (usually 0.2–0.9 MB), or as WebP/PNG if it has transparency (a logo), so the board color shows through. It covers the 16:9 board (not the shaded
 margins), or the whole window when the board shape is unlocked.
@@ -226,12 +239,12 @@ the window is moved or resized, never because the screen changed.
 Window rects are in **layout px**: the CSS px the window's widget sees. They are drawn on screen with one
 zoom factor, so the board looks the same everywhere:
 
-- **16:9 board** (`shape: "16:9"`, the default): the board is `1920/scale × 1080/scale` layout px
+- **Widescreen, a 16:9 board** (`shape: "16:9"`, the default): the board is `1920/scale × 1080/scale` layout px
   (2400 × 1350 at the default 80%). It is drawn as large as fits the window (zoom
   `min(screenW / boardW, screenH / boardH)`), centered left-to-right and top-aligned; the rest of the
   window is lightly shaded. Windows are kept inside the board, so every screen shows the same
   arrangement. Pointer movement is divided by the zoom, so drags follow the finger.
-- **Any shape** (`shape: "free"`): the board is the whole window at zoom = `scale`. Windows that don't
+- **Fill** (`shape: "free"`; Settings → Appearance → Board shape): the board is the whole window at zoom = `scale`. Windows that don't
   fit a smaller window are moved inside when drawn (their saved rect is kept).
 - **Scale** (`scale`): how big windows, title bars and menus are, as on a 1920 × 1080 screen (at 1.0, a
   window's CSS px are screen px there). Changing it multiplies every rect's position, width and content
@@ -296,7 +309,7 @@ Each device thins only files with its own `dev4` (by name only); files ending in
   size and content. With `timer:1` and `timer:2` both closed: first open → `timer:1`,
   second → `timer:2`, third → new `timer:3`.
 - **Reset** (window menu) deletes that instance's `data` and `conf` and restores the default size.
-- **Delete** (Settings → Saved widget windows) removes the `inst`, `data` and `conf` records.
+- **Delete** (Settings → This page → Saved widgets) removes the `inst`, `data` and `conf` records.
 - Records for a widget that isn't installed are kept (and exported) but not shown.
 - A widget marked `single` in the registry (the district apps) has one window: opening it while it is open
   brings that window forward instead of creating a second instance, and *Add to my board* leaves out the
