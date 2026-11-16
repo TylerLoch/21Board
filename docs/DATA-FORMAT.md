@@ -101,8 +101,9 @@ storage can't be read still has every page.
 
 Only `theme` and `accent` go into exported files (and so into the device files in the Google Drive folder). With Board
 Sync they are the board's, on every device linked to the folder: the later choice wins, as for a page's name (see
-`link:sync.style` below). *Import › Replace this page* takes the file's (a choice made here, so it syncs); going back
-in Board history never changes them. `locked`, `awake`, `clock` and `letters` belong to this device: never in
+`link:sync.style` below). *Import › Replace this page* takes the file's (a choice made here, so it syncs), and its
+Undo puts back the ones it replaced (chosen here again, so that syncs too); going back in Board history never changes
+them. `locked`, `awake`, `clock` and `letters` belong to this device: never in
 exports, Board history or the Google Drive folder, and an import leaves them as they are.
 
 Older versions had a third choice for `awake`, `"hours"` (school hours, Monday to Friday, from `awakeFrom` to
@@ -233,8 +234,13 @@ when it was chosen (`themeAt`, `accentAt`), not the newest change stamped with i
 unlinked, say) resolve to the later on every device. An entry with no `v` is a value this device had before it
 synced with this folder: joining it or switching to it (the folder's then applies), or a ledger from before
 2026.11.16-4 (each device keeps its own until one is chosen again). It is no change, and never replaces another
-device's. Linking an empty folder (`seed`) makes this device's a version; linking the same folder again (`carry`)
-keeps the entries, so a choice made while unlinked counts.
+device's. Linking an empty folder (`seed`) makes this device's a version: one chosen here at its `themeAt` or
+`accentAt`, one never chosen here (the default, or a value from before 2026.11.16-4) at the lowest counter there is,
+1, with `t` 0, so that when two devices set up the same folder at once, before either has the other's file, a choice
+made on one of them wins on both (neither having chosen: the tie goes by device id). Linking the same folder again
+(`carry`) keeps the entries, so a choice made while unlinked counts. A choice made after linking while Google Drive is
+still bringing the folder (`wait`) is this device's own when the files arrive: joining or switching to the folder,
+the folder's applies.
 
 Comparing versions: one is older than another when the other's vector includes it, or when the other includes a
 later change to that part by the device that made it (a device's changes to a part follow one another, each made on
@@ -628,7 +634,9 @@ Importing a one-page file offers three choices:
 - **Replace this page** — removes this page's current windows and content, then loads the file
   (including its board name, background, theme and accent color). The page stays this page (its `board.uid`),
   whatever board the file was: with Board Sync, the new content reaches the same page on the other devices, as
-  edits, and the theme and accent color are a choice made on this device, which reaches them too.
+  edits, and the theme and accent color are a choice made on this device, which reaches them too (the dialog says
+  so when they differ from this board's). Its Undo goes back to the version saved before, and chooses the theme and
+  accent color it replaced again.
 - **Add to this page** — keeps everything and adds the file's windows. Instance numbers are
   renumbered to the next free number per widget, and windows are nudged into free space. Each added window gets a
   new `wid` and a `createdAt` of its own; *Replace this page* keeps the file's `wid`s (or makes the default from

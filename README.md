@@ -102,7 +102,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close** (21Sketch, 21Timer and 21DocCam: **Reload** and **Open … on its own** instead of Reset). Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. From the keyboard: Enter on the window's name opens it, the arrow keys move between its items, Enter chooses one and Escape closes it. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). With several pages: *All pages* (a backup of every page in one file), *This page*, or *This page as a blank template*. Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). *Back up now* (Settings) and the backup reminders always save every page. |
-| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). *Replace this page* keeps the page and takes the file's theme and accent color (with Board Sync, its windows and content, and the theme and accent color, change on your other devices too). A Board Sync device file opens as a backup of every page. |
+| **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). *Replace this page* keeps the page and takes the file's theme and accent color, and says so when they differ (with Board Sync, its windows and content, and the theme and accent color, change on your other devices too); its Undo puts back the page and the theme and accent color it replaced. A Board Sync device file opens as a backup of every page. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (*Fill*: any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → Classroom → **Board history…** opens the earlier versions of the board as a column beside Settings; tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Board Sync, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
@@ -136,7 +136,8 @@ Settings opens.
 - **This page ▸ Saved widgets:** how many widget windows this page has, open or closed; open, each one with
   Open and Delete. (The page's name is changed from the Pages menu: ‹ Page › → *Rename this page…*.)
 - **Appearance**
-  - **Theme:** Light, Dark or Auto (the device's own; the default). With Board Sync, on all your devices.
+  - **Theme:** Light, Dark or Auto (follows the device's light or dark setting; the default). With Board Sync, the
+    board's: on all your devices.
   - **Background ▸** (this page): one set of choices: match the theme and six light colors (White, Paper, Sky,
     Mint, Blush, Lavender); then four dark ones (Slate, Chalkboard, Navy, Black), *Custom…* (any color) and
     *Photo…* on the same row. Once there is a photo it is one of the choices, *Photo* (with a tiny picture):
@@ -155,9 +156,9 @@ Settings opens.
   - **Board shape** (this page): *Widescreen* (16:9, the same on every screen; the default) or *Fill* (the whole
     window). See [Board shape and size](#board-shape-and-size).
 - **Advanced ▸** (an amber dot on it only when a backup is overdue: none for a week, or none yet and the board has
-  had windows for a week. *Back up now* clears it, and so does Board Sync writing this device's file, a full backup
-  too. Whether the browser has promised to keep 21Board's data is said inside, under *Protected storage*, not with
-  the dot):
+  had windows, on any page, for a week; inside, *Back up every page* has the amber dot too. *Back up now* clears it,
+  and so does Board Sync writing this device's file, a full backup too. Whether the browser has promised to keep
+  21Board's data is said inside, under *Protected storage*, not with the dot):
   - **Widget Picker:** both corners, or only left or right.
   - **Size of windows and menus** (this page; default 80%).
   - **Moving windows:** *Windows stop at each other's edges* (Off, or Light, Medium and Firm: how hard you push to
@@ -313,7 +314,9 @@ keyboard doesn't pop up by itself: tap the field to type. The name can be change
 your devices show up on the others by themselves, usually within a minute: Google Drive decides when."):
 
 - **An empty folder:** this device's board goes there at once, with its theme and accent color. (A device with
-  only its untouched first page, "My Board", writes nothing yet: the board comes from your other device.)
+  only its untouched first page, "My Board", writes nothing yet: the board comes from your other device.) When two
+  devices set up the same folder at once, before Google Drive has brought either one's file to the other, a theme or
+  accent color chosen on one of them wins on both: one never chosen (the defaults) never replaces it.
 - **A folder with a board, on a device that has never synced:** its board is shown here, in its theme and accent
   color. Pages of this device's own are added after the board's ("This device’s 2 pages were added after them."); a
   page both have (from the same import) keeps the folder's values, and this device's different content is kept
@@ -332,7 +335,9 @@ your devices show up on the others by themselves, usually within a minute: Googl
   chose one since, the later choice wins), and nothing is deleted anywhere because of how this device looked
   while it wasn't syncing.
 - **Google Drive still bringing the folder or its files:** linked anyway; nothing is merged or written until
-  the files can be read (up to 10 minutes), so a slow Drive can never combine two boards.
+  the files can be read (up to 10 minutes), so a slow Drive can never combine two boards. A theme or accent color
+  chosen here meanwhile is still this device's own when the board arrives, so the board's replaces it, as on any
+  device that hasn't synced with the folder yet (choose it again once the board is here).
 
 **Then it just syncs.** A few seconds after you change something (at most every 20 seconds while changes keep
 coming), and at once when 21Board is hidden or the lid is closed, this device writes its file; every 5 seconds
@@ -377,11 +382,12 @@ synced: …" while changes made here can't be written; which device stopped sync
 the only other one has left it) and *Change…* and *Unlink*; **This device’s name** (shown on your other devices, and
 in its file's name); and **Keep history copies in the folder**. While changes made here are on their way (and for a
 moment after a change from another device is taken in, while this device's own file, which holds the whole board, is
-written again), "Syncing…" shows after the folder's name (its room is kept while it's hidden), not in the line
-below, so the rows below Board Sync stay put as changes go out and come in (only a new day moves them once: times
-from the day before read "on Nov 16 at 3:00 PM" until the first change of the day). The line and "Syncing…" are
-updated in place, so Settings isn't redrawn under a screen reader or a name being typed, and "Syncing…" isn't
-announced each time.
+written again), "Syncing…" shows after the folder's name (its room is kept while it's hidden, and the title stays
+one line: a long folder name ends in "…"), not in the line below, so the rows below Board Sync stay put as changes
+go out and come in (only a new day moves them once: times from the day before read "on Nov 16 at 3:00 PM" until the
+first change of the day). The line and "Syncing…" are updated in place, so Settings isn't redrawn under a screen
+reader or a name being typed, and "Syncing…" isn't announced each time. Nor is Settings redrawn when something else
+changes that it doesn't show (a deleted page gone for good, a Board history copy written to the folder).
 
 **What's in the folder:**
 

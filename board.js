@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.16-4';
-  const BOARD_BUILD = '21fdcc19';
+  const BOARD_BUILD = '026798e6';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -1193,7 +1193,9 @@
     S.settings = Merge.patchSettings(S.settings, p);
     applySettings();
     Writer.patch(Keys.settings, 'settings', p);
-    if (Settings.isOpen) { if (quiet) Settings.refreshStatus(true); else Settings.render(); }
+    // (drawn again only if something it shows changed: a deleted page purged or a Board history copy written while
+    // Settings is open changes nothing in it, and a screen reader or a tap there isn't disturbed)
+    if (Settings.isOpen) { if (quiet) Settings.refreshStatus(true); else Settings.refresh(); }
   }
 
   function updateBoard(patch) {
@@ -4252,12 +4254,13 @@
   // it. Which groups are open is Settings.groups: it lasts while Settings stays open (Settings is drawn again on every
   // change), and every group starts closed each time Settings opens. A closed group is still in the page, hidden.
   // opts: sub (a grey line under the name), preview (HTML before the value), valueId, warn (an amber dot, shown while
-  // true: something inside needs a look), inset (drawn indented, with a line beside it).
+  // true: something inside needs a look; warnLabel, what a screen reader says for it), inset (drawn indented, with a
+  // line beside it).
   function settingsGroup(key, label, value, content, opts = {}) {
     const open = Settings.groups.has(key), id = 'grp-' + key;
     return `<button class="row disc" data-act="group" data-val="${key}" aria-expanded="${open}" aria-controls="${id}">` +
       `<span class="txt"><span class="lbl">${label}</span>${opts.sub ? `<span class="hint">${opts.sub}</span>` : ''}</span>` +
-      `<span class="val">${'warn' in opts ? `<span class="status-dot warn" id="${id}-warn" role="img" aria-label="(needs a look)"${opts.warn ? '' : ' hidden'}></span>` : ''}${opts.preview || ''}` +
+      `<span class="val">${'warn' in opts ? `<span class="status-dot warn" id="${id}-warn" role="img" aria-label="${opts.warnLabel || '(needs a look)'}"${opts.warn ? '' : ' hidden'}></span>` : ''}${opts.preview || ''}` +
       `${value ? `<span class="v"${opts.valueId ? ` id="${opts.valueId}"` : ''}>${value}</span>` : ''}<span class="chev" aria-hidden="true">${svg('chevRight')}</span></span></button>` +
       `<div class="drawer${opts.inset ? ' inset' : ''}" id="${id}" role="group" aria-label="${label}"${open ? '' : ' hidden'}>${content}</div>`;
   }
@@ -4336,7 +4339,9 @@
   // syncing is going (Link.status) and Change… and Unlink; this device's name; history copies in the folder.
   // "Syncing…" goes after the folder's name (Link.syncing), on a title line across the whole row (beside Change… and
   // Unlink it doesn't fit), its room kept while it's hidden: neither the title nor the line below it changes size as
-  // changes go out, and nothing below Board Sync moves. (Not a live region: it comes and goes every few seconds.)
+  // changes go out, and nothing below Board Sync moves. The title is one line: a long folder name ends in "…" (the
+  // whole name in its tooltip, and for a screen reader), so "Syncing…" never lands on a line of its own and leaves a
+  // blank one when it hides. (Not a live region: it comes and goes every few seconds.)
   function linkSettings(sw) {
     const L = Link;
     if (!L.dir) {
@@ -4351,7 +4356,7 @@
     const H = BoardHistory;
     return `<h3>Board Sync</h3>
       ${warn}
-      <div class="row link-folder"><div class="lbl">Synced through “${esc(L.dir.name)}” <span class="link-syncing${L.syncing() ? ' on' : ''}" id="set-link-syncing">Syncing…</span></div><div class="hint" id="set-link-status">${esc(L.status())}</div>
+      <div class="row link-folder"><div class="lbl">Synced through <span class="link-name" title="${esc(L.dir.name)}">“${esc(L.dir.name)}”</span> <span class="link-syncing${L.syncing() ? ' on' : ''}" id="set-link-syncing">Syncing…</span></div><div class="hint" id="set-link-status">${esc(L.status())}</div>
         <div class="btns"><button class="btn small" data-act="link-choose">Change…</button><button class="btn small" data-act="link-unlink">Unlink</button></div></div>
       <div class="row stack"><label class="lbl" for="set-link-label">This device’s name <span class="hint">(shown on your other devices)</span></label>
         <input type="text" class="text-input" id="set-link-label" maxlength="40" value="${esc(dev.label)}" autocomplete="off"></div>
@@ -4361,7 +4366,10 @@
   // Settings' HTML without what is put in place: Board Sync's status line and "Syncing…" shown or not (putStatus), and
   // when the last backup was (refreshStatus: each write of this device's file counts as one, see writeOwn).
   const noStatus = h => h.replace(/<div class="hint" id="set-link-status">[\s\S]*?<\/div>/, '').replace('<span class="link-syncing on"', '<span class="link-syncing"')
-    .replace(/<div class="hint" id="st-backup">[^<]*<\/div>/, '');
+    .replace(/<div class="hint[^"]*" id="st-backup">(?:<span class="status-dot warn"><\/span>)?[^<]*<\/div>/, '');
+  // Advanced › Back up every page: when the last backup was, with the amber dot that is on Advanced when it is overdue
+  // (Settings.needsLook), so that what the dot is about is plain once Advanced is open.
+  const backupLine = late => `<div class="hint${late ? ' warn-line' : ''}" id="st-backup">${late ? '<span class="status-dot warn"></span>' : ''}${esc(backupAgo())}</div>`;
   // ... and without which theme and accent color are chosen (and the swatches' shades, which follow the theme): put in
   // place when only they changed, chosen on another device or in another tab (putLook).
   const noLook = h => h.replace(/<button role="radio" aria-checked="\w+" data-act="theme"([^>]*) class="\w*">/g, '<button data-act="theme"$1>')
@@ -4376,6 +4384,7 @@
     linkShown: '',       // the Board Sync section as last drawn
     drawn: '',           // all of Settings as last drawn (see refresh)
     syncingOff: 0,       // "Syncing…" goes in a moment (see putStatus)
+    oldestAt: Infinity,  // the oldest window on any page, read while Settings is open and nothing was backed up (needsLook)
 
     // What Settings shows of Board Sync is no longer what it shows now (after a look at the folder: Link.redraw).
     linkChanged() { return Link.supported && linkSettings(switchHTML, segHTML) !== this.linkShown; },
@@ -4577,7 +4586,7 @@
         <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Off: only by the title bar.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
         ${historySettings(sw, seg)}
         <h4>${LAB ? 'Storage' : 'Backups and storage'}</h4>
-        ${LAB ? '' : `<div class="row"><div><div class="lbl">Back up every page</div><div class="hint" id="st-backup">${esc(backupAgo())}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
+        ${LAB ? '' : `<div class="row"><div><div class="lbl">Back up every page</div>${backupLine(this.needsLook())}</div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>
         <div class="row status-block">
           <div class="st"><span class="k">Offline</span><span class="hint" id="st-offline">Checking…</span></div>
           <div class="st"><span class="k">Protected storage</span><span id="st-persist"></span></div>
@@ -4620,7 +4629,7 @@
         ${shapeSettingsRow(seg)}
 
         <div class="gap"></div>
-        ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), inset: true })}`;
+        ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), warnLabel: '(backup overdue)', inset: true })}`;
       if (ifChanged && noLook(noStatus(html)) === noLook(noStatus(this.drawn))) {
         if (noStatus(html) !== noStatus(this.drawn)) this.putLook(html);
         const line = $('#set-link-status', this.body);
@@ -4642,15 +4651,15 @@
     },
 
     // The amber dot on Advanced: only a backup overdue, so making one clears it: none in the last week, or never one
-    // and the board has had windows for a week (an empty or brand-new board has nothing to lose yet, as
-    // maybeRemindBackup judges). Whether the browser has promised to keep 21Board's data is said inside Advanced
-    // (Protected storage), not with the dot: in an ordinary Chrome tab it can't be cleared, and a dot that can't be
-    // cleared is soon ignored.
+    // and the board has had windows for a week, on any page (an empty or brand-new board has nothing to lose yet, as
+    // maybeRemindBackup judges; oldestAt, see refreshStatus). Whether the browser has promised to keep 21Board's data
+    // is said inside Advanced (Protected storage), not with the dot: in an ordinary Chrome tab it can't be cleared, and
+    // a dot that can't be cleared is soon ignored.
     needsLook() {
       if (LAB) return false;
       const t = S.settings.lastBackupAt, now = Date.now();
       if (t) return now - t > 7 * DAY;
-      let oldest = Infinity;
+      let oldest = this.oldestAt;
       for (const i of S.insts.values()) oldest = Math.min(oldest, i.createdAt || Infinity);
       return now - oldest > 7 * DAY;
     },
@@ -4680,7 +4689,7 @@
       if (cache) cache.textContent = S.sw.version && S.sw.build !== BOARD_BUILD ? ` · Offline copy ${S.sw.version}${S.sw.build ? ` (${S.sw.build})` : ''}` : '';
       const renderPersist = () => {
         const per2 = $('#st-persist', this.body), hint = $('#st-persist-hint', this.body), bk = $('#st-backup', this.body);
-        if (bk) bk.textContent = backupAgo();
+        if (bk) { const line = backupLine(this.needsLook()); if (bk.outerHTML !== line) bk.outerHTML = line; }
         if (!per2 || !hint) return;
         const st = Persist.state;
         if (st === 'granted') {
@@ -4717,6 +4726,7 @@
         const nav = navigator.storage;
         if (nav && nav.estimate) { const e = await nav.estimate(); storage = `${fmtBytes(e.usage || 0)} of ${fmtBytes(e.quota || 0)}`; }
         await Persist.check();
+        if (!S.settings.lastBackupAt && !LAB) this.oldestAt = await oldestWindow();
       } catch (e) { /* ignore */ }
       this._statusCache = { storage };
       if (!this.isOpen) return;
@@ -5157,13 +5167,15 @@
     const openCount = parsed.instances.filter(i => i.open).length;
     const missing = new Set(parsed.instances.filter(i => !getWidget(i.widgetId)).map(i => i.widgetId));
     const what = parsed.kind === 'template' ? 'a blank template' : 'a full backup';
-    // Replace keeps this page (its uid): with Board Sync, its windows and content change on the other devices too.
-    const uid = S.board.uid;
+    // Replace keeps this page (its uid): with Board Sync, its windows and content change on the other devices too, and
+    // so do the file's theme and accent color, which are the whole board's (said, when they differ from this board's).
+    const uid = S.board.uid, look0 = { theme: S.settings.theme, accent: S.settings.accent };
+    const looks = andList([parsed.theme && parsed.theme !== look0.theme && 'theme', parsed.accent && parsed.accent !== look0.accent && 'accent color'].filter(Boolean));
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
       message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' is' : 's are'} not installed here; ${missing.size === 1 ? 'its' : 'their'} content will be kept but not shown.` : ''),
       actions: (Pages.enabled() ? [{ label: 'Open as a new page', sub: 'Your pages stay as they are. This one is added after the page you’re on.', value: 'page', kind: 'primary', choice: true }] : []).concat([
-        { label: Pages.enabled() ? 'Replace this page' : 'Replace my board', sub: `${Pages.enabled() ? 'This page’s' : 'Your current'} windows and content are replaced${Link.dir ? ', here and on your other devices' : ''}.` + (BoardHistory.enabled() ? ' You can undo this.' : ''), value: 'replace', kind: 'danger', choice: true },
+        { label: Pages.enabled() ? 'Replace this page' : 'Replace my board', sub: `${Pages.enabled() ? 'This page’s' : 'Your current'} windows and content${looks ? `, and the ${looks},` : ''} are replaced${Link.dir ? ', here and on your other devices' : ''}.` + (BoardHistory.enabled() ? ' You can undo this.' : ''), value: 'replace', kind: 'danger', choice: true },
         { label: Pages.enabled() ? 'Add to this page' : 'Add to my board', sub: 'Keep what’s here and add these windows', value: 'add', kind: Pages.enabled() ? '' : 'primary', choice: true },
         { label: 'Cancel', value: null }
       ])
@@ -5178,8 +5190,13 @@
       // (Board Sync: no round runs while it is put on the board, see Link.swap; then one syncs it.)
       const undoId = await Link.swap(() => applyImport(parsed, mode, { uid: replace ? uid : null, keepCreated: replace, photo: 'file', history: { reason: replace ? 'import' : 'add', label } }));
       if (Link.supported) Link.changed([Keys.board(S.boardId)]);
-      const added = opened() - before;
-      toast(replace ? 'Board imported.' : `Added ${added} window${added === 1 ? '' : 's'}.`, undoAction(undoId, replace ? 'the import' : 'adding windows'));
+      const added = opened() - before, undo = undoAction(undoId, replace ? 'the import' : 'adding windows');
+      // (its Undo puts back the theme and accent the file replaced too, chosen again here, so that with Board Sync it
+      // reaches the other devices: going back in Board history never changes them)
+      const back = {};
+      for (const k of ['theme', 'accent']) if (replace && S.settings[k] !== look0[k]) back[k] = look0[k];
+      if (undo.onAction && Object.keys(back).length) { const go = undo.onAction; undo.onAction = async () => { if (await go() !== false) updateSettings(back); }; }
+      toast(replace ? 'Board imported.' : `Added ${added} window${added === 1 ? '' : 's'}.`, undo);
     } catch (err) {
       console.error(err);
       toast('Import failed: ' + (err.message || err));
@@ -6241,7 +6258,11 @@
         if (back.length) Pages.backByMerge(back);
         // (Not the round that applies set-up's mode: its last step says what it did.)
         if (!(mode && this.welcoming)) {
-          try { MergeUI.shown(plan.summary, { at: now, from: plan.summary.from, ops: done.written.filter(x => Keys.parse(x.key).board === S.boardId).map(x => ({ key: x.key, rev: x.rev || 0, prev: seed[x.key] })), swaps: plan.undo.swaps, skip: plan.undo.skip }); }
+          // (a theme or accent chosen in this tab while the round ran, not stored yet when it was saved: this tab shows
+          // that, not the merge's, and the next round takes it to the other devices. It isn't said.)
+          const was = (r.by.get(Keys.settings) || {}).value || {};
+          const style = (plan.summary.style || []).map(x => Object.fromEntries(Object.entries(x).filter(([k]) => k === 'by' || S.settings[k + 'At'] === was[k + 'At']))).filter(x => x.theme || x.accent);
+          try { MergeUI.shown(Object.assign({}, plan.summary, { style }), { at: now, from: plan.summary.from, ops: done.written.filter(x => Keys.parse(x.key).board === S.boardId).map(x => ({ key: x.key, rev: x.rev || 0, prev: seed[x.key] })), swaps: plan.undo.swaps, skip: plan.undo.skip }); }
           catch (err) { console.warn('21Board: the merge message couldn’t be shown', err); }
         }
       }
@@ -6466,6 +6487,10 @@
           const go = () => {
             if (gen !== this.gen) { stale = 'gone'; s.transaction.abort(); return; }
             for (const w of writes) if ((((cur[w.key] || {}).rev) || 0) !== ((plan.ifRev || {})[w.key] || 0)) { stale = true; s.transaction.abort(); return; }
+            // (the theme or accent chosen here, in another tab or by an Import, since the round read the settings: the
+            // merge's value would replace a later choice for good. The round runs again, and the later one wins.)
+            const sset = (plan.settingsPatch && plan.settingsPatch.set) || {}, was = ((r.by.get(Keys.settings) || {}).value) || {}, now0 = ((cur[Keys.settings] || {}).value) || {};
+            if (['theme', 'accent'].some(k => k in sset && (now0[k] !== was[k] || now0[k + 'At'] !== was[k + 'At']))) { stale = true; s.transaction.abort(); return; }
             const out = [];
             for (const w of writes) {
               if (w.del) { if (cur[w.key]) { s.delete(w.key); out.push({ key: w.key, deleted: true }); } continue; }
@@ -8151,11 +8176,12 @@
       }
       const local = { H, pages: new Map(), byB: new Map(), nouid: [], settings: st, revs, recs: byKey, skipped, now, fixes: [], style: {} };
       // The theme and accent, and when each was chosen here (themeAt, accentAt: see updateSettings; for one chosen
-      // before 2026.11.16-4, the settings record's own time)
+      // before 2026.11.16-4, the settings record's own time). chosen: someone picked it on this device (not only the
+      // default, or a value from before 2026.11.16-4)
       const sr = byKey.get('settings'), sAt = sr ? fin(sr.updatedAt, now) : now;
       for (const k of STYLE_PARTS) {
-        const val = (k === 'theme' ? THEMES.includes(st.theme) : H.accentOk(st.accent)) ? st[k] : STYLE_DEF[k];
-        local.style[k] = { val, h: hj(val), at: fin(st[k + 'At'], sAt) };
+        const val = (k === 'theme' ? THEMES.includes(st.theme) : H.accentOk(st.accent)) ? st[k] : STYLE_DEF[k], t = fin(st[k + 'At'], null);
+        local.style[k] = { val, h: hj(val), at: t === null ? sAt : t, chosen: t !== null };
       }
       const lp = (key, val, h, rec, x) => Object.assign({ key, val, h, rev: rec ? fin(rec.rev, 0) : 0, at: rec ? fin(rec.updatedAt, null) : null,
         base: rec && typeof rec.base === 'number' ? rec.base : undefined, u: !!(rec && rec.u), m: !!(rec && rec.m), skipped: skipped.has(key) }, x);
@@ -8388,15 +8414,17 @@
       // not the newest change stamped with it, so that two made apart (one while unlinked, say) resolve to the later on
       // every device. A value this device had before it synced with this folder (joining it, switching to it, a
       // ledger from before 2026.11.16-4) is no change: only its fingerprint is noted, and the folder's applies. An
-      // empty folder (seed) gets this device's.
+      // empty folder (seed) gets this device's; one never chosen here (the default) as the oldest version there can be,
+      // so that a choice made on another device that set up the same folder at once, before either had the other's
+      // file, wins on both. (Neither chose one: the tie goes by device id, the same on every device.)
       const style = Object.assign({}, L.sync.style);
       let sn = 0, styled = 0;
       for (const k of STYLE_PARTS) {
         const lp = local.style && local.style[k], E = style[k];
         if (!lp || (E && E.h === lp.h)) continue;
         if (!E && o.mode !== 'seed') { style[k] = { h: lp.h }; continue; }
-        const n = Math.max(fin(lp.at, now), fin(o.ctr, 0) + 1, fin(o.maxSeen, 0) + 1);
-        style[k] = { h: lp.h, v: arr({ by: dev, vv: vjoin(E && E.v ? E.v[1] : {}, { [dev]: n }), t: fin(lp.at, now), u: false }) };
+        const low = !E && !lp.chosen, n = low ? 1 : Math.max(fin(lp.at, now), fin(o.ctr, 0) + 1, fin(o.maxSeen, 0) + 1);
+        style[k] = { h: lp.h, v: arr({ by: dev, vv: vjoin(E && E.v ? E.v[1] : {}, { [dev]: n }), t: low ? 0 : fin(lp.at, now), u: false }) };
         sn = Math.max(sn, n); styled++;
       }
       if (!sameJSON(style, L.sync.style || {})) L.sync = Object.assign({}, L.sync, { style });
@@ -9842,16 +9870,27 @@
     return 'Last backup: ' + (days <= 0 ? 'today' : days === 1 ? 'yesterday' : `${days} days ago`);
   }
 
+  // When the oldest window on any page was made (its createdAt; Infinity: none): the board has had something worth keeping
+  // since then. The pages not shown are read from the database (S.insts holds only the page shown); the page shown
+  // alone if that read fails.
+  async function oldestWindow() {
+    let oldest = Infinity;
+    for (const i of S.insts.values()) oldest = Math.min(oldest, i.createdAt || Infinity);
+    try {
+      const gone = new Set((S.settings.deletedBoards || []).map(Number));
+      for (const r of await Store.getRange(['inst:'])) if (r.value && !gone.has(Keys.parse(r.key).board)) oldest = Math.min(oldest, r.value.createdAt || Infinity);
+    } catch (e) { /* the page shown, then */ }
+    return oldest;
+  }
+
   // If the browser hasn't promised to keep the data, remind (at most every 3 days) to export a backup.
-  function maybeRemindBackup() {
+  async function maybeRemindBackup() {
     // Not in a kiosk: no one is signed in, so it would reach whoever is at the panel, in a lesson, about something
     // only IT can settle; and a backup that leaves the device needs a USB drive in hand. (Settings has Back up now.)
     if (KIOSK) return;
     if (document.visibilityState !== 'visible') return; // never use up the reminder in a background tab
     if (Persist.state === 'granted' || Store.failed || !S.data.size) return;
-    let oldest = Infinity;
-    for (const i of S.insts.values()) oldest = Math.min(oldest, i.createdAt || Infinity);
-    if (!(Date.now() - oldest > DAY)) return;                         // brand-new board: nothing to lose yet
+    if (!(Date.now() - await oldestWindow() > DAY)) return;           // brand-new board: nothing to lose yet
     if (Date.now() - (S.settings.lastBackupAt || 0) < 7 * DAY) return; // backed up recently
     let nagged = 0;
     try { nagged = +localStorage.getItem('21board-backup-reminder') || 0; } catch (e) { /* ignore */ }

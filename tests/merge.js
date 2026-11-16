@@ -5,15 +5,18 @@
  * then checks:
  *   - the rules table (spec §4.1), case by case, with two or three simulated devices;
  *   - the theme and accent color, the board's on every device: the later change wins, a device that never changed
- *     them never overwrites, joining, an empty folder, switching, linking again, files from 2026.11.16-3;
+ *     them never overwrites, joining, an empty folder (two set up at once), switching, linking again, files from
+ *     2026.11.16-3;
  *   - reading a device file: cut, mixed and edited files are refused, a whole one is read, a bad unit is skipped;
  *   - a randomized run: devices editing pages and windows, Google Drive delivering files late, out of order, twice,
  *     as conflict copies or not at all, devices unlinked, linked again, switched to another folder and back, away
  *     for months, busy windows, stale tabs writing over a merge, lost files and ledgers, the theme and accent
- *     changed now and then. After a final full exchange, an oracle checks that every device shows the same board
- *     (and theme and accent), that nothing anyone typed is lost unless a device that showed it changed or deleted
- *     it, that no clash is left, that no version is copied twice, that nobody writes again, and that nothing
- *     deleted comes back unless someone edited it without having seen the deletion;
+ *     changed now and then (and before set-up), and in some runs two or more devices setting up the folder at once.
+ *     After a final full exchange, an oracle checks that every device shows the same board (and theme and accent),
+ *     that nothing anyone typed is lost unless a device that showed it changed or deleted it, that no clash is left,
+ *     that no version is copied twice, that nobody writes again, that nothing deleted comes back unless someone
+ *     edited it without having seen the deletion, and that the theme and accent are the latest choice made for the
+ *     folder;
  *   - that the oracle bites: the same run with plain "later wins" content, and with the first draft's rules for
  *     removing old device files and tombstones, must fail.
  * Options: node tests/merge.js [runs-scale] (0.1 for a quick look; default 1).
@@ -60,7 +63,7 @@ const pick = (a, r = rnd) => a[Math.floor(r() * a.length)];
 const token = v => (v && typeof v === 'object' ? (typeof v.text === 'string' ? v.text : Array.isArray(v.tasks) ? v.tasks[0] : null) : null);
 let LOG;
 const newLog = () => ({ typed: new Set(), gone: new Set(), dels: [], edits: [], sig: new Map(), writes: 0, fileKnow: new Map(),
-  replaced: new Set(), repl: new Map(), spur: [], udels: [], published: new Set(), resetCopies: new Set() });
+  replaced: new Set(), repl: new Map(), spur: [], udels: [], published: new Set(), resetCopies: new Set(), styles: [], folder: null });
 // A name, color, place, setting or Timer state that a device changed while it showed it (folder|unit|mark): it must
 // never come back (oracle 7). Typed text is the "lost" oracle's.
 const LWW_MARK = /^(n|l|r|c|dur):/;
@@ -96,6 +99,7 @@ class Device {
     this.decoded = new Map();    // text -> decode result
     this.busy = new Set(); this.stale = new Map(); this.staleBase = new Map(); this.heard = new Set(); this.know = new Set(); this.applied = new Set();
     this.lastWid = 0; this.writes = 0; this.away = false; this.blinded = new Set();
+    this.styleBase = { theme: 'system', accent: 'blue' };   // (the theme and accent after its last round: oracle 9)
     this.put('settings', 'settings', { boards: [], deletedBoards: [], deletedAt: {}, lastBoard: 0, activeBoard: 1 });
     if (opts.pages !== false) this.placeholder();
   }
@@ -249,6 +253,16 @@ class Device {
   // was chosen here: themeAt, accentAt)
   setStyle(p) { const set = {}; for (const [k, v] of Object.entries(p)) { set[k] = v; set[k + 'At'] = this.now(); } this.patch({ set }); }
   styleNow() { return [this.settings.theme || 'system', this.settings.accent || 'blue'].join(' '); }
+  styleOf() { return { theme: this.settings.theme || 'system', accent: this.settings.accent || 'blue' }; }
+  // (oracle 9: the choices a round takes out of this device as a change: one made here since its last round that left
+  // something else showing than that round did, or any it made before setting up an empty folder. They count for the
+  // folder of the run unless the round joins it or switches to it: the folder's then apply.)
+  settleStyle() {
+    const st = this.settings, now = this.styleOf(), counts = !!LOG.folder && this.folderName === LOG.folder && this.mode !== 'join' && this.mode !== 'take';
+    for (const k of ['theme', 'accent']) {
+      if (typeof st[k + 'At'] === 'number' && (now[k] !== this.styleBase[k] || this.mode === 'seed')) LOG.styles.push({ k, val: now[k], at: st[k + 'At'], counts, by: this.label });
+    }
+  }
   photo(b, on) {
     if (on) {
       const m = { data: 'data:image/jpeg;base64,AAAA', w: 2000 + Math.floor(rnd() * 500), h: 1200, bytes: 1000 + Math.floor(rnd() * 1e5), name: 'p.jpg', addedAt: this.now() };
@@ -303,6 +317,7 @@ class Device {
   pageShown() { const b = this.settings.activeBoard; const v = this.boardOf(b); return v ? v.uid : null; }
   round(kind = 'full', opts = {}) {
     if (!this.linked || this.away) return;
+    this.settleStyle();
     // (a stale tab's write lands before the next round: Writer writes at once, rounds wait for quiet)
     // (a stale tab's write lands before the next round, unless its writes are held up: then it may still miss the
     // next merge too, and its change is based on the record before the first)
@@ -332,7 +347,10 @@ class Device {
       for (const w of writes) {
         if (w.del) { this.del(w.key); continue; }
         const was = this.recs.get(w.key);
-        if (was && /^(data|inst|board)$/.test(w.type) && !this.stale.has(w.key)) this.stale.set(w.key, Object.assign(clone(was), { unit: unitWas.get(w.key) }));   // what a stale tab still shows (and of which window or page)
+        // what a stale tab still shows (and of which window or page). (Not after a take: what this device showed of the
+        // other folder's board, written back by a tab that hadn't seen the switch, isn't known to the take's merge as an
+        // old value, so it would count as a change made here: a gap left for now.)
+        if (was && /^(data|inst|board)$/.test(w.type) && !this.stale.has(w.key) && this.mode !== 'take') this.stale.set(w.key, Object.assign(clone(was), { unit: unitWas.get(w.key) }));
         this.recs.set(w.key, { key: w.key, type: w.type, rev: w.rev, updatedAt: now, by: 'm', m: 1, value: clone(w.value) });
         this.staleBase.delete(w.key);
         for (const sg of sigsOf(w.key, w.value)) if (LOG.sig.has(sg)) this.applied.add(LOG.sig.get(sg));   // on screen here now
@@ -343,6 +361,7 @@ class Device {
       apply(st.fixes, st.settings ? s => Merge.patchSettings(s, st.settings) : null, true);
       this.store(st.ledger); this.first = false;
       this.writeFile(st.ledger);
+      this.styleBase = this.styleOf();
       return;
     }
     const { peers, files } = this.look(st.ledger);
@@ -380,6 +399,7 @@ class Device {
     for (const id of this.heard) if (!this.know.has(id)) { const d = LOG.dels[id - 1]; if (!this.shows(d.unit)) this.know.add(id); }
     this.writeFile(L3);
     this.lastSum = plan.summary; (this.sums || (this.sums = [])).push(plan.summary);
+    this.styleBase = this.styleOf();
     return plan;
   }
   leave(uid) {
@@ -455,8 +475,9 @@ class Device {
     this.writes++; LOG.writes++;
     return true;
   }
-  // set-up, as Link decides the mode (§3.5)
-  linkTo(folder) {
+  // set-up, as Link decides the mode (§3.5). opts.atOnce: another device is setting up the same folder at this moment,
+  // and neither has the other's file yet (this one finds it empty).
+  linkTo(folder, opts = {}) {
     // (which folder this device was linked to is kept apart from the ledger, as link:folder is)
     if (!this.link && this.lostLedger && folder.files.has(this.fileName())) {
       const r = this.decodeText(folder.files.get(this.fileName()));
@@ -464,8 +485,8 @@ class Device {
     }
     this.lostLedger = false;
     const had = this.folderName;
-    const others = Array.from(folder.files.keys()).filter(n => n !== this.fileName());
-    this.folder = folder; this.view = new Map(folder.files);
+    const others = opts.atOnce ? [] : Array.from(folder.files.keys()).filter(n => n !== this.fileName());
+    this.folder = folder; this.view = opts.atOnce ? new Map() : new Map(folder.files);
     if (had === folder.name) this.mode = 'carry';
     else if (!others.length) this.mode = 'seed';
     else {
@@ -478,7 +499,7 @@ class Device {
       this.link = { sync: Object.assign({ v: 1, dev: this.dev, peers: {} }, keep), mines: new Map() };
       this.peers.clear();
     }
-    this.folderName = folder.name;
+    this.folderName = folder.name; this.linkedAs = this.mode;
     this.linked = true; this.first = true; this.busy.clear();
     this.round('full');
   }
@@ -519,20 +540,32 @@ function run(seed, nDev, steps, variant = {}) {
   const folder = new Folder('Room 12'), other = new Folder('Room 14');
   const devs = global.__devs = Array.from({ length: nDev }, (_, i) => new Device(['laptop', 'board', 'home', 'cart', 'panel'][i], { skew: variant.skew && i === 1 ? variant.skew : 0, pages: true }));
   const gcOpts = variant.gc ? { gcFn: variant.gc } : {};
+  // (the theme and accent changed now and then: a stream of numbers of their own, so that the rest of each run is as it
+  // was. Some devices choose them before they are set up. variant.atOnce: how often a device sets up the folder at the
+  // same moment as the first, before either has the other's file, so that two or more find it empty and each sends its
+  // board, theme and accent there.)
+  const srnd = seeded(seed * 104729 + 3);
+  const choose = d => d.setStyle(srnd() < 0.5 ? { theme: pick(['light', 'dark', 'system'], srnd) } : { accent: pick(['blue', 'green', 'pink', 'teal'], srnd) });
+  const before = d => { if (srnd() < 0.4) { NOW += 1000 + Math.floor(srnd() * 1000); choose(d); } };
+  LOG.folder = folder.name;
   devs[0].addPage('Math'); devs[0].addWindow(devs[0].ids()[1], W.NOTES);
+  before(devs[0]);
   devs[0].linkTo(folder);
-  for (const d of devs.slice(1)) { if (rnd() < 0.3) { const b = d.addPage(); d.addWindow(b, W.NOTES); } for (const o of devs) if (o !== d) d.deliver(o); d.linkTo(folder); }
+  for (const d of devs.slice(1)) {
+    if (rnd() < 0.3) { const b = d.addPage(); d.addWindow(b, W.NOTES); }
+    before(d);
+    for (const o of devs) if (o !== d) d.deliver(o);
+    d.linkTo(folder, { atOnce: srnd() < (variant.atOnce || 0) });
+  }
   for (const d of devs) for (const o of devs) if (o !== d) d.deliver(o);
   const roundOf = d => d.round('full', gcOpts);
-  // (the theme and accent changed now and then: a stream of numbers of their own, so that the rest of each run is as it was)
-  const srnd = seeded(seed * 104729 + 3);
   for (let s = 0; s < steps; s++) {
     NOW += rnd() < (variant.jumps || 0.03) ? Math.floor(rnd() * 40) * DAY : Math.floor(rnd() * 30000);
     const d = pick(devs), r = rnd();
     if (d.away && rnd() < (variant.back || 0.15)) d.away = false;
     if (d.away) continue;   // (closed: it does nothing until it is back)
     if (variant.awayMore && rnd() < variant.awayMore) { d.away = true; NOW += 90 * DAY; continue; }
-    if (srnd() < 0.04) d.setStyle(srnd() < 0.5 ? { theme: pick(['light', 'dark', 'system'], srnd) } : { accent: pick(['blue', 'green', 'pink', 'teal'], srnd) });
+    if (srnd() < 0.04) choose(d);
     if (r < 0.40) edit(d);
     else if (r < 0.62) roundOf(d);
     else if (r < 0.85) { const o = pick(devs.filter(x => x !== d)); d.deliver(o, rnd() < 0.15 ? 'old' : rnd() < 0.05 ? 'copy' : 'latest'); }
@@ -600,10 +633,20 @@ function run(seed, nDev, steps, variant = {}) {
   const pageOf = u => u.split(' ')[0];
   const excused = u => LOG.dels.some(d => d.folder === folder.name && !d.undone && !d.relink && (d.unit === u || d.unit === pageOf(u)));
   const unlinked = LOG.udels.concat(LOG.dels.filter(d => d.relink)).filter(d => d.folder === folder.name && d.elsewhere && LOG.published.has(`${folder.name}|${d.unit}`) && !devs[0].shows(d.unit) && !excused(d.unit)).map(d => d.unit);
+  // (oracle 9: the theme and accent are the latest choice that counted for this folder (see settleStyle), or the
+  // defaults when none did. Not after a lost ledger, which stamps them again, as §3.4 accepts; two choices within a
+  // moment of each other may go either way.)
+  const style = [];
+  for (const k of LOG.lostLedger ? [] : ['theme', 'accent']) {
+    const cs = LOG.styles.filter(x => x.k === k && x.counts), top = cs.reduce((a, x) => (!a || x.at > a.at ? x : a), null);
+    if (top && cs.some(x => x.val !== top.val && top.at - x.at < 3)) continue;
+    const want = top ? top.val : { theme: 'system', accent: 'blue' }[k], got = devs[0].styleOf()[k];
+    if (got !== want) style.push(`${k} ${got}, not ${want} (${top ? `chosen on the ${top.by} at ${top.at}` : 'nobody chose one'})`);
+  }
   // (a device that lost its ledger and its file stamps its edits again under new counters: §3.4 accepts that this may
   // copy one of them twice, so oracle 4 holds only in runs where no ledger was lost)
   return { converged, quiet, lost, twice: LOG.lostLedger ? [] : twice, twiceLost: LOG.lostLedger ? twice : [], pending, back, wins, copies, writes: LOG.writes, lostLedger: !!LOG.lostLedger,
-    needless, reverted, unlinked };
+    needless, reverted, unlinked, style };
 }
 function edit(d) {
   if (d.away) return;
@@ -1118,6 +1161,35 @@ function styles() {
     E.view = new Map(f.files); E.folder = f; E.linkTo(f); E.round(); D.deliver(E); D.round();
     ok(E.styleNow() === 'dark teal' && D.styleNow() === 'dark teal', `and a device set up there after it takes them (${E.styleNow()})`);
   });
+  for (const first of ['laptop', 'smartboard']) block(() => {
+    // two devices set up one empty folder at once, neither having the other's file yet, so each sends its board there:
+    // only the laptop ever chose a theme and accent (the smartboard, started a day later, has the defaults, and its
+    // settings changed since the laptop chose). The chooser's win on both, and nobody is told otherwise.
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 5'), A = new Device('laptop');
+    A.addWindow(A.ids()[0], W.NOTES); A.setStyle({ theme: 'dark', accent: 'green' });
+    NOW += DAY;
+    const B = new Device('board'); B.addPage('Smartboard page');
+    const [x, y] = first === 'laptop' ? [A, B] : [B, A];
+    x.linkTo(f, { atOnce: true }); NOW += 1000; y.linkTo(f, { atOnce: true });
+    const each = () => { for (let k = 0; k < 3; k++) { for (const d of [A, B]) { for (const o of [A, B]) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } };
+    each();
+    ok(A.linkedAs === 'seed' && B.linkedAs === 'seed' && A.styleNow() === 'dark green' && B.styleNow() === 'dark green',
+      `two devices set up one empty folder at once (the ${first} first), and only the laptop had chosen a theme and accent: the laptop’s on both (${A.styleNow()} / ${B.styleNow()})`);
+    ok(A.sums.every(sm => !sm.style.length), `and the laptop isn’t told the smartboard changed them (${JSON.stringify(A.sums.map(sm => sm.style))})`);
+    B.setStyle({ theme: 'light' }); NOW += 1000; each();
+    ok(A.styleNow() === 'light green' && B.styleNow() === 'light green', `once the smartboard chooses one, it is a change like any other (${A.styleNow()} / ${B.styleNow()})`);
+  });
+  block(() => {
+    // the same, neither having chosen one (the laptop's theme from before 2026.11.16-4, with no time it was chosen):
+    // the same on both
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 6'), A = new Device('laptop'); A.patch({ set: { theme: 'dark' } }); NOW += DAY;
+    const B = new Device('board'); B.addPage('Smartboard page');
+    A.linkTo(f, { atOnce: true }); NOW += 1000; B.linkTo(f, { atOnce: true });
+    for (let k = 0; k < 3; k++) { for (const d of [A, B]) { for (const o of [A, B]) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; }
+    ok(A.styleNow() === B.styleNow(), `two set up at once and neither chose one: the same on both (${A.styleNow()} / ${B.styleNow()})`);
+  });
   block(() => {
     // Change… to a folder with another board: that board's theme and accent apply here, and nothing there changes
     const { A, B, sync, folder } = pair();
@@ -1243,9 +1315,9 @@ function runRange({ from, to, nDev, steps, variant }) {
     if (r.lost.length) out.lost++;
     if (r.back.length || !r.converged) out.back++;
     const why = [!r.converged && 'converged', !r.quiet && 'quiet', r.lost.length && 'lost', r.twice.length && 'twice', r.pending && 'pending', r.back.length && 'back',
-      r.needless.length && 'needless', r.reverted.length && 'reverted', r.unlinked.length && 'unlinked'].filter(Boolean);
+      r.needless.length && 'needless', r.reverted.length && 'reverted', r.unlinked.length && 'unlinked', r.style.length && 'style'].filter(Boolean);
     for (const w of why) out.bad[w] = (out.bad[w] || 0) + 1;
-    if (why.length && !out.first) out.first = `seed ${i}: ${why.join(', ')} ${JSON.stringify({ lost: r.lost.slice(0, 5), twice: r.twice.slice(0, 3), back: r.back.slice(0, 3), needless: r.needless.slice(0, 2), reverted: r.reverted.slice(0, 3), unlinked: r.unlinked.slice(0, 3) })}`;
+    if (why.length && !out.first) out.first = `seed ${i}: ${why.join(', ')} ${JSON.stringify({ lost: r.lost.slice(0, 5), twice: r.twice.slice(0, 3), back: r.back.slice(0, 3), needless: r.needless.slice(0, 2), reverted: r.reverted.slice(0, 3), unlinked: r.unlinked.slice(0, 3), style: r.style })}`;
   }
   return out;
 }
@@ -1264,10 +1336,11 @@ function inWorkers(job, runs) {
 async function randomized(scale) {
   console.log(`\nThe randomized run (§12.2; ${THREADS} thread${THREADS > 1 ? 's' : ''})`);
   const t0 = Date.now();
-  for (const [runs, nDev, steps] of [[Math.round(2000 * scale), 3, 150], [Math.round(500 * scale), 5, 300]]) {
-    const r = await inWorkers({ nDev, steps }, runs);
+  // (and runs where two or more devices set up the folder at once, each finding it empty)
+  for (const [runs, nDev, steps, variant] of [[Math.round(2000 * scale), 3, 150], [Math.round(500 * scale), 5, 300], [Math.round(300 * scale), 3, 150, { atOnce: 0.6 }], [Math.round(100 * scale), 5, 300, { atOnce: 0.6 }]]) {
+    const r = await inWorkers({ nDev, steps, variant }, runs);
     const total = Object.values(r.bad).reduce((a, b) => a + b, 0);
-    ok(total === 0 && r.runs === runs, `${runs} runs × ${nDev} devices × ${steps} steps: every oracle holds (${r.copies} copies over ${r.wins} windows)` + (total ? ` — ${JSON.stringify(r.bad)}; first: ${r.first}` : ''));
+    ok(total === 0 && r.runs === runs, `${runs} runs × ${nDev} devices × ${steps} steps${variant ? ', two or more setting up the folder at once' : ''}: every oracle holds (${r.copies} copies over ${r.wins} windows)` + (total ? ` — ${JSON.stringify(r.bad)}; first: ${r.first}` : ''));
   }
   console.log(`  (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
 }
@@ -1321,6 +1394,7 @@ function withDraft(f) {
 }
 // The same run with the rules swapped out.
 function runWith(v, seed, nDev, steps) {
+  if (v.atOnce) return run(seed, nDev, steps, v);
   if (v.lww) {
     const real = Merge.join;
     Merge.join = (l, p, o) => real(l, p, Object.assign({}, o, { isLater: () => true }));

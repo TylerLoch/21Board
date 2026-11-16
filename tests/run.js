@@ -1655,8 +1655,19 @@ const SUITES = [
     const said = await dp.evaluate(() => ({ persist: document.getElementById('st-persist').textContent, hint: document.getElementById('st-persist-hint').textContent, backup: document.getElementById('st-backup').textContent }));
     ok(said.persist === 'Not yet' && /^The browser could clear your boards to free up space\. Installing 21Board as an app usually prevents that/.test(said.hint) && /Until then, keep backups\.$/.test(said.hint) && said.backup === 'Last backup: never',
       `Advanced › Backups and storage still says the storage isn’t protected (“${said.persist}”: “${said.hint}”; ${said.backup})`);
+    // What the dot is about is plain once Advanced is open: the backup line has the amber mark too, exactly while the
+    // dot shows, and a screen reader hears what the dot means.
+    const mark = () => dp.evaluate(() => { const b = document.getElementById('st-backup'); return !!b.querySelector('.status-dot.warn') && b.classList.contains('warn-line'); });
+    const label = await dp.locator('#grp-advanced-warn').getAttribute('aria-label');
+    ok(await mark() && label === '(backup overdue)', `8 days in, the backup line inside Advanced has the amber mark too, and the dot reads “(backup overdue)” (${await mark()}, ${label})`);
+    // A new page shown, empty (a teacher who starts one each day): the board still has a window 8 days old, on page 1.
+    await dp.keyboard.press('Escape');
+    await dp.evaluate(() => window.__board21.pages.create({ end: true, name: 'Tuesday' })); await dp.waitForTimeout(800);
+    await openSettings(dp, ['advanced']); await dp.waitForTimeout(300);
+    const onNew = { insts: await dp.evaluate(() => window.__board21.state.insts.size), dot: await dot(dp), mark: await mark() };
+    ok(onNew.insts === 0 && onNew.dot && onNew.mark, `on a new, empty page the dot still shows, judged by the oldest window on any page (${JSON.stringify(onNew)})`);
     await Promise.all([dp.waitForEvent('download'), dp.click('#settings [data-act="backup"]')]);
-    ok(await eventually(async () => !await dot(dp), 1000) && await dp.locator('#st-backup').textContent() === 'Last backup: today', 'Back up now: the dot goes at once');
+    ok(await eventually(async () => !await dot(dp), 1000) && await dp.locator('#st-backup').textContent() === 'Last backup: today' && !await mark(), 'Back up now: the dot goes at once, and the amber mark beside the backup line with it');
     ok(!await after(14), 'and comes back only once that backup is a week old: none 6 days later (the clock 14 days on), though storage still isn’t protected');
     ok(await after(16), 'a dot 8 days after it');
     await days.close();
@@ -10039,8 +10050,21 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await B.p.evaluate(ik => { const r = window.__board21.state.insts.get(ik).rect; window.__board21.setRect(ik, Object.assign({}, r, { x: r.x + 60 })); }, ik);
       ok(await eventually(() => B.p.evaluate(() => window.__said[window.__said.length - 1] === 'Syncing…'), 3000), 'a window moved here: “Syncing…” shows beside the folder’s name at once');
       const live = await B.p.evaluate(() => { for (let e = document.getElementById('set-link-syncing'); e; e = e.parentElement) if (e.getAttribute('aria-live') || /^(status|alert|log)$/.test(e.getAttribute('role') || '') || e.tagName === 'OUTPUT') return e.id || e.tagName; return ''; });
-      const title = await B.p.locator('#settings .row:has(#set-link-status) .lbl').innerText();
-      ok(!live && /^Synced through “21Board” Syncing…$/.test(title.trim()), `in the title, not in a live region (read as “${title.trim()}”)`);
+      const title = (await B.p.locator('#settings .row:has(#set-link-status) .lbl').innerText()).replace(/\s+/g, ' ').trim();
+      ok(!live && /^Synced through “21Board” Syncing…$/.test(title), `in the title, not in a live region (read as “${title}”)`);
+      // (the title is one line whatever the folder's name: a long one ends in "…", whole in its tooltip, and "Syncing…"
+      // never goes onto a line of its own, which would leave a blank one when it hides)
+      const long = await B.p.evaluate(() => {
+        const t = document.querySelector('#settings .row.link-folder > .lbl'), n = t.querySelector('.link-name'), s = document.getElementById('set-link-syncing');
+        const was = n.textContent, name = 'MrsRodriguezRoom204Grade3SharedWhiteboard2026', short = Math.round(t.getBoundingClientRect().height);
+        n.textContent = `“${name}”`;
+        const on = Math.round(t.getBoundingClientRect().height), sOn = s.getBoundingClientRect(), tr = t.getBoundingClientRect();
+        s.classList.remove('on'); const off = Math.round(t.getBoundingClientRect().height); s.classList.add('on');
+        const out = { short, on, off, cut: n.scrollWidth > n.clientWidth, inside: sOn.right <= tr.right + 0.5 && Math.abs(sOn.top - n.getBoundingClientRect().top) < 8, tip: n.title };
+        n.textContent = was;
+        return out;
+      });
+      ok(long.on === long.short && long.off === long.short && long.cut && long.inside && long.tip === '21Board', `a long folder name: the title stays one line, the name ending in “…”, “Syncing…” beside it (${JSON.stringify(long)})`);
       await eventually(() => B.p.evaluate(() => window.__said.join() === 'not syncing,Syncing…,not syncing'), 25000);
       await B.p.waitForTimeout(500);
       let out = await B.p.evaluate(() => ({ ys: Array.from(new Set(window.__ys)), said: window.__said.slice(), lines: window.__lines.slice(), drawn: window.__drawn, what: window.__what.slice() }));
@@ -10062,6 +10086,17 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const r = await B.p.evaluate(() => { clearInterval(window.__poll); return { ys: Array.from(new Set(window.__ys)), drawn: window.__drawn, focus: document.activeElement.dataset.act }; });
       ok(r.ys.length === 1, `and the rows stay put as it is merged (y ${r.ys.join(' → ')})`);
       ok(r.drawn === 0 && r.focus === 'lock-windows', `a merge that changes nothing Settings shows doesn’t draw Settings again: the keyboard stays on what it was on (${r.drawn} drawings; on ${r.focus})`);
+      // Board history › Save this version, with Settings open beside it: its copy goes to the folder at once (and
+      // counts as a backup), which changes nothing Settings shows.
+      await B.p.evaluate(() => { window.__drawn = 0; window.__what = []; });
+      const saved = await B.p.evaluate(async () => {
+        const H = window.__board21.history;
+        await H.save('Before lunch');
+        for (let i = 0; i < 60 && !H.metas.some(m => m.kind === 'manual' && m.folder); i++) await new Promise(r => setTimeout(r, 100));
+        await new Promise(r => setTimeout(r, 500));
+        return { copied: H.metas.some(m => m.kind === 'manual' && m.folder), drawn: window.__drawn, what: window.__what, focus: document.activeElement.dataset.act };
+      });
+      ok(saved.copied && saved.drawn === 0 && saved.focus === 'lock-windows', `Board history › Save this version with Settings open: its copy in the folder doesn’t draw Settings again (${saved.drawn} drawings${saved.what.length ? ': ' + saved.what.join(' | ') : ''}; on ${saved.focus})`);
       await A.c.close(); await B.c.close();
     }
     ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
@@ -10249,6 +10284,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const h1 = await hints(A.p);
     ok(h1.theme === 'On all your devices.' && h1.accent === 'On all your devices.' && /This device only\.$/.test(h1.lock) && h1.clock === 'This device only.',
       `linked: “On all your devices.” beside Theme and Accent color; Lock and the clock still “This device only.” (${JSON.stringify(h1)})`);
+    const accentRow = await A.p.evaluate(() => {
+      const row = document.querySelector('#settings .accent-row'), r = document.createRange();
+      r.selectNodeContents(row.querySelector('.hint'));
+      return { swatchLines: new Set(Array.from(row.querySelectorAll('.swatch'), b => Math.round(b.getBoundingClientRect().top))).size, hintLines: r.getClientRects().length };
+    });
+    ok(accentRow.swatchLines === 1 && accentRow.hintLines === 1, `the Accent color row stays one line: its eight swatches, and the hint under its name (${JSON.stringify(accentRow)})`);
     ok(await look(A.p) === 'system blue light built-in' && await look(B.p) === 'system blue light built-in', '(both start with Auto and Blue)');
 
     // The laptop sets Dark and Green while Settings is open on the smartboard, scrolled down, the keyboard on Auto.
@@ -10333,17 +10374,81 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(h3.theme === 'On all your devices.' && h3.accent === 'On all your devices.', 'and once linked, it says “On all your devices.” beside them');
     await C.p.keyboard.press('Escape');
 
-    // Import › Replace this page takes the file's theme and accent, as before: a change made here, so it syncs.
+    // Import › Replace this page takes the file's theme and accent, as before: a change made here, so it syncs. The
+    // dialog says so, and the import's Undo puts them back too, on every device.
     await hear(B.p);
-    await A.p.evaluate(async () => { const W = window.__board21, exp = await W.buildExport('full'); exp.theme = 'light'; exp.accent = 'orange'; await W.applyImport(exp, 'replace'); });
-    await A.p.waitForTimeout(400);
+    const exp = await A.p.evaluate(async () => { const e = await window.__board21.buildExport('full'); e.theme = 'light'; e.accent = 'orange'; e.board = Object.assign({}, e.board, { name: 'Fractions (Ms. Lee)' }); return e; });
+    fs.writeFileSync(OUT + 'colleague-light-orange.21board', JSON.stringify(exp));
+    await A.p.setInputFiles('#import-input', OUT + 'colleague-light-orange.21board');
+    const sub = await A.p.locator('#modal.open .btn', { hasText: 'Replace this page' }).innerText();
+    ok(/This page’s windows and content, and the theme and accent color, are replaced, here and on your other devices\. You can undo this\./.test(sub.replace(/\s+/g, ' ')), `the dialog’s Replace this page says the theme and accent color change too (${sub.replace(/\s+/g, ' ')})`);
+    await A.p.locator('#modal.open .btn', { hasText: 'Replace this page' }).click();
+    await A.p.locator('#toasts .toast', { hasText: 'Board imported.' }).waitFor();
     await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p); await deliver(A.p, C.p); await syncNow(C.p);
     ok(await look(A.p) === 'light orange light #c2410c' && await look(B.p) === 'light orange light #c2410c' && await look(C.p) === 'light orange light #c2410c',
       `Import › Replace this page with a file in Light and Orange: every device takes them (${await look(B.p)})`);
     ok((await heard(B.p)).includes('The laptop changed the theme to Light and the accent color to Orange.'), `and says so (${(await heard(B.p)).join(' | ')})`);
+    await A.p.locator('#toasts .toast', { hasText: 'Board imported.' }).locator('button', { hasText: 'Undo' }).click();
+    ok(await eventually(async () => await look(A.p) === 'dark pink dark #f472b6' && await A.p.evaluate(() => window.__board21.state.board.name) !== 'Fractions (Ms. Lee)'),
+      `the import’s Undo brings back the page, and the theme and accent it replaced (${await look(A.p)})`);
+    await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p); await deliver(A.p, C.p); await syncNow(C.p);
+    ok(await look(B.p) === 'dark pink dark #f472b6' && await look(C.p) === 'dark pink dark #f472b6', `on every device (${await look(B.p)} / ${await look(C.p)})`);
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close(); await C.c.close();
+  }],
+
+  ['Board Sync: theme and accent color when two devices set up one folder at once, and a choice made while a round runs', async (browser) => {
+    const errors = [];
+    const look = p => p.evaluate(() => { const s = window.__board21.state.settings; return `${s.theme} ${s.accent}`; });
+    const styleSaid = async p => (await heard(p)).filter(t => /changed the (theme|accent)/.test(t));
+
+    // A laptop where Dark and Green were chosen, and a brand-new smartboard (its defaults, and settings written since):
+    // both set up the same new folder before Google Drive has brought either one's file, so each finds it empty.
+    let A = await syncDev(browser, 'the laptop', errors);
+    await openSettings(A.p);
+    await A.p.click('#settings [data-act="theme"][data-val="dark"]'); await A.p.click('#settings [data-act="accent"][data-val="green"]');
+    await A.p.keyboard.press('Escape');
+    await addNote(A.p, 'Laptop note');
+    let B = await syncDev(browser, 'the smartboard', errors);
+    await linkFolder(A.p); await linkFolder(B.p);
+    const modes = [await A.p.evaluate(() => (window.__board21.link.linked || {}).mode), await B.p.evaluate(() => (window.__board21.link.linked || {}).mode)];
+    await hear(A.p);
+    await exchange(A, B); await exchange(A, B);
+    ok(modes.join() === 'seed,seed' && await look(A.p) === 'dark green' && await look(B.p) === 'dark green',
+      `two devices set up one empty folder at once, only the laptop having chosen a theme and accent: the laptop’s on both (${modes.join(', ')}: ${await look(A.p)} / ${await look(B.p)})`);
+    ok(!(await styleSaid(A.p)).length, `and the laptop isn’t told the smartboard changed them (${(await styleSaid(A.p)).join(' | ')})`);
+    await A.c.close(); await B.c.close();
+
+    // The smartboard's round is merging the laptop's Dark when the teacher taps Light there (a later choice), after the
+    // round read the settings and before it saves: stored at once, or still on its way to the database.
+    for (const when of ['stored', 'not stored yet']) {
+      A = await syncDev(browser, 'the laptop', errors); B = await syncDev(browser, 'the smartboard', errors);
+      await addNote(A.p, 'Morning meeting');
+      await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+      await openSettings(B.p); await hear(B.p);
+      await B.p.evaluate(stored => {
+        const L = window.__board21.link, orig = L.commit.bind(L);
+        L.commit = async function (gen, r, plan, next, sync, full, T, dels) {
+          if (full && plan && plan.settingsPatch && plan.settingsPatch.set && plan.settingsPatch.set.theme && !window.__raced) {
+            window.__raced = true;
+            document.querySelector('#settings [data-act="theme"][data-val="light"]').click();
+            if (stored) await window.__board21.writer.settled(3000);
+          }
+          return orig(gen, r, plan, next, sync, full, T, dels);
+        };
+      }, when === 'stored');
+      await openSettings(A.p);
+      await A.p.click('#settings [data-act="theme"][data-val="dark"]'); await A.p.waitForTimeout(300);
+      await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+      const raced = await B.p.evaluate(() => !!window.__raced), now = await look(B.p);
+      await exchange(A, B); await exchange(A, B);
+      ok(raced && now === 'light blue' && await look(A.p) === 'light blue' && await look(B.p) === 'light blue',
+        `Light tapped on the smartboard while its round merged the laptop’s earlier Dark (${when}): the later choice on both (raced: ${raced}; right after: ${now}; then ${await look(A.p)} / ${await look(B.p)})`);
+      ok(!(await styleSaid(B.p)).length, `and the smartboard doesn’t say the laptop changed the theme (${(await styleSaid(B.p)).join(' | ')})`);
+      await A.c.close(); await B.c.close();
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
 
   // (end of Board Sync merge)

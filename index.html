@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="21fdcc19">
+<html lang="en" data-build="026798e6">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -486,18 +486,20 @@
     .sheet h4 { font-size: 12.5px; font-weight: 600; color: var(--muted); margin: 18px 0 2px; }
     .sheet-body .gap { height: 14px; }
     .row .btns { display: flex; gap: 6px; flex: 0 0 auto; }
-    /* Board Sync's folder row (linkSettings in board.js): the title across the row, then the grey line beside Change…
-       and Unlink. "Syncing…" after the folder's name while changes made here go out; hidden, it keeps its room, so
-       the title never changes height. */
+    /* Board Sync's folder row (linkSettings in board.js): the title across the row, on one line (a long folder name
+       ends in "…"), then the grey line beside Change… and Unlink. "Syncing…" after the folder's name while changes
+       made here go out; hidden, it keeps its room, so the title never changes height. */
     .row.link-folder { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 14px; }
-    .row.link-folder > .lbl { grid-column: 1 / -1; }
-    .row .link-syncing { margin-left: 2px; font-size: 12.5px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+    .row.link-folder > .lbl { grid-column: 1 / -1; display: flex; align-items: baseline; gap: 0 4px; min-width: 0; white-space: nowrap; }
+    .row .link-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }   /* (a long folder name ends in "…") */
+    .row .link-syncing { flex: none; margin-left: 2px; font-size: 12.5px; font-weight: 400; color: var(--muted); white-space: nowrap; }
     .row .link-syncing:not(.on) { visibility: hidden; }
     .row > .seg, .row > .switch, .row > .stepper, .row > .btn { flex-shrink: 0; }   /* (the text beside them wraps instead) */
     .row .hint.warn-line, .row .awake-status { color: var(--text); }
     #set-clock-fit:empty { display: none; }
-    /* Accent color: the swatches beside the label. */
-    .accent-row .swatches { gap: 7px; justify-content: flex-end; }
+    /* Accent color: the swatches beside the label, on one line (with Board Sync, "On all your devices." under the label
+       fits beside them; should it not, it wraps, rather than a swatch going onto a line of its own). */
+    .accent-row .swatches { gap: 5px; justify-content: flex-end; flex-wrap: nowrap; }
     .accent-row .swatch { width: 30px; height: 30px; }
     .accent-row .swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary); }
     /* Advanced → Backups and storage: Offline, Protected storage and Storage used in one block. */
