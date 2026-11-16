@@ -42,8 +42,14 @@ the host:
 2. **Run `node tools/release.js`.** It stamps the release: the name and a fingerprint of all the files (the
    *build*) go into `sw.js`, `board.js` and `index.html`. Run it again after any later change.
 3. **Run the tests** (`node tests/run.js`). They fail if a file changed after the stamp was made.
-4. Copy the repository's files (everything except `tests/` and `docs/`, which are harmless to include) to
-   the static host, all of them together.
+4. Copy the app's files to the static host, all of them together.
+   - **Leave out:** `.git/` (never serve it: it would let anyone download the whole history), `.claude/`,
+     `.gitattributes`, `.gitignore`, `README.md`, `docs/`, `tests/`, `tools/`, `widgets/_template/`, and
+     anything git ignores (`node_modules/`, `.DS_Store`).
+   - **Everything else must be there:** `index.html`, `board.js`, `sw.js`, `manifest.webmanifest`, `icons/`,
+     `fonts/` (the `-OFL.txt` licences too), `sdk/` (the lab and the dev window too), `widgets/registry.js`
+     and every other folder in `widgets/`. These are the files listed in `sw.js`, and a device saves its
+     offline copy only if every one of them arrives. One missing file means no device can work offline.
 
 On the host: serve `manifest.webmanifest` as `application/manifest+json` (most servers already do), and
 preferably `sw.js` with `Cache-Control: no-cache`. The host must serve the files exactly as they are in the
