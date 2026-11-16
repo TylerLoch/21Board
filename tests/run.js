@@ -84,7 +84,7 @@ const DEV_ROUTES = {
   '/__dev/top.html': q => `<!doctype html><body style="margin:0"><iframe src="${BASE.replace('127.0.0.1', 'localhost')}__dev/${q.get('s')}" sandbox="allow-scripts${q.get('opaque') ? '' : ' allow-same-origin'}" style="width:760px;height:560px;border:0"></iframe>`
 };
 
-// Shared Google Drive folder tests. Each "device" is its own browser profile; the folder each one picks is a
+// Board Sync tests (a shared Google Drive folder). Each "device" is its own browser profile; the folder each one picks is a
 // folder in that browser's private file system, and drive() copies one folder onto the other, as Google Drive
 // would. (Wrapped in a plain object: this headless browser closes the page when it reads a saved folder handle
 // back from IndexedDB, so the stand-in can't be saved and stays linked until the page closes. Real Chrome keeps
@@ -94,10 +94,17 @@ const DEV_ROUTES = {
 // folder can't be found), readOnly: true (files can't be written), unreadable: [names of files that are listed but
 // can't be read yet], noContent: {name: ms} (files whose size and date can be read, the date that long ago, but
 // whose content can't yet), slow: ms (the folder takes that long to list)}.
+// The picker gives the folder named by window.__drive.pick: a path in the private file system, 'My Drive' or
+// 'My Drive/21Board' (made if it isn't there; '21Board' when not set). pickFails: the name of the error the picker
+// throws instead ('AbortError': the teacher cancelled). readOnly also stops new folders being made in it.
+// window.__picks: for each time the picker opened, whether it was from a tap (Chrome opens it only then).
 const DRIVE_PICK = () => {
   const F = () => window.__drive || {};
   window.showDirectoryPicker = async () => {
-    const real = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
+    window.__picks = (window.__picks || []).concat([!!(navigator.userActivation && navigator.userActivation.isActive)]);
+    if (F().pickFails) throw new DOMException('The user aborted a request.', F().pickFails);
+    let real = await navigator.storage.getDirectory();
+    for (const n of (F().pick || '21Board').split('/')) real = await real.getDirectoryHandle(n, { create: true });
     const gone = () => { if (F().gone) throw new DOMException('A requested file or directory could not be found at the time an operation was processed.', 'NotFoundError'); };
     const unread = () => { throw new DOMException('The requested file could not be read.', 'NotReadableError'); };
     const file = fh => ({ kind: 'file', name: fh.name,
@@ -112,7 +119,11 @@ const DRIVE_PICK = () => {
       queryPermission: async () => F().perm || 'granted',
       requestPermission: async () => { if (F().perm && F().grant) window.__drive.perm = F().grant; return F().perm || 'granted'; },
       getFileHandle: async (n, o) => { gone(); return file(await d.getFileHandle(n, o)); },
-      getDirectoryHandle: async (n, o) => { gone(); return dir(await d.getDirectoryHandle(n, o)); },
+      getDirectoryHandle: async (n, o) => {
+        gone();
+        if (o && o.create && F().readOnly) { try { return dir(await d.getDirectoryHandle(n)); } catch (e) { throw new DOMException('An attempt was made to modify an object where modifications are not allowed.', 'NoModificationAllowedError'); } }
+        return dir(await d.getDirectoryHandle(n, o));
+      },
       removeEntry: (n, o) => d.removeEntry(n, o),
       entries: async function* () { gone(); if (F().slow) await new Promise(r => setTimeout(r, F().slow)); for await (const [n, h] of d.entries()) yield [n, h.kind === 'file' ? file(h) : dir(h)]; }
     });
@@ -127,6 +138,30 @@ const writeFolder = (p, files) => p.evaluate(async files => {
   for (const [n, t] of Object.entries(files)) { const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(t); await w.close(); }
 }, files);
 const drive = async (from, to) => writeFolder(to, await readFolder(from));
+// Puts files and folders in a folder of the private file system (a path, as __drive.pick has it): {name: text},
+// or {name: {}} for a folder (its own {name: …} inside it). Returns every name in the folder afterwards.
+const seedFolder = (p, at, items = {}) => p.evaluate(async ([at, items]) => {
+  let d = await navigator.storage.getDirectory();
+  for (const n of at.split('/')) d = await d.getDirectoryHandle(n, { create: true });
+  const put = async (d, items) => {
+    for (const [n, v] of Object.entries(items)) {
+      if (typeof v === 'string') { const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(v); await w.close(); }
+      else await put(await d.getDirectoryHandle(n, { create: true }), v);
+    }
+  };
+  await put(d, items);
+  const names = [];
+  for await (const [n] of d.entries()) names.push(n);
+  return names.sort();
+}, [at, items]);
+// Board Sync, from Settings (open): Set up…, then Choose folder… (the folder __drive.pick names), then Done.
+const setUpSync = async p => {
+  await p.click('#settings [data-act="link-setup"]');
+  await p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
+  await p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor();
+  await p.locator('#modal.open .btn', { hasText: 'Done' }).click();
+  await p.waitForTimeout(300);
+};
 // Waits (up to ms) until fn, run here, answers true; false if it never does.
 const eventually = async (fn, ms = 8000) => { for (const end = Date.now() + ms; Date.now() < end; await new Promise(r => setTimeout(r, 150))) if (await fn().catch(() => false)) return true; return false; };
 // The "Board history" subfolder of the shared folder.
@@ -4092,7 +4127,7 @@ const SUITES = [
     ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
     await ctx.close();
   }],
-  ['Google Drive folder (sharing a board with the smartboard)', async (browser) => {
+  ['Board Sync (sharing a board with the smartboard)', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const noteText = p => note(p).locator('#t').inputValue();
     const settings = openSettings;
@@ -4116,7 +4151,7 @@ const SUITES = [
     await A.p.click('.picker-btn.left'); await A.p.waitForTimeout(200);
     // ---- Send from the laptop: choose the folder, then Send.
     await settings(A.p);
-    await A.p.click('#settings [data-act="link-setup"]'); await A.p.waitForTimeout(800);
+    await setUpSync(A.p);
     await A.p.click('#settings [data-act="link-send"]'); await A.p.waitForTimeout(1500);
     let files = await readFolder(A.p);
     const sent = files['Room 12.21board'] && JSON.parse(files['Room 12.21board']);
@@ -4134,7 +4169,7 @@ const SUITES = [
     await B.p.goto(BASE); await B.p.waitForTimeout(800);
     await drive(A.p, B.p);
     await settings(B.p);
-    await B.p.click('#settings [data-act="link-setup"]'); await B.p.waitForTimeout(1200);
+    await setUpSync(B.p); await B.p.waitForTimeout(400);
     await settings(B.p, ['boards']);
     ok(await B.p.locator('#settings [data-act="link-load"][data-val="Room 12.21board"]').count() === 1, 'on the smartboard, linking the same folder lists “Room 12”');
     await B.p.click('#settings [data-act="link-load"][data-val="Room 12.21board"]'); await B.p.waitForTimeout(300);
@@ -4209,7 +4244,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
-  ['Google Drive folder: never losing a version', async (browser) => {
+  ['Board Sync: never losing a version', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const noteText = p => note(p).locator('#t').inputValue();
     const L = (p, fn, arg) => p.evaluate(fn, arg);
@@ -4494,7 +4529,7 @@ const SUITES = [
     ok(/isn’t available/.test(await pu.locator('#settings').textContent()) && !eu.length && await pu.evaluate(() => window.__board21.state.data.get('notes:1').text === 'still saves'), 'where board history can’t be used, Settings says so and the board saves as before');
     await c2.close();
   }],
-  ['Board history: Google Drive folder', async (browser) => {
+  ['Board history: copies in the Board Sync folder', async (browser) => {
     const L = (p, fn, arg) => p.evaluate(fn, arg);
     const errors = [];
     const A = await driveDevice(browser);
@@ -5826,7 +5861,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await mctx.close();
   }],
-  ['Google Drive folder: opening another board, and the photo', async (browser) => {
+  ['Board Sync: opening another board, and the photo', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const L = (p, fn, arg) => p.evaluate(fn, arg);
     const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
@@ -6006,7 +6041,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
-  ['Google Drive folder: when the folder can’t be used', async (browser) => {
+  ['Board Sync: when the folder can’t be used', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const L = (p, fn, arg) => p.evaluate(fn, arg);
     const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
@@ -6097,7 +6132,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close();
   }],
-  ['Google Drive folder: catching up, files still arriving, sending when left alone', async (browser) => {
+  ['Board Sync: catching up, files still arriving, sending when left alone', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const L = (p, fn, arg) => p.evaluate(fn, arg);
     const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
@@ -6227,6 +6262,184 @@ const SUITES = [
     await L(A.p, async () => { const b = window.__board21; for (const k of Array.from(b.state.insts.keys())) await b.closeWin(k); await b.link.send(); });
     await drive(A.p, B.p); await L(B.p, () => window.__board21.link.check(true)); await B.p.waitForTimeout(400);
     ok(await B.p.locator('.toast', { hasText: 'That version has no open windows.' }).count() === 1, 'a version in which every window is closed says so when it is offered (it isn’t loaded by reflex)');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: setting up (the steps, what is in the folder picked, Change…, a read-only folder, the new names)', async (browser) => {
+    const L = (p, fn, arg) => p.evaluate(fn, arg);
+    const settings = openSettings;
+    const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
+    const asking = (p, text) => p.locator('#modal.open', { hasText: text }).waitFor({ timeout: 6000 }).then(() => true, () => false);
+    const said = async p => (await p.locator('#modal.open').count()) ? p.locator('#modal.open .modal-card').innerText() : '';
+    const buttons = async p => (await p.locator('#modal.open .modal-actions .btn').allInnerTexts()).map(t => t.trim()).join('|');
+    const linked = p => L(p, () => { const l = window.__board21.link; return l.dir ? l.dir.name : ''; });
+    const unlink = async p => { await L(p, () => window.__board21.link.unlink()); await p.waitForTimeout(300); };
+    const setUp = async p => { await p.click('#settings [data-act="link-setup"]'); await modal(p, 'Choose folder…'); };
+    const change = async p => { await settings(p, ['folder']); await p.click('#settings [data-act="link-choose"]'); };   // Settings › Board Sync › Folder settings › Change…
+    // What is in a folder (not counting the "Board history" folder that Board history may add to a linked folder meanwhile).
+    const names = async at => (await seedFolder(p, at)).filter(n => n !== 'Board history').join();
+    const errors = [];
+    const A = await driveDevice(browser), B = await driveDevice(browser), p = A.p;   // the laptop and the smartboard
+    for (const d of [A, B]) d.p.on('pageerror', e => errors.push(e.message));
+    const toasts = text => p.locator('.toast', { hasText: text }).count();
+    await p.setViewportSize({ width: 1366, height: 768 });
+    await p.goto(BASE); await boardUp(p);
+    await L(p, () => window.__board21.openWidget('notes')); await p.waitForTimeout(1000);
+
+    // ---- Step 1: what Board Sync is, and how to make the folder.
+    await settings(p);
+    ok(await p.locator('#settings [data-act="link-setup"]').count() === 1 && await p.locator('#settings [data-act="link-choose"]').count() === 0, 'before a folder is linked, Settings’ button starts setting up Board Sync');
+    await p.click('#settings [data-act="link-setup"]');
+    ok(await asking(p, 'Set up Board Sync'), 'it opens “Set up Board Sync”');
+    ok(/Board Sync keeps your boards in a Google Drive folder, so your laptop and smartboard can share them\./.test(await said(p)), 'which says in a sentence what Board Sync does');
+    const steps = await p.locator('#modal.open .setup-steps li').allInnerTexts();
+    ok(steps.length === 3 && /Tap Choose folder…/.test(steps[0]) && /Google Drive › My Drive/.test(steps[0]) && /tap New folder and name it 21Board/.test(steps[1]) && /other devices, pick the 21Board folder/.test(steps[1]) && /Select/.test(steps[2]) && /Allow/.test(steps[2]),
+      `then three numbered steps that teach making the 21Board folder in My Drive (${steps.join(' | ')})`);
+    ok(await p.locator('#modal.open svg.setup-art').count() === 1 && await buttons(p) === 'Choose folder…|Cancel' && await L(p, () => document.activeElement.textContent === 'Choose folder…'),
+      'with a picture of the folder between a laptop and a smartboard, and Choose folder… (where the keyboard is) and Cancel');
+    ok(await p.getAttribute('#modal', 'aria-describedby') === 'modal-text modal-more', 'a screen reader reads the steps with the dialog');
+    const card = await p.locator('#modal.open .modal-card').boundingBox();
+    ok(!!card && card.y >= 16 && card.y + card.height <= 768 - 16, `it fits a Chromebook’s screen (${card && Math.round(card.height)} px tall)`);
+    await p.screenshot({ path: OUT + '96-board-sync-setup.png' });
+    await modal(p, 'Cancel'); await p.waitForTimeout(300);
+    ok(!await p.locator('#modal.open').count() && await linked(p) === '' && await L(p, () => !(window.__picks || []).length) && await p.locator('#settings [data-act="link-setup"]').count() === 1, 'Cancel: no folder picker, nothing linked, and Settings is as it was');
+
+    // ---- The picker is closed without a folder, or fails.
+    await L(p, () => { window.__drive = { pickFails: 'AbortError' }; });
+    await setUp(p); await p.waitForTimeout(500);
+    ok(await linked(p) === '' && !await p.locator('#modal.open').count() && await toasts('folder') === 0, 'closing the folder picker without a folder ends it quietly: nothing linked, nothing said');
+    ok(await L(p, () => window.__picks.join()) === 'true', 'the folder picker opens from the tap on Choose folder… (Chrome opens it only from a tap)');
+    await L(p, () => { window.__drive = { pickFails: 'SecurityError' }; });
+    await setUp(p); await p.waitForTimeout(500);
+    ok(await linked(p) === '' && await toasts('That folder couldn’t be opened. Try again, or choose another folder.') === 1, 'a picker that fails says so in plain words');
+
+    // ---- An empty folder: linked at once, then what comes next.
+    await L(p, () => { window.__drive = { pick: 'Empty' }; window.__picks = []; });
+    await setUp(p);
+    ok(await asking(p, 'Board Sync is set up'), 'an empty folder is linked straight away, and the last step follows');
+    ok(/This device now syncs through your “Empty” folder\./.test(await said(p)) && /Now set up Board Sync on your other devices and pick this same folder\./.test(await said(p)), 'it says which folder, and to pick the same one on the other devices');
+    ok(await buttons(p) === 'Send this board now|Done' && await linked(p) === 'Empty', 'with Send this board now and Done');
+    await modal(p, 'Send this board now');
+    ok(await eventually(async () => await names('Empty') === 'About this folder.txt,My Board.21board') && await eventually(async () => await toasts('Sent “My Board” to your “Empty” folder') === 1),
+      'Send this board now sends it (beside the note about the files)');
+    ok(await p.locator('#settings [data-act="link-choose"]').count() === 1 && await p.locator('#settings [data-act="link-setup"]').count() === 0, 'Settings then shows the linked folder (Change…)');
+    await unlink(p);
+
+    // ---- A folder with other things in it (My Drive itself).
+    await seedFolder(p, 'My Drive', { 'Lesson plan.docx': 'x', Photos: {} });
+    await L(p, () => { window.__drive = { pick: 'My Drive' }; window.__picks = []; });
+    await setUp(p);
+    ok(await asking(p, 'Make a 21Board folder in “My Drive”?') && await linked(p) === '', 'a folder with other things in it (My Drive itself) isn’t linked straight away');
+    ok(/This folder has other files in it\. 21Board works best in a folder of its own\./.test(await said(p)) && await buttons(p) === 'Make a 21Board folder here|Use this folder anyway|Choose another…|Cancel',
+      'it says why, and offers to make a 21Board folder there, to use it anyway, or to choose another');
+    await L(p, () => { window.__drive.pick = 'Empty'; });
+    await modal(p, 'Choose another…');
+    ok(await asking(p, 'Board Sync is set up') && await linked(p) === 'Empty' && await L(p, () => window.__picks.join()) === 'true,true', 'Choose another… opens the folder picker again, from its own tap, and links the folder picked then');
+    await modal(p, 'Done'); await unlink(p);
+    await L(p, () => { window.__drive.pick = 'My Drive'; });
+    await setUp(p); await asking(p, 'Make a 21Board folder');
+    await modal(p, 'Make a 21Board folder here');
+    ok(await asking(p, 'Board Sync is set up') && await linked(p) === '21Board', 'Make a 21Board folder here makes it, and links it');
+    ok(/your “21Board” folder/.test(await said(p)) && /Now set up Board Sync on your other devices and pick this same folder/.test(await said(p)), 'it is new and empty: the last step says to pick it on the other devices');
+    await modal(p, 'Done');
+    const inside = await names('My Drive/21Board'), around = await names('My Drive');
+    ok(inside === 'About this folder.txt' && around === '21Board,Lesson plan.docx,Photos', `21Board’s files go in the new folder, and My Drive keeps only what it had, and the folder (${around})`);
+
+    // ---- Change…: the same look at the folder picked, without step 1. My Drive now has a 21Board folder in it.
+    await change(p);
+    ok(await asking(p, 'Use the 21Board folder inside “My Drive”?') && !/Set up Board Sync|Google Drive › My Drive/.test(await said(p)), 'Change… looks inside the folder picked too, without step 1: My Drive with a 21Board folder in it offers that folder');
+    ok(await buttons(p) === 'Use 21Board folder|Use “My Drive” itself|Cancel', 'Use 21Board folder, or Use “My Drive” itself');
+    await modal(p, 'Use 21Board folder'); await p.waitForTimeout(600);
+    ok(await linked(p) === '21Board' && !await p.locator('#modal.open').count(), 'Use 21Board folder links the folder inside (and Change… ends there: no last step)');
+    await change(p); await asking(p, 'inside “My Drive”');
+    await modal(p, 'Use “My Drive” itself'); await p.waitForTimeout(600);
+    ok(await linked(p) === 'My Drive', 'Use “My Drive” itself links My Drive');
+    await seedFolder(p, 'Class', { 'notes.txt': 'x', '21board': { 'Math.21board': '{}' } });
+    await L(p, () => { window.__drive.pick = 'Class'; });
+    await change(p);
+    ok(await asking(p, 'Use the 21board folder inside “Class”?'), 'a 21Board folder in other capitals is found too');
+    await modal(p, 'Cancel'); await p.waitForTimeout(300);
+    ok(await linked(p) === 'My Drive', 'Cancel then leaves the folder that was linked');
+    await change(p); await asking(p, 'inside “Class”');
+    await modal(p, 'Use 21board folder'); await p.waitForTimeout(600);
+    ok(await linked(p) === '21board', 'and Use 21board folder links it');
+    // A folder that already has 21Board's files in it is linked straight away (whatever else is in it).
+    await seedFolder(p, 'Mixed', { 'About this folder.txt': 'x', 'Old.docx': 'x', '21Board': {} });
+    await L(p, () => { window.__drive.pick = 'Mixed'; });
+    await change(p); await p.waitForTimeout(800);
+    ok(await linked(p) === 'Mixed' && !await p.locator('#modal.open').count(), 'a folder that already has 21Board’s files in it is linked straight away');
+    // A folder that is slow to list: never held up by the look.
+    await seedFolder(p, 'Slow', { 'Report.pdf': 'x' });
+    await L(p, () => { window.__drive = { pick: 'Slow', slow: 4000 }; });
+    await change(p);
+    ok(await eventually(async () => await linked(p) === 'Slow', 2500) && !await p.locator('#modal.open').count(), 'a folder that is slow to list (Google Drive still bringing it) is linked as it is, without waiting for the look');
+    await p.waitForTimeout(4500);
+    await L(p, () => { window.__drive = {}; });
+    await unlink(p);
+
+    // ---- A folder that can only be viewed (shared with the teacher for viewing).
+    await seedFolder(p, 'Team folder', { 'Worksheet.pdf': 'x' });
+    await L(p, () => { window.__drive = { pick: 'Team folder', readOnly: true }; });
+    await setUp(p); await asking(p, 'Make a 21Board folder');
+    await modal(p, 'Make a 21Board folder here');
+    ok(await asking(p, '21Board can’t make a folder in “Team folder”') && /You can only view this folder, not change it\./.test(await said(p)) && await buttons(p) === 'Choose another…|Cancel',
+      'in a folder that can only be viewed, making the 21Board folder fails calmly: it says why, and offers to choose another');
+    await modal(p, 'Cancel'); await p.waitForTimeout(300);
+    ok(await linked(p) === '' && await names('Team folder') === 'Worksheet.pdf' && await toasts('modifications are not allowed') === 0, 'Cancel: nothing linked, nothing made, and none of the browser’s own wording');
+    await setUp(p); await asking(p, 'Make a 21Board folder');
+    await modal(p, 'Use this folder anyway');
+    ok(await asking(p, 'Board Sync is set up') && /You can only view this folder, not change it, so boards can be loaded from it but not sent\./.test(await said(p)) && !/other devices/.test(await said(p)) && await buttons(p) === 'Done',
+      'Use this folder anyway links it, and the last step says boards can be loaded from it but not sent (no Send button)');
+    await modal(p, 'Done');
+    // The new name where the feature is named: what to do when the folder can't be used.
+    await L(p, () => { window.__board21.link.send(); });
+    ok(await eventually(async () => await toasts('Ask its owner to let you edit it, or choose another folder in Settings › Board Sync.') === 1), 'a send that fails says where to choose another folder: Settings › Board Sync');
+    await L(p, () => { window.__drive = { gone: true }; window.__board21.link.send(); });
+    ok(await eventually(async () => await toasts('If it was renamed, moved or deleted, choose it again in Settings › Board Sync.') === 1), 'and where to choose it again when it can’t be found');
+    await L(p, () => { window.__drive = { perm: 'prompt' }; return window.__board21.link.refresh(); });
+    ok(await eventually(async () => await p.locator('.folder-note.left').getAttribute('aria-label') === 'Reconnect your Board Sync folder'), 'the note on the board names Board Sync to a screen reader');
+    await L(p, () => { window.__drive = {}; }); await unlink(p);
+    ok(!/Settings [›>] Google Drive folder/.test(fs.readFileSync(path.join(ROOT, 'board.js'), 'utf8')), 'no message sends the teacher to “Settings › Google Drive folder” any more');
+
+    // ---- Send before Board Sync is set up: the same steps, then it sends.
+    await p.keyboard.press('Escape');
+    await L(p, () => { window.__drive = { pick: 'Later' }; window.__board21.link.send(); });
+    ok(await asking(p, 'Set up Board Sync'), 'Send before a folder is linked starts setting up Board Sync');
+    await modal(p, 'Choose folder…');
+    ok(await eventually(async () => (await names('Later')).includes('My Board.21board')) && await eventually(async () => await toasts('Sent “My Board” to your “Later” folder') === 1) && !/Board Sync is set up/.test(await said(p)),
+      'once the folder is picked, the board is sent (without the last step)');
+    await unlink(p);
+
+    // ---- The laptop sets Board Sync up and sends; then the smartboard, which finds the laptop's board.
+    await L(p, () => { window.__drive = {}; });
+    await settings(p);
+    await setUp(p);
+    ok(await asking(p, 'Board Sync is set up') && /Now set up Board Sync on your other devices/.test(await said(p)), 'the laptop picks its new, empty 21Board folder');
+    await modal(p, 'Send this board now'); await p.waitForTimeout(1200);
+    const note = (await readFolder(p))['About this folder.txt'] || '';
+    ok(/21Board keeps your boards here/.test(note) && /Settings > Board Sync > Set up, and\r\n  pick this same folder\./.test(note) && !/Google Drive folder/.test(note), 'the folder’s note says to set up Board Sync on each device and pick this same folder');
+    await B.p.goto(BASE); await boardUp(B.p);
+    await drive(p, B.p);
+    await settings(B.p);
+    await setUp(B.p);
+    ok(await asking(B.p, 'Board Sync is set up'), 'on the smartboard, the 21Board folder (with the laptop’s board in it) is linked straight away');
+    ok(/It already has a board from your other devices: you’ll find it in Settings › Board Sync\./.test(await said(B.p)) && !/Now set up/.test(await said(B.p)), 'and the last step says that a board from the other device is there');
+    await B.p.screenshot({ path: OUT + '97-board-sync-found.png' });
+    await modal(B.p, 'Done'); await B.p.waitForTimeout(400);
+    await settings(B.p, ['boards']);
+    ok(await B.p.locator('#settings [data-act="link-load"][data-val="My Board.21board"]').count() === 1 && await B.p.locator('#settings [data-act="link-load"][data-val="My Board.21board"]').isVisible(), 'Settings lists it under Boards from other devices, with Load');
+    // Set up again with a newer version of the board on screen waiting in the folder: the message on the board
+    // offers it as usual, and the last step points to it (and doesn't offer to send over it).
+    await L(B.p, () => { window.__board21.link.load('My Board.21board'); }); await modal(B.p, 'Replace this board'); await B.p.waitForTimeout(1500);
+    await L(p, () => window.__board21.openWidget('dice')); await p.waitForTimeout(800);
+    await L(p, () => window.__board21.link.send()); await p.waitForTimeout(800);
+    await drive(p, B.p);
+    await unlink(B.p);
+    await setUp(B.p);
+    ok(await asking(B.p, 'Board Sync is set up') && /A newer version of this board, from a computer, is in it: tap Load on the message below to show it here\./.test(await said(B.p)) && await buttons(B.p) === 'Done',
+      'set up again with a newer version of this board in the folder: the last step points to Load on the message (and offers no Send)');
+    ok(await B.p.locator('.toast', { hasText: '“My Board” was updated on a computer' }).count() === 1, 'and the message offers it, as before');
+    await modal(B.p, 'Done');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
@@ -7039,10 +7252,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await B(() => document.activeElement.dataset.act === 'go' && document.activeElement.getAttribute('aria-checked') === 'true'), 'Enter on the page indicator takes the keyboard into the menu, at this page');
     await page.keyboard.press('Escape'); await page.keyboard.press('Escape');
 
-    // Google Drive folder: a file sent from another page here is that page (Go to page), and loading it never gives
+    // Board Sync: a file sent from another page here is that page (Go to page), and loading it never gives
     // two pages one board id (both would send to the same file).
     await settings();
-    await page.click('#settings [data-act="link-setup"]'); await settle(800);
+    await setUpSync(page); await settle(500);
     await page.click('#settings [data-act="link-send"]'); await settle(1500);
     await page.keyboard.press('Escape');
     await go(2);
@@ -7451,7 +7664,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await ctx.close();
   }],
 
-  ['Lock windows in place: Load on the Google Drive folder’s message asks to unlock first (Settings’ Load doesn’t)', async (browser) => {
+  ['Lock windows in place: Load on Board Sync’s message asks to unlock first (Settings’ Load doesn’t)', async (browser) => {
     const errors = [];
     const A = await driveDevice(browser), B = await driveDevice(browser);   // the laptop and the smartboard
     for (const d of [A, B]) d.p.on('pageerror', e => errors.push(e.message));
@@ -7472,7 +7685,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await A.p.goto(BASE); await boardUp(A.p);
     await A.p.evaluate(() => { window.__board21.updateBoard({ name: 'Room 12' }); window.__board21.openWidget('notes'); }); await A.p.waitForTimeout(1000);
     await settings(A.p);
-    await A.p.click('#settings [data-act="link-setup"]'); await A.p.waitForTimeout(800); await settings(A.p, ['folder']);
+    await setUpSync(A.p); await settings(A.p, ['folder']);
     await A.p.fill('#set-link-label', 'my laptop'); await A.p.press('#set-link-label', 'Tab'); await A.p.waitForTimeout(200);
     await A.p.click('#settings [data-act="link-send"]'); await A.p.waitForTimeout(1500);
     await closeSettings(A.p);
@@ -7480,7 +7693,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await B.p.goto(BASE); await boardUp(B.p);
     await drive(A.p, B.p);
     await settings(B.p);
-    await B.p.click('#settings [data-act="link-setup"]'); await B.p.waitForTimeout(1200); await settings(B.p, ['boards']);
+    await setUpSync(B.p); await B.p.waitForTimeout(400); await settings(B.p, ['boards']);
     await B.p.click('#settings [data-act="link-load"][data-val="Room 12.21board"]'); await B.p.waitForTimeout(300);
     await B.p.locator('#modal.open .btn', { hasText: 'Replace this board' }).click(); await B.p.waitForTimeout(2000);
     await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(300);

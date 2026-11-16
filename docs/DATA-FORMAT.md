@@ -156,7 +156,7 @@ by itself.
 
 ### `link:folder` and `link:state` (this device only)
 
-The link to a shared Google Drive folder (see README, "Sharing a board with the smartboard"). Never
+Board Sync's link to a shared Google Drive folder (see README, "Board Sync"). Never
 exported. `link:folder` holds the folder handle Chrome gives 21Board (stored as is, not as JSON).
 `link:state`:
 
