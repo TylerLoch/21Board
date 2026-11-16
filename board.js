@@ -802,9 +802,15 @@
         }) || [];
       } catch (e) { throw thrown || e; }
       for (const r of written) { if (r.deleted) Known.delete(r.key); else Known.set(r.key, r.rev); Pages.hold(r.key, r.deleted ? null : r); }
-      // (a settings patch was put over what was stored, which may hold another tab's or a merge's changes: shown here too)
+      // (a settings patch was put over what was stored, which may hold another tab's or a merge's pages added, moved or
+      // deleted: those lists are shown here too)
       const st = written.find(r => r.key === Keys.settings && batch.get(r.key) && batch.get(r.key).patch);
-      if (st) { const w = this.pending.get(Keys.settings), v = w && w.patch ? Merge.patchSettings(st.value, w.patch) : st.value; if (!sameJSON(v, S.settings)) { S.settings = Object.assign({}, DEFAULT_SETTINGS, v); applySettings(); afterBulkApply(); } }
+      if (st) {
+        const w = this.pending.get(Keys.settings), v = w && w.patch ? Merge.patchSettings(st.value, w.patch) : st.value;
+        const next = Object.assign({}, S.settings);
+        for (const k of ['boards', 'deletedBoards', 'deletedAt', 'lastBoard']) if (k in v) next[k] = v[k];
+        if (!sameJSON(next, S.settings)) { S.settings = next; applySettings(); afterBulkApply(); }
+      }
       if (written.length) { const keys = written.map(r => r.key); Sync.announce(keys); Link.changed(keys); BoardHistory.changed(keys); }
     },
 
@@ -1076,11 +1082,10 @@
         // of testing a widget is gone: the list is ignored, whatever it holds, and dropped here so it is never saved
         // again. Their windows are kept like any window whose widget isn't in the catalog: not shown, and listed in
         // Settings as Widget not installed, to delete.
-        delete S.settings.devWidgets;
         // Stay awake (section 12b) used to have school hours: 'hours' with a From and To. Now it's on or off, and a
         // device that kept the screen on in school hours keeps it on (the teacher wanted it awake in class).
         if (S.settings.awake === 'hours') S.settings.awake = 'on';
-        delete S.settings.awakeFrom; delete S.settings.awakeTo;
+        for (const k of OLD_SETTINGS) delete S.settings[k];   // (and from the record, with the next change: updateSettings)
         applySettings();
         break;
       case 'board':
@@ -1172,8 +1177,9 @@
 
   // quiet: nothing Settings shows changes but the status lines (when the last backup was), which are put right in place.
   // Written as a patch of the keys given (Writer.patch); gone: deleted pages added or removed (Pages.goneWith).
+  const OLD_SETTINGS = ['devWidgets', 'awakeFrom', 'awakeTo'];
   function updateSettings(patch, quiet) {
-    const p = { set: {} };
+    const p = { set: {}, drop: OLD_SETTINGS };
     for (const [k, v] of Object.entries(patch)) { if (k === 'gone') p.gone = v; else p.set[k] = v; }
     S.settings = Merge.patchSettings(S.settings, p);
     applySettings();
@@ -7560,14 +7566,17 @@
       return { put, del };
     }
     const newMine = (uid, b) => ({ uid, b, p: {}, w: {}, hist: { at: 0, local: false }, quiet: null, gone: null, wgone: {} });
+    // A page's fingerprint: whether it changed here since.
+    const keepH = P => hash53(JSON.stringify([PAGE_PARTS.map(k => P.parts[k].h), sortBy(Array.from(P.wins.values()), W => W.wid).map(W => [W.wid].concat(WIN_PARTS.map(k => W.parts[k].h)))]));
     const cloneMine = m => Object.assign({}, m, { p: Object.assign({}, m.p), w: Object.assign({}, m.w), wgone: Object.assign({}, m.wgone || {}), hist: Object.assign({}, m.hist || { at: 0, local: false }) });
 
     // settings, changed as set operations, so a tab with an old copy can't write its old lists over a merge's.
-    // patch: { set: {key: value}, gone: [['add', b, at] | ['remove', b]], order: { b: [pos, uid] }, lastBoard }
+    // patch: { set: {key: value}, drop: [key], gone: [['add', b, at] | ['remove', b]], order: { b: [pos, uid] }, lastBoard }
     function patchSettings(stored, patch) {
       const s = Object.assign({}, stored || {});
       if (!patch) return s;
       if (patch.set) Object.assign(s, patch.set);
+      for (const k of patch.drop || []) delete s[k];
       if (patch.gone && patch.gone.length) {
         const gone = (Array.isArray(s.deletedBoards) ? s.deletedBoards : []).map(Number), at = Object.assign({}, s.deletedAt);
         for (const [op, b, t] of patch.gone) {
@@ -7590,7 +7599,7 @@
       return s;
     }
     // Two patches waiting together (Writer): the later's keys win, set operations run in order.
-    const joinPatches = (a, b) => ({ set: Object.assign({}, a && a.set, b && b.set), gone: ((a && a.gone) || []).concat((b && b.gone) || []),
+    const joinPatches = (a, b) => ({ set: Object.assign({}, a && a.set, b && b.set), drop: Array.from(new Set(((a && a.drop) || []).concat((b && b.drop) || []))), gone: ((a && a.gone) || []).concat((b && b.gone) || []),
       order: (b && b.order) || (a && a.order) || undefined, lastBoard: Math.max((a && a.lastBoard) || 0, (b && b.lastBoard) || 0) || undefined });
 
     // ---- read: the records of this device (with rev, updatedAt, base, m, u) → its board as parts, by page uid and wid
@@ -7751,10 +7760,32 @@
         for (const W of P.all) for (const k of WIN_PARTS) { W.parts[k].page = P; W.parts[k].part = k; }
       }
       const seenPages = new Set();
+      // Windows in the ledger that are gone from their page: deleted here (a window tombstone, apart from the page's).
+      const winsGone = (M, P) => {
+        for (const wid of Object.keys(M.w)) {
+          if (P.wins.has(wid)) continue;
+          const mw = M.w[wid];
+          if (first) { delete M.w[wid]; continue; }   // (a first round deletes nothing: the folder's version is taken)
+          note(now);
+          items.push(n => {
+            const cover = {};
+            for (const k of WIN_PARTS) if (mw.p[k] && mw.p[k].v) cover[k] = mw.p[k].v[1];
+            M.wgone[wid] = { exists: nv(mw.p.exists ? mw.p.exists.v[1] : {}, now)(n), cover, seq: null, seen: now };
+            delete M.w[wid]; touched.add(M);
+          });
+        }
+      };
       for (const P of Array.from(local.pages.values()).sort((a, c) => a.b - c.b)) {
-        if (P.held || P.gone) continue;
+        // A page deleted here (its Undo still offered, or its records not cleared yet): nothing is stamped but the
+        // windows deleted from it before it was, so that if it comes back (an edit made elsewhere), they don't.
+        if (P.held || P.gone) {
+          const M0 = L.mine[P.uid];
+          if (M0 && !M0.gone && o.mode !== 'take' && Object.keys(M0.w).some(wid => !P.wins.has(wid))) winsGone(mineOf(P.uid, P.b), P);
+          continue;
+        }
         const uid = P.uid;
         if ((!L.mine[uid] && P.placeholder) || o.mode === 'take') continue;   // never synced; (take: the folder's board replaces this one)
+        if (L.mine[uid] && L.mine[uid].keep && L.mine[uid].keep === keepH(P)) continue;   // deleted elsewhere, still shown here, and not edited since
         seenPages.add(uid);
         const M = mineOf(uid, P.b);
         M.b = P.b;
@@ -7762,7 +7793,7 @@
         const pc = back ? M.gone.cover || {} : null;
         if (back) {
           note(now);
-          items.push(n => { M.p = { exists: { h: '1', v: nv(back.exists[1], now)(n), rev: P.rev } }; M.gone = null; touched.add(M); });
+          items.push(n => { M.p = { exists: { h: '1', v: nv(back.exists[1], now)(n), rev: P.rev } }; M.gone = null; delete M.keep; touched.add(M); });
         } else if (!M.p.exists) { note(P.parts.name.at); items.push(n => { M.p.exists = { h: '1', v: nv({}, P.parts.name.at)(n), rev: P.rev }; touched.add(M); }); }
         else if (M.p.exists.rev !== P.rev) M.p.exists = Object.assign({}, M.p.exists, { rev: P.rev });
         for (const k of PAGE_PARTS) part(M, back ? null : M.p[k], P.parts[k], pc ? pc[k] : null, e => { M.p[k] = e; });
@@ -7777,20 +7808,7 @@
           for (const k of WIN_PARTS) part(M, mw0 ? mw0.p[k] : null, W.parts[k], cov(k), e => { mw.p[k] = e; });
         }
         // windows in the ledger that aren't here now: deleted here
-        if (!back) {
-          for (const wid of Object.keys(M.w)) {
-            if (P.wins.has(wid)) continue;
-            const mw = M.w[wid];
-            if (first) { delete M.w[wid]; continue; }   // (a first round deletes nothing: the folder's version is taken)
-            note(now);
-            items.push(n => {
-              const cover = {};
-              for (const k of WIN_PARTS) if (mw.p[k] && mw.p[k].v) cover[k] = mw.p[k].v[1];
-              M.wgone[wid] = { exists: nv(mw.p.exists ? mw.p.exists.v[1] : {}, now)(n), cover, seq: null, seen: now };
-              delete M.w[wid]; touched.add(M);
-            });
-          }
-        }
+        if (!back) winsGone(M, P);
       }
       // pages in the ledger that aren't here now (deleted here, past their Undo)
       for (const uid of Object.keys(L.mine)) {
@@ -8041,14 +8059,21 @@
         }
         const show = sh.pages.has(uid);
         if (!show) {
+          const wgone = {};
+          for (const [wid, SW] of S.wins) if (SW.exists.main.h === '0') wgone[wid] = tomb(SW.exists, SW.cover, M && M.wgone && M.wgone[wid]);
           if (LP && !LP.gone) {
-            if (histFailed.has(uid) || uid === o.pageShown) { if (uid === o.pageShown && !histFailed.has(uid)) sum.leave = uid; sp.order[LP.b] = [LP.parts.pos.val, uid]; continue; }
+            if (histFailed.has(uid) || uid === o.pageShown) {
+              if (uid === o.pageShown && !histFailed.has(uid)) sum.leave = uid;
+              sp.order[LP.b] = [LP.parts.pos.val, uid];
+              // (no entry of its own, as in a new ledger: the deletion, with what the page holds now, so that only an
+              // edit made here brings it back)
+              if (!M || (!M.gone && (!M.p || !M.p.exists))) setMine(uid, Object.assign(newMine(uid, LP.b), { hist: (M && M.hist) || { at: 0, local: false }, gone: tomb(S.exists, S.cover, null), wgone, keep: keepH(LP) }));
+              continue;
+            }
             sp.gone.push(['add', LP.b, now]);
             Object.assign(ps(uid, LP.b), { deleted: true, changed: true, risky: true, name: LP.parts.name.val, from: [S.exists.main.by] });
             from.add(S.exists.main.by);
           }
-          const wgone = {};
-          for (const [wid, SW] of S.wins) if (SW.exists.main.h === '0') wgone[wid] = tomb(SW.exists, SW.cover, M && M.wgone && M.wgone[wid]);
           setMine(uid, { uid, b: LP ? LP.b : M ? M.b : 0, p: {}, w: {}, hist: (M && M.hist) || { at: 0, local: false }, quiet: null,
             gone: tomb(S.exists, S.cover, M && M.gone), wgone });
           continue;
@@ -8067,7 +8092,7 @@
         if (S.exists.main.h !== '1') sumP.back = true;
         const tv = {}, held = {};
         // (a new size rescales every window on the page: it waits while one of them is busy)
-        const busyHere = !!LP && Array.from(LP.wins.values()).some(W2 => holdW.has(`${b}:${W2.ikey}`));
+        const busyHere = !!LP && !LP.gone && !(M && M.gone) && Array.from(LP.wins.values()).some(W2 => holdW.has(`${b}:${W2.ikey}`));
         for (const k of PAGE_PARTS) {
           const J = S.parts[k], lp = LP && LP.parts[k];
           if (!J) { tv[k] = lp ? lp.val : undefined; continue; }
@@ -8130,7 +8155,7 @@
         const targets = [];
         for (const wid of wins) {
           const SW = S.wins.get(wid), LW = LP && LP.wins.get(wid), mw0 = M && M.w[wid];
-          const busy = !!LW && holdW.has(`${b}:${LW.ikey}`);
+          const busy = !!LW && !LP.gone && !(M && M.gone) && holdW.has(`${b}:${LW.ikey}`);   // (a page coming back isn't shown: nothing in it is busy)
           if (busy) { useN(LW.widgetId, LW.n); if (mw0) nm.w[wid] = mw0; continue; }   // all its parts keep this device's version
           if (!SW) {
             if (LW && !LP.gone && mode !== 'take' && !(M && M.gone)) { useN(LW.widgetId, LW.n); if (mw0) nm.w[wid] = mw0; continue; }
@@ -8472,7 +8497,7 @@
       for (const [uid, M] of Object.entries(L.mine)) {
         const ripe = T => T && T.seq != null && now - fin(T.seen, now) >= goneMs;
         let M2 = M;
-        if (M.gone && ripe(M.gone) && shows(M.gone, f => (f.pages.has(uid) ? 'alive' : f.gone.pages.get(uid) || null))) { delete L.mine[uid]; continue; }
+        if (M.gone && !M.keep && ripe(M.gone) && shows(M.gone, f => (f.pages.has(uid) ? 'alive' : f.gone.pages.get(uid) || null))) { delete L.mine[uid]; continue; }
         for (const [wid, T] of Object.entries(M.wgone || {})) {
           if (!ripe(T)) continue;
           if (!shows(T, f => { const p = f.pages.get(uid); if (p && p.wins.has(wid)) return 'alive'; const g = f.gone.wins.get(`${uid} ${wid}`); return g ? g.exists : null; })) continue;
@@ -8545,7 +8570,9 @@
   // #endregion
 
   // What a Board Sync round did, told to the teacher (§8.3), and its Undo. Link (section 13b) hands each round's summary
-  // and undo seed to shown(): { at, from, ops: [{ key, rev (written), prev: record | null }], swaps: [{ page, wid, copyWid }] }.
+  // and undo seed to shown(): { at, from, ops: [{ key, rev (written), prev: record | null }], swaps, skip } (swaps and skip:
+  // plan's undo: the clashes this device lost, to swap back, and the records of copies that arrived, which the Undo
+  // leaves alone: it never removes another device's work).
   // One merge toast at a time: the same message is updated in place (no new node, so a screen reader doesn't hear it
   // again) and its Undo then covers every round it has shown; a plain "Updated from …" gets a new node at most once a
   // minute. The page shown only: other pages change quietly and say so once when next shown (pageShown).
@@ -8572,7 +8599,7 @@
       for (const [uid, p] of Object.entries(pages)) if (p.back && uid !== mine && !p.added) this.say(`“${p.name}” is back: it was changed on ${this.names(p.from.length ? p.from : summary.from)} before the deletion reached it.`);
       if (!here || !here.changed || here.deleted) return;
       const by = here.from.length ? here.from : summary.from, ops = (seed.ops || []).filter(o => Keys.parse(o.key).board === S.boardId);
-      const skip = new Set((summary.undo && summary.undo.skip) || []);
+      const skip = new Set((seed.skip || (summary.undo && summary.undo.skip) || []));
       const seedHere = { ops: ops.filter(o => !skip.has(o.key)), swaps: (seed.swaps || []).filter(w => w.page === mine), from: by };
       let text, button = 'Undo';
       const clash = here.clashes.find(c => !c.arrived) || here.clashes[0];

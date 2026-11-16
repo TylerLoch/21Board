@@ -193,10 +193,10 @@ class Device {
     return true;
   }
   orderNow(extra = []) { const o = {}; for (const b of this.ids().concat(extra)) { const v = this.boardOf(b); if (v) o[b] = [v.pos, v.uid]; } return o; }
-  purge() {   // pages whose Undo is over: their records go (Pages.purge)
+  purge() {   // pages whose Undo is over: their records go (Pages.purge; a round has always run since: rounds follow every change)
     const st = this.settings;
     for (const b of st.deletedBoards || []) {
-      if (this.now() - (st.deletedAt[b] || 0) < UNDO + 3000) continue;
+      if (this.now() - (st.deletedAt[b] || 0) < UNDO + 3000 || (this.linked && !(this.seenGone || new Set()).has(b))) continue;
       for (const k of Array.from(this.recs.keys())) { const p = k.split(':'); if (['board', 'inst', 'data', 'conf', 'media'].includes(p[0]) && +p[1] === b) this.del(k); }
       this.patch({ gone: [['remove', b]] });
     }
@@ -276,9 +276,10 @@ class Device {
   round(kind = 'full', opts = {}) {
     if (!this.linked || this.away) return;
     // (a stale tab's write lands before the next round: Writer writes at once, rounds wait for quiet)
-    const stale = this.stale; this.stale = new Map();
+    const stale = this.stale; this.stale = new Map(); if (kind === 'full' || kind === 'send') this.blindSince = false;
     void stale;
     this.purge();
+    this.seenGone = new Set(this.settings.deletedBoards || []);
     const now = this.now();
     let L = this.ledger();
     if (!this.link) {   // the ledger is gone: rebuilt from this device's own file if it is here, and a first round either way
@@ -286,7 +287,9 @@ class Device {
       if (r && r.peer) L = Merge.rebuild(r.peer, { now });
       this.first = true; this.lostLedger = false;
     }
-    if (this.restamp) this.restamped();
+    if (this.restamp) this.restamped(true);
+    // (seed and join start a new ledger that stamps everything here again, as a lost one does)
+    else if (kind === 'full' && this.first && (this.mode === 'seed' || this.mode === 'join')) this.restamped(false);
     if (this.mode === 'take' && kind === 'full') {   // what this device had in the other folder is kept (Board history, the other folder)
       for (const P of this.readLocal().pages.values()) for (const W2 of P.all) { const t = token(W2.parts.data.val); if (t) LOG.gone.add(t); }
     }
@@ -362,9 +365,9 @@ class Device {
     this.link = null; this.lostLedger = true; this.restamp = true; this.lostAt = LOG.dels.length;
   }
   // A lost ledger's first round stamps everything shown here again: for the oracle, an edit of each of them.
-  restamped() {
+  restamped(lost) {
     this.restamp = false;
-    for (const d of LOG.dels.slice(this.lostAt || 0)) if (d.by === this.dev) d.undone = true;   // (deleted since: not stamped either)
+    if (lost) for (const d of LOG.dels.slice(this.lostAt || 0)) if (d.by === this.dev) d.undone = true;   // (deleted since: not stamped either)
     for (const b of this.ids()) {
       const uid = this.pageUnit(b);
       const units = [uid].concat(this.insts(b).map(r => `${uid} ${r.value.wid}`));
@@ -483,7 +486,7 @@ function run(seed, nDev, steps, variant = {}) {
     else if (r < 0.91) d.busy.clear();
     else if (r < 0.925) blind(d);
     else if (r < 0.93) { if (d.folder) { d.view.delete(d.fileName()); d.folder.remove(d.fileName()); } }   // its own file lost
-    else if (r < 0.935) { if (d.link && d.linked) { d.loseLedger(); } }   // its ledger lost
+    else if (r < 0.935) { if (d.link && d.linked && !d.blindSince) { d.loseLedger(); } }   // its ledger lost (not in the seconds a stale tab's write waits for a round: a rebuilt ledger can't tell it from an edit)
     else if (r < 0.945) { if (d.linked && d.folder === folder && !variant.noUnlink) d.unlink(); else if (!d.linked) { d.view = new Map(folder.files); d.linkTo(folder); } }
     else if (r < 0.95) { if (d.linked && d.folder === folder && !variant.noChange) { d.round('send'); d.linkTo(other); } else if (d.linked && d.folder === other) { d.round('send'); d.view = new Map(folder.files); d.linkTo(folder); } }
     else if (r < 0.955) { if (variant.away !== false) { d.away = true; NOW += 90 * DAY; } }
@@ -540,13 +543,14 @@ function edit(d) {
 }
 // A stale tab: a widget there saves what it showed before the merge (its old content), or a change made on top of it.
 function blind(d) {
-  if (!d.linked) return;
-  const keys = Array.from(d.stale.keys()).filter(k => d.recs.has(k) && d.recs.get(k).m);
+  if (!d.linked || !d.link) return;   // (nor while its ledger is lost, before the round that rebuilds it: see loseLedger)
+  const gone = new Set(d.settings.deletedBoards || []);   // (no tab shows a deleted page)
+  const keys = Array.from(d.stale.keys()).filter(k => d.recs.has(k) && d.recs.get(k).m && !gone.has(+k.split(':')[1]));
   if (!keys.length) return;
   const key = pick(keys), old = d.stale.get(key);
   d.stale.delete(key);
   const [, b, wg, n] = key.split(':');
-  d.staleBase.set(key, old.rev);
+  d.staleBase.set(key, old.rev); d.blindSince = true;
   if (rnd() < 0.5) d.put(key, 'data', old.value, { base: old.rev });
   else { const shown = token(old.value); if (shown) LOG.gone.add(shown); d.put(key, 'data', d.value(wg), { base: old.rev }); d.touchWin(+b, `${wg}:${n}`); }
 }

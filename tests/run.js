@@ -8276,7 +8276,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await B(() => { for (const id of ['clock', 'dice', 'notes', 'timer', '21timer']) window.__board21.openWidget(id); });
     await page.waitForTimeout(1500);
     const place = { 'clock:1': { x: 40, y: 40, w: 260, h: 300 }, 'dice:1': { x: 360, y: 40, w: 360, h: 280 }, 'notes:1': { x: 780, y: 40, w: 320, h: 300 }, 'timer:1': { x: 40, y: 420, w: 380, h: 300 }, '21timer:1': { x: 500, y: 420, w: 460, h: 340 } };
-    await B(place => { window.__board21.state.settings.snapping = false; for (const [ik, r] of Object.entries(place)) window.__board21.setRect(ik, r); }, place);
+    // (snapping off is stored too: settings are written as patches, and the page reads them again after the Import below)
+    await B(place => { window.__board21.state.settings.snapping = false; window.__board21.writer.patch('settings', 'settings', { set: { snapping: false } }); for (const [ik, r] of Object.entries(place)) window.__board21.setRect(ik, r); }, place);
     await page.waitForTimeout(300);
 
     // ---- Settings → Classroom: the switch, with how to unlock.
@@ -9314,6 +9315,278 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   }],
 
   // (end of classroom features)
+
+  // ---- Board Sync merge (section 13d), on one device: its hooks in the board. The two-device scenarios use the Drive fakes.
+  ['Board Sync merge: the Node test of the merge (tests/merge.js)', async () => {
+    const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'merge.js')], { encoding: 'utf8', timeout: 9 * 60e3, env: Object.assign({}, process.env, { MERGE_THREADS: process.env.MERGE_THREADS || '2' }) });
+    const m = /(\d+) passed, (\d+) failed/.exec(r.stdout || '');
+    for (const line of String(r.stdout || '').split('\n').filter(l => /✗ FAIL/.test(l))) console.log('   ' + line.trim());
+    ok(r.status === 0 && m && +m[2] === 0, `tests/merge.js: ${m ? `${m[1]} passed, ${m[2]} failed` : 'no result'}${r.status !== 0 && !m ? ': ' + String(r.stderr || '').slice(0, 400) : ''}`);
+  }],
+
+  ['Board Sync merge: wid, pos, the copy label, Delete this copy', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const settle = (ms = 600) => page.waitForTimeout(ms);
+    const inst = ik => page.evaluate(ik => { const i = window.__board21.state.insts.get(ik); return i && JSON.parse(JSON.stringify(i)); }, ik);
+    // wid: new windows, reopening, Export → Import Replace, Add, going back, Put back
+    await page.evaluate(() => window.__board21.openWidget('notes')); await settle();
+    let n1 = await inst('notes:1');
+    ok(n1 && n1.wid === `notes@${n1.createdAt}`, `a new window gets wid <widget>@<createdAt> (${n1 && n1.wid})`);
+    await page.evaluate(() => window.__board21.openWidget('notes')); await settle();
+    const n2 = await inst('notes:2');
+    ok(n2 && n2.wid && n2.wid !== n1.wid, 'a second window gets a wid of its own');
+    await page.evaluate(() => window.__board21.closeWin('notes:1', { quiet: true })); await settle();
+    await page.evaluate(() => window.__board21.openWidget('notes')); await settle();
+    ok((await inst('notes:1')).wid === n1.wid, 'reopening a closed window keeps its wid');
+    const exp = await page.evaluate(() => window.__board21.buildExport('full'));
+    ok(exp.instances.every(i => i.wid) && exp.instances.find(i => i.instance === 1).wid === n1.wid, 'a full export carries each window’s wid');
+    await page.evaluate(e => window.__board21.applyImport(e, 'replace'), exp); await settle(900);
+    ok((await inst('notes:1')).wid === n1.wid && (await inst('notes:2')).wid === n2.wid, 'Import › Replace keeps the file’s wids');
+    await page.evaluate(e => window.__board21.applyImport(e, 'add'), exp); await settle(900);
+    const all = await page.evaluate(() => Array.from(window.__board21.state.insts.values()).map(i => [i.wid, i.createdAt]));
+    ok(all.length === 4 && new Set(all.map(a => a[0])).size === 4 && new Set(all.map(a => a[1])).size === 4, `Import › Add gives new wids and createdAts of their own (${all.map(a => a[0]).join(', ')})`);
+    const vid = await page.evaluate(() => window.__board21.history.capture('manual', { label: 'with wids' })); await settle(300);
+    await page.evaluate(() => window.__board21.deleteInstance('notes:1', { history: false })); await settle();
+    await page.evaluate(id => window.__board21.history.putBack(id, 'notes:1', { exact: true, quiet: true }), vid); await settle(900);
+    ok((await inst('notes:1') || {}).wid === n1.wid, 'Put back brings the window back with its wid');
+    await page.evaluate(id => window.__board21.history.restore(id), vid); await settle(1500);
+    ok((await inst('notes:1') || {}).wid === n1.wid && (await inst('notes:2') || {}).wid === n2.wid, 'going back keeps the windows’ wids');
+    // pos: New page, Duplicate, Move, Add these pages; settings.boards from pos
+    const pages = () => page.evaluate(() => { const P = window.__board21.pages; return P.ids().map(b => [b, P.posOf(b)]); });
+    await page.evaluate(() => window.__board21.pages.add()); await settle(900);
+    await page.evaluate(() => window.__board21.pages.duplicate()); await settle(1200);
+    let ps = await pages();
+    ok(ps.length === 3 && ps.every(([, p]) => typeof p === 'number') && ps.every(([, p], i) => i === 0 || p > ps[i - 1][1]), `New page and Duplicate give each page a pos, in order (${JSON.stringify(ps)})`);
+    await page.evaluate(() => window.__board21.pages.move(-1)); await settle(600);
+    const ps2 = await pages();
+    ok(ps2.map(x => x[0]).join() !== ps.map(x => x[0]).join() && ps2.every(([, p], i) => i === 0 || p > ps2[i - 1][1]), `Move left changes the page’s pos, and the order follows it (${JSON.stringify(ps2)})`);
+    const stored = await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const q = o.result.transaction('records').objectStore('records').getAll(); q.onsuccess = () => { o.result.close(); res(q.result); }; }; }));
+    const posStored = stored.filter(r => /^board:/.test(r.key)).map(r => [+r.key.split(':')[1], r.value.pos]);
+    ok(posStored.length === 3 && posStored.every(([b, p]) => ps2.find(x => x[0] === b)[1] === p), 'each page’s pos is in its board record');
+    const order = await page.evaluate(recs => {
+      const M = window.__board21.merge, settings = recs.find(r => r.key === 'settings').value;
+      const local = M.read(recs, { settings: Object.assign({}, settings, { boards: settings.boards.slice().reverse() }), now: Date.now() });
+      const st = M.stamp(M.ledger({ v: 1 }, []), local, { dev: 'aaaaaaaaaaaa', now: Date.now(), ctr: 0, maxSeen: 0 });
+      return M.patchSettings(Object.assign({}, settings, { boards: settings.boards.slice().reverse() }), st.settings).boards;
+    }, stored);
+    ok(order.join() === ps2.map(x => x[0]).join(), `a settings.boards out of step is rebuilt from pos, never the reverse (${order.join()})`);
+    const two = await page.evaluate(() => window.__board21.buildExport('full'));
+    await page.evaluate(async e => { const b = window.__board21; await b.pages.addFrom([JSON.parse(JSON.stringify(e))].map(x => x), { end: true }); }, two).catch(() => {});
+    await settle(1200);
+    const ps3 = await pages();
+    ok(ps3.length === 4 && ps3[3][1] > ps3[2][1], `Add these pages: the page added at the end gets a pos after the others (${JSON.stringify(ps3)})`);
+    // the copy label: its own span, short, the whole sentence in its title and the name's label; kept after a reload
+    await page.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[0])); await settle(1200);
+    const b = await page.evaluate(() => window.__board21.state.boardId);
+    const at = Date.now() - 60e3;
+    await page.evaluate(([b, at]) => {
+      const B = window.__board21, i = B.state.insts.get('notes:2'), key = `inst:${b}:notes:2`;
+      const v = Object.assign({}, i, { copyOf: { wid: B.state.insts.get('notes:1').wid, from: 'aaaaaaaaaaaa', name: 'the laptop', at } });
+      return B.store.tx('readwrite', s => { s.put({ key, type: 'inst', rev: Date.now() + 5, updatedAt: Date.now(), by: 'x', m: 1, value: v }); }).then(() => B.store.getMany([key])).then(r => B.applyMerged([key], r));
+    }, [b, at]); await settle(800);
+    const label = () => page.evaluate(() => { const w = document.querySelector('.win[data-ikey="notes:2"] .win-label'); const c = w.querySelector('.copy-label'); return { text: c.textContent, hidden: c.hidden, title: c.title, aria: w.getAttribute('aria-label'), sub: w.querySelector('.sub').textContent }; });
+    let L = await label();
+    const time = await page.evaluate(at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), at);
+    ok(!L.hidden && L.text === `Copy · ${time}` && L.sub === '', `the copy label is in its own span, short ("${L.text}"), and .sub is the widget’s own`);
+    ok(L.title === `The laptop’s version from ${time}, kept because this window was changed on two devices at once.`, `its title says whose version it is (“${L.title}”)`);
+    ok(L.aria === `Notes 2, the laptop’s version from ${time}, window menu`, `and so does the window name’s label (“${L.aria}”)`);
+    await page.reload(); await boardUp(page); await settle(800);
+    L = await label();
+    ok(!L.hidden && L.text === `Copy · ${time}`, 'the label is still there after a reload');
+    // moving the copy clears its label
+    const box = await page.locator('.win[data-ikey="notes:2"] .win-title').boundingBox();
+    await page.mouse.move(box.x + box.width - 30, box.y + 12); await page.mouse.down(); await page.mouse.move(box.x + box.width - 90, box.y + 80, { steps: 6 }); await page.mouse.up(); await settle(800);
+    L = await label();
+    ok(L.hidden && !(await inst('notes:2')).copyOf && L.aria === 'Notes 2 window menu', 'moving the copy clears its label: it is an ordinary window');
+    // changing its content clears it too
+    await page.evaluate(([b, at]) => { const B = window.__board21, key = `inst:${b}:notes:2`, v = Object.assign({}, B.state.insts.get('notes:2'), { copyOf: { wid: 'notes@1', from: 'aaaaaaaaaaaa', name: 'the laptop', at } });
+      return B.store.tx('readwrite', s => { s.put({ key, type: 'inst', rev: Date.now() + 5, updatedAt: Date.now(), by: 'x', m: 1, value: v }); }).then(() => B.store.getMany([key])).then(r => B.applyMerged([key], r)); }, [b, at]); await settle(800);
+    await fillNote(page.frameLocator('.win[data-ikey="notes:2"] iframe'), 'changed here'); await settle(900);
+    ok(!(await inst('notes:2')).copyOf, 'changing the copy’s content clears its label');
+    // Delete this copy, with Undo
+    await page.evaluate(([b, at]) => { const B = window.__board21, key = `inst:${b}:notes:2`, v = Object.assign({}, B.state.insts.get('notes:2'), { copyOf: { wid: 'notes@1', from: 'aaaaaaaaaaaa', name: 'the laptop', at } });
+      return B.store.tx('readwrite', s => { s.put({ key, type: 'inst', rev: Date.now() + 5, updatedAt: Date.now(), by: 'x', m: 1, value: v }); }).then(() => B.store.getMany([key])).then(r => B.applyMerged([key], r)); }, [b, at]); await settle(800);
+    await page.click('.win[data-ikey="notes:2"] .win-label'); await settle(300);
+    ok(await page.locator('#menu [data-act="delete-copy"]').count() === 1, 'a copy’s window menu has Delete this copy');
+    await page.click('#menu [data-act="delete-copy"]'); await page.waitForSelector('#modal.open'); await page.click('#modal .btn.danger'); await settle(900);
+    ok(!(await inst('notes:2')), 'Delete this copy asks, then deletes it');
+    await page.click('#toasts button:has-text("Undo")'); await settle(1200);
+    ok(!!(await inst('notes:2')), 'and its Undo brings it back');
+    // the Widget Picker doesn't reopen a closed copy
+    await page.evaluate(() => window.__board21.closeWin('notes:2', { quiet: true })); await page.evaluate(() => window.__board21.closeWin('notes:1', { quiet: true })); await settle(600);
+    await page.evaluate(([b, at]) => { const B = window.__board21, key = `inst:${b}:notes:1`, v = Object.assign({}, B.state.insts.get('notes:1'), { copyOf: { wid: 'notes@1', from: 'aaaaaaaaaaaa', name: 'the laptop', at } });
+      return B.store.tx('readwrite', s => { s.put({ key, type: 'inst', rev: Date.now() + 5, updatedAt: Date.now(), by: 'x', m: 1, value: v }); }).then(() => B.store.getMany([key])).then(r => B.applyMerged([key], r)); }, [b, at]); await settle(600);
+    const opened = await page.evaluate(() => window.__board21.openWidget('notes'));
+    ok(opened === 'notes:2' && !(await inst('notes:1')).open, `tapping Notes doesn’t reopen a closed copy (opened ${opened})`);
+    ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+    await ctx.close();
+  }],
+
+  ['Board Sync merge: base and u, the race guard, settings patches, two tabs', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const p1 = await ctx.newPage();
+    const errors = []; p1.on('pageerror', e => errors.push(e.message));
+    await p1.goto(BASE); await boardUp(p1); await freeBoard(p1);
+    const settle = (ms = 600, p = p1) => p.waitForTimeout(ms);
+    const rec = (key, p = p1) => p.evaluate(key => window.__board21.store.getMany([key]).then(r => r[0] || null), key);
+    await p1.evaluate(() => window.__board21.openWidget('notes')); await settle();
+    const b = await p1.evaluate(() => window.__board21.state.boardId), key = `data:${b}:notes:1`;
+    await p1.evaluate(key => window.__board21.writer.put(key, 'data', { text: 'one' }), key); await settle(400);
+    const r1 = await rec(key);
+    await p1.evaluate(key => window.__board21.writer.put(key, 'data', { text: 'undone' }, { undo: true }), key); await settle(400);
+    const r2 = await rec(key);
+    ok(r1.base === 0 && r2.base === r1.rev && r2.u === 1 && !r1.u, `Writer stores each change’s base (the revision it was made on) and u for an Undo (${r1.base}, ${r2.base}/${r1.rev}, u ${r2.u})`);
+    // the race guard: a save within 1.5 s of a merge's write is based on the revision before it
+    await p1.evaluate(key => { const B = window.__board21; return B.store.tx('readwrite', s => { s.put({ key, type: 'data', rev: Date.now() + 10, updatedAt: Date.now(), by: 'x', m: 1, value: { text: 'merged' } }); }).then(() => B.store.getMany([key])).then(r => B.applyMerged([key], r)); }, key); await settle(300);
+    const merged = await rec(key);
+    await p1.evaluate(key => window.__board21.writer.put(key, 'data', { text: 'stale save' }), key); await settle(300);
+    const r3 = await rec(key);
+    ok(r3.base === r2.rev && r3.base < merged.rev, `a widget save within 1.5 s of a merge’s write is based on the revision before the merge (${r3.base} < ${merged.rev})`);
+    await p1.evaluate(key => { const B = window.__board21; return B.store.tx('readwrite', s => { s.put({ key, type: 'data', rev: Date.now() + 20, updatedAt: Date.now(), by: 'x', m: 1, value: { text: 'merged 2' } }); }).then(() => B.store.getMany([key])).then(r => B.applyMerged([key], r)); }, key); await settle(300);
+    const merged2 = await rec(key);
+    await p1.evaluate(key => { window.__board21.raced.clear([key]); return window.__board21.writer.put(key, 'data', { text: 'undo' }, { undo: true }); }, key); await settle(300);
+    const r4 = await rec(key);
+    ok(r4.base === merged2.rev, 'Raced.clear lifts it (the Undo of a merge is based on what the merge wrote)');
+    // two tabs: a merged write doesn't drop the other tab's waiting change, and isn't shown over it
+    const p2 = await ctx.newPage(); p2.on('pageerror', e => errors.push(e.message));
+    await p2.goto(BASE); await boardUp(p2); await settle(800, p2);
+    await p2.evaluate(key => { const W = window.__board21.writer; W.pending.set(key, W.based(key, { type: 'data', value: { text: 'tab 2 typing' } })); window.__held = true; }, key);
+    await p1.evaluate(key => { const B = window.__board21; return B.store.tx('readwrite', s => { s.put({ key, type: 'data', rev: Date.now() + 30, updatedAt: Date.now(), by: 'x', m: 1, value: { text: 'merged 3' } }); }).then(() => B.store.getMany([key])).then(r => { B.applyMerged([key], r); B.state && 0; }); }, key);
+    await p1.evaluate(key => { const B = window.__board21; B.store.getMany([key]).then(() => {}); }, key);
+    await p1.evaluate(key => window.__board21.store.tx('readonly', () => {}).then(() => { const ch = new BroadcastChannel('21board-sync'); ch.postMessage({ tab: 'x', keys: [key], t: Date.now() }); ch.close(); }), key); await settle(800, p2);
+    const s2 = await p2.evaluate(key => { const B = window.__board21, k = key.split(':'); return { shown: B.state.data.get(`${k[2]}:${k[3]}`), waiting: B.writer.pending.has(key) }; }, key);
+    ok(s2.waiting && (!s2.shown || s2.shown.text !== 'merged 3'), `the other tab keeps its waiting change and doesn’t show the merged write over it (${JSON.stringify(s2)})`);
+    const m3 = await rec(key);
+    await p2.evaluate(() => window.__board21.writer.run()); await settle(500, p2);
+    const r5 = await rec(key);
+    ok(r5.value.text === 'tab 2 typing' && r5.base < m3.rev, 'its change is then written with the base it had, so the next look finds both (a clash, not an overwrite)');
+    // a settings patch from a tab with an old copy doesn't change boards or deletedBoards
+    await p2.evaluate(() => { window.__old = JSON.parse(JSON.stringify(window.__board21.state.settings)); });
+    await p1.evaluate(() => window.__board21.pages.add()); await settle(1200);
+    await p2.evaluate(() => { const B = window.__board21; B.state.settings = window.__old; B.writer.patch('settings', 'settings', { set: { theme: 'dark' } }); }); await settle(800, p2);
+    const st = (await rec('settings')).value;
+    ok(st.theme === 'dark' && st.boards.length === 2, `a settings change from a tab with an old copy of the settings leaves boards as they are (${JSON.stringify(st.boards)})`);
+    ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+    await ctx.close();
+  }],
+
+  ['Board Sync merge: Board history before merges, deleted pages, going back to another page’s version', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const settle = (ms = 600) => page.waitForTimeout(ms);
+    await page.evaluate(() => window.__board21.openWidget('timer')); await settle();
+    await page.evaluate(() => window.__board21.pages.add()); await settle(1200);
+    await page.evaluate(() => window.__board21.openWidget('notes')); await settle();
+    const [b1, b2] = await page.evaluate(() => window.__board21.pages.ids());
+    const metasOf = b => page.evaluate(b => new Promise(res => { const o = indexedDB.open('21Board-history'); o.onsuccess = () => { const q = o.result.transaction('meta').objectStore('meta').getAll(); q.onsuccess = () => { o.result.close(); res(q.result.filter(m => m.b === b)); }; }; }), b);
+    // capture({ b }): a page that isn't shown
+    const id = await page.evaluate(b => window.__board21.history.capture('before', { b, reason: 'merge', label: 'Before changes from the laptop' }), b1);
+    const m1 = (await metasOf(b1)).find(m => m.id === id);
+    ok(!!m1 && m1.wins['timer:1'] && m1.uid === await page.evaluate(b => window.__board21.pages.info.get(b).uid, b1),
+      'Board history can save a version of a page that isn’t shown (from its stored records, with its own uid; the same as its newest version: that one)');
+    // beforeMerge: risky → always; otherwise at most one an hour of a page nothing was changed on here
+    const uid1 = await page.evaluate(b => window.__board21.pages.info.get(b).uid, b1);
+    await page.evaluate(() => window.__board21.openWidget('dice')); await settle();
+    const r = await page.evaluate(([b1, b2, uid1]) => { const B = window.__board21, u2 = B.state.board.uid;
+      return B.history.beforeMerge({ [uid1]: { b: b1, risky: false }, [u2]: { b: b2, risky: true } }, 'Before changes from the laptop', { [uid1]: { at: Date.now() - 60e3, local: false }, [u2]: { at: Date.now() - 60e3, local: false } }); }, [b1, b2, uid1]);
+    ok(r[uid1] === 'none' && Object.values(r).includes('saved'), `before a merge: a version of a page changed here or risky, none of one nothing changed on in the last hour (${JSON.stringify(r)})`);
+    const r2 = await page.evaluate(([b1, uid1]) => window.__board21.history.beforeMerge({ [uid1]: { b: b1, risky: false } }, 'Before changes from the laptop', { [uid1]: { at: Date.now() - 2 * 3600e3, local: false } }), [b1, uid1]);
+    ok(r2[uid1] === 'saved', 'an hour later, one more');
+    await page.evaluate(() => { const H = window.__board21.history; H.__tx = H.tx; H.tx = function (stores, mode, fn) { if (mode === 'readwrite' && stores.includes('body')) return Promise.reject(new DOMException('The quota has been exceeded.', 'QuotaExceededError')); return H.__tx.call(this, stores, mode, fn); }; H.__thin = H.thin; H.thin = async () => false; });
+    await page.evaluate(() => window.__board21.openWidget('traffic-light')); await settle();
+    const r3 = await page.evaluate(() => { const B = window.__board21; return B.history.beforeMerge({ [B.state.board.uid]: { b: B.state.boardId, risky: true } }, 'Before changes from the laptop', {}); });
+    ok(Object.values(r3)[0] === 'failed', `when storage is full, beforeMerge reports failed (${JSON.stringify(r3)})`);
+    await page.evaluate(() => { const H = window.__board21.history; H.tx = H.__tx; H.thin = H.__thin; H.paused = ''; });
+    // deleted pages: kept 30 days, Bring back under the old uid
+    await page.evaluate(b1 => window.__board21.pages.go(b1), b1); await settle(1200);
+    const name1 = await page.evaluate(() => window.__board21.state.board.name);
+    await page.evaluate(() => { window.__board21.pages.remove(); }); await page.click('#modal .btn.danger'); await settle(1200);
+    await page.evaluate(b1 => window.__board21.pages.purge([b1]), b1); await settle(800);
+    const kept = await metasOf(b1);
+    ok(kept.length >= 1 && kept.every(m => m.deletedAt), `a deleted page’s versions stay, marked deleted (${kept.length})`);
+    await page.evaluate(() => window.__board21.historySheet.open('left')); await settle(1200);
+    const row = await page.locator('#history .hist-day:has-text("Deleted pages") + .hint + .inst-list .inst').first().textContent().catch(() => '');
+    ok(row.includes(`“${name1}” · deleted`) && row.includes('Bring back'), `Board history › Deleted pages lists it (“${row.trim()}”)`);
+    await page.click('#history [data-act="bring"]'); await settle(2000);
+    const back = await page.evaluate(() => ({ uid: window.__board21.state.board.uid, wins: Array.from(window.__board21.state.insts.keys()) }));
+    ok(back.uid === uid1 && back.wins.includes('timer:1'), `Bring back adds it again under its uid, with its windows (${JSON.stringify(back)})`);
+    ok(await page.locator('#toasts .toast', { hasText: `“${name1}” is back.` }).count() === 1, 'and says so');
+    await page.evaluate(b1 => new Promise(res => { const o = indexedDB.open('21Board-history'); o.onsuccess = () => { const t = o.result.transaction('meta', 'readwrite'), s = t.objectStore('meta'); const q = s.getAll(); q.onsuccess = () => { for (const m of q.result) if (m.b === b1) { m.deletedAt = Date.now() - 31 * 864e5; s.put(m); } }; t.oncomplete = () => { o.result.close(); res(); }; }; }), b1);
+    await page.evaluate(() => window.__board21.history.prune()); await settle(800);
+    ok((await metasOf(b1)).length === 0, 'after 30 days, a deleted page’s versions go');
+    // going back to a version of another page keeps this page's uid
+    await page.evaluate(() => window.__board21.historySheet.close());
+    const other = await page.evaluate(async () => { const B = window.__board21, e = await B.buildExport('full'); e.board.uid = 'someotherpage-1234'; e.board.name = 'Other'; return e; });
+    const uidNow = await page.evaluate(() => window.__board21.state.board.uid);
+    await page.evaluate(e => window.__board21.history.restore({ exp: e }), other); await settle(1500);
+    ok(await page.evaluate(() => window.__board21.state.board.uid) === uidNow, 'going back to a version of another page keeps this page’s uid');
+    ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+    await ctx.close();
+  }],
+
+  ['Board Sync merge: what a merge says (toasts updated in place, Undo of the page shown, a quiet page)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const settle = (ms = 600) => page.waitForTimeout(ms);
+    await page.evaluate(() => window.__board21.openWidget('notes')); await settle();
+    await fillNote(page.frameLocator('.win[data-ikey="notes:1"] iframe'), 'mine'); await settle(900);
+    await page.evaluate(() => window.__board21.pages.add()); await settle(1200);
+    await page.evaluate(() => window.__board21.openWidget('notes')); await settle();
+    await fillNote(page.frameLocator('.win[data-ikey="notes:1"] iframe'), 'other page'); await settle(900);
+    const [b1, b2] = await page.evaluate(() => window.__board21.pages.ids());
+    await page.evaluate(b1 => window.__board21.pages.go(b1), b1); await settle(1200);
+    await page.evaluate(() => { const L = window.__board21.link; L.names = () => ({ bbbbbbbbbbbb: 'the smartboard' }); });
+    // a fake round: it writes the content of a window on each page (as Link's transaction does), then hands MergeUI its summary
+    const round = (text, u) => page.evaluate(([b1, b2, text, u]) => {
+      const B = window.__board21, keys = [`data:${b1}:notes:1`, `data:${b2}:notes:1`];
+      return B.store.getMany(keys).then(prev => B.store.tx('readwrite', s => { keys.forEach((k, i) => s.put({ key: k, type: 'data', rev: Math.max(prev[i].rev + 1, Date.now()), updatedAt: Date.now(), by: 'x', m: 1, value: { text: text + ' ' + i } })); })
+        .then(() => B.store.getMany(keys)).then(now => {
+          B.applyMerged(keys, now);
+          const uid = B.state.board.uid, uid2 = B.pages.info.get(b2).uid;
+          B.mergeUI.shown({ from: ['bbbbbbbbbbbb'], pages: { [uid]: { b: b1, name: 'P1', changed: true, from: ['bbbbbbbbbbbb'], clashes: [], undone: u, mineUndone: u },
+            [uid2]: { b: b2, name: 'P2', changed: true, quiet: true, from: ['bbbbbbbbbbbb'], clashes: [] } } },
+            { at: Date.now(), from: ['bbbbbbbbbbbb'], ops: keys.map((k, i) => ({ key: k, rev: now[i].rev, prev: prev[i] })), swaps: [] });
+        }));
+    }, [b1, b2, text, u]);
+    await round('from the smartboard', false); await settle(500);
+    const toasts = () => page.evaluate(() => Array.from(document.querySelectorAll('#toasts .toast')).map(t => t.querySelector('span').textContent));
+    ok((await toasts()).includes('Updated from the smartboard.'), `the page shown changed: “Updated from the smartboard.” with Undo (${(await toasts()).join(' | ')})`);
+    const node = await page.evaluate(() => { window.__t = document.querySelector('#toasts .toast'); return !!window.__t; });
+    await round('again', false); await settle(500);
+    ok(node && await page.evaluate(() => document.querySelectorAll('#toasts .toast').length === 1 && document.querySelector('#toasts .toast') === window.__t), 'a second round updates the toast in place (one node, not announced again)');
+    await page.click('#toasts button:has-text("Undo")'); await settle(1200);
+    const data = await page.evaluate(([b1, b2]) => window.__board21.store.getMany([`data:${b1}:notes:1`, `data:${b2}:notes:1`]), [b1, b2]);
+    ok(data[0].value.text === 'mine' && data[0].u === 1, `Undo puts back the page shown, as an Undo (u) that syncs (${JSON.stringify(data[0].value)})`);
+    ok(data[1].value.text === 'again 1', `and leaves other pages alone (${JSON.stringify(data[1].value)})`);
+    ok((await toasts()).includes('Undone. Your other devices get this too.'), 'and says so');
+    await round('undo', true); await settle(500);
+    ok((await toasts()).some(t => t === 'The smartboard undid the changes from this device.') && await page.locator('#toasts button:has-text("Redo")').count() === 1, 'another device’s Undo: “The smartboard undid the changes from this device.” with Redo');
+    // windows locked: no Undo
+    await page.evaluate(() => window.__board21.mergeUI.drop());
+    await page.evaluate(() => { document.querySelector('#toasts').innerHTML = ''; window.__board21.state.settings.locked = true; });
+    await round('locked', false); await settle(500);
+    ok(await page.locator('#toasts button:has-text("Undo")').count() === 0, 'while windows are locked, the toast has no Undo');
+    await page.evaluate(() => { window.__board21.state.settings.locked = false; });
+    // a page that changed quietly says so once when it is shown
+    await page.evaluate(b2 => { const L = window.__board21.link, quiet = window.__board21.pages.info.get(b2).uid, said = new Set(); L.quietNote = uid => (uid !== quiet || said.has(uid) ? null : (said.add(uid), { from: ['bbbbbbbbbbbb'], at: Date.now() - 120e3 })); }, b2);
+    await page.evaluate(b2 => window.__board21.pages.go(b2), b2); await settle(1200);
+    const q = (await toasts()).find(t => /^Changed on the smartboard /.test(t));
+    ok(!!q && await page.locator('#toasts button:has-text("Board history")').count() === 1, `a page changed while it wasn’t shown: “${q}” with Board history`);
+    await page.evaluate(b1 => window.__board21.pages.go(b1), b1); await settle(1000);
+    await page.evaluate(b2 => window.__board21.pages.go(b2), b2); await settle(1000);
+    ok((await toasts()).filter(t => /^Changed on /.test(t)).length <= 1, 'once only');
+    ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+    await ctx.close();
+  }],
+
+  // (end of Board Sync merge)
 ];
 
 (async () => {

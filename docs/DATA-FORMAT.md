@@ -119,9 +119,16 @@ installed*. Test widgets are now uploaded as a file: see [`devfile:<widgetId>`](
   background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" | "handwriting" | "graph" },
   scale: 0.8,                    // size of windows and menus (0.5–2), as on a 1920 × 1080 screen; see "Layout space"
   shape: "16:9",                 // "16:9" (Widescreen, the default) | "free" (Fill: fills any window)
-  layout: { w: 2400, h: 1350 }   // the 16:9 board in layout px: 1920/scale × 1080/scale (kept for older readers)
+  layout: { w: 2400, h: 1350 },  // the 16:9 board in layout px: 1920/scale × 1080/scale (kept for older readers)
+  pos: 2                         // the page's place among the pages: they are in (pos, uid) order
 }
 ```
+
+`uid` is which page this is on every device (Board Sync merges pages by it), and in Board history; two pages on one
+device never share one. `pos` orders the pages: a new or moved page gets a `pos` between its neighbours' (when the
+gap gets below 1e-6, every page is numbered 1, 2, 3… again). `settings.boards` is this device's copy of that order,
+rebuilt from `pos` when they disagree, never the other way round. A page without `pos` (from before it existed) gets
+its place in `settings.boards` plus 1 the first time Board Sync looks at the board.
 
 `color: null` means "match the light/dark theme". Settings offers White `#ffffff`, Paper `#f3ede1`, Sky `#e0f2fe`,
 Mint `#dcfce7`, Blush `#fce7f3`, Lavender `#ede9fe`, Slate `#334155`, Chalkboard `#1f3a2c`, Navy `#1e293b`, Black
@@ -268,9 +275,23 @@ and let each device set its own photo; the board still works without it.
   rect: { x: 40, y: 60, w: 380, h: 300 },   // OUTER window rect in CSS px, incl. the 40px title bar
   z: 7,                                     // stacking order; highest = front
   maximized: false,
-  createdAt: 1762713600000
+  createdAt: 1762713600000,
+  wid: "timer@1762713600000",               // which window this is, on every device (Board Sync)
+  copyOf: null                              // or, on a copy kept from a clash: { wid, from, name, at } (below)
 }
 ```
+
+`wid` (`^[\w.@~-]{1,120}$`) is the window's identity across devices: `<widgetId>@<createdAt>` when it is made, with
+`.2`, `.3`… if that is taken on the page. Reopening a closed window, going back in Board history, *Put back* and
+Import › *Replace* keep it; Import › *Add* gives each window a new one (and a `createdAt` of its own). A window
+without one (from before) gets its default the first time Board Sync looks at the board; of two windows with the
+same `wid`, the higher instance number gets a new one. `z` is this device's own: Board Sync never takes another
+device's.
+
+`copyOf` marks a copy that Board Sync kept when the same window's content was changed on two devices at once: `wid`
+is the original window's, `from` the device whose version this is (its Board Sync id), `name` that device's name,
+`at` when that version was made. Its title bar shows "Copy · 9:41 AM". It goes (`null`) once the copy is moved,
+resized or changed: the copy is then an ordinary window.
 
 `rect` is where the teacher *put* the window, in **layout space** (below). It only changes when
 the window is moved or resized, never because the screen changed.
@@ -325,12 +346,21 @@ with the board's records and never exported. Three object stores:
 ```js
 // meta
 { v: 1, id, b, at, kind: "auto" | "open" | "manual" | "before" | "restored",
-  reason: null | "reset" | "delete" | "close-all" | "emptied" | "photo" | "import" | "add" | "load" | "restore" | "window" | "erase",
+  reason: null | "reset" | "delete" | "close-all" | "emptied" | "photo" | "import" | "add" | "load" | "restore" | "window" | "erase"
+        | "merge" | "undo" | "join" | "take",
   label, sig, uid, name, bytes, photo: "<key>" | null | "gone",
   thumb: { bg, pattern, shape, vw, vh, wins: [[ikey, x, y, w, h], …] },              // open windows, back to front
   wins: { "<ikey>": [open, createdAt, dataHash, confHash, dataLength, excerpt] },
-  beforeBig, link: "sent" | "loaded" | null, keepUntil, manual, manualLabel, folder, tab }
+  beforeBig, link: "sent" | "loaded" | null, keepUntil, manual, manualLabel, folder, tab,
+  deletedAt }                                                                         // the page was deleted then (ms)
 ```
+
+Versions before Board Sync merges (`reason: "merge"`, "Before changes from the laptop") may be of a page that isn't
+shown: `uid` and `name` are that page's. A risky merge (deleting or bringing back, emptying content, a clash, a photo
+replaced) always saves one first; otherwise a page nothing was changed on here gets at most one an hour. "Before
+undoing the changes from …" (`undo`) comes before the Undo of a merge. When a deleted page's records go (its Undo is
+over), its versions stay, marked with `deletedAt`, for 30 days: Board history › *Deleted pages* lists them, and *Bring
+back* adds the page again from its newest version, under its old `uid`. Then they go.
 
 `sig` is the content fingerprint the shared folder uses (window stacking order doesn't count), without this
 device's theme and accent (going back never changes them), so identical versions aren't saved twice. `link`:
@@ -388,6 +418,21 @@ Several tabs or windows of 21Board can be open on one device. All show the same 
 Two copies editing the *same* record at the *same* moment: the later write wins, and both copies
 then show it. A tab that takes over another tab's newer record drops its own change to that record
 if it was still waiting to be saved (see below), so the older change is never written over the newer.
+
+**Board Sync's writes** (section 13d) are the exception: a record a merge wrote has `m: 1`, and a tab with a change
+to that record still waiting neither drops it nor shows the merged record; the change is written, and the next look
+at the board finds both and keeps both. Each record a tab writes also says what it was based on:
+
+| Field | Meaning |
+| --- | --- |
+| `base` | the record's `rev` this tab knew when the change was queued (the earliest, when several coalesce). Missing: written around the queue (Import, a deleted page's purge), not tracked. Within 1.5 s of showing a merged write, a widget's save gets the revision before the merge; a tab that didn't show one (it had a change waiting) gives every save of that record that revision until it shows a merged write of it. Either way the save counts as made without the merge. |
+| `m` | `1`: written by a Board Sync merge, never by a tab's own change. |
+| `u` | `1`: written by the Undo of a merge, so that other devices can say "The laptop undid …". |
+
+`settings` is written as a **patch**: only the keys a change gave are put over the stored record, inside the
+transaction (and the keys an older 21Board used, `devWidgets`, `awakeFrom` and `awakeTo`, are dropped), and
+`deletedBoards`/`deletedAt` change only by adding or removing a page, so a tab with an old copy of the settings can't
+write its old lists (or `boards`) over newer ones.
 
 ### When storage fails
 
@@ -522,7 +567,9 @@ Importing a one-page file offers three choices:
   folder (it has a `sent` block), as with Load; otherwise a new board with a new `uid`, so that sending it
   never touches the file of the board it replaced.
 - **Add to this page** — keeps everything and adds the file's windows. Instance numbers are
-  renumbered to the next free number per widget, and windows are nudged into free space.
+  renumbered to the next free number per widget, and windows are nudged into free space. Each added window gets a
+  new `wid` and a `createdAt` of its own; *Replace this page* keeps the file's `wid`s (or makes the default from
+  their `createdAt`), so a restored backup of a page is the same windows on every device.
 
 Importing an all-pages file offers **Add these pages** (each becomes a new page, after this device's pages,
 as with *Open as a new page*) or **Replace all pages** (asked again; the file's pages are added, then this

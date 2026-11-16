@@ -372,8 +372,15 @@ Add an entry to `widgets/registry.js`:
   // devOnly: true                     only listed when Developer mode is on
   // single: true                      one window only: the Widget Picker brings it forward (or opens it again)
   //                                   instead of opening a second one, and "Add to my board" adds none
+  // clash: 'later'                    Board Sync: see below
 }
 ```
+
+`clash: 'later'` is for a widget whose content is only a setting, such as the Timer (its time), Dice (the faces)
+and the Traffic light (the light on). When Board Sync finds the same window's content changed on two devices at
+once, it keeps the later change (Board history keeps the other), instead of keeping both, the other as a labelled
+copy beside the window. Leave it out when the content holds anything typed, such as notes, names or a task list:
+then nothing anyone typed is lost.
 
 Then **bump `VERSION` in `sw.js` and run `node tools/release.js`** so installed copies download the new
 files (README, "Deploying"). Devices save a release for offline use only as a whole, so a widget file that
