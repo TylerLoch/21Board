@@ -10281,7 +10281,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await said(B.p, 'The laptop changed the theme').locator('button').count() === 0, 'with no Undo (changing it back in Settings is one tap)');
     const sb = await B.p.evaluate(() => ({ dark: document.querySelector('#settings [data-act="theme"][data-val="dark"]').getAttribute('aria-checked'), green: document.querySelector('#settings [data-act="accent"][data-val="green"]').getAttribute('aria-checked'),
       focus: `${document.activeElement.dataset.act}=${document.activeElement.dataset.val}`, top: document.querySelector('#settings .sheet-body').scrollTop,
-      shade: getComputedStyle(document.querySelector('#settings [data-act="accent"][data-val="green"]')).backgroundColor }));
+      shade: document.querySelector('#settings [data-act="accent"][data-val="green"]').style.backgroundColor }));   // (as set: the shown one fades to it)
     ok(sb.dark === 'true' && sb.green === 'true' && sb.focus === 'theme=system' && Math.abs(sb.top - top0) <= 2 && sb.shade === 'rgb(74, 222, 128)',
       `Settings open on the smartboard shows Dark and Green chosen (the swatches in their dark shades), with the keyboard where it was and the same scroll (${JSON.stringify(sb)}; was ${top0})`);
     const quiet = await B.p.evaluate(() => { clearInterval(window.__poll); return { drawn: window.__drawn, ys: Array.from(new Set(window.__ys)), lines: window.__lines }; });
