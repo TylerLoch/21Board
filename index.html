@@ -453,7 +453,7 @@
     .row.stack { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px 0; }
     .seg { display: inline-flex; background: var(--hover-bg); border-radius: 10px; padding: 3px; gap: 2px; flex-wrap: wrap; }
     .seg button { height: 36px; padding: 0 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text); }
-    .seg button.on { background: var(--surface); color: var(--primary); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
+    .seg button.on, .seg button[aria-pressed="true"] { background: var(--surface); color: var(--primary); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
     .seg.disabled { opacity: .45; pointer-events: none; }
     .switch { position: relative; width: 52px; height: 32px; flex: 0 0 52px; border-radius: 16px; background: var(--border); transition: background-color .2s; }
     .switch::after { content: ""; position: absolute; left: 3px; top: 3px; width: 26px; height: 26px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .3); transition: transform .2s; }
@@ -569,8 +569,12 @@
     .modal-actions .btn { height: 46px; font-size: 15px; justify-content: center; }
     .modal-actions .choice { height: auto; min-height: 60px; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 16px; text-align: left; }
     .modal-actions .choice small { font-weight: 400; font-size: 13px; opacity: .8; white-space: normal; line-height: 1.35; }
-    /* Setting up Board Sync (Link.setup in board.js): a picture of the folder between two devices, and numbered steps. */
+    /* Setting up Board Sync (Link.setup in board.js): a picture of the folder between two devices, and numbered steps.
+       The last step (Link.welcome): this device's name, with three quick names under the field. */
     .modal-card.setup { width: min(460px, 100%); max-height: calc((100vh - 32px) / var(--ui, 1)); overflow-y: auto; }   /* (large sizes of windows and menus: it scrolls) */
+    .modal-note { margin: -8px 0 12px; font-size: 13.5px; line-height: 1.4; color: var(--muted); }
+    .modal-card .name-quick { display: flex; margin: -4px 0 22px; }
+    .modal-card .name-quick button { flex: 1; height: 40px; }
     .setup-art { display: block; width: 100%; max-width: 320px; height: auto; margin: 0 auto 16px; stroke: none; }
     .setup-art .dev { fill: var(--hover-bg); stroke: var(--icon-color); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
     .setup-art .fold { fill: var(--primary-soft); stroke: var(--primary); stroke-width: 2.5; stroke-linejoin: round; }

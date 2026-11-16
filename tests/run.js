@@ -4422,8 +4422,8 @@ const SUITES = [
     await B.p.click('#settings [data-act="link-setup"]'); await B.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await B.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
     const lastB = await said(B.p);
-    ok(lastB.includes('This device now syncs through your “21Board” folder. The board from the laptop (1 page) is here now. ' + ENDING) && !await B.p.locator('#modal.open input').count(),
-      `the smartboard says the board from the laptop is here (“${lastB}”)`);
+    ok(lastB.includes('This device now syncs through your “21Board” folder. The board from the laptop (1 page) is here now. ' + ENDING) && await B.p.locator('#modal.open input').inputValue() === 'the smartboard',
+      `the smartboard says the board from the laptop is here, with its name in the field (“${lastB}”)`);
     const setupToasts = await B.p.locator('#toasts .toast span').allInnerTexts();
     ok(!setupToasts.some(t => /added on|is here|Updated from/.test(t)), `and no merge message besides (${setupToasts.join(' | ') || 'none'})`);
     await B.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
@@ -4445,14 +4445,16 @@ const SUITES = [
     ok(await eventually(async () => { await syncNow(Late.p); return await Late.p.evaluate(() => window.__board21.state.board.name) === 'Morning' && Object.keys(await shownBoard(Late.p)).length === 1; }, 10000)
       && (await heard(Late.p)).includes('The board from the laptop is here.'), `the board that arrives after set-up is taken: “The board from the laptop is here.” (${(await heard(Late.p)).join(' | ')})`);
     await Late.c.close();
-    // Two devices both called "a Chromebook": the last step asks for this one's name.
+    // Two devices both called "a Chromebook": the last step says so under the name field, its text selected to type over.
     const D = await dev('a Chromebook'), F = await dev('a Chromebook');
     await addNote(D.p, 'Twins');
     await linkFolder(D.p);
     await deliver(D.p, F.p);
     await openSettings(F.p); await F.p.click('#settings [data-act="link-setup"]'); await F.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await F.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
-    ok(await F.p.locator('#modal.open input').count() === 1 && /This device’s name/.test(await said(F.p)), 'when the other device has the same default name, the last step shows the name field');
+    const twin = await F.p.evaluate(() => { const f = document.querySelector('#modal.open input'), n = document.getElementById(f.getAttribute('aria-describedby') || '-'); return { note: n ? n.textContent : '', selected: document.activeElement === f && f.selectionStart === 0 && f.selectionEnd === f.value.length, value: f.value }; });
+    ok(twin.value === 'a Chromebook' && twin.selected && twin.note === 'Another device in this folder is called “a Chromebook” too.',
+      `when another device in the folder has this device’s name, the last step says so under the field (read with it), its text selected even as the board it took is shown (“${twin.note}”; selected: ${twin.selected})`);
     await F.p.fill('#modal.open input', 'the reading corner'); await F.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
     ok(await eventually(async () => (await devFiles(F.p)).some(n => n.startsWith('21Board (reading corner) ['))), 'and the name given there names its file');
     await D.c.close(); await F.c.close();
@@ -4497,6 +4499,104 @@ const SUITES = [
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: setting up this device’s name on the last step (Laptop, Smartboard, Desktop, typed, Enter, touch screens, the file renamed)', async (browser) => {
+    const errors = [];
+    // A device with 21Board's own guess at its name (no nameDevice): a laptop screen with no touch, unless opts say otherwise.
+    const device = async (label, opts) => {
+      const c = await browser.newContext(Object.assign({ viewport: { width: 1366, height: 768 } }, opts)); await c.addInitScript(DRIVE_PICK); await c.addInitScript(CLOCK);
+      const p = await c.newPage(); p.on('pageerror', e => errors.push(label + ': ' + e.message)); await p.goto(BASE); await boardUp(p); await syncWaits(p); return { c, p };
+    };
+    const lastStep = async p => {
+      await openSettings(p); await p.click('#settings [data-act="link-setup"]'); await p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
+      await p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
+    };
+    const said = async p => (await p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
+    const field = p => p.locator('#modal.open input');
+    const quick = p => p.getByRole('group', { name: 'Pick a name' });
+    const pressed = async p => (await p.locator('#modal.open .name-quick [aria-pressed="true"]').allInnerTexts()).join(',');
+    const keyOn = p => p.evaluate(() => { const a = document.activeElement; return a.tagName === 'INPUT' ? 'the field' : (a.textContent || a.tagName).trim(); });
+    const label = p => p.evaluate(() => window.__board21.link.device().label);
+    const devFiles = async p => Object.keys(await readFolder(p)).filter(n => /^21Board \(/.test(n)).sort();
+    const status = async p => { await openSettings(p); const s = await p.locator('#set-link-status').innerText(); await p.keyboard.press('Escape'); return s; };
+    // The card on the screen, top to bottom: the message, the field, the quick names, Done (and its edges).
+    const layout = p => p.evaluate(() => { const r = s => document.querySelector('#modal.open ' + s).getBoundingClientRect(), c = r('.modal-card');
+      return { order: [r('#modal-text').bottom <= r('input').top, r('input').bottom <= r('.name-quick').top, r('.name-quick').bottom <= r('.modal-actions').top], inside: c.top >= 0 && c.left >= 0 && c.bottom <= innerHeight && c.right <= innerWidth, h: Math.round(c.height) }; });
+
+    // ---- A first set-up on a laptop (no touch screen): the field has 21Board's guess, with the keyboard and its text selected.
+    const A = await device('laptop'), B = await device('smartboard', { viewport: { width: 1920, height: 1080 }, hasTouch: true });
+    await addNote(A.p, 'Spelling words');
+    await lastStep(A.p);
+    ok(await label(A.p) === 'a computer' && await field(A.p).inputValue() === 'a computer' && (await said(A.p)).includes('This device’s name (shown on your other devices)'),
+      `the last step always has “This device’s name”, filled in with 21Board’s guess (“${await field(A.p).inputValue()}”)`);
+    ok(await A.p.evaluate(() => { const f = document.querySelector('#modal.open input'); return document.activeElement === f && f.selectionStart === 0 && f.selectionEnd === f.value.length; }),
+      'with no touch screen, the field has the keyboard, its text selected to type over');
+    ok((await quick(A.p).getByRole('button').allInnerTexts()).join(',') === 'Laptop,Smartboard,Desktop' && await pressed(A.p) === '' && !await A.p.locator('#modal.open .modal-note').count(),
+      'under it, a group of three buttons, Laptop, Smartboard and Desktop: none is pressed for “a computer” (and no other device has that name)');
+    let look = await layout(A.p);
+    ok(look.order.every(Boolean) && look.inside, `the message, then the field and its buttons, then Done, all on a 1366×768 screen (${look.h}px high)`);
+    await quick(A.p).getByRole('button', { name: 'Laptop' }).click();
+    ok(await field(A.p).inputValue() === 'the laptop' && await pressed(A.p) === 'Laptop', 'Laptop fills in “the laptop”, and only Laptop is pressed');
+    await field(A.p).fill('Room 14 smartboard');
+    ok(await pressed(A.p) === '', 'typing “Room 14 smartboard”: none is pressed');
+    await field(A.p).fill('  The Desktop ');
+    ok(await pressed(A.p) === 'Desktop', 'typing “ The Desktop ” presses Desktop (spaces and capitals don’t count)');
+    await quick(A.p).getByRole('button', { name: 'Laptop' }).click();
+    const oldA = await devFiles(A.p);   // (the first round wrote this device's file under the guess)
+    await deliver(A.p, B.p);            // (Google Drive brings it to the smartboard before the laptop is renamed)
+    await field(A.p).press('Enter');
+    await A.p.waitForSelector('#modal', { state: 'hidden' });
+    ok(await label(A.p) === 'the laptop', 'Enter in the field saves the name, as Done does');
+    ok(oldA.length === 1 && /^21Board \(computer\) \[[0-9a-z]{4}\]\.21board$/.test(oldA[0]) && await eventually(async () => { await syncNow(A.p); const f = await devFiles(A.p); return f.length === 1 && f[0] === oldA[0].replace('(computer)', '(laptop)'); }, 15000),
+      `at its next write, its file in the folder takes the new name, and none is left under the old one (${oldA.join()} → ${(await devFiles(A.p)).join()})`);
+    ok(JSON.parse(await fileText(A.p, (await devFiles(A.p))[0])).sync.name === 'the laptop', 'the file says the new name inside too');
+
+    // ---- A second device, a smartboard (touch screen, 1920 wide): its guess with Smartboard pressed, and no on-screen keyboard unasked.
+    await lastStep(B.p);
+    ok(await label(B.p) === 'the smartboard' && await field(B.p).inputValue() === 'the smartboard' && await pressed(B.p) === 'Smartboard', `a second device: the field has its guess, “the smartboard”, and Smartboard is pressed (${await pressed(B.p)})`);
+    ok(await keyOn(B.p) === 'Done', `on a touch screen the field doesn’t take the keyboard by itself (the on-screen keyboard would pop up): Done has it (${await keyOn(B.p)})`);
+    look = await layout(B.p);
+    ok(look.order.every(Boolean) && look.inside, `it fits a 1920×1080 smartboard (${look.h}px high)`);
+    ok((await said(B.p)).includes('The board from a computer (1 page) is here now.'), 'the laptop’s old file was all the smartboard had: “The board from a computer”');
+    const ownB = (await devFiles(B.p)).filter(n => /\(smartboard\)/.test(n));   // (written by the first round, or not yet)
+    await field(B.p).fill('Room 14 smartboard');
+    ok(await pressed(B.p) === '', 'typing “Room 14 smartboard”: none is pressed');
+    await B.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
+    ok(await label(B.p) === 'Room 14 smartboard', 'Done saves the name typed');
+    ok(await eventually(async () => { await syncNow(B.p); const f = (await devFiles(B.p)).filter(n => !/\((computer|laptop)\)/.test(n)); return f.length === 1 && /^21Board \(Room 14 smartboard\) \[[0-9a-z]{4}\]\.21board$/.test(f[0]); }, 15000),
+      `its file takes that name, and none is left under “smartboard” (${ownB.join() || 'none written yet'} → ${(await devFiles(B.p)).join()})`);
+    // The laptop's renamed file reaches the smartboard; the old one is still there until Google Drive removes it.
+    await deliver(A.p, B.p); await syncNow(B.p);
+    let st = await status(B.p);
+    ok(/Shared with the laptop \(last change at \d/.test(st) && !/computer/.test(st), `the smartboard’s Settings › Board Sync names the laptop by its new name, once (“${st}”)`);
+    await deliver(A.p, B.p, { removed: oldA }); await syncNow(B.p);
+    ok(!(await devFiles(B.p)).includes(oldA[0]) && await B.p.evaluate(() => Array.from(window.__board21.link.files.keys()).filter(n => /^21Board \((computer|laptop)\)/.test(n)).length) === 1
+      && await B.p.evaluate(() => { const L = window.__board21.link; return Object.values(L.names()).filter(n => n !== L.device().label).join(); }) === 'the laptop',
+      'once Google Drive removes the old file, the laptop is one device there, called the laptop');
+    // A change on the laptop: the smartboard says where it came from by the new name.
+    await hear(B.p);
+    await addNote(A.p, 'Homework'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    ok(await eventually(async () => (await heard(B.p)).includes('Updated from the laptop.')), `“Updated from the laptop.” (${(await heard(B.p)).join(' | ')})`);
+    // And the smartboard's new name reaches the laptop.
+    await deliver(B.p, A.p, { removed: ownB }); await syncNow(A.p);
+    st = await status(A.p);
+    ok(/Shared with Room 14 smartboard \(last change at \d/.test(st), `the laptop’s Settings › Board Sync names the smartboard “Room 14 smartboard” (“${st}”)`);
+
+    // ---- An iPad, upright then on its side: it fits both ways; an empty field keeps the name it had.
+    const C = await device('iPad', { viewport: { width: 768, height: 1024 }, hasTouch: true });
+    await deliver(A.p, C.p);
+    await lastStep(C.p);
+    look = await layout(C.p);
+    const upright = look.order.every(Boolean) && look.inside;
+    await C.p.setViewportSize({ width: 1024, height: 768 }); await C.p.waitForTimeout(200);
+    look = await layout(C.p);
+    ok(upright && look.order.every(Boolean) && look.inside && await keyOn(C.p) === 'Done', `it fits an iPad upright and on its side (${look.h}px high), with the keyboard on Done`);
+    await field(C.p).fill('');
+    await C.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
+    ok(await label(C.p) === 'a computer', 'Done with the field emptied keeps the name it had');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close(); await C.c.close();
   }],
   ['Board Sync: linking again, Change…, Unlink, a lost ledger, Erase, kiosk (scenarios 5–12)', async (browser) => {
     const errors = [], DAY = 864e5;

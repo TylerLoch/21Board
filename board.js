@@ -3360,9 +3360,10 @@
       return S.boardId === b;
     },
     async leave() {
-      // (A field being typed in, such as this device's name in Settings, is saved first.)
+      // (A field being typed in, such as this device's name in Settings, is saved first. Not one in a dialog, which
+      // stays open: Board Sync's last step, while the board it took is shown.)
       const typing = document.activeElement;
-      if (typing && typing.matches('input, textarea, select')) typing.blur();
+      if (typing && typing.matches('input, textarea, select') && !typing.closest('#modal')) typing.blur();
       Menu.close(); this.closeMenu(); Settings.close(); HistorySheet.close();
       Array.from($('#toasts').children).forEach(t => { if (t.board) t.remove2(); });   // (their Undo was for this page)
       // Each widget saves what it holds, as when its window closes (see closeWin).
@@ -5274,7 +5275,8 @@
   // on every device, so 21Board never talks to Google: no sign-in, API keys, Cloud project or server. Chrome and Edge
   // only (Safari and Firefox keep Export/Import).
   // Setting up (Settings › Board Sync › Set up…, see setup): what it is and how to make the folder, then Chrome's
-  // folder picker, then a look inside the folder picked (see choose), then the first round (see link and welcome).
+  // folder picker, then a look inside the folder picked (see choose), then the first round and this device's name
+  // (see link and welcome).
   //
   // One file per device, never two writers to one file (Google Drive could drop one of two writes):
   // - "21Board (<this device's name>) [<4 characters of its id>].21board": the whole board as this device has it,
@@ -5346,6 +5348,8 @@
     '<text class="fold-t" x="158" y="59">21Board</text>' +
     '<path class="arr" d="M94 50h22M100 44l-6 6 6 6M110 44l6 6-6 6M200 50h22M206 44l-6 6 6 6M216 44l6 6-6 6"/>' +
     '<text x="50" y="98">Laptop</text><text x="158" y="98">Google Drive</text><text x="272" y="98">Smartboard</text></svg>';
+  // Set-up's last step (welcome): the quick names under "This device’s name", and the name each one gives.
+  const LINK_NAMES = [['Laptop', 'the laptop'], ['Smartboard', 'the smartboard'], ['Desktop', 'the desktop']];
   // A promise that gives up (rejects with a TimeoutError) after ms.
   const within = (p, ms) => Promise.race([p, sleep(ms).then(() => { throw Object.assign(new Error('Google Drive didn’t answer'), { name: 'TimeoutError' }); })]);
   const randomId = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => '0123456789abcdefghijklmnopqrstuvwxyz'[b % 36]).join('');
@@ -5576,8 +5580,8 @@
 
     // ---- linking (from a tap)
     // Board Sync, the first time (Settings › Board Sync › Set up…). Step 1 says what it is and how to make the
-    // folder; its button opens Chrome's folder picker (choose); the last step says what the first round did
-    // (welcome). True once a folder is linked.
+    // folder; its button opens Chrome's folder picker (choose); the last step says what the first round did, and
+    // asks for this device's name (welcome). True once a folder is linked.
     async setup() {
       if (!this.supported) return false;
       const go = await dialog({
@@ -5692,7 +5696,8 @@
       await this.check(true, true);
       return { readOnly, had };
     },
-    // The last step of setup: what the first round did (this.linked, see decide), and what comes next.
+    // The last step of setup (also after Change…): what the first round did (this.linked, see decide), what comes
+    // next, and this device's name.
     async welcome(got) {
       if (!this.dir) return;   // (unlinked meanwhile)
       for (let i = 0; i < 300 && this.running; i++) await sleep(100);
@@ -5709,16 +5714,27 @@
       else if (L.mode === 'join') say.push(board + (L.added ? ` This device’s ${L.added === 1 ? 'page was' : pages(L.added) + ' were'} added after them.` : ''));
       else if (L.mode === 'take') say.push(board + (L.switched ? ` This device’s other pages are still in your ${L.other ? `“${L.other}”` : 'other'} folder, and under Board history › Deleted pages for 30 days.` : ''));
       say.push('Changes you make on any of your devices show up on the others by themselves, usually within a minute: Google Drive decides when.');
-      // A default name ("a Chromebook") that another device in the folder has too: the status would say "Shared with
-      // a Chromebook and a Chromebook". The field to name this one is here.
-      const me = this.device(), deflt = /^(the smartboard|a Chromebook|a computer)$/.test(me.label);
-      const twin = deflt && Object.entries(this.names()).some(([d, n]) => d !== this.dev() && n === me.label);
-      const asked = dialog({ title: 'Board Sync is set up', message: say.join(' '), input: twin ? { label: 'This device’s name (shown on your other devices)', maxlength: 40 } : null,
+      // This device's name, as the others say it ("Updated from the laptop."): 21Board's guess (see device) or the name
+      // it has, kept or changed with a tap (LINK_NAMES) or typed. The field gets the keyboard only on a device without
+      // a touch screen: on a smartboard or an iPad, that would bring up the on-screen keyboard unasked. Another device
+      // in the folder with the same name ("Shared with a Chromebook and a Chromebook") is said under the field.
+      const me = this.device(), same = s => String(s || '').trim().toLowerCase(), keys = navigator.maxTouchPoints === 0;
+      const twin = Object.entries(this.names()).some(([d, n]) => d !== this.dev() && same(n) === same(me.label));
+      const asked = dialog({ title: 'Board Sync is set up', message: say.join(' '), cls: 'setup',
+        input: { label: 'This device’s name (shown on your other devices)', maxlength: 40, focus: keys,
+          html: (twin ? `<div class="modal-note" id="name-twin">Another device in this folder is called “${esc(me.label)}” too.</div>` : '') +
+            `<div class="seg name-quick" role="group" aria-label="Pick a name">${LINK_NAMES.map(([l, v]) => `<button type="button" aria-pressed="false" data-name="${v}">${l}</button>`).join('')}</div>` },
         actions: [{ label: 'Done', value: true, kind: 'primary' }] });
-      if (twin) { const f = $('#modal input'); if (f) { f.value = me.label; f.select(); } }
+      const f = $('#modal input'), quick = $$('#modal .name-quick button');
+      const mark = () => { for (const b of quick) b.setAttribute('aria-pressed', String(b.dataset.name === same(f.value))); };   // (as the teacher types too)
+      f.value = me.label; mark();
+      if (keys) f.select();
+      if (twin) f.setAttribute('aria-describedby', 'name-twin');
+      f.addEventListener('input', mark);
+      for (const b of quick) b.onclick = () => { f.value = b.dataset.name; mark(); };
       const r = await asked;
-      const label = r && r.text && r.text.slice(0, 40);
-      if (twin && label && label !== me.label) this.rename(label);
+      const label = r && r.text && r.text.slice(0, 40);   // (an empty field keeps the name)
+      if (label && label !== this.device().label) this.rename(label);
     },
     // This device's name changed (Settings, set-up): its file is renamed at the next write.
     rename(label) {
@@ -9029,6 +9045,8 @@
   let dialogResolve = null;
   let dialogHeld = false;   // a dialog has just closed, and the key that answered it may still be down (dialogKey)
   // input: {label, placeholder, maxlength}: also asks for a line of text; resolves {value, text} (or null).
+  // input.html: markup under the field (the caller escapes it, and wires up its controls). input.focus: false: the
+  // keyboard goes to the first button instead (on a touch screen, a field given the keyboard brings up the on-screen one).
   // html: more under the message, as markup (the caller escapes what goes in it). cls: a class for the card.
   function dialog({ title, message, actions, input, html, cls }) {
     closePopups({ keepSettings: true, keepHistory: true });
@@ -9041,12 +9059,12 @@
     if (desc) modal.setAttribute('aria-describedby', desc); else modal.removeAttribute('aria-describedby');
     card.className = 'modal-card' + (cls ? ' ' + cls : '');
     card.innerHTML = `<h3 id="modal-title">${esc(title)}</h3>${message ? `<p id="modal-text">${esc(message)}</p>` : ''}` + (html ? `<div id="modal-more">${html}</div>` : '') +
-      (input ? `<label class="modal-input"><span>${esc(input.label || '')}</span><input type="text" class="text-input" maxlength="${+input.maxlength || 60}" placeholder="${esc(input.placeholder || '')}" autocomplete="off"></label>` : '') +
+      (input ? `<label class="modal-input"><span>${esc(input.label || '')}</span><input type="text" class="text-input" maxlength="${+input.maxlength || 60}" placeholder="${esc(input.placeholder || '')}" autocomplete="off"></label>${input.html || ''}` : '') +
       `<div class="modal-actions">` +
       actions.map((a, i) => `<button class="btn ${a.kind || ''} ${a.choice ? 'choice' : ''}" data-i="${i}">${esc(a.label)}${a.sub ? `<small>${esc(a.sub)}</small>` : ''}</button>`).join('') + '</div>';
     modal.classList.add('open');
     const field = input ? $('input', card) : null;
-    const first = field || $('.btn', card);
+    const first = (input && input.focus !== false && field) || $('.modal-actions .btn', card);
     if (first) first.focus({ preventScroll: true });   // (a card taller than the screen, at a large size, opens at its title)
     return new Promise(resolve => {
       const answer = v => (field ? (v == null ? null : { value: v, text: field.value.trim() }) : v);
