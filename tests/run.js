@@ -137,7 +137,36 @@ const writeFolder = (p, files) => p.evaluate(async files => {
   for await (const [n, h] of d.entries()) if (h.kind === 'file' && !(n in files)) await d.removeEntry(n);
   for (const [n, t] of Object.entries(files)) { const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(t); await w.close(); }
 }, files);
-const drive = async (from, to) => writeFolder(to, await readFolder(from));
+// The "Photos" subfolder of the shared folder: {name: its bytes, in base64} (null: there is none). writePhotos makes the
+// other device's the same (files it doesn't have go; files that differ are written).
+const readPhotos = p => p.evaluate(async () => {
+  let d;
+  try { d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getDirectoryHandle('Photos'); } catch (e) { return null; }
+  const out = {};
+  for await (const [n, h] of d.entries()) {
+    if (h.kind !== 'file') continue;
+    const b = new Uint8Array(await (await h.getFile()).arrayBuffer());
+    let s = '';
+    for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+    out[n] = btoa(s);
+  }
+  return out;
+});
+const writePhotos = async (p, files) => {
+  const have = await readPhotos(p) || {};
+  await p.evaluate(async ([files, have]) => {
+    const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
+    if (!files) { try { await root.removeEntry('Photos', { recursive: true }); } catch (e) { /* none */ } return; }
+    const d = await root.getDirectoryHandle('Photos', { create: true });
+    for (const n of Object.keys(have)) if (!(n in files)) await d.removeEntry(n);
+    for (const [n, b64] of Object.entries(files)) {
+      if (have[n] === b64) continue;
+      const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(Uint8Array.from(atob(b64), c => c.charCodeAt(0))); await w.close();
+    }
+  }, [files, have]);
+};
+// Google Drive bringing one device's folder to another: the board files, and the photos (opts.photos false: not yet).
+const drive = async (from, to, opts = {}) => { await writeFolder(to, await readFolder(from)); if (opts.photos !== false) await writePhotos(to, await readPhotos(from)); };
 // Puts files and folders in a folder of the private file system (a path, as __drive.pick has it): {name: text},
 // or {name: {}} for a folder (its own {name: …} inside it). Returns every name in the folder afterwards.
 const seedFolder = (p, at, items = {}) => p.evaluate(async ([at, items]) => {
@@ -6113,6 +6142,283 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
+  ['Board Sync: background photos in the Photos folder (sent once, arriving late, checked, tidied)', async (browser) => {
+    const L = (p, fn, arg) => p.evaluate(fn, arg);
+    const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
+    const noteText = p => note(p).locator('#t').inputValue();
+    const modal = (p, text) => p.locator('#modal.open .btn', { hasText: text }).click();
+    const sha = b64 => require('crypto').createHash('sha256').update(Buffer.from(b64, 'base64')).digest('hex').slice(0, 32);
+    const boardFile = async p => JSON.parse((await readFolder(p))['Math.21board']);
+    const photoData = p => L(p, () => (window.__board21.state.media.get('background') || {}).data || null);
+    const rec = p => L(p, () => window.__board21.link.boardRec(window.__board21.state.board.uid) || {});
+    const toasts = (p, text) => p.locator('.toast', { hasText: text }).count();
+    // A picture of one color, added as a teacher adds one (Settings › Appearance › Background › Add photo…).
+    const picture = async (p, color, w = 400, h = 300) => Buffer.from((await L(p, ([c, w, h]) => {
+      const k = document.createElement('canvas'); k.width = w; k.height = h; const g = k.getContext('2d'); g.fillStyle = c; g.fillRect(0, 0, w, h); return k.toDataURL('image/png');
+    }, [color, w, h])).split(',')[1], 'base64');
+    const addPhoto = async (p, color, name) => {
+      const was = await photoData(p);
+      await p.setInputFiles('#photo-input', { name, mimeType: 'image/png', buffer: await picture(p, color) });
+      return eventually(async () => (await photoData(p)) !== was);
+    };
+    const send = p => L(p, () => window.__board21.link.send());
+    // Load "Math" from the folder (answering the question, if one is asked), and wait until it is loaded.
+    const load = async (p, answer = 'Load and replace mine') => {
+      const id = (await boardFile(p)).sent.id;
+      await L(p, () => { window.__board21.link.load('Math.21board'); });
+      if (await p.locator('#modal.open').waitFor({ timeout: 1500 }).then(() => true, () => false)) await modal(p, answer);
+      const done = await eventually(async () => (await rec(p)).headId === id, 8000);
+      await p.waitForTimeout(300);
+      return done;
+    };
+    const check = p => L(p, () => window.__board21.link.check(true));
+    const errors = [];
+    const A = await driveDevice(browser), B = await driveDevice(browser);   // the laptop and the smartboard
+    for (const d of [A, B]) { d.p.on('pageerror', e => errors.push(e.message)); await d.p.goto(BASE); await boardUp(d.p); }
+
+    // ---- The laptop sends a board with a photo: the photo goes in Photos, once; the board file names it.
+    await L(A.p, () => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
+    await fillNote(note(A.p), 'Math notes'); await A.p.waitForTimeout(300);
+    await renamePage(A.p, 'Math');
+    await addPhoto(A.p, '#4f9be0', 'blue.png');
+    await L(A.p, async () => {
+      const l = window.__board21.link; await l.choose(); l.saveState({ auto: false, device: Object.assign({}, l.device(), { label: 'my laptop' }) });
+      const digest = crypto.subtle.digest.bind(crypto.subtle); window.__digests = 0; crypto.subtle.digest = (...a) => { window.__digests++; return digest(...a); };
+    });
+    await send(A.p);
+    let file = await boardFile(A.p), photos = await readPhotos(A.p);
+    const blue = file.media && file.media.background;
+    ok(!!blue && /^[0-9a-f]{32}\.jpg$/.test(blue.file) && !('data' in blue) && blue.w === 400 && blue.h === 300 && blue.name === 'blue.png' && blue.bytes > 0 && blue.addedAt > 0 && file.media.look && file.media.look.fit === 'fill',
+      `the board file names its photo, and says how it is shown, instead of holding it (${JSON.stringify(blue)})`);
+    const bytes = photos && Buffer.from(photos[blue.file] || '', 'base64');
+    ok(!!photos && Object.keys(photos).join() === blue.file && sha(photos[blue.file]) === blue.file.slice(0, 32) && bytes.length === blue.bytes && bytes.slice(0, 3).toString('hex') === 'ffd8ff',
+      'the photo is a picture file (a JPEG, not text) in the folder’s “Photos” folder, named by the SHA-256 of its bytes');
+    let size = Buffer.byteLength((await readFolder(A.p))['Math.21board']);
+    ok(size < 4000, `the board file is small: ${size} bytes`);
+    ok(/The "Photos" folder holds the boards’ background photos/.test((await readFolder(A.p))['About this folder.txt']), 'the note about the files mentions the Photos folder');
+    const stamp = name => L(A.p, async n => (await (await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getDirectoryHandle('Photos')).getFileHandle(n)).getFile()).lastModified, name);
+    const t1 = await stamp(blue.file), digests = await L(A.p, () => window.__digests);
+    await fillNote(note(A.p), 'Math, second lesson'); await A.p.waitForTimeout(300);
+    await send(A.p);
+    file = await boardFile(A.p);
+    ok(await stamp(blue.file) === t1 && file.media.background.file === blue.file && JSON.stringify(file).includes('Math, second lesson') && await L(A.p, () => window.__digests) === digests,
+      'a later send writes only the board file: the photo isn’t written again, nor worked out again');
+    const exp = await L(A.p, () => window.__board21.buildExport('full'));
+    ok(!!exp.media && /^data:image\/jpeg;base64,/.test(exp.media.background.data) && !exp.media.background.file, 'exports and backups still have the photo inside them');
+
+    // ---- The smartboard links the same folder: the list is of boards (not the Photos folder), and Load brings the photo.
+    await drive(A.p, B.p);
+    await L(B.p, async () => {
+      const l = window.__board21.link; await l.choose(); l.saveState({ auto: false, device: Object.assign({}, l.device(), { label: 'the smartboard' }) });
+      const read = l.readPhoto.bind(l); window.__reads = 0; l.readPhoto = (...a) => { window.__reads++; return read(...a); };
+    });
+    await openSettings(B.p, ['boards']);
+    const listed = await B.p.locator('#settings [data-act="link-load"]').evaluateAll(bs => bs.map(b => b.dataset.val));
+    ok(listed.join() === 'Math.21board' && !/Photos/.test(await B.p.locator('#settings').innerText()), `Boards from other devices lists the board, not the Photos folder (${listed.join()})`);
+    await B.p.keyboard.press('Escape');
+    ok(await load(B.p, 'Replace this board') && await noteText(B.p) === 'Math, second lesson' && await photoData(B.p) === await photoData(A.p) && await L(B.p, () => window.__reads) === 1,
+      'the smartboard loads the board, with the photo read from Photos (the same picture)');
+    ok(await L(B.p, () => JSON.stringify(window.__board21.state.media.get('background-look'))) === JSON.stringify(file.media.look) && !(await rec(B.p)).want, 'shown the same way, and nothing is left to wait for');
+    // A later version with the same photo, shown another way: nothing more is read.
+    await openSettings(A.p, ['bg']); await A.p.click('#settings [data-act="photo-fit"][data-val="whole"]'); await A.p.keyboard.press('Escape');
+    await fillNote(note(A.p), 'Math, whole photo'); await A.p.waitForTimeout(300);
+    await send(A.p); await drive(A.p, B.p); await check(B.p);
+    ok(await load(B.p) && await noteText(B.p) === 'Math, whole photo' && await L(B.p, () => window.__board21.state.media.get('background-look').fit) === 'whole' && await L(B.p, () => window.__reads) === 1,
+      'a later version with the same photo: the smartboard reads nothing more (it has that photo), and how it is shown changes');
+
+    // ---- Google Drive brings the board file before its photo.
+    await addPhoto(A.p, '#2e9b4f', 'green.png');
+    await fillNote(note(A.p), 'Math, green'); await A.p.waitForTimeout(300);
+    await send(A.p);
+    const green = (await boardFile(A.p)).media.background;
+    const blueData = await photoData(B.p);
+    await drive(A.p, B.p, { photos: false }); await check(B.p);
+    ok(await load(B.p) && await noteText(B.p) === 'Math, green' && await photoData(B.p) === blueData && !!(await rec(B.p)).want,
+      'the board file arrives before its photo: Load shows the new board, with the photo the smartboard had until the new one comes');
+    ok(await toasts(B.p, 'Its background photo follows once Google Drive brings it.') === 1, 'and says “Its background photo follows once Google Drive brings it.”');
+    await openSettings(B.p);
+    ok(/Waiting for Google Drive: the background photo is still arriving\./.test(await B.p.locator('#settings').innerText()), 'Settings › Board Sync says the photo is still arriving');
+    await B.p.keyboard.press('Escape');
+    await fillNote(note(B.p), 'Math, from the smartboard'); await B.p.waitForTimeout(300);
+    await send(B.p);
+    const fromB = await boardFile(B.p);
+    ok(fromB.media.background.file === green.file && JSON.stringify(fromB).includes('Math, from the smartboard') && Object.keys(await readPhotos(B.p)).join() === blue.file,
+      'a send from the smartboard meanwhile names the new photo, not the one it kept (and writes no photo)');
+    await writePhotos(B.p, await readPhotos(A.p)); await check(B.p);
+    ok(await eventually(async () => await photoData(B.p) === await photoData(A.p)), 'once the photo arrives, it is put on the board at the next look at the folder');
+    ok(await L(B.p, async () => { const l = window.__board21.link; return !(l.boardRec(window.__board21.state.board.uid) || {}).want && !await l.localChanges(); }),
+      'and that isn’t a change to send: the board is still the version sent from here');
+    await drive(B.p, A.p); await check(A.p);
+    await L(A.p, () => { const l = window.__board21.link, read = l.readPhoto.bind(l); window.__reads = 0; l.readPhoto = (...a) => { window.__reads++; return read(...a); }; });
+    ok(await load(A.p) && await noteText(A.p) === 'Math, from the smartboard' && await photoData(A.p) === await photoData(B.p) && await L(A.p, () => window.__reads) === 0,
+      'the laptop loads the smartboard’s version, which names the laptop’s own photo: nothing is read');
+
+    // ---- The photo arrives before the board file: nothing happens until the board file comes, then Load puts it on.
+    await addPhoto(A.p, '#d62828', 'red.png');
+    await fillNote(note(A.p), 'Math, red'); await A.p.waitForTimeout(300);
+    await send(A.p);
+    const red = (await boardFile(A.p)).media.background, greenData = await photoData(B.p);
+    await writePhotos(B.p, await readPhotos(A.p)); await check(B.p);
+    ok(await photoData(B.p) === greenData && await L(B.p, () => !window.__board21.link.offer), 'a photo that arrives before its board file changes nothing');
+    await drive(A.p, B.p); await check(B.p);
+    ok(await load(B.p) && await noteText(B.p) === 'Math, red' && await photoData(B.p) === await photoData(A.p) && !(await rec(B.p)).want && await toasts(B.p, 'follows once Google Drive') === 0,
+      'then the board file comes, and Load puts the photo on at once');
+
+    // ---- A photo deleted from the folder: the board still loads; the next send from a device that has it writes it again.
+    await addPhoto(A.p, '#7b2cbf', 'purple.png');
+    await fillNote(note(A.p), 'Math, purple'); await A.p.waitForTimeout(300);
+    await send(A.p);
+    const purple = (await boardFile(A.p)).media.background, redData = await photoData(B.p);
+    await L(A.p, async n => { const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getDirectoryHandle('Photos'); await d.removeEntry(n); }, purple.file);
+    await drive(A.p, B.p); await check(B.p);
+    ok(await load(B.p) && await noteText(B.p) === 'Math, purple' && await photoData(B.p) === redData && !!(await rec(B.p)).want, 'a board whose photo was deleted from the folder still loads, and the smartboard keeps its photo');
+    await fillNote(note(A.p), 'Math, purple again'); await A.p.waitForTimeout(300);
+    await send(A.p);
+    ok(!!(await readPhotos(A.p))[purple.file], 'the laptop’s next send writes the missing photo again');
+    await writePhotos(B.p, await readPhotos(A.p)); await check(B.p);
+    ok(await eventually(async () => await photoData(B.p) === await photoData(A.p)), 'and the smartboard then gets it');
+
+    // ---- A photo that isn't all there yet (or is damaged): not used, not read again until it changes, used once whole.
+    await addPhoto(A.p, '#f77f00', 'orange.png');
+    await fillNote(note(A.p), 'Math, orange'); await A.p.waitForTimeout(300);
+    await send(A.p);
+    const orange = (await boardFile(A.p)).media.background, whole = (await readPhotos(A.p))[orange.file], purpleData = await photoData(B.p);
+    const half = Buffer.from(whole, 'base64');
+    await drive(A.p, B.p);
+    await writePhotos(B.p, Object.assign(await readPhotos(A.p), { [orange.file]: half.slice(0, half.length >> 1).toString('base64') }));
+    await check(B.p);
+    ok(await load(B.p) && await noteText(B.p) === 'Math, orange' && await photoData(B.p) === purpleData && await L(B.p, n => window.__board21.link.badPhotos.has(n), orange.file),
+      'half a photo (still arriving, or damaged) isn’t used: the board loads with the photo the smartboard had, and the file isn’t read again while it stays as it is');
+    const reads = await L(B.p, () => window.__reads);
+    await check(B.p); await B.p.waitForTimeout(200);
+    ok(await photoData(B.p) === purpleData, 'the next look leaves it so');
+    await writePhotos(B.p, await readPhotos(A.p)); await check(B.p);
+    ok(await eventually(async () => await photoData(B.p) === await photoData(A.p)) && await L(B.p, () => window.__reads) > reads, 'once the whole photo is there, it is used');
+
+    // ---- Files that only look like photos, and board files that name something else: never used, and the board still loads.
+    const orangeData = await photoData(B.p);
+    const pixels = await picture(B.p, '#000', 2600, 2600);   // 6.76 MP: more than a photo added here can have
+    const fake = {
+      big: { name: 'a'.repeat(32) + '.jpg', b64: null },   // made below: over 12 MB
+      text: { b64: Buffer.from('This is not a picture.').toString('base64'), ext: 'jpg' },
+      huge: { b64: pixels.toString('base64'), ext: 'png' },
+      broken: { b64: Buffer.concat([Buffer.from('89504e470d0a1a0a', 'hex'), Buffer.from('not really a png at all')]).toString('base64'), ext: 'png' }
+    };
+    for (const f of Object.values(fake)) if (f.b64) f.name = `${sha(f.b64)}.${f.ext}`;
+    const photosB = await readPhotos(B.p);
+    for (const k of ['text', 'huge', 'broken']) photosB[fake[k].name] = fake[k].b64;
+    await writePhotos(B.p, photosB);
+    await L(B.p, async n => {   // (a file over 12 MB with a JPEG's first bytes)
+      const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getDirectoryHandle('Photos', { create: true });
+      const b = new Uint8Array(12.5e6); b.set([0xff, 0xd8, 0xff, 0xe0]);
+      const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(b); await w.close();
+    }, fake.big.name);
+    let n = 0;
+    const crafted = async (photoFile, text) => {   // a version of "Math" from another device that names photoFile
+      const j = await boardFile(A.p);
+      j.sent = Object.assign({}, j.sent, { id: 'crafted-version-' + (++n) });
+      j.media = { background: Object.assign({}, j.media.background, { file: photoFile }), look: j.media.look };
+      j.instances.forEach(i => { if (i.widgetId === 'notes') i.data = { text }; });
+      await writeFolder(B.p, Object.assign(await readFolder(B.p), { 'Math.21board': JSON.stringify(j) }));
+      await check(B.p);
+    };
+    for (const [bad, what] of [['../x.jpg', '“../x.jpg”'], [`Photos/${orange.file}`, 'a path'], ['class.jpg', 'a name that isn’t a fingerprint'], [orange.file.toUpperCase(), 'capitals'], [orange.file.replace('.jpg', '.gif'), 'another type'], [null, 'nothing']]) {
+      const reads0 = await L(B.p, () => window.__reads);
+      await crafted(bad, 'Math, named ' + what);
+      const loaded = await load(B.p);
+      ok(loaded && await noteText(B.p) === 'Math, named ' + what && await photoData(B.p) === orangeData && !(await rec(B.p)).want && await L(B.p, () => window.__reads) === reads0,
+        `a board file that names ${what} as its photo still loads; it says nothing about the photo (the smartboard keeps its own, and reads nothing)`);
+    }
+
+    for (const [k, why] of [['big', 'over 12 MB'], ['text', 'not a picture, whatever its name says'], ['huge', 'a picture of 6.8 MP'], ['broken', 'a PNG that doesn’t open']]) {
+      await crafted(fake[k].name, 'Math, ' + k);
+      const loaded = await load(B.p);
+      await check(B.p); await B.p.waitForTimeout(200);
+      ok(loaded && await noteText(B.p) === 'Math, ' + k && await photoData(B.p) === orangeData && await L(B.p, f => window.__board21.link.badPhotos.has(f), fake[k].name),
+        `a file in Photos that is ${why} isn’t used: the board loads, and the smartboard keeps its photo`);
+    }
+    // ---- Two writing the same photo at once (two sends from tabs, or two devices): one whole file, the same either way.
+    await L(B.p, async n => { const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getDirectoryHandle('Photos'); await d.removeEntry(n); }, orange.file);
+    const twice = await L(B.p, async () => { const l = window.__board21.link, m = window.__board21.state.media.get('background'); const r = await Promise.all([l.putPhoto(m), l.putPhoto(m)]); return r[0].file === r[1].file && r[0].file; });
+    const again = (await readPhotos(B.p))[orange.file];
+    ok(twice === orange.file && again === whole, 'the same photo written twice at the same moment is one whole file (its bytes have its name)');
+
+    // ---- Tidying Photos: a photo no board file names goes after a week, once seen so on two looks an hour apart.
+    const day = 864e5;
+    const conflict = orange.file.replace('.jpg', ' (1).jpg');   // (a copy Google Drive made)
+    await writePhotos(A.p, Object.assign(await readPhotos(A.p), { [conflict]: whole }));
+    await seedFolder(A.p, '21Board/Photos', { 'notes.txt': 'not a photo' });
+    const aged = { [blue.file]: 8 * day, [green.file]: 8 * day, [red.file]: 8 * day, [conflict]: 8 * day, [orange.file]: 8 * day, 'notes.txt': 30 * day };
+    await L(A.p, a => { window.__drive = { noContent: a }; }, aged);
+    const inPhotos = async () => Object.keys(await readPhotos(A.p)).sort();
+    const tidy = (seenAgo = null) => L(A.p, async ago => {
+      const l = window.__board21.link, t = l.st.tidy || {};
+      const seen = ago === null ? t.seen || {} : Object.fromEntries(Object.keys(t.seen || {}).map(k => [k, Date.now() - ago]));
+      l.saveState({ tidy: { at: 0, seen } });
+      await l.scan(); await l.tidyPhotos();
+      while (l.tidying) await l.tidying;   // (a look the timer started meanwhile does the same)
+      return Object.keys(l.st.tidy.seen).sort();
+    }, seenAgo);
+    const all = await inPhotos();
+    let seen = await tidy();
+    ok(JSON.stringify(await inPhotos()) === JSON.stringify(all) && seen.join() === [blue.file, green.file, red.file, conflict].sort().join(),
+      'the first look deletes nothing: it notes the unused photos over a week old (not the one the board names, a new one, or a file that isn’t a photo)');
+    seen = await tidy();
+    ok(JSON.stringify(await inPhotos()) === JSON.stringify(all), 'a second look within the hour deletes nothing either');
+    await L(A.p, () => { window.__drive.unreadable = ['Math.21board']; });
+    seen = await tidy(2 * 3600e3);
+    ok(JSON.stringify(await inPhotos()) === JSON.stringify(all), 'nor does any look while a board file can’t be read (it may name one of them)');
+    await L(A.p, () => { delete window.__drive.unreadable; });
+    seen = await tidy(2 * 3600e3);
+    ok((await inPhotos()).join() === [orange.file, purple.file, 'notes.txt'].sort().join() && !seen.length,
+      'a look an hour or more later deletes them (and Google Drive’s copy); the photo the board names, a new photo and other files stay');
+    await L(A.p, ([a, n]) => { window.__drive.noContent = Object.assign({}, a, { [n]: 8 * 864e5 }); }, [aged, purple.file]);
+    await check(A.p);
+    ok(!Object.keys(await L(A.p, () => window.__board21.link.st.tidy.seen)).length && !!(await readPhotos(A.p))[purple.file], 'it looks at most once a day: the next check doesn’t look at Photos (an unused old photo isn’t even noted)');
+    // A photo deleted while a board still names it (another device thought it unused) is written again by the next send;
+    // one a board names again after a day is written again too, so that no device's tidying takes it.
+    await L(A.p, async n => { const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getDirectoryHandle('Photos'); await d.removeEntry(n); }, orange.file);
+    await fillNote(note(A.p), 'Math, orange again'); await A.p.waitForTimeout(300);
+    await send(A.p);
+    ok((await readPhotos(A.p))[orange.file] === whole, 'a photo deleted while a board names it is written again by the next send of a device that has it');
+    const t2 = await stamp(orange.file);
+    await L(A.p, n => { window.__drive.noContent = { [n]: 2 * 864e5 }; }, orange.file);
+    await A.p.waitForTimeout(20);
+    await fillNote(note(A.p), 'Math, orange once more'); await A.p.waitForTimeout(300);
+    await send(A.p);
+    await L(A.p, () => { window.__drive = {}; });
+    ok(await stamp(orange.file) > t2, 'a photo named by a send that is over a day old is written again (its date is new, so tidying won’t take it)');
+
+    // ---- "Send the background photo" off: no photo is written, and the board file says nothing about one.
+    await L(A.p, () => window.__board21.link.saveState({ photo: false }));
+    const before = await inPhotos();
+    await addPhoto(A.p, '#ff70a6', 'pink.png');
+    await fillNote(note(A.p), 'Math, pink here only'); await A.p.waitForTimeout(300);
+    await send(A.p);
+    ok(!('media' in await boardFile(A.p)) && JSON.stringify(await inPhotos()) === JSON.stringify(before), 'with “Send the background photo” off, no photo is written, and the board file says nothing about one');
+    await L(A.p, () => window.__board21.link.saveState({ photo: true }));
+    // ---- Taking the photo off travels.
+    await drive(A.p, B.p); await check(B.p); await load(B.p);
+    await openSettings(A.p, ['bg']); await A.p.click('#settings [data-act="photo-remove"]'); await modal(A.p, 'Remove photo'); await A.p.waitForTimeout(500); await A.p.keyboard.press('Escape');
+    await send(A.p);
+    ok((await boardFile(A.p)).media.background === null, 'with it on again, a board sent after its photo is removed says so (“background”: null)');
+    await drive(A.p, B.p); await check(B.p);
+    ok(await load(B.p) && !await photoData(B.p), 'and the smartboard that loads it takes the photo off too');
+
+    // ---- Import: a backup with the photo inside still brings it; a file sent to the folder brings the photo it names.
+    await L(B.p, () => window.__board21.link.unlink());
+    await B.p.setInputFiles('#import-input', { name: 'Math backup.21board', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(exp)) });
+    await modal(B.p, 'Replace this page');
+    ok(await eventually(async () => await photoData(B.p) === exp.media.background.data), 'importing an export brings its photo (from inside the file), with no folder linked');
+    const sentFile = Object.assign({}, fromB, { media: { background: Object.assign({}, fromB.media.background, { file: orange.file }), look: fromB.media.look } });
+    await L(B.p, async () => { const l = window.__board21.link; await l.choose(); l.saveState({ auto: false }); l.prints.clear(); window.__reads = 0; });
+    await B.p.setInputFiles('#import-input', { name: 'Math.21board', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(sentFile)) });
+    await modal(B.p, 'Open as a new page');
+    ok(await eventually(async () => await photoData(B.p) === orangeData) && await L(B.p, () => window.__reads) === 1, 'a file sent to the folder, opened with Import, gets the photo it names from the folder’s Photos');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
   ['Board Sync: when the folder can’t be used', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
     const L = (p, fn, arg) => p.evaluate(fn, arg);
@@ -6589,6 +6895,36 @@ const SUITES = [
     ok(await linked(p) === 'Kept', 'and Cancel leaves the folder that was linked');
     await L(p, () => { window.__drive = {}; });
     await unlink(p);
+
+    // ---- 21Board's Photos folder (inside the 21Board folder too), picked by mistake: the same.
+    const print = '0123456789abcdef0123456789abcdef.jpg';
+    await seedFolder(p, 'Kept2', { 'About this folder.txt': 'x', Photos: { [print]: 'x' } });
+    await L(p, () => { window.__drive = { pick: 'Kept2/Photos' }; window.__picks = []; });
+    await setUp(p);
+    ok(await asking(p, '“Photos” is 21Board’s Photos folder') && await linked(p) === '', 'the Photos folder inside 21Board’s folder isn’t linked');
+    ok(/It holds the background photos of your boards\. Choose the folder it’s in instead, such as 21Board\./.test(await said(p)) && await buttons(p) === 'Choose another…|Cancel' && await names('Kept2/Photos') === print,
+      'it says what the folder is and to choose the one it’s in, with Choose another… and Cancel (and nothing is written in it)');
+    await L(p, () => { window.__drive.pick = 'Kept2'; });
+    await modal(p, 'Choose another…');
+    ok(await asking(p, 'Board Sync is set up') && await linked(p) === 'Kept2', 'Choose another… then links the folder picked');
+    await modal(p, 'Done'); await unlink(p);
+    for (const [at, items, what] of [['Pics/Photos', {}, 'an empty folder called “Photos”'], ['Pictures', { [print]: 'x' }, 'a folder with nothing but 21Board’s photos in it']]) {
+      await seedFolder(p, at, items);
+      await L(p, a => { window.__drive = { pick: a }; }, at);
+      await setUp(p);
+      ok(await asking(p, 'is 21Board’s Photos folder') && await linked(p) === '', `${what} is taken for one too`);
+      await modal(p, 'Cancel'); await p.waitForTimeout(300);
+    }
+    await seedFolder(p, 'Mine/Photos', { 'IMG_0001.jpg': 'x' });
+    await L(p, () => { window.__drive = { pick: 'Mine/Photos' }; });
+    await setUp(p);
+    ok(await asking(p, 'Make a 21Board folder in “Photos”?') && await linked(p) === '', 'a folder called Photos with the teacher’s own pictures in it is a folder with other things in it');
+    await modal(p, 'Cancel'); await p.waitForTimeout(300);
+    await seedFolder(p, 'Class sync', { Photos: { [print]: 'x' } });
+    await L(p, () => { window.__drive = { pick: 'Class sync' }; });
+    await setUp(p);
+    ok(await asking(p, 'Board Sync is set up') && await linked(p) === 'Class sync', 'a folder with only a Photos folder in it (a 21Board folder whose boards are gone) is used as it is');
+    await modal(p, 'Done'); await L(p, () => { window.__drive = {}; }); await unlink(p);
 
     // ---- A folder that can only be viewed (shared with the teacher for viewing).
     await L(p, () => window.__board21.link.saveState({ auto: false }));

@@ -1150,6 +1150,8 @@
   const PHOTO_MAX_PIXELS = 6.5e6;
   const PHOTO_DATA_RE = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/;
   const validPhoto = m => !!(m && typeof m.data === 'string' && m.data.length < 16e6 && PHOTO_DATA_RE.test(m.data) && m.w > 0 && m.h > 0);
+  // A photo in Board Sync's Photos folder (section 13b): the start of its SHA-256 and its type, nothing else (no paths).
+  const PHOTO_FILE_RE = /^[0-9a-f]{32}\.(jpg|png|webp)$/;
   function normalizePhotoSettings(im) {
     if (!im || typeof im !== 'object') return null;
     const f = im.focus || {};
@@ -4096,7 +4098,7 @@
     const status = [mine ? `In the folder as “${mine.name}”.` : 'Not in the folder yet.', rec.sentAt ? `Sent from here ${when(rec.sentAt)}.` : '',
       rec.loadedSentAt ? `Loaded the version from ${rec.loadedFrom || 'another device'} sent ${when(rec.loadedSentAt)}.` : '',
       L.failed && prob !== 'send' ? `Couldn’t send ${when(L.failed.at)}: ${LINK_SAY[L.failed.code][0]}.` : '',
-      late ? `Waiting for Google Drive: “${late.name}” is still arriving.` : ''].filter(Boolean).join(' ');
+      late ? `Waiting for Google Drive: “${late.name}” is still arriving.` : '', L.wanted(rec) ? 'Waiting for Google Drive: the background photo is still arriving.' : ''].filter(Boolean).join(' ');
     // (Another file of this board is listed too: Drive can leave two, and each may hold a version.)
     const others = L.found.filter(f => f.kind === 'full' && f !== mine && (f.uid !== uid || f.vid));
     const boards = `<div class="hint">Load one to show it on this device. It replaces this page.</div>
@@ -4810,6 +4812,12 @@
         const m = j.kind !== 'template' && j.media && j.media.background;   // templates never carry a photo (it may show the class)
         return validPhoto(m) ? { data: m.data, w: +m.w, h: +m.h, bytes: +m.bytes || 0, name: String(m.name || 'Photo').slice(0, 80), addedAt: +m.addedAt || Date.now() } : null;
       })(),
+      // A file sent to a shared folder names its photo instead: a file in the folder's Photos folder (Link.photoIn
+      // reads it). Only a plain fingerprint name (PHOTO_FILE_RE) counts; any other says nothing about a photo.
+      photoRef: (() => {
+        const m = j.kind !== 'template' && j.media && j.media.background;
+        return m && typeof m === 'object' && !m.data && PHOTO_FILE_RE.test(m.file || '') ? { file: m.file, w: +m.w || 0, h: +m.h || 0, bytes: +m.bytes || 0, name: String(m.name || 'Photo').slice(0, 80), addedAt: +m.addedAt || 0 } : null;
+      })(),
       photoLook: j.media && j.media.background ? normalizePhotoSettings(j.media.look || {}) : null,
       // A file sent to a shared folder says so when its board's photo was taken off ("background": null):
       // loading it takes the photo off here too (see Link.photoRule and ownPhoto). No "media" at all: the file
@@ -4848,6 +4856,7 @@
       return;
     }
     if (parsed.pages && Pages.enabled()) return importPages(file, parsed);
+    if (Link.supported) await Link.photoIn(parsed);   // (a file sent to the folder names its photo: this device's own, or the one in Photos)
     const openCount = parsed.instances.filter(i => i.open).length;
     const missing = new Set(parsed.instances.filter(i => !getWidget(i.widgetId)).map(i => i.widgetId));
     const what = parsed.kind === 'template' ? 'a blank template' : 'a full backup';
@@ -5062,6 +5071,9 @@
   // file with the board's uid counts (Drive can leave two), and a file that can't be read yet isn't taken
   // for no file: a send waits for one that may be this board's.
   // - "<name> (copy from …).21board": a copy kept, with a new uid, before loading over local changes.
+  // - "Photos": each background photo once, as a picture file named by its content ("<SHA-256>.jpg"). A board
+  //   file only names its photo, so a send is a few KB (see photoRule, putPhoto, photoIn, wantPhoto). Photos no
+  //   board file names any more are deleted after about a week (tidyPhotos).
   // - "About this folder.txt" explains the files to anyone browsing the folder. Other files are left alone.
   // Sending: Settings → Board Sync → Send, or "Send automatically" (on from the end of setting up, see autoOn): a
   // few seconds after the changes stop, and at once when 21Board is left or another page is shown. What wasn't
@@ -5076,7 +5088,8 @@
   // On this device only (never exported): link:folder (the folder handle) and link:state
   // {device: {id, label}, auto, photo, boards: {uid: {file, also: [files used before], seen: [version ids],
   //   headId, headMine, sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig, setupSig (see autoOn), photo (see photoRule)}},
-  //   late: {file name: {size, lastModified}} (files that can't be read and have had their full wait, see scan)}.
+  //   late: {file name: {size, lastModified}} (files that can't be read and have had their full wait, see scan),
+  //   tidy: {at, seen: {photo file: when first found unused}} (see tidyPhotos)}. A board's want: see wantPhoto.
   // =====================================================================
   const LINK_CHECK_MS = 5000;                // how often the folder is looked at while 21Board is in front
   const LINK_AUTO_MS = 8000;                 // "Send automatically": how long after the last change
@@ -5088,6 +5101,8 @@
   const LINK_ARRIVE_MS = 10 * 60 * 1000;     // how long automatic sends wait for a file that can't be read yet
   const LINK_LOST_MS = 5 * 60 * 1000;        // a folder missing this long was probably renamed, moved or deleted
   const LINK_README = 'About this folder.txt';
+  const LINK_PHOTOS = 'Photos';              // the background photos (see putPhoto)
+  const LINK_PHOTO_KEEP_MS = 7 * 864e5;      // a photo no board file names is deleted once it is this old (see tidyPhotos)
   // Folder problems in plain words: what happened, and what to do. (The browser's own wording goes to the console.)
   const LINK_SAY = {
     missing: ['the folder can’t be found', 'If it was renamed, moved or deleted, choose it again in Settings › Board Sync.'],
@@ -5122,27 +5137,31 @@
     checkedAt: 0,       // the last good look at the folder
     unsent: false, comparedAt: 0,   // "Send automatically": a change may be waiting; when the board was last found the same as what was sent
     owned: new Set(),   // this device's own versions found in the folder without a note of them (noted once)
+    prints: new Map(),  // photo data URL -> {file, size, w, h}: its name in Photos, worked out once (see photoName)
+    badPhotos: new Map(),   // photo file -> {size, lastModified}: found not good as it is (not read again until it changes)
+    photoAt: 0,         // when a photo this board waits for was last looked for (see wantPhoto)
+    tidying: null,      // while Photos is being tidied: done when it is (see tidyPhotos)
 
     // ---- this device's records
     applyRecord(name, value) {
       if (name === 'folder') {
         this.dir = value && typeof value === 'object' && value.kind === 'directory' ? value : null;
-        this.found = []; this.cache.clear(); this.unread.clear(); this.names = new Set(); this.setOffer(null);
+        this.found = []; this.cache.clear(); this.unread.clear(); this.names = new Set(); this.badPhotos.clear(); this.setOffer(null);
         this.trouble = this.failed = null; this.checkedAt = 0;
         if (this.started) this.refresh(); else FolderNote.update();
       } else if (name === 'state') {
         const v = value && typeof value === 'object' ? value : {};
         // (A state from before Send automatically was a switch: "When left alone" (calm) reads as on.)
         this.st = { device: v.device && UID_RE.test(v.device.id || '') ? v.device : null, auto: !!v.auto, photo: v.photo !== false, boards: v.boards && typeof v.boards === 'object' ? v.boards : {},
-          late: v.late && typeof v.late === 'object' ? v.late : {} };
+          late: v.late && typeof v.late === 'object' ? v.late : {}, tidy: v.tidy && typeof v.tidy === 'object' ? v.tidy : {} };
         this.computeOffer();
         FolderNote.update();
       }
     },
-    saveState(patch) {
+    saveState(patch, quiet) {
       this.st = Object.assign({}, this.st, patch);
       Writer.put(Keys.link('state'), 'link', this.st);
-      this.redraw();
+      this.redraw(quiet);
     },
     // The note on the board and Settings show how the folder is doing. quiet (a look at the folder, every few
     // seconds): Settings is drawn again only if what it shows of Board Sync changed. (Rebuilding it each time would
@@ -5305,8 +5324,9 @@
           return false;
         }
         const look = await this.peek(h);
-        if (look.history) {   // (a folder can't reach the one it's in: the teacher picks that)
-          const again = await dialog({ title: `“${h.name}” is 21Board’s Board history folder`, message: 'It holds earlier versions of your boards. Choose the folder it’s in instead, such as 21Board.',
+        if (look.history || look.photos) {   // (a folder can't reach the one it's in: the teacher picks that)
+          const again = await dialog({ title: `“${h.name}” is 21Board’s ${look.history ? 'Board history' : 'Photos'} folder`,
+            message: `It holds ${look.history ? 'earlier versions of your boards' : 'the background photos of your boards'}. Choose the folder it’s in instead, such as 21Board.`,
             actions: [{ label: 'Choose another…', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
           if (again) continue;   // (this tap opens the picker again)
           return false;
@@ -5336,6 +5356,7 @@
         this.perm = 'granted';
         await this.saveFolder(h);
         this.device();
+        this.saveState({ tidy: {} });   // (what was found unused in Photos was another folder's)
         let readOnly = false;
         try { await this.writeReadme(); } catch (err) { readOnly = await this.codeOf(err) === 'readonly'; }   // (a send says so too)
         await this.check(true);
@@ -5344,8 +5365,10 @@
     },
     // A quick look inside a folder just picked: {ours} (21Board's files are in it, or it is called 21Board),
     // {history} (the Board history folder inside 21Board's: only its copies and note, or its name and nothing
-    // else), {sub} (no files of 21Board's, but a folder called 21Board, in any capitals), {other} (other files or
-    // folders, as in My Drive itself), or {} (empty, or it couldn't be read). Google Drive may be slow to list
+    // else), {photos} (the Photos folder inside 21Board's: only its photos, or its name and nothing else), {sub}
+    // (no files of 21Board's, but a folder called 21Board, in any capitals), {other} (other files or folders, as in
+    // My Drive itself; not a folder called Photos, which My Drive may have too), or {} (empty, or it couldn't be
+    // read). Google Drive may be slow to list
     // a folder, or not have it yet: what has been seen after a second and a half is all there is, and the
     // folder is linked as it is if that is nothing (never held up by the look).
     async peek(h) {
@@ -5356,15 +5379,17 @@
         for await (const [name, e] of h.entries()) {
           if (stop) break;
           if (e.kind === 'file' && (name === 'About these files.txt' || BoardHistory.parseName(name))) seen.history = true;
+          else if (e.kind === 'file' && PHOTO_FILE_RE.test(name)) { seen.photos = true; continue; }
           else if (e.kind === 'file' ? /\.21board$/i.test(name) || name === LINK_README : name === 'Board history') { seen.ours = true; break; }
           if (e.kind === 'directory' && /^21board$/i.test(name)) seen.sub = seen.sub || e;
-          else if (!/^\.|^desktop\.ini$/i.test(name)) seen.other = true;   // (not hidden files that a computer adds)
+          else if (!/^\.|^desktop\.ini$/i.test(name) && !(e.kind === 'directory' && name === LINK_PHOTOS)) seen.other = true;   // (not hidden files that a computer adds)
         }
       })();
       await Promise.race([look.catch(() => {}), sleep(1500)]);
       stop = true;
       return seen.ours ? { ours: true } : seen.history || (h.name === 'Board history' && !seen.other && !seen.sub) ? { history: true }
-        : seen.sub ? { sub: seen.sub } : seen.other ? { other: true } : {};
+        : (seen.photos || h.name === LINK_PHOTOS) && !seen.other && !seen.sub ? { photos: true }
+        : seen.sub ? { sub: seen.sub } : seen.other || seen.photos ? { other: true } : {};
     },
     // Step 3 of setup: the folder is linked (and was just looked at). What comes next.
     async welcome(got) {
@@ -5407,7 +5432,7 @@
       await this.writeFile(LINK_README, [
         '21Board keeps your boards here so your devices can share them through Google Drive (Board Sync).',
         '',
-        'Each .21board file is one board: its windows, what is in them, and its background photo.',
+        'Each .21board file is one board: its windows and what is in them.',
         '21Board names these files after your boards and updates them a few seconds after you change',
         'a board (Send automatically), or when you press Send. Your other devices check this folder',
         'and offer to load a newer version.',
@@ -5417,6 +5442,7 @@
         '- Please don’t edit or rename the files. Deleting one stops sharing that board; the board',
         '  itself stays on your devices.',
         '- "… (copy from …)" files are copies 21Board kept before loading a newer version over changes.',
+        '- The "Photos" folder holds the boards’ background photos, each one once.',
         '- The "Board history" folder holds earlier versions of your boards, about one an hour. Open one from',
         '  21Board > Settings > Board history, or with Import.',
         '- These files can include student names and class photos. Share this folder only with',
@@ -5441,6 +5467,7 @@
         vid: this.vidOf(sent), base: sent && sent.base ? String(sent.base) : null, legacy: !!(sent && !sent.id),
         sentAt: num(sent && sent.at, file.lastModified), by: String((sent && sent.by) || ''), from: String((sent && sent.from) || '').slice(0, 60),
         open: Array.isArray(j.instances) ? j.instances.filter(i => i && i.open).length : null,   // open windows (null: not known)
+        photo: j.media && j.media.background && PHOTO_FILE_RE.test(j.media.background.file || '') ? j.media.background.file : null,   // the photo it names in Photos (see tidyPhotos)
         kind: j.kind === 'template' ? 'template' : 'full', size: file.size, lastModified: file.lastModified };
     },
     // Every board file in the folder (files that didn't change since the last look aren't read again).
@@ -5477,6 +5504,7 @@
               const head = await file.slice(0, 65536).text(), pick = re => { const m = head.match(re); return m ? m[1] : ''; };
               meta = this.meta({ kind: 'full', board: { uid: pick(/"uid":"([A-Za-z0-9-]{8,64})"/), name: pick(/"name":"([^"]{0,60})"/) },
                 sent: { id: pick(/"sent":\{"id":"([^"]+)"/), base: pick(/"base":"([^"]+)"/), at: +pick(/"at":(\d+)/) || 0, by: pick(/"by":"([^"]+)"/), from: pick(/"from":"([^"]*)"/) } }, name, file);
+              meta.photo = undefined;   // (which photo it names isn't known: no photo is deleted meanwhile, see tidyPhotos)
             }
           } catch (e) { miss(name, file); continue; }   // still arriving, or damaged: look again next time
           this.cache.set(name, { lastModified: file.lastModified, size: file.size, meta });
@@ -5522,6 +5550,7 @@
       this.computeOffer();
       this.redraw(true);
       if (ok) this.catchUp();
+      if (ok) { await this.wantPhoto(); this.tidyPhotos(); }   // (each does nothing on most checks; tidying, about once a day, isn't waited for)
     },
     // The folder's versions of a board that this device hasn't seen (sent or loaded), newest first.
     // Versions are compared by id, never by time: two devices' clocks can disagree. Every file with the
@@ -5683,7 +5712,7 @@
         // removed as the wrong board. See swap.)
         if (S.board.uid !== uid || exp.board.uid !== uid) return false;
         const sig = this.sigOf(exp);
-        this.photoRule(exp, typeof rec.photo === 'boolean');
+        await this.photoRule(exp, typeof rec.photo === 'boolean', this.wanted(rec));   // (the photo goes in Photos first)
         // id: this version; base: the version this board was built on; mine: each device's latest version it
         // includes (to spot a version made without this device's last send).
         const sentId = newId();
@@ -5744,15 +5773,154 @@
     // said it had been taken off), and the board has none now: the file says so ("background": null), and
     // loading it takes the photo off there too. A board that never had a photo says nothing: a photo put on
     // at another device only (the smartboard's own) stays there.
-    photoRule(exp, gone) {
+    // The file names the photo, in Photos (written there first if it isn't: see putPhoto), instead of holding
+    // it. want: a photo the board is still waiting for here (see wantPhoto) is the board's photo, so the file
+    // names that one (not the photo this device kept meanwhile, which would undo the other device's choice).
+    async photoRule(exp, gone, want) {
+      const m = exp.media && exp.media.background;
       if (!this.st.photo) delete exp.media;
-      else if (!exp.media && gone) exp.media = { background: null };
+      else if (want) exp.media = { background: Object.assign({}, want.ref), look: want.look };
+      else if (m) exp.media = { background: await this.putPhoto(m), look: exp.media.look };
+      else if (gone) exp.media = { background: null };
       return exp;
     },
     // Loading a sent file p that says the photo was taken off: the photo here stays if the version this device
     // last sent or loaded said so already. It was put on here since then, and is this device's own (files go
     // on saying "taken off" until a photo is sent again).
     ownPhoto(uid, p) { return !!p.noPhoto && (this.boardRec(uid) || {}).photo === false; },
+
+    // ---- background photos: "Photos/<fingerprint>.jpg", each photo once, named by its content
+    // The first 32 hex digits of the SHA-256 of a photo's bytes.
+    async digest(buf) {
+      return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf)).slice(0, 16), b => b.toString(16).padStart(2, '0')).join('');
+    },
+    // A photo's file in Photos, and its size in bytes. Worked out once per photo (prints: the last few photos seen
+    // here, by their data URL), not at every send.
+    async photoName(m) {
+      let f = this.prints.get(m.data);
+      if (!f) {
+        const buf = await (await fetch(m.data)).arrayBuffer(), type = /^data:image\/(jpeg|png|webp)/.exec(m.data.slice(0, 32))[1];
+        f = { file: `${await this.digest(buf)}.${type === 'jpeg' ? 'jpg' : type}`, size: buf.byteLength, w: m.w, h: m.h };
+      }
+      this.print(m.data, f);
+      return f;
+    },
+    print(data, f) {
+      this.prints.delete(data); this.prints.set(data, f);
+      while (this.prints.size > 4) this.prints.delete(this.prints.keys().next().value);
+    },
+    // Before a board file names its photo, the photo is in Photos: written if it isn't there, or isn't whole (it
+    // may be arriving from a device that wrote the same photo), and written again if it is a day old, so that
+    // cleanup (tidyPhotos) can't take a photo that a board names again. Otherwise one look, and nothing written.
+    // Throws as a send does (and then no board file names it).
+    async putPhoto(m) {
+      if (this.tidying) await this.tidying;
+      const f = await this.photoName(m), dir = await this.dir.getDirectoryHandle(LINK_PHOTOS, { create: true });
+      let have = null;
+      try { have = await (await dir.getFileHandle(f.file)).getFile(); } catch (e) { /* not there (yet) */ }
+      if (!have || have.size !== f.size || Date.now() - have.lastModified > 864e5) await this.writeFile(f.file, await (await fetch(m.data)).blob(), dir);
+      return { file: f.file, w: m.w, h: m.h, bytes: m.bytes, name: m.name, addedAt: m.addedAt };
+    },
+    // A photo from Photos. Anyone with the folder can put a file there, so it must be what a photo added here is: a
+    // JPEG, PNG or WebP by its first bytes (not its name), whole (its bytes have the fingerprint it is named by),
+    // within the same limits (validPhoto, 6.5 MP), and one that opens. null while it isn't here, or if it isn't
+    // good (then it isn't read again until it changes).
+    async readPhoto(ref) {
+      let f;
+      try { f = await (await (await this.dir.getDirectoryHandle(LINK_PHOTOS)).getFileHandle(ref.file)).getFile(); } catch (e) { return null; }
+      const bad = this.badPhotos.get(ref.file);
+      if (bad && bad.size === f.size && bad.lastModified === f.lastModified) return null;
+      const no = () => { this.badPhotos.set(ref.file, { size: f.size, lastModified: f.lastModified }); return null; };
+      if (!f.size || f.size > 11.9e6) return no();   // (as a data URL it must stay under 16e6 characters)
+      let buf;
+      try { buf = await f.arrayBuffer(); } catch (e) { return null; }   // (Google Drive hasn't brought its content yet)
+      const b = new Uint8Array(buf.slice(0, 12)), is = (i, s) => Array.from(s).every((c, k) => b[i + k] === c.charCodeAt(0));
+      const type = is(0, '\xff\xd8\xff') ? 'jpeg' : is(0, '\x89PNG\r\n\x1a\n') ? 'png' : is(0, 'RIFF') && is(8, 'WEBP') ? 'webp' : '';
+      if (!type || await this.digest(buf) !== ref.file.slice(0, 32)) return no();   // (not a picture, or not all of it yet)
+      const blob = new Blob([buf], { type: 'image/' + type });
+      let w = 0, h = 0;
+      try { const bmp = await createImageBitmap(blob); w = bmp.width; h = bmp.height; if (bmp.close) bmp.close(); } catch (e) { return no(); }
+      if (w * h > PHOTO_MAX_PIXELS * 1.01) return no();   // (a photo made here can be a little over, by rounding)
+      const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
+      const m = { data, w, h, bytes: buf.byteLength, name: ref.name, addedAt: ref.addedAt || Date.now() };
+      if (!validPhoto(m)) return no();
+      this.print(data, { file: ref.file, size: buf.byteLength, w, h });
+      return m;
+    },
+    // A sent file names its photo (p.photoRef): this device's own photo if it is that one (then nothing is read), or
+    // the one in Photos. p.photo is then that picture. It stays null while the photo isn't here or isn't good: the
+    // board keeps the photo it has meanwhile (see loaded and wantPhoto).
+    async photoIn(p) {
+      const ref = p.photoRef;
+      if (!ref || p.photo) return p;
+      try {
+        const mine = BoardPhoto.media();
+        if (mine) await this.photoName(mine);
+        for (const [data, f] of this.prints) if (f.file === ref.file) { p.photo = { data, w: f.w, h: f.h, bytes: f.size, name: ref.name, addedAt: ref.addedAt || Date.now() }; return p; }
+        if (this.dir && this.perm === 'granted') p.photo = await this.readPhoto(ref);
+      } catch (e) { console.warn('21Board: the background photo couldn’t be read', e); }
+      return p;
+    },
+    // The photo this board is waiting for (rec.want: the version loaded here names one that wasn't here yet), while
+    // the photo on this device is still the one it kept then. A photo put on or removed here since is this
+    // device's own, and wins. (rec: the board shown.)
+    wanted(rec) {
+      const w = rec && rec.want;
+      return w && w.ref && w.keep === (BoardHistory.photoKeyOf(BoardPhoto.media()) || '') ? w : null;
+    },
+    // Google Drive often brings the small board file before its photo. The board is then loaded with the photo it
+    // had here, and the photo it names is looked for at each check (once it has had LINK_ARRIVE_MS, once a minute),
+    // and put on when it is here. That isn't a change to send: the board is still the version that was loaded.
+    async wantPhoto() {
+      const uid = S.board.uid, rec = this.boardRec(uid);
+      if (!rec || !rec.want || this.busy || this.loading) return;
+      const want = this.wanted(rec);
+      if (!want) { this.setBoardRec(uid, { want: null }); return; }
+      if (this.overdue({ since: want.since || 0 }) && Date.now() - this.photoAt < 60000) return;
+      this.photoAt = Date.now();
+      const m = await this.readPhoto(want.ref).catch(e => { console.warn('21Board: the background photo couldn’t be read', e); return null; });
+      // (Not if anything changed meanwhile: another page, a send or load, the photo here.)
+      if (!m || S.board.uid !== uid || this.busy || this.loading || !sameJSON(this.boardRec(uid).want, rec.want) || !this.wanted(rec)) return;
+      this.loading = true;
+      try {
+        const was = await this.same(this.boardRec(uid)), b = S.boardId;
+        if (S.board.uid !== uid) return;
+        S.media.set('background', m); S.media.set('background-look', want.look);
+        Writer.put(Keys.media(b, 'background'), 'media', m);
+        Writer.put(Keys.media(b, 'background-look'), 'media', want.look);
+        BoardPhoto.render();
+        const patch = { want: null };
+        if (was) { const sig = await this.sig(); patch[this.boardRec(uid).sentSig ? 'sentSig' : 'loadedSig'] = sig; this.comparedAt = Date.now(); }
+        this.setBoardRec(uid, patch);
+      } finally { this.loading = false; }
+    },
+    // Photos no board file names any more are deleted after about a week: only when every board file in the folder
+    // could be read (one still arriving may name it), the photo is over LINK_PHOTO_KEEP_MS old (a device that names
+    // it again writes it again: putPhoto), and this device has found it unnamed on two looks at least an hour
+    // apart. At most once a day, after a good look at the folder. (Copies Google Drive makes, "… (1).jpg", are
+    // never named, so they go too. Anything else in Photos is left alone.) A photo deleted too soon is written
+    // again by the next send of a device that has it.
+    async tidyPhotos() {
+      const t = this.st.tidy || {}, now = Date.now(), gen = this.gen;
+      if (now - (t.at || 0) < 20 * 36e5 || this.tidying || this.busy || this.unread.size || this.found.some(f => f.photo === undefined)) return;
+      const named = new Set(this.found.map(f => f.photo)), was = t.seen || {}, seen = {};
+      let done;
+      this.tidying = new Promise(r => { done = r; });   // (a send that names a photo meanwhile waits: see putPhoto)
+      try {
+        let dir = null;
+        try { dir = await this.dir.getDirectoryHandle(LINK_PHOTOS); } catch (e) { /* none yet */ }
+        if (dir) for await (const [name, h] of dir.entries()) {
+          if (h.kind !== 'file' || !/^[0-9a-f]{32}( \(\d+\))?\.(jpg|png|webp)$/.test(name) || named.has(name)) continue;
+          let f;
+          try { f = await h.getFile(); } catch (e) { continue; }   // (still arriving: new)
+          if (now - f.lastModified < LINK_PHOTO_KEEP_MS) continue;
+          if (was[name] && now - was[name] >= 36e5) { try { await dir.removeEntry(name); } catch (e) { /* gone already */ } }
+          else seen[name] = was[name] || now;
+        }
+      } catch (e) { console.warn('21Board: the Photos folder couldn’t be tidied', e); Object.assign(seen, was); }
+      finally { this.tidying = null; done(); }
+      if (gen === this.gen && this.dir) this.saveState({ tidy: { at: now, seen } }, true);   // (Settings doesn't show it)
+    },
     // "Send automatically" sends once the board has been left alone for this long.
     wait() { return this.waits.now; },
     // When this board last changed on this device, in any tab or session (a record's revision is the time it
@@ -5832,7 +6000,9 @@
       const s = p.sent || {}, vid = this.vidOf(p.sent);
       const loadedSig = await this.sig();
       await this.remember(uid, vid, Object.assign({ loadedSentAt: s.at || Date.now(), loadedFrom: s.from || '', loadedSig, sentSig: null, setupSig: null, headId: vid || null, headMine: !!vid && s.by === (this.st.device || {}).id,
-        mine: Object.assign({}, s.mine || {}, s.by && vid ? { [s.by]: vid } : {}) }, p.photo ? { photo: true } : p.noPhoto ? { photo: false } : {}, patch), gen);
+        mine: Object.assign({}, s.mine || {}, s.by && vid ? { [s.by]: vid } : {}) }, p.photo || p.photoRef ? { photo: true } : p.noPhoto ? { photo: false } : {},
+        // want: the photo it names, if it isn't here yet (the board kept the photo it had: see wantPhoto).
+        { want: p.photoRef && !p.photo ? { ref: p.photoRef, look: p.photoLook || normalizePhotoSettings({}), keep: BoardHistory.photoKeyOf(BoardPhoto.media()) || '', since: Date.now() } : null }, patch), gen);
       this.comparedAt = Date.now();
       this.unstuck();
     },
@@ -5890,6 +6060,7 @@
         }
         // The file may have changed while the dialog was open: load what's there now.
         try { const raw2 = await this.readFile(name); if (raw2 !== raw) parsed = parseBoardFile(raw2); } catch (e) { /* keep what was read */ }
+        await this.photoIn(parsed);   // (the photo it names: this device's own, the one in Photos, or later, see wantPhoto)
         const s2 = parsed.sent || {}, vid = this.vidOf(parsed.sent);
         // Only a sent file joins this device to that board (a plain Export saved in the folder doesn't).
         // (Nor a board that is another page here: this page becomes a copy of it, with an id of its own.)
@@ -5902,7 +6073,7 @@
         await this.loaded(newUid, parsed, { file: name, also: Array.from(new Set((was.also || []).concat(was.file || []))).filter(n => n !== name) }, gen);
         loaded = true;
         this.computeOffer();
-        toast(`Loaded “${S.board.name}”${s2.from ? ' from ' + s2.from : ''}.`, undoAction(undoId, 'loading it'));
+        toast(`Loaded “${S.board.name}”${s2.from ? ' from ' + s2.from : ''}.` + (parsed.photoRef && !parsed.photo ? ' Its background photo follows once Google Drive brings it.' : ''), undoAction(undoId, 'loading it'));
         return true;
       } finally {
         this.loading = false;
@@ -5912,7 +6083,7 @@
     // Before loading over changes made here: keep them in the folder as a separate board.
     async saveCopy() {
       try {
-        const name = await this.writeCopy(this.photoRule(await buildExport('full')));
+        const name = await this.writeCopy(await this.photoRule(await buildExport('full'), false, this.wanted(this.boardRec(S.board.uid))));
         toast(`Kept a copy of this board in your folder: “${name.replace(/\.21board$/i, '')}”.`);
         return true;
       } catch (err) {
@@ -5927,7 +6098,7 @@
     forget() {
       this.gen++;   // writes already under way won't save anything back
       clearTimeout(this.autoT); this.autoT = 0;
-      this.dir = null; this.perm = 'none'; this.found = []; this.names = new Set(); this.cache.clear(); this.unread.clear();
+      this.dir = null; this.perm = 'none'; this.found = []; this.names = new Set(); this.cache.clear(); this.unread.clear(); this.badPhotos.clear();
       this.trouble = this.failed = null; this.unsent = false; this.comparedAt = this.checkedAt = 0; this.owned.clear();
       this.st = { device: null, auto: false, photo: true, boards: {} };
       this.setOffer(null);
