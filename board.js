@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.16-1';
-  const BOARD_BUILD = 'caa573c4';
+  const BOARD_BUILD = '5dda58dc';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4480,7 +4480,13 @@
           this.render();
           break;
         }
-        case 'link-setup': await Link.setup(); this.render(); break;
+        case 'link-setup': {   // (Board Sync's setup, section 13b) Boards it found from the other devices are shown open.
+          const linked = await Link.setup();
+          if (linked && Link.found.some(f => f.kind === 'full' && f.uid !== S.board.uid)) this.groups.add('boards');
+          this.render();
+          if (this.groups.has('boards')) this.reveal('boards');
+          break;
+        }
         case 'link-choose': await Link.choose(); this.render(); break;
         case 'link-unlink': {
           const ok = await dialog({ title: `Unlink the “${Link.dir ? Link.dir.name : ''}” folder?`, message: 'This device stops sending to it and checking it. The files in it are left as they are.', actions: [{ label: 'Unlink', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
@@ -6817,7 +6823,7 @@
     modal.classList.add('open');
     const field = input ? $('input', card) : null;
     const first = field || $('.btn', card);
-    if (first) first.focus();
+    if (first) first.focus({ preventScroll: true });   // (a card taller than the screen, at a large size, opens at its title)
     return new Promise(resolve => {
       const answer = v => (field ? (v == null ? null : { value: v, text: field.value.trim() }) : v);
       dialogResolve = v => { dialogResolve = null; dialogHeld = true; modal.classList.remove('open'); dialogBack(back); resolve(answer(v)); };

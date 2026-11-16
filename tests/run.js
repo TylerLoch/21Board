@@ -6303,6 +6303,13 @@ const SUITES = [
     await p.screenshot({ path: OUT + '96-board-sync-setup.png' });
     await modal(p, 'Cancel'); await p.waitForTimeout(300);
     ok(!await p.locator('#modal.open').count() && await linked(p) === '' && await L(p, () => !(window.__picks || []).length) && await p.locator('#settings [data-act="link-setup"]').count() === 1, 'Cancel: no folder picker, nothing linked, and Settings is as it was');
+    // At the largest size of windows and menus the card is taller than the screen: it scrolls, and opens at its title.
+    const scale = await L(p, () => window.__board21.state.board.scale || 0.8);
+    await L(p, () => window.__board21.setBoardScale(2)); await p.waitForTimeout(300);
+    await p.click('#settings [data-act="link-setup"]'); await asking(p, 'Set up Board Sync');
+    const big = await L(p, () => { const c = document.querySelector('#modal.open .modal-card'); return { top: c.scrollTop, scrolls: c.scrollHeight > c.clientHeight + 4, focus: document.activeElement.textContent }; });
+    ok(big.top === 0 && big.scrolls && big.focus === 'Choose folder…', `at 200% the card scrolls and opens at its title, with the keyboard on Choose folder… (${JSON.stringify(big)})`);
+    await modal(p, 'Cancel'); await L(p, s => window.__board21.setBoardScale(s), scale); await p.waitForTimeout(300);
 
     // ---- The picker is closed without a folder, or fails.
     await L(p, () => { window.__drive = { pickFails: 'AbortError' }; });
@@ -6322,7 +6329,8 @@ const SUITES = [
     await modal(p, 'Send this board now');
     ok(await eventually(async () => await names('Empty') === 'About this folder.txt,My Board.21board') && await eventually(async () => await toasts('Sent “My Board” to your “Empty” folder') === 1),
       'Send this board now sends it (beside the note about the files)');
-    ok(await p.locator('#settings [data-act="link-choose"]').count() === 1 && await p.locator('#settings [data-act="link-setup"]').count() === 0, 'Settings then shows the linked folder (Change…)');
+    ok(await p.locator('#settings [data-act="link-choose"]').count() === 1 && await p.locator('#settings [data-act="link-setup"]').count() === 0 && await p.locator('#settings [data-act="group"][data-val="boards"]').getAttribute('aria-expanded') === 'false',
+      'Settings then shows the linked folder (Change…, in Folder settings), with Boards from other devices closed (none there)');
     await unlink(p);
 
     // ---- A folder with other things in it (My Drive itself).
@@ -6426,8 +6434,8 @@ const SUITES = [
     ok(/It already has a board from your other devices: you’ll find it in Settings › Board Sync\./.test(await said(B.p)) && !/Now set up/.test(await said(B.p)), 'and the last step says that a board from the other device is there');
     await B.p.screenshot({ path: OUT + '97-board-sync-found.png' });
     await modal(B.p, 'Done'); await B.p.waitForTimeout(400);
-    await settings(B.p, ['boards']);
-    ok(await B.p.locator('#settings [data-act="link-load"][data-val="My Board.21board"]').count() === 1 && await B.p.locator('#settings [data-act="link-load"][data-val="My Board.21board"]').isVisible(), 'Settings lists it under Boards from other devices, with Load');
+    ok(await B.p.locator('#settings [data-act="group"][data-val="boards"]').getAttribute('aria-expanded') === 'true' && await B.p.locator('#settings [data-act="link-load"][data-val="My Board.21board"]').isVisible(),
+      'Settings then shows it, open under Boards from other devices, with Load');
     // Set up again with a newer version of the board on screen waiting in the folder: the message on the board
     // offers it as usual, and the last step points to it (and doesn't offer to send over it).
     await L(B.p, () => { window.__board21.link.load('My Board.21board'); }); await modal(B.p, 'Replace this board'); await B.p.waitForTimeout(1500);
