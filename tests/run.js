@@ -6415,9 +6415,52 @@ const SUITES = [
     await B.p.setInputFiles('#import-input', { name: 'Math.21board', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(sentFile)) });
     await modal(B.p, 'Open as a new page');
     ok(await eventually(async () => await photoData(B.p) === orangeData) && await L(B.p, () => window.__reads) === 1, 'a file sent to the folder, opened with Import, gets the photo it names from the folder’s Photos');
-
-    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
+
+    // ---- Set up from Settings, as teachers do: Send automatically is on and the folder is looked at every 5 seconds.
+    // Nothing is sent by itself, photo included: not at set-up, not while a loaded board's photo is still arriving,
+    // and not when it comes (which happens at one of those looks, with nothing asked to look).
+    const X = await driveDevice(browser), Y = await driveDevice(browser);   // a laptop and a smartboard
+    for (const d of [X, Y]) { d.p.on('pageerror', e => errors.push(e.message)); await d.p.goto(BASE); await boardUp(d.p); await L(d.p, () => { const l = window.__board21.link; l.waits.now = 1000; l.waits.settle = 1000; }); }
+    const sentBoards = async p => Object.keys(await readFolder(p)).filter(n => n.endsWith('.21board')).sort().join();
+    await L(X.p, () => window.__board21.openWidget('notes')); await X.p.waitForTimeout(1200);
+    await fillNote(note(X.p), 'Art'); await X.p.waitForTimeout(300);
+    await renamePage(X.p, 'Math');
+    await addPhoto(X.p, '#9b5de5', 'purple.png');
+    await openSettings(X.p); await setUpSync(X.p); await X.p.keyboard.press('Escape');
+    await X.p.waitForTimeout(3000);
+    ok(await L(X.p, () => window.__board21.link.st.auto) && await sentBoards(X.p) === '' && !await readPhotos(X.p), 'set up from Settings, Send automatically is on, and neither the board nor its photo is sent by itself');
+    await fillNote(note(X.p), 'Art, first lesson');
+    ok(await eventually(async () => (await boardFile(X.p)).media.background.file && Object.keys(await readPhotos(X.p) || {}).length === 1),
+      'a real change sends the board by itself, its photo going in Photos');
+    const violet = (await boardFile(X.p)).media.background.file, xv1 = (await boardFile(X.p)).sent.id;
+    await L(Y.p, () => window.__board21.openWidget('notes')); await Y.p.waitForTimeout(1200);
+    await fillNote(note(Y.p), 'The smartboard’s own'); await Y.p.waitForTimeout(300);
+    await addPhoto(Y.p, '#f15bb5', 'pink.png');
+    const ownData = await photoData(Y.p);
+    await drive(X.p, Y.p, { photos: false });   // (Google Drive brings the board file first)
+    await openSettings(Y.p); await setUpSync(Y.p); await Y.p.keyboard.press('Escape');
+    await Y.p.waitForTimeout(6000);
+    ok(await L(Y.p, () => window.__board21.link.st.auto) && await sentBoards(Y.p) === 'Math.21board' && (await boardFile(Y.p)).sent.id === xv1 && !await readPhotos(Y.p),
+      'the smartboard, set up against that folder, sends nothing by itself either: not its own board, nor its own photo');
+    ok(await load(Y.p, 'Replace this board') && await noteText(Y.p) === 'Art, first lesson' && await photoData(Y.p) === ownData && !!(await rec(Y.p)).want,
+      'Load shows the laptop’s board, with the smartboard’s photo while the laptop’s is still arriving');
+    await Y.p.waitForTimeout(6000);
+    ok((await boardFile(Y.p)).sent.id === xv1 && !await readPhotos(Y.p), 'while it waits for the photo, nothing is sent (and the photo it kept isn’t written)');
+    await writePhotos(Y.p, await readPhotos(X.p));
+    ok(await eventually(async () => await photoData(Y.p) === await photoData(X.p), 12000), 'the photo is put on once it arrives, at a look every 5 seconds (nothing asked to look)');
+    await Y.p.waitForTimeout(4000);
+    ok((await boardFile(Y.p)).sent.id === xv1 && Object.keys(await readPhotos(Y.p)).join() === violet && !(await rec(Y.p)).want, 'and that isn’t sent: the board is still the version loaded');
+    await L(Y.p, () => { const d = window.__board21.link.dir, g = d.getDirectoryHandle, n = window.__n = { subfolders: 0 }; d.getDirectoryHandle = function () { n.subfolders++; return g.apply(this, arguments); }; });
+    await Y.p.waitForTimeout(11000);
+    ok(await L(Y.p, () => window.__n.subfolders) === 0, 'with no photo to wait for, the looks every 5 seconds don’t look in Photos');
+    const stampY = () => L(Y.p, async n => (await (await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getDirectoryHandle('Photos')).getFileHandle(n)).getFile()).lastModified, violet);
+    const tY = await stampY();
+    await fillNote(note(Y.p), 'Art, from the smartboard');
+    ok(await eventually(async () => JSON.stringify(await boardFile(Y.p)).includes('Art, from the smartboard')) && (await boardFile(Y.p)).media.background.file === violet && Object.keys(await readPhotos(Y.p)).join() === violet && await stampY() === tY,
+      'a real change on the smartboard is sent by itself, naming the photo already in Photos (not written again)');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await X.c.close(); await Y.c.close();
   }],
   ['Board Sync: when the folder can’t be used', async (browser) => {
     const note = p => p.frameLocator('.win[data-ikey="notes:1"] iframe');
