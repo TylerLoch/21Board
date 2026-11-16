@@ -240,7 +240,9 @@ this device's board when deciding whether an old device file can go.
 
 **The folder** holds one file per device, `21Board (<this device's name>) [<4 id characters>].21board` (8 when
 another device's file has that name; Google Drive's copies, `… (1).21board`, are read too), each written only by
-its own device; `Photos/`; `Board history/`; and `About this folder.txt`. Other files are left alone.
+its own device; `Photos/`; `Board history/`; and `About this folder.txt`. Other files are left alone. A device
+renamed (set-up's last step, Settings → Board Sync) writes its file under the new name at its next write, then
+deletes the old one.
 
 **A device file** is an all-pages backup (see "The .21board file": Import opens it) with, for each page's `board`
 and each instance, `v`: the version of each part; instances also carry `wid` (and `copyOf` on a labelled copy),

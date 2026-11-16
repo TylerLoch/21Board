@@ -607,7 +607,7 @@ section **6a. Board shape and scale** in `board.js`; see also docs/DATA-FORMAT.m
 ```bash
 npm install --no-save playwright && npx playwright install chromium
 node tests/run.js            # all suites
-node tests/run.js offline    # just one suite (matches the suite title)
+node tests/run.js offline    # only the suites whose title contains "offline"
 ```
 
 The *District apps* suite uses stand-ins for 21Sketch, 21Timer and 21DocCam; the tests never reach their real sites.
