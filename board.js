@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.16-3';
-  const BOARD_BUILD = '4d4e74b5';
+  const BOARD_VERSION = '2026.11.16-4';
+  const BOARD_BUILD = '2d840d99';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4330,6 +4330,9 @@
   // Not linked: one row, whose Set up… starts the setup (Link.setup, section 13b).
   // Linked: what is wrong, if anything (as the note on the board says), then three rows: the folder, with how
   // syncing is going (Link.status) and Change… and Unlink; this device's name; history copies in the folder.
+  // "Syncing…" goes after the folder's name (Link.syncing), on a title line across the whole row (beside Change… and
+  // Unlink it doesn't fit), its room kept while it's hidden: neither the title nor the line below it changes size as
+  // changes go out, and nothing below Board Sync moves. (Not a live region: it comes and goes every few seconds.)
   function linkSettings(sw) {
     const L = Link;
     if (!L.dir) {
@@ -4344,15 +4347,17 @@
     const H = BoardHistory;
     return `<h3>Board Sync</h3>
       ${warn}
-      <div class="row"><div><div class="lbl">Synced through “${esc(L.dir.name)}”</div><div class="hint" id="set-link-status">${esc(L.status())}</div></div>
+      <div class="row link-folder"><div class="lbl">Synced through “${esc(L.dir.name)}” <span class="link-syncing${L.syncing() ? ' on' : ''}" id="set-link-syncing">Syncing…</span></div><div class="hint" id="set-link-status">${esc(L.status())}</div>
         <div class="btns"><button class="btn small" data-act="link-choose">Change…</button><button class="btn small" data-act="link-unlink">Unlink</button></div></div>
       <div class="row stack"><label class="lbl" for="set-link-label">This device’s name <span class="hint">(shown on your other devices)</span></label>
         <input type="text" class="text-input" id="set-link-label" maxlength="40" value="${esc(dev.label)}" autocomplete="off"></div>
       ${H.enabled() ? `<div class="row"><div><div class="lbl">Keep history copies in the folder</div><div class="hint">About hourly, so you can go back even if this device is reset.${H.folderStatus ? ' ' + esc(H.folderStatus) : ''}</div></div>${sw('hist-folder', S.settings.historyFolder !== false, 'Keep history copies in the folder')}</div>` : ''}`;
   }
 
-  // Settings' HTML without Board Sync's status line, which is put in place (Settings.putStatus).
-  const noStatus = h => h.replace(/<div class="hint" id="set-link-status">[\s\S]*?<\/div>/, '');
+  // Settings' HTML without what is put in place: Board Sync's status line and "Syncing…" shown or not (putStatus), and
+  // when the last backup was (refreshStatus: each write of this device's file counts as one, see writeOwn).
+  const noStatus = h => h.replace(/<div class="hint" id="set-link-status">[\s\S]*?<\/div>/, '').replace('<span class="link-syncing on"', '<span class="link-syncing"')
+    .replace(/<div class="hint" id="st-backup">[^<]*<\/div>/, '');
 
   const Settings = {
     el: null,
@@ -4362,12 +4367,12 @@
     groups: new Set(),   // the groups open now (settingsGroup): none each time Settings opens
     linkShown: '',       // the Board Sync section as last drawn
     drawn: '',           // all of Settings as last drawn (see refresh)
-    statusMin: 0,        // the status line's height while Settings is open (see keepStatus); null: just opened
+    syncingOff: 0,       // "Syncing…" goes in a moment (see putStatus)
 
     // What Settings shows of Board Sync is no longer what it shows now (after a look at the folder: Link.redraw).
     linkChanged() { return Link.supported && linkSettings(switchHTML, segHTML) !== this.linkShown; },
-    // Board Sync changed while Settings is open: only the status line (the usual case) is put in place, so a screen
-    // reader, a tap and a name being typed aren't disturbed; anything else draws Settings again.
+    // Board Sync changed while Settings is open: only the status line and "Syncing…" (the usual case) are put in
+    // place, so a screen reader, a tap and a name being typed aren't disturbed; anything else draws Settings again.
     linkRefresh() {
       if (!this.linkChanged()) return;
       const html = linkSettings(switchHTML), el = $('#set-link-status', this.body);
@@ -4378,17 +4383,16 @@
     // the status line put in place otherwise. (Each merge drew it two or three times: a screen reader read the control
     // it was on again, and a tap whose press and release straddled a drawing was lost.)
     refresh() { this.render(false, true); },
-    // The status line never gets shorter while Settings is open: Board Sync is first, so every row below would move
-    // under a finger each time it says "Syncing…" and then "Up to date…" again. (Measured afresh each time it opens.)
-    keepStatus() {
-      const el = $('#set-link-status', this.body);
-      if (this.statusMin === null) this.statusMin = 0;
-      else if (el) this.statusMin = Math.max(this.statusMin, el.offsetHeight);
-    },
     putStatus(el) {
-      this.keepStatus();
-      if (this.statusMin) el.style.minHeight = this.statusMin + 'px';
-      el.textContent = Link.status();
+      const t = Link.status();
+      if (el.textContent !== t) el.textContent = t;   // (only a change: nothing for a screen reader to notice otherwise)
+      const s = $('#set-link-syncing', this.body);
+      if (!s) return;
+      // "Syncing…" shows at once, and goes only once nothing has been on its way for a moment: a write is followed at
+      // once by a change of its own (when the last backup was), which would make it blink.
+      clearTimeout(this.syncingOff);
+      if (Link.syncing()) s.classList.add('on');
+      else if (s.classList.contains('on')) this.syncingOff = setTimeout(() => { if (!Link.syncing()) s.classList.remove('on'); }, 600);
     },
 
     init() {
@@ -4494,7 +4498,6 @@
       this.el.classList.add(this.side, 'open');
       this.groups = opts.again ? groups : new Set();   // (every group starts closed)
       this.isOpen = true;
-      this.statusMin = null;
       this.render();
       if (opts.again) this.body.scrollTop = top;
       if (keep) HistorySheet.move(this.side);
@@ -4605,10 +4608,7 @@
         if (line) this.putStatus(line);
         this.drawn = html; this.refreshStatus(true); return;
       }
-      this.keepStatus();
       this.body.innerHTML = this.drawn = html;
-      const line = $('#set-link-status', this.body);
-      if (line && this.statusMin) line.style.minHeight = this.statusMin + 'px';
       if (was) {
         const again = $$(`[data-act="${CSS.escape(was.dataset.act)}"]`, this.body).find(b => b.dataset.val === was.dataset.val);
         if (again) again.focus({ preventScroll: true });
@@ -4622,12 +4622,18 @@
       this.refreshStatus(true);
     },
 
-    // The amber dot on Advanced: no backup in the last week, or the browser hasn't promised to keep 21Board's data
-    // (once it has answered). Settings → Advanced → Backups and storage says which.
+    // The amber dot on Advanced: only a backup overdue, so making one clears it: none in the last week, or never one
+    // and the board has had windows for a week (an empty or brand-new board has nothing to lose yet, as
+    // maybeRemindBackup judges). Whether the browser has promised to keep 21Board's data is said inside Advanced
+    // (Protected storage), not with the dot: in an ordinary Chrome tab it can't be cleared, and a dot that can't be
+    // cleared is soon ignored.
     needsLook() {
       if (LAB) return false;
-      const t = S.settings.lastBackupAt;
-      return !t || Date.now() - t > 7 * DAY || !['granted', 'unknown'].includes(Persist.state);
+      const t = S.settings.lastBackupAt, now = Date.now();
+      if (t) return now - t > 7 * DAY;
+      let oldest = Infinity;
+      for (const i of S.insts.values()) oldest = Math.min(oldest, i.createdAt || Infinity);
+      return now - oldest > 7 * DAY;
     },
 
     // A group opened: as much of it in view as fits, with its own row still showing.
@@ -5415,7 +5421,7 @@
     listed: new Set(),  // every .21board name in the folder at the last look, lowercased
     peers: {},          // device key -> {peer (Merge.decode), seq, name, at, file, left, folder}: its newest file that passed every check
     photoDirs: [],      // Photos, and any Photos (n) Google Drive made beside it
-    started: false, running: null, again: null, timers: { full: 0, send: 0 }, fullAt: 0, firstChange: 0, gen: 0, lastCheck: 0, loading: false,
+    started: false, running: null, again: null, timers: { full: 0, send: 0 }, fullAt: 0, firstChange: 0, carrying: false, gen: 0, lastCheck: 0, loading: false,
     owed: false,        // the last round held something back: the next look runs one (see check)
     dailyAt: 0,         // the last daily tidying (see daily)
     hcache: new Map(),  // the fingerprints of the records' parts, by revision, kept between rounds (Merge.read)
@@ -5990,9 +5996,10 @@
       if (!this.dir || !this.sync) return;
       if (!opts.name && !keys.some(k => /^(board|inst|data|conf|media|settings)$/.test(Keys.parse(k).kind))) return;
       if (opts.now) { this.urgent = true; this.want('full', 0); return; }
-      const now = Date.now();
+      const now = Date.now(), was = this.syncing();
       if (!this.firstChange) this.firstChange = now;
       this.want('full', Math.max(0, Math.min(this.waits.quiet, this.firstChange + this.waits.max - now)), true);
+      if (!was) this.redraw(true);   // ("Syncing…" in Settings at once, not at the next look)
     },
     // A round of this kind in delay ms ('full': read, merge and write; 'send': stamp and write only). The sooner one
     // wins, except that a change here puts a full round off until the changes stop (later).
@@ -6003,28 +6010,31 @@
       if (kind === 'full') this.fullAt = at;
       this.timers[kind] = setTimeout(() => { this.timers[kind] = 0; this.round(kind); }, delay);
     },
-    stopTimers() { clearTimeout(this.timers.full); clearTimeout(this.timers.send); this.timers = { full: 0, send: 0 }; this.firstChange = 0; },
+    stopTimers() { clearTimeout(this.timers.full); clearTimeout(this.timers.send); this.timers = { full: 0, send: 0 }; this.firstChange = 0; this.carrying = false; },
     // A round, under the Web Lock: one tab per device at a time. If another tab holds it, this one tries again in a
     // moment (that tab's result reaches this one through the sync channel). One at a time in this tab, too: a round
     // asked for while one runs follows it.
     async round(kind = 'full') {
       if (!this.ready()) return;
       if (this.running) { if (kind === 'full' || !this.again) this.again = kind; return this.running; }
+      // (a round that takes changes made here out: "Syncing…" until it has, also while it reads the folder or is put off)
+      this.carrying = this.carrying || kind === 'send' || !!this.firstChange;
       if (kind === 'full') { clearTimeout(this.timers.full); this.timers.full = 0; this.firstChange = 0; }
       const run = this.running = (async () => {
         try {
           await this.locked(async lock => {
             if (!lock) { this.want(kind, this.waits.quiet); return; }
-            await this.roundLocked(kind);
+            let later = false;
+            try { later = await this.roundLocked(kind) === 'later'; } finally { if (!later) this.carrying = false; }
           }, true);
         } catch (err) { console.warn('21Board: a Board Sync round didn’t finish', err); }
       })();
       this.redraw(true);
       try { await run; } finally {
         this.running = null;
-        this.redraw(true);
         const next = this.again; this.again = null;
         if (next && this.ready()) this.want(next, 0);
+        this.redraw(true);   // (after the next one is asked for: "Syncing…" doesn't blink between them)
       }
     },
     ready() { return !!(this.dir && this.perm === 'granted' && Store.loaded && !Store.lost && !Store.failed && !Writer.failing); },
@@ -6034,7 +6044,7 @@
       const gen = this.gen;
       for (let i = 0; this.loading && i < 150; i++) await sleep(100);   // (an Import, a going back or an Undo: see swap)
       const settled = await Writer.settled(kind === 'send' ? 500 : 2000);
-      if (!settled && kind === 'full') { this.want('full', this.waits.quiet); return; }   // (a change still being saved: the round follows it)
+      if (!settled && kind === 'full') { this.want('full', this.waits.quiet); return 'later'; }   // (a change still being saved: the round follows it)
       for (let tries = 0; tries < 3; tries++) {
         if (gen !== this.gen || !this.ready()) return;
         if (await this.attempt(kind, gen) !== 'again') return;
@@ -6753,12 +6763,12 @@
       FolderNote.update();
     },
 
-    // ---- what Settings says (spec §8.2): how things stand, who else is there, anything waiting
+    // ---- what Settings says (spec §8.2): how things stand, who else is there, anything waiting. ("Syncing…" isn't in
+    // it: it goes beside the folder's name, see syncing, so the line changes only when how things stand does.)
     status() {
       const sync = this.sync || {}, now = Date.now(), out = [];
       const arriving = Array.from(this.files.values()).filter(f => f.bad && (f.devish || f.dev) && now - f.bad >= this.waits.idle);
-      if (this.writing || this.firstChange || this.timers.send) out.push('Syncing…');   // (changes here on their way: not a look at the folder)
-      else if (this.trouble && this.trouble.kind === 'send' && this.trouble.code === 'readonly') out.push('This folder can only be viewed: changes from your other devices show here, but changes made here stay on this device.');
+      if (this.trouble && this.trouble.kind === 'send' && this.trouble.code === 'readonly') out.push('This folder can only be viewed: changes from your other devices show here, but changes made here stay on this device.');
       else if (this.newer) out.push(`${cap(this.newer)} uses a newer 21Board. Update 21Board on this device to keep syncing.`);
       else if (sync.mode) out.push('Waiting for Google Drive to bring the board in this folder.');
       else if (arriving.length) {   // (the device's name as it gave it: a file's name drops "the", "a", "an")
@@ -6788,6 +6798,10 @@
       if (this.checkedAt && !this.problem() && this.running && now - this.lookingSince > 15e3 && now - this.checkedAt > LINK_STALE_MS) out.push(`Folder last checked ${when(this.checkedAt)}.`);
       return out.join(' ');
     },
+
+    // Changes made here are on their way to the folder: Settings says "Syncing…" beside the folder's name. (Not a look
+    // at the folder: that happens every few seconds, and would flash it.)
+    syncing() { return !!(this.writing || this.firstChange || this.timers.send || this.carrying); },
 
     // ---- startup: look now, when 21Board comes back to the front, and every few seconds while it is in front.
     // Hidden (the lid closed, another app): this device's changes are written at once, before reading anything.

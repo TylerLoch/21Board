@@ -11,17 +11,17 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.16-3';
+const VERSION = '2026.11.16-4';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '4d4e74b5';
+const BUILD = '2d840d99';
 const FILES = {
-  './': '109898e1a7d91a58',
-  'index.html': '109898e1a7d91a58',
-  'board.js': 'db2f8b9c96910b0a',
+  './': '1c9146daf9cf0198',
+  'index.html': '1c9146daf9cf0198',
+  'board.js': '2c8b8310f75a5267',
   'sdk/board21.js': 'ed09079b03d3c364',
   'sdk/board21-dev.js': '95479bed48fa2ec3',
-  'sdk/dev/board-shell.js': '650ae9b02dafa41d',
+  'sdk/dev/board-shell.js': '958d8ef00faff375',
   'sdk/lab.html': '21cda27716334794',
   'widgets/registry.js': '7a66e1e4c46b6d1e',
   'manifest.webmanifest': '3fddd4aac05d7279',
