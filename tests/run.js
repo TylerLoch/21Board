@@ -1239,10 +1239,10 @@ const SUITES = [
     const shapeRow = () => page.evaluate(() => { const r = document.querySelector('#settings [data-act="shape"]').closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
       return { section: h.textContent, label: r.querySelector('.lbl').textContent, hint: r.querySelector('.hint').textContent, choices: [...r.querySelectorAll('[data-act="shape"]')].map(b => b.textContent + (b.getAttribute('aria-checked') === 'true' ? ' (chosen)' : '')).join(', ') }; });
     let sr = await shapeRow();
-    ok(sr.section === 'Appearance' && sr.label === 'Board shape' && sr.choices === 'Widescreen, Fill (chosen)' && sr.hint === 'Uses the whole window. This page only.', `Settings → Appearance → Board shape: ${sr.choices} (“${sr.hint}”)`);
+    ok(sr.section === 'Appearance' && sr.label === 'Board shape' && sr.choices === 'Widescreen, Fill (chosen)' && sr.hint === 'Uses the whole window.', `Settings → Appearance → Board shape: ${sr.choices}, with only what the choice does (“${sr.hint}”: no “This page only.”)`);
     await page.click('#settings [data-act="shape"][data-val="16:9"]'); await page.waitForTimeout(300);
     sr = await shapeRow();
-    ok((await view(page)).board.shape === '16:9' && sr.choices === 'Widescreen (chosen), Fill' && sr.hint === 'Looks the same on every screen. This page only.', `Widescreen makes the board 16:9 again (“${sr.hint}”)`);
+    ok((await view(page)).board.shape === '16:9' && sr.choices === 'Widescreen (chosen), Fill' && sr.hint === 'Looks the same on every screen.', `Widescreen makes the board 16:9 again (“${sr.hint}”)`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await page.evaluate(() => window.__board21.setBoardShape('16:9')); await page.waitForTimeout(300);
     await page.click('#shape-hint [data-act="hide"]'); await page.waitForTimeout(200);
@@ -1435,15 +1435,26 @@ const SUITES = [
     const picked = () => page.evaluate(() => ({ name: document.getElementById('bg-color-name').textContent,
       chosen: [...document.querySelectorAll('#bg-block .swatches [role="radio"][aria-checked="true"]')].map(b => (b.dataset.act === 'bg' ? b.dataset.val : b.dataset.act) + (b.querySelector('.tick') ? '✓' : '')),
       custom: document.querySelector('#bg-block .swatch.custom').matches('.on') }));
-    // One set of choices: the theme's, the light colors, the dark colors, Custom… and Add photo… (no Color, Pattern
+    // One set of choices: the theme's, the light colors, the dark colors, Custom… and Photo… (no Color, Pattern
     // or Photo parts, no Light / Dark captions, no patterns). Paper and Sand are one Paper now.
     const set = await page.evaluate(() => { const g = document.querySelector('#bg-block [role="radiogroup"]');
       return { names: [...g.querySelectorAll('[data-act="bg"]')].map(b => b.getAttribute('aria-label') + (b.dataset.val ? ' ' + b.dataset.val : '')), pills: [...g.querySelectorAll('.pill')].map(b => b.textContent.trim()),
         parts: document.querySelectorAll('#bg-block .bg-sub, #bg-block .bg-cap, #bg-block .bg-part').length, patterns: document.querySelectorAll('#settings [data-act="pattern"]').length,
         scope: document.querySelector('#bg-block .bg-scope').textContent, groups: document.querySelectorAll('#bg-block [role="radiogroup"]').length }; });
     ok(set.groups === 1 && set.names.join() === 'Match the theme (light or dark),White #ffffff,Paper #f3ede1,Sky #e0f2fe,Mint #dcfce7,Blush #fce7f3,Lavender #ede9fe,Slate #334155,Chalkboard #1f3a2c,Navy #1e293b,Black #0a0a0a' &&
-      set.pills.join() === 'Custom…,Add photo…' && !set.parts && !set.patterns && set.scope === 'This page only.',
-      `Background is one set of choices, then Custom… and Add photo…; Paper is #f3ede1 and Sand is gone; no patterns (${set.names.length} colors, ${set.pills.join(', ')})`);
+      set.pills.join() === 'Custom…,Photo…' && !set.parts && !set.patterns && set.scope === 'This page only.',
+      `Background is one set of choices, then Custom… and Photo…; Paper is #f3ede1 and Sand is gone; no patterns (${set.names.length} colors, ${set.pills.join(', ')})`);
+    // Custom… and Photo… are two more choices on the dark colors' row: as tall as the swatches, after Black, inside
+    // Settings, in the same radio group (a screen reader hears one set). (row: where each sits, in screen px.)
+    const row = (p = page) => p.evaluate(() => { const g = document.querySelector('#bg-block [role="radiogroup"]'), box = e => e.getBoundingClientRect();
+      const black = box(g.querySelector('[data-val="#0a0a0a"]')), slate = box(g.querySelector('[data-val="#334155"]')), white = box(g.querySelector('[data-val="#ffffff"]')), body = box(document.querySelector('#settings .sheet-body'));
+      const pills = [...g.querySelectorAll('.pill')].map(e => { const b = box(e); return { name: e.textContent.trim(), top: b.top, h: b.height, left: b.left, right: b.right, inGroup: e.closest('[role="radiogroup"]') === g }; });
+      return { pills, black: { top: black.top, h: black.height, right: black.right }, slateLeft: slate.left, whiteTop: white.top, bodyRight: body.right };
+    });
+    const inLine = r => r.pills.length === 2 && r.pills.every(x => x.inGroup && Math.abs(x.top - r.black.top) < 1 && Math.abs(x.h - r.black.h) < 1 && x.right <= r.bodyRight) &&
+      r.pills[0].left > r.black.right && r.pills[1].left > r.pills[0].right && r.black.top > r.whiteTop;
+    let rw = await row();
+    ok(inLine(rw), `Custom… and Photo… sit on the dark colors' row, after Black, as tall as the swatches and in the same radio group (${JSON.stringify(rw.pills.map(x => [x.name, Math.round(x.left), Math.round(x.top), Math.round(x.h)]))}; Black at ${Math.round(rw.black.top)})`);
     let pk = await picked();
     ok(pk.name === 'Matches the theme' && pk.chosen.join() === '✓', `a new board matches the theme (${pk.name})`);
     await page.click('#settings [data-act="bg"][data-val="#1f3a2c"]'); await page.waitForTimeout(500);
@@ -1488,11 +1499,22 @@ const SUITES = [
     ok(live.desk === 'rgb(18, 52, 86)' && live.pv === live.desk && live.name === 'Custom color' && live.open, `a custom color shows at once, Settings staying as it is while choosing (${live.name})`);
     await page.locator('#set-bg-custom').evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true }))); await page.waitForTimeout(300);
     pk = await picked();
-    ok(pk.custom && await page.evaluate(() => !!document.querySelector('#bg-block .swatch.custom .tick')) && pk.chosen.length === 0, 'then Custom… is marked as the choice');
-    // Its color input is invisible, so the pill shows where the keyboard is.
+    ok(pk.custom && await page.evaluate(() => !!document.querySelector('#bg-block .swatch.custom .tick')) && pk.chosen.join() === 'bg-custom✓', `then Custom… is the choice: marked, and the one checked in the group (${pk.chosen.join()})`);
+    // For a screen reader it's one more choice in the set, checked now (its color input, under a finger, isn't heard).
+    const aria = await page.locator('#bg-block [role="radiogroup"]').ariaSnapshot();
+    ok(/- radio "Custom color" \[checked\]/.test(aria) && !/textbox|Custom background color/.test(aria) && (aria.match(/\[checked\]/g) || []).length === 1, `a screen reader hears Custom as a choice in Background, checked (${aria.replace(/\n\s*/g, ' ¶ ')})`);
+    // A tap lands on its color input (the device's own picker); the keyboard reaches the choice itself, which shows
+    // where the keyboard is, and Enter opens the same picker. Afterwards the keyboard is back on it.
+    ok(await page.evaluate(() => { const e = document.querySelector('#bg-block .swatch.custom'); e.scrollIntoView({ block: 'center' }); const b = e.getBoundingClientRect(); return document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2).id === 'set-bg-custom'; }), 'a tap on Custom… lands on its color input');
     await page.focus('#bg-block [data-act="bg"][data-val="#0a0a0a"]'); await page.keyboard.press('Tab');
-    ok(await page.evaluate(() => document.activeElement.id === 'set-bg-custom' && getComputedStyle(document.activeElement.closest('.swatch')).outlineStyle === 'solid'), 'Tab reaches Custom…, and it shows the keyboard focus');
-    // The photo is one of the choices. Add photo… sits beside Custom…; once there is a photo it's “Photo”, chosen while it shows.
+    ok(await page.evaluate(() => document.activeElement.matches('.swatch.custom[role="radio"]') && getComputedStyle(document.activeElement).outlineStyle === 'solid'), 'Tab reaches Custom…, and it shows the keyboard focus');
+    await page.evaluate(() => { window.__picker = 0; document.getElementById('set-bg-custom').showPicker = () => { window.__picker++; }; });
+    await page.keyboard.press('Enter'); await page.waitForTimeout(100);
+    await page.locator('#set-bg-custom').evaluate(el => { el.value = '#123457'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__picker === 1 && document.activeElement.matches('.swatch.custom[aria-checked="true"]')), 'Enter on it opens the color picker; once a color is picked, the keyboard is back on Custom…, checked');
+    await page.keyboard.press('Tab');
+    ok(await page.evaluate(() => document.activeElement.matches('.pill.photo')), 'and Tab goes on to Photo… (the color input isn’t a stop of its own)');
+    // The photo is one of the choices. Photo… sits beside Custom…; once there is a photo it's “Photo”, chosen while it shows.
     const png = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1600; c.height = 900; const g = c.getContext('2d'); g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 1600, 900); return c.toDataURL('image/png'); });
     await page.click('#settings [data-act="bg"][data-val="#e0f2fe"]'); await page.waitForTimeout(200);
     const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.click('#bg-block .pill.photo[data-act="photo-add"]')]);
@@ -1517,7 +1539,7 @@ const SUITES = [
     ok(ph.shown && ph.on === true && pk.chosen.join() === 'photo-show✓' && ph.fadeTo === '#dcfce7' && ph.ctrls, `tapping Photo shows it again, over the color picked last (${ph.fadeTo})`);
     await page.locator('#set-bg-custom').evaluate(el => { el.value = '#654321'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }); await page.waitForTimeout(400);
     ph = await photo(); pk = await picked();
-    ok(!ph.shown && ph.kept && pk.custom && !pk.chosen.length, 'a custom color hides it too');
+    ok(!ph.shown && ph.kept && pk.custom && pk.chosen.join() === 'bg-custom✓', 'a custom color hides it too');
     await page.click('#bg-block .pill.photo'); await page.waitForTimeout(400);
     // Nothing spills out of Settings, at 80% and at 200%; the choices stay big enough to tap.
     for (const sc of [0.8, 2]) {
@@ -1529,7 +1551,18 @@ const SUITES = [
         const small = [...document.querySelectorAll('#bg-block .swatch')].filter(e => { const b = e.getBoundingClientRect(); return b.width / ui < 43.5 || b.height / ui < 43.5; });
         return { wide: body.scrollWidth > body.clientWidth + 1, out: out.length, small: small.length, ui }; });
       ok(!fit.wide && !fit.out && !fit.small, `at ${sc * 100}% (menus drawn at ${fit.ui.toFixed(2)}×), Background fits Settings and its choices are at least 44 px`);
+      rw = await row();
+      ok(inLine(rw), `and Custom… and Photo (with its picture) are still on the dark colors' row (${JSON.stringify(rw.pills.map(x => [x.name, Math.round(x.top), Math.round(x.h)]))})`);
       await page.screenshot({ path: OUT + `bg-options-${sc * 100}.png` });
+    }
+    // In dark mode, and on a small screen (where menus are drawn smaller), the same.
+    for (const [vp, dark] of [[{ width: 1366, height: 768 }, true], [{ width: 768, height: 1024 }, false], [{ width: 1920, height: 1080 }, true]]) {
+      const c2 = await browser.newContext({ viewport: vp, colorScheme: dark ? 'dark' : 'light' }), p2 = await c2.newPage();
+      p2.on('pageerror', e => errors.push(e.message));
+      await p2.goto(BASE); await boardUp(p2); await openSettings(p2, ['bg']);
+      rw = await row(p2);
+      ok(inLine(rw), `${vp.width} × ${vp.height}${dark ? ', dark' : ''}: Custom… and Photo… are on the dark colors' row (${JSON.stringify(rw.pills.map(x => [x.name, Math.round(x.top), Math.round(x.h)]))})`);
+      await c2.close();
     }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
@@ -1553,9 +1586,14 @@ const SUITES = [
       last: document.querySelector('#settings .sheet-body').lastElementChild.id, name: document.querySelectorAll('#set-board-name').length,
       missing: ['st-offline', 'st-persist', 'st-storage', 'st-backup', 'st-version', 'st-scale'].filter(id => !document.getElementById(id)) }));
     let sh = await shape();
-    ok(sh.heads.join() === 'Classroom,This page,Appearance,Board Sync' && sh.last === 'grp-advanced' && sh.theme === 'Auto',
+    ok(sh.heads.join() === 'Board Sync,Classroom,This page,Appearance' && sh.last === 'grp-advanced' && sh.theme === 'Auto',
       `Settings: ${sh.heads.join(', ')}, then Advanced at the bottom; Theme shows Auto`);
-    ok(sh.groups.join() === 'saved hidden,letters hidden,bg hidden,advanced hidden' && !sh.missing.length && !sh.name,
+    // Appearance: Theme, Background, Accent color, Letters, Clock in the corner, Board shape.
+    const looks = await page.evaluate(() => { const h = [...document.querySelectorAll('#settings .sheet-body > h3')].find(x => x.textContent === 'Appearance'), out = [];
+      for (let e = h.nextElementSibling; e && e.tagName !== 'H3' && !e.classList.contains('gap'); e = e.nextElementSibling) if (e.matches('.row')) out.push(e.querySelector('.lbl').textContent);
+      return out; });
+    ok(looks.join() === 'Theme,Background,Accent color,Letters,Clock in the corner,Board shape', `Appearance: ${looks.join(', ')}`);
+    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden' && !sh.missing.length && !sh.name,
       `every group starts closed, and is in the page, hidden (${sh.groups.join(', ')}); no page name field`);
     // Saved widgets: how many there are, open or closed; open, the list says Open or Closed (no sizes).
     const saved = () => page.evaluate(() => ({ value: document.querySelector('#settings [data-val="saved"] .v').textContent, label: document.querySelector('#settings [data-val="saved"] .lbl').textContent,
@@ -1583,11 +1621,11 @@ const SUITES = [
       `Off turns snapping off; Light, Medium and Firm turn it on with that push (${seen.join(', ')})`);
     await page.evaluate(() => { window.__board21.updateBoard({}); }); await page.waitForTimeout(150);
     sh = await shape();
-    ok(sh.groups.join() === 'saved open,letters hidden,bg hidden,advanced open', `open groups stay open while Settings is drawn again (${sh.groups.join(', ')})`);
+    ok(sh.groups.join() === 'saved open,bg hidden,letters hidden,advanced open', `open groups stay open while Settings is drawn again (${sh.groups.join(', ')})`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await openSettings(page);
     sh = await shape();
-    ok(sh.groups.join() === 'saved hidden,letters hidden,bg hidden,advanced hidden', 'and every group is closed again the next time Settings opens');
+    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden', 'and every group is closed again the next time Settings opens');
     // The amber dot on Advanced: shown while there's no backup from the last week, or the browser hasn't promised to
     // keep 21Board's data. (Here it hasn't, so it shows.)
     const dot = (p = page) => p.evaluate(() => { const d = document.getElementById('grp-advanced-warn'); return !!d && !d.hidden && getComputedStyle(d).display !== 'none'; });
@@ -4387,8 +4425,8 @@ const SUITES = [
     await B.p.click('#settings [data-act="link-setup"]'); await B.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await B.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
     const lastB = await said(B.p);
-    ok(lastB.includes('This device now syncs through your “21Board” folder. The board from the laptop (1 page) is here now. ' + ENDING) && !await B.p.locator('#modal.open input').count(),
-      `the smartboard says the board from the laptop is here (“${lastB}”)`);
+    ok(lastB.includes('This device now syncs through your “21Board” folder. The board from the laptop (1 page) is here now. ' + ENDING) && await B.p.locator('#modal.open input').inputValue() === 'the smartboard',
+      `the smartboard says the board from the laptop is here, with its name in the field (“${lastB}”)`);
     const setupToasts = await B.p.locator('#toasts .toast span').allInnerTexts();
     ok(!setupToasts.some(t => /added on|is here|Updated from/.test(t)), `and no merge message besides (${setupToasts.join(' | ') || 'none'})`);
     await B.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
@@ -4410,14 +4448,16 @@ const SUITES = [
     ok(await eventually(async () => { await syncNow(Late.p); return await Late.p.evaluate(() => window.__board21.state.board.name) === 'Morning' && Object.keys(await shownBoard(Late.p)).length === 1; }, 10000)
       && (await heard(Late.p)).includes('The board from the laptop is here.'), `the board that arrives after set-up is taken: “The board from the laptop is here.” (${(await heard(Late.p)).join(' | ')})`);
     await Late.c.close();
-    // Two devices both called "a Chromebook": the last step asks for this one's name.
+    // Two devices both called "a Chromebook": the last step says so under the name field, its text selected to type over.
     const D = await dev('a Chromebook'), F = await dev('a Chromebook');
     await addNote(D.p, 'Twins');
     await linkFolder(D.p);
     await deliver(D.p, F.p);
     await openSettings(F.p); await F.p.click('#settings [data-act="link-setup"]'); await F.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await F.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
-    ok(await F.p.locator('#modal.open input').count() === 1 && /This device’s name/.test(await said(F.p)), 'when the other device has the same default name, the last step shows the name field');
+    const twin = await F.p.evaluate(() => { const f = document.querySelector('#modal.open input'), n = document.getElementById(f.getAttribute('aria-describedby') || '-'); return { note: n ? n.textContent : '', selected: document.activeElement === f && f.selectionStart === 0 && f.selectionEnd === f.value.length, value: f.value }; });
+    ok(twin.value === 'a Chromebook' && twin.selected && twin.note === 'Another device in this folder is called “a Chromebook” too.',
+      `when another device in the folder has this device’s name, the last step says so under the field (read with it), its text selected even as the board it took is shown (“${twin.note}”; selected: ${twin.selected})`);
     await F.p.fill('#modal.open input', 'the reading corner'); await F.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
     ok(await eventually(async () => (await devFiles(F.p)).some(n => n.startsWith('21Board (reading corner) ['))), 'and the name given there names its file');
     await D.c.close(); await F.c.close();
@@ -4462,6 +4502,133 @@ const SUITES = [
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: setting up this device’s name on the last step (Laptop, Smartboard, Desktop, typed, Enter, Escape or a tap outside, a name another device has, touch screens, the file renamed)', async (browser) => {
+    const errors = [];
+    // A device with 21Board's own guess at its name (no nameDevice): a laptop screen with no touch, unless opts say otherwise.
+    const device = async (label, opts) => {
+      const c = await browser.newContext(Object.assign({ viewport: { width: 1366, height: 768 } }, opts)); await c.addInitScript(DRIVE_PICK); await c.addInitScript(CLOCK);
+      const p = await c.newPage(); p.on('pageerror', e => errors.push(label + ': ' + e.message)); await p.goto(BASE); await boardUp(p); await syncWaits(p); return { c, p };
+    };
+    const lastStep = async p => {
+      await openSettings(p); await p.click('#settings [data-act="link-setup"]'); await p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
+      await p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
+    };
+    const said = async p => (await p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
+    const field = p => p.locator('#modal.open input');
+    const quick = p => p.getByRole('group', { name: 'Pick a name' });
+    const pressed = async p => (await p.locator('#modal.open .name-quick [aria-pressed="true"]').allInnerTexts()).join(',');
+    const keyOn = p => p.evaluate(() => { const a = document.activeElement; return a.tagName === 'INPUT' ? 'the field' : (a.textContent || a.tagName).trim(); });
+    const label = p => p.evaluate(() => window.__board21.link.device().label);
+    const devFiles = async p => Object.keys(await readFolder(p)).filter(n => /^21Board \(/.test(n)).sort();
+    const status = async p => { await openSettings(p); const s = await p.locator('#set-link-status').innerText(); await p.keyboard.press('Escape'); return s; };
+    // The line under the field saying another device has the name in it, as shown and read with the field (null: not
+    // shown, and nothing hidden left for a screen reader to read with the field).
+    const twinLine = p => p.evaluate(() => { const f = document.querySelector('#modal.open input'), n = document.getElementById(f.getAttribute('aria-describedby') || '-');
+      return !n ? null : n.offsetParent ? n.textContent : n.textContent ? 'hidden, but read: ' + n.textContent : null; });
+    // The card on the screen, top to bottom: the message, the field, the quick names, Done (and its edges).
+    const layout = p => p.evaluate(() => { const r = s => document.querySelector('#modal.open ' + s).getBoundingClientRect(), c = r('.modal-card');
+      return { order: [r('#modal-text').bottom <= r('input').top, r('input').bottom <= r('.name-quick').top, r('.name-quick').bottom <= r('.modal-actions').top], inside: c.top >= 0 && c.left >= 0 && c.bottom <= innerHeight && c.right <= innerWidth, h: Math.round(c.height) }; });
+
+    // ---- A first set-up on a laptop (no touch screen): the field has 21Board's guess, with the keyboard and its text selected.
+    const A = await device('laptop'), B = await device('smartboard', { viewport: { width: 1920, height: 1080 }, hasTouch: true });
+    await addNote(A.p, 'Spelling words');
+    await lastStep(A.p);
+    ok(await label(A.p) === 'a computer' && await field(A.p).inputValue() === 'a computer' && (await said(A.p)).includes('This device’s name (shown on your other devices)'),
+      `the last step always has “This device’s name”, filled in with 21Board’s guess (“${await field(A.p).inputValue()}”)`);
+    ok(await A.p.evaluate(() => { const f = document.querySelector('#modal.open input'); return document.activeElement === f && f.selectionStart === 0 && f.selectionEnd === f.value.length; }),
+      'with no touch screen, the field has the keyboard, its text selected to type over');
+    ok((await quick(A.p).getByRole('button').allInnerTexts()).join(',') === 'Laptop,Smartboard,Desktop' && await pressed(A.p) === '' && await twinLine(A.p) === null,
+      'under it, a group of three buttons, Laptop, Smartboard and Desktop: none is pressed for “a computer” (and no other device has that name)');
+    let look = await layout(A.p);
+    ok(look.order.every(Boolean) && look.inside, `the message, then the field and its buttons, then Done, all on a 1366×768 screen (${look.h}px high)`);
+    await quick(A.p).getByRole('button', { name: 'Laptop' }).click();
+    ok(await field(A.p).inputValue() === 'the laptop' && await pressed(A.p) === 'Laptop', 'Laptop fills in “the laptop”, and only Laptop is pressed');
+    await field(A.p).fill('Room 14 smartboard');
+    ok(await pressed(A.p) === '', 'typing “Room 14 smartboard”: none is pressed');
+    await field(A.p).fill('  The Desktop ');
+    ok(await pressed(A.p) === 'Desktop', 'typing “ The Desktop ” presses Desktop (spaces and capitals don’t count)');
+    await quick(A.p).getByRole('button', { name: 'Laptop' }).click();
+    const oldA = await devFiles(A.p);   // (the first round wrote this device's file under the guess)
+    await deliver(A.p, B.p);            // (Google Drive brings it to the smartboard before the laptop is renamed)
+    await field(A.p).press('Enter');
+    await A.p.waitForSelector('#modal', { state: 'hidden' });
+    ok(await label(A.p) === 'the laptop', 'Enter in the field saves the name, as Done does');
+    ok(oldA.length === 1 && /^21Board \(computer\) \[[0-9a-z]{4}\]\.21board$/.test(oldA[0]) && await eventually(async () => { await syncNow(A.p); const f = await devFiles(A.p); return f.length === 1 && f[0] === oldA[0].replace('(computer)', '(laptop)'); }, 15000),
+      `at its next write, its file in the folder takes the new name, and none is left under the old one (${oldA.join()} → ${(await devFiles(A.p)).join()})`);
+    ok(JSON.parse(await fileText(A.p, (await devFiles(A.p))[0])).sync.name === 'the laptop', 'the file says the new name inside too');
+
+    // ---- A second device, a smartboard (touch screen, 1920 wide): its guess with Smartboard pressed, and no on-screen keyboard unasked.
+    await lastStep(B.p);
+    ok(await label(B.p) === 'the smartboard' && await field(B.p).inputValue() === 'the smartboard' && await pressed(B.p) === 'Smartboard', `a second device: the field has its guess, “the smartboard”, and Smartboard is pressed (${await pressed(B.p)})`);
+    ok(await keyOn(B.p) === 'Done', `on a touch screen the field doesn’t take the keyboard by itself (the on-screen keyboard would pop up): Done has it (${await keyOn(B.p)})`);
+    look = await layout(B.p);
+    ok(look.order.every(Boolean) && look.inside, `it fits a 1920×1080 smartboard (${look.h}px high)`);
+    ok((await said(B.p)).includes('The board from a computer (1 page) is here now.'), 'the laptop’s old file was all the smartboard had: “The board from a computer”');
+    const ownB = (await devFiles(B.p)).filter(n => /\(smartboard\)/.test(n));   // (written by the first round, or not yet)
+    await field(B.p).fill('Room 14 smartboard');
+    ok(await pressed(B.p) === '', 'typing “Room 14 smartboard”: none is pressed');
+    await B.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
+    ok(await label(B.p) === 'Room 14 smartboard', 'Done saves the name typed');
+    ok(await eventually(async () => { await syncNow(B.p); const f = (await devFiles(B.p)).filter(n => !/\((computer|laptop)\)/.test(n)); return f.length === 1 && /^21Board \(Room 14 smartboard\) \[[0-9a-z]{4}\]\.21board$/.test(f[0]); }, 15000),
+      `its file takes that name, and none is left under “smartboard” (${ownB.join() || 'none written yet'} → ${(await devFiles(B.p)).join()})`);
+    // The laptop's renamed file reaches the smartboard; the old one is still there until Google Drive removes it.
+    await deliver(A.p, B.p); await syncNow(B.p);
+    let st = await status(B.p);
+    ok(/Shared with the laptop \(last change at \d/.test(st) && !/computer/.test(st), `the smartboard’s Settings › Board Sync names the laptop by its new name, once (“${st}”)`);
+    await deliver(A.p, B.p, { removed: oldA }); await syncNow(B.p);
+    ok(!(await devFiles(B.p)).includes(oldA[0]) && await B.p.evaluate(() => Array.from(window.__board21.link.files.keys()).filter(n => /^21Board \((computer|laptop)\)/.test(n)).length) === 1
+      && await B.p.evaluate(() => { const L = window.__board21.link; return Object.values(L.names()).filter(n => n !== L.device().label).join(); }) === 'the laptop',
+      'once Google Drive removes the old file, the laptop is one device there, called the laptop');
+    // A change on the laptop: the smartboard says where it came from by the new name.
+    await hear(B.p);
+    await addNote(A.p, 'Homework'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    ok(await eventually(async () => (await heard(B.p)).includes('Updated from the laptop.')), `“Updated from the laptop.” (${(await heard(B.p)).join(' | ')})`);
+    // And the smartboard's new name reaches the laptop.
+    await deliver(B.p, A.p, { removed: ownB }); await syncNow(A.p);
+    st = await status(A.p);
+    ok(/Shared with Room 14 smartboard \(last change at \d/.test(st), `the laptop’s Settings › Board Sync names the smartboard “Room 14 smartboard” (“${st}”)`);
+
+    // ---- An iPad, upright then on its side: it fits both ways; a name another device has is said as it is picked or
+    // typed; an empty field keeps the name it had.
+    const C = await device('iPad', { viewport: { width: 768, height: 1024 }, hasTouch: true });
+    await deliver(A.p, C.p);
+    await lastStep(C.p);
+    look = await layout(C.p);
+    const upright = look.order.every(Boolean) && look.inside;
+    await C.p.setViewportSize({ width: 1024, height: 768 }); await C.p.waitForTimeout(200);
+    look = await layout(C.p);
+    ok(upright && look.order.every(Boolean) && look.inside && await keyOn(C.p) === 'Done', `it fits an iPad upright and on its side (${look.h}px high), with the keyboard on Done`);
+    // The laptop is "the laptop" here: picking or typing that name says so under the field, and a name of its own doesn't.
+    ok(await twinLine(C.p) === null, `“a computer”: no other device here has that name, and nothing says so (${await twinLine(C.p)})`);
+    await quick(C.p).getByRole('button', { name: 'Laptop' }).click();
+    ok(await twinLine(C.p) === 'Another device in this folder is called “the laptop” too.', `tapping Laptop, while the laptop is “the laptop”: the step says so under the field, read with it (${await twinLine(C.p)})`);
+    await field(C.p).fill('Room 14 laptop');
+    ok(await twinLine(C.p) === null, `typing “Room 14 laptop”: the line goes (${await twinLine(C.p)})`);
+    await field(C.p).fill('');
+    await C.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
+    ok(await label(C.p) === 'a computer', 'Done with the field emptied keeps the name it had');
+    await A.c.close(); await B.c.close(); await C.c.close();
+
+    // ---- Closing the step without Done (Escape, or a tap outside the card, the usual way to close one on a smartboard):
+    // set-up is over either way, so the name in the field is kept.
+    const D = await device('laptop 2');
+    await lastStep(D.p);
+    await quick(D.p).getByRole('button', { name: 'Laptop' }).click();
+    await D.p.keyboard.press('Escape');
+    await D.p.waitForSelector('#modal', { state: 'hidden' });
+    ok(await label(D.p) === 'the laptop' && await D.p.inputValue('#set-link-label') === 'the laptop', `Laptop, then Escape: “the laptop” is kept, and Settings › Board Sync shows it (${await label(D.p)})`);
+    await D.p.evaluate(() => { window.__drive = { pick: 'Room 9' }; });
+    await openSettings(D.p); await D.p.click('#settings [data-act="link-choose"]');
+    await D.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
+    ok(await field(D.p).inputValue() === 'the laptop' && await pressed(D.p) === 'Laptop', 'after Change…, the last step has the name the device has, with Laptop pressed');
+    await quick(D.p).getByRole('button', { name: 'Smartboard' }).click();
+    await D.p.mouse.click(8, 8);   // (outside the card)
+    await D.p.waitForSelector('#modal', { state: 'hidden' });
+    ok(await label(D.p) === 'the smartboard', `Smartboard, then a tap outside the card: “the smartboard” is kept (${await label(D.p)})`);
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await D.c.close();
   }],
   ['Board Sync: linking again, Change…, Unlink, a lost ledger, Erase, kiosk (scenarios 5–12)', async (browser) => {
     const errors = [], DAY = 864e5;
@@ -5716,17 +5883,19 @@ const SUITES = [
     await H(() => window.__board21.closeWin('timer:1')); await page.waitForTimeout(800);
     // Find it in Board history (Settings → Classroom, the second row: Go back to an earlier version).
     await openSettings(page);
-    const goBack = await page.evaluate(() => { const b = document.querySelector('#settings [data-act="hist-open"]'), r = b.closest('.row'), first = document.querySelector('#settings .sheet-body h3');
-      return { section: first.textContent, second: [...document.querySelectorAll('#settings .row')].filter(x => !x.matches('.update-note')).indexOf(r), label: r.querySelector('.lbl').textContent, plain: !b.classList.contains('primary') }; });
+    const goBack = await page.evaluate(() => { const b = document.querySelector('#settings [data-act="hist-open"]'), r = b.closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
+      const rows = []; for (let e = h.nextElementSibling; e && e.tagName !== 'H3'; e = e.nextElementSibling) if (e.matches('.row')) rows.push(e);
+      return { section: h.textContent, second: rows.indexOf(r), label: r.querySelector('.lbl').textContent, plain: !b.classList.contains('primary') }; });
     ok(goBack.section === 'Classroom' && goBack.second === 1 && goBack.label === 'Go back to an earlier version' && goBack.plain, `Settings → Classroom → “Go back to an earlier version” (Board history…) is the second row (${JSON.stringify(goBack)})`);
     await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(1200);
     ok(await page.locator('#history.open .hist-row').count() >= 5, 'the Board history sheet lists the versions');
     await page.screenshot({ path: OUT + '80-history-sheet.png' });
     await page.click(`#history [data-act="sel"][data-val="${goodId}"]`); await page.waitForTimeout(400);
-    const detail = await page.evaluate(() => { const d = document.querySelector('#history .hist-detail'); return d && { rects: d.querySelectorAll('.minimap g').length, text: d.textContent }; });
+    const detail = await page.evaluate(() => { const d = document.querySelector('#history-detail.open .hist-detail'); return d && { rects: d.querySelectorAll('.minimap g').length, text: d.textContent }; });
     ok(detail && detail.rects === 3 && /Not on the board now/.test(detail.text) && /Compared with now/.test(detail.text), `tapping a version shows a preview (3 windows), and what’s different now`);
     await page.screenshot({ path: OUT + '81-history-detail.png' });
-    await page.click('#history .hist-detail [data-act="go"]'); await page.waitForTimeout(3500);
+    await page.click('#history-detail [data-act="go"]'); await page.waitForTimeout(3500);
+    ok(await page.locator('#settings.open, #history.open, #history-detail.open').count() === 0, 'Go back closes Board history and Settings, so the board can be seen');
     const back = await page.evaluate(() => ({ wins: document.querySelectorAll('.win').length, bg: window.__board21.state.board.background.color, theme: window.__board21.state.settings.theme }));
     ok(back.wins === 3 && await noteText() === 'Good setup' && back.bg === '#e0f2fe', 'Go back brings back the windows, their content and the background');
     ok(back.theme === 'dark', 'but leaves this device’s settings (dark mode) alone');
@@ -6088,6 +6257,207 @@ const SUITES = [
     ok((await storedRecords(page))['data:1:notes:1'].text === 'typed on a full device', 'with room again, what was typed is saved');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+  }],
+  ['Board history: columns beside Settings (1366 × 768 from either side, 1920 × 1080, a window’s menu, iPad), what’s kept', async (browser) => {
+    const errors = [];
+    // The columns shown (open and not covered), in screen px; whether none overlaps another; whether all are on screen.
+    const cols = p => p.evaluate(() => ['settings', 'history', 'history-detail'].map(id => { const e = document.getElementById(id), r = e.getBoundingClientRect();
+      return { id, shown: e.classList.contains('open') && getComputedStyle(e).visibility !== 'hidden', l: r.left, r: r.right, t: r.top, b: r.bottom }; }).filter(c => c.shown));
+    const apart = cs => cs.every((a, i) => cs.every((b, j) => i >= j || a.r <= b.l + 0.5 || b.r <= a.l + 0.5));
+    const onScreen = (cs, vp) => cs.every(c => c.l >= 0 && c.r <= vp.width && c.t >= 0 && c.b <= vp.height);
+    const ids = cs => cs.map(c => c.id).join();
+    const say = cs => cs.map(c => `${c.id} ${Math.round(c.l)}–${Math.round(c.r)}`).join(', ');
+    // Where the keyboard is: in which column, and on what.
+    const focus = p => p.evaluate(() => { const a = document.activeElement; return { col: (a.closest('#history-detail, #history, #settings') || {}).id || a.tagName, act: (a.dataset && a.dataset.act) || '', val: (a.dataset && a.dataset.val) || '', cls: String(a.className) }; });
+    // A board with a few versions (each window opened, then a version saved by hand).
+    const start = async (vp, opts = {}) => {
+      const ctx = await browser.newContext(Object.assign({ viewport: vp }, opts));
+      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE); await boardUp(page);
+      await page.evaluate(async () => {
+        const b = window.__board21, wait = ms => new Promise(r => setTimeout(r, ms));
+        b.history.cfg({ skipOpen: true });
+        b.openWidget('notes'); await wait(900); await b.history.save('Monday setup');
+        b.openWidget('timer'); await wait(700); await b.history.save('With a timer');
+        b.openWidget('dice'); await wait(700); await b.history.save('');
+      });
+      return { ctx, page };
+    };
+    const history = async (page, side) => { await openSettings(page, [], side); await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open .hist-row'); await page.waitForTimeout(300); };
+    const row = (page, n) => page.locator('#history .hist-row').nth(n);
+
+    // ---- 1366 × 768, from the left: Board history is a second column, Settings stays open beside it.
+    const vp = { width: 1366, height: 768 };
+    let { ctx, page } = await start(vp);
+    await history(page, 'left');
+    let c = await cols(page), f = await focus(page);
+    ok(ids(c) === 'settings,history' && apart(c) && onScreen(c, vp) && c[1].l > c[0].r, `from the left, Board history opens as a column beside Settings, which stays open: nothing overlaps, all on screen (${say(c)})`);
+    ok(f.col === 'history' && await page.locator('#settings [data-act="hist-open"][aria-expanded="true"]').count() === 1, `the keyboard goes into Board history, and Settings’ “Board history…” is marked as open (${JSON.stringify(f)})`);
+    const heads = await page.evaluate(() => ['settings', 'history', 'history-detail'].map(id => { const e = document.getElementById(id); return [e.querySelector('h2').tagName, e.querySelector('[data-close]').getAttribute('aria-label')]; }));
+    ok(heads.map(h => h[1]).join() === 'Close settings,Close board history,Close this version', `each column has a heading and a close button that says what it closes (${heads.map(h => h[1]).join(', ')})`);
+    // What's kept: a list a screen reader reads as one, a tier a line.
+    const keeps = page.getByRole('list', { name: 'Board history keeps, on this device:' });
+    const tiers = await keeps.getByRole('listitem').allTextContents();
+    ok(tiers.join(' | ') === 'The 20 most recent versions | Hourly versions for the past 2 days | Daily versions for the past 30 days | Weekly versions for the past 12 weeks',
+      `what's kept is a list, a tier a line (${tiers.join(' | ')})`);
+    const foot = await page.locator('#history .hist-keeps').innerText();
+    ok(/Versions you save are kept until you delete them\. When board history needs more room, the oldest versions are deleted first\./.test(foot) && /Board history isn’t a backup: if this browser’s data for 21Board is cleared, it’s cleared too\./.test(foot) && !/Kept on this device|space runs low/.test(foot),
+      'then what you save, what goes first when board history needs more room (its share of the device, or a full device), and that it isn’t a backup');
+    const tierTops = await page.evaluate(() => [...document.querySelectorAll('#history .hist-keeps li')].map(li => Math.round(li.getBoundingClientRect().top)));
+    ok(new Set(tierTops).size === 4, `each tier is on its own line (${tierTops.join(', ')})`);
+    // Settings is still usable: a choice there leaves Board history open.
+    await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__board21.state.settings.theme === 'dark') && ids(await cols(page)) === 'settings,history', 'a choice in Settings works, and Board history stays open beside it');
+    await page.click('#settings [data-act="theme"][data-val="light"]'); await page.waitForTimeout(200);
+    // A version: its own column, the version still marked in the list.
+    await row(page, 1).click(); await page.waitForTimeout(400);
+    c = await cols(page); f = await focus(page);
+    const sel = await page.evaluate(() => { const r = document.querySelectorAll('#history .hist-row')[1]; return { sel: r.classList.contains('sel'), exp: r.getAttribute('aria-expanded'), id: r.dataset.val, marked: document.querySelectorAll('#history .hist-row.sel').length }; });
+    ok(ids(c) === 'settings,history,history-detail' && apart(c) && onScreen(c, vp) && c[2].l > c[1].r, `a version opens a third column beside the list: three side by side on a 1366 × 768 screen (${say(c)})`);
+    ok(sel.sel && sel.exp === 'true' && sel.marked === 1 && f.col === 'history-detail', `the version stays marked in the list, and the keyboard goes into its column (${JSON.stringify(sel)}; ${f.col})`);
+    // In it: the summary, then Go back, then each window.
+    const order = await page.evaluate(() => {
+      const d = document.querySelector('#history-detail .sheet-body'), parts = [['summary with its preview', '.hist-sum:has(> .minimap:first-child)'], ['go back', '[data-act="go"]'], ['windows', '.inst-list']];
+      const at = parts.map(([n, q]) => [n, d.querySelector(q)]), all = [...d.querySelectorAll('*')];
+      return { order: at.filter(x => x[1]).sort((a, b) => all.indexOf(a[1]) - all.indexOf(b[1])).map(x => x[0]).join(', '), sum: d.querySelector('.hist-sum').innerText.replace(/\s+/g, ' '), go: (d.querySelector('[data-act="go"]') || {}).textContent,
+        rows: d.querySelectorAll('.inst-list .inst').length, title: document.querySelector('#history-detail h2').textContent, put: [...d.querySelectorAll('.inst-list .inst')].some(i => /Not on the board now|Closed now|Different now/.test(i.textContent) && i.querySelector('[data-act="put"]')) };
+    });
+    ok(order.order === 'summary with its preview, go back, windows' && /^Today \d/.test(order.title) && /^Go back to Today \d/.test(order.go) && /Saved by you · With a timer/.test(order.sum) && /After this: /.test(order.sum) && /Compared with now: /.test(order.sum),
+      `the version’s column: its time as the heading, then the preview and what changed, then Go back, then each window (${order.order}; “${order.title}”; ${order.sum})`);
+    ok(order.rows === 2 && !order.put, `each window of that version is listed with how it compares with now (${order.rows} windows)`);
+    await page.screenshot({ path: OUT + '82-history-columns.png' });
+    // Tapping it again closes the column; so does its ✕ (the keyboard goes back to the version in the list).
+    await row(page, 1).click(); await page.waitForTimeout(300);
+    ok(ids(await cols(page)) === 'settings,history' && await page.locator('#history .hist-row.sel').count() === 0, 'tapping the version again closes its column');
+    await row(page, 1).click(); await page.waitForTimeout(300);
+    await page.click('#history-detail [data-close]'); await page.waitForTimeout(300);
+    f = await focus(page);
+    ok(ids(await cols(page)) === 'settings,history' && f.col === 'history' && f.act === 'sel' && f.val === sel.id, `its ✕ closes it, and the keyboard goes back to the version (${JSON.stringify(f)})`);
+    // Escape: the outermost column first, the keyboard going back to what opened each.
+    await page.keyboard.press('Enter'); await page.waitForTimeout(400);   // (the version, from the keyboard)
+    ok(ids(await cols(page)) === 'settings,history,history-detail' && (await focus(page)).col === 'history-detail', 'Enter on a version opens it, with the keyboard in its column');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    f = await focus(page);
+    ok(ids(await cols(page)) === 'settings,history' && f.col === 'history' && f.val === sel.id, `Escape closes the version first, the keyboard back on it in the list (${JSON.stringify(f)})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    f = await focus(page);
+    ok(ids(await cols(page)) === 'settings' && f.col === 'settings' && f.act === 'hist-open' && await page.locator('#settings [data-act="hist-open"][aria-expanded="false"]').count() === 1,
+      `then Board history, the keyboard back on “Board history…” in Settings (${JSON.stringify(f)})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    f = await page.evaluate(() => document.activeElement.matches('.picker-btn.left'));
+    ok(!(await cols(page)).length && f, `then Settings, the keyboard back on ▦ (${f})`);
+    // Settings opened from the keyboard (▦, then its gear) takes the keyboard too, as each column does.
+    await page.keyboard.press('Enter'); await page.waitForSelector('.panel.open [data-ctl="settings"]');
+    await page.locator('.panel.open [data-ctl="settings"]').focus(); await page.keyboard.press('Enter'); await page.waitForSelector('#settings.open'); await page.waitForTimeout(200);
+    f = await focus(page);
+    ok(f.col === 'settings', `Settings opened from the keyboard: the keyboard goes into it (${JSON.stringify(f)})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    // Board history… again closes it; closing Settings closes its columns; so does a tap on the board.
+    await history(page, 'left');
+    await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(200);
+    ok(ids(await cols(page)) === 'settings', 'tapping “Board history…” again closes it');
+    await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open .hist-row'); await row(page, 0).click(); await page.waitForTimeout(300);
+    await page.click('#settings [data-close]'); await page.waitForTimeout(200);
+    ok(!(await cols(page)).length, 'closing Settings closes Board history’s columns with it');
+    await history(page, 'left'); await row(page, 0).click(); await page.waitForTimeout(300);
+    const empty = await page.evaluate(() => { for (let y = 60; y < 700; y += 20) for (let x = 1350; x > 1150; x -= 20) { const e = document.elementFromPoint(x, y); if (e && (e.id === 'desk' || e.closest('#layout-frame') || e === document.body)) return [x, y]; } return null; });
+    await page.mouse.click(empty[0], empty[1]); await page.waitForTimeout(200);
+    ok(!(await cols(page)).length, 'and a tap on the board closes them all');
+    // A window's menu: that window's versions, without Settings, at the screen edge; a version beside it.
+    await page.locator('.win[data-ikey="notes:1"] .win-label').click(); await page.waitForTimeout(250);
+    await page.click('#menu [data-act="history"]'); await page.waitForSelector('#history.open [data-act="whole"]'); await page.waitForTimeout(300);
+    c = await cols(page);
+    ok(ids(c) === 'history' && c[0].l < 20 && /Earlier versions of Notes/.test(await page.locator('#history .hist-intro').textContent()), `from a window’s menu, Board history opens on its own at the edge, Settings closed (${say(c)})`);
+    await page.click('#history [data-act="whole"]'); await page.waitForSelector('#history .hist-row');
+    await row(page, 0).click(); await page.waitForTimeout(300);
+    c = await cols(page);
+    ok(ids(c) === 'history,history-detail' && apart(c) && onScreen(c, vp) && c[1].l > c[0].r, `and a version opens as the second column (${say(c)})`);
+    await page.keyboard.press('Escape'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    f = await page.evaluate(() => document.activeElement.classList.contains('win-label') && document.activeElement.closest('.win').dataset.ikey);
+    ok(!(await cols(page)).length && f === 'notes:1', `Escape twice closes both, and the keyboard goes back to the window’s name (${f})`);
+    await ctx.close();
+
+    // ---- 1366 × 768, from the right: the same, mirrored. (The newest version was saved under a long page name.)
+    ({ ctx, page } = await start(vp));
+    const long = 'Room 214 — Ms. Rodriguez-Whitfield’s Thursday afternoon literacy centers and reading groups';
+    await page.evaluate(async long => {
+      const b = window.__board21, r = b.state.insts.get('timer:1').rect;
+      b.updateBoard({ name: long }); b.setRect('timer:1', Object.assign({}, r, { x: r.x + 33 })); await new Promise(res => setTimeout(res, 80));
+      await b.history.save('After lunch'); b.updateBoard({ name: 'Math' });
+    }, long);
+    await history(page, 'right'); await row(page, 0).click(); await page.waitForTimeout(400);
+    c = await cols(page);
+    ok(ids(c) === 'settings,history,history-detail' && apart(c) && onScreen(c, vp) && c[0].r > vp.width - 20 && c[1].r <= c[0].l && c[2].r <= c[1].l,
+      `from the right, the columns go leftwards: Settings at the edge, then Board history, then the version (${say(c)})`);
+    // A long name in “Then called …” ends in … inside its row; the whole name is in its tooltip and in the row's name.
+    const tag = await page.evaluate(() => { const t = [...document.querySelectorAll('#history .hist-row .tag')].find(x => /Room 214/.test(x.textContent)), r = t.getBoundingClientRect(), rr = t.closest('.hist-row').getBoundingClientRect();
+      return { inside: r.right <= rr.right + 0.5, cut: t.scrollWidth > t.clientWidth, ellipsis: getComputedStyle(t).textOverflow, title: t.title, row: t.closest('.hist-row').textContent.includes('literacy centers and reading groups”') }; });
+    ok(tag.inside && tag.cut && tag.ellipsis === 'ellipsis' && tag.title === `Then called “${long}”` && tag.row, `a long page name in “Then called …” ends in … inside its row, the whole of it in the tooltip (${JSON.stringify(tag)})`);
+    await page.screenshot({ path: OUT + '83-history-columns-right.png' });
+    // Widget Picker → Left (Settings → Advanced) moves Settings to the other edge as it is, and Board history and the
+    // version go with it, as they are.
+    const was = await page.evaluate(() => window.__board21.historySheet.sel);
+    await page.click('#settings [data-act="group"][data-val="advanced"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="corners"][data-val="left"]'); await page.waitForTimeout(500);
+    c = await cols(page);
+    const moved = await page.evaluate(() => ({ sel: window.__board21.historySheet.sel, marked: document.querySelectorAll('#history .hist-row.sel').length, side: window.__board21.historySheet.side,
+      open: !!document.querySelector('#settings [data-act="hist-open"][aria-expanded="true"]'), advanced: document.querySelector('#settings [data-act="group"][data-val="advanced"]').getAttribute('aria-expanded') }));
+    ok(ids(c) === 'settings,history,history-detail' && apart(c) && onScreen(c, vp) && c[0].l < 20 && c[1].l > c[0].r && c[2].l > c[1].r && moved.sel === was && moved.marked === 1 && moved.side === 'left' && moved.open && moved.advanced === 'true',
+      `Widget Picker → Left: Settings moves to the left edge with Advanced still open, Board history and the version beside it, still open (${say(c)}; ${JSON.stringify(moved)})`);
+    await page.click('#settings [data-act="corners"][data-val="both"]'); await page.waitForTimeout(300);
+    await ctx.close();
+
+    // ---- What's kept is as the list says until board history needs more room. At its share of the device's storage
+    // (here a small one), with room on the device, it gives up the oldest first, the day's first too; never what you saved.
+    ({ ctx, page } = await (async () => { const ctx = await browser.newContext({ viewport: vp }), page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message)); await page.goto(BASE); await boardUp(page); return { ctx, page }; })());
+    const room = await page.evaluate(async () => {
+      const b = window.__board21, H = b.history, wait = ms => new Promise(r => setTimeout(r, ms));
+      H.cfg({ skipOpen: true, every: 1 }); b.openWidget('notes'); await wait(900);   // (every: one auto version per change)
+      for (let i = 0; i < 24; i++) {
+        const r = b.state.insts.get('notes:1').rect; b.setRect('notes:1', Object.assign({}, r, { x: 40 + i * 7 })); await wait(40);
+        await (i === 2 ? H.save('Kept') : H.capture('auto'));
+      }
+      await H.reload();
+      const first = H.metas[H.metas.length - 1], daily = b.historyPlan(H.metas, Date.now(), { newest: 20, hours: 48, days: 30, weeks: 12, firstOfDay: true, cap: 250 }).has(first.id);
+      H.cfg({ budget: Math.floor(H.metas.reduce((n, m) => n + (m.bytes || 0), 0) * 0.7) });
+      await H.prune(); await H.reload();
+      return { daily, low: H.low, firstGone: !H.metas.some(m => m.id === first.id), saved: H.metas.some(m => m.manual && m.label === 'Kept'), left: H.metas.length };
+    });
+    ok(room.daily && !room.low && room.firstGone && room.saved, `at its share of the device's storage (the device not short of space), the oldest go first, the day's first too, and what you saved stays: hence “When board history needs more room…” (${JSON.stringify(room)})`);
+    await ctx.close();
+
+    // ---- A 1920 × 1080 flat panel (touch), from the right.
+    const big = { width: 1920, height: 1080 };
+    ({ ctx, page } = await start(big, { hasTouch: true }));
+    await history(page, 'right'); await row(page, 0).click(); await page.waitForTimeout(400);
+    c = await cols(page);
+    ok(ids(c) === 'settings,history,history-detail' && apart(c) && onScreen(c, big), `1920 × 1080: three columns side by side (${say(c)})`);
+    await ctx.close();
+
+    // ---- iPads: a column that doesn't fit covers the one before it, with a Back button; nothing goes off screen.
+    for (const ipad of [{ width: 768, height: 1024 }, { width: 1024, height: 768 }]) {
+      ({ ctx, page } = await start(ipad, { hasTouch: true }));
+      const portrait = ipad.width < ipad.height;
+      await history(page, 'left');
+      c = await cols(page);
+      const backOf = id => page.evaluate(id => { const b = document.querySelector(`#${id} [data-back]`), x = document.querySelector(`#${id} [data-close]`); return b.hidden ? (x.hidden ? 'none' : '✕') : `${b.textContent} (${b.getAttribute('aria-label')})`; }, id);
+      if (portrait) ok(ids(c) === 'history' && onScreen(c, ipad) && await backOf('history') === 'Settings (Back to Settings)', `iPad portrait: Board history covers Settings, with ‹ Settings in place of ✕ (${say(c)}; ${await backOf('history')})`);
+      else ok(ids(c) === 'settings,history' && apart(c) && onScreen(c, ipad) && await backOf('history') === '✕', `iPad landscape: Settings and Board history side by side (${say(c)})`);
+      await row(page, 0).click(); await page.waitForTimeout(400);
+      c = await cols(page);
+      ok(ids(c) === (portrait ? 'history-detail' : 'settings,history-detail') && apart(c) && onScreen(c, ipad) && await backOf('history-detail') === 'Board history (Back to Board history)',
+        `${portrait ? 'portrait' : 'landscape'}: the version covers Board history, with ‹ Board history; nothing off screen (${say(c)})`);
+      if (portrait) await page.screenshot({ path: OUT + '84-history-ipad-portrait.png' });
+      await page.locator('#history-detail [data-back]').tap(); await page.waitForTimeout(300);
+      c = await cols(page);
+      ok(ids(c) === (portrait ? 'history' : 'settings,history') && await page.locator('#history .hist-row.sel').count() === 0, `‹ Board history goes back to the list (${say(c)})`);
+      if (portrait) {
+        await page.locator('#history [data-back]').tap(); await page.waitForTimeout(300);
+        ok(ids(await cols(page)) === 'settings', '‹ Settings goes back to Settings');
+      }
+      await ctx.close();
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Kiosk mode (?kiosk=yes)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
