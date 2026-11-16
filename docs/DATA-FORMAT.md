@@ -165,8 +165,7 @@ exported. `link:folder` holds the folder handle Chrome gives 21Board (stored as 
 ```js
 {
   device: { id: "…", label: "my laptop" },   // label: what other devices show ("updated on …")
-  auto: false,                               // "Send automatically": once the board has been left alone…
-  calm: false,                               // …for 10 minutes ("When left alone") instead of a few seconds ("After each change")
+  auto: false,                               // "Send automatically" (a switch, on from the end of setting up): a few seconds after the changes stop
   photo: true,                               // include the background photo in sent files
   boards: { "<board uid>": {
     file: "Room 12.21board",       // the board's file in the folder, as this device last wrote or loaded it
@@ -174,6 +173,7 @@ exported. `link:folder` holds the folder handle Chrome gives 21Board (stored as 
     seen: ["<version id>", …],     // versions sent or loaded here (newest 40): anything else is new to this device
     headId, headMine,              // the version this board was built on, and whether this device sent it
     sentAt, sentSig, loadedSentAt, loadedFrom, loadedSig,
+    setupSig,                      // the board as it was when Board Sync was set up here (see below)
     photo: true } },               // what the version last sent or loaded here said about the photo: true (it had one), false ("background": null), absent (nothing)
   late: { "room 12.21board": { size, lastModified } }   // files that couldn't be read and were waited for in full (not waited for again while they stay as they are)
 }
@@ -188,7 +188,11 @@ device is its own, even if it didn't get to note it.
 `sentSig` / `loadedSig` fingerprint the board's content when it was last sent or loaded here, to tell
 whether it was changed on this device since (window stacking order doesn't count). Only the later of the two
 is kept (sending clears `loadedSig`, loading clears `sentSig`), so a board changed back to what was loaded
-before the last send still counts as changed.
+before the last send still counts as changed. `setupSig` is the same fingerprint of each page as it was when
+Board Sync was set up on this device (which turns *Send automatically* on): *Send automatically* doesn't send a
+board that is still as it was then, so setting up sends nothing by itself (and a board never sent from here isn't
+sent for a tap that brings a window to the front). Sending or loading clears it. (A state saved with
+`calm: true`, the old *When left alone*, reads as `auto` alone.)
 
 In the folder, 21Board writes one `<board name>.21board` per board (a full backup with `board.uid` and a
 `sent` block, below), renames it when the board is renamed (the files this device used for the board before
@@ -293,9 +297,13 @@ with the board's records and never exported. Three object stores:
   beforeBig, link: "sent" | "loaded" | null, keepUntil, manual, manualLabel, folder, tab }
 ```
 
-`sig` is the same content fingerprint as the shared folder uses (window stacking order doesn't count), so
-identical versions aren't saved twice. Retention is in README, "Board history". Settings (device only):
-`historyEvery` (minutes, 0 = off; default 10) and `historyFolder` (default true).
+`sig` is the content fingerprint the shared folder uses (window stacking order doesn't count), without this
+device's theme and accent (going back never changes them), so identical versions aren't saved twice. `link`:
+the board was, when the version was saved, as this device last sent it to the shared folder (`"sent"`) or loaded
+it from there (`"loaded"`, compared with the folder's own fingerprints). A `"loaded"` version is another device's,
+and isn't copied to the folder (that device keeps the copies) unless it was saved by hand. Retention is in
+README, "Board history". Settings (device only): `historyEvery` (minutes, 0 = off; default 10) and
+`historyFolder` (default true).
 
 **Folder copies:** `<shared folder>/Board history/<board name> <YYYY-MM-DD> <HH.MM>[ saved] (<device>) [<uid6>-<dev4>].21board`
 (local time; `uid6` and `dev4` are the first characters of the board's uid and the device id). A valid `.21board`

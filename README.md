@@ -148,8 +148,8 @@ Settings opens.
   - **Board shape** (this page): *Widescreen* (16:9, the same on every screen; the default) or *Fill* (the whole
     window). See [Board shape and size](#board-shape-and-size).
 - **Board Sync** (Chrome and Edge): sync your boards with your other devices (the smartboard) through a folder in
-  Google Drive: *Set up…* (a few steps that show how to make the folder, then pick it); once linked, *Send this board*, *Send automatically* (off, after each change, or when
-  left alone), **Boards from other devices ▸** and **Folder settings ▸** (the folder, *Change…* and *Unlink*,
+  Google Drive: *Set up…* (a few steps that show how to make the folder, then pick it); once linked, *Send this board*, *Send automatically*
+  (a switch, on from the end of setting up), **Boards from other devices ▸** and **Folder settings ▸** (the folder, *Change…* and *Unlink*,
   this device's name, *Send the background photo*, *Keep history copies in the folder*); and what is wrong when
   the folder can't be used. See [Board Sync](#board-sync-sharing-boards-with-the-smartboard).
 - **Advanced ▸** (an amber dot on it when there has been no backup for a week, or the browser hasn't promised to
@@ -309,43 +309,48 @@ Board Sync on your other devices and pick this same folder*, with *Send this boa
 once); for one with boards from your other devices, that they are there (Settings → Board Sync → *Boards from
 other devices* lists them, with Load), and when there is one, *Load “…”* shows it here at once (after the usual
 question); for a folder you can only view (also one that another teacher set up and shared for viewing), that
-boards can be loaded from it but not sent. *Change…* (Settings → Board
+boards can be loaded from it but not sent. Setting up turns *Send automatically* on (not for a folder you can only
+view), and the last step says so: *Changes you make here are sent automatically. You can turn this off in
+Settings › Board Sync.* (Send tapped before Board Sync was set up turns it on too.) *Change…* (Settings → Board
 Sync → *Folder settings*) and *Choose the folder again…* (on the note on the board) take the same look inside the folder picked,
-without the first dialog.
+without the first dialog, and leave *Send automatically* as it was.
 
 **Then:**
 
-- **Laptop:** Settings → Board Sync → **Send**, or set *Send automatically* to *After each change*
-  (a few seconds after the last change).
-- **Smartboard:** within a minute or two (when 21Board opens, when it comes back to the front, and every
-  2 minutes) it says **“Room 12” was updated on my laptop at 7:42 · Load / Not now**. Nothing changes until
-  you tap Load (if the windows are locked, Load asks to unlock them first). The first time, pick the board under *Boards from other devices* in Settings → Board Sync. (A board that
+- **Laptop:** just change the board: *Send automatically* sends it a few seconds after you stop. Or tap
+  Settings → Board Sync → **Send**.
+- **Smartboard:** as soon as Google Drive brings the file (21Board looks in the folder every 5 seconds while it
+  is in front, and when it opens or comes back to the front) it says **“Room 12” was updated on my laptop at
+  7:42 · Load / Not now**. Nothing changes until you tap Load (if the windows are locked, Load asks to unlock
+  them first). The first time, pick the board under *Boards from other devices* in Settings → Board Sync. (A board that
   is already one of this device's pages shows *Go to page* there instead of Load.)
 - **Changed on both?** Load says so first and offers *Keep a copy of mine, then load* (the copy goes in the
   folder as its own board). A version this device hasn't loaded is never overwritten: *Send automatically*
   waits until it's loaded, and Send asks (*Load theirs* or *Send mine*, keeping the other as a copy).
 - It works both ways: Send from the smartboard and the laptop offers it.
 
-**Send automatically, and which device should do it.** A board is shared whole, and a version one device
-hasn't loaded holds up that device's own automatic sends (they would replace it). So:
+**Send automatically** (Settings → Board Sync, a switch; on from the end of setting up, on each device) sends
+the board a few seconds after you stop changing it, and at once when 21Board is hidden or you go to another
+page. It sends only what you change: setting up sends nothing by itself, and neither does bringing a window to
+the front.
 
-- *After each change* is for the device where you prepare boards (the laptop).
-- On the smartboard, leave it *Off* (tap Send after class if you want the board's work back on the laptop),
-  or choose *When left alone*: the board is sent once it hasn't changed for 10 minutes. Dice rolls, timers
-  and windows opened in class then don't each become a version that the laptop has to load before it can
-  send again. With *After each change* on the smartboard they do.
-- Either way, a change that wasn't sent before 21Board was closed (or while the folder couldn't be used) goes
-  out after 21Board opens again. Not at once: Google Drive first gets two minutes (ten with *When left
-  alone*) to bring anything your other device sent in the meantime, so that its version is offered here
-  instead of being replaced. The same wait follows waking the device up or coming back online. A change you
-  make once 21Board is open again is sent as usual, and takes the earlier one with it.
+- A board is shared whole, and a version another device sent that this one hasn't loaded holds up this device's
+  automatic sends until you load it (the message on the board says so): they never replace it. A dice roll or a
+  timer on the smartboard is a change too, so the laptop is offered that version first. To keep a device from
+  sending, turn *Send automatically* off there (and tap Send when you want its board on the others).
+- A change that wasn't sent before 21Board was closed (or while the folder couldn't be used) goes
+  out after 21Board opens again. Not at once: Google Drive first gets two minutes to bring anything your other
+  device sent in the meantime, so that its version is offered here instead of being replaced. The same wait
+  follows waking the device up or coming back online. A change you make once 21Board is open again is sent as
+  usual, and takes the earlier one with it.
+- An automatic send that didn't work is tried again about a minute later (and with each change).
 
 **If the folder can't be used,** a small note stays above the ▦ button until it works again, so sharing is
 never off for a whole day unnoticed: *Reconnect folder* (Chrome wants to be asked again: one tap on the note
 and *Allow*), *Folder unavailable* (it can't be found: 21Board keeps looking, and a tap says what to do) or
 *Not sent* (an automatic send failed, for example because the folder is shared with you for viewing only: a
 tap says why; the note goes once the send works or nothing is left to send). Settings → Board Sync
-says the same, and when the folder was last checked.
+says the same (and when the folder was last checked, once that is over a minute ago).
 
 **21Board keeps the folder in order:** one file per board, named after it (“Room 12.21board”, or
 “Room 12 (2).21board” if another board has that name); renaming a board renames its file on the next
@@ -538,7 +543,8 @@ a page how much space is left, so a refused save is the sign 21Board goes by.)
 **In the Google Drive folder** (when Board Sync is set up, and *Keep history copies in the folder* is on: Settings →
 Board Sync → *Folder settings*): about one copy an hour (and every version you save) goes to
 “Board history” inside the folder, without the background photo, named like
-`Room 12 2026-11-10 09.45 (smartboard) [7c1e9a-k3j9].21board`. Each device thins only its own copies; files
+`Room 12 2026-11-10 09.45 (smartboard) [7c1e9a-k3j9].21board`. A device showing a version it loaded from
+another device leaves the copies of it to that device. Each device thins only its own copies; files
 ending in “saved” stay. Another device, even one that was reset, can bring a board back from them (Board
 history → *In your Google Drive folder*). They can include student names.
 
