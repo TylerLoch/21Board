@@ -997,6 +997,41 @@ function review() {
       'Change… to a folder with a board, then a window opened and one deleted right away: both reach the other devices, and the old page doesn’t');
     ok(!D.ids().some(x => D.boardOf(x).name === 'Room 14 page'), 'and the old page is gone here (it is still in the other folder)');
   });
+  block(() => {
+    // FIN-2: a round that brings only a copy made on the other device names that device (Board history's "Before
+    // changes from …", the quiet note of a page not shown)
+    const { A, B, b, ik } = pair();
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+    A.type(b, ik); NOW += 1000; A.round();
+    B.type(bOf(B, uid), ikOf(B, uid, wid)); NOW += 1000; B.round();
+    A.deliver(B); A.round();                     // the laptop's text lost: the laptop, its author, makes the copy
+    NOW += 1000; B.deliver(A); const p = B.round();
+    const P = p && p.summary.pages[uid];
+    ok(P && P.clashes.some(c => c.arrived) && winsOf(B, uid).some(w => w.copyOf), 'the copy made on the laptop arrives on the smartboard');
+    ok(P && P.from.includes(A.dev) && p.summary.from.includes(A.dev), `and the round names the laptop as where it came from (${P && JSON.stringify(P.from)}; ${JSON.stringify(p && p.summary.from)})`);
+  });
+  block(() => {
+    // FIN-3: a page deleted here comes back. Brought back on the other device (its Undo, Bring back): 'returned'; by an
+    // edit made there before the deletion arrived: 'edit'.
+    const { A, B, b, ik, sync } = pair();
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+    A.addPage('Other'); sync();
+    const bB = () => +Array.from(B.recs.keys()).find(k => k.startsWith('board:') && B.recs.get(k).value.uid === uid).split(':')[1];
+    for (const purged of [false, true]) {
+      // (a deletion goes out once its Undo is over here; the page's records go 3 s later)
+      A.delPage(bOf(A, uid)); NOW += UNDO + 500; A.round(); B.deliver(A); B.round(); B.round();
+      ok(!bOf(B, uid) && B.undoDel(bB()), 'deleted on the laptop, then its Undo on the smartboard');
+      NOW += 500; B.round(); A.deliver(B);
+      if (purged) NOW += 5000;                   // (the page's records are gone on the laptop by then)
+      const p = A.round(), P = p && p.summary.pages[uid];
+      ok(bOf(A, uid) && P && P.back === 'returned', `the laptop gets it back, as brought back on the smartboard${purged ? ' (gone here already)' : ' (its Undo still offered here)'} (${P && P.back})`);
+      sync();
+    }
+    A.delPage(bOf(A, uid)); NOW += UNDO + 5000; A.round();
+    B.type(bOf(B, uid), ikOf(B, uid, wid)); NOW += 1000; B.round(); A.deliver(B);
+    const p = A.round(), P = p && p.summary.pages[uid];
+    ok(bOf(A, uid) && P && P.back === 'edit', `deleted on the laptop and edited on the smartboard before the deletion arrived: back, as an edit (${P && P.back})`);
+  });
 }
 
 // ---------------------------------------------------------------------

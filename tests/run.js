@@ -4608,6 +4608,16 @@ const SUITES = [
     await field(C.p).fill('');
     await C.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
     ok(await label(C.p) === 'a computer', 'Done with the field emptied keeps the name it had');
+    // Change… on the laptop to Room 9, whose board is still arriving (Google Drive has only part of its file): the
+    // devices of the folder it left aren't in this one, so a name of theirs isn't said under the field.
+    await seedFolder(A.p, 'Room 9', { '21Board (desktop) [q7k2].21board': '{"format":"21board","sync":{"v":1,' });
+    await A.p.evaluate(() => { window.__drive = { pick: 'Room 9' }; });
+    await openSettings(A.p); await A.p.click('#settings [data-act="link-choose"]');
+    await A.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
+    await field(A.p).fill('Room 14 smartboard');
+    ok((await said(A.p)).includes('Google Drive is still bringing the board in this folder') && await twinLine(A.p) === null,
+      `Change… to a folder whose board is still arriving: the smartboard’s name, typed, isn’t said to be another device’s there (${await twinLine(A.p)})`);
+    await field(A.p).fill('the laptop'); await A.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
     await A.c.close(); await B.c.close(); await C.c.close();
 
     // ---- Closing the step without Done (Escape, or a tap outside the card, the usual way to close one on a smartboard):
@@ -5241,6 +5251,9 @@ const SUITES = [
     const full = (await A.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
     ok(/^Your changes aren’t reaching your other devices 21Board couldn’t save them in your folder at .+?: there’s no room left\. Make room in Google Drive \(or on this device\)\. 21Board keeps trying, and changes from your other devices still show here\. Try again now Close$/.test(full), `tapping it says what happened (“${full}”)`);
     await A.p.keyboard.press('Escape');
+    // (FIN-4) and Settings' status line doesn't say "Up to date" under that warning
+    ok(await eventually(async () => /^Not synced: changes made here aren’t in your folder yet \(the last ones went there at .+?\)\./.test(await status(A.p))) && !/Up to date/.test(await status(A.p)),
+      `the status says “Not synced: …”, not “Up to date” (“${await status(A.p)}”)`);
     await A.p.evaluate(() => { window.__drive = {}; });
     ok(await eventually(async () => { await A.p.evaluate(() => window.__board21.link.check(true)); return await note(A.p) === '' && (await ownJSON(A.p)).board.name === 'While full'; }), 'it is tried again after a while, and nothing was lost');
     await syncWaits(A.p, { maxFile: 500 });
@@ -6326,6 +6339,12 @@ const SUITES = [
       `the version’s column: its time as the heading, then the preview and what changed, then Go back, then each window (${order.order}; “${order.title}”; ${order.sum})`);
     ok(order.rows === 2 && !order.put, `each window of that version is listed with how it compares with now (${order.rows} windows)`);
     await page.screenshot({ path: OUT + '82-history-columns.png' });
+    // A merge's message tapped (its Undo) while looking through Board history: the three columns stay open, as Board
+    // history does on its own.
+    await page.evaluate(() => window.__board21.mergeUI.say('Updated from the laptop.', { action: 'Undo', timeout: 0, onAction: () => { window.__undone = true; } }));
+    await page.locator('#toasts .toast', { hasText: 'Updated from the laptop.' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(300);
+    c = await cols(page);
+    ok(await page.evaluate(() => window.__undone) && ids(c) === 'settings,history,history-detail', `a merge’s message tapped (its Undo) leaves Settings, Board history and the version open (${say(c)})`);
     // Tapping it again closes the column; so does its ✕ (the keyboard goes back to the version in the list).
     await row(page, 1).click(); await page.waitForTimeout(300);
     ok(ids(await cols(page)) === 'settings,history' && await page.locator('#history .hist-row.sel').count() === 0, 'tapping the version again closes its column');
@@ -9775,6 +9794,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(/typed just before/.test(await notesText(B.p)), 'the smartboard, which stays on that folder, gets that work');
       const st = await B.p.evaluate(() => window.__board21.link.status());
       ok(!/Shared with the laptop/.test(st), `and stops listing the laptop as sharing it (${st})`);
+      ok(/The laptop stopped syncing through this folder at \d/.test(st) && !/has synced yet/.test(st), `and says the laptop stopped syncing through this folder, and when (${st})`);
       await syncWaits(A.p);
       await A.p.evaluate(() => { window.__drive = { pick: '21Board' }; });
       await openSettings(A.p); await A.p.click('#settings [data-act="link-choose"]');
@@ -9957,6 +9977,44 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(/Waiting for Google Drive to bring the art room Chromebook’s latest changes\./.test(s2), `a later file still arriving: its device as it names itself (${s2})`);
       await A.c.close(); await B.c.close(); await C.c.close();
     }
+
+    // Settings open on a 1366 × 768 smartboard while a change made here goes out and one from the laptop comes in:
+    // the status line ("Syncing…", "Up to date…") never gets shorter, so the rows below it stay put (Board Sync is the
+    // first section); a merge that changes nothing Settings shows doesn't draw it again.
+    {
+      const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+      await B.p.setViewportSize({ width: 1366, height: 768 });
+      const n = await addNote(A.p, 'Homework: page 12');
+      await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+      await openSettings(B.p);
+      await eventually(async () => /^Up to date\./.test(await B.p.locator('#set-link-status').innerText()), 10000);
+      await B.p.evaluate(() => {
+        const body = document.querySelector('#settings .sheet-body');
+        window.__ys = []; window.__said = []; window.__drawn = 0;
+        new MutationObserver(ms => { for (const m of ms) if (m.target === body) window.__drawn++; }).observe(body, { childList: true });
+        window.__poll = setInterval(() => {
+          window.__ys.push(Math.round(document.querySelector('#settings [data-act="lock-windows"]').getBoundingClientRect().top));
+          const t = document.getElementById('set-link-status').textContent, k = /^Syncing…/.test(t) ? 'Syncing…' : /^Up to date/.test(t) ? 'Up to date' : t;
+          if (window.__said[window.__said.length - 1] !== k) window.__said.push(k);
+        }, 40);
+      });
+      // (a write waits out LINK_GAP_MS after the last one, here 12 s: "Syncing…" meanwhile, put in place at each look)
+      await syncWaits(B.p, { gap: 12000 });
+      await B.p.click('#settings [data-act="close-all"]');
+      await eventually(() => B.p.evaluate(() => window.__said.includes('Syncing…') && window.__said[window.__said.length - 1] === 'Up to date'), 25000);
+      const out = await B.p.evaluate(() => ({ ys: Array.from(new Set(window.__ys)), said: window.__said.slice() }));
+      ok(out.said.includes('Syncing…') && out.ys.length === 1, `Close all tapped: “Syncing…”, then “Up to date…”, and Classroom’s first row stays put (${out.said.join(' → ')}; y ${out.ys.join(' → ')})`);
+      await syncWaits(B.p);
+      await B.p.focus('#settings [data-act="lock-windows"]');
+      await B.p.evaluate(() => { window.__ys = []; window.__drawn = 0; });
+      await typeNote(A.p, n, 'Homework: page 20'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+      ok(await eventually(async () => /page 20/.test(await notesText(B.p))), 'a change from the laptop arrives');
+      await B.p.waitForTimeout(1500);
+      const r = await B.p.evaluate(() => { clearInterval(window.__poll); return { ys: Array.from(new Set(window.__ys)), drawn: window.__drawn, focus: document.activeElement.dataset.act }; });
+      ok(r.ys.length === 1, `and the rows stay put as it is merged (y ${r.ys.join(' → ')})`);
+      ok(r.drawn === 0 && r.focus === 'lock-windows', `a merge that changes nothing Settings shows doesn’t draw Settings again: the keyboard stays on what it was on (${r.drawn} drawings; on ${r.focus})`);
+      await A.c.close(); await B.c.close();
+    }
     ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
   }],
   ['Board Sync review: what merges say, and their Undo (UX-3, UX-4, UX-7…UX-12)', async (browser) => {
@@ -9984,8 +10042,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await deliver(A.p, B.p); await syncNow(B.p);
     await deliver(B.p, A.p); await syncNow(A.p);
     ok((await copiesOf(A.p)).length === 1 && await toastOf(A.p, 'at once, so both versions are kept').locator('button', { hasText: 'Undo' }).count() === 1, 'the laptop, whose text lost, keeps it as a copy, and offers Undo (a swap)');
+    // (the label the round gives Board history, as the round passes it: see the same-name test above)
+    await B.p.evaluate(() => { const H = window.__board21.history, bm = H.beforeMerge.bind(H); window.__labels = []; H.beforeMerge = function (pages, label, hist) { window.__labels.push(label); return bm(pages, label, hist); }; });
     await fresh(B.p); await deliver(A.p, B.p); await syncNow(B.p);
     ok((await heard(B.p)).includes('Notes was changed here and on the laptop at once, so both versions are kept.'), `the smartboard says both versions are kept (${(await heard(B.p)).join(' | ')})`);
+    const labels3 = await B.p.evaluate(() => window.__labels);
+    ok(labels3.includes('Before changes from the laptop') && !labels3.some(l => / from $/.test(l)), `the version before it, made when only the copy arrived, is “Before changes from the laptop” (${JSON.stringify(labels3)})`);
     ok(await toastOf(B.p, 'at once, so both versions are kept').locator('button').count() === 0, 'with no Undo: there is nothing it wrote here to undo');
     await exchange(A, B);
     for (const x of await copiesOf(A.p)) await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), x.ikey);
@@ -9995,9 +10057,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     // page shown.
     await fresh(B.p); await dropPages(A.p, ['Art']); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
     ok(await eventually(async () => await toastOf(B.p, '“Art” was deleted on the laptop.').count() === 1), 'another page deleted on the laptop: said, with Undo');
+    await fresh(A.p);
     await toastOf(B.p, '“Art” was deleted on the laptop.').locator('button', { hasText: 'Undo' }).click();
     ok(await eventually(async () => (await pageNames(B.p)).includes('Art')) && await B.p.evaluate(() => window.__board21.state.board.name) === 'Morning', 'its Undo brings it back, and the smartboard stays on the page shown');
     await B.p.waitForTimeout(600); await exchange(A, B);
+    // (FIN-3) the laptop is told it was brought back there, not that it was changed there before the deletion arrived
+    ok((await heard(A.p)).includes('“Art” was brought back on the smartboard.') && !(await heard(A.p)).some(t => /before the deletion reached it/.test(t)), `the laptop says “Art” was brought back on the smartboard (${(await heard(A.p)).join(' | ')})`);
 
     // UX-7: three pages deleted on the laptop at once: one message, one Undo for all three.
     await fresh(B.p); await dropPages(A.p, ['Music', 'Gym', 'Drama']); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
@@ -10060,6 +10125,34 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await B.p.locator('#history .inst', { hasText: '“Math” · deleted' }).locator('button', { hasText: 'Bring back' }).click();
     ok(await eventually(async () => (await pageNames(B.p)).includes('Math')), 'and Bring back brings it back');
     await openSettings(B.p); await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(400); await B.p.keyboard.press('Escape');
+
+    // FIN-1: Board history opened while a deleted page's Undo runs, and Bring back tapped after it is over (the page's
+    // records gone, its version kept): the page comes back. An open list's row turns into the kept version's as the Undo
+    // ends; one tapped just as it ends brings the page back from that version. (FIN-7: the Deleted pages hint is a hint.)
+    const drop1 = name => B.p.evaluate(name => { const P = window.__board21.pages, b = P.ids().find(x => P.name(x) === name); P.drop([b]); return b; }, name);
+    const actOf = name => B.p.evaluate(name => { const r = Array.from(document.querySelectorAll('#history .inst')).find(e => e.textContent.includes(`“${name}” · deleted`)), b = r && r.querySelector('button'); return b ? b.dataset.act : null; }, name);
+    await fresh(B.p);
+    const gym = await drop1('Gym');
+    await B.p.evaluate(() => window.__board21.historySheet.open('left'));
+    await eventually(async () => await actOf('Gym') !== null, 8000);
+    const act0 = await actOf('Gym');
+    await B.p.evaluate(b => window.__board21.pages.purge([b]), gym);   // (as the Undo's timer does, 23 s after)
+    ok(act0 === 'bring-now' && await eventually(async () => await actOf('Gym') === 'bring', 5000), `Deleted pages: its Undo while that runs, then its kept version once it is over (${act0} → ${await actOf('Gym')})`);
+    const look = await B.p.evaluate(() => { const h = getComputedStyle(document.querySelector('#history .sheet-body > .hint')), i = getComputedStyle(document.querySelector('#history .hist-intro')); return { size: h.fontSize, muted: h.color === i.color }; });
+    ok(look.size === '13px' && look.muted, `its hint is set as a hint: 13 px, muted (${JSON.stringify(look)})`);
+    await B.p.locator('#history .inst', { hasText: '“Gym” · deleted' }).locator('button', { hasText: 'Bring back' }).click();
+    ok(await eventually(async () => (await pageNames(B.p)).includes('Gym') && await B.p.evaluate(() => window.__board21.state.board.name === 'Gym')) && !(await heard(B.p)).includes('That can’t be undone anymore.'),
+      `and its Bring back brings the page back, and goes to it (${(await heard(B.p)).join(' | ')})`);
+    const drama = await drop1('Drama');
+    await B.p.evaluate(() => window.__board21.historySheet.open('left'));
+    await eventually(async () => await actOf('Drama') !== null, 8000);
+    const act1 = await B.p.evaluate(b => {   // (tapped just as its Undo ends: the row is still the Undo)
+      window.__board21.pages.purge([b]);
+      const r = Array.from(document.querySelectorAll('#history .inst')).find(e => e.textContent.includes('“Drama” · deleted')).querySelector('button'), act = r.dataset.act;
+      r.click(); return act;
+    }, drama);
+    ok(act1 === 'bring-now' && await eventually(async () => (await pageNames(B.p)).includes('Drama'), 8000) && !(await heard(B.p)).includes('That can’t be undone anymore.'),
+      `Bring back tapped just as the Undo ends brings the page back too (${act1}; ${(await heard(B.p)).join(' | ')})`);
 
     // UX-9: another device on a newer 21Board: Settings says to update; its Update button only once the update is here.
     await putText(B.p, '21Board (laptop) [fut1].21board', JSON.stringify({ format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Future', uid: 'aaaaaaaa-0000-4000-8000-000000000000' }, instances: [], sync: { v: 2, dev: 'futurexxxxxx', name: 'the Chromebook', seq: 1, at: Date.now(), sum: '' } }));

@@ -343,7 +343,9 @@ back, such as a window being typed in, is due again):
   Traffic light, whose content is a setting, the later one wins. Anything else changed on both (a window
   moved on both) takes the later change, and Board history keeps a version from before it.
 - **Deleting** a page or window on any device deletes it everywhere (with Undo, and Board history). An edit made
-  on a device that hadn't seen the deletion yet brings it back, so no one's work disappears unseen.
+  on a device that hadn't seen the deletion yet brings it back, so no one's work disappears unseen. A page brought
+  back on one device (its Undo, or Board history › Deleted pages › *Bring back*) comes back on the others, which
+  say so ("“Math” was brought back on the smartboard.").
 - **Never under your hands:** nothing moves while you drag, while a menu or dialog is open, or in a window
   that is being typed in; the change lands a moment later. A window menu left open for a minute closes.
 - **The page shown** says "Updated from the laptop." (with Undo; a new message at most once a minute, the one up
@@ -359,8 +361,10 @@ back, such as a window being typed in, is due again):
 
 **Settings → Board Sync** has three rows: **Synced through “21Board”** with how syncing is going ("Up to date.
 This device’s latest changes went to your folder at 9:42 AM. Shared with the smartboard (last change at 9:40
-AM)."; "Syncing…" only while changes made here are on their way; the line is updated in place, so Settings
-isn't redrawn under a screen reader or a name being typed) and *Change…* and *Unlink*; **This device’s name**
+AM)."; "Syncing…" only while changes made here are on their way; "Not synced: …" while they can't be written;
+which device stopped syncing through the folder, and when, once the only other one has left it; the line is updated
+in place and never gets shorter while Settings is open, so Settings isn't redrawn under a screen reader or a name
+being typed, and the rows below it don't move) and *Change…* and *Unlink*; **This device’s name**
 (shown on your other devices, and in its file's name); and **Keep history copies in the folder**.
 
 **What's in the folder:**

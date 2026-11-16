@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.16-3';
-  const BOARD_BUILD = '437d9574';
+  const BOARD_BUILD = '4d4e74b5';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -1151,7 +1151,7 @@
     Pages.follow();   // another tab went to another page
     Picker.render();
     updateHint();
-    if (Settings.isOpen) Settings.render();
+    if (Settings.isOpen) Settings.refresh();
   }
 
   function normalizeInst(v, k) {
@@ -3567,6 +3567,7 @@
       if (keys.length) { Sync.announce(keys); Link.changed(keys); }   // (written around Writer: Board Sync is told)
       for (const b of list) { await BoardHistory.markDeleted(b, this.goneAt.get(b)); this.goneAt.delete(b); }   // (its versions stay 30 days: Board history › Deleted pages)
       updateSettings(this.goneWith([], list));
+      HistorySheet.refresh();   // (an open Deleted pages list: its Bring back is now the kept version's, not the Undo)
     },
     // At start-up: pages deleted before (in a tab that may still be offering their Undo) go once it is over.
     purgeLater() {
@@ -4350,6 +4351,9 @@
       ${H.enabled() ? `<div class="row"><div><div class="lbl">Keep history copies in the folder</div><div class="hint">About hourly, so you can go back even if this device is reset.${H.folderStatus ? ' ' + esc(H.folderStatus) : ''}</div></div>${sw('hist-folder', S.settings.historyFolder !== false, 'Keep history copies in the folder')}</div>` : ''}`;
   }
 
+  // Settings' HTML without Board Sync's status line, which is put in place (Settings.putStatus).
+  const noStatus = h => h.replace(/<div class="hint" id="set-link-status">[\s\S]*?<\/div>/, '');
+
   const Settings = {
     el: null,
     body: null,
@@ -4357,6 +4361,8 @@
     isOpen: false,
     groups: new Set(),   // the groups open now (settingsGroup): none each time Settings opens
     linkShown: '',       // the Board Sync section as last drawn
+    drawn: '',           // all of Settings as last drawn (see refresh)
+    statusMin: 0,        // the status line's height while Settings is open (see keepStatus); null: just opened
 
     // What Settings shows of Board Sync is no longer what it shows now (after a look at the folder: Link.redraw).
     linkChanged() { return Link.supported && linkSettings(switchHTML, segHTML) !== this.linkShown; },
@@ -4365,9 +4371,24 @@
     linkRefresh() {
       if (!this.linkChanged()) return;
       const html = linkSettings(switchHTML), el = $('#set-link-status', this.body);
-      const rest = h => h.replace(/<div class="hint" id="set-link-status">[\s\S]*?<\/div>/, '');
-      if (el && rest(html) === rest(this.linkShown)) { el.textContent = Link.status(); this.linkShown = html; return; }
+      if (el && noStatus(html) === noStatus(this.linkShown)) { this.putStatus(el); this.linkShown = html; return; }
       this.render();
+    },
+    // Something Settings shows may have changed (a merge, another tab, a version saved): drawn again only if it did,
+    // the status line put in place otherwise. (Each merge drew it two or three times: a screen reader read the control
+    // it was on again, and a tap whose press and release straddled a drawing was lost.)
+    refresh() { this.render(false, true); },
+    // The status line never gets shorter while Settings is open: Board Sync is first, so every row below would move
+    // under a finger each time it says "Syncing…" and then "Up to date…" again. (Measured afresh each time it opens.)
+    keepStatus() {
+      const el = $('#set-link-status', this.body);
+      if (this.statusMin === null) this.statusMin = 0;
+      else if (el) this.statusMin = Math.max(this.statusMin, el.offsetHeight);
+    },
+    putStatus(el) {
+      this.keepStatus();
+      if (this.statusMin) el.style.minHeight = this.statusMin + 'px';
+      el.textContent = Link.status();
     },
 
     init() {
@@ -4473,6 +4494,7 @@
       this.el.classList.add(this.side, 'open');
       this.groups = opts.again ? groups : new Set();   // (every group starts closed)
       this.isOpen = true;
+      this.statusMin = null;
       this.render();
       if (opts.again) this.body.scrollTop = top;
       if (keep) HistorySheet.move(this.side);
@@ -4491,8 +4513,9 @@
       if (btn && btn.getClientRects().length) btn.focus({ preventScroll: true });
     },
 
-    // force: drawn even while a field has the keyboard (the color picker has just closed).
-    render(force) {
+    // force: drawn even while a field has the keyboard (the color picker has just closed). ifChanged: only if what it
+    // shows changed (see refresh).
+    render(force, ifChanged) {
       if (!this.isOpen) return;
       // Don't yank a text field out from under someone who is typing in it, nor the color picker (it closes) or a
       // slider being moved. (Drawn again at the next change; Board Sync's part at the next look at the folder.)
@@ -4554,7 +4577,7 @@
       const link = this.linkShown = Link.supported ? linkSettings(sw, seg) : '';   // (see linkChanged)
       const inside = ['Widget Picker', 'size', 'moving windows'].concat(!LAB && BoardHistory.enabled() ? ['history'] : [], LAB ? [] : ['backups'], dev ? ['developer'] : [], ['erase']);
 
-      this.body.innerHTML = `
+      const html = `
         ${note ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(note.title)}</div><div class="hint">${esc(note.text)}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>` : ''}
         <div class="row update-note" id="st-update" hidden><div><div class="lbl">A new version is ready</div><div class="hint">Takes a second. Your board stays as it is.</div></div><button class="btn small primary" data-act="update">Update now</button></div>
 
@@ -4577,6 +4600,15 @@
 
         <div class="gap"></div>
         ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), inset: true })}`;
+      if (ifChanged && noStatus(html) === noStatus(this.drawn)) {
+        const line = $('#set-link-status', this.body);
+        if (line) this.putStatus(line);
+        this.drawn = html; this.refreshStatus(true); return;
+      }
+      this.keepStatus();
+      this.body.innerHTML = this.drawn = html;
+      const line = $('#set-link-status', this.body);
+      if (line && this.statusMin) line.style.minHeight = this.statusMin + 'px';
       if (was) {
         const again = $$(`[data-act="${CSS.escape(was.dataset.act)}"]`, this.body).find(b => b.dataset.val === was.dataset.val);
         if (again) again.focus({ preventScroll: true });
@@ -5752,9 +5784,11 @@
       // it has, kept or changed with a tap (LINK_NAMES) or typed. The field gets the keyboard only on a device without
       // a touch screen: on a smartboard or an iPad, that would bring up the on-screen keyboard unasked. A name in the
       // field that another device in the folder has ("Shared with the laptop and the laptop") is said under it, as the
-      // teacher types or taps; not the name of a device that left, which the status leaves out too.
+      // teacher types or taps; not the name of a device that left, or of one with no file in this folder (after Change…,
+      // the folder left's devices until this one's board is decided), which the status leaves out too.
       const me = this.device(), same = s => String(s || '').trim().toLowerCase(), keys = navigator.maxTouchPoints === 0;
-      const sp = (this.sync && this.sync.peers) || {}, others = Object.entries(this.names()).filter(([d]) => d !== this.dev() && !(sp[d] || {}).left).map(([, n]) => n);
+      const sp = (this.sync && this.sync.peers) || {}, seen = new Set(Array.from(this.files.values(), f => f.dev).filter(Boolean));
+      const others = Object.entries(this.names()).filter(([d]) => d !== this.dev() && seen.has(d) && !(sp[d] || {}).left).map(([, n]) => n);
       const asked = dialog({ title: 'Board Sync is set up', message: say.join(' '), cls: 'setup',
         input: { label: 'This device’s name (shown on your other devices)', maxlength: 40, focus: keys,
           html: '<div class="modal-note" id="name-twin" aria-live="polite" hidden></div>' +
@@ -6113,7 +6147,7 @@
       for (const [uid, p] of Object.entries(plan.summary.pages)) if ((p.changed || p.deleted) && !p.added && !p.placeholder) pages[uid] = p;
       const hist = {};
       if (Object.keys(pages).length) {
-        const names = andList(plan.summary.from.map(d => this.names()[d] || 'another device'));
+        const names = andList(plan.summary.from.map(d => this.names()[d] || 'another device')) || 'another device';   // (never "Before changes from ")
         // (switching between two folders with the same name, as set-up suggests "21Board": the label names the board's device)
         // (a take's own page shown then, removed here at the next round, is labelled as the switch too)
         const top = Object.values(files).filter(f => f.dev !== me).sort((a, b) => b.at - a.at)[0];
@@ -6731,12 +6765,17 @@
         const f = arriving[0], p = Object.values(sync.peers || {}).find(x => x && x.file === f.name);
         out.push(`Waiting for Google Drive to bring ${f.devName || (p && p.name) || 'another device'}’s latest changes.`);
       }
+      // (a write that fails: not "Up to date" under the warning that changes aren't reaching the other devices)
+      else if (this.unsent || this.problem() === 'send') out.push(`Not synced: changes made here aren’t in your folder yet${sync.wroteAt ? ` (the last ones went there ${when(sync.wroteAt)})` : ''}.`);
       else if (sync.wroteAt) out.push(`Up to date. This device’s latest changes went to your folder ${when(sync.wroteAt)}.`);
       else out.push('Up to date.');
       const me = this.dev(), seen = new Set(Array.from(this.files.values(), f => f.dev).filter(Boolean));
       const others = Object.entries(sync.peers || {}).filter(([d, p]) => d !== me && seen.has(d) && p && !p.left).map(([, p]) => ({ devName: p.name, at: p.at || 0 })).sort((a, b) => b.at - a.at);
       const who = f => `${f.devName || 'another device'}`;
-      if (!others.length) out.push('No other device has synced yet: set up Board Sync on your other devices and pick this same folder.');
+      // (a device that synced here and stopped, by Unlink or Change…: said, not "has synced yet")
+      const gone = Object.entries(sync.peers || {}).filter(([d, p]) => d !== me && seen.has(d) && p && p.left).map(([, p]) => p).sort((a, b) => (b.left.at || 0) - (a.left.at || 0))[0];
+      if (!others.length && gone) out.push(`${cap(gone.name || 'another device')} stopped syncing through this folder ${when(gone.left.at || 0)}.`);
+      else if (!others.length) out.push('No other device has synced yet: set up Board Sync on your other devices and pick this same folder.');
       else if (others.length === 1) out.push(`Shared with ${who(others[0])} (last change ${when(others[0].at)}).`);
       else if (others.length === 2) out.push(`Shared with ${who(others[0])} (${when(others[0].at)}) and ${who(others[1])} (${when(others[1].at)}).`);
       else out.push(`Shared with ${who(others[0])} (${when(others[0].at)}), ${who(others[1])} (${when(others[1].at)}) and ${others.length - 2} other${others.length === 3 ? '' : 's'}.`);
@@ -7069,7 +7108,7 @@
       if (saved && (id === meta.id || kind === 'manual')) this.maybeFolder(saved, kind === 'manual');
       Sync.announce([], { op: 'history', board: b });
       HistorySheet.refresh(); updateHint();
-      if (Settings.isOpen) Settings.render();
+      if (Settings.isOpen) Settings.refresh();
       return id || null;
     },
     // A version from just before a risky action. Never holds the action up for long (opts.timeout).
@@ -7864,7 +7903,15 @@
         case 'bring': closePopups(); await H.bringBack(val); break;
         case 'bring-now': {   // (deleted just now: its Undo, staying on the page shown)
           const b = +val, name = (Pages.info.get(b) || {}).name || '';
-          closePopups(); await Pages.undrop([b], Pages.ids().concat(b), () => {});
+          closePopups();
+          if (!Pages.purges.has(b)) {   // (its Undo ended since the list was drawn: its kept version, once noted as deleted)
+            if (Pages.ids().includes(b)) { toast(`“${name}” is back.`); break; }   // (another device brought it back meanwhile)
+            let d = null;
+            for (let i = 0; i < 20 && !d; i++) { d = (await H.deletedPages()).find(x => x.b === b && x.id); if (!d) await sleep(150); }
+            if (d) await H.bringBack(d.id); else toast('Couldn’t bring that page back just now. Try again in a moment.');
+            break;
+          }
+          await Pages.undrop([b], Pages.ids().concat(b), () => {});
           if (Pages.ids().includes(b)) toast(`“${name}” is back.`);
           break;
         }
@@ -8582,14 +8629,15 @@
         let b = LP ? LP.b : 0;
         const acc = { applied: [], replaced: [] };   // versions taken from other devices, and the entries they replaced
         const sumP = ps(uid, b);
-        if (!LP) { b = newB(); sumP.b = b; if (M && M.gone) sumP.back = true; else sumP.added = true; sp.lastBoard = Math.max(sp.lastBoard, b); }
-        else if (LP.gone) { sp.gone.push(['remove', b]); sumP.back = true; }
+        // back: 'returned' (brought back on another device: its Undo, Bring back, made again) or 'edit' (below)
+        if (!LP) { b = newB(); sumP.b = b; if (M && M.gone) sumP.back = 'returned'; else sumP.added = true; sp.lastBoard = Math.max(sp.lastBoard, b); }
+        else if (LP.gone) { sp.gone.push(['remove', b]); sumP.back = 'returned'; }
         const nm = { uid, b, p: {}, w: {}, hist: (M && M.hist) || { at: 0, local: false }, quiet: (M && M.quiet) || null, gone: null, wgone: {} };
         let pageChanged = !LP || LP.gone;
         // shown although deleted (an edit its deleter hadn't seen): the deletion's own version, as shown. Every device
         // does the same, and in a file a shown version beats the deletion with the same vector (§4.1: the larger h).
         const ex = S.exists.main;
-        if (S.exists.main.h !== '1') sumP.back = true;
+        if (S.exists.main.h !== '1') sumP.back = 'edit';
         const tv = {}, held = {};
         // (a new size rescales every window on the page: it waits while one of them is busy)
         const busyHere = !!LP && !LP.gone && !(M && M.gone) && Array.from(LP.wins.values()).some(W2 => holdW.has(`${b}:${W2.ikey}`));
@@ -8827,7 +8875,8 @@
           pageChanged = true;
         }
         for (const [wid, T0] of Object.entries((M && M.wgone) || {})) if (!nm.w[wid] && !nm.wgone[wid] && !S.wins.has(wid)) nm.wgone[wid] = T0;
-        const devsHere = Array.from(new Set(acc.applied.map(v => v.by).filter(d => d !== dev && DEV_RE.test(d))));
+        // (a copy's versions are by "the copy", no device: they are credited to the device whose file brought them)
+        const devsHere = Array.from(new Set(acc.applied.map(v => (DEV_RE.test(v.by) ? v.by : v.src)).filter(d => d !== dev && DEV_RE.test(d || ''))));
         // (at: when it was merged here, for "shown since"; t: when the newest of those changes was made, to say)
         if (pageChanged && uid !== o.pageShown && LP && !LP.gone && devsHere.length) {
           const t = Math.max(fin(nm.quiet && nm.quiet.t, 0), ...acc.applied.filter(v => v.by !== dev).map(v => fin(v.t, 0)));
@@ -9144,14 +9193,14 @@
         if (locked) this.say(one + (deleted.length === 1 ? ' Board history › Deleted pages has it.' : ' Board history › Deleted pages has them.'));
         else this.say(one, { action: 'Undo', pages: true, timeout: PAGE_UNDO_MS, onAction: () => Pages.undrop(bs, Pages.ids().concat(bs), left ? undefined : () => {}) });
       }
-      for (const [uid, p] of Object.entries(pages)) if (p.back && uid !== mine && !p.added) this.say(`“${p.name}” is back: it was changed on ${this.names(p.from.length ? p.from : summary.from)} before the deletion reached it.`);
+      for (const [uid, p] of Object.entries(pages)) if (p.back && uid !== mine && !p.added) this.say(this.back(p, p.from.length ? p.from : summary.from));
       if (!here || !here.changed || here.deleted) return;
       const by = here.from.length ? here.from : summary.from, ops = (seed.ops || []).filter(o => Keys.parse(o.key).board === S.boardId);
       const skip = new Set((seed.skip || (summary.undo && summary.undo.skip) || []));
       const seedHere = { ops: ops.filter(o => !skip.has(o.key)), swaps: (seed.swaps || []).filter(w => w.page === mine), from: by };
       let text, button = 'Undo';
       const clash = here.clashes.find(c => !c.arrived) || here.clashes[0];
-      if (here.back) text = `“${here.name}” is back: it was changed on ${this.names(by)} before the deletion reached it.`, button = null;
+      if (here.back) text = this.back(here, by), button = null;
       else if (here.undone) { text = here.mineUndone ? `${this.names(by, true)} undid the changes from this device.` : `${this.names(by, true)} undid the latest changes.`; button = 'Redo'; }
       else if (clash) {
         const w = getWidget(clash.widgetId), name = w ? w.name : 'A window', others = clash.devs.filter(d => d && d !== devKey());
@@ -9164,6 +9213,11 @@
       if (!seedHere.ops.length && !seedHere.swaps.length) button = null;
       if (locked || !button) { this.merge(text, null, seedHere); return; }   // (windows locked: no Undo; Board history has it)
       this.merge(text, button, seedHere);
+    },
+    // A page deleted here is back: brought back on another device (its Undo, Bring back), or changed there before the
+    // deletion reached it (Merge.plan's back).
+    back(p, by) {
+      return p.back === 'returned' ? `“${p.name}” was brought back on ${this.names(by)}.` : `“${p.name}” is back: it was changed on ${this.names(by)} before the deletion reached it.`;
     },
     // Another merge toast, shown at once: it replaces the merge toasts of earlier rounds that are up. (One round that
     // deletes or adds pages and changes the page shown says each.)
@@ -9847,8 +9901,9 @@
       if (Pages.open && !t.closest('#pages-menu') && !t.closest('[data-ctl="pages"]')) Pages.closeMenu();
       if (Picker.side && !t.closest('#panel') && !t.closest('.picker-btn') && !t.closest('#pages-menu')) Picker.close();
       if (Menu.win && !t.closest('#menu') && !t.closest('.win-label')) Menu.close();
-      // (Settings and Board history's columns beside it count as one: a tap in either leaves both open.)
-      const cols = HistorySheet.beside && t.closest('#settings, #history, #history-detail');
+      // (Settings and Board history's columns beside it count as one: a tap in either leaves both open. So does a tap on a
+      // message, as for Board history on its own: a merge's Undo while looking through Board history.)
+      const cols = HistorySheet.beside && t.closest('#settings, #history, #history-detail, #toasts');
       if (Settings.isOpen && !cols && !t.closest('#settings') && !t.closest('#modal') && !t.closest('.picker-btn') && !t.closest('#panel')) Settings.close();
       if (HistorySheet.isOpen && !cols && !t.closest('#history, #history-detail') && !t.closest('#modal') && !t.closest('#toasts') && !t.closest('.picker-btn') && !t.closest('#panel') && !t.closest('#empty-hint')) HistorySheet.close();
     }, true);
