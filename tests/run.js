@@ -8037,14 +8037,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.click('#toasts button:has-text("Undo")'); await page.waitForFunction(() => window.__board21.state.boardId === 2); await settle(1000);
     s = await st();
     ok(s.ids.join() === '1,2,3' && s.name === 'Math' && s.wins.join() === 'dice:1,timer:1', `Undo brings it back in its place, as it was (${JSON.stringify(s)})`);
-    // Deleted for good: its records and its board history go (once its Undo is over); its id isn't used again.
+    // Deleted for good: its records go (once its Undo is over), its board history stays 30 days (Board history ›
+    // Deleted pages, to bring it back); its id isn't used again.
     await page.evaluate(() => window.__board21.history.capture('manual', { label: 'kept' })); await settle(300);
     await openPicker(); await page.click('[data-ctl="pages"]'); await page.click('#pages-menu [data-act="delete"]'); await page.click('#modal .btn.danger');
     await page.waitForFunction(() => window.__board21.state.boardId !== 2); await settle(400);
     await page.evaluate(() => window.__board21.pages.purge([2])); await settle(400);
     R = await recs();
-    const hist2 = await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board-history'); o.onsuccess = () => { const q = o.result.transaction('meta').objectStore('meta').getAllKeys(); q.onsuccess = () => { o.result.close(); res(q.result.filter(k => String(k).startsWith('2:')).length); }; }; }));
-    ok(!Object.keys(R).some(k => /^(board|inst|data|conf|media):2(:|$)/.test(k)) && hist2 === 0 && !(R.settings.deletedBoards || []).length, 'after its Undo, a deleted page’s records and board history are gone');
+    const hist2 = await page.evaluate(() => new Promise(res => { const o = indexedDB.open('21Board-history'); o.onsuccess = () => { const q = o.result.transaction('meta').objectStore('meta').getAll(); q.onsuccess = () => { o.result.close(); res(q.result.filter(m => String(m.id).startsWith('2:'))); }; }; }));
+    ok(!Object.keys(R).some(k => /^(board|inst|data|conf|media):2(:|$)/.test(k)) && hist2.length > 0 && hist2.every(m => m.deletedAt > 0) && !(R.settings.deletedBoards || []).length,
+      `after its Undo, a deleted page’s records are gone and its board history stays, marked deleted (${hist2.length} versions)`);
     await openPicker(); await page.click('[data-ctl="pages"]'); await page.click('#pages-menu [data-act="new"]');
     await page.waitForFunction(() => window.__board21.state.boardId === 4, null, { timeout: 8000 }).catch(() => {});
     ok((await st()).id === 4, 'a new page never gets a deleted page’s id');

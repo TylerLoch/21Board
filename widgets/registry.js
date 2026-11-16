@@ -35,6 +35,8 @@
  *   single       true = one window only: the Widget Picker brings it to the front (or opens it again)
  *                instead of opening a second one, and "Add to my board" adds none from a file if the board
  *                has one.
+ *   clash        'later' = Board Sync keeps the later content when the same window was changed on two devices at once
+ *                (its content is only a setting, such as a timer's time); otherwise both are kept, the other as a copy.
  *   external     true = one of the district's own apps, shown from its own site: `entry` is its https
  *                address and `files` is empty. The app keeps its own work on the device (and its own offline
  *                copy, once it has one); 21Board saves only where its window is. No SDK. (README, "District apps")
@@ -50,6 +52,7 @@ self.BOARD21_WIDGETS = [
     color: '#ef4444',
     icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5"/><path d="M10 2.5h4"/><path d="M12 2.5V6"/><path d="M18.5 6.5l1.5-1.5"/></svg>',
     window: { width: 380, height: 260, minWidth: 240, minHeight: 170 },
+    clash: 'later',
     permissions: []
   },
   {
@@ -135,6 +138,7 @@ self.BOARD21_WIDGETS = [
     color: '#10b981',
     icon: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>',
     window: { width: 360, height: 240, minWidth: 200, minHeight: 160 },
+    clash: 'later',
     permissions: []
   },
   {
@@ -147,6 +151,7 @@ self.BOARD21_WIDGETS = [
     color: '#f97316',
     icon: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="7" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="17" r="1.6"/></svg>',
     window: { width: 170, height: 380, minWidth: 90, minHeight: 200, aspectRatio: 170 / 380 },
+    clash: 'later',
     permissions: []
   },
   // The district's own apps, each from its own site (they keep their own work; see `external` above). Their pages

@@ -192,6 +192,11 @@
     .win-label .sub { font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1000 auto; min-width: 0; }
     .win-label .sub:not(:empty)::before { content: "·"; margin: 0 6px 0 2px; }
     @container (max-width: 260px) { .win-label .sub { display: none; } }
+    /* A copy kept from a clash (Board Sync): "Copy · 9:41 AM". It goes last when the title bar is narrow. */
+    .win-label .copy-label { flex: 0 0 auto; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: .8em; font-weight: 600; white-space: nowrap;
+      background: var(--copy-bg, #fef3c7); color: var(--copy-fg, #92400e); }
+    body.dark .win-label .copy-label { --copy-bg: rgba(251, 191, 36, 0.18); --copy-fg: #fcd34d; }
+    @container (max-width: 170px) { .win-label .copy-label { display: none; } }
     .win-label svg { width: 18px; height: 18px; color: var(--muted); }
     .win-label.open { background: var(--label-open); color: var(--primary); }
     .win-label.open svg { color: var(--primary); transform: rotate(180deg); }
