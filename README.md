@@ -361,8 +361,8 @@ back, such as a window being typed in, is due again):
   other device kept its own version as the copy). Several pages deleted at once on another device are one
   message ("3 pages were deleted on the laptop.") with one Undo, which leaves you on the page you're on.
 - **Theme and accent color are the board's:** the later choice, made on any device, shows on all of them (the
-  laptop set to Dark turns the smartboard dark), at once, even while windows are locked, and the device that
-  shows it says who changed it ("The laptop changed the theme to Dark and the accent color to Green.", with no
+  laptop set to Dark turns the smartboard dark), at once, even while windows are locked (Settings, if open, shows
+  the new choice in place, without being drawn again), and the device that shows it says who changed it ("The laptop changed the theme to Dark and the accent color to Green.", with no
   Undo: changing it back in Settings is one tap, and syncs). Auto stays Auto everywhere: each device then follows
   its own light or dark setting. A device that only ever had the defaults, or the folder's, never replaces
   another's choice; one made while unlinked counts when the same folder is linked again, and of two made apart
@@ -371,15 +371,17 @@ back, such as a window being typed in, is due again):
   Settings says "On all your devices." beside Theme and Accent color, "This device only." beside Lock, Stay
   awake, the clock and the letters, and "This page, on all your devices." beside the page's own settings.
 
-**Settings → Board Sync** has three rows: **Synced through “21Board”** with how syncing is going ("Up to date.
-This device’s latest changes went to your folder at 9:42 AM. Shared with the smartboard (last change at 9:40
-AM)."; "Not synced: …" while changes made here can't be written; which device stopped syncing through the folder,
-and when, once the only other one has left it) and *Change…* and *Unlink*; **This device’s name** (shown on your
-other devices, and in its file's name); and **Keep history copies in the folder**. While changes made here are on
-their way, "Syncing…" shows after the folder's name (its room is kept while it's hidden), not in the line below, so
-the rows below Board Sync stay put as changes go out and come in (only a new day moves them once: times from the day
-before read "on Nov 16 at 3:00 PM" until the first change of the day). The line and "Syncing…" are updated in place,
-so Settings isn't redrawn under a screen reader or a name being typed, and "Syncing…" isn't announced each time.
+**Settings → Board Sync** has three rows: **Synced through “21Board”** with how syncing is going ("Up to date. This
+device’s latest changes went to your folder at 9:42 AM. Shared with the smartboard (last change at 9:40 AM)."; "Not
+synced: …" while changes made here can't be written; which device stopped syncing through the folder, and when, once
+the only other one has left it) and *Change…* and *Unlink*; **This device’s name** (shown on your other devices, and
+in its file's name); and **Keep history copies in the folder**. While changes made here are on their way (and for a
+moment after a change from another device is taken in, while this device's own file, which holds the whole board, is
+written again), "Syncing…" shows after the folder's name (its room is kept while it's hidden), not in the line
+below, so the rows below Board Sync stay put as changes go out and come in (only a new day moves them once: times
+from the day before read "on Nov 16 at 3:00 PM" until the first change of the day). The line and "Syncing…" are
+updated in place, so Settings isn't redrawn under a screen reader or a name being typed, and "Syncing…" isn't
+announced each time.
 
 **What's in the folder:**
 

@@ -88,7 +88,8 @@ storage can't be read still has every page.
   awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
   clock: "date",           // Settings → Appearance → Clock in the corner: "off" | "time" | "date" (time and date, the default)
   letters: "standard",     // Settings → Appearance → Letters: "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
-  lastBackupAt: null,      // ms of the last full backup export, for backup reminders
+  lastBackupAt: null,      // ms of the last full backup (an export of every page, or Board Sync writing this device's
+                           //   file), for backup reminders and the amber dot on Settings → Advanced (only when overdue)
   devMode: false,          // Settings → Advanced → Developer mode
   activeBoard: 1,          // the page shown, in every tab (start-up falls back to the first page if it is gone)
   boards: [1, 3, 2],       // the pages in order (board ids)

@@ -10256,6 +10256,19 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await B.p.evaluate(() => { const body = document.querySelector('#settings .sheet-body'); body.scrollTop = 0; body.scrollTop = Math.min(220, body.scrollHeight - body.clientHeight); });
     await B.p.focus('#settings [data-act="theme"][data-val="system"]');
     const top0 = await B.p.evaluate(() => document.querySelector('#settings .sheet-body').scrollTop);
+    // (Settings isn't drawn again for it, and nothing in it moves: the choices are put in place; the grey line goes on
+    // saying how things stand)
+    await B.p.evaluate(() => {
+      const body = document.querySelector('#settings .sheet-body');
+      window.__drawn = 0; window.__ys = []; window.__lines = [];
+      new MutationObserver(ms => { if (ms.some(m => m.target === body)) window.__drawn++; }).observe(body, { childList: true });
+      const look = () => {
+        window.__ys.push(['lock-windows', 'theme', 'accent'].map(a => Math.round(document.querySelector(`#settings [data-act="${a}"]`).getBoundingClientRect().top)).join());
+        const t = document.getElementById('set-link-status').textContent;
+        if (!window.__lines.includes(t)) window.__lines.push(t);
+      };
+      look(); window.__poll = setInterval(look, 40);
+    });
     await hear(B.p);
     await pick(A.p, 'theme', 'dark'); await pick(A.p, 'accent', 'green');
     ok(await look(A.p) === 'dark green dark #4ade80', `(the laptop is dark and green: ${await look(A.p)})`);
@@ -10267,9 +10280,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok((await heard(B.p)).includes('The laptop changed the theme to Dark and the accent color to Green.'), `it says “The laptop changed the theme to Dark and the accent color to Green.” (${(await heard(B.p)).join(' | ')})`);
     ok(await said(B.p, 'The laptop changed the theme').locator('button').count() === 0, 'with no Undo (changing it back in Settings is one tap)');
     const sb = await B.p.evaluate(() => ({ dark: document.querySelector('#settings [data-act="theme"][data-val="dark"]').getAttribute('aria-checked'), green: document.querySelector('#settings [data-act="accent"][data-val="green"]').getAttribute('aria-checked'),
-      focus: `${document.activeElement.dataset.act}=${document.activeElement.dataset.val}`, top: document.querySelector('#settings .sheet-body').scrollTop }));
-    ok(sb.dark === 'true' && sb.green === 'true' && sb.focus === 'theme=system' && Math.abs(sb.top - top0) <= 2,
-      `Settings open on the smartboard shows Dark and Green chosen, with the keyboard where it was and the same scroll (${JSON.stringify(sb)}; was ${top0})`);
+      focus: `${document.activeElement.dataset.act}=${document.activeElement.dataset.val}`, top: document.querySelector('#settings .sheet-body').scrollTop,
+      shade: getComputedStyle(document.querySelector('#settings [data-act="accent"][data-val="green"]')).backgroundColor }));
+    ok(sb.dark === 'true' && sb.green === 'true' && sb.focus === 'theme=system' && Math.abs(sb.top - top0) <= 2 && sb.shade === 'rgb(74, 222, 128)',
+      `Settings open on the smartboard shows Dark and Green chosen (the swatches in their dark shades), with the keyboard where it was and the same scroll (${JSON.stringify(sb)}; was ${top0})`);
+    const quiet = await B.p.evaluate(() => { clearInterval(window.__poll); return { drawn: window.__drawn, ys: Array.from(new Set(window.__ys)), lines: window.__lines }; });
+    ok(quiet.drawn === 0 && quiet.ys.length === 1, `put in place: Settings isn’t drawn again, and its rows don’t move (${quiet.drawn} drawings; y ${quiet.ys.join(' → ')})`);
+    ok(quiet.lines.every(t => /^Up to date\. .*Shared with the laptop \(last change at /.test(t)), `the grey line goes on saying “Up to date…”, with the laptop’s last change (${quiet.lines.join(' | ')})`);
     const fileA = await ownJSON(A.p), devA = await A.p.evaluate(() => window.__board21.link.dev());
     ok(fileA.theme === 'dark' && fileA.accent === 'green' && fileA.sync.style.theme[0] === devA && fileA.sync.style.accent[0] === devA, `the laptop’s file has them, and their versions (${JSON.stringify(fileA.sync.style)})`);
 

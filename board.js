@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.16-4';
-  const BOARD_BUILD = '277b6b58';
+  const BOARD_BUILD = '21fdcc19';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4362,6 +4362,10 @@
   // when the last backup was (refreshStatus: each write of this device's file counts as one, see writeOwn).
   const noStatus = h => h.replace(/<div class="hint" id="set-link-status">[\s\S]*?<\/div>/, '').replace('<span class="link-syncing on"', '<span class="link-syncing"')
     .replace(/<div class="hint" id="st-backup">[^<]*<\/div>/, '');
+  // ... and without which theme and accent color are chosen (and the swatches' shades, which follow the theme): put in
+  // place when only they changed, chosen on another device or in another tab (putLook).
+  const noLook = h => h.replace(/<button role="radio" aria-checked="\w+" data-act="theme"([^>]*) class="\w*">/g, '<button data-act="theme"$1>')
+    .replace(/<button class="swatch[^"]*" style="[^"]*" role="radio" aria-checked="\w+" data-act="accent"/g, '<button data-act="accent"');
 
   const Settings = {
     el: null,
@@ -4387,6 +4391,16 @@
     // the status line put in place otherwise. (Each merge drew it two or three times: a screen reader read the control
     // it was on again, and a tap whose press and release straddled a drawing was lost.)
     refresh() { this.render(false, true); },
+    // The theme's and accent color's choices as html has them, put in place: Settings isn't drawn again for a choice
+    // made elsewhere (the keyboard, a tap and a screen reader stay where they were, and nothing moves).
+    putLook(html) {
+      const t = document.createElement('template');
+      t.innerHTML = html;
+      for (const b of t.content.querySelectorAll('[data-act="theme"], [data-act="accent"]')) {
+        const el = $(`[data-act="${b.dataset.act}"][data-val="${CSS.escape(b.dataset.val)}"]`, this.body);
+        if (el) for (const a of ['class', 'style', 'aria-checked']) if (el.getAttribute(a) !== b.getAttribute(a)) el.setAttribute(a, b.getAttribute(a));
+      }
+    },
     putStatus(el) {
       const t = Link.status();
       if (el.textContent !== t) el.textContent = t;   // (only a change: nothing for a screen reader to notice otherwise)
@@ -4607,7 +4621,8 @@
 
         <div class="gap"></div>
         ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), inset: true })}`;
-      if (ifChanged && noStatus(html) === noStatus(this.drawn)) {
+      if (ifChanged && noLook(noStatus(html)) === noLook(noStatus(this.drawn))) {
+        if (noStatus(html) !== noStatus(this.drawn)) this.putLook(html);
         const line = $('#set-link-status', this.body);
         if (line) this.putStatus(line);
         this.drawn = html; this.refreshStatus(true); return;
