@@ -1498,10 +1498,21 @@ const SUITES = [
     ok(live.desk === 'rgb(18, 52, 86)' && live.pv === live.desk && live.name === 'Custom color' && live.open, `a custom color shows at once, Settings staying as it is while choosing (${live.name})`);
     await page.locator('#set-bg-custom').evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true }))); await page.waitForTimeout(300);
     pk = await picked();
-    ok(pk.custom && await page.evaluate(() => !!document.querySelector('#bg-block .swatch.custom .tick')) && pk.chosen.length === 0, 'then Custom… is marked as the choice');
-    // Its color input is invisible, so the pill shows where the keyboard is.
+    ok(pk.custom && await page.evaluate(() => !!document.querySelector('#bg-block .swatch.custom .tick')) && pk.chosen.join() === 'bg-custom✓', `then Custom… is the choice: marked, and the one checked in the group (${pk.chosen.join()})`);
+    // For a screen reader it's one more choice in the set, checked now (its color input, under a finger, isn't heard).
+    const aria = await page.locator('#bg-block [role="radiogroup"]').ariaSnapshot();
+    ok(/- radio "Custom color" \[checked\]/.test(aria) && !/textbox|Custom background color/.test(aria) && (aria.match(/\[checked\]/g) || []).length === 1, `a screen reader hears Custom as a choice in Background, checked (${aria.replace(/\n\s*/g, ' ¶ ')})`);
+    // A tap lands on its color input (the device's own picker); the keyboard reaches the choice itself, which shows
+    // where the keyboard is, and Enter opens the same picker. Afterwards the keyboard is back on it.
+    ok(await page.evaluate(() => { const e = document.querySelector('#bg-block .swatch.custom'); e.scrollIntoView({ block: 'center' }); const b = e.getBoundingClientRect(); return document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2).id === 'set-bg-custom'; }), 'a tap on Custom… lands on its color input');
     await page.focus('#bg-block [data-act="bg"][data-val="#0a0a0a"]'); await page.keyboard.press('Tab');
-    ok(await page.evaluate(() => document.activeElement.id === 'set-bg-custom' && getComputedStyle(document.activeElement.closest('.swatch')).outlineStyle === 'solid'), 'Tab reaches Custom…, and it shows the keyboard focus');
+    ok(await page.evaluate(() => document.activeElement.matches('.swatch.custom[role="radio"]') && getComputedStyle(document.activeElement).outlineStyle === 'solid'), 'Tab reaches Custom…, and it shows the keyboard focus');
+    await page.evaluate(() => { window.__picker = 0; document.getElementById('set-bg-custom').showPicker = () => { window.__picker++; }; });
+    await page.keyboard.press('Enter'); await page.waitForTimeout(100);
+    await page.locator('#set-bg-custom').evaluate(el => { el.value = '#123457'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }); await page.waitForTimeout(300);
+    ok(await page.evaluate(() => window.__picker === 1 && document.activeElement.matches('.swatch.custom[aria-checked="true"]')), 'Enter on it opens the color picker; once a color is picked, the keyboard is back on Custom…, checked');
+    await page.keyboard.press('Tab');
+    ok(await page.evaluate(() => document.activeElement.matches('.pill.photo')), 'and Tab goes on to Photo… (the color input isn’t a stop of its own)');
     // The photo is one of the choices. Photo… sits beside Custom…; once there is a photo it's “Photo”, chosen while it shows.
     const png = await page.evaluate(() => { const c = document.createElement('canvas'); c.width = 1600; c.height = 900; const g = c.getContext('2d'); g.fillStyle = '#4f9be0'; g.fillRect(0, 0, 1600, 900); return c.toDataURL('image/png'); });
     await page.click('#settings [data-act="bg"][data-val="#e0f2fe"]'); await page.waitForTimeout(200);
@@ -1527,7 +1538,7 @@ const SUITES = [
     ok(ph.shown && ph.on === true && pk.chosen.join() === 'photo-show✓' && ph.fadeTo === '#dcfce7' && ph.ctrls, `tapping Photo shows it again, over the color picked last (${ph.fadeTo})`);
     await page.locator('#set-bg-custom').evaluate(el => { el.value = '#654321'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }); await page.waitForTimeout(400);
     ph = await photo(); pk = await picked();
-    ok(!ph.shown && ph.kept && pk.custom && !pk.chosen.length, 'a custom color hides it too');
+    ok(!ph.shown && ph.kept && pk.custom && pk.chosen.join() === 'bg-custom✓', 'a custom color hides it too');
     await page.click('#bg-block .pill.photo'); await page.waitForTimeout(400);
     // Nothing spills out of Settings, at 80% and at 200%; the choices stay big enough to tap.
     for (const sc of [0.8, 2]) {
@@ -6158,8 +6169,8 @@ const SUITES = [
     ok(tiers.join(' | ') === 'The 20 most recent versions | Hourly versions for the past 2 days | Daily versions for the past 30 days | Weekly versions for the past 12 weeks',
       `what's kept is a list, a tier a line (${tiers.join(' | ')})`);
     const foot = await page.locator('#history .hist-keeps').innerText();
-    ok(/Versions you save are kept until you delete them\. When space runs low, the oldest versions are deleted first\./.test(foot) && /Board history isn’t a backup: if this browser’s data for 21Board is cleared, it’s cleared too\./.test(foot) && !/Kept on this device/.test(foot),
-      'then what you save, what goes first when space runs low, and that it isn’t a backup');
+    ok(/Versions you save are kept until you delete them\. When board history needs more room, the oldest versions are deleted first\./.test(foot) && /Board history isn’t a backup: if this browser’s data for 21Board is cleared, it’s cleared too\./.test(foot) && !/Kept on this device|space runs low/.test(foot),
+      'then what you save, what goes first when board history needs more room (its share of the device, or a full device), and that it isn’t a backup');
     const tierTops = await page.evaluate(() => [...document.querySelectorAll('#history .hist-keeps li')].map(li => Math.round(li.getBoundingClientRect().top)));
     ok(new Set(tierTops).size === 4, `each tier is on its own line (${tierTops.join(', ')})`);
     // Settings is still usable: a choice there leaves Board history open.
@@ -6201,7 +6212,14 @@ const SUITES = [
     ok(ids(await cols(page)) === 'settings' && f.col === 'settings' && f.act === 'hist-open' && await page.locator('#settings [data-act="hist-open"][aria-expanded="false"]').count() === 1,
       `then Board history, the keyboard back on “Board history…” in Settings (${JSON.stringify(f)})`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
-    ok(!(await cols(page)).length, 'then Settings');
+    f = await page.evaluate(() => document.activeElement.matches('.picker-btn.left'));
+    ok(!(await cols(page)).length && f, `then Settings, the keyboard back on ▦ (${f})`);
+    // Settings opened from the keyboard (▦, then its gear) takes the keyboard too, as each column does.
+    await page.keyboard.press('Enter'); await page.waitForSelector('.panel.open [data-ctl="settings"]');
+    await page.locator('.panel.open [data-ctl="settings"]').focus(); await page.keyboard.press('Enter'); await page.waitForSelector('#settings.open'); await page.waitForTimeout(200);
+    f = await focus(page);
+    ok(f.col === 'settings', `Settings opened from the keyboard: the keyboard goes into it (${JSON.stringify(f)})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     // Board history… again closes it; closing Settings closes its columns; so does a tap on the board.
     await history(page, 'left');
     await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(200);
@@ -6227,13 +6245,53 @@ const SUITES = [
     ok(!(await cols(page)).length && f === 'notes:1', `Escape twice closes both, and the keyboard goes back to the window’s name (${f})`);
     await ctx.close();
 
-    // ---- 1366 × 768, from the right: the same, mirrored.
+    // ---- 1366 × 768, from the right: the same, mirrored. (The newest version was saved under a long page name.)
     ({ ctx, page } = await start(vp));
+    const long = 'Room 214 — Ms. Rodriguez-Whitfield’s Thursday afternoon literacy centers and reading groups';
+    await page.evaluate(async long => {
+      const b = window.__board21, r = b.state.insts.get('timer:1').rect;
+      b.updateBoard({ name: long }); b.setRect('timer:1', Object.assign({}, r, { x: r.x + 33 })); await new Promise(res => setTimeout(res, 80));
+      await b.history.save('After lunch'); b.updateBoard({ name: 'Math' });
+    }, long);
     await history(page, 'right'); await row(page, 0).click(); await page.waitForTimeout(400);
     c = await cols(page);
     ok(ids(c) === 'settings,history,history-detail' && apart(c) && onScreen(c, vp) && c[0].r > vp.width - 20 && c[1].r <= c[0].l && c[2].r <= c[1].l,
       `from the right, the columns go leftwards: Settings at the edge, then Board history, then the version (${say(c)})`);
+    // A long name in “Then called …” ends in … inside its row; the whole name is in its tooltip and in the row's name.
+    const tag = await page.evaluate(() => { const t = [...document.querySelectorAll('#history .hist-row .tag')].find(x => /Room 214/.test(x.textContent)), r = t.getBoundingClientRect(), rr = t.closest('.hist-row').getBoundingClientRect();
+      return { inside: r.right <= rr.right + 0.5, cut: t.scrollWidth > t.clientWidth, ellipsis: getComputedStyle(t).textOverflow, title: t.title, row: t.closest('.hist-row').textContent.includes('literacy centers and reading groups”') }; });
+    ok(tag.inside && tag.cut && tag.ellipsis === 'ellipsis' && tag.title === `Then called “${long}”` && tag.row, `a long page name in “Then called …” ends in … inside its row, the whole of it in the tooltip (${JSON.stringify(tag)})`);
     await page.screenshot({ path: OUT + '83-history-columns-right.png' });
+    // Widget Picker → Left (Settings → Advanced) moves Settings to the other edge as it is, and Board history and the
+    // version go with it, as they are.
+    const was = await page.evaluate(() => window.__board21.historySheet.sel);
+    await page.click('#settings [data-act="group"][data-val="advanced"]'); await page.waitForTimeout(300);
+    await page.click('#settings [data-act="corners"][data-val="left"]'); await page.waitForTimeout(500);
+    c = await cols(page);
+    const moved = await page.evaluate(() => ({ sel: window.__board21.historySheet.sel, marked: document.querySelectorAll('#history .hist-row.sel').length, side: window.__board21.historySheet.side,
+      open: !!document.querySelector('#settings [data-act="hist-open"][aria-expanded="true"]'), advanced: document.querySelector('#settings [data-act="group"][data-val="advanced"]').getAttribute('aria-expanded') }));
+    ok(ids(c) === 'settings,history,history-detail' && apart(c) && onScreen(c, vp) && c[0].l < 20 && c[1].l > c[0].r && c[2].l > c[1].r && moved.sel === was && moved.marked === 1 && moved.side === 'left' && moved.open && moved.advanced === 'true',
+      `Widget Picker → Left: Settings moves to the left edge with Advanced still open, Board history and the version beside it, still open (${say(c)}; ${JSON.stringify(moved)})`);
+    await page.click('#settings [data-act="corners"][data-val="both"]'); await page.waitForTimeout(300);
+    await ctx.close();
+
+    // ---- What's kept is as the list says until board history needs more room. At its share of the device's storage
+    // (here a small one), with room on the device, it gives up the oldest first, the day's first too; never what you saved.
+    ({ ctx, page } = await (async () => { const ctx = await browser.newContext({ viewport: vp }), page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message)); await page.goto(BASE); await boardUp(page); return { ctx, page }; })());
+    const room = await page.evaluate(async () => {
+      const b = window.__board21, H = b.history, wait = ms => new Promise(r => setTimeout(r, ms));
+      H.cfg({ skipOpen: true, every: 1 }); b.openWidget('notes'); await wait(900);   // (every: one auto version per change)
+      for (let i = 0; i < 24; i++) {
+        const r = b.state.insts.get('notes:1').rect; b.setRect('notes:1', Object.assign({}, r, { x: 40 + i * 7 })); await wait(40);
+        await (i === 2 ? H.save('Kept') : H.capture('auto'));
+      }
+      await H.reload();
+      const first = H.metas[H.metas.length - 1], daily = b.historyPlan(H.metas, Date.now(), { newest: 20, hours: 48, days: 30, weeks: 12, firstOfDay: true, cap: 250 }).has(first.id);
+      H.cfg({ budget: Math.floor(H.metas.reduce((n, m) => n + (m.bytes || 0), 0) * 0.7) });
+      await H.prune(); await H.reload();
+      return { daily, low: H.low, firstGone: !H.metas.some(m => m.id === first.id), saved: H.metas.some(m => m.manual && m.label === 'Kept'), left: H.metas.length };
+    });
+    ok(room.daily && !room.low && room.firstGone && room.saved, `at its share of the device's storage (the device not short of space), the oldest go first, the day's first too, and what you saved stays: hence “When board history needs more room…” (${JSON.stringify(room)})`);
     await ctx.close();
 
     // ---- A 1920 × 1080 flat panel (touch), from the right.

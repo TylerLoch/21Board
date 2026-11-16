@@ -4254,6 +4254,8 @@
   // dark colors, Custom… and the photo (Photo…, until there is one), all on one row. Picking a color hides the photo,
   // which is kept (BoardPhoto `on: false`); picking the photo shows it again, over the color picked last ("Whole
   // photo" shows that color around it). While the photo is picked, its controls follow (photoRow).
+  // Custom… is a choice like the others (a radio, checked while the color is one of its own); a tap lands on the
+  // color input laid over it, so the device's own picker opens as from any color input (an iPad's too).
   function backgroundSettings() {
     const bg = S.board.background || {}, color = bg.color || null;
     const isCustom = !!color && !BG_SWATCHES.some(([c]) => c === color);
@@ -4271,7 +4273,7 @@
       <div class="swatches" role="radiogroup" aria-label="Background">
         <button class="swatch auto${auto ? ' on' : ''}" ${radio(auto)} data-act="bg" data-val="" title="Match the theme" aria-label="Match the theme (light or dark)">${sunMoon}${tick(auto)}</button>
         ${BG_LIGHT.map(swatch).join('')}<span class="break"></span>${BG_DARK.map(swatch).join('')}
-        <span class="bg-more"><label class="swatch pill custom${custom ? ' on' : ''}" title="Choose any color"><span class="dot"${isCustom ? ` style="background:${color}"` : ''}></span>Custom…${tick(custom)}<input type="color" id="set-bg-custom" value="${esc(isCustom ? color : '#88aacc')}" aria-label="Custom background color"></label>
+        <span class="bg-more"><span class="bg-custom"><button class="swatch pill custom${custom ? ' on' : ''}" ${radio(custom)} data-act="bg-custom" title="Choose any color" aria-label="Custom color"><span class="dot"${isCustom ? ` style="background:${color}"` : ''}></span>Custom…${tick(custom)}</button><input type="color" id="set-bg-custom" value="${esc(isCustom ? color : '#88aacc')}" tabindex="-1" aria-hidden="true"></span>
         ${m ? `<button class="swatch pill photo${photoShown ? ' on' : ''}" ${radio(photoShown)} data-act="photo-show" aria-label="Photo"><span class="pic bg-pic"></span>Photo${tick(photoShown)}</button>`
           : `<button class="swatch pill photo" data-act="photo-add" title="Add a photo">${svg('image')}Photo…</button>`}</span>
       </div>
@@ -4355,7 +4357,7 @@
       this.body = $('.sheet-body', this.el);
       const closeBtn = $('[data-close]', this.el);
       closeBtn.innerHTML = svg('close');
-      closeBtn.addEventListener('click', () => this.close());
+      closeBtn.addEventListener('click', () => this.close(true));
       this.body.addEventListener('click', e => {
         const b = e.target.closest('[data-act]');
         if (b && !b.disabled) this.act(b.dataset.act, b.dataset.val, b);
@@ -4367,7 +4369,11 @@
           const label = e.target.value.trim().slice(0, 40);
           if (label && label !== Link.device().label) setTimeout(() => Link.rename(label));
         }
-        if (e.target.id === 'set-bg-custom') this.render(true);   // (the picker has closed: mark the choice)
+        if (e.target.id === 'set-bg-custom') {   // (the picker has closed: mark the choice, the keyboard back on it)
+          this.render(true);
+          const b = $('[data-act="bg-custom"]', this.body);
+          if (b && (!document.activeElement || document.activeElement === document.body)) b.focus({ preventScroll: true });
+        }
       });
       this.body.addEventListener('input', e => {
         if (e.target.id === 'set-bg-custom') {
@@ -4439,10 +4445,11 @@
       });
     },
 
-    // opts.again: moved to the other side (Widget Picker: Left or Right), with the same groups open, where it was.
+    // opts.again: moved to the other side (Widget Picker: Left or Right), with the same groups open, where it was, and
+    // Board history's columns beside it (moved too, as they are). The keyboard goes into it, as into those columns.
     open(side, opts = {}) {
-      const groups = new Set(this.groups), top = this.body.scrollTop;
-      closePopups();
+      const groups = new Set(this.groups), top = this.body.scrollTop, keep = !!opts.again && HistorySheet.beside;
+      closePopups({ keepSettings: keep, keepHistory: keep });
       this.side = side === 'right' ? 'right' : 'left';
       this.el.classList.remove('left', 'right');
       this.el.classList.add(this.side, 'open');
@@ -4450,14 +4457,20 @@
       this.isOpen = true;
       this.render();
       if (opts.again) this.body.scrollTop = top;
+      if (keep) HistorySheet.move(this.side);
+      if (!this.el.contains(document.activeElement)) this.el.focus({ preventScroll: true });
       this.refreshStatus();
     },
 
-    close() {
+    // back: ✕ or Escape, so the keyboard goes back to ▦ on that side (otherwise something else takes it, or a tap).
+    close(back) {
       if (!this.isOpen) return;
+      const a = document.activeElement, mine = !a || a === document.body || this.el.contains(a) || (HistorySheet.beside && (HistorySheet.el.contains(a) || HistorySheet.det.contains(a)));
       this.isOpen = false;
       this.el.classList.remove('open');
       if (HistorySheet.beside) HistorySheet.close(true);   // (Board history's columns beside it go with it)
+      const btn = back && mine && $(`.picker-btn.${this.side}`);
+      if (btn && btn.getClientRects().length) btn.focus({ preventScroll: true });
     },
 
     // force: drawn even while a field has the keyboard (the color picker has just closed).
@@ -4666,6 +4679,15 @@
           break;
         // Patterns (removed 2026-11-16; uncomment to bring them back):
         // case 'pattern': updateBoard({ background: Object.assign({}, S.board.background, { pattern: val }) }); this.render(); break;
+        // Custom… from the keyboard or a screen reader: the same picker a tap opens. (On its input, as a tap is: while
+        // the input has the keyboard, Settings isn't drawn afresh under the open picker; see render.)
+        case 'bg-custom': {
+          const input = $('#set-bg-custom', this.body);
+          if (!input) break;
+          input.focus({ preventScroll: true });
+          try { input.showPicker(); } catch (e) { input.click(); }
+          break;
+        }
         case 'photo-add': $('#photo-input').click(); break;
         case 'photo-show': BoardPhoto.update({ on: true }); this.render(); break;
         case 'photo-fit': BoardPhoto.update({ fit: val }); this.render(); break;
@@ -7492,6 +7514,12 @@
     },
     // Escape: the outermost column first.
     escape() { if (this.sel) this.select(null); else this.close(); },
+    // Settings moved to the other edge (Widget Picker: Left or Right): its columns go with it, as they are.
+    move(side) {
+      this.side = side;
+      for (const el of [this.el, this.det]) { el.classList.remove('left', 'right'); el.classList.add(side); }
+      this.place();
+    },
     // Settings' Board history… is marked while its column is open.
     marked() { const b = Settings.isOpen && $('[data-act="hist-open"]', Settings.body); if (b) b.setAttribute('aria-expanded', String(this.beside)); },
     // Where the columns go: Settings (when beside), the list, the version. Each is as wide as Settings and drawn at
@@ -7627,7 +7655,8 @@
         const older = metas[i + 1];
         const tags = [];
         if (m.beforeBig) tags.push('<span class="tag big">Before a big change</span>');
-        if (m.name !== S.board.name) tags.push(`<span class="tag">Then called “${esc(m.name)}”</span>`);
+        const called = `Then called “${esc(m.name)}”`;   // (a long name ends in … in its row: all of it in the tooltip)
+        if (m.name !== S.board.name) tags.push(`<span class="tag" title="${called}">${called}</span>`);
         const sel = this.sel === m.id;
         html += `<button class="hist-row${sel ? ' sel' : ''}" data-act="sel" data-val="${esc(m.id)}" aria-controls="history-detail" aria-expanded="${sel}">${this.minimap(m.thumb, { photo: this.photoOf(m) })}<span class="meta2">` +
           `<span class="when">${esc(new Date(m.at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }))}</span><span class="what">${esc(this.label(m))}</span>` +
@@ -7669,13 +7698,14 @@
       const del = this.deleted.length ? `<div class="hist-day">Deleted pages</div><p class="hint">Pages deleted in the last 30 days, here or on your other devices.</p><div class="inst-list">` +
         this.deleted.map(d => `<div class="inst"><div class="meta"><b>“${esc(d.name)}” · deleted ${esc(when(d.deletedAt))}</b></div><button class="btn small" data-act="bring" data-val="${esc(d.id)}">Bring back</button></div>`).join('') + '</div>' : '';
       // What's kept (T_LOCAL, as historyPlan keeps it: "Daily" is the first and last of each day). Counted only where
-      // there are versions, so each "past …" is at least that long. The byte budget (prune) and a full device (thin)
-      // give up the oldest first, never what you saved.
+      // there are versions, so each "past …" is at least that long. At its share of the device's storage (prune's byte
+      // budget: the device may have plenty of room) or on a full device (thin), history gives up the oldest first,
+      // never what you saved: so "when board history needs more room", whichever it is.
       const T = T_LOCAL;
       let html = del + `<div class="hist-foot"><button class="btn" data-act="save">${svg('plus')}Save this version now</button>
         <div class="hist-keeps"><p id="hist-keeps">Board history keeps, on this device:</p>
           <ul aria-labelledby="hist-keeps"><li>The ${T.newest} most recent versions</li><li>Hourly versions for the past ${T.hours / 24} days</li><li>Daily versions for the past ${T.days} days</li><li>Weekly versions for the past ${T.weeks} weeks</li></ul>
-          <p>Versions you save are kept until you delete them. When space runs low, the oldest versions are deleted first.</p>
+          <p>Versions you save are kept until you delete them. When board history needs more room, the oldest versions are deleted first.</p>
           <p>Board history isn’t a backup: if this browser’s data for 21Board is cleared, it’s cleared too.</p></div></div>`;
       if (Link.dir && Link.perm === 'granted' && S.settings.historyFolder !== false) {
         const t = H.tag(S.board.uid, 6), mine = this.folder.filter(f => f.uidTag === t).slice(0, 20), others = this.folder.filter(f => f.uidTag !== t);
@@ -9605,7 +9635,7 @@
       else if (Pages.open) { Pages.closeMenu(); const ind = $('[data-ctl="pages"]', Picker.el); if (ind) ind.focus(); }
       else if (Picker.side) Picker.close();
       else if (HistorySheet.isOpen) HistorySheet.escape();   // (a version's column, then the list, then Settings)
-      else if (Settings.isOpen) Settings.close();
+      else if (Settings.isOpen) Settings.close(true);
     });
 
     $('#import-input').addEventListener('change', e => {

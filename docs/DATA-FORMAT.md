@@ -282,7 +282,7 @@ blends it toward the board color. Everything about the photo is in these two rec
 its color: putting one on, changing how it is shown or removing it reaches the other devices (the picture itself
 goes through the folder's `Photos/`).
 
-Chosen in Settings → Appearance → Background → *Add photo…*, then shrunk on the device (long side at most 2560 px,
+Chosen in Settings → Appearance → Background → *Photo…*, then shrunk on the device (long side at most 2560 px,
 short side kept at 1440 px or more so panoramas stay sharp, about 6.5 MP at most) and saved as a JPEG
 (usually 0.2–0.9 MB), or as WebP/PNG if it has transparency (a logo), so the board color shows through. It covers the 16:9 board (not the shaded
 margins), or the whole window when the board shape is unlocked.

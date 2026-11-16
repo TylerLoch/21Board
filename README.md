@@ -528,8 +528,9 @@ Board history opens on its own at the screen edge, and a version is the second c
 Settings, at the size of windows and menus chosen; on a 1366 × 768 Chromebook all three fit side by side at the
 usual size. Where one doesn't fit (an iPad, or a large size), it covers the column before it, with *‹ Settings*
 or *‹ Board history* to go back. Escape closes the outermost column first; closing Settings closes Board history
-too. *Go back*, *Put back*, *Undo*, *Bring back* and a folder copy close every column, Settings too, so you see
-the board.
+too, and moving the Widget Picker to the other side (Settings → Advanced) takes the columns with it. The keyboard
+goes into Settings and each column as it opens, and back to what opened it as it closes. *Go back*, *Put back*,
+*Undo*, *Bring back* and a folder copy close every column, Settings too, so you see the board.
 
 **Off** (Settings → Advanced → *Save a version automatically*) stops the first three: nothing is saved while you work,
 when 21Board opens or when a note is cleared. One is still saved before each risky action, so Undo keeps
@@ -539,9 +540,9 @@ working, and when you tap *Save this version now*. Versions already saved stay u
 for the past 2 days*, *Daily versions for the past 30 days*, *Weekly versions for the past 12 weeks*): the newest 20,
 one an hour for 48 hours, the first and last of each day for 30 days, one a week for 12 weeks (counting only
 hours, days and weeks the board was used, so a summer break doesn't empty it), safety versions for a week, and
-the version before a big change for a month. When space runs low, the oldest versions go first; versions you
-save are never deleted for space. Photos are stored once, and history stays within a share
-of the device's storage. **Going back never changes this device's settings** (theme, accent) and a running
+the version before a big change for a month. When board history needs more room (it has used its share of the
+device's storage, or the device is full), the oldest versions go first; versions you save are never deleted to make
+room. Photos are stored once. **Going back never changes this device's settings** (theme, accent) and a running
 timer comes back paused. If going back can't finish, 21Board says why and the board stays as it was.
 *Erase everything* keeps board history (so it can be undone; if the board as it is can't be kept first,
 21Board asks before erasing); *Erase, including board history* doesn't.
