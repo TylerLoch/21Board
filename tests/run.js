@@ -4500,7 +4500,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
-  ['Board Sync: setting up this device’s name on the last step (Laptop, Smartboard, Desktop, typed, Enter, touch screens, the file renamed)', async (browser) => {
+  ['Board Sync: setting up this device’s name on the last step (Laptop, Smartboard, Desktop, typed, Enter, Escape or a tap outside, a name another device has, touch screens, the file renamed)', async (browser) => {
     const errors = [];
     // A device with 21Board's own guess at its name (no nameDevice): a laptop screen with no touch, unless opts say otherwise.
     const device = async (label, opts) => {
@@ -4519,6 +4519,10 @@ const SUITES = [
     const label = p => p.evaluate(() => window.__board21.link.device().label);
     const devFiles = async p => Object.keys(await readFolder(p)).filter(n => /^21Board \(/.test(n)).sort();
     const status = async p => { await openSettings(p); const s = await p.locator('#set-link-status').innerText(); await p.keyboard.press('Escape'); return s; };
+    // The line under the field saying another device has the name in it, as shown and read with the field (null: not
+    // shown, and nothing hidden left for a screen reader to read with the field).
+    const twinLine = p => p.evaluate(() => { const f = document.querySelector('#modal.open input'), n = document.getElementById(f.getAttribute('aria-describedby') || '-');
+      return !n ? null : n.offsetParent ? n.textContent : n.textContent ? 'hidden, but read: ' + n.textContent : null; });
     // The card on the screen, top to bottom: the message, the field, the quick names, Done (and its edges).
     const layout = p => p.evaluate(() => { const r = s => document.querySelector('#modal.open ' + s).getBoundingClientRect(), c = r('.modal-card');
       return { order: [r('#modal-text').bottom <= r('input').top, r('input').bottom <= r('.name-quick').top, r('.name-quick').bottom <= r('.modal-actions').top], inside: c.top >= 0 && c.left >= 0 && c.bottom <= innerHeight && c.right <= innerWidth, h: Math.round(c.height) }; });
@@ -4531,7 +4535,7 @@ const SUITES = [
       `the last step always has “This device’s name”, filled in with 21Board’s guess (“${await field(A.p).inputValue()}”)`);
     ok(await A.p.evaluate(() => { const f = document.querySelector('#modal.open input'); return document.activeElement === f && f.selectionStart === 0 && f.selectionEnd === f.value.length; }),
       'with no touch screen, the field has the keyboard, its text selected to type over');
-    ok((await quick(A.p).getByRole('button').allInnerTexts()).join(',') === 'Laptop,Smartboard,Desktop' && await pressed(A.p) === '' && !await A.p.locator('#modal.open .modal-note').count(),
+    ok((await quick(A.p).getByRole('button').allInnerTexts()).join(',') === 'Laptop,Smartboard,Desktop' && await pressed(A.p) === '' && await twinLine(A.p) === null,
       'under it, a group of three buttons, Laptop, Smartboard and Desktop: none is pressed for “a computer” (and no other device has that name)');
     let look = await layout(A.p);
     ok(look.order.every(Boolean) && look.inside, `the message, then the field and its buttons, then Done, all on a 1366×768 screen (${look.h}px high)`);
@@ -4582,7 +4586,8 @@ const SUITES = [
     st = await status(A.p);
     ok(/Shared with Room 14 smartboard \(last change at \d/.test(st), `the laptop’s Settings › Board Sync names the smartboard “Room 14 smartboard” (“${st}”)`);
 
-    // ---- An iPad, upright then on its side: it fits both ways; an empty field keeps the name it had.
+    // ---- An iPad, upright then on its side: it fits both ways; a name another device has is said as it is picked or
+    // typed; an empty field keeps the name it had.
     const C = await device('iPad', { viewport: { width: 768, height: 1024 }, hasTouch: true });
     await deliver(A.p, C.p);
     await lastStep(C.p);
@@ -4591,12 +4596,36 @@ const SUITES = [
     await C.p.setViewportSize({ width: 1024, height: 768 }); await C.p.waitForTimeout(200);
     look = await layout(C.p);
     ok(upright && look.order.every(Boolean) && look.inside && await keyOn(C.p) === 'Done', `it fits an iPad upright and on its side (${look.h}px high), with the keyboard on Done`);
+    // The laptop is "the laptop" here: picking or typing that name says so under the field, and a name of its own doesn't.
+    ok(await twinLine(C.p) === null, `“a computer”: no other device here has that name, and nothing says so (${await twinLine(C.p)})`);
+    await quick(C.p).getByRole('button', { name: 'Laptop' }).click();
+    ok(await twinLine(C.p) === 'Another device in this folder is called “the laptop” too.', `tapping Laptop, while the laptop is “the laptop”: the step says so under the field, read with it (${await twinLine(C.p)})`);
+    await field(C.p).fill('Room 14 laptop');
+    ok(await twinLine(C.p) === null, `typing “Room 14 laptop”: the line goes (${await twinLine(C.p)})`);
     await field(C.p).fill('');
     await C.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
     ok(await label(C.p) === 'a computer', 'Done with the field emptied keeps the name it had');
+    await A.c.close(); await B.c.close(); await C.c.close();
+
+    // ---- Closing the step without Done (Escape, or a tap outside the card, the usual way to close one on a smartboard):
+    // set-up is over either way, so the name in the field is kept.
+    const D = await device('laptop 2');
+    await lastStep(D.p);
+    await quick(D.p).getByRole('button', { name: 'Laptop' }).click();
+    await D.p.keyboard.press('Escape');
+    await D.p.waitForSelector('#modal', { state: 'hidden' });
+    ok(await label(D.p) === 'the laptop' && await D.p.inputValue('#set-link-label') === 'the laptop', `Laptop, then Escape: “the laptop” is kept, and Settings › Board Sync shows it (${await label(D.p)})`);
+    await D.p.evaluate(() => { window.__drive = { pick: 'Room 9' }; });
+    await openSettings(D.p); await D.p.click('#settings [data-act="link-choose"]');
+    await D.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
+    ok(await field(D.p).inputValue() === 'the laptop' && await pressed(D.p) === 'Laptop', 'after Change…, the last step has the name the device has, with Laptop pressed');
+    await quick(D.p).getByRole('button', { name: 'Smartboard' }).click();
+    await D.p.mouse.click(8, 8);   // (outside the card)
+    await D.p.waitForSelector('#modal', { state: 'hidden' });
+    ok(await label(D.p) === 'the smartboard', `Smartboard, then a tap outside the card: “the smartboard” is kept (${await label(D.p)})`);
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
-    await A.c.close(); await B.c.close(); await C.c.close();
+    await D.c.close();
   }],
   ['Board Sync: linking again, Change…, Unlink, a lost ledger, Erase, kiosk (scenarios 5–12)', async (browser) => {
     const errors = [], DAY = 864e5;

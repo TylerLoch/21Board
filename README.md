@@ -302,10 +302,10 @@ and a folder holding two 21Board folders (`21Board` and `21Board (1)`, made by t
 guess (*the smartboard* on a large touch screen, otherwise *a Chromebook* or *a computer*). Tap *Laptop*,
 *Smartboard* or *Desktop* for *the laptop*, *the smartboard* or *the desktop* (the button that matches the name is
 selected), or type your own, such as "Room 14 smartboard". That is how your other devices say it ("Updated from
-the laptop."). *Done* (or Enter) saves it; an empty field keeps the name. This device's file in the folder takes
-the new name the next time it is written. If another device in the folder already has this name, the step says so.
-On a touch screen the on-screen keyboard doesn't pop up by itself: tap the field to type. The name can be changed
-later in Settings → Board Sync.
+the laptop."). If another device in the folder already has the name in the field, the step says so. *Done*, Enter,
+Escape or a tap outside the step all keep the name in the field; an empty field keeps the name it had. This
+device's file in the folder takes the new name the next time it is written. On a touch screen the on-screen
+keyboard doesn't pop up by itself: tap the field to type. The name can be changed later in Settings → Board Sync.
 
 **What happens when you link a folder** (the last step says which, and ends with "Changes you make on any of
 your devices show up on the others by themselves, usually within a minute: Google Drive decides when."):

@@ -5716,24 +5716,30 @@
       say.push('Changes you make on any of your devices show up on the others by themselves, usually within a minute: Google Drive decides when.');
       // This device's name, as the others say it ("Updated from the laptop."): 21Board's guess (see device) or the name
       // it has, kept or changed with a tap (LINK_NAMES) or typed. The field gets the keyboard only on a device without
-      // a touch screen: on a smartboard or an iPad, that would bring up the on-screen keyboard unasked. Another device
-      // in the folder with the same name ("Shared with a Chromebook and a Chromebook") is said under the field.
+      // a touch screen: on a smartboard or an iPad, that would bring up the on-screen keyboard unasked. A name in the
+      // field that another device in the folder has ("Shared with the laptop and the laptop") is said under it, as the
+      // teacher types or taps; not the name of a device that left, which the status leaves out too.
       const me = this.device(), same = s => String(s || '').trim().toLowerCase(), keys = navigator.maxTouchPoints === 0;
-      const twin = Object.entries(this.names()).some(([d, n]) => d !== this.dev() && same(n) === same(me.label));
+      const sp = (this.sync && this.sync.peers) || {}, others = Object.entries(this.names()).filter(([d]) => d !== this.dev() && !(sp[d] || {}).left).map(([, n]) => n);
       const asked = dialog({ title: 'Board Sync is set up', message: say.join(' '), cls: 'setup',
         input: { label: 'This device’s name (shown on your other devices)', maxlength: 40, focus: keys,
-          html: (twin ? `<div class="modal-note" id="name-twin">Another device in this folder is called “${esc(me.label)}” too.</div>` : '') +
+          html: '<div class="modal-note" id="name-twin" aria-live="polite" hidden></div>' +
             `<div class="seg name-quick" role="group" aria-label="Pick a name">${LINK_NAMES.map(([l, v]) => `<button type="button" aria-pressed="false" data-name="${v}">${l}</button>`).join('')}</div>` },
         actions: [{ label: 'Done', value: true, kind: 'primary' }] });
-      const f = $('#modal input'), quick = $$('#modal .name-quick button');
-      const mark = () => { for (const b of quick) b.setAttribute('aria-pressed', String(b.dataset.name === same(f.value))); };   // (as the teacher types too)
+      const f = $('#modal input'), quick = $$('#modal .name-quick button'), note = $('#name-twin');
+      const mark = () => {   // (as the teacher types too)
+        for (const b of quick) b.setAttribute('aria-pressed', String(b.dataset.name === same(f.value)));
+        const v = same(f.value), twin = v && others.find(n => same(n) === v), line = twin ? `Another device in this folder is called “${twin}” too.` : '';
+        note.hidden = !twin;
+        if (note.textContent !== line) note.textContent = line;   // (emptied when hidden: a screen reader reads it with the field even then)
+      };
       f.value = me.label; mark();
       if (keys) f.select();
-      if (twin) f.setAttribute('aria-describedby', 'name-twin');
+      f.setAttribute('aria-describedby', 'name-twin');
       f.addEventListener('input', mark);
       for (const b of quick) b.onclick = () => { f.value = b.dataset.name; mark(); };
-      const r = await asked;
-      const label = r && r.text && r.text.slice(0, 40);   // (an empty field keeps the name)
+      await asked;   // (Done, Enter, Escape or a tap outside: set-up is over either way, so the name in the field is kept)
+      const label = f.value.trim().slice(0, 40);   // (an empty field keeps the name)
       if (label && label !== this.device().label) this.rename(label);
     },
     // This device's name changed (Settings, set-up): its file is renamed at the next write.
