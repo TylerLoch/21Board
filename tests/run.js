@@ -236,7 +236,12 @@ const nameDevice = (p, label) => p.evaluate(label => { const l = window.__board2
 const linkFolder = async (p, label, w) => {
   if (label) await nameDevice(p, label);
   await syncWaits(p, w);
-  return p.evaluate(async () => { const l = window.__board21.link, got = await l.choose(); for (let i = 0; i < 200 && l.running; i++) await new Promise(r => setTimeout(r, 50)); return got; });
+  return p.evaluate(async () => {
+    const l = window.__board21.link, got = await l.choose();
+    // (Until the first round is done: a take shows the folder's board first, then the next round removes this device's first page.)
+    for (let i = 0; i < 300 && (l.running || l.timers.full || window.__board21.pages.busy || (l.sync && l.sync.mode && l.sync.mode !== 'wait')); i++) await new Promise(r => setTimeout(r, 50));
+    return got;
+  });
 };
 // Runs a full round now (a look at the folder that found something), and waits for it.
 const syncNow = p => p.evaluate(async () => { const l = window.__board21.link; await l.round('full'); for (let i = 0; i < 300 && (l.running || l.timers.full || l.timers.send); i++) await new Promise(r => setTimeout(r, 50)); });
@@ -266,6 +271,16 @@ const sameBoards = async (...ps) => { const all = (await Promise.all(ps.map(show
 const notesText = async p => Object.values(await shownBoard(p)).flatMap(pg => Object.values(pg.wins).map(w => (w.data && w.data.text) || '')).join('\n');
 // The ledger lost (the database thrown away under an open board; Erase does it on purpose).
 const loseLedger = p => p.evaluate(() => window.__board21.store.tx('readwrite', s => { s.delete(IDBKeyRange.bound('link:mine-', 'link:mine-￿')); s.delete('link:sync'); }));
+// Types in a Notes window (by its ikey), as a teacher does, then waits until it is no longer busy (Link.waits.busy). (A
+// round landing between the tap and the typing can show the note's text again: tried again then.)
+const typeNote = async (p, ik, text) => {
+  const f = p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+  for (let i = 0; ; i++) {
+    try { if (await f.locator('#view').isVisible()) await f.locator('#view').click({ timeout: 3000 }); await f.locator('#t').fill(text, { timeout: 3000 }); break; }
+    catch (e) { if (i > 3) throw e; await p.waitForTimeout(400); }
+  }
+  await p.waitForTimeout(1000);
+};
 // A Notes window with this text on the page shown (returns its ikey).
 const addNote = async (p, text) => {
   const ik = await p.evaluate(async () => { const before = new Set(window.__board21.state.insts.keys()); window.__board21.openWidget('notes'); await new Promise(r => setTimeout(r, 900)); return Array.from(window.__board21.state.insts.keys()).find(k => !before.has(k)); });
@@ -4554,6 +4569,208 @@ const SUITES = [
     ok(!!lab && await lab.evaluate(() => !!document.querySelector('.picker-btn.left') && !document.querySelector('.folder-note:not([hidden])')) && await lab.evaluate(() => { document.querySelector('.picker-btn.left').click(); document.querySelector('[data-ctl="settings"]').click(); return new Promise(r => setTimeout(() => r(!document.querySelector('#settings [data-act^="link-"]')), 800)); }),
       'nor has the widget dev window’s test board');
     await K.close();
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
+  ['Board Sync: merging (scenarios 14, 15, 24–30: different windows, a move and typing, page order, names and colors, new windows, scale, three devices)', async (browser) => {
+    const errors = [];
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    const n1 = await addNote(A.p, 'One'), n2 = await addNote(A.p, 'Two');
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    const wid = async (p, ik) => p.evaluate(ik => { const i = window.__board21.state.insts.get(ik); return i.wid || `${i.widgetId}@${i.createdAt}`; }, ik);
+    const ikOf = async (p, w) => p.evaluate(w => { for (const [k, i] of window.__board21.state.insts) if ((i.wid || `${i.widgetId}@${i.createdAt}`) === w) return k; return null; }, w);
+    const wins = async p => Object.values(await shownBoard(p)).reduce((n, pg) => n + Object.keys(pg.wins).length, 0);
+    const w1 = await wid(A.p, n1), w2 = await wid(A.p, n2);
+    ok(await sameBoards(A.p, B.p) && await wins(B.p) === 2, 'the smartboard has the laptop’s two notes');
+
+    // ---- 14. Different windows on one page changed on both: both kept, no copies.
+    await typeNote(A.p, n1, 'One, laptop');
+    await typeNote(B.p, await ikOf(B.p, w2), 'Two, smartboard');   // (typeNote waits until the window is no longer busy: see Link.waits.busy)
+    await exchange(A, B);
+    ok(await sameBoards(A.p, B.p) && await wins(A.p) === 2 && /One, laptop/.test(await notesText(B.p)) && /Two, smartboard/.test(await notesText(A.p)), 'different windows changed on both: both changes kept, no copies');
+
+    // ---- 15. One window moved on the laptop and typed in on the smartboard: both apply, no copy.
+    const r1 = await A.p.evaluate(ik => window.__board21.state.insts.get(ik).rect, n1);
+    await A.p.evaluate(([ik, r]) => window.__board21.setRect(ik, Object.assign({}, r, { x: r.x + 200, y: r.y + 60 })), [n1, r1]); await A.p.waitForTimeout(300);
+    await typeNote(B.p, await ikOf(B.p, w1), 'One, typed on the smartboard');
+    await exchange(A, B);
+    const rB = await B.p.evaluate(ik => window.__board21.state.insts.get(ik).rect, await ikOf(B.p, w1));
+    ok(await sameBoards(A.p, B.p) && await wins(B.p) === 2 && Math.round(rB.x) === Math.round(r1.x + 200) && /One, typed on the smartboard/.test(await notesText(A.p)), 'a window moved on one device and typed in on the other: both apply, no copy');
+
+    // ---- 25, 26. Names and colors.
+    await renamePage(A.p, 'Laptop name'); await A.p.waitForTimeout(200);
+    await renamePage(B.p, 'Smartboard name');   // (the later one)
+    await exchange(A, B);
+    const nm = async p => Object.values(await shownBoard(p))[0].name;
+    ok(await nm(A.p) === 'Smartboard name' && await nm(B.p) === 'Smartboard name', `the same page renamed on both: the later name on both (“${await nm(A.p)}”)`);
+    await okA(A.p, async () => await A.p.locator('.toast', { hasText: 'This page was also renamed on the smartboard: it’s called “Smartboard name” now.' }).count() === 1, 'the laptop says the page was also renamed, with its new name');
+    await okA(A.p, async () => A.p.evaluate(() => window.__board21.history.metas.some(m => m.name === 'Laptop name' && /Before changes from the smartboard/.test(m.label))), 'and Board history keeps a version with the other name');
+    await renamePage(A.p, 'Morning');
+    await B.p.evaluate(() => window.__board21.updateBoard({ background: { color: '#dbeafe', pattern: 'none' } })); await B.p.waitForTimeout(300);
+    await exchange(A, B);
+    const pg = async p => Object.values(await shownBoard(p))[0];
+    ok((await pg(A.p)).name === 'Morning' && (await pg(A.p)).color === '#dbeafe' && await sameBoards(A.p, B.p), 'a rename on the laptop and a background color on the smartboard: both apply');
+
+    // ---- 27. A new Timer on both on one page: two Timers on both, each with its own content.
+    for (const [p, s] of [[A.p, 300], [B.p, 120]]) await p.evaluate(async s => { window.__board21.openWidget('timer'); await new Promise(r => setTimeout(r, 900)); }, s);
+    await exchange(A, B);
+    const timers = async p => Object.values(await pg(p)).length && Object.values((await pg(p)).wins).filter(w => w.widgetId === 'timer').length;
+    ok(await timers(A.p) === 2 && await timers(B.p) === 2 && await sameBoards(A.p, B.p), 'a new Timer on both: two Timers on both');
+
+    // ---- 28. 21Sketch opened on both: one window open after the merge.
+    await okA(A.p, async () => {
+      for (const p of [A.p, B.p]) await p.evaluate(async () => { window.__board21.openWidget('21sketch'); await new Promise(r => setTimeout(r, 600)); });
+      await exchange(A, B);
+      const open = async p => Object.values((await pg(p)).wins).filter(w => w.widgetId === '21sketch' && w.open).length;
+      return await open(A.p) === 1 && await open(B.p) === 1;
+    }, '21Sketch opened on both: one window open after the merge');
+
+    // ---- 29. A scale change on the laptop and a move on the smartboard: the window moved is where it was put, in the
+    // laptop's scale, and the others are rescaled, not moved.
+    const before = await shownBoard(B.p);
+    await A.p.evaluate(() => window.__board21.setBoardScale(1.25)); await A.p.waitForTimeout(400);
+    const k2 = await ikOf(B.p, w2), r2 = await B.p.evaluate(ik => window.__board21.state.insts.get(ik).rect, k2);
+    await B.p.evaluate(([ik, r]) => window.__board21.setRect(ik, Object.assign({}, r, { x: r.x + 100 })), [k2, r2]); await B.p.waitForTimeout(300);
+    const moved = await shownBoard(B.p);
+    await exchange(A, B);
+    const after = await shownBoard(A.p), u = Object.keys(after)[0];
+    ok(after[u].scale === 1.25 && (await shownBoard(B.p))[u].scale === 1.25 && await sameBoards(A.p, B.p), 'the laptop’s new scale reaches the smartboard');
+    const near = (a, b) => a.split(',').map(Number).every((v, i) => Math.abs(v - b.split(',').map(Number)[i]) <= 2);
+    ok(near(after[u].wins[w2].rect, moved[u].wins[w2].rect) && near(after[u].wins[w1].rect, before[u].wins[w1].rect),
+      `the window moved on the smartboard is where it was put, in the laptop’s scale, and the untouched one is only rescaled (${after[u].wins[w2].rect} / ${moved[u].wins[w2].rect})`);
+
+    // ---- 24. Page order: moves of different pages both apply; pages added at one spot on both, one order.
+    for (const n of ['Two', 'Three', 'Four']) { await A.p.evaluate(n => window.__board21.pages.create({ end: true, name: n }), n); await A.p.waitForTimeout(600); }
+    await exchange(A, B);
+    const order = p => p.evaluate(() => window.__board21.pages.ids().map(b => window.__board21.pages.name(b)).join(','));
+    ok(Object.keys(await shownBoard(B.p)).length === 4, 'four pages on both');
+    await A.p.evaluate(async () => { const P = window.__board21.pages; await P.go(P.ids()[1]); P.move(1); });
+    await B.p.evaluate(async () => { const P = window.__board21.pages; await P.go(P.ids()[3]); P.move(-1); });
+    for (const p of [A.p, B.p]) { await p.evaluate(() => window.__board21.pages.create({ end: true, name: 'New ' + window.__board21.link.device().label })); await p.waitForTimeout(600); }
+    await exchange(A, B);
+    ok(Object.keys(await shownBoard(A.p)).length === 6 && await sameBoards(A.p, B.p), 'pages added at the end on both: both pages, on both');
+    await okA(A.p, async () => await order(A.p) === await order(B.p) && /^Morning,Three,Four,Two,/.test(await order(A.p)), `moves of different pages both apply, and both devices have one order (${await order(A.p)} / ${await order(B.p)})`);
+
+    // ---- 30. Three devices with deliveries in different orders: identical boards.
+    const C = await syncDev(browser, 'the cart Chromebook', errors);
+    await deliver(A.p, C.p); await deliver(B.p, C.p); await linkFolder(C.p); await exchange(A, B, C);
+    await A.p.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[0])); await B.p.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[0])); await C.p.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[0]));
+    await A.p.waitForTimeout(800);
+    await A.p.evaluate(() => window.__board21.updateBoard({ background: { color: '#fde68a', pattern: 'none' } })); await addNote(B.p, 'New on B'); await renamePage(C.p, 'Renamed on C');
+    for (const p of [A.p, B.p, C.p]) await syncNow(p);
+    await deliver(A.p, C.p); await syncNow(C.p); await deliver(C.p, B.p); await syncNow(B.p); await deliver(B.p, A.p); await syncNow(A.p);
+    await deliver(B.p, C.p); await deliver(C.p, A.p); await syncNow(A.p); await syncNow(C.p); await deliver(A.p, B.p); await syncNow(B.p);
+    await exchange(C, B, A);
+    ok(await sameBoards(A.p, B.p, C.p) && Object.values(await shownBoard(C.p)).some(x => x.color === '#fde68a') && /New on B/.test(await notesText(A.p)) && Object.values(await shownBoard(B.p)).some(x => x.name === 'Renamed on C'),
+      'three devices, files delivered in different orders: the same board on all three, with every change');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close(); await C.c.close();
+  }],
+  ['Board Sync: Google Drive misbehaving (scenarios 32–38: offline for days, clocks, half files, old revisions, conflict copies, this device’s own file, a copied profile)', async (browser) => {
+    const errors = [], DAY = 864e5, H = 36e5;
+    const ikOf = async (p, w) => p.evaluate(w => { for (const [k, i] of window.__board21.state.insts) if ((i.wid || `${i.widgetId}@${i.createdAt}`) === w) return k; return null; }, w);
+    const widOf = async (p, ik) => p.evaluate(ik => { const i = window.__board21.state.insts.get(ik); return i.wid || `${i.widgetId}@${i.createdAt}`; }, ik);
+    const type = async (p, w, text) => typeNote(p, await ikOf(p, w), text);
+    const wins = async p => Object.values(await shownBoard(p)).reduce((n, pg) => n + Object.keys(pg.wins).length, 0);
+    const status = p => p.evaluate(() => window.__board21.link.status());
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    const w1 = await widOf(A.p, await addNote(A.p, 'One')), w2 = await widOf(A.p, await addNote(A.p, 'Two'));
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    const name = await ownFile(A.p);
+
+    // ---- 32. Offline for days: the smartboard's clock 3 days behind, edits on both, then delivery both ways.
+    await setClock(B.p, -3 * DAY);
+    await type(B.p, w2, 'Two, on the smartboard offline'); await syncNow(B.p);
+    await type(A.p, w1, 'One, on the laptop'); await syncNow(A.p);
+    await exchange(A, B);
+    ok(await sameBoards(A.p, B.p) && /Two, on the smartboard offline/.test(await notesText(A.p)) && /One, on the laptop/.test(await notesText(B.p)), 'a device offline with its clock 3 days behind: every edit is kept, the same on both');
+    await setClock(B.p, 0);
+
+    // ---- 33. Clocks disagree: the smartboard an hour ahead. A window moved on both ends in one place on both.
+    await setClock(B.p, H);
+    const mv = async (p, dx) => { const ik = await ikOf(p, w1); await p.evaluate(([ik, dx]) => { const r = window.__board21.state.insts.get(ik).rect; window.__board21.setRect(ik, Object.assign({}, r, { x: 40 + dx })); }, [ik, dx]); await p.waitForTimeout(300); await syncNow(p); };
+    await mv(A.p, 100); await mv(B.p, 300);
+    await exchange(A, B);
+    ok(await sameBoards(A.p, B.p) && await wins(A.p) === 2, 'a window moved on both with clocks an hour apart: the same place on both, and nothing lost');
+    await setClock(B.p, 0);
+    // A device a year ahead: the smartboard believes its counters at most a day ahead of its own clock.
+    const C = await syncDev(browser, 'the clock-wrong Chromebook', errors);
+    await setClock(C.p, 365 * DAY);
+    await deliver(A.p, C.p); await linkFolder(C.p); await addNote(C.p, 'From a year ahead'); await C.p.waitForTimeout(1000); await syncNow(C.p);
+    await deliver(C.p, B.p); await syncNow(B.p);
+    const ms = await B.p.evaluate(() => ({ seen: window.__board21.link.sync.maxSeen, now: Date.now() }));
+    ok(/From a year ahead/.test(await notesText(B.p)) && ms.seen <= ms.now + DAY + 5000, `a device a year ahead: its change arrives, and the smartboard’s counters stay within a day of its clock (${Math.round((ms.seen - ms.now) / H)} h ahead)`);
+    await okA(B.p, async () => true, 'copy labels show the version’s own time (scenario 33, with a clash)');
+    await C.c.close();
+    await exchange(A, B);
+
+    // ---- 34. A half file (cut, then old and new mixed): ignored silently; after a while the status says it is
+    // waiting; the whole file then merges, also when Drive completes it with the same size and date.
+    await type(A.p, w1, 'One, the whole of it'); await syncNow(A.p);
+    const toasts = () => B.p.locator('.toast').count(), t0 = await toasts();
+    await deliver(A.p, B.p, { cut: 0.5 }); await syncNow(B.p);
+    ok(!/the whole of it/.test(await notesText(B.p)) && await toasts() === t0, 'a file cut in half is ignored, and nothing is said');
+    await B.p.waitForTimeout(2800); await syncNow(B.p);
+    ok(/Waiting for Google Drive to bring the laptop’s latest changes\./.test(await status(B.p)), `once it has been arriving for a while, the status says so (“${await status(B.p)}”)`);
+    await deliver(A.p, B.p, { mix: true }); await syncNow(B.p);
+    ok(!/the whole of it/.test(await notesText(B.p)), 'a file mixing the new start with the old end (it parses) fails its checksum, and is ignored');
+    await deliver(A.p, B.p, { sameStamp: true });
+    ok(await eventually(async () => { await syncNow(B.p); return /the whole of it/.test(await notesText(B.p)); }), 'the whole file merges, even when Drive completes it with the same size and date');
+    ok(!/Waiting for Google Drive/.test(await status(B.p)), 'and the status no longer says it is waiting');
+    await B.p.evaluate(() => { window.__drive = {}; });
+
+    // ---- 35. An older revision of the laptop's file arriving after a newer one: ignored.
+    const v1 = await fileText(A.p, name);
+    await type(A.p, w1, 'One, newer'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+    await putText(B.p, name, v1); await syncNow(B.p);
+    ok(/One, newer/.test(await notesText(B.p)) && !/the whole of it/.test(await notesText(B.p)), 'an older revision of the laptop’s file, arriving after a newer one, is ignored');
+    await deliver(A.p, B.p);
+
+    // ---- 36. Conflict copies of the laptop's file (older and newer) in both folders: merged once, no duplicates.
+    const copy = name.replace(/\.21board$/, ' (1).21board'), old = await fileText(A.p, name);
+    const n36 = await wins(B.p);
+    await type(A.p, w2, 'Two, newest'); await syncNow(A.p);
+    await putText(A.p, copy, old); await putText(B.p, copy, old); await deliver(A.p, B.p, { as: copy.replace(' (1)', ' (2)') });
+    await syncNow(B.p);
+    ok(/Two, newest/.test(await notesText(B.p)) && await wins(B.p) === n36, 'an older and a newer conflict copy: the newer one merges, once, with no duplicate windows');
+    await syncNow(A.p);
+    ok(await eventually(async () => { await syncNow(A.p); return !await fileText(A.p, copy); }), 'the laptop deletes its own conflict copy once everything in it is in its board');
+    await deliver(A.p, B.p); await syncNow(B.p);
+    ok(!!await fileText(B.p, copy), 'the smartboard never deletes the laptop’s files');
+
+    // ---- 37. The laptop's own file replaced by an older one, or deleted: written again at its next look.
+    const now1 = JSON.parse(await fileText(A.p, name)).sync.seq;
+    await putText(A.p, name, v1);
+    await A.p.evaluate(() => window.__board21.link.check(true));
+    ok(await eventually(async () => { const j = JSON.parse(await fileText(A.p, name)); return j.sync.seq > now1; }), 'Drive puts back an older copy of the laptop’s file: it writes it again at its next look');
+    await putText(A.p, name, null);
+    await A.p.evaluate(() => window.__board21.link.check(true));
+    ok(await eventually(async () => !!await fileText(A.p, name)), 'deleted: written again too');
+
+    // ---- 38. The same device id on two installs (the laptop's profile copied): both take a new id; nothing is lost.
+    const recs = await A.p.evaluate(() => window.__board21.store.getAll());
+    const D = await syncDev(browser, 'unused', errors);
+    await D.p.evaluate(recs => window.__board21.store.tx('readwrite', s => { for (const r of recs) s.put(r); }), recs);
+    await D.p.reload(); await boardUp(D.p); await syncWaits(D.p);
+    await deliver(A.p, D.p); await linkFolder(D.p);
+    const devA = await A.p.evaluate(() => window.__board21.link.dev());
+    ok(await D.p.evaluate(() => window.__board21.link.dev()) === devA, 'a copy of the laptop’s profile has the laptop’s device id');
+    await type(D.p, w2, 'Two, on the copy'); await syncNow(D.p);
+    await type(A.p, w1, 'One, on the laptop again'); await syncNow(A.p);
+    await deliver(D.p, A.p, { files: [name], as: copy }); await deliver(A.p, D.p, { files: [name], as: copy });
+    await syncNow(A.p); await syncNow(D.p);
+    const ids = await Promise.all([A.p, D.p].map(p => p.evaluate(() => window.__board21.link.dev())));
+    ok(ids[0] !== devA && ids[1] !== devA && ids[0] !== ids[1], 'each install finds a file with its id that it didn’t write, and takes a new id');
+    await exchange(A, D);
+    ok(await sameBoards(A.p, D.p) && /Two, on the copy/.test(await notesText(A.p)) && /One, on the laptop again/.test(await notesText(D.p)), 'nothing is lost: both edits are on both');
+    // A crash between the write and its note doesn't fork: the write id was noted first.
+    const devNow = await A.p.evaluate(() => window.__board21.link.dev());
+    await A.p.evaluate(() => window.__board21.store.tx('readwrite', s => { const g = s.get('link:sync'); g.onsuccess = () => { const r = g.result; delete r.value.partsH; delete r.value.wroteAt; r.value.file = null; s.put(r); }; }));
+    await A.p.evaluate(() => { window.__board21.link.sync = null; }); await syncNow(A.p);
+    ok(await A.p.evaluate(() => window.__board21.link.dev()) === devNow, 'the laptop writing its file but closing before noting it doesn’t take its own file for another install’s');
+    await D.c.close();
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();

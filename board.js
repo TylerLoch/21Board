@@ -5545,10 +5545,11 @@
       for (const n of Array.from(this.files.keys())) if (!seen.has(n)) { this.files.delete(n); changed = true; }
       await Promise.all(Array.from(seen, async ([name, h]) => {
         const was = this.files.get(name), devish = LINK_FILE_RE.test(name);
+        // (Never merged while it fails; whose it is, if it could be read before, is kept for the status.)
         const fail = file => {
-          const e = Object.assign({}, was && !was.bad ? was : {}, { name, bad: (was && was.bad) || now, readAt: now, size: file ? file.size : -1, lastModified: file ? file.lastModified : -1, devish });
-          if (was && was.bad && was.size === e.size && was.lastModified === e.lastModified && was.peer === e.peer) { was.readAt = now; return; }
-          this.files.set(name, e); changed = true;
+          const e = { name, devish, dev: was && was.dev, devName: was && was.devName, at: was && was.at, bad: (was && was.bad) || now, readAt: now, size: file ? file.size : -1, lastModified: file ? file.lastModified : -1 };
+          if (!(was && was.bad && was.size === e.size && was.lastModified === e.lastModified)) changed = true;
+          this.files.set(name, e);
         };
         let file;
         try { file = await within(h.getFile(), this.waits.read); } catch (e) { return fail(null); }
@@ -5594,7 +5595,8 @@
       if (!force && Date.now() - this.lastCheck < 4000) return;
       this.lastCheck = Date.now();
       const dir = this.dir;
-      let due = !!(this.sync && this.sync.mode) || !this.sync || this.unsent && Date.now() - ((this.failed || {}).at || 0) >= this.waits.retry;
+      const failedAgo = Date.now() - ((this.failed || {}).at || 0);
+      let due = !!(this.sync && this.sync.mode) || !this.sync || this.unsent && (failedAgo < 0 || failedAgo >= this.waits.retry);
       try {
         for await (const [name, h] of dir.entries()) {
           if (h.kind !== 'file' || !/\.21board$/i.test(name)) continue;
@@ -5908,7 +5910,8 @@
         if (f.seq > (p.seen || 0)) { p.seen = f.seq; p.changedAt = now; }
         p.name = f.devName; p.file = f.name; p.at = f.at; p.left = f.left; p.missingSince = 0;
       }
-      for (const [d, p] of Object.entries(peers)) if (d !== me && !files[d] && !p.missingSince && this.checkedAt) peers[d] = Object.assign({}, p, { missingSince: now });
+      const present = new Set(Array.from(this.files.values(), f => f.dev).filter(Boolean));   // (a file still arriving isn't missing)
+      for (const [d, p] of Object.entries(peers)) if (d !== me && !present.has(d) && !p.missingSince && this.checkedAt) peers[d] = Object.assign({}, p, { missingSince: now });
       sync.peers = peers;
       this.newer = null;
       for (const f of this.files.values()) if (f.newer) this.newer = f.devName || 'Another device';
@@ -5927,7 +5930,7 @@
       const d = this.device();
       console.warn('21Board: another install uses this device’s id; this one takes a new id');
       this.saveState({ device: Object.assign({}, d, { id: newId() }) });
-      await this.noteSync(s => Object.assign(s, { dev: this.dev(), writes: [], wseqs: [], file: null }));
+      await this.noteSync(s => Object.assign(s, { forked: { dev: s.dev, writes: s.writes || [] }, dev: this.dev(), writes: [], wseqs: [], file: null }));
     },
     // The records after the round's transaction (step 1's, with its writes), for this device's file: never read
     // afresh, which could put a change made meanwhile, not stamped yet, in the file under an older version.
@@ -6093,8 +6096,10 @@
       const empty = !Object.values(ledger.pages || {}).length;
       if (empty && !own.exists) return;   // (only the untouched placeholder: nothing to write yet)
       if (trial.partsH === sync.partsH && own.ok && sync.file === name && !opts.left) { this.unstuck(); return; }
-      if (!opts.urgent && !opts.left && now - (sync.wroteAt || 0) < this.waits.gap) { this.want('send', sync.wroteAt + this.waits.gap - now); return; }
-      if (this.failed && !opts.urgent && !opts.left && now - this.failed.at < this.waits.retry) { this.unsent = true; return; }
+      // (Not before LINK_GAP_MS since the last write, or LINK_RETRY_MS since one failed. A clock set back counts as time passed.)
+      const since = now - (sync.wroteAt || 0), failedAgo = this.failed ? now - this.failed.at : Infinity;
+      if (!opts.urgent && !opts.left && since >= 0 && since < this.waits.gap) { this.want('send', this.waits.gap - since); return; }
+      if (!opts.urgent && !opts.left && failedAgo >= 0 && failedAgo < this.waits.retry) { this.unsent = true; return; }
       const gen = this.gen;
       try {
         // A new sequence number and write id, noted before the file is written: a crash in between can't look
@@ -6170,8 +6175,9 @@
     // After a write: the file this device used before (it was renamed) goes, and so do Drive's copies of this
     // device's file once everything in them is in the ledger.
     async tidyOwn(name, me, ledger) {
+      const was = (this.sync && this.sync.forked) || {};   // (the id this device had before a fork: its own old files go too)
       for (const f of Array.from(this.files.values())) {
-        if (f.name === name || f.dev !== me) continue;
+        if (f.name === name || !(f.dev === me || (f.dev === was.dev && (was.writes || []).includes(f.write)))) continue;
         if (!f.peer ? !f.write || !(this.sync.writes || []).includes(f.write) : !Merge.includes(ledger, f.peer)) continue;
         try { await this.dir.removeEntry(f.name); this.files.delete(f.name); } catch (e) { /* gone already */ }
       }
@@ -6191,6 +6197,7 @@
         const next = Object.assign({}, sync, { gcAt: now });
         await this.commit(this.gen, r, { writes: [] }, { sync: next, pages: (after || before).pages }, next, false);
       }
+      if (sync.file) await this.tidyOwn(sync.file, this.dev(), r.ledger);
       this.tidyPhotos();
     },
 
@@ -6330,7 +6337,8 @@
       else if (arriving.length) out.push(`Waiting for Google Drive to bring ${arriving[0].devName || (LINK_FILE_RE.exec(arriving[0].name) || [])[1] || 'another device'}’s latest changes.`);
       else if (sync.wroteAt) out.push(`Up to date. This device’s latest changes went to your folder ${when(sync.wroteAt)}.`);
       else out.push('Up to date.');
-      const me = this.dev(), others = Object.values(this.good()).filter(f => f.dev !== me && !f.left).sort((a, b) => b.at - a.at);
+      const me = this.dev(), seen = new Set(Array.from(this.files.values(), f => f.dev).filter(Boolean));
+      const others = Object.entries(sync.peers || {}).filter(([d, p]) => d !== me && seen.has(d) && p && !p.left).map(([, p]) => ({ devName: p.name, at: p.at || 0 })).sort((a, b) => b.at - a.at);
       const who = f => `${f.devName || 'another device'}`;
       if (!others.length) out.push('No other device has synced yet: set up Board Sync on your other devices and pick this same folder.');
       else if (others.length === 1) out.push(`Shared with ${who(others[0])} (last change ${when(others[0].at)}).`);
@@ -7541,7 +7549,8 @@
             let ikey = LW ? LW.ikey : null;
             if (!ikey) { const wn = o.freeIds.inst(b, f.widgetId, taken, f.n); ikey = `${f.widgetId}:${wn}`; taken.add(ikey); }
             W.ikey = ikey;
-            let instChanged = !LW;
+            // (The page's scale came from another device: this device's rects, in the old scale, are rescaled, not moved.)
+            let instChanged = !LW || (!!L && L.vals.size.scale !== scale && !(Sw.rect && Sw.rect.src !== 'local'));
             for (const part of WIN_PARTS) {
               const s = Sw[part];
               if (!s || s.src === 'local') continue;
@@ -7556,8 +7565,9 @@
             if (!LW) for (const part of ['data', 'conf']) { const s = Sw[part]; if (s && s.src === 'local' && s.val != null) w8(Keys[part](b, ikey), part, s.val, o.rec(Keys[part](b, ikey))); }
             if (instChanged) {
               const rv = wv('rect'), k = s0 => (Sw.rect && Sw.rect.src !== 'local' ? (Sw.rect.scale || s0) / scale : 1);
+              const peerRect = Sw.rect && Sw.rect.src !== 'local';
               const inst = Object.assign({}, LW ? LW.inst : { createdAt: f.createdAt }, { open: wv('open'), maximized: !!rv.maximized,
-                rect: Sw.rect && Sw.rect.src !== 'local' ? scaleRect(rv.rect, k(scale)) : rv.rect, z: LW && !(Sw.rect && Sw.rect.src !== 'local') ? LW.inst.z : o.zTop(uid), wid });
+                rect: peerRect ? scaleRect(rv.rect, k(scale)) : L && L.vals.size.scale !== scale ? scaleRect(rv.rect, L.vals.size.scale / scale) : rv.rect, z: LW && !peerRect ? LW.inst.z : o.zTop(uid), wid });
               const lab = wv('label');
               if (lab) inst.copyOf = lab; else delete inst.copyOf;
               w8(Keys.inst(b, ikey), 'inst', inst, LW && LW.rec);
@@ -7581,7 +7591,7 @@
           gone.push(L.b);
           pg(uid, { b: L.b, name: L.vals.name, deleted: true, changed: true });
         }
-        const fromList = Array.from(from);
+        const fromList = Array.from(from).filter(d => !d.includes('#'));   // (not this device's own file, merged in a first round)
         sum.from = fromList;
         return {
           writes, ifRev,
