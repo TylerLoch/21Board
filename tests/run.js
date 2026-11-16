@@ -2453,6 +2453,8 @@ const SUITES = [
     await eventually(async () => ((await conf(cp)) || {}).style === 'wheel');
     await np(cp).locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan\nSofia\nLiam\nAmara\nKenji\nDiego\nFatima'); await np(cp).locator('#done').click();
     await cp.evaluate(() => window.__board21.setMaximized('name-picker:1', true));
+    await eventually(() => cp.evaluate(() => (window.__board21.state.wins.get('name-picker:1').menuItems || []).some(i => i.id === 'style:name')), 15000);   // (a busy machine: the widget's menu may come late)
+    await cp.waitForTimeout(300);
     await menu('style:name', cp); await menu('winners:3', cp);
     await pickNow(cp); await idle(cp);
     // What of the main button, the status and Start over is under the clock or a ▦ button (in screen px).
