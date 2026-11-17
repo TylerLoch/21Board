@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.16-4';
-  const BOARD_BUILD = 'd5861dfd';
+  const BOARD_BUILD = 'acfb4e9a';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -8038,7 +8038,10 @@
     const superseded = (v, w) => (leq(v.vv, w.vv) && !leq(w.vv, v.vv)) || (w.vv[v.by] || 0) > nOf(v);
     // v is within what a deletion's cover had seen: the vector, or that device's change at v's counter or a later one.
     const covered = (v, C) => leq(v.vv, C || {}) || ((C || {})[v.by] || 0) >= nOf(v);
-    const arr = v => (v.u ? [v.by, v.vv, v.t, 'u'] : [v.by, v.vv, v.t]);
+    // (the vector's devices in one order: a version joined from the same ones in another order is the same version,
+    // and its file and ledger mustn't change with it)
+    const sortVV = vv => { const o = {}; for (const k of Object.keys(vv).sort()) o[k] = vv[k]; return o; };
+    const arr = v => (v.u ? [v.by, sortVV(v.vv), v.t, 'u'] : [v.by, sortVV(v.vv), v.t]);
     const ver = (a, x) => Object.assign({ by: a[0], vv: a[1], t: a[2], u: a[3] === 'u' }, x);
     // 1 a version, 2 one this release doesn't know (a newer 21Board), 0 not one
     function okV(a) {

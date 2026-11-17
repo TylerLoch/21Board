@@ -244,6 +244,10 @@ goes by device id). Linking the same folder again (`carry`) keeps the entries, s
 A choice made after linking while Google Drive is still bringing the folder (`wait`) is this device's own when the
 files arrive: joining or switching to the folder, the folder's applies.
 
+A vector is written with its devices in sorted order, in files and in the ledger, so that the same version joined
+from the same devices in another order (two or more devices setting up one folder at once) is the same text and
+causes no write.
+
 Comparing versions: one is older than another when the other's vector includes it, or when the other includes a
 later change to that part by the device that made it (a device's changes to a part follow one another, each made on
 what it showed then; one that lost was kept as a copy by that device at once). So a version that joined other

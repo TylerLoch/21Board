@@ -1109,6 +1109,19 @@ function styles() {
     ok(f.theme === 'system' && f.accent === 'green' && f.sync.style && f.sync.style.theme[0] === B.dev && f.sync.style.accent[0] === A.dev,
       `a device file has them as any export does, and their versions in sync.style (${JSON.stringify(f.sync.style)})`);
   });
+  block(() => {
+    // the same version, its vector's devices in another order in another device's file (two or more devices that set
+    // up one folder at once join their first versions in different orders): nobody writes again for it
+    const { A, B, sync } = pair();
+    A.setStyle({ accent: 'green' }); NOW += 2000; sync();
+    const o = fileOf(B), v = o.sync.style.accent;
+    v[1] = Object.fromEntries(Object.entries(v[1]).concat([[B.dev, 1]]).reverse());   // (B's default, joined in, first)
+    B.folder.write(B.fileName(), resum(o)); A.deliver(B); A.round(); B.deliver(A); B.round();
+    const v2 = clone(v); v2[1] = Object.fromEntries(Object.entries(v2[1]).reverse());
+    const o2 = fileOf(B); o2.sync.style.accent = v2; B.folder.write(B.fileName(), resum(o2));
+    const w1 = A.folder.revs.get(A.fileName()).length; A.deliver(B); A.round(); A.deliver(B); A.round();
+    ok(A.folder.revs.get(A.fileName()).length === w1, `a version whose vector lists the devices in another order is the same version: no new write (${A.folder.revs.get(A.fileName()).length - w1} more)`);
+  });
   for (const first of ['earlier', 'later']) block(() => {
     // changed on both before either has the other's: the later change, on both, whichever round runs first
     const { A, B, sync } = pair();
