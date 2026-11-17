@@ -82,12 +82,13 @@ storage can't be read still has every page.
                            //   Light / Medium / Firm = snapping true with "gentle" / "normal" / "strong")
   pickerCorners: "both",   // Settings → Advanced → Widget Picker: "both" | "left" | "right"
   accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
-  themeAt: 1794460416170,  // when the theme and the accent were last chosen on this device (ms; set by a change made
-  accentAt: 1794460410000, //   here, never by Board Sync): of two choices made apart, the later wins on every device
+  themeAt: 1794460416170,  // when the theme, the accent and the text style were last chosen on this device (ms; set by
+  accentAt: 1794460410000, //   a change made here, never by Board Sync): of two choices made apart, the later wins on
+  lettersAt: 1794460420000,//   every device (lettersAt from 2026.11.17-2)
   locked: false,           // Settings → Classroom → Lock windows in place
   awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
   clock: "date",           // Settings → Appearance → Clock in the corner: "off" | "time" | "date" (time and date, the default)
-  letters: "standard",     // Settings → Appearance → Letters: "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
+  letters: "standard",     // Settings → Appearance → Text style (called Letters before 2026.11.17-2): "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
   lastBackupAt: null,      // ms of the last full backup (an export of every page, or Board Sync writing this device's
                            //   file), for backup reminders and the amber dot on Settings → Advanced (only when overdue)
   devMode: false,          // Settings → Advanced → Developer mode
@@ -99,12 +100,13 @@ storage can't be read still has every page.
 }
 ```
 
-Only `theme` and `accent` go into exported files (and so into the device files in the Google Drive folder). With Board
-Sync they are the board's, on every device linked to the folder: the later choice wins, as for a page's name (see
-`link:sync.style` below). *Import › Replace this page* takes the file's (a choice made here, so it syncs), and its
-Undo puts back the ones it replaced (chosen here again, so that syncs too); going back in Board history never changes
-them. `locked`, `awake`, `clock` and `letters` belong to this device: never in
-exports, Board history or the Google Drive folder, and an import leaves them as they are.
+Only `theme`, `accent` and `letters` (the text style; from 2026.11.17-2, before which it stayed on the device) go into
+exported files (and so into the device files in the Google Drive folder). With Board Sync they are the board's, on
+every device linked to the folder: the later choice wins, as for a page's name (see `link:sync.style` below).
+*Import › Replace this page* takes the file's (a choice made here, so it syncs; a file without `letters` leaves the
+text style as it is), and its Undo puts back the ones it replaced (chosen here again, so that syncs too); the other
+ways to import, and going back in Board history, never change them. `locked`, `awake` and `clock` belong to this
+device: never in exports, Board history or the Google Drive folder, and an import leaves them as they are.
 
 Older versions had a third choice for `awake`, `"hours"` (school hours, Monday to Friday, from `awakeFrom` to
 `awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"` (the teacher wanted the screen on in class) and drops
@@ -201,7 +203,7 @@ fingerprints and versions of the board's parts, never the board's values:
   peers: { "<dev>": { seq, seen, changedAt, name, file, at, left, missingSince, folder } },   // every device seen in the folder; changedAt and missingSince are this device's clock
   last: { dev, name, at }, gcAt, left: null,       // the last merge that changed something here; Unlink or Erase's last write
   dropped: { "<page uid>" | "<page uid> <wid>": { vv, at } },   // deletions collected here (gc) in the last 30 days
-  style: { theme: { h, v: [by, {dev: n}, t] }, accent: { h, v } } }   // the board's theme and accent: their parts (below)
+  style: { theme: { h, v: [by, {dev: n}, t] }, accent: { h, v }, letters: { h, v } } }   // the board's theme, accent and text style: their parts (below)
 
 // link:mine-<page uid>: the page's parts and its windows' parts, each { h: fingerprint, v: [by, {dev: n}, t], rev }
 { uid, b, p: { exists, name, look, size, pos, photo, photoLook }, w: { "<wid>": { ikey, p: { exists, rect, open, data, conf, label } } },
@@ -227,22 +229,29 @@ The parts, versions and rules belong to the merge (`board.js` section 13d, the r
 ledger (the browser threw the database away) is rebuilt from this device's own file in the folder; with no file
 there, the folder's board is joined as on a first set-up.
 
-**The theme and accent** (`settings.theme`, `settings.accent`) are two more parts, of the board as a whole, in
-`link:sync.style`: `h` is the fingerprint of the value this device has, `v` its version. They take the later change,
-as a page's name does, with no copy and no Board history version. A change made here is a version whose counter is
-when it was chosen (`themeAt`, `accentAt`), not the newest change stamped with it, so that two made apart (one while
-unlinked, say) resolve to the later on every device. An entry with no `v` is a value this device had before it synced
-with this folder: joining it or switching to it (the folder's then applies), or a ledger from before 2026.11.16-4
-(each device keeps its own until one is chosen again). It is no change, and never replaces another device's. Nor is a
-value never chosen here (no `themeAt` or `accentAt`) that differs from its entry: one only received, which a ledger
-rebuilt from this device's file, written before its last merge, doesn't have yet. Linking an empty folder (`seed`)
-makes this device's a version: one chosen here at its `themeAt` or `accentAt` (not at the counters this device brings
-from another folder, which say nothing about when it was chosen), one never chosen here (the default, or a value from
-before 2026.11.16-4) at the lowest counter there is, 1, with `t` 0, so that when two devices set up the same folder at
-once, before either has the other's file, a choice made on one of them wins on both (neither having chosen: the tie
-goes by device id). Linking the same folder again (`carry`) keeps the entries, so a choice made while unlinked counts.
-A choice made after linking while Google Drive is still bringing the folder (`wait`) is this device's own when the
-files arrive: joining or switching to the folder, the folder's applies.
+**The theme, accent and text style** (`settings.theme`, `settings.accent`, `settings.letters`) are three more parts, of
+the board as a whole, in `link:sync.style` (the text style from 2026.11.17-2): `h` is the fingerprint of the value this
+device has, `v` its version. They take the later change, as a page's name does, with no copy and no Board history
+version. A change made here is a version whose counter is when it was chosen (`themeAt`, `accentAt`, `lettersAt`), not
+the newest change stamped with it, so that two made apart (one while unlinked, say) resolve to the later on every
+device. An entry with no `v` is a value this device had before it synced with this folder: joining it or switching to
+it (the folder's then applies), or a ledger from before 2026.11.16-4, or from before 2026.11.17-2 for the text style
+(each device keeps its own until one is chosen again, and takes the folder's if one was). It is no change, and never
+replaces another device's. Nor is a value never chosen here (no `themeAt`, `accentAt` or `lettersAt`) that differs
+from its entry: one only received, which a ledger rebuilt from this device's file, written before its last merge,
+doesn't have yet. Linking an empty folder (`seed`) makes this device's a version: one chosen here at its `themeAt`,
+`accentAt` or `lettersAt` (not at the counters this device brings from another folder, which say nothing about when
+it was chosen), one never chosen here (the default, or a value from before 2026.11.16-4, or a text style from before
+2026.11.17-2) at the lowest counter there is, 1, with `t` 0, so that when two or more devices set up the same folder
+at once, before any has another's file, a choice made on one of them wins on all (of two, the later; none having
+chosen: the tie goes by device id). Linking the same folder again (`carry`) keeps the entries, so a choice made while
+unlinked counts. A choice made after linking while Google Drive is still bringing the folder (`wait`) is this
+device's own when the files arrive: joining or switching to the folder, the folder's applies. A value this release
+doesn't know (a text style a newer 21Board added, say) is skipped in a file, as any part is.
+
+A device on 2026.11.16-4 doesn't know the text style: its files have no `letters` and no `sync.style.letters`, which
+says nothing about it (never a change, never a reset back to Standard), and it reads past both in a newer device's
+file, so the text style chosen on a newer device never reaches it and its rounds stay as quiet as before.
 
 A vector is written with its devices in sorted order, in files and in the ledger, so that the same version joined
 from the same devices in another order (two or more devices setting up one folder at once) is the same text and
@@ -282,7 +291,7 @@ boards `pos`; content clash versions not yet settled go in an instance's `pendin
           "merged": { "<dev>": <seq> },                                        // the newest seq of each other device this file includes
           "gone": { "pages": [{ "uid", "exists", "cover" }], "windows": [{ "page", "wid", "exists", "cover" }] },   // deletions
           "left": null | { "at": … } | { "at": …, "erased": true },              // Unlink, Erase everything
-          "style": { "theme": [by, {dev: n}, t], "accent": [ … ] },             // the versions of the top-level theme and accent (one with none says nothing about it)
+          "style": { "theme": [by, {dev: n}, t], "accent": [ … ], "letters": [ … ] },   // the versions of the top-level theme, accent and text style (one with none says nothing about it)
           "sum": "9be0c3…" }                                                   // the first 32 hex digits of SHA-256 of the file with "sum": ""
 ```
 
@@ -437,8 +446,8 @@ undoing the changes from …" (`undo`) comes before the Undo of a merge. When a 
 over), its versions stay, marked with `deletedAt`, for 30 days: Board history › *Deleted pages* lists them, and *Bring
 back* adds the page again from its newest version, under its old `uid`. Then they go.
 
-`sig` is the content fingerprint (window stacking order doesn't count), without the theme and accent (going back
-never changes them), so identical versions aren't saved twice. Versions saved before Board Sync merged
+`sig` is the content fingerprint (window stacking order doesn't count), without the theme, accent and text style
+(going back never changes them), so identical versions aren't saved twice. Versions saved before Board Sync merged
 boards may have `reason: "load"` and `link: "sent" | "loaded"`; `link` is ignored now. While the board is linked to
 a folder, versions saved when 21Board opens aren't copied to it (they may hold only work merged from other devices,
 which those devices copy themselves), unless saved by hand. Retention is in README, "Board history". Settings
@@ -446,7 +455,7 @@ which those devices copy themselves), unless saved by hand. Retention is in READ
 
 **Folder copies:** `<shared folder>/Board history/<board name> <YYYY-MM-DD> <HH.MM>[ saved] (<device>) [<uid6>-<dev4>].21board`
 (local time; `uid6` and `dev4` are the first characters of the board's uid and the device id). A valid `.21board`
-file: the version's body plus `history: {at, kind, label, by, from}`, without theme, accent or the photo.
+file: the version's body plus `history: {at, kind, label, by, from}`, without theme, accent, text style or the photo.
 Each device thins only files with its own `dev4` (by name only); files ending in ` saved` are never removed.
 
 ## Instances: numbering, closing, reopening
@@ -556,6 +565,7 @@ on Chrome) reads it.
   "viewport": { "width": 2400, "height": 1350 },   // the space the rects are in (the 16:9 board, grown to fit every window)
   "theme": "light",
   "accent": "blue",
+  "letters": "standard",          // the text style (from 2026.11.17-2; a file without it leaves the text style as it is)
   "board": {
     "name": "Room 12",
     "background": { "color": null, "pattern": "dots" },
@@ -634,26 +644,28 @@ the file is made anyway, the teacher is told which pages are incomplete, and it 
 Importing a one-page file offers three choices:
 
 - **Open as a new page** (suggested) — the file becomes a new page right after the page shown, with the file's
-  name, background, photo, size and shape (not its theme or accent color). It keeps the file's `board.uid`
+  name, background, photo, size and shape (not its theme, accent color or text style). It keeps the file's `board.uid`
   unless a page on this device already has it (then it gets a new one), so the same file opened on two linked
   devices is one page. Undo takes the page away again.
 - **Replace this page** — removes this page's current windows and content, then loads the file
-  (including its board name, background, theme and accent color). The page stays this page (its `board.uid`),
-  whatever board the file was: with Board Sync, the new content reaches the same page on the other devices, as
-  edits, and the theme and accent color are a choice made on this device, which reaches them too (the dialog says
-  so when they differ from this board's). Its Undo goes back to the version saved before, and chooses the theme and
-  accent color it replaced again.
-- **Add to this page** — keeps everything and adds the file's windows. Instance numbers are
-  renumbered to the next free number per widget, and windows are nudged into free space. Each added window gets a
-  new `wid` and a `createdAt` of its own; *Replace this page* keeps the file's `wid`s (or makes the default from
-  their `createdAt`), so a restored backup of a page is the same windows on every device.
+  (including its board name, background, theme, accent color and text style). The page stays this page (its
+  `board.uid`), whatever board the file was: with Board Sync, the new content reaches the same page on the other
+  devices, as edits, and the theme, accent color and text style are a choice made on this device, which reaches
+  them too (the dialog says so when they differ from this board's). Its Undo goes back to the version saved before,
+  and chooses the theme, accent color and text style it replaced again.
+- **Add to this page** — keeps everything (the theme, accent color and text style too) and adds the file's
+  windows. Instance numbers are renumbered to the next free number per widget, and windows are nudged into free
+  space. Each added window gets a new `wid` and a `createdAt` of its own; *Replace this page* keeps the file's
+  `wid`s (or makes the default from their `createdAt`), so a restored backup of a page is the same windows on every
+  device.
 
 Importing an all-pages file offers **Add these pages** (each becomes a new page, after this device's pages,
 as with *Open as a new page*) or **Replace all pages** (asked again; the file's pages are added, then this
 device's pages are deleted, with Undo for 20 seconds, which brings them back and takes the new ones away). With
 *Replace all pages* the file's pages keep their `board.uid` even though the pages they replace have it, so a
 restored backup is the same boards in the Google Drive folder. Either way it is all or nothing: if a page can't
-be added, those that were go again and this device's pages stay.
+be added, those that were go again and this device's pages stay; and either way the theme, accent color and text
+style stay as they are.
 
 *Replace* keeps this page's background photo unless the file brings one, and takes the file's `scale` and `shape`, so the board looks exactly as it did (zoomed to fit
 this screen); a file from before board sizes existed is fitted into the 16:9 board. *Add* fits the

@@ -107,8 +107,8 @@
     applyLetters(palette.font);
   }
 
-  // ---------------------------------------------------------------- letters
-  // The teacher can choose easier-to-read letters (21Board's Settings → Appearance → Letters): --b21-font then
+  // ---------------------------------------------------------------- text style
+  // The teacher can choose easier-to-read letters (21Board's Settings → Appearance → Text style): --b21-font then
   // starts with a font that comes with 21Board, in its fonts/ folder. Its @font-face rules are added here,
   // pointing at that folder next to this script (…/sdk/board21.js), and fetch the files only once text uses
   // them. For the built-in widgets that's the board's own site; a widget on another site that loads this
