@@ -422,6 +422,40 @@ const parts = async page => {
 const updateCheck = page => page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r.update()).then(() => true, () => false));
 const boardUp = page => page.waitForFunction(() => window.__board21 && window.__board21.store.loaded && !document.getElementById('startup'), null, { timeout: 20000 });
 
+// The YouTube Player suites never reach YouTube: its sites answer with a stand-in page (stubYouTube) that notes each
+// address asked for (yt.hits) and keeps the Referer YouTube would see (window.__ref in its frame).
+const VID = 'dQw4w9WgXcQ', VID2 = 'aqz-KE-bpKQ';
+const EMBED = (id, more = '') => `https://www.youtube.com/embed/${id}?rel=0&iv_load_policy=3&playsinline=1${more}`;
+async function stubYouTube(ctx) {
+  const yt = { hits: [], embeds: () => yt.hits.filter(u => /\/embed\//.test(u)).length };
+  await ctx.route(/^https?:\/\/([^/?#]*\.)?(youtube(-nocookie)?\.com|youtu\.be|ytimg\.com|googlevideo\.com)(:\d+)?([/?#]|$)/i, r => {
+    yt.hits.push(r.request().url());
+    return r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>YouTube stand-in</title><body style="margin:0;background:#000;color:#fff;font:16px system-ui">YouTube stand-in<script>window.__ref = document.referrer;</script></body>' });
+  });
+  return yt;
+}
+const ytWin = (p, ik = 'youtube-player:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+// What a YouTube Player window shows: the link box, the player (its frame's src), the offline message, the link typed,
+// the error under it, Cancel.
+const ytLook = (p, ik = 'youtube-player:1') => ytWin(p, ik).locator('html').evaluate(() => {
+  const $ = id => document.getElementById(id), f = document.querySelector('iframe');
+  return { ask: !$('ask').hidden, player: !$('player').hidden, offline: !$('offline').hidden, src: f ? f.src : null, frames: document.querySelectorAll('iframe').length,
+    link: $('link').value, err: $('err').hidden ? '' : $('err').textContent, cancel: !$('cancel').hidden, text: $('offline').hidden ? '' : $('offline').innerText.replace(/\s+/g, ' ').trim() };
+});
+// The tab's live YouTube frames (one removed from its page is gone from this list).
+const ytFrames = p => p.frames().filter(f => /^https:\/\/www\.youtube(-nocookie)?\.com\/embed\//.test(f.url()));
+const ytMenu = (p, ik = 'youtube-player:1') => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return w ? w.menuItems.map(i => i.separator ? '—' : i.label).join(' | ') : null; }, ik);
+const ytData = (p, ik = 'youtube-player:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
+// A widget item in the window menu, chosen as a teacher does; a link typed in the link box and shown.
+const ytChoose = async (p, label, ik = 'youtube-player:1') => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.locator('#menu [data-act="widget"]', { hasText: label }).click(); await p.waitForTimeout(400); };
+const ytShow = async (p, text, ik) => { const f = ytWin(p, ik); await f.locator('#link').fill(text); await f.locator('#go').click(); await p.waitForTimeout(500); };
+// Contrast ratio of two CSS colors ('rgb(…)'), as WCAG counts it.
+const contrast = (a, b) => {
+  const lum = c => { const [r, g, bl] = c.match(/[\d.]+/g).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * bl; };
+  const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+  return (x + 0.05) / (y + 0.05);
+};
+
 const SUITES = [
   ['Windows, data and multi-tab sync', async (browser) => {
   const wins = page => page.evaluate(() => Object.fromEntries(Array.from(window.__board21.state.wins.values()).sort((a,b)=>a.ikey<b.ikey?-1:1).map(w => [w.ikey, Object.assign({}, w.disp)])));
@@ -4448,6 +4482,310 @@ const SUITES = [
     ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
     await ctx.close();
   }],
+  ['YouTube Player: the Widget Picker, links, the frame YouTube gets, the window menu, kiosk, Open on YouTube', async (browser) => {
+    const src = fs.readFileSync(path.join(ROOT, 'widgets', 'youtube-player', 'index.html'), 'utf8');
+    ok(!/--b21-[\w-]+\s*:/.test(src), 'the widget never sets a --b21-* value of its own: the board’s theme colors reach it');
+    ok(!/touchstart/.test(src), 'no touchstart handler (and no toolbar over the player: checked below)');
+    ok(/const EMBED_HOST = 'https:\/\/www\.youtube\.com';/.test(src), 'the embed host is one named constant, www.youtube.com');
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const yt = await stubYouTube(ctx);
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'youtube-player'); return a && { name: a.name, version: a.version, entry: a.entry, files: a.files, clash: a.clash, permissions: a.permissions, win: a.win, color: a.color, icon: a.icon, external: a.external, description: a.description }; });
+    ok(reg && reg.name === 'YouTube Player' && reg.version === '1.0.0' && reg.entry === 'widgets/youtube-player/index.html' && JSON.stringify(reg.files) === '["widgets/youtube-player/index.html"]' &&
+      reg.clash === 'later' && reg.permissions.length === 0 && !reg.external && reg.win.width === 480 && reg.win.height === 270 && reg.win.minWidth >= 200 && reg.win.minHeight >= 200 && !reg.win.aspectRatio && reg.description,
+      `it is in the registry: version 1.0.0, one file, clash 'later', no extra permissions, 480 × 270, at least 200 × 200, no shape lock (${JSON.stringify(reg && reg.win)})`);
+    const manifest = JSON.parse(/<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src)[1]);
+    ok(manifest.id === 'youtube-player' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => manifest.window[k] === reg.win[k]), 'its manifest block matches the registry entry');
+    ok(/^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', `rgb(${[1, 3, 5].map(i => parseInt(reg.color.slice(i, i + 2), 16)).join(', ')})`) >= 4.5 && reg.color.toLowerCase() !== '#ef4444',
+      `its tile is a red of its own (${reg.color}, not the Timer’s #ef4444) with the white icon readable on it`);
+    // In the Widget Picker; opening it shows the link box and asks YouTube for nothing.
+    await page.click('.picker-btn.left'); await page.waitForTimeout(250);
+    const tile = page.locator('[data-widget="youtube-player"]');
+    ok(await tile.count() === 1 && (await tile.innerText()).trim() === 'YouTube Player', 'the Widget Picker lists the YouTube Player');
+    await tile.click(); await page.waitForTimeout(1200);
+    ok(await eventually(() => page.evaluate(() => { const w = window.__board21.state.wins.get('youtube-player:1'); return !!w && w.connected; })), 'tapping it opens a window, which connects');
+    let a = await ytLook(page);
+    ok(a.ask && !a.player && !a.offline && a.frames === 0 && yt.hits.length === 0, 'a new window shows the link box, and nothing is asked of YouTube yet');
+    ok(await ytMenu(page) === '', `the link box has no window menu items of its own (${await ytMenu(page)})`);
+    const box = await ytWin(page).locator('html').evaluate(() => ({ title: document.querySelector('#ask h1').textContent, help: document.getElementById('help').textContent, go: document.getElementById('go').textContent.trim(),
+      label: document.getElementById('link').getAttribute('aria-label'), focused: document.activeElement === document.getElementById('link') }));
+    ok(box.title === 'Show a YouTube video' && box.help === 'Paste the link to a video on YouTube.' && box.go === 'Show video' && box.label && !box.focused,
+      `the link box: a short title, one line of help, a field and a button, in sentence case, and the field isn't focused by itself (no keyboard popping up): ${JSON.stringify(box)}`);
+
+    // Links: every form it reads, and what it turns away.
+    const forms = [
+      [`https://www.youtube.com/watch?v=${VID}`, VID, 0], [`https://www.youtube.com/watch?feature=share&v=${VID}`, VID, 0], [`https://youtu.be/${VID}?si=Ab12Cd34`, VID, 0],
+      [`https://www.youtube.com/embed/${VID}`, VID, 0], [`https://www.youtube.com/v/${VID}`, VID, 0], [`https://www.youtube.com/shorts/${VID}?feature=share`, VID, 0],
+      [`https://www.youtube.com/live/${VID}?feature=shared`, VID, 0], [`https://www.youtube-nocookie.com/embed/${VID}`, VID, 0], [VID, VID, 0], [`  ${VID2}  `, VID2, 0],
+      [`https://m.youtube.com/watch?v=${VID}`, VID, 0], [`https://music.youtube.com/watch?v=${VID}&list=RDAMVM${VID}`, VID, 0], [`youtube.com/watch?v=${VID}`, VID, 0],
+      [`www.youtube.com/watch?v=${VID}`, VID, 0], [`http://youtube.com/watch?v=${VID}`, VID, 0], [`https://WWW.YouTube.com/watch?v=${VID}`, VID, 0], [`Watch this: https://youtu.be/${VID2} please`, VID2, 0],
+      [`https://youtu.be/${VID}?t=90`, VID, 90], [`https://www.youtube.com/watch?v=${VID}&t=1m30s`, VID, 90], [`https://www.youtube.com/embed/${VID}?start=45`, VID, 45],
+      [`https://www.youtube.com/watch?v=${VID}#t=2m`, VID, 120], [`https://youtu.be/${VID}?t=1h2m3s`, VID, 3723], [`https://youtu.be/${VID}?t=0`, VID, 0], [`https://youtu.be/${VID}?t=soon`, VID, 0]
+    ];
+    const bad = ['', 'hello there', 'https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', 'https://www.youtube.com/@ccsd21', 'https://vimeo.com/123456789',
+      `https://example.com/watch?v=${VID}`, `https://www.youtube.com.example.org/watch?v=${VID}`, `https://notyoutube.com/watch?v=${VID}`, 'javascript:alert(1)', VID.slice(0, 10),
+      `https://www.youtube.com/watch?v=${VID}%22%3E%3Cimg`, `https://www.youtube.com/watch?v=${VID}<script>`, `https://www.youtube.com/results?search_query=${VID}`];
+    const parsed = await ytWin(page).locator('html').evaluate((html, [forms, bad]) => ({
+      good: forms.map(([t]) => parseLink(t)), bad: bad.map(t => parseLink(t)) }), [forms, bad]);
+    const wrong = forms.filter(([t, id, start], i) => !parsed.good[i] || parsed.good[i].id !== id || parsed.good[i].start !== start).map(([t], i) => t + ' → ' + JSON.stringify(parsed.good[forms.findIndex(f => f[0] === t)]));
+    ok(!wrong.length, `every form of link is read, with its start time (${forms.length} forms${wrong.length ? '; wrong: ' + wrong.join('; ') : ''})`);
+    const let_ = bad.filter((t, i) => parsed.bad[i] !== null);
+    ok(!let_.length, `text that isn't a link to a YouTube video is turned away (${bad.length} kinds${let_.length ? '; let through: ' + let_.join(', ') : ''})`);
+    await ytWin(page).locator('#go').click(); await page.waitForTimeout(200);
+    a = await ytLook(page);
+    ok(a.ask && a.err === 'Paste the link to a YouTube video first.' && a.frames === 0, `Show video with nothing typed says what to do (${a.err})`);
+    await ytShow(page, 'https://vimeo.com/123456789');
+    a = await ytLook(page);
+    ok(a.ask && a.err === 'That isn’t a link to a YouTube video.' && a.frames === 0 && await ytData(page) === null && yt.hits.length === 0, `a link that isn't a YouTube video gets a clear message, and nothing is saved or loaded (${a.err})`);
+    await ytWin(page).locator('#link').press('x');
+    ok((await ytLook(page)).err === '', 'typing again takes the message away');
+
+    // A video: YouTube's frame fills the window, with the address, rules and Referer it should have.
+    await ytShow(page, `https://www.youtube.com/watch?v=${VID}`);
+    a = await ytLook(page);
+    ok(a.player && !a.ask && a.frames === 1 && a.src === EMBED(VID), `Show video puts YouTube’s player in the window: ${a.src}`);
+    ok(JSON.stringify(await ytData(page)) === JSON.stringify({ videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}` }), `it is saved as { videoId, videoUrl } (${JSON.stringify(await ytData(page))})`);
+    const fr = await ytWin(page).locator('#player iframe').evaluate(f => ({ host: new URL(f.src).host, allow: f.getAttribute('allow'), fs: f.hasAttribute('allowfullscreen'), ref: f.getAttribute('referrerpolicy'), title: f.title, sandbox: f.hasAttribute('sandbox') }));
+    ok(fr.host === 'www.youtube.com' && !/autoplay=/.test(a.src), `the frame comes from www.youtube.com, with no autoplay parameter (${fr.host})`);
+    ok(fr.allow.split(/;\s*/).sort().join() === 'autoplay,clipboard-write,encrypted-media,fullscreen,picture-in-picture' && fr.fs && fr.ref === 'strict-origin-when-cross-origin' && !fr.sandbox,
+      `allow="${fr.allow}" (no web-share), allowfullscreen, referrerpolicy="${fr.ref}"`);
+    ok(await eventually(async () => ytFrames(page).length === 1), 'the stand-in for YouTube loads in it');
+    const ref = await ytFrames(page)[0].evaluate(() => window.__ref);
+    ok(ref === BASE, `YouTube is told where the board is (Referer ${ref}), as its embeds require`);
+    const cover = await ytWin(page).locator('html').evaluate(() => { const f = document.querySelector('#player iframe'), out = [];
+      for (const fx of [0.02, 0.25, 0.5, 0.75, 0.98]) for (const fy of [0.02, 0.25, 0.5, 0.75, 0.98]) out.push(document.elementFromPoint(innerWidth * fx, innerHeight * fy) === f);
+      const r = f.getBoundingClientRect(); return { all: out.every(Boolean), fills: r.left === 0 && r.top === 0 && Math.abs(r.width - innerWidth) < 1 && Math.abs(r.height - innerHeight) < 1, bg: getComputedStyle(document.getElementById('player')).backgroundColor }; });
+    ok(cover.all && cover.fills && cover.bg === 'rgb(0, 0, 0)', 'the frame fills the window on black, and nothing of the widget’s is drawn over any part of it');
+    ok(await ytMenu(page) === 'Change video | Open on YouTube | — | Remove video', `with a video, the window menu has the controls (${await ytMenu(page)})`);
+    // Open on YouTube: the watch page in a new tab.
+    const [tab] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), ytChoose(page, 'Open on YouTube')]);
+    ok(!!tab && tab.url() === `https://www.youtube.com/watch?v=${VID}`, `Open on YouTube opens the video’s watch page in a new tab (${tab && tab.url()})`);
+    if (tab) { ok(await tab.evaluate(() => window.opener === null), 'the new tab can’t reach the board (noopener)'); await tab.close(); }
+    ok((await ytLook(page)).player, 'and the video stays in its window');
+    // A start time from the link goes into the saved content and the player's address (and the watch page's).
+    await ytChoose(page, 'Change video'); await ytShow(page, `https://youtu.be/${VID2}?t=1m30s`);
+    a = await ytLook(page);
+    ok(a.src === EMBED(VID2, '&start=90') && (await ytData(page)).start === 90, `a start time in the link (t=1m30s) is kept and passed to the player (${a.src})`);
+    const [tab2] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), ytChoose(page, 'Open on YouTube')]);
+    ok(!!tab2 && tab2.url() === `https://www.youtube.com/watch?v=${VID2}&t=90s`, `Open on YouTube starts there too (${tab2 && tab2.url()})`);
+    if (tab2) await tab2.close();
+
+    // Kiosk mode: no Open on YouTube (a kiosk can't open new windows).
+    const k = await ctx.newPage(); k.on('pageerror', e => errors.push('[kiosk] ' + e.message));
+    await k.goto(BASE + '?kiosk=yes'); await boardUp(k);
+    ok(await eventually(async () => (await ytLook(k)).player), 'kiosk mode shows the video too');
+    ok(await ytMenu(k) === 'Change video | — | Remove video', `in kiosk mode the menu leaves out Open on YouTube (${await ytMenu(k)})`);
+    await k.close();
+    // Settings → About says what goes to YouTube.
+    await openSettings(page, ['advanced']);
+    const about = (await page.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
+    ok(about.endsWith('Everything you make stays on this device. 21Board sends nothing to a server, except that a YouTube Player window loads its video from YouTube.'), `Settings → About names the exception (${about.slice(about.indexOf('·') + 1).trim()})`);
+    await page.keyboard.press('Escape');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['YouTube Player: nothing plays behind the link box (Remove video here and in another tab, Change video and Cancel, Reset, another page), reload, saved data checked, offline', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const yt = await stubYouTube(ctx);
+    const errors = [];
+    const A = await ctx.newPage(); A.on('pageerror', e => errors.push('[A] ' + e.message));
+    await A.goto(BASE); await boardUp(A);
+    await addWin(A, 'youtube-player');
+    await ytShow(A, `https://youtu.be/${VID}`);
+    ok(await eventually(async () => (await ytLook(A)).player && ytFrames(A).length === 1), 'a video shows');
+    await A.reload(); await boardUp(A);
+    ok(await eventually(async () => (await ytLook(A)).src === EMBED(VID) && ytFrames(A).length === 1), 'after a reload the same video shows');
+    const B = await ctx.newPage(); B.on('pageerror', e => errors.push('[B] ' + e.message));
+    await B.goto(BASE); await boardUp(B);
+    ok(await eventually(async () => (await ytLook(B)).player && ytFrames(B).length === 1), 'a second tab shows it too');
+
+    // Change video: the frame goes, the box holds the link; Cancel puts the same video back, loaded again.
+    let loads = yt.embeds();
+    await ytChoose(A, 'Change video');
+    let a = await ytLook(A);
+    ok(a.ask && !a.player && a.frames === 0 && ytFrames(A).length === 0, 'Change video removes YouTube’s frame: nothing goes on playing behind the link box');
+    ok(a.link === `https://youtu.be/${VID}` && a.cancel && a.err === '', `the box holds the video’s link, with Cancel (${a.link})`);
+    ok(await ytMenu(A) === '', 'and the menu has no items while the box shows');
+    ok((await ytLook(B)).player && ytFrames(B).length === 1, 'the other tab keeps its video (nothing was changed yet)');
+    await ytWin(A).locator('#cancel').click(); await A.waitForTimeout(500);
+    a = await ytLook(A);
+    ok(a.player && a.src === EMBED(VID) && ytFrames(A).length === 1 && yt.embeds() === loads + 1, 'Cancel puts the same video back (loaded again, so from the start)');
+    ok(JSON.stringify(await ytData(A)) === JSON.stringify({ videoId: VID, videoUrl: `https://youtu.be/${VID}` }), 'and nothing was saved');
+    // Another video, from the box: both tabs show it.
+    await ytChoose(A, 'Change video'); await ytShow(A, `https://www.youtube.com/watch?v=${VID2}`);
+    ok(await eventually(async () => (await ytLook(A)).src === EMBED(VID2) && (await ytLook(B)).src === EMBED(VID2) && ytFrames(A).length === 1 && ytFrames(B).length === 1), 'a new video shows in both tabs, one frame in each');
+    // Remove video, here: both tabs drop the frame.
+    await ytChoose(A, 'Remove video');
+    a = await ytLook(A);
+    ok(a.ask && a.frames === 0 && ytFrames(A).length === 0 && a.link === '' && !a.cancel && await ytData(A) === null, 'Remove video: the frame is removed, an empty link box shows, and the content is cleared');
+    ok(await eventually(async () => { const b = await ytLook(B); return b.ask && b.frames === 0 && ytFrames(B).length === 0; }), 'the other tab removes its frame too (no sound left playing there)');
+    // Remove video in the other tab.
+    await ytShow(A, VID);
+    ok(await eventually(async () => (await ytLook(B)).player), 'a video again (typed as its id)');
+    await ytChoose(B, 'Remove video');
+    ok(await eventually(async () => { const x = await ytLook(A); return x.ask && x.frames === 0 && ytFrames(A).length === 0 && x.link === ''; }), 'Remove video in the other tab removes the frame here');
+    // Typing in the box here while the other tab picks a video: what's typed stays, Cancel then shows that video.
+    await ytWin(A).locator('#link').fill('https://youtu.be/');
+    await ytShow(B, `https://youtu.be/${VID2}`);
+    await A.waitForTimeout(600);
+    a = await ytLook(A);
+    ok(a.ask && a.link === 'https://youtu.be/' && a.cancel && a.frames === 0, 'a video chosen in another tab while a link is being typed here leaves the box and its text alone, and offers Cancel');
+    await ytWin(A).locator('#cancel').click(); await A.waitForTimeout(500);
+    ok((await ytLook(A)).src === EMBED(VID2), 'Cancel then shows the other tab’s video');
+    // Reset (window menu).
+    await A.click('.win[data-ikey="youtube-player:1"] .win-label'); await A.click('#menu [data-act="reset"]'); await A.click('#menu [data-act="reset-yes"]');
+    ok(await eventually(async () => { const x = await ytLook(A), y = await ytLook(B); return x.ask && y.ask && x.frames + y.frames === 0 && ytFrames(A).length + ytFrames(B).length === 0; }), 'Reset: the link box in both tabs, and no YouTube frame left anywhere');
+    ok(await ytData(A) === null, 'and the video is no longer saved');
+    // Another page: its windows stop (every tab goes there).
+    await ytShow(A, VID);
+    ok(await eventually(async () => ytFrames(A).length === 1 && ytFrames(B).length === 1), 'a video in both tabs again');
+    await A.evaluate(() => window.__board21.pages.create({ end: true, name: 'Two' }));
+    ok(await eventually(async () => ytFrames(A).length === 0 && ytFrames(B).length === 0), 'going to another page removes the frame (in every tab): nothing plays out of sight');
+    await A.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[0]));
+    ok(await eventually(async () => (await ytLook(A)).src === EMBED(VID) && ytFrames(A).length === 1), 'coming back shows the video again');
+    // Closing the window removes it too.
+    await A.evaluate(() => window.__board21.closeWin('youtube-player:1', { quiet: true }));
+    ok(await eventually(async () => ytFrames(A).length === 0 && ytFrames(B).length === 0), 'closing the window removes the frame');
+    await A.evaluate(() => window.__board21.openWidget('youtube-player'));
+    ok(await eventually(async () => (await ytLook(A)).player), 'opening it again shows the saved video');
+    await B.close();
+
+    // Offline: a calm message instead of the browser's error page; the video comes back online.
+    await ctx.setOffline(true); await A.waitForTimeout(500);
+    a = await ytLook(A);
+    ok(a.offline && !a.player && !a.ask && a.frames === 0 && ytFrames(A).length === 0, 'offline, the frame goes and a message shows in its place');
+    ok(a.text === 'YouTube needs an internet connection. The video comes back once this device is online again.', `the message: “${a.text}”`);
+    ok((await ytData(A)).videoId === VID, 'the saved video is kept');
+    ok(await ytMenu(A) === 'Change video | Open on YouTube | — | Remove video', 'the menu still has the controls');
+    loads = yt.embeds();
+    await ytChoose(A, 'Change video'); await ytShow(A, `https://youtu.be/${VID2}`);
+    a = await ytLook(A);
+    ok(a.offline && a.frames === 0 && (await ytData(A)).videoId === VID2 && yt.embeds() === loads, 'a video chosen while offline is saved, and shows the message instead of loading');
+    await ctx.setOffline(false); await A.waitForTimeout(600);
+    ok(await eventually(async () => { const x = await ytLook(A); return x.player && x.src === EMBED(VID2) && ytFrames(A).length === 1; }), 'back online, the video comes back by itself');
+
+    // Saved content is checked before it is used: anything else shows the link box, loads nothing, makes no markup.
+    const send = d => A.evaluate(d => window.__board21.state.wins.get('youtube-player:1').post('data', { data: d, reason: 'remote' }), d);
+    const evil = '"><img src=x onerror="top.document.title=\'PWNED\'">';
+    const crafted = [{ videoId: 'short' }, { videoId: VID + evil, videoUrl: evil }, { videoId: 12345678901, videoUrl: '' }, { videoId: VID, videoUrl: 42 }, { videoId: VID, videoUrl: 'x'.repeat(5000) },
+      { videoId: VID }, { videoId: '../../evi/l' }, 'dQw4w9WgXcQ', [VID], { videoId: ['dQw4w9WgXcQ'], videoUrl: '' }, { videoId: 'javascript:a', videoUrl: '' }, 7, true];
+    const wrongly = [];
+    for (const d of crafted) {
+      await send({ videoId: VID, videoUrl: `https://youtu.be/${VID}` }); await A.waitForTimeout(250);
+      loads = yt.embeds();
+      await send(d); await A.waitForTimeout(250);
+      const x = await ytLook(A);
+      if (!(x.ask && x.frames === 0 && x.link === '' && yt.embeds() === loads)) wrongly.push(JSON.stringify(d).slice(0, 60));
+    }
+    ok(!wrongly.length, `damaged content from another tab or device shows the link box (${crafted.length} kinds${wrongly.length ? '; not: ' + wrongly.join(', ') : ''})`);
+    await send({ videoId: VID2, videoUrl: evil, start: 'soon' }); await A.waitForTimeout(300);
+    ok((await ytLook(A)).src === EMBED(VID2), 'a start time that isn’t a number of seconds is left out (the video starts at the beginning)');
+    await send({ videoId: VID2, videoUrl: '', start: 1e9 }); await A.waitForTimeout(300);
+    ok((await ytLook(A)).src === EMBED(VID2), 'and so is one longer than a day');
+    await ytChoose(A, 'Change video');
+    ok((await ytLook(A)).link === `https://www.youtube.com/watch?v=${VID2}`, 'Change video without a saved link fills in the video’s watch address');
+    await ytWin(A).locator('#cancel').click(); await A.waitForTimeout(300);
+    await send({ videoId: VID, videoUrl: evil, start: 75 }); await A.waitForTimeout(300);
+    await ytChoose(A, 'Change video');
+    ok((await ytLook(A)).link === evil && await ytWin(A).locator('html').evaluate(() => document.querySelectorAll('img, [onerror]').length === 0), 'a saved link is only ever text in the field');
+    await ytWin(A).locator('#cancel').click(); await A.waitForTimeout(300);
+    ok((await ytLook(A)).src === EMBED(VID, '&start=75'), 'a saved start time is used');
+    // The same from a file: it opens with the link box.
+    const file = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Crafted' }, instances: [
+      { widgetId: 'youtube-player', instance: 1, open: true, z: 1, rect: { x: 40, y: 40, w: 480, h: 310 }, config: null, data: { videoId: VID + '"><script>top.document.title="PWNED"</script>', videoUrl: evil } },
+      { widgetId: 'youtube-player', instance: 2, open: true, z: 2, rect: { x: 600, y: 40, w: 480, h: 310 }, config: null, data: { videoId: VID2, videoUrl: `https://youtu.be/${VID2}`, start: -5 } }] };
+    await A.evaluate(f => window.__board21.applyImport(f, 'replace'), file); await A.waitForTimeout(1500);
+    const c1 = await ytLook(A, 'youtube-player:1'), c2 = await ytLook(A, 'youtube-player:2');
+    ok(c1.ask && c1.frames === 0 && c2.src === EMBED(VID2) && await A.title() !== 'PWNED', `from an imported file too: damaged content shows the link box, a bad start time is dropped (${c2.src})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['YouTube Player: light and dark, at least 200 × 200 on screen (1366 × 768 and 1920 × 1080, every size and both board shapes), export and import', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await stubYouTube(ctx);
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    await addWin(page, 'youtube-player');
+    // The link box in the board's light and dark themes, with its error and Cancel showing: every text readable.
+    await ytShow(page, `https://youtu.be/${VID}`);
+    await ytChoose(page, 'Change video'); await ytShow(page, 'not a link');
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMedia({ colorScheme: scheme }); await page.waitForTimeout(500);
+      const c = await ytWin(page).locator('html').evaluate(() => {
+        const cs = e => getComputedStyle(e), bg = cs(document.body).backgroundColor, $ = id => document.getElementById(id);
+        const pairs = { title: [document.querySelector('#ask h1'), bg], help: [$('help'), bg], field: [$('link'), cs($('link')).backgroundColor], error: [$('err'), bg],
+          show: [$('go'), cs($('go')).backgroundColor], cancel: [$('cancel'), cs($('cancel')).backgroundColor] };
+        const out = {};
+        for (const [k, [el, back]] of Object.entries(pairs)) out[k] = [cs(el).color, back, cs(el).fontSize, cs(el).fontFamily];
+        const v = n => getComputedStyle(document.documentElement).getPropertyValue('--b21-' + n).trim();
+        return { out, bg, palette: { bg: v('bg'), accent: v('accent') }, goBg: cs($('go')).backgroundColor, theme: document.documentElement.getAttribute('data-b21-theme'),
+          big: ['link', 'go', 'cancel'].every(id => $(id).getBoundingClientRect().height >= 44), font: (() => { const t = document.createElement('span'); t.style.fontFamily = 'var(--b21-font)'; document.body.append(t);
+            const want = cs(t).fontFamily; t.remove(); return [document.body, $('link'), $('go'), $('cancel')].every(e => cs(e).fontFamily === want); })() };
+      });
+      const low = Object.entries(c.out).map(([k, [fg, back]]) => [k, contrast(fg, back)]).filter(([, r]) => r < 4.5);
+      ok(c.theme === scheme && !low.length, `${scheme}: every text in the link box is readable, 4.5:1 or more (${Object.entries(c.out).map(([k, [fg, back]]) => k + ' ' + contrast(fg, back).toFixed(1)).join(', ')})`);
+      const hex = h => `rgb(${[1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16)).join(', ')})`;
+      ok(c.bg === hex(c.palette.bg) && c.goBg === hex(c.palette.accent) && c.font, `${scheme}: it takes the board’s colors (background ${c.bg}, Show video in the accent ${c.goBg}) and its font`);
+      ok(c.big && Object.values(c.out).every(([, , size]) => parseFloat(size) >= 14), `${scheme}: field and buttons at least 44 px tall, no text under 14 px`);
+      await page.screenshot({ path: OUT + `yt-linkbox-${scheme}.png`, clip: await page.locator('.win[data-ikey="youtube-player:1"]').boundingBox() });
+    }
+    await page.emulateMedia({ colorScheme: 'light' });
+    await ytWin(page).locator('#cancel').click(); await page.waitForTimeout(400);
+
+    // At least 200 × 200 as drawn, and in YouTube's own frame, at the smallest size the window can be, on both screens,
+    // at every size of windows and menus, on both board shapes (and no bigger than that needs).
+    const fails = [], seen = [];
+    for (const [w, h] of [[1366, 768], [1920, 1080]]) {
+      await page.setViewportSize({ width: w, height: h }); await page.waitForTimeout(300);
+      for (const shape of ['16:9', 'free']) {
+        await page.evaluate(s => window.__board21.setBoardShape(s), shape);
+        for (const sc of [0.5, 0.6, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]) {
+          await page.evaluate(sc => { window.__board21.setBoardScale(sc); window.__board21.setRect('youtube-player:1', { x: 20, y: 20, w: 50, h: 60 }); }, sc);
+          let m = null;
+          const measure = async () => {
+            const outer = await page.evaluate(() => { const r = document.querySelector('.win[data-ikey="youtube-player:1"] iframe').getBoundingClientRect(); return { w: r.width, h: r.height, zoom: window.__board21.zoom.s }; });
+            const inner = await ytWin(page).locator('html').evaluate(() => { const f = document.querySelector('#player iframe'); if (!f) return null; const r = f.getBoundingClientRect(); return { w: r.width, h: r.height, iw: innerWidth, ih: innerHeight }; });
+            if (!inner) return null;
+            return { drawnW: outer.w * inner.w / inner.iw, drawnH: outer.h * inner.h / inner.ih, cssW: inner.w, cssH: inner.h, zoom: outer.zoom };
+          };
+          const good = x => x && x.drawnW >= 199.5 && x.drawnH >= 199.5 && x.cssW >= 200 && x.cssH >= 200;
+          // (once it has settled: the window may still be moving to its new size)
+          await eventually(async () => { const m0 = await measure(); await page.waitForTimeout(300); m = await measure();
+            return good(m) && !!m0 && ['drawnW', 'drawnH', 'cssW', 'cssH'].every(k => Math.abs(m[k] - m0[k]) < 0.5); }, 4000);
+          const label = `${w}×${h} ${shape} ${Math.round(sc * 100)}%`;
+          // (no bigger than needed either: the board tells the widget its zoom rounded to 0.01, so it may be a few px over)
+          if (!good(m) || Math.min(m.drawnW, m.cssW) > 206 || Math.min(m.drawnH, m.cssH) > 206) fails.push(`${label}: ${m ? [m.drawnW, m.drawnH, m.cssW, m.cssH].map(v => Math.round(v)).join('/') : 'no player'}`);
+          else seen.push(`${label} ${Math.round(m.drawnW)}×${Math.round(m.drawnH)}`);
+        }
+      }
+    }
+    ok(!fails.length, `the player is never smaller than 200 × 200, on screen or in its own frame, at the window’s smallest size (48 setups${fails.length ? '; too small or bigger than needed: ' + fails.join('; ') : ''})`);
+    console.log('    smallest players drawn:', seen.filter(s => / (50|80|200)%/.test(s)).join(', '));
+    // The minimum only draws the window bigger: the size it was given is kept, to come back when the minimum goes down.
+    const kept = await page.evaluate(() => window.__board21.state.insts.get('youtube-player:1').rect);
+    ok(kept.w === 50 && kept.h === 60, `the window’s saved size stays as it was set (${kept.w} × ${kept.h})`);
+    await page.setViewportSize({ width: 1920, height: 1080 }); await page.evaluate(() => { window.__board21.setBoardShape('16:9'); window.__board21.setBoardScale(0.8); });
+
+    // Export and import carry the video; a template leaves it out (it is content).
+    await page.evaluate(() => window.__board21.setRect('youtube-player:1', { x: 40, y: 40, w: 640, h: 400 })); await page.waitForTimeout(300);
+    const full = await page.evaluate(() => window.__board21.buildExport('full')), tpl = await page.evaluate(() => window.__board21.buildExport('template'));
+    const fi = full.instances.find(i => i.widgetId === 'youtube-player'), ti = tpl.instances.find(i => i.widgetId === 'youtube-player');
+    ok(fi && fi.data && fi.data.videoId === VID && ti && ti.data === null, 'a full export has the video; a blank template has the window without it');
+    const ctx2 = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await stubYouTube(ctx2);
+    const p2 = await ctx2.newPage(); p2.on('pageerror', e => errors.push('[2] ' + e.message));
+    await p2.goto(BASE); await boardUp(p2);
+    await p2.evaluate(f => window.__board21.applyImport(f, 'replace'), full);
+    ok(await eventually(async () => (await ytLook(p2)).src === EMBED(VID) && ytFrames(p2).length === 1), 'importing it on another device shows the same video');
+    await p2.evaluate(f => window.__board21.applyImport(f, 'add'), tpl); await p2.waitForTimeout(1200);
+    ok((await ytLook(p2, 'youtube-player:2')).ask, 'the template’s window opens with the link box');
+    await ctx2.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   // ---- Board Sync suites ----
   ['Board Sync: setting up (scenarios 1–4: the first device, a fresh smartboard, a device with its own pages, two set up at once)', async (browser) => {
     const errors = [];
@@ -4499,7 +4837,7 @@ const SUITES = [
     const hints = await A.p.evaluate(() => Array.from(document.querySelectorAll('#settings .hint')).map(h => h.textContent));
     ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 2 && hints.filter(h => h === 'On all your devices.').length === 3 && !hints.some(h => /This page only\./.test(h)),
       'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme, Accent color and Text style “On all your devices.”');
-    ok(/Your board stays on this device and in your Drive folder\. 21Board sends nothing to a server\./.test(await A.p.locator('#settings .about').innerText()), 'the footer says the board stays here and in the Drive folder');
+    ok(/Your board stays on this device and in your Drive folder\. 21Board sends nothing to a server, except that a YouTube Player window loads its video from YouTube\./.test(await A.p.locator('#settings .about').innerText()), 'the footer says the board stays here and in the Drive folder');
     await A.p.keyboard.press('Escape');
     // A placeholder-only device writes nothing, even after a Timer was opened and closed on it with no content.
     const C = await dev('a computer');

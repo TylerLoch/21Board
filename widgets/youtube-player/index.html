@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">
+  {"id": "youtube-player", "name": "YouTube Player", "version": "1.0.0", "window": {"width": 480, "height": 270, "minWidth": 200, "minHeight": 200}}
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>YouTube Player</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font);
+    font-size: clamp(15px, 4.5vmin, 20px); overflow: hidden;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  [hidden] { display: none !important; }
+  /* The link box. (In a small window the help line gives way and the rest packs closer.) */
+  #ask { box-sizing: border-box; height: 100%; overflow: auto; display: flex; padding: clamp(12px, 5vmin, 32px); }
+  #ask .box { margin: auto; width: 100%; max-width: 28em; display: flex; flex-direction: column; gap: .6em; }
+  h1 { margin: 0; font-size: 1.25em; font-weight: 700; line-height: 1.25; }
+  #help { margin: -.3em 0 0; color: var(--b21-muted); line-height: 1.35; }
+  @media (max-height: 250px) { #help { display: none; } }
+  input {
+    box-sizing: border-box; width: 100%; min-width: 0; height: clamp(48px, 13vmin, 60px); padding: 0 .7em;
+    font: inherit; color: var(--b21-text); background: var(--b21-surface); border: 2px solid var(--b21-border); border-radius: var(--b21-radius);
+    outline: none; user-select: text; -webkit-user-select: text;
+  }
+  input::placeholder { color: var(--b21-muted); opacity: 1; }
+  input:focus { border-color: var(--b21-accent); box-shadow: 0 0 0 3px var(--b21-accent-soft); }
+  #err { margin: 0; color: var(--b21-danger); font-weight: 600; line-height: 1.3; }
+  .buttons { display: flex; flex-wrap: wrap; gap: .5em; }
+  button {
+    flex: 1 1 auto; height: clamp(48px, 13vmin, 60px); padding: 0 1.1em; border: 0; border-radius: 999px; cursor: pointer;
+    font: inherit; font-weight: 700; color: var(--b21-text); background: var(--b21-surface-2);
+  }
+  button:active { filter: brightness(.92); }
+  button.primary { background: var(--b21-accent); color: var(--b21-on-accent); }
+  @media (max-width: 280px), (max-height: 230px) {
+    #ask { padding: 8px 10px; }
+    #ask .box { gap: .4em; }
+    h1 { font-size: 1.1em; }
+    button { padding: 0 .5em; font-size: 14px; }   /* (Cancel and Show video side by side at 200 px) */
+  }
+  /* The player: YouTube's own page, filling the window on black. Nothing is drawn over it (YouTube's rules). */
+  #player { position: fixed; inset: 0; background: #000; }
+  #player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+  #offline { position: fixed; inset: 0; box-sizing: border-box; padding: 1em; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4em; text-align: center; }
+  #offline p { margin: 0; max-width: 24em; line-height: 1.35; }
+  #offline p:first-child { font-weight: 700; font-size: 1.1em; }
+  #offline p + p { color: var(--b21-muted); }
+</style>
+</head>
+<body>
+  <form id="ask" novalidate autocomplete="off" hidden>
+    <div class="box">
+      <h1>Show a YouTube video</h1>
+      <p id="help">Paste the link to a video on YouTube.</p>
+      <input id="link" type="url" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="youtube.com/watch?v=…" aria-label="Link to a YouTube video" aria-describedby="help err">
+      <p id="err" role="alert" hidden></p>
+      <div class="buttons"><button type="button" id="cancel" hidden>Cancel</button><button type="submit" id="go" class="primary">Show video</button></div>
+    </div>
+  </form>
+  <div id="player" hidden></div>
+  <div id="offline" role="status" hidden><p>YouTube needs an internet connection.</p><p>The video comes back once this device is online again.</p></div>
+<script>
+  // Content (Board21.save): { videoId, videoUrl, start }, or null for no video.
+  //   videoId: the video's 11-character YouTube id. videoUrl: its link as it was pasted (Change video shows it again).
+  //   start: where the video starts, in whole seconds, from the link's t= or start= (left out: from the beginning).
+  // No config.
+  //
+  // The video is YouTube's own embedded player, in a frame that fills the window. YouTube's rules for embeds: nothing
+  // drawn over any part of the player (so its controls are in the window menu), at least 200 × 200 px (keepMinimum),
+  // a Referer, no autoplay, and no playing out of sight. The frame is removed whenever the link box or the offline
+  // message takes its place (Change video, Remove video here or anywhere else, a Reset, going offline), so nothing goes
+  // on playing behind them. (A window that is closed, or on a page that isn't shown, has no frame at all: the board
+  // removes it.) Taps on the video go to YouTube's page and never reach this one or the board, so they don't bring the
+  // window forward or move it: that is done by its title bar.
+
+  // Where the player comes from. www.youtube.com, so that on a Chromebook the school's YouTube settings for the
+  // signed-in student (Restricted Mode) apply to it. To use youtube-nocookie.com instead, change this one line to
+  // 'https://www.youtube-nocookie.com' (ask the district's tech team first: Restricted Mode set by Chrome policy may
+  // not reach it).
+  const EMBED_HOST = 'https://www.youtube.com';
+
+  const ID_RE = /^[A-Za-z0-9_-]{11}$/;
+  const MAX_LINK = 2000, MAX_START = 86400;   // characters; seconds (a day)
+  const $ = id => document.getElementById(id);
+  const ask = $('ask'), link = $('link'), err = $('err'), cancel = $('cancel'), player = $('player'), offline = $('offline');
+
+  // "1h2m3s", "1m30s", "90s" or "90" → seconds (0: none, or not a time).
+  function seconds(t) {
+    const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/i.exec(String(t || '').trim());
+    if (!m || !(m[1] || m[2] || m[3])) return 0;
+    const s = (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0);
+    return s > 0 && s <= MAX_START ? s : 0;
+  }
+  // A link to a YouTube video, or just the video's id → { id, start, link } (link: the part of the text that is the
+  // link, so a sentence around it is left out). null if it isn't one.
+  function parseLink(text) {
+    const all = String(text == null ? '' : text).trim();
+    if (ID_RE.test(all)) return { id: all, start: 0, link: all };
+    for (const word of all.split(/\s+/)) {
+      const v = fromAddress(word);
+      if (v) return v;
+    }
+    return null;
+  }
+  // youtube.com (www., m., music.) /watch?v=…, /embed/…, /v/…, /shorts/…, /live/…; youtube-nocookie.com; youtu.be/….
+  function fromAddress(word) {
+    let u;
+    try { u = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(word) ? word : 'https://' + word); } catch (e) { return null; }
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
+    const host = u.hostname, path = u.pathname.split('/').filter(Boolean);
+    let id = null;
+    if (host === 'youtu.be' || host === 'www.youtu.be') id = path.length === 1 ? path[0] : null;
+    else if (/^((www|m|music)\.)?youtube\.com$/.test(host) || /^(www\.)?youtube-nocookie\.com$/.test(host)) {
+      if (path.length === 1 && path[0] === 'watch') id = u.searchParams.get('v');
+      else if (path.length === 2 && /^(embed|v|shorts|live)$/.test(path[0])) id = path[1];
+    }
+    if (!id || !ID_RE.test(id)) return null;
+    const t = u.searchParams.get('t') || u.searchParams.get('start') || new URLSearchParams(u.hash.slice(1)).get('t');
+    return { id, start: seconds(t), link: word };
+  }
+
+  let video = null;       // the saved video: { videoId, videoUrl, start } (readVideo), or null
+  let changing = false;   // the link box shows in place of a saved video (Change video): Cancel puts the video back
+  let frame = null;       // YouTube's frame, while the player shows
+  let kiosk = false;      // ChromeOS kiosk: no new windows, so no Open on YouTube
+  let started = false;
+
+  // Saved content can come from an imported file or another device, so it is checked before it is used: anything
+  // else is no video.
+  function readVideo(d) {
+    if (!d || typeof d !== 'object' || typeof d.videoId !== 'string' || !ID_RE.test(d.videoId) || typeof d.videoUrl !== 'string' || d.videoUrl.length > MAX_LINK) return null;
+    return { videoId: d.videoId, videoUrl: d.videoUrl, start: Number.isInteger(d.start) && d.start > 0 && d.start <= MAX_START ? d.start : 0 };
+  }
+  const sameVideo = (a, b) => !!a && !!b && a.videoId === b.videoId && a.videoUrl === b.videoUrl && a.start === b.start;
+  const embedUrl = v => `${EMBED_HOST}/embed/${v.videoId}?rel=0&iv_load_policy=3&playsinline=1${v.start ? '&start=' + v.start : ''}`;
+  const watchUrl = v => `https://www.youtube.com/watch?v=${v.videoId}${v.start ? '&t=' + v.start + 's' : ''}`;
+
+  function save() {
+    const d = video ? Object.assign({ videoId: video.videoId, videoUrl: video.videoUrl }, video.start ? { start: video.start } : {}) : null;
+    Board21.save(d).catch(() => {});   // (not stored yet: the board keeps it, says so and tries again)
+  }
+
+  // What the window shows: the link box (no video, or Change video), the offline message, or the player.
+  function show() {
+    const view = !video || changing ? 'ask' : navigator.onLine === false ? 'offline' : 'player';
+    if (view !== 'player') dropFrame();
+    else if (!frame || frame.dataset.src !== embedUrl(video)) startPlayer();   // (the same video goes on playing)
+    ask.hidden = view !== 'ask';
+    offline.hidden = view !== 'offline';
+    player.hidden = view !== 'player';
+    cancel.hidden = !(view === 'ask' && video);
+    setMenu();
+  }
+  function startPlayer() {
+    dropFrame();
+    const f = document.createElement('iframe');
+    f.title = 'YouTube video player';
+    f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
+    f.setAttribute('allowfullscreen', '');
+    f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');   // (the browser's default, stated: YouTube's embeds need the Referer)
+    f.src = f.dataset.src = embedUrl(video);
+    player.appendChild(f);
+    frame = f;
+  }
+  // Removing the frame ends YouTube's page in it, and so the sound.
+  function dropFrame() { if (frame) { frame.remove(); frame = null; } }
+
+  // Window menu: the player's controls (nothing may be drawn over the player itself).
+  let menuNow = null;
+  function setMenu() {
+    const items = !video || changing ? [] : [
+      { id: 'change', label: 'Change video' },
+      ...(kiosk ? [] : [{ id: 'open', label: 'Open on YouTube' }]),
+      { separator: true },
+      { id: 'remove', label: 'Remove video' }
+    ];
+    const sig = JSON.stringify(items);
+    if (sig !== menuNow) { menuNow = sig; Board21.menu.set(items); }
+  }
+  Board21.on('menu', id => {
+    if (!video) return;
+    if (id === 'change') { changing = true; link.value = video.videoUrl || watchUrl(video); say(''); show(); }
+    else if (id === 'open' && !kiosk) window.open(watchUrl(video), '_blank', 'noopener,noreferrer');
+    else if (id === 'remove') { video = null; changing = false; link.value = ''; say(''); save(); show(); }
+  });
+
+  function say(text) { err.textContent = text; err.hidden = !text; }
+  link.addEventListener('input', () => { if (!err.hidden) say(''); });
+  ask.addEventListener('submit', e => {
+    e.preventDefault();
+    const text = link.value.trim(), v = text ? parseLink(text) : null;
+    if (!v) { say(text ? 'That isn’t a link to a YouTube video.' : 'Paste the link to a YouTube video first.'); return; }
+    say('');
+    video = { videoId: v.id, videoUrl: v.link.length <= MAX_LINK ? v.link : watchUrl({ videoId: v.id, start: v.start }), start: v.start };
+    changing = false;
+    link.blur();   // (the on-screen keyboard goes away)
+    save(); show();
+  });
+  cancel.addEventListener('click', () => { changing = false; say(''); show(); });
+
+  // Changed in another tab or on another device (or imported). A link being typed here stays: Cancel then shows
+  // the new video.
+  Board21.on('data', d => {
+    const v = readVideo(d);
+    if (sameVideo(v, video)) return;
+    const typing = !ask.hidden && document.activeElement === link;
+    video = v;
+    changing = !!v && typing;
+    if (!typing) { link.value = ''; say(''); }
+    show();
+  });
+
+  addEventListener('online', () => { if (started) show(); });
+  addEventListener('offline', () => { if (started) show(); });
+
+  // YouTube's player must be at least 200 × 200 px. The board draws this window `zoom` times its CSS size (the size
+  // of windows and menus in Settings, and how far the screen shrinks the 16:9 board: 0.36 at 50% on a 1366 × 768
+  // Chromebook, 0.57 at the usual 80%), so where it is drawn smaller the minimum is raised to keep the player 200 px
+  // on screen as well as in its own frame. (The board sends zoom rounded to 0.01, hence the 0.005.)
+  const MIN_PX = 200;
+  let minNow = 0;
+  function keepMinimum(info) {
+    const zoom = info && typeof info.zoom === 'number' && info.zoom > 0 ? info.zoom : 1;   // (an older board sends none)
+    const min = Math.max(MIN_PX, Math.ceil(MIN_PX / Math.max(0.1, zoom - 0.005)));
+    if (min !== minNow) { minNow = min; Board21.window.setMinSize(min, min); }
+  }
+  Board21.on('resize', keepMinimum);
+
+  Board21.ready().then(ctx => {
+    kiosk = !!ctx.kiosk;
+    video = readVideo(ctx.data);
+    started = true;
+    keepMinimum(ctx.window);
+    show();
+  });
+</script>
+</body>
+</html>

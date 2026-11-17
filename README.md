@@ -9,9 +9,10 @@ built independently and dropped in.
 
 - Pure HTML, CSS, JavaScript and SVG — **no libraries, no build step, no server code**
 - Installable PWA that **works entirely offline** (the district apps' windows: see
-  [District apps](#district-apps-21sketch-21timer-21doccam))
+  [District apps](#district-apps-21sketch-21timer-21doccam); YouTube Player videos need the internet)
 - All data stays **on the device** (IndexedDB); 21Board sends nothing anywhere (the district apps' windows
-  load those apps from their own sites)
+  load those apps from their own sites, and a YouTube Player window loads its video from YouTube, which sees the
+  board's address and the video)
 - Production: <https://boardapp.ccsd21.org>
 
 ---
@@ -96,7 +97,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Widget Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap a widget to open it. Tap ▦ again (or anywhere else) to close. |
 | **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Fullscreen, Settings. |
 | **Pages** | Each page is a board of its own (its own windows, content, background and name), for lessons or parts of the day. At the far end of the Widget Picker's bottom row: **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after; on the last page › is **+** (a new page). Tap *Page* for the Pages menu: every page by name (tap one to go there), **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** and **Delete this page…** (with Undo). A new page takes this page's size, shape and background color. Every tab on the device shows the same page, and 21Board opens on the page it was showing. With Board Sync, pages and their order are the same on every device, and each device shows its own page. Widgets on other pages don't run while their page isn't shown: a Timer shows the right time when you come back, but its alarm doesn't ring on another page. |
-| **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
+| **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. A YouTube Player's video takes every tap itself: move its window, or bring it forward, by the title bar. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close** (21Sketch, 21Timer and 21DocCam: **Reload** and **Open … on its own** instead of Reset). Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. From the keyboard: Enter on the window's name opens it, the arrow keys move between its items, Enter chooses one and Escape closes it. |
@@ -213,6 +214,7 @@ tests/run.js            Optional automated browser tests
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
+| **YouTube Player** | A YouTube video from its link: the one built-in widget that goes online (YouTube sees the board's address and the video). Its controls are in the window menu, since nothing may be drawn over YouTube's player; it raises its minimum size from the window's `zoom`, so the player is never under 200 × 200 px on screen; offline, a message instead of the browser's error page |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps-21sketch-21timer-21doccam) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
@@ -351,9 +353,9 @@ back, such as a window being typed in, is due again):
   content and settings are merged separately. A window moved on the laptop and typed in on the smartboard keeps
   both changes. Changes to different windows never clash.
 - **The same content changed on both** (two edits to one note): both are kept. The later one stays in the
-  window, and the other appears beside it as a labelled copy ("Copy · 9:41 AM"). For the Timer, Dice and
-  Traffic light, whose content is a setting, the later one wins. Anything else changed on both (a window
-  moved on both) takes the later change, and Board history keeps a version from before it.
+  window, and the other appears beside it as a labelled copy ("Copy · 9:41 AM"). For the Timer, Dice,
+  Traffic light and YouTube Player, whose content is a setting, the later one wins. Anything else changed on both
+  (a window moved on both) takes the later change, and Board history keeps a version from before it.
 - **Deleting** a page or window on any device deletes it everywhere (with Undo, and Board history). An edit made
   on a device that hadn't seen the deletion yet brings it back, so no one's work disappears unseen. A page brought
   back on one device (its Undo, or Board history › Deleted pages › *Bring back*) comes back on the others, which
@@ -549,7 +551,8 @@ repository (`sw.js`) but not yet on its server; 21Timer and 21DocCam need one de
   show them. If they ever do, they must allow 21Board: `Content-Security-Policy: frame-ancestors 'self'
   https://boardapp.ccsd21.org` (add `https://tylerloch.github.io` for the test site), and no `X-Frame-Options`
   (it can't name another site). If 21Board's own host ever sends a CSP, it needs `frame-src
-  https://sketchapp.ccsd21.org https://timerapp.ccsd21.org https://doccamapp.ccsd21.org`.
+  https://sketchapp.ccsd21.org https://timerapp.ccsd21.org https://doccamapp.ccsd21.org`, and
+  `https://www.youtube.com` for the YouTube Player's page.
 - **Camera (21DocCam).** Chrome asks for the camera on behalf of the page in the address bar,
   `boardapp.ccsd21.org`: its prompt names that site and remembers the answer for it. On managed devices, allow
   the camera for `https://boardapp.ccsd21.org` (Admin console: *Video input allowed URLs*, policy
@@ -649,7 +652,8 @@ node tests/run.js            # all suites
 node tests/run.js offline    # only the suites whose title contains "offline"
 ```
 
-The *District apps* suite uses stand-ins for 21Sketch, 21Timer and 21DocCam; the tests never reach their real sites.
+The *District apps* suite uses stand-ins for 21Sketch, 21Timer and 21DocCam, and the *YouTube Player* suites one for
+YouTube; the tests never reach their real sites.
 
 The *Board Sync* suites play two or three devices sharing a Google Drive folder, in numbered scenarios (1–61):
 each device is a browser profile of its own, and the tests bring files from one device's folder to another's as
