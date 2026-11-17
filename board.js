@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.16-5';
-  const BOARD_BUILD = '1a5989e6';
+  const BOARD_VERSION = '2026.11.16-6';
+  const BOARD_BUILD = '690d127a';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -5889,7 +5889,7 @@
         '',
         '- To add a device: in 21Board on that device, go to Settings > Board Sync > Set up, and',
         '  pick this same folder. Everyone who sets up Board Sync with this folder shares one board.',
-        '- To share the board with a co-teacher: share this folder with them in Google Drive as an',
+        '- To keep a board in sync with a co-teacher: share this Google Drive folder with them as an',
         '  Editor. They add a shortcut to it in their My Drive, then pick it when they set up.',
         '- Please don’t edit, rename or move these files. When a device is unlinked, 21Board deletes',
         '  its file here two months later.',

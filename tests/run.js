@@ -4477,7 +4477,7 @@ const SUITES = [
     ok(fA.length === 1 && /^21Board \(laptop\) \[[0-9a-z]{4}\]\.21board$/.test(fA[0]) && (await files(A.p)).includes('About this folder.txt'),
       `setting up writes this device’s file at once, named after it, beside “About this folder.txt” (${(await files(A.p)).join(', ')})`);
     const about = await fileText(A.p, 'About this folder.txt');
-    ok(/Each device keeps its own copy of the whole board here, named after the device, such as\r\n"21Board \(laptop\) \[k3j9\]\.21board"\./.test(about) && /share this folder with them in Google Drive as an\r\n  Editor/.test(about) && /deletes\r\n  its file here two months later/.test(about),
+    ok(/Each device keeps its own copy of the whole board here, named after the device, such as\r\n"21Board \(laptop\) \[k3j9\]\.21board"\./.test(about) && /- To keep a board in sync with a co-teacher: share this Google Drive folder with them as an\r\n  Editor\./.test(about) && /deletes\r\n  its file here two months later/.test(about),
       'the note explains one file per device, sharing with a co-teacher, and that an unlinked device’s file goes after two months');
     const jA = JSON.parse(await fileText(A.p, fA[0]));
     ok(jA.format === '21board' && jA.kind === 'full' && jA.board.name === 'Morning' && jA.sync && jA.sync.v === 1 && /^[0-9a-z]{12}$/.test(jA.sync.dev) && jA.sync.name === 'the laptop' && /^[0-9a-f]{32}$/.test(jA.sync.sum) &&
