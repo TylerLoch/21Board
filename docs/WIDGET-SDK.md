@@ -356,8 +356,8 @@ Add an entry to `widgets/registry.js`:
 ```js
 {
   id: 'counter',                       // folder name; lowercase a-z, 0-9, dashes; never change it
-  name: 'Counter',                     // shown in the Widget Picker and title bar
-  description: 'Count anything.',      // shown as a tooltip
+  name: 'Counter',                     // shown in the Widget Picker (two lines at most there) and title bar
+  description: 'Count anything.',      // shown as a tooltip, under the name
   version: '1.0.0',
   entry: 'widgets/counter/index.html',
   files: ['widgets/counter/index.html'],  // EVERY file the widget needs (images, extra scripts...) for offline use

@@ -1858,6 +1858,119 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (every Text style, 5 and 3 columns, both corners, badges and DEV, 200%)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    // Badges on one-line and two-line names (Notes twice), Developer mode for SDK Playground's DEV tag, and a widget file
+    // with a long name of its own (21Board adds “ (test)”), uploaded as in Developer mode.
+    for (const id of ['clock', 'notes', 'notes', 'first-then-board', 'task-timer']) await page.evaluate(id => window.__board21.openWidget(id), id);
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]');
+    const LONG = 'Fraction Bars and Number Line Explorer', FULL = LONG + ' (test)';
+    fs.writeFileSync(OUT + 'long-name.html', `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Fractions</title>
+<script type="application/json" id="board21-widget">{"id":"fractions","name":"${LONG}","window":{"width":400,"height":300}}</script></head><body>Fractions</body></html>`);
+    await page.setInputFiles('#widget-input', OUT + 'long-name.html');
+    ok(await eventually(() => page.evaluate(() => window.__board21.state.insts.has('dev-fractions:1'))), `a widget file named “${LONG}” is uploaded and opens`);
+    await page.waitForTimeout(800);
+    const openPicker = async (side = 'left', cols) => {
+      for (let i = 0; i < 3 && await page.locator('#settings.open, #panel.open').count(); i++) { await page.keyboard.press('Escape'); await page.waitForTimeout(200); }
+      if (await page.locator('#panel.open').count()) await page.click(`.picker-btn.${await page.locator('#panel.open.left').count() ? 'left' : 'right'}`);
+      await page.click(`.picker-btn.${side}`); await page.mouse.move(1, 1);
+      // (Three columns: what the picker draws where it has least room, set here directly.)
+      if (cols) await page.evaluate(c => { const P = document.getElementById('panel'); P.style.setProperty('--cols', String(c)); P.classList.toggle('narrow', c < 5); }, cols);
+      await page.evaluate(() => Promise.all(document.getElementById('panel').getAnimations().map(a => a.finished)));
+    };
+    // Each tile, in the panel's own px (it is drawn at --ui: Settings › Size of windows and menus).
+    const tiles = () => page.evaluate(() => {
+      const ui = window.__board21.zoom.ui;
+      return [...document.querySelectorAll('#panel .widget-tile')].map(t => {
+        const r = t.getBoundingClientRect(), i = t.querySelector('.widget-icon').getBoundingClientRect(), s = t.querySelector('.widget-icon + span'), n = s.getBoundingClientRect(), cs = getComputedStyle(s);
+        const by = e => { if (!e) return null; const b = e.getBoundingClientRect(); return { up: (i.top - b.top) / ui, past: (b.right - i.right) / ui, before: (i.left - b.left) / ui }; };
+        return { name: s.textContent, row: Math.round(r.top), icon: i.top, size: Math.max(Math.abs(i.width / ui - 54), Math.abs(i.height / ui - 54)), lines: Math.round(n.height / ui / parseFloat(cs.lineHeight)),
+          inside: n.top >= r.top - 0.5 && n.bottom <= r.bottom + 0.5 && n.left >= r.left - 0.5 && n.right <= r.right + 0.5,
+          cut: s.scrollHeight > s.clientHeight + 1 || s.scrollWidth > s.clientWidth + 1, clamp: cs.webkitLineClamp === '2' && cs.overflow === 'hidden',
+          badge: by(t.querySelector('.badge')), dev: by(t.querySelector('.devtag')) };
+      });
+    });
+    // Nothing of a name is cut off by its own box (a name cut with … aside): each looks the same drawn without its clip.
+    const inkCut = async () => {
+      const out = [];
+      for (const s of await page.locator('#panel .widget-tile .widget-icon + span').all()) {
+        if (await s.evaluate(s => s.scrollHeight > s.clientHeight + 1)) continue;
+        const b = await s.boundingBox(), clip = { x: b.x - 4, y: b.y - 4, width: b.width + 8, height: b.height + 8 };
+        const a = await page.screenshot({ clip });
+        await s.evaluate(s => { s.style.overflow = 'visible'; });
+        const c = await page.screenshot({ clip });
+        await s.evaluate(s => { s.style.overflow = ''; });
+        if (!a.equals(c)) out.push(await s.textContent());
+      }
+      return out;
+    };
+    const near = (a, b) => Math.abs(a - b) < 0.6;
+    const check = async (where, { ink = false } = {}) => {
+      const ts = await tiles(), rows = new Map();
+      for (const t of ts) rows.set(t.row, (rows.get(t.row) || []).concat(t));
+      const off = [...rows.values()].map(r => Math.max(...r.map(t => t.icon)) - Math.min(...r.map(t => t.icon)));
+      const two = ts.filter(t => t.lines === 2).map(t => t.name);
+      ok(off.every(d => d < 0.5) && ts.every(t => t.size < 0.5) && two.length > 0,
+        `${where}: in every row the icons share one top, all full size, with names on one line and on two (${two.join(', ')}) (rows off by ${off.map(d => d.toFixed(1)).join(', ')} px; icons squeezed: ${ts.filter(t => t.size >= 0.5).map(t => t.name).join(', ') || 'none'})`);
+      const bad = ts.filter(t => !t.inside || t.lines > 2 || (t.cut && !(t.clamp && t.lines === 2)) || (t.cut && t.name !== FULL));
+      const long = ts.find(t => t.name === FULL);
+      ok(!bad.length && long && long.cut && long.clamp && long.lines === 2,
+        `${where}: no name runs out of its tile or is cut, save “${FULL}”: two lines and an ellipsis (${bad.map(t => `${t.name}: ${t.lines} lines${t.inside ? '' : ', out of its tile'}${t.cut ? ', cut' : ''}`).join('; ') || (long ? `${long.lines} lines${long.cut ? ', cut' : ''}${long.clamp ? ' with …' : ''}` : 'not there')})`);
+      const marks = ts.filter(t => (t.badge && !(near(t.badge.up, 9) && near(t.badge.past, 9))) || (t.dev && !(near(t.dev.up, 7) && near(t.dev.before, 13))));
+      ok(ts.filter(t => t.badge).length >= 5 && ts.filter(t => t.dev).length >= 2 && !marks.length,
+        `${where}: each open-count badge sits 9 px above its icon and 9 px past its right edge, each DEV tag 7 px above and 13 px before it, as on a one-line tile before (${marks.map(t => `${t.name}: ${JSON.stringify(t.badge || t.dev, (k, v) => typeof v === 'number' ? +v.toFixed(1) : v)}`).join('; ') || 'all'})`);
+      if (ink) { const cut = await inkCut(); ok(!cut.length, `${where}: no letter of a name is clipped by its box (${cut.join(', ') || 'none'})`); }
+    };
+
+    const FAMS = { legible: 'Atkinson Hyperlegible', early: '21Board Early Readers' };
+    for (const style of ['standard', 'legible', 'early']) {
+      if (style !== 'standard') {
+        await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
+        await page.waitForFunction(fam => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').length >= 2, FAMS[style]);
+      }
+      for (const cols of [5, 3]) {
+        await openPicker('left', cols === 5 ? 0 : cols);
+        ok(await page.evaluate(() => getComputedStyle(document.getElementById('panel')).getPropertyValue('--cols').trim()) === String(cols), `${style}: ${cols} columns`);
+        await check(`${style}, ${cols} columns`, { ink: cols === 5 });
+        await page.locator('#panel').screenshot({ path: OUT + `widget-picker-${style}-${cols}col.png` });
+      }
+    }
+    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]');
+    await openPicker('right');
+    await check('Standard, the right corner’s panel');
+    await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-right.png' });
+    // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits without scrolling.
+    await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(300);
+    await openPicker('left');
+    await check('200%');
+    const fit = await page.evaluate(() => { const P = document.getElementById('panel'), g = P.querySelector('.panel-widgets'), r = P.getBoundingClientRect(), c = P.querySelector('.panel-controls').getBoundingClientRect();
+      return { ui: window.__board21.zoom.ui, top: r.top, bottom: c.bottom, scrolls: g.scrollHeight > g.clientHeight + 1 }; });
+    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && !fit.scrolls, `at 200% (drawn at ${fit.ui.toFixed(2)}) the whole panel fits on the screen, all its tiles in view without scrolling (top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
+    await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-200.png' });
+    await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
+
+    // The full name stays within reach: it is the tile's accessible name (what a screen reader says), with what the widget
+    // does as its description, and its tooltip starts with it.
+    await openPicker('left');
+    const cdp = await ctx.newCDPSession(page);
+    const { root } = await cdp.send('DOM.getDocument', { depth: 0 });
+    const heard = [];
+    for (const w of await page.evaluate(() => window.__board21.catalog().filter(a => document.querySelector(`#panel [data-widget="${a.id}"]`)).map(a => ({ id: a.id, name: a.name, description: a.description || '' })))) {
+      const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector: `#panel [data-widget="${w.id}"]` });
+      const n = (await cdp.send('Accessibility.getPartialAXTree', { nodeId, fetchRelatives: false })).nodes[0];
+      const title = await page.getAttribute(`#panel [data-widget="${w.id}"]`, 'title');
+      heard.push({ ...w, said: n.name && n.name.value, desc: (n.description && n.description.value) || '', tip: title.split('\n')[0] });
+    }
+    const wrong = heard.filter(h => h.said !== h.name || h.tip !== h.name || (h.description && h.desc !== h.description));
+    ok(heard.length >= 15 && !wrong.length, `every tile's accessible name is its full name, its description what it does, and its tooltip starts with the name (${wrong.map(h => `${h.id}: heard “${h.said}”, described “${h.desc}”, tooltip “${h.tip}”`).join('; ') || heard.length + ' tiles'})`);
+    const lt = heard.find(h => h.name === FULL);
+    ok(lt && lt.said === FULL && lt.tip === FULL, `the long one too: a screen reader hears “${lt && lt.said}”, and its tooltip says “${lt && lt.tip}”`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Accent color', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
     const page = await ctx.newPage();
@@ -4413,6 +4526,17 @@ const SUITES = [
     // Pick a card, mark it done, change the theme.
     const f = ft(page);
     await f.locator('#btn-first').click({ force: true });   // (the cards bob gently, so they are never "still")
+    // The card picker: in every row the pictures share one top, whether a label takes one line or two.
+    await page.mouse.move(1, 1); await page.waitForTimeout(400);
+    const cards = await f.locator('html').evaluate(() => {
+      const rows = new Map();
+      for (const t of document.querySelectorAll('.aac-tile-btn')) {
+        const k = Math.round(t.getBoundingClientRect().top), lb = t.querySelector('.aac-tile-label'), g = document.createRange(); g.selectNodeContents(lb);
+        rows.set(k, (rows.get(k) || []).concat({ top: t.querySelector('.aac-tile-icon').getBoundingClientRect().top, two: new Set([...g.getClientRects()].map(q => Math.round(q.top))).size > 1, name: lb.textContent }));
+      }
+      return { off: [...rows.values()].map(r => Math.max(...r.map(t => t.top)) - Math.min(...r.map(t => t.top))), two: [...rows.values()].flat().filter(t => t.two).map(t => t.name) };
+    });
+    ok(cards.two.length > 0 && cards.off.every(d => d < 0.5), `in the card picker the pictures in each row share one top, two-line labels (${cards.two.join(', ')}) or not (rows off by ${cards.off.filter(d => d >= 0.5).map(d => d.toFixed(1)).join(', ') || 'none'} px)`);
     await f.locator('#search-input').fill('math');
     await f.locator('.aac-tile-btn', { hasText: 'Math' }).click();
     await f.locator('#btn-done-icon').click(); await f.locator('#btn-toggle-first').click();

@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.17-3';
-  const BOARD_BUILD = 'dd221ce7';
+  const BOARD_VERSION = '2026.11.17-4';
+  const BOARD_BUILD = '88714131';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3006,8 +3006,12 @@
       if (Lock.on()) { $('.panel-widgets', this.el).innerHTML = Lock.pickerNote(); return; }   // windows locked: none opens (section 12b)
       $('.panel-widgets', this.el).innerHTML = widgets.map(a => {
         const c = counts.get(a.id) || 0;
-        return `<button class="widget-tile" role="listitem" data-widget="${esc(a.id)}" title="${esc(a.description || a.name)}">` +
-          `<span class="widget-icon" style="--c:${esc(a.color)}">${a.icon}</span><span>${esc(a.name)}</span>` +
+        // A long name is cut to two lines (…): the tooltip starts with it in full, and it is what a screen reader says
+        // (a list item takes its name only from here), then what the widget does.
+        const about = a.description && a.description !== a.name ? a.description : '';
+        return `<button class="widget-tile" role="listitem" data-widget="${esc(a.id)}" aria-label="${esc(a.name)}"` +
+          `${about ? ` aria-description="${esc(about)}"` : ''} title="${esc(about ? a.name + '\n' + about : a.name)}">` +
+          `<span class="widget-icon" style="--c:${esc(a.color)}">${a.icon}</span><span class="widget-name">${esc(a.name)}</span>` +
           (c ? `<span class="badge" aria-label="${c} open">${c}</span>` : '') +
           (a.dev || a.devOnly ? '<span class="devtag">DEV</span>' : '') + '</button>';
       }).join('') || '<div class="empty-note" style="grid-column:1/-1;padding:16px">No widgets installed.</div>';
