@@ -1671,6 +1671,66 @@ const SUITES = [
     ok(!await after(14), 'and comes back only once that backup is a week old: none 6 days later (the clock 14 days on), though storage still isn’t protected');
     ok(await after(16), 'a dot 8 days after it');
     await days.close();
+    // The dot is right from the moment Settings opens, whatever changed since it was last open (it judges every page from
+    // what this tab holds), so it never shows wrongly for a moment, and the next Theme tap is put in place (Settings
+    // isn't drawn again). A reload on a new, empty page while page 1 has a window 9 days old; that page deleted (its Undo
+    // offered); then a window 9 days old on the page shown, deleted.
+    const again = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await again.addInitScript(CLOCK);
+    await again.addInitScript(() => { const s = navigator.storage; s.persisted = async () => false; s.persist = async () => false; });
+    const ap = await again.newPage(); ap.on('pageerror', e => errors.push(e.message));
+    await ap.goto(BASE); await boardUp(ap);
+    const insts = () => ap.evaluate(() => window.__board21.state.insts.size);
+    // (every state of the dot while Settings is open, from the tap that opens it, and how often Settings is drawn)
+    const arm = () => ap.evaluate(() => {
+      const s = document.getElementById('settings'), body = s.querySelector('.sheet-body');
+      window.__dots = []; window.__drawn = 0;
+      if (window.__dotObs) window.__dotObs.disconnect();
+      window.__dotObs = new MutationObserver(ms => {
+        if (ms.some(m => m.target === body && m.type === 'childList')) window.__drawn++;
+        const d = document.getElementById('grp-advanced-warn'), v = d && !d.hidden ? 'dot' : 'none';
+        if (s.classList.contains('open') && window.__dots[window.__dots.length - 1] !== v) window.__dots.push(v);
+      });
+      window.__dotObs.observe(s, { childList: true, subtree: true, attributes: true });
+    });
+    // (closed before anything changes: what changes while it is open is put in place, and read again)
+    const shut = async () => { await ap.keyboard.press('Escape'); await ap.waitForFunction(() => !document.getElementById('settings').classList.contains('open')); };
+    const storageSaid = () => ap.evaluate(() => / of /.test(document.getElementById('st-storage').textContent));
+    // Settings opened (with what it reads settled: storage, and the dot as it ends), then a Theme tap: what was seen.
+    const openThenTheme = async (theme, dotEnds) => {
+      await shut(); await arm(); await openSettings(ap);
+      const settled = await eventually(async () => await storageSaid() && await dot(ap) === dotEnds, 3000);
+      const dots = await ap.evaluate(() => window.__dots.slice());
+      await ap.evaluate(() => { window.__drawn = 0; });
+      await ap.click(`#settings [data-act="theme"][data-val="${theme}"]`);
+      await eventually(() => ap.evaluate(t => document.querySelector(`#settings [data-act="theme"][data-val="${t}"]`).getAttribute('aria-checked') === 'true', theme), 2000);
+      return { settled, dots, drawn: await ap.evaluate(() => window.__drawn) };
+    };
+    await setClock(ap, 0); await ap.evaluate(() => window.__board21.openWidget('notes'));
+    await eventually(async () => await insts() === 1, 3000);
+    await ap.evaluate(() => window.__board21.pages.create({ end: true, name: 'Tuesday' }));
+    await eventually(() => ap.evaluate(() => window.__board21.state.board.name === 'Tuesday'), 3000);
+    await setClock(ap, 9 * 864e5); await ap.reload(); await boardUp(ap);
+    let look = await openThenTheme('dark', true);
+    ok(look.settled && look.dots.join() === 'dot' && look.drawn === 0,
+      `after a reload on a new, empty page, page 1 having a window 9 days old: the dot from the moment Settings opens, and the next Theme tap doesn’t draw Settings again (${JSON.stringify(look)})`);
+    const p1 = await ap.evaluate(() => window.__board21.pages.ids().find(b => b !== window.__board21.state.boardId));
+    await shut(); await ap.evaluate(b => window.__board21.pages.drop([b], 'Deleted.'), p1);
+    await eventually(() => ap.evaluate(b => (window.__board21.state.settings.deletedBoards || []).includes(b), p1), 2000);
+    look = await openThenTheme('light', false);
+    ok(look.settled && look.dots.join() === 'none' && look.drawn === 0,
+      `that page deleted (its Undo offered): Settings opens again with no dot, not even for a moment, and the next Theme tap doesn’t draw it again (${JSON.stringify(look)})`);
+    await shut(); await setClock(ap, 0); await ap.evaluate(() => window.__board21.openWidget('notes'));
+    await eventually(async () => await insts() === 1, 3000);
+    await setClock(ap, 9 * 864e5);
+    look = await openThenTheme('dark', true);
+    const ik = await ap.evaluate(() => Array.from(window.__board21.state.insts.keys())[0]);
+    await shut(); await ap.evaluate(ik => window.__board21.deleteInstance(ik), ik);
+    await eventually(async () => await insts() === 0, 2000);
+    const gone = await openThenTheme('system', false);
+    ok(look.settled && look.dots.join() === 'dot' && gone.settled && gone.dots.join() === 'none' && gone.drawn === 0,
+      `a window 9 days old on the page shown: the dot; that window deleted: Settings opens again with no dot, not even for a moment, and the next Theme tap doesn’t draw it again (${JSON.stringify([look, gone])})`);
+    await again.close();
     // Storage protected: a backup overdue still shows the dot.
     const kept = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     await kept.addInitScript(() => { const s = navigator.storage; s.persisted = async () => true; s.persist = async () => true; });

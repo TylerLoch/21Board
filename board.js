@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.16-4';
-  const BOARD_BUILD = '026798e6';
+  const BOARD_BUILD = 'd5861dfd';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4364,9 +4364,10 @@
   }
 
   // Settings' HTML without what is put in place: Board Sync's status line and "Syncing…" shown or not (putStatus), and
-  // when the last backup was (refreshStatus: each write of this device's file counts as one, see writeOwn).
+  // when the last backup was and the amber dot on Advanced (refreshStatus, after every drawing too: each write of this
+  // device's file counts as a backup, see writeOwn).
   const noStatus = h => h.replace(/<div class="hint" id="set-link-status">[\s\S]*?<\/div>/, '').replace('<span class="link-syncing on"', '<span class="link-syncing"')
-    .replace(/<div class="hint[^"]*" id="st-backup">(?:<span class="status-dot warn"><\/span>)?[^<]*<\/div>/, '');
+    .replace(/<div class="hint[^"]*" id="st-backup">(?:<span class="status-dot warn"><\/span>)?[^<]*<\/div>/, '').replace(/(id="grp-advanced-warn"[^>]*?) hidden>/, '$1>');
   // Advanced › Back up every page: when the last backup was, with the amber dot that is on Advanced when it is overdue
   // (Settings.needsLook), so that what the dot is about is plain once Advanced is open.
   const backupLine = late => `<div class="hint${late ? ' warn-line' : ''}" id="st-backup">${late ? '<span class="status-dot warn"></span>' : ''}${esc(backupAgo())}</div>`;
@@ -4384,7 +4385,6 @@
     linkShown: '',       // the Board Sync section as last drawn
     drawn: '',           // all of Settings as last drawn (see refresh)
     syncingOff: 0,       // "Syncing…" goes in a moment (see putStatus)
-    oldestAt: Infinity,  // the oldest window on any page, read while Settings is open and nothing was backed up (needsLook)
 
     // What Settings shows of Board Sync is no longer what it shows now (after a look at the folder: Link.redraw).
     linkChanged() { return Link.supported && linkSettings(switchHTML, segHTML) !== this.linkShown; },
@@ -4652,16 +4652,14 @@
 
     // The amber dot on Advanced: only a backup overdue, so making one clears it: none in the last week, or never one
     // and the board has had windows for a week, on any page (an empty or brand-new board has nothing to lose yet, as
-    // maybeRemindBackup judges; oldestAt, see refreshStatus). Whether the browser has promised to keep 21Board's data
+    // maybeRemindBackup judges, see oldestWindow). Whether the browser has promised to keep 21Board's data
     // is said inside Advanced (Protected storage), not with the dot: in an ordinary Chrome tab it can't be cleared, and
     // a dot that can't be cleared is soon ignored.
     needsLook() {
       if (LAB) return false;
       const t = S.settings.lastBackupAt, now = Date.now();
       if (t) return now - t > 7 * DAY;
-      let oldest = this.oldestAt;
-      for (const i of S.insts.values()) oldest = Math.min(oldest, i.createdAt || Infinity);
-      return now - oldest > 7 * DAY;
+      return now - oldestWindow() > 7 * DAY;
     },
 
     // A group opened: as much of it in view as fits, with its own row still showing.
@@ -4726,7 +4724,6 @@
         const nav = navigator.storage;
         if (nav && nav.estimate) { const e = await nav.estimate(); storage = `${fmtBytes(e.usage || 0)} of ${fmtBytes(e.quota || 0)}`; }
         await Persist.check();
-        if (!S.settings.lastBackupAt && !LAB) this.oldestAt = await oldestWindow();
       } catch (e) { /* ignore */ }
       this._statusCache = { storage };
       if (!this.isOpen) return;
@@ -8413,17 +8410,20 @@
       // 3. the theme and accent. A change made here is a version whose counter is when it was made (themeAt, accentAt),
       // not the newest change stamped with it, so that two made apart (one while unlinked, say) resolve to the later on
       // every device. A value this device had before it synced with this folder (joining it, switching to it, a
-      // ledger from before 2026.11.16-4) is no change: only its fingerprint is noted, and the folder's applies. An
-      // empty folder (seed) gets this device's; one never chosen here (the default) as the oldest version there can be,
-      // so that a choice made on another device that set up the same folder at once, before either had the other's
-      // file, wins on both. (Neither chose one: the tie goes by device id, the same on every device.)
+      // ledger from before 2026.11.16-4) is no change: only its fingerprint is noted, and the folder's applies. Nor is
+      // one never chosen here: a value only received, which a ledger rebuilt from an own file older than the last merge
+      // doesn't have. An empty folder (seed) gets this device's, as old as the choice (the counters it brings from
+      // another folder say nothing about when that was; ctr is still raised to it, so later stamps stay above it); one
+      // never chosen here (the default) as the oldest version there can be, so that a choice made on another device
+      // that set up the same folder at once, before either had the other's file, wins on both. (Neither chose one: the
+      // tie goes by device id, the same on every device.)
       const style = Object.assign({}, L.sync.style);
       let sn = 0, styled = 0;
       for (const k of STYLE_PARTS) {
         const lp = local.style && local.style[k], E = style[k];
         if (!lp || (E && E.h === lp.h)) continue;
-        if (!E && o.mode !== 'seed') { style[k] = { h: lp.h }; continue; }
-        const low = !E && !lp.chosen, n = low ? 1 : Math.max(fin(lp.at, now), fin(o.ctr, 0) + 1, fin(o.maxSeen, 0) + 1);
+        if (o.mode !== 'seed' && (!E || !lp.chosen)) { style[k] = { h: lp.h }; continue; }
+        const low = !E && !lp.chosen, n = low ? 1 : !E ? Math.max(1, fin(lp.at, now)) : Math.max(fin(lp.at, now), fin(o.ctr, 0) + 1, fin(o.maxSeen, 0) + 1);
         style[k] = { h: lp.h, v: arr({ by: dev, vv: vjoin(E && E.v ? E.v[1] : {}, { [dev]: n }), t: low ? 0 : fin(lp.at, now), u: false }) };
         sn = Math.max(sn, n); styled++;
       }
@@ -9871,15 +9871,14 @@
   }
 
   // When the oldest window on any page was made (its createdAt; Infinity: none): the board has had something worth keeping
-  // since then. The pages not shown are read from the database (S.insts holds only the page shown); the page shown
-  // alone if that read fails.
-  async function oldestWindow() {
+  // since then. The page shown is S.insts; the others are what this tab holds of them (Pages.held, kept as they change
+  // here, in another tab or by a merge), deleted pages left out. Known at once, so Settings' amber dot is right from the
+  // moment it opens, whatever was deleted since it was last open.
+  function oldestWindow() {
     let oldest = Infinity;
     for (const i of S.insts.values()) oldest = Math.min(oldest, i.createdAt || Infinity);
-    try {
-      const gone = new Set((S.settings.deletedBoards || []).map(Number));
-      for (const r of await Store.getRange(['inst:'])) if (r.value && !gone.has(Keys.parse(r.key).board)) oldest = Math.min(oldest, r.value.createdAt || Infinity);
-    } catch (e) { /* the page shown, then */ }
+    const gone = Pages.gone();
+    for (const [key, r] of Pages.held) { const k = Keys.parse(key); if (k.kind === 'inst' && r.value && !gone.has(k.board)) oldest = Math.min(oldest, r.value.createdAt || Infinity); }
     return oldest;
   }
 
@@ -9890,7 +9889,7 @@
     if (KIOSK) return;
     if (document.visibilityState !== 'visible') return; // never use up the reminder in a background tab
     if (Persist.state === 'granted' || Store.failed || !S.data.size) return;
-    if (!(Date.now() - await oldestWindow() > DAY)) return;           // brand-new board: nothing to lose yet
+    if (!(Date.now() - oldestWindow() > DAY)) return;                 // brand-new board: nothing to lose yet
     if (Date.now() - (S.settings.lastBackupAt || 0) < 7 * DAY) return; // backed up recently
     let nagged = 0;
     try { nagged = +localStorage.getItem('21board-backup-reminder') || 0; } catch (e) { /* ignore */ }

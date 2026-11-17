@@ -231,16 +231,18 @@ there, the folder's board is joined as on a first set-up.
 `link:sync.style`: `h` is the fingerprint of the value this device has, `v` its version. They take the later change,
 as a page's name does, with no copy and no Board history version. A change made here is a version whose counter is
 when it was chosen (`themeAt`, `accentAt`), not the newest change stamped with it, so that two made apart (one while
-unlinked, say) resolve to the later on every device. An entry with no `v` is a value this device had before it
-synced with this folder: joining it or switching to it (the folder's then applies), or a ledger from before
-2026.11.16-4 (each device keeps its own until one is chosen again). It is no change, and never replaces another
-device's. Linking an empty folder (`seed`) makes this device's a version: one chosen here at its `themeAt` or
-`accentAt`, one never chosen here (the default, or a value from before 2026.11.16-4) at the lowest counter there is,
-1, with `t` 0, so that when two devices set up the same folder at once, before either has the other's file, a choice
-made on one of them wins on both (neither having chosen: the tie goes by device id). Linking the same folder again
-(`carry`) keeps the entries, so a choice made while unlinked counts. A choice made after linking while Google Drive is
-still bringing the folder (`wait`) is this device's own when the files arrive: joining or switching to the folder,
-the folder's applies.
+unlinked, say) resolve to the later on every device. An entry with no `v` is a value this device had before it synced
+with this folder: joining it or switching to it (the folder's then applies), or a ledger from before 2026.11.16-4
+(each device keeps its own until one is chosen again). It is no change, and never replaces another device's. Nor is a
+value never chosen here (no `themeAt` or `accentAt`) that differs from its entry: one only received, which a ledger
+rebuilt from this device's file, written before its last merge, doesn't have yet. Linking an empty folder (`seed`)
+makes this device's a version: one chosen here at its `themeAt` or `accentAt` (not at the counters this device brings
+from another folder, which say nothing about when it was chosen), one never chosen here (the default, or a value from
+before 2026.11.16-4) at the lowest counter there is, 1, with `t` 0, so that when two devices set up the same folder at
+once, before either has the other's file, a choice made on one of them wins on both (neither having chosen: the tie
+goes by device id). Linking the same folder again (`carry`) keeps the entries, so a choice made while unlinked counts.
+A choice made after linking while Google Drive is still bringing the folder (`wait`) is this device's own when the
+files arrive: joining or switching to the folder, the folder's applies.
 
 Comparing versions: one is older than another when the other's vector includes it, or when the other includes a
 later change to that part by the device that made it (a device's changes to a part follow one another, each made on

@@ -1190,6 +1190,21 @@ function styles() {
     for (let k = 0; k < 3; k++) { for (const d of [A, B]) { for (const o of [A, B]) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; }
     ok(A.styleNow() === B.styleNow(), `two set up at once and neither chose one: the same on both (${A.styleNow()} / ${B.styleNow()})`);
   });
+  for (const first of ['laptop', 'smartboard']) block(() => {
+    // the same, the laptop coming from another folder (Change…) where it was in use for days: its counters carry on
+    // from there, but its choice is as old as it is, so the smartboard's later one wins on both
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const X = new Folder('Room 3'), Y = new Folder('Room 4'), A = new Device('laptop'), B = new Device('board');
+    A.addWindow(A.ids()[0], W.NOTES); A.setStyle({ theme: 'dark' });   // (day 0)
+    A.linkTo(X);
+    for (let i = 1; i <= 10; i++) { NOW += DAY; A.addPage('Day ' + i); A.round(); if (i === 5) B.setStyle({ theme: 'light' }); }
+    B.addPage('Smartboard page'); NOW += 1000; A.round('send');
+    const [x, y] = first === 'laptop' ? [A, B] : [B, A];
+    x.linkTo(Y, { atOnce: true }); NOW += 1000; y.linkTo(Y, { atOnce: true });
+    for (let k = 0; k < 3; k++) { for (const d of [A, B]) { for (const o of [A, B]) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; }
+    ok(A.linkedAs === 'seed' && B.linkedAs === 'seed' && A.styleNow() === 'light blue' && B.styleNow() === 'light blue' && B.sums.every(sm => !sm.style.length),
+      `two set up an empty folder at once (the ${first} first), the laptop coming from another folder: the smartboard’s Light, chosen 5 days after the laptop’s Dark, on both, and the smartboard isn’t told otherwise (${A.styleNow()} / ${B.styleNow()}; the laptop’s version ${JSON.stringify(((A.link.sync.style || {}).theme || {}).v)})`);
+  });
   block(() => {
     // Change… to a folder with another board: that board's theme and accent apply here, and nothing there changes
     const { A, B, sync, folder } = pair();
@@ -1232,6 +1247,24 @@ function styles() {
       'a ledger rebuilt from a device file has the theme and accent versions in it');
     ok(Merge.includes(A.ledger(), Merge.decode(fileOf(B), H).peer) && !Merge.includes(Merge.ledger({ v: 1, dev: A.dev }, Array.from(A.link.mines.values())), Merge.decode(fileOf(B), H).peer),
       'a file is “included” only if the ledger has its theme and accent versions too');
+  });
+  for (const restore of [true, false]) block(() => {
+    // a lost ledger rebuilt from this device's own file, written before its last merge (a write waits up to
+    // LINK_GAP_MS): a theme it only received there is no choice of its own, though the settings were written back with
+    // the time they were (Writer.restore), so the laptop's later choice stays, and nobody hears otherwise
+    const { A, B, folder, sync } = pair();
+    A.setStyle({ theme: 'dark' }); NOW += 1000; A.round();
+    const before = folder.files.get(B.fileName());
+    B.deliver(A); B.round();
+    folder.files.set(B.fileName(), before); B.view.set(B.fileName(), before);   // (its file not written yet)
+    NOW += 4000; A.setStyle({ theme: 'light' }); NOW += 1000; A.round();
+    NOW += 3000; B.loseLedger();
+    if (restore) B.put('settings', 'settings', B.settings, { quiet: true });   // (Writer.restore)
+    const heard = A.sums.length;
+    NOW += 1000; B.round(); sync();
+    const said = A.sums.slice(heard).flatMap(sm => sm.style);
+    ok(A.styleNow() === 'light blue' && B.styleNow() === 'light blue' && !said.length,
+      `a lost ledger rebuilt from a file older than the last merge${restore ? ', the settings written back' : ''}: the laptop’s later Light stays on both, and the laptop hears nothing about the theme (${A.styleNow()} / ${B.styleNow()}; ${JSON.stringify(said)})`);
   });
 }
 
@@ -1336,7 +1369,10 @@ function inWorkers(job, runs) {
 async function randomized(scale) {
   console.log(`\nThe randomized run (§12.2; ${THREADS} thread${THREADS > 1 ? 's' : ''})`);
   const t0 = Date.now();
-  // (and runs where two or more devices set up the folder at once, each finding it empty)
+  // (and runs where two or more devices set up the folder at once, each finding it empty. These pass only on the seeds
+  // run here: with 3 devices × 150 steps at atOnce 0.6, seeds 952 and 362 (a take and a stale tab), 635 and 809 (a
+  // deleted item comes back) and 1041 (window places reverted), and with 5 devices seed 180, show merge gaps that
+  // 2026.11.16-3 already had, which are being looked into.)
   for (const [runs, nDev, steps, variant] of [[Math.round(2000 * scale), 3, 150], [Math.round(500 * scale), 5, 300], [Math.round(300 * scale), 3, 150, { atOnce: 0.6 }], [Math.round(100 * scale), 5, 300, { atOnce: 0.6 }]]) {
     const r = await inWorkers({ nDev, steps, variant }, runs);
     const total = Object.values(r.bad).reduce((a, b) => a + b, 0);
