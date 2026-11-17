@@ -66,9 +66,15 @@
   <div id="player" hidden></div>
   <div id="offline" role="status" hidden><p>YouTube needs an internet connection.</p><p>The video comes back once this device is online again.</p></div>
 <script>
-  // Content (Board21.save): { videoId, videoUrl, start }, or { videoId: null, videoUrl: '' } for no video.
+  // Content (Board21.save): { videoId, videoUrl, start, history }, or { videoId: null, videoUrl: '', history } for no
+  // video.
   //   videoId: the video's 11-character YouTube id. videoUrl: its link as it was pasted (Change video shows it again).
   //   start: where the video starts, in whole seconds, from the link's t= or start= (left out: from the beginning).
+  //   history: the window menu's History, the last 5 different videos shown in this window, newest first, the one
+  //   showing among them: [{ videoId, videoUrl, start, title }], each as above, and title: the video's title from
+  //   YouTube (cleaned, at most 200 characters; left out until it is known). A video is listed once (the same videoId
+  //   and start). Remove video keeps the history; a Reset clears it. Content from before the History (no history) is
+  //   read as a history of just its video.
   //   No video is saved as content of its own, not cleared: in Board Sync, content cleared (null) gives way to a video
   //   picked on another device at the same time, so a later Remove video would lose. (A Reset, or a window from a
   //   blank template, has null: no video either.)
@@ -83,6 +89,15 @@
   // removes it.) Taps on the video go to YouTube's page and never reach this one or the board, so they don't bring the
   // window forward or move it: that is done by its title bar.
 
+  // Titles, for the History. When a video is shown here (from the link box or the History), the widget asks YouTube's
+  // oEmbed for its title, with no cookies and no Referer (YouTube answers the board's site: it allows it by CORS), and
+  // saves it with the video, so other tabs and devices, a reload and an export have it without asking again. The video
+  // never waits for it. Until a title is known (offline, a private or removed video, the school's filter, no answer
+  // within TITLE_WAIT), the label is "YouTube video" and the id. A video without a title is asked for again when the
+  // window opens online and when the device comes back online, once per page load, MAX_ASKING requests at most at a
+  // time. A title found then is shown at once, but saved only with the window's next change: saved by itself it would
+  // be a newer change for Board Sync, and win over a video picked on another device meanwhile.
+
   // Where the player comes from. www.youtube.com, so that on a Chromebook the school's YouTube settings for the
   // signed-in student (Restricted Mode) apply to it. To use youtube-nocookie.com instead, change this one line to
   // 'https://www.youtube-nocookie.com' (ask the district's tech team first: Restricted Mode set by Chrome policy may
@@ -92,6 +107,8 @@
   const ID_RE = /^[A-Za-z0-9_-]{11}$/;
   const isId = s => ID_RE.test(s) && s !== 'videoseries';   // (embed/videoseries is a playlist's embed address, not a video)
   const MAX_LINK = 2000, MAX_START = 86400;   // characters; seconds (a day)
+  const HISTORY_MAX = 5, MAX_TITLE = 200, LABEL_MAX = 48;   // videos; characters (a label: two lines of the board's menu)
+  const OEMBED = 'https://www.youtube.com/oembed', TITLE_WAIT = 5000, MAX_ASKING = 5;   // ms; requests
   const $ = id => document.getElementById(id);
   const ask = $('ask'), link = $('link'), err = $('err'), cancel = $('cancel'), player = $('player'), offline = $('offline');
 
@@ -132,23 +149,53 @@
   }
 
   let video = null;       // the saved video: { videoId, videoUrl, start } (readVideo), or null
+  let history = [];       // the History, newest first: [{ videoId, videoUrl, start, title }] (readHistory)
+  const titles = new Map();   // videoId → the title YouTube gave this page (see Titles, above)
   let changing = false;   // the link box shows in place of a saved video (Change video): Cancel puts the video back
   let frame = null;       // YouTube's frame, while the player shows
   let kiosk = false;      // ChromeOS kiosk: no new windows, so no Open on YouTube
   let started = false;
 
   // Saved content can come from an imported file or another device, so it is checked before it is used: anything
-  // else is no video.
-  function readVideo(d) {
+  // else is no video. A damaged entry of the history is left out (the rest is kept), as is a damaged start or title.
+  function readEntry(d) {
     if (!d || typeof d !== 'object' || typeof d.videoId !== 'string' || !ID_RE.test(d.videoId) || typeof d.videoUrl !== 'string' || d.videoUrl.length > MAX_LINK) return null;
-    return { videoId: d.videoId, videoUrl: d.videoUrl, start: Number.isInteger(d.start) && d.start > 0 && d.start <= MAX_START ? d.start : 0 };
+    const e = { videoId: d.videoId, videoUrl: d.videoUrl, start: Number.isInteger(d.start) && d.start > 0 && d.start <= MAX_START ? d.start : 0 };
+    const title = cleanTitle(d.title);
+    if (title) e.title = title;
+    return e;
+  }
+  function readVideo(d) { const v = readEntry(d); if (v) delete v.title; return v; }
+  // The history saved in d, with its video v (readVideo) among the five, at the top if it wasn't.
+  function readHistory(d, v) {
+    const list = [];
+    for (const x of d && Array.isArray(d.history) ? d.history.slice(0, 50) : []) {
+      const e = readEntry(x);
+      if (e && !list.some(o => sameEntry(o, e))) list.push(e);
+    }
+    const i = v ? list.findIndex(o => sameEntry(o, v)) : -1;
+    if (v && (i < 0 || i >= HISTORY_MAX)) list.unshift(i < 0 ? Object.assign({}, v) : list.splice(i, 1)[0]);
+    return list.slice(0, HISTORY_MAX);
+  }
+  // A title is another site's text: only ever used as text (the board escapes the menu's labels too), with control
+  // characters and direction overrides taken out, white space collapsed, and MAX_TITLE characters at most. '': none.
+  function cleanTitle(t) {
+    if (typeof t !== 'string') return '';
+    const s = t.slice(0, 2000).replace(/\s+/g, ' ').replace(/[\p{Cc}\u202a-\u202e\u2066-\u2069]/gu, '').replace(/ {2,}/g, ' ').trim();
+    return Array.from(s).slice(0, MAX_TITLE).join('').trim();
   }
   const sameVideo = (a, b) => !!a && !!b && a.videoId === b.videoId && a.videoUrl === b.videoUrl && a.start === b.start;
+  const sameEntry = (a, b) => a.videoId === b.videoId && a.start === b.start;   // (the same video, in the History)
+  const keyOf = e => e.videoId + ':' + e.start;
   const embedUrl = v => `${EMBED_HOST}/embed/${v.videoId}?rel=0&iv_load_policy=3&playsinline=1${v.start ? '&start=' + v.start : ''}`;
   const watchUrl = v => `https://www.youtube.com/watch?v=${v.videoId}${v.start ? '&t=' + v.start + 's' : ''}`;
 
   function save() {
     const d = video ? Object.assign({ videoId: video.videoId, videoUrl: video.videoUrl }, video.start ? { start: video.start } : {}) : { videoId: null, videoUrl: '' };
+    d.history = history.map(e => {
+      const title = e.title || titles.get(e.videoId);
+      return Object.assign({ videoId: e.videoId, videoUrl: e.videoUrl }, e.start ? { start: e.start } : {}, title ? { title } : {});
+    });
     Board21.save(d).catch(() => {});   // (not stored yet: the board keeps it, says so and tries again)
   }
 
@@ -177,7 +224,8 @@
   // Removing the frame ends YouTube's page in it, and so the sound.
   function dropFrame() { if (frame) { frame.remove(); frame = null; } }
 
-  // Window menu: the player's controls (nothing may be drawn over the player itself).
+  // Window menu: the player's controls (nothing may be drawn over the player itself), then the History, the video
+  // showing checked. (The link box: just the History.)
   let menuNow = null;
   function setMenu() {
     const items = !video || changing ? [] : [
@@ -186,10 +234,36 @@
       { separator: true },
       { id: 'remove', label: 'Remove video' }
     ];
+    if (history.length) {
+      if (items.length) items.push({ separator: true });
+      items.push({ heading: true, label: 'History' }, ...history.map(e => ({ id: 'history:' + keyOf(e), label: labelOf(e), checked: !!video && sameEntry(e, video) })));
+    }
     const sig = JSON.stringify(items);
     if (sig !== menuNow) { menuNow = sig; Board21.menu.set(items); }
   }
+  // A History item's label: the video's title (until it is known, "YouTube video" and its id), shortened to two lines
+  // of the board's menu, with its start time after it ("(from 1:30)": the same video from another time is listed apart).
+  function labelOf(e) {
+    const from = e.start ? ` (from ${clock(e.start)})` : '';
+    return shorten(e.title || titles.get(e.videoId) || `YouTube video ${e.videoId}`, LABEL_MAX - from.length) + from;
+  }
+  // 90 → "1:30"; 3723 → "1:02:03"
+  function clock(s) {
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, ss = String(s % 60).padStart(2, '0');
+    return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`;
+  }
+  // Text of more than n characters, cut at a word, with … (a word the cut leaves in an open bracket goes too, and any
+  // separator before the …).
+  function shorten(t, n) {
+    const c = Array.from(t);
+    if (c.length <= n) return t;
+    const s = c.slice(0, n - 1).join(''), i = /\s/.test(c[n - 1]) ? s.length : s.lastIndexOf(' ');
+    const cut = (i >= s.length * 0.6 ? s.slice(0, i) : s).replace(/\s+[(\[{][^)\]}]*$/u, '').replace(/[\s|:;,.·•/&+\-–—([{]+$/u, '');
+    return (cut || s) + '…';
+  }
   Board21.on('menu', id => {
+    const e = /^history:/.test(id) ? history.find(x => 'history:' + keyOf(x) === id) : null;
+    if (e) { if (!video || changing || !sameEntry(e, video)) choose(e); return; }   // (the video showing: it goes on as it is)
     if (!video) return;
     if (id === 'change') { changing = true; link.value = video.videoUrl || watchUrl(video); say(''); show(); }
     else if (id === 'open' && !kiosk) window.open(watchUrl(video), '_blank', 'noopener,noreferrer');
@@ -202,19 +276,33 @@
     e.preventDefault();
     const text = link.value.trim(), v = text ? parseLink(text) : null;
     if (!v) { say(text ? 'That isn’t a link to a YouTube video.' : 'Paste the link to a YouTube video first.'); return; }
+    choose({ videoId: v.id, videoUrl: v.link.length <= MAX_LINK ? v.link : watchUrl({ videoId: v.id, start: v.start }), start: v.start });
+  });
+  // A video chosen here, from the link box or the History: it shows (in place of the link box, if that showed), goes
+  // to the top of the History, and is saved.
+  function choose(v) {
     say('');
-    video = { videoId: v.id, videoUrl: v.link.length <= MAX_LINK ? v.link : watchUrl({ videoId: v.id, start: v.start }), start: v.start };
+    video = { videoId: v.videoId, videoUrl: v.videoUrl, start: v.start };
     changing = false;
     link.blur();   // (the on-screen keyboard goes away)
+    remember(video);
     save(); show();
-  });
+  }
+  // v to the top of the History (listed once), with its title if it is known here; if not, YouTube is asked for it.
+  function remember(v) {
+    const title = (history.find(e => e.videoId === v.videoId && e.title) || {}).title || titles.get(v.videoId);
+    history = [Object.assign({ videoId: v.videoId, videoUrl: v.videoUrl, start: v.start }, title ? { title } : {})]
+      .concat(history.filter(e => !sameEntry(e, v))).slice(0, HISTORY_MAX);
+    if (!title) askTitle(v.videoId, true);
+  }
   cancel.addEventListener('click', () => { changing = false; say(''); show(); });
 
   // Changed in another tab or on another device (or imported). A link being typed here stays: Cancel then shows
   // the new video.
   Board21.on('data', d => {
     const v = readVideo(d);
-    if (sameVideo(v, video)) return;
+    history = readHistory(d, v);
+    if (sameVideo(v, video)) { setMenu(); return; }   // (the History alone: a title found in another tab, say)
     const typing = !ask.hidden && document.activeElement === link;
     video = v;
     changing = !!v && typing;
@@ -222,7 +310,7 @@
     show();
   });
 
-  addEventListener('online', () => { if (started) show(); });
+  addEventListener('online', () => { if (started) { show(); askMissing(); } });
   addEventListener('offline', () => { if (started) show(); });
 
   // YouTube's player must be at least 200 × 200 px. The board draws this window `zoom` times its CSS size (the size
@@ -244,13 +332,51 @@
   }
   Board21.on('resize', info => { keepMinimum(info); keepClear(info); });
 
+  // Titles (see the top). asked: the videos asked for in this page load; waiting: those not answered yet (queue: not
+  // sent yet); saveTitle: those asked for because they were just shown here (their title is saved when it comes).
+  const asked = new Set(), waiting = new Set(), saveTitle = new Set(), queue = [];
+  let asking = 0;
+  function askTitle(id, shownHere) {
+    if (titles.has(id) || navigator.onLine === false) return;
+    if (shownHere && (!asked.has(id) || waiting.has(id))) saveTitle.add(id);
+    if (asked.has(id)) return;
+    asked.add(id); waiting.add(id); queue.push(id);
+    next();
+  }
+  function next() {
+    while (asking < MAX_ASKING && queue.length) {
+      const id = queue.shift();
+      asking++;
+      fetchTitle(id).then(t => { if (t) gotTitle(id, t); }, () => { if (navigator.onLine === false) asked.delete(id); })   // (offline: asked again online)
+        .catch(() => {}).then(() => { asking--; waiting.delete(id); saveTitle.delete(id); next(); });
+    }
+  }
+  // YouTube's oEmbed: a video's title ('' if it gives none). No cookies; no Referer either: the Origin header, which
+  // goes with every request to another site, is all YouTube needs to answer.
+  function fetchTitle(id) {
+    const stop = typeof AbortController === 'function' ? new AbortController() : null, timer = setTimeout(() => { if (stop) stop.abort(); }, TITLE_WAIT);
+    return fetch(OEMBED + '?url=' + encodeURIComponent(watchUrl({ videoId: id, start: 0 })) + '&format=json', { credentials: 'omit', referrerPolicy: 'no-referrer', signal: stop ? stop.signal : undefined })
+      .then(r => (r.ok ? r.json() : null)).then(j => cleanTitle(j && j.title)).finally(() => clearTimeout(timer));
+  }
+  // A title: shown at once. Saved into the History as it is now (another tab or device may have changed it meanwhile)
+  // if its video was just shown here; otherwise with the window's next change.
+  function gotTitle(id, t) {
+    titles.set(id, t);
+    if (saveTitle.has(id) && history.some(e => e.videoId === id && !e.title)) save();
+    setMenu();
+  }
+  // Every video in the History without a title (asked for once per page load: askTitle).
+  function askMissing() { for (const e of history) if (!e.title) askTitle(e.videoId, false); }
+
   Board21.ready().then(ctx => {
     kiosk = !!ctx.kiosk;
     video = readVideo(ctx.data);
+    history = readHistory(ctx.data, video);
     started = true;
     keepMinimum(ctx.window);
     keepClear(ctx.window);
     show();
+    askMissing();
   });
 </script>
 </body>
