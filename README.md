@@ -409,7 +409,13 @@ changes that it doesn't show (a deleted page gone for good, a Board history copy
 **Unlink** (Settings → Board Sync) writes this device's file once more, saying it left, then stops; the board
 stays here, and linking the same folder again carries on. An unlinked device's file is deleted by the others
 two months later (a laptop put away for the summer still has its file in September). **Erase everything** says
-so in its file the same way, and this device forgets the folder.
+so in its file the same way, and this device forgets the folder. A page deleted just before *Change…*, *Unlink* or
+*Erase everything*, while its Undo is still offered, is deleted on the devices still on that folder too. Tapped
+afterwards, its Undo brings the page back on this device: after *Change…* into the new folder's board (tapped while
+*Change…* is still switching, once that board is here), after *Unlink* here only (the other devices get it back once
+this device links the folder again: "“Math” was brought back on the laptop."; set up with another folder that has a
+board instead, this device switches to that board, and the last step says that “Math” was deleted in the folder
+left). After *Erase everything* it can't be undone; Board history › Deleted pages on the other devices has it.
 
 **If the board can't sync,** a small note stays above the ▦ button until it works again: *Reconnect folder*
 (Chrome wants to be asked again: one tap), *Folder unavailable* (it can't be found: 21Board keeps looking),
