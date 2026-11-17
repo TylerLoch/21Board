@@ -262,15 +262,16 @@ status in Settings and reminds teachers (at most every 3 days) to save a backup,
 **regular exports remain the real backup.**
 
 Installed, 21Board opens in a window of its own and **opens maximized**: the window fills the screen as soon as
-21Board starts, and with Chrome 155 or later the first tap makes it maximized for real. The first time, Chrome asks
-whether 21Board may *Manage windows on all your displays*, and remembers the answer. With *Block*, or an older Chrome,
-the window still fills the screen. This happens each time 21Board is started, not when it updates or reloads, and a
-window you make smaller or move stays as you left it. Not in a browser tab or in kiosk mode.
+21Board starts, and on a Chromebook with Chrome 155 or later (other computers in a later Chrome) the first tap makes it
+maximized for real. The first time, Chrome asks whether boardapp.ccsd21.org may *Manage windows on all your displays*,
+and remembers the answer. With *Block*, or an older Chrome, the window still fills the screen. This happens each time
+21Board is started, not when it updates or reloads, and a window you make smaller or move stays as you left it. Not in
+a browser tab or in kiosk mode.
 
 **For IT:** the Chrome policy `WindowManagementAllowedForUrls` with `https://boardapp.ccsd21.org` grants the
-permission ahead of time, so Chrome never asks. Without it, or on Chrome before 155, the window just fills the screen
-(as it does where the permission is blocked: `DefaultWindowManagementSetting` set to 2, or
-`WindowManagementBlockedForUrls`).
+permission ahead of time, so Chrome never asks. Where it's blocked (`DefaultWindowManagementSetting` set to 2, or
+`WindowManagementBlockedForUrls`), or where Chrome doesn't offer it yet (before 155 on Chromebooks, or until a later
+version on other computers), the window just fills the screen.
 
 ### If the board can't be opened or saved
 

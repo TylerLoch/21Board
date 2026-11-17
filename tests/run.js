@@ -7300,17 +7300,23 @@ const SUITES = [
   // the window and its screen (screenX/Y, outerWidth/Height, screen.avail*), and records moveTo, resizeTo, maximize and the
   // window-management permission query. cfg: mode (display-mode: 'browser'), state (display-state: 'normal'), win {x, y, w, h}
   // (the window, outer, screen px), screen {left, top, width, height} (its available area), perm ('prompt'), max (false: no
-  // window.maximize, Chrome before 155; 'reject': it refuses). window.__max: calls [[name, args, whether a tap's activation was
-  // on]], win (change it as the teacher would), listeners() (pointerup, click, keydown and blur listeners on window and document).
-  ['Opens maximized: an installed app window fills the screen at launch and maximizes at the first tap (stubbed: a tab, the numbers, ▦, the board, a widget’s frame, denied, maximized or covering already, a refusal, the teacher’s own size, reload, kiosk, the lab, the dev window, Chrome before 155, the layout follows)', async (browser) => {
+  // window.maximize, Chrome before 155; 'reject': it refuses), avail ('throw' or 'none': screen.avail* throw, or are missing).
+  // window.__max: calls [[name, args, whether a tap's activation was on, when]], clicks [[activation on, when]] (each click,
+  // after the page's own handlers; the times on one clock in every frame), win (change it as the teacher would), set({state,
+  // win}) (from an init script added later: the window as it is after a reload), listeners() (pointerup, click, keydown and
+  // blur listeners on window and document).
+  ['Opens maximized: an installed app window fills the screen at launch and maximizes at the first tap (stubbed: a tab, the numbers, ▦, the board, a widget’s frame, the tap’s own click first, denied, maximized or covering already, a refusal, the teacher’s own size, reload, kiosk, the lab, the dev window, Chrome before 155, no screen size, the layout follows)', async (browser) => {
     const MAX_STUB = cfg => {
       const act = () => !!(navigator.userActivation && navigator.userActivation.isActive);
+      const now = () => performance.timeOrigin + performance.now();
       const scr = Object.assign({ left: 0, top: 0, width: 1366, height: 728 }, cfg.screen), win = Object.assign({ x: 120, y: 60, w: 1050, h: 640 }, cfg.win);
-      const log = window.__max = { calls: [], win };
-      const note = (name, args) => log.calls.push([name, args, act()]);
+      const log = window.__max = { calls: [], clicks: [], win };
+      const note = (name, args) => log.calls.push([name, args, act(), now()]);
       let state = cfg.state || (cfg.max === false ? '' : 'normal');
+      log.set = o => { if (o.state) state = o.state; Object.assign(win, o.win); };
       const def = (o, k, get) => { try { Object.defineProperty(o, k, { get, configurable: true }); } catch (e) { /* (not here) */ } };
-      def(screen, 'availLeft', () => scr.left); def(screen, 'availTop', () => scr.top); def(screen, 'availWidth', () => scr.width); def(screen, 'availHeight', () => scr.height);
+      const avail = (k, v) => def(screen, k, () => { if (cfg.avail === 'throw') throw new Error('screen ' + k); return cfg.avail === 'none' ? undefined : v(); });
+      avail('availLeft', () => scr.left); avail('availTop', () => scr.top); avail('availWidth', () => scr.width); avail('availHeight', () => scr.height);
       for (const k of ['screenX', 'screenLeft']) def(window, k, () => win.x);
       for (const k of ['screenY', 'screenTop']) def(window, k, () => win.y);
       def(window, 'outerWidth', () => win.w); def(window, 'outerHeight', () => win.h);
@@ -7342,6 +7348,7 @@ const SUITES = [
       EventTarget.prototype.addEventListener = function (type, fn, o) { if (fn && tracked(this, type, o) && at(this, type, fn, o) < 0) live.push([this, type, fn, cap(o)]); return add.apply(this, arguments); };
       EventTarget.prototype.removeEventListener = function (type, fn, o) { const i = at(this, type, fn, o); if (i >= 0) live.splice(i, 1); return remove.apply(this, arguments); };
       log.listeners = () => live.length;
+      add.call(window, 'click', () => log.clicks.push([act(), now()]));   // (not one of listeners())
     };
     // Read and run things in the page without a user gesture: Playwright's page.evaluate (and so waitForFunction) passes
     // userGesture, which gives the page a tap's activation for a few seconds.
@@ -7372,7 +7379,14 @@ const SUITES = [
     const maxes = async p => (await calls(p)).filter(c => /^maximize/.test(c));
     const center = async (p, sel) => quiet(p, sel => { const r = document.querySelector(sel).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, sel);
     const click = async (p, sel) => { const c = await center(p, sel); await p.mouse.click(c.x, c.y); await p.waitForTimeout(400); };
-    const APP = { mode: 'standalone', screen: { left: 48, top: 0, width: 1318, height: 768 }, win: { x: 200, y: 80, w: 1000, h: 632 } };
+    // Whether the tap's own click (in the board, or in frame fr) came first, with its activation, and maximize() after it
+    // (a real maximize() uses the activation up).
+    const clickFirst = async (p, fr) => {
+      const m = (await quiet(p, () => window.__max.calls)).find(c => c[0] === 'maximize');
+      const k = fr ? await fr.evaluate(() => window.__max.clicks) : await quiet(p, () => window.__max.clicks);
+      return !!m && !!k.length && k[0][0] && k[0][1] < m[3];
+    };
+    const APP ={ mode: 'standalone', screen: { left: 48, top: 0, width: 1318, height: 768 }, win: { x: 200, y: 80, w: 1000, h: 632 } };
     const FILL = ['moveTo(48, 0)', 'resizeTo(1318, 768)'];
 
     // ---- A browser tab: nothing at all (no calls, no listeners), and the tap does what it does.
@@ -7393,6 +7407,7 @@ const SUITES = [
     // The first tap, on ▦ (a mouse): maximize() once, and the Widget Picker opens as usual.
     await click(p, '.picker-btn.left');
     ok(JSON.stringify(await maxes(p)) === '["maximize at a tap"]' && await p.locator('#panel.open').count() === 1, `the first tap, on ▦, calls maximize() once with the tap's activation, and still opens the Widget Picker (${(await maxes(p)).join(', ')})`);
+    ok(await clickFirst(p), 'the tap’s own click comes first, with its activation; maximize() after it');
     const app1 = await quiet(p, () => window.__max.listeners());
     ok(app0 > tab0 && app1 === tab1, `until the first tap it listens for one (${app0 - tab0} more listeners than a tab); after it, none is left (${app1} and ${tab1} in a tab)`);
     await click(p, '.picker-btn.left'); await p.keyboard.press('a'); await click(p, '.picker-btn.right'); await click(p, '.picker-btn.right');
@@ -7413,17 +7428,31 @@ const SUITES = [
 
     // ---- The first tap on the board itself, with a finger (activation comes at pointerup, not pointerdown).
     ({ c, p } = await launch(APP, { touch: true }));
-    await p.touchscreen.tap(220, 160); await p.waitForTimeout(400);
+    await p.touchscreen.tap(220, 160); await p.waitForTimeout(600);
     ok(JSON.stringify(await maxes(p)) === '["maximize at a tap"]', `a finger's tap on the empty board calls maximize() once (${(await maxes(p)).join(', ') || 'no call'})`);
+    ok(await clickFirst(p), 'its click (which comes a moment after the finger is lifted) comes first, with its activation; maximize() after it');
     await c.close();
 
-    // ---- The first tap inside a widget's frame: the board's page gets the activation too, and loses focus to the frame.
+    // ---- The first tap inside a widget's frame: the board's page gets the activation too, and loses focus to the frame (at
+    // the press: the frame's click comes when the button is let go).
     ({ c, p } = await launch(APP));
     await quiet(p, () => { window.__board21.openWidget('clock'); return true; }); await p.waitForTimeout(1500);
     const noneYet = !(await maxes(p)).length;
     const f = await center(p, '.win[data-ikey="clock:1"] iframe');
-    await p.mouse.click(f.x, f.y); await p.waitForTimeout(500);
+    await p.mouse.click(f.x, f.y, { delay: 150 }); await p.waitForTimeout(1500);   // (a press as long as a person's)
     ok(noneYet && JSON.stringify(await maxes(p)) === '["maximize at a tap"]' && await quiet(p, () => document.activeElement && document.activeElement.tagName === 'IFRAME'), `a first tap inside a widget's window (its frame) calls maximize() once (${(await maxes(p)).join(', ') || 'no call'})`);
+    const clockFrame = await (await p.$('.win[data-ikey="clock:1"] iframe')).contentFrame();
+    ok(await clickFirst(p, clockFrame), 'the frame’s own click comes first, with its activation; maximize() after it');
+    await c.close();
+
+    // ---- The first tap uses the activation up itself (here its click opens a window, as an app's button might): it keeps it,
+    // and maximize() waits for the next tap.
+    ({ c, p } = await launch(APP));
+    await quiet(p, () => { addEventListener('click', () => { const w = window.open('about:blank', '_blank'); if (w) w.close(); }, { once: true }); return true; });
+    await click(p, '.picker-btn.left');
+    const used = await maxes(p);
+    await click(p, '.picker-btn.left');
+    ok(!used.length && JSON.stringify(await maxes(p)) === '["maximize at a tap"]', `a first tap whose own click uses the activation (it opens a window) keeps it, and maximize() comes at the next tap (${used.join(', ') || 'none'} at the first; ${(await maxes(p)).join(', ') || 'none'} by the second)`);
     await c.close();
 
     // ---- Permission denied: the fill still happens; no maximize().
@@ -7437,6 +7466,12 @@ const SUITES = [
       ({ c, p } = await launch(Object.assign({}, APP, { state })));
       await click(p, '.picker-btn.left');
       ok(!(await calls(p)).some(s => /^(moveTo|resizeTo|maximize)/.test(s)), `a window ${what} at launch is left as it is, at launch and at the first tap (${(await calls(p)).join(', ') || 'no calls'})`);
+      // That launch is marked too: once the teacher makes the window smaller, a reload (Update, Ctrl+R) leaves it so.
+      const marked = await quiet(p, () => sessionStorage.getItem('21board-launched'));
+      await c.addInitScript(() => { if (window.__max) window.__max.set({ state: 'normal', win: { x: 300, y: 200, w: 800, h: 500 } }); });
+      await p.reload(); await up(p); await p.waitForTimeout(300);
+      await click(p, '.picker-btn.left');
+      ok(marked === '1' && JSON.stringify(await calls(p)) === '[]', `${what} at launch, then made smaller and reloaded: left as the teacher made it, at the reload and at a tap (${(await calls(p)).join(', ') || 'no calls'}; launch marked: ${marked})`);
       await c.close();
     }
     // display-mode fullscreen (an app that opens full screen) is no window to fill either.
@@ -7515,6 +7550,15 @@ const SUITES = [
     ok(JSON.stringify(await calls(p)) === JSON.stringify(FILL) && old0 === tab0, `with no maximize() (Chrome before 155), only the fill: no permission asked, no listener (${(await calls(p)).join(', ')})`);
     await c.close();
 
+    // ---- A screen that doesn't say its size (screen.avail* throw, or are missing): the window isn't moved or sized, and the
+    // board starts as usual.
+    for (const [avail, what] of [['throw', 'can’t be read'], ['none', 'is missing']]) {
+      ({ c, p } = await launch(Object.assign({}, APP, { avail }), { board: false }));
+      const started = await up(p).then(() => true, () => false);
+      ok(started && !(await calls(p)).some(s => /^(moveTo|resizeTo)/.test(s)), `where the screen's size ${what}, the window isn't moved or sized, and the board starts (${(await calls(p)).join(', ') || 'no calls'})`);
+      await c.close();
+    }
+
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   // The same in a real app window: Chrome for Testing, headful on an Xvfb screen of its own (1366 × 768, no window manager),
@@ -7536,7 +7580,7 @@ const SUITES = [
         const mm = q => matchMedia(q).matches, z = window.__board21 && window.__board21.zoom, r = s => { const e = document.querySelector(s); return e && !e.hidden ? e.getBoundingClientRect().toJSON() : null; };
         return { mode: ['browser', 'standalone', 'fullscreen'].find(m => mm('(display-mode: ' + m + ')')) || '', state: ['normal', 'maximized', 'fullscreen'].find(m => mm('(display-state: ' + m + ')')) || '',
           tapped: navigator.userActivation.hasBeenActive, iw: innerWidth, ih: innerHeight, s: { al: screen.availLeft, at: screen.availTop, aw: screen.availWidth, ah: screen.availHeight },
-          zoom: z && { vw: z.vw, vh: z.vh }, right: r('.picker-btn.right'), clock: r('.corner-clock'), spy: window.__maxSpy || null, launched: sessionStorage.getItem('21board-launched'),
+          zoom: z && { vw: z.vw, vh: z.vh }, right: r('.picker-btn.right'), clock: r('.corner-clock'), spy: window.__maxSpy || null, clicks: window.__clicks || null, launched: sessionStorage.getItem('21board-launched'),
           up: !!(window.__board21 && window.__board21.store.loaded && !document.getElementById('startup')) };
       })()` });
       await s.detach();
@@ -7544,8 +7588,13 @@ const SUITES = [
     };
     // (boardUp's waitForFunction would give the page a gesture.)
     const up = async (ctx, p) => { for (let i = 0; i < 100; i++) { if ((await look(ctx, p).catch(() => ({}))).up) return; await sleep(100); } };
-    // Records each maximize() and how it ended, and calls the real one.
+    // A page or frame read without a user gesture.
+    const run = async (ctx, p, expression) => { const s = await ctx.newCDPSession(p); const r = await s.send('Runtime.evaluate', { expression, returnByValue: true }); await s.detach(); return r.result.value; };
+    // Records each click (in every frame, after the page's own handlers) and whether it had a tap's activation, and each
+    // maximize() and how it ended, and calls the real one.
     const SPY = () => {
+      const clicks = window.__clicks = [];
+      addEventListener('click', () => clicks.push(!!(navigator.userActivation && navigator.userActivation.isActive)));
       const m = window.maximize;
       if (typeof m !== 'function') return;
       const log = window.__maxSpy = [];
@@ -7644,6 +7693,7 @@ const SUITES = [
       B = display && await start({ display, flag: true });
       if (B) {
         const app = await B.launch();
+        ok(!!app, 'with the flag too, PWA.launch opens the app window');
         if (app) {
           let v = await look(B.ctx, app);
           ok(covers(await B.bounds(app.id), v.s) && v.state === 'normal' && Array.isArray(v.spy) && !v.spy.length, `with the flag: filled at launch, display-state ${v.state}, no maximize() before a tap`);
@@ -7653,6 +7703,7 @@ const SUITES = [
           const b = await B.bounds(app.id), s = v.spy || [];
           ok(s.length === 1 && s[0].tap && (v.state === 'maximized' || (/Could not maximize/.test(s[0].outcome) && covers(b, v.s))) && !errors.length,
             `the first tap calls the real maximize() once (${s.length ? s.map(x => x.outcome || 'no answer yet').join(', ') : 'no call'}): ${v.state === 'maximized' ? 'maximized' : 'refused, so it stays filled'} (${box(b)}, display-state ${v.state}), with no error`);
+          ok(v.clicks && v.clicks[0] === true, `that tap's own click had its activation (maximize() uses it up, so it comes after): ${JSON.stringify(v.clicks)}`);
         }
         await B.close();
       }
@@ -7672,10 +7723,43 @@ const SUITES = [
         v = await look(H.ctx, app); b = await H.bounds(app.id);
         ok(v.spy && v.spy.length === 1 && v.spy[0].tap && v.spy[0].outcome === 'resolved' && v.state === 'maximized' && b.windowState === 'maximized',
           `the first tap maximizes it for real: maximize() ${v.spy && v.spy.map(x => x.outcome).join(', ')}, display-state ${v.state}, Chrome's window ${b.windowState}`);
+        ok(v.clicks && v.clicks[0] === true, `that tap's own click had its activation (maximize() uses it up, so it comes after): ${JSON.stringify(v.clicks)}`);
         ok(v.zoom && v.zoom.vw === v.iw && v.zoom.vh === v.ih && corner(v), `and the board follows the maximized window (${v.zoom && v.zoom.vw} × ${v.zoom && v.zoom.vh})`);
         await app.reload(); await up(H.ctx, app); await sleep(1200); await tapBoard(app);
         v = await look(H.ctx, app);
         ok(v.spy && !v.spy.length && v.launched === '1', 'after a reload, no maximize() again (the window is marked as launched)');
+        // Closed maximized, it opens maximized next time. That launch is marked too: once the teacher makes the window
+        // smaller, a reload (an update) leaves it so.
+        await app.close(); await sleep(500);
+        const re = await H.launch();
+        b = re && await H.bounds(re.id); v = re && await look(H.ctx, re);
+        ok(!!re && b.windowState === 'maximized' && v.launched === '1' && v.spy && !v.spy.length, `closed maximized and launched again, it opens maximized, and that launch is marked too (${b ? box(b) : 'no window'}; marked: ${v && v.launched})`);
+        if (re) {
+          const id = await H.windowId(re.id);
+          await H.bs.send('Browser.setWindowBounds', { windowId: id, bounds: { windowState: 'normal' } }); await sleep(500);
+          await H.bs.send('Browser.setWindowBounds', { windowId: id, bounds: { left: 100, top: 60, width: 900, height: 600 } }); await sleep(800);
+          await re.reload(); await up(H.ctx, re); await sleep(1200); await tapBoard(re);
+          b = await H.bounds(re.id); v = await look(H.ctx, re);
+          ok(b.left === 100 && b.top === 60 && b.width === 900 && b.height === 600 && b.windowState === 'normal' && v.spy && !v.spy.length,
+            `made smaller by the teacher and reloaded, it stays as they left it, with no maximize() at a tap (${box(b)}; ${v.spy ? v.spy.length : '?'} calls)`);
+          await H.bs.send('Browser.setWindowBounds', { windowId: id, bounds: { windowState: 'normal' } }); await sleep(300);   // (closed at that size, whatever happened)
+          await H.bs.send('Browser.setWindowBounds', { windowId: id, bounds: { left: 100, top: 60, width: 900, height: 600 } }); await sleep(500);
+          await re.close(); await sleep(500);
+        }
+        // Launched again (at that size: filled at launch), the first tap inside a widget's window: the frame's own click
+        // keeps its activation, and the window is maximized a moment later.
+        const fr = await H.launch();
+        if (fr) {
+          await run(H.ctx, fr, `window.__board21.openWidget('clock'), 1`); await sleep(1500);
+          const at0 = await H.bounds(fr.id);
+          const f = await run(H.ctx, fr, `(() => { const r = document.querySelector('.win[data-ikey="clock:1"] iframe').getBoundingClientRect(); return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+          await fr.mouse.click(f.x, f.y, { delay: 150 }); await sleep(2500);   // (a press as long as a person's)
+          v = await look(H.ctx, fr); b = await H.bounds(fr.id);
+          const clock = await (await fr.$('.win[data-ikey="clock:1"] iframe')).contentFrame();
+          const fc = clock && await clock.evaluate(() => window.__clicks || null).catch(() => null);
+          ok(covers(at0, v.s) && at0.windowState === 'normal' && fc && fc[0] === true && v.spy && v.spy.length === 1 && v.spy[0].tap && v.spy[0].outcome === 'resolved' && b.windowState === 'maximized',
+            `a first tap in a widget's window (filled at launch: ${box(at0)}): the frame's own click had its activation (${JSON.stringify(fc)}), then maximize() ${v.spy && v.spy.map(x => x.outcome).join(', ')} (${box(b)})`);
+        }
       }
       await H.close();
     }
