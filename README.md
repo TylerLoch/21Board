@@ -198,6 +198,7 @@ widgets/_template/         Starter for new widgets (not registered)
 docs/WIDGET-SDK.md      How to build a widget; SDK reference; submission checklist
 docs/AI-PROMPT.md       For staff: a prompt to build a widget with an AI tool (Gemini, ChatGPT, Claude)
 docs/DATA-FORMAT.md     IndexedDB layout, sync protocol, .21board file format
+docs/ROADMAP.md         Major changes kept for later (shared widget storage, other languages)
 tools/release.js        Stamps a release: its name and a fingerprint of the files (see Deploying)
 tests/run.js            Optional automated browser tests
 ```
