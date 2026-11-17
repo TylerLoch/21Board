@@ -318,6 +318,7 @@ class Device {
   pageShown() { const b = this.settings.activeBoard; const v = this.boardOf(b); return v ? v.uid : null; }
   round(kind = 'full', opts = {}) {
     if (!this.linked || this.away) return;
+    if (this.mode && kind === 'send') return;   // (Link: a mode isn't applied by a send round)
     this.settleStyle();
     // (a stale tab's write lands before the next round: Writer writes at once, rounds wait for quiet)
     // (a stale tab's write lands before the next round, unless its writes are held up: then it may still miss the
@@ -369,6 +370,8 @@ class Device {
     for (const [d, p] of this.peers) { const q = seen[d] = Object.assign({}, seen[d]); if (p.seq > (q.seen || 0)) { q.seen = p.seq; q.changedAt = now; } q.left = p.left; }
     const idle = d => { const q = seen[d] || {}; return !!q.left || now - (q.changedAt || 0) >= IDLE; };
     const state = Merge.join(st.ledger, peers, { dev: this.dev, now, mode: this.mode, first: this.first, aheadMax: DAY, isLater, idle, left: d => !!(seen[d] || {}).left });
+    // (Link: a mode waits while a page the folder has, and this new ledger doesn't, is held for its Undo)
+    if (this.mode && Array.from(local.pages.values()).some(P => P.held && !P.gone && state.pages.has(P.uid) && !st.ledger.mine[P.uid])) return;
     const photos = {};
     for (const w of Merge.photosWanted(state, local)) if (rnd() > (opts.photoMiss || 0) && PHOTOS.has(w.key)) photos[w.uid] = PHOTOS.get(w.key);
     const holds = { wins: Array.from(this.busy) };
@@ -443,8 +446,12 @@ class Device {
       for (const u of units) { const e = { id: LOG.edits.length + 1, units: [u], by: this.dev, folder: this.folderName }; LOG.edits.push(e); this.applied.add(e.id); this.touch(u); }
     }
   }
-  removeFile(d) {
-    for (const [name, text] of Array.from(this.view)) { const r = this.decodeText(text); if (r && r.peer && r.peer.dev === d) { this.view.delete(name); if (this.folder) this.folder.remove(name); } }
+  removeFile(d) {   // (only the file as it was read: one written anew since is kept, as Link.daily re-reads its size and date)
+    for (const [name, text] of Array.from(this.view)) {
+      const r = this.decodeText(text);
+      if (!r || !r.peer || r.peer.dev !== d || (this.folder && this.folder.files.has(name) && this.folder.files.get(name) !== text)) continue;
+      this.view.delete(name); if (this.folder) this.folder.remove(name);
+    }
     this.peers.delete(d);
   }
   writeFile(L, left) {
@@ -579,7 +586,7 @@ function run(seed, nDev, steps, variant = {}) {
       // (with its ledger lost too, before a round rebuilt it: its deletions that no other device has had are gone, as §3.4 accepts)
       if (d.folder && !d.link) for (const x of LOG.dels) if (x.by === d.dev && !devs.some(o => o !== d && o.know.has(x.id))) { x.undone = true; x.relink = true; }
     }
-    else if (r < 0.935) { if (d.link && d.linked && !d.blindSince && !d.stale.size) { d.loseLedger(); } }   // its ledger lost (not in the seconds a stale tab's write waits for a round, nor while one is still to come, as after a device closed for weeks: a rebuilt ledger can't tell it from an edit)
+    else if (r < 0.935) { if (d.link && d.linked && !d.blindSince) { d.loseLedger(); d.stale = new Map(); } }   // its ledger lost (not in the seconds a stale tab's write waits for a round, and the stale tabs' writes still to come go with it, as after a device closed for weeks: a rebuilt ledger can't tell one from an edit)
     else if (r < 0.945) { if (d.linked && d.folder === folder && !variant.noUnlink) d.unlink(); else if (!d.linked) { d.view = new Map(folder.files); d.linkTo(folder); } }
     else if (r < 0.95) { if (d.linked && d.folder === folder && !variant.noChange) { d.farewell(); d.linkTo(other); } else if (d.linked && d.folder === other) { d.farewell(); d.view = new Map(folder.files); d.linkTo(folder); } }
     else if (r < 0.955) { if (variant.away !== false) { d.away = true; NOW += 90 * DAY; } }
@@ -1172,6 +1179,60 @@ function review() {
     const p = B.round(), P = p && p.summary.pages[uid];
     sync();
     ok(bOf(A, uid) && bOf(B, uid) && P && P.back === 'returned', `linked again, it is back on the smartboard, as brought back on the laptop (${P && P.back}; ${[A, B].map(d => (bOf(d, uid) ? 'there' : 'gone')).join(', ')})`);
+  });
+  for (const how of ['take', 'carry']) for (const via of ['Board history', 'Undo']) block(() => {
+    // a window's text emptied on the smartboard (Reset) reaches the laptop, by a take after Change… back or by an
+    // ordinary merge; the laptop puts the text back: Board history's Put back two minutes later (Writer.put, based on
+    // the revision the merge deleted, Raced.gone), or the merge toast's Undo 3 s later (MergeUI.undo: based on Known, 1).
+    // A change made after seeing the deletion, not a stale tab's save: it stays
+    const { A, B, b, ik, sync, folder } = pair();
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+    A.type(b, ik); const t1 = token(dataOf(A, uid, wid)); NOW += 1000; sync();
+    if (how === 'take') { A.farewell(); A.linkTo(new Folder('Room 14')); NOW += 60000; }
+    B.resetWin(bOf(B, uid), ikOf(B, uid, wid)); NOW += 1000; B.round();
+    if (how === 'take') { NOW += 60000; A.farewell(); A.view = new Map(folder.files); A.linkTo(folder); } else { A.deliver(B); A.round(); }
+    const key = `data:${bOf(A, uid)}:${ikOf(A, uid, wid)}`;
+    ok(!A.recs.has(key), `[${how}, ${via}] (the laptop's window is empty now: ${JSON.stringify(dataOf(A, uid, wid))})`);
+    if (via === 'Undo') { NOW += 3000; A.put(key, 'data', { text: t1 }, { base: 1, u: true }); } else { NOW += 120000; A.put(key, 'data', { text: t1 }); }
+    NOW += 1000; A.round(); sync(4);
+    ok([A, B].every(d => token(dataOf(d, uid, wid)) === t1), `[${how}] the text put back with ${via} after a merge emptied the window stays, on both (${[A, B].map(d => JSON.stringify(token(dataOf(d, uid, wid)))).join(' / ')})`);
+  });
+  for (const how of ['Change… back', 'no Change…']) block(() => {
+    // the smartboard deletes a window on a page, then the page. The laptop (in another folder, or asleep) gets both in
+    // one round, which deletes the page there; its Undo, tapped within 20 s, brings the page back on both, but not the
+    // window the smartboard had deleted first (keepW, noted when the round deletes the page)
+    const { A, B, b, ik, sync, folder } = pair();
+    const uid = A.boardOf(b).uid, w1 = A.winVal(b, ik).wid, ik2 = A.addWindow(b, W.NOTES), w2 = A.winVal(b, ik2).wid;
+    const bo = A.addPage('Other'); A.patch({ set: { activeBoard: how === 'no Change…' ? bo : b } }); NOW += 1000; sync();
+    if (how === 'Change… back') { A.farewell(); A.linkTo(new Folder('Room 14')); NOW += 60000; }
+    const bb = bOf(B, uid); B.delWin(bb, ikOf(B, uid, w2)); NOW += 1000; B.round();
+    B.delPage(bb); NOW += UNDO + 500; B.round(); NOW += 5000; B.round();
+    const bA = bOf(A, uid);
+    if (how === 'Change… back') { A.farewell(); A.view = new Map(folder.files); A.linkTo(folder); NOW += 1000; } else A.deliver(B);   // (the take keeps the page shown, and Link leaves it at once)
+    const p = A.round(), P = p && p.summary.pages[uid];
+    ok(P && P.deleted && !bOf(A, uid), `[${how}] (the laptop's round deletes the page there: ${JSON.stringify(P && { deleted: P.deleted, from: P.from })})`);
+    NOW += 3000;
+    ok(A.undoDel(bA) && bOf(A, uid) && winsOf(A, uid).some(w => w.wid === w2), `[${how}] (its Undo brings it back on the laptop, with both windows as it had them)`);
+    NOW += 1000; A.round(); sync(4);
+    ok([A, B].every(d => bOf(d, uid) && winsOf(d, uid).some(w => w.wid === w1) && !winsOf(d, uid).some(w => w.wid === w2)),
+      `[${how}] the page’s Undo brings it back on both with its other window, but not the window the smartboard deleted first (${[A, B].map(d => winsOf(d, uid).map(w => w.wid === w2 ? 'w2' : w.wid === w1 ? 'w1' : 'new').join('+') || 'no page').join(' / ')})`);
+  });
+  block(() => {
+    // as keepW's case above, but the page is the laptop's only one after the take, so it stays shown, and is edited
+    // only after 31 days: Merge.gc, which keeps the page's tombstone (keep), keeps its windows' kept by keepW too
+    const { A, B, b, ik, sync, folder } = pair();
+    const uid = A.boardOf(b).uid, w1 = A.winVal(b, ik).wid, ik2 = A.addWindow(b, W.NOTES), w2 = A.winVal(b, ik2).wid;
+    NOW += 1000; sync();
+    A.farewell(); A.linkTo(new Folder('Room 14')); NOW += 60000;
+    const bb = bOf(B, uid); B.delWin(bb, ikOf(B, uid, w2)); NOW += 1000; B.round();
+    B.delPage(bb); NOW += UNDO + 500; B.round(); NOW += 5000; B.round();
+    A.leave = function () {};   // (Link: no other page to show)
+    A.farewell(); A.view = new Map(folder.files); A.linkTo(folder);
+    ok(bOf(A, uid) && A.ids().length === 1, `(the take keeps the laptop's only page shown: ${A.ids().map(x => A.boardOf(x).name).join(', ')})`);
+    for (let d = 0; d < 31; d += 5) { NOW += 5 * DAY; sync(1); }
+    A.addWindow(bOf(A, uid), W.NOTES); NOW += 1000; A.round(); sync(4);
+    ok([A, B].every(d => bOf(d, uid) && winsOf(d, uid).some(w => w.wid === w1) && !winsOf(d, uid).some(w => w.wid === w2)),
+      `a window added to it 31 days later brings the page back on both, but not the window deleted in the folder (${[A, B].map(d => winsOf(d, uid).map(w => w.wid === w2 ? 'w2' : w.wid === w1 ? 'w1' : 'new').join('+') || 'no page').join(' / ')})`);
   });
 }
 

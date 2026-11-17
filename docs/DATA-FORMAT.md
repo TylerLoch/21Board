@@ -193,6 +193,7 @@ fingerprints and versions of the board's parts, never the board's values:
   folder: "f7q2m9x0c1d4", folderName: "21Board",   // the folder's id (made by the first device, taken by the others: the smaller wins), and its name
   dir: <FileSystemDirectoryHandle>,                // where the browser can store one (linking the same folder again carries on)
   mode: null, first: false, linkAt,                // a folder just linked: 'wait' until the first look decides 'seed' | 'join' | 'take' | 'carry'; first: that round deletes nothing anywhere
+  other, switched, goneThere, keptThere,           // a take from another folder, for set-up's last step: that folder's name, and the pages shown here that it has as deleted (and how many others)
   dropHere: null | ["<page uid>"],                 // after a take's round: this device's own page that was shown then, removed here (only) once another page is shown
   ctr, maxSeen,                                    // the last counter given out; the highest merged from other devices (at most a day ahead of this clock)
   seq, writes: ["q7c2m0x1", …], wseqs: [ … ],      // the last write's sequence number (never goes back), the last 20 write ids and their seqs, noted before each write
@@ -222,8 +223,11 @@ for the photo, `ref` and `put` (its file in `Photos/`) or `hold` (a photo not he
 here when it was deleted elsewhere while shown here and this device had no entry of its own for it: only an edit
 made here brings it back. Beside it, `keepW` (`{ "<wid>": fingerprint }`) holds each window on that page that was
 deleted elsewhere too, as shown here then: an edit here that brings the page back leaves such a window deleted
-unless it was changed here as well. Neither is ever written to a file. A tombstone's `seq` is the first write of
-this device's file that carried it, and `seen` when this device first held it.
+unless it was changed here as well. A round that deletes a page here notes `keepW` the same way (it stays while the
+page is deleted), so that the page's Undo or Bring back doesn't bring back a window deleted elsewhere before it, and
+a window tombstone that `keepW` names is kept as long as the page's. Neither is ever written to a file. A
+tombstone's `seq` is the first write of this device's file that carried it, and `seen` when this device first held
+it.
 
 The parts, versions and rules belong to the merge (`board.js` section 13d, the region `Board Sync merge`). A lost
 ledger (the browser threw the database away) is rebuilt from this device's own file in the folder; with no file
@@ -508,7 +512,7 @@ at the board finds both and keeps both. Each record a tab writes also says what 
 
 | Field | Meaning |
 | --- | --- |
-| `base` | the record's `rev` this tab knew when the change was queued (the earliest, when several coalesce). Missing: written around the queue (Import, a deleted page's purge), not tracked. Within 1.5 s of showing a merged write of a record it already had (timed on a clock that never goes back), a widget's save gets the revision before the merge; a tab that didn't show one (it had a change waiting) gives every save of that record that revision until it shows a merged write of it. Either way the save counts as made without the merge. A record made again after this tab saw it deleted (a Reset, then typing) is based on the revision deleted, not on "absent", which would look like a save made without a merge. |
+| `base` | the record's `rev` this tab knew when the change was queued (the earliest, when several coalesce). Missing: written around the queue (Import, a deleted page's purge), not tracked. Within 1.5 s of showing a merged write of a record it already had (timed on a clock that never goes back), a widget's save gets the revision before the merge; a tab that didn't show one (it had a change waiting) gives every save of that record that revision until it shows a merged write of it. Either way the save counts as made without the merge. A record made again after this tab saw it deleted (a Reset, then typing) is based on the revision deleted, not on "absent", which would look like a save made without a merge. A record a merge deleted is based on the revision before that too when it is made again: its Undo (`u`), and any change made more than 10 seconds after the merge (Board history's Put back, say), count as made after seeing the deletion. |
 | `m` | `1`: written by a Board Sync merge, never by a tab's own change. |
 | `u` | `1`: written by the Undo of a merge, so that other devices can say "The laptop undid …". |
 

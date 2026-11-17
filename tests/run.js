@@ -10551,6 +10551,123 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await A.c.close(); await B.c.close();
     ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
   }],
+  ['Board Sync: linking again: the Undo of a page deleted just before Change… or Unlink, tapped while Change… switches, and what is said', async (browser) => {
+    const errors = [];
+    const lastStep = (p, ms = 45000) => p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: ms });
+    const said = async p => (await p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
+    const done = async p => { await p.locator('#modal.open .btn', { hasText: 'Done' }).click(); await p.keyboard.press('Escape'); await eventually(() => p.evaluate(() => { const l = window.__board21.link; return !!l.sync && !l.sync.mode && !l.running && !l.timers.full; }), 30000); };
+    // Change… (or Set up… after Unlink) to the folder named pick; returns what the last step said
+    const change = async (p, pick, act = 'link-choose') => {
+      await p.evaluate(pick => { window.__drive = Object.assign({}, window.__drive, { pick }); }, pick);
+      await openSettings(p); await p.click(`#settings [data-act="${act}"]`);
+      if (act === 'link-setup') await p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
+      await lastStep(p); const t = await said(p); await done(p); return t;
+    };
+    const names = async p => Object.values(await shownBoard(p)).map(x => x.name).sort().join();
+    const folderNames = (p, folder) => p.evaluate(async folder => {
+      const d = await (await navigator.storage.getDirectory()).getDirectoryHandle(folder), out = [];
+      for await (const [n, h] of d.entries()) if (/\.21board$/.test(n)) { const o = JSON.parse(await (await h.getFile()).text()); for (const e of [o].concat(o.pages || [])) if (e && e.board) out.push(e.board.name); }
+      return Array.from(new Set(out)).sort().join();
+    }, folder);
+    const folderFiles = (p, folder) => p.evaluate(async folder => { const d = await (await navigator.storage.getDirectory()).getDirectoryHandle(folder), o = {}; for await (const [n, h] of d.entries()) if (h.kind === 'file') o[n] = await (await h.getFile()).text(); return o; }, folder);
+    const self = '“Math” was deleted on the laptop.';
+    // the laptop (Morning and Math) and the smartboard, linked to 21Board
+    const two = async () => {
+      const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+      await renamePage(A.p, 'Morning'); await addNote(A.p, 'Morning note');
+      await A.p.evaluate(() => window.__board21.pages.create({ end: true, name: 'Math' }));
+      await eventually(() => A.p.evaluate(() => window.__board21.state.board.name === 'Math' && !window.__board21.pages.busy)); await addNote(A.p, 'Math note');
+      await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+      await hear(A.p); await hear(B.p);
+      return { A, B };
+    };
+    // a third device whose board ("Room 14") is in the Room 14 folder, and that folder as the laptop's Google Drive has it
+    const room14 = async A => {
+      const C = await syncDev(browser, 'the Room 14 laptop', errors);
+      await renamePage(C.p, 'Room 14'); await addNote(C.p, 'Room 14 plans');
+      await C.p.evaluate(() => { window.__drive = { pick: 'Room 14' }; }); await linkFolder(C.p);
+      await seedFolder(A.p, 'Room 14', await folderFiles(C.p, 'Room 14'));
+      return C;
+    };
+    // the laptop deletes Math, the page shown (its Undo is offered for 20 s)
+    const delMath = async p => {
+      await p.evaluate(() => { window.__board21.pages.remove(); });
+      await p.locator('#modal.open .btn', { hasText: 'Delete page' }).click();
+      await eventually(async () => await names(p) === 'Morning');
+    };
+    const undo = p => p.locator('#toasts .toast', { hasText: 'Deleted “Math”.' }).locator('button', { hasText: 'Undo' }).click({ force: true });   // (toasts are above the set-up dialog)
+    const switching = p => eventually(() => p.evaluate(() => { const l = window.__board21.link; return !!(l.sync && l.sync.mode); }), 10000);
+
+    {
+      // Change… to a folder that has a board, and the Undo tapped while the switch is still deciding (the folder is slow
+      // to list): Math comes back once Room 14's board is here, into it, and isn't taken away by the switch
+      const { A, B } = await two(), C = await room14(A);
+      await delMath(A.p);
+      await A.p.evaluate(() => { window.__drive = { pick: 'Room 14', slow: 2500 }; });
+      await openSettings(A.p); await A.p.click('#settings [data-act="link-choose"]');
+      ok(await switching(A.p), '(Change… to Room 14 is switching)');
+      await undo(A.p);
+      await A.p.evaluate(() => { window.__drive.slow = 0; });
+      await lastStep(A.p); const s = await said(A.p); await done(A.p);
+      ok(await eventually(async () => await names(A.p) === 'Math,Room 14', 20000), `Undo tapped while Change… switches: Math comes back with Room 14’s board, not before it (${await names(A.p)}; said “${s}”)`);
+      await syncNow(A.p);
+      ok(await eventually(async () => (await folderNames(A.p, 'Room 14')).includes('Math')), `and goes into Room 14’s board (${await folderNames(A.p, 'Room 14')})`);
+      await deliver(A.p, B.p); await syncNow(B.p);
+      ok(await names(B.p) === 'Morning', `the smartboard, in 21Board, deletes it, as the laptop left it there (${await names(B.p)})`);
+      await A.c.close(); await B.c.close(); await C.c.close();
+    }
+    {
+      // Change… to an empty folder and straight back, and the Undo tapped while the switch back waits: Math comes back
+      // in 21Board on both devices, and the laptop never tells itself that it deleted Math
+      const { A, B } = await two();
+      await delMath(A.p);
+      await change(A.p, 'Room 14');
+      await A.p.evaluate(() => { window.__drive = Object.assign({}, window.__drive, { pick: '21Board' }); });
+      await openSettings(A.p); await A.p.click('#settings [data-act="link-choose"]');
+      ok(await switching(A.p), '(Change… back to 21Board is switching)');
+      const up = await A.p.locator('#toasts .toast', { hasText: 'Deleted “Math”.' }).count();
+      ok(up === 1, '(the Undo is still offered)');
+      if (up) await undo(A.p);
+      await lastStep(A.p, 60000); await done(A.p);
+      ok(await eventually(async () => await names(A.p) === 'Math,Morning', 30000), `Undo tapped while Change… back waits: Math comes back on the laptop (${await names(A.p)})`);
+      await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p); await deliver(B.p, A.p); await syncNow(A.p);
+      ok(await names(B.p) === 'Math,Morning' && await sameBoards(A.p, B.p), `and on the smartboard (${await names(B.p)})`);
+      ok(!(await heard(A.p)).includes(self), `the laptop doesn’t say “Math” was deleted on the laptop (${(await heard(A.p)).join(' | ')})`);
+      await A.c.close(); await B.c.close();
+    }
+    {
+      // Change… to an empty folder, Undo (Math goes into Room 14), then Change… back to 21Board with Math shown: Math,
+      // which the laptop deleted there as it left, goes once another page is shown, without a message naming the laptop
+      const { A, B } = await two();
+      await delMath(A.p);
+      await change(A.p, 'Room 14');
+      await undo(A.p);
+      ok(await eventually(async () => await names(A.p) === 'Math,Morning'), `(Undo after Change…: Math back on the laptop, ${await names(A.p)})`);
+      await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
+      ok(await A.p.evaluate(() => window.__board21.pages.name(window.__board21.state.boardId)) === 'Math', '(Math is the page shown)');
+      await change(A.p, '21Board');
+      ok(await eventually(async () => await names(A.p) === 'Morning', 20000), `back in 21Board, Math goes on the laptop too (${await names(A.p)})`);
+      await syncNow(A.p);
+      ok(!(await heard(A.p)).includes(self), `with no message that “Math” was deleted on the laptop (${(await heard(A.p)).join(' | ')})`);
+      await A.c.close(); await B.c.close();
+    }
+    {
+      // Unlink, Undo, then Set up… with another folder that has a board: the last step doesn't say Math is still in
+      // 21Board, where the laptop's last write deleted it
+      const { A, B } = await two(), C = await room14(A);
+      await delMath(A.p);
+      await openSettings(A.p); await A.p.click('#settings [data-act="link-unlink"]'); await A.p.locator('#modal.open .btn', { hasText: 'Unlink' }).click();
+      await eventually(() => A.p.evaluate(() => !window.__board21.link.dir)); await A.p.keyboard.press('Escape');
+      await undo(A.p);
+      ok(await eventually(async () => await names(A.p) === 'Math,Morning'), `(Undo after Unlink: Math back on the laptop, ${await names(A.p)})`);
+      await deliver(A.p, B.p); await syncNow(B.p);
+      ok(await names(B.p) === 'Morning', `(the smartboard deletes Math: ${await names(B.p)})`);
+      const s = await change(A.p, 'Room 14', 'link-setup');
+      ok(/This device’s other pages are still in your “21Board” folder, except “Math”, which was deleted there\. All of them are under Board history › Deleted pages for 30 days\./.test(s), `the last step says Math was deleted in 21Board (“${s}”)`);
+      await A.c.close(); await B.c.close(); await C.c.close();
+    }
+    ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+  }],
   ['Board Sync: theme and accent color when two devices set up one folder at once, and a choice made while a round runs', async (browser) => {
     const errors = [];
     const look = p => p.evaluate(() => { const s = window.__board21.state.settings; return `${s.theme} ${s.accent}`; });

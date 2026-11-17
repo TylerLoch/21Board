@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.17-1';
-  const BOARD_BUILD = '87bc8699';
+  const BOARD_BUILD = '1504ffa5';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3537,6 +3537,9 @@
       // (Its records must still be there: never an empty page in its place.)
       if (list.some(b => !this.purges.has(b)) || !await this.stored(list)) { toast('That can’t be undone anymore.'); return; }
       list.forEach(b => { clearTimeout(this.purges.get(b)); this.purges.delete(b); });
+      // (Change… still switching folders: the page comes back once the new folder's board is here, into it, not into the
+      // board the switch is about to replace, nor into the folder left, which has heard it was deleted. At most a minute)
+      for (let i = 0; i < 600 && Link.switching(); i++) await sleep(100);
       const now = this.ids(), back = order.filter(b => list.includes(b) || now.includes(b));
       now.forEach(b => { if (!back.includes(b)) back.push(b); });
       updateSettings(Object.assign({ boards: back }, this.goneWith([], list)));
@@ -5482,6 +5485,7 @@
     histWait: new Map(),   // page uid -> {name, from}: its changes wait until Board history can save a version
     linked: null,       // what the first round after linking did (see welcome)
     welcoming: false,   // set-up's last step will say what the first round did: that round shows no merge message
+    leaving: false,     // Change…: the farewell write to the folder left, until the new folder's mode is noted (switching)
     prints: new Map(),  // photo data URL -> {file, size, w, h}: its name in Photos, worked out once (see photoName)
     got: new Map(),     // photo file -> the picture read from Photos (the last few)
     badPhotos: new Map(),   // photo file -> {size, lastModified, at}: found not good as it is
@@ -5784,14 +5788,17 @@
     // changed here since its last write and saying that this device left (as Unlink does), so its other devices get
     // that work and stop listing this one.
     async link(h) {
-      if (this.dir && this.sync && !this.sync.mode && this.ready()) {
-        let same = false;
-        try { same = typeof h.isSameEntry === 'function' && await h.isSameEntry(this.dir); } catch (e) { /* not comparable */ }
-        if (!same) await this.locked(() => this.farewell(false));
-      }
-      this.perm = 'granted';
-      this.device();
-      await this.locked(() => this.noteSync(s => Object.assign(s, { dev: this.dev(), mode: 'wait', first: true, linkAt: Date.now(), linking: h.name, left: null })));
+      this.leaving = true;   // (from the farewell write until the mode is noted: see switching)
+      try {
+        if (this.dir && this.sync && !this.sync.mode && this.ready()) {
+          let same = false;
+          try { same = typeof h.isSameEntry === 'function' && await h.isSameEntry(this.dir); } catch (e) { /* not comparable */ }
+          if (!same) await this.locked(() => this.farewell(false));
+        }
+        this.perm = 'granted';
+        this.device();
+        await this.locked(() => this.noteSync(s => Object.assign(s, { dev: this.dev(), mode: 'wait', first: true, linkAt: Date.now(), linking: h.name, left: null })));
+      } finally { this.leaving = false; }
       this.linked = null; this.welcoming = true;
       await this.saveFolder(h);
       this.saveState({ tidy: {} });   // (what was found unused in Photos was another folder's)
@@ -5819,7 +5826,11 @@
       else if (L.mode === 'take') {
         // (both folders are often called 21Board, as set-up suggests: then "the one this device used before")
         const where = !L.other ? 'your other folder' : L.other === this.dir.name ? `the “${L.other}” folder this device used before` : `your “${L.other}” folder`;
-        say.push(board + (L.switched ? ` This device’s other pages are still in ${where}, and under Board history › Deleted pages for 30 days.` : ''));
+        // (a page deleted there, brought back here by its Undo after Unlink, say: not "still in" it)
+        const gone = L.goneThere || [], them = andList(gone.map(n => `“${n}”`)), one = gone.length === 1;
+        say.push(board + (!L.switched ? '' : !gone.length ? ` This device’s other pages are still in ${where}, and under Board history › Deleted pages for 30 days.`
+          : L.keptThere ? ` This device’s other pages are still in ${where}, except ${them}, which ${one ? 'was' : 'were'} deleted there. All of them are under Board history › Deleted pages for 30 days.`
+          : ` This device’s ${one ? 'page' : 'pages'} ${them} ${one ? 'was' : 'were'} deleted in ${where}: ${one ? 'it is' : 'they are'} under Board history › Deleted pages for 30 days.`));
       }
       say.push('Changes you make on any of your devices show up on the others by themselves, usually within a minute: Google Drive decides when.');
       // This device's name, as the others say it ("Updated from the laptop."): 21Board's guess (see device) or the name
@@ -6074,6 +6085,8 @@
       }
     },
     ready() { return !!(this.dir && this.perm === 'granted' && Store.loaded && !Store.lost && !Store.failed && !Writer.failing); },
+    // Change… (or set-up) under way: the folder left being written to, or the new folder's board not decided or applied yet.
+    switching() { return !!this.leaving || !!(this.sync && this.sync.mode); },
 
     // ---- a round (spec: SPEC §5.2)
     async roundLocked(kind) {
@@ -6315,7 +6328,11 @@
       const trial = Merge.stamp(Merge.ledger(null, []), this.local(r, now), { dev: me, ctr: 0, maxSeen: 0, first: true, now });
       const placeholder = !Object.values(trial.ledger.mine).some(p => !p.gone);
       if (!has || sync.lost) return placeholder ? fresh('take') : fresh('join');
-      return fresh('take', { other: sync.folderName || null, switched: true });
+      // (pages shown here that the folder left has as deleted, such as one brought back by its Undo after Unlink: they
+      // aren't "still in" that folder, and the last step says so)
+      const shown = Array.from(this.local(r, now).pages.values()).filter(P => !P.gone && !P.held && !P.placeholder);
+      const goneThere = shown.filter(P => (r.ledger.mine[P.uid] || {}).gone).map(P => P.parts.name.val || 'Page');
+      return fresh('take', Object.assign({ other: sync.folderName || null, switched: true }, goneThere.length ? { goneThere, keptThere: shown.length - goneThere.length } : {}));
     },
     // What the set-up's last step says the first round did (see welcome).
     linkedSay(mode, sync, stamped) {
@@ -6323,7 +6340,7 @@
       const mine = Object.keys(stamped.mine || {}).filter(uid => !stamped.mine[uid].gone);
       const theirs = new Set(others.flatMap(f => (f.uids || []).concat(f.peer ? Array.from(f.peer.gone.pages.keys()) : [])));   // (and pages the folder deleted)
       return { mode, from: top ? top.devName || 'another device' : '', pages: top ? top.pages : 0, empty: !mine.length,
-        added: mode === 'join' ? mine.filter(uid => !theirs.has(uid)).length : 0, other: sync.other || null, switched: !!sync.switched };
+        added: mode === 'join' ? mine.filter(uid => !theirs.has(uid)).length : 0, other: sync.other || null, switched: !!sync.switched, goneThere: sync.goneThere || [], keptThere: sync.keptThere || 0 };
     },
     // Notes what this look found of each device (for the status and the idle test): its name, when it last
     // changed (this device's clock), whether it left, whether its file is missing.
@@ -8024,7 +8041,8 @@
     const STYLE_PARTS = ['theme', 'accent'], THEMES = ['light', 'dark', 'system'], STYLE_DEF = { theme: 'system', accent: 'blue' };
     const WID_RE = /^[\w.@~-]{1,120}$/, DEV_RE = /^[0-9a-z]{12}$/, KEY_RE = /^[0-9a-z]{1,40}$/, WIDGET_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
     const DAY = 864e5;
-    const DEF = { goneMs: 30 * DAY, peerGoneMs: 365 * DAY, aheadMs: DAY, undoMs: 20000, scale: 0.8 };
+    // (remadeMs: a record a merge deleted, made again this long after it, is a change made after seeing that, see stamp)
+    const DEF = { goneMs: 30 * DAY, peerGoneMs: 365 * DAY, aheadMs: DAY, undoMs: 20000, scale: 0.8, remadeMs: 10000 };
     const fin = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
     const vscale = v => (typeof v === 'number' && v >= 0.5 && v <= 2 ? v : null);
     const hj = v => hash53(JSON.stringify(v === undefined ? null : v));
@@ -8312,7 +8330,10 @@
           if (E1.rev !== P.rev || E.applied || E1 !== E) { const e = Object.assign({}, E1, { rev: P.rev }); for (const k of ['applied', 'prevH', 'prevHs', 'prevV', 'prevSc', 'val']) delete e[k]; set(e); }
           return;
         }
-        if (E.applied && typeof P.base === 'number' && P.base < E.applied && P.rev !== E.applied) {
+        // (not the Undo of a merge, nor a record a merge deleted (rev 0) made again well after that: Board history's Put
+        // back, say. Each is based on the revision before the deletion (Known after MergeUI.undo's applyRecord, or
+        // Raced.gone), as a stale tab's save is, but was made after seeing it)
+        if (E.applied && typeof P.base === 'number' && P.base < E.applied && P.rev !== E.applied && !P.u && !(!E.rev && P.rev - E.applied > DEF.remadeMs)) {
           // written by a tab that hadn't seen the merge's write (§3.4)
           // (only an old value carried along: the merged one is put back, by a merge write of its own, so that this tab's
           // next save, based on its own write, is still found to be one that never saw the merge)
@@ -8745,8 +8766,13 @@
             Object.assign(ps(uid, LP.b), { deleted: true, changed: true, risky: true, name: LP.parts.name.val, from: [S.exists.main.by], at: fin(S.exists.main.t, now) });
             from.add(S.exists.main.by);
           }
-          setMine(uid, { uid, b: LP ? LP.b : M ? M.b : 0, p: {}, w: {}, hist: (M && M.hist) || { at: 0, local: false }, quiet: null,
-            gone: tomb(S.exists, S.cover, M && M.gone), wgone });
+          // (deleted here now: each window on it that was deleted elsewhere too, as it is here, so that the page's Undo
+          // or Bring back doesn't bring that window back, see stamp. Kept while the page stays deleted)
+          const kw = {};
+          if (LP && !LP.gone) for (const wid of Object.keys(wgone)) if (LP.wins.has(wid)) kw[wid] = winH(LP.wins.get(wid));
+          const keepW = Object.keys(kw).length ? kw : M && M.gone && M.keepW;
+          setMine(uid, Object.assign({ uid, b: LP ? LP.b : M ? M.b : 0, p: {}, w: {}, hist: (M && M.hist) || { at: 0, local: false }, quiet: null,
+            gone: tomb(S.exists, S.cover, M && M.gone), wgone }, keepW ? { keepW } : {}));
           continue;
         }
         // ---- a page that shows
@@ -9230,7 +9256,7 @@
         let M2 = M;
         if (M.gone && !M.keep && ripe(M.gone) && shows(M.gone, f => (f.pages.has(uid) ? 'alive' : f.gone.pages.get(uid) || null))) { drop(uid, M.gone); delete L.mine[uid]; continue; }
         for (const [wid, T] of Object.entries(M.wgone || {})) {
-          if (!ripe(T)) continue;
+          if (!ripe(T) || (M.keepW && M.keepW[wid])) continue;   // (kept for keepW, as the page's is for keep)
           if (!shows(T, f => { const p = f.pages.get(uid); if (p && p.wins.has(wid)) return 'alive'; const g = f.gone.wins.get(`${uid} ${wid}`); return g ? g.exists : null; })) continue;
           if (M2 === M) { M2 = cloneMine(M); L.mine[uid] = M2; }
           drop(`${uid} ${wid}`, T);
@@ -9336,8 +9362,9 @@
       if (!summary || !summary.pages) return;
       this.round++;
       const pages = summary.pages, mine = S.board.uid, here = pages[mine], locked = Lock.on();
-      // pages added and deleted (not the untouched placeholder, nor this device's own pages when switching boards)
-      const added = Object.values(pages).filter(p => p.added), deleted = Object.entries(pages).filter(([, p]) => p.deleted && !p.here);
+      // pages added and deleted (not the untouched placeholder, nor this device's own pages when switching boards, nor a
+      // deletion made on this device: in an earlier stay in this folder, sent as it left)
+      const added = Object.values(pages).filter(p => p.added), deleted = Object.entries(pages).filter(([, p]) => p.deleted && !p.here && !(p.from.length && p.from.every(d => d === devKey())));
       if ((summary.placeholder || Object.values(pages).some(p => p.placeholder)) && added.length) this.say(`The board from ${this.names(summary.from)} is here.`);
       else if (added.length) this.say(added.length === 1 ? `“${added[0].name}” was added on ${this.names(added[0].from.length ? added[0].from : summary.from)}.` : `${added.length} pages were added on ${this.names(summary.from)}.`);
       // (pages deleted on another device: one message, with one Undo, however many. The Undo stays on the page shown:
