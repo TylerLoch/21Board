@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.16-4';
-  const BOARD_BUILD = 'acfb4e9a';
+  const BOARD_VERSION = '2026.11.16-5';
+  const BOARD_BUILD = '1a5989e6';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -5685,7 +5685,7 @@
         message: 'Board Sync keeps your board in a Google Drive folder, so your laptop and smartboard share it.',
         html: SYNC_ART + '<ol class="setup-steps">' +
           '<li>Tap <b>Choose folder…</b> below. In the window that opens, go to <b>Google Drive › My Drive</b>.</li>' +
-          '<li>The first time, tap <b>New folder</b> and name it <b>21Board</b>. On your other devices, wait until it shows up there, then pick it. (To share the board with a co-teacher, share this folder with them in Google Drive as an Editor.)</li>' +
+          '<li>The first time, tap <b>New folder</b> and name it <b>21Board</b>. On your other device, pick this same folder. (To keep a board in sync with a co-teacher, share this Google Drive folder with them as an Editor.)</li>' +
           '<li>Open the folder, then tap <b>Select</b> (or <b>Open</b>) and <b>Allow</b>.</li></ol>',
         actions: [{ label: 'Choose folder…', value: true, kind: 'primary' }, { label: 'Cancel', value: false }]
       });

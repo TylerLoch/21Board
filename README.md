@@ -292,9 +292,9 @@ says in a sentence what Board Sync does and how to make its folder, with a pictu
 then opens Chrome's folder picker:
 
 1. Go to **Google Drive › My Drive**.
-2. The first time, tap *New folder* and name it **21Board**. On your other devices, wait until it shows up
-   there, then pick it. (To share the board with a co-teacher, share this folder with them in Google Drive as
-   an Editor; they add a shortcut to it in their My Drive, then pick it.)
+2. The first time, tap *New folder* and name it **21Board**. On your other device, pick this same folder. (To
+   keep a board in sync with a co-teacher, share this Google Drive folder with them as an Editor; they add a
+   shortcut to it in their My Drive, then pick it.)
 3. Open the folder, then tap *Select* (or *Open*) and *Allow*.
 
 A quick look inside the folder picked catches the usual slips: My Drive itself offers to make a 21Board folder

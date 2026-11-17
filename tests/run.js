@@ -4465,8 +4465,8 @@ const SUITES = [
     await A.p.click('#settings [data-act="link-setup"]');
     const step1 = await said(A.p), steps = await A.p.locator('#modal.open .setup-steps li').allInnerTexts();
     ok(/Board Sync keeps your board in a Google Drive folder, so your laptop and smartboard share it\./.test(step1) && steps.length === 3 &&
-      /The first time, tap New folder and name it 21Board\. On your other devices, wait until it shows up there, then pick it\. \(To share the board with a co-teacher, share this folder with them in Google Drive as an Editor\.\)/.test(steps[1]),
-      `step 1 says what Board Sync does, and step 2 to wait for the folder on the other devices and how to share it (${steps[1]})`);
+      /The first time, tap New folder and name it 21Board\. On your other device, pick this same folder\. \(To keep a board in sync with a co-teacher, share this Google Drive folder with them as an Editor\.\)/.test(steps[1]),
+      `step 1 says what Board Sync does, and step 2 to pick the same folder on the other device and how to share it (${steps[1]})`);
     await A.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await A.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
     const last = await said(A.p);
