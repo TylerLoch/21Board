@@ -377,8 +377,9 @@ back, such as a window being typed in, is due again):
   the folder's, never replaces another's choice; one made while unlinked counts when the same folder is linked
   again, and of two made apart the later wins on every device. Board history never changes them, and the Undo of
   an update doesn't either. A device still on 2026.11.16-4 doesn't know the text style: it keeps its own, and
-  changes nobody's, until it updates (then it takes the board's). The page shown, Lock, Stay awake, the clock and
-  the Widget Picker's corners stay on each device. Settings says "On all your devices." beside Theme, Accent color
+  changes nobody's, until it updates. Then each device keeps the text style it had until one is chosen on any of
+  your devices (or takes one already chosen on another updated device). The page shown, Lock, Stay awake, the clock
+  and the Widget Picker's corners stay on each device. Settings says "On all your devices." beside Theme, Accent color
   and Text style, "This device only." beside Lock, Stay awake and the clock, and "This page, on all your devices."
   beside the page's own settings.
 

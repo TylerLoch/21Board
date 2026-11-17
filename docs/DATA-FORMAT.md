@@ -236,18 +236,22 @@ version. A change made here is a version whose counter is when it was chosen (`t
 the newest change stamped with it, so that two made apart (one while unlinked, say) resolve to the later on every
 device. An entry with no `v` is a value this device had before it synced with this folder: joining it or switching to
 it (the folder's then applies), or a ledger from before 2026.11.16-4, or from before 2026.11.17-2 for the text style
-(each device keeps its own until one is chosen again, and takes the folder's if one was). It is no change, and never
-replaces another device's. Nor is a value never chosen here (no `themeAt`, `accentAt` or `lettersAt`) that differs
-from its entry: one only received, which a ledger rebuilt from this device's file, written before its last merge,
-doesn't have yet. Linking an empty folder (`seed`) makes this device's a version: one chosen here at its `themeAt`,
-`accentAt` or `lettersAt` (not at the counters this device brings from another folder, which say nothing about when
-it was chosen), one never chosen here (the default, or a value from before 2026.11.16-4, or a text style from before
-2026.11.17-2) at the lowest counter there is, 1, with `t` 0, so that when two or more devices set up the same folder
-at once, before any has another's file, a choice made on one of them wins on all (of two, the later; none having
-chosen: the tie goes by device id). Linking the same folder again (`carry`) keeps the entries, so a choice made while
-unlinked counts. A choice made after linking while Google Drive is still bringing the folder (`wait`) is this
-device's own when the files arrive: joining or switching to the folder, the folder's applies. A value this release
-doesn't know (a text style a newer 21Board added, say) is skipped in a file, as any part is.
+(each device keeps its own until one is chosen on any device, and takes the folder's if one was). It is no change, and
+never replaces another device's. Nor is a value never chosen here (no `themeAt`, `accentAt` or `lettersAt`: the
+default, a value from before 2026.11.16-4 or a text style from before 2026.11.17-2) that differs from its entry: one
+only received, which a ledger rebuilt from this device's file, written before its last merge, doesn't have yet. A
+ledger from before then, which has no entry for it at all, takes a value chosen here since (on the newer release,
+before its first round: while Chrome asks to reconnect the folder after the update, say) as a change, at its time.
+Linking an empty folder (`seed`) makes this device's a version: one chosen here at its `themeAt`, `accentAt` or
+`lettersAt` (not at the counters this device brings from another folder, which say nothing about when it was chosen),
+one never chosen here at the lowest counter there is, 1, with `t` 0, so that when two or more devices set up the same
+folder at once, before any has another's file, a choice made on one of them wins on all (of two, the later; none
+having chosen: the tie goes by device id). A version with `t` 0 is nobody's change: a device that takes it says
+nothing, and one whose own value has no version (an entry with no `v`) keeps its own, unless it is joining or
+switching to the folder. Linking the same folder again (`carry`) keeps the entries, so a choice made while unlinked
+counts. A choice made after linking while Google Drive is still bringing the folder (`wait`) is this device's own when
+the files arrive: joining or switching to the folder, the folder's applies. A value this release doesn't know (a text
+style a newer 21Board added, say) is skipped in a file, as any part is.
 
 A device on 2026.11.16-4 doesn't know the text style: its files have no `letters` and no `sync.style.letters`, which
 says nothing about it (never a change, never a reset back to Standard), and it reads past both in a newer device's

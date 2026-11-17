@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.17-2';
-  const BOARD_BUILD = 'd7152063';
+  const BOARD_BUILD = 'ac7e939b';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -8438,21 +8438,22 @@
       }
       // 3. the theme, accent and text style. A change made here is a version whose counter is when it was made (themeAt,
       // accentAt, lettersAt), not the newest change stamped with it, so that two made apart (one while unlinked, say)
-      // resolve to the later on every device. A value this device had before it synced with this folder (joining it,
-      // switching to it, a ledger from before 2026.11.16-4, or from before 2026.11.17-2 for the text style) is no
-      // change: only its fingerprint is noted, and the folder's applies. Nor is
-      // one never chosen here: a value only received, which a ledger rebuilt from an own file older than the last merge
-      // doesn't have. An empty folder (seed) gets this device's, as old as the choice (the counters it brings from
-      // another folder say nothing about when that was; ctr is still raised to it, so later stamps stay above it); one
-      // never chosen here (the default) as the oldest version there can be, so that a choice made on another device
-      // that set up the same folder at once, before either had the other's file, wins on both. (Neither chose one: the
-      // tie goes by device id, the same on every device.)
-      const style = Object.assign({}, L.sync.style);
+      // resolve to the later on every device. A value this device had before it synced with this folder (joining it or
+      // switching to it) is no change: only its fingerprint is noted, and the folder's applies. Nor is one never chosen
+      // here: a value from before 2026.11.16-4 (2026.11.17-2 for the text style), or one only received, which a ledger
+      // rebuilt from an own file older than the last merge doesn't have. A ledger of this folder from before then has no
+      // entry for it: one chosen here since (on this release, before its first round: Chrome asking to Reconnect the
+      // folder after the update, say) is a change, as old as the choice. An empty folder (seed) gets this device's, as
+      // old as the choice (the counters it brings from another folder say nothing about when that was; ctr is still
+      // raised to it, so later stamps stay above it); one never chosen here (the default) as the oldest version there
+      // can be, so that a choice made on another device that set up the same folder at once, before either had the
+      // other's file, wins on both. (Neither chose one: the tie goes by device id, the same on every device.)
+      const style = Object.assign({}, L.sync.style), fresh = o.mode === 'join' || o.mode === 'take';
       let sn = 0, styled = 0;
       for (const k of STYLE_PARTS) {
         const lp = local.style && local.style[k], E = style[k];
         if (!lp || (E && E.h === lp.h)) continue;
-        if (o.mode !== 'seed' && (!E || !lp.chosen)) { style[k] = { h: lp.h }; continue; }
+        if (o.mode !== 'seed' && (!lp.chosen || (!E && fresh))) { style[k] = { h: lp.h }; continue; }
         const low = !E && !lp.chosen, n = low ? 1 : !E ? Math.max(1, fin(lp.at, now)) : Math.max(fin(lp.at, now), fin(o.ctr, 0) + 1, fin(o.maxSeen, 0) + 1);
         style[k] = { h: lp.h, v: arr({ by: dev, vv: vjoin(E && E.v ? E.v[1] : {}, { [dev]: n }), t: low ? 0 : fin(lp.at, now), u: false }) };
         sn = Math.max(sn, n); styled++;
@@ -9033,14 +9034,19 @@
       sum.from = Array.from(from);
       // the theme, accent and text style: another device's change is written to settings (a patch of those keys only),
       // and said (sum.style: [{by, theme, accent, letters}], by device; not when joining or switching to the folder's
-      // board, which nobody has just changed). With no version anywhere, this device's own is only noted.
+      // board, which nobody has just changed). With no version anywhere, this device's own is only noted. A version
+      // nobody chose (t 0: a default an empty folder was set up with) is nobody's change: it is never said, and it never
+      // replaces a value this device had before it synced that part (no version here: a smartboard that joined on
+      // 2026.11.16-4 keeps its own text style until one is chosen on any device).
       const style = {};
       for (const k of STYLE_PARTS) {
         const J = state.style && state.style[k], lp = local.style && local.style[k], E = (L.sync.style || {})[k];
         if (!J || !lp) { if (E || lp) style[k] = E || { h: lp.h }; continue; }
         if (J.main.src !== 'local' && J.main.h !== lp.h && J.main.has) {
+          const none = !fin(J.main.t, 0);
+          if (none && !(E && E.v) && mode !== 'join' && mode !== 'take') { style[k] = { h: lp.h }; continue; }
           (sp.set || (sp.set = {}))[k] = J.main.val;
-          if (mode === 'join' || mode === 'take') { style[k] = { h: J.main.h, v: arr(J.main) }; continue; }
+          if (mode === 'join' || mode === 'take' || none) { style[k] = { h: J.main.h, v: arr(J.main) }; continue; }
           let said = sum.style.find(x => x.by === J.main.by);
           if (!said) sum.style.push(said = { by: J.main.by });
           said[k] = J.main.val;

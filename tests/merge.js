@@ -6,8 +6,8 @@
  *   - the rules table (spec §4.1), case by case, with two or three simulated devices;
  *   - the theme, accent color and text style, the board's on every device: the later change wins, a device that never
  *     changed them never overwrites, joining, an empty folder (two or three set up at once), switching, linking again,
- *     files from 2026.11.16-3 (no theme or accent version) and 2026.11.16-4 (no text style version), and a device
- *     still on 2026.11.16-4 in the folder;
+ *     files from 2026.11.16-3 (no theme or accent version) and 2026.11.16-4 (no text style version), a device
+ *     still on 2026.11.16-4 in the folder, and devices updated from it;
  *   - reading a device file: cut, mixed and edited files are refused, a whole one is read, a bad unit is skipped;
  *   - a randomized run: devices editing pages and windows, Google Drive delivering files late, out of order, twice,
  *     as conflict copies or not at all, devices unlinked, linked again, switched to another folder and back, away
@@ -257,8 +257,8 @@ class Device {
     this.touch(v.uid);
   }
   // Settings → Theme, Accent color, Text style: the board's on every device linked to the folder (updateSettings notes
-  // when each was chosen here: themeAt, accentAt, lettersAt)
-  setStyle(p) { const set = {}; for (const [k, v] of Object.entries(p)) { set[k] = v; set[k + 'At'] = this.now(); } this.patch({ set }); }
+  // when each was chosen here: themeAt, accentAt, lettersAt; 2026.11.16-4 notes no lettersAt)
+  setStyle(p) { const set = {}; for (const [k, v] of Object.entries(p)) { set[k] = v; if (!(this.old && k === 'letters')) set[k + 'At'] = this.now(); } this.patch({ set }); }
   styleNow() { return [this.settings.theme || 'system', this.settings.accent || 'blue'].join(' '); }
   textNow() { return this.settings.letters || 'standard'; }
   styleOf() { return { theme: this.settings.theme || 'system', accent: this.settings.accent || 'blue', letters: this.textNow() }; }
@@ -1451,6 +1451,102 @@ function styles() {
     ok(all.every(d => d.textNow() === 'standard'), `updated, the smartboard takes the folder’s text style (the cart’s Standard), and changes nobody’s (${all.map(d => d.textNow()).join(' / ')})`);
     A.setStyle({ letters: 'early' }); NOW += 1000; each();
     ok(all.every(d => d.textNow() === 'early'), `then the laptop’s next choice reaches it too (${all.map(d => d.textNow()).join(' / ')})`);
+  });
+  // Updated from 2026.11.16-4: a ledger from before the text style. A choice made on the new release before its first
+  // round (Chrome asking to Reconnect the folder after the update, offline, or just quick) is a change like any other.
+  const linked4 = (labels, folderName) => {
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder(folderName), devs = labels.map(l => new Device(l, { old: true }));
+    devs[0].addWindow(devs[0].ids()[0], W.NOTES);
+    for (const d of devs) { if (d !== devs[0]) d.deliver(devs[0]); d.linkTo(f); }
+    const each = (list = devs) => { const w = LOG.writes; for (let k = 0; k < 3; k++) { for (const d of list) { if (!d.linked) continue; for (const o of list) if (o !== d && o.folder) d.deliver(o); d.round(); } NOW += MIN; } return LOG.writes - w; };
+    each();
+    return { f, devs, each };
+  };
+  const toldOf = d => (d.sums || []).flatMap(sm => sm.style).filter(x => x.letters).map(x => [x.by, x.letters]);
+  block(() => {
+    const { devs: [A, B], each } = linked4(['laptop', 'board'], 'Room 21');
+    as4(A, false); as4(B, false);
+    NOW += 1000; A.setStyle({ letters: 'early' }); NOW += 1000;
+    each();
+    ok(A.textNow() === 'early' && B.textNow() === 'early' && !toldOf(A).length,
+      `updated from 2026.11.16-4, Early readers chosen on the laptop before its first round: on both, and the laptop isn’t told otherwise (${A.textNow()} / ${B.textNow()}; ${JSON.stringify(toldOf(A))})`);
+    A.setStyle({ letters: 'legible' }); NOW += 1000; each();
+    ok(A.textNow() === 'legible' && B.textNow() === 'legible' && each() === 0, `then the laptop’s next choice reaches the smartboard too, and all is quiet (${A.textNow()} / ${B.textNow()})`);
+  });
+  block(() => {
+    // the cart, updated first, chose Easier to read; a minute later Early readers is chosen on the smartboard, just
+    // updated, before its first round: the later choice, on every device
+    const { devs: [A, B, C], each } = linked4(['laptop', 'board', 'cart'], 'Room 22');
+    as4(A, false); as4(C, false); each();
+    C.setStyle({ letters: 'legible' }); NOW += 1000; each();
+    ok(A.textNow() === 'legible' && C.textNow() === 'legible' && B.textNow() === 'standard', `(the cart’s Easier to read on the laptop; the smartboard, still on 2026.11.16-4, keeps its own: ${[A, B, C].map(d => d.textNow()).join(' / ')})`);
+    as4(B, false); NOW += MIN; B.setStyle({ letters: 'early' }); NOW += 1000;
+    each();
+    ok([A, B, C].every(d => d.textNow() === 'early') && !toldOf(B).length && each() === 0,
+      `the smartboard’s later Early readers, chosen before its first round on the new release, wins on every device, and it isn’t told otherwise (${[A, B, C].map(d => d.textNow()).join(' / ')}; ${JSON.stringify(toldOf(B))})`);
+  });
+  block(() => {
+    // unlinked while still on 2026.11.16-4, updated, Early readers chosen while unlinked, linked again (carry)
+    const { f, devs: [A, B], each } = linked4(['laptop', 'board'], 'Room 23');
+    as4(A, false); each();
+    B.unlink(); NOW += 1000;
+    as4(B, false); NOW += MIN; B.setStyle({ letters: 'early' }); NOW += 1000;
+    B.view = new Map(f.files); B.linkTo(f); each();
+    ok(B.linkedAs === 'carry' && A.textNow() === 'early' && B.textNow() === 'early', `unlinked on 2026.11.16-4, updated, Early readers chosen while unlinked, linked again: it counts (${B.linkedAs}: ${A.textNow()} / ${B.textNow()})`);
+  });
+  block(() => {
+    // the theme in the same place (the ledger has its entry): the same
+    const { devs: [A, B], each } = linked4(['laptop', 'board'], 'Room 24');
+    as4(A, false); as4(B, false);
+    NOW += 1000; A.setStyle({ theme: 'dark' }); NOW += 1000;
+    each();
+    ok(A.styleNow() === 'dark blue' && B.styleNow() === 'dark blue', `and the theme, chosen at the same moment, the same (${A.styleNow()} / ${B.styleNow()})`);
+  });
+  block(() => {
+    // a ledger from 2026.11.16-3 (no sync.style at all; that device skipped 2026.11.16-4): a theme and text style chosen
+    // before the first round on the new release reach the other device
+    const { A, B, folder, sync } = pair();
+    for (const d of [A, B]) { delete d.link.sync.style; d.peers.clear(); }
+    for (const [n, t] of Array.from(folder.files)) { const o = JSON.parse(t); delete o.sync.style; delete o.letters; folder.write(n, resum(o)); }
+    for (const d of [A, B]) d.view = new Map(folder.files);
+    NOW += 1000; A.setStyle({ theme: 'dark', letters: 'early' }); NOW += 1000;
+    sync();
+    ok(A.styleNow() === 'dark blue' && B.styleNow() === 'dark blue' && A.textNow() === 'early' && B.textNow() === 'early',
+      `a ledger from 2026.11.16-3, the theme and text style chosen before the first round on the new release: on both (${A.styleNow()} ${A.textNow()} / ${B.styleNow()} ${B.textNow()})`);
+  });
+  for (const joins of [true, false]) block(() => {
+    // the laptop, on 2026.11.17-2 and never having chosen a text style, sets up an empty folder (its Standard there as
+    // the oldest version there can be); the smartboard, on 2026.11.16-4 with Early readers, joins it, then updates. Nobody
+    // chose a text style for this folder: the smartboard keeps its own, and isn't told the laptop changed it.
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 25'), A = new Device('laptop'), B = new Device('board', { old: true, pages: !joins });
+    if (joins) B.addPage('Smartboard page');
+    A.addWindow(A.ids()[0], W.NOTES); B.patch({ set: { letters: 'early' } }); NOW += 1000;   // (2026.11.16-4 notes no lettersAt)
+    A.linkTo(f); B.linkTo(f);
+    const all = [A, B], each = () => { const w = LOG.writes; for (let k = 0; k < 3; k++) { for (const d of all) { for (const o of all) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } return LOG.writes - w; };
+    each();
+    ok(A.linkedAs === 'seed' && B.linkedAs === (joins ? 'join' : 'take') && A.textNow() === 'standard' && B.textNow() === 'early', `(the laptop set up the folder; the smartboard ${B.linkedAs}s it on 2026.11.16-4, and keeps its Early readers: ${A.textNow()} / ${B.textNow()})`);
+    as4(B, false); NOW += 1000; each();
+    ok(A.textNow() === 'standard' && B.textNow() === 'early' && !toldOf(B).length && each() === 0,
+      `updated, the smartboard (${joins ? 'joined' : 'took'} on 2026.11.16-4) keeps its Early readers over the laptop’s never-chosen Standard, isn’t told the laptop changed it, and all is quiet (${A.textNow()} / ${B.textNow()}; ${JSON.stringify(toldOf(B))})`);
+    B.setStyle({ letters: 'legible' }); NOW += 1000; each();
+    ok(A.textNow() === 'legible' && B.textNow() === 'legible', `then a choice on the smartboard reaches the laptop (${A.textNow()} / ${B.textNow()})`);
+    A.setStyle({ letters: 'early' }); NOW += 1000; each();
+    ok(A.textNow() === 'early' && B.textNow() === 'early' && each() === 0, `and the laptop’s later one the smartboard (${A.textNow()} / ${B.textNow()})`);
+  });
+  for (const first of ['laptop', 'smartboard']) block(() => {
+    // two set up one empty folder at once, neither having chosen a text style, but the smartboard has one from before
+    // 2026.11.17-2: one of the two never-chosen values on both (by device id), and nobody is told someone changed it
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 26'), A = new Device('laptop'), B = new Device('board', { pages: false });
+    A.addWindow(A.ids()[0], W.NOTES); B.addPage('Smartboard page'); B.patch({ set: { letters: 'early' } });
+    const [x, y] = first === 'laptop' ? [A, B] : [B, A];
+    x.linkTo(f, { atOnce: true }); NOW += 1000; y.linkTo(f, { atOnce: true });
+    const each = () => { for (let k = 0; k < 3; k++) { for (const d of [A, B]) { for (const o of [A, B]) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } };
+    each();
+    ok(A.textNow() === B.textNow() && !toldOf(A).length && !toldOf(B).length,
+      `two set up one empty folder at once (the ${first} first), neither having chosen a text style: the same on both, and nobody is told it changed (${A.textNow()} / ${B.textNow()}; ${JSON.stringify(toldOf(A).concat(toldOf(B)))})`);
   });
 }
 
