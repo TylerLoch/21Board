@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.17-4';
-  const BOARD_BUILD = '88714131';
+  const BOARD_BUILD = '935ec83f';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2967,6 +2967,8 @@
         this.close();
         openWidget(t.dataset.widget, { side });
       });
+      // A font for the text style finishing loading can change where names wrap: measure again.
+      if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => this.fitNames());
     },
 
     toggle(side) { if (this.side === side) this.close(); else this.open(side); },
@@ -2978,6 +2980,7 @@
       this.renderControls();
       this.el.classList.remove('left', 'right');
       this.el.classList.add(side, 'open');
+      this.fitNames();
       for (const s of ['left', 'right']) {
         this.btns[s].classList.toggle('active', s === side);
         this.btns[s].setAttribute('aria-expanded', String(s === side));
@@ -3015,6 +3018,18 @@
           (c ? `<span class="badge" aria-label="${c} open">${c}</span>` : '') +
           (a.dev || a.devOnly ? '<span class="devtag">DEV</span>' : '') + '</button>';
       }).join('') || '<div class="empty-note" style="grid-column:1/-1;padding:16px">No widgets installed.</div>';
+      this.fitNames();
+    },
+
+    // Only a name cut to two lines (…) is clipped to its box; the others are marked to be drawn whole (index.html,
+    // .widget-name.fits). Measured as drawn, so only while the panel is open, and while clipped: every browser counts
+    // the lines a clipped box hides.
+    fitNames() {
+      if (!this.el || !this.el.classList.contains('open')) return;
+      const names = $$('.widget-name', this.el);
+      for (const n of names) n.classList.remove('fits');
+      const fits = names.map(n => n.scrollHeight <= n.clientHeight + 1);
+      names.forEach((n, i) => n.classList.toggle('fits', fits[i]));
     },
 
     renderControls() {

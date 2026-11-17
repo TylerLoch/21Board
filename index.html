@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="88714131">
+<html lang="en" data-build="935ec83f">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -312,12 +312,12 @@
     .panel.open { display: flex; animation: panel-in .18s cubic-bezier(.2, .9, .3, 1.1); }
     @keyframes panel-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
     .panel-widgets {
-      display: grid; grid-template-columns: repeat(var(--cols, 4), 96px); gap: 6px;
+      display: grid; grid-template-columns: repeat(var(--cols, 4), 96px); gap: 0 6px;
       overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 2px;
     }
     /* The icon at the top and the name under it, with room for two lines, so the icons in a row line up whatever their
        names. A longer name ends in … (the tile's tooltip and accessible name have it in full: board.js, Picker).
-       104px tall: three rows still fit at the largest size (UI_FIT_H in board.js). */
+       104px tall, and no gap between rows (the 10px above each icon parts them): rows are 104px apart, as before. */
     .widget-tile {
       position: relative; width: 96px; height: 104px; flex-direction: column; justify-content: flex-start; gap: 6px;
       border-radius: 16px; color: var(--text); font-size: 13px; font-weight: 500; line-height: 1.15; text-align: center; padding: 10px 4px 4px;
@@ -328,8 +328,11 @@
       background: var(--c, #64748b); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .14), 0 2px 6px rgba(0, 0, 0, .12);
     }
     .widget-icon svg { width: 30px; height: 30px; stroke-width: 2; }
-    /* (The tile's full width: cut to the width of its words, the box would clip the edges of the first and last letters.) */
-    .widget-name { align-self: stretch; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+    /* Words wrap at the tile's 88px, and the box reaches 6px further each side: Chrome draws the … of a centred line it
+       cuts up to half its width past the line's end. Only a name cut to two lines is clipped (.fits: Picker.fitNames in
+       board.js); the rest are drawn whole, as a box just two lines tall would shave the tails of g and y. */
+    .widget-name { align-self: stretch; margin: 0 -6px; padding: 0 6px; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+    .widget-name.fits { overflow: visible; }
     .widget-tile .badge {
       position: absolute; top: 1px; right: 12px; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
       background: var(--primary); color: var(--on-primary); font-size: 12px; font-weight: 700; display: grid; place-items: center;

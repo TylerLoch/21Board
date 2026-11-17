@@ -1858,7 +1858,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (every Text style, 5 and 3 columns, both corners, badges and DEV, 200%)', async (browser) => {
+  ['Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (every Text style, 5 and 3 columns, 100–150%, both corners, badges and DEV, 200%, 16 tiles)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -1867,12 +1867,15 @@ const SUITES = [
     // with a long name of its own (21Board adds “ (test)”), uploaded as in Developer mode.
     for (const id of ['clock', 'notes', 'notes', 'first-then-board', 'task-timer']) await page.evaluate(id => window.__board21.openWidget(id), id);
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]');
-    const LONG = 'Fraction Bars and Number Line Explorer', FULL = LONG + ' (test)';
-    fs.writeFileSync(OUT + 'long-name.html', `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Fractions</title>
-<script type="application/json" id="board21-widget">{"id":"fractions","name":"${LONG}","window":{"width":400,"height":300}}</script></head><body>Fractions</body></html>`);
-    await page.setInputFiles('#widget-input', OUT + 'long-name.html');
-    ok(await eventually(() => page.evaluate(() => window.__board21.state.insts.has('dev-fractions:1'))), `a widget file named “${LONG}” is uploaded and opens`);
-    await page.waitForTimeout(800);
+    const upload = async (id, name) => {
+      fs.writeFileSync(OUT + `long-name-${id}.html`, `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>${id}</title>
+<script type="application/json" id="board21-widget">{"id":"${id}","name":"${name}","window":{"width":400,"height":300}}</script></head><body>${id}</body></html>`);
+      await page.setInputFiles('#widget-input', OUT + `long-name-${id}.html`);
+      ok(await eventually(() => page.evaluate(k => window.__board21.state.insts.has(k), `dev-${id}:1`)), `a widget file named “${name}” is uploaded and opens`);
+      await page.waitForTimeout(800);
+    };
+    const LONG = 'Fraction Bars and Number Line Explorer', FULL = LONG + ' (test)', LONGS = [FULL];
+    await upload('fractions', LONG);
     const openPicker = async (side = 'left', cols) => {
       for (let i = 0; i < 3 && await page.locator('#settings.open, #panel.open').count(); i++) { await page.keyboard.press('Escape'); await page.waitForTimeout(200); }
       if (await page.locator('#panel.open').count()) await page.click(`.picker-btn.${await page.locator('#panel.open.left').count() ? 'left' : 'right'}`);
@@ -1887,9 +1890,11 @@ const SUITES = [
       return [...document.querySelectorAll('#panel .widget-tile')].map(t => {
         const r = t.getBoundingClientRect(), i = t.querySelector('.widget-icon').getBoundingClientRect(), s = t.querySelector('.widget-icon + span'), n = s.getBoundingClientRect(), cs = getComputedStyle(s);
         const by = e => { if (!e) return null; const b = e.getBoundingClientRect(); return { up: (i.top - b.top) / ui, past: (b.right - i.right) / ui, before: (i.left - b.left) / ui }; };
+        // (Where its words wrap, inside the room its box keeps at the sides for a …)
+        const pl = parseFloat(cs.paddingLeft) * ui, pr = parseFloat(cs.paddingRight) * ui;
         return { name: s.textContent, row: Math.round(r.top), icon: i.top, size: Math.max(Math.abs(i.width / ui - 54), Math.abs(i.height / ui - 54)), lines: Math.round(n.height / ui / parseFloat(cs.lineHeight)),
-          inside: n.top >= r.top - 0.5 && n.bottom <= r.bottom + 0.5 && n.left >= r.left - 0.5 && n.right <= r.right + 0.5,
-          cut: s.scrollHeight > s.clientHeight + 1 || s.scrollWidth > s.clientWidth + 1, clamp: cs.webkitLineClamp === '2' && cs.overflow === 'hidden',
+          inside: n.top >= r.top - 0.5 && n.bottom <= r.bottom + 0.5 && n.left + pl >= r.left - 0.5 && n.right - pr <= r.right + 0.5,
+          cut: s.scrollHeight > s.clientHeight + 1 || s.scrollWidth > s.clientWidth + 1, clamp: cs.webkitLineClamp === '2' && cs.overflow === 'hidden', clip: cs.overflow !== 'visible',
           badge: by(t.querySelector('.badge')), dev: by(t.querySelector('.devtag')) };
       });
     });
@@ -1907,6 +1912,28 @@ const SUITES = [
       }
       return out;
     };
+    // Where a name's ink starts and ends, drawn with its clip widened sideways: px past its box's left and right edges (the
+    // clip's), so > 0 is ink the clip cuts off. (Chrome draws the … of a centred line it cuts up to half its width past
+    // the line's end.) Its text against the same shot with the text taken away.
+    const inkSides = async s => {
+      await s.evaluate(s => s.scrollIntoView({ block: 'nearest' }));
+      const b = await s.boundingBox(), clip = { x: b.x - 20, y: b.y, width: b.width + 40, height: b.height };
+      await s.evaluate(s => { s.style.overflow = 'visible'; s.style.clipPath = 'inset(0 -20px)'; });
+      const a = (await page.screenshot({ clip })).toString('base64');
+      await s.evaluate(s => { s.style.color = 'transparent'; });
+      const c = (await page.screenshot({ clip })).toString('base64');
+      await s.evaluate(s => { s.style.overflow = s.style.clipPath = s.style.color = ''; });
+      const x = await page.evaluate(async shots => {
+        const [A, C] = await Promise.all(shots.map(async s => { const i = new Image(); i.src = 'data:image/png;base64,' + s; await i.decode();
+          const v = document.createElement('canvas'); v.width = i.width; v.height = i.height; const g = v.getContext('2d'); g.drawImage(i, 0, 0); return g.getImageData(0, 0, i.width, i.height); }));
+        let l = A.width, r = 0;
+        for (let k = 0; k < A.data.length; k += 4) {
+          if (Math.abs(A.data[k] - C.data[k]) + Math.abs(A.data[k + 1] - C.data[k + 1]) + Math.abs(A.data[k + 2] - C.data[k + 2]) > 30) { const p = (k / 4) % A.width; l = Math.min(l, p); r = Math.max(r, p + 1); }
+        }
+        return { l: l / A.width, r: r / A.width };
+      }, [a, c]);
+      return { left: 20 - x.l * clip.width, right: x.r * clip.width - 20 - b.width };
+    };
     const near = (a, b) => Math.abs(a - b) < 0.6;
     const check = async (where, { ink = false } = {}) => {
       const ts = await tiles(), rows = new Map();
@@ -1915,10 +1942,16 @@ const SUITES = [
       const two = ts.filter(t => t.lines === 2).map(t => t.name);
       ok(off.every(d => d < 0.5) && ts.every(t => t.size < 0.5) && two.length > 0,
         `${where}: in every row the icons share one top, all full size, with names on one line and on two (${two.join(', ')}) (rows off by ${off.map(d => d.toFixed(1)).join(', ')} px; icons squeezed: ${ts.filter(t => t.size >= 0.5).map(t => t.name).join(', ') || 'none'})`);
-      const bad = ts.filter(t => !t.inside || t.lines > 2 || (t.cut && !(t.clamp && t.lines === 2)) || (t.cut && t.name !== FULL));
-      const long = ts.find(t => t.name === FULL);
-      ok(!bad.length && long && long.cut && long.clamp && long.lines === 2,
-        `${where}: no name runs out of its tile or is cut, save “${FULL}”: two lines and an ellipsis (${bad.map(t => `${t.name}: ${t.lines} lines${t.inside ? '' : ', out of its tile'}${t.cut ? ', cut' : ''}`).join('; ') || (long ? `${long.lines} lines${long.cut ? ', cut' : ''}${long.clamp ? ' with …' : ''}` : 'not there')})`);
+      // Only a name cut to two lines is clipped to its box: a box exactly two lines tall would shave the tails of g and y.
+      const bad = ts.filter(t => !t.inside || t.lines > 2 || (t.cut && !(t.clamp && t.lines === 2)) || (t.cut && !LONGS.includes(t.name)) || (!t.cut && t.clip));
+      const longs = LONGS.map(n => ts.find(t => t.name === n)), sideways = await page.evaluate(() => { const g = document.querySelector('#panel .panel-widgets'); return g.scrollWidth - g.clientWidth; });
+      ok(!bad.length && longs.every(l => l && l.cut && l.clamp && l.lines === 2) && sideways <= 0,
+        `${where}: no name runs out of its tile, is cut or is clipped, save ${LONGS.map(n => `“${n}”`).join(' and ')}: two lines and an ellipsis; the tiles don't scroll sideways (${bad.map(t => `${t.name}: ${t.lines} lines${t.inside ? '' : ', out of its tile'}${t.cut ? ', cut' : ''}${t.clip && !t.cut ? ', clipped though it fits' : ''}`).join('; ') || longs.map((l, k) => l ? `${l.lines} lines${l.cut ? ', cut' : ''}${l.clamp ? ' with …' : ''}` : LONGS[k] + ' not there').join('; ')}${sideways > 0 ? `; ${sideways} px sideways` : ''})`);
+      const ell = [];
+      for (const s of await page.locator('#panel .widget-name').all()) if (await s.evaluate(s => s.scrollHeight > s.clientHeight + 1)) ell.push({ name: await s.textContent(), ...await inkSides(s) });
+      const cutEll = ell.filter(e => e.left > 0.5 || e.right > 0.5);
+      ok(ell.length === LONGS.length && !cutEll.length,
+        `${where}: the … ending a name cut to two lines is drawn whole, inside its box (${ell.map(e => `${e.name}: ink ${e.right > 0.5 ? e.right.toFixed(1) + ' px past its right edge' : e.left > 0.5 ? e.left.toFixed(1) + ' px past its left edge' : `${(-e.left).toFixed(1)} and ${(-e.right).toFixed(1)} px inside`}`).join('; ') || 'none cut'})`);
       const marks = ts.filter(t => (t.badge && !(near(t.badge.up, 9) && near(t.badge.past, 9))) || (t.dev && !(near(t.dev.up, 7) && near(t.dev.before, 13))));
       ok(ts.filter(t => t.badge).length >= 5 && ts.filter(t => t.dev).length >= 2 && !marks.length,
         `${where}: each open-count badge sits 9 px above its icon and 9 px past its right edge, each DEV tag 7 px above and 13 px before it, as on a one-line tile before (${marks.map(t => `${t.name}: ${JSON.stringify(t.badge || t.dev, (k, v) => typeof v === 'number' ? +v.toFixed(1) : v)}`).join('; ') || 'all'})`);
@@ -1937,6 +1970,13 @@ const SUITES = [
         await check(`${style}, ${cols} columns`, { ink: cols === 5 });
         await page.locator('#panel').screenshot({ path: OUT + `widget-picker-${style}-${cols}col.png` });
       }
+      // Sizes between, where a box's edges fall between the screen's pixels.
+      for (const sc of [1.25, 1.5]) {
+        await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
+        await openPicker('left');
+        await check(`${style}, ${sc * 100}%`);
+      }
+      await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
     }
     await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]');
     await openPicker('right');
@@ -1968,6 +2008,31 @@ const SUITES = [
     ok(heard.length >= 15 && !wrong.length, `every tile's accessible name is its full name, its description what it does, and its tooltip starts with the name (${wrong.map(h => `${h.id}: heard “${h.said}”, described “${h.desc}”, tooltip “${h.tip}”`).join('; ') || heard.length + ' tiles'})`);
     const lt = heard.find(h => h.name === FULL);
     ok(lt && lt.said === FULL && lt.tip === FULL, `the long one too: a screen reader hears “${lt && lt.said}”, and its tooltip says “${lt && lt.tip}”`);
+
+    // Sixteen tiles (a second long name): four rows, 104 px apart as before, so the panel fits where it did: at 200% on
+    // 1920 × 1080 and 150% on 1280 × 800, without scrolling.
+    const LONG2 = 'Supercalifragilisticexpialidocious Spelling';
+    await upload('spelling', LONG2); LONGS.push(LONG2 + ' (test)');
+    for (const [w, h, sc] of [[1920, 1080, 2], [1280, 800, 1.5]]) {
+      await page.setViewportSize({ width: w, height: h }); await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(400);
+      await openPicker('left');
+      const f = await page.evaluate(() => { const P = document.getElementById('panel'), g = P.querySelector('.panel-widgets'), r = P.getBoundingClientRect(), c = P.querySelector('.panel-controls').getBoundingClientRect();
+        const ts = [...g.querySelectorAll('.widget-tile')];
+        return { n: ts.length, rows: new Set(ts.map(t => Math.round(t.getBoundingClientRect().top))).size, top: r.top, bottom: c.bottom, sh: g.scrollHeight, ch: g.clientHeight }; });
+      ok(f.n === 16 && f.rows === 4 && f.sh <= f.ch + 1 && f.top >= 0 && f.bottom <= h,
+        `16 tiles at ${sc * 100}% on ${w} × ${h}: their 4 rows fit without scrolling, the controls on screen (${f.n} tiles, ${f.rows} rows, ${f.sh} of ${f.ch} px; top ${Math.round(f.top)}, controls end at ${Math.round(f.bottom)})`);
+      await check(`16 tiles at ${sc * 100}% on ${w} × ${h}`);
+      await page.locator('#panel').screenshot({ path: OUT + `widget-picker-16-${w}x${h}.png` });
+    }
+    // Each long name's … whole in every Text style.
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(400);
+    for (const style of ['standard', 'legible', 'early']) {
+      await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
+      if (style !== 'standard') await page.waitForFunction(fam => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').length >= 2, FAMS[style]);
+      await openPicker('left');
+      await check(`16 tiles, ${style}`);
+    }
+    await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-16-early.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
