@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.17-5';
-  const BOARD_BUILD = '1e6787ba';
+  const BOARD_BUILD = 'a3038492';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3193,6 +3193,9 @@
       this.el.classList.remove('compact', 'tight', 'cols');
       this.el.style.gridTemplateRows = '';
       this.el.style.maxHeight = 'none';
+      // (Measured at the screen's top left: where it was last, at another zoom or by another window, it may have had
+      // too little room to its right, and been squeezed to its min-width, its labels wrapped onto more lines.)
+      this.el.style.left = this.el.style.top = '0px';
       let m = size();
       if (m.height > vh - 2 * M) { this.el.classList.add('compact'); m = size(); }
       if (m.height > vh - 2 * M) { this.el.classList.add('tight'); m = size(); }
@@ -4620,7 +4623,7 @@
           <button class="btn primary" data-act="dev-upload">${svg('import')}Upload file…</button>
           ${devList ? `<div class="inst-list">${devList}</div>` : ''}</div>` : ''}` : ''}
         <div class="about">21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
-        ${note ? '' : Link.dir ? 'Your board stays on this device and in your Drive folder. ' : 'Everything you make stays on this device. '}21Board sends nothing to a server, except that a YouTube Player window loads its video from YouTube.</div>`;
+        ${note ? '' : Link.dir ? 'Your board stays on this device and in your Drive folder. ' : 'Everything you make stays on this device. '}21Board sends nothing to a server, except that a YouTube Player window loads its video, and the titles of the videos in its History, from YouTube.</div>`;
       // The keyboard stays on the control it was on (a group's row, a choice): Settings is drawn afresh below.
       const was = this.body.contains(document.activeElement) && document.activeElement.dataset.act ? document.activeElement : null;
       const link = this.linkShown = Link.supported ? linkSettings(sw, seg) : '';   // (see linkChanged)

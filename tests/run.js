@@ -4537,7 +4537,8 @@ const SUITES = [
       'the README says all that YouTube sees: the board’s address, the video, the device and any YouTube account signed in on it');
     ok(!/widget that goes online/.test(readme + registrySrc), 'the README and registry don’t call it the one built-in widget that goes online (the district apps’ windows do too)');
     ok(/Open on YouTube/.test(readme.slice(readme.indexOf('## Kiosk mode'), readme.indexOf('## District apps'))), 'the README’s Kiosk mode section says the YouTube Player’s menu has no Open on YouTube there');
-    ok(readme.includes('when a video is added, the window also asks YouTube for its title, without sending cookies'), 'the README’s line on what YouTube sees says the window also asks YouTube for a video’s title, without cookies');
+    ok(readme.includes('and the window asks YouTube for the title of each video in its History, without sending cookies: when it is added and, until the window has saved its title, each time the board opens)'),
+      'the README’s line on what YouTube sees says the window also asks YouTube for the titles in its History, without cookies, and when');
     ok(/^\| \*\*YouTube Player\*\* \|.*History/.test(readme.slice(readme.indexOf('| **YouTube Player**'), readme.indexOf('| **21Sketch**'))), 'its row in Included widgets names the History');
     ok(/connect-src https:\/\/www\.youtube\.com/.test(readme.slice(readme.lastIndexOf('**For IT**'))), 'the README’s note for IT on a CSP names connect-src for the titles, as well as frame-src');
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
@@ -4607,8 +4608,8 @@ const SUITES = [
     await ytShow(page, `https://www.youtube.com/watch?v=${VID}`);
     a = await ytLook(page);
     ok(a.player && !a.ask && a.frames === 1 && a.src === EMBED(VID), `Show video puts YouTube’s player in the window: ${a.src}`);
-    const saved1 = { videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}`, history: [{ videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}`, title: YT_TITLES[VID] }] };
-    ok(await eventually(async () => JSON.stringify(await ytData(page)) === JSON.stringify(saved1), 3000), `it is saved as { videoId, videoUrl, history }, its History with the title YouTube gave (${JSON.stringify(await ytData(page))})`);
+    const saved1 = { videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}`, history: [{ videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}` }] };
+    ok(await eventually(async () => JSON.stringify(await ytData(page)) === JSON.stringify(saved1), 3000), `it is saved as { videoId, videoUrl, history } (the title YouTube gives goes into the History with the window’s next change) (${JSON.stringify(await ytData(page))})`);
     const fr = await ytWin(page).locator('#player iframe').evaluate(f => ({ host: new URL(f.src).host, allow: f.getAttribute('allow'), fs: f.hasAttribute('allowfullscreen'), ref: f.getAttribute('referrerpolicy'), title: f.title, sandbox: f.hasAttribute('sandbox') }));
     ok(fr.host === 'www.youtube.com' && !/autoplay=/.test(a.src), `the frame comes from www.youtube.com, with no autoplay parameter (${fr.host})`);
     ok(fr.allow.split(/;\s*/).sort().join() === 'autoplay,clipboard-write,encrypted-media,fullscreen,picture-in-picture' && fr.fs && fr.ref === 'strict-origin-when-cross-origin' && !fr.sandbox,
@@ -4647,7 +4648,7 @@ const SUITES = [
     // Settings → About says what goes to YouTube.
     await openSettings(page, ['advanced']);
     const about = (await page.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
-    ok(about.endsWith('Everything you make stays on this device. 21Board sends nothing to a server, except that a YouTube Player window loads its video from YouTube.'), `Settings → About names the exception (${about.slice(about.indexOf('·') + 1).trim()})`);
+    ok(about.endsWith('Everything you make stays on this device. 21Board sends nothing to a server, except that a YouTube Player window loads its video, and the titles of the videos in its History, from YouTube.'), `Settings → About names the exception (${about.slice(about.indexOf('·') + 1).trim()})`);
     await page.keyboard.press('Escape');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
@@ -4678,7 +4679,7 @@ const SUITES = [
     await ytWin(A).locator('#cancel').click(); await A.waitForTimeout(500);
     a = await ytLook(A);
     ok(a.player && a.src === EMBED(VID) && ytFrames(A).length === 1 && yt.embeds() === loads + 1, 'Cancel puts the same video back (loaded again, so from the start)');
-    ok(JSON.stringify(await ytData(A)) === JSON.stringify({ videoId: VID, videoUrl: `https://youtu.be/${VID}`, history: [{ videoId: VID, videoUrl: `https://youtu.be/${VID}`, title: YT_TITLES[VID] }] }), 'and nothing was saved');
+    ok(JSON.stringify(await ytData(A)) === JSON.stringify({ videoId: VID, videoUrl: `https://youtu.be/${VID}`, history: [{ videoId: VID, videoUrl: `https://youtu.be/${VID}` }] }), 'and nothing was saved');
     // Another video, from the box: both tabs show it.
     await ytChoose(A, 'Change video'); await ytShow(A, `https://www.youtube.com/watch?v=${VID2}`);
     ok(await eventually(async () => (await ytLook(A)).src === EMBED(VID2) && (await ytLook(B)).src === EMBED(VID2) && ytFrames(A).length === 1 && ytFrames(B).length === 1), 'a new video shows in both tabs, one frame in each');
@@ -4891,19 +4892,22 @@ const SUITES = [
     ok(!covered.length, `in a window that fills the board, the board’s ▦ buttons and clock never cover YouTube’s player (${covered.length ? covered.join('; ') : clear.join('; ')})`);
     await page.setViewportSize({ width: 1920, height: 1080 }); await page.evaluate(() => window.__board21.setBoardScale(0.8));
 
-    // Export and import carry the video; a template leaves it out (it is content).
+    // Export and import carry the video and its History; a template leaves them out (they are content). (Another video
+    // and back to this one from the History first: the titles found go into the content with those changes.)
     await page.evaluate(() => window.__board21.setRect('youtube-player:1', { x: 40, y: 40, w: 640, h: 400 })); await page.waitForTimeout(300);
+    await ytChoose(page, 'Change video'); await ytShow(page, `https://youtu.be/${VID2}`); await page.waitForTimeout(300);
+    ok(await ytPick(page, YT_LABEL[VID]), 'back to the first video, from the History');
     const full = await page.evaluate(() => window.__board21.buildExport('full')), tpl = await page.evaluate(() => window.__board21.buildExport('template'));
     const fi = full.instances.find(i => i.widgetId === 'youtube-player'), ti = tpl.instances.find(i => i.widgetId === 'youtube-player');
-    ok(fi && fi.data && fi.data.videoId === VID && JSON.stringify(fi.data.history) === JSON.stringify([{ videoId: VID, videoUrl: `https://youtu.be/${VID}`, title: YT_TITLES[VID] }]) && ti && ti.data === null,
-      `a full export has the video and its History, with the title; a blank template has the window without them (${JSON.stringify(fi && fi.data)})`);
+    ok(fi && fi.data && fi.data.videoId === VID && JSON.stringify(fi.data.history) === JSON.stringify([{ videoId: VID, videoUrl: `https://youtu.be/${VID}`, title: YT_TITLES[VID] }, { videoId: VID2, videoUrl: `https://youtu.be/${VID2}`, title: YT_TITLES[VID2] }]) && ti && ti.data === null,
+      `a full export has the video and its History, with the titles; a blank template has the window without them (${JSON.stringify(fi && fi.data)})`);
     const ctx2 = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const yt2 = await stubYouTube(ctx2);
     const p2 = await ctx2.newPage(); p2.on('pageerror', e => errors.push('[2] ' + e.message));
     await p2.goto(BASE); await boardUp(p2);
     await p2.evaluate(f => window.__board21.applyImport(f, 'replace'), full);
     ok(await eventually(async () => (await ytLook(p2)).src === EMBED(VID) && ytFrames(p2).length === 1), 'importing it on another device shows the same video');
-    ok(JSON.stringify(await ytHistory(p2)) === JSON.stringify(['✓ ' + YT_LABEL[VID]]) && yt2.oembeds() === 0, `and its History, by the title in the file: YouTube isn’t asked for it (${JSON.stringify(await ytHistory(p2))}; ${yt2.oembeds()} requests)`);
+    ok(await eventually(async () => JSON.stringify(await ytHistory(p2)) === JSON.stringify(['✓ ' + YT_LABEL[VID], YT_LABEL[VID2]]), 2000) && yt2.oembeds() === 0, `and its History, by the titles in the file: YouTube isn’t asked for them (${JSON.stringify(await ytHistory(p2))}; ${yt2.oembeds()} requests)`);
     await p2.evaluate(f => window.__board21.applyImport(f, 'add'), tpl); await p2.waitForTimeout(1200);
     ok((await ytLook(p2, 'youtube-player:2')).ask, 'the template’s window opens with the link box');
     await ctx2.close();
@@ -4942,7 +4946,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
-  ['YouTube Player: History in the window menu (the last five videos by their titles, the same video again, tapping one, Remove video, Reset, kiosk, reload, two tabs, content from before, saved history checked)', async (browser) => {
+  ['YouTube Player: History in the window menu (the last five videos by their titles, the same video again, tapping one, Remove video, Reset, kiosk, reload, two tabs, an older release saving, content from before, saved history checked)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const yt = await stubYouTube(ctx);
     // A YouTube cookie in this browser (as a signed-in student's would be): the request for a title must not carry it.
@@ -4968,7 +4972,8 @@ const SUITES = [
     const probe = yt.asked.find(x => x.id === 'c00k1eCheck');
     ok(!!probe && /PREF=f6=8/.test(probe.cookie), `(a request with cookies from the same page does carry YouTube’s cookie: “${probe && probe.cookie}”)`);
     yt.asked = yt.asked.filter(x => x !== probe);
-    ok(JSON.stringify((await ytData(A)).history) === JSON.stringify([{ videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}`, title: YT_TITLES[VID] }]), 'the History is saved in the window’s content, with the title');
+    ok(JSON.stringify((await ytData(A)).history) === JSON.stringify([{ videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}` }]),
+      'the History is saved in the window’s content; its title, found after, is not saved by itself (Board Sync would count that as a newer change: see “History with Board Sync”)');
 
     // Five more: the last five are kept, newest first, the one showing checked.
     const week = ['w4tErCyc1e0', 'mU1t1pl1c8n', 'pLaNtsGr0w5', 'S0larSyst3m', 'r3adAl0udPd'];
@@ -4977,13 +4982,14 @@ const SUITES = [
     ok(await same(L(five)), `after six videos the History keeps the last five, newest first, the one showing checked (${(await hist()).join(' | ')})`);
     ok(yt.oembeds() === 6 && week.every(id => yt.oembeds(id) === 1), `each title was asked for once (${yt.oembeds()} requests)`);
     let d = await ytData(A);
-    ok(d.videoId === 'r3adAl0udPd' && (d.history || []).length === 5 && (d.history || []).every((e, i) => e.videoId === five[i] && e.videoUrl === `https://youtu.be/${five[i]}` && e.title === YT_TITLES[five[i]] && !('start' in e)),
-      'the content’s history: those five, each with its link as pasted and its title');
+    ok(d.videoId === 'r3adAl0udPd' && (d.history || []).length === 5 && (d.history || []).every((e, i) => e.videoId === five[i] && e.videoUrl === `https://youtu.be/${five[i]}` && e.title === (i ? YT_TITLES[five[i]] : undefined) && !('start' in e)),
+      'the content’s history: those five, each with its link as pasted and its title, saved with the next change (the newest one’s not yet)');
     // The same video again, from another form of its link: to the top, listed once, its title not asked for again.
     await ytChoose(A, 'Change video'); await ytShow(A, 'https://www.youtube.com/watch?v=mU1t1pl1c8n&feature=share');
     five = ['mU1t1pl1c8n', 'r3adAl0udPd', 'S0larSyst3m', 'pLaNtsGr0w5', 'w4tErCyc1e0'];
     ok(JSON.stringify(await hist()) === JSON.stringify(L(five)) && yt.oembeds() === 6, `a video shown again moves to the top, listed once, its title not asked for again (${(await hist()).join(' | ')})`);
-    ok(((await ytData(A)).history || [])[0]?.videoUrl === 'https://www.youtube.com/watch?v=mU1t1pl1c8n&feature=share', 'with the link it was shown from this time');
+    ok(((await ytData(A)).history || [])[0]?.videoUrl === 'https://www.youtube.com/watch?v=mU1t1pl1c8n&feature=share' && ((await ytData(A)).history || [])[1]?.title === YT_TITLES.r3adAl0udPd,
+      'with the link it was shown from this time (and the title found for the one before is saved now)');
     // The same video from a start time: listed apart, its start in its label.
     await ytChoose(A, 'Change video'); await ytShow(A, 'https://youtu.be/mU1t1pl1c8n?t=90');
     const from90 = 'Multiplication Song: The 3 Times… (from 1:30)';
@@ -5034,7 +5040,8 @@ const SUITES = [
     await A.reload(); await boardUp(A);
     ok(await same(now5, A, 8000) && yt.oembeds() === 6, `after a reload the History is the same, titles and all, and YouTube isn’t asked for them again (${yt.oembeds()} requests)`);
 
-    // Two tabs: a title found in one shows in the other, which doesn't ask too; the player there goes on playing.
+    // Two tabs: a video added in one shows in the other, which asks for its title too (titles aren't saved by
+    // themselves); a title arriving doesn't start the player there again.
     const B = await ctx.newPage(); B.on('pageerror', e => errors.push('[B] ' + e.message));
     await B.goto(BASE); await boardUp(B);
     ok(await same(now5, B, 8000), 'a second tab shows the same History');
@@ -5043,8 +5050,15 @@ const SUITES = [
     ok(await eventually(async () => (await hist(B))[0] === '✓ YouTube video M7lc1UVf-VE' && (await ytLook(B)).src === EMBED('M7lc1UVf-VE'), 1200),
       `until its title is known, the video’s label says what it is: “YouTube video” and its id (${(await hist(B))[0]})`);
     await ytWin(B).locator('#player iframe').evaluate(f => { f.__mark = 1; }).catch(() => {});
-    ok(await eventually(async () => (await hist(B))[0] === '✓ ' + YT_LABEL['M7lc1UVf-VE'], 5000) && (await hist(A))[0] === '✓ ' + YT_LABEL['M7lc1UVf-VE'], `the title found in one tab shows in the other (${(await hist(B))[0]})`);
-    ok(yt.oembeds('M7lc1UVf-VE') === 1 && await ytWin(B).locator('#player iframe').evaluate(f => f.__mark === 1).catch(() => false), 'asked for once (the other tab didn’t ask), and the title arriving didn’t start the video there again');
+    ok(await eventually(async () => (await hist(B))[0] === '✓ ' + YT_LABEL['M7lc1UVf-VE'], 5000) && (await hist(A))[0] === '✓ ' + YT_LABEL['M7lc1UVf-VE'], `its title shows in both tabs (${(await hist(B))[0]})`);
+    ok(yt.oembeds('M7lc1UVf-VE') === 2 && await ytWin(B).locator('#player iframe').evaluate(f => f.__mark === 1).catch(() => false), `asked for once in each tab (${yt.oembeds('M7lc1UVf-VE')}), and the title arriving didn’t start the video there again`);
+    // A tab still on the release before the History (2026.11.17-3) saves just { videoId, videoUrl } when its teacher
+    // picks a video: the History here keeps its videos, that one moved to the top, with its title.
+    await ytWin(B).locator('html').evaluate(() => Board21.save({ videoId: 'pLaNtsGr0w5', videoUrl: 'https://youtu.be/pLaNtsGr0w5' }));
+    const kept = ['✓ ' + YT_LABEL.pLaNtsGr0w5, YT_LABEL['M7lc1UVf-VE'], YT_LABEL.r3adAl0udPd, from90, YT_LABEL.S0larSyst3m];
+    ok(await same(kept) && (await ytLook(A)).src === EMBED('pLaNtsGr0w5'), `content saved by an older release (no history) keeps the History, its video moved to the top (${(await hist()).join(' | ')})`);
+    await ytChoose(A, 'Change video'); await ytShow(A, `https://youtu.be/${VID}`);
+    ok(JSON.stringify(((await ytData(A)).history || []).map(e => e.videoId)) === JSON.stringify([VID, 'pLaNtsGr0w5', 'M7lc1UVf-VE', 'r3adAl0udPd', 'mU1t1pl1c8n']), 'and the next change here saves that History');
     // Reset clears the History, in both tabs; a video after it starts a History of its own.
     await A.click('.win[data-ikey="youtube-player:1"] .win-label'); await A.click('#menu [data-act="reset"]'); await A.click('#menu [data-act="reset-yes"]');
     ok(await eventually(async () => await ytHistory(A) === null && await ytHistory(B) === null && await ytMenu(A) === '' && await ytMenu(B) === '' && await ytData(A) === null), 'Reset clears the History too, in both tabs');
@@ -5059,21 +5073,22 @@ const SUITES = [
       `content from before the History: the video shows, with a History of just it, by its title (${(await hist()).join(' | ')})`);
     await ytChoose(A, 'Change video'); await ytShow(A, `https://youtu.be/${VID}`);
     d = await ytData(A);
-    ok(await same(L([VID]).concat(['Fractions for Kids | Halves, Thirds… (from 0:45)'])) && JSON.stringify((await ytData(A)).history) === JSON.stringify([{ videoId: VID, videoUrl: `https://youtu.be/${VID}`, title: YT_TITLES[VID] },
-      { videoId: 'fR4ct10nsK1', videoUrl: 'https://youtu.be/fR4ct10nsK1?t=45', start: 45, title: YT_TITLES['fR4ct10nsK1'] }]), 'the next video goes above it, and the History is saved, both titles with it');
+    ok(await same(L([VID]).concat(['Fractions for Kids | Halves, Thirds… (from 0:45)'])) && JSON.stringify((await ytData(A)).history) === JSON.stringify([{ videoId: VID, videoUrl: `https://youtu.be/${VID}` },
+      { videoId: 'fR4ct10nsK1', videoUrl: 'https://youtu.be/fR4ct10nsK1?t=45', start: 45, title: YT_TITLES['fR4ct10nsK1'] }]), 'the next video goes above it, and the History is saved, with the title found when the window opened');
 
     // Saved history is checked before it is used: bad entries are dropped (not the rest), more than five cut to five,
     // a title is only ever text.
     const send = dd => A.evaluate(dd => window.__board21.state.wins.get('youtube-player:1').post('data', { data: dd, reason: 'remote' }), dd);
+    Object.assign(yt.titles, { [VID2]: { status: 404 }, mU1t1pl1c8n: { status: 404 } });   // (titles arriving with content are asked for: these get none)
     const evil = '<img src=x onerror="top.document.title=\'PWNED\'">';   // (markup, and both kinds of quotes)
-    await send({ videoId: VID2, videoUrl: `https://youtu.be/${VID2}`, history: [{ videoId: 'short', videoUrl: '' }, { videoId: VID, videoUrl: 42 }, { videoId: VID, videoUrl: 'x'.repeat(5000) }, VID, null, [VID], 7,
+    await send({ videoId: VID2, videoUrl: `https://youtu.be/${VID2}`, history: [{ videoId: 'short', videoUrl: '' }, { videoId: 'videoseries', videoUrl: PLAYLIST_EMBED }, { videoId: VID, videoUrl: 42 }, { videoId: VID, videoUrl: 'x'.repeat(5000) }, VID, null, [VID], 7,
       { videoId: VID, videoUrl: `https://youtu.be/${VID}`, start: 'soon', title: evil }, { videoId: VID, videoUrl: 'another link', title: 'The same video again' },
       { videoId: 'mU1t1pl1c8n', videoUrl: '', start: 1e9, title: 42 }, { videoId: 'pLaNtsGr0w5', videoUrl: '', start: 30, title: '  How\tDo\nPlants\u0007 Grow?‮  ' },
       { videoId: 'S0larSyst3m', videoUrl: '', title: 'x'.repeat(500) }, { videoId: 'r3adAl0udPd', videoUrl: '' }, { videoId: 'w4tErCyc1e0', videoUrl: '' }] });
     await A.waitForTimeout(400);
     const got = await hist();
     ok(JSON.stringify(got) === JSON.stringify(['✓ YouTube video aqz-KE-bpKQ', evil, 'YouTube video mU1t1pl1c8n', 'How Do Plants Grow? (from 0:30)', 'x'.repeat(47) + '…']),
-      `damaged history entries are dropped, the rest kept (five, the video showing first), titles cleaned, a damaged start or title left out (${got.join(' | ')})`);
+      `damaged history entries are dropped (“videoseries”, a playlist’s address, too), the rest kept (five, the video showing first), titles cleaned, a damaged start or title left out (${got.join(' | ')})`);
     await A.click('.win[data-ikey="youtube-player:1"] .win-label'); await A.waitForTimeout(300);
     const shown = await A.evaluate(() => ({ marks: document.querySelectorAll('#menu img, #menu [onerror]').length, texts: Array.from(document.querySelectorAll('#menu [data-act="widget"] .label')).map(e => e.textContent) }));
     ok(shown.marks === 0 && shown.texts.includes(evil) && await A.title() !== 'PWNED', 'a title with markup and quotes shows as text in the menu');
@@ -5082,10 +5097,16 @@ const SUITES = [
     ok(JSON.stringify(await hist()) === JSON.stringify(['✓ ' + YT_LABEL[VID]]), 'a history that isn’t a list is read as none: just the video showing');
     await send({ videoId: null, videoUrl: '', history: [{ videoId: VID2, videoUrl: 'x' }] }); await A.waitForTimeout(300);
     ok(JSON.stringify(await hist()) === JSON.stringify(['YouTube video aqz-KE-bpKQ']) && (await ytLook(A)).ask, 'no video and a History: the link box, the History in the menu, nothing checked');
+    // A link typed in the link box and not shown yet stays when only the History changes (no video before or after),
+    // even with the keyboard gone from the box.
+    await ytWin(A).locator('#link').fill('https://youtu.be/r3adAl0udPd'); await ytWin(A).locator('h1').click();
+    await send({ videoId: null, videoUrl: '', history: [{ videoId: VID2, videoUrl: 'x', title: YT_TITLES[VID2] }, { videoId: VID, videoUrl: 'y' }] }); await A.waitForTimeout(300);
+    ok((await ytLook(A)).link === 'https://youtu.be/r3adAl0udPd' && JSON.stringify(await hist()) === JSON.stringify([YT_LABEL[VID2], YT_LABEL[VID]]),
+      `a change to the History alone, with no video, keeps a link being typed (“${(await ytLook(A)).link}”)`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['YouTube Player: History titles YouTube doesn’t give (a private video, blocked, no answer, offline, then online), a hostile or long title, at most five requests at once, the menu at Size 200%', async (browser) => {
+  ['YouTube Player: History titles YouTube doesn’t give (a private video, blocked, no answer, offline, then online), a hostile, invisible, long or wide title, a series, at most five requests at once, the menu at Size 200%', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const yt = await stubYouTube(ctx);
     const errors = [];
@@ -5127,7 +5148,7 @@ const SUITES = [
     await A.waitForTimeout(500);
     ok(yt.oembeds('n3wV1de0xyz') === 0 && (await hist())[0] === '✓ YouTube video n3wV1de0xyz', `with five requests waiting, a sixth isn’t sent yet (${yt.oembeds('n3wV1de0xyz')})`);
     ok(await eventually(async () => (await hist())[0] === '✓ How Volcanoes Work', 12000) && yt.oembeds('n3wV1de0xyz') === 1, 'once one is given up, it is sent, and its title shows');
-    ok(await eventually(async () => await titleOf('n3wV1de0xyz') === 'How Volcanoes Work', 2000), 'and is saved, as it is for a video just added');
+    ok(await titleOf('n3wV1de0xyz') === undefined, 'not saved by itself, as for every title (it goes with the window’s next change)');
 
     // Offline: a video can be added (it is saved); its title isn't asked for. Back online, it is, and shows.
     await ctx.setOffline(true); await A.waitForTimeout(400);
@@ -5138,37 +5159,72 @@ const SUITES = [
     ok(await eventually(async () => (await hist())[0] === '✓ ' + YT_LABEL['S0larSyst3m'], 6000) && yt.oembeds('S0larSyst3m') === 1, `back online, its title is asked for and shows (${(await hist())[0]})`);
     ok(await titleOf('S0larSyst3m') === undefined, 'a title found later like this is not saved by itself (Board Sync would count it as a newer change: see the next suite)');
     await show('r3adAl0udPd');
-    ok(await eventually(async () => await titleOf('S0larSyst3m') === YT_TITLES['S0larSyst3m'] && await titleOf('r3adAl0udPd') === YT_TITLES['r3adAl0udPd'], 3000), 'it is saved with the window’s next change');
+    ok(await eventually(async () => await titleOf('S0larSyst3m') === YT_TITLES['S0larSyst3m'], 3000) && await titleOf('r3adAl0udPd') === undefined, 'it is saved with the window’s next change (and that video’s own title with the one after)');
 
     // A hostile title: only ever text, cleaned (control characters out, white space collapsed).
     yt.titles.h0st1leT1tl = '\u0007<img src=x onerror="top.document.title=\'PWNED\'">\n';
     await show('h0st1leT1tl');
     const clean = '<img src=x onerror="top.document.title=\'PWNED\'">';
-    ok(await eventually(async () => (await hist())[0] === '✓ ' + clean, 3000) && await titleOf('h0st1leT1tl') === clean, `a title with markup, quotes and control characters is cleaned, and saved and shown as text (${(await hist())[0]})`);
+    ok(await eventually(async () => (await hist())[0] === '✓ ' + clean, 3000), `a title with markup, quotes and control characters is cleaned, and shown as text (${(await hist())[0]})`);
     await A.click('.win[data-ikey="youtube-player:1"] .win-label'); await A.waitForTimeout(300);
     const shown = await A.evaluate(() => ({ marks: document.querySelectorAll('#menu img, #menu [onerror]').length, first: (document.querySelector('#menu [role="menuitemcheckbox"] .label') || {}).textContent }));
     ok(shown.marks === 0 && shown.first === clean && await A.title() !== 'PWNED', `in the menu it is text (“${shown.first}”)`);
     await A.click('.win[data-ikey="youtube-player:1"] .win-label');
+    // A title with nothing to see in it (zero-width characters, direction marks, a soft hyphen, a combining mark, a
+    // Hangul filler, a blank Braille cell) is none: the label is the video's id, and nothing is saved.
+    yt.titles.inv1s1bleT1 = '\u200b\u200e\u200f\u2060\ufeff\u00ad\u0301 \u3164\u2800';
+    await show('inv1s1bleT1'); await A.waitForTimeout(500);
+    ok((await hist())[0] === '✓ YouTube video inv1s1bleT1' && yt.oembeds('inv1s1bleT1') === 1, `a title with nothing to see is none: the label is the video’s id (${JSON.stringify((await hist())[0])})`);
+    ok(await titleOf('h0st1leT1tl') === clean, 'the cleaned title before it was saved with this change');
     // A long title: saved up to 200 characters, its label shortened at a word, with …
     const long = 'A Very Long Title ' + 'about the water cycle and the weather '.repeat(10);
     yt.titles.l0ngT1tleV1 = long;
     await show('l0ngT1tleV1');
     ok(await eventually(async () => (await hist())[0] === '✓ A Very Long Title about the water cycle and the…', 3000), `a long title’s label is shortened at a word, with … (${(await hist())[0]})`);
+    ok(await titleOf('inv1s1bleT1') === undefined, 'and the title with nothing to see wasn’t saved');
+    // Videos of one series, whose titles differ only at the end: their labels keep the end too, so they can be told
+    // apart (a screen reader says each one's name).
+    Object.assign(yt.titles, { ph0n1csL1A0: 'Phonics for Kids | Learn to Read with Short Vowel Sounds | Lesson 1: Short A', ph0n1csL2E0: 'Phonics for Kids | Learn to Read with Short Vowel Sounds | Lesson 2: Short E' });
+    await show('ph0n1csL1A0'); await show('ph0n1csL2E0');
+    ok(await eventually(async () => JSON.stringify((await hist()).slice(0, 3)) === JSON.stringify(['✓ Phonics for Kids | Learn to… Lesson 2: Short E', 'Phonics for Kids | Learn to… Lesson 1: Short A', 'A Very Long Title about the water cycle and the…']), 3000),
+      `two titles that differ only at the end keep their ends in their labels (${(await hist()).slice(0, 2).join(' | ')})`);
     const t = await titleOf('l0ngT1tleV1');
     ok(t && t.length > 190 && t.length <= 200 && long.startsWith(t), `the title saved is cut to 200 characters at most (${t && t.length})`);
+    // Emoji: a label is cut between whole characters, short enough that the board doesn't cut it again (at 80 UTF-16
+    // code units), so it ends with … and never with half an emoji.
+    Object.assign(yt.titles, { thumbsUp000: 'a' + '👍'.repeat(60), fam1lyEm0j1: '👨‍👩‍👧‍👦'.repeat(30) + ' Family Fun' });
+    for (const id of ['thumbsUp000', 'fam1lyEm0j1']) {
+      await show(id);
+      const l = await eventually(async () => !/^✓ YouTube video/.test((await hist())[0]), 3000) && (await hist())[0].slice(2);
+      ok(l && l.endsWith('…') && l.length <= 80 && !/[\ud800-\udbff](?![\udc00-\udfff])|(^|[^\ud800-\udbff])[\udc00-\udfff]/.test(l) && (id !== 'fam1lyEm0j1' || /^(👨‍👩‍👧‍👦)+…$/u.test(l)),
+        `an emoji title’s label: whole characters, then … (${l && l.length} UTF-16 units: ${l})`);
+    }
 
     // The menu with a full History never scrolls: at Size 50% and 200%, on 1366 × 768 and 1920 × 1080, with a video,
-    // in the link box, and in kiosk mode; no label takes more than two lines.
-    yt.titles.w4tErCyc1e0 = YT_TITLES.w4tErCyc1e0; await show('w4tErCyc1e0'); await show(VID2 + '?t=90');
+    // in the link box, and in kiosk mode, with Board history's "Earlier versions…" in it too; it doesn't go into two
+    // columns, no label takes more than two lines (Chinese, an emoji title, one in capitals), and items whose labels
+    // wrap are set apart (a gap, or where the menu is tightest a line between them). (Size goes straight from 50% to
+    // 200% here: the menu is measured where it has the room, not squeezed at the place it had at 50%.)
+    await A.evaluate(() => window.__board21.history.cfg({ quiet: 300, every: 900 }));
+    Object.assign(yt.titles, { c4Jk4nJ1V1d: '九九乘法表儿歌 小学数学 乘法口诀歌 轻松学会乘法 儿童学习歌曲 一年级二年级三年级', em0j1T1tle0: '🎵🎶 Baby Shark Dance 🦈🦈🦈 Sing and Dance! 🎶🎵 Animal Songs 🐳🐙🐠🐡🦀🦞🦑 PINKFONG Songs for Children 🎵',
+      CAPSt1tLe00: 'WORLD MAP SONG | CONTINENTS AND OCEANS FOR KIDS | GEOGRAPHY' });
+    for (const id of ['c4Jk4nJ1V1d', 'em0j1T1tle0', 'CAPSt1tLe00?t=1h2m3s', VID2 + '?t=90']) await show(id);
+    await A.waitForTimeout(1500);
     const menuFits = async (p, label) => {
       await p.click('.win[data-ikey="youtube-player:1"] .win-label'); await p.waitForTimeout(350);
       const m = await p.evaluate(() => {
         const el = document.getElementById('menu'), r = el.getBoundingClientRect(), labels = Array.from(el.querySelectorAll('[data-act="widget"] .label'));
         const one = (() => { const x = labels[0].cloneNode(); x.textContent = 'X'; labels[0].parentNode.appendChild(x); const h = x.getBoundingClientRect().height; x.remove(); return h; })();
+        // The History's items: from one's text to the next's (in the menu's own px), and a line drawn between them.
+        const items = Array.from(el.querySelectorAll('[role="menuitemcheckbox"]')), ui = window.__board21.zoom.ui;
+        const text = it => { const g = document.createRange(); g.selectNodeContents(it.querySelector('.label')); const q = Array.from(g.getClientRects()); return { top: Math.min(...q.map(x => x.top)), bottom: Math.max(...q.map(x => x.bottom)) }; };
+        const gaps = items.slice(1).map((it, i) => ({ gap: (text(it).top - text(items[i]).bottom) / ui, line: getComputedStyle(it, '::before').content !== 'none' }));
         return { scrolls: el.scrollHeight > el.clientHeight + 1, inside: r.top >= -0.5 && r.left >= -0.5 && r.bottom <= innerHeight + 0.5 && r.right <= innerWidth + 0.5, lines: Math.max(...labels.map(l => Math.round(l.getBoundingClientRect().height / one))),
-          items: labels.length, mode: Array.from(el.classList).filter(c => /^(compact|tight|cols)$/.test(c)).join(' ') || 'normal', w: Math.round(r.width), h: Math.round(r.height) };
+          items: labels.length, mode: Array.from(el.classList).filter(c => /^(compact|tight|cols)$/.test(c)).join(' ') || 'normal', w: Math.round(r.width), h: Math.round(r.height),
+          apart: gaps.every(g => g.gap >= 6 || g.line), gaps: gaps.map(g => Math.round(g.gap) + (g.line ? '+line' : '')).join('/'), earlier: !!el.querySelector('[data-act="history"]') };
       });
-      await p.click('.win[data-ikey="youtube-player:1"] .win-label'); await p.waitForTimeout(200);
+      await p.keyboard.press('Escape'); await p.waitForTimeout(200);
+      if (await p.locator('#menu.open').count()) { await p.click('.win[data-ikey="youtube-player:1"] .win-label'); await p.waitForTimeout(200); }
       return Object.assign(m, { label });
     };
     const seen = [];
@@ -5188,32 +5244,34 @@ const SUITES = [
     await K.evaluate(() => window.__board21.setBoardScale(2)); await K.waitForTimeout(500);
     seen.push(await menuFits(K, '1366 × 768 200%, kiosk'));
     await K.close();
-    const bad = seen.filter(m => m.scrolls || !m.inside || m.lines > 2 || m.items < 5);
-    ok(!bad.length, `the menu with a full History fits on screen without scrolling, no label over two lines (${seen.map(m => `${m.label}: ${m.w} × ${m.h} ${m.mode}, ${m.lines} line(s)${m.scrolls ? ' SCROLLS' : ''}${m.inside ? '' : ' OFF SCREEN'}`).join('; ')})`);
+    const bad = seen.filter(m => m.scrolls || !m.inside || /cols/.test(m.mode) || m.lines > 2 || m.items < 5 || !m.apart);
+    ok(!bad.length, `the menu with a full History fits on screen without scrolling or columns, no label over two lines, items set apart (${seen.map(m => `${m.label}: ${m.w} × ${m.h} ${m.mode}, ${m.lines} line(s), gaps ${m.gaps}${m.scrolls ? ' SCROLLS' : ''}${m.inside ? '' : ' OFF SCREEN'}${m.earlier ? ', Earlier versions…' : ''}`).join('; ')})`);
+    ok(seen.filter(m => !/kiosk/.test(m.label)).every(m => m.earlier), 'with “Earlier versions…” in the menu as well');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['YouTube Player: History with Board Sync (titles arrive with it, the later change wins with its History, a title found later doesn’t count as a change)', async (browser) => {
+  ['YouTube Player: History with Board Sync (titles arrive with it, the later change wins with its History, a title that comes after doesn’t count as a change)', async (browser) => {
     const errors = [];
     const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
     const ya = await stubYouTube(A.c), yb = await stubYouTube(B.c);
     const ik = await addWin(A.p, 'youtube-player');
     await ytShow(A.p, `https://youtu.be/${VID}`, ik);
-    await eventually(async () => (((await ytData(A.p, ik)).history || [])[0] || {}).title === YT_TITLES[VID], 3000);
+    await eventually(async () => ((await ytHistory(A.p, ik)) || [])[0] === '✓ ' + YT_LABEL[VID], 3000);
     await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
     const ikB = await ikOf(B.p, await A.p.evaluate(ik => window.__board21.state.insts.get(ik).wid, ik));
     const k = d => d === A ? ik : ikB, hist = async d => (await ytHistory(d.p, k(d))) || [];
     const look = async d => ({ video: ((await ytData(d.p, k(d))) || {}).videoId, src: (await ytLook(d.p, k(d))).src, history: await hist(d), wins: (await winList(d.p)).filter(x => x.widgetId === 'youtube-player').length });
-    ok(!!ikB && await eventually(async () => JSON.stringify(await hist(B)) === JSON.stringify(['✓ ' + YT_LABEL[VID]])) && yb.oembeds() === 0,
-      `the smartboard gets the laptop’s History with the title, and asks YouTube for nothing (${(await hist(B)).join(' | ')}; ${yb.oembeds()} requests)`);
+    ok(!!ikB && await eventually(async () => JSON.stringify(await hist(B)) === JSON.stringify(['✓ ' + YT_LABEL[VID]])) && yb.oembeds() === 1,
+      `the smartboard gets the laptop’s History; the newest video’s title isn’t saved yet (it goes with the next change), so the smartboard asks for it, once (${(await hist(B)).join(' | ')}; ${yb.oembeds()} requests)`);
     const pick = async (d, link) => { if (!(await ytLook(d.p, k(d))).ask) await ytChoose(d.p, 'Change video', k(d)); await ytShow(d.p, link, k(d)); };
 
-    // A title found on one device arrives on the other with the content: it isn't asked for again there.
+    // A title found on one device arrives on the other with the content, saved with the next change.
     await pick(A, `https://youtu.be/${VID2}`);
-    await eventually(async () => (((await ytData(A.p, ik)).history || [])[0] || {}).title === YT_TITLES[VID2], 3000);
+    await eventually(async () => (await hist(A))[0] === '✓ ' + YT_LABEL[VID2], 3000);
     await syncNow(A.p); await exchange(A, B); await A.p.waitForTimeout(500);
-    ok(await eventually(async () => JSON.stringify(await hist(B)) === JSON.stringify(['✓ ' + YT_LABEL[VID2], YT_LABEL[VID]])) && yb.oembeds() === 0 && ya.oembeds() === 2,
-      `a video added on the laptop arrives on the smartboard with its title (${(await hist(B)).join(' | ')}; asked ${ya.oembeds()} times on the laptop, ${yb.oembeds()} on the smartboard)`);
+    ok(await eventually(async () => JSON.stringify(await hist(B)) === JSON.stringify(['✓ ' + YT_LABEL[VID2], YT_LABEL[VID]])) && (((await ytData(B.p, ikB)).history || [])[1] || {}).title === YT_TITLES[VID] &&
+      yb.oembeds(VID) === 1 && yb.oembeds(VID2) === 1 && ya.oembeds() === 2,
+      `a video added on the laptop arrives on the smartboard, the title of the one before in the content (${(await hist(B)).join(' | ')}; asked ${ya.oembeds()} times on the laptop, ${yb.oembeds()} on the smartboard, once for each video)`);
 
     // Both change the video before they sync: the later one wins, with its History.
     await pick(A, 'https://youtu.be/w4tErCyc1e0'); await syncNow(A.p); await A.p.waitForTimeout(1500);
@@ -5229,8 +5287,8 @@ const SUITES = [
     // smartboard's newer video still wins.
     await A.c.setOffline(true); await A.p.waitForTimeout(400);
     await pick(A, 'https://youtu.be/fR4ct10nsK1'); await syncNow(A.p); await exchange(A, B); await A.p.waitForTimeout(500);
-    ok(await eventually(async () => (await hist(B))[0] === '✓ YouTube video fR4ct10nsK1' && (await hist(A))[0] === '✓ YouTube video fR4ct10nsK1') && ya.oembeds('fR4ct10nsK1') === 0,
-      `both show the video, labelled with its id (${(await hist(B))[0]})`);
+    ok(await eventually(async () => (await hist(B))[0] === '✓ ' + YT_LABEL.fR4ct10nsK1 && (await hist(A))[0] === '✓ YouTube video fR4ct10nsK1') && ya.oembeds('fR4ct10nsK1') === 0 && yb.oembeds('fR4ct10nsK1') === 1,
+      `both show the video: offline, the laptop labels it with its id; the smartboard asks for its title itself (laptop ${(await hist(A))[0]}; smartboard ${(await hist(B))[0]})`);
     await A.p.waitForTimeout(1500);
     await pick(B, 'https://youtu.be/r3adAl0udPd'); await B.p.waitForTimeout(300); await syncNow(B.p);
     await A.c.setOffline(false);
@@ -5238,7 +5296,7 @@ const SUITES = [
     await A.p.waitForTimeout(1500); await syncNow(A.p);
     await exchange(A, B); await A.p.waitForTimeout(800);
     a = await look(A); b = await look(B);
-    want = ['✓ ' + YT_LABEL.r3adAl0udPd, 'YouTube video fR4ct10nsK1', YT_LABEL['M7lc1UVf-VE'], YT_LABEL[VID2], YT_LABEL[VID]];
+    want = ['✓ ' + YT_LABEL.r3adAl0udPd, YT_LABEL.fR4ct10nsK1, YT_LABEL['M7lc1UVf-VE'], YT_LABEL[VID2], YT_LABEL[VID]];
     ok(good(b, 'r3adAl0udPd', want) && a.video === 'r3adAl0udPd' && a.src === EMBED('r3adAl0udPd') && a.history[0] === want[0] && a.wins === 1,
       `the smartboard’s newer video stays on both: the title found later didn’t count as a newer change (laptop ${JSON.stringify(a)}; smartboard ${JSON.stringify(b)})`);
     ok(a.history[1] === YT_LABEL.fR4ct10nsK1, 'the laptop still shows the title it found');
@@ -5247,8 +5305,26 @@ const SUITES = [
     await ytChoose(B.p, 'Remove video', ikB); await B.p.waitForTimeout(300); await syncNow(B.p);
     await exchange(A, B); await A.p.waitForTimeout(800);
     a = await look(A); b = await look(B);
-    ok(a.video === null && b.video === null && !a.src && !b.src && a.history.length === 5 && JSON.stringify(a.history.map(l => l.replace(YT_LABEL.fR4ct10nsK1, 'YouTube video fR4ct10nsK1'))) === JSON.stringify(b.history) && !b.history.some(l => l.startsWith('✓')),
+    ok(a.video === null && b.video === null && !a.src && !b.src && a.history.length === 5 && JSON.stringify(a.history) === JSON.stringify(b.history) && !b.history.some(l => l.startsWith('✓')),
       `a later Remove video wins on both, the History kept, nothing checked (laptop ${JSON.stringify(a)}; smartboard ${JSON.stringify(b)})`);
+
+    // Picked on both within a moment, the laptop's title slow to come (a slow network): when it comes, the title isn't
+    // a change of its own, so the smartboard's pick, made after the laptop's, wins on both.
+    for (const [how, aId, bId, bLink] of [['a link pasted', 'mU1t1pl1c8n', 'S0larSyst3m', true], ['a History item tapped', 'pLaNtsGr0w5', 'r3adAl0udPd', false]]) {
+      ya.titles[aId] = { json: { title: YT_TITLES[aId] }, delay: 4000 };   // (under TITLE_WAIT)
+      await pick(A, `https://youtu.be/${aId}`);
+      const t0 = Date.now();   // (each pick here waits about half a second after its tap: t0 to tB is about their distance)
+      await A.p.waitForTimeout(300);
+      if (bLink) await pick(B, `https://youtu.be/${bId}`); else ok(await ytPick(B.p, YT_LABEL[bId], ikB), `the smartboard taps “${YT_LABEL[bId]}” in its History`);
+      const tB = Date.now() - t0;
+      ok(tB < 3500 && await eventually(async () => (await hist(A))[0] === '✓ ' + YT_LABEL[aId], 6000), `${how}: the laptop’s title comes after the smartboard’s pick (that about ${(tB / 1000).toFixed(1)} s after the laptop’s; the title after 4 s)`);
+      await A.p.waitForTimeout(500); await syncNow(A.p); await syncNow(B.p);
+      await exchange(A, B); await A.p.waitForTimeout(1000);
+      a = await look(A); b = await look(B);
+      ok(a.video === bId && b.video === bId && a.src === EMBED(bId) && b.src === EMBED(bId) && a.wins === 1 && b.wins === 1 && a.history[0] === '✓ ' + YT_LABEL[bId],
+        `${how} on the smartboard just after the laptop’s pick: the later pick wins on both (laptop ${JSON.stringify(a)}; smartboard ${JSON.stringify(b)})`);
+      await exchange(A, B); await A.p.waitForTimeout(500);
+    }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
@@ -5303,7 +5379,7 @@ const SUITES = [
     const hints = await A.p.evaluate(() => Array.from(document.querySelectorAll('#settings .hint')).map(h => h.textContent));
     ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 2 && hints.filter(h => h === 'On all your devices.').length === 3 && !hints.some(h => /This page only\./.test(h)),
       'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme, Accent color and Text style “On all your devices.”');
-    ok(/Your board stays on this device and in your Drive folder\. 21Board sends nothing to a server, except that a YouTube Player window loads its video from YouTube\./.test(await A.p.locator('#settings .about').innerText()), 'the footer says the board stays here and in the Drive folder');
+    ok(/Your board stays on this device and in your Drive folder\. 21Board sends nothing to a server, except that a YouTube Player window loads its video, and the titles of the videos in its History, from YouTube\./.test(await A.p.locator('#settings .about').innerText()), 'the footer says the board stays here and in the Drive folder');
     await A.p.keyboard.press('Escape');
     // A placeholder-only device writes nothing, even after a Timer was opened and closed on it with no content.
     const C = await dev('a computer');

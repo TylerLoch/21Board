@@ -13,8 +13,9 @@ built independently and dropped in.
 - All data stays **on the device** (IndexedDB); 21Board sends nothing anywhere (the district apps' windows
   load those apps from their own sites, and a YouTube Player window loads its video from YouTube, which, as on
   youtube.com, sees the board's address, the video, the device and any YouTube account signed in on it; its
-  player also contacts Google's ad and measurement servers, even before the video is played; and when a video is
-  added, the window also asks YouTube for its title, without sending cookies)
+  player also contacts Google's ad and measurement servers, even before the video is played; and the window asks
+  YouTube for the title of each video in its History, without sending cookies: when it is added and, until the
+  window has saved its title, each time the board opens)
 - Production: <https://boardapp.ccsd21.org>
 
 ---
@@ -356,8 +357,9 @@ back, such as a window being typed in, is due again):
   both changes. Changes to different windows never clash.
 - **The same content changed on both** (two edits to one note): both are kept. The later one stays in the
   window, and the other appears beside it as a labelled copy ("Copy · 9:41 AM"). For the Timer, Dice,
-  Traffic light and YouTube Player, whose content is a setting, the later one wins. Anything else changed on both
-  (a window moved on both) takes the later change, and Board history keeps a version from before it.
+  Traffic light and YouTube Player, whose content is a setting, the later one wins (for the YouTube Player, with
+  its History: a video added on the other device meanwhile leaves it, and Board history keeps it). Anything else
+  changed on both (a window moved on both) takes the later change, and Board history keeps a version from before it.
 - **Deleting** a page or window on any device deletes it everywhere (with Undo, and Board history). An edit made
   on a device that hadn't seen the deletion yet brings it back, so no one's work disappears unseen. A page brought
   back on one device (its Undo, or Board history › Deleted pages › *Bring back*) comes back on the others, which
