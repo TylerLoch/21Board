@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="935ec83f">
+<html lang="en" data-build="512c785b">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -405,6 +405,14 @@
     /* Widget menu extras: section headings and a row of color swatches. */
     .menu-heading { flex: 0 0 auto; padding: 8px 14px 2px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
     .menu-group { display: contents; }   /* (a heading and its items, for screen readers: laid out as if not there) */
+    /* An item of a group on two lines (a long title in the YouTube Player's History) keeps a gap to the next one (an item
+       on one line is no taller: its min-height is more). Where rows are tightest there is no room for one: a hairline,
+       under the labels. */
+    .menu-group .menu-item { padding-top: 7px; padding-bottom: 7px; }
+    .menu.compact .menu-group .menu-item { padding-top: 4px; padding-bottom: 4px; }
+    .menu.tight .menu-group .menu-item { padding-top: 0; padding-bottom: 0; }
+    .menu.tight .menu-group .menu-item + .menu-item { position: relative; }
+    .menu.tight .menu-group .menu-item + .menu-item::before { content: ''; position: absolute; top: 0; left: 48px; right: 14px; height: 1px; background: var(--border); }
     .menu-swatches { flex: 0 0 auto; display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 12px 8px; max-width: 300px; }
     .swatch {
       width: 38px; height: 38px; min-width: 0; padding: 0; border: 0; border-radius: 50%; cursor: pointer;

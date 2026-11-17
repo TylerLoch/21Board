@@ -13,7 +13,9 @@ built independently and dropped in.
 - All data stays **on the device** (IndexedDB); 21Board sends nothing anywhere (the district apps' windows
   load those apps from their own sites, and a YouTube Player window loads its video from YouTube, which, as on
   youtube.com, sees the board's address, the video, the device and any YouTube account signed in on it; its
-  player also contacts Google's ad and measurement servers, even before the video is played)
+  player also contacts Google's ad and measurement servers, even before the video is played; and the window asks
+  YouTube for the title of each video in its History, without sending cookies: when it is added and, until the
+  window has saved its title, each time the board opens)
 - Production: <https://boardapp.ccsd21.org>
 
 ---
@@ -216,7 +218,7 @@ tests/run.js            Optional automated browser tests
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
-| **YouTube Player** | A YouTube video from its link: the one built-in widget that loads another company's site (what YouTube sees: see the top of this README). Its controls are in the window menu, since nothing may be drawn over YouTube's player, and in a window that fills the board the player ends above the board's own buttons in the corners (`corners`); it raises its minimum size from the window's `zoom`, so the player is never under 200 × 200 px on screen; offline, a message instead of the browser's error page |
+| **YouTube Player** | A YouTube video from its link: the one built-in widget that loads another company's site (what YouTube sees: see the top of this README). Its controls are in the window menu, since nothing may be drawn over YouTube's player, with a History of the last 5 videos shown in that window, labelled with their titles from YouTube's oEmbed (kept in the window's content); in a window that fills the board the player ends above the board's own buttons in the corners (`corners`); it raises its minimum size from the window's `zoom`, so the player is never under 200 × 200 px on screen; offline, a message instead of the browser's error page |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps-21sketch-21timer-21doccam) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
@@ -356,8 +358,9 @@ back, such as a window being typed in, is due again):
   both changes. Changes to different windows never clash.
 - **The same content changed on both** (two edits to one note): both are kept. The later one stays in the
   window, and the other appears beside it as a labelled copy ("Copy · 9:41 AM"). For the Timer, Dice,
-  Traffic light and YouTube Player, whose content is a setting, the later one wins. Anything else changed on both
-  (a window moved on both) takes the later change, and Board history keeps a version from before it.
+  Traffic light and YouTube Player, whose content is a setting, the later one wins (for the YouTube Player, with
+  its History: a video added on the other device meanwhile leaves it, and Board history keeps it). Anything else
+  changed on both (a window moved on both) takes the later change, and Board history keeps a version from before it.
 - **Deleting** a page or window on any device deletes it everywhere (with Undo, and Board history). An edit made
   on a device that hadn't seen the deletion yet brings it back, so no one's work disappears unseen. A page brought
   back on one device (its Undo, or Board history › Deleted pages › *Bring back*) comes back on the others, which
@@ -555,7 +558,8 @@ repository (`sw.js`) but not yet on its server; 21Timer and 21DocCam need one de
   https://boardapp.ccsd21.org` (add `https://tylerloch.github.io` for the test site), and no `X-Frame-Options`
   (it can't name another site). If 21Board's own host ever sends a CSP, it needs `frame-src
   https://sketchapp.ccsd21.org https://timerapp.ccsd21.org https://doccamapp.ccsd21.org`, and
-  `https://www.youtube.com` for the YouTube Player's page.
+  `https://www.youtube.com` for the YouTube Player's page, which also needs `connect-src https://www.youtube.com`
+  (where it asks YouTube for a video's title).
 - **Camera (21DocCam).** Chrome asks for the camera on behalf of the page in the address bar,
   `boardapp.ccsd21.org`: its prompt names that site and remembers the answer for it. On managed devices, allow
   the camera for `https://boardapp.ccsd21.org` (Admin console: *Video input allowed URLs*, policy
