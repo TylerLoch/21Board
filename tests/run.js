@@ -4800,7 +4800,21 @@ const SUITES = [
     await A.p.evaluate(ik => window.__board21.deleteInstance(ik), del2); await syncNow(A.p);
     await setClock(A.p, 59 * DAY); await syncNow(A.p);
     ok(!!await fileText(A.p, bName), 'after 59 days the laptop still keeps the unlinked smartboard’s file');
+    // (only the file as it was read: here it is written again, unchanged, after each round has read the folder and
+    // before it tidies, as when Drive brings the file of a device that linked again just then)
+    await A.p.evaluate(name => {
+      const L = window.__board21.link, real = L.daily;
+      window.__daily = { real, n: 0 };
+      L.daily = async function (r) {
+        const h = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getFileHandle(name), was = await h.getFile(), text = await was.text();
+        do { const w = await h.createWritable(); await w.write(text); await w.close(); } while ((await h.getFile()).lastModified === was.lastModified);   // (until its date changes)
+        window.__daily.n++;
+        return real.call(this, r);
+      };
+    }, bName);
     await setClock(A.p, 61 * DAY); await syncNow(A.p);
+    ok(await A.p.evaluate(() => window.__daily.n > 0) && !!await fileText(A.p, bName), 'after 60 days, a round keeps it if it was written again after that round read the folder');
+    await A.p.evaluate(() => { window.__board21.link.daily = window.__daily.real; }); await syncNow(A.p);
     ok(await eventually(async () => !await fileText(A.p, bName)), 'after 60 days it removes it (the smartboard had left, and everything in it is in the laptop’s board)');
     await setClock(B.p, 70 * DAY);
     await deliver(A.p, B.p, { removed: [bName] });
@@ -10458,6 +10472,85 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await A.c.close(); await B.c.close(); await C.c.close();
   }],
 
+  ['Board Sync merge: a save of what the other folder showed, just after Change… back (a take)', async (browser) => {
+    const errors = [];
+    const lastStep = p => p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 45000 });
+    const done = async p => { await p.locator('#modal.open .btn', { hasText: 'Done' }).click(); await p.keyboard.press('Escape'); await eventually(() => p.evaluate(() => { const l = window.__board21.link; return !l.sync.mode && !l.running && !l.timers.full; }), 20000); };
+    const change = async (p, pick) => { await p.evaluate(pick => { window.__drive = { pick }; }, pick); await openSettings(p); await p.click('#settings [data-act="link-choose"]'); await lastStep(p); await done(p); };
+    for (const what of ['name', 'text']) {
+      const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+      await renamePage(A.p, 'Main'); const nA = await addNote(A.p, 'Shared note');
+      await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+      const uid = await A.p.evaluate(() => window.__board21.state.board.uid), wid = await A.p.evaluate(ik => window.__board21.state.insts.get(ik).wid, nA);
+      // the smartboard: Change… to a new, empty folder (its board, the same page and window, goes there), and work there
+      await change(B.p, 'Room 14');
+      ok(await B.p.evaluate(u => window.__board21.state.board.uid === u, uid), '(the smartboard shows the same page in Room 14)');
+      const b = await B.p.evaluate(() => window.__board21.state.boardId), ikB = await ikOf(B.p, wid);
+      if (what === 'name') await renamePage(B.p, 'Room 14 name'); else await typeNote(B.p, ikB, 'Room 14 text');
+      await syncNow(B.p);
+      // the laptop, in the first folder
+      if (what === 'name') await renamePage(A.p, 'Room 12 name'); else await typeNote(A.p, nA, 'Room 12 text');
+      await syncNow(A.p); await deliver(A.p, B.p);
+      // the smartboard: Change… back to the first folder (a take). Just after the take writes the record, within
+      // LINK_RACE_MS, something here saves it as it showed it in Room 14 (a second tab that hadn't seen the switch, or a
+      // widget saving what it showed): the race guard bases that save on the revision before the take.
+      const key = what === 'name' ? `board:${b}` : `data:${b}:${ikB}`;
+      await B.p.evaluate(key => {
+        const W = window.__board21;
+        window.__stale = W.store.getMany([key]).then(([old]) => new Promise(res => {
+          const iv = setInterval(async () => {
+            const [r] = await W.store.getMany([key]);
+            if (r && r.m && JSON.stringify(r.value) !== JSON.stringify(old.value)) { clearInterval(iv); await W.writer.put(key, old.type, old.value); res({ old: old.value, merged: r.value }); }
+          }, 20);
+        }));
+      }, key);
+      await change(B.p, '21Board');
+      const st = await B.p.evaluate(() => window.__stale);
+      const saved = (await B.p.evaluate(key => window.__board21.store.getMany([key]), key))[0];
+      ok(!!st, `(the stale save landed after the take's write: ${JSON.stringify(st && st.merged)} written over by ${JSON.stringify(st && st.old)}, base ${saved && saved.base})`);
+      await syncNow(B.p); await deliver(B.p, A.p); await syncNow(A.p); await exchange(A, B);
+      const pageA = (await shownBoard(A.p))[uid], pageB = (await shownBoard(B.p))[uid];
+      const texts = Object.values(pageA.wins).map(w => (w.data && w.data.text) || '');
+      if (what === 'name') ok(pageA.name === 'Room 12 name' && pageB.name === 'Room 12 name', `the laptop's rename in the first folder stays, on both (laptop "${pageA.name}", smartboard "${pageB.name}")`);
+      else ok(texts.length === 1 && texts[0] === 'Room 12 text' && !(await copiesOf(A.p)).length, `the laptop's text stays in its window, with no copy (${JSON.stringify((await winList(A.p)).filter(x => x.uid === uid).map(x => [x.data && x.data.text, x.copyOf ? 'copy from ' + x.copyOf.name : 'window']))})`);
+      ok(await sameBoards(A.p, B.p), 'the same board on both');
+      await A.c.close(); await B.c.close();
+    }
+    ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+  }],
+  ['Board Sync: linking again: a page deleted just before Change…, while its Undo is still offered', async (browser) => {
+    const errors = [];
+    const lastStep = p => p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 45000 });
+    const done = async p => { await p.locator('#modal.open .btn', { hasText: 'Done' }).click(); await p.keyboard.press('Escape'); await eventually(() => p.evaluate(() => { const l = window.__board21.link; return !l.sync.mode && !l.running && !l.timers.full; }), 20000); };
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    await renamePage(A.p, 'Morning'); await addNote(A.p, 'Morning note');
+    await A.p.evaluate(() => window.__board21.pages.create({ end: true, name: 'Math' }));
+    await eventually(() => A.p.evaluate(() => window.__board21.state.board.name === 'Math' && !window.__board21.pages.busy)); await addNote(A.p, 'Math note');
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    const names = async p => Object.values(await shownBoard(p)).map(x => x.name).sort().join();
+    ok(await names(B.p) === 'Math,Morning', `(two pages on both: ${await names(B.p)})`);
+    // the laptop deletes Math, and before its Undo is over (20 s) uses Change… to go to another folder
+    await A.p.evaluate(() => { window.__board21.pages.remove(); });
+    await A.p.locator('#modal.open .btn', { hasText: 'Delete page' }).click();
+    await eventually(async () => await names(A.p) === 'Morning');
+    const t0 = Date.now();
+    await A.p.evaluate(() => { window.__drive = { pick: 'Room 14' }; }); await openSettings(A.p); await A.p.click('#settings [data-act="link-choose"]'); await lastStep(A.p); await done(A.p);
+    ok(Date.now() - t0 < 12000, `(Change… done within the page's Undo: ${Date.now() - t0} ms)`);
+    // its Undo, tapped after Change…, brings it back on the laptop, which now syncs through Room 14: there it goes
+    await A.p.locator('#toasts .toast', { hasText: 'Deleted “Math”.' }).locator('button', { hasText: 'Undo' }).click();
+    ok(await eventually(async () => await names(A.p) === 'Math,Morning'), `its Undo, after Change…, brings Math back on the laptop (${await names(A.p)})`);
+    const room14 = () => A.p.evaluate(async () => {
+      const d = await (await navigator.storage.getDirectory()).getDirectoryHandle('Room 14'), out = [];
+      for await (const [n, h] of d.entries()) if (/\.21board$/.test(n)) { const o = JSON.parse(await (await h.getFile()).text()); for (const e of [o].concat(o.pages || [])) if (e && e.board) out.push(e.board.name); }
+      return Array.from(new Set(out)).sort().join();
+    });
+    await syncNow(A.p);
+    ok(await eventually(async () => await room14() === 'Math,Morning'), `and into the board in Room 14 (${await room14()})`);
+    await deliver(A.p, B.p); await syncNow(B.p);
+    ok(await names(B.p) === 'Morning', `the folder left hears of the deletion, sent as the laptop left it: the smartboard deletes Math too (${await names(B.p)})`);
+    await A.c.close(); await B.c.close();
+    ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+  }],
   ['Board Sync: theme and accent color when two devices set up one folder at once, and a choice made while a round runs', async (browser) => {
     const errors = [];
     const look = p => p.evaluate(() => { const s = window.__board21.state.settings; return `${s.theme} ${s.accent}`; });
