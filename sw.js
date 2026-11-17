@@ -11,25 +11,22 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.16-6';
+const VERSION = '2026.11.16-7';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '690d127a';
+const BUILD = '3a46a8bb';
 const FILES = {
-  './': '6673c1114e801fa7',
-  'index.html': '6673c1114e801fa7',
-  'board.js': 'bf679ecfcfcac690',
+  './': 'd4effd71b7fc5ba5',
+  'index.html': 'd4effd71b7fc5ba5',
+  'board.js': '05b0a099bee30a98',
   'sdk/board21.js': 'ed09079b03d3c364',
   'sdk/board21-dev.js': '95479bed48fa2ec3',
   'sdk/dev/board-shell.js': '2e4593539548aeab',
   'sdk/lab.html': '21cda27716334794',
   'widgets/registry.js': '7a66e1e4c46b6d1e',
-  'manifest.webmanifest': '3fddd4aac05d7279',
-  'icons/icon.svg': '7b5cfc68d4259303',
-  'icons/icon-192.png': 'cd8df22014016f08',
-  'icons/icon-512.png': 'f36bcfa6f75f9518',
-  'icons/icon-maskable-512.png': 'f657800c74fa000f',
-  'icons/apple-touch-icon.png': '40c6305b7794812a',
+  'manifest.webmanifest': '18a4aa7b736c3183',
+  'icons/icon-192.png': '8d779eac2a94f475',
+  'icons/icon-512.png': 'f52d15c85180a10b',
   'fonts/AtkinsonHyperlegible-Regular.woff2': '57f2debe054cd288',
   'fonts/AtkinsonHyperlegible-Bold.woff2': '21b2f082b7390e74',
   'fonts/AtkinsonHyperlegible-OFL.txt': 'f32d22b3908fcad2',
@@ -70,11 +67,8 @@ const SHELL_FILES = [
   'sdk/lab.html',
   'widgets/registry.js',
   'manifest.webmanifest',
-  'icons/icon.svg',
   'icons/icon-192.png',
   'icons/icon-512.png',
-  'icons/icon-maskable-512.png',
-  'icons/apple-touch-icon.png',
   // Settings → Letters (board.js section 12b): loaded only when chosen, but always in the copy, so they work offline
   'fonts/AtkinsonHyperlegible-Regular.woff2',
   'fonts/AtkinsonHyperlegible-Bold.woff2',

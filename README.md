@@ -183,7 +183,7 @@ index.html              Board shell: markup + all CSS
 board.js                Board shell logic (storage, sync, windows, picker, settings, export/import)
 sw.js                   Service worker (offline copy, updates)  ← bump VERSION, run tools/release.js
 manifest.webmanifest    PWA manifest (also lets the installed app open .21board files in Chrome)
-icons/                  Widget icons
+icons/                  21Board's app icons (192 and 512 px)
 fonts/                  Easier-to-read letters (Settings → Appearance → Letters): part of the offline copy, used only once chosen
 sdk/board21.js          The SDK every widget includes (window.Board21)
 sdk/board21-dev.js      The widget dev window: a widget opened outside 21Board runs in the real board

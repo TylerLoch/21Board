@@ -893,7 +893,7 @@ const SUITES = [
       op.on('pageerror', e => oerr.push(e.message));
       op.on('request', r => asked.push(r.url()));
       await op.goto(BASE); await op.waitForTimeout(600);
-      await op.goto(BASE + 'icons/icon.svg');   // (the board isn't running while its records are written)
+      await op.goto(BASE + 'icons/icon-192.png');   // (the board isn't running while its records are written)
       await op.evaluate(() => new Promise((res, rej) => {
         const o = indexedDB.open('21Board');
         o.onerror = () => rej(o.error);
@@ -7430,8 +7430,12 @@ const SUITES = [
 
     // ---- the offline copy saved by the release before builds (it replaced its files one at a time)
     {
-      const oldSw = fs.readFileSync(path.join(__dirname, 'fixtures', 'sw-2026.11.10-30.js'), 'utf8').replace("'2026.11.10-30'", "'OLD-1'");
-      ok(oldSw.includes("'OLD-1'") && oldSw.includes('refresh in the background'), '(the fixture is the service worker of release 2026.11.10-30)');
+      // (Without the icons that release had and the site no longer does: icon.svg, icon-maskable-512.png and
+      // apple-touch-icon.png, removed in 2026.11.16-7. Its worker saves its copy only if every file arrives.)
+      const oldSw = fs.readFileSync(path.join(__dirname, 'fixtures', 'sw-2026.11.10-30.js'), 'utf8').replace("'2026.11.10-30'", "'OLD-1'")
+        .replace(/\n  'icons\/(icon\.svg|icon-maskable-512\.png|apple-touch-icon\.png)',?/g, '');
+      ok(oldSw.includes("'OLD-1'") && oldSw.includes('refresh in the background') && !/icon\.svg|maskable|apple-touch/.test(oldSw),
+        '(the fixture is the service worker of release 2026.11.10-30)');
       // (That release had no district apps: its worker would try to save their pages, on another site, with its own
       // files, and never install. A device that has it keeps the list it installed with.)
       const noApps = t => t.replace(/\n  \/\/ The district's own apps[\s\S]*?(?=\n  \{\n    id: 'sdk-playground')/, '');
