@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.17-5';
-  const BOARD_BUILD = '512c785b';
+  const BOARD_VERSION = '2026.11.17-6';
+  const BOARD_BUILD = '316a9de6';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -9975,6 +9975,66 @@
     }
   };
 
+  /*
+   * Opening maximized. Installed, 21Board opens in a window of its own, at the size Chrome gives it; on a smartboard
+   * it should have the whole screen. Once per launch, when the window opens:
+   *   - at once, the window is moved and sized to cover the screen (an app window may do this without a tap; in a
+   *     tab it does nothing). It covers the screen, but isn't "maximized";
+   *   - at the first tap (or key) anywhere, a tap in a widget's window too, once the tap has done what it does,
+   *     window.maximize() makes it maximized for real. Chrome 155+ (Chromebooks first). It needs that tap, and the
+   *     window-management permission: Chrome asks once, unless IT grants it (WindowManagementAllowedForUrls). Refused or
+   *     missing, the window stays as the first step left it.
+   * Never again in that window: a reload isn't a launch (sessionStorage), and a window the teacher has made smaller or
+   * moved stays so. Not in a tab, kiosk mode (always full screen), the widget dev window or a window already maximized
+   * or full screen. The board follows as it does any resize.
+   */
+  function openMaximized() {
+    if (LAB || KIOSK || !window.matchMedia) return;
+    const mq = q => { try { return matchMedia(q).matches; } catch (e) { return false; } };
+    const full = () => !!(document.fullscreenElement || document.webkitFullscreenElement) || mq('(display-state: fullscreen)');
+    if (!['standalone', 'minimal-ui', 'window-controls-overlay'].some(m => mq(`(display-mode: ${m})`))) return;   // a tab
+    try {
+      if (sessionStorage.getItem('21board-launched')) return;
+      sessionStorage.setItem('21board-launched', '1');
+    } catch (e) { /* can't tell a reload from a launch: a launch */ }
+    // (Marked even then: a window closed maximized opens maximized next time, and once the teacher makes it smaller, a
+    // reload leaves it so.)
+    if (full() || mq('(display-state: maximized)')) return;
+    const sc = window.screen, x = sc.availLeft || 0, y = sc.availTop || 0, w = sc.availWidth, h = sc.availHeight;
+    const at = () => ({ x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight });
+    // (A few px either way: Chrome on Linux leaves a window sized to the screen 1 px short, a maximized one on Windows
+    // reaches past the edges.)
+    const covers = b => b.x <= x + 4 && b.y <= y + 4 && b.x + b.w >= x + w - 4 && b.y + b.h >= y + h - 4;
+    const launched = at();
+    if (w > 0 && h > 0 && !covers(launched)) { try { window.moveTo(x, y); window.resizeTo(w, h); } catch (e) { /* not allowed here */ } }
+    if (typeof window.maximize !== 'function') return;
+    let perm = null;   // (its state follows the teacher's answer)
+    try { navigator.permissions.query({ name: 'window-management' }).then(s => { perm = s; }, () => {}); } catch (e) { /* unknown here */ }
+    const events = ['pointerup', 'click', 'keydown'];
+    const active = () => !navigator.userActivation || navigator.userActivation.isActive;
+    let done = false;
+    const tap = e => {
+      // The tap's activation: a finger's comes at pointerup, not pointerdown.
+      if (done || (e && !e.isTrusted) || !active()) return;
+      // maximize() uses the activation up, so the tap does what it does first (its click or key: Reconnect, full screen,
+      // a file to open…), and maximize() comes after, if the activation is left; if the tap used it, at the next tap. A
+      // finger's click comes a moment after it's lifted, and a widget's frame clicks when the button is let go.
+      setTimeout(() => {
+        if (done || !active()) return;
+        done = true;
+        for (const t of events) window.removeEventListener(t, tap, true);
+        window.removeEventListener('blur', inFrame);
+        const b = at(), same = Math.abs(b.x - launched.x) <= 4 && Math.abs(b.y - launched.y) <= 4 && Math.abs(b.w - launched.w) <= 4 && Math.abs(b.h - launched.h) <= 4;
+        if ((perm && perm.state === 'denied') || full() || mq('(display-state: maximized)') || !(covers(b) || same)) return;
+        try { const p = window.maximize(); if (p && p.catch) p.catch(() => {}); } catch (err) { /* refused */ }   // (never awaited)
+      }, !e ? 1000 : e.type === 'pointerup' && e.pointerType !== 'mouse' ? 300 : 0);
+    };
+    // A tap inside a widget's window reaches its frame, not this page: the page gets its activation, and loses the focus.
+    const inFrame = () => setTimeout(() => { const f = document.activeElement; if (f && f.tagName === 'IFRAME') tap(); }, 0);
+    for (const t of events) window.addEventListener(t, tap, true);
+    window.addEventListener('blur', inFrame);
+  }
+
   const DAY = 24 * 60 * 60 * 1000;
   function backupAgo() {
     const t = S.settings.lastBackupAt;
@@ -10313,6 +10373,7 @@
     if (late) late.remove();   // (index.html's "taking a long time to start")
     Startup.cover();
     if (pageBuild() !== BOARD_BUILD && await mixedStart()) return;
+    try { openMaximized(); } catch (e) { /* an installed app's window (section 15): the board starts anyway */ }
     if (!LAB && !KIOSK) Install.init(); // before anything async: Chrome can fire beforeinstallprompt early
     document.body.classList.toggle('kiosk', KIOSK);
     initUI();

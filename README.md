@@ -263,6 +263,18 @@ unless they're added to the Home Screen/Dock. While storage isn't protected, 21B
 status in Settings and reminds teachers (at most every 3 days) to save a backup, and
 **regular exports remain the real backup.**
 
+Installed, 21Board opens in a window of its own and **opens maximized**: the window fills the screen as soon as
+21Board starts, and on a Chromebook with Chrome 155 or later (other computers in a later Chrome) the first tap makes it
+maximized for real. The first time, Chrome asks whether boardapp.ccsd21.org may *Manage windows on all your displays*,
+and remembers the answer. With *Block*, or an older Chrome, the window still fills the screen. This happens each time
+21Board is started, not when it updates or reloads, and a window you make smaller or move stays as you left it. Not in
+a browser tab or in kiosk mode.
+
+**For IT:** the Chrome policy `WindowManagementAllowedForUrls` with `https://boardapp.ccsd21.org` grants the
+permission ahead of time, so Chrome never asks. Where it's blocked (`DefaultWindowManagementSetting` set to 2, or
+`WindowManagementBlockedForUrls`), or where Chrome doesn't offer it yet (before 155 on Chromebooks, or until a later
+version on other computers), the window just fills the screen.
+
 ### If the board can't be opened or saved
 
 - **The board can't be opened** (the device's storage doesn't answer or can't be read, or 21Board fails to
@@ -661,6 +673,10 @@ node tests/run.js offline    # only the suites whose title contains "offline"
 
 The *District apps* suite uses stand-ins for 21Sketch, 21Timer and 21DocCam, and the *YouTube Player* suites one for
 YouTube; the tests never reach their real sites.
+
+The second *Opens maximized* suite installs 21Board as an app in a real Chrome window, on an Xvfb screen of its own,
+and in Chrome's headless mode. It needs Xvfb (the package with `xvfb-run`) and the full Chromium that
+`npx playwright install chromium` brings; where one is missing, it says *skipped* and goes on.
 
 The *Board Sync* suites play two or three devices sharing a Google Drive folder, in numbered scenarios (1–61):
 each device is a browser profile of its own, and the tests bring files from one device's folder to another's as
