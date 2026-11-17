@@ -12,12 +12,14 @@
  *   - a randomized run: devices editing pages and windows, Google Drive delivering files late, out of order, twice,
  *     as conflict copies or not at all, devices unlinked, linked again, switched to another folder and back, away
  *     for months, busy windows, stale tabs writing over a merge, lost files and ledgers, the theme, accent and text
- *     style changed now and then (and before set-up), and in some runs two or more devices setting up the folder at
- *     once. After a final full exchange, an oracle checks that every device shows the same board (and theme, accent
- *     and text style), that nothing anyone typed is lost unless a device that showed it changed or deleted it, that no
+ *     style changed now and then (and before set-up), in some runs two or more devices setting up the folder at
+ *     once, and in some, devices still on 2026.11.16-4, updated as they go. After a final full exchange, an oracle
+ *     checks that every device shows the same board (and theme, accent and text style, but for a device that keeps its
+ *     own text style), that nothing anyone typed is lost unless a device that showed it changed or deleted it, that no
  *     clash is left, that no version is copied twice, that nobody writes again, that nothing deleted comes back unless
  *     someone edited it without having seen the deletion, and that the theme, accent and text style are the latest
- *     choice made for the folder;
+ *     choice made for the folder (or, before any, the text style each updated device had); and in the runs with
+ *     devices on 2026.11.16-4, that the file of a device that then leaves for good is removed two months on;
  *   - that the oracle bites: the same run with plain "later wins" content, and with the first draft's rules for
  *     removing old device files and tombstones, must fail.
  * Options: node tests/merge.js [runs-scale] (0.1 for a quick look; default 1).
@@ -41,7 +43,10 @@ const fnText = name => {   // a function declaration, up to its closing brace at
 const region = text => vm.compileFunction([named(/const clone = .*;/, 'clone'), named(/const sameJSON = .*;/, 'sameJSON'), fnText('hash53'), text, 'return Merge;'].join('\n'), [], { filename: 'board.js#merge' })();
 let Merge = region(SRC.slice(start, end));   // (let: a device on 2026.11.16-4 runs with Merge4 in its place, see as4)
 // A device still on 2026.11.16-4, which doesn't know the text style: all that handles the theme, accent and text style
-// goes through STYLE_PARTS, so the region without the text style in it is that release's merge, file and fingerprint.
+// goes through STYLE_PARTS, so this release's region without the text style in it writes and reads that release's file
+// and fingerprint. Its merge rules are this release's (2026.11.17-2 without the text style), not 2026.11.16-4's, which
+// also lacks 2026.11.17-1's merge fixes. (The cases here, and runs with devices on it (variant.old), pass with
+// 2026.11.16-4's own merge region in its place too.)
 const PARTS_NOW = "STYLE_PARTS = ['theme', 'accent', 'letters']";
 const Merge4 = SRC.slice(start, end).includes(PARTS_NOW) ? region(SRC.slice(start, end).replace(PARTS_NOW, "STYLE_PARTS = ['theme', 'accent']")) : null;
 // The helpers the board passes in, taken from board.js as they are.
@@ -264,12 +269,15 @@ class Device {
   textNow() { return this.settings.letters || 'standard'; }
   styleOf() { return { theme: this.settings.theme || 'system', accent: this.settings.accent || 'blue', letters: this.textNow() }; }
   // (oracle 9: the choices a round takes out of this device as a change: one made here since its last round that left
-  // something else showing than that round did, or any it made before setting up an empty folder. They count for the
-  // folder of the run unless the round joins it or switches to it: the folder's then apply.)
+  // something else showing than that round did, or any it made before setting up an empty folder, or before its first
+  // round after it was updated from 2026.11.16-4 (its ledger has no entry for the text style yet, so any choice made is
+  // one, the same value again too). They count for the folder of the run unless the round joins it or switches to it:
+  // the folder's then apply.)
   settleStyle() {
     const st = this.settings, now = this.styleOf(), counts = !!LOG.folder && this.folderName === LOG.folder && this.mode !== 'join' && this.mode !== 'take';
     for (const k of this.old ? ['theme', 'accent'] : ['theme', 'accent', 'letters']) {
-      if (typeof st[k + 'At'] === 'number' && (now[k] !== this.styleBase[k] || this.mode === 'seed')) LOG.styles.push({ k, val: now[k], at: st[k + 'At'], counts, by: this.label });
+      const fresh = !!this.link && !(this.link.sync.style || {})[k];
+      if (typeof st[k + 'At'] === 'number' && (now[k] !== this.styleBase[k] || this.mode === 'seed' || fresh)) LOG.styles.push({ k, val: now[k], at: st[k + 'At'], counts, by: this.label });
     }
   }
   photo(b, on) {
@@ -459,6 +467,7 @@ class Device {
     for (const [name, text] of Array.from(this.view)) {
       const r = this.decodeText(text);
       if (!r || !r.peer || r.peer.dev !== d || (this.folder && this.folder.files.has(name) && this.folder.files.get(name) !== text)) continue;
+      if (this.old && LOG && ((JSON.parse(text).sync || {}).style || {}).letters) LOG.textGone = true;   // (oracle 9, see run)
       this.view.delete(name); if (this.folder) this.folder.remove(name);
     }
     this.peers.delete(d);
@@ -515,6 +524,7 @@ class Device {
       this.peers.clear();
     }
     this.folderName = folder.name; this.linkedAs = this.mode;
+    if (this.mode !== 'carry') this.setUp = true;   // (set up since it was updated: oracle 9's text style, see run)
     this.linked = true; this.first = true; this.busy.clear();
     this.round('full');
   }
@@ -530,7 +540,7 @@ class Device {
     const text = how === 'old' ? pick(revs) : folder.files.get(name);
     this.view.set(how === 'copy' ? name.replace('.21board', ' (1).21board') : name, text);
   }
-  canon() {
+  canon(noText) {   // (noText: without the text style, which a device may keep as its own: see run)
     const local = this.readLocal(), L = this.ledger(), out = [];
     for (const P of local.pages.values()) {
       if (P.gone || P.held || !L.mine[P.uid] || L.mine[P.uid].gone) continue;
@@ -538,7 +548,7 @@ class Device {
       for (const W2 of Array.from(P.wins.values()).sort((a, c) => (a.wid < c.wid ? -1 : 1))) wins.push([W2.wid, W2.widgetId, W2.parts.open.val, W2.parts.rect.h, W2.parts.data.val, W2.parts.conf.val, W2.parts.label.val]);
       out.push([P.uid, P.parts.name.val, P.parts.look.val, P.parts.size.val, P.parts.pos.val, P.parts.photo.val, P.parts.photoLook.val, wins]);
     }
-    return JSON.stringify([this.styleNow(), this.textNow(), out.sort((a, c) => (a[0] < c[0] ? -1 : 1))]);   // (and the board's theme, accent and text style)
+    return JSON.stringify([this.styleNow(), noText ? '' : this.textNow(), out.sort((a, c) => (a[0] < c[0] ? -1 : 1))]);   // (and the board's theme, accent and text style)
   }
   pending() {
     for (const M of this.link.mines.values()) for (const mw of Object.values(M.w || {})) if (mw.p.data && mw.p.data.pending && mw.p.data.pending.length) return true;
@@ -576,6 +586,18 @@ function run(seed, nDev, steps, variant = {}) {
   const choose = d => d.setStyle(srnd() < 0.5 ? { theme: pick(['light', 'dark', 'system'], srnd) } : { accent: pick(['blue', 'green', 'pink', 'teal'], srnd) });
   const chooseText = d => d.setStyle({ letters: pick(['standard', 'legible', 'early'], trnd) });
   const before = d => { if (srnd() < 0.4) { NOW += 1000 + Math.floor(srnd() * 1000); choose(d); } if (trnd() < 0.3) chooseText(d); };
+  // (variant.old: how often a device starts on 2026.11.16-4 (the first device half as often), most of them with a text
+  // style of their own from it; each is updated at a step of its own, or not before the end, and now and then a text
+  // style is chosen on it at once, before its first round on the new release. A stream of numbers of its own; in half
+  // of these runs no ledger is lost, so that oracle 9 holds there; and text styles are chosen a third as often, so that
+  // runs where nobody chose one on the new release, and updated devices keep their own, are common.)
+  const ornd = seeded(seed * 2750159 + 7), noLoss = !!variant.old && ornd() < 0.5;
+  if (variant.old) for (const d of devs) {
+    if (ornd() >= (d === devs[0] ? variant.old / 2 : variant.old)) continue;
+    as4(d); d.upAt = Math.floor(ornd() * steps * 1.25);
+    if (ornd() < 0.8) d.patch({ set: { letters: pick(['legible', 'early'], ornd) } });   // (2026.11.16-4 notes no lettersAt)
+  }
+  const update = d => { as4(d, false); d.ownText = d.textNow(); d.setUp = false; if (ornd() < 0.3) d.setStyle({ letters: pick(['standard', 'legible', 'early'], ornd) }); };
   LOG.folder = folder.name;
   devs[0].addPage('Math'); devs[0].addWindow(devs[0].ids()[1], W.NOTES);
   before(devs[0]);
@@ -590,12 +612,13 @@ function run(seed, nDev, steps, variant = {}) {
   const roundOf = d => d.round('full', gcOpts);
   for (let s = 0; s < steps; s++) {
     NOW += rnd() < (variant.jumps || 0.03) ? Math.floor(rnd() * 40) * DAY : Math.floor(rnd() * 30000);
+    if (variant.old) for (const o of devs) if (o.old && s >= o.upAt) update(o);
     const d = pick(devs), r = rnd();
     if (d.away && rnd() < (variant.back || 0.15)) d.away = false;
     if (d.away) continue;   // (closed: it does nothing until it is back)
     if (variant.awayMore && rnd() < variant.awayMore) { d.away = true; NOW += 90 * DAY; continue; }
     if (srnd() < 0.04) choose(d);
-    if (trnd() < 0.03) chooseText(d);
+    if (trnd() < (variant.old ? 0.01 : 0.03)) chooseText(d);
     if (r < 0.40) edit(d);
     else if (r < 0.62) roundOf(d);
     else if (r < 0.85) { const o = pick(devs.filter(x => x !== d)); d.deliver(o, rnd() < 0.15 ? 'old' : rnd() < 0.05 ? 'copy' : 'latest'); }
@@ -608,7 +631,7 @@ function run(seed, nDev, steps, variant = {}) {
       // (with its ledger lost too, before a round rebuilt it: its deletions that no other device has had are gone, as §3.4 accepts)
       if (d.folder && !d.link) for (const x of LOG.dels) if (x.by === d.dev && !devs.some(o => o !== d && o.know.has(x.id))) { x.undone = true; x.relink = true; }
     }
-    else if (r < 0.935) { if (d.link && d.linked && !d.blindSince) { d.loseLedger(); d.stale = new Map(); } }   // its ledger lost (not in the seconds a stale tab's write waits for a round, and the stale tabs' writes still to come go with it, as after a device closed for weeks: a rebuilt ledger can't tell one from an edit)
+    else if (r < 0.935) { if (d.link && d.linked && !d.blindSince && !noLoss) { d.loseLedger(); d.stale = new Map(); } }   // its ledger lost (not in the seconds a stale tab's write waits for a round, and the stale tabs' writes still to come go with it, as after a device closed for weeks: a rebuilt ledger can't tell one from an edit)
     else if (r < 0.945) { if (d.linked && d.folder === folder && !variant.noUnlink) d.unlink(); else if (!d.linked) { d.view = new Map(folder.files); d.linkTo(folder); } }
     else if (r < 0.95) { if (d.linked && d.folder === folder && !variant.noChange) { d.farewell(); d.linkTo(other); } else if (d.linked && d.folder === other) { d.farewell(); d.view = new Map(folder.files); d.linkTo(folder); } }
     else if (r < 0.955) { if (variant.away !== false) { d.away = true; NOW += 90 * DAY; } }
@@ -623,7 +646,12 @@ function run(seed, nDev, steps, variant = {}) {
   for (let k = 0; k < 2; k++) exchange();
   const quiet = LOG.writes === w0;
   // the oracle
-  const canons = devs.map(d => d.canon()), converged = canons.every(c => c === canons[0]);
+  // (variant.old: a device still on 2026.11.16-4, or an updated one with no version of the text style (no choice made
+  // on the new release has reached it), keeps its own text style; the rest of the board is the same everywhere, and so
+  // is the text style on every other device. Oracle 9 checks that each keeps the right one.)
+  const keepsOwn = devs.map(d => !!variant.old && (d.old || !(((d.link && d.link.sync.style) || {}).letters || {}).v));
+  const canons = devs.map(d => d.canon(true)), texts = devs.filter((d, i) => !keepsOwn[i]).map(d => d.textNow());
+  const converged = canons.every(c => c === canons[0]) && texts.every(t => t === texts[0]);
   const shownTokens = new Map();
   for (const P of devs[0].readLocal().pages.values()) {
     if (P.gone || P.held) continue;
@@ -671,12 +699,41 @@ function run(seed, nDev, steps, variant = {}) {
     const cs = LOG.styles.filter(x => x.k === k && x.counts), top = cs.reduce((a, x) => (!a || x.at > a.at ? x : a), null);
     if (top && cs.some(x => x.val !== top.val && top.at - x.at < 3)) continue;
     const want = top ? top.val : { theme: 'system', accent: 'blue', letters: 'standard' }[k], got = devs[0].styleOf()[k];
+    if (k === 'letters' && variant.old) {
+      // (with devices on 2026.11.16-4: once a text style was chosen, every updated device has the latest choice; until
+      // then, each updated device keeps the one it had, unless it was set up since (join, take: the folder's applies).
+      // Not once a device on 2026.11.16-4 removed the file of one that left with a text style version in it: that
+      // device knows nothing of the text style, and the version may have been the only one, as no device of its release
+      // keeps it.)
+      if (LOG.textGone) continue;
+      for (const d of devs) {
+        const w = d.old ? null : top ? top.val : d.ownText !== undefined && !d.setUp ? d.ownText : null;
+        if (w !== null && d.textNow() !== w) style.push(`letters ${d.textNow()} on the ${d.label}, not ${w} (${top ? `chosen on the ${top.by} at ${top.at}` : 'its own: nobody chose one'})`);
+      }
+      continue;
+    }
     if (got !== want) style.push(`${k} ${got}, not ${want} (${top ? `chosen on the ${top.by} at ${top.at}` : 'nobody chose one'})`);
+  }
+  // (oracle 10, variant.old: then a device leaves for good (Unlink). Once the others have merged its last file, that file
+  // holds nothing they lack, and two months on it is removed (Link.daily), whatever text style each keeps. A tombstone
+  // in it that they have collected meanwhile, and no longer note as dropped, is taken back from it by one round and
+  // then held, see gc.)
+  const kept = [];
+  if (variant.old) {
+    const gone = ornd() < 0.5 ? devs[0] : pick(devs.slice(1), ornd), rest = devs.filter(d => d !== gone);
+    gone.unlink();
+    const seq = gone.link.sync.seq;
+    const each = () => { for (const d of rest) { for (const o of devs) if (o !== d) d.deliver(o); for (const n of Array.from(d.view.keys())) if (!folder.files.has(n)) d.view.delete(n); roundOf(d); } NOW += 3 * MIN; };
+    each(); each();
+    const merged = rest.every(d => (((d.link.sync.peers || {})[gone.dev] || {}).seq || 0) >= seq);
+    NOW += KEEP; each(); NOW += DAY; each();   // (the rounds of the next two days)
+    const textOf = d => `${d.label} ${d.textNow()}${d.old ? ' on 2026.11.16-4' : (((d.link.sync.style || {}).letters || {}).v ? '' : ' (its own)')}`;
+    if (folder.files.has(gone.fileName())) kept.push(`the ${gone.label}’s file, ${merged ? '' : 'not '}merged by every other device, still there ${Math.round(KEEP / DAY)} days after it unlinked (text style: ${textOf(gone)}; ${rest.map(textOf).join(', ')})`);
   }
   // (a device that lost its ledger and its file stamps its edits again under new counters: §3.4 accepts that this may
   // copy one of them twice, so oracle 4 holds only in runs where no ledger was lost)
   return { converged, quiet, lost, twice: LOG.lostLedger ? [] : twice, twiceLost: LOG.lostLedger ? twice : [], pending, back, wins, copies, writes: LOG.writes, lostLedger: !!LOG.lostLedger,
-    needless, reverted, unlinked, style };
+    needless, reverted, unlinked, style, kept };
 }
 function edit(d) {
   if (d.away) return;
@@ -1685,6 +1742,25 @@ function styles() {
     A.setStyle({ letters: 'early' }); NOW += 1000; each();
     ok(A.textNow() === 'early' && B.textNow() === 'early' && each() === 0, `and the laptop’s later one the smartboard (${A.textNow()} / ${B.textNow()})`);
   });
+  for (const own of ['early', 'none', 'chosen']) block(() => {
+    // the same, then the laptop unlinks: two months on, the smartboard removes its file (Link.daily), whether it keeps
+    // its own Early readers (no version of the text style: the laptop's never-chosen Standard is nobody's change, so
+    // that file holds nothing it lacks), has none of its own, or chose one after the update
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 27'), A = new Device('laptop'), B = new Device('board', { old: true, pages: false });
+    B.addPage('Smartboard page'); A.addWindow(A.ids()[0], W.NOTES);
+    if (own !== 'none') B.patch({ set: { letters: 'early' } });
+    NOW += 1000; A.linkTo(f); B.linkTo(f);
+    const all = [A, B], each = () => { const w = LOG.writes; for (let k = 0; k < 3; k++) { for (const d of all) { if (!d.linked) continue; for (const o of all) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } return LOG.writes - w; };
+    each(); as4(B, false); NOW += 1000; each();
+    if (own === 'chosen') { B.setStyle({ letters: 'legible' }); NOW += 1000; each(); }
+    const want = { early: 'early', none: 'standard', chosen: 'legible' }[own], E = (B.link.sync.style || {}).letters;
+    A.unlink(); NOW += 1000; B.deliver(A); B.round();
+    const peer = B.peers.get(A.dev);
+    ok(!!(peer && peer.left) && Merge.includes(B.ledger(), peer), `(the laptop unlinked; the smartboard, its text style ${B.textNow()} ${E && E.v ? 'with' : 'without'} a version, has everything in its file)`);
+    for (let d = 0; d < 13; d++) { NOW += 5 * DAY; B.round(); }
+    ok(!f.files.has(A.fileName()) && B.textNow() === want, `the laptop unlinked 65 days ago, the smartboard ${{ early: 'keeping its own Early readers', none: 'with no text style of its own', chosen: 'having chosen Easier to read after the update' }[own]}: its file is removed (${f.files.has(A.fileName()) ? 'still there' : 'removed'}; ${B.textNow()})`);
+  });
   for (const first of ['laptop', 'smartboard']) block(() => {
     // two set up one empty folder at once, neither having chosen a text style, but the smartboard has one from before
     // 2026.11.17-2: one of the two never-chosen values on both (by device id), and nobody is told someone changed it
@@ -1780,9 +1856,9 @@ function runRange({ from, to, nDev, steps, variant }) {
     if (r.lost.length) out.lost++;
     if (r.back.length || !r.converged) out.back++;
     const why = [!r.converged && 'converged', !r.quiet && 'quiet', r.lost.length && 'lost', r.twice.length && 'twice', r.pending && 'pending', r.back.length && 'back',
-      r.needless.length && 'needless', r.reverted.length && 'reverted', r.unlinked.length && 'unlinked', r.style.length && 'style'].filter(Boolean);
+      r.needless.length && 'needless', r.reverted.length && 'reverted', r.unlinked.length && 'unlinked', r.style.length && 'style', r.kept.length && 'kept'].filter(Boolean);
     for (const w of why) out.bad[w] = (out.bad[w] || 0) + 1;
-    if (why.length && !out.first) out.first = `seed ${i}: ${why.join(', ')} ${JSON.stringify({ lost: r.lost.slice(0, 5), twice: r.twice.slice(0, 3), back: r.back.slice(0, 3), needless: r.needless.slice(0, 2), reverted: r.reverted.slice(0, 3), unlinked: r.unlinked.slice(0, 3), style: r.style })}`;
+    if (why.length && !out.first) out.first = `seed ${i}: ${why.join(', ')} ${JSON.stringify({ lost: r.lost.slice(0, 5), twice: r.twice.slice(0, 3), back: r.back.slice(0, 3), needless: r.needless.slice(0, 2), reverted: r.reverted.slice(0, 3), unlinked: r.unlinked.slice(0, 3), style: r.style, kept: r.kept })}`;
   }
   return out;
 }
@@ -1807,11 +1883,16 @@ async function randomized(scale) {
   // without its farewell write, in this harness); with 5, 362 (both a take and a stale tab, and a deleted window back)
   // and 180 at 0.25 (oracle 7 keyed by text, not by window). The review's cases repeat each merge fix, since 362 and 180
   // lie past the 5-device ranges run here.)
-  const batches = [[2000, 3, 150], [500, 5, 300], [1200, 3, 150, { atOnce: 0.6 }], [500, 3, 150, { atOnce: 0.25 }], [300, 5, 300, { atOnce: 0.6 }], [100, 5, 300, { atOnce: 0.25 }]];
+  // (and runs with devices still on 2026.11.16-4, updated as they go, then one leaving for good (variant.old, see run).
+  // Such runs found that a left device's file stayed for good while every other device kept its own text style: with 3
+  // devices, seeds 15, 101, 109, 183, 289, 358 and 581.)
+  const batches = [[2000, 3, 150], [500, 5, 300], [1200, 3, 150, { atOnce: 0.6 }], [500, 3, 150, { atOnce: 0.25 }], [300, 5, 300, { atOnce: 0.6 }], [100, 5, 300, { atOnce: 0.25 }],
+    [600, 3, 150, { old: 0.7, atOnce: 0.3 }], [100, 5, 300, { old: 0.6, atOnce: 0.25 }]];
+  const what = v => (v && v.old ? `, some devices on 2026.11.16-4 until a step of their own (${v.old}), and one then leaving for good` : '') + (v && v.atOnce ? `, two or more setting up the folder at once (${v.atOnce})` : '');
   for (const [n, nDev, steps, variant] of batches) {
     const runs = Math.round(n * scale), r = await inWorkers({ nDev, steps, variant }, runs);
     const total = Object.values(r.bad).reduce((a, b) => a + b, 0);
-    ok(total === 0 && r.runs === runs, `${runs} runs × ${nDev} devices × ${steps} steps${variant ? `, two or more setting up the folder at once (${variant.atOnce})` : ''}: every oracle holds (${r.copies} copies over ${r.wins} windows)` + (total ? ` — ${JSON.stringify(r.bad)}; first: ${r.first}` : ''));
+    ok(total === 0 && r.runs === runs, `${runs} runs × ${nDev} devices × ${steps} steps${what(variant)}: every oracle holds (${r.copies} copies over ${r.wins} windows)` + (total ? ` — ${JSON.stringify(r.bad)}; first: ${r.first}` : ''));
   }
   console.log(`  (${((Date.now() - t0) / 1000).toFixed(1)} s)`);
 }
@@ -1865,7 +1946,7 @@ function withDraft(f) {
 }
 // The same run with the rules swapped out.
 function runWith(v, seed, nDev, steps) {
-  if (v.atOnce) return run(seed, nDev, steps, v);
+  if (v.atOnce || v.old) return run(seed, nDev, steps, v);
   if (v.lww) {
     const real = Merge.join;
     Merge.join = (l, p, o) => real(l, p, Object.assign({}, o, { isLater: () => true }));

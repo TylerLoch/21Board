@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.17-2';
-  const BOARD_BUILD = '94e382b9';
+  const BOARD_BUILD = '55ff22a5';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -9305,7 +9305,13 @@
     // Does this ledger hold everything in that file (so the file can go)?
     function includes(ledger0, peer) {
       const inV = (v, E) => !!E && !!E.v && [E.v].concat((E.pending || []).map(q => q.v)).some(a => leq(v.vv, a[1]) || superseded(v, ver(a)));
-      for (const k in peer.style || {}) if (!inV(peer.style[k], ((ledger0.sync || {}).style || {})[k])) return false;
+      // (a version nobody chose (t 0) is nothing this device lacks while it keeps its own value instead, with no version:
+      // plan never lets one replace it, see there)
+      for (const k in peer.style || {}) {
+        const v = peer.style[k], E = ((ledger0.sync || {}).style || {})[k];
+        if (!fin(v.t, 0) && E && !E.v) continue;
+        if (!inV(v, E)) return false;
+      }
       const dropped = (ledger0.sync && ledger0.sync.dropped) || {}, collected = (k, vv) => !!dropped[k] && leq(vv, dropped[k].vv);   // (deletions collected here, see gc)
       for (const [uid, pp] of peer.pages) {
         const M = ledger0.mine[uid];

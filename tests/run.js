@@ -8357,7 +8357,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     let [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="1"]')]);
     const oneP = OUT + 'page-one.21board'; await dl.saveAs(oneP);
     const single = JSON.parse(fs.readFileSync(oneP, 'utf8'));
-    ok(Object.keys(single).join() === 'format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,board,instances' && single.formatVersion === 1 && !single.pages && single.board.name === 'My Board' && single.instances.length === 1,
+    ok(Object.keys(single).join() === 'format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,letters,board,instances' && single.formatVersion === 1 && !single.pages && single.board.name === 'My Board' && single.instances.length === 1,
       `“This page” is a .21board file exactly as before pages (${Object.keys(single).join(',')})`);
     await openPicker(); await page.click('[data-ctl="export"]'); await settle(200);
     [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="0"]')]);
