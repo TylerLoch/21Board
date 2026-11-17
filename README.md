@@ -11,8 +11,9 @@ built independently and dropped in.
 - Installable PWA that **works entirely offline** (the district apps' windows: see
   [District apps](#district-apps-21sketch-21timer-21doccam); YouTube Player videos need the internet)
 - All data stays **on the device** (IndexedDB); 21Board sends nothing anywhere (the district apps' windows
-  load those apps from their own sites, and a YouTube Player window loads its video from YouTube, which sees the
-  board's address and the video)
+  load those apps from their own sites, and a YouTube Player window loads its video from YouTube, which, as on
+  youtube.com, sees the board's address, the video, the device and any YouTube account signed in on it; its
+  player also contacts Google's ad and measurement servers, even before the video is played)
 - Production: <https://boardapp.ccsd21.org>
 
 ---
@@ -214,7 +215,7 @@ tests/run.js            Optional automated browser tests
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
-| **YouTube Player** | A YouTube video from its link: the one built-in widget that goes online (YouTube sees the board's address and the video). Its controls are in the window menu, since nothing may be drawn over YouTube's player; it raises its minimum size from the window's `zoom`, so the player is never under 200 × 200 px on screen; offline, a message instead of the browser's error page |
+| **YouTube Player** | A YouTube video from its link: the one built-in widget that loads another company's site (what YouTube sees: see the top of this README). Its controls are in the window menu, since nothing may be drawn over YouTube's player, and in a window that fills the board the player ends above the board's own buttons in the corners (`corners`); it raises its minimum size from the window's `zoom`, so the player is never under 200 × 200 px on screen; offline, a message instead of the browser's error page |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps-21sketch-21timer-21doccam) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
@@ -468,7 +469,8 @@ app, where no one signs in:
   backup first*, as everywhere else. A backup on a USB drive is the only copy that isn't on the kiosk itself.
   **Not yet tried on a real kiosk device: test before relying on it.**
 - Links in Notes show as plain text: a kiosk can't open new windows. For the same reason the district apps'
-  window menu has no *Open … on its own* ([District apps](#district-apps-21sketch-21timer-21doccam)).
+  window menu has no *Open … on its own* ([District apps](#district-apps-21sketch-21timer-21doccam)), and the
+  YouTube Player's has no *Open on YouTube*.
 - Everything else works as usual: widgets, saving on the device, board history and Undo. Widgets can check
   `Board21.context.kiosk`. Without the parameter (or with `?kiosk=no`), nothing changes.
 - A new version of 21Board arrives as everywhere else: the board offers *Update* / *Later*, and the new

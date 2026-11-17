@@ -40,12 +40,13 @@
   @media (max-width: 280px), (max-height: 230px) {
     #ask { padding: 8px 10px; }
     #ask .box { gap: .4em; }
-    h1 { font-size: 1.1em; }
+    h1 { font-size: 1em; }   /* (one line at 200 px in every text style) */
     button { padding: 0 .5em; font-size: 14px; }   /* (Cancel and Show video side by side at 200 px) */
   }
-  /* The player: YouTube's own page, filling the window on black. Nothing is drawn over it (YouTube's rules). */
+  /* The player: YouTube's own page, filling the window on black. Nothing is drawn over it (YouTube's rules), so in a
+     window that fills the board it ends above the board's own buttons and clock in the bottom corners (--clear). */
   #player { position: fixed; inset: 0; background: #000; }
-  #player iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; }
+  #player iframe { position: absolute; inset: 0 0 auto; width: 100%; height: calc(100% - var(--clear, 0px)); border: 0; display: block; }
   #offline { position: fixed; inset: 0; box-sizing: border-box; padding: 1em; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4em; text-align: center; }
   #offline p { margin: 0; max-width: 24em; line-height: 1.35; }
   #offline p:first-child { font-weight: 700; font-size: 1.1em; }
@@ -65,13 +66,17 @@
   <div id="player" hidden></div>
   <div id="offline" role="status" hidden><p>YouTube needs an internet connection.</p><p>The video comes back once this device is online again.</p></div>
 <script>
-  // Content (Board21.save): { videoId, videoUrl, start }, or null for no video.
+  // Content (Board21.save): { videoId, videoUrl, start }, or { videoId: null, videoUrl: '' } for no video.
   //   videoId: the video's 11-character YouTube id. videoUrl: its link as it was pasted (Change video shows it again).
   //   start: where the video starts, in whole seconds, from the link's t= or start= (left out: from the beginning).
+  //   No video is saved as content of its own, not cleared: in Board Sync, content cleared (null) gives way to a video
+  //   picked on another device at the same time, so a later Remove video would lose. (A Reset, or a window from a
+  //   blank template, has null: no video either.)
   // No config.
   //
   // The video is YouTube's own embedded player, in a frame that fills the window. YouTube's rules for embeds: nothing
-  // drawn over any part of the player (so its controls are in the window menu), at least 200 × 200 px (keepMinimum),
+  // drawn over any part of the player (so its controls are in the window menu, and in a window that fills the board it
+  // ends above the board's own buttons and clock: keepClear), at least 200 × 200 px (keepMinimum),
   // a Referer, no autoplay, and no playing out of sight. The frame is removed whenever the link box or the offline
   // message takes its place (Change video, Remove video here or anywhere else, a Reset, going offline), so nothing goes
   // on playing behind them. (A window that is closed, or on a page that isn't shown, has no frame at all: the board
@@ -85,6 +90,7 @@
   const EMBED_HOST = 'https://www.youtube.com';
 
   const ID_RE = /^[A-Za-z0-9_-]{11}$/;
+  const isId = s => ID_RE.test(s) && s !== 'videoseries';   // (embed/videoseries is a playlist's embed address, not a video)
   const MAX_LINK = 2000, MAX_START = 86400;   // characters; seconds (a day)
   const $ = id => document.getElementById(id);
   const ask = $('ask'), link = $('link'), err = $('err'), cancel = $('cancel'), player = $('player'), offline = $('offline');
@@ -97,12 +103,13 @@
     return s > 0 && s <= MAX_START ? s : 0;
   }
   // A link to a YouTube video, or just the video's id → { id, start, link } (link: the part of the text that is the
-  // link, so a sentence around it is left out). null if it isn't one.
+  // link, so a sentence, quotes or brackets around it are left out, as is the rest of YouTube's Share › Embed code).
+  // null if it isn't one.
   function parseLink(text) {
     const all = String(text == null ? '' : text).trim();
-    if (ID_RE.test(all)) return { id: all, start: 0, link: all };
-    for (const word of all.split(/\s+/)) {
-      const v = fromAddress(word);
+    if (isId(all)) return { id: all, start: 0, link: all };
+    for (const word of all.split(/[\s"'\u200b-\u200d\u2060]+/)) {
+      const v = fromAddress(word.replace(/^[(<\[]+|[)>\].,;:!?]+$/g, ''));
       if (v) return v;
     }
     return null;
@@ -119,7 +126,7 @@
       if (path.length === 1 && path[0] === 'watch') id = u.searchParams.get('v');
       else if (path.length === 2 && /^(embed|v|shorts|live)$/.test(path[0])) id = path[1];
     }
-    if (!id || !ID_RE.test(id)) return null;
+    if (!id || !isId(id)) return null;
     const t = u.searchParams.get('t') || u.searchParams.get('start') || new URLSearchParams(u.hash.slice(1)).get('t');
     return { id, start: seconds(t), link: word };
   }
@@ -141,7 +148,7 @@
   const watchUrl = v => `https://www.youtube.com/watch?v=${v.videoId}${v.start ? '&t=' + v.start + 's' : ''}`;
 
   function save() {
-    const d = video ? Object.assign({ videoId: video.videoId, videoUrl: video.videoUrl }, video.start ? { start: video.start } : {}) : null;
+    const d = video ? Object.assign({ videoId: video.videoId, videoUrl: video.videoUrl }, video.start ? { start: video.start } : {}) : { videoId: null, videoUrl: '' };
     Board21.save(d).catch(() => {});   // (not stored yet: the board keeps it, says so and tries again)
   }
 
@@ -229,13 +236,20 @@
     const min = Math.max(MIN_PX, Math.ceil(MIN_PX / Math.max(0.1, zoom - 0.005)));
     if (min !== minNow) { minNow = min; Board21.window.setMinSize(min, min); }
   }
-  Board21.on('resize', keepMinimum);
+  // In a window that fills the board, the board's own buttons (▦, and the clock beside one) sit over its bottom
+  // corners (the board sends how far up they reach: corners.height): the player ends above them, on black.
+  function keepClear(info) {
+    const c = info && info.maximized && info.corners, h = c ? Math.min(1000, Math.max(0, Number(c.height) || 0)) : 0;
+    player.style.setProperty('--clear', h + 'px');
+  }
+  Board21.on('resize', info => { keepMinimum(info); keepClear(info); });
 
   Board21.ready().then(ctx => {
     kiosk = !!ctx.kiosk;
     video = readVideo(ctx.data);
     started = true;
     keepMinimum(ctx.window);
+    keepClear(ctx.window);
     show();
   });
 </script>

@@ -155,7 +155,7 @@ self.BOARD21_WIDGETS = [
     permissions: []
   },
   {
-    // The one built-in widget that goes online: its window loads the video from YouTube (README).
+    // The one built-in widget that loads another company's site: its window loads the video from YouTube (README).
     id: 'youtube-player',
     name: 'YouTube Player',
     description: 'Shows a YouTube video from its link, with its controls in the window menu.',
