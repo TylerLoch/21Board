@@ -11,17 +11,17 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.17-1';
+const VERSION = '2026.11.17-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'a0719be3';
+const BUILD = '94e382b9';
 const FILES = {
-  './': '6364de983207fee3',
-  'index.html': '6364de983207fee3',
-  'board.js': '08bc218152e50a8f',
-  'sdk/board21.js': 'ed09079b03d3c364',
+  './': '177538e4c72f48a2',
+  'index.html': '177538e4c72f48a2',
+  'board.js': '3addfb7b6c91cc4a',
+  'sdk/board21.js': 'bb51d90e54690fac',
   'sdk/board21-dev.js': '95479bed48fa2ec3',
-  'sdk/dev/board-shell.js': '2e4593539548aeab',
+  'sdk/dev/board-shell.js': '2d8d1554f5a76d47',
   'sdk/lab.html': '21cda27716334794',
   'widgets/registry.js': '7a66e1e4c46b6d1e',
   'manifest.webmanifest': '18a4aa7b736c3183',
@@ -34,7 +34,7 @@ const FILES = {
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
   'widgets/timer/index.html': '519a447651242d8e',
-  'widgets/task-timer/index.html': '4ee701b977da15e1',
+  'widgets/task-timer/index.html': '8fd45dce297c22e7',
   'widgets/calendar/index.html': '7b3d6a2ac35e8999',
   'widgets/clock/index.html': '21a98aa1d345b489',
   'widgets/notes/index.html': 'c906b2da71b6f6d4',
@@ -42,10 +42,10 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': '50c9a187fd181455',
+  'widgets/name-picker/index.html': 'bed97f7f60bef9ef',
   'widgets/name-picker/style-bigname.js': 'f8620d2f1d12c8c5',
   'widgets/name-picker/style-wheel.js': 'bd3793376cdfc9e7',
-  'widgets/name-picker/style-spotlight.js': '4a7f5ff537d61d52',
+  'widgets/name-picker/style-spotlight.js': 'd2ffd9ead362cf90',
   'widgets/name-picker/style-lotto.js': 'fc46b85bc0bf5ff7',
   'widgets/first-then-board/index.html': 'a10c7d4ab528ae1d',
   'widgets/dice/index.html': '868bf3c637359718',
@@ -69,7 +69,7 @@ const SHELL_FILES = [
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
-  // Settings → Letters (board.js section 12b): loaded only when chosen, but always in the copy, so they work offline
+  // Settings → Text style (board.js section 12b): loaded only when chosen, but always in the copy, so they work offline
   'fonts/AtkinsonHyperlegible-Regular.woff2',
   'fonts/AtkinsonHyperlegible-Bold.woff2',
   'fonts/AtkinsonHyperlegible-OFL.txt',

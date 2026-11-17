@@ -220,8 +220,8 @@ and links are stripped). Up to 24 items (a swatch row counts as one, with up to 
 | --- | --- | --- |
 | `data` | `(data, { reason })` | This instance's content changed outside this page: another 21Board tab, an import, or a reset. |
 | `config` | `(config, { reason })` | Same, for config. |
-| `theme` | `(theme, palette)` | Light/dark, the accent color or the letters changed. CSS variables are already updated. |
-| `resize` | `(info)` | The window's content size, maximized or focused state, `zoom` or `corners` changed. Also when the teacher's letters change, and again once their font has loaded (text may need fitting again). (Native `resize` events also fire when the size changes.) On the 16:9 board `zoom` changes at almost every step while the browser window is being resized, so keep the work here light, or wait until it stops (about 150 ms). |
+| `theme` | `(theme, palette)` | Light/dark, the accent color or the text style changed. CSS variables are already updated. |
+| `resize` | `(info)` | The window's content size, maximized or focused state, `zoom` or `corners` changed. Also when the teacher's text style changes, and again once its font has loaded (text may need fitting again). (Native `resize` events also fire when the size changes.) On the 16:9 board `zoom` changes at almost every step while the browser window is being resized, so keep the work here light, or wait until it stops (about 150 ms). |
 | `focus` / `blur` | — | The window was selected / deselected. Selecting a window brings it to the front. **`blur` also fires when the teacher taps the empty board to deselect everything; the window stays in front and visible**, so don't treat `blur` as "covered" (e.g. don't pause a timer on blur). |
 | `menu` | `(id, item)` | One of your menu items was tapped. |
 | `beforeclose` | — | The window is about to close. Save anything pending *synchronously* (call `save()`). |
@@ -333,14 +333,15 @@ The SDK sets these CSS variables on your `<html>` element and keeps them updated
 | `--b21-danger`, `--b21-success`, `--b21-warning` | Status colors |
 | `--b21-font`, `--b21-radius` | Font stack, corner radius |
 
-`--b21-font` is the device's own font unless the teacher chose easier-to-read letters (Settings → Appearance →
-*Letters*): then it starts with a font that comes with 21Board, which the SDK loads from the board's `fonts/`
-folder (a widget on another site gets it only if the board's site allows it, CORS; otherwise its text stays in the
-device's own font). If you fit text to the window, fit it on `resize` (the window's, or `Board21.on('resize')`):
-one fires when the letters change, and again once the new font has loaded.
+`--b21-font` is the device's own font unless the teacher chose an easier-to-read text style (Settings → Appearance
+→ *Text style*; with Board Sync, the same on all the teacher's devices): then it starts with a font that comes with
+21Board, which the SDK loads from the board's `fonts/` folder (a widget on another site gets it only if the board's
+site allows it, CORS; otherwise its text stays in the device's own font). If you fit text to the window, fit it on
+`resize` (the window's, or `Board21.on('resize')`): one fires when the text style changes, and again once the new
+font has loaded.
 A widget uploaded as a file in Developer mode is sealed off from the board's files, so it stays in the device's
 own font. Form controls don't take the page's font by themselves: give `button`, `input`, `textarea` and
-`select` `font-family: inherit` (or `font: inherit`) so their text follows the letters too.
+`select` `font-family: inherit` (or `font: inherit`) so their text follows the text style too.
 
 Use `[data-b21-theme="dark"] .thing { … }` for anything else that should change in dark mode.
 
@@ -459,10 +460,10 @@ The footer shows the window's content size, shape lock, minimum size and board s
 - If the SDK **isn't the first script** in `<head>`, the widget runs on its own with a note saying so.
 - Without a manifest block, a widget in this repo's `widgets/` folder uses its `widgets/registry.js`
   entry; otherwise the window is 400 × 300.
-- **Letters** (Settings → Appearance) can be tried only in a dev window on 21Board's own site (a widget's
+- **Text style** (Settings → Appearance) can be tried only in a dev window on 21Board's own site (a widget's
   file there, or opened from disk). In an AI tool's preview and in the widget lab the test board isn't on
   21Board's site (the lab's is sealed off), and fonts from another site need that site's permission (CORS),
-  so there the letters stay Standard and Settings says so.
+  so there the text style stays Standard and Settings says so.
 
 How it works: the SDK keeps the rest of the page as text before any of your code runs
 (`document.write` of an unclosed `<plaintext>`), then loads `sdk/board21-dev.js`. That runs the board

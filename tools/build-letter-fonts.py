@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Builds the fonts for Settings → Appearance → Letters (board.js section 12b, "Letters"):
+Builds the fonts for Settings → Appearance → Text style (board.js section 12b, "Text style"):
 
   fonts/AtkinsonHyperlegible-Regular.woff2, -Bold.woff2   "Easier to read"
   fonts/EarlyReaders-Regular.woff2, -Bold.woff2           "Early readers"

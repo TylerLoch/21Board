@@ -4,19 +4,20 @@
  * Loads the "// #region Board Sync merge" region of board.js (and hash53, clone and sameJSON, by name) into a vm,
  * then checks:
  *   - the rules table (spec §4.1), case by case, with two or three simulated devices;
- *   - the theme and accent color, the board's on every device: the later change wins, a device that never changed
- *     them never overwrites, joining, an empty folder (two set up at once), switching, linking again, files from
- *     2026.11.16-3;
+ *   - the theme, accent color and text style, the board's on every device: the later change wins, a device that never
+ *     changed them never overwrites, joining, an empty folder (two or three set up at once), switching, linking again,
+ *     files from 2026.11.16-3 (no theme or accent version) and 2026.11.16-4 (no text style version), a device
+ *     still on 2026.11.16-4 in the folder, and devices updated from it;
  *   - reading a device file: cut, mixed and edited files are refused, a whole one is read, a bad unit is skipped;
  *   - a randomized run: devices editing pages and windows, Google Drive delivering files late, out of order, twice,
  *     as conflict copies or not at all, devices unlinked, linked again, switched to another folder and back, away
- *     for months, busy windows, stale tabs writing over a merge, lost files and ledgers, the theme and accent
- *     changed now and then (and before set-up), and in some runs two or more devices setting up the folder at once.
- *     After a final full exchange, an oracle checks that every device shows the same board (and theme and accent),
- *     that nothing anyone typed is lost unless a device that showed it changed or deleted it, that no clash is left,
- *     that no version is copied twice, that nobody writes again, that nothing deleted comes back unless someone
- *     edited it without having seen the deletion, and that the theme and accent are the latest choice made for the
- *     folder;
+ *     for months, busy windows, stale tabs writing over a merge, lost files and ledgers, the theme, accent and text
+ *     style changed now and then (and before set-up), and in some runs two or more devices setting up the folder at
+ *     once. After a final full exchange, an oracle checks that every device shows the same board (and theme, accent
+ *     and text style), that nothing anyone typed is lost unless a device that showed it changed or deleted it, that no
+ *     clash is left, that no version is copied twice, that nobody writes again, that nothing deleted comes back unless
+ *     someone edited it without having seen the deletion, and that the theme, accent and text style are the latest
+ *     choice made for the folder;
  *   - that the oracle bites: the same run with plain "later wins" content, and with the first draft's rules for
  *     removing old device files and tombstones, must fail.
  * Options: node tests/merge.js [runs-scale] (0.1 for a quick look; default 1).
@@ -37,7 +38,12 @@ const fnText = name => {   // a function declaration, up to its closing brace at
 };
 // (vm.compileFunction, in this context: code run in a context of its own reaches Math, JSON... through the
 // context's interceptors, many times slower)
-const Merge = vm.compileFunction([named(/const clone = .*;/, 'clone'), named(/const sameJSON = .*;/, 'sameJSON'), fnText('hash53'), SRC.slice(start, end), 'return Merge;'].join('\n'), [], { filename: 'board.js#merge' })();
+const region = text => vm.compileFunction([named(/const clone = .*;/, 'clone'), named(/const sameJSON = .*;/, 'sameJSON'), fnText('hash53'), text, 'return Merge;'].join('\n'), [], { filename: 'board.js#merge' })();
+let Merge = region(SRC.slice(start, end));   // (let: a device on 2026.11.16-4 runs with Merge4 in its place, see as4)
+// A device still on 2026.11.16-4, which doesn't know the text style: all that handles the theme, accent and text style
+// goes through STYLE_PARTS, so the region without the text style in it is that release's merge, file and fingerprint.
+const PARTS_NOW = "STYLE_PARTS = ['theme', 'accent', 'letters']";
+const Merge4 = SRC.slice(start, end).includes(PARTS_NOW) ? region(SRC.slice(start, end).replace(PARTS_NOW, "STYLE_PARTS = ['theme', 'accent']")) : null;
 // The helpers the board passes in, taken from board.js as they are.
 const H = vm.compileFunction([named(/const TITLE_H = \d+;/, 'TITLE_H'), named(/const r2 = .*;/, 'r2'), named(/const scaleRect = .*;/, 'scaleRect'),
   named(/const BG_RENAMED = .*;/, 'BG_RENAMED'), named(/const bgColor = .*;/, 'bgColor'), fnText('normalizePhotoSettings'),
@@ -99,7 +105,8 @@ class Device {
     this.decoded = new Map();    // text -> decode result
     this.busy = new Set(); this.stale = new Map(); this.staleBase = new Map(); this.heard = new Set(); this.know = new Set(); this.applied = new Set();
     this.lastWid = 0; this.writes = 0; this.away = false; this.blinded = new Set();
-    this.styleBase = { theme: 'system', accent: 'blue' };   // (the theme and accent after its last round: oracle 9)
+    if (opts.old) as4(this);   // (still on 2026.11.16-4)
+    this.styleBase = { theme: 'system', accent: 'blue', letters: 'standard' };   // (the theme, accent and text style after its last round: oracle 9)
     this.put('settings', 'settings', { boards: [], deletedBoards: [], deletedAt: {}, lastBoard: 0, activeBoard: 1 });
     if (opts.pages !== false) this.placeholder();
   }
@@ -250,17 +257,18 @@ class Device {
     this.put(`board:${b}`, 'board', v);
     this.touch(v.uid);
   }
-  // Settings → Theme, Accent color: the board's on every device linked to the folder (updateSettings notes when each
-  // was chosen here: themeAt, accentAt)
-  setStyle(p) { const set = {}; for (const [k, v] of Object.entries(p)) { set[k] = v; set[k + 'At'] = this.now(); } this.patch({ set }); }
+  // Settings → Theme, Accent color, Text style: the board's on every device linked to the folder (updateSettings notes
+  // when each was chosen here: themeAt, accentAt, lettersAt; 2026.11.16-4 notes no lettersAt)
+  setStyle(p) { const set = {}; for (const [k, v] of Object.entries(p)) { set[k] = v; if (!(this.old && k === 'letters')) set[k + 'At'] = this.now(); } this.patch({ set }); }
   styleNow() { return [this.settings.theme || 'system', this.settings.accent || 'blue'].join(' '); }
-  styleOf() { return { theme: this.settings.theme || 'system', accent: this.settings.accent || 'blue' }; }
+  textNow() { return this.settings.letters || 'standard'; }
+  styleOf() { return { theme: this.settings.theme || 'system', accent: this.settings.accent || 'blue', letters: this.textNow() }; }
   // (oracle 9: the choices a round takes out of this device as a change: one made here since its last round that left
   // something else showing than that round did, or any it made before setting up an empty folder. They count for the
   // folder of the run unless the round joins it or switches to it: the folder's then apply.)
   settleStyle() {
     const st = this.settings, now = this.styleOf(), counts = !!LOG.folder && this.folderName === LOG.folder && this.mode !== 'join' && this.mode !== 'take';
-    for (const k of ['theme', 'accent']) {
+    for (const k of this.old ? ['theme', 'accent'] : ['theme', 'accent', 'letters']) {
       if (typeof st[k + 'At'] === 'number' && (now[k] !== this.styleBase[k] || this.mode === 'seed')) LOG.styles.push({ k, val: now[k], at: st[k + 'At'], counts, by: this.label });
     }
   }
@@ -290,13 +298,14 @@ class Device {
   fileName() { return `21Board (${this.label}) [${this.dev.slice(0, 4)}].21board`; }
   // A device file in this view → decoded (cached by its text).
   decodeText(text) {   // (decoded once for every device: Merge never changes a peer)
-    if (!DECODED.has(text)) {
+    const key = this.old ? '4' + text : text;
+    if (!DECODED.has(key)) {
       let r = null;
       try { r = Merge.decode(JSON.parse(text), H); } catch (e) { r = null; }
       if (DECODED.size > 2000) DECODED.clear();
-      DECODED.set(text, r);
+      DECODED.set(key, r);
     }
-    return DECODED.get(text);
+    return DECODED.get(key);
   }
   look(L) {
     const peers = [], files = new Set();
@@ -529,7 +538,7 @@ class Device {
       for (const W2 of Array.from(P.wins.values()).sort((a, c) => (a.wid < c.wid ? -1 : 1))) wins.push([W2.wid, W2.widgetId, W2.parts.open.val, W2.parts.rect.h, W2.parts.data.val, W2.parts.conf.val, W2.parts.label.val]);
       out.push([P.uid, P.parts.name.val, P.parts.look.val, P.parts.size.val, P.parts.pos.val, P.parts.photo.val, P.parts.photoLook.val, wins]);
     }
-    return JSON.stringify([this.styleNow(), out.sort((a, c) => (a[0] < c[0] ? -1 : 1))]);   // (and the board's theme and accent)
+    return JSON.stringify([this.styleNow(), this.textNow(), out.sort((a, c) => (a[0] < c[0] ? -1 : 1))]);   // (and the board's theme, accent and text style)
   }
   pending() {
     for (const M of this.link.mines.values()) for (const mw of Object.values(M.w || {})) if (mw.p.data && mw.p.data.pending && mw.p.data.pending.length) return true;
@@ -538,6 +547,16 @@ class Device {
   liveWins() { const out = []; for (const b of this.ids()) for (const r of this.insts(b)) out.push([b, `${r.value.widgetId}:${r.value.n}`, r.value]); return out; }
 }
 const PHOTOS = new Map(), DECODED = new Map();
+// A device on 2026.11.16-4: each of its methods runs with Merge4 in place of Merge (on false: it is updated).
+function as4(d, on = true) {
+  d.old = on;
+  for (const k of Object.getOwnPropertyNames(Device.prototype)) {
+    const f = Object.getOwnPropertyDescriptor(Device.prototype, k).value;
+    if (k === 'constructor' || typeof f !== 'function') continue;
+    if (!on) { delete d[k]; continue; }
+    d[k] = function (...a) { const was = Merge; Merge = Merge4; try { return f.apply(this, a); } finally { Merge = was; } };
+  }
+}
 
 // ---------------------------------------------------------------------
 // The randomized run
@@ -549,12 +568,14 @@ function run(seed, nDev, steps, variant = {}) {
   const devs = global.__devs = Array.from({ length: nDev }, (_, i) => new Device(['laptop', 'board', 'home', 'cart', 'panel'][i], { skew: variant.skew && i === 1 ? variant.skew : 0, pages: true }));
   const gcOpts = variant.gc ? { gcFn: variant.gc } : {};
   // (the theme and accent changed now and then: a stream of numbers of their own, so that the rest of each run is as it
-  // was. Some devices choose them before they are set up. variant.atOnce: how often a device sets up the folder at the
-  // same moment as the first, before either has the other's file, so that two or more find it empty and each sends its
-  // board, theme and accent there.)
-  const srnd = seeded(seed * 104729 + 3);
+  // was; the text style from a third, so that the theme and accent are chosen as they were before it came. Some devices
+  // choose them before they are set up. variant.atOnce: how often a device sets up the folder at the same moment as the
+  // first, before either has the other's file, so that two or more find it empty and each sends its board, theme,
+  // accent and text style there.)
+  const srnd = seeded(seed * 104729 + 3), trnd = seeded(seed * 15485863 + 11);
   const choose = d => d.setStyle(srnd() < 0.5 ? { theme: pick(['light', 'dark', 'system'], srnd) } : { accent: pick(['blue', 'green', 'pink', 'teal'], srnd) });
-  const before = d => { if (srnd() < 0.4) { NOW += 1000 + Math.floor(srnd() * 1000); choose(d); } };
+  const chooseText = d => d.setStyle({ letters: pick(['standard', 'legible', 'early'], trnd) });
+  const before = d => { if (srnd() < 0.4) { NOW += 1000 + Math.floor(srnd() * 1000); choose(d); } if (trnd() < 0.3) chooseText(d); };
   LOG.folder = folder.name;
   devs[0].addPage('Math'); devs[0].addWindow(devs[0].ids()[1], W.NOTES);
   before(devs[0]);
@@ -574,6 +595,7 @@ function run(seed, nDev, steps, variant = {}) {
     if (d.away) continue;   // (closed: it does nothing until it is back)
     if (variant.awayMore && rnd() < variant.awayMore) { d.away = true; NOW += 90 * DAY; continue; }
     if (srnd() < 0.04) choose(d);
+    if (trnd() < 0.03) chooseText(d);
     if (r < 0.40) edit(d);
     else if (r < 0.62) roundOf(d);
     else if (r < 0.85) { const o = pick(devs.filter(x => x !== d)); d.deliver(o, rnd() < 0.15 ? 'old' : rnd() < 0.05 ? 'copy' : 'latest'); }
@@ -641,14 +663,14 @@ function run(seed, nDev, steps, variant = {}) {
   const pageOf = u => u.split(' ')[0];
   const excused = u => LOG.dels.some(d => d.folder === folder.name && !d.undone && !d.relink && (d.unit === u || d.unit === pageOf(u)));
   const unlinked = LOG.udels.concat(LOG.dels.filter(d => d.relink)).filter(d => d.folder === folder.name && d.elsewhere && LOG.published.has(`${folder.name}|${d.unit}`) && !devs[0].shows(d.unit) && !excused(d.unit)).map(d => d.unit);
-  // (oracle 9: the theme and accent are the latest choice that counted for this folder (see settleStyle), or the
-  // defaults when none did. Not after a lost ledger, which stamps them again, as §3.4 accepts; two choices within a
+  // (oracle 9: the theme, accent and text style are the latest choice that counted for this folder (see settleStyle), or
+  // the defaults when none did. Not after a lost ledger, which stamps them again, as §3.4 accepts; two choices within a
   // moment of each other may go either way.)
   const style = [];
-  for (const k of LOG.lostLedger ? [] : ['theme', 'accent']) {
+  for (const k of LOG.lostLedger ? [] : ['theme', 'accent', 'letters']) {
     const cs = LOG.styles.filter(x => x.k === k && x.counts), top = cs.reduce((a, x) => (!a || x.at > a.at ? x : a), null);
     if (top && cs.some(x => x.val !== top.val && top.at - x.at < 3)) continue;
-    const want = top ? top.val : { theme: 'system', accent: 'blue' }[k], got = devs[0].styleOf()[k];
+    const want = top ? top.val : { theme: 'system', accent: 'blue', letters: 'standard' }[k], got = devs[0].styleOf()[k];
     if (got !== want) style.push(`${k} ${got}, not ${want} (${top ? `chosen on the ${top.by} at ${top.at}` : 'nobody chose one'})`);
   }
   // (a device that lost its ledger and its file stamps its edits again under new counters: §3.4 accepts that this may
@@ -1236,10 +1258,10 @@ function review() {
   });
 }
 
-// Theme and accent color: the board's, on every device linked to the folder (Tyler's decision 5: synced like
-// everything else), the later change winning as for a page's name. One block each.
+// Theme, accent color and text style: the board's, on every device linked to the folder (Tyler's decision 5: synced
+// like everything else; the text style from 2026.11.17-2), the later change winning as for a page's name. One block each.
 function styles() {
-  console.log('\nTheme and accent color (§4.6)');
+  console.log('\nTheme, accent color and text style (§4.6)');
   const fileOf = d => JSON.parse(d.folder.files.get(d.fileName()));
   const resum = o => { o.sync.sum = ''; o.sync.sum = crypto.createHash('sha256').update(Merge.sumText(o)).digest('hex').slice(0, 32); return JSON.stringify(o); };
   block(() => {
@@ -1428,6 +1450,253 @@ function styles() {
     const said = A.sums.slice(heard).flatMap(sm => sm.style);
     ok(A.styleNow() === 'light blue' && B.styleNow() === 'light blue' && !said.length,
       `a lost ledger rebuilt from a file older than the last merge${restore ? ', the settings written back' : ''}: the laptop’s later Light stays on both, and the laptop hears nothing about the theme (${A.styleNow()} / ${B.styleNow()}; ${JSON.stringify(said)})`);
+  });
+
+  // ---- the text style (settings.letters, Settings › Text style), from 2026.11.17-2: as the theme and accent
+  block(() => {
+    const { A, B, sync } = pair();
+    ok(A.textNow() === 'standard' && B.textNow() === 'standard', '(both start with Standard)');
+    A.setStyle({ letters: 'early' }); NOW += 2000; A.round(); B.deliver(A);
+    const plan = B.round();
+    ok(B.textNow() === 'early' && B.styleNow() === 'system blue', `the text style changed on the laptop: the smartboard takes it at its next round, and only it (${B.textNow()}, ${B.styleNow()})`);
+    ok(plan && same(plan.summary.style, [{ by: A.dev, letters: 'early' }]), `and its summary says which device changed it (${plan && JSON.stringify(plan.summary.style)})`);
+    sync();
+    const f = fileOf(A), keys = Object.keys(f);
+    ok(f.letters === 'early' && keys.indexOf('letters') === keys.indexOf('accent') + 1 && f.sync.style.letters && f.sync.style.letters[0] === A.dev,
+      `a device file has it beside the theme and accent, and its version in sync.style (${f.letters}; ${JSON.stringify(f.sync.style.letters)})`);
+    A.setStyle({ theme: 'dark', accent: 'green', letters: 'legible' }); NOW += 2000; A.round(); B.deliver(A);
+    const p2 = B.round();
+    ok(B.styleNow() === 'dark green' && B.textNow() === 'legible' && p2 && same(p2.summary.style, [{ by: A.dev, theme: 'dark', accent: 'green', letters: 'legible' }]),
+      `all three changed at once: the smartboard takes them, one entry for the laptop with all three (${p2 && JSON.stringify(p2.summary.style)})`);
+    B.setStyle({ letters: 'standard' }); NOW += 2000; sync();
+    ok(A.textNow() === 'standard' && B.textNow() === 'standard' && A.styleNow() === 'dark green', `then Standard chosen on the smartboard reaches the laptop, and the theme and accent stay (${A.textNow()}, ${A.styleNow()})`);
+    const quiet = B.round();
+    ok(quiet && same(quiet.summary.style, []) && A.canon() === B.canon(), 'a round with nothing new says nothing about it, and both show the same');
+    B.unlink();
+    ok(B.textNow() === 'standard', 'Unlink keeps it');
+  });
+  for (const first of ['earlier', 'later']) block(() => {
+    // changed on both before either has the other's: the later change, on both, whichever round runs first
+    const { A, B, sync } = pair();
+    A.setStyle({ letters: 'legible' }); NOW += 5000; B.setStyle({ letters: 'early' }); NOW += 1000;
+    const [x, y] = first === 'earlier' ? [A, B] : [B, A];
+    x.round(); y.deliver(x); y.round(); x.deliver(y); x.round(); sync();
+    ok(A.textNow() === 'early' && B.textNow() === 'early', `the text style changed on both, the ${first} change’s round first: the later change on both (${A.textNow()} / ${B.textNow()})`);
+  });
+  block(() => {
+    // carry: one chosen while unlinked counts, the later winning, though stamped with a later change
+    const { A, B, sync, folder } = pair();
+    B.unlink(); NOW += 1000;
+    A.setStyle({ letters: 'legible' }); NOW += 1000; A.round(); NOW += 60000;
+    B.setStyle({ letters: 'early' }); NOW += 1000;
+    B.view = new Map(folder.files); B.linkTo(folder); sync();
+    ok(B.linkedAs === 'carry' && A.textNow() === 'early' && B.textNow() === 'early', `a text style chosen while unlinked, later than the laptop’s: it wins on both (${B.linkedAs}: ${A.textNow()} / ${B.textNow()})`);
+    B.unlink(); NOW += 1000;
+    B.setStyle({ letters: 'standard' }); NOW += 60000;
+    A.setStyle({ letters: 'legible' }); NOW += 1000; A.round();
+    NOW += 60000; B.addPage('After both'); NOW += 1000;
+    B.view = new Map(folder.files); B.linkTo(folder); sync();
+    ok(A.textNow() === 'legible' && B.textNow() === 'legible', `one chosen while unlinked, earlier than the laptop’s: the laptop’s on both (${A.textNow()} / ${B.textNow()})`);
+  });
+  block(() => {
+    // join and take: the folder's; a device that never chose one never overwrites, however many rounds it runs
+    const { A, B, folder } = pair();
+    A.setStyle({ letters: 'early' });
+    const C = new Device('cart'); C.setStyle({ letters: 'legible' }); C.addPage('Mine');   // (chosen before it ever synced: a join)
+    const D = new Device('desk'); D.setStyle({ letters: 'legible' });   // (only the untouched first page: a take)
+    const all = [A, B, C, D], each = () => { for (let k = 0; k < 3; k++) { for (const d of all) { if (!d.linked) continue; for (const o of all) if (o !== d && o.linked) d.deliver(o); d.round(); } NOW += MIN; } };
+    each();
+    C.view = new Map(folder.files); C.folder = folder; C.linkTo(folder);
+    D.view = new Map(folder.files); D.folder = folder; D.linkTo(folder);
+    each();
+    ok(C.linkedAs === 'join' && D.linkedAs === 'take' && all.every(d => d.textNow() === 'early'), `a device joining and one taking show the folder’s text style, and change nobody’s (${all.map(d => d.textNow()).join(', ')})`);
+    ok(same(C.sums[0].style, []) && same(D.sums[0].style, []), `and say nothing about it (${JSON.stringify([C.sums[0].style, D.sums[0].style])})`);
+    for (let i = 0; i < 4; i++) { B.addPage(); NOW += 1000; each(); }
+    const v = (B.link.sync.style || {}).letters;
+    ok(v && v.v[0] === A.dev && fileOf(B).sync.style.letters[0] === A.dev && fileOf(C).sync.style.letters[0] === A.dev, 'a device that only received it makes no version of its own');
+  });
+  block(() => {
+    // an empty folder: this device's goes there; a device set up after it takes it
+    const D = new Device('desk', { pages: false }); D.addPage('Home'); D.setStyle({ letters: 'legible' });
+    const f = new Folder('Room 9'); D.folder = f; D.view = new Map(); D.linkTo(f);
+    const o = fileOf(D);
+    ok(o.letters === 'legible' && o.sync.style.letters[0] === D.dev, 'an empty folder (seed): this device’s text style goes there');
+    const E = new Device('wall', { pages: false }); E.addPage('Wall page'); E.setStyle({ letters: 'early' });
+    E.view = new Map(f.files); E.folder = f; E.linkTo(f); E.round(); D.deliver(E); D.round();
+    ok(E.textNow() === 'legible' && D.textNow() === 'legible', `and a device set up there after it takes it (${E.textNow()})`);
+  });
+  for (const first of ['laptop', 'smartboard']) block(() => {
+    // two set up one empty folder at once, only the laptop having chosen one: the laptop's on both, nobody told otherwise
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 5'), A = new Device('laptop');
+    A.addWindow(A.ids()[0], W.NOTES); A.setStyle({ letters: 'early' });
+    NOW += DAY;
+    const B = new Device('board'); B.addPage('Smartboard page');
+    const [x, y] = first === 'laptop' ? [A, B] : [B, A];
+    x.linkTo(f, { atOnce: true }); NOW += 1000; y.linkTo(f, { atOnce: true });
+    const each = () => { for (let k = 0; k < 3; k++) { for (const d of [A, B]) { for (const o of [A, B]) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } };
+    each();
+    ok(A.linkedAs === 'seed' && B.linkedAs === 'seed' && A.textNow() === 'early' && B.textNow() === 'early' && A.sums.every(sm => !sm.style.length),
+      `two set up one empty folder at once (the ${first} first), only the laptop having chosen a text style: the laptop’s on both, and it isn’t told otherwise (${A.textNow()} / ${B.textNow()})`);
+  });
+  for (const order of [[0, 1, 2], [2, 1, 0], [1, 2, 0]]) block(() => {
+    // three at once: the laptop chose Easier to read, the cart Early readers a day later, the smartboard none: the
+    // cart's on all three, and the cart isn't told otherwise
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 7'), A = new Device('laptop');
+    A.addWindow(A.ids()[0], W.NOTES); A.setStyle({ letters: 'legible' }); NOW += DAY;
+    const C = new Device('cart'); C.addPage('Cart page'); C.setStyle({ letters: 'early' }); NOW += DAY;
+    const B = new Device('board'); B.addPage('Smartboard page');
+    const all = [A, B, C];
+    for (const i of order) { all[i].linkTo(f, { atOnce: true }); NOW += 1000; }
+    for (let k = 0; k < 4; k++) { for (const d of all) { for (const o of all) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; }
+    ok(all.every(d => d.linkedAs === 'seed' && d.textNow() === 'early') && C.sums.every(sm => !sm.style.some(x => x.letters)),
+      `three set up one empty folder at once (${order.map(i => all[i].label).join(', ')}): the later choice on all three, and the cart isn’t told otherwise (${all.map(d => d.textNow()).join(' / ')})`);
+  });
+  block(() => {
+    // a device file from 2026.11.16-4 (sync.style without the text style): read without error, and it changes nothing
+    const { A, B, sync } = pair();
+    A.setStyle({ letters: 'early', theme: 'dark' }); NOW += 1000; sync();
+    const old = fileOf(A); delete old.letters; delete old.sync.style.letters; old.sync.seq += 1000;
+    const text = resum(old), r = Merge.decode(JSON.parse(text), H);
+    ok(r && r.peer && !r.newer && !r.skipped.length && r.peer.style.theme && !r.peer.style.letters, 'a 2026.11.16-4 device file (no text style) reads without error, with the theme’s version and none of the text style');
+    B.view.set(A.fileName(), text); const plan = B.round();
+    ok(B.textNow() === 'early' && (B.link.sync.style.letters || {}).v && plan && !plan.summary.style.length, `merged, it changes nothing about the text style, nor says anything (${B.textNow()})`);
+    // and two devices that synced on 2026.11.16-4, each with its own text style (no time it was chosen), then updated:
+    // their own each, until one is chosen
+    const C = new Device('cart', { pages: false, old: true }), E = new Device('wall', { pages: false, old: true }), f = new Folder('Room 3');
+    C.addPage('C page'); C.folder = f; C.view = new Map(); C.linkTo(f);
+    E.view = new Map(f.files); E.folder = f; E.linkTo(f);
+    C.patch({ set: { letters: 'legible' } }); E.patch({ set: { letters: 'early' } });
+    const each = () => { for (let k = 0; k < 3; k++) { for (const d of [C, E]) { for (const o of [C, E]) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } };
+    each();
+    for (const d of [C, E]) as4(d, false);
+    each();
+    ok(C.textNow() === 'legible' && E.textNow() === 'early', `two devices that synced on 2026.11.16-4, updated, keep their own text style until one is chosen (${C.textNow()} / ${E.textNow()})`);
+    C.setStyle({ letters: 'standard' }); each();
+    ok(C.textNow() === 'standard' && E.textNow() === 'standard', `then that choice reaches the other (${C.textNow()} / ${E.textNow()})`);
+  });
+  block(() => {
+    // a device still on 2026.11.16-4 in the folder: it doesn't know the text style, so it keeps its own and never sends
+    // one; its file, without one, resets nobody's; and its rounds stay quiet
+    ok(!!Merge4, `(the stand-in for 2026.11.16-4: board.js has “${PARTS_NOW}”)`);
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 8'), A = new Device('laptop'), B = new Device('board', { old: true }), C = new Device('cart');
+    A.addWindow(A.ids()[0], W.NOTES); A.linkTo(f); B.linkTo(f); C.linkTo(f);
+    const all = [A, B, C], each = () => { const w = LOG.writes; for (let k = 0; k < 3; k++) { for (const d of all) { for (const o of all) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } return LOG.writes - w; };
+    each();
+    B.setStyle({ letters: 'legible' }); NOW += 1000; A.setStyle({ letters: 'early' }); NOW += 1000; each();
+    ok(A.textNow() === 'early' && C.textNow() === 'early' && B.textNow() === 'legible', `the text style chosen on one new device reaches the other; the 2026.11.16-4 smartboard keeps its own (${all.map(d => d.textNow()).join(' / ')})`);
+    ok(each() === 0, 'then nobody writes again');
+    B.setStyle({ theme: 'dark' }); NOW += 1000; each();
+    ok(all.every(d => d.styleNow() === 'dark blue') && A.textNow() === 'early' && C.textNow() === 'early', `a theme chosen on the 2026.11.16-4 smartboard reaches every device, and its file, with no text style, resets nobody’s (${all.map(d => d.styleNow() + ' ' + d.textNow()).join(' / ')})`);
+    const fb = fileOf(B);
+    ok(!('letters' in fb) && !('letters' in fb.sync.style) && fileOf(A).letters === 'early', '(its file has no text style; the laptop’s has it)');
+    C.setStyle({ letters: 'standard' }); NOW += 1000; each();
+    ok(A.textNow() === 'standard' && C.textNow() === 'standard' && B.textNow() === 'legible' && each() === 0, `Standard on the cart reaches the laptop, the smartboard keeps its own, and all is quiet again (${all.map(d => d.textNow()).join(' / ')})`);
+    const said = A.sums.concat(C.sums).flatMap(sm => sm.style).filter(x => x.letters);
+    ok(said.every(x => x.by !== B.dev) && B.sums.every(sm => sm.style.every(x => !('letters' in x))), `nobody hears that the smartboard changed the text style, and it hears of none (${JSON.stringify(said)})`);
+    // the smartboard updated: its own text style, from before, is no choice; it takes the folder's, and changes nobody's
+    as4(B, false); NOW += 1000; each();
+    ok(all.every(d => d.textNow() === 'standard'), `updated, the smartboard takes the folder’s text style (the cart’s Standard), and changes nobody’s (${all.map(d => d.textNow()).join(' / ')})`);
+    A.setStyle({ letters: 'early' }); NOW += 1000; each();
+    ok(all.every(d => d.textNow() === 'early'), `then the laptop’s next choice reaches it too (${all.map(d => d.textNow()).join(' / ')})`);
+  });
+  // Updated from 2026.11.16-4: a ledger from before the text style. A choice made on the new release before its first
+  // round (Chrome asking to Reconnect the folder after the update, offline, or just quick) is a change like any other.
+  const linked4 = (labels, folderName) => {
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder(folderName), devs = labels.map(l => new Device(l, { old: true }));
+    devs[0].addWindow(devs[0].ids()[0], W.NOTES);
+    for (const d of devs) { if (d !== devs[0]) d.deliver(devs[0]); d.linkTo(f); }
+    const each = (list = devs) => { const w = LOG.writes; for (let k = 0; k < 3; k++) { for (const d of list) { if (!d.linked) continue; for (const o of list) if (o !== d && o.folder) d.deliver(o); d.round(); } NOW += MIN; } return LOG.writes - w; };
+    each();
+    return { f, devs, each };
+  };
+  const toldOf = d => (d.sums || []).flatMap(sm => sm.style).filter(x => x.letters).map(x => [x.by, x.letters]);
+  block(() => {
+    const { devs: [A, B], each } = linked4(['laptop', 'board'], 'Room 21');
+    as4(A, false); as4(B, false);
+    NOW += 1000; A.setStyle({ letters: 'early' }); NOW += 1000;
+    each();
+    ok(A.textNow() === 'early' && B.textNow() === 'early' && !toldOf(A).length,
+      `updated from 2026.11.16-4, Early readers chosen on the laptop before its first round: on both, and the laptop isn’t told otherwise (${A.textNow()} / ${B.textNow()}; ${JSON.stringify(toldOf(A))})`);
+    A.setStyle({ letters: 'legible' }); NOW += 1000; each();
+    ok(A.textNow() === 'legible' && B.textNow() === 'legible' && each() === 0, `then the laptop’s next choice reaches the smartboard too, and all is quiet (${A.textNow()} / ${B.textNow()})`);
+  });
+  block(() => {
+    // the cart, updated first, chose Easier to read; a minute later Early readers is chosen on the smartboard, just
+    // updated, before its first round: the later choice, on every device
+    const { devs: [A, B, C], each } = linked4(['laptop', 'board', 'cart'], 'Room 22');
+    as4(A, false); as4(C, false); each();
+    C.setStyle({ letters: 'legible' }); NOW += 1000; each();
+    ok(A.textNow() === 'legible' && C.textNow() === 'legible' && B.textNow() === 'standard', `(the cart’s Easier to read on the laptop; the smartboard, still on 2026.11.16-4, keeps its own: ${[A, B, C].map(d => d.textNow()).join(' / ')})`);
+    as4(B, false); NOW += MIN; B.setStyle({ letters: 'early' }); NOW += 1000;
+    each();
+    ok([A, B, C].every(d => d.textNow() === 'early') && !toldOf(B).length && each() === 0,
+      `the smartboard’s later Early readers, chosen before its first round on the new release, wins on every device, and it isn’t told otherwise (${[A, B, C].map(d => d.textNow()).join(' / ')}; ${JSON.stringify(toldOf(B))})`);
+  });
+  block(() => {
+    // unlinked while still on 2026.11.16-4, updated, Early readers chosen while unlinked, linked again (carry)
+    const { f, devs: [A, B], each } = linked4(['laptop', 'board'], 'Room 23');
+    as4(A, false); each();
+    B.unlink(); NOW += 1000;
+    as4(B, false); NOW += MIN; B.setStyle({ letters: 'early' }); NOW += 1000;
+    B.view = new Map(f.files); B.linkTo(f); each();
+    ok(B.linkedAs === 'carry' && A.textNow() === 'early' && B.textNow() === 'early', `unlinked on 2026.11.16-4, updated, Early readers chosen while unlinked, linked again: it counts (${B.linkedAs}: ${A.textNow()} / ${B.textNow()})`);
+  });
+  block(() => {
+    // the theme in the same place (the ledger has its entry): the same
+    const { devs: [A, B], each } = linked4(['laptop', 'board'], 'Room 24');
+    as4(A, false); as4(B, false);
+    NOW += 1000; A.setStyle({ theme: 'dark' }); NOW += 1000;
+    each();
+    ok(A.styleNow() === 'dark blue' && B.styleNow() === 'dark blue', `and the theme, chosen at the same moment, the same (${A.styleNow()} / ${B.styleNow()})`);
+  });
+  block(() => {
+    // a ledger from 2026.11.16-3 (no sync.style at all; that device skipped 2026.11.16-4): a theme and text style chosen
+    // before the first round on the new release reach the other device
+    const { A, B, folder, sync } = pair();
+    for (const d of [A, B]) { delete d.link.sync.style; d.peers.clear(); }
+    for (const [n, t] of Array.from(folder.files)) { const o = JSON.parse(t); delete o.sync.style; delete o.letters; folder.write(n, resum(o)); }
+    for (const d of [A, B]) d.view = new Map(folder.files);
+    NOW += 1000; A.setStyle({ theme: 'dark', letters: 'early' }); NOW += 1000;
+    sync();
+    ok(A.styleNow() === 'dark blue' && B.styleNow() === 'dark blue' && A.textNow() === 'early' && B.textNow() === 'early',
+      `a ledger from 2026.11.16-3, the theme and text style chosen before the first round on the new release: on both (${A.styleNow()} ${A.textNow()} / ${B.styleNow()} ${B.textNow()})`);
+  });
+  for (const joins of [true, false]) block(() => {
+    // the laptop, on 2026.11.17-2 and never having chosen a text style, sets up an empty folder (its Standard there as
+    // the oldest version there can be); the smartboard, on 2026.11.16-4 with Early readers, joins it, then updates. Nobody
+    // chose a text style for this folder: the smartboard keeps its own, and isn't told the laptop changed it.
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 25'), A = new Device('laptop'), B = new Device('board', { old: true, pages: !joins });
+    if (joins) B.addPage('Smartboard page');
+    A.addWindow(A.ids()[0], W.NOTES); B.patch({ set: { letters: 'early' } }); NOW += 1000;   // (2026.11.16-4 notes no lettersAt)
+    A.linkTo(f); B.linkTo(f);
+    const all = [A, B], each = () => { const w = LOG.writes; for (let k = 0; k < 3; k++) { for (const d of all) { for (const o of all) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } return LOG.writes - w; };
+    each();
+    ok(A.linkedAs === 'seed' && B.linkedAs === (joins ? 'join' : 'take') && A.textNow() === 'standard' && B.textNow() === 'early', `(the laptop set up the folder; the smartboard ${B.linkedAs}s it on 2026.11.16-4, and keeps its Early readers: ${A.textNow()} / ${B.textNow()})`);
+    as4(B, false); NOW += 1000; each();
+    ok(A.textNow() === 'standard' && B.textNow() === 'early' && !toldOf(B).length && each() === 0,
+      `updated, the smartboard (${joins ? 'joined' : 'took'} on 2026.11.16-4) keeps its Early readers over the laptop’s never-chosen Standard, isn’t told the laptop changed it, and all is quiet (${A.textNow()} / ${B.textNow()}; ${JSON.stringify(toldOf(B))})`);
+    B.setStyle({ letters: 'legible' }); NOW += 1000; each();
+    ok(A.textNow() === 'legible' && B.textNow() === 'legible', `then a choice on the smartboard reaches the laptop (${A.textNow()} / ${B.textNow()})`);
+    A.setStyle({ letters: 'early' }); NOW += 1000; each();
+    ok(A.textNow() === 'early' && B.textNow() === 'early' && each() === 0, `and the laptop’s later one the smartboard (${A.textNow()} / ${B.textNow()})`);
+  });
+  for (const first of ['laptop', 'smartboard']) block(() => {
+    // two set up one empty folder at once, neither having chosen a text style, but the smartboard has one from before
+    // 2026.11.17-2: one of the two never-chosen values on both (by device id), and nobody is told someone changed it
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    const f = new Folder('Room 26'), A = new Device('laptop'), B = new Device('board', { pages: false });
+    A.addWindow(A.ids()[0], W.NOTES); B.addPage('Smartboard page'); B.patch({ set: { letters: 'early' } });
+    const [x, y] = first === 'laptop' ? [A, B] : [B, A];
+    x.linkTo(f, { atOnce: true }); NOW += 1000; y.linkTo(f, { atOnce: true });
+    const each = () => { for (let k = 0; k < 3; k++) { for (const d of [A, B]) { for (const o of [A, B]) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } };
+    each();
+    ok(A.textNow() === B.textNow() && !toldOf(A).length && !toldOf(B).length,
+      `two set up one empty folder at once (the ${first} first), neither having chosen a text style: the same on both, and nobody is told it changed (${A.textNow()} / ${B.textNow()}; ${JSON.stringify(toldOf(A).concat(toldOf(B)))})`);
   });
 }
 

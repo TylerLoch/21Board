@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.17-1';
-  const BOARD_BUILD = 'a0719be3';
+  const BOARD_VERSION = '2026.11.17-2';
+  const BOARD_BUILD = '94e382b9';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -114,7 +114,8 @@
 
     clock: 'date',           // Clock in the corner: 'off' | 'time' | 'date' (time and date, the default)
 
-    letters: 'standard'      // Letters: 'standard' (the device's own font) | 'legible' (Atkinson Hyperlegible) | 'early' (Andika)
+    // The whole board's, like the theme and accent: exported, and with Board Sync on every device (section 12b).
+    letters: 'standard'      // Text style: 'standard' (the device's own font) | 'legible' (Atkinson Hyperlegible) | 'early' (Andika)
   };
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
   const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
@@ -137,7 +138,7 @@
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
   // The palette widgets receive (--b21-* variables), with the chosen accent applied.
   function paletteFor(theme) {
-    const base = Object.assign({}, PALETTES[theme], { font: letterFont() });   // Settings → Letters (section 12b)
+    const base = Object.assign({}, PALETTES[theme], { font: letterFont() });   // Settings → Text style (section 12b)
     const a = accentOf(S.settings.accent);
     if (!a || S.settings.accent === 'blue') return base; // blue is the built-in default
     const c = theme === 'dark' ? a[1] : a[0];
@@ -806,12 +807,12 @@
       } catch (e) { throw thrown || e; }
       for (const r of written) { if (r.deleted) { if (Known.get(r.key)) Raced.gone.set(r.key, Known.get(r.key)); Known.delete(r.key); } else Known.set(r.key, r.rev); Pages.hold(r.key, r.deleted ? null : r); }
       // (a settings patch was put over what was stored, which may hold another tab's or a merge's pages added, moved or
-      // deleted, or a merge's theme and accent, which this tab didn't show while its patch waited: shown here too)
+      // deleted, or a merge's theme, accent and text style, which this tab didn't show while its patch waited: shown here too)
       const st = written.find(r => r.key === Keys.settings && batch.get(r.key) && batch.get(r.key).patch);
       if (st) {
         const w = this.pending.get(Keys.settings), v = w && w.patch ? Merge.patchSettings(st.value, w.patch) : st.value;
         const next = Object.assign({}, S.settings);
-        for (const k of ['boards', 'deletedBoards', 'deletedAt', 'lastBoard', 'theme', 'accent']) if (k in v) next[k] = v[k];
+        for (const k of ['boards', 'deletedBoards', 'deletedAt', 'lastBoard'].concat(Merge.STYLE_PARTS)) if (k in v) next[k] = v[k];
         if (!sameJSON(next, S.settings)) { S.settings = next; applySettings(); afterBulkApply(); }
       }
       if (written.length) { const keys = written.map(r => r.key); Sync.announce(keys); Link.changed(keys); BoardHistory.changed(keys); }
@@ -1188,8 +1189,9 @@
   function updateSettings(patch, quiet) {
     const p = { set: {}, drop: OLD_SETTINGS };
     for (const [k, v] of Object.entries(patch)) { if (k === 'gone') p.gone = v; else p.set[k] = v; }
-    // (when the theme or accent was chosen here: with Board Sync the later choice wins on every device, see Merge.stamp)
-    for (const k of ['theme', 'accent']) if (k in p.set) p.set[k + 'At'] = Date.now();
+    // (when the theme, accent or text style was chosen here: with Board Sync the later choice wins on every device, see
+    // Merge.stamp)
+    for (const k of Merge.STYLE_PARTS) if (k in p.set) p.set[k + 'At'] = Date.now();
     S.settings = Merge.patchSettings(S.settings, p);
     applySettings();
     Writer.patch(Keys.settings, 'settings', p);
@@ -1223,7 +1225,7 @@
     applyAccent(theme);
     const palette = paletteFor(theme);
     window.__board21Host = { theme, palette, version: BOARD_VERSION };
-    const themeSig = theme + '|' + S.settings.accent + '|' + letterKey();   // (the letters go to widgets with the theme)
+    const themeSig = theme + '|' + S.settings.accent + '|' + letterKey();   // (the text style goes to widgets with the theme)
     if (themeSig !== S.appliedTheme) {
       const themeChanged = !S.appliedTheme || S.appliedTheme.split('|')[0] !== theme;
       S.appliedTheme = themeSig;
@@ -1235,7 +1237,7 @@
     Picker.btns.right.hidden = corners === 'left';
     if (Picker.side && Picker.btns[Picker.side].hidden) Picker.close();
     SaveNote.update();   // (it sits above the Widget Picker buttons)
-    applyClassroom();    // section 12b: lock, screen, clock, letters
+    applyClassroom();    // section 12b: lock, screen, clock, text style
     updateCatalog();
     Picker.renderControls();
     Picker.render();
@@ -3459,7 +3461,7 @@
         const id = await this.create({ after, end: !after, name: p.board.name || null, uid, quiet: true });
         if (!id) break;
         made.push(id); after = id;
-        await applyImport(Object.assign({}, p, { theme: null, accent: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
+        await applyImport(Object.assign({}, p, { theme: null, accent: null, letters: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
       }
       return made;
     },
@@ -3689,7 +3691,7 @@
   //   Classroom    Lock windows in place, Go back to an earlier version (Board history, as a column beside
   //                Settings: section 13c), Close all windows, Stay awake
   //   This page    Saved widgets ▸
-  //   Appearance   Theme, Background ▸, Accent color, Letters ▸, Clock in the corner, Board shape
+  //   Appearance   Theme, Background ▸, Accent color, Text style ▸, Clock in the corner, Board shape
   //   Advanced ▸   Widget Picker, Size of windows and menus, moving windows, board history, backups and storage,
   //                Developer mode, About
   // ▸ is a group shown as one row with its value, that opens in place (settingsGroup; Settings.groups). A group that
@@ -3698,11 +3700,12 @@
   // Settings → Appearance → Background: one set of choices (the theme's, colors, Custom…, the photo). It's this
   // page's background (board.background, and its photo in media:<b>:background*).
   // =====================================================================
-  // 12b. Classroom features: lock windows, stay awake, clock in the corner, letters
+  // 12b. Classroom features: lock windows, stay awake, clock in the corner, text style
   // ---------------------------------------------------------------------
   // Each feature keeps its code in its own part below and is wired in through these hooks:
   // applySettings() calls applyClassroom(); Settings.render shows the rows; Settings.act passes actions on.
-  // All four settings belong to this device (DEFAULT_SETTINGS, "Classroom features").
+  // Lock, Stay awake and the clock belong to this device (DEFAULT_SETTINGS, "Classroom features"); the text style is
+  // the whole board's, like the theme and accent color.
 
   function applyClassroom() {
     applyLock();
@@ -3713,10 +3716,11 @@
 
   // Settings → Classroom: lock, go back (board history, section 13c), close all, stay awake.
   // While Board Sync is set up (section 13b), the settings that stay on this device say so (the board's own ones
-  // say "This page, on all your devices.": pageScope; the theme and accent color, the whole board's, "On all your
-  // devices.": labelled).
+  // say "This page, on all your devices.": pageScope; the theme, accent color and text style, the whole board's, "On
+  // all your devices.": allDevices, labelled).
   const deviceOnly = (pre = '') => (Link.dir ? pre + 'This device only.' : '');
-  const labelled = lbl => (Link.dir ? `<div><div class="lbl">${lbl}</div><div class="hint">On all your devices.</div></div>` : `<div class="lbl">${lbl}</div>`);
+  const allDevices = () => (Link.dir ? 'On all your devices.' : '');
+  const labelled = lbl => (Link.dir ? `<div><div class="lbl">${lbl}</div><div class="hint">${allDevices()}</div></div>` : `<div class="lbl">${lbl}</div>`);
   function classroomSettings(sw, seg) {
     const rows = lockSettings(sw, seg) + historyOpenRow() + closeAllRow() + awakeSettings(sw, seg);
     return rows ? `<h3>Classroom</h3>${rows}` : '';
@@ -4053,7 +4057,7 @@
       panel.addEventListener('animationend', () => this.cover());
       // Timers sleep while the page is hidden or the device is asleep: the right time as soon as it shows again.
       document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && this.on()) this.tick(); });
-      // A font for Letters finishing loading changes its width: measure again.
+      // A font for the text style finishing loading changes its width: measure again.
       if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => this.place());
     },
     apply() {
@@ -4174,8 +4178,8 @@
     return true;
   }
 
-  // ---- Letters (easier-to-read fonts)
-  // Settings → Appearance → Letters: the device's own font (as before), or one that comes with 21Board for easier
+  // ---- Text style (easier-to-read fonts)
+  // Settings → Appearance → Text style: the device's own font (as before), or one that comes with 21Board for easier
   // reading from across the room: Atkinson Hyperlegible (the Braille Institute's font for low vision: I, l and 1
   // differ, and 0 has a line through it) or Andika (SIL's font for beginning readers: a and g as children learn to
   // write them). Easier reading, not a "dyslexia font". The files are in fonts/, cut down to the letters 21Board
@@ -4187,11 +4191,12 @@
   // (sdk/board21.js, LETTER_FACES), then fires a resize (the window's and Board21's), so text that is fitted to its
   // window fits again in the new letters.
   // Weights 600 to 800 (headings, names) come out in the Bold face, 500 in the Regular one.
-  // This device only, like the other classroom settings: never exported (unlike the theme and accent) or sent to the
-  // Drive folder, so a board opened on the smartboard keeps the smartboard's letters.
+  // The whole board's, like the theme and accent color (settings.letters, a name from when it was called Letters):
+  // exported, taken by Import › Replace this page, and with Board Sync on every device, the later choice winning
+  // (lettersAt, see updateSettings and Merge.stamp). Going back in Board history never changes it.
   // (\u00a0, a no-break space, keeps “I, l and 1” and “a and g” on one line in the hints.)
   const LETTERS = {
-    standard: { name: 'Standard', hint: 'This device’s own letters.' },
+    standard: { name: 'Standard', hint: 'This device’s own font.' },
     legible: { name: 'Easier to read', hint: 'Atkinson Hyperlegible, made for people with low vision: I,\u00a0l\u00a0and\u00a01 all look different, and 0 has a line through it.',
       family: 'Atkinson Hyperlegible', files: ['AtkinsonHyperlegible-Regular.woff2', 'AtkinsonHyperlegible-Bold.woff2'] },
     early: { name: 'Early readers', hint: 'Based on Andika by SIL, for children learning to read: a\u00a0and\u00a0g look the way they learn to write them.',
@@ -4205,7 +4210,7 @@
   // Whether the fonts can load here. A font from another site loads only if that site allows it (CORS); if it
   // doesn't, the browser logs errors and the text stays as it was. 21Board itself is always on the fonts' own site
   // (or on disk). The widget dev window may not be: in an AI tool's preview it runs on the tool's site, and in the
-  // widget lab it is sealed off (no site at all). There the letters stay Standard and nothing is fetched, so the
+  // widget lab it is sealed off (no site at all). There the text style stays Standard and nothing is fetched, so the
   // preview's console only shows the widget's own errors, and Settings says where to try them.
   const LETTERS_HERE = !LAB || (() => { try { const u = new URL(FONT_BASE); return u.protocol === 'file:' || u.origin === self.origin; } catch (e) { return false; } })();
   const letterKey = () => LETTERS_HERE && Object.prototype.hasOwnProperty.call(LETTERS, S.settings.letters) ? S.settings.letters : 'standard';
@@ -4227,7 +4232,7 @@
 
   // Each choice is shown in its own letters, with a sample of the look-alikes.
   function letterSettings() {
-    if (!LETTERS_HERE) return `<div class="row"><div><div class="lbl">Letters</div><div class="hint">Easier-to-read letters can’t load in this test board. Try them in 21Board itself.</div></div></div>`;
+    if (!LETTERS_HERE) return `<div class="row"><div><div class="lbl">Text style</div><div class="hint">Easier-to-read fonts can’t load in this test board. Try them in 21Board itself.</div></div></div>`;
     const cur = letterKey();
     const opt = key => {
       const l = LETTERS[key], on = key === cur;
@@ -4235,8 +4240,9 @@
         `<span class="txt"><b>${esc(l.name)}</b><small>${esc(l.hint)}</small></span><span class="sample" aria-hidden="true">${LETTER_SAMPLE}</span>` +
         (on ? `<span class="tick" aria-hidden="true">${svg('check')}</span>` : '') + '</button>';
     };
-    // (A group: one row showing the choice, that opens to the three cards.)
-    return settingsGroup('letters', 'Letters', esc(LETTERS[cur].name), `${deviceOnly() ? `<div class="hint">${deviceOnly()}</div>` : ''}<div class="letter-opts" role="radiogroup" aria-label="Letters">${Object.keys(LETTERS).map(opt).join('')}</div>`);
+    // (A group: one row showing the choice, and under its name where it applies, like Theme's; it opens to the three
+    // cards. Its key and actions keep the setting's name, letters.)
+    return settingsGroup('letters', 'Text style', esc(LETTERS[cur].name), `<div class="letter-opts" role="radiogroup" aria-label="Text style">${Object.keys(LETTERS).map(opt).join('')}</div>`, { sub: allDevices() });
   }
 
   function letterAct(act, val) {
@@ -4374,10 +4380,14 @@
   // Advanced › Back up every page: when the last backup was, with the amber dot that is on Advanced when it is overdue
   // (Settings.needsLook), so that what the dot is about is plain once Advanced is open.
   const backupLine = late => `<div class="hint${late ? ' warn-line' : ''}" id="st-backup">${late ? '<span class="status-dot warn"></span>' : ''}${esc(backupAgo())}</div>`;
-  // ... and without which theme and accent color are chosen (and the swatches' shades, which follow the theme): put in
-  // place when only they changed, chosen on another device or in another tab (putLook).
+  // ... and without which theme, accent color and text style are chosen (the swatches' shades, which follow the theme;
+  // the text style's card ticked, and the name on its row): put in place when only they changed, chosen on another
+  // device or in another tab (putLook).
   const noLook = h => h.replace(/<button role="radio" aria-checked="\w+" data-act="theme"([^>]*) class="\w*">/g, '<button data-act="theme"$1>')
-    .replace(/<button class="swatch[^"]*" style="[^"]*" role="radio" aria-checked="\w+" data-act="accent"/g, '<button data-act="accent"');
+    .replace(/<button class="swatch[^"]*" style="[^"]*" role="radio" aria-checked="\w+" data-act="accent"/g, '<button data-act="accent"')
+    .replace(/<button class="letter-opt[^"]*" role="radio" aria-checked="\w+" data-act="letters"/g, '<button data-act="letters"')
+    .replace(/(<span class="sample" aria-hidden="true">[^<]*<\/span>)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/g, '$1')
+    .replace(/(data-val="letters"[^>]*>[\s\S]*?<span class="v">)[^<]*/, '$1');
 
   const Settings = {
     el: null,
@@ -4403,15 +4413,21 @@
     // the status line put in place otherwise. (Each merge drew it two or three times: a screen reader read the control
     // it was on again, and a tap whose press and release straddled a drawing was lost.)
     refresh() { this.render(false, true); },
-    // The theme's and accent color's choices as html has them, put in place: Settings isn't drawn again for a choice
-    // made elsewhere (the keyboard, a tap and a screen reader stay where they were, and nothing moves).
+    // The theme's, accent color's and text style's choices as html has them, put in place: Settings isn't drawn again
+    // for a choice made elsewhere (the keyboard, a tap and a screen reader stay where they were, and nothing moves, but
+    // for the text in another font).
     putLook(html) {
       const t = document.createElement('template');
       t.innerHTML = html;
-      for (const b of t.content.querySelectorAll('[data-act="theme"], [data-act="accent"]')) {
+      for (const b of t.content.querySelectorAll('[data-act="theme"], [data-act="accent"], [data-act="letters"]')) {
         const el = $(`[data-act="${b.dataset.act}"][data-val="${CSS.escape(b.dataset.val)}"]`, this.body);
-        if (el) for (const a of ['class', 'style', 'aria-checked']) if (el.getAttribute(a) !== b.getAttribute(a)) el.setAttribute(a, b.getAttribute(a));
+        if (!el) continue;
+        for (const a of ['class', 'style', 'aria-checked']) if (el.getAttribute(a) !== b.getAttribute(a)) el.setAttribute(a, b.getAttribute(a));
+        const tick = $(':scope > .tick', b), had = $(':scope > .tick', el);   // (the text style's card that is ticked)
+        if (tick && !had) el.appendChild(tick.cloneNode(true)); else if (!tick && had) had.remove();
       }
+      const v = $('[data-act="group"][data-val="letters"] .v', t.content), el = $('[data-act="group"][data-val="letters"] .v', this.body);
+      if (v && el && el.textContent !== v.textContent) el.textContent = v.textContent;
     },
     putStatus(el) {
       const t = Link.status();
@@ -4997,6 +5013,7 @@
       viewport: here ? exportViewport() : storedViewport(sc, free, instances), // the size of the space the rects are in
       theme: S.settings.theme,
       accent: S.settings.accent,
+      letters: S.settings.letters,   // the text style
       board: Object.assign({ name: board.name, background: board.background || { color: null, pattern: 'none' }, scale: sc, shape: free ? 'free' : '16:9' },
         kind === 'full' && board.uid ? { uid: board.uid } : {},   // which board this is (see section 13b)
         kind === 'full' && typeof board.pos === 'number' && isFinite(board.pos) ? { pos: board.pos } : {}),   // its place among the pages
@@ -5120,6 +5137,7 @@
       kind: j.kind === 'template' ? 'template' : 'full',
       theme: ['light', 'dark', 'system'].includes(j.theme) ? j.theme : null,
       accent: accentOf(j.accent) ? j.accent : null,
+      letters: Object.prototype.hasOwnProperty.call(LETTERS, j.letters) ? j.letters : null,   // (a file from before 2026.11.17-2 has none)
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
         background: { color: bgColor(bg.color), pattern: PATTERN_IDS.includes(bg.pattern) ? bg.pattern : 'none' },
@@ -5168,9 +5186,11 @@
     const missing = new Set(parsed.instances.filter(i => !getWidget(i.widgetId)).map(i => i.widgetId));
     const what = parsed.kind === 'template' ? 'a blank template' : 'a full backup';
     // Replace keeps this page (its uid): with Board Sync, its windows and content change on the other devices too, and
-    // so do the file's theme and accent color, which are the whole board's (said, when they differ from this board's).
-    const uid = S.board.uid, look0 = { theme: S.settings.theme, accent: S.settings.accent };
-    const looks = andList([parsed.theme && parsed.theme !== look0.theme && 'theme', parsed.accent && parsed.accent !== look0.accent && 'accent color'].filter(Boolean));
+    // so do the file's theme, accent color and text style, which are the whole board's (said, when they differ from
+    // this board's).
+    const uid = S.board.uid, look0 = { theme: S.settings.theme, accent: S.settings.accent, letters: S.settings.letters };
+    const looks = andList([parsed.theme && parsed.theme !== look0.theme && 'theme', parsed.accent && parsed.accent !== look0.accent && 'accent color',
+      parsed.letters && parsed.letters !== look0.letters && 'text style'].filter(Boolean));
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
       message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' is' : 's are'} not installed here; ${missing.size === 1 ? 'its' : 'their'} content will be kept but not shown.` : ''),
@@ -5191,10 +5211,10 @@
       const undoId = await Link.swap(() => applyImport(parsed, mode, { uid: replace ? uid : null, keepCreated: replace, photo: 'file', history: { reason: replace ? 'import' : 'add', label } }));
       if (Link.supported) Link.changed([Keys.board(S.boardId)]);
       const added = opened() - before, undo = undoAction(undoId, replace ? 'the import' : 'adding windows');
-      // (its Undo puts back the theme and accent the file replaced too, chosen again here, so that with Board Sync it
-      // reaches the other devices: going back in Board history never changes them)
+      // (its Undo puts back the theme, accent and text style the file replaced too, chosen again here, so that with Board
+      // Sync it reaches the other devices: going back in Board history never changes them)
       const back = {};
-      for (const k of ['theme', 'accent']) if (replace && S.settings[k] !== look0[k]) back[k] = look0[k];
+      for (const k of Merge.STYLE_PARTS) if (replace && S.settings[k] !== look0[k]) back[k] = look0[k];
       if (undo.onAction && Object.keys(back).length) { const go = undo.onAction; undo.onAction = async () => { if (await go() !== false) updateSettings(back); }; }
       toast(replace ? 'Board imported.' : `Added ${added} window${added === 1 ? '' : 's'}.`, undo);
     } catch (err) {
@@ -5327,9 +5347,10 @@
         out.push(rec(Keys.media(b, 'background'), 'media', p.photo));
         out.push(rec(Keys.media(b, 'background-look'), 'media', p.photoLook || normalizePhotoSettings({})));
       }
-      // (the file's theme and accent: chosen here now, so with Board Sync they reach the other devices, see updateSettings)
+      // (the file's theme, accent and text style: chosen here now, so with Board Sync they reach the other devices, see
+      // updateSettings)
       const look = {};
-      for (const k of ['theme', 'accent']) if (p[k]) Object.assign(look, { [k]: p[k], [k + 'At']: rev });
+      for (const k of Merge.STYLE_PARTS) if (p[k]) Object.assign(look, { [k]: p[k], [k + 'At']: rev });
       if (Object.keys(look).length) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, look)));
     }
 
@@ -6164,7 +6185,7 @@
       let st = { ledger, ctr: sync.ctr || 0, fixes: [], partsChanged: false };
       if (mode !== 'take') st = Merge.stamp(ledger, local, { dev: me, ctr: sync.ctr || 0, maxSeen: sync.maxSeen || 0, first: !!sync.first, now, dropHere, mode });
       const fixes = { writes: (st.fixes || []).map(f => Object.assign({ type: Keys.parse(f.key).kind }, f)), ifRev: this.ifRevOf(r, st.fixes || []), settings: st.settings ? stored => Merge.patchSettings(stored, st.settings) : null };
-      // (the theme and accent's versions are in link:sync: the stamp's, see Merge.stamp)
+      // (the theme, accent and text style's versions are in link:sync: the stamp's, see Merge.stamp)
       sync = Object.assign({}, sync, { ctr: st.ctr }, (st.ledger.sync || {}).style ? { style: st.ledger.sync.style } : {}, st.partsChanged ? { localAt: now } : {});
       // (Two devices that each set up a folder "first" at once gave it two ids: every device takes the smaller one.)
       for (const f of Object.values(this.good())) if (f.folder && sync.folder && f.folder < sync.folder) sync.folder = f.folder;
@@ -6270,10 +6291,10 @@
         if (back.length) Pages.backByMerge(back);
         // (Not the round that applies set-up's mode: its last step says what it did.)
         if (!(mode && this.welcoming)) {
-          // (a theme or accent chosen in this tab while the round ran, not stored yet when it was saved: this tab shows
-          // that, not the merge's, and the next round takes it to the other devices. It isn't said.)
+          // (a theme, accent or text style chosen in this tab while the round ran, not stored yet when it was saved: this
+          // tab shows that, not the merge's, and the next round takes it to the other devices. It isn't said.)
           const was = (r.by.get(Keys.settings) || {}).value || {};
-          const style = (plan.summary.style || []).map(x => Object.fromEntries(Object.entries(x).filter(([k]) => k === 'by' || S.settings[k + 'At'] === was[k + 'At']))).filter(x => x.theme || x.accent);
+          const style = (plan.summary.style || []).map(x => Object.fromEntries(Object.entries(x).filter(([k]) => k === 'by' || S.settings[k + 'At'] === was[k + 'At']))).filter(x => Merge.STYLE_PARTS.some(k => k in x));
           try { MergeUI.shown(Object.assign({}, plan.summary, { style }), { at: now, from: plan.summary.from, ops: done.written.filter(x => Keys.parse(x.key).board === S.boardId).map(x => ({ key: x.key, rev: x.rev || 0, prev: seed[x.key] })), swaps: plan.undo.swaps, skip: plan.undo.skip }); }
           catch (err) { console.warn('21Board: the merge message couldn’t be shown', err); }
         }
@@ -6503,17 +6524,17 @@
           const go = () => {
             if (gen !== this.gen) { stale = 'gone'; s.transaction.abort(); return; }
             for (const w of writes) if ((((cur[w.key] || {}).rev) || 0) !== ((plan.ifRev || {})[w.key] || 0)) { stale = true; s.transaction.abort(); return; }
-            // (the theme or accent chosen here, in another tab or by an Import, since the round read the settings: the
-            // merge's value would replace a later choice for good. The round runs again, and the later one wins.)
+            // (the theme, accent or text style chosen here, in another tab or by an Import, since the round read the
+            // settings: the merge's value would replace a later choice for good. The round runs again, and the later one wins.)
             const sset = (plan.settingsPatch && plan.settingsPatch.set) || {}, was = ((r.by.get(Keys.settings) || {}).value) || {}, now0 = ((cur[Keys.settings] || {}).value) || {};
-            if (['theme', 'accent'].some(k => k in sset && (now0[k] !== was[k] || now0[k + 'At'] !== was[k + 'At']))) { stale = true; s.transaction.abort(); return; }
+            if (Merge.STYLE_PARTS.some(k => k in sset && (now0[k] !== was[k] || now0[k + 'At'] !== was[k + 'At']))) { stale = true; s.transaction.abort(); return; }
             const out = [];
             for (const w of writes) {
               if (w.del) { if (cur[w.key]) { s.delete(w.key); out.push({ key: w.key, deleted: true }); } continue; }
               const rec = { key: w.key, type: w.type, rev: Math.max(((cur[w.key] && cur[w.key].rev) || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value: w.value };
               s.put(rec); out.push(rec);
             }
-            if (typeof plan.settings === 'function') {   // (a patch: only boards, deletedBoards, deletedAt, lastBoard, theme and accent)
+            if (typeof plan.settings === 'function') {   // (a patch: only boards, deletedBoards, deletedAt, lastBoard, theme, accent and letters)
               const st = cur[Keys.settings] || { key: Keys.settings, type: 'settings', rev: 0, value: {} }, value = plan.settings(st.value || {});
               if (value && !sameJSON(value, st.value || {})) {
                 const rec = { key: Keys.settings, type: 'settings', rev: Math.max((st.rev || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value };
@@ -6558,7 +6579,7 @@
       const me = this.dev(), now = Date.now(), local = this.local(r, now, !!opts.left), name = this.fileName(this.wideName(me));
       const own = this.ownCheck(sync, me, name);
       const meta = { dev: me, folder: sync.folder, name: this.device().label, seq: sync.seq || 0, write: '', at: now, merged: this.mergedOf(sync, me), left: opts.left || null,
-        refs: this.byPhoto(this.refsOf(ledger)), skipped: r.skipped, generator: `21Board ${RELEASE}` };   // (the theme and accent: Merge.read's, from r.settings)
+        refs: this.byPhoto(this.refsOf(ledger)), skipped: r.skipped, generator: `21Board ${RELEASE}` };   // (the theme, accent and text style: Merge.read's, from r.settings)
       const trial = Merge.encode(ledger, local, meta);
       const empty = !Object.values(ledger.mine || {}).length;
       if (empty && !own.exists) return;   // (only the untouched placeholder: nothing to write yet)
@@ -7061,7 +7082,8 @@
       return w;
     },
     photoKeyOf(m) { return m ? `${m.addedAt}-${m.bytes}-${m.w}x${m.h}` : null; },
-    // The board's content, without this device's settings (theme, accent: going back never changes them).
+    // The board's content, without the theme, accent and text style (going back never changes them; boardSig never had
+    // the text style).
     sigOf(exp) { return boardSig(Object.assign({}, exp, { theme: null, accent: null })); },
     // Version prev already holds everything in cur (each window's content is there, or is gone now).
     holdsAll(prev, cur) {
@@ -7402,7 +7424,7 @@
       const r = await this.find(id);
       if (!r) return false;
       const exp = clone(r.body.exp);
-      delete exp.theme; delete exp.accent;
+      delete exp.theme; delete exp.accent; delete exp.letters;
       const ref = exp.media && exp.media.ref, look = exp.media && exp.media.look;
       delete exp.media;
       const p = parseBoardFile(JSON.stringify(exp));
@@ -7476,7 +7498,7 @@
         exp = clone(r.body.exp); meta = r.meta;
       } else exp = clone(src.exp);
       const at = (exp.snapshot && exp.snapshot.at) || (exp.history && exp.history.at) || (meta && meta.at) || Date.now();
-      delete exp.theme; delete exp.accent;   // going back never changes this device's settings
+      delete exp.theme; delete exp.accent; delete exp.letters;   // going back never changes the theme, accent or text style
       if (!opts.undo) this.fix(exp, at);
       const ref = exp.media && exp.media.ref, look = exp.media && exp.media.look;
       delete exp.media;
@@ -7589,7 +7611,7 @@
           const r = await this.get(meta.id);
           if (!r) return;
           const exp = clone(r.body.exp);
-          delete exp.theme; delete exp.accent;
+          delete exp.theme; delete exp.accent; delete exp.letters;
           const dev = Link.device();
           exp.history = { at: meta.at, kind: meta.kind, label: meta.label, by: dev.id, from: dev.label };
           await Link.writeFile(name, JSON.stringify(exp), dir);
@@ -7788,7 +7810,7 @@
     async loadExtras() {
       try {
         const exp = await buildExport('full');
-        // (Fingerprinted as versions are: without the theme and accent, and also as an older 21Board stored it.)
+        // (Fingerprinted as versions are: without the theme, accent and text style, and also as an older 21Board stored it.)
         this.now = { sigs: boardSigs(exp, e => BoardHistory.sigOf(e)), wins: BoardHistory.winsOf(exp), thumb: BoardHistory.thumbOf(exp), photo: BoardHistory.photoKeyOf(exp.media && exp.media.background), name: S.board.name };
       } catch (e) { this.now = null; }
       for (const k of new Set(BoardHistory.metas.map(m => m.photo).filter(k => k && k !== 'gone'))) {
@@ -8036,9 +8058,13 @@
     const PAGE_PARTS = ['name', 'look', 'size', 'pos', 'photo', 'photoLook'];
     const PAGE_BACK = ['name', 'look', 'size', 'photo', 'photoLook'];   // an unseen edit to one brings a deleted page back (moving it doesn't)
     const WIN_PARTS = ['rect', 'open', 'data', 'conf', 'label'];
-    // The board's theme and accent color (settings.theme, settings.accent): on every device linked to the folder, the
-    // later change winning, as for a page's name. (The device's other settings, and the page shown, stay its own.)
-    const STYLE_PARTS = ['theme', 'accent'], THEMES = ['light', 'dark', 'system'], STYLE_DEF = { theme: 'system', accent: 'blue' };
+    // The board's theme, accent color and text style (settings.theme, settings.accent, settings.letters): on every
+    // device linked to the folder, the later change winning, as for a page's name. (The device's other settings, and the
+    // page shown, stay its own.) Everything below that handles them goes through STYLE_PARTS (tests/merge.js leaves
+    // 'letters' out of it to stand in for 2026.11.16-4, which didn't have the text style).
+    const STYLE_PARTS = ['theme', 'accent', 'letters'], THEMES = ['light', 'dark', 'system'], LETTER_KEYS = ['standard', 'legible', 'early'];
+    const STYLE_DEF = { theme: 'system', accent: 'blue', letters: 'standard' };
+    const styleOk = (k, v, H) => (k === 'theme' ? THEMES.includes(v) : k === 'accent' ? H.accentOk(v) : LETTER_KEYS.includes(v));
     const WID_RE = /^[\w.@~-]{1,120}$/, DEV_RE = /^[0-9a-z]{12}$/, KEY_RE = /^[0-9a-z]{1,40}$/, WIDGET_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
     const DAY = 864e5;
     // (remadeMs: a record a merge deleted, made again this long after it, is a change made after seeing that, see stamp)
@@ -8201,12 +8227,12 @@
         else if ((p[0] === 'inst' || p[0] === 'data' || p[0] === 'conf') && p.length === 4) slot(b)[p[0]].set(`${p[2]}:${p[3]}`, r);
       }
       const local = { H, pages: new Map(), byB: new Map(), nouid: [], settings: st, revs, recs: byKey, skipped, now, fixes: [], style: {} };
-      // The theme and accent, and when each was chosen here (themeAt, accentAt: see updateSettings; for one chosen
-      // before 2026.11.16-4, the settings record's own time). chosen: someone picked it on this device (not only the
-      // default, or a value from before 2026.11.16-4)
+      // The theme, accent and text style, and when each was chosen here (themeAt, accentAt, lettersAt: see
+      // updateSettings; for one chosen before it synced, the settings record's own time). chosen: someone picked it on
+      // this device (not only the default, or a value from before 2026.11.16-4, or a text style from before 2026.11.17-2)
       const sr = byKey.get('settings'), sAt = sr ? fin(sr.updatedAt, now) : now;
       for (const k of STYLE_PARTS) {
-        const val = (k === 'theme' ? THEMES.includes(st.theme) : H.accentOk(st.accent)) ? st[k] : STYLE_DEF[k], t = fin(st[k + 'At'], null);
+        const val = styleOk(k, st[k], H) ? st[k] : STYLE_DEF[k], t = fin(st[k + 'At'], null);
         local.style[k] = { val, h: hj(val), at: t === null ? sAt : t, chosen: t !== null };
       }
       const lp = (key, val, h, rec, x) => Object.assign({ key, val, h, rev: rec ? fin(rec.rev, 0) : 0, at: rec ? fin(rec.updatedAt, null) : null,
@@ -8444,22 +8470,24 @@
           M.p = {}; M.w = {}; touched.add(M);
         });
       }
-      // 3. the theme and accent. A change made here is a version whose counter is when it was made (themeAt, accentAt),
-      // not the newest change stamped with it, so that two made apart (one while unlinked, say) resolve to the later on
-      // every device. A value this device had before it synced with this folder (joining it, switching to it, a
-      // ledger from before 2026.11.16-4) is no change: only its fingerprint is noted, and the folder's applies. Nor is
-      // one never chosen here: a value only received, which a ledger rebuilt from an own file older than the last merge
-      // doesn't have. An empty folder (seed) gets this device's, as old as the choice (the counters it brings from
-      // another folder say nothing about when that was; ctr is still raised to it, so later stamps stay above it); one
-      // never chosen here (the default) as the oldest version there can be, so that a choice made on another device
-      // that set up the same folder at once, before either had the other's file, wins on both. (Neither chose one: the
-      // tie goes by device id, the same on every device.)
-      const style = Object.assign({}, L.sync.style);
+      // 3. the theme, accent and text style. A change made here is a version whose counter is when it was made (themeAt,
+      // accentAt, lettersAt), not the newest change stamped with it, so that two made apart (one while unlinked, say)
+      // resolve to the later on every device. A value this device had before it synced with this folder (joining it or
+      // switching to it) is no change: only its fingerprint is noted, and the folder's applies. Nor is one never chosen
+      // here: a value from before 2026.11.16-4 (2026.11.17-2 for the text style), or one only received, which a ledger
+      // rebuilt from an own file older than the last merge doesn't have. A ledger of this folder from before then has no
+      // entry for it: one chosen here since (on this release, before its first round: Chrome asking to Reconnect the
+      // folder after the update, say) is a change, as old as the choice. An empty folder (seed) gets this device's, as
+      // old as the choice (the counters it brings from another folder say nothing about when that was; ctr is still
+      // raised to it, so later stamps stay above it); one never chosen here (the default) as the oldest version there
+      // can be, so that a choice made on another device that set up the same folder at once, before either had the
+      // other's file, wins on both. (Neither chose one: the tie goes by device id, the same on every device.)
+      const style = Object.assign({}, L.sync.style), fresh = o.mode === 'join' || o.mode === 'take';
       let sn = 0, styled = 0;
       for (const k of STYLE_PARTS) {
         const lp = local.style && local.style[k], E = style[k];
         if (!lp || (E && E.h === lp.h)) continue;
-        if (o.mode !== 'seed' && (!E || !lp.chosen)) { style[k] = { h: lp.h }; continue; }
+        if (o.mode !== 'seed' && (!lp.chosen || (!E && fresh))) { style[k] = { h: lp.h }; continue; }
         const low = !E && !lp.chosen, n = low ? 1 : !E ? Math.max(1, fin(lp.at, now)) : Math.max(fin(lp.at, now), fin(o.ctr, 0) + 1, fin(o.maxSeen, 0) + 1);
         style[k] = { h: lp.h, v: arr({ by: dev, vv: vjoin(E && E.v ? E.v[1] : {}, { [dev]: n }), t: low ? 0 : fin(lp.at, now), u: false }) };
         sn = Math.max(sn, n); styled++;
@@ -8629,7 +8657,7 @@
         }
         state.pages.set(uid, S);
       }
-      // the theme and accent: the later change ('join': the folder's before this device's)
+      // the theme, accent and text style: the later change ('join': the folder's before this device's)
       state.style = {};
       for (const k of STYLE_PARTS) {
         const E = ((ledger0.sync || {}).style || {})[k], list = (peers || []).map(p => p.style && p.style[k]).filter(Boolean);
@@ -9049,16 +9077,21 @@
         if (!sumP.changed && !sumP.deleted) delete sum.pages[uid];
       }
       sum.from = Array.from(from);
-      // the theme and accent: another device's change is written to settings (a patch of those keys only), and said
-      // (sum.style: [{by, theme, accent}], by device; not when joining or switching to the folder's board, whose theme
-      // and accent nobody has just changed). With no version anywhere, this device's own is only noted.
+      // the theme, accent and text style: another device's change is written to settings (a patch of those keys only),
+      // and said (sum.style: [{by, theme, accent, letters}], by device; not when joining or switching to the folder's
+      // board, which nobody has just changed). With no version anywhere, this device's own is only noted. A version
+      // nobody chose (t 0: a default an empty folder was set up with) is nobody's change: it is never said, and it never
+      // replaces a value this device had before it synced that part (no version here: a smartboard that joined on
+      // 2026.11.16-4 keeps its own text style until one is chosen on any device).
       const style = {};
       for (const k of STYLE_PARTS) {
         const J = state.style && state.style[k], lp = local.style && local.style[k], E = (L.sync.style || {})[k];
         if (!J || !lp) { if (E || lp) style[k] = E || { h: lp.h }; continue; }
         if (J.main.src !== 'local' && J.main.h !== lp.h && J.main.has) {
+          const none = !fin(J.main.t, 0);
+          if (none && !(E && E.v) && mode !== 'join' && mode !== 'take') { style[k] = { h: lp.h }; continue; }
           (sp.set || (sp.set = {}))[k] = J.main.val;
-          if (mode === 'join' || mode === 'take') { style[k] = { h: J.main.h, v: arr(J.main) }; continue; }
+          if (mode === 'join' || mode === 'take' || none) { style[k] = { h: J.main.h, v: arr(J.main) }; continue; }
           let said = sum.style.find(x => x.by === J.main.by);
           if (!said) sum.style.push(said = { by: J.main.by });
           said[k] = J.main.val;
@@ -9125,18 +9158,21 @@
       }
       pages.sort((a, c) => a.board.pos - c.board.pos || (a.board.uid < c.board.uid ? -1 : 1));
       const main = pages[0] || { viewport: { width: 2400, height: 1350 }, board: null, instances: [] };
-      // the theme and accent, as any export has them, and their versions (sync.style) while the values are the ones stamped
+      // the theme, accent and text style, as any export has them, and their versions (sync.style) while the values are
+      // the ones stamped
       const ls = local.style || {}, val = k => (ls[k] ? ls[k].val : m[k] || null), style = {};
       for (const k of STYLE_PARTS) { const E = ((ledger0.sync || {}).style || {})[k]; if (E && E.v && ls[k] && E.h === ls[k].h) style[k] = E.v; }
       const obj = { format: '21board', formatVersion: 1, kind: 'full', exportedAt: new Date(fin(m.at, 0)).toISOString(), generator: m.generator || '21Board',
-        viewport: main.viewport, theme: val('theme'), accent: val('accent'), board: main.board };
+        viewport: main.viewport };
+      for (const k of STYLE_PARTS) obj[k] = val(k);
+      obj.board = main.board;
       if (main.media) obj.media = main.media;
       obj.instances = main.instances;
       if (pages.length > 1) obj.pages = pages.map((p, i) => (i === 0 ? { main: true } : p));
       obj.sync = { v: 1, dev: m.dev, folder: m.folder || null, name: m.name || '', seq: m.seq || 0, write: m.write || '', at: fin(m.at, 0), merged: m.merged || {},
         gone: { pages: goneP, windows: goneW }, style, left: m.left || null, sum: '' };
       // Bookkeeping (seq, write, at, merged) and z never make a write: only the parts do.
-      const partsH = hash53(JSON.stringify([m.name || '', m.folder || null, m.left || null, goneP, goneW, canon, [obj.theme, obj.accent, style]]));
+      const partsH = hash53(JSON.stringify([m.name || '', m.folder || null, m.left || null, goneP, goneW, canon, STYLE_PARTS.map(k => obj[k]).concat([style])]));
       return { obj, partsH };
     }
     // The text a file's checksum is taken over: the file with its sum left empty (as its writer had it).
@@ -9220,13 +9256,13 @@
         const x = t && H.UID_RE.test(t.page || '') && WID_RE.test(t.wid || '') ? V(t.exists, { h: '0', val: false, cover: cover(t.cover) }) : null;
         if (x && !(peer.pages.get(t.page) && peer.pages.get(t.page).wins.has(t.wid))) peer.gone.wins.set(`${t.page} ${t.wid}`, { page: t.page, wid: t.wid, exists: x }); else skipped.push('deleted window');
       }
-      // the theme and accent: a version in sync.style, with a value this release knows (a file from before 2026.11.16-4
-      // has none: it says nothing about them)
+      // the theme, accent and text style: a version in sync.style, with a value this release knows (a file from before
+      // 2026.11.16-4 has none, and one from 2026.11.16-4 none of the text style: it says nothing about them)
       peer.style = {};
       const sv = s.style && typeof s.style === 'object' ? s.style : {};
       for (const k of STYLE_PARTS) {
         if (!sv[k]) continue;
-        const val = obj[k], x = (k === 'theme' ? THEMES.includes(val) : H.accentOk(val)) ? V(sv[k], { h: hj(val), val }) : null;
+        const val = obj[k], x = styleOk(k, val, H) ? V(sv[k], { h: hj(val), val }) : null;
         if (x) peer.style[k] = x; else skipped.push(k);
       }
       if (newer) return { peer: null, skipped, newer: true };
@@ -9397,11 +9433,12 @@
       if (locked || !button) { this.merge(text, null, seedHere); return; }   // (windows locked: no Undo; Board history has it)
       this.merge(text, button, seedHere);
     },
-    // The theme or accent color changed on another device ({by, theme, accent}): they are the whole board's, on every
-    // device. No Undo: changing it back in Settings is one tap, and syncs.
+    // The theme, accent color or text style changed on another device ({by, theme, accent, letters}): they are the whole
+    // board's, on every device. No Undo: changing it back in Settings is one tap, and syncs.
     style(x) {
       const theme = { light: 'Light', dark: 'Dark', system: 'Auto' }[x.theme], accent = x.accent && (accentOf(x.accent) || [])[2];
-      const what = [theme && `the theme to ${theme}`, accent && `the accent color to ${accent}`].filter(Boolean).join(' and ');
+      const text = Object.prototype.hasOwnProperty.call(LETTERS, x.letters) ? LETTERS[x.letters].name : null;
+      const what = andList([theme && `the theme to ${theme}`, accent && `the accent color to ${accent}`, text && `the text style to “${text}”`].filter(Boolean));
       return what ? `${this.names([x.by], true)} changed ${what}.` : '';
     },
     // A page deleted here is back: brought back on another device (its Undo, Bring back), or changed there before the
