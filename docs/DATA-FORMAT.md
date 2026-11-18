@@ -81,10 +81,15 @@ storage can't be read still has every page.
                            //   (Settings → Advanced → Windows stop at each other's edges: Off = snapping false;
                            //   Light / Medium / Firm = snapping true with "gentle" / "normal" / "strong")
   pickerCorners: "both",   // Settings → Advanced → Widget Picker: "both" | "left" | "right"
-  accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
+  accent: "blue",          // the accent every release reads: "blue" | "purple" | "red" | "orange" | "green" | "slate".
+                           //   "blue" for a custom color. "pink" and "teal", from before 2026.11.18-2, show as Blue.
+  accentColor: "#8040c0",  // from 2026.11.18-2: the accent chosen, one of the six or a custom "#rrggbb" (lowercase);
+                           //   "" before any. It shows while accent goes with it: itself, or "blue" for a custom color.
+                           //   Otherwise a release before 2026.11.18-2 chose accent since, and accent shows.
   themeAt: 1794460416170,  // when the theme, the accent and the text style were last chosen on this device (ms; set by
   accentAt: 1794460410000, //   a change made here, never by Board Sync): of two choices made apart, the later wins on
-  lettersAt: 1794460420000,//   every device (lettersAt from 2026.11.17-2)
+  lettersAt: 1794460420000,//   every device (lettersAt from 2026.11.17-2, accentColorAt from 2026.11.18-2)
+  accentColorAt: 1794460410000,
   locked: false,           // Settings → Classroom → Lock windows in place
   awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
   clock: "auto",           // Settings → Advanced → Clock in the corner: "on" | "off" | "auto" (the default: only in full screen)
@@ -100,13 +105,15 @@ storage can't be read still has every page.
 }
 ```
 
-Only `theme`, `accent` and `letters` (the text style; from 2026.11.17-2, before which it stayed on the device) go into
-exported files (and so into the device files in the Google Drive folder). With Board Sync they are the board's, on
-every device linked to the folder: the later choice wins, as for a page's name (see `link:sync.style` below).
-*Import › Replace this page* takes the file's (a choice made here, so it syncs; a file without `letters` leaves the
-text style as it is), and its Undo puts back the ones it replaced (chosen here again, so that syncs too); the other
-ways to import, and going back in Board history, never change them. `locked`, `awake` and `clock` belong to this
-device: never in exports, Board history or the Google Drive folder, and an import leaves them as they are.
+Only `theme`, the accent and `letters` (the text style; from 2026.11.17-2, before which it stayed on the device) go
+into exported files (and so into the device files in the Google Drive folder). An export's `accent` is the accent
+shown: one of the six, or a custom color. A device file has `accent` and `accentColor` as they are stored. With Board
+Sync they are the board's, on every device linked to the folder: the later choice wins, as for a page's name (see
+`link:sync.style` below). *Import › Replace this page* takes the file's (a choice made here, so it syncs; a file
+without `letters` leaves the text style as it is), and its Undo puts back the ones it replaced (chosen here again, so
+that syncs too); the other ways to import, and going back in Board history, never change them. `locked`, `awake` and
+`clock` belong to this device: never in exports, Board history or the Google Drive folder, and an import leaves them
+as they are.
 
 Older versions had a third choice for `awake`, `"hours"` (school hours, Monday to Friday, from `awakeFrom` to
 `awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"` (the teacher wanted the screen on in class) and drops
@@ -209,7 +216,7 @@ fingerprints and versions of the board's parts, never the board's values:
   peers: { "<dev>": { seq, seen, changedAt, name, file, at, left, missingSince, folder } },   // every device seen in the folder; changedAt and missingSince are this device's clock
   last: { dev, name, at }, gcAt, left: null,       // the last merge that changed something here; Unlink or Erase's last write
   dropped: { "<page uid>" | "<page uid> <wid>": { vv, at } },   // deletions collected here (gc) in the last 30 days
-  style: { theme: { h, v: [by, {dev: n}, t] }, accent: { h, v }, letters: { h, v } } }   // the board's theme, accent and text style: their parts (below)
+  style: { theme: { h, v: [by, {dev: n}, t] }, accent: { h, v }, letters: { h, v }, accentColor: { h, v } } }   // the board's theme, accent and text style: their parts (below)
 
 // link:mine-<page uid>: the page's parts and its windows' parts, each { h: fingerprint, v: [by, {dev: n}, t], rev }
 { uid, b, p: { exists, name, look, size, pos, photo, photoLook }, w: { "<wid>": { ikey, p: { exists, rect, open, data, conf, label } } },
@@ -240,14 +247,15 @@ The parts, versions and rules belong to the merge (`board.js` section 13d, the r
 ledger (the browser threw the database away) is rebuilt from this device's own file in the folder; with no file
 there, the folder's board is joined as on a first set-up.
 
-**The theme, accent and text style** (`settings.theme`, `settings.accent`, `settings.letters`) are three more parts, of
-the board as a whole, in `link:sync.style` (the text style from 2026.11.17-2): `h` is the fingerprint of the value this
-device has, `v` its version. They take the later change, as a page's name does, with no copy and no Board history
-version. A change made here is a version whose counter is when it was chosen (`themeAt`, `accentAt`, `lettersAt`), not
-the newest change stamped with it, so that two made apart (one while unlinked, say) resolve to the later on every
-device. An entry with no `v` is a value this device had before it synced with this folder: joining it or switching to
-it (the folder's then applies), or a ledger from before 2026.11.16-4, or from before 2026.11.17-2 for the text style
-(each device keeps its own until one is chosen on any device, and takes the folder's if one was). It is no change, and
+**The theme, accent and text style** (`settings.theme`, `settings.accent` and `settings.accentColor`,
+`settings.letters`) are four more parts, of the board as a whole, in `link:sync.style` (the text style from
+2026.11.17-2, `accentColor` from 2026.11.18-2): `h` is the fingerprint of the value this device has, `v` its version.
+They take the later change, as a page's name does, with no copy and no Board history version. A change made here is a
+version whose counter is when it was chosen (`themeAt`, `accentAt`, `lettersAt`, `accentColorAt`), not the newest
+change stamped with it, so that two made apart (one while unlinked, say) resolve to the later on every device. An
+entry with no `v` is a value this device had before it synced with this folder: joining it or switching to it (the
+folder's then applies), or a ledger from before 2026.11.16-4, or from before 2026.11.17-2 for the text style (each
+device keeps its own until one is chosen on any device, and takes the folder's if one was). It is no change, and
 never replaces another device's. Nor is a value never chosen here (no `themeAt`, `accentAt` or `lettersAt`: the
 default, a value from before 2026.11.16-4 or a text style from before 2026.11.17-2) that differs from its entry: one
 only received, which a ledger rebuilt from this device's file, written before its last merge, doesn't have yet. A
@@ -260,9 +268,14 @@ folder at once, before any has another's file, a choice made on one of them wins
 having chosen: the tie goes by device id). A version with `t` 0 is nobody's change: a device that takes it says
 nothing, and one whose own value has no version (an entry with no `v`) keeps its own, unless it is joining or
 switching to the folder. Linking the same folder again (`carry`) keeps the entries, so a choice made while unlinked
-counts. A choice made after linking while Google Drive is still bringing the folder (`wait`) is this device's own when
-the files arrive: joining or switching to the folder, the folder's applies. A value this release doesn't know (a text
-style a newer 21Board added, say) is skipped in a file, as any part is.
+counts. A choice made after linking while Google Drive is still bringing the folder (`wait`) is this device's own
+when the files arrive: joining or switching to the folder, the folder's applies. A value this release doesn't know (a
+text style a newer 21Board added, say) is skipped in a file, as any part is.
+
+A device on a release before 2026.11.18-2 doesn't know `accentColor`. It reads and writes `accent` alone, always a
+value it knows. So it shows Blue for a custom color, and never takes the accent for a change of its own, even in a tab
+beside a newer one. Its files have no `accentColor`, which says nothing about it. An accent chosen there shows on every
+device: `accentColor` gives way once `accent` no longer goes with it.
 
 A device on 2026.11.16-4 doesn't know the text style: its files have no `letters` and no `sync.style.letters`, which
 says nothing about it (never a change, never a reset back to Standard), and it reads past both in a newer device's
@@ -309,7 +322,7 @@ boards `pos`; content clash versions not yet settled go in an instance's `pendin
           "merged": { "<dev>": <seq> },                                        // the newest seq of each other device this file includes
           "gone": { "pages": [{ "uid", "exists", "cover" }], "windows": [{ "page", "wid", "exists", "cover" }] },   // deletions
           "left": null | { "at": … } | { "at": …, "erased": true },              // Unlink, Erase everything
-          "style": { "theme": [by, {dev: n}, t], "accent": [ … ], "letters": [ … ] },   // the versions of the top-level theme, accent and text style (one with none says nothing about it)
+          "style": { "theme": [by, {dev: n}, t], "accent": [ … ], "letters": [ … ], "accentColor": [ … ] },   // the versions of the top-level theme, accent and text style (one with none says nothing about it)
           "sum": "9be0c3…" }                                                   // the first 32 hex digits of SHA-256 of the file with "sum": ""
 ```
 
@@ -586,7 +599,7 @@ on Chrome) reads it.
   "generator": "21Board 2026.11.12-1 (3fa9c1d2)",   // the release that wrote the file: name and build (for people; never read back)
   "viewport": { "width": 2400, "height": 1350 },   // the space the rects are in (the 16:9 board, grown to fit every window)
   "theme": "light",
-  "accent": "blue",
+  "accent": "blue",               // the accent shown: one of the six, or a custom color "#rrggbb"
   "letters": "standard",          // the text style (from 2026.11.17-2; a file without it leaves the text style as it is)
   "board": {
     "name": "Room 12",

@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-1';
-  const BOARD_BUILD = 'eaf48663';
+  const BOARD_VERSION = '2026.11.18-2';
+  const BOARD_BUILD = '3ee9e440';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -95,7 +95,8 @@
     snapping: true,          // snap + resist overlap while dragging
     resistance: 'normal',    // 'gentle' | 'normal' | 'strong'
     pickerCorners: 'both',   // 'both' | 'left' | 'right'
-    accent: 'blue',          // accent color: a key of ACCENTS
+    accent: 'blue',          // accent color, as releases before 2026.11.18-2 know it (see accentShown)
+    accentColor: '',         // accent color from 2026.11.18-2: a key of ACCENTS or a custom '#rrggbb'
     dragFromContent: true,   // move windows by dragging inside them (see section 9a)
     devMode: false,
     activeBoard: 1,          // the page every tab shows (section 11b)
@@ -121,45 +122,103 @@
   // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
   const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
 
-  // Accent colors: [light theme, dark theme]. Light shades keep white text readable (≥4.5:1);
-  // dark shades are lighter so they stand out on dark surfaces.
+  // Accent colors (Settings › Accent color): [light theme, dark theme, name]. The light theme's shade takes white text
+  // (4.5:1, on the widgets' #f9fafb too). The dark theme's shade takes dark text (on-accent, #0b1220) and stands out on
+  // the window color (6:1 on #1e1e1e). Custom… takes any color (customShades). Pink and Teal went in 2026.11.18-2.
   const ACCENTS = {
-    blue: ['#2563eb', '#60a5fa', 'Blue'], purple: ['#7c3aed', '#a78bfa', 'Purple'], pink: ['#db2777', '#f472b6', 'Pink'],
-    red: ['#dc2626', '#f87171', 'Red'], orange: ['#c2410c', '#fb923c', 'Orange'], green: ['#15803d', '#4ade80', 'Green'],
-    teal: ['#0f766e', '#2dd4bf', 'Teal'], slate: ['#475569', '#94a3b8', 'Slate']
+    blue: ['#2563eb', '#60a5fa', 'Blue'], purple: ['#7c3aed', '#a78bfa', 'Purple'], red: ['#dc2626', '#f87171', 'Red'],
+    orange: ['#c2410c', '#fb923c', 'Orange'], green: ['#15803d', '#4ade80', 'Green'], slate: ['#475569', '#94a3b8', 'Slate']
   };
   function mixHex(a, b, t) { // t = share of b
     const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
     const ch = sh => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t);
     return '#' + [16, 8, 0].map(sh => ch(sh).toString(16).padStart(2, '0')).join('');
   }
-  // Only real entries count ("constructor", "__proto__" etc. from a crafted file must not).
-  const accentOf = key => (typeof key === 'string' && Object.prototype.hasOwnProperty.call(ACCENTS, key)) ? ACCENTS[key] : null;
-  const accentOk = key => !!accentOf(key);   // (Board Sync's merge takes only these from another device's file)
+  const contrast = (a, b) => { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); };   // (WCAG, 1 to 21)
+  // A custom color's [light theme, dark theme] shades, held to the six colors' rules. A color that passes is kept. One
+  // that doesn't keeps its hue and saturation while its HSL lightness moves in 0.5% steps until it passes: darker for
+  // the light theme (4.5:1 on the widgets' #f9fafb, so white text reads too), lighter for the dark theme (6:1 on
+  // #1e1e1e, as Red has, which keeps the dark text above 4.5:1 too). Lightness alone always gets there: luminance grows
+  // with it, and black and white pass.
+  function customShades(hex) {
+    const n = parseInt(hex.slice(1), 16), [r, g, b] = [n >> 16, (n >> 8) & 255, n & 255].map(v => v / 255);
+    const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l0 = (mx + mn) / 2;
+    const s = d ? d / (1 - Math.abs(2 * l0 - 1)) : 0;
+    const h = !d ? 0 : mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;   // (in sixths of the circle)
+    const at = l => {   // the color at lightness l (HSL to '#rrggbb')
+      const c = (1 - Math.abs(2 * l - 1)) * s, x = c * (1 - Math.abs((h % 2) - 1)), m = l - c / 2;
+      return '#' + [[c, x, 0], [x, c, 0], [0, c, x], [0, x, c], [x, 0, c], [c, 0, x]][Math.floor(h) % 6].map(v => Math.round((v + m) * 255).toString(16).padStart(2, '0')).join('');
+    };
+    let light = hex, dark = hex;
+    for (let l = l0; contrast(light, PALETTES.light.surface) < 4.5 && l > 0;) light = at(l = Math.max(0, l - 0.005));
+    for (let l = l0; contrast(dark, '#1e1e1e') < 6 && l < 1;) dark = at(l = Math.min(1, l + 0.005));
+    return [light, dark];
+  }
+  // An accent's [light theme, dark theme, name], or null. A key of ACCENTS (own keys only: "constructor", "__proto__"
+  // and the like from a crafted file don't count), or a custom '#rrggbb', lowercase. The last custom color's shades are
+  // cached: the board asks at every redraw.
+  let lastCustom = ['', null];
+  const accentKey = v => typeof v === 'string' && Object.prototype.hasOwnProperty.call(ACCENTS, v);
+  function accentOf(v) {
+    if (typeof v !== 'string') return null;
+    if (accentKey(v)) return ACCENTS[v];
+    if (!/^#[0-9a-f]{6}$/.test(v)) return null;
+    if (lastCustom[0] !== v) lastCustom = [v, customShades(v).concat('Custom')];
+    return lastCustom[1];
+  }
+  const accentOk = v => !!accentOf(v);
+  // The accent is stored in two parts, so that a release before 2026.11.18-2 (another device, or another tab during an
+  // update) never finds one it doesn't know and never takes it for a choice of its own. settings.accent is what those
+  // releases read and write: a key of ACCENTS, 'pink' or 'teal' (shown as Blue), or 'blue' for a custom color.
+  // settings.accentColor is the accent chosen from 2026.11.18-2: a key of ACCENTS or a custom '#rrggbb'. It shows while
+  // accent goes with it. Otherwise an older release has chosen accent since. Board Sync carries both (Merge's
+  // STYLE_PARTS) and checks them with accentKeyOk and accentOk.
+  const accentKeyOk = v => accentKey(v) || v === 'pink' || v === 'teal';
+  const accentWith = c => (c[0] === '#' ? 'blue' : c);
+  const accentSet = c => ({ accent: accentWith(c), accentColor: c });   // (choosing c: Settings, Import, the dev window)
+  // The accent shown for an accent and accentColor as stored (or a file's: an export's accent can be a '#rrggbb'), or
+  // none. The board, its widgets, exports and the dev window all read it here (accentNow).
+  const accentShown = (a, c, none = 'blue') => (accentOk(c) && accentWith(c) === a ? c : accentOk(a) ? a : none);
+  const accentNow = () => accentShown(S.settings.accent, S.settings.accentColor);
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${a})`; };
   // The palette widgets receive (--b21-* variables), with the chosen accent applied.
   function paletteFor(theme) {
     const base = Object.assign({}, PALETTES[theme], { font: letterFont() });   // Settings → Text style (section 12b)
-    const a = accentOf(S.settings.accent);
-    if (!a || S.settings.accent === 'blue') return base; // blue is the built-in default
-    const c = theme === 'dark' ? a[1] : a[0];
+    const key = accentNow();
+    if (key === 'blue') return base; // blue is the built-in default
+    const c = accentOf(key)[theme === 'dark' ? 1 : 0];
     base.accent = c;
     base['accent-soft'] = theme === 'dark' ? rgba(c, 0.18) : mixHex(c, '#ffffff', 0.9);
     return base;
   }
-  // Board chrome: override the CSS color tokens for a non-default accent.
+  // Title bars (section 5) carry the accent: every window's faintly (8% of it in white, dark theme 20% in #1e1e1e), the
+  // focused one's clearly more, so it stands out across the room, even filling the board with no ring. TITLE_INK: the
+  // text on them, index.html's --text and --title-muted.
+  const TITLE_INK = { light: ['#1f2937', '#4b5563'], dark: ['#f9fafb', '#d1d5db'] };
+  // The focused tint: 25% of the accent (dark theme 35%). Very light and very dark accents get just enough less to keep
+  // the title text at 4.5:1 and the handles at 3:1.
+  function focusTint(c, dark) {
+    const base = dark ? '#1e1e1e' : '#ffffff', ink = TITLE_INK[dark ? 'dark' : 'light'];
+    for (let p = dark ? 35 : 25; ; p--) {   // (percent of the accent; never down to the faint tint)
+      const bg = mixHex(c, base, 1 - p / 100);
+      if (p <= (dark ? 21 : 9) || (ink.every(i => contrast(i, bg) >= 4.5) && contrast(c, bg) >= 3)) return bg;
+    }
+  }
+  // Board chrome: the CSS color tokens for the accent. index.html has Blue's built in: its faint tints are the focused
+  // tints before 2026.11.18-2. The window menu's button, while its menu is open, is the accent with --on-primary text.
   function applyAccent(theme) {
     const st = document.body.style;
-    const names = ['--primary', '--primary-soft', '--active-bg', '--focus-ring', '--focus-title', '--label-open'];
-    const a = accentOf(S.settings.accent);
-    if (!a || S.settings.accent === 'blue') { names.forEach(n => st.removeProperty(n)); return; }
-    const dark = theme === 'dark', c = dark ? a[1] : a[0];
+    const names = ['--primary', '--primary-soft', '--active-bg', '--focus-ring', '--titlebar', '--focus-title', '--label-open'];
+    const key = accentNow();
+    if (key === 'blue') { names.forEach(n => st.removeProperty(n)); return; }
+    const dark = theme === 'dark', c = accentOf(key)[dark ? 1 : 0];
     st.setProperty('--primary', c);
     st.setProperty('--focus-ring', c);
     st.setProperty('--primary-soft', rgba(c, dark ? 0.18 : 0.12));
     st.setProperty('--active-bg', dark ? rgba(c, 0.2) : mixHex(c, '#ffffff', 0.92));
-    st.setProperty('--focus-title', dark ? mixHex(c, '#1e1e1e', 0.8) : mixHex(c, '#ffffff', 0.92));
-    st.setProperty('--label-open', dark ? rgba(c, 0.32) : mixHex(c, '#ffffff', 0.8));
+    st.setProperty('--titlebar', dark ? mixHex(c, '#1e1e1e', 0.8) : mixHex(c, '#ffffff', 0.92));
+    st.setProperty('--focus-title', focusTint(c, dark));
+    st.setProperty('--label-open', c);
   }
 
   // Board background colors (Settings shows them in two rows) and patterns (.pattern-<id> in index.html).
@@ -1226,7 +1285,7 @@
     applyAccent(theme);
     const palette = paletteFor(theme);
     window.__board21Host = { theme, palette, version: BOARD_VERSION };
-    const themeSig = theme + '|' + S.settings.accent + '|' + letterKey();   // (the text style goes to widgets with the theme)
+    const themeSig = theme + '|' + accentNow() + '|' + letterKey();   // (the text style goes to widgets with the theme)
     if (themeSig !== S.appliedTheme) {
       const themeChanged = !S.appliedTheme || S.appliedTheme.split('|')[0] !== theme;
       S.appliedTheme = themeSig;
@@ -4383,6 +4442,18 @@
     `<div class="pat-tiles${photoShown ? ' disabled' : ''}" role="radiogroup" aria-label="Pattern">${PATTERNS.map(([p, n]) => { const on = p === pattern;
       return `<button class="pat-tile${on ? ' on' : ''}" role="radio" aria-checked="${on}" data-act="pattern" data-val="${p}"${photoShown ? ' disabled' : ''}><span class="pv${p === 'none' ? '' : ' pattern-' + p}" style="${look}"></span>${n}${tick(on)}</button>`; }).join('')}</div>`
   */
+  // Settings → Appearance → Accent color: the six, then Custom…, one radio group drawn like Background's. Custom… is
+  // checked while the accent is a '#rrggbb'. Every choice and Custom…'s dot show this theme's shade. A tap on Custom…
+  // lands on the color input laid over it, and the device's picker opens at the custom color, or else at the accent's
+  // light-theme shade.
+  function accentSettings() {
+    const cur = accentNow(), shade = a => a[resolvedTheme() === 'dark' ? 1 : 0], custom = cur[0] === '#';
+    const tick = on => on ? `<span class="tick" aria-hidden="true">${svg('check')}</span>` : '';
+    const colors = Object.entries(ACCENTS).map(([k, a]) => { const on = cur === k;
+      return `<button class="swatch${on ? ' on' : ''}" style="background:${shade(a)}" role="radio" aria-checked="${on}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent">${tick(on)}</button>`; }).join('');
+    return `<div class="row stack accent-row">${labelled('Accent color')}
+          <div class="swatches" role="radiogroup" aria-label="Accent color">${colors}<span class="accent-custom"><button class="swatch pill custom${custom ? ' on' : ''}" role="radio" aria-checked="${custom}" data-act="accent-custom" data-val="custom" title="Choose any color" aria-label="Custom color"><span class="dot"${custom ? ` style="background:${shade(accentOf(cur))}"` : ''}></span>Custom…${tick(custom)}</button><input type="color" id="set-accent-custom" value="${custom ? cur : accentOf(cur)[0]}" tabindex="-1" aria-hidden="true"></span></div></div>`;
+  }
   // Settings → Appearance → Background, with the photo picked: the picture (tap it to choose the part that stays in
   // view), Fit, Fade, and Change… / Remove.
   function photoRow() {
@@ -4451,11 +4522,15 @@
   // Advanced › Back up every page: when the last backup was, with the amber dot that is on Advanced when it is overdue
   // (Settings.needsLook), so that what the dot is about is plain once Advanced is open.
   const backupLine = late => `<div class="hint${late ? ' warn-line' : ''}" id="st-backup">${late ? '<span class="status-dot warn"></span>' : ''}${esc(backupAgo())}</div>`;
-  // ... and without which theme, accent color and text style are chosen (the swatches' shades, which follow the theme;
-  // the text style's card ticked, and the name on its row): put in place when only they changed, chosen on another
-  // device or in another tab (putLook).
+  // ... and without which theme, accent color and text style are chosen (the swatches' shades, which follow the theme,
+  // and the check; Custom…'s dot and its input's color; the text style's card ticked, and the name on its row): put in
+  // place when only they changed, chosen on another device or in another tab (putLook).
   const noLook = h => h.replace(/<button role="radio" aria-checked="\w+" data-act="theme"([^>]*) class="\w*">/g, '<button data-act="theme"$1>')
     .replace(/<button class="swatch[^"]*" style="[^"]*" role="radio" aria-checked="\w+" data-act="accent"/g, '<button data-act="accent"')
+    .replace(/(data-act="accent"[^>]*>)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/g, '$1')
+    .replace(/<button class="swatch pill custom[^"]*" role="radio" aria-checked="\w+" data-act="accent-custom"([^>]*><span class="dot")[^>]*>/, '<button data-act="accent-custom"$1>')
+    .replace(/(data-act="accent-custom"[^>]*><span class="dot"><\/span>Custom…)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/, '$1')
+    .replace(/(id="set-accent-custom" value=")[^"]*/, '$1')
     .replace(/<button class="letter-opt[^"]*" role="radio" aria-checked="\w+" data-act="letters"/g, '<button data-act="letters"')
     .replace(/(<span class="sample" aria-hidden="true">[^<]*<\/span>)<span class="tick" aria-hidden="true"><svg[^>]*>[\s\S]*?<\/svg><\/span>/g, '$1')
     .replace(/(data-val="letters"[^>]*>[\s\S]*?<span class="v">)[^<]*/, '$1');
@@ -4490,15 +4565,35 @@
     putLook(html) {
       const t = document.createElement('template');
       t.innerHTML = html;
-      for (const b of t.content.querySelectorAll('[data-act="theme"], [data-act="accent"], [data-act="letters"]')) {
-        const el = $(`[data-act="${b.dataset.act}"][data-val="${CSS.escape(b.dataset.val)}"]`, this.body);
+      for (const b of t.content.querySelectorAll('[data-act="theme"], [data-act="accent"], [data-act="accent-custom"], [data-act="letters"], [data-act="accent-custom"] > .dot')) {
+        const el = b.matches('.dot') ? $('[data-act="accent-custom"] > .dot', this.body) : $(`[data-act="${b.dataset.act}"][data-val="${CSS.escape(b.dataset.val)}"]`, this.body);
         if (!el) continue;
-        for (const a of ['class', 'style', 'aria-checked']) if (el.getAttribute(a) !== b.getAttribute(a)) el.setAttribute(a, b.getAttribute(a));
-        const tick = $(':scope > .tick', b), had = $(':scope > .tick', el);   // (the text style's card that is ticked)
+        for (const a of ['class', 'style', 'aria-checked']) if (el.getAttribute(a) !== b.getAttribute(a)) { if (b.hasAttribute(a)) el.setAttribute(a, b.getAttribute(a)); else el.removeAttribute(a); }
+        const tick = $(':scope > .tick', b), had = $(':scope > .tick', el);   // (the color or text style that is ticked)
         if (tick && !had) el.appendChild(tick.cloneNode(true)); else if (!tick && had) had.remove();
       }
+      const ci = $('#set-accent-custom', t.content), ci0 = $('#set-accent-custom', this.body);   // (where the picker opens next)
+      if (ci && ci0 && ci0.value !== ci.getAttribute('value')) ci0.value = ci.getAttribute('value');
       const v = $('[data-act="group"][data-val="letters"] .v', t.content), el = $('[data-act="group"][data-val="letters"] .v', this.body);
       if (v && el && el.textContent !== v.textContent) el.textContent = v.textContent;
+    },
+    // Accent color › Custom…: a color picked. The board, its widgets and Custom…'s dot follow at once. Settings isn't
+    // drawn again while the picker is open: that would close it.
+    customAccent(input) {
+      const v = String(input.value || '').toLowerCase();
+      if (!/^#[0-9a-f]{6}$/.test(v) || v === accentNow()) return;
+      updateSettings(accentSet(v));
+      const dot = input.parentNode.querySelector('.dot'); if (dot) dot.style.background = accentOf(v)[resolvedTheme() === 'dark' ? 1 : 0];
+    },
+    // Custom… (Background, Accent color) from the keyboard or a screen reader: the picker a tap opens, the keyboard
+    // staying on Custom…, also if nothing is picked. Settings isn't drawn again under it (render) until a color is
+    // picked, or the next tap or key.
+    picker(input) {
+      if (!input) return;
+      this.picking = true;
+      const done = () => { this.picking = false; document.removeEventListener('keydown', done, true); document.removeEventListener('pointerdown', done, true); };
+      document.addEventListener('keydown', done, true); document.addEventListener('pointerdown', done, true);
+      try { input.showPicker(); } catch (e) { input.click(); }
     },
     putStatus(el) {
       const t = Link.status();
@@ -4529,9 +4624,11 @@
           const label = e.target.value.trim().slice(0, 40);
           if (label && label !== Link.device().label) setTimeout(() => Link.rename(label));
         }
-        if (e.target.id === 'set-bg-custom') {   // (the picker has closed: mark the choice, the keyboard back on it)
+        if (e.target.id === 'set-bg-custom' || e.target.id === 'set-accent-custom') {   // (the picker has closed: mark the choice, the keyboard back on it)
+          if (e.target.id === 'set-accent-custom') this.customAccent(e.target);   // (some browsers send only this)
+          this.picking = false;
           this.render(true);
-          const b = $('[data-act="bg-custom"]', this.body);
+          const b = $(`[data-act="${e.target.id === 'set-bg-custom' ? 'bg-custom' : 'accent-custom'}"]`, this.body);
           if (b && (!document.activeElement || document.activeElement === document.body)) b.focus({ preventScroll: true });
         }
       });
@@ -4547,6 +4644,7 @@
           const nm = $('#bg-color-name', this.body); if (nm) nm.textContent = bgColorName(color);
           const dot = e.target.parentNode.querySelector('.dot'); if (dot) dot.style.background = color;
         }
+        if (e.target.id === 'set-accent-custom') this.customAccent(e.target);
         if (e.target.id === 'photo-fade') {
           const fade = Math.max(0, Math.min(0.7, e.target.value / 100));
           BoardPhoto.update({ fade });
@@ -4637,9 +4735,10 @@
     // shows changed (see refresh).
     render(force, ifChanged) {
       if (!this.isOpen) return;
-      // Don't yank a text field out from under someone who is typing in it, nor the color picker (it closes) or a
-      // slider being moved. (Drawn again at the next change; Board Sync's part at the next look at the folder.)
-      if (!force && this.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"], input[type="color"], input[type="range"]')) return;
+      // Don't yank a text field out from under someone who is typing in it, nor the color picker (it would close; see
+      // picker for the keyboard's) or a slider being moved. (Drawn again at the next change; Board Sync's part at the
+      // next look at the folder.)
+      if (!force && (this.picking || (this.body.contains(document.activeElement) && document.activeElement.matches('input[type="text"], input[type="color"], input[type="range"]')))) return;
       const st = S.settings, seg = segHTML, sw = switchHTML;
       const note = SaveNote.state() ? SaveNote.info() : null;
 
@@ -4712,9 +4811,7 @@
         <h3>Appearance</h3>
         <div class="row">${labelled('Theme')}${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']], false, 'Theme')}</div>
         ${backgroundSettings()}
-        <div class="row accent-row">${labelled('Accent color')}
-          <div class="swatches" role="radiogroup" aria-label="Accent color">${Object.entries(ACCENTS).map(([k, a]) => { const on = (st.accent || 'blue') === k;
-            return `<button class="swatch${on ? ' on' : ''}" style="background:${resolvedTheme() === 'dark' ? a[1] : a[0]}" role="radio" aria-checked="${on}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent"></button>`; }).join('')}</div></div>
+        ${accentSettings()}
         ${letterSettings()}
         ${shapeSettingsRow(seg)}
 
@@ -4831,7 +4928,8 @@
           this.reveal(val);
           break;
         case 'theme': updateSettings({ theme: val }); break;
-        case 'accent': if (accentOf(val)) updateSettings({ accent: val }); break;
+        case 'accent': if (accentKey(val)) updateSettings(accentSet(val)); break;
+        case 'accent-custom': this.picker($('#set-accent-custom', this.body)); break;   // (from the keyboard, as Background's, below)
         // Windows stop at each other's edges: Off (no snapping), or how hard a push overlaps them anyway.
         case 'snap': {
           const r = { light: 'gentle', medium: 'normal', firm: 'strong' }[val];
@@ -4851,15 +4949,7 @@
           break;
         // Patterns (removed 2026-11-16; uncomment to bring them back):
         // case 'pattern': updateBoard({ background: Object.assign({}, S.board.background, { pattern: val }) }); this.render(); break;
-        // Custom… from the keyboard or a screen reader: the same picker a tap opens. (On its input, as a tap is: while
-        // the input has the keyboard, Settings isn't drawn afresh under the open picker; see render.)
-        case 'bg-custom': {
-          const input = $('#set-bg-custom', this.body);
-          if (!input) break;
-          input.focus({ preventScroll: true });
-          try { input.showPicker(); } catch (e) { input.click(); }
-          break;
-        }
+        case 'bg-custom': this.picker($('#set-bg-custom', this.body)); break;
         case 'photo-add': $('#photo-input').click(); break;
         case 'photo-show': BoardPhoto.update({ on: true }); this.render(); break;
         case 'photo-fit': BoardPhoto.update({ fit: val }); this.render(); break;
@@ -5083,7 +5173,7 @@
       generator: `21Board ${RELEASE}`,
       viewport: here ? exportViewport() : storedViewport(sc, free, instances), // the size of the space the rects are in
       theme: S.settings.theme,
-      accent: S.settings.accent,
+      accent: accentNow(),   // what the board shows: a key of ACCENTS or a custom '#rrggbb'
       letters: S.settings.letters,   // the text style
       board: Object.assign({ name: board.name, background: board.background || { color: null, pattern: 'none' }, scale: sc, shape: free ? 'free' : '16:9' },
         kind === 'full' && board.uid ? { uid: board.uid } : {},   // which board this is (see section 13b)
@@ -5207,7 +5297,7 @@
     const out = {
       kind: j.kind === 'template' ? 'template' : 'full',
       theme: ['light', 'dark', 'system'].includes(j.theme) ? j.theme : null,
-      accent: accentOf(j.accent) ? j.accent : null,
+      accent: accentShown(j.accent, j.accentColor, null),   // (an export's accent, or a device file's two parts)
       letters: Object.prototype.hasOwnProperty.call(LETTERS, j.letters) ? j.letters : null,   // (a file from before 2026.11.17-2 has none)
       board: {
         name: j.board && typeof j.board.name === 'string' ? j.board.name.slice(0, 60) : null,
@@ -5259,8 +5349,8 @@
     // Replace keeps this page (its uid): with Board Sync, its windows and content change on the other devices too, and
     // so do the file's theme, accent color and text style, which are the whole board's (said, when they differ from
     // this board's).
-    const uid = S.board.uid, look0 = { theme: S.settings.theme, accent: S.settings.accent, letters: S.settings.letters };
-    const looks = andList([parsed.theme && parsed.theme !== look0.theme && 'theme', parsed.accent && parsed.accent !== look0.accent && 'accent color',
+    const uid = S.board.uid, look0 = { theme: S.settings.theme, accent: S.settings.accent, accentColor: S.settings.accentColor, letters: S.settings.letters };
+    const looks = andList([parsed.theme && parsed.theme !== look0.theme && 'theme', parsed.accent && parsed.accent !== accentNow() && 'accent color',
       parsed.letters && parsed.letters !== look0.letters && 'text style'].filter(Boolean));
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
@@ -5420,8 +5510,8 @@
       }
       // (the file's theme, accent and text style: chosen here now, so with Board Sync they reach the other devices, see
       // updateSettings)
-      const look = {};
-      for (const k of Merge.STYLE_PARTS) if (p[k]) Object.assign(look, { [k]: p[k], [k + 'At']: rev });
+      const look = {}, q = Object.assign({}, p, p.accent ? accentSet(p.accent) : {});
+      for (const k of Merge.STYLE_PARTS) if (q[k]) Object.assign(look, { [k]: q[k], [k + 'At']: rev });
       if (Object.keys(look).length) out.push(rec(Keys.settings, 'settings', Object.assign({}, S.settings, look)));
     }
 
@@ -6050,7 +6140,7 @@
         const s = obj && obj.format === '21board' && obj.sync && typeof obj.sync === 'object' ? obj.sync : null;
         if (!s) { if (devish) return fail(file); this.files.set(name, { name, size: file.size, lastModified: file.lastModified, other: true }); return; }
         const meta = { name, size: file.size, lastModified: file.lastModified, readAt: now, dev: String(s.dev || ''), devName: String(s.name || '').slice(0, 60) };
-        const dec = (() => { try { return Merge.decode(obj, { UID_RE, PHOTO_FILE_RE, accentOk }); } catch (e) { console.warn('21Board: a device file couldn’t be read', e); return null; } })();
+        const dec = (() => { try { return Merge.decode(obj, { UID_RE, PHOTO_FILE_RE, accentOk: accentKeyOk, accentColorOk: accentOk }); } catch (e) { console.warn('21Board: a device file couldn’t be read', e); return null; } })();
         if (dec && dec.newer) { this.files.set(name, Object.assign(meta, { newer: true })); changed = true; return; }
         let sum = '';
         try { sum = await this.digest(new TextEncoder().encode(Merge.sumText(obj))); } catch (e) { /* no checksum: not merged */ }
@@ -6218,7 +6308,7 @@
     // as deleted, or the folder left would never hear of it: Change… starts a new ledger for the next folder)
     local(r, now, leaving) {
       return Merge.read(r.recs, { settings: r.settings, skipped: r.skipped, holdPages: leaving ? [] : this.undoPages(r.settings, now), undoMs: leaving ? 0 : undefined, photoKeyOf: m => BoardHistory.photoKeyOf(m),
-        scaleRect, bgColor, normalizePhotoSettings, accentOk, now, hcache: this.hcache });
+        scaleRect, bgColor, normalizePhotoSettings, accentOk: accentKeyOk, accentColorOk: accentOk, now, hcache: this.hcache });
     },
     // One go at a round. 'again': a record changed under it (its transaction aborted): run it again.
     async attempt(kind, gen, opts = {}) {
@@ -6605,7 +6695,7 @@
               const rec = { key: w.key, type: w.type, rev: Math.max(((cur[w.key] && cur[w.key].rev) || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value: w.value };
               s.put(rec); out.push(rec);
             }
-            if (typeof plan.settings === 'function') {   // (a patch: only boards, deletedBoards, deletedAt, lastBoard, theme, accent and letters)
+            if (typeof plan.settings === 'function') {   // (a patch: only boards, deletedBoards, deletedAt, lastBoard, theme, accent, accentColor and letters)
               const st = cur[Keys.settings] || { key: Keys.settings, type: 'settings', rev: 0, value: {} }, value = plan.settings(st.value || {});
               if (value && !sameJSON(value, st.value || {})) {
                 const rec = { key: Keys.settings, type: 'settings', rev: Math.max((st.rev || 0) + 1, T), updatedAt: T, by: TAB_ID, m: 1, value };
@@ -6680,7 +6770,7 @@
         await this.noteSync(s => Object.assign(s, { file: name, sum: obj.sync.sum, partsH, wroteAt: Date.now(), left: opts.left || null, refs }), gen);
         await this.noteGone(ledger, seq, gen);
         // (So that the next look doesn't read it back as news.)
-        const dec = Merge.decode(obj, { UID_RE, PHOTO_FILE_RE, accentOk });
+        const dec = Merge.decode(obj, { UID_RE, PHOTO_FILE_RE, accentOk: accentKeyOk, accentColorOk: accentOk });
         this.files.set(name, Object.assign({ name, readAt: Date.now(), dev: me, devName: this.device().label, seq, at: obj.sync.at, folder: sync.folder, left: opts.left || null, write,
           merged: obj.sync.merged, peer: (dec && dec.peer) || null, refs: [], pages: 0 }, stamp || { size: -1, lastModified: -1 }));
         this.unstuck();
@@ -8129,13 +8219,15 @@
     const PAGE_PARTS = ['name', 'look', 'size', 'pos', 'photo', 'photoLook'];
     const PAGE_BACK = ['name', 'look', 'size', 'photo', 'photoLook'];   // an unseen edit to one brings a deleted page back (moving it doesn't)
     const WIN_PARTS = ['rect', 'open', 'data', 'conf', 'label'];
-    // The board's theme, accent color and text style (settings.theme, settings.accent, settings.letters): on every
-    // device linked to the folder, the later change winning, as for a page's name. (The device's other settings, and the
-    // page shown, stay its own.) Everything below that handles them goes through STYLE_PARTS (tests/merge.js leaves
-    // 'letters' out of it to stand in for 2026.11.16-4, which didn't have the text style).
-    const STYLE_PARTS = ['theme', 'accent', 'letters'], THEMES = ['light', 'dark', 'system'], LETTER_KEYS = ['standard', 'legible', 'early'];
-    const STYLE_DEF = { theme: 'system', accent: 'blue', letters: 'standard' };
-    const styleOk = (k, v, H) => (k === 'theme' ? THEMES.includes(v) : k === 'accent' ? H.accentOk(v) : LETTER_KEYS.includes(v));
+    // The board's theme, accent color and text style (settings.theme, settings.accent and settings.accentColor,
+    // settings.letters): on every device linked to the folder, the later change winning, as for a page's name. (The
+    // device's other settings, and the page shown, stay its own.) Everything below that handles them goes through
+    // STYLE_PARTS (tests/merge.js leaves 'accentColor' out of it to stand in for 2026.11.17-6, and 'letters' too for
+    // 2026.11.16-4: the releases before them). accentColor: the accent chosen from 2026.11.18-2 ('' before any), see
+    // accentShown.
+    const STYLE_PARTS = ['theme', 'accent', 'letters', 'accentColor'], THEMES = ['light', 'dark', 'system'], LETTER_KEYS = ['standard', 'legible', 'early'];
+    const STYLE_DEF = { theme: 'system', accent: 'blue', letters: 'standard', accentColor: '' };
+    const styleOk = (k, v, H) => (k === 'theme' ? THEMES.includes(v) : k === 'accent' ? H.accentOk(v) : k === 'accentColor' ? v === '' || H.accentColorOk(v) : LETTER_KEYS.includes(v));
     const WID_RE = /^[\w.@~-]{1,120}$/, DEV_RE = /^[0-9a-z]{12}$/, KEY_RE = /^[0-9a-z]{1,40}$/, WIDGET_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
     const DAY = 864e5;
     // (remadeMs: a record a merge deleted, made again this long after it, is a change made after seeing that, see stamp)
@@ -8188,7 +8280,8 @@
         photoKeyOf: o.photoKeyOf || (m => (m ? `${m.addedAt}-${m.bytes}-${m.w}x${m.h}` : null)),
         canvasFor: o.canvasFor || (sc => ({ w: Math.round(1920 / sc), h: Math.round(1080 / sc) })),
         scale: o.defaultScale || DEF.scale,
-        accentOk: o.accentOk || (k => typeof k === 'string' && /^[a-z][a-z0-9-]{0,23}$/.test(k)),   // (the board passes: a key of ACCENTS)
+        accentOk: o.accentOk || (k => typeof k === 'string' && /^[a-z][a-z0-9-]{0,23}$/.test(k)),   // (the board passes its own: a key of ACCENTS, 'pink' or 'teal')
+        accentColorOk: o.accentColorOk || (k => typeof k === 'string' && /^(?:[a-z][a-z0-9-]{0,23}|#[0-9a-f]{6})$/.test(k)),   // (the board's: a key of ACCENTS or '#rrggbb')
         UID_RE: o.UID_RE || /^[A-Za-z0-9-]{8,64}$/, PHOTO_FILE_RE: o.PHOTO_FILE_RE || /^[0-9a-f]{32}\.(jpg|png|webp)$/
       };
     }
@@ -9149,10 +9242,10 @@
       }
       sum.from = Array.from(from);
       // the theme, accent and text style: another device's change is written to settings (a patch of those keys only),
-      // and said (sum.style: [{by, theme, accent, letters}], by device; not when joining or switching to the folder's
-      // board, which nobody has just changed). With no version anywhere, this device's own is only noted. A version
-      // nobody chose (t 0: a default an empty folder was set up with) is nobody's change: it is never said, and it never
-      // replaces a value this device had before it synced that part (no version here: a smartboard that joined on
+      // and said (sum.style: [{by, theme, accent, letters, accentColor}], by device; not when joining or switching to the
+      // folder's board, which nobody has just changed). With no version anywhere, this device's own is only noted. A
+      // version nobody chose (t 0: a default an empty folder was set up with) is nobody's change: it is never said, and it
+      // never replaces a value this device had before it synced that part (no version here: a smartboard that joined on
       // 2026.11.16-4 keeps its own text style until one is chosen on any device).
       const style = {};
       for (const k of STYLE_PARTS) {
@@ -9510,10 +9603,12 @@
       if (locked || !button) { this.merge(text, null, seedHere); return; }   // (windows locked: no Undo; Board history has it)
       this.merge(text, button, seedHere);
     },
-    // The theme, accent color or text style changed on another device ({by, theme, accent, letters}): they are the whole
-    // board's, on every device. No Undo: changing it back in Settings is one tap, and syncs.
+    // The theme, accent color or text style changed on another device ({by, theme, accent, accentColor, letters}): they
+    // are the whole board's, on every device. No Undo: changing it back in Settings is one tap, and syncs. The accent is
+    // named as it shows now (accentShown): "a custom one" for a custom color.
     style(x) {
-      const theme = { light: 'Light', dark: 'Dark', system: 'Auto' }[x.theme], accent = x.accent && (accentOf(x.accent) || [])[2];
+      const a = ('accent' in x || 'accentColor' in x) && accentNow(), accent = a && (a[0] === '#' ? 'a custom one' : accentOf(a)[2]);
+      const theme = { light: 'Light', dark: 'Dark', system: 'Auto' }[x.theme];
       const text = Object.prototype.hasOwnProperty.call(LETTERS, x.letters) ? LETTERS[x.letters].name : null;
       const what = andList([theme && `the theme to ${theme}`, accent && `the accent color to ${accent}`, text && `the text style to “${text}”`].filter(Boolean));
       return what ? `${this.names([x.by], true)} changed ${what}.` : '';
@@ -10201,7 +10296,7 @@
           const ik = ikeyOf(i.widgetId, i.n);
           return { ikey: ik, n: i.n, open: !!i.open, data: S.data.has(ik) ? S.data.get(ik) : null, config: S.conf.has(ik) ? S.conf.get(ik) : null };
         }),
-        focused: S.focused, settings: { theme: S.settings.theme, accent: S.settings.accent }, scale: boardScale(), shape: freeShape() ? 'free' : '16:9'
+        focused: S.focused, settings: { theme: S.settings.theme, accent: accentNow() }, scale: boardScale(), shape: freeShape() ? 'free' : '16:9'
       });
     },
     // A message a widget posted that isn't for 21Board: pass it up (e.g. to the AI tool hosting the preview).
@@ -10214,7 +10309,7 @@
       const focused = () => S.wins.get(S.focused) || Array.from(S.wins.values())[0] || null;
       switch (cmd) {
         case 'theme': updateSettings({ theme: ['light', 'dark', 'system'].includes(a.value) ? a.value : 'system' }); break;
-        case 'accent': if (accentOf(a.value)) updateSettings({ accent: a.value }); break;
+        case 'accent': if (accentOk(a.value)) updateSettings(accentSet(a.value)); break;   // (a key from ready's list, or a custom '#rrggbb')
         case 'scale': if (a.dir) scaleStep(a.dir > 0 ? 1 : -1); else setBoardScale(+a.value); if (Settings.isOpen) Settings.render(); break;
         case 'shape': setBoardShape(a.value === 'free' ? 'free' : '16:9'); if (Settings.isOpen) Settings.render(); break;
         case 'reload': for (const w of S.wins.values()) w.reload(); break;
@@ -10475,7 +10570,7 @@
     openWidget, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,
     catalog: () => Array.from(catalog.values()), link: Link, history: BoardHistory, historySheet: HistorySheet, historyPlan, pages: Pages, updateBoard,
-    merge: Merge, mergeUI: MergeUI, applyMerged, placeCopy, zTop, raced: Raced, writer: Writer
+    merge: Merge, mergeUI: MergeUI, applyMerged, placeCopy, zTop, raced: Raced, writer: Writer, accentNow
   };
 
   // (A problem after the board is up is logged, as before; before that, the teacher is told.)

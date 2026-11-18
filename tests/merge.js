@@ -41,19 +41,30 @@ const fnText = name => {   // a function declaration, up to its closing brace at
 // (vm.compileFunction, in this context: code run in a context of its own reaches Math, JSON... through the
 // context's interceptors, many times slower)
 const region = text => vm.compileFunction([named(/const clone = .*;/, 'clone'), named(/const sameJSON = .*;/, 'sameJSON'), fnText('hash53'), text, 'return Merge;'].join('\n'), [], { filename: 'board.js#merge' })();
-let Merge = region(SRC.slice(start, end));   // (let: a device on 2026.11.16-4 runs with Merge4 in its place, see as4)
+let Merge = region(SRC.slice(start, end));   // (let: a device on an older release runs with its region in place, see asRel)
 // A device still on 2026.11.16-4, which doesn't know the text style: all that handles the theme, accent and text style
 // goes through STYLE_PARTS, so this release's region without the text style in it writes and reads that release's file
 // and fingerprint. Its merge rules are this release's (2026.11.17-2 without the text style), not 2026.11.16-4's, which
 // also lacks 2026.11.17-1's merge fixes. (The cases here, and runs with devices on it (variant.old), pass with
-// 2026.11.16-4's own merge region in its place too.)
-const PARTS_NOW = "STYLE_PARTS = ['theme', 'accent', 'letters']";
-const Merge4 = SRC.slice(start, end).includes(PARTS_NOW) ? region(SRC.slice(start, end).replace(PARTS_NOW, "STYLE_PARTS = ['theme', 'accent']")) : null;
+// 2026.11.16-4's own merge region in its place too.) Merge6, the same for 2026.11.17-6, which doesn't know accentColor.
+const PARTS_NOW = "STYLE_PARTS = ['theme', 'accent', 'letters', 'accentColor']";
+const older = parts => (SRC.slice(start, end).includes(PARTS_NOW) ? region(SRC.slice(start, end).replace(PARTS_NOW, `STYLE_PARTS = ${parts}`)) : null);
+const Merge4 = older("['theme', 'accent']"), Merge6 = older("['theme', 'accent', 'letters']");
 // The helpers the board passes in, taken from board.js as they are.
 const H = vm.compileFunction([named(/const TITLE_H = \d+;/, 'TITLE_H'), named(/const r2 = .*;/, 'r2'), named(/const scaleRect = .*;/, 'scaleRect'),
   named(/const BG_RENAMED = .*;/, 'BG_RENAMED'), named(/const bgColor = .*;/, 'bgColor'), fnText('normalizePhotoSettings'),
   named(/const BASE_W = .*;/, 'BASE_W'), named(/const canvasFor = .*;/, 'canvasFor'), named(/const UID_RE = .*;/, 'UID_RE'), named(/const PHOTO_FILE_RE = .*;/, 'PHOTO_FILE_RE'),
   'return { scaleRect, bgColor, normalizePhotoSettings, canvasFor, UID_RE, PHOTO_FILE_RE, defaultScale: 0.8 };'].join('\n'), [])();
+// The accent a board shows for its settings, the settings choosing one sets, and the accents Board Sync takes (H):
+// board.js's accentShown, accentSet, accentKeyOk and accentOk.
+const ACC = vm.compileFunction([fnText('luminance'), named(/const PALETTES = \{[\s\S]*?\n  \};/, 'PALETTES'), named(/const ACCENTS = \{[\s\S]*?\};/, 'ACCENTS'),
+  named(/const contrast = .*;/, 'contrast'), fnText('customShades'), named(/let lastCustom = .*;/, 'lastCustom'), named(/const accentKey = .*;/, 'accentKey'), fnText('accentOf'),
+  named(/const accentOk = .*;/, 'accentOk'), named(/const accentKeyOk = .*;/, 'accentKeyOk'), named(/const accentWith = .*;/, 'accentWith'), named(/const accentSet = .*;/, 'accentSet'),
+  named(/const accentShown = .*;/, 'accentShown'), 'return { accentShown, accentSet, accentKeyOk, accentOk };'].join('\n'), [])();
+const { accentShown, accentSet } = ACC;
+Object.assign(H, { accentOk: ACC.accentKeyOk, accentColorOk: ACC.accentOk });
+// 2026.11.17-6's: its eight accents (a device or tab on it passes these, see asRel)
+const H6 = Object.assign({}, H, { accentOk: k => ['blue', 'purple', 'pink', 'red', 'orange', 'green', 'teal', 'slate'].includes(k) });
 const clone = v => (v === undefined || v === null ? null : JSON.parse(JSON.stringify(v)));
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -266,6 +277,7 @@ class Device {
   // when each was chosen here: themeAt, accentAt, lettersAt; 2026.11.16-4 notes no lettersAt)
   setStyle(p) { const set = {}; for (const [k, v] of Object.entries(p)) { set[k] = v; if (!(this.old && k === 'letters')) set[k + 'At'] = this.now(); } this.patch({ set }); }
   styleNow() { return [this.settings.theme || 'system', this.settings.accent || 'blue'].join(' '); }
+  accentNow() { return accentShown(this.settings.accent, this.settings.accentColor); }   // (as the board shows it)
   textNow() { return this.settings.letters || 'standard'; }
   styleOf() { return { theme: this.settings.theme || 'system', accent: this.settings.accent || 'blue', letters: this.textNow() }; }
   // (oracle 9: the choices a round takes out of this device as a change: one made here since its last round that left
@@ -301,15 +313,15 @@ class Device {
   }
   readLocal(leaving) {   // (leaving: Link.farewell's round, where a page whose Undo is still offered goes as deleted)
     const recs = Array.from(this.recs.values());
-    return Merge.read(recs, Object.assign({ settings: this.settings, now: this.now(), hcache: this.hcache || (this.hcache = new Map()) }, H, leaving ? { undoMs: 0 } : {}));
+    return Merge.read(recs, Object.assign({ settings: this.settings, now: this.now(), hcache: this.hcache || (this.hcache = new Map()) }, this.H || H, leaving ? { undoMs: 0 } : {}));
   }
   fileName() { return `21Board (${this.label}) [${this.dev.slice(0, 4)}].21board`; }
   // A device file in this view → decoded (cached by its text).
   decodeText(text) {   // (decoded once for every device: Merge never changes a peer)
-    const key = this.old ? '4' + text : text;
+    const key = (this.rel || '') + text;   // (decoded as its release decodes it)
     if (!DECODED.has(key)) {
       let r = null;
-      try { r = Merge.decode(JSON.parse(text), H); } catch (e) { r = null; }
+      try { r = Merge.decode(JSON.parse(text), this.H || H); } catch (e) { r = null; }
       if (DECODED.size > 2000) DECODED.clear();
       DECODED.set(key, r);
     }
@@ -557,16 +569,20 @@ class Device {
   liveWins() { const out = []; for (const b of this.ids()) for (const r of this.insts(b)) out.push([b, `${r.value.widgetId}:${r.value.n}`, r.value]); return out; }
 }
 const PHOTOS = new Map(), DECODED = new Map();
-// A device on 2026.11.16-4: each of its methods runs with Merge4 in place of Merge (on false: it is updated).
-function as4(d, on = true) {
-  d.old = on;
+// A device on an older release: each of its methods runs with that release's region (M) in place of Merge, and its
+// helpers (h, or H) (M null: it is updated). rel: its mark, for the files it decoded. A device whose tabs are on two
+// releases runs each round with the region and helpers of the tab that runs it.
+function asRel(d, M, rel, h) {
+  d.rel = M ? rel : ''; d.H = M ? h || null : null;
   for (const k of Object.getOwnPropertyNames(Device.prototype)) {
     const f = Object.getOwnPropertyDescriptor(Device.prototype, k).value;
     if (k === 'constructor' || typeof f !== 'function') continue;
-    if (!on) { delete d[k]; continue; }
-    d[k] = function (...a) { const was = Merge; Merge = Merge4; try { return f.apply(this, a); } finally { Merge = was; } };
+    if (!M) { delete d[k]; continue; }
+    d[k] = function (...a) { const was = Merge; Merge = M; try { return f.apply(this, a); } finally { Merge = was; } };
   }
 }
+// A device on 2026.11.16-4 (on false: it is updated).
+function as4(d, on = true) { d.old = on; asRel(d, on ? Merge4 : null, '4'); }
 
 // ---------------------------------------------------------------------
 // The randomized run
@@ -1337,6 +1353,71 @@ function styles() {
     const f = fileOf(A);
     ok(f.theme === 'system' && f.accent === 'green' && f.sync.style && f.sync.style.theme[0] === B.dev && f.sync.style.accent[0] === A.dev,
       `a device file has them as any export does, and their versions in sync.style (${JSON.stringify(f.sync.style)})`);
+  });
+  block(() => {
+    // From 2026.11.18-2 the accent is kept in two parts (board.js accentShown): accent, which every release knows (Blue
+    // for a custom color), and accentColor, the color chosen. The laptop is on this release, the smartboard still on
+    // 2026.11.17-6, which knows only accent.
+    const { A, B, folder, sync } = pair();
+    asRel(B, Merge6, '6', H6);
+    A.setStyle(accentSet('green')); NOW += 2000; sync();
+    ok(A.accentNow() === 'green' && B.accentNow() === 'green', `(both green: ${A.accentNow()} / ${B.accentNow()})`);
+    A.setStyle(Object.assign({ theme: 'dark' }, accentSet('#8040c0'))); NOW += 2000; A.round(); B.deliver(A);
+    const pb = B.round(); sync();
+    ok(A.accentNow() === '#8040c0' && B.styleNow() === 'dark blue' && pb && same(pb.summary.style, [{ by: A.dev, theme: 'dark', accent: 'blue' }]),
+      `a custom color on the laptop: the older smartboard shows Blue in its place, and says so (${A.accentNow()} / ${B.styleNow()}; ${pb && JSON.stringify(pb.summary.style)})`);
+    ok(fileOf(A).accent === 'blue' && fileOf(A).accentColor === '#8040c0' && fileOf(A).sync.style.accentColor[0] === A.dev && !('accentColor' in fileOf(B)) && !fileOf(B).sync.style.accentColor,
+      `their files: the laptop’s says Blue and the custom color, with its version; the smartboard’s knows nothing of the color (${JSON.stringify([fileOf(A).accent, fileOf(A).accentColor, fileOf(B).accent])})`);
+    B.setStyle({ accent: 'orange' }); NOW += 2000; sync();
+    ok(A.accentNow() === 'orange' && B.accentNow() === 'orange' && A.settings.accentColor === '#8040c0',
+      `Orange chosen later on the older smartboard shows on both: on the laptop it goes over the custom color (${A.accentNow()} / ${B.accentNow()})`);
+    B.setStyle({ accent: 'pink' }); NOW += 2000; sync();
+    ok(A.accentNow() === 'blue' && A.settings.accent === 'pink' && B.settings.accent === 'pink', `Pink chosen there: the laptop has it too, and shows Blue (${A.accentNow()})`);
+    A.setStyle(accentSet('#0d9488')); NOW += 2000; sync();
+    ok(A.accentNow() === '#0d9488' && B.styleNow() === 'dark blue', `a custom color again on the laptop: Blue on the smartboard (${A.accentNow()} / ${B.styleNow()})`);
+    asRel(B, null); NOW += 2000; sync();
+    ok(A.accentNow() === '#0d9488' && B.accentNow() === '#0d9488' && A.canon() === B.canon(), `updated, the smartboard shows the laptop’s custom color (${B.accentNow()})`);
+    const files = JSON.stringify([...folder.files]);
+    NOW += 2000; sync();
+    ok(JSON.stringify([...folder.files]) === files, 'and nobody writes again');
+  });
+  block(() => {
+    // Both on Pink, before 2026.11.18-2. The laptop updates: it shows Blue, and changes nothing. Its file still says
+    // Pink, and the older smartboard keeps it, told nothing. Updated too, the smartboard shows Blue, and nobody writes.
+    const { A, B, folder, sync } = pair();
+    asRel(A, Merge6, '6', H6); asRel(B, Merge6, '6', H6);
+    A.setStyle({ accent: 'pink' }); NOW += 2000; sync();
+    const v0 = JSON.stringify(fileOf(A).sync.style.accent);
+    ok(A.settings.accent === 'pink' && B.settings.accent === 'pink', `(both pink: ${A.settings.accent} / ${B.settings.accent})`);
+    asRel(A, null); NOW += 2000;
+    A.round(); B.deliver(A); const pb = B.round();
+    ok(A.accentNow() === 'blue' && fileOf(A).accent === 'pink' && JSON.stringify(fileOf(A).sync.style.accent) === v0 && B.settings.accent === 'pink' && pb && same(pb.summary.style, []),
+      `the laptop updated: it shows Blue, its file still says Pink at the same version, and the smartboard keeps Pink, told nothing (${A.accentNow()}; ${fileOf(A).accent}; ${B.settings.accent}; ${pb && JSON.stringify(pb.summary.style)})`);
+    sync(); asRel(B, null); NOW += 2000; sync();
+    const files = JSON.stringify([...folder.files]);
+    NOW += 2000; sync();
+    ok(A.accentNow() === 'blue' && B.accentNow() === 'blue' && JSON.stringify([...folder.files]) === files, `both updated: Blue on both, and nobody writes again (${A.accentNow()} / ${B.accentNow()})`);
+  });
+  block(() => {
+    // One device, two tabs on two releases (one still on 2026.11.17-6 during an update), taking turns at its rounds, as
+    // any tab may. Each reads the same settings and keeps the same versions of them. A custom color, then Pink: the older
+    // tab finds an accent it knows, never takes it for a choice of its own, and nothing flips on either device.
+    for (const [what, set, older] of [['a custom color chosen in the new tab', accentSet('#8040c0'), false], ['Pink, from before the update', { accent: 'pink' }, true]]) {
+      const { A, B, sync } = pair();
+      if (older) { asRel(A, Merge6, '6', H6); asRel(B, Merge6, '6', H6); }
+      A.setStyle(set); NOW += 2000; sync();
+      if (older) { asRel(A, null); NOW += 2000; sync(); }
+      const was = JSON.stringify([A.accentNow(), B.accentNow(), A.settings, B.settings.accent, fileOf(A).accent, fileOf(A).sync.style.accent]), told = [], seen = new Set();
+      for (let i = 0; i < 6; i++) {
+        asRel(A, i % 2 ? null : Merge6, '6', H6); NOW += 6000;
+        A.round(); B.deliver(A); NOW += 1000;
+        const pb = B.round(); A.deliver(B);
+        if (pb && pb.summary.style.length) told.push(JSON.stringify(pb.summary.style));
+        seen.add(JSON.stringify([A.accentNow(), B.accentNow(), A.settings, B.settings.accent, fileOf(A).accent, fileOf(A).sync.style.accent]));
+      }
+      asRel(A, null);
+      ok(!told.length && seen.size === 1 && [...seen][0] === was, `${what}, the laptop’s two tabs taking turns: the same accent everywhere for six rounds, the same version of it, and the smartboard told nothing (${told.join(' | ') || [...seen].length + ' state'})`);
+    }
   });
   block(() => {
     // the same version, its vector's devices in another order in another device's file (two or more devices that set
