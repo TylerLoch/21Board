@@ -181,7 +181,7 @@
     (code.match(/https?:\/\/[^\s'")]+/g) || []).forEach(function (u) { if (!/board21/.test(u)) hosts[u.replace(/^https?:\/\//, '').split('/')[0]] = 1; });
     var hl = Object.keys(hosts);
     if (hl.length) add('warn', 'Loads files from the Internet: ' + hl.join(', '), '21Board works offline, so a widget must bring everything it needs. No CDN libraries, web fonts or placeholder images.',
-      'Remove every external file: ' + hl.join(', ') + '. Write your own CSS instead of using a framework, use system fonts, and draw images with inline SVG.');
+      'Remove every external file: ' + hl.join(', ') + '. Write your own CSS instead of using a framework, use system fonts and draw images with inline SVG.');
     if (/\b(localStorage|sessionStorage|indexedDB)\b|document\.cookie/.test(code)) add('warn', 'Stores data itself', 'localStorage, sessionStorage, IndexedDB and cookies bypass 21Board. The data won’t sync or be backed up, and every window of the widget shares it.',
       'Replace localStorage/sessionStorage/IndexedDB with Board21.save(data) and Board21.saveConfig(config); load with const ctx = await Board21.ready() and ctx.data / ctx.config.');
     if (/\b(alert|confirm|prompt)\s*\(/.test(code)) add('warn', 'Uses alert(), confirm() or prompt()', 'They freeze the whole board, and AI previews often don’t allow them.', 'Replace alert/confirm/prompt with a small message or confirmation shown inside the widget.');

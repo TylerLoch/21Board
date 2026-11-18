@@ -2335,7 +2335,7 @@ const SUITES = [
     ok(!empty && !day0 && !day3 && day8, `storage not protected and no backup: no dot on an empty board (30 days), nor on the day of its first window or 3 days in; a dot 8 days in (${[empty, day0, day3, day8].join(', ')})`);
     await openSettings(dp, ['advanced']);
     const said = await dp.evaluate(() => ({ persist: document.getElementById('st-persist').textContent, hint: document.getElementById('st-persist-hint').textContent, backup: document.getElementById('st-backup').textContent }));
-    ok(said.persist === 'Not yet' && /^The browser might clear your boards to free up space\. Installing 21Board as an app usually prevents that\./.test(said.hint) && /Until then, back up regularly\.$/.test(said.hint) && said.backup === 'Last backup: never',
+    ok(said.persist === 'Not yet' && said.hint === 'The browser might clear your boards to free up space. Installing 21Board as an app usually prevents that. Until then, back up regularly.' && said.backup === 'Last backup: never',
       `Advanced › Backups and storage still says the storage isn’t protected (“${said.persist}”: “${said.hint}”; ${said.backup})`);
     // What the dot is about is plain once Advanced is open: the backup line has the amber mark too, exactly while the
     // dot shows, and a screen reader hears what the dot means.
@@ -2353,6 +2353,14 @@ const SUITES = [
     ok(!await after(14), 'and comes back only once that backup is a week old: none 6 days later (the clock 14 days on), though storage still isn’t protected');
     ok(await after(16), 'a dot 8 days after it');
     await days.close();
+    // On an iPad, where the browser offers no Install button, the hint says how to add 21Board to the Home Screen.
+    const ipad = await browser.newContext({ viewport: { width: 1024, height: 768 }, userAgent: 'Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1' });
+    await ipad.addInitScript(() => { const s = navigator.storage; s.persisted = async () => false; s.persist = async () => false; });
+    const ip = await ipad.newPage(); ip.on('pageerror', e => errors.push(e.message));
+    await ip.goto(BASE); await boardUp(ip); await openSettings(ip, ['advanced']);
+    const ipSaid = await ip.evaluate(() => [document.getElementById('st-persist').textContent, document.getElementById('st-persist-hint').textContent].join(' | '));
+    ok(ipSaid === 'Not yet | The browser might clear your boards to free up space. To prevent that, tap Share › Add to Home Screen. Until then, back up regularly.', `on an iPad, the hint says how to protect the boards there (${ipSaid})`);
+    await ipad.close();
     // The dot is right from the moment Settings opens, whatever changed since it was last open (it judges every page from
     // what this tab holds), so it never shows wrongly for a moment, and the next Theme tap is put in place (Settings
     // isn't drawn again). A reload on a new, empty page while page 1 has a window 9 days old; that page deleted (its Undo
@@ -5856,6 +5864,8 @@ const SUITES = [
       return [al('btn-first'), al('btn-then'), al('btn-theme-icon'), al('btn-done-icon'), al('btn-swap'), $('first-done-text').textContent, $('then-done-text').textContent, $('both-done-text').textContent].join(' | ');
     });
     ok(words === 'First, Math, done | Then, Free Choice | Theme | Mark done | Swap First and Then | First done | Then done | Both done', `each card is heard by its place, its picture and whether it’s done; the buttons say what they do (${words})`);
+    const pressed = () => f.locator('html').evaluate(() => ['btn-toggle-first', 'btn-toggle-then'].map(id => document.getElementById(id).getAttribute('aria-pressed')).join(' | '));
+    ok(await pressed() === 'true | false', `First done and Then done are heard as pressed or not (${await pressed()})`);
     // A second tab shows the same board; a change there comes back here, and the chime plays only where it was tapped.
     const page2 = await ctx.newPage(); page2.on('pageerror', e => errors.push(e.message));
     await page2.goto(BASE); await boardUp(page2);
@@ -5863,6 +5873,7 @@ const SUITES = [
     ok(await eventually(async () => { const b = await look(page2); return b.first === 'Math' && b.firstDone && b.theme === 'theme-winter'; }), 'the second tab shows the same cards, done mark and theme');
     await ft(page2).locator('#btn-done-icon').click(); await ft(page2).locator('#btn-toggle-then').click();
     ok(await eventually(async () => (await look(page)).thenDone), 'marking Then done in one tab shows it done in the other');
+    ok(await eventually(async () => await pressed() === 'true | true'), `and Then done is heard as pressed there too (${await pressed()})`);
     const s1 = JSON.stringify(await saved(page)); await page.waitForTimeout(1200);
     const s2 = JSON.stringify(await saved(page)), s3 = JSON.stringify(await saved(page2));
     ok(s1 === s2 && s2 === s3 && JSON.parse(s2).thenDone === true, 'the two tabs agree and stay that way (no saving back and forth)');
@@ -5883,7 +5894,7 @@ const SUITES = [
     // The menu's words, with a tick where something is on: First done and Then done, Sound and Animation, the theme.
     // Themes and presets each under one heading, the themes in the pills' order.
     const ftMenu = () => page.evaluate(k => window.__board21.state.wins.get(k).menuItems.map(i => i.heading ? `[${i.label}]` : (i.checked ? '✓ ' : '') + i.label).join(' | '), KEY);
-    ok(await ftMenu() === '✓ First done | ✓ Then done | Mark both done | Clear done marks | Theme… | Mark done… | Swap First and Then | ✓ Sound | ✓ Animation | [Theme] | 🌈 Classic | 🍂 Autumn | ✓ ❄️ Winter | 🌸 Spring | ☀️ Summer | 💜 Calm | [Presets] | Classwork ➔ Free Choice | Classwork ➔ iPad | Sit at Table ➔ Quiet Corner | Clean Up ➔ Playground | Math ➔ Snack Time',
+    ok(await ftMenu() === '✓ First done | ✓ Then done | Mark both done | Clear done marks | Swap First and Then | ✓ Sound | ✓ Animation | [Theme] | 🌈 Classic | 🍂 Autumn | ✓ ❄️ Winter | 🌸 Spring | ☀️ Summer | 💜 Calm | [Presets] | Classwork ➔ Free Choice | Classwork ➔ iPad | Sit at Table ➔ Quiet Corner | Clean Up ➔ Playground | Math ➔ Snack Time',
       `the window menu says each thing once, with ticks where something is on (${await ftMenu()})`);
     await page.click('#menu [data-id="toggle_sound"]');
     await page.click(`.win[data-ikey="${KEY}"] .win-label`); await page.waitForTimeout(200);
@@ -5934,7 +5945,7 @@ const SUITES = [
     ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
     await ctx.close();
   }],
-  ['Copy: words no other suite checks (Widget Picker tooltips and its name, closing a window, Delete page with closed windows, Duplicate, Calendar, Timer, Task Timer, the widget dev window and lab)', async (browser) => {
+  ['Copy: words no other suite checks (Widget Picker tooltips and its name, closing a window, Delete page with closed windows, Duplicate, Calendar, Timer, Task Timer, Board Sync with several devices, a photo that can’t be used, the widget dev window and lab, the docs)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -5981,9 +5992,48 @@ const SUITES = [
     ok(await eventually(async () => /(^| \| )Play sound( \||$)/.test(await menuOf('timer:1'))), `Timer’s menu says “Play sound” (${await menuOf('timer:1')})`);
     ok(await eventually(async () => await menuOf('task-timer:1') === 'Start | Start over | Next activity | Reset activity | Edit schedule'), `Task Timer’s menu in sentence case, “activity” for each item (${await menuOf('task-timer:1')})`);
     const tt = page.frameLocator('.win[data-ikey="task-timer:1"] iframe');
+    // With no activities: one name for the action, as in the editor, and “Tap to add one” once, on the dial.
+    const emptyTT = () => tt.locator('html').evaluate(() => [document.getElementById('btn-playpause').textContent, document.getElementById('clock-next-task').textContent].join(' | '));
+    ok(await eventually(async () => await emptyTT() === '➕ Add activity | '), `Task Timer with no activities says “Add activity” and its hint once (${await emptyTT()})`);
     await tt.locator('#btn-edit').click();
     const ed = await tt.locator('html').evaluate(() => { const b = document.querySelector('.btn-test-sound'); return [document.querySelector('.edit-header-title').textContent, document.querySelector('.total-time-label').textContent, document.getElementById('btn-mode-sum').textContent.replace(/:.*/, ''), document.getElementById('btn-mode-custom').textContent, document.querySelector('.editor-footer .primary').textContent, b.textContent, b.title, b.getAttribute('aria-label')].join(' | '); });
     ok(ed === '📅 Schedule | ⏱ Total time | Σ Activities | ⏱ Fixed time | + Add activity | 🔊 Play sound | Play sound | Play sound', `Task Timer’s editor: short labels, and “Play sound” as on the Timer (${ed})`);
+
+    // Settings › Board Sync with one, two and three other devices: the latest change, and which device made it.
+    const shared = await page.evaluate(() => {
+      const L = window.__board21.link, keep = { sync: L.sync, files: L.files }, now = Date.now(), out = [];
+      for (const n of [1, 2, 3]) {
+        const peers = {}, files = new Map();
+        [['a', 'the laptop', 2], ['b', 'the smartboard', 40], ['c', 'Room 14 desktop', 95]].slice(0, n).forEach(([d, name, min]) => { peers[d] = { name, at: now - min * 6e4 }; files.set('f-' + d, { dev: d, name: 'f-' + d }); });
+        L.sync = { peers }; L.files = files;
+        out.push(L.status().replace(/(at|on [A-Z][a-z]{2} \d{1,2} at) \d{1,2}:\d\d\s?[AP]M/g, 'WHEN'));
+      }
+      L.sync = keep.sync; L.files = keep.files;
+      return out;
+    });
+    ok(shared.join(' | ') === 'Up to date. Shared with the laptop. Last change WHEN. | Up to date. Shared with the laptop and the smartboard. Last change from the laptop WHEN. | Up to date. Shared with the laptop, the smartboard and 1 other. Last change from the laptop WHEN.',
+      `Board Sync names the device with the latest change, once (${shared.join(' | ')})`);
+
+    // A background photo that can’t be used says JPEG, as the Picture widget does.
+    const photoSays = async file => { await page.setInputFiles('#photo-input', file); await page.waitForSelector('#modal.open');
+      const t = (await page.locator('#modal.open p').innerText()).replace(/\s+/g, ' '); await page.locator('#modal.open .btn', { hasText: 'OK' }).click(); await page.waitForTimeout(200); return t; };
+    const notPic = await photoSays({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
+    const badPic = await photoSays({ name: 'broken.png', mimeType: 'image/png', buffer: Buffer.from('not a picture') });
+    ok(notPic === 'Choose a JPEG, PNG or WebP picture.' && badPic === 'This picture can’t be opened here. Save it as a JPEG or PNG, then try again.', `a photo that can’t be used: “${notPic}” “${badPic}”`);
+
+    // README and the docs: the glossary’s words and its style.
+    const doc = f => fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\s+/g, ' ');
+    const readme = doc('README.md'), sdkDoc = doc('docs/WIDGET-SDK.md'), aiDoc = doc('docs/AI-PROMPT.md'), devJs = doc('sdk/board21-dev.js');
+    const docOff = [
+      [/widget dev window/i.test(readme), 'README says “widget dev window”'],
+      [/uploaded widget/i.test(readme + aiDoc), '“uploaded widget”'],
+      [/e\.g\. when a timer ends|\(e\.g\. `https:/.test(sdkDoc), 'WIDGET-SDK says “e.g.”'],
+      [/kiosk mode, and|system fonts, and/.test(readme + devJs), 'a serial comma'],
+      [!/It needs Chrome 84 or later, or Safari 16\.4 or later\. As a Home Screen app, it needs Safari 18\.4 or later\./.test(readme), 'Stay awake’s versions without “or later”'],
+      [!/Choose Early readers on the laptop, and the smartboard/.test(readme), 'Board Sync’s “there”'],
+      [/needs a connection/.test(readme), 'the district apps’ offline message in its old words']
+    ].filter(([bad]) => bad).map(([, w]) => w);
+    ok(!docOff.length, `README and the docs follow the glossary (${docOff.join('; ') || 'all fine'})`);
 
     // The widget dev window's ⋯ menu, and the widget lab.
     const dv = await ctx.newPage();   // (no error listener: the test widget throws on purpose, see DEV_WIDGET)
@@ -9368,13 +9418,19 @@ const SUITES = [
     await L(A.p, () => window.__board21.openWidget('notes')); await A.p.waitForTimeout(1200);
     await fillNote(A.p.frameLocator('.win[data-ikey="notes:1"] iframe'), 'Lesson plan'); await A.p.waitForTimeout(400);
     await linkFolder(A.p, 'my laptop');
+    // Before any copy of this board is there, Board history says so under “In your Google Drive folder”.
+    await A.p.click('.picker-btn.left'); await A.p.click('[data-ctl="settings"]'); await A.p.waitForTimeout(300);
+    await A.p.click('#settings [data-act="hist-open"]'); await A.p.waitForTimeout(1500);
+    const noCopies = await A.p.locator('#history .hint', { hasText: 'No copies' }).allTextContents();
+    ok(noCopies.join(' | ') === 'No copies of this board there yet. 21Board adds about one an hour.', `with no copies of this board in the folder yet, Board history says so (${noCopies.join(' | ')})`);
+    await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(200); await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(200);
     await L(A.p, () => window.__board21.history.save('Monday')); await A.p.waitForTimeout(1500);
     let hist = await readHistory(A.p);
     const saved = Object.keys(hist).find(n => / saved \(my laptop\) \[[0-9a-z]{6}-[0-9a-z]{4}\]\.21board$/.test(n));
     const j = saved && JSON.parse(hist[saved]);
     ok(!!saved && j.format === '21board' && j.history && j.history.from === 'my laptop' && !j.sent && !j.theme && j.instances.some(i => JSON.stringify(i.data).includes('Lesson plan')),
       `a saved version is copied to “Board history” in the folder (“${saved}”), without the theme and not as a sent version`);
-    ok(!!hist['About these files.txt'], 'with a note explaining the files');
+    ok(/^Earlier versions of your 21Board boards, to go back to after a big change or a device reset\.\r\n/.test(hist['About these files.txt'] || ''), `with a note explaining the files (${(hist['About these files.txt'] || '').split('\r\n')[0]})`);
     await syncNow(A.p);
     ok(await L(A.p, () => Array.from(window.__board21.link.files.keys()).every(n => !/Board history/.test(n)) && Object.keys(window.__board21.link.good()).length === 1), 'history copies are never taken for a device’s file');
     // 21Board thins its own copies by name; other devices' files, other boards' files, saved ones and other files stay.
@@ -9429,11 +9485,11 @@ const SUITES = [
     await page.locator('.toast', { hasText: 'Deleted Notes 2' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(2000);
     ok(await noteText('notes:2') === 'homework p.42', 'a second delete soon after the first keeps what was typed in between (Undo brings it back)');
     await page.keyboard.press('Escape');
-    // With automatic versions off, Reset still keeps a copy and can be undone.
+    // With automatic versions off, Reset still keeps a version and can be undone.
     await H(() => { window.__board21.state.settings.historyEvery = 0; });
     await page.locator('.win[data-ikey="notes:2"] .win-label').click(); await page.waitForTimeout(250);
     await page.click('#menu [data-act="reset"]');
-    ok(/Board history keeps a copy/.test(await page.locator('#menu').textContent()), 'the Reset question still promises a copy with automatic versions off…');
+    ok(/Board history keeps a version\./.test(await page.locator('#menu').textContent()), 'the Reset question still promises a version with automatic versions off…');
     await page.click('#menu [data-act="reset-yes"]'); await page.waitForTimeout(1500);
     await page.locator('.toast', { hasText: 'was reset' }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(2000);
     ok(await noteText('notes:2') === 'homework p.42', '…and keeps it: Undo works');
@@ -9555,7 +9611,7 @@ const SUITES = [
     ok(/Couldn’t read Board history\. Your earlier versions haven’t been deleted\./.test(sheet) && !/No earlier versions yet/.test(sheet), 'when board history can’t be read, the sheet says so (not “No earlier versions yet”)');
     await page.keyboard.press('Escape'); await settings();
     const st = await page.locator('#settings .sheet-body').textContent();
-    ok(/couldn’t be read just now/.test(st) && !/None yet/.test(st), 'and so does Settings (not “None yet”)');
+    ok(st.includes('Couldn’t read Board history. Try again in a moment.') && !/just now|None yet/.test(st), 'and so does Settings, in the toast’s words: “Couldn’t read Board history. Try again in a moment.” (not “None yet”)');
     await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open [data-act="retry"]');
     await H(() => { window.__failHist = null; });
     await page.click('#history [data-act="retry"]');
@@ -9871,7 +9927,7 @@ const SUITES = [
     await openSettings(page, ['advanced']);
     await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300);
     const first = page.locator('#modal.open .btn', { hasText: 'Export a backup first' });
-    ok(await first.count() === 1 && /To keep them, export a backup first\./.test(await page.locator('#modal.open p').textContent()), 'Erase everything offers “Export a backup first” in kiosk mode too');
+    ok(await first.count() === 1 && / To keep what’s here, export a backup first\./.test(await page.locator('#modal.open p').textContent()), 'Erase everything offers “Export a backup first” in kiosk mode too');
     await first.click(); await page.waitForFunction(() => window.__saved, null, { timeout: 5000 }).catch(() => {});
     const kept = await page.evaluate(() => ({ saved: window.__saved, note: window.__board21.state.insts.has('notes:1'), at: window.__board21.state.settings.lastBackupAt }));
     ok(kept.saved && /\.21board$/.test(kept.saved.name) && JSON.parse(kept.saved.text).instances.some(i => i.widgetId === 'notes' && /example\.org/.test(JSON.stringify(i.data))) && kept.note, 'choosing it saves a full backup through the Save dialog, and erases nothing');
@@ -11790,7 +11846,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const row = await page.locator('#settings .inst', { hasText: '21Sketch' }).first().innerText();
     ok(/21Sketch keeps its own work on this device/.test(row) && !/\d B|saved/.test(row), 'Settings’ window list says 21Sketch keeps its own work on this device (no size, no “saved”): ' + row.replace(/\n/g, ' '));
     await page.locator('#settings .inst', { hasText: '21Timer' }).locator('[data-act="inst-delete"]').click(); await page.waitForTimeout(300);
-    ok(/Your work in 21Timer isn’t touched/.test(await page.locator('#modal.open').innerText()), 'deleting its window says the work in 21Timer isn’t touched');
+    const delApp = (await page.locator('#modal.open p').innerText()).replace(/\s+/g, ' ');
+    ok(/^Its window is deleted from this page\. Your work in 21Timer isn’t touched\. 21Timer keeps it on this device\. /.test(delApp), `deleting its window says the window is deleted and the work in 21Timer isn’t touched (${delApp})`);
     await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(200);
     // Erase everything and Export don't reach the apps' work, and say so.
     const allNamed = t => Object.values(APPS).every(([name]) => t.includes(name));

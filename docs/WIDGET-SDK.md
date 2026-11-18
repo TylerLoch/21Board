@@ -144,7 +144,7 @@ Sizes are the **content area**, the iframe, without the 40px title bar.
 | `Board21.window.setResizable(bool)` | Show or hide the resize grips. |
 | `Board21.window.setDragFromContent(bool)` | Whether the window can be dragged from anywhere inside it right now (see [Moving windows from inside](#moving-windows-from-inside)). |
 | `Board21.window.setTitle(text)` | Short status shown after the widget name in the title bar, e.g. `"Running"`. Hidden in narrow windows. |
-| `Board21.window.requestAttention()` | Pulse the title bar, e.g. when a timer ends. |
+| `Board21.window.requestAttention()` | Pulse the title bar, such as when a timer ends. |
 | `Board21.window.focus()` | Select the window and bring it to the front. |
 | `Board21.window.maximize()` / `restore()` | Fill the board / return to normal size. |
 | `Board21.window.close()` | Close the window. Its data is kept. |
@@ -504,10 +504,10 @@ real tool still needs a quick check.
 
 ### The widget lab
 
-Open `sdk/lab.html` (e.g. `https://boardapp.ccsd21.org/sdk/lab.html`), paste a widget's HTML or open or
-drop its file, and tap **Try it**. It's the same dev window, for tools whose previews can't load the SDK and
-for a final check before adding a widget. The pasted code runs in a sandbox with its own empty storage, so
-it can't read this site's real boards. *Edit code* goes back to the code.
+Open `sdk/lab.html` on a 21Board site, such as `https://boardapp.ccsd21.org/sdk/lab.html`. Paste a widget's
+HTML or open or drop its file, and tap **Try it**. It's the same dev window, for tools whose previews can't load
+the SDK and for a final check before adding a widget. The pasted code runs in a sandbox with its own empty
+storage, so it can't read this site's real boards. *Edit code* goes back to the code.
 
 ### Inside 21Board
 

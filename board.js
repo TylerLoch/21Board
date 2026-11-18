@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-9';
-  const BOARD_BUILD = 'c089651b';
+  const BOARD_BUILD = '5c938c21';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -1396,9 +1396,9 @@
     },
     // A picture from the teacher's device: shrunk and re-compressed here (nothing is uploaded anywhere).
     async process(file) {
-      if (!file || !/^image\//.test(file.type || '') && !/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || '')) throw new Error('Choose a JPG, PNG or WebP picture.');
+      if (!file || !/^image\//.test(file.type || '') && !/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || '')) throw new Error('Choose a JPEG, PNG or WebP picture.');
       let bmp;
-      try { bmp = await createImageBitmap(file); } catch (e) { throw new Error('This picture can’t be opened here. Save it as a JPG or PNG, then try again.'); }
+      try { bmp = await createImageBitmap(file); } catch (e) { throw new Error('This picture can’t be opened here. Save it as a JPEG or PNG, then try again.'); }
       const long = Math.max(bmp.width, bmp.height), short = Math.min(bmp.width, bmp.height);
       // Long side ≤ 2560, but keep the short side ≥ 1440 (a panorama filling the board stays sharp), within ~6.5 MP.
       let k = Math.min(1, PHOTO_MAX_SIDE / long);
@@ -3231,7 +3231,7 @@
         `<button class="menu-item ${cls}" role="menuitem" data-act="${act}" ${extra}><span class="icon-slot">${icon}</span><span class="label">${esc(label)}</span></button>`;
       if (this.confirming) {
         const name = `${w.widget.name}${w.inst.n > 1 ? ' ' + w.inst.n : ''}`;
-        this.el.innerHTML = `<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything in this window and restores its starting size.${BoardHistory.enabled() ? ' Board history keeps a copy.' : ''}</div>` +
+        this.el.innerHTML = `<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything in this window and restores its starting size.${BoardHistory.enabled() ? ' Board history keeps a version.' : ''}</div>` +
           item('reset-yes', svg('reset'), 'Reset', '', 'danger') + item('reset-no', '', 'Cancel');
         return;
       }
@@ -4975,8 +4975,10 @@
         } else {
           per2.innerHTML = Install.prompt ? `<button class="btn small primary" data-act="install">${svg('plus')}Install app</button>`
             : '<span class="hint"><span class="status-dot warn"></span>Not yet</span>';
+          // (Chrome offers Install app when it can install. An iPad's Safari never does: say how to add it there.)
+          const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
           hint.textContent = 'The browser might clear your boards to free up space. ' +
-            (Install.prompt ? 'Installing 21Board as an app usually prevents that. ' : 'Installing 21Board as an app usually prevents that. In Chrome, tap Install in the address bar. On iPad, tap Share › Add to Home Screen. ') +
+            (apple && !Install.prompt ? 'To prevent that, tap Share › Add to Home Screen. ' : 'Installing 21Board as an app usually prevents that. ') +
             'Until then, back up regularly.';
         }
         // A kiosk can't be installed, and whether its data is kept is set up by IT: say only what applies.
@@ -5056,7 +5058,7 @@
           if (!i) break;
           const widget = getWidget(i.widgetId);
           const name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
-          const ok = await dialog({ title: `Delete ${name}?`, message: (widget && widget.external ? `Its window is removed from this page. Your work in ${widget.name} isn’t touched. ${widget.name} keeps it on this device. `
+          const ok = await dialog({ title: `Delete ${name}?`, message: (widget && widget.external ? `Its window is deleted from this page. Your work in ${widget.name} isn’t touched. ${widget.name} keeps it on this device. `
             : 'Its window and everything in it are deleted. ') + (BoardHistory.enabled() ? 'You can bring it back from Board history for a while.' : 'This can’t be undone.'), actions: [{ label: 'Delete', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
           if (ok) {
             const id = await deleteInstance(val); this.render();
@@ -5110,7 +5112,7 @@
           const ok = await dialog(temp ? { title: 'Empty this board?', message: 'The windows, their content and the settings you see now are cleared.' + saved + apps,
             actions: [{ label: 'Empty this board', value: 'erase', kind: 'danger' }, { label: 'Cancel', value: null }] }
             : { title: 'Erase everything?', message: (others.length ? `All ${others.length + 1} pages, their windows and content, and your settings are deleted from this device.` + (hist ? ' Board history keeps the page you’re on, so you can still go back to it.' : '')
-                : 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '')) + (Link.dir ? ' This device also stops syncing. The board stays in your folder and on your other devices.' : '') + ' To keep them, export a backup first.' + apps,
+                : 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '')) + (Link.dir ? ' This device also stops syncing. The board stays in your folder and on your other devices.' : '') + ' To keep what’s here, export a backup first.' + apps,
               actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }]
                 .concat(hist ? [{ label: 'Erase, including Board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (ok === 'backup') { await doExport('all'); break; }
@@ -7121,8 +7123,8 @@
       if (!others.length && gone) out.push(`${cap(gone.name || 'another device')} stopped syncing through this folder ${when(gone.left.at || 0)}.`);
       else if (!others.length) out.push('No other devices yet. Set up Board Sync on another device and pick this same folder.');
       else if (others.length === 1) out.push(`Shared with ${who(others[0])}. Last change ${when(others[0].at)}.`);
-      else if (others.length === 2) out.push(`Shared with ${who(others[0])} and ${who(others[1])}. Last changes ${when(others[0].at)} and ${when(others[1].at)}.`);
-      else out.push(`Shared with ${who(others[0])}, ${who(others[1])} and ${others.length - 2} other${others.length === 3 ? '' : 's'}. Last changes ${when(others[0].at)} and ${when(others[1].at)}.`);
+      else if (others.length === 2) out.push(`Shared with ${who(others[0])} and ${who(others[1])}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
+      else out.push(`Shared with ${who(others[0])}, ${who(others[1])} and ${others.length - 2} other${others.length === 3 ? '' : 's'}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
       for (const [file, w] of this.waiting) {
         if (now - w.since < this.waits.arrive) continue;
         out.push(this.badPhotos.has(file) ? `The background photo of “${w.page}” in your folder can’t be used. This device keeps its own.` : `The background photo of “${w.page}” is still arriving.`);
@@ -7935,7 +7937,7 @@
     async writeFolderReadme(dir) {
       try { await dir.getFileHandle('About these files.txt'); return; } catch (e) { /* write it */ }
       await Link.writeFile('About these files.txt', [
-        'Earlier versions of your 21Board pages, to go back to after a big change or a device reset.',
+        'Earlier versions of your 21Board boards, to go back to after a big change or a device reset.',
         '',
         '- To go back, open 21Board > Settings > Board history and look under "In your Google Drive',
         '  folder" at the bottom. Or open a file with Import.',
@@ -8003,7 +8005,7 @@
     const H = BoardHistory;
     if (LAB) return '';
     if (!H.enabled()) return `<div class="row"><div><div class="lbl">Go back to an earlier version</div><div class="hint">Board history isn’t available in this browser window.</div></div></div>`;
-    const warn = H.paused === 'quota' ? 'Board history is paused. This device is out of space.' : H.paused === 'over' ? 'Board history is using its share of this device’s storage. It now saves about once an hour.' : H.low || H.tight ? `Space is low on this device.${H.thinned ? ' Some of the oldest versions were removed.' : ''} Make room so 21Board can keep saving.` : H.status === 'too-big' ? 'This page is too big for automatic versions.' : H.unread ? 'Board history couldn’t be read just now.' : '';
+    const warn = H.paused === 'quota' ? 'Board history is paused. This device is out of space.' : H.paused === 'over' ? 'Board history is using its share of this device’s storage. It now saves about once an hour.' : H.low || H.tight ? `Space is low on this device.${H.thinned ? ' Some of the oldest versions were removed.' : ''} Make room so 21Board can keep saving.` : H.status === 'too-big' ? 'This page is too big for automatic versions.' : H.unread ? 'Couldn’t read Board history. Try again in a moment.' : '';
     return `<div class="row"><div><div class="lbl">Go back to an earlier version</div>${warn ? `<div class="hint warn-line"><span class="status-dot warn"></span>${warn}</div>` : ''}</div>
         <button class="btn" data-act="hist-open" aria-controls="history" aria-expanded="${HistorySheet.beside}">${svg('history')}Board history…</button></div>`;
   }
@@ -8274,7 +8276,7 @@
           <p>Board history isn’t a backup. Clearing this browser’s data for 21Board clears it too.</p></div></div>`;
       if (Link.dir && Link.perm === 'granted' && S.settings.historyFolder !== false) {
         const t = H.tag(S.board.uid, 6), mine = this.folder.filter(f => f.uidTag === t).slice(0, 20), others = this.folder.filter(f => f.uidTag !== t);
-        html += `<div class="hist-day">In your Google Drive folder</div>` + (mine.length ? `<div class="inst-list">${mine.map(f => `<div class="inst"><div class="meta"><b>${esc(dayTime(f.at))}${f.saved ? ' · saved by you' : ''}</b><span>From ${esc(f.device)}</span></div><button class="btn small" data-act="folder-go" data-val="${esc(f.name)}">Go back</button></div>`).join('')}</div>` : '<p class="hint">No copies yet. 21Board adds about one an hour.</p>');
+        html += `<div class="hist-day">In your Google Drive folder</div>` + (mine.length ? `<div class="inst-list">${mine.map(f => `<div class="inst"><div class="meta"><b>${esc(dayTime(f.at))}${f.saved ? ' · saved by you' : ''}</b><span>From ${esc(f.device)}</span></div><button class="btn small" data-act="folder-go" data-val="${esc(f.name)}">Go back</button></div>`).join('')}</div>` : '<p class="hint">No copies of this board there yet. 21Board adds about one an hour.</p>');
         if (others.length) {
           html += `<button class="btn small" data-act="others">${this.showOthers ? 'Hide' : 'Show'} other boards’ copies (${others.length})</button>`;
           if (this.showOthers) html += `<div class="inst-list">${others.slice(0, 40).map(f => `<div class="inst"><div class="meta"><b>${esc(f.board)}</b><span>${esc(dayTime(f.at))} · from ${esc(f.device)}</span></div><button class="btn small" data-act="folder-go" data-val="${esc(f.name)}">Use</button></div>`).join('')}</div>`;

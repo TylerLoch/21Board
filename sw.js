@@ -14,13 +14,13 @@
 const VERSION = '2026.11.18-9';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'c089651b';
+const BUILD = '5c938c21';
 const FILES = {
-  './': '848fbc5efa74d74c',
-  'index.html': '848fbc5efa74d74c',
-  'board.js': '03ad4209fba17079',
+  './': '2c85e6e26a6b0d86',
+  'index.html': '2c85e6e26a6b0d86',
+  'board.js': '7b8d5499423e50fe',
   'sdk/board21.js': '3d8ef72db43df6eb',
-  'sdk/board21-dev.js': 'b29b654c8bb7040b',
+  'sdk/board21-dev.js': '701293968d7cad06',
   'sdk/dev/board-shell.js': '0e3f86d375d4d478',
   'sdk/lab.html': '53da73e5ab2bad8b',
   'widgets/registry.js': '679b74a462d85c48',
@@ -38,7 +38,7 @@ const FILES = {
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
   'widgets/timer/index.html': '6f2d2f7354a10fe6',
-  'widgets/task-timer/index.html': '7da6a7e27a6165c2',
+  'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
   'widgets/clock/index.html': '21a98aa1d345b489',
   'widgets/notes/index.html': '0dc57fad3cd2fca1',
@@ -51,7 +51,7 @@ const FILES = {
   'widgets/name-picker/style-wheel.js': 'bd3793376cdfc9e7',
   'widgets/name-picker/style-spotlight.js': 'd2ffd9ead362cf90',
   'widgets/name-picker/style-lotto.js': 'fc46b85bc0bf5ff7',
-  'widgets/first-then-board/index.html': '9788b5e6876fb178',
+  'widgets/first-then-board/index.html': '77fb759a3e2786ac',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
   'widgets/youtube-player/index.html': '1f4b8a73cb31265d',

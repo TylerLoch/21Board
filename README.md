@@ -116,7 +116,7 @@ opens.
 - **Board Sync**, in Chrome and Edge: one board on all your devices, the smartboard too, through a Google Drive
   folder. *Set up…* shows how to make the folder, then you pick it. Once linked, it has three rows: the folder and
   how syncing is going, with *Change…* and *Unlink*; this device's name; and *Keep history copies in the folder*.
-  When the board can't sync, it says what's wrong. Not in kiosk mode, the widget dev window or browsers without it.
+  When the board can't sync, it says what's wrong. Not in kiosk mode, the dev window or browsers without it.
   See [Board Sync](#board-sync).
 - **Classroom**
   - **Lock windows in place:** widgets still work, but no one can move, resize, close or add windows, and Close all
@@ -130,8 +130,8 @@ opens.
     screen. It uses the browser's screen wake lock. A screen that never sleeps never locks, so while it's on,
     Settings warns *This makes your account less secure.* Kiosks skip the warning, since no one is signed in. A line
     says when it can't work: in an older browser, when 21Board isn't served over https, or on a device that doesn't
-    allow it. IT can turn it off by policy. It needs Chrome 84, or Safari 16.4 in a tab and 18.4 as a Home Screen
-    app. This device only. An old *School hours* setting reads as on.
+    allow it. IT can turn it off by policy. It needs Chrome 84 or later, or Safari 16.4 or later. As a Home Screen
+    app, it needs Safari 18.4 or later. This device only. An old *School hours* setting reads as on.
 - **This page ▸ Saved widgets:** how many windows this page has, open or closed. Open the group to see each one,
   with Open and Delete. To rename the page, use ‹ Page › → *Rename this page…*.
 - **Appearance**
@@ -171,11 +171,11 @@ opens.
     once a day or off. Below it, *Delete all versions*.
   - **Backups and storage:** *Back up every page*, with *Back up now* and when you last backed up. Whether 21Board
     works offline. *Protected storage*, which says whether the browser will keep 21Board's data, with *Install app*
-    when that would help. Storage used, kiosk mode, and *Erase everything* for every page.
+    when that would help. Storage used, kiosk mode and *Erase everything* for every page.
   - **Developer:** Developer mode adds the SDK Playground and *Test a widget*, which runs an unregistered widget
     from a file you upload.
 - **About ▸** shows the version on its row. Inside: the 21 gear, who made 21Board, the version, where your work is
-  stored, the licenses in full, credits and the goat. The widget dev window shows only the version and where your
+  stored, the licenses in full, credits and the goat. The dev window shows only the version and where your
   work is stored.
 
 Background patterns, from Dots to Graph paper, are off for now. Each page keeps its choice. To bring them back,
@@ -193,7 +193,7 @@ manifest.webmanifest    PWA manifest; lets the installed app open .21board files
 icons/                  App icons (192 and 512 px), the 21 gear and the goat (Settings → About)
 fonts/                  Text style fonts (Settings → Appearance), saved offline, loaded only once chosen
 sdk/board21.js          The SDK every widget includes (window.Board21)
-sdk/board21-dev.js      The widget dev window: a widget opened outside 21Board runs in the real board
+sdk/board21-dev.js      The dev window: a widget opened outside 21Board runs in the real board
 sdk/dev/board-shell.js  index.html's markup for the dev window (made by tools/build-sdk.js)
 sdk/lab.html            Widget lab: paste a widget's HTML and try it in a real window
 widgets/registry.js     The list of widgets, for the Widget Picker and the offline copy
@@ -245,7 +245,7 @@ tool write a widget, start with the prompt in [docs/AI-PROMPT.md](docs/AI-PROMPT
 [docs/WIDGET-SDK.md, "Testing a widget"](docs/WIDGET-SDK.md#testing-a-widget).
 
 To try a widget file in your own board, go to Settings → Advanced → Developer mode → *Test a widget* → **Upload
-file…**. An uploaded widget can't reach your boards' data. It stays on this device only, never in exports, Board
+file…**. A test widget can't reach your boards' data. It stays on this device only, never in exports, Board
 history or the Google Drive folder, and it works offline. Upload it again to see an edit. If one freezes 21Board,
 add `?nodev` to the end of 21Board's address. No test widget starts, and you can remove it in Settings. See
 [docs/WIDGET-SDK.md, "Inside 21Board"](docs/WIDGET-SDK.md#inside-21board).
@@ -387,9 +387,9 @@ being typed in, is due again.
   one message, "3 pages were deleted on the laptop.", with one Undo that leaves you on the page you're on.
 - **Theme, accent color and text style belong to the board.** The latest choice, made on any device, shows on all of
   them at once, in every tab, even while windows are locked. Set the laptop to Dark and the smartboard turns dark.
-  Choose Early readers there, and the smartboard's text and widgets change too. If Settings is open, it shows the
-  new choice in place without being redrawn. The device that shows the change says who made it, in one message: "The
-  laptop changed the theme to Dark and the accent color to Green.", "The laptop changed the text style to “Early
+  Choose Early readers on the laptop, and the smartboard's text and widgets change too. If Settings is open, it shows
+  the new choice in place without being redrawn. The device that shows the change says who made it, in one message:
+  "The laptop changed the theme to Dark and the accent color to Green.", "The laptop changed the text style to “Early
   readers”." or "The laptop changed the accent color to a custom one." There's no Undo, since changing it back in
   Settings is one tap, and syncs. Auto stays Auto everywhere, so each device follows its own light or dark setting.
   A device that only ever had the defaults, or the folder's, never replaces another's choice. A choice made while
@@ -575,8 +575,8 @@ opened it online since. None of the three does yet. **21Sketch's offline worker 
 but not yet on its server. 21Timer and 21DocCam need one deployed too.** 21Board won't need to change when they are.
 Tested with a copy of 21Sketch and its worker: offline, the window opens 21Sketch with the same drawing.
 
-- Offline, the window's title says **Offline**, and a message says once that the app needs a connection unless it's
-  saved on this device for offline use. 21Board can't see into another site's page, so it can't tell whether the app
+- Offline, the window's title says **Offline**, and a message says once that you're offline and the app works only
+  if it's saved on this device. 21Board can't see into another site's page, so it can't tell whether the app
   loaded, and covers nothing. An app with its own offline copy works as usual. One without shows the browser's "no
   connection" page. When the connection is back, choose *Reload 21Sketch*, *Reload 21Timer* or *Reload 21DocCam* in
   the window's menu. The same goes for a window that opened while the site was out of reach, such as before Wi-Fi

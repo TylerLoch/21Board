@@ -1172,7 +1172,7 @@
           playBtn.style.background = '#ff3b30';
           playBtn.style.color = '#ffffff';
         } else if (state.tasks.length === 0) {
-          playBtn.innerText = '➕ Add activities';
+          playBtn.innerText = '➕ Add activity';
           playBtn.className = 'primary';
           playBtn.style.background = 'var(--b21-accent)';
           playBtn.style.color = 'var(--b21-on-accent)';
@@ -1701,7 +1701,7 @@
         taskTimeEl.innerText = "00:00";
         taskTimeEl.classList.remove('is-alarming');
         totalLeftEl.innerText = "Total left: 00:00";
-        nextTaskEl.innerText = "Tap ➕ to add one";
+        nextTaskEl.innerText = "";   // (the dial says "Tap to add one")
         return;
       }
 

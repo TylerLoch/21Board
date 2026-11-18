@@ -32,7 +32,7 @@ shows the widget in a real 21Board window, the **dev window**.
    button. In 21Board, turn on **Settings → Advanced → Developer mode**. Under **Test a widget**, tap
    **Upload file…** and pick the file. This works on Chromebooks, Chrome on Windows and Mac, and iPad Safari.
    The widget opens in a window named *Your Widget (test)*. To see a new version, upload the file again.
-   - An uploaded widget stays **on that device only**. It isn't in exports, templates, Board history or the
+   - A test widget stays **on that device only**. It isn't in exports, templates, Board history or the
      Google Drive folder. Another device shows *Widget not installed* for it.
    - To share a widget with everyone, send it to the 21Board team. In the dev window, ⋯ ▸
      **Copy for 21Board** copies the file and the entry they need.

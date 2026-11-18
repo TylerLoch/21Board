@@ -1090,8 +1090,6 @@
           { id: 'toggle_then', label: 'Then done', checked: state.thenDone },
           { id: 'mark_both', label: 'Mark both done' },
           { id: 'clear_both', label: 'Clear done marks' },
-          { id: 'open_theme_menu', label: 'Theme…' },
-          { id: 'open_done_menu', label: 'Mark done…' },
           { id: 'swap', label: 'Swap First and Then' },
           { id: 'toggle_sound', label: 'Sound', checked: state.sound },
           { id: 'toggle_motion', label: 'Animation', checked: state.motion },
@@ -1186,8 +1184,11 @@
         }
 
         // What a screen reader hears for each card: its place, its picture and whether it is done ("First, Math, done").
+        // The done buttons say the same either way, so they are heard as pressed or not.
         btnFirst.setAttribute('aria-label', `First, ${state.first.label}${state.firstDone ? ', done' : ''}`);
         btnThen.setAttribute('aria-label', `Then, ${state.then.label}${state.thenDone ? ', done' : ''}`);
+        btnToggleFirst.setAttribute('aria-pressed', String(!!state.firstDone));
+        btnToggleThen.setAttribute('aria-pressed', String(!!state.thenDone));
         setMenu();
       }
 
@@ -1416,14 +1417,6 @@
           state.thenDone = false;
           renderBoard();
           Board21.save(state);
-        } else if (id === 'open_theme_menu') {
-          closeAllPopovers();
-          themePopover.classList.add('open');
-          btnThemeIcon.classList.add('is-active');
-        } else if (id === 'open_done_menu') {
-          closeAllPopovers();
-          donePopover.classList.add('open');
-          btnDoneIcon.classList.add('is-active');
         } else if (id === 'swap') {
           swapCards();
         } else if (id === 'toggle_sound') {
