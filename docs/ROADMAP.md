@@ -7,7 +7,7 @@ touches the SDK, Board Sync or every widget, so it is more than a widget's own r
 
 A widget's content belongs to one window (`Board21.save`). It syncs, exports and goes back with Board history
 with that window, and a new window starts empty. Some lists would be better shared by all of a widget's
-windows: the YouTube Player's History (the last 5 videos), today one per window, is the first.
+windows: the Video Player's History (the last 5 videos), today one per window, is the first.
 
 What it would involve:
 - A new SDK call, and a new protocol version for widgets that use it.
@@ -15,7 +15,7 @@ What it would involve:
 - Board Sync: how changes from two devices are merged.
 - Export and import, Board history, and what Reset and Erase clear.
 - The widget dev window and the lab.
-- Moving each YouTube Player window's History into it.
+- Moving each Video Player window's History into it.
 
 ## Telling copies of a widget apart (names, for finding one again)
 
@@ -27,7 +27,7 @@ the one they want later.
 What it would involve:
 - Ways to identify a copy, to choose from or combine:
   - a name the teacher gives it (Rename… in the window menu);
-  - a name the widget suggests from its content (a note's first line, a Timer's time, the YouTube Player's video
+  - a name the widget suggests from its content (a note's first line, a Timer's time, the Video Player's video
     title);
   - a color or mark;
   - when it was last used;

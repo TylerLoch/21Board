@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <script src="../../sdk/board21.js"></script>
 <script type="application/json" id="board21-widget">
-  {"id": "youtube-player", "name": "YouTube Player", "version": "1.0.0", "window": {"width": 480, "height": 270, "minWidth": 200, "minHeight": 200}}
+  {"id": "youtube-player", "name": "Video Player", "version": "1.0.0", "window": {"width": 480, "height": 270, "minWidth": 200, "minHeight": 200}}
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>YouTube Player</title>
+<title>Video Player</title>
 <style>
   html, body { margin: 0; height: 100%; }
   body {
@@ -43,8 +43,8 @@
     h1 { font-size: 1em; }   /* (one line at 200 px in every text style) */
     button { padding: 0 .5em; font-size: 14px; }   /* (Cancel and Show video side by side at 200 px) */
   }
-  /* The player: YouTube's own page, filling the window on black. Nothing is drawn over it (YouTube's rules), so in a
-     window that fills the board it ends above the board's own buttons and clock in the bottom corners (--clear). */
+  /* The player: the video site's own page, filling the window on black. Nothing is drawn over it (YouTube's rules), so
+     in a window that fills the board it ends above the board's own buttons and clock in the bottom corners (--clear). */
   #player { position: fixed; inset: 0; background: #000; }
   #player iframe { position: absolute; inset: 0 0 auto; width: 100%; height: calc(100% - var(--clear, 0px)); border: 0; display: block; }
   #offline { position: fixed; inset: 0; box-sizing: border-box; padding: 1em; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .4em; text-align: center; }
@@ -56,51 +56,60 @@
 <body>
   <form id="ask" novalidate autocomplete="off" hidden>
     <div class="box">
-      <h1>Show a YouTube video</h1>
-      <p id="help">Paste the link to a video on YouTube.</p>
-      <input id="link" type="url" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="youtube.com/watch?v=…" aria-label="Link to a YouTube video" aria-describedby="help err">
+      <h1>Show a video</h1>
+      <p id="help">Paste a link from YouTube, Google Drive or Vimeo.</p>
+      <input id="link" type="url" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="Video link" aria-label="Video link" aria-describedby="help err">
       <p id="err" role="alert" hidden></p>
       <div class="buttons"><button type="button" id="cancel" hidden>Cancel</button><button type="submit" id="go" class="primary">Show video</button></div>
     </div>
   </form>
   <div id="player" hidden></div>
-  <div id="offline" role="status" hidden><p>YouTube needs an internet connection.</p><p>The video comes back once this device is online again.</p></div>
+  <div id="offline" role="status" hidden><p>You’re offline.</p><p>The video comes back when you’re online.</p></div>
 <script>
-  // Content (Board21.save): { videoId, videoUrl, start, history }, or { videoId: null, videoUrl: '', history } for no
-  // video.
-  //   videoId: the video's 11-character YouTube id. videoUrl: its link as it was pasted (Change video shows it again).
-  //   start: where the video starts, in whole seconds, from the link's t= or start= (left out: from the beginning).
+  // Content (Board21.save): { source, videoId, hash or resourceKey, videoUrl, start, history }, or
+  // { videoId: null, videoUrl: '', history } for no video.
+  //   source: where the video is, 'youtube', 'drive' (Google Drive) or 'vimeo'. Content saved before Drive and Vimeo
+  //   (no source) is YouTube's. videoId: the video's id there (SOURCES: YouTube's 11 characters, a Drive file's id,
+  //   Vimeo's number). hash: an unlisted Vimeo video's key. resourceKey: the key older Drive files shared by link need.
+  //   videoUrl: its link as it was pasted (Change video shows it again).
+  //   start: where the video starts, in whole seconds, from the link's time (left out: from the beginning; Drive's player
+  //   has none, so a Drive video never has one).
   //   history: the window menu's History, the last 5 different videos shown in this window, newest first, the one
-  //   showing among them: [{ videoId, videoUrl, start, title }], each as above, and title: the video's title from
-  //   YouTube (cleaned, at most 200 characters; left out until it is known, and saved with the window's next change:
-  //   see Titles). A video is listed once (the same videoId and start). Remove video keeps the history; a Reset clears
-  //   it. Content from before the History (no history) is read as a history of just its video (or, arriving while the
-  //   window is open, keeps the history it has, its video moved to the top).
+  //   showing among them: [{ source, videoId, hash or resourceKey, videoUrl, start, title }], each as above, and title:
+  //   the video's title from YouTube or Vimeo (cleaned, at most 200 characters; left out until it is known, and saved
+  //   with the window's next change: see Titles). A video is listed once (the same source, videoId, hash or
+  //   resourceKey, and start). Remove video keeps the history; a Reset clears it. Content from before the History (no
+  //   history) is read as a history of just its video (or, arriving while the window is open, keeps the history it has,
+  //   its video moved to the top).
   //   No video is saved as content of its own, not cleared: in Board Sync, content cleared (null) gives way to a video
   //   picked on another device at the same time, so a later Remove video would lose. (A Reset, or a window from a
   //   blank template, has null: no video either.)
   // No config.
   //
-  // The video is YouTube's own embedded player, in a frame that fills the window. YouTube's rules for embeds: nothing
-  // drawn over any part of the player (so its controls are in the window menu, and in a window that fills the board it
-  // ends above the board's own buttons and clock: keepClear), at least 200 × 200 px (keepMinimum),
-  // a Referer, no autoplay, and no playing out of sight. The frame is removed whenever the link box or the offline
-  // message takes its place (Change video, Remove video here or anywhere else, a Reset, going offline), so nothing goes
-  // on playing behind them. (A window that is closed, or on a page that isn't shown, has no frame at all: the board
-  // removes it.) Taps on the video go to YouTube's page and never reach this one or the board, so they don't bring the
-  // window forward or move it: that is done by its title bar.
+  // The video is the site's own embedded player, in a frame that fills the window. YouTube's rules for embeds, kept for
+  // all three: nothing drawn over any part of the player (so its controls are in the window menu, and in a window that
+  // fills the board it ends above the board's own buttons and clock: keepClear), at least 200 × 200 px (keepMinimum),
+  // a Referer (YouTube's and Vimeo's: a Vimeo video can be limited to some sites; Drive gets none), no autoplay, and no
+  // playing out of sight. The frame is removed whenever the link box or the offline message takes its place (Change
+  // video, Remove video here or anywhere else, a Reset, going offline), so nothing goes on playing behind them. (A
+  // window that is closed, or on a page that isn't shown, has no frame at all: the board removes it.) Taps on the video
+  // go to the site's page and never reach this one or the board, so they don't bring the window forward or move it: that
+  // is done by its title bar. A Drive video plays only if the account signed in on the device can open it (in a kiosk,
+  // where no one is signed in, only a file shared with "Anyone with the link").
 
-  // Titles, for the History. When a video is shown here (from the link box or the History), the widget asks YouTube's
-  // oEmbed for its title, with no cookies and no Referer (YouTube answers the board's site: it allows it by CORS). The
+  // Titles, for the History. When a YouTube or Vimeo video is shown here (from the link box or the History), the widget
+  // asks that site's oEmbed for its title, with no cookies and no Referer (both answer the board's site: they allow it
+  // by CORS). Drive has no title for a page that isn't signed in to it, so a Drive video is never asked about. The
   // video never waits for it. A title is shown as soon as it comes, and saved with the window's next change (another
   // video, Remove video), so other tabs and devices, a reload and an export then have it without asking. It is never
   // saved by itself: Board Sync would count that as a newer change, and it would win over a video picked on another
   // device in the meantime. So each tab and device asks for the titles its History is missing: when the window opens
   // online, when content without them arrives, and when the device comes back online; once per video per page load,
   // and MAX_ASKING requests at most at a time in each window. Until a title is known (not yet, offline, a private or
-  // removed video, the school's filter, no answer within TITLE_WAIT), the label is "YouTube video" and the id.
+  // removed video, the school's filter, no answer within TITLE_WAIT), the label is the site's name and the video's id
+  // (a Drive video's: the end of its id, enough to tell two apart).
 
-  // Where the player comes from. www.youtube.com, so that on a Chromebook the school's YouTube settings for the
+  // Where YouTube's player comes from. www.youtube.com, so that on a Chromebook the school's YouTube settings for the
   // signed-in student (Restricted Mode) apply to it. To use youtube-nocookie.com instead, change this one line to
   // 'https://www.youtube-nocookie.com' (ask the district's tech team first: Restricted Mode set by Chrome policy may
   // not reach it).
@@ -108,11 +117,50 @@
 
   const ID_RE = /^[A-Za-z0-9_-]{11}$/;
   const isId = s => ID_RE.test(s) && s !== 'videoseries';   // (embed/videoseries is a playlist's embed address, not a video)
+  // Each site's ids and keys, checked before any of them goes into an address: a Drive file's id (28 or 33 characters
+  // today, 44 for some), its resource key; Vimeo's number, an unlisted video's hash (10 hex digits today).
+  const DRIVE_ID = /^[A-Za-z0-9_-]{25,50}$/, DRIVE_KEY = /^[A-Za-z0-9_-]{8,64}$/;
+  const VIMEO_ID = /^[1-9][0-9]{0,11}$/, VIMEO_HASH = /^[0-9a-f]{8,16}$/;
+  // The three sites: their name, the window menu's item, ids, whether a video can start from a time, the player's
+  // address and frame, where the video opens on its own, and its oEmbed for titles (none for Drive).
+  const SOURCES = {
+    youtube: {
+      name: 'YouTube', open: 'Open in YouTube', isId, starts: true,
+      embed: v => `${EMBED_HOST}/embed/${v.videoId}?rel=0&iv_load_policy=3&playsinline=1${v.start ? '&start=' + v.start : ''}`,
+      page: v => `https://www.youtube.com/watch?v=${v.videoId}${v.start ? '&t=' + v.start + 's' : ''}`,
+      frame: { title: 'YouTube video player', allow: 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write', referrer: 'strict-origin-when-cross-origin' },
+      oembed: v => 'https://www.youtube.com/oembed?url=' + encodeURIComponent(`https://www.youtube.com/watch?v=${v.videoId}`) + '&format=json'
+    },
+    // Drive's preview page, made for frames (its resource key passed on). No Referer: Drive doesn't need one.
+    drive: {
+      name: 'Google Drive', open: 'Open in Google Drive', isId: s => DRIVE_ID.test(s), starts: false,
+      embed: v => `https://drive.google.com/file/d/${v.videoId}/preview${v.resourceKey ? '?resourcekey=' + v.resourceKey : ''}`,
+      page: v => `https://drive.google.com/file/d/${v.videoId}/view${v.resourceKey ? '?resourcekey=' + v.resourceKey : ''}`,
+      frame: { title: 'Google Drive video player', allow: 'autoplay; fullscreen', referrer: 'no-referrer' },
+      oembed: null
+    },
+    // Vimeo's player with dnt=1 (Vimeo's "do not track": no cookies or viewing data kept for the session) and no
+    // title, byline or portrait over the video.
+    vimeo: {
+      name: 'Vimeo', open: 'Open in Vimeo', isId: s => VIMEO_ID.test(s), starts: true,
+      embed: v => `https://player.vimeo.com/video/${v.videoId}?${v.hash ? 'h=' + v.hash + '&' : ''}dnt=1&title=0&byline=0&portrait=0${v.start ? '#t=' + v.start + 's' : ''}`,
+      page: v => `https://vimeo.com/${v.videoId}${v.hash ? '/' + v.hash : ''}${v.start ? '#t=' + v.start + 's' : ''}`,
+      frame: { title: 'Vimeo video player', allow: 'autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media', referrer: 'strict-origin-when-cross-origin' },
+      oembed: v => 'https://vimeo.com/api/oembed.json?url=' + encodeURIComponent(`https://vimeo.com/${v.videoId}${v.hash ? '/' + v.hash : ''}`)
+    }
+  };
+  const isSource = s => typeof s === 'string' && Object.prototype.hasOwnProperty.call(SOURCES, s);
+  // What the link box says to text that isn't a video's link (readText's why).
+  const SAY = {
+    empty: 'Paste a link first.', none: 'That isn’t a video link.', folder: 'That’s a folder. Paste a link to one video.',
+    list: 'That’s a list of videos. Paste a link to one video.', doc: 'That’s a document. Paste a link to a video.',
+    sheet: 'That’s a spreadsheet. Paste a link to a video.', slides: 'That’s a presentation. Paste a link to a video.'
+  };
   const MAX_LINK = 2000, MAX_START = 86400;   // characters; seconds (a day)
   const HISTORY_MAX = 5, MAX_TITLE = 200;   // videos; characters
   // A History label: two lines of the board's menu, in narrow letters (widths); the board cuts one at 80 UTF-16 units.
   const LABEL_MAX = 48, LABEL_UNITS = 80;
-  const OEMBED = 'https://www.youtube.com/oembed', TITLE_WAIT = 5000, MAX_ASKING = 5;   // ms; requests
+  const TITLE_WAIT = 5000, MAX_ASKING = 5;   // ms; requests
   const $ = id => document.getElementById(id);
   const ask = $('ask'), link = $('link'), err = $('err'), cancel = $('cancel'), player = $('player'), offline = $('offline');
 
@@ -123,48 +171,97 @@
     const s = (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0);
     return s > 0 && s <= MAX_START ? s : 0;
   }
-  // A link to a YouTube video, or just the video's id → { id, start, link } (link: the part of the text that is the
-  // link, so a sentence, quotes or brackets around it are left out, as is the rest of YouTube's Share › Embed code).
-  // null if it isn't one.
-  function parseLink(text) {
+  // Text with a link to a video in it → { video: { source, id, hash, resourceKey, start, link } } (link: the part of
+  // the text that is the link, so a sentence, quotes or brackets around it are left out, as is the rest of an embed
+  // code), or { why } if there is none: what the link box says (SAY), from the first link that told what it is.
+  function readText(text) {
     const all = String(text == null ? '' : text).trim();
-    if (isId(all)) return { id: all, start: 0, link: all };
+    if (!all) return { why: 'empty' };
+    if (isId(all)) return { video: { source: 'youtube', id: all, start: 0, link: all } };
+    let why = null;
     for (const word of all.split(/[\s"'\u200b-\u200d\u2060]+/)) {
-      const v = fromAddress(word.replace(/^[(<\[]+|[)>\].,;:!?]+$/g, ''));
-      if (v) return v;
+      const r = fromAddress(word.replace(/^[(<\[]+|[)>\].,;:!?]+$/g, ''));
+      if (r && r.video) return r;
+      if (r && r.why && !why) why = r.why;
     }
-    return null;
+    return { why: why || 'none' };
   }
-  // youtube.com (www., m., music.) /watch?v=…, /embed/…, /v/…, /shorts/…, /live/…; youtube-nocookie.com; youtu.be/….
+  const parseLink = text => readText(text).video || null;
   function fromAddress(word) {
     let u;
     try { u = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(word) ? word : 'https://' + word); } catch (e) { return null; }
     if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
     const host = u.hostname, path = u.pathname.split('/').filter(Boolean);
+    const r = host === 'youtu.be' || host === 'www.youtu.be' || /^((www|m|music)\.)?youtube\.com$/.test(host) || /^(www\.)?youtube-nocookie\.com$/.test(host) ? fromYouTube(u, host, path)
+      : host === 'drive.google.com' || host === 'docs.google.com' ? fromDrive(u, host, path)
+      : /^((www|player)\.)?vimeo\.com$/.test(host) ? fromVimeo(u, host, path) : null;
+    if (r && r.video) r.video.link = word;
+    return r;
+  }
+  const timeIn = (u, ...names) => seconds(names.map(n => u.searchParams.get(n)).find(t => t) || new URLSearchParams(u.hash.slice(1)).get('t'));
+  // youtube.com (www., m., music.) /watch?v=…, /embed/…, /v/…, /shorts/…, /live/…; youtube-nocookie.com; youtu.be/….
+  // A playlist or a channel is a list.
+  function fromYouTube(u, host, path) {
     let id = null;
     if (host === 'youtu.be' || host === 'www.youtu.be') id = path.length === 1 ? path[0] : null;
-    else if (/^((www|m|music)\.)?youtube\.com$/.test(host) || /^(www\.)?youtube-nocookie\.com$/.test(host)) {
-      if (path.length === 1 && path[0] === 'watch') id = u.searchParams.get('v');
-      else if (path.length === 2 && /^(embed|v|shorts|live)$/.test(path[0])) id = path[1];
-    }
-    if (!id || !isId(id)) return null;
-    const t = u.searchParams.get('t') || u.searchParams.get('start') || new URLSearchParams(u.hash.slice(1)).get('t');
-    return { id, start: seconds(t), link: word };
+    else if (path.length === 1 && path[0] === 'watch') id = u.searchParams.get('v');
+    else if (path.length === 2 && /^(embed|v|shorts|live)$/.test(path[0])) id = path[1];
+    if (id && isId(id)) return { video: { source: 'youtube', id, start: timeIn(u, 't', 'start') } };
+    return path[0] === 'playlist' || (path[0] === 'embed' && path[1] === 'videoseries') || /^@./.test(path[0] || '') || /^(channel|c|user)$/.test(path[0] || '') ? { why: 'list' } : null;
+  }
+  // drive.google.com/file/d/<id>/… (also /file/u/<n>/d/<id>/…, and a school's older /a/<domain>/file/d/<id>/…),
+  // /open?id=<id>, /uc?id=<id>; docs.google.com/file/d/<id>/…; with the resource key, if any. Drive's player has no
+  // start time. A folder, or a Google Doc, Sheet or Slides, is not a video.
+  const DOCS = { document: 'doc', spreadsheets: 'sheet', presentation: 'slides' };
+  function fromDrive(u, host, path) {
+    const p = path[0] === 'a' && path.length > 2 ? path.slice(2) : path;
+    let id = null;
+    if (p[0] === 'file') { const q = p[1] === 'u' && /^\d+$/.test(p[2] || '') ? p.slice(3) : p.slice(1); if (q[0] === 'd') id = q[1] || null; }
+    else if (host === 'drive.google.com' && p.length === 1 && (p[0] === 'open' || p[0] === 'uc')) id = u.searchParams.get('id');
+    else if (host === 'drive.google.com' && /^(drive|folderview|embeddedfolderview)$/.test(p[0] || '')) return { why: 'folder' };
+    else if (host === 'docs.google.com' && Object.prototype.hasOwnProperty.call(DOCS, p[0] || '')) return { why: DOCS[p[0]] };
+    const key = u.searchParams.get('resourcekey');
+    if (!id || !DRIVE_ID.test(id) || (key !== null && !DRIVE_KEY.test(key))) return null;
+    return { video: { source: 'drive', id, resourceKey: key || '', start: 0 } };
+  }
+  // vimeo.com/<id>, /<id>/<hash> (unlisted), /channels/<name>/<id>, /groups/<name>/videos/<id>,
+  // /showcase/<n>/video/<id>; player.vimeo.com/video/<id>?h=<hash>; a start time (#t=90, #t=1m30s). A showcase,
+  // album, channel, group or someone's page is a list.
+  function fromVimeo(u, host, path) {
+    let id = null, hash = '';
+    if (host === 'player.vimeo.com') { if (path.length === 2 && path[0] === 'video') { id = path[1]; hash = u.searchParams.get('h') || ''; } }
+    else if (/^\d+$/.test(path[0] || '')) { if (path.length <= 2) { id = path[0]; hash = path[1] || ''; } }
+    else if (path[0] === 'channels' && path.length === 3) id = path[2];
+    else if (path[0] === 'groups' && path.length === 4 && path[2] === 'videos') id = path[3];
+    else if ((path[0] === 'showcase' || path[0] === 'album') && path.length === 4 && path[2] === 'video') id = path[3];
+    else if (/^(showcase|album|channels|groups)$/.test(path[0] || '') || (/^[A-Za-z][\w-]*$/.test(path[0] || '') && (path.length === 1 || (path.length === 2 && path[1] === 'videos')))) return { why: 'list' };
+    if (!id || !VIMEO_ID.test(id) || (hash && !VIMEO_HASH.test(hash))) return null;
+    return { video: { source: 'vimeo', id, hash, start: timeIn(u, 't') } };
   }
 
-  let video = null;       // the saved video: { videoId, videoUrl, start } (readVideo), or null
-  let history = [];       // the History, newest first: [{ videoId, videoUrl, start, title }] (readHistory)
-  const titles = new Map();   // videoId → the title YouTube gave this page (see Titles, above)
+  let video = null;       // the saved video: { source, videoId, hash, resourceKey, videoUrl, start } (readVideo), or null
+  let history = [];       // the History, newest first: [{ source, videoId, hash, resourceKey, videoUrl, start, title }]
+  const titles = new Map();   // titleKey → the title YouTube or Vimeo gave this page (see Titles, above)
   let changing = false;   // the link box shows in place of a saved video (Change video): Cancel puts the video back
-  let frame = null;       // YouTube's frame, while the player shows
-  let kiosk = false;      // ChromeOS kiosk: no new windows, so no Open on YouTube
+  let frame = null;       // the player's frame, while it shows
+  let kiosk = false;      // ChromeOS kiosk: no new windows, so no Open in …
   let started = false;
 
-  // Saved content can come from an imported file or another device, so it is checked before it is used: anything
-  // else is no video. A damaged entry of the history is left out (the rest is kept), as is a damaged start or title.
+  // Saved content can come from an imported file or another device, so it is checked before it is used, by its
+  // site's own rules: anything else is no video. A damaged entry of the history is left out (the rest is kept), as is a
+  // damaged start or title. (A start with a Drive video is left out too: Drive's player has none.)
   function readEntry(d) {
-    if (!d || typeof d !== 'object' || typeof d.videoId !== 'string' || !isId(d.videoId) || typeof d.videoUrl !== 'string' || d.videoUrl.length > MAX_LINK) return null;
-    const e = { videoId: d.videoId, videoUrl: d.videoUrl, start: Number.isInteger(d.start) && d.start > 0 && d.start <= MAX_START ? d.start : 0 };
+    if (!d || typeof d !== 'object' || Array.isArray(d)) return null;
+    const source = d.source === undefined ? 'youtube' : d.source;   // (content from before Drive and Vimeo)
+    if (!isSource(source) || typeof d.videoId !== 'string' || !SOURCES[source].isId(d.videoId) || typeof d.videoUrl !== 'string' || d.videoUrl.length > MAX_LINK) return null;
+    const e = { source, videoId: d.videoId };
+    const key = source === 'vimeo' ? ['hash', VIMEO_HASH] : source === 'drive' ? ['resourceKey', DRIVE_KEY] : null;
+    if (key && d[key[0]] !== undefined && d[key[0]] !== '') {
+      if (typeof d[key[0]] !== 'string' || !key[1].test(d[key[0]])) return null;
+      e[key[0]] = d[key[0]];
+    }
+    e.videoUrl = d.videoUrl;
+    e.start = SOURCES[source].starts && Number.isInteger(d.start) && d.start > 0 && d.start <= MAX_START ? d.start : 0;
     const title = cleanTitle(d.title);
     if (title) e.title = title;
     return e;
@@ -190,17 +287,24 @@
     const c = Array.from(s).slice(0, MAX_TITLE).join('').trim();
     return /[^\p{Cf}\p{Mn}\p{Me}\p{Z}\u115f\u1160\u2800\u3164\uffa0]/u.test(c) ? c : '';
   }
-  const sameVideo = (a, b) => !!a && !!b && a.videoId === b.videoId && a.videoUrl === b.videoUrl && a.start === b.start;
-  const sameEntry = (a, b) => a.videoId === b.videoId && a.start === b.start;   // (the same video, in the History)
-  const keyOf = e => e.videoId + ':' + e.start;
-  const embedUrl = v => `${EMBED_HOST}/embed/${v.videoId}?rel=0&iv_load_policy=3&playsinline=1${v.start ? '&start=' + v.start : ''}`;
-  const watchUrl = v => `https://www.youtube.com/watch?v=${v.videoId}${v.start ? '&t=' + v.start + 's' : ''}`;
+  // The same video: the same site, id, key and start (in the History); and the same link (the saved video).
+  const keyOf = e => [e.source, e.videoId, e.hash || e.resourceKey || '', e.start].join(':');
+  const sameEntry = (a, b) => keyOf(a) === keyOf(b);
+  const sameVideo = (a, b) => !!a && !!b && sameEntry(a, b) && a.videoUrl === b.videoUrl;
+  const titleKey = e => e.source + ':' + e.videoId + (e.hash ? '/' + e.hash : '');   // (a video's title, whatever its start)
+  // A History item's menu id (at most 64 characters: a Drive id and key are longer, so a short hash of keyOf).
+  const itemId = e => { let h = 0x811c9dc5; for (const c of keyOf(e)) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193); return 'history:' + (h >>> 0).toString(36); };
+  const embedUrl = v => SOURCES[v.source].embed(v);
+  const pageUrl = v => SOURCES[v.source].page(v);
+  // An entry as content: its site, id and key, link, start (and title).
+  const entryOf = e => Object.assign({ source: e.source, videoId: e.videoId }, e.hash ? { hash: e.hash } : {}, e.resourceKey ? { resourceKey: e.resourceKey } : {},
+    { videoUrl: e.videoUrl }, e.start ? { start: e.start } : {});
 
   function save() {
-    const d = video ? Object.assign({ videoId: video.videoId, videoUrl: video.videoUrl }, video.start ? { start: video.start } : {}) : { videoId: null, videoUrl: '' };
+    const d = video ? entryOf(video) : { videoId: null, videoUrl: '' };
     d.history = history.map(e => {
-      const title = e.title || titles.get(e.videoId);
-      return Object.assign({ videoId: e.videoId, videoUrl: e.videoUrl }, e.start ? { start: e.start } : {}, title ? { title } : {});
+      const title = e.title || titles.get(titleKey(e));
+      return Object.assign(entryOf(e), title ? { title } : {});
     });
     Board21.save(d).catch(() => {});   // (not stored yet: the board keeps it, says so and tries again)
   }
@@ -218,16 +322,16 @@
   }
   function startPlayer() {
     dropFrame();
-    const f = document.createElement('iframe');
-    f.title = 'YouTube video player';
-    f.setAttribute('allow', 'autoplay; encrypted-media; picture-in-picture; fullscreen; clipboard-write');
+    const f = document.createElement('iframe'), how = SOURCES[video.source].frame;
+    f.title = how.title;
+    f.setAttribute('allow', how.allow);
     f.setAttribute('allowfullscreen', '');
-    f.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');   // (the browser's default, stated: YouTube's embeds need the Referer)
+    f.setAttribute('referrerpolicy', how.referrer);   // (YouTube's and Vimeo's: the browser's default, stated; their embeds use the Referer)
     f.src = f.dataset.src = embedUrl(video);
     player.appendChild(f);
     frame = f;
   }
-  // Removing the frame ends YouTube's page in it, and so the sound.
+  // Removing the frame ends the site's page in it, and so the sound.
   function dropFrame() { if (frame) { frame.remove(); frame = null; } }
 
   // Window menu: the player's controls (nothing may be drawn over the player itself), then the History, the video
@@ -236,24 +340,26 @@
   function setMenu() {
     const items = !video || changing ? [] : [
       { id: 'change', label: 'Change video' },
-      ...(kiosk ? [] : [{ id: 'open', label: 'Open on YouTube' }]),
+      ...(kiosk ? [] : [{ id: 'open', label: SOURCES[video.source].open }]),
       { separator: true },
       { id: 'remove', label: 'Remove video' }
     ];
     if (history.length) {
       if (items.length) items.push({ separator: true });
       const labels = history.map(e => labelOf(e)), twice = l => labels.filter(x => x === l).length > 1;
-      items.push({ heading: true, label: 'History' }, ...history.map((e, i) => ({ id: 'history:' + keyOf(e), label: twice(labels[i]) ? labelOf(e, true) : labels[i], checked: !!video && sameEntry(e, video) })));
+      items.push({ heading: true, label: 'History' }, ...history.map((e, i) => ({ id: itemId(e), label: twice(labels[i]) ? labelOf(e, true) : labels[i], checked: !!video && sameEntry(e, video) })));
     }
     const sig = JSON.stringify(items);
     if (sig !== menuNow) { menuNow = sig; Board21.menu.set(items); }
   }
-  // A History item's label: the video's title (until it is known, "YouTube video" and its id), shortened to two lines
-  // of the board's menu, with its start time after it ("(from 1:30)": the same video from another time is listed apart).
+  // A History item's label: the video's title (until it is known, the site's name and the video's id: "YouTube video
+  // dQw4w9WgXcQ", "Vimeo video 76979871", "Google Drive video" and the end of its id), shortened to two lines of the
+  // board's menu, with its start time after it ("(from 1:30)": the same video from another time is listed apart).
   // both: keep the title's end as well (its label would be the same as another's: ends).
   function labelOf(e, both) {
     const from = e.start ? ` (from ${clock(e.start)})` : '';
-    return (both ? ends : shorten)(e.title || titles.get(e.videoId) || `YouTube video ${e.videoId}`, LABEL_MAX - from.length, LABEL_UNITS - from.length) + from;
+    const name = e.title || titles.get(titleKey(e)) || `${SOURCES[e.source].name} video ${e.source === 'drive' ? e.videoId.slice(-6) : e.videoId}`;
+    return (both ? ends : shorten)(name, LABEL_MAX - from.length, LABEL_UNITS - from.length) + from;
   }
   // 90 → "1:30"; 3723 → "1:02:03"
   function clock(s) {
@@ -295,40 +401,41 @@
     return end ? shorten(t, n - sum(w.slice(k)) - 1, units - end.length - 1) + ' ' + end : shorten(t, n, units);
   }
   Board21.on('menu', id => {
-    const e = /^history:/.test(id) ? history.find(x => 'history:' + keyOf(x) === id) : null;
+    const e = /^history:/.test(id) ? history.find(x => itemId(x) === id) : null;
     if (e) { if (!video || changing || !sameEntry(e, video)) choose(e); return; }   // (the video showing: it goes on as it is)
     if (!video) return;
-    if (id === 'change') { changing = true; link.value = video.videoUrl || watchUrl(video); say(''); show(); }
-    else if (id === 'open' && !kiosk) window.open(watchUrl(video), '_blank', 'noopener,noreferrer');
+    if (id === 'change') { changing = true; link.value = video.videoUrl || pageUrl(video); say(''); show(); }
+    else if (id === 'open' && !kiosk) window.open(pageUrl(video), '_blank', 'noopener,noreferrer');
     else if (id === 'remove') { video = null; changing = false; link.value = ''; say(''); save(); show(); }
   });
 
   function say(text) { err.textContent = text; err.hidden = !text; }
   link.addEventListener('input', () => { if (!err.hidden) say(''); });
-  ask.addEventListener('submit', e => {
-    e.preventDefault();
-    const text = link.value.trim(), v = text ? parseLink(text) : null;
-    if (!v) { say(text ? 'That isn’t a link to a YouTube video.' : 'Paste the link to a YouTube video first.'); return; }
-    choose({ videoId: v.id, videoUrl: v.link.length <= MAX_LINK ? v.link : watchUrl({ videoId: v.id, start: v.start }), start: v.start });
+  ask.addEventListener('submit', ev => {
+    ev.preventDefault();
+    const r = readText(link.value), v = r.video;
+    if (!v) { say(SAY[r.why]); return; }
+    const e = Object.assign({ source: v.source, videoId: v.id }, v.hash ? { hash: v.hash } : {}, v.resourceKey ? { resourceKey: v.resourceKey } : {}, { start: v.start });
+    choose(Object.assign(e, { videoUrl: v.link.length <= MAX_LINK ? v.link : pageUrl(e) }));
   });
   // A video chosen here, from the link box or the History: it shows (in place of the link box, if that showed), goes
   // to the top of the History, and is saved.
   function choose(v) {
     say('');
-    video = { videoId: v.videoId, videoUrl: v.videoUrl, start: v.start };
+    video = Object.assign(entryOf(v), { start: v.start || 0 });
     changing = false;
     link.blur();   // (the on-screen keyboard goes away)
     remember(video);
     save(); show();
   }
-  // v to the top of the History (listed once), with its title if it is known here; if not, YouTube is asked for it.
+  // v to the top of the History (listed once), with its title if it is known here; if not, its site is asked for it.
   function remember(v) {
     history = toTop(history, v);
-    if (!history[0].title) askTitle(v.videoId);
+    if (!history[0].title) askTitle(history[0]);
   }
   function toTop(list, v) {
-    const title = (list.find(e => e.videoId === v.videoId && e.title) || {}).title || titles.get(v.videoId);
-    return [Object.assign({ videoId: v.videoId, videoUrl: v.videoUrl, start: v.start }, title ? { title } : {})]
+    const title = (list.find(e => titleKey(e) === titleKey(v) && e.title) || {}).title || titles.get(titleKey(v));
+    return [Object.assign(entryOf(v), { start: v.start || 0 }, title ? { title } : {})]
       .concat(list.filter(e => !sameEntry(e, v))).slice(0, HISTORY_MAX);
   }
   cancel.addEventListener('click', () => { changing = false; say(''); show(); });
@@ -351,10 +458,11 @@
   addEventListener('online', () => { if (started) { show(); askMissing(); } });
   addEventListener('offline', () => { if (started) show(); });
 
-  // YouTube's player must be at least 200 × 200 px. The board draws this window `zoom` times its CSS size (the size
-  // of windows and menus in Settings, and how far the screen shrinks the 16:9 board: 0.36 at 50% on a 1366 × 768
-  // Chromebook, 0.57 at the usual 80%), so where it is drawn smaller the minimum is raised to keep the player 200 px
-  // on screen as well as in its own frame. (The board sends zoom rounded to 0.01, hence the 0.005.)
+  // YouTube's player must be at least 200 × 200 px (kept for all three sites). The board draws this window `zoom`
+  // times its CSS size (the size of windows and menus in Settings, and how far the screen shrinks the 16:9 board: 0.36
+  // at 50% on a 1366 × 768 Chromebook, 0.57 at the usual 80%), so where it is drawn smaller the minimum is raised to
+  // keep the player 200 px on screen as well as in its own frame. (The board sends zoom rounded to 0.01, hence the
+  // 0.005.)
   const MIN_PX = 200;
   let minNow = 0;
   function keepMinimum(info) {
@@ -370,36 +478,37 @@
   }
   Board21.on('resize', info => { keepMinimum(info); keepClear(info); });
 
-  // Titles (see the top). asked: the videos asked for in this page load (queue: not sent yet).
+  // Titles (see the top). asked: the videos asked for in this page load, by titleKey (queue: not sent yet).
   const asked = new Set(), queue = [];
   let asking = 0;
-  function askTitle(id) {
-    if (titles.has(id) || asked.has(id) || navigator.onLine === false) return;
-    asked.add(id); queue.push(id);
+  function askTitle(e) {
+    const k = titleKey(e);
+    if (!SOURCES[e.source].oembed || titles.has(k) || asked.has(k) || navigator.onLine === false) return;
+    asked.add(k); queue.push(e);
     next();
   }
   function next() {
     while (asking < MAX_ASKING && queue.length) {
-      const id = queue.shift();
+      const e = queue.shift(), k = titleKey(e);
       asking++;
-      fetchTitle(id).then(t => { if (t) gotTitle(id, t); }, () => { if (navigator.onLine === false) asked.delete(id); })   // (offline: asked again online)
+      fetchTitle(e).then(t => { if (t) gotTitle(k, t); }, () => { if (navigator.onLine === false) asked.delete(k); })   // (offline: asked again online)
         .catch(() => {}).then(() => { asking--; next(); });
     }
   }
-  // YouTube's oEmbed: a video's title ('' if it gives none). No cookies; no Referer either: the Origin header, which
-  // goes with every request to another site, is all YouTube needs to answer.
-  function fetchTitle(id) {
+  // The site's oEmbed: a video's title ('' if it gives none). No cookies; no Referer either: the Origin header, which
+  // goes with every request to another site, is all YouTube and Vimeo need to answer.
+  function fetchTitle(e) {
     const stop = typeof AbortController === 'function' ? new AbortController() : null, timer = setTimeout(() => { if (stop) stop.abort(); }, TITLE_WAIT);
-    return fetch(OEMBED + '?url=' + encodeURIComponent(watchUrl({ videoId: id, start: 0 })) + '&format=json', { credentials: 'omit', referrerPolicy: 'no-referrer', signal: stop ? stop.signal : undefined })
+    return fetch(SOURCES[e.source].oembed(e), { credentials: 'omit', referrerPolicy: 'no-referrer', signal: stop ? stop.signal : undefined })
       .then(r => (r.ok ? r.json() : null)).then(j => cleanTitle(j && j.title)).finally(() => clearTimeout(timer));
   }
   // A title: shown at once, and saved with the window's next change (never by itself: see the top).
-  function gotTitle(id, t) {
-    titles.set(id, t);
+  function gotTitle(k, t) {
+    titles.set(k, t);
     setMenu();
   }
   // Every video in the History without a title (asked for once per page load: askTitle).
-  function askMissing() { for (const e of history) if (!e.title) askTitle(e.videoId); }
+  function askMissing() { for (const e of history) if (!e.title) askTitle(e); }
 
   Board21.ready().then(ctx => {
     kiosk = !!ctx.kiosk;

@@ -422,12 +422,13 @@ const parts = async page => {
 const updateCheck = page => page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r.update()).then(() => true, () => false));
 const boardUp = page => page.waitForFunction(() => window.__board21 && window.__board21.store.loaded && !document.getElementById('startup'), null, { timeout: 20000 });
 
-// The YouTube Player suites never reach YouTube: its sites answer with a stand-in page (stubYouTube) that notes each
-// address asked for (yt.hits) and keeps the Referer YouTube would see (window.__ref in its frame). Its oEmbed, where the
-// widget asks for a video's title, answers as YouTube's does (JSON, the asking site allowed), from yt.titles: a video's
-// title, or { status } (404: a private or removed video), { abort: true } (no connection to it, as when a school's
-// filter blocks it), { hang: true } (no answer), { json } or { body } (an answer of another shape); any video not in it
-// gets 404. Each request is noted in yt.asked: { id, url, cookie, origin, referer }.
+// The Video Player suites never reach YouTube, Google Drive or Vimeo: their sites answer with a stand-in page
+// (stubVideos) that notes each address asked for (yt.hits) and keeps the Referer the site would see (window.__ref in its
+// frame). YouTube's oEmbed and Vimeo's, where the widget asks for a video's title, answer as theirs do (JSON, the asking
+// site allowed), from yt.titles (YouTube's, by id) and yt.vimeo (Vimeo's, by its number, or "number/hash" for an
+// unlisted video): a video's title, or { status } (404: a private or removed video), { abort: true } (no connection to
+// it, as when a school's filter blocks it), { hang: true } (no answer), { json } or { body } (an answer of another
+// shape); any video not in it gets 404. Each request is noted in yt.asked: { source, id, url, cookie, origin, referer }.
 const VID = 'dQw4w9WgXcQ', VID2 = 'aqz-KE-bpKQ';
 const YT_TITLES = { [VID]: 'Rick Astley - Never Gonna Give You Up (Official Music Video)', [VID2]: 'Big Buck Bunny 60fps 4K - Official Blender Foundation Short Film',
   'M7lc1UVf-VE': 'YouTube Developers Live: Embedded Web Player Customization',
@@ -444,29 +445,67 @@ const EMBED = (id, more = '') => `https://www.youtube.com/embed/${id}?rel=0&iv_l
 // What YouTube's Share › Embed gives for a video, and for a playlist ("videoseries" is no video's id).
 const EMBED_CODE = `<iframe width="560" height="315" src="https://www.youtube.com/embed/${VID}?si=AbCdEf123" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>`;
 const PLAYLIST_EMBED = 'https://www.youtube.com/embed/videoseries?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG';
-async function stubYouTube(ctx) {
-  const yt = { hits: [], asked: [], titles: Object.assign({}, YT_TITLES), embeds: () => yt.hits.filter(u => /\/embed\//.test(u)).length, oembeds: id => yt.asked.filter(a => !id || a.id === id).length };
+// Google Drive and Vimeo: files and videos for the Video Player suites (made-up ids of the right shapes: a Drive file's
+// 33 characters today and 28 for an older one, with a resource key; Vimeo's numbers, and an unlisted video's hash).
+const D1 = '1Fq7nZ0yXc9vB8mN2lK3jH4gF5dS6aP7o', D2 = '0B9xY8wV7uT6sR5qP4oN3mL2kJ1i', RK = '0-AbCdEfGhIjKlMnOpQrStUv';
+const V1 = '76979871', V2 = '1084537', VH = '8272103f6e';
+const VIMEO_TITLES = { [V1]: 'The New Vimeo Player (You Know, For Videos)', [`${V2}/${VH}`]: 'Big Buck Bunny, Our Class Copy',
+  '148751763': 'Volcanoes 101 | National Geographic Education', '22439234': 'The Mountain' };
+const DRIVE_EMBED = (id, key) => `https://drive.google.com/file/d/${id}/preview${key ? '?resourcekey=' + key : ''}`;
+const VIMEO_EMBED = (id, hash, start) => `https://player.vimeo.com/video/${id}?${hash ? 'h=' + hash + '&' : ''}dnt=1&title=0&byline=0&portrait=0${start ? '#t=' + start + 's' : ''}`;
+const VIMEO_OEMBED = (id, hash) => `https://vimeo.com/api/oembed.json?url=${encodeURIComponent('https://vimeo.com/' + id + (hash ? '/' + hash : ''))}`;
+// Where Open in Google Drive and Open in Vimeo go.
+const DRIVE_OPEN = (id, key) => `https://drive.google.com/file/d/${id}/view${key ? '?resourcekey=' + key : ''}`;
+const VIMEO_OPEN = (id, hash, start) => `https://vimeo.com/${id}${hash ? '/' + hash : ''}${start ? '#t=' + start + 's' : ''}`;
+// A Drive file's label in the History (Drive gives no title without signing in): "Google Drive video" and its id's end.
+const DRIVE_LABEL = id => `Google Drive video ${id.slice(-6)}`;
+// What the link box says to text that isn't a video's link.
+const VMSG = { empty: 'Paste a link first.', none: 'That isn’t a video link.', folder: 'That’s a folder. Paste a link to one video.', list: 'That’s a list of videos. Paste a link to one video.',
+  doc: 'That’s a document. Paste a link to a video.', sheet: 'That’s a spreadsheet. Paste a link to a video.', slides: 'That’s a presentation. Paste a link to a video.' };
+// The tab's live player frames from any of the three sites.
+const vidFrames = p => p.frames().filter(f => /^https:\/\/(www\.youtube(-nocookie)?\.com\/embed\/|drive\.google\.com\/file\/d\/|player\.vimeo\.com\/video\/)/.test(f.url()));
+// What Drive's "Embed item…" and Vimeo's Share › Embed give.
+const DRIVE_CODE = `<iframe src="https://drive.google.com/file/d/${D1}/preview" width="640" height="480" allow="autoplay"></iframe>`;
+const VIMEO_CODE = `<div style="padding:56.25% 0 0 0;position:relative;"><iframe src="https://player.vimeo.com/video/${V2}?h=${VH}&amp;badge=0&amp;autopause=0&amp;player_id=0&amp;app_id=58479" frameborder="0" allow="autoplay; fullscreen; picture-in-picture; clipboard-write; encrypted-media; web-share" referrerpolicy="strict-origin-when-cross-origin" style="position:absolute;top:0;left:0;width:100%;height:100%;" title="Big Buck Bunny"></iframe></div><script src="https://player.vimeo.com/api/player.js"></script>`;
+async function stubVideos(ctx) {
+  const yt = { hits: [], asked: [], titles: Object.assign({}, YT_TITLES), vimeo: Object.assign({}, VIMEO_TITLES), embeds: () => yt.hits.filter(u => /\/embed\//.test(u)).length,
+    oembeds: id => yt.asked.filter(a => !id || a.id === id).length, loads: re => yt.hits.filter(u => re.test(u)).length };
+  const standIn = name => `<!doctype html><title>${name} stand-in</title><body style="margin:0;background:#000;color:#fff;font:16px system-ui">${name} stand-in<script>window.__ref = document.referrer;</script></body>`;
+  // A title from yt.titles or yt.vimeo, answered as oEmbed does.
+  const answer = async (r, source, id, t) => {
+    const h = await r.request().allHeaders(), url = r.request().url();
+    yt.asked.push({ source, id, url, cookie: h.cookie || '', origin: h.origin || '', referer: h.referer || '' });
+    const cors = { 'access-control-allow-origin': h.origin || '*', vary: 'Origin' };
+    if (t && t.hang) return;   // (no answer: the widget stops waiting by itself)
+    if (t && t.abort) return r.abort('connectionrefused').catch(() => {});
+    if (t && t.delay) await new Promise(res => setTimeout(res, t.delay));
+    const json = typeof t === 'string' ? (source === 'vimeo' ? { type: 'video', version: '1.0', provider_name: 'Vimeo', provider_url: 'https://vimeo.com/', title: t, author_name: 'A teacher', video_id: +id.split('/')[0], width: 640, height: 360 }
+      : { title: t, author_name: 'A channel', type: 'video', version: '1.0', provider_name: 'YouTube', provider_url: 'https://www.youtube.com/', height: 113, width: 200 }) : t && 'json' in t ? t.json : undefined;
+    if (json !== undefined) return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(json) }).catch(() => {});
+    return r.fulfill({ status: t && t.status || (t && t.body ? 200 : 404), headers: cors, contentType: 'text/html', body: t && t.body || 'Not Found' }).catch(() => {});
+  };
   await ctx.route(/^https?:\/\/([^/?#]*\.)?(youtube(-nocookie)?\.com|youtu\.be|ytimg\.com|googlevideo\.com)(:\d+)?([/?#]|$)/i, async r => {
     const url = r.request().url();
     yt.hits.push(url);
     const o = /^https:\/\/www\.youtube\.com\/oembed\?(.*)$/.exec(url);
-    if (o) {
-      const h = await r.request().allHeaders(), w = /[?&]v=([^&#]*)/.exec(new URLSearchParams(o[1]).get('url') || ''), id = w ? w[1] : '';
-      yt.asked.push({ id, url, cookie: h.cookie || '', origin: h.origin || '', referer: h.referer || '' });
-      const t = yt.titles[id], cors = { 'access-control-allow-origin': h.origin || '*', vary: 'Origin' };
-      if (t && t.hang) return;   // (no answer: the widget stops waiting by itself)
-      if (t && t.abort) return r.abort('connectionrefused').catch(() => {});
-      if (t && t.delay) await new Promise(res => setTimeout(res, t.delay));
-      const json = typeof t === 'string' ? { title: t, author_name: 'A channel', type: 'video', version: '1.0', provider_name: 'YouTube', provider_url: 'https://www.youtube.com/', height: 113, width: 200 } : t && 'json' in t ? t.json : undefined;
-      if (json !== undefined) return r.fulfill({ status: 200, headers: cors, contentType: 'application/json', body: JSON.stringify(json) }).catch(() => {});
-      return r.fulfill({ status: t && t.status || (t && t.body ? 200 : 404), headers: cors, contentType: 'text/html', body: t && t.body || 'Not Found' }).catch(() => {});
-    }
-    return r.fulfill({ status: 200, contentType: 'text/html', body: '<!doctype html><title>YouTube stand-in</title><body style="margin:0;background:#000;color:#fff;font:16px system-ui">YouTube stand-in<script>window.__ref = document.referrer;</script></body>' });
+    if (o) { const w = /[?&]v=([^&#]*)/.exec(new URLSearchParams(o[1]).get('url') || ''), id = w ? w[1] : ''; return answer(r, 'youtube', id, yt.titles[id]); }
+    return r.fulfill({ status: 200, contentType: 'text/html', body: standIn('YouTube') });
+  });
+  await ctx.route(/^https?:\/\/([^/?#]*\.)?(drive|docs)\.google\.com(:\d+)?([/?#]|$)/i, async r => {
+    yt.hits.push(r.request().url());
+    return r.fulfill({ status: 200, contentType: 'text/html', body: standIn('Google Drive') });
+  });
+  await ctx.route(/^https?:\/\/([^/?#]*\.)?(vimeo\.com|vimeocdn\.com)(:\d+)?([/?#]|$)/i, async r => {
+    const url = r.request().url();
+    yt.hits.push(url);
+    const o = /^https:\/\/vimeo\.com\/api\/oembed\.json\?(.*)$/.exec(url);
+    if (o) { const w = /^https:\/\/vimeo\.com\/(\d+)(?:\/([0-9a-f]+))?$/.exec(new URLSearchParams(o[1]).get('url') || ''), id = w ? w[1] + (w[2] ? '/' + w[2] : '') : ''; return answer(r, 'vimeo', id, yt.vimeo[id]); }
+    return r.fulfill({ status: 200, contentType: 'text/html', body: standIn('Vimeo') });
   });
   return yt;
 }
 const ytWin = (p, ik = 'youtube-player:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
-// What a YouTube Player window shows: the link box, the player (its frame's src), the offline message, the link typed,
+// What a Video Player window shows: the link box, the player (its frame's src), the offline message, the link typed,
 // the error under it, Cancel.
 const ytLook = (p, ik = 'youtube-player:1') => ytWin(p, ik).locator('html').evaluate(() => {
   const $ = id => document.getElementById(id), f = document.querySelector('iframe');
@@ -4714,31 +4753,41 @@ const SUITES = [
     ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
     await ctx.close();
   }],
-  ['YouTube Player: the Widget Picker, links, the frame YouTube gets, the window menu, kiosk, Open on YouTube', async (browser) => {
+  ['Video Player: the Widget Picker, YouTube links, the frame YouTube gets, the window menu, kiosk, Open in YouTube, the docs and Settings › About', async (browser) => {
     const src = fs.readFileSync(path.join(ROOT, 'widgets', 'youtube-player', 'index.html'), 'utf8');
     ok(!/--b21-[\w-]+\s*:/.test(src), 'the widget never sets a --b21-* value of its own: the board’s theme colors reach it');
     ok(!/touchstart/.test(src), 'no touchstart handler (and no toolbar over the player: checked below)');
     ok(/const EMBED_HOST = 'https:\/\/www\.youtube\.com';/.test(src), 'the embed host is one named constant, www.youtube.com');
-    // The docs: all that YouTube gets (its embed is youtube.com's own page, with the device's YouTube sign-in); the one
-    // built-in widget that loads another company's site (the district apps' windows go online too); kiosk mode's menu.
+    // The docs: 21Board's value (work stored only on the device, and in the teacher's Drive with Board Sync; online when
+    // needed), what the video sites see, kiosk mode's menu and Drive there, and what IT needs to know.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), registrySrc = fs.readFileSync(path.join(ROOT, 'widgets', 'registry.js'), 'utf8');
-    ok(!readme.includes('sees the board\'s address and the video') && readme.includes('sees the board\'s address, the video, the device and any YouTube account signed in on it'),
-      'the README says all that YouTube sees: the board’s address, the video, the device and any YouTube account signed in on it');
+    ok(readme.includes('- **Private.** Your work is stored only on your device, and in your own Google Drive if you turn on Board Sync. 21Board has no servers and no accounts. - **Online only when needed:** updates, district apps and videos.'),
+      'the README’s top says the work is stored only on the device (and in the teacher’s own Drive with Board Sync), and that 21Board goes online only when needed');
+    ok(!/sends nothing|nothing anywhere|All data stays/.test(readme), 'and no longer says 21Board sends nothing anywhere');
+    const row = readme.slice(readme.indexOf('| **Video Player**'), readme.indexOf('| **21Sketch**'));
+    ok(/^\| \*\*Video Player\*\* \|.*History/.test(row) && row.includes('YouTube, Google Drive and Vimeo see what they would on their own sites: the video, the device and any account signed in.') && !/YouTube Player/.test(readme),
+      'its row in Included widgets says what the three sites see, in one sentence, and names the History (and the README calls it the Video Player)');
     ok(!/widget that goes online/.test(readme + registrySrc), 'the README and registry don’t call it the one built-in widget that goes online (the district apps’ windows do too)');
-    ok(/Open on YouTube/.test(readme.slice(readme.indexOf('## Kiosk mode'), readme.indexOf('## District apps'))), 'the README’s Kiosk mode section says the YouTube Player’s menu has no Open on YouTube there');
-    ok(readme.includes('and the window asks YouTube for the title of each video in its History, without sending cookies: when it is added and, until the window has saved its title, each time the board opens)'),
-      'the README’s line on what YouTube sees says the window also asks YouTube for the titles in its History, without cookies, and when');
-    ok(/^\| \*\*YouTube Player\*\* \|.*History/.test(readme.slice(readme.indexOf('| **YouTube Player**'), readme.indexOf('| **21Sketch**'))), 'its row in Included widgets names the History');
-    ok(/connect-src https:\/\/www\.youtube\.com/.test(readme.slice(readme.lastIndexOf('**For IT**'))), 'the README’s note for IT on a CSP names connect-src for the titles, as well as frame-src');
+    const kioskDoc = readme.slice(readme.indexOf('## Kiosk mode'), readme.indexOf('## District apps'));
+    ok(/Video Player/.test(kioskDoc) && /\*Open in …\*/.test(kioskDoc) && /Anyone with the link/.test(kioskDoc), 'the README’s Kiosk mode section says the Video Player’s menu has no Open in … there, and that a Drive video plays there only if it’s shared with Anyone with the link');
+    const it = readme.slice(readme.lastIndexOf('**For IT**'));
+    ok(it.includes('frame-src https://www.youtube.com https://drive.google.com https://player.vimeo.com') && it.includes('connect-src https://www.youtube.com https://vimeo.com'),
+      'the README’s note for IT names the CSP the Video Player’s page needs: frame-src for the three players, connect-src for the titles');
+    ok(it.includes('YouTube\'s player also contacts Google\'s ad servers.') && /Anyone with the link/.test(it) && /third-party cookies/.test(it), 'and the ad servers, what a Drive video needs to play, and third-party cookies');
+    const sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' '), prompt = fs.readFileSync(path.join(ROOT, 'docs', 'AI-PROMPT.md'), 'utf8');
+    ok(sdkDoc.includes('1. **No Internet.** No CDNs, web fonts, analytics or APIs. Keep everything in your folder, so the widget works offline and student work stays on the device. The Video Player is the only exception. 2.'),
+      'the SDK guide’s rule 1 is the new one, word for word');
+    ok(/\*\*No network at all\*\*/.test(prompt) && /Make NO network requests/.test(prompt), 'the AI prompt keeps its rules: no network at all');
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-    const yt = await stubYouTube(ctx);
+    const yt = await stubVideos(ctx);
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page);
     const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'youtube-player'); return a && { name: a.name, version: a.version, entry: a.entry, files: a.files, clash: a.clash, permissions: a.permissions, win: a.win, color: a.color, icon: a.icon, external: a.external, description: a.description }; });
-    ok(reg && reg.name === 'YouTube Player' && reg.version === '1.0.0' && reg.entry === 'widgets/youtube-player/index.html' && JSON.stringify(reg.files) === '["widgets/youtube-player/index.html"]' &&
+    ok(reg && reg.name === 'Video Player' && reg.version === '1.0.0' && reg.entry === 'widgets/youtube-player/index.html' && JSON.stringify(reg.files) === '["widgets/youtube-player/index.html"]' &&
       reg.clash === 'later' && reg.permissions.length === 0 && !reg.external && reg.win.width === 480 && reg.win.height === 270 && reg.win.minWidth >= 200 && reg.win.minHeight >= 200 && !reg.win.aspectRatio && reg.description,
-      `it is in the registry: version 1.0.0, one file, clash 'later', no extra permissions, 480 × 270, at least 200 × 200, no shape lock (${JSON.stringify(reg && reg.win)})`);
+      `it is in the registry as the Video Player (its id still youtube-player): version 1.0.0, one file, clash 'later', no extra permissions, 480 × 270, at least 200 × 200, no shape lock (${JSON.stringify(reg && reg.win)})`);
+    ok(reg && reg.description === 'Plays a video from YouTube, Google Drive or Vimeo.' && /<title>Video Player<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
     const manifest = JSON.parse(/<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src)[1]);
     ok(manifest.id === 'youtube-player' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => manifest.window[k] === reg.win[k]), 'its manifest block matches the registry entry');
     ok(/^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', `rgb(${[1, 3, 5].map(i => parseInt(reg.color.slice(i, i + 2), 16)).join(', ')})`) >= 4.5 && reg.color.toLowerCase() !== '#ef4444',
@@ -4746,15 +4795,16 @@ const SUITES = [
     // In the Widget Picker; opening it shows the link box and asks YouTube for nothing.
     await page.click('.picker-btn.left'); await page.waitForTimeout(250);
     const tile = page.locator('[data-widget="youtube-player"]');
-    ok(await tile.count() === 1 && (await tile.innerText()).trim() === 'YouTube Player', 'the Widget Picker lists the YouTube Player');
+    ok(await tile.count() === 1 && (await tile.innerText()).trim() === 'Video Player', `the Widget Picker’s tile reads “Video Player” (${await tile.count() && (await tile.innerText()).trim()})`);
     await tile.click(); await page.waitForTimeout(1200);
     ok(await eventually(() => page.evaluate(() => { const w = window.__board21.state.wins.get('youtube-player:1'); return !!w && w.connected; })), 'tapping it opens a window, which connects');
+    ok((await page.locator('.win[data-ikey="youtube-player:1"] .win-label').innerText()).trim() === 'Video Player', 'its window’s title is “Video Player”');
     let a = await ytLook(page);
     ok(a.ask && !a.player && !a.offline && a.frames === 0 && yt.hits.length === 0, 'a new window shows the link box, and nothing is asked of YouTube yet');
     ok(await ytMenu(page) === '', `the link box has no window menu items of its own (${await ytMenu(page)})`);
     const box = await ytWin(page).locator('html').evaluate(() => ({ title: document.querySelector('#ask h1').textContent, help: document.getElementById('help').textContent, go: document.getElementById('go').textContent.trim(),
       label: document.getElementById('link').getAttribute('aria-label'), focused: document.activeElement === document.getElementById('link') }));
-    ok(box.title === 'Show a YouTube video' && box.help === 'Paste the link to a video on YouTube.' && box.go === 'Show video' && box.label && !box.focused,
+    ok(box.title === 'Show a video' && box.help === 'Paste a link from YouTube, Google Drive or Vimeo.' && box.go === 'Show video' && box.label === 'Video link' && !box.focused,
       `the link box: a short title, one line of help, a field and a button, in sentence case, and the field isn't focused by itself (no keyboard popping up): ${JSON.stringify(box)}`);
 
     // Links: every form it reads, and what it turns away.
@@ -4771,25 +4821,25 @@ const SUITES = [
       [`"https://youtu.be/${VID}?t=90"`, VID, 90], [`'https://www.youtube.com/watch?v=${VID2}'`, VID2, 0], [`<https://www.youtube.com/watch?v=${VID}>`, VID, 0], [`See https://youtu.be/${VID}?t=45!`, VID, 45],
       [`[https://youtu.be/${VID}];`, VID, 0], [`\u200bhttps://youtu.be/${VID}\u200b`, VID, 0]
     ];
-    const bad = ['', 'hello there', 'https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', 'https://www.youtube.com/@ccsd21', 'https://vimeo.com/123456789',
+    const bad = ['', 'hello there', 'https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', 'https://www.youtube.com/@ccsd21', 'https://www.dailymotion.com/video/x8abc12',
       `https://example.com/watch?v=${VID}`, `https://www.youtube.com.example.org/watch?v=${VID}`, `https://notyoutube.com/watch?v=${VID}`, 'javascript:alert(1)', VID.slice(0, 10),
       `https://www.youtube.com/watch?v=${VID}%22%3E%3Cimg`, `https://www.youtube.com/watch?v=${VID}<script>`, `https://www.youtube.com/results?search_query=${VID}`,
       PLAYLIST_EMBED, 'videoseries', `(https://www.youtube.com/watch?v=${VID}<script>)`];
     const parsed = await ytWin(page).locator('html').evaluate((html, [forms, bad]) => ({
       good: forms.map(([t]) => parseLink(t)), bad: bad.map(t => parseLink(t)) }), [forms, bad]);
-    const wrong = forms.filter(([t, id, start], i) => !parsed.good[i] || parsed.good[i].id !== id || parsed.good[i].start !== start).map(([t], i) => t + ' → ' + JSON.stringify(parsed.good[forms.findIndex(f => f[0] === t)]));
+    const wrong = forms.filter(([t, id, start], i) => !parsed.good[i] || parsed.good[i].source !== 'youtube' || parsed.good[i].id !== id || parsed.good[i].start !== start).map(([t], i) => t + ' → ' + JSON.stringify(parsed.good[forms.findIndex(f => f[0] === t)]));
     ok(!wrong.length, `every form of link is read, with its start time (${forms.length} forms${wrong.length ? '; wrong: ' + wrong.join('; ') : ''})`);
     const let_ = bad.filter((t, i) => parsed.bad[i] !== null);
     ok(!let_.length, `text that isn't a link to a YouTube video is turned away (${bad.length} kinds${let_.length ? '; let through: ' + let_.join(', ') : ''})`);
     await ytWin(page).locator('#go').click(); await page.waitForTimeout(200);
     a = await ytLook(page);
-    ok(a.ask && a.err === 'Paste the link to a YouTube video first.' && a.frames === 0, `Show video with nothing typed says what to do (${a.err})`);
-    await ytShow(page, 'https://vimeo.com/123456789');
+    ok(a.ask && a.err === VMSG.empty && a.frames === 0, `Show video with nothing typed says what to do (${a.err})`);
+    await ytShow(page, 'https://www.dailymotion.com/video/x8abc12');
     a = await ytLook(page);
-    ok(a.ask && a.err === 'That isn’t a link to a YouTube video.' && a.frames === 0 && await ytData(page) === null && yt.hits.length === 0, `a link that isn't a YouTube video gets a clear message, and nothing is saved or loaded (${a.err})`);
+    ok(a.ask && a.err === VMSG.none && a.frames === 0 && await ytData(page) === null && yt.hits.length === 0, `a link to a video on another site gets a clear message, and nothing is saved or loaded (${a.err})`);
     await ytShow(page, PLAYLIST_EMBED);
     a = await ytLook(page);
-    ok(a.ask && a.err === 'That isn’t a link to a YouTube video.' && a.frames === 0 && await ytData(page) === null && yt.hits.length === 0, `a playlist’s embed link (embed/videoseries) gets the same message, not YouTube’s error in the window (${a.err})`);
+    ok(a.ask && a.err === VMSG.list && a.frames === 0 && await ytData(page) === null && yt.hits.length === 0, `a playlist’s embed link (embed/videoseries) says it’s a list, not YouTube’s error in the window (${a.err})`);
     await ytWin(page).locator('#link').press('x');
     ok((await ytLook(page)).err === '', 'typing again takes the message away');
 
@@ -4797,8 +4847,8 @@ const SUITES = [
     await ytShow(page, `https://www.youtube.com/watch?v=${VID}`);
     a = await ytLook(page);
     ok(a.player && !a.ask && a.frames === 1 && a.src === EMBED(VID), `Show video puts YouTube’s player in the window: ${a.src}`);
-    const saved1 = { videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}`, history: [{ videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}` }] };
-    ok(await eventually(async () => JSON.stringify(await ytData(page)) === JSON.stringify(saved1), 3000), `it is saved as { videoId, videoUrl, history } (the title YouTube gives goes into the History with the window’s next change) (${JSON.stringify(await ytData(page))})`);
+    const saved1 = { source: 'youtube', videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}`, history: [{ source: 'youtube', videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}` }] };
+    ok(await eventually(async () => JSON.stringify(await ytData(page)) === JSON.stringify(saved1), 3000), `it is saved as { source, videoId, videoUrl, history } (the title YouTube gives goes into the History with the window’s next change) (${JSON.stringify(await ytData(page))})`);
     const fr = await ytWin(page).locator('#player iframe').evaluate(f => ({ host: new URL(f.src).host, allow: f.getAttribute('allow'), fs: f.hasAttribute('allowfullscreen'), ref: f.getAttribute('referrerpolicy'), title: f.title, sandbox: f.hasAttribute('sandbox') }));
     ok(fr.host === 'www.youtube.com' && !/autoplay=/.test(a.src), `the frame comes from www.youtube.com, with no autoplay parameter (${fr.host})`);
     ok(fr.allow.split(/;\s*/).sort().join() === 'autoplay,clipboard-write,encrypted-media,fullscreen,picture-in-picture' && fr.fs && fr.ref === 'strict-origin-when-cross-origin' && !fr.sandbox,
@@ -4810,41 +4860,41 @@ const SUITES = [
       for (const fx of [0.02, 0.25, 0.5, 0.75, 0.98]) for (const fy of [0.02, 0.25, 0.5, 0.75, 0.98]) out.push(document.elementFromPoint(innerWidth * fx, innerHeight * fy) === f);
       const r = f.getBoundingClientRect(); return { all: out.every(Boolean), fills: r.left === 0 && r.top === 0 && Math.abs(r.width - innerWidth) < 1 && Math.abs(r.height - innerHeight) < 1, bg: getComputedStyle(document.getElementById('player')).backgroundColor }; });
     ok(cover.all && cover.fills && cover.bg === 'rgb(0, 0, 0)', 'the frame fills the window on black, and nothing of the widget’s is drawn over any part of it');
-    ok(await ytMenu(page) === `Change video | Open on YouTube | — | Remove video | — | History | ${YT_LABEL[VID]}`, `with a video, the window menu has the controls, then the History (${await ytMenu(page)})`);
-    // Open on YouTube: the watch page in a new tab.
-    const [tab] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), ytChoose(page, 'Open on YouTube')]);
-    ok(!!tab && tab.url() === `https://www.youtube.com/watch?v=${VID}`, `Open on YouTube opens the video’s watch page in a new tab (${tab && tab.url()})`);
+    ok(await ytMenu(page) === `Change video | Open in YouTube | — | Remove video | — | History | ${YT_LABEL[VID]}`, `with a video, the window menu has the controls, then the History (${await ytMenu(page)})`);
+    // Open in YouTube: the watch page in a new tab.
+    const [tab] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), ytChoose(page, 'Open in YouTube')]);
+    ok(!!tab && tab.url() === `https://www.youtube.com/watch?v=${VID}`, `Open in YouTube opens the video’s watch page in a new tab (${tab && tab.url()})`);
     if (tab) { ok(await tab.evaluate(() => window.opener === null), 'the new tab can’t reach the board (noopener)'); await tab.close(); }
     ok((await ytLook(page)).player, 'and the video stays in its window');
     // A start time from the link goes into the saved content and the player's address (and the watch page's).
     await ytChoose(page, 'Change video'); await ytShow(page, `https://youtu.be/${VID2}?t=1m30s`);
     a = await ytLook(page);
     ok(a.src === EMBED(VID2, '&start=90') && (await ytData(page)).start === 90, `a start time in the link (t=1m30s) is kept and passed to the player (${a.src})`);
-    const [tab2] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), ytChoose(page, 'Open on YouTube')]);
-    ok(!!tab2 && tab2.url() === `https://www.youtube.com/watch?v=${VID2}&t=90s`, `Open on YouTube starts there too (${tab2 && tab2.url()})`);
+    const [tab2] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), ytChoose(page, 'Open in YouTube')]);
+    ok(!!tab2 && tab2.url() === `https://www.youtube.com/watch?v=${VID2}&t=90s`, `Open in YouTube starts there too (${tab2 && tab2.url()})`);
     if (tab2) await tab2.close();
     // YouTube's embed code, pasted whole: the video shows, and only its link is kept.
     await ytChoose(page, 'Change video'); await ytShow(page, EMBED_CODE);
     a = await ytLook(page);
     ok(a.player && a.src === EMBED(VID) && (await ytData(page)).videoUrl === `https://www.youtube.com/embed/${VID}?si=AbCdEf123`, `YouTube’s Share › Embed code, pasted whole, shows the video and keeps just its link (${a.src}; ${(await ytData(page)).videoUrl})`);
 
-    // Kiosk mode: no Open on YouTube (a kiosk can't open new windows).
+    // Kiosk mode: no Open in YouTube (a kiosk can't open new windows).
     const k = await ctx.newPage(); k.on('pageerror', e => errors.push('[kiosk] ' + e.message));
     await k.goto(BASE + '?kiosk=yes'); await boardUp(k);
     ok(await eventually(async () => (await ytLook(k)).player), 'kiosk mode shows the video too');
-    ok(await ytMenu(k) === `Change video | — | Remove video | — | History | ${YT_LABEL[VID]} | Big Buck Bunny 60fps 4K - Official… (from 1:30)`, `in kiosk mode the menu leaves out Open on YouTube, and keeps the History (${await ytMenu(k)})`);
+    ok(await ytMenu(k) === `Change video | — | Remove video | — | History | ${YT_LABEL[VID]} | Big Buck Bunny 60fps 4K - Official… (from 1:30)`, `in kiosk mode the menu leaves out Open in YouTube, and keeps the History (${await ytMenu(k)})`);
     await k.close();
-    // Settings → About says what goes to YouTube.
+    // Settings → About says where the work is stored.
     await openSettings(page, ['advanced']);
     const about = (await page.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
-    ok(about.endsWith('Everything you make stays on this device. 21Board sends nothing to a server, except that a YouTube Player window loads its video, and the titles of the videos in its History, from YouTube.'), `Settings → About names the exception (${about.slice(about.indexOf('·') + 1).trim()})`);
+    ok(about.endsWith(' Your work is stored only on this device.') && !/sends nothing|YouTube/.test(about), `Settings → About says the work is stored only on this device (${about.slice(about.indexOf('·') + 1).trim()})`);
     await page.keyboard.press('Escape');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['YouTube Player: nothing plays behind the link box (Remove video here and in another tab, Change video and Cancel, Reset, another page), reload, saved data checked, offline', async (browser) => {
+  ['Video Player: nothing plays behind the link box (Remove video here and in another tab, Change video and Cancel, Reset, another page), reload, saved data checked, offline', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-    const yt = await stubYouTube(ctx);
+    const yt = await stubVideos(ctx);
     const errors = [];
     const A = await ctx.newPage(); A.on('pageerror', e => errors.push('[A] ' + e.message));
     await A.goto(BASE); await boardUp(A);
@@ -4868,14 +4918,14 @@ const SUITES = [
     await ytWin(A).locator('#cancel').click(); await A.waitForTimeout(500);
     a = await ytLook(A);
     ok(a.player && a.src === EMBED(VID) && ytFrames(A).length === 1 && yt.embeds() === loads + 1, 'Cancel puts the same video back (loaded again, so from the start)');
-    ok(JSON.stringify(await ytData(A)) === JSON.stringify({ videoId: VID, videoUrl: `https://youtu.be/${VID}`, history: [{ videoId: VID, videoUrl: `https://youtu.be/${VID}` }] }), 'and nothing was saved');
+    ok(JSON.stringify(await ytData(A)) === JSON.stringify({ source: 'youtube', videoId: VID, videoUrl: `https://youtu.be/${VID}`, history: [{ source: 'youtube', videoId: VID, videoUrl: `https://youtu.be/${VID}` }] }), 'and nothing was saved');
     // Another video, from the box: both tabs show it.
     await ytChoose(A, 'Change video'); await ytShow(A, `https://www.youtube.com/watch?v=${VID2}`);
     ok(await eventually(async () => (await ytLook(A)).src === EMBED(VID2) && (await ytLook(B)).src === EMBED(VID2) && ytFrames(A).length === 1 && ytFrames(B).length === 1), 'a new video shows in both tabs, one frame in each');
     // Remove video, here: both tabs drop the frame.
     await ytChoose(A, 'Remove video');
     a = await ytLook(A);
-    const removed = { videoId: null, videoUrl: '', history: [{ videoId: VID2, videoUrl: `https://www.youtube.com/watch?v=${VID2}`, title: YT_TITLES[VID2] }, { videoId: VID, videoUrl: `https://youtu.be/${VID}`, title: YT_TITLES[VID] }] };
+    const removed = { videoId: null, videoUrl: '', history: [{ source: 'youtube', videoId: VID2, videoUrl: `https://www.youtube.com/watch?v=${VID2}`, title: YT_TITLES[VID2] }, { source: 'youtube', videoId: VID, videoUrl: `https://youtu.be/${VID}`, title: YT_TITLES[VID] }] };
     ok(a.ask && a.frames === 0 && ytFrames(A).length === 0 && a.link === '' && !a.cancel && JSON.stringify(await ytData(A)) === JSON.stringify(removed),
       `Remove video: the frame is removed, an empty link box shows, and the content says there is no video, as a change of its own (Board Sync: a later Remove video wins), its History kept (${JSON.stringify(await ytData(A))})`);
     ok(await eventually(async () => { const b = await ytLook(B); return b.ask && b.frames === 0 && ytFrames(B).length === 0; }), 'the other tab removes its frame too (no sound left playing there)');
@@ -4914,9 +4964,9 @@ const SUITES = [
     await ctx.setOffline(true); await A.waitForTimeout(500);
     a = await ytLook(A);
     ok(a.offline && !a.player && !a.ask && a.frames === 0 && ytFrames(A).length === 0, 'offline, the frame goes and a message shows in its place');
-    ok(a.text === 'YouTube needs an internet connection. The video comes back once this device is online again.', `the message: “${a.text}”`);
+    ok(a.text === 'You’re offline. The video comes back when you’re online.', `the message: “${a.text}”`);
     ok((await ytData(A)).videoId === VID, 'the saved video is kept');
-    ok(await ytMenu(A) === `Change video | Open on YouTube | — | Remove video | — | History | ${YT_LABEL[VID]}`, `the menu still has the controls and the History (${await ytMenu(A)})`);
+    ok(await ytMenu(A) === `Change video | Open in YouTube | — | Remove video | — | History | ${YT_LABEL[VID]}`, `the menu still has the controls and the History (${await ytMenu(A)})`);
     loads = yt.embeds();
     await ytChoose(A, 'Change video'); await ytShow(A, `https://youtu.be/${VID2}`);
     a = await ytLook(A);
@@ -4960,9 +5010,9 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['YouTube Player: light and dark, at least 200 × 200 on screen (1366 × 768 and 1920 × 1080, every size and both board shapes), export and import', async (browser) => {
+  ['Video Player: light and dark, at least 200 × 200 on screen (1366 × 768 and 1920 × 1080, every size and both board shapes), export and import', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-    await stubYouTube(ctx);
+    await stubVideos(ctx);
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page);
@@ -5088,10 +5138,10 @@ const SUITES = [
     ok(await ytPick(page, YT_LABEL[VID]), 'back to the first video, from the History');
     const full = await page.evaluate(() => window.__board21.buildExport('full')), tpl = await page.evaluate(() => window.__board21.buildExport('template'));
     const fi = full.instances.find(i => i.widgetId === 'youtube-player'), ti = tpl.instances.find(i => i.widgetId === 'youtube-player');
-    ok(fi && fi.data && fi.data.videoId === VID && JSON.stringify(fi.data.history) === JSON.stringify([{ videoId: VID, videoUrl: `https://youtu.be/${VID}`, title: YT_TITLES[VID] }, { videoId: VID2, videoUrl: `https://youtu.be/${VID2}`, title: YT_TITLES[VID2] }]) && ti && ti.data === null,
+    ok(fi && fi.data && fi.data.videoId === VID && JSON.stringify(fi.data.history) === JSON.stringify([{ source: 'youtube', videoId: VID, videoUrl: `https://youtu.be/${VID}`, title: YT_TITLES[VID] }, { source: 'youtube', videoId: VID2, videoUrl: `https://youtu.be/${VID2}`, title: YT_TITLES[VID2] }]) && ti && ti.data === null,
       `a full export has the video and its History, with the titles; a blank template has the window without them (${JSON.stringify(fi && fi.data)})`);
     const ctx2 = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-    const yt2 = await stubYouTube(ctx2);
+    const yt2 = await stubVideos(ctx2);
     const p2 = await ctx2.newPage(); p2.on('pageerror', e => errors.push('[2] ' + e.message));
     await p2.goto(BASE); await boardUp(p2);
     await p2.evaluate(f => window.__board21.applyImport(f, 'replace'), full);
@@ -5103,10 +5153,10 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['YouTube Player: Board Sync, a video picked on one device and removed on the other before they synced (the later one wins)', async (browser) => {
+  ['Video Player: Board Sync, a YouTube video picked on one device and removed on the other before they synced (the later one wins)', async (browser) => {
     const errors = [];
     const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
-    await stubYouTube(A.c); await stubYouTube(B.c);
+    await stubVideos(A.c); await stubVideos(B.c);
     const VID3 = 'M7lc1UVf-VE';
     const ik = await addWin(A.p, 'youtube-player');
     await ytShow(A.p, `https://youtu.be/${VID}`, ik);
@@ -5135,9 +5185,9 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
-  ['YouTube Player: History in the window menu (the last five videos by their titles, the same video again, tapping one, Remove video, Reset, kiosk, reload, two tabs, an older release saving, content from before, saved history checked)', async (browser) => {
+  ['Video Player: History in the window menu (the last five YouTube videos by their titles, the same video again, tapping one, Remove video, Reset, kiosk, reload, two tabs, an older release saving, content from before, saved history checked)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-    const yt = await stubYouTube(ctx);
+    const yt = await stubVideos(ctx);
     // A YouTube cookie in this browser (as a signed-in student's would be): the request for a title must not carry it.
     await ctx.addCookies([{ name: 'PREF', value: 'f6=8', domain: '.youtube.com', path: '/', secure: true, sameSite: 'None' }]);
     const errors = [];
@@ -5152,7 +5202,7 @@ const SUITES = [
     // One video: the History, by the title YouTube's oEmbed gives, checked.
     await ytShow(A, `https://www.youtube.com/watch?v=${VID}`);
     ok(await same(L([VID])), `after one video the menu has a History of it, by its title, checked (${(await hist()).join(' | ')})`);
-    ok(await ytMenu(A) === `Change video | Open on YouTube | — | Remove video | — | History | ${YT_LABEL[VID]}`, `the controls first, then the History under its heading (${await ytMenu(A)})`);
+    ok(await ytMenu(A) === `Change video | Open in YouTube | — | Remove video | — | History | ${YT_LABEL[VID]}`, `the controls first, then the History under its heading (${await ytMenu(A)})`);
     const q = yt.asked[0] || {};
     ok(yt.oembeds() === 1 && q.url === OEMBED(VID), `its title was asked for once, from YouTube’s oEmbed (${q.url})`);
     ok(q.cookie === '' && q.referer === '' && q.origin === new URL(BASE).origin, `with no cookie and no Referer: only the Origin, which YouTube needs to answer (cookie “${q.cookie}”, Referer “${q.referer}”, Origin ${q.origin})`);
@@ -5161,7 +5211,7 @@ const SUITES = [
     const probe = yt.asked.find(x => x.id === 'c00k1eCheck');
     ok(!!probe && /PREF=f6=8/.test(probe.cookie), `(a request with cookies from the same page does carry YouTube’s cookie: “${probe && probe.cookie}”)`);
     yt.asked = yt.asked.filter(x => x !== probe);
-    ok(JSON.stringify((await ytData(A)).history) === JSON.stringify([{ videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}` }]),
+    ok(JSON.stringify((await ytData(A)).history) === JSON.stringify([{ source: 'youtube', videoId: VID, videoUrl: `https://www.youtube.com/watch?v=${VID}` }]),
       'the History is saved in the window’s content; its title, found after, is not saved by itself (Board Sync would count that as a newer change: see “History with Board Sync”)');
 
     // Five more: the last five are kept, newest first, the one showing checked.
@@ -5220,10 +5270,10 @@ const SUITES = [
     ok(yt.oembeds() === 6, `none of this asked YouTube for a title again (${yt.oembeds()} requests)`);
     const now5 = await hist();
 
-    // Kiosk mode: the History, but no Open on YouTube.
+    // Kiosk mode: the History, but no Open in YouTube.
     const k = await ctx.newPage(); k.on('pageerror', e => errors.push('[kiosk] ' + e.message));
     await k.goto(BASE + '?kiosk=yes'); await boardUp(k);
-    ok(await eventually(async () => await ytMenu(k) === 'Change video | — | Remove video | — | History | ' + now5.map(l => l.replace('✓ ', '')).join(' | ')), `in kiosk mode the menu keeps the History, without Open on YouTube (${await ytMenu(k)})`);
+    ok(await eventually(async () => await ytMenu(k) === 'Change video | — | Remove video | — | History | ' + now5.map(l => l.replace('✓ ', '')).join(' | ')), `in kiosk mode the menu keeps the History, without Open in YouTube (${await ytMenu(k)})`);
     await k.close();
     // Reload: the History and its titles are kept, and YouTube isn't asked again.
     await A.reload(); await boardUp(A);
@@ -5262,8 +5312,8 @@ const SUITES = [
       `content from before the History: the video shows, with a History of just it, by its title (${(await hist()).join(' | ')})`);
     await ytChoose(A, 'Change video'); await ytShow(A, `https://youtu.be/${VID}`);
     d = await ytData(A);
-    ok(await same(L([VID]).concat(['Fractions for Kids | Halves, Thirds… (from 0:45)'])) && JSON.stringify((await ytData(A)).history) === JSON.stringify([{ videoId: VID, videoUrl: `https://youtu.be/${VID}` },
-      { videoId: 'fR4ct10nsK1', videoUrl: 'https://youtu.be/fR4ct10nsK1?t=45', start: 45, title: YT_TITLES['fR4ct10nsK1'] }]), 'the next video goes above it, and the History is saved, with the title found when the window opened');
+    ok(await same(L([VID]).concat(['Fractions for Kids | Halves, Thirds… (from 0:45)'])) && JSON.stringify((await ytData(A)).history) === JSON.stringify([{ source: 'youtube', videoId: VID, videoUrl: `https://youtu.be/${VID}` },
+      { source: 'youtube', videoId: 'fR4ct10nsK1', videoUrl: 'https://youtu.be/fR4ct10nsK1?t=45', start: 45, title: YT_TITLES['fR4ct10nsK1'] }]), 'the next video goes above it, and the History is saved, with the title found when the window opened');
 
     // Saved history is checked before it is used: bad entries are dropped (not the rest), more than five cut to five,
     // a title is only ever text.
@@ -5295,9 +5345,9 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['YouTube Player: History titles YouTube doesn’t give (a private video, blocked, no answer, offline, then online), a hostile, invisible, long or wide title, a series, at most five requests at once, the menu at Size 200%', async (browser) => {
+  ['Video Player: History titles YouTube doesn’t give (a private video, blocked, no answer, offline, then online), a hostile, invisible, long or wide title, a series, at most five requests at once, the menu at Size 200%', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
-    const yt = await stubYouTube(ctx);
+    const yt = await stubVideos(ctx);
     const errors = [];
     const A = await ctx.newPage(); A.on('pageerror', e => errors.push('[A] ' + e.message));
     const failed = []; A.on('requestfailed', r => { if (/\/oembed\?/.test(r.url())) failed.push({ url: r.url(), at: Date.now() }); });
@@ -5439,10 +5489,10 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['YouTube Player: History with Board Sync (titles arrive with it, the later change wins with its History, a title that comes after doesn’t count as a change)', async (browser) => {
+  ['Video Player: History with Board Sync (YouTube titles arrive with it, the later change wins with its History, a title that comes after doesn’t count as a change)', async (browser) => {
     const errors = [];
     const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
-    const ya = await stubYouTube(A.c), yb = await stubYouTube(B.c);
+    const ya = await stubVideos(A.c), yb = await stubVideos(B.c);
     const ik = await addWin(A.p, 'youtube-player');
     await ytShow(A.p, `https://youtu.be/${VID}`, ik);
     await eventually(async () => ((await ytHistory(A.p, ik)) || [])[0] === '✓ ' + YT_LABEL[VID], 3000);
@@ -5517,6 +5567,305 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
+  ['Video Player: Google Drive and Vimeo links (every form, what is turned away and why, start times, the frame each site gets, Open in Google Drive and Open in Vimeo, kiosk)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const yt = await stubVideos(ctx);
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    await addWin(page, 'youtube-player');
+    // Every form of a Drive or Vimeo link, as teachers paste them: [text, source, id, start, Vimeo's hash or Drive's
+    // resource key].
+    const forms = [
+      [`https://drive.google.com/file/d/${D1}/view?usp=sharing`, 'drive', D1, 0], [`https://drive.google.com/file/d/${D1}/view?usp=drive_link`, 'drive', D1, 0],
+      [`https://drive.google.com/file/d/${D1}/view`, 'drive', D1, 0], [`https://drive.google.com/file/d/${D1}/preview`, 'drive', D1, 0], [`https://drive.google.com/file/d/${D1}/edit`, 'drive', D1, 0],
+      [`https://drive.google.com/file/d/${D1}`, 'drive', D1, 0], [`https://drive.google.com/file/u/0/d/${D1}/view`, 'drive', D1, 0], [`https://drive.google.com/file/u/1/d/${D1}/view?usp=sharing`, 'drive', D1, 0],
+      [`https://drive.google.com/open?id=${D1}`, 'drive', D1, 0], [`https://drive.google.com/open?id=${D2}&resourcekey=${RK}`, 'drive', D2, 0, RK],
+      [`https://drive.google.com/uc?id=${D1}&export=download`, 'drive', D1, 0], [`https://drive.google.com/uc?export=view&id=${D1}`, 'drive', D1, 0],
+      [`https://docs.google.com/file/d/${D1}/edit`, 'drive', D1, 0], [`https://docs.google.com/file/d/${D2}/preview?resourcekey=${RK}`, 'drive', D2, 0, RK],
+      [`https://drive.google.com/file/d/${D2}/view?usp=sharing&resourcekey=${RK}`, 'drive', D2, 0, RK], [`https://drive.google.com/a/ccsd21.org/file/d/${D1}/view`, 'drive', D1, 0],
+      [DRIVE_CODE, 'drive', D1, 0], [`drive.google.com/file/d/${D1}/view`, 'drive', D1, 0], [`https://DRIVE.Google.com/file/d/${D1}/view`, 'drive', D1, 0],
+      [`Watch this: https://drive.google.com/file/d/${D1}/view?usp=sharing.`, 'drive', D1, 0], [`(https://drive.google.com/file/d/${D1}/view)`, 'drive', D1, 0],
+      // (a start time in a Drive link: Drive's player has none, so it is left out, and nothing is said)
+      [`"https://drive.google.com/file/d/${D1}/view?t=90"`, 'drive', D1, 0], [`https://drive.google.com/file/d/${D1}/view#t=1m30s`, 'drive', D1, 0],
+      [`https://vimeo.com/${V1}`, 'vimeo', V1, 0], [`vimeo.com/${V1}`, 'vimeo', V1, 0], [`https://www.vimeo.com/${V1}`, 'vimeo', V1, 0], [`http://vimeo.com/${V1}?share=copy`, 'vimeo', V1, 0],
+      [`https://vimeo.com/${V2}/${VH}`, 'vimeo', V2, 0, VH], [`https://vimeo.com/${V2}/${VH}?share=copy`, 'vimeo', V2, 0, VH],
+      [`https://vimeo.com/channels/staffpicks/${V1}`, 'vimeo', V1, 0], [`https://vimeo.com/groups/animation/videos/${V1}`, 'vimeo', V1, 0],
+      [`https://vimeo.com/showcase/11223344/video/${V1}`, 'vimeo', V1, 0], [`https://vimeo.com/album/2233445/video/${V1}`, 'vimeo', V1, 0],
+      [`https://player.vimeo.com/video/${V1}`, 'vimeo', V1, 0], [`https://player.vimeo.com/video/${V2}?h=${VH}`, 'vimeo', V2, 0, VH],
+      [`https://player.vimeo.com/video/${V2}?h=${VH}&badge=0&autopause=0`, 'vimeo', V2, 0, VH], [VIMEO_CODE, 'vimeo', V2, 0, VH],
+      [`https://vimeo.com/${V1}#t=90`, 'vimeo', V1, 90], [`https://vimeo.com/${V1}#t=1m30s`, 'vimeo', V1, 90], [`https://vimeo.com/${V2}/${VH}#t=2m`, 'vimeo', V2, 120, VH],
+      [`https://player.vimeo.com/video/${V1}#t=45s`, 'vimeo', V1, 45], [`https://vimeo.com/${V1}#t=soon`, 'vimeo', V1, 0],
+      [`Watch: https://vimeo.com/${V1}!`, 'vimeo', V1, 0], [`<https://vimeo.com/${V1}>`, 'vimeo', V1, 0], [`'https://vimeo.com/${V2}/${VH}',`, 'vimeo', V2, 0, VH],
+      // (a folder's link, then a video's: the video)
+      [`The folder https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345 and the video https://vimeo.com/${V1}`, 'vimeo', V1, 0]
+    ];
+    const parsed = await ytWin(page).locator('html').evaluate((html, forms) => forms.map(([t]) => parseLink(t)), forms);
+    const wrong = forms.filter(([t, source, id, start, extra], i) => { const p = parsed[i];
+      return !p || p.source !== source || p.id !== id || p.start !== start || (p.hash || '') !== (source === 'vimeo' && extra || '') || (p.resourceKey || '') !== (source === 'drive' && extra || ''); })
+      .map(f => f[0].slice(0, 80) + ' → ' + JSON.stringify(parsed[forms.indexOf(f)]));
+    ok(!wrong.length, `every form of a Drive or Vimeo link is read, with its hash or resource key, and a start time for Vimeo only (${forms.length} forms${wrong.length ? '; wrong: ' + wrong.join('; ') : ''})`);
+    // Each one shown: the player's address, and the stand-in for that site loading in it.
+    const embedOf = ([, source, id, start, extra]) => source === 'drive' ? DRIVE_EMBED(id, extra) : VIMEO_EMBED(id, extra, start);
+    const shownWrong = [];
+    for (const f of forms) {
+      if (!(await ytLook(page)).ask) await ytChoose(page, 'Change video');
+      await ytShow(page, f[0]);
+      const want = embedOf(f);
+      const good = await eventually(async () => (await ytLook(page)).src === want && vidFrames(page).length === 1 && vidFrames(page)[0].url() === want && await vidFrames(page)[0].evaluate(() => /stand-in/.test(document.title)), 3000);
+      if (!good) shownWrong.push(`${f[0].slice(0, 70)} → ${(await ytLook(page)).src || (await ytLook(page)).err}`);
+    }
+    ok(!shownWrong.length, `each shows its site’s player, at the right address, which loads (${forms.length} links${shownWrong.length ? '; not: ' + shownWrong.join('; ') : ''})`);
+
+    // What is turned away, and what the link box says.
+    const F = '1AbCdEfGhIjKlMnOpQrStUvWxYz012345', G = '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms';
+    const refused = [
+      ['', VMSG.empty], ['   ', VMSG.empty], ['hello there', VMSG.none], ['javascript:alert(1)', VMSG.none], ['https://www.dailymotion.com/video/x8abc12', VMSG.none],
+      [`https://drive.google.com/drive/folders/${F}`, VMSG.folder], [`https://drive.google.com/drive/folders/${F}?usp=sharing`, VMSG.folder], [`https://drive.google.com/drive/u/0/folders/${F}`, VMSG.folder],
+      ['https://drive.google.com/drive/my-drive', VMSG.folder], [`https://drive.google.com/folderview?id=${F}`, VMSG.folder], [`https://drive.google.com/embeddedfolderview?id=${F}#grid`, VMSG.folder],
+      [`https://docs.google.com/document/d/${G}/edit`, VMSG.doc], [`https://docs.google.com/spreadsheets/d/${G}/edit#gid=0`, VMSG.sheet], [`https://docs.google.com/presentation/d/${G}/edit?usp=sharing`, VMSG.slides],
+      [`https://docs.google.com/forms/d/${G}/viewform`, VMSG.none],
+      [`https://drive.google.com/file/d/short/view`, VMSG.none], [`https://drive.google.com/file/d/${D1}%22%3E%3Cimg/view`, VMSG.none], [`https://drive.google.com/file/d/${'x'.repeat(80)}/view`, VMSG.none],
+      [`https://drive.google.com.example.org/file/d/${D1}/view`, VMSG.none], [`https://example.org/drive.google.com/file/d/${D1}/view`, VMSG.none], [`https://drive.google.com/open?id=${D1}&resourcekey=%3Cscript%3E`, VMSG.none],
+      [`https://drive.google.com/file/d/${D1}/view?resourcekey=${RK}<script>`, VMSG.none], [`ftp://drive.google.com/file/d/${D1}/view`, VMSG.none],
+      ['https://vimeo.com/showcase/11223344', VMSG.list], ['https://vimeo.com/album/2233445', VMSG.list], ['https://vimeo.com/channels/staffpicks', VMSG.list], ['https://vimeo.com/groups/animation', VMSG.list],
+      ['https://vimeo.com/blenderfoundation', VMSG.list], ['https://vimeo.com/user12345678', VMSG.list], ['https://vimeo.com/blenderfoundation/videos', VMSG.list],
+      ['https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', VMSG.list], ['https://www.youtube.com/@ccsd21', VMSG.list], ['https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw', VMSG.list],
+      [`https://vimeo.com/${V1}/zzzzzzzzzz`, VMSG.none], [`https://vimeo.com/${V1}abc`, VMSG.none], [`https://player.vimeo.com/video/${V2}?h=${VH}%22%3E%3Cimg`, VMSG.none], ['https://player.vimeo.com/video/abc', VMSG.none],
+      [`https://vimeo.com.example.org/${V1}`, VMSG.none], [`https://notvimeo.com/${V1}`, VMSG.none], ['https://vimeo.com/0', VMSG.none], ['https://vimeo.com/1234567890123', VMSG.none], [V1, VMSG.none]
+    ];
+    const said = [];
+    const players = () => yt.hits.filter(u => !/oembed/.test(u));
+    yt.hits.length = 0;
+    for (const [text, msg] of refused) {
+      if (!(await ytLook(page)).ask) await ytChoose(page, 'Change video');
+      const before = JSON.stringify(await ytData(page));
+      await ytWin(page).locator('#link').fill(text); await ytWin(page).locator('#go').click(); await page.waitForTimeout(150);
+      const l = await ytLook(page);
+      if (!(l.ask && l.err === msg && l.frames === 0 && JSON.stringify(await ytData(page)) === before)) said.push(`${text.slice(0, 70)} → “${l.err}”${l.frames ? ' (a frame)' : ''}`);
+    }
+    ok(!said.length && players().length === 0, `text that isn’t a video’s link is turned away with a message that says what it is and what to paste, and nothing is saved or loaded (${refused.length} kinds${said.length ? '; not: ' + said.join('; ') : ''}${players().length ? '; loaded: ' + players().join(' ') : ''})`);
+    ok(await ytWin(page).locator('html').evaluate(() => { const r = document.getElementById('err').getBoundingClientRect(); return r.bottom <= innerHeight && r.width > 0; }), 'the message shows in the window');
+
+    // (a fresh start: Reset, then four videos)
+    await page.click('.win[data-ikey="youtube-player:1"] .win-label'); await page.click('#menu [data-act="reset"]'); await page.click('#menu [data-act="reset-yes"]');
+    ok(await eventually(async () => (await ytLook(page)).ask && await ytData(page) === null), 'Reset');
+    for (const t of [`https://vimeo.com/${V1}`, `https://drive.google.com/file/d/${D1}/view`, `https://vimeo.com/${V2}/${VH}`]) { if (!(await ytLook(page)).ask) await ytChoose(page, 'Change video'); await ytShow(page, t); }
+    // A Drive video: Drive's own preview page, no Referer, the menu's Open in Google Drive.
+    await ytChoose(page, 'Change video'); await ytShow(page, `https://drive.google.com/open?id=${D2}&resourcekey=${RK}`);
+    let a = await ytLook(page);
+    ok(a.player && a.src === DRIVE_EMBED(D2, RK), `a Drive file shows Drive’s own preview page, its resource key passed on (${a.src})`);
+    let d = await ytData(page);
+    ok(d.source === 'drive' && d.videoId === D2 && d.resourceKey === RK && d.videoUrl === `https://drive.google.com/open?id=${D2}&resourcekey=${RK}` && !('start' in d) && !('hash' in d) && d.history[0].source === 'drive' && d.history[0].resourceKey === RK,
+      `it is saved with its source and resource key, in the History too (${JSON.stringify(d).slice(0, 220)})`);
+    let fr = await ytWin(page).locator('#player iframe').evaluate(f => ({ allow: f.getAttribute('allow'), fs: f.hasAttribute('allowfullscreen'), ref: f.getAttribute('referrerpolicy'), title: f.title, sandbox: f.hasAttribute('sandbox') }));
+    ok(fr.allow.split(/;\s*/).sort().join() === 'autoplay,fullscreen' && fr.fs && fr.ref === 'no-referrer' && fr.title === 'Google Drive video player' && !fr.sandbox, `Drive’s frame: allow="${fr.allow}", allowfullscreen, referrerpolicy="${fr.ref}", title “${fr.title}”`);
+    ok(await eventually(async () => vidFrames(page).length === 1 && await vidFrames(page)[0].evaluate(() => window.__ref) === ''), 'Drive isn’t told where the board is (no Referer)');
+    ok(await eventually(async () => await ytMenu(page) === `Change video | Open in Google Drive | — | Remove video | — | History | ${DRIVE_LABEL(D2)} | ${VIMEO_TITLES[`${V2}/${VH}`]} | ${DRIVE_LABEL(D1)} | ${VIMEO_TITLES[V1]}`, 3000),
+      `the menu: Open in Google Drive, and a History of Drive and Vimeo videos (${await ytMenu(page)})`);
+    let [tab] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), ytChoose(page, 'Open in Google Drive')]);
+    ok(!!tab && tab.url() === DRIVE_OPEN(D2, RK) && await tab.evaluate(() => window.opener === null), `Open in Google Drive opens the file in Drive, in a new tab the board can’t reach (${tab && tab.url()})`);
+    if (tab) await tab.close();
+    // A Vimeo video, unlisted, from a time: Vimeo's player with "do not track" and its overlays quiet; Open in Vimeo.
+    await ytChoose(page, 'Change video'); await ytShow(page, `https://vimeo.com/${V2}/${VH}#t=1m30s`);
+    a = await ytLook(page); d = await ytData(page);
+    ok(a.player && a.src === VIMEO_EMBED(V2, VH, 90) && d.source === 'vimeo' && d.videoId === V2 && d.hash === VH && d.start === 90 && !('resourceKey' in d),
+      `an unlisted Vimeo video from 1:30: Vimeo’s player, its hash, dnt=1, no title, byline or portrait over it, from 1:30 (${a.src}; ${JSON.stringify(d).slice(0, 160)})`);
+    fr = await ytWin(page).locator('#player iframe').evaluate(f => ({ allow: f.getAttribute('allow'), fs: f.hasAttribute('allowfullscreen'), ref: f.getAttribute('referrerpolicy'), title: f.title }));
+    ok(fr.allow.split(/;\s*/).sort().join() === 'autoplay,clipboard-write,encrypted-media,fullscreen,picture-in-picture' && fr.fs && fr.ref === 'strict-origin-when-cross-origin' && fr.title === 'Vimeo video player',
+      `Vimeo’s frame: allow="${fr.allow}" (no web-share), allowfullscreen, referrerpolicy="${fr.ref}", title “${fr.title}”`);
+    ok(await eventually(async () => vidFrames(page).length === 1 && await vidFrames(page)[0].evaluate(() => window.__ref) === BASE), 'Vimeo is told the board’s site (Referer), as a video limited to some sites needs');
+    ok(await eventually(async () => await ytMenu(page) === `Change video | Open in Vimeo | — | Remove video | — | History | ${VIMEO_TITLES[`${V2}/${VH}`]} (from 1:30) | ${DRIVE_LABEL(D2)} | ${VIMEO_TITLES[`${V2}/${VH}`]} | ${DRIVE_LABEL(D1)} | ${VIMEO_TITLES[V1]}`, 3000),
+      `the menu: Open in Vimeo; the same video from a time is listed apart (${await ytMenu(page)})`);
+    [tab] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), ytChoose(page, 'Open in Vimeo')]);
+    ok(!!tab && tab.url() === VIMEO_OPEN(V2, VH, 90) && await tab.evaluate(() => window.opener === null), `Open in Vimeo opens the video on Vimeo, from its time (${tab && tab.url()})`);
+    if (tab) await tab.close();
+    ok((await ytLook(page)).player, 'and the video stays in its window');
+    // Change video fills in the link as pasted.
+    await ytChoose(page, 'Change video');
+    ok((await ytLook(page)).link === `https://vimeo.com/${V2}/${VH}#t=1m30s`, 'Change video shows the link as it was pasted');
+    await ytWin(page).locator('#cancel').click(); await page.waitForTimeout(300);
+
+    // Kiosk mode: no Open in … for Drive or Vimeo either.
+    const k = await ctx.newPage(); k.on('pageerror', e => errors.push('[kiosk] ' + e.message));
+    await k.goto(BASE + '?kiosk=yes'); await boardUp(k);
+    ok(await eventually(async () => (await ytLook(k)).src === VIMEO_EMBED(V2, VH, 90)), 'kiosk mode shows the Vimeo video too');
+    ok(!/Open in/.test(await ytMenu(k)) && /^Change video \| — \| Remove video \| — \| History/.test(await ytMenu(k)), `in kiosk mode the menu has no Open in Vimeo (${await ytMenu(k)})`);
+    await ytPick(k, DRIVE_LABEL(D2));
+    ok(await eventually(async () => (await ytLook(k)).src === DRIVE_EMBED(D2, RK)) && !/Open in/.test(await ytMenu(k)), `nor Open in Google Drive (${await ytMenu(k)})`);
+    await k.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Video Player: a History of YouTube, Google Drive and Vimeo videos (titles from YouTube and Vimeo, Drive’s labels told apart, tapping one, older content, damaged content from each site, offline, export and import)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const yt = await stubVideos(ctx);
+    // Vimeo and Google cookies in this browser (a teacher signed in): the requests for titles carry neither.
+    await ctx.addCookies([{ name: 'vuid', value: 'pl123.456', domain: '.vimeo.com', path: '/', secure: true, sameSite: 'None' }, { name: 'SID', value: 'g00gle', domain: '.google.com', path: '/', secure: true, sameSite: 'None' }]);
+    const errors = [];
+    const A = await ctx.newPage(); A.on('pageerror', e => errors.push('[A] ' + e.message));
+    await A.goto(BASE); await boardUp(A);
+    await addWin(A, 'youtube-player');
+    const hist = async (p = A) => (await ytHistory(p)) || [];
+    const same = async (want, p = A, ms = 3000) => eventually(async () => JSON.stringify(await hist(p)) === JSON.stringify(want), ms);
+    const show = async text => { if (!(await ytLook(A)).ask) await ytChoose(A, 'Change video'); await ytShow(A, text); };
+    // Five videos from the three sites.
+    await show(`https://youtu.be/${VID}`); await show(`https://vimeo.com/${V1}`); await show(`https://drive.google.com/file/d/${D1}/view?usp=sharing`);
+    await show(`https://vimeo.com/${V2}/${VH}`); await show(`https://drive.google.com/open?id=${D2}&resourcekey=${RK}`);
+    const L5 = [DRIVE_LABEL(D2), VIMEO_TITLES[`${V2}/${VH}`], DRIVE_LABEL(D1), VIMEO_TITLES[V1], YT_LABEL[VID]];
+    ok(await same(['✓ ' + L5[0], ...L5.slice(1)]), `a History of five from the three sites: YouTube’s and Vimeo’s by their titles, Drive’s as “Google Drive video” and the end of its id, so two can be told apart (${(await hist()).join(' | ')})`);
+    const vq = yt.asked.filter(x => x.source === 'vimeo');
+    ok(vq.length === 2 && vq[0].url === VIMEO_OEMBED(V1) && vq[1].url === VIMEO_OEMBED(V2, VH) && vq.every(x => x.cookie === '' && x.referer === '' && x.origin === new URL(BASE).origin),
+      `Vimeo’s titles come from its oEmbed, asked once each, an unlisted one with its hash, with no cookie and no Referer (${vq.map(x => x.url + ' cookie “' + x.cookie + '” Referer “' + x.referer + '”').join('; ')})`);
+    ok(yt.oembeds(VID) === 1 && yt.asked.length === 3 && !yt.hits.some(u => /drive\.google\.com\/(?!file\/d\/[^/]+\/preview)/.test(u)), `YouTube’s title asked once, and Drive is asked for nothing but its player (${yt.asked.length} title requests)`);
+    let d = await ytData(A);
+    ok(d.source === 'drive' && d.videoId === D2 && d.resourceKey === RK && JSON.stringify(d.history.map(e => [e.source, e.videoId, e.hash || e.resourceKey || ''])) === JSON.stringify([['drive', D2, RK], ['vimeo', V2, VH], ['drive', D1, ''], ['vimeo', V1, ''], ['youtube', VID, '']]),
+      `the content: each video with its source, and a Vimeo hash or Drive resource key (${JSON.stringify(d).slice(0, 300)})`);
+    ok(d.history[3].title === VIMEO_TITLES[V1] && d.history[4].title === YT_TITLES[VID] && !('title' in d.history[2]), 'the titles found are saved with the next change; a Drive video has none');
+    // The same video from another form of its link: to the top, listed once, not asked for again.
+    await show(`https://vimeo.com/channels/staffpicks/${V1}`); await show(`https://drive.google.com/file/d/${D2}/view?resourcekey=${RK}`);
+    ok(await same(['✓ ' + DRIVE_LABEL(D2), VIMEO_TITLES[V1], VIMEO_TITLES[`${V2}/${VH}`], DRIVE_LABEL(D1), YT_LABEL[VID]]) && yt.asked.length === 3,
+      `the same video from another form of its link moves to the top, listed once, its title not asked for again (${(await hist()).join(' | ')})`);
+    // Tapping one shows it: from Drive to Vimeo to YouTube.
+    let ok3 = true;
+    for (const [label, want] of [[DRIVE_LABEL(D1), DRIVE_EMBED(D1)], [VIMEO_TITLES[`${V2}/${VH}`], VIMEO_EMBED(V2, VH)], [YT_LABEL[VID], EMBED(VID)]]) {
+      ok3 = ok3 && await ytPick(A, label) && await eventually(async () => (await ytLook(A)).src === want && vidFrames(A).length === 1 && (await hist())[0] === '✓ ' + label, 3000);
+    }
+    ok(ok3, `tapping a History item shows that video, whatever its site, in place of the other (${(await hist()).join(' | ')})`);
+    ok(/^Change video \| Open in YouTube \| — \| Remove video \| — \| History \| /.test(await ytMenu(A)), `the menu follows the site: Open in YouTube (${await ytMenu(A)})`);
+    // Two Vimeo videos without a title (private: 404; blocked): "Vimeo video" and the number.
+    Object.assign(yt.vimeo, { '22222222': { status: 404 }, '33333333': { abort: true } });
+    await show('https://vimeo.com/22222222'); await show('https://vimeo.com/33333333');
+    ok(await same(['✓ Vimeo video 33333333', 'Vimeo video 22222222', YT_LABEL[VID], VIMEO_TITLES[`${V2}/${VH}`], DRIVE_LABEL(D1)]), `a Vimeo video without a title is “Vimeo video” and its number (${(await hist()).join(' | ')})`);
+
+    // Reload: the History stays.
+    const now = await hist();
+    await A.reload(); await boardUp(A);
+    ok(await same(now, A, 8000), `after a reload the History is the same (${(await hist()).join(' | ')})`);
+
+    // Content from before (no source) is YouTube's.
+    await saveData(A, 'youtube-player:1', { videoId: VID2, videoUrl: `https://youtu.be/${VID2}`, start: 30, history: [{ videoId: VID2, videoUrl: `https://youtu.be/${VID2}`, start: 30, title: YT_TITLES[VID2] }, { videoId: VID, videoUrl: `https://youtu.be/${VID}` }] });
+    await A.reload(); await boardUp(A);
+    ok(await eventually(async () => (await ytLook(A)).src === EMBED(VID2, '&start=30')) && await same(['✓ Big Buck Bunny 60fps 4K - Official… (from 0:30)', YT_LABEL[VID]], A, 6000) && /Open in YouTube/.test(await ytMenu(A)),
+      `content saved before (no source) plays from YouTube, with its History (${(await ytLook(A)).src}; ${(await hist()).join(' | ')})`);
+
+    // Damaged content, from each site: the link box, nothing loaded.
+    const send = dd => A.evaluate(dd => window.__board21.state.wins.get('youtube-player:1').post('data', { data: dd, reason: 'remote' }), dd);
+    const evil = '"><img src=x onerror="top.document.title=\'PWNED\'">', evilT = '<img src=x onerror="top.document.title=\'PWNED\'">';
+    const loads = () => yt.hits.filter(u => !/oembed/.test(u)).length;
+    const crafted = [
+      { source: 'drive', videoId: 'short', videoUrl: '' }, { source: 'drive', videoId: D1 + evil, videoUrl: '' }, { source: 'drive', videoId: D1, resourceKey: evil, videoUrl: '' },
+      { source: 'drive', videoId: D1, resourceKey: 42, videoUrl: '' }, { source: 'drive', videoId: '../../evil/' + 'a'.repeat(30), videoUrl: '' }, { source: 'drive', videoId: VID, videoUrl: '' },
+      { source: 'drive', videoId: 'x'.repeat(200), videoUrl: '' }, { source: 'drive', videoId: D1, videoUrl: 'x'.repeat(5000) },
+      { source: 'vimeo', videoId: 'abc', videoUrl: '' }, { source: 'vimeo', videoId: +V1, videoUrl: '' }, { source: 'vimeo', videoId: V1, hash: 'javascript:alert(1)', videoUrl: '' },
+      { source: 'vimeo', videoId: V1, hash: 'ZZZZZZZZZZ', videoUrl: '' }, { source: 'vimeo', videoId: V1, hash: 7, videoUrl: '' }, { source: 'vimeo', videoId: '0', videoUrl: '' },
+      { source: 'vimeo', videoId: V1 + '#t=9', videoUrl: '' }, { source: 'vimeo', videoId: V1 + '?autoplay=1', videoUrl: '' }, { source: 'vimeo', videoId: VID, videoUrl: '' },
+      { source: 'javascript', videoId: VID, videoUrl: '' }, { source: 'https://evil.example/', videoId: VID, videoUrl: '' }, { source: null, videoId: VID, videoUrl: '' },
+      { source: 'youtube', videoId: D1, videoUrl: '' }, { source: ['vimeo'], videoId: V1, videoUrl: '' }, { source: 'Vimeo', videoId: V1, videoUrl: '' }, { source: 'vimeo', videoId: V1, videoUrl: 42 }];
+    const wrongly = [];
+    for (const dd of crafted) {
+      await send({ source: 'vimeo', videoId: V1, videoUrl: `https://vimeo.com/${V1}` }); await A.waitForTimeout(250);
+      const n = loads();
+      await send(dd); await A.waitForTimeout(250);
+      const x = await ytLook(A);
+      if (!(x.ask && x.frames === 0 && loads() === n)) wrongly.push(JSON.stringify(dd).slice(0, 70));
+    }
+    ok(!wrongly.length && await A.title() !== 'PWNED', `damaged Drive, Vimeo or YouTube content from another tab or device shows the link box and loads nothing (${crafted.length} kinds${wrongly.length ? '; not: ' + wrongly.join(', ') : ''})`);
+    await send({ source: 'drive', videoId: D1, videoUrl: '', start: 90 }); await A.waitForTimeout(300);
+    ok((await ytLook(A)).src === DRIVE_EMBED(D1), 'a start time with a Drive video is left out');
+    await send({ source: 'vimeo', videoId: V1, videoUrl: '', start: 1e9 }); await A.waitForTimeout(300);
+    ok((await ytLook(A)).src === VIMEO_EMBED(V1), 'a Vimeo start time longer than a day is left out');
+    await send({ source: 'vimeo', videoId: V1, videoUrl: '', start: 75 }); await A.waitForTimeout(300);
+    ok((await ytLook(A)).src === VIMEO_EMBED(V1, '', 75), 'a saved Vimeo start time is used');
+    await ytChoose(A, 'Change video');
+    ok((await ytLook(A)).link === VIMEO_OPEN(V1, '', 75), `Change video without a saved link fills in the video’s Vimeo address (${(await ytLook(A)).link})`);
+    await ytWin(A).locator('#cancel').click(); await A.waitForTimeout(300);
+    // A History with damaged entries from each site: those are dropped, the rest kept.
+    Object.assign(yt.vimeo, { '148751763': { status: 404 } });
+    await send({ source: 'vimeo', videoId: '22439234', videoUrl: '', history: [{ source: 'drive', videoId: 'short', videoUrl: '' }, { source: 'vimeo', videoId: V1, hash: 'nothex!!!!', videoUrl: '' },
+      { source: 'drive', videoId: D1, resourceKey: '<b>', videoUrl: '' }, { source: 'tiktok', videoId: VID, videoUrl: '' }, { source: 'vimeo', videoId: 'x', videoUrl: '' },
+      { source: 'drive', videoId: D1, videoUrl: '', start: 30, title: evilT }, { source: 'vimeo', videoId: '148751763', videoUrl: '', start: 'soon' }, { videoId: VID, videoUrl: '', title: 'Old and YouTube’s' },
+      { source: 'drive', videoId: D2, resourceKey: RK, videoUrl: '' }, { source: 'vimeo', videoId: V1, videoUrl: '' }] });
+    ok(await same(['✓ The Mountain', evilT, 'Vimeo video 148751763', 'Old and YouTube’s', DRIVE_LABEL(D2)]),
+      `damaged entries are dropped (each site’s own checks), the rest kept, five at most, a title only ever text, a Drive start time left out (${(await hist()).join(' | ')})`);
+    await A.click('.win[data-ikey="youtube-player:1"] .win-label'); await A.waitForTimeout(300);
+    ok(await A.evaluate(() => document.querySelectorAll('#menu img, #menu [onerror]').length) === 0 && await A.title() !== 'PWNED', 'a title with markup shows as text in the menu');
+    await A.click('.win[data-ikey="youtube-player:1"] .win-label');
+    // A file with damaged content opens with the link box too.
+    const file = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Crafted' }, instances: [
+      { widgetId: 'youtube-player', instance: 1, open: true, z: 1, rect: { x: 40, y: 40, w: 480, h: 310 }, config: null, data: { source: 'drive', videoId: D1, resourceKey: '"><script>top.document.title="PWNED"</script>', videoUrl: evil } },
+      { widgetId: 'youtube-player', instance: 2, open: true, z: 2, rect: { x: 600, y: 40, w: 480, h: 310 }, config: null, data: { source: 'vimeo', videoId: V1, hash: 'javascript:x', videoUrl: '' } },
+      { widgetId: 'youtube-player', instance: 3, open: true, z: 3, rect: { x: 40, y: 380, w: 480, h: 310 }, config: null, data: { source: 'vimeo', videoId: V2, hash: VH, start: 30, videoUrl: '' } }] };
+    await A.evaluate(f => window.__board21.applyImport(f, 'replace'), file); await A.waitForTimeout(1500);
+    const c1 = await ytLook(A, 'youtube-player:1'), c2 = await ytLook(A, 'youtube-player:2'), c3 = await ytLook(A, 'youtube-player:3');
+    ok(c1.ask && c1.frames === 0 && c2.ask && c2.frames === 0 && c3.src === VIMEO_EMBED(V2, VH, 30) && await A.title() !== 'PWNED', `from an imported file too: damaged content shows the link box; good content plays (${c3.src})`);
+
+    // Offline: Drive and Vimeo show the message, and come back by themselves.
+    await A.evaluate(() => window.__board21.closeWin('youtube-player:2', { quiet: true })); await A.evaluate(() => window.__board21.closeWin('youtube-player:3', { quiet: true }));
+    await ytShow(A, `https://drive.google.com/file/d/${D1}/view`, 'youtube-player:1');
+    ok(await eventually(async () => (await ytLook(A)).src === DRIVE_EMBED(D1)), 'a Drive video');
+    for (const [label, want, go] of [['Drive', DRIVE_EMBED(D1), null], ['Vimeo', VIMEO_EMBED(V2, VH), `https://vimeo.com/${V2}/${VH}`]]) {
+      await ctx.setOffline(true); await A.waitForTimeout(500);
+      if (go) { await ytChoose(A, 'Change video'); await ytShow(A, go); }
+      const x = await ytLook(A);
+      ok(x.offline && x.frames === 0 && vidFrames(A).length === 0 && x.text === 'You’re offline. The video comes back when you’re online.', `${label}, offline: the frame goes and the message shows (“${x.text}”)`);
+      await ctx.setOffline(false);
+      ok(await eventually(async () => { const y = await ytLook(A); return y.player && y.src === want && vidFrames(A).length === 1; }), `${label}: back online, the video comes back by itself`);
+    }
+
+    // Export and import carry the sources, hashes and keys, with the History and its titles.
+    await show(`https://vimeo.com/${V1}`); await show(`https://youtu.be/${VID}`); await A.waitForTimeout(300);
+    await ytPick(A, VIMEO_TITLES[V1]);
+    const full = await A.evaluate(() => window.__board21.buildExport('full'));
+    const fi = full.instances.find(i => i.widgetId === 'youtube-player');
+    const wantH = [{ source: 'vimeo', videoId: V1, videoUrl: `https://vimeo.com/${V1}`, title: VIMEO_TITLES[V1] }, { source: 'youtube', videoId: VID, videoUrl: `https://youtu.be/${VID}`, title: YT_TITLES[VID] },
+      { source: 'vimeo', videoId: V2, hash: VH, videoUrl: `https://vimeo.com/${V2}/${VH}`, title: VIMEO_TITLES[`${V2}/${VH}`] }, { source: 'drive', videoId: D1, videoUrl: `https://drive.google.com/file/d/${D1}/view` }];
+    ok(fi && fi.data && fi.data.source === 'vimeo' && fi.data.videoId === V1 && JSON.stringify(fi.data.history.slice(0, 4)) === JSON.stringify(wantH), `a full export has the video and its History, each with its source, hash or key, and title (${JSON.stringify(fi && fi.data).slice(0, 400)})`);
+    const ctx2 = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const yt2 = await stubVideos(ctx2);
+    const p2 = await ctx2.newPage(); p2.on('pageerror', e => errors.push('[2] ' + e.message));
+    await p2.goto(BASE); await boardUp(p2);
+    await p2.evaluate(f => window.__board21.applyImport(f, 'replace'), full);
+    ok(await eventually(async () => (await ytLook(p2)).src === VIMEO_EMBED(V1) && vidFrames(p2).length === 1), 'importing it on another device shows the same Vimeo video');
+    ok(await eventually(async () => JSON.stringify(((await ytHistory(p2)) || []).slice(0, 4)) === JSON.stringify(['✓ ' + VIMEO_TITLES[V1], YT_LABEL[VID], VIMEO_TITLES[`${V2}/${VH}`], DRIVE_LABEL(D1)]), 3000) && yt2.asked.length === 0,
+      `and its History, by the titles in the file: neither site is asked for them (${JSON.stringify(await ytHistory(p2))}; ${yt2.asked.length} requests)`);
+    await ctx2.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Video Player: Board Sync with Google Drive and Vimeo videos (picked on one device and changed or removed on the other before they synced: the later one wins, with its History)', async (browser) => {
+    const errors = [];
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    await stubVideos(A.c); await stubVideos(B.c);
+    const ik = await addWin(A.p, 'youtube-player');
+    await ytShow(A.p, `https://drive.google.com/file/d/${D1}/view`, ik);
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    const ikB = await ikOf(B.p, await A.p.evaluate(ik => window.__board21.state.insts.get(ik).wid, ik));
+    ok(!!ikB && await eventually(async () => (await ytLook(B.p, ikB)).src === DRIVE_EMBED(D1)), 'the smartboard shows the laptop’s Drive video');
+    const k = d => d === A ? ik : ikB;
+    const pick = async (d, link) => { if (!(await ytLook(d.p, k(d))).ask) await ytChoose(d.p, 'Change video', k(d)); await ytShow(d.p, link, k(d)); };
+    const remove = d => ytChoose(d.p, 'Remove video', k(d));
+    const look = async d => { const l = await ytLook(d.p, k(d)), data = await ytData(d.p, k(d));
+      return { src: l.ask ? 'ask' : l.src, frames: l.frames, video: data && data.videoId, source: data && data.source, top: ((await ytHistory(d.p, k(d))) || [])[0], wins: (await winList(d.p)).filter(x => x.widgetId === 'youtube-player').length }; };
+    const vim = `https://vimeo.com/${V2}/${VH}`, drv = `https://drive.google.com/open?id=${D2}&resourcekey=${RK}`;
+    for (const [first, firstDo, then, thenDo, label, want] of [
+      [A, d => pick(d, drv), B, d => pick(d, vim), 'a Drive video picked on the laptop, then a Vimeo video on the smartboard', { src: VIMEO_EMBED(V2, VH), video: V2, source: 'vimeo', top: '✓ ' + VIMEO_TITLES[`${V2}/${VH}`] }],
+      [B, d => pick(d, vim), A, d => pick(d, drv), 'a Vimeo video picked on the smartboard, then a Drive video on the laptop', { src: DRIVE_EMBED(D2, RK), video: D2, source: 'drive', top: '✓ ' + DRIVE_LABEL(D2) }],
+      [A, d => pick(d, vim), B, remove, 'a Vimeo video picked on the laptop, then removed on the smartboard', { src: 'ask', video: null, source: undefined, top: DRIVE_LABEL(D1) }],
+      [B, d => pick(d, drv), A, remove, 'a Drive video picked on the smartboard, then removed on the laptop', { src: 'ask', video: null, source: undefined, top: DRIVE_LABEL(D1) }],
+      [A, remove, B, d => pick(d, vim), 'removed on the laptop, then a Vimeo video picked on the smartboard', { src: VIMEO_EMBED(V2, VH), video: V2, source: 'vimeo', top: '✓ ' + VIMEO_TITLES[`${V2}/${VH}`] }]]) {
+      await pick(A, `https://drive.google.com/file/d/${D1}/view`); await syncNow(A.p); await exchange(A, B); await A.p.waitForTimeout(500);   // (the same video on both to start with)
+      await firstDo(first); await syncNow(first.p); await first.p.waitForTimeout(1500);
+      await thenDo(then); await then.p.waitForTimeout(300); await syncNow(then.p);
+      await exchange(A, B); await A.p.waitForTimeout(800);
+      const good = x => x.wins === 1 && x.src === want.src && x.video === want.video && x.source === want.source && x.frames === (want.video ? 1 : 0) && x.top === want.top;
+      let a, b;
+      await eventually(async () => { a = await look(A); b = await look(B); return good(a) && good(b); }, 3000);
+      ok(good(a) && good(b), `${label} (later): ${want.video ? 'that video' : 'no video, and no frame,'} on both, with its History, and no copy (laptop ${JSON.stringify(a)}; smartboard ${JSON.stringify(b)})`);
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
   // ---- Board Sync suites ----
   ['Board Sync: setting up (scenarios 1–4: the first device, a fresh smartboard, a device with its own pages, two set up at once)', async (browser) => {
     const errors = [];
@@ -5568,7 +5917,8 @@ const SUITES = [
     const hints = await A.p.evaluate(() => Array.from(document.querySelectorAll('#settings .hint')).map(h => h.textContent));
     ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 2 && hints.filter(h => h === 'On all your devices.').length === 3 && !hints.some(h => /This page only\./.test(h)),
       'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme, Accent color and Text style “On all your devices.”');
-    ok(/Your board stays on this device and in your Drive folder\. 21Board sends nothing to a server, except that a YouTube Player window loads its video, and the titles of the videos in its History, from YouTube\./.test(await A.p.locator('#settings .about').innerText()), 'the footer says the board stays here and in the Drive folder');
+    const footer = (await A.p.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
+    ok(footer.endsWith(' Your work is stored only on this device and in your Drive folder.') && !/sends nothing/.test(footer), `the footer says the work is stored only here and in the Drive folder (${footer})`);
     await A.p.keyboard.press('Escape');
     // A placeholder-only device writes nothing, even after a Timer was opened and closed on it with no content.
     const C = await dev('a computer');
