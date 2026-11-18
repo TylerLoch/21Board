@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-7';
-  const BOARD_BUILD = 'bb12dc73';
+  const BOARD_BUILD = '18dfe2ae';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -7537,7 +7537,17 @@
         const { B, low } = await this.budget();
         this.low = low;
         const all = (await this.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAll(); q.onsuccess = () => set(q.result); })) || [];
-        const photos = (await this.tx(['photo'], 'readonly', (o, set) => { const q = o.photo.getAll(); q.onsuccess = () => set(q.result.map(p => ({ key: p.key, size: (p.data || '').length, lastUsed: p.lastUsed || 0 }))); })) || [];
+        // Each photo's size. A window's picture's is in its key (pic-<hash>-<length>, see pack), so pictures aren't read.
+        const photos = (await this.tx(['photo'], 'readonly', (o, set) => {
+          const q = o.photo.getAllKeys();
+          q.onsuccess = () => {
+            const out = [], rest = [];
+            for (const key of q.result) { const m = /^pic-[0-9a-z]+-(\d+)$/.exec(key); if (m) out.push({ key, size: +m[1], lastUsed: 0 }); else rest.push(key); }
+            let left = rest.length;
+            if (!left) { set(out); return; }
+            for (const key of rest) { const g = o.photo.get(key); g.onsuccess = () => { const p = g.result; if (p) out.push({ key, size: (p.data || '').length, lastUsed: p.lastUsed || 0 }); if (!--left) set(out); }; }
+          };
+        })) || [];
         const now = Date.now(), drop = new Set(), gone = new Set();
         const byBoard = new Map();
         for (const m of all) { if (m.deletedAt && now - m.deletedAt >= HIST.goneKeep) drop.add(m.id); if (!byBoard.has(m.b)) byBoard.set(m.b, []); byBoard.get(m.b).push(m); }   // (a page deleted 30 days ago)
@@ -10420,12 +10430,13 @@
     // A file that may be a picture, by its type or name. (Its bytes are checked by the widget, which says what's wrong:
     // an SVG, a HEIC photo, a file that isn't a picture at all.)
     is(f) { return !!f && typeof f.arrayBuffer === 'function' && (/^image\//i.test(f.type || '') || /\.(png|jpe?g|jfif|gif|webp|avif|svgz?|hei[cf]|bmp|tiff?)$/i.test(f.name || '')); },
-    // A Picture window for each picture among files (10 at most), near at (layout px) or in the middle of the board.
-    // reason: 'paste' or 'drop'. False when there was no picture to open.
+    // A Picture window for each picture among files (10 at most, and the rest asked for again), near at (layout px) or
+    // in the middle of the board. reason: 'paste' or 'drop'. False when there was no picture to open.
     open(files, reason, at) {
-      const pics = Array.from(files || []).filter(f => this.is(f)).slice(0, 10);
+      const all = Array.from(files || []).filter(f => this.is(f)), pics = all.slice(0, 10);
       if (!pics.length || !getWidget(PICTURE_ID) || !Store.loaded) return false;
       if (Lock.refuse()) return true;
+      if (all.length > pics.length) toast(reason === 'paste' ? 'Opened 10 pictures. Paste the rest again.' : 'Opened 10 pictures. Drop the rest again.');
       for (const file of pics) {
         const ik = openWidget(PICTURE_ID, { fresh: true, at: at || undefined }), w = ik && S.wins.get(ik);
         if (!w) continue;

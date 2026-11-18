@@ -471,7 +471,7 @@
     // A paste or a drop of files that the widget didn't take (preventDefault() on the document or an element) goes to the
     // board, which opens the pictures in new Picture windows. A paste in a text field is the field's. A dropped file
     // never opens in place of the widget.
-    var filesOf = function (dt) { var out = []; for (var i = 0; dt && dt.files && i < dt.files.length && i < 10; i++) out.push(dt.files[i]); return out; };
+    var filesOf = function (dt) { var out = []; for (var i = 0; dt && dt.files && i < dt.files.length && i < 100; i++) out.push(dt.files[i]); return out; };   // (the board opens 10 and asks for the rest again)
     var hasFiles = function (dt) { return !!dt && Array.prototype.indexOf.call(dt.types || [], 'Files') >= 0; };
     var typing = function (el) { return !!el && el.nodeType === 1 && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); };
     window.addEventListener('paste', function (e) {

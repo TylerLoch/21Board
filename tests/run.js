@@ -569,7 +569,8 @@ const FIXTURE = n => fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', n));
 // The Picture windows on the page shown: { ik, open } in order.
 const picWins = p => p.evaluate(() => Array.from(window.__board21.state.insts.entries()).filter(([k]) => k.startsWith('image:')).map(([k, i]) => ({ ik: k, open: !!i.open })).sort((a, b) => +a.ik.split(':')[1] - +b.ik.split(':')[1]));
 // A picture drawn in the page with a canvas: w × h, as type, returned as a Buffer. noise: random bits in each color (so
-// it doesn't compress); alpha: its top-left quarter transparent; q: the encoder's quality.
+// it doesn't compress); alpha: its top-left quarter transparent; round: its corners rounded, clear outside, by this
+// radius; margin: a clear border this wide; q: the encoder's quality.
 const drawPic = async (p, w, h, type = 'image/png', o = {}) => Buffer.from(await p.evaluate(async ([w, h, type, o]) => {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d', { willReadFrequently: !!o.noise }), grad = g.createLinearGradient(0, 0, w, h);
@@ -583,6 +584,11 @@ const drawPic = async (p, w, h, type = 'image/png', o = {}) => Buffer.from(await
     g.putImageData(d, 0, 0);
   }
   if (o.alpha) g.clearRect(0, 0, w / 2, h / 2);
+  if (o.round || o.margin) {
+    g.globalCompositeOperation = 'destination-in'; g.beginPath();
+    if (o.round) g.roundRect(0, 0, w, h, o.round); else g.rect(o.margin, o.margin, w - 2 * o.margin, h - 2 * o.margin);
+    g.fill(); g.globalCompositeOperation = 'source-over';
+  }
   const blob = await new Promise(r => c.toBlob(r, type, o.q));
   const b = new Uint8Array(await blob.arrayBuffer());
   let s = '';
@@ -592,8 +598,8 @@ const drawPic = async (p, w, h, type = 'image/png', o = {}) => Buffer.from(await
 // The Picture widget's messages, word for word.
 const PMSG = {
   type: '21Board can’t show that file. Choose a PNG, JPEG, GIF, WebP or AVIF.',
-  svg: '21Board can’t show SVG files. Save it as a PNG first.',
-  heic: '21Board can’t show HEIC photos. Save it as a JPEG first.',
+  svg: '21Board can’t show an SVG file. Save it as a PNG first.',
+  heic: '21Board can’t show a HEIC photo. Save it as a JPEG first.',
   big: 'That file is over 25 MB. Choose a smaller one.',
   pixels: 'That picture is too large. Choose a smaller one.',
   anim: 'That animation is over 5 MB. Choose a smaller one.',
@@ -617,12 +623,26 @@ const padWebp = (buf, n) => {
   return out;
 };
 // A PNG that says it is w × h (its header), with almost nothing in it.
+const pngChunk = (type, data) => { const zlib = require('zlib'), len = Buffer.alloc(4), crc = Buffer.alloc(4), td = Buffer.concat([Buffer.from(type, 'ascii'), data]); len.writeUInt32BE(data.length); crc.writeUInt32BE(zlib.crc32(td)); return Buffer.concat([len, td, crc]); };
+const PNG_SIG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const pngHeader = (w, h) => {
   const zlib = require('zlib');
-  const chunk = (type, data) => { const len = Buffer.alloc(4), crc = Buffer.alloc(4), td = Buffer.concat([Buffer.from(type, 'ascii'), data]); len.writeUInt32BE(data.length); crc.writeUInt32BE(zlib.crc32(td)); return Buffer.concat([len, td, crc]); };
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
-  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.alloc(64))), chunk('IEND', Buffer.alloc(0))]);
+  return Buffer.concat([PNG_SIG, pngChunk('IHDR', ihdr), pngChunk('IDAT', zlib.deflateSync(Buffer.alloc(64))), pngChunk('IEND', Buffer.alloc(0))]);
 };
+// An animated PNG (APNG) of two frames, w × h, gray then noise (noise in the first too: a file that doesn't compress).
+const apng = (w, h, noise) => {
+  const zlib = require('zlib');
+  let s = 99;
+  const frame = rnd => { const rows = []; for (let y = 0; y < h; y++) { const r = Buffer.alloc(1 + w * 3, 0x80); r[0] = 0; if (rnd) for (let i = 1; i < r.length; i++) { s = (Math.imul(s, 1103515245) + 12345) >>> 0; r[i] = s >>> 24; } rows.push(r); } return zlib.deflateSync(Buffer.concat(rows), { level: 1 }); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const actl = Buffer.alloc(8); actl.writeUInt32BE(2, 0);
+  const fctl = seq => { const b = Buffer.alloc(26); b.writeUInt32BE(seq, 0); b.writeUInt32BE(w, 4); b.writeUInt32BE(h, 8); b.writeUInt16BE(1, 20); b.writeUInt16BE(2, 22); return b; };
+  const seq2 = Buffer.alloc(4); seq2.writeUInt32BE(2);
+  return Buffer.concat([PNG_SIG, pngChunk('IHDR', ihdr), pngChunk('acTL', actl), pngChunk('fcTL', fctl(0)), pngChunk('IDAT', frame(noise)), pngChunk('fcTL', fctl(1)), pngChunk('fdAT', Buffer.concat([seq2, frame(true)])), pngChunk('IEND', Buffer.alloc(0))]);
+};
+// The alpha of one pixel (x, y) of a picture given as a data: URL, decoded in page p.
+const alphaAt = (p, src, x, y) => p.evaluate(async ([src, x, y]) => { const i = new Image(); i.src = src; await i.decode(); const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; const g = c.getContext('2d'); g.drawImage(i, 0, 0); return g.getImageData(x, y, 1, 1).data[3]; }, [src, x, y]);
 // A paste or a drop made in a page or a window's frame (where: a Page, or a window's ikey on page p): a DataTransfer
 // holding these files (and text), sent as a ClipboardEvent to the element with focus, or as a DragEvent (dragover,
 // then drop) to the element at x, y. Returns whether the page's own code took it (preventDefault).
@@ -6374,6 +6394,10 @@ const SUITES = [
     ok(/\| \*\*Paste a picture\*\* \|[^|]*Ctrl\+V/.test(readme) && /ClipboardAllowedForUrls/.test(readme), 'the README says how to paste a picture, and tells IT how to allow the Paste button ahead of time');
     ok(/\| `file` \| `\(file, \{ reason \}\)` \|/.test(sdkDoc) && /new Picture window/.test(sdkDoc), 'the SDK guide has the file event, and says what happens to a picture pasted or dropped in a widget');
     ok(/\{ src, w, h, name, bytes \}/.test(dataDoc) && /"b21pic"/.test(dataDoc), 'the data format guide has the Picture’s content and how Board history keeps pictures');
+    ok(/`preventDefault\(\)` in a `paste` or `drop` listener on the document or an element\./.test(sdkDoc) && /In a widget uploaded in Developer mode, they do nothing\./.test(sdkDoc),
+      'the SDK guide says where a widget takes a paste or drop itself (a listener on window runs too late), and that one uploaded in Developer mode passes nothing on');
+    ok(/A still over 1 MB or 3840 px is redrawn, 2560 px at most\./.test(row) && /On a touch screen, tap \*Paste\* in a Picture window or its menu\./.test(readme) && /data:` URL over 32 KB in a top-level field/.test(dataDoc),
+      'the README says a still is redrawn at 2560 px at most and where Paste is on a touch screen; the data format guide says which content Board history keeps once');
 
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
@@ -6423,11 +6447,11 @@ const SUITES = [
     L = await picLook(page); let f = fits(L);
     ok(f.inside && f.touches && !f.covers && Math.abs(f.ratio - 64 / 48) < 0.02, `Whole picture: all of it shows, as large as fits, in its own shape (${JSON.stringify(L.box)} in ${L.vw} × ${L.vh})`);
     ok(L.behind === 'rgb(255, 255, 255)' && L.around === 'rgb(255, 255, 255)', `white behind the picture, the window’s own color around it (${L.behind} / ${L.around})`);
-    ok(await picMenu(page) === 'Open… | — | ✓ Whole picture | Crop to fill | — | Remove picture', `the window menu (${await picMenu(page)})`);
+    ok(await picMenu(page) === 'Open… | Paste | — | ✓ Whole picture | Crop to fill | — | Remove picture', `the window menu (${await picMenu(page)})`);
     await ytChoose(page, 'Crop to fill', 'image:1');
     L = await picLook(page); f = fits(L);
     ok(f.covers && Math.abs(f.ratio - 64 / 48) < 0.02 && (await picConf(page) || {}).fit === 'fill', `Crop to fill: the picture covers the window in its own shape, saved as a setting (${JSON.stringify(await picConf(page))})`);
-    ok(await picMenu(page) === 'Open… | — | Whole picture | ✓ Crop to fill | — | Remove picture', `and the menu shows it (${await picMenu(page)})`);
+    ok(await picMenu(page) === 'Open… | Paste | — | Whole picture | ✓ Crop to fill | — | Remove picture', `and the menu shows it (${await picMenu(page)})`);
     await ytChoose(page, 'Whole picture', 'image:1');
     ok(fits(await picLook(page)).inside && (await picConf(page) || {}).fit === 'whole', 'Whole picture again');
     // Open… from the window menu shows the file dialog too.
@@ -6452,10 +6476,11 @@ const SUITES = [
       ok(!!d2 && d2.src === `data:${type};base64,${buf.toString('base64')}` && d2.w === w && d2.h === h && L2.pic && L2.nw === w && L2.nh === h && !L2.err,
         `${name} opens and shows, kept as it is (${d2 && String(d2.src).slice(0, 24)}…, ${L2.nw} × ${L2.nh}${L2.err ? ', ' + L2.err : ''})`);
     }
-    for (const [name, buf, type] of [['Big dance.gif', padGif(FIXTURE('picture-animated.gif'), 1.5e6), 'image/gif'], ['Big spin.webp', padWebp(FIXTURE('picture-animated.webp'), 1.5e6), 'image/webp']]) {
+    for (const [name, buf, type, w] of [['Big dance.gif', padGif(FIXTURE('picture-animated.gif'), 1.5e6), 'image/gif', 32], ['Big spin.webp', padWebp(FIXTURE('picture-animated.webp'), 1.5e6), 'image/webp', 32],
+      ['Blink.png', apng(40, 30, false), 'image/png', 40], ['Big blink.png', apng(800, 800, true), 'image/png', 800]]) {
       await picOpen(page, picFile(name, buf, type), ik2);
       const d2 = await picData(page, ik2), L2 = await picLook(page, ik2);
-      ok(!!d2 && d2.src === `data:${type};base64,${buf.toString('base64')}` && d2.bytes === buf.length && L2.nw === 32, `an animation over 1 MB (${name}, ${(buf.length / 1e6).toFixed(1)} MB) is kept byte for byte, so it still moves`);
+      ok(!!d2 && d2.src === `data:${type};base64,${buf.toString('base64')}` && d2.bytes === buf.length && L2.nw === w, `an animation (${name}, ${(buf.length / 1e6).toFixed(2)} MB) is kept byte for byte, so it still moves (${d2 && String(d2.src).slice(0, 22)}, ${d2 && d2.w} × ${d2 && d2.h})`);
     }
 
     // Files turned away, kindly, in an empty window: nothing is saved. Then a good one shows and the message goes.
@@ -6494,6 +6519,33 @@ const SUITES = [
     ok(!!d && /^data:image\/webp;base64,/.test(d.src) && d.w === 2560 && d.h === 1280, `a ${(logo.length / 1e6).toFixed(1)} MB PNG with transparency is drawn again at 2560 as a WebP, which keeps the transparency (${d && String(d.src).slice(0, 22)}, ${d && d.w + ' × ' + d.h})`);
     c = await contentOf(page, ik4);
     ok(Math.abs(c.w - 720) <= 2 && Math.abs(c.h - 360) <= 2, `and the window takes the new picture’s shape (${c.w} × ${c.h})`);
+    // A WebP still over 1.2 MB is made again at a lower quality, as a JPEG is.
+    const confetti = await drawPic(page, 2560, 1280, 'image/png', { noise: 255, alpha: true });
+    await picOpen(page, picFile('Confetti.png', confetti, 'image/png'), ik4);
+    d = await picData(page, ik4);
+    const webp9 = await page.evaluate(async b64 => {
+      const bmp = await createImageBitmap(new Blob([Uint8Array.from(atob(b64), x => x.charCodeAt(0))], { type: 'image/png' }));
+      const cv = document.createElement('canvas'); cv.width = 2560; cv.height = 1280;
+      const g = cv.getContext('2d'); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, 2560, 1280);
+      return (await new Promise(r => cv.toBlob(r, 'image/webp', 0.9))).size;
+    }, confetti.toString('base64'));
+    ok(!!d && d.name === 'Confetti.png' && /^data:image\/webp/.test(d.src) && webp9 > 1.2e6 && d.bytes < webp9 * 0.9, `with transparency, a picture still over 1.2 MB is saved at a lower quality (${d && (d.bytes / 1e6).toFixed(2)} MB, not ${(webp9 / 1e6).toFixed(2)} MB)`);
+    // Transparency only at the edges, a few pixels of a large picture: rounded corners, a thin clear border. Kept clear.
+    for (const [name, w, h, o] of [['Card.png', 2400, 1600, { noise: 31, round: 24 }], ['Sticker.png', 1600, 1200, { noise: 31, margin: 4 }]]) {
+      const buf = await drawPic(page, w, h, 'image/png', o);
+      await picOpen(page, picFile(name, buf, 'image/png'), ik4);
+      d = await picData(page, ik4);
+      const a = d && d.src ? await alphaAt(page, d.src, 1, 1) : 255;
+      ok(!!d && d.name === name && !/^data:image\/jpeg/.test(d.src) && a < 128, `a ${(buf.length / 1e6).toFixed(1)} MB PNG clear only at its edges (${o.round ? 'rounded corners' : 'a 4 px border'}) stays clear there (${d && String(d.src).slice(0, 22)}, corner alpha ${a})`);
+    }
+    // Far taller or wider than the window's box: the window stays within 720 × 540, at its least size across, and the
+    // whole picture shows inside it.
+    for (const [name, w, h] of [['Timeline.png', 300, 2400], ['Banner.png', 3000, 200]]) {
+      await picOpen(page, picFile(name, await drawPic(page, w, h, 'image/png'), 'image/png'), ik4);
+      c = await contentOf(page, ik4); L = await picLook(page, ik4);
+      ok(((await picData(page, ik4)) || {}).name === name && c.w <= 722 && c.h <= 542 && (Math.abs(c.w - 160) <= 2 || Math.abs(c.h - 120) <= 2) && fits(L).inside && fits(L).touches,
+        `a ${w} × ${h} picture: its window stays within 720 × 540 (${c.w} × ${c.h}), the whole picture inside it`);
+    }
     const banner = await drawPic(page, 4000, 300, 'image/jpeg', { q: 0.7 });
     await picOpen(page, picFile('Banner.jpg', banner, 'image/jpeg'), ik4);
     d = await picData(page, ik4);
@@ -6510,6 +6562,23 @@ const SUITES = [
     await page.reload(); await boardUp(page);
     ok(await eventually(async () => (await picLook(page, ik2)).src === before2 && (await picLook(page, ik2)).pic), 'a reload shows the same picture');
     ok((await picConf(page, ik2) || {}).fit === 'fill' && fits(await picLook(page, ik2)).covers, 'and keeps Crop to fill');
+
+    // At its least size, 160 × 120, a message and the buttons still fit in the window.
+    const ik6 = await addWin(page, 'image');
+    await page.evaluate(ik => window.__board21.setRect(ik, Object.assign({}, window.__board21.state.insts.get(ik).rect, { w: 160, h: 160 })), ik6); await page.waitForTimeout(400);
+    await picOpen(page, picFile('notes.png', Buffer.from('These are my notes, not a picture.'), 'image/png'), ik6, PMSG.type);
+    const tiny = await picWin(page, ik6).locator('html').evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect(); return { vw: innerWidth, vh: innerHeight, err: r('err').top, open: r('open').bottom, paste: r('paste').bottom }; }).catch(() => ({}));
+    ok(tiny.vw === 160 && tiny.vh === 120 && tiny.err >= 0 && tiny.open <= tiny.vh + 0.5 && tiny.paste <= tiny.vh + 0.5, `at 160 × 120, the message and the buttons fit in the window (${JSON.stringify(tiny)})`);
+    // A picture that takes a while to open: after a moment the window says so, with no buttons showing first.
+    await page.evaluate(ik => window.__board21.setRect(ik, Object.assign({}, window.__board21.state.insts.get(ik).rect, { w: 480, h: 400 })), ik6); await page.waitForTimeout(400);
+    await picWin(page, ik6).locator('html').evaluate(() => { const make = window.createImageBitmap; window.createImageBitmap = (...a) => new Promise(r => setTimeout(r, 1500)).then(() => make.apply(window, a)); });
+    await picWin(page, ik6).locator('#file').setInputFiles(picFile('Slow.png', small, 'image/png'));
+    const waiting = () => picWin(page, ik6).locator('html').evaluate(() => { const w = document.getElementById('wait'), box = document.querySelector('#ask .box'); return { text: w ? w.textContent : null, shown: !!w && w.offsetHeight > 0, role: w && w.getAttribute('role'), box: getComputedStyle(box).visibility }; }).catch(() => ({}));
+    await page.waitForTimeout(150);
+    const soon = await waiting();
+    ok(await eventually(async () => { const x = await waiting(); return x.text === 'Opening…' && x.shown && x.role === 'status' && x.box === 'hidden'; }, 1300) && !soon.shown && soon.box === 'hidden',
+      `while a picture takes a while, the window says “Opening…” after a moment, with no buttons showing (at first: ${JSON.stringify(soon)})`);
+    ok(await eventually(async () => (await picLook(page, ik6)).pic) && (await waiting()).text === '', 'then the picture shows, and “Opening…” goes');
 
     // Dark: the empty window and the space around a picture follow the theme; white stays behind the picture.
     await openSettings(page); await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(500);
@@ -6621,6 +6690,28 @@ const SUITES = [
     await picWin(page, p2).locator('#paste').click({ timeout: 3000 }).catch(() => {});
     ok(await eventually(async () => (await picLook(page, p2)).err === PMSG.blocked, 4000), `when the browser won’t let 21Board see the clipboard, it says so (${(await picLook(page, p2)).err})`);
     await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+    // An SVG and a PNG on the clipboard, as a drawing app may copy: Paste uses the PNG.
+    const both = await page.evaluate(async b64 => {
+      const png = new Blob([Uint8Array.from(atob(b64), x => x.charCodeAt(0))], { type: 'image/png' }), svg = new Blob(['<svg xmlns="http://www.w3.org/2000/svg" width="90" height="60"/>'], { type: 'image/svg+xml' });
+      await navigator.clipboard.write([new ClipboardItem({ 'image/svg+xml': svg, 'image/png': png })]);
+      return (await navigator.clipboard.read()).map(i => i.types.join(' ')).join(', ');
+    }, small.toString('base64')).catch(e => 'not written: ' + e.message);
+    const p3 = await freshPic(page);
+    await picWin(page, p3).locator('#paste').click({ timeout: 3000 }).catch(() => {});
+    ok(/image\/svg\+xml/.test(both) && await eventually(async () => ((await picData(page, p3)) || {}).w === 90 && /^data:image\/png/.test(((await picData(page, p3)) || {}).src)),
+      `with an SVG and a PNG on the clipboard (${both}), Paste uses the PNG (${(await picLook(page, p3)).err || 'no message'})`);
+    // On a touch screen, the Picture tile can bring back a closed Picture window with its picture. Its menu has Paste,
+    // which puts the clipboard's picture in place of the old one.
+    await copyPic(page, tall);
+    await page.click('.picker-btn.left'); await page.waitForTimeout(250); await page.click('[data-widget="image"]');
+    ok(await eventually(async () => (await picLook(page, 'image:1')).pic) && ((await picData(page, 'image:1')) || {}).w === 90, 'the Picture tile brings back the closed Picture window, with its picture');
+    ok(await picMenu(page, 'image:1') === 'Open… | Paste | — | ✓ Whole picture | Crop to fill | — | Remove picture', `its menu has Paste (${await picMenu(page, 'image:1')})`);
+    const menuPaste = () => ytChoose(page, 'Paste', 'image:1').catch(() => page.keyboard.press('Escape'));
+    await menuPaste();
+    ok(await eventually(async () => ((await picData(page, 'image:1')) || {}).w === 60), 'Paste in the menu puts the clipboard’s picture in its place');
+    await copyText(page, 'Spelling words');
+    await menuPaste();
+    ok(await eventually(async () => await page.locator('.toast', { hasText: PMSG.empty }).count() > 0) && ((await picData(page, 'image:1')) || {}).w === 60, 'with no picture on the clipboard, it says so, and the picture stays');
 
     // Windows locked: no new window, and the board says how to unlock.
     const setLock = async on => {
@@ -6668,6 +6759,21 @@ const SUITES = [
     await sendFiles(page, note, 'drop', [picFile('Class.21board', file21, '')], { x: 20, y: 20 });
     ok(await eventually(async () => /Import “Class”/.test(await page.locator('#modal.open').innerText().catch(() => ''))), 'a .21board file dropped on a window asks how to import it, as on the board');
     await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(300);
+    // Several pictures dropped on a Picture window: a window for each, as on the board. That window keeps its own.
+    n = await count();
+    const three = await sendFiles(page, dropped[0], 'drop', [picFile('a.png', small, 'image/png'), picFile('b.png', tall, 'image/png'), picFile('c.png', small, 'image/png')], { x: 20, y: 20 });
+    ok(three && await eventually(async () => await count() === n + 3) && ((await picData(page, dropped[0])) || {}).name === 'Tall.png', `three pictures dropped on a Picture window open a window each (${await count() - n}), and it keeps its own picture`);
+    ok(await eventually(async () => (await Promise.all((await picWins(page)).slice(-3).map(async w => ((await picData(page, w.ik)) || {}).name))).join() === 'a.png,b.png,c.png'), 'each with its picture');
+    // More than 10 pictures at once, on the board or on a window: 10 open, and the board says to drop the rest again.
+    for (const [where, label] of [[page, 'on the board'], [note, 'on a window']]) {
+      for (const w of (await picWins(page)).filter(w => w.open)) await page.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), w.ik);
+      await page.locator('.toast').evaluateAll(ts => ts.forEach(t => t.remove())).catch(() => {});
+      n = await count();
+      await sendFiles(page, where, 'drop', Array.from({ length: 12 }, (_, i) => picFile(`p${i + 1}.png`, small, 'image/png')), { x: where === page ? 500 : 20, y: where === page ? 400 : 20 });
+      ok(await eventually(async () => await count() === n + 10) && await eventually(async () => await page.locator('.toast', { hasText: 'Opened 10 pictures. Drop the rest again.' }).count() > 0),
+        `12 pictures dropped ${label}: 10 open, and the board says “Opened 10 pictures. Drop the rest again.” (${await count() - n})`);
+    }
+    for (const w of (await picWins(page)).filter(w => w.open)) await page.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), w.ik);
 
     // A widget uploaded in Developer mode is sealed off: a paste in it isn't passed on.
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]');
@@ -6759,6 +6865,17 @@ const SUITES = [
     ok((m1 && m1.wins[ik] && m1.wins[ik][5]) === 'Volcano.jpg', `the version’s list of windows shows the picture’s name, not its data (${m1 && m1.wins[ik] && m1.wins[ik][5]})`);
     const back = await a.evaluate(id => window.__board21.history.get(id).then(r => r.body.exp.instances.find(i => i.widgetId === 'image').data.src), v1);
     ok(back === pic, 'reading a version gives its picture back whole');
+    // Tidying board history (2 s after each version) reads no picture: their sizes are in their keys.
+    const read = await a.evaluate(async () => {
+      const got = [], getAll = IDBObjectStore.prototype.getAll, get = IDBObjectStore.prototype.get;
+      const watch = (r, store) => { if (store === 'photo') r.addEventListener('success', () => [].concat(r.result || []).forEach(x => { if (x && /^pic-/.test(x.key)) got.push(x.key); })); return r; };
+      IDBObjectStore.prototype.getAll = function (...x) { return watch(getAll.apply(this, x), this.name); };
+      IDBObjectStore.prototype.get = function (...x) { return watch(get.apply(this, x), this.name); };
+      try { await window.__board21.history.prune(); } finally { IDBObjectStore.prototype.getAll = getAll; IDBObjectStore.prototype.get = get; }
+      return got;
+    });
+    h = await H();
+    ok(read.length === 0 && h.pics.length === 1, `tidying board history reads no picture (${read.length} read), and keeps the one its versions name (${h.pics.length})`);
     // Going back after Remove picture, and putting back a deleted window.
     await ytChoose(a, 'Remove picture', ik);
     await a.evaluate(id => window.__board21.history.restore(id), v1);

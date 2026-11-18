@@ -235,9 +235,10 @@ and links are stripped). Up to 24 items (a swatch row counts as one, with up to 
 
 Tapping anywhere inside your widget brings its window to the front automatically.
 
-**Pasting and dropping files.** A paste your widget doesn't take, outside a text field, goes to the board. So does a
-dropped file. A picture opens in a new Picture window, and a `.21board` file imports. A dropped file never opens in
-place of your widget. To take them yourself, call `preventDefault()` in a `paste` or `drop` listener.
+**Pasting and dropping files.** In a built-in widget, a paste your widget doesn't take, outside a text field, goes to
+the board. So does a dropped file. A picture opens in a new Picture window, and a `.21board` file imports. In a widget
+uploaded in Developer mode, they do nothing. A dropped file never opens in place of your widget. To take them
+yourself, call `preventDefault()` in a `paste` or `drop` listener on the document or an element.
 
 ---
 
