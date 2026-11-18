@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.17-6';
-  const BOARD_BUILD = '316a9de6';
+  const BOARD_VERSION = '2026.11.18-1';
+  const BOARD_BUILD = 'ae59880d';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -112,7 +112,8 @@
 
     awake: 'off',            // Stay awake: 'off' | 'on' (while 21Board shows). An older 'hours' (school hours) reads as 'on'.
 
-    clock: 'date',           // Clock in the corner: 'off' | 'time' | 'date' (time and date, the default)
+    clock: 'auto',           // Clock in the corner: 'on' | 'off' | 'auto' (only in full screen). An older 'date' (Time and
+                             // date, the old default) reads as 'auto', 'time' as 'on' (clockMode).
 
     // The whole board's, like the theme and accent: exported, and with Board Sync on every device (section 12b).
     letters: 'standard'      // Text style: 'standard' (the device's own font) | 'legible' (Atkinson Hyperlegible) | 'early' (Andika)
@@ -3713,9 +3714,9 @@
   //   Classroom    Lock windows in place, Go back to an earlier version (Board history, as a column beside
   //                Settings: section 13c), Close all windows, Stay awake
   //   This page    Saved widgets ▸
-  //   Appearance   Theme, Background ▸, Accent color, Text style ▸, Clock in the corner, Board shape
-  //   Advanced ▸   Widget Picker, Size of windows and menus, moving windows, board history, backups and storage,
-  //                Developer mode, About
+  //   Appearance   Theme, Background ▸, Accent color, Text style ▸, Board shape
+  //   Advanced ▸   Widget Picker, Clock in the corner, Size of windows and menus, moving windows, board history, backups
+  //                and storage, Developer mode, About
   // ▸ is a group shown as one row with its value, that opens in place (settingsGroup; Settings.groups). A group that
   // is closed is still in the page, hidden, so whatever looks for its parts (refreshStatus, the clock's fit note)
   // finds them.
@@ -4044,24 +4045,42 @@
   }
 
   // ---- Clock in the corner
-  // Settings → Appearance → "Clock in the corner": Off, Time or Time and date (the default). A small clock beside a
-  // Widget Picker button, on every board and page, without taking a window: teachers and students check the time all
-  // day, a Clock window would have to be on every page, and in fullscreen the device's own clock is hidden.
+  // Settings → Advanced → "Clock in the corner": On, Off or Auto (the default: only while 21Board is full screen). A small
+  // clock beside a Widget Picker button, on every board and page, without taking a window: teachers and students check
+  // the time all day, a Clock window would have to be on every page, and in full screen the device's own clock is
+  // hidden (a Chromebook's shelf, Windows' taskbar). In a tab or a window, maximized or not, the shelf is there with its
+  // clock, so Auto leaves the board's out. Its row sits beside Widget Picker's: it goes where ▦ goes.
   // Where: on the inner side of the ▦ button in the bottom right corner, or of the only one when Settings → Advanced
   // → Widget Picker shows the controls in one corner. Bottom right is where Chromebooks (and Windows) show the time, so it's
   // where people already look for it. Drawn like ▦ and as tall, at the board's size (--ui, like the other chrome).
   // It never covers anything: taps go through it to the windows under it (pointer-events: none); toasts keep clear
   // of it (body.clock-on in index.html); it hides while its corner's Widget Picker is open or the other corner's
-  // reaches it; and where the screen is too narrow, "Time and date" shows only the time, and the time hides
-  // (CornerClock.place). It changes exactly on the minute, in this device's way of writing times.
+  // reaches it; and where the screen is too narrow, it shows only the time, and then hides (CornerClock.place). It
+  // changes exactly on the minute, in this device's way of writing times.
   const CLOCK_GAP = 8;          // CSS px between the clock and what it must keep clear of
   const CLOCK_TOASTS = 320;     // CSS px of the bottom middle always left for toasts
-  // Off, Time or Time and date. A value this release doesn't know (another release's: the page and this script can
-  // be from different versions for a launch or two; or a damaged record) is the default, on the board and in Settings.
-  const clockMode = () => ['off', 'time', 'date'].includes(S.settings.clock) ? S.settings.clock : DEFAULT_SETTINGS.clock;
+  // On, Off or Auto. Before 2026.11.18-1 the choices were Off, Time and Time and date: "Time and date" ('date', the old
+  // default, saved by most devices without anyone choosing it) reads as Auto, and "Time" ('time': someone chose a
+  // clock) as On. Nothing is rewritten. A value this release doesn't know (another release's: the page and this script
+  // can be from different versions for a launch or two; or a damaged record) is the default, on the board and in
+  // Settings. (An older release reads 'on' and 'auto' as its own default, Time and date, the same way.)
+  const clockMode = () => {
+    const v = S.settings.clock;
+    return v === 'on' || v === 'off' || v === 'auto' ? v : v === 'time' ? 'on' : v === 'date' ? 'auto' : DEFAULT_SETTINGS.clock;
+  };
+  // Auto: is 21Board full screen now? Its own Fullscreen (⛶, the Fullscreen API: fullscreenElement); the browser's or
+  // app's window in full screen without it (F11 or the Chromebook's full screen key, an app opened full screen on
+  // Android: display-mode fullscreen; Chrome 155's display-state fullscreen too); kiosk mode (always full screen, no ⛶).
+  // Not a tab, a maximized window or an installed app's own window. Chrome 153 says display-mode fullscreen for its
+  // window's full screen, in a tab and an app's window, but not for the Fullscreen API, which only fullscreenElement
+  // tells; it knows display-state only behind a flag (no value matches). Nothing is guessed from the window's size: an
+  // installed app's window can fill the screen and keep the shelf, and an iPad Home Screen app fills it under its
+  // status bar, which shows the time.
+  const FULL_MEDIA = ['(display-mode: fullscreen)', '(display-state: fullscreen)'].map(q => { try { return window.matchMedia ? window.matchMedia(q) : null; } catch (e) { return null; } }).filter(Boolean);
+  const fullScreen = () => KIOSK || !!(document.fullscreenElement || document.webkitFullscreenElement) || FULL_MEDIA.some(m => m.matches);
   const CornerClock = {
-    el: null, timer: 0, side: 'right', fit: '', bare: false, fmt: null,
-    on: () => !LAB && clockMode() !== 'off',
+    el: null, timer: 0, side: 'right', fit: '', bare: false, fmt: null, was: false, listening: false,
+    on: () => !LAB && (clockMode() === 'on' || (clockMode() === 'auto' && fullScreen())),
     init() {
       const el = this.el = document.createElement('div');
       el.className = 'corner-clock';
@@ -4078,21 +4097,44 @@
       }
       panel.addEventListener('animationend', () => this.cover());
       // Timers sleep while the page is hidden or the device is asleep: the right time as soon as it shows again.
-      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && this.on()) this.tick(); });
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && !this.follow() && this.on()) this.tick(); });
       // A font for the text style finishing loading changes its width: measure again.
       if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => this.place());
     },
     apply() {
-      if (!this.on()) {
+      this.listen();
+      this.was = this.on();
+      if (!this.was) {
         clearTimeout(this.timer);
         if (this.el) this.el.hidden = true;
         this.fit = '';
         document.body.classList.remove('clock-on');
         notifyCorners();
+        this.note();
         return;
       }
       if (!this.el) this.init();
       this.tick();
+    },
+    // Auto: full screen coming or going (⛶, Escape, F11 or the full screen key, an app's window) shows or hides it at
+    // once. A browser that says nothing else still resizes the page. (Listened for from the first apply, Auto or not:
+    // follow costs nothing while nothing changes.)
+    listen() {
+      if (this.listening || LAB) return;
+      this.listening = true;
+      const follow = () => { this.follow(); };
+      document.addEventListener('fullscreenchange', follow);
+      document.addEventListener('webkitfullscreenchange', follow);
+      window.addEventListener('resize', follow);
+      for (const m of FULL_MEDIA) {
+        try { if (m.addEventListener) m.addEventListener('change', follow); else if (m.addListener) m.addListener(follow); } catch (e) { /* the resize still tells */ }
+      }
+    },
+    // Shown or hidden again if that has changed (true), or nothing (false).
+    follow() {
+      if (this.on() === this.was) return false;
+      this.apply();
+      return true;
     },
     tick() {
       clearTimeout(this.timer);
@@ -4121,7 +4163,7 @@
       let reach = 0;
       this.fit = '';
       if (!this.bare) {
-        for (const withDate of clockMode() === 'date' ? [true, false] : [false]) {
+        for (const withDate of [true, false]) {
           el.innerHTML = this.html(now, withDate);
           el.hidden = false;
           reach = this.room();
@@ -4133,6 +4175,10 @@
       if (reach) document.body.style.setProperty('--clock-room', Math.ceil(reach) + 'px');
       this.cover();
       notifyCorners();
+      this.note();
+    },
+    // Settings, if open, says what doesn't fit (the clock came or went, or the window changed).
+    note() {
       const note = Settings.isOpen && $('#set-clock-fit', Settings.body);
       if (note) note.textContent = this.fitNote();
     },
@@ -4155,10 +4201,10 @@
       const side = Picker.side, r = el.getBoundingClientRect(), p = side && Picker.el.getBoundingClientRect();
       el.classList.toggle('covered', !!side && (side === this.side || (r.left < p.right && p.left < r.right && r.top < p.bottom && p.top < r.bottom)));
     },
-    // For Settings: what doesn't fit in this window right now ('' when it all does).
+    // For Settings: what doesn't fit in this window right now ('' when it all does, or it isn't meant to show).
     fitNote() {
       if (!this.on() || this.bare) return '';
-      return !this.fit ? 'There isn’t room for it in this window right now.' : clockMode() === 'date' && this.fit === 'time' ? 'Only the time fits in this window right now.' : '';
+      return !this.fit ? 'There isn’t room for it in this window right now.' : this.fit === 'time' ? 'Only the time fits in this window right now.' : '';
     }
   };
 
@@ -4187,16 +4233,17 @@
     Promise.resolve().then(() => { cornersDue = false; for (const w of S.wins.values()) if (w.inst && w.inst.maximized) w.notifyInfo(); });
   }
 
-  // (No hint: the clock shows the moment it's chosen. Only what doesn't fit right now is said, by CornerClock.place.)
+  // Settings → Advanced, after Widget Picker. What Auto does is said; On and Off say themselves. What doesn't fit right
+  // now (when it's meant to show) is said too, by CornerClock.place.
   function clockSettings(sw, seg) {
     if (LAB) return '';
-    return `<div class="row"><div><div class="lbl">Clock in the corner</div>${deviceOnly() ? `<div class="hint">${deviceOnly()}</div>` : ''}<div class="hint" id="set-clock-fit">${esc(CornerClock.fitNote())}</div></div>
-      ${seg('clock', clockMode(), [['off', 'Off'], ['time', 'Time'], ['date', 'Time and date']])}</div>`;
+    return `<div class="row"><div><div class="lbl">Clock in the corner</div>${deviceOnly() ? `<div class="hint">${deviceOnly()}</div>` : ''}<div class="hint">Auto: only in full screen, where the device’s own clock is hidden.</div><div class="hint" id="set-clock-fit">${esc(CornerClock.fitNote())}</div></div>
+      ${seg('clock', clockMode(), [['on', 'On'], ['off', 'Off'], ['auto', 'Auto']])}</div>`;
   }
 
   function clockAct(act, val) {
     if (act !== 'clock') return false;
-    if (['off', 'time', 'date'].includes(val)) updateSettings({ clock: val });
+    if (['on', 'off', 'auto'].includes(val)) updateSettings({ clock: val });
     return true;
   }
 
@@ -4621,6 +4668,7 @@
       const dev = !LAB && !KIOSK;
       const advanced = `
         <div class="row"><div class="lbl">Widget Picker</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']])}</div>
+        ${clockSettings(sw, seg)}
         ${scaleSettingsRow()}
         <h4>Moving windows</h4>
         <div class="row stack"><div class="lbl">Windows stop at each other’s edges</div>${seg('snap', snap, [['off', 'Off'], ['light', 'Light'], ['medium', 'Medium'], ['firm', 'Firm']])}</div>
@@ -4646,7 +4694,7 @@
       // The keyboard stays on the control it was on (a group's row, a choice): Settings is drawn afresh below.
       const was = this.body.contains(document.activeElement) && document.activeElement.dataset.act ? document.activeElement : null;
       const link = this.linkShown = Link.supported ? linkSettings(sw, seg) : '';   // (see linkChanged)
-      const inside = ['Widget Picker', 'size', 'moving windows'].concat(!LAB && BoardHistory.enabled() ? ['history'] : [], LAB ? [] : ['backups'], dev ? ['developer'] : [], ['erase']);
+      const inside = ['Widget Picker'].concat(LAB ? [] : ['clock'], ['size', 'moving windows'], !LAB && BoardHistory.enabled() ? ['history'] : [], LAB ? [] : ['backups'], dev ? ['developer'] : [], ['erase']);
 
       const html = `
         ${note ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(note.title)}</div><div class="hint">${esc(note.text)}</div></div><button class="btn small" data-act="backup">${svg('export')}Back up now</button></div>` : ''}
@@ -4666,7 +4714,6 @@
           <div class="swatches" role="radiogroup" aria-label="Accent color">${Object.entries(ACCENTS).map(([k, a]) => { const on = (st.accent || 'blue') === k;
             return `<button class="swatch${on ? ' on' : ''}" style="background:${resolvedTheme() === 'dark' ? a[1] : a[0]}" role="radio" aria-checked="${on}" data-act="accent" data-val="${k}" title="${a[2]}" aria-label="${a[2]} accent"></button>`; }).join('')}</div></div>
         ${letterSettings()}
-        ${clockSettings(sw, seg)}
         ${shapeSettingsRow(seg)}
 
         <div class="gap"></div>

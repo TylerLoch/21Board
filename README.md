@@ -154,10 +154,6 @@ Settings opens.
     (Andika by SIL, with a and g the way children learn to write them). Easier reading, not a dyslexia font; Notes'
     Chalkboard and Whiteboard keep their own lettering. With Board Sync, on all your devices. (Before 2026.11.17-2
     it was called *Letters*, and stayed on each device.)
-  - **Clock in the corner:** *Off*, *Time* or *Time and date* (the default). A small clock beside the ▦ button in
-    the bottom right corner (beside the only ▦ when the Widget Picker is in one corner), on every page and in kiosk
-    mode, as tall as ▦. Taps go through it to the windows under it. It hides while that corner's Widget Picker is
-    open, and where the window is too narrow for it (*Time and date* shows only the time first). This device only.
   - **Board shape** (this page): *Widescreen* (16:9, the same on every screen; the default) or *Fill* (the whole
     window). See [Board shape and size](#board-shape-and-size).
 - **Advanced ▸** (an amber dot on it only when a backup is overdue: none for a week, or none yet and the board has
@@ -165,6 +161,14 @@ Settings opens.
   and so does Board Sync writing this device's file, a full backup too. Whether the browser has promised to keep
   21Board's data is said inside, under *Protected storage*, not with the dot):
   - **Widget Picker:** both corners, or only left or right.
+  - **Clock in the corner:** *On*, *Off* or *Auto* (the default): the time and date beside the ▦ button in the bottom
+    right corner (beside the only ▦ when the Widget Picker is in one corner), on every page, as tall as ▦. *Auto*
+    shows it only while 21Board is full screen, where the device's own clock is hidden: ⛶ Fullscreen, the browser
+    or app window in full screen (F11, the Chromebook's full screen key), and kiosk mode. Not in a tab or a window,
+    maximized or not, where the shelf or taskbar shows the time. Taps go through it to the windows under it. It hides
+    while that corner's Widget Picker is open, and where the window is too narrow for it (it shows only the time
+    first). This device only. (Before 2026.11.18-1 it was in Appearance, with *Off*, *Time* and *Time and date*:
+    *Time and date*, the old default, reads as *Auto*, and *Time* as *On*.)
   - **Size of windows and menus** (this page; default 80%).
   - **Moving windows:** *Windows stop at each other's edges* (Off, or Light, Medium and Firm: how hard you push to
     overlap them anyway) and *Drag windows from inside*.
