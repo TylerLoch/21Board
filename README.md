@@ -109,8 +109,8 @@ widget.
 ### Settings
 
 The gear in either Widget Picker opens Settings on that side. Rows marked ▸ are groups. Each shows what it's set to,
-such as a small preview, "Standard" or "3 widgets", and opens in place. Groups start closed each time Settings
-opens.
+such as a small preview, "Standard" or "3 widgets", and opens just below. The row you tapped stays put. Groups start
+closed each time Settings opens.
 
 - **At the top, when needed:** a save problem with *Back up now*, or *A new version is ready* with *Update now*.
 - **Board Sync**, in Chrome and Edge: one board on all your devices, the smartboard too, through a Google Drive
