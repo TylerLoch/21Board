@@ -30,8 +30,8 @@ async function freeBoard(page) {
 }
 
 // Settings, opened from the ▦ in that corner (left or right), with the groups named open: Settings starts with every
-// group closed, and a control inside one can't be tapped until it is open. The groups: 'saved' (This page → Saved
-// widgets), 'letters' and 'bg' (Appearance → Text style, Background) and 'advanced'. Settings already open on that side
+// group closed, and a control inside one can't be tapped until it is open. The groups: 'saved' (This page → Windows),
+// 'letters' and 'bg' (Appearance → Text style, Background) and 'advanced'. Settings already open on that side
 // stays open (its open groups too).
 async function openSettings(p, groups = [], side = 'left') {
   if (!await p.locator(`#settings.open.${side}`).count()) {
@@ -2238,7 +2238,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Settings: sections and groups, Auto theme, Saved widgets, windows stopping at edges, the dot on Advanced', async (browser) => {
+  ['Settings: sections and groups, Auto theme, This page › Windows, windows stopping at edges, the dot on Advanced', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: 'dark' });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -2277,22 +2277,33 @@ const SUITES = [
       `every set of choices in Settings has a name (${named.join('; ')})`);
     ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden,about hidden,code-license hidden,docs-license hidden' && !sh.missing.length && !sh.name,
       `every group starts closed, and is in the page, hidden (${sh.groups.join(', ')}); no page name field`);
-    // Saved widgets: how many there are, open or closed; open, the list says Open or Closed (no sizes).
+    // This page › Windows: how many there are, open or closed; open, the list says Open or Closed (no sizes).
     const saved = () => page.evaluate(() => ({ value: document.querySelector('#settings [data-val="saved"] .v').textContent, label: document.querySelector('#settings [data-val="saved"] .lbl').textContent,
       items: [...document.querySelectorAll('#grp-saved .inst')].map(i => i.querySelector('.meta').innerText.replace(/\s+/g, ' ')) }));
     let sv = await saved();
-    ok(sv.label === 'Saved widgets' && sv.value === 'None', `Saved widgets on an empty page: ${sv.value}`);
+    ok(sv.label === 'Windows' && sv.value === 'None' && await page.evaluate(() => document.getElementById('grp-saved').getAttribute('aria-label')) === 'Windows',
+      `This page › Windows on an empty page: ${sv.label}, ${sv.value}`);
     await page.keyboard.press('Escape');
     await page.evaluate(() => { const b = window.__board21; b.openWidget('notes'); b.openWidget('timer'); b.openWidget('dice'); }); await page.waitForTimeout(1200);
     await page.evaluate(() => window.__board21.closeWin('dice:1')); await page.waitForTimeout(400);
     await openSettings(page, ['saved']);
     sv = await saved();
-    ok(sv.value === '3 widgets' && sv.items.join(' | ') === 'Dice Closed | Notes Open | Timer Open' && await page.locator('#grp-saved .hint').first().textContent() === 'Closed widgets keep their content until you delete them here.',
-      `three widgets, one closed: “${sv.value}” (${sv.items.join(' | ')})`);
+    ok(sv.value === '3 windows' && sv.items.join(' | ') === 'Dice Closed | Notes Open | Timer Open' && await page.locator('#grp-saved .hint').first().textContent() === 'Closed windows keep their content until you delete them here.',
+      `three windows, one closed: “${sv.value}” (${sv.items.join(' | ')})`);
     await page.evaluate(() => window.__board21.deleteInstance('dice:1')); await page.waitForTimeout(400);
-    ok((await saved()).value === '2 widgets', 'one deleted: “2 widgets”');
+    ok((await saved()).value === '2 windows', 'one deleted: “2 windows”');
     await page.evaluate(() => window.__board21.deleteInstance('timer:1')); await page.waitForTimeout(400);
-    ok((await saved()).value === '1 widget', 'and then “1 widget”');
+    ok((await saved()).value === '1 window', 'and then “1 window”');
+    // While the board isn't being saved, the same name, and the hint says how long closed windows keep their content.
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await page.evaluate(() => { window.__board21.writer.failing = new Error('test'); });
+    await openSettings(page, ['saved']);
+    sv = await saved();
+    const unsavedHint = await page.locator('#grp-saved .hint').first().textContent();
+    await page.keyboard.press('Escape'); await page.evaluate(() => window.__board21.writer.clear()); await page.waitForTimeout(200);
+    ok(sv.label === 'Windows' && sv.value === '1 window' && unsavedHint === 'Closed windows keep their content while 21Board stays open.',
+      `while changes aren’t saved: still “Windows” (${sv.label}, ${sv.value}; ${unsavedHint})`);
+    await openSettings(page, ['saved']);
     // Windows stop at each other's edges: Off, or how hard a push overlaps them anyway (the old Snap switch and Push).
     await openSettings(page, ['advanced']);
     const snap = async v => { await page.click(`#settings [data-act="snap"][data-val="${v}"]`); await page.waitForTimeout(150);
@@ -2435,7 +2446,7 @@ const SUITES = [
     ok(!none && why === 'Last backup: never' && prot === 'Protected' && overdue && /\.21board$/.test(dl.suggestedFilename()) && await eventually(async () => !await dot(kp), 2000),
       `with storage protected: no dot on a new board; a dot when the last backup is 8 days old, gone once there is a new one (${[none, why, prot, overdue].join(', ')})`);
     await kept.close();
-    // The widget dev window: no Classroom features but Close all, no Board Sync; Saved widgets sits under Widget test mode.
+    // The widget dev window: no Classroom features but Close all, no Board Sync; This page › Windows sits under Widget test mode.
     const lab = await browser.newContext({ viewport: { width: 1100, height: 760 } });
     const lp = await lab.newPage();   // (its test widget throws on purpose)
     await lp.goto(BASE + '__dev/widget.html'); await lp.waitForTimeout(2500);
@@ -2566,7 +2577,7 @@ const SUITES = [
     ok(waiting.every(w => w.lines[0] === `21Board ${VERSION} (${SITES.about.build}) · Widget SDK protocol 1` && w.lines[1] === 'Offline copy 2026.11.19-1 (abcd1234)' && !w.hanging),
       `an update waiting, the offline copy has a line of its own, and no “·” ends a line (${waiting.map(w => `${w.at}: ${w.lines.join(' / ')}${w.hanging ? ' (a “·” ends a line)' : ''}`).join('; ')})`);
 
-    // Reading a license, Settings drawn again (a window opens, so Saved widgets changes) keeps the place, with its row
+    // Reading a license, Settings drawn again (a window opens, so Windows changes) keeps the place, with its row
     // still holding the keyboard, as after a tap.
     await open(page, ['about']);
     await page.click('#settings [data-act="group"][data-val="code-license"]');
@@ -5831,7 +5842,12 @@ const SUITES = [
     await page.goto(BASE); await boardUp(page); await freeBoard(page);
     await page.evaluate(() => window.__board21.openWidget('first-then-board'));
     ok(await connected(page), 'the First/Then Board opens and connects');
-    ok(await eventually(async () => { const x = await look(page); return x.first === 'Classwork' && x.then === 'Free Choice' && x.theme === 'theme-classic' && !x.firstDone; }), 'it starts with Classwork, then Free Choice');
+    ok(await eventually(async () => { const x = await look(page); return x.first === 'Classwork' && x.then === 'Free choice' && x.theme === 'theme-classic' && !x.firstDone; }), 'it starts with Classwork, then Free choice');
+    // For children: the cards in sentence case (iPad keeps its capital), FIRST and THEN in capitals, the stamp “All done!”.
+    const caps = await ft(page).locator('html').evaluate(() => ({ title: document.querySelector('.board-title-pill').innerText, first: document.getElementById('first-heading').innerText,
+      then: document.getElementById('then-heading').innerText, stamps: [...document.querySelectorAll('.done-stamp-text')].map(s => s.textContent + '/' + getComputedStyle(s).textTransform) }));
+    ok(caps.title === '⭐ FIRST ➔ THEN' && caps.first === 'FIRST' && caps.then === 'THEN' && caps.stamps.join() === 'All done!/none,All done!/none',
+      `FIRST and THEN stay in capitals; the done stamp says “All done!”, not in capitals (${JSON.stringify(caps)})`);
     let a;
     // Pick a card, mark it done, change the theme.
     const f = ft(page);
@@ -5847,6 +5863,10 @@ const SUITES = [
       return { off: [...rows.values()].map(r => Math.max(...r.map(t => t.top)) - Math.min(...r.map(t => t.top))), two: [...rows.values()].flat().filter(t => t.two).map(t => t.name) };
     });
     ok(cards.two.length > 0 && cards.off.every(d => d < 0.5), `in the card picker the pictures in each row share one top, two-line labels (${cards.two.join(', ')}) or not (rows off by ${cards.off.filter(d => d >= 0.5).map(d => d.toFixed(1)).join(', ') || 'none'} px)`);
+    const tiles = await f.locator('.aac-tile-label').allTextContents();
+    const titled = tiles.filter(t => /[ /&][A-Z]/.test(t.replace(/\biPad\b/g, 'ipad')) || !/^[A-Zi]/.test(t));
+    ok(tiles.length > 50 && !titled.length && tiles.includes('Sit at table') && tiles.includes('Free choice') && tiles.includes('iPad / tablet'),
+      `every card in the picker is in sentence case (${titled.join(', ') || tiles.slice(0, 8).join(', ') + '…'})`);
     await f.locator('#search-input').fill('zebra');
     const pickerSays = await f.locator('html').evaluate(() => [document.getElementById('picker-title').textContent, document.getElementById('search-input').placeholder, document.getElementById('search-input').getAttribute('aria-label'), document.getElementById('aac-grid').textContent].join(' | '));
     ok(pickerSays === 'Choose a First card | 🔍 Search cards | Search cards | No cards match.', `the card picker’s words (${pickerSays})`);
@@ -5863,7 +5883,7 @@ const SUITES = [
       const $ = id => document.getElementById(id), al = id => $(id).getAttribute('aria-label');
       return [al('btn-first'), al('btn-then'), al('btn-theme-icon'), al('btn-done-icon'), al('btn-swap'), $('first-done-text').textContent, $('then-done-text').textContent, $('both-done-text').textContent].join(' | ');
     });
-    ok(words === 'First, Math, done | Then, Free Choice | Theme | Mark done | Swap First and Then | First done | Then done | Both done', `each card is heard by its place, its picture and whether it’s done; the buttons say what they do (${words})`);
+    ok(words === 'First, Math, done | Then, Free choice | Theme | Mark done | Swap First and Then | First done | Then done | Both done', `each card is heard by its place, its picture and whether it’s done; the buttons say what they do (${words})`);
     const pressed = () => f.locator('html').evaluate(() => ['btn-toggle-first', 'btn-toggle-then'].map(id => document.getElementById(id).getAttribute('aria-pressed')).join(' | '));
     ok(await pressed() === 'true | false', `First done and Then done are heard as pressed or not (${await pressed()})`);
     // A second tab shows the same board; a change there comes back here, and the chime plays only where it was tapped.
@@ -5894,7 +5914,7 @@ const SUITES = [
     // The menu's words, with a tick where something is on: First done and Then done, Sound and Animation, the theme.
     // Themes and presets each under one heading, the themes in the pills' order.
     const ftMenu = () => page.evaluate(k => window.__board21.state.wins.get(k).menuItems.map(i => i.heading ? `[${i.label}]` : (i.checked ? '✓ ' : '') + i.label).join(' | '), KEY);
-    ok(await ftMenu() === '✓ First done | ✓ Then done | Mark both done | Clear done marks | Swap First and Then | ✓ Sound | ✓ Animation | [Theme] | 🌈 Classic | 🍂 Autumn | ✓ ❄️ Winter | 🌸 Spring | ☀️ Summer | 💜 Calm | [Presets] | Classwork ➔ Free Choice | Classwork ➔ iPad | Sit at Table ➔ Quiet Corner | Clean Up ➔ Playground | Math ➔ Snack Time',
+    ok(await ftMenu() === '✓ First done | ✓ Then done | Mark both done | Clear done marks | Swap First and Then | ✓ Sound | ✓ Animation | [Theme] | 🌈 Classic | 🍂 Autumn | ✓ ❄️ Winter | 🌸 Spring | ☀️ Summer | 💜 Calm | [Presets] | Classwork ➔ Free choice | Classwork ➔ iPad | Sit at table ➔ Quiet corner | Clean up ➔ Playground | Math ➔ Snack time',
       `the window menu says each thing once, with ticks where something is on (${await ftMenu()})`);
     await page.click('#menu [data-id="toggle_sound"]');
     await page.click(`.win[data-ikey="${KEY}"] .win-label`); await page.waitForTimeout(200);
@@ -5903,8 +5923,8 @@ const SUITES = [
       `the ticks follow: Sound off, Calm on (${await ftMenu()})`);
     await page.click(`.win[data-ikey="${KEY}"] .win-label`); await page.waitForTimeout(200);
     await page.click('#menu [data-id="swap"]');
-    ok(await eventually(async () => { const x = await look(page); const s = await saved(page); return x.first === 'Free Choice' && x.then === 'Math' && s.first.id === 'free-play'; }), 'Swap First and Then swaps the cards and saves');
-    ok(await eventually(() => ft(page).locator('html').evaluate(() => document.getElementById('btn-first').getAttribute('aria-label') === 'First, Free Choice, done' && document.getElementById('btn-then').getAttribute('aria-label') === 'Then, Math, done')),
+    ok(await eventually(async () => { const x = await look(page); const s = await saved(page); return x.first === 'Free choice' && x.then === 'Math' && s.first.id === 'free-play'; }), 'Swap First and Then swaps the cards and saves');
+    ok(await eventually(() => ft(page).locator('html').evaluate(() => document.getElementById('btn-first').getAttribute('aria-label') === 'First, Free choice, done' && document.getElementById('btn-then').getAttribute('aria-label') === 'Then, Math, done')),
       'and each card is heard by its new place');
     // The smallest window: the buttons and both cards fit.
     await page.evaluate(k => window.__board21.setRect(k, { x: 40, y: 40, w: 100, h: 100 }), KEY);
@@ -5931,9 +5951,15 @@ const SUITES = [
     let marks = await made();
     ok(await page.title() !== 'PWNED' && marks.every(n => n === 0), `nothing in the file runs as script or becomes markup (page title: ${await page.title()}; elements made: ${marks.join(',')})`);
     const shown = await Promise.all(keys.map(k => look(page, k)));
-    ok(shown.slice(0, 2).every(x => x.first === 'Classwork' && x.then === 'Free Choice' && x.badge === 'Academic' && x.theme === 'theme-classic' && !x.firstDone && !x.thenDone),
+    ok(shown.slice(0, 2).every(x => x.first === 'Classwork' && x.then === 'Free choice' && x.badge === 'Academic' && x.theme === 'theme-classic' && !x.firstDone && !x.thenDone),
       `damaged cards, done marks and themes fall back to the usual board (${shown.slice(0, 2).map(x => [x.first, x.then, x.theme, x.firstDone].join('/')).join('; ')})`);
-    ok(shown[2].first === 'Math' && shown[2].then === 'Snack Time' && shown[2].theme === 'theme-calm' && shown[2].firstDone, `a card is drawn from the card library, not from the file's text (${shown[2].first}, ${shown[2].then})`);
+    ok(shown[2].first === 'Math' && shown[2].then === 'Snack time' && shown[2].theme === 'theme-calm' && shown[2].firstDone, `a card is drawn from the card library, not from the file's text (${shown[2].first}, ${shown[2].then})`);
+    // A window saved before the cards were in sentence case shows them in sentence case: a card is found by its id.
+    await page.evaluate(k => window.__board21.state.wins.get(k).post('data', { data: { first: { id: 'desk', label: 'Sit at Table', icon: '🪑', category: 'Academic' },
+      then: { id: 'free-play', label: 'Free Choice', icon: '🧩', category: 'Reward' }, firstDone: true }, reason: 'remote' }), keys[2]);
+    ok(await eventually(async () => { const x = await look(page, keys[2]); return x.first === 'Sit at table' && x.then === 'Free choice'; }) &&
+      await ft(page, keys[2]).locator('html').evaluate(() => document.getElementById('btn-first').getAttribute('aria-label')) === 'First, Sit at table, done',
+      'a window saved with the old labels shows the new ones, and is heard by them');
     // The same through a change from another tab (the 'data' event).
     await page.evaluate(([k, d]) => window.__board21.state.wins.get(k).post('data', { data: d, reason: 'remote' }), [keys[2], crafted.instances[0].data]);
     ok(await eventually(async () => { const x = await look(page, keys[2]); return x.first === 'Classwork' && x.theme === 'theme-classic'; }), 'a damaged change from another tab falls back to the usual board too');
@@ -6034,6 +6060,19 @@ const SUITES = [
       [/needs a connection/.test(readme), 'the district apps’ offline message in its old words']
     ].filter(([bad]) => bad).map(([, w]) => w);
     ok(!docOff.length, `README and the docs follow the glossary (${docOff.join('; ') || 'all fine'})`);
+    // The tagline, Tyler's words, in the README, the app's manifest and the page's description.
+    const rawReadme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8'), manifest = JSON.parse(fs.readFileSync(path.join(ROOT, 'manifest.webmanifest'), 'utf8'));
+    const pageDesc = (/<meta name="description" content="([^"]*)">/.exec(fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8')) || [])[1];
+    const oldTag = ['README.md', 'manifest.webmanifest', 'index.html', 'docs/WIDGET-SDK.md', 'docs/AI-PROMPT.md', 'docs/DATA-FORMAT.md'].filter(f => /curate|orchestrate/i.test(doc(f)));
+    ok(rawReadme.split('\n')[2] === '**Build your own suite of smartboard widgets**' && manifest.description === 'Build your own suite of smartboard widgets' && pageDesc === 'Build your own suite of smartboard widgets' && !oldTag.length,
+      `the tagline is “Build your own suite of smartboard widgets” in the README, the manifest and the page (${manifest.description} / ${pageDesc}; old words in ${oldTag.join(', ') || 'none'})`);
+    const dataDocs = doc('docs/DATA-FORMAT.md');
+    ok(!/Not yet tried on a real kiosk/i.test(readme) && !/ready in its repository/.test(readme) && readme.replace(/\*\*/g, '').includes("None of the three has one yet. Each needs its own. 21Board won't need to change when they do.") &&
+      readme.includes('We tested this with a copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the same drawing.'),
+      'the README says 21Board was tried on a real kiosk, and that none of the district apps has an offline worker yet');
+    ok(/\*\*This page ▸ Windows:\*\*/.test(readme) && !/Saved widgets/.test(readme + dataDocs + doc('docs/ROADMAP.md')) && readme.includes('with only its untouched first page, "Page 1", writes nothing yet') &&
+      /name: "Page 1"/.test(dataDocs) && /"My Board"/.test(dataDocs),
+      'the README and the docs say “Windows” for This page’s windows, and “Page 1” for a new board’s first page (the data format guide notes “My Board” on older devices)');
 
     // The widget dev window's ⋯ menu, and the widget lab.
     const dv = await ctx.newPage();   // (no error listener: the test widget throws on purpose, see DEV_WIDGET)
@@ -7782,19 +7821,33 @@ const SUITES = [
     const footer = (await A.p.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
     ok(footer.endsWith(' Your work is stored only on this device and in your Drive folder.') && !/sends nothing/.test(footer), `About says the work is stored only here and in the Drive folder (${footer})`);
     await A.p.keyboard.press('Escape');
-    // A placeholder-only device writes nothing, even after a Timer was opened and closed on it with no content.
+    // A placeholder-only device writes nothing, even after a Timer was opened and closed on it with no content. A new
+    // device's first page is "Page 1".
     const C = await dev('a computer');
+    ok(await C.p.evaluate(() => window.__board21.state.board.name) === 'Page 1', 'a new device starts with one page, “Page 1”');
     await C.p.evaluate(async () => { window.__board21.openWidget('timer'); await new Promise(r => setTimeout(r, 900)); window.__board21.closeWin('timer:1'); });
     await C.p.evaluate(() => { window.__drive = { pick: 'Empty' }; });
     await openSettings(C.p); await C.p.click('#settings [data-act="link-setup"]'); await C.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await C.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
     ok((await said(C.p)).includes('Now set up Board Sync on your other device and pick this same folder. Its board then shows up here.'), 'a device with only the untouched first page: “… Its board then shows up here.”');
     await C.p.locator('#modal.open .btn', { hasText: 'Done' }).click(); await C.p.waitForTimeout(1500);
-    ok((await seedFolder(C.p, 'Empty')).join() === 'About this folder.txt', 'and it writes no file: an empty “My Board” would be added to every board that joins');
+    ok((await seedFolder(C.p, 'Empty')).join() === 'About this folder.txt', 'and it writes no file: an empty “Page 1” would be added to every board that joins');
     await C.c.close();
+    // A device set up before 2026.11.18-10 has "My Board" as its untouched first page: that is never sent either.
+    const C2 = await dev('an older computer');
+    await C2.p.evaluate(() => window.__board21.updateBoard({ name: 'My Board' })); await C2.p.waitForTimeout(400);
+    await C2.p.evaluate(() => { window.__drive = { pick: 'Empty' }; });
+    await openSettings(C2.p); await C2.p.click('#settings [data-act="link-setup"]'); await C2.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
+    await C2.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
+    ok((await said(C2.p)).includes('Its board then shows up here.'), 'a device with only an untouched “My Board” is told the board then shows up there');
+    await C2.p.locator('#modal.open .btn', { hasText: 'Done' }).click(); await C2.p.waitForTimeout(1500);
+    ok((await seedFolder(C2.p, 'Empty')).join() === 'About this folder.txt' && await C2.p.evaluate(() => window.__board21.state.board.name) === 'My Board',
+      'and it writes no file either, and keeps its page’s name');
+    await C2.c.close();
 
     // ---- 2. A fresh smartboard joins: it takes the board, with no question; its first page is in no file.
     const B = await dev('the smartboard');
+    const firstB = await B.p.evaluate(() => window.__board21.state.board.name);
     await deliver(A.p, B.p);
     await openSettings(B.p);
     await B.p.click('#settings [data-act="link-setup"]'); await B.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
@@ -7807,8 +7860,8 @@ const SUITES = [
     await B.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
     ok(await eventually(async () => await B.p.evaluate(() => window.__board21.state.board.name) === 'Morning' && (await notesText(B.p)).includes('Spelling words') && Object.keys(await shownBoard(B.p)).length === 1, 10000),
       'it shows the laptop’s page, and its own untouched first page is gone');
-    ok(await eventually(async () => (await devFiles(B.p)).some(n => /^21Board \(smartboard\) \[/.test(n))) && !(await fileText(B.p, (await devFiles(B.p)).find(n => /smartboard/.test(n)))).includes('"My Board"'),
-      'the smartboard writes its own file, without the placeholder');
+    ok(await eventually(async () => (await devFiles(B.p)).some(n => /^21Board \(smartboard\) \[/.test(n))) && firstB === 'Page 1' && !/"(Page 1|My Board)"/.test(await fileText(B.p, (await devFiles(B.p)).find(n => /smartboard/.test(n)))),
+      `the smartboard writes its own file, without the placeholder (its first page was “${firstB}”), and no file names it`);
     await deliver(B.p, A.p); await syncNow(A.p); await syncNow(B.p);
     ok(await sameBoards(A.p, B.p), 'both show the same board');
     await openSettings(A.p);
@@ -8590,7 +8643,7 @@ const SUITES = [
     await deliver(A.p, B.p, { photos: false }); await syncNow(B.p);
     ok(await photoKey(B.p) === red && await named(B.p) === redFile, 'the file arrives before the new photo: the smartboard keeps its photo, and its file still names it (no flipping)');
     await B.p.waitForTimeout(2700); await syncNow(B.p);
-    ok(/The background photo of “My Board” is still arriving\./.test(await status(B.p)), `after a while the status says the photo is still arriving (“${await status(B.p)}”)`);
+    ok(/The background photo of “Page 1” is still arriving\./.test(await status(B.p)), `after a while the status says the photo is still arriving (“${await status(B.p)}”)`);
     await B.p.reload(); await boardUp(B.p); await linkFolder(B.p, null);
     ok(await photoKey(B.p) === red, 'reloaded while it waits, the smartboard still shows its photo');
     await deliver(A.p, B.p);
@@ -8662,8 +8715,29 @@ const SUITES = [
     ok(await note(A.p) === '', 'back: the note goes');
     await A.p.evaluate(() => { window.__drive = { perm: 'prompt', grant: 'granted' }; const l = window.__board21.link; l.nagged = false; return l.refresh(); });
     ok(await note(A.p) === 'Reconnect folder' && await A.p.locator('.toast', { hasText: 'Reconnect your “21Board” folder to keep syncing.' }).count() === 1, 'Chrome wants to be asked again: “Reconnect folder”, and a message for a device that has synced');
+    // The one action has one name: the message's button, Settings' button and the dialog's all say Reconnect.
+    const nagBtn = (await A.p.locator('.toast', { hasText: 'Reconnect your “21Board” folder to keep syncing.' }).locator('button').allInnerTexts()).filter(t => t.trim());
+    await openSettings(A.p);
+    const fixBtn = await A.p.locator('#settings .save-warn .btn').evaluateAll(bs => bs.map(b => b.textContent.trim() + '/' + b.dataset.act).join());
+    await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(200);
+    await A.p.evaluate(() => { const l = window.__board21.link; l.trouble = null; l.stuck('other'); });
+    await A.p.locator('.toast', { hasText: 'Couldn’t sync this board with your folder' }).locator('button', { hasText: 'Details' }).click(); await A.p.locator('#modal.open').waitFor();
+    const askBtns = (await A.p.locator('#modal.open .btn').allInnerTexts()).join('|'), askTitle = await A.p.locator('#modal.open .modal-card').innerText();
+    await A.p.locator('#modal.open .btn', { hasText: 'Close' }).click(); await A.p.evaluate(() => { window.__board21.link.trouble = null; });
+    ok(nagBtn.includes('Reconnect') && fixBtn === 'Reconnect/link-reconnect' && askBtns === 'Reconnect|Close' && /^Reconnect your “21Board” folder/.test(askTitle),
+      `the message, Settings and the dialog each offer “Reconnect” (${nagBtn.join(', ')} / ${fixBtn} / ${askBtns})`);
     await A.p.locator('.folder-note.left').click(); await A.p.waitForTimeout(500);
     ok(await note(A.p) === '' && await A.p.locator('.toast', { hasText: 'Your “21Board” folder is connected again.' }).count() === 1, 'one tap reconnects it');
+    // Chrome refusing without asking: Settings still says Reconnect, and it then offers to choose the folder again.
+    await A.p.evaluate(() => { window.__drive = { perm: 'denied' }; return window.__board21.link.refresh(); });
+    await openSettings(A.p);
+    const denyBtn = await A.p.locator('#settings .save-warn .btn').allInnerTexts();
+    await A.p.locator('#settings .save-warn .btn').click(); await A.p.locator('#modal.open').waitFor();
+    const denyAsk = (await A.p.locator('#modal.open .btn').allInnerTexts()).join('|');
+    await A.p.locator('#modal.open .btn', { hasText: 'Close' }).click();
+    await A.p.evaluate(() => { window.__drive = {}; return window.__board21.link.refresh(); }); await A.p.keyboard.press('Escape');
+    ok(denyBtn.join() === 'Reconnect' && denyAsk === 'Choose the folder again…|Close' && await eventually(async () => await note(A.p) === ''),
+      `a folder Chrome blocks: Reconnect in Settings, then “Choose the folder again…” (${denyBtn.join()} / ${denyAsk})`);
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
@@ -10939,7 +11013,7 @@ const SUITES = [
     const marks = await a.evaluate(() => { const g = document.querySelector('[data-ctl="settings"]'), w = document.querySelector('.picker-btn.left'); return [!!g.querySelector('.dot'), g.getAttribute('aria-label'), w.getAttribute('aria-label'), w.title].join(' | '); });
     await a.click('[data-ctl="settings"]'); await a.waitForSelector('#st-version', { state: 'attached' });
     const note = a.locator('#settings #st-update'), box = await note.boundingBox({ timeout: 2000 }).catch(() => null);
-    ok(marks === 'true | Settings, new version ready | Widgets and settings, new version ready | A new version is ready. Open Settings to update.' && !!box && box.y > 0 && box.y + box.height < 400 && (await note.innerText()).startsWith('A new version is ready') && await a.locator('#settings [data-act="update"]').count() === 1,
+    ok(marks === 'true | Settings, new version ready | Widget Picker, new version ready | A new version is ready. Open Settings to update.' && !!box && box.y > 0 && box.y + box.height < 400 && (await note.innerText()).startsWith('A new version is ready') && await a.locator('#settings [data-act="update"]').count() === 1,
       'after Later, how to update stays in view: the ▦ button and the Settings gear carry a dot and say why, and Settings opens with “A new version is ready” and Update now at the top (' + marks + ')');
     await a.locator('#settings [data-act="update"]').click();
     const took = await allOn('v2');
@@ -10949,7 +11023,7 @@ const SUITES = [
       'both tabs then say the new release in Settings, and only its offline copy is kept');
     await settings(a);
     ok((await both(noteText)).join() === 'kept through the update,kept through the update' && (await both(p => p.locator('.win').count())).join() === '2,2' && (await both(p => p.locator('.toast').count())).join() === '0,0' &&
-      (await both(p => p.locator('.picker-btn .dot').count())).join() === '0,0' && await a.locator('#settings #st-update').isHidden() && await a.locator('.picker-btn.left').getAttribute('aria-label') === 'Widgets and settings',
+      (await both(p => p.locator('.picker-btn .dot').count())).join() === '0,0' && await a.locator('#settings #st-update').isHidden() && (await both(p => p.evaluate(() => [...document.querySelectorAll('.picker-btn')].map(b => b.getAttribute('aria-label')).join()))).join() === 'Widget Picker,Widget Picker,Widget Picker,Widget Picker',
       'the windows and their content are as they were, and the prompt, the dots and the line in Settings are gone');
     await a.keyboard.press('Escape');
 
@@ -11299,7 +11373,7 @@ const SUITES = [
     await page.focus('.picker-btn.left'); await page.keyboard.press('Enter');
     await page.focus('[data-ctl="settings"]'); await page.keyboard.press('Enter');
     await page.waitForSelector('#settings.open [data-act="group"][data-val="saved"]');
-    await page.focus('#settings [data-act="group"][data-val="saved"]'); await page.keyboard.press('Enter');   // (This page → Saved widgets opens)
+    await page.focus('#settings [data-act="group"][data-val="saved"]'); await page.keyboard.press('Enter');   // (This page → Windows opens)
     ok((await at()).act === 'group' && await page.locator('#settings [data-val="saved"][aria-expanded="true"]').count() === 1, 'a group in Settings opens by keyboard, and the keyboard stays on its row');
     await page.waitForSelector('#settings.open [data-act="inst-delete"]');
     await page.focus('#settings [data-act="inst-delete"]'); await page.keyboard.press('Enter'); await open();
@@ -11402,7 +11476,7 @@ const SUITES = [
     await page.waitForSelector('.toast:has-text("Board imported.")');
     back = await at();
     const after = await count();
-    ok(back.tag !== 'INPUT' && before === '2 widgets' && after === 'None', `the keyboard isn’t put back into a text field, so Settings shows the imported board (Saved widgets: ${before} → ${after})`);
+    ok(back.tag !== 'INPUT' && before === '2 windows' && after === 'None', `the keyboard isn’t put back into a text field, so Settings shows the imported board (Windows: ${before} → ${after})`);
     await ctx.close();
 
     // A window menu by keyboard: the arrow keys, Home and End go from item to item (Tab too); Enter chooses one and
@@ -12041,6 +12115,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await openPicker();
     const one = await page.evaluate(() => ({ prev: document.querySelector('[data-ctl="prev"]').disabled, next: document.querySelector('[data-ctl="next"]').getAttribute('aria-label'), ind: document.querySelector('[data-ctl="pages"]').textContent }));
     ok(one.prev && one.next === 'New page' && one.ind === 'Page1 of 1', `with one page, ‹ is off, › is + (New page), and it reads “Page 1 of 1” (${JSON.stringify(one)})`);
+    // A new board's first page is "Page 1", named once, never "Page 1 · Page 1".
+    const first1 = await page.evaluate(() => { const ind = document.querySelector('[data-ctl="pages"]'); return { name: window.__board21.state.board.name, label: window.__board21.pages.label(), said: ind.getAttribute('aria-label'), tip: ind.title }; });
+    ok(first1.name === 'Page 1' && first1.label === 'Page 1' && first1.said === 'Page 1 of 1. Pages menu' && first1.tip === 'Pages: Page 1',
+      `a new board starts with “Page 1”, and says it once (${JSON.stringify(first1)})`);
     // New page.
     await page.click('[data-ctl="next"]');
     await page.waitForFunction(() => window.__board21.state.boardId !== 1 && !document.getElementById('page-flash').hidden, null, { timeout: 8000 });
@@ -12057,7 +12135,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.keyboard.press('Escape');
     await page.evaluate(() => { window.__board21.openWidget('timer'); window.__board21.openWidget('dice'); }); await settle(1200);
     await openPicker(); await page.click('[data-ctl="prev"]');
-    await page.waitForFunction(() => window.__board21.state.boardId === 1); await settle(1200);
+    await page.waitForFunction(() => window.__board21.state.boardId === 1);
+    await page.waitForFunction(() => /^Page 1/.test(document.getElementById('page-flash').textContent), null, { timeout: 5000 }).catch(() => {});
+    const flash1 = await page.evaluate(() => document.getElementById('page-flash').textContent); await settle(1200);
+    ok(flash1 === 'Page 1', `going back, “Page 1” shows in the middle of the board, once (${flash1})`);
     s = await st();
     ok(s.wins.join() === 'notes:1' && await frame('notes:1').locator('textarea').inputValue() === 'Page one note', `‹ goes back to page 1 with its own window and content (${s.wins.join()})`);
     await fillNote(frame('notes:1'), 'Page one, edited just before leaving');
@@ -12085,7 +12166,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.click('[data-ctl="pages"]'); await settle(250);
     const menu = await page.evaluate(() => { const m = document.getElementById('pages-menu'), r = m.getBoundingClientRect(), i = document.querySelector('[data-ctl="pages"]').getBoundingClientRect();
       return { open: m.classList.contains('open'), items: Array.from(m.querySelectorAll('.menu-item')).map(b => b.textContent.trim()), checked: (m.querySelector('[aria-checked="true"]') || {}).textContent, above: r.bottom <= i.top + 1, inside: r.left >= 0 && r.right <= innerWidth && r.top >= 0 }; });
-    ok(menu.open && menu.above && menu.inside && menu.checked === '2Page 2' && menu.items.join('|') === '1My Board|2Page 2|New page|Duplicate this page|Rename this page…|Move left|Move right|Delete this page…',
+    ok(menu.open && menu.above && menu.inside && menu.checked === '2Page 2' && menu.items.join('|') === '1Page 1|2Page 2|New page|Duplicate this page|Rename this page…|Move left|Move right|Delete this page…',
       `the Pages menu opens above the indicator, lists the pages with this one checked, then what can be done (${menu.items.join(' | ')})`);
     await page.click('#pages-menu [data-act="rename"]'); await settle(200);
     ok(await page.locator('#modal input').inputValue() === 'Page 2', 'Rename starts from the page’s name');
@@ -12138,13 +12219,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     let [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="1"]')]);
     const oneP = OUT + 'page-one.21board'; await dl.saveAs(oneP);
     const single = JSON.parse(fs.readFileSync(oneP, 'utf8'));
-    ok(Object.keys(single).join() === 'format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,letters,board,instances' && single.formatVersion === 1 && !single.pages && single.board.name === 'My Board' && single.instances.length === 1,
+    ok(Object.keys(single).join() === 'format,formatVersion,kind,exportedAt,generator,viewport,theme,accent,letters,board,instances' && single.formatVersion === 1 && !single.pages && single.board.name === 'Page 1' && single.instances.length === 1,
       `“This page” is a .21board file exactly as before pages (${Object.keys(single).join(',')})`);
     await openPicker(); await page.click('[data-ctl="export"]'); await settle(200);
     [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="0"]')]);
     const allP = OUT + 'all-pages.21board'; await dl.saveAs(allP);
     const all = JSON.parse(fs.readFileSync(allP, 'utf8'));
-    ok(all.formatVersion === 1 && all.board.name === 'My Board' && Array.isArray(all.pages) && all.pages.length === 3 && all.pages[0].main && all.pages[2].board.name === 'Math (copy)' && all.pages[2].instances.length === 2 && /3 pages/.test(dl.suggestedFilename()),
+    ok(all.formatVersion === 1 && all.board.name === 'Page 1' && Array.isArray(all.pages) && all.pages.length === 3 && all.pages[0].main && all.pages[2].board.name === 'Math (copy)' && all.pages[2].instances.length === 2 && /3 pages/.test(dl.suggestedFilename()),
       `“All pages” is a version 1 file of the page shown, with every page in order in “pages” (${dl.suggestedFilename()})`);
     ok(await page.evaluate(() => Date.now() - window.__board21.state.settings.lastBackupAt < 60000), 'an all-pages export counts as a backup');
 
@@ -12156,7 +12237,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.waitForFunction(() => window.__board21.pages.ids().length === 6, null, { timeout: 20000 }).catch(() => {});
     await settle(1200);
     s = await st();
-    ok(s.ids.length === 6 && s.name === 'My Board' && s.ids.indexOf(s.id) === 3 && s.wins.join() === 'notes:1', `its 3 pages are added after this device’s, and the first is shown (${s.ids.join()})`);
+    ok(s.ids.length === 6 && s.name === 'Page 1' && s.ids.indexOf(s.id) === 3 && s.wins.join() === 'notes:1', `its 3 pages are added after this device’s, and the first is shown (${s.ids.join()})`);
     ok(await frame('notes:1').locator('textarea').inputValue() === 'Page one, edited just before leaving', 'with their content');
     await page.setInputFiles('#import-input', oneP); await settle(300);
     const it1 = await page.locator('#modal .btn').allTextContents();
@@ -12185,6 +12266,30 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok((await st()).id === first && await frame('notes:1').locator('textarea').inputValue() === 'Page one, edited just before leaving', 'going back to a version after switching pages restores this page');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+
+    // A board saved before 2026.11.18-10 keeps its first page's name, "My Board". After Erase everything, "Page 1".
+    const ctxO = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const po = await ctxO.newPage(); po.on('pageerror', e => errors.push('[older board] ' + e.message));
+    await po.goto(BASE + 'manifest.webmanifest');
+    await po.evaluate(() => new Promise((res, rej) => {
+      const rq = indexedDB.open('21Board', 1);
+      rq.onupgradeneeded = () => rq.result.createObjectStore('records', { keyPath: 'key' });
+      rq.onsuccess = () => {
+        const tx = rq.result.transaction('records', 'readwrite'), st = tx.objectStore('records'), now = Date.now();
+        st.put({ key: 'settings', type: 'settings', rev: 1, updatedAt: now, by: 'old', value: { boards: [1], activeBoard: 1, lastBoard: 1, theme: 'light' } });
+        st.put({ key: 'board:1', type: 'board', rev: 1, updatedAt: now, by: 'old', value: { id: 1, name: 'My Board', uid: 'oldboard0001', background: { color: null, pattern: 'none' }, scale: 0.8, shape: '16:9', layout: { w: 2400, h: 1350 }, pos: 1 } });
+        tx.oncomplete = () => { rq.result.close(); res(); }; tx.onerror = () => rej(tx.error);
+      };
+      rq.onerror = () => rej(rq.error);
+    }));
+    await po.goto(BASE); await boardUp(po); await po.waitForTimeout(800);
+    const older = await po.evaluate(() => ({ name: window.__board21.state.board.name, label: window.__board21.pages.label(), said: document.querySelector('[data-ctl="pages"]').getAttribute('aria-label') }));
+    ok(older.name === 'My Board' && older.label === 'Page 1 · My Board' && older.said === 'Page 1 of 1, My Board. Pages menu', `a board saved before keeps its page’s name, “My Board” (${JSON.stringify(older)})`);
+    await openSettings(po, ['advanced']);
+    await po.click('#settings [data-act="erase"]'); await po.locator('#modal.open .btn', { hasText: /^Erase everything$/ }).click();
+    ok(await eventually(() => po.evaluate(() => window.__board21.state.board.name === 'Page 1' && window.__board21.pages.ids().length === 1), 8000), 'after Erase everything, the board starts again with “Page 1”');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctxO.close();
   }],
   ['Pages (multiple boards): nothing lost when things go wrong', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, acceptDownloads: true });

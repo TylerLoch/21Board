@@ -124,7 +124,7 @@ class Device {
     if (opts.old) as4(this);   // (still on 2026.11.16-4)
     this.styleBase = { theme: 'system', accent: 'blue', letters: 'standard' };   // (the theme, accent and text style after its last round: oracle 9)
     this.put('settings', 'settings', { boards: [], deletedBoards: [], deletedAt: {}, lastBoard: 0, activeBoard: 1 });
-    if (opts.pages !== false) this.placeholder();
+    if (opts.pages !== false) this.placeholder(opts.first);
   }
   now() { return NOW + this.skew; }
   put(key, type, value, opts = {}) {
@@ -159,7 +159,8 @@ class Device {
   boardOf(b) { const r = this.recs.get(`board:${b}`); return r && r.value; }
   ids() { const st = this.settings, gone = new Set(st.deletedBoards || []); const all = Array.from(this.recs.keys()).filter(k => /^board:/.test(k)).map(k => +k.split(':')[1]).filter(b => !gone.has(b)); return (st.boards || []).filter(b => all.includes(b)).concat(all.filter(b => !(st.boards || []).includes(b)).sort((a, c) => a - c)); }
   nextB() { let m = Math.max(0, +this.settings.lastBoard || 0); for (const k of this.recs.keys()) { const b = +k.split(':')[1]; if (b > m) m = b; } return m + 1; }
-  placeholder() { const b = this.nextB(); this.put(`board:${b}`, 'board', { id: b, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null, uid: 'u' + (++uidN).toString(36).padStart(8, '0') }); this.patch({ set: { boards: [b], activeBoard: b, lastBoard: b } }); }
+  // The untouched first page a new device has: "Page 1", or "My Board" on a device set up before 2026.11.18-10.
+  placeholder(name = 'My Board') { const b = this.nextB(); this.put(`board:${b}`, 'board', { id: b, name, background: { color: null, pattern: 'none' }, layout: null, uid: 'u' + (++uidN).toString(36).padStart(8, '0') }); this.patch({ set: { boards: [b], activeBoard: b, lastBoard: b } }); }
   posOf(b) { return (this.boardOf(b) || {}).pos; }
   addPage(name) {
     const ids = this.ids(), b = this.nextB(), at = Math.floor(rnd() * (ids.length + 1));
@@ -800,10 +801,10 @@ function blind(d) {
 // ---------------------------------------------------------------------
 // 1. The rules table, case by case
 // ---------------------------------------------------------------------
-function pair(n = 2) {
+function pair(n = 2, first) {   // (first: the name of each device's untouched first page, "My Board" if not given)
   rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
   const folder = new Folder('Room 12');
-  const devs = ['laptop', 'board', 'home'].slice(0, n).map(x => new Device(x));
+  const devs = ['laptop', 'board', 'home'].slice(0, n).map(x => new Device(x, { first }));
   const A = devs[0];
   const b = A.addPage('Math');
   const ik = A.addWindow(b, W.NOTES);
@@ -851,6 +852,14 @@ function rules() {
     A.type(b, cik); NOW += 2000; B.type(bOf(B, uid), ikOf(B, uid, copy.wid)); sync(4);
     const cc = winsOf(A, uid).find(x => x.copyOf && x.copyOf.wid === copy.wid);
     ok(cc && cc.wid.length === copy.wid.length, `a copy of a copy is no longer than the first copy (${cc && cc.wid})`);
+  });
+  block(() => {
+    // The same with "Page 1", a new device's untouched first page since 2026.11.18-10.
+    const { A, B, b, ik, folder } = pair(2, 'Page 1');
+    const uid = A.boardOf(b).uid, wid = A.winVal(b, ik).wid;
+    ok(B.canon() === A.canon() && dataOf(B, uid, wid).text === dataOf(A, uid, wid).text && !B.ids().some(x => B.boardOf(x).name === 'Page 1'),
+      'with “Page 1”: a board set up on one device arrives whole on a new device, and its placeholder goes');
+    ok(folder.files.size === 2 && !Array.from(folder.files.values()).some(t => /"Page 1"/.test(t)), 'and no file names a “Page 1” placeholder, on either device');
   });
   block(() => {
     // the null rule: one side emptied, the other typed: the content wins
@@ -997,6 +1006,10 @@ function rules() {
     const D = new Device('cart2'); D.view = new Map(folder.files); D.folder = folder; D.linkTo(folder);
     D.round();   // (the placeholder was the page shown: it goes once another page is shown)
     ok(D.mode === null && bOf(D, uid) && !D.ids().some(x => D.boardOf(x).name === 'My Board'), 'take: a device with only the placeholder shows the folder’s board, and the placeholder goes');
+    const n0 = folder.files.size, D1 = new Device('cart3', { first: 'Page 1' }); D1.view = new Map(folder.files); D1.folder = folder; D1.linkTo(folder);
+    D1.round();
+    ok(D1.mode === null && bOf(D1, uid) && !D1.ids().some(x => D1.boardOf(x).name === 'Page 1') && folder.files.size === n0 + 1 && !/"Page 1"/.test(folder.files.get(D1.fileName())),
+      'take: a new device with only “Page 1” shows the folder’s board, the placeholder goes, and its file doesn’t name it');
   });
 }
 
@@ -1902,6 +1915,15 @@ function files() {
   D.addWindow(db, W.TIMER); D.resetWin(db, `${W.TIMER}:1`); D.openWin(db, `${W.TIMER}:1`, false);
   const L0 = D.ledger(), st = Merge.stamp(L0, D.readLocal(), { dev: D.dev, now: D.now(), ctr: 0, maxSeen: 0 });
   ok(Object.keys(st.ledger.mine).length === 0 && st.stamped === 0, 'the untouched placeholder (even with a Timer opened and closed, empty) is never stamped');
+  const D1 = new Device('desk1', { first: 'Page 1' }), d1b = D1.ids()[0];
+  D1.addWindow(d1b, W.TIMER); D1.resetWin(d1b, `${W.TIMER}:1`); D1.openWin(d1b, `${W.TIMER}:1`, false);
+  const st1 = Merge.stamp(D1.ledger(), D1.readLocal(), { dev: D1.dev, now: D1.now(), ctr: 0, maxSeen: 0 });
+  ok(D1.boardOf(d1b).name === 'Page 1' && Object.keys(st1.ledger.mine).length === 0 && st1.stamped === 0, 'nor is a new device’s untouched “Page 1”');
+  // An empty folder: a new device with only "Page 1" sends none of it.
+  const F1 = new Folder('Room 15'), D2 = new Device('desk2', { first: 'Page 1' });
+  D2.linkTo(F1); D2.round();
+  const f2 = F1.files.get(D2.fileName());
+  ok(D2.mode === null && (!f2 || !/"Page 1"/.test(f2)) && D2.ids().length === 1 && D2.boardOf(D2.ids()[0]).name === 'Page 1', 'an empty folder: a new device keeps its “Page 1” and sends none of it');
   // wid defaults and de-duplication
   const E = new Device('wids', { pages: false }); E.addPage('X');
   const eb = E.ids()[0];
