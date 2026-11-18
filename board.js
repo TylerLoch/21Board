@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-12';
-  const BOARD_BUILD = 'c63090c8';
+  const BOARD_BUILD = '603b081c';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4090,12 +4090,16 @@
       return null;
     },
     statusHTML() { const s = this.status(); return s ? `<span class="status-dot ${s.dot}"></span>${esc(s.text)}` : ''; },
-    // Settings, while open: the status line, in place (Settings isn't drawn again for it).
+    // Settings, while open: the status line, in place (Settings isn't drawn again for it). The switch, if it shows,
+    // stays where it is on the screen (it sits in the middle of its row, beside the line).
     paint() {
       if (!Settings.isOpen) return;
       const line = $('#set-awake-status', Settings.body);
       const html = this.statusHTML();   // (only when it changes: a screen reader reads the line out again)
-      if (line && line.innerHTML !== html) { line.innerHTML = html; line.hidden = !html; }
+      if (!line || line.innerHTML === html) return;
+      const sw = $('[data-act="awake"]', Settings.body), spot = sw && Settings.shows(sw) ? Settings.spot(sw) : null;
+      line.innerHTML = html; line.hidden = !html;
+      if (spot) Settings.keep(spot);
     }
   };
 
@@ -4405,9 +4409,10 @@
 
   // A group in Settings: one row (a button) with its name and what it's set to, that opens the group in place, below
   // it. Nothing scrolls as it opens or closes: the row stays where it is on the screen, and the group may run past the
-  // bottom, for the teacher to scroll to. Which groups are open is Settings.groups: it lasts while Settings stays open
-  // (Settings is drawn again on every change), and every group starts closed each time Settings opens. A closed group
-  // is still in the page, hidden.
+  // bottom, for the teacher to scroll to. (Closed near the end, the sheet may get too short to stay where it was: the
+  // browser then pulls it down as far as it must.) Which groups are open is Settings.groups: it lasts while Settings
+  // stays open (Settings is drawn again on every change), and every group starts closed each time Settings opens. A
+  // closed group is still in the page, hidden.
   // opts: sub (a grey line under the name), preview (HTML before the value), valueId, warn (an amber dot, shown while
   // true: something inside needs a look; warnLabel, what a screen reader says for it), inset (drawn indented, with a
   // line beside it).
@@ -4532,8 +4537,8 @@
   // About's license texts, read from the offline copy the first time their group opens, then kept for this tab. They
   // are shown as paragraphs that flow to the width of Settings (the files break their lines for a text editor), except
   // a block of short lines (the Apache title), which keeps them; the files' headings are headings (LICENSE_HEAD).
-  // Settings.render puts them in place at once when already read, before the keyboard goes back to its control
-  // (focus() lays the page out): drawing Settings again never shortens it for a moment, which would move the text.
+  // Settings.render puts them in place at once when already read, before the sheet is laid out and its scroll put
+  // back: drawing Settings again never shortens it for a moment, which would move the text.
   // A read that failed shows its note at once too. It is tried again when its group is opened again (again), except
   // in a copy opened from disk, where the browser never allows it: that note says where the file is instead.
   const LICENSE_HEAD = /^(Apache License|TERMS AND CONDITIONS|END OF TERMS|APPENDIX:|Attribution 4\.0 International|Using Creative Commons|Creative Commons Attribution|Section \d+ -- )/;
@@ -4629,6 +4634,7 @@
     linkShown: '',       // the Board Sync section as last drawn
     drawn: '',           // all of Settings as last drawn (see refresh)
     syncingOff: 0,       // "Syncing…" goes in a moment (see putStatus)
+    tapped: null,        // the control being tapped, where it was (spot), while its act runs: see render
 
     // What Settings shows of Board Sync is no longer what it shows now (after a look at the folder: Link.redraw).
     linkChanged() { return Link.supported && linkSettings(switchHTML, segHTML) !== this.linkShown; },
@@ -4700,7 +4706,10 @@
       closeBtn.addEventListener('click', () => this.close(true));
       this.body.addEventListener('click', e => {
         const b = e.target.closest('[data-act]');
-        if (b && !b.disabled) this.act(b.dataset.act, b.dataset.val, b);
+        if (!b || b.disabled) return;
+        // (Where it was before anything changed: Text style and Size change the page before Settings is drawn again.)
+        this.tapped = this.spot(b);
+        try { this.act(b.dataset.act, b.dataset.val, b); } finally { this.tapped = null; }
       });
       this.body.addEventListener('change', e => {
         if (e.target.id === 'set-link-label') {
@@ -4908,9 +4917,10 @@
         if (line) this.putStatus(line);
         this.drawn = html; this.refreshStatus(true); return;
       }
-      const top = this.body.scrollTop;
+      // The control just tapped stays where it was tapped; or else the one with the keyboard, if it shows.
+      const top = this.body.scrollTop, spot = this.tapped || (was && this.shows(was) ? this.spot(was) : null);
       this.body.innerHTML = this.drawn = html;
-      LicenseText.fill(this.body);   // (About's license texts, in the groups that are open: before focus() lays the page out)
+      LicenseText.fill(this.body);   // (About's license texts, in the groups that are open: before anything below lays the page out)
       // The photo's pictures get it here (never as text inside the HTML above).
       const pm = BoardPhoto.media(), fadeTo = (S.board.background && S.board.background.color) || 'var(--board-bg)';   // as on the board
       const shows = [$('#photo-thumb', this.body), $('#bg-preview .ph', this.body)].filter(Boolean), pics = $$('.bg-pic', this.body);
@@ -4918,15 +4928,29 @@
       // (One call for all of them: the board's own call at the same moment gets the same URL, see BoardPhoto.objectUrl.)
       if (pm && (shows.length || pics.length)) BoardPhoto.objectUrl(pm).then(u => shows.concat(pics).forEach(el => { el.style.backgroundImage = `url("${u}")`; }), () => {});
       this.refreshStatus(true);   // (its lines filled in at once, before anything lays the page out)
-      // Then where it was scrolled to, so the control tapped stays put. (Every row is new: the browser's scroll
-      // anchoring would pick another to keep in place, and could move the sheet. Set only if it moved, so a finger's
-      // scroll isn't stopped.)
+      // Then where it was scrolled to (every row is new: the browser's scroll anchoring would pick another to keep in
+      // place, and could move the sheet), and the control back on its spot: lines above it, or in its row, may have
+      // come or gone. (Set only if it moved, so a finger's scroll isn't stopped.)
       if (this.body.scrollTop !== top) this.body.scrollTop = top;
+      if (spot) this.keep(spot);
       if (was) {
         const again = $$(`[data-act="${CSS.escape(was.dataset.act)}"]`, this.body).find(b => b.dataset.val === was.dataset.val);
         if (again) again.focus({ preventScroll: true });
       }
     },
+
+    // A control's spot on the screen: which control (its act and value, and which of the controls with both), and its
+    // top. keep puts it back there by scrolling the sheet, unless one of those controls came or went, or it's hidden.
+    spot(el) {
+      const same = $$(`[data-act="${CSS.escape(el.dataset.act)}"]`, this.body).filter(b => b.dataset.val === el.dataset.val);
+      return { act: el.dataset.act, val: el.dataset.val, i: same.indexOf(el), n: same.length, top: el.getBoundingClientRect().top };
+    },
+    keep(s) {
+      const same = $$(`[data-act="${CSS.escape(s.act)}"]`, this.body).filter(b => b.dataset.val === s.val), el = same.length === s.n && same[s.i];
+      const dy = el && el.getClientRects().length ? el.getBoundingClientRect().top - s.top : 0;
+      if (Math.abs(dy) > 0.5) this.body.scrollTop += dy / (Zoom.ui || 1);   // (the sheet is drawn zoomed: see --ui)
+    },
+    shows(el) { const r = el.getBoundingClientRect(), b = this.body.getBoundingClientRect(); return r.bottom > b.top && r.top < b.bottom; },   // (some of it, at least)
 
     // The amber dot on Advanced: only a backup overdue, so making one clears it: none in the last week, or never one
     // and the board has had windows for a week, on any page (an empty or brand-new board has nothing to lose yet, as

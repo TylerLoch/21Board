@@ -2752,12 +2752,17 @@ const SUITES = [
     for (const scale of [null, 2]) {
       const size = scale ? '200%' : 'the usual size';
       if (scale) { await page.keyboard.press('Escape'); await page.evaluate(s => window.__board21.setBoardScale(s), scale); await page.waitForTimeout(300); }
-      // Tapped: Advanced near the bottom, then About at the very bottom with Advanced open above it, then a license in
-      // About (a group in a group) near the bottom, also once its text has come in.
+      // Tapped: Advanced near the bottom, then About near the bottom and at the very bottom with Advanced open above it,
+      // then a license in About (a group in a group) near the bottom, also once its text has come in, and again with
+      // its text already there.
       await openSettings(page);
       await scrollTo('advanced');
       let r = await toggle('advanced');
       ok(r.same && r.after.open && r.after.past && r.after.keys, `${size}: Advanced, tapped near the bottom, opens below its row, which stays put, and runs past the bottom; nothing scrolls (${say(r)})`);
+      await scrollTo('about');
+      r = await toggle('about');
+      ok(r.same && r.after.open && r.after.past, `${size}: About, tapped near the bottom with Advanced open, opens below its row, which stays put (${say(r)})`);
+      await toggle('about');   // (closed again: About is last, so the sheet gets shorter and the browser may pull it down)
       await scrollTo('about', 'end');
       r = await toggle('about');
       ok(r.same && r.after.open && r.after.past, `${size}: About, tapped at the very bottom with Advanced open, opens below its row, which stays put (${say(r)})`);
@@ -2767,6 +2772,10 @@ const SUITES = [
       const read = await where('code-license');
       ok(r.same && r.after.open && Math.abs(read.top - r.before.top) <= 1 && read.scroll === r.before.scroll && read.past,
         `${size}: Code, a license inside About, opens below its row, which stays put, also once the license has come in (${say(r)}; then its row at ${Math.round(read.top - r.before.top)} px, scroll ${Math.round(read.scroll)})`);
+      await toggle('code-license');
+      await scrollTo('code-license');
+      r = await toggle('code-license');
+      ok(r.same && r.after.open && r.after.past, `${size}: Code, opened again near the bottom with its text already there, opens below its row, which stays put (${say(r)})`);
       // Closed in the middle of the sheet: the row stays put too.
       await scrollTo('advanced', 'middle');
       r = await toggle('advanced');
@@ -2798,6 +2807,48 @@ const SUITES = [
     const t1 = await spot();
     ok(Math.abs(t1.top - t0.top) <= 1 && t1.scroll === t0.scroll && t1.open === 'true', `a finger’s tap on Advanced near the bottom opens it below its row, which stays put (its row moved ${Math.round(t1.top - t0.top)} px, scroll ${Math.round(t0.scroll)} → ${Math.round(t1.scroll)})`);
     await touch.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  ['Settings keeps a control still as it changes the rows around it: tapped in the middle of the sheet, it stays under the finger while lines come and go above it or in its row, or the sheet is drawn larger (1366 × 768, light, the usual size and 200%: Stay awake, Photo Fit, Clock in the corner, Size, Text style)', async (browser) => {
+    const errors = [];
+    for (const scale of [null, 2]) {
+      const size = scale ? '200%' : 'the usual size';
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: 'light' });
+      // The device says no to keeping the screen on, a moment after it is asked: Settings says so then, in place.
+      await ctx.addInitScript(() => Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => {
+        await new Promise(r => setTimeout(r, 200)); throw new DOMException('Wake Lock permission request denied', 'NotAllowedError'); } } }));
+      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE); await boardUp(page);
+      if (scale) { await page.evaluate(s => window.__board21.setBoardScale(s), scale); await page.waitForTimeout(300); }
+      await page.setInputFiles('#photo-input', path.join(ROOT, 'icons/goat.png')); await page.waitForTimeout(1200);   // (a photo: Background shows Fit)
+      await openSettings(page, ['bg', 'letters', 'advanced']);
+      // The control scrolled to the middle of the sheet (as far as the sheet goes), or left where it is ('here'), and
+      // tapped: how far it moved, also once what comes in later (the device's answer) has come in.
+      const tap = async (sel, what, wait = 300, here) => {
+        const at = () => page.evaluate(s => ({ top: document.querySelector(s).getBoundingClientRect().top, scroll: document.querySelector('#settings .sheet-body').scrollTop }), sel);
+        if (!here) await page.evaluate(s => { const b = document.querySelector('#settings .sheet-body'), r = document.querySelector(s).getBoundingClientRect(), bb = b.getBoundingClientRect();
+          b.scrollTop += (r.top + r.height / 2 - (bb.top + bb.height / 2)) / (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui')) || 1); }, sel);
+        await page.waitForTimeout(150);
+        const a = await at();
+        await page.click(sel); await page.waitForTimeout(wait);
+        const b = await at(), dy = Math.round((b.top - a.top) * 10) / 10;
+        ok(Math.abs(b.top - a.top) <= 1, `${size}: ${what} stays under the finger (moved ${dy} px; the sheet scrolled ${Math.round(a.scroll)} → ${Math.round(b.scroll)})`);
+      };
+      const ctl = (act, val) => `#settings .sheet-body [data-act="${act}"]` + (val ? `[data-val="${val}"]` : '');
+      await tap(ctl('awake'), 'Stay awake, turned on: its warning, then the device’s no, come in beside it,', 900);
+      // (Off where it was turned on: at the usual size its row is near the top, and a sheet at the top can't scroll up.)
+      await tap(ctl('awake'), 'Stay awake, turned off again: both lines go,', 300, true);
+      await tap(ctl('photo-fit', 'whole'), 'Photo Fit, Whole photo: the hint above it goes,');
+      await tap(ctl('photo-fit', 'fill'), 'Photo Fit, Fill the board: the hint comes back,');
+      await tap(ctl('clock', 'on'), 'Clock in the corner, On,');
+      await tap(ctl('clock', 'auto'), 'Clock in the corner, Auto again,');
+      await tap(ctl('letters', 'legible'), 'Text style, a card tapped: every row in the new letters,');
+      await tap(ctl('letters', 'standard'), 'Text style, Standard again,');
+      // Size: the sheet drawn larger or smaller. (At 200% the screen holds Settings at the size of 175% too: − twice.)
+      for (const [act, what] of scale ? [['scale-down', '− (175%)'], ['scale-down', '− (150%): the sheet drawn smaller,'], ['scale-up', '+ (175%): larger again,'], ['scale-up', '+ (200%)']]
+        : [['scale-up', '+: the sheet drawn larger,'], ['scale-down', '−: back again,']]) await tap(ctl(act), `Size ${what}`);
+      await ctx.close();
+    }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Large sizes on small screens', async (browser) => {
