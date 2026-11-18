@@ -98,7 +98,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | | |
 | --- | --- |
 | **Widget Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap a widget to open it. Tap ▦ again (or anywhere else) to close. |
-| **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Fullscreen, Settings. |
+| **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Full screen, Settings. |
 | **Pages** | Each page is a board of its own (its own windows, content, background and name), for lessons or parts of the day. At the far end of the Widget Picker's bottom row: **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after; on the last page › is **+** (a new page). Tap *Page* for the Pages menu: every page by name (tap one to go there), **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** and **Delete this page…** (with Undo). A new page takes this page's size, shape and background color. Every tab on the device shows the same page, and 21Board opens on the page it was showing. With Board Sync, pages and their order are the same on every device, and each device shows its own page. Widgets on other pages don't run while their page isn't shown: a Timer shows the right time when you come back, but its alarm doesn't ring on another page. |
 | **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. A YouTube Player's video takes every tap itself: move its window, or bring it forward, by the title bar. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
@@ -109,7 +109,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). *Replace this page* keeps the page and takes the file's theme, accent color and text style, and says so when they differ (with Board Sync, its windows and content, and the theme, accent color and text style, change on your other devices too); its Undo puts back the page and the theme, accent color and text style it replaced. The other ways leave the theme, accent color and text style as they are. A Board Sync device file opens as a backup of every page. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (*Fill*: any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → Classroom → **Board history…** opens the earlier versions of the board as a column beside Settings; tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
-| **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Fullscreen or Board Sync, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
+| **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Full screen or Board Sync, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 | **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → Advanced shows the version in use. |
 
@@ -154,10 +154,6 @@ Settings opens.
     (Andika by SIL, with a and g the way children learn to write them). Easier reading, not a dyslexia font; Notes'
     Chalkboard and Whiteboard keep their own lettering. With Board Sync, on all your devices. (Before 2026.11.17-2
     it was called *Letters*, and stayed on each device.)
-  - **Clock in the corner:** *Off*, *Time* or *Time and date* (the default). A small clock beside the ▦ button in
-    the bottom right corner (beside the only ▦ when the Widget Picker is in one corner), on every page and in kiosk
-    mode, as tall as ▦. Taps go through it to the windows under it. It hides while that corner's Widget Picker is
-    open, and where the window is too narrow for it (*Time and date* shows only the time first). This device only.
   - **Board shape** (this page): *Widescreen* (16:9, the same on every screen; the default) or *Fill* (the whole
     window). See [Board shape and size](#board-shape-and-size).
 - **Advanced ▸** (an amber dot on it only when a backup is overdue: none for a week, or none yet and the board has
@@ -165,6 +161,12 @@ Settings opens.
   and so does Board Sync writing this device's file, a full backup too. Whether the browser has promised to keep
   21Board's data is said inside, under *Protected storage*, not with the dot):
   - **Widget Picker:** both corners, or only left or right.
+  - **Clock in the corner:** *On*, *Off* or *Auto*, the default. The time and date, beside the ▦ button in the
+    bottom right corner, or beside the only ▦ when the Widget Picker is in one corner. *Auto* shows it only in full
+    screen, where the device's own clock is hidden. That's ⛶ Full screen, F11 or the Chromebook's full screen key,
+    and kiosk mode. Taps go through it. It hides while that corner's Widget Picker is open. In a narrow window it
+    shows only the time, or nothing. This device only. Before 2026.11.18-1 it was in Appearance. *Time and date*,
+    the old default, now reads as *Auto*, and *Time* as *On*.
   - **Size of windows and menus** (this page; default 80%).
   - **Moving windows:** *Windows stop at each other's edges* (Off, or Light, Medium and Firm: how hard you push to
     overlap them anyway) and *Drag windows from inside*.
@@ -474,7 +476,7 @@ new revision, or as a deleted file plus a new one: each write would then leave a
 Open 21Board with **`?kiosk=yes`** (for example `https://boardapp.ccsd21.org/?kiosk=yes`) for a ChromeOS kiosk
 app, where no one signs in:
 
-- The Widget Picker leaves out Fullscreen (a kiosk is always full screen) and ends with **Quit**, a red ✕ after
+- The Widget Picker has no Full screen, since a kiosk is always full screen. It ends with **Quit**, a red ✕ after
   the Settings gear. Quit asks first, waits until everything is saved, then closes the app
   (`window.close()`, as 21Sketch does). On ChromeOS that ends the kiosk session: an auto-launched kiosk starts
   21Board again; one started from **Apps** on the sign-in screen goes back to the sign-in screen. If the page
@@ -581,8 +583,8 @@ repository (`sw.js`) but not yet on its server; 21Timer and 21DocCam need one de
   `VideoCaptureAllowedUrls`) as well as for `https://doccamapp.ccsd21.org` (the app on its own). Only the
   21DocCam window is given the camera.
 - **What the windows allow:** the same sandbox as every widget (scripts, the app's own storage, forms, alerts
-  and printing, pop-ups, downloads) plus fullscreen, the clipboard and sound, and the camera for 21DocCam.
-  Tried with copies of the apps: saving PNG and project files, fullscreen, copying a picture, the camera, sound,
+  and printing, pop-ups, downloads) plus full screen, the clipboard and sound, and the camera for 21DocCam.
+  Tried with copies of the apps: saving PNG and project files, full screen, copying a picture, the camera, sound,
   alerts, printing and the app's own offline copy all work. The sandbox stops an app from taking 21Board's tab
   elsewhere; 21Board takes no messages from them and sends them none.
 - **Kiosk.** They work in a kiosk 21Board like any widget, without *Open … on its own* (a kiosk can't open
@@ -696,7 +698,7 @@ never lost to a clean-up (or is saved again if it is).
 ## Browser support
 
 Built for current **Chrome** (and Chromium-based Edge). Kept compatible with **Safari 16+**
-(iPadOS/macOS) and current Firefox. Fullscreen is hidden where the browser doesn't support it.
+(iPadOS/macOS) and current Firefox. Full screen is hidden where the browser doesn't support it.
 
 ## Third-party files
 

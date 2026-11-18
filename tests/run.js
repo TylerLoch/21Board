@@ -46,6 +46,14 @@ async function openSettings(p, groups = [], side = 'left') {
   await p.waitForTimeout(250);
 }
 
+// Settings → Advanced → Clock in the corner, chosen as a teacher does ('on', 'off' or 'auto'), and Settings closed again.
+// Auto, the default, shows the clock only in full screen: a test of what sits beside or under the clock turns it On.
+async function setCornerClock(p, mode = 'on', side = 'left') {
+  await openSettings(p, ['advanced'], side);
+  await p.click(`#settings [data-act="clock"][data-val="${mode}"]`); await p.waitForTimeout(200);
+  await p.keyboard.press('Escape'); await p.waitForTimeout(150);
+}
+
 // Renames the page shown, as a teacher does (‹ Page › → Rename this page…: Settings has no name field).
 async function renamePage(p, name) {
   await p.evaluate(() => { window.__board21.pages.rename(); });
@@ -1665,11 +1673,22 @@ const SUITES = [
     let sh = await shape();
     ok(sh.heads.join() === 'Board Sync,Classroom,This page,Appearance' && sh.last === 'grp-advanced' && sh.theme === 'Auto',
       `Settings: ${sh.heads.join(', ')}, then Advanced at the bottom; Theme shows Auto`);
-    // Appearance: Theme, Background, Accent color, Text style, Clock in the corner, Board shape.
+    // Appearance: Theme, Background, Accent color, Text style, Board shape. (Clock in the corner is in Advanced.)
     const looks = await page.evaluate(() => { const h = [...document.querySelectorAll('#settings .sheet-body > h3')].find(x => x.textContent === 'Appearance'), out = [];
       for (let e = h.nextElementSibling; e && e.tagName !== 'H3' && !e.classList.contains('gap'); e = e.nextElementSibling) if (e.matches('.row')) out.push(e.querySelector('.lbl').textContent);
       return out; });
-    ok(looks.join() === 'Theme,Background,Accent color,Text style,Clock in the corner,Board shape', `Appearance: ${looks.join(', ')}`);
+    ok(looks.join() === 'Theme,Background,Accent color,Text style,Board shape', `Appearance: ${looks.join(', ')}`);
+    // Advanced: Widget Picker, then Clock in the corner (On, Off, Auto: Auto chosen on a new device), then Size; its row's
+    // grey line says the clock is in it.
+    const adv = await page.evaluate(() => ({ rows: [...document.getElementById('grp-advanced').children].filter(e => e.matches('.row') && e.querySelector('.lbl')).slice(0, 3).map(e => e.querySelector('.lbl').textContent),
+      clock: [...document.querySelectorAll('#grp-advanced [data-act="clock"]')].map(b => b.textContent + (b.classList.contains('on') ? ' (chosen)' : '')).join(', '),
+      sub: document.querySelector('#settings [data-act="group"][data-val="advanced"] .hint').textContent }));
+    ok(adv.rows.join() === 'Widget Picker,Clock in the corner,Size of windows and menus' && adv.clock === 'On, Off, Auto (chosen)' && adv.sub === 'Widget Picker, clock, size, moving windows, history, backups, developer, erase',
+      `Advanced: ${adv.rows.join(', ')}…, the clock ${adv.clock}; its row says “${adv.sub}”`);
+    // Every set of choices says which setting it is, for a screen reader: Theme's Auto isn't the clock's Auto.
+    const named = await page.evaluate(() => [...document.querySelectorAll('#settings [role="radiogroup"]')].map(g => `${g.getAttribute('aria-label') || '(no name)'}: ${[...g.querySelectorAll('[role="radio"]')].map(r => r.textContent).join('/')}`));
+    ok(named.length >= 5 && !named.some(n => n.startsWith('(no name)')) && named.includes('Theme: Light/Dark/Auto') && named.includes('Clock in the corner: On/Off/Auto') && named.includes('Widget Picker: Both corners/Left/Right'),
+      `every set of choices in Settings has a name (${named.join('; ')})`);
     ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden' && !sh.missing.length && !sh.name,
       `every group starts closed, and is in the page, hidden (${sh.groups.join(', ')}); no page name field`);
     // Saved widgets: how many there are, open or closed; open, the list says Open or Closed (no sizes).
@@ -1831,11 +1850,12 @@ const SUITES = [
       const heads = [...document.querySelectorAll('#settings .sheet-body > h3')].map(h => h.textContent), saved = document.querySelector('#settings [data-val="saved"]');
       const h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(saved) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
       const erase = document.querySelector('#settings [data-act="erase"]'), eh = [...document.querySelectorAll('#grp-advanced h4')].filter(e => e.compareDocumentPosition(erase) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
-      return { heads, under: h && h.textContent, dot: !!document.getElementById('grp-advanced-warn') && !document.getElementById('grp-advanced-warn').hidden, rows: ['lock-windows', 'awake', 'hist-open', 'close-all', 'backup', 'devmode'].filter(a => document.querySelector(`#settings [data-act="${a}"]`)),
-        adv: [...document.querySelectorAll('#grp-advanced h4')].map(e => e.textContent), erase: eh && eh.textContent }; });
+      return { heads, under: h && h.textContent, dot: !!document.getElementById('grp-advanced-warn') && !document.getElementById('grp-advanced-warn').hidden, rows: ['lock-windows', 'awake', 'hist-open', 'close-all', 'backup', 'devmode', 'clock'].filter(a => document.querySelector(`#settings [data-act="${a}"]`)),
+        adv: [...document.querySelectorAll('#grp-advanced h4')].map(e => e.textContent), erase: eh && eh.textContent, sub: document.querySelector('#settings [data-act="group"][data-val="advanced"] .hint').textContent }; });
     ok(labShape && labShape.heads.join() === 'Classroom,Widget test mode,Appearance' && labShape.under === 'Widget test mode' && labShape.rows.join() === 'close-all' && !labShape.dot,
       `the widget dev window’s Settings: ${labShape && labShape.heads.join(', ')}, with only Close all in Classroom (${JSON.stringify(labShape)})`);
     ok(labShape && labShape.adv.join() === 'Moving windows,Storage' && labShape.erase === 'Storage', `and in Advanced, Erase everything is under Storage, not under Moving windows (${labShape && labShape.adv.join(', ')})`);
+    ok(labShape && labShape.sub === 'Widget Picker, size, moving windows, erase', `and no clock in it, nor in its row’s grey line (“${labShape && labShape.sub}”)`);
     await lab.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
@@ -2837,6 +2857,7 @@ const SUITES = [
     const cp = await cctx.newPage(); watch(cp, 'corners');
     await cp.clock.install({ time: new Date('2026-11-12T09:41:00') });   // (the clock's width depends on the time: see Clock in the corner)
     await cp.goto(BASE); await boardUp(cp);
+    await setCornerClock(cp, 'on');   // (Auto, the default, shows it only in full screen: here it's what the picker keeps clear of)
     await cp.evaluate(() => window.__board21.openWidget('name-picker'));
     await eventually(async () => ((await conf(cp)) || {}).style === 'wheel');
     await np(cp).locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan\nSofia\nLiam\nAmara\nKenji\nDiego\nFatima'); await np(cp).locator('#done').click();
@@ -5056,6 +5077,8 @@ const SUITES = [
 
     // A window that fills the board: the board's own ▦ buttons and clock sit over its bottom corners, so YouTube's
     // player ends above them, on black, and nothing of the board's covers any part of it (its controls are at its foot).
+    // (The clock On: Auto, the default, shows it only in full screen.)
+    await setCornerClock(page, 'on');
     const ytOnScreen = async () => {
       const top = await page.evaluate(() => { const vis = e => { const s = getComputedStyle(e), b = e.getBoundingClientRect(); return !e.hidden && s.display !== 'none' && s.visibility !== 'hidden' && b.width > 0; };
         const r = document.querySelector('.win[data-ikey="youtube-player:1"] iframe').getBoundingClientRect();
@@ -7664,7 +7687,7 @@ const SUITES = [
     await page.goto(BASE + '?kiosk=yes'); await page.waitForTimeout(800);
     await page.click('.picker-btn.left'); await page.waitForTimeout(250);
     const ctl = await page.evaluate(() => Array.from(document.querySelectorAll('.panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl));
-    ok(JSON.stringify(ctl) === JSON.stringify(['export', 'import', 'theme', 'settings', 'quit']), `the Widget Picker keeps Export and Import, leaves out Fullscreen, and ends with Quit after Settings (${ctl.join(', ')})`);
+    ok(JSON.stringify(ctl) === JSON.stringify(['export', 'import', 'theme', 'settings', 'quit']), `the Widget Picker keeps Export and Import, leaves out Full screen, and ends with Quit after Settings (${ctl.join(', ')})`);
     ok(await page.evaluate(() => getComputedStyle(document.querySelector('[data-ctl="quit"]')).color === 'rgb(220, 38, 38)'), 'Quit is a red X');
     await page.click('[data-ctl="settings"]'); await page.waitForTimeout(400);
     const set = await page.evaluate(() => { const r = document.getElementById('settings'); return { link: !!r.querySelector('[data-act^="link-"]'), backup: !!r.querySelector('[data-act="backup"]'), dev: !!r.querySelector('[data-act="devmode"]'), install: !!r.querySelector('[data-act="install"]'), kiosk: /Kiosk mode/.test(r.textContent), hist: !!r.querySelector('[data-act="hist-open"]') }; });
@@ -7846,6 +7869,8 @@ const SUITES = [
     await click(p, '.picker-btn.left'); await p.keyboard.press('a'); await click(p, '.picker-btn.right'); await click(p, '.picker-btn.right');
     ok((await maxes(p)).length === 1, 'later taps and keys call nothing more (one call per launch)');
     // X5: the board follows. The window grows (as the fill does) to 1318 × 736 inside: the layout is what a board started at that size has.
+    // (The corner clock On, for this tab and the one started beside it: Auto shows it only in full screen, and an app's window isn't.)
+    await setCornerClock(p, 'on');
     await quiet(p, () => { window.__board21.openWidget('timer'); return true; }); await p.waitForTimeout(1000);
     await p.setViewportSize({ width: 1318, height: 736 }); await p.waitForTimeout(600);
     const layout = q => quiet(q, () => {
@@ -8056,6 +8081,9 @@ const SUITES = [
       const tab = ctx.pages()[0] || await ctx.newPage();
       tab.on('pageerror', e => errors.push(e.message));
       await tab.goto(BASE); await boardUp(tab);
+      // The corner clock On (chosen in this tab: the app's window shares its settings), to see that it follows the window.
+      // (Auto, the default, shows it only in full screen: "Clock in the corner: real Chrome windows" checks that.)
+      await setCornerClock(tab, 'on');
       const tabId = (await (await ctx.newCDPSession(tab)).send('Target.getTargetInfo')).targetInfo.targetId;
       try {
         await bs.send('PWA.install', { manifestId: BASE, installUrlOrBundleUrl: BASE });
@@ -10570,33 +10598,80 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   }],
 
   // Clock in the corner
-  ['Clock in the corner (on by default, the minute, Time and date, Off, dark, corners, never in the way, LAB, kiosk)', async (browser) => {
+  ['Clock in the corner (Auto by default: only in full screen, ⛶ and the window’s own, kiosk; On, Off, the minute, time and date, dark, corners, never in the way, older values, LAB)', async (browser) => {
     const errors = [];
     // The clock as drawn: shown (not hidden or covered), its text without spaces between the time and AM/PM, where it is.
     const cornerClock = page => page.evaluate(() => {
       const c = document.querySelector('.corner-clock');
-      if (!c || c.hidden) return { shown: false };
+      if (!c || c.hidden) return { shown: false, on: document.body.classList.contains('clock-on') };
       const r = c.getBoundingClientRect(), cs = getComputedStyle(c), t = c.querySelector('.t');
-      return { shown: cs.display !== 'none' && cs.visibility !== 'hidden', text: c.textContent.replace(/\s+(?=[AP]M)/g, '').replace(/\s+/g, ' ').trim(), side: c.classList.contains('right') ? 'right' : 'left',
+      return { shown: cs.display !== 'none' && cs.visibility !== 'hidden', on: document.body.classList.contains('clock-on'), text: c.textContent.replace(/\s+(?=[AP]M)/g, '').replace(/\s+/g, ' ').trim(), side: c.classList.contains('right') ? 'right' : 'left',
         r: { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width, height: r.height }, bg: cs.backgroundColor, color: cs.color, pe: cs.pointerEvents,
         fontPx: t ? t.getBoundingClientRect().height : 0 };
     });
-    const setClock = async (page, mode) => {   // through Settings, as a teacher would
-      await page.keyboard.press('Escape');
-      await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(250);
-      await page.click(`#settings [data-act="clock"][data-val="${mode}"]`); await page.waitForTimeout(200);
-      await page.keyboard.press('Escape'); await page.waitForTimeout(100);
-    };
+    const setClock = async (page, mode) => { await page.keyboard.press('Escape'); await setCornerClock(page, mode); };   // (through Settings, as a teacher would)
+    // Settings → Advanced → Clock in the corner: the group it's in, the row before it, its choices and the lines under its name.
+    const clockRow = page => page.evaluate(() => {
+      const b = document.querySelector('#settings [data-act="clock"]'), r = b && b.closest('.row'), g = r && r.closest('.drawer');
+      if (!r) return null;
+      const rows = g ? [...g.children].filter(e => e.matches('.row') && e.querySelector('.lbl')).map(e => e.querySelector('.lbl').textContent) : [];
+      return { group: g ? g.id : '(none)', before: rows[rows.indexOf('Clock in the corner') - 1] || '(first)', label: r.querySelector('.lbl').textContent, name: r.querySelector('[role="radiogroup"]').getAttribute('aria-label'),
+        choices: [...r.querySelectorAll('[data-act="clock"]')].map(x => x.textContent + (x.classList.contains('on') ? ' (chosen)' : '')).join(', '),
+        hints: [...r.querySelectorAll('.hint')].map(h => h.textContent).filter(Boolean) };
+    });
+    const AUTO_HINT = 'Auto: only in full screen.';
+    // The Fullscreen API, as ⛶ uses it, and done once its fullscreenchange has come (Chrome can resolve the promise first:
+    // here, going full screen again just after leaving it, by about 0.4 s).
+    const fsChange = (page, on) => page.evaluate(on => new Promise(res => {
+      if (!!document.fullscreenElement === on) return res(true);
+      const done = () => res(!!document.fullscreenElement === on);
+      document.addEventListener('fullscreenchange', done, { once: true }); setTimeout(done, 3000);
+      (on ? document.documentElement.requestFullscreen() : document.exitFullscreen()).catch(e => res(e.name));
+    }), on);
+    const fsOn = page => fsChange(page, true), fsOff = page => fsChange(page, false);
+
+    // ---- A new device, in a tab: Auto, so no clock. Settings → Advanced → Clock in the corner: On, Off, Auto.
     let ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     let page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
     await page.clock.install({ time: new Date('2026-11-12T09:41:00') });
     await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
     let c = await cornerClock(page);
+    ok(await page.evaluate(() => window.__board21.state.settings.clock) === 'auto' && !c.shown && !c.on && !await page.evaluate(() => !!document.querySelector('.corner-clock:not([hidden])')),
+      'Auto by default: in a tab (not full screen) there’s no clock, and toasts have the whole bottom');
+    await openSettings(page, ['advanced']);
+    let row = await clockRow(page);
+    ok(row && row.group === 'grp-advanced' && row.before === 'Widget Picker' && row.label === 'Clock in the corner' && row.choices === 'On, Off, Auto (chosen)',
+      `Settings → Advanced → “Clock in the corner”, after Widget Picker: ${row && `${row.group}, after ${row.before}: ${row.choices}`}`);
+    ok(row && row.name === 'Clock in the corner', `a screen reader hears which setting its On, Off and Auto belong to (${row && row.name})`);
+    ok(row && row.hints.join(' | ') === AUTO_HINT, `under it, what Auto does, and nothing about room while it isn’t meant to show (${row && row.hints.join(' | ')})`);
+    await page.keyboard.press('Escape');
+
+    // ---- ⛶ (21Board's own Fullscreen, the Fullscreen API): Auto shows it at once, and hides it on leaving (⛶ again, or
+    // Escape, which the browser handles as exitFullscreen()).
+    const fsLabel = () => page.evaluate(() => { const b = document.querySelector('#panel [data-ctl="fullscreen"]'); return `${b.title} / ${b.getAttribute('aria-label')}`; });
+    const fsLabels = [await fsLabel()];
+    await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="fullscreen"]'); await page.waitForTimeout(400);
+    c = await cornerClock(page);
+    const full = await page.evaluate(() => !!document.fullscreenElement);
+    fsLabels.push(await fsLabel());
+    ok(full && c.shown && c.on && c.text === 'Thu, Nov 12 9:41AM', `⛶ Full screen: Auto shows the time and date at once (${full ? 'full screen' : 'not full screen'}: ${c.text || 'no clock'})`);
+    await openSettings(page, ['advanced']);
+    row = await clockRow(page);
+    ok(row && row.hints.join(' | ') === AUTO_HINT, `Settings in full screen: the clock fits, so only what Auto does is said (${row && row.hints.join(' | ')})`);
+    await page.keyboard.press('Escape');
+    await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="fullscreen"]'); await page.waitForTimeout(400);
+    c = await cornerClock(page);
+    ok(!await page.evaluate(() => !!document.fullscreenElement) && !c.shown && !c.on, `⛶ again (Exit full screen): hidden again (${c.shown ? c.text : 'no clock'})`);
+    fsLabels.push(await fsLabel());
+    ok(fsLabels.join(', ') === 'Full screen / Full screen, Exit full screen / Exit full screen, Full screen / Full screen', `⛶ says “Full screen”, and “Exit full screen” while 21Board is (${fsLabels.join(', ')})`);
+    await page.keyboard.press('Escape');
+    ok(await fsOn(page) === true && (await cornerClock(page)).shown, 'the Fullscreen API from anywhere (a key, a widget): shown');
+    ok(await fsOff(page) === true && !(await cornerClock(page)).shown, 'Escape (exitFullscreen()): hidden');
+
+    // ---- On: always, as "Time and date" was.
+    await setClock(page, 'on'); c = await cornerClock(page);
     const btn = await page.evaluate(() => { const r = document.querySelector('.picker-btn.right').getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, height: r.height }; });
-    ok(await page.evaluate(() => window.__board21.state.settings.clock) === 'date' && c.shown && c.text === 'Thu, Nov 12 9:41AM', `on by default, showing the time and date (${c.text})`);
-    // (The checks below were written for the time alone: the narrower clock.)
-    await setClock(page, 'time'); await page.waitForTimeout(250); c = await cornerClock(page);
-    ok(c.shown && c.text === '9:41AM', `Time shows only the time (${c.text})`);
+    ok(c.shown && c.on && c.text === 'Thu, Nov 12 9:41AM', `On: the time and date, in a tab too (${c.text})`);
     ok(c.side === 'right' && c.r.right <= btn.left && btn.left - c.r.right < 12 && Math.abs(c.r.height - btn.height) < 1 && Math.abs(c.r.bottom - btn.bottom) < 1,
       'beside the right-hand ▦ button on its inner side, as tall as it');
     ok(c.pe === 'none' && c.fontPx >= 24, `taps go through it, and it is big enough to read across the room (${c.fontPx.toFixed(1)} px)`);
@@ -10606,20 +10681,18 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const before = (await cornerClock(page)).text;
     await page.clock.runFor(200);
     const after = (await cornerClock(page)).text;
-    ok(before === '9:41AM' && after === '9:42AM', `it changes exactly on the minute (9:41:59.9 ${before}, 9:42:00.1 ${after})`);
+    ok(before === 'Thu, Nov 12 9:41AM' && after === 'Thu, Nov 12 9:42AM', `it changes exactly on the minute (9:41:59.9 ${before}, 9:42:00.1 ${after})`);
     await page.clock.resume();
-    // Settings → Appearance: Off / Time / Time and date.
-    await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300);
-    const row = await page.evaluate(() => { const b = document.querySelector('#settings [data-act="clock"]'), r = b && b.closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
-      return r && { section: h && h.textContent, label: r.querySelector('.lbl').textContent, choices: [...r.querySelectorAll('[data-act="clock"]')].map(x => x.textContent + (x.classList.contains('on') ? ' (chosen)' : '')).join(', ') }; });
-    ok(row && row.section === 'Appearance' && row.label === 'Clock in the corner' && row.choices === 'Off, Time (chosen), Time and date', `Settings → Appearance → “Clock in the corner”: ${row && row.choices}`);
-    await page.click('#settings [data-act="clock"][data-val="date"]'); await page.waitForTimeout(300);
-    c = await cornerClock(page);
-    ok(c.shown && c.text === 'Thu, Nov 12 9:42AM' && c.r.right <= btn.left, `Time and date: “${c.text}”, still beside ▦`);
+    await openSettings(page, ['advanced']);
+    row = await clockRow(page);
+    ok(row && row.choices === 'On (chosen), Off, Auto' && row.hints.join(' | ') === AUTO_HINT, `Settings: ${row && row.choices}`);
     await page.click('#settings [data-act="clock"][data-val="off"]'); await page.waitForTimeout(300);
-    ok(!(await cornerClock(page)).shown && !await page.evaluate(() => document.body.classList.contains('clock-on')), 'Off: no clock');
-    await page.click('#settings [data-act="clock"][data-val="time"]'); await page.waitForTimeout(300);
-    ok((await cornerClock(page)).text === '9:42AM', 'Time: back again');
+    c = await cornerClock(page);
+    ok(!c.shown && !c.on, 'Off: no clock');
+    ok(await fsOn(page) === true && !(await cornerClock(page)).shown && await fsOff(page) === true, 'Off: none in full screen either');
+    await openSettings(page, ['advanced']);
+    await page.click('#settings [data-act="clock"][data-val="on"]'); await page.waitForTimeout(300);
+    ok((await cornerClock(page)).text === 'Thu, Nov 12 9:42AM', 'On: back again');
     // Drawn like the toolbar in both themes.
     const light = (await cornerClock(page)).bg;
     await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(300);
@@ -10647,7 +10720,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const zone = await ctx.newCDPSession(page);
     await zone.send('Emulation.setTimezoneOverride', { timezoneId: 'America/Chicago' });
     await page.clock.install({ time: new Date('2026-11-12T15:41:30Z') });   // 9:41 AM in Chicago
-    await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
+    await page.goto(BASE); await boardUp(page); await setClock(page, 'on'); await page.waitForTimeout(300);
     const chicago = (await cornerClock(page)).text;
     await zone.send('Emulation.setTimezoneOverride', { timezoneId: '' });   // (one override at a time)
     await zone.send('Emulation.setTimezoneOverride', { timezoneId: 'America/New_York' });
@@ -10656,11 +10729,11 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(chicago === 'Thu, Nov 12 9:41AM' && newYork === 'Thu, Nov 12 10:42AM', `a new time zone shows from the next minute (Chicago ${chicago}, then New York ${newYork})`);
     await ctx.close();
 
-    // Never in the way. (At 9:41: what fits depends on the time's width, and "12:59 PM" is wider than "9:41 AM".)
+    // Never in the way (On). (At 9:41: what fits depends on the time's width, and "12:59 PM" is wider than "9:41 AM".)
     ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     page = await ctx.newPage(); page.on('pageerror', e => { if (!/boom from the widget/.test(e.message)) errors.push(e.message); });   // (the dev window's test widget throws on purpose)
     await page.clock.install({ time: new Date('2026-11-12T09:41:00') });
-    await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
+    await page.goto(BASE); await boardUp(page); await setClock(page, 'on'); await page.waitForTimeout(300);
     const clear = () => page.evaluate(() => {
       const c = document.querySelector('.corner-clock');
       if (!c || c.hidden || getComputedStyle(c).visibility === 'hidden') return { shown: false };
@@ -10668,7 +10741,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const names = { 'picker-btn': '▦', 'save-note': 'Not saved', 'folder-note': 'the folder note', toast: 'a toast', 'shape-hint': 'the shape tip' };
       const over = [...document.querySelectorAll('.picker-btn, .save-note, .folder-note, #toasts .toast, #shape-hint')].filter(e => !e.hidden && e.getBoundingClientRect().width && hit(e.getBoundingClientRect()))
         .map(e => names[e.id] || names[[...e.classList].find(k => names[k])]);
-      return { shown: true, inside: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, over, text: c.textContent };
+      return { shown: true, inside: r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight, over, text: c.textContent.replace(/\s+(?=[AP]M)/g, '').replace(/\s+/g, ' ').trim() };
     });
     // Everything that can sit in the bottom corners and the bottom middle at once: both notes and a long toast.
     const crowd = () => page.evaluate(() => {
@@ -10679,22 +10752,27 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       document.getElementById('toasts').appendChild(t);
     });
     const report = [];
-    for (const [w, h, size, mode] of [[1366, 768, 0.8, 'time'], [1366, 768, 0.8, 'date'], [1024, 768, 0.8, 'time'], [1024, 768, 0.8, 'date'], [1920, 1080, 0.8, 'date'], [768, 1024, 0.8, 'date'], [683, 768, 0.8, 'time'], [480, 800, 0.8, 'time'], [1366, 768, 2, 'date'], [1920, 1080, 2, 'time']]) {
+    for (const [w, h, size] of [[1366, 768, 0.8], [1024, 768, 0.8], [1920, 1080, 0.8], [768, 1024, 0.8], [683, 768, 0.8], [480, 800, 0.8], [1366, 768, 2], [1920, 1080, 2]]) {
       await page.setViewportSize({ width: w, height: h });
       await page.evaluate(size => { document.querySelectorAll('#toasts .toast').forEach(t => t.remove()); window.__board21.setBoardScale(size); }, size);
-      await setClock(page, mode); await page.waitForTimeout(250);
+      await page.waitForTimeout(350);
       await crowd(); await page.waitForTimeout(100);
       const r = await clear();
-      report.push(`${w}×${h} ${size * 100}% ${mode}: ${r.shown ? (r.over.length ? 'over ' + r.over.join(', ') : r.inside ? 'clear' : 'off screen') : 'hidden'}`);
+      report.push(`${w}×${h} ${size * 100}%: ${r.shown ? (r.over.length ? 'over ' + r.over.join(', ') : r.inside ? 'clear' : 'off screen') : 'hidden'}`);
       ok(!r.shown || (r.inside && !r.over.length), report[report.length - 1] + (r.shown ? ` (“${r.text}”)` : ''));
     }
-    ok(/^768×1024 80% date: clear/.test(report[5]) && /^480×800 80% time: hidden/.test(report[7]), 'it shows on an upright iPad, and hides in a window too narrow for it');
+    ok(/^768×1024 80%: clear/.test(report[3]) && /^480×800 80%: hidden/.test(report[5]), 'it shows on an upright iPad, and hides in a window too narrow for it');
     await page.evaluate(() => document.querySelectorAll('#toasts .toast').forEach(t => t.remove()));
-    // Settings says what doesn't fit right now.
-    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(2)); await setClock(page, 'date'); await page.waitForTimeout(300);
-    await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(300);
+    // Settings says what doesn't fit right now: only the time, or none of it.
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(300);
+    await openSettings(page, ['advanced']);
     const fit = await page.locator('#set-clock-fit').textContent(), only = (await cornerClock(page)).text;
-    ok(fit === 'Only the time fits in this window right now.' && /^\d{1,2}:\d\d[AP]M$/.test(only), `at 200% on 1366×768, “Time and date” shows the time only (${only}), and Settings says so (${fit})`);
+    ok(fit === 'Only the time fits in this window right now.' && /^\d{1,2}:\d\d[AP]M$/.test(only), `at 200% on 1366×768, On shows the time only (${only}), and Settings says so (${fit})`);
+    await page.keyboard.press('Escape');
+    await page.setViewportSize({ width: 480, height: 800 }); await page.evaluate(() => window.__board21.setBoardScale(0.8)); await page.waitForTimeout(300);
+    await openSettings(page, ['advanced']);
+    const none = await page.locator('#set-clock-fit').textContent();
+    ok(none === 'There isn’t room for it in this window right now.' && !(await cornerClock(page)).shown, `in a window too narrow for it, Settings says so (${none})`);
     await page.keyboard.press('Escape');
     // The shape tip never sits under it.
     for (const [w, h, sc] of [[1100, 400, 1.5], [1600, 600, 2], [600, 800, 2], [800, 720, 1.5], [1000, 900, 2], [1000, 820, 0.8]]) {
@@ -10703,7 +10781,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(!r.shown || (r.inside && !r.over.length), `${w}×${h} at ${sc * 100}%${tip ? ' with the shape tip' : ''}: the clock is ${r.shown ? (r.over.length ? 'over ' + r.over.join(', ') : 'clear of everything') : 'left out'}`);
     }
     // The Widget Picker: the clock hides while its corner's Picker is open, and stays while the other corner's is.
-    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(0.8)); await setClock(page, 'time'); await page.waitForTimeout(300);
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(0.8)); await page.waitForTimeout(300);
     await page.click('.picker-btn.right'); await page.waitForTimeout(400);
     const underPanel = (await clear()).shown;
     await page.click('.picker-btn.right'); await page.waitForTimeout(300);
@@ -10733,17 +10811,17 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.mouse.up(); await page.waitForTimeout(400);
     const w1 = await page.evaluate(() => Object.assign({}, window.__board21.state.wins.get('clock:1').disp));
     ok(under && w1.x < w0.x - 200 && w1.y < w0.y - 150, `a window under the clock gets the tap, and drags from there (moved ${Math.round(w1.x - w0.x)}, ${Math.round(w1.y - w0.y)})`);
-    // Kiosk mode: shown. The widget dev window (LAB): never.
+    // Kiosk mode is always full screen (it has no ⛶): Auto shows the clock there.
+    await setClock(page, 'auto');
+    ok(!(await cornerClock(page)).shown, 'back to Auto: none in this tab');
     await page.goto(BASE + '?kiosk=yes'); await boardUp(page); await page.waitForTimeout(300);
-    ok((await cornerClock(page)).shown, 'kiosk mode shows the clock');
-    await page.goto(BASE + '__dev/widget.html'); await page.waitForTimeout(3000);
-    const board = page.frames().find(f => f.parentFrame() === page.mainFrame());
-    ok(!!board && await board.evaluate(() => !!window.__board21 && !document.querySelector('.corner-clock:not([hidden])') && !document.body.classList.contains('clock-on') && !document.querySelector('#settings [data-act="clock"]')),
-      'the widget dev window has no clock');
+    ok(await page.evaluate(() => window.__board21.state.settings.clock) === 'auto' && (await cornerClock(page)).shown, 'kiosk mode (always full screen): Auto shows the clock');
     await ctx.close();
 
-    // A window that fills the board is told how far ▦ and the clock reach into its bottom corners (`corners` in Board21's
-    // window info, in its CSS px), so it can keep its own buttons clear of them. A window that doesn't fill it isn't.
+    // ---- A window that fills the board is told how far ▦ and the clock reach into its bottom corners (`corners` in Board21's
+    // window info, in its CSS px), so it can keep its own buttons clear of them; it follows the clock coming and going,
+    // with Auto as full screen comes and goes. A window that doesn't fill it isn't told. Toasts keep clear of the clock
+    // only while it shows (body.clock-on, --clock-room).
     ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
     page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page);
@@ -10757,37 +10835,140 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       return { left: Math.ceil(L.right / s), right: Math.ceil((innerWidth - Math.min(R.left, C ? C.left : Infinity)) / s), height: Math.ceil((innerHeight - Math.min(L.top, R.top, C ? C.top : Infinity)) / s) };
     });
     const sameReach = (a, b) => !!a && !!b && ['left', 'right', 'height'].every(k => Math.abs(a[k] - b[k]) <= 1);
+    const onlyButtons = async () => { const t = await told(); return sameReach(t, await measured()) && Math.abs(t.right - t.left) <= 1; };
+    let withClock = null;
+    const andClock = async () => { const t = await told(); if (!sameReach(t, await measured()) || t.right < t.left + 100) return false; withClock = t; return true; };
+    // (A toast keeps clear of the clock by --clock-room; without it, only of the screen's edges.)
+    const toastRoom = () => page.evaluate(() => { const t = document.getElementById('toasts'); return document.body.classList.contains('clock-on') ? getComputedStyle(t).maxWidth : 'no clock-on'; });
     ok(await told() === null, 'a window that doesn’t fill the board isn’t told about the corners');
     await page.evaluate(() => window.__board21.setMaximized('notes:1', true));
-    ok(await eventually(async () => sameReach(await told(), await measured())), `filling the board, it is told how far ▦ and the clock reach in (${JSON.stringify(await told())})`);
-    const withClock = await told();
+    ok(await eventually(onlyButtons) && await toastRoom() === 'no clock-on', `filling the board in a tab (Auto, no clock), it is told how far ▦ reaches in (${JSON.stringify(await told())})`);
+    ok(await fsOn(page) === true && await eventually(andClock) && /px$/.test(await toastRoom()), `full screen (Auto): the clock comes, and the window is told it reaches in further (${JSON.stringify(withClock)}); toasts keep clear of it (max-width ${await toastRoom()})`);
+    ok(await fsOff(page) === true && await eventually(onlyButtons) && await toastRoom() === 'no clock-on', `leaving full screen: the clock goes, and the window is told only ▦ again (${JSON.stringify(await told())}); toasts have the whole bottom again`);
+    await setClock(page, 'on');
+    ok(await eventually(andClock), `On: as far as the clock (${JSON.stringify(await told())})`);
     await setClock(page, 'off');
-    ok(await eventually(async () => { const t = await told(); return sameReach(t, await measured()) && t.right < withClock.right - 100 && Math.abs(t.right - t.left) <= 1; }),
-      `with the clock off, only as far as ▦ (${JSON.stringify(await told())})`);
-    await setClock(page, 'date');
+    ok(await eventually(async () => { const t = await told(); return await onlyButtons() && t.right < withClock.right - 100; }), `Off: only as far as ▦ (${JSON.stringify(await told())})`);
+    await setClock(page, 'on');
     await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(1.5));
     ok(await eventually(async () => sameReach(await told(), await measured())), `and again when the screen or the board’s Size changes (${JSON.stringify(await told())} at 150% on 1366×768)`);
     await page.evaluate(() => window.__board21.setMaximized('notes:1', false));
     ok(await eventually(async () => await told() === null), 'and not once it no longer fills the board');
     await ctx.close();
 
-    // A clock setting this release doesn't know (another release's, or a damaged record): the default, on the board
-    // and in Settings alike.
+    // ---- The browser's or app's window in full screen without the Fullscreen API: Chrome 153 says so with
+    // (display-mode: fullscreen) (F11, the Chromebook's full screen key, an app opened full screen), Chrome 155 with
+    // (display-state: fullscreen) too. Stubbed (CDP can't emulate either): window.__screen({ mode, state }) changes what
+    // they say, with their change events; __screen(…, true) quietly, with none, so a resize is all the board gets.
+    const SCREEN = cfg => {
+      const st = Object.assign({ mode: 'browser', state: 'normal' }, cfg), lists = {}, mm = window.matchMedia.bind(window);
+      const val = (k, v) => st[k] === v;
+      window.matchMedia = q => {
+        const m = /^\s*\(\s*display-(mode|state)\s*:\s*([a-z-]+)\s*\)\s*$/.exec(String(q));
+        if (!m) return mm(q);
+        if (lists[q]) return lists[q];
+        const l = lists[q] = new EventTarget(), k = m[1], v = m[2];
+        let was = val(k, v);
+        Object.defineProperty(l, 'matches', { get: () => val(k, v) });
+        l.media = q; l.onchange = null;
+        l.addListener = f => l.addEventListener('change', f); l.removeListener = f => l.removeEventListener('change', f);
+        l.check = () => { const now = val(k, v); if (now === was) return; was = now; const e = new Event('change'); e.matches = now; e.media = q; l.dispatchEvent(e); if (l.onchange) l.onchange(e); };
+        return l;
+      };
+      window.__screen = (o, quiet) => { Object.assign(st, o); if (!quiet) Object.values(lists).forEach(l => l.check()); };
+    };
+    ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await ctx.addInitScript(SCREEN, {});
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    await page.evaluate(() => window.__board21.openWidget('notes'));
+    const noteWin2 = page.frameLocator('.win[data-ikey="notes:1"] iframe');
+    await noteWin2.locator('body').waitFor(); await page.waitForTimeout(500);
+    const told2 = () => noteWin2.locator('html').evaluate(() => (Board21.context && Board21.context.window && Board21.context.window.corners) || null).catch(() => null);
+    await page.evaluate(() => window.__board21.setMaximized('notes:1', true)); await page.waitForTimeout(400);
+    const flips = [];
+    // What the board shows after the window says it's in that state: the clock or not, clock-on, and how far the
+    // maximized window is told the right-hand corner reaches (once it has been told what the board shows).
+    const as = async (label, o, quiet) => {
+      await page.evaluate(([o, quiet]) => window.__screen(o, quiet), [o, !!quiet]); await page.waitForTimeout(300);
+      await eventually(async () => sameReach(await told2(), await measured()), 3000);
+      const k = await cornerClock(page), t = await told2();
+      flips.push(`${label}: ${k.shown ? 'clock' : 'none'}${k.on ? ' (clock-on)' : ''}, told right ${t ? t.right : '?'}`);
+      return { shown: !!k.shown && k.on, right: t ? t.right : null };
+    };
+    const tab = await as('a tab', { mode: 'browser', state: 'normal' });
+    const f11 = await as('F11 (display-mode: fullscreen)', { mode: 'fullscreen' });
+    const tabAgain = await as('F11 again (display-mode: browser)', { mode: 'browser' });
+    const ds = await as('display-state: fullscreen', { state: 'fullscreen' });
+    const dsOff = await as('display-state: normal', { state: 'normal' });
+    const maxed = await as('a maximized tab (display-state: maximized)', { state: 'maximized' });
+    const appMax = await as('an installed app’s window, maximized', { mode: 'standalone', state: 'maximized' });
+    const appFilled = await as('an installed app’s window filling the screen (normal)', { mode: 'standalone', state: 'normal' });
+    const screenSized = await page.evaluate(() => innerWidth === screen.width && innerHeight === screen.height);
+    const appFull = await as('an app opened full screen (Android)', { mode: 'fullscreen', state: 'fullscreen' });
+    const appBack = await as('and back to its window', { mode: 'standalone', state: 'normal' });
+    ok(!tab.shown && f11.shown && !tabAgain.shown && f11.right > tab.right + 100 && tabAgain.right === tab.right, `Auto: F11 or the full screen key (display-mode: fullscreen) shows it, leaving hides it, and a window filling the board is told (${flips.slice(0, 3).join('; ')})`);
+    ok(ds.shown && !dsOff.shown && ds.right === f11.right && dsOff.right === tab.right, `Chrome 155’s (display-state: fullscreen) alone shows it too (${flips.slice(3, 5).join('; ')})`);
+    ok(!maxed.shown && !appMax.shown && !appFilled.shown && screenSized, `not in a maximized tab, nor an installed app’s window, maximized or filling the screen, though it is as big as the screen (an iPad Home Screen app) (${flips.slice(5, 8).join('; ')})`);
+    ok(appFull.shown && !appBack.shown, `an app opened full screen shows it (${flips.slice(8).join('; ')})`);
+    // A browser that says nothing (no change events): the window's resize is enough. The window that fills the board gets
+    // one message for it, with its new size, zoom and corners together (not first the corners at its old size and zoom).
+    await page.setViewportSize({ width: 1366, height: 681 }); await page.waitForTimeout(400);   // (a tab on a 1366×768 Chromebook)
+    await as('quietly full screen', { mode: 'fullscreen' }, true);
+    const quiet = await cornerClock(page);
+    const said = i => `${i.width}×${i.height} zoom ${i.zoom} corners ${i.corners ? [i.corners.left, i.corners.right, i.corners.height].join('/') : '-'}`;
+    await noteWin2.locator('html').evaluate(() => { window.__got = []; Board21.on('resize', i => window.__got.push(i)); });
+    const got = async () => (await noteWin2.locator('html').evaluate(() => window.__got.splice(0))).map(said).join(' then ') + ' (now ' + said(await page.evaluate(() => window.__board21.state.wins.get('notes:1').info())) + ')';
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.waitForTimeout(400);
+    const resized = await cornerClock(page), gotIn = await got();
+    await page.evaluate(() => window.__screen({ mode: 'browser' }, true)); await page.setViewportSize({ width: 1366, height: 681 }); await page.waitForTimeout(400);
+    const resizedBack = await cornerClock(page), gotOut = await got();
+    ok(!quiet.shown && resized.shown && !resizedBack.shown, `with no change event, the resize that comes with full screen shows it, and the one leaving it hides it (${[quiet, resized, resizedBack].map(k => k.shown ? 'clock' : 'none').join(', ')})`);
+    const one = s => { const [msgs, now] = s.split(' (now '); return msgs === now.slice(0, -1); };
+    ok(one(gotIn) && one(gotOut), `the window filling the board gets one message each time, its size, zoom and corners together (in: ${gotIn}; out: ${gotOut})`);
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.waitForTimeout(400);
+    // On and Off don't care.
+    await setClock(page, 'on'); const onTab = (await cornerClock(page)).shown;
+    await setClock(page, 'off'); const offFull = (await as('Off, full screen', { mode: 'fullscreen' })).shown;
+    await setClock(page, 'auto'); const autoFull = (await cornerClock(page)).shown;
+    ok(onTab && !offFull && autoFull, `On shows it in a tab, Off never, and back to Auto in full screen it shows at once (${onTab}, ${offFull}, ${autoFull})`);
+    await ctx.close();
+    // Opened already full screen (an app that opens full screen, a window left in full screen): there at once. The widget
+    // dev window (LAB), the same: never.
+    ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await ctx.addInitScript(SCREEN, { mode: 'fullscreen', state: 'fullscreen' });
+    page = await ctx.newPage(); page.on('pageerror', e => { if (!/boom from the widget/.test(e.message)) errors.push(e.message); });
+    await page.goto(BASE); await boardUp(page); await page.waitForTimeout(300);
+    ok((await cornerClock(page)).shown, 'opened already full screen: Auto shows it from the start');
+    await page.goto(BASE + '__dev/widget.html'); await page.waitForTimeout(3000);
+    const board = page.frames().find(f => f.parentFrame() === page.mainFrame());
+    const lab = board && await board.evaluate(() => ({ up: !!window.__board21, full: matchMedia('(display-mode: fullscreen)').matches, clock: !!document.querySelector('.corner-clock:not([hidden])'),
+      on: document.body.classList.contains('clock-on'), row: !!document.querySelector('#settings [data-act="clock"]') }));
+    ok(!!lab && lab.up && lab.full && !lab.clock && !lab.on && !lab.row, `the widget dev window has no clock, though its window says full screen (${JSON.stringify(lab)})`);
+    await ctx.close();
+
+    // ---- Older and unknown values. Before this release the choices were Off, Time and Time and date (the default, which
+    // most devices saved without anyone choosing it): "Time and date" reads as Auto, "Time" (someone chose a clock) as On,
+    // and a value this release doesn't know (another release's, or a damaged record) as the default, Auto. On the board
+    // and in Settings alike; nothing is rewritten.
     ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page);
     const putSettings = patch => page.evaluate(patch => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'), st = t.objectStore('records'), g = st.get('settings');
       g.onsuccess = () => st.put({ key: 'settings', type: 'settings', rev: Date.now() + 1e6, updatedAt: Date.now(), by: 'test', value: Object.assign({}, g.result && g.result.value, patch) }); t.oncomplete = () => { o.result.close(); res(); }; }; }), patch);
     const agree = [];
-    for (const junk of ['analog', 7, null]) {
-      await putSettings({ clock: junk }); await page.reload(); await boardUp(page); await page.waitForTimeout(300);
-      const shown = (await cornerClock(page)).text || 'no clock';
-      await page.click('.picker-btn.left'); await page.click('.panel.open [data-ctl="settings"]'); await page.waitForTimeout(250);
-      agree.push(`${JSON.stringify(junk)}: ${shown} / ${await page.evaluate(() => (document.querySelector('#settings [data-act="clock"].on') || {}).textContent)}`);
+    for (const v of ['date', 'time', 'off', 'analog', 7, null, 'constructor']) {
+      await putSettings({ clock: v }); await page.reload(); await boardUp(page); await page.waitForTimeout(300);
+      const inTab = (await cornerClock(page)).shown ? 'clock' : 'none';
+      await fsOn(page); await page.waitForTimeout(200);
+      const inFull = (await cornerClock(page)).shown ? 'clock' : 'none';
+      await fsOff(page);
+      await openSettings(page, ['advanced']);
+      agree.push(`${JSON.stringify(v)}: ${inTab} / ${inFull} / ${await page.evaluate(() => (document.querySelector('#settings [data-act="clock"].on') || {}).textContent)} / kept ${JSON.stringify(await page.evaluate(() => window.__board21.state.settings.clock))}`);
       await page.keyboard.press('Escape');
     }
-    ok(agree.every(a => /: \w{3}, \w{3} \d+ \d{1,2}:\d\d[AP]M \/ Time and date$/.test(a)), `the board shows Time and date (the default), and Settings says so (${agree.join('; ')})`);
-
+    ok(agree.join('; ') === '"date": none / clock / Auto / kept "date"; "time": clock / clock / On / kept "time"; "off": none / none / Off / kept "off"; "analog": none / clock / Auto / kept "analog"; 7: none / clock / Auto / kept 7; null: none / clock / Auto / kept null; "constructor": none / clock / Auto / kept "constructor"',
+      `“Time and date” reads as Auto, “Time” as On, Off stays Off, anything else as Auto: the board (in a tab / in full screen) and Settings agree (${agree.join('; ')})`);
     await ctx.close();
 
     // Text style: the clock measures itself (and the room toasts keep clear of) in the letters it shows. A font still on
@@ -10803,7 +10984,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.goto(BASE); await boardUp(page);
     const rooms = [];
     for (const key of ['legible', 'early']) {
-      await putSettings({ letters: key }); await page.reload(); await boardUp(page);
+      await putSettings({ letters: key, clock: 'on' }); await page.reload(); await boardUp(page);
       await page.evaluate(() => document.fonts.ready); await page.waitForTimeout(300);
       const m = await page.evaluate(() => window.__clockRoom()); rooms.push(`opened in ${key}: ${m.room}/${m.real}`);
     }
@@ -10817,6 +10998,130 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(rooms.every(r => { const [a, b] = r.split(': ')[1].split('/'); return a === b && +a > 0; }), `--clock-room is how far the clock really reaches, in each of the letters (${rooms.join('; ')})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+  }],
+
+  // The clock in Chrome's real windows, which the suite above stubs: Chrome 153 under Xvfb (no window manager: a window
+  // can't be maximized there) and in Chrome's own headless mode with the windowing DevTrial flag (it maximizes, and has
+  // display-state). A tab and an installed 21Board (installed and launched with CDP's PWA domain, as "Opens maximized" does).
+  // F11 is Chrome's window in its own full screen: CDP's Browser.setWindowBounds with windowState 'fullscreen'.
+  ['Clock in the corner: real Chrome windows (Auto: a tab and an installed app’s window, normal, maximized, Chrome’s own full screen as F11 gives it, the Fullscreen API; On in the app’s window)', async () => {
+    const os = require('os'), { spawn } = require('child_process');
+    const skip = why => console.log('  - skipped: ' + why);
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const errors = [];
+    // What the page sees and shows, read without a user gesture (page.evaluate passes one).
+    const run = async (ctx, p, expression, gesture) => { const s = await ctx.newCDPSession(p); const r = await s.send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true, userGesture: !!gesture }); await s.detach(); return r.exceptionDetails ? 'threw' : r.result.value; };
+    const look = (ctx, p) => run(ctx, p, `(() => {
+      const mm = q => matchMedia(q).matches, c = document.querySelector('.corner-clock'), b = document.querySelector('.picker-btn.right');
+      const shown = !!c && !c.hidden && getComputedStyle(c).visibility !== 'hidden', r = shown ? c.getBoundingClientRect() : null, br = b && b.getBoundingClientRect();
+      return { mode: ['browser', 'standalone', 'fullscreen'].find(m => mm('(display-mode: ' + m + ')')) || '', state: ['normal', 'maximized', 'fullscreen'].find(m => mm('(display-state: ' + m + ')')) || '-',
+        fs: !!document.fullscreenElement, clock: shown, on: document.body.classList.contains('clock-on'), iw: innerWidth, ih: innerHeight,
+        beside: !!r && !!br && r.right <= br.left && br.left - r.right < 12 && Math.abs(r.bottom - br.bottom) < 1 && br.right <= innerWidth && br.right >= innerWidth - 30 && br.bottom >= innerHeight - 30,
+        up: !!(window.__board21 && window.__board21.store.loaded && !document.getElementById('startup')) };
+    })()`);
+    const up = async (ctx, p) => { for (let i = 0; i < 100; i++) { if ((await look(ctx, p).catch(() => ({}))).up) return; await sleep(100); } };
+    const said = v => `${v.mode}${v.state !== '-' ? ', display-state ' + v.state : ''}${v.fs ? ', fullscreenElement' : ''}: ${v.clock ? 'clock' : 'none'}`;
+    // (As in "Opens maximized: a real app window": a profile of its own, started by Playwright, the only kind given the PWA domain.)
+    const start = async ({ display, headless }) => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'b21-clock-'));
+      const args = headless ? ['--enable-features=DesktopPWAsAdditionalWindowingControls', '--screen-info={1366x768}'] : [];
+      let ctx;
+      try {
+        ctx = await chromium.launchPersistentContext(dir, { headless: !!headless, channel: headless ? 'chromium' : undefined, viewport: null, args, env: Object.assign({}, process.env, display ? { DISPLAY: display } : {}) });
+      } catch (e) { skip(`Chrome${headless ? '’s headless mode (the full Chromium, npx playwright install chromium)' : ' (headful)'} didn’t start here: ${String(e.message).split('\n')[0]}`); return null; }
+      const close = async () => { await ctx.close().catch(() => {}); fs.rmSync(dir, { recursive: true, force: true }); };
+      ctx.on('page', p => p.on('pageerror', e => errors.push(e.message)));
+      const bs = await ctx.browser().newBrowserCDPSession();
+      const tab = ctx.pages()[0] || await ctx.newPage();
+      tab.on('pageerror', e => errors.push(e.message));
+      await tab.goto(BASE); await boardUp(tab); await sleep(500);
+      const B = { ctx, bs, tab, close };
+      const target = async p => (await (await ctx.newCDPSession(p)).send('Target.getTargetInfo')).targetInfo.targetId;
+      // The window's state, as Chrome is asked to make it (as the teacher, F11 or the maximize button would), then what the page sees.
+      B.state = async (p, windowState) => {
+        const { windowId } = await bs.send('Browser.getWindowForTarget', { targetId: await target(p) });
+        await bs.send('Browser.setWindowBounds', { windowId, bounds: { windowState } }); await sleep(1000);
+        return look(ctx, p);
+      };
+      B.api = async (p, on) => { await run(ctx, p, on ? 'document.documentElement.requestFullscreen().then(() => 1, () => 0)' : 'document.exitFullscreen().then(() => 1, () => 0)', on); await sleep(600); return look(ctx, p); };
+      B.app = async () => {
+        try {
+          await bs.send('PWA.install', { manifestId: BASE, installUrlOrBundleUrl: BASE });
+          await bs.send('PWA.changeAppUserSettings', { manifestId: BASE, displayMode: 'standalone' });
+        } catch (e) { skip(`CDP’s PWA domain isn’t available here (${e.message})`); return undefined; }   // (null: installed, but no window came)
+        const before = ctx.pages();
+        await bs.send('PWA.launch', { manifestId: BASE });
+        for (let i = 0; i < 100 && !ctx.pages().some(p => !before.includes(p)); i++) await sleep(100);
+        const app = ctx.pages().find(p => !before.includes(p));
+        if (app) { await app.waitForLoadState('load'); await up(ctx, app); await sleep(1500); }
+        return app || null;
+      };
+      return B;
+    };
+
+    let X = null, display = null;
+    const onPath = name => (process.env.PATH || '').split(path.delimiter).some(d => d && fs.existsSync(path.join(d, name)));
+    if (!onPath('Xvfb')) skip('no Xvfb (the xvfb package, with xvfb-run) on this machine: no headful Chrome. The suite above covers the behaviour, stubbed.');
+    else {
+      X = spawn('Xvfb', ['-displayfd', '3', '-screen', '0', '1366x768x24', '-nolisten', 'tcp'], { stdio: ['ignore', 'ignore', 'ignore', 'pipe'] });
+      display = await new Promise(res => { let s = ''; X.stdio[3].on('data', d => { s += d; if (/\n/.test(s)) res(':' + s.trim()); }); X.on('exit', () => res(null)); setTimeout(() => res(null), 10000); });
+      if (!display) skip('Xvfb didn’t start');
+    }
+    try {
+      // ---- Headful, under Xvfb.
+      const B = display && await start({ display });
+      if (B) {
+        const t = [await look(B.ctx, B.tab)];
+        t.push(await B.state(B.tab, 'fullscreen'), await B.state(B.tab, 'normal'), await B.api(B.tab, true), await B.api(B.tab, false));
+        ok(!t[0].clock && t[1].clock && t[1].on && !t[2].clock && !t[2].on && t[3].clock && !t[4].clock,
+          `a tab: none; Chrome’s own full screen (F11) shows it; back to normal, none; the Fullscreen API (⛶) shows it; leaving it, none (${t.map(said).join('; ')})`);
+        const app = await B.app();
+        if (app !== undefined) ok(!!app, 'PWA.launch opens 21Board in an app window of its own');
+        if (app) {
+          const a = [await look(B.ctx, app)];
+          a.push(await B.state(app, 'fullscreen'), await B.state(app, 'normal'), await B.api(app, true), await B.api(app, false));
+          ok(a[0].mode === 'standalone' && !a[0].clock && a[1].clock && !a[2].clock && a[3].clock && !a[4].clock,
+            `an installed app’s window (filling the screen at launch): none; in Chrome’s full screen, the clock; back in its window, none; the Fullscreen API, the clock; left, none (${a.map(said).join('; ')})`);
+          // On, chosen in the tab beside it (the same device): the app's window follows, the clock beside ▦ in its corner.
+          await setCornerClock(B.tab, 'on');
+          let v = null;
+          ok(await eventually(async () => (v = await look(B.ctx, app)).clock && v.beside), `On (chosen in the tab): the app’s window shows it at once, beside ▦ in the window’s corner (${v && said(v)})`);
+        }
+        await B.close();
+      }
+    } finally {
+      if (X) X.kill();
+    }
+
+    // ---- Chrome's headless mode with the flag: windows maximize, and display-state says so.
+    const H = await start({ headless: true });
+    if (H) {
+      const t = [await look(H.ctx, H.tab), await H.state(H.tab, 'maximized'), await H.api(H.tab, true), await H.api(H.tab, false), await H.state(H.tab, 'fullscreen'), await H.state(H.tab, 'normal')];
+      ok(t[1].state === 'maximized' && !t[0].clock && !t[1].clock && t[2].clock && !t[3].clock && t[4].clock && !t[5].clock,
+        `a tab: none; maximized, none; the Fullscreen API while maximized, the clock; left, none; Chrome’s full screen, the clock; normal, none (${t.map(said).join('; ')})`);
+      // A window that fills the board while Chrome's full screen comes and goes (the page resizes, and the clock comes and
+      // goes with it): one message each time, with its new size, zoom and corners together.
+      await H.tab.evaluate(() => window.__board21.openWidget('notes'));
+      const note = H.tab.frameLocator('.win[data-ikey="notes:1"] iframe');
+      await note.locator('body').waitFor(); await sleep(500);
+      await H.tab.evaluate(() => window.__board21.setMaximized('notes:1', true)); await sleep(500);
+      await note.locator('html').evaluate(() => { window.__got = []; Board21.on('resize', i => window.__got.push(i)); });
+      const info = i => `${i.width}×${i.height} zoom ${i.zoom} corners ${i.corners ? [i.corners.left, i.corners.right, i.corners.height].join('/') : '-'}`;
+      const got = async () => { const m = (await note.locator('html').evaluate(() => window.__got.splice(0))).map(info).join(' then '), now = info(await H.tab.evaluate(() => window.__board21.state.wins.get('notes:1').info())); return { one: m === now, text: `${m} (now ${now})` }; };
+      await H.state(H.tab, 'fullscreen'); const gIn = await got();
+      await H.state(H.tab, 'normal'); const gOut = await got();
+      ok(gIn.one && gOut.one, `a window filling the board: one message as Chrome’s full screen comes, and one as it goes, its size, zoom and corners together (in: ${gIn.text}; out: ${gOut.text})`);
+      await H.tab.evaluate(() => window.__board21.closeWin('notes:1')); await sleep(300);
+      const app = await H.app();
+      if (app) {
+        // (Chrome maximizes a full screen window only from normal.)
+        const a = [await look(H.ctx, app), await H.state(app, 'maximized'), await H.state(app, 'fullscreen'), await H.state(app, 'normal'), await H.state(app, 'maximized')];
+        ok(a[1].state === 'maximized' && !a[0].clock && !a[1].clock && a[2].clock && a[2].state === 'fullscreen' && !a[3].clock && a[4].state === 'maximized' && !a[4].clock,
+          `an installed app’s window: none filling the screen, none maximized, the clock in full screen, none back in its window, maximized or not (${a.map(said).join('; ')})`);
+      }
+      await H.close();
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
 
   // Text style (called Letters before 2026.11.17-2)

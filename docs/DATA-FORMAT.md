@@ -87,7 +87,7 @@ storage can't be read still has every page.
   lettersAt: 1794460420000,//   every device (lettersAt from 2026.11.17-2)
   locked: false,           // Settings → Classroom → Lock windows in place
   awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
-  clock: "date",           // Settings → Appearance → Clock in the corner: "off" | "time" | "date" (time and date, the default)
+  clock: "auto",           // Settings → Advanced → Clock in the corner: "on" | "off" | "auto" (the default: only in full screen)
   letters: "standard",     // Settings → Appearance → Text style (called Letters before 2026.11.17-2): "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
   lastBackupAt: null,      // ms of the last full backup (an export of every page, or Board Sync writing this device's
                            //   file), for backup reminders and the amber dot on Settings → Advanced (only when overdue)
@@ -111,6 +111,11 @@ device: never in exports, Board history or the Google Drive folder, and an impor
 Older versions had a third choice for `awake`, `"hours"` (school hours, Monday to Friday, from `awakeFrom` to
 `awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"` (the teacher wanted the screen on in class) and drops
 `awakeFrom` and `awakeTo` when it reads the record, so the next save of the settings leaves them out.
+
+Before 2026.11.18-1, `clock` was in Settings → Appearance: `"off"`, `"time"` or `"date"`, the default. 21Board
+reads `"date"` as `"auto"`, because most devices saved it without anyone choosing it. It reads `"time"` as `"on"`,
+and any value it doesn't know as `"auto"`. The record keeps its old value until someone changes Clock in the corner.
+An older release reads `"on"` and `"auto"` as its own default, Time and date.
 
 Older versions also kept `devWidgets` here: test widgets added in Developer mode by their path on the site
 (`[{ id, name, entry }]`). That way of testing a widget is gone, so 21Board ignores `devWidgets`, whatever it
