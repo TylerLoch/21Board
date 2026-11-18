@@ -50,7 +50,7 @@
   .hint { margin: 2px 2px 6px; color: var(--b21-muted); }
   .call { display: grid; gap: 6px; padding: 8px 0; border-top: 1px solid var(--b21-border); min-width: 0; }
   .line { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
-  .code { flex: 1; min-width: 0; padding: 8px; border-radius: 8px; background: var(--b21-surface); line-height: 1.45; user-select: text; -webkit-user-select: text; }
+  .code { flex: 1; min-width: 0; max-height: 40vh; overflow: auto; padding: 8px; border-radius: 8px; background: var(--b21-surface); line-height: 1.45; user-select: text; -webkit-user-select: text; }
   .code.stale { opacity: .55; }
   .args { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
   .arg { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--b21-muted); }
@@ -58,16 +58,16 @@
   .arg.text { flex: 1 1 10em; }
   .arg.text input { flex: 1; width: auto; }
   .arg.json { flex: 1 1 100%; flex-direction: column; align-items: stretch; gap: 4px; }
-  .arg textarea { height: auto; padding: 6px 8px; resize: vertical; color: var(--b21-text); line-height: 1.45; }
+  .arg textarea { height: auto; max-height: 45vh; padding: 6px 8px; resize: vertical; color: var(--b21-text); line-height: 1.45; }
   .args .run { margin-left: auto; }
   .examples { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 100%; }
-  .examples button { height: 30px; padding: 0 10px; font-size: 13px; }
+  .examples button { padding: 0 10px; font-size: 13px; }
   .err { margin: 0; color: var(--b21-danger); font-weight: 600; }
   .result { display: block; max-height: 12em; overflow: auto; color: var(--b21-muted); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
   .result::before { content: '\2192  '; }
   .result.error { color: var(--b21-danger); }
   .result.error::before { content: ''; }
-  .sig { margin: 0; color: var(--b21-muted); }
+  .sig, .note { margin: 0; color: var(--b21-muted); }
 
   /* State */
   #state h3 { margin: 14px 0 6px; font-size: 15px; }
@@ -81,13 +81,13 @@
   .none { color: var(--b21-muted); }
   .changed { animation: changed 1.2s ease-out; }
   @keyframes changed { from { background: var(--b21-accent-soft); } to { background: transparent; } }
-  .link { height: auto; padding: 0; border: 0; background: none; color: var(--b21-accent); font-family: inherit; font-size: inherit; text-decoration: underline; }
+  .link { height: auto; min-height: 36px; padding: 0; border: 0; background: none; color: var(--b21-accent); font-family: inherit; font-size: inherit; text-decoration: underline; }
 
   /* Palette */
   .tokens { display: grid; gap: 4px; }
   .token { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 2px 10px; align-items: center; height: auto; padding: 6px 8px; border-radius: var(--b21-radius); background: none; border-color: transparent; text-align: left; font-weight: 400; white-space: normal; }
   .token:hover { background: var(--b21-surface); }
-  .swatch { grid-row: 1 / 3; width: 32px; height: 32px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--b21-border); display: grid; place-items: center; font-weight: 700; }
+  .swatch { grid-row: 1 / 3; width: 32px; height: 32px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--b21-muted); display: grid; place-items: center; font-weight: 700; }
   .token .top { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; min-width: 0; }
   .token .name { color: var(--b21-text); overflow-wrap: anywhere; }
   .token .use { margin-left: auto; color: var(--b21-muted); font-size: 13px; }
@@ -95,7 +95,8 @@
 
   /* Log */
   .log-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--b21-border); background: var(--b21-surface); }
-  .log-bar select { flex: 1 1 5em; }
+  .log-bar button { padding: 0 8px; }
+  .log-bar select { flex: 1 1 3.5em; min-width: 0; }
   #pause[aria-pressed="true"] { background: var(--b21-accent-soft); border-color: var(--b21-accent); }
   .badge { display: inline-block; min-width: 1.4em; margin-left: 6px; padding: 0 5px; border-radius: 999px; background: var(--b21-accent); color: var(--b21-on-accent); font-size: 12px; line-height: 1.5; }
   #log { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px 10px; font-size: 12.5px; user-select: text; -webkit-user-select: text; }
@@ -170,26 +171,34 @@
     if (!text.trim()) return { value: null, code: 'null' };   // (an empty box is null)
     try { const value = JSON.parse(text); return { value, code: js(value) }; } catch (e) {
       const bare = text.replace(/"(?:[^"\\]|\\.)*"/g, '""');
-      if (/'|[{,]\s*[A-Za-z_$][\w$]*\s*:/.test(bare)) return { err: 'That’s not valid JSON. Use double quotes around keys and text.' };
+      if (/['‘’“”]|[{,]\s*[A-Za-z_$][\w$]*\s*:/.test(bare)) return { err: 'That’s not valid JSON. Use double quotes around keys and text.' };
       const m = /line (\d+)/.exec(e.message), p = /position (\d+)/.exec(e.message);
       const line = m ? +m[1] : p ? text.slice(0, +p[1]).split('\n').length : 0;
       return { err: 'That’s not valid JSON.' + (line ? ` Check line ${line}.` : '') };
     }
   }
-  function readNumber(text) {
+  // (A menu is a list. An empty box is an empty one.)
+  function readList(text) {
+    if (!text.trim()) return { value: [], code: '[]' };
+    const r = readJSON(text);
+    return r.err || Array.isArray(r.value) ? r : { err: 'That’s not a list. Put the items in [ ].' };
+  }
+  // (Every number here is a size: above 0. An empty box is null only where null means something.)
+  function readNumber(text, nullable) {
     const t = text.trim();
-    if (!t || t === 'null') return { value: null, code: 'null' };
+    if (nullable && (!t || t === 'null')) return { value: null, code: 'null' };
     const n = Number(t);
-    return Number.isFinite(n) ? { value: n, code: String(n) } : { err: 'Type a number.' };
+    if (!t || !Number.isFinite(n)) return { err: 'Type a number.' };
+    return n > 0 ? { value: n, code: String(n) } : { err: 'Type a number above 0.' };
   }
   function readRatio(text) {
     const t = text.trim(), m = /^(\d+(?:\.\d+)?)\s*[/:]\s*(\d+(?:\.\d+)?)$/.exec(t);
-    if (m) return { value: m[1] / m[2], code: `${+m[1]} / ${+m[2]}` };
-    const r = readNumber(t);
+    if (m) return +m[1] && +m[2] ? { value: m[1] / m[2], code: `${+m[1]} / ${+m[2]}` } : { err: 'Type a ratio like 16/9.' };
+    const r = readNumber(t, true);
     return r.err ? { err: 'Type a ratio like 16/9.' } : r;
   }
   const READ = {
-    json: readJSON, num: readNumber, ratio: readRatio,
+    json: readJSON, list: readList, num: readNumber, ratio: readRatio,
     text: t => ({ value: t, code: str(t) }),
     bool: t => ({ value: t === 'true', code: t === 'true' ? 'true' : 'false' }),
     event: t => ({ value: t, code: str(t) })
@@ -250,13 +259,13 @@
       { call: 'Board21.window.getInfo' }
     ]],
     ['Menu', null, [
-      { call: 'Board21.menu.set', args: [['items', 'json', json(EXAMPLES.checkmarks)]], examples: true },
+      { call: 'Board21.menu.set', args: [['items', 'list', json(EXAMPLES.checkmarks)]], examples: true },
       { call: 'Board21.menu.clear' }
     ]],
     ['Messages', null, [
       { call: 'Board21.toast', args: [['text', 'text', 'Hello!']] }
     ]],
-    ['Events', 'Here, handler writes to the log.', [
+    ['Events', 'Here, handler writes to the log. It’s already on for every event.', [
       { call: 'Board21.on', args: [['event', 'event', 'menu']], handler: true, sig: true },
       { call: 'Board21.off', args: [['event', 'event', 'menu']], handler: true }
     ]],
@@ -272,6 +281,11 @@
   // ---- The log's own handler for each event. Board21.on / off in Events add and remove these.
   const handlers = {};
   for (const ev of EVENTS) handlers[ev] = (...args) => logEvent(ev, args);
+  // (The window, and the log with it, goes right after beforeclose: the board shows that it came.)
+  const logClose = handlers.beforeclose;
+  handlers.beforeclose = (...args) => { Board21.toast('SDK Playground got beforeclose.'); logClose(...args); };
+  // How many times each handler is on: once from the start. on() adds it again; off() takes every copy off.
+  const heard = Object.fromEntries(EVENTS.map(ev => [ev, 1]));
 
   // ---- The calls, built from GROUPS.
   const calls = [];
@@ -309,28 +323,29 @@
       }
       for (const [name, kind, value, nullable] of def.args) {
         let el;
-        if (kind === 'json') {
+        if (kind === 'json' || kind === 'list') {
           el = h('textarea', { 'data-arg': name, spellcheck: 'false', autocapitalize: 'off', rows: 3 });
           el.value = value;
           el.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(run); } });
-          args.append(h('label', { class: 'arg json' }, h('span', {}, name + ' · JSON'), el));
+          args.append(h('label', { class: 'arg json' }, h('span', { class: 'mono' }, name + ' · JSON'), el));
         } else if (kind === 'bool' || kind === 'event') {
           el = h('select', { 'data-arg': name, 'aria-label': name }, (kind === 'bool' ? ['true', 'false'] : EVENTS).map(o => h('option', { value: o }, o)));
           el.value = value;
           args.append(el);
         } else {
           el = h('input', { 'data-arg': name, type: 'text', inputmode: kind === 'num' ? 'decimal' : null, spellcheck: 'false', autocapitalize: 'off', placeholder: nullable ? 'null' : null, value });
-          args.append(h('label', { class: 'arg' + (kind === 'text' ? ' text' : '') }, h('span', {}, name), el));
+          args.append(h('label', { class: 'arg' + (kind === 'text' ? ' text' : '') }, h('span', { class: 'mono' }, name), el));
         }
-        el.addEventListener('input', () => { if (kind === 'json') fit(el); update(c); });
+        el.addEventListener('input', () => { if (el.tagName === 'TEXTAREA') fit(el); update(c); });
         el.addEventListener('change', () => update(c));
-        c.inputs.push({ el, kind });
+        c.inputs.push({ el, kind, nullable });
       }
       args.append(run);
       form.append(args);
       if (def.sig) { c.sig = h('p', { class: 'sig mono' }); form.append(c.sig); }
     }
     form.append(err, out);
+    if (def.sig) { c.note = h('p', { class: 'note', role: 'status', hidden: true }); form.append(c.note); }   // (on: when the handler is on more than once)
     form.addEventListener('submit', e => { e.preventDefault(); runCall(c); });
     copy.onclick = () => copyCall(c);
     calls.push(c);
@@ -344,7 +359,7 @@
   function read(c) {
     const vals = [], codes = [];
     for (const i of c.inputs) {
-      const r = READ[i.kind](i.el.value);
+      const r = READ[i.kind](i.el.value, i.nullable);
       if (r.err) return { err: r.err, el: i.el };
       vals.push(r.value); codes.push(r.code);
     }
@@ -382,8 +397,16 @@
     };
     try {
       const v = c.def.prop ? obj[key] : obj[key](...r.vals);
+      if (c.def.handler) countHandler(c, r.vals[0]);
       if (v && typeof v.then === 'function') v.then(x => done(x), e => done(e, true)); else done(v);
     } catch (e) { done(e, true); }
+  }
+  // Run on() for an event whose handler is already on, and the log shows it twice: say why.
+  function countHandler(c, ev) {
+    const on = c.def.call === 'Board21.on', note = calls.find(x => x.note).note;
+    heard[ev] = on ? heard[ev] + 1 : 0;
+    note.hidden = !(on && heard[ev] > 1);
+    note.textContent = note.hidden ? '' : `Already on. Each ${ev} event now shows ${heard[ev] === 2 ? 'twice' : heard[ev] + ' times'}.`;
   }
 
   async function copyText(text) {
@@ -424,7 +447,8 @@
       if (on && focus) t.focus();
     }
     $('#log-panel').setAttribute('role', wide.matches ? 'region' : 'tabpanel');
-    if (name === 'log' || wide.matches) Log.toEnd();
+    if (name === 'log' && !wide.matches) Log.toEnd();   // (the log as it comes into view; beside the rest, it stays where it is)
+    if (name === 'state') refreshWindow();
   }
   tabs.forEach(t => {
     t.onclick = () => showTab(t.dataset.tab);
@@ -436,7 +460,7 @@
       showTab(shown[(to + shown.length) % shown.length].dataset.tab, true);
     };
   });
-  wide.addEventListener('change', () => showTab(current));
+  wide.addEventListener('change', () => { showTab(current); if (wide.matches) Log.toEnd(); });
 
   // ---- State: content, config, window info and the context, as they are now.
   const CONTEXT_KEYS = ['widgetId', 'widgetName', 'widgetVersion', 'instance', 'theme', 'text-style', 'palette', 'locale', 'devMode', 'boardVersion', 'sdkProtocol', 'host', 'kiosk', 'standalone'];
@@ -468,11 +492,15 @@
     if (!first) { el.classList.remove('changed'); void el.offsetWidth; el.classList.add('changed'); }
   }
   const putValue = (el, v, compact) => (v === undefined ? put(el, '—', true) : put(el, compact ? JSON.stringify(v) : json(v)));
+  // The window as last heard: a resize event, or getInfo as State opens. (A move sends no event, and on its own
+  // a page's context.window keeps its first size.)
+  let winInfo = null;
+  const refreshWindow = () => Board21.window.getInfo().then(i => { winInfo = Object.assign({}, i); renderState(); }, () => {});
   function renderState() {
     const ctx = Board21.context;
     if (!ctx) return;
     for (const k of Object.keys(SECTIONS)) putValue($(`#state [data-key="${k}"] > .v`), ctx[k]);
-    const win = ctx.window || {};
+    const win = Object.assign({}, ctx.window, winInfo);
     for (const k of WINDOW_KEYS) putValue($(`#state [data-wkey="${k}"] .v`), win[k], true);
     const rows = $('#ctx-rows');
     for (const k of Object.keys(ctx)) {   // (anything else the board sends, after the documented keys)
@@ -482,7 +510,7 @@
       const v = $(`#state [data-key="${k}"] .v`);
       if (k === 'text-style') put(v, textStyle(font()));
       else if (k === 'palette') {
-        if (!v.firstChild) { const b = h('button', { class: 'link' }); b.onclick = () => showTab('palette'); v.append(b); }
+        if (!v.firstChild) { const b = h('button', { class: 'link' }); b.onclick = () => showTab('palette', true); v.append(b); }
         v.firstChild.textContent = ctx.palette ? `${Object.keys(ctx.palette).length} tokens` : '—';
       } else putValue(v, ctx[k], true);
     }
@@ -504,7 +532,11 @@
       let b = list.querySelector(`[data-token="${name}"]`);
       if (!b) {
         const sw = h('span', { class: 'swatch', 'aria-hidden': 'true' });
-        if (k === 'font') { sw.textContent = 'Aa'; sw.style.fontFamily = `var(${name})`; } else if (k === 'radius') { sw.style.borderRadius = `var(${name})`; sw.style.background = 'var(--b21-accent-soft)'; } else sw.style.background = `var(${name})`;
+        // (Text tokens show text on the fill they go with.)
+        if (k === 'font') { sw.textContent = 'Aa'; sw.style.fontFamily = `var(${name})`; } else if (k === 'radius') { sw.style.borderRadius = `var(${name})`; sw.style.background = 'var(--b21-accent-soft)'; }
+        else if (k === 'on-accent') { sw.textContent = 'Aa'; sw.style.color = `var(${name})`; sw.style.background = 'var(--b21-accent)'; }
+        else if (k === 'accent-soft') { sw.textContent = 'Aa'; sw.style.color = 'var(--b21-text)'; sw.style.background = `var(${name})`; }
+        else sw.style.background = `var(${name})`;
         b = h('button', { class: 'token', 'data-token': name }, sw, h('span', { class: 'top' }, h('code', { class: 'name' }, name), h('span', { class: 'use' }, TOKENS[k] || '')), h('code', { class: 'value' }));
         b.onclick = async () => { const ok = await copyText(name); const u = $('.use', b); clearTimeout(b.flashT); u.textContent = ok ? 'Copied' : 'Can’t copy'; say(u.textContent); b.flashT = setTimeout(() => { u.textContent = TOKENS[k] || ''; }, 1500); };
         list.append(b);
@@ -579,6 +611,9 @@
   buildState();
   renderPalette();
   for (const ev of EVENTS) Board21.on(ev, handlers[ev]);
+  Board21.on('resize', i => { winInfo = Object.assign({}, i); });
+  Board21.on('focus', () => { if (winInfo) winInfo.focused = true; });
+  Board21.on('blur', () => { if (winInfo) winInfo.focused = false; });
   // (State and the palette follow on their own, whatever the log hears.)
   for (const ev of ['data', 'config', 'theme', 'resize', 'focus', 'blur']) Board21.on(ev, renderState);
   Board21.on('theme', renderPalette);
