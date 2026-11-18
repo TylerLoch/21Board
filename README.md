@@ -201,6 +201,9 @@ docs/WIDGET-SDK.md      How to build a widget; SDK reference; submission checkli
 docs/AI-PROMPT.md       For staff: a prompt to build a widget with an AI tool (Gemini, ChatGPT, Claude)
 docs/DATA-FORMAT.md     IndexedDB layout, sync protocol, .21board file format
 docs/ROADMAP.md         Major changes kept for later (shared widget storage, telling copies of a widget apart, other languages)
+LICENSE                 Apache License 2.0 (the code)
+LICENSE-DOCS            CC BY 4.0 (the documentation)
+NOTICE                  Copyright and credits that copies keep
 tools/release.js        Stamps a release: its name and a fingerprint of the files (see Deploying)
 tests/run.js            Optional automated browser tests
 ```
@@ -717,3 +720,13 @@ Built for current **Chrome** (and Chromium-based Edge). Kept compatible with **S
   brought down from 1.61 to 1.36 em (room for these letters' accents only). The four fonts add about 83 KB
   (92 KB with the licences) to the offline copy, which every device saves; 21Board uses one only once it is
   chosen.
+
+## License
+
+Copyright 2026 Community Consolidated School District 21. These licenses cover every version of 21Board,
+including those published before they were added.
+
+- **Code:** [Apache License 2.0](LICENSE). Copy it, change it, share it. Keep the [notice](NOTICE).
+- **Documentation:** [CC BY 4.0](LICENSE-DOCS). Share it with credit.
+- **The 21 gear, the goat and the CCSD21 name** belong to the district. Neither license covers them.
+- **Fonts** keep their own licenses. See [Third-party files](#third-party-files).
