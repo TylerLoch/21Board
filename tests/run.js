@@ -539,6 +539,116 @@ const ytPick = async (p, label, ik = 'youtube-player:1') => {
   if (!await b.count()) { await p.click(`.win[data-ikey="${ik}"] .win-label`); return false; }
   await b.click(); await p.waitForTimeout(400); return true;
 };
+// The Picture widget (widgets/image, id 'image'): its window's frame, what it shows (the empty window with its title,
+// Open… and Paste and a message; or the picture, where it is drawn in the window, and the colors behind and around it),
+// its saved content and settings, its window menu ("✓ " before a checked item), and a file opened in it as a teacher
+// does (Open…'s file input), waiting until the window has taken it or said why not.
+const picWin = (p, ik = 'image:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+const picLook = (p, ik = 'image:1') => picWin(p, ik).locator('html').evaluate(() => {
+  const $ = id => document.getElementById(id), shown = id => !!$(id) && !$(id).hidden && getComputedStyle($(id)).display !== 'none';
+  const img = $('img'), r = img ? img.getBoundingClientRect() : { x: 0, y: 0, width: 0, height: 0 }, h1 = document.querySelector('#ask h1');
+  return { ask: shown('ask'), pic: shown('pic'), err: shown('err') ? $('err').textContent : '', paste: shown('paste'),
+    title: h1 ? h1.textContent : '', open: $('open') ? $('open').textContent : '', pasteLabel: $('paste') ? $('paste').textContent : '',
+    src: img ? img.getAttribute('src') || '' : '', alt: img ? img.alt : '', nw: img ? img.naturalWidth : 0, nh: img ? img.naturalHeight : 0,
+    box: { x: r.x, y: r.y, w: r.width, h: r.height }, vw: innerWidth, vh: innerHeight,
+    behind: img ? getComputedStyle(img).backgroundColor : '', around: getComputedStyle(document.body).backgroundColor,
+    font: getComputedStyle(document.body).fontFamily, buttonFont: $('open') ? getComputedStyle($('open')).fontFamily : '' };
+}).catch(() => ({}));
+const picData = (p, ik = 'image:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
+const picConf = (p, ik = 'image:1') => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
+const picMenu = (p, ik = 'image:1') => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return w ? w.menuItems.map(i => i.separator ? '—' : (i.checked ? '✓ ' : '') + i.label).join(' | ') : null; }, ik);
+const picOpen = async (p, file, ik = 'image:1', want) => {
+  const before = JSON.stringify(await picData(p, ik));
+  await picWin(p, ik).locator('#file').setInputFiles(file);
+  await eventually(async () => { const l = await picLook(p, ik); return want ? l.err === want : l.err || (JSON.stringify(await picData(p, ik)) !== before && l.pic && l.nw > 0); }, 10000);
+  await p.waitForTimeout(300);
+};
+// A file for setInputFiles (or, with dropFiles and pasteFiles, for a drop or a paste made in the page).
+const picFile = (name, buffer, mimeType = '') => ({ name, mimeType, buffer });
+const FIXTURE = n => fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', n));
+// The Picture windows on the page shown: { ik, open } in order.
+const picWins = p => p.evaluate(() => Array.from(window.__board21.state.insts.entries()).filter(([k]) => k.startsWith('image:')).map(([k, i]) => ({ ik: k, open: !!i.open })).sort((a, b) => +a.ik.split(':')[1] - +b.ik.split(':')[1]));
+// A picture drawn in the page with a canvas: w × h, as type, returned as a Buffer. noise: random bits in each color (so
+// it doesn't compress); alpha: its top-left quarter transparent; q: the encoder's quality.
+const drawPic = async (p, w, h, type = 'image/png', o = {}) => Buffer.from(await p.evaluate(async ([w, h, type, o]) => {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const g = c.getContext('2d', { willReadFrequently: !!o.noise }), grad = g.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, '#2563eb'); grad.addColorStop(0.5, '#fde68a'); grad.addColorStop(1, '#f97316');
+  g.fillStyle = grad; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#111827'; g.font = `${Math.max(8, Math.round(h / 5))}px sans-serif`; g.fillText('21Board', w / 10, h / 2);
+  if (o.noise) {
+    const d = g.getImageData(0, 0, w, h), a = d.data;
+    let s = 12345;
+    for (let i = 0; i < a.length; i += 4) { s = (Math.imul(s, 1103515245) + 12345) >>> 0; a[i] ^= s & o.noise; a[i + 1] ^= (s >>> 8) & o.noise; a[i + 2] ^= (s >>> 16) & o.noise; }
+    g.putImageData(d, 0, 0);
+  }
+  if (o.alpha) g.clearRect(0, 0, w / 2, h / 2);
+  const blob = await new Promise(r => c.toBlob(r, type, o.q));
+  const b = new Uint8Array(await blob.arrayBuffer());
+  let s = '';
+  for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+  return btoa(s);
+}, [w, h, type, o]), 'base64');
+// The Picture widget's messages, word for word.
+const PMSG = {
+  type: '21Board can’t show that file. Choose a PNG, JPEG, GIF, WebP or AVIF.',
+  svg: '21Board can’t show SVG files. Save it as a PNG first.',
+  heic: '21Board can’t show HEIC photos. Save it as a JPEG first.',
+  big: 'That file is over 25 MB. Choose a smaller one.',
+  pixels: 'That picture is too large. Choose a smaller one.',
+  anim: 'That animation is over 5 MB. Choose a smaller one.',
+  broken: 'That picture couldn’t be opened. Try another one.',
+  empty: 'There’s no picture to paste. Copy one first.',
+  blocked: 'Pasting is blocked. Allow the clipboard for 21Board in Chrome.'
+};
+// A GIF or WebP made bigger with filler that browsers skip (a GIF comment; a WebP chunk of its own): the same pictures,
+// in a file as big as wanted.
+const padGif = (buf, n) => {
+  const parts = [buf.subarray(0, buf.length - 1), Buffer.from([0x21, 0xfe])];
+  for (let left = n; left > 0; left -= 255) { const k = Math.min(255, left); parts.push(Buffer.from([k]), Buffer.alloc(k, 0x41)); }
+  parts.push(Buffer.from([0, 0x3b]));
+  return Buffer.concat(parts);
+};
+const padWebp = (buf, n) => {
+  n += n & 1;
+  const h = Buffer.alloc(8); h.write('JUNK', 0, 'ascii'); h.writeUInt32LE(n, 4);
+  const out = Buffer.concat([buf, h, Buffer.alloc(n)]);
+  out.writeUInt32LE(out.length - 8, 4);
+  return out;
+};
+// A PNG that says it is w × h (its header), with almost nothing in it.
+const pngHeader = (w, h) => {
+  const zlib = require('zlib');
+  const chunk = (type, data) => { const len = Buffer.alloc(4), crc = Buffer.alloc(4), td = Buffer.concat([Buffer.from(type, 'ascii'), data]); len.writeUInt32BE(data.length); crc.writeUInt32BE(zlib.crc32(td)); return Buffer.concat([len, td, crc]); };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2;
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.alloc(64))), chunk('IEND', Buffer.alloc(0))]);
+};
+// A paste or a drop made in a page or a window's frame (where: a Page, or a window's ikey on page p): a DataTransfer
+// holding these files (and text), sent as a ClipboardEvent to the element with focus, or as a DragEvent (dragover,
+// then drop) to the element at x, y. Returns whether the page's own code took it (preventDefault).
+const sendFiles = async (p, where, kind, files, o = {}) => {
+  const target = typeof where === 'string' ? p.frame({ name: 'b21-board:' + where }) : p;
+  return target.evaluate(([kind, files, o]) => {
+    const dt = new DataTransfer();
+    for (const f of files) dt.items.add(new File([Uint8Array.from(atob(f.b64), c => c.charCodeAt(0))], f.name, { type: f.type }));
+    if (o.text) dt.setData('text/plain', o.text);
+    if (kind === 'paste') {
+      const e = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+      (document.activeElement || document.body).dispatchEvent(e);
+      return e.defaultPrevented;
+    }
+    const at = document.elementFromPoint(o.x || 1, o.y || 1) || document.body;
+    at.dispatchEvent(new DragEvent('dragover', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: o.x || 1, clientY: o.y || 1 }));
+    const e = new DragEvent('drop', { dataTransfer: dt, bubbles: true, cancelable: true, clientX: o.x || 1, clientY: o.y || 1 });
+    at.dispatchEvent(e);
+    return e.defaultPrevented;
+  }, [kind, files.map(f => ({ name: f.name, type: f.mimeType, b64: f.buffer.toString('base64') })), o]);
+};
+// A picture, or text, put on the clipboard as Chrome's Copy image (and Copy) does. (The context grants the clipboard.)
+const copyPic = (p, buf) => p.evaluate(async b64 => { const blob = new Blob([Uint8Array.from(atob(b64), c => c.charCodeAt(0))], { type: 'image/png' }); await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]); }, buf.toString('base64'));
+const copyText = (p, t) => p.evaluate(t => navigator.clipboard.writeText(t), t);
+// The content area of a window, from its saved place: { w, h, max }.
+const contentOf = (p, ik) => p.evaluate(ik => { const i = window.__board21.state.insts.get(ik), r = i.rect; return { w: r.w, h: r.h - 40, max: !!i.maximized }; }, ik);
 // Contrast ratio of two CSS colors ('rgb(…)'), as WCAG counts it.
 const contrast = (a, b) => {
   const lum = c => { const [r, g, bl] = c.match(/[\d.]+/g).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }); return 0.2126 * r + 0.7152 * g + 0.0722 * bl; };
@@ -1969,7 +2079,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (every Text style, 5 and 3 columns, 100–150%, both corners, badges and DEV, 200%, 16 tiles)', async (browser) => {
+  ['Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (every Text style, 5 and 3 columns, 100–150%, both corners, badges and DEV, 200%, four rows of tiles)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -2093,14 +2203,23 @@ const SUITES = [
     await openPicker('right');
     await check('Standard, the right corner’s panel');
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-right.png' });
-    // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits without scrolling.
+    // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits without scrolling. With
+    // Developer mode's tiles (SDK Playground, the uploaded widget) there are four rows, which scroll inside the panel; a
+    // teacher's tiles (Developer mode off) are three rows, all in view.
     await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(300);
     await openPicker('left');
     await check('200%');
-    const fit = await page.evaluate(() => { const P = document.getElementById('panel'), g = P.querySelector('.panel-widgets'), r = P.getBoundingClientRect(), c = P.querySelector('.panel-controls').getBoundingClientRect();
-      return { ui: window.__board21.zoom.ui, top: r.top, bottom: c.bottom, scrolls: g.scrollHeight > g.clientHeight + 1 }; });
-    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && !fit.scrolls, `at 200% (drawn at ${fit.ui.toFixed(2)}) the whole panel fits on the screen, all its tiles in view without scrolling (top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
+    const fitNow = () => page.evaluate(() => { const P = document.getElementById('panel'), g = P.querySelector('.panel-widgets'), r = P.getBoundingClientRect(), c = P.querySelector('.panel-controls').getBoundingClientRect();
+      const ts = [...g.querySelectorAll('.widget-tile')];
+      return { ui: window.__board21.zoom.ui, top: r.top, bottom: c.bottom, scrolls: g.scrollHeight > g.clientHeight + 1, n: ts.length, rows: new Set(ts.map(t => t.offsetTop)).size }; });
+    let fit = await fitNow();
+    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && (fit.rows <= 3 || fit.scrolls), `at 200% (drawn at ${fit.ui.toFixed(2)}) the whole panel fits on the screen, with Developer mode’s ${fit.n} tiles in ${fit.rows} rows (top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-200.png' });
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await openPicker('left');
+    fit = await fitNow();
+    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && fit.rows === 3 && !fit.scrolls, `at 200% a teacher’s ${fit.n} tiles, three rows, are all in view without scrolling (top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
 
     // The full name stays within reach: it is the tile's accessible name (what a screen reader says), with what the widget
@@ -2120,8 +2239,8 @@ const SUITES = [
     const lt = heard.find(h => h.name === FULL);
     ok(lt && lt.said === FULL && lt.tip === FULL, `the long one too: a screen reader hears “${lt && lt.said}”, and its tooltip says “${lt && lt.tip}”`);
 
-    // Sixteen tiles (a second long name): four rows, 104 px apart as before, so the panel fits where it did: at 200% on
-    // 1920 × 1080 and 150% on 1280 × 800, without scrolling.
+    // Sixteen tiles and more (a second long name: 17 with the Picture): four rows, 104 px apart as before, so the panel
+    // fits where it did: at 200% on 1920 × 1080 and 150% on 1280 × 800, without scrolling.
     const LONG2 = 'Supercalifragilisticexpialidocious Spelling';
     await upload('spelling', LONG2); LONGS.push(LONG2 + ' (test)');
     for (const [w, h, sc] of [[1920, 1080, 2], [1280, 800, 1.5]]) {
@@ -2130,9 +2249,9 @@ const SUITES = [
       const f = await page.evaluate(() => { const P = document.getElementById('panel'), g = P.querySelector('.panel-widgets'), r = P.getBoundingClientRect(), c = P.querySelector('.panel-controls').getBoundingClientRect();
         const ts = [...g.querySelectorAll('.widget-tile')];
         return { n: ts.length, rows: new Set(ts.map(t => Math.round(t.getBoundingClientRect().top))).size, top: r.top, bottom: c.bottom, sh: g.scrollHeight, ch: g.clientHeight }; });
-      ok(f.n === 16 && f.rows === 4 && f.sh <= f.ch + 1 && f.top >= 0 && f.bottom <= h,
-        `16 tiles at ${sc * 100}% on ${w} × ${h}: their 4 rows fit without scrolling, the controls on screen (${f.n} tiles, ${f.rows} rows, ${f.sh} of ${f.ch} px; top ${Math.round(f.top)}, controls end at ${Math.round(f.bottom)})`);
-      await check(`16 tiles at ${sc * 100}% on ${w} × ${h}`);
+      ok(f.n >= 16 && f.rows === 4 && f.sh <= f.ch + 1 && f.top >= 0 && f.bottom <= h,
+        `${f.n} tiles at ${sc * 100}% on ${w} × ${h}: their 4 rows fit without scrolling, the controls on screen (${f.n} tiles, ${f.rows} rows, ${f.sh} of ${f.ch} px; top ${Math.round(f.top)}, controls end at ${Math.round(f.bottom)})`);
+      await check(`four rows at ${sc * 100}% on ${w} × ${h}`);
       await page.locator('#panel').screenshot({ path: OUT + `widget-picker-16-${w}x${h}.png` });
     }
     // Each long name's … whole in every Text style.
@@ -2141,7 +2260,7 @@ const SUITES = [
       await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
       if (style !== 'standard') await page.waitForFunction(fam => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').length >= 2, FAMS[style]);
       await openPicker('left');
-      await check(`16 tiles, ${style}`);
+      await check(`four rows, ${style}`);
     }
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-16-early.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
@@ -6243,6 +6362,444 @@ const SUITES = [
     await A.c.close(); await B.c.close();
   }],
   // ---- Board Sync suites ----
+  ['Image: the Picture widget (the Widget Picker, PNG, JPEG, GIF, WebP and AVIF, animations kept, files turned away kindly, sizes and downscaling, the window takes the picture’s shape, Whole picture and Crop to fill, Open… from the menu, Remove picture, reload, Reset, delete, light and dark, the widget dev window, the docs)', async (browser) => {
+    const file = path.join(ROOT, 'widgets', 'image', 'index.html'), src = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    ok(!!src && !/--b21-[\w-]+\s*:/.test(src) && !/localStorage|indexedDB|XMLHttpRequest|sessionStorage/.test(src) && !/https?:\/\/(?!www\.w3\.org\/)/.test(src),
+      'the widget is one page, widgets/image/index.html: it never sets a --b21-* value of its own, stores nothing itself and loads nothing from the Internet');
+    // The docs: the widget's row, pasting a picture, the SDK's file event and paste, the content and Board history.
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' ');
+    const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
+    const row = readme.indexOf('| **Picture** |') >= 0 ? readme.slice(readme.indexOf('| **Picture** |'), readme.indexOf('|', readme.indexOf('| **Picture** |') + 16) + 400) : '';
+    ok(/PNG, JPEG, GIF, WebP or AVIF/.test(row) && readme.indexOf('| **Picture** |') > readme.indexOf('### Included widgets'), 'the README’s Included widgets has a Picture row naming the five kinds of picture');
+    ok(/\| \*\*Paste a picture\*\* \|[^|]*Ctrl\+V/.test(readme) && /ClipboardAllowedForUrls/.test(readme), 'the README says how to paste a picture, and tells IT how to allow the Paste button ahead of time');
+    ok(/\| `file` \| `\(file, \{ reason \}\)` \|/.test(sdkDoc) && /new Picture window/.test(sdkDoc), 'the SDK guide has the file event, and says what happens to a picture pasted or dropped in a widget');
+    ok(/\{ src, w, h, name, bytes \}/.test(dataDoc) && /"b21pic"/.test(dataDoc), 'the data format guide has the Picture’s content and how Board history keeps pictures');
+
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'image'); return a && { name: a.name, version: a.version, entry: a.entry, files: a.files, clash: a.clash, permissions: a.permissions, win: a.win, color: a.color, icon: a.icon, external: !!a.external, single: !!a.single, description: a.description }; });
+    ok(reg && reg.name === 'Picture' && reg.version === '1.0.0' && reg.entry === 'widgets/image/index.html' && JSON.stringify(reg.files) === '["widgets/image/index.html"]' && reg.clash === 'later' &&
+      reg.permissions.length === 0 && !reg.external && !reg.single && reg.win.width === 480 && reg.win.height === 360 && reg.win.minWidth === 160 && reg.win.minHeight === 120 && !reg.win.aspectRatio && reg.win.dragFromContent !== false,
+      `it is in the registry as Picture (id image): one file, clash 'later', 480 × 360, at least 160 × 120, no shape lock, moved from inside (${JSON.stringify(reg && reg.win)})`);
+    ok(!!reg && reg.description === 'Shows a picture you open or paste.' && /<title>Picture<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
+    const mf = /<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src), manifest = mf ? JSON.parse(mf[1]) : {};
+    ok(!!reg && manifest.id === 'image' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => (manifest.window || {})[k] === reg.win[k]), 'its manifest block matches the registry entry');
+    const others = await page.evaluate(() => window.__board21.catalog().filter(w => w.id !== 'image').map(w => String(w.color || '').toLowerCase()));
+    ok(!!reg && /^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', rgbOf(reg.color)) >= 4.5 && !others.includes(reg.color.toLowerCase()), `its tile is a color of its own (${reg && reg.color}), the white icon readable on it`);
+
+    // The Widget Picker; an empty window.
+    await page.click('.picker-btn.left'); await page.waitForTimeout(250);
+    const tile = page.locator('[data-widget="image"]');
+    ok(await tile.count() === 1 && (await tile.innerText()).trim() === 'Picture', 'the Widget Picker has a Picture tile');
+    if (await tile.count()) await tile.click();
+    ok(await eventually(() => page.evaluate(() => { const w = window.__board21.state.wins.get('image:1'); return !!w && w.connected; })), 'tapping it opens a window, which connects');
+    let L = await picLook(page);
+    ok(L.ask && !L.pic && L.title === 'Show a picture' && L.open === 'Open…' && L.paste && L.pasteLabel === 'Paste' && !L.err, `an empty window: “Show a picture”, Open… and Paste (${JSON.stringify([L.title, L.open, L.pasteLabel, L.err])})`);
+    ok(await picMenu(page) === '', `no window menu items of its own while it is empty (${await picMenu(page)})`);
+    ok(await picWin(page).locator('html').evaluate(() => document.activeElement === document.body).catch(() => false), 'nothing in it takes the focus by itself (no keyboard popping up)');
+    ok(!!L.font && L.buttonFont === L.font, `its buttons are in the text style’s font (${L.buttonFont})`);
+
+    // Open… shows the file dialog, for the five kinds; a small PNG is kept exactly as it is.
+    const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null), picWin(page).locator('#open').click({ timeout: 3000 }).catch(() => {})]);
+    const accept = chooser ? await chooser.element().getAttribute('accept') : '';
+    ok(!!chooser && !chooser.isMultiple() && ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif'].every(t => accept.includes(t)) && !/svg|heic/i.test(accept), `Open… shows the file dialog, for PNG, JPEG, GIF, WebP and AVIF (${accept})`);
+    const small = await drawPic(page, 64, 48, 'image/png');
+    if (chooser) await chooser.setFiles(picFile('Field trip.png', small, 'image/png'));
+    ok(await eventually(async () => (await picLook(page)).pic), 'the picture shows');
+    let d = await picData(page);
+    ok(!!d && d.src === 'data:image/png;base64,' + small.toString('base64') && d.w === 64 && d.h === 48 && d.name === 'Field trip.png' && d.bytes === small.length && Object.keys(d).sort().join() === 'bytes,h,name,src,w',
+      `a small PNG is kept exactly as it is, saved as { src, w, h, name, bytes } (${d && JSON.stringify(Object.assign({}, d, { src: String(d.src).slice(0, 30) }))})`);
+    L = await picLook(page);
+    ok(L.alt === 'Field trip' && L.nw === 64 && L.nh === 48, `its alt text is its name without the extension (${L.alt})`);
+    let c = await contentOf(page, 'image:1');
+    ok(Math.abs(c.w - 360) <= 2 && Math.abs(c.h - 270) <= 2, `the window takes the picture’s shape, a small picture at 360 on its long side (${c.w} × ${c.h})`);
+
+    // Whole picture (the default) and Crop to fill, in a window of another shape.
+    const fits = L => { const b = L.box || {}; return { inside: b.x >= -0.5 && b.y >= -0.5 && b.x + b.w <= L.vw + 0.5 && b.y + b.h <= L.vh + 0.5, touches: Math.abs(b.w - L.vw) < 1 || Math.abs(b.h - L.vh) < 1,
+      covers: b.x <= 0.5 && b.y <= 0.5 && b.x + b.w >= L.vw - 0.5 && b.y + b.h >= L.vh - 0.5, ratio: b.w / b.h }; };
+    await page.evaluate(() => window.__board21.setRect('image:1', Object.assign({}, window.__board21.state.insts.get('image:1').rect, { w: 600, h: 280 }))); await page.waitForTimeout(400);
+    L = await picLook(page); let f = fits(L);
+    ok(f.inside && f.touches && !f.covers && Math.abs(f.ratio - 64 / 48) < 0.02, `Whole picture: all of it shows, as large as fits, in its own shape (${JSON.stringify(L.box)} in ${L.vw} × ${L.vh})`);
+    ok(L.behind === 'rgb(255, 255, 255)' && L.around === 'rgb(255, 255, 255)', `white behind the picture, the window’s own color around it (${L.behind} / ${L.around})`);
+    ok(await picMenu(page) === 'Open… | — | ✓ Whole picture | Crop to fill | — | Remove picture', `the window menu (${await picMenu(page)})`);
+    await ytChoose(page, 'Crop to fill', 'image:1');
+    L = await picLook(page); f = fits(L);
+    ok(f.covers && Math.abs(f.ratio - 64 / 48) < 0.02 && (await picConf(page) || {}).fit === 'fill', `Crop to fill: the picture covers the window in its own shape, saved as a setting (${JSON.stringify(await picConf(page))})`);
+    ok(await picMenu(page) === 'Open… | — | Whole picture | ✓ Crop to fill | — | Remove picture', `and the menu shows it (${await picMenu(page)})`);
+    await ytChoose(page, 'Whole picture', 'image:1');
+    ok(fits(await picLook(page)).inside && (await picConf(page) || {}).fit === 'whole', 'Whole picture again');
+    // Open… from the window menu shows the file dialog too.
+    const [chooser2] = await Promise.all([page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null), ytChoose(page, 'Open…', 'image:1').catch(() => {})]);
+    ok(!!chooser2, 'Open… in the window menu shows the file dialog');
+    if (chooser2) await chooser2.setFiles(picFile('Field trip.png', small, 'image/png'));
+    await page.waitForTimeout(500);
+
+    // Each kind of picture, in a window of its own: small ones kept byte for byte, and animations too.
+    const kinds = [
+      ['Map.jpg', await drawPic(page, 80, 60, 'image/jpeg', { q: 0.8 }), 'image/jpeg', 80, 60],
+      ['Leaf.webp', await drawPic(page, 60, 80, 'image/webp', { q: 0.8 }), 'image/webp', 60, 80],
+      ['Dance.gif', FIXTURE('picture-animated.gif'), 'image/gif', 32, 24],
+      ['Still.gif', FIXTURE('picture-still.gif'), 'image/gif', 32, 24],
+      ['Spin.webp', FIXTURE('picture-animated.webp'), 'image/webp', 32, 24],
+      ['Sky.avif', FIXTURE('picture.avif'), 'image/avif', 32, 24],
+      ['Twirl.avif', FIXTURE('picture-animated.avif'), 'image/avif', 32, 24]];
+    const ik2 = await addWin(page, 'image');
+    for (const [name, buf, type, w, h] of kinds) {
+      await picOpen(page, picFile(name, buf), ik2);   // (no type given: its first bytes say what it is)
+      const d2 = await picData(page, ik2), L2 = await picLook(page, ik2);
+      ok(!!d2 && d2.src === `data:${type};base64,${buf.toString('base64')}` && d2.w === w && d2.h === h && L2.pic && L2.nw === w && L2.nh === h && !L2.err,
+        `${name} opens and shows, kept as it is (${d2 && String(d2.src).slice(0, 24)}…, ${L2.nw} × ${L2.nh}${L2.err ? ', ' + L2.err : ''})`);
+    }
+    for (const [name, buf, type] of [['Big dance.gif', padGif(FIXTURE('picture-animated.gif'), 1.5e6), 'image/gif'], ['Big spin.webp', padWebp(FIXTURE('picture-animated.webp'), 1.5e6), 'image/webp']]) {
+      await picOpen(page, picFile(name, buf, type), ik2);
+      const d2 = await picData(page, ik2), L2 = await picLook(page, ik2);
+      ok(!!d2 && d2.src === `data:${type};base64,${buf.toString('base64')}` && d2.bytes === buf.length && L2.nw === 32, `an animation over 1 MB (${name}, ${(buf.length / 1e6).toFixed(1)} MB) is kept byte for byte, so it still moves`);
+    }
+
+    // Files turned away, kindly, in an empty window: nothing is saved. Then a good one shows and the message goes.
+    const ik3 = await addWin(page, 'image');
+    const turned = [
+      ['drawing.svg', Buffer.from('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><script>parent.alert(1)</script></svg>'), 'image/svg+xml', PMSG.svg],
+      ['notes.png', Buffer.from('These are my notes, not a picture.'), 'image/png', PMSG.type],
+      ['IMG_0042.HEIC', Buffer.concat([Buffer.from([0, 0, 0, 24]), Buffer.from('ftypheic\0\0\0\0mif1heic', 'latin1'), Buffer.alloc(64)]), 'image/heic', PMSG.heic],
+      ['huge.png', Buffer.concat([small, Buffer.alloc(27e6 - small.length)]), 'image/png', PMSG.big],
+      ['scan.bmp', Buffer.concat([Buffer.from('BM'), Buffer.alloc(60)]), 'image/bmp', PMSG.type],
+      ['poster.png', pngHeader(10000, 6000), 'image/png', PMSG.pixels],
+      ['long dance.gif', padGif(FIXTURE('picture-animated.gif'), 5.3e6), 'image/gif', PMSG.anim],
+      ['broken.jpg', Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(300, 7)]), 'image/jpeg', PMSG.broken]];
+    for (const [name, buf, type, say] of turned) {
+      await picOpen(page, picFile(name, buf, type), ik3, say);
+      const L3 = await picLook(page, ik3);
+      ok(L3.ask && !L3.pic && L3.err === say && await picData(page, ik3) === null, `${name} is turned away: “${L3.err}”, and nothing is saved`);
+    }
+    await picOpen(page, picFile('ok.png', small, 'image/png'), ik3);
+    L = await picLook(page, ik3);
+    ok(L.pic && !L.err, 'a good picture after that shows, and the message goes');
+
+    // Sizes: a big photo is drawn again at 2560 px as a JPEG; with transparency, as a WebP; a small file wider than
+    // 3840 px is drawn again too. Its window takes its shape, at most 720 × 540.
+    const ik4 = await addWin(page, 'image');
+    const photo = await drawPic(page, 4200, 2800, 'image/jpeg', { noise: 63, q: 0.92 });
+    await picOpen(page, picFile('Class photo.jpg', photo, 'image/jpeg'), ik4);
+    d = await picData(page, ik4);
+    ok(!!d && /^data:image\/jpeg;base64,/.test(d.src) && d.w === 2560 && d.h === 1707 && d.bytes < photo.length && d.bytes === Buffer.from(String(d.src).split(',')[1] || '', 'base64').length,
+      `a ${(photo.length / 1e6).toFixed(1)} MB photo, 4200 × 2800, is drawn again at 2560 × 1707 as a JPEG of ${d && (d.bytes / 1e6).toFixed(2)} MB`);
+    c = await contentOf(page, ik4);
+    ok(Math.abs(c.w - 720) <= 2 && Math.abs(c.h - 480) <= 2, `its window takes its shape, at most 720 × 540 (${c.w} × ${c.h})`);
+    const logo = await drawPic(page, 3200, 1600, 'image/png', { noise: 63, alpha: true });
+    await picOpen(page, picFile('Logo.png', logo, 'image/png'), ik4);
+    d = await picData(page, ik4);
+    ok(!!d && /^data:image\/webp;base64,/.test(d.src) && d.w === 2560 && d.h === 1280, `a ${(logo.length / 1e6).toFixed(1)} MB PNG with transparency is drawn again at 2560 as a WebP, which keeps the transparency (${d && String(d.src).slice(0, 22)}, ${d && d.w + ' × ' + d.h})`);
+    c = await contentOf(page, ik4);
+    ok(Math.abs(c.w - 720) <= 2 && Math.abs(c.h - 360) <= 2, `and the window takes the new picture’s shape (${c.w} × ${c.h})`);
+    const banner = await drawPic(page, 4000, 300, 'image/jpeg', { q: 0.7 });
+    await picOpen(page, picFile('Banner.jpg', banner, 'image/jpeg'), ik4);
+    d = await picData(page, ik4);
+    ok(!!d && banner.length <= 1048576 && d.w === 2560 && d.h === 192, `a small file (${Math.round(banner.length / 1e3)} KB) wider than 3840 px is drawn again at 2560 (${d && d.w + ' × ' + d.h})`);
+    await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik4); await page.waitForTimeout(400);
+    await picOpen(page, picFile('Map.jpg', kinds[0][1], 'image/jpeg'), ik4);
+    ok((await contentOf(page, ik4)).max, 'a picture opened in a window that fills the board leaves it filling the board');
+    await page.evaluate(ik => window.__board21.setMaximized(ik, false), ik4); await page.waitForTimeout(400);
+    await page.screenshot({ path: OUT + 'picture-kinds.png' });
+
+    // Reload: the same pictures, the same setting.
+    await ytChoose(page, 'Crop to fill', ik2);
+    const before2 = (await picData(page, ik2)).src;
+    await page.reload(); await boardUp(page);
+    ok(await eventually(async () => (await picLook(page, ik2)).src === before2 && (await picLook(page, ik2)).pic), 'a reload shows the same picture');
+    ok((await picConf(page, ik2) || {}).fit === 'fill' && fits(await picLook(page, ik2)).covers, 'and keeps Crop to fill');
+
+    // Dark: the empty window and the space around a picture follow the theme; white stays behind the picture.
+    await openSettings(page); await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(500);
+    const ik5 = await addWin(page, 'image');
+    L = await picLook(page, ik5);
+    ok(L.ask && L.around === 'rgb(30, 30, 30)', `dark: an empty window is dark (${L.around})`);
+    await ytChoose(page, 'Whole picture', ik2);
+    L = await picLook(page, ik2);
+    ok(L.around === 'rgb(30, 30, 30)' && L.behind === 'rgb(255, 255, 255)', `dark: around a picture is dark, behind it white, so a dark drawing on a clear background stays readable (${L.around} / ${L.behind})`);
+    await page.screenshot({ path: OUT + 'picture-dark.png' });
+    await openSettings(page); await page.click('#settings [data-act="theme"][data-val="light"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+
+    // Remove picture: empty again, saved as no picture. Reset: empty, nothing saved. Delete: the records go.
+    await ytChoose(page, 'Remove picture', 'image:1');
+    L = await picLook(page); d = await picData(page);
+    ok(L.ask && !L.pic && L.title === 'Show a picture' && !!d && d.src === null && await picMenu(page) === '', `Remove picture: the window is empty again, saved as no picture (${JSON.stringify(d)})`);
+    await page.evaluate(ik => window.__board21.resetWin(ik), ik2); await page.waitForTimeout(800);
+    ok(await eventually(async () => (await picLook(page, ik2)).ask) && await picData(page, ik2) === null && await picConf(page, ik2) === null, 'Reset: the window is empty, and its picture and setting are gone');
+    await page.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), ik3); await page.waitForTimeout(800);
+    const keys = await page.evaluate(async ik => (await window.__board21.store.getAll()).map(r => r.key).filter(k => k.endsWith(':' + ik)), ik3);
+    ok(!keys.length, `deleting a window deletes its picture (${keys.join(', ')})`);
+
+    // The widget dev window: the page opened on its own runs in a real board window, and a picture opens there.
+    const dev = await ctx.newPage(); dev.on('pageerror', e => errors.push('[dev] ' + e.message));
+    await dev.goto(BASE + 'widgets/image/index.html'); await dev.waitForTimeout(3000);
+    const devBoard = dev.mainFrame().childFrames()[0], devPic = devBoard && devBoard.childFrames()[0];
+    ok(!!devPic && await devPic.evaluate(() => document.querySelector('#ask h1').textContent === 'Show a picture' && Board21.context.host === 'dev').catch(() => false), 'in the widget dev window, it runs in a real board window');
+    if (devPic) await devPic.locator('#file').setInputFiles(picFile('Dev.png', small, 'image/png')).catch(() => {});
+    ok(!!devPic && await eventually(() => devPic.evaluate(() => !document.getElementById('pic').hidden && document.getElementById('img').naturalWidth === 64).catch(() => false)), 'and a picture opened there shows');
+    await dev.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Image: pasting and dropping pictures onto the board (Ctrl+V, after tapping a widget, Notes keeps its paste, an empty Picture window, text, the Paste button, locked windows, drops on the board and on windows, kiosk, offline)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, permissions: ['clipboard-read', 'clipboard-write'] });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const small = await drawPic(page, 90, 60, 'image/png'), tall = await drawPic(page, 60, 90, 'image/png');
+    const count = async () => (await picWins(page)).length;
+    const board = () => page.evaluate(() => window.__board21.boundsRect());
+    const centre = ik => page.evaluate(ik => { const r = window.__board21.state.insts.get(ik).rect; return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; }, ik);
+    const newest = async () => { const w = await picWins(page); return w.length ? w[w.length - 1].ik : null; };
+    const tapBoard = () => page.mouse.click(30, 330);   // (the empty board, at its left edge)
+    // A new, empty Picture window (never one closed earlier, which has its picture).
+    const freshPic = p => p.evaluate(async () => { const ik = window.__board21.openWidget('image', { fresh: true }); await new Promise(r => setTimeout(r, 900)); return ik; });
+
+    // Ctrl+V on the board: a new Picture window, in the middle of the board, in front and selected.
+    await copyPic(page, small);
+    await tapBoard();
+    await page.keyboard.press('Control+V');
+    ok(await eventually(async () => ((await picData(page, 'image:1')) || {}).w === 90), 'Ctrl+V on the board opens a Picture window with the picture copied');
+    await page.waitForTimeout(300);
+    let L = await picLook(page);
+    const b = await board(), m = await centre('image:1'), c1 = await contentOf(page, 'image:1');
+    ok(L.pic && L.nw === 90 && L.alt === 'Picture' && ((await picData(page)) || {}).name === '', `it shows, named “Picture” for a screen reader (a pasted picture has no name of its own: ${L.alt})`);
+    ok(Math.abs(m.x - (b.x + b.w / 2)) < 40 && Math.abs(m.y - (b.y + b.h * 0.42)) < 40 && Math.abs(c1.w - 360) <= 2 && Math.abs(c1.h - 240) <= 2 && await page.evaluate(() => window.__board21.state.focused) === 'image:1',
+      `in the middle of the board, where new windows open, in the picture’s shape, in front and selected (${Math.round(m.x)}, ${Math.round(m.y)} on ${b.w} × ${b.h}; ${c1.w} × ${c1.h})`);
+    await page.screenshot({ path: OUT + 'picture-pasted.png' });
+    // Again: another new window. A closed Picture window isn't used: it keeps its own picture.
+    await tapBoard(); await page.keyboard.press('Control+V');
+    ok(await eventually(async () => await count() === 2), 'pasting again opens a second window');
+    await page.evaluate(() => window.__board21.closeWin('image:1', { quiet: true })); await page.waitForTimeout(400);
+    await copyPic(page, tall);
+    await tapBoard(); await page.keyboard.press('Control+V');
+    ok(await eventually(async () => await count() === 3), 'with a Picture window closed, a paste still opens a new one');
+    ok(await eventually(async () => ((await picData(page, await newest())) || {}).w === 60), 'the new one has the new picture');
+    const shut = (await picWins(page)).find(w => w.ik === 'image:1');
+    ok(shut && !shut.open && ((await picData(page, 'image:1')) || {}).w === 90, 'the closed one keeps its own picture');
+
+    // After tapping a widget (the keyboard goes to its window): Ctrl+V still opens a Picture window. In Notes, the
+    // paste is the note's.
+    const timer = await addWin(page, 'timer');
+    await page.frameLocator(`.win[data-ikey="${timer}"] iframe`).locator('body').click({ position: { x: 5, y: 5 } }).catch(() => {});
+    let n = await count();
+    await page.keyboard.press('Control+V');
+    ok(await eventually(async () => await count() === n + 1), 'after tapping a Timer, Ctrl+V opens a Picture window (the widget passes the paste to the board)');
+    const note = await addNote(page, 'Spelling words');
+    n = await count();
+    const nf = page.frame({ name: 'b21-board:' + note });
+    if (await nf.isVisible('#view')) await nf.click('#view');
+    await nf.focus('#t');
+    await page.keyboard.press('Control+V'); await page.waitForTimeout(1200);
+    ok(await count() === n && await noteOf(page, note) === 'Spelling words', 'in Notes, Ctrl+V is the note’s: no Picture window');
+    // An empty Picture window that has the keyboard takes the picture itself; one with a picture leaves it to the board.
+    const empty = await freshPic(page);
+    await picWin(page, empty).locator('body').click({ position: { x: 5, y: 5 } }).catch(() => {});
+    n = await count();
+    await page.keyboard.press('Control+V');
+    ok(await eventually(async () => ((await picData(page, empty)) || {}).w === 60) && await count() === n, 'in an empty Picture window, the picture goes into that window');
+    await picWin(page, empty).locator('body').click({ position: { x: 5, y: 5 } }).catch(() => {});
+    await page.keyboard.press('Control+V');
+    ok(await eventually(async () => await count() === n + 1), 'in a Picture window with a picture, Ctrl+V opens a new one');
+    // Text on the clipboard: nothing new.
+    await copyText(page, 'https://www.youtube.com/watch?v=aqz-KE-bpKQ');
+    n = await count();
+    await tapBoard(); await page.keyboard.press('Control+V'); await page.waitForTimeout(1000);
+    ok(await count() === n, 'pasting text on the board opens nothing');
+
+    // The Paste button, in an empty window: the clipboard's picture, or what to do.
+    const p1 = await freshPic(page);
+    await picWin(page, p1).locator('#paste').click({ timeout: 3000 }).catch(() => {});
+    ok(await eventually(async () => (await picLook(page, p1)).err === PMSG.empty), `Paste with no picture on the clipboard says so (${(await picLook(page, p1)).err})`);
+    await copyPic(page, tall);
+    await picWin(page, p1).locator('#paste').click({ timeout: 3000 }).catch(() => {});
+    ok(await eventually(async () => ((await picData(page, p1)) || {}).w === 60 && (await picLook(page, p1)).pic), 'Paste puts the clipboard’s picture in the window');
+    await ctx.clearPermissions();
+    const p2 = await freshPic(page);
+    await picWin(page, p2).locator('#paste').click({ timeout: 3000 }).catch(() => {});
+    ok(await eventually(async () => (await picLook(page, p2)).err === PMSG.blocked, 4000), `when the browser won’t let 21Board see the clipboard, it says so (${(await picLook(page, p2)).err})`);
+    await ctx.grantPermissions(['clipboard-read', 'clipboard-write']);
+
+    // Windows locked: no new window, and the board says how to unlock.
+    const setLock = async on => {
+      await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(250);
+      if ((await page.getAttribute('#settings [data-act="lock-windows"]', 'aria-checked')) !== String(on)) await page.click('#settings [data-act="lock-windows"]');
+      await page.keyboard.press('Escape'); await page.waitForTimeout(250);
+    };
+    await setLock(true);
+    n = await count();
+    await copyPic(page, small);
+    await tapBoard(); await page.keyboard.press('Control+V'); await page.waitForTimeout(800);
+    ok(await count() === n && await page.locator('.toast', { hasText: 'Windows are locked' }).count() > 0, 'windows locked: a paste opens nothing, and the board says how to unlock');
+    n = await count();
+    await sendFiles(page, page, 'drop', [picFile('Frog.png', small, 'image/png')], { x: 300, y: 300 }); await page.waitForTimeout(800);
+    ok(await count() === n, 'nor does a drop');
+    await setLock(false);
+
+    // Drops on the board: a window for each picture, where they were dropped. A file that isn't one opens nothing.
+    // (The left half of the board is cleared first: the Timer and the note move to the right.)
+    for (const k of (await picWins(page)).filter(w => w.open).map(w => w.ik)) await page.evaluate(ik => window.__board21.closeWin(ik, { quiet: true }), k);
+    await page.evaluate(iks => { const B = window.__board21, v = B.boundsRect(); iks.forEach((ik, j) => { const r = B.state.insts.get(ik).rect; B.setRect(ik, Object.assign({}, r, { x: v.x + v.w - r.w - 40, y: v.y + 40 + j * (v.h / 2) })); }); }, [timer, note]);
+    await page.waitForTimeout(400);
+    n = await count();
+    const took = await sendFiles(page, page, 'drop', [picFile('Frog.png', small, 'image/png'), picFile('Dance.gif', FIXTURE('picture-animated.gif'), 'image/gif'), picFile('list.txt', Buffer.from('words'), 'text/plain')], { x: 260, y: 260 });
+    ok(took && await eventually(async () => await count() === n + 2), `dropping two pictures and a text file on the board opens two Picture windows (${await count() - n})`);
+    const dropped = (await picWins(page)).slice(-2).map(w => w.ik), bb = await board();
+    ok(await eventually(async () => ((await picData(page, dropped[0])) || {}).name === 'Frog.png' && ((await picData(page, dropped[1])) || {}).name === 'Dance.gif'), 'each with its picture');
+    await page.waitForTimeout(300);
+    const at = await page.evaluate(() => { const Z = window.__board21.zoom; return { x: (260 - Z.ox) / Z.s, y: (260 - Z.oy) / Z.s }; });
+    const rs = await page.evaluate(iks => iks.map(ik => window.__board21.state.insts.get(ik).rect), dropped), cs = rs.map(r => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 }));
+    const apart = rs[0].x + rs[0].w <= rs[1].x || rs[1].x + rs[1].w <= rs[0].x || rs[0].y + rs[0].h <= rs[1].y || rs[1].y + rs[1].h <= rs[0].y;
+    ok(Math.hypot(cs[0].x - at.x, cs[0].y - at.y) < 40 && apart && Math.hypot(cs[1].x - at.x, cs[1].y - at.y) < 600 && cs.every(q => q.x < bb.x + bb.w / 2),
+      `where they were dropped, in their pictures’ shapes: the first there, the next beside it (${cs.map(q => Math.round(q.x) + ',' + Math.round(q.y)).join(' ')}; dropped at ${Math.round(at.x)},${Math.round(at.y)})`);
+    await sendFiles(page, page, 'drop', [picFile('drawing.svg', Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'), 'image/svg+xml')], { x: 900, y: 500 });
+    ok(await eventually(async () => (await picLook(page, await newest())).err === PMSG.svg), 'an SVG dropped on the board opens a window that says it can’t show it');
+    // On a window: a Picture window takes it; any other keeps its page, and the board opens the picture beside it.
+    n = await count();
+    const onPic = await sendFiles(page, dropped[0], 'drop', [picFile('Tall.png', tall, 'image/png')], { x: 20, y: 20 });
+    ok(onPic && await eventually(async () => ((await picData(page, dropped[0])) || {}).name === 'Tall.png') && await count() === n, 'dropped on a Picture window, the picture goes into that window');
+    const onNote = await sendFiles(page, note, 'drop', [picFile('Frog.png', small, 'image/png')], { x: 20, y: 20 });
+    ok(onNote && await eventually(async () => await count() === n + 1), 'dropped on a Notes window, the board opens a Picture window for it');
+    ok(await page.frame({ name: 'b21-board:' + note }).evaluate(() => /widgets\/notes\/index\.html$/.test(location.pathname)).catch(() => false) && await noteOf(page, note) === 'Spelling words', 'and the note stays as it was (the browser doesn’t open the file in its place)');
+    // A .21board file dropped on a window: the board asks how to import it, as when it is dropped on the board.
+    const file21 = Buffer.from(JSON.stringify(await page.evaluate(() => window.__board21.buildExport('template'))));
+    await sendFiles(page, note, 'drop', [picFile('Class.21board', file21, '')], { x: 20, y: 20 });
+    ok(await eventually(async () => /Import “Class”/.test(await page.locator('#modal.open').innerText().catch(() => ''))), 'a .21board file dropped on a window asks how to import it, as on the board');
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click({ timeout: 3000 }).catch(() => {}); await page.waitForTimeout(300);
+
+    // A widget uploaded in Developer mode is sealed off: a paste in it isn't passed on.
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]');
+    fs.writeFileSync(OUT + 'picture-sealed.html', '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Sealed</title><script type="application/json" id="board21-widget">{"id":"sealed","name":"Sealed","window":{"width":300,"height":200}}</script></head><body style="height:100vh;margin:0">sealed</body></html>');
+    await page.setInputFiles('#widget-input', OUT + 'picture-sealed.html');
+    ok(await eventually(() => page.evaluate(() => { const w = window.__board21.state.wins.get('dev-sealed:1'); return !!w && w.connected; })), 'a widget file uploaded in Developer mode opens');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await copyPic(page, small);
+    n = await count();
+    await page.frameLocator('.win[data-ikey="dev-sealed:1"] iframe').locator('body').click({ position: { x: 20, y: 20 } }).catch(() => {});
+    await page.keyboard.press('Control+V'); await page.waitForTimeout(1200);
+    ok(await count() === n, 'a paste in a widget uploaded in Developer mode isn’t passed on: no Picture window');
+
+    // Kiosk mode: Open… and Ctrl+V work there too.
+    const k = await ctx.newPage(); k.on('pageerror', e => errors.push('[kiosk] ' + e.message));
+    await k.goto(BASE + '?kiosk=yes'); await boardUp(k);
+    const kk = await freshPic(k);
+    const [kc] = await Promise.all([k.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null), picWin(k, kk).locator('#open').click({ timeout: 3000 }).catch(() => {})]);
+    ok(!!kc, 'kiosk: Open… shows the file dialog (ChromeOS’s Files)');
+    if (kc) await kc.setFiles(picFile('Kiosk.png', small, 'image/png'));
+    ok(await eventually(async () => (await picLook(k, kk)).pic), 'and the picture shows');
+    n = (await picWins(k)).length;
+    await copyPic(k, tall); await k.mouse.click(30, 330); await k.keyboard.press('Control+V');
+    ok(await eventually(async () => (await picWins(k)).length === n + 1), 'kiosk: Ctrl+V opens a Picture window');
+    await k.close();
+
+    // Offline: a picture still opens and pastes.
+    if (stamped()) {
+      await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 }).catch(() => {});
+      await ctx.setOffline(true);
+      await page.reload(); await boardUp(page);
+      n = await count();
+      await copyPic(page, small); await tapBoard(); await page.keyboard.press('Control+V');
+      ok(await eventually(async () => await count() === n + 1 && (await picLook(page, await newest())).pic), 'offline: a pasted picture opens and shows');
+      await ctx.setOffline(false);
+    } else ok(false, STAMPED);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Image: two tabs, export and import, Board history (each picture kept once: what one version costs), going back and putting back', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const a = await ctx.newPage(), b = await ctx.newPage();
+    const errors = []; a.on('pageerror', e => errors.push('[A] ' + e.message)); b.on('pageerror', e => errors.push('[B] ' + e.message));
+    await a.goto(BASE); await boardUp(a); await b.goto(BASE); await boardUp(b);
+    const ik = await addWin(a, 'image');
+    const photo = await drawPic(a, 1400, 1000, 'image/jpeg', { noise: 15, q: 0.85 });
+    await picOpen(a, picFile('Volcano.jpg', photo, 'image/jpeg'), ik);
+    const pic = ((await picData(a, ik)) || {}).src || '';
+    ok(pic.length > 1000 && await eventually(async () => (await picLook(b, ik)).src === pic), `the other tab shows the same picture (${Math.round(pic.length / 1e3)} KB as content)`);
+    const rect = p => p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik);
+    ok(await eventually(async () => await rect(a) === await rect(b)), 'and the window has the picture’s shape there too');
+    await ytChoose(b, 'Crop to fill', ik);
+    ok(await eventually(async () => ((await picConf(a, ik)) || {}).fit === 'fill'), 'Crop to fill in one tab is Crop to fill in the other');
+    await ytChoose(b, 'Remove picture', ik);
+    ok(await eventually(async () => (await picLook(a, ik)).ask), 'Remove picture in one tab empties the window in the other');
+    await picOpen(a, picFile('Volcano.jpg', photo, 'image/jpeg'), ik);
+    ok(await eventually(async () => (await picLook(b, ik)).src === pic), 'a picture opened again shows in both');
+
+    // Export and import: a full backup carries the picture, a template leaves it out (Crop to fill stays).
+    const full = await a.evaluate(() => window.__board21.buildExport('full')), tpl = await a.evaluate(() => window.__board21.buildExport('template'));
+    const fi = full.instances.find(i => i.widgetId === 'image'), ti = tpl.instances.find(i => i.widgetId === 'image');
+    ok(!!fi && fi.data && fi.data.src === pic && fi.data.name === 'Volcano.jpg' && (fi.config || {}).fit === 'fill', 'a full export carries the picture in the window’s content');
+    ok(!!ti && ti.data === null && (ti.config || {}).fit === 'fill', 'a template leaves the picture out (a picture may show the class), and keeps Crop to fill');
+    fs.writeFileSync(OUT + 'picture-board.21board', JSON.stringify(full));
+    const ctx2 = await browser.newContext({ viewport: { width: 1366, height: 768 } }), c = await ctx2.newPage();
+    c.on('pageerror', e => errors.push('[C] ' + e.message));
+    await c.goto(BASE); await boardUp(c);
+    await c.setInputFiles('#import-input', OUT + 'picture-board.21board');
+    await c.locator('#modal.open .btn', { hasText: 'Replace this page' }).click({ timeout: 5000 }).catch(() => {});
+    ok(await eventually(async () => (await picLook(c, ik)).src === pic && (await picLook(c, ik)).pic), 'importing it on another device shows the picture');
+    await ctx2.close();
+
+    // Board history: each picture is kept once. One version costs what the page costs without its pictures.
+    const H = () => a.evaluate(async () => {
+      const BH = window.__board21.history, all = s => BH.tx([s], 'readonly', (o, set) => { const q = o[s].getAll(); q.onsuccess = () => set(q.result); });
+      const metas = await all('meta'), photos = await all('photo'), bodies = await all('body');
+      return { metas: metas.map(m => ({ id: m.id, bytes: m.bytes, pics: m.pics || null, wins: m.wins })), pics: photos.filter(p => /^pic-/.test(p.key)).map(p => ({ key: p.key, size: (p.data || '').length })),
+        bodies: bodies.map(x => ({ id: x.id, size: JSON.stringify(x.exp).length, src: (x.exp.instances.find(i => i.widgetId === 'image') || { data: null }).data })) };
+    });
+    const v1 = await a.evaluate(() => window.__board21.history.save('With the volcano'));
+    await a.evaluate(ik => window.__board21.setRect(ik, Object.assign({}, window.__board21.state.insts.get(ik).rect, { x: 60, y: 60 })), ik); await a.waitForTimeout(600);
+    const v2 = await a.evaluate(() => window.__board21.history.save('Moved'));
+    let h = await H();
+    const m1 = h.metas.find(x => x.id === v1), m2 = h.metas.find(x => x.id === v2), b1 = h.bodies.find(x => x.id === v1);
+    ok(!!v1 && !!v2 && v1 !== v2 && h.pics.length === 1 && h.pics[0].size === pic.length && m1 && m2 && m1.bytes < 20000 && m2.bytes < 20000 && JSON.stringify(m1.pics) === JSON.stringify([h.pics[0].key]),
+      `Board history keeps the picture once (${Math.round(pic.length / 1e3)} KB), however many versions show it; each version costs ${m1 && m1.bytes} and ${m2 && m2.bytes} bytes`);
+    console.log(`  (Board history: one version of this page costs ${m1 && m1.bytes} bytes, its ${Math.round(pic.length / 1e3)} KB picture once: ${h.pics.length} kept)`);
+    ok(!!b1 && b1.size < 20000 && b1.src && b1.src.src && b1.src.src.b21pic === (h.pics[0] || {}).key, `a version names its picture ({ "b21pic": key }) instead of holding it (${b1 && JSON.stringify(b1.src).slice(0, 80)})`);
+    ok((m1 && m1.wins[ik] && m1.wins[ik][5]) === 'Volcano.jpg', `the version’s list of windows shows the picture’s name, not its data (${m1 && m1.wins[ik] && m1.wins[ik][5]})`);
+    const back = await a.evaluate(id => window.__board21.history.get(id).then(r => r.body.exp.instances.find(i => i.widgetId === 'image').data.src), v1);
+    ok(back === pic, 'reading a version gives its picture back whole');
+    // Going back after Remove picture, and putting back a deleted window.
+    await ytChoose(a, 'Remove picture', ik);
+    await a.evaluate(id => window.__board21.history.restore(id), v1);
+    ok(await eventually(async () => (await picLook(a, ik)).src === pic && (await picLook(b, ik)).src === pic), 'going back to a version brings the picture back, in both tabs');
+    await a.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), ik); await a.waitForTimeout(600);
+    await a.evaluate(([id, ik]) => window.__board21.history.putBack(id, ik), [v1, ik]);
+    ok(await eventually(async () => (await picLook(a, ik)).src === pic), 'putting back a deleted window brings its picture');
+    // Versions deleted: the picture goes with the last one that named it.
+    await a.evaluate(() => window.__board21.history.clearBoard());
+    h = await H();
+    ok(h.pics.length === 0, `deleting the page’s versions deletes the picture they kept (${h.pics.length} left)`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Image: Board Sync on two devices (a picture added on the laptop shows on the smartboard, changed on both: the later one wins, Crop to fill, Remove picture, the picture inside the device file)', async (browser) => {
+    const errors = [];
+    const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
+    const ik = await addWin(A.p, 'image');
+    const one = await drawPic(A.p, 120, 90, 'image/png'), two = await drawPic(A.p, 90, 120, 'image/jpeg', { q: 0.8 }), three = FIXTURE('picture-animated.gif');
+    const url = (buf, type) => `data:${type};base64,${buf.toString('base64')}`;
+    await picOpen(A.p, picFile('One.png', one, 'image/png'), ik);
+    await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
+    const wid = await A.p.evaluate(ik => window.__board21.state.insts.get(ik).wid, ik), ikB = await ikOf(B.p, wid);
+    ok(!!ikB && await eventually(async () => (await picLook(B.p, ikB)).src === url(one, 'image/png')), 'the smartboard shows the picture added on the laptop');
+    const own = await ownJSON(A.p), inFile = own && JSON.stringify(own).includes(url(one, 'image/png'));
+    ok(inFile, `the picture travels inside the laptop’s file in the folder (${own ? Math.round(JSON.stringify(own).length / 1e3) + ' KB' : 'no file'})`);
+    // Changed on both before they synced: the later one wins, on both, with no copy.
+    await picOpen(B.p, picFile('Two.jpg', two, 'image/jpeg'), ikB); await syncNow(B.p); await B.p.waitForTimeout(1500);
+    await picOpen(A.p, picFile('Three.gif', three, 'image/gif'), ik); await A.p.waitForTimeout(300); await syncNow(A.p);
+    await exchange(A, B); await A.p.waitForTimeout(800);
+    const wins = async d => (await winList(d.p)).filter(x => x.widgetId === 'image');
+    const sa = await picLook(A.p, ik), sb = await picLook(B.p, ikB);
+    ok(sa.src === url(three, 'image/gif') && sb.src === url(three, 'image/gif') && (await wins(A)).length === 1 && (await wins(B)).length === 1,
+      `a picture changed on both devices: the later one shows on both, and no copy is kept (laptop ${sa.src.slice(0, 20)}, smartboard ${sb.src.slice(0, 20)})`);
+    await ytChoose(B.p, 'Crop to fill', ikB); await B.p.waitForTimeout(300); await syncNow(B.p); await exchange(A, B);
+    ok(await eventually(async () => ((await picConf(A.p, ik)) || {}).fit === 'fill'), 'Crop to fill reaches the other device');
+    await ytChoose(A.p, 'Remove picture', ik); await A.p.waitForTimeout(300); await syncNow(A.p); await exchange(A, B);
+    ok(await eventually(async () => (await picLook(B.p, ikB)).ask), 'Remove picture reaches the other device');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await A.c.close(); await B.c.close();
+  }],
   ['Board Sync: setting up (scenarios 1–4: the first device, a fresh smartboard, a device with its own pages, two set up at once)', async (browser) => {
     const errors = [];
     const said = async p => (await p.locator('#modal.open').count()) ? (await p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ') : '';

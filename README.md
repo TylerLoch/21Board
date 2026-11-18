@@ -103,11 +103,15 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). With several pages: *All pages* (a backup of every page in one file), *This page*, or *This page as a blank template*. Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). *Back up now* (Settings) and the backup reminders always save every page. |
 | **Import** | Pick a `.21board` file (or drop it on the board). Choose *Open as a new page* (suggested), *Replace this page* or *Add to this page*. A file of several pages: *Add these pages* or *Replace all pages* (with Undo). *Replace this page* keeps the page and takes the file's theme, accent color and text style, and says so when they differ (with Board Sync, its windows and content, and the theme, accent color and text style, change on your other devices too); its Undo puts back the page and the theme, accent color and text style it replaced. The other ways leave the theme, accent color and text style as they are. A Board Sync device file opens as a backup of every page. |
+| **Paste a picture** | Ctrl+V (⌘V) opens a copied picture in a new Picture window. So does dropping a picture on the board. On a touch screen, open Picture and tap *Paste*. An animation copied from a web page pastes as a still. Open or drop its file instead. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so moving between a laptop and the smartboard keeps your arrangement. Settings can unlock the shape (*Fill*: any window) and change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → Classroom → **Board history…** opens the earlier versions of the board as a column beside Settings; tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Full screen or Board Sync, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
 | **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → Advanced shows the version in use. |
+
+**For IT:** *Paste* in a Picture window asks once to see the clipboard. The Chrome policy `ClipboardAllowedForUrls` with
+`https://boardapp.ccsd21.org` allows it ahead of time. Ctrl+V never asks.
 
 ### Settings
 
@@ -222,6 +226,7 @@ tests/run.js            Optional automated browser tests
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
 | **Video Player** | A YouTube, Google Drive or Vimeo video from its link. YouTube, Google Drive and Vimeo see what they would on their own sites: the video, the device and any account signed in. YouTube and Vimeo also see the board's address. Controls in the window menu, since nothing may cover the player; a History of the last 5 videos, titled by YouTube's and Vimeo's oEmbed without cookies (kept in the content); clear of the board's corner buttons when it fills the board (`corners`); never under 200 × 200 px on screen (`zoom`); a message when offline |
+| **Picture** | A picture opened, pasted or dropped on the board. PNG, JPEG, GIF, WebP or AVIF, animations too, each checked by its bytes. Kept in the window's content. A still over 1 MB or 3840 px is redrawn at 2560 px; an animation is kept as it is, up to 5 MB. The window takes the picture's shape. *Whole picture* or *Crop to fill* in its menu. Board history keeps each picture once |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps-21sketch-21timer-21doccam) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
@@ -428,7 +433,7 @@ changes that it doesn't show (a deleted page gone for good, a Board history copy
 - **Photos:** each background photo once, named by its content. The device files only name their photos. A
   photo can arrive after the board: the page keeps its photo until the new one is here ("still arriving"
   after 10 minutes). Photos no device names any more are deleted after about a week. A second `Photos (1)`
-  folder that Google Drive may make is read too.
+  folder that Google Drive may make is read too. A Picture window's picture travels inside the device files.
 - **Board history:** about hourly copies of this device's own changes. **About this folder.txt** explains it all.
 - A file that is half-delivered, mixes old and new bytes, or is older than one already merged is never
   merged; the status says when one has been arriving for a while. A device whose file says it is from a newer
@@ -510,7 +515,8 @@ app, where no one signs in:
    the kiosk web-app offline setting at its default (on).
 5. Keep **Kiosk troubleshooting tools** off (an open developer tools window keeps the session going after Quit)
    and leave *new windows in kiosk* off. Optional: turn off pinch-to-zoom for touch panels.
-6. If Import and Export will be used: don't block USB drives, downloads, or file-system access for this OU.
+6. If Import, Export or a Picture window's *Open…* will be used: don't block USB drives, downloads, or file-system
+   access for this OU.
 
 Check on a real device: Quit (auto-launched and from Apps), Import/Export to the device and to USB, typing on a
 touch-only panel, and that the board is still there after airplane mode and a restart.
@@ -608,7 +614,8 @@ also keeps a version of a page before changes from your other devices change it,
 while nothing is changed on that page here, and always before a merge deletes something or settles a clash.
 Pages deleted on any device are kept 30 days under *Deleted pages*, with *Bring back* (listed at once, while
 their Undo is still offered too), and the time they were deleted on the device that deleted them. Identical
-content is never saved twice. *Save this version now* keeps a named version until you delete it.
+content is never saved twice, and a Picture window's picture is kept once, however many versions show it. *Save
+this version now* keeps a named version until you delete it.
 
 **Columns.** Opened from Settings (Classroom → *Board history…*), Board history is a column beside Settings, on
 the side away from the screen edge, and Settings stays open and usable. Tapping a version opens it in a third

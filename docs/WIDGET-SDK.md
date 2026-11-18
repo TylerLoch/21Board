@@ -225,6 +225,7 @@ and links are stripped). Up to 24 items (a swatch row counts as one, with up to 
 | `focus` / `blur` | — | The window was selected / deselected. Selecting a window brings it to the front. **`blur` also fires when the teacher taps the empty board to deselect everything; the window stays in front and visible**, so don't treat `blur` as "covered" (e.g. don't pause a timer on blur). |
 | `menu` | `(id, item)` | One of your menu items was tapped. |
 | `beforeclose` | — | The window is about to close. Save anything pending *synchronously* (call `save()`). |
+| `file` | `(file, { reason })` | A picture pasted or dropped on the board, for the Picture window the board opened for it. `reason` is `'paste'` or `'drop'`. Only the built-in Picture widget gets it. |
 
 ### Other
 
@@ -233,6 +234,10 @@ and links are stripped). Up to 24 items (a swatch row counts as one, with up to 
 | `Board21.toast(text)` | Show a short message at the bottom of the board. |
 
 Tapping anywhere inside your widget brings its window to the front automatically.
+
+**Pasting and dropping files.** A paste your widget doesn't take, outside a text field, goes to the board. So does a
+dropped file. A picture opens in a new Picture window, and a `.21board` file imports. A dropped file never opens in
+place of your widget. To take them yourself, call `preventDefault()` in a `paste` or `drop` listener.
 
 ---
 
