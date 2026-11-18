@@ -1598,6 +1598,7 @@ const SUITES = [
     ok(await page.evaluate(() => document.activeElement.matches('.swatch.custom[role="radio"]') && getComputedStyle(document.activeElement).outlineStyle === 'solid'), 'Tab reaches Custom…, and it shows the keyboard focus');
     await page.evaluate(() => { window.__picker = 0; document.getElementById('set-bg-custom').showPicker = () => { window.__picker++; }; });
     await page.keyboard.press('Enter'); await page.waitForTimeout(100);
+    ok(await page.evaluate(() => window.__picker === 1 && document.activeElement.matches('#bg-block .swatch.custom')), 'Enter on it opens the color picker, and the keyboard stays on Custom…, so it is still there if nothing is picked');
     await page.locator('#set-bg-custom').evaluate(el => { el.value = '#123457'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }); await page.waitForTimeout(300);
     ok(await page.evaluate(() => window.__picker === 1 && document.activeElement.matches('.swatch.custom[aria-checked="true"]')), 'Enter on it opens the color picker; once a color is picked, the keyboard is back on Custom…, checked');
     await page.keyboard.press('Tab');
@@ -2210,10 +2211,11 @@ const SUITES = [
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page); await freeBoard(page);
     await page.evaluate(() => window.__board21.openWidget('timer')); await page.waitForTimeout(1200);
-    // The accent the board shows (its chrome) and a widget gets (its palette).
+    // The accent the board shows (its chrome) and a widget gets (its palette), and as it is stored: accent, which a
+    // release before 2026.11.18-2 reads (Blue for a custom color), and accentColor, the color chosen.
     const shown = async () => {
-      const b = await page.evaluate(() => { const css = getComputedStyle(document.body), v = n => css.getPropertyValue(n).trim();
-        return { accent: window.__board21.state.settings.accent, primary: v('--primary'), ring: v('--focus-ring'), override: document.body.style.getPropertyValue('--primary') }; });
+      const b = await page.evaluate(() => { const css = getComputedStyle(document.body), v = n => css.getPropertyValue(n).trim(), st = window.__board21.state.settings;
+        return { accent: window.__board21.accentNow(), stored: `${st.accent} ${st.accentColor}`, primary: v('--primary'), ring: v('--focus-ring'), override: document.body.style.getPropertyValue('--primary') }; });
       b.w = await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('html').evaluate(e => { const v = n => e.style.getPropertyValue(n).trim(); return { accent: v('--b21-accent'), on: v('--b21-on-accent') }; });
       return b;
     };
@@ -2264,6 +2266,7 @@ const SUITES = [
       const same = await page.evaluate(() => document.getElementById('set-accent-custom').dataset.same === '1');
       ok(s.accent === '#8040c0' && s.primary === '#8040c0' && s.ring === '#8040c0' && s.w.accent === '#8040c0' && s.w.on === '#ffffff' && ch.dot === 'rgb(128, 64, 192)' && same,
         `while the picker is open a custom color shows at once, on the board, in its widgets and on Custom…’s dot (white text reads on it, so it is used as it is), Settings staying as it is (${JSON.stringify(s)}; dot ${ch.dot})`);
+      ok(s.stored === 'blue #8040c0', `it is stored as Blue for releases before 2026.11.18-2, and the color itself (${s.stored})`);
       await page.locator('#set-accent-custom').evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true }))); await page.waitForTimeout(300);
       ch = await choices();
       ok(ch.checked === 'custom✓', `once the picker closes, Custom… is the choice, checked (${ch.checked})`);
@@ -2281,16 +2284,21 @@ const SUITES = [
       const s2 = await shown(); await openSettings(page); ch = await choices();
       ok(s2.accent === '#8040c0' && s2.primary === s.primary && s2.w.accent === s.primary && ch.checked === 'custom✓', `a reload keeps it (${s2.accent}, ${s2.primary}; ${ch.checked})`);
 
-      // The keyboard: Tab reaches Custom…, Enter opens the same picker, and afterwards the keyboard is back on it.
+      // The keyboard: Tab reaches Custom…, Enter opens the same picker, the keyboard staying on Custom… (also when
+      // nothing is picked), and Settings isn't drawn again under the open picker while the color follows it.
       await page.click('#settings [data-act="theme"][data-val="light"]'); await page.waitForTimeout(300);
       await page.focus('#settings [data-act="accent"][data-val="slate"]'); await page.keyboard.press('Tab');
       ok(await page.evaluate(() => document.activeElement.matches('[data-act="accent-custom"]') && getComputedStyle(document.activeElement).outlineStyle === 'solid'), 'Tab goes from Slate to Custom…, which shows the keyboard focus');
       await page.evaluate(() => { window.__picker = 0; document.getElementById('set-accent-custom').showPicker = () => { window.__picker++; }; });
       await page.keyboard.press('Enter'); await page.waitForTimeout(100);
-      const opened = await page.evaluate(() => window.__picker === 1 && document.activeElement.id === 'set-accent-custom');
-      await pickColor('#0d9488'); await page.waitForTimeout(400);
-      ok(opened && await page.evaluate(() => document.activeElement.matches('[data-act="accent-custom"][aria-checked="true"]')) && (await shown()).accent === '#0d9488',
-        'Enter on it opens the color picker; a color picked (a teal of one’s own), the keyboard is back on Custom…, checked');
+      const opened = await page.evaluate(() => window.__picker === 1 && document.activeElement.matches('[data-act="accent-custom"]'));
+      ok(opened, `Enter on it opens the color picker, and the keyboard stays on Custom…, so it is still there if nothing is picked (${await page.evaluate(() => document.activeElement.id || document.activeElement.className)})`);
+      await pickColor('#0d9488', false); await page.waitForTimeout(400);
+      const kept = await page.evaluate(() => document.getElementById('set-accent-custom').dataset.same === '1' && document.activeElement.matches('[data-act="accent-custom"]'));
+      ok(kept && (await shown()).accent === '#0d9488', 'a color tried in the picker shows at once, and Settings isn’t drawn again under the open picker');
+      await page.locator('#set-accent-custom').evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true }))); await page.waitForTimeout(400);
+      ok(await page.evaluate(() => document.activeElement.matches('[data-act="accent-custom"][aria-checked="true"]')) && (await shown()).accent === '#0d9488',
+        'a color picked (a teal of one’s own), the keyboard is on Custom…, checked');
       await page.keyboard.press('Tab');
       ok(await page.evaluate(() => !document.activeElement.matches('#set-accent-custom') && !document.activeElement.closest('.accent-row')), 'and Tab goes on past the row (the color input isn’t a stop of its own)');
       // A color again: Custom… unchecked, its dot back to the rainbow.
@@ -2308,26 +2316,31 @@ const SUITES = [
       const took = [];
       for (const v of ['pink', 'teal', '#fff', 'red; x', '__proto__', '#GGGGGG']) {
         await page.evaluate(f => window.__board21.applyImport(f, 'replace'), Object.assign({}, file, { accent: v })); await page.waitForTimeout(600);
-        const a = await page.evaluate(() => window.__board21.state.settings.accent);
+        const a = await page.evaluate(() => window.__board21.accentNow());
         if (a !== '#8040c0') took.push(`${v} → ${a}`);
       }
       ok(!took.length, `a file whose accent is Pink, Teal or not an accent at all changes nothing (${took.join(' | ') || 'kept #8040c0'})`);
     }
 
-    // A device that had Pink or Teal (or something that isn't an accent) shows Blue: the board, its widgets,
-    // Settings and an export.
-    const stored = v => page.evaluate(v => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'), st = t.objectStore('records'), g = st.get('settings');
-      g.onsuccess = () => st.put({ key: 'settings', type: 'settings', rev: Date.now() + 1e6, updatedAt: Date.now(), by: 'test', value: Object.assign({}, g.result && g.result.value, { theme: 'light', accent: v, accentAt: Date.now() }) });
-      t.oncomplete = () => { o.result.close(); res(); }; }; }), v);
+    // A device that had Pink or Teal (or something that isn't an accent, in either part) shows Blue: the board, its
+    // widgets, Settings and an export. And an accent chosen on a release before 2026.11.18-2 after the color shows.
+    const stored = (a, c) => page.evaluate(([a, c]) => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'), st = t.objectStore('records'), g = st.get('settings');
+      g.onsuccess = () => st.put({ key: 'settings', type: 'settings', rev: Date.now() + 1e6, updatedAt: Date.now(), by: 'test', value: Object.assign({}, g.result && g.result.value, { theme: 'light', accent: a, accentColor: c, accentAt: Date.now() }) });
+      t.oncomplete = () => { o.result.close(); res(); }; }; }), [a, c]);
     const notBlue = [];
-    for (const v of ['pink', 'teal', '#fff', 'red; x', '__proto__', '#GGGGGG', 'constructor']) {
-      await stored(v); await page.reload(); await boardUp(page); await page.waitForTimeout(900);
+    for (const [a, c] of [['pink', ''], ['teal', ''], ['#fff', ''], ['red; x', ''], ['__proto__', ''], ['#GGGGGG', ''], ['constructor', ''], ['blue', 'pink'], ['blue', '#FFFFFF'], ['blue', '#fff'],
+      ['blue', '__proto__'], ['blue', 'red; x'], ['blue', { c: 1 }], ['blue', 'green'], ['pink', '#8040c0']]) {
+      await stored(a, c); await page.reload(); await boardUp(page); await page.waitForTimeout(900);
       const s = await shown(); await openSettings(page); ch = await choices();
       const exp = await page.evaluate(async () => (await window.__board21.buildExport('full')).accent);
-      if (!(s.primary === '#2563eb' && s.override === '' && s.w.accent === '#2563eb' && ch.checked === 'blue✓' && exp === 'blue')) notBlue.push(`${v}: ${s.primary}${s.override ? ' (set)' : ''}, widget ${s.w.accent}, ${ch.checked}, export ${exp}`);
+      if (!(s.primary === '#2563eb' && s.override === '' && s.w.accent === '#2563eb' && ch.checked === 'blue✓' && exp === 'blue')) notBlue.push(`${JSON.stringify([a, c])}: ${s.primary}${s.override ? ' (set)' : ''}, widget ${s.w.accent}, ${ch.checked}, export ${exp}`);
       await page.keyboard.press('Escape');
     }
-    ok(!notBlue.length, `a device that had Pink or Teal, or something that isn’t an accent, shows Blue on the board, in its widgets and in Settings, and exports Blue (${notBlue.join(' | ') || 'all Blue'})`);
+    ok(!notBlue.length, `a device that had Pink or Teal, or something that isn’t an accent in either part, or a color an older release has changed since, shows Blue on the board, in its widgets and in Settings, and exports Blue (${notBlue.join(' | ') || 'all Blue'})`);
+    await stored('green', '#8040c0'); await page.reload(); await boardUp(page); await page.waitForTimeout(900);
+    let s0 = await shown(); await openSettings(page); ch = await choices();
+    ok(s0.accent === 'green' && s0.primary === '#15803d' && s0.w.accent === '#15803d' && ch.checked === 'green✓', `Green chosen on an older release after a custom color: Green shows, and is checked (${s0.accent}; ${ch.checked})`);
+    await page.keyboard.press('Escape');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
 
     // The widget lab: it is told the six colors, and shows a custom color it is sent (Pink or anything else: nothing).
@@ -2337,7 +2350,7 @@ const SUITES = [
     await page.click('#sample'); await page.click('#run'); await page.waitForTimeout(3500);
     const ready = await page.evaluate(() => window.__ready || null), board = page.frames().find(f => f.parentFrame() === page.mainFrame());
     const send = v => page.evaluate(v => window.__board21DevWindow.send('accent', { value: v }), v);
-    const lab = () => board.evaluate(() => ({ accent: window.__board21.state.settings.accent, primary: getComputedStyle(document.body).getPropertyValue('--primary').trim() }));
+    const lab = () => board.evaluate(() => ({ accent: window.__board21.accentNow(), primary: getComputedStyle(document.body).getPropertyValue('--primary').trim() }));
     await send('pink'); await page.waitForTimeout(400);
     const l0 = await lab();
     await send('#8040c0'); await page.waitForTimeout(400);
@@ -2366,10 +2379,12 @@ const SUITES = [
       return b;
     };
     const rgba = (hex, a) => rgbOf(hex).replace('rgb(', 'rgba(').replace(')', `, ${a})`);
-    // The rules: light, white text on it reads (4.5:1); dark, it stands out on the dark window color as the six do
-    // (6:1 on #1e1e1e), dark text on it reading too. A color that keeps them is used as it is; one that doesn't
-    // changes only as far as it must (just past the line), keeping its hue (a grey stays grey).
-    const rule = (c, dark) => (dark ? contrast(rgbOf(c), rgbOf('#1e1e1e')) >= 6 && contrast(rgbOf(c), rgbOf('#0b1220')) >= 4.5 : contrast(rgbOf(c), 'rgb(255, 255, 255)') >= 4.5);
+    // The rules: light, it reads as text on the widgets' surface (#f9fafb), and white text reads on it (4.5:1); dark,
+    // it stands out on the dark window color as the six do (6:1 on #1e1e1e), dark text on it reading too. A color that
+    // keeps them is used as it is; one that doesn't changes only as far as it must (just past the line), keeping its
+    // hue (a grey stays grey).
+    const rule = (c, dark) => (dark ? contrast(rgbOf(c), rgbOf('#1e1e1e')) >= 6 && contrast(rgbOf(c), rgbOf('#0b1220')) >= 4.5
+      : contrast(rgbOf(c), rgbOf('#f9fafb')) >= 4.5 && contrast(rgbOf(c), 'rgb(255, 255, 255)') >= 4.5);
     const near = (c, dark) => (dark ? contrast(rgbOf(c), rgbOf('#1e1e1e')) <= 6.6 : contrast(rgbOf(c), 'rgb(255, 255, 255)') <= 5);
     const bad = [], seen = [];
     for (const hex of ['#ffffff', '#000000', '#ffff00', '#808080', '#000080', '#ffffe0', '#8040c0']) {
@@ -2390,7 +2405,7 @@ const SUITES = [
         if (why.length) bad.push(`${hex} ${theme} → ${c}: ${why.join(', ')}`);
       }
     }
-    ok(!bad.length, `any color: light, white text on it reads (4.5:1); dark, it stands out (6:1 on the window color) with dark text on it; changed only as far as needed, same hue; widgets and the soft shades follow (${bad.join(' | ') || seen.join(', ')})`);
+    ok(!bad.length, `any color: light, it reads on the widgets’ surface and white text reads on it (4.5:1); dark, it stands out (6:1 on the window color) with dark text on it; changed only as far as needed, same hue; widgets and the soft shades follow (${bad.join(' | ') || seen.join(', ')})`);
     // The six colors keep the same rules (as their swatches show them, in each theme).
     const presetBad = [];
     for (const theme of ['light', 'dark']) {
@@ -2471,6 +2486,24 @@ const SUITES = [
         await page.keyboard.press('Escape'); await page.waitForTimeout(200);
         ok(lab.open && lab.bg !== e.T1 && lab.bg !== e.T0 && contrast(lab.color, lab.bg) >= 4.5 && contrast(lab.sub, lab.bg) >= 4.5 && contrast(lab.chev, lab.bg) >= 3,
           `${acc}, ${theme}: the window menu’s button, open, stands apart from both tints, its text and ⌄ readable (${lab.bg}: ${contrast(lab.color, lab.bg).toFixed(2)}:1, ${contrast(lab.sub, lab.bg).toFixed(2)}:1, ${contrast(lab.chev, lab.bg).toFixed(2)}:1)`);
+        // From the keyboard, on a window that isn't the focused one (Tab to its name, Enter): the window stays as it is,
+        // and its open button reads the same.
+        await page.focus('.win[data-ikey="notes:1"] .win-label'); await page.keyboard.press('Enter'); await page.waitForTimeout(350);
+        const kb = await page.evaluate(() => { const w = document.querySelector('.win[data-ikey="notes:1"]'), l = w.querySelector('.win-label'), c = el => getComputedStyle(el).color;
+          return { focused: w.matches('.focused'), open: l.matches('.open'), bg: getComputedStyle(l).backgroundColor, name: c(l.querySelector('.name')), sub: c(l.querySelector('.sub')), chev: c(l.querySelector('svg')) }; });
+        await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+        ok(!kb.focused && kb.open && contrast(kb.name, kb.bg) >= 4.5 && contrast(kb.sub, kb.bg) >= 4.5 && contrast(kb.chev, kb.bg) >= 3,
+          `${acc}, ${theme}: Enter on another window’s name opens its menu, the name, subtitle and ⌄ readable on the open button (${kb.bg}: ${contrast(kb.name, kb.bg).toFixed(2)}:1, ${contrast(kb.sub, kb.bg).toFixed(2)}:1, ${contrast(kb.chev, kb.bg).toFixed(2)}:1)`);
+        // A widget asks for attention on the focused window (Board21.window.requestAttention()): the flash starts at its
+        // bar's own tint, comes back to it between pulses, and ends there.
+        await page.evaluate(() => window.__board21.focusWin('notes:1')); await page.waitForTimeout(300);
+        await page.frameLocator('.win[data-ikey="notes:1"] iframe').locator('html').evaluate(() => Board21.window.requestAttention()); await page.waitForTimeout(150);
+        const fl = await page.evaluate(() => { const t = document.querySelector('.win[data-ikey="notes:1"] .win-title'), a = t.getAnimations().find(x => x.animationName === 'attention'); if (!a) return null;
+          a.pause(); const at = ms => { a.currentTime = ms; return getComputedStyle(t).backgroundColor; }; const r = { first: at(0), peak: at(500), trough: at(1000), last: at(4999) };
+          t.closest('.win').getAnimations({ subtree: true }).filter(x => /^attention/.test(x.animationName)).forEach(x => x.finish()); return r; });   // (its text's flash too: the next look is at rest)
+        const pri = (await bars()).primary; await page.waitForTimeout(100);
+        ok(!!fl && fl.first === e.T1 && fl.trough === e.T1 && fl.last === e.T1 && fl.peak === rgbOf(pri),
+          `${acc}, ${theme}: the attention flash on the focused window goes from its tint (${e.T1}) to the accent and back, never to the faint tint (${JSON.stringify(fl)})`);
       }
       // The extreme colors keep the title bars readable too.
       const worst = [];
@@ -12179,7 +12212,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const errors = [];
     const A = await syncDev(browser, 'the laptop', errors), B = await syncDev(browser, 'the smartboard', errors);
     // theme, accent, and what the board shows: dark or light, and its accent shade
-    const look = p => p.evaluate(() => { const s = window.__board21.state.settings; return `${s.theme} ${s.accent} ${document.body.classList.contains('dark') ? 'dark' : 'light'} ${document.body.style.getPropertyValue('--focus-ring').trim() || 'built-in'}`; });
+    const look = p => p.evaluate(() => { const s = window.__board21.state.settings, a = window.__board21.accentNow ? window.__board21.accentNow() : s.accent;
+      return `${s.theme} ${a} ${document.body.classList.contains('dark') ? 'dark' : 'light'} ${document.body.style.getPropertyValue('--focus-ring').trim() || 'built-in'}`; });
     const hints = p => p.evaluate(() => {
       const hint = act => { const b = document.querySelector(`#settings [data-act="${act}"]`), r = b && b.closest('.row'), h = r && r.querySelector('.hint'); return h ? h.textContent.trim() : ''; };
       const g = document.querySelector('#settings [data-act="group"][data-val="letters"] .hint');   // (Text style: a group, its hint on its row)
@@ -12268,7 +12302,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(/^dark #db2777 dark #[0-9a-f]{6}$/.test(pinkA) && pinkA !== 'dark #db2777 dark #db2777', `(the laptop is dark, in a pink of its own, a lighter shade of it shown: ${pinkA})`);
     await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
     ok(await look(B.p) === pinkA, `locked: the change applies, the same pink and the same shade of it (${await look(B.p)})`);
-    ok((await heard(B.p)).includes('The laptop changed the theme to Dark and the accent color to a custom color.') && await said(B.p, 'The laptop changed the theme').locator('button').count() === 0, `and is said, a custom color as “a custom color”, with no button (${(await heard(B.p)).join(' | ')})`);
+    ok((await heard(B.p)).includes('The laptop changed the theme to Dark and the accent color to a custom one.') && await said(B.p, 'The laptop changed the theme').locator('button').count() === 0, `and is said, a custom color as “a custom one”, with no button (${(await heard(B.p)).join(' | ')})`);
+    const filePink = await ownJSON(A.p);
+    ok(filePink && filePink.accent === 'blue' && filePink.accentColor === '#db2777', `the laptop’s file says Blue for a release before 2026.11.18-2, and the color itself (${filePink && JSON.stringify([filePink.accent, filePink.accentColor])})`);
     ok(await eventually(async () => await look(B2) === pinkA), `another tab of the smartboard follows (${await look(B2)})`);
     ok(await eventually(async () => await look(K) === pinkA), `and so does one in kiosk mode (${await look(K)})`);
     await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(400);

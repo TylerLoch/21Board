@@ -149,8 +149,8 @@ Settings opens.
     choose what stays in view, *Fill the board* or *Whole photo*, fade, *Change…* and *Remove*. The photo is kept
     on the device and in full backups, not in templates.
   - **Accent color:** Blue, Purple, Red, Orange, Green, Slate or *Custom…* for any color. A custom color adjusts to
-    stay readable in Light and Dark. Widgets use the accent too. It tints every title bar, and the selected window's
-    tint is stronger. With Board Sync, on all your devices. A board that had Pink or Teal is now Blue.
+    stay readable in Light and Dark. The accent colors widgets and tints every title bar. With Board Sync, on all
+    your devices. A board that had Pink or Teal is now Blue.
   - **Text style ▸** for 21Board and its widgets: *Standard* (the device's own font), *Easier to read* (Atkinson
     Hyperlegible, made for low vision, with I, l and 1 all different and a line through 0) or *Early readers*
     (Andika by SIL, with a and g the way children learn to write them). Easier reading, not a dyslexia font; Notes'
@@ -393,18 +393,17 @@ back, such as a window being typed in, is due again):
   widgets', in Early readers), at once, in every tab, even while windows are locked (Settings, if open, shows the
   new choice in place, without being drawn again), and the device that shows it says who changed it, in one
   message ("The laptop changed the theme to Dark and the accent color to Green.", "The laptop changed the text
-  style to “Early readers”.", with no Undo: changing it back in Settings is one tap, and syncs). Auto stays Auto
-  everywhere: each device then follows its own light or dark setting. A device that only ever had the defaults, or
-  the folder's, never replaces another's choice; one made while unlinked counts when the same folder is linked
-  again, and of two made apart the later wins on every device. Board history never changes them, and the Undo of
-  an update doesn't either. A device still on 2026.11.16-4 doesn't know the text style: it keeps its own, and
-  changes nobody's, until it updates. Then each device keeps the text style it had until one is chosen on any of
-  your devices (or takes one already chosen on another updated device). A custom accent color is "a custom color"
-  in the message. A device on a release before 2026.11.18-2 ignores it and keeps its own accent until it updates.
-  The page shown, Lock, Stay awake, the clock
-  and the Widget Picker's corners stay on each device. Settings says "On all your devices." beside Theme, Accent color
-  and Text style, "This device only." beside Lock, Stay awake and the clock, and "This page, on all your devices."
-  beside the page's own settings.
+  style to “Early readers”.", "The laptop changed the accent color to a custom one.", with no Undo: changing it
+  back in Settings is one tap, and syncs). Auto stays Auto everywhere: each device then follows its own light or
+  dark setting. A device that only ever had the defaults, or the folder's, never replaces another's choice; one
+  made while unlinked counts when the same folder is linked again, and of two made apart the later wins on every
+  device. Board history never changes them, and the Undo of an update doesn't either. A device still on
+  2026.11.16-4 doesn't know the text style: it keeps its own, and changes nobody's, until it updates. Then each
+  device keeps the text style it had until one is chosen on any of your devices (or takes one already chosen on
+  another updated device). A device on a release before 2026.11.18-2 shows Blue for a custom accent color until it
+  updates. The page shown, Lock, Stay awake, the clock and the Widget Picker's corners stay on each device.
+  Settings says "On all your devices." beside Theme, Accent color and Text style, "This device only." beside Lock,
+  Stay awake and the clock, and "This page, on all your devices." beside the page's own settings.
 
 **Settings → Board Sync** has three rows: **Synced through “21Board”** with how syncing is going ("Up to date. This
 device’s latest changes went to your folder at 9:42 AM. Shared with the smartboard (last change at 9:40 AM)."; "Not
@@ -532,8 +531,8 @@ on): 21Board doesn't copy the apps or their work.
   drawing, and a second 21DocCam would start the camera again.
 - **A window partly behind another: tap it once** to bring it forward. That first tap doesn't draw or press
   anything (21Board can't see taps inside another site's page). A window that nothing covers takes every tap
-  straight away, so two people can draw in 21Sketch and use another window at once; its blue outline may then
-  stay on the other window. Move the window by its title bar.
+  straight away, so two people can draw in 21Sketch and use another window at once; the outline may then stay on
+  the other window. Move the window by its title bar.
 - **The window menu** has *Reload 21Sketch* (loads the app again, e.g. after the connection came back), *Open
   21Sketch on its own* (a new tab) and no *Reset* or *Earlier versions*: the app's work isn't 21Board's to reset
   or bring back.

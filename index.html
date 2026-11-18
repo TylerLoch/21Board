@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="b4b07560">
+<html lang="en" data-build="b5e36eb1">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -39,7 +39,7 @@
       --focus-ring-width: 3px;
       --focus-title: #c9d8fa;  /* its title bar: a stronger tint than --titlebar */
       --label-open: #2563eb;   /* window-menu button while its menu is open: the accent itself */
-      --title-muted: #4b5563;  /* an unfocused window's name, subtitle, number and ⌄: readable on both tints */
+      --title-muted: #4b5563;  /* every title bar's subtitle, number and ⌄, and an unfocused window's name: readable on both tints */
       --on-primary: #ffffff;   /* text on --primary (dark theme uses dark text: the accent shades are light there) */
       --title-h: 40px;
       color-scheme: light;
@@ -186,7 +186,7 @@
       height: 32px; padding: 0 6px 0 12px; border-radius: 8px;
       color: var(--text); font-size: 15px; white-space: nowrap; cursor: inherit;
     }
-    .win:not(.focused) .win-label { color: var(--title-muted); }
+    .win:not(.focused) .win-label:not(.open) { color: var(--title-muted); }
     .win-label .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 2.5em; }
     .win-label .num { font-weight: 700; color: var(--title-muted); flex: 0 0 auto; }
     /* The subtitle gives way first in narrow windows so the widget name stays readable. */
@@ -214,7 +214,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
 
     .win.attention .win-title { animation: attention 1s ease-in-out 5; }
-    @keyframes attention { 0%, 100% { background: var(--titlebar); } 50% { background: var(--primary); } }
+    @keyframes attention { 50% { background: var(--primary); } }   /* (from the bar's own tint and back to it) */
     .win.attention .win-label, .win.attention .win-label :is(.num, .sub, svg) { animation: attention-text 1s ease-in-out 5; }
     @keyframes attention-text { 50% { color: var(--on-primary); } }
 
