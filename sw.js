@@ -11,22 +11,22 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.18-4';
+const VERSION = '2026.11.18-5';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '2ac242fc';
+const BUILD = 'fc186d4f';
 const FILES = {
-  './': '521433add4d4b44e',
-  'index.html': '521433add4d4b44e',
-  'board.js': '9138e4626e269f60',
+  './': '9fd916c340bc079f',
+  'index.html': '9fd916c340bc079f',
+  'board.js': '8422d91bba8a9509',
   'sdk/board21.js': 'bb51d90e54690fac',
   'sdk/board21-dev.js': '95479bed48fa2ec3',
   'sdk/dev/board-shell.js': '63ea4be8582a3ea1',
   'sdk/lab.html': '21cda27716334794',
   'widgets/registry.js': '3d51a211a0af413b',
   'manifest.webmanifest': '18a4aa7b736c3183',
-  'icons/icon-192.png': '8d779eac2a94f475',
-  'icons/icon-512.png': 'f52d15c85180a10b',
+  'icons/icon-192.png': '03358970ec7a0961',
+  'icons/icon-512.png': '9dc3eedc618872bc',
   'fonts/AtkinsonHyperlegible-Regular.woff2': '57f2debe054cd288',
   'fonts/AtkinsonHyperlegible-Bold.woff2': '21b2f082b7390e74',
   'fonts/AtkinsonHyperlegible-OFL.txt': 'f32d22b3908fcad2',
