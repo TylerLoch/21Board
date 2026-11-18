@@ -14,14 +14,14 @@
 const VERSION = '2026.11.18-3';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '4cc099c3';
+const BUILD = 'c5a696b4';
 const FILES = {
-  './': '890764a0c44152b6',
-  'index.html': '890764a0c44152b6',
-  'board.js': 'afc44513be65d065',
+  './': '7cd5a7b91205a30a',
+  'index.html': '7cd5a7b91205a30a',
+  'board.js': 'b18364c3fe0458ce',
   'sdk/board21.js': 'bb51d90e54690fac',
   'sdk/board21-dev.js': '95479bed48fa2ec3',
-  'sdk/dev/board-shell.js': '2620a6111b381be7',
+  'sdk/dev/board-shell.js': '932adab5ec075b20',
   'sdk/lab.html': '21cda27716334794',
   'widgets/registry.js': '3d51a211a0af413b',
   'manifest.webmanifest': '18a4aa7b736c3183',
@@ -50,7 +50,7 @@ const FILES = {
   'widgets/first-then-board/index.html': '3283512732b75fc2',
   'widgets/dice/index.html': '868bf3c637359718',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
-  'widgets/youtube-player/index.html': '08b7005e9a08c425',
+  'widgets/youtube-player/index.html': '1f4b8a73cb31265d',
   'widgets/sdk-playground/index.html': '9d5615e8b0f6f313'
 };
 const CACHE_PREFIX = '21board-';

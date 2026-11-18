@@ -139,7 +139,7 @@
       frame: { title: 'Google Drive video player', allow: 'autoplay; fullscreen', referrer: 'no-referrer' },
       oembed: null
     },
-    // Vimeo's player with dnt=1 (Vimeo's "do not track": no cookies or viewing data kept for the session) and no
+    // Vimeo's player with dnt=1 (Vimeo's "do not track": no viewing data, and only its essential cookies) and no
     // title, byline or portrait over the video.
     vimeo: {
       name: 'Vimeo', open: 'Open in Vimeo', isId: s => VIMEO_ID.test(s), starts: true,
@@ -150,10 +150,11 @@
     }
   };
   const isSource = s => typeof s === 'string' && Object.prototype.hasOwnProperty.call(SOURCES, s);
-  // What the link box says to text that isn't a video's link (readText's why).
+  // What the link box says to text that isn't a video's link (readText's why). Each fits in two lines at 200 px, where
+  // the help line gives way.
   const SAY = {
-    empty: 'Paste a link first.', none: 'That isn’t a video link.', folder: 'That’s a folder. Paste a link to one video.',
-    list: 'That’s a list of videos. Paste a link to one video.', doc: 'That’s a document. Paste a link to a video.',
+    empty: 'Paste a link first.', none: 'Paste a YouTube, Google Drive or Vimeo link.', folder: 'That’s a folder. Paste a link to one video.',
+    list: 'That’s a list of videos. Paste a link to one.', doc: 'That’s a document. Paste a link to a video.',
     sheet: 'That’s a spreadsheet. Paste a link to a video.', slides: 'That’s a presentation. Paste a link to a video.'
   };
   const MAX_LINK = 2000, MAX_START = 86400;   // characters; seconds (a day)
@@ -175,12 +176,13 @@
   // the text that is the link, so a sentence, quotes or brackets around it are left out, as is the rest of an embed
   // code), or { why } if there is none: what the link box says (SAY), from the first link that told what it is.
   function readText(text) {
-    const all = String(text == null ? '' : text).trim();
+    const all = String(text == null ? '' : text).replace(/&amp;/gi, '&').trim();   // (an embed code writes & as &amp;)
     if (!all) return { why: 'empty' };
     if (isId(all)) return { video: { source: 'youtube', id: all, start: 0, link: all } };
     let why = null;
-    for (const word of all.split(/[\s"'\u200b-\u200d\u2060]+/)) {
-      const r = fromAddress(word.replace(/^[(<\[]+|[)>\].,;:!?]+$/g, ''));
+    // (Words are split at quotes too, curly ones and guillemets as well: Docs, Slides and Word write those.)
+    for (const word of all.split(/[\s"'\u2018-\u201f\u00ab\u00bb\u2039\u203a\u200b-\u200d\u2060]+/)) {
+      const r = fromAddress(word.replace(/^[(<\[]+|[)>\].,;:!?\u3001\u3002\uff0c]+$/g, ''));
       if (r && r.video) return r;
       if (r && r.why && !why) why = r.why;
     }
@@ -200,14 +202,14 @@
   }
   const timeIn = (u, ...names) => seconds(names.map(n => u.searchParams.get(n)).find(t => t) || new URLSearchParams(u.hash.slice(1)).get('t'));
   // youtube.com (www., m., music.) /watch?v=…, /embed/…, /v/…, /shorts/…, /live/…; youtube-nocookie.com; youtu.be/….
-  // A playlist or a channel is a list.
+  // A playlist (a link with a list and no video in it) or a channel is a list.
   function fromYouTube(u, host, path) {
     let id = null;
     if (host === 'youtu.be' || host === 'www.youtu.be') id = path.length === 1 ? path[0] : null;
     else if (path.length === 1 && path[0] === 'watch') id = u.searchParams.get('v');
     else if (path.length === 2 && /^(embed|v|shorts|live)$/.test(path[0])) id = path[1];
     if (id && isId(id)) return { video: { source: 'youtube', id, start: timeIn(u, 't', 'start') } };
-    return path[0] === 'playlist' || (path[0] === 'embed' && path[1] === 'videoseries') || /^@./.test(path[0] || '') || /^(channel|c|user)$/.test(path[0] || '') ? { why: 'list' } : null;
+    return path[0] === 'playlist' || (path[0] === 'embed' && path[1] === 'videoseries') || u.searchParams.get('list') || /^@./.test(path[0] || '') || /^(channel|c|user)$/.test(path[0] || '') ? { why: 'list' } : null;
   }
   // drive.google.com/file/d/<id>/… (also /file/u/<n>/d/<id>/…, and a school's older /a/<domain>/file/d/<id>/…),
   // /open?id=<id>, /uc?id=<id>; docs.google.com/file/d/<id>/…; with the resource key, if any. Drive's player has no
@@ -225,15 +227,18 @@
     return { video: { source: 'drive', id, resourceKey: key || '', start: 0 } };
   }
   // vimeo.com/<id>, /<id>/<hash> (unlisted), /channels/<name>/<id>, /groups/<name>/videos/<id>,
-  // /showcase/<n>/video/<id>; player.vimeo.com/video/<id>?h=<hash>; a start time (#t=90, #t=1m30s). A showcase,
-  // album, channel, group or someone's page is a list.
+  // /showcase/<n>/video/<id>, /manage/videos/<id>(/<hash>) (the uploader's own address for it);
+  // player.vimeo.com/video/<id>?h=<hash>; a start time (#t=90, #t=1m30s). A showcase, album, channel, group (with no
+  // video's number at its end) or someone's page is a list.
   function fromVimeo(u, host, path) {
     let id = null, hash = '';
     if (host === 'player.vimeo.com') { if (path.length === 2 && path[0] === 'video') { id = path[1]; hash = u.searchParams.get('h') || ''; } }
     else if (/^\d+$/.test(path[0] || '')) { if (path.length <= 2) { id = path[0]; hash = path[1] || ''; } }
+    else if (/^(channels|groups)$/.test(path[0]) && !/^\d+$/.test(path[path.length - 1])) return { why: 'list' };
     else if (path[0] === 'channels' && path.length === 3) id = path[2];
     else if (path[0] === 'groups' && path.length === 4 && path[2] === 'videos') id = path[3];
     else if ((path[0] === 'showcase' || path[0] === 'album') && path.length === 4 && path[2] === 'video') id = path[3];
+    else if (path[0] === 'manage' && path[1] === 'videos' && (path.length === 3 || path.length === 4)) { id = path[2]; hash = path[3] || ''; }
     else if (/^(showcase|album|channels|groups)$/.test(path[0] || '') || (/^[A-Za-z][\w-]*$/.test(path[0] || '') && (path.length === 1 || (path.length === 2 && path[1] === 'videos')))) return { why: 'list' };
     if (!id || !VIMEO_ID.test(id) || (hash && !VIMEO_HASH.test(hash))) return null;
     return { video: { source: 'vimeo', id, hash, start: timeIn(u, 't') } };

@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-3';
-  const BOARD_BUILD = '4cc099c3';
+  const BOARD_BUILD = 'c5a696b4';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -5409,7 +5409,7 @@
   // A teacher builds the board on a laptop and shows it on the smartboard. Each device links itself once to the
   // same folder, e.g. Google Drive › My Drive › 21Board (Chrome's folder picker: 21Board can read and write in that
   // folder only, and the teacher allows it). ChromeOS (and Drive for desktop on Windows) keeps that folder the same
-  // on every device, so 21Board never talks to Google: no sign-in, API keys, Cloud project or server. Chrome and Edge
+  // on every device, so Board Sync never talks to Google: no sign-in, API keys, Cloud project or server. Chrome and Edge
   // only (Safari and Firefox keep Export/Import).
   // Setting up (Settings › Board Sync › Set up…, see setup): what it is and how to make the folder, then Chrome's
   // folder picker, then a look inside the folder picked (see choose), then the first round and this device's name

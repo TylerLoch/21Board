@@ -214,7 +214,7 @@ tests/run.js            Optional automated browser tests
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
-| **Video Player** | A YouTube, Google Drive or Vimeo video from its link. YouTube, Google Drive and Vimeo see what they would on their own sites: the video, the device and any account signed in. Controls in the window menu, since nothing may cover the player; a History of the last 5 videos, titled by YouTube's and Vimeo's oEmbed without cookies (kept in the content); clear of the board's corner buttons when it fills the board (`corners`); never under 200 × 200 px on screen (`zoom`); a message when offline |
+| **Video Player** | A YouTube, Google Drive or Vimeo video from its link. YouTube, Google Drive and Vimeo see what they would on their own sites: the video, the device and any account signed in. YouTube and Vimeo also see the board's address. Controls in the window menu, since nothing may cover the player; a History of the last 5 videos, titled by YouTube's and Vimeo's oEmbed without cookies (kept in the content); clear of the board's corner buttons when it fills the board (`corners`); never under 200 × 200 px on screen (`zoom`); a message when offline |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps-21sketch-21timer-21doccam) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
@@ -567,11 +567,11 @@ repository (`sw.js`) but not yet on its server; 21Timer and 21DocCam need one de
   https://boardapp.ccsd21.org` (add `https://tylerloch.github.io` for the test site), and no `X-Frame-Options`
   (it can't name another site). If 21Board's own host ever sends a CSP, it needs `frame-src
   https://sketchapp.ccsd21.org https://timerapp.ccsd21.org https://doccamapp.ccsd21.org`.
-- **Video Player.** A CSP for its page needs `frame-src https://www.youtube.com https://drive.google.com
-  https://player.vimeo.com`, plus `connect-src https://www.youtube.com https://vimeo.com` for titles. Drive plays
-  what the signed-in account can open; in a kiosk, only files shared with *Anyone with the link*. With third-party
-  cookies blocked, Drive can't see who is signed in, so only those files play. YouTube's player also contacts
-  Google's ad servers.
+- **Video Player.** A CSP for its page, `widgets/youtube-player/index.html`, needs `frame-src
+  https://www.youtube.com https://drive.google.com https://player.vimeo.com`, plus `connect-src
+  https://www.youtube.com https://vimeo.com` for titles. Drive plays what the signed-in account can open. In a
+  kiosk, or with third-party cookies blocked, only files shared with *Anyone with the link* play. YouTube's player
+  also contacts Google's ad servers.
 - **Camera (21DocCam).** Chrome asks for the camera on behalf of the page in the address bar,
   `boardapp.ccsd21.org`: its prompt names that site and remembers the answer for it. On managed devices, allow
   the camera for `https://boardapp.ccsd21.org` (Admin console: *Video input allowed URLs*, policy

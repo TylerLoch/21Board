@@ -460,7 +460,7 @@ const VIMEO_OPEN = (id, hash, start) => `https://vimeo.com/${id}${hash ? '/' + h
 // A Drive file's label in the History (Drive gives no title without signing in): "Google Drive video" and its id's end.
 const DRIVE_LABEL = id => `Google Drive video ${id.slice(-6)}`;
 // What the link box says to text that isn't a video's link.
-const VMSG = { empty: 'Paste a link first.', none: 'That isn’t a video link.', folder: 'That’s a folder. Paste a link to one video.', list: 'That’s a list of videos. Paste a link to one video.',
+const VMSG = { empty: 'Paste a link first.', none: 'Paste a YouTube, Google Drive or Vimeo link.', folder: 'That’s a folder. Paste a link to one video.', list: 'That’s a list of videos. Paste a link to one.',
   doc: 'That’s a document. Paste a link to a video.', sheet: 'That’s a spreadsheet. Paste a link to a video.', slides: 'That’s a presentation. Paste a link to a video.' };
 // The tab's live player frames from any of the three sites.
 const vidFrames = p => p.frames().filter(f => /^https:\/\/(www\.youtube(-nocookie)?\.com\/embed\/|drive\.google\.com\/file\/d\/|player\.vimeo\.com\/video\/)/.test(f.url()));
@@ -4765,15 +4765,21 @@ const SUITES = [
       'the README’s top says the work is stored only on the device (and in the teacher’s own Drive with Board Sync), and that 21Board goes online only when needed');
     ok(!/sends nothing|nothing anywhere|All data stays/.test(readme), 'and no longer says 21Board sends nothing anywhere');
     const row = readme.slice(readme.indexOf('| **Video Player**'), readme.indexOf('| **21Sketch**'));
-    ok(/^\| \*\*Video Player\*\* \|.*History/.test(row) && row.includes('YouTube, Google Drive and Vimeo see what they would on their own sites: the video, the device and any account signed in.') && !/YouTube Player/.test(readme),
-      'its row in Included widgets says what the three sites see, in one sentence, and names the History (and the README calls it the Video Player)');
+    ok(/^\| \*\*Video Player\*\* \|.*History/.test(row) && row.includes('YouTube, Google Drive and Vimeo see what they would on their own sites: the video, the device and any account signed in. YouTube and Vimeo also see the board\'s address.') &&
+      row.includes('oEmbed without cookies') && !/YouTube Player/.test(readme),
+      'its row in Included widgets says what the three sites see, that YouTube and Vimeo also see the board’s address (the Referer) and that titles are asked for without cookies, and names the History (and the README calls it the Video Player)');
     ok(!/widget that goes online/.test(readme + registrySrc), 'the README and registry don’t call it the one built-in widget that goes online (the district apps’ windows do too)');
     const kioskDoc = readme.slice(readme.indexOf('## Kiosk mode'), readme.indexOf('## District apps'));
     ok(/Video Player/.test(kioskDoc) && /\*Open in …\*/.test(kioskDoc) && /Anyone with the link/.test(kioskDoc), 'the README’s Kiosk mode section says the Video Player’s menu has no Open in … there, and that a Drive video plays there only if it’s shared with Anyone with the link');
     const it = readme.slice(readme.lastIndexOf('**For IT**'));
-    ok(it.includes('frame-src https://www.youtube.com https://drive.google.com https://player.vimeo.com') && it.includes('connect-src https://www.youtube.com https://vimeo.com'),
-      'the README’s note for IT names the CSP the Video Player’s page needs: frame-src for the three players, connect-src for the titles');
-    ok(it.includes('YouTube\'s player also contacts Google\'s ad servers.') && /Anyone with the link/.test(it) && /third-party cookies/.test(it), 'and the ad servers, what a Drive video needs to play, and third-party cookies');
+    ok(it.includes('A CSP for its page, `widgets/youtube-player/index.html`, needs `frame-src https://www.youtube.com https://drive.google.com https://player.vimeo.com`') && it.includes('connect-src https://www.youtube.com https://vimeo.com'),
+      'the README’s note for IT names the Video Player’s page (its folder keeps the old name) and the CSP it needs: frame-src for the three players, connect-src for the titles');
+    ok(it.includes('YouTube\'s player also contacts Google\'s ad servers.') && it.includes('Drive plays what the signed-in account can open. In a kiosk, or with third-party cookies blocked, only files shared with *Anyone with the link* play.'),
+      'and the ad servers, and plainly which Drive videos play in a kiosk or with third-party cookies blocked');
+    // The data format guide opens with the same value.
+    const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(dataDoc.includes('21Board stores everything **on the device**, in the browser\'s IndexedDB. With Board Sync, the board is also in the teacher\'s Google Drive folder. 21Board has no servers.') && !/never sees any data/.test(dataDoc),
+      'the data format guide says where the work is stored: on the device, and in the teacher’s Drive folder with Board Sync');
     const sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' '), prompt = fs.readFileSync(path.join(ROOT, 'docs', 'AI-PROMPT.md'), 'utf8');
     ok(sdkDoc.includes('1. **No Internet.** No CDNs, web fonts, analytics or APIs. Keep everything in your folder, so the widget works offline and student work stays on the device. The Video Player is the only exception. 2.'),
       'the SDK guide’s rule 1 is the new one, word for word');
@@ -4819,7 +4825,9 @@ const SUITES = [
       // (as teachers paste them: YouTube's Share › Embed code, and a link with punctuation or quotes around it)
       [EMBED_CODE, VID, 0], [`Watch this: https://youtu.be/${VID}.`, VID, 0], [`(https://youtu.be/${VID})`, VID, 0], [`https://youtu.be/${VID2}, then answer the questions`, VID2, 0],
       [`"https://youtu.be/${VID}?t=90"`, VID, 90], [`'https://www.youtube.com/watch?v=${VID2}'`, VID2, 0], [`<https://www.youtube.com/watch?v=${VID}>`, VID, 0], [`See https://youtu.be/${VID}?t=45!`, VID, 45],
-      [`[https://youtu.be/${VID}];`, VID, 0], [`\u200bhttps://youtu.be/${VID}\u200b`, VID, 0]
+      [`[https://youtu.be/${VID}];`, VID, 0], [`\u200bhttps://youtu.be/${VID}\u200b`, VID, 0],
+      // (Share \u203a Embed with Start at, whose start comes after &amp;; a link in the curly quotes Docs, Slides and Word write)
+      [EMBED_CODE.replace('?si=AbCdEf123', '?si=AbCdEf123&amp;start=90'), VID, 90], [`\u201chttps://youtu.be/${VID}?t=90\u201d`, VID, 90], [`\u2018https://www.youtube.com/watch?v=${VID2}\u2019`, VID2, 0]
     ];
     const bad = ['', 'hello there', 'https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', 'https://www.youtube.com/@ccsd21', 'https://www.dailymotion.com/video/x8abc12',
       `https://example.com/watch?v=${VID}`, `https://www.youtube.com.example.org/watch?v=${VID}`, `https://notyoutube.com/watch?v=${VID}`, 'javascript:alert(1)', VID.slice(0, 10),
@@ -5082,11 +5090,14 @@ const SUITES = [
     // the title stays on one line, in every text style.
     await page.evaluate(() => { window.__board21.setBoardScale(2); window.__board21.setRect('youtube-player:1', { x: 20, y: 20, w: 50, h: 60 }); }); await page.waitForTimeout(600);
     await ytChoose(page, 'Change video');
-    const tight = [], fitted = [];
+    const tight = [], fitted = [], said = new Set();
+    // (text that gets each of the link box's messages)
+    const G = '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms', texts = ['not a link', '', 'https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345', 'https://vimeo.com/showcase/11223344',
+      `https://docs.google.com/document/d/${G}/edit`, `https://docs.google.com/spreadsheets/d/${G}/edit`, `https://docs.google.com/presentation/d/${G}/edit`];
     for (const letters of ['standard', 'legible', 'early']) {
       await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${letters}"]`); await page.keyboard.press('Escape');
       await page.waitForFunction(l => window.__board21.state.settings.letters === l, letters); await page.waitForTimeout(800);
-      for (const text of ['not a link', '']) {
+      for (const text of texts) {
         await ytWin(page).locator('#link').fill(text); await ytWin(page).locator('#go').click(); await page.waitForTimeout(300);
         const r = await ytWin(page).locator('html').evaluate(async () => {
           await document.fonts.ready;
@@ -5095,11 +5106,13 @@ const SUITES = [
           return { w: innerWidth, h: innerHeight, scrolls: $('ask').scrollHeight > $('ask').clientHeight + 1, lines: Math.round(h1.getBoundingClientRect().height / parseFloat(getComputedStyle(h1).lineHeight)), off, err: $('err').textContent, cancel: !$('cancel').hidden };
         });
         const label = `${letters}, “${r.err}”, ${r.w} × ${r.h}`;
+        said.add(r.err);
         if (r.scrolls || r.lines !== 1 || r.off.length || !r.cancel || !r.err || r.w > 202 || r.h > 202) tight.push(`${label}: ${r.scrolls ? 'scrolls, ' : ''}title on ${r.lines} line(s)${r.off.length ? ', cut off: ' + r.off.join(' ') : ''}`);
         else fitted.push(label);
       }
     }
-    ok(!tight.length && fitted.length === 6, `the smallest link box fits, title on one line, in every text style and with either message (${tight.length ? 'not: ' + tight.join('; ') : fitted.join('; ')})`);
+    ok(!tight.length && fitted.length === texts.length * 3 && Object.values(VMSG).every(m => said.has(m)),
+      `the smallest link box fits, title on one line, in every text style and with each of its ${Object.keys(VMSG).length} messages (${tight.length ? 'not: ' + tight.join('; ') : fitted.length + ' fitted, 200 × 200'})`);
     await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.keyboard.press('Escape');
     await page.waitForFunction(() => window.__board21.state.settings.letters === 'standard');
     await ytWin(page).locator('#cancel').click(); await page.waitForTimeout(400);
@@ -5598,7 +5611,15 @@ const SUITES = [
       [`https://player.vimeo.com/video/${V1}#t=45s`, 'vimeo', V1, 45], [`https://vimeo.com/${V1}#t=soon`, 'vimeo', V1, 0],
       [`Watch: https://vimeo.com/${V1}!`, 'vimeo', V1, 0], [`<https://vimeo.com/${V1}>`, 'vimeo', V1, 0], [`'https://vimeo.com/${V2}/${VH}',`, 'vimeo', V2, 0, VH],
       // (a folder's link, then a video's: the video)
-      [`The folder https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345 and the video https://vimeo.com/${V1}`, 'vimeo', V1, 0]
+      [`The folder https://drive.google.com/drive/folders/1AbCdEfGhIjKlMnOpQrStUvWxYz012345 and the video https://vimeo.com/${V1}`, 'vimeo', V1, 0],
+      // (embed codes whose key comes after another parameter, written &amp;)
+      [`<iframe src="https://drive.google.com/file/d/${D2}/preview?usp=sharing&amp;resourcekey=${RK}" width="640" height="480" allow="autoplay"></iframe>`, 'drive', D2, 0, RK],
+      [`<iframe src="https://player.vimeo.com/video/${V2}?badge=0&amp;h=${VH}&amp;autopause=0" frameborder="0" allow="autoplay; fullscreen"></iframe>`, 'vimeo', V2, 0, VH],
+      // (curly quotes, as Docs, Slides and Word write them, guillemets, and a full-width comma after a link)
+      [`“https://vimeo.com/${V1}”`, 'vimeo', V1, 0], [`‘https://drive.google.com/file/d/${D1}/view?usp=sharing’`, 'drive', D1, 0], [`«https://vimeo.com/${V2}/${VH}#t=90»`, 'vimeo', V2, 90, VH],
+      [`https://vimeo.com/${V1}，`, 'vimeo', V1, 0],
+      // (Vimeo's address for one's own video, as its uploader sees it)
+      [`https://vimeo.com/manage/videos/${V1}`, 'vimeo', V1, 0], [`https://vimeo.com/manage/videos/${V2}/${VH}`, 'vimeo', V2, 0, VH]
     ];
     const parsed = await ytWin(page).locator('html').evaluate((html, forms) => forms.map(([t]) => parseLink(t)), forms);
     const wrong = forms.filter(([t, source, id, start, extra], i) => { const p = parsed[i];
@@ -5632,7 +5653,13 @@ const SUITES = [
       ['https://vimeo.com/blenderfoundation', VMSG.list], ['https://vimeo.com/user12345678', VMSG.list], ['https://vimeo.com/blenderfoundation/videos', VMSG.list],
       ['https://www.youtube.com/playlist?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', VMSG.list], ['https://www.youtube.com/@ccsd21', VMSG.list], ['https://www.youtube.com/channel/UC_x5XG1OV2P6uZZ5FSM9Ttw', VMSG.list],
       [`https://vimeo.com/${V1}/zzzzzzzzzz`, VMSG.none], [`https://vimeo.com/${V1}abc`, VMSG.none], [`https://player.vimeo.com/video/${V2}?h=${VH}%22%3E%3Cimg`, VMSG.none], ['https://player.vimeo.com/video/abc', VMSG.none],
-      [`https://vimeo.com.example.org/${V1}`, VMSG.none], [`https://notvimeo.com/${V1}`, VMSG.none], ['https://vimeo.com/0', VMSG.none], ['https://vimeo.com/1234567890123', VMSG.none], [V1, VMSG.none]
+      [`https://vimeo.com.example.org/${V1}`, VMSG.none], [`https://notvimeo.com/${V1}`, VMSG.none], ['https://vimeo.com/0', VMSG.none], ['https://vimeo.com/1234567890123', VMSG.none], [V1, VMSG.none],
+      // (more lists: a channel's or group's videos, a YouTube playlist's watch and embed links without a video)
+      ['https://vimeo.com/channels/staffpicks/videos', VMSG.list], ['https://vimeo.com/groups/animation/videos', VMSG.list],
+      ['https://www.youtube.com/watch?list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', VMSG.list], ['https://www.youtube.com/embed?listType=playlist&list=PLx0sYbCqOb8TBPRdmBHs5Iftvv9TPboYG', VMSG.list],
+      // (Vimeo's address for one's own video, damaged; a video on another site)
+      ['https://vimeo.com/manage/videos/abc', VMSG.none], [`https://vimeo.com/manage/videos/${V1}/zzzz`, VMSG.none], ['https://vimeo.com/manage/folders/123', VMSG.none],
+      ['https://www.dropbox.com/scl/fi/a1b2c3d4/lesson.mp4?rlkey=x1y2z3&dl=0', VMSG.none]
     ];
     const said = [];
     const players = () => yt.hits.filter(u => !/oembed/.test(u));
