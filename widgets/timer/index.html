@@ -266,7 +266,7 @@
       ...Object.keys(SOUNDS).map(k => ({ id: 'sound:' + k, label: SOUNDS[k].label, checked: cur === k })),
       { id: 'sound:off', label: 'No sound', checked: cur === 'off' },
       { separator: true },
-      { id: 'test', label: 'Play alarm sound', disabled: cur === 'off' }
+      { id: 'test', label: 'Play sound', disabled: cur === 'off' }
     ]);
   }
 

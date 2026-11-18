@@ -39,7 +39,7 @@
  *                    calls it for a tap after the double-tap guard, a menu change, a pick from another copy, the
  *                    page being hidden, or a show that ran too long. No need to call host.done() after it.
  *   resize()         The stage changed size, or the letters did (Settings → Text style): fit the names again.
- *   theme()          Light/dark or the accent colour changed. CSS has the new colours already; redraw a canvas.
+ *   theme()          Light/dark or the accent color changed. CSS has the new colors already; redraw a canvas.
  *   destroy()        Another style was chosen: stop every timer and animation frame. (The host removes root.)
  *
  * `view`, a fresh object for each call (read it, don't change it):
@@ -76,9 +76,9 @@
  *                               devicePixelRatio × zoom pixels per CSS px to stay sharp (up to about 3); resize() is
  *                               called when it changes (once it stops changing: 150 ms after the last change).
  *
- * Colours and letters: use the board's CSS tokens (--b21-bg, -surface, -surface-2, -text, -muted, -border, -accent,
+ * Colors and letters: use the board's CSS tokens (--b21-bg, -surface, -surface-2, -text, -muted, -border, -accent,
  * -on-accent, -accent-soft, -danger, -success, -warning, -radius, -font) and these extras, set below for light and
- * dark: --np-win (gold, for winners) with --np-ink (text on gold), and --np-c1 … --np-c8 (eight soft colours for
+ * dark: --np-win (gold, for winners) with --np-ink (text on gold), and --np-c1 … --np-c8 (eight soft colors for
  * slices, tiles and balls). The demo page's names --np-bg, -surface, -text, -muted, -border, -accent, -on-accent,
  * -font-body and -font-display are the board's tokens too. Canvas text: host.token('font'), redrawn in resize().
  * The host handles taps on the stage during a show (skip, after the guard). Math.random is fine for decoration;
@@ -147,7 +147,7 @@ window.NamePicker = {
     <div class="sr" id="said" role="status" aria-live="polite" aria-atomic="true"></div>
   </section>
   <section class="view" id="edit">
-    <div class="edit-head"><span>Names — one per line</span><button class="small primary" id="done" style="min-width:0">Done</button></div>
+    <div class="edit-head"><span>One name per line</span><button class="small primary" id="done" style="min-width:0">Done</button></div>
     <textarea id="list" placeholder="Ada&#10;Grace&#10;Katherine&#10;…" spellcheck="false" aria-label="Names, one per line"></textarea>
   </section>
 <script>
@@ -308,13 +308,13 @@ window.NamePicker = {
   function renderChrome() {
     const N = state.names.length, p = pool(), k = Math.min(config.winners, p.length);
     // The button says how many it will pick ("Pick 3"), and when fewer are left than that ("Pick the last 2").
-    $('go').textContent = !N ? 'Add names' : showing ? 'Show now' : !p.length ? 'Everyone picked — start over'
+    $('go').textContent = !N ? 'Add names' : showing ? 'Show now' : !p.length ? 'Start over'
       : k < config.winners && config.noRepeats ? (k === 1 ? 'Pick the last one' : `Pick the last ${k}`)
       : k > 1 ? `Pick ${k}` : state.picked.length ? 'Pick again' : 'Pick a name';
     // (The count changes once the winners are on screen, so it gives nothing away during the show.)
     if (!showing) {
       $('status').textContent = !N ? '' : config.noRepeats ? `${p.length} of ${N} left` : N === 1 ? '1 name' : `${N} names`;
-      $('round').hidden = !canStartOver();
+      $('round').hidden = !canStartOver() || !p.length;   // (with everyone picked the main button says Start over: never two side by side)
     }
     setMenu();
     fitFoot();
@@ -378,7 +378,7 @@ window.NamePicker = {
     if (!state.names.length) { setView('edit', true); return; }
     if (showing) { if (performance.now() - showing.at >= GUARD) skipShow(); return; }
     const p = pool();
-    if (!p.length) { startOver(); return; }   // (the button reads "Everyone picked — start over")
+    if (!p.length) { startOver(); return; }   // (the button reads "Start over")
     const k = Math.min(config.winners, p.length), at = draw(p.length, k);
     if (config.noRepeats) state.left = p.filter((x, i) => !at.includes(i));
     state.picked = at.map(i => p[i]);

@@ -64,7 +64,7 @@
 </style>
 </head>
 <body>
-  <div id="view" class="layer" tabindex="0" role="textbox" aria-multiline="true" aria-readonly="true" aria-label="Note (tap to edit)"></div>
+  <div id="view" class="layer" tabindex="0" role="textbox" aria-multiline="true" aria-readonly="true" aria-label="Note. Tap to edit."></div>
   <textarea id="t" class="layer" placeholder="Type a note…" spellcheck="true" aria-label="Note"></textarea>
   <div id="sizer" class="layer" aria-hidden="true"></div>
   <div id="undo" role="status" hidden><span>Note cleared.</span><button type="button">Undo</button></div>
@@ -91,19 +91,19 @@
   };
   // Chalk and marker colors: [writing, link]. Links get a different color than the writing.
   const CHALKS = {
-    white:  { ink: '#f4f7f2', link: '#bfe3ff', label: 'White chalk' },
-    yellow: { ink: '#fde68a', link: '#bfe3ff', label: 'Yellow chalk' },
-    pink:   { ink: '#f9b4d6', link: '#bfe3ff', label: 'Pink chalk' },
-    blue:   { ink: '#a8d4ff', link: '#fde68a', label: 'Blue chalk' },
-    green:  { ink: '#a7f0c2', link: '#bfe3ff', label: 'Green chalk' },
-    orange: { ink: '#fdbb8a', link: '#bfe3ff', label: 'Orange chalk' }
+    white:  { ink: '#f4f7f2', link: '#bfe3ff', label: 'White' },
+    yellow: { ink: '#fde68a', link: '#bfe3ff', label: 'Yellow' },
+    pink:   { ink: '#f9b4d6', link: '#bfe3ff', label: 'Pink' },
+    blue:   { ink: '#a8d4ff', link: '#fde68a', label: 'Blue' },
+    green:  { ink: '#a7f0c2', link: '#bfe3ff', label: 'Green' },
+    orange: { ink: '#fdbb8a', link: '#bfe3ff', label: 'Orange' }
   };
   const MARKERS = {
-    black:  { ink: '#1b1f24', link: '#1d4ed8', label: 'Black marker' },
-    blue:   { ink: '#1d4ed8', link: '#6d28d9', label: 'Blue marker' },
-    red:    { ink: '#c81e1e', link: '#1d4ed8', label: 'Red marker' },
-    green:  { ink: '#15803d', link: '#1d4ed8', label: 'Green marker' },
-    purple: { ink: '#6d28d9', link: '#1d4ed8', label: 'Purple marker' }
+    black:  { ink: '#1b1f24', link: '#1d4ed8', label: 'Black' },
+    blue:   { ink: '#1d4ed8', link: '#6d28d9', label: 'Blue' },
+    red:    { ink: '#c81e1e', link: '#1d4ed8', label: 'Red' },
+    green:  { ink: '#15803d', link: '#1d4ed8', label: 'Green' },
+    purple: { ink: '#6d28d9', link: '#1d4ed8', label: 'Purple' }
   };
   const THEMES = {
     sticky:     { label: 'Sticky note', colors: PAPERS, key: 'color', fallback: 'yellow', heading: 'Paper color' },
@@ -231,7 +231,7 @@
       { heading: true, label: th.heading },
       { id: 'colors', label: th.heading, swatches: Object.keys(th.colors).map(k => Object.assign({ id: th.key + ':' + k, label: th.colors[k].label, checked: cur === k }, swatch(k))) },
       { separator: true },
-      { id: 'fit', label: 'Fit text to the note', checked: !!config.fit },
+      { id: 'fit', label: 'Fit text', checked: !!config.fit },
       { id: 'bigger', label: 'Larger text', disabled: !config.fit && config.px >= MAX_PX },
       { id: 'smaller', label: 'Smaller text', disabled: !config.fit && config.px <= MIN_PX },
       { separator: true },

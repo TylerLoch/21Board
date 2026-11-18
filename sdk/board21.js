@@ -17,12 +17,14 @@
  * Talks to the board with window.postMessage, so a widget never touches
  * IndexedDB itself.
  *
- * Opened anywhere else (its own file, a local server, an AI tool's preview such
- * as Gemini Canvas), the SDK shows the widget inside a real 21Board window: the
- * "dev window" (sdk/board21-dev.js), with the real title bar, resize handles,
- * menu and Settings. That needs this script to be the FIRST script in <head>.
- * Add #b21-bare to the address (or data-dev="off" to this script tag) for just
- * the widget on its own ("standalone": data in localStorage, window calls ignored).
+ * Anywhere else, such as its own file, a local server or an AI tool's preview,
+ * the SDK shows the widget in a real 21Board window: the dev window
+ * (sdk/board21-dev.js), with the real title bar, resize handles, menu and
+ * Settings. For that, this must be the FIRST script in <head>.
+ *
+ * For just the widget on its own, add #b21-bare to the address or data-dev="off"
+ * to this script tag. It then runs standalone: data in localStorage, window calls
+ * ignored.
  */
 (function () {
   'use strict';
@@ -239,7 +241,7 @@
       };
       if (mq.addEventListener) mq.addEventListener('change', onTheme); else if (mq.addListener) mq.addListener(onTheme);
     }
-    console.info('21Board SDK: running standalone (not inside 21Board). Data is kept in localStorage.');
+    console.info('21Board SDK: running on its own, outside 21Board. Data is kept in localStorage.');
     readyResolve(context);
     renderStandaloneMenu();
   }
@@ -261,7 +263,7 @@
     if (!menuItems.length) { if (standaloneMenuBtn) { standaloneMenuBtn.remove(); standaloneMenuBtn = null; } return; }
     if (!standaloneMenuBtn) {
       standaloneMenuBtn = document.createElement('select');
-      standaloneMenuBtn.title = 'Window menu items (standalone preview)';
+      standaloneMenuBtn.title = 'Window menu items';
       standaloneMenuBtn.style.cssText = 'position:fixed;top:6px;right:6px;z-index:2147483647;font:12px system-ui;opacity:.85';
       standaloneMenuBtn.addEventListener('change', function () {
         var id = standaloneMenuBtn.value; standaloneMenuBtn.value = '';
@@ -429,8 +431,8 @@
     if (started === 'ok') return;   // the dev window takes over the page; this copy of the SDK is done
     role = 'bare';
     devNote = started === 'not-first'
-      ? 'To try this widget in a 21Board window, make the 21Board SDK script the first script in <head>.'
-      : started === 'not-loadable' ? 'To try this widget in a 21Board window, load the SDK with a normal <script src="\u2026/sdk/board21.js">.' : '';
+      ? 'To try this widget in a 21Board window, make the SDK the first script in <head>.'
+      : started === 'not-loadable' ? 'To try this widget in a 21Board window, load the SDK with a plain <script src="\u2026/sdk/board21.js">. No async, defer or module.' : '';
   } else if (role === 'bare' && window.__board21DevNote !== undefined) {
     devNote = window.__board21DevNote ? 'The 21Board dev window could not start: ' + window.__board21DevNote : '';
   }

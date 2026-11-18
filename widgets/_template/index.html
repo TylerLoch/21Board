@@ -2,14 +2,14 @@
 <!--
   21Board widget starter
   =======================
-  1. Copy this folder to widgets/<your-widget-id>/   (lowercase letters, numbers, dashes)
+  1. Copy this folder to widgets/<your-widget-id>/. An id is lowercase letters, numbers and dashes.
   2. Add an entry for it in widgets/registry.js
-  3. Bump VERSION in sw.js and run `node tools/release.js`   (README, "Deploying")
-  Open this file directly in a browser (or paste it into sdk/lab.html) to try it: the SDK shows it in
-  a real 21Board window, the "dev window". Add #b21-bare to the address for just the widget.
-  Keep the SDK the FIRST script in <head>, and the manifest block below the same as your registry entry.
+  3. Change VERSION in sw.js and run `node tools/release.js`. See README, Deploying.
+  To try it, open this file in a browser or paste it into sdk/lab.html. The SDK shows it in the
+  dev window, a real 21Board window. Add #b21-bare to the address to see the widget on its own.
+  The SDK must be the first script in <head>. Keep the manifest block below the same as your registry entry.
 
-  This folder is NOT in the registry, so it is not shown in 21Board or cached offline.
+  This folder isn't in the registry, so 21Board doesn't show it or cache it for offline use.
   Full reference: docs/WIDGET-SDK.md
 -->
 <html lang="en">
@@ -24,12 +24,12 @@
 <style>
   html, body { margin: 0; height: 100%; }
   body {
-    /* --b21-* variables follow 21Board's light/dark theme automatically */
+    /* --b21-* variables follow 21Board's theme, light or dark. */
     background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font);
     display: grid; place-items: center; overflow: hidden;
     user-select: none; -webkit-user-select: none; touch-action: manipulation;
   }
-  /* Size things relative to the window (vmin/vw/vh) so the widget scales when resized. */
+  /* Size things in vmin, vw or vh so the widget scales with its window. */
   #count { font-size: 30vmin; font-weight: 800; }
   button { font: inherit; font-size: 6vmin; border: 0; border-radius: 999px; padding: 2vmin 6vmin; background: var(--b21-accent); color: var(--b21-on-accent); cursor: pointer; }
 </style>
@@ -40,12 +40,12 @@
     <button id="add">Add one</button>
   </div>
 <script>
-  // Content you save with Board21.save() is kept per window (instance) and
-  // restored when the window is reopened. It is left out of template exports.
+  // Board21.save() keeps content for each window (instance) and brings it back
+  // when the window reopens. Template exports leave it out.
   let state = { count: 0 };
 
-  // Saved content can come from a file someone imported, so check it before you use it, and put it on the
-  // page as text (textContent), never as HTML (innerHTML).
+  // Saved content can come from an imported file. Check it before you use it, and put it on the page
+  // as text (textContent), never as HTML (innerHTML).
   const read = data => ({ count: data && Number.isFinite(data.count) ? data.count : 0 });
 
   function render() { document.getElementById('count').textContent = state.count; }
@@ -56,8 +56,8 @@
     render();
   };
 
-  // Fired when this window's content was changed somewhere else
-  // (another open 21Board tab, an import, or a reset).
+  // Fires when this window's content changes somewhere else, such as another
+  // 21Board tab, an import or a reset.
   Board21.on('data', data => { state = read(data); render(); });
 
   Board21.ready().then(ctx => {

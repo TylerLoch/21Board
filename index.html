@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="a7363a45">
+<html lang="en" data-build="c089651b">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -469,6 +469,7 @@
     .row .lbl { font-size: 15px; font-weight: 500; }
     .row .hint { font-size: 12.5px; color: var(--muted); margin-top: 2px; font-weight: 400; line-height: 1.35; }
     .row.stack { flex-direction: column; align-items: stretch; gap: 10px; padding: 10px 0; }
+    .row.stack > .hint { margin-top: -6px; }   /* a hint under a field (This device’s name): close to it */
     .seg { display: inline-flex; background: var(--hover-bg); border-radius: 10px; padding: 3px; gap: 2px; flex-wrap: wrap; }
     .seg button { height: 36px; padding: 0 12px; border-radius: 8px; font-size: 14px; font-weight: 500; color: var(--text); }
     .seg button.on, .seg button[aria-pressed="true"] { background: var(--surface); color: var(--primary); box-shadow: 0 1px 3px rgba(0, 0, 0, .15); }
@@ -808,19 +809,19 @@
   <div id="shape-hint" role="note" hidden></div>
   <button class="picker-btn left" data-side="left" aria-label="Widgets and settings" aria-haspopup="dialog" aria-expanded="false"></button>
   <button class="picker-btn right" data-side="right" aria-label="Widgets and settings" aria-haspopup="dialog" aria-expanded="false"></button>
-  <div id="boot-note">21Board is taking a long time to start. Check the connection, then reload the page.</div>
+  <div id="boot-note">21Board is slow to start. Check your connection and reload the page.</div>
 
-  <div id="panel" class="panel" role="dialog" aria-label="Widgets">
+  <div id="panel" class="panel" role="dialog" aria-label="Widget Picker">
     <div class="panel-widgets" role="list"></div>
     <div class="panel-sep"></div>
     <div class="panel-controls">
       <span class="picker-spacer" aria-hidden="true"></span>
-      <button class="ctl" data-ctl="export" title="Export" aria-label="Export"></button>
-      <button class="ctl" data-ctl="import" title="Import" aria-label="Import"></button>
+      <button class="ctl" data-ctl="export" title="Export board" aria-label="Export board"></button>
+      <button class="ctl" data-ctl="import" title="Import board" aria-label="Import board"></button>
       <button class="ctl" data-ctl="theme" title="Dark mode" aria-label="Dark mode"></button>
       <button class="ctl" data-ctl="fullscreen" title="Full screen" aria-label="Full screen"></button>
       <button class="ctl" data-ctl="settings" title="Settings" aria-label="Settings"></button>
-      <button class="ctl" data-ctl="quit" title="Quit" aria-label="Quit" hidden></button>
+      <button class="ctl" data-ctl="quit" title="Quit 21Board" aria-label="Quit 21Board" hidden></button>
       <div class="page-ctl" role="group" aria-label="Pages">
         <span class="page-sep" aria-hidden="true"></span>
         <button class="pg" data-ctl="prev" aria-label="Previous page"></button>
@@ -841,7 +842,7 @@
 
   <!-- Board history: the list of versions, and a version's own column beside it (HistorySheet in board.js). -->
   <section id="history" class="sheet" role="dialog" aria-label="Board history" tabindex="-1">
-    <div class="sheet-head"><button class="back" data-back hidden></button><h2>Board history</h2><button data-close aria-label="Close board history"></button></div>
+    <div class="sheet-head"><button class="back" data-back hidden></button><h2>Board history</h2><button data-close aria-label="Close Board history"></button></div>
     <div class="sheet-body"></div>
   </section>
   <section id="history-detail" class="sheet" role="dialog" aria-labelledby="history-detail-title" tabindex="-1">

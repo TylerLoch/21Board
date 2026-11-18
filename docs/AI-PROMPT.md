@@ -1,8 +1,8 @@
 # Building a widget with an AI tool
 
-You can make your own 21Board widget by describing it to an AI tool such as Gemini (Canvas), ChatGPT or
-Claude. Paste one of the prompts below, then describe your widget. The tool writes one HTML file that runs
-as a 21Board widget, and its preview shows the widget in a real 21Board window, the **dev window**.
+Make your own 21Board widget by describing it to an AI tool such as Gemini Canvas, ChatGPT or Claude.
+Paste one of the prompts below, then describe your widget. The tool writes one HTML file, and its preview
+shows the widget in a real 21Board window, the **dev window**.
 
 - [How to use the prompt](#how-to-use-the-prompt)
 - [Describing your widget](#describing-your-widget)
@@ -13,41 +13,38 @@ as a 21Board widget, and its preview shows the widget in a real 21Board window, 
 
 ## How to use the prompt
 
-1. **Start a new chat** in your AI tool, in its mode that shows a preview of a web page (in Gemini,
-   *Canvas*).
-2. **Paste the prompt**, then, below it, **describe your widget** (see the next section) and send it.
-   Use the copy button at the top right of the prompt's box.
+1. **Start a new chat** in your AI tool, in the mode that previews web pages (*Canvas* in Gemini).
+2. **Paste the prompt**, using the copy button at the top right of its box. Below it, **describe your
+   widget** (see the next section) and send it.
 3. **Look at the preview.** It shows the widget in the dev window: the real 21Board window with its title
    bar, resize handles and window menu (⌄). Try it the way a class would:
    - drag a corner to make the window as small as it goes, then *Fill the board* from the window menu;
    - switch *Light* to *Dark* in the dev window's toolbar, and try **−** / **+** (the size of windows and
      menus);
-   - use the window menu's items, and open a second copy (⋯ ▸ *Open another copy*);
+   - use the window menu's items, and open a second window (⋯ ▸ *Open another window*);
    - *Data*: change the saved content and *Send as a change from another tab*, to check that the widget
      keeps up when the board is open on the smartboard and a laptop at once.
-4. **Fix problems.** Open *Checks* in the dev window's toolbar. Each problem has **Copy fix request**: paste
-   it into the chat as your next message. Errors from the widget show in red under *Events*; copy them into
-   the chat too. Ask for changes in plain words ("make the names bigger", "add a menu item to hide the
-   score"), one or two at a time. The prompt asks the tool to give the whole file back each time.
-5. **Put it on your board.** Save the file as `something.html` (most tools have a download or copy
-   button). In 21Board: **Settings → Advanced → Developer mode**, then under **Test a widget** tap
-   **Upload file…** and pick the file (Chromebooks, Chrome on Windows and Mac, iPad Safari). It opens in a
-   window named *Your Widget (test)*. To see a new version, upload the file again.
-   - An uploaded widget stays **on that device only**: it isn't in exports, templates, board history or the
-     Google Drive folder, and another device shows *Widget not installed* for it.
-   - To share a widget with everyone, send it to the 21Board maintainers: in the dev window, ⋯ ▸
+4. **Fix problems.** Open *Checks* in the dev window's toolbar. Each problem has **Copy fix request**. Paste
+   it into the chat as your next message. Errors from the widget show in red under *Events*. Copy them into
+   the chat too. Ask for changes in plain words, one or two at a time: "make the names bigger", "add a menu
+   item to hide the score". The tool gives the whole file back each time.
+5. **Put it on your board.** Save the file as `something.html`. Most tools have a download or copy
+   button. In 21Board, turn on **Settings → Advanced → Developer mode**. Under **Test a widget**, tap
+   **Upload file…** and pick the file. This works on Chromebooks, Chrome on Windows and Mac, and iPad Safari.
+   The widget opens in a window named *Your Widget (test)*. To see a new version, upload the file again.
+   - An uploaded widget stays **on that device only**. It isn't in exports, templates, Board history or the
+     Google Drive folder. Another device shows *Widget not installed* for it.
+   - To share a widget with everyone, send it to the 21Board team. In the dev window, ⋯ ▸
      **Copy for 21Board** copies the file and the entry they need.
 
-**If the preview shows nothing**, or says `Board21 is not defined`: the tool's preview may not load the
-21Board SDK. Copy the HTML into the **widget lab** (`sdk/lab.html` on a 21Board site, e.g.
-<https://boardapp.ccsd21.org/sdk/lab.html>) and tap **Try it**: the same dev window, with the same
-Checks.
+**If the preview shows nothing** or says `Board21 is not defined`, the tool's preview may not load the
+21Board SDK. Paste the HTML into the **widget lab**, `sdk/lab.html` on any 21Board site, such as
+<https://boardapp.ccsd21.org/sdk/lab.html>. Tap **Try it**. It's the same dev window, with the same Checks.
 
 **The SDK address.** The prompts load the SDK from 21Board itself, `boardapp.ccsd21.org`. If a preview
-can't reach it (for example away from the school network), ask the tool to load
-`https://tylerloch.github.io/21Board/sdk/board21.js` instead: the test copy on GitHub Pages. Inside 21Board
-the address doesn't matter: *Upload file…* puts in the board's own copy, and *Copy for 21Board* points it
-at the `widgets/` folder.
+can't reach it, as away from the school network, ask the tool to load the test copy on GitHub Pages instead:
+`https://tylerloch.github.io/21Board/sdk/board21.js`. Inside 21Board the address doesn't matter.
+*Upload file…* puts in the board's own copy, and *Copy for 21Board* points it at the `widgets/` folder.
 
 ---
 
@@ -59,8 +56,8 @@ Say, in a few sentences:
 - **The main thing on screen** and **the one main button** ("a big name in the middle and a *Pick a name*
   button").
 - **What the teacher sets up**, and where ("the teacher types the list of jobs in an edit view").
-- **What it should remember**, and whether anything is about students (names, scores: kept out of shared
-  templates).
+- **What it should remember**, and whether any of it is about students, such as names or scores. Those
+  stay out of shared templates.
 - **Options for the window menu** ("Sound on/off", "Show the score", "Start over").
 - **Grade level and words**: "for kindergarten: pictures and very few words".
 
@@ -74,15 +71,15 @@ For example:
 
 ## The full prompt
 
-Covers the whole widget kit: saving, the window menu, window size (including making room for a settings
-view), dragging, light and dark, and how 21Board's own widgets look and behave. It ends with a check list the
-tool goes through before answering.
+Covers everything: saving, the window menu, window size and room for a settings view, dragging, light and
+dark, and how 21Board's own widgets look and behave. It ends with a checklist the tool goes through before
+answering.
 
 ````markdown
 # Build a 21Board widget
 
-Write a **21Board widget**: one small web page that runs in a window on a classroom smartboard (K–8
-teachers and students; also Chromebooks and iPads). 21Board gives it a window the teacher can move,
+Write a **21Board widget**: one small web page that runs in a window on a classroom smartboard,
+Chromebook or iPad, for K–8 teachers and students. 21Board gives it a window the teacher can move,
 resize and close, saves its data on the device and keeps every open copy of the board in sync. Build
 the widget I describe after this prompt. If I haven't described one, ask me what it should do.
 
@@ -94,7 +91,7 @@ the widget I describe after this prompt. If I haven't described one, ask me what
   `<script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>` (no async, defer or type=module).
 - The next line is a manifest:
   `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
-  Replace "my-widget" and "My Widget" with the name the user chose for the widget.
+  Replace "my-widget" and "My Widget" with my widget's name.
   - The id is lowercase letters, digits and dashes. Strict JSON: no comments, no trailing commas.
   - You may add `"description"` (one short sentence for teachers) and `"color"` (a `#hex` for its tile),
     and change the `window` sizes and keys to suit the widget (see *Window size*).
@@ -190,8 +187,8 @@ the widget I describe after this prompt. If I haven't described one, ask me what
   not by position.
 - The window menu's *Reset* clears both and reloads the widget at its manifest size: `start()` sees
   `ctx.data` and `ctx.config` as `null` again, as the first time.
-- Save the whole small JSON object whenever it changes (no need to await; 21Board batches writes, skips
-  unchanged ones and retries by itself). Keep it to kilobytes.
+- Save the whole small JSON object whenever it changes. No need to await: 21Board batches writes, skips
+  unchanged ones and retries by itself. Keep it to kilobytes.
 - Handle `Board21.on('data', d => …)` and `Board21.on('config', c => …)` by re-rendering from the value
   given: the board can be open in several tabs (smartboard and teacher laptop), and an import or an earlier
   version can replace it. Your own `save()` / `saveConfig()` never come back as events. If a text box is
@@ -223,11 +220,11 @@ board's own *Fill the board*, *Reset* and *Close*. Set it with `Board21.menu.set
 
 ## Window size
 
-Sizes are the window's content area (without its 40px title bar), in the same px as `ctx.window` and
-`await Board21.window.getInfo()`: `{ width, height, x, y, maximized, focused, zoom, corners }` (`zoom`: how much bigger
-the board draws the window, so a canvas uses `devicePixelRatio × zoom` pixels per CSS px to stay sharp; cap it at about 3,
-and treat a missing `zoom` as 1. `corners`, only while the window fills the board: `{ left, right, height }`, how far the
-board's own buttons reach into its bottom corners, in CSS px; keep your buttons out of them).
+Sizes are the window's content area, without its 40px title bar, in the same px as `ctx.window` and
+`await Board21.window.getInfo()`: `{ width, height, x, y, maximized, focused, zoom, corners }`. `zoom` is how much
+bigger the board draws the window. A canvas uses `devicePixelRatio × zoom` pixels per CSS px to stay sharp, capped at
+about 3. Treat a missing `zoom` as 1. `corners` is sent only while the window fills the board: `{ left, right, height }`,
+how far the board's own buttons reach into its bottom corners, in CSS px. Keep your buttons out of them.
 
 - **Manifest `window`**: `width`, `height` (the size it opens at), `minWidth`, `minHeight` (the smallest
   it can be: the widget must still work there), and optionally `maxWidth`, `maxHeight`, `aspectRatio`
@@ -251,11 +248,11 @@ board's own buttons reach into its bottom corners, in CSS px; keep your buttons 
   `setMaxSize(w, h)` (`null` removes it); `setResizable(false)` hides the resize grips.
 - `setMinSize`, `setMaxSize`, `setAspectRatio`, `setResizable`, `setDragFromContent`, `setTitle` and
   the menu last until the widget reloads: set them again in `start()` from config and state.
-- **At *Fill the board*** the board's two Widget Picker buttons cover the window's bottom-left and
-  bottom-right corners (up to about 140px in from each side on a small screen): centre the main button
+- **At *Fill the board***, the board's two Widget Picker buttons cover the window's bottom-left and
+  bottom-right corners, up to about 140px in from each side on a small screen. Center the main button
   and any bottom row of buttons.
-- `Board21.window.maximize()` / `restore()`: *Fill the board* and back (the menu already offers it; use
-  it only for a widget's own "Present" kind of button). `focus()` and `close()` also exist.
+- `Board21.window.maximize()` / `restore()`: *Fill the board* and back. The menu already offers it, so use
+  it only for a widget's own "Present" button. `focus()` and `close()` also exist.
 - Lay out with CSS so a resize needs no code beyond the skeleton's `fitAll()`.
   `Board21.on('resize', info => …)` is for redrawing a `<canvas>` or switching to a compact layout.
   `Board21.context.window` always holds the current size.
@@ -271,7 +268,7 @@ board's own buttons reach into its bottom corners, in CSS px; keep your buttons 
 - `Board21.on('focus' | 'blur', …)`: the window was selected or deselected. **`blur` also fires when the
   teacher taps the empty board while the window stays in view**: never pause, hide or stop on blur.
 - `Board21.on('beforeclose', () => …)`: save anything not yet saved, right away (no awaiting).
-- Context worth using: `ctx.instance`; `ctx.window`; `ctx.theme` (`'light'`/`'dark'`); `ctx.palette`
+- Useful context: `ctx.instance`; `ctx.window`; `ctx.theme` (`'light'`/`'dark'`); `ctx.palette`
   (the variables' colors, for canvas); `ctx.locale` (for dates and numbers:
   `toLocaleDateString(ctx.locale, …)`); `ctx.kiosk` (a locked-down Chromebook: links can't open new
   windows, so hide them); `ctx.devMode` (Developer mode is on: extra details may show).
@@ -324,7 +321,7 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 ## Before you answer, check
 
 - [ ] `<!DOCTYPE html>` first; the SDK tag exactly as given, the first script, right after `<meta charset="utf-8">`; the manifest next, valid JSON, its id and name replaced.
-- [ ] No address, CDN, font, image or fetch from the internet; no `http(s)://` in your own script code; no localStorage, sessionStorage, IndexedDB or cookies (not even in comments); no alert/confirm/prompt; no autofocus; no React.
+- [ ] No address, CDN, font, image or fetch from the Internet; no `http(s)://` in your own script code; no localStorage, sessionStorage, IndexedDB or cookies (not even in comments); no alert/confirm/prompt; no autofocus; no React.
 - [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render and call `setMenu()`.
 - [ ] Anything about a student saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
 - [ ] Menu: at most 24 items, each with its own id, swatches `#hex` (at most 12 per row); `menu.set()` called again when state changes.
@@ -350,13 +347,13 @@ Build the widget I describe below as a 21Board widget (a window on a K–8 class
 
 The next line is a manifest:
 `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
-Replace "my-widget" and "My Widget" with the name the user chose for the widget. Add `"dragFromContent":false` to `window` if the widget needs typing, drawing or dragging.
+Replace "my-widget" and "My Widget" with my widget's name. Add `"dragFromContent":false` to `window` if the widget needs typing, drawing or dragging.
 
 Start with `const ctx = await Board21.ready()` and draw from `ctx.data`. Save content with `Board21.save(state)` and preferences with `Board21.saveConfig(cfg)`; anything about students (names, scores) is content, never config. Handle `Board21.on('data', …)` and `Board21.on('config', …)` by re-rendering from the value given and setting the menu again (your own saves don't come back as events). Check the type of every loaded field and show text with `textContent`, never `innerHTML`. Save timers as wall-clock times (`endsAt`). Never use localStorage, sessionStorage, IndexedDB or cookies (don't even name them in comments).
 
 Put settings and rarely used commands in the window menu with `Board21.menu.set([...])` (at most 24 items, each with an id; `checked: true/false` for options; `#hex` colors only; call it again when state changes) and react in `Board21.on('menu', id => …)`. Do editing in a separate view with a Done button: while it shows, call `Board21.window.setMinSize(w, h)` for room and `setDragFromContent(false)`; when done, `setMinSize(null, null)` and `setDragFromContent(true)`. Never resize the window on load. Use `Board21.window.setTitle('…')` for status and `requestAttention()` when a timer ends. Don't pause anything on `blur`.
 
-Style with plain CSS using `var(--b21-bg)`, `--b21-surface`, `--b21-surface-2`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`, `--b21-font` (they switch for dark mode). Give `button`, `input`, `textarea` and `select` `font: inherit`, so they use the text style the teacher picked too. Big, bold, kid-readable text that grows with the window (`min(13vw, 24vh)`), one obvious main button that grows with the window too (`font-size: clamp(17px, 5vmin, 40px)`), and an empty state that says what to do. When the window fills the board, the board's own buttons cover its bottom corners: centre the main button.
+Style with plain CSS using `var(--b21-bg)`, `--b21-surface`, `--b21-surface-2`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`, `--b21-font` (they switch for dark mode). Give `button`, `input`, `textarea` and `select` `font: inherit`, so they use the text style the teacher picked too. Big, bold, kid-readable text that grows with the window (`min(13vw, 24vh)`), one obvious main button that grows with the window too (`font-size: clamp(17px, 5vmin, 40px)`), and an empty state that says what to do. When the window fills the board, the board's own buttons cover its bottom corners, so center the main button.
 Make NO network requests: no Tailwind or other CDNs, no web fonts, no external images, no `http(s)://` in scripts. Fill the window (`html, body {margin:0; height:100%; overflow:hidden}`) with flex/grid and %/vmin so it works at every size without scrolling (an editor's long list may scroll), with no text under 14px. Tap targets at least 48px. No alert/confirm/prompt or autofocus.
 Output the whole file in one code block.
 ````

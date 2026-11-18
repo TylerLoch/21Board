@@ -351,7 +351,7 @@ const writeHistory = (p, files) => p.evaluate(async files => {
 
 // Storage failures, for the "When storage fails" suite. The ones that must be in place before board.js starts
 // are switched on through localStorage: {open: n (the first n tries fail) | 'blocked' | 'hang', read: n | 'all',
-// readKey: one record that can't be read}. Saves fail while window.__failPut is 'quota', 'disk' or 'unnamed', or
+// readKey: a record that can't be read, or a list of them}. Saves fail while window.__failPut is 'quota', 'disk' or 'unnamed', or
 // for one record only ('key:<record key>'); reads fail in one tab only while its window.__failRead is set.
 const STORAGE_FAULTS = () => {
   const cfg = () => { try { return JSON.parse(localStorage.getItem('test-faults') || '{}'); } catch (e) { return {}; } };
@@ -370,7 +370,7 @@ const STORAGE_FAULTS = () => {
   const reading = s => s.name === 'records' && s.transaction.mode === 'readonly';   // (the page reading its board)
   O.getAll = function () { const r = raw.getAll.apply(this, arguments), c = cfg(); if (reading(this) && (c.read === 'all' || window.__failRead || c.readKey || reads++ < c.read)) this.transaction.abort(); return r; };
   O.getAllKeys = function () { const r = raw.getAllKeys.apply(this, arguments); if (reading(this) && (cfg().read === 'all' || window.__failRead)) this.transaction.abort(); return r; };
-  O.get = function (key) { const r = raw.get.apply(this, arguments), c = cfg(); if (reading(this) && (c.read === 'all' || window.__failRead || c.readKey === key)) this.transaction.abort(); return r; };
+  O.get = function (key) { const r = raw.get.apply(this, arguments), c = cfg(); if (reading(this) && (c.read === 'all' || window.__failRead || [].concat(c.readKey).includes(key))) this.transaction.abort(); return r; };
   O.put = function (rec) {
     const f = this.name === 'records' && window.__failPut;
     if (f && f.startsWith('key:') && rec.key !== f.slice(4)) return raw.put.apply(this, arguments);
@@ -597,14 +597,14 @@ const drawPic = async (p, w, h, type = 'image/png', o = {}) => Buffer.from(await
 }, [w, h, type, o]), 'base64');
 // The Picture widget's messages, word for word.
 const PMSG = {
-  type: '21Board can’t show that file. Choose a PNG, JPEG, GIF, WebP or AVIF.',
-  svg: '21Board can’t show an SVG file. Save it as a PNG first.',
-  heic: '21Board can’t show a HEIC photo. Save it as a JPEG first.',
+  type: 'Can’t show that file. Choose a PNG, JPEG, GIF, WebP or AVIF.',
+  svg: 'Can’t show an SVG file. Save it as a PNG first.',
+  heic: 'Can’t show a HEIC photo. Save it as a JPEG first.',
   big: 'That file is over 25 MB. Choose a smaller one.',
   pixels: 'That picture is too large. Choose a smaller one.',
   anim: 'That animation is over 5 MB. Choose a smaller one.',
-  broken: 'That picture couldn’t be opened. Try another one.',
-  empty: 'There’s no picture to paste. Copy one first.',
+  broken: 'Couldn’t open that picture. Try another one.',
+  empty: 'No picture to paste. Copy one first.',
   blocked: 'Pasting is blocked. Allow the clipboard for 21Board in Chrome.'
 };
 // A GIF or WebP made bigger with filler that browsers skip (a GIF comment; a WebP chunk of its own): the same pictures,
@@ -1896,12 +1896,14 @@ const SUITES = [
     const saved = await page.evaluate(() => window.__board21.state.insts.get('timer:1').rect);
     ok(saved.y + saved.h <= 1350.5, `windows can't be dragged off the 16:9 board (bottom ${Math.round(saved.y + saved.h)} of 1350)`);
     ok(v.hint, 'a tip in the shaded margin offers to unlock the board shape');
+    const tipSays = await page.evaluate(() => [document.querySelector('#shape-hint .msg').textContent, document.querySelector('#shape-hint [data-act="unlock"]').textContent].join(' | '));
+    ok(tipSays === 'This board is widescreen.Fill the whole window? | Fill the window', `the tip asks in a few words, and its button says what it does (${tipSays})`);
     const hb = await page.evaluate(() => { const h = document.getElementById('shape-hint').getBoundingClientRect(); const L = window.__board21.zoom; return { top: h.top, bottom: h.bottom, boardBottom: 1350 * L.s }; });
     ok(hb.top >= hb.boardBottom - 1 && hb.bottom <= 1000, 'the tip sits in the unused margin, not over the board');
     await page.click('#shape-hint [data-act="unlock"]'); await page.waitForTimeout(500);
     v = await view(page);
     ok(v.board.shape === 'free' && Math.abs(v.zoom.s - 0.8) < 0.001 && !v.hint && !v.frame && Math.abs(v.bounds.h - 1250) < 1, 'unlocking: the board fills the window at 80%, no shading, no tip');
-    ok(await page.locator('#toasts', { hasText: 'Settings → Appearance → Board shape → Widescreen changes it back' }).count() === 1, 'and a message says how to change it back (Settings → Appearance → Board shape)');
+    ok(await page.locator('#toasts', { hasText: 'The board now fills the window. Change it in Settings › Appearance › Board shape.' }).count() === 1, 'and a message says how to change it back (Settings › Appearance › Board shape)');
     // Settings → Appearance → Board shape: Widescreen or Fill, with what the chosen one does (it's saved with the page).
     await openSettings(page);
     const shapeRow = () => page.evaluate(() => { const r = document.querySelector('#settings [data-act="shape"]').closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
@@ -2070,7 +2072,7 @@ const SUITES = [
     const pe = await ctxE.newPage(); await pe.goto(BASE); await pe.waitForTimeout(600);
     await pe.evaluate(o => window.__board21.applyImport(o, 'replace'), evil); await pe.waitForTimeout(1200);
     await openSettings(pe, ['bg']);
-    ok(await pe.evaluate(() => !window.__pwned && !window.__board21.state.media.has('background') && !document.querySelector('#settings img')), 'a malformed photo in a file is refused');
+    ok(await pe.evaluate(() => !window.__pwned && !window.__board21.state.media.has('background') && !document.querySelector('#settings img:not(.about-gear):not(.about-goat)')), 'a malformed photo in a file is refused (Settings shows no picture but About’s own two)');
     await ctxE.close();
     // Remove.
     page.once('dialog', () => {});
@@ -2109,7 +2111,7 @@ const SUITES = [
       return { names: [...g.querySelectorAll('[data-act="bg"]')].map(b => b.getAttribute('aria-label') + (b.dataset.val ? ' ' + b.dataset.val : '')), pills: [...g.querySelectorAll('.pill')].map(b => b.textContent.trim()),
         parts: document.querySelectorAll('#bg-block .bg-sub, #bg-block .bg-cap, #bg-block .bg-part').length, patterns: document.querySelectorAll('#settings [data-act="pattern"]').length,
         scope: document.querySelector('#bg-block .bg-scope').textContent, groups: document.querySelectorAll('#bg-block [role="radiogroup"]').length }; });
-    ok(set.groups === 1 && set.names.join() === 'Match the theme (light or dark),White #ffffff,Paper #f3ede1,Sky #e0f2fe,Mint #dcfce7,Blush #fce7f3,Lavender #ede9fe,Slate #334155,Chalkboard #1f3a2c,Navy #1e293b,Black #0a0a0a' &&
+    ok(set.groups === 1 && set.names.join() === 'Match the theme,White #ffffff,Paper #f3ede1,Sky #e0f2fe,Mint #dcfce7,Blush #fce7f3,Lavender #ede9fe,Slate #334155,Chalkboard #1f3a2c,Navy #1e293b,Black #0a0a0a' &&
       set.pills.join() === 'Custom…,Photo…' && !set.parts && !set.patterns && set.scope === 'This page only.',
       `Background is one set of choices, then Custom… and Photo…; Paper is #f3ede1 and Sand is gone; no patterns (${set.names.length} colors, ${set.pills.join(', ')})`);
     // Custom… and Photo… are two more choices on the dark colors' row: as tall as the swatches, after Black, inside
@@ -2333,13 +2335,13 @@ const SUITES = [
     ok(!empty && !day0 && !day3 && day8, `storage not protected and no backup: no dot on an empty board (30 days), nor on the day of its first window or 3 days in; a dot 8 days in (${[empty, day0, day3, day8].join(', ')})`);
     await openSettings(dp, ['advanced']);
     const said = await dp.evaluate(() => ({ persist: document.getElementById('st-persist').textContent, hint: document.getElementById('st-persist-hint').textContent, backup: document.getElementById('st-backup').textContent }));
-    ok(said.persist === 'Not yet' && /^The browser could clear your boards to free up space\. Installing 21Board as an app usually prevents that/.test(said.hint) && /Until then, keep backups\.$/.test(said.hint) && said.backup === 'Last backup: never',
+    ok(said.persist === 'Not yet' && /^The browser might clear your boards to free up space\. Installing 21Board as an app usually prevents that\./.test(said.hint) && /Until then, back up regularly\.$/.test(said.hint) && said.backup === 'Last backup: never',
       `Advanced › Backups and storage still says the storage isn’t protected (“${said.persist}”: “${said.hint}”; ${said.backup})`);
     // What the dot is about is plain once Advanced is open: the backup line has the amber mark too, exactly while the
     // dot shows, and a screen reader hears what the dot means.
     const mark = () => dp.evaluate(() => { const b = document.getElementById('st-backup'); return !!b.querySelector('.status-dot.warn') && b.classList.contains('warn-line'); });
     const label = await dp.locator('#grp-advanced-warn').getAttribute('aria-label');
-    ok(await mark() && label === '(backup overdue)', `8 days in, the backup line inside Advanced has the amber mark too, and the dot reads “(backup overdue)” (${await mark()}, ${label})`);
+    ok(await mark() && label === 'Backup overdue', `8 days in, the backup line inside Advanced has the amber mark too, and the dot reads “Backup overdue” (${await mark()}, ${label})`);
     // A new page shown, empty (a teacher who starts one each day): the board still has a window 8 days old, on page 1.
     await dp.keyboard.press('Escape');
     await dp.evaluate(() => window.__board21.pages.create({ end: true, name: 'Tuesday' })); await dp.waitForTimeout(800);
@@ -2762,7 +2764,7 @@ const SUITES = [
     const n = await page.evaluate(() => { const g = document.querySelector('.win[data-ikey="notes:1"] .grip.n'), w = document.querySelector('.win[data-ikey="notes:1"]').getBoundingClientRect();
       const e = document.elementFromPoint(w.left + w.width / 2, w.top - 6); return g.contains(e); });
     ok(n, 'the top handle still works just above the window');
-    // Shape tip: "Use the whole window" while someone is moving a window says only why it can't.
+    // Shape tip: "Fill the window" while someone is moving a window says only why it can't.
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -3568,8 +3570,8 @@ const SUITES = [
     await ends(A, 1500); await ends(B, 1500);
     ok(await eventually(async () => (await look(fA)).alarm && (await look(fB)).alarm), 'when the activity ends, both copies show the alarm');
     a = await look(fA);
-    ok(/TIME'S UP/.test(a.name) && a.time === '00:00' && a.btn.includes('Stop Alarm'), `it says so (${a.name})`);
-    ok(await A.evaluate(() => { const m = window.__board21.state.wins.get('task-timer:1').menuItems; return m.length <= 24 && m[0].id === 'stop_alarm'; }), 'the window menu offers Stop Alarm');
+    ok(/^🔔 Time’s up! /.test(a.name) && a.time === '00:00' && a.btn.includes('Stop alarm'), `it says so (${a.name}; ${a.btn})`);
+    ok(await A.evaluate(() => { const m = window.__board21.state.wins.get('task-timer:1').menuItems; return m.length <= 24 && m[0].id === 'stop_alarm' && m[0].label === 'Stop alarm'; }), 'the window menu offers Stop alarm');
     await A.waitForTimeout(1500);
     au = await audio(fA);
     const auB = await audio(fB);
@@ -3836,8 +3838,8 @@ const SUITES = [
     const p2 = await pickNow(); await idle();
     ok(p2.picked.length === 3 && !p2.left.length && sameList(p1.picked.concat(p2.picked), ['Ava', 'Leo', 'Mia', 'Noah', 'Zoe', 'Ethan']),
       `it picks the 3 left; over the two picks everyone was picked once (${p1.picked} / ${p2.picked})`);
-    ok(await text('#status') === '0 of 6 left' && await text('#go') === 'Everyone picked — start over' && await eventually(async () => /^Picked: .*\. Everyone has been picked\.$/.test(await said())),
-      '“0 of 6 left”, the button offers to start over, and screen readers hear that everyone has been picked');
+    ok(await text('#status') === '0 of 6 left' && await text('#go') === 'Start over' && await np().locator('#round').isHidden() && await eventually(async () => /^Picked: .*\. Everyone has been picked\.$/.test(await said())),
+      '“0 of 6 left”, the button says “Start over” (the small Start over beside it hides: never two side by side), and screen readers hear that everyone has been picked');
     await np().locator('#go').click(); await page.waitForTimeout(200);
     ok((await saved()).left.length === 6 && await text('#status') === '6 of 6 left', 'the button starts over');
     for (const n of [1, 5]) {
@@ -4159,7 +4161,7 @@ const SUITES = [
     ok(!bad.length, `1 winner, No repeats: 8 picks (SPIN or the main button) land on exactly the saved winner, and the wheel holds just the names still in the draw${bad.length ? ': ' + bad.join(' | ') : ''}`);
     ok(times.every(t => t > 1000 && t < 2400), `with Quick each spin takes about 1½ s (${times.join(', ')} ms)`);
     st = await saved(page); w = await look(page);
-    ok(!st.left.length && w.hub === 'Start over' && w.note === 'Everyone has been picked' && await np(page).locator('#go').textContent() === 'Everyone picked — start over',
+    ok(!st.left.length && w.hub === 'Start over' && w.note === 'Everyone has been picked' && await np(page).locator('#go').textContent() === 'Start over',
       `after everyone has been picked, SPIN reads “Start over” and the banner says “Everyone has been picked” (“${w.hub}”, “${w.note}”)`);
     await np(page).locator('.wheel-hub').click(); await page.waitForTimeout(300);
     st = await saved(page); w = await look(page);
@@ -4176,7 +4178,7 @@ const SUITES = [
         if (!landed(w, p.st)) bad.push(`round ${r + 1}, pick ${k + 1}: saved ${p.st.picked}, ${said(w)}`);
         else if (w.wheel.length === 1 && !(w.aim[0] < 0.25)) bad.push(`round ${r + 1}: ${p.st.picked[0]} stopped ${Math.round(w.aim[0] * 57.3)}° from the arrow`);
       }
-      await np(page).locator('#go').click(); await page.waitForTimeout(300);   // (“Everyone picked — start over”)
+      await np(page).locator('#go').click(); await page.waitForTimeout(300);   // (“Start over”)
     }
     ok(!bad.length, `a wheel of one name (the last of a round) stops with the name at the arrow${bad.length ? ': ' + bad.join(' | ') : ''}`);
 
@@ -4685,7 +4687,7 @@ const SUITES = [
     }
     ok(!wrong.length && all.length === 24 && new Set(all).size === 24, `5 at a time with No repeats: five picks, each on the saved winners, everyone picked once (${wrong.join(' | ') || all.length + ' picked'})`);
     ok(!moved, 'the tiles never move during the round');
-    ok(await text(page, '#status') === '0 of 24 left' && await text(page, '#go') === 'Everyone picked — start over', '“0 of 24 left”, and the button offers to start over');
+    ok(await text(page, '#status') === '0 of 24 left' && await text(page, '#go') === 'Start over' && await np(page).locator('#round').isHidden(), '“0 of 24 left”, and the one button says “Start over”');
     await np(page).locator('#go').click(); await page.waitForTimeout(300);
     s = await stage(page);
     ok(!s.cards.length && s.tiles.every(t => !t.done) && await text(page, '#status') === '24 of 24 left', 'which brings everyone back');
@@ -5080,7 +5082,7 @@ const SUITES = [
       const fails = [], seen = [];
       for (let n = 0; n < 20; n++) {
         await idle();
-        if (await np().locator('#go').textContent() === 'Everyone picked — start over') break;
+        if (await np().locator('#go').textContent() === 'Start over') break;
         const s = await pickNow(); await idle();
         seen.push(...s.picked);
         const b = await landsOn(s, C12);
@@ -5777,7 +5779,10 @@ const SUITES = [
     const conf = await page.evaluate(() => window.__board21.state.conf.get('notes:1'));
     ok(conf.fit === false && conf.px > 0 && conf.theme === 'chalkboard', 'Smaller text switches to a fixed size and is saved');
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.click('#menu [data-id="fit"]'); await page.waitForTimeout(300);
-    ok((await page.evaluate(() => window.__board21.state.conf.get('notes:1'))).fit === true, '"Fit text to the note" turns fitting back on');
+    ok((await page.evaluate(() => window.__board21.state.conf.get('notes:1'))).fit === true, '"Fit text" turns fitting back on');
+    // The menu's words: "Fit text", and the chalk colors by their color alone (the heading says Chalk color).
+    const nm = await page.evaluate(() => { const m = window.__board21.state.wins.get('notes:1').menuItems; return { fit: (m.find(i => i.id === 'fit') || {}).label, colors: ((m.find(i => i.id === 'colors') || {}).swatches || []).map(w => w.label).join() }; });
+    ok(nm.fit === 'Fit text' && nm.colors === 'White,Yellow,Pink,Blue,Green,Orange', `the menu says “Fit text”, and names the chalk colors in one word each (${nm.fit}; ${nm.colors})`);
     await page.evaluate(() => window.__board21.state.wins.get('notes:1').post('config', { config: { color: 'pink', size: 3 } })); await page.waitForTimeout(400);
     ok(!(await info()).overflowY, 'a note saved before this update fits its text automatically');
     // Clear note can be undone, from a bar inside the note.
@@ -5834,6 +5839,9 @@ const SUITES = [
       return { off: [...rows.values()].map(r => Math.max(...r.map(t => t.top)) - Math.min(...r.map(t => t.top))), two: [...rows.values()].flat().filter(t => t.two).map(t => t.name) };
     });
     ok(cards.two.length > 0 && cards.off.every(d => d < 0.5), `in the card picker the pictures in each row share one top, two-line labels (${cards.two.join(', ')}) or not (rows off by ${cards.off.filter(d => d >= 0.5).map(d => d.toFixed(1)).join(', ') || 'none'} px)`);
+    await f.locator('#search-input').fill('zebra');
+    const pickerSays = await f.locator('html').evaluate(() => [document.getElementById('picker-title').textContent, document.getElementById('search-input').placeholder, document.getElementById('search-input').getAttribute('aria-label'), document.getElementById('aac-grid').textContent].join(' | '));
+    ok(pickerSays === 'Choose a First card | 🔍 Search cards | Search cards | No cards match.', `the card picker’s words (${pickerSays})`);
     await f.locator('#search-input').fill('math');
     await f.locator('.aac-tile-btn', { hasText: 'Math' }).click();
     await f.locator('#btn-done-icon').click(); await f.locator('#btn-toggle-first').click();
@@ -5841,6 +5849,13 @@ const SUITES = [
     ok(await eventually(async () => { const s = await saved(page); return s && s.first.id === 'math' && s.firstDone === true && s.thenDone === false && s.theme === 'winter'; }), 'the chosen card, its done mark and the theme are saved');
     a = await look(page);
     ok(a.first === 'Math' && a.firstDone && a.theme === 'theme-winter' && a.chimes === 1, `and shown: Math, done, Winter, one chime (${a.chimes})`);
+    // What a screen reader hears: each card by its place, its picture's name and whether it is done; the buttons by
+    // what they do. The done buttons in sentence case.
+    const words = await f.locator('html').evaluate(() => {
+      const $ = id => document.getElementById(id), al = id => $(id).getAttribute('aria-label');
+      return [al('btn-first'), al('btn-then'), al('btn-theme-icon'), al('btn-done-icon'), al('btn-swap'), $('first-done-text').textContent, $('then-done-text').textContent, $('both-done-text').textContent].join(' | ');
+    });
+    ok(words === 'First, Math, done | Then, Free Choice | Theme | Mark done | Swap First and Then | First done | Then done | Both done', `each card is heard by its place, its picture and whether it’s done; the buttons say what they do (${words})`);
     // A second tab shows the same board; a change there comes back here, and the chime plays only where it was tapped.
     const page2 = await ctx.newPage(); page2.on('pageerror', e => errors.push(e.message));
     await page2.goto(BASE); await boardUp(page2);
@@ -5865,8 +5880,21 @@ const SUITES = [
     await page.click(`.win[data-ikey="${KEY}"] .win-label`); await page.waitForTimeout(200);
     const items = await page.locator('#menu [data-id]').count();
     ok(items > 0 && items <= 24, `the window menu has ${items} of the widget's items (24 at most)`);
+    // The menu's words, with a tick where something is on: First done and Then done, Sound and Animation, the theme.
+    // Themes and presets each under one heading, the themes in the pills' order.
+    const ftMenu = () => page.evaluate(k => window.__board21.state.wins.get(k).menuItems.map(i => i.heading ? `[${i.label}]` : (i.checked ? '✓ ' : '') + i.label).join(' | '), KEY);
+    ok(await ftMenu() === '✓ First done | ✓ Then done | Mark both done | Clear done marks | Theme… | Mark done… | Swap First and Then | ✓ Sound | ✓ Animation | [Theme] | 🌈 Classic | 🍂 Autumn | ✓ ❄️ Winter | 🌸 Spring | ☀️ Summer | 💜 Calm | [Presets] | Classwork ➔ Free Choice | Classwork ➔ iPad | Sit at Table ➔ Quiet Corner | Clean Up ➔ Playground | Math ➔ Snack Time',
+      `the window menu says each thing once, with ticks where something is on (${await ftMenu()})`);
+    await page.click('#menu [data-id="toggle_sound"]');
+    await page.click(`.win[data-ikey="${KEY}"] .win-label`); await page.waitForTimeout(200);
+    await page.click('#menu [data-id="theme_calm"]');
+    ok(await eventually(async () => { const m = await ftMenu(); return /\| Sound \|/.test(m) && /✓ 💜 Calm/.test(m) && !/✓ ❄️ Winter/.test(m); }) && await eventually(async () => (await look(page)).theme === 'theme-calm'),
+      `the ticks follow: Sound off, Calm on (${await ftMenu()})`);
+    await page.click(`.win[data-ikey="${KEY}"] .win-label`); await page.waitForTimeout(200);
     await page.click('#menu [data-id="swap"]');
-    ok(await eventually(async () => { const x = await look(page); const s = await saved(page); return x.first === 'Free Choice' && x.then === 'Math' && s.first.id === 'free-play'; }), 'Swap First & Then swaps the cards and saves');
+    ok(await eventually(async () => { const x = await look(page); const s = await saved(page); return x.first === 'Free Choice' && x.then === 'Math' && s.first.id === 'free-play'; }), 'Swap First and Then swaps the cards and saves');
+    ok(await eventually(() => ft(page).locator('html').evaluate(() => document.getElementById('btn-first').getAttribute('aria-label') === 'First, Free Choice, done' && document.getElementById('btn-then').getAttribute('aria-label') === 'Then, Math, done')),
+      'and each card is heard by its new place');
     // The smallest window: the buttons and both cards fit.
     await page.evaluate(k => window.__board21.setRect(k, { x: 40, y: 40, w: 100, h: 100 }), KEY);
     ok(await eventually(() => ft(page).locator('html').evaluate(() => { const r = id => document.getElementById(id).getBoundingClientRect(); return innerWidth <= 300 && innerHeight <= 220 && r('btn-swap').right <= innerWidth && r('btn-then').right <= innerWidth && r('btn-then').bottom <= innerHeight; })), 'in the smallest window the buttons and both cards fit');
@@ -5904,6 +5932,70 @@ const SUITES = [
     marks = await made();
     ok(await page.title() !== 'PWNED' && marks.every(n => n === 0), 'still nothing made after the change and with the picker open');
     ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
+    await ctx.close();
+  }],
+  ['Copy: words no other suite checks (Widget Picker tooltips and its name, closing a window, Delete page with closed windows, Duplicate, Calendar, Timer, Task Timer, the widget dev window and lab)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    // The Widget Picker: its name, and for each widget a tooltip of one short sentence that starts with a verb.
+    const tips = await page.evaluate(() => Object.fromEntries(window.__board21.catalog().map(w => [w.id, w.description])));
+    const want = { timer: 'Count down with presets and an alarm.', 'task-timer': 'Count down a schedule of activities on a pie, with an alarm.', calendar: 'See the month, with today highlighted.',
+      clock: 'Show an analog or digital clock, or just the date.', notes: 'Write directions, reminders or the day’s agenda.', 'name-picker': 'Pick one to five names at random from your list.',
+      'first-then-board': 'Pick a First card and a Then card, and mark each one done.', dice: 'Roll one to six dice.', 'traffic-light': 'Show noise level or work time in red, yellow and green.',
+      'youtube-player': 'Play a video from YouTube, Google Drive or Vimeo.', image: 'Show a picture you open or paste.', '21sketch': 'Draw with the district’s whiteboard app.',
+      '21timer': 'Run the district’s classroom timer app.', '21doccam': 'Show work with the district’s document camera app.' };
+    const offTips = Object.keys(want).filter(id => tips[id] !== want[id]);
+    ok(!offTips.length, `each widget’s tooltip says what it does in one sentence that starts with a verb${offTips.length ? ': ' + offTips.map(id => `${id} “${tips[id]}”`).join(', ') : ''}`);
+    const panelName = await page.evaluate(() => [document.getElementById('panel').getAttribute('aria-label'), ...['export', 'import', 'quit'].map(c => document.querySelector(`#panel [data-ctl="${c}"]`).getAttribute('aria-label'))].join(' | '));
+    ok(panelName === 'Widget Picker | Export board | Import board | Quit 21Board', `screen readers hear the Widget Picker by its name, and its buttons by what they do (${panelName})`);
+
+    // Closing a window, and Close all.
+    await page.evaluate(() => window.__board21.openWidget('notes')); await page.waitForTimeout(600);
+    await page.evaluate(() => window.__board21.closeWin('notes:1')); await page.waitForTimeout(300);
+    const closedSays = await page.evaluate(() => Array.from(document.querySelectorAll('#toasts .toast span'), t => t.textContent).join(' | '));
+    ok(/Notes closed\. It’s saved\. Open it again from the Widget Picker\./.test(closedSays), `closing a window: “Notes closed. It’s saved. Open it again from the Widget Picker.” (${closedSays})`);
+
+    // Delete page: the closed windows in a sentence of their own, not in parentheses.
+    await page.evaluate(() => window.__board21.pages.create({ end: true, name: 'Two' })); await page.waitForTimeout(600);
+    for (let i = 0; i < 3; i++) { await page.evaluate(() => window.__board21.openWidget('notes')); await page.waitForTimeout(300); }
+    await page.evaluate(() => { window.__board21.closeWin('notes:2'); window.__board21.closeWin('notes:3'); }); await page.waitForTimeout(400);
+    const deleteSays = async () => { await page.evaluate(() => { window.__board21.pages.remove(); }); await page.waitForSelector('#modal.open');
+      const t = (await page.locator('#modal.open p').innerText()).replace(/\s+/g, ' '); await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(200); return t; };
+    let del = await deleteSays();
+    ok(del === 'This page and its 1 window are deleted from this device. So are 2 closed windows.', `Delete page with closed windows: “${del}”`);
+    await page.evaluate(() => window.__board21.openWidget('notes')); await page.waitForTimeout(400);
+    del = await deleteSays();
+    ok(del === 'This page and its 2 windows are deleted from this device. So is 1 closed window.', `and with one closed window: “${del}”`);
+
+    // Duplicate this page: “Page 3 · Two (copy) is ready.”, as New page says “Page 3 is ready.”
+    await page.evaluate(() => window.__board21.pages.duplicate()); await page.waitForTimeout(900);
+    const dupSays = await page.evaluate(() => Array.from(document.querySelectorAll('#toasts .toast span'), t => t.textContent));
+    ok(dupSays.some(t => /^Page 3 · .+ is ready\.$/.test(t)) && !dupSays.some(t => / is a copy\.$/.test(t)), `Duplicate this page says the copy is ready (${dupSays.join(' | ')})`);
+
+    // Calendar: “Week starts on” once, as a heading. Timer: Play sound, as Task Timer says it.
+    const menuOf = ik => page.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.map(i => i.heading ? `[${i.label}]` : (i.checked ? '✓ ' : '') + i.label).join(' | '), ik);
+    for (const id of ['calendar', 'timer', 'task-timer']) await page.evaluate(id => window.__board21.openWidget(id), id);
+    ok(await eventually(async () => /\[Week starts on\] \| ✓ Sunday \| Monday/.test(await menuOf('calendar:1'))), `Calendar’s menu says “Week starts on” once, as a heading (${await menuOf('calendar:1')})`);
+    ok(await eventually(async () => /(^| \| )Play sound( \||$)/.test(await menuOf('timer:1'))), `Timer’s menu says “Play sound” (${await menuOf('timer:1')})`);
+    ok(await eventually(async () => await menuOf('task-timer:1') === 'Start | Start over | Next activity | Reset activity | Edit schedule'), `Task Timer’s menu in sentence case, “activity” for each item (${await menuOf('task-timer:1')})`);
+    const tt = page.frameLocator('.win[data-ikey="task-timer:1"] iframe');
+    await tt.locator('#btn-edit').click();
+    const ed = await tt.locator('html').evaluate(() => { const b = document.querySelector('.btn-test-sound'); return [document.querySelector('.edit-header-title').textContent, document.querySelector('.total-time-label').textContent, document.getElementById('btn-mode-sum').textContent.replace(/:.*/, ''), document.getElementById('btn-mode-custom').textContent, document.querySelector('.editor-footer .primary').textContent, b.textContent, b.title, b.getAttribute('aria-label')].join(' | '); });
+    ok(ed === '📅 Schedule | ⏱ Total time | Σ Activities | ⏱ Fixed time | + Add activity | 🔊 Play sound | Play sound | Play sound', `Task Timer’s editor: short labels, and “Play sound” as on the Timer (${ed})`);
+
+    // The widget dev window's ⋯ menu, and the widget lab.
+    const dv = await ctx.newPage();   // (no error listener: the test widget throws on purpose, see DEV_WIDGET)
+    await dv.goto(BASE + '__dev/widget.html'); await dv.waitForTimeout(2500);
+    const more = await dv.evaluate(() => Array.from(document.getElementById('b21-dev').shadowRoot.querySelectorAll('.pop button'), b => b.textContent).join(' | '));
+    ok(more === 'Reload the widget | Reset size and data | Open another window | Switch board shape | Show the widget on its own | Copy for 21Board | How this works', `the dev window’s ⋯ menu says each thing in a few words (${more})`);
+    await dv.goto(BASE + 'sdk/lab.html'); await dv.waitForTimeout(500);
+    const lab = (await dv.locator('#editor p').first().innerText()).replace(/\s+/g, ' ');
+    ok(lab === 'Paste a widget’s whole HTML file, or drop or open the file. Then tap Try it to open it in a real 21Board window. It runs in a sandbox with its own empty storage, so it can’t see your boards.', `the widget lab says what to do (${lab})`);
+    await dv.close();
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
   ['Video Player: the Widget Picker, YouTube links, the frame YouTube gets, the window menu, kiosk, Open in YouTube, the docs and Settings › About', async (browser) => {
@@ -5946,7 +6038,7 @@ const SUITES = [
     ok(reg && reg.name === 'Video Player' && reg.version === '1.0.0' && reg.entry === 'widgets/youtube-player/index.html' && JSON.stringify(reg.files) === '["widgets/youtube-player/index.html"]' &&
       reg.clash === 'later' && reg.permissions.length === 0 && !reg.external && reg.win.width === 480 && reg.win.height === 270 && reg.win.minWidth >= 200 && reg.win.minHeight >= 200 && !reg.win.aspectRatio && reg.description,
       `it is in the registry as the Video Player (its id still youtube-player): version 1.0.0, one file, clash 'later', no extra permissions, 480 × 270, at least 200 × 200, no shape lock (${JSON.stringify(reg && reg.win)})`);
-    ok(reg && reg.description === 'Plays a video from YouTube, Google Drive or Vimeo.' && /<title>Video Player<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
+    ok(reg && reg.description === 'Play a video from YouTube, Google Drive or Vimeo.' && /<title>Video Player<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
     const manifest = JSON.parse(/<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src)[1]);
     ok(manifest.id === 'youtube-player' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => manifest.window[k] === reg.win[k]), 'its manifest block matches the registry entry');
     ok(/^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', `rgb(${[1, 3, 5].map(i => parseInt(reg.color.slice(i, i + 2), 16)).join(', ')})`) >= 4.5 && reg.color.toLowerCase() !== '#ef4444',
@@ -7074,7 +7166,7 @@ const SUITES = [
     ok(reg && reg.name === 'Picture' && reg.version === '1.0.0' && reg.entry === 'widgets/image/index.html' && JSON.stringify(reg.files) === '["widgets/image/index.html"]' && reg.clash === 'later' &&
       reg.permissions.length === 0 && !reg.external && !reg.single && reg.win.width === 480 && reg.win.height === 360 && reg.win.minWidth === 160 && reg.win.minHeight === 120 && !reg.win.aspectRatio && reg.win.dragFromContent !== false,
       `it is in the registry as Picture (id image): one file, clash 'later', 480 × 360, at least 160 × 120, no shape lock, moved from inside (${JSON.stringify(reg && reg.win)})`);
-    ok(!!reg && reg.description === 'Shows a picture you open or paste.' && /<title>Picture<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
+    ok(!!reg && reg.description === 'Show a picture you open or paste.' && /<title>Picture<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
     const mf = /<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src), manifest = mf ? JSON.parse(mf[1]) : {};
     ok(!!reg && manifest.id === 'image' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => (manifest.window || {})[k] === reg.win[k]), 'its manifest block matches the registry entry');
     const others = await page.evaluate(() => window.__board21.catalog().filter(w => w.id !== 'image').map(w => String(w.color || '').toLowerCase()));
@@ -7590,7 +7682,7 @@ const SUITES = [
     const dev = async label => { const d = await driveDevice(browser); d.p.on('pageerror', e => errors.push(label + ': ' + e.message)); await d.p.goto(BASE); await boardUp(d.p); await nameDevice(d.p, label); await syncWaits(d.p); return d; };
     const files = async p => Object.keys(await readFolder(p)).sort();
     const devFiles = async p => (await files(p)).filter(n => /^21Board \(/.test(n));
-    const ENDING = 'Changes you make on any of your devices show up on the others by themselves, usually within a minute: Google Drive decides when.';
+    const ENDING = 'Changes on any of your devices show up on the others, usually within a minute.';
 
     // ---- 1. The first device, an empty folder, a page with a note: its file and the note about the folder, at once.
     const A = await dev('the laptop');
@@ -7600,19 +7692,19 @@ const SUITES = [
     await A.p.click('#settings [data-act="link-setup"]');
     const step1 = await said(A.p), steps = await A.p.locator('#modal.open .setup-steps li').allInnerTexts();
     ok(/Board Sync keeps your board in a Google Drive folder, so your laptop and smartboard share it\./.test(step1) && steps.length === 3 &&
-      /The first time, tap New folder and name it 21Board\. On your other device, pick this same folder\. \(To keep a board in sync with a co-teacher, share this Google Drive folder with them as an Editor\.\)/.test(steps[1]),
+      /The first time, tap New folder and name it 21Board\. On your other device, pick this same folder\. To work on a board with a co-teacher, share this folder with them as an Editor\.$/.test(steps[1]),
       `step 1 says what Board Sync does, and step 2 to pick the same folder on the other device and how to share it (${steps[1]})`);
     await A.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await A.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
     const last = await said(A.p);
-    ok(last.includes('This device now syncs through your “21Board” folder. Now set up Board Sync on your other devices and pick this same folder: this board shows up there. ' + ENDING) && await A.p.locator('#modal.open .btn').allInnerTexts().then(b => b.join('|') === 'Done'),
+    ok(last.includes('This device now syncs through your “21Board” folder. Now set up Board Sync on your other devices and pick this same folder. This board then shows up there. ' + ENDING) && await A.p.locator('#modal.open .btn').allInnerTexts().then(b => b.join('|') === 'Done'),
       `the last step says what comes next, with one button, Done (“${last}”)`);
     await A.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
     let fA = await devFiles(A.p);
     ok(fA.length === 1 && /^21Board \(laptop\) \[[0-9a-z]{4}\]\.21board$/.test(fA[0]) && (await files(A.p)).includes('About this folder.txt'),
       `setting up writes this device’s file at once, named after it, beside “About this folder.txt” (${(await files(A.p)).join(', ')})`);
     const about = await fileText(A.p, 'About this folder.txt');
-    ok(/Each device keeps its own copy of the whole board here, named after the device, such as\r\n"21Board \(laptop\) \[k3j9\]\.21board"\./.test(about) && /- To keep a board in sync with a co-teacher: share this Google Drive folder with them as an\r\n  Editor\./.test(about) && /deletes\r\n  its file here two months later/.test(about),
+    ok(/Each device keeps its own copy of the whole board here, named after the device, such as\r\n"21Board \(laptop\) \[k3j9\]\.21board"\./.test(about) && /- To work on a board with a co-teacher, share this folder with them as an Editor\. They add a\r\n  shortcut to it in their My Drive, then pick it when they set up Board Sync\./.test(about) && /21Board deletes an unlinked device’s file two\r\n  months later\./.test(about),
       'the note explains one file per device, sharing with a co-teacher, and that an unlinked device’s file goes after two months');
     const jA = JSON.parse(await fileText(A.p, fA[0]));
     ok(jA.format === '21board' && jA.kind === 'full' && jA.board.name === 'Morning' && jA.sync && jA.sync.v === 1 && /^[0-9a-z]{12}$/.test(jA.sync.dev) && jA.sync.name === 'the laptop' && /^[0-9a-f]{32}$/.test(jA.sync.sum) &&
@@ -7626,9 +7718,11 @@ const SUITES = [
     // Settings: three rows.
     await openSettings(A.p);
     const rows = await A.p.evaluate(() => { const h = [...document.querySelectorAll('#settings h3')].find(x => x.textContent === 'Board Sync'); const out = []; for (let e = h.nextElementSibling; e && e.tagName !== 'H3' && !e.classList.contains('gap'); e = e.nextElementSibling) out.push(e.innerText.replace(/\s+/g, ' ').trim()); return out; });
-    ok(rows.length === 3 && /^Synced through “21Board” /.test(rows[0]) && /Up to date\. This device’s latest changes went to your folder at \d/.test(rows[0]) && /No other device has synced yet: set up Board Sync on your other devices and pick this same folder\./.test(rows[0]) &&
-      /Change… Unlink$/.test(rows[0]) && /^This device’s name \(shown on your other devices\)/.test(rows[1]) && /^Keep history copies in the folder About hourly/.test(rows[2]),
+    ok(rows.length === 3 && /^Synced through “21Board” /.test(rows[0]) && /Up to date\. This device’s latest changes went to your folder at \d/.test(rows[0]) && /No other devices yet\. Set up Board Sync on another device and pick this same folder\./.test(rows[0]) &&
+      /Change… Unlink$/.test(rows[0]) && /^This device’s name Shown on your other devices\.$/.test(rows[1]) && /^Keep history copies in the folder About hourly/.test(rows[2]),
       `Settings › Board Sync has three rows: the folder with how it is going, Change… and Unlink; this device’s name; history copies (${rows.join(' | ')})`);
+    const nameHint = await A.p.evaluate(() => { const f = document.getElementById('set-link-label'), h = document.getElementById(f.getAttribute('aria-describedby') || '-'); return h && h.classList.contains('hint') ? h.textContent : null; });
+    ok(nameHint === 'Shown on your other devices.', `this device’s name has a hint under the field, read with it, not a label in parentheses (${nameHint})`);
     ok(await A.p.locator('#settings [data-act="link-send"], #settings [data-act="link-auto"], #settings [data-act="link-photo"], #settings [data-act="group"][data-val="boards"], #settings [data-act="group"][data-val="folder"]').count() === 0,
       'no Send, Send automatically, Send the background photo, Boards from other devices or Folder settings');
     const hints = await A.p.evaluate(() => Array.from(document.querySelectorAll('#settings .hint')).map(h => h.textContent));
@@ -7644,7 +7738,7 @@ const SUITES = [
     await C.p.evaluate(() => { window.__drive = { pick: 'Empty' }; });
     await openSettings(C.p); await C.p.click('#settings [data-act="link-setup"]'); await C.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await C.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
-    ok((await said(C.p)).includes('Now set up Board Sync on your other device and pick this same folder: its board shows up here.'), 'a device with only the untouched first page: “… its board shows up here.”');
+    ok((await said(C.p)).includes('Now set up Board Sync on your other device and pick this same folder. Its board then shows up here.'), 'a device with only the untouched first page: “… Its board then shows up here.”');
     await C.p.locator('#modal.open .btn', { hasText: 'Done' }).click(); await C.p.waitForTimeout(1500);
     ok((await seedFolder(C.p, 'Empty')).join() === 'About this folder.txt', 'and it writes no file: an empty “My Board” would be added to every board that joins');
     await C.c.close();
@@ -7656,7 +7750,7 @@ const SUITES = [
     await B.p.click('#settings [data-act="link-setup"]'); await B.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await B.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
     const lastB = await said(B.p);
-    ok(lastB.includes('This device now syncs through your “21Board” folder. The board from the laptop (1 page) is here now. ' + ENDING) && await B.p.locator('#modal.open input').inputValue() === 'the smartboard',
+    ok(lastB.includes('This device now syncs through your “21Board” folder. The 1-page board from the laptop is here. ' + ENDING) && await B.p.locator('#modal.open input').inputValue() === 'the smartboard',
       `the smartboard says the board from the laptop is here, with its name in the field (“${lastB}”)`);
     const setupToasts = await B.p.locator('#toasts .toast span').allInnerTexts();
     ok(!setupToasts.some(t => /added on|is here|Updated from/.test(t)), `and no merge message besides (${setupToasts.join(' | ') || 'none'})`);
@@ -7668,7 +7762,7 @@ const SUITES = [
     await deliver(B.p, A.p); await syncNow(A.p); await syncNow(B.p);
     ok(await sameBoards(A.p, B.p), 'both show the same board');
     await openSettings(A.p);
-    ok(/Shared with the smartboard \(last change at \d/.test(await A.p.locator('#set-link-status').innerText()), `the laptop’s status names the smartboard (“${await A.p.locator('#set-link-status').innerText()}”)`);
+    ok(/Shared with the smartboard\. Last change at \d/.test(await A.p.locator('#set-link-status').innerText()), `the laptop’s status names the smartboard (“${await A.p.locator('#set-link-status').innerText()}”)`);
     await A.p.keyboard.press('Escape');
     // A fresh device set up before the laptop's file arrived: the board that arrives later is taken, and said.
     const Late = await dev('the reading corner');
@@ -7686,7 +7780,7 @@ const SUITES = [
     await deliver(D.p, F.p);
     await openSettings(F.p); await F.p.click('#settings [data-act="link-setup"]'); await F.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await F.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
-    const twin = await F.p.evaluate(() => { const f = document.querySelector('#modal.open input'), n = document.getElementById(f.getAttribute('aria-describedby') || '-'); return { note: n ? n.textContent : '', selected: document.activeElement === f && f.selectionStart === 0 && f.selectionEnd === f.value.length, value: f.value }; });
+    const twin = await F.p.evaluate(() => { const f = document.querySelector('#modal.open input'), n = (f.getAttribute('aria-describedby') || '').split(/\s+/).includes('name-twin') ? document.getElementById('name-twin') : null; return { note: n ? n.textContent : '', selected: document.activeElement === f && f.selectionStart === 0 && f.selectionEnd === f.value.length, value: f.value }; });
     ok(twin.value === 'a Chromebook' && twin.selected && twin.note === 'Another device in this folder is called “a Chromebook” too.',
       `when another device in the folder has this device’s name, the last step says so under the field (read with it), its text selected even as the board it took is shown (“${twin.note}”; selected: ${twin.selected})`);
     await F.p.fill('#modal.open input', 'the reading corner'); await F.p.locator('#modal.open .btn', { hasText: 'Done' }).click();
@@ -7710,7 +7804,7 @@ const SUITES = [
     await openSettings(G.p); await G.p.click('#settings [data-act="link-setup"]'); await G.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
     await G.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
     const lastG = await said(G.p);
-    ok(/The board from the laptop \(2 pages\) is here now\. This device’s 2 pages were added after them\./.test(lastG), `a device with pages of its own: they are added after the board’s, and the last step names both counts (“${lastG}”)`);
+    ok(/The 2-page board from the laptop is here\. This device’s 2 pages were added at the end\./.test(lastG), `a device with pages of its own: they are added after the board’s, and the last step names both counts (“${lastG}”)`);
     await G.p.locator('#modal.open .btn', { hasText: 'Done' }).click(); await G.p.waitForTimeout(800);
     await deliver(G.p, A.p); await syncNow(A.p); await deliver(A.p, G.p); await syncNow(G.p);
     const names = async p => Object.values(await shownBoard(p)).map(x => x.name).sort().join();
@@ -7755,7 +7849,7 @@ const SUITES = [
     const status = async p => { await openSettings(p); const s = await p.locator('#set-link-status').innerText(); await p.keyboard.press('Escape'); return s; };
     // The line under the field saying another device has the name in it, as shown and read with the field (null: not
     // shown, and nothing hidden left for a screen reader to read with the field).
-    const twinLine = p => p.evaluate(() => { const f = document.querySelector('#modal.open input'), n = document.getElementById(f.getAttribute('aria-describedby') || '-');
+    const twinLine = p => p.evaluate(() => { const f = document.querySelector('#modal.open input'), n = (f.getAttribute('aria-describedby') || '').split(/\s+/).includes('name-twin') ? document.getElementById('name-twin') : null;
       return !n ? null : n.offsetParent ? n.textContent : n.textContent ? 'hidden, but read: ' + n.textContent : null; });
     // The card on the screen, top to bottom: the message, the field, the quick names, Done (and its edges).
     const layout = p => p.evaluate(() => { const r = s => document.querySelector('#modal.open ' + s).getBoundingClientRect(), c = r('.modal-card');
@@ -7765,8 +7859,10 @@ const SUITES = [
     const A = await device('laptop'), B = await device('smartboard', { viewport: { width: 1920, height: 1080 }, hasTouch: true });
     await addNote(A.p, 'Spelling words');
     await lastStep(A.p);
-    ok(await label(A.p) === 'a computer' && await field(A.p).inputValue() === 'a computer' && (await said(A.p)).includes('This device’s name (shown on your other devices)'),
-      `the last step always has “This device’s name”, filled in with 21Board’s guess (“${await field(A.p).inputValue()}”)`);
+    ok(await label(A.p) === 'a computer' && await field(A.p).inputValue() === 'a computer' && (await said(A.p)).includes('This device’s name Shown on your other devices.'),
+      `the last step always has “This device’s name”, filled in with 21Board’s guess (“${await field(A.p).inputValue()}”), and a hint under it`);
+    const hintRead = await A.p.evaluate(() => { const f = document.querySelector('#modal.open input'), h = document.getElementById('name-hint'); return !!h && h.offsetParent !== null && (f.getAttribute('aria-describedby') || '').split(/\s+/)[0] === 'name-hint' && h.textContent === 'Shown on your other devices.' && h.getBoundingClientRect().top >= f.getBoundingClientRect().bottom; });
+    ok(hintRead, 'the hint “Shown on your other devices.” is under the field, not in its label, and a screen reader reads it with the field');
     ok(await A.p.evaluate(() => { const f = document.querySelector('#modal.open input'); return document.activeElement === f && f.selectionStart === 0 && f.selectionEnd === f.value.length; }),
       'with no touch screen, the field has the keyboard, its text selected to type over');
     ok((await quick(A.p).getByRole('button').allInnerTexts()).join(',') === 'Laptop,Smartboard,Desktop' && await pressed(A.p) === '' && await twinLine(A.p) === null,
@@ -7795,7 +7891,7 @@ const SUITES = [
     ok(await keyOn(B.p) === 'Done', `on a touch screen the field doesn’t take the keyboard by itself (the on-screen keyboard would pop up): Done has it (${await keyOn(B.p)})`);
     look = await layout(B.p);
     ok(look.order.every(Boolean) && look.inside, `it fits a 1920×1080 smartboard (${look.h}px high)`);
-    ok((await said(B.p)).includes('The board from a computer (1 page) is here now.'), 'the laptop’s old file was all the smartboard had: “The board from a computer”');
+    ok((await said(B.p)).includes('The 1-page board from a computer is here.'), 'the laptop’s old file was all the smartboard had: “The 1-page board from a computer”');
     const ownB = (await devFiles(B.p)).filter(n => /\(smartboard\)/.test(n));   // (written by the first round, or not yet)
     await field(B.p).fill('Room 14 smartboard');
     ok(await pressed(B.p) === '', 'typing “Room 14 smartboard”: none is pressed');
@@ -7806,7 +7902,7 @@ const SUITES = [
     // The laptop's renamed file reaches the smartboard; the old one is still there until Google Drive removes it.
     await deliver(A.p, B.p); await syncNow(B.p);
     let st = await status(B.p);
-    ok(/Shared with the laptop \(last change at \d/.test(st) && !/computer/.test(st), `the smartboard’s Settings › Board Sync names the laptop by its new name, once (“${st}”)`);
+    ok(/Shared with the laptop\. Last change at \d/.test(st) && !/computer/.test(st), `the smartboard’s Settings › Board Sync names the laptop by its new name, once (“${st}”)`);
     await deliver(A.p, B.p, { removed: oldA }); await syncNow(B.p);
     ok(!(await devFiles(B.p)).includes(oldA[0]) && await B.p.evaluate(() => Array.from(window.__board21.link.files.keys()).filter(n => /^21Board \((computer|laptop)\)/.test(n)).length) === 1
       && await B.p.evaluate(() => { const L = window.__board21.link; return Object.values(L.names()).filter(n => n !== L.device().label).join(); }) === 'the laptop',
@@ -7818,7 +7914,7 @@ const SUITES = [
     // And the smartboard's new name reaches the laptop.
     await deliver(B.p, A.p, { removed: ownB }); await syncNow(A.p);
     st = await status(A.p);
-    ok(/Shared with Room 14 smartboard \(last change at \d/.test(st), `the laptop’s Settings › Board Sync names the smartboard “Room 14 smartboard” (“${st}”)`);
+    ok(/Shared with Room 14 smartboard\. Last change at \d/.test(st), `the laptop’s Settings › Board Sync names the smartboard “Room 14 smartboard” (“${st}”)`);
 
     // ---- An iPad, upright then on its side: it fits both ways; a name another device has is said as it is picked or
     // typed; an empty field keeps the name it had.
@@ -7898,7 +7994,7 @@ const SUITES = [
     await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
     ok(await sameBoards(A.p, B.p) && await wins(B.p) === 2, 'the laptop and the smartboard show the same board');
     const unlinkSaid = await unlinkUI(B.p);
-    ok(/Unlink the “21Board” folder\? This device keeps its board as it is but stops syncing it\. Your other devices and the folder keep theirs\. Unlink Cancel/.test(unlinkSaid), `Unlink asks first, and says what stays (“${unlinkSaid}”)`);
+    ok(/Unlink the “21Board” folder\? This device keeps its board but stops syncing\. Your other devices and the folder keep theirs\. Unlink Cancel/.test(unlinkSaid), `Unlink asks first, and says what stays (“${unlinkSaid}”)`);
     const left = await ownJSON(B.p);
     ok(!!left && left.sync.left && left.sync.left.at > 0 && !left.sync.left.erased && await B.p.evaluate(() => !window.__board21.link.dir) && await wins(B.p) === 2,
       'Unlink writes the smartboard’s file once more, saying it left; the board stays on the smartboard');
@@ -7971,7 +8067,7 @@ const SUITES = [
     await openSettings(A.p); await A.p.click('#settings [data-act="link-choose"]');
     await A.p.locator('#modal.open', { hasText: 'Board Sync is set up' }).waitFor({ timeout: 20000 });
     const switched = await said(A.p);
-    ok(switched.includes('The board from the Room 14 laptop (1 page) is here now. This device’s other pages are still in your “21Board” folder, and under Board history › Deleted pages for 30 days.'), `Change… to a folder with another board switches to that board (“${switched}”)`);
+    ok(switched.includes('The 1-page board from the Room 14 laptop is here. This device’s other pages are still in your “21Board” folder. They’re also in Board history › Deleted pages for 30 days.'), `Change… to a folder with another board switches to that board (“${switched}”)`);
     await A.p.locator('#modal.open .btn', { hasText: 'Done' }).click(); await A.p.keyboard.press('Escape');
     ok(await eventually(async () => { const b = await shownBoard(A.p); return Object.keys(b).length === 1 && Object.values(b)[0].name === 'Room 14' && /Room 14 plans/.test(await notesText(A.p)); }, 15000),
       'the laptop shows the Room 14 board: its own pages are deleted here only');
@@ -8024,7 +8120,7 @@ const SUITES = [
     const eName = await ownFile(B.p);
     await openSettings(B.p, ['advanced']); await B.p.click('#settings [data-act="erase"]');
     const erase = await said(B.p);
-    ok(/This device also stops syncing: the board stays in your folder and on your other devices\./.test(erase), 'Erase everything says this device stops syncing, and where the board stays');
+    ok(/This device also stops syncing\. The board stays in your folder and on your other devices\./.test(erase), 'Erase everything says this device stops syncing, and where the board stays');
     await B.p.locator('#modal.open .btn', { hasText: /^Erase everything$/ }).click(); await B.p.waitForTimeout(2500);
     const ej = JSON.parse(await fileText(B.p, eName));
     ok(!!ej.sync.left && ej.sync.left.erased === true && await B.p.evaluate(() => !window.__board21.link.dir && !window.__board21.link.st.device), 'its last write says it was erased, and the smartboard forgets the folder and its id');
@@ -8083,7 +8179,7 @@ const SUITES = [
     await exchange(A, B);
     const nm = async p => Object.values(await shownBoard(p))[0].name;
     ok(await nm(A.p) === 'Smartboard name' && await nm(B.p) === 'Smartboard name', `the same page renamed on both: the later name on both (“${await nm(A.p)}”)`);
-    ok((await heard(A.p)).includes('This page was also renamed on the smartboard: it’s called “Smartboard name” now.'), `the laptop says the page was also renamed, with its new name (${(await heard(A.p)).join(' | ')})`);
+    ok((await heard(A.p)).includes('This page was also renamed on the smartboard. It’s called “Smartboard name” now.'), `the laptop says the page was also renamed, with its new name (${(await heard(A.p)).join(' | ')})`);
     ok(await A.p.evaluate(() => window.__board21.history.metas.some(m => m.name === 'Laptop name' && /Before changes from the smartboard/.test(m.label))), 'and Board history keeps a version with the other name');
     await renamePage(A.p, 'Morning');
     await B.p.evaluate(() => window.__board21.updateBoard({ background: { color: '#dbeafe', pattern: 'none' } })); await B.p.waitForTimeout(300);
@@ -8323,7 +8419,7 @@ const SUITES = [
     ok(/The new laptop uses a newer 21Board\. Update 21Board on this device to keep syncing\./.test(await B.p.evaluate(() => window.__board21.link.status())), 'and the status says so');
     await B.p.locator('.folder-note.left').click();
     const dlg = (await B.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
-    ok(/^Update 21Board on this device The new laptop uses a newer 21Board, so its changes can’t show here until this device is updated too\./.test(dlg), `tapping it says why (“${dlg}”)`);
+    ok(/^Update 21Board on this device The new laptop uses a newer 21Board\. Its changes show here once this device is updated too\./.test(dlg), `tapping it says why (“${dlg}”)`);
     await B.p.keyboard.press('Escape');
     ok(!Object.values(await shownBoard(B.p)).some(x => x.name === 'Future'), 'nothing in that file is merged');
     await typeNote(A.p, await ikOf(A.p, w1), 'One, still merging'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
@@ -8456,7 +8552,7 @@ const SUITES = [
     await openSettings(A.p, ['bg']);
     await A.p.click('#settings [data-act="photo-remove"]');
     const rm = (await A.p.locator('#modal.open p').innerText()).replace(/\s+/g, ' ');
-    ok(rm === 'It is removed from this page here and on your other devices. Your full backups and board history still have it.', `removing the photo says it goes on the other devices too (“${rm}”)`);
+    ok(rm === 'It’s removed from this page, here and on your other devices. Your full backups and Board history still have it.', `removing the photo says it goes on the other devices too (“${rm}”)`);
     await A.p.locator('#modal.open .btn', { hasText: 'Remove photo' }).click(); await A.p.waitForTimeout(500); await A.p.keyboard.press('Escape');
     await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
     ok(!await photoKey(B.p) && !await named(B.p) && !await named(A.p), 'removed on the laptop, it is removed on the smartboard');
@@ -8479,7 +8575,7 @@ const SUITES = [
     await B.p.evaluate(() => { window.__drive = { readOnly: true }; });
     await renamePage(A.p, 'From the laptop'); await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
     ok(Object.values(await shownBoard(B.p))[0].name === 'From the laptop' && await note(B.p) === '', 'a folder that can only be viewed: the laptop’s changes still show, and there is no note');
-    ok(/^This folder can only be viewed: changes from your other devices show here, but changes made here stay on this device\./.test(await status(B.p)), `the status says so (“${await status(B.p)}”)`);
+    ok(/^You can only view this folder\. Changes from your other devices show here\. Changes made here stay on this device\./.test(await status(B.p)), `the status says so (“${await status(B.p)}”)`);
     await B.p.evaluate(() => window.__board21.updateBoard({ background: { color: '#fef9c3', pattern: 'none' } })); await syncNow(B.p);
     ok(await eventually(async () => await note(B.p) === 'Not synced'), 'once a change is made here, the note says “Not synced”');
     await B.p.evaluate(() => { window.__drive = {}; });
@@ -8494,18 +8590,18 @@ const SUITES = [
     ok(await note(A.p) === 'Not synced' && await A.p.locator('.toast', { hasText: 'Couldn’t sync this board with your folder: there’s no room left. 21Board keeps trying.' }).count() === 1, 'writing fails for lack of room: “Not synced”, and a message the first time');
     await A.p.locator('.folder-note.left').click();
     const full = (await A.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
-    ok(/^Your changes aren’t reaching your other devices 21Board couldn’t save them in your folder at .+?: there’s no room left\. Make room in Google Drive \(or on this device\)\. 21Board keeps trying, and changes from your other devices still show here\. Try again now Close$/.test(full), `tapping it says what happened (“${full}”)`);
+    ok(/^Your changes aren’t reaching your other devices 21Board couldn’t save them to your folder at .+?\. There’s no room left\. Make room in Google Drive or on this device\. 21Board keeps trying\. Changes from your other devices still show here\. Try again now Close$/.test(full), `tapping it says what happened (“${full}”)`);
     await A.p.keyboard.press('Escape');
     // (FIN-4) and Settings' status line doesn't say "Up to date" under that warning
-    ok(await eventually(async () => /^Not synced: changes made here aren’t in your folder yet \(the last ones went there at .+?\)\./.test(await status(A.p))) && !/Up to date/.test(await status(A.p)),
-      `the status says “Not synced: …”, not “Up to date” (“${await status(A.p)}”)`);
+    ok(await eventually(async () => /^Not synced\. Changes made here aren’t in your folder yet\. The last ones went there at .+?\./.test(await status(A.p))) && !/Up to date/.test(await status(A.p)),
+      `the status says “Not synced. …”, not “Up to date” (“${await status(A.p)}”)`);
     await A.p.evaluate(() => { window.__drive = {}; });
     ok(await eventually(async () => { await A.p.evaluate(() => window.__board21.link.check(true)); return await note(A.p) === '' && (await ownJSON(A.p)).board.name === 'While full'; }), 'it is tried again after a while, and nothing was lost');
     await syncWaits(A.p, { maxFile: 500 });
     await renamePage(A.p, 'Too big'); await syncNow(A.p);
     await A.p.locator('.folder-note.left').click();
     const big = (await A.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
-    ok(await A.p.evaluate(() => window.__board21.link.trouble.code) === 'big' && /: the board is too big to sync\. Remove some big content, such as long notes or large pictures in widgets, then try again\./.test(big), `a board too big to sync: “Not synced”, and why (“${big}”)`);
+    ok(await A.p.evaluate(() => window.__board21.link.trouble.code) === 'big' && /\. The board is too big to sync\. Remove some long notes or large pictures, then try again\./.test(big), `a board too big to sync: “Not synced”, and why (“${big}”)`);
     await A.p.keyboard.press('Escape');
     await syncWaits(A.p);
 
@@ -8515,7 +8611,7 @@ const SUITES = [
     await A.p.evaluate(() => { window.__drive = {}; }); await A.p.evaluate(() => window.__board21.link.check(true));
     ok(await note(A.p) === '', 'back: the note goes');
     await A.p.evaluate(() => { window.__drive = { perm: 'prompt', grant: 'granted' }; const l = window.__board21.link; l.nagged = false; return l.refresh(); });
-    ok(await note(A.p) === 'Reconnect folder' && await A.p.locator('.toast', { hasText: 'Reconnect your “21Board” folder to keep this board in sync with your other devices.' }).count() === 1, 'Chrome wants to be asked again: “Reconnect folder”, and a message for a device that has synced');
+    ok(await note(A.p) === 'Reconnect folder' && await A.p.locator('.toast', { hasText: 'Reconnect your “21Board” folder to keep syncing.' }).count() === 1, 'Chrome wants to be asked again: “Reconnect folder”, and a message for a device that has synced');
     await A.p.locator('.folder-note.left').click(); await A.p.waitForTimeout(500);
     ok(await note(A.p) === '' && await A.p.locator('.toast', { hasText: 'Your “21Board” folder is connected again.' }).count() === 1, 'one tap reconnects it');
 
@@ -8656,9 +8752,9 @@ const SUITES = [
     const label = (p, ik) => p.evaluate(ik => { const w = document.querySelector(`.win[data-ikey="${ik}"] .win-label`), c = w && w.querySelector('.copy-label'); return c ? { text: c.textContent, hidden: c.hidden, title: c.title, aria: w.getAttribute('aria-label') } : null; }, ik);
     const lB = await label(B.p, kB.cp[0].ikey), lA = await label(A.p, kA.cp[0].ikey);
     ok(lB && !lB.hidden && lB.text === `Copy · ${time}`, `the copy’s label is short: “${lB && lB.text}”`);
-    ok(lB.title === `The laptop’s version from ${time}, kept because this window was changed on two devices at once.` && lB.aria === `Notes ${kB.cp[0].ikey.split(':')[1]}, the laptop’s version from ${time}, window menu`,
+    ok(lB.title === `The laptop’s version from ${time}. This window was changed on two devices at once.` && lB.aria === `Notes ${kB.cp[0].ikey.split(':')[1]}, the laptop’s version from ${time}, window menu`,
       `on the smartboard its title and the window name’s label name the laptop (“${lB.title}” / “${lB.aria}”)`);
-    ok(lA && lA.title === `This device’s version from ${time}, kept because this window was changed on two devices at once.`, `on the laptop they say it is this device’s (“${lA && lA.title}”)`);
+    ok(lA && lA.title === `This device’s version from ${time}. This window was changed on two devices at once.`, `on the laptop they say it is this device’s (“${lA && lA.title}”)`);
     const box = await B.p.locator(`.win[data-ikey="${kB.cp[0].ikey}"] .win-title`).boundingBox();
     await B.p.mouse.move(box.x + box.width - 30, box.y + 12); await B.p.mouse.down(); await B.p.mouse.move(box.x + box.width - 110, box.y + 70, { steps: 6 }); await B.p.mouse.up();
     await B.p.waitForTimeout(1000);
@@ -8782,7 +8878,7 @@ const SUITES = [
     await exchange(A, B);
     const m21 = (await shownBoard(A.p))[math.uid];
     ok(!!m21 && Object.values(m21.wins).some(x => x.data && x.data.text === 'Math warm-up: 7 × 8') && await sameBoards(A.p, B.p), 'the whole page comes back on the laptop, with the smartboard’s edit');
-    ok((await heard(A.p)).includes('“Math” is back: it was changed on the smartboard before the deletion reached it.'), `and the laptop says why (${(await heard(A.p)).join(' | ')})`);
+    ok((await heard(A.p)).includes('“Math” is back. It was changed on the smartboard before the deletion reached it.'), `and the laptop says why (${(await heard(A.p)).join(' | ')})`);
 
     // ---- 22. A page deleted on the laptop while the smartboard only taps one window on it (z) and closes another: it
     // stays deleted.
@@ -8988,11 +9084,11 @@ const SUITES = [
     await typeNote(B.p, await ikOf(B.p, wMorning), 'Morning: the smartboard’s plan'); await syncNow(B.p);
     await typeNote(A.p, m1, 'Morning: the laptop’s plan'); await syncNow(A.p);   // (the later one)
     await fresh(); await deliver(A.p, B.p); await syncNow(B.p);
-    ok((await heard(B.p)).includes('Notes was changed here and on the laptop at once, so both versions are kept.'), `a clash on the page shown says both versions are kept (${(await heard(B.p)).join(' | ')})`);
+    ok((await heard(B.p)).includes('Notes was changed here and on the laptop at once. Both versions are kept.'), `a clash on the page shown says both versions are kept (${(await heard(B.p)).join(' | ')})`);
     const devA = await A.p.evaluate(() => window.__board21.link.dev());
     let cp = (await copiesOf(B.p)).find(x => x.copyOf.wid === wMorning);
     ok(await textOf(B.p, wMorning) === 'Morning: the laptop’s plan' && cp && cp.data.text === 'Morning: the smartboard’s plan', 'the laptop’s text is in the window, the smartboard’s in the copy');
-    await toastOf(B.p, 'at once, so both versions are kept').locator('button', { hasText: 'Undo' }).click();
+    await toastOf(B.p, 'at once. Both versions are kept').locator('button', { hasText: 'Undo' }).click();
     ok(await eventually(async () => { cp = (await copiesOf(B.p)).find(x => x.copyOf.wid === wMorning); return await textOf(B.p, wMorning) === 'Morning: the smartboard’s plan' && cp && cp.data.text === 'Morning: the laptop’s plan' && cp.copyOf.from === devA; }),
       'Undo swaps them: the smartboard’s text back in the window, and the laptop’s kept as the copy, labelled as the laptop’s');
     await B.p.waitForTimeout(600); await exchange(A, B);
@@ -9007,9 +9103,9 @@ const SUITES = [
     // The page shown deleted on a locked board: the message points to Board history › Deleted pages.
     const art = await go(B.p, 'Art'); await fresh();
     await dropPage(A.p, 'Art'); await syncNow(A.p); await deliver(A.p, B.p);
-    ok(await eventually(async () => { await syncNow(B.p); return (await heard(B.p)).includes('“Art” was deleted on the laptop. Board history › Deleted pages has it.'); }, 15000) && !(await shownBoard(B.p))[art],
-      `the page shown, deleted on a locked board: “… Board history › Deleted pages has it.” (${(await heard(B.p)).join(' | ')})`);
-    ok(await toastOf(B.p, 'Deleted pages has it').locator('button').count() === 0, 'with no Undo');
+    ok(await eventually(async () => { await syncNow(B.p); return (await heard(B.p)).includes('“Art” was deleted on the laptop. Find it in Board history › Deleted pages.'); }, 15000) && !(await shownBoard(B.p))[art],
+      `the page shown, deleted on a locked board: “… Find it in Board history › Deleted pages.” (${(await heard(B.p)).join(' | ')})`);
+    ok(await toastOf(B.p, 'Find it in Board history › Deleted pages.').locator('button').count() === 0, 'with no Undo');
     // Unlocked: the Undo of a deleted page brings it back, and goes back to it.
     await lock(B.p, false);
     const music = await go(B.p, 'Music'); await fresh();
@@ -9239,14 +9335,15 @@ const SUITES = [
     await H(() => window.__board21.history.save('By hand')); await page.waitForTimeout(300);
     ok((await metas()).length === nOff + 1, 'but “Save this version now” still works');
     await H(() => { window.__board21.state.settings.historyEvery = 10; });
-    // Delete board history.
+    // Delete all versions.
     await openSettings(page, ['advanced']);
+    ok(await page.evaluate(() => document.querySelector('#settings [data-act="hist-delete"]').closest('.row').querySelector('.lbl').textContent) === 'Delete all versions', 'Settings › Advanced names the row “Delete all versions”');
     await page.click('#settings [data-act="hist-delete"]'); await page.waitForTimeout(300); await modal('Delete from this device'); await page.waitForTimeout(1500);
-    ok((await metas()).length === 0 && await page.locator('.win').count() >= 1, '“Delete board history” deletes the versions and leaves the board as it is');
-    // Erase, including board history.
+    ok((await metas()).length === 0 && await page.locator('.win').count() >= 1, '“Delete all versions” deletes the versions and leaves the board as it is');
+    // Erase, including Board history.
     await H(() => window.__board21.history.save('x')); await page.waitForTimeout(300);
-    await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300); await modal('including board history'); await page.waitForTimeout(2500);
-    ok((await metas()).length === 0, '“Erase, including board history” removes it too');
+    await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300); await modal('including Board history'); await page.waitForTimeout(2500);
+    ok((await metas()).length === 0, '“Erase, including Board history” removes it too');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
 
@@ -9455,7 +9552,7 @@ const SUITES = [
     await settings(); await page.click('#settings [data-act="hist-open"]');
     await page.waitForSelector('#history.open [data-act="retry"]');
     const sheet = await page.locator('#history .sheet-body').textContent();
-    ok(/couldn’t read board history/.test(sheet) && /haven’t been deleted/.test(sheet) && !/No earlier versions yet/.test(sheet), 'when board history can’t be read, the sheet says so (not “No earlier versions yet”)');
+    ok(/Couldn’t read Board history\. Your earlier versions haven’t been deleted\./.test(sheet) && !/No earlier versions yet/.test(sheet), 'when board history can’t be read, the sheet says so (not “No earlier versions yet”)');
     await page.keyboard.press('Escape'); await settings();
     const st = await page.locator('#settings .sheet-body').textContent();
     ok(/couldn’t be read just now/.test(st) && !/None yet/.test(st), 'and so does Settings (not “None yet”)');
@@ -9496,7 +9593,7 @@ const SUITES = [
     let now = await left();
     ok(await H(() => window.__thins) === 1 && was.photo && !now.photo && now.withPhoto === 0 && now.old === was.old && was.old >= 50 && await page.locator('.save-note.left:visible').count() === 0,
       `it gave up only the photo kept with old versions, and stopped there (${now.old} of ${was.old} old versions still there)`);
-    ok(await toasts('almost out of space') === 1, 'and says that some of the oldest board history was removed, and to make room');
+    ok(await toasts('This device is almost out of space. Some of the oldest versions in Board history were removed. Make room on this device.') === 1, 'and says that some of the oldest versions were removed, and to make room');
     // The device stays full.
     await H(() => { window.__once = false; window.__thins = 0; window.__failPut = 'quota'; });
     await fillNote(note, 'typed on a full device');
@@ -9508,7 +9605,7 @@ const SUITES = [
     await page.click('.save-note.left'); await modal('Try again now');
     ok(await until(() => toasts('Still not saved').then(n => n === 1)) && (await left()).old === now.old, 'trying again while the device is still full takes no more history');
     await settings();
-    ok(/Space is low on this device, so some of the oldest board history was removed/.test(await page.locator('#settings .sheet-body').textContent()), 'Settings → Board history says space is low (after a refused save: the sign that Chrome gives too)');
+    ok(/Space is low on this device\. Some of the oldest versions were removed\. Make room so 21Board can keep saving\./.test(await page.locator('#settings .sheet-body').textContent()), 'Settings → Board history says space is low (after a refused save: the sign that Chrome gives too)');
     await page.keyboard.press('Escape');
     await H(() => { window.__failPut = null; });
     await page.click('.save-note.left'); await modal('Try again now');
@@ -9553,14 +9650,14 @@ const SUITES = [
     ok(ids(c) === 'settings,history' && apart(c) && onScreen(c, vp) && c[1].l > c[0].r, `from the left, Board history opens as a column beside Settings, which stays open: nothing overlaps, all on screen (${say(c)})`);
     ok(f.col === 'history' && await page.locator('#settings [data-act="hist-open"][aria-expanded="true"]').count() === 1, `the keyboard goes into Board history, and Settings’ “Board history…” is marked as open (${JSON.stringify(f)})`);
     const heads = await page.evaluate(() => ['settings', 'history', 'history-detail'].map(id => { const e = document.getElementById(id); return [e.querySelector('h2').tagName, e.querySelector('[data-close]').getAttribute('aria-label')]; }));
-    ok(heads.map(h => h[1]).join() === 'Close settings,Close board history,Close this version', `each column has a heading and a close button that says what it closes (${heads.map(h => h[1]).join(', ')})`);
+    ok(heads.map(h => h[1]).join() === 'Close settings,Close Board history,Close this version', `each column has a heading and a close button that says what it closes (${heads.map(h => h[1]).join(', ')})`);
     // What's kept: a list a screen reader reads as one, a tier a line.
     const keeps = page.getByRole('list', { name: 'Board history keeps, on this device:' });
     const tiers = await keeps.getByRole('listitem').allTextContents();
     ok(tiers.join(' | ') === 'The 20 most recent versions | Hourly versions for the past 2 days | Daily versions for the past 30 days | Weekly versions for the past 12 weeks',
       `what's kept is a list, a tier a line (${tiers.join(' | ')})`);
     const foot = await page.locator('#history .hist-keeps').innerText();
-    ok(/Versions you save are kept until you delete them\. When board history needs more room, the oldest versions are deleted first\./.test(foot) && /Board history isn’t a backup: if this browser’s data for 21Board is cleared, it’s cleared too\./.test(foot) && !/Kept on this device|space runs low/.test(foot),
+    ok(/Versions you save are kept until you delete them\. When Board history needs room, the oldest go first\./.test(foot) && /Board history isn’t a backup\. Clearing this browser’s data for 21Board clears it too\./.test(foot) && !/Kept on this device|space runs low/.test(foot),
       'then what you save, what goes first when board history needs more room (its share of the device, or a full device), and that it isn’t a backup');
     const tierTops = await page.evaluate(() => [...document.querySelectorAll('#history .hist-keeps li')].map(li => Math.round(li.getBoundingClientRect().top)));
     ok(new Set(tierTops).size === 4, `each tier is on its own line (${tierTops.join(', ')})`);
@@ -9739,7 +9836,7 @@ const SUITES = [
     ok(!set.link && !set.dev && !set.install && set.kiosk && set.hist, 'Settings leaves out Board Sync, Developer mode and Install, says it’s kiosk mode, and keeps Board history');
     ok(set.backup && (await page.locator('#st-backup').textContent()).includes('never'), 'Settings has Backups with “Back up now”, as everywhere else (a kiosk can export)');
     const protect = await page.evaluate(() => [document.getElementById('st-persist').textContent, document.getElementById('st-persist-hint').textContent]);
-    ok(/Protected/.test(protect[0]) || (/school’s IT/.test(protect[1]) && /back up to a USB drive/.test(protect[1]) && !/[Ii]nstall/.test(protect[1])), `Data protection says what applies to a kiosk: IT manages it, and backups are still worth making (${protect[1]})`);
+    ok(/Protected/.test(protect[0]) || (/school’s IT/.test(protect[1]) && /Back up to a USB drive now and then\./.test(protect[1]) && !/[Ii]nstall/.test(protect[1])), `Data protection says what applies to a kiosk: IT manages it, and backups are still worth making (${protect[1]})`);
     await page.keyboard.press('Escape');
     // Export uses only the Save dialog (a download would land unseen in the kiosk's Downloads).
     await page.click('.picker-btn.left'); await page.click('[data-ctl="export"]'); await page.waitForTimeout(300);
@@ -9762,9 +9859,9 @@ const SUITES = [
     await page.waitForTimeout(400);
     const front = p => p.evaluate(() => { document.dispatchEvent(new Event('visibilitychange')); });   // the reminder is looked at 2 s after 21Board comes to the front
     await front(page); await page.waitForTimeout(2600);
-    const nagged = await page.locator('.toast', { hasText: 'Save a backup file?' }).count();
+    const nagged = await page.locator('.toast', { hasText: 'Save a backup?' }).count();
     const p0 = await ctx.newPage(); await p0.goto(BASE + ''); await boardUp(p0); await front(p0);
-    const shown = await p0.waitForSelector('.toast:has-text("Save a backup file?")', { timeout: 6000 }).then(() => true, () => false);
+    const shown = await p0.waitForSelector('.toast:has-text("Save a backup?")', { timeout: 6000 }).then(() => true, () => false);
     const safe = await p0.evaluate(() => navigator.storage.persisted());
     ok(nagged === 0 && (shown || safe), `kiosk mode shows no backup reminder (a normal tab ${shown ? 'does' : 'has protected storage here, so it has none either'})`);
     await p0.close(); await page.bringToFront();
@@ -9774,7 +9871,7 @@ const SUITES = [
     await openSettings(page, ['advanced']);
     await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300);
     const first = page.locator('#modal.open .btn', { hasText: 'Export a backup first' });
-    ok(await first.count() === 1 && /Export a backup first if/.test(await page.locator('#modal.open p').textContent()), 'Erase everything offers “Export a backup first” in kiosk mode too');
+    ok(await first.count() === 1 && /To keep them, export a backup first\./.test(await page.locator('#modal.open p').textContent()), 'Erase everything offers “Export a backup first” in kiosk mode too');
     await first.click(); await page.waitForFunction(() => window.__saved, null, { timeout: 5000 }).catch(() => {});
     const kept = await page.evaluate(() => ({ saved: window.__saved, note: window.__board21.state.insts.has('notes:1'), at: window.__board21.state.settings.lastBackupAt }));
     ok(kept.saved && /\.21board$/.test(kept.saved.name) && JSON.parse(kept.saved.text).instances.some(i => i.widgetId === 'notes' && /example\.org/.test(JSON.stringify(i.data))) && kept.note, 'choosing it saves a full backup through the Save dialog, and erases nothing');
@@ -10458,7 +10555,7 @@ const SUITES = [
     ok(await page.locator('#modal.open', { hasText: 'Empty this board?' }).filter({ hasText: 'Your saved board isn’t touched' }).count() === 1 && await page.locator('#modal.open .btn', { hasText: 'history' }).count() === 0,
       'there, Erase only offers to empty the board on screen, and says the saved board isn’t touched');
     await page.locator('#modal.open .btn', { hasText: 'Empty this board' }).click();
-    await page.waitForSelector('.toast:has-text("This board was emptied. Your saved board wasn’t touched.")');
+    await page.waitForSelector('.toast:has-text("Board emptied. Your saved board wasn’t touched.")');
     ok(await B(() => window.__board21.state.wins.size === 0) && await stored() === before, 'and that is all it does');
     await page.keyboard.press('Escape');
     await faults(null); await page.reload(); await started();
@@ -10483,7 +10580,7 @@ const SUITES = [
     ok(/This board isn’t being saved/.test(st) && /Notes[\s\S]*not saved/.test(st) && !/stays saved|B saved|stored only on this device/.test(st) && /Empty this board/.test(st) && !/Erase everything/.test(st),
       'Settings doesn’t call that content saved, and offers to empty the board (there is nothing stored to erase)');
     await page.click('.save-note.left');
-    ok(await page.locator('#modal.open', { hasText: 'normal (not private) window' }).count() === 1 && await page.locator('#modal.open .btn', { hasText: 'Export a backup' }).count() === 1, 'tapping the note says why, and offers a backup');
+    ok(await page.locator('#modal.open', { hasText: 'Use a normal window, not a private one.' }).count() === 1 && await page.locator('#modal.open .btn', { hasText: 'Export a backup' }).count() === 1, 'tapping the note says why, and offers a backup');
     await page.locator('#modal.open .btn', { hasText: 'Close' }).click();
     ok(await B(async () => (await window.__board21.buildExport('full')).instances.some(i => i.data && i.data.text === 'in a private window')) && await stored() === before, 'the backup has the session’s content; the stored board is untouched');
     await page.goto(BASE + '?kiosk=yes'); await started();
@@ -10509,7 +10606,7 @@ const SUITES = [
 
     // ---- a save fails: kept, shown, tried again
     await B(() => { const h = window.__board21.history, thin = h.thin.bind(h); window.__room = { thin: 0 }; h.thin = () => { window.__room.thin++; return thin(); }; });
-    const said = () => page.locator('.toast', { hasText: 'couldn’t save' }).count();
+    const said = () => page.locator('.toast', { hasText: 'Couldn’t save your latest changes. 21Board keeps trying.' }).count();
     await B(() => { window.__failPut = 'unnamed'; });
     await fillNote(note, 'typed while saving failed');
     await page.waitForSelector('.save-note.left:visible');
@@ -10531,10 +10628,10 @@ const SUITES = [
     ok(await page.locator('#modal.open', { hasText: 'may be out of space' }).count() === 1, 'the note’s message mentions space even when the error doesn’t say “full” (a full disk isn’t always reported as one)');
     const [dl] = await Promise.all([page.waitForEvent('download'), page.locator('#modal.open .btn', { hasText: 'Export a backup' }).click()]);
     const backup = OUT + 'storage-broken.21board'; await dl.saveAs(backup);
-    ok(JSON.parse(fs.readFileSync(backup, 'utf8')).instances.find(i => i.widgetId === 'notes').data.text === 'typed while saving failed, and more' && await page.locator('.toast', { hasText: 'Export failed' }).count() === 0,
+    ok(JSON.parse(fs.readFileSync(backup, 'utf8')).instances.find(i => i.widgetId === 'notes').data.text === 'typed while saving failed, and more' && await page.locator('.toast', { hasText: 'Couldn’t export' }).count() === 0,
       'with storage neither writable nor readable, “Export a backup” still gives a file with the unsaved work');
     await faults(null);
-    await toastGone('couldn’t save');
+    await toastGone('Couldn’t save your latest changes.');
     ok(await noteShown() === 1 && await said() === 0, 'the “Not saved” note is still there after the message has gone');
     await B(() => { window.__failPut = null; });
     await page.click('.save-note.left'); await page.locator('#modal.open .btn', { hasText: 'Try again now' }).click();
@@ -10695,9 +10792,14 @@ const SUITES = [
     await page.evaluate(async px => { const e = await window.__board21.buildExport('full'); e.media = { background: { data: px, w: 1, h: 1, bytes: 70, name: 'p.png', addedAt: 1 }, look: { on: true, fit: 'fill', focus: { x: 0.5, y: 0.5 }, fade: 0 } }; await window.__board21.applyImport(e, 'replace'); }, px);
     await until(() => B(() => document.body.classList.contains('has-photo')));
     await faults({ readKey: 'media:1:background' }); await page.reload(); await started();
-    ok(await noteIs('imported again') && await page.locator('.toast', { hasText: 'couldn’t be read' }).filter({ hasText: 'the background photo' }).count() === 1 && await B(() => !document.body.classList.contains('has-photo')),
+    ok(await noteIs('imported again') && await page.locator('.toast', { hasText: 'Couldn’t show the background photo on this device. Board history may still have it.' }).count() === 1 && await B(() => !document.body.classList.contains('has-photo')),
       'one unreadable record (the photo) doesn’t hide the board: the rest opens, and a message says what is missing');
     ok(await B(async () => (await window.__board21.buildExport('full')).instances.length === 2) && !!(await storedRecords(page))['media:1:background'], 'the board can still be exported, and the unreadable record is left as it is');
+    // Two records: one sentence names both, joined with “and”, and says “them”.
+    await faults({ readKey: ['media:1:background', 'data:1:notes:1'] }); await page.reload(); await started();
+    const unread = await page.evaluate(() => Array.from(document.querySelectorAll('#toasts .toast span'), t => t.textContent).filter(t => /^Couldn’t show/.test(t)));
+    ok(unread.length === 1 && /^Couldn’t show (Notes and the background photo|the background photo and Notes) on this device\. Board history may still have them\.$/.test(unread[0]),
+      `two unreadable records: one message names both, with “and”, and says Board history may still have them (${unread.join(' | ')})`);
 
     // ---- the page and board.js from different versions (the offline copy refreshes its files one by one)
     await faults(null);
@@ -10778,10 +10880,10 @@ const SUITES = [
     ok(typeof await allOn('v1', 5000) === 'number' && await a.evaluate(() => window.__same === 1) && await a.locator('.picker-btn.left .dot').count() === 1,
       'Later puts it off: nothing restarts, a dot stays on the Widget Picker button, and both tabs stay wholly on the old release (a widget opened now is the old one too)');
     await a.click('.picker-btn.left');
-    const marks = await a.evaluate(() => { const g = document.querySelector('[data-ctl="settings"]'), w = document.querySelector('.picker-btn.left'); return [!!g.querySelector('.dot'), g.getAttribute('aria-label'), w.getAttribute('aria-label')].join(' | '); });
+    const marks = await a.evaluate(() => { const g = document.querySelector('[data-ctl="settings"]'), w = document.querySelector('.picker-btn.left'); return [!!g.querySelector('.dot'), g.getAttribute('aria-label'), w.getAttribute('aria-label'), w.title].join(' | '); });
     await a.click('[data-ctl="settings"]'); await a.waitForSelector('#st-version', { state: 'attached' });
     const note = a.locator('#settings #st-update'), box = await note.boundingBox({ timeout: 2000 }).catch(() => null);
-    ok(marks === 'true | Settings (a new version is ready) | Widgets and settings (a new version is ready)' && !!box && box.y > 0 && box.y + box.height < 400 && (await note.innerText()).startsWith('A new version is ready') && await a.locator('#settings [data-act="update"]').count() === 1,
+    ok(marks === 'true | Settings, new version ready | Widgets and settings, new version ready | A new version is ready. Open Settings to update.' && !!box && box.y > 0 && box.y + box.height < 400 && (await note.innerText()).startsWith('A new version is ready') && await a.locator('#settings [data-act="update"]').count() === 1,
       'after Later, how to update stays in view: the ▦ button and the Settings gear carry a dot and say why, and Settings opens with “A new version is ready” and Update now at the top (' + marks + ')');
     await a.locator('#settings [data-act="update"]').click();
     const took = await allOn('v2');
@@ -10821,7 +10923,7 @@ const SUITES = [
       await b.waitForSelector('#modal.open');
       const warn = await b.locator('#modal.open').innerText();
       await b.locator('#modal.open .btn', { hasText: 'Later' }).click();
-      ok(/Update 21Board now\?/.test(warn) && warn.includes('aren’t saved on this device yet') && await b.evaluate(() => window.__same === 1), 'Update there first says the changes would be lost; Later leaves the board as it is');
+      ok(/Update 21Board now\?/.test(warn) && warn.includes('Your latest changes aren’t saved yet. Update now and they’ll be lost.') && await b.evaluate(() => window.__same === 1), 'Update there first says the changes would be lost; Later leaves the board as it is');
       await b.evaluate(() => { window.__failPut = null; });
       await b.locator('#settings [data-act="update"]').click();
       await b.waitForFunction(() => window.__rel === 'v4' && !window.__same, null, { timeout: 15000 }); await boardUp(b);
@@ -11146,7 +11248,7 @@ const SUITES = [
     await page.waitForSelector('#settings.open [data-act="inst-delete"]');
     await page.focus('#settings [data-act="inst-delete"]'); await page.keyboard.press('Enter'); await open();
     ok(await page.getByRole('dialog', { name: 'Delete Notes?', exact: true }).count() === 1, 'a dialog is announced by its title (“Delete Notes?”)');
-    ok(/removed from this board/.test(await page.locator('#modal').evaluate(m => (document.getElementById(m.getAttribute('aria-describedby')) || {}).textContent || '')), 'and its message is read with it');
+    ok(/^Its window and everything in it are deleted\./.test(await page.locator('#modal').evaluate(m => (document.getElementById(m.getAttribute('aria-describedby')) || {}).textContent || '')), 'and its message is read with it');
     let seen = await press('Tab', 5);
     ok(inside(seen) && names(seen) === 'Cancel, Delete, Cancel, Delete, Cancel', `Tab goes round the dialog’s buttons and never out to the board behind it (${names(seen)})`);
     seen = await press('Shift+Tab', 5);
@@ -11206,7 +11308,7 @@ const SUITES = [
     await page.keyboard.type('Monday setup');
     await page.keyboard.down('Enter'); await hold(3);   // (it repeats at once: the keyboard is back on the button, which is still there until the version is saved)
     await page.keyboard.up('Enter');
-    await page.waitForSelector('.toast:has-text("Saved this version of the board.")');
+    await page.waitForSelector('.toast:has-text("Version saved.")');
     st = await state();
     ok(!st.open && await kept() === 1, 'Enter held in the name field saves the version once, and doesn’t press “Save this version now” again behind the dialog (which would ask again)');
     await page.keyboard.press('Escape');   // (closes Board history)
@@ -11664,16 +11766,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await B(() => Array.from(window.__board21.state.insts.keys()).filter(k => k.startsWith('21sketch:')).join()) === '21sketch:1' && await page.locator('.win[data-ikey="21sketch:1"]').count() === 1, 'closed, it opens again as the same window');
     ok(await page.locator('.toast', { hasText: '21Sketch closed. Open it again' }).count() === 1, 'closing it doesn’t claim the board saved its content');
 
-    // ---- The window menu: open it on its own; nothing to reset or go back to.
+    // ---- The window menu: open it in a new tab; nothing to reset or go back to.
     await page.click('.win[data-ikey="21sketch:1"] .win-label'); await page.waitForTimeout(250);
     await page.screenshot({ path: OUT + '90-district-apps-light.png' });
     const acts = await B(() => Array.from(document.querySelectorAll('#menu [data-act]')).map(b => b.dataset.act + ':' + b.textContent.trim()));
-    ok(JSON.stringify(acts) === JSON.stringify(['maximize:Fill the board', 'reload:Reload 21Sketch', 'own:Open 21Sketch on its own', 'close:Close']), 'its menu: Fill the board, “Reload 21Sketch”, “Open 21Sketch on its own”, Close (no Reset, no Earlier versions): ' + acts.join(', '));
+    ok(JSON.stringify(acts) === JSON.stringify(['maximize:Fill the board', 'reload:Reload 21Sketch', 'own:Open in new tab', 'close:Close']), 'its menu: Fill the board, “Reload 21Sketch”, “Open in new tab”, Close (no Reset, no Earlier versions): ' + acts.join(', '));
     const popup = ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null);
     await page.click('#menu [data-act="own"]');
     const pop = await popup;
     if (pop) await pop.waitForLoadState().catch(() => {});
-    ok(!!pop && pop.url() === APPS['21sketch'][1] && await pop.evaluate(() => window.opener === null), '“Open 21Sketch on its own” opens its site in a new tab, cut off from the board');
+    ok(!!pop && pop.url() === APPS['21sketch'][1] && await pop.evaluate(() => window.opener === null), '“Open in new tab” opens its site in a new tab, cut off from the board');
     if (pop) await pop.close();
     // A window that opened while its site couldn't be reached stays on the browser's error page: Reload loads it again.
     down.add('21timer');
@@ -11694,11 +11796,11 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const allNamed = t => Object.values(APPS).every(([name]) => t.includes(name));
     await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300);
     let said = await page.locator('#modal.open').innerText();
-    ok(allNamed(said) && /keep their own work: it isn’t erased here\. Clear it in each app itself\./.test(said), 'Erase everything says the apps keep their own work, which it doesn’t erase: ' + said.replace(/\n/g, ' '));
+    ok(allNamed(said) && /Work in 21Sketch, 21Timer and 21DocCam isn’t erased here\. Clear it in each app\./.test(said), 'Erase everything says the apps keep their own work, which it doesn’t erase: ' + said.replace(/\n/g, ' '));
     await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await page.click('.picker-btn.left'); await page.click('[data-ctl="export"]'); await page.waitForTimeout(300);
     said = await page.locator('#modal.open').innerText();
-    ok(allNamed(said) && /keep their own work: it isn’t in the file\. Save it in each app itself\./.test(said), 'so does Export: their work isn’t in the file');
+    ok(allNamed(said) && /Work in 21Sketch, 21Timer and 21DocCam isn’t in the file\. Save it in each app\./.test(said), 'so does Export: their work isn’t in the file');
     await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(200);
 
     // ---- Exports and Board history keep the window, never content.
@@ -11737,9 +11839,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await ctx.setOffline(true); await page.waitForTimeout(800);
     let s = await subs();
     ok(s['21sketch:1'] === 'Offline' && s['21timer:1'] === 'Offline' && s['21doccam:1'] === 'Offline' && s['dice:1'] === '', 'offline, each district app’s title bar says Offline (not other widgets’): ' + JSON.stringify(s));
-    const told = page.locator('.toast', { hasText: 'need a connection, unless they’re saved on this device for offline use' });
-    const toldText = await told.count() === 1 ? await told.innerText() : '';
-    ok(Object.values(APPS).every(([name]) => toldText.includes(name)) && / and /.test(toldText), 'and one toast says they need a connection unless they’re saved on this device for offline use: ' + toldText);
+    const told = page.locator('.toast', { hasText: 'work only if they’re saved on this device' });
+    const toldText = await told.count() === 1 ? await told.locator('span').innerText() : '';
+    ok(Object.values(APPS).every(([name]) => toldText.includes(name)) && / and /.test(toldText) && /^You’re offline\. .+ work only if they’re saved on this device\.$/.test(toldText), 'and one toast says you’re offline, and they work only if they’re saved on this device: ' + toldText);
     ok(await onTop('21sketch:1'), 'nothing covers the app (it may well work offline)');
     await page.screenshot({ path: OUT + '91-district-apps-offline.png' });
     await ctx.setOffline(false); await page.waitForTimeout(800);
@@ -11761,7 +11863,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
 
-    // ---- Kiosk on a flat panel (touch): one person draws in 21Sketch while another uses Dice; no “Open … on its own”
+    // ---- Kiosk on a flat panel (touch): one person draws in 21Sketch while another uses Dice; no “Open in new tab”
     // (a kiosk can’t open tabs).
     const kctx = await browser.newContext({ viewport: { width: 1280, height: 720 }, hasTouch: true });
     await standIns(kctx);
@@ -11810,7 +11912,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await a.reload(); await a.waitForTimeout(1500);
     ok(await a.frameLocator('.win[data-ikey="notes:1"] iframe').locator('textarea').inputValue() === 'from disk', 'content persists when opened from disk');
     await openSettings(a, ['advanced']);
-    ok((await a.locator('#st-persist').textContent()).includes('Not available') && !(await a.locator('#st-persist-hint').textContent()).includes('address bar'), 'data-protection status is accurate for a copy opened from a file');
+    ok((await a.locator('#st-persist').textContent()).includes('Unavailable') && !(await a.locator('#st-persist-hint').textContent()).includes('address bar'), 'data-protection status is accurate for a copy opened from a file');
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
     await openSettings(a, ['about']);
     ok((await a.locator('#settings .about').innerText()).startsWith(`21Board ${/const VERSION = '([^']+)'/.exec(sw)[1]} (${/const BUILD = '([0-9a-f]{8})'/.exec(sw)[1]}) · `), 'Settings → About names the release and build there too, where there is no offline copy to ask');
@@ -12196,7 +12298,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     // ---- Settings → Classroom: the switch, with how to unlock.
     await page.click('.picker-btn.left'); await page.click('[data-ctl="settings"]'); await page.waitForTimeout(300);
     const row = await B(() => { const b = document.querySelector('#settings [data-act="lock-windows"]'), r = b && b.closest('.row'); let h = r && r.previousElementSibling; while (h && h.tagName !== 'H3') h = h.previousElementSibling; return b && { on: b.getAttribute('aria-checked'), role: b.getAttribute('role'), text: r.textContent, section: h && h.textContent }; });
-    ok(row && row.section === 'Classroom' && row.role === 'switch' && row.on === 'false' && /^Lock windows in place/.test(row.text) && /hold .*for 2 seconds/.test(row.text), `Settings → Classroom has “Lock windows in place”, off, saying how to unlock (${row && row.text})`);
+    ok(row && row.section === 'Classroom' && row.role === 'switch' && row.on === 'false' && /^Lock windows in place/.test(row.text) && /Widgets still work\. Hold .*for 2 seconds to unlock\./.test(row.text), `Settings → Classroom has “Lock windows in place”, off, saying how to unlock (${row && row.text})`);
     await page.click('#settings [data-act="lock-windows"]'); await page.waitForTimeout(300);
     ok(await B(() => window.__board21.state.settings.locked === true && document.body.classList.contains('windows-locked') && document.querySelector('#settings [data-act="lock-windows"]').getAttribute('aria-checked') === 'true'), 'turning it on locks the windows (saved in the settings)');
     ok(await B(() => ['left', 'right'].every(s => document.querySelector(`.picker-btn.${s} .lock-badge svg`))), 'a padlock shows on both ▦ buttons');
@@ -12252,7 +12354,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.keyboard.press('Escape');
     await page.click('.win[data-ikey="21timer:1"] .win-label'); await page.waitForTimeout(250);
     m = await menu();
-    ok(m.open && m.acts.join() === 'reload,own' && /locked/.test(m.note), `a district app keeps Reload and Open … on its own (${m.items.join(', ')})`);
+    ok(m.open && m.acts.join() === 'reload,own' && /locked/.test(m.note), `a district app keeps Reload and Open in new tab (${m.items.join(', ')})`);
     await page.keyboard.press('Escape');
 
     // ---- A widget's own calls: close, fill and restore are refused; setMinSize and setSize still work.
@@ -12803,7 +12905,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       document.querySelectorAll('.save-note, .folder-note').forEach(b => { b.hidden = false; b.innerHTML = '<span class="status-dot warn"></span>' + (b.classList.contains('save-note') ? 'Not saved' : 'Reconnect folder'); b.style.bottom = b.classList.contains('folder-note') ? 'calc(132px + env(safe-area-inset-bottom))' : ''; });
       document.querySelectorAll('#toasts .toast').forEach(t => t.remove());
       const t = document.createElement('div'); t.className = 'toast';
-      t.innerHTML = '<span>21Board can’t close itself right now. Your board is saved. To leave, restart the device or ask your school’s IT.</span><button>Undo</button>';
+      t.innerHTML = '<span>21Board can’t close itself. Your board is saved. To leave, restart the device or ask your school’s IT.</span><button>Undo</button>';
       document.getElementById('toasts').appendChild(t);
     });
     const report = [];
@@ -12822,12 +12924,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(300);
     await openSettings(page, ['advanced']);
     const fit = await page.locator('#set-clock-fit').textContent(), only = (await cornerClock(page)).text;
-    ok(fit === 'Only the time fits in this window right now.' && /^\d{1,2}:\d\d[AP]M$/.test(only), `at 200% on 1366×768, On shows the time only (${only}), and Settings says so (${fit})`);
+    ok(fit === 'Only the time fits in this window.' && /^\d{1,2}:\d\d[AP]M$/.test(only), `at 200% on 1366×768, On shows the time only (${only}), and Settings says so (${fit})`);
     await page.keyboard.press('Escape');
     await page.setViewportSize({ width: 480, height: 800 }); await page.evaluate(() => window.__board21.setBoardScale(0.8)); await page.waitForTimeout(300);
     await openSettings(page, ['advanced']);
     const none = await page.locator('#set-clock-fit').textContent();
-    ok(none === 'There isn’t room for it in this window right now.' && !(await cornerClock(page)).shown, `in a window too narrow for it, Settings says so (${none})`);
+    ok(none === 'Not enough room in this window.' && !(await cornerClock(page)).shown, `in a window too narrow for it, Settings says so (${none})`);
     await page.keyboard.press('Escape');
     // The shape tip never sits under it.
     for (const [w, h, sc] of [[1100, 400, 1.5], [1600, 600, 2], [600, 800, 2], [800, 720, 1.5], [1000, 900, 2], [1000, 820, 0.8]]) {
@@ -13216,7 +13318,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       `Settings → Appearance → Text style: Standard, Easier to read, Early readers; Standard is chosen (${opts.map(o => o.val + ':' + o.on).join(' ')})`);
     ok(opts[0].font === SYSTEM && opts[1].font.startsWith('"Atkinson Hyperlegible"') && opts[2].font.startsWith('"21Board Early Readers"') && opts.every(o => o.text.includes('Il1 0 ag')),
       'each choice is shown in its own letters, with a sample of the look-alikes and a 0');
-    ok(/I,\u00a0l\u00a0and\u00a01 all look different, and 0 has a line through it\./.test(opts[1].text), `Easier to read says its 0 has a line through it, as on every clock and timer (${opts[1].text})`);
+    ok(/low vision\. I,\u00a0l\u00a0and\u00a01 look different, and 0 has a line through it\./.test(opts[1].text), `Easier to read says its 0 has a line through it, as on every clock and timer (${opts[1].text})`);
     await page.screenshot({ path: OUT + 'letters-settings.png' });
 
     for (const key of ['legible', 'early']) {
@@ -13519,7 +13621,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     let L = await label();
     const time = await page.evaluate(at => new Date(at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }), at);
     ok(!L.hidden && L.text === `Copy · ${time}` && L.sub === '', `the copy label is in its own span, short ("${L.text}"), and .sub is the widget’s own`);
-    ok(L.title === `The laptop’s version from ${time}, kept because this window was changed on two devices at once.`, `its title says whose version it is (“${L.title}”)`);
+    ok(L.title === `The laptop’s version from ${time}. This window was changed on two devices at once.`, `its title says whose version it is (“${L.title}”)`);
     ok(L.aria === `Notes 2, the laptop’s version from ${time}, window menu`, `and so does the window name’s label (“${L.aria}”)`);
     await page.reload(); await boardUp(page); await settle(800);
     L = await label();
@@ -13807,7 +13909,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(/typed just before/.test(await notesText(B.p)), 'the smartboard, which stays on that folder, gets that work');
       const st = await B.p.evaluate(() => window.__board21.link.status());
       ok(!/Shared with the laptop/.test(st), `and stops listing the laptop as sharing it (${st})`);
-      ok(/The laptop stopped syncing through this folder at \d/.test(st) && !/has synced yet/.test(st), `and says the laptop stopped syncing through this folder, and when (${st})`);
+      ok(/The laptop stopped syncing through this folder at \d/.test(st) && !/No other devices yet/.test(st), `and says the laptop stopped syncing through this folder, and when (${st})`);
       await syncWaits(A.p);
       await A.p.evaluate(() => { window.__drive = { pick: '21Board' }; });
       await openSettings(A.p); await A.p.click('#settings [data-act="link-choose"]');
@@ -13832,7 +13934,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await A.p.evaluate(() => { window.__drive = { pick: 'Room 14/21Board' }; });
       await openSettings(A.p); await A.p.click('#settings [data-act="link-choose"]');
       const said = await lastStep(A.p);
-      ok(/This device’s other pages are still in the “21Board” folder this device used before, and under Board history › Deleted pages for 30 days\./.test(said), `the last step: “…the “21Board” folder this device used before…” (${said})`);
+      ok(/This device’s other pages are still in the “21Board” folder this device used before\. They’re also in Board history › Deleted pages for 30 days\./.test(said), `the last step: “…the “21Board” folder this device used before…” (${said})`);
       await done(A.p);
       // (the page shown then goes here at the round after another page is shown)
       await eventually(async () => !Object.values(await shownBoard(A.p)).some(p => p.name === 'Main') && (await A.p.evaluate(() => window.__labels)).length > 0, 10000);
@@ -14104,14 +14206,14 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await typeNote(B.p, nB, 'Homework: page 21 (smartboard)'); await syncNow(B.p);
     await deliver(A.p, B.p); await syncNow(B.p);
     await deliver(B.p, A.p); await syncNow(A.p);
-    ok((await copiesOf(A.p)).length === 1 && await toastOf(A.p, 'at once, so both versions are kept').locator('button', { hasText: 'Undo' }).count() === 1, 'the laptop, whose text lost, keeps it as a copy, and offers Undo (a swap)');
+    ok((await copiesOf(A.p)).length === 1 && await toastOf(A.p, 'at once. Both versions are kept').locator('button', { hasText: 'Undo' }).count() === 1, 'the laptop, whose text lost, keeps it as a copy, and offers Undo (a swap)');
     // (the label the round gives Board history, as the round passes it: see the same-name test above)
     await B.p.evaluate(() => { const H = window.__board21.history, bm = H.beforeMerge.bind(H); window.__labels = []; H.beforeMerge = function (pages, label, hist) { window.__labels.push(label); return bm(pages, label, hist); }; });
     await fresh(B.p); await deliver(A.p, B.p); await syncNow(B.p);
-    ok((await heard(B.p)).includes('Notes was changed here and on the laptop at once, so both versions are kept.'), `the smartboard says both versions are kept (${(await heard(B.p)).join(' | ')})`);
+    ok((await heard(B.p)).includes('Notes was changed here and on the laptop at once. Both versions are kept.'), `the smartboard says both versions are kept (${(await heard(B.p)).join(' | ')})`);
     const labels3 = await B.p.evaluate(() => window.__labels);
     ok(labels3.includes('Before changes from the laptop') && !labels3.some(l => / from $/.test(l)), `the version before it, made when only the copy arrived, is “Before changes from the laptop” (${JSON.stringify(labels3)})`);
-    ok(await toastOf(B.p, 'at once, so both versions are kept').locator('button').count() === 0, 'with no Undo: there is nothing it wrote here to undo');
+    ok(await toastOf(B.p, 'at once. Both versions are kept').locator('button').count() === 0, 'with no Undo: there is nothing it wrote here to undo');
     await exchange(A, B);
     for (const x of await copiesOf(A.p)) await A.p.evaluate(ik => window.__board21.deleteInstance(ik, { history: false }), x.ikey);
     await A.p.waitForTimeout(400); await exchange(A, B);
@@ -14143,7 +14245,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await openSettings(B.p); await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(400); await B.p.keyboard.press('Escape');
     ok(await B.p.evaluate(() => !!window.__board21.state.settings.locked) && await toastOf(B.p, 'Updated from the laptop.').locator('button').count() === 0, 'windows locked: the Undo goes');
     await hear(B.p); await B.p.evaluate(() => window.__board21.mergeUI.undo([{ key: 'x', rev: 1, prev: null }], [], ['laptopxxxxxx']));
-    ok((await heard(B.p)).includes('Windows are locked. Board history has the earlier version.'), 'an Undo tapped while locked says so');
+    ok((await heard(B.p)).includes('Windows are locked. Find the earlier version in Board history.'), 'an Undo tapped while locked says so');
     await openSettings(B.p); await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(400); await B.p.keyboard.press('Escape');
 
     // UX-4: a plain "Updated from …" gets a new message at most once a LINK_TOAST_MS, even after the one shown went.
@@ -14182,7 +14284,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await go(B.p, 'Math'); await go(A.p, 'Morning');
     await openSettings(B.p); await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(400); await B.p.keyboard.press('Escape');
     await fresh(B.p); await dropPages(A.p, ['Math']); await syncNow(A.p); await deliver(A.p, B.p);
-    ok(await eventually(async () => { await syncNow(B.p); return (await heard(B.p)).includes('“Math” was deleted on the laptop. Board history › Deleted pages has it.'); }, 15000), 'locked: “… Board history › Deleted pages has it.”');
+    ok(await eventually(async () => { await syncNow(B.p); return (await heard(B.p)).includes('“Math” was deleted on the laptop. Find it in Board history › Deleted pages.'); }, 15000), 'locked: “… Find it in Board history › Deleted pages.”');
     const now12 = await B.p.evaluate(async () => { window.__board21.historySheet.open('left'); await new Promise(r => setTimeout(r, 1500)); const h = document.getElementById('history'); const out = Array.from(h.querySelectorAll('.inst-list .inst')).map(e => e.innerText.replace(/\s+/g, ' ')).filter(t => /“Math” · deleted/.test(t)); return out; });
     ok(now12.length === 1, `and Board history › Deleted pages lists it at once (${JSON.stringify(now12)})`);
     await B.p.locator('#history .inst', { hasText: '“Math” · deleted' }).locator('button', { hasText: 'Bring back' }).click();
@@ -14309,7 +14411,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       `Settings open on the smartboard shows Dark and Green chosen (the swatches in their dark shades), with the keyboard where it was and the same scroll (${JSON.stringify(sb)}; was ${top0})`);
     const quiet = await B.p.evaluate(() => { clearInterval(window.__poll); return { drawn: window.__drawn, ys: Array.from(new Set(window.__ys)), lines: window.__lines }; });
     ok(quiet.drawn === 0 && quiet.ys.length === 1, `put in place: Settings isn’t drawn again, and its rows don’t move (${quiet.drawn} drawings; y ${quiet.ys.join(' → ')})`);
-    ok(quiet.lines.every(t => /^Up to date\. .*Shared with the laptop \(last change at /.test(t)), `the grey line goes on saying “Up to date…”, with the laptop’s last change (${quiet.lines.join(' | ')})`);
+    ok(quiet.lines.every(t => /^Up to date\. .*Shared with the laptop\. Last change at /.test(t)), `the grey line goes on saying “Up to date…”, with the laptop’s last change (${quiet.lines.join(' | ')})`);
     const fileA = await ownJSON(A.p), devA = await A.p.evaluate(() => window.__board21.link.dev());
     ok(fileA.theme === 'dark' && fileA.accent === 'green' && fileA.sync.style.theme[0] === devA && fileA.sync.style.accent[0] === devA, `the laptop’s file has them, and their versions (${JSON.stringify(fileA.sync.style)})`);
 
@@ -14577,7 +14679,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await deliver(A.p, B.p); await syncNow(B.p);
       ok(await names(B.p) === 'Morning', `(the smartboard deletes Math: ${await names(B.p)})`);
       const s = await change(A.p, 'Room 14', 'link-setup');
-      ok(/This device’s other pages are still in your “21Board” folder, except “Math”, which was deleted there\. All of them are under Board history › Deleted pages for 30 days\./.test(s), `the last step says Math was deleted in 21Board (“${s}”)`);
+      ok(/This device’s other pages are still in your “21Board” folder\. “Math” was deleted there\. All of them are in Board history › Deleted pages for 30 days\./.test(s), `the last step says Math was deleted in 21Board (“${s}”)`);
       await A.c.close(); await B.c.close(); await C.c.close();
     }
     ok(!errors.length, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));

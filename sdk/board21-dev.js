@@ -164,15 +164,15 @@
     var doc = info.doc;
     var code = Array.prototype.map.call(doc.querySelectorAll('script:not([src])'), function (s) { return s.type === 'application/json' ? '' : s.textContent; }).join('\n');
     var add = function (level, title, detail, fix) { out.push({ level: level, title: title, detail: detail || '', fix: fix || '' }); };
-    if (!info.manifest) add(info.widget.fromRegistry ? 'info' : 'warn', 'No manifest block', 'The dev window guessed the window size and name' + (info.widget.fromRegistry ? ' (from widgets/registry.js)' : '') + '.',
+    if (!info.manifest) add(info.widget.fromRegistry ? 'info' : 'warn', 'No manifest block', 'The dev window guessed the window’s size and name' + (info.widget.fromRegistry ? ' from widgets/registry.js' : '') + '.',
       'Add near the top of <head>: <script type="application/json" id="board21-widget">{"id": "' + info.widget.id + '", "name": "' + info.widget.name + '", "version": "1.0.0", "window": {"width": 400, "height": 300, "minWidth": 200, "minHeight": 150}}</script>');
     else if (!ID_RE.test(info.manifest.id || '')) add('warn', 'The manifest has no valid "id"', 'An id is lowercase letters, digits and dashes, e.g. "seating-chart".', 'Set "id" in the board21-widget manifest block to a short lowercase name with dashes.');
     var scripts = doc.querySelectorAll('script[src]');
     var sdkFirst = false;
     for (var i = 0; i < doc.scripts.length; i++) { var s = doc.scripts[i]; if (s.type === 'application/json') continue; sdkFirst = !!(s.src && /board21(\.min)?\.js/.test(s.getAttribute('src'))); break; }
-    if (!info.sdkFound) add('err', 'The 21Board SDK isn’t loaded', 'The dev window added it for this test.', 'Add <script src="' + sdkUrl + '"></script> as the first script in <head>, before any other script.');
-    else if (!sdkFirst) add('warn', 'The SDK isn’t the first script', 'Scripts before it run before the dev window starts (and run twice).', 'Move the 21Board SDK <script> tag so it is the first script in <head>.');
-    if (!/^\s*(<!--[\s\S]*?-->\s*)*<!doctype html>/i.test(src)) add('warn', 'No <!DOCTYPE html> at the top', 'Without it the board draws the widget in an old compatibility mode (sizes and spacing can differ), which this window can’t show.', 'Make <!DOCTYPE html> the very first line of the file.');
+    if (!info.sdkFound) add('err', 'The 21Board SDK isn’t loaded', 'The dev window added it for this test.', 'Add <script src="' + sdkUrl + '"></script> as the first script in <head>.');
+    else if (!sdkFirst) add('warn', 'The SDK isn’t the first script', 'Scripts before it run before the dev window starts, then again inside it.', 'Make the 21Board SDK <script> the first script in <head>.');
+    if (!/^\s*(<!--[\s\S]*?-->\s*)*<!doctype html>/i.test(src)) add('warn', 'No <!DOCTYPE html> at the top', 'Without it, the board draws the widget in quirks mode, where sizes and spacing can differ. This window can’t show that.', 'Make <!DOCTYPE html> the first line of the file.');
     var hosts = {};
     Array.prototype.forEach.call(doc.querySelectorAll('[src], link[href]'), function (n) {
       var u = n.getAttribute('src') || n.getAttribute('href') || '';
@@ -180,13 +180,13 @@
     });
     (code.match(/https?:\/\/[^\s'")]+/g) || []).forEach(function (u) { if (!/board21/.test(u)) hosts[u.replace(/^https?:\/\//, '').split('/')[0]] = 1; });
     var hl = Object.keys(hosts);
-    if (hl.length) add('warn', 'Loads files from the internet: ' + hl.join(', '), '21Board works offline on the smartboard, so a widget must bring everything it needs (no CDN libraries, web fonts or placeholder images).',
-      'Remove every external file (' + hl.join(', ') + '). Write the CSS yourself instead of a CSS framework, use system fonts, and draw images with inline SVG.');
-    if (/\b(localStorage|sessionStorage|indexedDB)\b|document\.cookie/.test(code)) add('warn', 'Stores data itself', 'Saving with localStorage, sessionStorage, IndexedDB or cookies skips 21Board: no sync between tabs, no backups, and data is shared by every window of the widget.',
+    if (hl.length) add('warn', 'Loads files from the Internet: ' + hl.join(', '), '21Board works offline, so a widget must bring everything it needs. No CDN libraries, web fonts or placeholder images.',
+      'Remove every external file: ' + hl.join(', ') + '. Write your own CSS instead of using a framework, use system fonts, and draw images with inline SVG.');
+    if (/\b(localStorage|sessionStorage|indexedDB)\b|document\.cookie/.test(code)) add('warn', 'Stores data itself', 'localStorage, sessionStorage, IndexedDB and cookies bypass 21Board. The data won’t sync or be backed up, and every window of the widget shares it.',
       'Replace localStorage/sessionStorage/IndexedDB with Board21.save(data) and Board21.saveConfig(config); load with const ctx = await Board21.ready() and ctx.data / ctx.config.');
-    if (/\b(alert|confirm|prompt)\s*\(/.test(code)) add('warn', 'Uses alert(), confirm() or prompt()', 'These block the whole board, and AI previews often block them.', 'Replace alert/confirm/prompt with a small message or confirmation shown inside the widget.');
+    if (/\b(alert|confirm|prompt)\s*\(/.test(code)) add('warn', 'Uses alert(), confirm() or prompt()', 'They freeze the whole board, and AI previews often don’t allow them.', 'Replace alert/confirm/prompt with a small message or confirmation shown inside the widget.');
     if (doc.querySelector('[autofocus]')) add('info', 'Has autofocus', 'Opening the widget would steal the keyboard from whatever the teacher is using.', 'Remove the autofocus attribute.');
-    if (/type=["']text\/babel["']|\bimport\s+React\b|from\s+["']react["']/.test(src)) add('err', 'Uses React/JSX', 'Widgets are one plain HTML file with no build step.', 'Rewrite as a single HTML file with plain JavaScript (no React, JSX or build step).');
+    if (/type=["']text\/babel["']|\bimport\s+React\b|from\s+["']react["']/.test(src)) add('err', 'Uses React/JSX', 'Widgets are one plain HTML file with no build step.', 'Rewrite as a single HTML file in plain JavaScript, with no React, JSX or build step.');
     if (code && !/Board21\.(ready|load)\b/.test(code)) add('warn', 'Never calls Board21.ready()', 'The widget can’t get its saved data, theme or size without it.', 'Start the widget with const ctx = await Board21.ready(); then render ctx.data.');
     if (/Board21\.save\s*\(/.test(code) && !/on\(\s*["']data["']/.test(code)) add('info', 'Doesn’t listen for "data"', 'If the board is open in two tabs, or a backup is imported, this widget keeps showing old content.', 'Add Board21.on("data", data => render(data)) so changes made elsewhere show up.');
     if (lastMenu) {
@@ -202,7 +202,7 @@
         if (it.icon && !/^\s*<svg/i.test(it.icon)) add('info', 'A menu icon isn’t an <svg>', 'The board drops icons that aren’t inline SVG.', 'Use an inline <svg> string for menu icons, or none.');
       });
     }
-    if (!out.length) add('ok', 'No problems found', 'These checks look for common problems. Also try resizing the window and the theme.', '');
+    if (!out.length) add('ok', 'No problems found', 'These checks catch common problems. Also try resizing the window and changing the theme.', '');
     return out;
   }
 
@@ -252,15 +252,15 @@
       '<div class="foot" aria-live="polite"></div>' +
       '<div class="pop" hidden role="menu">' +
         '<button data-act="reload">Reload the widget</button>' +
-        '<button data-act="reset">Reset the window (default size, no data)</button>' +
-        '<button data-act="open2">Open another copy (instance 2)</button>' +
-        '<button data-act="shape">Board shape: Fill / Widescreen</button>' +
+        '<button data-act="reset">Reset size and data</button>' +
+        '<button data-act="open2">Open another window</button>' +
+        '<button data-act="shape">Switch board shape</button>' +
         '<hr>' +
         '<button data-act="bare">Show the widget on its own</button>' +
-        '<button data-act="copy21">Copy for 21Board (HTML + registry entry)</button>' +
+        '<button data-act="copy21">Copy for 21Board</button>' +
         '<button data-act="help">How this works</button>' +
       '</div>' +
-      '<div class="barewrap" hidden><div class="bar"><span class="brand"><i>21</i></span><span class="muted">The widget on its own (standalone: data in this browser\u2019s storage, window calls ignored)</span><span class="grow"></span><button class="btn primary" data-act="unbare">Back to the window</button></div></div>' +
+      '<div class="barewrap" hidden><div class="bar"><span class="brand"><i>21</i></span><span class="muted">The widget on its own. Data stays in this browser, and window calls do nothing.</span><span class="grow"></span><button class="btn primary" data-act="unbare">Back to the window</button></div></div>' +
       '<aside class="drawer" hidden aria-label="Dev window panel"><div class="dhead"><h2></h2><button class="btn" data-act="close-drawer" aria-label="Close panel">✕</button></div><div class="dbody"></div></aside>';
 
     var $ = function (sel) { return root.querySelector(sel); };
@@ -407,7 +407,7 @@
       var scr = screenSize();
       parts.push('screen ' + scr.w + ' × ' + scr.h + ' · size ' + Math.round(st.scale * 100) + '%');
       var mem = st.storage === 'memory';
-      parts.push('<span class="chip' + (mem ? ' mem' : '') + '" title="' + (mem ? 'This page blocks storage: saved data lasts until it reloads. Data ▸ Copy keeps it.' : 'A test board: kept in this browser, apart from real boards.') + '">' +
+      parts.push('<span class="chip' + (mem ? ' mem' : '') + '" title="' + (mem ? 'This page blocks storage, so saved data lasts until it reloads. Data ▸ Copy keeps it.' : 'A test board, kept in this browser apart from real boards.') + '">' +
         (mem ? 'Test data lasts until this page reloads' : st.storage ? 'Test data, kept apart from real boards' : 'Starting…') + '</span>');
       foot.innerHTML = parts.join(' · ');
     }
@@ -437,14 +437,14 @@
       foot.innerHTML = '<b>' + esc(text) + '</b>';
       setTimeout(function () { foot.innerHTML = old; renderFoot(); }, 1600);
     }
-    var COPYBOX = '<div class="copybox" hidden><span class="muted">Copying isn’t allowed here: select it and copy (Ctrl+C / ⌘C).</span><textarea readonly></textarea></div>';
+    var COPYBOX = '<div class="copybox" hidden><span class="muted">Copying is blocked here. Select the text and press Ctrl+C or ⌘C.</span><textarea readonly></textarea></div>';
     function renderDrawer() {
       var h = $('.dhead h2'), b = $('.dbody');
       if (st.drawer === 'data') {
         h.textContent = 'Saved data';
         var s = st.state, insts = s ? s.instances.filter(function (i) { return i.open; }) : [];
         var cur = insts.filter(function (i) { return i.ikey === (st.ikey || s.focused); })[0] || insts[0];
-        if (!cur) { b.innerHTML = '<p class="muted">No open window.</p>'; return; }
+        if (!cur) { b.innerHTML = '<p class="muted">No window is open. Open one from ▦ on the board.</p>'; return; }
         st.ikey = cur.ikey;
         var focused = document.activeElement === host && root.activeElement && root.activeElement.tagName === 'TEXTAREA';
         if (focused) return;   // don't replace what's being typed
@@ -457,7 +457,7 @@
       } else if (st.drawer === 'events') {
         h.textContent = 'Events';
         b.innerHTML = '<div class="row"><label style="font-weight:400"><span><input type="checkbox" data-k="hidewin"> Hide size changes</span></label><span class="grow"></span><button class="btn" data-act="copy-events">Copy</button><button class="btn" data-act="clear-events">Clear</button></div>' +
-          '<p class="muted" style="margin:0">Every message between the widget and the board. Tap one for its details. Errors from the widget are red (they are also in the console as “[widget]”).</p>' +
+          '<p class="muted" style="margin:0">Every message between the widget and the board. Tap one for details. Widget errors are red, and also in the console as “[widget] …”.</p>' +
           '<div class="ev"></div>' + COPYBOX;
         st.events.forEach(appendEvent);
         b.scrollTop = b.scrollHeight;
@@ -471,9 +471,9 @@
       } else if (st.drawer === 'help') {
         h.textContent = 'How this works';
         b.innerHTML = '<div class="help">' +
-          '<p>This is the real 21Board, running a test board with your widget in an ordinary window, drawn as if on a ' + esc((SCREENS.filter(function (x) { return x.id === st.screen; })[0] || SCREENS[0]).label.toLowerCase()) + ' and scaled to fit here.</p>' +
-          '<p><b>Try it like a teacher:</b> drag the title bar, tap the window to show its resize handles and drag them, tap the name (⌄) for the menu, double-tap the title bar to fill the board. The ▦ buttons in the bottom corners open the Widget Picker (another copy) and Settings (theme, accent, size).</p>' +
-          '<p><b>Saved data</b> is a test copy, kept apart from real boards. In AI previews it usually lasts until the preview reloads: use Data ▸ Copy to keep it.</p>' +
+          '<p>This is the real 21Board. Your widget is in an ordinary window on a test board, ' + (st.screen === 'pane' ? 'the size of this pane' : 'drawn as on a ' + esc((function (s) { return s.id === 'chromebook' ? s.label : s.label.toLowerCase(); })(SCREENS.filter(function (x) { return x.id === st.screen; })[0] || SCREENS[0])) + ' and scaled to fit') + '.</p>' +
+          '<p><b>Try it like a teacher.</b> Drag the title bar. Tap the window, then drag its handles to resize it. Tap its name for the menu. Double-tap the title bar to fill the board. ▦ in a bottom corner opens the Widget Picker and Settings. Open another window there, or change the theme, accent and size.</p>' +
+          '<p><b>Saved data</b> is a test copy, kept apart from real boards. In AI previews it usually lasts only until the preview reloads. Data ▸ Copy keeps it.</p>' +
           '<p><b>Just the widget:</b> ⋯ ▸ Show the widget on its own, or add <code>#b21-bare</code> to the address.</p>' +
           '<p>The widget’s errors also appear in this page’s console as “[widget] …”. The SDK must be the first script in &lt;head&gt; for this window to appear.</p>' +
           '<p class="muted">21Board dev window ' + VERSION + '. Reference: docs/WIDGET-SDK.md.</p></div>';
@@ -524,7 +524,7 @@
             var ta = $('[data-k="' + k + '"]'), txt = ta.value.trim();
             try { var v = txt ? JSON.parse(txt) : null; ta.classList.remove('bad'); send('setData', { ikey: st.ikey, kind: k, value: v }); } catch (err) { ok = false; ta.classList.add('bad'); }
           });
-          flash(ok ? 'Sent to the widget' : 'That isn’t valid JSON');
+          flash(ok ? 'Sent to the widget' : 'That isn’t valid JSON. Fix the red box.');
           break;
         }
         case 'copy-data': {
