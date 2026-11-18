@@ -47,9 +47,10 @@ the host:
      `.gitattributes`, `.gitignore`, `README.md`, `docs/`, `tests/`, `tools/`, `widgets/_template/`, and
      anything git ignores (`node_modules/`, `.DS_Store`).
    - **Everything else must be there:** `index.html`, `board.js`, `sw.js`, `manifest.webmanifest`, `icons/`,
-     `fonts/` (the `-OFL.txt` licences too), `sdk/` (the lab and the dev window too), `widgets/registry.js`
-     and every other folder in `widgets/`. These are the files listed in `sw.js`, and a device saves its
-     offline copy only if every one of them arrives. One missing file means no device can work offline.
+     `LICENSE`, `LICENSE-DOCS`, `fonts/` (the `-OFL.txt` licences too), `sdk/` (the lab and the dev window too),
+     `widgets/registry.js` and every other folder in `widgets/`. These are the files listed in `sw.js`, and a
+     device saves its offline copy only if every one of them arrives. One missing file means no device can work
+     offline.
 
 On the host: serve `manifest.webmanifest` as `application/manifest+json` (most servers already do), and
 preferably `sw.js` with `Cache-Control: no-cache`. The host must serve the files exactly as they are in the
@@ -67,7 +68,7 @@ What devices do with a release:
   time 21Board starts (after every tab or the app was closed; in a kiosk, after Quit or a restart). Until
   then a dot stays on the ▦ buttons and on the Settings gear, and Settings opens with *A new version is ready*
   and *Update now* at the top.
-- **Settings → Advanced**, at the bottom, shows the release the device is really running, name and build, e.g.
+- **Settings → About** shows the release the device is really running, name and build, e.g.
   `21Board 2026.11.12-1 (3fa9c1d2)`. Exported files carry the same text. That is the answer to “which version
   are you on?”.
 - If files are uploaded **without a new stamp** (step 2 forgotten), devices that already have 21Board keep
@@ -107,7 +108,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Board history** | Undo a big change, or recover after a “disaster” (a curious student): Settings → Classroom → **Board history…** opens the earlier versions of the board as a column beside Settings; tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board (and can itself be undone); *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. With every window closed, the empty board offers *Go back to an earlier version*; each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | Add `?kiosk=yes` to the address for a ChromeOS kiosk (no sign-in): no Full screen or Board Sync, and a red ✕ Quit after the Settings gear. See [Kiosk mode](#kiosk-mode-chromeos-kiosk-no-sign-in). |
 | **Multiple tabs** | If 21Board is open in several tabs/windows on the same computer, they stay in sync automatically. |
-| **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → Advanced shows the version in use. |
+| **Updates** | When a new version of 21Board is ready, a message offers *Update* (a second or two; the board and its content stay as they are) or *Later*. Left alone, the new version takes over by itself the next time 21Board starts; until then, *Update now* is at the top of Settings (a dot on ▦ and on the Settings gear shows it). Settings → About shows the version in use. |
 
 ### Settings
 
@@ -174,7 +175,8 @@ Settings opens.
     offline, whether the browser has agreed to protect its data (*Protected storage*, with an *Install app* button
     when that would help), storage used, kiosk mode, and *Erase everything* (every page).
   - **Developer:** Developer mode (SDK Playground, test an unregistered widget by uploading its file).
-  - **About:** the version this device is running (release name and build), to read out to IT.
+- **About ▸** shows the version on its row. Inside: the 21 gear, who made 21Board, the version, where your work is
+  stored, the licenses in full, credits and the goat. The widget dev window shows only the version.
 
 (Patterns behind the board, Dots to Graph paper, are switched off for now: each page keeps its choice, and
 uncommenting the parts marked "Patterns" in `board.js` and `index.html` brings them back.)
@@ -188,7 +190,7 @@ index.html              Board shell: markup + all CSS
 board.js                Board shell logic (storage, sync, windows, picker, settings, export/import)
 sw.js                   Service worker (offline copy, updates)  ← bump VERSION, run tools/release.js
 manifest.webmanifest    PWA manifest (also lets the installed app open .21board files in Chrome)
-icons/                  21Board's app icons (192 and 512 px)
+icons/                  App icons (192 and 512 px), the 21 gear and the goat (Settings → About)
 fonts/                  Easier-to-read fonts (Settings → Appearance → Text style): part of the offline copy, used only once chosen
 sdk/board21.js          The SDK every widget includes (window.Board21)
 sdk/board21-dev.js      The widget dev window: a widget opened outside 21Board runs in the real board

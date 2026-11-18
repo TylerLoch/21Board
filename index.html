@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="2ac242fc">
+<html lang="en" data-build="e55d03d8">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -582,7 +582,21 @@
     .empty-note { font-size: 13px; color: var(--muted); padding: 6px 0; }
     .status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--muted); }
     .status-dot.ok { background: #16a34a; } .status-dot.warn { background: #d97706; }
+    /* Settings → About (aboutSettings in board.js): the 21 gear, the team's line and the release, centred; then License
+       (each license's text opens in place, in paragraphs) and Credits; the goat last. The pictures are shown as they
+       are, light and dark alike, at a set size. */
     .about { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .about-top { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 0 4px; text-align: center; }
+    .about-gear { display: block; width: 88px; height: 88px; }
+    .about-made { max-width: 30em; font-size: 14px; font-weight: 500; line-height: 1.45; text-wrap: balance; }
+    .about-line { margin: 4px 0 2px; font-size: 13px; line-height: 1.5; color: var(--muted); }
+    .about-credits { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; list-style: none; font-size: 13px; line-height: 1.45; color: var(--muted); }
+    .about-credits b { font-weight: 600; color: var(--text); }
+    .about-credits span { display: block; }   /* (a font's license, on a line of its own) */
+    .about-goat { display: block; width: 96px; height: auto; margin: 24px auto 6px; }
+    .license-text { font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
+    .license-text p + p { margin-top: 8px; }
+    .license-text .hint { margin: 0; }
 
     /* -------------------------------------------------------------- Modal */
     #modal { position: fixed; inset: 0; z-index: 2000; display: none; align-items: center; justify-content: center; padding: 16px; background: rgba(0, 0, 0, .45); }

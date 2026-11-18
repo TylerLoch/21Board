@@ -1722,8 +1722,8 @@ const SUITES = [
       last: document.querySelector('#settings .sheet-body').lastElementChild.id, name: document.querySelectorAll('#set-board-name').length,
       missing: ['st-offline', 'st-persist', 'st-storage', 'st-backup', 'st-version', 'st-scale'].filter(id => !document.getElementById(id)) }));
     let sh = await shape();
-    ok(sh.heads.join() === 'Board Sync,Classroom,This page,Appearance' && sh.last === 'grp-advanced' && sh.theme === 'Auto',
-      `Settings: ${sh.heads.join(', ')}, then Advanced at the bottom; Theme shows Auto`);
+    ok(sh.heads.join() === 'Board Sync,Classroom,This page,Appearance' && sh.last === 'grp-about' && sh.theme === 'Auto',
+      `Settings: ${sh.heads.join(', ')}, then Advanced and About at the bottom; Theme shows Auto`);
     // Appearance: Theme, Background, Accent color, Text style, Board shape. (Clock in the corner is in Advanced.)
     const looks = await page.evaluate(() => { const h = [...document.querySelectorAll('#settings .sheet-body > h3')].find(x => x.textContent === 'Appearance'), out = [];
       for (let e = h.nextElementSibling; e && e.tagName !== 'H3' && !e.classList.contains('gap'); e = e.nextElementSibling) if (e.matches('.row')) out.push(e.querySelector('.lbl').textContent);
@@ -1740,7 +1740,7 @@ const SUITES = [
     const named = await page.evaluate(() => [...document.querySelectorAll('#settings [role="radiogroup"]')].map(g => `${g.getAttribute('aria-label') || '(no name)'}: ${[...g.querySelectorAll('[role="radio"]')].map(r => r.textContent).join('/')}`));
     ok(named.length >= 5 && !named.some(n => n.startsWith('(no name)')) && named.includes('Theme: Light/Dark/Auto') && named.includes('Clock in the corner: On/Off/Auto') && named.includes('Widget Picker: Both corners/Left/Right'),
       `every set of choices in Settings has a name (${named.join('; ')})`);
-    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden' && !sh.missing.length && !sh.name,
+    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden,about hidden,code-license hidden,docs-license hidden' && !sh.missing.length && !sh.name,
       `every group starts closed, and is in the page, hidden (${sh.groups.join(', ')}); no page name field`);
     // Saved widgets: how many there are, open or closed; open, the list says Open or Closed (no sizes).
     const saved = () => page.evaluate(() => ({ value: document.querySelector('#settings [data-val="saved"] .v').textContent, label: document.querySelector('#settings [data-val="saved"] .lbl').textContent,
@@ -1768,11 +1768,11 @@ const SUITES = [
       `Off turns snapping off; Light, Medium and Firm turn it on with that push (${seen.join(', ')})`);
     await page.evaluate(() => { window.__board21.updateBoard({}); }); await page.waitForTimeout(150);
     sh = await shape();
-    ok(sh.groups.join() === 'saved open,bg hidden,letters hidden,advanced open', `open groups stay open while Settings is drawn again (${sh.groups.join(', ')})`);
+    ok(sh.groups.join() === 'saved open,bg hidden,letters hidden,advanced open,about hidden,code-license hidden,docs-license hidden', `open groups stay open while Settings is drawn again (${sh.groups.join(', ')})`);
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await openSettings(page);
     sh = await shape();
-    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden', 'and every group is closed again the next time Settings opens');
+    ok(sh.groups.join() === 'saved hidden,bg hidden,letters hidden,advanced hidden,about hidden,code-license hidden,docs-license hidden', 'and every group is closed again the next time Settings opens');
     // The amber dot on Advanced: only while a backup is overdue. Not on a new board, though the browser hasn't promised
     // to keep 21Board's data here: Advanced › Backups and storage says that.
     const dot = (p = page) => p.evaluate(() => { const d = document.getElementById('grp-advanced-warn'); return !!d && !d.hidden && getComputedStyle(d).display !== 'none'; });
@@ -1907,6 +1907,199 @@ const SUITES = [
       `the widget dev window’s Settings: ${labShape && labShape.heads.join(', ')}, with only Close all in Classroom (${JSON.stringify(labShape)})`);
     ok(labShape && labShape.adv.join() === 'Moving windows,Storage' && labShape.erase === 'Storage', `and in Advanced, Erase everything is under Storage, not under Moving windows (${labShape && labShape.adv.join(', ')})`);
     ok(labShape && labShape.sub === 'Widget Picker, size, moving windows, erase', `and no clock in it, nor in its row’s grey line (“${labShape && labShape.sub}”)`);
+    await lab.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  // Settings › About (board.js, aboutSettings): its own group, directly below Advanced. Inside, top to bottom: the 21 gear,
+  // the team's sentence, the version and where the work is stored, the license (each license's full text comes from the
+  // offline copy), the credits, and the goat. The two pictures are the district's files, byte for byte, in light and dark.
+  ['Settings: About (its own group below Advanced: the 21 gear, the sentence, version and storage, license, credits, the goat; offline, kiosk, Board Sync, the widget dev window, Size 50%–200%, both corners)', async (browser) => {
+    const errors = [];
+    const SENTENCE = 'Made with Love and Stubbornness by the CCSD21 Technology Services team at Gill Center, Wheeling, Illinois, USA';
+    const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8'), VERSION = /const VERSION = '([^']+)'/.exec(sw)[1];
+    // The two pictures, unchanged (the sha-256 of the files as given).
+    const PICS = { 'icons/gear-21.png': '1c2c1163ae6ee714cbb1dc65144b3fae5b888d9db87808c93f485b475685df48', 'icons/goat.png': 'c6072947ca83bc84cb3e40af98280185a9532ad1678bd2e4e6fc02c001233ae6' };
+    const same = Object.entries(PICS).map(([f, h]) => { try { return require('crypto').createHash('sha256').update(fs.readFileSync(path.join(ROOT, f))).digest('hex') === h; } catch (e) { return false; } });
+    ok(same.every(Boolean), `the 21 gear and the goat are the files as given, byte for byte (${Object.keys(PICS).map((f, i) => f + (same[i] ? '' : ': differs or missing')).join(', ')})`);
+    // In the offline copy's list (sw.js), with the license texts About shows.
+    const vm = require('vm');
+    const box = { addEventListener() {} }; box.self = box;
+    box.importScripts = (...files) => files.forEach(f => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), box));
+    vm.createContext(box);
+    const list = vm.runInContext(sw + '\n;PRECACHE;', box);
+    const NEEDED = Object.keys(PICS).concat(['LICENSE', 'LICENSE-DOCS']);
+    ok(NEEDED.every(f => list.includes(f)), `the pictures and the license texts are in the offline copy’s list (${NEEDED.filter(f => !list.includes(f)).join(', ') || 'all ' + NEEDED.length})`);
+
+    // What About shows, in reading order: its text, and each picture as [src "alt"]. A closed group inside it is left out.
+    const about = p => p.evaluate(() => {
+      const row = document.querySelector('#settings [data-act="group"][data-val="about"]'), box = document.getElementById('grp-about');
+      if (!row || !box) return null;
+      // (each block, line and picture a part of its own)
+      let s = '';
+      const walk = n => { for (const c of n.childNodes) {
+        if (c.nodeType === 3) { s += c.textContent; continue; }
+        if (c.nodeType !== 1 || c.hidden || c.getAttribute('aria-hidden') === 'true' || getComputedStyle(c).display === 'none') continue;
+        if (c.tagName === 'IMG') { s += ` | [${c.getAttribute('src')} "${c.alt}"] | `; continue; }
+        if (c.tagName === 'BR') { s += ' | '; continue; }
+        const block = !/^inline/.test(getComputedStyle(c).display);
+        if (block) s += ' | ';
+        walk(c);
+        if (block) s += ' | ';
+      } };
+      walk(box);
+      const parts = s.split('|').map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean);
+      const kids = [...document.querySelector('#settings .sheet-body').children];
+      return { parts, text: parts.join(' | '), open: row.getAttribute('aria-expanded') === 'true', hidden: box.hidden, label: box.getAttribute('aria-label'),
+        sub: (row.querySelector('.hint') || {}).textContent || '', value: (row.querySelector('.v') || {}).textContent || '',
+        afterAdvanced: (document.getElementById('grp-advanced') || {}).nextElementSibling === row, last: kids[kids.length - 1] === box,
+        groups: [...document.querySelectorAll('#settings [data-act="group"]')].filter(b => !b.closest('#grp-about')).map(b => b.dataset.val),
+        inAdvanced: !!document.querySelector('#grp-advanced #st-version, #grp-advanced .about'), links: box.querySelectorAll('a[href]').length,
+        credits: [...box.querySelectorAll('.about-credits li')].map(li => li.textContent.replace(/\s+/g, ' ').trim()),
+        imgs: [...box.querySelectorAll('img')].map(i => ({ src: i.getAttribute('src'), alt: i.alt, w: i.naturalWidth, h: i.naturalHeight, done: i.complete, filter: getComputedStyle(i).filter, opacity: getComputedStyle(i).opacity })) };
+    });
+    // The marks About's text must show, in this order.
+    const MARKS = ['[icons/gear-21.png "', SENTENCE, `21Board ${VERSION} (`, ' · Widget SDK protocol 1', 'Your work is stored only on this device.', 'License', '© 2026 Community Consolidated School District 21',
+      'Code', 'Apache 2.0', 'Docs', 'CC BY 4.0', 'Credits', 'Atkinson Hyperlegible', 'Andika', 'Excalifont', 'Crayon Libre', 'YouTube', '[icons/goat.png "'];
+    const inOrder = (text, marks) => { let at = -1; for (const m of marks) { const i = text.indexOf(m, at + 1); if (i < 0) return `“${m}” missing or out of order`; at = i; } return ''; };
+    const CREDITS = ['Atkinson Hyperlegible by the Braille Institute. SIL Open Font License 1.1.', 'Andika by SIL International, as 21Board Early Readers. SIL Open Font License 1.1.',
+      'Excalifont by Excalidraw. SIL Open Font License 1.1.', 'Crayon Libre by GGBotNet. CC0 1.0.', 'YouTube and Google Drive are trademarks of Google LLC. Vimeo is a trademark of Vimeo.com, Inc.'];
+    // Settings opened on that side, with the groups named open (those that are there).
+    const open = async (p, groups = [], side = 'left') => {
+      await openSettings(p, [], side);
+      const have = [];
+      for (const g of groups) if (await p.locator(`#settings [data-act="group"][data-val="${g}"]`).count()) have.push(g);
+      await openSettings(p, have, side);
+    };
+    const shut = async p => { await p.keyboard.press('Escape'); await p.waitForTimeout(150); };
+
+    // ---- A stamped release, served as a site.
+    deploy('about');
+    const url = BASE + '__site/about/';
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.goto(url); await boardUp(page);
+    await open(page);
+    let a = await about(page);
+    ok(!!a && a.afterAdvanced && a.last && a.groups.slice(-2).join() === 'advanced,about' && !a.open && a.hidden && a.label === 'About',
+      `About is a group of its own, the last row, directly below Advanced, closed when Settings opens (${a ? a.groups.join(', ') : 'no About'})`);
+    ok(!!a && a.sub === `Version ${VERSION}` && !a.value, `closed, its grey line says the version (“${a && a.sub}”)`);
+    const adv = await page.evaluate(() => (document.querySelector('#settings [data-act="group"][data-val="advanced"] .hint') || {}).textContent);
+    ok(!!a && !a.inAdvanced && adv === 'Widget Picker, clock, size, moving windows, history, backups, developer, erase',
+      `the version and the storage line are no longer in Advanced, and Advanced’s grey line lists what it did (“${adv}”)`);
+    await open(page, ['about']);
+    a = await about(page);
+    let miss = a ? inOrder(a.text, MARKS) : 'no About';
+    ok(!miss && a.open && /^\[icons\/gear-21\.png "[^"]+"\]/.test(a.text) && /\[icons\/goat\.png "[^"]+"\]$/.test(a.text),
+      `open, top to bottom: the 21 gear, the sentence, the version and the storage line, License, Credits, the goat at the very bottom (${miss || a.parts.length + ' parts'})`);
+    ok(!!a && a.parts.includes(SENTENCE), `the sentence, exactly: “${SENTENCE}”`);
+    ok(!!a && a.credits.join(' | ') === CREDITS.join(' | '), `Credits: the four fonts with their makers and licenses, and the three video sites’ owners (${a && a.credits.join(' | ')})`);
+    ok(!!a && a.imgs.length === 2 && a.imgs.map(i => i.alt).join() === '21 gear,Goat' && a.imgs.every(i => i.done && i.w > 0), `the two pictures load, each with a short alt text (${a && a.imgs.map(i => `${i.src} “${i.alt}” ${i.w}×${i.h}`).join(', ')})`);
+    await page.screenshot({ path: OUT + 'about-open.png' });
+
+    // ---- Offline: the pictures and both license texts come from the offline copy.
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 }).catch(() => {});
+    const cached = () => page.evaluate(async () => { const k = (await caches.keys()).filter(n => n.startsWith('21board-')); if (!k.length) return []; const c = await caches.open(k[0]); return (await c.keys()).map(r => new URL(r.url).pathname); });
+    ok(await eventually(async () => { const c = await cached(); return NEEDED.every(f => c.includes('/__site/about/' + f)); }, 15000), 'a device saves them with the rest of its offline copy');
+    await shut(page);
+    await ctx.setOffline(true);
+    await page.reload(); await boardUp(page);
+    await open(page, ['about', 'code-license', 'docs-license']);
+    const texts = () => page.evaluate(() => ['code-license', 'docs-license'].map(k => { const g = document.getElementById('grp-' + k); return g && !g.hidden ? g.innerText : ''; }));
+    let t = ['', ''];
+    await eventually(async () => { t = await texts(); return t.every(x => x.length > 5000); }, 5000);
+    a = await about(page);
+    ok(!!a && a.imgs.length === 2 && a.imgs.every(i => i.done) && a.imgs.map(i => `${i.w}×${i.h}`).join() === '880×880,618×733', `offline, both pictures load from the offline copy (${a && a.imgs.map(i => `${i.src} ${i.w}×${i.h}`).join(', ')})`);
+    ok(/Apache License\s+Version 2\.0, January 2004/.test(t[0]) && /END OF TERMS AND CONDITIONS/.test(t[0]), `offline, Code opens the Apache License 2.0 in full (${t[0].length} characters)`);
+    ok(/Attribution 4\.0 International/.test(t[1]) && /Creative Commons may be contacted at creativecommons\.org\./.test(t[1]), `and Docs the CC BY 4.0 license in full (${t[1].length} characters)`);
+    // (Its paragraphs flow to the width of Settings: no line sticks out.)
+    const flows = await page.evaluate(() => { const g = document.getElementById('grp-code-license'); if (!g) return false; const r = g.getBoundingClientRect(); return [...g.querySelectorAll('*')].every(e => e.getBoundingClientRect().right <= r.right + 1) && g.querySelectorAll('p').length > 20; });
+    ok(flows, 'the license text flows in paragraphs, within Settings');
+    await page.screenshot({ path: OUT + 'about-license-offline.png' });
+    await shut(page);
+    await ctx.setOffline(false);
+
+    // ---- Tidy at Size 50% and 200%, on 1366 × 768 and 1920 × 1080, from either corner, in every text style: nothing
+    // sticks out of Settings, and the pictures keep their size on screen.
+    const fits = p => p.evaluate(() => {
+      const body = document.querySelector('#settings .sheet-body'), box = document.getElementById('grp-about');
+      if (!box || box.hidden) return null;
+      const r = box.getBoundingClientRect();
+      const out = [...box.querySelectorAll('*')].filter(e => { const q = e.getBoundingClientRect(); return q.width && (q.right > r.right + 1 || q.left < r.left - 1); }).map(e => e.tagName.toLowerCase() + (e.className ? '.' + e.className : ''));
+      const ui = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui')) || 1;
+      return { wide: body.scrollWidth > body.clientWidth + 1, out, imgs: [...box.querySelectorAll('img')].map(i => Math.round(i.getBoundingClientRect().width / ui)) };
+    });
+    const tidy = [];
+    for (const [w, h] of [[1366, 768], [1920, 1080]]) {
+      await page.setViewportSize({ width: w, height: h });
+      for (const scale of [0.5, 2]) for (const side of ['left', 'right']) {
+        await page.evaluate(s => window.__board21.setBoardScale(s), scale); await page.waitForTimeout(150);
+        await open(page, ['about', 'code-license'], side);
+        const f = await fits(page);
+        tidy.push({ at: `${w}×${h} ${scale * 100}% ${side}`, f });
+        if (w === 1366 && scale === 2 && side === 'right') await page.screenshot({ path: OUT + 'about-200-right.png' });
+        await shut(page);
+      }
+    }
+    for (const letters of ['legible', 'early', 'standard']) {
+      await open(page, ['letters']);
+      if (await page.locator(`#settings [data-act="letters"][data-val="${letters}"]`).count()) await page.click(`#settings [data-act="letters"][data-val="${letters}"]`);
+      await shut(page);
+      await page.evaluate(() => document.fonts.ready);
+      await open(page, ['about', 'docs-license']);
+      tidy.push({ at: `1920×1080 200% ${letters}`, f: await fits(page) });
+      await shut(page);
+    }
+    const bad = tidy.filter(x => !x.f || x.f.wide || x.f.out.length || x.f.imgs.length !== 2 || x.f.imgs.some(px => px < 48 || px > 160));
+    ok(!bad.length, `tidy at Size 50% and 200%, both screens, both corners and every text style (${bad.length ? JSON.stringify(bad) : tidy.length + ' looks, the pictures ' + tidy[0].f.imgs.join(' and ') + ' px'})`);
+    await page.evaluate(() => window.__board21.setBoardScale(0.8));
+
+    // ---- Kiosk mode: the same About, with nothing that leaves 21Board.
+    const k = await ctx.newPage(); k.on('pageerror', e => errors.push('[kiosk] ' + e.message));
+    await k.goto(BASE + '?kiosk=yes'); await boardUp(k);
+    await open(k, ['about']);
+    a = await about(k);
+    miss = a ? inOrder(a.text, MARKS) : 'no About';
+    ok(!miss && a.afterAdvanced && a.links === 0, `kiosk mode: the same About below Advanced, with no links out (${miss || a.parts.length + ' parts'})`);
+    await k.close();
+    await ctx.close();
+
+    // ---- Dark: the same two pictures, untouched (the navy gear stays as it is: no light version).
+    const dark = await browser.newContext({ viewport: { width: 1920, height: 1080 }, colorScheme: 'dark' });
+    const dp = await dark.newPage(); dp.on('pageerror', e => errors.push('[dark] ' + e.message));
+    await dp.goto(BASE); await boardUp(dp);
+    await open(dp, ['about']);
+    a = await about(dp);
+    ok(!!a && await dp.evaluate(() => document.body.classList.contains('dark')) && a.imgs.map(i => i.src).join() === 'icons/gear-21.png,icons/goat.png' && a.imgs.every(i => i.filter === 'none' && i.opacity === '1'),
+      `in dark mode, the same two files, with no filter (${a && a.imgs.map(i => `${i.src} ${i.filter} ${i.opacity}`).join(', ')})`);
+    await dp.screenshot({ path: OUT + 'about-dark.png' });
+    await dark.close();
+
+    // ---- Board Sync: the storage line names the Drive folder too.
+    const D = await driveDevice(browser); D.p.on('pageerror', e => errors.push('[sync] ' + e.message));
+    await D.p.goto(BASE); await boardUp(D.p);
+    await linkFolder(D.p, 'the laptop');
+    await open(D.p, ['about']);
+    a = await about(D.p);
+    ok(!!a && a.parts.includes('Your work is stored only on this device and in your Drive folder.') && !a.parts.includes('Your work is stored only on this device.'),
+      `with Board Sync: “Your work is stored only on this device and in your Drive folder.” (${a && a.parts.filter(x => /stored/.test(x)).join(' | ')})`);
+    await D.c.close();
+
+    // ---- The widget dev window: a short About below Advanced, with the version and the SDK protocol, and nothing
+    // loaded from 21Board's site (in an AI tool's preview, that would be another site).
+    const lab = await browser.newContext({ viewport: { width: 1100, height: 760 } });
+    const lp = await lab.newPage();   // (its test widget throws on purpose)
+    await lp.goto(BASE + '__dev/widget.html'); await lp.waitForTimeout(2500);
+    const board = lp.frames().find(f => f.parentFrame() === lp.mainFrame());
+    const labAbout = board && await board.evaluate(() => {
+      document.querySelector('.picker-btn.left').click(); document.querySelector('[data-ctl="settings"]').click();
+      const row = document.querySelector('#settings [data-act="group"][data-val="about"]');
+      if (!row) return null;
+      row.click();   // (Settings is drawn again)
+      const now = document.querySelector('#settings [data-act="group"][data-val="about"]'), box = document.getElementById('grp-about');
+      return { sub: (now.querySelector('.hint') || {}).textContent, after: (now.previousElementSibling || {}).id, text: box.innerText.replace(/\s+/g, ' ').trim(), imgs: box.querySelectorAll('img').length, groups: box.querySelectorAll('[data-act="group"]').length };
+    });
+    ok(!!labAbout && labAbout.after === 'grp-advanced' && labAbout.sub === `Version ${VERSION}` && !labAbout.imgs && !labAbout.groups && /^21Board \S+ \([0-9a-f]{8}\) · Widget SDK protocol 1 Your work is stored only on this device\.$/.test(labAbout.text),
+      `the widget dev window: a short About below Advanced, the version and the SDK protocol, no pictures (${JSON.stringify(labAbout)})`);
     await lab.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
@@ -5240,7 +5433,7 @@ const SUITES = [
     ok(await ytMenu(k) === `Change video | — | Remove video | — | History | ${YT_LABEL[VID]} | Big Buck Bunny 60fps 4K - Official… (from 1:30)`, `in kiosk mode the menu leaves out Open in YouTube, and keeps the History (${await ytMenu(k)})`);
     await k.close();
     // Settings → About says where the work is stored.
-    await openSettings(page, ['advanced']);
+    await openSettings(page, ['about']);
     const about = (await page.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
     ok(about.endsWith(' Your work is stored only on this device.') && !/sends nothing|YouTube/.test(about), `Settings → About says the work is stored only on this device (${about.slice(about.indexOf('·') + 1).trim()})`);
     await page.keyboard.press('Escape');
@@ -6293,8 +6486,9 @@ const SUITES = [
     const hints = await A.p.evaluate(() => Array.from(document.querySelectorAll('#settings .hint')).map(h => h.textContent));
     ok(hints.filter(h => /This page, on all your devices\./.test(h)).length >= 2 && hints.filter(h => h === 'This device only.').length >= 2 && hints.filter(h => h === 'On all your devices.').length === 3 && !hints.some(h => /This page only\./.test(h)),
       'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme, Accent color and Text style “On all your devices.”');
+    await openSettings(A.p, ['about']);
     const footer = (await A.p.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
-    ok(footer.endsWith(' Your work is stored only on this device and in your Drive folder.') && !/sends nothing/.test(footer), `the footer says the work is stored only here and in the Drive folder (${footer})`);
+    ok(footer.endsWith(' Your work is stored only on this device and in your Drive folder.') && !/sends nothing/.test(footer), `About says the work is stored only here and in the Drive folder (${footer})`);
     await A.p.keyboard.press('Escape');
     // A placeholder-only device writes nothing, even after a Timer was opened and closed on it with no content.
     const C = await dev('a computer');
@@ -9071,7 +9265,7 @@ const SUITES = [
     const B = fn => page.evaluate(fn);
     const stored = async () => JSON.stringify(await storedRecords(page));
     const noteShown = () => page.locator('.save-note.left:visible').count();
-    const settingsText = async () => { await openSettings(page, ['saved', 'advanced']); const t = await page.locator('#settings .sheet-body').innerText(); await page.keyboard.press('Escape'); return t; };
+    const settingsText = async () => { await openSettings(page, ['saved', 'advanced', 'about']); const t = await page.locator('#settings .sheet-body').innerText(); await page.keyboard.press('Escape'); return t; };
     const toastGone = text => page.waitForFunction(text => !Array.from(document.querySelectorAll('#toasts .toast')).some(t => t.textContent.includes(text)), text, { timeout: 15000 });
     // The database disappears behind the open board (as when the browser throws its damaged storage away).
     const loseDatabase = () => page.evaluate(() => new Promise(res => { const r = indexedDB.deleteDatabase('21Board'); r.onsuccess = r.onerror = r.onblocked = () => res(); }));
@@ -9396,7 +9590,7 @@ const SUITES = [
     const a = await ctx.newPage(), b = await ctx.newPage();
     const errors = []; for (const p of [a, b]) p.on('pageerror', e => errors.push(e.message));
     const both = fn => Promise.all([a, b].map(fn));
-    const settings = async p => { await openSettings(p, ['advanced']); await p.waitForSelector('#st-version'); };
+    const settings = async p => { await openSettings(p, ['about']); await p.waitForSelector('#st-version'); };
     const shown = async p => { await settings(p); const t = await p.locator('#settings .about').innerText(); await p.keyboard.press('Escape'); return t; };
     const prompt = p => p.locator('.toast', { hasText: 'A new version of 21Board is ready.' });
     const offered = () => both(p => p.waitForFunction(() => !!window.__board21.state.sw.updateReady && !!document.querySelector('.toast'), null, { timeout: 20000 }));
@@ -10470,7 +10664,14 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await openSettings(a, ['advanced']);
     ok((await a.locator('#st-persist').textContent()).includes('Not available') && !(await a.locator('#st-persist-hint').textContent()).includes('address bar'), 'data-protection status is accurate for a copy opened from a file');
     const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
+    await openSettings(a, ['about']);
     ok((await a.locator('#settings .about').innerText()).startsWith(`21Board ${/const VERSION = '([^']+)'/.exec(sw)[1]} (${/const BUILD = '([0-9a-f]{8})'/.exec(sw)[1]}) · `), 'Settings → About names the release and build there too, where there is no offline copy to ask');
+    // About's pictures load from disk; a license's text can't be read there (the browser won't), so it says where it is.
+    await openSettings(a, ['code-license']);
+    let lic = '';
+    await eventually(async () => { lic = (await a.locator('#grp-code-license').innerText()).trim(); return lic !== 'Loading…'; }, 5000);
+    const pics = await a.evaluate(() => [...document.querySelectorAll('#grp-about img')].map(i => i.complete && i.naturalWidth > 0));
+    ok(pics.length === 2 && pics.every(Boolean) && lic === 'Can’t show the license here. See the LICENSE file.', `and its two pictures, and for the license “${lic.slice(0, 60)}”`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
