@@ -231,8 +231,8 @@
   const EXAMPLE_NAMES = { checkmarks: 'Checkmarks', heading: 'Heading', swatches: 'Swatches', icon: 'Icon' };
 
   // ---- Events, and what a handler gets.
-  const EVENTS = ['data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose'];
-  const SIGNATURES = { data: '(data, { reason })', config: '(config, { reason })', theme: '(theme, palette)', resize: '(info)', focus: '()', blur: '()', menu: '(id, item)', beforeclose: '()' };
+  const EVENTS = ['data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose', 'file'];
+  const SIGNATURES = { data: '(data, { reason })', config: '(config, { reason })', theme: '(theme, palette)', resize: '(info)', focus: '()', blur: '()', menu: '(id, item)', beforeclose: '()', file: '(file, { reason })' };
 
   // ---- Every call. args: [name, kind, default, nullable]. prop: a value read, not called.
   const json = v => JSON.stringify(v, null, 2);

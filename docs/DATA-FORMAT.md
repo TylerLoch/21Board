@@ -445,6 +445,10 @@ Exports write the board's `scale` and `shape`, and the space the rects are in as
 Any JSON value the widget saved. The format is up to each widget; document it at the top of the
 widget's script. Missing record = nothing saved (`null` in the SDK).
 
+The Picture widget (`image`) saves `{ src, w, h, name, bytes }`. `src` is a PNG, JPEG, GIF, WebP or AVIF `data:`
+URL, its type checked by its bytes. `w` and `h` are its size in pixels, `name` the file's name, `""` when pasted, and
+`bytes` its size. `{ src: null }` is no picture, after *Remove picture*. Its config is `{ fit: "whole" | "fill" }`.
+
 The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
 their own work in their own site's storage on the device. Their windows have an `inst` record like any other,
 and exports and Board history carry that (with `data` and `config` null), never an address.
@@ -460,14 +464,14 @@ with the board's records and never exported. Three object stores:
 | --- | --- | --- |
 | `meta` | `id` = `<b>:<at, 13 digits>:<tab id>` | what a version looks like (below), for lists, previews and comparisons |
 | `body` | `id` | `{ id, exp }`: a full export of the board (as in a `.21board` file) with `instances[].createdAt`, `snapshot: {at, kind, label}`, and `media: {ref, look}` instead of the photo |
-| `photo` | `key` = `<addedAt>-<bytes>-<w>x<h>` | each background photo once: `{ key, data, w, h, bytes, name, addedAt, thumb, lastUsed }` |
+| `photo` | `key` = `<addedAt>-<bytes>-<w>x<h>`, or `pic-<hash>-<length>` for a window's picture | each background photo once: `{ key, data, w, h, bytes, name, addedAt, thumb, lastUsed }`. Also each picture in a window's content once (below) |
 
 ```js
 // meta
 { v: 1, id, b, at, kind: "auto" | "open" | "manual" | "before" | "restored",
   reason: null | "reset" | "delete" | "close-all" | "emptied" | "photo" | "import" | "add" | "load" | "restore" | "window" | "erase"
         | "merge" | "undo" | "join" | "take",
-  label, sig, uid, name, bytes, photo: "<key>" | null | "gone",
+  label, sig, uid, name, bytes, photo: "<key>" | null | "gone", pics: ["pic-…"],     // only with pictures
   thumb: { bg, pattern, shape, vw, vh, wins: [[ikey, x, y, w, h], …] },              // open windows, back to front
   wins: { "<ikey>": [open, createdAt, dataHash, confHash, dataLength, excerpt] },
   beforeBig, keepUntil, manual, manualLabel, folder, tab,
@@ -480,6 +484,12 @@ replaced) always saves one first; otherwise a page nothing was changed on here g
 undoing the changes from …" (`undo`) comes before the Undo of a merge. When a deleted page's records go (its Undo is
 over), its versions stay, marked with `deletedAt`, for 30 days: Board history › *Deleted pages* lists them, and *Bring
 back* adds the page again from its newest version, under its old `uid`. Then they go.
+
+**Pictures in windows' content** are kept once, not in every version. A `data:` URL over 32 KB in a top-level field
+of an instance's `data` goes into `photo` as `{ key: "pic-<hash>-<length>", data, pic: true, bytes, lastUsed }`, and
+the body holds `{ "b21pic": "<key>" }` in its place. `pics` lists the keys. Reading a version puts the pictures back.
+A picture stays while any version names it. A version of a page with pictures costs what the page costs without
+them, usually a few KB. Copies in the Google Drive folder hold their pictures, as exports do.
 
 `sig` is the content fingerprint (window stacking order doesn't count), without the theme, accent and text style
 (going back never changes them), so identical versions aren't saved twice. Versions saved before Board Sync merged

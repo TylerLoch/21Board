@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">
+  {"id": "image", "name": "Picture", "version": "1.0.0", "window": {"width": 480, "height": 360, "minWidth": 160, "minHeight": 120}}
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Picture</title>
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font);
+    font-size: clamp(14px, 5vmin, 20px); overflow: hidden;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  [hidden] { display: none !important; }
+  /* Empty: a title and two buttons. (In a small window the title gives way.) */
+  #ask { box-sizing: border-box; height: 100%; display: flex; padding: clamp(8px, 5vmin, 32px); overflow: auto; }
+  #ask .box { margin: auto; max-width: 24em; display: flex; flex-direction: column; align-items: center; gap: .7em; text-align: center; }
+  body.busy #ask .box { visibility: hidden; }   /* (a picture being opened: no buttons flashing first, and after a moment, Opening…) */
+  #wait { position: fixed; inset: 0; margin: 0; padding: 8px; display: flex; align-items: center; justify-content: center; text-align: center; opacity: .75; }
+  #wait:empty { display: none; }
+  h1 { margin: 0; font-size: 1.25em; font-weight: 700; line-height: 1.25; }
+  #err { margin: 0; color: var(--b21-danger); font-weight: 600; line-height: 1.3; }
+  .buttons { display: flex; flex-wrap: wrap; justify-content: center; gap: .5em; }
+  button {
+    height: clamp(40px, 13vmin, 56px); min-width: 5.5em; padding: 0 1.1em; border: 0; border-radius: 999px; cursor: pointer;
+    font: inherit; font-weight: 700; color: var(--b21-text); background: var(--b21-surface-2);
+  }
+  button:active { filter: brightness(.92); }
+  button.primary { background: var(--b21-accent); color: var(--b21-on-accent); }
+  button:focus-visible { outline: 3px solid var(--b21-accent); outline-offset: 2px; }
+  @media (max-width: 220px), (max-height: 170px) {
+    h1 { display: none; }
+    #ask { padding: 6px; }
+    #ask .box { gap: .4em; }
+    #err { font-size: 12px; line-height: 1.2; }
+    button { min-width: 0; padding: 0 .8em; font-size: 14px; }
+  }
+  /* The picture: the whole window, nothing drawn over it. White behind the picture itself (a transparent drawing stays
+     readable in dark mode), the window's own color around it. */
+  #pic { position: fixed; inset: 0; overflow: hidden; }
+  #img { position: absolute; display: block; max-width: none; background: #fff; -webkit-user-drag: none; }
+</style>
+</head>
+<body>
+  <div id="ask" hidden>
+    <div class="box">
+      <h1>Show a picture</h1>
+      <p id="err" role="alert" hidden></p>
+      <div class="buttons"><button type="button" id="open" class="primary">Open…</button><button type="button" id="paste" hidden>Paste</button></div>
+    </div>
+    <p id="wait" role="status"></p>
+  </div>
+  <div id="pic" hidden><img id="img" alt="" draggable="false"></div>
+  <input id="file" type="file" accept="image/png,image/jpeg,image/gif,image/webp,image/avif,.png,.jpg,.jpeg,.gif,.webp,.avif" hidden>
+<script>
+  // Content (Board21.save): { src, w, h, name, bytes } for a picture, or { src: null } for none.
+  //   src: the picture as a data: URL, its type from its bytes (PNG, JPEG, GIF, WebP or AVIF). w, h: its size in pixels.
+  //   name: the file's name ('' for a pasted picture). bytes: the picture's size.
+  //   No picture (Remove picture) is saved as content of its own, not cleared: in Board Sync, content cleared (null)
+  //   gives way to a picture chosen on another device at the same time, so a later Remove picture would lose. (A Reset,
+  //   or a window from a template, has null: no picture either.)
+  // Config (Board21.saveConfig): { fit: 'whole' | 'fill' }: Whole picture (the default) or Crop to fill.
+  //
+  // A file is checked by its first bytes, never by its name or type (they only choose the message). Stills of 1 MB or
+  // less, 3840 px or less on the long side, are kept exactly as they are; others are drawn again at 2560 px at most, as
+  // the board's background photo is: JPEG, or WebP where any pixel is see-through (PNG where WebP can't be made), each
+  // at a lower quality if it is still over 1.2 MB. Animations (a GIF of more than one frame, an animated PNG, a WebP
+  // with its animation flag, an AVIF image sequence) are kept byte for byte, so they still move: at most 5 MB. Board
+  // history keeps each picture once (board.js, BoardHistory.pack).
+  //
+  // A picture chosen here (Open…, Paste, a file dropped on this window, or one pasted or dropped on the board, which
+  // opens a new window for it and sends it here: the 'file' event) gives the window its shape, unless it fills the
+  // board. A paste here with a picture showing isn't taken: the SDK passes it on to the board, which opens a new window.
+  // Nor are several pictures pasted or dropped at once: the board opens a window for each, as when they're dropped on it.
+
+  const MAX_FILE = 25 * 1048576, MAX_PIXELS = 50e6, MAX_ANIM = 5 * 1048576;   // turned away above these
+  const KEEP_BYTES = 1048576, KEEP_SIDE = 3840, DRAW_SIDE = 2560;            // kept as they are / drawn again at most
+  const BOX = { w: 720, h: 540, least: 360, minW: 160, minH: 120 };   // a new picture's window: within 720 × 540, at least 360 on its long side (the manifest's least size: minW, minH)
+  const SAY = {
+    type: '21Board can’t show that file. Choose a PNG, JPEG, GIF, WebP or AVIF.',
+    svg: '21Board can’t show an SVG file. Save it as a PNG first.',
+    heic: '21Board can’t show a HEIC photo. Save it as a JPEG first.',
+    big: 'That file is over 25 MB. Choose a smaller one.',
+    pixels: 'That picture is too large. Choose a smaller one.',
+    anim: 'That animation is over 5 MB. Choose a smaller one.',
+    broken: 'That picture couldn’t be opened. Try another one.',
+    empty: 'There’s no picture to paste. Copy one first.',
+    blocked: 'Pasting is blocked. Allow the clipboard for 21Board in Chrome.',
+    wait: 'Opening…'
+  };
+  const $ = id => document.getElementById(id);
+  const ask = $('ask'), err = $('err'), wait = $('wait'), openBtn = $('open'), pasteBtn = $('paste'), pic = $('pic'), img = $('img'), input = $('file');
+  const canPaste = !!(navigator.clipboard && typeof navigator.clipboard.read === 'function');
+
+  let picture = null, fit = 'whole', started = false, busy = 0, waitT = 0;
+
+  // ---- reading what is saved (it may come from an imported file: checked, put on the page as an attribute only)
+  const SRC_RE = /^data:image\/(png|jpeg|gif|webp|avif);base64,[A-Za-z0-9+/]+=*$/;
+  function readPicture(d) {
+    if (!d || typeof d !== 'object' || typeof d.src !== 'string' || d.src.length > 40e6 || !SRC_RE.test(d.src)) return null;
+    const w = Math.round(+d.w), h = Math.round(+d.h);
+    if (!(w > 0 && h > 0 && w <= 1e5 && h <= 1e5)) return null;
+    return { src: d.src, w, h, name: typeof d.name === 'string' ? d.name.slice(0, 120) : '', bytes: Number.isFinite(+d.bytes) ? Math.max(0, Math.round(+d.bytes)) : 0 };
+  }
+  const readFit = c => (c && c.fit === 'fill' ? 'fill' : 'whole');
+
+  // ---- what a file is, by its bytes
+  const text4 = (b, i) => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+  const u32 = (b, i) => (b[i] << 24 | b[i + 1] << 16 | b[i + 2] << 8 | b[i + 3]) >>> 0;
+  // An ISO media file's brands (AVIF, HEIC): its ftyp box's major brand and compatible brands.
+  function brands(b) {
+    const size = Math.min(b.length, u32(b, 0) || 0), out = [];
+    for (let i = 8; i + 4 <= Math.max(12, size); i += 4) if (i !== 12) out.push(text4(b, i));
+    return out;
+  }
+  // 'png', 'jpeg', 'gif', 'webp' or 'avif'; 'svg' or 'heic' (turned away, with a message of their own); '' otherwise.
+  function kindOf(b) {
+    if (b.length < 12) return '';
+    if (b[0] === 0x89 && text4(b, 1) === 'PNG\r') return 'png';
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpeg';
+    if (text4(b, 0) === 'GIF8' && (b[4] === 0x37 || b[4] === 0x39) && b[5] === 0x61) return 'gif';
+    if (text4(b, 0) === 'RIFF' && text4(b, 8) === 'WEBP') return 'webp';
+    if (text4(b, 4) === 'ftyp') {
+      const br = brands(b);
+      if (br.includes('avif') || br.includes('avis')) return 'avif';
+      if (br.some(x => /^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(x))) return 'heic';
+      return '';
+    }
+    const head = new TextDecoder().decode(b.subarray(0, 1024)).replace(/^﻿/, '').trimStart();
+    return /^<(\?xml|svg|!DOCTYPE svg|!--)/i.test(head) && /<svg[\s>]/i.test(head) ? 'svg' : '';
+  }
+  // Its size in pixels from its header, so a huge picture is turned away before it is decoded. null: not found.
+  function sizeOf(b, kind) {
+    const u16 = i => b[i] << 8 | b[i + 1];
+    const l16 = i => b[i] | b[i + 1] << 8, l24 = i => b[i] | b[i + 1] << 8 | b[i + 2] << 16;
+    if (kind === 'png' && b.length >= 24) return { w: u32(b, 16), h: u32(b, 20) };
+    if (kind === 'gif' && b.length >= 10) return { w: l16(6), h: l16(8) };
+    if (kind === 'webp' && b.length >= 30) {
+      const t = text4(b, 12);
+      if (t === 'VP8X') return { w: l24(24) + 1, h: l24(27) + 1 };
+      if (t === 'VP8L') { const v = (b[21] | b[22] << 8 | b[23] << 16 | b[24] << 24) >>> 0; return { w: (v & 0x3fff) + 1, h: ((v >>> 14) & 0x3fff) + 1 }; }
+      if (t === 'VP8 ') return { w: l16(26) & 0x3fff, h: l16(28) & 0x3fff };
+    }
+    if (kind === 'jpeg') {   // (its frame header, after any EXIF)
+      for (let i = 2; i + 9 < b.length;) {
+        if (b[i] !== 0xff) { i++; continue; }
+        const m = b[i + 1];
+        if (m === 0xff) { i++; continue; }
+        if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { w: u16(i + 7), h: u16(i + 5) };
+        if (m === 0x01 || (m >= 0xd0 && m <= 0xd8)) { i += 2; continue; }
+        i += 2 + u16(i + 2);
+      }
+    }
+    if (kind === 'avif') {   // (its first image's ispe box)
+      for (let i = 4; i + 16 <= b.length && i < 65536; i++) if (b[i] === 0x69 && b[i + 1] === 0x73 && b[i + 2] === 0x70 && b[i + 3] === 0x65) return { w: u32(b, i + 8), h: u32(b, i + 12) };
+    }
+    return null;
+  }
+  // Whether it moves: a GIF of more than one frame, a PNG whose acTL chunk (before its first IDAT) says more than one
+  // frame, a WebP with its animation flag, an AVIF image sequence.
+  function moves(b, kind) {
+    if (kind === 'png') {
+      for (let i = 8; i + 12 <= b.length;) {
+        const t = text4(b, i + 4);
+        if (t === 'acTL') return i + 12 <= b.length && u32(b, i + 8) > 1;
+        if (t === 'IDAT' || t === 'IEND') return false;
+        i += 12 + u32(b, i);
+      }
+      return false;
+    }
+    if (kind === 'webp') return text4(b, 12) === 'VP8X' && !!(b[20] & 2);
+    if (kind === 'avif') return brands(b).includes('avis');
+    if (kind !== 'gif') return false;
+    const skip = j => { while (j < b.length && b[j]) j += b[j] + 1; return j + 1; };   // past a run of sub-blocks
+    let i = 13 + (b[10] & 0x80 ? 3 << ((b[10] & 7) + 1) : 0), frames = 0;
+    while (i < b.length) {
+      if (b[i] === 0x2c) {
+        if (++frames > 1) return true;
+        i = skip(i + 10 + (b[i + 9] & 0x80 ? 3 << ((b[i + 9] & 7) + 1) : 0) + 1);
+      } else if (b[i] === 0x21) i = skip(i + 2);
+      else break;   // the end (0x3b), or something that isn't GIF
+    }
+    return false;
+  }
+  const dataUrl = blob => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
+  const no = say => Object.assign(new Error(say), { say });
+
+  // ---- a file, made ready to save: { src, w, h, bytes }, or an error with what to say
+  async function prepare(file) {
+    if (!file || typeof file.arrayBuffer !== 'function') throw no(SAY.broken);
+    if (file.size > MAX_FILE) throw no(SAY.big);
+    const b = new Uint8Array(await file.arrayBuffer()), name = String(file.name || ''), type0 = String(file.type || '');
+    let kind = kindOf(b);
+    if (!kind && (/svg/i.test(type0) || /\.svgz?$/i.test(name))) kind = 'svg';
+    if (!kind && (/hei[cf]/i.test(type0) || /\.hei[cf]$/i.test(name))) kind = 'heic';
+    if (kind === 'svg') throw no(SAY.svg);
+    if (kind === 'heic') throw no(SAY.heic);
+    if (!kind) throw no(SAY.type);
+    const head = sizeOf(b, kind), anim = moves(b, kind);
+    if (head && head.w * head.h > MAX_PIXELS) throw no(SAY.pixels);
+    if (anim && b.length > MAX_ANIM) throw no(SAY.anim);
+    const blob = new Blob([b], { type: 'image/' + kind });
+    let bmp;
+    try { bmp = await createImageBitmap(blob); } catch (e) { throw no(SAY.broken); }
+    try {
+      const w = bmp.width, h = bmp.height;
+      if (!w || !h) throw no(SAY.broken);
+      if (w * h > MAX_PIXELS) throw no(SAY.pixels);
+      const asIs = async () => ({ src: await dataUrl(blob), w, h, bytes: b.length });
+      if (anim || (b.length <= KEEP_BYTES && Math.max(w, h) <= KEEP_SIDE)) return asIs();
+      const out = await redraw(bmp, w, h, kind);
+      if (!out || (out.blob.size >= b.length && Math.max(w, h) <= KEEP_SIDE)) return asIs();   // (the original is smaller)
+      return { src: await dataUrl(out.blob), w: out.w, h: out.h, bytes: out.blob.size };
+    } finally { if (bmp.close) bmp.close(); }
+  }
+  // A still drawn again at 2560 px at most on its long side: JPEG, or WebP (PNG where WebP can't be made) where any
+  // pixel is see-through, so the board shows through it as before. Over 1.2 MB, at a lower quality.
+  async function redraw(bmp, w, h, kind) {
+    const k = Math.min(1, DRAW_SIDE / Math.max(w, h)), cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+    const c = document.createElement('canvas'); c.width = cw; c.height = ch;
+    const g = c.getContext('2d', { willReadFrequently: kind !== 'jpeg' }); g.imageSmoothingQuality = 'high'; g.drawImage(bmp, 0, 0, cw, ch);
+    const enc = (type, q) => new Promise(res => c.toBlob(res, type, q));
+    const smaller = async (type, q, q2) => {
+      const a = await enc(type, q);
+      if (!a || a.type !== type || a.size <= 1200000) return a;
+      const b = await enc(type, q2);
+      return b && b.size < a.size ? b : a;
+    };
+    let blob;
+    if (kind !== 'jpeg' && seeThrough(g, cw, ch)) {   // (a JPEG never is)
+      blob = await smaller('image/webp', 0.9, 0.75);
+      if (!blob || blob.type !== 'image/webp') blob = await enc('image/png');
+    } else blob = await smaller('image/jpeg', 0.85, 0.72);
+    c.width = c.height = 0;   // (its memory goes now)
+    return blob ? { blob, w: cw, h: ch } : null;
+  }
+  // Whether any pixel is see-through: every one is read, 256 rows at a time. (Rounded corners or a thin clear border
+  // are only a few pixels.)
+  function seeThrough(g, w, h) {
+    for (let y = 0; y < h; y += 256) {
+      const px = g.getImageData(0, y, w, Math.min(256, h - y)).data;
+      for (let i = 3; i < px.length; i += 4) if (px[i] < 250) return true;
+    }
+    return false;
+  }
+
+  // ---- a picture chosen here: how ('open', 'paste', 'drop') says whether it has a name of its own
+  async function take(file, how) {
+    const n = ++busy;
+    say('');
+    document.body.classList.add('busy');
+    clearTimeout(waitT);
+    waitT = setTimeout(() => { if (n === busy) wait.textContent = SAY.wait; }, 300);   // (said only when it takes a while)
+    try {
+      const out = await prepare(file);
+      await Board21.ready();   // (a file from the board can come before what was saved: see the 'file' event)
+      if (n !== busy) return;   // (another file since: that one wins)
+      picture = { src: out.src, w: out.w, h: out.h, name: how === 'paste' ? '' : String(file.name || '').slice(0, 120), bytes: out.bytes };
+      save(); show(); takeShape();
+    } catch (e) {
+      if (n !== busy) return;
+      tell((e && e.say) || SAY.broken);
+    } finally { if (n === busy) { document.body.classList.remove('busy'); clearTimeout(waitT); wait.textContent = ''; } }
+  }
+  function save() { Board21.save(picture ? Object.assign({}, picture) : { src: null }).catch(() => {}); }   // (not stored yet: the board keeps it and tries again)
+
+  // ---- what the window shows
+  function say(text) { err.textContent = text; err.hidden = !text; }
+  function tell(text) { if (picture) Board21.toast(text); else say(text); }   // (with a picture showing, its message is a toast)
+  const altOf = name => String(name || '').replace(/\.[a-z0-9]{1,5}$/i, '').trim() || 'Picture';
+  function show() {
+    if (!started) return;
+    ask.hidden = !!picture;
+    pic.hidden = !picture;
+    pasteBtn.hidden = !canPaste;
+    if (picture) {
+      if (img.getAttribute('src') !== picture.src) img.src = picture.src;
+      img.alt = altOf(picture.name);
+      place();
+    } else img.removeAttribute('src');   // (its memory goes)
+    setMenu();
+  }
+  // Whole picture: all of it, as large as fits. Crop to fill: it covers the window. Centered, in its own shape.
+  function place() {
+    if (!picture) return;
+    const W = innerWidth, H = innerHeight, w = img.naturalWidth || picture.w, h = img.naturalHeight || picture.h;
+    const k = fit === 'fill' ? Math.max(W / w, H / h) : Math.min(W / w, H / h), bw = w * k, bh = h * k;
+    Object.assign(img.style, { width: bw + 'px', height: bh + 'px', left: (W - bw) / 2 + 'px', top: (H - bh) / 2 + 'px' });
+  }
+  img.addEventListener('load', place);
+  addEventListener('resize', place);
+  // The window takes the picture's shape (within the board: the board fits it), unless it fills the board. A picture
+  // too tall or too wide for that within 720 × 540 gets the window's least size on its short side instead, and shows
+  // whole inside it.
+  function takeShape() {
+    const info = Board21.context && Board21.context.window;
+    if (!picture || (info && info.maximized)) return;
+    const { w, h } = picture, k = Math.min(BOX.w / w, BOX.h / h, Math.max(1, BOX.least / Math.max(w, h)));
+    let cw = Math.max(1, Math.round(w * k)), ch = Math.max(1, Math.round(h * k));
+    const exact = cw >= BOX.minW && ch >= BOX.minH;
+    cw = Math.max(BOX.minW, cw); ch = Math.max(BOX.minH, ch);
+    // (Its shape kept while the board fits it in, then free again: the teacher can make it any shape.)
+    if (exact) Board21.window.setAspectRatio(cw / ch);
+    Board21.window.setSize(cw, ch);
+    if (exact) Board21.window.setAspectRatio(null);
+  }
+
+  // ---- the window menu (an empty window has none: its buttons are there)
+  let menuNow = null;
+  function setMenu() {
+    const items = !picture ? [] : [
+      { id: 'open', label: 'Open…' },
+      ...(canPaste ? [{ id: 'paste', label: 'Paste' }] : []),
+      { separator: true },
+      { id: 'fit:whole', label: 'Whole picture', checked: fit !== 'fill' },
+      { id: 'fit:fill', label: 'Crop to fill', checked: fit === 'fill' },
+      { separator: true },
+      { id: 'remove', label: 'Remove picture' }
+    ];
+    const sig = JSON.stringify(items);
+    if (sig !== menuNow) { menuNow = sig; Board21.menu.set(items); }
+  }
+  Board21.on('menu', id => {
+    if (id === 'open') input.click();
+    else if (id === 'paste') pasteNow();
+    else if (id === 'fit:whole' || id === 'fit:fill') { fit = id.slice(4); Board21.saveConfig({ fit }).catch(() => {}); place(); setMenu(); }
+    else if (id === 'remove') { picture = null; say(''); save(); show(); }
+  });
+
+  // ---- Open…, Paste, and files pasted or dropped here
+  openBtn.addEventListener('click', () => input.click());
+  input.addEventListener('change', () => { const f = input.files && input.files[0]; input.value = ''; if (f) take(f, 'open'); });
+  pasteBtn.addEventListener('click', () => pasteNow());
+  // Paste (the button, or the window menu's): the clipboard's picture, in place of any picture here. One of the five
+  // kinds first, where the clipboard has another kind too (a drawing app may put an SVG first).
+  async function pasteNow() {
+    say('');
+    if (!document.hasFocus()) window.focus();   // (chosen in the window menu, which is the board's: Chrome reads the clipboard only for the page with focus)
+    let items;
+    try { items = await navigator.clipboard.read(); } catch (e) { tell(e && e.name === 'NotAllowedError' ? SAY.blocked : SAY.empty); return; }
+    for (const it of items || []) {
+      const t = it.types.find(x => /^image\/(png|jpeg|gif|webp|avif)$/i.test(x)) || it.types.find(x => /^image\//i.test(x));
+      if (t) { take(new File([await it.getType(t)], '', { type: t }), 'paste'); return; }
+    }
+    tell(SAY.empty);
+  }
+  // A file that may be a picture (its bytes decide): by its type or name, or with neither.
+  const maybe = f => /^image\//i.test(f.type || '') || /\.(png|jpe?g|jfif|gif|webp|avif|svgz?|hei[cf]|bmp|tiff?)$/i.test(f.name || '') || (!f.type && !/\.[a-z0-9]+$/i.test(f.name || ''));
+  // The one picture pasted or dropped, or null: none, or several (left to the board, which opens a window for each).
+  const oneOf = dt => { const fs = Array.from((dt && dt.files) || []).filter(maybe); return fs.length === 1 ? fs[0] : null; };
+  // Pasted with this window empty: it goes here. With a picture showing: left to the board (a new window).
+  document.addEventListener('paste', e => {
+    if (picture) return;
+    const f = oneOf(e.clipboardData);
+    if (!f) return;
+    e.preventDefault();
+    take(f, 'paste');
+  });
+  document.addEventListener('dragover', e => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) { e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; } });
+  document.addEventListener('drop', e => {
+    const f = oneOf(e.dataTransfer);
+    if (!f) return;   // (anything else, a .21board file say, or several pictures: the SDK passes them on to the board)
+    e.preventDefault();
+    take(f, 'drop');
+  });
+  // A picture pasted or dropped on the board, which opened this window for it.
+  Board21.on('file', (f, o) => { if (f && typeof f.arrayBuffer === 'function') take(f, o && o.reason === 'paste' ? 'paste' : 'drop'); });
+
+  // ---- changed in another tab, on another device, or by an import or a Reset
+  Board21.on('data', d => { picture = readPicture(d); if (picture) say(''); show(); });
+  Board21.on('config', c => { fit = readFit(c); place(); setMenu(); });
+
+  Board21.ready().then(ctx => {
+    picture = readPicture(ctx.data);
+    fit = readFit(ctx.config);
+    started = true;
+    show();
+  });
+</script>
+</body>
+</html>

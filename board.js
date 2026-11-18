@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-7';
-  const BOARD_BUILD = '5e55cbaf';
+  const BOARD_VERSION = '2026.11.18-8';
+  const BOARD_BUILD = 'a7363a45';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -1937,10 +1937,10 @@
     return best;
   }
 
-  function placeNew(size, c, side) {
+  function placeNew(size, c, side, at) {
     const view = boundsRect();
     const obs = obstacles(null);
-    const anchor = { x: view.x + view.w * (side === 'left' ? 0.32 : side === 'right' ? 0.68 : 0.5), y: view.y + view.h * 0.42 };
+    const anchor = at || { x: view.x + view.w * (side === 'left' ? 0.32 : side === 'right' ? 0.68 : 0.5), y: view.y + view.h * 0.42 };
     let prev = null;
     for (const scale of [1, 0.85, 0.7, 0.55]) {
       const s = fitSize(size.w * scale, size.h * scale, c, view);
@@ -2124,6 +2124,8 @@
       coverApps();   // (what overlaps a district app may have changed)
     }
 
+    middle() { const d = this.disp || this.inst.rect; return { x: d.x + d.w / 2, y: d.y + d.h / 2 }; }
+
     info() {
       const d = this.disp || { x: 0, y: 0, w: 0, h: TITLE_H };
       // zoom: how much bigger the window is drawn than its CSS size (the board's Size, the screen), so a canvas can stay sharp.
@@ -2189,9 +2191,13 @@
             }
           });
           this.loadingEl.classList.add('done');
+          Pictures.deliver(this);   // (a picture pasted or dropped on the board, for this new window: section 15c)
           break;
         }
         case 'activate': focusWin(this.ikey); closePopups(); break;
+        // A paste or drop the widget didn't take, as if on the board (section 15c). Not from a widget uploaded in
+        // Developer mode: it is sealed off, and opens nothing.
+        case 'paste': case 'drop': if (!this.widget.sealed && Array.isArray(m.files)) Pictures.fromWin(this, m.files, m.type); break;
         case 'key': if (m.key === 'Escape') closePopups(); break;
         case 'save': this.saveContent('data', m.data, m.reqId); break;
         case 'saveConfig': this.saveContent('conf', m.config, m.reqId); break;
@@ -2247,7 +2253,9 @@
           if (!cw || !ch) return;
           const view = boundsRect();
           const s = fitSize(cw, ch + TITLE_H, this.constraints(), view);
-          const r = resolveMove({ x: inst.rect.x, y: inst.rect.y, w: s.w, h: s.h }, obstacles(this), view, screenPx(RESISTANCE.strong), S.settings.snapping);
+          // (A window opened for a picture pasted or dropped on the board keeps its middle there: section 15c.)
+          const at = this.keepAt; this.keepAt = null;
+          const r = resolveMove({ x: at ? at.x - s.w / 2 : inst.rect.x, y: at ? at.y - s.h / 2 : inst.rect.y, w: s.w, h: s.h }, obstacles(this), view, screenPx(RESISTANCE.strong), S.settings.snapping);
           // (Windows locked: one that fills the board keeps filling it, and gets this size when restored. Section 12b.)
           saveInst(this.ikey, Object.assign({}, inst, { rect: r, maximized: !!inst.maximized && Lock.on() }));
           this.layout(true);
@@ -2434,6 +2442,8 @@
 
   // Open a widget: reopen its lowest-numbered closed instance (restoring its data),
   // or create the next instance number if every existing one is already open.
+  // opts.fresh: always a new window (a picture pasted on the board: a closed Picture window keeps its own, section 15c);
+  // opts.at: near this point (layout px) instead of the middle of the board.
   function openWidget(widgetId, opts = {}) {
     const widget = getWidget(widgetId);
     if (!widget || !Store.loaded) return null;   // (not before the stored board has been read: its windows aren't known yet)
@@ -2448,7 +2458,7 @@
       return ik;
     }
     // (Not a closed copy kept from a clash: it holds another device's older version.)
-    const closed = mine.find(i => !i.open && !i.copyOf);
+    const closed = !opts.fresh && mine.find(i => !i.open && !i.copyOf);
     let ikey, inst;
     if (closed) {
       ikey = ikeyOf(widgetId, closed.n);
@@ -2465,7 +2475,7 @@
       let n = 1;
       while (used.has(n)) n++;
       ikey = ikeyOf(widgetId, n);
-      const rect = placeNew(defaultOuterSize(widget), constraintsFor(widget), opts.side), createdAt = Date.now();
+      const rect = placeNew(defaultOuterSize(widget), constraintsFor(widget), opts.side, opts.at), createdAt = Date.now();
       // wid: which window this is on every device (Board Sync)
       inst = { widgetId, n, open: true, rect, z: maxZ() + 1, maximized: false, createdAt, wid: Merge.newWid(widgetId, createdAt, new Set(Array.from(S.insts.values(), i => i.wid))) };
     }
@@ -2637,6 +2647,7 @@
         if (Math.hypot(it.x - it.sx, it.y - it.sy) < slop) return;
         if (it.refused || Lock.refuse()) { it.refused = true; return; }   // windows locked (section 12b)
         it.moved = true;
+        it.win.keepAt = null;   // (moved by hand: no longer kept where a picture opened it, section 15c)
         document.body.classList.add('busy');
         // Mouse only: let the pointer pass over widget iframes. Touch and pen stay with their element anyway,
         // and other people can keep using (and dragging) the other windows.
@@ -7284,11 +7295,55 @@
       try { const r = await this.get(id); if (!r) toast('That version can’t be found anymore.'); return r; }
       catch (e) { toast('Couldn’t read board history just now. Try again in a moment.'); return null; }
     },
+    // (With its pictures put back: see pack.)
     async get(id) {
-      return this.tx(['meta', 'body'], 'readonly', (o, set) => {
+      return this.tx(['meta', 'body', 'photo'], 'readonly', (o, set) => {
         const m = o.meta.get(id), bd = o.body.get(id), r = {};
-        m.onsuccess = () => { r.meta = m.result; }; bd.onsuccess = () => { r.body = bd.result; set(r.meta && r.body ? r : null); };
+        m.onsuccess = () => { r.meta = m.result; };
+        bd.onsuccess = () => {
+          r.body = bd.result;
+          if (!r.meta || !r.body) { set(null); return; }
+          const keys = this.picsIn(r.body.exp), got = new Map();
+          let left = keys.length;
+          if (!left) { set(r); return; }
+          for (const k of keys) { const g = o.photo.get(k); g.onsuccess = () => { if (g.result) got.set(k, g.result.data); if (!--left) { this.unpack(r.body.exp, got); set(r); } }; }
+        };
       });
+    },
+    // Pictures in windows' content (the Picture widget's, usually 0.2–0.8 MB each) are kept once, in the photo store, not
+    // in every version: a string in a window's content over 32 KB that is a data: URL goes there under a fingerprint
+    // (pic-<hash>-<length>), and the version holds { b21pic: key } in its place (meta.pics lists them). get() puts them
+    // back; prune and thin keep a picture while a version names it. pack returns { exp, pics: key -> data }.
+    PIC_MIN: 32768,
+    pack(exp) {
+      const pics = new Map();
+      const instances = exp.instances.map(i => {
+        const d = i.data;
+        if (!d || typeof d !== 'object' || Array.isArray(d)) return i;
+        let out = null;
+        for (const [k, v] of Object.entries(d)) {
+          if (typeof v !== 'string' || v.length < this.PIC_MIN || !v.startsWith('data:')) continue;
+          const key = `pic-${hash53(v)}-${v.length}`;
+          pics.set(key, v);
+          out = out || Object.assign({}, d);
+          out[k] = { b21pic: key };
+        }
+        return out ? Object.assign({}, i, { data: out }) : i;
+      });
+      return { exp: Object.assign({}, exp, { instances }), pics };
+    },
+    picsIn(exp) {
+      const keys = new Set();
+      for (const i of (exp && exp.instances) || []) {
+        if (i.data && typeof i.data === 'object') for (const v of Object.values(i.data)) if (v && typeof v === 'object' && typeof v.b21pic === 'string') keys.add(v.b21pic);
+      }
+      return Array.from(keys);
+    },
+    unpack(exp, got) {   // (a picture that is gone: null, which the widget reads as none)
+      for (const i of exp.instances || []) {
+        if (i.data && typeof i.data === 'object') for (const [k, v] of Object.entries(i.data)) if (v && typeof v === 'object' && typeof v.b21pic === 'string') i.data[k] = got.get(v.b21pic) || null;
+      }
+      return exp;
     },
     async getPhoto(key) { return key ? this.tx(['photo'], 'readonly', (o, set) => { const g = o.photo.get(key); g.onsuccess = () => set(g.result || null); }) : null; },
     hasWindow(ikey) { return this.metas.some(m => m.wins && m.wins[ikey]); },
@@ -7302,7 +7357,7 @@
     },
     excerptOf(v) {
       const out = [];
-      const walk = x => { if (out.join(' ').length > 80) return; if (typeof x === 'string') { if (x.trim()) out.push(x.trim()); } else if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === 'object') Object.values(x).forEach(walk); };
+      const walk = x => { if (out.join(' ').length > 80) return; if (typeof x === 'string') { if (x.trim() && !x.startsWith('data:')) out.push(x.trim()); } else if (Array.isArray(x)) x.forEach(walk); else if (x && typeof x === 'object') Object.values(x).forEach(walk); };
       walk(v);
       return out.join(' ').replace(/\s+/g, ' ').slice(0, 80);
     },
@@ -7391,11 +7446,12 @@
       if (!exp.media) delete exp.media;
       const at = Math.max(Date.now(), (here && this.metas[0] && this.metas[0].tab === TAB_ID ? this.metas[0].at + 1 : 0));
       exp.snapshot = { at, kind, label: String(opts.label || '').slice(0, 80) };
-      const bytes = JSON.stringify(exp).length;
+      const packed = this.pack(exp), picKeys = Array.from(packed.pics.keys());   // (each window's picture kept once: pack)
+      const bytes = JSON.stringify(packed.exp).length;
       if (bytes > HIST.maxBody || ((kind === 'auto' || kind === 'open') && bytes > HIST.maxAuto)) { this.status = 'too-big'; return null; }
       const uid = here ? S.board.uid : exp.board.uid, name = here ? S.board.name : exp.board.name;
       const meta = { v: 1, id: `${b}:${String(at).padStart(13, '0')}:${TAB_ID}`, b, at, kind, reason: opts.reason || null, label: exp.snapshot.label,
-        sig, uid: uid || null, name, bytes, photo: photoKey, thumb: this.thumbOf(exp), wins: this.winsOf(exp),
+        sig, uid: uid || null, name, bytes, photo: photoKey, ...(picKeys.length ? { pics: picKeys } : {}), thumb: this.thumbOf(exp), wins: this.winsOf(exp),
         target: opts.target || null,   // going back: the time gone back to (labels are written when shown)
         beforeBig: false,
         keepUntil: kind === 'before' || kind === 'restored' ? at + HIST.safetyKeep : 0, manual: kind === 'manual', folder: null, tab: TAB_ID };
@@ -7418,8 +7474,12 @@
             // Another tab just saved one.
             if (newest && kind === 'auto' && (newest.kind === 'auto' || newest.kind === 'open') && every && at - newest.at < 0.9 * every) { set(null); return; }
             if (newest && this.bigChange(newest, meta)) { newest.beforeBig = true; o.meta.put(newest); }
-            o.body.put({ id: meta.id, exp });
+            o.body.put({ id: meta.id, exp: packed.exp });
             o.meta.put(meta);
+            for (const [key, data] of packed.pics) {
+              const g = o.photo.get(key);
+              g.onsuccess = () => { const ph = g.result; if (ph) { ph.lastUsed = at; o.photo.put(ph); } else o.photo.put({ key, data, pic: true, bytes: data.length, lastUsed: at }); };
+            }
             if (photoKey) {
               const g = o.photo.get(photoKey);
               g.onsuccess = () => {
@@ -7548,7 +7608,17 @@
         const { B, low } = await this.budget();
         this.low = low;
         const all = (await this.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAll(); q.onsuccess = () => set(q.result); })) || [];
-        const photos = (await this.tx(['photo'], 'readonly', (o, set) => { const q = o.photo.getAll(); q.onsuccess = () => set(q.result.map(p => ({ key: p.key, size: (p.data || '').length, lastUsed: p.lastUsed || 0 }))); })) || [];
+        // Each photo's size. A window's picture's is in its key (pic-<hash>-<length>, see pack), so pictures aren't read.
+        const photos = (await this.tx(['photo'], 'readonly', (o, set) => {
+          const q = o.photo.getAllKeys();
+          q.onsuccess = () => {
+            const out = [], rest = [];
+            for (const key of q.result) { const m = /^pic-[0-9a-z]+-(\d+)$/.exec(key); if (m) out.push({ key, size: +m[1], lastUsed: 0 }); else rest.push(key); }
+            let left = rest.length;
+            if (!left) { set(out); return; }
+            for (const key of rest) { const g = o.photo.get(key); g.onsuccess = () => { const p = g.result; if (p) out.push({ key, size: (p.data || '').length, lastUsed: p.lastUsed || 0 }); if (!--left) set(out); }; }
+          };
+        })) || [];
         const now = Date.now(), drop = new Set(), gone = new Set();
         const byBoard = new Map();
         for (const m of all) { if (m.deletedAt && now - m.deletedAt >= HIST.goneKeep) drop.add(m.id); if (!byBoard.has(m.b)) byBoard.set(m.b, []); byBoard.get(m.b).push(m); }   // (a page deleted 30 days ago)
@@ -7565,12 +7635,14 @@
         const dropPhotos = new Set(refs.slice(HIST.photos));
         live.forEach(m => { if (dropPhotos.has(m.photo)) gone.add(m.id); });
         // Within the byte budget: photos of old versions first, then old versions.
-        const total = () => live.reduce((n, m) => n + (m.bytes || 0), 0) + Array.from(new Set(live.filter(m => !gone.has(m.id)).map(m => m.photo))).reduce((n, k) => n + ((used.get(k) || {}).size || 0), 0);
+        const pics = () => Array.from(new Set(live.flatMap(m => m.pics || [])));   // (windows' pictures: each once, see pack)
+        const total = () => live.reduce((n, m) => n + (m.bytes || 0), 0) + Array.from(new Set(live.filter(m => !gone.has(m.id)).map(m => m.photo))).reduce((n, k) => n + ((used.get(k) || {}).size || 0), 0)
+          + pics().reduce((n, k) => n + ((used.get(k) || {}).size || 0), 0);
         const old = live.filter(m => !m.manual && !newest20.has(m.id)).sort((a, b) => a.at - b.at);
         for (const m of old) { if (total() <= B) break; if (m.photo && m.photo !== 'gone') gone.add(m.id); }
         for (const m of old) { if (total() <= B) break; drop.add(m.id); live = live.filter(x => x.id !== m.id); }
         this.paused = total() > B ? 'over' : (this.paused === 'over' || (this.paused === 'quota' && !low) ? '' : this.paused);
-        const stillUsed = new Set(live.filter(m => !gone.has(m.id)).map(m => m.photo).filter(Boolean));
+        const stillUsed = new Set(live.filter(m => !gone.has(m.id)).map(m => m.photo).filter(Boolean).concat(pics()));
         if (!drop.size && !gone.size && photos.every(p => stillUsed.has(p.key))) return;
         await this.tx(['meta', 'body', 'photo'], 'readwrite', o => {
           drop.forEach(id => { o.meta.delete(id); o.body.delete(id); });
@@ -7604,9 +7676,11 @@
         const photos = all.filter(m => m.photo && m.photo !== 'gone' && !keepPhoto.has(m.photo));
         const old = photos.length ? [] : all.filter(m => !keep.has(m.id)).sort((a, b) => a.at - b.at).slice(0, 10);
         if (!photos.length && !old.length) return false;
+        const named = new Set(all.filter(m => !old.includes(m)).flatMap(m => m.pics || []));   // (windows' pictures still named: pack)
         await this.tx(['meta', 'body', 'photo'], 'readwrite', o => {
           for (const m of photos) { o.photo.delete(m.photo); m.photo = 'gone'; o.meta.put(m); }
           for (const m of old) { o.meta.delete(m.id); o.body.delete(m.id); }
+          for (const k of new Set(old.flatMap(m => m.pics || []))) if (!named.has(k)) o.photo.delete(k);
         });
         // Said once: history is never given up silently.
         if (!this.thinned) toast('This device is almost out of space, so some of the oldest board history was removed. Make room on this device.', { timeout: 12000 });
@@ -10411,6 +10485,60 @@
   };
 
   // =====================================================================
+  // 15c. Pictures pasted or dropped onto the board
+  // ---------------------------------------------------------------------
+  // A picture pasted (Ctrl+V, ⌘V) or dropped onto the board opens in a new Picture window (widgets/image): in the middle
+  // of the board, or where it was dropped, one window for each picture, which keeps its middle there as it takes the
+  // picture's shape. The window opens first; once its page has started (hello), the board sends it the file ('file'),
+  // and the widget checks it, shrinks it if it must and saves it as its content, as it does for its own Open…. A paste
+  // or drop inside a widget that the widget didn't take comes here too (the SDK passes it on; a .21board file dropped
+  // there imports, as on the board), except from a widget uploaded in Developer mode. A paste in the board's own text
+  // fields, or while a dialog is open, is theirs; text pasted on the board does nothing. Not while windows are locked
+  // (section 12b): the board says how to unlock, as it does for a window moved.
+  // =====================================================================
+  const PICTURE_ID = 'image';
+  const Pictures = {
+    // A file that may be a picture, by its type or name. (Its bytes are checked by the widget, which says what's wrong:
+    // an SVG, a HEIC photo, a file that isn't a picture at all.)
+    is(f) { return !!f && typeof f.arrayBuffer === 'function' && (/^image\//i.test(f.type || '') || /\.(png|jpe?g|jfif|gif|webp|avif|svgz?|hei[cf]|bmp|tiff?)$/i.test(f.name || '')); },
+    // A Picture window for each picture among files (10 at most, and the rest asked for again), near at (layout px) or
+    // in the middle of the board. reason: 'paste' or 'drop'. False when there was no picture to open.
+    open(files, reason, at) {
+      const all = Array.from(files || []).filter(f => this.is(f)), pics = all.slice(0, 10);
+      if (!pics.length || !getWidget(PICTURE_ID) || !Store.loaded) return false;
+      if (Lock.refuse()) return true;
+      if (all.length > pics.length) toast(reason === 'paste' ? 'Opened 10 pictures. Paste the rest again.' : 'Opened 10 pictures. Drop the rest again.');
+      for (const file of pics) {
+        const ik = openWidget(PICTURE_ID, { fresh: true, at: at || undefined }), w = ik && S.wins.get(ik);
+        if (!w) continue;
+        w.keepAt = w.middle();   // (taking the picture's shape, it stays where it opened: windowOp setSize)
+        w.files = (w.files || []).concat({ file, reason: reason === 'paste' ? 'paste' : 'drop' });
+        if (w.connected) this.deliver(w);
+      }
+      return true;
+    },
+    // What a window's widget didn't take (the SDK passes it on): as on the board. A picture dropped opens beside that
+    // window; a .21board file dropped imports.
+    fromWin(w, files, reason) {
+      const f = files[0];
+      if (reason === 'drop' && f && typeof f.text === 'function' && /\.21board$|\.json$/i.test(f.name || '')) importFile(f);
+      else this.open(files, reason, reason === 'drop' ? w.middle() : null);
+    },
+    deliver(w) {
+      const list = w.files;
+      w.files = null;
+      for (const x of list || []) w.post('file', x);
+    },
+    init() {
+      document.addEventListener('paste', e => {
+        const t = e.target;
+        if (e.defaultPrevented || $('#modal.open') || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))) return;
+        if (this.open(e.clipboardData && e.clipboardData.files, 'paste')) e.preventDefault();
+      });
+    }
+  };
+
+  // =====================================================================
   // 16. Boot
   // =====================================================================
   function initUI() {
@@ -10477,14 +10605,17 @@
       if (f) importFile(f);
     });
 
-    // Dropping a .21board file onto the board imports it.
+    // Dropping a .21board file onto the board imports it. Pictures open in Picture windows, where they were dropped
+    // (section 15c).
     window.addEventListener('dragover', e => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault(); });
     window.addEventListener('drop', e => {
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
       if (!f) return;
       e.preventDefault();
       if (/\.21board$|\.json$/i.test(f.name)) importFile(f);
+      else Pictures.open(e.dataTransfer.files, 'drop', toLayout({ left: e.clientX, top: e.clientY, width: 0, height: 0 }));
     });
+    Pictures.init();
 
     window.addEventListener('resize', () => { scheduleLayoutAll(); Picker.render(); Pages.closeMenu(); });
     const onFs = () => Picker.renderControls();

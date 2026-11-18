@@ -30,7 +30,7 @@
   // from the old page doesn't count.)
   if (window.Board21 && window.Board21.page === document.documentElement) return;
 
-  var SDK_VERSION = '1.1.0';
+  var SDK_VERSION = '1.2.0';
   var PROTOCOL = 1;
   var ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   var me = document.currentScript;
@@ -75,6 +75,7 @@
   var reqSeq = 0;
   var pending = {};
   var menuItems = [];
+  var heldFiles = [];   // 'file' events that came before any listener: given to the first one (see on)
   var readyResolve;
   var readyPromise = new Promise(function (r) { readyResolve = r; });
 
@@ -327,6 +328,14 @@
         break;
       }
       case 'beforeclose': emit('beforeclose'); break;
+      // A picture pasted or dropped on the board, sent to the Picture window the board opened for it. (Held until the
+      // widget listens: it may come before the widget's own script has run.)
+      case 'file': {
+        if (!m.file || typeof m.file.arrayBuffer !== 'function') break;
+        var f = [m.file, { reason: m.reason === 'paste' ? 'paste' : 'drop' }];
+        if ((listeners.file || []).length) emit('file', f[0], f[1]); else heldFiles.push(f);
+        break;
+      }
     }
   });
 
@@ -459,6 +468,24 @@
     // Tapping anywhere in the widget brings its window to the front.
     window.addEventListener('pointerdown', function () { post('activate'); }, true);
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape') post('key', { key: 'Escape' }); }, true);
+    // A paste or a drop of files that the widget didn't take (preventDefault() on the document or an element) goes to the
+    // board, which opens the pictures in new Picture windows. A paste in a text field is the field's. A dropped file
+    // never opens in place of the widget.
+    var filesOf = function (dt) { var out = []; for (var i = 0; dt && dt.files && i < dt.files.length && i < 100; i++) out.push(dt.files[i]); return out; };   // (the board opens 10 and asks for the rest again)
+    var hasFiles = function (dt) { return !!dt && Array.prototype.indexOf.call(dt.types || [], 'Files') >= 0; };
+    var typing = function (el) { return !!el && el.nodeType === 1 && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); };
+    window.addEventListener('paste', function (e) {
+      if (e.defaultPrevented || typing(e.target) || typing(document.activeElement)) return;
+      var files = filesOf(e.clipboardData);
+      if (files.length) post('paste', { files: files });
+    });
+    window.addEventListener('dragover', function (e) { if (!e.defaultPrevented && hasFiles(e.dataTransfer)) e.preventDefault(); });
+    window.addEventListener('drop', function (e) {
+      if (e.defaultPrevented || !hasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      var files = filesOf(e.dataTransfer);
+      if (files.length) post('drop', { files: files });
+    });
     // Safety net: if the board never answers, run on its own.
     setTimeout(function () { if (!context) startStandalone(); }, 4000);
   } else {
@@ -486,9 +513,13 @@
     /** 'light' or 'dark'. */
     get theme() { return context ? context.theme : 'light'; },
 
-    /** Subscribe: 'data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose'. Returns an unsubscribe function. */
+    /** Subscribe: 'data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose', 'file' (the Picture widget's). Returns an unsubscribe function. */
     on: function (event, fn) {
       (listeners[event] = listeners[event] || []).push(fn);
+      if (event === 'file' && heldFiles.length) {
+        var held = heldFiles.splice(0);
+        setTimeout(function () { held.forEach(function (f) { emit('file', f[0], f[1]); }); }, 0);
+      }
       return function () { Board21.off(event, fn); };
     },
     off: function (event, fn) {

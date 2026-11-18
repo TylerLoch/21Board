@@ -172,6 +172,21 @@ self.BOARD21_WIDGETS = [
     clash: 'later',   // its content is which video, like a timer's time
     permissions: []
   },
+  {
+    // A picture opened, pasted or dropped on the board (board.js section 15c opens one of these for each). Its id is
+    // 'image', so that a new name changes nothing saved.
+    id: 'image',
+    name: 'Picture',
+    description: 'Shows a picture you open or paste.',
+    version: '1.0.0',
+    entry: 'widgets/image/index.html',
+    files: ['widgets/image/index.html'],
+    color: '#c026d3',
+    icon: '<svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.8" cy="9.8" r="1.7"/><path d="M3.5 17.5l5.2-5.2 3.8 3.8 2.6-2.6 5.4 5.4"/></svg>',
+    window: { width: 480, height: 360, minWidth: 160, minHeight: 120 },
+    clash: 'later',   // its content is which picture, a choice (Board history keeps the other)
+    permissions: []
+  },
   // The district's own apps, each from its own site (they keep their own work; see `external` above). Their pages
   // are another site's, so their windows move by the title bar only: dragFromContent false.
   {
