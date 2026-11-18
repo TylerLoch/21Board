@@ -216,13 +216,13 @@ self.BOARD21_WIDGETS = [
   {
     id: 'sdk-playground',
     name: 'SDK Playground',
-    description: 'Developer tool: exercise every 21Board SDK call and watch events.',
-    version: '1.0.0',
+    description: 'Try every SDK call with your own values.',
+    version: '2.0.0',
     entry: 'widgets/sdk-playground/index.html',
     files: ['widgets/sdk-playground/index.html'],
     color: '#475569',
     icon: '<svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5"/><path d="M16 7l5 5-5 5"/><path d="M13.5 4l-3 16"/></svg>',
-    window: { width: 520, height: 440, minWidth: 320, minHeight: 260, dragFromContent: false },
+    window: { width: 720, height: 520, minWidth: 320, minHeight: 260, dragFromContent: false },
     permissions: [],
     devOnly: true
   }

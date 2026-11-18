@@ -546,8 +546,8 @@ it can't read this site's real boards. *Edit code* goes back to the code.
   it is offered a few seconds later. (Reloading with Shift held, Ctrl+Shift+R, shows the page from the
   server at once, but a widget window that is open still comes from the saved copy: reload once more, or
   close and open the widget.)
-- **SDK Playground:** with Developer mode on, open *SDK Playground* from the Widget Picker to try
-  every call and watch events.
+- **SDK Playground:** with Developer mode on, open *SDK Playground* from the Widget Picker. Run any call
+  with your own values and copy its code. Watch the window's state, the palette and every event.
 - **Sync:** open 21Board in two tabs side by side and use your widget in one.
 
 ---

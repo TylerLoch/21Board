@@ -961,37 +961,45 @@ const SUITES = [
     ok(await page.locator('[data-widget="sdk-playground"]').count() === 1, 'developer mode shows SDK Playground');
     await page.click('[data-widget="sdk-playground"]'); await page.waitForTimeout(1000);
     const f = page.frameLocator('.win[data-ikey="sdk-playground:1"] iframe');
-    const btn = k => f.locator(`button[data-k="${k}"]`).click();
+    // A call in the Playground, run with these values (its inputs, boxes and lists by their data-arg).
+    const btn = async (name, args = {}) => {
+      const c = f.locator(`[data-call="${name}"]`);
+      for (const [k, v] of Object.entries(args)) {
+        const el = c.locator(`[data-arg="${k}"]`);
+        if (await el.evaluate(e => e.tagName === 'SELECT')) await el.selectOption(String(v)); else await el.fill(String(v));
+      }
+      await c.locator('.run').click();
+    };
     const ik = 'sdk-playground:1';
-    await btn('setSize(480, 320)'); await page.waitForTimeout(400);
+    await btn('Board21.window.setSize', { width: 480, height: 320 }); await page.waitForTimeout(400);
     let d = await disp(page, ik);
     ok(d.w === 480 && d.h === 360, `setSize sets content size (${d.w}x${d.h - 40})`);
-    await btn('aspect 16:9'); await page.waitForTimeout(400);
+    await btn('Board21.window.setAspectRatio', { ratio: '16/9' }); await page.waitForTimeout(400);
     d = await disp(page, ik);
     ok(Math.abs(d.w / (d.h - 40) - 16 / 9) < 0.02, `setAspectRatio 16:9 (${d.w}x${d.h - 40})`);
-    await btn('aspect off');
-    await btn('resizable off'); await page.waitForTimeout(200);
+    await btn('Board21.window.setAspectRatio', { ratio: '' });
+    await btn('Board21.window.setResizable', { resizable: false }); await page.waitForTimeout(200);
     ok(await page.locator(`.win[data-ikey="${ik}"].no-resize`).count() === 1, 'setResizable(false) hides grips');
-    await btn('resizable on');
-    await btn('setTitle(time)'); await page.waitForTimeout(200);
+    await btn('Board21.window.setResizable', { resizable: true });
+    await btn('Board21.window.setTitle', { text: new Date().toLocaleTimeString() }); await page.waitForTimeout(200);
     ok((await page.locator(`.win[data-ikey="${ik}"] .sub`).textContent()).length > 0, 'setTitle shows subtitle');
-    await btn('requestAttention()'); await page.waitForTimeout(200);
+    await btn('Board21.window.requestAttention'); await page.waitForTimeout(200);
     ok(await page.locator(`.win[data-ikey="${ik}"].attention`).count() === 1, 'requestAttention pulses the title bar');
-    await btn('menu.set(3 items)'); await page.waitForTimeout(200);
+    await btn('Board21.menu.set', { items: JSON.stringify([{ id: 'a', label: 'Item A' }, { id: 'b', label: 'Checked B', checked: true }, { separator: true }, { id: 'c', label: 'Disabled C', disabled: true }]) }); await page.waitForTimeout(200);
     await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200);
     ok(await page.locator('#menu [data-act="widget"]').count() === 3, 'custom menu items appear in window menu');
     await page.screenshot({ path: OUT + '40-sdk-menu.png' });
     await page.click('#menu [data-id="a"]'); await page.waitForTimeout(200);
-    ok((await f.locator('#log').textContent()).includes('event menu "a"'), 'menu selection reaches the widget');
-    await btn('save({counter})'); await page.waitForTimeout(300);
-    ok((await f.locator('#log').textContent()).includes('save ok'), 'save resolves after commit');
-    await btn('getInfo()'); await page.waitForTimeout(200);
-    ok((await f.locator('#log').textContent()).includes('"width"'), 'getInfo returns window info');
-    await btn('toast()'); await page.waitForTimeout(200);
+    ok(await f.locator('#log .entry[data-event="menu"]', { hasText: '"a"' }).count() === 1, 'menu selection reaches the widget');
+    await btn('Board21.save', { data: '{"counter": 1}' }); await page.waitForTimeout(300);
+    ok(await f.locator('[data-call="Board21.save"] .result').textContent() === 'null' && await page.evaluate(ik => JSON.stringify(window.__board21.state.data.get(ik)), ik) === '{"counter":1}', 'save resolves after commit');
+    await btn('Board21.window.getInfo'); await page.waitForTimeout(200);
+    ok((await f.locator('[data-call="Board21.window.getInfo"] .result').textContent()).includes('"width"'), 'getInfo returns window info');
+    await btn('Board21.toast', { text: 'Hello from the SDK Playground' }); await page.waitForTimeout(200);
     ok(await page.locator('.toast:has-text("Hello from the SDK")').count() === 1, 'toast shows on the board');
-    await btn('maximize()'); await page.waitForTimeout(400);
+    await btn('Board21.window.maximize'); await page.waitForTimeout(400);
     d = await disp(page, ik); ok(d.w === 1400 && d.h === 860, 'maximize()');
-    await btn('restore()'); await page.waitForTimeout(400);
+    await btn('Board21.window.restore'); await page.waitForTimeout(400);
     // dev: test an unregistered widget by uploading its file, with the button (Settings → Developer mode → Test a widget → Upload file…)
     await openSettings(page, ['advanced']);
     const devChooser = await Promise.all([page.waitForEvent('filechooser', { timeout: 3000 }), page.click('#settings [data-act="dev-upload"]', { timeout: 3000 })]).then(([c]) => c, () => null);
@@ -1000,7 +1008,7 @@ const SUITES = [
     await eventually(() => page.evaluate(() => Array.from(window.__board21.state.wins.values()).some(w => w.widget.dev && w.connected)));
     const devWin = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).filter(w => w.widget.dev).map(w => [w.ikey, w.connected, w.widget.sealed]));
     ok(devWin.length === 1 && devWin[0][1] && devWin[0][2], 'developer can test an unregistered widget by uploading its file (it runs sealed off): ' + JSON.stringify(devWin));
-    await btn('close()'); await page.waitForTimeout(400);
+    await btn('Board21.window.close'); await page.waitForTimeout(400);
     ok(!(await page.evaluate(ik => window.__board21.state.wins.has(ik), ik)), 'close() from the widget closes its window');
 
     // ---- standalone widget
@@ -1073,6 +1081,304 @@ const SUITES = [
       if (oerr.length) ok(false, 'no page errors on the older board: ' + oerr.join(' | '));
       await oc.close();
     }
+  }],
+  ['SDK Playground: every call and event the SDK has, run with your own values (save and load, a menu from JSON with a heading and a checkmark, title, minimum size), bad JSON, copy as code, live state, the palette (theme, Custom… accent, text style), the log (timestamps, pretty JSON, filter, pause, clear, copy), the smallest window in every text style, the keyboard', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1400, height: 860 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    const ik = 'sdk-playground:1';
+    const open = async () => {
+      await page.evaluate(() => window.__board21.openWidget('sdk-playground'));
+      await eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+      await page.evaluate(ik => window.__board21.setRect(ik, { x: 300, y: 40, w: 720, h: 560 }), ik);
+    };
+    await open();
+    const f = page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const F = (fn, arg) => f.locator('html').evaluate(fn, arg);
+    ok(await f.locator('[data-call="Board21.save"]').waitFor({ timeout: 5000 }).then(() => true, () => false), 'the Playground lists its calls');
+    // Copying: what the Playground hands the clipboard.
+    const stubClipboard = () => F(() => { window.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copied.push(t); return Promise.resolve(); } } }); });
+    await stubClipboard();
+    const copied = () => F(() => window.__copied.slice());
+    const tab = async t => { const b = f.locator(`[role="tab"][data-tab="${t}"]`); if (await b.isVisible()) await b.click(); };
+    const call = name => f.locator(`[data-call="${name}"]`);
+    // A call's values: its inputs, boxes and lists by their data-arg, or one of its ready examples.
+    const setArgs = async (name, args = {}) => {
+      for (const [k, v] of Object.entries(args)) {
+        if (k === 'example') { await call(name).locator(`[data-example="${v}"]`).click(); continue; }
+        const el = call(name).locator(`[data-arg="${k}"]`);
+        if (await el.evaluate(e => e.tagName === 'SELECT')) await el.selectOption(String(v)); else await el.fill(String(v));
+      }
+    };
+    const run = async (name, args) => { await tab('calls'); await setArgs(name, args); await call(name).locator('.run').click(); await page.waitForTimeout(300); };
+    const result = name => call(name).locator('.result').textContent();
+    const data = () => page.evaluate(ik => window.__board21.state.data.get(ik), ik);
+    const disp = () => page.evaluate(ik => Object.assign({}, window.__board21.state.wins.get(ik).disp), ik);
+    const doc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8');
+    const between = (a, b) => { const i = doc.indexOf(a); return doc.slice(i, doc.indexOf(b, i)); };
+
+    // ---- P1. Everything the SDK has and the guide documents: calls, events, the context and window info, menu items.
+    const api = between('## API reference', '## Content vs. config');
+    const calls = new Set(api.match(/Board21\.(?:window\.|menu\.)?[A-Za-z]+/g));
+    for (const row of api.split('\n').filter(l => /^\| `Board21\./.test(l))) {   // (`Board21.window.maximize()` / `restore()`)
+      const cell = row.split('|')[1], pre = /`(Board21\.(?:window\.|menu\.)?)/.exec(cell)[1];
+      for (const m of cell.matchAll(/`([A-Za-z]+)\(/g)) calls.add(pre + m[1]);
+    }
+    const live = await F(() => [].concat(Object.keys(Board21).filter(k => k !== 'window' && k !== 'menu').map(k => 'Board21.' + k),
+      Object.keys(Board21.window).map(k => 'Board21.window.' + k), Object.keys(Board21.menu).map(k => 'Board21.menu.' + k)));
+    live.forEach(c => calls.add(c));
+    const shown = await F(() => [...document.querySelectorAll('[data-call]')].filter(c => c.querySelector('.run') && c.querySelector('.code') && c.querySelector('.copy')).map(c => c.dataset.call));
+    let missing = [...calls].filter(c => !shown.includes(c));
+    ok(calls.size >= 27 && !missing.length, `every call the SDK has and the guide documents is there, with its code, Copy and Run (${calls.size} calls${missing.length ? '; missing: ' + missing.join(', ') : ''})`);
+    const groups = await F(() => [...document.querySelectorAll('.group')].map(g => [g.querySelector('h2').textContent.trim(), g.querySelectorAll('[data-call]').length]));
+    ok(groups.length >= 5 && groups.every(([n, c]) => n && n.length <= 12 && c > 0), `in short groups (${groups.map(g => g.join(' ')).join(', ')})`);
+    const events = [...new Set(between('### Events', '### Other').split('\n').filter(l => /^\| `/.test(l)).flatMap(l => [...l.split('|')[1].matchAll(/`([a-z]+)`/g)].map(m => m[1])))];
+    const evs = await F(() => ({ filter: [...document.querySelectorAll('#filter option')].map(o => o.value),
+      on: [...document.querySelectorAll('[data-call="Board21.on"] [data-arg="event"] option')].map(o => o.value),
+      off: [...document.querySelectorAll('[data-call="Board21.off"] [data-arg="event"] option')].map(o => o.value) }));
+    missing = events.filter(e => !evs.filter.includes(e) || !evs.on.includes(e) || !evs.off.includes(e));
+    ok(events.length === 8 && !missing.length, `every event (${events.join(', ')}) can be shown in the log, and turned on and off${missing.length ? '; missing: ' + missing.join(', ') : ''}`);
+    const ctxDoc = between('The **context**:', '### Saving');
+    const ctxKeys = [...ctxDoc.matchAll(/^\s+([a-zA-Z]+):/gm)].map(m => m[1]);
+    const winKeys = /window: \{ ([^}]+) \}/.exec(ctxDoc)[1].split(',').map(s => s.trim());
+    const st0 = await F(() => ({ keys: [...document.querySelectorAll('#state [data-key]')].map(e => e.dataset.key), wkeys: [...document.querySelectorAll('#state [data-wkey]')].map(e => e.dataset.wkey) }));
+    missing = ctxKeys.filter(k => !st0.keys.includes(k)).concat(winKeys.filter(k => !st0.wkeys.includes(k)).map(k => 'window.' + k));
+    ok(ctxKeys.length >= 15 && ctxKeys.includes('kiosk') && winKeys.includes('zoom') && winKeys.includes('corners') && !missing.length,
+      `State shows every key of the context (${ctxKeys.length}) and of window info (${winKeys.join(', ')})${missing.length ? '; missing: ' + missing.join(', ') : ''}`);
+    const menuDoc = between('### Window menu', '### Events');
+    const itemKeys = [...new Set([...menuDoc.split('```').filter((b, i) => i % 2).join('\n').matchAll(/\b([a-z]+): /g)].map(m => m[1]))];
+    const exNames = await call('Board21.menu.set').locator('[data-example]').evaluateAll(b => b.map(e => e.dataset.example));
+    const used = new Set();
+    for (const n of exNames) {
+      await setArgs('Board21.menu.set', { example: n });
+      const walk = v => { if (Array.isArray(v)) v.forEach(walk); else if (v && typeof v === 'object') for (const k of Object.keys(v)) { used.add(k); walk(v[k]); } };
+      walk(JSON.parse(await call('Board21.menu.set').locator('[data-arg="items"]').inputValue()));
+    }
+    missing = itemKeys.filter(k => !used.has(k));
+    ok(['checkmarks', 'heading', 'swatches'].every(n => exNames.includes(n)) && itemKeys.length >= 9 && !missing.length,
+      `the menu's ready examples (${exNames.join(', ')}) use every option a menu item has (${itemKeys.join(', ')})${missing.length ? '; missing: ' + missing.join(', ') : ''}`);
+
+    // ---- P2. Your own values: save and load, a menu from JSON with a heading and a checkmark, the title, a minimum size.
+    await run('Board21.save', { data: '{"n": 42, "names": ["Ana", "Ben"]}' });
+    ok(JSON.stringify(await data()) === '{"n":42,"names":["Ana","Ben"]}', `save() saves the JSON typed (${JSON.stringify(await data())})`);
+    await run('Board21.load');
+    const loaded = await result('Board21.load');
+    ok((() => { try { return JSON.stringify(JSON.parse(loaded)) === '{"n":42,"names":["Ana","Ben"]}'; } catch (e) { return false; } })(), `and load() gives it back (${loaded})`);
+    await page.evaluate(ik => window.__board21.closeWin(ik), ik); await page.waitForTimeout(300);
+    await open(); await f.locator('[data-call="Board21.load"]').waitFor(); await stubClipboard();
+    await run('Board21.load');
+    ok((await result('Board21.load').catch(() => '')).replace(/\s/g, '') === '{"n":42,"names":["Ana","Ben"]}', 'closed and opened again, load() still gives it back');
+    const items = [{ heading: true, label: 'Size' }, { id: 'size:s', label: 'Small', checked: true }, { id: 'size:b', label: 'Big', checked: false }];
+    await run('Board21.menu.set', { items: JSON.stringify(items, null, 2) });
+    const mi = await page.evaluate(ik => window.__board21.state.wins.get(ik).menuItems, ik);
+    ok(mi.length === 3 && mi[0].heading && mi[0].label === 'Size' && mi[1].checked === true && mi[2].checked === false, `menu.set() from JSON: a heading and two checkable items (${JSON.stringify(mi)})`);
+    await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200);
+    const small = page.locator('#menu').getByRole('menuitemcheckbox', { name: 'Small', exact: true });
+    ok(await page.locator('#menu .menu-group[aria-label="Size"] .menu-heading').textContent() === 'Size' && await small.getAttribute('aria-checked') === 'true',
+      'the window menu shows the heading, and Small with its checkmark');
+    await page.locator('#menu').getByRole('menuitemcheckbox', { name: 'Big', exact: true }).click(); await page.waitForTimeout(300);
+    ok(await f.locator('#log .entry[data-event="menu"]', { hasText: 'size:b' }).count() === 1, 'tapping Big reaches the Playground’s log');
+    await run('Board21.window.setTitle', { text: 'Quiz in 5' });
+    ok(await page.locator(`.win[data-ikey="${ik}"] .sub`).textContent() === 'Quiz in 5', 'setTitle() with your own text');
+    await page.evaluate(ik => window.__board21.setRect(ik, { x: 300, y: 40, w: 600, h: 480 }), ik); await page.waitForTimeout(300);
+    await run('Board21.window.setMinSize', { width: 760, height: 500 }); await page.waitForTimeout(200);
+    let d = await disp();
+    ok(d.w >= 760 && d.h - 40 >= 500, `setMinSize(760, 500) draws the window at least that big (${d.w} × ${d.h - 40})`);
+    await run('Board21.window.setMinSize', { width: '', height: '' }); await page.waitForTimeout(200);
+    d = await disp();
+    ok(await call('Board21.window.setMinSize').locator('.code').textContent() === 'Board21.window.setMinSize(null, null);' && d.w === 600 && d.h === 480,
+      `empty boxes are null: setMinSize(null, null) goes back to the registry’s, and the window to its size (${d.w} × ${d.h - 40})`);
+
+    // ---- Bad JSON says so, kindly, and nothing runs.
+    const logCalls = () => f.locator('#log .entry[data-kind="call"]').count();
+    const before = JSON.stringify(await data()), n0 = await logCalls();
+    await run('Board21.save', { data: '{ count: 1 }' });
+    const err = call('Board21.save').locator('.err');
+    ok(await err.isVisible() && /^That’s not valid JSON\. .*double quotes/.test(await err.textContent()) && await call('Board21.save').locator('[data-arg="data"]').getAttribute('aria-invalid') === 'true',
+      `keys without double quotes: “${await err.textContent().catch(() => '')}”`);
+    await run('Board21.save', { data: '{\n  "count": 1,\n}' });
+    ok(await err.isVisible() && /^That’s not valid JSON\. Check line 3\.$/.test(await err.textContent()), `a comma too many: “${await err.textContent().catch(() => '')}”`);
+    await call('Board21.save').locator('.copy').click(); await page.waitForTimeout(150);
+    ok(JSON.stringify(await data()) === before && await logCalls() === n0 && !(await copied()).length && !errors.length, 'nothing is saved, run, logged or copied, and nothing throws');
+    await setArgs('Board21.save', { data: '{"count": 2}' }); await page.waitForTimeout(150);
+    ok(!(await err.isVisible()) && await call('Board21.save').locator('[data-arg="data"]').getAttribute('aria-invalid') !== 'true', 'the message goes once the JSON is right');
+
+    // ---- P5. Copy as code: the line shown is what Copy gives, and it makes the very call Run makes.
+    await F(() => {
+      window.__ran = [];
+      const wrap = (o, p) => Object.keys(o).forEach(k => {
+        if (typeof o[k] !== 'function') return;
+        const fn = o[k];
+        o[k] = function (...a) { window.__ran.push([p + k, JSON.parse(JSON.stringify(a))]); return fn.apply(this, a); };
+      });
+      wrap(Board21, 'Board21.'); wrap(Board21.window, 'Board21.window.'); wrap(Board21.menu, 'Board21.menu.');
+    });
+    const evalCode = text => {
+      const out = [];
+      const rec = p => new Proxy(function () {}, { get: (t, k) => rec(p + '.' + String(k)), apply: (t, th, a) => { out.push([p, JSON.parse(JSON.stringify(a))]); return Promise.resolve(); } });
+      new Function('Board21', 'handler', text)(rec('Board21'), function handler() {});
+      return out;
+    };
+    const cases = [
+      ['Board21.save', { data: '{"score": 7, "done": false, "note": "It’s \\"fine\\"\\n", "list": [1, 2.5, null]}' }],
+      ['Board21.saveConfig', { config: '{"big": true, "color": "#fef08a"}' }],
+      ['Board21.load'], ['Board21.loadConfig'],
+      ['Board21.window.setSize', { width: 640, height: 400 }],
+      ['Board21.window.setAspectRatio', { ratio: '4:3' }], ['Board21.window.setAspectRatio', { ratio: '' }],
+      ['Board21.window.setMinSize', { width: 400, height: '' }], ['Board21.window.setMinSize', { width: '', height: '' }],
+      ['Board21.window.setMaxSize', { width: 900, height: '' }], ['Board21.window.setMaxSize', { width: '', height: '' }],
+      ['Board21.window.setResizable', { resizable: 'false' }], ['Board21.window.setResizable', { resizable: 'true' }],
+      ['Board21.window.setDragFromContent', { on: 'true' }], ['Board21.window.setDragFromContent', { on: 'false' }],
+      ['Board21.window.setTitle', { text: 'Ms. O’Neil’s \'class\' \\ 2' }],
+      ['Board21.window.getInfo'], ['Board21.window.focus'], ['Board21.window.requestAttention'],
+      ['Board21.menu.set', { example: 'swatches' }], ['Board21.menu.set', { example: 'icon' }], ['Board21.menu.clear'],
+      ['Board21.toast', { text: 'Done!' }],
+      ['Board21.on', { event: 'resize' }], ['Board21.off', { event: 'resize' }], ['Board21.on', { event: 'resize' }],
+      ['Board21.ready']
+    ];
+    const wrong = [];
+    for (const [name, args] of cases) {
+      await setArgs(name, args);
+      await F(() => { window.__ran = []; window.__copied = []; });
+      await call(name).locator('.run').click(); await page.waitForTimeout(200);
+      await call(name).locator('.copy').click(); await page.waitForTimeout(100);
+      const [ran, cp, code, label] = await Promise.all([F(() => window.__ran.slice()), copied(), call(name).locator('.code').textContent(), call(name).locator('.copy').textContent()]);
+      let made = null; try { made = evalCode(cp[0]); } catch (e) { made = 'throws: ' + e.message; }
+      if (cp.length !== 1 || cp[0] !== code || !Array.isArray(made) || made.length !== 1 || JSON.stringify(made[0]) !== JSON.stringify(ran[0]) || label !== 'Copied') wrong.push({ name, args, code, copied: cp, ran: ran[0], made, label });
+    }
+    ok(!wrong.length, `Copy gives the line shown, and that line makes the same call as Run (${cases.length} calls${wrong.length ? '; wrong: ' + JSON.stringify(wrong) : ''})`);
+    const reads = await F(() => ['context', 'embedded', 'theme', 'version'].map(k => document.querySelector(`[data-call="Board21.${k}"] .code`).textContent));
+    ok(reads.join() === 'Board21.context,Board21.embedded,Board21.theme,Board21.version', `reading a value shows just that (${reads.join(', ')})`);
+    const codes = await F(() => ({ save: document.querySelector('[data-call="Board21.save"] .code').textContent, size: document.querySelector('[data-call="Board21.window.setSize"] .code').textContent,
+      menu: (document.querySelector('[data-call="Board21.menu.set"] [data-example="heading"]').click(), document.querySelector('[data-call="Board21.menu.set"] .code').textContent) }));
+    ok(codes.size === 'Board21.window.setSize(640, 400);' && /^Board21\.save\(\{ score: 7, done: false, note: 'It’s "fine"\\n', list: \[1, 2\.5, null\] \}\);$/.test(codes.save) &&
+      /^Board21\.menu\.set\(\[\n  \{ heading: true, label: '[^']+' \},\n/.test(codes.menu),
+      `as a widget would write it: ${codes.size} ${codes.save} ${codes.menu.replace(/\n/g, '¶')}`);
+
+    // ---- P3. State, live: content, config, context and window info, refreshed by their events.
+    await tab('state');
+    const sv = (attr, k) => F((_, [attr, k]) => { const e = document.querySelector(`#state [data-${attr}="${k}"] .v`); return e ? e.textContent : null; }, [attr, k]);
+    await run('Board21.save', { data: '{"step": 3}' }); await tab('state');
+    ok((await sv('key', 'data') || '').replace(/\s/g, '') === '{"step":3}', `State shows the content saved (${await sv('key', 'data')})`);
+    await page.evaluate(ik => { const b = window.__board21; b.state.data.set(ik, { step: 4 }); b.state.wins.get(ik).post('data', { data: { step: 4 }, reason: 'remote' }); }, ik); await page.waitForTimeout(300);
+    ok((await sv('key', 'data') || '').replace(/\s/g, '') === '{"step":4}', 'and a change from another tab (the data event)');
+    await page.evaluate(ik => window.__board21.setRect(ik, { x: 660, y: 40, w: 700, h: 540 }), ik); await page.waitForTimeout(400);
+    ok(await sv('wkey', 'width') === '700' && await sv('wkey', 'height') === '500', `the window’s size follows resize events (${await sv('wkey', 'width')} × ${await sv('wkey', 'height')})`);
+    await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(500);
+    const corners = await sv('wkey', 'corners'), maxd = await sv('wkey', 'maximized');
+    ok(maxd === 'true' && /"left"/.test(corners || ''), `filling the board: maximized and corners (${maxd}, ${corners})`);
+    await page.evaluate(ik => window.__board21.setMaximized(ik, false), ik); await page.waitForTimeout(400);
+    ok(await sv('wkey', 'maximized') === 'false' && await sv('wkey', 'zoom') === '1', `back again (zoom ${await sv('wkey', 'zoom')})`);
+    const ctxShown = await F(() => Object.fromEntries([...document.querySelectorAll('#state [data-key] > .v')].map(e => [e.parentNode.dataset.key, e.textContent])));
+    ok(ctxShown.widgetId === '"sdk-playground"' && ctxShown.instance === '1' && ctxShown.kiosk === 'false' && ctxShown.standalone === 'false' && ctxShown.host === '"board"' && ctxShown.theme === '"light"' && ctxShown['text-style'] === 'Standard',
+      `the context: widget id, instance, kiosk, standalone, host, theme, text style (${JSON.stringify(ctxShown)})`);
+
+    // ---- P4. The palette: every token, its swatch, name and value, following the theme, the accent and the text style.
+    await tab('palette');
+    const tokens = [...new Set(between('## Theming', '## Registering a widget').match(/--b21-[a-z0-9-]+/g))];
+    const pal = () => F(() => [...document.querySelectorAll('#palette [data-token]')].map(b => ({ t: b.dataset.token, v: b.querySelector('.value').textContent.trim(), sw: !!b.querySelector('.swatch'),
+      css: getComputedStyle(document.documentElement).getPropertyValue(b.dataset.token).trim() })));
+    let p = await pal();
+    const ctxPal = await F(() => Object.keys(Board21.context.palette).map(k => '--b21-' + k));
+    missing = [...new Set(tokens.concat(ctxPal))].filter(t => !p.some(x => x.t === t));
+    ok(tokens.length === 14 && !missing.length && p.every(x => x.v && x.v === x.css && x.sw), `the palette lists every token with a swatch, its name and value (${p.length}${missing.length ? '; missing: ' + missing.join(', ') : ''})`);
+    const val = t => p.find(x => x.t === t).v;
+    await openSettings(page); await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(500);
+    p = await pal();
+    ok(val('--b21-bg') === '#1e1e1e' && val('--b21-accent') === '#60a5fa' && p.every(x => x.v === x.css), `dark: it follows (${val('--b21-bg')}, ${val('--b21-accent')})`);
+    await page.locator('#set-accent-custom').evaluate(el => { el.value = '#0d9488'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }); await page.waitForTimeout(500);
+    p = await pal();
+    const custom = await page.evaluate(() => window.__board21.state.settings.accentColor);
+    ok(custom === '#0d9488' && val('--b21-accent') !== '#60a5fa' && val('--b21-accent-soft') !== 'rgba(96,165,250,0.18)' && p.every(x => x.v === x.css), `a Custom… accent: it follows (${val('--b21-accent')}, ${val('--b21-accent-soft')})`);
+    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="legible"]'); await page.waitForTimeout(500);
+    p = await pal();
+    ok(/Atkinson Hyperlegible/.test(val('--b21-font')) && p.every(x => x.v === x.css), `the text style: it follows (${val('--b21-font')})`);
+    await tab('state');
+    ok(await sv('key', 'text-style') === 'Easier to read' && await sv('key', 'theme') === '"dark"', `and State says so (${await sv('key', 'text-style')}, ${await sv('key', 'theme')})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await tab('palette');
+    await F(() => { window.__copied = []; });
+    await f.locator('#palette [data-token="--b21-accent"]').click(); await page.waitForTimeout(100);
+    ok(JSON.stringify(await copied()) === '["--b21-accent"]', `tapping a token copies its name (${JSON.stringify(await copied())})`);
+    await page.screenshot({ path: OUT + 'sdk-playground-palette-dark.png' });
+
+    // ---- P6. The log: timestamps, pretty JSON, filter by event, pause, clear, copy.
+    await page.evaluate(ik => window.__board21.setRect(ik, { x: 300, y: 40, w: 720, h: 560 }), ik); await page.waitForTimeout(400);
+    await tab('log');
+    await run('Board21.menu.set', { example: 'checkmarks' });
+    const tapMenu = async id => { await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.click(`#menu [data-id="${id}"]`); await page.waitForTimeout(250); };
+    const shownLog = () => F(() => [...document.querySelectorAll('#log .entry')].filter(e => !e.hidden).map(e => ({ kind: e.dataset.kind, ev: e.dataset.event || '', time: (e.querySelector('.time') || {}).textContent || '',
+      pre: [...e.querySelectorAll('pre')].map(x => x.textContent) })));
+    await f.locator('#filter').selectOption('menu');
+    await tapMenu('analog');
+    await page.evaluate(ik => window.__board21.setRect(ik, { x: 300, y: 40, w: 730, h: 560 }), ik); await page.waitForTimeout(300);
+    let L = await shownLog();
+    const hiddenResize = await f.locator('#log .entry[data-event="resize"][hidden]').count();
+    ok(L.length >= 1 && L.every(e => e.ev === 'menu') && hiddenResize >= 1, `the filter shows only menu events (${L.length} shown; ${hiddenResize} resize events hidden)`);
+    const last = L[L.length - 1];
+    ok(/^\d\d:\d\d:\d\d\.\d{3}$/.test(last.time) && last.pre.some(t => t.includes('\n  "label": "Analog"')), `with a timestamp and pretty JSON (${last.time}; ${JSON.stringify(last.pre)})`);
+    await f.locator('#pause').click();
+    const n1 = (await shownLog()).length;
+    await tapMenu('digital'); await tapMenu('analog');
+    ok((await shownLog()).length === n1 && await f.locator('#pause').getAttribute('aria-pressed') === 'true' && /[1-9]/.test(await f.locator('#pause').textContent()),
+      `paused: nothing new shows, and Resume counts what waits (${await f.locator('#pause').textContent()})`);
+    await f.locator('#pause').click(); await page.waitForTimeout(150);
+    L = await shownLog();
+    ok(L.length === n1 + 2 && await f.locator('#pause').getAttribute('aria-pressed') === 'false', `Resume shows them (${L.length})`);
+    await F(() => { window.__copied = []; });
+    await f.locator('#copy-log').click(); await page.waitForTimeout(100);
+    const text = (await copied())[0] || '';
+    ok(/^\d\d:\d\d:\d\d\.\d{3} +menu /m.test(text) && !/resize/.test(text) && (text.match(/^\d\d:\d\d:\d\d\.\d{3}/gm) || []).length === L.length, `Copy gives what the log shows (${text.split('\n').length} lines)`);
+    await f.locator('#filter').selectOption('all');
+    await f.locator('#clear').click(); await page.waitForTimeout(100);
+    ok(await f.locator('#log .entry').count() === 0, 'Clear empties it');
+
+    // ---- P7. The smallest window (320 × 260) in every text style, and the board's other sizes: every tab usable.
+    const cramped = [];
+    for (const style of ['standard', 'legible', 'early']) {
+      await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+      await page.evaluate(ik => window.__board21.setRect(ik, { x: 500, y: 60, w: 320, h: 300 }), ik); await page.waitForTimeout(500);
+      for (const t of ['calls', 'state', 'palette', 'log']) {
+        await f.locator(`[role="tab"][data-tab="${t}"]`).click(); await page.waitForTimeout(100);
+        const m = await F(() => {
+          const tabs = [...document.querySelectorAll('[role="tab"]')].filter(b => b.offsetParent), panel = document.querySelector('[role="tabpanel"]:not([hidden])');
+          const over = panel ? [...panel.querySelectorAll('*')].filter(e => e.offsetParent && e.getBoundingClientRect().right > innerWidth + 0.5).map(e => e.tagName + '.' + e.className) : ['no panel'];
+          return { w: innerWidth, h: innerHeight, sw: document.documentElement.scrollWidth, tabs: tabs.length, clipped: tabs.filter(b => b.scrollWidth > b.clientWidth + 1 || b.getBoundingClientRect().right > innerWidth + 0.5).map(b => b.textContent),
+            over, font: getComputedStyle(document.querySelector('button')).fontFamily, room: panel ? panel.getBoundingClientRect().height : 0 };
+        });
+        if (m.w !== 320 || m.h !== 260 || m.sw > 320 || m.tabs !== 4 || m.clipped.length || m.over.length || m.room < 150 ||
+          !(style === 'standard' || m.font.includes(style === 'legible' ? 'Atkinson Hyperlegible' : '21Board Early Readers'))) cramped.push({ style, t, m });
+      }
+      await page.screenshot({ path: OUT + `sdk-playground-min-${style}.png`, clip: await page.locator(`.win[data-ikey="${ik}"]`).boundingBox() });
+    }
+    ok(!cramped.length, `at 320 × 260, in every text style, all four tabs and their content fit, in the board’s font${cramped.length ? ': ' + JSON.stringify(cramped) : ''}`);
+    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    for (const sc of [0.5, 2]) {
+      await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(400);
+      await page.evaluate(ik => window.__board21.setRect(ik, { x: 20, y: 20, w: 320, h: 300 }), ik); await page.waitForTimeout(400);
+      const m = await F(() => ({ w: innerWidth, h: innerHeight, sw: document.documentElement.scrollWidth }));
+      ok(m.w === 320 && m.h === 260 && m.sw <= 320, `at Size ${sc * 100}% too (${m.w} × ${m.h})`);
+    }
+    await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
+
+    // ---- The keyboard and a screen reader: tabs with the arrow keys, Enter runs a call, every control named.
+    await page.evaluate(ik => { window.__board21.setRect(ik, { x: 300, y: 40, w: 480, h: 440 }); window.__board21.focusWin(ik); }, ik); await page.waitForTimeout(400);
+    await f.locator('[role="tab"][data-tab="calls"]').click();
+    await page.keyboard.press('ArrowRight');
+    ok(await F(() => document.activeElement.dataset.tab === 'state' && document.activeElement.getAttribute('aria-selected') === 'true' && !document.getElementById(document.activeElement.getAttribute('aria-controls')).hidden),
+      'the arrow keys move between the tabs');
+    await f.locator('[role="tab"][data-tab="calls"]').click();
+    await call('Board21.window.setTitle').locator('[data-arg="text"]').fill('From the keyboard');
+    await call('Board21.window.setTitle').locator('[data-arg="text"]').press('Enter'); await page.waitForTimeout(300);
+    ok(await page.locator(`.win[data-ikey="${ik}"] .sub`).textContent() === 'From the keyboard', 'Enter in a box runs its call');
+    const unnamed = await F(() => [...document.querySelectorAll('input, select, textarea, button')].filter(e => !(e.labels && e.labels.length) && !e.getAttribute('aria-label') && !e.textContent.trim() && !e.getAttribute('aria-labelledby')).map(e => e.outerHTML.slice(0, 80)));
+    const runs = await F(() => [...document.querySelectorAll('[data-call] .run')].map(b => b.getAttribute('aria-label') || ''));
+    ok(!unnamed.length && runs.every(n => /^Run \S/.test(n)) && new Set(runs).size === runs.length, `every control has a name, and each Run says which call (${unnamed.join(' | ') || runs.slice(0, 3).join(', ')}…)`);
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
   }],
   ['Focus, grips, resize snapping, storage protection', async (browser) => {
   const disp = (p, ik) => p.evaluate(ik => Object.assign({}, window.__board21.state.wins.get(ik).disp), ik);
