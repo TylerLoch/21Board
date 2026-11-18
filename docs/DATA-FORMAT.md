@@ -87,7 +87,7 @@ storage can't be read still has every page.
   lettersAt: 1794460420000,//   every device (lettersAt from 2026.11.17-2)
   locked: false,           // Settings → Classroom → Lock windows in place
   awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
-  clock: "auto",           // Settings → Advanced → Clock in the corner: "on" | "off" | "auto" (the default: only while 21Board is full screen)
+  clock: "auto",           // Settings → Advanced → Clock in the corner: "on" | "off" | "auto" (the default: only in full screen)
   letters: "standard",     // Settings → Appearance → Text style (called Letters before 2026.11.17-2): "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
   lastBackupAt: null,      // ms of the last full backup (an export of every page, or Board Sync writing this device's
                            //   file), for backup reminders and the amber dot on Settings → Advanced (only when overdue)
@@ -112,11 +112,10 @@ Older versions had a third choice for `awake`, `"hours"` (school hours, Monday t
 `awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"` (the teacher wanted the screen on in class) and drops
 `awakeFrom` and `awakeTo` when it reads the record, so the next save of the settings leaves them out.
 
-Before 2026.11.18-1, `clock` was `"off"`, `"time"` or `"date"` (Time and date, the default, in Settings →
-Appearance). 21Board reads `"date"`, which most devices saved without anyone choosing it, as `"auto"`, and `"time"`
-(someone chose a clock) as `"on"`; `"off"` stays. Nothing is rewritten: the record keeps the old value until Clock in
-the corner is changed. Any other value reads as `"auto"`. An older release reads `"on"` and `"auto"` as its own
-default, Time and date.
+Before 2026.11.18-1, `clock` was in Settings → Appearance: `"off"`, `"time"` or `"date"`, the default. 21Board
+reads `"date"` as `"auto"`, because most devices saved it without anyone choosing it. It reads `"time"` as `"on"`,
+and any value it doesn't know as `"auto"`. The record keeps its old value until someone changes Clock in the corner.
+An older release reads `"on"` and `"auto"` as its own default, Time and date.
 
 Older versions also kept `devWidgets` here: test widgets added in Developer mode by their path on the site
 (`[{ id, name, entry }]`). That way of testing a widget is gone, so 21Board ignores `devWidgets`, whatever it

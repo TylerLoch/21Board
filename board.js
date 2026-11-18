@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-1';
-  const BOARD_BUILD = 'ae59880d';
+  const BOARD_BUILD = 'eaf48663';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -48,7 +48,7 @@
       return v && v.widget && typeof v.src === 'string' ? v : null;
     } catch (e) { return null; }
   })();
-  // Kiosk mode (?kiosk=yes): ChromeOS kiosk, for users who don't sign in. No Fullscreen (a kiosk is always full
+  // Kiosk mode (?kiosk=yes): ChromeOS kiosk, for users who don't sign in. No ⛶ Full screen (a kiosk is always full
   // screen), Google Drive folder, install prompt or backup reminders; a Quit control at the end of the Widget
   // Picker's controls. Import and Export use ChromeOS's Files dialog (the kiosk's own storage, USB drives).
   // Everything else (windows, widgets, saving on the device, board history, backups when asked for) works as usual.
@@ -1650,7 +1650,7 @@
   // section, says what a page's own look reaches).
   function shapeSettingsRow(seg) {
     const hint = freeShape() ? 'Uses the whole window.' : 'Looks the same on every screen.';
-    return `<div class="row"><div><div class="lbl">Board shape</div><div class="hint">${hint}</div></div>${seg('shape', freeShape() ? 'free' : '16:9', [['16:9', 'Widescreen'], ['free', 'Fill']])}</div>`;
+    return `<div class="row"><div><div class="lbl">Board shape</div><div class="hint">${hint}</div></div>${seg('shape', freeShape() ? 'free' : '16:9', [['16:9', 'Widescreen'], ['free', 'Fill']], false, 'Board shape')}</div>`;
   }
   function scaleStep(dir) {
     const sc = boardScale();
@@ -3043,7 +3043,7 @@
       set('import', 'import', 'Import board').hidden = Lock.on();   // (windows locked: section 12b)
       set('quit', 'quit', 'Quit 21Board').hidden = !KIOSK;
       set('theme', dark ? 'sun' : 'moon', dark ? 'Light mode' : 'Dark mode');
-      const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit fullscreen' : 'Fullscreen');
+      const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit full screen' : 'Full screen');
       fs.hidden = KIOSK || !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
       // A new version is waiting (section 15): a dot on the ▦ buttons and on Settings, where "Update now" is.
       const update = !!S.sw.updateReady, ready = update ? ' (a new version is ready)' : '';
@@ -3097,7 +3097,7 @@
     try {
       if (on) (d.exitFullscreen || d.webkitExitFullscreen).call(d);
       else (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
-    } catch (err) { toast('Fullscreen is not available here.'); }
+    } catch (err) { toast('Full screen isn’t available here.'); }
   }
 
   // =====================================================================
@@ -4224,21 +4224,22 @@
     }
     return { left: Math.ceil(left / s), right: Math.ceil(right / s), height: Math.ceil((vh - top) / s) };
   }
-  // The clock or a ▦ button came, went or changed width: tell the windows that fill the board. (Once the code running
-  // now is done: when the screen changed size the windows are laid out again first, and one message tells it all.)
+  // The clock or a ▦ button came, went or changed width: tell the windows that fill the board, once the code running now
+  // is done. When the screen changed size, the layout that's coming tells them instead, with their new size and zoom in
+  // the same message. (initUI's resize listener, which asks for that layout, runs before the clock's: CornerClock.listen.)
   let cornersDue = false;
   function notifyCorners() {
     if (cornersDue) return;
     cornersDue = true;
-    Promise.resolve().then(() => { cornersDue = false; for (const w of S.wins.values()) if (w.inst && w.inst.maximized) w.notifyInfo(); });
+    Promise.resolve().then(() => { cornersDue = false; if (layoutRaf) return; for (const w of S.wins.values()) if (w.inst && w.inst.maximized) w.notifyInfo(); });
   }
 
   // Settings → Advanced, after Widget Picker. What Auto does is said; On and Off say themselves. What doesn't fit right
   // now (when it's meant to show) is said too, by CornerClock.place.
   function clockSettings(sw, seg) {
     if (LAB) return '';
-    return `<div class="row"><div><div class="lbl">Clock in the corner</div>${deviceOnly() ? `<div class="hint">${deviceOnly()}</div>` : ''}<div class="hint">Auto: only in full screen, where the device’s own clock is hidden.</div><div class="hint" id="set-clock-fit">${esc(CornerClock.fitNote())}</div></div>
-      ${seg('clock', clockMode(), [['on', 'On'], ['off', 'Off'], ['auto', 'Auto']])}</div>`;
+    return `<div class="row"><div><div class="lbl">Clock in the corner</div>${deviceOnly() ? `<div class="hint">${deviceOnly()}</div>` : ''}<div class="hint">Auto: only in full screen.</div><div class="hint" id="set-clock-fit">${esc(CornerClock.fitNote())}</div></div>
+      ${seg('clock', clockMode(), [['on', 'On'], ['off', 'Off'], ['auto', 'Auto']], false, 'Clock in the corner')}</div>`;
   }
 
   function clockAct(act, val) {
@@ -4322,8 +4323,9 @@
 
   // ---- (end of section 12b)
 
-  // Settings' controls: a segmented choice (radio buttons) and an on/off switch.
-  const segHTML = (act, cur, opts, disabled) => `<div class="seg${disabled ? ' disabled' : ''}" role="radiogroup">${opts.map(([v, l]) =>
+  // Settings' controls: a segmented choice (radio buttons) and an on/off switch. (label: the setting's name, for a screen
+  // reader, which otherwise hears only "Auto" or "Off".)
+  const segHTML = (act, cur, opts, disabled, label) => `<div class="seg${disabled ? ' disabled' : ''}" role="radiogroup"${label ? ` aria-label="${esc(label)}"` : ''}>${opts.map(([v, l]) =>
     `<button role="radio" aria-checked="${v === cur}" data-act="${act}" data-val="${v}" class="${v === cur ? 'on' : ''}">${l}</button>`).join('')}</div>`;
   // (describedBy: the id of a line a screen reader reads with the switch, such as a warning that comes with it on.)
   const switchHTML = (act, on, label, disabled, describedBy) => `<button class="switch${on ? ' on' : ''}" role="switch" aria-checked="${!!on}" aria-label="${esc(label)}"${describedBy ? ` aria-describedby="${describedBy}"` : ''} data-act="${act}"${disabled ? ' disabled' : ''}></button>`;
@@ -4394,7 +4396,7 @@
           style="aspect-ratio:${g.ratio.toFixed(4)};width:min(100%, ${Math.round(200 * g.ratio)}px);background-size:${fill ? 'cover' : 'contain'};background-position:${photoPosition(im)};--fade:${im.fade}">
           ${fill ? `<span class="focus" style="left:${(g.mx * 100).toFixed(2)}%;top:${(g.my * 100).toFixed(2)}%"></span>` : ''}</div>
         <div class="photo-ctrls">
-          <div class="line"><span>Fit</span>${segHTML('photo-fit', im.fit, [['fill', 'Fill the board'], ['whole', 'Whole photo']])}</div>
+          <div class="line"><span>Fit</span>${segHTML('photo-fit', im.fit, [['fill', 'Fill the board'], ['whole', 'Whole photo']], false, 'Fit')}</div>
           <label class="line"><span>Fade</span><input type="range" id="photo-fade" min="0" max="70" step="5" value="${Math.round(im.fade * 100)}" aria-label="Fade the photo"></label>
           <div class="line end"><button class="btn small" data-act="photo-add">Change…</button><button class="btn small danger" data-act="photo-remove">Remove</button></div>
         </div>
@@ -4667,11 +4669,11 @@
         `<button class="icon" data-act="dev-remove" data-val="${esc(d.id)}" title="Remove" aria-label="Remove ${esc(d.name)}">${svg('trash')}</button></div>`).join('');
       const dev = !LAB && !KIOSK;
       const advanced = `
-        <div class="row"><div class="lbl">Widget Picker</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']])}</div>
+        <div class="row"><div class="lbl">Widget Picker</div>${seg('corners', st.pickerCorners, [['both', 'Both corners'], ['left', 'Left'], ['right', 'Right']], false, 'Widget Picker')}</div>
         ${clockSettings(sw, seg)}
         ${scaleSettingsRow()}
         <h4>Moving windows</h4>
-        <div class="row stack"><div class="lbl">Windows stop at each other’s edges</div>${seg('snap', snap, [['off', 'Off'], ['light', 'Light'], ['medium', 'Medium'], ['firm', 'Firm']])}</div>
+        <div class="row stack"><div class="lbl">Windows stop at each other’s edges</div>${seg('snap', snap, [['off', 'Off'], ['light', 'Light'], ['medium', 'Medium'], ['firm', 'Firm']], false, 'Windows stop at each other’s edges')}</div>
         <div class="row"><div><div class="lbl">Drag windows from inside</div><div class="hint">Off: only by the title bar.</div></div>${sw('dragcontent', st.dragFromContent !== false, 'Drag windows from inside')}</div>
         ${historySettings(sw, seg)}
         <h4>${LAB ? 'Storage' : 'Backups and storage'}</h4>
@@ -4708,7 +4710,7 @@
         ${saved}
 
         <h3>Appearance</h3>
-        <div class="row">${labelled('Theme')}${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']])}</div>
+        <div class="row">${labelled('Theme')}${seg('theme', st.theme, [['light', 'Light'], ['dark', 'Dark'], ['system', 'Auto']], false, 'Theme')}</div>
         ${backgroundSettings()}
         <div class="row accent-row">${labelled('Accent color')}
           <div class="swatches" role="radiogroup" aria-label="Accent color">${Object.entries(ACCENTS).map(([k, a]) => { const on = (st.accent || 'blue') === k;
@@ -7776,7 +7778,7 @@
     if (LAB || !BoardHistory.enabled()) return '';
     const every = String(S.settings.historyEvery == null ? 10 : S.settings.historyEvery);
     return `<h4>Board history</h4>
-      <div class="row stack"><div><div class="lbl">Save a version automatically</div>${every === '0' ? '<div class="hint">One is still saved before big changes, like Close all.</div>' : ''}</div>${seg('hist-every', every, [['10', 'Every 10 min'], ['60', 'Every hour'], ['1440', 'Once a day'], ['0', 'Off']])}</div>
+      <div class="row stack"><div><div class="lbl">Save a version automatically</div>${every === '0' ? '<div class="hint">One is still saved before big changes, like Close all.</div>' : ''}</div>${seg('hist-every', every, [['10', 'Every 10 min'], ['60', 'Every hour'], ['1440', 'Once a day'], ['0', 'Off']], false, 'Save a version automatically')}</div>
       <div class="row"><div><div class="lbl">Delete board history</div><div class="hint">The board itself stays.</div></div><button class="btn small danger" data-act="hist-delete">Delete…</button></div>`;
   }
 
