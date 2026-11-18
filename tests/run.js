@@ -7190,6 +7190,380 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
+  // ---- Calculator (widgets/calculator): Teach's canvas and steps, its keys, and History that looks like Desmos's lines ----
+  ['Calculator: the Node test of its math engine (tests/calc-engine.js)', async () => {
+    const r = require('child_process').spawnSync(process.execPath, [path.join(__dirname, 'calc-engine.js')], { encoding: 'utf8', timeout: 5 * 60e3 });
+    const m = /(\d+) passed, (\d+) failed/.exec(r.stdout || '');
+    for (const line of String(r.stdout || '').split('\n').filter(l => /^FAIL /.test(l)).slice(0, 20)) console.log('   ' + line.trim());
+    ok(r.status === 0 && m && +m[2] === 0 && +m[1] >= 764, `tests/calc-engine.js: ${m ? `${m[1]} passed, ${m[2]} failed` : 'no result'}${!m ? ': ' + String(r.stderr || '').split('\n').slice(0, 4).join(' ') : ''}`);
+  }],
+  ['Calculator: the Widget Picker and a new window (canvas on the left, History hidden), the keys, = = =, History on and off and its lines, percent, faint digit groups, Advanced keys, Test practice, Steps, Hide the answer, In words, fractions, the keyboard, Swap sides, saved and kept apart, Reset, light and dark, the menu, the smallest size, the docs', async (browser) => {
+    const dir = path.join(ROOT, 'widgets', 'calculator'), file = path.join(dir, 'index.html'), src = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    const engineSrc = fs.existsSync(path.join(dir, 'calc-engine.js')) ? fs.readFileSync(path.join(dir, 'calc-engine.js'), 'utf8') : '';
+    ok(!!src && !!engineSrc && !/--b21-[\w-]+\s*:/.test(src) && !/localStorage|indexedDB|XMLHttpRequest|sessionStorage|fetch\(/.test(src + engineSrc) && !/https?:\/\/(?!www\.w3\.org\/)/.test(src + engineSrc.replace(/\/\/.*$/gm, '')),
+      'the widget is widgets/calculator/index.html and its engine calc-engine.js: no --b21-* value of its own, nothing stored itself, nothing from the Internet');
+    ok(/<script src="calc-engine\.js"><\/script>/.test(src) && /separators: 'faint'/.test(src), 'the page loads its engine from its own folder, with faint digit groups');
+    // The docs: README's row and section, the data format's content and config.
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
+    const sec = readme.indexOf('## Calculator') >= 0 ? readme.slice(readme.indexOf('## Calculator'), readme.indexOf('## ', readme.indexOf('## Calculator') + 5)) : '';
+    ok(readme.indexOf('| **Calculator** |') > readme.indexOf('### Included widgets') && readme.indexOf('| **Calculator** |') < readme.indexOf('## Adding a widget'), 'the README’s Included widgets has a Calculator row');
+    ok(/Desmos/.test(sec) && ['Canvas', 'History', 'Steps', 'In words', 'Advanced keys', 'Hide the answer', 'Answers as fractions', 'Test practice', '50 + 10% = 55', 'Swap sides'].every(w => sec.includes(w)),
+      `the README has a Calculator section: Desmos’s math, and every item of its menu (${sec.length} characters)`);
+    ok(/`calculator`/.test(dataDoc) && /serialize\(\)|"v": 2|v: 2/.test(dataDoc) && /percent/.test(dataDoc) && /advanced/.test(dataDoc) && /swap/.test(dataDoc), 'the data format guide has the Calculator’s content and config');
+
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+
+    // Helpers: a window's frame; what it shows; keys pressed as a child does; its menu; its saved content and config.
+    const W = (ik = 'calculator:1') => page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const look = (ik = 'calculator:1') => W(ik).locator('html').evaluate(() => {
+      const $ = id => document.getElementById(id), shown = e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+      const box = e => { const r = e.getBoundingClientRect(); return { x: Math.round(r.x * 10) / 10, y: Math.round(r.y * 10) / 10, w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10 }; };
+      const plain = e => { if (!e) return ''; const c = e.cloneNode(true); c.querySelectorAll('.ce-anslabel, .ce-cursor, .heq').forEach(n => n.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); };
+      const label = e => { const m = e && e.querySelector('.ce-math'); return m ? m.getAttribute('aria-label') : ''; };
+      const keys = [...document.querySelectorAll('#keys .key')].filter(shown);
+      const panels = [['canvas', $('card')], ['display', $('disp')], ['keys', $('keys')], ['history', $('history')]].filter(([, e]) => shown(e)).map(([n, e]) => Object.assign({ n }, box(e)));
+      const lines = [...document.querySelectorAll('#history .hline')].filter(shown);
+      return {
+        app: !!$('app'), layout: $('app') ? $('app').dataset.layout : '', panels, order: panels.slice().sort((a, b) => a.x - b.x).map(p => p.n),
+        keys: keys.map(k => k.dataset.key), keyMin: keys.length ? Math.min(...keys.map(k => Math.min(k.getBoundingClientRect().width, k.getBoundingClientRect().height))) : 0,
+        keysInside: keys.every(k => { const r = k.getBoundingClientRect(); return r.left >= -0.5 && r.top >= -0.5 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5; }),
+        eq: plain($('eq')), eqLabel: label($('eq')), cursor: !!document.querySelector('#eq .ce-cursor'), reveal: shown(document.querySelector('#eq .reveal')) || shown(document.querySelector('#big .reveal')),
+        big: plain($('big')), x: plain($('x')), hint: plain($('hint')), note: plain($('note')), said: shown($('said')) ? plain($('said')) : '',
+        toggle: shown($('eqToggle')) || shown($('bigToggle')), frac: !!document.querySelector('#eq .ce-ans .ce-frac, #big .ce-frac'),
+        hist: lines.map(l => ({ expr: plain(l.querySelector('.hpick')), ans: plain(l.querySelector('.hans')), pick: (l.querySelector('.hpick') || {}).getAttribute && l.querySelector('.hpick').getAttribute('aria-label'), use: l.querySelector('.hans') && l.querySelector('.hans').getAttribute('aria-label') })),
+        histEmpty: shown($('history')) ? plain(document.querySelector('#history .hempty')) : '',
+        count: plain($('count')), next: plain($('next')), chain: [...document.querySelectorAll('#chain li.on')].map(li => plain(li.querySelector('.lx'))),
+        lit: [...document.querySelectorAll('#player .pemdas b.lit')].map(b => b.textContent).join(''), player: shown($('player')),
+        hide: $('hide') ? $('hide').getAttribute('aria-checked') : null, live: $('live') ? $('live').textContent : '',
+        focus: document.activeElement === document.body, vw: innerWidth, vh: innerHeight, theme: document.documentElement.getAttribute('data-b21-theme')
+      };
+    }).catch(e => ({ error: String(e).slice(0, 200), panels: [], order: [], keys: [], hist: [], chain: [] }));
+    const NAME = { '+': 'add', '−': 'subtract', '-': 'subtract', '×': 'multiply', '÷': 'divide', '=': 'equals', '.': 'point', '(': 'open', ')': 'close', '%': 'percent', '√': 'sqrt', '±': 'negate', '⌫': 'backspace', π: 'pi' };
+    // keys: a string of one-character keys ('5+5='), or an array of key names (['clear', 'ans']).
+    // (Windows overlap: the one tapped is brought to the front first, as a teacher's tap would.)
+    const front = ik => page.evaluate(ik => { if (window.__board21.state.focused !== ik) window.__board21.focusWin(ik); }, ik);
+    const press = async (keys, ik = 'calculator:1') => {
+      await front(ik);
+      for (const k of typeof keys === 'string' ? Array.from(keys).map(c => NAME[c] || c) : keys) await W(ik).locator(`#keys .key[data-key="${k}"]`).click({ timeout: 3000 });
+      await page.waitForTimeout(120);
+    };
+    // text typed on the keyboard, as in Desmos (% is an Advanced key: the keyboard has it whether they show or not)
+    const type = async (text, ik = 'calculator:1') => { await front(ik); await W(ik).locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.type(text); await page.waitForTimeout(200); };
+    const choose = async (label, ik = 'calculator:1') => {
+      await front(ik);
+      await page.click(`.win[data-ikey="${ik}"] .win-label`);
+      await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).click({ timeout: 3000 });
+      await page.waitForTimeout(500);
+    };
+    const menu = (ik = 'calculator:1') => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return w ? w.menuItems.map(i => i.separator ? '—' : i.heading ? `[${i.label}]` : (i.disabled ? '(off) ' : '') + (i.checked ? '✓ ' : '') + i.label).join(' | ') : null; }, ik);
+    const data = (ik = 'calculator:1') => page.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
+    const conf = (ik = 'calculator:1') => page.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
+    const near = (a, b, d = 3) => Math.abs(a - b) <= d;
+    const panel = (L, n) => L.panels.find(p => p.n === n) || { x: 0, y: 0, w: 0, h: 0 };
+    const BASIC = 'clear,backspace,negate,open,close,sqrt,divide,7,8,9,multiply,4,5,6,subtract,1,2,3,add,0,point,ans,equals';
+    const ADV = ['square', 'power', 'root', 'cbrt', 'pi', 'percent', 'fraction', 'right'];
+    const TEST = 'clear,backspace,open,close,sqrt,divide,7,8,9,multiply,4,5,6,subtract,1,2,3,add,0,point,ans,equals';
+    const sorted = s => String(s).split(',').sort().join();
+
+    // ---- The registry and the Widget Picker
+    const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'calculator'); return a && { name: a.name, version: a.version, entry: a.entry, files: a.files, clash: a.clash, permissions: a.permissions, win: a.win, color: a.color, icon: a.icon, external: !!a.external, single: !!a.single, description: a.description }; });
+    ok(!!reg && reg.name === 'Calculator' && reg.version === '1.0.0' && reg.entry === 'widgets/calculator/index.html' && JSON.stringify(reg.files) === '["widgets/calculator/index.html","widgets/calculator/calc-engine.js"]' &&
+      reg.clash === 'later' && reg.permissions.length === 0 && !reg.external && !reg.single && reg.win.width === 900 && reg.win.height === 600 && reg.win.minWidth === 280 && reg.win.minHeight === 400 && !reg.win.aspectRatio && reg.win.dragFromContent !== false,
+      `it is in the registry as Calculator (id calculator): its page and engine, clash 'later', 900 × 600, at least 280 × 400, no shape lock (${JSON.stringify(reg && reg.win)}, ${reg && reg.clash})`);
+    ok(!!reg && reg.description === 'Work out problems and show each step.' && /<title>Calculator<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
+    const mf = /<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src), manifest = mf ? JSON.parse(mf[1]) : {};
+    ok(!!reg && manifest.id === 'calculator' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => (manifest.window || {})[k] === reg.win[k]), 'its manifest block matches the registry entry');
+    const others = await page.evaluate(() => window.__board21.catalog().filter(w => w.id !== 'calculator').map(w => String(w.color || '').toLowerCase()));
+    ok(!!reg && /^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', rgbOf(reg.color)) >= 4.5 && !others.includes(String(reg.color).toLowerCase()), `its tile is a color of its own (${reg && reg.color}), the white icon readable on it`);
+    await page.click('.picker-btn.left'); await page.waitForTimeout(250);
+    const tile = page.locator('[data-widget="calculator"]');
+    ok(await tile.count() === 1 && (await tile.innerText()).trim() === 'Calculator', 'the Widget Picker has a Calculator tile');
+    if (await tile.count()) await tile.click(); else await page.keyboard.press('Escape');
+    ok(await eventually(() => page.evaluate(() => { const w = window.__board21.state.wins.get('calculator:1'); return !!w && w.connected; })), 'tapping it opens a window, which connects');
+    await page.waitForTimeout(600);
+
+    // ---- A new window: 900 × 600, the canvas on the left of the keys, History hidden, Desmos's basic keys and Teach's
+    let c = await contentOf(page, 'calculator:1'), L = await look();
+    ok(c.w === 900 && c.h === 600, `a new window opens at 900 × 600 (${c.w} × ${c.h})`);
+    ok(L.layout === 'side' && L.order.join() === 'canvas,keys' && !L.panels.some(p => p.n === 'history'), `the canvas on the left, the keys on the right, History hidden (${L.layout}: ${L.order.join(', ')})`);
+    ok(sorted(L.keys) === sorted(BASIC) && L.keys.length === 23, `the basic keys: Teach’s AC, ⌫, ±, ÷ × − + = down the right, 0 . ans, plus ( ) √ (${L.keys.join(' ')})`);
+    const opCol = await W().locator('html').evaluate(() => ['divide', 'multiply', 'subtract', 'add', 'equals'].map(k => document.querySelector(`#keys .key[data-key="${k}"]`).getBoundingClientRect()).map(r => [Math.round(r.right), Math.round(r.top)]));
+    const rightEdge = await W().locator('#keys').evaluate(e => Math.round(e.getBoundingClientRect().right));
+    ok(opCol.every(([r]) => Math.abs(r - rightEdge) <= 1) && opCol.every((p, i) => !i || p[1] > opCol[i - 1][1]), `÷ × − + = run down the right edge of the keys, in that order (${JSON.stringify(opCol)})`);
+    ok(L.keyMin >= 44, `every key is 44 px or larger (${L.keyMin.toFixed(1)})`);
+    ok(L.player && /Next step/.test(L.next) && L.hide === 'false', `Steps show inside the canvas, with Next step, and the Hide the answer switch is off (${L.next})`);
+    ok(L.focus, 'nothing in it takes the focus by itself');
+    const MENU0 = '[Show] | ✓ Canvas | History | ✓ Steps | In words | — | Advanced keys | Hide the answer | Answers as fractions | Test practice | 50 + 10% = 55 | Swap sides | — | (off) Clear history';
+    let mtext = await menu();
+    ok(mtext === MENU0, `its window menu (${mtext})`);
+    ok(!/digit|group|comma|separat/i.test(mtext || 'digit'), 'no digit-group item in the menu');
+
+    // ---- = = = counts by 5s, and each = adds its line to History
+    await press('5+5=');
+    L = await look();
+    ok(L.eqLabel === '5 plus 5 equals 10' && L.eq === '5 + 5 = 10', `5 + 5 = shows 5 + 5 = 10 on the canvas (${L.eq})`);
+    await press('=='); L = await look();
+    ok(L.eqLabel === '15 plus 5 equals 20', `= = again counts on by 5s: 15 + 5 = 20 (${L.eqLabel})`);
+    await choose('History'); await page.waitForTimeout(400);
+    let c2 = await contentOf(page, 'calculator:1'), L2 = await look();
+    const H = panel(L2, 'history'), K = panel(L2, 'keys'), Cv = panel(L2, 'canvas'), K0 = panel(L, 'keys'), Cv0 = panel(L, 'canvas');
+    ok(L2.order.join() === 'canvas,keys,history', `History opens on the right of the keys (${L2.order.join(', ')})`);
+    ok(near(c2.w - c.w, H.x + H.w - (K.x + K.w), 4) && c2.h === c.h && near(Cv.w, Cv0.w, 4) && near(K.w, K0.w, 4) && H.w >= 220,
+      `turning History on widens the window by History’s width; the canvas and keys keep theirs (${c.w} → ${c2.w}; History ${H.w}, canvas ${Cv0.w} → ${Cv.w}, keys ${K0.w} → ${K.w})`);
+    ok(JSON.stringify(L2.hist.map(h => h.expr + ' = ' + h.ans)) === JSON.stringify(['5 + 5 = 10', '10 + 5 = 15', '15 + 5 = 20']),
+      `History: one line per problem, as the canvas writes it, oldest at the top, newest at the bottom (${L2.hist.map(h => h.expr + ' | ' + h.ans).join(' / ')})`);
+    const hl = await W().locator('#history').evaluate(h => { const ls = [...h.querySelectorAll('.hline')], a = ls[0] && ls[0].querySelector('.hans'), cs = e => getComputedStyle(e);
+      return ls.length ? { border: cs(ls[0]).borderBottomStyle, ansBg: cs(a).backgroundColor, bg: cs(document.body).backgroundColor, ansRight: Math.round(a.getBoundingClientRect().right), lineRight: Math.round(ls[0].getBoundingClientRect().right), pickLeft: Math.round(ls[0].querySelector('.hpick').getBoundingClientRect().left), lineLeft: Math.round(ls[0].getBoundingClientRect().left) } : null; });
+    ok(!!hl && hl.border !== 'none' && hl.ansBg !== hl.bg && hl.lineRight - hl.ansRight < 24 && hl.pickLeft - hl.lineLeft < 40,
+      `its lines look like Desmos’s: a rule under each, the problem on the left, its answer in a soft box on the right (${JSON.stringify(hl)})`);
+    ok(/^(Change|Edit) 5 \+ 5$/.test(L2.hist[0] && L2.hist[0].pick) && /^Use 10$/.test(L2.hist[0] && L2.hist[0].use), `a screen reader hears what each tap does (${L2.hist[0] && L2.hist[0].pick} / ${L2.hist[0] && L2.hist[0].use})`);
+    mtext = await menu();
+    ok(/✓ History/.test(mtext) && /\| Clear history$/.test(mtext), `the menu shows History ticked, and Clear history ready (${mtext})`);
+    // Tap a line to change it; tap an answer to use it.
+    await W().locator('#history .hline').first().locator('.hpick').click(); await page.waitForTimeout(200);
+    L = await look();
+    ok(L.cursor && /^5 \+ 5( = 10)?$/.test(L.eq), `tapping a line puts its problem on the canvas to change (${L.eq})`);
+    await press(['backspace', '7', 'equals']); L = await look();
+    ok(L.eqLabel === '5 plus 7 equals 12' && L.hist.length === 4 && L.hist[3].expr === '5 + 7' && L.hist[3].ans === '12', `changed and worked out, it is a new line at the bottom (${L.hist.map(h => h.expr).join(' / ')})`);
+    await press(['clear']); await W().locator('#history .hline').first().locator('.hans').click(); await press('×2=');
+    L = await look();
+    ok(L.eqLabel === '10 times 2 equals 20', `tapping an answer uses it in the problem: 10 × 2 = 20 (${L.eqLabel})`);
+    // History off gives the width back.
+    await choose('History'); c2 = await contentOf(page, 'calculator:1'); L = await look();
+    ok(c2.w === c.w && !L.panels.some(p => p.n === 'history'), `turning History off gives the width back (${c2.w})`);
+
+    // ---- Percent: Desmos's "% of" by default; iPhone's 50 + 10% = 55 as a menu setting
+    await press(['clear']); await type('10%50='); L = await look();
+    ok(L.eq === '10% of 50 = 5', `10% of 50 = 5, as Desmos (${L.eq})`);
+    await choose('50 + 10% = 55');
+    await press(['clear']); await type('50+10%='); L = await look();
+    ok(L.eq === '50 + 10% = 55' && ((await conf()) || {}).percent === 'apple' && /✓ 50 \+ 10% = 55/.test(await menu()), `with 50 + 10% = 55 ticked: 50 + 10% = 55, saved as a setting (${L.eq}, ${JSON.stringify(await conf())})`);
+    await choose('50 + 10% = 55');
+    await press(['clear']); await type('50+10%5='); L = await look();
+    ok(L.eq === '50 + 10% of 5 = 50.5' && ((await conf()) || {}).percent === 'of', `untick it: Desmos’s % of again (${L.eq})`);
+
+    // ---- Digit groups: a faint comma, its own element; a plain comma wherever it is read
+    await press(['clear']); await press('1234567');
+    const sep = await W().locator('html').evaluate(() => {
+      const eq = document.getElementById('eq'), s = [...eq.querySelectorAll('.ce-sep')], num = eq.querySelector('.ce-num'), cs = e => getComputedStyle(e);
+      const bg = cs(document.getElementById('card')).backgroundColor, card = document.getElementById('card');
+      const probe = document.createElement('span'); probe.style.color = 'var(--b21-muted)'; document.body.append(probe); const muted = cs(probe).color; probe.remove();
+      return { n: s.length, text: s.map(x => x.textContent).join(''), color: s[0] ? cs(s[0]).color : '', opacity: s[0] ? +cs(s[0]).opacity : 1, muted, digit: num ? cs(num).color : '', bg, label: (eq.querySelector('.ce-math') || { getAttribute: () => '' }).getAttribute('aria-label'), whole: eq.textContent.replace(/\s+/g, '') };
+    });
+    ok(sep.n === 2 && sep.text === ',,' && sep.whole.startsWith('1,234,567'), `1,234,567: each comma is its own element (${sep.n}, ${sep.whole})`);
+    ok(sep.color === sep.muted && sep.opacity < 1 && sep.opacity >= 0.3, `drawn in the board’s muted color, softened (${sep.color}, opacity ${sep.opacity})`);
+    ok(/1,234,567/.test(sep.label) && !/ce-sep/.test(sep.label), `a screen reader hears a plain comma (${sep.label})`);
+    await press('+1='); await choose('History');
+    L = await look();
+    const hsep = await W().locator('#history').evaluate(h => ({ n: h.querySelectorAll('.ce-sep').length, labels: [...h.querySelectorAll('button')].map(b => b.getAttribute('aria-label')).filter(t => /1,234/.test(t)) }));
+    ok(hsep.n >= 4 && hsep.labels.length >= 2 && hsep.labels.every(t => !/<|ce-sep/.test(t)), `History draws them faint too, and its buttons’ names have plain commas (${hsep.n}; ${hsep.labels.join(' / ')})`);
+    await choose('History');
+
+    // ---- Advanced keys: off at first, a² aᵇ ⁿ√ ∛ π % a/b → when on, remembered per window
+    await choose('Advanced keys'); L = await look();
+    ok(sorted(L.keys) === sorted(BASIC + ',' + ADV.join()) && L.keyMin >= 44 && ((await conf()) || {}).advanced === true, `Advanced keys add a² aᵇ ⁿ√ ∛ π % a/b →, every key still 44 px or more (${L.keys.length} keys, ${L.keyMin.toFixed(1)} px)`);
+    await press(['clear', '3', 'square', 'equals']); L = await look();
+    ok(L.eqLabel === '3 squared equals 9' || /^3\s?2 = 9$/.test(L.eq), `a² works (${L.eq})`);
+    const ik2 = await addWin(page, 'calculator'); await page.waitForTimeout(500);
+    let L2b = await look(ik2);
+    ok(ik2 === 'calculator:2' && sorted(L2b.keys) === sorted(BASIC), `a second Calculator window starts with Advanced keys off (${ik2}: ${L2b.keys.length} keys)`);
+
+    // ---- Test practice: Desmos Four-Function's keys and 7 digits, as on NWEA MAP; Advanced keys hide
+    await choose('Test practice'); L = await look();
+    mtext = await menu();
+    ok(sorted(L.keys) === sorted(TEST) && L.keys.length === 22 && L.keyMin >= 44, `Test practice: Desmos Four-Function’s keys, with no ± and no Advanced keys (${L.keys.join(' ')})`);
+    ok(/\(off\) ✓ Advanced keys/.test(mtext) && /✓ Test practice/.test(mtext), `Advanced keys can’t be changed while it is on, and keep their tick (${mtext})`);
+    await press(['clear']); await press('2÷3='); L = await look();
+    ok(L.eq === '2 ÷ 3 = 0.6666667', `answers have 7 digits, as on the test (${L.eq})`);
+    await W().locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.type('2^3'); await page.waitForTimeout(200); L = await look();
+    ok(L.eq === '2' && /^Test practice has no aᵇ key\.$/.test(L.note || L.hint), `a key the test has no button for does nothing when typed, and says so; the digit after it is kept out too (${L.eq}; ${L.note || L.hint})`);
+    await choose('Test practice'); await press(['clear']); await press('2÷3='); L = await look();
+    ok(L.eq === '2 ÷ 3 = 0.6666666667' && sorted(L.keys) === sorted(BASIC + ',' + ADV.join()), `off again: 10 digits, and the Advanced keys come back (${L.eq})`);
+    await choose('Advanced keys');
+
+    // ---- Steps, as in Teach: Next step, Back, Show all, and a clicker's Page Down and Page Up
+    await press(['clear']); await press('2+3×4='); L = await look();
+    ok(L.eq === '2 + 3 × 4 = 14', `2 + 3 × 4 = 14 (${L.eq})`);
+    await W().locator('#next').click(); await page.waitForTimeout(250); L = await look();
+    ok(L.count === 'Step 1 of 3' && L.lit === 'MD' && L.chain.join(' | ') === '2 + 3 × 4', `Next step: step 1 of 3, × first, M and D lit (${L.count}, ${L.lit}, ${L.chain.join(' | ')})`);
+    await W().locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.press('PageDown'); await page.waitForTimeout(250); L = await look();
+    ok(L.count === 'Step 2 of 3' && L.chain.join(' | ') === '2 + 3 × 4 | 2 + 12', `a clicker’s Page Down goes on (${L.count}: ${L.chain.join(' | ')})`);
+    await page.keyboard.press('PageUp'); await page.waitForTimeout(250); L = await look();
+    ok(L.count === 'Step 1 of 3', `Page Up goes back (${L.count})`);
+    await W().locator('#all').click(); await page.waitForTimeout(250); L = await look();
+    ok(L.count === 'Step 3 of 3' && L.chain.join(' | ') === '2 + 3 × 4 | 2 + 12 | 14' && /Replay/.test(L.next), `Show all writes every step out, the answer last (${L.chain.join(' | ')}; ${L.next})`);
+    await W().locator('#back').click(); await page.waitForTimeout(200);
+    ok((await look()).count === 'Step 2 of 3', 'Back goes one step back');
+    await choose('Steps'); L = await look();
+    ok(!L.player && ((await conf()) || {}).steps === false, 'Steps off: no step buttons');
+    await choose('Steps');
+
+    // ---- In words, from Lines: under the canvas's problem
+    await choose('In words'); await press(['clear']); await press('2+3×4='); L = await look();
+    ok(L.said === '2 plus 3 times 4 equals 14' && ((await conf()) || {}).words === true, `In words: “${L.said}” under the problem`);
+    await press(['clear']); await press('1234×2'); L = await look();
+    const saidSep = await W().locator('#said').evaluate(e => e.querySelectorAll('.ce-sep').length).catch(() => -1);
+    ok(L.said === '1,234 times 2 equals 2,468' && saidSep === 2, `while typing it says the live answer too, its digits grouped with faint commas (${L.said}, ${saidSep})`);
+    await choose('In words');
+
+    // ---- Hide the answer, from Teach: the class predicts, then taps to see
+    await choose('Hide the answer'); await choose('History');
+    await press(['clear']); await press('7×8='); L = await look();
+    ok(L.reveal && !/56/.test(L.eq) && L.hide === 'true' && L.hist.length && L.hist[L.hist.length - 1].ans === '?', `7 × 8 = ?: the answer is hidden on the canvas and in History (${L.eq}; ${L.hist.length && L.hist[L.hist.length - 1].ans})`);
+    await W().locator('#eq .reveal').click(); await page.waitForTimeout(300); L = await look();
+    ok(L.eq === '7 × 8 = 56' && L.hist[L.hist.length - 1].ans === '56', `a tap shows it (${L.eq})`);
+    await W().locator('#hide').click(); await page.waitForTimeout(200);
+    ok((await look()).hide === 'false' && ((await conf()) || {}).hide === false && /\| Hide the answer \|/.test(await menu()), 'the switch on the canvas turns it off, and the menu follows');
+    await choose('History');
+
+    // ---- Answers as decimals first; ⇄ switches one; Answers as fractions flips the window
+    await press(['clear']); await press('1÷8='); L = await look();
+    ok(L.eq === '1 ÷ 8 = 0.125' && L.toggle, `answers start as decimals, with ⇄ beside them (${L.eq})`);
+    await W().locator('#eqToggle').click(); await page.waitForTimeout(200); L = await look();
+    ok(L.frac && /1\s?8$/.test(L.eq.replace(/\s/g, ' ').trim()), `⇄ shows that answer as a fraction (${L.eq})`);
+    await choose('Answers as fractions'); await press(['clear']); await press('3÷4='); L = await look();
+    ok(L.frac && ((await conf()) || {}).fractions === true, `Answers as fractions: new answers start as fractions (${L.eq})`);
+    await W().locator('#eqToggle').click(); await page.waitForTimeout(200); L = await look();
+    ok(L.eq === '3 ÷ 4 = 0.75', `and ⇄ shows one as a decimal (${L.eq})`);
+    await choose('Answers as fractions');
+
+    // ---- The keyboard: digits, + - * / ^ % ( ) ., Enter or =, Backspace, sqrt, pi, ans
+    await press(['clear']); await W().locator('#app').click({ position: { x: 3, y: 3 } });
+    await page.keyboard.type('2+3*4'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+    ok((await look()).eq === '2 + 3 × 4 = 14', 'typed: 2+3*4 Enter');
+    await page.keyboard.type('(1+2)^2='); await page.waitForTimeout(200);
+    ok((await look()).eqLabel === '(1 plus 2) squared equals 9' || /^\(1 \+ 2\)\s?2 = 9$/.test((await look()).eq), `typed: (1+2)^2= (${(await look()).eq})`);
+    await page.keyboard.type('sqrt16'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+    ok((await look()).eq === '√16 = 4', `typed: sqrt16 Enter (${(await look()).eq})`);
+    await page.keyboard.type('12/4'); await page.keyboard.press('Backspace'); await page.keyboard.type('3='); await page.waitForTimeout(200);
+    ok((await look()).eq === '12 ÷ 3 = 4', `typed: / is ÷, and Backspace (${(await look()).eq})`);
+    await page.keyboard.type('2pi'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+    ok(/^2π = 6\.283185307$/.test((await look()).eq), `typed: 2pi (${(await look()).eq})`);
+    await page.keyboard.type('ans*2='); await page.waitForTimeout(200);
+    ok((await look()).eqLabel === '6.283185307 times 2 equals 12.56637061', `typed: ans (${(await look()).eqLabel})`);
+    await page.keyboard.type('50%'); await page.keyboard.type('8='); await page.waitForTimeout(200);
+    ok((await look()).eq === '50% of 8 = 4', `typed: % (${(await look()).eq})`);
+
+    // ---- Canvas off: a compact display above the keys, as on a phone, and the width given back; Swap sides
+    c = await contentOf(page, 'calculator:1'); const before = await look();
+    await choose('Canvas'); c2 = await contentOf(page, 'calculator:1'); L = await look();
+    const cv = panel(before, 'canvas'), kk = panel(before, 'keys');
+    ok(L.order.join() === 'display' || (L.panels.some(p => p.n === 'display') && !L.panels.some(p => p.n === 'canvas')), `Canvas off: a compact display shows above the keys (${L.panels.map(p => p.n).join(', ')})`);
+    const D = panel(L, 'display'), KK = panel(L, 'keys');
+    ok(D.y + D.h <= KK.y + 1 && near(c.w - c2.w, kk.x - cv.x, 4), `the display is above the keys, and the window gives the canvas’s width back (${c.w} → ${c2.w}, canvas and gap ${Math.round(kk.x - cv.x)})`);
+    ok(L.big === '4' && /50% of 8/.test(L.x), `it shows the problem small and the answer big (${L.x} / ${L.big})`);
+    mtext = await menu();
+    ok(/\| Canvas \|/.test(mtext) && /\(off\) ✓ Steps/.test(mtext) && /\(off\) In words/.test(mtext), `Steps and In words wait for the canvas (${mtext})`);
+    await choose('Canvas'); c2 = await contentOf(page, 'calculator:1');
+    ok(near(c2.w, c.w, 2) && (await look()).order.join() === 'canvas,keys', `Canvas on again: the width comes back (${c2.w})`);
+    await choose('History'); await choose('Swap sides'); L = await look();
+    ok(L.order.join() === 'history,keys,canvas' && ((await conf()) || {}).swap === true, `Swap sides mirrors the row: History, keys, canvas (${L.order.join(', ')})`);
+    await choose('Swap sides'); await choose('History');
+
+    // ---- Saved: content is the problem and History, config every setting; kept after a reload, apart between windows
+    await choose('Advanced keys'); await choose('History'); await choose('50 + 10% = 55');
+    await press(['clear']); await press('6×7=');
+    const d1 = await data(), f1 = await conf();
+    ok(!!d1 && d1.v === 2 && Array.isArray(d1.expr) && d1.mode === 'done' && Array.isArray(d1.history) && d1.history.length >= 5, `content is the engine’s saved problem and History (${JSON.stringify(d1).slice(0, 120)}…)`);
+    ok(!!f1 && f1.canvas === true && f1.history === true && f1.steps === true && f1.words === false && f1.advanced === true && f1.hide === false && f1.fractions === false && f1.test === false && f1.percent === 'apple' && f1.swap === false,
+      `config is every menu setting and which panels show (${JSON.stringify(f1)})`);
+    await press('1+1=', ik2);
+    const histLen = (await look()).hist.length;
+    await page.waitForTimeout(1200);
+    await page.reload(); await boardUp(page); await page.waitForTimeout(1500);
+    L = await look(); L2b = await look(ik2);
+    ok(L.eq === '6 × 7 = 42' && L.hist.length === histLen && sorted(L.keys) === sorted(BASIC + ',' + ADV.join()) && L.order.join() === 'canvas,keys,history' && /✓ 50 \+ 10% = 55/.test(await menu()),
+      `after a reload: the same problem, History, keys and settings (${L.eq}; ${L.hist.length} lines; ${L.keys.length} keys)`);
+    ok(L2b.eq === '1 + 1 = 2' && sorted(L2b.keys) === sorted(BASIC) && L2b.hist.length === 0 && !/✓ 50/.test(await menu(ik2)), `the second window kept its own (${L2b.eq}; ${L2b.keys.length} keys)`);
+
+    // ---- Reset: back to a new window
+    await front('calculator:1');
+    await page.click('.win[data-ikey="calculator:1"] .win-label'); await page.locator('#menu [data-act="reset"]').click(); await page.locator('#menu [data-act="reset-yes"]').click();
+    await page.waitForTimeout(1500);
+    c = await contentOf(page, 'calculator:1'); L = await look();
+    ok(c.w === 900 && c.h === 600 && !(await data()) && !(await conf()) && L.order.join() === 'canvas,keys' && sorted(L.keys) === sorted(BASIC) && L.eq === '0' && !L.hist.length,
+      `Reset: 900 × 600, nothing saved, canvas and keys, the basic keys, an empty problem (${c.w} × ${c.h}; ${L.order.join(', ')}; ${L.eq})`);
+    ok(await menu() === MENU0, 'and its menu as new');
+
+    // ---- Light and dark: readable, and the commas quieter than the digits but still there
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMedia({ colorScheme: scheme }); await page.waitForTimeout(500);
+      await press(['clear']); await press('1234567+1=');
+      const col = await W().locator('html').evaluate(() => {
+        // (Any CSS color, color-mix() included, as rgb(): drawn on a canvas and read back.)
+        const g2 = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+        const rgb = c => { g2.clearRect(0, 0, 1, 1); g2.fillStyle = '#000'; g2.fillStyle = c; g2.fillRect(0, 0, 1, 1); const d = g2.getImageData(0, 0, 1, 1).data; return `rgb(${d[0]}, ${d[1]}, ${d[2]})`; };
+        const cs = e => { const c = getComputedStyle(e); return { color: rgb(c.color), backgroundColor: c.backgroundColor === 'rgba(0, 0, 0, 0)' ? c.backgroundColor : rgb(c.backgroundColor), opacity: c.opacity }; }, $ = s => document.querySelector(s), solid = e => { let n = e; while (n) { const b = cs(n).backgroundColor; if (b && !/rgba\(0, 0, 0, 0\)|transparent/.test(b)) return b; n = n.parentElement; } return cs(document.body).backgroundColor; };
+        const mix = (fg, bg, a) => { const f = fg.match(/[\d.]+/g).map(Number), b = bg.match(/[\d.]+/g).map(Number); return `rgb(${[0, 1, 2].map(i => Math.round(f[i] * a + b[i] * (1 - a))).join(', ')})`; };
+        const sepEl = $('#eq .ce-sep'), dig = $('#eq .ce-num');
+        const pair = (e, bg) => [cs(e).color, bg || solid(e)];
+        return { theme: document.documentElement.getAttribute('data-b21-theme'), digit: pair(dig), sep: sepEl ? [mix(cs(sepEl).color, solid(sepEl), +cs(sepEl).opacity), solid(sepEl)] : ['rgb(0, 0, 0)', 'rgb(0, 0, 0)'],
+          num: pair($('#keys .key[data-key="7"]'), cs($('#keys .key[data-key="7"]')).backgroundColor), op: pair($('#keys .key[data-key="add"]'), cs($('#keys .key[data-key="add"]')).backgroundColor),
+          fn: pair($('#keys .key[data-key="clear"]'), cs($('#keys .key[data-key="clear"]')).backgroundColor), next: pair($('#next'), cs($('#next')).backgroundColor), sw: pair($('#hide')) };
+      });
+      const r = k => contrast(col[k][0], col[k][1]);
+      ok(col.theme === scheme && ['digit', 'num', 'op', 'fn', 'next', 'sw'].every(k => r(k) >= 4.5), `${scheme}: the canvas, the keys and the buttons are readable, 4.5:1 or more (${['digit', 'num', 'op', 'fn', 'next', 'sw'].map(k => k + ' ' + r(k).toFixed(1)).join(', ')})`);
+      ok(r('sep') >= 1.4 && r('sep') < r('digit') - 1, `${scheme}: the faint commas are still seen, and quieter than the digits (${r('sep').toFixed(2)} against ${r('digit').toFixed(2)})`);
+      await page.screenshot({ path: OUT + `calculator-${scheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: 'light' });
+
+    // ---- Every Text style: the keys and the canvas in its font
+    for (const style of ['legible', 'early', 'standard']) {
+      await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`); await page.keyboard.press('Escape'); await page.waitForTimeout(600);
+      const fonts = await W().locator('html').evaluate(() => { const cs = e => getComputedStyle(e).fontFamily; const t = document.createElement('span'); t.style.fontFamily = 'var(--b21-font)'; document.body.append(t); const want = cs(t); t.remove();
+        return { want, ok: [document.body, document.querySelector('#keys .key'), document.getElementById('next'), document.getElementById('eq')].every(e => cs(e) === want) }; });
+      L = await look();
+      ok(fonts.ok && L.keyMin >= 44 && L.keysInside, `${style}: the keys and the canvas are in the text style’s font, and fit (${fonts.want.split(',')[0]})`);
+    }
+
+    // ---- The menu fits a 1366 × 768 board at the default size, without scrolling or squeezing
+    {
+      const c3 = await browser.newContext({ viewport: { width: 1366, height: 768 } }), p3 = await c3.newPage();
+      await p3.goto(BASE); await boardUp(p3);
+      await p3.evaluate(() => window.__board21.openWidget('calculator')); await p3.waitForTimeout(1500);
+      await p3.click('.win[data-ikey="calculator:1"] .win-label'); await p3.waitForTimeout(400);
+      const m = await p3.evaluate(() => { const e = document.getElementById('menu'), r = e.getBoundingClientRect(); return { cls: e.className, top: r.top, bottom: r.bottom, scrolls: e.scrollHeight > e.clientHeight + 1, items: e.querySelectorAll('.menu-item').length, scale: window.__board21.state.board.scale }; });
+      ok(m.items >= 14 && !/compact|tight|cols/.test(m.cls) && !m.scrolls && m.top >= 0 && m.bottom <= 768, `on a 1366 × 768 board at its default size, the whole menu fits without scrolling or tighter rows (${m.items} items, ${Math.round(m.top)} to ${Math.round(m.bottom)}, ${m.cls})`);
+      await p3.screenshot({ path: OUT + 'calculator-menu-1366.png' });
+      await c3.close();
+    }
+
+    // ---- The smallest window: the keys stay 44 px or larger, with Advanced keys and in Test practice too
+    await page.evaluate(() => window.__board21.setRect('calculator:1', Object.assign({}, window.__board21.state.insts.get('calculator:1').rect, { w: 280, h: 440 }))); await page.waitForTimeout(600);
+    L = await look();
+    ok(L.layout === 'stack' && L.keyMin >= 44 && L.keysInside && L.panels.some(p => p.n === 'display'), `280 × 400: a display above the keys, every key 44 px or more and in view (${L.layout}, ${L.keyMin.toFixed(1)} px)`);
+    await choose('Advanced keys'); await page.waitForTimeout(500); L = await look();
+    ok(L.keys.length === 31 && L.keyMin >= 44 && L.keysInside, `with Advanced keys too (the window grows to fit them: ${L.vw} × ${L.vh}, ${L.keyMin.toFixed(1)} px)`);
+    await choose('Advanced keys'); await page.waitForTimeout(500); L = await look();
+    ok(L.vh === 400 && L.keyMin >= 44, `and gives the height back after (${L.vw} × ${L.vh})`);
+    await choose('Test practice'); L = await look();
+    ok(L.keys.length === 22 && L.keyMin >= 44 && L.keysInside, `in Test practice too (${L.keyMin.toFixed(1)} px)`);
+    await choose('Test practice');
+    // History in a narrow window: the window widens by its width, and it shows beside the display and keys.
+    c = await contentOf(page, 'calculator:1');
+    await choose('History'); c2 = await contentOf(page, 'calculator:1'); L = await look();
+    ok(c2.w > c.w + 200 && L.layout === 'stack' && L.order.slice(-1)[0] === 'history' && L.keyMin >= 44, `History on in the smallest window: it widens, History beside the display and keys (${c.w} → ${c2.w}; ${L.order.join(', ')})`);
+    await choose('History'); c2 = await contentOf(page, 'calculator:1');
+    ok(c2.w === c.w, `and narrows again after (${c2.w})`);
+    // A narrow, tall window stacks the canvas above the keys, as Teach does.
+    await page.evaluate(() => window.__board21.setRect('calculator:1', Object.assign({}, window.__board21.state.insts.get('calculator:1').rect, { w: 420, h: 700 }))); await page.waitForTimeout(600);
+    L = await look();
+    ok(L.layout === 'stack' && L.panels.some(p => p.n === 'canvas') && panel(L, 'canvas').y + panel(L, 'canvas').h <= panel(L, 'keys').y + 1 && L.keyMin >= 44, `420 × 660: the canvas above the keys, as Teach does (${L.panels.map(p => p.n + ' ' + p.y + '+' + p.h).join(', ')})`);
+    // Every size from 50% to 200%: nothing spills out.
+    await page.evaluate(() => window.__board21.setRect('calculator:1', Object.assign({}, window.__board21.state.insts.get('calculator:1').rect, { w: 720, h: 520 }))); await page.waitForTimeout(400);
+    for (const sc of [0.5, 1, 1.5, 2]) {
+      await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(500);
+      L = await look();
+      ok(L.keysInside && L.keyMin >= 44, `at ${sc * 100}%: every key in its window, 44 px or more (${L.keyMin.toFixed(1)})`);
+    }
+    await page.evaluate(() => window.__board21.setBoardScale(1));
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   // ---- Board Sync suites ----
   ['Image: the Picture widget (the Widget Picker, PNG, JPEG, GIF, WebP and AVIF, animations kept, files turned away kindly, sizes and downscaling, the window takes the picture’s shape, Whole picture and Crop to fill, Open… from the menu, Remove picture, reload, Reset, delete, light and dark, the widget dev window, the docs)', async (browser) => {
     const file = path.join(ROOT, 'widgets', 'image', 'index.html'), src = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';

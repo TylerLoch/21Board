@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">
+  {"id": "calculator", "name": "Calculator", "version": "1.0.0", "window": {"width": 900, "height": 600, "minWidth": 280, "minHeight": 400}}
+</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calculator</title>
+<script src="calc-engine.js"></script>
+<!-- The engine's stylesheet for its math (the ce-* classes) goes first, so the rules below can adjust it. -->
+<style id="engine-css"></style>
+<script>document.getElementById('engine-css').textContent = window.CalcEngine ? CalcEngine.CSS : '';</script>
+<style>
+  /* Calculator: Teach's canvas and steps, its keys, and History drawn as Desmos draws its lines. The panels sit side by
+     side, left to right (Swap sides mirrors them): the canvas, the keys, History. The script sets the grid for the
+     window's size (layout()); the rules here draw each panel. Colors come only from the --b21-* variables. */
+  html, body { margin: 0; height: 100%; }
+  body {
+    --shadow: color-mix(in srgb, var(--b21-text) 16%, transparent);
+    background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font); overflow: hidden;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  [data-b21-theme="dark"] body { --shadow: rgba(0, 0, 0, .45); }
+  *, *::before, *::after { box-sizing: border-box; }
+  button { font: inherit; color: inherit; margin: 0; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  button:focus { outline: none; }
+  button:focus-visible { outline: 3px solid var(--b21-accent); outline-offset: 2px; }
+  svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+  .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  #app { position: fixed; inset: 0; outline: none; container: app / size; }
+  .kbd #app:focus { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--b21-accent) 60%, transparent); }
+  #grid { position: absolute; inset: 0; display: grid; padding: var(--p, 10px); gap: var(--g, 6px); grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+
+  /* ---- The canvas: Teach's card when there is room, otherwise a plain display above the keys, as on a phone */
+  #canvas { grid-area: canvas; position: relative; min-width: 0; min-height: 0; container: cv / size; }
+  #card { position: absolute; inset: 0; display: none; flex-direction: column; border-radius: 18px; --cp: clamp(10px, 2.6cqmin, 36px); padding: 0 var(--cp); background: var(--b21-surface); box-shadow: inset 0 0 0 1px var(--b21-border); }
+  #disp { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: flex-end; min-height: 0; padding: 2px 6px 0; }
+  @container cv (min-width: 340px) and (min-height: 190px) {
+    #app:not(.nocanvas) #card { display: flex; }
+    #app:not(.nocanvas) #disp { display: none; }
+  }
+  #player { display: none; }
+  @container cv (min-width: 340px) and (min-height: 250px) {
+    #app.steps #player { display: flex; }
+  }
+  #app[data-layout="stack"] #keys, #app.nocanvas[data-layout="stack"] #canvas { justify-self: center; width: min(100%, var(--kcap, 100%)); }
+
+  /* The top bar: where the steps are, and the Hide the answer switch */
+  .cbar { flex: 0 0 auto; display: flex; height: clamp(44px, 9cqh, 84px); align-items: center; gap: .6em; font-size: clamp(13px, min(3.4cqh, 2.4cqw), 28px); }
+  .where { flex: 1 1 auto; min-width: 0; color: var(--b21-muted); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #rule:not(:empty)::before { content: "·"; margin: 0 .45em; color: var(--b21-muted); }
+  #rule { color: var(--b21-text); font-weight: 500; }
+  #rule.bad { color: var(--b21-danger); }
+  @container cv (max-width: 619.98px) { #rule { display: none; } }
+  #hide { flex: 0 0 auto; display: inline-flex; align-items: center; gap: .55em; height: 100%; min-height: 44px; margin-right: -.4em; padding: 0 .4em; border: 0; border-radius: 999px; background: transparent; font-weight: 600; color: var(--b21-text); cursor: pointer; white-space: nowrap; }
+  .track { position: relative; width: 2.3em; height: 1.36em; border-radius: 999px; background: var(--b21-muted); transition: background-color .18s; }
+  .knob { position: absolute; top: .16em; left: .16em; width: 1.04em; height: 1.04em; border-radius: 50%; background: var(--b21-bg); box-shadow: 0 1px 3px var(--shadow); transition: transform .18s; }
+  #hide[aria-checked="true"] .track { background: var(--b21-accent); }
+  #hide[aria-checked="true"] .knob { transform: translateX(.94em); background: var(--b21-on-accent); }
+
+  /* The board: one big problem, or its steps written out under each other */
+  #board { position: relative; flex: 1 1 0; display: flex; min-height: 0; flex-direction: column; align-items: center; justify-content: center; overflow: hidden; }
+  .eqv { display: flex; flex-direction: column; align-items: center; justify-content: center; max-width: 100%; min-height: 0; }
+  .eqline { display: flex; align-items: center; gap: .3em; max-width: 100%; }
+  #eq { flex: 0 0 auto; white-space: nowrap; font-size: clamp(24px, min(24cqh, 16cqw), 260px); line-height: 1.3; letter-spacing: -.01em; }
+  #eq .ce-ans, #big .ce-num { font-weight: 700; }
+  #eq .ce-ans { color: var(--b21-accent); }
+  .prev { color: var(--b21-muted); }
+  .zero { color: var(--b21-muted); opacity: .6; }
+  #said { max-width: 100%; margin-top: .4em; text-align: center; color: var(--b21-text); font-size: clamp(14px, min(5cqh, 3.4cqw), 40px); line-height: 1.3; }
+  #said:empty { display: none; }
+  #note { max-width: 100%; margin-top: .55em; text-align: center; color: var(--b21-muted); font-size: clamp(13px, min(5cqh, 3.4cqw), 40px); line-height: 1.3; }
+  #note:empty { display: none; }
+  #note.tip { color: var(--b21-accent); font-weight: 600; }
+  #note.bad { display: inline-flex; align-items: center; gap: .5em; padding: .42em .9em; border-radius: 999px; background: color-mix(in srgb, var(--b21-danger) 11%, var(--b21-surface)); color: var(--b21-text); text-align: left; }
+  #note.bad svg { width: 1.2em; height: 1.2em; color: var(--b21-danger); }
+  #chain { display: none; }
+  #board.chain .eqv { display: none; }
+  #board.chain { justify-content: safe center; overflow: auto; scrollbar-width: thin; }
+  #board.chain #chain {
+    display: grid; grid-template-columns: auto max-content minmax(0, auto); align-items: center; column-gap: .32em; row-gap: .1em;
+    width: max-content; max-width: none; margin: 0; padding: .1em 0; list-style: none;
+    font-size: clamp(18px, min(14cqh, 10cqw), 160px); line-height: 1.3;
+  }
+  .ln { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; }
+  .ln:not(.on) { visibility: hidden; }
+  .ln.on.in { animation: rise .34s cubic-bezier(.2, .8, .2, 1) both; }
+  .lead { color: var(--b21-muted); text-align: right; min-width: .6em; }
+  .lx { white-space: nowrap; }
+  .ln.past .lx { color: var(--b21-muted); }
+  .ln.past .ce-mark { background: none; box-shadow: none; color: inherit; }
+  .ln.cur .ce-mark { color: var(--b21-accent); background: var(--b21-accent-soft); border-radius: .18em; box-shadow: 0 0 0 .07em var(--b21-accent-soft), 0 0 0 .11em color-mix(in srgb, var(--b21-accent) 35%, transparent); }
+  .ln.bad .ce-mark { color: var(--b21-danger); background: color-mix(in srgb, var(--b21-danger) 13%, transparent); box-shadow: 0 0 0 .07em color-mix(in srgb, var(--b21-danger) 13%, transparent), 0 0 0 .11em color-mix(in srgb, var(--b21-danger) 35%, transparent); }
+  .ln.fin .lx { color: var(--b21-accent); font-weight: 700; }
+  .lw { display: flex; align-items: center; gap: .4em; min-width: 0; margin-left: .5em; font-size: .46em; }
+  .lw:not(.on) { visibility: hidden; }
+  .lw.on.in { animation: fade .3s ease-out both; }
+  .work { padding: .2em .65em; border-radius: 999px; background: var(--b21-surface-2); color: var(--b21-text); white-space: nowrap; }
+  .work.bad { background: color-mix(in srgb, var(--b21-danger) 11%, var(--b21-surface)); font-weight: 600; }
+  @container cv (max-width: 539.98px) {
+    #board.chain #chain { grid-template-columns: auto max-content; }
+    .lw { grid-column: 2; margin: 0 0 .25em; font-size: .52em; }
+  }
+
+  /* Under the board: PEMDAS lit for the step on screen, and the step buttons */
+  #player { flex: 0 0 auto; align-items: center; gap: .55em; height: clamp(52px, 12cqh, 112px); font-size: clamp(14px, min(3.7cqh, 2.6cqw), 32px); border-top: 1px solid var(--b21-border); }
+  .pemdas { flex: 1 1 auto; display: inline-flex; gap: .1em; min-width: 0; overflow: hidden; }
+  .pemdas b { display: inline-grid; place-items: center; width: 1.25em; height: 1.4em; border-radius: .38em; font-size: max(16px, .9em); font-weight: 700; color: var(--b21-muted); transition: background-color .2s, color .2s; }
+  .pemdas b.lit { background: var(--b21-accent); color: var(--b21-on-accent); }
+  .pemdas b.soft { background: var(--b21-accent-soft); color: var(--b21-text); }
+  .btn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: .3em; height: max(44px, 2.5em); min-width: max(44px, 2.5em); padding: 0 1em; border: 0; border-radius: 999px; background: var(--b21-surface-2); font-weight: 600; white-space: nowrap; cursor: pointer; }
+  .btn svg { width: 1.15em; height: 1.15em; stroke-width: 2.3; }
+  .btn.icon { padding: 0; }
+  .btn.primary { background: var(--b21-accent); color: var(--b21-on-accent); }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn:not(:disabled):active { filter: brightness(.92); }
+  @container cv (max-width: 399.98px) { .pemdas { visibility: hidden; } }
+
+  /* The compact display: the problem in small type above the big number */
+  .xline { display: flex; justify-content: flex-end; min-width: 0; overflow: hidden; }
+  .xline.clip { -webkit-mask-image: linear-gradient(to right, transparent, var(--b21-text) 2.2em); mask-image: linear-gradient(to right, transparent, var(--b21-text) 2.2em); }
+  #x { flex: 0 0 auto; white-space: nowrap; color: var(--b21-muted); font-size: clamp(13px, min(15cqh, 7cqw), 64px); line-height: 1.35; min-height: 1.35em; }
+  .bigline { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
+  #big { flex: 0 0 auto; white-space: nowrap; font-size: clamp(22px, min(46cqh, 18cqw), 200px); line-height: 1.12; letter-spacing: -.01em; }
+  #big .ce-num { font-weight: 400; }
+  #big.k-error, #big.k-warning { font-size: clamp(16px, min(22cqh, 8cqw), 90px); font-weight: 600; }
+  #big.k-warning, #big .zero { color: var(--b21-muted); }
+  #hint { text-align: right; color: var(--b21-muted); font-size: clamp(12px, min(10cqh, 4.2cqw), 30px); line-height: 1.3; min-height: 1.3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #hint.tip { color: var(--b21-accent); }
+
+  /* Fraction or decimal, beside an answer, as in Desmos */
+  .toggle { flex: 0 0 auto; display: grid; place-items: center; width: max(44px, .9em); height: max(44px, .9em); padding: 0; border: 0; border-radius: 999px; background: var(--b21-accent-soft); color: var(--b21-accent); cursor: pointer; font-size: inherit; }
+  .toggle svg { width: 56%; height: 56%; stroke-width: 2.2; }
+  .toggle[hidden] { display: none; }
+  .eqline .toggle { font-size: clamp(24px, min(24cqh, 16cqw), 260px); width: max(44px, .62em); height: max(44px, .62em); }
+  .lw .toggle { width: max(36px, 1.7em); height: max(36px, 1.7em); }
+
+  /* The hidden answer: tap the box to show it */
+  .reveal { display: inline-grid; place-items: center; min-width: 1.25em; height: 1.12em; margin: 0 .04em; padding: 0 .18em; vertical-align: -.12em; border: .07em dashed var(--b21-accent); border-radius: .2em; background: var(--b21-accent-soft); color: var(--b21-accent); font-weight: 700; line-height: 1; cursor: pointer; }
+  .shown .ce-ans, #big.shown { animation: pop .42s cubic-bezier(.2, 1.4, .4, 1) both; display: inline-block; }
+
+  /* ---- History: Desmos's lines. Each problem on a line of its own, its answer in a soft box at the right. */
+  #history { grid-area: hist; display: none; flex-direction: column; min-width: 0; min-height: 0; border-radius: 18px; background: var(--b21-bg); box-shadow: inset 0 0 0 1px var(--b21-border); overflow: hidden; }
+  #app.hist #history { display: flex; }
+  #hlist { flex: 1 1 auto; min-height: 0; margin: 0; padding: 0; list-style: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; font-size: var(--hf, 20px); }
+  .hline { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: .1em .4em; min-height: max(52px, 2.1em); padding: .2em .45em .2em .55em; border-bottom: 1px solid var(--b21-border); }
+  .hline::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: transparent; }
+  .hline.cur { background: color-mix(in srgb, var(--b21-accent-soft) 75%, transparent); }
+  .hline.cur::before { background: var(--b21-accent); }
+  .hpick { flex: 1 1 auto; min-width: 0; min-height: max(44px, 1.6em); display: flex; align-items: center; padding: 0 .1em; border: 0; border-radius: 8px; background: transparent; text-align: left; font-size: 1em; overflow-x: auto; scrollbar-width: none; cursor: pointer; }
+  .hpick::-webkit-scrollbar, .hans::-webkit-scrollbar { display: none; }
+  /* (A long problem and its answer don't share a line: the answer goes under it, still at the right, as in Desmos.) */
+  .hans { flex: 0 1 auto; display: inline-flex; align-items: center; gap: .3em; max-width: 100%; margin-left: auto; min-height: max(44px, 1.6em); padding: .06em .5em; border: 0; border-radius: .45em; background: var(--b21-surface-2); font-size: 1em; font-weight: 600; white-space: nowrap; overflow-x: auto; scrollbar-width: none; cursor: pointer; }
+  .hans .heq { font-weight: 400; }
+  .hans:disabled { cursor: default; color: var(--b21-accent); }
+  .hans .ce-frac { font-size: .72em; }
+  .hpick:active, .hans:not(:disabled):active { filter: brightness(.94); }
+  @media (hover: hover) { .hpick:hover { color: var(--b21-accent); } .hans:not(:disabled):hover { background: color-mix(in srgb, var(--b21-accent) 18%, var(--b21-surface-2)); } }
+  .hempty { padding: .8em .7em; color: var(--b21-muted); font-size: .8em; }
+
+  /* ---- Keys: ÷ × − + = down the right, in the accent color. Advanced keys are two rows above. */
+  #keys {
+    grid-area: keys; container: pad / size; min-width: 0; min-height: 0; --rows: 6;
+    display: grid; gap: var(--g, 6px); grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
+    grid-template-areas:
+      "ac ac ac ac del del del del neg neg neg neg"
+      "open open open close close close sqrt sqrt sqrt div div div"
+      "d7 d7 d7 d8 d8 d8 d9 d9 d9 mul mul mul"
+      "d4 d4 d4 d5 d5 d5 d6 d6 d6 sub sub sub"
+      "d1 d1 d1 d2 d2 d2 d3 d3 d3 add add add"
+      "d0 d0 d0 pt pt pt ans ans ans eq eq eq";
+  }
+  #app.adv:not(.test) #keys {
+    --rows: 8;
+    grid-template-areas:
+      "sq sq sq pow pow pow root root root cbrt cbrt cbrt"
+      "pi pi pi pct pct pct frac frac frac right right right"
+      "ac ac ac ac del del del del neg neg neg neg"
+      "open open open close close close sqrt sqrt sqrt div div div"
+      "d7 d7 d7 d8 d8 d8 d9 d9 d9 mul mul mul"
+      "d4 d4 d4 d5 d5 d5 d6 d6 d6 sub sub sub"
+      "d1 d1 d1 d2 d2 d2 d3 d3 d3 add add add"
+      "d0 d0 d0 pt pt pt ans ans ans eq eq eq";
+  }
+  /* Test practice: Desmos Four-Function's keys (its clear all and ⌫ on top, no ±) */
+  #app.test #keys {
+    grid-template-areas:
+      "ac ac ac ac ac ac del del del del del del"
+      "open open open close close close sqrt sqrt sqrt div div div"
+      "d7 d7 d7 d8 d8 d8 d9 d9 d9 mul mul mul"
+      "d4 d4 d4 d5 d5 d5 d6 d6 d6 sub sub sub"
+      "d1 d1 d1 d2 d2 d2 d3 d3 d3 add add add"
+      "d0 d0 d0 pt pt pt ans ans ans eq eq eq";
+  }
+  .key {
+    --kb: color-mix(in srgb, var(--b21-surface-2), var(--b21-text) 4%);
+    display: flex; align-items: center; justify-content: center; min-width: 0; min-height: 0; padding: 0;
+    border: 0; border-radius: clamp(10px, 3.4cqmin, 26px); background: var(--kb); cursor: pointer;
+    font-size: calc(clamp(15px, min(calc(100cqh / var(--rows, 6) * .4), 8.6cqw), 80px) * var(--ks, 1));
+    font-weight: 500; line-height: 1; transition: background-color .12s, transform .08s;
+  }
+  .key:active, .key.hit { background: color-mix(in srgb, var(--kb), var(--b21-text) 16%); transform: scale(.96); }
+  .key.fn { --kb: color-mix(in srgb, var(--b21-surface-2), var(--b21-text) 13%); }
+  .key.adv { --kb: var(--b21-accent-soft); --ks: .84; display: none; }
+  #app.adv:not(.test) .key.adv { display: flex; }
+  #app.test .key[data-key="negate"] { display: none; }
+  .key.op { --kb: var(--b21-accent); color: var(--b21-on-accent); --ks: 1.22; font-weight: 400; }
+  .key.op:active, .key.op.hit { background: color-mix(in srgb, var(--b21-accent), var(--b21-text) 22%); }
+  .key.op.pending { background: var(--b21-on-accent); color: var(--b21-accent); box-shadow: inset 0 0 0 max(3px, .08em) var(--b21-accent); }
+  [data-b21-theme="dark"] .key.op.pending { background: var(--b21-text); color: var(--b21-bg); box-shadow: none; }
+  .key.adv.pending, .key.inbox { box-shadow: inset 0 0 0 max(3px, .08em) var(--b21-accent); }
+  .key.adv.exit { background: var(--b21-accent); color: var(--b21-on-accent); }
+  .key[aria-disabled="true"] { opacity: .38; }
+  .key svg { width: 1.1em; height: 1.1em; stroke-width: 1.9; }
+  .key .w { font-size: .8em; font-weight: 600; }
+  .key i { font-family: Georgia, "Times New Roman", serif; font-style: italic; }
+  .key sup { font-size: .62em; line-height: 0; position: relative; top: -.42em; margin-left: .04em; }
+  .key .ri { margin: 0 -.12em 0 0; top: -.5em; }
+  .key .fk { display: inline-flex; flex-direction: column; align-items: center; font-size: .74em; line-height: 1.02; }
+  .key .fk i:first-child { border-bottom: .09em solid currentColor; padding: 0 .2em .04em; }
+
+  /* ---- The engine's math, adjusted for a big canvas */
+  .ce-radic { display: inline-block; transform: scaleY(1.06); transform-origin: 50% 100%; }
+  .ce-radicand { display: inline-block; line-height: .84; border-top: .07em solid currentColor; padding: .07em .08em .02em .04em; }
+  .ce-ansref { color: var(--b21-accent); }
+
+  @keyframes rise { from { opacity: 0; transform: translateY(.35em); } to { opacity: 1; transform: none; } }
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes pop { 0% { opacity: 0; transform: scale(.6); } 100% { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .ln.on.in, .lw.on.in, .shown .ce-ans, #big.shown { animation: none; }
+    .key, .track, .knob, .pemdas b { transition: none; }
+    .key:active, .key.hit { transform: none; }
+  }
+</style>
+</head>
+<body>
+<div id="app" tabindex="0" role="group" aria-label="Calculator" data-layout="side">
+  <div id="grid">
+    <section id="canvas" aria-label="Problem">
+      <div id="card">
+        <div class="cbar">
+          <span class="where"><span id="count"></span><span id="rule"></span></span>
+          <button type="button" id="hide" role="switch" aria-checked="false"><span class="track" aria-hidden="true"><span class="knob"></span></span><span>Hide the answer</span></button>
+        </div>
+        <div id="board">
+          <div class="eqv">
+            <div class="eqline"><div id="eq"></div><button type="button" class="toggle" id="eqToggle" hidden></button></div>
+            <div id="said" aria-hidden="true"></div>
+            <div id="note"></div>
+          </div>
+          <ol id="chain" aria-label="Steps"></ol>
+        </div>
+        <div id="player">
+          <span class="pemdas" aria-hidden="true"><b>P</b><b>E</b><b>M</b><b>D</b><b>A</b><b>S</b></span>
+          <button type="button" class="btn icon" id="back" aria-label="Back"></button>
+          <button type="button" class="btn primary" id="next"><span>Next step</span></button>
+          <button type="button" class="btn" id="all">Show all</button>
+        </div>
+      </div>
+      <div id="disp">
+        <div class="xline"><div id="x"></div></div>
+        <div class="bigline"><button type="button" class="toggle" id="bigToggle" hidden></button><div id="big"></div></div>
+        <div id="hint"></div>
+      </div>
+    </section>
+    <div id="keys"></div>
+    <section id="history" aria-label="History"><ol id="hlist"></ol></section>
+  </div>
+  <div id="live" class="vh" aria-live="polite"></div>
+</div>
+<script>
+(function () {
+  'use strict';
+  const E = window.CalcEngine;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const noCursor = html => html.replace(/<span class="ce-cursor"><\/span>/g, '');
+  const clamp = (lo, v, hi) => Math.max(lo, Math.min(v, hi));
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+
+  // Content (Board21.save): the engine's serialize(), the problem on the canvas and History (docs/DATA-FORMAT.md):
+  //   { v: 2, expr, mode, pct?, closed?, frac?, history: [{ expr, pct }] }. The engine checks it all on load.
+  // Config (Board21.saveConfig): every menu setting, and which panels show:
+  //   { canvas, history, steps, words, advanced, hide, fractions, test, percent: 'of' | 'apple', swap }
+  const DEFAULTS = Object.freeze({ canvas: true, history: false, steps: true, words: false, advanced: false, hide: false, fractions: false, test: false, percent: 'of', swap: false });
+  const FLAGS = ['canvas', 'history', 'steps', 'words', 'advanced', 'hide', 'fractions', 'test', 'swap'];
+  function readConfig(c) {
+    const out = Object.assign({}, DEFAULTS);
+    if (!c || typeof c !== 'object' || Array.isArray(c)) return out;
+    for (const k of FLAGS) if (own(c, k) && typeof c[k] === 'boolean') out[k] = c[k];
+    if (c.percent === 'of' || c.percent === 'apple') out.percent = c.percent;
+    return out;
+  }
+  let cfg = Object.assign({}, DEFAULTS);
+
+  // Test practice: Desmos Four-Function's keys and its 7 digits, as on NWEA MAP.
+  const TEST_KEYS = ['digits', 'point', 'add', 'subtract', 'multiply', 'divide', 'open', 'close', 'sqrt', 'ans'];
+  const NOT_IN_TEST = new Set(['negate', 'percent', 'power', 'square', 'root', 'cbrt', 'pi', 'fraction', 'over']);
+  const engineOptions = () => cfg.test
+    ? { digits: 7, keys: TEST_KEYS, toggle: false, answerAs: 'decimal', slash: 'divide', percent: cfg.percent }
+    : { digits: 10, keys: null, toggle: true, answerAs: cfg.fractions ? 'fraction' : 'decimal', slash: cfg.advanced ? 'fraction' : 'divide', percent: cfg.percent };
+  const calc = E.create(Object.assign({ separators: 'faint', historySize: 20 }, engineOptions()));
+
+  const SVG = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
+  const ICON = {
+    del: SVG('<path d="M21 5H9l-6.5 7L9 19h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/>'),
+    right: SVG('<path d="M4 12h15M13 6l6 6-6 6"/>'),
+    back: SVG('<path d="M15 6l-6 6 6 6"/>'),
+    replay: SVG('<path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/>'),
+    alert: SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/>'),
+    swap: SVG('<path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/>'),
+    trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>'
+  };
+
+  // [engine key, grid area, kind, label]: the Advanced keys first (they sit above the others), then row by row.
+  const KEYS = [
+    ['square', 'sq', 'adv', '<i>a</i><sup>2</sup>'], ['power', 'pow', 'adv', '<i>a</i><sup><i>b</i></sup>'],
+    ['root', 'root', 'adv', '<sup class="ri"><i>n</i></sup>√'], ['cbrt', 'cbrt', 'adv', '<sup class="ri">3</sup>√'],
+    ['pi', 'pi', 'adv', 'π'], ['percent', 'pct', 'adv', '%'], ['fraction', 'frac', 'adv', '<span class="fk"><i>a</i><i>b</i></span>'], ['right', 'right', 'adv', ICON.right],
+    ['clear', 'ac', 'fn', '<span class="w">AC</span>'], ['backspace', 'del', 'fn', ICON.del], ['negate', 'neg', 'fn', '±'],
+    ['open', 'open', 'fn', '('], ['close', 'close', 'fn', ')'], ['sqrt', 'sqrt', 'fn', '√'], ['divide', 'div', 'op', '÷'],
+    ['7', 'd7', 'num', '7'], ['8', 'd8', 'num', '8'], ['9', 'd9', 'num', '9'], ['multiply', 'mul', 'op', '×'],
+    ['4', 'd4', 'num', '4'], ['5', 'd5', 'num', '5'], ['6', 'd6', 'num', '6'], ['subtract', 'sub', 'op', '−'],
+    ['1', 'd1', 'num', '1'], ['2', 'd2', 'num', '2'], ['3', 'd3', 'num', '3'], ['add', 'add', 'op', '+'],
+    ['0', 'd0', 'num', '0'], ['point', 'pt', 'num', '.'], ['ans', 'ans', 'num', '<span class="w">ans</span>'], ['equals', 'eq', 'op', '=']
+  ];
+  const BOX_KEYS = ['power', 'root', 'fraction', 'sqrt'];
+  const PENDING = { '+': 'add', '-': 'subtract', '*': 'multiply', '/': 'divide', '^': 'power', '%': 'percent' };
+  const DIMMABLE = ['close', 'right', 'ans'];
+  const FLASH = { clearEntry: 'clear', over: 'fraction' };
+
+  const el = {
+    app: $('app'), grid: $('grid'), canvas: $('canvas'), card: $('card'), board: $('board'), eq: $('eq'), eqline: document.querySelector('.eqline'),
+    eqToggle: $('eqToggle'), said: $('said'), note: $('note'), chain: $('chain'), player: $('player'), pemdas: Array.from(document.querySelectorAll('.pemdas b')),
+    count: $('count'), rule: $('rule'), back: $('back'), next: $('next'), all: $('all'), hide: $('hide'),
+    disp: $('disp'), xline: document.querySelector('.xline'), x: $('x'), bigline: document.querySelector('.bigline'), big: $('big'), bigToggle: $('bigToggle'), hint: $('hint'),
+    keys: $('keys'), history: $('history'), hlist: $('hlist'), live: $('live')
+  };
+  el.back.innerHTML = ICON.back;
+  el.eqToggle.innerHTML = el.bigToggle.innerHTML = ICON.swap;
+
+  const keyBtn = {};
+  for (const [k, area, kind, html] of KEYS) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'key ' + kind; b.dataset.key = k; b.style.gridArea = area;
+    b.innerHTML = html; b.setAttribute('aria-label', E.KEYS[k].name);
+    el.keys.appendChild(b); keyBtn[k] = b;
+  }
+
+  // ---- What isn't saved: the steps on screen, a hidden answer shown, a message
+  let shown = 0;            // steps on screen: 0 is the whole problem; 1 to n write them out, the answer last
+  let problem = '';         // the worked-out problem the steps and a hidden answer belong to
+  let revealed = false;     // the hidden answer has been shown for this problem
+  let popAnswer = false;    // the answer pops in once, as it is shown
+  let lastShown = 0, chainKey = null, histKey = null;
+  let message = '';         // a key Test practice has no button for, typed: said until the next key
+  let blocked = false;      // ...and the digits typed right after it are kept out too (2^3 mustn't become 23)
+
+  // ---- Saving
+  let savedData = '';
+  function save() {
+    const d = calc.serialize(), j = JSON.stringify(d);
+    if (j === savedData) return;
+    savedData = j;
+    Board21.save(d).catch(() => {});   // (not stored yet: the board keeps it and tries again)
+  }
+  const saveConfig = () => Board21.saveConfig(Object.assign({}, cfg)).catch(() => {});
+
+  // ---- Pressing keys
+  function press(k) {
+    const before = calc.state();
+    calc.press(k);
+    after(before);
+  }
+  // After any change: draw, save, and tell screen readers what happened.
+  function after(before) {
+    message = '';
+    const s = render();
+    save();
+    let msg = '';
+    const fresh = s.mode === 'done' && (before.mode !== 'done' || before.expression.text !== s.expression.text || before.history.length !== s.history.length);
+    if (s.mode === 'done' && (fresh || before.display !== s.display)) msg = answerHidden(s) ? 'Answer hidden.' : s.equation.speech;
+    else if (s.mode === 'error' && before.mode !== 'error') msg = s.error.short + '. ' + s.error.message;
+    else if (s.notice && (!before.notice || before.notice.message !== s.notice.message)) msg = s.notice.message;
+    if (msg) say(msg);
+  }
+  const say = msg => { el.live.textContent = ''; el.live.textContent = msg; };
+  const hitTimers = new Map();
+  function flash(k) {
+    const b = keyBtn[FLASH[k] || k];
+    if (!b || !b.offsetParent) return;
+    b.classList.add('hit');
+    clearTimeout(hitTimers.get(b));
+    hitTimers.set(b, setTimeout(() => b.classList.remove('hit'), 140));
+  }
+  el.keys.addEventListener('click', e => {
+    const b = e.target.closest('.key');
+    if (b && b.getAttribute('aria-disabled') !== 'true') { blocked = false; press(b.dataset.key); }
+  });
+  // A tap keeps the keyboard on the calculator, so Enter after a tap means = (not the button tapped last).
+  el.app.addEventListener('mousedown', e => {
+    if (e.target.closest('button')) e.preventDefault();
+    if (document.activeElement !== el.app) el.app.focus({ preventScroll: true });
+  });
+
+  // ---- The keyboard, as in Desmos. Page Down and Page Up step, so a presentation clicker works.
+  document.addEventListener('keydown', e => {
+    const t = e.target;
+    if (e.key === 'Tab') { document.documentElement.classList.add('kbd'); return; }
+    if (t !== el.app && t.closest && t.closest('button') && (e.key === 'Enter' || e.key === ' ')) return;
+    if (e.key === 'PageDown' || e.key === 'PageUp') {
+      if (!stepsShowing()) return;
+      e.preventDefault();
+      if (e.key === 'PageDown') next(); else back();
+      return;
+    }
+    const k = E.keyFromEvent(e, calc.options());
+    if (cfg.test && k && NOT_IN_TEST.has(k)) {
+      e.preventDefault();
+      blocked = true;
+      message = `Test practice has no ${E.KEYS[k].label} key.`;
+      render();
+      say(message);
+      return;
+    }
+    if (blocked && k && (/^[0-9]$/.test(k) || k === 'point')) { e.preventDefault(); return; }
+    blocked = false;
+    const before = calc.state();
+    if (calc.handleKey(e)) {
+      e.preventDefault();
+      if (k) flash(k);
+      after(before);
+    }
+  });
+  document.addEventListener('pointerdown', () => document.documentElement.classList.remove('kbd'), true);
+
+  // ---- Hide the answer, ⇄, the steps
+  const answerHidden = s => cfg.hide && s.mode === 'done' && !revealed;
+  function setHide(on) {
+    cfg.hide = on;
+    revealed = false;
+    saveConfig(); setMenu(); render();
+    say(on ? 'Answers hidden.' : 'Answers shown.');
+  }
+  function reveal() {
+    if (revealed) return;
+    revealed = true; popAnswer = true;
+    const s = render();
+    if (s.mode === 'done') say(s.equation.speech);
+  }
+  el.hide.addEventListener('click', () => setHide(!cfg.hide));
+  el.canvas.addEventListener('click', e => {
+    if (e.target.closest('.reveal')) reveal();
+    else if (e.target.closest('.toggle')) { blocked = false; press('toggle'); }
+  });
+
+  const stepsOf = s => (s.mode === 'done' || s.mode === 'error') && s.steps ? s.steps : [];
+  const hasWork = steps => steps.some(st => !st.final);
+  const stepsShowing = () => cfg.canvas && cfg.steps && el.player.offsetParent !== null;
+  // Next step also works the problem out first, when it is finished but = hasn't been pressed.
+  function solveFirst() {
+    const s = calc.state();
+    if (s.mode !== 'edit' || !s.preview) return s.mode !== 'edit';
+    calc.press('equals');
+    after(s);
+    return calc.state().mode !== 'edit';
+  }
+  function go(to) {
+    const steps = stepsOf(calc.state());
+    if (!hasWork(steps)) return;
+    shown = clamp(0, to, steps.length);
+    if (shown >= steps.length) revealed = true;
+    render();
+    if (shown > 0) {
+      const st = steps[shown - 1], prev = steps[shown - 2], parts = [];
+      if (prev && prev.work) parts.push(prev.work.speech);
+      parts.push(st.final ? 'Answer, ' + st.speech : st.error ? st.speech + '. ' + st.error.short : st.speech);
+      say(parts.join('. '));
+    }
+  }
+  function next() { if (!solveFirst()) return; const n = stepsOf(calc.state()).length; go(shown >= n ? 1 : shown + 1); }
+  function back() { go(shown - 1); }
+  function showAll() { if (solveFirst()) go(stepsOf(calc.state()).length); }
+  el.chain.addEventListener('animationend', e => { const n = e.target.closest('.in'); if (n) n.classList.remove('in'); });
+  el.next.addEventListener('click', next);
+  el.back.addEventListener('click', back);
+  el.all.addEventListener('click', showAll);
+
+  // ---- History: tap a line to change its problem, its answer to use it
+  el.hlist.addEventListener('click', e => {
+    const b = e.target.closest('button');
+    if (!b || b.disabled) return;
+    const i = +b.dataset.i, before = calc.state();
+    blocked = false;
+    if (b.classList.contains('hans')) calc.useAnswer(i); else calc.useExpression(i);
+    after(before);
+  });
+
+  // ---- Drawing
+  function render() {
+    const s = calc.state();
+    const key = s.mode === 'edit' ? 'edit' : s.mode + '|' + s.expression.text + '|' + s.history.length;
+    if (key !== problem) { problem = key; shown = 0; revealed = false; lastShown = 0; }
+    const steps = stepsOf(s);
+    if (shown > steps.length) shown = steps.length;
+    el.app.classList.toggle('adv', cfg.advanced);
+    el.app.classList.toggle('test', cfg.test);
+    el.app.classList.toggle('steps', cfg.steps);
+    el.app.classList.toggle('nocanvas', !cfg.canvas);
+    el.hide.setAttribute('aria-checked', String(cfg.hide));
+    renderBoard(s, steps);
+    renderPlayer(s, steps);
+    renderDisplay(s);
+    renderKeys(s);
+    renderHistory(s);
+    setMenu(s);
+    fitAll();
+    popAnswer = false;
+    return s;
+  }
+
+  const REVEAL = '<button type="button" class="reveal" aria-label="Show the answer">?</button>';
+  function problemHTML(s) {
+    if (s.mode === 'done') return answerHidden(s) ? noCursor(s.expression.html) + '<span class="ce-eq"> = </span>' + REVEAL : s.equation.html;
+    if (s.mode === 'error') return noCursor(s.expression.html);
+    if (s.displayKind === 'empty') return '<span class="zero">0</span>';
+    let html = s.expression.html;
+    if (!cfg.hide && s.preview && !s.preview.error) html += `<span class="prev"><span class="ce-eq"> = </span>${s.preview.html}</span>`;
+    return html;
+  }
+  function noteFor(s) {
+    if (message) return { cls: 'tip', html: esc(message) };
+    if (s.mode === 'error') return { cls: 'bad', html: `${ICON.alert}<span><b>${esc(s.error.short)}.</b> ${esc(s.error.message)}</span>` };
+    if (s.notice) return { cls: 'tip', html: esc(s.notice.message) };
+    if (s.mode === 'edit' && s.preview && s.preview.error) return { cls: '', html: esc(s.preview.error.short) };
+    return { cls: '', html: '' };
+  }
+  // In words: the problem read aloud, as Lines writes it under each line. Its digit groups get the faint comma too.
+  function wordsFor(s) {
+    if (!cfg.words) return '';
+    let t = '';
+    if (s.mode === 'done') t = answerHidden(s) ? s.expression.speech : s.equation.speech;
+    else if (s.mode === 'error') t = s.expression.speech;
+    else if (s.displayKind !== 'empty') {
+      t = s.expression.speech;
+      if (t && !cfg.hide && s.preview && !s.preview.error && s.preview.speech) t += ' equals ' + s.preview.speech;
+    }
+    return esc(t).replace(/(\d),(?=\d{3}(?!\d))/g, '$1<span class="ce-sep">,</span>');
+  }
+  const toggleLabel = s => s.answer && s.answer.asFraction ? 'Show as a decimal' : 'Show as a fraction';
+  function setToggle(btn, s) {
+    const on = s.mode === 'done' && !!s.answer && s.answer.canToggle && !answerHidden(s);
+    btn.hidden = !on;
+    if (on) { const t = toggleLabel(s); btn.setAttribute('aria-label', t); btn.title = t; }
+  }
+
+  function renderBoard(s, steps) {
+    const chain = cfg.steps && shown > 0 && steps.length > 0;
+    el.board.classList.toggle('chain', chain);
+    el.eq.innerHTML = problemHTML(s);
+    el.eq.classList.toggle('shown', popAnswer);
+    el.said.innerHTML = wordsFor(s);
+    const note = noteFor(s);
+    el.note.className = note.cls;
+    el.note.innerHTML = note.html;
+    setToggle(el.eqToggle, s);
+    // The steps, written out as on a whiteboard: each line is the one before with the marked part worked out. Every
+    // line is laid out from the start (hidden until its turn), so the text never jumps as they appear.
+    const ck = steps.map(st => st.html).join('|') + '|' + (s.answer ? s.answer.asFraction : '');
+    if (ck !== chainKey) {
+      chainKey = ck;
+      el.chain.innerHTML = steps.map((st, i) => {
+        let work = '';
+        if (st.error) work = `<span class="work bad">${esc(st.error.short)}</span>`;
+        else if (st.work) work = `<span class="work">${st.work.html}</span>`;
+        else if (st.final && s.answer && s.answer.canToggle) work = `<button type="button" class="toggle" aria-label="${toggleLabel(s)}" title="${toggleLabel(s)}">${ICON.swap}</button>`;
+        return `<li class="ln${st.final ? ' fin' : ''}${st.error ? ' bad' : ''}"><span class="lead" aria-hidden="true">${i ? '=' : ''}</span>` +
+          `<span class="lx">${st.html}</span><span class="lw">${work}</span></li>`;
+      }).join('');
+    }
+    // A line (or its sum) that has just appeared slides in once; 'in' comes off when that is done.
+    const grew = shown > lastShown;
+    Array.from(el.chain.children).forEach((li, i) => {
+      const on = i < shown, st = steps[i];
+      li.classList.toggle('on', on);
+      li.classList.toggle('cur', i === shown - 1 && !st.final);
+      li.classList.toggle('past', i < shown - 1);
+      if (!on) li.classList.remove('in'); else if (grew && i >= lastShown) li.classList.add('in');
+      li.setAttribute('aria-hidden', String(!on));
+      const lw = li.lastElementChild, workOn = i < shown - 1 || (on && !!(st.error || st.final));
+      lw.classList.toggle('on', workOn);
+      if (!workOn) lw.classList.remove('in'); else if (grew && i >= lastShown - 1) lw.classList.add('in');
+    });
+    lastShown = shown;
+  }
+
+  function renderPlayer(s, steps) {
+    const n = steps.length, work = hasWork(steps);
+    const ready = s.mode === 'edit' && !!s.preview;   // finished, not worked out yet
+    const cur = shown > 0 ? steps[shown - 1] : null;
+    const lit = new Set(), soft = new Set();
+    let words = '', bad = false;
+    if (cur && cur.error) { words = cur.error.short; bad = true; }
+    if (cur && !cur.final && cur.rule) {
+      const letters = { P: 'P', E: 'E', MD: 'MD', AS: 'AS' }[cur.rule] || '';   // O (the opposite) lights none
+      letters.split('').forEach(l => lit.add(l));
+      // Inside parentheses, P is why it goes first and the operation shows softly. Inside a √, a power or a
+      // fraction, nothing says P: the words say "Inside first".
+      if (cur.inside) letters.split('').forEach(l => { if (l !== 'P') { lit.delete(l); soft.add(l); } });
+      if (cur.inside === 'parens') lit.add('P');
+      if (!bad) words = cur.inside === 'parens' ? E.RULES.P : cur.inside === 'box' ? E.RULES.G : (E.RULES[cur.rule] || '');
+    }
+    el.pemdas.forEach((b, i) => { const l = 'PEMDAS'[i]; b.className = lit.has(l) ? (bad ? 'soft' : 'lit') : soft.has(l) ? 'soft' : ''; });
+    el.rule.textContent = cfg.steps ? words : '';
+    el.rule.classList.toggle('bad', bad);
+    const end = n > 0 && shown >= n, canGo = (work && !end) || ready;
+    el.back.disabled = shown === 0;
+    el.next.disabled = !(canGo || (end && work));
+    const nextHTML = end && work ? `${ICON.replay}<span>Replay</span>` : '<span>Next step</span>';
+    if (el.next.innerHTML !== nextHTML) el.next.innerHTML = nextHTML;
+    el.all.disabled = !canGo;
+    el.count.textContent = cfg.steps && shown > 0 ? `Step ${shown} of ${n}` : '';
+  }
+
+  function renderDisplay(s) {
+    let x = '';
+    if (s.mode === 'done' || s.mode === 'error') x = noCursor(s.expression.html);
+    else if (s.displayKind !== 'empty') {
+      x = s.expression.html;
+      if (!cfg.hide && s.preview && !s.preview.error) x += `<span class="prev"><span class="ce-eq"> = </span>${s.preview.html}</span>`;
+    }
+    el.x.innerHTML = x;
+    let big = s.displayHtml, kind = s.displayKind;
+    if (answerHidden(s)) { big = REVEAL; kind = 'answer'; }
+    else if (cfg.hide && kind === 'running') big = '<span class="zero">?</span>';   // the part worked out so far would give it away
+    else if (kind === 'empty') big = '<span class="zero">0</span>';
+    el.big.innerHTML = big;
+    el.big.className = 'k-' + kind + (popAnswer ? ' shown' : '');
+    let hint = '', tip = false;
+    if (message) { hint = message; tip = true; }
+    else if (s.error) hint = s.error.message;
+    else if (s.notice) { hint = s.notice.message; tip = true; }
+    else if (s.mode === 'edit' && s.preview && s.preview.error) hint = s.preview.error.short;
+    el.hint.textContent = hint;
+    el.hint.classList.toggle('tip', tip);
+    setToggle(el.bigToggle, s);
+  }
+
+  function renderKeys(s) {
+    const pend = PENDING[s.pendingOp] || null;
+    Object.values(PENDING).forEach(k => {
+      const b = keyBtn[k], on = k === pend;
+      b.classList.toggle('pending', on);
+      if (b.classList.contains('op')) b.setAttribute('aria-pressed', String(on));
+    });
+    DIMMABLE.forEach(k => keyBtn[k].setAttribute('aria-disabled', String(s.can[k] === false)));
+    // The key whose box holds the cursor is ringed, and → is filled: it is the way out.
+    const box = s.mode === 'edit' && (s.boxKey === 'cbrt' ? 'root' : s.boxKey);
+    BOX_KEYS.forEach(k => keyBtn[k].classList.toggle('inbox', k === box));
+    keyBtn.right.classList.toggle('exit', BOX_KEYS.includes(box));
+  }
+
+  function renderHistory(s) {
+    if (!el.app.classList.contains('hist')) { histKey = null; return; }   // (drawn when it shows)
+    const hideNewest = answerHidden(s), cur = s.mode === 'done' && s.history.length > 0 && s.history[0].equation.text === s.equation.text;
+    const key = s.history.map(h => h.equation.html).join('|') + '|' + hideNewest + '|' + cur;
+    if (key === histKey) return;
+    histKey = key;
+    if (!s.history.length) { el.hlist.innerHTML = '<li class="hempty">Your problems show here.</li>'; return; }
+    let html = '';
+    for (let i = s.history.length - 1; i >= 0; i--) {   // the oldest at the top, the newest at the bottom
+      const h = s.history[i], hid = i === 0 && hideNewest;
+      html += `<li class="hline${i === 0 && cur ? ' cur' : ''}"><button type="button" class="hpick" data-i="${i}" aria-label="Change ${esc(h.expression.text)}" title="Change this problem">${noCursor(h.expression.html)}</button>` +
+        `<button type="button" class="hans" data-i="${i}"${hid ? ' disabled aria-label="Answer hidden"' : ` aria-label="Use ${esc(h.answer.text)}" title="Use this answer"`}><span class="heq" aria-hidden="true">=</span>${hid ? '?' : h.answer.html}</button></li>`;
+    }
+    const had = el.hlist.contains(document.activeElement);
+    el.hlist.innerHTML = html;
+    if (had) el.app.focus({ preventScroll: true });
+    el.hlist.scrollTop = el.hlist.scrollHeight;
+  }
+
+  // ---- The window menu (the board adds its own items after these)
+  let menuNow = '';
+  function setMenu(s) {
+    s = s || calc.state();
+    const off = !cfg.canvas;
+    const items = [
+      { heading: true, label: 'Show' },
+      { id: 'canvas', label: 'Canvas', checked: cfg.canvas },
+      { id: 'history', label: 'History', checked: cfg.history },
+      { id: 'steps', label: 'Steps', checked: cfg.steps, disabled: off },
+      { id: 'words', label: 'In words', checked: cfg.words, disabled: off },
+      { separator: true },
+      { id: 'advanced', label: 'Advanced keys', checked: cfg.advanced, disabled: cfg.test },
+      { id: 'hide', label: 'Hide the answer', checked: cfg.hide },
+      { id: 'fractions', label: 'Answers as fractions', checked: cfg.fractions, disabled: cfg.test },
+      { id: 'test', label: 'Test practice', checked: cfg.test },
+      { id: 'percent', label: '50 + 10% = 55', checked: cfg.percent === 'apple', disabled: cfg.test },
+      { id: 'swap', label: 'Swap sides', checked: cfg.swap },
+      { separator: true },
+      { id: 'clear-history', label: 'Clear history', icon: ICON.trash, disabled: !s.history.length }
+    ];
+    const sig = JSON.stringify(items);
+    if (sig !== menuNow) { menuNow = sig; Board21.menu.set(items); }
+  }
+  Board21.on('menu', id => {
+    if (id === 'clear-history') { calc.clearHistory(); render(); save(); return; }
+    if (id === 'hide') { setHide(!cfg.hide); return; }
+    if (!own(DEFAULTS, id)) return;
+    const was = cfg, next = Object.assign({}, cfg);
+    if (id === 'percent') next.percent = cfg.percent === 'apple' ? 'of' : 'apple';
+    else next[id] = !cfg[id];
+    // A panel turned on widens the window by its width; turned off, it gives the width back (resizeFor).
+    const change = id === 'history' ? panelChange('history', next.history) : id === 'canvas' ? panelChange('canvas', next.canvas) : null;
+    useConfig(next, was);
+    saveConfig();
+    if (change) change();
+  });
+
+  // A new config, from the menu or from elsewhere (another tab, an import, Reset).
+  function useConfig(next, was) {
+    cfg = next;
+    if (was.steps !== cfg.steps || was.canvas !== cfg.canvas) { shown = 0; lastShown = 0; }
+    calc.setOptions(engineOptions());
+    // The answer on screen follows Answers as fractions at once; new ones start in that form anyway (answerAs).
+    const s = calc.state();
+    if (was.fractions !== cfg.fractions && s.mode === 'done' && s.answer && s.answer.canToggle && s.answer.asFraction !== (cfg.fractions && !cfg.test)) calc.toggleFraction();
+    if (was.fractions !== cfg.fractions || was.test !== cfg.test) save();
+    layout();
+    render();
+  }
+
+  // ---- The window's size: panels turned on or off
+  // Turning History or the canvas on widens the window by that panel's width, where the board has room. Turning it off
+  // gives the width back. Turned back while the window is still the size it was given, it goes back to the size it had
+  // before, exactly. A window that fills the board keeps its size, and its panels share it.
+  const sized = {};   // panel → { on, from, to }: its last change, the window's size before it and the size asked for
+  function panelChange(panel, on) {
+    const info = Board21.context && Board21.context.window;
+    if (!Board21.embedded || !info || info.maximized) return null;
+    const w = info.width || innerWidth, h = info.height || innerHeight, M = metrics(w, h), rec = sized[panel];
+    delete sized[panel];
+    let to;
+    if (rec && rec.on !== on && Math.abs(rec.to.w - w) <= 2 && Math.abs(rec.to.h - h) <= 2) to = rec.from;
+    else if (on) to = { w: w + (panel === 'history' ? histWidth(h) : canvasWidth(h)) + M.G, h };
+    else {
+      // (Only a panel beside the others has a width to give back: a canvas above the keys has none.)
+      const beside = panel === 'history' ? el.app.classList.contains('hist') : el.app.dataset.layout === 'side';
+      if (!beside) return null;
+      to = { w: Math.round(w - (panel === 'history' ? el.history : el.canvas).getBoundingClientRect().width - M.G), h };
+    }
+    return () => { sized[panel] = { on, from: { w, h }, to }; Board21.window.setSize(to.w, to.h); };
+  }
+
+  // ---- Layout: which panels show where, for the window's size. Every key stays 44 px or more.
+  const KEY = 44.5, HIST_MIN = 200, CANVAS_MIN = 340, DISP_MIN = 76;
+  function metrics(W, H) {
+    const m = Math.min(W, H), rows = !cfg.test && cfg.advanced ? 8 : 6;
+    const P = clamp(8, m * .02, 28), G = clamp(5, m * .013, 16);
+    // Filling the board, the window keeps clear of the board's buttons in its bottom corners.
+    const info = Board21.context && Board21.context.window, cn = info && info.maximized && info.corners;
+    const PB = cn && (cn.left > 0 || cn.right > 0) && cn.height > 0 ? Math.max(P, cn.height + G) : P;
+    return { W, H, P, PB, G, rows, keysMinW: 4 * KEY + 3 * G, keysMinH: rows * KEY + (rows - 1) * G };
+  }
+  const histWidth = h => Math.round(clamp(240, h * .6, 480));
+  const canvasWidth = h => Math.round(h * .86);
+  let minNow = null;
+  function layout() {
+    const W = innerWidth, H = innerHeight;
+    if (!W || !H) return;
+    const M = metrics(W, H), { P, PB, G, rows } = M, availW = W - 2 * P, availH = H - P - PB;
+    // History: at its width beside everything else, or narrower down to 200 px; where even that doesn't fit, it hides.
+    let hw = 0;
+    if (cfg.history) { hw = Math.min(histWidth(H), availW - G - M.keysMinW); if (hw < HIST_MIN) hw = 0; }
+    const mainW = availW - (hw ? hw + G : 0);
+    // The canvas beside the keys when both fit; otherwise it, or the compact display, sits above them. (Whether the
+    // canvas fits beside them is a matter of width alone, so the room asked for Advanced keys below never flips it.)
+    const keysW = clamp(M.keysMinW, availH * 4 / rows * 1.12, mainW * .4);
+    const besideByWidth = cfg.canvas && mainW * .6 - G >= CANVAS_MIN;
+    const side = besideByWidth && availH >= M.keysMinH && mainW - keysW - G >= CANVAS_MIN;
+    const s = el.grid.style, swap = cfg.swap;
+    if (side) {
+      const cols = [['canvas', 'minmax(0, 1fr)'], ['keys', keysW + 'px']].concat(hw ? [['hist', hw + 'px']] : []);
+      if (swap) cols.reverse();
+      s.gridTemplateColumns = cols.map(c => c[1]).join(' ');
+      s.gridTemplateRows = 'minmax(0, 1fr)';
+      s.gridTemplateAreas = `"${cols.map(c => c[0]).join(' ')}"`;
+    } else {
+      const keysH = clamp(M.keysMinH, Math.min(mainW * rows / 4 * .72, availH * .7), availH - G - DISP_MIN);
+      const cols = [['main', 'minmax(0, 1fr)']].concat(hw ? [['hist', hw + 'px']] : []);
+      if (swap) cols.reverse();
+      const row = top => cols.map(c => c[0] === 'main' ? top : 'hist').join(' ');
+      s.gridTemplateColumns = cols.map(c => c[1]).join(' ');
+      s.gridTemplateRows = `minmax(0, 1fr) ${keysH}px`;
+      s.gridTemplateAreas = `"${row('canvas')}" "${row('keys')}"`;
+      el.app.style.setProperty('--kcap', Math.round(keysH * 4 / rows * 1.5) + 'px');
+    }
+    el.app.dataset.layout = side ? 'side' : 'stack';
+    el.app.classList.toggle('hist', !!hw);
+    el.app.classList.toggle('swap', swap);
+    s.padding = `${P}px ${P}px ${PB}px`; s.setProperty('--g', G + 'px');
+    el.app.style.setProperty('--hf', clamp(16, (hw || 240) * .072, 40) + 'px');
+    // Advanced keys need a taller window when they sit under a display: the board draws it taller meanwhile.
+    const need = rows > 6 ? Math.ceil(2 * P + M.keysMinH + (besideByWidth ? 0 : G + DISP_MIN)) + 1 : 0;
+    const min = need > 400 ? need : null;
+    if (min !== minNow && Board21.embedded) { minNow = min; Board21.window.setMinSize(min ? 280 : null, min); }
+  }
+
+  // ---- Fitting text: the largest size that fits, from the size the CSS gives down to minRatio of it
+  function fitTo(node, maxW, maxH, minRatio) {
+    node.style.fontSize = '';
+    const base = parseFloat(getComputedStyle(node).fontSize);
+    const fits = px => { node.style.fontSize = px + 'px'; return node.offsetWidth <= maxW + .5 && (maxH == null || node.offsetHeight <= maxH + .5); };
+    if (!(maxW > 0) || fits(base)) { if (!(maxW > 0)) node.style.fontSize = ''; return true; }
+    let lo = Math.max(12, base * minRatio), hi = base;
+    if (!fits(lo)) return false;
+    for (let i = 0; i < 8; i++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
+    node.style.fontSize = lo + 'px';
+    return true;
+  }
+  const shows = node => node.offsetParent !== null;
+  function fitAll() {
+    if (!el.app.clientWidth) return;
+    if (shows(el.board)) {
+      const w = el.board.clientWidth, h = el.board.clientHeight;
+      if (el.board.classList.contains('chain')) {
+        const fit = fitTo(el.chain, w - 2, h - 2, .3), cur = el.chain.children[shown - 1];   // too many steps to fit: keep the newest in view
+        if (!fit && cur) cur.scrollIntoView({ block: 'nearest' });
+      } else {
+        const tw = el.eqToggle.hidden ? 0 : el.eqToggle.offsetWidth + parseFloat(getComputedStyle(el.eqline).columnGap || 0);
+        const below = [el.said, el.note].reduce((a, n) => a + (n.innerHTML ? n.offsetHeight + parseFloat(getComputedStyle(n).marginTop) : 0), 0);
+        fitTo(el.eq, w - tw - 4, h - below - 4, .2);
+        el.eqToggle.style.fontSize = el.eq.style.fontSize;   // the toggle keeps to the size of the answer beside it
+      }
+    }
+    if (shows(el.disp)) {
+      const lineW = el.xline.clientWidth, okX = fitTo(el.x, lineW, null, .72);
+      el.xline.classList.toggle('clip', !okX || el.x.offsetWidth > lineW + 1);
+      const d = el.disp, cs = getComputedStyle(d);
+      const availH = d.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) - el.xline.offsetHeight - el.hint.offsetHeight;
+      const availW = el.bigline.clientWidth - (el.bigToggle.hidden ? 0 : el.bigToggle.offsetWidth + 10);
+      fitTo(el.big, availW, Math.max(availH, 12), .2);
+    }
+  }
+
+  // (Work is done in the next frame: changing sizes inside a ResizeObserver callback makes the browser complain.)
+  let frame = 0;
+  function refit() { frame = 0; layout(); histKey = null; render(); }
+  const soon = () => { if (!frame) frame = requestAnimationFrame(refit); };
+  new ResizeObserver(soon).observe(el.app);
+  Board21.on('resize', soon);   // (also when the text style changes, and once its font has loaded)
+
+  // ---- Changes from elsewhere: another tab, an import, Board history
+  Board21.on('data', d => { calc.load(d); savedData = JSON.stringify(calc.serialize()); render(); });
+  Board21.on('config', c => useConfig(readConfig(c), cfg));
+
+  Board21.ready().then(ctx => {
+    cfg = readConfig(ctx.config);
+    calc.setOptions(engineOptions());
+    calc.load(ctx.data);
+    savedData = JSON.stringify(calc.serialize());
+    layout();
+    render();
+  });
+  layout();
+  render();
+})();
+</script>
+</body>
+</html>
