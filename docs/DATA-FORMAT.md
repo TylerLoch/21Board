@@ -81,7 +81,8 @@ storage can't be read still has every page.
                            //   (Settings → Advanced → Windows stop at each other's edges: Off = snapping false;
                            //   Light / Medium / Firm = snapping true with "gentle" / "normal" / "strong")
   pickerCorners: "both",   // Settings → Advanced → Widget Picker: "both" | "left" | "right"
-  accent: "blue",          // "blue" | "purple" | "pink" | "red" | "orange" | "green" | "teal" | "slate"
+  accent: "blue",          // "blue" | "purple" | "red" | "orange" | "green" | "slate", or a custom color as "#rrggbb",
+                           //   lowercase. From 2026.11.18-2, "pink", "teal" and anything else read as "blue".
   themeAt: 1794460416170,  // when the theme, the accent and the text style were last chosen on this device (ms; set by
   accentAt: 1794460410000, //   a change made here, never by Board Sync): of two choices made apart, the later wins on
   lettersAt: 1794460420000,//   every device (lettersAt from 2026.11.17-2)
@@ -257,7 +258,8 @@ nothing, and one whose own value has no version (an entry with no `v`) keeps its
 switching to the folder. Linking the same folder again (`carry`) keeps the entries, so a choice made while unlinked
 counts. A choice made after linking while Google Drive is still bringing the folder (`wait`) is this device's own when
 the files arrive: joining or switching to the folder, the folder's applies. A value this release doesn't know (a text
-style a newer 21Board added, say) is skipped in a file, as any part is.
+style a newer 21Board added, say) is skipped in a file, as any part is. A release before 2026.11.18-2 skips a custom
+accent, `"#rrggbb"`. A later one skips `"pink"` and `"teal"`, and reads its own as `"blue"`.
 
 A device on 2026.11.16-4 doesn't know the text style: its files have no `letters` and no `sync.style.letters`, which
 says nothing about it (never a change, never a reset back to Standard), and it reads past both in a newer device's
@@ -581,7 +583,7 @@ on Chrome) reads it.
   "generator": "21Board 2026.11.12-1 (3fa9c1d2)",   // the release that wrote the file: name and build (for people; never read back)
   "viewport": { "width": 2400, "height": 1350 },   // the space the rects are in (the 16:9 board, grown to fit every window)
   "theme": "light",
-  "accent": "blue",
+  "accent": "blue",               // or a custom color, "#rrggbb"
   "letters": "standard",          // the text style (from 2026.11.17-2; a file without it leaves the text style as it is)
   "board": {
     "name": "Room 12",

@@ -301,15 +301,15 @@ class Device {
   }
   readLocal(leaving) {   // (leaving: Link.farewell's round, where a page whose Undo is still offered goes as deleted)
     const recs = Array.from(this.recs.values());
-    return Merge.read(recs, Object.assign({ settings: this.settings, now: this.now(), hcache: this.hcache || (this.hcache = new Map()) }, H, leaving ? { undoMs: 0 } : {}));
+    return Merge.read(recs, Object.assign({ settings: this.settings, now: this.now(), hcache: this.hcache || (this.hcache = new Map()) }, this.H || H, leaving ? { undoMs: 0 } : {}));
   }
   fileName() { return `21Board (${this.label}) [${this.dev.slice(0, 4)}].21board`; }
   // A device file in this view → decoded (cached by its text).
   decodeText(text) {   // (decoded once for every device: Merge never changes a peer)
-    const key = this.old ? '4' + text : text;
+    const key = (this.old ? '4' : '') + (this.H ? this.H.tag : '') + text;   // (this.H: helpers of its own, see styles())
     if (!DECODED.has(key)) {
       let r = null;
-      try { r = Merge.decode(JSON.parse(text), H); } catch (e) { r = null; }
+      try { r = Merge.decode(JSON.parse(text), this.H || H); } catch (e) { r = null; }
       if (DECODED.size > 2000) DECODED.clear();
       DECODED.set(key, r);
     }
@@ -1337,6 +1337,45 @@ function styles() {
     const f = fileOf(A);
     ok(f.theme === 'system' && f.accent === 'green' && f.sync.style && f.sync.style.theme[0] === B.dev && f.sync.style.accent[0] === A.dev,
       `a device file has them as any export does, and their versions in sync.style (${JSON.stringify(f.sync.style)})`);
+  });
+  block(() => {
+    // From 2026.11.18-2 an accent is one of six keys or a custom '#rrggbb'. Each board passes the accents it knows
+    // (accentOk). The laptop is on this release, the smartboard on an older one with eight keys. Each skips the other's
+    // accent it doesn't know and keeps its own. Nothing flips back. Updated, the smartboard takes the laptop's color.
+    const { A, B, sync } = pair();
+    const helpers = (tag, keys) => Object.assign({}, H, { tag, accentOk: k => typeof k === 'string' && (keys.includes(k) || (tag === 'new' && /^#[0-9a-f]{6}$/.test(k))) });
+    A.H = helpers('new', ['blue', 'purple', 'red', 'orange', 'green', 'slate']); B.H = helpers('old', ['blue', 'purple', 'pink', 'red', 'orange', 'green', 'teal', 'slate']);
+    A.setStyle({ accent: 'green' }); NOW += 2000; sync();
+    ok(A.styleNow() === 'system green' && B.styleNow() === 'system green', `(both green: ${A.styleNow()} / ${B.styleNow()})`);
+    A.setStyle({ theme: 'dark', accent: '#8040c0' }); NOW += 2000; sync();
+    ok(A.styleNow() === 'dark #8040c0' && B.styleNow() === 'dark green', `a custom accent on the laptop: the older smartboard takes the theme and skips the accent, keeping its own, and the laptop keeps its custom one (${A.styleNow()} / ${B.styleNow()})`);
+    ok(fileOf(A).accent === '#8040c0' && fileOf(B).accent === 'green' && fileOf(B).sync.style.accent[0] === A.dev, `their files: the laptop’s has the custom color, the smartboard’s its green, at the laptop’s older version (${fileOf(B).sync.style.accent[0] === A.dev})`);
+    B.setStyle({ accent: 'pink' }); NOW += 2000; sync();
+    ok(A.styleNow() === 'dark #8040c0' && B.styleNow() === 'dark pink', `Pink chosen on the older smartboard: the laptop skips it in turn (${A.styleNow()} / ${B.styleNow()})`);
+    B.setStyle({ accent: 'orange' }); NOW += 2000; sync();
+    ok(A.styleNow() === 'dark orange' && B.styleNow() === 'dark orange', `a color both know, chosen later, reaches both (${A.styleNow()} / ${B.styleNow()})`);
+    A.setStyle({ accent: '#0d9488' }); NOW += 2000; sync();
+    B.H = helpers('new', ['blue', 'purple', 'red', 'orange', 'green', 'slate']); NOW += 2000; sync();
+    ok(A.styleNow() === 'dark #0d9488' && B.styleNow() === 'dark #0d9488' && A.canon() === B.canon(), `once the smartboard is updated it takes the laptop’s custom color, and both stay so (${A.styleNow()} / ${B.styleNow()})`);
+  });
+  block(() => {
+    // Both on Pink before 2026.11.18-2. The laptop updates and shows Blue: its file says Blue, once, and the older
+    // smartboard takes it. Updated too, the smartboard stays Blue, and nobody writes again.
+    const { A, B, folder, sync } = pair();
+    const helpers = (tag, keys) => Object.assign({}, H, { tag, accentOk: k => typeof k === 'string' && (keys.includes(k) || (tag === 'new' && /^#[0-9a-f]{6}$/.test(k))) });
+    const NEW = ['blue', 'purple', 'red', 'orange', 'green', 'slate'], OLD = NEW.concat('pink', 'teal');
+    A.H = helpers('old', OLD); B.H = helpers('old', OLD);
+    A.setStyle({ accent: 'pink' }); NOW += 2000; sync();
+    ok(A.styleNow() === 'system pink' && B.styleNow() === 'system pink', `(both pink: ${A.styleNow()} / ${B.styleNow()})`);
+    A.H = helpers('new', NEW); NOW += 2000;
+    A.round(); B.deliver(A); const pb = B.round();
+    ok(fileOf(A).accent === 'blue' && B.styleNow() === 'system blue' && pb && same(pb.summary.style, [{ by: A.dev, accent: 'blue' }]),
+      `the laptop updated: its file says Blue, and the older smartboard takes it and says so (${fileOf(A).accent}; ${B.styleNow()}; ${pb && JSON.stringify(pb.summary.style)})`);
+    sync(); B.H = helpers('new', NEW); NOW += 2000; sync();
+    const files = JSON.stringify([...folder.files]);
+    NOW += 2000; sync();
+    ok(fileOf(A).accent === 'blue' && fileOf(B).accent === 'blue' && B.styleNow() === 'system blue' && JSON.stringify([...folder.files]) === files,
+      `both updated: Blue on both, and nobody writes again (${fileOf(A).accent} / ${fileOf(B).accent})`);
   });
   block(() => {
     // the same version, its vector's devices in another order in another device's file (two or more devices that set

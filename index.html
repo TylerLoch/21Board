@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="316a9de6">
+<html lang="en" data-build="b4b07560">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -26,7 +26,7 @@
       --icon-color: #4b5563;
       --hover-bg: #f3f4f6;
       --active-bg: #eff6ff;
-      --titlebar: #f9fafb;
+      --titlebar: #eff6ff;     /* every title bar: a faint tint of the accent (board.js applyAccent sets the other accents') */
       --grip: #9ca3af;
       --pattern: rgba(0, 0, 0, 0.09);
       --pattern-strong: rgba(0, 0, 0, 0.2);
@@ -34,11 +34,12 @@
       --danger-soft: #fef2f2;
       --shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
       --shadow-focus: 0 18px 48px rgba(0, 0, 0, 0.22), 0 4px 12px rgba(0, 0, 0, 0.10);
-      /* Focused window: tune these to make focus more or less prominent. */
+      /* Focused window: tune these to make focus more or less prominent (board.js focusTint and applyAccent too). */
       --focus-ring: #2563eb;
       --focus-ring-width: 3px;
-      --focus-title: #eff6ff;
-      --label-open: #dbeafe;   /* window-menu button while its menu is open (must differ from --focus-title) */
+      --focus-title: #c9d8fa;  /* its title bar: a stronger tint than --titlebar */
+      --label-open: #2563eb;   /* window-menu button while its menu is open: the accent itself */
+      --title-muted: #4b5563;  /* an unfocused window's name, subtitle, number and ⌄: readable on both tints */
       --on-primary: #ffffff;   /* text on --primary (dark theme uses dark text: the accent shades are light there) */
       --title-h: 40px;
       color-scheme: light;
@@ -55,7 +56,7 @@
       --icon-color: #d1d5db;
       --hover-bg: #2a2a2a;
       --active-bg: rgba(96, 165, 250, 0.2);
-      --titlebar: #262626;
+      --titlebar: #22324a;
       --grip: #6b7280;
       --pattern: rgba(255, 255, 255, 0.10);
       --pattern-strong: rgba(255, 255, 255, 0.22);
@@ -64,8 +65,9 @@
       --shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
       --shadow-focus: 0 18px 48px rgba(0, 0, 0, 0.7), 0 4px 12px rgba(0, 0, 0, 0.4);
       --focus-ring: #60a5fa;
-      --focus-title: #22324a;
-      --label-open: rgba(96, 165, 250, 0.32);
+      --focus-title: #354d6b;
+      --label-open: #60a5fa;
+      --title-muted: #d1d5db;
       --on-primary: #0b1220;
       color-scheme: dark;
     }
@@ -165,7 +167,7 @@
     }
     .win.focused { box-shadow: 0 0 0 calc(var(--focus-ring-width) * var(--zi, 1)) var(--focus-ring), var(--shadow-focus); }
     .win.focused .win-title { background: var(--focus-title); border-bottom-color: transparent; }
-    .win.maximized.focused { box-shadow: none; } /* fills the board; the tinted title bar marks focus */
+    .win.maximized.focused { box-shadow: none; } /* fills the board: the stronger title bar tint marks focus */
     .win.animate { transition: transform .22s ease, width .22s ease, height .22s ease, box-shadow .2s; }
     .win.opening { animation: win-open .18s ease-out; }
     @keyframes win-open { from { opacity: 0; scale: .96; } to { opacity: 1; scale: 1; } }
@@ -184,11 +186,11 @@
       height: 32px; padding: 0 6px 0 12px; border-radius: 8px;
       color: var(--text); font-size: 15px; white-space: nowrap; cursor: inherit;
     }
-    .win:not(.focused) .win-label { color: var(--muted); }
+    .win:not(.focused) .win-label { color: var(--title-muted); }
     .win-label .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 2.5em; }
-    .win-label .num { font-weight: 700; opacity: .55; flex: 0 0 auto; }
+    .win-label .num { font-weight: 700; color: var(--title-muted); flex: 0 0 auto; }
     /* The subtitle gives way first in narrow windows so the widget name stays readable. */
-    .win-label .sub { font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1000 auto; min-width: 0; }
+    .win-label .sub { font-weight: 400; color: var(--title-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1000 auto; min-width: 0; }
     .win-label .sub:not(:empty)::before { content: "·"; margin: 0 6px 0 2px; }
     @container (max-width: 260px) { .win-label .sub { display: none; } }
     /* A copy kept from a clash (Board Sync): "Copy · 9:41 AM". It goes last when the title bar is narrow. */
@@ -196,9 +198,10 @@
       background: var(--copy-bg, #fef3c7); color: var(--copy-fg, #92400e); }
     body.dark .win-label .copy-label { --copy-bg: rgba(251, 191, 36, 0.18); --copy-fg: #fcd34d; }
     @container (max-width: 170px) { .win-label .copy-label { display: none; } }
-    .win-label svg { width: 18px; height: 18px; color: var(--muted); }
-    .win-label.open { background: var(--label-open); color: var(--primary); }
-    .win-label.open svg { color: var(--primary); transform: rotate(180deg); }
+    .win-label svg { width: 18px; height: 18px; color: var(--title-muted); }
+    .win-label.open { background: var(--label-open); color: var(--on-primary); }
+    .win-label.open :is(.num, .sub, svg) { color: var(--on-primary); }
+    .win-label.open svg { transform: rotate(180deg); }
 
     .win-body { position: relative; flex: 1 1 auto; overflow: hidden; border-radius: 0 0 12px 12px; background: var(--surface); }
     .win-body iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; display: block; background: transparent; color-scheme: normal; }
@@ -212,8 +215,8 @@
 
     .win.attention .win-title { animation: attention 1s ease-in-out 5; }
     @keyframes attention { 0%, 100% { background: var(--titlebar); } 50% { background: var(--primary); } }
-    .win.attention .win-label, .win.attention .win-label svg { animation: attention-text 1s ease-in-out 5; }
-    @keyframes attention-text { 50% { color: #fff; } }
+    .win.attention .win-label, .win.attention .win-label :is(.num, .sub, svg) { animation: attention-text 1s ease-in-out 5; }
+    @keyframes attention-text { 50% { color: var(--on-primary); } }
 
     /* Resize grips: corners and side centers. Hit areas are larger than what's drawn. */
     /* Resize grips are only shown (and only grabbable) on the focused window. */
@@ -512,11 +515,9 @@
     .row > .seg, .row > .switch, .row > .stepper, .row > .btn { flex-shrink: 0; }   /* (the text beside them wraps instead) */
     .row .hint.warn-line, .row .awake-status { color: var(--text); }
     #set-clock-fit:empty { display: none; }
-    /* Accent color: the swatches beside the label, on one line (with Board Sync, "On all your devices." under the label
-       fits beside them; should it not, it wraps, rather than a swatch going onto a line of its own). */
-    .accent-row .swatches { gap: 5px; justify-content: flex-end; flex-wrap: nowrap; }
-    .accent-row .swatch { width: 30px; height: 30px; }
-    .accent-row .swatch.on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--primary); }
+    /* Accent color (board.js accentSettings): the six and Custom… under the row's name, drawn like Background's (below).
+       They fit on one line; a narrower Settings wraps Custom… to the next. */
+    .accent-row .swatches { gap: 5px; }
     /* Advanced → Backups and storage: Offline, Protected storage and Storage used in one block. */
     .row.status-block { flex-direction: column; align-items: stretch; gap: 4px; padding: 10px 0; }
     .status-block .st { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 30px; }
@@ -532,11 +533,11 @@
     .bg-block .hint { margin: 0; }
     .bg-block .swatches { gap: 5px; }
     .bg-block .swatches .break { flex-basis: 100%; height: 0; }
-    .bg-block .swatch { width: 44px; height: 44px; flex: 0 0 auto; }
-    .bg-block .swatch.on { box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .35), 0 0 0 2px var(--surface), 0 0 0 4.5px var(--primary); }
+    .bg-block .swatch, .accent-row .swatch { width: 44px; height: 44px; flex: 0 0 auto; }
+    .bg-block .swatch.on, .accent-row .swatch.on { box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .35), 0 0 0 2px var(--surface), 0 0 0 4.5px var(--primary); }
     /* The chosen one also gets a check (not only the ring's color). */
-    .bg-block .tick { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); box-shadow: 0 0 0 2px var(--surface); display: grid; place-items: center; pointer-events: none; }
-    .bg-block .tick svg { width: 13px; height: 13px; stroke-width: 3.5; }
+    .bg-block .tick, .accent-row .tick { position: absolute; top: -5px; right: -5px; width: 20px; height: 20px; border-radius: 50%; background: var(--primary); color: var(--on-primary); box-shadow: 0 0 0 2px var(--surface); display: grid; place-items: center; pointer-events: none; }
+    .bg-block .tick svg, .accent-row .tick svg { width: 13px; height: 13px; stroke-width: 3.5; }
     /* "Match the theme": half light (sun), half dark (moon), so it reads as "follows light or dark". */
     .bg-block .swatch.auto { background: linear-gradient(135deg, #f3f4f6 50%, #121212 50%); }
     .bg-block .swatch.auto > svg { width: 44px; height: 44px; stroke-width: 1.5; }
@@ -544,13 +545,13 @@
        as tall as the swatches and round-ended like them, with a short label. Settings has room for both there, also
        beside a scroll bar that takes room (Windows); where it hasn't, the two go on to the next row together. */
     .bg-block .bg-more { display: inline-flex; gap: inherit; }
-    .bg-block .swatch.pill { display: inline-flex; align-items: center; width: auto; padding: 0 10px 0 7px; gap: 5px; border-radius: 22px; background: var(--hover-bg); color: var(--text); font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
-    .bg-block .pill .dot { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 24px; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .45); background: conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444); }
+    .bg-block .swatch.pill, .accent-row .swatch.pill { display: inline-flex; align-items: center; width: auto; padding: 0 10px 0 7px; gap: 5px; border-radius: 22px; background: var(--hover-bg); color: var(--text); font-size: 12.5px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+    .bg-block .pill .dot, .accent-row .pill .dot { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 24px; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .45); background: conic-gradient(#ef4444, #eab308, #22c55e, #06b6d4, #3b82f6, #a855f7, #ef4444); }
     .bg-block .pill.photo > svg { width: 20px; height: 20px; color: var(--icon-color); }
     .bg-block .pill .pic { width: 24px; height: 24px; border-radius: 50%; flex: 0 0 24px; background: var(--border) center / cover no-repeat; box-shadow: inset 0 0 0 1px rgba(128, 128, 128, .45); }
     /* Custom…: a radio like the others, with its color input laid over it, invisible, for a tap (the device's own picker). */
-    .bg-block .bg-custom { position: relative; display: inline-flex; }
-    .bg-block .bg-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; cursor: pointer; }
+    .bg-block .bg-custom, .accent-row .accent-custom { position: relative; display: inline-flex; }
+    .bg-block .bg-custom input, .accent-row .accent-custom input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; margin: 0; padding: 0; border: 0; cursor: pointer; }
     /* Patterns (removed 2026-11-16; uncomment to bring them back): their tiles in the Background group.
     .pat-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
     .pat-tile { position: relative; flex-direction: column; align-items: stretch; gap: 4px; padding: 4px 4px 6px; min-height: 44px; border-radius: 12px; color: var(--text); font-size: 13px; font-weight: 500; }

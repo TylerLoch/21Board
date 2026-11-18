@@ -498,6 +498,17 @@ const contrast = (a, b) => {
   const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
   return (x + 0.05) / (y + 0.05);
 };
+// Colors for the accent tests: '#rrggbb' to 'rgb(…)' and back, two mixed as board.js mixes them (t: the share of b),
+// and a color's HSL hue (degrees), saturation and lightness (0 to 1).
+const rgbOf = hex => { const n = parseInt(hex.slice(1), 16); return `rgb(${n >> 16}, ${(n >> 8) & 255}, ${n & 255})`; };
+const hexOf = c => (/^#/.test(c) ? c.trim().toLowerCase() : '#' + c.match(/[\d.]+/g).slice(0, 3).map(v => (+v).toString(16).padStart(2, '0')).join(''));
+const mixOf = (a, b, t) => { const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16); return '#' + [16, 8, 0].map(sh => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t).toString(16).padStart(2, '0')).join(''); };
+const hslOf = hex => {
+  const n = parseInt(hexOf(hex).slice(1), 16), [r, g, b] = [n >> 16, (n >> 8) & 255, n & 255].map(v => v / 255), mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn, l = (mx + mn) / 2;
+  const h = !d ? 0 : 60 * (mx === r ? ((g - b) / d + 6) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4);
+  return { h, s: d ? d / (1 - Math.abs(2 * l - 1)) : 0, l };
+};
+const hueGap = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 
 const SUITES = [
   ['Windows, data and multi-tab sync', async (browser) => {
@@ -2188,6 +2199,288 @@ const SUITES = [
     const btnColor = await page.locator('#modal .btn.primary').evaluate(el => getComputedStyle(el).color);
     ok(btnColor === 'rgb(11, 18, 32)', `dark theme: primary buttons use dark text on the light accent (${btnColor})`);
     await page.keyboard.press('Escape');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  // ---- Accent color from 2026.11.18-2: six colors and Custom…, readable in both themes, tinting every title bar.
+  // (Colors compared as #rrggbb, with WCAG contrast worked out here.)
+  ['Accent color: six colors and Custom… (Settings, light and dark, reload, keyboard, junk values, export, the widget lab)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    let page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    await page.evaluate(() => window.__board21.openWidget('timer')); await page.waitForTimeout(1200);
+    // The accent the board shows (its chrome) and a widget gets (its palette).
+    const shown = async () => {
+      const b = await page.evaluate(() => { const css = getComputedStyle(document.body), v = n => css.getPropertyValue(n).trim();
+        return { accent: window.__board21.state.settings.accent, primary: v('--primary'), ring: v('--focus-ring'), override: document.body.style.getPropertyValue('--primary') }; });
+      b.w = await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('html').evaluate(e => { const v = n => e.style.getPropertyValue(n).trim(); return { accent: v('--b21-accent'), on: v('--b21-on-accent') }; });
+      return b;
+    };
+    // Settings › Accent color: its choices (in order), the ones checked (✓: with a check drawn), Custom… and its color input.
+    const choices = () => page.evaluate(() => {
+      const g = document.querySelector('#settings .accent-row [role="radiogroup"]'), radios = g ? [...g.querySelectorAll('[role="radio"]')] : [];
+      const pill = document.querySelector('#settings [data-act="accent-custom"]'), dot = pill && pill.querySelector('.dot'), inp = document.getElementById('set-accent-custom');
+      return { keys: radios.map(b => (b.dataset.act === 'accent' ? b.dataset.val : b.dataset.act)).join(), names: radios.map(b => b.getAttribute('aria-label')).join(),
+        checked: radios.filter(b => b.getAttribute('aria-checked') === 'true').map(b => (b.dataset.act === 'accent' ? b.dataset.val : 'custom') + (b.querySelector('.tick') ? '✓' : '')).join(),
+        pill: pill ? { text: pill.textContent.trim(), title: pill.title, inGroup: !!g && pill.closest('[role="radiogroup"]') === g } : null,
+        dot: dot ? getComputedStyle(dot).backgroundColor : null, input: inp ? `${inp.type} ${inp.tabIndex} ${inp.getAttribute('aria-hidden')}` : null };
+    });
+    // A color picked in the device's picker (input events while it is open; change when it closes).
+    const pickColor = (hex, close = true) => page.locator('#set-accent-custom').evaluate((el, [hex, close]) => {
+      el.dataset.same = 1; el.value = hex; el.dispatchEvent(new Event('input', { bubbles: true })); if (close) el.dispatchEvent(new Event('change', { bubbles: true })); }, [hex, close]);
+
+    await openSettings(page);
+    let ch = await choices();
+    ok(ch.keys === 'blue,purple,red,orange,green,slate,accent-custom' && ch.names === 'Blue accent,Purple accent,Red accent,Orange accent,Green accent,Slate accent,Custom color' && ch.checked === 'blue✓',
+      `Accent color: six colors (one red and one green: Pink and Teal are gone), then Custom…, in one set; Blue chosen, with a check (${ch.keys}; ${ch.checked})`);
+    ok(!!ch.pill && ch.pill.text === 'Custom…' && ch.pill.title === 'Choose any color' && ch.pill.inGroup && ch.input === 'color -1 true',
+      `Custom… is a choice like Background’s: “Custom…”, “Choose any color”, its color input out of the keyboard’s way (${JSON.stringify(ch.pill)}; ${ch.input})`);
+    const aria = ch.pill ? await page.locator('#settings .accent-row [role="radiogroup"]').ariaSnapshot() : '';
+    ok((aria.match(/- radio /g) || []).length === 7 && /- radio "Custom color"/.test(aria) && /- radio "Blue accent" \[checked\]/.test(aria) && (aria.match(/\[checked\]/g) || []).length === 1 && !/- (textbox|button)/.test(aria),
+      `a screen reader hears seven choices, Blue checked, “Custom color” the last, and not the color input (${aria.replace(/\n\s*/g, ' ¶ ')})`);
+    // The seven on one line, under the row's name, at every size of windows and menus (Settings grows with it), on a
+    // Chromebook's screen and a 1920 × 1080 one.
+    const crowded = [];
+    for (const [w, h] of [[1366, 768], [1920, 1080]]) {
+      await page.setViewportSize({ width: w, height: h });
+      for (const sc of [0.5, 0.67, 0.8, 1, 1.25, 1.5, 1.75, 2]) {
+        await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(250);
+        const r = await page.evaluate(() => {
+          const g = document.querySelector('#settings .accent-row [role="radiogroup"]'), gr = g.getBoundingClientRect(), bs = [...g.querySelectorAll('[role="radio"]')].map(b => b.getBoundingClientRect());
+          const name = document.querySelector('#settings .accent-row .lbl').getBoundingClientRect();
+          return { lines: new Set(bs.map(b => Math.round(b.top))).size, over: Math.max(...bs.map(b => b.right)) - gr.right, below: bs[0].top >= name.bottom };
+        });
+        if (r.lines !== 1 || r.over > 0.5 || !r.below) crowded.push(`${w}×${h} at ${Math.round(sc * 100)}%: ${JSON.stringify(r)}`);
+      }
+    }
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
+    ok(!crowded.length, `the six colors and Custom… sit on one line under the row’s name at every size from 50% to 200%, at 1366 × 768 and 1920 × 1080 (${crowded.join(' | ') || 'all'})`);
+
+    // Custom…: the color shows at once, on the board, in its widgets and on Custom…'s dot, while the picker is open.
+    if (ch.input) {
+      await pickColor('#8040c0', false); await page.waitForTimeout(400);
+      let s = await shown(); ch = await choices();
+      const same = await page.evaluate(() => document.getElementById('set-accent-custom').dataset.same === '1');
+      ok(s.accent === '#8040c0' && s.primary === '#8040c0' && s.ring === '#8040c0' && s.w.accent === '#8040c0' && s.w.on === '#ffffff' && ch.dot === 'rgb(128, 64, 192)' && same,
+        `while the picker is open a custom color shows at once, on the board, in its widgets and on Custom…’s dot (white text reads on it, so it is used as it is), Settings staying as it is (${JSON.stringify(s)}; dot ${ch.dot})`);
+      await page.locator('#set-accent-custom').evaluate(el => el.dispatchEvent(new Event('change', { bubbles: true }))); await page.waitForTimeout(300);
+      ch = await choices();
+      ok(ch.checked === 'custom✓', `once the picker closes, Custom… is the choice, checked (${ch.checked})`);
+      await page.screenshot({ path: OUT + 'accent-custom-light.png' });
+      // Dark: a lighter shade of the same purple (dark text on it), for the board, its widgets and the dot.
+      await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(500);
+      s = await shown(); ch = await choices();
+      const hs = hslOf(s.primary), h0 = hslOf('#8040c0');
+      ok(/^#[0-9a-f]{6}$/.test(s.primary) && s.primary !== '#8040c0' && s.w.accent === s.primary && s.ring === s.primary && s.w.on === '#0b1220' && hueGap(hs.h, h0.h) <= 3 && hs.l > h0.l &&
+        contrast(rgbOf(s.primary), rgbOf('#1e1e1e')) >= 6 && contrast(rgbOf(s.primary), rgbOf('#0b1220')) >= 4.5 && !!ch.dot && hexOf(ch.dot) === s.primary,
+        `dark: a lighter shade of the same purple, with dark text on it, for the board, its widgets and Custom…’s dot (${s.primary}; dot ${ch.dot})`);
+      await page.screenshot({ path: OUT + 'accent-custom-dark.png' });
+      // A reload keeps it.
+      await page.reload(); await boardUp(page); await page.waitForTimeout(1000);
+      const s2 = await shown(); await openSettings(page); ch = await choices();
+      ok(s2.accent === '#8040c0' && s2.primary === s.primary && s2.w.accent === s.primary && ch.checked === 'custom✓', `a reload keeps it (${s2.accent}, ${s2.primary}; ${ch.checked})`);
+
+      // The keyboard: Tab reaches Custom…, Enter opens the same picker, and afterwards the keyboard is back on it.
+      await page.click('#settings [data-act="theme"][data-val="light"]'); await page.waitForTimeout(300);
+      await page.focus('#settings [data-act="accent"][data-val="slate"]'); await page.keyboard.press('Tab');
+      ok(await page.evaluate(() => document.activeElement.matches('[data-act="accent-custom"]') && getComputedStyle(document.activeElement).outlineStyle === 'solid'), 'Tab goes from Slate to Custom…, which shows the keyboard focus');
+      await page.evaluate(() => { window.__picker = 0; document.getElementById('set-accent-custom').showPicker = () => { window.__picker++; }; });
+      await page.keyboard.press('Enter'); await page.waitForTimeout(100);
+      const opened = await page.evaluate(() => window.__picker === 1 && document.activeElement.id === 'set-accent-custom');
+      await pickColor('#0d9488'); await page.waitForTimeout(400);
+      ok(opened && await page.evaluate(() => document.activeElement.matches('[data-act="accent-custom"][aria-checked="true"]')) && (await shown()).accent === '#0d9488',
+        'Enter on it opens the color picker; a color picked (a teal of one’s own), the keyboard is back on Custom…, checked');
+      await page.keyboard.press('Tab');
+      ok(await page.evaluate(() => !document.activeElement.matches('#set-accent-custom') && !document.activeElement.closest('.accent-row')), 'and Tab goes on past the row (the color input isn’t a stop of its own)');
+      // A color again: Custom… unchecked, its dot back to the rainbow.
+      await page.click('#settings [data-act="accent"][data-val="green"]'); await page.waitForTimeout(300);
+      s = await shown(); ch = await choices();
+      ok(s.accent === 'green' && s.primary === '#15803d' && s.w.accent === '#15803d' && ch.checked === 'green✓' && ch.dot === 'rgba(0, 0, 0, 0)', `Green again: the board and widgets green, Green checked, Custom… not (${s.primary}; ${ch.checked})`);
+
+      // An export carries a custom color as it is stored, and Import › Replace this page brings it back.
+      await pickColor('#8040c0'); await page.waitForTimeout(300);
+      const file = await page.evaluate(() => window.__board21.buildExport('full'));
+      await page.click('#settings [data-act="accent"][data-val="orange"]'); await page.waitForTimeout(300);
+      await page.evaluate(f => window.__board21.applyImport(f, 'replace'), file); await page.waitForTimeout(900);
+      s = await shown();
+      ok(file.accent === '#8040c0' && s.accent === '#8040c0' && s.primary === '#8040c0' && s.w.accent === '#8040c0', `an export carries a custom color (accent: ${JSON.stringify(file.accent)}), and an import brings it back (${s.accent})`);
+      const took = [];
+      for (const v of ['pink', 'teal', '#fff', 'red; x', '__proto__', '#GGGGGG']) {
+        await page.evaluate(f => window.__board21.applyImport(f, 'replace'), Object.assign({}, file, { accent: v })); await page.waitForTimeout(600);
+        const a = await page.evaluate(() => window.__board21.state.settings.accent);
+        if (a !== '#8040c0') took.push(`${v} → ${a}`);
+      }
+      ok(!took.length, `a file whose accent is Pink, Teal or not an accent at all changes nothing (${took.join(' | ') || 'kept #8040c0'})`);
+    }
+
+    // A device that had Pink or Teal (or something that isn't an accent) shows Blue: the board, its widgets,
+    // Settings and an export.
+    const stored = v => page.evaluate(v => new Promise(res => { const o = indexedDB.open('21Board'); o.onsuccess = () => { const t = o.result.transaction('records', 'readwrite'), st = t.objectStore('records'), g = st.get('settings');
+      g.onsuccess = () => st.put({ key: 'settings', type: 'settings', rev: Date.now() + 1e6, updatedAt: Date.now(), by: 'test', value: Object.assign({}, g.result && g.result.value, { theme: 'light', accent: v, accentAt: Date.now() }) });
+      t.oncomplete = () => { o.result.close(); res(); }; }; }), v);
+    const notBlue = [];
+    for (const v of ['pink', 'teal', '#fff', 'red; x', '__proto__', '#GGGGGG', 'constructor']) {
+      await stored(v); await page.reload(); await boardUp(page); await page.waitForTimeout(900);
+      const s = await shown(); await openSettings(page); ch = await choices();
+      const exp = await page.evaluate(async () => (await window.__board21.buildExport('full')).accent);
+      if (!(s.primary === '#2563eb' && s.override === '' && s.w.accent === '#2563eb' && ch.checked === 'blue✓' && exp === 'blue')) notBlue.push(`${v}: ${s.primary}${s.override ? ' (set)' : ''}, widget ${s.w.accent}, ${ch.checked}, export ${exp}`);
+      await page.keyboard.press('Escape');
+    }
+    ok(!notBlue.length, `a device that had Pink or Teal, or something that isn’t an accent, shows Blue on the board, in its widgets and in Settings, and exports Blue (${notBlue.join(' | ') || 'all Blue'})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+
+    // The widget lab: it is told the six colors, and shows a custom color it is sent (Pink or anything else: nothing).
+    await page.close(); page = await ctx.newPage(); page.on('pageerror', e => errors.push('lab: ' + e.message));
+    await page.goto(BASE + 'sdk/lab.html'); await page.waitForTimeout(400);
+    await page.evaluate(() => window.addEventListener('message', e => { if (e.data && e.data.b21lab === 1 && e.data.type === 'ready') window.__ready = e.data; }));
+    await page.click('#sample'); await page.click('#run'); await page.waitForTimeout(3500);
+    const ready = await page.evaluate(() => window.__ready || null), board = page.frames().find(f => f.parentFrame() === page.mainFrame());
+    const send = v => page.evaluate(v => window.__board21DevWindow.send('accent', { value: v }), v);
+    const lab = () => board.evaluate(() => ({ accent: window.__board21.state.settings.accent, primary: getComputedStyle(document.body).getPropertyValue('--primary').trim() }));
+    await send('pink'); await page.waitForTimeout(400);
+    const l0 = await lab();
+    await send('#8040c0'); await page.waitForTimeout(400);
+    const l1 = await lab();
+    await send('red; x'); await page.waitForTimeout(400);
+    const l2 = await lab();
+    await board.evaluate(() => document.querySelector('.picker-btn.left').click()); await page.waitForTimeout(300);
+    await board.evaluate(() => document.querySelector('[data-ctl="settings"]').click()); await page.waitForTimeout(800);
+    const labChecked = await board.evaluate(() => [...document.querySelectorAll('#settings .accent-row [role="radio"][aria-checked="true"]')].map(b => b.dataset.act).join());
+    ok(!!ready && (ready.accents || []).join() === 'blue,purple,red,orange,green,slate' && l0.accent === 'blue' && l1.accent === '#8040c0' && l1.primary === '#8040c0' && l2.accent === '#8040c0' && labChecked === 'accent-custom',
+      `the widget lab is told the six colors, ignores Pink, shows a custom color it is sent (Custom… checked in its Settings) and ignores anything else (${ready && (ready.accents || []).join()}; ${l0.accent} → ${l1.accent} → ${l2.accent}; ${labChecked})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Accent color: any custom color stays readable, light and dark', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    await page.evaluate(() => window.__board21.openWidget('timer')); await page.waitForTimeout(1200);
+    await openSettings(page);
+    if (!await page.locator('#set-accent-custom').count()) { ok(false, 'Settings has no Custom… for the accent'); await ctx.close(); return; }
+    const look = async () => {
+      const b = await page.evaluate(() => { const css = getComputedStyle(document.body), v = n => css.getPropertyValue(n).trim(); return { primary: v('--primary'), soft: v('--primary-soft'), active: v('--active-bg'), dark: document.body.classList.contains('dark') }; });
+      b.w = await page.frameLocator('.win[data-ikey="timer:1"] iframe').locator('html').evaluate(e => { const v = n => e.style.getPropertyValue(n).trim(); return { accent: v('--b21-accent'), on: v('--b21-on-accent'), soft: v('--b21-accent-soft') }; });
+      return b;
+    };
+    const rgba = (hex, a) => rgbOf(hex).replace('rgb(', 'rgba(').replace(')', `, ${a})`);
+    // The rules: light, white text on it reads (4.5:1); dark, it stands out on the dark window color as the six do
+    // (6:1 on #1e1e1e), dark text on it reading too. A color that keeps them is used as it is; one that doesn't
+    // changes only as far as it must (just past the line), keeping its hue (a grey stays grey).
+    const rule = (c, dark) => (dark ? contrast(rgbOf(c), rgbOf('#1e1e1e')) >= 6 && contrast(rgbOf(c), rgbOf('#0b1220')) >= 4.5 : contrast(rgbOf(c), 'rgb(255, 255, 255)') >= 4.5);
+    const near = (c, dark) => (dark ? contrast(rgbOf(c), rgbOf('#1e1e1e')) <= 6.6 : contrast(rgbOf(c), 'rgb(255, 255, 255)') <= 5);
+    const bad = [], seen = [];
+    for (const hex of ['#ffffff', '#000000', '#ffff00', '#808080', '#000080', '#ffffe0', '#8040c0']) {
+      await page.locator('#set-accent-custom').evaluate((el, hex) => { el.value = hex; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, hex);
+      for (const theme of ['light', 'dark']) {
+        await page.click(`#settings [data-act="theme"][data-val="${theme}"]`); await page.waitForTimeout(350);
+        const s = await look(), dark = theme === 'dark', c = s.primary, h = hslOf(c), h0 = hslOf(hex), why = [];
+        if (!/^#[0-9a-f]{6}$/.test(c)) why.push(`not a color (${c})`);
+        else {
+          if (!rule(c, dark)) why.push('breaks the rule');
+          if (rule(hex, dark) ? c !== hex : !near(c, dark)) why.push(rule(hex, dark) ? 'changed though it kept the rule' : 'changed further than needed');
+          if (h0.s > 0.05 ? hueGap(h.h, h0.h) > 4 || Math.abs(h.s - h0.s) > 0.06 : h.s > 0.02) why.push(`hue ${h.h.toFixed(0)}° / ${h.s.toFixed(2)} (was ${h0.h.toFixed(0)}° / ${h0.s.toFixed(2)})`);
+          if (s.w.accent !== c || s.w.on !== (dark ? '#0b1220' : '#ffffff')) why.push(`widget ${s.w.accent} on ${s.w.on}`);
+          if (s.w.soft !== (dark ? rgba(c, 0.18) : mixOf(c, '#ffffff', 0.9))) why.push(`widget soft ${s.w.soft}`);
+          if (s.soft !== rgba(c, dark ? 0.18 : 0.12) || s.active !== (dark ? rgba(c, 0.2) : mixOf(c, '#ffffff', 0.92))) why.push(`soft ${s.soft} / ${s.active}`);
+        }
+        seen.push(`${hex} ${theme} ${c}`);
+        if (why.length) bad.push(`${hex} ${theme} → ${c}: ${why.join(', ')}`);
+      }
+    }
+    ok(!bad.length, `any color: light, white text on it reads (4.5:1); dark, it stands out (6:1 on the window color) with dark text on it; changed only as far as needed, same hue; widgets and the soft shades follow (${bad.join(' | ') || seen.join(', ')})`);
+    // The six colors keep the same rules (as their swatches show them, in each theme).
+    const presetBad = [];
+    for (const theme of ['light', 'dark']) {
+      await page.click(`#settings [data-act="theme"][data-val="${theme}"]`); await page.waitForTimeout(350);
+      const sw = await page.evaluate(() => [...document.querySelectorAll('#settings [data-act="accent"]')].map(b => [b.dataset.val, b.style.backgroundColor]));
+      for (const [k, bg] of sw) if (!rule(hexOf(bg), theme === 'dark')) presetBad.push(`${k} ${theme} ${hexOf(bg)}`);
+    }
+    ok(!presetBad.length, `and so do the six colors, light and dark (${presetBad.join(', ') || 'all'})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Accent color: title bars tinted with it, the focused one more', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    await page.evaluate(() => { const b = window.__board21; b.openWidget('timer'); b.openWidget('notes'); b.openWidget('timer'); }); await page.waitForTimeout(1500);
+    await page.evaluate(() => { const b = window.__board21; b.setRect('timer:1', { x: 560, y: 60, w: 380, h: 260 }); b.setRect('notes:1', { x: 560, y: 380, w: 380, h: 300 }); b.setRect('timer:2', { x: 970, y: 60, w: 360, h: 260 }); });
+    for (const ik of ['timer:1', 'notes:1', 'timer:2']) await page.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('html').evaluate(() => Board21.window.setTitle('Period 3'));
+    // Each window's title bar: its background, and its name, number, subtitle and ⌄ as drawn (a color with opacity is
+    // blended over the bar).
+    const bars = () => page.evaluate(() => {
+      const css = getComputedStyle(document.body), out = {};
+      for (const w of document.querySelectorAll('.win')) {
+        const t = w.querySelector('.win-title'), l = w.querySelector('.win-label'), c = e => { const s = getComputedStyle(e); return [s.color, +s.opacity]; };
+        out[w.dataset.ikey] = { focused: w.matches('.focused'), max: w.matches('.maximized'), bg: getComputedStyle(t).backgroundColor, shadow: getComputedStyle(w).boxShadow,
+          name: c(l.querySelector('.name')), num: l.querySelector('.num').textContent.trim() ? c(l.querySelector('.num')) : null, sub: l.querySelector('.sub').textContent.trim() ? c(l.querySelector('.sub')) : null, chev: c(l.querySelector('svg')) };
+      }
+      return { primary: css.getPropertyValue('--primary').trim(), wins: out };
+    });
+    const blend = ([col, op], bg) => { if (op >= 1) return col; const a = col.match(/[\d.]+/g).map(Number), z = bg.match(/[\d.]+/g).map(Number); return `rgb(${[0, 1, 2].map(i => Math.round(z[i] + (a[i] - z[i]) * op)).join(', ')})`; };
+    // faint: what an unfocused window's bar should be (Blue: index.html's, today's focused tint; else the same mix).
+    const examine = async (dark, faint) => {
+      const b = await bars(), base = rgbOf(dark ? '#1e1e1e' : '#ffffff'), wins = Object.values(b.wins), f = wins.filter(w => w.focused), u = wins.filter(w => !w.focused);
+      const T0 = rgbOf(faint || mixOf(b.primary, dark ? '#1e1e1e' : '#ffffff', dark ? 0.8 : 0.92)), T1 = f.length ? f[0].bg : null, bad = [];
+      if (f.length !== 1) bad.push(`${f.length} focused`);
+      for (const w of u) if (w.bg !== T0) bad.push(`an unfocused bar ${w.bg}, not ${T0}`);
+      if (T1) {
+        if (!(contrast(T1, base) > contrast(T0, base)) || contrast(T1, T0) < 1.15) bad.push(`the focused bar ${T1} isn’t clearly more than ${T0} (${contrast(T1, T0).toFixed(2)}:1)`);
+        if (hslOf(b.primary).s > 0.05 && hueGap(hslOf(T1).h, hslOf(b.primary).h) > 8) bad.push(`the focused bar’s hue ${hslOf(T1).h.toFixed(0)}° isn’t the accent’s ${hslOf(b.primary).h.toFixed(0)}°`);
+        if (contrast(rgbOf(b.primary), T1) < 3) bad.push(`the accent (handles, ring) on the focused bar ${contrast(rgbOf(b.primary), T1).toFixed(2)}:1`);
+      }
+      let subs = 0, nums = 0;
+      for (const w of wins) for (const k of ['name', 'num', 'sub', 'chev']) {
+        if (!w[k]) continue;
+        if (k === 'sub') subs++; if (k === 'num') nums++;
+        const r = contrast(blend(w[k], w.bg), w.bg);
+        if (r < (k === 'chev' ? 3 : 4.5)) bad.push(`${w.focused ? 'focused' : 'unfocused'} ${k} ${r.toFixed(2)}:1`);
+      }
+      if (!subs || !nums) bad.push('no subtitle or number to check');
+      return { bad, T0, T1 };
+    };
+    const choose = async (theme, acc) => {
+      await openSettings(page);
+      await page.click(`#settings [data-act="theme"][data-val="${theme}"]`); await page.waitForTimeout(200);
+      if (acc[0] !== '#') await page.click(`#settings [data-act="accent"][data-val="${acc}"]`);
+      else if (await page.locator('#set-accent-custom').count()) await page.locator('#set-accent-custom').evaluate((el, hex) => { el.value = hex; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, acc);
+      else return false;
+      await page.keyboard.press('Escape'); await page.evaluate(() => window.__board21.focusWin('timer:1')); await page.waitForTimeout(450);
+      return true;
+    };
+    for (const theme of ['light', 'dark']) {
+      for (const [acc, faint] of [['blue', theme === 'dark' ? '#22324a' : '#eff6ff'], ['green'], ['#8040c0']]) {
+        if (!await choose(theme, acc)) { ok(false, `${acc}: no Custom… to choose it with`); continue; }
+        const e = await examine(theme === 'dark', faint);
+        ok(!e.bad.length, `${acc}, ${theme}: the other windows’ title bars faintly tinted (${hexOf(e.T0)}${acc === 'blue' ? ', the focused tint before' : ''}), the focused one clearly more (${e.T1 && hexOf(e.T1)}); its text 4.5:1, ⌄ and the accent 3:1 (${e.bad.join('; ') || 'all'})`);
+        if ((theme === 'light' && acc === 'blue') || (theme === 'dark' && acc === '#8040c0')) await page.screenshot({ path: OUT + `accent-title-bars-${theme}-${acc.replace('#', '')}.png` });
+        await page.evaluate(() => window.__board21.focusWin('notes:1')); await page.waitForTimeout(350);
+        const sw = await bars();
+        ok(sw.wins['notes:1'].focused && sw.wins['notes:1'].bg === e.T1 && sw.wins['timer:1'].bg === e.T0, `${acc}, ${theme}: focus moves to another window and the tints swap (${sw.wins['notes:1'].bg} / ${sw.wins['timer:1'].bg})`);
+        await page.evaluate(() => { window.__board21.setMaximized('timer:2', true); window.__board21.focusWin('timer:2'); }); await page.waitForTimeout(500);
+        const mx = (await bars()).wins['timer:2'];
+        ok(mx.max && mx.focused && mx.bg === e.T1 && mx.shadow === 'none', `${acc}, ${theme}: a window filling the board has no ring, and its title bar has the focused tint (${mx.bg}, ${mx.shadow})`);
+        await page.evaluate(() => window.__board21.setMaximized('timer:2', false)); await page.waitForTimeout(400);
+        await page.evaluate(() => window.__board21.focusWin('timer:1')); await page.waitForTimeout(300);
+        await page.click('.win[data-ikey="timer:1"] .win-label'); await page.waitForTimeout(350);
+        const lab = await page.evaluate(() => { const l = document.querySelector('.win[data-ikey="timer:1"] .win-label'), s = getComputedStyle(l); return { open: l.matches('.open'), bg: s.backgroundColor, color: s.color, sub: getComputedStyle(l.querySelector('.sub')).color, chev: getComputedStyle(l.querySelector('svg')).color }; });
+        await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+        ok(lab.open && lab.bg !== e.T1 && lab.bg !== e.T0 && contrast(lab.color, lab.bg) >= 4.5 && contrast(lab.sub, lab.bg) >= 4.5 && contrast(lab.chev, lab.bg) >= 3,
+          `${acc}, ${theme}: the window menu’s button, open, stands apart from both tints, its text and ⌄ readable (${lab.bg}: ${contrast(lab.color, lab.bg).toFixed(2)}:1, ${contrast(lab.sub, lab.bg).toFixed(2)}:1, ${contrast(lab.chev, lab.bg).toFixed(2)}:1)`);
+      }
+      // The extreme colors keep the title bars readable too.
+      const worst = [];
+      for (const acc of ['#ffffff', '#000000', '#ffff00']) {
+        if (!await choose(theme, acc)) { worst.push(`${acc}: no Custom…`); continue; }
+        const e = await examine(theme === 'dark');
+        if (e.bad.length) worst.push(`${acc}: ${e.bad.join('; ')}`);
+      }
+      ok(!worst.length, `${theme}: white, black and yellow tint the title bars the same way, readable (${worst.join(' | ') || 'all'})`);
+    }
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -11910,7 +12203,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       r.selectNodeContents(row.querySelector('.hint'));
       return { swatchLines: new Set(Array.from(row.querySelectorAll('.swatch'), b => Math.round(b.getBoundingClientRect().top))).size, hintLines: r.getClientRects().length };
     });
-    ok(accentRow.swatchLines === 1 && accentRow.hintLines === 1, `the Accent color row stays one line: its eight swatches, and the hint under its name (${JSON.stringify(accentRow)})`);
+    ok(accentRow.swatchLines === 1 && accentRow.hintLines === 1, `the Accent color row’s choices stay on one line, its six colors and Custom…, and the hint under its name on one (${JSON.stringify(accentRow)})`);
     ok(await look(A.p) === 'system blue light built-in' && await look(B.p) === 'system blue light built-in', '(both start with Auto and Blue)');
 
     // The laptop sets Dark and Green while Settings is open on the smartboard, scrolled down, the keyboard on Auto.
@@ -11968,28 +12261,32 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(400);
     ok(await B.p.evaluate(() => window.__board21.state.settings.locked === true), '(the smartboard’s windows are locked)');
     await hear(B.p);
-    await pick(A.p, 'theme', 'dark'); await pick(A.p, 'accent', 'pink');
+    // (a color of the laptop's own, with Custom…: the pink that was a choice of its own until 2026.11.18-2)
+    await pick(A.p, 'theme', 'dark');
+    await A.p.locator('#set-accent-custom').evaluate(el => { el.value = '#db2777'; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }); await A.p.waitForTimeout(300);
+    const pinkA = await look(A.p);
+    ok(/^dark #db2777 dark #[0-9a-f]{6}$/.test(pinkA) && pinkA !== 'dark #db2777 dark #db2777', `(the laptop is dark, in a pink of its own, a lighter shade of it shown: ${pinkA})`);
     await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p);
-    ok(await look(B.p) === 'dark pink dark #f472b6', `locked: the change applies (${await look(B.p)})`);
-    ok((await heard(B.p)).includes('The laptop changed the theme to Dark and the accent color to Pink.') && await said(B.p, 'The laptop changed the theme').locator('button').count() === 0, 'and is said, with no button');
-    ok(await eventually(async () => await look(B2) === 'dark pink dark #f472b6'), `another tab of the smartboard follows (${await look(B2)})`);
-    ok(await eventually(async () => await look(K) === 'dark pink dark #f472b6'), `and so does one in kiosk mode (${await look(K)})`);
+    ok(await look(B.p) === pinkA, `locked: the change applies, the same pink and the same shade of it (${await look(B.p)})`);
+    ok((await heard(B.p)).includes('The laptop changed the theme to Dark and the accent color to a custom color.') && await said(B.p, 'The laptop changed the theme').locator('button').count() === 0, `and is said, a custom color as “a custom color”, with no button (${(await heard(B.p)).join(' | ')})`);
+    ok(await eventually(async () => await look(B2) === pinkA), `another tab of the smartboard follows (${await look(B2)})`);
+    ok(await eventually(async () => await look(K) === pinkA), `and so does one in kiosk mode (${await look(K)})`);
     await B.p.click('#settings [data-act="lock-windows"]'); await B.p.waitForTimeout(400);
     await B2.close(); await K.close();
 
-    // A fresh smartboard, set up against this folder: it takes the folder's Dark and Pink, and changes nobody's.
+    // A fresh smartboard, set up against this folder: it takes the folder's Dark and pink, and changes nobody's.
     const C = await syncDev(browser, 'the hall smartboard', errors);
     await openSettings(C.p);
-    await pick(C.p, 'theme', 'light'); await pick(C.p, 'accent', 'teal');
+    await pick(C.p, 'theme', 'light'); await pick(C.p, 'accent', 'slate');
     const h2 = await hints(C.p);
     ok(h2.theme === '' && h2.accent === '' && h2.text === '', 'a device not linked yet: no hint beside them');
     await C.p.keyboard.press('Escape');
     await deliver(A.p, C.p); await deliver(B.p, C.p); await linkFolder(C.p);
-    ok(await look(C.p) === 'dark pink dark #f472b6', `a fresh smartboard set up against a folder whose board is Dark and Pink becomes Dark and Pink (${await look(C.p)})`);
+    ok(await look(C.p) === pinkA, `a fresh smartboard set up against a folder whose board is Dark and pink becomes Dark and pink (${await look(C.p)})`);
     const devC = await C.p.evaluate(() => window.__board21.link.dev()), fileC = await ownJSON(C.p);
     ok(!fileC || !fileC.sync.style || ['theme', 'accent'].every(k => !fileC.sync.style[k] || fileC.sync.style[k][0] !== devC), `its file holds no change of its own to them (${fileC && JSON.stringify(fileC.sync.style)})`);
     await exchange(A, B, C);
-    ok(await look(A.p) === 'dark pink dark #f472b6' && await look(B.p) === 'dark pink dark #f472b6', 'the laptop and the smartboard keep theirs');
+    ok(await look(A.p) === pinkA && await look(B.p) === pinkA, 'the laptop and the smartboard keep theirs');
     await openSettings(C.p);
     const h3 = await hints(C.p);
     ok(h3.theme === 'On all your devices.' && h3.accent === 'On all your devices.' && h3.text === 'On all your devices.', 'and once linked, it says “On all your devices.” beside them');
@@ -12010,10 +12307,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       `Import › Replace this page with a file in Light and Orange: every device takes them (${await look(B.p)})`);
     ok((await heard(B.p)).includes('The laptop changed the theme to Light and the accent color to Orange.'), `and says so (${(await heard(B.p)).join(' | ')})`);
     await A.p.locator('#toasts .toast', { hasText: 'Board imported.' }).locator('button', { hasText: 'Undo' }).click();
-    ok(await eventually(async () => await look(A.p) === 'dark pink dark #f472b6' && await A.p.evaluate(() => window.__board21.state.board.name) !== 'Fractions (Ms. Lee)'),
+    ok(await eventually(async () => await look(A.p) === pinkA && await A.p.evaluate(() => window.__board21.state.board.name) !== 'Fractions (Ms. Lee)'),
       `the import’s Undo brings back the page, and the theme and accent it replaced (${await look(A.p)})`);
     await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p); await deliver(A.p, C.p); await syncNow(C.p);
-    ok(await look(B.p) === 'dark pink dark #f472b6' && await look(C.p) === 'dark pink dark #f472b6', `on every device (${await look(B.p)} / ${await look(C.p)})`);
+    ok(await look(B.p) === pinkA && await look(C.p) === pinkA, `on every device (${await look(B.p)} / ${await look(C.p)})`);
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close(); await C.c.close();

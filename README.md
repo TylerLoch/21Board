@@ -102,7 +102,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Pages** | Each page is a board of its own (its own windows, content, background and name), for lessons or parts of the day. At the far end of the Widget Picker's bottom row: **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after; on the last page › is **+** (a new page). Tap *Page* for the Pages menu: every page by name (tap one to go there), **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** and **Delete this page…** (with Undo). A new page takes this page's size, shape and background color. Every tab on the device shows the same page, and 21Board opens on the page it was showing. With Board Sync, pages and their order are the same on every device, and each device shows its own page. Widgets on other pages don't run while their page isn't shown: a Timer shows the right time when you come back, but its alarm doesn't ring on another page. |
 | **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. A YouTube Player's video takes every tap itself: move its window, or bring it forward, by the title bar. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
-| **Select / bring to front** | Tap anywhere on a window. The selected window gets a blue outline and resize handles. Tap the empty board to deselect everything. |
+| **Select / bring to front** | Tap anywhere on a window. The selected window gets an outline in the accent color, a stronger title bar tint and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close** (21Sketch, 21Timer and 21DocCam: **Reload** and **Open … on its own** instead of Reset). Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. From the keyboard: Enter on the window's name opens it, the arrow keys move between its items, Enter chooses one and Escape closes it. |
 | **Closing** | Closing a window keeps its content. Open the widget again to pick up where you left off. If you have several of the same widget, they come back in order (1, 2, 3…). |
 | **Export** | *Full backup* (everything, including closed windows) or *Blank template* (layout and widget settings, no content — safe to share with colleagues). With several pages: *All pages* (a backup of every page in one file), *This page*, or *This page as a blank template*. Saves a `.21board` file (in Chrome/Edge on computers and Chromebooks you choose where, e.g. Google Drive). *Back up now* (Settings) and the backup reminders always save every page. |
@@ -148,7 +148,9 @@ Settings opens.
     picking a color hides it (it's kept), and picking *Photo* shows it again. While it shows: tap its picture to
     choose what stays in view, *Fill the board* or *Whole photo*, fade, *Change…* and *Remove*. The photo is kept
     on the device and in full backups, not in templates.
-  - **Accent color** (8 choices; also passed to widgets). With Board Sync, on all your devices.
+  - **Accent color:** Blue, Purple, Red, Orange, Green, Slate or *Custom…* for any color. A custom color adjusts to
+    stay readable in Light and Dark. Widgets use the accent too. It tints every title bar, and the selected window's
+    tint is stronger. With Board Sync, on all your devices. A board that had Pink or Teal is now Blue.
   - **Text style ▸** for 21Board and its widgets: *Standard* (the device's own font), *Easier to read* (Atkinson
     Hyperlegible, made for low vision, with I, l and 1 all different and a line through 0) or *Early readers*
     (Andika by SIL, with a and g the way children learn to write them). Easier reading, not a dyslexia font; Notes'
@@ -397,7 +399,9 @@ back, such as a window being typed in, is due again):
   again, and of two made apart the later wins on every device. Board history never changes them, and the Undo of
   an update doesn't either. A device still on 2026.11.16-4 doesn't know the text style: it keeps its own, and
   changes nobody's, until it updates. Then each device keeps the text style it had until one is chosen on any of
-  your devices (or takes one already chosen on another updated device). The page shown, Lock, Stay awake, the clock
+  your devices (or takes one already chosen on another updated device). A custom accent color is "a custom color"
+  in the message. A device on a release before 2026.11.18-2 ignores it and keeps its own accent until it updates.
+  The page shown, Lock, Stay awake, the clock
   and the Widget Picker's corners stay on each device. Settings says "On all your devices." beside Theme, Accent color
   and Text style, "This device only." beside Lock, Stay awake and the clock, and "This page, on all your devices."
   beside the page's own settings.
