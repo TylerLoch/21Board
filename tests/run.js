@@ -2717,6 +2717,140 @@ const SUITES = [
     await lab.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
+  ['Settings stays still when a section opens: its row stays put, the section opens below it, past the bottom if need be (1366 × 768, light, the usual size and 200%: Advanced, About, a license in About, the keyboard, closing)', async (browser) => {
+    const errors = [];
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: 'light' });
+    const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const row = g => `#settings [data-act="group"][data-val="${g}"]`;
+    // A group's row on the screen (its top, in px), the sheet's scroll, and whether the group is open, runs past the
+    // sheet's bottom and has the keyboard.
+    const where = g => page.evaluate(s => {
+      const b = document.querySelector('#settings .sheet-body'), r = document.querySelector(s), box = document.getElementById(r.getAttribute('aria-controls'));
+      return { top: r.getBoundingClientRect().top, scroll: b.scrollTop, open: r.getAttribute('aria-expanded') === 'true' && !box.hidden,
+        past: !box.hidden && box.getBoundingClientRect().bottom > b.getBoundingClientRect().bottom + 1, keys: document.activeElement === r };
+    }, row(g));
+    // Settings scrolled so that the row is near the bottom (all of it showing, 30 px above), at the very bottom of the
+    // sheet ('end'), or in the middle ('middle').
+    const scrollTo = (g, to) => page.evaluate(([s, to]) => {
+      const b = document.querySelector('#settings .sheet-body'), r = document.querySelector(s).getBoundingClientRect(), bb = b.getBoundingClientRect();
+      const ui = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui')) || 1;   // (the sheet is drawn zoomed)
+      if (to === 'end') b.scrollTop = b.scrollHeight;
+      else b.scrollTop += (to === 'middle' ? r.top + r.height / 2 - (bb.top + bb.height / 2) : r.bottom - (bb.bottom - 30)) / ui;
+    }, [row(g), to]);
+    // The group opened or closed as a teacher does: a tap, or a key on its row (Enter or Space). What moved.
+    const toggle = async (g, how = 'tap') => {
+      if (how !== 'tap') await page.evaluate(s => document.querySelector(s).focus({ preventScroll: true }), row(g));
+      const a = await where(g);
+      if (how === 'tap') await page.click(row(g)); else await page.keyboard.press(how);
+      await page.waitForTimeout(300);
+      const b = await where(g);
+      return { g, how, before: a, after: b, dy: Math.round((b.top - a.top) * 10) / 10, same: Math.abs(b.top - a.top) <= 1 && b.scroll === a.scroll };
+    };
+    const say = r => `${r.g} by ${r.how}: its row moved ${r.dy} px, scroll ${Math.round(r.before.scroll)} → ${Math.round(r.after.scroll)}, ${r.after.open ? 'open' : 'closed'}` +
+      `${r.after.past ? ', running past the bottom' : ''}${r.after.keys ? ', the keyboard on its row' : ''}`;
+    for (const scale of [null, 2]) {
+      const size = scale ? '200%' : 'the usual size';
+      if (scale) { await page.keyboard.press('Escape'); await page.evaluate(s => window.__board21.setBoardScale(s), scale); await page.waitForTimeout(300); }
+      // Tapped: Advanced near the bottom, then About near the bottom and at the very bottom with Advanced open above it,
+      // then a license in About (a group in a group) near the bottom, also once its text has come in, and again with
+      // its text already there.
+      await openSettings(page);
+      await scrollTo('advanced');
+      let r = await toggle('advanced');
+      ok(r.same && r.after.open && r.after.past && r.after.keys, `${size}: Advanced, tapped near the bottom, opens below its row, which stays put, and runs past the bottom; nothing scrolls (${say(r)})`);
+      await scrollTo('about');
+      r = await toggle('about');
+      ok(r.same && r.after.open && r.after.past, `${size}: About, tapped near the bottom with Advanced open, opens below its row, which stays put (${say(r)})`);
+      await toggle('about');   // (closed again: About is last, so the sheet gets shorter and the browser may pull it down)
+      await scrollTo('about', 'end');
+      r = await toggle('about');
+      ok(r.same && r.after.open && r.after.past, `${size}: About, tapped at the very bottom with Advanced open, opens below its row, which stays put (${say(r)})`);
+      await scrollTo('code-license');
+      r = await toggle('code-license');
+      await eventually(() => page.evaluate(() => document.querySelectorAll('#grp-code-license p').length > 20), 8000);
+      const read = await where('code-license');
+      ok(r.same && r.after.open && Math.abs(read.top - r.before.top) <= 1 && read.scroll === r.before.scroll && read.past,
+        `${size}: Code, a license inside About, opens below its row, which stays put, also once the license has come in (${say(r)}; then its row at ${Math.round(read.top - r.before.top)} px, scroll ${Math.round(read.scroll)})`);
+      await toggle('code-license');
+      await scrollTo('code-license');
+      r = await toggle('code-license');
+      ok(r.same && r.after.open && r.after.past, `${size}: Code, opened again near the bottom with its text already there, opens below its row, which stays put (${say(r)})`);
+      // Closed in the middle of the sheet: the row stays put too.
+      await scrollTo('advanced', 'middle');
+      r = await toggle('advanced');
+      ok(r.same && !r.after.open, `${size}: Advanced, closed in the middle of the sheet, stays put (${say(r)})`);
+      // The keyboard: Enter on Advanced near the bottom, Space on About at the very bottom. The keyboard stays on the row.
+      await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+      await openSettings(page);
+      ok(await page.evaluate(() => document.querySelector('#settings .sheet-body').scrollTop) === 0, `${size}: Settings still opens at the top`);
+      await scrollTo('advanced');
+      r = await toggle('advanced', 'Enter');
+      ok(r.same && r.after.open && r.after.past && r.after.keys, `${size}: Enter on Advanced near the bottom opens it below its row, which stays put, with the keyboard on it (${say(r)})`);
+      await scrollTo('about', 'end');
+      r = await toggle('about', 'Space');
+      ok(r.same && r.after.open && r.after.past && r.after.keys, `${size}: Space on About at the very bottom opens it below its row, which stays put, with the keyboard on it (${say(r)})`);
+      if (scale) await page.screenshot({ path: OUT + 'settings-still-200.png' });
+    }
+    await ctx.close();
+    // A finger: Settings opened with taps, then a tap on Advanced near the bottom.
+    const touch = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: 'light', hasTouch: true });
+    const tp = await touch.newPage(); tp.on('pageerror', e => errors.push(e.message));
+    await tp.goto(BASE); await boardUp(tp);
+    await tp.tap('.picker-btn.left'); await tp.tap('.panel.open [data-ctl="settings"]'); await tp.waitForSelector('#settings.open'); await tp.waitForTimeout(400);
+    await tp.evaluate(s => { const b = document.querySelector('#settings .sheet-body'), r = document.querySelector(s).getBoundingClientRect(), bb = b.getBoundingClientRect();
+      b.scrollTop += (r.bottom - (bb.bottom - 30)) / (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui')) || 1); }, row('advanced'));
+    await tp.waitForTimeout(200);
+    const spot = () => tp.evaluate(s => ({ top: document.querySelector(s).getBoundingClientRect().top, scroll: document.querySelector('#settings .sheet-body').scrollTop, open: document.querySelector(s).getAttribute('aria-expanded') }), row('advanced'));
+    const t0 = await spot();
+    await tp.tap(row('advanced')); await tp.waitForTimeout(300);
+    const t1 = await spot();
+    ok(Math.abs(t1.top - t0.top) <= 1 && t1.scroll === t0.scroll && t1.open === 'true', `a finger’s tap on Advanced near the bottom opens it below its row, which stays put (its row moved ${Math.round(t1.top - t0.top)} px, scroll ${Math.round(t0.scroll)} → ${Math.round(t1.scroll)})`);
+    await touch.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  ['Settings keeps a control still as it changes the rows around it: tapped in the middle of the sheet, it stays under the finger while lines come and go above it or in its row, or the sheet is drawn larger (1366 × 768, light, the usual size and 200%: Stay awake, Photo Fit, Clock in the corner, Size, Text style)', async (browser) => {
+    const errors = [];
+    for (const scale of [null, 2]) {
+      const size = scale ? '200%' : 'the usual size';
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, colorScheme: 'light' });
+      // The device says no to keeping the screen on, a moment after it is asked: Settings says so then, in place.
+      await ctx.addInitScript(() => Object.defineProperty(navigator, 'wakeLock', { configurable: true, value: { request: async () => {
+        await new Promise(r => setTimeout(r, 200)); throw new DOMException('Wake Lock permission request denied', 'NotAllowedError'); } } }));
+      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE); await boardUp(page);
+      if (scale) { await page.evaluate(s => window.__board21.setBoardScale(s), scale); await page.waitForTimeout(300); }
+      await page.setInputFiles('#photo-input', path.join(ROOT, 'icons/goat.png')); await page.waitForTimeout(1200);   // (a photo: Background shows Fit)
+      await openSettings(page, ['bg', 'letters', 'advanced']);
+      // The control scrolled to the middle of the sheet (as far as the sheet goes), or left where it is ('here'), and
+      // tapped: how far it moved, also once what comes in later (the device's answer) has come in.
+      const tap = async (sel, what, wait = 300, here) => {
+        const at = () => page.evaluate(s => ({ top: document.querySelector(s).getBoundingClientRect().top, scroll: document.querySelector('#settings .sheet-body').scrollTop }), sel);
+        if (!here) await page.evaluate(s => { const b = document.querySelector('#settings .sheet-body'), r = document.querySelector(s).getBoundingClientRect(), bb = b.getBoundingClientRect();
+          b.scrollTop += (r.top + r.height / 2 - (bb.top + bb.height / 2)) / (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui')) || 1); }, sel);
+        await page.waitForTimeout(150);
+        const a = await at();
+        await page.click(sel); await page.waitForTimeout(wait);
+        const b = await at(), dy = Math.round((b.top - a.top) * 10) / 10;
+        ok(Math.abs(b.top - a.top) <= 1, `${size}: ${what} stays under the finger (moved ${dy} px; the sheet scrolled ${Math.round(a.scroll)} → ${Math.round(b.scroll)})`);
+      };
+      const ctl = (act, val) => `#settings .sheet-body [data-act="${act}"]` + (val ? `[data-val="${val}"]` : '');
+      await tap(ctl('awake'), 'Stay awake, turned on: its warning, then the device’s no, come in beside it,', 900);
+      // (Off where it was turned on: at the usual size its row is near the top, and a sheet at the top can't scroll up.)
+      await tap(ctl('awake'), 'Stay awake, turned off again: both lines go,', 300, true);
+      await tap(ctl('photo-fit', 'whole'), 'Photo Fit, Whole photo: the hint above it goes,');
+      await tap(ctl('photo-fit', 'fill'), 'Photo Fit, Fill the board: the hint comes back,');
+      await tap(ctl('clock', 'on'), 'Clock in the corner, On,');
+      await tap(ctl('clock', 'auto'), 'Clock in the corner, Auto again,');
+      await tap(ctl('letters', 'legible'), 'Text style, a card tapped: every row in the new letters,');
+      await tap(ctl('letters', 'standard'), 'Text style, Standard again,');
+      // Size: the sheet drawn larger or smaller. (At 200% the screen holds Settings at the size of 175% too: − twice.)
+      for (const [act, what] of scale ? [['scale-down', '− (175%)'], ['scale-down', '− (150%): the sheet drawn smaller,'], ['scale-up', '+ (175%): larger again,'], ['scale-up', '+ (200%)']]
+        : [['scale-up', '+: the sheet drawn larger,'], ['scale-down', '−: back again,']]) await tap(ctl(act), `Size ${what}`);
+      await ctx.close();
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
   ['Large sizes on small screens', async (browser) => {
     // A size chosen on a smartboard can arrive on a tablet in a backup: menus, Settings and toasts must still fit.
     const ctx = await browser.newContext({ viewport: { width: 768, height: 1024 }, hasTouch: true });
