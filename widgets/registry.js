@@ -155,17 +155,19 @@ self.BOARD21_WIDGETS = [
     permissions: []
   },
   {
-    // The one built-in widget that loads another company's site: its window loads the video from YouTube (README).
+    // The one built-in widget that loads other companies' sites: its window plays a video from YouTube, Google Drive or
+    // Vimeo (README). Its id is from when it played YouTube only, kept so saved boards and files still open it.
     id: 'youtube-player',
-    name: 'YouTube Player',
-    description: 'Shows a YouTube video from its link, with its controls in the window menu.',
+    name: 'Video Player',
+    description: 'Plays a video from YouTube, Google Drive or Vimeo.',
     version: '1.0.0',
     entry: 'widgets/youtube-player/index.html',
     files: ['widgets/youtube-player/index.html'],
     color: '#b91c1c',
     icon: '<svg viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="3.5"/><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor"/></svg>',
-    // YouTube's player must be at least 200 × 200 px: where the board draws the window smaller than its CSS size, the
-    // widget raises its minimum to match (Board21.window.setMinSize). No shape lock: Shorts are tall.
+    // YouTube's player must be at least 200 × 200 px (kept for all three): where the board draws the window smaller
+    // than its CSS size, the widget raises its minimum to match (Board21.window.setMinSize). No shape lock: Shorts are
+    // tall.
     window: { width: 480, height: 270, minWidth: 200, minHeight: 200 },
     clash: 'later',   // its content is which video, like a timer's time
     permissions: []

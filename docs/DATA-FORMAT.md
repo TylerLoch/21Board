@@ -1,7 +1,7 @@
 # 21Board data format
 
-Everything 21Board stores lives **on the device**, in the browser's IndexedDB. The server only
-serves static files and never sees any data.
+21Board stores everything **on the device**, in the browser's IndexedDB. With Board Sync, the board is also in
+the teacher's Google Drive folder. 21Board has no servers.
 
 - [IndexedDB layout](#indexeddb-layout)
 - [Record types](#record-types)

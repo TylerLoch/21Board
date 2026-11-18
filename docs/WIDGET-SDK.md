@@ -65,10 +65,8 @@ window (see [Testing a widget](#testing-a-widget)). The `board21-widget` block i
 
 ## Rules for widgets
 
-1. **No external requests.** No CDNs, web fonts, analytics or APIs. Everything must be in your
-   folder so the widget works offline and no student data leaves the device. (The built-in YouTube Player is
-   the one exception, chosen by the district: its window loads the video from YouTube and asks YouTube's oEmbed
-   for video titles. Your own widgets still follow this rule.)
+1. **No Internet.** No CDNs, web fonts, analytics or APIs. Keep everything in your folder, so the widget works
+   offline and student work stays on the device. The Video Player is the only exception.
 2. **No direct storage.** Don't use IndexedDB, `localStorage`, cookies or `sessionStorage`.
    Use `Board21.save()` / `Board21.saveConfig()`. That's what makes export/import, templates,
    reset, multi-tab sync and multiple instances work.
@@ -380,7 +378,7 @@ Add an entry to `widgets/registry.js`:
 ```
 
 `clash: 'later'` is for a widget whose content is only a setting, such as the Timer (its time), Dice (the faces),
-the Traffic light (the light on) and the YouTube Player (which video, with its History). When Board Sync finds the
+the Traffic light (the light on) and the Video Player (which video, with its History). When Board Sync finds the
 same window's content changed on two devices at once, it keeps the later change (Board history keeps the other),
 instead of keeping both, the other as a labelled copy beside the window. Leave it out when the content holds
 anything typed, such as notes, names or a task list: then nothing anyone typed is lost.

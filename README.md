@@ -8,14 +8,10 @@ corners, a windowing system for widgets, and on-device storage with export/impor
 built independently and dropped in.
 
 - Pure HTML, CSS, JavaScript and SVG — **no libraries, no build step, no server code**
-- Installable PWA that **works entirely offline** (the district apps' windows: see
-  [District apps](#district-apps-21sketch-21timer-21doccam); YouTube Player videos need the internet)
-- All data stays **on the device** (IndexedDB); 21Board sends nothing anywhere (the district apps' windows
-  load those apps from their own sites, and a YouTube Player window loads its video from YouTube, which, as on
-  youtube.com, sees the board's address, the video, the device and any YouTube account signed in on it; its
-  player also contacts Google's ad and measurement servers, even before the video is played; and the window asks
-  YouTube for the title of each video in its History, without sending cookies: when it is added and, until the
-  window has saved its title, each time the board opens)
+- Installable PWA that **works offline**
+- **Private.** Your work is stored only on your device, and in your own Google Drive if you turn on Board Sync.
+  21Board has no servers and no accounts.
+- **Online only when needed.** For updates, district apps and videos.
 - Production: <https://boardapp.ccsd21.org>
 
 ---
@@ -100,7 +96,7 @@ are open still come from the saved copy: reload once more, or close and open the
 | **Widget Picker** | The ▦ button in **either** bottom corner (so you can reach it from either side of the board). Tap a widget to open it. Tap ▦ again (or anywhere else) to close. |
 | **System controls** | Next to ▦ in the panel: Export, Import, Dark mode, Full screen, Settings. |
 | **Pages** | Each page is a board of its own (its own windows, content, background and name), for lessons or parts of the day. At the far end of the Widget Picker's bottom row: **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after; on the last page › is **+** (a new page). Tap *Page* for the Pages menu: every page by name (tap one to go there), **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** and **Delete this page…** (with Undo). A new page takes this page's size, shape and background color. Every tab on the device shows the same page, and 21Board opens on the page it was showing. With Board Sync, pages and their order are the same on every device, and each device shows its own page. Widgets on other pages don't run while their page isn't shown: a Timer shows the right time when you come back, but its alarm doesn't ring on another page. |
-| **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. A YouTube Player's video takes every tap itself: move its window, or bring it forward, by the title bar. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
+| **Move a window** | Drag its title bar, or drag anywhere inside widgets that don't involve typing (Clock, Timer, Calendar, Dice…). In widgets with typing (Notes), drag inside with two fingers. The Video Player's video takes every tap: move its window, or bring it forward, by the title bar. Windows snap next to each other and resist overlapping — keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select / bring to front** | Tap anywhere on a window. The selected window gets an outline in the accent color, a stronger title bar tint and resize handles. Tap the empty board to deselect everything. |
 | **Window menu** | Tap the widget's name (⌄) in the title bar: the widget's own options, **Fill the board**, **Reset**, **Close** (21Sketch, 21Timer and 21DocCam: **Reload** and **Open … on its own** instead of Reset). Double-tap the title bar to fill/restore. A tap that slides a little under a finger still counts as a tap. From the keyboard: Enter on the window's name opens it, the arrow keys move between its items, Enter chooses one and Escape closes it. |
@@ -225,7 +221,7 @@ tests/run.js            Optional automated browser tests
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
-| **YouTube Player** | A YouTube video from its link: the one built-in widget that loads another company's site (what YouTube sees: see the top of this README). Its controls are in the window menu, since nothing may be drawn over YouTube's player, with a History of the last 5 videos shown in that window, labelled with their titles from YouTube's oEmbed (kept in the window's content); in a window that fills the board the player ends above the board's own buttons in the corners (`corners`); it raises its minimum size from the window's `zoom`, so the player is never under 200 × 200 px on screen; offline, a message instead of the browser's error page |
+| **Video Player** | A YouTube, Google Drive or Vimeo video from its link. YouTube, Google Drive and Vimeo see what they would on their own sites: the video, the device and any account signed in. YouTube and Vimeo also see the board's address. Controls in the window menu, since nothing may cover the player; a History of the last 5 videos, titled by YouTube's and Vimeo's oEmbed without cookies (kept in the content); clear of the board's corner buttons when it fills the board (`corners`); never under 200 × 200 px on screen (`zoom`); a message when offline |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps-21sketch-21timer-21doccam) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
@@ -310,7 +306,7 @@ version on other computers), the window just fills the screen.
 ## Board Sync (one board on all your devices)
 
 Build the board on your laptop, show it on the smartboard: every page, on every device, kept the same by
-itself. 21Board never talks to Google itself: ChromeOS already keeps **Google Drive › My Drive** the same on
+itself. Board Sync never talks to Google itself: ChromeOS already keeps **Google Drive › My Drive** the same on
 every Chromebook you sign in to, and 21Board keeps its files in one folder there that you choose.
 
 **Set it up once on each device** (laptop and smartboard): Settings → **Board Sync** → *Set up…*. A dialog
@@ -377,7 +373,7 @@ back, such as a window being typed in, is due again):
   both changes. Changes to different windows never clash.
 - **The same content changed on both** (two edits to one note): both are kept. The later one stays in the
   window, and the other appears beside it as a labelled copy ("Copy · 9:41 AM"). For the Timer, Dice,
-  Traffic light and YouTube Player, whose content is a setting, the later one wins (for the YouTube Player, with
+  Traffic light and Video Player, whose content is a setting, the later one wins (for the Video Player, with
   its History: a video added on the other device meanwhile leaves it, and Board history keeps it). Anything else
   changed on both (a window moved on both) takes the later change, and Board history keeps a version from before it.
 - **Deleting** a page or window on any device deletes it everywhere (with Undo, and Board history). An edit made
@@ -494,7 +490,8 @@ app, where no one signs in:
   **Not yet tried on a real kiosk device: test before relying on it.**
 - Links in Notes show as plain text: a kiosk can't open new windows. For the same reason the district apps'
   window menu has no *Open … on its own* ([District apps](#district-apps-21sketch-21timer-21doccam)), and the
-  YouTube Player's has no *Open on YouTube*.
+  Video Player's has no *Open in …*.
+- No one is signed in, so a Google Drive video plays only if it's shared with *Anyone with the link*.
 - Everything else works as usual: widgets, saving on the device, board history and Undo. Widgets can check
   `Board21.context.kiosk`. Without the parameter (or with `?kiosk=no`), nothing changes.
 - A new version of 21Board arrives as everywhere else: the board offers *Update* / *Later*, and the new
@@ -577,9 +574,12 @@ repository (`sw.js`) but not yet on its server; 21Timer and 21DocCam need one de
   show them. If they ever do, they must allow 21Board: `Content-Security-Policy: frame-ancestors 'self'
   https://boardapp.ccsd21.org` (add `https://tylerloch.github.io` for the test site), and no `X-Frame-Options`
   (it can't name another site). If 21Board's own host ever sends a CSP, it needs `frame-src
-  https://sketchapp.ccsd21.org https://timerapp.ccsd21.org https://doccamapp.ccsd21.org`, and
-  `https://www.youtube.com` for the YouTube Player's page, which also needs `connect-src https://www.youtube.com`
-  (where it asks YouTube for a video's title).
+  https://sketchapp.ccsd21.org https://timerapp.ccsd21.org https://doccamapp.ccsd21.org`.
+- **Video Player.** A CSP for its page, `widgets/youtube-player/index.html`, needs `frame-src
+  https://www.youtube.com https://drive.google.com https://player.vimeo.com`, plus `connect-src
+  https://www.youtube.com https://vimeo.com` for titles. Drive plays what the signed-in account can open. In a
+  kiosk, or with third-party cookies blocked, only files shared with *Anyone with the link* play. YouTube's player
+  also contacts Google's ad servers.
 - **Camera (21DocCam).** Chrome asks for the camera on behalf of the page in the address bar,
   `boardapp.ccsd21.org`: its prompt names that site and remembers the answer for it. On managed devices, allow
   the camera for `https://boardapp.ccsd21.org` (Admin console: *Video input allowed URLs*, policy
@@ -679,8 +679,8 @@ node tests/run.js            # all suites
 node tests/run.js offline    # only the suites whose title contains "offline"
 ```
 
-The *District apps* suite uses stand-ins for 21Sketch, 21Timer and 21DocCam, and the *YouTube Player* suites one for
-YouTube; the tests never reach their real sites.
+The *District apps* suite uses stand-ins for 21Sketch, 21Timer and 21DocCam, and the *Video Player* suites stand-ins
+for YouTube, Google Drive and Vimeo; the tests never reach their real sites.
 
 The second *Opens maximized* suite installs 21Board as an app in a real Chrome window, on an Xvfb screen of its own,
 and in Chrome's headless mode. It needs Xvfb (the package with `xvfb-run`) and the full Chromium that

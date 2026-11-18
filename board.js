@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-3';
-  const BOARD_BUILD = '6757d17f';
+  const BOARD_VERSION = '2026.11.18-4';
+  const BOARD_BUILD = '2ac242fc';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4791,8 +4791,8 @@
         ${st.devMode ? `<div class="row stack"><div><div class="lbl">Test a widget</div><div class="hint">An uploaded file runs sealed off from your boards. It is kept on this device only, never in exports.</div></div>
           <button class="btn primary" data-act="dev-upload">${svg('import')}Upload file…</button>
           ${devList ? `<div class="inst-list">${devList}</div>` : ''}</div>` : ''}` : ''}
-        <div class="about">21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span><br>
-        ${note ? '' : Link.dir ? 'Your board stays on this device and in your Drive folder. ' : 'Everything you make stays on this device. '}21Board sends nothing to a server, except that a YouTube Player window loads its video, and the titles of the videos in its History, from YouTube.</div>`;
+        <div class="about">21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span>${note ? '' : `<br>
+        ${Link.dir ? 'Your work is stored only on this device and in your Drive folder.' : 'Your work is stored only on this device.'}`}</div>`;
       // The keyboard stays on the control it was on (a group's row, a choice): Settings is drawn afresh below.
       const was = this.body.contains(document.activeElement) && document.activeElement.dataset.act ? document.activeElement : null;
       const link = this.linkShown = Link.supported ? linkSettings(sw, seg) : '';   // (see linkChanged)
@@ -5549,7 +5549,7 @@
   // A teacher builds the board on a laptop and shows it on the smartboard. Each device links itself once to the
   // same folder, e.g. Google Drive › My Drive › 21Board (Chrome's folder picker: 21Board can read and write in that
   // folder only, and the teacher allows it). ChromeOS (and Drive for desktop on Windows) keeps that folder the same
-  // on every device, so 21Board never talks to Google: no sign-in, API keys, Cloud project or server. Chrome and Edge
+  // on every device, so Board Sync never talks to Google: no sign-in, API keys, Cloud project or server. Chrome and Edge
   // only (Safari and Firefox keep Export/Import).
   // Setting up (Settings › Board Sync › Set up…, see setup): what it is and how to make the folder, then Chrome's
   // folder picker, then a look inside the folder picked (see choose), then the first round and this device's name
