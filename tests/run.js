@@ -1954,15 +1954,16 @@ const SUITES = [
         afterAdvanced: (document.getElementById('grp-advanced') || {}).nextElementSibling === row, last: kids[kids.length - 1] === box,
         groups: [...document.querySelectorAll('#settings [data-act="group"]')].filter(b => !b.closest('#grp-about')).map(b => b.dataset.val),
         inAdvanced: !!document.querySelector('#grp-advanced #st-version, #grp-advanced .about'), links: box.querySelectorAll('a[href]').length,
-        credits: [...box.querySelectorAll('.about-credits li')].map(li => li.textContent.replace(/\s+/g, ' ').trim()),
+        credits: [...box.querySelectorAll('.about-credits li')].map(li => li.innerText.split('\n').map(x => x.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' / ')),   // (" / ": a line of its own)
         imgs: [...box.querySelectorAll('img')].map(i => ({ src: i.getAttribute('src'), alt: i.alt, w: i.naturalWidth, h: i.naturalHeight, done: i.complete, filter: getComputedStyle(i).filter, opacity: getComputedStyle(i).opacity })) };
     });
     // The marks About's text must show, in this order.
     const MARKS = ['[icons/gear-21.png "', SENTENCE, `21Board ${VERSION} (`, ' · Widget SDK protocol 1', 'Your work is stored only on this device.', 'License', '© 2026 Community Consolidated School District 21',
       'Code', 'Apache 2.0', 'Docs', 'CC BY 4.0', 'Credits', 'Atkinson Hyperlegible', 'Andika', 'Excalifont', 'Crayon Libre', 'YouTube', '[icons/goat.png "'];
     const inOrder = (text, marks) => { let at = -1; for (const m of marks) { const i = text.indexOf(m, at + 1); if (i < 0) return `“${m}” missing or out of order`; at = i; } return ''; };
-    const CREDITS = ['Atkinson Hyperlegible by the Braille Institute. SIL Open Font License 1.1.', 'Andika by SIL International, as 21Board Early Readers. SIL Open Font License 1.1.',
-      'Excalifont by Excalidraw. SIL Open Font License 1.1.', 'Crayon Libre by GGBotNet. CC0 1.0.', 'YouTube and Google Drive are trademarks of Google LLC. Vimeo is a trademark of Vimeo.com, Inc.'];
+    // (Each font and its license are names, on lines of their own: no end period. The trademark line is two sentences.)
+    const CREDITS = ['Atkinson Hyperlegible by the Braille Institute / SIL Open Font License 1.1', 'Andika by SIL International / SIL Open Font License 1.1',
+      'Excalifont by Excalidraw / SIL Open Font License 1.1', 'Crayon Libre by GGBotNet / CC0 1.0', 'YouTube and Google Drive are trademarks of Google LLC. Vimeo is a trademark of Vimeo.com, Inc.'];
     // Settings opened on that side, with the groups named open (those that are there).
     const open = async (p, groups = [], side = 'left') => {
       await openSettings(p, [], side);
@@ -1996,6 +1997,50 @@ const SUITES = [
     ok(!!a && a.imgs.length === 2 && a.imgs.map(i => i.alt).join() === '21 gear,Goat' && a.imgs.every(i => i.done && i.w > 0), `the two pictures load, each with a short alt text (${a && a.imgs.map(i => `${i.src} “${i.alt}” ${i.w}×${i.h}`).join(', ')})`);
     await page.screenshot({ path: OUT + 'about-open.png' });
 
+    // An update waiting (the offline copy is another build): the offline copy is named on a line of its own, and no "·"
+    // is left at the end of a line, at Size 80% and 200%.
+    const swWas = await page.evaluate(() => { const s = window.__board21.state.sw; return { version: s.version, build: s.build }; });
+    const releaseLines = () => page.evaluate(() => {
+      const box = document.querySelector('#grp-about .about'), chars = [], walk = document.createTreeWalker(box, NodeFilter.SHOW_TEXT);
+      for (let n; (n = walk.nextNode());) for (let i = 0; i < n.data.length; i++) {
+        if (!n.data[i].trim()) continue;
+        const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1);
+        const q = r.getClientRects()[0]; if (q) chars.push({ c: n.data[i], top: q.top, h: q.height });
+      }
+      return { lines: box.innerText.split('\n').map(x => x.trim()).filter(Boolean), hanging: chars.some((x, i) => x.c === '·' && (!chars[i + 1] || chars[i + 1].top > x.top + x.h / 2)) };
+    });
+    const waiting = [];
+    for (const scale of [0.8, 2]) {
+      await shut(page);
+      await page.evaluate(s => window.__board21.setBoardScale(s), scale);
+      await page.evaluate(() => Object.assign(window.__board21.state.sw, { version: '2026.11.19-1', build: 'abcd1234' }));
+      await open(page, ['about']);
+      waiting.push(Object.assign({ at: scale * 100 + '%' }, await releaseLines()));
+    }
+    await shut(page);
+    await page.evaluate(v => Object.assign(window.__board21.state.sw, v), swWas);
+    await page.evaluate(() => window.__board21.setBoardScale(0.8));
+    ok(waiting.every(w => w.lines[0] === `21Board ${VERSION} (${SITES.about.build}) · Widget SDK protocol 1` && w.lines[1] === 'Offline copy 2026.11.19-1 (abcd1234)' && !w.hanging),
+      `an update waiting, the offline copy has a line of its own, and no “·” ends a line (${waiting.map(w => `${w.at}: ${w.lines.join(' / ')}${w.hanging ? ' (a “·” ends a line)' : ''}`).join('; ')})`);
+
+    // Reading a license, Settings drawn again (a window opens, so Saved widgets changes) keeps the place, with its row
+    // still holding the keyboard, as after a tap.
+    await open(page, ['about']);
+    await page.click('#settings [data-act="group"][data-val="code-license"]');
+    await eventually(() => page.evaluate(() => document.querySelectorAll('#grp-code-license p').length > 20), 8000);
+    const place = () => page.evaluate(() => {
+      const b = document.querySelector('#settings .sheet-body'), top = b.getBoundingClientRect().top;
+      const p = [...document.querySelectorAll('#grp-code-license p')].find(x => x.getBoundingClientRect().top >= top);
+      return { at: Math.round(b.scrollTop), first: p ? p.textContent.slice(0, 40) : '', keys: document.activeElement.dataset.val || document.activeElement.tagName };
+    });
+    await page.evaluate(() => { const g = document.getElementById('grp-code-license'), b = document.querySelector('#settings .sheet-body'); b.scrollTop += g.getBoundingClientRect().top - b.getBoundingClientRect().top + 1500; });
+    const before = await place();
+    await page.evaluate(() => window.__board21.openWidget('dice')); await page.waitForTimeout(600);
+    const after = await place();
+    ok(before.keys === 'code-license' && before.at > 1000 && Math.abs(after.at - before.at) < 2 && after.first === before.first,
+      `reading a license, Settings drawn again keeps the place (${JSON.stringify(before)} → ${JSON.stringify(after)})`);
+    await shut(page);
+
     // ---- Offline: the pictures and both license texts come from the offline copy.
     await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 }).catch(() => {});
     const cached = () => page.evaluate(async () => { const k = (await caches.keys()).filter(n => n.startsWith('21board-')); if (!k.length) return []; const c = await caches.open(k[0]); return (await c.keys()).map(r => new URL(r.url).pathname); });
@@ -2011,6 +2056,13 @@ const SUITES = [
     ok(!!a && a.imgs.length === 2 && a.imgs.every(i => i.done) && a.imgs.map(i => `${i.w}×${i.h}`).join() === '880×880,618×733', `offline, both pictures load from the offline copy (${a && a.imgs.map(i => `${i.src} ${i.w}×${i.h}`).join(', ')})`);
     ok(/Apache License\s+Version 2\.0, January 2004/.test(t[0]) && /END OF TERMS AND CONDITIONS/.test(t[0]), `offline, Code opens the Apache License 2.0 in full (${t[0].length} characters)`);
     ok(/Attribution 4\.0 International/.test(t[1]) && /Creative Commons may be contacted at creativecommons\.org\./.test(t[1]), `and Docs the CC BY 4.0 license in full (${t[1].length} characters)`);
+    // (A block of short lines keeps them: the Apache title. The files' headings are headings.)
+    const heads = await page.evaluate(() => ['code-license', 'docs-license'].map(k => { const t = document.querySelector(`#grp-${k} .license-text`);
+      return { first: t && t.firstElementChild ? t.firstElementChild.innerText : '', heads: t ? [...t.querySelectorAll('h5')].map(h => h.innerText.replace(/\s+/g, ' ')) : [] }; }));
+    ok(heads[0].first === 'Apache License\nVersion 2.0, January 2004\nhttp://www.apache.org/licenses/'
+      && heads[0].heads.join(' | ') === 'Apache License Version 2.0, January 2004 http://www.apache.org/licenses/ | TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION | END OF TERMS AND CONDITIONS | APPENDIX: How to apply the Apache License to your work.'
+      && heads[1].heads[0] === 'Attribution 4.0 International' && heads[1].heads.filter(h => /^Section \d -- /.test(h)).length === 8,
+      `the title keeps its lines, and the headings are headings (${JSON.stringify(heads[0].first)}; ${heads[0].heads.length} and ${heads[1].heads.length} headings)`);
     // (Its paragraphs flow to the width of Settings: no line sticks out.)
     const flows = await page.evaluate(() => { const g = document.getElementById('grp-code-license'); if (!g) return false; const r = g.getBoundingClientRect(); return [...g.querySelectorAll('*')].every(e => e.getBoundingClientRect().right <= r.right + 1) && g.querySelectorAll('p').length > 20; });
     ok(flows, 'the license text flows in paragraphs, within Settings');
@@ -2062,6 +2114,25 @@ const SUITES = [
     ok(!miss && a.afterAdvanced && a.links === 0, `kiosk mode: the same About below Advanced, with no links out (${miss || a.parts.length + ' parts'})`);
     await k.close();
     await ctx.close();
+
+    // ---- A license the host didn't send (a blip, or offline before the offline copy is saved): says what to do, at
+    // once when Settings is drawn again, and is read again when opened again.
+    let fail = true;
+    SITES.about.fault['LICENSE'] = res => { if (!fail) return; fail = false; res.writeHead(503); res.end(); return true; };
+    const nc = await browser.newContext({ viewport: { width: 1366, height: 768 }, serviceWorkers: 'block' });
+    const np = await nc.newPage(); np.on('pageerror', e => errors.push('[no answer] ' + e.message));
+    await np.goto(url); await boardUp(np);
+    await open(np, ['about', 'code-license']);
+    const codeText = () => np.evaluate(() => document.getElementById('grp-code-license').innerText.trim());
+    let lic = '';
+    await eventually(async () => (lic = await codeText()) !== 'Loading…', 5000);
+    const drawn = await np.evaluate(() => { document.querySelector('#settings [data-act="group"][data-val="docs-license"]').click(); return document.getElementById('grp-code-license').innerText.trim(); });
+    ok(!fail && lic === 'Can’t load the license. Try again online.' && drawn === lic, `a license the host didn’t send: “${lic}”, and at once when Settings is drawn again (“${drawn}”)`);
+    await np.click('#settings [data-act="group"][data-val="code-license"]'); await np.click('#settings [data-act="group"][data-val="code-license"]');
+    await eventually(async () => /END OF TERMS AND CONDITIONS/.test(lic = await codeText()), 5000);
+    ok(/^Apache License/.test(lic) && /END OF TERMS AND CONDITIONS/.test(lic), `closed and opened again, it is read again (${lic.length} characters)`);
+    delete SITES.about.fault['LICENSE'];
+    await nc.close();
 
     // ---- Dark: the same two pictures, untouched (the navy gear stays as it is: no light version).
     const dark = await browser.newContext({ viewport: { width: 1920, height: 1080 }, colorScheme: 'dark' });
@@ -10672,6 +10743,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await eventually(async () => { lic = (await a.locator('#grp-code-license').innerText()).trim(); return lic !== 'Loading…'; }, 5000);
     const pics = await a.evaluate(() => [...document.querySelectorAll('#grp-about img')].map(i => i.complete && i.naturalWidth > 0));
     ok(pics.length === 2 && pics.every(Boolean) && lic === 'Can’t show the license here. See the LICENSE file.', `and its two pictures, and for the license “${lic.slice(0, 60)}”`);
+    // (Opening Docs draws Settings again: Code shows that at once, and isn't read again.)
+    const again = await a.evaluate(() => { document.querySelector('#settings [data-act="group"][data-val="docs-license"]').click(); return document.getElementById('grp-code-license').innerText.trim(); });
+    ok(again === 'Can’t show the license here. See the LICENSE file.', `drawn again, it shows that at once, with no “Loading…” (“${again}”)`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

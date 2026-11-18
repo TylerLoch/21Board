@@ -176,7 +176,8 @@ Settings opens.
     when that would help), storage used, kiosk mode, and *Erase everything* (every page).
   - **Developer:** Developer mode (SDK Playground, test an unregistered widget by uploading its file).
 - **About ▸** shows the version on its row. Inside: the 21 gear, who made 21Board, the version, where your work is
-  stored, the licenses in full, credits and the goat. The widget dev window shows only the version.
+  stored, the licenses in full, credits and the goat. The widget dev window shows only the version and where your
+  work is stored.
 
 (Patterns behind the board, Dots to Graph paper, are switched off for now: each page keeps its choice, and
 uncommenting the parts marked "Patterns" in `board.js` and `index.html` brings them back.)

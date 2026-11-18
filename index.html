@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="e55d03d8">
+<html lang="en" data-build="ebc04e47">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -586,6 +586,7 @@
        (each license's text opens in place, in paragraphs) and Credits; the goat last. The pictures are shown as they
        are, light and dark alike, at a set size. */
     .about { font-size: 13px; color: var(--muted); line-height: 1.6; }
+    .about > span { display: block; }   /* (the release, the offline copy when it is another build, where work is stored) */
     .about-top { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 0 4px; text-align: center; }
     .about-gear { display: block; width: 88px; height: 88px; }
     .about-made { max-width: 30em; font-size: 14px; font-weight: 500; line-height: 1.45; text-wrap: balance; }
@@ -595,7 +596,10 @@
     .about-credits span { display: block; }   /* (a font's license, on a line of its own) */
     .about-goat { display: block; width: 96px; height: auto; margin: 24px auto 6px; }
     .license-text { font-size: 12.5px; line-height: 1.5; overflow-wrap: anywhere; }
-    .license-text p + p { margin-top: 8px; }
+    .license-text > * { white-space: pre-line; }   /* (a block of short lines keeps them: the Apache title) */
+    .license-text > * + * { margin-top: 8px; }
+    .license-text h5 { font-size: inherit; font-weight: 600; }
+    .license-text > * + h5 { margin-top: 16px; }
     .license-text .hint { margin: 0; }
 
     /* -------------------------------------------------------------- Modal */

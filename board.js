@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-5';
-  const BOARD_BUILD = 'e55d03d8';
+  const BOARD_BUILD = 'ebc04e47';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4496,12 +4496,13 @@
   // site, and the pictures and texts would have to come from 21Board's (see LETTERS_HERE).
   // note: the board isn't being saved (SaveNote), so the storage line is left out.
   const ABOUT_LICENSES = [['code-license', 'Code', 'Apache 2.0', 'LICENSE'], ['docs-license', 'Docs', 'CC BY 4.0', 'LICENSE-DOCS']];
-  const OFL = 'SIL Open Font License 1.1.';
-  const ABOUT_FONTS = [['Atkinson Hyperlegible', 'by the Braille Institute.', OFL], ['Andika', 'by SIL International, as 21Board Early Readers.', OFL],
-    ['Excalifont', 'by Excalidraw.', OFL], ['Crayon Libre', 'by GGBotNet.', 'CC0 1.0.']];
+  const OFL = 'SIL Open Font License 1.1';
+  const ABOUT_FONTS = [['Atkinson Hyperlegible', 'by the Braille Institute', OFL], ['Andika', 'by SIL International', OFL],
+    ['Excalifont', 'by Excalidraw', OFL], ['Crayon Libre', 'by GGBotNet', 'CC0 1.0']];
   function aboutSettings(note) {
-    const release = `<div class="about">21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span>${note ? '' : `<br>
-      ${Link.dir ? 'Your work is stored only on this device and in your Drive folder.' : 'Your work is stored only on this device.'}`}</div>`;
+    // (Each on a line of its own: the release, the offline copy when it is another build (refreshStatus), where work is stored.)
+    const release = `<div class="about"><span>21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}</span><span id="st-cache"></span>${note ? '' : `
+      <span>${Link.dir ? 'Your work is stored only on this device and in your Drive folder.' : 'Your work is stored only on this device.'}</span>`}</div>`;
     const content = LAB ? release : `<div class="about-top">
         <img class="about-gear" src="icons/gear-21.png" alt="21 gear">
         <p class="about-made">Made with Love and Stubbornness by the CCSD21 Technology Services team at Gill Center, Wheeling, Illinois, USA</p>
@@ -4516,11 +4517,15 @@
     return settingsGroup('about', 'About', '', content, { sub: `Version ${esc(BOARD_VERSION)}`, inset: true });
   }
   // About's license texts, read from the offline copy the first time their group opens, then kept for this tab. They
-  // are shown as paragraphs that flow to the width of Settings (the files break their lines for a text editor). Put in
-  // place at once when already read, so drawing Settings again never shortens it for a moment (which would move it).
-  // A read that failed (as from a copy opened from disk, where the browser won't) is kept too: its note shows at once.
+  // are shown as paragraphs that flow to the width of Settings (the files break their lines for a text editor), except
+  // a block of short lines (the Apache title), which keeps them; the files' headings are headings (LICENSE_HEAD).
+  // Settings.render puts them in place at once when already read, before the keyboard goes back to its control
+  // (focus() lays the page out): drawing Settings again never shortens it for a moment, which would move the text.
+  // A read that failed shows its note at once too. It is tried again when its group is opened again (again), except
+  // in a copy opened from disk, where the browser never allows it: that note says where the file is instead.
+  const LICENSE_HEAD = /^(Apache License|TERMS AND CONDITIONS|END OF TERMS|APPENDIX:|Attribution 4\.0 International|Using Creative Commons|Creative Commons Attribution|Section \d+ -- )/;
   const LicenseText = {
-    paras: {},     // file → its paragraphs, or null: it couldn't be read
+    paras: {},     // file → its paragraphs ({ text, head }), or null: it couldn't be read
     reading: {},   // file → the read under way
     fill(root) {
       for (const el of root.querySelectorAll('.license-text[data-file]')) {
@@ -4529,16 +4534,25 @@
         if (file in this.paras) { this.show(el, file); continue; }
         if (!this.reading[file]) {
           this.reading[file] = fetch(file).then(r => (r.ok ? r.text() : Promise.reject(new Error(`${file}: ${r.status}`))))
-            .then(text => { this.paras[file] = text.split(/\n\s*\n/).map(p => p.replace(/\s+/g, ' ').trim()).filter(p => p && !/^[=_-]+$/.test(p)); }, () => { this.paras[file] = null; })
+            .then(text => { this.paras[file] = this.split(text); }, () => { this.paras[file] = null; })
             .finally(() => { delete this.reading[file]; });
         }
         this.reading[file].then(() => { if (el.isConnected) this.show(el, file); });
       }
     },
-    // (Not read: says where the text is.)
+    split(text) {
+      return text.split(/\n\s*\n/).map(b => b.split('\n').map(l => l.trim()).filter(Boolean)).filter(ls => ls.length && !/^[=_-]+$/.test(ls.join('')))
+        .map(ls => ({ text: ls.join(ls.every(l => l.length <= 40) ? '\n' : ' '), head: LICENSE_HEAD.test(ls[0]) && ls.every(l => l.length <= 70) }));
+    },
+    // A license's group opened again: a read that failed is tried again.
+    again(key) {
+      const lic = ABOUT_LICENSES.find(l => l[0] === key);
+      if (lic && this.paras[lic[3]] === null && location.protocol !== 'file:') delete this.paras[lic[3]];
+    },
     show(el, file) {
-      const p = (text, cls) => Object.assign(document.createElement('p'), { textContent: text, className: cls || '' });
-      el.replaceChildren(...(this.paras[file] ? this.paras[file].map(t => p(t)) : [p(`Can’t show the license here. See the ${file} file.`, 'hint')]));
+      const put = (tag, text, cls) => Object.assign(document.createElement(tag), { textContent: text, className: cls || '' });
+      const note = location.protocol === 'file:' ? `Can’t show the license here. See the ${file} file.` : 'Can’t load the license. Try again online.';
+      el.replaceChildren(...(this.paras[file] ? this.paras[file].map(q => put(q.head ? 'h5' : 'p', q.text)) : [put('p', note, 'hint')]));
     }
   };
 
@@ -4881,6 +4895,7 @@
         this.drawn = html; this.refreshStatus(true); return;
       }
       this.body.innerHTML = this.drawn = html;
+      LicenseText.fill(this.body);   // (About's license texts, in the groups that are open: before focus() lays the page out)
       if (was) {
         const again = $$(`[data-act="${CSS.escape(was.dataset.act)}"]`, this.body).find(b => b.dataset.val === was.dataset.val);
         if (again) again.focus({ preventScroll: true });
@@ -4891,7 +4906,6 @@
       shows.forEach(el => el.style.setProperty('--fade-color', fadeTo));
       // (One call for all of them: the board's own call at the same moment gets the same URL, see BoardPhoto.objectUrl.)
       if (pm && (shows.length || pics.length)) BoardPhoto.objectUrl(pm).then(u => shows.concat(pics).forEach(el => { el.style.backgroundImage = `url("${u}")`; }), () => {});
-      LicenseText.fill(this.body);   // (About's license texts, in the groups that are open)
       this.refreshStatus(true);
     },
 
@@ -4929,7 +4943,7 @@
           : '<span class="status-dot"></span>Saving an offline copy…';
       }
       // (The offline copy is named only when it isn't the version this tab runs: see section 15.)
-      if (cache) cache.textContent = S.sw.version && S.sw.build !== BOARD_BUILD ? ` · Offline copy ${S.sw.version}${S.sw.build ? ` (${S.sw.build})` : ''}` : '';
+      if (cache) cache.textContent = S.sw.version && S.sw.build !== BOARD_BUILD ? `Offline copy ${S.sw.version}${S.sw.build ? ` (${S.sw.build})` : ''}` : '';
       const renderPersist = () => {
         const per2 = $('#st-persist', this.body), hint = $('#st-persist-hint', this.body), bk = $('#st-backup', this.body);
         if (bk) { const line = backupLine(this.needsLook()); if (bk.outerHTML !== line) bk.outerHTML = line; }
@@ -4981,7 +4995,7 @@
       if (classroomAct(act, val)) { this.render(); return; }   // section 12b
       switch (act) {
         case 'group':   // a group opens or closes (settingsGroup)
-          if (this.groups.has(val)) this.groups.delete(val); else this.groups.add(val);
+          if (this.groups.has(val)) this.groups.delete(val); else { this.groups.add(val); LicenseText.again(val); }
           this.render();
           this.reveal(val);
           break;
