@@ -2,84 +2,634 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<script src="../../sdk/board21.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SDK Playground</title>
-<script src="../../sdk/board21.js"></script>
 <style>
   html, body { margin: 0; height: 100%; }
-  body { background: var(--b21-bg); color: var(--b21-text); font: 13px/1.4 var(--b21-font); display: flex; flex-direction: column; overflow: hidden; }
-  header { padding: 8px 10px; border-bottom: 1px solid var(--b21-border); display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  header b { margin-right: auto; }
-  .grid { padding: 8px 10px; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 6px; overflow-y: auto; max-height: 50%; }
-  button { font: inherit; border: 1px solid var(--b21-border); background: var(--b21-surface); color: var(--b21-text); border-radius: 8px; padding: 7px 8px; cursor: pointer; text-align: left; }
-  button:active { background: var(--b21-accent-soft); }
-  .k { color: var(--b21-muted); }
-  #log { flex: 1; margin: 0; padding: 8px 10px; overflow-y: auto; background: var(--b21-surface); border-top: 1px solid var(--b21-border); font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace; white-space: pre-wrap; user-select: text; -webkit-user-select: text; }
-  #log .ev { color: var(--b21-accent); }
-  #log .err { color: var(--b21-danger); }
+  body {
+    background: var(--b21-bg); color: var(--b21-text); font: 14px/1.4 var(--b21-font);
+    overflow: hidden; touch-action: manipulation; user-select: none; -webkit-user-select: none;
+    display: grid; grid-template-rows: auto minmax(0, 1fr); grid-template-columns: minmax(0, 1fr);
+  }
+  [hidden] { display: none !important; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  /* Code: the device's monospace font (no web font). */
+  .mono, pre, code, textarea, output, #log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+  pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  :focus-visible { outline: 2px solid var(--b21-accent); outline-offset: 1px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  button { height: 36px; padding: 0 12px; border: 1px solid var(--b21-border); border-radius: 999px; background: var(--b21-surface-2); font-weight: 600; cursor: pointer; white-space: nowrap; }
+  button:active { filter: brightness(.94); }
+  button.primary { background: var(--b21-accent); border-color: var(--b21-accent); color: var(--b21-on-accent); }
+  input, select, textarea {
+    box-sizing: border-box; max-width: 100%; min-width: 0; height: 36px; padding: 0 8px; border: 1px solid var(--b21-border);
+    border-radius: 8px; background: var(--b21-surface); user-select: text; -webkit-user-select: text;
+  }
+  input:focus, select:focus, textarea:focus { border-color: var(--b21-accent); outline: none; box-shadow: 0 0 0 3px var(--b21-accent-soft); }
+  [aria-invalid="true"] { border-color: var(--b21-danger); }
+
+  /* Tabs: Calls, State, Palette, Log. A wide window shows the log beside them. */
+  .tabs { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--b21-border); background: var(--b21-surface); min-width: 0; }
+  .tabs [role="tab"] { flex: 1 1 0; min-width: 0; padding: 0 4px; border: 0; background: none; color: var(--b21-muted); overflow: hidden; text-overflow: ellipsis; }
+  .tabs [role="tab"][aria-selected="true"] { background: var(--b21-bg); color: var(--b21-text); box-shadow: inset 0 0 0 1px var(--b21-border); }
+  .panel { grid-row: 2; grid-column: 1; min-height: 0; overflow: auto; padding: 0 10px 14px; }
+  #log-panel { padding: 0; display: flex; flex-direction: column; }
+  @media (min-width: 640px) {
+    body { grid-template-columns: minmax(0, 1fr) minmax(260px, 44%); }
+    [data-tab="log"] { display: none; }
+    #log-panel { grid-column: 2; grid-row: 1 / 3; border-left: 1px solid var(--b21-border); }
+  }
+
+  /* Calls, in groups that fold. */
+  .group h2 { margin: 0; position: sticky; top: 0; z-index: 1; background: var(--b21-bg); padding-top: 8px; }
+  .group-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 0 2px; border: 0; border-radius: 8px; background: none; font-size: 15px; font-weight: 700; text-align: left; }
+  .group-head::after { content: ''; width: 7px; height: 7px; margin-left: auto; border: solid var(--b21-muted); border-width: 0 2px 2px 0; transform: rotate(45deg) translateY(-2px); transition: transform .15s; }
+  .group-head[aria-expanded="false"]::after { transform: rotate(-45deg); }
+  .hint { margin: 2px 2px 6px; color: var(--b21-muted); }
+  .call { display: grid; gap: 6px; padding: 8px 0; border-top: 1px solid var(--b21-border); min-width: 0; }
+  .line { display: flex; gap: 6px; align-items: flex-start; min-width: 0; }
+  .code { flex: 1; min-width: 0; max-height: 40vh; overflow: auto; padding: 8px; border-radius: 8px; background: var(--b21-surface); line-height: 1.45; user-select: text; -webkit-user-select: text; }
+  .code.stale { opacity: .55; }
+  .args { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; min-width: 0; }
+  .arg { display: inline-flex; align-items: center; gap: 6px; min-width: 0; color: var(--b21-muted); }
+  .arg input { width: 5.5em; color: var(--b21-text); }
+  .arg.text { flex: 1 1 10em; }
+  .arg.text input { flex: 1; width: auto; }
+  .arg.json { flex: 1 1 100%; flex-direction: column; align-items: stretch; gap: 4px; }
+  .arg textarea { height: auto; max-height: 45vh; padding: 6px 8px; resize: vertical; color: var(--b21-text); line-height: 1.45; }
+  .args .run { margin-left: auto; }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; flex: 1 1 100%; }
+  .examples button { padding: 0 10px; font-size: 13px; }
+  .err { margin: 0; color: var(--b21-danger); font-weight: 600; }
+  .result { display: block; max-height: 12em; overflow: auto; color: var(--b21-muted); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+  .result::before { content: '\2192  '; }
+  .result.error { color: var(--b21-danger); }
+  .result.error::before { content: ''; }
+  .sig, .note { margin: 0; color: var(--b21-muted); }
+
+  /* State */
+  #state h3 { margin: 14px 0 6px; font-size: 15px; }
+  #state pre.v { padding: 8px; border-radius: 8px; background: var(--b21-surface); user-select: text; -webkit-user-select: text; }
+  dl { margin: 0; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 12px; }
+  dl .row { display: contents; }
+  dt, dd { margin: 0; padding: 4px 0; border-top: 1px solid var(--b21-border); min-width: 0; }
+  dt { color: var(--b21-muted); }
+  dt.derived { font-family: inherit; font-size: inherit; }
+  dd { overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+  .none { color: var(--b21-muted); }
+  .changed { animation: changed 1.2s ease-out; }
+  @keyframes changed { from { background: var(--b21-accent-soft); } to { background: transparent; } }
+  .link { height: auto; min-height: 36px; padding: 0; border: 0; background: none; color: var(--b21-accent); font-family: inherit; font-size: inherit; text-decoration: underline; }
+
+  /* Palette */
+  .tokens { display: grid; gap: 4px; }
+  .token { display: grid; grid-template-columns: 32px minmax(0, 1fr); gap: 2px 10px; align-items: center; height: auto; padding: 6px 8px; border-radius: var(--b21-radius); background: none; border-color: transparent; text-align: left; font-weight: 400; white-space: normal; }
+  .token:hover { background: var(--b21-surface); }
+  .swatch { grid-row: 1 / 3; width: 32px; height: 32px; box-sizing: border-box; border-radius: 8px; border: 1px solid var(--b21-muted); display: grid; place-items: center; font-weight: 700; }
+  .token .top { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: baseline; min-width: 0; }
+  .token .name { color: var(--b21-text); overflow-wrap: anywhere; }
+  .token .use { margin-left: auto; color: var(--b21-muted); font-size: 13px; }
+  .token .value { color: var(--b21-muted); overflow-wrap: anywhere; }
+
+  /* Log */
+  .log-bar { display: flex; flex-wrap: wrap; gap: 6px; padding: 6px 8px; border-bottom: 1px solid var(--b21-border); background: var(--b21-surface); }
+  .log-bar button { padding: 0 8px; }
+  .log-bar select { flex: 1 1 3.5em; min-width: 0; }
+  #pause[aria-pressed="true"] { background: var(--b21-accent-soft); border-color: var(--b21-accent); }
+  .badge { display: inline-block; min-width: 1.4em; margin-left: 6px; padding: 0 5px; border-radius: 999px; background: var(--b21-accent); color: var(--b21-on-accent); font-size: 12px; line-height: 1.5; }
+  #log { flex: 1; min-height: 0; overflow: auto; padding: 4px 10px 10px; font-size: 12.5px; user-select: text; -webkit-user-select: text; }
+  #log .empty { margin: 10px 0; color: var(--b21-muted); font-family: var(--b21-font); font-size: 14px; }
+  .entry { padding: 5px 0; border-bottom: 1px solid var(--b21-border); }
+  .entry .head { display: flex; flex-wrap: wrap; gap: 0 8px; overflow-wrap: anywhere; }
+  .entry .time { color: var(--b21-muted); }
+  .entry .tag { color: var(--b21-accent); font-weight: 700; }
+  .entry[data-kind="call"] .tag { color: var(--b21-text); }
+  .entry pre { margin-top: 2px; }
+  .entry .res { color: var(--b21-muted); }
+  .entry .res.error { color: var(--b21-danger); }
 </style>
 </head>
 <body>
-  <header><b>SDK Playground</b><span class="k" id="who"></span><button id="clear">Clear log</button></header>
-  <div class="grid" id="grid"></div>
-  <pre id="log"></pre>
+  <div class="tabs" role="tablist" aria-label="SDK Playground">
+    <button role="tab" id="tab-calls" data-tab="calls" aria-controls="calls" aria-selected="true">Calls</button>
+    <button role="tab" id="tab-state" data-tab="state" aria-controls="state" aria-selected="false" tabindex="-1">State</button>
+    <button role="tab" id="tab-palette" data-tab="palette" aria-controls="palette" aria-selected="false" tabindex="-1">Palette</button>
+    <button role="tab" id="tab-log" data-tab="log" aria-controls="log-panel" aria-selected="false" tabindex="-1">Log</button>
+  </div>
+  <div class="panel" id="calls" role="tabpanel" aria-labelledby="tab-calls"></div>
+  <div class="panel" id="state" role="tabpanel" aria-labelledby="tab-state" hidden></div>
+  <div class="panel" id="palette" role="tabpanel" aria-labelledby="tab-palette" hidden>
+    <p class="hint" style="margin-top:10px">Tap a token to copy its name.</p>
+    <div class="tokens"></div>
+  </div>
+  <div class="panel" id="log-panel" role="tabpanel" aria-labelledby="tab-log" hidden>
+    <div class="log-bar">
+      <select id="filter" aria-label="Show"></select>
+      <button id="pause" aria-pressed="false">Pause</button>
+      <button id="clear">Clear</button>
+      <button id="copy-log">Copy</button>
+    </div>
+    <div id="log" tabindex="0" aria-label="Log"><p class="empty">Calls and events show here.</p></div>
+  </div>
+  <div class="sr" id="sr" aria-live="polite"></div>
 <script>
-  const log = (msg, cls) => {
-    const el = document.getElementById('log');
-    const line = document.createElement('div');
-    if (cls) line.className = cls;
-    line.textContent = `${new Date().toLocaleTimeString()}  ${msg}`;
-    el.appendChild(line); el.scrollTop = el.scrollHeight;
+  'use strict';
+  // The SDK Playground: every call of the 21Board SDK, run with your own values and shown as the code it runs; the
+  // window's state, the palette, and a log of calls and events. It saves nothing of its own: its content and config
+  // are only what you save with it.
+  const $ = (s, el = document) => el.querySelector(s);
+  const h = (tag, attrs = {}, ...kids) => {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) if (v != null && v !== false) el.setAttribute(k, v === true ? '' : v);
+    for (const k of kids.flat()) if (k != null) el.append(k);
+    return el;
   };
-  const j = v => JSON.stringify(v);
-  let counter = 0;
+  const say = text => { const sr = $('#sr'); sr.textContent = ''; setTimeout(() => { sr.textContent = text; }, 30); };
 
-  const actions = {
-    'save({counter})': async () => { await Board21.save({ counter: ++counter, at: new Date().toISOString() }); log('save ok: counter=' + counter); },
-    'load()': async () => log('load → ' + j(await Board21.load())),
-    'save(null)': async () => { await Board21.save(null); log('content cleared'); },
-    'saveConfig({n})': async () => { await Board21.saveConfig({ n: Math.round(Math.random() * 100) }); log('saveConfig ok'); },
-    'loadConfig()': async () => log('loadConfig → ' + j(await Board21.loadConfig())),
-    'setSize(480, 320)': () => Board21.window.setSize(480, 320),
-    'setSize(300, 500)': () => Board21.window.setSize(300, 500),
-    'aspect 16:9': () => Board21.window.setAspectRatio(16 / 9),
-    'aspect 1:1': () => Board21.window.setAspectRatio(1),
-    'aspect off': () => Board21.window.setAspectRatio(null),
-    'min 400×300': () => Board21.window.setMinSize(400, 300),
-    'min reset': () => Board21.window.setMinSize(320, 260),
-    'max 600×400': () => Board21.window.setMaxSize(600, 400),
-    'max off': () => Board21.window.setMaxSize(null, null),
-    'resizable off': () => Board21.window.setResizable(false),
-    'resizable on': () => Board21.window.setResizable(true),
-    'setTitle(time)': () => Board21.window.setTitle(new Date().toLocaleTimeString()),
-    'setTitle("")': () => Board21.window.setTitle(''),
-    'requestAttention()': () => Board21.window.requestAttention(),
-    'maximize()': () => Board21.window.maximize(),
-    'restore()': () => Board21.window.restore(),
-    'getInfo()': async () => log('getInfo → ' + j(await Board21.window.getInfo())),
-    'menu.set(3 items)': () => Board21.menu.set([{ id: 'a', label: 'Item A' }, { id: 'b', label: 'Checked B', checked: true }, { separator: true }, { id: 'c', label: 'Disabled C', disabled: true }]),
-    'menu.clear()': () => Board21.menu.clear(),
-    'toast()': () => Board21.toast('Hello from the SDK Playground!'),
-    'context': () => log('context → ' + j(Object.assign({}, Board21.context, { palette: '…' }))),
-    'close()': () => Board21.window.close()
+  // ---- Code as a widget writes it: JavaScript values with single quotes; arrays of objects one item a line.
+  const IDENT = /^[A-Za-z_$][\w$]*$/;
+  const ESC = { '\\': '\\\\', '\'': '\\\'', '\n': '\\n', '\r': '\\r', '\t': '\\t' };
+  const str = s => '\'' + s.replace(/[\\'\u0000-\u001f\u2028\u2029]/g, c => ESC[c] || '\\u' + c.charCodeAt(0).toString(16).padStart(4, '0')) + '\'';
+  function js(v, ind = '') {
+    if (v === null || typeof v !== 'object') return typeof v === 'string' ? str(v) : String(v);
+    if (Array.isArray(v)) {
+      if (!v.length) return '[]';
+      if (!v.some(x => x && typeof x === 'object')) return '[' + v.map(x => js(x, ind)).join(', ') + ']';
+      const in2 = ind + '  ';
+      return '[\n' + v.map(x => in2 + js(x, in2)).join(',\n') + '\n' + ind + ']';
+    }
+    const keys = Object.keys(v);
+    if (!keys.length) return '{}';
+    return '{ ' + keys.map(k => (k === '__proto__' ? '[\'__proto__\']' : IDENT.test(k) ? k : str(k)) + ': ' + js(v[k], ind)).join(', ') + ' }';
+  }
+  const pretty = v => (v === undefined ? 'Done' : typeof v === 'function' ? 'function' : JSON.stringify(v, null, 2));
+
+  // ---- What a box holds. Each returns { value, code } or { err }.
+  function readJSON(text) {
+    if (!text.trim()) return { value: null, code: 'null' };   // (an empty box is null)
+    try { const value = JSON.parse(text); return { value, code: js(value) }; } catch (e) {
+      const bare = text.replace(/"(?:[^"\\]|\\.)*"/g, '""');
+      if (/['‘’“”]|[{,]\s*[A-Za-z_$][\w$]*\s*:/.test(bare)) return { err: 'That’s not valid JSON. Use double quotes around keys and text.' };
+      const m = /line (\d+)/.exec(e.message), p = /position (\d+)/.exec(e.message);
+      const line = m ? +m[1] : p ? text.slice(0, +p[1]).split('\n').length : 0;
+      return { err: 'That’s not valid JSON.' + (line ? ` Check line ${line}.` : '') };
+    }
+  }
+  // (A menu is a list. An empty box is an empty one.)
+  function readList(text) {
+    if (!text.trim()) return { value: [], code: '[]' };
+    const r = readJSON(text);
+    return r.err || Array.isArray(r.value) ? r : { err: 'That’s not a list. Put the items in [ ].' };
+  }
+  // (Every number here is a size: above 0. An empty box is null only where null means something.)
+  function readNumber(text, nullable) {
+    const t = text.trim();
+    if (nullable && (!t || t === 'null')) return { value: null, code: 'null' };
+    const n = Number(t);
+    if (!t || !Number.isFinite(n)) return { err: 'Type a number.' };
+    return n > 0 ? { value: n, code: String(n) } : { err: 'Type a number above 0.' };
+  }
+  function readRatio(text) {
+    const t = text.trim(), m = /^(\d+(?:\.\d+)?)\s*[/:]\s*(\d+(?:\.\d+)?)$/.exec(t);
+    if (m) return +m[1] && +m[2] ? { value: m[1] / m[2], code: `${+m[1]} / ${+m[2]}` } : { err: 'Type a ratio like 16/9.' };
+    const r = readNumber(t, true);
+    return r.err ? { err: 'Type a ratio like 16/9.' } : r;
+  }
+  const READ = {
+    json: readJSON, list: readList, num: readNumber, ratio: readRatio,
+    text: t => ({ value: t, code: str(t) }),
+    bool: t => ({ value: t === 'true', code: t === 'true' ? 'true' : 'false' }),
+    event: t => ({ value: t, code: str(t) })
   };
 
-  const grid = document.getElementById('grid');
-  grid.innerHTML = Object.keys(actions).map(k => `<button data-k="${k.replace(/"/g, '&quot;')}">${k.replace(/</g, '&lt;')}</button>`).join('');
-  grid.onclick = async e => {
-    const b = e.target.closest('button'); if (!b) return;
-    try { await actions[b.dataset.k](); } catch (err) { log('error: ' + err.message, 'err'); }
+  // ---- The window menu's ready examples.
+  const EXAMPLES = {
+    checkmarks: [
+      { id: 'analog', label: 'Analog', checked: true },
+      { id: 'digital', label: 'Digital', checked: false },
+      { separator: true },
+      { id: 'clear', label: 'Clear', disabled: true }
+    ],
+    heading: [
+      { heading: true, label: 'Size' },
+      { id: 'size:small', label: 'Small', checked: false },
+      { id: 'size:big', label: 'Big', checked: true }
+    ],
+    swatches: [
+      { label: 'Color', swatches: [
+        { id: 'color:yellow', label: 'Yellow', color: '#fef08a', checked: true },
+        { id: 'color:blue', label: 'Blue', color: '#bfdbfe' },
+        { id: 'chalk:white', label: 'White chalk', color: '#f4f7f2', background: '#2f4a3a' }
+      ] }
+    ],
+    icon: [
+      { id: 'options', label: 'Options…', icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>' }
+    ]
   };
-  document.getElementById('clear').onclick = () => { document.getElementById('log').textContent = ''; };
+  const EXAMPLE_NAMES = { checkmarks: 'Checkmarks', heading: 'Heading', swatches: 'Swatches', icon: 'Icon' };
 
-  ['data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose'].forEach(ev =>
-    Board21.on(ev, (...args) => log(`event ${ev} ${args.map(a => j(a && a.accent ? '…palette' : a)).join(' ')}`, 'ev')));
+  // ---- Events, and what a handler gets.
+  const EVENTS = ['data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose'];
+  const SIGNATURES = { data: '(data, { reason })', config: '(config, { reason })', theme: '(theme, palette)', resize: '(info)', focus: '()', blur: '()', menu: '(id, item)', beforeclose: '()' };
 
-  Board21.ready().then(ctx => {
-    counter = ctx.data && Number.isFinite(ctx.data.counter) ? ctx.data.counter : 0;
-    document.getElementById('who').textContent = `${ctx.widgetId} #${ctx.instance}${ctx.standalone ? ' (standalone)' : ''}`;
-    log('ready: ' + j({ widgetId: ctx.widgetId, instance: ctx.instance, theme: ctx.theme, data: ctx.data, config: ctx.config, window: ctx.window }));
+  // ---- Every call. args: [name, kind, default, nullable]. prop: a value read, not called.
+  const json = v => JSON.stringify(v, null, 2);
+  const GROUPS = [
+    ['Saving', null, [
+      { call: 'Board21.save', args: [['data', 'json', json({ count: 1 })]] },
+      { call: 'Board21.load' },
+      { call: 'Board21.saveConfig', args: [['config', 'json', json({ big: true })]] },
+      { call: 'Board21.loadConfig' }
+    ]],
+    ['Window', null, [
+      { call: 'Board21.window.setSize', args: [['width', 'num', '480'], ['height', 'num', '320']] },
+      { call: 'Board21.window.setAspectRatio', args: [['ratio', 'ratio', '16/9', true]] },
+      { call: 'Board21.window.setMinSize', args: [['width', 'num', '400', true], ['height', 'num', '300', true]] },
+      { call: 'Board21.window.setMaxSize', args: [['width', 'num', '600', true], ['height', 'num', '400', true]] },
+      { call: 'Board21.window.setResizable', args: [['resizable', 'bool', 'false']] },
+      { call: 'Board21.window.setDragFromContent', args: [['on', 'bool', 'true']] },
+      { call: 'Board21.window.setTitle', args: [['text', 'text', 'Running']] },
+      { call: 'Board21.window.requestAttention' },
+      { call: 'Board21.window.focus' },
+      { call: 'Board21.window.maximize' },
+      { call: 'Board21.window.restore' },
+      { call: 'Board21.window.close' },
+      { call: 'Board21.window.getInfo' }
+    ]],
+    ['Menu', null, [
+      { call: 'Board21.menu.set', args: [['items', 'list', json(EXAMPLES.checkmarks)]], examples: true },
+      { call: 'Board21.menu.clear' }
+    ]],
+    ['Messages', null, [
+      { call: 'Board21.toast', args: [['text', 'text', 'Hello!']] }
+    ]],
+    ['Events', 'Here, handler writes to the log. It’s already on for every event.', [
+      { call: 'Board21.on', args: [['event', 'event', 'menu']], handler: true, sig: true },
+      { call: 'Board21.off', args: [['event', 'event', 'menu']], handler: true }
+    ]],
+    ['Board', null, [
+      { call: 'Board21.ready' },
+      { call: 'Board21.context', prop: true },
+      { call: 'Board21.embedded', prop: true },
+      { call: 'Board21.theme', prop: true },
+      { call: 'Board21.version', prop: true }
+    ]]
+  ];
+
+  // ---- The log's own handler for each event. Board21.on / off in Events add and remove these.
+  const handlers = {};
+  for (const ev of EVENTS) handlers[ev] = (...args) => logEvent(ev, args);
+  // (The window, and the log with it, goes right after beforeclose: the board shows that it came.)
+  const logClose = handlers.beforeclose;
+  handlers.beforeclose = (...args) => { Board21.toast('SDK Playground got beforeclose.'); logClose(...args); };
+  // How many times each handler is on: once from the start. on() adds it again; off() takes every copy off.
+  const heard = Object.fromEntries(EVENTS.map(ev => [ev, 1]));
+
+  // ---- The calls, built from GROUPS.
+  const calls = [];
+  function build() {
+    const root = $('#calls');
+    GROUPS.forEach(([name, hint, list], gi) => {
+      const body = h('div', { class: 'group-body', id: 'g' + gi });
+      const head = h('button', { class: 'group-head', 'aria-expanded': 'true', 'aria-controls': 'g' + gi }, name);
+      head.onclick = () => { const open = head.getAttribute('aria-expanded') !== 'true'; head.setAttribute('aria-expanded', open); body.hidden = !open; };
+      if (hint) body.append(h('p', { class: 'hint' }, hint));
+      list.forEach(def => body.append(callForm(def)));
+      root.append(h('section', { class: 'group', 'data-group': name }, h('h2', {}, head), body));
+    });
+  }
+  function callForm(def) {
+    const short = def.call.replace(/^Board21\./, '');
+    const form = h('form', { class: 'call', 'data-call': def.call, novalidate: true, autocomplete: 'off' });
+    const code = h('pre', { class: 'code' });
+    const copy = h('button', { type: 'button', class: 'copy', 'aria-label': 'Copy ' + short }, 'Copy');
+    const run = h('button', { type: 'submit', class: 'run primary', 'aria-label': 'Run ' + short }, 'Run');
+    const line = h('div', { class: 'line' }, code, copy);
+    const err = h('p', { class: 'err', role: 'alert', hidden: true });
+    const out = h('output', { class: 'result', hidden: true });
+    const c = { def, form, code, err, out, copy, inputs: [] };
+    form.append(line);
+    if (!def.args) line.append(run);
+    else {
+      const args = h('div', { class: 'args' });
+      if (def.examples) {
+        args.append(h('div', { class: 'examples', role: 'group', 'aria-label': 'Examples' }, Object.keys(EXAMPLES).map(k => {
+          const b = h('button', { type: 'button', 'data-example': k }, EXAMPLE_NAMES[k]);
+          b.onclick = () => { c.inputs[0].el.value = json(EXAMPLES[k]); fit(c.inputs[0].el); update(c); };
+          return b;
+        })));
+      }
+      for (const [name, kind, value, nullable] of def.args) {
+        let el;
+        if (kind === 'json' || kind === 'list') {
+          el = h('textarea', { 'data-arg': name, spellcheck: 'false', autocapitalize: 'off', rows: 3 });
+          el.value = value;
+          el.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); form.requestSubmit(run); } });
+          args.append(h('label', { class: 'arg json' }, h('span', { class: 'mono' }, name + ' · JSON'), el));
+        } else if (kind === 'bool' || kind === 'event') {
+          el = h('select', { 'data-arg': name, 'aria-label': name }, (kind === 'bool' ? ['true', 'false'] : EVENTS).map(o => h('option', { value: o }, o)));
+          el.value = value;
+          args.append(el);
+        } else {
+          el = h('input', { 'data-arg': name, type: 'text', inputmode: kind === 'num' ? 'decimal' : null, spellcheck: 'false', autocapitalize: 'off', placeholder: nullable ? 'null' : null, value });
+          args.append(h('label', { class: 'arg' + (kind === 'text' ? ' text' : '') }, h('span', { class: 'mono' }, name), el));
+        }
+        el.addEventListener('input', () => { if (el.tagName === 'TEXTAREA') fit(el); update(c); });
+        el.addEventListener('change', () => update(c));
+        c.inputs.push({ el, kind, nullable });
+      }
+      args.append(run);
+      form.append(args);
+      if (def.sig) { c.sig = h('p', { class: 'sig mono' }); form.append(c.sig); }
+    }
+    form.append(err, out);
+    if (def.sig) { c.note = h('p', { class: 'note', role: 'status', hidden: true }); form.append(c.note); }   // (on: when the handler is on more than once)
+    form.addEventListener('submit', e => { e.preventDefault(); runCall(c); });
+    copy.onclick = () => copyCall(c);
+    calls.push(c);
+    update(c);
+    return form;
+  }
+  // A JSON box grows with what it holds (up to 12 lines).
+  const fit = ta => { ta.rows = Math.max(2, Math.min(12, ta.value.split('\n').length)); };
+
+  // The call as it stands: its values, and the code that makes it. { err, el } when a box can't be read.
+  function read(c) {
+    const vals = [], codes = [];
+    for (const i of c.inputs) {
+      const r = READ[i.kind](i.el.value, i.nullable);
+      if (r.err) return { err: r.err, el: i.el };
+      vals.push(r.value); codes.push(r.code);
+    }
+    if (c.def.handler) { vals.push(handlers[vals[0]]); codes.push('handler'); }
+    return { vals, code: c.def.prop ? c.def.call : `${c.def.call}(${codes.join(', ')});` };
+  }
+  function update(c) {
+    const r = read(c);
+    if (c.sig) c.sig.textContent = 'handler' + SIGNATURES[c.inputs[0].el.value];
+    if (r.err) { c.code.classList.add('stale'); return r; }
+    c.code.textContent = r.code;
+    c.code.classList.remove('stale');
+    c.err.hidden = true;
+    c.inputs.forEach(i => i.el.removeAttribute('aria-invalid'));
+    return r;
+  }
+  function refuse(c, r) {
+    c.err.textContent = r.err; c.err.hidden = false; c.out.hidden = true;
+    r.el.setAttribute('aria-invalid', 'true');
+  }
+
+  // Run: the very call the code shows, looked up on Board21 as it is now.
+  function runCall(c) {
+    const r = update(c);
+    if (r.err) { refuse(c, r); return; }
+    const path = c.def.call.split('.').slice(1), key = path.pop();
+    let obj = Board21;
+    for (const p of path) obj = obj[p];
+    const entry = Log.add({ kind: 'call', text: r.code });
+    const done = (v, failed) => {
+      const text = failed ? 'Error: ' + (v && v.message || v) : pretty(v);
+      c.out.textContent = text; c.out.classList.toggle('error', !!failed); c.out.hidden = false;
+      entry.result = text; entry.failed = !!failed; Log.update(entry);
+      renderState();
+    };
+    try {
+      const v = c.def.prop ? obj[key] : obj[key](...r.vals);
+      if (c.def.handler) countHandler(c, r.vals[0]);
+      if (v && typeof v.then === 'function') v.then(x => done(x), e => done(e, true)); else done(v);
+    } catch (e) { done(e, true); }
+  }
+  // Run on() for an event whose handler is already on, and the log shows it twice: say why.
+  function countHandler(c, ev) {
+    const on = c.def.call === 'Board21.on', note = calls.find(x => x.note).note;
+    heard[ev] = on ? heard[ev] + 1 : 0;
+    note.hidden = !(on && heard[ev] > 1);
+    note.textContent = note.hidden ? '' : `Already on. Each ${ev} event now shows ${heard[ev] === 2 ? 'twice' : heard[ev] + ' times'}.`;
+  }
+
+  async function copyText(text) {
+    try { if (navigator.clipboard && navigator.clipboard.writeText) { await navigator.clipboard.writeText(text); return true; } } catch (e) { /* not allowed: try the older way */ }
+    try {
+      const ta = h('textarea', { readonly: true, style: 'position:fixed;left:0;top:0;opacity:0' });
+      ta.value = text; document.body.append(ta); ta.select();
+      const ok = document.execCommand('copy'); ta.remove(); return ok;
+    } catch (e) { return false; }
+  }
+  // A button says Copied for a moment, or Can’t copy.
+  function flash(btn, ok, label = 'Copy') {
+    clearTimeout(btn.flashT);
+    btn.textContent = ok ? 'Copied' : 'Can’t copy';
+    say(ok ? 'Copied' : 'Can’t copy');
+    btn.flashT = setTimeout(() => { btn.textContent = label; }, 1500);
+  }
+  async function copyCall(c) {
+    const r = update(c);
+    if (r.err) { refuse(c, r); return; }
+    const ok = await copyText(r.code);
+    flash(c.copy, ok);
+    if (!ok) getSelection().selectAllChildren(c.code);   // (copy it by hand)
+  }
+
+  // ---- Tabs. A window 640 px wide or more shows the log beside the other three.
+  const tabs = [...document.querySelectorAll('[role="tab"]')];
+  const wide = matchMedia('(min-width: 640px)');
+  let current = 'calls';
+  function showTab(name, focus) {
+    if (wide.matches && name === 'log') name = 'calls';
+    current = name;
+    for (const t of tabs) {
+      const on = t.dataset.tab === name;
+      t.setAttribute('aria-selected', on);
+      t.tabIndex = on ? 0 : -1;
+      $('#' + t.getAttribute('aria-controls')).hidden = !on && !(wide.matches && t.dataset.tab === 'log');
+      if (on && focus) t.focus();
+    }
+    $('#log-panel').setAttribute('role', wide.matches ? 'region' : 'tabpanel');
+    if (name === 'log' && !wide.matches) Log.toEnd();   // (the log as it comes into view; beside the rest, it stays where it is)
+    if (name === 'state') refreshWindow();
+  }
+  tabs.forEach(t => {
+    t.onclick = () => showTab(t.dataset.tab);
+    t.onkeydown = e => {
+      const shown = tabs.filter(b => b.offsetParent), i = shown.indexOf(t);
+      const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: shown.length - 1 }[e.key];
+      if (to === undefined) return;
+      e.preventDefault();
+      showTab(shown[(to + shown.length) % shown.length].dataset.tab, true);
+    };
   });
+  wide.addEventListener('change', () => { showTab(current); if (wide.matches) Log.toEnd(); });
+
+  // ---- State: content, config, window info and the context, as they are now.
+  const CONTEXT_KEYS = ['widgetId', 'widgetName', 'widgetVersion', 'instance', 'theme', 'text-style', 'palette', 'locale', 'devMode', 'boardVersion', 'sdkProtocol', 'host', 'kiosk', 'standalone'];
+  const WINDOW_KEYS = ['width', 'height', 'x', 'y', 'maximized', 'focused', 'zoom', 'corners'];
+  const SECTIONS = { data: 'Content', config: 'Config' };
+  // The text style the teacher chose, from the font that leads --b21-font.
+  function textStyle(font) {
+    const fam = (/^\s*"([^"]+)"/.exec(font || '') || [])[1];
+    return !fam ? 'Standard' : fam === 'Atkinson Hyperlegible' ? 'Easier to read' : fam === '21Board Early Readers' ? 'Early readers' : fam;
+  }
+  const font = () => getComputedStyle(document.documentElement).getPropertyValue('--b21-font').trim();
+  function row(attr, key, label, derived) {
+    const v = h('dd', { class: 'v' });
+    return h('div', { class: 'row', ['data-' + attr]: key }, h('dt', { class: derived ? 'derived' : 'mono' }, label), v);
+  }
+  function buildState() {
+    const st = $('#state');
+    for (const [k, title] of Object.entries(SECTIONS)) st.append(h('section', { 'data-key': k }, h('h3', {}, title), h('pre', { class: 'v' })));
+    st.append(h('section', { 'data-key': 'window' }, h('h3', {}, 'Window'), h('dl', {}, WINDOW_KEYS.map(k => row('wkey', k, k)))));
+    st.append(h('section', {}, h('h3', {}, 'Context'), h('dl', { id: 'ctx-rows' }, CONTEXT_KEYS.map(k => row('key', k, k === 'text-style' ? 'Text style' : k, k === 'text-style')))));
+    st.append(h('section', {}, h('h3', {}, 'SDK'), h('dl', {}, ['version', 'embedded'].map(k => row('sdk', k, k)))));
+  }
+  function put(el, text, none) {
+    if (el.textContent === text && el.classList.contains('none') === !!none) return;
+    const first = !el.dataset.seen;
+    el.dataset.seen = 1;
+    el.textContent = text;
+    el.classList.toggle('none', !!none);
+    if (!first) { el.classList.remove('changed'); void el.offsetWidth; el.classList.add('changed'); }
+  }
+  const putValue = (el, v, compact) => (v === undefined ? put(el, '—', true) : put(el, compact ? JSON.stringify(v) : json(v)));
+  // The window as last heard: a resize event, or getInfo as State opens. (A move sends no event, and on its own
+  // a page's context.window keeps its first size.)
+  let winInfo = null;
+  const refreshWindow = () => Board21.window.getInfo().then(i => { winInfo = Object.assign({}, i); renderState(); }, () => {});
+  function renderState() {
+    const ctx = Board21.context;
+    if (!ctx) return;
+    for (const k of Object.keys(SECTIONS)) putValue($(`#state [data-key="${k}"] > .v`), ctx[k]);
+    const win = Object.assign({}, ctx.window, winInfo);
+    for (const k of WINDOW_KEYS) putValue($(`#state [data-wkey="${k}"] .v`), win[k], true);
+    const rows = $('#ctx-rows');
+    for (const k of Object.keys(ctx)) {   // (anything else the board sends, after the documented keys)
+      if (!CONTEXT_KEYS.includes(k) && !SECTIONS[k] && k !== 'window') { CONTEXT_KEYS.push(k); rows.append(row('key', k, k)); }
+    }
+    for (const k of CONTEXT_KEYS) {
+      const v = $(`#state [data-key="${k}"] .v`);
+      if (k === 'text-style') put(v, textStyle(font()));
+      else if (k === 'palette') {
+        if (!v.firstChild) { const b = h('button', { class: 'link' }); b.onclick = () => showTab('palette', true); v.append(b); }
+        v.firstChild.textContent = ctx.palette ? `${Object.keys(ctx.palette).length} tokens` : '—';
+      } else putValue(v, ctx[k], true);
+    }
+    put($('#state [data-sdk="version"] .v'), JSON.stringify(Board21.version));
+    put($('#state [data-sdk="embedded"] .v'), JSON.stringify(Board21.embedded));
+  }
+
+  // ---- The palette: every --b21-* token as it is now, with what it's for.
+  const TOKENS = {
+    bg: 'Page background', surface: 'Cards and inputs', 'surface-2': 'Secondary buttons', text: 'Text', muted: 'Secondary text',
+    border: 'Borders and lines', accent: 'Main buttons', 'on-accent': 'Text on accent', 'accent-soft': 'Highlights',
+    danger: 'Errors', success: 'Success', warning: 'Warnings', font: 'Font', radius: 'Corners'
+  };
+  function renderPalette() {
+    const list = $('#palette .tokens'), css = getComputedStyle(document.documentElement);
+    const keys = Object.keys(TOKENS).concat(Object.keys((Board21.context && Board21.context.palette) || {}).filter(k => !(k in TOKENS)));
+    for (const k of keys) {
+      const name = '--b21-' + k;
+      let b = list.querySelector(`[data-token="${name}"]`);
+      if (!b) {
+        const sw = h('span', { class: 'swatch', 'aria-hidden': 'true' });
+        // (Text tokens show text on the fill they go with.)
+        if (k === 'font') { sw.textContent = 'Aa'; sw.style.fontFamily = `var(${name})`; } else if (k === 'radius') { sw.style.borderRadius = `var(${name})`; sw.style.background = 'var(--b21-accent-soft)'; }
+        else if (k === 'on-accent') { sw.textContent = 'Aa'; sw.style.color = `var(${name})`; sw.style.background = 'var(--b21-accent)'; }
+        else if (k === 'accent-soft') { sw.textContent = 'Aa'; sw.style.color = 'var(--b21-text)'; sw.style.background = `var(${name})`; }
+        else sw.style.background = `var(${name})`;
+        b = h('button', { class: 'token', 'data-token': name }, sw, h('span', { class: 'top' }, h('code', { class: 'name' }, name), h('span', { class: 'use' }, TOKENS[k] || '')), h('code', { class: 'value' }));
+        b.onclick = async () => { const ok = await copyText(name); const u = $('.use', b); clearTimeout(b.flashT); u.textContent = ok ? 'Copied' : 'Can’t copy'; say(u.textContent); b.flashT = setTimeout(() => { u.textContent = TOKENS[k] || ''; }, 1500); };
+        list.append(b);
+      }
+      const v = css.getPropertyValue(name).trim();
+      $('.value', b).textContent = v;
+      if (!(k in TOKENS) && k !== 'font' && k !== 'radius' && !CSS.supports('color', v)) { const sw = $('.swatch', b); sw.textContent = 'Aa'; sw.style.background = ''; }
+    }
+  }
+
+  // ---- The log: calls and events, newest last.
+  const p2 = n => String(n).padStart(2, '0');
+  const stamp = d => `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}.${String(d.getMilliseconds()).padStart(3, '0')}`;
+  const Log = {
+    MAX: 500, all: [], waiting: [], paused: false, filter: 'all', el: $('#log'),
+    key: e => (e.kind === 'call' ? 'calls' : e.kind === 'event' ? e.ev : e.kind),
+    add(e) {
+      e.at = new Date();
+      if (this.paused) { this.waiting.push(e); if (this.waiting.length > this.MAX) this.waiting.shift(); this.badge(); return e; }
+      this.put(e); return e;
+    },
+    put(e) {
+      const atEnd = this.el.scrollHeight - this.el.scrollTop - this.el.clientHeight < 40;
+      const empty = $('.empty', this.el); if (empty) empty.remove();
+      e.node = h('div', { class: 'entry', 'data-kind': e.kind, 'data-event': e.ev || null });
+      this.draw(e);
+      this.el.append(e.node);
+      this.all.push(e);
+      while (this.all.length > this.MAX) this.all.shift().node.remove();
+      if (atEnd) this.toEnd();
+    },
+    draw(e) {
+      const tag = e.kind === 'event' ? e.ev : e.kind;
+      const multi = e.text.includes('\n');
+      e.node.replaceChildren(...[h('div', { class: 'head' }, h('span', { class: 'time' }, stamp(e.at)), h('span', { class: 'tag' }, tag), multi ? null : h('span', { class: 'text' }, e.text)),
+        multi ? h('pre', {}, e.text) : null, (e.blocks || []).map(b => h('pre', {}, b)),
+        e.result != null ? h('pre', { class: 'res' + (e.failed ? ' error' : '') }, (e.failed ? '' : '→ ') + e.result) : null].flat().filter(Boolean));
+      e.node.hidden = this.filter !== 'all' && this.key(e) !== this.filter;
+    },
+    update(e) { if (e.node) this.draw(e); },
+    toEnd() { this.el.scrollTop = this.el.scrollHeight; },
+    badge() {
+      const b = $('#pause');
+      b.setAttribute('aria-pressed', this.paused);
+      b.replaceChildren(this.paused ? 'Resume' : 'Pause');
+      if (this.paused && this.waiting.length) b.append(h('span', { class: 'badge' }, String(this.waiting.length)));
+    },
+    text(e) {
+      return [`${stamp(e.at)}  ${e.kind === 'event' ? e.ev : e.kind}  ${e.text}`].concat(e.blocks || [], e.result != null ? [(e.failed ? '' : '→ ') + e.result] : []).join('\n');
+    }
+  };
+  function logEvent(ev, args) {
+    const inline = [], blocks = [];
+    for (const a of args) (a && typeof a === 'object' ? blocks : inline).push(a && typeof a === 'object' ? json(a) : a === undefined ? 'undefined' : JSON.stringify(a));
+    Log.add({ kind: 'event', ev, text: inline.join(', '), blocks });
+  }
+  $('#filter').append(h('option', { value: 'all' }, 'All'), h('option', { value: 'calls' }, 'Calls'), ...EVENTS.map(ev => h('option', { value: ev }, ev)));
+  $('#filter').onchange = e => { Log.filter = e.target.value; Log.all.forEach(x => { x.node.hidden = Log.filter !== 'all' && Log.key(x) !== Log.filter; }); Log.toEnd(); };
+  $('#pause').onclick = () => {
+    Log.paused = !Log.paused;
+    if (!Log.paused) { const w = Log.waiting; Log.waiting = []; w.forEach(e => Log.put(e)); Log.toEnd(); }
+    Log.badge();
+  };
+  $('#clear').onclick = () => {
+    Log.all.forEach(e => e.node.remove()); Log.all = []; Log.waiting = []; Log.badge();
+    Log.el.replaceChildren(h('p', { class: 'empty' }, 'Calls and events show here.'));
+  };
+  $('#copy-log').onclick = async e => flash(e.currentTarget, await copyText(Log.all.filter(x => !x.node.hidden).map(x => Log.text(x)).join('\n')));
+
+  // ---- Start.
+  build();
+  buildState();
+  renderPalette();
+  for (const ev of EVENTS) Board21.on(ev, handlers[ev]);
+  Board21.on('resize', i => { winInfo = Object.assign({}, i); });
+  Board21.on('focus', () => { if (winInfo) winInfo.focused = true; });
+  Board21.on('blur', () => { if (winInfo) winInfo.focused = false; });
+  // (State and the palette follow on their own, whatever the log hears.)
+  for (const ev of ['data', 'config', 'theme', 'resize', 'focus', 'blur']) Board21.on(ev, renderState);
+  Board21.on('theme', renderPalette);
+  Board21.ready().then(ctx => {
+    // The save boxes start from what's saved, if anything.
+    for (const [call, v] of [['Board21.save', ctx.data], ['Board21.saveConfig', ctx.config]]) {
+      const c = calls.find(x => x.def.call === call);
+      if (v != null) { c.inputs[0].el.value = json(v); update(c); }
+      fit(c.inputs[0].el);
+    }
+    fit(calls.find(x => x.def.call === 'Board21.menu.set').inputs[0].el);
+    renderState();
+    renderPalette();
+    Log.add({ kind: 'ready', text: '', blocks: [json(ctx)] });
+  });
+  showTab('calls');
 </script>
 </body>
 </html>

@@ -225,7 +225,7 @@ tests/run.js            Optional automated browser tests
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps-21sketch-21timer-21doccam) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
-| **SDK Playground** | Developer mode only: every SDK call and event |
+| **SDK Playground** | Developer mode only. Run any SDK call with your own values and copy its code. Watch the window's state, the palette and every event |
 
 ---
 
