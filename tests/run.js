@@ -2254,7 +2254,7 @@ const SUITES = [
 
     await openSettings(page);
     let ch = await choices();
-    ok(ch.keys === 'blue,purple,red,orange,green,slate,accent-custom' && ch.names === 'Blue accent,Purple accent,Red accent,Orange accent,Green accent,Slate accent,Custom color' && ch.checked === 'blue✓',
+    ok(ch.keys === 'blue,purple,red,orange,green,slate,accent-custom' && ch.names === 'Blue accent,Purple accent,Rose accent,Orange accent,Green accent,Slate accent,Custom color' && ch.checked === 'blue✓',
       `Accent color: six colors (one red and one green: Pink and Teal are gone), then Custom…, in one set; Blue chosen, with a check (${ch.keys}; ${ch.checked})`);
     ok(!!ch.pill && ch.pill.text === 'Custom…' && ch.pill.title === 'Choose any color' && ch.pill.inGroup && ch.input === 'color -1 true',
       `Custom… is a choice like Background’s: “Custom…”, “Choose any color”, its color input out of the keyboard’s way (${JSON.stringify(ch.pill)}; ${ch.input})`);

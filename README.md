@@ -148,7 +148,7 @@ Settings opens.
     picking a color hides it (it's kept), and picking *Photo* shows it again. While it shows: tap its picture to
     choose what stays in view, *Fill the board* or *Whole photo*, fade, *Change…* and *Remove*. The photo is kept
     on the device and in full backups, not in templates.
-  - **Accent color:** Blue, Purple, Red, Orange, Green, Slate or *Custom…* for any color. A custom color adjusts to
+  - **Accent color:** Blue, Purple, Rose, Orange, Green, Slate or *Custom…* for any color. A custom color adjusts to
     stay readable in Light and Dark. The accent colors widgets and tints every title bar. With Board Sync, on all
     your devices. A board that had Pink or Teal is now Blue.
   - **Text style ▸** for 21Board and its widgets: *Standard* (the device's own font), *Easier to read* (Atkinson

@@ -81,7 +81,7 @@ storage can't be read still has every page.
                            //   (Settings → Advanced → Windows stop at each other's edges: Off = snapping false;
                            //   Light / Medium / Firm = snapping true with "gentle" / "normal" / "strong")
   pickerCorners: "both",   // Settings → Advanced → Widget Picker: "both" | "left" | "right"
-  accent: "blue",          // the accent every release reads: "blue" | "purple" | "red" | "orange" | "green" | "slate".
+  accent: "blue",          // the accent every release reads: "blue" | "purple" | "red" (shown as Rose) | "orange" | "green" | "slate".
                            //   "blue" for a custom color. "pink" and "teal", from before 2026.11.18-2, show as Blue.
   accentColor: "#8040c0",  // from 2026.11.18-2: the accent chosen, one of the six or a custom "#rrggbb" (lowercase);
                            //   "" before any. It shows while accent goes with it: itself, or "blue" for a custom color.

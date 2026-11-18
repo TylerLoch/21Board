@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-2';
-  const BOARD_BUILD = '3ee9e440';
+  const BOARD_VERSION = '2026.11.18-3';
+  const BOARD_BUILD = '6757d17f';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -124,9 +124,10 @@
 
   // Accent colors (Settings › Accent color): [light theme, dark theme, name]. The light theme's shade takes white text
   // (4.5:1, on the widgets' #f9fafb too). The dark theme's shade takes dark text (on-accent, #0b1220) and stands out on
-  // the window color (6:1 on #1e1e1e). Custom… takes any color (customShades). Pink and Teal went in 2026.11.18-2.
+  // the window color (6:1 on #1e1e1e). Custom… takes any color (customShades). Pink and Teal went in 2026.11.18-2. Red became Rose in 2026.11.18-3
+  // (its key is still 'red').
   const ACCENTS = {
-    blue: ['#2563eb', '#60a5fa', 'Blue'], purple: ['#7c3aed', '#a78bfa', 'Purple'], red: ['#dc2626', '#f87171', 'Red'],
+    blue: ['#2563eb', '#60a5fa', 'Blue'], purple: ['#7c3aed', '#a78bfa', 'Purple'], red: ['#db1f48', '#fb7185', 'Rose'],
     orange: ['#c2410c', '#fb923c', 'Orange'], green: ['#15803d', '#4ade80', 'Green'], slate: ['#475569', '#94a3b8', 'Slate']
   };
   function mixHex(a, b, t) { // t = share of b
