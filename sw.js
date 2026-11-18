@@ -11,22 +11,26 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.18-6';
+const VERSION = '2026.11.18-7';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '999d7d2e';
+const BUILD = '5e55cbaf';
 const FILES = {
-  './': '87872455c8289dc6',
-  'index.html': '87872455c8289dc6',
-  'board.js': '72bd21f95581b0a2',
+  './': '7cb7c94ccd3ed62b',
+  'index.html': '7cb7c94ccd3ed62b',
+  'board.js': 'ceda9b8119ff4c67',
   'sdk/board21.js': 'bb51d90e54690fac',
   'sdk/board21-dev.js': '95479bed48fa2ec3',
-  'sdk/dev/board-shell.js': '63ea4be8582a3ea1',
+  'sdk/dev/board-shell.js': 'a77ebd06bab57ab5',
   'sdk/lab.html': '21cda27716334794',
   'widgets/registry.js': '238a5766508fe086',
   'manifest.webmanifest': '18a4aa7b736c3183',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
+  'icons/gear-21.png': '1c2c1163ae6ee714',
+  'icons/goat.png': 'c6072947ca83bc84',
+  'LICENSE': 'cfc7749b96f63bd3',
+  'LICENSE-DOCS': '9ba9550ad48438d0',
   'fonts/AtkinsonHyperlegible-Regular.woff2': '57f2debe054cd288',
   'fonts/AtkinsonHyperlegible-Bold.woff2': '21b2f082b7390e74',
   'fonts/AtkinsonHyperlegible-OFL.txt': 'f32d22b3908fcad2',
@@ -70,6 +74,11 @@ const SHELL_FILES = [
   'manifest.webmanifest',
   'icons/icon-192.png',
   'icons/icon-512.png',
+  // Settings → About (board.js, aboutSettings): the 21 gear, the goat, and the license texts it opens
+  'icons/gear-21.png',
+  'icons/goat.png',
+  'LICENSE',
+  'LICENSE-DOCS',
   // Settings → Text style (board.js section 12b): loaded only when chosen, but always in the copy, so they work offline
   'fonts/AtkinsonHyperlegible-Regular.woff2',
   'fonts/AtkinsonHyperlegible-Bold.woff2',

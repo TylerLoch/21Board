@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-6';
-  const BOARD_BUILD = '999d7d2e';
+  const BOARD_VERSION = '2026.11.18-7';
+  const BOARD_BUILD = '5e55cbaf';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3776,7 +3776,9 @@
   //   This page    Saved widgets ▸
   //   Appearance   Theme, Background ▸, Accent color, Text style ▸, Board shape
   //   Advanced ▸   Widget Picker, Clock in the corner, Size of windows and menus, moving windows, board history, backups
-  //                and storage, Developer mode, About
+  //                and storage, Developer mode
+  //   About ▸      the 21 gear, the team's line, the release and where the work is stored, License, Credits, the goat
+  //                (aboutSettings)
   // ▸ is a group shown as one row with its value, that opens in place (settingsGroup; Settings.groups). A group that
   // is closed is still in the page, hidden, so whatever looks for its parts (refreshStatus, the clock's fit note)
   // finds them.
@@ -4485,6 +4487,75 @@
     return { ratio, dw, dh, ox, oy, W, H, mx: (ox + f.x * dw) / W, my: (oy + f.y * dh) / H };
   }
 
+  // Settings → About: a group of its own, the last row, below Advanced; closed, its grey line is the version. Top to
+  // bottom: the 21 gear, the team's line, the release (name and build, to read out to IT) and where the work is stored,
+  // License (each license's full text opens in place: LicenseText), Credits, and the goat. The two pictures are the
+  // district's files exactly as given, in light and dark alike; they and the license texts are part of the offline
+  // copy (sw.js). Nothing in it leaves 21Board (no links: a kiosk can't open them).
+  // The widget dev window shows only the release and the storage line: in an AI tool's preview it runs on the tool's
+  // site, and the pictures and texts would have to come from 21Board's (see LETTERS_HERE).
+  // note: the board isn't being saved (SaveNote), so the storage line is left out.
+  const ABOUT_LICENSES = [['code-license', 'Code', 'Apache 2.0', 'LICENSE'], ['docs-license', 'Docs', 'CC BY 4.0', 'LICENSE-DOCS']];
+  const OFL = 'SIL Open Font License 1.1';
+  const ABOUT_FONTS = [['Atkinson Hyperlegible', 'by the Braille Institute', OFL], ['Andika', 'by SIL International', OFL],
+    ['Excalifont', 'by Excalidraw', OFL], ['Crayon Libre', 'by GGBotNet', 'CC0 1.0']];
+  function aboutSettings(note) {
+    // (Each on a line of its own: the release, the offline copy when it is another build (refreshStatus), where work is stored.)
+    const release = `<div class="about"><span>21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}</span><span id="st-cache"></span>${note ? '' : `
+      <span>${Link.dir ? 'Your work is stored only on this device and in your Drive folder.' : 'Your work is stored only on this device.'}</span>`}</div>`;
+    const content = LAB ? release : `<div class="about-top">
+        <img class="about-gear" src="icons/gear-21.png" alt="21 gear">
+        <p class="about-made">Made with Love and Stubbornness by the CCSD21 Technology Services team at Gill Center, Wheeling, Illinois, USA</p>
+        ${release}</div>
+      <h4>License</h4>
+      <p class="about-line">© 2026 Community Consolidated School District 21</p>
+      ${ABOUT_LICENSES.map(([key, label, name, file]) => settingsGroup(key, label, esc(name), `<div class="license-text" data-file="${file}"><p class="hint">Loading…</p></div>`)).join('')}
+      <h4>Credits</h4>
+      <ul class="about-credits">${ABOUT_FONTS.map(([font, maker, license]) => `<li><b>${font}</b> ${maker} <span>${license}</span></li>`).join('')}
+        <li>YouTube and Google Drive are trademarks of Google LLC. Vimeo is a trademark of Vimeo.com, Inc.</li></ul>
+      <img class="about-goat" src="icons/goat.png" alt="Goat">`;
+    return settingsGroup('about', 'About', '', content, { sub: `Version ${esc(BOARD_VERSION)}`, inset: true });
+  }
+  // About's license texts, read from the offline copy the first time their group opens, then kept for this tab. They
+  // are shown as paragraphs that flow to the width of Settings (the files break their lines for a text editor), except
+  // a block of short lines (the Apache title), which keeps them; the files' headings are headings (LICENSE_HEAD).
+  // Settings.render puts them in place at once when already read, before the keyboard goes back to its control
+  // (focus() lays the page out): drawing Settings again never shortens it for a moment, which would move the text.
+  // A read that failed shows its note at once too. It is tried again when its group is opened again (again), except
+  // in a copy opened from disk, where the browser never allows it: that note says where the file is instead.
+  const LICENSE_HEAD = /^(Apache License|TERMS AND CONDITIONS|END OF TERMS|APPENDIX:|Attribution 4\.0 International|Using Creative Commons|Creative Commons Attribution|Section \d+ -- )/;
+  const LicenseText = {
+    paras: {},     // file → its paragraphs ({ text, head }), or null: it couldn't be read
+    reading: {},   // file → the read under way
+    fill(root) {
+      for (const el of root.querySelectorAll('.license-text[data-file]')) {
+        const file = el.dataset.file, box = el.closest('.drawer');
+        if (box && box.hidden) continue;
+        if (file in this.paras) { this.show(el, file); continue; }
+        if (!this.reading[file]) {
+          this.reading[file] = fetch(file).then(r => (r.ok ? r.text() : Promise.reject(new Error(`${file}: ${r.status}`))))
+            .then(text => { this.paras[file] = this.split(text); }, () => { this.paras[file] = null; })
+            .finally(() => { delete this.reading[file]; });
+        }
+        this.reading[file].then(() => { if (el.isConnected) this.show(el, file); });
+      }
+    },
+    split(text) {
+      return text.split(/\n\s*\n/).map(b => b.split('\n').map(l => l.trim()).filter(Boolean)).filter(ls => ls.length && !/^[=_-]+$/.test(ls.join('')))
+        .map(ls => ({ text: ls.join(ls.every(l => l.length <= 40) ? '\n' : ' '), head: LICENSE_HEAD.test(ls[0]) && ls.every(l => l.length <= 70) }));
+    },
+    // A license's group opened again: a read that failed is tried again.
+    again(key) {
+      const lic = ABOUT_LICENSES.find(l => l[0] === key);
+      if (lic && this.paras[lic[3]] === null && location.protocol !== 'file:') delete this.paras[lic[3]];
+    },
+    show(el, file) {
+      const put = (tag, text, cls) => Object.assign(document.createElement(tag), { textContent: text, className: cls || '' });
+      const note = location.protocol === 'file:' ? `Can’t show the license here. See the ${file} file.` : 'Can’t load the license. Try again online.';
+      el.replaceChildren(...(this.paras[file] ? this.paras[file].map(q => put(q.head ? 'h5' : 'p', q.text)) : [put('p', note, 'hint')]));
+    }
+  };
+
   // Settings → Board Sync (section 13b): the board on this device and the others, through a folder in Google Drive.
   // Not linked: one row, whose Set up… starts the setup (Link.setup, section 13b).
   // Linked: what is wrong, if anything (as the note on the board says), then three rows: the folder, with how
@@ -4790,9 +4861,7 @@
         <div class="row"><div><div class="lbl">Developer mode</div><div class="hint">For people who build widgets.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>
         ${st.devMode ? `<div class="row stack"><div><div class="lbl">Test a widget</div><div class="hint">An uploaded file runs sealed off from your boards. It is kept on this device only, never in exports.</div></div>
           <button class="btn primary" data-act="dev-upload">${svg('import')}Upload file…</button>
-          ${devList ? `<div class="inst-list">${devList}</div>` : ''}</div>` : ''}` : ''}
-        <div class="about">21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}<span id="st-cache"></span>${note ? '' : `<br>
-        ${Link.dir ? 'Your work is stored only on this device and in your Drive folder.' : 'Your work is stored only on this device.'}`}</div>`;
+          ${devList ? `<div class="inst-list">${devList}</div>` : ''}</div>` : ''}` : ''}`;
       // The keyboard stays on the control it was on (a group's row, a choice): Settings is drawn afresh below.
       const was = this.body.contains(document.activeElement) && document.activeElement.dataset.act ? document.activeElement : null;
       const link = this.linkShown = Link.supported ? linkSettings(sw, seg) : '';   // (see linkChanged)
@@ -4817,7 +4886,8 @@
         ${shapeSettingsRow(seg)}
 
         <div class="gap"></div>
-        ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), warnLabel: '(backup overdue)', inset: true })}`;
+        ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), warnLabel: '(backup overdue)', inset: true })}
+        ${aboutSettings(note)}`;
       if (ifChanged && noLook(noStatus(html)) === noLook(noStatus(this.drawn))) {
         if (noStatus(html) !== noStatus(this.drawn)) this.putLook(html);
         const line = $('#set-link-status', this.body);
@@ -4825,6 +4895,7 @@
         this.drawn = html; this.refreshStatus(true); return;
       }
       this.body.innerHTML = this.drawn = html;
+      LicenseText.fill(this.body);   // (About's license texts, in the groups that are open: before focus() lays the page out)
       if (was) {
         const again = $$(`[data-act="${CSS.escape(was.dataset.act)}"]`, this.body).find(b => b.dataset.val === was.dataset.val);
         if (again) again.focus({ preventScroll: true });
@@ -4872,7 +4943,7 @@
           : '<span class="status-dot"></span>Saving an offline copy…';
       }
       // (The offline copy is named only when it isn't the version this tab runs: see section 15.)
-      if (cache) cache.textContent = S.sw.version && S.sw.build !== BOARD_BUILD ? ` · Offline copy ${S.sw.version}${S.sw.build ? ` (${S.sw.build})` : ''}` : '';
+      if (cache) cache.textContent = S.sw.version && S.sw.build !== BOARD_BUILD ? `Offline copy ${S.sw.version}${S.sw.build ? ` (${S.sw.build})` : ''}` : '';
       const renderPersist = () => {
         const per2 = $('#st-persist', this.body), hint = $('#st-persist-hint', this.body), bk = $('#st-backup', this.body);
         if (bk) { const line = backupLine(this.needsLook()); if (bk.outerHTML !== line) bk.outerHTML = line; }
@@ -4924,7 +4995,7 @@
       if (classroomAct(act, val)) { this.render(); return; }   // section 12b
       switch (act) {
         case 'group':   // a group opens or closes (settingsGroup)
-          if (this.groups.has(val)) this.groups.delete(val); else this.groups.add(val);
+          if (this.groups.has(val)) this.groups.delete(val); else { this.groups.add(val); LicenseText.again(val); }
           this.render();
           this.reveal(val);
           break;
