@@ -707,45 +707,45 @@
       <div class="nav-actions">
         <!-- THEME ICON & POPOVER -->
         <div class="icon-menu-wrap">
-          <button type="button" class="mini-icon-btn" id="btn-theme-icon" aria-label="Theme menu" title="Theme and Colors">
+          <button type="button" class="mini-icon-btn" id="btn-theme-icon" aria-label="Theme" title="Theme">
             <span id="theme-season-icon">🍂</span>
           </button>
           <div class="popover-menu" id="theme-popover">
             <div class="theme-pill-group">
-              <button type="button" class="theme-pill" data-theme="classic" title="Classic Blue & Green">🌈 Classic</button>
-              <button type="button" class="theme-pill" data-theme="autumn" title="Autumn Warmth">🍂 Autumn</button>
-              <button type="button" class="theme-pill" data-theme="winter" title="Winter Snow">❄️ Winter</button>
-              <button type="button" class="theme-pill" data-theme="spring" title="Spring Bloom">🌸 Spring</button>
-              <button type="button" class="theme-pill" data-theme="summer" title="Summer Sunshine">☀️ Summer</button>
-              <button type="button" class="theme-pill" data-theme="calm" title="Calm Lavender Low-Stim">💜 Calm</button>
+              <button type="button" class="theme-pill" data-theme="classic">🌈 Classic</button>
+              <button type="button" class="theme-pill" data-theme="autumn">🍂 Autumn</button>
+              <button type="button" class="theme-pill" data-theme="winter">❄️ Winter</button>
+              <button type="button" class="theme-pill" data-theme="spring">🌸 Spring</button>
+              <button type="button" class="theme-pill" data-theme="summer">☀️ Summer</button>
+              <button type="button" class="theme-pill" data-theme="calm" title="Low-stim colors">💜 Calm</button>
             </div>
           </div>
         </div>
 
         <!-- DONE CONTROLS ICON & POPOVER -->
         <div class="icon-menu-wrap">
-          <button type="button" class="mini-icon-btn" id="btn-done-icon" aria-label="Done controls menu" title="Task Done Controls">
+          <button type="button" class="mini-icon-btn" id="btn-done-icon" aria-label="Mark done" title="Mark done">
             <span>⭐</span>
             <span class="status-badge-dot" id="done-status-badge"></span>
           </button>
           <div class="popover-menu" id="done-popover">
-            <button type="button" class="action-btn btn-done-toggle" id="btn-toggle-first" title="Mark First Task as Done">
+            <button type="button" class="action-btn btn-done-toggle" id="btn-toggle-first">
               <span id="first-done-icon">✔️</span>
-              <span id="first-done-text">First Done</span>
+              <span id="first-done-text">First done</span>
             </button>
-            <button type="button" class="action-btn btn-done-toggle" id="btn-toggle-then" title="Mark Then Task as Done">
+            <button type="button" class="action-btn btn-done-toggle" id="btn-toggle-then">
               <span id="then-done-icon">🌟</span>
-              <span id="then-done-text">Then Done</span>
+              <span id="then-done-text">Then done</span>
             </button>
-            <button type="button" class="action-btn btn-both-done" id="btn-toggle-both" title="Mark both tasks as complete">
+            <button type="button" class="action-btn btn-both-done" id="btn-toggle-both">
               <span id="both-done-icon">🎉</span>
-              <span id="both-done-text">Both Done</span>
+              <span id="both-done-text">Both done</span>
             </button>
           </div>
         </div>
 
         <!-- SWAP ICON BUTTON -->
-        <button type="button" class="mini-icon-btn" id="btn-swap" aria-label="Swap Cards" title="Swap First and Then">
+        <button type="button" class="mini-icon-btn" id="btn-swap" aria-label="Swap First and Then" title="Swap First and Then">
           <span>⇄</span>
         </button>
       </div>
@@ -756,7 +756,7 @@
       <!-- FIRST COLUMN (NO NUMBER) -->
       <div class="panel-column">
         <div class="panel-heading first-heading" id="first-heading">FIRST</div>
-        <button type="button" class="pecs-card first-card" id="btn-first" aria-label="First task card">
+        <button type="button" class="pecs-card first-card" id="btn-first">
           <div class="pecs-category-badge" id="first-badge">Academic</div>
           <div class="pecs-icon-wrap">
             <span class="pecs-icon" id="first-icon">📝</span>
@@ -782,7 +782,7 @@
       <!-- THEN COLUMN (NO NUMBER) -->
       <div class="panel-column">
         <div class="panel-heading then-heading" id="then-heading">THEN</div>
-        <button type="button" class="pecs-card then-card" id="btn-then" aria-label="Then reward card">
+        <button type="button" class="pecs-card then-card" id="btn-then">
           <div class="pecs-category-badge" id="then-badge">Reward</div>
           <div class="pecs-icon-wrap">
             <span class="pecs-icon" id="then-icon">🧩</span>
@@ -804,9 +804,9 @@
   <div class="modal-overlay" id="picker-modal" role="dialog" aria-modal="true">
     <div class="picker-box">
       <div class="picker-topbar">
-        <h2 class="picker-title" id="picker-title">Select Card</h2>
+        <h2 class="picker-title" id="picker-title">Choose a card</h2>
         <div class="picker-search-wrap">
-          <input type="text" class="picker-search-input" id="search-input" placeholder="🔍 Search PECS..." aria-label="Search PECS symbols">
+          <input type="text" class="picker-search-input" id="search-input" placeholder="🔍 Search cards" aria-label="Search cards">
         </div>
         <button type="button" class="close-btn" id="picker-close" aria-label="Close">✕</button>
       </div>
@@ -827,7 +827,7 @@
         'Academic': { border: '#2563eb', badgeBg: '#dbeafe', label: 'Academic' },
         'Sensory':  { border: '#db2777', badgeBg: '#fce7f3', label: 'Sensory' },
         'Routine':  { border: '#d97706', badgeBg: '#fef3c7', label: 'Routine' },
-        'Snack':    { border: '#9333ea', badgeBg: '#f3e8ff', label: 'Food/Snack' },
+        'Snack':    { border: '#9333ea', badgeBg: '#f3e8ff', label: 'Snack' },
         'Reward':   { border: '#16a34a', badgeBg: '#dcfce7', label: 'Reward' },
         'Social':   { border: '#ea580c', badgeBg: '#ffedd5', label: 'Social' },
         'Seasonal': { border: '#e11d48', badgeBg: '#ffe4e6', label: 'Seasonal' }
@@ -1038,6 +1038,7 @@
           firstHeading.textContent = 'FIRST';
           thenHeading.textContent = 'THEN';
         }
+        setMenu();
       }
 
       themePills.forEach(pill => {
@@ -1079,6 +1080,37 @@
         }
       }
 
+      // The window menu, with a tick on what is on: set again whenever the board changes (renderBoard, applyTheme,
+      // Sound and Animation), once 21Board has answered.
+      let menuReady = false, menuNow = '';
+      function setMenu() {
+        if (!menuReady) return;
+        const items = [
+          { id: 'toggle_first', label: 'First done', checked: state.firstDone },
+          { id: 'toggle_then', label: 'Then done', checked: state.thenDone },
+          { id: 'mark_both', label: 'Mark both done' },
+          { id: 'clear_both', label: 'Clear done marks' },
+          { id: 'swap', label: 'Swap First and Then' },
+          { id: 'toggle_sound', label: 'Sound', checked: state.sound },
+          { id: 'toggle_motion', label: 'Animation', checked: state.motion },
+          { heading: true, label: 'Theme' },
+          { id: 'theme_classic', label: '🌈 Classic', checked: state.theme === 'classic' },
+          { id: 'theme_autumn', label: '🍂 Autumn', checked: state.theme === 'autumn' },
+          { id: 'theme_winter', label: '❄️ Winter', checked: state.theme === 'winter' },
+          { id: 'theme_spring', label: '🌸 Spring', checked: state.theme === 'spring' },
+          { id: 'theme_summer', label: '☀️ Summer', checked: state.theme === 'summer' },
+          { id: 'theme_calm', label: '💜 Calm', checked: state.theme === 'calm' },
+          { heading: true, label: 'Presets' },
+          { id: 'reset_default', label: 'Classwork ➔ Free Choice' },
+          { id: 'preset_work_ipad', label: 'Classwork ➔ iPad' },
+          { id: 'preset_desk_break', label: 'Sit at Table ➔ Quiet Corner' },
+          { id: 'preset_clean_recess', label: 'Clean Up ➔ Playground' },
+          { id: 'preset_work_snack', label: 'Math ➔ Snack Time' }
+        ];
+        const sig = JSON.stringify(items);
+        if (sig !== menuNow) { menuNow = sig; Board21.menu.set(items); }
+      }
+
       function updateCardDisplay(target, item) {
         const card = document.getElementById(`btn-${target}`);
         const badge = document.getElementById(`${target}-badge`);
@@ -1104,12 +1136,12 @@
           firstDoneOverlay.classList.add('visible');
           btnToggleFirst.classList.add('is-done');
           firstDoneIcon.textContent = '✔️';
-          firstDoneText.textContent = 'First: Done';
+          firstDoneText.textContent = 'First done';
         } else {
           firstDoneOverlay.classList.remove('visible');
           btnToggleFirst.classList.remove('is-done');
           firstDoneIcon.textContent = '⭕';
-          firstDoneText.textContent = 'First Done';
+          firstDoneText.textContent = 'First done';
         }
 
         // Then Done status
@@ -1117,12 +1149,12 @@
           thenDoneOverlay.classList.add('visible');
           btnToggleThen.classList.add('is-done');
           thenDoneIcon.textContent = '🌟';
-          thenDoneText.textContent = 'Then: Done';
+          thenDoneText.textContent = 'Then done';
         } else {
           thenDoneOverlay.classList.remove('visible');
           btnToggleThen.classList.remove('is-done');
           thenDoneIcon.textContent = '⭕';
-          thenDoneText.textContent = 'Then Done';
+          thenDoneText.textContent = 'Then done';
         }
 
         // Pulse Then Card when First is Done and waiting for Then
@@ -1137,19 +1169,27 @@
         if (bothDone) {
           btnToggleBoth.classList.add('all-done');
           bothDoneIcon.textContent = '↺';
-          bothDoneText.textContent = 'Reset Done';
+          bothDoneText.textContent = 'Clear done marks';
           doneStatusBadge.textContent = '🎉';
         } else if (state.firstDone || state.thenDone) {
           btnToggleBoth.classList.remove('all-done');
           bothDoneIcon.textContent = '🎉';
-          bothDoneText.textContent = 'Both Done';
+          bothDoneText.textContent = 'Both done';
           doneStatusBadge.textContent = '✔️';
         } else {
           btnToggleBoth.classList.remove('all-done');
           bothDoneIcon.textContent = '🎉';
-          bothDoneText.textContent = 'Both Done';
+          bothDoneText.textContent = 'Both done';
           doneStatusBadge.textContent = '';
         }
+
+        // What a screen reader hears for each card: its place, its picture and whether it is done ("First, Math, done").
+        // The done buttons say the same either way, so they are heard as pressed or not.
+        btnFirst.setAttribute('aria-label', `First, ${state.first.label}${state.firstDone ? ', done' : ''}`);
+        btnThen.setAttribute('aria-label', `Then, ${state.then.label}${state.thenDone ? ', done' : ''}`);
+        btnToggleFirst.setAttribute('aria-pressed', String(!!state.firstDone));
+        btnToggleThen.setAttribute('aria-pressed', String(!!state.thenDone));
+        setMenu();
       }
 
       function toggleFirstDone() {
@@ -1194,7 +1234,7 @@
 
       function openPicker(target) {
         activeTarget = target;
-        modalTitle.textContent = `Choose "${target === 'first' ? 'FIRST' : 'THEN'}" Card`;
+        modalTitle.textContent = `Choose a ${target === 'first' ? 'First' : 'Then'} card`;
         modal.classList.add('active');
         searchInput.value = '';
         searchQuery = '';
@@ -1306,7 +1346,7 @@
           empty.style.textAlign = 'center';
           empty.style.padding = '20px';
           empty.style.color = 'var(--b21-muted, #64748b)';
-          empty.textContent = 'No matching PECS symbols found.';
+          empty.textContent = 'No cards match.';
           aacGrid.appendChild(empty);
           return;
         }
@@ -1358,28 +1398,8 @@
       renderBoard();
 
       // Configure Window Menu Items
-      Board21.menu.set([
-        { id: 'toggle_first', label: '✔️ Toggle First Done' },
-        { id: 'toggle_then', label: '🌟 Toggle Then Done' },
-        { id: 'mark_both', label: '🎉 Mark Both Tasks as Done' },
-        { id: 'clear_both', label: '↺ Clear Done Status' },
-        { id: 'open_theme_menu', label: '🎨 Open Theme Menu' },
-        { id: 'open_done_menu', label: '⭐ Open Done Menu' },
-        { id: 'swap', label: '⇄ Swap First & Then' },
-        { id: 'toggle_sound', label: '🔔 Toggle Chime Sound' },
-        { id: 'toggle_motion', label: '✨ Toggle Symbol Animation' },
-        { id: 'theme_autumn', label: 'Theme: 🍂 Autumn Season' },
-        { id: 'theme_winter', label: 'Theme: ❄️ Winter Snow' },
-        { id: 'theme_spring', label: 'Theme: 🌸 Spring Bloom' },
-        { id: 'theme_summer', label: 'Theme: ☀️ Summer Sunshine' },
-        { id: 'theme_calm', label: 'Theme: 💜 Calm Lavender' },
-        { id: 'theme_classic', label: 'Theme: 🌈 Classic Board' },
-        { id: 'preset_work_ipad', label: 'Preset: Classwork ➔ iPad' },
-        { id: 'preset_desk_break', label: 'Preset: Sit at Table ➔ Quiet Corner' },
-        { id: 'preset_clean_recess', label: 'Preset: Clean Up ➔ Playground' },
-        { id: 'preset_work_snack', label: 'Preset: Math ➔ Snack Time' },
-        { id: 'reset_default', label: '↺ Reset Defaults' }
-      ]);
+      menuReady = true;
+      setMenu();
 
       Board21.on('menu', id => {
         if (id === 'toggle_first') {
@@ -1397,18 +1417,11 @@
           state.thenDone = false;
           renderBoard();
           Board21.save(state);
-        } else if (id === 'open_theme_menu') {
-          closeAllPopovers();
-          themePopover.classList.add('open');
-          btnThemeIcon.classList.add('is-active');
-        } else if (id === 'open_done_menu') {
-          closeAllPopovers();
-          donePopover.classList.add('open');
-          btnDoneIcon.classList.add('is-active');
         } else if (id === 'swap') {
           swapCards();
         } else if (id === 'toggle_sound') {
           state.sound = !state.sound;
+          setMenu();
           Board21.save(state);
         } else if (id === 'toggle_motion') {
           state.motion = !state.motion;

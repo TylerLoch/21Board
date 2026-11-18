@@ -81,14 +81,14 @@
   const KEEP_BYTES = 1048576, KEEP_SIDE = 3840, DRAW_SIDE = 2560;            // kept as they are / drawn again at most
   const BOX = { w: 720, h: 540, least: 360, minW: 160, minH: 120 };   // a new picture's window: within 720 × 540, at least 360 on its long side (the manifest's least size: minW, minH)
   const SAY = {
-    type: '21Board can’t show that file. Choose a PNG, JPEG, GIF, WebP or AVIF.',
-    svg: '21Board can’t show an SVG file. Save it as a PNG first.',
-    heic: '21Board can’t show a HEIC photo. Save it as a JPEG first.',
+    type: 'Can’t show that file. Choose a PNG, JPEG, GIF, WebP or AVIF.',
+    svg: 'Can’t show an SVG file. Save it as a PNG first.',
+    heic: 'Can’t show a HEIC photo. Save it as a JPEG first.',
     big: 'That file is over 25 MB. Choose a smaller one.',
     pixels: 'That picture is too large. Choose a smaller one.',
     anim: 'That animation is over 5 MB. Choose a smaller one.',
-    broken: 'That picture couldn’t be opened. Try another one.',
-    empty: 'There’s no picture to paste. Copy one first.',
+    broken: 'Couldn’t open that picture. Try another one.',
+    empty: 'No picture to paste. Copy one first.',
     blocked: 'Pasting is blocked. Allow the clipboard for 21Board in Chrome.',
     wait: 'Opening…'
   };

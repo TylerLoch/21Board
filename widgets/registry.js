@@ -14,7 +14,7 @@
  * Field reference (see docs/WIDGET-SDK.md for details):
  *   id           Unique, stable id. NEVER change it after release: saved data is keyed by it.
  *   name         Shown in the Widget Picker and in the window title bar.
- *   description  One line, shown in Settings.
+ *   description  The tile's tooltip in the Widget Picker. One short sentence that starts with a verb.
  *   version      The widget's own version string.
  *   entry        Path of the page loaded into the window's iframe.
  *   files        Every file the widget needs, so it works offline (entry included).
@@ -32,20 +32,19 @@
  *                                      two fingers. Default true: drag from anywhere inside.
  *   permissions  Browser features the iframe may use, e.g. ["microphone"].
  *   devOnly      true = only listed when Developer mode is on (Settings).
- *   single       true = one window only: the Widget Picker brings it to the front (or opens it again)
- *                instead of opening a second one, and "Add to my board" adds none from a file if the board
- *                has one.
- *   clash        'later' = Board Sync keeps the later content when the same window was changed on two devices at once
- *                (its content is only a setting, such as a timer's time); otherwise both are kept, the other as a copy.
- *   external     true = one of the district's own apps, shown from its own site: `entry` is its https
- *                address and `files` is empty. The app keeps its own work on the device (and its own offline
- *                copy, once it has one); 21Board saves only where its window is. No SDK. (README, "District apps")
+ *   single       true = one window only. The Widget Picker brings it to the front, or opens it again, instead
+ *                of opening a second one. Adding a file's windows skips it when the board already has one.
+ *   clash        'later' = when two devices change the same window at once, Board Sync keeps the later change.
+ *                Use it when the content is only a setting, such as a timer's time. Otherwise both are kept, one as a copy.
+ *   external     true = one of the district's own apps, loaded from its own site. `entry` is its https address
+ *                and `files` is empty. The app keeps its own work, and its own offline copy once it has one.
+ *                21Board saves only where its window is. No SDK. See README, "District apps".
  */
 self.BOARD21_WIDGETS = [
   {
     id: 'timer',
     name: 'Timer',
-    description: 'Countdown timer with presets and an alarm.',
+    description: 'Count down with presets and an alarm.',
     version: '1.0.0',
     entry: 'widgets/timer/index.html',
     files: ['widgets/timer/index.html'],
@@ -58,7 +57,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'task-timer',
     name: 'Task Timer',
-    description: 'A schedule of activities as a pie, with a countdown and an alarm.',
+    description: 'Count down a schedule of activities on a pie, with an alarm.',
     version: '1.0.0',
     entry: 'widgets/task-timer/index.html',
     files: ['widgets/task-timer/index.html'],
@@ -70,7 +69,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'calendar',
     name: 'Calendar',
-    description: 'Month calendar with today highlighted.',
+    description: 'See the month, with today highlighted.',
     version: '1.0.0',
     entry: 'widgets/calendar/index.html',
     files: ['widgets/calendar/index.html'],
@@ -82,7 +81,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'clock',
     name: 'Clock',
-    description: 'Analog, digital, or date-only clock.',
+    description: 'Show an analog or digital clock, or just the date.',
     version: '1.0.0',
     entry: 'widgets/clock/index.html',
     files: ['widgets/clock/index.html'],
@@ -94,7 +93,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'notes',
     name: 'Notes',
-    description: 'A sticky note for directions, reminders, or the day\'s agenda.',
+    description: 'Write directions, reminders or the day’s agenda.',
     version: '1.1.0',
     entry: 'widgets/notes/index.html',
     files: ['widgets/notes/index.html', 'widgets/notes/fonts/CrayonLibre-21Board.woff2', 'widgets/notes/fonts/CrayonLibre-LICENSE.txt', 'widgets/notes/fonts/Excalifont-Regular.woff2', 'widgets/notes/fonts/Excalifont-OFL.txt'],
@@ -106,7 +105,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'name-picker',
     name: 'Name Picker',
-    description: 'Pick names from your list at random, one to five at a time: Big name, Spinning wheel, Spotlight, or Lotto.',
+    description: 'Pick one to five names at random from your list.',
     version: '2.0.0',
     entry: 'widgets/name-picker/index.html',
     // (One file for each pick style: the page loads them all.)
@@ -119,7 +118,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'first-then-board',
     name: 'First/Then Board',
-    description: 'A First/Then picture schedule: pick two cards and mark each one done.',
+    description: 'Pick a First card and a Then card, and mark each one done.',
     version: '1.0.0',
     entry: 'widgets/first-then-board/index.html',
     files: ['widgets/first-then-board/index.html'],
@@ -144,7 +143,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'traffic-light',
     name: 'Traffic Light',
-    description: 'Red / yellow / green signal for noise level or work time.',
+    description: 'Show noise level or work time in red, yellow and green.',
     version: '1.0.0',
     entry: 'widgets/traffic-light/index.html',
     files: ['widgets/traffic-light/index.html'],
@@ -159,7 +158,7 @@ self.BOARD21_WIDGETS = [
     // Vimeo (README). Its id is from when it played YouTube only, kept so saved boards and files still open it.
     id: 'youtube-player',
     name: 'Video Player',
-    description: 'Plays a video from YouTube, Google Drive or Vimeo.',
+    description: 'Play a video from YouTube, Google Drive or Vimeo.',
     version: '1.0.0',
     entry: 'widgets/youtube-player/index.html',
     files: ['widgets/youtube-player/index.html'],
@@ -177,7 +176,7 @@ self.BOARD21_WIDGETS = [
     // 'image', so that a new name changes nothing saved.
     id: 'image',
     name: 'Picture',
-    description: 'Shows a picture you open or paste.',
+    description: 'Show a picture you open or paste.',
     version: '1.0.0',
     entry: 'widgets/image/index.html',
     files: ['widgets/image/index.html'],
@@ -192,7 +191,7 @@ self.BOARD21_WIDGETS = [
   {
     id: '21sketch',
     name: '21Sketch',
-    description: 'The district’s drawing whiteboard, from its own site.',
+    description: 'Draw with the district’s whiteboard app.',
     entry: 'https://sketchapp.ccsd21.org/',
     files: [],
     color: '#4f46e5',
@@ -205,7 +204,7 @@ self.BOARD21_WIDGETS = [
   {
     id: '21timer',
     name: '21Timer',
-    description: 'The district’s classroom timer, from its own site.',
+    description: 'Run the district’s classroom timer app.',
     entry: 'https://timerapp.ccsd21.org/',
     files: [],
     color: '#b45309',
@@ -218,7 +217,7 @@ self.BOARD21_WIDGETS = [
   {
     id: '21doccam',
     name: '21DocCam',
-    description: 'The district’s document camera, from its own site.',
+    description: 'Show work with the district’s document camera app.',
     entry: 'https://doccamapp.ccsd21.org/',
     files: [],
     color: '#0d9488',

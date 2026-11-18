@@ -100,8 +100,9 @@
 
   function setMenu() {
     Board21.menu.set([
-      { id: 'sun', label: 'Week starts on Sunday', checked: config.weekStart === 0 },
-      { id: 'mon', label: 'Week starts on Monday', checked: config.weekStart === 1 }
+      { heading: true, label: 'Week starts on' },
+      { id: 'sun', label: 'Sunday', checked: config.weekStart === 0 },
+      { id: 'mon', label: 'Monday', checked: config.weekStart === 1 }
     ]);
   }
 

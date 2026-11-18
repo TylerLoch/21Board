@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-8';
-  const BOARD_BUILD = 'a7363a45';
+  const BOARD_VERSION = '2026.11.18-9';
+  const BOARD_BUILD = '5c938c21';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -453,7 +453,7 @@
     async page(id) {
       const f = S.devFiles.get(id);
       let sdk;
-      try { sdk = await this.sdk(); } catch (err) { return this.note('This widget can’t start', '21Board couldn’t read its own copy of the widget SDK. Connect to the internet, then reload.'); }
+      try { sdk = await this.sdk(); } catch (err) { return this.note('This widget can’t start', 'Couldn’t load the widget SDK. Connect to the Internet, then reload.'); }
       const tag = `<script>${sdk.replace(/<\/(script)/gi, '<\\/$1').replace(/<!--/g, '<\\!--')}</script>`;
       let src = f ? f.src : '', found = false;
       src = src.replace(SDK_TAGS_RE, () => { found = true; return tag; });
@@ -466,7 +466,7 @@
     // What its window shows: its page, or a note if its page left (see Win.onFrameLoad) or it stopped
     // responding last time (see begin).
     async start(id, left) {
-      if (left) return this.note('This test widget left its page', 'An uploaded widget can’t go to another address or reload itself. Upload its file again to start it.');
+      if (left) return this.note('This test widget left its page', 'A test widget can’t go to another address or reload. Upload its file again.');
       const html = await this.page(id);
       return this.begin(id) ? html : this.note('This test widget wasn’t started', 'It stopped responding last time. Fix it, then upload it again.');
     },
@@ -506,7 +506,7 @@
     // Reads an uploaded file and keeps it; its window opens, or its open windows start again with it.
     // Throws, with a message to show, if the file can't be used.
     async add(file, side) {
-      if (location.protocol === 'file:') throw new Error('Uploading a widget works in 21Board opened from its web address, not from a file.');
+      if (location.protocol === 'file:') throw new Error('To upload a widget, open 21Board from its web address.');
       if (!/\.html?$/i.test(file.name || '') && file.type !== 'text/html') throw new Error('Choose the widget’s .html file.');
       if (file.size > DEV_FILE_MAX) throw new Error(`This file is ${fmtBytes(file.size)}. A widget file can be at most 5 MB.`);
       const src = await file.text();
@@ -930,7 +930,7 @@
         console.error('21Board: save failed', err);
         const left = this.waiters; this.waiters = [];
         left.forEach(w => w(!this.pending.has(w.key)));   // (true for a change that was stored on its own)
-        if (!this.failing) toast('21Board couldn’t save your latest changes. It keeps trying.', { action: 'Details', timeout: 8000, onAction: () => SaveNote.explain() });
+        if (!this.failing) toast('Couldn’t save your latest changes. 21Board keeps trying.', { action: 'Details', timeout: 8000, onAction: () => SaveNote.explain() });
         this.failing = err; this.fails++;
         this.retryT = setTimeout(() => this.retry(), this.fails === 1 ? 5000 : 30000);
         break;
@@ -1103,7 +1103,7 @@
     }
     if (!names.size) return;
     const hist = BoardHistory.enabled();
-    toast(`Part of this board couldn’t be read on this device, so it isn’t shown: ${Array.from(names).join(', ')}.` + (hist ? ' Board history may still have it.' : ''),
+    toast(`Couldn’t show ${andList(Array.from(names))} on this device.` + (hist ? ` Board history may still have ${names.size > 1 ? 'them' : 'it'}.` : ''),
       hist ? { timeout: 0, action: 'Board history', onAction: () => HistorySheet.open('left'), dismiss: 'OK' } : { timeout: 0, action: 'OK' });
   }
 
@@ -1396,9 +1396,9 @@
     },
     // A picture from the teacher's device: shrunk and re-compressed here (nothing is uploaded anywhere).
     async process(file) {
-      if (!file || !/^image\//.test(file.type || '') && !/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || '')) throw new Error('Choose a picture file (JPG, PNG or WebP).');
+      if (!file || !/^image\//.test(file.type || '') && !/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || '')) throw new Error('Choose a JPEG, PNG or WebP picture.');
       let bmp;
-      try { bmp = await createImageBitmap(file); } catch (e) { throw new Error('This picture can’t be opened here. Try a JPG or PNG (iPhone HEIC photos may need converting first).'); }
+      try { bmp = await createImageBitmap(file); } catch (e) { throw new Error('This picture can’t be opened here. Save it as a JPEG or PNG, then try again.'); }
       const long = Math.max(bmp.width, bmp.height), short = Math.min(bmp.width, bmp.height);
       // Long side ≤ 2560, but keep the short side ≥ 1440 (a panorama filling the board stays sharp), within ~6.5 MP.
       let k = Math.min(1, PHOTO_MAX_SIDE / long);
@@ -1424,13 +1424,13 @@
         blob = await enc('image/jpeg', 0.85);
         if (blob && blob.size > 1200000) blob = await enc('image/jpeg', 0.72);
       }
-      if (!blob) throw new Error('This picture couldn’t be prepared.');
+      if (!blob) throw new Error('Couldn’t use this picture. Try another one.');
       const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
       return { data, w, h, bytes: blob.size, name: String(file.name || 'Photo').slice(0, 80), addedAt: Date.now() };
     },
     async setFromFile(file) {
       // (Preparing it takes a moment: if another page is shown by then, the photo isn't put on that one.)
-      const b = S.boardId, still = () => { if (b !== S.boardId) throw new Error('Another page is shown now. Choose the photo again on the page you want it on.'); };
+      const b = S.boardId, still = () => { if (b !== S.boardId) throw new Error('The page changed. Choose the photo again on the page you want.'); };
       const m = await this.process(file);
       still();
       if (this.media()) { await BoardHistory.before('photo', 'Before changing the background photo'); still(); }
@@ -1624,8 +1624,8 @@
     hidden: (() => { try { return sessionStorage.getItem('21board-shape-hint') === 'hidden'; } catch (e) { return false; } })(),
     init() {
       this.el = $('#shape-hint');
-      this.el.innerHTML = '<div class="msg"><b>This board keeps a<br>standard widescreen shape.</b>Do you want it to fill<br>the whole window?</div>' +
-        '<div class="acts"><button class="btn primary small" data-act="unlock">Use the whole window</button></div>' +
+      this.el.innerHTML = '<div class="msg"><b>This board is widescreen.</b>Fill the whole window?</div>' +
+        '<div class="acts"><button class="btn primary small" data-act="unlock">Fill the window</button></div>' +
         `<button class="hide" data-act="hide" aria-label="Hide this tip" title="Hide">${svg('close')}</button>`;
       this.el.addEventListener('click', e => {
         const b = e.target.closest('[data-act]');
@@ -1633,7 +1633,7 @@
         if (b.dataset.act === 'unlock') {
           if (!setBoardShape('free')) return;   // refused (someone is moving a window); it said why
           if (Settings.isOpen) Settings.render();
-          toast('The board now fills the window. Settings → Appearance → Board shape → Widescreen changes it back.');
+          toast('The board now fills the window. Change it in Settings › Appearance › Board shape.');
         }
         else { this.hidden = true; try { sessionStorage.setItem('21board-shape-hint', 'hidden'); } catch (err) { /* private mode */ } }
         this.update();
@@ -2067,7 +2067,7 @@
       const c = this.inst && this.inst.copyOf, cl = $('.copy-label', this.labelEl);
       cl.hidden = !c;
       cl.textContent = c ? `Copy · ${copyWhen(c.at, false)}` : '';
-      if (c) cl.title = `${copyWhose(c)} version from ${copyWhen(c.at, true)}, kept because this window was changed on two devices at once.`; else cl.removeAttribute('title');
+      if (c) cl.title = `${copyWhose(c)} version from ${copyWhen(c.at, true)}. This window was changed on two devices at once.`; else cl.removeAttribute('title');
       this.labelEl.setAttribute('aria-label', `${this.widget.name}${this.inst && this.inst.n > 1 ? ' ' + this.inst.n : ''}${c ? `, ${copyWhose(c, true)} version from ${copyWhen(c.at, true)},` : ''} window menu`);
     }
 
@@ -2352,7 +2352,7 @@
       const names = Array.from(new Set(Array.from(S.wins.values()).filter(w => w.widget.external && !this.told.has(w.widget.name)).map(w => w.widget.name)));
       if (!names.length) return;
       names.forEach(n => this.told.add(n));
-      toast(`${andList(names)} ${names.length > 1 ? 'need' : 'needs'} a connection, unless ${names.length > 1 ? 'they’re' : 'it’s'} saved on this device for offline use.`, { timeout: 8000 });
+      toast(`You’re offline. ${andList(names)} ${names.length > 1 ? 'work' : 'works'} only if ${names.length > 1 ? 'they’re' : 'it’s'} saved on this device.`, { timeout: 8000 });
     }
   };
 
@@ -2361,7 +2361,7 @@
   function appsOwnWork(notHere, todo) {
     const names = Array.from(new Set(Array.from(S.insts.values()).map(i => getWidget(i.widgetId)).filter(w => w && w.external).map(w => w.name)));
     if (!names.length) return '';
-    return ` ${andList(names)} ${names.length > 1 ? 'keep their' : 'keeps its'} own work: it isn’t ${notHere}. ${todo} in ${names.length > 1 ? 'each app' : names[0]} itself.`;
+    return ` Work in ${andList(names)} isn’t ${notHere}. ${todo} in ${names.length > 1 ? 'each app' : names[0]}.`;
   }
 
   // =====================================================================
@@ -2511,7 +2511,7 @@
       try { shown = +localStorage.getItem('21board-tip-close') || 0; } catch (e) { /* ignore */ }
       if (shown < 3) {
         const widget = getWidget(inst.widgetId);
-        toast(`${widget ? widget.name : 'Widget'} closed. ` + (SaveNote.state() || (widget && widget.external) ? 'Open it again from the Widget Picker.' : 'Its content is saved — open it again from the Widget Picker.'));
+        toast(`${widget ? widget.name : 'Widget'} closed. ` + (SaveNote.state() || (widget && widget.external) ? 'Open it again from the Widget Picker.' : 'It’s saved. Open it again from the Widget Picker.'));
         try { localStorage.setItem('21board-tip-close', String(shown + 1)); } catch (e) { /* ignore */ }
       }
     }
@@ -2564,7 +2564,7 @@
     const was = new Map(open.map(k => [k, Object.assign({}, S.insts.get(k))]));
     await Promise.all(open.map(k => closeWin(k, { quiet: true })));
     // Undo reopens those windows where they were (their content was never touched; a running timer keeps running).
-    if (open.length) toast(`Closed ${open.length} window${open.length === 1 ? '' : 's'}.` + (SaveNote.state() ? '' : ' Their content is saved.'), { action: 'Undo', timeout: 20000, onAction: async () => {
+    if (open.length) toast(`Closed ${open.length} window${open.length === 1 ? '' : 's'}.` + (SaveNote.state() ? '' : ' They’re saved.'), { action: 'Undo', timeout: 20000, onAction: async () => {
       for (const [k, inst] of was) { const cur = S.insts.get(k); if (cur && !cur.open) await saveInst(k, Object.assign({}, cur, { open: true, rect: inst.rect, maximized: inst.maximized, z: maxZ() + 1 })); reconcileWin(k); }
       afterBulkApply();
       void beforeId;
@@ -3117,7 +3117,7 @@
       const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit full screen' : 'Full screen');
       fs.hidden = KIOSK || !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
       // A new version is waiting (section 15): a dot on the ▦ buttons and on Settings, where "Update now" is.
-      const update = !!S.sw.updateReady, ready = update ? ' (a new version is ready)' : '';
+      const update = !!S.sw.updateReady, ready = update ? ', new version ready' : '';
       const gear = set('settings', 'gear', 'Settings' + ready);
       for (const b of [this.btns.left, this.btns.right, gear]) {
         let dot = $('.dot', b);
@@ -3125,7 +3125,7 @@
         if (!update && dot) dot.remove();
         if (b === gear) continue;
         b.setAttribute('aria-label', 'Widgets and settings' + ready);
-        if (update) b.title = 'A new version of 21Board is ready: see Settings'; else b.removeAttribute('title');
+        if (update) b.title = 'A new version is ready. Open Settings to update.'; else b.removeAttribute('title');
       }
     },
 
@@ -3150,7 +3150,7 @@
   async function quitApp() {
     const unsaved = SaveNote.state();
     const ok = await dialog({ title: 'Quit 21Board?', message: !unsaved ? 'Your board is saved on this device and will be here next time.'
-      : unsaved === 'unsaved' ? 'Your latest changes aren’t saved on this device yet. If you quit now, they will be gone.' : 'This board isn’t being saved. If you quit now, it will be gone.',
+      : unsaved === 'unsaved' ? 'Your latest changes aren’t saved yet. Quit now and they’ll be lost.' : 'This board isn’t being saved. Quit now and it’ll be lost.',
       actions: [{ label: 'Quit', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
     if (!ok) return;
     closePopups();
@@ -3158,7 +3158,7 @@
     await Writer.settled(3000);
     if (BoardHistory.dirty) { try { await Promise.race([BoardHistory.check(true), sleep(2000)]); } catch (e) { /* quit anyway */ } }
     window.close();
-    const refused = () => toast(`21Board can’t close itself right now.${SaveNote.state() ? '' : ' Your board is saved.'} To leave, restart the device or ask your school’s IT.`, { timeout: 10000 });
+    const refused = () => toast(`21Board can’t close itself.${SaveNote.state() ? '' : ' Your board is saved.'} To leave, restart the device or ask your school’s IT.`, { timeout: 10000 });
     if (!window.closed) setTimeout(() => { if (!window.closed) refused(); }, 600);
   }
 
@@ -3231,7 +3231,7 @@
         `<button class="menu-item ${cls}" role="menuitem" data-act="${act}" ${extra}><span class="icon-slot">${icon}</span><span class="label">${esc(label)}</span></button>`;
       if (this.confirming) {
         const name = `${w.widget.name}${w.inst.n > 1 ? ' ' + w.inst.n : ''}`;
-        this.el.innerHTML = `<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything saved in this window and returns it to its starting size.${BoardHistory.enabled() ? ' Board history keeps a copy.' : ''}</div>` +
+        this.el.innerHTML = `<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything in this window and restores its starting size.${BoardHistory.enabled() ? ' Board history keeps a version.' : ''}</div>` +
           item('reset-yes', svg('reset'), 'Reset', '', 'danger') + item('reset-no', '', 'Cancel');
         return;
       }
@@ -3261,7 +3261,7 @@
         // A district app keeps its own work: there is none here to reset or to go back to. Reload: a window that
         // opened while the site couldn't be reached stays on the browser's error page. (A kiosk can't open tabs.)
         html += item('reload', svg('reload'), `Reload ${w.widget.name}`);
-        if (!KIOSK) html += item('own', svg('external'), `Open ${w.widget.name} on its own`);
+        if (!KIOSK) html += item('own', svg('external'), 'Open in new tab');
       } else if (!locked) {
         if (BoardHistory.hasWindow(w.ikey)) html += item('history', svg('history'), 'Earlier versions…');
         html += item('reset', svg('reset'), 'Reset');
@@ -3343,7 +3343,7 @@
     const i = S.insts.get(ikey);
     if (!i) return;
     const widget = getWidget(i.widgetId), name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
-    const ok = await dialog({ title: `Delete this copy of ${widget ? widget.name : 'the window'}?`, message: 'Its window and everything saved in it will be removed from this board. ' +
+    const ok = await dialog({ title: `Delete this copy of ${widget ? widget.name : 'the window'}?`, message: 'Its window and everything in it are deleted. ' +
       (BoardHistory.enabled() ? 'You can bring it back from Board history for a while.' : 'This can’t be undone.'), actions: [{ label: 'Delete', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
     if (!ok || !S.insts.has(ikey)) return;
     const id = await deleteInstance(ikey);
@@ -3568,7 +3568,7 @@
         const p = parseBoardFile(JSON.stringify(await buildExport('full')));
         p.board.name = `${S.board.name} (copy)`.slice(0, 60);
         await this.addFrom([p], { made });   // (a new board id: another board, as far as the Google Drive folder is concerned)
-        if (made.length) { this.flash(); toast(`${this.label()} is a copy.`); }
+        if (made.length) { this.flash(); toast(`${this.label()} is ready.`); }
       } catch (err) { console.error(err); failed = err; }
       finally { this.busy = false; }
       if (failed) { if (made.length) await this.discard(made, from); toast('Couldn’t copy this page: ' + ((failed && failed.message) || failed)); }   // (no half-made copy is left)
@@ -3599,7 +3599,7 @@
       const b = S.boardId, name = S.board.name, at = order.indexOf(b);
       const n = Array.from(S.insts.values()).filter(i => i.open).length, saved = S.insts.size - n;
       const ok = await dialog({ title: `Delete “${name}”?`,
-        message: `This page and its ${n ? `${n} window${n === 1 ? '' : 's'}` : 'background'}${saved ? ` (and ${saved} closed window${saved === 1 ? '' : 's'})` : ''} are deleted ${Link.dir ? 'here and on your other devices' : 'from this device'}.` + appsOwnWork('deleted here', 'Clear it'),
+        message: `This page and its ${n ? `${n} window${n === 1 ? '' : 's'}` : 'background'} are deleted ${Link.dir ? 'here and on your other devices' : 'from this device'}.` + (saved ? ` So ${saved === 1 ? 'is 1 closed window' : `are ${saved} closed windows`}.` : '') + appsOwnWork('deleted here', 'Clear it'),
         actions: [{ label: 'Delete page', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
       if (!ok) return;
       this.busy = true;
@@ -4009,7 +4009,7 @@
 
   function lockSettings(sw) {
     if (LAB) return '';   // (the widget dev window: one widget, whose window its developer moves and resizes)
-    return `<div class="row"><div><div class="lbl">Lock windows in place</div><div class="hint">Widgets still work. To unlock, hold ${LOCK_KEY} for 2 seconds.${deviceOnly(' ')}</div></div>${sw('lock-windows', Lock.on(), 'Lock windows in place')}</div>`;
+    return `<div class="row"><div><div class="lbl">Lock windows in place</div><div class="hint">Widgets still work. ${LOCK_HOW}${deviceOnly(' ')}</div></div>${sw('lock-windows', Lock.on(), 'Lock windows in place')}</div>`;
   }
 
   // Settings → Classroom → Close all: off while the windows are locked, saying why (Settings.render, Lock.paint).
@@ -4277,7 +4277,7 @@
     // For Settings: what doesn't fit in this window right now ('' when it all does, or it isn't meant to show).
     fitNote() {
       if (!this.on() || this.bare) return '';
-      return !this.fit ? 'There isn’t room for it in this window right now.' : this.fit === 'time' ? 'Only the time fits in this window right now.' : '';
+      return !this.fit ? 'Not enough room in this window.' : this.fit === 'time' ? 'Only the time fits in this window.' : '';
     }
   };
 
@@ -4340,9 +4340,9 @@
   // (\u00a0, a no-break space, keeps “I, l and 1” and “a and g” on one line in the hints.)
   const LETTERS = {
     standard: { name: 'Standard', hint: 'This device’s own font.' },
-    legible: { name: 'Easier to read', hint: 'Atkinson Hyperlegible, made for people with low vision: I,\u00a0l\u00a0and\u00a01 all look different, and 0 has a line through it.',
+    legible: { name: 'Easier to read', hint: 'Atkinson Hyperlegible, made for people with low vision. I,\u00a0l\u00a0and\u00a01 look different, and 0 has a line through it.',
       family: 'Atkinson Hyperlegible', files: ['AtkinsonHyperlegible-Regular.woff2', 'AtkinsonHyperlegible-Bold.woff2'] },
-    early: { name: 'Early readers', hint: 'Based on Andika by SIL, for children learning to read: a\u00a0and\u00a0g look the way they learn to write them.',
+    early: { name: 'Early readers', hint: 'Based on Andika by SIL, for children learning to read. Its a\u00a0and\u00a0g look the way children write them.',
       family: '21Board Early Readers', files: ['EarlyReaders-Regular.woff2', 'EarlyReaders-Bold.woff2'] }
   };
   // (With a 0: Atkinson Hyperlegible draws it with a line through it, on every clock and timer too. Better seen
@@ -4413,7 +4413,7 @@
     const open = Settings.groups.has(key), id = 'grp-' + key;
     return `<button class="row disc" data-act="group" data-val="${key}" aria-expanded="${open}" aria-controls="${id}">` +
       `<span class="txt"><span class="lbl">${label}</span>${opts.sub ? `<span class="hint">${opts.sub}</span>` : ''}</span>` +
-      `<span class="val">${'warn' in opts ? `<span class="status-dot warn" id="${id}-warn" role="img" aria-label="${opts.warnLabel || '(needs a look)'}"${opts.warn ? '' : ' hidden'}></span>` : ''}${opts.preview || ''}` +
+      `<span class="val">${'warn' in opts ? `<span class="status-dot warn" id="${id}-warn" role="img" aria-label="${opts.warnLabel || 'Needs a look'}"${opts.warn ? '' : ' hidden'}></span>` : ''}${opts.preview || ''}` +
       `${value ? `<span class="v"${opts.valueId ? ` id="${opts.valueId}"` : ''}>${value}</span>` : ''}<span class="chev" aria-hidden="true">${svg('chevRight')}</span></span></button>` +
       `<div class="drawer${opts.inset ? ' inset' : ''}" id="${id}" role="group" aria-label="${label}"${open ? '' : ' hidden'}>${content}</div>`;
   }
@@ -4440,7 +4440,7 @@
       ? `<span class="ph" style="background-size:${im.fit === 'whole' ? 'contain' : 'cover'};background-position:${photoPosition(im)};--fade:${im.fade}"></span>` : ''}</span>`;
     const content = `<div class="bg-block" id="bg-block"><div class="hint bg-scope">${pageScope()}</div>
       <div class="swatches" role="radiogroup" aria-label="Background">
-        <button class="swatch auto${auto ? ' on' : ''}" ${radio(auto)} data-act="bg" data-val="" title="Match the theme" aria-label="Match the theme (light or dark)">${sunMoon}${tick(auto)}</button>
+        <button class="swatch auto${auto ? ' on' : ''}" ${radio(auto)} data-act="bg" data-val="" title="Match the theme" aria-label="Match the theme">${sunMoon}${tick(auto)}</button>
         ${BG_LIGHT.map(swatch).join('')}<span class="break"></span>${BG_DARK.map(swatch).join('')}
         <span class="bg-more"><span class="bg-custom"><button class="swatch pill custom${custom ? ' on' : ''}" ${radio(custom)} data-act="bg-custom" title="Choose any color" aria-label="Custom color"><span class="dot"${isCustom ? ` style="background:${color}"` : ''}></span>Custom…${tick(custom)}</button><input type="color" id="set-bg-custom" value="${esc(isCustom ? color : '#88aacc')}" tabindex="-1" aria-hidden="true"></span>
         ${m ? `<button class="swatch pill photo${photoShown ? ' on' : ''}" ${radio(photoShown)} data-act="photo-show" aria-label="Photo"><span class="pic bg-pic"></span>Photo${tick(photoShown)}</button>`
@@ -4476,8 +4476,8 @@
     const g = photoThumbGeometry(m, im), fill = im.fit === 'fill';
     // Shaped like the board, but never taller than about 200 px (a portrait window would make it huge).
     return `<div class="photo-edit">
-        ${fill ? '<div class="hint">Tap the picture to pick the part that stays in view.</div>' : ''}
-        <div class="photo-thumb${fill ? ' pick' : ''}" id="photo-thumb"${fill ? ' role="button" tabindex="0" aria-label="Choose the part of the photo that stays in view (tap, or use the arrow keys)"' : ' role="img" aria-label="Background photo"'}
+        ${fill ? '<div class="hint">Tap the part that should stay in view.</div>' : ''}
+        <div class="photo-thumb${fill ? ' pick' : ''}" id="photo-thumb"${fill ? ' role="button" tabindex="0" aria-label="Choose the part of the photo that stays in view. Tap it or use the arrow keys."' : ' role="img" aria-label="Background photo"'}
           style="aspect-ratio:${g.ratio.toFixed(4)};width:min(100%, ${Math.round(200 * g.ratio)}px);background-size:${fill ? 'cover' : 'contain'};background-position:${photoPosition(im)};--fade:${im.fade}">
           ${fill ? `<span class="focus" style="left:${(g.mx * 100).toFixed(2)}%;top:${(g.my * 100).toFixed(2)}%"></span>` : ''}</div>
         <div class="photo-ctrls">
@@ -4592,8 +4592,8 @@
       ${warn}
       <div class="row link-folder"><div class="lbl">Synced through <span class="link-name" title="${esc(L.dir.name)}">“${esc(L.dir.name)}”</span> <span class="link-syncing${L.syncing() ? ' on' : ''}" id="set-link-syncing">Syncing…</span></div><div class="hint" id="set-link-status">${esc(L.status())}</div>
         <div class="btns"><button class="btn small" data-act="link-choose">Change…</button><button class="btn small" data-act="link-unlink">Unlink</button></div></div>
-      <div class="row stack"><label class="lbl" for="set-link-label">This device’s name <span class="hint">(shown on your other devices)</span></label>
-        <input type="text" class="text-input" id="set-link-label" maxlength="40" value="${esc(dev.label)}" autocomplete="off"></div>
+      <div class="row stack"><label class="lbl" for="set-link-label">This device’s name</label>
+        <input type="text" class="text-input" id="set-link-label" maxlength="40" value="${esc(dev.label)}" autocomplete="off" aria-describedby="set-link-label-hint"><div class="hint" id="set-link-label-hint">Shown on your other devices.</div></div>
       ${H.enabled() ? `<div class="row"><div><div class="lbl">Keep history copies in the folder</div><div class="hint">About hourly, so you can go back even if this device is reset.${H.folderStatus ? ' ' + esc(H.folderStatus) : ''}</div></div>${sw('hist-folder', S.settings.historyFolder !== false, 'Keep history copies in the folder')}</div>` : ''}`;
   }
 
@@ -4870,7 +4870,7 @@
           : `<div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Every page, window and setting on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase…</button></div>`}
         ${dev ? `<h4>Developer</h4>
         <div class="row"><div><div class="lbl">Developer mode</div><div class="hint">For people who build widgets.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>
-        ${st.devMode ? `<div class="row stack"><div><div class="lbl">Test a widget</div><div class="hint">An uploaded file runs sealed off from your boards. It is kept on this device only, never in exports.</div></div>
+        ${st.devMode ? `<div class="row stack"><div><div class="lbl">Test a widget</div><div class="hint">An uploaded file runs sealed off from your boards. It stays on this device and is never exported.</div></div>
           <button class="btn primary" data-act="dev-upload">${svg('import')}Upload file…</button>
           ${devList ? `<div class="inst-list">${devList}</div>` : ''}</div>` : ''}` : ''}`;
       // The keyboard stays on the control it was on (a group's row, a choice): Settings is drawn afresh below.
@@ -4886,7 +4886,7 @@
         ${classroomSettings(sw, seg)}
 
         ${LAB ? `<h3>Widget test mode</h3>
-        <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards${Store.mem ? ' (in memory, until this preview reloads)' : ''}.</div></div>` : '<h3>This page</h3>'}
+        <div class="row"><div class="hint">A test board for one widget, made by the widget dev window. Its data is kept apart from real boards.${Store.mem ? ' It’s held in memory until this preview reloads.' : ''}</div></div>` : '<h3>This page</h3>'}
         ${saved}
 
         <h3>Appearance</h3>
@@ -4897,7 +4897,7 @@
         ${shapeSettingsRow(seg)}
 
         <div class="gap"></div>
-        ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), warnLabel: '(backup overdue)', inset: true })}
+        ${settingsGroup('advanced', 'Advanced', '', advanced, { sub: inside.join(', ').replace(/^./, c => c.toUpperCase()), warn: this.needsLook(), warnLabel: 'Backup overdue', inset: true })}
         ${aboutSettings(note)}`;
       if (ifChanged && noLook(noStatus(html)) === noLook(noStatus(this.drawn))) {
         if (noStatus(html) !== noStatus(this.drawn)) this.putLook(html);
@@ -4968,21 +4968,23 @@
           hint.textContent = 'This browser might clear your boards to free up space. Back up regularly.';
         } else if (st === 'insecure') {
           per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Needs https</span>';
-          hint.textContent = 'Browsers protect data only on https sites. Ask whoever hosts 21Board to turn on https; until then, back up regularly.';
+          hint.textContent = 'Browsers protect data only on https sites. Ask whoever hosts 21Board to use https. Until then, back up regularly.';
         } else if (st === 'file') {
-          per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Not available</span>';
+          per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Unavailable</span>';
           hint.textContent = 'A copy opened from a file can’t be protected. Use 21Board’s web address, or back up regularly.';
         } else {
           per2.innerHTML = Install.prompt ? `<button class="btn small primary" data-act="install">${svg('plus')}Install app</button>`
             : '<span class="hint"><span class="status-dot warn"></span>Not yet</span>';
-          hint.textContent = 'The browser could clear your boards to free up space. ' +
-            (Install.prompt ? 'Installing 21Board as an app usually prevents that. ' : 'Installing 21Board as an app usually prevents that (Chrome: Install in the address bar; iPad: Share › Add to Home Screen). ') +
-            'Until then, keep backups.';
+          // (Chrome offers Install app when it can install. An iPad's Safari never does: say how to add it there.)
+          const apple = /iPad|iPhone|iPod/.test(navigator.userAgent) || navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1;
+          hint.textContent = 'The browser might clear your boards to free up space. ' +
+            (apple && !Install.prompt ? 'To prevent that, tap Share › Add to Home Screen. ' : 'Installing 21Board as an app usually prevents that. ') +
+            'Until then, back up regularly.';
         }
         // A kiosk can't be installed, and whether its data is kept is set up by IT: say only what applies.
         if (KIOSK && st !== 'granted') {
           if (per2.querySelector('[data-act="install"]')) per2.innerHTML = '<span class="hint"><span class="status-dot warn"></span>Not yet</span>';
-          hint.textContent = 'On a kiosk device, your school’s IT manages this. To be safe, back up to a USB drive now and then.';
+          hint.textContent = 'On a kiosk, your school’s IT manages this. Back up to a USB drive now and then.';
         }
         const dot = $('#grp-advanced-warn', this.body);   // (the amber dot on Advanced)
         if (dot) dot.hidden = !this.needsLook();
@@ -5037,7 +5039,7 @@
         case 'photo-show': BoardPhoto.update({ on: true }); this.render(); break;
         case 'photo-fit': BoardPhoto.update({ fit: val }); this.render(); break;
         case 'photo-remove': {
-          const yes = await dialog({ title: 'Remove the background photo?', message: (Link.dir ? 'It is removed from this page here and on your other devices' : 'It is removed from this board on this device') + '. Your full backups' + (BoardHistory.enabled() ? ' and board history' : '') + ' still have it.', actions: [{ label: 'Remove photo', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+          const yes = await dialog({ title: 'Remove the background photo?', message: (Link.dir ? 'It’s removed from this page, here and on your other devices' : 'It’s removed from this page') + '. Your full backups' + (BoardHistory.enabled() ? ' and Board history' : '') + ' still have it.', actions: [{ label: 'Remove photo', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
           if (yes) {
             const m = BoardPhoto.media(), look = BoardPhoto.settings();
             await BoardPhoto.remove(); this.render();
@@ -5056,8 +5058,8 @@
           if (!i) break;
           const widget = getWidget(i.widgetId);
           const name = `${widget ? widget.name : i.widgetId}${i.n > 1 || !widget ? ' ' + i.n : ''}`;
-          const ok = await dialog({ title: `Delete ${name}?`, message: (widget && widget.external ? `Its window will be removed from this board. Your work in ${widget.name} isn’t touched: ${widget.name} keeps it on this device. `
-            : 'Its window and everything saved in it will be removed from this board. ') + (BoardHistory.enabled() ? 'You can bring it back from Board history for a while.' : 'This can’t be undone.'), actions: [{ label: 'Delete', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+          const ok = await dialog({ title: `Delete ${name}?`, message: (widget && widget.external ? `Its window is deleted from this page. Your work in ${widget.name} isn’t touched. ${widget.name} keeps it on this device. `
+            : 'Its window and everything in it are deleted. ') + (BoardHistory.enabled() ? 'You can bring it back from Board history for a while.' : 'This can’t be undone.'), actions: [{ label: 'Delete', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
           if (ok) {
             const id = await deleteInstance(val); this.render();
             toast(`Deleted ${name}.`, id ? { action: 'Undo', timeout: 15000, onAction: () => BoardHistory.putBack(id, val, { exact: true, quiet: true }) } : {});
@@ -5069,7 +5071,7 @@
         case 'hist-open': if (HistorySheet.beside) HistorySheet.close(); else HistorySheet.open(this.side, { beside: true }); break;
         case 'hist-every': {
           if (val === '0') {
-            const ok = await dialog({ title: 'Turn off automatic versions?', message: '21Board stops saving versions while you work, when it opens and when a note is suddenly cleared. It still saves one before Reset, Delete, Close all, a photo change, Import, Erase and going back, so those can be undone, and when you tap “Save this version now”. Versions already saved stay until you delete them.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+            const ok = await dialog({ title: 'Turn off automatic versions?', message: '21Board stops saving versions as you work, when it opens and when a note is suddenly cleared. It still saves one before Reset, Delete, Close all, a photo change, Import, Erase and going back, so you can undo them. “Save this version now” still works. Versions already saved stay until you delete them.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
             if (!ok) break;
           }
           updateSettings({ historyEvery: +val });
@@ -5079,7 +5081,7 @@
         case 'hist-delete': {
           const canFolder = Link.dir && Link.perm === 'granted';
           const ok = await dialog({ title: 'Delete this board’s history?', message: 'Every earlier version on this device is deleted. The board itself stays as it is.',
-            actions: [{ label: 'Delete from this device', value: 'local', kind: 'danger' }].concat(canFolder ? [{ label: 'Also delete its copies in your Google Drive folder', value: 'folder', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
+            actions: [{ label: 'Delete from this device', value: 'local', kind: 'danger' }].concat(canFolder ? [{ label: 'Delete here and in Google Drive', value: 'folder', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (!ok) break;
           await BoardHistory.clearBoard();
           if (ok === 'folder') await BoardHistory.deleteFolderCopies(S.board.uid);
@@ -5090,7 +5092,7 @@
         case 'link-setup': await Link.setup(); this.render(); break;   // (Board Sync's setup, section 13b)
         case 'link-choose': { const got = await Link.choose(); if (got) await Link.welcome(got); this.render(); break; }
         case 'link-unlink': {
-          const ok = await dialog({ title: `Unlink the “${Link.dir ? Link.dir.name : ''}” folder?`, message: 'This device keeps its board as it is but stops syncing it. Your other devices and the folder keep theirs.', actions: [{ label: 'Unlink', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+          const ok = await dialog({ title: `Unlink the “${Link.dir ? Link.dir.name : ''}” folder?`, message: 'This device keeps its board but stops syncing. Your other devices and the folder keep theirs.', actions: [{ label: 'Unlink', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
           if (ok) await Link.unlink();
           break;
         }
@@ -5104,21 +5106,21 @@
           const hist = BoardHistory.enabled();
           // Where nothing is stored (see SaveNote), only the board on screen can be emptied: the saved board,
           // if there is one, and its history are left alone.
-          const temp = Store.failed, saved = temp === 'unopened' ? ' Your saved board isn’t touched: reload 21Board to open it.' : '';
+          const temp = Store.failed, saved = temp === 'unopened' ? ' Your saved board isn’t touched. Reload 21Board to open it.' : '';
           const apps = appsOwnWork('erased here', 'Clear it');
           const others = temp ? [] : Pages.ids().filter(b => b !== S.boardId);
           const ok = await dialog(temp ? { title: 'Empty this board?', message: 'The windows, their content and the settings you see now are cleared.' + saved + apps,
             actions: [{ label: 'Empty this board', value: 'erase', kind: 'danger' }, { label: 'Cancel', value: null }] }
             : { title: 'Erase everything?', message: (others.length ? `All ${others.length + 1} pages, their windows and content, and your settings are deleted from this device.` + (hist ? ' Board history keeps the page you’re on, so you can still go back to it.' : '')
-                : 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '')) + (Link.dir ? ' This device also stops syncing: the board stays in your folder and on your other devices.' : '') + ' Export a backup first if you might want them later.' + apps,
+                : 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '')) + (Link.dir ? ' This device also stops syncing. The board stays in your folder and on your other devices.' : '') + ' To keep what’s here, export a backup first.' + apps,
               actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }]
-                .concat(hist ? [{ label: 'Erase, including board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
+                .concat(hist ? [{ label: 'Erase, including Board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (ok === 'backup') { await doExport('all'); break; }
           if (ok !== 'erase' && ok !== 'erase-all') break;
           if (ok === 'erase') {
             // (The question promised a way back: if the board as it is couldn't be kept, ask once more.)
             const kept = await BoardHistory.before('erase', temp ? 'Before emptying the board' : 'Before erasing everything', { timeout: 3000 });
-            if (!kept && hist && (S.insts.size || BoardPhoto.media()) && !await dialog({ title: temp ? 'Empty it anyway?' : 'Erase anyway?', message: '21Board couldn’t save the board as it is now in board history, so this can’t be undone.',
+            if (!kept && hist && (S.insts.size || BoardPhoto.media()) && !await dialog({ title: temp ? 'Empty it anyway?' : 'Erase anyway?', message: '21Board couldn’t save the board as it is now, so this can’t be undone.',
               actions: [{ label: temp ? 'Empty it anyway' : 'Erase anyway', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] })) break;
           } else await BoardHistory.clearAll();
           // (Board Sync: this device's file says it was erased, and no round in another tab writes between that and the clear.)
@@ -5135,7 +5137,7 @@
           if (!temp && Pages.enabled()) updateSettings({ boards: [S.boardId], activeBoard: S.boardId });   // (the page shown stays: see Pages.pick)
           Picker.renderControls();
           this.render();
-          toast(temp ? 'This board was emptied.' + (temp === 'unopened' ? ' Your saved board wasn’t touched.' : '') : 'Everything was erased.');
+          toast(temp ? 'Board emptied.' + (temp === 'unopened' ? ' Your saved board wasn’t touched.' : '') : 'Everything erased.');
           break;
         }
       }
@@ -5176,17 +5178,17 @@
       title: 'Export board',
       message: 'Save a .21board file you can import later or share with another teacher.' + appsOwnWork('in the file', 'Save it'),
       actions: [
-        { label: 'Full backup', sub: 'Windows, their content, and closed windows', value: 'full', kind: 'primary', choice: true },
-        { label: 'Blank template', sub: 'Window layout and widget settings only — no content', value: 'template', choice: true },
+        { label: 'Full backup', sub: 'Every window and its content, even closed ones', value: 'full', kind: 'primary', choice: true },
+        { label: 'Blank template', sub: 'Window layout and widget settings, without content', value: 'template', choice: true },
         { label: 'Cancel', value: null }
       ]
     } : {
       title: 'Export',
       message: 'Save a .21board file you can import later or share with another teacher.' + appsOwnWork('in the file', 'Save it'),
       actions: [
-        { label: `All ${n} pages`, sub: 'A full backup of every page: windows, their content, and closed windows', value: 'all', kind: 'primary', choice: true },
+        { label: `All ${n} pages`, sub: 'A full backup of every page', value: 'all', kind: 'primary', choice: true },
         { label: 'This page', sub: `A full backup of “${S.board.name}” only`, value: 'full', choice: true },
-        { label: 'This page as a blank template', sub: 'Window layout and widget settings only — no content', value: 'template', choice: true },
+        { label: 'This page as a blank template', sub: 'Window layout and widget settings, without content', value: 'template', choice: true },
         { label: 'Cancel', value: null }
       ]
     });
@@ -5196,7 +5198,7 @@
   // The page shown (b: another page, from its stored records). Throws if the page shown changed meanwhile.
   async function buildExport(kind, b = S.boardId) {
     const gen = Pages.gen, read = await readForExport();
-    if (gen !== Pages.gen) throw new Error('The page changed while it was being read.');
+    if (gen !== Pages.gen) throw new Error('The page changed while it was being read. Try again.');
     return pageExport(kind, b, read);
   }
   // The stored records, with what this tab holds for any that can't be read: single ones (unread), or all of
@@ -5282,7 +5284,7 @@
   // still lacks some is named in missing (and the file isn't counted as a backup: see doExport).
   async function buildAllExport(missing = []) {
     const ids = Pages.ids(), gen = Pages.gen, read = await readForExport();
-    if (gen !== Pages.gen) throw new Error('The page changed while it was being read.');
+    if (gen !== Pages.gen) throw new Error('The page changed while it was being read. Try again.');
     const main = pageExport('full', S.boardId, read);
     if (ids.length < 2) return main;
     const have = new Set(read.recs.map(r => r.key).concat(Array.from(Writer.pending.keys()))), lacking = new Set();
@@ -5349,7 +5351,7 @@
       return true;
     } catch (err) {
       console.error(err);
-      toast('Export failed: ' + (err.message || err));
+      toast('Couldn’t export. ' + (err.message || err));
       return false;
     }
   }
@@ -5357,8 +5359,8 @@
 
   function parseBoardFile(text) {
     let j;
-    try { j = JSON.parse(text); } catch (e) { throw new Error('This isn’t a 21Board file (it can’t be read as JSON).'); }
-    if (!j || typeof j !== 'object' || j.format !== '21board') throw new Error('This file isn’t a 21Board export.');
+    try { j = JSON.parse(text); } catch (e) { throw new Error('This file is damaged or isn’t a 21Board file.'); }
+    if (!j || typeof j !== 'object' || j.format !== '21board') throw new Error('This isn’t a 21Board file.');
     if (typeof j.formatVersion === 'number' && j.formatVersion > FORMAT_VERSION) throw new Error('This file was made by a newer version of 21Board. Update 21Board and try again.');
     const seen = new Set();
     const instances = (Array.isArray(j.instances) ? j.instances : []).filter(i => {
@@ -5437,10 +5439,10 @@
       parsed.letters && parsed.letters !== look0.letters && 'text style'].filter(Boolean));
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
-      message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' is' : 's are'} not installed here; ${missing.size === 1 ? 'its' : 'their'} content will be kept but not shown.` : ''),
+      message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' isn’t' : 's aren’t'} installed here. ${missing.size === 1 ? 'Its' : 'Their'} content is kept but not shown.` : ''),
       actions: (Pages.enabled() ? [{ label: 'Open as a new page', sub: 'Your pages stay as they are. This one is added after the page you’re on.', value: 'page', kind: 'primary', choice: true }] : []).concat([
         { label: Pages.enabled() ? 'Replace this page' : 'Replace my board', sub: `${Pages.enabled() ? 'This page’s' : 'Your current'} windows and content${looks ? `, and the ${looks},` : ''} are replaced${Link.dir ? ', here and on your other devices' : ''}.` + (BoardHistory.enabled() ? ' You can undo this.' : ''), value: 'replace', kind: 'danger', choice: true },
-        { label: Pages.enabled() ? 'Add to this page' : 'Add to my board', sub: 'Keep what’s here and add these windows', value: 'add', kind: Pages.enabled() ? '' : 'primary', choice: true },
+        { label: Pages.enabled() ? 'Add to this page' : 'Add to my board', sub: 'What’s here stays. These windows are added.', value: 'add', kind: Pages.enabled() ? '' : 'primary', choice: true },
         { label: 'Cancel', value: null }
       ])
     });
@@ -5463,7 +5465,7 @@
       toast(replace ? 'Board imported.' : `Added ${added} window${added === 1 ? '' : 's'}.`, undo);
     } catch (err) {
       console.error(err);
-      toast('Import failed: ' + (err.message || err));
+      toast('Couldn’t import. ' + (err.message || err));
     }
   }
 
@@ -5498,7 +5500,7 @@
     // (Replace) the pages here stay.
     if (made.length < list.length || failed) {
       if (made.length) await Pages.discard(made, from);
-      toast((failed ? 'Import failed: ' + ((failed && failed.message) || failed) : 'The import didn’t finish.') + (replace ? ' Your pages are as they were.' : ''));
+      toast((failed ? 'Couldn’t import. ' + ((failed && failed.message) || failed) : 'The import didn’t finish.') + (replace ? ' Your pages are as they were.' : ''));
       Picker.renderControls();
       return;
     }
@@ -5695,8 +5697,8 @@
     missing: ['the folder can’t be found', 'If it was renamed, moved or deleted, choose it again in Settings › Board Sync.'],
     allow: ['Chrome needs you to allow the folder again', 'Tap “Reconnect folder” on the board.'],
     readonly: ['the folder can only be viewed, not changed', 'Ask its owner to let you edit it, or choose another folder in Settings › Board Sync.'],
-    full: ['there’s no room left', 'Make room in Google Drive (or on this device).'],
-    big: ['the board is too big to sync', 'Remove some big content, such as long notes or large pictures in widgets, then try again.'],
+    full: ['there’s no room left', 'Make room in Google Drive or on this device.'],
+    big: ['the board is too big to sync', 'Remove some long notes or large pictures, then try again.'],
     other: ['the file couldn’t be saved in the folder', 'If this goes on, check that Google Drive is working on this device.']
   };
   // Setting up Board Sync (setup): a laptop and a smartboard on either side of the 21Board folder in Google Drive.
@@ -5865,7 +5867,7 @@
       if (this.perm === 'granted') { this.unnag(); await this.check(true); }
       else if (this.perm === 'prompt' && !this.nagged && this.sync) {
         this.nagged = true;   // (said once; the note on the board stays: see FolderNote)
-        this.nagToast = toast(`Reconnect your “${this.dir.name}” folder to keep this board in sync with your other devices.`, { action: 'Reconnect', timeout: 12000, onAction: () => this.reconnect() });
+        this.nagToast = toast(`Reconnect your “${this.dir.name}” folder to keep syncing.`, { action: 'Reconnect', timeout: 12000, onAction: () => this.reconnect() });
       }
     },
     // The folder is allowed again: the message at start that asked for it goes (it would say the opposite of
@@ -5923,7 +5925,7 @@
       if (told) t.said = true;
       if (!t.said && t.at - t.since >= 60 * 1000) {
         t.said = true;
-        toast(`21Board can’t find your “${this.dir.name}” folder, so this board isn’t synced right now. It keeps looking.`, { action: 'Details', timeout: 10000, onAction: () => FolderNote.explain() });
+        toast(`21Board can’t find your “${this.dir.name}” folder, so this board isn’t syncing. It keeps looking.`, { action: 'Details', timeout: 10000, onAction: () => FolderNote.explain() });
       }
     },
     // Writing this device's file didn't work: said the first time (not for a folder that can only be viewed: the
@@ -5954,8 +5956,8 @@
         message: 'Board Sync keeps your board in a Google Drive folder, so your laptop and smartboard share it.',
         html: SYNC_ART + '<ol class="setup-steps">' +
           '<li>Tap <b>Choose folder…</b> below. In the window that opens, go to <b>Google Drive › My Drive</b>.</li>' +
-          '<li>The first time, tap <b>New folder</b> and name it <b>21Board</b>. On your other device, pick this same folder. (To keep a board in sync with a co-teacher, share this Google Drive folder with them as an Editor.)</li>' +
-          '<li>Open the folder, then tap <b>Select</b> (or <b>Open</b>) and <b>Allow</b>.</li></ol>',
+          '<li>The first time, tap <b>New folder</b> and name it <b>21Board</b>. On your other device, pick this same folder. To work on a board with a co-teacher, share this folder with them as an Editor.</li>' +
+          '<li>Open the folder, then tap <b>Select</b> or <b>Open</b>, then <b>Allow</b>.</li></ol>',
         actions: [{ label: 'Choose folder…', value: true, kind: 'primary' }, { label: 'Cancel', value: false }]
       });
       // (Straight on to the picker, with nothing to wait for first: Chrome opens it only from a tap.)
@@ -5984,7 +5986,7 @@
         }
         if (look.subs && look.subs.length > 1) {
           // Two devices each made a 21Board folder before Google Drive brought the other's: the one with device files first.
-          const pick = await dialog({ title: 'This folder has two 21Board folders', message: 'Pick the one your other devices use. The other one can be deleted in Google Drive.',
+          const pick = await dialog({ title: 'This folder has two 21Board folders', message: 'Pick the one your other devices use. You can delete the other in Google Drive.',
             actions: look.subs.map((s, i) => ({ label: `Use “${s.name}”`, value: i + 1, kind: i ? '' : 'primary' })).concat([{ label: 'Cancel', value: null }]) });
           if (!pick) return false;
           h = look.subs[pick - 1];
@@ -6080,24 +6082,24 @@
       const say = [`This device now syncs through your “${this.dir.name}” folder.`], L = this.linked || {};
       this.welcoming = false;   // (a board that arrives after this is said with a toast)
       const pages = n => `${n} page${n === 1 ? '' : 's'}`;
-      const board = L.from ? `The board from ${L.from}${L.pages ? ` (${pages(L.pages)})` : ''} is here now.` : '';
+      const board = L.from ? `The ${L.pages ? `${L.pages}-page ` : ''}board from ${L.from} is here.` : '';
       if (this.problem() === 'missing') say.push('Google Drive is still bringing the folder to this device. 21Board keeps looking.');
-      else if (got.readOnly) say.push('You can only view this folder, so changes made here aren’t synced. The board from your other devices still shows here.');
+      else if (got.readOnly) say.push('You can only view this folder. Changes made here stay on this device. Changes from your other devices still show here.');
       else if (!L.mode || L.mode === 'wait') say.push('Google Drive is still bringing the board in this folder to this device. It shows up here by itself.');
-      else if (L.mode === 'seed') say.push(L.empty ? 'Now set up Board Sync on your other device and pick this same folder: its board shows up here.'
-        : 'Now set up Board Sync on your other devices and pick this same folder: this board shows up there.');
+      else if (L.mode === 'seed') say.push(L.empty ? 'Now set up Board Sync on your other device and pick this same folder. Its board then shows up here.'
+        : 'Now set up Board Sync on your other devices and pick this same folder. This board then shows up there.');
       else if (L.mode === 'carry') say.push('This device syncs again. Changes made here while it was unlinked are added to the board.');
-      else if (L.mode === 'join') say.push(board + (L.added ? ` This device’s ${L.added === 1 ? 'page was' : pages(L.added) + ' were'} added after them.` : ''));
+      else if (L.mode === 'join') say.push(board + (L.added ? ` This device’s ${L.added === 1 ? 'page was' : pages(L.added) + ' were'} added at the end.` : ''));
       else if (L.mode === 'take') {
         // (both folders are often called 21Board, as set-up suggests: then "the one this device used before")
         const where = !L.other ? 'your other folder' : L.other === this.dir.name ? `the “${L.other}” folder this device used before` : `your “${L.other}” folder`;
         // (a page deleted there, brought back here by its Undo after Unlink, say: not "still in" it)
         const gone = L.goneThere || [], them = andList(gone.map(n => `“${n}”`)), one = gone.length === 1;
-        say.push(board + (!L.switched ? '' : !gone.length ? ` This device’s other pages are still in ${where}, and under Board history › Deleted pages for 30 days.`
-          : L.keptThere ? ` This device’s other pages are still in ${where}, except ${them}, which ${one ? 'was' : 'were'} deleted there. All of them are under Board history › Deleted pages for 30 days.`
-          : ` This device’s ${one ? 'page' : 'pages'} ${them} ${one ? 'was' : 'were'} deleted in ${where}: ${one ? 'it is' : 'they are'} under Board history › Deleted pages for 30 days.`));
+        say.push(board + (!L.switched ? '' : !gone.length ? ` This device’s other pages are still in ${where}. They’re also in Board history › Deleted pages for 30 days.`
+          : L.keptThere ? ` This device’s other pages are still in ${where}. ${them} ${one ? 'was' : 'were'} deleted there. All of them are in Board history › Deleted pages for 30 days.`
+          : ` This device’s ${one ? 'page' : 'pages'} ${them} ${one ? 'was' : 'were'} deleted in ${where}. ${one ? 'It’s' : 'They’re'} in Board history › Deleted pages for 30 days.`));
       }
-      say.push('Changes you make on any of your devices show up on the others by themselves, usually within a minute: Google Drive decides when.');
+      say.push('Changes on any of your devices show up on the others, usually within a minute.');
       // This device's name, as the others say it ("Updated from the laptop."): 21Board's guess (see device) or the name
       // it has, kept or changed with a tap (LINK_NAMES) or typed. The field gets the keyboard only on a device without
       // a touch screen: on a smartboard or an iPad, that would bring up the on-screen keyboard unasked. A name in the
@@ -6108,8 +6110,8 @@
       const sp = (this.sync && this.sync.peers) || {}, seen = new Set(Array.from(this.files.values(), f => f.dev).filter(Boolean));
       const others = Object.entries(this.names()).filter(([d]) => d !== this.dev() && seen.has(d) && !(sp[d] || {}).left).map(([, n]) => n);
       const asked = dialog({ title: 'Board Sync is set up', message: say.join(' '), cls: 'setup',
-        input: { label: 'This device’s name (shown on your other devices)', maxlength: 40, focus: keys,
-          html: '<div class="modal-note" id="name-twin" aria-live="polite" hidden></div>' +
+        input: { label: 'This device’s name', maxlength: 40, focus: keys,
+          html: '<div class="modal-note" id="name-hint">Shown on your other devices.</div><div class="modal-note" id="name-twin" aria-live="polite" hidden></div>' +
             `<div class="seg name-quick" role="group" aria-label="Pick a name">${LINK_NAMES.map(([l, v]) => `<button type="button" aria-pressed="false" data-name="${v}">${l}</button>`).join('')}</div>` },
         actions: [{ label: 'Done', value: true, kind: 'primary' }] });
       const f = $('#modal input'), quick = $$('#modal .name-quick button'), note = $('#name-twin');
@@ -6121,7 +6123,7 @@
       };
       f.value = me.label; mark();
       if (keys) f.select();
-      f.setAttribute('aria-describedby', 'name-twin');
+      f.setAttribute('aria-describedby', 'name-hint name-twin');
       f.addEventListener('input', mark);
       for (const b of quick) b.onclick = () => { f.value = b.dataset.name; mark(); };
       await asked;   // (Done, Enter, Escape or a tap outside: set-up is over either way, so the name in the field is kept)
@@ -6157,20 +6159,20 @@
       try { fh = await this.dir.getFileHandle(LINK_README); } catch (e) { /* not there yet */ }
       if (fh) { const w = await fh.createWritable({ keepExistingData: true }); await w.abort(); return true; }
       await this.writeFile(LINK_README, [
-        '21Board keeps your board here so your devices can share it through Google Drive (Board Sync).',
+        '21Board keeps your board here for Board Sync. Your devices share it through Google Drive.',
         '',
         'Each device keeps its own copy of the whole board here, named after the device, such as',
-        '"21Board (laptop) [k3j9].21board". 21Board puts them together, so every device shows the same',
-        'board. Each one is a full backup of every page: you can open it with Import in 21Board.',
+        '"21Board (laptop) [k3j9].21board". 21Board combines them, so every device shows the same',
+        'board. Each file is a full backup. Open one with Import in 21Board.',
         '',
-        '- To add a device: in 21Board on that device, go to Settings > Board Sync > Set up, and',
-        '  pick this same folder. Everyone who sets up Board Sync with this folder shares one board.',
-        '- To keep a board in sync with a co-teacher: share this Google Drive folder with them as an',
-        '  Editor. They add a shortcut to it in their My Drive, then pick it when they set up.',
-        '- Please don’t edit, rename or move these files. When a device is unlinked, 21Board deletes',
-        '  its file here two months later.',
-        '- The "Photos" folder holds the pages’ background photos, each one once. The board files only',
-        '  name their photos: to give a board to someone, use Export in 21Board.',
+        '- To add a device, open 21Board on it, go to Settings > Board Sync > Set up and pick this',
+        '  folder. Everyone who uses this folder shares one board.',
+        '- To work on a board with a co-teacher, share this folder with them as an Editor. They add a',
+        '  shortcut to it in their My Drive, then pick it when they set up Board Sync.',
+        '- Don’t edit, rename or move these files. 21Board deletes an unlinked device’s file two',
+        '  months later.',
+        '- The "Photos" folder holds the background photos, one copy of each. The board files only',
+        '  name them. To give someone a board, use Export in 21Board.',
         '- The "Board history" folder holds earlier versions of your pages, about one an hour. Open one',
         '  from 21Board > Settings > Board history, or with Import.',
         '- These files can include student names and class photos. Share this folder only with people',
@@ -7102,7 +7104,7 @@
     status() {
       const sync = this.sync || {}, now = Date.now(), out = [];
       const arriving = Array.from(this.files.values()).filter(f => f.bad && (f.devish || f.dev) && now - f.bad >= this.waits.idle);
-      if (this.trouble && this.trouble.kind === 'send' && this.trouble.code === 'readonly') out.push('This folder can only be viewed: changes from your other devices show here, but changes made here stay on this device.');
+      if (this.trouble && this.trouble.kind === 'send' && this.trouble.code === 'readonly') out.push('You can only view this folder. Changes from your other devices show here. Changes made here stay on this device.');
       else if (this.newer) out.push(`${cap(this.newer)} uses a newer 21Board. Update 21Board on this device to keep syncing.`);
       else if (sync.mode) out.push('Waiting for Google Drive to bring the board in this folder.');
       else if (arriving.length) {   // (the device's name as it gave it: a file's name drops "the", "a", "an")
@@ -7110,7 +7112,7 @@
         out.push(`Waiting for Google Drive to bring ${f.devName || (p && p.name) || 'another device'}’s latest changes.`);
       }
       // (a write that fails: not "Up to date" under the warning that changes aren't reaching the other devices)
-      else if (this.unsent || this.problem() === 'send') out.push(`Not synced: changes made here aren’t in your folder yet${sync.wroteAt ? ` (the last ones went there ${when(sync.wroteAt)})` : ''}.`);
+      else if (this.unsent || this.problem() === 'send') out.push(`Not synced. Changes made here aren’t in your folder yet.${sync.wroteAt ? ` The last ones went there ${when(sync.wroteAt)}.` : ''}`);
       else if (sync.wroteAt) out.push(`Up to date. This device’s latest changes went to your folder ${when(sync.wroteAt)}.`);
       else out.push('Up to date.');
       const me = this.dev(), seen = new Set(Array.from(this.files.values(), f => f.dev).filter(Boolean));
@@ -7119,16 +7121,16 @@
       // (a device that synced here and stopped, by Unlink or Change…: said, not "has synced yet")
       const gone = Object.entries(sync.peers || {}).filter(([d, p]) => d !== me && seen.has(d) && p && p.left).map(([, p]) => p).sort((a, b) => (b.left.at || 0) - (a.left.at || 0))[0];
       if (!others.length && gone) out.push(`${cap(gone.name || 'another device')} stopped syncing through this folder ${when(gone.left.at || 0)}.`);
-      else if (!others.length) out.push('No other device has synced yet: set up Board Sync on your other devices and pick this same folder.');
-      else if (others.length === 1) out.push(`Shared with ${who(others[0])} (last change ${when(others[0].at)}).`);
-      else if (others.length === 2) out.push(`Shared with ${who(others[0])} (${when(others[0].at)}) and ${who(others[1])} (${when(others[1].at)}).`);
-      else out.push(`Shared with ${who(others[0])} (${when(others[0].at)}), ${who(others[1])} (${when(others[1].at)}) and ${others.length - 2} other${others.length === 3 ? '' : 's'}.`);
+      else if (!others.length) out.push('No other devices yet. Set up Board Sync on another device and pick this same folder.');
+      else if (others.length === 1) out.push(`Shared with ${who(others[0])}. Last change ${when(others[0].at)}.`);
+      else if (others.length === 2) out.push(`Shared with ${who(others[0])} and ${who(others[1])}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
+      else out.push(`Shared with ${who(others[0])}, ${who(others[1])} and ${others.length - 2} other${others.length === 3 ? '' : 's'}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
       for (const [file, w] of this.waiting) {
         if (now - w.since < this.waits.arrive) continue;
-        out.push(this.badPhotos.has(file) ? `The background photo of “${w.page}” in the folder can’t be used, so this device keeps its own.` : `The background photo of “${w.page}” is still arriving.`);
+        out.push(this.badPhotos.has(file) ? `The background photo of “${w.page}” in your folder can’t be used. This device keeps its own.` : `The background photo of “${w.page}” is still arriving.`);
       }
       for (const [, h] of this.histWait) out.push(`Changes to “${h.name}” from ${h.from} wait until Board history can save a version on this device. It may be full.`);
-      if (this.big) out.push(`Your board file is very large (${fmtBytes(this.big)}), so Google Drive may be slow to bring it to your other devices.`);
+      if (this.big) out.push(`At ${fmtBytes(this.big)}, your board file may be slow to reach your other devices.`);
       if (this.checkedAt && !this.problem() && this.running && now - this.lookingSince > 15e3 && now - this.checkedAt > LINK_STALE_MS) out.push(`Folder last checked ${when(this.checkedAt)}.`);
       return out.join(' ');
     },
@@ -7293,7 +7295,7 @@
     // A version to go back to, or null after saying why not: it is gone, or history can't be read just now.
     async find(id) {
       try { const r = await this.get(id); if (!r) toast('That version can’t be found anymore.'); return r; }
-      catch (e) { toast('Couldn’t read board history just now. Try again in a moment.'); return null; }
+      catch (e) { toast('Couldn’t read Board history. Try again in a moment.'); return null; }
     },
     // (With its pictures put back: see pack.)
     async get(id) {
@@ -7409,7 +7411,7 @@
       say(emptied, n => `${n} emptied`, c => `${c} windows emptied`);
       say(deleted, n => `${n} deleted`, c => `${c} windows deleted`);
       say(closed, n => `${n} closed`, c => `${c} windows closed`);
-      say(added, n => `New: ${n}`, c => `${c} new windows`);
+      say(added, n => `${n} added`, c => `${c} windows added`);
       say(opened, n => `${n} opened`, c => `${c} windows opened`);
       say(edited, n => `${n} changed`, c => `${c} windows changed`);
       say(moved, () => 'A window moved', c => `${c} windows moved`);
@@ -7683,7 +7685,7 @@
           for (const k of new Set(old.flatMap(m => m.pics || []))) if (!named.has(k)) o.photo.delete(k);
         });
         // Said once: history is never given up silently.
-        if (!this.thinned) toast('This device is almost out of space, so some of the oldest board history was removed. Make room on this device.', { timeout: 12000 });
+        if (!this.thinned) toast('This device is almost out of space. Some of the oldest versions in Board history were removed. Make room on this device.', { timeout: 12000 });
         this.thinned = true;
         await this.reload();
         HistorySheet.refresh(); updateHint();
@@ -7740,7 +7742,7 @@
       Pages.busy = true;
       let made = [];
       try { made = await Pages.addFrom([p], { end: true }); } finally { Pages.busy = false; }
-      if (!made.length) { toast('Couldn’t bring that page back just now. Try again in a moment.'); return false; }
+      if (!made.length) { toast('Couldn’t bring that page back. Try again in a moment.'); return false; }
       await Pages.go(made[0], { quiet: true });
       Pages.flash();
       Picker.renderControls();
@@ -7828,8 +7830,8 @@
       await this.capture('restored', opts.undo ? { label: `Undid ${opts.what || 'a change'}` } : { label: 'Went back', target: at });
       Link.changed([Keys.board(S.boardId)]);
       this.undoable = undoId && !opts.undo ? { id: undoId, label: `Put the board back to how it was ${when(Date.now())}`, until: Date.now() + HIST.undoMs } : null;
-      if (opts.undo) toast('Undone: the board is back as it was.');
-      else toast(`Your board is back to how it was ${when(at)}.` + (gone ? ' The background photo from then wasn’t kept, so your photo stays.' : ''), undoAction(undoId, 'going back'));
+      if (opts.undo) toast('Undone. The board is back as it was.');
+      else toast(`Your board is back to how it was ${when(at)}.` + (gone ? ' The background photo from then wasn’t kept. Your current photo stays.' : ''), undoAction(undoId, 'going back'));
       HistorySheet.refresh();
       return true;
     },
@@ -7930,18 +7932,17 @@
         await this.folderPrune(dir);
         await this.reload();
         HistorySheet.refresh();
-      } catch (err) { this.folderStatus = 'Couldn’t write to your folder just now. 21Board will try again.'; console.warn('21Board: board history copy failed', err); }
+      } catch (err) { this.folderStatus = 'Couldn’t save a copy to your folder. 21Board keeps trying.'; console.warn('21Board: board history copy failed', err); }
     },
     async writeFolderReadme(dir) {
       try { await dir.getFileHandle('About these files.txt'); return; } catch (e) { /* write it */ }
       await Link.writeFile('About these files.txt', [
-        'Earlier versions of your 21Board boards, kept by 21Board so you can go back after a big change',
-        'or if a device is reset.',
+        'Earlier versions of your 21Board boards, to go back to after a big change or a device reset.',
         '',
-        '- To go back: 21Board > Settings > Board history (at the bottom: "In your Google Drive folder"),',
-        '  or open a file with Import.',
-        '- 21Board removes older copies automatically (about one an hour, then one a day, then one a week).',
-        '  Files whose name ends in "saved" were saved by you and are never removed automatically.',
+        '- To go back, open 21Board > Settings > Board history and look under "In your Google Drive',
+        '  folder" at the bottom. Or open a file with Import.',
+        '- 21Board keeps about one copy an hour, then one a day, then one a week, and removes the rest.',
+        '  Files whose names end in "saved" are ones you saved. 21Board never removes them.',
         '- These copies leave out the background photo.',
         '- They can include student names. Share this folder only with people who should see them.',
         ''
@@ -8004,7 +8005,7 @@
     const H = BoardHistory;
     if (LAB) return '';
     if (!H.enabled()) return `<div class="row"><div><div class="lbl">Go back to an earlier version</div><div class="hint">Board history isn’t available in this browser window.</div></div></div>`;
-    const warn = H.paused === 'quota' ? 'Board history is paused: this device is out of space.' : H.paused === 'over' ? 'Board history is using its share of this device’s storage, so a version is saved about once an hour.' : H.low || H.tight ? `Space is low on this device${H.thinned ? ', so some of the oldest board history was removed' : ''}. Make room on the device so 21Board can keep saving.` : H.status === 'too-big' ? 'This page is too big for automatic versions.' : H.unread ? 'Board history couldn’t be read just now.' : '';
+    const warn = H.paused === 'quota' ? 'Board history is paused. This device is out of space.' : H.paused === 'over' ? 'Board history is using its share of this device’s storage. It now saves about once an hour.' : H.low || H.tight ? `Space is low on this device.${H.thinned ? ' Some of the oldest versions were removed.' : ''} Make room so 21Board can keep saving.` : H.status === 'too-big' ? 'This page is too big for automatic versions.' : H.unread ? 'Couldn’t read Board history. Try again in a moment.' : '';
     return `<div class="row"><div><div class="lbl">Go back to an earlier version</div>${warn ? `<div class="hint warn-line"><span class="status-dot warn"></span>${warn}</div>` : ''}</div>
         <button class="btn" data-act="hist-open" aria-controls="history" aria-expanded="${HistorySheet.beside}">${svg('history')}Board history…</button></div>`;
   }
@@ -8015,7 +8016,7 @@
     const every = String(S.settings.historyEvery == null ? 10 : S.settings.historyEvery);
     return `<h4>Board history</h4>
       <div class="row stack"><div><div class="lbl">Save a version automatically</div>${every === '0' ? '<div class="hint">One is still saved before big changes, like Close all.</div>' : ''}</div>${seg('hist-every', every, [['10', 'Every 10 min'], ['60', 'Every hour'], ['1440', 'Once a day'], ['0', 'Off']], false, 'Save a version automatically')}</div>
-      <div class="row"><div><div class="lbl">Delete board history</div><div class="hint">The board itself stays.</div></div><button class="btn small danger" data-act="hist-delete">Delete…</button></div>`;
+      <div class="row"><div><div class="lbl">Delete all versions</div><div class="hint">The board itself stays.</div></div><button class="btn small danger" data-act="hist-delete">Delete…</button></div>`;
   }
 
   // Board history: every version of the board, in columns from a screen edge, each as wide as Settings (place):
@@ -8204,7 +8205,7 @@
       const H = BoardHistory, metas = H.metas, now = this.now;
       let html = '<p class="hist-intro">Tap a time to see how your board looked. Nothing changes until you tap Go back.</p>';
       if (H.undoable && H.undoable.until > Date.now()) html += `<div class="hist-undo"><span>${esc(H.undoable.label)}</span><button class="btn small primary" data-act="undo">Undo</button></div>`;
-      if (H.unread) return html + '<p class="empty-note">21Board couldn’t read board history just now. Your earlier versions haven’t been deleted.</p><p><button class="btn" data-act="retry">Try again</button></p>' + this.renderFoot();
+      if (H.unread) return html + '<p class="empty-note">Couldn’t read Board history. Your earlier versions haven’t been deleted.</p><p><button class="btn" data-act="retry">Try again</button></p>' + this.renderFoot();
       if (!metas.length) return html + '<p class="empty-note">No earlier versions yet. 21Board saves one when the board changes, and before risky actions like Reset or Import.</p>' + this.renderFoot();
       // The version most likely wanted after a disaster.
       const noneOpen = now && !Object.values(now.wins).some(w => w[0]);
@@ -8235,8 +8236,8 @@
       const same = now && now.sigs.includes(m.sig);
       const after = newer ? H.diff(m, newer) : null, vsNow = now ? H.diff(m, now) : [];
       const notes = [];
-      if (m.uid && S.board.uid && m.uid !== S.board.uid) notes.push(`This version is of another page, “${m.name}”: going back puts its windows on this page.`);
-      if (m.photo === 'gone') notes.push('The background photo from then wasn’t kept, so going back keeps your photo now.');
+      if (m.uid && S.board.uid && m.uid !== S.board.uid) notes.push(`This version is from another page, “${m.name}”. Going back puts its windows on this page.`);
+      if (m.photo === 'gone') notes.push('The background photo from then wasn’t kept. Going back keeps your current photo.');
       if (Link.dir) notes.push('Going back changes this page on your other devices too.');
       const wins = Object.keys(m.wins || {}).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
       const rows = wins.map(ik => {
@@ -8271,11 +8272,11 @@
       let html = del + `<div class="hist-foot"><button class="btn" data-act="save">${svg('plus')}Save this version now</button>
         <div class="hist-keeps"><p id="hist-keeps">Board history keeps, on this device:</p>
           <ul aria-labelledby="hist-keeps"><li>The ${T.newest} most recent versions</li><li>Hourly versions for the past ${T.hours / 24} days</li><li>Daily versions for the past ${T.days} days</li><li>Weekly versions for the past ${T.weeks} weeks</li></ul>
-          <p>Versions you save are kept until you delete them. When board history needs more room, the oldest versions are deleted first.</p>
-          <p>Board history isn’t a backup: if this browser’s data for 21Board is cleared, it’s cleared too.</p></div></div>`;
+          <p>Versions you save are kept until you delete them. When Board history needs room, the oldest go first.</p>
+          <p>Board history isn’t a backup. Clearing this browser’s data for 21Board clears it too.</p></div></div>`;
       if (Link.dir && Link.perm === 'granted' && S.settings.historyFolder !== false) {
         const t = H.tag(S.board.uid, 6), mine = this.folder.filter(f => f.uidTag === t).slice(0, 20), others = this.folder.filter(f => f.uidTag !== t);
-        html += `<div class="hist-day">In your Google Drive folder</div>` + (mine.length ? `<div class="inst-list">${mine.map(f => `<div class="inst"><div class="meta"><b>${esc(dayTime(f.at))}${f.saved ? ' · saved by you' : ''}</b><span>From ${esc(f.device)}</span></div><button class="btn small" data-act="folder-go" data-val="${esc(f.name)}">Go back</button></div>`).join('')}</div>` : '<p class="hint">No copies of this board there yet (about one an hour).</p>');
+        html += `<div class="hist-day">In your Google Drive folder</div>` + (mine.length ? `<div class="inst-list">${mine.map(f => `<div class="inst"><div class="meta"><b>${esc(dayTime(f.at))}${f.saved ? ' · saved by you' : ''}</b><span>From ${esc(f.device)}</span></div><button class="btn small" data-act="folder-go" data-val="${esc(f.name)}">Go back</button></div>`).join('')}</div>` : '<p class="hint">No copies of this board there yet. 21Board adds about one an hour.</p>');
         if (others.length) {
           html += `<button class="btn small" data-act="others">${this.showOthers ? 'Hide' : 'Show'} other boards’ copies (${others.length})</button>`;
           if (this.showOthers) html += `<div class="inst-list">${others.slice(0, 40).map(f => `<div class="inst"><div class="meta"><b>${esc(f.board)}</b><span>${esc(dayTime(f.at))} · from ${esc(f.device)}</span></div><button class="btn small" data-act="folder-go" data-val="${esc(f.name)}">Use</button></div>`).join('')}</div>`;
@@ -8297,7 +8298,7 @@
         html += `<div class="inst"><div class="meta"><b>${esc(dayTime(m.at))}</b><span>${esc(w[5] || '(empty)')}</span></div><button class="btn small" data-act="put-here" data-val="${esc(m.id + '|' + ik)}">Put back this version</button></div>`;
       }
       html += '</div>';
-      if (!count) html += `<p class="hint">${H.unread ? '21Board couldn’t read board history just now. Close this and try again.' : 'No different versions of this window yet.'}</p>`;
+      if (!count) html += `<p class="hint">${H.unread ? 'Couldn’t read Board history. Close this and try again.' : 'No other versions of this window yet.'}</p>`;
       return html + `<p><button class="btn small" data-act="whole">Show the whole board’s history</button></p>`;
     },
 
@@ -8320,7 +8321,7 @@
             if (Pages.ids().includes(b)) { toast(`“${name}” is back.`); break; }   // (another device brought it back meanwhile)
             let d = null;
             for (let i = 0; i < 20 && !d; i++) { d = (await H.deletedPages()).find(x => x.b === b && x.id); if (!d) await sleep(150); }
-            if (d) await H.bringBack(d.id); else toast('Couldn’t bring that page back just now. Try again in a moment.');
+            if (d) await H.bringBack(d.id); else toast('Couldn’t bring that page back. Try again in a moment.');
             break;
           }
           await Pages.undrop([b], Pages.ids().concat(b), () => {});
@@ -8331,7 +8332,7 @@
         case 'others': this.showOthers = !this.showOthers; this.render(); break;
         case 'save': {
           const r = await dialog({ title: 'Save this version', message: 'It’s kept until you delete it.', input: { label: 'Name (optional)', placeholder: 'Monday setup', maxlength: 60 }, actions: [{ label: 'Save', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
-          if (r && r.value) { const id = await H.save(r.text); toast(id ? 'Saved this version of the board.' : 'Couldn’t save a version just now.'); }
+          if (r && r.value) { const id = await H.save(r.text); toast(id ? 'Version saved.' : 'Couldn’t save this version. Try again.'); }
           break;
         }
         case 'folder-go': {
@@ -9724,7 +9725,7 @@
       if (deleted.length) {
         const by = this.names(Array.from(new Set(deleted.flatMap(([, p]) => (p.from.length ? p.from : summary.from)))));
         const left = deleted.some(([uid]) => uid === this.left), bs = deleted.slice().sort((x, y) => (y[0] === this.left) - (x[0] === this.left)).map(([, p]) => p.b), one = deleted.length === 1 ? `“${deleted[0][1].name}” was deleted on ${by}.` : `${deleted.length} pages were deleted on ${by}.`;
-        if (locked) this.say(one + (deleted.length === 1 ? ' Board history › Deleted pages has it.' : ' Board history › Deleted pages has them.'));
+        if (locked) this.say(one + (deleted.length === 1 ? ' Find it in Board history › Deleted pages.' : ' Find them in Board history › Deleted pages.'));
         else this.say(one, { action: 'Undo', pages: true, timeout: PAGE_UNDO_MS, onAction: () => Pages.undrop(bs, Pages.ids().concat(bs), left ? undefined : () => {}) });
       }
       for (const [uid, p] of Object.entries(pages)) if (p.back && uid !== mine && !p.added) this.say(this.back(p, p.from.length ? p.from : summary.from));
@@ -9740,9 +9741,9 @@
       else if (clash) {
         const w = getWidget(clash.widgetId), name = w ? w.name : 'A window', others = clash.devs.filter(d => d && d !== devKey());
         const both = Array.from(new Set(clash.devs.filter(Boolean))).map(d => this.nameOf(d));
-        text = clash.mine ? `${name} was changed here and on ${this.names(others.length ? others : by)} at once, so both versions are kept.`
-          : `${name} was changed on ${both.length === 2 ? `${both[0]} and on ${both[1]}` : andList(both)} at once, so both versions are kept.`;
-      } else if (here.renamed) text = `This page was also renamed on ${this.names([here.renamed.by])}: it’s called “${here.renamed.name}” now.`;
+        text = clash.mine ? `${name} was changed here and on ${this.names(others.length ? others : by)} at once. Both versions are kept.`
+          : `${name} was changed on ${both.length === 2 ? `${both[0]} and on ${both[1]}` : andList(both)} at once. Both versions are kept.`;
+      } else if (here.renamed) text = `This page was also renamed on ${this.names([here.renamed.by])}. It’s called “${here.renamed.name}” now.`;
       else text = `Updated from ${this.names(by)}.`;
       // (nothing written here to undo: the device whose text stayed in the window, where the copy arrived made elsewhere)
       if (!seedHere.ops.length && !seedHere.swaps.length) button = null;
@@ -9762,7 +9763,7 @@
     // A page deleted here is back: brought back on another device (its Undo, Bring back), or changed there before the
     // deletion reached it (Merge.plan's back).
     back(p, by) {
-      return p.back === 'returned' ? `“${p.name}” was brought back on ${this.names(by)}.` : `“${p.name}” is back: it was changed on ${this.names(by)} before the deletion reached it.`;
+      return p.back === 'returned' ? `“${p.name}” was brought back on ${this.names(by)}.` : `“${p.name}” is back. It was changed on ${this.names(by)} before the deletion reached it.`;
     },
     // Another merge toast, shown at once: it replaces the merge toasts of earlier rounds that are up. (One round that
     // deletes or adds pages and changes the page shown says each.)
@@ -9797,14 +9798,14 @@
     // changed it since; a clash is undone by swapping, so the other device's version stays, as the copy. It syncs:
     // written as this device's changes, marked as an Undo (u), and Board history keeps the page as it was first.
     async undo(ops, swaps, from) {
-      if (Lock.on()) { toast('Windows are locked. Board history has the earlier version.'); return; }
+      if (Lock.on()) { toast('Windows are locked. Find the earlier version in Board history.'); return; }
       if (!ops.length && !swaps.length) return;
       const b = S.boardId;
       await BoardHistory.before('undo', `Before undoing the changes from ${this.names(from)}`);
       if (b !== S.boardId) return;
       const keys = Array.from(new Set(ops.map(o => o.key)));
       let cur = [];
-      try { cur = await Store.getMany(keys); } catch (e) { toast('Couldn’t undo that just now. Try again in a moment.'); return; }
+      try { cur = await Store.getMany(keys); } catch (e) { toast('Couldn’t undo that. Try again in a moment.'); return; }
       const now = new Map(keys.map((k, i) => [k, cur[i] || null]));
       // (the copies made for this device's versions: they take the other device's version instead of going)
       const copyKeys = new Set(), swapped = [];
@@ -9841,7 +9842,7 @@
       afterBulkApply();
       Picker.renderControls();
       Link.changed(keys, { now: true });   // (a round at once, and this device's file written at once)
-      toast(missed ? 'Undone, except what was changed again since.' : 'Undone. Your other devices get this too.');
+      toast(missed ? 'Undone, except for later changes.' : 'Undone. Your other devices get this too.');
     },
     // Windows were locked: no Undo is offered (anyone can tap the smartboard). Board history still has it.
     locked() {
@@ -9988,14 +9989,14 @@
     // What happened and what to do (the note's dialog, and the top of Settings).
     info() {
       const st = this.state();
-      if (st === 'blocked') return { title: 'This board isn’t being saved', text: 'This browser window doesn’t let 21Board keep anything, so the board is gone when the window closes. Use a normal (not private) window, or export a backup to keep what’s here.' };
-      if (st === 'unopened') return { title: 'This board isn’t being saved', text: '21Board couldn’t open your saved board, so it started an empty one that isn’t kept. Your saved board hasn’t been changed: reload 21Board to open it.' +
+      if (st === 'blocked') return { title: 'This board isn’t being saved', text: 'This browser window can’t save anything, so the board is lost when it closes. Use a normal window, not a private one. Or export a backup to keep what’s here.' };
+      if (st === 'unopened') return { title: 'This board isn’t being saved', text: '21Board couldn’t open your saved board, so this empty one isn’t kept. Your saved board is unchanged. Reload 21Board to open it.' +
         (BoardHistory.metas.length ? ' Board history still has its earlier versions.' : '') + ' Export a backup first to keep what’s here now.' };
-      if (Store.lost) return { title: 'This board isn’t saved on this device right now', text: 'This device lost what 21Board had saved (it may be out of space). The board stays here while 21Board is open, and 21Board keeps trying to save it again. Export a backup now to keep it.' };
+      if (Store.lost) return { title: 'This board isn’t saved on this device right now', text: 'This device lost what 21Board had saved. It may be out of space. The board stays here while 21Board is open, and 21Board keeps trying to save it. Export a backup now to keep it.' };
       // (A full device isn't always reported as one, so the other wording mentions space too.)
       const full = isFull(Writer.failing);
-      return { title: 'Your latest changes aren’t saved yet', text: (full ? 'This device is out of space, so 21Board can’t save.' : '21Board couldn’t save to this device (it may be out of space).') +
-        ' Your changes stay on the board while 21Board is open, and it keeps trying. ' + (full ? 'Make room on this device, or export a backup to keep them.' : 'If this goes on, export a backup to keep them, then make room on the device or restart it.') };
+      return { title: 'Your latest changes aren’t saved yet', text: (full ? 'This device is out of space.' : '21Board couldn’t save to this device. It may be out of space.') +
+        ' Your changes stay on the board while 21Board is open, and it keeps trying. ' + (full ? 'Make room on this device, or export a backup to keep them.' : 'If this goes on, export a backup to keep them. Then make room on the device or restart it.') };
     },
     async explain() {
       const st = this.state();
@@ -10039,17 +10040,17 @@
       const off = ', this board isn’t synced with your other devices.';
       if (p === 'allow') {
         return Link.perm === 'denied' ? { title: `21Board isn’t allowed to use your “${name}” folder`, text: 'Chrome is blocking it. Choose the folder again to allow it. If Chrome still refuses, ask your school’s IT. Until it is allowed' + off }
-          : { title: `Reconnect your “${name}” folder`, text: 'Chrome asks again after a restart unless 21Board is installed (or you chose “Allow on every visit”). Until you allow it' + off };
+          : { title: `Reconnect your “${name}” folder`, text: 'Chrome asks again after a restart, unless 21Board is installed or you chose “Allow on every visit”. Until you allow it' + off };
       }
       if (p === 'missing') {
         // (Choosing it again is suggested only once it has been gone a while: Google Drive may just be starting.)
         return { title: `21Board can’t find your “${name}” folder`, text: (Date.now() - t.since >= LINK_LOST_MS ? `It went missing ${when(t.since)}. If it was renamed, moved or deleted, choose it again.` : 'Google Drive may still be starting, or this device may be offline.') +
-          ' 21Board keeps looking, and carries on by itself when the folder is back. Until then' + off };
+          ' 21Board keeps looking and syncs again once the folder is back. Until then' + off };
       }
-      if (p === 'newer') return { title: 'Update 21Board on this device', text: `${cap(Link.newer)} uses a newer 21Board, so its changes can’t show here until this device is updated too.` };
+      if (p === 'newer') return { title: 'Update 21Board on this device', text: `${cap(Link.newer)} uses a newer 21Board. Its changes show here once this device is updated too.` };
       if (p !== 'send') return null;
       const say = LINK_SAY[t.code] || LINK_SAY.other;
-      return { title: 'Your changes aren’t reaching your other devices', text: `21Board couldn’t save them in your folder ${when(t.at)}: ${say[0]}. ${say[1]} 21Board keeps trying, and changes from your other devices still show here.` };
+      return { title: 'Your changes aren’t reaching your other devices', text: `21Board couldn’t save them to your folder ${when(t.at)}. ${cap(say[0])}. ${say[1]} 21Board keeps trying. Changes from your other devices still show here.` };
     },
     async explain() {
       const p = Link.problem(), i = this.info();
@@ -10191,7 +10192,7 @@
     if (Writer.failing) { Writer.retry(); await Writer.settled(3000); }   // (one more try)
     const unsaved = SaveNote.state();
     if (unsaved && !await dialog({ title: 'Update 21Board now?',
-      message: unsaved === 'unsaved' ? 'Your latest changes aren’t saved on this device yet. If you update now, they will be gone.' : 'This board isn’t being saved. If you update now, it will be gone.',
+      message: unsaved === 'unsaved' ? 'Your latest changes aren’t saved yet. Update now and they’ll be lost.' : 'This board isn’t being saved. Update now and it’ll be lost.',
       actions: [{ label: 'Update', value: true, kind: 'danger' }, { label: 'Later', value: false }] })) return;
     applyUpdate();
   }
@@ -10359,7 +10360,7 @@
     try { nagged = +localStorage.getItem('21board-backup-reminder') || 0; } catch (e) { /* ignore */ }
     if (Date.now() - nagged < 3 * DAY) return;
     try { localStorage.setItem('21board-backup-reminder', String(Date.now())); } catch (e) { /* ignore */ }
-    toast('This browser hasn’t promised to keep 21Board’s data yet. Save a backup file?', { action: 'Back up', timeout: 15000, onAction: () => doExport('all') });
+    toast('This browser might clear your boards to free up space. Save a backup?', { action: 'Back up', timeout: 15000, onAction: () => doExport('all') });
   }
 
   function setupFileLaunch() {
@@ -10656,7 +10657,7 @@
       el.setAttribute('role', 'alertdialog');
       el.setAttribute('aria-label', '21Board couldn’t open your board');
       el.innerHTML = `<div class="modal-card"><h3>${opts.storage ? '21Board couldn’t open your board' : '21Board couldn’t start'}</h3>
-        <p>Nothing has been changed: your board is still saved on this device. Try again. If this keeps happening, restart the device or tell your school’s IT.</p>
+        <p>Nothing was changed. Your board is still saved on this device. Try again. If this keeps happening, restart the device or tell your school’s IT.</p>
         <div class="modal-actions"><button class="btn primary" data-go="retry">Try again</button>
           ${opts.storage ? '<button class="btn choice" data-go="on">Use 21Board without saving<small>An empty board for now. Your saved board isn’t touched.</small></button>' : ''}</div>
         <p style="font-size:12px;margin:14px 0 0;overflow-wrap:anywhere">Details for IT: ${esc(why)} · 21Board ${esc(RELEASE)}${pageBuild() === BOARD_BUILD ? '' : esc(` on a page from ${pageBuild() || 'an earlier version'}`)}</p></div>`;
@@ -10736,7 +10737,7 @@
         if (!LAB) {
           console.error('21Board: storage is blocked', err);
           Store.failed = 'blocked';
-          toast('This browser is blocking storage, so nothing will be saved. Try a normal (not private) window.', { timeout: 10000 });
+          toast('This browser is blocking storage. Nothing will be saved. Use a normal window, not a private one.', { timeout: 10000 });
         }
       }
       await reloadAll(true, { pick: !LAB });

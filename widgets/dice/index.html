@@ -107,7 +107,7 @@
     }, times[i])));
     rollTimers.push(setTimeout(() => {
       total.classList.remove('hide'); rollTimers = [];
-      document.getElementById('said').textContent = 'Rolled ' + vals.join(', ') + (vals.length > 1 ? ', total ' + vals.reduce((a, b) => a + b, 0) : '');
+      document.getElementById('said').textContent = 'Rolled ' + vals.join(', ') + (vals.length > 1 ? '. Total ' + vals.reduce((a, b) => a + b, 0) : '');
     }, Math.max(...times) + 30));
   }
 

@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.18-8';
+const VERSION = '2026.11.18-9';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'a7363a45';
+const BUILD = '5c938c21';
 const FILES = {
-  './': '7cd1fc1de4f7a1e5',
-  'index.html': '7cd1fc1de4f7a1e5',
-  'board.js': '6eafeb56362a7197',
-  'sdk/board21.js': '2d5f3399fbf13abb',
-  'sdk/board21-dev.js': '95479bed48fa2ec3',
-  'sdk/dev/board-shell.js': 'a77ebd06bab57ab5',
-  'sdk/lab.html': '21cda27716334794',
-  'widgets/registry.js': '2359c628db2a4c56',
+  './': '2c85e6e26a6b0d86',
+  'index.html': '2c85e6e26a6b0d86',
+  'board.js': '7b8d5499423e50fe',
+  'sdk/board21.js': '3d8ef72db43df6eb',
+  'sdk/board21-dev.js': '701293968d7cad06',
+  'sdk/dev/board-shell.js': '0e3f86d375d4d478',
+  'sdk/lab.html': '53da73e5ab2bad8b',
+  'widgets/registry.js': '679b74a462d85c48',
   'manifest.webmanifest': '18a4aa7b736c3183',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -37,26 +37,26 @@ const FILES = {
   'fonts/EarlyReaders-Regular.woff2': 'e96901beca9ae308',
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
-  'widgets/timer/index.html': '519a447651242d8e',
-  'widgets/task-timer/index.html': '8fd45dce297c22e7',
-  'widgets/calendar/index.html': '7b3d6a2ac35e8999',
+  'widgets/timer/index.html': '6f2d2f7354a10fe6',
+  'widgets/task-timer/index.html': 'db23b33641e050b2',
+  'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
   'widgets/clock/index.html': '21a98aa1d345b489',
-  'widgets/notes/index.html': 'c906b2da71b6f6d4',
+  'widgets/notes/index.html': '0dc57fad3cd2fca1',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': 'bed97f7f60bef9ef',
+  'widgets/name-picker/index.html': '5acdb45c0d53e519',
   'widgets/name-picker/style-bigname.js': 'f8620d2f1d12c8c5',
   'widgets/name-picker/style-wheel.js': 'bd3793376cdfc9e7',
   'widgets/name-picker/style-spotlight.js': 'd2ffd9ead362cf90',
   'widgets/name-picker/style-lotto.js': 'fc46b85bc0bf5ff7',
-  'widgets/first-then-board/index.html': '3283512732b75fc2',
-  'widgets/dice/index.html': '868bf3c637359718',
+  'widgets/first-then-board/index.html': '77fb759a3e2786ac',
+  'widgets/dice/index.html': 'f4e9223ca5c16dd8',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
   'widgets/youtube-player/index.html': '1f4b8a73cb31265d',
-  'widgets/image/index.html': '4b558ab6cf2b8192',
-  'widgets/sdk-playground/index.html': '4162997ecb529861'
+  'widgets/image/index.html': '3b499bb53ad637c3',
+  'widgets/sdk-playground/index.html': '0dff97332041a455'
 };
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION + '-' + BUILD;

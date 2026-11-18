@@ -629,41 +629,41 @@
           <div id="clock-task-time" class="digital-clock-time">00:00</div>
         </div>
         <div class="clock-sub">
-          <span id="clock-total-left" class="clock-sub-badge">Total Left: --:--</span>
+          <span id="clock-total-left" class="clock-sub-badge">Total left: --:--</span>
           <span id="clock-next-task">Next: --</span>
         </div>
       </div>
 
       <div class="controls-bar">
         <button id="btn-playpause" class="primary" onclick="togglePlay()">▶ Start</button>
-        <button id="btn-start-over" class="icon-btn" onclick="startOver()" title="Start Over (Restart All)" aria-label="Start Over">⏮</button>
-        <button id="btn-skip" class="icon-btn" onclick="skipToNext()" title="Next Activity" aria-label="Next Activity">⏭</button>
-        <button id="btn-reset" class="icon-btn" onclick="resetCurrentTask()" title="Reset Current Task" aria-label="Reset Current Task">↺</button>
-        <button id="btn-edit" class="icon-btn" onclick="showEditView()" title="Edit Schedule" aria-label="Edit Schedule">⚙</button>
+        <button id="btn-start-over" class="icon-btn" onclick="startOver()" title="Start over" aria-label="Start over">⏮</button>
+        <button id="btn-skip" class="icon-btn" onclick="skipToNext()" title="Next activity" aria-label="Next activity">⏭</button>
+        <button id="btn-reset" class="icon-btn" onclick="resetCurrentTask()" title="Reset activity" aria-label="Reset activity">↺</button>
+        <button id="btn-edit" class="icon-btn" onclick="showEditView()" title="Edit schedule" aria-label="Edit schedule">⚙</button>
       </div>
     </div>
 
     <!-- View 2: Schedule & Time Editor -->
     <div id="view-edit" class="view hidden">
       <div class="edit-header">
-        <div class="edit-header-title">📅 Customize Schedule</div>
+        <div class="edit-header-title">📅 Schedule</div>
         <button onclick="saveAndCloseEditor()" style="min-height: max(48px, 5.5vmin); padding: 0 clamp(8px, 2vmin, 14px);">Done</button>
       </div>
 
       <!-- Total Time Setting with Mode Option -->
       <div class="total-time-card">
         <div class="total-time-header">
-          <div class="total-time-label">⏱ Total Session Time</div>
+          <div class="total-time-label">⏱ Total time</div>
           <span id="edit-total-summary" style="font-size: 0.85rem; color: var(--b21-accent); font-weight: 700;">60 min</span>
         </div>
         <div class="total-mode-group">
-          <button type="button" id="btn-mode-sum" class="mode-toggle-btn" onclick="setTotalMode('sum')">Σ Sum of Tasks</button>
-          <button type="button" id="btn-mode-custom" class="mode-toggle-btn" onclick="setTotalMode('custom')">⏱ Fixed Time</button>
+          <button type="button" id="btn-mode-sum" class="mode-toggle-btn" onclick="setTotalMode('sum')">Σ Activities</button>
+          <button type="button" id="btn-mode-custom" class="mode-toggle-btn" onclick="setTotalMode('custom')">⏱ Fixed time</button>
         </div>
         <div id="custom-time-input-row" class="custom-time-row">
-          <label style="font-size: 0.85rem; color: var(--b21-text);">Set duration:</label>
+          <label style="font-size: 0.85rem; color: var(--b21-text);">Set to</label>
           <div class="number-input-wrap" style="flex:0;">
-            <input type="number" id="edit-total-time" min="1" max="1440" value="60" aria-label="Total Session Minutes">
+            <input type="number" id="edit-total-time" min="1" max="1440" value="60" aria-label="Total minutes">
             <span>min</span>
           </div>
         </div>
@@ -671,8 +671,8 @@
 
       <div id="tasks-list"></div>
       <div class="editor-footer">
-        <button class="primary" onclick="addNewTask()">+ Add Activity</button>
-        <button type="button" class="btn-test-sound" onclick="testAlarmSound()" title="Preview Timer Alarm Noise" aria-label="Test Alarm Noise">🔊 Test Alarm</button>
+        <button class="primary" onclick="addNewTask()">+ Add activity</button>
+        <button type="button" class="btn-test-sound" onclick="testAlarmSound()" title="Play sound" aria-label="Play sound">🔊 Play sound</button>
       </div>
     </div>
 
@@ -680,8 +680,8 @@
     <div id="emoji-keyboard-modal" class="emoji-keyboard-overlay hidden" onclick="handleKeyboardOverlayClick(event)">
       <div class="emoji-keyboard-panel" onclick="event.stopPropagation()">
         <div class="gboard-search-bar">
-          <input type="text" id="gboard-search-input" placeholder="🔍 Search emojis (math, snack, run)..." oninput="filterEmojiKeyboard()" aria-label="Search Emojis">
-          <button type="button" class="gboard-close-btn" onclick="closeEmojiKeyboard()" aria-label="Close Emoji Keyboard">✕</button>
+          <input type="text" id="gboard-search-input" placeholder="🔍 Search emoji" oninput="filterEmojiKeyboard()" aria-label="Search emoji">
+          <button type="button" class="gboard-close-btn" onclick="closeEmojiKeyboard()" aria-label="Close">✕</button>
         </div>
         <div class="gboard-tabs" id="gboard-tabs"></div>
         <div class="gboard-grid" id="gboard-grid"></div>
@@ -768,7 +768,7 @@
       {
         id: 'school',
         icon: '🏫',
-        label: 'Class & Study',
+        label: 'School',
         emojis: [
           { char: '📚', keywords: 'books study read math library learning' },
           { char: '📖', keywords: 'book reading open story literature' },
@@ -797,7 +797,7 @@
       {
         id: 'smileys',
         icon: '😃',
-        label: 'Smileys & Feelings',
+        label: 'Faces',
         emojis: [
           { char: '😀', keywords: 'grinning happy smile face joy' },
           { char: '😃', keywords: 'happy joy smile big' },
@@ -828,7 +828,7 @@
       {
         id: 'activities',
         icon: '⚽',
-        label: 'Activities & Recess',
+        label: 'Play',
         emojis: [
           { char: '🏃', keywords: 'running runner jog recess physical pe exercise' },
           { char: '🏃‍♂️', keywords: 'man running recess pe sports' },
@@ -857,7 +857,7 @@
       {
         id: 'food',
         icon: '🥪',
-        label: 'Food & Snacks',
+        label: 'Food',
         emojis: [
           { char: '🥪', keywords: 'sandwich lunch snack meal food' },
           { char: '🍎', keywords: 'red apple fruit healthy snack teacher' },
@@ -888,7 +888,7 @@
       {
         id: 'objects',
         icon: '💡',
-        label: 'Objects & Tools',
+        label: 'Objects',
         emojis: [
           { char: '⏰', keywords: 'alarm clock time timer morning wake' },
           { char: '⏱️', keywords: 'stopwatch timer sprint countdown' },
@@ -915,7 +915,7 @@
       {
         id: 'symbols',
         icon: '⭐',
-        label: 'Symbols & Awards',
+        label: 'Symbols',
         emojis: [
           { char: '⭐', keywords: 'star favorite gold excellence award' },
           { char: '🌟', keywords: 'glowing star sparkle bright shine' },
@@ -1145,21 +1145,21 @@
     function updateMenu() {
       if (state.view === 'edit') {
         Board21.menu.set([
-          { id: 'done_edit', label: 'Done Editing', color: '#30d158' }
+          { id: 'done_edit', label: 'Done', color: '#30d158' }
         ]);
       } else if (state.alarm) {
         Board21.menu.set([
-          { id: 'stop_alarm', label: 'Stop Alarm 🔔', color: '#ff3b30' },
-          { id: 'skip_next', label: 'Next Task', color: '#0a84ff' },
-          { id: 'start_over', label: 'Start Over', color: '#8e8e93' }
+          { id: 'stop_alarm', label: 'Stop alarm', color: '#ff3b30' },
+          { id: 'skip_next', label: 'Next activity', color: '#0a84ff' },
+          { id: 'start_over', label: 'Start over', color: '#8e8e93' }
         ]);
       } else {
         Board21.menu.set([
           { id: 'play_pause', label: state.running ? 'Pause' : 'Start', color: state.running ? '#ff9f0a' : '#30d158' },
-          { id: 'start_over', label: 'Start Over', color: '#ff453a' },
-          { id: 'skip_next', label: 'Next Task', color: '#0a84ff' },
-          { id: 'reset_task', label: 'Reset Task', color: '#8e8e93' },
-          { id: 'open_edit', label: 'Edit Schedule', color: '#5856d6' }
+          { id: 'start_over', label: 'Start over', color: '#ff453a' },
+          { id: 'skip_next', label: 'Next activity', color: '#0a84ff' },
+          { id: 'reset_task', label: 'Reset activity', color: '#8e8e93' },
+          { id: 'open_edit', label: 'Edit schedule', color: '#5856d6' }
         ]);
       }
 
@@ -1167,12 +1167,12 @@
       const playBtn = document.getElementById('btn-playpause');
       if (playBtn) {
         if (state.alarm) {
-          playBtn.innerText = '🔔 Stop Alarm';
+          playBtn.innerText = '🔔 Stop alarm';
           playBtn.className = 'primary btn-alarming';
           playBtn.style.background = '#ff3b30';
           playBtn.style.color = '#ffffff';
         } else if (state.tasks.length === 0) {
-          playBtn.innerText = '➕ Create Activity';
+          playBtn.innerText = '➕ Add activity';
           playBtn.className = 'primary';
           playBtn.style.background = 'var(--b21-accent)';
           playBtn.style.color = 'var(--b21-on-accent)';
@@ -1696,12 +1696,12 @@
       if (!taskNameEl) return;
 
       if (state.tasks.length === 0) {
-        taskNameEl.innerText = "No Activities";
+        taskNameEl.innerText = "No activities";
         taskNameEl.style.color = 'var(--b21-muted)';
         taskTimeEl.innerText = "00:00";
         taskTimeEl.classList.remove('is-alarming');
-        totalLeftEl.innerText = "Total: 0m";
-        nextTaskEl.innerText = "Tap ⚙ or ➕ to create";
+        totalLeftEl.innerText = "Total left: 00:00";
+        nextTaskEl.innerText = "";   // (the dial says "Tap to add one")
         return;
       }
 
@@ -1710,7 +1710,7 @@
       const cleanName = getCleanTaskName(activeTask);
 
       if (state.alarm) {
-        taskNameEl.innerText = `🔔 TIME'S UP! ${emoji} ${cleanName}`.trim();
+        taskNameEl.innerText = `🔔 Time’s up! ${emoji} ${cleanName}`.trim();
         taskNameEl.style.color = 'var(--b21-danger)';
         taskTimeEl.innerText = "00:00";
         taskTimeEl.classList.add('is-alarming');
@@ -1729,18 +1729,18 @@
       // Total session countdown
       const totM = Math.floor(metrics.totalRemainingSec / 60);
       const totS = metrics.totalRemainingSec % 60;
-      totalLeftEl.innerText = `Total Left: ${String(totM).padStart(2, '0')}:${String(totS).padStart(2, '0')}`;
+      totalLeftEl.innerText = `Total left: ${String(totM).padStart(2, '0')}:${String(totS).padStart(2, '0')}`;
 
       // Next task or status
       if (state.alarm) {
-        nextTaskEl.innerText = "Tap 'Stop Alarm' to continue";
+        nextTaskEl.innerText = "Stop the alarm to continue";
       } else if (state.tasks.length > 1) {
         const nextIdx = (state.activeIndex + 1) % state.tasks.length;
         const nextEmoji = getTaskEmoji(state.tasks[nextIdx]);
         const nextClean = getCleanTaskName(state.tasks[nextIdx]);
         nextTaskEl.innerText = `Next: ${nextEmoji} ${nextClean}`;
       } else {
-        nextTaskEl.innerText = state.running ? "In Progress" : "Paused";
+        nextTaskEl.innerText = state.running ? "Running" : "Paused";
       }
     }
 
@@ -1760,7 +1760,7 @@
       ctx.font = `bold 16px ${textFont()}`;
       ctx.fillText('No activities yet', cx, cy - 14);
       ctx.font = `13px ${textFont()}`;
-      ctx.fillText('Tap here to create schedule', cx, cy + 10);
+      ctx.fillText('Tap to add one', cx, cy + 10);
       ctx.font = '22px -apple-system, sans-serif';
       ctx.fillText('➕', cx, cy + 38);
       ctx.restore();
@@ -1880,7 +1880,7 @@
       if (sumBtn && customBtn) {
         sumBtn.classList.toggle('active', !isCustom);
         customBtn.classList.toggle('active', isCustom);
-        sumBtn.innerText = `Σ Sum of Tasks (${tasksSum}m)`;
+        sumBtn.innerText = `Σ Activities: ${tasksSum} min`;
       }
 
       // Show/hide fixed duration input row
@@ -1893,7 +1893,7 @@
       const summaryEl = document.getElementById('edit-total-summary');
       if (summaryEl) {
         const effectiveTotal = isCustom ? Math.max(tasksSum, state.totalMinutes || 60) : tasksSum;
-        summaryEl.innerText = `${effectiveTotal} min total`;
+        summaryEl.innerText = `${effectiveTotal} min`;
       }
 
       // Sync Total Time input
@@ -1913,8 +1913,8 @@
         emptyNotice.style.fontSize = 'clamp(0.85rem, 2.2vmin, 1rem)';
         emptyNotice.innerHTML = `
           <div style="font-size: clamp(1.8rem, 5vmin, 2.4rem); margin-bottom: 8px;">📋</div>
-          <strong>No activities added yet</strong>
-          <div style="font-size: clamp(0.75rem, 1.8vmin, 0.88rem); margin-top: 4px;">Tap "+ Add Activity" below to start creating your schedule!</div>
+          <strong>No activities yet</strong>
+          <div style="font-size: clamp(0.75rem, 1.8vmin, 0.88rem); margin-top: 4px;">Add your first activity below.</div>
         `;
         container.appendChild(emptyNotice);
       }
@@ -1945,19 +1945,19 @@
         const cleanName = getCleanTaskName(task);
 
         const main = make('div', { class: 'task-row-main' });
-        const emojiBtn = make('button', { type: 'button', class: 'btn-emoji-picker', id: 'emoji-btn-' + index, title: 'Choose Emoji', 'aria-label': 'Choose Emoji' }, emoji);
+        const emojiBtn = make('button', { type: 'button', class: 'btn-emoji-picker', id: 'emoji-btn-' + index, title: 'Choose emoji', 'aria-label': 'Choose emoji' }, emoji);
         emojiBtn.onclick = () => openEmojiKeyboard(index);
         const delBtn = make('button', { class: 'btn-delete', title: 'Delete', 'aria-label': 'Delete' }, '✕');
         delBtn.onclick = () => removeTask(index);
         main.append(
           emojiBtn,
           make('input', { type: 'color', class: 'task-color', value: task.color, title: 'Color', 'aria-label': 'Color' }),
-          make('input', { type: 'text', class: 'task-name', value: cleanName, maxlength: 80, placeholder: 'Activity Name', 'aria-label': 'Activity Name' }),
+          make('input', { type: 'text', class: 'task-name', value: cleanName, maxlength: 80, placeholder: 'Activity name', 'aria-label': 'Activity name' }),
           delBtn
         );
         const details = make('div', { class: 'task-row-details' });
-        details.append(minutesInput('Duration:', 'task-mins', task.minutes, MAX_MINUTES, 'Duration Minutes'));
-        if (isCurrent) details.append(minutesInput('Left now:', 'task-left-mins', currentRemainingMinutes, task.minutes, 'Remaining Minutes Left'));
+        details.append(minutesInput('Time:', 'task-mins', task.minutes, MAX_MINUTES, 'Minutes'));
+        if (isCurrent) details.append(minutesInput('Time left:', 'task-left-mins', currentRemainingMinutes, task.minutes, 'Minutes left'));
         card.append(main, details);
         container.appendChild(card);
       });
@@ -2035,7 +2035,7 @@
       const randomEmoji = defaultEmojis[state.tasks.length % defaultEmojis.length];
       state.tasks.push({
         emoji: randomEmoji,
-        name: "New Task",
+        name: "New activity",
         minutes: 15,
         color: randomColor
       });
@@ -2124,8 +2124,8 @@
           const banner = document.createElement('div');
           banner.className = 'gboard-custom-banner';
           banner.innerHTML = `
-            <span>Use emoji: <strong>${directEmoji}</strong></span>
-            <button type="button" class="primary" style="min-height:36px; padding:0 12px; font-size:0.85rem;" onclick="selectEmoji('${directEmoji}')">Apply</button>
+            <span><strong>${directEmoji}</strong></span>
+            <button type="button" class="primary" style="min-height:36px; padding:0 12px; font-size:0.85rem;" onclick="selectEmoji('${directEmoji}')">Use</button>
           `;
           grid.appendChild(banner);
         }
@@ -2149,7 +2149,7 @@
         emptyMsg.style.textAlign = 'center';
         emptyMsg.style.padding = '20px';
         emptyMsg.style.color = 'var(--b21-muted)';
-        emptyMsg.innerText = 'No matching emojis found. Try searching for "book", "lunch", "game", or paste an emoji!';
+        emptyMsg.innerText = 'No matches. Try “lunch” or paste an emoji.';
         grid.appendChild(emptyMsg);
         return;
       }
