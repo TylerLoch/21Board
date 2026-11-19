@@ -31,12 +31,13 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-12';
-  const BOARD_BUILD = 'c578ec3b';
+  const BOARD_VERSION = '2026.11.18-14';
+  const BOARD_BUILD = '1a5dbaf7';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
-  const FORMAT_VERSION = 1;
+  const FORMAT_VERSION = 1;   // what an export writes
+  const FORMAT_READ = 2;      // the newest this release opens: 2 names pictures in a Board Sync folder's Photos (section 13b)
   // Widget test mode ("lab"): the widget dev window (sdk/board21-dev.js) runs this board in a frame with one
   // widget given as HTML source, e.g. inside an AI tool's preview. Its data is kept apart from real boards
   // (another database, or memory where storage is blocked) and nothing is installed or cached.
@@ -5387,7 +5388,7 @@
     let j;
     try { j = JSON.parse(text); } catch (e) { throw new Error('This file is damaged or isn’t a 21Board file.'); }
     if (!j || typeof j !== 'object' || j.format !== '21board') throw new Error('This isn’t a 21Board file.');
-    if (typeof j.formatVersion === 'number' && j.formatVersion > FORMAT_VERSION) throw new Error('This file was made by a newer version of 21Board. Update 21Board and try again.');
+    if (typeof j.formatVersion === 'number' && j.formatVersion > FORMAT_READ) throw new Error('This file was made by a newer version of 21Board. Update 21Board and try again.');
     const seen = new Set();
     const instances = (Array.isArray(j.instances) ? j.instances : []).filter(i => {
       if (!i || !ID_RE.test(i.widgetId || '') || !Number.isInteger(i.instance) || i.instance < 1) return false;
@@ -5452,8 +5453,10 @@
       await dialog({ title: 'Can’t import this file', message: err.message, actions: [{ label: 'OK', value: true, kind: 'primary' }] });
       return;
     }
-    if (parsed.pages && Pages.enabled()) return importPages(file, parsed);
-    if (Link.supported) await Link.photoIn(parsed);   // (a device file names its photo: this device's own, or the one in Photos)
+    // (a device file names its photo and its windows' pictures: this device's own, or the ones in Photos)
+    const lost = await Link.picsIn(parsed);
+    if (parsed.pages && Pages.enabled()) return importPages(file, parsed, lost);
+    if (Link.supported) await Link.photoIn(parsed);
     const openCount = parsed.instances.filter(i => i.open).length;
     const missing = new Set(parsed.instances.filter(i => !getWidget(i.widgetId)).map(i => i.widgetId));
     const what = parsed.kind === 'template' ? 'a blank template' : 'a full backup';
@@ -5465,7 +5468,7 @@
       parsed.letters && parsed.letters !== look0.letters && 'text style'].filter(Boolean));
     const mode = await dialog({
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
-      message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' isn’t' : 's aren’t'} installed here. ${missing.size === 1 ? 'Its' : 'Their'} content is kept but not shown.` : ''),
+      message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' isn’t' : 's aren’t'} installed here. ${missing.size === 1 ? 'Its' : 'Their'} content is kept but not shown.` : '') + picsLost(lost),
       actions: (Pages.enabled() ? [{ label: 'Open as a new page', sub: 'Your pages stay as they are. This one is added after the page you’re on.', value: 'page', kind: 'primary', choice: true }] : []).concat([
         { label: Pages.enabled() ? 'Replace this page' : 'Replace my board', sub: `${Pages.enabled() ? 'This page’s' : 'Your current'} windows and content${looks ? `, and the ${looks},` : ''} are replaced${Link.dir ? ', here and on your other devices' : ''}.` + (BoardHistory.enabled() ? ' You can undo this.' : ''), value: 'replace', kind: 'danger', choice: true },
         { label: Pages.enabled() ? 'Add to this page' : 'Add to my board', sub: 'What’s here stays. These windows are added.', value: 'add', kind: Pages.enabled() ? '' : 'primary', choice: true },
@@ -5495,11 +5498,13 @@
     }
   }
 
+  // Pictures a file names that can't be found (Link.picsIn): said in the import dialog.
+  const picsLost = n => (!n ? '' : n === 1 ? ' A picture can’t be found. Its window opens empty.' : ` ${n} pictures can’t be found. Their windows open empty.`);
   // A file of several pages (an all-pages backup): add its pages after this device's, or put them in their place.
-  async function importPages(file, p) {
+  async function importPages(file, p, lost = 0) {
     const n = p.pages.length, wins = p.pages.reduce((t, x) => t + x.instances.filter(i => i.open).length, 0), mine = Pages.ids().length;
     const name = file.name.replace(/\.21board$/i, '');
-    const mode = await dialog({ title: `Import “${name}”?`, message: `This is a backup of ${n} pages with ${wins} window${wins === 1 ? '' : 's'}.`,
+    const mode = await dialog({ title: `Import “${name}”?`, message: `This is a backup of ${n} pages with ${wins} window${wins === 1 ? '' : 's'}.` + picsLost(lost),
       actions: [
         { label: `Add these ${n} pages`, sub: `Your ${mine === 1 ? 'page stays' : `${mine} pages stay`} as ${mine === 1 ? 'it is' : 'they are'}. These are added after ${mine === 1 ? 'it' : 'them'}.`, value: 'add', kind: 'primary', choice: true },
         { label: 'Replace all pages', sub: `Your ${mine === 1 ? 'page is' : `${mine} pages are`} deleted and these take ${mine === 1 ? 'its' : 'their'} place.`, value: 'replace', kind: 'danger', choice: true },
@@ -5670,8 +5675,9 @@
   //   every page, with a version of each part (see the Merge region, section 13d) and a "sync" block (who wrote it,
   //   the folder's id, a sequence number, a checksum). Each one is also a full backup: Import opens it. Files are
   //   matched by the device id inside them, never by name. Renaming the device renames its file.
-  // - "Photos": each background photo once, named by its content ("<SHA-256>.jpg", see putPhoto, readPhoto). A
-  //   device file only names its photos. Photos no device file names are deleted after about a week (tidyPhotos).
+  // - "Photos": each picture once, named by its content ("<SHA-256>.jpg"): the background photos (see putPhoto,
+  //   readPhoto) and the pictures in windows' content (Merge.picType, putPics, picsFor). A device file only names
+  //   them. Pictures no device file or Board history copy names are deleted after about a week (tidyPhotos).
   // - "Board history": hourly copies (section 13c). "About this folder.txt" explains the files to anyone browsing.
   //   Other files are left alone, and other .21board files (exports saved there) aren't merged.
   // A round (see round) reads this device's records, gives a new version to every part changed here since the last
@@ -5707,14 +5713,15 @@
   const LINK_GONE_MS = 30 * 864e5;           // deletions are remembered at least this long (and deleted pages kept in Board history)
   const LINK_DEVICE_KEEP_MS = 60 * 864e5;    // an unlinked device's file is removed this long after it left
   const LINK_PEER_GONE_MS = 365 * 864e5;     // a device whose file has been missing this long no longer holds deletions back
-  const LINK_BIG = 20e6, LINK_MAX_FILE = 35e6;   // this device's file: very large (said) / too big to write
+  const LINK_BIG = 5e6, LINK_MAX_FILE = 20e6;    // this device's file: very large (said) / too big to write (its pictures are in Photos)
   const LINK_BEAT_MS = 30 * 1000;            // 21Board's heartbeat, hidden or not (see awake)
   const LINK_SLEPT_MS = 3 * 60 * 1000;       // no heartbeat for this long: the device slept. (Chrome may run a hidden or busy tab's timers only once a minute.)
   const LINK_STALE_MS = 60 * 1000;           // Settings says when the folder was last checked once that is this long ago (while a look is taking long)
   const LINK_LOST_MS = 5 * 60 * 1000;        // a folder missing this long was probably renamed, moved or deleted
   const LINK_README = 'About this folder.txt';
-  const LINK_PHOTOS = 'Photos';              // the background photos (see putPhoto)
-  const LINK_PHOTO_KEEP_MS = 7 * 864e5;      // a photo no device file names is deleted once it is this old (see tidyPhotos)
+  const LINK_PHOTOS = 'Photos';              // the pictures: background photos (see putPhoto) and windows' (see putPics)
+  const LINK_PHOTO_KEEP_MS = 7 * 864e5;      // a picture nothing names is deleted once it is this old (see tidyPhotos)
+  const LINK_PIC_PIXELS = 50e6;              // a window's picture read from Photos: at most this many pixels (the Picture widget's)
   const LINK_LOCK = '21board-link';          // the Web Lock: rounds, Unlink's and Erase's last writes
   // A device file's name, and Google Drive's copies of it ("… (1).21board").
   const LINK_FILE_RE = /^21Board \((.{0,60})\) \[([0-9a-z]{4,8})\]( \(\d+\))?\.21board$/i;
@@ -5724,7 +5731,7 @@
     allow: ['Chrome needs you to allow the folder again', 'Tap “Reconnect folder” on the board.'],
     readonly: ['the folder can only be viewed, not changed', 'Ask its owner to let you edit it, or choose another folder in Settings › Board Sync.'],
     full: ['there’s no room left', 'Make room in Google Drive or on this device.'],
-    big: ['the board is too big to sync', 'Remove some long notes or large pictures, then try again.'],
+    big: ['the board is too big to sync', 'Remove some long notes, then try again.'],
     other: ['the file couldn’t be saved in the folder', 'If this goes on, check that Google Drive is working on this device.']
   };
   // Setting up Board Sync (setup): a laptop and a smartboard on either side of the 21Board folder in Google Drive.
@@ -5742,6 +5749,37 @@
   const randomId = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => '0123456789abcdefghijklmnopqrstuvwxyz'[b % 36]).join('');
   // "The smartboard" at the start of a sentence.
   const cap = s => String(s || '').replace(/^./, c => c.toUpperCase());
+  // The pictures a .21board file names in Photos (Merge.refsIn): in its windows' content and their pending versions.
+  const picsOfFile = obj => [obj].concat(Array.isArray(obj.pages) ? obj.pages : []).flatMap(e => (e && Array.isArray(e.instances) ? e.instances : []))
+    .flatMap(i => [i && i.data].concat(i && i.pending && Array.isArray(i.pending.data) ? i.pending.data.map(q => q && q.val) : [])).flatMap(v => Merge.refsIn(v) || []);
+  // A picture's size in pixels from its header ({w, h}, or null if it isn't found), so a huge one is turned away before
+  // it is decoded. (As the Picture widget's sizeOf.)
+  function pixelsOf(b, kind) {
+    const u16 = i => b[i] << 8 | b[i + 1], u32 = i => (b[i] << 24 | b[i + 1] << 16 | b[i + 2] << 8 | b[i + 3]) >>> 0;
+    const l16 = i => b[i] | b[i + 1] << 8, l24 = i => b[i] | b[i + 1] << 8 | b[i + 2] << 16, t4 = i => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+    if (kind === 'png' && b.length >= 24) return { w: u32(16), h: u32(20) };
+    if (kind === 'gif' && b.length >= 10) return { w: l16(6), h: l16(8) };
+    if (kind === 'webp' && b.length >= 30) {
+      const t = t4(12);
+      if (t === 'VP8X') return { w: l24(24) + 1, h: l24(27) + 1 };
+      if (t === 'VP8L') { const v = (b[21] | b[22] << 8 | b[23] << 16 | b[24] << 24) >>> 0; return { w: (v & 0x3fff) + 1, h: ((v >>> 14) & 0x3fff) + 1 }; }
+      if (t === 'VP8 ') return { w: l16(26) & 0x3fff, h: l16(28) & 0x3fff };
+    }
+    if (kind === 'jpeg') {   // (its frame header, after any EXIF)
+      for (let i = 2; i + 9 < b.length;) {
+        if (b[i] !== 0xff) { i++; continue; }
+        const m = b[i + 1];
+        if (m === 0xff) { i++; continue; }
+        if (m >= 0xc0 && m <= 0xcf && m !== 0xc4 && m !== 0xc8 && m !== 0xcc) return { w: u16(i + 7), h: u16(i + 5) };
+        if (m === 0x01 || (m >= 0xd0 && m <= 0xd8)) { i += 2; continue; }
+        i += 2 + u16(i + 2);
+      }
+    }
+    if (kind === 'avif') {   // (its first image's ispe box)
+      for (let i = 4; i + 16 <= b.length && i < 65536; i++) if (t4(i) === 'ispe') return { w: u32(i + 8), h: u32(i + 12) };
+    }
+    return null;
+  }
 
   const Link = {
     supported: !LAB && !KIOSK && typeof window.showDirectoryPicker === 'function',
@@ -5780,6 +5818,10 @@
     welcoming: false,   // set-up's last step will say what the first round did: that round shows no merge message
     leaving: false,     // Change…: the farewell write to the folder left, until the new folder's mode is noted (switching)
     prints: new Map(),  // photo data URL -> {file, size, w, h}: its name in Photos, worked out once (see photoName)
+    picNames: new Map(),   // a window's picture (data URL) -> {type, file, size}: its name in Photos, worked out once (see picName)
+    picSeen: null,      // while this device's file is encoded: the pictures in it (picNames keeps only those)
+    histPics: new Map(),   // Board history copy in the folder -> {size, lastModified, files}: the pictures it names (see histNames)
+    histBusy: false, histFailAt: 0,   // the copies are being read; when one last couldn't be (tidyPhotos)
     got: new Map(),     // photo file -> the picture read from Photos (the last few)
     badPhotos: new Map(),   // photo file -> {size, lastModified, at}: found not good as it is
     slowPhotos: new Map(),  // photo file -> when its read last timed out (read again LINK_REREAD_MS later)
@@ -5790,7 +5832,7 @@
     applyRecord(name, value) {
       if (name === 'folder') {
         this.dir = value && typeof value === 'object' && value.kind === 'directory' ? value : null;
-        this.files.clear(); this.listed = new Set(); this.peers = {}; this.badPhotos.clear(); this.waiting.clear(); this.histWait.clear();
+        this.files.clear(); this.listed = new Set(); this.peers = {}; this.badPhotos.clear(); this.waiting.clear(); this.histWait.clear(); this.histPics.clear(); this.histFailAt = 0;
         this.trouble = this.failed = this.newer = null; this.checkedAt = 0; this.unsent = false;
         if (this.started) this.refresh(); else FolderNote.update();
       } else if (name === 'state') {
@@ -6197,8 +6239,8 @@
         '  shortcut to it in their My Drive, then pick it when they set up Board Sync.',
         '- Don’t edit, rename or move these files. 21Board deletes an unlinked device’s file two',
         '  months later.',
-        '- The "Photos" folder holds the background photos, one copy of each. The board files only',
-        '  name them. To give someone a board, use Export in 21Board.',
+        '- The "Photos" folder holds each picture once, background photos and pictures in windows.',
+        '  The board files only name them. To give someone a board, use Export in 21Board.',
         '- The "Board history" folder holds earlier versions of your pages, about one an hour. Open one',
         '  from 21Board > Settings > Board history, or with Import.',
         '- These files can include student names and class photos. Share this folder only with people',
@@ -6263,7 +6305,7 @@
           if (bg && e.board && PHOTO_FILE_RE.test(bg.file || '')) refs.push({ uid: e.board.uid, ref: bg, look: e.media.look || null });
         }
         this.files.set(name, Object.assign(meta, { seq: num(s.seq, 0), at: num(s.at, 0), folder: String(s.folder || ''), left: s.left && typeof s.left === 'object' ? s.left : null,
-          write: String(s.write || ''), merged: s.merged && typeof s.merged === 'object' ? s.merged : {}, peer: dec.peer, refs, uids: [obj].concat(Array.isArray(obj.pages) ? obj.pages : []).map(e => e && e.board && e.board.uid).filter(Boolean),
+          write: String(s.write || ''), merged: s.merged && typeof s.merged === 'object' ? s.merged : {}, peer: dec.peer, refs, pics: picsOfFile(obj), uids: [obj].concat(Array.isArray(obj.pages) ? obj.pages : []).map(e => e && e.board && e.board.uid).filter(Boolean),
           pages: Array.isArray(obj.pages) && obj.pages.length > 1 ? obj.pages.length : 1 }));
         changed = true;
       }));
@@ -6490,12 +6532,12 @@
       // neither stamped nor merged, and this device's own file, which may hold its latest version, is merged only in
       // the round that applies the mode.)
       if (mode && Array.from(local.pages.values()).some(P => P.held && !P.gone && state.pages.has(P.uid) && !ledger.mine[P.uid])) { this.want('full', this.waits.quiet); return; }
-      const photos = await this.photosFor(r, state, local, merging, deadline);
+      const photos = await this.photosFor(r, state, local, merging, deadline), pics = await this.picsFor(state, local, deadline);
       const hmax = await BoardHistory.maxBoard().catch(() => 0);
       const T = Date.now(), histFailed = new Set();
       const planOf = () => Merge.plan(state, local, ledger, { dev: me, now: T, mode, holds: this.holds(r, local), place: (uid, rect, near) => placeCopy(uid, rect, near), zTop: uid => zTop(uid),
         freeIds: this.freeIds(r, hmax), isSingle: id => !!(getWidget(id) || {}).single, isLater: id => (getWidget(id) || {}).clash === 'later', names: this.names(), pageShown: S.board.uid,
-        photos, histFailed, dropHere });
+        photos, pics, histFailed, dropHere });
       let plan = planOf();
       // Board history keeps a version of each page first, where it must (BoardHistory.beforeMerge).
       const pages = {};
@@ -6604,7 +6646,7 @@
         dir: this.dir, folderName: this.dir.name, first: true, linkAt: sync.linkAt || now, other: null, switched: false };
       const ids = all.map(f => f.folder).filter(Boolean).sort();
       // (A new ledger keeps this device's counters, never another folder's devices: they would hold its deletions back.)
-      const fresh = (mode, extra) => { const s = Object.assign({}, keep, { mode, folder: ids[0] || randomId(12), peers: {}, file: null, sum: null, partsH: null, last: null, gcAt: 0, refs: {} }, extra); return { mode, ledger: Merge.ledger(s, []), sync: s }; };
+      const fresh = (mode, extra) => { const s = Object.assign({}, keep, { mode, folder: ids[0] || randomId(12), peers: {}, file: null, sum: null, partsH: null, last: null, gcAt: 0, refs: {}, pics: [] }, extra); return { mode, ledger: Merge.ledger(s, []), sync: s }; };
       const has = Object.keys(r.ledger.mine).length > 0;
       // The ledger lost (the database thrown away under an open board): rebuilt from this device's own file.
       if (sync.lost && files[me]) {
@@ -6763,8 +6805,36 @@
           if (!this.waiting.has(ref.file)) this.waiting.set(ref.file, { since: now, uid, page: (Array.from(Pages.info.values()).find(i => i.uid === uid) || {}).name || '' });
         }
       }
-      for (const f of Array.from(this.waiting.keys())) if (!live.has(f)) this.waiting.delete(f);
+      for (const [f, w] of Array.from(this.waiting)) if (!live.has(f) && !w.pic) this.waiting.delete(f);
       return out;
+    },
+    // The windows' pictures the merge needs (Merge.picsWanted), each read from Photos as a photo is (photosFor): {file:
+    // data URL, or null while it isn't here or isn't good (its window keeps what it has, see Merge.plan)}.
+    async picsFor(state, local, deadline) {
+      const out = {}, now = Date.now(), live = new Set();
+      for (const { uid, file, name } of Merge.picsWanted(state, local)) {
+        if (file in out) continue;
+        let d = null;
+        const slow = this.slowPhotos.get(file);
+        if (Date.now() < deadline && !(slow && Date.now() - slow < this.waits.reread)) {
+          try { d = await within(this.picFor(file), Math.max(500, Math.min(this.waits.read, deadline - Date.now()))); this.slowPhotos.delete(file); }
+          catch (e) { d = null; if (e && e.name === 'TimeoutError') this.slowPhotos.set(file, Date.now()); }
+        }
+        out[file] = d;
+        if (d) continue;
+        const k = 'pic ' + file;
+        live.add(k);
+        if (!this.waiting.has(k)) this.waiting.set(k, { since: now, uid, page: (Array.from(Pages.info.values()).find(i => i.uid === uid) || {}).name || name || '', file, pic: true });
+      }
+      for (const [k, w] of Array.from(this.waiting)) if (w.pic && !live.has(k)) this.waiting.delete(k);
+      return out;
+    },
+    // A window's picture: this device's own (by its name in Photos), or the one in Photos.
+    async picFor(file) {
+      for (const [s, e] of this.picNames) if (e.file === file) return s;
+      if (!this.dir || this.perm !== 'granted') return null;
+      const m = await this.readPhoto({ file }, true);
+      return m ? m.data : null;
     },
     async photoFor(ref) {
       if (this.got.has(ref.file)) return this.got.get(ref.file);
@@ -6852,7 +6922,12 @@
       const own = this.ownCheck(sync, me, name);
       const meta = { dev: me, folder: sync.folder, name: this.device().label, seq: sync.seq || 0, write: '', at: now, merged: this.mergedOf(sync, me), left: opts.left || null,
         refs: this.byPhoto(this.refsOf(ledger)), skipped: r.skipped, generator: `21Board ${RELEASE}` };   // (the theme, accent and text style: Merge.read's, from r.settings)
-      const trial = Merge.encode(ledger, local, meta);
+      // (the trial finds the windows' pictures the file names: picNames keeps only those)
+      const want = new Set();
+      this.picSeen = new Set();
+      let trial;
+      try { trial = Merge.encode(ledger, local, Object.assign({}, meta, { pic: s => (this.picKind(s) ? (want.add(s), '-') : '') })); }
+      finally { for (const s of Array.from(this.picNames.keys())) if (!this.picSeen.has(s)) this.picNames.delete(s); this.picSeen = null; }
       const empty = !Object.values(ledger.mine || {}).length;
       if (empty && !own.exists) return;   // (only the untouched placeholder: nothing to write yet)
       if (trial.partsH === sync.partsH && own.ok && sync.file === name && !opts.left) { this.unstuck(); return; }
@@ -6860,15 +6935,18 @@
       const since = now - (sync.wroteAt || 0), failedAgo = this.failed ? now - this.failed.at : Infinity;
       if (!opts.urgent && !opts.left && since >= 0 && since < this.waits.gap) { this.want('send', this.waits.gap - since); return; }
       if (!opts.urgent && !opts.left && failedAgo >= 0 && failedAgo < this.waits.retry) { this.unsent = true; return; }
-      const gen = this.gen;
+      const gen = this.gen, reput = this.reput;
+      this.reput = false;
       try {
         // A new sequence number and write id, noted before the file is written: a crash in between can't look
         // like another install writing this device's file (see cloneOf).
         const seq = Math.max((sync.seq || 0) + 1, this.ownSeq(me) + 1, Date.now()), write = randomId(8);
         await this.noteSync(s => Object.assign(s, { seq, writes: (s.writes || []).concat(write).slice(-20), wseqs: (s.wseqs || []).concat(seq).slice(-20) }), gen);
         if (gen !== this.gen) return;
-        const refs = await this.putPhotos(r, ledger);   // (photos first: no file names a photo that isn't there)
-        const { obj, partsH } = Merge.encode(ledger, local, Object.assign(meta, { seq, write, at: Date.now(), refs: this.byPhoto(refs) }));
+        // (pictures first: no file names a picture that isn't there)
+        const refs = await this.putPhotos(r, ledger, reput), names = await this.putPics(want, reput);
+        const pic = s => { if (!this.picKind(s)) return ''; const f = names.get(s); if (!f) throw new Error('A picture isn’t in Photos'); return f; };
+        const { obj, partsH, pics } = Merge.encode(ledger, local, Object.assign(meta, { seq, write, at: Date.now(), refs: this.byPhoto(refs), pic }));
         obj.sync.sum = '';
         obj.sync.sum = await this.digest(new TextEncoder().encode(Merge.sumText(obj)));
         const text = JSON.stringify(obj);
@@ -6878,7 +6956,7 @@
         try { await this.writeFile(name, text); } finally { this.writing = false; }
         let stamp = null;
         try { const f = await (await this.dir.getFileHandle(name)).getFile(); stamp = { size: f.size, lastModified: f.lastModified }; } catch (e) { /* read at the next look */ }
-        await this.noteSync(s => Object.assign(s, { file: name, sum: obj.sync.sum, partsH, wroteAt: Date.now(), left: opts.left || null, refs }), gen);
+        await this.noteSync(s => Object.assign(s, { file: name, sum: obj.sync.sum, partsH, wroteAt: Date.now(), left: opts.left || null, refs, pics }), gen);
         await this.noteGone(ledger, seq, gen);
         // (So that the next look doesn't read it back as news.)
         const dec = Merge.decode(obj, { UID_RE, PHOTO_FILE_RE, accentOk: accentKeyOk, accentColorOk: accentOk });
@@ -6889,6 +6967,7 @@
         await this.tidyOwn(name, me, ledger);
       } catch (err) {
         if (gen !== this.gen || !this.dir) return;
+        if (reput) this.reput = true;
         console.warn('21Board: this device’s file couldn’t be written', err);
         const code = await this.codeOf(err);
         this.failed = { at: Date.now(), code }; this.unsent = true;
@@ -6949,8 +7028,9 @@
         }
       });
     },
-    // Each page's photo in Photos (written there if it isn't, see putPhoto): {page uid: its ref}.
-    async putPhotos(r, ledger) {
+    // Each page's photo in Photos (written there if it isn't, see putPhoto): {page uid: its ref}. reput: each one
+    // looked at again (tidyPhotos found one missing).
+    async putPhotos(r, ledger, reput) {
       const refs = {}, had = this.refsOf(ledger);
       for (const rec of r.recs) {
         const k = Keys.parse(rec.key);
@@ -6958,10 +7038,33 @@
         const m = (r.by.get(Keys.media(k.board, 'background')) || {}).value;
         if (!validPhoto(m)) continue;
         const key = BoardHistory.photoKeyOf(m), was = had[rec.value.uid];
-        refs[rec.value.uid] = was && was.key === key && !this.reput ? was : Object.assign(await this.putPhoto(m), { key });
+        refs[rec.value.uid] = was && was.key === key && !reput ? was : Object.assign(await this.putPhoto(m), { key });
       }
-      this.reput = false;
       return refs;
+    },
+    // Before a device file names a window's picture, the picture is in Photos (putFile). One the last write named
+    // (sync.pics) isn't looked at again, unless reput. Returns data URL -> its file.
+    async putPics(want, reput) {
+      const out = new Map(), had = new Set(reput ? [] : (this.sync && this.sync.pics) || []);
+      if (want.size && this.tidying) await this.tidying;
+      let dir = null;
+      for (const s of want) {
+        const e = await this.picName(s);
+        if (!e) continue;
+        if (!had.has(e.file)) await this.putFile(e, s, dir || (dir = await this.dir.getDirectoryHandle(LINK_PHOTOS, { create: true })));
+        out.set(s, e.file);
+      }
+      return out;
+    },
+    // A Board history copy for the folder names its windows' pictures in Photos, as this device's file does (each put
+    // there first; throws as a write does). Returns how many it names.
+    async namePics(exp) {
+      const want = new Set();
+      for (const i of exp.instances || []) Merge.slim(i.data, s => (this.picKind(s) ? (want.add(s), '-') : ''));
+      if (!want.size) return 0;
+      const names = await this.putPics(want, false);
+      for (const i of exp.instances || []) { const sl = Merge.slim(i.data, s => names.get(s) || ''); if (sl) i.data = sl.val; }
+      return names.size;
     },
     // After a write: the file this device used before (it was renamed) goes, and so do Drive's copies of this
     // device's file once everything in them is in the ledger.
@@ -7019,23 +7122,67 @@
       this.prints.delete(data); this.prints.set(data, f);
       while (this.prints.size > 4) this.prints.delete(this.prints.keys().next().value);
     },
-    // Before a device file names a photo, the photo is in Photos: written if it isn't there, or isn't whole (it may
-    // be arriving from a device that wrote the same photo), or if it is more than 3 days old and this device has
-    // just started naming it (cleanup, tidyPhotos, leaves photos younger than a week alone: it can't take this one
-    // before the file naming it arrives). Otherwise one look, and nothing written. Throws as a write does.
+    // Before a device file names a photo, the photo is in Photos (putFile).
     async putPhoto(m) {
       if (this.tidying) await this.tidying;
-      const f = await this.photoName(m), dir = await this.dir.getDirectoryHandle(LINK_PHOTOS, { create: true });
-      let have = null;
-      try { have = await (await dir.getFileHandle(f.file)).getFile(); } catch (e) { /* not there (yet) */ }
-      if (!have || have.size !== f.size || Date.now() - have.lastModified > 3 * 864e5) await this.writeFile(f.file, await (await fetch(m.data)).blob(), dir);
+      const f = await this.photoName(m);
+      await this.putFile(f, m.data, await this.dir.getDirectoryHandle(LINK_PHOTOS, { create: true }));
       return { file: f.file, w: m.w, h: m.h, bytes: m.bytes, name: m.name, addedAt: m.addedAt };
     },
-    // A photo from Photos (or a Photos (n) Google Drive made beside it). Anyone with the folder can put a file there,
-    // so it must be what a photo added here is: a JPEG, PNG or WebP by its first bytes (not its name), whole (its
-    // bytes have the fingerprint it is named by), within the same limits (validPhoto, 6.5 MP), and one that opens.
-    // null while it isn't here, or if it isn't good (then it is read again after LINK_REREAD_MS, or once it changes).
-    async readPhoto(ref) {
+    // A picture (f: {file, size}) in Photos: written if it isn't there, or isn't whole (it may be arriving from a device
+    // that wrote the same picture), or if it is more than 3 days old and this device has just started naming it
+    // (cleanup, tidyPhotos, leaves pictures younger than a week alone: it can't take this one before the file naming it
+    // arrives). Otherwise one look, and nothing written. Throws as a write does.
+    async putFile(f, data, dir) {
+      let have = null;
+      try { have = await (await dir.getFileHandle(f.file)).getFile(); } catch (e) { /* not there (yet) */ }
+      if (!have || have.size !== f.size || Date.now() - have.lastModified > 3 * 864e5) await this.writeFile(f.file, await (await fetch(data)).blob(), dir);
+    },
+    // ---- windows' pictures: "Photos/<fingerprint>.jpg" (or .png, .webp, .gif, .avif), as background photos are. Which
+    // content is a picture: Merge.picType, worked out once per picture (picNames), as is its name (picName).
+    picKind(s) {
+      let e = this.picNames.get(s);
+      if (!e) { e = { type: Merge.picType(s) }; this.picNames.set(s, e); }
+      if (this.picSeen) this.picSeen.add(s);
+      return e.type;
+    },
+    async picName(s) {
+      const e = this.picNames.get(s) || { type: Merge.picType(s) };
+      if (e.type && !e.file) {
+        const buf = await (await fetch(s)).arrayBuffer();
+        Object.assign(e, { file: `${await this.digest(buf)}.${Merge.PIC_EXT[e.type]}`, size: buf.byteLength });
+      }
+      this.picNames.set(s, e);
+      return e.file ? e : null;
+    },
+    // An imported file names its windows' pictures (a device file or a Board history copy from the folder): each is this
+    // device's own if it has it, or the one in Photos (readPhoto's checks). One that can't be had leaves its field
+    // empty (null). Returns how many couldn't.
+    async picsIn(p) {
+      let lost = 0;
+      for (const x of [p].concat(p.pages || []).filter((y, k, a) => a.indexOf(y) === k)) {
+        for (const i of x.instances || []) {
+          if (!i.data || typeof i.data !== 'object' || Array.isArray(i.data)) continue;
+          for (const [k, v] of Object.entries(i.data)) {
+            if (!v || typeof v !== 'object' || Array.isArray(v) || !('b21photo' in v)) continue;
+            let d = null;
+            try { if (Merge.PIC_FILE_RE.test(v.b21photo || '')) d = await this.picFor(v.b21photo); } catch (e) { console.warn('21Board: a picture couldn’t be read', e); }
+            i.data = Object.assign({}, i.data, { [k]: d || null });
+            if (!d) lost++;
+          }
+        }
+      }
+      return lost;
+    },
+    // A picture from Photos (or a Photos (n) Google Drive made beside it). Anyone with the folder can put a file there,
+    // so it must be what a picture added here is: whole (its bytes have the fingerprint it is named by), and one that
+    // opens. A background photo: a JPEG, PNG or WebP by its first bytes (not its name), within the same limits
+    // (validPhoto, 6.5 MP). pic, a window's picture: by its first bytes the type its name says (JPEG, PNG, WebP, GIF or
+    // AVIF), under 16e6 characters as a data URL, at most LINK_PIC_PIXELS (read from its header first, so a huge one
+    // isn't decoded). null while it isn't here, or if it isn't good (then it is read again after LINK_REREAD_MS, or once
+    // it changes).
+    async readPhoto(ref, pic) {
+      if (!(pic ? Merge.PIC_FILE_RE : PHOTO_FILE_RE).test(ref.file || '')) return null;
       let f = null;
       const dirs = this.photoDirs.length ? this.photoDirs : await (async () => { try { return [await this.dir.getDirectoryHandle(LINK_PHOTOS)]; } catch (e) { return []; } })();
       for (const d of dirs) { try { f = await (await d.getFileHandle(ref.file)).getFile(); break; } catch (e) { /* not in this one */ } }
@@ -7046,18 +7193,20 @@
       if (!f.size || f.size > 11.9e6) return no();   // (as a data URL it must stay under 16e6 characters)
       let buf;
       try { buf = await f.arrayBuffer(); } catch (e) { return null; }   // (Google Drive hasn't brought its content yet)
-      const b = new Uint8Array(buf.slice(0, 12)), is = (i, s) => Array.from(s).every((c, k) => b[i + k] === c.charCodeAt(0));
-      const type = is(0, '\xff\xd8\xff') ? 'jpeg' : is(0, '\x89PNG\r\n\x1a\n') ? 'png' : is(0, 'RIFF') && is(8, 'WEBP') ? 'webp' : '';
-      if (!type || await this.digest(buf) !== ref.file.slice(0, 32)) return no();   // (not a picture, or not all of it yet)
+      const type = Merge.sniff(new Uint8Array(buf.slice(0, 96)));   // (as many bytes as Merge.picType looks at)
+      if (!(pic ? type && ref.file.endsWith('.' + Merge.PIC_EXT[type]) : /^(jpeg|png|webp)$/.test(type)) || await this.digest(buf) !== ref.file.slice(0, 32)) return no();   // (not a picture, or not all of it yet)
+      const px = pic ? pixelsOf(new Uint8Array(buf.slice(0, 65536)), type) : null;
+      if (px && px.w * px.h > LINK_PIC_PIXELS) return no();
       const blob = new Blob([buf], { type: 'image/' + type });
       let w = 0, h = 0;
       try { const bmp = await createImageBitmap(blob); w = bmp.width; h = bmp.height; if (bmp.close) bmp.close(); } catch (e) { return no(); }
-      if (w * h > PHOTO_MAX_PIXELS * 1.01) return no();   // (a photo made here can be a little over, by rounding)
+      if (w * h > (pic ? LINK_PIC_PIXELS : PHOTO_MAX_PIXELS * 1.01)) return no();   // (a photo made here can be a little over, by rounding)
       const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
       const m = { data, w, h, bytes: buf.byteLength, name: ref.name, addedAt: ref.addedAt || Date.now() };
-      if (!validPhoto(m)) return no();
+      if (!pic && !validPhoto(m)) return no();
       this.badPhotos.delete(ref.file);
-      this.print(data, { file: ref.file, size: buf.byteLength, w, h });
+      if (pic) this.picNames.set(data, { type, file: ref.file, size: buf.byteLength });   // (this device has it now: see picFor)
+      else this.print(data, { file: ref.file, size: buf.byteLength, w, h });
       return m;
     },
     // An imported file names its photo (p.photoRef, a device file): this device's own photo if it is that one (then
@@ -7073,27 +7222,36 @@
       } catch (e) { console.warn('21Board: the background photo couldn’t be read', e); }
       return p;
     },
-    // Photos no device file names any more are deleted after about a week: only when every device file in the
-    // folder could be read (one still arriving may name it), the photo is over LINK_PHOTO_KEEP_MS old (a device that
-    // names it again writes it again: putPhoto), and this device has found it unnamed on two looks at least an hour
-    // apart. At most once a day. (Copies Google Drive makes, "… (1).jpg", are never named, so they go too, and so do
-    // photos in a Photos (n). Anything else is left alone.) Then every photo this device's pages name that isn't
-    // there (deleted by hand) is put again at the next write.
+    // Pictures nothing names any more are deleted after about a week: only when every device file in the folder could
+    // be read (one still arriving may name it), and every Board history copy there (histNames: a copy older than a
+    // picture's removal still opens whole), the picture is over LINK_PHOTO_KEEP_MS old (a device that names it again
+    // writes it again: putFile), and this device has found it unnamed on two looks at least an hour apart. At most once
+    // a day. (Copies Google Drive makes, "… (1).jpg", are never named, so they go too, and so do pictures in a Photos (n).
+    // Anything else is left alone.) Then every picture this device's file names that isn't there (deleted by hand) is
+    // put again at the next write.
     // Not in the first LINK_ARRIVE_MS after 21Board opens, the device wakes or the folder comes back (freshAt), nor
     // with no device file found at all (Drive may be listing the folder short).
     async tidyPhotos() {
-      const t = this.st.tidy || {}, now = Date.now(), gen = this.gen, files = Array.from(this.files.values());
-      // (nor while a file can't be read, or is a newer 21Board's: either may name photos this device can't see)
+      const t = this.st.tidy || {}, now = Date.now(), gen = this.gen, files = Array.from(this.files.values()), sync = this.sync || {};
+      // (nor while a file can't be read, or is a newer 21Board's: either may name pictures this device can't see)
       if (now - (t.at || 0) < 20 * 36e5 || now - this.freshAt < this.waits.arrive || !files.some(f => f.peer || f.dev === this.dev()) || this.tidying || files.some(f => f.bad || f.newer)) return;
-      const named = new Set(files.flatMap(f => (f.refs || []).map(x => x.ref.file)).concat(Object.values((this.sync || {}).refs || {}).map(x => x.file))), was = t.seen || {}, seen = {};
+      if (this.histBusy || now - this.histFailAt < this.waits.arrive) return;
+      const named = new Set(files.flatMap(f => (f.refs || []).map(x => x.ref.file).concat(f.pics || [])).concat(Object.values(sync.refs || {}).map(x => x.file), sync.pics || [])), was = t.seen || {}, seen = {};
+      // (A write meanwhile that names a picture over 3 days old writes it again, so its date keeps it: see putFile.)
+      let copies = null;
+      this.histBusy = true;
+      try { copies = await this.histNames(); } catch (e) { copies = null; } finally { this.histBusy = false; }
+      if (!copies) { this.histFailAt = Date.now(); return; }   // (a copy that can't be read yet may name one: looked at again later)
+      if (gen !== this.gen || this.tidying) return;
+      copies.forEach(f => named.add(f));
       let done, missing = false;
-      this.tidying = new Promise(r => { done = r; });   // (a write that names a photo meanwhile waits: see putPhoto)
+      this.tidying = new Promise(r => { done = r; });   // (a write that names a picture meanwhile waits: see putPhoto, putPics)
       try {
         for (const dir of this.photoDirs) {
           const there = new Set();
           for await (const [name, h] of dir.entries()) {
             there.add(name);
-            if (h.kind !== 'file' || !/^[0-9a-f]{32}( \(\d+\))?\.(jpg|png|webp)$/.test(name) || (named.has(name) && dir.name === LINK_PHOTOS)) continue;
+            if (h.kind !== 'file' || !/^[0-9a-f]{32}( \(\d+\))?\.(jpg|png|webp|gif|avif)$/.test(name) || (named.has(name) && dir.name === LINK_PHOTOS)) continue;
             if (named.has(name) && dir.name !== LINK_PHOTOS) continue;   // (one a page names, in Photos (n): it is found there, see readPhoto)
             let f;
             try { f = await h.getFile(); } catch (e) { continue; }   // (still arriving: new)
@@ -7102,12 +7260,34 @@
             if (first && now - first >= 36e5) { try { await dir.removeEntry(name); } catch (e) { /* gone already */ } }
             else seen[key] = first || now;
           }
-          if (dir.name === LINK_PHOTOS) for (const x of Object.values((this.sync || {}).refs || {})) if (!there.has(x.file)) missing = true;
+          if (dir.name === LINK_PHOTOS) for (const f of Object.values(sync.refs || {}).map(x => x.file).concat(sync.pics || [])) if (!there.has(f)) missing = true;
         }
       } catch (e) { console.warn('21Board: the Photos folder couldn’t be tidied', e); Object.assign(seen, was); }
       finally { this.tidying = null; done(); }
       if (missing) { this.reput = true; this.want('send', 0); }
       if (gen === this.gen && this.dir) this.saveState({ tidy: { at: now, seen } }, true);   // (Settings doesn't show it)
+    },
+    // Every picture the Board history copies in the folder name (picsOfFile). Each copy is read once: a copy never
+    // changes (by its name, size and date). null if one can't be read yet. (One that isn't a board file names none.)
+    async histNames() {
+      const dir = await BoardHistory.folderDir(false), out = new Set(), seen = new Set();
+      if (!dir) return out;
+      for await (const [name, h] of dir.entries()) {
+        if (h.kind !== 'file' || !/\.21board$/i.test(name)) continue;
+        seen.add(name);
+        let f, c = this.histPics.get(name);
+        try { f = await within(h.getFile(), this.waits.read); } catch (e) { return null; }
+        if (!c || c.size !== f.size || c.lastModified !== f.lastModified) {
+          let text;
+          try { text = await within(f.text(), this.waits.read); } catch (e) { return null; }
+          let files = [];
+          try { files = picsOfFile(JSON.parse(text)); } catch (e) { /* not a board file */ }
+          this.histPics.set(name, c = { size: f.size, lastModified: f.lastModified, files });
+        }
+        c.files.forEach(x => out.add(x));
+      }
+      for (const n of Array.from(this.histPics.keys())) if (!seen.has(n)) this.histPics.delete(n);
+      return out;
     },
     // fn puts other content on the board (Import, going back, Undo): a round waits for it, and Pages.go waits for a round.
     async swap(fn) {
@@ -7120,6 +7300,7 @@
       this.gen++;   // a round under way (here or in another tab) doesn't save anything back
       this.stopTimers();
       this.dir = null; this.perm = 'none'; this.files.clear(); this.listed = new Set(); this.peers = {}; this.badPhotos.clear(); this.got.clear(); this.media.clear(); this.hcache = new Map(); this.owed = false;
+      this.picNames.clear(); this.histPics.clear();
       this.trouble = this.failed = this.newer = this.sync = this.linked = null; this.unsent = this.welcoming = false; this.checkedAt = 0; this.quiet = {}; this.waiting.clear(); this.histWait.clear(); this.slowPhotos.clear(); this.fresh = true;
       this.st = { device: null, tidy: {}, shown: {} };
       FolderNote.update();
@@ -7151,9 +7332,15 @@
       else if (others.length === 1) out.push(`Shared with ${who(others[0])}. Last change ${when(others[0].at)}.`);
       else if (others.length === 2) out.push(`Shared with ${who(others[0])} and ${who(others[1])}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
       else out.push(`Shared with ${who(others[0])}, ${who(others[1])} and ${others.length - 2} other${others.length === 3 ? '' : 's'}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
+      const pics = new Map();   // (windows' pictures: by page, how many are still arriving and how many can't be used)
       for (const [file, w] of this.waiting) {
         if (now - w.since < this.waits.arrive) continue;
+        if (w.pic) { const c = pics.get(w.page) || { late: 0, bad: 0 }; c[this.badPhotos.has(w.file) ? 'bad' : 'late']++; pics.set(w.page, c); continue; }
         out.push(this.badPhotos.has(file) ? `The background photo of “${w.page}” in your folder can’t be used. This device keeps its own.` : `The background photo of “${w.page}” is still arriving.`);
+      }
+      for (const [page, c] of pics) {
+        if (c.late) out.push(c.late === 1 ? `A picture on “${page}” is still arriving.` : `${c.late} pictures on “${page}” are still arriving.`);
+        if (c.bad) out.push(c.bad === 1 ? `A picture on “${page}” in your folder can’t be used. Its window stays as it is.` : `${c.bad} pictures on “${page}” in your folder can’t be used. Their windows stay as they are.`);
       }
       for (const [, h] of this.histWait) out.push(`Changes to “${h.name}” from ${h.from} wait until Board history can save a version on this device. It may be full.`);
       if (this.big) out.push(`At ${fmtBytes(this.big)}, your board file may be slow to reach your other devices.`);
@@ -7838,6 +8025,7 @@
       const ref = exp.media && exp.media.ref, look = exp.media && exp.media.look;
       delete exp.media;
       const p = parseBoardFile(JSON.stringify(exp));
+      const lost = await Link.picsIn(p);   // (a copy from the folder names its pictures in Photos)
       let photo = 'exact', gone = false;
       if (ref) {
         const ph = await this.getPhoto(ref).catch(() => null);
@@ -7857,7 +8045,8 @@
       Link.changed([Keys.board(S.boardId)]);
       this.undoable = undoId && !opts.undo ? { id: undoId, label: `Put the board back to how it was ${when(Date.now())}`, until: Date.now() + HIST.undoMs } : null;
       if (opts.undo) toast('Undone. The board is back as it was.');
-      else toast(`Your board is back to how it was ${when(at)}.` + (gone ? ' The background photo from then wasn’t kept. Your current photo stays.' : ''), undoAction(undoId, 'going back'));
+      else toast(`Your board is back to how it was ${when(at)}.` + (gone ? ' The background photo from then wasn’t kept. Your current photo stays.' : '') +
+        (lost ? (lost === 1 ? ' A picture from then can’t be found.' : ` ${lost} pictures from then can’t be found.`) : ''), undoAction(undoId, 'going back'));
       HistorySheet.refresh();
       return true;
     },
@@ -7914,7 +8103,8 @@
       return true;
     },
 
-    // ---- copies in the Google Drive folder ("Board history" inside it), about one an hour
+    // ---- copies in the Google Drive folder ("Board history" inside it), about one an hour. Their windows' pictures
+    // are named in the folder's Photos (Link.namePics), as in a device file; tidying Photos reads the copies.
     async folderDir(create) {
       if (!Link.dir || Link.perm !== 'granted' || typeof Link.dir.getDirectoryHandle !== 'function') return null;
       try { return await Link.dir.getDirectoryHandle('Board history', { create: !!create }); } catch (e) { return null; }
@@ -7949,6 +8139,7 @@
           delete exp.theme; delete exp.accent; delete exp.letters;
           const dev = Link.device();
           exp.history = { at: meta.at, kind: meta.kind, label: meta.label, by: dev.id, from: dev.label };
+          if (await Link.namePics(exp)) exp.formatVersion = 2;   // (its windows' pictures named in Photos, put there first)
           await Link.writeFile(name, JSON.stringify(exp), dir);
           await this.writeFolderReadme(dir);
         }
@@ -7969,7 +8160,8 @@
         '  folder" at the bottom. Or open a file with Import.',
         '- 21Board keeps about one copy an hour, then one a day, then one a week, and removes the rest.',
         '  Files whose names end in "saved" are ones you saved. 21Board never removes them.',
-        '- These copies leave out the background photo.',
+        '- These copies leave out the background photo. Pictures in windows are in the "Photos"',
+        '  folder, once each.',
         '- They can include student names. Share this folder only with people who should see them.',
         ''
       ].join('\r\n'), dir);
@@ -8384,6 +8576,9 @@
   // values never clash; content changed on both keeps both (the later stays in the window, the other becomes a
   // labelled copy beside it, made by the device whose version lost); other parts take the later change; an edit
   // the deleting device hadn't seen brings a deleted window or page back. See docs/DATA-FORMAT.md, "Board Sync".
+  // A device file names the pictures in windows' content by their files in the folder's Photos (picType, slim): a
+  // name and the picture it stands for are one version (vh.data), and plan puts the picture back when it writes the
+  // content (fill), holding the content while its picture isn't here.
   // The region is pure (no DOM, storage or clock: time comes in opts), so tests/merge.js runs it in Node.
   // MergeUI, after it, shows what a merge did and undoes it.
   // =====================================================================
@@ -8494,6 +8689,82 @@
     }
     // A running Task Timer kept as a copy is paused, the same way on every device, so a copy never rings a second alarm.
     const pauseTask = (v, t) => (v && typeof v === 'object' && v.running && typeof v.endsAt === 'number' ? Object.assign({}, v, { running: false, secondsLeft: Math.max(0, Math.ceil((v.endsAt - t) / 1000)), endsAt: null, alarm: false }) : v);
+
+    // ---- pictures in windows' content: a device file names each one by its file in the folder's Photos (Link.putPics)
+    // instead of holding it. A picture is a string in a top-level field of a window's content that is a base64 data: URL
+    // of a PNG, JPEG, GIF, WebP or AVIF, of 32,768 characters or more (as Board history keeps them once) and under 16e6,
+    // whose first bytes are that type, written as an encoder writes it: the data URL made again from the file's bytes is
+    // then this very string. Anything else stays in the file. See docs/DATA-FORMAT.md, "A device file".
+    const PIC_MIN = 32768, PIC_MAX = 16e6, PIC_HEAD = /^data:image\/(png|jpeg|gif|webp|avif);base64,/, B64 = /^[A-Za-z0-9+/]*={0,2}$/;
+    const PIC_FILE_RE = /^[0-9a-f]{32}\.(jpg|png|webp|gif|avif)$/, PIC_EXT = { jpeg: 'jpg', png: 'png', gif: 'gif', webp: 'webp', avif: 'avif' };
+    // A picture's type by its first bytes ('png', 'jpeg', 'gif', 'webp' or 'avif'), or '' (as the Picture widget's kindOf).
+    function sniff(b) {
+      if (!b || b.length < 12) return '';
+      const t4 = i => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+      if (b[0] === 0x89 && t4(1) === 'PNG\r' && b[5] === 0x0a && b[6] === 0x1a && b[7] === 0x0a) return 'png';
+      if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'jpeg';
+      if (t4(0) === 'GIF8' && (b[4] === 0x37 || b[4] === 0x39) && b[5] === 0x61) return 'gif';
+      if (t4(0) === 'RIFF' && t4(8) === 'WEBP') return 'webp';
+      if (t4(4) === 'ftyp') {   // (an ISO media file: AVIF by its brands, not HEIC)
+        const end = Math.min(b.length, (b[0] << 24 | b[1] << 16 | b[2] << 8 | b[3]) >>> 0);
+        for (let i = 8; i + 4 <= Math.max(12, end); i += 4) if (i !== 12 && (t4(i) === 'avif' || t4(i) === 'avis')) return 'avif';
+      }
+      return '';
+    }
+    // The type of a picture that goes to Photos, or ''.
+    function picType(s) {
+      if (typeof s !== 'string' || s.length < PIC_MIN || s.length >= PIC_MAX) return '';
+      const m = PIC_HEAD.exec(s.slice(0, 32));
+      if (!m) return '';
+      const body = s.slice(m[0].length), last = body.slice(-4);
+      if (body.length % 4 || !B64.test(body)) return '';
+      try {
+        if (sniff(Uint8Array.from(atob(body.slice(0, 128)), c => c.charCodeAt(0))) !== m[1] || btoa(atob(last)) !== last) return '';
+      } catch (e) { return ''; }
+      return m[1];
+    }
+    // In a file, { "b21photo": "<SHA-256>.<ext>" } stands for a picture. refsIn: the files a content names, or null if one
+    // of its fields is such an object but not exactly that.
+    const isRef = v => !!v && typeof v === 'object' && !Array.isArray(v) && 'b21photo' in v;
+    function refsIn(val) {
+      const out = [];
+      if (!val || typeof val !== 'object' || Array.isArray(val)) return out;
+      for (const v of Object.values(val)) {
+        if (!isRef(v)) continue;
+        if (Object.keys(v).length !== 1 || typeof v.b21photo !== 'string' || !PIC_FILE_RE.test(v.b21photo)) return null;
+        out.push(v.b21photo);
+      }
+      return out;
+    }
+    // A content with each picture named (pic(s): its file in Photos, or '' for one that stays): {val, files}, or null if
+    // it has none.
+    function slim(val, pic) {
+      if (!val || typeof val !== 'object' || Array.isArray(val)) return null;
+      let out = null;
+      const files = [];
+      for (const [k, v] of Object.entries(val)) {
+        const f = typeof v === 'string' && v.length >= PIC_MIN ? pic(v) : '';
+        if (!f) continue;
+        out = out || Object.assign({}, val);
+        out[k] = { b21photo: f };
+        files.push(f);
+      }
+      return out ? { val: out, files } : null;
+    }
+    // The content again, its pictures put back from pics ({file: data URL}); undefined while one isn't there.
+    function fill(val, pics) {
+      const files = refsIn(val);
+      if (!files) return undefined;
+      if (!files.length) return val;
+      const out = Object.assign({}, val);
+      for (const [k, v] of Object.entries(val)) {
+        if (!isRef(v)) continue;
+        const d = pics && pics[v.b21photo];
+        if (typeof d !== 'string') return undefined;
+        out[k] = d;
+      }
+      return out;
+    }
 
     // ---- the ledger in memory: { sync: link:sync's value, mine: { uid: link:mine-<uid>'s value } }. A change copies the
     // page's record (base: as it was stored), so records() can tell what to write.
@@ -9034,6 +9305,24 @@
       }
       return out;
     }
+    // The pictures in Photos plan needs (Link reads them, see picsFor): those another device's winning content names
+    // where this device's differs, and those of the copies plan would make. [{uid, wid, file, name: the page's}]
+    function picsWanted(state, local) {
+      const out = [], sh = shown(state);
+      for (const [uid, S] of state.pages) {
+        if (!sh.pages.has(uid)) continue;
+        const LP = local.pages.get(uid), on = sh.wins.get(uid) || new Set(), N = S.parts.name;
+        const name = N && N.main.src !== 'local' && typeof N.main.val === 'string' ? N.main.val : LP ? LP.parts.name.val : '';
+        for (const [wid, SW] of S.wins) {
+          const J = SW.parts.data, LW = LP && LP.wins.get(wid);
+          if (!J || !on.has(wid)) continue;
+          for (const v of (LW && LW.parts.data.h === J.main.h ? [] : [J.main]).concat(J.copy || [])) {
+            if (v.src !== 'local') for (const file of refsIn(v.val) || []) out.push({ uid, wid, file, name });
+          }
+        }
+      }
+      return out;
+    }
 
     // ---- plan: the writes, ledger and settings that make this device show the joined state, honoring holds; copies
     // made here; the summary for messages and Board history. Pass the same now as to stamp.
@@ -9055,6 +9344,9 @@
       const holdP = new Set(o.holds && o.holds.pages || []), holdW = new Set(mode === 'take' ? [] : o.holds && o.holds.wins || []), histFailed = new Set(o.histFailed || []);
       const dropHere = new Set(o.dropHere || []);   // (this device's own pages that an earlier take still has to remove here)
       const photos = o.photos || {}, isLater = o.isLater || (() => false), isSingle = o.isSingle || (() => false);
+      // (a content's pictures from Photos, o.pics, checked against its version's fingerprint: the content, or undefined
+      // while one isn't here, or isn't the one named)
+      const full = (val, h) => { const f = fill(val, o.pics); return f === undefined || (f !== val && hj(f) !== h) ? undefined : f; };
       const nameOf = d => (typeof o.names === 'function' ? o.names(d) : o.names && o.names[d]) || '';
       // (new page ids: o.freeIds.board() from the board, which also knows the ids Board history still uses; or a list, or the first free id)
       const free = Array.isArray(o.freeIds) ? o.freeIds.slice() : [];
@@ -9165,7 +9457,7 @@
           if (k === 'photo' && J.main.src !== 'local' && J.main.h !== '-' && (!lp || lp.h !== J.main.h) && !photos[uid]) held[k] = true;
           if (held[k]) sum.held++;
           tv[k] = held[k] ? (lp ? lp.val : k === 'photo' ? null : undefined) : valOf(J.main, lp);
-          if (!held[k] && (!lp || lp.h !== J.main.h)) { if (J.main.src !== 'local') { acc.applied.push(J.main); if (M && M.p[k]) acc.replaced.push(M.p[k].v); } pageChanged = true; }
+          if (!held[k] && (!lp || lp.h !== J.main.h)) { if (J.main.src !== 'local') { acc.applied.push(J.main); if (M && M.p[k] && M.p[k].v) acc.replaced.push(M.p[k].v); } pageChanged = true; }   // (a hold has no version)
         }
         // join mode: this device's own pages go after the folder's
         if (mode === 'join' && !S.inPeers && S.parts.pos) {
@@ -9246,6 +9538,9 @@
             if (SW.exists.main.h === '0' || LW || mw0) nm.wgone[wid] = tomb(SW.exists, SW.cover, M && M.wgone && M.wgone[wid]);
             continue;
           }
+          // (a window new here whose picture isn't here yet waits, whole: it comes with its picture)
+          const Jd = SW.parts.data;
+          if (!LW && Jd && Jd.main.src !== 'local' && full(Jd.main.val, Jd.main.h) === undefined) { if (mw0) nm.w[wid] = mw0; sum.held++; continue; }
           if (LW) useN(LW.widgetId, LW.n);
           targets.push({ wid, SW: Object.assign({}, SW, { parts: Object.assign({}, SW.parts) }), LW, mw0 });
         }
@@ -9264,6 +9559,10 @@
             }
             const J2 = SW.parts[k];
             t[k] = valOf(J2.main, lp);
+            if (k === 'data') {   // (its pictures put back: this device's own content if it is the same; one not here yet: this device's content stays, and the round is owed)
+              const f = lp && lp.h === J2.main.h ? lp.val : full(t.data, J2.main.h);
+              if (f === undefined) { (T.held || (T.held = {})).data = true; t.data = lp ? lp.val : null; sum.held++; } else t.data = f;
+            }
             if (k === 'rect') {
               const sc = J2.main.src === 'local' || J2.main.src === 'pending' ? lScale : fin(J2.main.scale, tScale);
               const v = t.rect || { rect: normRect(null), maximized: false };
@@ -9281,14 +9580,17 @@
           const J = T.SW.parts.data = Object.assign({}, J0);
           for (const Pv of sortBy(J0.copy || [], v => `${v.by}:${nOf(v)}`)) {
             const cw = copyWid(T.wid, Pv);
-            // (its copy is there now: the version joins the window's own, so no device finds that clash again)
-            J.main = Object.assign({}, J.main, { vv: vjoin(J.main.vv, Pv.vv) });
-            J.pending = J.pending.filter(x => x !== Pv);
             // already made (here or elsewhere), or the same edit under another counter (a device that lost its ledger
             // stamped it again): already kept
             const same = W2 => { const lb = W2.parts.label, lw = LP && LP.wins.get(W2.wid); return lb && sameLabel(valOf(lb.main, lw && lw.parts.label), T.wid, Pv); };
-            if (S.wins.has(cw) || copies.some(c => c.wid === cw || (c.T.wid === T.wid && c.P.by === Pv.by && c.P.t === Pv.t)) || Array.from(S.wins.values()).some(same)) continue;
-            const val0 = Pv.src === 'local' ? (T.LW ? T.LW.parts.data.val : null) : Pv.val, val = T.widgetId === 'task-timer' ? pauseTask(val0, Pv.t) : val0;
+            const made = S.wins.has(cw) || copies.some(c => c.wid === cw || (c.T.wid === T.wid && c.P.by === Pv.by && c.P.t === Pv.t)) || Array.from(S.wins.values()).some(same);
+            const val0 = made ? null : Pv.src === 'local' ? (T.LW ? T.LW.parts.data.val : null) : full(Pv.val, Pv.h);
+            if (val0 === undefined) { sum.held++; continue; }   // (its picture isn't here yet: the copy waits, still pending)
+            // (its copy is there now: the version joins the window's own, so no device finds that clash again)
+            J.main = Object.assign({}, J.main, { vv: vjoin(J.main.vv, Pv.vv) });
+            J.pending = J.pending.filter(x => x !== Pv);
+            if (made) continue;
+            const val = T.widgetId === 'task-timer' ? pauseTask(val0, Pv.t) : val0;
             copies.push({ wid: cw, T, P: Pv, val });
             sumP.clashes.push({ wid: T.wid, widgetId: T.widgetId, mine: Pv.by === dev || J.main.by === dev, devs: [J.main.by, Pv.by] });
             sumP.risky = true;
@@ -9337,9 +9639,11 @@
           for (const k of WIN_PARTS) {
             const J = SW.parts[k];
             if (!J) { if (mw0 && mw0.p[k]) mw.p[k] = mw0.p[k]; continue; }
-            if (T.held && T.held[k]) { mw.p[k] = mw0.p[k]; continue; }
+            // (held with no entry of its own yet: a change made here meanwhile is made on what this device shows, so it
+            // doesn't include the version held back, which it never showed (no seen, unlike a photo's hold))
+            if (T.held && T.held[k]) { mw.p[k] = mw0 && mw0.p[k] ? mw0.p[k] : { hold: 1, h: LW ? LW.parts[k].h : NULL_H }; continue; }
             const lp = LW && LW.parts[k], changedHere = !lp || lp.h !== J.main.h;
-            if (changedHere && J.main.src !== 'local' && J.main.src !== 'plan') { acc.applied.push(J.main); if (mw0 && mw0.p[k]) acc.replaced.push(mw0.p[k].v); }
+            if (changedHere && J.main.src !== 'local' && J.main.src !== 'plan') { acc.applied.push(J.main); if (mw0 && mw0.p[k] && mw0.p[k].v) acc.replaced.push(mw0.p[k].v); }
             if (changedHere || (k === 'rect' && ch('rect'))) pageChanged = true;
             const wrote = changedHere || (k === 'rect' && ch('rect')) ? revs[k] || 0 : 0;
             mw.p[k] = entry(J, lp, mw0 && mw0.p[k], wrote, t[k]);
@@ -9451,9 +9755,12 @@
         ledger: { put: rr.put, del: rr.del }, sync: L.sync, next: L, summary: sum, undo };
     }
 
-    // ---- the device file: this device's whole board as an all-pages backup (Import opens it), with each part's version
+    // ---- the device file: this device's whole board as an all-pages backup (Import opens it), with each part's version.
+    // Its pictures are named, not held (m.pic: a picture's file in Photos, see slim; without it, a stand-in name: the
+    // file's parts fingerprint doesn't depend on the names). Returns {obj, partsH, pics: the files it names}.
     function encode(ledger0, local, m = {}) {
-      const H = local.H, pages = [], goneP = [], goneW = [], canon = [];
+      const H = local.H, pages = [], goneP = [], goneW = [], canon = [], named = [];
+      const pic = typeof m.pic === 'function' ? m.pic : (s => (picType(s) ? '-' : ''));
       for (const uid of Object.keys(ledger0.mine).sort()) {
         const M = ledger0.mine[uid];
         if (M.gone) goneP.push({ uid, exists: M.gone.exists, cover: M.gone.cover || {} });
@@ -9479,10 +9786,20 @@
           for (const k of WIN_PARTS) if (mw.p[k] && mw.p[k].v && !W.parts[k].skipped) iv[k] = mw.p[k].v;
           if (mw.p.rect && mw.p.rect.lh && W.parts.rect.h === mw.p.rect.lh) i.vh = { rect: mw.p.rect.h };   // (the place converted from another scale: still that version)
           if (iv.conf) i.config = W.parts.conf.val;
-          if (iv.data) i.data = W.parts.data.val;
+          if (iv.data) {   // (its pictures named: beside them, the fingerprint of the content with them in it)
+            const sl = slim(W.parts.data.val, pic);
+            i.data = sl ? sl.val : W.parts.data.val;
+            if (sl) { i.vh = Object.assign({}, i.vh, { data: W.parts.data.h }); named.push(...sl.files); }
+          }
           i.v = iv;
           const pend = mw.p.data && mw.p.data.pending;
-          if (iv.data && pend && pend.length) i.pending = { data: pend.map(q => ({ v: q.v, val: q.val })) };
+          if (iv.data && pend && pend.length) {
+            i.pending = { data: pend.map(q => {
+              const sl = slim(q.val, pic), r = sl ? sl.files : refsIn(q.val) || [];   // (one from another device may name its pictures already)
+              named.push(...r);
+              return r.length ? { v: q.v, val: sl ? sl.val : q.val, h: q.h } : { v: q.v, val: q.val };
+            }) };
+          }
           instances.push(i);
         }
         const C = H.canvasFor(size.scale);
@@ -9492,7 +9809,7 @@
         pages.push(Object.assign({ viewport: { width: vw, height: vh }, board }, media ? { media } : {}, { instances }));
         // (what the parts fingerprint covers: each part's fingerprint and version, not its value again)
         canon.push([uid, PAGE_PARTS.map(k => (v[k] ? P.parts[k].h : 0)), v, media ? [media.background || null, media.look ? P.parts.photoLook.h : 0] : 0,
-          instances.map(i => { const W2 = P.wins.get(i.wid); return [i.wid, i.widgetId, i.instance, i.createdAt, WIN_PARTS.map(k => (i.v[k] ? W2.parts[k].h : 0)), i.v, i.vh || 0, i.pending ? i.pending.data.map(q => [q.v, hj(q.val)]) : 0]; })]);
+          instances.map(i => { const W2 = P.wins.get(i.wid); return [i.wid, i.widgetId, i.instance, i.createdAt, WIN_PARTS.map(k => (i.v[k] ? W2.parts[k].h : 0)), i.v, i.vh || 0, i.pending ? i.pending.data.map(q => (q.h ? [q.v, q.h, 1] : [q.v, hj(q.val)])) : 0]; })]);
       }
       pages.sort((a, c) => a.board.pos - c.board.pos || (a.board.uid < c.board.uid ? -1 : 1));
       const main = pages[0] || { viewport: { width: 2400, height: 1350 }, board: null, instances: [] };
@@ -9500,18 +9817,19 @@
       // the ones stamped
       const ls = local.style || {}, val = k => (ls[k] ? ls[k].val : m[k] || null), style = {};
       for (const k of STYLE_PARTS) { const E = ((ledger0.sync || {}).style || {})[k]; if (E && E.v && ls[k] && E.h === ls[k].h) style[k] = E.v; }
-      const obj = { format: '21board', formatVersion: 1, kind: 'full', exportedAt: new Date(fin(m.at, 0)).toISOString(), generator: m.generator || '21Board',
+      // (formatVersion 2: it names pictures in Photos, which an older 21Board's Import can't open)
+      const obj = { format: '21board', formatVersion: named.length ? 2 : 1, kind: 'full', exportedAt: new Date(fin(m.at, 0)).toISOString(), generator: m.generator || '21Board',
         viewport: main.viewport };
       for (const k of STYLE_PARTS) obj[k] = val(k);
       obj.board = main.board;
       if (main.media) obj.media = main.media;
       obj.instances = main.instances;
       if (pages.length > 1) obj.pages = pages.map((p, i) => (i === 0 ? { main: true } : p));
-      obj.sync = { v: 1, dev: m.dev, folder: m.folder || null, name: m.name || '', seq: m.seq || 0, write: m.write || '', at: fin(m.at, 0), merged: m.merged || {},
+      obj.sync = { v: 2, dev: m.dev, folder: m.folder || null, name: m.name || '', seq: m.seq || 0, write: m.write || '', at: fin(m.at, 0), merged: m.merged || {},
         gone: { pages: goneP, windows: goneW }, style, left: m.left || null, sum: '' };
       // Bookkeeping (seq, write, at, merged) and z never make a write: only the parts do.
       const partsH = hash53(JSON.stringify([m.name || '', m.folder || null, m.left || null, goneP, goneW, canon, STYLE_PARTS.map(k => obj[k]).concat([style])]));
-      return { obj, partsH };
+      return { obj, partsH, pics: Array.from(new Set(named)) };
     }
     // The text a file's checksum is taken over: the file with its sum left empty (as its writer had it).
     function sumText(obj) {
@@ -9520,12 +9838,15 @@
       return JSON.stringify(o);
     }
     // A device file (parsed, checksum checked) → a peer, leaving out units that aren't well formed (a missing unit is
-    // never a deletion), or null if it isn't one. newer: made by a newer 21Board (not merged).
+    // never a deletion), or null if it isn't one. newer: made by a newer 21Board (not merged). sync.v 2 (from
+    // 2026.11.18-14): a window's content may name its pictures in Photos, with its fingerprint in vh.data; sync.v 1 has
+    // its pictures inside.
     function decode(obj, o = {}) {
       const H = helpers(o);
       if (!obj || typeof obj !== 'object' || obj.format !== '21board' || !obj.sync || typeof obj.sync !== 'object') return null;
       const s = obj.sync;
-      if (s.v !== 1) return typeof s.v === 'number' && s.v > 1 ? { peer: null, skipped: [], newer: true } : null;
+      if (s.v !== 1 && s.v !== 2) return typeof s.v === 'number' && s.v > 2 ? { peer: null, skipped: [], newer: true } : null;
+      const v2 = s.v === 2, HASH_RE = /^[0-9a-z]{1,16}$/;
       if (!DEV_RE.test(s.dev || '')) return null;
       const skipped = [];
       let newer = false;
@@ -9567,14 +9888,22 @@
             const pw = { wid: i.wid, ident: { widgetId: i.widgetId, n: i.instance, createdAt: fin(i.createdAt, null), z: fin(i.z, 1) }, exists: ex, parts: {}, pending: [] };
             const rv = { rect: normRect(i.rect), maximized: !!i.maximized }, label = normLabel(i.copyOf);
             const vals = { rect: rv, open: !!i.open, label, data: i.data === undefined ? null : i.data, conf: i.config === undefined ? null : i.config };
+            // (content naming its pictures: only in a sync.v 2 file, and only with its fingerprint beside it)
+            const refs = iv.data && v2 ? refsIn(vals.data) : [], dh = refs && refs.length && i.vh && HASH_RE.test(i.vh.data || '') ? i.vh.data : null;
+            if (!refs || (refs.length && !dh)) throw new Error('window');
             for (const k of WIN_PARTS) {
               if (!iv[k]) continue;
-              const fh = k === 'rect' && i.vh && typeof i.vh.rect === 'string' && /^[0-9a-z]{1,16}$/.test(i.vh.rect) ? i.vh.rect : null;
+              const fh = k === 'rect' && i.vh && typeof i.vh.rect === 'string' && HASH_RE.test(i.vh.rect) ? i.vh.rect : k === 'data' ? dh : null;
               const x = V(iv[k], { h: fh || partH(k, vals[k], sc, H), val: vals[k], scale: sc });
               if (x) pw.parts[k] = x;
             }
             const pend = i.pending && Array.isArray(i.pending.data) ? i.pending.data : [];
-            for (const q of pend.slice(0, 50)) { const x = q && V(q.v, { h: hj(q.val === undefined ? null : q.val), val: q.val === undefined ? null : q.val }); if (x) pw.pending.push(x); }
+            for (const q of pend.slice(0, 50)) {
+              const qv = q && q.val !== undefined ? q.val : null, qr = v2 ? refsIn(qv) : [];
+              const qh = qr && qr.length ? (HASH_RE.test(q.h || '') ? q.h : null) : qr ? hj(qv) : null;
+              const x = q && qh && V(q.v, { h: qh, val: qv });
+              if (x) pw.pending.push(x);
+            }
             pp.wins.set(i.wid, pw);
           } catch (err) { skipped.push(`window ${i && i.wid}`); }
         }
@@ -9720,8 +10049,8 @@
       return L;
     }
 
-    return { read, stamp, decode, sumText, join, shown, plan, encode, gc, includes, rebuild, photosWanted, ledger, records, patchSettings, joinPatches, newWid, copyWid,
-      partH, okV, leq, vjoin, PAGE_PARTS, WIN_PARTS, STYLE_PARTS, WID_RE, DEV_RE };
+    return { read, stamp, decode, sumText, join, shown, plan, encode, gc, includes, rebuild, photosWanted, picsWanted, ledger, records, patchSettings, joinPatches, newWid, copyWid,
+      partH, okV, leq, vjoin, picType, sniff, refsIn, fill, slim, PAGE_PARTS, WIN_PARTS, STYLE_PARTS, WID_RE, DEV_RE, PIC_MIN, PIC_FILE_RE, PIC_EXT };
   })();
   // #endregion
 

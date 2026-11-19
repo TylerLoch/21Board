@@ -9,10 +9,15 @@
  *     files from 2026.11.16-3 (no theme or accent version) and 2026.11.16-4 (no text style version), a device
  *     still on 2026.11.16-4 in the folder, and devices updated from it;
  *   - reading a device file: cut, mixed and edited files are refused, a whole one is read, a bad unit is skipped;
+ *   - pictures in windows' content: which go to Photos, device files that name them there, a name and its picture one
+ *     version on every device, a window that keeps what it has (or waits, if new) while its picture is on its way, a
+ *     copy that waits for its picture, files read strictly, and a device still on 2026.11.18-12 (its region, as it
+ *     shipped, in tests/fixtures);
  *   - a randomized run: devices editing pages and windows, Google Drive delivering files late, out of order, twice,
  *     as conflict copies or not at all, devices unlinked, linked again, switched to another folder and back, away
  *     for months, busy windows, stale tabs writing over a merge, lost files and ledgers, the theme, accent and text
- *     style changed now and then (and before set-up), in some runs two or more devices setting up the folder at
+ *     style changed now and then (and before set-up), every tenth note holding a picture that Google Drive sometimes
+ *     brings minutes after the file naming it, in some runs two or more devices setting up the folder at
  *     once, and in some, devices still on 2026.11.16-4, updated as they go. After a final full exchange, an oracle
  *     checks that every device shows the same board (and theme, accent and text style, but for a device that keeps its
  *     own text style), that nothing anyone typed is lost unless a device that showed it changed or deleted it, that no
@@ -50,6 +55,9 @@ let Merge = region(SRC.slice(start, end));   // (let: a device on an older relea
 const PARTS_NOW = "STYLE_PARTS = ['theme', 'accent', 'letters', 'accentColor']";
 const older = parts => (SRC.slice(start, end).includes(PARTS_NOW) ? region(SRC.slice(start, end).replace(PARTS_NOW, `STYLE_PARTS = ${parts}`)) : null);
 const Merge4 = older("['theme', 'accent']"), Merge6 = older("['theme', 'accent', 'letters']");
+// 2026.11.18-12, the release before window pictures moved to Photos: its region as it shipped (tests/fixtures). It reads
+// a device file only if its sync.v is 1, and keeps pictures inside its own file.
+const MergeOld = region(fs.readFileSync(path.join(__dirname, 'fixtures', 'merge-2026.11.18-12.js'), 'utf8'));
 // The helpers the board passes in, taken from board.js as they are.
 const H = vm.compileFunction([named(/const TITLE_H = \d+;/, 'TITLE_H'), named(/const r2 = .*;/, 'r2'), named(/const scaleRect = .*;/, 'scaleRect'),
   named(/const BG_RENAMED = .*;/, 'BG_RENAMED'), named(/const bgColor = .*;/, 'bgColor'), fnText('normalizePhotoSettings'),
@@ -77,7 +85,7 @@ const ok = (cond, msg) => { if (cond) passes++; else fails++; if (!cond || proce
 // ---------------------------------------------------------------------
 const DAY = 864e5, MIN = 60e3, IDLE = 2 * MIN, UNDO = 20000, KEEP = 60 * DAY;
 const W = { NOTES: 'notes', TIMER: 'timer', TASK: 'task-timer', SKETCH: '21sketch' };
-const isLater = w => w === 'timer' || w === 'dice' || w === 'traffic-light';
+const isLater = w => w === 'timer' || w === 'dice' || w === 'traffic-light' || w === 'image';
 const isSingle = w => w === '21sketch';
 let NOW = Date.UTC(2026, 10, 2, 13);
 let rnd = () => Math.random();
@@ -192,7 +200,8 @@ class Device {
   }
   value(widgetId) {
     const t = 't' + (++LOG.n);
-    if (widgetId === W.NOTES) { LOG.typed.add(t); return { text: t }; }
+    // (every tenth note also holds a picture, as a widget with pictures would: it goes through Photos, see PICS)
+    if (widgetId === W.NOTES) { LOG.typed.add(t); return LOG.n % 10 ? { text: t } : { text: t, img: picURL('png', 24576, LOG.n) }; }
     if (widgetId === W.TASK) { LOG.typed.add(t); const run = rnd() < 0.3; return { tasks: [t], running: run, endsAt: run ? this.now() + 5 * MIN : null, secondsLeft: 300, alarm: false }; }
     return { duration: 60 + LOG.n, remaining: 0, endsAt: null };
   }
@@ -404,10 +413,13 @@ class Device {
     if (this.mode && Array.from(local.pages.values()).some(P => P.held && !P.gone && state.pages.has(P.uid) && !st.ledger.mine[P.uid])) return;
     const photos = {};
     for (const w of Merge.photosWanted(state, local)) if (rnd() > (opts.photoMiss || 0) && PHOTOS.has(w.key)) photos[w.uid] = PHOTOS.get(w.key);
+    // (the windows' pictures the merge needs, from the folder's Photos (PICS): one held back (picMiss) hasn't arrived yet)
+    const pics = {};
+    if (typeof Merge.picsWanted === 'function') for (const w of Merge.picsWanted(state, local)) if (PICS.has(w.file) && !(this.picMiss && this.picMiss.has(w.file)) && !picLate(w.file)) pics[w.file] = PICS.get(w.file);
     const holds = { wins: Array.from(this.busy) };
     const names = d => { const p = this.peers.get(d); return p ? p.name : d === this.dev ? this.name : 'another device'; };
     // (as Link calls it: n is the stamp's counter, which plan must not reuse)
-    const plan = Merge.plan(state, local, st.ledger, { dev: this.dev, n: st.ctr, now, mode: this.mode, holds, isLater, isSingle, names, pageShown: this.pageShown(), photos, freeIds: this.nextB(),
+    const plan = Merge.plan(state, local, st.ledger, { dev: this.dev, n: st.ctr, now, mode: this.mode, holds, isLater, isSingle, names, pageShown: this.pageShown(), photos, pics, freeIds: this.nextB(),
       zTop: () => 500, place: (uid, r) => ({ x: r.x + 32, y: r.y + 32, w: r.w, h: r.h }), dropHere });
     // (oracle 7: a copy this device made of its own version: never of text it had itself typed over in that window)
     for (const sw of plan.undo.swaps) {
@@ -490,7 +502,7 @@ class Device {
     const local = this.readLocal(), at = this.now();
     const merged = {};
     for (const [d, p] of Object.entries(L.sync.peers || {})) merged[d] = p.seq;
-    const meta = { dev: this.dev, folder: 'f', name: this.name, at, merged, left: left || null, refs: {} };
+    const meta = { dev: this.dev, folder: 'f', name: this.name, at, merged, left: left || null, refs: {}, pic: picOf };
     for (const P of local.pages.values()) if (P.parts.photo.val) meta.refs[P.parts.photo.val] = { file: crypto.createHash('sha256').update(P.parts.photo.val).digest('hex').slice(0, 32) + '.jpg', w: P.parts.photo.media.w, h: P.parts.photo.media.h, bytes: P.parts.photo.media.bytes, name: 'p.jpg', addedAt: P.parts.photo.media.addedAt };
     const { obj, partsH } = Merge.encode(L, local, meta);
     const name = this.fileName();
@@ -570,6 +582,26 @@ class Device {
   liveWins() { const out = []; for (const b of this.ids()) for (const r of this.insts(b)) out.push([b, `${r.value.widgetId}:${r.value.n}`, r.value]); return out; }
 }
 const PHOTOS = new Map(), DECODED = new Map();
+// The folder's Photos for windows' pictures: file name -> the data URL it holds. A device puts each picture its file
+// names there as Link.putPics does (picOf: its name, from its bytes' SHA-256, or '' for content that stays in the file).
+const PICS = new Map();
+// (in the randomized run, Drive brings some pictures after the files that name them: a quarter of them, for minutes at a
+// time, by their name and the time, until Drive catches up at the end)
+const PICS_LATE = { on: false };
+const picLate = f => PICS_LATE.on && (parseInt(f[0], 16) + Math.floor(NOW / (7 * MIN))) % 4 === 0;
+const picNames = new Map();   // (worked out once per picture, as Link's picNames)
+const picOf = s => {
+  if (typeof Merge.picType !== 'function') return '';
+  let f = picNames.get(s);
+  if (f === undefined) {
+    const t = Merge.picType(s);
+    f = t ? crypto.createHash('sha256').update(Buffer.from(s.slice(s.indexOf(',') + 1), 'base64')).digest('hex').slice(0, 32) + '.' + (t === 'jpeg' ? 'jpg' : t) : '';
+    if (picNames.size > 5000) picNames.clear();
+    picNames.set(s, f);
+  }
+  if (f) PICS.set(f, s);
+  return f;
+};
 // A device on an older release: each of its methods runs with that release's region (M) in place of Merge, and its
 // helpers (h, or H) (M null: it is updated). rel: its mark, for the files it decoded. A device whose tabs are on two
 // releases runs each round with the region and helpers of the tab that runs it.
@@ -590,7 +622,7 @@ function as4(d, on = true) { d.old = on; asRel(d, on ? Merge4 : null, '4'); }
 // ---------------------------------------------------------------------
 function seeded(seed) { let s = seed >>> 0 || 1; return () => { s = (Math.imul(s, 1103515245) + 12345) >>> 0; return (s >>> 1) / 0x80000000; }; }
 function run(seed, nDev, steps, variant = {}) {
-  rnd = seeded(seed * 7919 + 17); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+  rnd = seeded(seed * 7919 + 17); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
   const folder = new Folder('Room 12'), other = new Folder('Room 14');
   const devs = global.__devs = Array.from({ length: nDev }, (_, i) => new Device(['laptop', 'board', 'home', 'cart', 'panel'][i], { skew: variant.skew && i === 1 ? variant.skew : 0, pages: true }));
   const gcOpts = variant.gc ? { gcFn: variant.gc } : {};
@@ -627,6 +659,7 @@ function run(seed, nDev, steps, variant = {}) {
   }
   for (const d of devs) for (const o of devs) if (o !== d) d.deliver(o);
   const roundOf = d => d.round('full', gcOpts);
+  PICS_LATE.on = true;
   for (let s = 0; s < steps; s++) {
     NOW += rnd() < (variant.jumps || 0.03) ? Math.floor(rnd() * 40) * DAY : Math.floor(rnd() * 30000);
     if (variant.old) for (const o of devs) if (o.old && s >= o.upAt) update(o);
@@ -655,7 +688,7 @@ function run(seed, nDev, steps, variant = {}) {
     else roundOf(d);
   }
   // Drive catches up: everything is delivered, every device is back in the folder and running, until nothing changes.
-  NOW += UNDO + 5000;
+  NOW += UNDO + 5000; PICS_LATE.on = false;
   for (const d of devs) { d.away = false; d.busy.clear(); if (d.folder !== folder || !d.linked) { if (d.linked) d.farewell(); d.view = new Map(folder.files); d.linkTo(folder); } }
   const exchange = () => { const w = LOG.writes; for (const d of devs) { for (const o of devs) if (o !== d) d.deliver(o); for (const n of Array.from(d.view.keys())) if (!folder.files.has(n)) d.view.delete(n); roundOf(d); } NOW += 3 * MIN; return LOG.writes - w; };
   for (let k = 0; k < 12 && (exchange() > 0 || k < 1); k++);
@@ -802,7 +835,7 @@ function blind(d) {
 // 1. The rules table, case by case
 // ---------------------------------------------------------------------
 function pair(n = 2, first) {   // (first: the name of each device's untouched first page, "My Board" if not given)
-  rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+  rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
   const folder = new Folder('Room 12');
   const devs = ['laptop', 'board', 'home'].slice(0, n).map(x => new Device(x, { first }));
   const A = devs[0];
@@ -1501,7 +1534,7 @@ function styles() {
     // two devices set up one empty folder at once, neither having the other's file yet, so each sends its board there:
     // only the laptop ever chose a theme and accent (the smartboard, started a day later, has the defaults, and its
     // settings changed since the laptop chose). The chooser's win on both, and nobody is told otherwise.
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const f = new Folder('Room 5'), A = new Device('laptop');
     A.addWindow(A.ids()[0], W.NOTES); A.setStyle({ theme: 'dark', accent: 'green' });
     NOW += DAY;
@@ -1519,7 +1552,7 @@ function styles() {
   block(() => {
     // the same, neither having chosen one (the laptop's theme from before 2026.11.16-4, with no time it was chosen):
     // the same on both
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const f = new Folder('Room 6'), A = new Device('laptop'); A.patch({ set: { theme: 'dark' } }); NOW += DAY;
     const B = new Device('board'); B.addPage('Smartboard page');
     A.linkTo(f, { atOnce: true }); NOW += 1000; B.linkTo(f, { atOnce: true });
@@ -1529,7 +1562,7 @@ function styles() {
   for (const first of ['laptop', 'smartboard']) block(() => {
     // the same, the laptop coming from another folder (Change…) where it was in use for days: its counters carry on
     // from there, but its choice is as old as it is, so the smartboard's later one wins on both
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const X = new Folder('Room 3'), Y = new Folder('Room 4'), A = new Device('laptop'), B = new Device('board');
     A.addWindow(A.ids()[0], W.NOTES); A.setStyle({ theme: 'dark' });   // (day 0)
     A.linkTo(X);
@@ -1678,7 +1711,7 @@ function styles() {
   });
   for (const first of ['laptop', 'smartboard']) block(() => {
     // two set up one empty folder at once, only the laptop having chosen one: the laptop's on both, nobody told otherwise
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const f = new Folder('Room 5'), A = new Device('laptop');
     A.addWindow(A.ids()[0], W.NOTES); A.setStyle({ letters: 'early' });
     NOW += DAY;
@@ -1693,7 +1726,7 @@ function styles() {
   for (const order of [[0, 1, 2], [2, 1, 0], [1, 2, 0]]) block(() => {
     // three at once: the laptop chose Easier to read, the cart Early readers a day later, the smartboard none: the
     // cart's on all three, and the cart isn't told otherwise
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const f = new Folder('Room 7'), A = new Device('laptop');
     A.addWindow(A.ids()[0], W.NOTES); A.setStyle({ letters: 'legible' }); NOW += DAY;
     const C = new Device('cart'); C.addPage('Cart page'); C.setStyle({ letters: 'early' }); NOW += DAY;
@@ -1731,7 +1764,7 @@ function styles() {
     // a device still on 2026.11.16-4 in the folder: it doesn't know the text style, so it keeps its own and never sends
     // one; its file, without one, resets nobody's; and its rounds stay quiet
     ok(!!Merge4, `(the stand-in for 2026.11.16-4: board.js has “${PARTS_NOW}”)`);
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const f = new Folder('Room 8'), A = new Device('laptop'), B = new Device('board', { old: true }), C = new Device('cart');
     A.addWindow(A.ids()[0], W.NOTES); A.linkTo(f); B.linkTo(f); C.linkTo(f);
     const all = [A, B, C], each = () => { const w = LOG.writes; for (let k = 0; k < 3; k++) { for (const d of all) { for (const o of all) if (o !== d) d.deliver(o); d.round(); } NOW += MIN; } return LOG.writes - w; };
@@ -1756,7 +1789,7 @@ function styles() {
   // Updated from 2026.11.16-4: a ledger from before the text style. A choice made on the new release before its first
   // round (Chrome asking to Reconnect the folder after the update, offline, or just quick) is a change like any other.
   const linked4 = (labels, folderName) => {
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const f = new Folder(folderName), devs = labels.map(l => new Device(l, { old: true }));
     devs[0].addWindow(devs[0].ids()[0], W.NOTES);
     for (const d of devs) { if (d !== devs[0]) d.deliver(devs[0]); d.linkTo(f); }
@@ -1820,7 +1853,7 @@ function styles() {
     // the laptop, on 2026.11.17-2 and never having chosen a text style, sets up an empty folder (its Standard there as
     // the oldest version there can be); the smartboard, on 2026.11.16-4 with Early readers, joins it, then updates. Nobody
     // chose a text style for this folder: the smartboard keeps its own, and isn't told the laptop changed it.
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const f = new Folder('Room 25'), A = new Device('laptop'), B = new Device('board', { old: true, pages: !joins });
     if (joins) B.addPage('Smartboard page');
     A.addWindow(A.ids()[0], W.NOTES); B.patch({ set: { letters: 'early' } }); NOW += 1000;   // (2026.11.16-4 notes no lettersAt)
@@ -1840,7 +1873,7 @@ function styles() {
     // the same, then the laptop unlinks: two months on, the smartboard removes its file (Link.daily), whether it keeps
     // its own Early readers (no version of the text style: the laptop's never-chosen Standard is nobody's change, so
     // that file holds nothing it lacks), has none of its own, or chose one after the update
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const f = new Folder('Room 27'), A = new Device('laptop'), B = new Device('board', { old: true, pages: false });
     B.addPage('Smartboard page'); A.addWindow(A.ids()[0], W.NOTES);
     if (own !== 'none') B.patch({ set: { letters: 'early' } });
@@ -1858,7 +1891,7 @@ function styles() {
   for (const first of ['laptop', 'smartboard']) block(() => {
     // two set up one empty folder at once, neither having chosen a text style, but the smartboard has one from before
     // 2026.11.17-2: one of the two never-chosen values on both (by device id), and nobody is told someone changed it
-    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const f = new Folder('Room 26'), A = new Device('laptop'), B = new Device('board', { pages: false });
     A.addWindow(A.ids()[0], W.NOTES); B.addPage('Smartboard page'); B.patch({ set: { letters: 'early' } });
     const [x, y] = first === 'laptop' ? [A, B] : [B, A];
@@ -1891,7 +1924,7 @@ function files() {
   bad.instances.push({ widgetId: 'notes', instance: 8, wid: 'notes@1', v: { exists: ['zz', {}, 1] } });
   const r = Merge.decode(bad, H);
   ok(r && r.peer && r.skipped.length === 2 && Array.from(r.peer.pages.values()).some(p => p.wins.size >= 1), 'one malformed unit is skipped and the rest is read');
-  const nv = clone(obj); nv.sync.v = 2;
+  const nv = clone(obj); nv.sync.v = 3;
   ok(same(Merge.decode(nv, H), { peer: null, skipped: [], newer: true }), 'a newer sync.v is reported as newer');
   const ns = clone(obj); ns.instances[0].v.data = [ns.instances[0].v.data[0], ns.instances[0].v.data[1], 5, 'x', 'y'];
   ok(Merge.decode(ns, H).newer === true, 'a version shape this release doesn’t know is reported as newer');
@@ -1942,6 +1975,206 @@ function files() {
   ok(same(s1.deletedBoards, [2]) && same(s1.deletedAt, { 2: 99 }) && same(s1.boards, [1, 3]) && s1.theme === 'light', 'a settings patch adds and removes deleted pages as set operations');
   const s2 = Merge.patchSettings(Object.assign({}, s0, { boards: [3, 1, 2, 5] }), { order: { 1: [1, 'a'], 2: [2, 'b'], 3: [0.5, 'c'] } });
   ok(same(s2.boards, [3, 1, 2, 5]), 'the order is rebuilt from pos, with pages the patch doesn’t know kept after');
+}
+
+// ---------------------------------------------------------------------
+// 2b. Pictures in windows (2026.11.18-14): each kept once in the folder's Photos, the device files only name them
+// ---------------------------------------------------------------------
+// A picture as a widget holds it: a base64 data: URL of n bytes, with the first bytes of its type (and noise after).
+function picBytes(type, n, seed) {
+  const head = { jpeg: [0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1], png: [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13],
+    gif: Array.from(Buffer.from('GIF89a')).concat([1, 0, 1, 0, 0x80, 0]), webp: Array.from(Buffer.from('RIFF')).concat([0, 0, 0, 0]).concat(Array.from(Buffer.from('WEBPVP8X'))),
+    avif: [0, 0, 0, 28].concat(Array.from(Buffer.from('ftypavif')), [0, 0, 0, 0], Array.from(Buffer.from('avifmif1miaf'))),
+    heic: [0, 0, 0, 24].concat(Array.from(Buffer.from('ftypheic')), [0, 0, 0, 0], Array.from(Buffer.from('mif1heic'))) }[type];
+  const b = Buffer.alloc(n);
+  Buffer.from(head).copy(b);
+  let x = seed || 1;
+  for (let i = head.length; i < n; i++) { x = (Math.imul(x, 1103515245) + 12345) >>> 0; b[i] = x >>> 24; }
+  return b;
+}
+const picURL = (type, n, seed, as = type) => `data:image/${as};base64,` + picBytes(type, n, seed).toString('base64');
+const fileOf = d => JSON.parse(d.folder.files.get(d.fileName()));
+const instsOf = obj => [obj].concat((obj.pages || []).filter(x => !x.main)).flatMap(p => p.instances || []);
+const bigURL = text => /"data:[^"]{32768,}"/.test(text);
+// The labeled copies a device shows: { wid, copyOf, data }.
+const copiesOfD = d => d.liveWins().filter(([, , v]) => v.copyOf).map(([b, ik, v]) => ({ wid: v.wid, copyOf: v.copyOf, data: (d.recs.get(`data:${b}:${ik}`) || {}).value }));
+
+function pictures() {
+  console.log('\nPictures in windows: kept once in Photos, named by the device files');
+  if (typeof Merge.picType !== 'function') { ok(false, 'Merge.picType: which content goes to Photos'); return; }
+  block(() => {
+    const T = Merge.picType;
+    const jpg = picURL('jpeg', 40000, 1);
+    ok(T(jpg) === 'jpeg' && T(picURL('png', 30000, 2)) === 'png' && T(picURL('gif', 30000, 3)) === 'gif' && T(picURL('webp', 30000, 4)) === 'webp' && T(picURL('avif', 30000, 5)) === 'avif',
+      'a JPEG, PNG, GIF, WebP or AVIF data URL of 32,768 characters or more goes to Photos');
+    ok(T(picURL('jpeg', 20000, 1)) === '' && T(picURL('png', 30000, 2, 'jpeg')) === '' && T(picURL('heic', 30000, 6, 'avif')) === '' && T('data:text/plain;base64,' + picBytes('jpeg', 40000, 1).toString('base64')) === '' &&
+      T(jpg.slice(0, 1000) + '\n' + jpg.slice(1000)) === '' && T(jpg.slice(0, -2) + 'B=') === '' && T(123) === '' && T('x'.repeat(40000)) === '',
+      'one under 32,768 characters, of a type its bytes aren’t, a HEIC, not a picture, not plain base64 or not as an encoder writes it, stays in the file');
+  });
+  block(() => {
+    const { A, B, b, sync } = pair();
+    const uid = A.boardOf(b).uid;
+    const jpg = picURL('jpeg', 60000, 11), gif = picURL('gif', 30000, 12), icon = picURL('png', 3000, 13);
+    const i1 = A.addWindow(b, 'image'), i2 = A.addWindow(b, 'image'), i3 = A.addWindow(b, 'image');
+    A.put(`data:${b}:${i1}`, 'data', { src: jpg, w: 400, h: 300, name: 'Volcano.jpg', bytes: 60000 });
+    A.put(`data:${b}:${i2}`, 'data', { src: gif, w: 1, h: 1, name: 'Spin.gif', bytes: 30000 });
+    A.put(`data:${b}:${i3}`, 'data', { src: icon, w: 16, h: 16, name: 'Icon.png', bytes: 3000 });
+    A.put(`conf:${b}:${i2}`, 'conf', { fit: 'fill' });
+    const w1 = A.winVal(b, i1).wid, w2 = A.winVal(b, i2).wid, w3 = A.winVal(b, i3).wid;
+    sync();
+    const text = A.folder.files.get(A.fileName()), obj = JSON.parse(text), ins = instsOf(obj);
+    const f1 = ins.find(i => i.wid === w1), f2 = ins.find(i => i.wid === w2), f3 = ins.find(i => i.wid === w3);
+    const ref = i => i && i.data && i.data.src && i.data.src.b21photo;
+    ok(!bigURL(text) && /^[0-9a-f]{32}\.jpg$/.test(ref(f1) || '') && /^[0-9a-f]{32}\.gif$/.test(ref(f2) || '') && PICS.get(ref(f1)) === jpg && PICS.get(ref(f2)) === gif,
+      `the device file names each picture in Photos (<SHA-256>.jpg, .gif) and holds none (${ref(f1)}, ${ref(f2)})`);
+    ok(f3 && f3.data.src === icon && !(f3.vh && f3.vh.data), 'a picture under 32,768 characters stays in the file, as before');
+    const local = A.readLocal(), W1 = local.pages.get(uid).wins.get(w1);
+    ok(f1.vh && f1.vh.data === W1.parts.data.h && f1.data.name === 'Volcano.jpg' && f1.data.w === 400, 'beside the name, the file gives the content’s fingerprint with the picture in it (vh.data); the other fields stay');
+    ok(obj.formatVersion === 2 && obj.sync.v === 2, `a file that names pictures is formatVersion 2, sync.v 2 (${obj.formatVersion}, ${obj.sync.v})`);
+    ok(text.length < 20000, `the file stays small: ${text.length} characters for a board with ${jpg.length + gif.length} characters of pictures`);
+    ok(dataOf(B, uid, w1).src === jpg && dataOf(B, uid, w2).src === gif && dataOf(B, uid, w2).name === 'Spin.gif' && dataOf(B, uid, w3).src === icon,
+      'the other device gets each picture whole, from Photos, with its other fields');
+    const fB = instsOf(fileOf(B));
+    ok(ref(fB.find(i => i.wid === w1)) === ref(f1) && ref(fB.find(i => i.wid === w2)) === ref(f2), 'and its own file names the same pictures');
+    const lB = B.readLocal().pages.get(uid).wins.get(w1).parts.data;
+    const mA = A.link.mines.get(uid).w[w1].p.data, mB = B.link.mines.get(uid).w[w1].p.data;
+    ok(lB.h === W1.parts.data.h && same(mA.v, mB.v) && !mB.pending, 'a reference and the picture it stands for are one version, the same on both devices (no clash)');
+    const wa = A.writes, wb = B.writes;
+    sync(2);
+    ok(A.writes === wa && B.writes === wb, `nobody writes again (${A.writes - wa}, ${B.writes - wb})`);
+    // The same picture put in the same window on both devices before they synced: equal values, no clash, no copy.
+    const pic2 = picURL('jpeg', 45000, 21), same2 = { src: pic2, w: 400, h: 300, name: 'Same.jpg', bytes: 45000 };
+    A.put(`data:${b}:${i1}`, 'data', same2); NOW += 1000; A.round();
+    const bb = bOf(B, uid), bi1 = ikOf(B, uid, w1);
+    B.put(`data:${bb}:${bi1}`, 'data', same2); NOW += 1000; B.round();
+    sync(2);
+    ok(dataOf(A, uid, w1).src === pic2 && dataOf(B, uid, w1).src === pic2 && !copiesOfD(A).length && !copiesOfD(B).length && !(B.link.mines.get(uid).w[w1].p.data.pending || []).length,
+      'the same picture chosen on both devices: one version, no copy');
+  });
+  block(() => {
+    // A picture still on its way: the device file arrives before the picture.
+    const { A, B, b, sync } = pair();
+    const uid = A.boardOf(b).uid;
+    const old = picURL('jpeg', 50000, 31), next = picURL('jpeg', 52000, 32), fresh = picURL('png', 40000, 33), oldRef = picOf(old);
+    const i1 = A.addWindow(b, 'image');
+    A.put(`data:${b}:${i1}`, 'data', { src: old, w: 400, h: 300, name: 'Old.jpg', bytes: 50000 });
+    const w1 = A.winVal(b, i1).wid;
+    sync();
+    ok(dataOf(B, uid, w1).src === old, 'set up: the smartboard shows the picture');
+    A.put(`data:${b}:${i1}`, 'data', { src: next, w: 400, h: 300, name: 'Next.jpg', bytes: 52000 });
+    const i2 = A.addWindow(b, 'image');
+    A.put(`data:${b}:${i2}`, 'data', { src: fresh, w: 400, h: 300, name: 'New.png', bytes: 40000 });
+    const w2 = A.winVal(b, i2).wid;
+    NOW += 1000; A.round();
+    const refs = instsOf(fileOf(A)).map(i => i.data && i.data.src && i.data.src.b21photo).filter(Boolean);
+    B.picMiss = new Set(refs);
+    const bw = B.writes;
+    B.deliver(A); const p1 = B.round();
+    const kept = B.recs.get(`data:${bOf(B, uid)}:${ikOf(B, uid, w1)}`);
+    ok(kept && kept.value.src === old && !ikOf(B, uid, w2), 'pictures not here yet: a window the smartboard has keeps its picture, and a new one waits');
+    ok(p1 && p1.summary.held > 0, `the round says it held something back (${p1 && p1.summary.held}), so the next look runs another`);
+    const fB = instsOf(fileOf(B));
+    ok(!fB.some(i => i.wid === w2) && (fB.find(i => i.wid === w1).data.src || {}).b21photo === oldRef, 'its own file still names the picture it shows, and not the new window');
+    NOW += 1000; B.round(); NOW += 1000; B.round();
+    ok(B.recs.get(`data:${bOf(B, uid)}:${ikOf(B, uid, w1)}`).value.src === old, `rounds while it waits never empty the window, nor stamp it as changed here (${B.writes - bw} writes)`);
+    // A picture in Photos that isn't the one named (its bytes don't give the content's fingerprint): held too.
+    B.picMiss = new Set();
+    const realNext = PICS.get(refs[0]);
+    PICS.set(refs[0], picURL('jpeg', 52000, 99));
+    NOW += 1000; B.round();
+    ok(B.recs.get(`data:${bOf(B, uid)}:${ikOf(B, uid, w1)}`).value.src === old, 'a picture that doesn’t match what the file says is never used');
+    PICS.set(refs[0], realNext);
+    NOW += 1000; B.round();
+    ok(dataOf(B, uid, w1).src === next && dataOf(B, uid, w2).src === fresh, 'once the pictures are here, both windows fill in');
+    sync(2);
+    const wa = A.writes, wb = B.writes; sync(2);
+    ok(A.canon() === B.canon() && A.writes === wa && B.writes === wb, 'and the devices agree, with nothing written again');
+    // Changed here while the picture was on its way: this device's change wins, as any later change.
+    const later = picURL('jpeg', 41000, 41), mine = picURL('jpeg', 42000, 42);
+    A.put(`data:${b}:${i1}`, 'data', { src: later, w: 1, h: 1, name: 'Later.jpg', bytes: 41000 }); NOW += 1000; A.round();
+    const r2 = instsOf(fileOf(A)).find(i => i.wid === w1).data.src.b21photo;
+    B.picMiss = new Set([r2]); B.deliver(A); NOW += 1000; B.round();
+    B.put(`data:${bOf(B, uid)}:${ikOf(B, uid, w1)}`, 'data', { src: mine, w: 1, h: 1, name: 'Mine.jpg', bytes: 42000 }); NOW += 1000; B.round();
+    B.picMiss = new Set(); sync(3);
+    ok(dataOf(A, uid, w1).src === mine && dataOf(B, uid, w1).src === mine, 'a picture chosen here while another was on its way: the later one wins on both');
+  });
+  block(() => {
+    // Content whose clashes are kept as copies (not "later"), with a picture in it: the copy has its picture, once here.
+    const { A, B, b, sync } = pair();
+    const uid = A.boardOf(b).uid, ik = A.addWindow(b, W.NOTES), wid = A.winVal(b, ik).wid;
+    sync();
+    const pa = picURL('png', 40000, 51), pb = picURL('png', 40000, 52);
+    A.put(`data:${b}:${ik}`, 'data', { text: 'from A', img: pa }); NOW += 1000; A.round();
+    B.put(`data:${bOf(B, uid)}:${ikOf(B, uid, wid)}`, 'data', { text: 'from B', img: pb }); NOW += 1000; B.round();
+    const rb = instsOf(fileOf(B)).find(i => i.wid === wid).data.img.b21photo;
+    A.picMiss = new Set([rb]);
+    A.deliver(B); A.round(); B.deliver(A); B.round();
+    A.picMiss = new Set(); sync(3);
+    const cps = d => copiesOfD(d).filter(c => c.copyOf.wid === wid);
+    const all = d => [dataOf(d, uid, wid)].concat(cps(d).map(c => c.data)).filter(Boolean);
+    const imgs = d => all(d).map(x => x.img).sort().join('|');
+    ok(cps(A).length === 1 && cps(B).length === 1 && imgs(A) === [pa, pb].sort().join('|') && imgs(B) === imgs(A), 'a clash on content with pictures: both kept, the copy with its picture whole, on both devices');
+    const f = instsOf(fileOf(A));
+    ok(!bigURL(A.folder.files.get(A.fileName())) && f.filter(i => i.data && i.data.img && i.data.img.b21photo).length === 2, 'and the files name both pictures');
+  });
+  block(() => {
+    // Reading: a reference counts only in a file of sync.v 2, with the content's fingerprint.
+    const { A, b, sync } = pair();
+    const ik = A.addWindow(b, 'image'), wid = A.winVal(b, ik).wid, pic = picURL('jpeg', 40000, 61);
+    A.put(`data:${b}:${ik}`, 'data', { src: pic, w: 1, h: 1, name: 'p.jpg', bytes: 40000 }); NOW += 1000; A.round(); sync(1);
+    const obj = fileOf(A), uid = A.boardOf(b).uid;
+    const win = o => { const r = Merge.decode(o, H); const p = r && r.peer && r.peer.pages.get(uid); return { r, w: p && p.wins.get(wid) }; };
+    const at = o => instsOf(o).find(i => i.wid === wid);
+    const good = win(obj);
+    ok(good.w && good.w.parts.data && good.w.parts.data.h === at(obj).vh.data, 'a reference is read with the fingerprint the file gives');
+    const noVh = clone(obj); delete at(noVh).vh.data;
+    const r1 = win(noVh);
+    ok(r1.w === undefined && r1.r.skipped.some(x => /window/.test(x)), 'a reference without its fingerprint: the window is skipped, never read as an empty picture');
+    const badName = clone(obj); at(badName).data.src = { b21photo: '../a.jpg' };
+    ok(win(badName).w === undefined, 'nor is a reference whose name isn’t a plain fingerprint');
+    const v1 = clone(obj); v1.sync.v = 1; v1.formatVersion = 1;
+    const r3 = win(v1);
+    ok(r3.w && r3.w.parts.data && r3.w.parts.data.h !== at(obj).vh.data, 'in a file of sync.v 1 there are no references: content is read as it is');
+    const noRef = clone(obj); at(noRef).data.src = pic.slice(0, 100);
+    const r4 = win(noRef);
+    ok(r4.w && r4.w.parts.data.h !== at(obj).vh.data, 'a fingerprint (vh.data) with no reference beside it is ignored');
+  });
+  block(() => {
+    // A device still on 2026.11.18-12 in the folder.
+    rnd = seeded(42); NOW = Date.UTC(2026, 10, 2, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
+    const folder = new Folder('Room 9'), N = new Device('new'), O = new Device('old');
+    asRel(O, MergeOld, 'old');
+    const b = N.addPage('Art'), uid = N.boardOf(b).uid, ik = N.addWindow(b, 'image'), wid = N.winVal(b, ik).wid, pic = picURL('jpeg', 40000, 71);
+    N.put(`data:${b}:${ik}`, 'data', { src: pic, w: 1, h: 1, name: 'p.jpg', bytes: 40000 });
+    N.linkTo(folder); O.deliver(N); O.linkTo(folder);
+    for (let i = 0; i < 3; i++) { O.deliver(N); O.round(); N.deliver(O); N.round(); NOW += MIN; }
+    const fN = fileOf(N);
+    ok(fN.sync.v === 2 && MergeOld.decode(fN, H).newer === true, 'the older release reads this release’s file as a newer 21Board’s: it merges nothing from it (and says Update 21Board)');
+    ok(!O.ids().some(x => (O.boardOf(x) || {}).uid === uid), 'so it never shows a reference as content');
+    const ob = O.addPage('Old page'), oik = O.addWindow(ob, 'image'), owid = O.winVal(ob, oik).wid, opic = picURL('png', 38000, 72);
+    O.put(`data:${ob}:${oik}`, 'data', { src: opic, w: 1, h: 1, name: 'o.png', bytes: 38000 });
+    NOW += MIN; O.round(); N.deliver(O); N.round(); NOW += MIN; N.round();
+    const oText = O.folder.files.get(O.fileName()), ouid = O.boardOf(ob).uid;
+    ok(JSON.parse(oText).sync.v === 1 && oText.includes(opic), 'the older release keeps writing its file with the picture inside');
+    ok(dataOf(N, ouid, owid) && dataOf(N, ouid, owid).src === opic, 'this release reads that file’s picture as it is');
+    const nIns = instsOf(fileOf(N)).find(i => i.wid === owid);
+    ok(nIns && nIns.data.src.b21photo && PICS.get(nIns.data.src.b21photo) === opic, 'and names it in Photos in its own file');
+    const mO = (N.link.mines.get(ouid) || { w: {} }).w[owid];
+    ok(mO && mO.p.data.v[0] === O.dev, 'with the older device’s version: this release made no change of its own');
+    // The older device updates: its next write is a slim file, written once.
+    as4(O, false); O.rel = ''; O.H = null;
+    const w0 = O.writes; NOW += MIN; O.round(); NOW += MIN; O.round();
+    const oNew = O.folder.files.get(O.fileName());
+    ok(O.writes - w0 === 1 && JSON.parse(oNew).sync.v === 2 && !bigURL(oNew), `updated, its first round writes each picture once and a slim file, then nothing (${O.writes - w0} write)`);
+    const nw = N.writes; N.deliver(O); N.round(); NOW += MIN; N.round();
+    ok(N.writes === nw && dataOf(N, ouid, owid).src === opic, 'for the other device that is no change');
+  });
+  block(() => {
+    // A device file names no picture: formatVersion 1, as any export.
+    const { A } = pair();
+    const obj = fileOf(A);
+    ok(obj.formatVersion === 1 && obj.sync.v === 2 && !instsOf(obj).some(i => i.vh && i.vh.data), 'a file that names no picture stays formatVersion 1 (an older 21Board’s Import still opens it); its sync.v is 2');
+  });
 }
 
 // ---------------------------------------------------------------------
@@ -2011,7 +2244,7 @@ async function bites(scale) {
 // drive-critic/relink-sim.js's summer, on these devices: does the page the smartboard deleted come back?
 function summer(draft) {
   const run1 = () => {
-    rnd = seeded(7); NOW = Date.UTC(2027, 5, 10, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear();
+    rnd = seeded(7); NOW = Date.UTC(2027, 5, 10, 13); uidN = 0; LOG = newLog(); LOG.n = 0; PHOTOS.clear(); PICS.clear();
     const folder = new Folder('Room 12'), L = new Device('laptop'), S = new Device('board');
     const keep = L.addPage('Vocab'), b = L.addPage('Seating');
     L.addWindow(keep, W.NOTES); L.addWindow(b, W.NOTES);
@@ -2070,6 +2303,7 @@ else (async () => {
   review();
   styles();
   files();
+  pictures();
   await randomized(scale);
   await bites(scale);
   console.log(`\n${passes} passed, ${fails} failed`);
