@@ -56,8 +56,7 @@ const PARTS_NOW = "STYLE_PARTS = ['theme', 'accent', 'letters', 'accentColor']";
 const older = parts => (SRC.slice(start, end).includes(PARTS_NOW) ? region(SRC.slice(start, end).replace(PARTS_NOW, `STYLE_PARTS = ${parts}`)) : null);
 const Merge4 = older("['theme', 'accent']"), Merge6 = older("['theme', 'accent', 'letters']");
 // 2026.11.18-12: its region as it shipped (tests/fixtures), unchanged through 2026.11.18-14, the last release before
-// window pictures moved to Photos. It reads
-// a device file only if its sync.v is 1, and keeps pictures inside its own file.
+// window pictures moved to Photos. It reads a device file only if its sync.v is 1, and keeps pictures inside its own file.
 const MergeOld = region(fs.readFileSync(path.join(__dirname, 'fixtures', 'merge-2026.11.18-12.js'), 'utf8'));
 // The helpers the board passes in, taken from board.js as they are.
 const H = vm.compileFunction([named(/const TITLE_H = \d+;/, 'TITLE_H'), named(/const r2 = .*;/, 'r2'), named(/const scaleRect = .*;/, 'scaleRect'),

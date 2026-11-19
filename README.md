@@ -368,8 +368,8 @@ being typed in, is due again.
   place, whether it's open, its content and its settings. A window moved on the laptop and typed in on the
   smartboard keeps both changes. Changes to different windows never clash.
 - **The same content changed on both,** such as two edits to one note: both are kept. The later one stays in the
-  window, and the other appears beside it as a labeled copy, "Copy · 9:41 AM". For the Timer, Dice, Traffic Light
-  and Video Player, whose content is a setting, the later one wins. For the Video Player that includes its History,
+  window, and the other appears beside it as a labeled copy, "Copy · 9:41 AM". For the Timer, Dice, Traffic Light,
+  Video Player, Picture and Calculator, the later one wins. For the Video Player that includes its History,
   so a video added on the other device meanwhile drops out, and Board history keeps it. Anything else changed on
   both, such as a window moved on both, takes the later change, and Board history keeps a version from before it.
 - **Deleting** a page or window on any device deletes it everywhere, with Undo and Board history. An edit on a

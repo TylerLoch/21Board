@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-15';
-  const BOARD_BUILD = 'fb1e7ef4';
+  const BOARD_BUILD = 'c8edfabb';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2233,16 +2233,17 @@
       this.lastSaveAt = performance.now();   // (Board Sync leaves a window alone while it is being used; a clock that never goes back)
       const map = kind === 'data' ? S.data : S.conf;
       const key = (kind === 'data' ? Keys.data : Keys.conf)(S.boardId, this.ikey);
+      const stored = () => { if (kind === 'data') this.filling = 0; };   // (its first content stored: Board Sync no longer waits, see Link.filling)
       let v;
       try { v = clone(value); } catch (err) { this.ack(reqId, false, null, 'Value is not JSON-serializable'); return; }
       const has = map.has(this.ikey);
-      if (sameJSON(has ? map.get(this.ikey) : null, v) && (v === null || Known.has(key)) && !Writer.pending.has(key)) { this.ack(reqId, true); return; }   // (pending: not saved yet)
+      if (sameJSON(has ? map.get(this.ikey) : null, v) && (v === null || Known.has(key)) && !Writer.pending.has(key)) { stored(); this.ack(reqId, true); return; }   // (pending: not saved yet)
       if (kind === 'data' && has) BoardHistory.guardEmptied(this.ikey, map.get(this.ikey), v);   // e.g. a note cleared: keep a version first
       let p;
       if (v === null) { map.delete(this.ikey); p = Writer.del(key); }
       else { map.set(this.ikey, v); p = Writer.put(key, kind, v); }
       if (kind === 'data') unlabel(this.ikey);   // (a copy whose content is changed is an ordinary window now)
-      p.then(ok => (ok === false ? this.ack(reqId, false, null, 'Not saved yet') : this.ack(reqId, true)));   // (not saved: the board keeps it and tries again)
+      p.then(ok => { if (ok === false) this.ack(reqId, false, null, 'Not saved yet'); else { stored(); this.ack(reqId, true); } });   // (not saved: the board keeps it and tries again)
     }
 
     windowOp(op, args) {
@@ -5215,6 +5216,7 @@
   // ---------------------------------------------------------------------
   // A .21board file is JSON (see docs/DATA-FORMAT.md):
   //   { format: "21board", formatVersion: 1, kind: "full" | "template", ... }
+  // (formatVersion 2: a Board Sync device file or folder copy that names pictures in Photos, section 13b. An export is 1.)
   // "full" keeps everything (including closed windows and their content);
   // "template" keeps the open windows' layout and config but no content.
   // =====================================================================
@@ -5712,7 +5714,7 @@
   // While the folder can't be used (Chrome wants to be asked again, the folder is gone, writing fails, another
   // device has a newer 21Board), a note stays on the board: see FolderNote.
   // On this device only (never exported): link:folder (the folder handle), link:state {device: {id, label},
-  // tidy: {at, seen}, shown: {page uid: when}}, and the ledger (docs/DATA-FORMAT.md).
+  // tidy: {at, seen, copies}, shown: {page uid: when}}, and the ledger (docs/DATA-FORMAT.md).
   // =====================================================================
   const LINK_CHECK_MS = 5000;                // how often the folder is looked at while 21Board is in front
   const LINK_QUIET_MS = 3000;                // a round this long after the last change here…
@@ -5721,6 +5723,7 @@
   const LINK_RETRY_MS = 60 * 1000;           // a write that didn't work is tried again after this long (not at every look)
   const LINK_BUSY_MS = 12000;                // a window saved this recently (typing, a Name Picker show) keeps its own version this round
   const LINK_FOCUS_MS = 60000;               // …and this long while it has the keyboard
+  const LINK_FILL_MS = 30000;                // a window opened for something pasted or dropped holds this device's file back at most this long (filling)
   const LINK_HOLD_MS = 60000;                // an open window menu or Pages menu holds a merge at most this long, then closes
   const LINK_RACE_MS = 1500;                 // a widget save this soon after a merged write counts as based on the old one (Raced)
   const LINK_IDLE_MS = 2 * 60 * 1000;        // no change seen to a device's file for this long: it counts as idle; a file failing this long is said
@@ -5802,7 +5805,7 @@
     return null;
   }
   // Whether a picture moves: a GIF of more than one frame, a PNG whose acTL chunk (before its first IDAT) says more than
-  // one frame, a WebP with its animation flag, an AVIF image sequence.
+  // one frame, a WebP with its animation flag, an AVIF image sequence. (The Picture widget's moves: see pixelsOf.)
   function movesOf(b, kind) {
     const u32 = i => (b[i] << 24 | b[i + 1] << 16 | b[i + 2] << 8 | b[i + 3]) >>> 0, t4 = i => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
     if (kind === 'png') {
@@ -5847,7 +5850,7 @@
     hcache: new Map(),  // the fingerprints of the records' parts, by revision, kept between rounds (Merge.read)
     writing: false,     // a round is writing records or this device's file ("Syncing…")
     nagged: false, nagToast: null,
-    waits: { quiet: LINK_QUIET_MS, max: LINK_MAX_MS, gap: LINK_GAP_MS, retry: LINK_RETRY_MS, idle: LINK_IDLE_MS, arrive: LINK_ARRIVE_MS, busy: LINK_BUSY_MS, focus: LINK_FOCUS_MS,
+    waits: { quiet: LINK_QUIET_MS, max: LINK_MAX_MS, gap: LINK_GAP_MS, retry: LINK_RETRY_MS, idle: LINK_IDLE_MS, arrive: LINK_ARRIVE_MS, busy: LINK_BUSY_MS, focus: LINK_FOCUS_MS, fill: LINK_FILL_MS,
       race: LINK_RACE_MS, hold: LINK_HOLD_MS, read: LINK_READ_MS, round: LINK_ROUND_MS, reread: LINK_REREAD_MS, toast: LINK_TOAST_MS, keep: LINK_DEVICE_KEEP_MS,
       gone: LINK_GONE_MS, maxFile: LINK_MAX_FILE, bigFile: LINK_BIG, afterCommit: null },   // (tests shorten them; afterCommit 'stop': a crash between a round's transaction and its write)
     beatAt: 0, freshAt: 0,   // when 21Board was last seen running here; when it opened, or the device woke up or came back online (see awake)
@@ -6525,7 +6528,8 @@
     async attempt(kind, gen, opts = {}) {
       const now = Date.now(), me = this.dev();
       if (kind === 'full') this.owed = false;
-      const r = await this.readLocal(this.fresh);
+      const filling = this.filling(), r = await this.readLocal(this.fresh);
+      r.filling = filling || this.filling();   // (a window waiting for its picture as the board was read: see writeOwn)
       let sync = r.sync, ledger = r.ledger, send = kind === 'send';
       // (No ledger, but linked: the database lost it, see decide. A send round waits for the full round that decides.)
       if (!sync) sync = { v: 1, dev: me, mode: 'wait', first: true, linkAt: now, lost: true };
@@ -6778,7 +6782,7 @@
       for (const w of done.written) { if (w.deleted) by.delete(w.key); else by.set(w.key, w); }
       const sr = by.get(Keys.settings);
       return { recs: Array.from(by.values()).filter(x => !x.key.startsWith('link:')), by, skipped: r.skipped,
-        settings: Object.assign({}, DEFAULT_SETTINGS, (sr && sr.value) || {}), sync: done.sync, ledger: done.ledger };
+        settings: Object.assign({}, DEFAULT_SETTINGS, (sr && sr.value) || {}), sync: done.sync, ledger: done.ledger, filling: r.filling };
     },
     // Someone is using the board: a gesture, a dialog, a window menu, the Pages menu, or a page change. (Not the
     // Widget Picker: it isn't anchored to a window.) A menu left open for LINK_HOLD_MS is closed.
@@ -6971,6 +6975,14 @@
       this.redraw(true);
       return true;
     },
+    // A window on the page shown that the board opened for a picture or video link pasted or dropped on it, whose widget
+    // hasn't saved it yet (section 15c). This device's file waits for it, so other devices never get the window empty
+    // and ready for another picture. Not for longer than LINK_FILL_MS: a widget that turns the file away saves nothing.
+    filling() {
+      const now = performance.now();
+      for (const w of S.wins.values()) if (w.filling && now - w.filling < this.waits.fill) return true;
+      return false;
+    },
     // ---- writing this device's file (spec §6.1)
     // opts.urgent: not held back by LINK_GAP_MS. opts.left: Unlink's or Erase's last write.
     async writeOwn(r, ledger, opts = {}) {
@@ -6993,6 +7005,9 @@
       const since = now - (sync.wroteAt || 0), failedAgo = this.failed ? now - this.failed.at : Infinity;
       if (!opts.urgent && !opts.left && since >= 0 && since < this.waits.gap) { this.want('send', this.waits.gap - since); return; }
       if (!opts.urgent && !opts.left && failedAgo >= 0 && failedAgo < this.waits.retry) { this.unsent = true; return; }
+      // (A window was waiting for its picture when the board was read: tried again in a second, also once 21Board is
+      // hidden. Its widget saves the picture by then. See filling.)
+      if (r.filling && !opts.left) { this.want('send', 1000); return; }
       const gen = this.gen, reput = this.reput;
       this.reput = false;
       try {
@@ -7250,7 +7265,7 @@
       const bad = this.badPhotos.get(ref.file);
       if (bad && bad.size === f.size && bad.lastModified === f.lastModified && Date.now() - bad.at < this.waits.reread) return null;
       const no = () => { this.badPhotos.set(ref.file, { size: f.size, lastModified: f.lastModified, at: Date.now(), first: (bad && bad.first) || Date.now() }); return null; };
-      if (!f.size || f.size > 11.9e6) return no();   // (as a data URL it must stay under 16e6 characters)
+      if (!f.size || 23 + 4 * Math.ceil(f.size / 3) >= 16e6) return no();   // (under 16e6 characters as a data URL, as Merge.picType has it. 23: 'data:image/jpeg;base64,')
       let buf;
       try { buf = await f.arrayBuffer(); } catch (e) { return null; }   // (Google Drive hasn't brought its content yet)
       const type = Merge.sniff(new Uint8Array(buf.slice(0, 96)));   // (as many bytes as Merge.picType looks at)
@@ -8189,6 +8204,7 @@
       if (!S.settings.historyFolder || !Link.supported || !meta) return;
       if (!/^(auto|open|restored|manual)$/.test(meta.kind) && !meta.manual) return;
       if (meta.kind === 'open' && Link.dir && !meta.manual) return;   // (Board Sync: it may hold only what was merged from other devices, theirs to copy)
+      if (!force && Link.filling()) return;   // (a window still waiting for its picture would be empty in the copy: a later version goes)
       const last = this.metas.find(m => m.folder);
       if (last && last.sig === meta.sig && !force) return;
       if (!force && last && meta.at - last.at < HIST.folderEvery) return;
@@ -10912,7 +10928,8 @@
   // A picture pasted (Ctrl+V, ⌘V) or dropped onto the board opens in a new Picture window (widgets/image): in the middle
   // of the board, or where it was dropped, one window for each picture, which keeps its middle there as it takes the
   // picture's shape. The window opens first; once its page has started (hello), the board sends it the file ('file'),
-  // and the widget checks it, shrinks it if it must and saves it as its content, as it does for its own Open…. A paste
+  // and the widget checks it, shrinks it if it must and saves it as its content, as it does for its own Open…. Board
+  // Sync holds this device's file back until then, so other devices never get the window empty (Link.filling). A paste
   // or drop inside a widget that the widget didn't take comes here too (the SDK passes it on; a .21board file dropped
   // there imports, as on the board), except from a widget uploaded in Developer mode. A paste in the board's own text
   // fields, or while a dialog is open, is theirs. Not while windows are locked (section 12b): the board says how to
@@ -10926,7 +10943,7 @@
   const PICTURE_ID = 'image', VIDEO_ID = 'youtube-player';
   const Pictures = {
     // A file that may be a picture, by its type or name. (Its bytes are checked by the widget, which says what's wrong:
-    // an SVG, a HEIC photo, a file that isn't a picture at all.)
+    // a HEIC photo, an SVG it can't draw, a file that isn't a picture at all.)
     is(f) { return !!f && typeof f.arrayBuffer === 'function' && (/^image\//i.test(f.type || '') || /\.(png|jpe?g|jfif|gif|webp|avif|svgz?|hei[cf]|bmp|tiff?)$/i.test(f.name || '')); },
     // A Picture window for each picture among files (10 at most, and the rest asked for again), near at (layout px) or
     // in the middle of the board. reason: 'paste' or 'drop'. False when there was no picture to open.
@@ -10939,6 +10956,7 @@
         const ik = openWidget(PICTURE_ID, { fresh: true, at: at || undefined }), w = ik && S.wins.get(ik);
         if (!w) continue;
         w.keepAt = w.middle();   // (taking the picture's shape, it stays where it opened: windowOp setSize)
+        w.filling = performance.now();   // (Board Sync waits for its picture: Link.filling)
         w.files = (w.files || []).concat({ file, reason: reason === 'paste' ? 'paste' : 'drop' });
         if (w.connected) this.deliver(w);
       }
@@ -10960,6 +10978,7 @@
       const ik = openWidget(VIDEO_ID, { fresh: true, at: at || undefined }), w = ik && S.wins.get(ik);
       if (!w) return true;
       // (Sent as the 'file' event, as a picture is: a text/uri-list file. The widget shows it as if pasted into its box.)
+      w.filling = performance.now();   // (Board Sync waits for its video: Link.filling)
       w.files = (w.files || []).concat({ file: new File([link], 'link.uri', { type: 'text/uri-list' }), reason: reason === 'paste' ? 'paste' : 'drop' });
       if (w.connected) this.deliver(w);
       return true;

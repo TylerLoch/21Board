@@ -14,11 +14,11 @@
 const VERSION = '2026.11.18-15';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'fb1e7ef4';
+const BUILD = 'c8edfabb';
 const FILES = {
-  './': '4f4c8263aac25984',
-  'index.html': '4f4c8263aac25984',
-  'board.js': '62cc792f3548d954',
+  './': '50464e338b29ab33',
+  'index.html': '50464e338b29ab33',
+  'board.js': '27e3bb2540cb2ed0',
   'sdk/board21.js': 'ba3de867e376915e',
   'sdk/board21-dev.js': '701293968d7cad06',
   'sdk/dev/board-shell.js': 'fcec475a4f3074da',
@@ -56,7 +56,7 @@ const FILES = {
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
   'widgets/youtube-player/index.html': '5a84d2adf04f7031',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
-  'widgets/image/index.html': '1583c74c0e14ec48',
+  'widgets/image/index.html': '6f62120c44e8dde1',
   'widgets/calculator/index.html': '30b381684d80c30b',
   'widgets/calculator/calc-engine.js': '2591c6f99c951cd6',
   'widgets/sdk-playground/index.html': '0dff97332041a455'

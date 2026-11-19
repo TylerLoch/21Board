@@ -72,13 +72,15 @@
   // more than one frame, an animated PNG, a WebP with its animation flag, an AVIF image sequence) are kept byte for byte,
   // so they still move: at most 5 MB. An SVG drawing is drawn as a picture, 2560 px on its long side, and saved as a
   // still: nothing in it ever runs or loads, and it is never kept as SVG (drawSvg). Board history keeps each picture
-  // once (board.js, BoardHistory.pack).
+  // once (board.js, BoardHistory.pack), and so does Board Sync's Photos folder (Merge.picType).
   //
   // A picture chosen here (Open…, Paste, a file dropped on this window, or one pasted or dropped on the board, which
   // opens a new window for it and sends it here: the 'file' event) gives the window its shape, unless it fills the
   // board. A paste here with a picture showing isn't taken: the SDK passes it on to the board, which opens a new window.
   // Nor are several pictures pasted or dropped at once: the board opens a window for each, as when they're dropped on it.
 
+  // (board.js's LINK_PIC_PIXELS and LINK_PIC_ANIM are MAX_PIXELS and MAX_ANIM, for Board Sync's pictures in Photos.
+  // Change both.)
   const MAX_FILE = 25 * 1048576, MAX_PIXELS = 50e6, MAX_ANIM = 5 * 1048576, MAX_SVG = 5 * 1048576;   // turned away above these
   const KEEP_BYTES = 1048576, KEEP_SIDE = 3840, DRAW_SIDE = 2560;            // kept as they are / drawn again at most
   const BOX = { w: 720, h: 540, least: 360, minW: 160, minH: 120 };   // a new picture's window: within 720 × 540, at least 360 on its long side (the manifest's least size: minW, minH)
@@ -121,7 +123,8 @@
     return out;
   }
   // 'png', 'jpeg', 'gif', 'webp' or 'avif'; 'svg' (drawn as a picture); 'heic' (turned away, with a message of its own);
-  // '' otherwise.
+  // '' otherwise. board.js has a copy for Board Sync's pictures in Photos, Merge.sniff, without 'svg' and 'heic'.
+  // Change both.
   function kindOf(b) {
     if (b.length < 12) return '';
     if (b[0] === 0x89 && text4(b, 1) === 'PNG\r') return 'png';
@@ -144,6 +147,7 @@
     return new TextDecoder(enc).decode(b);
   }
   // Its size in pixels from its header, so a huge picture is turned away before it is decoded. null: not found.
+  // board.js has a copy for Board Sync's pictures in Photos, pixelsOf. Change both.
   function sizeOf(b, kind) {
     const u16 = i => b[i] << 8 | b[i + 1];
     const l16 = i => b[i] | b[i + 1] << 8, l24 = i => b[i] | b[i + 1] << 8 | b[i + 2] << 16;
@@ -171,7 +175,8 @@
     return null;
   }
   // Whether it moves: a GIF of more than one frame, a PNG whose acTL chunk (before its first IDAT) says more than one
-  // frame, a WebP with its animation flag, an AVIF image sequence.
+  // frame, a WebP with its animation flag, an AVIF image sequence. board.js has a copy for Board Sync's pictures in
+  // Photos, movesOf. Change both.
   function moves(b, kind) {
     if (kind === 'png') {
       for (let i = 8; i + 12 <= b.length;) {

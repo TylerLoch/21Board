@@ -8909,7 +8909,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
-  ['Board Sync: pictures in windows (each kept once in Photos and named by the device file, the other device gets them whole, typing writes no picture again, a write cut off between two pictures, a picture still arriving, a file in Photos that lies, the folder’s note from the release before, a device file from the release before, Export and Import, background photos as before)', async (browser) => {
+  ['Board Sync: pictures in windows (each kept once in Photos and named by the device file, the other device gets them whole, typing writes no picture again, a write cut off between two pictures, a picture still arriving, a file in Photos that lies, the folder’s note from the release before, a device file from the release before, Export and Import, background photos as before, pictures pasted just before 21Board is hidden)', async (browser) => {
     const errors = [], crypto = require('crypto');
     const sha = buf => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 32);
     const bytesOf = src => Buffer.from(src.slice(src.indexOf(',') + 1), 'base64');
@@ -9003,12 +9003,13 @@ const SUITES = [
     ok(await eventually(async () => { await syncNow(B.p); return ((await picData(B.p, b2)) || {}).src === s2b; }), 'the right bytes arrive: it fills in');
     // Files nobody should be able to slip in, each named by its own bytes: a text file, a PNG that says it is 8000 × 7000
     // (56 MP, over the Picture widget's 50), a GIF named .png, an animated GIF over 5 MB (the widget's limit); and a
-    // picture over 11.9 MB as Google Drive shows it. Each is turned away before it is decoded. (A PNG of 100 × 100 that
-    // doesn't open, and a good picture, are decoded once each.)
+    // picture of 11,999,983 bytes as Google Drive shows it, one byte more than Photos takes (as a data URL, 16e6
+    // characters or more). Each is turned away before it is decoded. (A PNG of 100 × 100 that doesn't open, and a good
+    // picture, are decoded once each. The good one shows 11,999,982 bytes, the most Photos takes: it is read whole.)
     const text = Buffer.from('not a picture at all. '.repeat(200)), huge = pngHeader(8000, 7000), anim = padGif(FIXTURE('picture-animated.gif'), 5.5 * 1048576), broken = pngHeader(100, 100);
     const lies = { [`${sha(text)}.png`]: text, [`${sha(huge)}.png`]: huge, [`${sha(gif)}.png`]: gif, [`${sha(anim)}.gif`]: anim };
     await addPhotos(B.p, Object.fromEntries(Object.entries(lies).concat([[`${sha(broken)}.png`, broken]]).map(([n, b]) => [n, b.toString('base64')])));
-    await B.p.evaluate(n => { window.__drive = { stamp: { [n]: { size: 12e6, lastModified: Date.now() } } }; }, nameOf(s2));
+    await B.p.evaluate(([n, good]) => { window.__drive = { stamp: { [n]: { size: 11999983, lastModified: Date.now() }, [good]: { size: 11999982, lastModified: Date.now() } } }; }, [nameOf(s2), nameOf(s1b)]);
     const read = await B.p.evaluate(async names => {
       const l = window.__board21.link, out = {}, real = window.createImageBitmap;
       let n = 0;
@@ -9019,7 +9020,16 @@ const SUITES = [
     await B.p.evaluate(() => { window.__drive = {}; });
     const said = Object.values(read).map(x => `${x.data ? 'read' : 'refused'} (${x.decoded})`).join(', ');
     ok(Object.keys(lies).concat(nameOf(s2)).every(n => read[n].data === null && read[n].decoded === 0) && read[`${sha(broken)}.png`].data === null && read[`${sha(broken)}.png`].decoded === 1 && read[nameOf(s1b)].data === s1b,
-      `a non-picture, a picture over 50 MP, one of another type than its name, an animation over 5 MB and one over 11.9 MB are refused before they are decoded; a good one is read whole (${said})`);
+      `a non-picture, a picture over 50 MP, one of another type than its name, an animation over 5 MB and one a byte over what Photos takes are refused before they are decoded; a good one is read whole, at the most Photos takes too (${said})`);
+    // (Merge.picType: a picture of 11,999,982 bytes, a data URL of 15,999,999 characters, goes to Photos; one byte more
+    // stays in the device file. So every picture a file names in Photos can be read back.)
+    const edge = await B.p.evaluate(src => {
+      const M = window.__board21.merge, head = 'data:image/jpeg;base64,', start = src.slice(head.length, head.length + 128);
+      const url = n => { const pad = (3 - n % 3) % 3; return head + start + 'A'.repeat(4 * Math.ceil(n / 3) - 128 - pad) + '='.repeat(pad); };
+      return [11999982, 11999983].map(n => { const u = url(n); return { n, chars: u.length, type: M.picType(u) }; });
+    }, s1b);
+    ok(edge[0].type === 'jpeg' && edge[0].chars === 15999999 && edge[1].type === '' && edge[1].chars >= 16e6,
+      `Photos takes a picture of up to 11,999,982 bytes, the size read back above; one byte more stays in the file (${edge.map(e => `${e.n} bytes, ${e.chars} characters: “${e.type}”`).join('; ')})`);
 
     // ---- A device file from the release before (sync.v 1, its pictures inside it): read as it is, with no Photos.
     const old = JSON.parse(await fileText(A.p, await ownFile(A.p))), srcs = {};
@@ -9068,8 +9078,62 @@ const SUITES = [
     await A.p.waitForTimeout(700); await syncNow(A.p);
     const jA3 = await ownJSON(A.p), bgFile = jA3 && jA3.media && jA3.media.background && jA3.media.background.file;
     ok(/^[0-9a-f]{32}\.(jpg|png|webp)$/.test(bgFile || '') && !!(await readPhotos(A.p))[bgFile] && !refsIn(jA3).includes(bgFile), `a background photo is still put in Photos and named by the file, as before (${bgFile})`);
-    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
+
+    // ---- Pictures pasted on a slow laptop (the Picture window's page held back), then 21Board hidden at once: the
+    // laptop's file waits for the pictures, so the smartboard never shows a new window empty, ready for another picture.
+    // With Ctrl+V, and with the Widget Picker's Paste. A window whose widget never saves holds the file back only a while.
+    const held = { on: false, wait: Promise.resolve(), go: null };
+    const hold = on => { held.on = on; if (on) held.wait = new Promise(r => { held.go = r; }); else if (held.go) held.go(); };
+    const lc = await browser.newContext({ viewport: { width: 1280, height: 720 }, serviceWorkers: 'block', permissions: ['clipboard-read', 'clipboard-write'] });   // (no service worker: the route sees the widget's page)
+    await lc.addInitScript(DRIVE_PICK); await lc.addInitScript(CLOCK);
+    await lc.route('**/widgets/image/index.html', async r => { if (held.on) await held.wait; await r.continue().catch(() => {}); });
+    const L = { c: lc, p: await lc.newPage() };
+    L.p.on('pageerror', e => errors.push('the slow laptop: ' + e.message));
+    await L.p.goto(BASE); await boardUp(L.p); await nameDevice(L.p, 'the slow laptop'); await syncWaits(L.p);
+    const SB = await syncDev(browser, 'the smartboard', errors);
+    await linkFolder(L.p); await deliver(L.p, SB.p); await linkFolder(SB.p); await exchange(L, SB);
+    const hide = (p, on) => p.evaluate(on => { if (on) Object.defineProperty(document, 'visibilityState', { get: () => 'hidden', configurable: true }); else delete document.visibilityState; document.dispatchEvent(new Event('visibilitychange')); }, on);
+    const picKeys = () => L.p.evaluate(() => Array.from(window.__board21.state.insts.keys()).filter(k => k.startsWith('image:')));
+    const newPic = async before => { let ks = []; await eventually(async () => (ks = (await picKeys()).filter(k => !before.includes(k))).length > 0, 5000); return ks[0] || null; };
+    const instsIn = j => (j ? pagesOf(j) : []).flatMap(pg => pg.instances || []);
+    const pa = await drawPic(L.p, 400, 300, 'image/png', { noise: 63 }), pb = await drawPic(L.p, 360, 280, 'image/png', { noise: 31 });
+    hold(true);
+    let before = await picKeys();
+    await copyPic(L.p, pa); await L.p.mouse.click(30, 330); await L.p.keyboard.press('Control+V');
+    const kp = await newPic(before);
+    before = await picKeys();
+    await copyPic(L.p, pb); await L.p.click('.picker-btn.left'); await L.p.mouse.move(1, 1); await L.p.waitForTimeout(300); await L.p.click('#panel.open [data-ctl="paste"]');
+    const kq = await newPic(before);
+    await hide(L.p, true); await L.p.waitForTimeout(2500);
+    const wids = kp && kq ? [await widOf(L.p, kp), await widOf(L.p, kq)] : [];
+    const emptyIn = j => instsIn(j).filter(i => wids.includes(i.wid) && !(i.data && i.data.src));
+    const hist = Object.values(await readHistory(L.p)).map(t => { try { return JSON.parse(t); } catch (e) { return null; } });
+    const jL1 = await ownJSON(L.p);
+    ok(wids.length === 2 && !emptyIn(jL1).length && !hist.some(h => emptyIn(h).length),
+      `pasted with Ctrl+V and with the Widget Picker’s Paste, then hidden before their widget has them: the laptop’s file and its Board history copies name neither window empty (${instsIn(jL1).filter(i => wids.includes(i.wid)).map(i => JSON.stringify(i.data)).join(', ') || 'not in the file yet'})`);
+    const emptyOn = async p => (await winList(p)).some(x => wids.includes(x.wid) && !(x.data && x.data.src));   // (from its records: a window it has, empty)
+    await deliver(L.p, SB.p, { photos: false }); await syncNow(SB.p);
+    ok(!await emptyOn(SB.p), 'that file reaches the smartboard: no empty window there');
+    hold(false);
+    ok(await eventually(async () => { const ins = instsIn(await ownJSON(L.p)); return wids.every(w => { const i = ins.find(x => x.wid === w); return !!(i && i.data && i.data.src && i.data.src.b21photo); }); }, 10000),
+      'once the widget has the pictures, the laptop’s file names both, still hidden');
+    await hide(L.p, false);
+    await deliver(L.p, SB.p, { photos: false }); await syncNow(SB.p);
+    ok(!await emptyOn(SB.p), 'it reaches the smartboard before the pictures: the new windows wait, never empty');
+    await deliver(L.p, SB.p);
+    const both = async () => { for (const [k, w] of [[kp, wids[0]], [kq, wids[1]]]) { const b = await ikOf(SB.p, w); if (!b || ((await picData(SB.p, b)) || {}).src !== ((await picData(L.p, k)) || {}).src) return false; } return true; };
+    ok(await eventually(async () => { await syncNow(SB.p); return both(); }), 'the pictures arrive: the smartboard shows both');
+    await syncWaits(L.p, { fill: 2000 });
+    hold(true);
+    before = await picKeys();
+    await L.p.mouse.click(30, 330); await L.p.keyboard.press('Control+V');
+    const kr = await newPic(before), wr = kr && await widOf(L.p, kr);
+    await hide(L.p, true);
+    ok(!!wr && await eventually(async () => instsIn(await ownJSON(L.p)).some(i => i.wid === wr), 8000), 'a window whose widget never saves holds the file back only a while (Link.waits.fill)');
+    hold(false); await hide(L.p, false);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await L.c.close(); await SB.c.close();
   }],
   ['Board Sync: pictures in windows and Board history copies (a copy names its pictures in Photos, tidying keeps a picture any device file or copy names, in “Board history (1)” too, waits while the copies can’t be read, deletes one nobody names after a week and puts back one deleted by hand, going back to a copy or importing it puts its pictures back)', async (browser) => {
     const errors = [], crypto = require('crypto'), DAY = 864e5;
