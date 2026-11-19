@@ -20,7 +20,7 @@ What it would involve:
 ## Telling copies of a widget apart
 
 A page can have several windows of one widget, open or closed: two Notes, three Timers. Each title bar shows only
-the widget's name. Settings › This page › Saved widgets lists them as "Notes", "Notes 2", "Notes 3". A closed
+the widget's name. Settings › This page › Windows lists them as "Notes", "Notes 2", "Notes 3". A closed
 one is hard to find without opening each. Find ways to tell each copy apart, so a teacher can find the one they
 want.
 
@@ -32,10 +32,10 @@ What it would involve:
   - a color or mark;
   - when it was last used;
   - a small preview.
-- Where it shows: the title bar (at every Size, with room for long names), the window menu, Saved widgets, Board
-  history, and Board Sync's labeled copies ("Copy · 9:41 AM").
-- Finding one again: Saved widgets sorted or searched by name, or a widget's saved copies offered from its tile in
-  the Widget Picker.
+- Where it shows: the title bar (at every Size, with room for long names), the window menu, This page › Windows,
+  Board history, and Board Sync's labeled copies ("Copy · 9:41 AM").
+- Finding one again: This page › Windows sorted or searched by name, or a widget's saved copies offered from its
+  tile in the Widget Picker.
 - Where it is kept: with the window, not its content. That means deciding:
   - whether it goes into exports, blank templates and Board history;
   - how Board Sync merges a copy renamed on two devices;

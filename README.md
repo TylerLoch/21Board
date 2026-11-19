@@ -1,7 +1,6 @@
 # 21Board
 
-**21Board helps teachers curate their own suite of smartboard widgets so they can orchestrate
-their unique classroom with ease.**
+**Build your own suite of smartboard widgets**
 
 21Board is a small operating system for the classroom smartboard. Open widgets from the Widget Picker in either
 bottom corner and arrange them in windows. Your work is saved on the device, and you can export it to a file.
@@ -109,7 +108,7 @@ widget.
 ### Settings
 
 The gear in either Widget Picker opens Settings on that side. Rows marked ▸ are groups. Each shows what it's set to,
-such as a small preview, "Standard" or "3 widgets". It opens below its row, which stays put. Groups start closed each
+such as a small preview, "Standard" or "3 windows". It opens below its row, which stays put. Groups start closed each
 time Settings opens.
 
 - **At the top, when needed:** a save problem with *Back up now*, or *A new version is ready* with *Update now*.
@@ -132,8 +131,8 @@ time Settings opens.
     says when it can't work: in an older browser, when 21Board isn't served over https, or on a device that doesn't
     allow it. IT can turn it off by policy. It needs Chrome 84 or later, or Safari 16.4 or later. As a Home Screen
     app, it needs Safari 18.4 or later. This device only. An old *School hours* setting reads as on.
-- **This page ▸ Saved widgets:** how many windows this page has, open or closed. Open the group to see each one,
-  with Open and Delete. To rename the page, use ‹ Page › → *Rename this page…*.
+- **This page ▸ Windows:** how many windows this page has, open or closed. Open the group to see each one, with Open
+  and Delete. To rename the page, use ‹ Page › → *Rename this page…*.
 - **Appearance**
   - **Theme:** Light, Dark or Auto, the default, which follows the device's light or dark setting. With Board Sync,
     on all your devices.
@@ -335,7 +334,7 @@ in Settings → Board Sync.
 of your devices show up on the others, usually within a minute."
 
 - **An empty folder:** this device's board goes there at once, with its theme, accent color and text style. A device
-  with only its untouched first page, "My Board", writes nothing yet, and takes the board from your other device. If
+  with only its untouched first page, "Page 1", writes nothing yet, and takes the board from your other device. If
   two or three devices set up the same folder before Google Drive has carried one's file to the others, a theme,
   accent color or text style chosen on any of them wins on all. The defaults never replace a choice.
 - **A folder with a board, on a device that has never synced:** this device shows the board, in its theme, accent
@@ -503,8 +502,7 @@ For a ChromeOS kiosk app, where no one signs in, open 21Board with **`?kiosk=yes
 - **Import and Export** stay. ChromeOS shows its Files dialog in kiosk sessions too, so files can be saved to and
   opened from the kiosk's own storage or a USB drive. Export always uses the Save dialog, since a plain download
   would land unseen in the kiosk's Downloads. Settings keeps **Back up now**, and *Erase everything* offers *Export
-  a backup first*, as everywhere else. A backup on a USB drive is the only copy off the kiosk. **Not yet tried on a
-  real kiosk. Test it before you rely on it.**
+  a backup first*, as everywhere else. A backup on a USB drive is the only copy off the kiosk.
 - Links in Notes show as plain text, since a kiosk can't open new windows. For the same reason, the window menus of
   the [district apps](#district-apps) have no *Open in new tab*, and the Video Player's
   has no *Open in …*.
@@ -601,9 +599,8 @@ first visit online inside 21Board before it can work offline.
 
 **Offline.** 21Board saves its own offline copy, but it can't save another site's pages. An app's window works
 offline only once **that app saves its own offline copy** with a service worker of its own, and the device has
-opened it online since. None of the three does yet. **21Sketch's offline worker is ready in its repository (`sw.js`)
-but not yet on its server. 21Timer and 21DocCam need one deployed too.** 21Board won't need to change when they are.
-Tested with a copy of 21Sketch and its worker: offline, the window opens 21Sketch with the same drawing.
+opened it online since. **None of the three has one yet.** 21Board won't need to change when they do. Tested with a
+copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the same drawing.
 
 - Offline, the window's title says **Offline**, and a message says once that you're offline and the app works only
   if it's saved on this device. 21Board can't see into another site's page, so it can't tell whether the app

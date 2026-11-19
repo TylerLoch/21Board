@@ -350,8 +350,7 @@
     .pecs-category-badge {
       font-size: clamp(10px, 1.8vmin, 13px);
       font-weight: 900;
-      text-transform: uppercase;
-      letter-spacing: 0.06em;
+      letter-spacing: 0.02em;
       padding: 4px 12px;
       border-radius: 14px;
       background: var(--pecs-badge-bg, #eff6ff);
@@ -449,8 +448,7 @@
     .done-stamp-text {
       font-size: clamp(18px, 4vmin, 30px);
       font-weight: 900;
-      letter-spacing: 0.06em;
-      text-transform: uppercase;
+      letter-spacing: 0.02em;
       text-shadow: 0 2px 6px rgba(0,0,0,0.3);
     }
     .done-tap-hint {
@@ -766,7 +764,7 @@
           <!-- First Checkmark Stamp Overlay -->
           <div class="done-overlay" id="first-done-overlay" aria-label="First task marked done">
             <span class="done-stamp-icon">✔️</span>
-            <span class="done-stamp-text">ALL DONE!</span>
+            <span class="done-stamp-text">All done!</span>
             <span class="done-tap-hint">Tap to undo</span>
           </div>
         </button>
@@ -787,12 +785,12 @@
           <div class="pecs-icon-wrap">
             <span class="pecs-icon" id="then-icon">🧩</span>
           </div>
-          <div class="pecs-label" id="then-label">Free Choice</div>
+          <div class="pecs-label" id="then-label">Free choice</div>
 
           <!-- Then Checkmark Stamp Overlay -->
           <div class="done-overlay" id="then-done-overlay" aria-label="Then task marked done">
             <span class="done-stamp-icon">🌟</span>
-            <span class="done-stamp-text">ALL DONE!</span>
+            <span class="done-stamp-text">All done!</span>
             <span class="done-tap-hint">Tap to undo</span>
           </div>
         </button>
@@ -838,78 +836,78 @@
         // ACADEMIC & SCHOOL WORK
         { id: 'classwork', label: 'Classwork', icon: '📝', category: 'Academic' },
         { id: 'math', label: 'Math', icon: '🔢', category: 'Academic' },
-        { id: 'reading', label: 'Reading Book', icon: '📖', category: 'Academic' },
+        { id: 'reading', label: 'Reading book', icon: '📖', category: 'Academic' },
         { id: 'writing', label: 'Writing', icon: '✏️', category: 'Academic' },
-        { id: 'circle-time', label: 'Circle Time', icon: '⭕', category: 'Academic' },
-        { id: 'desk', label: 'Sit at Table', icon: '🪑', category: 'Academic' },
-        { id: 'art', label: 'Art & Coloring', icon: '🎨', category: 'Academic' },
-        { id: 'music', label: 'Music Class', icon: '🎵', category: 'Academic' },
+        { id: 'circle-time', label: 'Circle time', icon: '⭕', category: 'Academic' },
+        { id: 'desk', label: 'Sit at table', icon: '🪑', category: 'Academic' },
+        { id: 'art', label: 'Art & coloring', icon: '🎨', category: 'Academic' },
+        { id: 'music', label: 'Music class', icon: '🎵', category: 'Academic' },
         { id: 'science', label: 'Science', icon: '🔬', category: 'Academic' },
-        { id: 'computer', label: 'Computer Work', icon: '💻', category: 'Academic' },
-        { id: 'speech', label: 'Speech Therapy', icon: '🗣️', category: 'Academic' },
-        { id: 'listen', label: 'Listening Ears', icon: '👂', category: 'Academic' },
+        { id: 'computer', label: 'Computer work', icon: '💻', category: 'Academic' },
+        { id: 'speech', label: 'Speech therapy', icon: '🗣️', category: 'Academic' },
+        { id: 'listen', label: 'Listening ears', icon: '👂', category: 'Academic' },
 
         // SENSORY & EMOTIONAL REGULATION
-        { id: 'quiet-corner', label: 'Quiet Corner', icon: '🛋️', category: 'Sensory' },
-        { id: 'headphones', label: 'Noise Headphones', icon: '🎧', category: 'Sensory' },
-        { id: 'deep-breaths', label: 'Deep Breaths', icon: '🌬️', category: 'Sensory' },
-        { id: 'fidget', label: 'Fidget Toy', icon: '🌀', category: 'Sensory' },
-        { id: 'trampoline', label: 'Bounce / Jump', icon: '🤸', category: 'Sensory' },
-        { id: 'heavy-work', label: 'Heavy Blanket', icon: '🛏️', category: 'Sensory' },
-        { id: 'dim-lights', label: 'Dim Lights', icon: '💡', category: 'Sensory' },
-        { id: 'calm-walk', label: 'Calming Walk', icon: '👣', category: 'Sensory' },
+        { id: 'quiet-corner', label: 'Quiet corner', icon: '🛋️', category: 'Sensory' },
+        { id: 'headphones', label: 'Noise headphones', icon: '🎧', category: 'Sensory' },
+        { id: 'deep-breaths', label: 'Deep breaths', icon: '🌬️', category: 'Sensory' },
+        { id: 'fidget', label: 'Fidget toy', icon: '🌀', category: 'Sensory' },
+        { id: 'trampoline', label: 'Bounce / jump', icon: '🤸', category: 'Sensory' },
+        { id: 'heavy-work', label: 'Heavy blanket', icon: '🛏️', category: 'Sensory' },
+        { id: 'dim-lights', label: 'Dim lights', icon: '💡', category: 'Sensory' },
+        { id: 'calm-walk', label: 'Calming walk', icon: '👣', category: 'Sensory' },
         { id: 'chewelry', label: 'Chewelry', icon: '📿', category: 'Sensory' },
-        { id: 'stress-ball', label: 'Squeeze Ball', icon: '🏐', category: 'Sensory' },
+        { id: 'stress-ball', label: 'Squeeze ball', icon: '🏐', category: 'Sensory' },
 
         // ROUTINES & SELF-CARE
-        { id: 'wash-hands', label: 'Wash Hands', icon: '🧼', category: 'Routine' },
+        { id: 'wash-hands', label: 'Wash hands', icon: '🧼', category: 'Routine' },
         { id: 'restroom', label: 'Bathroom', icon: '🚻', category: 'Routine' },
-        { id: 'unpack', label: 'Unpack Bag', icon: '🎒', category: 'Routine' },
-        { id: 'clean-up', label: 'Clean Up', icon: '🧹', category: 'Routine' },
-        { id: 'shoes', label: 'Put on Shoes', icon: '👟', category: 'Routine' },
-        { id: 'coat', label: 'Put on Coat', icon: '🧥', category: 'Routine' },
-        { id: 'line-up', label: 'Line Up', icon: '🚶', category: 'Routine' },
-        { id: 'bus', label: 'Bus Ride', icon: '🚌', category: 'Routine' },
+        { id: 'unpack', label: 'Unpack bag', icon: '🎒', category: 'Routine' },
+        { id: 'clean-up', label: 'Clean up', icon: '🧹', category: 'Routine' },
+        { id: 'shoes', label: 'Put on shoes', icon: '👟', category: 'Routine' },
+        { id: 'coat', label: 'Put on coat', icon: '🧥', category: 'Routine' },
+        { id: 'line-up', label: 'Line up', icon: '🚶', category: 'Routine' },
+        { id: 'bus', label: 'Bus ride', icon: '🚌', category: 'Routine' },
 
         // FOOD & SNACKS
-        { id: 'snack', label: 'Snack Time', icon: '🍎', category: 'Snack' },
-        { id: 'lunch', label: 'Lunch Box', icon: '🥪', category: 'Snack' },
-        { id: 'water', label: 'Drink Water', icon: '💧', category: 'Snack' },
-        { id: 'juice', label: 'Juice Box', icon: '🧃', category: 'Snack' },
+        { id: 'snack', label: 'Snack time', icon: '🍎', category: 'Snack' },
+        { id: 'lunch', label: 'Lunch box', icon: '🥪', category: 'Snack' },
+        { id: 'water', label: 'Drink water', icon: '💧', category: 'Snack' },
+        { id: 'juice', label: 'Juice box', icon: '🧃', category: 'Snack' },
         { id: 'crackers', label: 'Crackers', icon: '🍘', category: 'Snack' },
-        { id: 'fruit', label: 'Fresh Fruit', icon: '🍌', category: 'Snack' },
+        { id: 'fruit', label: 'Fresh fruit', icon: '🍌', category: 'Snack' },
 
         // REWARDS & REINFORCERS
-        { id: 'tablet', label: 'iPad / Tablet', icon: '📱', category: 'Reward' },
-        { id: 'free-play', label: 'Free Choice', icon: '🧩', category: 'Reward' },
-        { id: 'playground', label: 'Playground / Swings', icon: '🛝', category: 'Reward' },
-        { id: 'blocks', label: 'Building Blocks', icon: '🧱', category: 'Reward' },
-        { id: 'bubbles', label: 'Bubble Popping', icon: '🫧', category: 'Reward' },
-        { id: 'ball', label: 'Ball Game', icon: '⚽', category: 'Reward' },
-        { id: 'sticker', label: 'Star Sticker', icon: '⭐', category: 'Reward' },
-        { id: 'trains', label: 'Toy Trains & Cars', icon: '🚂', category: 'Reward' },
-        { id: 'playdough', label: 'Play Dough', icon: '🟣', category: 'Reward' },
-        { id: 'video', label: 'Watch Video', icon: '🎬', category: 'Reward' },
+        { id: 'tablet', label: 'iPad / tablet', icon: '📱', category: 'Reward' },
+        { id: 'free-play', label: 'Free choice', icon: '🧩', category: 'Reward' },
+        { id: 'playground', label: 'Playground / swings', icon: '🛝', category: 'Reward' },
+        { id: 'blocks', label: 'Building blocks', icon: '🧱', category: 'Reward' },
+        { id: 'bubbles', label: 'Bubble popping', icon: '🫧', category: 'Reward' },
+        { id: 'ball', label: 'Ball game', icon: '⚽', category: 'Reward' },
+        { id: 'sticker', label: 'Star sticker', icon: '⭐', category: 'Reward' },
+        { id: 'trains', label: 'Toy trains & cars', icon: '🚂', category: 'Reward' },
+        { id: 'playdough', label: 'Play dough', icon: '🟣', category: 'Reward' },
+        { id: 'video', label: 'Watch video', icon: '🎬', category: 'Reward' },
 
         // SOCIAL & COMMUNICATION
-        { id: 'ask-help', label: 'Ask for Help', icon: '🙋', category: 'Social' },
-        { id: 'wait', label: 'Wait / Timer', icon: '⏳', category: 'Social' },
-        { id: 'share', label: 'Take Turns', icon: '🤝', category: 'Social' },
-        { id: 'high-five', label: 'High Five', icon: '✋', category: 'Social' },
-        { id: 'stop', label: 'Stop & Look', icon: '🛑', category: 'Social' },
-        { id: 'gentle', label: 'Gentle Hands', icon: '🤲', category: 'Social' },
+        { id: 'ask-help', label: 'Ask for help', icon: '🙋', category: 'Social' },
+        { id: 'wait', label: 'Wait / timer', icon: '⏳', category: 'Social' },
+        { id: 'share', label: 'Take turns', icon: '🤝', category: 'Social' },
+        { id: 'high-five', label: 'High five', icon: '✋', category: 'Social' },
+        { id: 'stop', label: 'Stop & look', icon: '🛑', category: 'Social' },
+        { id: 'gentle', label: 'Gentle hands', icon: '🤲', category: 'Social' },
 
         // SEASONAL THEMED ACTIVITIES & SUPPORTS
-        { id: 'pumpkin', label: 'Pumpkin Craft', icon: '🎃', category: 'Seasonal' },
-        { id: 'leaves', label: 'Play in Leaves', icon: '🍂', category: 'Seasonal' },
-        { id: 'snowman', label: 'Build Snowman', icon: '⛄', category: 'Seasonal' },
-        { id: 'hot-cocoa', label: 'Warm Cocoa', icon: '☕', category: 'Seasonal' },
-        { id: 'mittens', label: 'Warm Mittens', icon: '🧤', category: 'Seasonal' },
-        { id: 'plant-seed', label: 'Plant Seeds', icon: '🌱', category: 'Seasonal' },
-        { id: 'puddle-boots', label: 'Rain Boots', icon: '🌧️', category: 'Seasonal' },
-        { id: 'sunhat', label: 'Sun Hat', icon: '👒', category: 'Seasonal' },
-        { id: 'beach', label: 'Sand Castle', icon: '🏖️', category: 'Seasonal' },
-        { id: 'swimming', label: 'Swim Time', icon: '🏊', category: 'Seasonal' }
+        { id: 'pumpkin', label: 'Pumpkin craft', icon: '🎃', category: 'Seasonal' },
+        { id: 'leaves', label: 'Play in leaves', icon: '🍂', category: 'Seasonal' },
+        { id: 'snowman', label: 'Build snowman', icon: '⛄', category: 'Seasonal' },
+        { id: 'hot-cocoa', label: 'Warm cocoa', icon: '☕', category: 'Seasonal' },
+        { id: 'mittens', label: 'Warm mittens', icon: '🧤', category: 'Seasonal' },
+        { id: 'plant-seed', label: 'Plant seeds', icon: '🌱', category: 'Seasonal' },
+        { id: 'puddle-boots', label: 'Rain boots', icon: '🌧️', category: 'Seasonal' },
+        { id: 'sunhat', label: 'Sun hat', icon: '👒', category: 'Seasonal' },
+        { id: 'beach', label: 'Sand castle', icon: '🏖️', category: 'Seasonal' },
+        { id: 'swimming', label: 'Swim time', icon: '🏊', category: 'Seasonal' }
       ];
 
       const CATEGORIES = ['All', 'Academic', 'Sensory', 'Routine', 'Snack', 'Reward', 'Social', 'Seasonal'];
@@ -1101,11 +1099,11 @@
           { id: 'theme_summer', label: '☀️ Summer', checked: state.theme === 'summer' },
           { id: 'theme_calm', label: '💜 Calm', checked: state.theme === 'calm' },
           { heading: true, label: 'Presets' },
-          { id: 'reset_default', label: 'Classwork ➔ Free Choice' },
+          { id: 'reset_default', label: 'Classwork ➔ Free choice' },
           { id: 'preset_work_ipad', label: 'Classwork ➔ iPad' },
-          { id: 'preset_desk_break', label: 'Sit at Table ➔ Quiet Corner' },
-          { id: 'preset_clean_recess', label: 'Clean Up ➔ Playground' },
-          { id: 'preset_work_snack', label: 'Math ➔ Snack Time' }
+          { id: 'preset_desk_break', label: 'Sit at table ➔ Quiet corner' },
+          { id: 'preset_clean_recess', label: 'Clean up ➔ Playground' },
+          { id: 'preset_work_snack', label: 'Math ➔ Snack time' }
         ];
         const sig = JSON.stringify(items);
         if (sig !== menuNow) { menuNow = sig; Board21.menu.set(items); }

@@ -134,7 +134,7 @@ installed*. Test widgets are now uploaded as a file. See [`devfile:<widgetId>`](
 
 ```js
 {
-  id: 1, name: "My Board",       // id: the board's slot on this device
+  id: 1, name: "Page 1",         // id: the board's slot on this device
   uid: "7c1e…",                  // a unique id, made once: the same page on every device (Board Sync)
   background: { color: "#1f3a2c" | null, pattern: "none" | "dots" | "grid" | "lines" | "handwriting" | "graph" },
   scale: 0.8,                    // size of windows and menus (0.5–2), as on a 1920 × 1080 screen; see "Layout space"
@@ -143,6 +143,10 @@ installed*. Test widgets are now uploaded as a file. See [`devfile:<widgetId>`](
   pos: 2                         // the page's place among the pages: they are in (pos, uid) order
 }
 ```
+
+A new device's first page is "Page 1". On devices set up before 2026.11.18-12 it's "My Board". Saved pages keep
+their names. Board Sync never sends an untouched first page by either name. That empty page would otherwise be added
+to every board that joins.
 
 `uid` is which page this is, on every device and in Board history. Board Sync merges pages by it. Two pages on one
 device never share one. `pos` orders the pages. A new or moved page gets a `pos` between its neighbors'. When the
@@ -538,7 +542,7 @@ Each device thins only files with its own `dev4` (by name only); files ending in
   size and content. With `timer:1` and `timer:2` both closed: first open → `timer:1`,
   second → `timer:2`, third → new `timer:3`.
 - **Reset** (window menu) deletes that instance's `data` and `conf` and restores the default size.
-- **Delete** (Settings → This page → Saved widgets) removes the `inst`, `data` and `conf` records.
+- **Delete** (Settings → This page → Windows) removes the `inst`, `data` and `conf` records.
 - Records for a widget that isn't installed are kept (and exported) but not shown.
 - A widget marked `single` in the registry, as the district apps are, has one window. Opening it while it is
   open brings that window forward instead of creating a second instance. *Add to this page* leaves out the

@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-11';
-  const BOARD_BUILD = '5f21f97f';
+  const BOARD_VERSION = '2026.11.18-12';
+  const BOARD_BUILD = 'c578ec3b';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -119,8 +119,9 @@
     // The whole board's, like the theme and accent: exported, and with Board Sync on every device (section 12b).
     letters: 'standard'      // Text style: 'standard' (the device's own font) | 'legible' (Atkinson Hyperlegible) | 'early' (Andika)
   };
-  // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space.
-  const defaultBoard = (id = 1) => ({ id, name: 'My Board', background: { color: null, pattern: 'none' }, layout: null });
+  // layout: the screen size (CSS px) the board is laid out for; window rects are stored in this space. A new board's
+  // first page is "Page 1". Before 2026.11.18-12 it was "My Board", and saved pages keep that name.
+  const defaultBoard = (id = 1) => ({ id, name: 'Page 1', background: { color: null, pattern: 'none' }, layout: null });
 
   // Accent colors (Settings › Accent color): [light theme, dark theme, name]. The light theme's shade takes white text
   // (4.5:1, on the widgets' #f9fafb too). The dark theme's shade takes dark text (on-accent, #0b1220) and stands out on
@@ -3124,7 +3125,7 @@
         if (update && !dot) { dot = document.createElement('span'); dot.className = 'dot'; b.appendChild(dot); }
         if (!update && dot) dot.remove();
         if (b === gear) continue;
-        b.setAttribute('aria-label', 'Widgets and settings' + ready);
+        b.setAttribute('aria-label', 'Widget Picker' + ready);
         if (update) b.title = 'A new version is ready. Open Settings to update.'; else b.removeAttribute('title');
       }
     },
@@ -3338,7 +3339,8 @@
       }
     }
   };
-  // A copy kept from a clash (Board Sync), deleted from its window menu: asked, then as Settings › Saved widgets deletes.
+  // A copy kept from a clash (Board Sync), deleted from its window menu: asked, then as Settings › This page › Windows
+  // deletes.
   async function deleteCopy(ikey) {
     const i = S.insts.get(ikey);
     if (!i) return;
@@ -3379,7 +3381,7 @@
     hold(key, rec) { const k = Keys.parse(key); if (rec && k.board && k.board !== S.boardId) this.held.set(key, { type: rec.type || k.kind, value: rec.value }); else this.held.delete(key); },
     menuEl: null, open: false,
     enabled() { return !LAB; },
-    note(b, value) { if (!Number.isInteger(b) || b < 1) return; if (value) this.info.set(b, { name: String(value.name || 'My Board'), uid: value.uid || null, pos: num(value.pos, null) }); else this.info.delete(b); },
+    note(b, value) { if (!Number.isInteger(b) || b < 1) return; if (value) this.info.set(b, { name: String(value.name || 'Page 1'), uid: value.uid || null, pos: num(value.pos, null) }); else this.info.delete(b); },
     gone(st = S.settings) { return new Set((Array.isArray(st.deletedBoards) ? st.deletedBoards : []).map(Number)); },
     // The settings change for these pages deleted now (add) or not deleted after all, or gone for good (remove): set
     // operations on the stored lists (see updateSettings), so another tab's or a merge's deleted pages stay as they are.
@@ -3765,7 +3767,8 @@
       next.title = add ? 'New page' : last ? 'This is the last page' : `Go to page ${i + 2}`; next.setAttribute('aria-label', add ? 'New page' : 'Next page');
       next.classList.toggle('add', add);
       ind.innerHTML = `<small>Page</small><b>${i + 1} of ${ids.length}</b>`;
-      ind.title = `Pages: ${this.name(S.boardId)}`; ind.setAttribute('aria-label', `Page ${i + 1} of ${ids.length}, ${this.name(S.boardId)}. Pages menu`);
+      const nm = this.name(S.boardId);   // (named once: "Page 1 of 1" for a page called "Page 1", as label())
+      ind.title = `Pages: ${nm}`; ind.setAttribute('aria-label', `Page ${i + 1} of ${ids.length}${nm === `Page ${i + 1}` ? '' : `, ${nm}`}. Pages menu`);
     },
     step(dir) {
       const ids = this.ids(), i = ids.indexOf(S.boardId);
@@ -3784,7 +3787,7 @@
   //                device's name, history copies in the folder
   //   Classroom    Lock windows in place, Go back to an earlier version (Board history, as a column beside
   //                Settings: section 13c), Close all windows, Stay awake
-  //   This page    Saved widgets ▸
+  //   This page    Windows ▸
   //   Appearance   Theme, Background ▸, Accent color, Text style ▸, Board shape
   //   Advanced ▸   Widget Picker, Clock in the corner, Size of windows and menus, moving windows, board history, backups
   //                and storage, Developer mode
@@ -4591,8 +4594,9 @@
           <button class="btn primary" data-act="link-setup">${svg('send')}Set up…</button></div>`;
     }
     const dev = L.device(), prob = L.problem(), info = FolderNote.info();
-    // (Update only once the new version is here: before that, the button would do nothing, see FolderNote)
-    const fix = { allow: ['link-reconnect', 'Allow…'], missing: ['link-check', 'Look again'], send: ['link-send', 'Try again'], newer: S.sw.updateReady ? ['update', 'Update'] : null }[prob];
+    // (Update only once the new version is here: before that, the button would do nothing, see FolderNote. A folder
+    // Chrome blocks is chosen again, as the hint says: Reconnect would only say so.)
+    const fix = { allow: L.perm === 'denied' ? ['link-choose', 'Choose the folder again…'] : ['link-reconnect', 'Reconnect'], missing: ['link-check', 'Look again'], send: ['link-send', 'Try again'], newer: S.sw.updateReady ? ['update', 'Update'] : null }[prob];
     const warn = info && prob ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(info.title)}</div><div class="hint">${esc(info.text)}</div></div>${fix ? `<button class="btn small primary" data-act="${fix[0]}">${fix[1]}</button>` : ''}</div>` : '';
     const H = BoardHistory;
     return `<h3>Board Sync</h3>
@@ -4837,7 +4841,7 @@
       const st = S.settings, seg = segHTML, sw = switchHTML;
       const note = SaveNote.state() ? SaveNote.info() : null;
 
-      // This page → Saved widgets: every widget window of this page, open or closed, to open or delete.
+      // This page → Windows: every widget window of this page, open or closed, to open or delete.
       const insts = Array.from(S.insts.entries()).sort((a, b) => {
         const an = (getWidget(a[1].widgetId) || { name: a[1].widgetId }).name, bn = (getWidget(b[1].widgetId) || { name: b[1].widgetId }).name;
         return an.localeCompare(bn) || a[1].n - b[1].n;
@@ -4852,9 +4856,9 @@
           `<div class="meta"><b>${esc(name)}</b><span>${status}${app ? ` · ${esc(widget.name)} keeps its own work on this device${unsaved ? ' · window not saved' : ''}` : unsaved ? ' · not saved' : ''}</span></div>` +
           (widget && !i.open ? `<button class="icon" data-act="inst-open" data-val="${esc(ikey)}" title="Open" aria-label="Open ${esc(name)}">${svg('open')}</button>` : '') +
           `<button class="icon" data-act="inst-delete" data-val="${esc(ikey)}" title="Delete" aria-label="${app ? `Delete the ${esc(name)} window` : `Delete ${esc(name)} and its content`}">${svg('trash')}</button></div>`;
-      }).join('') : '<div class="empty-note">No widgets yet. Open one from the Widget Picker.</div>';
-      const saved = settingsGroup('saved', note ? 'Widget windows' : 'Saved widgets', insts.length ? `${insts.length} widget${insts.length === 1 ? '' : 's'}` : 'None',
-        `<div class="hint">${note ? 'Closed widgets keep their content while 21Board stays open.' : 'Closed widgets keep their content until you delete them here.'}</div><div class="inst-list">${instHTML}</div>`);
+      }).join('') : '<div class="empty-note">No windows yet. Open a widget from the Widget Picker.</div>';
+      const saved = settingsGroup('saved', 'Windows', insts.length ? `${insts.length} window${insts.length === 1 ? '' : 's'}` : 'None',
+        `<div class="hint">${note ? 'Closed windows keep their content while 21Board stays open.' : 'Closed windows keep their content until you delete them here.'}</div><div class="inst-list">${instHTML}</div>`);
 
       // Advanced: rare and IT-level things, in one group. Its grey line says what's in it.
       const snap = !st.snapping ? 'off' : { gentle: 'light', strong: 'firm' }[st.resistance] || 'medium';
@@ -8472,7 +8476,7 @@
     function pageVals(v, H) {
       const bg = (v && v.background) || {}, scale = vscale(v && v.scale) || H.scale;
       return {
-        name: v && typeof v.name === 'string' ? v.name.slice(0, 60) : 'My Board',
+        name: v && typeof v.name === 'string' ? v.name.slice(0, 60) : 'Page 1',
         look: { color: H.bgColor(bg.color), pattern: typeof bg.pattern === 'string' && /^[a-z-]{1,24}$/.test(bg.pattern) ? bg.pattern : 'none' },
         size: { scale, shape: v && v.shape === 'free' ? 'free' : '16:9' },
         pos: fin(v && v.pos, null)
@@ -8608,8 +8612,9 @@
           }
           P.all.push(W);
         }
-        // "My Board" as a new or erased device has it: never synced (it would be added to every board that joins)
-        P.placeholder = pv.name === 'My Board' && pv.look.color === null && pv.look.pattern === 'none' && pv.size.scale === H.scale && pv.size.shape === '16:9' && !pkey &&
+        // The untouched first page of a new or erased device: never synced (it would be added to every board that joins).
+        // "Page 1", or "My Board" on a device set up before 2026.11.18-12.
+        P.placeholder = (pv.name === 'Page 1' || pv.name === 'My Board') && pv.look.color === null && pv.look.pattern === 'none' && pv.size.scale === H.scale && pv.size.shape === '16:9' && !pkey &&
           !P.all.some(W => W.parts.open.val || W.parts.data.val !== null || W.parts.conf.val !== null || W.parts.data.skipped || W.parts.conf.skipped);
         const taken = new Set();
         for (const W of P.all) if (W.wid && !taken.has(W.wid)) { taken.add(W.wid); P.wins.set(W.wid, W); }
@@ -9177,7 +9182,7 @@
         const oldName = LP ? LP.parts.name.val : null;
         if (!LP || LP.gone || ['name', 'look', 'size', 'pos'].some(k => S.parts[k] && !held[k] && (!LP.parts[k] || LP.parts[k].h !== S.parts[k].main.h))) {
           const base = LP ? clone(LP.value) || {} : {};
-          boardRev = put(`board:${b}`, 'board', Object.assign(base, { id: b, uid, name: typeof tv.name === 'string' ? tv.name : 'My Board', background: clone(tv.look) || { color: null, pattern: 'none' },
+          boardRev = put(`board:${b}`, 'board', Object.assign(base, { id: b, uid, name: typeof tv.name === 'string' ? tv.name : 'Page 1', background: clone(tv.look) || { color: null, pattern: 'none' },
             scale: size.scale, shape: size.shape, layout: H.canvasFor(size.scale), pos: fin(tv.pos, 0) }));
         }
         nm.p.exists = { h: '1', v: arr(ex), rev: boardRev || (LP ? LP.rec.rev || 0 : 0) };
@@ -9396,7 +9401,7 @@
         setMine(uid, nm);
         sp.order[b] = [fin(tv.pos, 0), uid];
         // the summary of this page
-        sumP.name = typeof tv.name === 'string' ? tv.name : 'My Board';
+        sumP.name = typeof tv.name === 'string' ? tv.name : 'Page 1';
         sumP.changed = sumP.changed || pageChanged;
         devsHere.forEach(d => from.add(d));
         sumP.from = devsHere;
@@ -10081,7 +10086,7 @@
       const acts = p === 'send' ? [{ label: 'Try again now', value: 'send', kind: 'primary' }]
         : p === 'newer' ? (S.sw.updateReady ? [{ label: 'Update now', value: 'update', kind: 'primary' }] : [])
         : p === 'missing' ? [{ label: 'Look again now', value: 'check', kind: 'primary' }, { label: 'Choose the folder again…', value: 'choose' }]
-        : Link.perm === 'denied' ? [{ label: 'Choose the folder again…', value: 'choose', kind: 'primary' }] : [{ label: 'Allow…', value: 'allow', kind: 'primary' }];
+        : Link.perm === 'denied' ? [{ label: 'Choose the folder again…', value: 'choose', kind: 'primary' }] : [{ label: 'Reconnect', value: 'allow', kind: 'primary' }];
       const go = await dialog({ title: i.title, message: i.text, actions: acts.concat([{ label: 'Close', value: null, kind: acts.length ? '' : 'primary' }]) });
       if (go === 'choose') { const got = await Link.choose(); if (got) await Link.welcome(got); }
       else if (go === 'allow') await Link.reconnect();
