@@ -7,7 +7,7 @@
   --bg: #f4f5f7; --surface: #ffffff; --surface-2: #eceef2; --text: #1f2937; --muted: #565f6d; --border: #dfe2e8;
   --accent: #2563eb; --accent-soft: #eff6ff; --on-accent: #ffffff;
   --good: #15803d; --bad: #b91c1c;
-  --shadow: rgba(17, 24, 39, .08);
+  --shadow: rgba(17, 24, 39, .08); --swatch-ring: rgba(0, 0, 0, .12);
   --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   color-scheme: light;
@@ -17,7 +17,7 @@
     --bg: #121315; --surface: #1b1c1f; --surface-2: #26282c; --text: #f3f4f6; --muted: #a6acb6; --border: #33363c;
     --accent: #60a5fa; --accent-soft: rgba(96, 165, 250, .16); --on-accent: #0b1220;
     --good: #4ade80; --bad: #f87171;
-    --shadow: rgba(0, 0, 0, .4);
+    --shadow: rgba(0, 0, 0, .4); --swatch-ring: rgba(255, 255, 255, .18);
     color-scheme: dark;
   }
 }
@@ -25,7 +25,7 @@
   --bg: #121315; --surface: #1b1c1f; --surface-2: #26282c; --text: #f3f4f6; --muted: #a6acb6; --border: #33363c;
   --accent: #60a5fa; --accent-soft: rgba(96, 165, 250, .16); --on-accent: #0b1220;
   --good: #4ade80; --bad: #f87171;
-  --shadow: rgba(0, 0, 0, .4);
+  --shadow: rgba(0, 0, 0, .4); --swatch-ring: rgba(255, 255, 255, .18);
   color-scheme: dark;
 }
 
@@ -80,7 +80,7 @@ kbd { font: 600 13.5px var(--mono); padding: 2px 7px; border-radius: 6px; backgr
 .pg-seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px var(--shadow), 0 0 0 1px var(--border); }
 .pg-swatches { display: inline-flex; gap: 2px; }
 .pg-sw { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; cursor: pointer; }
-.pg-sw i { width: 20px; height: 20px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px rgba(0,0,0,.12); }
+.pg-sw i { width: 20px; height: 20px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px var(--swatch-ring); }
 .pg-sw[aria-pressed="true"] i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
 
 /* Sections */
@@ -113,6 +113,7 @@ section { scroll-margin-top: 72px; }
 .win-name { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 14px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 650; }
 .win-name svg { width: 14px; height: 14px; stroke-width: 2.4; }
 .win-stage { position: relative; overflow: hidden; }
+.win-stage.wide { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
 .win-stage iframe { position: absolute; left: 0; top: 0; border: 0; display: block; transform-origin: 0 0; background: transparent; }
 
 /* The window menu, drawn as 21Board draws it */
@@ -186,6 +187,9 @@ button.wm-i:hover:not(:disabled) { background: var(--surface-2); }
 .pemdas b.lit { background: var(--accent); color: var(--on-accent); }
 .pemdas b.soft { background: var(--accent-soft); color: var(--text); }
 .hide-ex { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); font-size: 26px; }
+.pg-btn { margin-top: 10px; height: 34px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font: 600 14px var(--font); cursor: pointer; }
+.pg-btn:hover { background: var(--surface-2); }
+.pg-btn[hidden] { display: none; }
 .reveal { display: inline-grid; place-items: center; min-width: 1.4em; height: 1.2em; padding: 0 .2em; border: .07em dashed var(--accent); border-radius: .2em; background: var(--accent-soft); color: var(--accent); font: 700 1em/1 var(--font); cursor: pointer; }
 .words-ex { margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); font-size: 24px; line-height: 1.3; }
 .words-ex .said { display: block; margin-top: 4px; font-size: 17px; }
@@ -478,6 +482,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
           <p>Turn it on at the top of the canvas or in the menu. The answer waits behind a ?, so the class can predict it. Tap the ? to show it.</p>
           <p>While it’s on, the answer doesn’t show as you type. History hides it too. The last step shows it.</p>
           <div class="hide-ex cx" id="hide-ex"></div>
+          <button type="button" class="pg-btn" id="hide-again" hidden>Try again</button>
         </div>
       </div>
       <h3 style="margin-top:22px">Every step of 3 + 4 × 2 ÷ (1 − 5)²</h3>
@@ -495,12 +500,13 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
   <section class="pg-part" id="desmos" aria-labelledby="desmos-h">
     <div class="pg-wrap">
       <h2 id="desmos-h">Same math as Desmos</h2>
-      <p class="pg-lede">Teachers use Desmos, so the Calculator does the same math. We typed <!--@TOTAL--> problems into Desmos and into the Calculator.</p>
+      <p class="pg-lede">Teachers use Desmos, so the Calculator does the same math. We typed <span id="fig-total"><!--@TOTAL--></span> problems into Desmos and into the Calculator.</p>
       <div class="pg-stats">
         <div class="pg-stat pg-same"><b id="fig-same"><!--@SAME--></b><span>get the same answer</span></div>
         <div class="pg-stat"><b id="fig-words"><!--@WORDS--></b><span>say what went wrong where Desmos says “undefined”</span></div>
         <div class="pg-stat"><b id="fig-apart"><!--@APART--></b><span>differ on purpose</span></div>
       </div>
+      <p class="pg-note"><span id="fig-open"><!--@OPEN--></span> unfinished problems, such as 2 +, show no answer in either.</p>
       <div class="pg-two">
         <div class="pg-card">
           <h3>The same as Desmos</h3>
@@ -519,10 +525,10 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
         <div class="pg-card">
           <h3>Different on purpose</h3>
           <ul>
-            <li>÷ and × on the keys, and = where Desmos has ↵.</li>
+            <li>× where Desmos writes ·, and = where Desmos has ↵.</li>
             <li>Kind words, such as “Can’t divide by 0”, where Desmos says “undefined”.</li>
-            <li>One problem at a time, as on iPhone. Another = repeats the last step, so 5 + 5 = = = counts by 5s.</li>
-            <li>= after a lone number shows it. A problem that starts with × works on the 0 on screen. Desmos shows nothing for either.</li>
+            <li>One problem at a time, as on iPhone.</li>
+            <li>= after a lone number shows its value. A problem that starts with ×, ÷ or + works on the 0 on screen. Desmos shows no answer for either.</li>
             <li>A faint comma groups the digits, as in 1,234,567. Desmos uses a narrow space.</li>
             <li>Answers below 10⁻³²⁴ say “Too small to show”. Desmos shows 0.</li>
           </ul>
@@ -535,7 +541,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
   <section class="pg-part" id="math" aria-labelledby="math-h">
     <div class="pg-wrap">
       <h2 id="math-h">How the math works</h2>
-      <p class="pg-lede">The Calculator’s own engine draws every example here. Tap one to see its steps.</p>
+      <p class="pg-lede">Tap an example to see its steps.</p>
       <div class="pg-rules">
         <div class="pg-card pg-rule">
           <h3>Order of operations</h3>
@@ -569,7 +575,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
         </div>
         <div class="pg-card pg-rule">
           <h3>Repeated =</h3>
-          <p>Another = repeats the last step, so 5 + 5 = = = counts by 5s. Each = adds a line to History.</p>
+          <p>Another = repeats the last step. Each = adds a line to History.</p>
           <div class="pg-exs"><div class="pg-ex" data-kind="repeat" data-keys="5+5==="></div></div>
         </div>
         <div class="pg-card pg-rule">
@@ -585,7 +591,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
   <section class="pg-part" id="keyboard" aria-labelledby="keyboard-h">
     <div class="pg-wrap">
       <h2 id="keyboard-h">Keyboard</h2>
-      <p class="pg-lede">Tap the calculator, then type. The keys are Desmos’s.</p>
+      <p class="pg-lede">Tap the calculator, then type. Most keys work as in Desmos.</p>
       <div class="kbd-box">
         <table class="kbd-table">
           <thead><tr><th scope="col">Type</th><th scope="col">For</th></tr></thead>
@@ -596,7 +602,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
             <tr><td><kbd>^</kbd> <kbd>%</kbd> <kbd>(</kbd> <kbd>)</kbd></td><td>aᵇ, % and parentheses</td></tr>
             <tr><td><kbd>Enter</kbd> <kbd>=</kbd></td><td>=</td></tr>
             <tr><td><kbd>Backspace</kbd></td><td>⌫</td></tr>
-            <tr><td><kbd>Escape</kbd> <kbd>Delete</kbd></td><td>AC</td></tr>
+            <tr><td><kbd>Escape</kbd> <kbd>Delete</kbd> <kbd>Clear</kbd></td><td>AC</td></tr>
             <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd></td><td>AC</td></tr>
             <tr><td><kbd>→</kbd></td><td>Leaves a box</td></tr>
             <tr><td><kbd>↓</kbd></td><td>From the top of a fraction to its bottom</td></tr>
@@ -605,6 +611,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
             <tr><td><kbd>pi</kbd> <kbd>ans</kbd> <kbd>frac</kbd></td><td>π, ans and a/b, typed as letters</td></tr>
             <tr><td><kbd>@</kbd></td><td>√</td></tr>
             <tr><td><kbd>F9</kbd></td><td>±</td></tr>
+            <tr><td><kbd>²</kbd> <kbd>√</kbd> <kbd>π</kbd> <kbd>±</kbd> <kbd>×</kbd> <kbd>÷</kbd></td><td>a², √, π, ±, × and ÷, where the keyboard has them</td></tr>
             <tr><td><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd></td><td>⇄. On a Mac, ⌘+Shift+A.</td></tr>
             <tr><td><kbd>,</kbd></td><td>Nothing. A comma only groups digits, so 1,500 is 1500.</td></tr>
             <tr><td><kbd>Page Down</kbd> <kbd>Page Up</kbd></td><td>Next step and Back, while the steps show</td></tr>
@@ -628,7 +635,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
         <li>A full backup keeps it all. A blank template keeps the settings, without the problem or History.</li>
         <li>After a reload, the steps start over and a hidden answer hides again.</li>
       </ul>
-      <footer>This manual is for 21Board <!--@VERSION-->. The demo and every example run the Calculator’s own code.</footer>
+      <footer>This manual is for 21Board <!--@VERSION-->. The demo and every example are the real Calculator.</footer>
     </div>
   </section>
 </main>
@@ -651,7 +658,10 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
   const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ', ' + a + ')'; };
   const dark = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : { matches: false };
   let mode = 'auto', accent = 'blue';
-  const theme = () => (mode === 'auto' ? (dark.matches ? 'dark' : 'light') : mode);
+  // The page's host may set data-theme on the root element. Auto follows the host's, else the system's. Light and
+  // Dark set the page's own, and Auto gives the host's back.
+  let hostTheme = doc.getAttribute('data-theme'), pageTheme = hostTheme;
+  const theme = () => (mode !== 'auto' ? mode : hostTheme === 'light' || hostTheme === 'dark' ? hostTheme : dark.matches ? 'dark' : 'light');
   // The palette a widget gets from the board (board.js paletteFor)
   function palette(t) {
     const pal = Object.assign({}, PALETTES[t]);
@@ -664,7 +674,8 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
 
   function applyLook() {
     const t = theme(), pal = palette(t);
-    if (mode === 'auto') doc.removeAttribute('data-theme'); else doc.setAttribute('data-theme', mode);
+    pageTheme = mode === 'auto' ? hostTheme : mode;
+    if (doc.getAttribute('data-theme') !== pageTheme) { if (pageTheme == null) doc.removeAttribute('data-theme'); else doc.setAttribute('data-theme', pageTheme); }
     if (accent === 'blue') ['--accent', '--accent-soft', '--on-accent'].forEach(k => doc.style.removeProperty(k));
     else {
       doc.style.setProperty('--accent', pal.accent);
@@ -684,6 +695,13 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
     if (a) { accent = a.dataset.accent; applyLook(); }
   });
   if (dark.addEventListener) dark.addEventListener('change', () => { if (mode === 'auto') applyLook(); });
+  // The host changed data-theme: its newest choice wins, for the page and the demo alike.
+  if (window.MutationObserver) new MutationObserver(() => {
+    const v = doc.getAttribute('data-theme');
+    if (v === pageTheme) return;
+    hostTheme = v; mode = 'auto';
+    applyLook();
+  }).observe(doc, { attributes: true, attributeFilter: ['data-theme'] });
 
   // ---- The demo: the real widget in a frame. This page plays the board's side of the SDK (sdk/board21.js,
   // docs/WIDGET-SDK.md) for one window: init, save, saveConfig, getInfo, menu, window sizes, theme. Its work is kept
@@ -698,7 +716,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
       reset: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/></svg>'
     };
     let data = null, config = null, items = [], confirming = false;
-    let size = null, min = { w: null, h: null }, scale = 1, lastInfo = '';
+    let size = null, first = null, min = { w: null, h: null }, scale = 1, lastInfo = '';
     let look = { theme: 'light', palette: PALETTES.light };
     const pos = v => (typeof v === 'number' && v > 0 && isFinite(v) ? v : null);
     const clamp = (lo, v, hi) => Math.max(lo, Math.min(v, hi));
@@ -716,13 +734,19 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
 
     function fit() {
       const d = drawn(), room = col.clientWidth;
-      const tall = window.innerWidth >= 1040 ? Math.max(.5, (window.innerHeight - 230) / d.h) : 1;
-      scale = Math.min(1, room / d.w, tall);
+      // Beside the menu, the whole window fits on the first screen.
+      const top = stage.getBoundingClientRect().top + window.scrollY;
+      const tall = window.innerWidth >= 1040 ? Math.max(.5, (window.innerHeight - top - 16) / d.h) : 1;
+      // At phone width the window keeps its size, so its keys stay big enough to tap, and scrolls sideways if wider.
+      const phone = room < 600, wide = phone && room > 0 && d.w > room;
+      scale = phone ? 1 : Math.min(1, room / d.w, tall);
       const sw = Math.floor(d.w * scale), sh = Math.floor(d.h * scale);
       frame.style.width = d.w + 'px'; frame.style.height = d.h + 'px';
       frame.style.transform = scale === 1 ? '' : `scale(${scale})`;
-      stage.style.width = sw + 'px'; stage.style.height = sh + 'px';
-      win.style.width = sw + 'px';
+      stage.classList.toggle('wide', wide);
+      stage.style.width = wide ? '' : sw + 'px'; stage.style.height = sh + 'px';
+      win.style.width = (wide ? Math.floor(room) : sw) + 'px';
+      if (wide) { const bar = stage.offsetHeight - stage.clientHeight; if (bar > 0) stage.style.height = sh + bar + 'px'; }   // (room for a scroll bar)
       tellSize();
     }
     function tellSize() {
@@ -810,7 +834,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
     // Reset, as the board does it: no content, no settings, the first size, and the window loaded again
     function reset() {
       data = null; config = null; items = []; min = { w: null, h: null };
-      size = startSize();
+      size = first = startSize();
       renderMenu();
       load();
     }
@@ -822,11 +846,20 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
 
     return {
       start() {
-        size = startSize();
+        size = first = startSize();
         renderMenu();
         load();
         let t = 0;
-        window.addEventListener('resize', () => { cancelAnimationFrame(t); t = requestAnimationFrame(fit); });
+        window.addEventListener('resize', () => {
+          cancelAnimationFrame(t);
+          t = requestAnimationFrame(() => {
+            // A window still at its first size takes the size a new one would have now. (The page may have been
+            // laid out while hidden, or a phone turned on its side.)
+            const s = startSize();
+            if (size.w === first.w && size.h === first.h && (s.w !== first.w || s.h !== first.h)) size = first = s;
+            fit();
+          });
+        });
       },
       theme(t, pal) {
         look = { theme: t, palette: pal };
@@ -842,14 +875,20 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
   const chips = Array.from(document.querySelectorAll('.pg-chip'));
   const parts = chips.map(c => document.querySelector(c.getAttribute('href'))).filter(Boolean);
   function current() {
+    if (!window.innerHeight) return;   // (laid out while hidden)
     let on = null;
     for (const p of parts) if (p.getBoundingClientRect().top <= 120) on = p;
+    // The last part can't scroll up to the bar. At the end of the page, it's the one in view.
+    const end = document.documentElement.scrollHeight - window.innerHeight - 2;
+    if (window.scrollY > 0 && window.scrollY >= end) on = parts[parts.length - 1];
     chips.forEach(c => {
       if (!!on && c.getAttribute('href') === '#' + on.id) c.setAttribute('aria-current', 'true'); else c.removeAttribute('aria-current');
     });
   }
   let ticking = false;
-  window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { ticking = false; current(); }); } }, { passive: true });
+  const soon = () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { ticking = false; current(); }); } };
+  window.addEventListener('scroll', soon, { passive: true });
+  window.addEventListener('resize', soon);
   current();
 
   // ---- Live examples, drawn by the engine with the widget's own options
@@ -922,15 +961,18 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
       `<li><span class="lead" aria-hidden="true">${i ? '=' : ''}</span><span>${st.html}</span>${st.work ? `<span class="wk">${st.work.html}</span>` : ''}${st.final ? '' : letters(st)}</li>`).join('');
   })();
 
-  // Hide the answer: tap the ? to show it
+  // Hide the answer: tap the ? to show it. (Try again is the page's, to tap the ? once more.)
   (function () {
-    const s = E.calc('7×8', WIDGET), box = $('hide-ex');
-    const hidden = () => { box.innerHTML = `${noCursor(s.expression.html)}<span> = </span><button type="button" class="reveal" id="hide-reveal" aria-label="Show the answer">?</button>`; };
+    const s = E.calc('7×8', WIDGET), box = $('hide-ex'), again = $('hide-again');
+    const hidden = () => { box.innerHTML = `${noCursor(s.expression.html)}<span> = </span><button type="button" class="reveal" id="hide-reveal" aria-label="Show the answer">?</button>`; again.hidden = true; };
     hidden();
     box.addEventListener('click', e => {
-      if (e.target.closest('#hide-reveal')) box.innerHTML = `${s.equation.html}<button type="button" class="reveal" id="hide-again" style="font-size:15px;height:30px;padding:0 10px">Hide</button>`;
-      else if (e.target.closest('#hide-again')) { hidden(); $('hide-reveal').focus(); }
+      if (!e.target.closest('#hide-reveal')) return;
+      box.innerHTML = s.equation.html;
+      again.hidden = false;
+      again.focus();
     });
+    again.addEventListener('click', () => { hidden(); $('hide-reveal').focus(); });
   })();
 
   // In words
