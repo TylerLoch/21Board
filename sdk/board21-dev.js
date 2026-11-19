@@ -36,6 +36,8 @@
   var ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   var SDK_TAG_RE = /(<script\b[^>]*?\bsrc\s*=\s*)(["'])([^"']*?)board21(?:\.min)?\.js((?:[?#][^"']*)?)\2/i;
   var MAX_ZOOM = 2.5;
+  // Where AI tools' previews load the SDK from, for Checks' fix request. docs/AI-PROMPT.md gives the same address.
+  var PUBLIC_SDK = 'https://tylerloch.github.io/21Board/sdk/board21.js';
 
   var CSS = [
     ':host { all: initial; position: fixed; inset: 0; z-index: 2147483000; display: block; font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e5e7eb; background: #23272e; }',
@@ -62,6 +64,8 @@
     '.stage { position: absolute; left: 0; right: 0; top: 40px; bottom: 26px; overflow: hidden; background: #2b3038; background-image: radial-gradient(#363c46 1px, transparent 1.2px); background-size: 18px 18px; }',
     '.board { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; background: #f3f4f6; box-shadow: 0 0 0 1px rgba(0,0,0,.5), 0 10px 40px rgba(0,0,0,.35); }',
     '.stage.anim .board { transition: transform .28s cubic-bezier(.2,.8,.2,1); }',
+    '.scrim { position: absolute; inset: 0; }',
+    '.pop[hidden] ~ .stage .scrim { display: none; }',   /* while ⋯ is open, a tap on the board closes it (the board is a frame, so its taps never reach this page) */
 
     '.foot { position: absolute; left: 0; right: 0; bottom: 0; height: 26px; display: flex; align-items: center; gap: 10px; padding: 0 10px; background: #111418; color: #9aa4af; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
     '.foot b { color: #e5e7eb; font-weight: 600; }',
@@ -89,7 +93,7 @@
     '.ev div .j { display: none; color: #9aa4af; margin-top: 3px; } .ev div.open .j { display: block; }',
     '.chk { border-radius: 8px; background: #1b2026; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }',
     '.chk b { color: #fff; } .chk.warn { box-shadow: inset 3px 0 0 #d97706; } .chk.err { box-shadow: inset 3px 0 0 #dc2626; } .chk.ok { box-shadow: inset 3px 0 0 #16a34a; } .chk.info { box-shadow: inset 3px 0 0 #3b82f6; }',
-    '.pop { position: absolute; top: 40px; right: 6px; min-width: 240px; padding: 5px; border-radius: 10px; background: #1d2228; border: 1px solid #000; box-shadow: 0 10px 30px rgba(0,0,0,.4); display: flex; flex-direction: column; }',
+    '.pop { position: absolute; z-index: 1; top: 40px; right: 6px; min-width: 240px; padding: 5px; border-radius: 10px; background: #1d2228; border: 1px solid #000; box-shadow: 0 10px 30px rgba(0,0,0,.4); display: flex; flex-direction: column; }',   /* over the panel */
     '.pop[hidden] { display: none; }',
     '.pop button { text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 6px; color: #e5e7eb; }',
     '.pop button:hover { background: #2a313a; }',
@@ -97,11 +101,14 @@
     '.copybox { display: flex; flex-direction: column; gap: 6px; }',
     '.copybox[hidden] { display: none; }',
     '.help p { margin: 0 0 8px; } .help code { font-family: ui-monospace, monospace; background: #0d1014; padding: 1px 4px; border-radius: 4px; }',
-    '.barewrap { position: absolute; inset: 0; display: flex; flex-direction: column; background: #23272e; }',
+    '.barewrap { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; background: #23272e; }',   /* over the panel and ⋯ */
     '.barewrap[hidden] { display: none; }',
     '.barewrap .bar { position: relative; }',
+    '.barewrap .bar .muted { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }',
     '.barewrap iframe { flex: 1; width: 100%; border: 0; background: #fff; }',
     '@media (max-width: 1000px) { .wide { display: none; } }',
+    '@media (max-width: 759px) { .top { height: 76px; flex-wrap: wrap; align-content: center; row-gap: 4px; } .top .brk { flex-basis: 100%; height: 0; } .top ~ .stage, .top ~ .drawer, .top ~ .pop { top: 76px; } }',   /* on a narrow pane the toolbar takes two rows, so the panels and ⋯ stay in view */
+    '@media (max-width: 839px) { .lab { height: 76px; flex-wrap: wrap; align-content: center; row-gap: 4px; } .lab .brk { flex-basis: 100%; height: 0; } .lab ~ .stage, .lab ~ .drawer, .lab ~ .pop { top: 76px; } }',   /* (the lab's toolbar also has Edit code) */
     '@media (min-width: 700px) { .stage.beside { right: min(420px, 50%); } .drawer { width: min(420px, 50%); } }'   /* the board makes room for the panel */
   ].join('\n');
 
@@ -159,7 +166,7 @@
   }
 
   // ---------------------------------------------------------------------- checks
-  function lint(src, info, sdkUrl, lastMenu) {
+  function lint(src, info, lastMenu) {
     var out = info.notes.slice();
     var doc = info.doc;
     var code = Array.prototype.map.call(doc.querySelectorAll('script:not([src])'), function (s) { return s.type === 'application/json' ? '' : s.textContent; }).join('\n');
@@ -170,7 +177,7 @@
     var scripts = doc.querySelectorAll('script[src]');
     var sdkFirst = false;
     for (var i = 0; i < doc.scripts.length; i++) { var s = doc.scripts[i]; if (s.type === 'application/json') continue; sdkFirst = !!(s.src && /board21(\.min)?\.js/.test(s.getAttribute('src'))); break; }
-    if (!info.sdkFound) add('err', 'The 21Board SDK isn’t loaded', 'The dev window added it for this test.', 'Add <script src="' + sdkUrl + '"></script> as the first script in <head>.');
+    if (!info.sdkFound) add('err', 'The 21Board SDK isn’t loaded', 'The dev window added it for this test.', 'Add <script src="' + PUBLIC_SDK + '"></script> as the first script in <head>.');
     else if (!sdkFirst) add('warn', 'The SDK isn’t the first script', 'Scripts before it run before the dev window starts, then again inside it.', 'Make the 21Board SDK <script> the first script in <head>.');
     if (!/^\s*(<!--[\s\S]*?-->\s*)*<!doctype html>/i.test(src)) add('warn', 'No <!DOCTYPE html> at the top', 'Without it, the board draws the widget in quirks mode, where sizes and spacing can differ. This window can’t show that.', 'Make <!DOCTYPE html> the first line of the file.');
     var hosts = {};
@@ -234,13 +241,13 @@
     var remember = function () { try { sessionStorage.setItem('21board-dev', JSON.stringify({ screen: st.screen, view: st.view })); } catch (e) { /* blocked */ } };
 
     root.innerHTML = '<style>' + CSS + '</style>' +
-      '<div class="bar" role="toolbar" aria-label="21Board dev window">' +
+      '<div class="bar top' + (opts.onEdit ? ' lab' : '') + '" role="toolbar" aria-label="21Board dev window">' +
         '<span class="brand" title="21Board widget dev window ' + VERSION + '"><i>21</i><span class="wide">Dev window</span></span><span class="sep"></span>' +
         '<span class="seg" role="group" aria-label="View"><button data-view="window" title="Follow the window">Window</button><button data-view="board" title="The whole screen">Board</button></span>' +
         '<select data-k="screen" aria-label="Screen" title="The screen the board is drawn on">' + SCREENS.map(function (s) { return '<option value="' + s.id + '" title="' + s.size + '">' + s.label + '</option>'; }).join('') + '</select>' +
         '<select data-k="theme" aria-label="Theme" title="Theme"><option value="system">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select>' +
         '<span class="size" title="Size of windows and menus"><button class="tb" data-act="smaller" aria-label="Smaller">−</button><output data-k="scale">80%</output><button class="tb" data-act="larger" aria-label="Larger">+</button></span>' +
-        '<span class="sep"></span>' +
+        '<span class="sep brk"></span>' +
         '<button class="tb" data-drawer="data">Data</button>' +
         '<button class="tb" data-drawer="events">Events<span class="n" data-k="evn">0</span></button>' +
         '<button class="tb" data-drawer="checks">Checks<span class="n" data-k="chn">0</span></button>' +
@@ -248,9 +255,7 @@
         (opts.onEdit ? '<button class="tb" data-act="edit">Edit code</button>' : '') +
         '<button class="tb" data-act="more" aria-label="More" title="More">⋯</button>' +
       '</div>' +
-      '<div class="stage"><iframe class="board" title="21Board test board"></iframe></div>' +
-      '<div class="foot" aria-live="polite"></div>' +
-      '<div class="pop" hidden role="menu">' +
+      '<div class="pop" hidden role="menu">' +   // (next after ⋯, so Tab goes from ⋯ to its items)
         '<button data-act="reload">Reload the widget</button>' +
         '<button data-act="reset">Reset size and data</button>' +
         '<button data-act="open2">Open another window</button>' +
@@ -260,6 +265,8 @@
         '<button data-act="copy21">Copy for 21Board</button>' +
         '<button data-act="help">How this works</button>' +
       '</div>' +
+      '<div class="stage"><iframe class="board" title="21Board test board"></iframe><div class="scrim"></div></div>' +
+      '<div class="foot" aria-live="polite"></div>' +
       '<div class="barewrap" hidden><div class="bar"><span class="brand"><i>21</i></span><span class="muted">The widget on its own. Data stays in this browser, and window calls do nothing.</span><span class="grow"></span><button class="btn primary" data-act="unbare">Back to the window</button></div></div>' +
       '<aside class="drawer" hidden aria-label="Dev window panel"><div class="dhead"><h2></h2><button class="btn" data-act="close-drawer" aria-label="Close panel">✕</button></div><div class="dbody"></div></aside>';
 
@@ -385,7 +392,7 @@
     // ---- checks
     function runChecks() {
       if (!info.widget) return;
-      st.checks = lint(src, info, sdkUrl, st.lastMenu);
+      st.checks = lint(src, info, st.lastMenu);
       var bad = st.checks.filter(function (c) { return c.level === 'err' || c.level === 'warn'; }).length;
       var n = $('[data-k="chn"]');
       n.textContent = String(bad);
@@ -506,7 +513,7 @@
         case 'shape': send('shape', { value: st.lastView && st.lastView.shape === 'free' ? '16:9' : 'free' }); break;
         case 'close-drawer': openDrawer(st.drawer); break;
         case 'edit': if (opts.onEdit) opts.onEdit(); break;
-        case 'help': openDrawer('help'); break;
+        case 'help': if (st.drawer !== 'help') openDrawer('help'); break;
         case 'bare': {   // in a fresh frame (rewriting this page would run the widget's code twice in one window)
           var wrap = $('.barewrap'), bf = document.createElement('iframe');
           bf.name = 'b21-bare';
