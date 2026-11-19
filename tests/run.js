@@ -11813,20 +11813,25 @@ const SUITES = [
     await ctx.close();
   }],
   // ---- From 2026.11.18-15: the ⋯ menu opens above an open panel. Both were placed with no z-index, and the panel came later
-  // in the page, so the menu opened under it. "Show the widget on its own" had the same problem.
-  ['Widget dev window: the ⋯ menu opens above an open panel (Data, Events, Checks and Help, 1366 and 600 px wide: every item on top, each one tapped, tapping outside; the widget on its own covers the panel)', async (browser) => {
+  // in the page, so the menu opened under it. "Show the widget on its own" had the same problem. Also from -15: on a narrow
+  // pane the toolbar takes two rows (the panels and ⋯ were past its right edge, and its scrollbar is hidden), Tab from ⋯
+  // goes to its items, and a tap on the board closes ⋯ while a widget that keeps its own field focused doesn't.
+  ['Widget dev window: the ⋯ menu opens above an open panel (Data, Events, Checks and Help, 1366 and 600 px wide: every item on top, each one tapped, tapping outside; the widget on its own covers the panel; the toolbar fits at 600 px and in the lab at 800 px; from the keyboard; beside a widget that keeps its field focused)', async (browser) => {
     for (const vp of [{ width: 1366, height: 768 }, { width: 600, height: 768 }]) {
       const wide = vp.width >= 700, px = vp.width + ' px';   // (from 700 px the panel sits beside the board; below, over it)
       const ctx = await browser.newContext({ viewport: vp });
       await ctx.addInitScript(() => { window.__copied = []; Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: t => { window.__copied.push(t); return Promise.resolve(); } } }); });
+      // A widget that keeps the keyboard on its own field, as a spelling game might.
+      await ctx.route(BASE + '__dev/keeps-focus.html', r => r.fulfill({ contentType: 'text/html', body: DEV_WIDGET(BASE + 'sdk/board21.js').replace('<body>', '<body><input id="word">').replace('</script></body>', "setInterval(() => document.getElementById('word').focus(), 700);\n</script></body>") }));
       const page = await ctx.newPage();
       const errors = []; page.on('pageerror', e => { if (!/boom from the widget/.test(e.message)) errors.push(e.message); });
       const kids = f => page.frames().filter(x => x.parentFrame() === f);
       const board = () => kids(page.mainFrame())[0];
       const B = fn => board().evaluate(fn);
       const dev = sel => page.locator('#b21-dev ' + sel);
+      const up = () => eventually(() => B(() => { const w = window.__board21.state.wins.get('counter:1'); return !!w && w.connected; }), 10000);
       await page.goto(BASE + '__dev/widget.html');
-      ok(await eventually(() => B(() => { const w = window.__board21.state.wins.get('counter:1'); return !!w && w.connected; }), 10000), `${px}: the widget is up in the dev window`);
+      ok(await up(), `${px}: the widget is up in the dev window`);
       const panel = () => page.evaluate(() => { const r = document.getElementById('b21-dev').shadowRoot; return r.querySelector('.drawer').hidden ? '' : r.querySelector('.dhead h2').textContent; });
       const menuOpen = () => page.evaluate(() => !document.getElementById('b21-dev').shadowRoot.querySelector('.pop').hidden);
       // Each item of the ⋯ menu: its center, what is on top there (through the shadow root), and whether that is over the panel.
@@ -11838,67 +11843,151 @@ const SUITES = [
             at: e ? e.tagName.toLowerCase() + (e.className ? '.' + e.className : '') : 'nothing' };
         });
       });
+      // Where a control shows, with the toolbar as it first appears (not scrolled): its center, and whether it is on top there.
+      const spot = sel => page.evaluate(s => {
+        const r = document.getElementById('b21-dev').shadowRoot, b = r.querySelector(s), bar = b.closest('.bar'), q = b.getBoundingClientRect();
+        const x = q.left + q.width / 2, y = q.top + q.height / 2, e = r.elementFromPoint(x, y);
+        return { x, y, shown: x > 0 && x < innerWidth && !!e && b.contains(e) && (!bar || bar.scrollLeft === 0), at: e ? e.tagName.toLowerCase() + (e.className ? '.' + e.className : '') : 'nothing' };
+      }, sel);
+      // Tap a control where it shows, as a teacher would. If it doesn't show, note it and tap it anyway, so the rest still runs.
+      const unseen = new Set();
+      const unscroll = () => page.evaluate(() => { document.getElementById('b21-dev').shadowRoot.querySelectorAll('.bar').forEach(b => { b.scrollLeft = 0; }); });
+      const tap = async (sel, name) => {
+        const s = await spot(sel);
+        if (s.shown) { await page.mouse.click(s.x, s.y); return; }
+        unseen.add(name); await dev(sel).click({ timeout: 3000 }); await unscroll();
+      };
+      // A point on the board, beside any panel, and whether the board is what's there while ⋯ is closed.
+      const onBoard = () => page.evaluate(() => {
+        const r = document.getElementById('b21-dev').shadowRoot, s = r.querySelector('.stage').getBoundingClientRect(), f = r.querySelector('.board').getBoundingClientRect();
+        const x = Math.max(s.left, f.left) + 20, y = (Math.max(s.top, f.top) + Math.min(s.bottom, f.bottom)) / 2;
+        return { x, y, board: r.elementFromPoint(x, y) === r.querySelector('.board') };
+      });
+      // Back to a known start whatever the last check did: ⋯ closed, the toolbar unscrolled, back from the widget on its own.
+      const reset = () => page.evaluate(() => {
+        const r = document.getElementById('b21-dev').shadowRoot;
+        r.querySelector('.pop').hidden = true; r.querySelectorAll('.bar').forEach(b => { b.scrollLeft = 0; });
+        if (!r.querySelector('.barewrap').hidden) r.querySelector('[data-act="unbare"]').click();
+      });
+
+      // The toolbar as it first appears: it fits the pane, and Data, Events, Checks and ⋯ are each on top where they show.
+      const BAR = [['[data-drawer="data"]', 'Data'], ['[data-drawer="events"]', 'Events'], ['[data-drawer="checks"]', 'Checks'], ['[data-act="more"]', '⋯']];
+      const notShown = async list => { const out = []; for (const [sel, name] of list) { const s = await spot(sel); if (!s.shown) out.push(`${name} at ${Math.round(s.x)} px, under ${s.at}`); } return out; };
+      const fits = () => page.evaluate(() => { const b = document.getElementById('b21-dev').shadowRoot.querySelector('.bar'); return b.scrollWidth <= b.clientWidth ? 'fits' : `${b.scrollWidth} px wide`; });
+      let off = await notShown(BAR), fit = await fits();
+      ok(!off.length && fit === 'fits', `${px}: the toolbar fits the pane, with Data, Events, Checks and ⋯ on top (${fit}; ${off.join('; ') || 'all four shown'})`);
+      off = await notShown([['[data-view="window"]', 'Window'], ['[data-k="screen"]', 'Screen'], ['[data-k="theme"]', 'Theme'], ['.size output', 'Size'], ['.brand', 'the 21']]);
+      ok(!off.length, `${px}: Window, Screen, Theme, Size and the 21 show too (${off.join('; ') || 'all five'})`);
+
+      // From the keyboard: Enter on ⋯ opens it, Tab goes to its first item, and Escape closes it.
+      await dev('[data-act="more"]').focus(); await page.keyboard.press('Enter'); await page.waitForTimeout(150);
+      const kOpen = await menuOpen();
+      await page.keyboard.press('Tab'); await page.waitForTimeout(150);
+      const kb = await page.evaluate(() => { const r = document.getElementById('b21-dev').shadowRoot, a = r.activeElement; return { open: !r.querySelector('.pop').hidden, at: a ? a.getAttribute('data-act') || a.tagName.toLowerCase() + '.' + a.className : 'nothing' }; });
+      await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+      ok(kOpen && kb.open && kb.at === 'reload' && !await menuOpen(), `${px}: from the keyboard, Enter on ⋯ opens it, Tab goes to “Reload the widget”, and Escape closes it (${kOpen ? 'opened' : 'didn’t open'}; after Tab: ${kb.at}, ${kb.open ? 'open' : 'closed'})`);
+      await reset();
+
+      // With no panel open, a tap on the board closes ⋯.
+      const b0 = await onBoard();
+      await tap('[data-act="more"]', '⋯'); await page.waitForTimeout(150);
+      const o0 = await menuOpen();
+      await page.mouse.click(b0.x, b0.y); await page.waitForTimeout(300);
+      ok(b0.board && o0 && !await menuOpen(), `${px}, no panel open: tapping the board closes ⋯ (${!b0.board ? 'that point isn’t the board' : !o0 ? '⋯ didn’t open' : await menuOpen() ? 'stayed open' : 'closed'})`);
+
       const openPanel = async name => {
-        if (await panel()) await dev('[data-act="close-drawer"]').click();
-        if (name === 'help') { await dev('[data-act="more"]').click(); await dev('.pop [data-act="help"]').click(); }   // (Help is only in ⋯)
-        else await dev(`[data-drawer="${name}"]`).click();
+        await reset();
+        if (await panel()) await tap('[data-act="close-drawer"]', 'the panel’s ✕');
+        if (name === 'help') { await tap('[data-act="more"]', '⋯'); await tap('.pop [data-act="help"]', 'How this works'); }   // (Help is only in ⋯)
+        else await tap(`[data-drawer="${name}"]`, BAR.find(b => b[0].includes(name))[1]);
         await page.waitForTimeout(300);
       };
       const HEAD = { data: 'Saved data', events: 'Events', checks: 'Checks', help: 'How this works' };
       // One item tapped with each panel open, so each item is tapped at one width or the other (How this works at both).
       const TAPS = wide ? { data: 'open2', events: 'reload', checks: 'bare', help: 'copy21' } : { data: 'shape', events: 'reset', checks: 'help', help: 'help' };
       for (const name of ['data', 'events', 'checks', 'help']) {
-        await openPanel(name);
-        ok(await panel() === HEAD[name], `${px}: ${HEAD[name]} is open`);
-        await dev('[data-act="more"]').click(); await page.waitForTimeout(150);
+        try {   // (one failure is reported, and the other panels still run)
+          await openPanel(name);
+          ok(await panel() === HEAD[name], `${px}: ${HEAD[name]} is open`);
+          await tap('[data-act="more"]', '⋯'); await page.waitForTimeout(150);
+          const its = await items();
+          ok(await menuOpen() && its.length === 7 && its.every(i => i.top && i.over),
+            `${px}, ${HEAD[name]} open: ⋯ opens over the panel, every item on top (${its.filter(i => !i.top || !i.over).map(i => `${i.label}: ${i.over ? 'under ' + i.at : 'not over the panel'}`).join('; ') || its.length + ' items'})`);
+          // Tap one item where it shows, and see it work.
+          const act = TAPS[name], it = its.find(i => i.act === act);
+          if (!it) { ok(false, `${px}, ${HEAD[name]} open: the ⋯ menu has “${act}”`); continue; }
+          let before = null, done = false, what = '';
+          if (act === 'open2') before = await B(() => window.__board21.state.wins.size);
+          if (act === 'reload') await Promise.all(kids(board()).map(f => f.evaluate(() => { window.__mark = 1; })));
+          if (act === 'shape') before = await page.evaluate(() => window.__board21DevWindow.state().lastView.shape);
+          if (act === 'reset') { await kids(board())[0].evaluate(() => Board21.save({ count: 5 })); await eventually(() => B(() => (window.__board21.state.data.get('counter:1') || {}).count === 5)); }
+          await page.mouse.click(it.x, it.y);
+          if (act === 'open2') { done = await eventually(() => board().evaluate(n => window.__board21.state.wins.size === n + 1, before)); what = 'a second window opens'; }
+          if (act === 'reload') { done = await eventually(async () => { const fs = kids(board()); return fs.length > 0 && (await Promise.all(fs.map(f => f.evaluate(() => !window.__mark && window.__runs === 1)))).every(Boolean); }); what = 'the widget reloads'; }
+          if (act === 'shape') { done = await eventually(async () => { const s = await page.evaluate(() => window.__board21DevWindow.state().lastView.shape); return !!s && s !== before; }); what = 'the board changes shape'; }
+          if (act === 'reset') { done = await eventually(() => B(() => !window.__board21.state.data.has('counter:1'))); what = 'the window’s saved data is cleared'; }
+          if (act === 'copy21') { done = await eventually(() => page.evaluate(() => { const t = window.__copied[window.__copied.length - 1] || ''; return t.startsWith('<!-- Save as widgets/counter/index.html -->') && t.includes('<script src="../../sdk/board21.js"></script>'); })) && await panel() === 'Checks'; what = 'the HTML and its registry entry are copied, shown with Checks'; }
+          if (act === 'help') { await page.waitForTimeout(300); done = await panel() === 'How this works'; what = 'How this works shows, and stays open'; }
+          if (act === 'bare') {
+            // The widget on its own covers the whole pane, the panel too; Back to the window returns to it.
+            const cover = await eventually(() => page.evaluate(() => {
+              const r = document.getElementById('b21-dev').shadowRoot, wrap = r.querySelector('.barewrap'), d = r.querySelector('.drawer').getBoundingClientRect();
+              const e = r.elementFromPoint(d.left + d.width / 2, d.top + d.height / 2);
+              return !wrap.hidden && !!e && wrap.contains(e) && e.tagName === 'IFRAME';
+            }));
+            const alone = cover && await eventually(() => kids(page.mainFrame())[1].evaluate(() => !!(window.Board21 && Board21.context && Board21.context.standalone)));
+            if (cover) { await tap('[data-act="unbare"]', 'Back to the window'); await page.waitForTimeout(800); }
+            done = cover && alone && await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('.barewrap').hidden) && await panel() === 'Checks';
+            what = 'the widget shows on its own, over the panel, and Back to the window returns';
+          }
+          ok(done && !await menuOpen(), `${px}, ${HEAD[name]} open: tapping “${it.label}” works (${what}) and closes the menu`);
+          // Tapping outside the menu closes it: on the panel, and on a wide pane on the board beside it.
+          await tap('[data-act="more"]', '⋯'); await page.waitForTimeout(150);
+          const h = await page.evaluate(() => { const q = document.getElementById('b21-dev').shadowRoot.querySelector('.dhead h2').getBoundingClientRect(); return { x: q.left + 6, y: q.top + q.height / 2 }; });
+          await page.mouse.click(h.x, h.y); await page.waitForTimeout(150);
+          const afterPanel = await menuOpen();
+          let afterBoard = false, spotB = null;
+          if (wide) {
+            spotB = await onBoard();
+            await tap('[data-act="more"]', '⋯'); await page.waitForTimeout(150);
+            await page.mouse.click(spotB.x, spotB.y); await page.waitForTimeout(300);
+            afterBoard = await menuOpen();
+          }
+          ok(!afterPanel && !afterBoard && (!spotB || spotB.board), `${px}, ${HEAD[name]} open: tapping outside the menu closes it (on the panel${wide ? ', on the board' : ''}: ${afterPanel ? 'stayed open' : 'closed'}${wide ? `, ${afterBoard ? 'stayed open' : 'closed'}` : ''})`);
+        } catch (err) { ok(false, `${px}, ${HEAD[name]} open: stopped early (${String(err && err.message || err).split('\n')[0]})`); }
+      }
+      ok(!unseen.size, `${px}: every control tapped above showed where it is, with the toolbar unscrolled (${[...unseen].join(', ') || 'all of them'})`);
+
+      if (wide) {
+        // A widget that keeps the keyboard on its own field: ⋯ stays open until a tap, and its items still work.
+        await page.goto(BASE + '__dev/keeps-focus.html');
+        ok(await up() && await eventually(() => page.evaluate(() => { const r = document.getElementById('b21-dev').shadowRoot; return r.activeElement === r.querySelector('.board'); })),
+          `${px}: a widget that keeps its field focused is up, with the keyboard`);
+        await tap('[data-act="more"]', '⋯'); await page.waitForTimeout(2000);
+        const still = await menuOpen();
+        const it = (await items()).find(i => i.act === 'open2' && i.top), n = await B(() => window.__board21.state.wins.size);
+        if (it) await page.mouse.click(it.x, it.y);
+        const opened = !!it && await eventually(() => board().evaluate(m => window.__board21.state.wins.size === m + 1, n));
+        ok(still && opened && !await menuOpen(), `${px}: beside a widget that keeps its field focused, ⋯ stays open (${still ? 'open' : 'closed by itself'} after 2 s), and “Open another window” works (${opened ? 'it opened' : 'it didn’t'})`);
+      } else {
+        // The widget on its own: Back to the window shows, and returns.
+        await reset(); await tap('[data-act="more"]', '⋯'); await tap('.pop [data-act="bare"]', 'Show the widget on its own'); await page.waitForTimeout(400);
+        const back = await spot('[data-act="unbare"]');
+        await tap('[data-act="unbare"]', 'Back to the window'); await page.waitForTimeout(800);
+        ok(back.shown && await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('.barewrap').hidden),
+          `${px}, the widget on its own: “Back to the window” shows, and tapping it returns (${back.shown ? 'shown' : `at ${Math.round(back.x)} px, under ${back.at}`})`);
+        // The widget lab, whose toolbar also has Edit code: Data, Events, Checks, Edit code and ⋯ show, and ⋯ opens.
+        await page.goto(BASE + 'sdk/lab.html'); await page.fill('#code', DEV_WIDGET('../../sdk/board21.js')); await page.click('#run');
+        ok(await up(), `${px}, the widget lab: the widget is up`);
+        off = await notShown(BAR.concat([['[data-act="edit"]', 'Edit code'], ['[data-k="theme"]', 'Theme'], ['.size output', 'Size']])); fit = await fits();
+        ok(!off.length && fit === 'fits', `${px}, the widget lab: the toolbar fits the pane, with Data, Events, Checks, Edit code, ⋯, Theme and Size on top (${fit}; ${off.join('; ') || 'all shown'})`);
+        await tap('[data-act="more"]', '⋯'); await page.waitForTimeout(150);
         const its = await items();
-        ok(await menuOpen() && its.length === 7 && its.every(i => i.top && i.over),
-          `${px}, ${HEAD[name]} open: ⋯ opens over the panel, every item on top (${its.filter(i => !i.top || !i.over).map(i => `${i.label}: ${i.over ? 'under ' + i.at : 'not over the panel'}`).join('; ') || its.length + ' items'})`);
-        // Tap one item where it shows, and see it work.
-        const act = TAPS[name], it = its.find(i => i.act === act);
-        if (!it) { ok(false, `${px}, ${HEAD[name]} open: the ⋯ menu has “${act}”`); continue; }
-        let before = null, done = false, what = '';
-        if (act === 'open2') before = await B(() => window.__board21.state.wins.size);
-        if (act === 'reload') await Promise.all(kids(board()).map(f => f.evaluate(() => { window.__mark = 1; })));
-        if (act === 'shape') before = await page.evaluate(() => window.__board21DevWindow.state().lastView.shape);
-        if (act === 'reset') { await kids(board())[0].evaluate(() => Board21.save({ count: 5 })); await eventually(() => B(() => (window.__board21.state.data.get('counter:1') || {}).count === 5)); }
-        await page.mouse.click(it.x, it.y);
-        if (act === 'open2') { done = await eventually(() => board().evaluate(n => window.__board21.state.wins.size === n + 1, before)); what = 'a second window opens'; }
-        if (act === 'reload') { done = await eventually(async () => { const fs = kids(board()); return fs.length > 0 && (await Promise.all(fs.map(f => f.evaluate(() => !window.__mark && window.__runs === 1)))).every(Boolean); }); what = 'the widget reloads'; }
-        if (act === 'shape') { done = await eventually(async () => { const s = await page.evaluate(() => window.__board21DevWindow.state().lastView.shape); return !!s && s !== before; }); what = 'the board changes shape'; }
-        if (act === 'reset') { done = await eventually(() => B(() => !window.__board21.state.data.has('counter:1'))); what = 'the window’s saved data is cleared'; }
-        if (act === 'copy21') { done = await eventually(() => page.evaluate(() => { const t = window.__copied[window.__copied.length - 1] || ''; return t.startsWith('<!-- Save as widgets/counter/index.html -->') && t.includes('<script src="../../sdk/board21.js"></script>'); })) && await panel() === 'Checks'; what = 'the HTML and its registry entry are copied, shown with Checks'; }
-        if (act === 'help') { await page.waitForTimeout(300); done = await panel() === 'How this works'; what = 'How this works shows, and stays open'; }
-        if (act === 'bare') {
-          // The widget on its own covers the whole pane, the panel too; Back to the window returns to it.
-          const cover = await eventually(() => page.evaluate(() => {
-            const r = document.getElementById('b21-dev').shadowRoot, wrap = r.querySelector('.barewrap'), d = r.querySelector('.drawer').getBoundingClientRect();
-            const e = r.elementFromPoint(d.left + d.width / 2, d.top + d.height / 2);
-            return !wrap.hidden && !!e && wrap.contains(e) && e.tagName === 'IFRAME';
-          }));
-          const alone = cover && await eventually(() => kids(page.mainFrame())[1].evaluate(() => !!(window.Board21 && Board21.context && Board21.context.standalone)));
-          if (cover) { await dev('[data-act="unbare"]').click(); await page.waitForTimeout(800); }
-          done = cover && alone && await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('.barewrap').hidden) && await panel() === 'Checks';
-          what = 'the widget shows on its own, over the panel, and Back to the window returns';
-        }
-        ok(done && !await menuOpen(), `${px}, ${HEAD[name]} open: tapping “${it.label}” works (${what}) and closes the menu`);
-        // Tapping outside the menu closes it: on the panel, and on a wide pane on the board beside it.
-        await dev('[data-act="more"]').click(); await page.waitForTimeout(150);
-        const h = await page.evaluate(() => { const q = document.getElementById('b21-dev').shadowRoot.querySelector('.dhead h2').getBoundingClientRect(); return { x: q.left + 6, y: q.top + q.height / 2 }; });
-        await page.mouse.click(h.x, h.y); await page.waitForTimeout(150);
-        const afterPanel = await menuOpen();
-        let afterBoard = false, spot = null;
-        if (wide) {
-          await dev('[data-act="more"]').click(); await page.waitForTimeout(150);
-          spot = await page.evaluate(() => {
-            const r = document.getElementById('b21-dev').shadowRoot, s = r.querySelector('.stage').getBoundingClientRect(), f = r.querySelector('.board').getBoundingClientRect();
-            const x = Math.max(s.left, f.left) + 20, y = (Math.max(s.top, f.top) + Math.min(s.bottom, f.bottom)) / 2;
-            return { x, y, board: r.elementFromPoint(x, y) === r.querySelector('.board') };
-          });
-          await page.mouse.click(spot.x, spot.y); await page.waitForTimeout(300);
-          afterBoard = await menuOpen();
-        }
-        ok(!afterPanel && !afterBoard && (!spot || spot.board), `${px}, ${HEAD[name]} open: tapping outside the menu closes it (on the panel${wide ? ', on the board' : ''}: ${afterPanel ? 'stayed open' : 'closed'}${wide ? `, ${afterBoard ? 'stayed open' : 'closed'}` : ''})`);
+        ok(await menuOpen() && its.length === 7 && its.every(i => i.top), `${px}, the widget lab: ⋯ opens, every item on top (${its.filter(i => !i.top).map(i => `${i.label}: under ${i.at}`).join('; ') || its.length + ' items'})`);
+        // At 800 px one row fits the dev window's toolbar but not the lab's, which also has Edit code.
+        await reset(); await page.setViewportSize({ width: 800, height: 768 }); await page.waitForTimeout(400);
+        off = await notShown(BAR.concat([['[data-act="edit"]', 'Edit code']])); fit = await fits();
+        ok(!off.length && fit === 'fits', `800 px, the widget lab: the toolbar fits the pane, with Data, Events, Checks, Edit code and ⋯ on top (${fit}; ${off.join('; ') || 'all shown'})`);
       }
       if (errors.length) ok(false, `${px}: no page errors: ` + errors.join(' | '));
       await ctx.close();

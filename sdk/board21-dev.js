@@ -64,6 +64,8 @@
     '.stage { position: absolute; left: 0; right: 0; top: 40px; bottom: 26px; overflow: hidden; background: #2b3038; background-image: radial-gradient(#363c46 1px, transparent 1.2px); background-size: 18px 18px; }',
     '.board { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; background: #f3f4f6; box-shadow: 0 0 0 1px rgba(0,0,0,.5), 0 10px 40px rgba(0,0,0,.35); }',
     '.stage.anim .board { transition: transform .28s cubic-bezier(.2,.8,.2,1); }',
+    '.scrim { position: absolute; inset: 0; }',
+    '.pop[hidden] ~ .stage .scrim { display: none; }',   /* while ⋯ is open, a tap on the board closes it (the board is a frame, so its taps never reach this page) */
 
     '.foot { position: absolute; left: 0; right: 0; bottom: 0; height: 26px; display: flex; align-items: center; gap: 10px; padding: 0 10px; background: #111418; color: #9aa4af; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }',
     '.foot b { color: #e5e7eb; font-weight: 600; }',
@@ -102,8 +104,11 @@
     '.barewrap { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; background: #23272e; }',   /* over the panel and ⋯ */
     '.barewrap[hidden] { display: none; }',
     '.barewrap .bar { position: relative; }',
+    '.barewrap .bar .muted { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }',
     '.barewrap iframe { flex: 1; width: 100%; border: 0; background: #fff; }',
     '@media (max-width: 1000px) { .wide { display: none; } }',
+    '@media (max-width: 759px) { .top { height: 76px; flex-wrap: wrap; align-content: center; row-gap: 4px; } .top .brk { flex-basis: 100%; height: 0; } .top ~ .stage, .top ~ .drawer, .top ~ .pop { top: 76px; } }',   /* on a narrow pane the toolbar takes two rows, so the panels and ⋯ stay in view */
+    '@media (max-width: 839px) { .lab { height: 76px; flex-wrap: wrap; align-content: center; row-gap: 4px; } .lab .brk { flex-basis: 100%; height: 0; } .lab ~ .stage, .lab ~ .drawer, .lab ~ .pop { top: 76px; } }',   /* (the lab's toolbar also has Edit code) */
     '@media (min-width: 700px) { .stage.beside { right: min(420px, 50%); } .drawer { width: min(420px, 50%); } }'   /* the board makes room for the panel */
   ].join('\n');
 
@@ -236,13 +241,13 @@
     var remember = function () { try { sessionStorage.setItem('21board-dev', JSON.stringify({ screen: st.screen, view: st.view })); } catch (e) { /* blocked */ } };
 
     root.innerHTML = '<style>' + CSS + '</style>' +
-      '<div class="bar" role="toolbar" aria-label="21Board dev window">' +
+      '<div class="bar top' + (opts.onEdit ? ' lab' : '') + '" role="toolbar" aria-label="21Board dev window">' +
         '<span class="brand" title="21Board widget dev window ' + VERSION + '"><i>21</i><span class="wide">Dev window</span></span><span class="sep"></span>' +
         '<span class="seg" role="group" aria-label="View"><button data-view="window" title="Follow the window">Window</button><button data-view="board" title="The whole screen">Board</button></span>' +
         '<select data-k="screen" aria-label="Screen" title="The screen the board is drawn on">' + SCREENS.map(function (s) { return '<option value="' + s.id + '" title="' + s.size + '">' + s.label + '</option>'; }).join('') + '</select>' +
         '<select data-k="theme" aria-label="Theme" title="Theme"><option value="system">Auto</option><option value="light">Light</option><option value="dark">Dark</option></select>' +
         '<span class="size" title="Size of windows and menus"><button class="tb" data-act="smaller" aria-label="Smaller">−</button><output data-k="scale">80%</output><button class="tb" data-act="larger" aria-label="Larger">+</button></span>' +
-        '<span class="sep"></span>' +
+        '<span class="sep brk"></span>' +
         '<button class="tb" data-drawer="data">Data</button>' +
         '<button class="tb" data-drawer="events">Events<span class="n" data-k="evn">0</span></button>' +
         '<button class="tb" data-drawer="checks">Checks<span class="n" data-k="chn">0</span></button>' +
@@ -250,9 +255,7 @@
         (opts.onEdit ? '<button class="tb" data-act="edit">Edit code</button>' : '') +
         '<button class="tb" data-act="more" aria-label="More" title="More">⋯</button>' +
       '</div>' +
-      '<div class="stage"><iframe class="board" title="21Board test board"></iframe></div>' +
-      '<div class="foot" aria-live="polite"></div>' +
-      '<div class="pop" hidden role="menu">' +
+      '<div class="pop" hidden role="menu">' +   // (next after ⋯, so Tab goes from ⋯ to its items)
         '<button data-act="reload">Reload the widget</button>' +
         '<button data-act="reset">Reset size and data</button>' +
         '<button data-act="open2">Open another window</button>' +
@@ -262,6 +265,8 @@
         '<button data-act="copy21">Copy for 21Board</button>' +
         '<button data-act="help">How this works</button>' +
       '</div>' +
+      '<div class="stage"><iframe class="board" title="21Board test board"></iframe><div class="scrim"></div></div>' +
+      '<div class="foot" aria-live="polite"></div>' +
       '<div class="barewrap" hidden><div class="bar"><span class="brand"><i>21</i></span><span class="muted">The widget on its own. Data stays in this browser, and window calls do nothing.</span><span class="grow"></span><button class="btn primary" data-act="unbare">Back to the window</button></div></div>' +
       '<aside class="drawer" hidden aria-label="Dev window panel"><div class="dhead"><h2></h2><button class="btn" data-act="close-drawer" aria-label="Close panel">✕</button></div><div class="dbody"></div></aside>';
 
@@ -555,7 +560,6 @@
       else if (k === 'hidewin') renderDrawer();
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { pop.hidden = true; } });
-    window.addEventListener('blur', function () { pop.hidden = true; });   // a tap on the board (a frame) closes ⋯ too
 
     $('[data-k="screen"]').value = st.screen;
     setView(st.view);
