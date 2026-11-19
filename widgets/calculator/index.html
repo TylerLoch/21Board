@@ -159,6 +159,7 @@
   .hans .ce-frac { font-size: .72em; }
   .hpick:active, .hans:not(:disabled):active { filter: brightness(.94); }
   @media (hover: hover) { .hpick:hover { color: var(--b21-accent); } .hans:not(:disabled):hover { background: color-mix(in srgb, var(--b21-accent) 18%, var(--b21-surface-2)); } }
+  .hpick.clip, .hans.clip { -webkit-mask-image: linear-gradient(to left, transparent, #000 1.6em); mask-image: linear-gradient(to left, transparent, #000 1.6em); }
   .hempty { padding: .8em .7em; color: var(--b21-muted); font-size: .8em; }
 
   /* ---- Keys: ÷ × − + = down the right, in the accent color. Advanced keys are two rows above. */
@@ -300,6 +301,7 @@
   // Test practice: Desmos Four-Function's keys and its 7 digits, as on NWEA MAP.
   const TEST_KEYS = ['digits', 'point', 'add', 'subtract', 'multiply', 'divide', 'open', 'close', 'sqrt', 'ans'];
   const NOT_IN_TEST = new Set(['negate', 'percent', 'power', 'square', 'root', 'cbrt', 'pi', 'fraction', 'over']);
+  const TEST_WORDS = { pi: 'pi', cbrt: 'cbrt', nthroot: 'root', frac: 'fraction' };   // ...and those typed as words
   const engineOptions = () => cfg.test
     ? { digits: 7, keys: TEST_KEYS, toggle: false, answerAs: 'decimal', slash: 'divide', percent: cfg.percent }
     : { digits: 10, keys: null, toggle: true, answerAs: cfg.fractions ? 'fraction' : 'decimal', slash: cfg.advanced ? 'fraction' : 'divide', percent: cfg.percent };
@@ -356,9 +358,10 @@
   let problem = '';         // the worked-out problem the steps and a hidden answer belong to
   let revealed = false;     // the hidden answer has been shown for this problem
   let popAnswer = false;    // the answer pops in once, as it is shown
-  let lastShown = 0, chainKey = null, histKey = null;
+  let lastShown = 0, chainKey = null, histKey = null, histTop = '';
   let message = '';         // a key Test practice has no button for, typed: said until the next key
   let blocked = false;      // ...and the digits typed right after it are kept out too (2^3 mustn't become 23)
+  let letters = '';         // the last letters typed, for a word Test practice has no key for (2pi3 mustn't become 23)
 
   // ---- Saving
   let savedData = '';
@@ -419,10 +422,17 @@
       return;
     }
     const k = E.keyFromEvent(e, calc.options());
-    if (cfg.test && k && NOT_IN_TEST.has(k)) {
+    if (!k && e.key === ',') return;   // (a comma groups digits here: 1,500 is typed as drawn)
+    let refused = cfg.test && k && NOT_IN_TEST.has(k) ? k : null;
+    if (cfg.test && !k && /^[a-zA-Z]$/.test(e.key) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      letters = (letters + e.key.toLowerCase()).slice(-7);
+      const w = Object.keys(TEST_WORDS).find(x => letters.endsWith(x));
+      if (w) { letters = ''; refused = TEST_WORDS[w]; }
+    } else letters = '';
+    if (refused) {
       e.preventDefault();
       blocked = true;
-      message = `Test practice has no ${E.KEYS[k].label} key.`;
+      message = `Test practice has no ${E.KEYS[refused].label} key.`;
       render();
       say(message);
       return;
@@ -501,6 +511,10 @@
   });
 
   // ---- Drawing
+  // A node is written only when what it shows has changed: a tap that lands as the board brings the window to the front
+  // (it redraws then) still finds the button it started on.
+  const drawn = new Map();
+  function setHTML(node, html) { if (drawn.get(node) === html) return; drawn.set(node, html); node.innerHTML = html; }
   function render() {
     const s = calc.state();
     const key = s.mode === 'edit' ? 'edit' : s.mode + '|' + s.expression.text + '|' + s.history.length;
@@ -561,12 +575,12 @@
   function renderBoard(s, steps) {
     const chain = cfg.steps && shown > 0 && steps.length > 0;
     el.board.classList.toggle('chain', chain);
-    el.eq.innerHTML = problemHTML(s);
+    setHTML(el.eq, problemHTML(s));
     el.eq.classList.toggle('shown', popAnswer);
-    el.said.innerHTML = wordsFor(s);
+    setHTML(el.said, wordsFor(s));
     const note = noteFor(s);
     el.note.className = note.cls;
-    el.note.innerHTML = note.html;
+    setHTML(el.note, note.html);
     setToggle(el.eqToggle, s);
     // The steps, written out as on a whiteboard: each line is the one before with the marked part worked out. Every
     // line is laid out from the start (hidden until its turn), so the text never jumps as they appear.
@@ -621,7 +635,7 @@
     el.back.disabled = shown === 0;
     el.next.disabled = !(canGo || (end && work));
     const nextHTML = end && work ? `${ICON.replay}<span>Replay</span>` : '<span>Next step</span>';
-    if (el.next.innerHTML !== nextHTML) el.next.innerHTML = nextHTML;
+    setHTML(el.next, nextHTML);
     el.all.disabled = !canGo;
     el.count.textContent = cfg.steps && shown > 0 ? `Step ${shown} of ${n}` : '';
   }
@@ -633,12 +647,12 @@
       x = s.expression.html;
       if (!cfg.hide && s.preview && !s.preview.error) x += `<span class="prev"><span class="ce-eq"> = </span>${s.preview.html}</span>`;
     }
-    el.x.innerHTML = x;
+    setHTML(el.x, x);
     let big = s.displayHtml, kind = s.displayKind;
     if (answerHidden(s)) { big = REVEAL; kind = 'answer'; }
     else if (cfg.hide && kind === 'running') big = '<span class="zero">?</span>';   // the part worked out so far would give it away
     else if (kind === 'empty') big = '<span class="zero">0</span>';
-    el.big.innerHTML = big;
+    setHTML(el.big, big);
     el.big.className = 'k-' + kind + (popAnswer ? ' shown' : '');
     let hint = '', tip = false;
     if (message) { hint = message; tip = true; }
@@ -658,6 +672,7 @@
       if (b.classList.contains('op')) b.setAttribute('aria-pressed', String(on));
     });
     DIMMABLE.forEach(k => keyBtn[k].setAttribute('aria-disabled', String(s.can[k] === false)));
+    keyBtn.percent.setAttribute('aria-label', cfg.percent === 'apple' ? 'percent' : E.KEYS.percent.name);
     // The key whose box holds the cursor is ringed, and → is filled: it is the way out.
     const box = s.mode === 'edit' && (s.boxKey === 'cbrt' ? 'root' : s.boxKey);
     BOX_KEYS.forEach(k => keyBtn[k].classList.toggle('inbox', k === box));
@@ -669,7 +684,9 @@
     const hideNewest = answerHidden(s), cur = s.mode === 'done' && s.history.length > 0 && s.history[0].equation.text === s.equation.text;
     const key = s.history.map(h => h.equation.html).join('|') + '|' + hideNewest + '|' + cur;
     if (key === histKey) return;
-    histKey = key;
+    // It scrolls to the newest line when History shows and when a line is added. Otherwise it stays where it was.
+    const top = s.history.length + '|' + (s.history.length ? s.history[0].equation.html : ''), toEnd = histKey === null || top !== histTop;
+    histKey = key; histTop = top;
     if (!s.history.length) { el.hlist.innerHTML = '<li class="hempty">Your problems show here.</li>'; return; }
     let html = '';
     for (let i = s.history.length - 1; i >= 0; i--) {   // the oldest at the top, the newest at the bottom
@@ -677,10 +694,27 @@
       html += `<li class="hline${i === 0 && cur ? ' cur' : ''}"><button type="button" class="hpick" data-i="${i}" aria-label="Change ${esc(h.expression.text)}" title="Change this problem">${noCursor(h.expression.html)}</button>` +
         `<button type="button" class="hans" data-i="${i}"${hid ? ' disabled aria-label="Answer hidden"' : ` aria-label="Use ${esc(h.answer.text)}" title="Use this answer"`}><span class="heq" aria-hidden="true">=</span>${hid ? '?' : h.answer.html}</button></li>`;
     }
-    const had = el.hlist.contains(document.activeElement);
+    const had = el.hlist.contains(document.activeElement), was = el.hlist.scrollTop;
     el.hlist.innerHTML = html;
     if (had) el.app.focus({ preventScroll: true });
-    el.hlist.scrollTop = el.hlist.scrollHeight;
+    fitHistory(true);
+    el.hlist.scrollTop = toEnd ? el.hlist.scrollHeight : was;
+  }
+
+  // A line too long for History is drawn smaller, down to 3/4 of its size. Still too long, its cut edge fades.
+  let histFit = '';
+  function fitHistory(fresh) {
+    const k = el.hlist.clientWidth + '|' + getComputedStyle(el.hlist).fontSize;
+    if (!fresh && k === histFit) return;
+    histFit = k;
+    el.hlist.querySelectorAll('.hpick, .hans').forEach(b => {
+      const m = b.querySelector('.ce-math');
+      if (!m) return;
+      m.style.fontSize = '';
+      const over = b.scrollWidth - b.clientWidth;
+      if (over > 1) fitTo(m, m.offsetWidth - over - 1, null, .75);
+      b.classList.toggle('clip', b.scrollWidth > b.clientWidth + 1);
+    });
   }
 
   // ---- The window menu (the board adds its own items after these)
@@ -714,8 +748,8 @@
     const was = cfg, next = Object.assign({}, cfg);
     if (id === 'percent') next.percent = cfg.percent === 'apple' ? 'of' : 'apple';
     else next[id] = !cfg[id];
-    // A panel turned on widens the window by its width; turned off, it gives the width back (resizeFor).
-    const change = id === 'history' ? panelChange('history', next.history) : id === 'canvas' ? panelChange('canvas', next.canvas) : null;
+    // A panel turned on widens the window by its width, and Advanced keys make it taller; turned off, they give it back.
+    const change = id === 'history' || id === 'canvas' || id === 'advanced' ? sizeChange(id, next[id]) : null;
     useConfig(next, was);
     saveConfig();
     if (change) change();
@@ -734,26 +768,52 @@
     render();
   }
 
-  // ---- The window's size: panels turned on or off
-  // Turning History or the canvas on widens the window by that panel's width, where the board has room. Turning it off
-  // gives the width back. Turned back while the window is still the size it was given, it goes back to the size it had
-  // before, exactly. A window that fills the board keeps its size, and its panels share it.
-  const sized = {};   // panel → { on, from, to }: its last change, the window's size before it and the size asked for
-  function panelChange(panel, on) {
+  // ---- The window's size: panels and Advanced keys turned on or off
+  // Turning History or the canvas on widens the window by that panel's width, where the board has room. Advanced keys
+  // beside the canvas make it taller, so the keys keep their size. Turning one off gives the room back: turned back while
+  // the window is still the size the board gave it, it goes back to the size it had before, exactly. A window that fills
+  // the board keeps its size, and its panels share it.
+  const sized = {};   // 'history', 'canvas' or 'advanced' → { on, from, to }: its last change, the size before and the size given
+  // The window's own size. While Advanced keys raise its smallest height, the board draws it taller than that.
+  function ownSize(info) {
+    const h = info.height || innerHeight;
+    return { w: info.width || innerWidth, h: minNow && baseH && h <= minNow + 1 ? baseH : h };
+  }
+  function sizeChange(what, on) {
     const info = Board21.context && Board21.context.window;
     if (!Board21.embedded || !info || info.maximized) return null;
-    const w = info.width || innerWidth, h = info.height || innerHeight, M = metrics(w, h), rec = sized[panel];
-    delete sized[panel];
+    const { w, h } = ownSize(info), M = metrics(w, h), rec = sized[what];
+    delete sized[what];
     let to;
     if (rec && rec.on !== on && Math.abs(rec.to.w - w) <= 2 && Math.abs(rec.to.h - h) <= 2) to = rec.from;
-    else if (on) to = { w: w + (panel === 'history' ? histWidth(h) : canvasWidth(h)) + M.G, h };
+    else if (what === 'advanced') {
+      // Two more rows of keys: taller by enough that a key's shorter side stays as it is (beside the canvas only; under
+      // a display, the board draws the window taller meanwhile, in layout()).
+      if (!on || cfg.test || el.app.dataset.layout !== 'side') return null;
+      const r = keyBtn[7].getBoundingClientRect(), k = Math.min(r.width, r.height);
+      let H = h;
+      for (let i = 0; i < 2; i++) { const m = metrics(w, H); H = Math.ceil(8 * k + 7 * m.G + m.P + m.PB); }
+      if (H <= h + 2) return null;
+      to = { w, h: H };
+    }
+    else if (on) to = { w: w + (what === 'history' ? histWidth(h) : canvasWidth(h)) + M.G, h };
     else {
       // (Only a panel beside the others has a width to give back: a canvas above the keys has none.)
-      const beside = panel === 'history' ? el.app.classList.contains('hist') : el.app.dataset.layout === 'side';
+      const beside = what === 'history' ? el.app.classList.contains('hist') : el.app.dataset.layout === 'side';
       if (!beside) return null;
-      to = { w: Math.round(w - (panel === 'history' ? el.history : el.canvas).getBoundingClientRect().width - M.G), h };
+      to = { w: Math.round(w - (what === 'history' ? el.history : el.canvas).getBoundingClientRect().width - M.G), h };
     }
-    return () => { sized[panel] = { on, from: { w, h }, to }; Board21.window.setSize(to.w, to.h); };
+    return () => {
+      const r = sized[what] = { on, from: { w, h }, to };
+      // (The board keeps a window inside the board: what it gave is the size to compare with later. And a raised
+      // smallest height is lifted meanwhile, or the board would keep it as the window's own height.)
+      const lift = minNow && to.h < minNow;
+      if (lift) Board21.window.setMinSize(null, null);
+      Board21.window.setSize(to.w, to.h).then(() => Board21.window.getInfo()).then(i => {
+        if (sized[what] === r && i && !i.maximized) r.to = { w: i.width, h: minNow && i.height <= minNow + 1 ? to.h : i.height };
+      }).catch(() => {});
+      if (lift) Board21.window.setMinSize(280, minNow);
+    };
   }
 
   // ---- Layout: which panels show where, for the window's size. Every key stays 44 px or more.
@@ -768,14 +828,20 @@
   }
   const histWidth = h => Math.round(clamp(240, h * .6, 480));
   const canvasWidth = h => Math.round(h * .86);
-  let minNow = null;
+  let minNow = null, baseH = 0;   // the smallest height asked of the board for Advanced keys, and the height before it
   function layout() {
     const W = innerWidth, H = innerHeight;
     if (!W || !H) return;
     const M = metrics(W, H), { P, PB, G, rows } = M, availW = W - 2 * P, availH = H - P - PB;
     // History: at its width beside everything else, or narrower down to 200 px; where even that doesn't fit, it hides.
     let hw = 0;
-    if (cfg.history) { hw = Math.min(histWidth(H), availW - G - M.keysMinW); if (hw < HIST_MIN) hw = 0; }
+    if (cfg.history) {
+      hw = Math.min(histWidth(H), availW - G - M.keysMinW);
+      // (Narrower still, where that keeps the canvas beside the keys.)
+      const room = Math.floor(availW - G - (CANVAS_MIN + G) / .6);
+      if (cfg.canvas && availH >= M.keysMinH && room >= HIST_MIN) hw = Math.min(hw, room);
+      if (hw < HIST_MIN) hw = 0;
+    }
     const mainW = availW - (hw ? hw + G : 0);
     // The canvas beside the keys when both fit; otherwise it, or the compact display, sits above them. (Whether the
     // canvas fits beside them is a matter of width alone, so the room asked for Advanced keys below never flips it.)
@@ -807,7 +873,10 @@
     // Advanced keys need a taller window when they sit under a display: the board draws it taller meanwhile.
     const need = rows > 6 ? Math.ceil(2 * P + M.keysMinH + (besideByWidth ? 0 : G + DISP_MIN)) + 1 : 0;
     const min = need > 400 ? need : null;
-    if (min !== minNow && Board21.embedded) { minNow = min; Board21.window.setMinSize(min ? 280 : null, min); }
+    if (min !== minNow && Board21.embedded) {
+      if (min && !minNow) baseH = (Board21.context && Board21.context.window && Board21.context.window.height) || H;
+      minNow = min; Board21.window.setMinSize(min ? 280 : null, min);
+    }
   }
 
   // ---- Fitting text: the largest size that fits, from the size the CSS gives down to minRatio of it
@@ -825,6 +894,7 @@
   const shows = node => node.offsetParent !== null;
   function fitAll() {
     if (!el.app.clientWidth) return;
+    if (el.app.classList.contains('hist')) fitHistory(false);
     if (shows(el.board)) {
       const w = el.board.clientWidth, h = el.board.clientHeight;
       if (el.board.classList.contains('chain')) {
@@ -849,7 +919,7 @@
 
   // (Work is done in the next frame: changing sizes inside a ResizeObserver callback makes the browser complain.)
   let frame = 0;
-  function refit() { frame = 0; layout(); histKey = null; render(); }
+  function refit() { frame = 0; layout(); histFit = ''; render(); }
   const soon = () => { if (!frame) frame = requestAnimationFrame(refit); };
   new ResizeObserver(soon).observe(el.app);
   Board21.on('resize', soon);   // (also when the text style changes, and once its font has loaded)

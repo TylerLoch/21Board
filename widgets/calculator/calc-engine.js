@@ -1474,7 +1474,9 @@
     let S = blank();
     const cache = new WeakMap();   // a problem's worked-out steps (keyed by its token list), drawn with the current options
     let drawKey = '', Bs = backends(displayOpts(o));
-    const fopts = () => displayOpts(o, S.frac ? otherForm(o.answerAs) : null);
+    // ⇄'s other form, while the toggle is on: with it off (Test practice), the answer is in the form answerAs asks for.
+    const other = () => S.frac && o.toggle ? otherForm(o.answerAs) : null;
+    const fopts = () => displayOpts(o, other());
 
     // = : works the problem out and keeps the answer (and adds it to the history).
     function solveState(Tt) {
@@ -1577,7 +1579,7 @@
         const r = worked(S.tokens, S.pct);
         out.steps = r.steps;
         if (S.mode === 'done') {
-          out.answer = answerOf(Bs, displayOpts(o), S.result, S.frac ? otherForm(o.answerAs) : null, o.toggle);
+          out.answer = answerOf(Bs, displayOpts(o), S.result, other(), o.toggle);
           Object.assign(out, equationOf(tokens, S.pct, S.result, false));
           showValue(S.result, 'answer');
         } else {
@@ -1942,8 +1944,10 @@
     if (e.altKey && e.shiftKey && (k === 'a' || k === 'A' || e.code === 'KeyA')) return 'toggle';
     if (/^[0-9]$/.test(k)) return k;
     const slash = options && options.slash === 'fraction' ? 'over' : 'divide';
+    // Where a comma groups the digits (1,500), a typed one is left out, so 1,500 is 1500 as drawn. Elsewhere it is the point.
+    const comma = options && (options.separators === 'comma' || options.separators === 'faint') ? null : 'point';
     const map = {
-      '.': 'point', ',': 'point', Decimal: 'point', '+': 'add', '-': 'subtract', [MINUS]: 'subtract', Subtract: 'subtract',
+      '.': 'point', ',': comma, Decimal: 'point', '+': 'add', '-': 'subtract', [MINUS]: 'subtract', Subtract: 'subtract',
       '*': 'multiply', x: 'multiply', X: 'multiply', '×': 'multiply', Multiply: 'multiply', '/': slash, '÷': 'divide', Divide: slash,
       '^': 'power', '%': 'percent', '(': 'open', ')': 'close', Enter: 'equals', '=': 'equals', Backspace: 'backspace',
       Escape: 'clear', Delete: 'clear', Clear: 'clear', '√': 'sqrt', '@': 'sqrt', 'π': 'pi', '²': 'square', '±': 'negate', F9: 'negate',

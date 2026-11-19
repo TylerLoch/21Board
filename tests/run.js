@@ -7263,6 +7263,20 @@ const SUITES = [
     const conf = (ik = 'calculator:1') => page.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
     const near = (a, b, d = 3) => Math.abs(a - b) <= d;
     const panel = (L, n) => L.panels.find(p => p.n === n) || { x: 0, y: 0, w: 0, h: 0 };
+    // A tap on the empty board, so no window is in front (true when it worked); a tap held 120 ms, as a finger holds it.
+    const away = async () => {
+      const at = await page.evaluate(() => { for (let y = innerHeight - 30; y > 40; y -= 24) for (let x = 30; x < innerWidth - 30; x += 24) { const e = document.elementFromPoint(x, y); if (e && e.closest('#desk') && !e.closest('.win, button')) return [x, y]; } return null; });
+      if (at) await page.mouse.click(at[0], at[1]);
+      await page.waitForTimeout(400);
+      return !!at && await page.evaluate(() => window.__board21.state.focused === null);
+    };
+    const held = async (sel, ik = 'calculator:1') => {
+      const b = await W(ik).locator(sel).first().boundingBox();
+      await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2); await page.mouse.down(); await page.waitForTimeout(120); await page.mouse.up();
+      await page.waitForTimeout(300);
+    };
+    const rect0 = () => page.evaluate(() => window.__board21.state.insts.get('calculator:1').rect);
+    const setSize = (w, h) => page.evaluate(([w, h]) => window.__board21.setRect('calculator:1', Object.assign({}, window.__board21.state.insts.get('calculator:1').rect, { w, h: h + 40 })), [w, h]).then(() => page.waitForTimeout(600));
     const BASIC = 'clear,backspace,negate,open,close,sqrt,divide,7,8,9,multiply,4,5,6,subtract,1,2,3,add,0,point,ans,equals';
     const ADV = ['square', 'power', 'root', 'cbrt', 'pi', 'percent', 'fraction', 'right'];
     const TEST = 'clear,backspace,open,close,sqrt,divide,7,8,9,multiply,4,5,6,subtract,1,2,3,add,0,point,ans,equals';
@@ -7331,9 +7345,26 @@ const SUITES = [
     await press(['clear']); await W().locator('#history .hline').first().locator('.hans').click(); await press('×2=');
     L = await look();
     ok(L.eqLabel === '10 times 2 equals 20', `tapping an answer uses it in the problem: 10 × 2 = 20 (${L.eqLabel})`);
+    // A long problem is drawn smaller to fit its line, never cut without a sign.
+    await press(['clear']); await press('(125+375)×12−1500÷25=');
+    const lastLine = () => W().locator('#history').evaluate(h => { const p = [...h.querySelectorAll('.hline .hpick')].pop(); return p ? { fits: p.scrollWidth <= p.clientWidth + 1, clip: p.classList.contains('clip'), need: p.scrollWidth, room: p.clientWidth, text: p.textContent.replace(/\s+/g, ' ').trim() } : {}; });
+    let ll = await lastLine();
+    ok(ll.fits && !ll.clip && ll.text === '(125 + 375) × 12 − 1,500 ÷ 25', `a long problem is drawn smaller to fit its line in History (${ll.text}: ${ll.need} px in ${ll.room})`);
     // History off gives the width back.
     await choose('History'); c2 = await contentOf(page, 'calculator:1'); L = await look();
     ok(c2.w === c.w && !L.panels.some(p => p.n === 'history'), `turning History off gives the width back (${c2.w})`);
+    // Where the board has no room for all of History, turning it off still gives back the width the window had.
+    const r0 = await rect0();
+    await page.evaluate(() => window.__board21.setRect('calculator:1', Object.assign({}, window.__board21.state.insts.get('calculator:1').rect, { x: 0, w: 1200 }))); await page.waitForTimeout(600);
+    const cw0 = await contentOf(page, 'calculator:1');
+    await choose('History'); const cw1 = await contentOf(page, 'calculator:1');
+    await choose('History'); const cw2 = await contentOf(page, 'calculator:1');
+    ok(cw0.w === 1200 && cw1.w > 1200 && cw1.w < 1200 + 360 && cw2.w === 1200 && cw2.h === cw0.h, `on a board without room for all of History, it widens as far as it can, and gives back exactly that (${cw0.w} → ${cw1.w} → ${cw2.w})`);
+    // A narrower window: History narrows so the canvas and its steps stay beside the keys.
+    await choose('History'); await setSize(960, 600); L = await look();
+    ok(L.layout === 'side' && L.order.join() === 'canvas,keys,history' && L.player && panel(L, 'history').w >= 200, `History in a 960 × 600 window: it narrows, and the canvas and its steps stay beside the keys (${L.layout}: ${L.order.join(', ')}; History ${panel(L, 'history').w})`);
+    await choose('History');
+    await page.evaluate(r => window.__board21.setRect('calculator:1', r), r0); await page.waitForTimeout(600);
 
     // ---- Percent: Desmos's "% of" by default; iPhone's 50 + 10% = 55 as a menu setting
     await press(['clear']); await type('10%50='); L = await look();
@@ -7341,9 +7372,11 @@ const SUITES = [
     await choose('50 + 10% = 55');
     await press(['clear']); await type('50+10%='); L = await look();
     ok(L.eq === '50 + 10% = 55' && ((await conf()) || {}).percent === 'apple' && /✓ 50 \+ 10% = 55/.test(await menu()), `with 50 + 10% = 55 ticked: 50 + 10% = 55, saved as a setting (${L.eq}, ${JSON.stringify(await conf())})`);
+    const pctName = () => W().locator('#keys .key[data-key="percent"]').getAttribute('aria-label');
+    ok(await pctName() === 'percent', `a screen reader calls the % key “percent” then (${await pctName()})`);
     await choose('50 + 10% = 55');
     await press(['clear']); await type('50+10%5='); L = await look();
-    ok(L.eq === '50 + 10% of 5 = 50.5' && ((await conf()) || {}).percent === 'of', `untick it: Desmos’s % of again (${L.eq})`);
+    ok(L.eq === '50 + 10% of 5 = 50.5' && ((await conf()) || {}).percent === 'of' && await pctName() === 'percent of', `untick it: Desmos’s % of again, and the key is “percent of” (${L.eq})`);
 
     // ---- Digit groups: a faint comma, its own element; a plain comma wherever it is read
     await press(['clear']); await press('1234567');
@@ -7380,6 +7413,10 @@ const SUITES = [
     ok(L.eq === '2 ÷ 3 = 0.6666667', `answers have 7 digits, as on the test (${L.eq})`);
     await W().locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.type('2^3'); await page.waitForTimeout(200); L = await look();
     ok(L.eq === '2' && /^Test practice has no aᵇ key\.$/.test(L.note || L.hint), `a key the test has no button for does nothing when typed, and says so; the digit after it is kept out too (${L.eq}; ${L.note || L.hint})`);
+    await press(['clear']); await type('2pi3'); const Lpi = await look();
+    await press(['clear']); await type('9cbrt8'); L = await look();
+    ok(Lpi.eq === '2' && /^Test practice has no π key\.$/.test(Lpi.note || Lpi.hint) && L.eq === '9' && /^Test practice has no ∛ key\.$/.test(L.note || L.hint),
+      `so is one typed as a word, such as pi or cbrt (${Lpi.eq}; ${Lpi.note || Lpi.hint} / ${L.eq}; ${L.note || L.hint})`);
     await choose('Test practice'); await press(['clear']); await press('2÷3='); L = await look();
     ok(L.eq === '2 ÷ 3 = 0.6666666667' && sorted(L.keys) === sorted(BASIC + ',' + ADV.join()), `off again: 10 digits, and the Advanced keys come back (${L.eq})`);
     await choose('Advanced keys');
@@ -7413,10 +7450,21 @@ const SUITES = [
     await choose('Hide the answer'); await choose('History');
     await press(['clear']); await press('7×8='); L = await look();
     ok(L.reveal && !/56/.test(L.eq) && L.hide === 'true' && L.hist.length && L.hist[L.hist.length - 1].ans === '?', `7 × 8 = ?: the answer is hidden on the canvas and in History (${L.eq}; ${L.hist.length && L.hist[L.hist.length - 1].ans})`);
-    await W().locator('#eq .reveal').click(); await page.waitForTimeout(300); L = await look();
-    ok(L.eq === '7 × 8 = 56' && L.hist[L.hist.length - 1].ans === '56', `a tap shows it (${L.eq})`);
+    const off1 = await away(); await held('#eq .reveal'); L = await look();
+    ok(off1 && L.eq === '7 × 8 = 56' && L.hist[L.hist.length - 1].ans === '56', `a tap shows it, the first tap on a window not in front too, held as a finger holds it (${L.eq})`);
     await W().locator('#hide').click(); await page.waitForTimeout(200);
     ok((await look()).hide === 'false' && ((await conf()) || {}).hide === false && /\| Hide the answer \|/.test(await menu()), 'the switch on the canvas turns it off, and the menu follows');
+    // History keeps its place when the window goes to the back, and a first tap on a line, held, loads that line.
+    await press(['clear']); await press('1+1============');
+    await W().locator('#hlist').evaluate(e => { e.scrollTop = 0; });
+    const st0 = await W().locator('#hlist').evaluate(e => ({ top: e.scrollTop, scrolls: e.scrollHeight > e.clientHeight + 20 }));
+    const off2 = await away(), st1 = await W().locator('#hlist').evaluate(e => e.scrollTop);
+    ok(off2 && st0.scrolls && st0.top === 0 && st1 === 0, `History stays where it was scrolled when its window goes to the back (${st0.top} → ${st1})`);
+    const first = (await look()).hist[0].expr;
+    await held('#history .hline:first-child .hpick'); L = await look();
+    ok(L.cursor && (L.eq === first || L.eq.startsWith(first + ' = ')), `a first tap on a line, held, loads that line (${first}: ${L.eq})`);
+    await press(['equals']);
+    ok(await W().locator('#hlist').evaluate(e => e.scrollTop + e.clientHeight >= e.scrollHeight - 2), 'a new line scrolls History to the bottom');
     await choose('History');
 
     // ---- Answers as decimals first; ⇄ switches one; Answers as fractions flips the window
@@ -7428,7 +7476,13 @@ const SUITES = [
     ok(L.frac && ((await conf()) || {}).fractions === true, `Answers as fractions: new answers start as fractions (${L.eq})`);
     await W().locator('#eqToggle').click(); await page.waitForTimeout(200); L = await look();
     ok(L.eq === '3 ÷ 4 = 0.75', `and ⇄ shows one as a decimal (${L.eq})`);
-    await choose('Answers as fractions');
+    await choose('Test practice'); L = await look();
+    ok(L.eq === '3 ÷ 4 = 0.75' && !L.toggle, `Test practice has no ⇄, and that answer stays 0.75 (${L.eq})`);
+    await choose('Test practice'); await choose('Answers as fractions');
+    await press(['clear']); await press('1÷8='); await W().locator('#eqToggle').click(); await page.waitForTimeout(200);
+    await choose('Test practice'); L = await look();
+    ok(L.eq === '1 ÷ 8 = 0.125' && !L.frac && !L.toggle, `1 ÷ 8 made 1/8 with ⇄ shows 0.125 in Test practice (${L.eq})`);
+    await choose('Test practice');
 
     // ---- The keyboard: digits, + - * / ^ % ( ) ., Enter or =, Backspace, sqrt, pi, ans
     await press(['clear']); await W().locator('#app').click({ position: { x: 3, y: 3 } });
@@ -7444,6 +7498,8 @@ const SUITES = [
     ok(/^2π = 6\.283185307$/.test((await look()).eq), `typed: 2pi (${(await look()).eq})`);
     await page.keyboard.type('ans*2='); await page.waitForTimeout(200);
     ok((await look()).eqLabel === '6.283185307 times 2 equals 12.56637061', `typed: ans (${(await look()).eqLabel})`);
+    await page.keyboard.type('1,500*3='); await page.waitForTimeout(200);
+    ok((await look()).eq === '1,500 × 3 = 4,500', `typed: 1,500*3= is 1,500 × 3, as drawn (${(await look()).eq})`);
     await page.keyboard.type('50%'); await page.keyboard.type('8='); await page.waitForTimeout(200);
     ok((await look()).eq === '50% of 8 = 4', `typed: % (${(await look()).eq})`);
 
@@ -7506,7 +7562,28 @@ const SUITES = [
       });
       const r = k => contrast(col[k][0], col[k][1]);
       ok(col.theme === scheme && ['digit', 'num', 'op', 'fn', 'next', 'sw'].every(k => r(k) >= 4.5), `${scheme}: the canvas, the keys and the buttons are readable, 4.5:1 or more (${['digit', 'num', 'op', 'fn', 'next', 'sw'].map(k => k + ' ' + r(k).toFixed(1)).join(', ')})`);
-      ok(r('sep') >= 1.4 && r('sep') < r('digit') - 1, `${scheme}: the faint commas are still seen, and quieter than the digits (${r('sep').toFixed(2)} against ${r('digit').toFixed(2)})`);
+      // The commas: in the canvas, in History's answer box, and in the compact display with the canvas off.
+      const sepsIn = places => W().locator('html').evaluate((html, places) => {
+        const g2 = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+        const rgb = c => { g2.clearRect(0, 0, 1, 1); g2.fillStyle = '#000'; g2.fillStyle = c; g2.fillRect(0, 0, 1, 1); const d = g2.getImageData(0, 0, 1, 1).data; return `rgb(${d[0]}, ${d[1]}, ${d[2]})`; };
+        const cs = e => getComputedStyle(e), clear = b => /rgba\(0, 0, 0, 0\)|transparent/.test(b);
+        const solid = e => { for (let n = e; n; n = n.parentElement) { const b = cs(n).backgroundColor; if (b && !clear(b)) return rgb(b); } return rgb(cs(document.body).backgroundColor); };
+        const mix = (fg, bg, a) => { const f = fg.match(/[\d.]+/g).map(Number), b = bg.match(/[\d.]+/g).map(Number); return `rgb(${[0, 1, 2].map(i => Math.round(f[i] * a + b[i] * (1 - a))).join(', ')})`; };
+        const out = {};
+        for (const [name, sel] of Object.entries(places)) {
+          const sp = document.querySelector(sel + ' .ce-sep'), dg = document.querySelector(sel + ' .ce-num');
+          out[name] = sp && dg && sp.getClientRects().length ? { sep: [mix(rgb(cs(sp).color), solid(sp), +cs(sp).opacity), solid(sp)], digit: [rgb(cs(dg).color), solid(dg)] } : null;
+        }
+        return out;
+      }, places);
+      const want = ['canvas', 'History', 'compact display'];
+      await choose('History');
+      const sp = await sepsIn({ canvas: '#eq', History: '#history .hline:last-child .hans' });
+      await choose('Canvas'); Object.assign(sp, await sepsIn({ 'compact display': '#big' })); await choose('Canvas'); await choose('History');
+      for (const place of want) {
+        const v = sp[place], rs = v ? contrast(v.sep[0], v.sep[1]) : 0, rd = v ? contrast(v.digit[0], v.digit[1]) : 0;
+        ok(!!v && rs >= 2 && rs < rd - 1, `${scheme}: the faint commas in the ${place} are still seen, 2:1 or more, and quieter than its digits (${rs.toFixed(2)} against ${rd.toFixed(2)})`);
+      }
       await page.screenshot({ path: OUT + `calculator-${scheme}.png` });
     }
     await page.emulateMedia({ colorScheme: 'light' });
@@ -7529,6 +7606,16 @@ const SUITES = [
       const m = await p3.evaluate(() => { const e = document.getElementById('menu'), r = e.getBoundingClientRect(); return { cls: e.className, top: r.top, bottom: r.bottom, scrolls: e.scrollHeight > e.clientHeight + 1, items: e.querySelectorAll('.menu-item').length, scale: window.__board21.state.board.scale }; });
       ok(m.items >= 14 && !/compact|tight|cols/.test(m.cls) && !m.scrolls && m.top >= 0 && m.bottom <= 768, `on a 1366 × 768 board at its default size, the whole menu fits without scrolling or tighter rows (${m.items} items, ${Math.round(m.top)} to ${Math.round(m.bottom)}, ${m.cls})`);
       await p3.screenshot({ path: OUT + 'calculator-menu-1366.png' });
+      // There, keys are 44 px or more on the screen with Advanced keys too: the window grows for them, then gives it back.
+      await p3.keyboard.press('Escape'); await p3.waitForTimeout(300);
+      const pick = async label => { await p3.click('.win[data-ikey="calculator:1"] .win-label'); await p3.locator('#menu [data-act="widget"]').filter({ has: p3.locator('.label', { hasText: new RegExp('^' + label + '$') }) }).click({ timeout: 3000 }); await p3.waitForTimeout(700); };
+      const onScreen = () => p3.frameLocator('.win[data-ikey="calculator:1"] iframe').locator('html').evaluate(() => {
+        const ks = [...document.querySelectorAll('#keys .key')].filter(k => k.getClientRects().length), z = Board21.context.window.zoom;
+        return { n: ks.length, min: Math.min(...ks.map(k => Math.min(k.getBoundingClientRect().width, k.getBoundingClientRect().height))) * z, zoom: z, w: innerWidth, h: innerHeight };
+      });
+      const k0 = await onScreen(); await pick('Advanced keys'); const k1 = await onScreen(); await pick('Advanced keys'); const k2 = await onScreen();
+      ok(k0.min >= 44 && k1.n === 31 && k1.min >= 44 && k1.h > k0.h && k2.w === 900 && k2.h === 600,
+        `there, keys are 44 px or more on the screen, Advanced keys too: the window grows for them and gives it back (${k0.min.toFixed(1)} px; ${k1.min.toFixed(1)} px at ${k1.w} × ${k1.h}, zoom ${k1.zoom}; then ${k2.w} × ${k2.h})`);
       await c3.close();
     }
 
@@ -7547,8 +7634,14 @@ const SUITES = [
     c = await contentOf(page, 'calculator:1');
     await choose('History'); c2 = await contentOf(page, 'calculator:1'); L = await look();
     ok(c2.w > c.w + 200 && L.layout === 'stack' && L.order.slice(-1)[0] === 'history' && L.keyMin >= 44, `History on in the smallest window: it widens, History beside the display and keys (${c.w} → ${c2.w}; ${L.order.join(', ')})`);
+    await press(['clear']); await press('(125+375)×12−1500÷25+987654321=');
+    ll = await lastLine();
+    ok(ll.clip, `a problem too long for its line even then fades at the cut edge (${ll.text}: ${ll.need} px in ${ll.room})`);
     await choose('History'); c2 = await contentOf(page, 'calculator:1');
     ok(c2.w === c.w, `and narrows again after (${c2.w})`);
+    await choose('Advanced keys'); await choose('History'); await choose('History'); await choose('Advanced keys');
+    c2 = await contentOf(page, 'calculator:1'); L = await look();
+    ok(c2.w === 280 && c2.h === 400 && L.vh === 400, `Advanced keys on, History on and off, Advanced keys off: 280 × 400 again (${c2.w} × ${c2.h}, drawn ${L.vw} × ${L.vh})`);
     // A narrow, tall window stacks the canvas above the keys, as Teach does.
     await page.evaluate(() => window.__board21.setRect('calculator:1', Object.assign({}, window.__board21.state.insts.get('calculator:1').rect, { w: 420, h: 700 }))); await page.waitForTimeout(600);
     L = await look();

@@ -14,16 +14,16 @@
 const VERSION = '2026.11.18-11';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '0bfd648f';
+const BUILD = '1d08243c';
 const FILES = {
-  './': 'ba03ba76b155be78',
-  'index.html': 'ba03ba76b155be78',
-  'board.js': '726a91fc1dba2fd9',
+  './': 'd880bff5145605a4',
+  'index.html': 'd880bff5145605a4',
+  'board.js': 'e36200159248e586',
   'sdk/board21.js': '3d8ef72db43df6eb',
   'sdk/board21-dev.js': '701293968d7cad06',
   'sdk/dev/board-shell.js': '0e3f86d375d4d478',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': 'c441c1276c401199',
+  'widgets/registry.js': '7e87b3f5b4c3010c',
   'manifest.webmanifest': '18a4aa7b736c3183',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -56,8 +56,8 @@ const FILES = {
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
   'widgets/youtube-player/index.html': '1f4b8a73cb31265d',
   'widgets/image/index.html': '3b499bb53ad637c3',
-  'widgets/calculator/index.html': '0031c0c0745f879d',
-  'widgets/calculator/calc-engine.js': 'b0e7ef06dcc0e74d',
+  'widgets/calculator/index.html': '30b381684d80c30b',
+  'widgets/calculator/calc-engine.js': '2591c6f99c951cd6',
   'widgets/sdk-playground/index.html': '0dff97332041a455'
 };
 const CACHE_PREFIX = '21board-';

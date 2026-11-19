@@ -467,13 +467,13 @@ URL, its type checked by its bytes. `w` and `h` are its size in pixels, `name` t
 
 The Calculator (`calculator`) saves its engine's `serialize()`: `{ v: 2, expr, mode, pct?, closed?, frac?, history }`.
 `expr` is the problem on the canvas, as its keys were pressed. `mode` is `"edit"`, `"done"` or `"error"`, `pct` the
-percent rule it was worked out with, `closed` the number of `)` that = added, and `frac: true` that ⇄ shows its answer
-in the other form. `history` is up to 20 earlier problems, `{ expr, pct }`, newest first. In `expr`, a number is
-`{ n: "12.5" }`, with `neg: true` after ±, and an answer used again is `{ ans: "7/2" }`. Everything else is a string:
-`"+" "-" "*" "/" "(" ")" "neg" "%" "%of" "pi"`, and the boxes `"^" "sqrt" "root" "frac" "sep" "end"`. Answers aren't
-saved. They're worked out again on load, and anything that doesn't check out is left out. Its config is every menu
-setting and which panels show: `{ canvas, history, steps, words, advanced, hide, fractions, test, percent: "of" |
-"apple", swap }`.
+percent rule it was worked out with, `closed` the number of `)` and box ends that = added, and `frac: true` that ⇄
+shows its answer in the other form. `history` is the last 20 problems worked out, `{ expr, pct }`, newest first. After
+an =, the first is the one on the canvas. In `expr`, a number is `{ n: "12.5" }`, with `neg: true` after ±, and an
+answer used again is `{ ans: "7/2" }`. Everything else is a string: `"+" "-" "*" "/" "(" ")" "neg" "%" "%of" "pi"`, and
+the boxes `"^" "sqrt" "root" "frac" "sep" "end"`. Answers aren't saved. They're worked out again on load, and anything
+that doesn't check out is left out. Its config is every menu setting and which panels show: `{ canvas, history, steps,
+words, advanced, hide, fractions, test, percent: "of" | "apple", swap }`.
 
 The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
 their own work in their own site's storage on the device. Their windows have an `inst` record like any other,

@@ -2079,6 +2079,48 @@ test('faint: powers keep their small digits (2¹⁰⁰⁰ and a grouped exponent
   assert.strictEqual(calc('2^10', FAINT).equation.text, '2¹⁰ = 1,024');
   assert.strictEqual(calc('1^1000', FAINT).equation.text, '1¹⁰⁰⁰ = 1');
 });
+test('faint and comma: a typed comma is left out, so 1,500 is 1500, as drawn', () => {
+  for (const sep of ['faint', 'comma']) assert.strictEqual(C.keyFromEvent(ev(','), { separators: sep }), null, sep);
+  for (const sep of ['space', 'none']) assert.strictEqual(C.keyFromEvent(ev(','), { separators: sep }), 'point', sep);
+  assert.strictEqual(C.keyFromEvent(ev(',')), 'point');
+  const c = fresh(FAINT);
+  for (const k of '1,500*3=') c.handleKey(ev(k));
+  assert.strictEqual(c.state().equation.text, '1,500 × 3 = 4,500');
+  const d = fresh({ separators: 'space' });
+  for (const k of '1,5+1=') d.handleKey(ev(k));
+  assert.strictEqual(d.state().equation.text, '1.5 + 1 = 2.5');
+});
+
+// ---- 24. ⇄ with the toggle off (the widget's Test practice) ----------------------------------------------------------
+test('toggle off: an answer ⇄ switched is drawn as answerAs asks, and ⇄ comes back with the toggle', () => {
+  const c = typed('1÷8=');
+  assert.ok(c.press('toggle'));
+  assert.strictEqual(c.state().display, '1/8');
+  c.setOptions({ toggle: false });
+  assert.strictEqual(c.state().display, '0.125');
+  assert.strictEqual(c.state().equation.text, '1 ÷ 8 = 0.125');
+  assert.strictEqual(c.state().answer.asFraction, false);
+  assert.strictEqual(c.state().answer.canToggle, false);
+  c.setOptions({ toggle: true });
+  assert.strictEqual(c.state().display, '1/8');
+});
+test('toggle off: answers as fractions switched to 0.75, then Test practice, stays 0.75', () => {
+  const c = typed('3÷4=', { answerAs: 'fraction' });
+  assert.strictEqual(c.state().display, '3/4');
+  c.press('toggle');
+  assert.strictEqual(c.state().display, '0.75');
+  c.setOptions({ toggle: false, answerAs: 'decimal', digits: 7 });
+  assert.strictEqual(c.state().display, '0.75');
+});
+test('toggle off: a saved ⇄ loaded is drawn as answerAs asks', () => {
+  const a = typed('1÷8=');
+  a.press('toggle');
+  const d = a.serialize();
+  assert.strictEqual(d.frac, true);
+  const b = fresh({ toggle: false });
+  b.load(d);
+  assert.strictEqual(b.state().display, '0.125');
+});
 
 // ---- Results ----------------------------------------------------------------------------------------------------------
 for (const f of failures) console.log('FAIL ' + f);
