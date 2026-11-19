@@ -161,7 +161,7 @@ self.BOARD21_WIDGETS = [
     description: 'Play a video from YouTube, Google Drive or Vimeo.',
     version: '1.0.0',
     entry: 'widgets/youtube-player/index.html',
-    files: ['widgets/youtube-player/index.html'],
+    files: ['widgets/youtube-player/index.html', 'widgets/youtube-player/video-links.js'],   // (the board loads video-links.js too)
     color: '#b91c1c',
     icon: '<svg viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="3.5"/><path d="M10 9.2v5.6l4.8-2.8z" fill="currentColor"/></svg>',
     // YouTube's player must be at least 200 × 200 px (kept for all three): where the board draws the window smaller

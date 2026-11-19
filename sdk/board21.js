@@ -32,7 +32,7 @@
   // from the old page doesn't count.)
   if (window.Board21 && window.Board21.page === document.documentElement) return;
 
-  var SDK_VERSION = '1.2.0';
+  var SDK_VERSION = '1.3.0';
   var PROTOCOL = 1;
   var ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   var me = document.currentScript;
@@ -471,15 +471,17 @@
     window.addEventListener('pointerdown', function () { post('activate'); }, true);
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape') post('key', { key: 'Escape' }); }, true);
     // A paste or a drop of files that the widget didn't take (preventDefault() on the document or an element) goes to the
-    // board, which opens the pictures in new Picture windows. A paste in a text field is the field's. A dropped file
-    // never opens in place of the widget.
+    // board, which opens the pictures in new Picture windows. So does a paste of one link (no spaces): the board opens a
+    // Video Player for a video's. A paste in a text field is the field's. A dropped file never opens in place of the
+    // widget.
     var filesOf = function (dt) { var out = []; for (var i = 0; dt && dt.files && i < dt.files.length && i < 100; i++) out.push(dt.files[i]); return out; };   // (the board opens 10 and asks for the rest again)
     var hasFiles = function (dt) { return !!dt && Array.prototype.indexOf.call(dt.types || [], 'Files') >= 0; };
     var typing = function (el) { return !!el && el.nodeType === 1 && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName)); };
     window.addEventListener('paste', function (e) {
       if (e.defaultPrevented || typing(e.target) || typing(document.activeElement)) return;
-      var files = filesOf(e.clipboardData);
+      var files = filesOf(e.clipboardData), text = files.length || !e.clipboardData ? '' : String(e.clipboardData.getData('text/plain') || '').trim();
       if (files.length) post('paste', { files: files });
+      else if (text && text.length <= 2000 && !/\s/.test(text)) post('paste', { files: [], text: text });
     });
     window.addEventListener('dragover', function (e) { if (!e.defaultPrevented && hasFiles(e.dataTransfer)) e.preventDefault(); });
     window.addEventListener('drop', function (e) {

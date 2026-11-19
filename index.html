@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="c578ec3b">
+<html lang="en" data-build="ee11efbf">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -314,8 +314,9 @@
     .panel.right { right: calc(4px + env(safe-area-inset-right)); transform-origin: bottom right; }
     .panel.open { display: flex; animation: panel-in .18s cubic-bezier(.2, .9, .3, 1.1); }
     @keyframes panel-in { from { opacity: 0; transform: scale(.85); } to { opacity: 1; transform: scale(1); } }
+    /* (Where the row of buttons below is wider than the tiles, as with Paste, the columns spread to its ends.) */
     .panel-widgets {
-      display: grid; grid-template-columns: repeat(var(--cols, 4), 96px); gap: 0 6px;
+      display: grid; grid-template-columns: repeat(var(--cols, 4), 96px); gap: 0 6px; justify-content: space-between;
       overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 2px;
     }
     /* The icon at the top and the name under it, with room for two lines, so the icons in a row line up whatever their
@@ -367,7 +368,7 @@
     .page-ind b { font-size: 15px; font-weight: 700; white-space: nowrap; }
     .page-ind[aria-expanded="true"] { background: var(--active-bg); }
     .panel.narrow .panel-controls { flex: 0 0 auto; flex-wrap: wrap-reverse; row-gap: 6px; }
-    .panel.narrow .page-ctl { flex: 1 0 100%; margin: 0; justify-content: flex-start; }
+    .panel.narrow .page-ctl { flex: 1 0 100%; margin: 0; justify-content: flex-start; contain: inline-size; }   /* (a row of its own: the tiles and the buttons set the panel's width) */
     .panel.right.narrow .page-ctl { justify-content: flex-end; }
     .panel.narrow .page-sep { display: none; }
     #pages-menu { z-index: 1100; background: var(--surface); }   /* (over the see-through Widget Picker: solid) */
@@ -816,6 +817,7 @@
     <div class="panel-sep"></div>
     <div class="panel-controls">
       <span class="picker-spacer" aria-hidden="true"></span>
+      <button class="ctl" data-ctl="paste" title="Paste" aria-label="Paste" hidden></button>
       <button class="ctl" data-ctl="export" title="Export board" aria-label="Export board"></button>
       <button class="ctl" data-ctl="import" title="Import board" aria-label="Import board"></button>
       <button class="ctl" data-ctl="theme" title="Dark mode" aria-label="Dark mode"></button>
@@ -858,6 +860,7 @@
   <noscript><div style="position:fixed;inset:0;display:grid;place-items:center;background:#fff;color:#111;font:18px system-ui">21Board needs JavaScript turned on.</div></noscript>
 
   <script src="widgets/registry.js"></script>
+  <script src="widgets/youtube-player/video-links.js"></script>
   <script src="board.js"></script>
 </body>
 </html>
