@@ -186,6 +186,25 @@ self.BOARD21_WIDGETS = [
     clash: 'later',   // its content is which picture, a choice (Board history keeps the other)
     permissions: []
   },
+  {
+    // Teach's canvas and steps, its keys, and History drawn as Desmos draws its lines. Desmos's math, through its
+    // engine (calc-engine.js, tested by tests/calc-engine.js).
+    id: 'calculator',
+    name: 'Calculator',
+    description: 'Work out problems and show each step.',
+    version: '1.0.0',
+    entry: 'widgets/calculator/index.html',
+    files: ['widgets/calculator/index.html', 'widgets/calculator/calc-engine.js'],
+    color: '#1e3a8a',
+    icon: '<svg viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 6.5h7v3h-7z"/><circle cx="9" cy="13.5" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="13.5" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r=".9" fill="currentColor" stroke="none"/><circle cx="9" cy="17" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="17" r=".9" fill="currentColor" stroke="none"/></svg>',
+    // 900 × 600: the canvas beside the keys from the start, its problem big enough to read from the back of the room,
+    // and keys 44 px or more on the screen of a 1366 × 768 Chromebook, where the board draws windows at 57%. Advanced
+    // keys make the window taller to keep them so. History still fits beside them. At 280 × 400, the keys under a small
+    // display are 44 px.
+    window: { width: 900, height: 600, minWidth: 280, minHeight: 400 },
+    clash: 'later',   // its content is scratch work, a problem and its History: the later change wins, Board history keeps the other
+    permissions: []
+  },
   // The district's own apps, each from its own site (they keep their own work; see `external` above). Their pages
   // are another site's, so their windows move by the title bar only: dragFromContent false.
   {
