@@ -24,3 +24,9 @@ Write like Apple. Less is more. Every word must earn its place.
 Before: "Everything you make stays on this device. 21Board sends nothing to a server, except that a YouTube Player
 window loads its video, and the titles of the videos in its History, from YouTube."
 After: "Your work is stored only on this device."
+
+## Calculator manual
+
+docs/calculator-manual/ is the Calculator's manual, published at https://claude.ai/artifact/8p3dg4r8xSduSD2DmNVjXB.
+When the Calculator changes, update the manual in the same change. Build it, check it, then publish it again to that
+link.
