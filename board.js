@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-12';
-  const BOARD_BUILD = 'c578ec3b';
+  const BOARD_VERSION = '2026.11.18-13';
+  const BOARD_BUILD = '980b6af0';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -251,6 +251,7 @@
     waffle: '<rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/>',
     export: '<path d="M6 3h10l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 3v4.5h7V3"/><path d="M7 21v-6.5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1V21"/>', // floppy disk: Save (also Settings > Back up now)
     import: '<path d="M3 18V7a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v1.5"/><path d="M3 18a2 2 0 0 0 2 2h12.5a2 2 0 0 0 1.9-1.4L22 11H7.6a2 2 0 0 0-1.9 1.4z"/>', // open folder: Open
+    paste: '<path d="M9 4.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2h-2"/><rect x="9" y="2.5" width="6" height="4" rx="1.2"/>', // clipboard: Paste
     moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
     sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
     gear: '<path d="M19.23 9.66L19.41 10.30L21.92 10.75L21.92 13.25L19.41 13.70L18.77 15.46L18.44 16.04L19.90 18.13L18.13 19.90L16.04 18.44L14.34 19.23L13.70 19.41L13.25 21.92L10.75 21.92L10.30 19.41L8.54 18.77L7.96 18.44L5.87 19.90L4.10 18.13L5.56 16.04L4.77 14.34L4.59 13.70L2.08 13.25L2.08 10.75L4.59 10.30L5.23 8.54L5.56 7.96L4.10 5.87L5.87 4.10L7.96 5.56L9.66 4.77L10.30 4.59L10.75 2.08L13.25 2.08L13.70 4.59L15.46 5.23L16.04 5.56L18.13 4.10L19.90 5.87L18.44 7.96Z"/><circle cx="12" cy="12" r="3.2"/>',
@@ -2198,7 +2199,7 @@
         case 'activate': focusWin(this.ikey); closePopups(); break;
         // A paste or drop the widget didn't take, as if on the board (section 15c). Not from a widget uploaded in
         // Developer mode: it is sealed off, and opens nothing.
-        case 'paste': case 'drop': if (!this.widget.sealed && Array.isArray(m.files)) Pictures.fromWin(this, m.files, m.type); break;
+        case 'paste': case 'drop': if (!this.widget.sealed && Array.isArray(m.files)) Pictures.fromWin(this, m.files, m.type, m.text); break;
         case 'key': if (m.key === 'Escape') closePopups(); break;
         case 'save': this.saveContent('data', m.data, m.reqId); break;
         case 'saveConfig': this.saveContent('conf', m.config, m.reqId); break;
@@ -3040,8 +3041,8 @@
         this.close();
         openWidget(t.dataset.widget, { side });
       });
-      // A font for the text style finishing loading can change where names wrap: measure again.
-      if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => this.fitNames());
+      // A font for the text style finishing loading can change where names wrap, and the row's width: measure again.
+      if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { this.fitRow(); this.fitNames(); });
     },
 
     toggle(side) { if (this.side === side) this.close(); else this.open(side); },
@@ -3053,6 +3054,7 @@
       this.renderControls();
       this.el.classList.remove('left', 'right');
       this.el.classList.add(side, 'open');
+      this.fitRow();
       this.fitNames();
       for (const s of ['left', 'right']) {
         this.btns[s].classList.toggle('active', s === side);
@@ -3073,12 +3075,13 @@
       const counts = new Map();
       for (const inst of S.insts.values()) if (inst.open) counts.set(inst.widgetId, (counts.get(inst.widgetId) || 0) + 1);
       const widgets = pickerWidgets();
-      // The panel is drawn at Zoom.ui. Five columns where the screen has room for them and the row below (the
-      // controls, then ‹ Page ›) beside the other corner's ▦ button; else four or three, with ‹ Page › on a row of
-      // its own above the controls.
+      // The panel is drawn at Zoom.ui. Five columns where the screen has room for them, else four or three, with
+      // ‹ Page › on a row of its own above the controls (narrow). With five, ‹ Page › ends the controls' row where that
+      // row clears the other corner's ▦ button (fitRow).
       const room = window.innerWidth / Zoom.ui, cols = room >= 600 ? 5 : room < 440 ? 3 : 4;
       this.el.style.setProperty('--cols', String(cols));
       this.el.classList.toggle('narrow', cols < 5);
+      this.fitRow();
       if (Lock.on()) { $('.panel-widgets', this.el).innerHTML = Lock.pickerNote(); return; }   // windows locked: none opens (section 12b)
       $('.panel-widgets', this.el).innerHTML = widgets.map(a => {
         const c = counts.get(a.id) || 0;
@@ -3092,6 +3095,19 @@
           (a.dev || a.devOnly ? '<span class="devtag">DEV</span>' : '') + '</button>';
       }).join('') || '<div class="empty-note" style="grid-column:1/-1;padding:16px">No widgets installed.</div>';
       this.fitNames();
+    },
+
+    // Five columns: ‹ Page › at the end of the controls' row where the panel then clears the other corner's ▦ (and
+    // fits the screen), else on a row of its own (narrow). Measured as drawn, so only while the panel is open, in the
+    // panel's own px: offsetLeft and offsetWidth leave out its zoom and its opening animation.
+    fitRow() {
+      const P = this.el;
+      if (!P || !P.classList.contains('open') || P.style.getPropertyValue('--cols') !== '5') return;
+      P.classList.remove('narrow');
+      const o = this.btns[this.side === 'right' ? 'left' : 'right'], row = $('.panel-controls', P), GAP = 4;
+      const clear = row.scrollWidth <= row.clientWidth + 1 && (o.hidden || !o.offsetWidth ||
+        (this.side === 'right' ? o.offsetLeft + o.offsetWidth + GAP <= P.offsetLeft : P.offsetLeft + P.offsetWidth + GAP <= o.offsetLeft));
+      P.classList.toggle('narrow', !clear);
     },
 
     // Only a name cut to two lines (…) is clipped to its box; the others are marked to be drawn whole (index.html,
@@ -3111,6 +3127,7 @@
       const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
       const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
       Pages.renderControls(this.el);
+      set('paste', 'paste', 'Paste').hidden = !!LAB || !Pictures.canRead();   // (section 15c; the widget dev window has no Picture or Video Player)
       set('export', 'export', 'Export board');
       set('import', 'import', 'Import board').hidden = Lock.on();   // (windows locked: section 12b)
       set('quit', 'quit', 'Quit 21Board').hidden = !KIOSK;
@@ -3128,11 +3145,13 @@
         b.setAttribute('aria-label', 'Widget Picker' + ready);
         if (update) b.title = 'A new version is ready. Open Settings to update.'; else b.removeAttribute('title');
       }
+      this.fitRow();   // (‹ Page › and the buttons shown may have changed)
     },
 
     control(ctl) {
       const side = this.side || 'left';
       switch (ctl) {
+        case 'paste': Pictures.fromClipboard(); break;
         case 'export': this.close(); exportFlow(); break;
         case 'quit': this.close(); quitApp(); break;
         case 'import': this.close(); $('#import-input').click(); break;
@@ -10513,7 +10532,7 @@
   };
 
   // =====================================================================
-  // 15c. Pictures pasted or dropped onto the board
+  // 15c. Pictures and video links pasted or dropped onto the board
   // ---------------------------------------------------------------------
   // A picture pasted (Ctrl+V, ⌘V) or dropped onto the board opens in a new Picture window (widgets/image): in the middle
   // of the board, or where it was dropped, one window for each picture, which keeps its middle there as it takes the
@@ -10521,10 +10540,15 @@
   // and the widget checks it, shrinks it if it must and saves it as its content, as it does for its own Open…. A paste
   // or drop inside a widget that the widget didn't take comes here too (the SDK passes it on; a .21board file dropped
   // there imports, as on the board), except from a widget uploaded in Developer mode. A paste in the board's own text
-  // fields, or while a dialog is open, is theirs; text pasted on the board does nothing. Not while windows are locked
-  // (section 12b): the board says how to unlock, as it does for a window moved.
+  // fields, or while a dialog is open, is theirs. Not while windows are locked (section 12b): the board says how to
+  // unlock, as it does for a window moved.
+  // A video link pasted or dropped on the board opens in a new Video Player (widgets/youtube-player) the same way, as if
+  // pasted into its link box: text that is one link (no other words) to a YouTube, Google Drive or Vimeo video, as the
+  // Video Player's own reader sees it (video-links.js, which index.html loads, so the two never disagree). Other text,
+  // and other links, do nothing. A picture on the clipboard wins over text. The Widget Picker's Paste does what Ctrl+V
+  // does, for touch screens with no keyboard (fromClipboard).
   // =====================================================================
-  const PICTURE_ID = 'image';
+  const PICTURE_ID = 'image', VIDEO_ID = 'youtube-player';
   const Pictures = {
     // A file that may be a picture, by its type or name. (Its bytes are checked by the widget, which says what's wrong:
     // an SVG, a HEIC photo, a file that isn't a picture at all.)
@@ -10546,11 +10570,56 @@
       return true;
     },
     // What a window's widget didn't take (the SDK passes it on): as on the board. A picture dropped opens beside that
-    // window; a .21board file dropped imports.
-    fromWin(w, files, reason) {
+    // window; a .21board file dropped imports. A link pasted there (text: the SDK passes one only) may be a video's.
+    fromWin(w, files, reason, text) {
       const f = files[0];
       if (reason === 'drop' && f && typeof f.text === 'function' && /\.21board$|\.json$/i.test(f.name || '')) importFile(f);
-      else this.open(files, reason, reason === 'drop' ? w.middle() : null);
+      else if (!this.open(files, reason, reason === 'drop' ? w.middle() : null) && reason === 'paste' && typeof text === 'string') this.openLink(text, 'paste');
+    },
+    // A Video Player for text that is one video link, in the middle of the board or near at, on that video. False when
+    // the text isn't one.
+    openLink(text, reason, at) {
+      const L = self.B21VideoLinks, link = L && typeof L.oneLink === 'function' ? L.oneLink(text) : '';   // (not in the widget dev window: the dev page doesn't load it)
+      if (!link || !getWidget(VIDEO_ID) || !Store.loaded) return false;
+      if (Lock.refuse()) return true;
+      const ik = openWidget(VIDEO_ID, { fresh: true, at: at || undefined }), w = ik && S.wins.get(ik);
+      if (!w) return true;
+      // (Sent as the 'file' event, as a picture is: a text/uri-list file. The widget shows it as if pasted into its box.)
+      w.files = (w.files || []).concat({ file: new File([link], 'link.uri', { type: 'text/uri-list' }), reason: reason === 'paste' ? 'paste' : 'drop' });
+      if (w.connected) this.deliver(w);
+      return true;
+    },
+    // Whether this browser lets a page read the clipboard (the Widget Picker's Paste shows only then, as a Picture
+    // window's does).
+    canRead() { return !!(navigator.clipboard && typeof navigator.clipboard.read === 'function'); },
+    // The Widget Picker's Paste: what Ctrl+V on the board does, with the clipboard read through the browser (Chrome asks
+    // once). A picture first, else its text, which may be a video link. The Widget Picker closes when a window opens.
+    async fromClipboard() {
+      if (Lock.refuse()) return;   // (windows locked: no window, as for Ctrl+V)
+      let items = null, blocked = false, text = '';
+      try { items = await navigator.clipboard.read(); } catch (e) { blocked = !!e && e.name === 'NotAllowedError'; }
+      let pic = null;
+      for (const it of items || []) {
+        const t = it.types.find(x => /^image\/(png|jpeg|gif|webp|avif)$/i.test(x)) || it.types.find(x => /^image\//i.test(x));
+        if (t) { try { pic = new File([await it.getType(t)], '', { type: t }); } catch (e) { /* gone meanwhile */ } break; }
+      }
+      if (!pic) {
+        const it = (items || []).find(x => x.types.includes('text/plain'));
+        if (it) { try { text = await (await it.getType('text/plain')).text(); } catch (e) { /* gone meanwhile */ } }
+        else if (!items && !blocked && typeof navigator.clipboard.readText === 'function') {
+          try { text = await navigator.clipboard.readText(); } catch (e) { blocked = !!e && e.name === 'NotAllowedError'; }
+        }
+      }
+      if (pic ? this.open([pic], 'paste') : this.openLink(text, 'paste')) { Picker.close(); return; }
+      toast(blocked ? 'Pasting is blocked. Allow the clipboard for 21Board.' : this.notOne(text) || 'Nothing to paste. Copy a picture or a video link first.');
+    },
+    // A link the Video Player can't play but knows (a list of videos, a folder, a Google Doc, Sheet or Slides): what it
+    // would say, for the Widget Picker's Paste. '' for anything else.
+    notOne(text) {
+      const L = self.B21VideoLinks, t = String(text || '').trim();
+      if (!L || !t || /\s/.test(t)) return '';
+      return { list: 'That’s a list of videos. Copy a link to one.', folder: 'That’s a folder. Copy a link to one video.', doc: 'That’s a document. Copy a link to a video.',
+        sheet: 'That’s a spreadsheet. Copy a link to a video.', slides: 'That’s a presentation. Copy a link to a video.' }[L.readText(t).why] || '';
     },
     deliver(w) {
       const list = w.files;
@@ -10561,7 +10630,8 @@
       document.addEventListener('paste', e => {
         const t = e.target;
         if (e.defaultPrevented || $('#modal.open') || (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)))) return;
-        if (this.open(e.clipboardData && e.clipboardData.files, 'paste')) e.preventDefault();
+        const dt = e.clipboardData;
+        if (this.open(dt && dt.files, 'paste') || (dt && this.openLink(dt.getData('text/plain'), 'paste'))) e.preventDefault();
       });
     }
   };
@@ -10633,15 +10703,26 @@
       if (f) importFile(f);
     });
 
-    // Dropping a .21board file onto the board imports it. Pictures open in Picture windows, where they were dropped
-    // (section 15c).
-    window.addEventListener('dragover', e => { if (e.dataTransfer && Array.from(e.dataTransfer.types || []).includes('Files')) e.preventDefault(); });
+    // Dropping a .21board file onto the board imports it. Pictures open in Picture windows, and a video link in a Video
+    // Player, where they were dropped (section 15c). Any other link dropped does nothing: the browser never goes to it.
+    // A link dropped in one of the board's text fields is the field's, and one dropped while a dialog is open opens
+    // nothing, as for a paste.
+    const dropped = (e, type) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(type);
+    const field = t => !!t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|password)$/.test(t.type)));
+    window.addEventListener('dragover', e => { if (dropped(e, 'Files') || (dropped(e, 'text/uri-list') && !field(e.target))) e.preventDefault(); });
     window.addEventListener('drop', e => {
-      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+      const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0], at = () => toLayout({ left: e.clientX, top: e.clientY, width: 0, height: 0 });
+      if (!f && dropped(e, 'text/uri-list')) {
+        if (field(e.target)) return;
+        e.preventDefault();
+        const links = e.dataTransfer.getData('text/uri-list').split(/\r?\n/).map(s => s.trim()).filter(s => s && s[0] !== '#');   // (# starts a comment)
+        if (links.length === 1 && !$('#modal.open')) Pictures.openLink(links[0], 'drop', at());
+        return;
+      }
       if (!f) return;
       e.preventDefault();
       if (/\.21board$|\.json$/i.test(f.name)) importFile(f);
-      else Pictures.open(e.dataTransfer.files, 'drop', toLayout({ left: e.clientX, top: e.clientY, width: 0, height: 0 }));
+      else Pictures.open(e.dataTransfer.files, 'drop', at());
     });
     Pictures.init();
 

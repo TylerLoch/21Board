@@ -6,6 +6,7 @@
 <script type="application/json" id="board21-widget">
   {"id": "youtube-player", "name": "Video Player", "version": "1.0.0", "window": {"width": 480, "height": 270, "minWidth": 200, "minHeight": 200}}
 </script>
+<script src="video-links.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Video Player</title>
 <style>
@@ -115,12 +116,10 @@
   // not reach it).
   const EMBED_HOST = 'https://www.youtube.com';
 
-  const ID_RE = /^[A-Za-z0-9_-]{11}$/;
-  const isId = s => ID_RE.test(s) && s !== 'videoseries';   // (embed/videoseries is a playlist's embed address, not a video)
-  // Each site's ids and keys, checked before any of them goes into an address: a Drive file's id (28 or 33 characters
-  // today, 44 for some), its resource key; Vimeo's number, an unlisted video's hash (10 hex digits today).
-  const DRIVE_ID = /^[A-Za-z0-9_-]{25,50}$/, DRIVE_KEY = /^[A-Za-z0-9_-]{8,64}$/;
-  const VIMEO_ID = /^[1-9][0-9]{0,11}$/, VIMEO_HASH = /^[0-9a-f]{8,16}$/;
+  // Reading a link: video-links.js, which the board uses too, to open a Video Player for a video link pasted or
+  // dropped on it.
+  const { readText, isId, DRIVE_ID, DRIVE_KEY, VIMEO_ID, VIMEO_HASH, MAX_LINK, MAX_START } = B21VideoLinks;
+  const parseLink = text => readText(text).video || null;
   // The three sites: their name, the window menu's item, ids, whether a video can start from a time, the player's
   // address and frame, where the video opens on its own, and its oEmbed for titles (none for Drive).
   const SOURCES = {
@@ -157,92 +156,12 @@
     list: 'That’s a list of videos. Paste a link to one.', doc: 'That’s a document. Paste a link to a video.',
     sheet: 'That’s a spreadsheet. Paste a link to a video.', slides: 'That’s a presentation. Paste a link to a video.'
   };
-  const MAX_LINK = 2000, MAX_START = 86400;   // characters; seconds (a day)
   const HISTORY_MAX = 5, MAX_TITLE = 200;   // videos; characters
   // A History label: two lines of the board's menu, in narrow letters (widths); the board cuts one at 80 UTF-16 units.
   const LABEL_MAX = 48, LABEL_UNITS = 80;
   const TITLE_WAIT = 5000, MAX_ASKING = 5;   // ms; requests
   const $ = id => document.getElementById(id);
   const ask = $('ask'), link = $('link'), err = $('err'), cancel = $('cancel'), player = $('player'), offline = $('offline');
-
-  // "1h2m3s", "1m30s", "90s" or "90" → seconds (0: none, or not a time).
-  function seconds(t) {
-    const m = /^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$/i.exec(String(t || '').trim());
-    if (!m || !(m[1] || m[2] || m[3])) return 0;
-    const s = (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0);
-    return s > 0 && s <= MAX_START ? s : 0;
-  }
-  // Text with a link to a video in it → { video: { source, id, hash, resourceKey, start, link } } (link: the part of
-  // the text that is the link, so a sentence, quotes or brackets around it are left out, as is the rest of an embed
-  // code), or { why } if there is none: what the link box says (SAY), from the first link that told what it is.
-  function readText(text) {
-    const all = String(text == null ? '' : text).replace(/&amp;/gi, '&').trim();   // (an embed code writes & as &amp;)
-    if (!all) return { why: 'empty' };
-    if (isId(all)) return { video: { source: 'youtube', id: all, start: 0, link: all } };
-    let why = null;
-    // (Words are split at quotes too, curly ones and guillemets as well: Docs, Slides and Word write those.)
-    for (const word of all.split(/[\s"'\u2018-\u201f\u00ab\u00bb\u2039\u203a\u200b-\u200d\u2060]+/)) {
-      const r = fromAddress(word.replace(/^[(<\[]+|[)>\].,;:!?\u3001\u3002\uff0c]+$/g, ''));
-      if (r && r.video) return r;
-      if (r && r.why && !why) why = r.why;
-    }
-    return { why: why || 'none' };
-  }
-  const parseLink = text => readText(text).video || null;
-  function fromAddress(word) {
-    let u;
-    try { u = new URL(/^[a-z][a-z\d+.-]*:\/\//i.test(word) ? word : 'https://' + word); } catch (e) { return null; }
-    if (u.protocol !== 'https:' && u.protocol !== 'http:') return null;
-    const host = u.hostname, path = u.pathname.split('/').filter(Boolean);
-    const r = host === 'youtu.be' || host === 'www.youtu.be' || /^((www|m|music)\.)?youtube\.com$/.test(host) || /^(www\.)?youtube-nocookie\.com$/.test(host) ? fromYouTube(u, host, path)
-      : host === 'drive.google.com' || host === 'docs.google.com' ? fromDrive(u, host, path)
-      : /^((www|player)\.)?vimeo\.com$/.test(host) ? fromVimeo(u, host, path) : null;
-    if (r && r.video) r.video.link = word;
-    return r;
-  }
-  const timeIn = (u, ...names) => seconds(names.map(n => u.searchParams.get(n)).find(t => t) || new URLSearchParams(u.hash.slice(1)).get('t'));
-  // youtube.com (www., m., music.) /watch?v=…, /embed/…, /v/…, /shorts/…, /live/…; youtube-nocookie.com; youtu.be/….
-  // A playlist (a link with a list and no video in it) or a channel is a list.
-  function fromYouTube(u, host, path) {
-    let id = null;
-    if (host === 'youtu.be' || host === 'www.youtu.be') id = path.length === 1 ? path[0] : null;
-    else if (path.length === 1 && path[0] === 'watch') id = u.searchParams.get('v');
-    else if (path.length === 2 && /^(embed|v|shorts|live)$/.test(path[0])) id = path[1];
-    if (id && isId(id)) return { video: { source: 'youtube', id, start: timeIn(u, 't', 'start') } };
-    return path[0] === 'playlist' || (path[0] === 'embed' && path[1] === 'videoseries') || u.searchParams.get('list') || /^@./.test(path[0] || '') || /^(channel|c|user)$/.test(path[0] || '') ? { why: 'list' } : null;
-  }
-  // drive.google.com/file/d/<id>/… (also /file/u/<n>/d/<id>/…, and a school's older /a/<domain>/file/d/<id>/…),
-  // /open?id=<id>, /uc?id=<id>; docs.google.com/file/d/<id>/…; with the resource key, if any. Drive's player has no
-  // start time. A folder, or a Google Doc, Sheet or Slides, is not a video.
-  const DOCS = { document: 'doc', spreadsheets: 'sheet', presentation: 'slides' };
-  function fromDrive(u, host, path) {
-    const p = path[0] === 'a' && path.length > 2 ? path.slice(2) : path;
-    let id = null;
-    if (p[0] === 'file') { const q = p[1] === 'u' && /^\d+$/.test(p[2] || '') ? p.slice(3) : p.slice(1); if (q[0] === 'd') id = q[1] || null; }
-    else if (host === 'drive.google.com' && p.length === 1 && (p[0] === 'open' || p[0] === 'uc')) id = u.searchParams.get('id');
-    else if (host === 'drive.google.com' && /^(drive|folderview|embeddedfolderview)$/.test(p[0] || '')) return { why: 'folder' };
-    else if (host === 'docs.google.com' && Object.prototype.hasOwnProperty.call(DOCS, p[0] || '')) return { why: DOCS[p[0]] };
-    const key = u.searchParams.get('resourcekey');
-    if (!id || !DRIVE_ID.test(id) || (key !== null && !DRIVE_KEY.test(key))) return null;
-    return { video: { source: 'drive', id, resourceKey: key || '', start: 0 } };
-  }
-  // vimeo.com/<id>, /<id>/<hash> (unlisted), /channels/<name>/<id>, /groups/<name>/videos/<id>,
-  // /showcase/<n>/video/<id>, /manage/videos/<id>(/<hash>) (the uploader's own address for it);
-  // player.vimeo.com/video/<id>?h=<hash>; a start time (#t=90, #t=1m30s). A showcase, album, channel, group (with no
-  // video's number at its end) or someone's page is a list.
-  function fromVimeo(u, host, path) {
-    let id = null, hash = '';
-    if (host === 'player.vimeo.com') { if (path.length === 2 && path[0] === 'video') { id = path[1]; hash = u.searchParams.get('h') || ''; } }
-    else if (/^\d+$/.test(path[0] || '')) { if (path.length <= 2) { id = path[0]; hash = path[1] || ''; } }
-    else if (/^(channels|groups)$/.test(path[0]) && !/^\d+$/.test(path[path.length - 1])) return { why: 'list' };
-    else if (path[0] === 'channels' && path.length === 3) id = path[2];
-    else if (path[0] === 'groups' && path.length === 4 && path[2] === 'videos') id = path[3];
-    else if ((path[0] === 'showcase' || path[0] === 'album') && path.length === 4 && path[2] === 'video') id = path[3];
-    else if (path[0] === 'manage' && path[1] === 'videos' && (path.length === 3 || path.length === 4)) { id = path[2]; hash = path[3] || ''; }
-    else if (/^(showcase|album|channels|groups)$/.test(path[0] || '') || (/^[A-Za-z][\w-]*$/.test(path[0] || '') && (path.length === 1 || (path.length === 2 && path[1] === 'videos')))) return { why: 'list' };
-    if (!id || !VIMEO_ID.test(id) || (hash && !VIMEO_HASH.test(hash))) return null;
-    return { video: { source: 'vimeo', id, hash, start: timeIn(u, 't') } };
-  }
 
   let video = null;       // the saved video: { source, videoId, hash, resourceKey, videoUrl, start } (readVideo), or null
   let history = [];       // the History, newest first: [{ source, videoId, hash, resourceKey, videoUrl, start, title }]
@@ -416,12 +335,32 @@
 
   function say(text) { err.textContent = text; err.hidden = !text; }
   link.addEventListener('input', () => { if (!err.hidden) say(''); });
-  ask.addEventListener('submit', ev => {
-    ev.preventDefault();
+  ask.addEventListener('submit', ev => { ev.preventDefault(); go(); });
+  // Show video: the link box's video, or what the box needs.
+  function go() {
     const r = readText(link.value), v = r.video;
     if (!v) { say(SAY[r.why]); return; }
     const e = Object.assign({ source: v.source, videoId: v.id }, v.hash ? { hash: v.hash } : {}, v.resourceKey ? { resourceKey: v.resourceKey } : {}, { start: v.start });
     choose(Object.assign(e, { videoUrl: v.link.length <= MAX_LINK ? v.link : pageUrl(e) }));
+  }
+  // Text pasted in this window outside the link box while it shows, or a video link pasted or dropped on the board,
+  // which opened this window for it: in the link box and shown, as if pasted there.
+  function useLink(text) {
+    changing = !!video;   // (a video showing: as Change video, so Cancel puts it back if the link isn't one)
+    link.value = String(text == null ? '' : text).trim();
+    say(''); show(); go();
+  }
+  document.addEventListener('paste', e => {
+    if (ask.hidden || e.defaultPrevented || e.target === link) return;
+    const dt = e.clipboardData, text = dt && !(dt.files && dt.files.length) ? dt.getData('text/plain') : '';
+    if (!text.trim()) return;   // (a picture: the board opens a Picture window for it)
+    e.preventDefault();
+    useLink(text);
+  });
+  // The board sends the link as a text/uri-list file (the SDK's 'file' event).
+  Board21.on('file', f => {
+    if (!f || !/^text\/uri-list\b/i.test(f.type || '') || typeof f.text !== 'function') return;
+    Promise.all([f.text(), Board21.ready()]).then(([text]) => useLink(text)).catch(() => {});
   });
   // A video chosen here, from the link box or the History: it shows (in place of the link box, if that showed), goes
   // to the top of the History, and is saved.

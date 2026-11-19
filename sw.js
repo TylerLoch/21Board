@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.18-12';
+const VERSION = '2026.11.18-13';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'c578ec3b';
+const BUILD = '980b6af0';
 const FILES = {
-  './': '9e764ebfe4840564',
-  'index.html': '9e764ebfe4840564',
-  'board.js': 'cd465f884f2e79c3',
-  'sdk/board21.js': '3d8ef72db43df6eb',
+  './': 'a4d37c89c5306288',
+  'index.html': 'a4d37c89c5306288',
+  'board.js': '52e2d0bcfb6e6e82',
+  'sdk/board21.js': 'ba3de867e376915e',
   'sdk/board21-dev.js': '701293968d7cad06',
-  'sdk/dev/board-shell.js': '6a9904ef1f666799',
+  'sdk/dev/board-shell.js': 'fcec475a4f3074da',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '7e87b3f5b4c3010c',
+  'widgets/registry.js': '200438390e9c516d',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -54,8 +54,9 @@ const FILES = {
   'widgets/first-then-board/index.html': '1467ccddd22e8d1f',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
-  'widgets/youtube-player/index.html': '1f4b8a73cb31265d',
-  'widgets/image/index.html': '3b499bb53ad637c3',
+  'widgets/youtube-player/index.html': '5a84d2adf04f7031',
+  'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
+  'widgets/image/index.html': '53821be1e1f93622',
   'widgets/calculator/index.html': '30b381684d80c30b',
   'widgets/calculator/calc-engine.js': '2591c6f99c951cd6',
   'widgets/sdk-playground/index.html': '0dff97332041a455'

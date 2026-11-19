@@ -225,7 +225,7 @@ and links are stripped. Up to 24 items. A swatch row counts as one and holds up 
 | `focus` / `blur` | — | The window was selected or deselected. Selecting a window brings it to the front. **`blur` also fires when the teacher taps the empty board to deselect everything, and the window stays in front and visible.** So `blur` doesn't mean the window is covered. Don't pause a timer on blur. |
 | `menu` | `(id, item)` | One of your menu items was tapped. |
 | `beforeclose` | — | The window is about to close. Save anything pending *synchronously* (call `save()`). |
-| `file` | `(file, { reason })` | A picture pasted or dropped on the board, for the Picture window the board opened for it. `reason` is `'paste'` or `'drop'`. Only the built-in Picture widget gets it. |
+| `file` | `(file, { reason })` | A picture or a video link pasted or dropped on the board, for the window the board opened for it. A link comes as a `text/uri-list` file. `reason` is `'paste'` or `'drop'`. Only the built-in Picture and Video Player widgets get it. |
 
 ### Other
 
@@ -236,9 +236,10 @@ and links are stripped. Up to 24 items. A swatch row counts as one and holds up 
 Tapping anywhere in your widget brings its window to the front.
 
 **Pasting and dropping files.** In a built-in widget, a paste your widget doesn't take, outside a text field, goes to
-the board. So does a dropped file. A picture opens in a new Picture window, and a `.21board` file imports. In a widget
-uploaded in Developer mode, they do nothing. A dropped file never opens in place of your widget. To take them
-yourself, call `preventDefault()` in a `paste` or `drop` listener on the document or an element.
+the board. So does a dropped file. A picture opens in a new Picture window, and a `.21board` file imports. A video
+link opens a new Video Player. In a widget uploaded in Developer mode, they do nothing. A dropped file never opens in
+place of your widget. To take them yourself, call `preventDefault()` in a `paste` or `drop` listener on the document
+or an element.
 
 ---
 
