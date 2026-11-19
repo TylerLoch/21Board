@@ -560,6 +560,8 @@ them off gives the room back.
 
 Keyboards work too. Type digits, + - * / ^ % ( ) and the point, then Enter or =. Type sqrt, pi or ans as letters.
 
+The manual, with the real Calculator to try, is in [docs/calculator-manual/](docs/calculator-manual/).
+
 ## District apps
 
 21Sketch, 21Timer and 21DocCam are the district's own apps, each its own website. They open from the Widget Picker

@@ -1,0 +1,984 @@
+<title>21Board Calculator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* The Calculator's manual. One column of sections under a sticky bar of chips; the live Calculator at the top, its
+   window menu beside it. Page tokens below; the Calculator gets the board's own --b21-* palette from the script. */
+:root {
+  --bg: #f4f5f7; --surface: #ffffff; --surface-2: #eceef2; --text: #1f2937; --muted: #565f6d; --border: #dfe2e8;
+  --accent: #2563eb; --accent-soft: #eff6ff; --on-accent: #ffffff;
+  --good: #15803d; --bad: #b91c1c;
+  --shadow: rgba(17, 24, 39, .08); --swatch-ring: rgba(0, 0, 0, .12);
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121315; --surface: #1b1c1f; --surface-2: #26282c; --text: #f3f4f6; --muted: #a6acb6; --border: #33363c;
+    --accent: #60a5fa; --accent-soft: rgba(96, 165, 250, .16); --on-accent: #0b1220;
+    --good: #4ade80; --bad: #f87171;
+    --shadow: rgba(0, 0, 0, .4); --swatch-ring: rgba(255, 255, 255, .18);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121315; --surface: #1b1c1f; --surface-2: #26282c; --text: #f3f4f6; --muted: #a6acb6; --border: #33363c;
+  --accent: #60a5fa; --accent-soft: rgba(96, 165, 250, .16); --on-accent: #0b1220;
+  --good: #4ade80; --bad: #f87171;
+  --shadow: rgba(0, 0, 0, .4); --swatch-ring: rgba(255, 255, 255, .18);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+body {
+  margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 var(--font);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 72px; overflow-x: hidden;
+}
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 60; background: var(--bg); }
+a { color: var(--accent); }
+:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+.pg-wrap { max-width: 1180px; margin-inline: auto; }
+h1, h2, h3 { line-height: 1.2; letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(30px, 5vw, 44px); font-weight: 750; }
+h2 { font-size: clamp(24px, 3.4vw, 32px); font-weight: 720; }
+h3 { font-size: 17px; font-weight: 680; }
+p { margin: 0 0 12px; }
+ul, ol { margin: 0; padding-left: 1.2em; }
+li + li { margin-top: 6px; }
+b { font-weight: 650; }
+.pg-muted { color: var(--muted); }
+.pg-small { font-size: 14px; }
+kbd { font: 600 13.5px var(--mono); padding: 2px 7px; border-radius: 6px; background: var(--surface-2); box-shadow: inset 0 -1px 0 var(--border); white-space: nowrap; }
+
+/* Sticky bar: jump to a part of the page; the look of the page and of the Calculator */
+.pg-bar {
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 50;
+  margin-left: calc(-1 * max(16px, env(safe-area-inset-left, 0px))); margin-right: calc(-1 * max(16px, env(safe-area-inset-right, 0px)));
+  padding: 8px max(16px, env(safe-area-inset-right, 0px)) 8px max(16px, env(safe-area-inset-left, 0px));
+  background: color-mix(in srgb, var(--bg) 90%, transparent); border-bottom: 1px solid var(--border);
+  backdrop-filter: saturate(1.4) blur(14px); -webkit-backdrop-filter: saturate(1.4) blur(14px);
+}
+.pg-bar-in { max-width: 1180px; margin-inline: auto; display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.pg-bar-in::-webkit-scrollbar { display: none; }
+@media (max-width: 1160px) { .pg-bar-in { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); padding-right: 24px; } }
+.pg-chip {
+  flex: 0 0 auto; display: inline-flex; align-items: center; height: 36px; padding: 0 13px; border-radius: 999px;
+  color: var(--text); text-decoration: none; font-size: 14px; font-weight: 600; white-space: nowrap;
+}
+.pg-chip:hover { background: var(--surface-2); }
+.pg-chip[aria-current="true"] { background: var(--text); color: var(--bg); }
+.pg-look { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; margin-left: auto; padding-left: 10px; }
+.pg-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--surface-2); }
+.pg-seg button {
+  height: 30px; padding: 0 12px; border: 0; border-radius: 999px; background: transparent; color: var(--muted);
+  font: 600 13px var(--font); cursor: pointer;
+}
+.pg-seg button[aria-pressed="true"] { background: var(--surface); color: var(--text); box-shadow: 0 1px 3px var(--shadow), 0 0 0 1px var(--border); }
+.pg-swatches { display: inline-flex; gap: 2px; }
+.pg-sw { width: 36px; height: 36px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; cursor: pointer; }
+.pg-sw i { width: 20px; height: 20px; border-radius: 50%; background: var(--c); box-shadow: inset 0 0 0 1px var(--swatch-ring); }
+.pg-sw[aria-pressed="true"] i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
+
+/* Sections */
+section { scroll-margin-top: 72px; }
+.pg-part { padding-top: 56px; }
+.pg-part > .pg-wrap > h2 { margin-bottom: 10px; }
+.pg-lede { font-size: 18px; max-width: 64ch; }
+.pg-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 16px 18px; min-width: 0; }
+.pg-card h3 { margin-bottom: 6px; }
+.pg-card p { margin: 0 0 10px; color: var(--muted); font-size: 15px; }
+.pg-card p:last-child { margin-bottom: 0; }
+.pg-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.pg-two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-top: 16px; }
+.pg-note { font-size: 13.5px; color: var(--muted); margin-top: 10px; }
+.pg-try { display: flex; gap: 10px; align-items: flex-start; margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--accent-soft); font-size: 15px; }
+.pg-try b { flex: 0 0 auto; }
+
+/* ---- The top: the live Calculator, its window menu beside it */
+.pg-hero { padding-top: 28px; }
+.pg-hero h1 { margin-bottom: 6px; }
+.pg-hero .pg-lede { margin-bottom: 18px; }
+.demo { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+.demo-main { min-width: 0; }
+.demo-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+@media (min-width: 1040px) { .demo { grid-template-columns: minmax(0, 1fr) 272px; } }
+@media (max-width: 1039.98px) { .demo-side { order: -1; } }
+/* A 21Board window: its title bar, then the widget, drawn at the board's size and scaled to fit */
+.win { max-width: 100%; border-radius: 14px; overflow: hidden; background: var(--b21-bg, var(--surface)); box-shadow: 0 0 0 2px var(--accent), 0 10px 30px var(--shadow); }
+.win-title { display: flex; justify-content: center; align-items: center; height: 38px; background: color-mix(in srgb, var(--accent) 22%, var(--surface)); }
+.win-name { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px 0 14px; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-size: 14px; font-weight: 650; }
+.win-name svg { width: 14px; height: 14px; stroke-width: 2.4; }
+.win-stage { position: relative; overflow: hidden; }
+.win-stage.wide { overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; }
+.win-stage iframe { position: absolute; left: 0; top: 0; border: 0; display: block; transform-origin: 0 0; background: transparent; }
+
+/* The window menu, drawn as 21Board draws it */
+.wm { display: flex; flex-direction: column; padding: 6px; margin: 0; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 12px 30px var(--shadow); }
+.wm-h { padding: 8px 12px 2px; font-size: 12px; font-weight: 600; color: var(--muted); letter-spacing: .02em; }
+.wm-i { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 40px; padding: 4px 12px; border: 0; border-radius: 9px; background: transparent; color: var(--text); font: 500 15px/1.25 var(--font); text-align: left; }
+button.wm-i { cursor: pointer; }
+button.wm-i:hover:not(:disabled) { background: var(--surface-2); }
+.wm-i:disabled, .wm-i.off { opacity: .45; cursor: default; }
+.wm-ic { width: 20px; height: 20px; flex: 0 0 20px; display: grid; place-items: center; color: var(--muted); }
+.wm-ic svg { width: 20px; height: 20px; }
+.wm-l { flex: 1; min-width: 0; }
+.wm-ck { width: 18px; height: 18px; color: var(--accent); }
+.wm-sep { height: 1px; background: var(--border); margin: 5px 8px; }
+.wm-i.danger, .wm-i.danger .wm-ic { color: var(--bad); }
+.wm-confirm { padding: 10px 12px 6px; font-size: 14px; color: var(--muted); line-height: 1.35; }
+.wm-confirm b { color: var(--text); }
+@media (max-width: 1039.98px) {
+  .demo-side .wm { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 4px; }
+  .demo-side .wm-h, .demo-side .wm-sep, .demo-side .wm-confirm { grid-column: 1 / -1; }
+}
+@media (max-width: 520px) {
+  .demo-side .wm-i { gap: 8px; padding: 4px 8px; font-size: 14px; }
+  .demo-side .wm-ic:empty { display: none; }
+}
+
+/* ---- The parts: the panels, side by side */
+.panes { display: flex; gap: 6px; padding: 8px; border-radius: 14px; background: var(--surface); border: 1px solid var(--border); min-height: 132px; }
+.pane { display: flex; flex-direction: column; justify-content: flex-start; gap: 2px; min-width: 0; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); font-size: 14px; color: var(--muted); }
+.pane b { color: var(--text); font-size: 15px; }
+.pane-canvas { flex: 1.6; }
+.pane-keys { flex: 1; background: color-mix(in srgb, var(--accent) 16%, var(--surface-2)); }
+.pane-hist { flex: 1; background: transparent; border: 1.5px dashed var(--border); }
+.panes-cap { margin: 8px 2px 0; font-size: 14px; color: var(--muted); }
+
+/* ---- The menu: drawn, and each item explained */
+.menu-doc { display: grid; grid-template-columns: 272px minmax(0, 1fr); gap: 20px 28px; align-items: start; margin-top: 16px; }
+.menu-doc .wm { position: sticky; top: 76px; }
+.menu-dl { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 6px 18px; }
+.menu-dl dt, .menu-dl dd { padding: 11px 0; border-top: 1px solid var(--border); margin: 0; }
+.menu-dl dt:first-of-type, .menu-dl dt:first-of-type + dd { border-top: 0; }
+.menu-dl dt { font-weight: 650; white-space: nowrap; }
+.menu-dl dd { color: var(--text); }
+.menu-dl .grey { display: block; font-size: 14px; color: var(--muted); margin-top: 2px; }
+
+/* ---- Keys, drawn as the Calculator draws them */
+.kp { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); grid-auto-rows: 36px; gap: 5px; margin: 10px 0 12px; max-width: 260px; }
+.kp span { display: flex; align-items: center; justify-content: center; border-radius: 10px; background: color-mix(in srgb, var(--surface-2), var(--text) 4%); font-size: 16px; font-weight: 500; line-height: 1; color: var(--text); }
+.kp .fn { background: color-mix(in srgb, var(--surface-2), var(--text) 13%); }
+.kp .op { background: var(--accent); color: var(--on-accent); font-size: 19px; }
+.kp .adv { background: var(--accent-soft); font-size: 14px; }
+.kp .w { font-size: 13px; font-weight: 600; }
+.kp i { font-family: Georgia, "Times New Roman", serif; }
+.kp sup { font-size: .62em; line-height: 0; position: relative; top: -.42em; }
+.kp .k3 { grid-column: span 3; } .kp .k4 { grid-column: span 4; } .kp .k6 { grid-column: span 6; }
+.key-notes { margin: 16px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 6px 18px; }
+.key-notes dt, .key-notes dd { margin: 0; padding: 11px 0; border-top: 1px solid var(--border); }
+.key-notes dt:first-of-type, .key-notes dt:first-of-type + dd { border-top: 0; }
+.key-notes dt { font-weight: 650; font-size: 17px; min-width: 2.2em; }
+.key-notes .pg-ex { margin-top: 8px; }
+.pg-card .pg-ex { margin-top: 10px; }
+
+/* ---- Steps */
+.steps-ex { list-style: none; margin: 0; padding: 4px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; font-size: 21px; }
+.steps-ex li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; padding: 10px 0; margin: 0; border-top: 1px solid var(--border); }
+.steps-ex li:first-child { border-top: 0; }
+.steps-ex .lead { color: var(--muted); width: .8em; text-align: right; }
+.steps-ex .wk { font-size: 15px; color: var(--muted); }
+.pemdas { display: inline-flex; gap: 2px; margin-left: auto; }
+.pemdas b { display: inline-grid; place-items: center; width: 22px; height: 24px; border-radius: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
+.pemdas b.lit { background: var(--accent); color: var(--on-accent); }
+.pemdas b.soft { background: var(--accent-soft); color: var(--text); }
+.hide-ex { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); font-size: 26px; }
+.pg-btn { margin-top: 10px; height: 34px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font: 600 14px var(--font); cursor: pointer; }
+.pg-btn:hover { background: var(--surface-2); }
+.pg-btn[hidden] { display: none; }
+.reveal { display: inline-grid; place-items: center; min-width: 1.4em; height: 1.2em; padding: 0 .2em; border: .07em dashed var(--accent); border-radius: .2em; background: var(--accent-soft); color: var(--accent); font: 700 1em/1 var(--font); cursor: pointer; }
+.words-ex { margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); font-size: 24px; line-height: 1.3; }
+.words-ex .said { display: block; margin-top: 4px; font-size: 17px; }
+
+/* ---- Desmos */
+.pg-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
+.pg-stat { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px 16px; }
+.pg-stat b { display: block; font-size: 34px; line-height: 1.1; font-weight: 750; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+.pg-stat span { display: block; margin-top: 4px; font-size: 14.5px; color: var(--muted); }
+.pg-stat.pg-same b { color: var(--good); }
+.pg-two .pg-card ul { margin-top: 4px; }
+.pg-two .pg-card li { font-size: 15.5px; }
+
+/* ---- The math, with live examples drawn by the engine */
+.pg-rules { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+.pg-rule p { font-size: 15.5px; }
+.pg-exs { display: flex; flex-direction: column; gap: 6px; margin-top: 4px; }
+.pg-ex { border-radius: 12px; background: var(--surface-2); min-width: 0; }
+.pg-ex > button {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 6px 12px; border: 0; border-radius: 12px;
+  background: transparent; color: var(--text); font: 22px/1.3 var(--font); text-align: left; cursor: pointer; overflow-x: auto;
+}
+.pg-ex > button:hover { background: color-mix(in srgb, var(--surface-2), var(--text) 5%); }
+.pg-ex > button .pg-more { margin-left: auto; flex: 0 0 auto; font-size: 13px; font-weight: 650; color: var(--muted); white-space: nowrap; }
+.pg-ex > div.pg-static { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-height: 48px; padding: 6px 12px; font-size: 22px; line-height: 1.3; overflow-x: auto; }
+.pg-ex .pg-msg { font-size: 15px; font-weight: 650; color: var(--bad); white-space: nowrap; }
+.pg-ex .pg-msg.pg-tip { color: var(--accent); }
+.pg-ex .pg-tagline { font-size: 13px; font-weight: 650; color: var(--muted); white-space: nowrap; }
+.pg-steps { list-style: none; margin: 0; padding: 2px 12px 12px 12px; font-size: 19px; }
+.pg-steps li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; padding: 6px 0; border-top: 1px solid var(--border); margin: 0; }
+.pg-steps .pg-rl { font-size: 13px; font-weight: 650; color: var(--muted); }
+.pg-steps .pg-wk { font-size: 15px; color: var(--muted); }
+.pg-steps[hidden] { display: none; }
+.pg-swap { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); }
+.pg-swap svg { width: 18px; height: 18px; }
+
+/* ---- Keyboard */
+.kbd-box { overflow-x: auto; margin-top: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; }
+.kbd-table { width: 100%; border-collapse: collapse; font-size: 15.5px; }
+.kbd-table th, .kbd-table td { text-align: left; vertical-align: top; padding: 10px 16px; border-top: 1px solid var(--border); }
+.kbd-table thead th { border-top: 0; font-size: 13px; font-weight: 650; color: var(--muted); background: var(--surface-2); }
+.kbd-table td:first-child { white-space: nowrap; }
+.kbd-table td:first-child kbd + kbd { margin-left: 4px; }
+
+/* ---- Saving */
+.save-list { list-style: none; padding: 0; margin: 16px 0 0; display: grid; gap: 10px; max-width: 760px; }
+.save-list li { margin: 0; padding: 12px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; }
+
+footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
+
+@media (max-width: 980px) {
+  .pg-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .menu-doc { grid-template-columns: minmax(0, 1fr); }
+  .menu-doc .wm { position: static; max-width: 340px; }
+}
+@media (max-width: 680px) {
+  .pg-grid, .pg-two, .pg-rules, .pg-stats { grid-template-columns: minmax(0, 1fr); }
+  .pg-part { padding-top: 40px; }
+  .pg-lede { font-size: 17px; }
+  .pg-ex > button, .pg-ex > div.pg-static { font-size: 19px; }
+  .menu-dl, .key-notes { grid-template-columns: minmax(0, 1fr); }
+  .menu-dl dd, .key-notes dd { border-top: 0; padding-top: 0; }
+  .steps-ex { font-size: 18px; }
+  .kbd-table th, .kbd-table td { padding: 10px 12px; }
+  .kbd-table td:first-child { white-space: normal; width: 45%; }
+  .pemdas { margin-left: 0; }
+}
+
+/* The engine's math drawing (CalcEngine.CSS), for the examples on this page */
+/*@CECSS*/
+.cx { --b21-accent: var(--accent); --b21-accent-soft: var(--accent-soft); --b21-muted: var(--muted); }
+.cx .ce-ans { color: var(--accent); }
+</style>
+<script>
+/*@ENGINE*/
+</script>
+
+<header class="pg-bar">
+  <nav class="pg-bar-in" aria-label="On this page">
+    <a class="pg-chip" id="nav-top" href="#top">Try it</a>
+    <a class="pg-chip" id="nav-parts" href="#parts">Parts</a>
+    <a class="pg-chip" id="nav-menu" href="#menu">Menu</a>
+    <a class="pg-chip" id="nav-keys" href="#keys">Keys</a>
+    <a class="pg-chip" id="nav-steps" href="#steps">Steps</a>
+    <a class="pg-chip" id="nav-desmos" href="#desmos">Desmos</a>
+    <a class="pg-chip" id="nav-math" href="#math">Math</a>
+    <a class="pg-chip" id="nav-keyboard" href="#keyboard">Keyboard</a>
+    <a class="pg-chip" id="nav-saving" href="#saving">Saving</a>
+    <div class="pg-look">
+      <div class="pg-seg" role="group" aria-label="Theme">
+        <button type="button" id="theme-auto" data-theme-mode="auto" aria-pressed="true">Auto</button>
+        <button type="button" id="theme-light" data-theme-mode="light" aria-pressed="false">Light</button>
+        <button type="button" id="theme-dark" data-theme-mode="dark" aria-pressed="false">Dark</button>
+      </div>
+      <div class="pg-swatches" role="group" aria-label="Accent color" id="swatches"></div>
+    </div>
+  </nav>
+</header>
+
+<main>
+  <!-- ===== Top: the real Calculator ===== -->
+  <section class="pg-hero" id="top" aria-labelledby="top-h">
+    <div class="pg-wrap">
+      <h1 id="top-h">Calculator</h1>
+      <p class="pg-lede">A calculator for the front of the room. It shows every step, and its math matches Desmos.</p>
+      <div class="demo">
+        <div class="demo-main" id="calc-col">
+          <div class="win" id="calc-win">
+            <div class="win-title"><span class="win-name">Calculator <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 15l6-6 6 6"/></svg></span></div>
+            <div class="win-stage" id="calc-stage">
+              <iframe id="calc-frame" name="b21-board:calculator:1" title="Calculator" data-doc="<!--@WIDGET-->"></iframe>
+            </div>
+          </div>
+        </div>
+        <div class="demo-side">
+          <p class="pg-try"><b>Try</b><span>2 + 3 × 4 =, then Next step. Tick History in the menu.</span></p>
+          <div class="wm" id="calc-menu" role="menu" aria-label="Calculator’s window menu"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== The parts ===== -->
+  <section class="pg-part" id="parts" aria-labelledby="parts-h">
+    <div class="pg-wrap">
+      <h2 id="parts-h">The parts</h2>
+      <p class="pg-lede">The canvas, the keys and History sit side by side.</p>
+      <div class="pg-two">
+        <div>
+          <div class="panes" aria-hidden="true">
+            <div class="pane pane-canvas"><b>Canvas</b>The problem, big, with its steps</div>
+            <div class="pane pane-keys"><b>Keys</b>÷ × − + = down the right</div>
+            <div class="pane pane-hist"><b>History</b>Off at first</div>
+          </div>
+          <p class="panes-cap">A new window. History hides until you tick it.</p>
+        </div>
+        <div>
+          <div class="panes" aria-hidden="true">
+            <div class="pane pane-hist"><b>History</b></div>
+            <div class="pane pane-keys"><b>Keys</b></div>
+            <div class="pane pane-canvas"><b>Canvas</b></div>
+          </div>
+          <p class="panes-cap">Swap sides. For a teacher on the left of a flat panel.</p>
+        </div>
+      </div>
+      <div class="pg-grid">
+        <div class="pg-card">
+          <h3>Sizes</h3>
+          <p>A new window opens at <!--@OPENS-->. The smallest is <!--@SMALLEST-->.</p>
+          <p>Fill the board, and the panels share the space.</p>
+        </div>
+        <div class="pg-card">
+          <h3>Growing</h3>
+          <p>Tick History and the window widens to fit it, where the board has room. Advanced keys make it taller.</p>
+          <p>Untick them and the room comes back.</p>
+        </div>
+        <div class="pg-card">
+          <h3>Narrow windows</h3>
+          <p>The canvas moves above the keys. Without room for it, a small display takes its place, as on a phone.</p>
+          <p>History hides when there’s no room for it, and stays ticked.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== The menu ===== -->
+  <section class="pg-part" id="menu" aria-labelledby="menu-h">
+    <div class="pg-wrap">
+      <h2 id="menu-h">The menu</h2>
+      <p class="pg-lede">Tap Calculator ⌄ in the title bar. Each window keeps its own settings.</p>
+      <div class="menu-doc">
+        <div>
+          <div class="wm" id="menu-drawn" aria-hidden="true">
+            <div class="wm-h">Show</div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Canvas</span><svg class="wm-ck" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">History</span></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Steps</span><svg class="wm-ck" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">In words</span></div>
+            <div class="wm-sep"></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Advanced keys</span></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Hide the answer</span></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Answers as fractions</span></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Test practice</span></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">50 + 10% = 55</span></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Swap sides</span></div>
+            <div class="wm-sep"></div>
+            <div class="wm-i off"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></span><span class="wm-l">Clear history</span></div>
+            <div class="wm-sep"></div>
+            <div class="wm-i"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></span><span class="wm-l">Fill the board</span></div>
+            <div class="wm-i"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/></svg></span><span class="wm-l">Reset</span></div>
+            <div class="wm-i"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></span><span class="wm-l">Close</span></div>
+          </div>
+          <p class="pg-note">As a new window opens.</p>
+        </div>
+        <dl class="menu-dl" id="menu-items">
+          <dt>Canvas</dt><dd>The problem, big, and its steps. Off, a small display sits above the keys.</dd>
+          <dt>History</dt><dd>Your problems, one to a line, the newest at the bottom. Tap one to change it. Tap its answer to use it.</dd>
+          <dt>Steps</dt><dd>Next step, Back and Show all, under the problem.<span class="grey">Greyed out while Canvas is off.</span></dd>
+          <dt>In words</dt><dd>“2 plus 3 times 4 equals 14” under the problem.<span class="grey">Greyed out while Canvas is off.</span></dd>
+          <dt>Advanced keys</dt><dd>Adds a² aᵇ ⁿ√ ∛ π % a/b and → above the keys.<span class="grey">Greyed out in Test practice.</span></dd>
+          <dt>Hide the answer</dt><dd>The answer hides behind a ? until you tap it. The class predicts first.</dd>
+          <dt>Answers as fractions</dt><dd>Answers start as fractions. ⇄ switches one to a decimal.<span class="grey">Greyed out in Test practice.</span></dd>
+          <dt>Test practice</dt><dd>Desmos Four-Function’s keys and 7 digits, as on NWEA MAP.</dd>
+          <dt>50 + 10% = 55</dt><dd>% works as on iPhone. Off, % means “% of”, as in Desmos.<span class="grey">Greyed out in Test practice.</span></dd>
+          <dt>Swap sides</dt><dd>The panels trade sides.</dd>
+          <dt>Clear history</dt><dd>Empties History.<span class="grey">Greyed out while History is empty.</span></dd>
+        </dl>
+      </div>
+      <p class="pg-note">Fill the board, Reset and Close come with every window. Earlier versions… joins them once Board history has one.</p>
+    </div>
+  </section>
+
+  <!-- ===== Keys ===== -->
+  <section class="pg-part" id="keys" aria-labelledby="keys-h">
+    <div class="pg-wrap">
+      <h2 id="keys-h">Keys</h2>
+      <p class="pg-lede">÷ × − + = run down the right, as on iPhone. (&nbsp;) and √ sit above the digits, as in Desmos.</p>
+      <div class="pg-grid">
+        <div class="pg-card">
+          <h3>Keys</h3>
+          <div class="kp" aria-label="The keys" role="img">
+            <span class="fn k4 w">AC</span><span class="fn k4">⌫</span><span class="fn k4">±</span>
+            <span class="fn k3">(</span><span class="fn k3">)</span><span class="fn k3">√</span><span class="op k3">÷</span>
+            <span class="k3">7</span><span class="k3">8</span><span class="k3">9</span><span class="op k3">×</span>
+            <span class="k3">4</span><span class="k3">5</span><span class="k3">6</span><span class="op k3">−</span>
+            <span class="k3">1</span><span class="k3">2</span><span class="k3">3</span><span class="op k3">+</span>
+            <span class="k3">0</span><span class="k3">.</span><span class="k3 w">ans</span><span class="op k3">=</span>
+          </div>
+          <p>Every window starts with these.</p>
+        </div>
+        <div class="pg-card">
+          <h3>Advanced keys</h3>
+          <div class="kp" aria-label="Advanced keys" role="img">
+            <span class="adv k3"><i>a</i><sup>2</sup></span><span class="adv k3"><i>a</i><sup><i>b</i></sup></span><span class="adv k3"><sup><i>n</i></sup>√</span><span class="adv k3"><sup>3</sup>√</span>
+            <span class="adv k3">π</span><span class="adv k3">%</span><span class="adv k3"><i>a</i>/<i>b</i></span><span class="adv k3">→</span>
+            <span class="fn k4 w">AC</span><span class="fn k4">⌫</span><span class="fn k4">±</span>
+            <span class="fn k3">(</span><span class="fn k3">)</span><span class="fn k3">√</span><span class="op k3">÷</span>
+            <span class="k3">7</span><span class="k3">8</span><span class="k3">9</span><span class="op k3">×</span>
+            <span class="k3">4</span><span class="k3">5</span><span class="k3">6</span><span class="op k3">−</span>
+            <span class="k3">1</span><span class="k3">2</span><span class="k3">3</span><span class="op k3">+</span>
+            <span class="k3">0</span><span class="k3">.</span><span class="k3 w">ans</span><span class="op k3">=</span>
+          </div>
+          <p>Two more rows on top. Tick Advanced keys in the menu.</p>
+        </div>
+        <div class="pg-card">
+          <h3>Test practice</h3>
+          <div class="kp" aria-label="Test practice keys" role="img">
+            <span class="fn k6 w">AC</span><span class="fn k6">⌫</span>
+            <span class="fn k3">(</span><span class="fn k3">)</span><span class="fn k3">√</span><span class="op k3">÷</span>
+            <span class="k3">7</span><span class="k3">8</span><span class="k3">9</span><span class="op k3">×</span>
+            <span class="k3">4</span><span class="k3">5</span><span class="k3">6</span><span class="op k3">−</span>
+            <span class="k3">1</span><span class="k3">2</span><span class="k3">3</span><span class="op k3">+</span>
+            <span class="k3">0</span><span class="k3">.</span><span class="k3 w">ans</span><span class="op k3">=</span>
+          </div>
+          <p>Desmos Four-Function’s keys. No ± and no Advanced keys. Answers show 7 digits.</p>
+          <div class="pg-ex" data-keys="1÷3" data-opts='{"test":true}'></div>
+        </div>
+      </div>
+      <dl class="key-notes">
+        <dt>AC</dt><dd>Clears the problem.</dd>
+        <dt>⌫</dt><dd>Takes back the last key. After =, it brings back the problem to fix.</dd>
+        <dt>±</dt><dd>Changes the sign of the number you’re typing, or of the answer.</dd>
+        <dt>ans</dt><dd>Puts in the last answer, drawn in a small box.</dd>
+        <dt>=</dt><dd>Works the problem out. Press it again to repeat the last step, so 5 + 5 = = = counts by 5s.</dd>
+        <dt>⇄</dt><dd>Switches an answer like 0.125 to 1/8 and back.
+          <div class="pg-ex" data-kind="toggle" data-keys="1÷8"></div></dd>
+        <dt>→</dt><dd>Leaves a box, such as a power or a fraction.</dd>
+      </dl>
+    </div>
+  </section>
+
+  <!-- ===== Steps and Hide the answer ===== -->
+  <section class="pg-part" id="steps" aria-labelledby="steps-h">
+    <div class="pg-wrap">
+      <h2 id="steps-h">Steps and Hide the answer</h2>
+      <p class="pg-lede">Steps work a problem out one part at a time, the way you would on the board.</p>
+      <div class="pg-two">
+        <div class="pg-card">
+          <h3>Steps</h3>
+          <ul>
+            <li><b>Next step</b> works out the part that’s marked and marks the next. It works before = too.</li>
+            <li>PEMDAS lights the letter for each step.</li>
+            <li><b>Back</b> goes back a step. <b>Show all</b> writes out every step. <b>Replay</b> starts again.</li>
+            <li>A clicker works too. Page Down is Next step, and Page Up is Back.</li>
+            <li>The top of the canvas counts the steps. In a wide window, it names each rule too.</li>
+          </ul>
+        </div>
+        <div class="pg-card">
+          <h3>Hide the answer</h3>
+          <p>Turn it on at the top of the canvas or in the menu. The answer waits behind a ?, so the class can predict it. Tap the ? to show it.</p>
+          <p>While it’s on, the answer doesn’t show as you type. History hides it too. The last step shows it.</p>
+          <div class="hide-ex cx" id="hide-ex"></div>
+          <button type="button" class="pg-btn" id="hide-again" hidden>Try again</button>
+        </div>
+      </div>
+      <h3 style="margin-top:22px">Every step of 3 + 4 × 2 ÷ (1 − 5)²</h3>
+      <p class="pg-muted pg-small" style="margin-top:4px">Each step marks what comes next and lights its PEMDAS letter.</p>
+      <ol class="steps-ex cx" id="steps-list"></ol>
+      <div class="pg-card" style="margin-top:12px">
+        <h3>In words</h3>
+        <p>Tick In words to write the problem out under it, as it’s read aloud. With the answer hidden, it reads only the problem.</p>
+        <div class="words-ex cx" id="words-ex"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Desmos ===== -->
+  <section class="pg-part" id="desmos" aria-labelledby="desmos-h">
+    <div class="pg-wrap">
+      <h2 id="desmos-h">Same math as Desmos</h2>
+      <p class="pg-lede">Teachers use Desmos, so the Calculator does the same math. We typed <span id="fig-total"><!--@TOTAL--></span> problems into Desmos and into the Calculator.</p>
+      <div class="pg-stats">
+        <div class="pg-stat pg-same"><b id="fig-same"><!--@SAME--></b><span>get the same answer</span></div>
+        <div class="pg-stat"><b id="fig-words"><!--@WORDS--></b><span>say what went wrong where Desmos says “undefined”</span></div>
+        <div class="pg-stat"><b id="fig-apart"><!--@APART--></b><span>differ on purpose</span></div>
+      </div>
+      <p class="pg-note"><span id="fig-open"><!--@OPEN--></span> unfinished problems, such as 2 +, show no answer in either.</p>
+      <div class="pg-two">
+        <div class="pg-card">
+          <h3>The same as Desmos</h3>
+          <ul>
+            <li>The answer shows as you type.</li>
+            <li>The order of operations. Side by side means ×, so 6 ÷ 2(1 + 2) = 9.</li>
+            <li>√, powers and fractions are boxes. → leaves a box.</li>
+            <li>% means “% of”. 10% of 50 = 5.</li>
+            <li>ans shows as a small box with its number.</li>
+            <li>⇄ switches an answer like 0.125 to 1/8 and back.</li>
+            <li>10 digits. Past a billion, 1.07374182 × 10⁹.</li>
+            <li>Test practice has Desmos Four-Function’s keys and 7 digits.</li>
+            <li>The same typing, such as ^, sqrt and pi.</li>
+          </ul>
+        </div>
+        <div class="pg-card">
+          <h3>Different on purpose</h3>
+          <ul>
+            <li>× where Desmos writes ·, and = where Desmos has ↵.</li>
+            <li>Kind words, such as “Can’t divide by 0”, where Desmos says “undefined”.</li>
+            <li>One problem at a time, as on iPhone.</li>
+            <li>= after a lone number shows its value. A problem that starts with ×, ÷ or + works on the 0 on screen. Desmos shows no answer for either.</li>
+            <li>A faint comma groups the digits, as in 1,234,567. Desmos uses a narrow space.</li>
+            <li>Answers below 10⁻³²⁴ say “Too small to show”. Desmos shows 0.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Math ===== -->
+  <section class="pg-part" id="math" aria-labelledby="math-h">
+    <div class="pg-wrap">
+      <h2 id="math-h">How the math works</h2>
+      <p class="pg-lede">Tap an example to see its steps.</p>
+      <div class="pg-rules">
+        <div class="pg-card pg-rule">
+          <h3>Order of operations</h3>
+          <p>Parentheses first, then powers and roots. Then × and ÷, left to right. Then + and −, left to right.</p>
+          <div class="pg-exs"><div class="pg-ex" data-keys="2+3×4"></div><div class="pg-ex" data-keys="8÷4÷2"></div><div class="pg-ex" data-keys="3+4×2÷(1−5)²"></div></div>
+        </div>
+        <div class="pg-card pg-rule">
+          <h3>Boxes, as in Desmos</h3>
+          <p>√, powers and fractions are boxes. What you type stays inside until →. +, − and × leave a power on their own.</p>
+          <div class="pg-exs"><div class="pg-ex" data-keys="√9+16"></div><div class="pg-ex" data-keys="√9→+16"></div><div class="pg-ex" data-keys="2^3+1"></div></div>
+        </div>
+        <div class="pg-card pg-rule">
+          <h3>Negative numbers and powers</h3>
+          <p>−3² is −9, because the power comes first. (−3)² is 9. A − right after another sign makes a negative number.</p>
+          <div class="pg-exs"><div class="pg-ex" data-keys="−3²"></div><div class="pg-ex" data-keys="(−3)²"></div><div class="pg-ex" data-keys="5×−3"></div></div>
+        </div>
+        <div class="pg-card pg-rule">
+          <h3>Side by side means ×</h3>
+          <p>2π, 2(3 + 4) and 3√16 multiply. They count as ×, left to right, so 6 ÷ 2(1 + 2) = 9, as in Desmos. The a/b key writes the other reading.</p>
+          <div class="pg-exs"><div class="pg-ex" data-keys="6÷2(1+2)"></div><div class="pg-ex" data-keys="6⁄2(1+2)"></div></div>
+        </div>
+        <div class="pg-card pg-rule">
+          <h3>Exact answers</h3>
+          <p>The math is exact, so 0.1 + 0.2 is 0.3. Answers show 10 digits, as in Desmos. A faint comma groups the digits.</p>
+          <div class="pg-exs"><div class="pg-ex" data-keys="0.1+0.2"></div><div class="pg-ex" data-keys="1÷3×3"></div><div class="pg-ex" data-keys="2^30"></div><div class="pg-ex" data-keys="1234567+1"></div></div>
+        </div>
+        <div class="pg-card pg-rule">
+          <h3>Percent</h3>
+          <p>% means “% of”, as in Desmos, so the problem reads true as written. Tick 50 + 10% = 55 in the menu for the iPhone way.</p>
+          <div class="pg-exs"><div class="pg-ex" data-keys="10%50"></div><div class="pg-ex" data-keys="50+10%50"></div><div class="pg-ex" data-keys="50+10%" data-opts='{"percent":"apple"}' data-tag="Ticked"></div></div>
+        </div>
+        <div class="pg-card pg-rule">
+          <h3>Repeated =</h3>
+          <p>Another = repeats the last step. Each = adds a line to History.</p>
+          <div class="pg-exs"><div class="pg-ex" data-kind="repeat" data-keys="5+5==="></div></div>
+        </div>
+        <div class="pg-card pg-rule">
+          <h3>Kind messages</h3>
+          <p>Desmos says “undefined”. The Calculator says what went wrong, in words a child can read, and keeps the problem on screen to fix.</p>
+          <div class="pg-exs"><div class="pg-ex" data-kind="error" data-keys="7÷0"></div><div class="pg-ex" data-kind="error" data-keys="√−4"></div><div class="pg-ex" data-kind="notice" data-keys="5×"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Keyboard ===== -->
+  <section class="pg-part" id="keyboard" aria-labelledby="keyboard-h">
+    <div class="pg-wrap">
+      <h2 id="keyboard-h">Keyboard</h2>
+      <p class="pg-lede">Tap the calculator, then type. Most keys work as in Desmos.</p>
+      <div class="kbd-box">
+        <table class="kbd-table">
+          <thead><tr><th scope="col">Type</th><th scope="col">For</th></tr></thead>
+          <tbody>
+            <tr><td><kbd>0</kbd>–<kbd>9</kbd> <kbd>.</kbd></td><td>Digits and the point</td></tr>
+            <tr><td><kbd>+</kbd> <kbd>-</kbd> <kbd>*</kbd> <kbd>/</kbd></td><td>+ − × ÷. <kbd>x</kbd> is × too.</td></tr>
+            <tr><td><kbd>/</kbd></td><td>A fraction, while Advanced keys are on</td></tr>
+            <tr><td><kbd>^</kbd> <kbd>%</kbd> <kbd>(</kbd> <kbd>)</kbd></td><td>aᵇ, % and parentheses</td></tr>
+            <tr><td><kbd>Enter</kbd> <kbd>=</kbd></td><td>=</td></tr>
+            <tr><td><kbd>Backspace</kbd></td><td>⌫</td></tr>
+            <tr><td><kbd>Escape</kbd> <kbd>Delete</kbd> <kbd>Clear</kbd></td><td>AC</td></tr>
+            <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd></td><td>AC</td></tr>
+            <tr><td><kbd>→</kbd></td><td>Leaves a box</td></tr>
+            <tr><td><kbd>↓</kbd></td><td>From the top of a fraction to its bottom</td></tr>
+            <tr><td><kbd>↑</kbd></td><td>Back to the top, while the bottom is empty</td></tr>
+            <tr><td><kbd>sqrt</kbd> <kbd>cbrt</kbd> <kbd>nthroot</kbd></td><td>√ ∛ ⁿ√, typed as letters</td></tr>
+            <tr><td><kbd>pi</kbd> <kbd>ans</kbd> <kbd>frac</kbd></td><td>π, ans and a/b, typed as letters</td></tr>
+            <tr><td><kbd>@</kbd></td><td>√</td></tr>
+            <tr><td><kbd>F9</kbd></td><td>±</td></tr>
+            <tr><td><kbd>²</kbd> <kbd>√</kbd> <kbd>π</kbd> <kbd>±</kbd> <kbd>×</kbd> <kbd>÷</kbd></td><td>a², √, π, ±, × and ÷, where the keyboard has them</td></tr>
+            <tr><td><kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd></td><td>⇄. On a Mac, ⌘+Shift+A.</td></tr>
+            <tr><td><kbd>,</kbd></td><td>Nothing. A comma only groups digits, so 1,500 is 1500.</td></tr>
+            <tr><td><kbd>Page Down</kbd> <kbd>Page Up</kbd></td><td>Next step and Back, while the steps show</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="pg-note">In Test practice, a key it doesn’t have says so, such as “Test practice has no aᵇ key.”</p>
+    </div>
+  </section>
+
+  <!-- ===== Saving ===== -->
+  <section class="pg-part" id="saving" aria-labelledby="saving-h">
+    <div class="pg-wrap">
+      <h2 id="saving-h">Saving</h2>
+      <ul class="save-list">
+        <li>Each window keeps its problem, the last <!--@HISTORY--> in History and its menu settings.</li>
+        <li>Two Calculator windows keep their own work.</li>
+        <li>With Board Sync, your other devices get it too. If two devices change a window at once, the later change wins. Board history keeps the other.</li>
+        <li>Board history keeps earlier versions. Earlier versions… in the window menu brings one back.</li>
+        <li>Reset clears the problem, History and settings, and gives the window its first size.</li>
+        <li>A full backup keeps it all. A blank template keeps the settings, without the problem or History.</li>
+        <li>After a reload, the steps start over and a hidden answer hides again.</li>
+      </ul>
+      <footer>This manual is for 21Board <!--@VERSION-->. The demo and every example are the real Calculator.</footer>
+    </div>
+  </section>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  const E = window.CalcEngine;
+  const doc = document.documentElement;
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+  // ---- The look: the board's palettes (sdk/board21.js) and its six accents (board.js), on the page and in the demo
+  const PALETTES = {
+    light: { 'bg': '#ffffff', 'surface': '#f9fafb', 'surface-2': '#f3f4f6', 'text': '#1f2937', 'muted': '#6b7280', 'border': '#e5e7eb', 'accent': '#2563eb', 'on-accent': '#ffffff', 'accent-soft': '#eff6ff', 'danger': '#dc2626', 'success': '#16a34a', 'warning': '#d97706', 'font': 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', 'radius': '10px' },
+    dark: { 'bg': '#1e1e1e', 'surface': '#262626', 'surface-2': '#2f2f2f', 'text': '#f9fafb', 'muted': '#9ca3af', 'border': '#3a3a3a', 'accent': '#60a5fa', 'on-accent': '#0b1220', 'accent-soft': 'rgba(96,165,250,0.18)', 'danger': '#f87171', 'success': '#4ade80', 'warning': '#fbbf24', 'font': 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif', 'radius': '10px' }
+  };
+  const ACCENTS = { blue: ['#2563eb', '#60a5fa', 'Blue'], purple: ['#7c3aed', '#a78bfa', 'Purple'], red: ['#db1f48', '#fb7185', 'Rose'], orange: ['#c2410c', '#fb923c', 'Orange'], green: ['#15803d', '#4ade80', 'Green'], slate: ['#475569', '#94a3b8', 'Slate'] };
+  const mixHex = (a, b, t) => { const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16); const ch = sh => Math.round(((pa >> sh) & 255) * (1 - t) + ((pb >> sh) & 255) * t); return '#' + [16, 8, 0].map(sh => ch(sh).toString(16).padStart(2, '0')).join(''); };
+  const rgba = (hex, a) => { const n = parseInt(hex.slice(1), 16); return 'rgba(' + ((n >> 16) & 255) + ', ' + ((n >> 8) & 255) + ', ' + (n & 255) + ', ' + a + ')'; };
+  const dark = window.matchMedia ? matchMedia('(prefers-color-scheme: dark)') : { matches: false };
+  let mode = 'auto', accent = 'blue';
+  // The page's host may set data-theme on the root element. Auto follows the host's, else the system's. Light and
+  // Dark set the page's own, and Auto gives the host's back.
+  let hostTheme = doc.getAttribute('data-theme'), pageTheme = hostTheme;
+  const theme = () => (mode !== 'auto' ? mode : hostTheme === 'light' || hostTheme === 'dark' ? hostTheme : dark.matches ? 'dark' : 'light');
+  // The palette a widget gets from the board (board.js paletteFor)
+  function palette(t) {
+    const pal = Object.assign({}, PALETTES[t]);
+    if (accent !== 'blue') { const c = ACCENTS[accent][t === 'dark' ? 1 : 0]; pal.accent = c; pal['accent-soft'] = t === 'dark' ? rgba(c, 0.18) : mixHex(c, '#ffffff', 0.9); }
+    return pal;
+  }
+
+  const sw = $('swatches');
+  sw.innerHTML = Object.keys(ACCENTS).map(k => `<button type="button" class="pg-sw" id="accent-${k}" data-accent="${k}" aria-pressed="false" aria-label="${ACCENTS[k][2]}" title="${ACCENTS[k][2]}"><i></i></button>`).join('');
+
+  function applyLook() {
+    const t = theme(), pal = palette(t);
+    pageTheme = mode === 'auto' ? hostTheme : mode;
+    if (doc.getAttribute('data-theme') !== pageTheme) { if (pageTheme == null) doc.removeAttribute('data-theme'); else doc.setAttribute('data-theme', pageTheme); }
+    if (accent === 'blue') ['--accent', '--accent-soft', '--on-accent'].forEach(k => doc.style.removeProperty(k));
+    else {
+      doc.style.setProperty('--accent', pal.accent);
+      doc.style.setProperty('--accent-soft', t === 'dark' ? rgba(ACCENTS[accent][1], 0.16) : pal['accent-soft']);
+      doc.style.setProperty('--on-accent', pal['on-accent']);
+    }
+    document.querySelectorAll('[data-theme-mode]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.themeMode === mode)));
+    sw.querySelectorAll('.pg-sw').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.accent === accent));
+      b.style.setProperty('--c', ACCENTS[b.dataset.accent][t === 'dark' ? 1 : 0]);
+    });
+    Demo.theme(t, pal);
+  }
+  document.addEventListener('click', e => {
+    const m = e.target.closest('[data-theme-mode]'), a = e.target.closest('.pg-sw');
+    if (m) { mode = m.dataset.themeMode; applyLook(); }
+    if (a) { accent = a.dataset.accent; applyLook(); }
+  });
+  if (dark.addEventListener) dark.addEventListener('change', () => { if (mode === 'auto') applyLook(); });
+  // The host changed data-theme: its newest choice wins, for the page and the demo alike.
+  if (window.MutationObserver) new MutationObserver(() => {
+    const v = doc.getAttribute('data-theme');
+    if (v === pageTheme) return;
+    hostTheme = v; mode = 'auto';
+    applyLook();
+  }).observe(doc, { attributes: true, attributeFilter: ['data-theme'] });
+
+  // ---- The demo: the real widget in a frame. This page plays the board's side of the SDK (sdk/board21.js,
+  // docs/WIDGET-SDK.md) for one window: init, save, saveConfig, getInfo, menu, window sizes, theme. Its work is kept
+  // in memory only, for as long as the page is open.
+  const Demo = (function () {
+    const W = /*@WINDOW*/;
+    const BOARD = { w: 2400, h: 1300 };   // the room a default board has for a window (board px)
+    const frame = $('calc-frame'), stage = $('calc-stage'), win = $('calc-win'), col = $('calc-col'), menuEl = $('calc-menu');
+    const DOC = frame.getAttribute('data-doc');
+    const ICON = {
+      check: '<svg class="wm-ck" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6L9 17l-5-5"/></svg>',
+      reset: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/></svg>'
+    };
+    let data = null, config = null, items = [], confirming = false;
+    let size = null, first = null, min = { w: null, h: null }, scale = 1, lastInfo = '';
+    let look = { theme: 'light', palette: PALETTES.light };
+    const pos = v => (typeof v === 'number' && v > 0 && isFinite(v) ? v : null);
+    const clamp = (lo, v, hi) => Math.max(lo, Math.min(v, hi));
+    const clone = v => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
+
+    // A new window: 900 × 600, scaled to fit. A phone's column gets the narrow layout instead, at full size.
+    function startSize() {
+      const w = col.clientWidth;
+      return w >= 600 ? { w: W.width, h: W.height } : { w: Math.max(W.minWidth, Math.floor(w)), h: Math.max(W.minHeight, 660) };
+    }
+    const mins = () => ({ w: min.w || W.minWidth, h: min.h || W.minHeight });
+    // As the board draws it: the size given, but never below a smallest size the widget has raised meanwhile.
+    const drawn = () => { const m = mins(); return { w: Math.max(size.w, m.w), h: Math.max(size.h, m.h) }; };
+    const info = () => { const d = drawn(); return { width: d.w, height: d.h, x: 0, y: 0, maximized: false, focused: true, zoom: Math.round(scale * 100) / 100 }; };
+
+    function fit() {
+      const d = drawn(), room = col.clientWidth;
+      // Beside the menu, the whole window fits on the first screen.
+      const top = stage.getBoundingClientRect().top + window.scrollY;
+      const tall = window.innerWidth >= 1040 ? Math.max(.5, (window.innerHeight - top - 16) / d.h) : 1;
+      // At phone width the window keeps its size, so its keys stay big enough to tap, and scrolls sideways if wider.
+      const phone = room < 600, wide = phone && room > 0 && d.w > room;
+      scale = phone ? 1 : Math.min(1, room / d.w, tall);
+      const sw = Math.floor(d.w * scale), sh = Math.floor(d.h * scale);
+      frame.style.width = d.w + 'px'; frame.style.height = d.h + 'px';
+      frame.style.transform = scale === 1 ? '' : `scale(${scale})`;
+      stage.classList.toggle('wide', wide);
+      stage.style.width = wide ? '' : sw + 'px'; stage.style.height = sh + 'px';
+      win.style.width = (wide ? Math.floor(room) : sw) + 'px';
+      if (wide) { const bar = stage.offsetHeight - stage.clientHeight; if (bar > 0) stage.style.height = sh + bar + 'px'; }   // (room for a scroll bar)
+      tellSize();
+    }
+    function tellSize() {
+      const i = info(), sig = [i.width, i.height, i.zoom].join();
+      if (sig === lastInfo) return;
+      lastInfo = sig;
+      post('window', { info: i });
+    }
+
+    function post(type, payload) {
+      try { frame.contentWindow.postMessage(Object.assign({ b21: 1, type }, payload || {}), '*'); } catch (e) { /* frame gone */ }
+    }
+    const ack = (reqId, result) => { if (reqId != null) post('ack', { reqId, ok: true, result: result === undefined ? null : result, error: null }); };
+
+    window.addEventListener('message', e => {
+      if (e.source !== frame.contentWindow) return;
+      const m = e.data;
+      if (!m || m.b21 !== 1 || typeof m.type !== 'string') return;
+      switch (m.type) {
+        case 'hello':
+          lastInfo = '';
+          post('init', { context: {
+            sdkProtocol: 1, boardVersion: '<!--@VERSION-->', widgetId: W.id, widgetName: W.name, widgetVersion: W.version, instance: 1,
+            data: clone(data), config: clone(config), theme: look.theme, palette: look.palette, window: info(),
+            locale: navigator.language || 'en-US', devMode: false, host: 'board', kiosk: false
+          } });
+          lastInfo = [info().width, info().height, info().zoom].join();
+          break;
+        case 'save': data = clone(m.data); ack(m.reqId); break;
+        case 'saveConfig': config = clone(m.config); ack(m.reqId); break;
+        case 'getInfo': ack(m.reqId, info()); break;
+        case 'window': {
+          const a = Array.isArray(m.args) ? m.args : [];
+          if (m.op === 'setSize') {
+            const w = pos(a[0]), h = pos(a[1]);
+            if (!w || !h) return;
+            const lo = mins();
+            size = { w: Math.round(clamp(lo.w, w, BOARD.w)), h: Math.round(clamp(lo.h, h, BOARD.h)) };
+            fit();
+          } else if (m.op === 'setMinSize') {
+            min = { w: pos(a[0]), h: pos(a[1]) };
+            fit();
+          }
+          break;
+        }
+        case 'menu':
+          items = (Array.isArray(m.items) ? m.items : []).slice(0, 24);
+          renderMenu();
+          break;
+      }
+    });
+
+    // The window menu: the widget's own items, then the board's Reset (with its question first, as on the board)
+    function renderMenu() {
+      if (confirming) {
+        menuEl.innerHTML = '<div class="wm-confirm"><b>Reset Calculator?</b><br>This clears everything in this window and restores its starting size.</div>' +
+          `<button type="button" class="wm-i danger" role="menuitem" id="menu-reset-yes"><span class="wm-ic">${ICON.reset}</span><span class="wm-l">Reset</span></button>` +
+          '<button type="button" class="wm-i" role="menuitem" id="menu-reset-no"><span class="wm-ic"></span><span class="wm-l">Cancel</span></button>';
+        return;
+      }
+      let html = '';
+      for (const i of items) {
+        if (!i) continue;
+        if (i.separator) { html += '<div class="wm-sep" role="separator"></div>'; continue; }
+        if (i.heading) { html += `<div class="wm-h">${esc(i.label)}</div>`; continue; }
+        const check = typeof i.checked === 'boolean';
+        html += `<button type="button" class="wm-i" id="menu-${esc(i.id)}" data-id="${esc(i.id)}" role="${check ? 'menuitemcheckbox' : 'menuitem'}"${check ? ` aria-checked="${i.checked}"` : ''}${i.disabled ? ' disabled' : ''}>` +
+          `<span class="wm-ic">${/^<svg[\s>]/.test(i.icon || '') && !/<script|\bon\w+=/i.test(i.icon) ? i.icon : ''}</span><span class="wm-l">${esc(i.label)}</span>${i.checked === true ? ICON.check : ''}</button>`;
+      }
+      if (html) html += '<div class="wm-sep" role="separator"></div>';
+      html += `<button type="button" class="wm-i" role="menuitem" id="menu-reset"><span class="wm-ic">${ICON.reset}</span><span class="wm-l">Reset</span></button>`;
+      const had = document.activeElement && menuEl.contains(document.activeElement) ? document.activeElement.id : '';
+      menuEl.innerHTML = html;
+      if (had && $(had)) $(had).focus({ preventScroll: true });
+    }
+    menuEl.addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b || b.disabled) return;
+      if (b.id === 'menu-reset') { confirming = true; renderMenu(); $('menu-reset-no').focus(); return; }
+      if (b.id === 'menu-reset-no') { confirming = false; renderMenu(); return; }
+      if (b.id === 'menu-reset-yes') { confirming = false; reset(); return; }
+      if (b.dataset.id) post('menu', { id: b.dataset.id });
+    });
+
+    // Reset, as the board does it: no content, no settings, the first size, and the window loaded again
+    function reset() {
+      data = null; config = null; items = []; min = { w: null, h: null };
+      size = first = startSize();
+      renderMenu();
+      load();
+    }
+    function load() {
+      lastInfo = '';
+      fit();
+      frame.srcdoc = DOC;
+    }
+
+    return {
+      start() {
+        size = first = startSize();
+        renderMenu();
+        load();
+        let t = 0;
+        window.addEventListener('resize', () => {
+          cancelAnimationFrame(t);
+          t = requestAnimationFrame(() => {
+            // A window still at its first size takes the size a new one would have now. (The page may have been
+            // laid out while hidden, or a phone turned on its side.)
+            const s = startSize();
+            if (size.w === first.w && size.h === first.h && (s.w !== first.w || s.h !== first.h)) size = first = s;
+            fit();
+          });
+        });
+      },
+      theme(t, pal) {
+        look = { theme: t, palette: pal };
+        window.__board21Host = { theme: t, palette: pal };   // (the SDK reads it to start in the right colors)
+        post('theme', { theme: t, palette: pal });
+      }
+    };
+  })();
+  applyLook();
+  Demo.start();
+
+  // ---- The chip for the part of the page in view
+  const chips = Array.from(document.querySelectorAll('.pg-chip'));
+  const parts = chips.map(c => document.querySelector(c.getAttribute('href'))).filter(Boolean);
+  function current() {
+    if (!window.innerHeight) return;   // (laid out while hidden)
+    let on = null;
+    for (const p of parts) if (p.getBoundingClientRect().top <= 120) on = p;
+    // The last part can't scroll up to the bar. At the end of the page, it's the one in view.
+    const end = document.documentElement.scrollHeight - window.innerHeight - 2;
+    if (window.scrollY > 0 && window.scrollY >= end) on = parts[parts.length - 1];
+    chips.forEach(c => {
+      if (!!on && c.getAttribute('href') === '#' + on.id) c.setAttribute('aria-current', 'true'); else c.removeAttribute('aria-current');
+    });
+  }
+  let ticking = false;
+  const soon = () => { if (!ticking) { ticking = true; requestAnimationFrame(() => { ticking = false; current(); }); } };
+  window.addEventListener('scroll', soon, { passive: true });
+  window.addEventListener('resize', soon);
+  current();
+
+  // ---- Live examples, drawn by the engine with the widget's own options
+  if (!E) return;
+  const WIDGET = { separators: 'faint', historySize: 20, digits: 10, keys: null, toggle: true, answerAs: 'decimal', slash: 'divide', percent: 'of' };
+  const TEST = { digits: 7, keys: ['digits', 'point', 'add', 'subtract', 'multiply', 'divide', 'open', 'close', 'sqrt', 'ans'], toggle: false };
+  const optsOf = o => Object.assign({}, WIDGET, o && o.test ? TEST : {}, o && o.percent ? { percent: o.percent } : {});
+  const SWAP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/></svg>';
+  const noCursor = html => html.replace(/<span class="ce-cursor"><\/span>/g, '');
+  const ruleOf = st => st.rule === 'O' ? E.RULES.O : st.inside === 'parens' ? E.RULES.P : st.inside === 'box' ? E.RULES.G : (E.RULES[st.rule] || '');
+  document.querySelectorAll('.pg-ex').forEach((box, n) => {
+    const keys = box.dataset.keys, kind = box.dataset.kind || 'steps';
+    let o = {};
+    try { o = box.dataset.opts ? JSON.parse(box.dataset.opts) : {}; } catch (e) { o = {}; }
+    const opts = optsOf(o);
+    const tag = box.dataset.tag ? `<span class="pg-tagline">${esc(box.dataset.tag)}</span>` : '';
+    if (kind === 'error') {
+      const s = E.calc(keys, opts);
+      box.innerHTML = `<div class="pg-static cx">${s.expression.html}<span class="pg-msg">${esc(s.error ? s.error.short : '')}</span></div>`;
+      return;
+    }
+    if (kind === 'notice') {
+      const c = E.create(opts); c.input(keys); c.press('equals');
+      const s = c.state();
+      box.innerHTML = `<div class="pg-static cx">${noCursor(s.expression.html)}<span class="pg-msg pg-tip">${esc(s.notice ? s.notice.message : '')}</span></div>`;
+      return;
+    }
+    if (kind === 'repeat') {
+      const c = E.create(opts); c.input(keys);
+      const h = c.state().history.slice().reverse();
+      box.innerHTML = `<div class="pg-static cx" style="gap:4px 18px">${h.map(x => `<span>${x.equation.html}</span>`).join('')}</div>`;
+      return;
+    }
+    if (kind === 'toggle') {
+      const s = E.calc(keys, opts), f = s.answer.forms.fraction;
+      box.innerHTML = `<div class="pg-static cx">${s.equation.html}<span class="pg-swap">${SWAP}</span>${f ? f.html : ''}</div>`;
+      return;
+    }
+    const s = E.calc(keys, opts);
+    const steps = (s.steps || []).filter(st => !st.final);
+    const id = 'ex-' + (n + 1);
+    if (steps.length < 2) { box.innerHTML = `<div class="pg-static cx">${s.equation.html}${tag}</div>`; return; }
+    const rows = steps.map(st => `<li><span>${st.html}</span>${st.work ? `<span class="pg-wk">${st.work.html}</span>` : ''}<span class="pg-rl">${esc(ruleOf(st))}</span></li>`).join('') +
+      `<li><span>= ${s.answer ? s.answer.html : ''}</span></li>`;
+    box.innerHTML = `<button type="button" class="cx" id="${id}" aria-expanded="false" aria-controls="${id}-steps">${s.equation.html}${tag}<span class="pg-more">${steps.length} steps</span></button><ol class="pg-steps cx" id="${id}-steps" hidden>${rows}</ol>`;
+  });
+  document.addEventListener('click', e => {
+    const b = e.target.closest('.pg-ex > button');
+    if (!b) return;
+    const list = $(b.getAttribute('aria-controls'));
+    const open = b.getAttribute('aria-expanded') !== 'true';
+    b.setAttribute('aria-expanded', String(open));
+    list.hidden = !open;
+    b.querySelector('.pg-more').textContent = open ? 'Hide' : list.children.length - 1 + ' steps';
+  });
+
+  // Every step of one problem, with PEMDAS lit as the canvas lights it (the widget's renderPlayer)
+  (function () {
+    const s = E.calc('3+4×2÷(1−5)²', WIDGET);
+    const letters = st => {
+      const lit = new Set(), soft = new Set();
+      if (!st.final && st.rule) {
+        ({ P: 'P', E: 'E', MD: 'MD', AS: 'AS' }[st.rule] || '').split('').forEach(l => lit.add(l));
+        if (st.inside) Array.from(lit).forEach(l => { if (l !== 'P') { lit.delete(l); soft.add(l); } });
+        if (st.inside === 'parens') lit.add('P');
+      }
+      return '<span class="pemdas" aria-hidden="true">' + 'PEMDAS'.split('').map(l => `<b class="${lit.has(l) ? 'lit' : soft.has(l) ? 'soft' : ''}">${l}</b>`).join('') + '</span>';
+    };
+    $('steps-list').innerHTML = s.steps.map((st, i) =>
+      `<li><span class="lead" aria-hidden="true">${i ? '=' : ''}</span><span>${st.html}</span>${st.work ? `<span class="wk">${st.work.html}</span>` : ''}${st.final ? '' : letters(st)}</li>`).join('');
+  })();
+
+  // Hide the answer: tap the ? to show it. (Try again is the page's, to tap the ? once more.)
+  (function () {
+    const s = E.calc('7×8', WIDGET), box = $('hide-ex'), again = $('hide-again');
+    const hidden = () => { box.innerHTML = `${noCursor(s.expression.html)}<span> = </span><button type="button" class="reveal" id="hide-reveal" aria-label="Show the answer">?</button>`; again.hidden = true; };
+    hidden();
+    box.addEventListener('click', e => {
+      if (!e.target.closest('#hide-reveal')) return;
+      box.innerHTML = s.equation.html;
+      again.hidden = false;
+      again.focus();
+    });
+    again.addEventListener('click', () => { hidden(); $('hide-reveal').focus(); });
+  })();
+
+  // In words
+  (function () {
+    const s = E.calc('2+3×4', WIDGET);
+    $('words-ex').innerHTML = `${s.equation.html}<span class="said">${esc(s.equation.speech)}</span>`;
+  })();
+})();
+</script>
