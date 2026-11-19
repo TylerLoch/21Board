@@ -597,7 +597,7 @@ const drawPic = async (p, w, h, type = 'image/png', o = {}) => Buffer.from(await
 }, [w, h, type, o]), 'base64');
 // The Picture widget's messages, word for word.
 const PMSG = {
-  type: 'Can’t show that file. Choose a PNG, JPEG, GIF, WebP or AVIF.',
+  type: 'Can’t show that file. Choose a PNG, JPEG, GIF, WebP, AVIF or SVG.',
   svgBroken: 'That SVG couldn’t be drawn. Save it as a PNG first.',
   svgBig: 'That SVG is over 5 MB. Save it as a PNG first.',
   heic: 'Can’t show a HEIC photo. Save it as a JPEG first.',
