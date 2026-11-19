@@ -487,8 +487,7 @@ the tool's preview can reach, for example:
 <script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>
 ```
 
-Away from the school network, use the GitHub Pages test copy instead. The preview then shows the widget in
-the dev window.
+The address is public, so the preview shows the widget in the dev window from anywhere.
 
 **[docs/AI-PROMPT.md](AI-PROMPT.md)** has prompts to paste before describing the widget. The full one covers
 this guide's rules, the window menu, window size, dragging, theming and the house look. The short one covers the

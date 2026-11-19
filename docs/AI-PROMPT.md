@@ -37,14 +37,16 @@ shows the widget in a real 21Board window, the **dev window**.
    - To share a widget with everyone, send it to the 21Board team. In the dev window, ⋯ ▸
      **Copy for 21Board** copies the file and the entry they need.
 
+**If the tool writes a mock or fallback for the SDK,** ask it to take it out: "The 21Board SDK is public and
+works in your preview. Remove the Board21 mock and use the SDK directly."
+
 **If the preview shows nothing** or says `Board21 is not defined`, the tool's preview may not load the
 21Board SDK. Paste the HTML into the **widget lab**, `sdk/lab.html` on any 21Board site, such as
 <https://boardapp.ccsd21.org/sdk/lab.html>. Tap **Try it**. It's the same dev window, with the same Checks.
 
-**The SDK address.** The prompts load the SDK from 21Board itself, `boardapp.ccsd21.org`. If a preview
-can't reach it, as away from the school network, ask the tool to load the test copy on GitHub Pages instead:
-`https://tylerloch.github.io/21Board/sdk/board21.js`. Inside 21Board the address doesn't matter.
-*Upload file…* puts in the board's own copy, and *Copy for 21Board* points it at the `widgets/` folder.
+**The SDK address.** The prompts load the SDK from 21Board itself, `boardapp.ccsd21.org`. It's public, so
+previews reach it from anywhere. Inside 21Board the address doesn't matter. *Upload file…* puts in the
+board's own copy, and *Copy for 21Board* points it at the `widgets/` folder.
 
 ---
 
@@ -89,6 +91,10 @@ the widget I describe after this prompt. If I haven't described one, ask me what
   is the very first line, then `<html lang="en">`.
 - In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly
   `<script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>` (no async, defer or type=module).
+- That address is public, and the SDK works in your preview. There it runs the widget in a real 21Board
+  window, with everything the board gives it. Use `Board21` directly. Write no mock, stub or fallback for
+  it, and don't check that it loaded. If your preview says `Board21 is not defined`, it blocked the SDK.
+  Tell me in one line and leave the code as it is.
 - The next line is a manifest:
   `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
   Replace "my-widget" and "My Widget" with my widget's name.
@@ -321,6 +327,7 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 ## Before you answer, check
 
 - [ ] `<!DOCTYPE html>` first; the SDK tag exactly as given, the first script, right after `<meta charset="utf-8">`; the manifest next, valid JSON, its id and name replaced.
+- [ ] `Board21` used directly, with no mock, stub or fallback.
 - [ ] No address, CDN, font, image or fetch from the Internet; no `http(s)://` in your own script code; no localStorage, sessionStorage, IndexedDB or cookies (not even in comments); no alert/confirm/prompt; no autofocus; no React.
 - [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render and call `setMenu()`.
 - [ ] Anything about a student saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
@@ -343,7 +350,7 @@ again.
 The essentials only, for trying out an idea. For a widget you will keep, use the full prompt.
 
 ````markdown
-Build the widget I describe below as a 21Board widget (a window on a K–8 classroom smartboard). We need **one plain HTML file** (no React, no build step), starting with `<!DOCTYPE html>`. In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly `<script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>` (no async, defer or type=module).
+Build the widget I describe below as a 21Board widget (a window on a K–8 classroom smartboard). We need **one plain HTML file** (no React, no build step), starting with `<!DOCTYPE html>`. In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly `<script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>` (no async, defer or type=module). That address is public, and the SDK works in your preview, where it runs the widget in a real 21Board window. Use `Board21` directly, with no mock, stub or fallback.
 
 The next line is a manifest:
 `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
