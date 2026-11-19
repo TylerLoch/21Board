@@ -14,14 +14,14 @@
 const VERSION = '2026.11.18-13';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'ee11efbf';
+const BUILD = '980b6af0';
 const FILES = {
-  './': '125abadf34ad7731',
-  'index.html': '125abadf34ad7731',
-  'board.js': '704189ec271d1f02',
+  './': 'a4d37c89c5306288',
+  'index.html': 'a4d37c89c5306288',
+  'board.js': '52e2d0bcfb6e6e82',
   'sdk/board21.js': 'ba3de867e376915e',
   'sdk/board21-dev.js': '701293968d7cad06',
-  'sdk/dev/board-shell.js': '807c9292cdafb199',
+  'sdk/dev/board-shell.js': 'fcec475a4f3074da',
   'sdk/lab.html': '53da73e5ab2bad8b',
   'widgets/registry.js': '200438390e9c516d',
   'manifest.webmanifest': '31bc5d66238072ca',
@@ -55,8 +55,8 @@ const FILES = {
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
   'widgets/youtube-player/index.html': '5a84d2adf04f7031',
-  'widgets/youtube-player/video-links.js': 'abd842c225cb8003',
-  'widgets/image/index.html': 'e2a66eb9f219fa93',
+  'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
+  'widgets/image/index.html': '53821be1e1f93622',
   'widgets/calculator/index.html': '30b381684d80c30b',
   'widgets/calculator/calc-engine.js': '2591c6f99c951cd6',
   'widgets/sdk-playground/index.html': '0dff97332041a455'

@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="ee11efbf">
+<html lang="en" data-build="980b6af0">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -353,7 +353,7 @@
     .ctl[data-ctl="quit"] { color: var(--danger); } /* kiosk mode: a plain red X */
     .ctl[data-ctl="quit"] svg { stroke-width: 2.6; }
     /* ‹ Page › (board.js: Pages): at the far end of the controls, ‹ always on the left; a row of its own above them
-       where the panel has fewer than five columns. */
+       where the panel has fewer than five columns, or where that row would reach the other corner's ▦ (Picker.fitRow). */
     .page-ctl { display: flex; align-items: center; gap: 2px; margin-left: auto; flex: 0 0 auto; }
     .page-ctl[hidden] { display: none; }
     .panel.right .page-ctl { margin-left: 0; margin-right: auto; }

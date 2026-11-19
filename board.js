@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-13';
-  const BOARD_BUILD = 'ee11efbf';
+  const BOARD_BUILD = '980b6af0';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3041,8 +3041,8 @@
         this.close();
         openWidget(t.dataset.widget, { side });
       });
-      // A font for the text style finishing loading can change where names wrap: measure again.
-      if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => this.fitNames());
+      // A font for the text style finishing loading can change where names wrap, and the row's width: measure again.
+      if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { this.fitRow(); this.fitNames(); });
     },
 
     toggle(side) { if (this.side === side) this.close(); else this.open(side); },
@@ -3054,6 +3054,7 @@
       this.renderControls();
       this.el.classList.remove('left', 'right');
       this.el.classList.add(side, 'open');
+      this.fitRow();
       this.fitNames();
       for (const s of ['left', 'right']) {
         this.btns[s].classList.toggle('active', s === side);
@@ -3074,12 +3075,13 @@
       const counts = new Map();
       for (const inst of S.insts.values()) if (inst.open) counts.set(inst.widgetId, (counts.get(inst.widgetId) || 0) + 1);
       const widgets = pickerWidgets();
-      // The panel is drawn at Zoom.ui. Five columns where the screen has room for them and the row below (the
-      // controls, then ‹ Page ›, 576 px with Paste) beside the other corner's ▦ button; else four or three, with
-      // ‹ Page › on a row of its own above the controls.
-      const room = window.innerWidth / Zoom.ui, cols = room >= 680 ? 5 : room < 440 ? 3 : 4;
+      // The panel is drawn at Zoom.ui. Five columns where the screen has room for them, else four or three, with
+      // ‹ Page › on a row of its own above the controls (narrow). With five, ‹ Page › ends the controls' row where that
+      // row clears the other corner's ▦ button (fitRow).
+      const room = window.innerWidth / Zoom.ui, cols = room >= 600 ? 5 : room < 440 ? 3 : 4;
       this.el.style.setProperty('--cols', String(cols));
       this.el.classList.toggle('narrow', cols < 5);
+      this.fitRow();
       if (Lock.on()) { $('.panel-widgets', this.el).innerHTML = Lock.pickerNote(); return; }   // windows locked: none opens (section 12b)
       $('.panel-widgets', this.el).innerHTML = widgets.map(a => {
         const c = counts.get(a.id) || 0;
@@ -3093,6 +3095,19 @@
           (a.dev || a.devOnly ? '<span class="devtag">DEV</span>' : '') + '</button>';
       }).join('') || '<div class="empty-note" style="grid-column:1/-1;padding:16px">No widgets installed.</div>';
       this.fitNames();
+    },
+
+    // Five columns: ‹ Page › at the end of the controls' row where the panel then clears the other corner's ▦ (and
+    // fits the screen), else on a row of its own (narrow). Measured as drawn, so only while the panel is open, in the
+    // panel's own px: offsetLeft and offsetWidth leave out its zoom and its opening animation.
+    fitRow() {
+      const P = this.el;
+      if (!P || !P.classList.contains('open') || P.style.getPropertyValue('--cols') !== '5') return;
+      P.classList.remove('narrow');
+      const o = this.btns[this.side === 'right' ? 'left' : 'right'], row = $('.panel-controls', P), GAP = 4;
+      const clear = row.scrollWidth <= row.clientWidth + 1 && (o.hidden || !o.offsetWidth ||
+        (this.side === 'right' ? o.offsetLeft + o.offsetWidth + GAP <= P.offsetLeft : P.offsetLeft + P.offsetWidth + GAP <= o.offsetLeft));
+      P.classList.toggle('narrow', !clear);
     },
 
     // Only a name cut to two lines (…) is clipped to its box; the others are marked to be drawn whole (index.html,
@@ -3112,7 +3127,7 @@
       const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
       const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
       Pages.renderControls(this.el);
-      set('paste', 'paste', 'Paste').hidden = !Pictures.canRead();   // (section 15c)
+      set('paste', 'paste', 'Paste').hidden = !!LAB || !Pictures.canRead();   // (section 15c; the widget dev window has no Picture or Video Player)
       set('export', 'export', 'Export board');
       set('import', 'import', 'Import board').hidden = Lock.on();   // (windows locked: section 12b)
       set('quit', 'quit', 'Quit 21Board').hidden = !KIOSK;
@@ -3130,6 +3145,7 @@
         b.setAttribute('aria-label', 'Widget Picker' + ready);
         if (update) b.title = 'A new version is ready. Open Settings to update.'; else b.removeAttribute('title');
       }
+      this.fitRow();   // (‹ Page › and the buttons shown may have changed)
     },
 
     control(ctl) {
@@ -10595,7 +10611,15 @@
         }
       }
       if (pic ? this.open([pic], 'paste') : this.openLink(text, 'paste')) { Picker.close(); return; }
-      toast(blocked ? 'Pasting is blocked. Allow the clipboard for 21Board in Chrome.' : 'Nothing to paste. Copy a picture or a video link first.');
+      toast(blocked ? 'Pasting is blocked. Allow the clipboard for 21Board.' : this.notOne(text) || 'Nothing to paste. Copy a picture or a video link first.');
+    },
+    // A link the Video Player can't play but knows (a list of videos, a folder, a Google Doc, Sheet or Slides): what it
+    // would say, for the Widget Picker's Paste. '' for anything else.
+    notOne(text) {
+      const L = self.B21VideoLinks, t = String(text || '').trim();
+      if (!L || !t || /\s/.test(t)) return '';
+      return { list: 'That’s a list of videos. Copy a link to one.', folder: 'That’s a folder. Copy a link to one video.', doc: 'That’s a document. Copy a link to a video.',
+        sheet: 'That’s a spreadsheet. Copy a link to a video.', slides: 'That’s a presentation. Copy a link to a video.' }[L.readText(t).why] || '';
     },
     deliver(w) {
       const list = w.files;
@@ -10681,14 +10705,18 @@
 
     // Dropping a .21board file onto the board imports it. Pictures open in Picture windows, and a video link in a Video
     // Player, where they were dropped (section 15c). Any other link dropped does nothing: the browser never goes to it.
+    // A link dropped in one of the board's text fields is the field's, and one dropped while a dialog is open opens
+    // nothing, as for a paste.
     const dropped = (e, type) => !!e.dataTransfer && Array.from(e.dataTransfer.types || []).includes(type);
-    window.addEventListener('dragover', e => { if (dropped(e, 'Files') || dropped(e, 'text/uri-list')) e.preventDefault(); });
+    const field = t => !!t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|password)$/.test(t.type)));
+    window.addEventListener('dragover', e => { if (dropped(e, 'Files') || (dropped(e, 'text/uri-list') && !field(e.target))) e.preventDefault(); });
     window.addEventListener('drop', e => {
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0], at = () => toLayout({ left: e.clientX, top: e.clientY, width: 0, height: 0 });
       if (!f && dropped(e, 'text/uri-list')) {
+        if (field(e.target)) return;
         e.preventDefault();
         const links = e.dataTransfer.getData('text/uri-list').split(/\r?\n/).map(s => s.trim()).filter(s => s && s[0] !== '#');   // (# starts a comment)
-        if (links.length === 1) Pictures.openLink(links[0], 'drop', at());
+        if (links.length === 1 && !$('#modal.open')) Pictures.openLink(links[0], 'drop', at());
         return;
       }
       if (!f) return;

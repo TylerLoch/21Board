@@ -92,7 +92,7 @@
     anim: 'That animation is over 5 MB. Choose a smaller one.',
     broken: 'Couldn’t open that picture. Try another one.',
     empty: 'No picture to paste. Copy one first.',
-    blocked: 'Pasting is blocked. Allow the clipboard for 21Board in Chrome.',
+    blocked: 'Pasting is blocked. Allow the clipboard for 21Board.',
     wait: 'Opening…'
   };
   const $ = id => document.getElementById(id);
@@ -134,8 +134,14 @@
       if (br.some(x => /^(heic|heix|hevc|hevx|heim|heis|mif1|msf1)$/.test(x))) return 'heic';
       return '';
     }
-    const head = new TextDecoder().decode(b.subarray(0, 1024)).replace(/^﻿/, '').trimStart();
+    const head = svgText(b.subarray(0, 1024)).trimStart();
     return /^<(\?xml|svg|!DOCTYPE svg|!--)/i.test(head) && /<svg[\s>]/i.test(head) ? 'svg' : '';
+  }
+  // A drawing's text: UTF-8, or UTF-16 where it starts with that byte order mark (Windows' "Unicode"). The mark is
+  // left out.
+  function svgText(b) {
+    const enc = b[0] === 0xff && b[1] === 0xfe ? 'utf-16le' : b[0] === 0xfe && b[1] === 0xff ? 'utf-16be' : 'utf-8';
+    return new TextDecoder(enc).decode(b);
   }
   // Its size in pixels from its header, so a huge picture is turned away before it is decoded. null: not found.
   function sizeOf(b, kind) {
@@ -255,7 +261,7 @@
   async function drawSvg(b) {
     if (b.length > MAX_SVG) throw no(SAY.svgBig);
     let doc = null;
-    try { doc = new DOMParser().parseFromString(new TextDecoder().decode(b), 'image/svg+xml'); } catch (e) { /* not text */ }
+    try { doc = new DOMParser().parseFromString(svgText(b), 'image/svg+xml'); } catch (e) { /* not text */ }
     const root = doc && doc.documentElement;
     if (!root || root.localName !== 'svg' || root.namespaceURI !== 'http://www.w3.org/2000/svg' || doc.getElementsByTagName('parsererror').length) throw no(SAY.svgBroken);
     const { w, h, box } = svgSize(root), k = DRAW_SIDE / Math.max(w, h);

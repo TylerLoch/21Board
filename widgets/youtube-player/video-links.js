@@ -38,8 +38,8 @@
     if (isId(all)) return { video: { source: 'youtube', id: all, start: 0, link: all } };
     let why = null;
     // (Words are split at quotes too, curly ones and guillemets as well: Docs, Slides and Word write those.)
-    for (const word of all.split(/[\s"'‘-‟«»‹›​-‍⁠]+/)) {
-      const r = fromAddress(word.replace(/^[(<\[]+|[)>\].,;:!?、。，]+$/g, ''));
+    for (const word of all.split(/[\s"'\u2018-\u201f\u00ab\u00bb\u2039\u203a\u200b-\u200d\u2060]+/)) {
+      const r = fromAddress(word.replace(/^[(<\[]+|[)>\].,;:!?\u3001\u3002\uff0c]+$/g, ''));
       if (r && r.video) return r;
       if (r && r.why && !why) why = r.why;
     }

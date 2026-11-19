@@ -606,7 +606,7 @@ const PMSG = {
   anim: 'That animation is over 5 MB. Choose a smaller one.',
   broken: 'Couldn’t open that picture. Try another one.',
   empty: 'No picture to paste. Copy one first.',
-  blocked: 'Pasting is blocked. Allow the clipboard for 21Board in Chrome.'
+  blocked: 'Pasting is blocked. Allow the clipboard for 21Board.'
 };
 // A GIF or WebP made bigger with filler that browsers skip (a GIF comment; a WebP chunk of its own): the same pictures,
 // in a file as big as wanted.
@@ -6266,7 +6266,7 @@ const SUITES = [
     const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'youtube-player'); return a && { name: a.name, version: a.version, entry: a.entry, files: a.files, clash: a.clash, permissions: a.permissions, win: a.win, color: a.color, icon: a.icon, external: a.external, description: a.description }; });
     ok(reg && reg.name === 'Video Player' && reg.version === '1.0.0' && reg.entry === 'widgets/youtube-player/index.html' && JSON.stringify(reg.files) === '["widgets/youtube-player/index.html","widgets/youtube-player/video-links.js"]' &&
       reg.clash === 'later' && reg.permissions.length === 0 && !reg.external && reg.win.width === 480 && reg.win.height === 270 && reg.win.minWidth >= 200 && reg.win.minHeight >= 200 && !reg.win.aspectRatio && reg.description,
-      `it is in the registry as the Video Player (its id still youtube-player): version 1.0.0, one file, clash 'later', no extra permissions, 480 × 270, at least 200 × 200, no shape lock (${JSON.stringify(reg && reg.win)})`);
+      `it is in the registry as the Video Player (its id still youtube-player): version 1.0.0, two files (the page and video-links.js), clash 'later', no extra permissions, 480 × 270, at least 200 × 200, no shape lock (${JSON.stringify(reg && reg.win)})`);
     ok(reg && reg.description === 'Play a video from YouTube, Google Drive or Vimeo.' && /<title>Video Player<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
     const manifest = JSON.parse(/<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src)[1]);
     ok(manifest.id === 'youtube-player' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => manifest.window[k] === reg.win[k]), 'its manifest block matches the registry entry');
@@ -7880,7 +7880,7 @@ const SUITES = [
     ok(await picWin(page).locator('html').evaluate(() => document.activeElement === document.body).catch(() => false), 'nothing in it takes the focus by itself (no keyboard popping up)');
     ok(!!L.font && L.buttonFont === L.font, `its buttons are in the text style’s font (${L.buttonFont})`);
 
-    // Open… shows the file dialog, for the five kinds; a small PNG is kept exactly as it is.
+    // Open… shows the file dialog, for the five kinds and SVG; a small PNG is kept exactly as it is.
     const [chooser] = await Promise.all([page.waitForEvent('filechooser', { timeout: 5000 }).catch(() => null), picWin(page).locator('#open').click({ timeout: 3000 }).catch(() => {})]);
     const accept = chooser ? await chooser.element().getAttribute('accept') : '';
     ok(!!chooser && !chooser.isMultiple() && ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/avif', 'image/svg+xml'].every(t => accept.includes(t)) && !/heic/i.test(accept), `Open… shows the file dialog, for PNG, JPEG, GIF, WebP, AVIF and SVG (${accept})`);
@@ -8105,7 +8105,7 @@ const SUITES = [
     ok(!!d && d.name === 'Water cycle.svg' && L.alt === 'Water cycle' && d.bytes === Buffer.from(String(d.src).split(',')[1] || '', 'base64').length, `its name and alt text come from the file’s name (${d && d.name}, “${L.alt}”)`);
     const [mid, left, right] = d ? [await pixel(d.src, 0.5, 0.5), await pixel(d.src, 0.1, 0.5), await pixel(d.src, 0.9, 0.5)] : [];
     ok(near(mid, [253, 230, 138]) && near(left, [37, 99, 235]) && !!right && right[3] < 10 && /^data:image\/(webp|png)/.test(d.src),
-      `it is the drawing: the yellow circle in the middle, blue on the left, and see-through where it draws nothing, so saved as a WebP (${JSON.stringify([mid, left, right])})`);
+      `it is the drawing: the yellow circle in the middle, blue on the left, and see-through where it draws nothing, so saved as a WebP, or a PNG where WebP can’t be made (${JSON.stringify([mid, left, right])})`);
     ok(await ran(ik) === 0 && await page.locator('.toast', { hasText: 'The SVG ran' }).count() === 0 && !fetched().length,
       `nothing in it ran (its script and onload) and nothing was fetched (its stylesheet and pictures from elsewhere: ${fetched().join(', ') || 'none'})`);
 
@@ -8128,6 +8128,21 @@ const SUITES = [
     await picOpen(page, picFile('Diagram.svg', drawing('width="300" height="200"', '<foreignObject x="0" y="0" width="100%" height="40%"><div xmlns="http://www.w3.org/1999/xhtml" style="font: 30px sans-serif">Evaporation</div></foreignObject>'), 'image/svg+xml'), ik);
     d = await picData(page, ik); L = await picLook(page, ik);
     ok(!!d && d.name === 'Diagram.svg' && raster(d.src) && d.w === 2560 && !L.err, `a drawing with text in a foreignObject (as diagram apps make) opens too (${d && d.name}${L.err ? ', ' + L.err : ''})`);
+    // Saved as UTF-16 with its byte order mark (Windows' "Unicode"), accents and all; known by its content too.
+    const utf16 = (buf, be) => {
+      const b = Buffer.from(buf.toString('utf8').replace('encoding="UTF-8"', 'encoding="UTF-16"'), 'utf16le');
+      if (be) b.swap16();
+      return Buffer.concat([Buffer.from(be ? [0xfe, 0xff] : [0xff, 0xfe]), b]);
+    };
+    const accents = drawing('width="400" height="300"', '<text x="10" y="290" font-size="12">Été à l’école</text>');
+    for (const [name, buf, type, what] of [['Été.svg', utf16(accents), 'image/svg+xml', 'UTF-16, little-endian'], ['École.svg', utf16(accents, true), 'image/svg+xml', 'UTF-16, big-endian'],
+      ['Diagram', utf16(accents), '', 'UTF-16, with no .svg in its name and no type']]) {
+      await picOpen(page, picFile(name, buf, type), ik);
+      d = await picData(page, ik); L = await picLook(page, ik);
+      const [m2, l2] = d ? [await pixel(d.src, 0.5, 0.5), await pixel(d.src, 0.1, 0.5)] : [];
+      ok(!!d && d.name === name && raster(d.src) && d.w === 2560 && d.h === 1920 && near(m2, [253, 230, 138]) && near(l2, [37, 99, 235]) && !L.err,
+        `an SVG saved as ${what} opens, drawn (${d && d.name}, ${d && d.w} × ${d && d.h}${L.err ? ', ' + L.err : ''}${(await page.locator('.toast').allTextContents()).map(t => '; ' + t).join('')})`);
+    }
 
     // Too big, broken, compressed (SVGZ): turned away kindly in an empty window, nothing saved. Then a good one.
     const ik2 = await addWin(page, 'image');
@@ -8238,10 +8253,10 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Widget Picker: Paste (both corners at 1366 × 768 in every Text style and size; a picture opens a Picture window, a video link a Video Player; nothing to paste, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)', async (browser) => {
+  ['Widget Picker: Paste (both corners at 1366 × 768 in every Text style and Size, with one page and 12, every widget in view; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)', async (browser) => {
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     ok(/\| \*\*Buttons\*\* \| The Widget Picker's bottom row: Paste, Export, Import, Dark mode, Full screen and Settings\. \|/.test(readme), 'the README’s Buttons row starts with Paste');
-    ok(/\| \*\*Paste\*\* \| Ctrl\+V or ⌘V opens a copied picture in a new Picture window, and a copied video link in a new Video Player\. [^|]*On a touch screen, tap \*Paste\* in the Widget Picker\./.test(readme),
+    ok(/\| \*\*Paste\*\* \| Ctrl\+V or ⌘V opens a copied picture in a new Picture window\. A copied video link opens in a new Video Player\. [^|]*On a touch screen, tap \*Paste\* in the Widget Picker\./.test(readme),
       'the README’s Paste row: a picture or a video link, and Paste in the Widget Picker on a touch screen');
     ok(/An animation copied from a web page pastes as a still\. Open or drop its file to keep it moving\./.test(readme), 'the README says an animation copied from a web page pastes as a still, so open or drop its file to keep it moving');
     ok(/\*\*For IT:\*\* \*Paste\* asks once to see the clipboard\./.test(readme), 'For IT: Paste asks once to see the clipboard');
@@ -8260,7 +8275,7 @@ const SUITES = [
     // Paste in the open panel: shown, named, the first button after ▦, the size of the others and on their row, nothing
     // over it, and the panel on screen, its row not scrolling and clear of the other corner's ▦.
     const where = side => page.evaluate(side => {
-      const P = document.getElementById('panel'), b = P.querySelector('[data-ctl="paste"]');
+      const P = document.getElementById('panel'), b = P.querySelector('[data-ctl="paste"]'), grid = P.querySelector('.panel-widgets'), wr = grid.getBoundingClientRect(), tiles = [...grid.querySelectorAll('.widget-tile')];
       if (!b) return { there: false };
       const r = b.getBoundingClientRect(), pr = P.getBoundingClientRect(), gear = P.querySelector('[data-ctl="settings"]').getBoundingClientRect(), row = P.querySelector('.panel-controls');
       const shown = [...row.querySelectorAll('button, .picker-spacer')].filter(x => x.offsetParent), others = shown.filter(x => x !== b).map(x => x.getBoundingClientRect());
@@ -8271,9 +8286,13 @@ const SUITES = [
         first: [...row.querySelectorAll('.ctl')].filter(x => x.offsetParent)[0] === b, row: Math.abs(r.top - gear.top) < 1 && Math.abs(r.height - gear.height) < 1 && Math.abs(r.width - gear.width) < 1,
         apart: !others.some(o => hit(r, o)), tappable: !!at && b.contains(at), onScreen: pr.left >= -0.5 && pr.right <= innerWidth + 0.5 && pr.top >= -0.5 && pr.bottom <= innerHeight + 0.5,
         inPanel: r.left >= pr.left && r.right <= pr.right, noScroll: row.scrollWidth <= row.clientWidth + 1 && P.scrollWidth <= P.clientWidth + 1,
-        clear: !shown.some(x => hit(x.getBoundingClientRect(), other)), big: r.width >= 44 * ui - 0.5 && r.height >= 44 * ui - 0.5, ui: Math.round(ui * 100) / 100 };
+        clear: !shown.some(x => hit(x.getBoundingClientRect(), other)), big: r.width >= 44 * ui - 0.5 && r.height >= 44 * ui - 0.5, ui: Math.round(ui * 100) / 100,
+        cols: +P.style.getPropertyValue('--cols'), narrow: P.classList.contains('narrow'), seen: tiles.filter(t => { const tr = t.getBoundingClientRect(); return tr.top >= wr.top - 0.5 && tr.bottom <= wr.bottom + 0.5; }).length,
+        tiles: tiles.length, tilesScroll: grid.scrollHeight > grid.clientHeight + 1 };
     }, side);
+    // Paste placed well; and every widget in view, none scrolled out of sight (as on ba52951, before Paste).
     const good = w => w.there && w.shown && w.label === 'Paste/Paste' && w.icon && w.first && w.row && w.apart && w.tappable && w.onScreen && w.inPanel && w.noScroll && w.clear && w.big;
+    const allSeen = w => w.tiles >= 15 && w.seen === w.tiles && !w.tilesScroll;
     for (const style of ['standard', 'legible', 'early']) {
       if (style !== 'standard') {
         await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
@@ -8282,26 +8301,49 @@ const SUITES = [
       for (const side of ['left', 'right']) {
         await openPicker(side);
         const w = await where(side);
-        ok(good(w), `${style}, the ${side} corner: Paste is the first button after ▦, as big as the others and on their row, with nothing over it, the panel on screen and clear of the other ▦ (${JSON.stringify(w)})`);
+        ok(good(w) && allSeen(w), `${style}, the ${side} corner: Paste is the first button after ▦, as big as the others and on their row, with nothing over it, the panel on screen and clear of the other ▦, every widget in view (${JSON.stringify(w)})`);
         await page.locator('#panel').screenshot({ path: OUT + `widget-picker-paste-${style}-${side}.png` });
       }
     }
+    // Every Size in every Text style, from both corners, with 12 pages (‹ Page 12 of 12 ›: the widest row).
+    for (let i = 0; i < 11; i++) await page.evaluate(() => window.__board21.pages.create({ end: true, quiet: true }));
+    await page.waitForTimeout(500);
+    const SIZES = [0.5, 0.6, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+    for (const style of ['standard', 'legible', 'early']) {
+      await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
+      const bad = [];
+      for (const sc of SIZES) {
+        await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(150);
+        for (const side of ['left', 'right']) {
+          await openPicker(side);
+          const w = await where(side);
+          if (!good(w) || !allSeen(w) || w.cols !== 5) bad.push(Object.assign({ sc, side }, w));
+        }
+      }
+      ok(!bad.length && await page.locator('#panel .page-ind b').textContent() === '12 of 12',
+        `${style}, 12 pages, every Size from both corners: Paste fits as at 100%, five columns, every widget in view (${bad.length ? JSON.stringify(bad) : SIZES.length * 2 + ' cases'})`);
+    }
     await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]');
-    for (const sc of [0.5, 0.8, 1.25, 1.5, 2]) {
-      await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
+    // Smaller screens: five columns from 600 px of room, as on ba52951. ‹ Page › ends the row of buttons where that row
+    // clears the other corner's ▦, else it has a row of its own.
+    for (const [vw, vh, sc, wide, all, what] of [[1180, 820, 1.75, true, true, 'an iPad Air, Size 175%'], [1180, 820, 2, false, false, 'an iPad Air, Size 200%'],
+      [1280, 1024, 2, false, true, '1280 × 1024, Size 200%'], [768, 1024, 1.25, false, true, 'an iPad upright, Size 125%']]) {
+      await page.setViewportSize({ width: vw, height: vh }); await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
       for (const side of ['left', 'right']) {
         await openPicker(side);
         const w = await where(side);
-        ok(good(w), `${sc * 100}%, the ${side} corner: Paste fits as at 100% (${JSON.stringify(w)})`);
+        ok(good(w) && w.cols === 5 && w.narrow === !wide && (!all || allSeen(w)) && w.seen >= 10,
+          `${what}, the ${side} corner: five columns, ‹ Page › ${wide ? 'beside the buttons' : 'on a row of its own'}, Paste placed well, ${all ? 'every widget in view' : `${w.seen} of ${w.tiles} widgets in view`} (${JSON.stringify(w)})`);
+        if (side === 'left') await page.locator('#panel').screenshot({ path: OUT + `widget-picker-paste-${vw}x${vh}-${sc * 100}.png` });
       }
     }
-    await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
 
     const wins = id => page.evaluate(id => Array.from(window.__board21.state.insts.keys()).filter(k => k.startsWith(id + ':')).sort((a, b) => +a.split(':')[1] - +b.split(':')[1]), id);
-    const tapPaste = async side => { await openPicker(side); await page.click('#panel.open [data-ctl="paste"]'); };
+    const tapPaste = async side => { await openPicker(side); await page.click('#panel.open [data-ctl="paste"]', { timeout: 3000 }).catch(() => {}); };
     const toastSays = t => page.locator('.toast', { hasText: t }).count().then(c => c > 0);
     const noToasts = () => page.locator('.toast').evaluateAll(ts => ts.forEach(t => t.remove())).catch(() => {});
-    const NOTHING = 'Nothing to paste. Copy a picture or a video link first.', BLOCKED = 'Pasting is blocked. Allow the clipboard for 21Board in Chrome.';
+    const NOTHING = 'Nothing to paste. Copy a picture or a video link first.', BLOCKED = 'Pasting is blocked. Allow the clipboard for 21Board.';
     // A picture: a new Picture window in the middle of the board, in front and selected, and the panel closes.
     const pic = await drawPic(page, 90, 60, 'image/png');
     await copyPic(page, pic);
@@ -8310,8 +8352,8 @@ const SUITES = [
     ok(await eventually(async () => (await wins('image')).length === n + 1), 'with a picture on the clipboard, Paste opens a Picture window');
     let ik = (await wins('image')).slice(-1)[0];
     ok(await eventually(async () => ((await picData(page, ik)) || {}).w === 90 && (await picLook(page, ik)).pic), 'with the picture in it');
-    const b = await page.evaluate(() => window.__board21.boundsRect()), m = await page.evaluate(ik => { const r = window.__board21.state.insts.get(ik).rect; return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; }, ik);
-    ok(await page.locator('#panel.open').count() === 0 && await page.evaluate(() => window.__board21.state.focused) === ik && Math.abs(m.x - (b.x + b.w / 2)) < 40 && Math.abs(m.y - (b.y + b.h * 0.42)) < 40,
+    const b = await page.evaluate(() => window.__board21.boundsRect()), m = await page.evaluate(ik => { const i = window.__board21.state.insts.get(ik), r = i && i.rect; return r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : { x: 1e9, y: 1e9 }; }, ik);   // (no window: a failed check, not a crash)
+    ok(!!ik && await page.locator('#panel.open').count() === 0 && await page.evaluate(() => window.__board21.state.focused) === ik && Math.abs(m.x - (b.x + b.w / 2)) < 40 && Math.abs(m.y - (b.y + b.h * 0.42)) < 40,
       `the Widget Picker closes; the window is in the middle of the board, in front and selected (${Math.round(m.x)}, ${Math.round(m.y)})`);
     await page.screenshot({ path: OUT + 'widget-picker-paste-picture.png' });
     // A video link: a new Video Player on that video.
@@ -8320,8 +8362,9 @@ const SUITES = [
     await tapPaste('right');
     ok(await eventually(async () => (await wins('youtube-player')).length === n + 1), 'with a YouTube link on the clipboard, Paste opens a Video Player');
     ik = (await wins('youtube-player')).slice(-1)[0];
-    ok(await eventually(async () => (await ytLook(page, ik)).src === EMBED(VID2, '&start=90')) && ((await ytData(page, ik)) || {}).videoUrl === `https://youtu.be/${VID2}?t=90` && await page.locator('#panel.open').count() === 0,
-      `on that video, from 1:30, and the Widget Picker closes (${(await ytLook(page, ik)).src})`);
+    const vLook = () => ik ? ytLook(page, ik).catch(() => ({})) : Promise.resolve({});   // (no window: a failed check, not a crash)
+    ok(await eventually(async () => (await vLook()).src === EMBED(VID2, '&start=90')) && ((ik && await ytData(page, ik)) || {}).videoUrl === `https://youtu.be/${VID2}?t=90` && await page.locator('#panel.open').count() === 0,
+      `on that video, from 1:30, and the Widget Picker closes (${(await vLook()).src})`);
     // Nothing to paste: empty, or words that aren't a video link. The Widget Picker stays open, and no window opens.
     for (const [text, what] of [['', 'an empty clipboard'], ['Spelling words', 'words'], ['https://www.example.com/page', 'a link that isn’t a video']]) {
       await copyText(page, text); await noToasts();
@@ -8329,6 +8372,18 @@ const SUITES = [
       await tapPaste('left');
       ok(await eventually(() => toastSays(NOTHING)) && await page.locator('#panel.open').count() === 1 && JSON.stringify([(await wins('image')).length, (await wins('youtube-player')).length]) === JSON.stringify(before),
         `${what}: “${NOTHING}”, the Widget Picker stays open, no window opens`);
+    }
+    // A link the Video Player knows but can't play: what it is, and what to copy instead (its own words, with Copy).
+    for (const [text, say, what] of [[PLAYLIST_EMBED, 'That’s a list of videos. Copy a link to one.', 'a playlist'],
+      [`https://drive.google.com/drive/folders/${D1}`, 'That’s a folder. Copy a link to one video.', 'a Drive folder'],
+      [`https://docs.google.com/document/d/${D1}/edit`, 'That’s a document. Copy a link to a video.', 'a Google Doc'],
+      [`https://docs.google.com/spreadsheets/d/${D1}/edit`, 'That’s a spreadsheet. Copy a link to a video.', 'a Google Sheet'],
+      [`https://docs.google.com/presentation/d/${D1}/edit`, 'That’s a presentation. Copy a link to a video.', 'Google Slides']]) {
+      await copyText(page, text); await noToasts();
+      const before = [(await wins('image')).length, (await wins('youtube-player')).length];
+      await tapPaste('left');
+      ok(await eventually(() => toastSays(say)) && !await toastSays(NOTHING) && await page.locator('#panel.open').count() === 1 && JSON.stringify([(await wins('image')).length, (await wins('youtube-player')).length]) === JSON.stringify(before),
+        `${what}: “${say}”, the Widget Picker stays open, no window opens`);
     }
     // Blocked: the browser won't let 21Board see the clipboard.
     await ctx.clearPermissions(); await noToasts();
@@ -8345,7 +8400,7 @@ const SUITES = [
     n = (await wins('image')).length;
     await openPicker('left');
     ok(good(await where('left')), 'windows locked: Paste still shows');
-    await page.click('#panel.open [data-ctl="paste"]'); await page.waitForTimeout(800);
+    await page.click('#panel.open [data-ctl="paste"]', { timeout: 3000 }).catch(() => {}); await page.waitForTimeout(800);
     ok((await wins('image')).length === n && await toastSays('Windows are locked'), 'and opens no window: the board says how to unlock');
     await setLock(false);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
@@ -8369,7 +8424,7 @@ const SUITES = [
     const kc = await k.evaluate(() => Array.from(document.querySelectorAll('.panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl));
     await copyPic(k, pic);
     const kn = (await picWins(k)).length;
-    await k.click('#panel.open [data-ctl="paste"]').catch(() => {});
+    await k.click('#panel.open [data-ctl="paste"]', { timeout: 3000 }).catch(() => {});
     ok(kc[0] === 'paste' && await eventually(async () => (await picWins(k)).length === kn + 1), `kiosk: Paste comes first (${kc.join(', ')}) and opens a Picture window`);
     await k.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
@@ -8382,8 +8437,15 @@ const SUITES = [
     ok(/function readText\(/.test(links) && /function fromYouTube\(/.test(links) && !/function readText\(|function fromYouTube\(|function fromDrive\(|function fromVimeo\(/.test(vp) &&
       /<script src="video-links\.js"><\/script>/.test(vp) && /<script src="widgets\/youtube-player\/video-links\.js"><\/script>\s*<script src="board\.js">/.test(shell) && /'widgets\/youtube-player\/video-links\.js': '[0-9a-f]{16}'/.test(sw),
       'the Video Player reads links with widgets/youtube-player/video-links.js, which the board loads too, and which is in the offline copy');
+    // Nothing in it that can't be seen: the zero-width characters (and the quotes and CJK marks) a link is split at are
+    // written as \u escapes, as before the move, so an editor can't drop them. And it still splits there.
+    let VL = null; try { VL = require(linksFile); } catch (e) { /* not there */ }
+    const split = VL && ['“https://youtu.be/dQw4w9WgXcQ”', '«https://youtu.be/dQw4w9WgXcQ»', 'https://youtu.be/dQw4w9WgXcQ\u200bwatch', 'https://youtu.be/dQw4w9WgXcQ\u2060', '(https://youtu.be/dQw4w9WgXcQ)。', 'https://youtu.be/dQw4w9WgXcQ，']
+      .every(t => (VL.readText(t).video || {}).link === 'https://youtu.be/dQw4w9WgXcQ');
+    ok(!!links && !/[\u200b-\u200f\u2060\ufeff]/.test(links) && links.includes('\\u200b-\\u200d\\u2060]+/') && links.includes('\\u3001\\u3002\\uff0c]+$/') && split,
+      `video-links.js has no invisible characters, and still splits a link from quotes, zero-width spaces and CJK marks (${(links.match(/[\u200b-\u200f\u2060\ufeff]/g) || []).map(c => 'U+' + c.charCodeAt(0).toString(16)).join(' ') || 'none'})`);
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' ');
-    ok(/\| \*\*Video Player\*\* \|[^|]*A link pasted or dropped on the board opens one too/.test(readme) && /\| `file` \| `\(file, \{ reason \}\)` \| A picture or a video link pasted or dropped on the board/.test(sdkDoc) && /A video link opens a new Video Player\./.test(sdkDoc),
+    ok(/\| \*\*Video Player\*\* \|[^|]*A link pasted or dropped on the board opens one too\. The board reads it with the widget's own `video-links\.js`\./.test(readme) && /\| `file` \| `\(file, \{ reason \}\)` \| A picture or a video link pasted or dropped on the board/.test(sdkDoc) && /A video link opens a new Video Player\./.test(sdkDoc),
       'the README and the SDK guide say a video link pasted or dropped on the board opens a Video Player');
 
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, permissions: ['clipboard-read', 'clipboard-write'] });
@@ -8461,7 +8523,7 @@ const SUITES = [
     n = (await wins('youtube-player')).length;
     await page.keyboard.press('Control+V');
     ok(await eventually(async () => (await ytLook(page, empty)).src === VIMEO_EMBED(V1)) && (await wins('youtube-player')).length === n, 'an empty Video Player with the keyboard takes the link itself: no new window');
-    await ytChoose(page, 'Change video', empty);
+    await ytChoose(page, 'Change video', empty).catch(() => {});   // (a missing item fails the check below, not the suite)
     await ytWin(page, empty).locator('h1').click().catch(() => {});
     await copyText(page, 'Spelling words');
     await page.keyboard.press('Control+V');
@@ -8484,9 +8546,22 @@ const SUITES = [
     const at = await page.evaluate(() => { const Z = window.__board21.zoom; return { x: (420 - Z.ox) / Z.s, y: (330 - Z.oy) / Z.s }; }), dm = dk ? await centre(dk) : { x: 1e9, y: 1e9 };
     ok(!!dk && await eventually(async () => (await ytLook(page, dk)).src === EMBED(VID)) && Math.hypot(dm.x - at.x, dm.y - at.y) < 60, `where it was dropped, on that video (${Math.round(dm.x)}, ${Math.round(dm.y)}; dropped at ${Math.round(at.x)}, ${Math.round(at.y)})`);
     n = (await wins('youtube-player')).length;
+    // (A synthetic drop never leaves the page: what keeps a real one from going to the link is the board taking the
+    // dragover and the drop.)
     const url0 = page.url(), other = await dropLink('https://www.example.com/', 900, 330); await page.waitForTimeout(900);
-    ok((await wins('youtube-player')).length === n && page.url() === url0, `another link dropped on the board opens nothing, and the board stays (${JSON.stringify(other)})`);
+    ok(other.over && other.took && (await wins('youtube-player')).length === n && page.url() === url0, `another link dropped on the board opens nothing, and the board takes it, so the browser stays (${JSON.stringify(other)})`);
+    const two = await dropLink(`https://www.youtube.com/watch?v=${VID}\r\nhttps://youtu.be/${VID2}`, 900, 330); await page.waitForTimeout(900);
+    ok(two.over && two.took && (await wins('youtube-player')).length === n, `two links dropped at once open nothing, and the board takes them too (${JSON.stringify(two)})`);
     await closeAll('youtube-player');
+    // In one of the board's text fields, a dropped link is the field's; while a dialog is open, it opens nothing.
+    n = (await wins('youtube-player')).length;
+    await page.evaluate(() => { window.__board21.pages.rename(); }); await page.waitForSelector('#modal.open input');
+    const fb = await page.locator('#modal.open input').boundingBox(), cb = await page.locator('#modal.open .modal-card').boundingBox();
+    const inField = await dropLink(`https://www.youtube.com/watch?v=${VID}`, fb.x + fb.width / 2, fb.y + fb.height / 2);
+    const inDialog = await dropLink(`https://www.youtube.com/watch?v=${VID}`, cb.x + 12, cb.y + 12); await page.waitForTimeout(900);
+    ok(!inField.over && !inField.took && inDialog.over && inDialog.took && (await wins('youtube-player')).length === n && await page.locator('#modal.open').count() === 1,
+      `a link dropped in the Rename dialog’s box is left to the box, and one dropped elsewhere on the dialog opens nothing (${JSON.stringify({ inField, inDialog })})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
 
     // Windows locked: no window, and the board says how to unlock, as for a picture.
     await openSettings(page); await page.click('#settings [data-act="lock-windows"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(250);
@@ -11670,6 +11745,14 @@ const SUITES = [
     board = kids(page.mainFrame())[0]; widget = board && kids(board)[0];
     ok(!!widget && await board.evaluate(() => self.origin === 'null' && !!window.__board21.store.mem) && await widget.evaluate(() => Board21.context.widgetId === 'counter' && innerWidth === 320),
       'the lab page runs a pasted widget in a real window, sandboxed with its own empty storage');
+    // Its Widget Picker has no Paste: there is no Picture or Video Player to open there.
+    const labPaste = await board.evaluate(() => {
+      document.querySelector('.picker-btn.left').click();
+      const b = document.querySelector('#panel [data-ctl="paste"]'), r = { open: document.getElementById('panel').classList.contains('open'), paste: !!b && !b.hidden && !!b.offsetParent, clipboard: !!(navigator.clipboard && navigator.clipboard.read) };
+      document.querySelector('.picker-btn.left').click();
+      return r;
+    });
+    ok(labPaste.open && !labPaste.paste, `the test board’s Widget Picker has no Paste (${JSON.stringify(labPaste)})`);
     await page.evaluate(() => document.getElementById('b21-dev').shadowRoot.querySelector('[data-act="edit"]').click()); await page.waitForTimeout(300);
     ok(await page.evaluate(() => !document.getElementById('editor').hidden && !document.getElementById('b21-dev')), '"Edit code" goes back to the code');
 
