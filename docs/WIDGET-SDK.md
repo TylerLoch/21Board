@@ -481,13 +481,14 @@ run `node tools/build-sdk.js`. The tests check it.
 ### Building with an AI tool
 
 Ask Gemini Canvas, Claude, ChatGPT or another AI tool for **one plain HTML file** whose first script is the SDK at its full address on a 21Board site
-the tool's preview can reach, for example:
+the tool's preview can reach. Use the GitHub Pages copy:
 
 ```html
-<script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>
+<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>
 ```
 
-The address is public, so the preview shows the widget in the dev window from anywhere.
+Some previews, such as Gemini Canvas, can't load the SDK from `boardapp.ccsd21.org`. The GitHub Pages copy
+works in them, and the preview shows the widget in the dev window.
 
 **[docs/AI-PROMPT.md](AI-PROMPT.md)** has prompts to paste before describing the widget. The full one covers
 this guide's rules, the window menu, window size, dragging, theming and the house look. The short one covers the

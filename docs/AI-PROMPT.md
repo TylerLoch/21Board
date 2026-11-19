@@ -44,9 +44,10 @@ works in your preview. Remove the Board21 mock and use the SDK directly."
 21Board SDK. Paste the HTML into the **widget lab**, `sdk/lab.html` on any 21Board site, such as
 <https://boardapp.ccsd21.org/sdk/lab.html>. Tap **Try it**. It's the same dev window, with the same Checks.
 
-**The SDK address.** The prompts load the SDK from 21Board itself, `boardapp.ccsd21.org`. It's public, so
-previews reach it from anywhere. Inside 21Board the address doesn't matter. *Upload file…* puts in the
-board's own copy, and *Copy for 21Board* points it at the `widgets/` folder.
+**The SDK address.** The prompts load the SDK from 21Board's copy on GitHub Pages,
+`tylerloch.github.io/21Board`. Some previews, such as Gemini Canvas, can't load it from
+`boardapp.ccsd21.org`. Inside 21Board the address doesn't matter. *Upload file…* puts in the board's own
+copy, and *Copy for 21Board* points it at the `widgets/` folder.
 
 ---
 
@@ -90,7 +91,7 @@ the widget I describe after this prompt. If I haven't described one, ask me what
 - We need **one plain HTML file** (no React, JSX, TypeScript, libraries or build step). `<!DOCTYPE html>`
   is the very first line, then `<html lang="en">`.
 - In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly
-  `<script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>` (no async, defer or type=module).
+  `<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>` (no async, defer or type=module).
 - That address is public, and the SDK works in your preview. There it runs the widget in a real 21Board
   window, with everything the board gives it. Use `Board21` directly. Write no mock, stub or fallback for
   it, and don't check that it loaded. If your preview says `Board21 is not defined`, it blocked the SDK.
@@ -121,7 +122,7 @@ the widget I describe after this prompt. If I haven't described one, ask me what
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>
+<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>
 <script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>My Widget</title>
@@ -350,7 +351,7 @@ again.
 The essentials only, for trying out an idea. For a widget you will keep, use the full prompt.
 
 ````markdown
-Build the widget I describe below as a 21Board widget (a window on a K–8 classroom smartboard). We need **one plain HTML file** (no React, no build step), starting with `<!DOCTYPE html>`. In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly `<script src="https://boardapp.ccsd21.org/sdk/board21.js"></script>` (no async, defer or type=module). That address is public, and the SDK works in your preview, where it runs the widget in a real 21Board window. Use `Board21` directly, with no mock, stub or fallback.
+Build the widget I describe below as a 21Board widget (a window on a K–8 classroom smartboard). We need **one plain HTML file** (no React, no build step), starting with `<!DOCTYPE html>`. In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly `<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>` (no async, defer or type=module). That address is public, and the SDK works in your preview, where it runs the widget in a real 21Board window. Use `Board21` directly, with no mock, stub or fallback.
 
 The next line is a manifest:
 `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
