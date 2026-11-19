@@ -569,9 +569,8 @@ first visit online inside 21Board before it can work offline.
 
 **Offline.** 21Board saves its own offline copy, but it can't save another site's pages. An app's window works
 offline only once **that app saves its own offline copy** with a service worker of its own, and the device has
-opened it online since. **None of the three has one yet. Each needs its own.** 21Board won't need to change when
-they do. We tested this with a copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the same
-drawing.
+opened it online since. **None of the three has one yet.** 21Board won't need to change when they do. Tested with a
+copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the same drawing.
 
 - Offline, the window's title says **Offline**, and a message says once that you're offline and the app works only
   if it's saved on this device. 21Board can't see into another site's page, so it can't tell whether the app

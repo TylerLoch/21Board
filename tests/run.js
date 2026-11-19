@@ -2281,8 +2281,10 @@ const SUITES = [
     const saved = () => page.evaluate(() => ({ value: document.querySelector('#settings [data-val="saved"] .v').textContent, label: document.querySelector('#settings [data-val="saved"] .lbl').textContent,
       items: [...document.querySelectorAll('#grp-saved .inst')].map(i => i.querySelector('.meta').innerText.replace(/\s+/g, ' ')) }));
     let sv = await saved();
-    ok(sv.label === 'Windows' && sv.value === 'None' && await page.evaluate(() => document.getElementById('grp-saved').getAttribute('aria-label')) === 'Windows',
-      `This page › Windows on an empty page: ${sv.label}, ${sv.value}`);
+    const emptyNote = await page.evaluate(() => document.querySelector('#grp-saved .empty-note').textContent);
+    ok(sv.label === 'Windows' && sv.value === 'None' && await page.evaluate(() => document.getElementById('grp-saved').getAttribute('aria-label')) === 'Windows' &&
+      emptyNote === 'No windows yet. Open a widget from the Widget Picker.',
+      `This page › Windows on an empty page: ${sv.label}, ${sv.value} (“${emptyNote}”)`);
     await page.keyboard.press('Escape');
     await page.evaluate(() => { const b = window.__board21; b.openWidget('notes'); b.openWidget('timer'); b.openWidget('dice'); }); await page.waitForTimeout(1200);
     await page.evaluate(() => window.__board21.closeWin('dice:1')); await page.waitForTimeout(400);
@@ -5843,11 +5845,13 @@ const SUITES = [
     await page.evaluate(() => window.__board21.openWidget('first-then-board'));
     ok(await connected(page), 'the First/Then Board opens and connects');
     ok(await eventually(async () => { const x = await look(page); return x.first === 'Classwork' && x.then === 'Free choice' && x.theme === 'theme-classic' && !x.firstDone; }), 'it starts with Classwork, then Free choice');
-    // For children: the cards in sentence case (iPad keeps its capital), FIRST and THEN in capitals, the stamp “All done!”.
+    // For children: the cards in sentence case (iPad keeps its capital), their category too, FIRST and THEN in
+    // capitals, the stamp “All done!”.
     const caps = await ft(page).locator('html').evaluate(() => ({ title: document.querySelector('.board-title-pill').innerText, first: document.getElementById('first-heading').innerText,
-      then: document.getElementById('then-heading').innerText, stamps: [...document.querySelectorAll('.done-stamp-text')].map(s => s.textContent + '/' + getComputedStyle(s).textTransform) }));
-    ok(caps.title === '⭐ FIRST ➔ THEN' && caps.first === 'FIRST' && caps.then === 'THEN' && caps.stamps.join() === 'All done!/none,All done!/none',
-      `FIRST and THEN stay in capitals; the done stamp says “All done!”, not in capitals (${JSON.stringify(caps)})`);
+      then: document.getElementById('then-heading').innerText, stamps: [...document.querySelectorAll('.done-stamp-text')].map(s => s.textContent + '/' + getComputedStyle(s).textTransform),
+      badges: ['first-badge', 'then-badge'].map(id => document.getElementById(id).innerText) }));
+    ok(caps.title === '⭐ FIRST ➔ THEN' && caps.first === 'FIRST' && caps.then === 'THEN' && caps.stamps.join() === 'All done!/none,All done!/none' && caps.badges.join() === 'Academic,Reward',
+      `FIRST and THEN stay in capitals; the cards’ categories and the done stamp (“All done!”) don’t (${JSON.stringify(caps)})`);
     let a;
     // Pick a card, mark it done, change the theme.
     const f = ft(page);
@@ -6067,11 +6071,12 @@ const SUITES = [
     ok(rawReadme.split('\n')[2] === '**Build your own suite of smartboard widgets**' && manifest.description === 'Build your own suite of smartboard widgets' && pageDesc === 'Build your own suite of smartboard widgets' && !oldTag.length,
       `the tagline is “Build your own suite of smartboard widgets” in the README, the manifest and the page (${manifest.description} / ${pageDesc}; old words in ${oldTag.join(', ') || 'none'})`);
     const dataDocs = doc('docs/DATA-FORMAT.md');
-    ok(!/Not yet tried on a real kiosk/i.test(readme) && !/ready in its repository/.test(readme) && readme.replace(/\*\*/g, '').includes("None of the three has one yet. Each needs its own. 21Board won't need to change when they do.") &&
-      readme.includes('We tested this with a copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the same drawing.'),
+    // (each sentence says something new, and the README never says “we”)
+    ok(!/Not yet tried on a real kiosk/i.test(readme) && !/ready in its repository/.test(readme) && !/Each needs its own|We tested/.test(readme) &&
+      readme.replace(/\*\*/g, '').includes("None of the three has one yet. 21Board won't need to change when they do. Tested with a copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the same drawing."),
       'the README says 21Board was tried on a real kiosk, and that none of the district apps has an offline worker yet');
     ok(/\*\*This page ▸ Windows:\*\*/.test(readme) && !/Saved widgets/.test(readme + dataDocs + doc('docs/ROADMAP.md')) && readme.includes('with only its untouched first page, "Page 1", writes nothing yet') &&
-      /name: "Page 1"/.test(dataDocs) && /"My Board"/.test(dataDocs),
+      /name: "Page 1"/.test(dataDocs) && dataDocs.includes('On devices set up before 2026.11.18-10 it\'s "My Board". Saved pages keep their names. Board Sync never sends an untouched first page by either name. That empty page would otherwise be added to every board that joins.'),
       'the README and the docs say “Windows” for This page’s windows, and “Page 1” for a new board’s first page (the data format guide notes “My Board” on older devices)');
 
     // The widget dev window's ⋯ menu, and the widget lab.
@@ -8726,18 +8731,25 @@ const SUITES = [
     await A.p.locator('#modal.open .btn', { hasText: 'Close' }).click(); await A.p.evaluate(() => { window.__board21.link.trouble = null; });
     ok(nagBtn.includes('Reconnect') && fixBtn === 'Reconnect/link-reconnect' && askBtns === 'Reconnect|Close' && /^Reconnect your “21Board” folder/.test(askTitle),
       `the message, Settings and the dialog each offer “Reconnect” (${nagBtn.join(', ')} / ${fixBtn} / ${askBtns})`);
-    await A.p.locator('.folder-note.left').click(); await A.p.waitForTimeout(500);
-    ok(await note(A.p) === '' && await A.p.locator('.toast', { hasText: 'Your “21Board” folder is connected again.' }).count() === 1, 'one tap reconnects it');
-    // Chrome refusing without asking: Settings still says Reconnect, and it then offers to choose the folder again.
-    await A.p.evaluate(() => { window.__drive = { perm: 'denied' }; return window.__board21.link.refresh(); });
+    await A.p.locator('.folder-note.left').click();   // (waited for, not a fixed time: a busy machine is slower)
+    ok(await eventually(async () => await note(A.p) === '' && await A.p.locator('.toast', { hasText: 'Your “21Board” folder is connected again.' }).count() === 1),
+      `one tap reconnects it (note “${await note(A.p)}”; messages: ${(await A.p.locator('#toasts .toast').allInnerTexts()).map(t => t.replace(/\s+/g, ' ')).join(' | ')})`);
+    // Chrome refusing without asking: Settings' button does what its hint says, choose the folder again (here the
+    // picker is cancelled). The board's note, tapped, offers the same.
+    await A.p.evaluate(() => { window.__drive = { perm: 'denied', pickFails: 'AbortError' }; return window.__board21.link.refresh(); });
     await openSettings(A.p);
-    const denyBtn = await A.p.locator('#settings .save-warn .btn').allInnerTexts();
-    await A.p.locator('#settings .save-warn .btn').click(); await A.p.locator('#modal.open').waitFor();
+    const denyBtn = await A.p.locator('#settings .save-warn .btn').evaluateAll(bs => bs.map(b => b.textContent.trim() + '/' + b.dataset.act).join());
+    const denyHint = await A.p.locator('#settings .save-warn .hint').innerText(), picks = await A.p.evaluate(() => (window.__picks || []).length);
+    await A.p.locator('#settings .save-warn .btn').click();
+    const denyPick = await eventually(() => A.p.evaluate(n => (window.__picks || []).length === n + 1 && window.__picks[n] === true, picks));
+    await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(200);
+    await A.p.locator('.folder-note.left').click(); await A.p.locator('#modal.open').waitFor();
     const denyAsk = (await A.p.locator('#modal.open .btn').allInnerTexts()).join('|');
     await A.p.locator('#modal.open .btn', { hasText: 'Close' }).click();
-    await A.p.evaluate(() => { window.__drive = {}; return window.__board21.link.refresh(); }); await A.p.keyboard.press('Escape');
-    ok(denyBtn.join() === 'Reconnect' && denyAsk === 'Choose the folder again…|Close' && await eventually(async () => await note(A.p) === ''),
-      `a folder Chrome blocks: Reconnect in Settings, then “Choose the folder again…” (${denyBtn.join()} / ${denyAsk})`);
+    ok(denyBtn === 'Choose the folder again…/link-choose' && /Chrome is blocking it\. Choose the folder again to allow it\./.test(denyHint) && denyPick && denyAsk === 'Choose the folder again…|Close',
+      `a folder Chrome blocks: Settings and the note’s dialog offer “Choose the folder again…”, and Settings’ opens the folder picker (${denyBtn} / ${denyHint} / ${denyPick} / ${denyAsk})`);
+    await A.p.evaluate(() => { window.__drive = {}; return window.__board21.link.refresh(); });
+    ok(await eventually(async () => await note(A.p) === ''), `allowed again: the note goes (“${await note(A.p)}”, ${await A.p.evaluate(() => { const l = window.__board21.link; return l.perm + ' ' + l.problem() + ' ' + JSON.stringify(l.trouble); })})`);
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();

@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-10';
-  const BOARD_BUILD = 'e9e48da6';
+  const BOARD_BUILD = '4efc58d6';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4587,8 +4587,9 @@
           <button class="btn primary" data-act="link-setup">${svg('send')}Set up…</button></div>`;
     }
     const dev = L.device(), prob = L.problem(), info = FolderNote.info();
-    // (Update only once the new version is here: before that, the button would do nothing, see FolderNote)
-    const fix = { allow: ['link-reconnect', 'Reconnect'], missing: ['link-check', 'Look again'], send: ['link-send', 'Try again'], newer: S.sw.updateReady ? ['update', 'Update'] : null }[prob];
+    // (Update only once the new version is here: before that, the button would do nothing, see FolderNote. A folder
+    // Chrome blocks is chosen again, as the hint says: Reconnect would only say so.)
+    const fix = { allow: L.perm === 'denied' ? ['link-choose', 'Choose the folder again…'] : ['link-reconnect', 'Reconnect'], missing: ['link-check', 'Look again'], send: ['link-send', 'Try again'], newer: S.sw.updateReady ? ['update', 'Update'] : null }[prob];
     const warn = info && prob ? `<div class="row save-warn"><div><div class="lbl"><span class="status-dot warn"></span>${esc(info.title)}</div><div class="hint">${esc(info.text)}</div></div>${fix ? `<button class="btn small primary" data-act="${fix[0]}">${fix[1]}</button>` : ''}</div>` : '';
     const H = BoardHistory;
     return `<h3>Board Sync</h3>
@@ -4843,7 +4844,7 @@
           `<div class="meta"><b>${esc(name)}</b><span>${status}${app ? ` · ${esc(widget.name)} keeps its own work on this device${unsaved ? ' · window not saved' : ''}` : unsaved ? ' · not saved' : ''}</span></div>` +
           (widget && !i.open ? `<button class="icon" data-act="inst-open" data-val="${esc(ikey)}" title="Open" aria-label="Open ${esc(name)}">${svg('open')}</button>` : '') +
           `<button class="icon" data-act="inst-delete" data-val="${esc(ikey)}" title="Delete" aria-label="${app ? `Delete the ${esc(name)} window` : `Delete ${esc(name)} and its content`}">${svg('trash')}</button></div>`;
-      }).join('') : '<div class="empty-note">No widgets yet. Open one from the Widget Picker.</div>';
+      }).join('') : '<div class="empty-note">No windows yet. Open a widget from the Widget Picker.</div>';
       const saved = settingsGroup('saved', 'Windows', insts.length ? `${insts.length} window${insts.length === 1 ? '' : 's'}` : 'None',
         `<div class="hint">${note ? 'Closed windows keep their content while 21Board stays open.' : 'Closed windows keep their content until you delete them here.'}</div><div class="inst-list">${instHTML}</div>`);
 

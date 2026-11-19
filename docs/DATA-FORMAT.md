@@ -145,8 +145,8 @@ installed*. Test widgets are now uploaded as a file. See [`devfile:<widgetId>`](
 ```
 
 A new device's first page is "Page 1". On devices set up before 2026.11.18-10 it's "My Board". Saved pages keep
-their names. Board Sync never sends an untouched first page by either name. It would be added to every board that
-joins.
+their names. Board Sync never sends an untouched first page by either name. That empty page would otherwise be added
+to every board that joins.
 
 `uid` is which page this is, on every device and in Board history. Board Sync merges pages by it. Two pages on one
 device never share one. `pos` orders the pages. A new or moved page gets a `pos` between its neighbors'. When the
