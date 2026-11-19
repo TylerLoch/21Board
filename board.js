@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-14';
-  const BOARD_BUILD = '1a5dbaf7';
+  const BOARD_BUILD = 'ef68a97c';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -5678,6 +5678,7 @@
   // - "Photos": each picture once, named by its content ("<SHA-256>.jpg"): the background photos (see putPhoto,
   //   readPhoto) and the pictures in windows' content (Merge.picType, putPics, picsFor). A device file only names
   //   them. Pictures no device file or Board history copy names are deleted after about a week (tidyPhotos).
+  //   Google Drive may make a "Photos (1)" or "Board history (1)" beside one: both are read.
   // - "Board history": hourly copies (section 13c). "About this folder.txt" explains the files to anyone browsing.
   //   Other files are left alone, and other .21board files (exports saved there) aren't merged.
   // A round (see round) reads this device's records, gives a new version to every part changed here since the last
@@ -5721,7 +5722,7 @@
   const LINK_README = 'About this folder.txt';
   const LINK_PHOTOS = 'Photos';              // the pictures: background photos (see putPhoto) and windows' (see putPics)
   const LINK_PHOTO_KEEP_MS = 7 * 864e5;      // a picture nothing names is deleted once it is this old (see tidyPhotos)
-  const LINK_PIC_PIXELS = 50e6;              // a window's picture read from Photos: at most this many pixels (the Picture widget's)
+  const LINK_PIC_PIXELS = 50e6, LINK_PIC_ANIM = 5 * 1048576;   // a window's picture read from Photos: at most this many pixels, and bytes if it moves (the Picture widget's)
   const LINK_LOCK = '21board-link';          // the Web Lock: rounds, Unlink's and Erase's last writes
   // A device file's name, and Google Drive's copies of it ("… (1).21board").
   const LINK_FILE_RE = /^21Board \((.{0,60})\) \[([0-9a-z]{4,8})\]( \(\d+\))?\.21board$/i;
@@ -5753,7 +5754,8 @@
   const picsOfFile = obj => [obj].concat(Array.isArray(obj.pages) ? obj.pages : []).flatMap(e => (e && Array.isArray(e.instances) ? e.instances : []))
     .flatMap(i => [i && i.data].concat(i && i.pending && Array.isArray(i.pending.data) ? i.pending.data.map(q => q && q.val) : [])).flatMap(v => Merge.refsIn(v) || []);
   // A picture's size in pixels from its header ({w, h}, or null if it isn't found), so a huge one is turned away before
-  // it is decoded. (As the Picture widget's sizeOf.)
+  // it is decoded. (A copy of the Picture widget's sizeOf, as movesOf is of its moves and Merge.sniff of its kindOf:
+  // a change to one is made to both.)
   function pixelsOf(b, kind) {
     const u16 = i => b[i] << 8 | b[i + 1], u32 = i => (b[i] << 24 | b[i + 1] << 16 | b[i + 2] << 8 | b[i + 3]) >>> 0;
     const l16 = i => b[i] | b[i + 1] << 8, l24 = i => b[i] | b[i + 1] << 8 | b[i + 2] << 16, t4 = i => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
@@ -5780,6 +5782,33 @@
     }
     return null;
   }
+  // Whether a picture moves: a GIF of more than one frame, a PNG whose acTL chunk (before its first IDAT) says more than
+  // one frame, a WebP with its animation flag, an AVIF image sequence.
+  function movesOf(b, kind) {
+    const u32 = i => (b[i] << 24 | b[i + 1] << 16 | b[i + 2] << 8 | b[i + 3]) >>> 0, t4 = i => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+    if (kind === 'png') {
+      for (let i = 8; i + 12 <= b.length;) {
+        const t = t4(i + 4);
+        if (t === 'acTL') return i + 12 <= b.length && u32(i + 8) > 1;
+        if (t === 'IDAT' || t === 'IEND') return false;
+        i += 12 + u32(i);
+      }
+      return false;
+    }
+    if (kind === 'webp') return b.length > 20 && t4(12) === 'VP8X' && !!(b[20] & 2);
+    if (kind === 'avif') { for (let i = 8, end = Math.min(b.length, u32(0)); i + 4 <= Math.max(12, end); i += 4) if (i !== 12 && t4(i) === 'avis') return true; return false; }
+    if (kind !== 'gif') return false;
+    const skip = j => { while (j < b.length && b[j]) j += b[j] + 1; return j + 1; };   // (past a run of sub-blocks)
+    let i = 13 + (b[10] & 0x80 ? 3 << ((b[10] & 7) + 1) : 0), frames = 0;
+    while (i < b.length) {
+      if (b[i] === 0x2c) {
+        if (++frames > 1) return true;
+        i = skip(i + 10 + (b[i + 9] & 0x80 ? 3 << ((b[i + 9] & 7) + 1) : 0) + 1);
+      } else if (b[i] === 0x21) i = skip(i + 2);
+      else break;   // (the end, or something that isn't GIF)
+    }
+    return false;
+  }
 
   const Link = {
     supported: !LAB && !KIOSK && typeof window.showDirectoryPicker === 'function',
@@ -5791,9 +5820,11 @@
     listed: new Set(),  // every .21board name in the folder at the last look, lowercased
     peers: {},          // device key -> {peer (Merge.decode), seq, name, at, file, left, folder}: its newest file that passed every check
     photoDirs: [],      // Photos, and any Photos (n) Google Drive made beside it
+    histDirs: [],       // Board history, and any Board history (n) beside it (see histNames)
     started: false, running: null, again: null, timers: { full: 0, send: 0 }, fullAt: 0, firstChange: 0, carrying: false, gen: 0, lastCheck: 0, loading: false,
     owed: false,        // the last round held something back: the next look runs one (see check)
     dailyAt: 0,         // the last daily tidying (see daily)
+    notedAt: 0,         // when the notes about the files were last looked at (see daily)
     hcache: new Map(),  // the fingerprints of the records' parts, by revision, kept between rounds (Merge.read)
     writing: false,     // a round is writing records or this device's file ("Syncing…")
     nagged: false, nagToast: null,
@@ -5820,7 +5851,7 @@
     prints: new Map(),  // photo data URL -> {file, size, w, h}: its name in Photos, worked out once (see photoName)
     picNames: new Map(),   // a window's picture (data URL) -> {type, file, size}: its name in Photos, worked out once (see picName)
     picSeen: null,      // while this device's file is encoded: the pictures in it (picNames keeps only those)
-    histPics: new Map(),   // Board history copy in the folder -> {size, lastModified, files}: the pictures it names (see histNames)
+    histPics: new Map(),   // "<folder>/<copy>" in the folder -> {size, lastModified, files}: the pictures it names (see histNames)
     histBusy: false, histFailAt: 0,   // the copies are being read; when one last couldn't be (tidyPhotos)
     got: new Map(),     // photo file -> the picture read from Photos (the last few)
     badPhotos: new Map(),   // photo file -> {size, lastModified, at}: found not good as it is
@@ -5832,7 +5863,7 @@
     applyRecord(name, value) {
       if (name === 'folder') {
         this.dir = value && typeof value === 'object' && value.kind === 'directory' ? value : null;
-        this.files.clear(); this.listed = new Set(); this.peers = {}; this.badPhotos.clear(); this.waiting.clear(); this.histWait.clear(); this.histPics.clear(); this.histFailAt = 0;
+        this.files.clear(); this.listed = new Set(); this.peers = {}; this.badPhotos.clear(); this.waiting.clear(); this.histWait.clear(); this.histPics.clear(); this.histFailAt = 0; this.notedAt = 0;
         this.trouble = this.failed = this.newer = null; this.checkedAt = 0; this.unsent = false;
         if (this.started) this.refresh(); else FolderNote.update();
       } else if (name === 'state') {
@@ -6138,7 +6169,7 @@
       await this.saveFolder(h);
       this.saveState({ tidy: {} });   // (what was found unused in Photos was another folder's)
       let readOnly = false, had = false;   // had: the note about the files was there (another device set this folder up)
-      try { had = await this.writeReadme(); } catch (err) { readOnly = await this.codeOf(err) === 'readonly'; }
+      try { had = await this.writeReadme(true); } catch (err) { readOnly = await this.codeOf(err) === 'readonly'; }
       await this.check(true, true);
       return { readOnly, had };
     },
@@ -6220,13 +6251,21 @@
       try { await this.attempt('send', this.gen, { left: Object.assign({ at: Date.now() }, erased ? { erased: true } : {}) }); }
       catch (err) { console.warn('21Board: the last write to the folder didn’t work', err); }
     },
-    // The note about the files, unless it's there (then true). Throws as a write would where the folder can only be
-    // viewed (one another teacher set up and shared for viewing has the note already: it is opened to be changed, and left).
-    async writeReadme() {
-      let fh = null;
-      try { fh = await this.dir.getFileHandle(LINK_README); } catch (e) { /* not there yet */ }
-      if (fh) { const w = await fh.createWritable({ keepExistingData: true }); await w.abort(); return true; }
-      await this.writeFile(LINK_README, [
+    // A note about the files (lines, in dir): written if it is missing or says something else (an earlier release's).
+    // Returns whether it was there. check: a note that is current is still opened to be changed, and left, so this throws
+    // as a write would where the folder can only be viewed (one another teacher set up and shared has the note already).
+    async writeNote(name, lines, dir, check) {
+      const text = lines.join('\r\n');
+      let fh = null, was = text;
+      try { fh = await dir.getFileHandle(name); } catch (e) { /* not there yet */ }
+      if (fh) { try { was = await within(fh.getFile().then(f => f.text()), this.waits.read); } catch (e) { /* not brought yet: left as it is */ } }
+      if (!fh || was !== text) await this.writeFile(name, text, dir);
+      else if (check) { const w = await fh.createWritable({ keepExistingData: true }); await w.abort(); }
+      return !!fh;
+    },
+    // The note about the files in the folder (see writeNote).
+    writeReadme(check) {
+      return this.writeNote(LINK_README, [
         '21Board keeps your board here for Board Sync. Your devices share it through Google Drive.',
         '',
         'Each device keeps its own copy of the whole board here, named after the device, such as',
@@ -6239,14 +6278,14 @@
         '  shortcut to it in their My Drive, then pick it when they set up Board Sync.',
         '- Don’t edit, rename or move these files. 21Board deletes an unlinked device’s file two',
         '  months later.',
-        '- The "Photos" folder holds each picture once, background photos and pictures in windows.',
-        '  The board files only name them. To give someone a board, use Export in 21Board.',
+        '- The "Photos" folder holds each picture once. The board files only name them. To give',
+        '  someone a board, use Export in 21Board.',
         '- The "Board history" folder holds earlier versions of your pages, about one an hour. Open one',
         '  from 21Board > Settings > Board history, or with Import.',
         '- These files can include student names and class photos. Share this folder only with people',
         '  who should see them.',
         ''
-      ].join('\r\n'));
+      ], this.dir, check);
     },
 
     // ---- the folder
@@ -6266,15 +6305,15 @@
     // half brought, or that mixes old and new bytes, can still parse). Returns true if anything changed.
     // A file that fails is "arriving" (bad: since when): it is never merged and never holds up anything else.
     async scan() {
-      const dir = this.dir, gen = this.gen, now = Date.now(), seen = new Map(), photos = [];
+      const dir = this.dir, gen = this.gen, now = Date.now(), seen = new Map(), photos = [], hist = [];
       this.lookingSince = now;
       for await (const [name, h] of dir.entries()) {
-        if (h.kind === 'directory') { if (/^Photos( \(\d+\))?$/.test(name)) photos.push(h); continue; }
+        if (h.kind === 'directory') { if (/^Photos( \(\d+\))?$/.test(name)) photos.push(h); else if (/^Board history( \(\d+\))?$/.test(name)) hist.push(h); continue; }
         if (/\.21board$/i.test(name)) seen.set(name, h);
       }
       if (gen !== this.gen) return false;
       photos.sort((a, b) => (a.name === LINK_PHOTOS ? -1 : b.name === LINK_PHOTOS ? 1 : a.name.localeCompare(b.name)));
-      this.photoDirs = photos;
+      this.photoDirs = photos; this.histDirs = hist;
       let changed = false;
       for (const n of Array.from(this.files.keys())) if (!seen.has(n)) { this.files.delete(n); changed = true; }
       await Promise.all(Array.from(seen, async ([name, h]) => {
@@ -6784,51 +6823,51 @@
     // The pictures for pages whose winning photo is another device's (Merge.photosWanted), each read from Photos:
     // {page uid: picture, or null while it isn't here or isn't good (that part is held, and the page keeps its photo)}.
     async photosFor(r, state, local, files, deadline) {
-      const out = {}, have = new Map(), now = Date.now(), live = new Set();
+      const out = {}, have = new Map(), live = new Set();
       for (const rec of r.recs) { const k = Keys.parse(rec.key); if (k.kind === 'board' && rec.value) have.set(rec.value.uid, BoardHistory.photoKeyOf(validPhoto((r.by.get(Keys.media(k.board, 'background')) || {}).value) ? r.by.get(Keys.media(k.board, 'background')).value : null)); }
       const wanted = typeof Merge.photosWanted === 'function' ? Merge.photosWanted(state, local).filter(x => x.ref)
         : files.flatMap(f => f.refs || []).filter(x => have.get(x.uid) !== BoardHistory.photoKeyOf(x.ref));
       for (const { uid, ref } of wanted) {
         const key = BoardHistory.photoKeyOf(ref);
         if (uid in out) continue;
-        let m = null;
-        // (each read has a time limit of its own, LINK_READ_MS, so one that stalls can't use up the round; one that timed
-        // out isn't read again until LINK_REREAD_MS later, as a photo found not good isn't)
-        const slow = this.slowPhotos.get(ref.file);
-        if (Date.now() < deadline && !(slow && Date.now() - slow < this.waits.reread)) {
-          try { m = await within(this.photoFor(ref), Math.max(500, Math.min(this.waits.read, deadline - Date.now()))); this.slowPhotos.delete(ref.file); }
-          catch (e) { m = null; if (e && e.name === 'TimeoutError') this.slowPhotos.set(ref.file, Date.now()); }
-        }
+        const m = await this.readTimed(ref.file, () => this.photoFor(ref), deadline);
         out[uid] = m && BoardHistory.photoKeyOf(m) === key ? m : null;
-        if (!out[uid]) {
-          live.add(ref.file);
-          if (!this.waiting.has(ref.file)) this.waiting.set(ref.file, { since: now, uid, page: (Array.from(Pages.info.values()).find(i => i.uid === uid) || {}).name || '' });
-        }
+        if (!out[uid]) { live.add(ref.file); this.awaiting(ref.file, uid); }
       }
-      for (const [f, w] of Array.from(this.waiting)) if (!live.has(f) && !w.pic) this.waiting.delete(f);
+      this.awaited(live, false);
       return out;
     },
     // The windows' pictures the merge needs (Merge.picsWanted), each read from Photos as a photo is (photosFor): {file:
     // data URL, or null while it isn't here or isn't good (its window keeps what it has, see Merge.plan)}.
     async picsFor(state, local, deadline) {
-      const out = {}, now = Date.now(), live = new Set();
-      for (const { uid, file, name } of Merge.picsWanted(state, local)) {
+      const out = {}, live = new Set();
+      for (const { uid, wid, file, name } of Merge.picsWanted(state, local)) {
         if (file in out) continue;
-        let d = null;
-        const slow = this.slowPhotos.get(file);
-        if (Date.now() < deadline && !(slow && Date.now() - slow < this.waits.reread)) {
-          try { d = await within(this.picFor(file), Math.max(500, Math.min(this.waits.read, deadline - Date.now()))); this.slowPhotos.delete(file); }
-          catch (e) { d = null; if (e && e.name === 'TimeoutError') this.slowPhotos.set(file, Date.now()); }
-        }
-        out[file] = d;
-        if (d) continue;
-        const k = 'pic ' + file;
+        out[file] = await this.readTimed(file, () => this.picFor(file), deadline);
+        if (out[file]) continue;
+        const k = 'pic ' + file, LP = local.pages.get(uid), w = this.awaiting(k, uid, { file, pic: true });
         live.add(k);
-        if (!this.waiting.has(k)) this.waiting.set(k, { since: now, uid, page: (Array.from(Pages.info.values()).find(i => i.uid === uid) || {}).name || name || '', file, pic: true });
+        w.page = w.page || name || '';
+        w.here = !!(LP && LP.wins.has(wid));   // (its window is on this device: it keeps what it shows)
       }
-      for (const [k, w] of Array.from(this.waiting)) if (w.pic && !live.has(k)) this.waiting.delete(k);
+      this.awaited(live, true);
       return out;
     },
+    // A read from Photos with a time limit of its own (LINK_READ_MS), so one that stalls can't use up the round. One that
+    // timed out isn't tried again until LINK_REREAD_MS later, as a picture found not good isn't. null if it isn't read.
+    async readTimed(file, read, deadline) {
+      const slow = this.slowPhotos.get(file);
+      if (Date.now() >= deadline || (slow && Date.now() - slow < this.waits.reread)) return null;
+      try { const v = await within(read(), Math.max(500, Math.min(this.waits.read, deadline - Date.now()))); this.slowPhotos.delete(file); return v; }
+      catch (e) { if (e && e.name === 'TimeoutError') this.slowPhotos.set(file, Date.now()); return null; }
+    },
+    // What Settings says is still arriving (see status), by key: noted once, with its page's name. awaited forgets the
+    // others of a kind (background photos, or windows' pictures: pic).
+    awaiting(k, uid, extra) {
+      if (!this.waiting.has(k)) this.waiting.set(k, Object.assign({ since: Date.now(), uid, page: (Array.from(Pages.info.values()).find(i => i.uid === uid) || {}).name || '' }, extra));
+      return this.waiting.get(k);
+    },
+    awaited(live, pic) { for (const [k, w] of Array.from(this.waiting)) if (!w.pic === !pic && !live.has(k)) this.waiting.delete(k); },
     // A window's picture: this device's own (by its name in Photos), or the one in Photos.
     async picFor(file) {
       for (const [s, e] of this.picNames) if (e.file === file) return s;
@@ -6930,7 +6969,7 @@
       finally { for (const s of Array.from(this.picNames.keys())) if (!this.picSeen.has(s)) this.picNames.delete(s); this.picSeen = null; }
       const empty = !Object.values(ledger.mine || {}).length;
       if (empty && !own.exists) return;   // (only the untouched placeholder: nothing to write yet)
-      if (trial.partsH === sync.partsH && own.ok && sync.file === name && !opts.left) { this.unstuck(); return; }
+      if (trial.partsH === sync.partsH && own.ok && sync.file === name && !opts.left && !this.reput) { this.unstuck(); return; }   // (reput: a picture is put back)
       // (Not before LINK_GAP_MS since the last write, or LINK_RETRY_MS since one failed. A clock set back counts as time passed.)
       const since = now - (sync.wroteAt || 0), failedAgo = this.failed ? now - this.failed.at : Infinity;
       if (!opts.urgent && !opts.left && since >= 0 && since < this.waits.gap) { this.want('send', this.waits.gap - since); return; }
@@ -6963,7 +7002,7 @@
         this.files.set(name, Object.assign({ name, readAt: Date.now(), dev: me, devName: this.device().label, seq, at: obj.sync.at, folder: sync.folder, left: opts.left || null, write,
           merged: obj.sync.merged, peer: (dec && dec.peer) || null, refs: [], pages: 0 }, stamp || { size: -1, lastModified: -1 }));
         this.unstuck();
-        updateSettings({ lastBackupAt: Date.now() }, true);   // (the device file is a full backup too)
+        updateSettings({ lastBackupAt: Date.now() }, true);   // (the device file is a full backup too, with its pictures in Photos)
         await this.tidyOwn(name, me, ledger);
       } catch (err) {
         if (gen !== this.gen || !this.dir) return;
@@ -7076,7 +7115,7 @@
         try { await this.dir.removeEntry(f.name); this.files.delete(f.name); } catch (e) { /* gone already */ }
       }
     },
-    // At most once a day, after a full round: old device files, deletions everyone has seen, Photos.
+    // At most once a day, after a full round: old device files, deletions everyone has seen, the note, Photos.
     async daily(r) {
       const now = Date.now(), sync = this.sync;
       if (!sync || sync.mode) return;
@@ -7099,6 +7138,8 @@
         await this.commit(this.gen, r, { writes: [] }, { sync: next, mine: (after || before).mine }, next, false);
       }
       if (sync.file) await this.tidyOwn(sync.file, this.dev(), r.ledger);
+      // (the note about the files, once a session and then once a day: one an earlier release wrote is written again)
+      if (now - this.notedAt >= 20 * 36e5) { this.notedAt = now; try { await this.writeReadme(); } catch (e) { /* a folder that can only be viewed keeps its note */ } }
       this.tidyPhotos();
     },
 
@@ -7156,8 +7197,8 @@
       return e.file ? e : null;
     },
     // An imported file names its windows' pictures (a device file or a Board history copy from the folder): each is this
-    // device's own if it has it, or the one in Photos (readPhoto's checks). One that can't be had leaves its field
-    // empty (null). Returns how many couldn't.
+    // device's own if it has it, or the one in Photos (readPhoto's checks, within LINK_READ_MS). One that can't be had
+    // leaves its field empty (null). Returns how many couldn't.
     async picsIn(p) {
       let lost = 0;
       for (const x of [p].concat(p.pages || []).filter((y, k, a) => a.indexOf(y) === k)) {
@@ -7166,7 +7207,7 @@
           for (const [k, v] of Object.entries(i.data)) {
             if (!v || typeof v !== 'object' || Array.isArray(v) || !('b21photo' in v)) continue;
             let d = null;
-            try { if (Merge.PIC_FILE_RE.test(v.b21photo || '')) d = await this.picFor(v.b21photo); } catch (e) { console.warn('21Board: a picture couldn’t be read', e); }
+            try { if (Merge.PIC_FILE_RE.test(v.b21photo || '')) d = await within(this.picFor(v.b21photo), this.waits.read); } catch (e) { console.warn('21Board: a picture couldn’t be read', e); }
             i.data = Object.assign({}, i.data, { [k]: d || null });
             if (!d) lost++;
           }
@@ -7178,9 +7219,9 @@
     // so it must be what a picture added here is: whole (its bytes have the fingerprint it is named by), and one that
     // opens. A background photo: a JPEG, PNG or WebP by its first bytes (not its name), within the same limits
     // (validPhoto, 6.5 MP). pic, a window's picture: by its first bytes the type its name says (JPEG, PNG, WebP, GIF or
-    // AVIF), under 16e6 characters as a data URL, at most LINK_PIC_PIXELS (read from its header first, so a huge one
-    // isn't decoded). null while it isn't here, or if it isn't good (then it is read again after LINK_REREAD_MS, or once
-    // it changes).
+    // AVIF), under 16e6 characters as a data URL, at most LINK_PIC_PIXELS, and at most LINK_PIC_ANIM if it moves. Its
+    // size in pixels is read from its header first, so a picture over the limits isn't decoded. null while it isn't
+    // here, or if it isn't good (then it is read again after LINK_REREAD_MS, or once it changes).
     async readPhoto(ref, pic) {
       if (!(pic ? Merge.PIC_FILE_RE : PHOTO_FILE_RE).test(ref.file || '')) return null;
       let f = null;
@@ -7195,12 +7236,12 @@
       try { buf = await f.arrayBuffer(); } catch (e) { return null; }   // (Google Drive hasn't brought its content yet)
       const type = Merge.sniff(new Uint8Array(buf.slice(0, 96)));   // (as many bytes as Merge.picType looks at)
       if (!(pic ? type && ref.file.endsWith('.' + Merge.PIC_EXT[type]) : /^(jpeg|png|webp)$/.test(type)) || await this.digest(buf) !== ref.file.slice(0, 32)) return no();   // (not a picture, or not all of it yet)
-      const px = pic ? pixelsOf(new Uint8Array(buf.slice(0, 65536)), type) : null;
-      if (px && px.w * px.h > LINK_PIC_PIXELS) return no();
+      const b = new Uint8Array(buf), px = pixelsOf(b.subarray(0, 65536), type), most = pic ? LINK_PIC_PIXELS : PHOTO_MAX_PIXELS * 1.01;   // (a photo made here can be a little over, by rounding)
+      if ((px && px.w * px.h > most) || (pic && buf.byteLength > LINK_PIC_ANIM && movesOf(b, type))) return no();
       const blob = new Blob([buf], { type: 'image/' + type });
       let w = 0, h = 0;
       try { const bmp = await createImageBitmap(blob); w = bmp.width; h = bmp.height; if (bmp.close) bmp.close(); } catch (e) { return no(); }
-      if (w * h > (pic ? LINK_PIC_PIXELS : PHOTO_MAX_PIXELS * 1.01)) return no();   // (a photo made here can be a little over, by rounding)
+      if (w * h > most) return no();
       const data = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
       const m = { data, w, h, bytes: buf.byteLength, name: ref.name, addedAt: ref.addedAt || Date.now() };
       if (!pic && !validPhoto(m)) return no();
@@ -7243,7 +7284,7 @@
       try { copies = await this.histNames(); } catch (e) { copies = null; } finally { this.histBusy = false; }
       if (!copies) { this.histFailAt = Date.now(); return; }   // (a copy that can't be read yet may name one: looked at again later)
       if (gen !== this.gen || this.tidying) return;
-      copies.forEach(f => named.add(f));
+      for (const c of Object.values(copies)) c.files.forEach(f => named.add(f));
       let done, missing = false;
       this.tidying = new Promise(r => { done = r; });   // (a write that names a picture meanwhile waits: see putPhoto, putPics)
       try {
@@ -7265,28 +7306,34 @@
       } catch (e) { console.warn('21Board: the Photos folder couldn’t be tidied', e); Object.assign(seen, was); }
       finally { this.tidying = null; done(); }
       if (missing) { this.reput = true; this.want('send', 0); }
-      if (gen === this.gen && this.dir) this.saveState({ tidy: { at: now, seen } }, true);   // (Settings doesn't show it)
+      if (gen === this.gen && this.dir) this.saveState({ tidy: { at: now, seen, copies } }, true);   // (Settings doesn't show it)
     },
-    // Every picture the Board history copies in the folder name (picsOfFile). Each copy is read once: a copy never
-    // changes (by its name, size and date). null if one can't be read yet. (One that isn't a board file names none.)
+    // The pictures each Board history copy in the folder names (picsOfFile), in "Board history" and any "Board history
+    // (n)" beside it: {"<folder>/<copy>": {size, lastModified, files}}. A copy never changes, so each is read once (by
+    // its name, size and date, kept with tidy in link:state). One from before 2026.11.18-14 (formatVersion 1) names
+    // none: only its first bytes are read. One that isn't a board file names none. null while a folder or a copy can't
+    // be read.
     async histNames() {
-      const dir = await BoardHistory.folderDir(false), out = new Set(), seen = new Set();
-      if (!dir) return out;
-      for await (const [name, h] of dir.entries()) {
-        if (h.kind !== 'file' || !/\.21board$/i.test(name)) continue;
-        seen.add(name);
-        let f, c = this.histPics.get(name);
-        try { f = await within(h.getFile(), this.waits.read); } catch (e) { return null; }
-        if (!c || c.size !== f.size || c.lastModified !== f.lastModified) {
-          let text;
-          try { text = await within(f.text(), this.waits.read); } catch (e) { return null; }
-          let files = [];
-          try { files = picsOfFile(JSON.parse(text)); } catch (e) { /* not a board file */ }
-          this.histPics.set(name, c = { size: f.size, lastModified: f.lastModified, files });
+      const was = (this.st.tidy || {}).copies || {}, out = {};
+      try {
+        for (const dir of this.histDirs) {
+          for await (const [name, h] of dir.entries()) {
+            if (h.kind !== 'file' || !/\.21board$/i.test(name)) continue;
+            const key = `${dir.name}/${name}`, f = await within(h.getFile(), this.waits.read);
+            let c = this.histPics.get(key) || was[key];
+            if (!c || c.size !== f.size || c.lastModified !== f.lastModified || !Array.isArray(c.files)) {
+              let files = [];
+              if (!/^\{"format":"21board","formatVersion":1[,}]/.test(await within(f.slice(0, 40).text(), this.waits.read))) {
+                const text = await within(f.text(), this.waits.read);
+                try { files = picsOfFile(JSON.parse(text)); } catch (e) { /* not a board file */ }
+              }
+              this.histPics.set(key, c = { size: f.size, lastModified: f.lastModified, files });
+            }
+            out[key] = c;
+          }
         }
-        c.files.forEach(x => out.add(x));
-      }
-      for (const n of Array.from(this.histPics.keys())) if (!seen.has(n)) this.histPics.delete(n);
+      } catch (e) { return null; }
+      for (const k of Array.from(this.histPics.keys())) if (!(k in out)) this.histPics.delete(k);
       return out;
     },
     // fn puts other content on the board (Import, going back, Undo): a round waits for it, and Pages.go waits for a round.
@@ -7300,7 +7347,7 @@
       this.gen++;   // a round under way (here or in another tab) doesn't save anything back
       this.stopTimers();
       this.dir = null; this.perm = 'none'; this.files.clear(); this.listed = new Set(); this.peers = {}; this.badPhotos.clear(); this.got.clear(); this.media.clear(); this.hcache = new Map(); this.owed = false;
-      this.picNames.clear(); this.histPics.clear();
+      this.picNames.clear(); this.histPics.clear(); this.notedAt = 0;
       this.trouble = this.failed = this.newer = this.sync = this.linked = null; this.unsent = this.welcoming = false; this.checkedAt = 0; this.quiet = {}; this.waiting.clear(); this.histWait.clear(); this.slowPhotos.clear(); this.fresh = true;
       this.st = { device: null, tidy: {}, shown: {} };
       FolderNote.update();
@@ -7332,15 +7379,15 @@
       else if (others.length === 1) out.push(`Shared with ${who(others[0])}. Last change ${when(others[0].at)}.`);
       else if (others.length === 2) out.push(`Shared with ${who(others[0])} and ${who(others[1])}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
       else out.push(`Shared with ${who(others[0])}, ${who(others[1])} and ${others.length - 2} other${others.length === 3 ? '' : 's'}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
-      const pics = new Map();   // (windows' pictures: by page, how many are still arriving and how many can't be used)
+      const pics = new Map();   // (windows' pictures: by page, how many are still arriving, can't be used, and of those for a window not here yet)
       for (const [file, w] of this.waiting) {
         if (now - w.since < this.waits.arrive) continue;
-        if (w.pic) { const c = pics.get(w.page) || { late: 0, bad: 0 }; c[this.badPhotos.has(w.file) ? 'bad' : 'late']++; pics.set(w.page, c); continue; }
+        if (w.pic) { const c = pics.get(w.page) || { late: 0, bad: 0, away: 0 }, bad = this.badPhotos.has(w.file); c[bad ? 'bad' : 'late']++; if (bad && !w.here) c.away++; pics.set(w.page, c); continue; }
         out.push(this.badPhotos.has(file) ? `The background photo of “${w.page}” in your folder can’t be used. This device keeps its own.` : `The background photo of “${w.page}” is still arriving.`);
       }
       for (const [page, c] of pics) {
         if (c.late) out.push(c.late === 1 ? `A picture on “${page}” is still arriving.` : `${c.late} pictures on “${page}” are still arriving.`);
-        if (c.bad) out.push(c.bad === 1 ? `A picture on “${page}” in your folder can’t be used. Its window stays as it is.` : `${c.bad} pictures on “${page}” in your folder can’t be used. Their windows stay as they are.`);
+        if (c.bad) out.push((c.bad === 1 ? `A picture on “${page}” can’t be used.` : `${c.bad} pictures on “${page}” can’t be used.`) + (c.away ? '' : c.bad === 1 ? ' Its window keeps what it shows.' : ' Their windows keep what they show.'));
       }
       for (const [, h] of this.histWait) out.push(`Changes to “${h.name}” from ${h.from} wait until Board history can save a version on this device. It may be full.`);
       if (this.big) out.push(`At ${fmtBytes(this.big)}, your board file may be slow to reach your other devices.`);
@@ -8151,9 +8198,8 @@
         HistorySheet.refresh();
       } catch (err) { this.folderStatus = 'Couldn’t save a copy to your folder. 21Board keeps trying.'; console.warn('21Board: board history copy failed', err); }
     },
-    async writeFolderReadme(dir) {
-      try { await dir.getFileHandle('About these files.txt'); return; } catch (e) { /* write it */ }
-      await Link.writeFile('About these files.txt', [
+    writeFolderReadme(dir) {
+      return Link.writeNote('About these files.txt', [
         'Earlier versions of your 21Board boards, to go back to after a big change or a device reset.',
         '',
         '- To go back, open 21Board > Settings > Board history and look under "In your Google Drive',
@@ -8164,7 +8210,7 @@
         '  folder, once each.',
         '- They can include student names. Share this folder only with people who should see them.',
         ''
-      ].join('\r\n'), dir);
+      ], dir);
     },
     async folderList(dir) {
       dir = dir || await this.folderDir(false);

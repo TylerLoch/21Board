@@ -103,7 +103,9 @@ const DEV_ROUTES = {
 // [names of files that are listed but can't be read yet], noContent: {name: ms} (files whose size and date can be
 // read, the date that long ago, but whose content can't yet), hang: [names] (reading them never settles), stamp:
 // {name: {size, lastModified}} (the size and date a file shows, whatever its content: see deliver's sameStamp), slow:
-// ms (the folder takes that long to list)}. window.__writes: the name of each file 21Board writes, in order.
+// ms (the folder takes that long to list), failWrite: [names] (writing one fails once, as when the device sleeps),
+// badDirs: [names] (folders that can't be opened or listed just now)}. window.__writes: the name of each file 21Board
+// writes, in order; window.__wrote: {name, bytes} for each, the bytes it wrote.
 // The picker gives the folder named by window.__drive.pick: a path in the private file system, 'My Drive' or
 // 'My Drive/21Board' (made if it isn't there; '21Board' when not set). pickFails: the name of the error the picker
 // throws instead ('AbortError': the teacher cancelled). readOnly also stops new folders being made in it.
@@ -128,9 +130,14 @@ const DRIVE_PICK = () => {
       createWritable: async () => {
         if (F().readOnly) throw new DOMException('An attempt was made to modify an object where modifications are not allowed.', 'NoModificationAllowedError');
         if (F().full) throw new DOMException('The quota has been exceeded.', 'QuotaExceededError');
+        if ((F().failWrite || []).includes(fh.name)) { window.__drive.failWrite = F().failWrite.filter(n => n !== fh.name); throw new DOMException('The device went to sleep.', 'AbortError'); }
         (window.__writes || (window.__writes = [])).push(fh.name);
-        return fh.createWritable();
+        const w = await fh.createWritable(), e = { name: fh.name, bytes: 0 }, write = w.write.bind(w);
+        (window.__wrote || (window.__wrote = [])).push(e);
+        w.write = d => { e.bytes += typeof d === 'string' ? new TextEncoder().encode(d).length : d instanceof Blob ? d.size : (d && d.byteLength) || 0; return write(d); };
+        return w;
       } });
+    const bad = n => { if ((F().badDirs || []).includes(n)) throw new DOMException('The folder couldn’t be read just now.', 'NotReadableError'); };
     const dir = d => ({
       kind: 'directory', name: d.name, __d: d,
       isSameEntry: async o => !!(o && o.__d) && d.isSameEntry(o.__d),
@@ -138,12 +145,12 @@ const DRIVE_PICK = () => {
       requestPermission: async () => { if (F().perm && F().grant) window.__drive.perm = F().grant; return F().perm || 'granted'; },
       getFileHandle: async (n, o) => { gone(); return file(await d.getFileHandle(n, o)); },
       getDirectoryHandle: async (n, o) => {
-        gone();
+        gone(); bad(n);
         if (o && o.create && F().readOnly) { try { return dir(await d.getDirectoryHandle(n)); } catch (e) { throw new DOMException('An attempt was made to modify an object where modifications are not allowed.', 'NoModificationAllowedError'); } }
         return dir(await d.getDirectoryHandle(n, o));
       },
       removeEntry: (n, o) => d.removeEntry(n, o),
-      entries: async function* () { gone(); if (F().slow) await new Promise(r => setTimeout(r, F().slow)); for await (const [n, h] of d.entries()) yield [n, h.kind === 'file' ? file(h) : dir(h)]; }
+      entries: async function* () { gone(); bad(d.name); if (F().slow) await new Promise(r => setTimeout(r, F().slow)); for await (const [n, h] of d.entries()) yield [n, h.kind === 'file' ? file(h) : dir(h)]; }
     });
     return dir(real);
   };
@@ -218,12 +225,12 @@ const deliver = async (from, to, opts = {}) => {
   if (opts.photos !== false) { const ph = await readPhotos(from); if (ph) await addPhotos(to, ph); }
 };
 // A second "Photos (1)" folder beside "Photos", with the photos moved into it (Google Drive made it on a device that
-// made "Photos" before the other device's arrived).
-const dupFolder = (p, name = 'Photos') => p.evaluate(async name => {
+// made "Photos" before the other device's arrived). to: another folder to move them to.
+const dupFolder = (p, name = 'Photos', to = name + ' (1)') => p.evaluate(async ([name, to]) => {
   const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true });
-  const a = await root.getDirectoryHandle(name, { create: true }), b = await root.getDirectoryHandle(name + ' (1)', { create: true });
+  const a = await root.getDirectoryHandle(name, { create: true }), b = await root.getDirectoryHandle(to, { create: true });
   for await (const [n, h] of a.entries()) { if (h.kind !== 'file') continue; const w = await (await b.getFileHandle(n, { create: true })).createWritable(); await w.write(await (await h.getFile()).arrayBuffer()); await w.close(); await a.removeEntry(n); }
-}, name);
+}, [name, to]);
 // Puts files and folders in a folder of the private file system (a path, as __drive.pick has it): {name: text},
 // or {name: {}} for a folder (its own {name: …} inside it). Returns every name in the folder afterwards.
 const seedFolder = (p, at, items = {}) => p.evaluate(async ([at, items]) => {
@@ -349,6 +356,20 @@ const writeHistory = (p, files) => p.evaluate(async files => {
   const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board', { create: true })).getDirectoryHandle('Board history', { create: true });
   for (const [n, t] of Object.entries(files)) { const w = await (await d.getFileHandle(n, { create: true })).createWritable(); await w.write(t); await w.close(); }
 }, files);
+// The notes about the files as 2026.11.18-12 wrote them: "About this folder.txt", and "About these files.txt" in "Board history".
+const OLD_NOTE = ['21Board keeps your board here for Board Sync. Your devices share it through Google Drive.', '',
+  'Each device keeps its own copy of the whole board here, named after the device, such as', '"21Board (laptop) [k3j9].21board". 21Board combines them, so every device shows the same',
+  'board. Each file is a full backup. Open one with Import in 21Board.', '',
+  '- To add a device, open 21Board on it, go to Settings > Board Sync > Set up and pick this', '  folder. Everyone who uses this folder shares one board.',
+  '- To work on a board with a co-teacher, share this folder with them as an Editor. They add a', '  shortcut to it in their My Drive, then pick it when they set up Board Sync.',
+  '- Don’t edit, rename or move these files. 21Board deletes an unlinked device’s file two', '  months later.',
+  '- The "Photos" folder holds the background photos, one copy of each. The board files only', '  name them. To give someone a board, use Export in 21Board.',
+  '- The "Board history" folder holds earlier versions of your pages, about one an hour. Open one', '  from 21Board > Settings > Board history, or with Import.',
+  '- These files can include student names and class photos. Share this folder only with people', '  who should see them.', ''].join('\r\n');
+const OLD_HIST_NOTE = ['Earlier versions of your 21Board boards, to go back to after a big change or a device reset.', '',
+  '- To go back, open 21Board > Settings > Board history and look under "In your Google Drive', '  folder" at the bottom. Or open a file with Import.',
+  '- 21Board keeps about one copy an hour, then one a day, then one a week, and removes the rest.', '  Files whose names end in "saved" are ones you saved. 21Board never removes them.',
+  '- These copies leave out the background photo.', '- They can include student names. Share this folder only with people who should see them.', ''].join('\r\n');
 
 // Storage failures, for the "When storage fails" suite. The ones that must be in place before board.js starts
 // are switched on through localStorage: {open: n (the first n tries fail) | 'blocked' | 'hang', read: n | 'all',
@@ -8372,13 +8393,13 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
-  ['Board Sync: pictures in windows (each kept once in Photos and named by the device file, the other device gets them whole, typing writes no picture again, a picture still arriving, a file in Photos that lies, a device file from the release before, Export and Import, background photos as before)', async (browser) => {
+  ['Board Sync: pictures in windows (each kept once in Photos and named by the device file, the other device gets them whole, typing writes no picture again, a write cut off between two pictures, a picture still arriving, a file in Photos that lies, the folder’s note from the release before, a device file from the release before, Export and Import, background photos as before)', async (browser) => {
     const errors = [], crypto = require('crypto');
     const sha = buf => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 32);
     const bytesOf = src => Buffer.from(src.slice(src.indexOf(',') + 1), 'base64');
     const nameOf = src => `${sha(bytesOf(src))}.${{ jpeg: 'jpg', png: 'png', gif: 'gif', webp: 'webp', avif: 'avif' }[/^data:image\/([a-z]+);/.exec(src)[1]]}`;
     const status = p => p.evaluate(() => window.__board21.link.status());
-    const writes = p => p.evaluate(() => (window.__writes || []).splice(0));
+    const writes = p => p.evaluate(() => { (window.__writes || []).splice(0); return (window.__wrote || []).splice(0); });   // ([{name, bytes}])
     const pagesOf = j => [j].concat((j.pages || []).filter(x => !x.main));
     const refsIn = j => pagesOf(j).flatMap(pg => pg.instances || []).map(i => i.data && i.data.src && i.data.src.b21photo).filter(Boolean);
     const bigIn = text => /"data:[^"]{32768,}"/.test(text);
@@ -8414,28 +8435,42 @@ const SUITES = [
     await writes(A.p);
     const seq0 = (await ownJSON(A.p)).sync.seq;
     await typeNote(A.p, kn, 'Spelling words for Friday'); await A.p.waitForTimeout(700); await syncNow(A.p);
-    const wrote = await writes(A.p), seq1 = (await ownJSON(A.p)).sync.seq;
-    ok(seq1 > seq0 && wrote.some(n => /\.21board$/.test(n)) && !wrote.some(n => /^[0-9a-f]{32}\./.test(n)), `typing in a note writes the laptop’s file again and no picture (${wrote.join(', ')})`);
+    const wrote = await writes(A.p), seq1 = (await ownJSON(A.p)).sync.seq, bytes = wrote.reduce((t, w) => t + w.bytes, 0);
+    ok(seq1 > seq0 && wrote.some(w => /\.21board$/.test(w.name)) && !wrote.some(w => /^[0-9a-f]{32}\./.test(w.name)) && bytes < 10000,
+      `typing in a note writes the laptop’s file again, ${bytes} bytes in all, and no picture (${wrote.map(w => `${w.name}: ${w.bytes}`).join(', ')})`);
     await exchange(A, B);
 
     // ---- A picture still on its way: the laptop's file reaches the smartboard before its pictures.
     const jpg2 = await drawPic(A.p, 900, 700, 'image/jpeg', { noise: 15, q: 0.9 }), png3 = await drawPic(A.p, 360, 280, 'image/png', { noise: 63 });
+    // (first the write is cut off before the second picture is in Photos, as when the device sleeps: its put fails once)
+    await A.p.evaluate(n => { window.__drive = { failWrite: [n] }; }, `${sha(png3)}.png`);
     await picOpen(A.p, picFile('Lake.jpg', jpg2, 'image/jpeg'), k1);
     const k3 = await addWin(A.p, 'image'); await picOpen(A.p, picFile('Map.png', png3, 'image/png'), k3);
     const s1b = (await picData(A.p, k1)).src, s3 = (await picData(A.p, k3)).src, w3 = await widOf(A.p, k3);
-    await A.p.waitForTimeout(700); await syncNow(A.p); await deliver(A.p, B.p, { photos: false }); await syncNow(B.p);
+    await A.p.waitForTimeout(700); await syncNow(A.p);
+    const noted = () => A.p.evaluate(() => (window.__board21.link.sync || {}).pics || []);
+    const cut = { st: await status(A.p), own: refsIn(await ownJSON(A.p)), pics: await noted(), failed: await A.p.evaluate(() => !(window.__drive.failWrite || []).length) };
+    ok(nameOf(s3) === `${sha(png3)}.png` && cut.failed && /^Not synced\./.test(cut.st) && !cut.own.includes(nameOf(s3)) && !cut.pics.includes(nameOf(s3)),
+      `a write cut off before the second picture is in Photos: “Not synced”, and neither the file nor what it notes as written names that picture (“${cut.st}”)`);
+    await A.p.evaluate(() => { window.__drive = {}; });
+    ok(await eventually(async () => { await syncNow(A.p); const j = await ownJSON(A.p), ph = await readPhotos(A.p) || {}; return refsIn(j).includes(nameOf(s1b)) && refsIn(j).includes(nameOf(s3)) && !!ph[nameOf(s1b)] && !!ph[nameOf(s3)]; }),
+      'tried again, it puts what is missing and writes the file, which names both');
+    await deliver(A.p, B.p, { photos: false }); await syncNow(B.p);
     const kept = await picData(B.p, b1);
     ok((await picLook(B.p, b1)).src === s1 && kept && kept.src === s1 && !await ikOf(B.p, w3), 'the file arrives first: the smartboard’s window keeps its picture, and the new window waits for its own');
     await B.p.waitForTimeout(2700); await syncNow(B.p);
     ok(/2 pictures on “Page 1” are still arriving\./.test(await status(B.p)), `after a while Settings says so (“${await status(B.p)}”)`);
     const jB2 = await ownJSON(B.p);
     ok(refsIn(jB2).includes(nameOf(s1)) && !refsIn(jB2).includes(nameOf(s3)), 'its own file still names the picture it shows, never an empty one');
+    await putText(B.p, 'About this folder.txt', OLD_NOTE);   // (the folder's note as the release before wrote it)
     await B.p.reload(); await boardUp(B.p); await linkFolder(B.p, null);
     ok(((await picData(B.p, b1)) || {}).src === s1, 'reloaded while it waits, it still shows it');
     await deliver(A.p, B.p);
     ok(await eventually(async () => { await syncNow(B.p); const b3 = await ikOf(B.p, w3); return ((await picData(B.p, b1)) || {}).src === s1b && !!b3 && (await picLook(B.p, b3)).src === s3; }),
       'once the pictures arrive, both windows fill in');
     ok(!/still arriving/.test(await status(B.p)), `and Settings no longer waits (“${await status(B.p)}”)`);
+    ok(await eventually(async () => /- The "Photos" folder holds each picture once\. The board files only name them\./.test(await fileText(B.p, 'About this folder.txt') || '')),
+      'the folder’s note from the release before is written again, with what Photos holds now');
 
     // ---- A file in Photos that isn't the picture it's named for: refused, and the window is unharmed.
     const webp = padWebp(FIXTURE('picture-animated.webp'), 50000);
@@ -8447,20 +8482,28 @@ const SUITES = [
     ok(((await picData(B.p, b2)) || {}).src === s2 && (await picLook(B.p, b2)).src === s2 && await B.p.evaluate(n => window.__board21.link.badPhotos.has(n), nameOf(s2b)),
       'a file whose bytes aren’t the picture its name says is refused, and the window keeps its picture');
     await B.p.waitForTimeout(2700); await syncNow(B.p);
-    ok(/A picture on “Page 1” in your folder can’t be used\. Its window stays as it is\./.test(await status(B.p)), `Settings says so (“${await status(B.p)}”)`);
+    ok(/A picture on “Page 1” can’t be used\. Its window keeps what it shows\./.test(await status(B.p)), `Settings says so (“${await status(B.p)}”)`);
     await deliver(A.p, B.p);
     ok(await eventually(async () => { await syncNow(B.p); return ((await picData(B.p, b2)) || {}).src === s2b; }), 'the right bytes arrive: it fills in');
     // Files nobody should be able to slip in, each named by its own bytes: a text file, a PNG that says it is 8000 × 7000
-    // (56 MP, over the Picture widget's 50), a GIF named .png; and a picture over 11.9 MB as Google Drive shows it.
-    const text = Buffer.from('not a picture at all. '.repeat(200)), huge = pngHeader(8000, 7000);
-    const lies = { [`${sha(text)}.png`]: text, [`${sha(huge)}.png`]: huge, [`${sha(gif)}.png`]: gif };
-    await addPhotos(B.p, Object.fromEntries(Object.entries(lies).map(([n, b]) => [n, b.toString('base64')])));
+    // (56 MP, over the Picture widget's 50), a GIF named .png, an animated GIF over 5 MB (the widget's limit); and a
+    // picture over 11.9 MB as Google Drive shows it. Each is turned away before it is decoded. (A PNG of 100 × 100 that
+    // doesn't open, and a good picture, are decoded once each.)
+    const text = Buffer.from('not a picture at all. '.repeat(200)), huge = pngHeader(8000, 7000), anim = padGif(FIXTURE('picture-animated.gif'), 5.5 * 1048576), broken = pngHeader(100, 100);
+    const lies = { [`${sha(text)}.png`]: text, [`${sha(huge)}.png`]: huge, [`${sha(gif)}.png`]: gif, [`${sha(anim)}.gif`]: anim };
+    await addPhotos(B.p, Object.fromEntries(Object.entries(lies).concat([[`${sha(broken)}.png`, broken]]).map(([n, b]) => [n, b.toString('base64')])));
     await B.p.evaluate(n => { window.__drive = { stamp: { [n]: { size: 12e6, lastModified: Date.now() } } }; }, nameOf(s2));
-    const read = await B.p.evaluate(async names => { const l = window.__board21.link, out = {}; for (const n of names) { const m = await l.readPhoto({ file: n }, true).catch(() => null); out[n] = m ? m.data : null; } return out; },
-      Object.keys(lies).concat(nameOf(s2), nameOf(s1b)));
+    const read = await B.p.evaluate(async names => {
+      const l = window.__board21.link, out = {}, real = window.createImageBitmap;
+      let n = 0;
+      window.createImageBitmap = (...a) => { n++; return real.apply(window, a); };
+      try { for (const f of names) { n = 0; const m = await l.readPhoto({ file: f }, true).catch(() => null); out[f] = { data: m ? m.data : null, decoded: n }; } } finally { window.createImageBitmap = real; }
+      return out;
+    }, Object.keys(lies).concat(nameOf(s2), `${sha(broken)}.png`, nameOf(s1b)));
     await B.p.evaluate(() => { window.__drive = {}; });
-    ok(Object.keys(lies).every(n => read[n] === null) && read[nameOf(s2)] === null && read[nameOf(s1b)] === s1b,
-      `a non-picture, a picture over 50 MP, one of another type than its name, and one over 11.9 MB are refused; a good one is read whole (${Object.values(read).map(x => (x ? 'read' : 'refused')).join(', ')})`);
+    const said = Object.values(read).map(x => `${x.data ? 'read' : 'refused'} (${x.decoded})`).join(', ');
+    ok(Object.keys(lies).concat(nameOf(s2)).every(n => read[n].data === null && read[n].decoded === 0) && read[`${sha(broken)}.png`].data === null && read[`${sha(broken)}.png`].decoded === 1 && read[nameOf(s1b)].data === s1b,
+      `a non-picture, a picture over 50 MP, one of another type than its name, an animation over 5 MB and one over 11.9 MB are refused before they are decoded; a good one is read whole (${said})`);
 
     // ---- A device file from the release before (sync.v 1, its pictures inside it): read as it is, with no Photos.
     const old = JSON.parse(await fileText(A.p, await ownFile(A.p))), srcs = {};
@@ -8512,7 +8555,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close();
   }],
-  ['Board Sync: pictures in windows and Board history copies (a copy names its pictures in Photos, tidying keeps a picture any device file or copy names and deletes one nobody names after a week, going back to a copy puts its pictures back)', async (browser) => {
+  ['Board Sync: pictures in windows and Board history copies (a copy names its pictures in Photos, tidying keeps a picture any device file or copy names, in “Board history (1)” too, waits while the copies can’t be read, deletes one nobody names after a week and puts back one deleted by hand, going back to a copy or importing it puts its pictures back)', async (browser) => {
     const errors = [], crypto = require('crypto'), DAY = 864e5;
     const sha = buf => crypto.createHash('sha256').update(buf).digest('hex').slice(0, 32);
     const nameOf = src => `${sha(Buffer.from(src.slice(src.indexOf(',') + 1), 'base64'))}.${{ jpeg: 'jpg', png: 'png', gif: 'gif', webp: 'webp' }[/^data:image\/([a-z]+);/.exec(src)[1]]}`;
@@ -8525,6 +8568,7 @@ const SUITES = [
     await linkFolder(A.p); await deliver(A.p, B.p); await linkFolder(B.p); await exchange(A, B);
 
     // ---- Save this version now: its copy in the folder names the picture in Photos, and holds none.
+    await writeHistory(A.p, { 'About these files.txt': OLD_HIST_NOTE });   // (the note beside the copies, as the release before wrote it)
     await A.p.evaluate(() => window.__board21.history.save('With the map'));
     let copy = null;
     await eventually(async () => { const h = await readHistory(A.p); copy = Object.keys(h).find(n => / saved \(laptop\) \[[0-9a-z]{6}-[0-9a-z]{4}\]\.21board$/.test(n)); return !!copy; });
@@ -8532,7 +8576,7 @@ const SUITES = [
     ok(!!copy && cj.formatVersion === 2 && refsIn(cj).join() === nameOf(sHist) && !/"data:[^"]{32768,}"/.test(copyText) && !!(await readPhotos(A.p) || {})[nameOf(sHist)],
       `a Board history copy in the folder names its picture in Photos, and holds none (${copy}: ${copyText.length} characters, the picture ${sHist.length})`);
     const about = (await readHistory(A.p))['About these files.txt'] || '';
-    ok(/Pictures in windows are in the "Photos" folder, once each\./.test(about.replace(/\r\n\s*/g, ' ')), 'the note beside the copies says where their pictures are');
+    ok(/Pictures in windows are in the "Photos" folder, once each\./.test(about.replace(/\r\n\s*/g, ' ')), 'the note beside the copies, from the release before, is written again and says where their pictures are');
 
     // ---- The window then shows another picture. A third, put in a window and deleted, is named by nobody.
     await picOpen(A.p, picFile('Kite.png', pKeep, 'image/png'), k1);
@@ -8545,13 +8589,36 @@ const SUITES = [
     await syncNow(A.p); await exchange(A, B);
     ok(!refsIn(await ownJSON(A.p)).includes(nameOf(sNone)) && !refsIn(await ownJSON(B.p)).includes(nameOf(sNone)) && !refsIn(await ownJSON(A.p)).includes(nameOf(sHist)),
       'no device file names the copy’s picture or the deleted one');
+    // Google Drive brings the copies to the smartboard, whose "Board history" can't be read just then. On the laptop it
+    // moved them to a second folder, "Board history (1)".
+    await writeHistory(B.p, await readHistory(A.p));
+    await dupFolder(A.p, 'Board history');
+    await B.p.evaluate(() => { window.__drive = { badDirs: ['Board history'] }; });
+    const photosB = Object.keys(await readPhotos(B.p) || {}).sort().join(), tidyB = () => B.p.evaluate(() => (window.__board21.link.st.tidy || {}).at || 0), tidiedB0 = await tidyB();
     // A week later (each device tidies Photos at most once a day; a picture goes once found unnamed on two looks).
-    const later = async d => { await setClock(A.p, d * DAY); await A.p.evaluate(() => window.__board21.link.awake()); await A.p.waitForTimeout(2700); await deliver(B.p, A.p); await syncNow(A.p); };
+    const later = async d => {
+      for (const D of [A, B]) { await setClock(D.p, d * DAY); await D.p.evaluate(() => window.__board21.link.awake()); }
+      await A.p.waitForTimeout(2700); await deliver(B.p, A.p); await syncNow(A.p); await syncNow(B.p);
+    };
     for (const d of [8, 9]) await later(d);
     const has = async n => !!(await readPhotos(A.p) || {})[n];
     ok(await eventually(async () => { await syncNow(A.p); return !await has(nameOf(sNone)); }), 'a week on, the picture nobody names is deleted from Photos');
-    ok(await has(nameOf(sHist)) && await has(nameOf(sKeep)), 'the one only a Board history copy names stays, and so does the one a device file names');
-    await setClock(A.p, 0);
+    ok(await has(nameOf(sHist)) && await has(nameOf(sKeep)), 'the one only a Board history copy names stays, in “Board history (1)” too, and so does the one a device file names');
+    const kept = await A.p.evaluate(() => (window.__board21.link.st.tidy || {}).copies || {});
+    ok(JSON.stringify((kept[`Board history (1)/${copy}`] || {}).files) === JSON.stringify([nameOf(sHist)]), `what each copy names is kept with the tidying, so each copy is read once (${Object.keys(kept).length} kept)`);
+    await syncNow(B.p);
+    const photosB2 = Object.keys(await readPhotos(B.p) || {}).sort().join();
+    ok(photosB.split(',').includes(nameOf(sHist)) && photosB2 === photosB && await tidyB() === tidiedB0, `while its “Board history” can’t be read, the smartboard deletes nothing from Photos (${photosB2.split(',').length} of ${photosB.split(',').length} left)`);
+    // A picture deleted from Photos by hand: the laptop's next daily look finds it missing, and it is put back with no
+    // change on the board.
+    await A.p.evaluate(async n => { await (await (await (await navigator.storage.getDirectory()).getDirectoryHandle('21Board')).getDirectoryHandle('Photos')).removeEntry(n); }, nameOf(sKeep));
+    await B.p.evaluate(() => { window.__drive = {}; });
+    const ownA = await fileText(A.p, await ownFile(A.p));
+    await setClock(A.p, 10 * DAY); await A.p.evaluate(() => window.__board21.link.awake()); await A.p.waitForTimeout(2700); await syncNow(A.p);
+    ok(await eventually(async () => { await syncNow(A.p); return await has(nameOf(sKeep)); }), 'a picture deleted from Photos by hand is put back after the next daily look, with no change on the board');
+    console.log(`  (the laptop’s file ${(await fileText(A.p, await ownFile(A.p))) === ownA ? 'was not written again' : 'was written again'})`);
+    await dupFolder(A.p, 'Board history (1)', 'Board history');   // (the copies back where Settings lists them)
+    for (const D of [A, B]) await setClock(D.p, 0);
 
     // ---- Going back to the copy (Settings › Board history › In your Google Drive folder): its picture is back.
     await openSettings(A.p); await A.p.click('#settings [data-act="hist-open"]');
@@ -8574,6 +8641,18 @@ const SUITES = [
     await goC.click({ timeout: 5000 }).catch(() => {});
     ok(await eventually(async () => await C.p.locator('.toast', { hasText: 'A picture from then can’t be found.' }).count() === 1),
       `a copy whose picture isn’t in Photos: going back says so (${(await C.p.locator('#toasts .toast').allInnerTexts()).map(t => t.replace(/\s+/g, ' ')).join(' | ')})`);
+    // The same copy opened with Import while its picture is in Photos but can't be read (the read never ends): the
+    // dialog still opens, in time, and says so.
+    await addPhotos(C.p, { [nameOf(sHist)]: sHist.slice(sHist.indexOf(',') + 1) });
+    await C.p.evaluate(n => { window.__drive = { hang: [n] }; }, nameOf(sHist));
+    fs.writeFileSync(OUT + 'pictures-history-copy.21board', copyText);
+    const t0 = Date.now();
+    await C.p.setInputFiles('#import-input', OUT + 'pictures-history-copy.21board');
+    await C.p.locator('#modal.open').waitFor({ timeout: 12000 }).catch(() => {});
+    const sayC = (await C.p.locator('#modal.open .modal-card').innerText().catch(() => '')).replace(/\s+/g, ' ');
+    ok(/A picture can’t be found\. Its window opens empty\./.test(sayC), `importing it while its picture can’t be read: the dialog opens after ${((Date.now() - t0) / 1000).toFixed(1)} s and says so (“${sayC}”)`);
+    await C.p.locator('#modal.open .btn', { hasText: 'Cancel' }).click().catch(() => {});
+    await C.p.evaluate(() => { window.__drive = {}; });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await A.c.close(); await B.c.close(); await C.c.close();
   }],
@@ -8605,8 +8684,9 @@ const SUITES = [
     ok(fA.length === 1 && /^21Board \(laptop\) \[[0-9a-z]{4}\]\.21board$/.test(fA[0]) && (await files(A.p)).includes('About this folder.txt'),
       `setting up writes this device’s file at once, named after it, beside “About this folder.txt” (${(await files(A.p)).join(', ')})`);
     const about = await fileText(A.p, 'About this folder.txt');
-    ok(/Each device keeps its own copy of the whole board here, named after the device, such as\r\n"21Board \(laptop\) \[k3j9\]\.21board"\./.test(about) && /- To work on a board with a co-teacher, share this folder with them as an Editor\. They add a\r\n  shortcut to it in their My Drive, then pick it when they set up Board Sync\./.test(about) && /21Board deletes an unlinked device’s file two\r\n  months later\./.test(about),
-      'the note explains one file per device, sharing with a co-teacher, and that an unlinked device’s file goes after two months');
+    ok(/Each device keeps its own copy of the whole board here, named after the device, such as\r\n"21Board \(laptop\) \[k3j9\]\.21board"\./.test(about) && /- To work on a board with a co-teacher, share this folder with them as an Editor\. They add a\r\n  shortcut to it in their My Drive, then pick it when they set up Board Sync\./.test(about) && /21Board deletes an unlinked device’s file two\r\n  months later\./.test(about) &&
+      /- The "Photos" folder holds each picture once\. The board files only name them\. To give\r\n  someone a board, use Export in 21Board\./.test(about),
+      'the note explains one file per device, sharing with a co-teacher, that an unlinked device’s file goes after two months, and what Photos holds');
     const jA = JSON.parse(await fileText(A.p, fA[0]));
     ok(jA.format === '21board' && jA.kind === 'full' && jA.board.name === 'Morning' && jA.sync && jA.sync.v === 2 && /^[0-9a-z]{12}$/.test(jA.sync.dev) && jA.sync.name === 'the laptop' && /^[0-9a-f]{32}$/.test(jA.sync.sum) &&
       jA.instances.some(i => i.data && i.data.text === 'Spelling words' && i.v && i.v.data) && /^[0-9a-z]{12}$/.test(jA.sync.folder),

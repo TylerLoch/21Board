@@ -14,11 +14,11 @@
 const VERSION = '2026.11.18-14';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '1a5dbaf7';
+const BUILD = 'ef68a97c';
 const FILES = {
-  './': '532ff6700576dca6',
-  'index.html': '532ff6700576dca6',
-  'board.js': 'f2e89fbd8b88e2ea',
+  './': '19b3ee4fe66a7ef1',
+  'index.html': '19b3ee4fe66a7ef1',
+  'board.js': '7a482081cc2eeefa',
   'sdk/board21.js': '3d8ef72db43df6eb',
   'sdk/board21-dev.js': '701293968d7cad06',
   'sdk/dev/board-shell.js': '6a9904ef1f666799',

@@ -196,7 +196,8 @@ never in Board history. `link:folder` holds the folder handle Chrome gives 21Boa
 ```js
 {
   device: { id: "…", label: "the laptop" },   // label: "This device's name", shown on the other devices and in this device's file name
-  tidy: { at, seen: { "Photos/<photo file>": <when first found unused> } },   // the last tidying of Photos (see below)
+  tidy: { at, seen: { "Photos/<photo file>": <when first found unused> },     // the last tidying of Photos (see below)
+          copies: { "Board history/<copy>": { size, lastModified, files } } },   // the pictures each history copy names
   shown: { "<page uid>": <when last shown here> }   // for the note on a page changed while it wasn't shown
 }
 ```
@@ -326,6 +327,9 @@ this device's board when deciding whether an old device file can go.
 - `Board history/`;
 - `About this folder.txt`.
 
+Google Drive may make a `Photos (1)` or `Board history (1)` beside the first. 21Board reads both. It writes
+`About this folder.txt` again when the one there says something else.
+
 Other files are left alone. A renamed device (set-up's last step, or Settings → Board Sync) writes its file under
 the new name at its next write, then deletes the old one.
 
@@ -347,10 +351,10 @@ Pictures in windows' content are named in `Photos/`, not held (see "The .21board
 A device file is merged only if:
 
 - it parses;
-- `sync.v` is 1 or 2 (a newer one shows *Update 21Board*). From 2026.11.18-14 every device file is 2, since it may
-  name pictures in `Photos/`. An earlier release merges only 1, so it shows *Update 21Board* and merges nothing from
-  such a file, as for any newer one. It never tidies `Photos/` meanwhile. This release reads its files, pictures
-  inside, as they are;
+- `sync.v` is 1 or 2. A newer one shows *Update 21Board*. From 2026.11.18-14 every device file is 2, since it may
+  name pictures in `Photos/`. An earlier release merges only 1, so it shows *Update 21Board*, merges nothing from
+  such a file and never tidies `Photos/` meanwhile. This release still reads an earlier release's files, pictures and
+  all;
 - its parts have the expected shapes (a malformed page or window is skipped, never taken for a deletion);
 - its checksum matches (a file cut short, or mixing old and new bytes, can still parse);
 - its `seq` isn't older than the one merged from that device.
@@ -376,19 +380,21 @@ A device reads a picture another device's file names when that content wins, fro
 beside it. The file is checked as an imported photo is: a plain fingerprint name (no paths), its type by its first
 bytes, its bytes' SHA-256 matching its name (so half a file still arriving isn't used), under 16e6 characters as a
 data URL, and it must open. A background photo is a JPEG, PNG or WebP of about 6.5 MP at most. A window's picture
-must be the type its name says, at most 50 MP (read from its header before it is decoded), and the content made
-with it must have the fingerprint the file gives (`vh.data`). Until it can be used, the page keeps its photo and the
-window keeps what it shows. A window new to this device waits, whole, for its picture. Settings says so after 10
-minutes. One that isn't good is read again 30 seconds later, or once its size or date changes.
+must be the type its name says, at most 50 MP, and at most 5 MB if it moves. Its size in pixels, and whether it
+moves, are read from its first bytes, so nothing over a limit is decoded. The content made with it must have the
+fingerprint the file gives (`vh.data`). Until it can be used, the page keeps its photo and the window keeps what it
+shows. A window new to this device waits, whole, for its picture. Settings says so after 10 minutes. One that isn't
+good is read again 30 seconds later, or once its size or date changes.
 
 `tidy`: a picture that no device file and no Board history copy in the folder names (Google Drive's own copies,
 `<fingerprint> (1).jpg`, never are) is deleted when its date is over 7 days old and this device has found it so on two
 looks at least an hour apart (`seen`; a note over 2 days old is taken afresh). A look happens at most once in 20
 hours (`at`), after a full round, not while any device file or history copy in the folder can't be read or no device
 file was found, and not in the first `LINK_ARRIVE_MS` (10 minutes) after 21Board opens, the device wakes or the
-folder comes back. Each history copy is read once (by its name, size and date: a copy never changes), so a copy
-older than a picture's removal still opens whole. A picture this device's file names that is missing from `Photos/`
-is put again at the next write. Other files in `Photos/` are left alone.
+folder comes back. So a copy older than a picture's removal still opens whole. A copy never changes, so each device
+reads each one once and keeps what it names in `copies`, by its name, size and date. A copy from before
+2026.11.18-14 names nothing, so only its first bytes are read. A picture this device's file names that is missing
+from `Photos/` is put again at the next round. Other files in `Photos/` are left alone.
 
 ### `media:<b>:background` and `media:<b>:background-look`
 
@@ -705,10 +711,10 @@ Otherwise the device keeps its own. To give a board to someone, use Export, sinc
 don't hold their photos. Exports, backups and Board history work as before, with the photo inside or left out.
 
 **Pictures in windows.** A device file, and a Board history copy in the folder, names each picture in a window's
-content in `Photos/` instead of holding it. A picture is a string in a top-level field of `data` that is a base64
-`data:` URL of a PNG, JPEG, GIF, WebP or AVIF, of 32,768 characters or more and under 16e6, whose first bytes are
-that type, written as an encoder writes it. That is Board history's rule for keeping a picture once, kept to
-pictures `Photos/` can check, so it works for any widget. Anything else stays in the file, a small icon too.
+content in `Photos/` instead of holding it. A picture is a base64 `data:` URL in a top-level field of `data`. Its
+first bytes make it a PNG, JPEG, GIF, WebP or AVIF. It is 32,768 to 16e6 characters of standard base64, so the
+picture read back is the same string. It is Board history's rule, kept to pictures `Photos/` can check. Any widget
+gets it. Anything else stays in the file, a small icon too.
 
 ```js
 "data": { "src": { "b21photo": "3fa9c1d2e4b5a6f70123456789abcdef.gif" }, "w": 480, "h": 360, "name": "Volcano.gif", "bytes": 61234 },
@@ -716,13 +722,12 @@ pictures `Photos/` can check, so it works for any widget. Anything else stays in
 "pending": { "data": [{ "v": […], "val": { … }, "h": "…" }] }   // a pending version that names a picture has its fingerprint too
 ```
 
-`b21photo` is the picture's file in `Photos/`, the object's only key. A device file that names one is
-`formatVersion: 2` (its `sync.v` is 2 either way), and so is a history copy; one that names none stays 1, as every
-export is. In a device file a name counts only with `vh.data` beside it: a window whose content names a picture
-without it, or names one oddly, is skipped, never read as an empty picture. Opened with Import, or with *Go back* in
-Board history, each picture comes from this device if it has it, or from `Photos/`. One that can't be found leaves
-its field empty (`null`), and 21Board says so. An earlier release refuses such a file ("made by a newer version of
-21Board"). An export always holds its pictures.
+`b21photo` is the picture's file in `Photos/`, the object's only key. A device file or history copy that names one
+is `formatVersion: 2`. One that names none stays 1, as every export is. Every device file's `sync.v` is 2. In a
+device file, a name counts only as a plain fingerprint with `vh.data` beside it. Otherwise the window is skipped.
+Opened with Import, or with *Go back* in Board history, each picture comes from this device if it has it, or from
+`Photos/`. One that can't be read in time leaves its field empty (`null`), and 21Board says so. An earlier release
+refuses such a file ("made by a newer version of 21Board"). An export always holds its pictures.
 
 Optional, ignored by older readers: `instances[].createdAt` (which window is which, kept by Board history),
 `history: {at, kind, label, by, from}` (a Board history copy), `media.ref` (a photo kept in Board history) and

@@ -2075,8 +2075,10 @@ function pictures() {
     ok(p1 && p1.summary.held > 0, `the round says it held something back (${p1 && p1.summary.held}), so the next look runs another`);
     const fB = instsOf(fileOf(B));
     ok(!fB.some(i => i.wid === w2) && (fB.find(i => i.wid === w1).data.src || {}).b21photo === oldRef, 'its own file still names the picture it shows, and not the new window');
+    const v1 = JSON.stringify(B.link.mines.get(uid).w[w1].p.data), bw1 = B.writes;
     NOW += 1000; B.round(); NOW += 1000; B.round();
-    ok(B.recs.get(`data:${bOf(B, uid)}:${ikOf(B, uid, w1)}`).value.src === old, `rounds while it waits never empty the window, nor stamp it as changed here (${B.writes - bw} writes)`);
+    ok(B.recs.get(`data:${bOf(B, uid)}:${ikOf(B, uid, w1)}`).value.src === old && JSON.stringify(B.link.mines.get(uid).w[w1].p.data) === v1 && B.writes === bw1,
+      `rounds while it waits never empty the window, nor stamp it as changed here, nor write (${B.writes - bw} writes in all)`);
     // A picture in Photos that isn't the one named (its bytes don't give the content's fingerprint): held too.
     B.picMiss = new Set();
     const realNext = PICS.get(refs[0]);
@@ -2165,7 +2167,7 @@ function pictures() {
     as4(O, false); O.rel = ''; O.H = null;
     const w0 = O.writes; NOW += MIN; O.round(); NOW += MIN; O.round();
     const oNew = O.folder.files.get(O.fileName());
-    ok(O.writes - w0 === 1 && JSON.parse(oNew).sync.v === 2 && !bigURL(oNew), `updated, its first round writes each picture once and a slim file, then nothing (${O.writes - w0} write)`);
+    ok(O.writes - w0 === 1 && JSON.parse(oNew).sync.v === 2 && !bigURL(oNew), `updated, its first round writes a slim file, then nothing (${O.writes - w0} write)`);
     const nw = N.writes; N.deliver(O); N.round(); NOW += MIN; N.round();
     ok(N.writes === nw && dataOf(N, ouid, owid).src === opic, 'for the other device that is no change');
   });
