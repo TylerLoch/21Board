@@ -36,6 +36,8 @@
   var ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   var SDK_TAG_RE = /(<script\b[^>]*?\bsrc\s*=\s*)(["'])([^"']*?)board21(?:\.min)?\.js((?:[?#][^"']*)?)\2/i;
   var MAX_ZOOM = 2.5;
+  // Where AI tools' previews load the SDK from, for Checks' fix request. docs/AI-PROMPT.md gives the same address.
+  var PUBLIC_SDK = 'https://tylerloch.github.io/21Board/sdk/board21.js';
 
   var CSS = [
     ':host { all: initial; position: fixed; inset: 0; z-index: 2147483000; display: block; font: 13px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: #e5e7eb; background: #23272e; }',
@@ -89,7 +91,7 @@
     '.ev div .j { display: none; color: #9aa4af; margin-top: 3px; } .ev div.open .j { display: block; }',
     '.chk { border-radius: 8px; background: #1b2026; padding: 9px 10px; display: flex; flex-direction: column; gap: 6px; }',
     '.chk b { color: #fff; } .chk.warn { box-shadow: inset 3px 0 0 #d97706; } .chk.err { box-shadow: inset 3px 0 0 #dc2626; } .chk.ok { box-shadow: inset 3px 0 0 #16a34a; } .chk.info { box-shadow: inset 3px 0 0 #3b82f6; }',
-    '.pop { position: absolute; top: 40px; right: 6px; min-width: 240px; padding: 5px; border-radius: 10px; background: #1d2228; border: 1px solid #000; box-shadow: 0 10px 30px rgba(0,0,0,.4); display: flex; flex-direction: column; }',
+    '.pop { position: absolute; z-index: 1; top: 40px; right: 6px; min-width: 240px; padding: 5px; border-radius: 10px; background: #1d2228; border: 1px solid #000; box-shadow: 0 10px 30px rgba(0,0,0,.4); display: flex; flex-direction: column; }',   /* over the panel */
     '.pop[hidden] { display: none; }',
     '.pop button { text-align: left; border: 0; background: none; padding: 8px 10px; border-radius: 6px; color: #e5e7eb; }',
     '.pop button:hover { background: #2a313a; }',
@@ -97,7 +99,7 @@
     '.copybox { display: flex; flex-direction: column; gap: 6px; }',
     '.copybox[hidden] { display: none; }',
     '.help p { margin: 0 0 8px; } .help code { font-family: ui-monospace, monospace; background: #0d1014; padding: 1px 4px; border-radius: 4px; }',
-    '.barewrap { position: absolute; inset: 0; display: flex; flex-direction: column; background: #23272e; }',
+    '.barewrap { position: absolute; z-index: 2; inset: 0; display: flex; flex-direction: column; background: #23272e; }',   /* over the panel and ⋯ */
     '.barewrap[hidden] { display: none; }',
     '.barewrap .bar { position: relative; }',
     '.barewrap iframe { flex: 1; width: 100%; border: 0; background: #fff; }',
@@ -159,7 +161,7 @@
   }
 
   // ---------------------------------------------------------------------- checks
-  function lint(src, info, sdkUrl, lastMenu) {
+  function lint(src, info, lastMenu) {
     var out = info.notes.slice();
     var doc = info.doc;
     var code = Array.prototype.map.call(doc.querySelectorAll('script:not([src])'), function (s) { return s.type === 'application/json' ? '' : s.textContent; }).join('\n');
@@ -170,7 +172,7 @@
     var scripts = doc.querySelectorAll('script[src]');
     var sdkFirst = false;
     for (var i = 0; i < doc.scripts.length; i++) { var s = doc.scripts[i]; if (s.type === 'application/json') continue; sdkFirst = !!(s.src && /board21(\.min)?\.js/.test(s.getAttribute('src'))); break; }
-    if (!info.sdkFound) add('err', 'The 21Board SDK isn’t loaded', 'The dev window added it for this test.', 'Add <script src="' + sdkUrl + '"></script> as the first script in <head>.');
+    if (!info.sdkFound) add('err', 'The 21Board SDK isn’t loaded', 'The dev window added it for this test.', 'Add <script src="' + PUBLIC_SDK + '"></script> as the first script in <head>.');
     else if (!sdkFirst) add('warn', 'The SDK isn’t the first script', 'Scripts before it run before the dev window starts, then again inside it.', 'Make the 21Board SDK <script> the first script in <head>.');
     if (!/^\s*(<!--[\s\S]*?-->\s*)*<!doctype html>/i.test(src)) add('warn', 'No <!DOCTYPE html> at the top', 'Without it, the board draws the widget in quirks mode, where sizes and spacing can differ. This window can’t show that.', 'Make <!DOCTYPE html> the first line of the file.');
     var hosts = {};
@@ -385,7 +387,7 @@
     // ---- checks
     function runChecks() {
       if (!info.widget) return;
-      st.checks = lint(src, info, sdkUrl, st.lastMenu);
+      st.checks = lint(src, info, st.lastMenu);
       var bad = st.checks.filter(function (c) { return c.level === 'err' || c.level === 'warn'; }).length;
       var n = $('[data-k="chn"]');
       n.textContent = String(bad);
@@ -506,7 +508,7 @@
         case 'shape': send('shape', { value: st.lastView && st.lastView.shape === 'free' ? '16:9' : 'free' }); break;
         case 'close-drawer': openDrawer(st.drawer); break;
         case 'edit': if (opts.onEdit) opts.onEdit(); break;
-        case 'help': openDrawer('help'); break;
+        case 'help': if (st.drawer !== 'help') openDrawer('help'); break;
         case 'bare': {   // in a fresh frame (rewriting this page would run the widget's code twice in one window)
           var wrap = $('.barewrap'), bf = document.createElement('iframe');
           bf.name = 'b21-bare';
@@ -553,6 +555,7 @@
       else if (k === 'hidewin') renderDrawer();
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') { pop.hidden = true; } });
+    window.addEventListener('blur', function () { pop.hidden = true; });   // a tap on the board (a frame) closes ⋯ too
 
     $('[data-k="screen"]').value = st.screen;
     setView(st.view);
