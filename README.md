@@ -154,8 +154,8 @@ time Settings opens.
     whole window. See [Board shape and size](#board-shape-and-size).
 - **Advanced ▸** shows an amber dot when a backup is overdue: none for a week, or none yet after a week with windows
   on any page. *Back up every page* inside has the dot too. *Back up now* clears it, and so does Board Sync writing
-  this device's file, which is a full backup too. Whether the browser will keep 21Board's data shows inside, under
-  *Protected storage*, not as a dot.
+  this device's file. Whether the browser will keep 21Board's data shows inside, under *Protected storage*, not as
+  a dot.
   - **Widget Picker:** both corners, or only left or right.
   - **Clock in the corner:** *On*, *Off* or *Auto*, the default. It shows the time and date beside the bottom right
     ▦, or beside the only ▦ when the Widget Picker is in one corner. *Auto* shows it only in full screen, where the
@@ -423,20 +423,22 @@ copy written to the folder.
 **What's in the folder:**
 
 - **One file per device**, named after it: `21Board (laptop) [k3j9].21board`. Each holds the whole board as that
-  device has it, and is a full backup of every page that Import can open. No file ever has two writers, so Google
-  Drive can't drop one of two saves made seconds apart. A laptop closed overnight still brings the evening's work to
-  the smartboard in the morning.
-- **Photos:** each background photo once, named by its content. Device files only name their photos. A photo can
-  arrive after the board, so the page keeps its photo until the new one is here. After 10 minutes, Board Sync says
-  the photo is still arriving. Photos no device names any more are deleted after about a week. 21Board also reads a
-  second `Photos (1)` folder if Google Drive makes one. A Picture window's picture travels inside the device files.
+  device has it. Import opens it, with its pictures from Photos. No file ever has two writers, so Google Drive can't
+  drop one of two saves made seconds apart. A laptop closed overnight still brings the evening's work to the
+  smartboard in the morning.
+- **Photos:** one copy of each background photo and each picture in a window, named by its content. Device files
+  and Board history copies only name them. Each picture uploads once. A picture can arrive after the board. Until it
+  does, the page keeps its photo and the window keeps what it shows. A new window waits for its picture. After 10
+  minutes, Settings says the picture is still arriving. Pictures no file names any more are deleted after about a
+  week. 21Board also reads a second `Photos (1)` or `Board history (1)` folder if Google Drive makes one.
 - **Board history:** copies of this device's own changes, about one an hour.
 - **About this folder.txt** explains what's in the folder.
 - A file that is half-delivered, mixes old and new bytes, or is older than one already merged is never merged. The
   status says when one has been arriving for a while. When a file in the folder comes from a newer 21Board, this
   device shows **Update 21Board** on the board, with an Update button once the update has downloaded. It merges
   nothing from that file until it updates. A folder holding only such a file doesn't get this device's board
-  meanwhile, so two boards are never combined.
+  meanwhile, so two boards are never combined. A device on 2026.11.18-14 or earlier shows **Update 21Board** once a
+  device in the folder has 2026.11.18-15.
 
 **Unlink**, in Settings → Board Sync, writes this device's file once more to say it left, then stops. The board
 stays here, and linking the same folder again carries on. The other devices delete an unlinked device's file two
@@ -710,7 +712,8 @@ page how much space is left, so 21Board goes by refused saves.
 
 **In the Google Drive folder.** When Board Sync is set up and *Keep history copies in the folder* is on in Settings
 → Board Sync, about one copy an hour, and every version you save, goes to “Board history” inside the folder. Copies
-leave out the background photo and are named like `Room 12 2026-11-10 09.45 (smartboard) [7c1e9a-k3j9].21board`.
+leave out the background photo. A copy names its pictures in Photos. Copies are named like
+`Room 12 2026-11-10 09.45 (smartboard) [7c1e9a-k3j9].21board`.
 They hold only this device's own changes. Work merged from another device is in that device's copies. Each device
 thins only its own copies, and files ending in “saved” stay. Another device, even one that was reset, can bring a
 board back from them in Board history → *In your Google Drive folder*. They can include student names.
