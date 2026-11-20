@@ -535,10 +535,13 @@ with the board's records and never exported. Three object stores:
         | "merge" | "undo" | "join" | "take",
   label, sig, uid, name, bytes, photo: "<key>" | null | "gone", pics: ["pic-…"],     // only with pictures
   thumb: { bg, pattern, shape, vw, vh, wins: [[ikey, x, y, w, h], …] },              // open windows, back to front
-  wins: { "<ikey>": [open, createdAt, dataHash, confHash, dataLength, excerpt] },
+  wins: { "<ikey>": [open, createdAt, dataHash, confHash, dataLength, excerpt, maximized] },
   beforeBig, keepUntil, manual, manualLabel, folder, tab,
   deletedAt }                                                                         // the page was deleted then (ms)
 ```
+
+`excerpt` is a few words about the window's content, such as a Timer's `5 minutes`. A widget that isn't built in
+shows its text.
 
 Versions before Board Sync merges (`reason: "merge"`, "Before changes from the laptop") may be of a page that isn't
 shown: `uid` and `name` are that page's. A risky merge (deleting or bringing back, emptying content, a clash, a photo
