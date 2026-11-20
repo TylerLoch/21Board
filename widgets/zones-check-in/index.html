@@ -47,13 +47,13 @@
   .grid { height: 100%; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: var(--pad); }
   @container zones (aspect-ratio > 2.2) { .grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
   @container zones (aspect-ratio < 0.5) { .grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
-  .zone { position: relative; min-width: 0; min-height: 0; container: zone / size; }
+  .zone { position: relative; min-width: 0; min-height: 0; container: zone / size; --head: clamp(36px, 22cqh, 76px); }
   .tap { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 18px; overflow: hidden;
          background: var(--tint); color: var(--ink); box-shadow: inset 0 0 0 2px var(--strong); text-align: center; transition: transform .08s, filter .15s; }
   .tap:active { transform: scale(.985); filter: brightness(.96); }
-  .tap:focus-visible, .idea-btn:focus-visible, .foot button:focus-visible { outline: 4px solid var(--b21-accent); outline-offset: 2px; }
-  .head { flex: 0 0 auto; display: flex; align-items: center; box-sizing: border-box; height: clamp(36px, 22cqh, 76px);
-          padding: 0 clamp(10px, 5cqw, 22px); background: var(--strong); color: var(--on); }
+  .tap:focus-visible, .foot button:focus-visible { outline: 4px solid var(--b21-accent); outline-offset: 2px; }
+  .head { flex: 0 0 auto; display: flex; align-items: center; box-sizing: border-box; height: var(--head);
+          padding: 0 45% 0 clamp(10px, 5cqw, 22px); background: var(--strong); color: var(--on); text-align: left; }
   .name { font-size: clamp(16px, min(12cqh, 11cqw), 46px); font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .main { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 4cqw; }
@@ -64,7 +64,7 @@
   /* The feeling words, in a slot two lines high on every card, so the four cards line up. */
   .words { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; box-sizing: content-box;
            height: 2.4em; padding: 0 10px clamp(6px, 4cqh, 16px); font-size: clamp(14px, min(6.5cqh, 5.6cqw), 26px); font-weight: 600; line-height: 1.2; }
-  .words span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .words span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-wrap: balance; }
   @container zone (height < 150px) or (width < 180px) { .words { display: none; } }
   /* "+1" (or ✓ while counts are hidden) after a tap */
   .float { position: absolute; top: 4%; right: 8%; font-size: clamp(16px, min(16cqh, 12cqw), 60px); font-weight: 800; pointer-events: none;
@@ -75,12 +75,20 @@
   @keyframes checked { 0% { opacity: 0; transform: scale(.6); } 20% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
   .count.pop { animation: pop .3s ease-out; }
   @keyframes pop { 40% { transform: scale(1.18); } }
-  /* Ideas for the zone: a quiet button on the card's top */
-  .idea-btn { position: absolute; top: 0; right: 0; width: 48px; height: clamp(36px, 22cqh, 76px); min-height: 48px; padding: 0; border: 0;
-              background: none; color: var(--on); display: grid; place-items: center; border-radius: 0 18px 0 12px; }
-  .idea-btn span { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; background: color-mix(in srgb, var(--on) 22%, transparent); }
-  .idea-btn svg { width: 22px; height: 22px; }
-  @container zone (height < 110px) or (width < 140px) { .idea-btn { display: none; } }
+  /* Ideas for the zone: a solid pill on the card's top, "💡 Ideas" (just the bulb on a narrow card). The button is at
+     least 48 px high; the pill sits in the middle of the colored top (--ph: its height). */
+  .idea-btn { position: absolute; top: 0; right: 0; height: max(48px, var(--head)); min-width: 48px; padding: 0 clamp(6px, 2.5cqw, 12px); border: 0;
+              background: none; display: flex; align-items: flex-start; justify-content: flex-end; border-radius: 0 18px 0 0;
+              --ph: clamp(30px, calc(var(--head) - 14px), 54px); }
+  .pill { display: inline-flex; align-items: center; justify-content: center; gap: .35em; box-sizing: border-box; height: var(--ph); min-width: var(--ph);
+          margin-top: calc((var(--head) - var(--ph)) / 2); padding: 0 .85em 0 .7em; border-radius: 999px; background: var(--on); color: var(--strong);
+          font-size: clamp(14px, calc(var(--ph) * .46), 24px); font-weight: 800; box-shadow: 0 2px 6px rgb(0 0 0 / .25); transition: transform .08s; }
+  .pill svg { width: 1.3em; height: 1.3em; flex: 0 0 auto; stroke-width: 2.4; }
+  .idea-btn:active .pill { transform: scale(.94); }
+  .idea-btn:focus-visible { outline: none; }
+  .idea-btn:focus-visible .pill { outline: 3px solid var(--on); outline-offset: 3px; }
+  @container zone (width < 200px) { .pill { padding: 0; } .pill b { display: none; } .head { padding-right: 52px; } }
+  @container zone (height < 90px) or (width < 110px) { .idea-btn { display: none; } .head { padding-right: clamp(10px, 5cqw, 22px); } }
 
   /* ---- The bottom: Undo, and how many have checked in. Kept clear of the board's own buttons (--reach, --low). */
   .foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: clamp(8px, 3vmin, 18px);
@@ -141,6 +149,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .tap, .tap:active { transition: none; transform: none; }
+    .pill, .idea-btn:active .pill { transition: none; transform: none; }
     .count.pop { animation: none; }
     .float, .float.check { animation: fade 1s ease-in forwards; }
     @keyframes fade { from { opacity: 1; } to { opacity: 0; } }
@@ -184,7 +193,7 @@
         <span class="head"><span class="name"></span></span>
         <span class="body"><span class="main"><span class="face" aria-hidden="true"></span><span class="count"></span></span><span class="words"><span></span></span></span>
       </button>
-      <button type="button" class="idea-btn" title="Ideas"><span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2v.2h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg></span></button>
+      <button type="button" class="idea-btn"><span class="pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2v.2h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg><b>Ideas</b></span></button>
     </div>
   </template>
   <template id="row-tpl">
@@ -199,21 +208,21 @@
   //   Counts are how the class feels, so they are content: templates never carry them.
   // Config (Board21.saveConfig): { classSize, showCounts, daily, sound }. Setup that names no student.
   const ZONES = [
-    { id: 'blue', name: 'Blue', face: '😴', words: 'Sad, tired, sick', lead: 'Ideas to wake up your body', pitch: 392, ideas: [
+    { id: 'blue', name: 'Blue', face: '😴', words: 'Sad • Tired • Sick • Slow', lead: 'Ideas to wake up your body', pitch: 392, ideas: [
       ['💧', 'Drink water', 'Take five slow sips.'],
       ['🙆', 'Stretch', 'Reach up high, then touch your toes.'],
       ['🌬️', 'Belly breaths', 'Take three deep breaths into your belly.'],
       ['🚶', 'Take a walk', 'Walk slowly around the room.']] },
-    { id: 'green', name: 'Green', face: '😊', words: 'Calm, happy, ready', lead: 'Ideas to keep it going', pitch: 523.25, ideas: [
+    { id: 'green', name: 'Green', face: '😊', words: 'Ready to Learn • Calm • Happy', lead: 'Ideas to keep it going', pitch: 523.25, ideas: [
       ['⭐', 'Keep learning', 'You’re ready to focus and do your best.'],
       ['🤝', 'Help a friend', 'See if someone needs a hand or a smile.'],
       ['🎯', 'Set a goal', 'Choose what to finish first today.']] },
-    { id: 'yellow', name: 'Yellow', face: '🤪', words: 'Silly, worried, frustrated', lead: 'Ideas to slow down', pitch: 659.25, ideas: [
+    { id: 'yellow', name: 'Yellow', face: '🤪', words: 'Elevated • Silly • Frustrated', lead: 'Ideas to slow down', pitch: 659.25, ideas: [
       ['🧱', 'Wall push-ups', 'Push against the wall five times.'],
       ['🖐️', '5, 4, 3, 2, 1', 'Find 5 things you see, 4 you can touch, 3 you hear, 2 you smell and 1 you taste.'],
       ['🪑', 'Calm corner', 'Sit quietly for two minutes.'],
       ['🧸', 'Use a fidget', 'Squeeze a stress ball, quietly.']] },
-    { id: 'red', name: 'Red', face: '😡', words: 'Angry, scared, out of control', lead: 'Ideas to calm down', pitch: 783.99, ideas: [
+    { id: 'red', name: 'Red', face: '😡', words: 'Angry • Intense • Overwhelmed', lead: 'Ideas to calm down', pitch: 783.99, ideas: [
       ['🛑', 'Take space', 'Go to the calm-down spot.'],
       ['🌬️', 'Breathe with the circle', 'In for 4, hold for 4, out for 4, hold for 4.'],
       ['🧊', 'Cool down', 'Hold something cold, or wash your hands in cool water.'],
@@ -315,7 +324,8 @@
     const c = cards[z.id] = { node, tap: node.querySelector('.tap'), body: node.querySelector('.body'), count: node.querySelector('.count') };
     node.querySelector('.name').textContent = z.name;
     node.querySelector('.face').textContent = z.face;
-    node.querySelector('.words span').textContent = z.words;
+    // (A phrase stays on one line, and a • stays with the word before it: "Ready to Learn •" / "Calm • Happy".)
+    node.querySelector('.words span').textContent = z.words.split(' • ').map(w => w.replace(/ /g, '\u00a0')).join('\u00a0• ');
     const ib = node.querySelector('.idea-btn');
     ib.setAttribute('aria-label', `${z.name} zone ideas`);
     ib.addEventListener('click', () => openIdeas(z.id, ib));
@@ -379,7 +389,7 @@
     for (const z of ZONES) {
       const c = cards[z.id], k = cur.counts[z.id];
       if (c.count.textContent !== String(k)) c.count.textContent = k;
-      c.tap.setAttribute('aria-label', `${z.name}: ${z.words}` + (config.showCounts ? `. ${k} checked in` : ''));
+      c.tap.setAttribute('aria-label', `${z.name}: ${z.words.split(' • ').join(', ')}` + (config.showCounts ? `. ${k} checked in` : ''));
     }
     // The bar: each zone's share of the class (of those checked in, without a class size). One color while counts are hidden.
     const base = Math.max(size, n);
@@ -396,7 +406,7 @@
     const items = [
       { id: 'undo', label: 'Undo', disabled: !cur.undo.length },
       { id: 'clear', label: 'Start over', disabled: !n },
-      { id: 'edit', label: 'Edit counts…' },
+      { id: 'edit', label: 'Edit counts' },
       { separator: true },
       { heading: true, label: 'Ideas' },
       ...ZONES.map(z => ({ id: 'ideas:' + z.id, label: `${z.name} zone` })),
