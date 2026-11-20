@@ -54,11 +54,16 @@
   @container zone (aspect-ratio < 0.9) {
     .reach .main { flex-direction: column; gap: 2cqh; }
     .reach .face { font-size: min(20cqh, 40cqw); }
-    .reach .count { font-size: min(28cqh, calc(108cqw / max(2, var(--len, 1)))); }   /* (--len: its digits, so 100 fits too) */
+    /* (--len: its digits, so 100 fits too. Its line stays as tall as two digits, so the faces still line up.) */
+    .reach .count { font-size: min(28cqh, calc(108cqw / max(2, var(--len, 1)))); height: min(28cqh, 54cqw); display: flex; align-items: center; }
     .reach.hide-counts .face { font-size: min(26cqh, 56cqw); }
     /* (Room for four on every card, stacked from the bottom, so the four cards line up and so do their last feelings.) */
     .reach .feelings { flex-direction: column; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: .4em;
                        height: 6.9em; padding-bottom: clamp(10px, 5cqh, 48px); font-size: clamp(14px, min(3.4cqh, 6cqw), 30px); }
+  }
+  /* (One per line, a feeling keeps its word on a card down to 150 px wide.) */
+  @container zone (aspect-ratio < 0.9) and (width >= 150px) {
+    .reach .feelings { display: flex; } .reach .feel { padding: .1em .55em .1em .3em; } .reach .feel b { display: inline; }
   }
   .zone { position: relative; min-width: 0; min-height: 0; container: zone / size; --head: clamp(36px, 22cqh, 76px); }
   .tap { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 18px; overflow: hidden;
@@ -375,9 +380,11 @@
   function fitHeads() {
     const all = IDS.map(id => cards[id]);
     const room = () => { for (const c of all) c.node.style.setProperty('--tools', (c.tools.offsetWidth ? c.tools.offsetWidth + 6 : 0) + 'px'); };
+    // (To the fraction of a pixel: a name a quarter of a pixel too long already ends in "…".)
+    const cut = n => { const r = document.createRange(); r.selectNodeContents(n); return r.getBoundingClientRect().width > n.getBoundingClientRect().width + 0.01; };
     for (const c of all) c.node.classList.remove('tight');
     room();
-    if (all.some(c => c.name.scrollWidth > c.name.clientWidth + 1)) { for (const c of all) c.node.classList.add('tight'); room(); }
+    if (all.some(c => cut(c.name))) { for (const c of all) c.node.classList.add('tight'); room(); }
   }
   let fitDue = 0;
   const fitSoon = () => { if (!fitDue) fitDue = requestAnimationFrame(() => { fitDue = 0; fitHeads(); }); };
