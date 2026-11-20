@@ -4,7 +4,7 @@ It's published at https://claude.ai/artifact/2vXnMT4JJAkm5y6dnjC8YG.
 
 ## Update it
 
-1. Change the words in `page-src.html`. `[W]` draws ▦. `{{tile:id}}` and `{{icon:id}}` draw a widget's tile or icon from
+1. Change the words in `page-src.html`. `[W]` draws ▦, and `[L]` the padlock. `{{tile:id}}` and `{{icon:id}}` draw a widget's tile or icon from
    `tiles.json`.
 2. Retake the screenshots that changed: `node docs/teacher-guide/work/shoot.js <scene> …`. With no scene it takes them
    all. The scenes are in `work/scenes.js`.

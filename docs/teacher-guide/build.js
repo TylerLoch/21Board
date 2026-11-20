@@ -21,6 +21,8 @@ let cells = '';
 for (const y of [3, 9.5, 16]) for (const x of [3, 9.5, 16]) cells += `<rect x="${x}" y="${y}" width="5" height="5" rx="1.2"/>`;
 const waf = `<svg class="waf" viewBox="0 0 24 24" role="img" aria-label="the Widget Picker button">${cells}</svg>`;
 t = t.split('[W]').join(waf);
+// [L] is the padlock (Lock, and the padlocks in the top corners while the board is locked).
+t = t.split('[L]').join('<svg class="padlock" viewBox="0 0 24 24" role="img" aria-label="the padlock"><rect x="5" y="10.5" width="14" height="10.5" rx="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>');
 
 // {{tile:id}} is a link to a widget's section, {{icon:id}} its small icon. tiles.json has each widget's name, icon and color.
 const tiles = Object.fromEntries(JSON.parse(fs.readFileSync(path.join(HERE, 'tiles.json'), 'utf8')).map(w => [w.id, w]));

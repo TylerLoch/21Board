@@ -11,17 +11,17 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.18-17';
+const VERSION = '2026.11.18-18';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '6dd5cd15';
+const BUILD = 'be8285f4';
 const FILES = {
-  './': 'bea38d8749dce17d',
-  'index.html': 'bea38d8749dce17d',
-  'board.js': '3e3dbbafa5882969',
+  './': 'be221dcf22a05929',
+  'index.html': 'be221dcf22a05929',
+  'board.js': '91dc63ef27bed77b',
   'sdk/board21.js': 'ba3de867e376915e',
   'sdk/board21-dev.js': 'f7a43b8c7a88a9e8',
-  'sdk/dev/board-shell.js': 'fcec475a4f3074da',
+  'sdk/dev/board-shell.js': '78b8e46f05dc4eda',
   'sdk/lab.html': '53da73e5ab2bad8b',
   'widgets/registry.js': '200438390e9c516d',
   'manifest.webmanifest': '31bc5d66238072ca',
@@ -46,7 +46,7 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': '5acdb45c0d53e519',
+  'widgets/name-picker/index.html': 'da5392353e884870',
   'widgets/name-picker/style-bigname.js': 'f8620d2f1d12c8c5',
   'widgets/name-picker/style-wheel.js': 'bd3793376cdfc9e7',
   'widgets/name-picker/style-spotlight.js': 'd2ffd9ead362cf90',
@@ -54,10 +54,10 @@ const FILES = {
   'widgets/first-then-board/index.html': '1467ccddd22e8d1f',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
-  'widgets/youtube-player/index.html': '5a84d2adf04f7031',
+  'widgets/youtube-player/index.html': '93aec54e1209816b',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': '6f62120c44e8dde1',
-  'widgets/calculator/index.html': '30b381684d80c30b',
+  'widgets/calculator/index.html': 'c17d1f43f6e11556',
   'widgets/calculator/calc-engine.js': '2591c6f99c951cd6',
   'widgets/sdk-playground/index.html': '0dff97332041a455'
 };

@@ -94,7 +94,7 @@ device only. Never synced or exported, and not in Board history.
   accentAt: 1794460410000, //   a change made here, never by Board Sync): of two choices made apart, the later wins on
   lettersAt: 1794460420000,//   every device (lettersAt from 2026.11.17-2, accentColorAt from 2026.11.18-2)
   accentColorAt: 1794460410000,
-  locked: false,           // Settings → Classroom → Lock windows in place
+  locked: false,           // Lock in the Widget Picker: false | "all" (Lock everything) | "widgets" (Widgets still work)
   awake: "off",            // Settings → Classroom → Stay awake: "off" | "on" (the screen is kept on while 21Board is showing)
   clock: "auto",           // Settings → Advanced → Clock in the corner: "on" | "off" | "auto" (the default: only in full screen)
   letters: "standard",     // Settings → Appearance → Text style (called Letters before 2026.11.17-2): "standard" (the device's own font) | "legible" (Atkinson Hyperlegible) | "early" (Andika, as "21Board Early Readers")
@@ -118,6 +118,10 @@ A file without `letters` leaves the text style as it is. Its Undo puts back the 
 choice made here, so that syncs too. The other ways to import, and going back in Board history, never change them.
 `locked`, `awake` and `clock` belong to this device. They are never in exports, Board history or the Google Drive
 folder, and an import leaves them as they are.
+
+Before 2026.11.18-18, `locked` was a switch in Settings, `true` or `false`, that kept windows in place. A device
+locked then now reads as `"widgets"`, which does the same. So does any other value but `false` and `"all"`. An older
+21Board reads any value but `false` as its switch on.
 
 Older versions had a third choice for `awake`, `"hours"` (school hours, Monday to Friday, from `awakeFrom` to
 `awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"`, since the teacher wanted the screen on in class. It drops

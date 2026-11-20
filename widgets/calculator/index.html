@@ -792,7 +792,7 @@
       if (!on || cfg.test || el.app.dataset.layout !== 'side') return null;
       const r = keyBtn[7].getBoundingClientRect(), k = Math.min(r.width, r.height);
       let H = h;
-      for (let i = 0; i < 2; i++) { const m = metrics(w, H); H = Math.ceil(8 * k + 7 * m.G + m.P + m.PB); }
+      for (let i = 0; i < 2; i++) { const m = metrics(w, H); H = Math.ceil(8 * k + 7 * m.G + m.PT + m.PB); }
       if (H <= h + 2) return null;
       to = { w, h: H };
     }
@@ -821,10 +821,12 @@
   function metrics(W, H) {
     const m = Math.min(W, H), rows = !cfg.test && cfg.advanced ? 8 : 6;
     const P = clamp(8, m * .02, 28), G = clamp(5, m * .013, 16);
-    // Filling the board, the window keeps clear of the board's buttons in its bottom corners.
-    const info = Board21.context && Board21.context.window, cn = info && info.maximized && info.corners;
+    // Filling the board, the window keeps clear of the board's buttons in its bottom corners, and of the padlocks in its
+    // top ones while the board is locked.
+    const info = Board21.context && Board21.context.window, cn = info && info.maximized && info.corners, ct = cn && cn.top;
     const PB = cn && (cn.left > 0 || cn.right > 0) && cn.height > 0 ? Math.max(P, cn.height + G) : P;
-    return { W, H, P, PB, G, rows, keysMinW: 4 * KEY + 3 * G, keysMinH: rows * KEY + (rows - 1) * G };
+    const PT = ct && (ct.left > 0 || ct.right > 0) && ct.height > 0 ? Math.max(P, Math.min(1000, ct.height) + G) : P;
+    return { W, H, P, PT, PB, G, rows, keysMinW: 4 * KEY + 3 * G, keysMinH: rows * KEY + (rows - 1) * G };
   }
   const histWidth = h => Math.round(clamp(240, h * .6, 480));
   const canvasWidth = h => Math.round(h * .86);
@@ -832,7 +834,7 @@
   function layout() {
     const W = innerWidth, H = innerHeight;
     if (!W || !H) return;
-    const M = metrics(W, H), { P, PB, G, rows } = M, availW = W - 2 * P, availH = H - P - PB;
+    const M = metrics(W, H), { P, PT, PB, G, rows } = M, availW = W - 2 * P, availH = H - PT - PB;
     // History: at its width beside everything else, or narrower down to 200 px; where even that doesn't fit, it hides.
     let hw = 0;
     if (cfg.history) {
@@ -868,7 +870,7 @@
     el.app.dataset.layout = side ? 'side' : 'stack';
     el.app.classList.toggle('hist', !!hw);
     el.app.classList.toggle('swap', swap);
-    s.padding = `${P}px ${P}px ${PB}px`; s.setProperty('--g', G + 'px');
+    s.padding = `${PT}px ${P}px ${PB}px`; s.setProperty('--g', G + 'px');
     el.app.style.setProperty('--hf', clamp(16, (hw || 240) * .072, 40) + 'px');
     // Advanced keys need a taller window when they sit under a display: the board draws it taller meanwhile.
     const need = rows > 6 ? Math.ceil(2 * P + M.keysMinH + (besideByWidth ? 0 : G + DISP_MIN)) + 1 : 0;

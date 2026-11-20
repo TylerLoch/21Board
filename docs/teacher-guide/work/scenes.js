@@ -88,7 +88,7 @@ async function openPicture(p, ik, file) {
 }
 async function pickerOpen(p, side = 'left') { if (await p.locator(`#panel.open.${side}`).count()) return; await p.click(`.picker-btn.${side}`); await wait(p, 500); }
 async function pickerClose(p) { await p.keyboard.press('Escape'); await wait(p, 300); if (await p.locator('#panel.open').count()) { await p.mouse.click(683, 300); await wait(p, 300); } }
-async function darkMode(p) { await pickerOpen(p); await p.click('#panel [data-ctl="theme"]'); await wait(p, 400); await pickerClose(p); }
+async function darkMode(p) { await openSettings(p); await p.click('#settings [data-act="theme"][data-val="dark"]'); await wait(p, 400); await p.keyboard.press('Escape'); await wait(p, 300); }
 async function openSettings(p, groups = [], side = 'left') {
   await pickerOpen(p, side);
   await p.click('.panel.open [data-ctl="settings"]');
@@ -351,6 +351,27 @@ SCENES.kiosk = async () => {
   log('  controls', JSON.stringify(await p.$$eval('#panel .panel-controls [data-ctl]', els => els.filter(e => !e.hidden).map(e => e.dataset.ctl + ':' + (e.getAttribute('aria-label') || e.textContent)))));
   const b = await p.locator('#panel').boundingBox(), btn = await p.locator('.picker-btn.left').boundingBox();
   await shot(p, 'kiosk.jpg', clear(padded(union(b, btn), 24), union(await p.locator('#empty-hint .big').boundingBox(), await p.locator('#empty-hint .small').first().boundingBox())));
+  await ctx.close();
+};
+
+// ---- 11. lock.jpg: Lock in the Widget Picker asks how, and says how to unlock
+SCENES.lock = async () => {
+  const { ctx, p } = await newBoard();
+  const ik = {};
+  for (const id of ['clock', 'notes', 'timer']) ik[id] = await addWin(p, id);
+  await setRect(p, ik.clock, { x: 160, y: 120, w: 440, h: 470 });
+  await setRect(p, ik.notes, { x: 650, y: 120, w: 1100, h: 1080 });
+  await setRect(p, ik.timer, { x: 1800, y: 120, w: 520, h: 430 });
+  await wait(p, 600);
+  await typeNote(p, ik.notes, AGENDA_LONG);
+  await deselect(p);
+  await pickerOpen(p, 'left');
+  log('  controls', JSON.stringify(await p.$$eval('#panel .panel-controls [data-ctl]', els => els.filter(e => !e.hidden).map(e => e.dataset.ctl + ':' + (e.getAttribute('aria-label') || e.textContent)))));
+  await p.click('#panel [data-ctl="lock"]'); await wait(p, 600);
+  log('  dialog', JSON.stringify(await p.locator('#modal.open .modal-card').innerText()));
+  await p.evaluate(() => { const a = document.activeElement; if (a && a.blur) a.blur(); });   // (no focus ring in the picture)
+  await wait(p, 200);
+  await shot(p, 'lock.jpg', padded(await p.locator('#modal .modal-card').boundingBox(), 28));
   await ctx.close();
 };
 
