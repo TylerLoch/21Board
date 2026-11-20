@@ -94,6 +94,5 @@ Each one's README has the steps.
 ## 8. Report and tidy up
 
 - Send Tyler the final screenshots and anything left open.
-- Remind Tyler that production needs LICENSE and LICENSE-DOCS uploaded with every release.
 - If the release answers a row in the tracker, update that row.
 - Remove the worktree, then its branch.
