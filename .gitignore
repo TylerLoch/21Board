@@ -3,3 +3,4 @@ tests/output/
 .DS_Store
 docs/calculator-manual/dist/
 docs/teacher-guide/dist/
+docs/teacher-guide/work/run.log

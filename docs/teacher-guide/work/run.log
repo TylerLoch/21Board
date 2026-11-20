@@ -1,5 +1,0 @@
-serving http://127.0.0.1:42209/
-== scene picker
-  tiles 15 ["21DocCam","21Sketch","21Timer","Calculator","Calendar","Clock","Dice","First/Then Board","Name Picker","Notes","Picture","Task Timer","Timer","Traffic Light","Video Player"]
-  controls ["paste:Paste","export:Export board","import:Import board","theme:Dark mode","fullscreen:Full screen","settings:Settings","prev:Previous page","pages:Page 1 of 1. Pages menu","next:New page"]
-  wrote picker.jpg (60331 bytes) clip {"x":0,"y":425,"width":495,"height":343}
