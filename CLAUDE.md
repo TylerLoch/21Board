@@ -29,3 +29,9 @@ After: "Your work is stored only on this device."
 docs/calculator-manual/ is the Calculator's manual, published at https://claude.ai/artifact/8p3dg4r8xSduSD2DmNVjXB.
 When the Calculator changes, update the manual in the same change. Build it, check it, then publish it again to that
 link.
+
+## Teacher Guide
+
+docs/teacher-guide/ is the Teacher Guide, published at https://claude.ai/artifact/2vXnMT4JJAkm5y6dnjC8YG.
+Every change to the interface, a widget or how the board behaves updates the guide in the same change: its words and
+the screenshots that show it. Build it, check it, then publish it again to that link. Its README has the steps.
