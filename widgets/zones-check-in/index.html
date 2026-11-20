@@ -8,7 +8,7 @@
 <title>Zones Check-In</title>
 <style>
   /* The four zones' colors: --z-<zone> fills a card's top and the bar, -on is text on it, -tint is the card, -ink is
-     text on the card. Each element with data-z="<zone>" gets them as --strong, --on, --tint and --ink. */
+     text on the card, --mark the zone's color on white. Each element with data-z="<zone>" gets them as --strong, --on, --tint and --ink. */
   :root {
     --z-blue: #2563eb; --z-blue-on: #fff; --z-blue-tint: #dbeafe; --z-blue-ink: #1e3a8a;
     --z-green: #15803d; --z-green-on: #fff; --z-green-tint: #dcfce7; --z-green-ink: #14532d;
@@ -21,10 +21,10 @@
     --z-yellow: #eab308; --z-yellow-on: #1c1917; --z-yellow-tint: #3b2a07; --z-yellow-ink: #fef9c3;
     --z-red-tint: #450a0a; --z-red-ink: #fee2e2;
   }
-  [data-z="blue"] { --strong: var(--z-blue); --on: var(--z-blue-on); --tint: var(--z-blue-tint); --ink: var(--z-blue-ink); }
-  [data-z="green"] { --strong: var(--z-green); --on: var(--z-green-on); --tint: var(--z-green-tint); --ink: var(--z-green-ink); }
-  [data-z="yellow"] { --strong: var(--z-yellow); --on: var(--z-yellow-on); --tint: var(--z-yellow-tint); --ink: var(--z-yellow-ink); }
-  [data-z="red"] { --strong: var(--z-red); --on: var(--z-red-on); --tint: var(--z-red-tint); --ink: var(--z-red-ink); }
+  [data-z="blue"] { --strong: var(--z-blue); --on: var(--z-blue-on); --tint: var(--z-blue-tint); --ink: var(--z-blue-ink); --mark: #1d4ed8; }
+  [data-z="green"] { --strong: var(--z-green); --on: var(--z-green-on); --tint: var(--z-green-tint); --ink: var(--z-green-ink); --mark: #15803d; }
+  [data-z="yellow"] { --strong: var(--z-yellow); --on: var(--z-yellow-on); --tint: var(--z-yellow-tint); --ink: var(--z-yellow-ink); --mark: #a16207; }
+  [data-z="red"] { --strong: var(--z-red); --on: var(--z-red-on); --tint: var(--z-red-tint); --ink: var(--z-red-ink); --mark: #dc2626; }
 
   html, body { margin: 0; height: 100%; overflow: hidden; }
   body { background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font);
@@ -53,7 +53,7 @@
   .tap:active { transform: scale(.985); filter: brightness(.96); }
   .tap:focus-visible, .foot button:focus-visible { outline: 4px solid var(--b21-accent); outline-offset: 2px; }
   .head { flex: 0 0 auto; display: flex; align-items: center; box-sizing: border-box; height: var(--head);
-          padding: 0 45% 0 clamp(10px, 5cqw, 22px); background: var(--strong); color: var(--on); text-align: left; }
+          padding: 0 max(clamp(10px, 5cqw, 22px), var(--tools, 0px)) 0 clamp(10px, 5cqw, 22px); background: var(--strong); color: var(--on); text-align: left; }
   .name { font-size: clamp(16px, min(12cqh, 11cqw), 46px); font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
   .main { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 4cqw; }
@@ -75,20 +75,28 @@
   @keyframes checked { 0% { opacity: 0; transform: scale(.6); } 20% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
   .count.pop { animation: pop .3s ease-out; }
   @keyframes pop { 40% { transform: scale(1.18); } }
-  /* Ideas for the zone: a solid pill on the card's top, "💡 Ideas" (just the bulb on a narrow card). The button is at
-     least 48 px high; the pill sits in the middle of the colored top (--ph: its height). */
-  .idea-btn { position: absolute; top: 0; right: 0; height: max(48px, var(--head)); min-width: 48px; padding: 0 clamp(6px, 2.5cqw, 12px); border: 0;
-              background: none; display: flex; align-items: flex-start; justify-content: flex-end; border-radius: 0 18px 0 0;
-              --ph: clamp(30px, calc(var(--head) - 14px), 54px); }
-  .pill { display: inline-flex; align-items: center; justify-content: center; gap: .35em; box-sizing: border-box; height: var(--ph); min-width: var(--ph);
-          margin-top: calc((var(--head) - var(--ph)) / 2); padding: 0 .85em 0 .7em; border-radius: 999px; background: var(--on); color: var(--strong);
-          font-size: clamp(14px, calc(var(--ph) * .46), 24px); font-weight: 800; box-shadow: 0 2px 6px rgb(0 0 0 / .25); transition: transform .08s; }
-  .pill svg { width: 1.3em; height: 1.3em; flex: 0 0 auto; stroke-width: 2.4; }
-  .idea-btn:active .pill { transform: scale(.94); }
-  .idea-btn:focus-visible { outline: none; }
-  .idea-btn:focus-visible .pill { outline: 3px solid var(--on); outline-offset: 3px; }
-  @container zone (width < 200px) { .pill { padding: 0; } .pill b { display: none; } .head { padding-right: 52px; } }
-  @container zone (height < 90px) or (width < 110px) { .idea-btn { display: none; } .head { padding-right: clamp(10px, 5cqw, 22px); } }
+  /* On the card's colored top: "−" takes one away (shown with the counts) and "💡 Ideas" opens the zone's ideas (just
+     the bulb on a narrow card). White on every zone, marked in the zone's color (--mark). Each button is at least 48 px
+     square; what shows sits in the middle of the colored top (--ph: its height). */
+  .tools { position: absolute; top: 0; right: 0; display: flex; padding-right: clamp(2px, 1.5cqw, 8px); --ph: clamp(24px, calc(var(--head) * .56), 40px); }
+  .tools button { height: max(48px, var(--head)); min-width: 48px; padding: 0 3px; border: 0; background: none;
+                  display: flex; align-items: flex-start; justify-content: center; }
+  .chip, .pill { box-sizing: border-box; height: var(--ph); margin-top: calc((var(--head) - var(--ph)) / 2); border-radius: 999px;
+                 background: #fff; color: var(--mark); box-shadow: 0 1px 3px rgb(0 0 0 / .2); transition: transform .08s, opacity .15s; }
+  .chip { display: grid; place-items: center; width: var(--ph); }
+  .chip svg { width: 58%; height: 58%; stroke-width: 3; }
+  .pill { display: inline-flex; align-items: center; justify-content: center; gap: .3em; min-width: var(--ph); padding: 0 .75em 0 .6em;
+          font-size: clamp(14px, calc(var(--ph) * .5), 20px); font-weight: 700; }
+  .pill svg { width: 1.2em; height: 1.2em; flex: 0 0 auto; stroke-width: 2.3; }
+  .tools button:active .chip, .tools button:active .pill { transform: scale(.92); }
+  .minus:disabled { cursor: default; }
+  .minus:disabled .chip { opacity: .45; box-shadow: none; }
+  .tools button:focus-visible { outline: none; }
+  .tools button:focus-visible .chip, .tools button:focus-visible .pill { outline: 3px solid var(--on); outline-offset: 3px; }
+  .hide-counts .tools .minus { display: none; }
+  @container zone (width < 250px) { .pill { padding: 0; } .pill b { display: none; } }
+  @container zone (width < 190px) { .tools .minus { display: none; } }
+  @container zone (height < 90px) or (width < 150px) { .tools { display: none; } }
 
   /* ---- The bottom: Undo, and how many have checked in. Kept clear of the board's own buttons (--reach, --low). */
   .foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: clamp(8px, 3vmin, 18px);
@@ -149,7 +157,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .tap, .tap:active { transition: none; transform: none; }
-    .pill, .idea-btn:active .pill { transition: none; transform: none; }
+    .chip, .pill, .tools button:active .chip, .tools button:active .pill { transition: none; transform: none; }
     .count.pop { animation: none; }
     .float, .float.check { animation: fade 1s ease-in forwards; }
     @keyframes fade { from { opacity: 1; } to { opacity: 0; } }
@@ -193,7 +201,10 @@
         <span class="head"><span class="name"></span></span>
         <span class="body"><span class="main"><span class="face" aria-hidden="true"></span><span class="count"></span></span><span class="words"><span></span></span></span>
       </button>
-      <button type="button" class="idea-btn"><span class="pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2v.2h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg><b>Ideas</b></span></button>
+      <div class="tools">
+        <button type="button" class="minus"><span class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></span></button>
+        <button type="button" class="idea-btn"><span class="pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2v.2h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg><b>Ideas</b></span></button>
+      </div>
     </div>
   </template>
   <template id="row-tpl">
@@ -304,12 +315,21 @@
     Sound.play(ZONE[id].pitch);
     say(config.showCounts ? `${ZONE[id].name}, ${n}` : 'Checked in');
   }
-  function cheer(id) {
+  // "−" on a card: a student tapped the wrong zone.
+  function takeOne(id) {
+    const t = performance.now();
+    if (t - (lastTap['-' + id] || -Infinity) < GUARD) return;
+    lastTap['-' + id] = t;
+    if (!change(c => { c[id] -= 1; })) return;
+    cheer(id, '−1');
+    say(`${ZONE[id].name}, ${shown().counts[id]}`);
+  }
+  function cheer(id, text) {
     const card = cards[id];
     const f = document.createElement('span');
-    f.className = config.showCounts ? 'float' : 'float check';
+    f.className = text || config.showCounts ? 'float' : 'float check';
     f.setAttribute('aria-hidden', 'true');
-    f.textContent = config.showCounts ? '+1' : '✓';
+    f.textContent = text || (config.showCounts ? '+1' : '✓');
     f.addEventListener('animationend', () => f.remove());
     setTimeout(() => f.remove(), 1500);   // (if the animation never runs)
     card.body.appendChild(f);
@@ -318,10 +338,14 @@
 
   // ---- The cards, made once and then only updated (a button replaced under a finger loses its tap)
   const cards = {};
+  // The zone's name keeps clear of the buttons on its colored top, however many of them show at this size.
+  const toolsSeen = new ResizeObserver(list => {
+    for (const e of list) e.target.parentNode.style.setProperty('--tools', (e.target.offsetWidth ? e.target.offsetWidth + 6 : 0) + 'px');
+  });
   for (const z of ZONES) {
     const node = $('card-tpl').content.firstElementChild.cloneNode(true);
     node.dataset.z = z.id;
-    const c = cards[z.id] = { node, tap: node.querySelector('.tap'), body: node.querySelector('.body'), count: node.querySelector('.count') };
+    const c = cards[z.id] = { node, tap: node.querySelector('.tap'), body: node.querySelector('.body'), count: node.querySelector('.count'), minus: node.querySelector('.minus') };
     node.querySelector('.name').textContent = z.name;
     node.querySelector('.face').textContent = z.face;
     // (A phrase stays on one line, and a • stays with the word before it: "Ready to Learn •" / "Calm • Happy".)
@@ -329,8 +353,11 @@
     const ib = node.querySelector('.idea-btn');
     ib.setAttribute('aria-label', `${z.name} zone ideas`);
     ib.addEventListener('click', () => openIdeas(z.id, ib));
+    c.minus.setAttribute('aria-label', `${z.name}, one less`);
+    c.minus.addEventListener('click', () => takeOne(z.id));
     c.tap.addEventListener('click', () => checkIn(z.id));
-    c.tap.addEventListener('keydown', e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); });
+    for (const b of [c.tap, c.minus]) b.addEventListener('keydown', e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); });
+    toolsSeen.observe(node.querySelector('.tools'));
     $('grid').appendChild(node);
   }
   const bars = {};
@@ -389,6 +416,11 @@
     for (const z of ZONES) {
       const c = cards[z.id], k = cur.counts[z.id];
       if (c.count.textContent !== String(k)) c.count.textContent = k;
+      if (c.minus.disabled !== !k) {
+        const keys = !k && c.minus.matches(':focus-visible');
+        c.minus.disabled = !k;
+        if (keys) c.tap.focus();   // (a button that can't be pressed loses the keyboard)
+      }
       c.tap.setAttribute('aria-label', `${z.name}: ${z.words.split(' • ').join(', ')}` + (config.showCounts ? `. ${k} checked in` : ''));
     }
     // The bar: each zone's share of the class (of those checked in, without a class size). One color while counts are hidden.
