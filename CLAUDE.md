@@ -24,6 +24,11 @@ Before: "Everything you make stays on this device. 21Board sends nothing to a se
 window loads its video, and the titles of the videos in its History, from YouTube."
 After: "Your work is stored only on this device."
 
+## Releasing
+
+Every release follows docs/RELEASING.md, from the spec to the report. tools/release-workflow.js builds, reviews and
+fixes it. tools/test-halves.js runs the whole test file.
+
 ## Calculator manual
 
 docs/calculator-manual/ is the Calculator's manual, published at https://claude.ai/artifact/8p3dg4r8xSduSD2DmNVjXB.

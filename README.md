@@ -201,10 +201,13 @@ docs/WIDGET-SDK.md      How to build a widget; SDK reference; submission checkli
 docs/AI-PROMPT.md       A prompt for staff building a widget with an AI tool such as Gemini, ChatGPT or Claude
 docs/DATA-FORMAT.md     IndexedDB layout, sync protocol, .21board file format
 docs/ROADMAP.md         Big changes saved for later: shared widget storage, telling copies of a widget apart, other languages
+docs/RELEASING.md       The steps for every release
 LICENSE                 Apache License 2.0 (the code)
 LICENSE-DOCS            CC BY 4.0 (the documentation)
 NOTICE                  Copyright and credits that copies keep
 tools/release.js        Stamps a release with its name and build. See Deploying.
+tools/test-halves.js    Runs tests/run.js as two halves at once. See Tests.
+tools/release-workflow.js  Builds, reviews and fixes a release with Claude Code. See docs/RELEASING.md.
 tests/run.js            Browser tests. See Tests.
 ```
 
@@ -753,7 +756,8 @@ device is a browser profile of its own. The tests bring files from one device's 
 would: late, cut short, out of order or twice, with clocks that disagree. `node tests/merge.js` tests the merge
 itself, `board.js` section 13d, in Node with no browser: the rules, reading device files, and a randomized run of
 devices changing and merging one board. It takes a couple of minutes, and `tests/run.js` runs it as a suite too. A
-whole `node tests/run.js` takes over half an hour.
+whole `node tests/run.js` takes over half an hour. `node tools/test-halves.js` runs it as two halves at once and adds
+up the results. It takes a filter too, and won't start while another test run is going.
 
 `node tests/calc-engine.js` tests the Calculator's math in Node, with the answers Desmos gave. It runs as a suite too.
 
