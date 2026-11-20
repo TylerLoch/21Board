@@ -299,6 +299,7 @@ SCENES.history = async () => {
   await typeNote(p, ik.notes, AGENDA_LONG);
   await addNames(p, ik['name-picker']);
   await light(p, ik['traffic-light'], 'green');
+  await frame(p, ik.timer).locator('#chips button[data-min="10"]').click(); await wait(p, 300);
   await deselect(p);
   // Board history → Save this version now → "Friday setup"
   await openSettings(p);

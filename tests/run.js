@@ -10972,6 +10972,173 @@ const SUITES = [
     ok(/isn’t available/.test(await pu.locator('#settings').textContent()) && !eu.length && await pu.evaluate(() => window.__board21.state.data.get('notes:1').text === 'still saves'), 'where board history can’t be used, Settings says so and the board saves as before');
     await c2.close();
   }],
+  // Each window's line in Board history (a version's Windows in this version, and a window's own Earlier versions):
+  // each built-in widget in its own terms, any other widget the text in its content, each piece once.
+  ["Board history: each window's line (2026.11.18-19)", async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await page.waitForTimeout(600); await freeBoard(page);
+    const H = (fn, arg) => page.evaluate(fn, arg);
+    const line = (data, id) => H(([d, id]) => window.__board21.history.excerptOf(d, id), [data, id]);
+    const NAMES = ['Ava', 'Ben', 'Carlos', 'Dana', 'Eli', 'Fatima', 'Gus', 'Hana'];
+    const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
+    const AGENDA = 'Friday\n1. Morning meeting\n2. Reading groups\n3. Math: fractions\n4. Lunch at 11:30\n5. Science lab';
+    const BUNNY = { source: 'youtube', videoId: 'aqz-KE-bpKQ', videoUrl: 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' };
+    const FRACS = [{ n: '3' }, '/', { n: '4' }, '+', { n: '1' }, '/', { n: '8' }];
+    const calc = expr => ({ v: 2, expr, mode: 'edit', history: [] });
+    // Content as each widget's own buttons saved it, measured on 84edbe5.
+    const SAVED = {
+      'name-picker': { names: NAMES, left: ['Ava', 'Ben', 'Carlos', 'Dana', 'Eli', 'Fatima', 'Hana'], picked: ['Gus'], pickId: 'mwp2g7b7-pg6utj', current: 'Gus' },
+      calculator: { v: 2, expr: FRACS, mode: 'done', pct: 'of', closed: 0, history: [{ expr: FRACS, pct: 'of' }] },
+      'first-then-board': { first: { id: 'math', label: 'Math', icon: '🔢', category: 'Academic' }, then: { id: 'playground', label: 'Playground / swings', icon: '🛝', category: 'Reward' },
+        firstDone: false, thenDone: false, sound: true, theme: 'classic', motion: true, themeTrayOpen: true, doneTrayOpen: true },
+      'task-timer': { totalMode: 'sum', totalMinutes: 60, tasks: [{ emoji: '✨', name: '✨ Reading', minutes: 20, color: '#ff5e57' }, { emoji: '🎨', name: '🎨 Writing', minutes: 15, color: '#ffc048' },
+        { emoji: '⚽', name: '⚽ Clean up', minutes: 5, color: '#0be881' }], activeIndex: 0, secondsLeft: 900, running: false, endsAt: null, alarm: false },
+      'youtube-player': Object.assign({}, BUNNY, { history: [Object.assign({}, BUNNY, { title: 'Big Buck Bunny 60fps 4K' })] }),
+      timer: { duration: 300000, remaining: 300000, endsAt: 1795184723603 },
+      dice: { values: [6, 2] },
+      'traffic-light': { active: 'green' },
+      image: { src: PNG, w: 1, h: 1, name: '', bytes: 70 },
+      notes: { text: AGENDA }
+    };
+    const FT = SAVED['first-then-board'];
+
+    // ---- 1. Each built-in widget in its own terms.
+    const CASES = [
+      ['name-picker', SAVED['name-picker'], 'Ava, Ben, Carlos, Dana, Eli, Fatima, Gus, Hana', 'a Name Picker: its names, each once'],
+      ['calculator', SAVED.calculator, '3 ÷ 4 + 1 ÷ 8', 'a Calculator: the problem on it, as it shows it'],
+      ['first-then-board', FT, 'First Math, then Playground / swings', 'a First/Then Board'],
+      ['task-timer', SAVED['task-timer'], 'Reading, Writing, Clean up', 'a Task Timer: its tasks, without their emoji'],
+      ['youtube-player', SAVED['youtube-player'], 'Big Buck Bunny 60fps 4K', 'a Video Player: the title of its video'],
+      ['timer', SAVED.timer, '5 minutes', 'a Timer: the time it’s set to'],
+      ['dice', SAVED.dice, '6 and 2', 'a pair of Dice'],
+      ['traffic-light', SAVED['traffic-light'], 'Green', 'a Traffic Light'],
+      ['image', SAVED.image, 'Pasted picture', 'a pasted Picture'],
+      ['notes', SAVED.notes, 'Friday 1. Morning meeting 2. Reading groups 3. Math: fractions 4. Lunch at…', 'Notes: its text, cut at a space'],
+      ['image', { src: PNG, w: 1, h: 1, name: 'photo.jpg', bytes: 70 }, 'photo.jpg', 'a Picture with a name'],
+      ['image', { src: null }, '', 'a Picture with no picture: no line'],
+      ['timer', { duration: 150000, remaining: 150000, endsAt: null }, '2:30', 'a Timer at 2½ minutes'],
+      ['timer', { duration: 60000, remaining: 60000, endsAt: null }, '1 minute', 'a Timer at 1 minute'],
+      ['timer', { duration: 45000, remaining: 45000, endsAt: null }, '0:45', 'a Timer at 45 seconds'],
+      ['dice', { values: [4] }, '4', 'one die'],
+      ['dice', { values: [3, 5, 1] }, '3, 5 and 1', 'three dice'],
+      ['dice', { values: [] }, '', 'Dice not rolled: no line'],
+      ['traffic-light', { active: null }, '', 'a Traffic Light with no light on: no line'],
+      ['traffic-light', { active: 'red' }, 'Red', 'a red Traffic Light'],
+      ['first-then-board', Object.assign({}, FT, { then: null }), 'First Math', 'a First/Then Board with only a first card'],
+      ['first-then-board', Object.assign({}, FT, { first: null }), 'Then Playground / swings', 'a First/Then Board with only a then card'],
+      ['task-timer', { totalMode: 'sum', totalMinutes: 60, tasks: [{ emoji: '📚', name: 'Math', minutes: 20, color: '#ff5e57' }, { emoji: '', name: 'Snack', minutes: 10, color: '#ffc048' }] },
+        'Math, Snack', 'a Task Timer whose names have no emoji'],
+      ['youtube-player', { source: 'youtube', videoId: 'aqz-KE-bpKQ', videoUrl: 'https://youtu.be/aqz-KE-bpKQ?t=30', start: 30, history: [{ source: 'youtube', videoId: 'aqz-KE-bpKQ', videoUrl: 'https://youtu.be/aqz-KE-bpKQ?t=30', start: 30 }] },
+        'https://youtu.be/aqz-KE-bpKQ?t=30', 'a Video Player with no title yet: its link as pasted'],
+      ['youtube-player', { videoId: null, videoUrl: '', history: SAVED['youtube-player'].history }, '', 'a Video Player with no video: no line'],
+      ['youtube-player', { source: 'vimeo', videoId: '76979871', videoUrl: 'https://vimeo.com/76979871', history: [SAVED['youtube-player'].history[0], { source: 'vimeo', videoId: '76979871', videoUrl: 'https://vimeo.com/76979871', title: 'The New Vimeo Player' }] },
+        'The New Vimeo Player', 'a Video Player: the title of the video showing, not of another in its History'],
+      ['calculator', { v: 2, expr: [], mode: 'edit', history: [{ expr: [{ n: '2' }, '*', '(', { n: '3' }, '+', { n: '4' }, ')'], pct: 'of' }] }, '2 × (3 + 4)',
+        'a Calculator with nothing typed: the newest problem in its history'],
+      ['calculator', calc(['frac', { n: '3' }, 'sep', { n: '4' }, 'end', '+', 'frac', { n: '1' }, 'sep', { n: '8' }, 'end']), '3/4 + 1/8', 'fractions from the fraction key'],
+      ['calculator', calc(['neg', { n: '5' }, '+', { n: '2' }]), '−5 + 2', 'a minus sign in front'],
+      ['calculator', calc([{ n: '5', neg: true }, '-', { n: '2.5' }]), '−5 − 2.5', 'a negative number'],
+      ['calculator', calc(['sqrt', { n: '16' }, 'end']), '√16', 'a square root'],
+      ['calculator', calc(['root', { n: '3' }, 'sep', { n: '27' }, 'end']), '³√27', 'a cube root'],
+      ['calculator', calc([{ n: '2' }, '^', { n: '3' }, 'end']), '2^3', 'a power'],
+      ['calculator', calc([{ n: '2' }, '^', { n: '3' }, '+', { n: '1' }, 'end']), '2^(3 + 1)', 'a power of more than one number'],
+      ['calculator', calc([{ n: '25' }, '%of', { n: '80' }]), '25% of 80', 'a percent of'],
+      ['calculator', calc(['pi', '*', { ans: '7/2' }, '/', { n: '1' }, 'frac', { n: '1' }, 'sep', { n: '2' }, 'end']), 'π × Ans ÷ 1 1/2', 'π, an earlier answer and a mixed number'],
+      ['calculator', calc([]), '', 'a Calculator with nothing in it: no line'],
+      ['calculator', calc([{ n: '2' }, 'sin', { n: '3' }]), '2 sin 3 edit', 'a Calculator token it doesn’t know: the text in its content'],
+      ['notes', { text: '  \n\t ' }, '', 'Notes with only spaces: no line'],
+      ['clock', null, '', 'a Clock: no line']
+    ];
+    for (const [id, data, want, what] of CASES) {
+      const got = await line(data, id);
+      ok(got === want, `${what}: “${want}” (${JSON.stringify(got)})`);
+    }
+
+    // ---- 2. Any other widget: the text in its content, each piece once.
+    ok(await line({ a: 'x', b: ['x', 'y'], c: 'x' }, 'counter') === 'x y', `another widget: its text, each piece once (${JSON.stringify(await line({ a: 'x', b: ['x', 'y'], c: 'x' }, 'counter'))})`);
+    ok(await line({ pic: PNG, caption: ' Our class ', again: 'Our class', n: 5, on: true }, 'counter') === 'Our class', 'pictures, numbers and true/false stay out, and the same text twice shows once');
+
+    // ---- 3. Content of any shape never throws.
+    const bad = await H(() => {
+      let deep = 'bottom';
+      for (let k = 0; k < 100000; k++) deep = k % 2 ? { a: deep } : [deep];
+      const shapes = [null, undefined, [], 'text', 42, { names: 5 }, { values: '6' }, { tasks: [null] }, { expr: [{}] }, { first: 'Math' }, deep,
+        { names: [null, 5, {}], tasks: 'x', values: [null], history: [null], expr: null, src: {}, active: 'constructor', text: 5, duration: '300000', first: { label: 7 }, videoId: 'x' }];
+      const out = [];
+      for (const id of ['name-picker', 'calculator', 'first-then-board', 'task-timer', 'youtube-player', 'timer', 'dice', 'traffic-light', 'image', 'notes', 'clock', 'constructor', 'counter']) {
+        shapes.forEach((d, k) => {
+          try { const s = window.__board21.history.excerptOf(d, id); if (typeof s !== 'string' || s.length > 80) out.push(`${id} #${k}: ${JSON.stringify(s)}`); } catch (e) { out.push(`${id} #${k} throws ${e.message}`); }
+        });
+      }
+      return out;
+    });
+    ok(!bad.length, `content of any shape, for each widget, never throws and gives a line of at most 80 characters (${bad.slice(0, 6).join(' | ')})`);
+
+    // ---- 4. At most 80 characters, cut at a space.
+    const FORTY = ['Aaliyah', 'Ben', 'Carlos', 'Dana', 'Eli', 'Fatima', 'Gus', 'Hana', 'Isaac', 'Jada', 'Kai', 'Luis', 'Maya', 'Noah', 'Olivia', 'Priya', 'Quinn', 'Rosa', 'Sam', 'Tariq',
+      'Uma', 'Victor', 'Wren', 'Xavier', 'Yara', 'Zane', 'Amir', 'Bella', 'Chloe', 'Diego', 'Emma', 'Finn', 'Grace', 'Hugo', 'Ivy', 'Jonah', 'Kira', 'Leo', 'Mia', 'Nico'];
+    const long = await line({ names: FORTY, left: FORTY, picked: [] }, 'name-picker'), full = FORTY.join(', ');
+    ok(long.length <= 80 && long.endsWith('…') && full.startsWith(long.slice(0, -1)) && full[long.length - 1] === ' ', `40 names: at most 80 characters, cut at a space, then … (${long.length}: ${long})`);
+    const word = await line({ a: 'x'.repeat(200) }, 'counter'), just = await line({ a: 'y'.repeat(80) }, 'counter');
+    ok(word === 'x'.repeat(79) + '…' && just === 'y'.repeat(80), `no space to cut at: 79 characters, then …; 80 stay as they are (${word.length}, ${just.length})`);
+
+    // ---- 5. End to end, through the widgets themselves: a Name Picker with 8 names and one pick, a Timer started at
+    // 5 minutes and a pair of Dice rolled, then Board history › Save this version now.
+    await H(() => window.__board21.history.cfg({ quiet: 36e5, every: 36e5, skipOpen: true }));   // (no automatic versions meanwhile)
+    const win = ik => page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const data = ik => H(ik => window.__board21.state.data.get(ik) || null, ik);
+    for (const [id, x] of [['name-picker', 20], ['timer', 450], ['dice', 880]]) {
+      await H(id => window.__board21.openWidget(id), id); await page.waitForTimeout(800);
+      await H(([ik, x]) => window.__board21.setRect(ik, { x, y: 20, w: 400, h: 380 }), [id + ':1', x]);
+    }
+    await page.waitForTimeout(400);
+    await win('name-picker:1').locator('#list').fill(NAMES.join('\n')); await win('name-picker:1').locator('#done').click();
+    await win('name-picker:1').locator('#go').click();
+    await eventually(async () => ((await data('name-picker:1')) || { picked: [] }).picked.length === 1);
+    await page.waitForTimeout(700); await win('name-picker:1').locator('#stage').click();
+    await win('timer:1').locator('#chips button[data-min="5"]').click(); await win('timer:1').locator('#go').click();
+    await win('dice:1').locator('#roll').click();
+    ok(await eventually(async () => ((await data('timer:1')) || {}).endsAt > 0 && (((await data('dice:1')) || {}).values || []).length === 2), '(a Name Picker with a pick, a Timer running and two Dice rolled)');
+    const rolled = (await data('dice:1')).values;
+    await openSettings(page);
+    await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open [data-act="save"]');
+    await page.click('#history [data-act="save"]'); await page.waitForSelector('#modal.open input');
+    await page.fill('#modal.open input', 'Friday setup'); await page.click('#modal.open .btn.primary');
+    await page.locator('#toasts .toast', { hasText: 'Version saved.' }).waitFor();
+    const vid = await H(async () => { await window.__board21.history.reload(); const m = window.__board21.history.metas.find(m => m.manual); return m && m.id; });
+    await page.locator(`#history .hist-row[data-val="${vid}"]`).click();
+    await page.waitForSelector('#history-detail.open .inst');
+    const rows = Object.fromEntries(await page.$$eval('#history-detail.open .inst .meta', els => els.map(e => [e.querySelector('b').textContent, e.querySelector('span').textContent])));
+    const np = rows['Name Picker'] || '';
+    ok(np === NAMES.join(', ') && NAMES.every(n => np.split(n).length === 2), `Windows in this version: the Name Picker’s line has each name once (${np})`);
+    ok(rows.Timer === '5 minutes', `the Timer’s says 5 minutes (${rows.Timer})`);
+    ok(rows.Dice === `${rolled[0]} and ${rolled[1]}`, `the Dice’s says what they rolled, ${rolled.join(' and ')} (${rows.Dice})`);
+    await page.waitForTimeout(600); await page.screenshot({ path: OUT + 'history-lines.png' });
+    for (let k = 0; k < 4 && await page.locator('#settings.open, #history.open, #history-detail.open').count(); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(250); }
+    await win('timer:1').locator('#go').click();   // (paused: the version saved is now an earlier one)
+    await eventually(async () => ((await data('timer:1')) || {}).endsAt === null);
+    await page.locator('.win[data-ikey="timer:1"] .win-label').click(); await page.waitForTimeout(250);
+    await page.click('#menu [data-act="history"]'); await page.waitForSelector('#history.open .hist-intro');
+    await page.waitForTimeout(600);
+    const own = await page.$$eval('#history.open .inst .meta span', els => els.map(e => e.textContent));
+    ok(own.length >= 2 && !own.includes('(empty)') && own.every(t => t === '5 minutes'), `the Timer’s own earlier versions: no row says “(empty)” (${own.join(' | ')})`);
+    await page.screenshot({ path: OUT + 'history-lines-timer.png' });
+    await page.keyboard.press('Escape');
+
+    // ---- 6. Nothing else changes: a version's sig and each window's other entries are as 84edbe5 made them.
+    const FIXED = { board: { name: 'Room 14', background: { color: '#e0f2fe', pattern: 'dots' } }, theme: 'light', accent: 'blue',
+      instances: Object.entries(SAVED).concat([['counter', { a: 'x', b: ['x', 'y'], c: 'x' }], ['clock', null]]).map(([id, data], k) => ({ widgetId: id, instance: 1, open: k !== 3, maximized: k === 5, z: k + 1,
+        rect: { x: 40 + 30 * k, y: 40, w: 400, h: 300 }, createdAt: 1795180000000 + k * 1000, data, config: k % 2 ? { sound: 'off' } : null })) };
+    // (Measured on 84edbe5.)
+    const BASE_SAME = '["usauus5c6e",[["name-picker:1",[1,1795180000000,"1536lr3po8m","",186,0]],["calculator:1",[1,1795180001000,"13qgdk3gyc1","1z9mcsp6qm5",190,0]],["first-then-board:1",[1,1795180002000,"1afeo75307i","",282,0]],["task-timer:1",[0,1795180003000,"17o8yuob6mr","1z9mcsp6qm5",319,0]],["youtube-player:1",[1,1795180004000,"13ic59d7fp1","",249,0]],["timer:1",[1,1795180005000,"2ebrmyxcumc","1z9mcsp6qm5",61,1]],["dice:1",[1,1795180006000,"wzsa238vhm","",16,0]],["traffic-light:1",[1,1795180007000,"9hitzml6ky","1z9mcsp6qm5",18,0]],["image:1",[1,1795180008000,"tsek3w2eu1","",157,0]],["notes:1",[1,1795180009000,"1p9bfplqr06","1z9mcsp6qm5",111,0]],["counter:1",[1,1795180010000,"1x5k0sh3378","",31,0]],["clock:1",[1,1795180011000,"","1z9mcsp6qm5",0,0]]]]';
+    const same = await H(exp => { const h = window.__board21.history, w = h.winsOf(exp); return JSON.stringify([h.sigOf(exp), Object.keys(w).map(k => [k, w[k].filter((x, j) => j !== 5)])]); }, FIXED);
+    ok(same === BASE_SAME, `a version’s sig and each window’s entries 0 to 4 and 6 are as on 84edbe5 (${same})`);
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Board history: copies in the Board Sync folder', async (browser) => {
     const L = (p, fn, arg) => p.evaluate(fn, arg);
     const errors = [];
