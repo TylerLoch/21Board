@@ -54,32 +54,32 @@ Copy `widgets/_template/` to `widgets/<your-id>/` and edit it. The essentials:
 </html>
 ```
 
-The SDK must be the **first script in `<head>`**, a plain `<script src>` with no `async`, `defer` or
+The SDK must be the **first script in `<head>`**, a plain `<script src>` with no `async`, `defer`, or
 `type="module"`. Then a widget opened outside 21Board shows in a real 21Board window (see
 [Testing a widget](#testing-a-widget)). The `board21-widget` block is the widget's **manifest**: its id,
-name and window size for testing. Inside 21Board, its entry in `widgets/registry.js` counts, so keep the
+name, and window size for testing. Inside 21Board, its entry in `widgets/registry.js` counts, so keep the
 two the same.
 
 ---
 
 ## Rules for widgets
 
-1. **No Internet.** No CDNs, web fonts, analytics or APIs. Keep everything in your folder, so the widget works
+1. **No Internet.** No CDNs, web fonts, analytics, or APIs. Keep everything in your folder, so the widget works
    offline and student work stays on the device. The Video Player is the only exception.
-2. **No direct storage.** Don't use IndexedDB, `localStorage`, cookies or `sessionStorage`.
+2. **No direct storage.** Don't use IndexedDB, `localStorage`, cookies, or `sessionStorage`.
    Use `Board21.save()` / `Board21.saveConfig()`. That's what makes export/import, templates,
-   reset, multi-tab sync and multiple instances work.
+   reset, multi-tab sync, and multiple instances work.
 3. **Keep data JSON and small.** Saved values must survive `JSON.stringify`. Aim for kilobytes,
    not megabytes. Store an image only if you must, shrunk, as a data URL.
 4. **Scale with the window.** The iframe is the window's content area. Size things with `vw`, `vh`,
-   `vmin` or flexbox, and test it small and large.
+   `vmin`, or flexbox, and test it small and large.
 5. **Touch first.** Big targets (44px+), no hover-only controls, no tiny text. Add
    `touch-action: manipulation` to avoid double-tap zoom delays.
 6. **Don't steal focus on load.** Auto-focusing a text box pops up the on-screen keyboard on a
    smartboard.
 7. **One folder, few files.** Prefer a single `index.html` with inline CSS/JS.
 8. **Never change your `id`** after release. Saved data is keyed by it.
-9. **Check what you load.** Content and config (`ctx.data`, `ctx.config` and the `data` and `config`
+9. **Check what you load.** Content and config (`ctx.data`, `ctx.config`, and the `data` and `config`
    events) can come from a `.21board` file someone imported. Check types and ranges before you use
    them. Put them on the page as text (`textContent`, `setAttribute`), never as HTML (`innerHTML`).
 
@@ -116,7 +116,7 @@ The **context**:
   devMode: false,            // Developer mode is on in Settings
   boardVersion: '2026.11.12-1',  // the 21Board release's name (for display; don't compare)
   sdkProtocol: 1,
-  host: 'board',             // 'board', 'dev' (the dev window's test board) or 'standalone'
+  host: 'board',             // 'board', 'dev' (the dev window's test board), or 'standalone'
   kiosk: false,              // ChromeOS kiosk mode (?kiosk=yes): links can't open new windows
   standalone: false
 }
@@ -126,7 +126,7 @@ The **context**:
 
 | Call | Description |
 | --- | --- |
-| `Board21.save(data)` | Save this instance's **content**. Returns a Promise that resolves once it's stored. Call it whenever the state changes. 21Board batches rapid writes. `save(null)` clears it. If the device can't store it, the Promise rejects ("Not saved yet"). 21Board keeps the data, shows the teacher *Not saved* and tries again by itself, so the widget needn't retry or show an error. |
+| `Board21.save(data)` | Save this instance's **content**. Returns a Promise that resolves once it's stored. Call it whenever the state changes. 21Board batches rapid writes. `save(null)` clears it. If the device can't store it, the Promise rejects ("Not saved yet"). 21Board keeps the data, shows the teacher *Not saved*, and tries again by itself, so the widget needn't retry or show an error. |
 | `Board21.load()` | Promise of the saved content (same as `context.data`). |
 | `Board21.saveConfig(config)` | Save this instance's **config** (preferences). |
 | `Board21.loadConfig()` | Promise of the saved config. |
@@ -137,7 +137,7 @@ Sizes are the **content area**, the iframe, without the 40px title bar.
 
 | Call | Description |
 | --- | --- |
-| `Board21.window.setSize(w, h)` | Resize the window, within its minimum and maximum size, shape lock and the board. Its top-left corner stays put where it can, and the window stays on screen and clear of other windows where it can. It takes a maximized window out of *Fill the board*. The size is saved with the board, like a teacher's resize: kept after a reload, the same in every tab. |
+| `Board21.window.setSize(w, h)` | Resize the window, within its minimum and maximum size, shape lock, and the board. Its top-left corner stays put where it can, and the window stays on screen and clear of other windows where it can. It takes a maximized window out of *Fill the board*. The size is saved with the board, like a teacher's resize: kept after a reload, the same in every tab. |
 | `Board21.window.setAspectRatio(ratio)` | Lock the content to `width / height` (e.g. `16/9`). `null` unlocks. |
 | `Board21.window.setMinSize(w, h)` | Minimum content size. `null` goes back to the registry's. A window smaller than the minimum is drawn bigger, without changing its saved size (see below). |
 | `Board21.window.setMaxSize(w, h)` | Maximum content size. `null` removes the limit. |
@@ -150,9 +150,9 @@ Sizes are the **content area**, the iframe, without the 40px title bar.
 | `Board21.window.close()` | Close the window. Its data is kept. |
 | `Board21.window.getInfo()` | Promise of `{ width, height, x, y, maximized, focused, zoom, corners }`. `zoom` is how much bigger the board draws the window than its CSS size. On the 16:9 board it is the board's Size times how much the screen enlarges the board: 0.57 at Size 80% on a 1366×768 Chromebook, 1.5 at Size 150% on a 1920×1080 panel. On the *Fill* board shape it is the Size. For sharp lines and letters, a canvas uses `devicePixelRatio × zoom` pixels per CSS px, capped at about 3. An older 21Board doesn't send `zoom`: treat a missing one as 1. `corners` is sent only while the window fills the board: `{ left, right, height }`, how far the board's own buttons in the bottom corners (▦, and the clock beside one) reach in from the window's left and right edges and up from its bottom, in its CSS px. The clock shows only in full screen by default, so `corners` changes as 21Board enters and leaves full screen. Keep buttons and text out of those corners. An older 21Board doesn't send `corners`. `corners.top` does the same for the padlocks in the top corners while the board is locked, measured down from the top of the content. Unlocked, it's all 0. A 21Board before 2026.11.18-18 doesn't send it. |
 
-While the board is locked (*Lock* in the Widget Picker), `maximize()`, `restore()` and `close()` do nothing. `setSize()` on a window that fills the board only sets the size it returns to when restored. Other calls work as usual.
+While the board is locked (*Lock* in the Widget Picker), `maximize()`, `restore()`, and `close()` do nothing. `setSize()` on a window that fills the board only sets the size it returns to when restored. Other calls work as usual.
 
-Defaults for size, minimum size and aspect ratio come from the [registry](#registering-a-widget),
+Defaults for size, minimum size, and aspect ratio come from the [registry](#registering-a-widget),
 so the window has the right shape before your page loads. Calls at run time override them
 until the window is reset or reloaded. If they depend on config, call them again after `ready()`
 (see `widgets/clock`).
@@ -174,7 +174,7 @@ change the teacher asked for, such as a layout that needs another shape, use `se
 
 ### Window menu
 
-Your own items appear in the window's **⌄** menu, above *Fill the board*, *Reset* and *Close*.
+Your own items appear in the window's **⌄** menu, above *Fill the board*, *Reset*, and *Close*.
 
 ```js
 Board21.menu.set([
@@ -204,9 +204,9 @@ Board21.menu.set([
 ```
 
 Tapping a swatch sends its `id` to `Board21.on('menu', …)` like any item. Colors must be `#hex`,
-`rgb()` or `hsl()`. A heading and the items under it, up to a separator or the next heading, are one group
+`rgb()`, or `hsl()`. A heading and the items under it, up to a separator or the next heading, are one group
 for screen readers, named by the heading ("Theme, Dark, not checked"). So a short label like `'3'` is fine
-under a heading that says what it is. The menu works from the keyboard too: the arrow keys, Home and End move
+under a heading that says what it is. The menu works from the keyboard too: the arrow keys, Home, and End move
 between items, and Enter chooses one.
 
 Call `menu.set()` again whenever an item's state changes. Icons must be inline `<svg>`; scripts
@@ -220,8 +220,8 @@ and links are stripped. Up to 24 items. A swatch row counts as one and holds up 
 | --- | --- | --- |
 | `data` | `(data, { reason })` | This instance's content changed outside this page: another 21Board tab, an import, or a reset. |
 | `config` | `(config, { reason })` | Same, for config. |
-| `theme` | `(theme, palette)` | The theme, accent color or text style changed. The CSS variables are already updated. |
-| `resize` | `(info)` | The window's content size, maximized or focused state, `zoom` or `corners` changed. Also fires when the teacher's text style changes, and again once its font loads, so text can be fitted again. Native `resize` events fire too when the size changes. On the 16:9 board, `zoom` changes at almost every step while the browser window is resized, so keep this handler light, or wait about 150 ms for it to stop. |
+| `theme` | `(theme, palette)` | The theme, accent color, or text style changed. The CSS variables are already updated. |
+| `resize` | `(info)` | The window's content size, maximized or focused state, `zoom`, or `corners` changed. Also fires when the teacher's text style changes, and again once its font loads, so text can be fitted again. Native `resize` events fire too when the size changes. On the 16:9 board, `zoom` changes at almost every step while the browser window is resized, so keep this handler light, or wait about 150 ms for it to stop. |
 | `focus` / `blur` | — | The window was selected or deselected. Selecting a window brings it to the front. **`blur` also fires when the teacher taps the empty board to deselect everything, and the window stays in front and visible.** So `blur` doesn't mean the window is covered. Don't pause a timer on blur. |
 | `menu` | `(id, item)` | One of your menu items was tapped. |
 | `beforeclose` | — | The window is about to close. Save anything pending *synchronously* (call `save()`). |
@@ -240,6 +240,9 @@ the board. So does a dropped file. A picture opens in a new Picture window, and 
 link opens a new Video Player. In a widget uploaded in Developer mode, they do nothing. A dropped file never opens in
 place of your widget. To take them yourself, call `preventDefault()` in a `paste` or `drop` listener on the document
 or an element.
+
+**Right-click.** The SDK turns off the browser's menu in your widget, except in text boxes, in Developer mode, and
+in the dev window. To show a menu of your own, listen for `contextmenu`.
 
 ---
 
@@ -301,7 +304,7 @@ your widget already handled: `preventDefault()` on `pointerdown` or `touchstart`
 on another element.
 
 A two-finger move needs both fingers within about 260 px, one hand's reach, so two people far apart are
-left alone. It never starts on `canvas`, `video`, `[data-b21-nodrag]` or `touch-action: none` elements.
+left alone. It never starts on `canvas`, `video`, `[data-b21-nodrag]`, or `touch-action: none` elements.
 When two fingers start moving a window, your widget gets a `pointercancel` for each, so it can drop
 whatever those fingers started. Neither kind of move from inside works on a maximized window.
 
@@ -314,7 +317,7 @@ So:
 - **One area needs drags** (a sketch pad, a slider you built from divs)? Put **`data-b21-nodrag`** on
   it. That works whatever events the widget uses. `preventDefault()` on `pointerdown` works too, but
   only for a widget written with pointer events, because it also stops the browser's `mousedown`,
-  `mousemove` and `mouseup`.
+  `mousemove`, and `mouseup`.
 - **Images and links** move the window like everything else. In click-only widgets their built-in drag
   and drop is off. If you use HTML drag and drop, give those elements `draggable="true"` or
   `data-b21-nodrag`.
@@ -347,7 +350,7 @@ font. So does a widget uploaded as a file in Developer mode, which is sealed off
 
 If you fit text to the window, fit it on `resize`, the window's or `Board21.on('resize')`. One fires when the text
 style changes, and again once the new font has loaded. Form controls don't take the page's font by themselves.
-Give `button`, `input`, `textarea` and `select` `font-family: inherit` (or `font: inherit`) so their text follows
+Give `button`, `input`, `textarea`, and `select` `font-family: inherit` (or `font: inherit`) so their text follows
 the text style too.
 
 Use `[data-b21-theme="dark"] .thing { … }` for anything else that should change in dark mode.
@@ -388,7 +391,7 @@ Add an entry to `widgets/registry.js`:
 the Traffic Light's light, the Video Player's video and History, which picture a Picture window shows, and the
 Calculator's problem and History. When Board Sync finds a window's content changed on two devices at once, it keeps
 the later change, and Board history keeps the other. Without `clash`, it keeps both, the other as a labeled copy
-beside the window. Leave it out when the content holds anything typed, such as notes, names or a task list, so
+beside the window. Leave it out when the content holds anything typed, such as notes, names, or a task list, so
 nothing anyone typed is lost.
 
 Then **change `VERSION` in `sw.js` and run `node tools/release.js`** so installed copies download the new
@@ -397,7 +400,7 @@ changed without a new release never reaches them.
 
 ### The district's own apps (`external`)
 
-21Sketch, 21Timer and 21DocCam are separate websites, each with its own data on the device. They appear in
+21Sketch, 21Timer, and 21DocCam are separate websites, each with its own data on the device. They appear in
 21Board as windows that show the live site, not as copies:
 
 ```js
@@ -439,12 +442,12 @@ What `external: true` changes:
 
 ### The dev window
 
-Open a widget anywhere but inside 21Board, such as its own file, a local web server, GitHub Pages or an AI
+Open a widget anywhere but inside 21Board, such as its own file, a local web server, GitHub Pages, or an AI
 tool's preview, and the SDK shows it in the **dev window**. It's the real 21Board, with your widget in an
 ordinary window, drawn as if on a 1920 × 1080 smartboard and scaled to fit. The title bar, resize handles,
-window menu, *Fill the board*, *Reset*, *Close*, the Widget Picker and Settings are the board's own code
+window menu, *Fill the board*, *Reset*, *Close*, the Widget Picker, and Settings are the board's own code
 (`board.js`), so what works here works on the board. Open another window from the Widget Picker, and change
-the theme, accent and size of windows and menus in Settings.
+the theme, accent, and size of windows and menus in Settings.
 
 | | |
 | --- | --- |
@@ -456,7 +459,7 @@ the theme, accent and size of windows and menus in Settings.
 | **Checks** | Common problems: the SDK not first, files loaded from the Internet, localStorage, `alert()`, menu items the board will drop (more than 24, swatches that aren't `#hex`)… Each has *Copy fix request*, a sentence to paste back to the AI tool. |
 | **⋯** | Reload the widget, reset its window, open another window, switch the board shape, show the widget on its own, and *Copy for 21Board* (the HTML with its SDK path set for the `widgets/` folder, plus a `widgets/registry.js` entry). |
 
-The footer shows the window's content size, shape lock, minimum size and board size.
+The footer shows the window's content size, shape lock, minimum size, and board size.
 
 - **Its data is a test copy**, kept apart from real boards in its own database, `21Board-dev`. Where a
   preview blocks storage, it lasts until the page reloads, and the footer says so. *Data ▸ Copy* keeps it.
@@ -482,7 +485,7 @@ run `node tools/build-sdk.js`. The tests check it.
 
 ### Building with an AI tool
 
-Ask Gemini Canvas, Claude, ChatGPT or another AI tool for **one plain HTML file** whose first script is the SDK at its full address on a 21Board site
+Ask Gemini Canvas, Claude, ChatGPT, or another AI tool for **one plain HTML file** whose first script is the SDK at its full address on a 21Board site
 the tool's preview can reach. Use the GitHub Pages copy:
 
 ```html
@@ -493,7 +496,7 @@ Some previews, such as Gemini Canvas, can't load the SDK from `boardapp.ccsd21.o
 works in them, and the preview shows the widget in the dev window.
 
 **[docs/AI-PROMPT.md](AI-PROMPT.md)** has prompts to paste before describing the widget. The full one covers
-this guide's rules, the window menu, window size, dragging, theming and the house look. The short one covers the
+this guide's rules, the window menu, window size, dragging, theming, and the house look. The short one covers the
 essentials. It also shows staff how to use them: the preview, *Checks* → *Copy fix request*, and *Upload file…*
 in Developer mode.
 
@@ -521,16 +524,16 @@ storage, so it can't read this site's real boards. *Edit code* goes back to the 
   an edit, upload the file again. It replaces the one kept, and its open windows restart with it. **Remove**
   in the list deletes it.
   - **Sealed off.** The file runs in a sandbox with an origin of its own. It can't reach the board's page, its
-    saved boards, Board history, the Google Drive folder, localStorage or cookies. It sees only what the
+    saved boards, Board history, the Google Drive folder, localStorage, or cookies. It sees only what the
     board sends its own window. It has no storage of its own either, since localStorage throws, so save with
     `Board21.save`. A Content Security Policy goes first in its page, so it can't fetch or load anything
-    from the network: no CDN scripts, web fonts or images by address. 21Board's own page doesn't let its
+    from the network: no CDN scripts, web fonts, or images by address. 21Board's own page doesn't let its
     window go to another site. If its page leaves anyway, to another page of this site or by reloading
     itself, the board stops talking to it and the window says *This test widget left its page*. Upload the
     file again to start it. Like any page, it can still open a link in a new tab when tapped, and
     the link's address can carry anything the widget holds: what it shows and its window's saved content.
   - **Kept on this device only.** The file's text is stored on this device, apart from boards, so the
-    window comes back after a reload, offline and in other tabs. It is never in an export, full or
+    window comes back after a reload, offline, and in other tabs. It is never in an export, full or
     template, nor in Board history or the Google Drive folder. Those carry the window and its content only,
     and another device shows *Widget not installed* for it. Importing a `.21board` file never brings code that
     runs. **Erase everything** deletes it.
@@ -541,7 +544,7 @@ storage, so it can't read this site's real boards. *Edit code* goes back to the 
     window says *This test widget wasn't started*. Fix it, then upload it again. If it froze the board after
     running for a while, add `?nodev` to 21Board's address, as in `https://boardapp.ccsd21.org/?nodev`. No
     test widget starts, and you can remove it in Settings.
-  - **Limits.** One self-contained file of at most 5 MB. Images, CSS and fonts beside it don't come along,
+  - **Limits.** One self-contained file of at most 5 MB. Images, CSS, and fonts beside it don't come along,
     since relative addresses don't resolve, so put them inline or as `data:` URLs. Its page has to stay put:
     reloading itself, or `document.write` after it has loaded, counts as leaving it. Window menu items show
     without their icons. Dragging inside the widget doesn't move its window; use its title bar. Its colors
@@ -555,7 +558,7 @@ storage, so it can't read this site's real boards. *Edit code* goes back to the 
   it's offered a few seconds later. Ctrl+Shift+R shows the page from the server at once, but an open widget
   window still comes from the saved copy. Reload once more, or close and open the widget.
 - **SDK Playground:** with Developer mode on, open *SDK Playground* from the Widget Picker. Run any call
-  with your own values and copy its code. Watch the window's state, the palette and every event.
+  with your own values and copy its code. Watch the window's state, the palette, and every event.
 - **Sync:** open 21Board in two tabs side by side and use your widget in one.
 
 ---
@@ -566,7 +569,7 @@ storage, so it can't read this site's real boards. *Edit code* goes back to the 
 - [ ] Includes `<script src="../../sdk/board21.js"></script>` as the first script in `<head>`
 - [ ] If it has a manifest block (`board21-widget`), it matches its registry entry
 - [ ] No external URLs (fonts, CDNs, images, APIs)
-- [ ] No IndexedDB, localStorage, sessionStorage or cookies; only `Board21.save` and `saveConfig`
+- [ ] No IndexedDB, localStorage, sessionStorage, or cookies; only `Board21.save` and `saveConfig`
 - [ ] Student-identifying data is **content**, not config
 - [ ] Handles `data` events (test with two tabs)
 - [ ] Looks right in light and dark mode

@@ -16,6 +16,7 @@ Write like Apple. Less is more. Every word must earn its place.
 - Cut hedges, qualifiers, parentheticals and stacked clauses. If a sentence needs "(…)", rewrite it or drop it.
 - Use teachers' words (board, window, widget, page), not the system's.
 - Labels: one to three words, sentence case, no end punctuation. Buttons are verbs. A hint is one short sentence.
+- Every list of three or more takes the Oxford comma, such as "red, yellow, and green".
 - Messages say what happened and what to do, in a few words: "That's a folder. Paste a link to one video."
 - No AI tells: em-dash asides, "not X but Y", colon reveals, "worth noting", triplets for rhythm, scare quotes.
 - Docs use the same voice. Details for IT go under **For IT**, still short.

@@ -32,7 +32,7 @@
   "name": "Notes",
   "color": "#eab308",
   "icon": "<svg viewBox=\"0 0 24 24\"><path d=\"M4 4h16v10l-6 6H4z\"/><path d=\"M14 20v-6h6\"/><path d=\"M8 9h8\"/><path d=\"M8 13h4\"/></svg>",
-  "description": "Write directions, reminders or the day’s agenda."
+  "description": "Write directions, reminders, or the day’s agenda."
  },
  {
   "id": "name-picker",
@@ -60,14 +60,14 @@
   "name": "Traffic Light",
   "color": "#f97316",
   "icon": "<svg viewBox=\"0 0 24 24\"><rect x=\"7\" y=\"2.5\" width=\"10\" height=\"19\" rx=\"3\"/><circle cx=\"12\" cy=\"7\" r=\"1.6\"/><circle cx=\"12\" cy=\"12\" r=\"1.6\"/><circle cx=\"12\" cy=\"17\" r=\"1.6\"/></svg>",
-  "description": "Show noise level or work time in red, yellow and green."
+  "description": "Show noise level or work time in red, yellow, and green."
  },
  {
   "id": "youtube-player",
   "name": "Video Player",
   "color": "#b91c1c",
   "icon": "<svg viewBox=\"0 0 24 24\"><rect x=\"2.5\" y=\"4.5\" width=\"19\" height=\"15\" rx=\"3.5\"/><path d=\"M10 9.2v5.6l4.8-2.8z\" fill=\"currentColor\"/></svg>",
-  "description": "Play a video from YouTube, Google Drive or Vimeo."
+  "description": "Play a video from YouTube, Google Drive, or Vimeo."
  },
  {
   "id": "image",

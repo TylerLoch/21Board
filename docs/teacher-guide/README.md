@@ -14,8 +14,8 @@ It's published at https://claude.ai/artifact/2vXnMT4JJAkm5y6dnjC8YG.
 
 ## For IT
 
-- The screenshots come from this checkout of 21Board, served on this computer. Nothing reaches YouTube, Vimeo or
-  Google. 21Sketch, 21Timer and 21DocCam are fetched from their sites.
+- The screenshots come from this checkout of 21Board, served on this computer. Nothing reaches YouTube, Vimeo, or
+  Google. 21Sketch, 21Timer, and 21DocCam are fetched from their sites.
 - 21DocCam films `work/worksheet.png`. To change that picture, run `work/worksheet.py` (Python with Pillow), then make
   5 frames at 5 fps and gzip them:
   `ffmpeg -loop 1 -i worksheet.png -frames:v 5 -r 5 -pix_fmt yuvj420p -f yuv4mpegpipe worksheet.y4m && gzip -9 worksheet.y4m`.
