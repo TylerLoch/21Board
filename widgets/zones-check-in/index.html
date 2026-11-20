@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <script src="../../sdk/board21.js"></script>
-<script type="application/json" id="board21-widget">{"id":"zones-check-in","name":"Zones Check-In","version":"1.0.0","description":"Tap the zone that matches how you feel.","color":"#15803d","window":{"width":560,"height":420,"minWidth":260,"minHeight":220}}</script>
+<script type="application/json" id="board21-widget">{"id":"zones-check-in","name":"Zones Check-In","version":"1.0.0","description":"Check in on how your class feels.","color":"#15803d","window":{"width":560,"height":420,"minWidth":260,"minHeight":220}}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Zones Check-In</title>
 <style>
@@ -45,8 +45,9 @@
   /* ---- The four zones: two by two, in a row when the window is wide, in a column when it is tall */
   .zones { flex: 1; min-height: 0; container: zones / size; }
   .grid { height: 100%; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: var(--pad); }
-  @container zones (aspect-ratio > 2.2) { .grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
-  @container zones (aspect-ratio < 0.5) { .grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
+  /* (A row only where it beats two by two: very wide, or wide and too short for two rows of cards with their feelings.) */
+  @container zones (aspect-ratio > 3.2) or ((aspect-ratio > 2.2) and (width >= 800px) and (height < 310px)) { .grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
+  @container zones (aspect-ratio < 0.7) { .grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
   .zone { position: relative; min-width: 0; min-height: 0; container: zone / size; --head: clamp(36px, 22cqh, 76px); }
   .tap { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 18px; overflow: hidden;
          background: var(--tint); color: var(--ink); box-shadow: inset 0 0 0 2px var(--strong); text-align: center; transition: transform .08s, filter .15s; }
@@ -56,11 +57,11 @@
           padding: 0 max(clamp(10px, 5cqw, 22px), var(--tools, 0px)) 0 clamp(10px, 5cqw, 22px); background: var(--strong); color: var(--on); text-align: left; }
   .name { font-size: clamp(16px, min(12cqh, 11cqw), 46px); font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-  .main { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 4cqw; }
+  .main { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 4cqw; }
   .face { font-size: min(30cqh, 20cqw); line-height: 1; }
   .count { font-size: min(42cqh, 26cqw); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
   .hide-counts .count { display: none; }
-  .hide-counts .face { font-size: min(42cqh, 32cqw); }
+  .hide-counts .face { font-size: min(30cqh, 26cqw); }
   /* The feelings: a chip for each, its face and its word (just the face on a narrow card), lighter than the card. They
      sit in a slot two rows high on every card, so the four cards line up. */
   .feelings { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: .3em;
@@ -78,7 +79,7 @@
            animation: rise .8s ease-out forwards; }
   @keyframes rise { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-60%); } }
   .float.check { top: 50%; right: auto; left: 50%; display: grid; place-items: center; width: 1.5em; height: 1.5em; margin: -.75em 0 0 -.75em;
-                 border-radius: 50%; background: var(--strong); color: var(--on); font-size: clamp(24px, min(36cqh, 24cqw), 120px); animation: checked 1s ease-out forwards; }
+                 border-radius: 50%; background: var(--strong); color: var(--on); font-size: clamp(20px, min(28cqh, 22cqw), 100px); animation: checked 1s ease-out forwards; }
   @keyframes checked { 0% { opacity: 0; transform: scale(.6); } 20% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
   .count.pop { animation: pop .3s ease-out; }
   @keyframes pop { 40% { transform: scale(1.18); } }
@@ -101,6 +102,7 @@
   .tools button:focus-visible { outline: none; }
   .tools button:focus-visible .chip, .tools button:focus-visible .pill { outline: 3px solid var(--on); outline-offset: 3px; }
   .hide-counts .tools .minus { display: none; }
+  @container zone (height >= 90px) and (width >= 150px) { .tap, .tools { --head: clamp(48px, 22cqh, 76px); } }
   .zone.tight .pill { padding: 0; } .zone.tight .pill b { display: none; }   /* (fitHead: the name wouldn't fit beside "Ideas") */
   @container zone (width < 190px) { .tools .minus { display: none; } }
   @container zone (height < 90px) or (width < 150px) { .tools { display: none; } }
@@ -123,31 +125,33 @@
 
   /* ---- Ideas and Counts: a heading with Done, then the view's own part */
   .sub-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .sub-head h2 { margin: 0; min-width: 0; font-size: clamp(20px, 6vmin, 40px); font-weight: 800; line-height: 1.15;
+  .sub-head h2 { margin: 0; min-width: 0; font-size: clamp(20px, 6vmin, 56px); font-weight: 800; line-height: 1.25;
                  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .done { flex: 0 0 auto; min-height: 48px; padding: 0 clamp(18px, 4vmin, 30px); border: 0; border-radius: 999px;
-          background: var(--b21-accent); color: var(--b21-on-accent); font-size: clamp(16px, 3.6vmin, 24px); font-weight: 700; }
+  .done { flex: 0 0 auto; min-height: max(48px, 1.9em); padding: 0 clamp(18px, 4vmin, 30px); border: 0; border-radius: 999px;
+          background: var(--b21-accent); color: var(--b21-on-accent); font-size: clamp(16px, 3.6vmin, 32px); font-weight: 700; }
   .done:focus-visible { outline: 4px solid var(--b21-text); outline-offset: 2px; }
 
   #ideas { background: var(--tint); color: var(--ink); }
   .idea-wrap { flex: 1; min-height: 0; container: ideas / size; }
   .idea-body { height: 100%; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--pad); }
-  @container ideas (aspect-ratio < 1.15) { .idea-body { grid-template-columns: 1fr; grid-template-rows: minmax(0, 2fr) minmax(0, 3fr); } }
+  @container ideas (aspect-ratio < 0.9) { .idea-body { grid-template-columns: 1fr; grid-template-rows: minmax(120px, 1fr) auto; } }
   .breathe { min-width: 0; min-height: 0; container: breathe / size; display: grid; place-items: center; }
   .ring { position: relative; width: min(96cqw, 96cqh); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
-          box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--strong) 45%, transparent); }
-  .ball { position: absolute; inset: 0; border-radius: 50%; background: color-mix(in srgb, var(--strong) 38%, transparent); transform: scale(.5); }
+          box-shadow: inset 0 0 0 3px var(--mark); }
+  .ball { position: absolute; inset: 0; border-radius: 50%; background: color-mix(in srgb, var(--strong) 38%, transparent); transform: scale(.5);
+          box-shadow: inset 0 0 0 3px var(--mark); }
+  [data-b21-theme="dark"] :is(.ring, .ball) { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--strong) 70%, var(--ink)); }
   .breath-say { position: relative; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
-  #breath-word { font-size: clamp(16px, 11cqmin, 44px); font-weight: 800; }
-  #breath-count { font-size: clamp(16px, 13cqmin, 56px); font-weight: 800; font-variant-numeric: tabular-nums; opacity: .75; }
+  #breath-word { font-size: clamp(16px, 11cqmin, 88px); font-weight: 800; }
+  #breath-count { font-size: clamp(16px, 13cqmin, 112px); font-weight: 800; font-variant-numeric: tabular-nums; opacity: .75; }
   .idea-list { min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
-  .idea-list h3 { margin: 0; font-size: clamp(16px, 3.4vmin, 26px); font-weight: 700; }
+  .idea-list h3 { margin: 0; font-size: clamp(16px, 3.4vmin, 40px); font-weight: 700; }
   .idea-list ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
-  .idea-list li { display: flex; align-items: flex-start; gap: 12px; padding: clamp(8px, 2vmin, 14px); border-radius: 14px;
+  .idea-list li { display: flex; align-items: flex-start; gap: 12px; padding: clamp(8px, 2vmin, 24px); border-radius: 14px;
                   background: var(--b21-surface); color: var(--b21-text); box-shadow: inset 0 0 0 1px var(--b21-border); }
-  .idea-list .ic { font-size: clamp(24px, 5vmin, 40px); line-height: 1; }
-  .idea-list b { display: block; font-size: clamp(16px, 3.2vmin, 24px); line-height: 1.2; }
-  .idea-list small { display: block; font-size: clamp(14px, 2.8vmin, 20px); line-height: 1.3; color: var(--b21-muted); }
+  .idea-list .ic { font-size: clamp(24px, 5vmin, 64px); line-height: 1; }
+  .idea-list b { display: block; font-size: clamp(16px, 3.2vmin, 40px); line-height: 1.2; }
+  .idea-list small { display: block; font-size: clamp(14px, 2.8vmin, 34px); line-height: 1.3; color: var(--b21-muted); }
 
   .rows { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
   .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 60px; border-bottom: 1px solid var(--b21-border); }
@@ -157,10 +161,17 @@
   .step { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
   .step button { width: 48px; height: 48px; padding: 0; border: 0; border-radius: 50%; background: var(--b21-surface-2); font-size: 26px; font-weight: 700; line-height: 1; }
   .step button:focus-visible { outline: 4px solid var(--b21-accent); outline-offset: 2px; }
-  .step input { width: 3.4em; height: 44px; box-sizing: border-box; border: 1px solid var(--b21-border); border-radius: 12px; background: var(--b21-surface);
+  .step input { width: 3.4em; height: 48px; box-sizing: border-box; border: 1px solid var(--b21-border); border-radius: 12px; background: var(--b21-surface);
                 text-align: center; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; -moz-appearance: textfield; appearance: textfield; }
   .step input::-webkit-outer-spin-button, .step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .step input:focus { outline: none; border-color: var(--b21-accent); box-shadow: 0 0 0 2px var(--b21-accent); }
+
+  /* Windows High Contrast: borders in place of the edges and fills it takes away */
+  @media (forced-colors: active) {
+    .tap, .foot button, .done, .step button { border: 2px solid; }
+    .bar { border: 1px solid; } .bar i { forced-color-adjust: none; background: CanvasText; }
+    .ring, .ball { box-sizing: border-box; border: 3px solid; }
+  }
 
   @media (prefers-reduced-motion: reduce) {
     .tap, .tap:active { transition: none; transform: none; }
@@ -179,8 +190,8 @@
       <button type="button" id="undo" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button>
       <div class="progress"><div class="bar" id="bar" aria-hidden="true"></div><div id="status"></div></div>
     </div>
-    <div class="sr" id="said" role="status" aria-live="polite" aria-atomic="true"></div>
   </section>
+  <div class="sr" id="said" role="status" aria-live="polite" aria-atomic="true"></div>
 
   <section class="view" id="ideas">
     <div class="sub-head"><h2 id="idea-title"></h2><button type="button" class="done" id="idea-done">Done</button></div>
@@ -216,12 +227,12 @@
   </template>
   <template id="row-tpl">
     <div class="row"><label><span class="dot"></span><span class="lbl"></span></label>
-      <div class="step"><button type="button" data-by="-1">−</button><input type="number" inputmode="numeric" min="0" max="999"><button type="button" data-by="1">+</button></div>
+      <div class="step"><button type="button" data-by="-1">−</button><input type="number" inputmode="numeric" min="0" max="9999"><button type="button" data-by="1">+</button></div>
     </div>
   </template>
 <script>
   // Content (Board21.save): { day, counts: { blue, green, yellow, red }, undo }
-  //   day     the date of the last change ('2026-11-20'). With New each day, counts from an earlier day show as none.
+  //   day     the date of the last change ('2026-11-20'). With Clear each day, counts from an earlier day show as none.
   //   undo    the counts before each of the last changes, oldest first, each as [blue, green, yellow, red].
   //   Counts are how the class feels, so they are content: templates never carry them.
   // Config (Board21.saveConfig): { classSize, showCounts, daily, sound }. Setup that names no student.
@@ -229,28 +240,28 @@
   // its ideas.
   const ZONES = [
     { id: 'blue', name: 'Blue', face: '😴', feelings: [['😢', 'Sad'], ['😴', 'Tired'], ['🤒', 'Sick'], ['🐢', 'Slow']], lead: 'Ideas to wake up your body', pitch: 392, ideas: [
-      ['💧', 'Drink water', 'Take five slow sips.'],
+      ['💧', 'Drink water', 'Take 5 slow sips.'],
       ['🙆', 'Stretch', 'Reach up high, then touch your toes.'],
-      ['🌬️', 'Belly breaths', 'Take three deep breaths into your belly.'],
+      ['🌬️', 'Belly breaths', 'Take 3 deep breaths into your belly.'],
       ['🚶', 'Take a walk', 'Walk slowly around the room.']] },
-    { id: 'green', name: 'Green', face: '😊', feelings: [['🤓', 'Ready to Learn'], ['😌', 'Calm'], ['😊', 'Happy']], lead: 'Ideas to keep it going', pitch: 523.25, ideas: [
+    { id: 'green', name: 'Green', face: '😊', feelings: [['🤓', 'Ready to Learn'], ['😌', 'Calm'], ['😊', 'Happy']], lead: 'Ideas to stay green', pitch: 523.25, ideas: [
       ['⭐', 'Keep learning', 'You’re ready to focus and do your best.'],
-      ['🤝', 'Help a friend', 'See if someone needs a hand or a smile.'],
+      ['🤝', 'Help a friend', 'See if someone needs help or a smile.'],
       ['🎯', 'Set a goal', 'Choose what to finish first today.']] },
     { id: 'yellow', name: 'Yellow', face: '🤪', feelings: [['🤩', 'Elevated'], ['🤪', 'Silly'], ['😤', 'Frustrated']], lead: 'Ideas to slow down', pitch: 659.25, ideas: [
-      ['🧱', 'Wall push-ups', 'Push against the wall five times.'],
+      ['🧱', 'Wall push-ups', 'Push against the wall 5 times.'],
       ['🖐️', '5, 4, 3, 2, 1', 'Find 5 things you see, 4 you can touch, 3 you hear, 2 you smell and 1 you taste.'],
-      ['🪑', 'Calm corner', 'Sit quietly for two minutes.'],
-      ['🧸', 'Use a fidget', 'Squeeze a stress ball, quietly.']] },
+      ['🪑', 'Calm corner', 'Sit quietly for 2 minutes.'],
+      ['🧸', 'Use a fidget', 'Quietly squeeze a stress ball.']] },
     { id: 'red', name: 'Red', face: '😡', feelings: [['😡', 'Angry'], ['😣', 'Intense'], ['🤯', 'Overwhelmed']], lead: 'Ideas to calm down', pitch: 783.99, ideas: [
-      ['🛑', 'Take space', 'Go to the calm-down spot.'],
+      ['🛑', 'Take space', 'Go to the calm corner.'],
       ['🌬️', 'Breathe with the circle', 'In for 4, hold for 4, out for 4, hold for 4.'],
       ['🧊', 'Cool down', 'Hold something cold, or wash your hands in cool water.'],
       ['💬', 'Talk to your teacher', 'Let them know you need help.']] }
   ];
   const IDS = ZONES.map(z => z.id);
   const ZONE = Object.fromEntries(ZONES.map(z => [z.id, z]));
-  const MOST = 999;        // in one zone
+  const MOST = 9999;       // in one zone (a school year of check-ins, with Clear each day off)
   const MOST_CLASS = 99;   // class size
   const KEEP = 20;         // changes Undo can take back
   const GUARD = 350;       // ms: a second tap on the same zone this soon is one tap (a double touch)
@@ -262,10 +273,10 @@
   const blank = () => ({ day: null, counts: Object.fromEntries(IDS.map(id => [id, 0])), undo: [] });
   let state = blank();
   let config = readConfig(null);
-  let view = 'main', ideaZone = null, editKept = false, opener = null;
+  let view = 'main', ideaZone = null, editMark = null, opener = null;
 
   // Saved content and config can come from an imported file, so every field is checked: a count is a whole number
-  // from 0 to 999, a day is a date, Undo keeps at most 20 changes of four counts each.
+  // from 0 to 9999, a day is a date, Undo keeps at most 20 changes of four counts each.
   function whole(v, most) { return Number.isInteger(v) ? Math.min(most, Math.max(0, v)) : 0; }
   function readState(d) {
     d = d && typeof d === 'object' ? d : {};
@@ -285,7 +296,7 @@
 
   // Today on this device, as '2026-11-20'.
   function today() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
-  // What shows now. With New each day, counts from an earlier day show as none, and there is nothing to undo.
+  // What shows now. With Clear each day, counts from an earlier day show as none, and there is nothing to undo.
   function shown() { return config.daily && state.day && state.day !== today() ? blank() : state; }
   const total = s => IDS.reduce((n, id) => n + s.counts[id], 0);
 
@@ -300,13 +311,15 @@
     save(); render();
     return true;
   }
+  let undoAt = -Infinity;
   function undo() {
-    const cur = shown();
-    if (!cur.undo.length) return;
+    const cur = shown(), t = performance.now();
+    if (!cur.undo.length || t - undoAt < GUARD) return;   // (a double touch takes back one change, not two)
+    undoAt = t;
     const rest = cur.undo.slice(), last = rest.pop();
     state = { day: today(), counts: Object.fromEntries(IDS.map((id, i) => [id, last[i]])), undo: rest };
     save(); render();
-    say('Undone');
+    say(`Undone. ${total(shown())} checked in`);
   }
   function startOver() {
     if (change(c => { for (const id of IDS) c[id] = 0; })) say('Counts cleared');
@@ -314,9 +327,11 @@
 
   // ---- A student checks in
   const lastTap = {};
+  let viewAt = -Infinity;
+  const settling = () => performance.now() - viewAt < GUARD;   // (the view has just changed: a double touch's second touch)
   function checkIn(id) {
     const t = performance.now();
-    if (t - (lastTap[id] || -Infinity) < GUARD) return;
+    if (settling() || t - (lastTap[id] || -Infinity) < GUARD) return;
     lastTap[id] = t;
     if (!change(c => { c[id] += 1; })) return;
     const n = shown().counts[id];
@@ -327,7 +342,7 @@
   // "−" on a card: a student tapped the wrong zone.
   function takeOne(id) {
     const t = performance.now();
-    if (t - (lastTap['-' + id] || -Infinity) < GUARD) return;
+    if (settling() || t - (lastTap['-' + id] || -Infinity) < GUARD) return;
     lastTap['-' + id] = t;
     if (!change(c => { c[id] -= 1; })) return;
     cheer(id, '−1');
@@ -341,7 +356,7 @@
     f.textContent = text || (config.showCounts ? '+1' : '✓');
     f.addEventListener('animationend', () => f.remove());
     setTimeout(() => f.remove(), 1500);   // (if the animation never runs)
-    card.body.appendChild(f);
+    (text || config.showCounts ? card.body : card.main).appendChild(f);   // (the check mark on the face, clear of the feelings)
     card.count.classList.remove('pop'); void card.count.offsetWidth; card.count.classList.add('pop');
   }
 
@@ -365,7 +380,7 @@
     const node = $('card-tpl').content.firstElementChild.cloneNode(true);
     node.dataset.z = z.id;
     const c = cards[z.id] = { node, tap: node.querySelector('.tap'), body: node.querySelector('.body'), count: node.querySelector('.count'), minus: node.querySelector('.minus'),
-      name: node.querySelector('.name'), tools: node.querySelector('.tools') };
+      name: node.querySelector('.name'), tools: node.querySelector('.tools'), idea: node.querySelector('.idea-btn'), main: node.querySelector('.main') };
     node.querySelector('.name').textContent = z.name;
     node.querySelector('.face').textContent = z.face;
     for (const [face, word] of z.feelings) {
@@ -375,10 +390,22 @@
     }
     const ib = node.querySelector('.idea-btn');
     ib.setAttribute('aria-label', `${z.name} zone ideas`);
-    ib.addEventListener('click', () => openIdeas(z.id, ib));
+    ib.addEventListener('click', () => { if (!settling()) openIdeas(z.id, ib); });
     c.minus.setAttribute('aria-label', `${z.name}, one less`);
     c.minus.addEventListener('click', () => takeOne(z.id));
-    c.tap.addEventListener('click', () => checkIn(z.id));
+    // A tap counts when the finger lifts: a browser sends no click while another touch is down (two students at once, a
+    // hand resting on the board). A click with no lift just before it (the mouse, the keyboard) counts too.
+    const downs = new Map();
+    c.tap.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') downs.set(e.pointerId, [e.clientX, e.clientY]); });
+    c.tap.addEventListener('pointercancel', e => downs.delete(e.pointerId));
+    c.tap.addEventListener('pointerup', e => {
+      const at = downs.get(e.pointerId);
+      downs.delete(e.pointerId);
+      if (!at || Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 16) return;   // (a slide, not a tap)
+      c.liftAt = performance.now();
+      checkIn(z.id);
+    });
+    c.tap.addEventListener('click', () => { if (performance.now() - (c.liftAt || -Infinity) > 1000) checkIn(z.id); });
     for (const b of [c.tap, c.minus]) b.addEventListener('keydown', e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); });
     cardSeen.observe(node);
     $('grid').appendChild(node);
@@ -391,7 +418,8 @@
   for (const z of ZONES) {
     const row = $('row-tpl').content.firstElementChild.cloneNode(true);
     row.dataset.z = z.id;
-    row.querySelector('.lbl').textContent = `${z.face} ${z.name}`;
+    const rowFace = document.createElement('span'); rowFace.setAttribute('aria-hidden', 'true'); rowFace.textContent = z.face + ' ';
+    row.querySelector('.lbl').replaceChildren(rowFace, z.name);
     const input = row.querySelector('input');
     input.id = 'n-' + z.id; input.dataset.n = z.id;
     row.querySelector('label').htmlFor = input.id;
@@ -408,7 +436,12 @@
       v = whole(v, MOST_CLASS);
       if (v === config.classSize) return;
       config.classSize = v; saveConfig(); render();
-    } else if (change(c => { c[key] = v; }, !editKept)) editKept = true;   // (one Undo takes back all the editing)
+    } else {
+      // One Undo takes back a whole editing session. An edit joins the session's step only while that step is still the
+      // last change: after Undo, Start over or a tap in another copy, the next edit is a step of its own.
+      const cur = shown(), joins = !!editMark && cur.undo.length > 0 && IDS.every(id => cur.counts[id] === editMark[id]);
+      if (change(c => { c[key] = v; }, !joins)) editMark = { ...state.counts };
+    }
   }
   $('rows').addEventListener('click', e => {
     const b = e.target.closest('button[data-step]');
@@ -419,21 +452,23 @@
       const t = input.value.trim(), v = t === '' ? 0 : Number(t);
       if (Number.isInteger(v)) setValue(input.dataset.n, v);
     });
-    input.addEventListener('change', () => fillInputs(true));   // (then shows the number kept, such as 999 for 1500)
+    input.addEventListener('change', () => fillInputs(true));   // (then shows the number kept, such as 9999 for 15000)
     input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
   }
-  // The boxes show the numbers kept. One being typed in changes only if its number is different.
-  function fillInputs(all) {
+  // The boxes show the numbers kept. One being typed in changes only if its number is different, and not at all for a
+  // change from another copy (what is typed next wins).
+  function fillInputs(all, remote) {
     for (const input of inputs) {
       const v = valueOf(input.dataset.n), text = input.dataset.n === 'size' && !v ? '' : String(v);
       const typing = !all && document.activeElement === input;
+      if (typing && remote) continue;
       if (typing ? (input.value.trim() === '' ? 0 : Number(input.value)) !== v : input.value !== text) input.value = text;
     }
   }
 
   // ---- Drawing
   let menuWas = '', titleWas = null;
-  function render() {
+  function render(remote) {
     const cur = shown(), n = total(cur), size = config.classSize;
     if (document.body.classList.contains('hide-counts') === config.showCounts) { document.body.classList.toggle('hide-counts', !config.showCounts); fitHeads(); }
     for (const z of ZONES) {
@@ -451,23 +486,28 @@
     for (const id of IDS) bars[id].style.width = config.showCounts && base ? (cur.counts[id] / base * 100) + '%' : '0';
     barAll.style.width = !config.showCounts && base ? (n / base * 100) + '%' : '0';
     $('status').textContent = !n ? 'Tap your zone to check in' : !size ? `${n} checked in` : n === size ? 'Everyone’s checked in' : `${n} of ${size} checked in`;
-    $('undo').hidden = !cur.undo.length;
+    if ($('undo').hidden !== !cur.undo.length) {
+      const keys = !cur.undo.length && $('undo').matches(':focus-visible');
+      $('undo').hidden = !cur.undo.length;
+      if (keys) cards[IDS[0]].tap.focus();   // (it hides itself when there is nothing left to undo)
+    }
     const title = !n ? '' : size ? `${n} of ${size}` : `${n} checked in`;
     if (title !== titleWas) { titleWas = title; Board21.window.setTitle(title); }
     setMenu(cur, n);
-    if (view === 'edit') fillInputs(false);
+    if (view === 'edit') fillInputs(false, remote);
   }
   function setMenu(cur, n) {
     const items = [
       { id: 'undo', label: 'Undo', disabled: !cur.undo.length },
       { id: 'clear', label: 'Start over', disabled: !n },
+      { id: 'size', label: 'Class size' },
       { id: 'edit', label: 'Edit counts' },
       { separator: true },
       { heading: true, label: 'Ideas' },
       ...ZONES.map(z => ({ id: 'ideas:' + z.id, label: `${z.name} zone` })),
       { separator: true },
       { id: 'counts', label: 'Show counts', checked: config.showCounts },
-      { id: 'daily', label: 'New each day', checked: config.daily },
+      { id: 'daily', label: 'Clear each day', checked: config.daily },
       { id: 'sound', label: 'Sound', checked: config.sound }
     ];
     const key = JSON.stringify(items);
@@ -485,9 +525,10 @@
   function setView(v) {
     const was = view;
     view = v;
+    if (v !== was) viewAt = performance.now();
     for (const id of ['main', 'ideas', 'edit']) $(id).classList.toggle('on', id === v);
     if (v !== 'ideas') stopBreath();
-    if (v === 'ideas') Board21.window.setMinSize(440, 380);
+    if (v === 'ideas') Board21.window.setMinSize(440, 430);
     else if (v === 'edit') Board21.window.setMinSize(340, 430);
     else if (was !== 'main') Board21.window.setMinSize(null, null);
     Board21.window.setDragFromContent(v !== 'edit');   // (typing numbers)
@@ -499,7 +540,8 @@
     opener = from && from.matches(':focus-visible') ? from : null;   // (from the keyboard: Done takes the focus, and gives it back)
     ideaZone = id;
     $('ideas').dataset.z = id;
-    $('idea-title').textContent = `${z.face} ${z.name} zone`;
+    const face = document.createElement('span'); face.setAttribute('aria-hidden', 'true'); face.textContent = z.face + ' ';
+    $('idea-title').replaceChildren(face, `${z.name} zone`);
     $('idea-lead').textContent = z.lead;
     const ul = $('idea-items');
     ul.textContent = '';
@@ -516,19 +558,24 @@
   }
   function openEdit(from) {
     opener = from || null;
-    editKept = false;
+    editMark = null;
     setView('edit');
     fillInputs(true);
     $('rows').scrollTop = 0;
   }
   function back() {
-    const to = opener;
+    const from = view, to = opener, a = document.activeElement;
+    const keys = !!a && $(from).contains(a) && a.matches(':focus-visible');   // (Done or Escape from the keyboard)
     opener = null;
     setView('main');
     if (to && document.contains(to)) to.focus();
+    else if (keys) {   // (the button it was on went with its view): the zone's Ideas button, or the first card
+      const c = cards[from === 'ideas' ? ideaZone : IDS[0]];
+      (from === 'ideas' && c.idea.offsetParent ? c.idea : c.tap).focus();
+    }
   }
-  $('idea-done').onclick = back;
-  $('edit-done').onclick = () => { fillInputs(true); back(); };
+  $('idea-done').onclick = () => { if (!settling()) back(); };
+  $('edit-done').onclick = () => { if (settling()) return; fillInputs(true); back(); };
   addEventListener('keydown', e => { if (e.key === 'Escape' && view !== 'main') { e.preventDefault(); back(); } });
 
   // ---- Breathing: the circle grows for 4 s, holds, shrinks for 4 s and holds, with the words and a count of 4 to 1.
@@ -581,28 +628,24 @@
       stop() { if (ctx) ctx.close().catch(() => {}); ctx = null; }
     };
   })();
-  for (const type of ['pointerdown', 'click', 'keydown']) addEventListener(type, () => Sound.wake(), true);
+  for (const type of ['pointerdown', 'pointerup', 'click', 'keydown']) addEventListener(type, () => Sound.wake(), true);
 
   // ---- The window menu
   Board21.on('menu', id => {
     id = String(id);
     if (id === 'undo') undo();
     else if (id === 'clear') startOver();
-    else if (id === 'edit') openEdit();
+    else if (id === 'edit' || id === 'size') openEdit();
     else if (id.startsWith('ideas:')) openIdeas(id.slice(6));
     else if (id === 'counts') { config.showCounts = !config.showCounts; saveConfig(); render(); }
     else if (id === 'daily') { config.daily = !config.daily; saveConfig(); render(); }
     else if (id === 'sound') { config.sound = !config.sound; saveConfig(); render(); if (config.sound) Sound.sample(); else Sound.stop(); }
   });
-  $('undo').onclick = () => {
-    const keys = $('undo').matches(':focus-visible');
-    undo();
-    if (keys && $('undo').hidden) cards[IDS[0]].tap.focus();   // (it hides itself when there is nothing left to undo)
-  };
+  $('undo').onclick = undo;
 
   // ---- Changed in another copy of the board (the smartboard and a laptop), or by an import
-  Board21.on('data', d => { state = readState(d); render(); });
-  Board21.on('config', c => { config = readConfig(c); if (!config.sound) Sound.stop(); render(); });
+  Board21.on('data', d => { state = readState(d); render(true); });
+  Board21.on('config', c => { config = readConfig(c); if (!config.sound) Sound.stop(); render(true); });
 
   // ---- The board's own buttons over a window that fills it: the bottom row and the views keep clear of them
   function fitCorners() {
@@ -615,7 +658,7 @@
   }
   Board21.on('resize', fitCorners);
 
-  // ---- A new day: with New each day the counts start again at none (checked now and then, and when the board shows again)
+  // ---- A new day: with Clear each day the counts start again at none (checked now and then, and when the board shows again)
   let dayWas = today();
   setInterval(() => { if (today() !== dayWas) { dayWas = today(); render(); } }, 20000);
   document.addEventListener('visibilitychange', () => { if (!document.hidden) { dayWas = today(); render(); } });
