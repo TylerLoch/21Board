@@ -6,11 +6,11 @@
 bottom corner and arrange them in windows. Your work is saved on the device, and you can export it to a file.
 Widgets are built on their own and dropped in.
 
-- Plain HTML, CSS, JavaScript and SVG. **No libraries, build step or server code.**
+- Plain HTML, CSS, JavaScript, and SVG. **No libraries, build step, or server code.**
 - Installable PWA that **works offline**
 - **Private.** Your work is stored only on your device, and in your own Google Drive if you turn on Board Sync.
   21Board has no servers and no accounts.
-- **Online only when needed.** For updates, district apps and videos.
+- **Online only when needed.** For updates, district apps, and videos.
 - Production: <https://boardapp.ccsd21.org>
 
 ---
@@ -35,16 +35,16 @@ You don't need a server to try 21Board:
 A release is a complete set of files with one name and one fingerprint. Before each upload:
 
 1. **Change `VERSION` in `sw.js`.** It names the release with the date and a counter, such as `2026.11.12-1`.
-2. **Run `node tools/release.js`.** It stamps `sw.js`, `board.js` and `index.html` with the name and the *build*, a
+2. **Run `node tools/release.js`.** It stamps `sw.js`, `board.js`, and `index.html` with the name and the *build*, a
    fingerprint of every file. Run it again after any change.
 3. **Run the tests** with `node tests/run.js`. They fail if a file changed after the stamp.
 4. **Upload every file together** to the static host.
    - **Leave out** `.git/`, `.claude/`, `.gitattributes`, `.gitignore`, `README.md`, `docs/`, `tests/`, `tools/`,
-     `widgets/_template/` and anything git ignores, such as `node_modules/` and `.DS_Store`. Never serve `.git/`:
+     `widgets/_template/`, and anything git ignores, such as `node_modules/` and `.DS_Store`. Never serve `.git/`:
      anyone could download the whole history.
    - **Upload everything else:** `index.html`, `board.js`, `sw.js`, `manifest.webmanifest`, `icons/`, `LICENSE`,
      `LICENSE-DOCS`, `fonts/` with its `-OFL.txt` licenses, `sdk/` with the lab and the dev window,
-     `widgets/registry.js` and every other folder in `widgets/`. These are the files `sw.js` lists. A device saves
+     `widgets/registry.js`, and every other folder in `widgets/`. These are the files `sw.js` lists. A device saves
      its offline copy only when every one arrives, so one missing file keeps every device from working offline.
 
 On the host, serve `manifest.webmanifest` as `application/manifest+json`. Most servers already do. Serve `sw.js`
@@ -53,9 +53,9 @@ rewriting.
 
 What devices do with a release:
 
-- A device keeps **one complete release** for offline use and runs only that. The page, `board.js`, the SDK and the
+- A device keeps **one complete release** for offline use and runs only that. The page, `board.js`, the SDK, and the
   widgets always match. The device saves a release only when every file matches the stamp, so a half-finished
-  upload, a dropped connection or a Wi-Fi sign-in page can't leave it with part of one. Until then it keeps the
+  upload, a dropped connection, or a Wi-Fi sign-in page can't leave it with part of one. Until then it keeps the
   release it has, and tries again every hour and each time 21Board starts.
 - Once a new release is saved, open boards say **“A new version of 21Board is ready.”** with *Update* and *Later*.
   *Update* takes a second or two and restarts every open 21Board tab on the new release. The board and its content
@@ -87,22 +87,25 @@ widget.
 | | |
 | --- | --- |
 | **Widget Picker** | The ▦ button in **either** bottom corner, so you can reach it from both sides of the board. Tap a widget to open it. Tap ▦ or anywhere else to close. |
-| **Buttons** | The Widget Picker's bottom row: Paste, Export, Import, Lock, Full screen and Settings. |
-| **Pages** | A page for each lesson or part of the day, with its own windows, content, background and name. The Widget Picker's bottom row ends with **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after, and on the last page › is **+** for a new page. Tap *Page* for the Pages menu. Tap a page there to go to it, or choose **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** or **Delete this page…**, which has Undo. A new page takes this page's size, shape and background color. Every tab on the device shows the same page, and 21Board opens on the page it last showed. With Board Sync, every device has the same pages in the same order, and each shows its own page. Widgets on other pages don't run. A Timer shows the right time when you come back, but its alarm won't ring on another page. |
-| **Move a window** | Drag its title bar. In widgets without typing, such as Clock, Timer, Calendar and Dice, drag anywhere inside. In widgets with typing, such as Notes, drag inside with two fingers. The Video Player's video takes every tap, so move or bring forward its window by the title bar. Windows snap next to each other and resist overlapping. Keep pushing to overlap anyway. Two people can drag two windows at once. |
+| **Buttons** | The Widget Picker's bottom row: Paste, Export, Import, Lock, Full screen, and Settings. |
+| **Pages** | A page for each lesson or part of the day, with its own windows, content, background, and name. The Widget Picker's bottom row ends with **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after, and on the last page › is **+** for a new page. Tap *Page* for the Pages menu. Tap a page there to go to it, or choose **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right**, or **Delete this page…**, which has Undo. A new page takes this page's size, shape, and background color. Every tab on the device shows the same page, and 21Board opens on the page it last showed. With Board Sync, every device has the same pages in the same order, and each shows its own page. Widgets on other pages don't run. A Timer shows the right time when you come back, but its alarm won't ring on another page. |
+| **Move a window** | Drag its title bar. In widgets without typing, such as Clock, Timer, Calendar, and Dice, drag anywhere inside. In widgets with typing, such as Notes, drag inside with two fingers. The Video Player's video takes every tap, so move or bring forward its window by the title bar. Windows snap next to each other and resist overlapping. Keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
-| **Select a window** | Tap anywhere on it. It comes forward and gets an outline in the accent color, a stronger title bar tint and resize handles. Tap the empty board to deselect. |
-| **Window menu** | Tap the widget's name ⌄ in the title bar for its own options, **Fill the board**, **Reset** and **Close**. 21Sketch, 21Timer and 21DocCam have **Reload** and **Open in new tab** instead of Reset. Double-tap the title bar to fill the board or restore the window. A tap that slides a little still counts as a tap. On a keyboard, Enter on the window's name opens the menu, the arrow keys move, Enter chooses and Escape closes. |
+| **Select a window** | Tap anywhere on it. It comes forward and gets an outline in the accent color, a stronger title bar tint, and resize handles. Tap the empty board to deselect. |
+| **Window menu** | Tap the widget's name ⌄ in the title bar for its own options, **Fill the board**, **Reset**, and **Close**. 21Sketch, 21Timer, and 21DocCam have **Reload** and **Open in new tab** instead of Reset. Double-tap the title bar to fill the board or restore the window. A tap that slides a little still counts as a tap. On a keyboard, Enter on the window's name opens the menu, the arrow keys move, Enter chooses, and Escape closes. |
 | **Close a window** | Its content is kept. Open the widget again to pick up where you left off. Several of one widget come back in order: 1, 2, 3. |
-| **Export** | *Full backup* saves everything, closed windows too. *Blank template* saves the layout and widget settings with no content, so it's safe to share with colleagues. With several pages, choose *All pages*, *This page* or *This page as a blank template*. You get a `.21board` file. In Chrome and Edge on computers and Chromebooks, you choose where it goes, such as Google Drive. *Back up now* in Settings and the backup reminders always save every page. |
-| **Import** | Pick a `.21board` file, or drop it on the board. The suggested choice is *Open as a new page*. The others are *Replace this page* and *Add to this page*. For a file of several pages, choose *Add these pages* or *Replace all pages*, which has Undo. *Replace this page* keeps the page itself and takes the file's theme, accent color and text style, and says so when they differ. With Board Sync, the new windows, content, theme, accent color and text style reach your other devices too. Its Undo puts back the page, theme, accent color and text style it replaced. The other choices leave the theme, accent color and text style alone. A Board Sync device file opens as a backup of every page. |
+| **Export** | *Full backup* saves everything, closed windows too. *Blank template* saves the layout and widget settings with no content, so it's safe to share with colleagues. With several pages, choose *All pages*, *This page*, or *This page as a blank template*. You get a `.21board` file. In Chrome and Edge on computers and Chromebooks, you choose where it goes, such as Google Drive. *Back up now* in Settings and the backup reminders always save every page. |
+| **Import** | Pick a `.21board` file, or drop it on the board. The suggested choice is *Open as a new page*. The others are *Replace this page* and *Add to this page*. For a file of several pages, choose *Add these pages* or *Replace all pages*, which has Undo. *Replace this page* keeps the page itself and takes the file's theme, accent color, and text style, and says so when they differ. With Board Sync, the new windows, content, theme, accent color, and text style reach your other devices too. Its Undo puts back the page, theme, accent color, and text style it replaced. The other choices leave the theme, accent color, and text style alone. A Board Sync device file opens as a backup of every page. |
 | **Paste** | Ctrl+V or ⌘V opens a copied picture in a new Picture window. A copied video link opens in a new Video Player. Dropping either on the board does the same. On a touch screen, tap *Paste* in the Widget Picker. An animation copied from a web page pastes as a still. Open or drop its file to keep it moving. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so your layout looks the same on a laptop and the smartboard. In Settings, *Fill* lets the board take any window's shape, and you can change the size of windows and menus. |
-| **Board history** | Undo a big change, or recover from a curious student. Settings → Classroom → **Board history…** lists earlier versions in a column beside Settings. Tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board, and can be undone. *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. An empty board offers *Go back to an earlier version*. Each window's menu has *Earlier versions…*. |
-| **Lock** | Tap **Lock** in the Widget Picker, then choose. *Lock everything*: nothing on the board responds. Timers and videos keep going. *Widgets still work*: windows can't move, resize or close, and widgets can still be used. Either way ▦ stays put and won't open. A tap says “The board is locked.” A 🔒 sits in the top corner above each ▦. To unlock, hold 🔒 for 2 seconds. A quick tap shows *Hold to unlock*. On a keyboard, press Enter on 🔒, then *Unlock*. Every tab on this device locks and unlocks together. Messages show without their buttons. Under *Widgets still work*, a file dropped on the board asks to unlock first. *Lock everything* refuses it. |
+| **Board history** | Undo a big change, or recover from a curious student. Settings → Classroom → **Board history…** lists earlier versions in a column beside Settings. Tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board, and can be undone. *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, and Import. An empty board offers *Go back to an earlier version*. Each window's menu has *Earlier versions…*. |
+| **Lock** | Tap **Lock** in the Widget Picker, then choose. *Lock everything*: nothing on the board responds. Timers and videos keep going. *Widgets still work*: windows can't move, resize, or close, and widgets can still be used. Either way ▦ stays put and won't open. A tap says “The board is locked.” A 🔒 sits in the top corner above each ▦. To unlock, hold 🔒 for 2 seconds. A quick tap shows *Hold to unlock*. On a keyboard, press Enter on 🔒, then *Unlock*. Every tab on this device locks and unlocks together. Messages show without their buttons. Under *Widgets still work*, a file dropped on the board asks to unlock first. *Lock everything* refuses it. |
 | **Kiosk mode** | For a ChromeOS kiosk with no sign-in, add `?kiosk=yes` to the address. Full screen and Board Sync go away, and a red ✕ Quit follows the Settings gear. See [Kiosk mode](#kiosk-mode). |
 | **Several tabs** | 21Board tabs and windows on one computer stay in sync. |
 | **Updates** | When a new version is ready, a message offers *Update* or *Later*. *Update* takes a second or two, and the board and its content stay as they are. Otherwise the new version takes over the next time 21Board starts. Until then, a dot shows on ▦ and the Settings gear, and *Update now* is at the top of Settings. After an update, the board says “Updated to …” once. Settings → About shows the version in use. |
+
+A right-click or a long press shows no browser menu, except in text boxes. Developer mode brings it back. District
+apps and videos keep their own.
 
 **For IT:** *Paste* asks once to see the clipboard. The Chrome policy `ClipboardAllowedForUrls` with
 `https://boardapp.ccsd21.org` allows it ahead of time. Ctrl+V never asks.
@@ -110,21 +113,21 @@ widget.
 ### Settings
 
 The gear in either Widget Picker opens Settings on that side. Rows marked ▸ are groups. Each shows what it's set to,
-such as a small preview, "Standard" or "3 windows". It opens below its row, which stays put. Groups start closed each
+such as a small preview, "Standard", or "3 windows". It opens below its row, which stays put. Groups start closed each
 time Settings opens.
 
 - **At the top, when needed:** a save problem with *Back up now*, or *A new version is ready* with *Update now*.
 - **Board Sync**, in Chrome and Edge: one board on all your devices, the smartboard too, through a Google Drive
   folder. *Set up…* shows how to make the folder, then you pick it. Once linked, it has three rows: the folder and
   how syncing is going, with *Change…* and *Unlink*; this device's name; and *Keep history copies in the folder*.
-  When the board can't sync, it says what's wrong. Not in kiosk mode, the dev window or browsers without it.
+  When the board can't sync, it says what's wrong. Not in kiosk mode, the dev window, or browsers without it.
   See [Board Sync](#board-sync).
 - **Classroom**
   - **Go back to an earlier version:** *Board history…* opens beside Settings, which stays open. Tap it again to
     close it. A line here says when history is paused or short of space. See
     [Board history](#board-history).
   - **Close all windows** on this page. Their content is kept.
-  - **Stay awake:** a switch that keeps the Chromebook, iPad or panel from dimming and sleeping while 21Board is on
+  - **Stay awake:** a switch that keeps the Chromebook, iPad, or panel from dimming and sleeping while 21Board is on
     screen. It uses the browser's screen wake lock. A screen that never sleeps never locks, so while it's on,
     Settings warns *This makes your account less secure.* Kiosks skip the warning, since no one is signed in. A line
     says when it can't work: in an older browser, when 21Board isn't served over https, or on a device that doesn't
@@ -133,19 +136,19 @@ time Settings opens.
 - **This page ▸ Windows:** how many windows this page has, open or closed. Open the group to see each one, with Open
   and Delete. To rename the page, use ‹ Page › → *Rename this page…*.
 - **Appearance**
-  - **Theme:** Light, Dark or Auto, the default, which follows the device's light or dark setting. With Board Sync,
+  - **Theme:** Light, Dark, or Auto, the default, which follows the device's light or dark setting. With Board Sync,
     on all your devices.
-  - **Background ▸** for this page. Match the theme, or pick a color. Light: White, Paper, Sky, Mint, Blush and
-    Lavender. Dark: Slate, Chalkboard, Navy and Black. *Custom…* picks any color, and *Photo…* adds a photo. Once
+  - **Background ▸** for this page. Match the theme, or pick a color. Light: White, Paper, Sky, Mint, Blush, and
+    Lavender. Dark: Slate, Chalkboard, Navy, and Black. *Custom…* picks any color, and *Photo…* adds a photo. Once
     added, *Photo* is a choice with a tiny picture. Picking a color hides the photo and keeps it, and picking
     *Photo* shows it again. While it shows, tap its picture to choose what stays in view, and choose *Fill the
-    board* or *Whole photo*, the fade, *Change…* or *Remove*. The device and full backups keep the photo. Templates
+    board* or *Whole photo*, the fade, *Change…*, or *Remove*. The device and full backups keep the photo. Templates
     don't.
-  - **Accent color:** Blue, Purple, Rose, Orange, Green, Slate or *Custom…* for any color. A custom color adjusts to
+  - **Accent color:** Blue, Purple, Rose, Orange, Green, Slate, or *Custom…* for any color. A custom color adjusts to
     stay readable in Light and Dark. The accent colors widgets and tints every title bar. With Board Sync, on all
     your devices. A board that had Pink or Teal is now Blue.
   - **Text style ▸** for 21Board and its widgets. *Standard* uses the device's own font. *Easier to read* uses
-    Atkinson Hyperlegible, made for low vision, where I, l and 1 all differ and 0 has a line through it. *Early
+    Atkinson Hyperlegible, made for low vision, where I, l, and 1 all differ and 0 has a line through it. *Early
     readers* uses Andika by SIL, with a and g the way children learn to write them. They're for easier reading.
     Neither is a dyslexia font. Notes' Chalkboard and Whiteboard keep their own lettering. With Board Sync, on all
     your devices. Before 2026.11.17-2 it was called *Letters* and stayed on each device.
@@ -156,24 +159,24 @@ time Settings opens.
   this device's file. Whether the browser will keep 21Board's data shows inside, under *Protected storage*, not as
   a dot.
   - **Widget Picker:** both corners, or only left or right.
-  - **Clock in the corner:** *On*, *Off* or *Auto*, the default. It shows the time and date beside the bottom right
+  - **Clock in the corner:** *On*, *Off*, or *Auto*, the default. It shows the time and date beside the bottom right
     ▦, or beside the only ▦ when the Widget Picker is in one corner. *Auto* shows it only in full screen, where the
-    device's own clock is hidden. That's ⛶ Full screen, F11 or the Chromebook's full screen key, and kiosk mode.
+    device's own clock is hidden. That's ⛶ Full screen, F11, the Chromebook's full screen key, and kiosk mode.
     Taps go through it. It hides while that corner's Widget Picker is open. In a narrow window it shows only the
     time, or nothing. This device only. Before 2026.11.18-1 it was in Appearance. *Time and date*, the old default,
     now reads as *Auto*, and *Time* as *On*.
   - **Size of windows and menus** for this page. The default is 80%.
   - **Moving windows:** *Windows stop at each other's edges* and *Drag windows from inside*. The first sets how hard
-    you push to overlap windows: Off, Light, Medium or Firm.
+    you push to overlap windows: Off, Light, Medium, or Firm.
   - **Board history:** *Save a version automatically*, set to every 10 minutes while the board changes, every hour,
-    once a day or off. Below it, *Delete all versions*.
+    once a day, or off. Below it, *Delete all versions*.
   - **Backups and storage:** *Back up every page*, with *Back up now* and when you last backed up. Whether 21Board
     works offline. *Protected storage*, which says whether the browser will keep 21Board's data, with *Install app*
-    when that would help. Storage used, kiosk mode and *Erase everything* for every page.
+    when that would help. Storage used, kiosk mode, and *Erase everything* for every page.
   - **Developer:** Developer mode adds the SDK Playground and *Test a widget*, which runs an unregistered widget
     from a file you upload.
 - **About ▸** shows the version on its row. Inside: the 21 gear, who made 21Board, the version, where your work is
-  stored, the licenses in full, credits and the goat. The dev window shows only the version and where your
+  stored, the licenses in full, credits, and the goat. The dev window shows only the version and where your
   work is stored.
 
 Background patterns, from Dots to Graph paper, are off for now. Each page keeps its choice. To bring them back,
@@ -188,7 +191,7 @@ index.html              Board shell: markup + all CSS
 board.js                Board shell logic (storage, sync, windows, picker, settings, export/import)
 sw.js                   Service worker (offline copy, updates)  ← bump VERSION, run tools/release.js
 manifest.webmanifest    PWA manifest; lets the installed app open .21board files in Chrome
-icons/                  App icons (192 and 512 px), the 21 gear and the goat (Settings → About)
+icons/                  App icons (192 and 512 px), the 21 gear, and the goat (Settings → About)
 fonts/                  Text style fonts (Settings → Appearance), saved offline, loaded only once chosen
 sdk/board21.js          The SDK every widget includes (window.Board21)
 sdk/board21-dev.js      The dev window: a widget opened outside 21Board runs in the real board
@@ -198,7 +201,7 @@ widgets/registry.js     The list of widgets, for the Widget Picker and the offli
 widgets/<id>/index.html One folder per widget
 widgets/_template/      Starter for new widgets, not registered
 docs/WIDGET-SDK.md      How to build a widget; SDK reference; submission checklist
-docs/AI-PROMPT.md       A prompt for staff building a widget with an AI tool such as Gemini, ChatGPT or Claude
+docs/AI-PROMPT.md       A prompt for staff building a widget with an AI tool such as Gemini, ChatGPT, or Claude
 docs/DATA-FORMAT.md     IndexedDB layout, sync protocol, .21board file format
 docs/ROADMAP.md         Big changes saved for later: shared widget storage, telling copies of a widget apart, other languages
 docs/RELEASING.md       The steps for every release
@@ -207,7 +210,7 @@ LICENSE-DOCS            CC BY 4.0 (the documentation)
 NOTICE                  Copyright and credits that copies keep
 tools/release.js        Stamps a release with its name and build. See Deploying.
 tools/test-halves.js    Runs tests/run.js as two halves at once. See Tests.
-tools/release-workflow.js  Builds, reviews and fixes a release with Claude Code. See docs/RELEASING.md.
+tools/release-workflow.js  Builds, reviews, and fixes a release with Claude Code. See docs/RELEASING.md.
 tests/run.js            Browser tests. See Tests.
 ```
 
@@ -218,20 +221,20 @@ tests/run.js            Browser tests. See Tests.
 | **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio, with no sound files |
 | **Task Timer** | A schedule of activities as a pie with a countdown kept in step across tabs; a repeating alarm set ahead on the sound's own clock, rung by one copy of the board |
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
-| **Clock** | Analog, digital or date only; an aspect-ratio lock that changes at runtime, 1:1 for analog and 2.2:1 for digital or date; a config-only widget |
+| **Clock** | Analog, digital, or date only; an aspect-ratio lock that changes at runtime, 1:1 for analog and 2.2:1 for digital or date; a config-only widget |
 | **Notes** | Text that grows to fill the note, tappable web links, colors and the Chalkboard and Whiteboard themes with bundled hand-drawn fonts, live text sync that keeps the cursor |
-| **Name Picker** | Student names kept as *content*, so templates never include them. Four ways to pick, each in its own file: Big name, Spinning wheel, Spotlight and Lotto. One to five winners at a time, set in the window menu and kept by templates. The pick is drawn and saved before the show, so every open copy lands on the same names |
+| **Name Picker** | Student names kept as *content*, so templates never include them. Four ways to pick, each in its own file: Big name, Spinning wheel, Spotlight, and Lotto. One to five winners at a time, set in the window menu and kept by templates. The pick is drawn and saved before the show, so every open copy lands on the same names |
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Zones Check-In** | Check-ins kept as *content*, so templates never carry them. A tap counts when the finger lifts, so two students tapping at once both count. "−" and Undo, the last 20 changes. Clear each day, by the device's date. A face beside each feeling word, and an Ideas view with a breathing circle |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Tall fixed-shape window, title status text |
-| **Video Player** | A YouTube, Google Drive or Vimeo video from its link. A link pasted or dropped on the board opens one too. The board reads it with the widget's own `video-links.js`. YouTube, Google Drive and Vimeo see what they would on their own sites: the video, the device and any account signed in. YouTube and Vimeo also see the board's address. Controls in the window menu, since nothing may cover the player. A History of the last 5 videos, kept in the content and titled by YouTube's and Vimeo's oEmbed without cookies. Clear of the board's corner buttons when it fills the board (`corners`). Never under 200 × 200 px on screen (`zoom`). A message when offline |
-| **Picture** | A picture opened, pasted or dropped on the board. PNG, JPEG, GIF, WebP or AVIF, animations too. An SVG is drawn as a picture, so nothing in it runs. Kept in the window's content. A still over 1 MB or 3840 px is redrawn as a WebP, 2560 px at most. An animation is kept as it is, up to 5 MB. The window takes the picture's shape. *Whole picture* or *Crop to fill* in its menu. Board history keeps each picture once |
-| **Calculator** | Its math in one engine, `calc-engine.js`, with its own Node tests. Every menu setting kept in the window's config. The window widens for History, grows for Advanced keys and gives the room back (`setSize`). See [Calculator](#calculator) |
+| **Video Player** | A YouTube, Google Drive, or Vimeo video from its link. A link pasted or dropped on the board opens one too. The board reads it with the widget's own `video-links.js`. YouTube, Google Drive, and Vimeo see what they would on their own sites: the video, the device, and any account signed in. YouTube and Vimeo also see the board's address. Controls in the window menu, since nothing may cover the player. A History of the last 5 videos, kept in the content and titled by YouTube's and Vimeo's oEmbed without cookies. Clear of the board's corner buttons when it fills the board (`corners`). Never under 200 × 200 px on screen (`zoom`). A message when offline |
+| **Picture** | A picture opened, pasted, or dropped on the board. PNG, JPEG, GIF, WebP, or AVIF, animations too. An SVG is drawn as a picture, so nothing in it runs. Kept in the window's content. A still over 1 MB or 3840 px is redrawn as a WebP, 2560 px at most. An animation is kept as it is, up to 5 MB. The window takes the picture's shape. *Whole picture* or *Crop to fill* in its menu. Board history keeps each picture once |
+| **Calculator** | Its math in one engine, `calc-engine.js`, with its own Node tests. Every menu setting kept in the window's config. The window widens for History, grows for Advanced keys, and gives the room back (`setSize`). See [Calculator](#calculator) |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
-| **SDK Playground** | Developer mode only. Run any SDK call with your own values and copy its code. Watch the window's state, the palette and every event |
+| **SDK Playground** | Developer mode only. Run any SDK call with your own values and copy its code. Watch the window's state, the palette, and every event |
 
 ---
 
@@ -242,14 +245,14 @@ tests/run.js            Browser tests. See Tests.
 3. Change `VERSION` in `sw.js` and run `node tools/release.js`. See [Deploying](#deploying).
 
 To try a widget, open its file in a browser. It appears in the **dev window**: a real 21Board window with its title
-bar, resize handles, menu and Settings, plus panels for its saved data, its messages and common problems. This works
+bar, resize handles, menu, and Settings, plus panels for its saved data, its messages, and common problems. This works
 in AI tools' previews too, such as Gemini Canvas, and in `sdk/lab.html`, where you paste the HTML. To have an AI
 tool write a widget, start with the prompt in [docs/AI-PROMPT.md](docs/AI-PROMPT.md). See
 [docs/WIDGET-SDK.md, "Testing a widget"](docs/WIDGET-SDK.md#testing-a-widget).
 
 To try a widget file in your own board, go to Settings → Advanced → Developer mode → *Test a widget* → **Upload
 file…**. A test widget can't reach your boards' data. It stays on this device only, never in exports, Board
-history or the Google Drive folder, and it works offline. Upload it again to see an edit. If one freezes 21Board,
+history, or the Google Drive folder, and it works offline. Upload it again to see an edit. If one freezes 21Board,
 add `?nodev` to the end of 21Board's address. No test widget starts, and you can remove it in Settings. See
 [docs/WIDGET-SDK.md, "Inside 21Board"](docs/WIDGET-SDK.md#inside-21board).
 
@@ -258,7 +261,7 @@ add `?nodev` to the end of 21Board's address. No test widget starts, and you can
 ## How your work is stored
 
 See **[docs/DATA-FORMAT.md](docs/DATA-FORMAT.md)**. In short, one IndexedDB object store holds small JSON records:
-the settings, the board, and for every widget window an instance record with its position, size and whether it's
+the settings, the board, and for every widget window an instance record with its position, size, and whether it's
 open, plus its content and its config. Each window of a widget has its own instance number and data. Other open
 copies of 21Board hear of every change and re-read only what changed.
 
@@ -292,7 +295,7 @@ permission ahead of time, so Chrome never asks. Where it's blocked (`DefaultWind
   a big one such as the background photo, the rest of the board opens and a message says what's missing.
 - **A save fails,** such as when the device is full. The change stays on the board, and 21Board tries again with the
   next change, after 5 seconds, then every 30. Until everything is saved, a **Not saved** note stays above the ▦
-  buttons. Tap it for the reason, *Try again now* and *Export a backup*. Settings says the same at the top. When the
+  buttons. Tap it for the reason, *Try again now*, and *Export a backup*. Settings says the same at the top. When the
   device is out of space, 21Board first makes a little room in [Board history](#board-history) and tries
   again. A record that doesn't fit, such as a very long note or the photo, doesn't hold back the other changes.
   *Export a backup* works from what's on screen, so it doesn't need the device's storage.
@@ -325,10 +328,10 @@ Pick the *Board history* or *Photos* folder inside, and it points to the folder 
 21Board folders, such as `21Board` and `21Board (1)` made by two devices at once, and it asks which.
 
 **The last step** says what linking did, then asks for **This device’s name**. 21Board fills in a guess: *the
-smartboard* on a large touch screen, otherwise *a Chromebook* or *a computer*. Tap *Laptop*, *Smartboard* or
-*Desktop* for *the laptop*, *the smartboard* or *the desktop*, or type your own, such as "Room 14 smartboard". The
+smartboard* on a large touch screen, otherwise *a Chromebook* or *a computer*. Tap *Laptop*, *Smartboard*, or
+*Desktop* for *the laptop*, *the smartboard*, or *the desktop*, or type your own, such as "Room 14 smartboard". The
 button that matches the name is selected. Your other devices use the name, as in "Updated from the laptop." If
-another device in the folder already has that name, the step says so. *Done*, Enter, Escape or a tap outside all
+another device in the folder already has that name, the step says so. *Done*, Enter, Escape, or a tap outside all
 keep the name in the field. An empty field keeps the old name. This device's file in the folder takes the new name
 the next time it's written. On a touch screen, tap the field to bring up the keyboard. You can change the name later
 in Settings → Board Sync.
@@ -336,17 +339,17 @@ in Settings → Board Sync.
 **What happens when you link a folder.** The last step says which of these happened, and ends with "Changes on any
 of your devices show up on the others, usually within a minute."
 
-- **An empty folder:** this device's board goes there at once, with its theme, accent color and text style. A device
+- **An empty folder:** this device's board goes there at once, with its theme, accent color, and text style. A device
   with only its untouched first page, "Page 1", writes nothing yet, and takes the board from your other device. If
   two or three devices set up the same folder before Google Drive has carried one's file to the others, a theme,
-  accent color or text style chosen on any of them wins on all. The defaults never replace a choice.
+  accent color, or text style chosen on any of them wins on all. The defaults never replace a choice.
 - **A folder with a board, on a device that has never synced:** this device shows the board, in its theme, accent
-  color and text style. This device's own pages go after the board's: "This device’s 2 pages were added at the end."
+  color, and text style. This device's own pages go after the board's: "This device’s 2 pages were added at the end."
   A page both have, from the same import, keeps the folder's values, and this device's different content stays
-  beside it as a copy. This device's own theme, accent color and text style don't count as a change, so they never
+  beside it as a copy. This device's own theme, accent color, and text style don't count as a change, so they never
   replace the board's.
 - **A folder with another board,** after *Change…* to another class's folder, or after *Unlink* and linking a
-  different folder: this device switches to that board, and to its theme, accent color and text style. Its own pages
+  different folder: this device switches to that board, and to its theme, accent color, and text style. Its own pages
   stay in the other folder, and under Board history › Deleted pages for 30 days. Two boards are never combined.
   Before it leaves, *Change…* writes this device's file once more, with the work done here since its last write and
   a note that it left, as *Unlink* does. So the devices still on that folder get the work and stop listing this one.
@@ -354,25 +357,25 @@ of your devices show up on the others, usually within a minute."
   Switching back within 20 seconds, while Undo for the pages it left is still offered, waits until that Undo is
   gone, so those pages come back with the work this device's file there holds.
 - **The same folder again,** after *Unlink*, or after the folder was renamed or moved: it carries on. Changes made
-  here while unlinked join the board, a theme, accent color or text style too. If another device chose one since,
+  here while unlinked join the board, a theme, accent color, or text style too. If another device chose one since,
   the later choice wins. Nothing is deleted anywhere because of how this device looked while it wasn't syncing.
 - **Google Drive still bringing the folder or its files:** it links anyway. Nothing is merged or written until the
-  files can be read, up to 10 minutes, so a slow Drive can never combine two boards. A theme, accent color or text
+  files can be read, up to 10 minutes, so a slow Drive can never combine two boards. A theme, accent color, or text
   style chosen here meanwhile is replaced by the board's when it arrives, as on any device that hasn't synced with
   the folder yet. Choose it again once the board is here.
 
 **Then it just syncs.** This device writes its file a few seconds after you change something, at most every 20
 seconds while changes keep coming, and at once when 21Board is hidden or the lid closes. While 21Board is in front,
 it looks for the other devices' files every 5 seconds and merges what changed. A look that finds nothing new does
-nothing more. Nothing is read, written or redrawn until a file changes, or something held back, such as a window
+nothing more. Nothing is read, written, or redrawn until a file changes, or something held back, such as a window
 being typed in, is due again.
 
-- **Part by part:** a page's name, background, size, place and photo merge separately, and so do each window's
-  place, whether it's open, its content and its settings. A window moved on the laptop and typed in on the
+- **Part by part:** a page's name, background, size, place, and photo merge separately, and so do each window's
+  place, whether it's open, its content, and its settings. A window moved on the laptop and typed in on the
   smartboard keeps both changes. Changes to different windows never clash.
 - **The same content changed on both,** such as two edits to one note: both are kept. The later one stays in the
   window, and the other appears beside it as a labeled copy, "Copy · 9:41 AM". For the Timer, Dice, Traffic Light,
-  Video Player, Picture and Calculator, the later one wins. For the Video Player that includes its History,
+  Video Player, Picture, and Calculator, the later one wins. For the Video Player that includes its History,
   so a video added on the other device meanwhile drops out, and Board history keeps it. Anything else changed on
   both, such as a window moved on both, takes the later change, and Board history keeps a version from before it.
 - **Deleting** a page or window on any device deletes it everywhere, with Undo and Board history. An edit on a
@@ -388,12 +391,12 @@ being typed in, is due again.
   locking takes away an Undo already shown. A clash where your text stayed in the window says so without Undo,
   because the other device kept its own version as the copy. Several pages deleted at once on another device make
   one message, "3 pages were deleted on the laptop.", with one Undo that leaves you on the page you're on.
-- **Theme, accent color and text style belong to the board.** The latest choice, made on any device, shows on all of
+- **Theme, accent color, and text style belong to the board.** The latest choice, made on any device, shows on all of
   them at once, in every tab, even while the board is locked. Set the laptop to Dark and the smartboard turns dark.
   Choose Early readers on the laptop, and the smartboard's text and widgets change too. If Settings is open, it shows
   the new choice in place without being redrawn. The device that shows the change says who made it, in one message:
   "The laptop changed the theme to Dark and the accent color to Green.", "The laptop changed the text style to “Early
-  readers”." or "The laptop changed the accent color to a custom one." There's no Undo, since changing it back in
+  readers”.", or "The laptop changed the accent color to a custom one." There's no Undo, since changing it back in
   Settings is one tap, and syncs. Auto stays Auto everywhere, so each device follows its own light or dark setting.
   A device that only ever had the defaults, or the folder's, never replaces another's choice. A choice made while
   unlinked counts when the same folder is linked again, and of two made apart, the later wins on every device. Board
@@ -401,8 +404,8 @@ being typed in, is due again.
   doesn't know the text style. It keeps its own, and changes nobody's, until it updates. Then each device keeps its
   text style until one is chosen on any of your devices, or takes one already chosen on another updated device. A
   device on a release before 2026.11.18-2 shows Blue for a custom accent color until it updates. The page shown,
-  Lock, Stay awake, the clock and the Widget Picker's corners stay on each device. Settings says "On all your
-  devices." beside Theme, Accent color and Text style, "This device only." beside Stay awake and the clock,
+  Lock, Stay awake, the clock, and the Widget Picker's corners stay on each device. Settings says "On all your
+  devices." beside Theme, Accent color, and Text style, "This device only." beside Stay awake and the clock,
   and "This page, on all your devices." beside the page's own settings.
 
 **Settings → Board Sync** has three rows:
@@ -448,7 +451,7 @@ stays here, and linking the same folder again carries on. The other devices dele
 months later, so a laptop put away for the summer still has its file in September. **Erase everything** leaves the
 same note in its file, and this device forgets the folder.
 
-A page deleted just before *Change…*, *Unlink* or *Erase everything*, while its Undo is still offered, is deleted on
+A page deleted just before *Change…*, *Unlink*, or *Erase everything*, while its Undo is still offered, is deleted on
 the devices still on that folder too. What its Undo does afterwards:
 
 - **After *Change…*,** it brings the page back into the new folder's board. Tapped while *Change…* is still
@@ -512,7 +515,7 @@ For a ChromeOS kiosk app, where no one signs in, open 21Board with **`?kiosk=yes
   the [district apps](#district-apps) have no *Open in new tab*, and the Video Player's
   has no *Open in …*.
 - No one is signed in, so a Google Drive video plays only if it's shared with *Anyone with the link*.
-- Everything else works as usual: widgets, saving on the device, Board history and Undo. Widgets can check
+- Everything else works as usual: widgets, saving on the device, Board history, and Undo. Widgets can check
   `Board21.context.kiosk`. Without the parameter, or with `?kiosk=no`, nothing changes.
 - Updates arrive as everywhere else. The board offers *Update* or *Later*, and the new version takes over by itself
   the next time the kiosk starts. See [Deploying](#deploying).
@@ -530,7 +533,7 @@ For a ChromeOS kiosk app, where no one signs in, open 21Board with **`?kiosk=yes
    kiosk web app offline setting on, its default.
 5. Keep **Kiosk troubleshooting tools** off, since an open developer tools window keeps the session going after
    Quit. Leave *new windows in kiosk* off too. Optional: turn off pinch-to-zoom for touch panels.
-6. For Import, Export or a Picture window's *Open…*, don't block USB drives, downloads or file-system access for
+6. For Import, Export, or a Picture window's *Open…*, don't block USB drives, downloads, or file-system access for
    this OU.
 
 Then check on a real device: Quit, both auto-launched and from Apps; Import and Export to the device and to USB;
@@ -550,7 +553,7 @@ repeats the last step, so 5 + 5 = = = counts by 5s. A faint comma groups the dig
 - **Canvas:** the big problem and its steps. Off, a small display sits above the keys, as on a phone.
 - **History:** your problems, one to a line, the newest at the bottom. Tap a line to change it, or its answer to use
   it.
-- **Steps:** Next step, Back and Show all, with PEMDAS lit. A clicker's Page Down works too.
+- **Steps:** Next step, Back, and Show all, with PEMDAS lit. A clicker's Page Down works too.
 - **In words:** "2 plus 3 times 4 equals 14" under the problem.
 - **Advanced keys:** a² aᵇ ⁿ√ ∛ π % a/b →. Off to start.
 - **Hide the answer:** the class predicts, then taps to see.
@@ -563,13 +566,13 @@ repeats the last step, so 5 + 5 = = = counts by 5s. A faint comma groups the dig
 Turning on History or the canvas widens the window, where the board has room. Advanced keys make it taller. Turning
 them off gives the room back.
 
-Keyboards work too. Type digits, + - * / ^ % ( ) and the point, then Enter or =. Type sqrt, pi or ans as letters.
+Keyboards work too. Type digits, + - * / ^ % ( ), and the point, then Enter or =. Type sqrt, pi, or ans as letters.
 
 The manual, with the real Calculator to try, is in [docs/calculator-manual/](docs/calculator-manual/).
 
 ## District apps
 
-21Sketch, 21Timer and 21DocCam are the district's own apps, each its own website. They open from the Widget Picker
+21Sketch, 21Timer, and 21DocCam are the district's own apps, each its own website. They open from the Widget Picker
 in a window like any widget, and the window shows the live site, such as `https://sketchapp.ccsd21.org/`. 21Board
 doesn't copy the apps or their work.
 
@@ -590,10 +593,10 @@ doesn't copy the apps or their work.
 - **The window menu** has *Reload 21Sketch*, to load the app again, such as after the connection comes back, and
   *Open in new tab*. It has no *Reset* or *Earlier versions*, because the app's work isn't
   21Board's to reset or bring back.
-- **Backups, templates, the Google Drive folder and Board history** keep the window's place and whether it's open,
+- **Backups, templates, the Google Drive folder, and Board history** keep the window's place and whether it's open,
   never the app's work. A board opened on another device opens that device's 21Sketch, with whatever is saved there.
   To move a drawing, use 21Sketch's own project file, a `.json`.
-- 21Board's theme, accent color, text style and size don't reach these apps. They have their own settings.
+- 21Board's theme, accent color, text style, and size don't reach these apps. They have their own settings.
 
 **Production and the test site.** At `boardapp.ccsd21.org`, 21Board and the apps share one site, ccsd21.org. So
 Chrome, on Chromebooks and the smartboards, treats the app in the window as the same app as on its own, with the
@@ -612,9 +615,9 @@ copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the
 - Offline, the window's title says **Offline**, and a message says once that you're offline and the app works only
   if it's saved on this device. 21Board can't see into another site's page, so it can't tell whether the app
   loaded, and covers nothing. An app with its own offline copy works as usual. One without shows the browser's "no
-  connection" page. When the connection is back, choose *Reload 21Sketch*, *Reload 21Timer* or *Reload 21DocCam* in
+  connection" page. When the connection is back, choose *Reload 21Sketch*, *Reload 21Timer*, or *Reload 21DocCam* in
   the window's menu. The same goes for a window that opened while the site was out of reach, such as before Wi-Fi
-  was up, at a sign-in page or with the server down. 21Board can't tell, so it doesn't reload the window by itself.
+  was up, at a sign-in page, or with the server down. 21Board can't tell, so it doesn't reload the window by itself.
   *Ready to work offline* in Settings is about 21Board itself.
 - 21Board never checks on the sites by itself. It sends them nothing beyond opening the window.
 
@@ -636,9 +639,9 @@ copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the
   Admin console that's *Video input allowed URLs*, policy `VideoCaptureAllowedUrls`. Only the 21DocCam window gets
   the camera.
 - **What the windows allow:** the same sandbox as every widget, which allows scripts, the app's own storage, forms,
-  alerts and printing, pop-ups and downloads. They also allow full screen, the clipboard and sound, and the camera
+  alerts and printing, pop-ups, and downloads. They also allow full screen, the clipboard, sound, and the camera
   for 21DocCam. Tested with copies of the apps, all of this works: saving PNG and project files, full screen,
-  copying a picture, the camera, sound, alerts, printing and the app's own offline copy. The sandbox stops an app
+  copying a picture, the camera, sound, alerts, printing, and the app's own offline copy. The sandbox stops an app
   from sending 21Board's tab elsewhere. 21Board takes no messages from the apps and sends them none.
 - **Kiosk.** The apps work in a kiosk like any widget, without *Open in new tab*, since a kiosk can't open tabs.
   An app saves its offline copy only when its page loads, and in a kiosk that happens only in its window. For a
@@ -655,7 +658,7 @@ copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the
 - while the board changes, at most every 10 minutes, once it has settled for a minute;
 - when 21Board opens;
 - when a widget's content is suddenly emptied, such as a note cleared;
-- before every risky action: Reset, Delete, Close all, changing or removing the photo, Import, going back and Erase
+- before every risky action: Reset, Delete, Close all, changing or removing the photo, Import, going back, and Erase
   everything.
 
 With Board Sync, it also saves a page before changes from your other devices change it. That's at most about once an
@@ -667,23 +670,23 @@ this version now* keeps a named version until you delete it.
 
 **Columns.** Opened from Settings → Classroom → *Board history…*, Board history is a column beside Settings, on the
 side away from the screen edge. Settings stays open and usable. Tap a version to open it in a third column, and it
-stays marked in the list. That column shows the version's time, a preview with each window, what changed after it
+stays marked in the list. That column shows the version's time, a preview with each window, what changed after it,
 and how it differs from now, then *Go back to …*, then each window of that version with *Put back* where it differs.
 Tap the version again, or its ✕, to close the column. The Undo strip, the suggestion *Before the last big change*,
-*Deleted pages*, *Save this version now*, what's kept and the copies in the Google Drive folder stay in the list's
+*Deleted pages*, *Save this version now*, what's kept, and the copies in the Google Drive folder stay in the list's
 column.
 
-Opened from a window's *Earlier versions…*, a message or the empty board, Board history opens alone at the screen
+Opened from a window's *Earlier versions…*, a message, or the empty board, Board history opens alone at the screen
 edge, and a version is the second column. Each column is as wide as Settings at the chosen size of windows and
 menus. On a 1366 × 768 Chromebook all three fit side by side at the usual size. Where one doesn't fit, such as on an
 iPad or at a large size, it covers the column before it, with *‹ Settings* or *‹ Board history* to go back. Escape
 closes the outermost column first. Closing Settings closes Board history too, and moving the Widget Picker to the
 other side in Settings → Advanced takes the columns with it. The keyboard moves into Settings and each column as it
-opens, and back to what opened it as it closes. *Go back*, *Put back*, *Undo*, *Bring back* and a folder copy close
+opens, and back to what opened it as it closes. *Go back*, *Put back*, *Undo*, *Bring back*, and a folder copy close
 every column, Settings too, so you see the board.
 
 **Off**, in Settings → Advanced → *Save a version automatically*, stops the first three. Nothing is saved while you
-work, when 21Board opens or when a note is cleared. A version is still saved before each risky action, so Undo keeps
+work, when 21Board opens, or when a note is cleared. A version is still saved before each risky action, so Undo keeps
 working, and when you tap *Save this version now*. Versions already saved stay until you delete them.
 
 **What's kept:**
@@ -695,13 +698,13 @@ working, and when you tap *Save this version now*. Versions already saved stay u
 - safety versions for a week;
 - the version before a big change for a month.
 
-Only hours, days and weeks the board was used count, so a summer break doesn't empty it. Board history lists the
+Only hours, days, and weeks the board was used count, so a summer break doesn't empty it. Board history lists the
 first four the same way, a line each: *The 20 most recent versions*, *Hourly versions for the past 2 days*, *Daily
 versions for the past 30 days*, *Weekly versions for the past 12 weeks*. When Board history needs more room, because
 it has used its share of the device's storage or the device is full, the oldest versions go first. Versions you save
 are never deleted to make room. Photos are stored once.
 
-**Going back never changes the theme, accent color or text style,** and a running timer comes back paused. If going
+**Going back never changes the theme, accent color, or text style,** and a running timer comes back paused. If going
 back can't finish, 21Board says why and the board stays as it was. *Erase everything* keeps Board history, so it can
 be undone. If the board as it is can't be kept first, 21Board asks before erasing. *Erase, including Board history* erases
 it too.
@@ -709,7 +712,7 @@ it too.
 **When the device runs out of space** and the browser refuses a save, Board history gives up a little at a time, and
 the save is tried again after each step, a few times at most. First go the photos kept with older versions, then the
 10 oldest versions. It never gives up the newest versions, the first and last of each of the last 7 days the board
-was used, the versions you saved, the safety versions or the one before a big change. A message says so once, and
+was used, the versions you saved, the safety versions, or the one before a big change. A message says so once, and
 Settings → Classroom → *Go back to an earlier version* says *Space is low on this device*. Chrome doesn't tell a
 page how much space is left, so 21Board goes by refused saves.
 
@@ -730,8 +733,8 @@ Board history isn't a backup. If the browser clears 21Board's data, history goes
 | --- | --- |
 | **Widescreen (default)** | The board is 16:9, as large as fits the window and centered, with the rest of the window lightly shaded. Every screen shows the same layout, so a board planned on a laptop looks the same on the smartboard. Windows can't go in the shaded margin. |
 | **Fill** | Settings → Appearance → *Board shape* → *Fill*. The board fills the whole window at the chosen size. On a smaller screen, windows move to fit. |
-| **Size of windows and menus** | Settings → Advanced, − and +, from 50% to 200%. The default is **80%**. It sets how big title bars, menus, the Widget Picker, Settings and widget contents are, as on a 1920 × 1080 screen. Windows keep their place and footprint when it changes. Menus, the Widget Picker, Settings and messages never grow past the screen, since a size picked on a smartboard can reach a tablet in a backup. |
-| **Tip** | When the 16:9 board leaves much of a very wide, tall or narrow window unused, a small tip in the shaded margin offers *Fill the window*, which switches to Fill. *Hide* keeps it away for the session. There's no tip when the margin is too small for it. |
+| **Size of windows and menus** | Settings → Advanced, − and +, from 50% to 200%. The default is **80%**. It sets how big title bars, menus, the Widget Picker, Settings, and widget contents are, as on a 1920 × 1080 screen. Windows keep their place and footprint when it changes. Menus, the Widget Picker, Settings, and messages never grow past the screen, since a size picked on a smartboard can reach a tablet in a backup. |
+| **Tip** | When the 16:9 board leaves much of a very wide, tall, or narrow window unused, a small tip in the shaded margin offers *Fill the window*, which switches to Fill. *Hide* keeps it away for the session. There's no tip when the margin is too small for it. |
 
 Both settings are saved with the board and in exports. Boards saved before they existed are converted once when
 opened, and keep their layout as it looks on that screen. The code is section **6a. Board shape and scale** of
@@ -745,8 +748,8 @@ node tests/run.js            # all suites
 node tests/run.js offline    # only the suites whose title contains "offline"
 ```
 
-The *District apps* suite uses stand-ins for 21Sketch, 21Timer and 21DocCam, and the *Video Player* suites use
-stand-ins for YouTube, Google Drive and Vimeo. The tests never reach the real sites.
+The *District apps* suite uses stand-ins for 21Sketch, 21Timer, and 21DocCam, and the *Video Player* suites use
+stand-ins for YouTube, Google Drive, and Vimeo. The tests never reach the real sites.
 
 The second *Opens maximized* suite installs 21Board as an app in a real Chrome window, on an Xvfb screen of its own,
 and in Chrome's headless mode. It needs Xvfb, the package with `xvfb-run`, and the full Chromium that `npx
@@ -754,7 +757,7 @@ playwright install chromium` brings. If either is missing, it says *skipped* and
 
 The *Board Sync* suites play two or three devices sharing a Google Drive folder, in scenarios numbered 1 to 61. Each
 device is a browser profile of its own. The tests bring files from one device's folder to another's as Google Drive
-would: late, cut short, out of order or twice, with clocks that disagree. `node tests/merge.js` tests the merge
+would: late, cut short, out of order, or twice, with clocks that disagree. `node tests/merge.js` tests the merge
 itself, `board.js` section 13d, in Node with no browser: the rules, reading device files, and a randomized run of
 devices changing and merging one board. It takes a couple of minutes, and `tests/run.js` runs it as a suite too.
 `node tools/test-halves.js` runs the whole of `tests/run.js` as two halves at once, in about 40 minutes, and adds up
@@ -778,8 +781,8 @@ Firefox. Full screen is hidden where the browser doesn't support it.
   domain (`widgets/notes/fonts/CrayonLibre-LICENSE.txt`). It gives the Notes Chalkboard theme hand-drawn chalk
   lettering on every device, Chromebooks included. `tools/build-chalk-font.py` makes this file from the original,
   reusing the font's own chalk strokes. It gives it a print, non-cursive lowercase l whose bottom trails off like
-  chalk as the hand lifts, a flag on the 1 and bars on the capital I so l, 1 and I differ, a Q with a plain straight
-  tail and a two-dot colon, since the original's looked like a semicolon. It drops the pictograph emoji. WOFF2,
+  chalk as the hand lifts, a flag on the 1 and bars on the capital I so l, 1, and I differ, a Q with a plain straight
+  tail, and a two-dot colon, since the original's looked like a semicolon. It drops the pictograph emoji. WOFF2,
   about 60 KB.
 - `widgets/notes/fonts/Excalifont-Regular.woff2`: *Excalifont* by Excalidraw (based on Virgil by Ellinor
   Rapp), used unmodified under the SIL Open Font License 1.1 (`widgets/notes/fonts/Excalifont-OFL.txt`),
@@ -802,5 +805,5 @@ including those published before they were added.
 
 - **Code:** [Apache License 2.0](LICENSE). Copy it, change it, share it. Keep the [notice](NOTICE).
 - **Documentation:** [CC BY 4.0](LICENSE-DOCS). Share it with credit.
-- **The 21 gear, the goat and the CCSD21 name** belong to the district. Neither license covers them.
+- **The 21 gear, the goat, and the CCSD21 name** belong to the district. Neither license covers them.
 - **Fonts** keep their own licenses. See [Third-party files](#third-party-files).

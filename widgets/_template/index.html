@@ -2,7 +2,7 @@
 <!--
   21Board widget starter
   =======================
-  1. Copy this folder to widgets/<your-widget-id>/. An id is lowercase letters, numbers and dashes.
+  1. Copy this folder to widgets/<your-widget-id>/. An id is lowercase letters, numbers, and dashes.
   2. Add an entry for it in widgets/registry.js
   3. Change VERSION in sw.js and run `node tools/release.js`. See README, Deploying.
   To try it, open this file in a browser or paste it into sdk/lab.html. The SDK shows it in the
@@ -29,7 +29,7 @@
     display: grid; place-items: center; overflow: hidden;
     user-select: none; -webkit-user-select: none; touch-action: manipulation;
   }
-  /* Size things in vmin, vw or vh so the widget scales with its window. */
+  /* Size things in vmin, vw, or vh so the widget scales with its window. */
   #count { font-size: 30vmin; font-weight: 800; }
   button { font: inherit; font-size: 6vmin; border: 0; border-radius: 999px; padding: 2vmin 6vmin; background: var(--b21-accent); color: var(--b21-on-accent); cursor: pointer; }
 </style>
@@ -57,7 +57,7 @@
   };
 
   // Fires when this window's content changes somewhere else, such as another
-  // 21Board tab, an import or a reset.
+  // 21Board tab, an import, or a reset.
   Board21.on('data', data => { state = read(data); render(); });
 
   Board21.ready().then(ctx => {

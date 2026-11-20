@@ -14,16 +14,16 @@
 const VERSION = '2026.11.20-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '5bac91de';
+const BUILD = '35f70d7b';
 const FILES = {
-  './': '3d4dad26338fef6d',
-  'index.html': '3d4dad26338fef6d',
-  'board.js': 'bdba5e82accded21',
-  'sdk/board21.js': 'ba3de867e376915e',
-  'sdk/board21-dev.js': 'f7a43b8c7a88a9e8',
+  './': 'bbd72f5e885c34fa',
+  'index.html': 'bbd72f5e885c34fa',
+  'board.js': 'f8b28161baf58d04',
+  'sdk/board21.js': '0f410ae1dbc68cdf',
+  'sdk/board21-dev.js': 'f7c7181b53d5025a',
   'sdk/dev/board-shell.js': 'b855220e82bbedad',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': 'dd85354e147f11ae',
+  'widgets/registry.js': 'a769cf6a75729bbb',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -52,12 +52,12 @@ const FILES = {
   'widgets/name-picker/style-spotlight.js': 'd2ffd9ead362cf90',
   'widgets/name-picker/style-lotto.js': 'fc46b85bc0bf5ff7',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
-  'widgets/zones-check-in/index.html': 'de68cf3d7016b2e7',
+  'widgets/zones-check-in/index.html': '79563d732e349a2d',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
-  'widgets/youtube-player/index.html': '93aec54e1209816b',
+  'widgets/youtube-player/index.html': '32fa8d870d4a57d4',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
-  'widgets/image/index.html': '6f62120c44e8dde1',
+  'widgets/image/index.html': 'af8342c7d8c343fa',
   'widgets/calculator/index.html': 'c17d1f43f6e11556',
   'widgets/calculator/calc-engine.js': '2591c6f99c951cd6',
   'widgets/sdk-playground/index.html': '0dff97332041a455'

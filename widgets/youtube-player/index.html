@@ -59,7 +59,7 @@
   <form id="ask" novalidate autocomplete="off" hidden>
     <div class="box">
       <h1>Show a video</h1>
-      <p id="help">Paste a link from YouTube, Google Drive or Vimeo.</p>
+      <p id="help">Paste a link from YouTube, Google Drive, or Vimeo.</p>
       <input id="link" type="url" spellcheck="false" autocapitalize="off" autocomplete="off" placeholder="Video link" aria-label="Video link" aria-describedby="help err">
       <p id="err" role="alert" hidden></p>
       <div class="buttons"><button type="button" id="cancel" hidden>Cancel</button><button type="submit" id="go" class="primary">Show video</button></div>
@@ -153,7 +153,7 @@
   // What the link box says to text that isn't a video's link (readText's why). Each fits in two lines at 200 px, where
   // the help line gives way.
   const SAY = {
-    empty: 'Paste a link first.', none: 'Paste a YouTube, Google Drive or Vimeo link.', folder: 'That’s a folder. Paste a link to one video.',
+    empty: 'Paste a link first.', none: 'Paste a YouTube, Google Drive, or Vimeo link.', folder: 'That’s a folder. Paste a link to one video.',
     list: 'That’s a list of videos. Paste a link to one.', doc: 'That’s a document. Paste a link to a video.',
     sheet: 'That’s a spreadsheet. Paste a link to a video.', slides: 'That’s a presentation. Paste a link to a video.'
   };

@@ -93,7 +93,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'notes',
     name: 'Notes',
-    description: 'Write directions, reminders or the day’s agenda.',
+    description: 'Write directions, reminders, or the day’s agenda.',
     version: '1.1.0',
     entry: 'widgets/notes/index.html',
     files: ['widgets/notes/index.html', 'widgets/notes/fonts/CrayonLibre-21Board.woff2', 'widgets/notes/fonts/CrayonLibre-LICENSE.txt', 'widgets/notes/fonts/Excalifont-Regular.woff2', 'widgets/notes/fonts/Excalifont-OFL.txt'],
@@ -156,7 +156,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'traffic-light',
     name: 'Traffic Light',
-    description: 'Show noise level or work time in red, yellow and green.',
+    description: 'Show noise level or work time in red, yellow, and green.',
     version: '1.0.0',
     entry: 'widgets/traffic-light/index.html',
     files: ['widgets/traffic-light/index.html'],
@@ -171,7 +171,7 @@ self.BOARD21_WIDGETS = [
     // Vimeo (README). Its id is from when it played YouTube only, kept so saved boards and files still open it.
     id: 'youtube-player',
     name: 'Video Player',
-    description: 'Play a video from YouTube, Google Drive or Vimeo.',
+    description: 'Play a video from YouTube, Google Drive, or Vimeo.',
     version: '1.0.0',
     entry: 'widgets/youtube-player/index.html',
     files: ['widgets/youtube-player/index.html', 'widgets/youtube-player/video-links.js'],   // (the board loads video-links.js too)

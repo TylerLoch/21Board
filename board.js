@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.20-1';
-  const BOARD_BUILD = '5bac91de';
+  const BOARD_BUILD = '35f70d7b';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -1406,7 +1406,7 @@
     },
     // A picture from the teacher's device: shrunk and re-compressed here (nothing is uploaded anywhere).
     async process(file) {
-      if (!file || !/^image\//.test(file.type || '') && !/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || '')) throw new Error('Choose a JPEG, PNG or WebP picture.');
+      if (!file || !/^image\//.test(file.type || '') && !/\.(jpe?g|png|webp|gif|bmp|avif)$/i.test(file.name || '')) throw new Error('Choose a JPEG, PNG, or WebP picture.');
       let bmp;
       try { bmp = await createImageBitmap(file); } catch (e) { throw new Error('This picture can’t be opened here. Save it as a JPEG or PNG, then try again.'); }
       const long = Math.max(bmp.width, bmp.height), short = Math.min(bmp.width, bmp.height);
@@ -2342,8 +2342,8 @@
     if (w) w.renderTitle();
   }
 
-  // "21Sketch", "21Sketch and 21Timer", "21DocCam, 21Sketch and 21Timer".
-  const andList = names => names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0] || '';
+  // "21Sketch", "21Sketch and 21Timer", "21DocCam, 21Sketch, and 21Timer".
+  const andList = names => names.length > 2 ? `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}` : names.join(' and ');
 
   // District apps (registry `external`) come from their own sites. Without a connection, a window shows one only if
   // the app saved its own copy on this device, and the board can't tell whether it did (the page is another site's:
@@ -4463,10 +4463,10 @@
   // The whole board's, like the theme and accent color (settings.letters, a name from when it was called Letters):
   // exported, taken by Import › Replace this page, and with Board Sync on every device, the later choice winning
   // (lettersAt, see updateSettings and Merge.stamp). Going back in Board history never changes it.
-  // (\u00a0, a no-break space, keeps “I, l and 1” and “a and g” on one line in the hints.)
+  // (\u00a0, a no-break space, keeps “I, l, and 1” and “a and g” on one line in the hints.)
   const LETTERS = {
     standard: { name: 'Standard', hint: 'This device’s own font.' },
-    legible: { name: 'Easier to read', hint: 'Atkinson Hyperlegible, made for people with low vision. I,\u00a0l\u00a0and\u00a01 look different, and 0 has a line through it.',
+    legible: { name: 'Easier to read', hint: 'Atkinson Hyperlegible, made for people with low vision. I,\u00a0l,\u00a0and\u00a01 look different, and 0 has a line through it.',
       family: 'Atkinson Hyperlegible', files: ['AtkinsonHyperlegible-Regular.woff2', 'AtkinsonHyperlegible-Bold.woff2'] },
     early: { name: 'Early readers', hint: 'Based on Andika by SIL, for children learning to read. Its a\u00a0and\u00a0g look the way children write them.',
       family: '21Board Early Readers', files: ['EarlyReaders-Regular.woff2', 'EarlyReaders-Bold.woff2'] }
@@ -5002,8 +5002,8 @@
           <div class="hint" id="st-persist-hint"></div>
           <div class="st"><span class="k">Storage used</span><span class="hint" id="st-storage">Checking…</span></div></div>
         ${KIOSK ? `<div class="row"><div><div class="lbl">Kiosk mode</div><div class="hint">No one is signed in, so there’s no Board Sync. Import and Export use this device or a USB drive.${note ? '' : ' Boards stay on this device.'}</div></div></div>` : ''}`}
-        ${Store.failed ? `<div class="row"><div><div class="lbl">Empty this board</div><div class="hint">Clears the windows, content and settings you see now.${Store.failed === 'unopened' ? ' Your saved board isn’t touched.' : ''}</div></div><button class="btn danger" data-act="erase">${svg('trash')}Empty…</button></div>`
-          : `<div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Every page, window and setting on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase…</button></div>`}
+        ${Store.failed ? `<div class="row"><div><div class="lbl">Empty this board</div><div class="hint">Clears the windows, content, and settings you see now.${Store.failed === 'unopened' ? ' Your saved board isn’t touched.' : ''}</div></div><button class="btn danger" data-act="erase">${svg('trash')}Empty…</button></div>`
+          : `<div class="row"><div><div class="lbl">Erase everything</div><div class="hint">Every page, window, and setting on this device.</div></div><button class="btn danger" data-act="erase">${svg('trash')}Erase…</button></div>`}
         ${dev ? `<h4>Developer</h4>
         <div class="row"><div><div class="lbl">Developer mode</div><div class="hint">For people who build widgets.</div></div>${sw('devmode', st.devMode, 'Developer mode')}</div>
         ${st.devMode ? `<div class="row stack"><div><div class="lbl">Test a widget</div><div class="hint">An uploaded file runs sealed off from your boards. It stays on this device and is never exported.</div></div>
@@ -5217,7 +5217,7 @@
         case 'hist-open': if (HistorySheet.beside) HistorySheet.close(); else HistorySheet.open(this.side, { beside: true }); break;
         case 'hist-every': {
           if (val === '0') {
-            const ok = await dialog({ title: 'Turn off automatic versions?', message: '21Board stops saving versions as you work, when it opens and when a note is suddenly cleared. It still saves one before Reset, Delete, Close all, a photo change, Import, Erase and going back, so you can undo them. “Save this version now” still works. Versions already saved stay until you delete them.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
+            const ok = await dialog({ title: 'Turn off automatic versions?', message: '21Board stops saving versions as you work, when it opens, and when a note is suddenly cleared. It still saves one before Reset, Delete, Close all, a photo change, Import, Erase, and going back, so you can undo them. “Save this version now” still works. Versions already saved stay until you delete them.', actions: [{ label: 'Turn off', value: true, kind: 'danger' }, { label: 'Cancel', value: false }] });
             if (!ok) break;
           }
           updateSettings({ historyEvery: +val });
@@ -5255,10 +5255,10 @@
           const temp = Store.failed, saved = temp === 'unopened' ? ' Your saved board isn’t touched. Reload 21Board to open it.' : '';
           const apps = appsOwnWork('erased here', 'Clear it');
           const others = temp ? [] : Pages.ids().filter(b => b !== S.boardId);
-          const ok = await dialog(temp ? { title: 'Empty this board?', message: 'The windows, their content and the settings you see now are cleared.' + saved + apps,
+          const ok = await dialog(temp ? { title: 'Empty this board?', message: 'The windows, their content, and the settings you see now are cleared.' + saved + apps,
             actions: [{ label: 'Empty this board', value: 'erase', kind: 'danger' }, { label: 'Cancel', value: null }] }
             : { title: 'Erase everything?', message: (others.length ? `All ${others.length + 1} pages, their windows and content, and your settings are deleted from this device.` + (hist ? ' Board history keeps the page you’re on, so you can still go back to it.' : '')
-                : 'All windows, their content and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '')) + (Link.dir ? ' This device also stops syncing. The board stays in your folder and on your other devices.' : '') + ' To keep what’s here, export a backup first.' + apps,
+                : 'All windows, their content, and your settings are deleted from this device.' + (hist ? ' Board history is kept, so you can still go back.' : '')) + (Link.dir ? ' This device also stops syncing. The board stays in your folder and on your other devices.' : '') + ' To keep what’s here, export a backup first.' + apps,
               actions: [{ label: 'Export a backup first', value: 'backup', kind: 'primary' }, { label: 'Erase everything', value: 'erase', kind: 'danger' }]
                 .concat(hist ? [{ label: 'Erase, including Board history', value: 'erase-all', kind: 'danger' }] : []).concat([{ label: 'Cancel', value: null }]) });
           if (ok === 'backup') { await doExport('all'); break; }
@@ -5590,7 +5590,7 @@
       title: `Import “${file.name.replace(/\.21board$/i, '')}”?`,
       message: `This is ${what} with ${openCount} window${openCount === 1 ? '' : 's'}.` + (missing.size ? ` ${missing.size} widget${missing.size === 1 ? ' isn’t' : 's aren’t'} installed here. ${missing.size === 1 ? 'Its' : 'Their'} content is kept but not shown.` : '') + picsLost(lost),
       actions: (Pages.enabled() ? [{ label: 'Open as a new page', sub: 'Your pages stay as they are. This one is added after the page you’re on.', value: 'page', kind: 'primary', choice: true }] : []).concat([
-        { label: Pages.enabled() ? 'Replace this page' : 'Replace my board', sub: `${Pages.enabled() ? 'This page’s' : 'Your current'} windows and content${looks ? `, and the ${looks},` : ''} are replaced${Link.dir ? ', here and on your other devices' : ''}.` + (BoardHistory.enabled() ? ' You can undo this.' : ''), value: 'replace', kind: 'danger', choice: true },
+        { label: Pages.enabled() ? 'Replace this page' : 'Replace my board', sub: `${Pages.enabled() ? 'This page’s' : 'Your current'} windows and content are replaced${Link.dir ? ', here and on your other devices' : ''}.` + (looks ? ` So ${/ and /.test(looks) ? 'are' : 'is'} the ${looks}.` : '') + (BoardHistory.enabled() ? ' You can undo this.' : ''), value: 'replace', kind: 'danger', choice: true },
         { label: Pages.enabled() ? 'Add to this page' : 'Add to my board', sub: 'What’s here stays. These windows are added.', value: 'add', kind: Pages.enabled() ? '' : 'primary', choice: true },
         { label: 'Cancel', value: null }
       ])
@@ -5849,7 +5849,7 @@
   const LINK_FILE_RE = /^21Board \((.{0,60})\) \[([0-9a-z]{4,8})\]( \(\d+\))?\.21board$/i;
   // Folder problems in plain words: what happened, and what to do. (The browser's own wording goes to the console.)
   const LINK_SAY = {
-    missing: ['the folder can’t be found', 'If it was renamed, moved or deleted, choose it again in Settings › Board Sync.'],
+    missing: ['the folder can’t be found', 'If it was renamed, moved, or deleted, choose it again in Settings › Board Sync.'],
     allow: ['Chrome needs you to allow the folder again', 'Tap “Reconnect folder” on the board.'],
     readonly: ['the folder can only be viewed, not changed', 'Ask its owner to let you edit it, or choose another folder in Settings › Board Sync.'],
     full: ['there’s no room left', 'Make room in Google Drive or on this device.'],
@@ -6393,11 +6393,11 @@
         '"21Board (laptop) [k3j9].21board". 21Board combines them, so every device shows the same',
         'board. Each file is a full backup. Open one with Import in 21Board.',
         '',
-        '- To add a device, open 21Board on it, go to Settings > Board Sync > Set up and pick this',
+        '- To add a device, open 21Board on it, go to Settings > Board Sync > Set up, and pick this',
         '  folder. Everyone who uses this folder shares one board.',
         '- To work on a board with a co-teacher, share this folder with them as an Editor. They add a',
         '  shortcut to it in their My Drive, then pick it when they set up Board Sync.',
-        '- Don’t edit, rename or move these files. 21Board deletes an unlinked device’s file two',
+        '- Don’t edit, rename, or move these files. 21Board deletes an unlinked device’s file two',
         '  months later.',
         '- The "Photos" folder holds each picture once. The board files only name them. To give',
         '  someone a board, use Export in 21Board.',
@@ -7511,7 +7511,7 @@
       else if (!others.length) out.push('No other devices yet. Set up Board Sync on another device and pick this same folder.');
       else if (others.length === 1) out.push(`Shared with ${who(others[0])}. Last change ${when(others[0].at)}.`);
       else if (others.length === 2) out.push(`Shared with ${who(others[0])} and ${who(others[1])}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
-      else out.push(`Shared with ${who(others[0])}, ${who(others[1])} and ${others.length - 2} other${others.length === 3 ? '' : 's'}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
+      else out.push(`Shared with ${who(others[0])}, ${who(others[1])}, and ${others.length - 2} other${others.length === 3 ? '' : 's'}. Last change from ${who(others[0])} ${when(others[0].at)}.`);
       const pics = new Map();   // (windows' pictures: by page, how many are still arriving, can't be used, and of those for a window not here yet)
       for (const [file, w] of this.waiting) {
         if (now - w.since < this.waits.arrive) continue;
@@ -7848,7 +7848,7 @@
         const s = Math.ceil(d.duration / 1000), m = Math.floor(s / 60);
         return s % 60 ? `${m}:${String(s % 60).padStart(2, '0')}` : m === 1 ? '1 minute' : `${m} minutes`;
       },
-      dice: d => { const v = listOf(d.values).slice(0, 6).filter(v => Number.isInteger(v) && v >= 1 && v <= 6); return v.length > 1 ? `${v.slice(0, -1).join(', ')} and ${v[v.length - 1]}` : v.join(''); },
+      dice: d => { const v = listOf(d.values).slice(0, 6).filter(v => Number.isInteger(v) && v >= 1 && v <= 6); return andList(v); },
       'traffic-light': d => ['red', 'yellow', 'green'].includes(d.active) ? d.active[0].toUpperCase() + d.active.slice(1) : '',
       // The zones with check-ins, in order ("Blue 2, Green 9, Red 1"), as the window showed them: whole numbers, 9999 at
       // most. With Clear each day on, counts from a day before the version's show as none.
@@ -10730,7 +10730,7 @@
       }
       if (p === 'missing') {
         // (Choosing it again is suggested only once it has been gone a while: Google Drive may just be starting.)
-        return { title: `21Board can’t find your “${name}” folder`, text: (Date.now() - t.since >= LINK_LOST_MS ? `It went missing ${when(t.since)}. If it was renamed, moved or deleted, choose it again.` : 'Google Drive may still be starting, or this device may be offline.') +
+        return { title: `21Board can’t find your “${name}” folder`, text: (Date.now() - t.since >= LINK_LOST_MS ? `It went missing ${when(t.since)}. If it was renamed, moved, or deleted, choose it again.` : 'Google Drive may still be starting, or this device may be offline.') +
           ' 21Board keeps looking and syncs again once the folder is back. Until then' + off };
       }
       if (p === 'newer') return { title: 'Update 21Board on this device', text: `${cap(Link.newer)} uses a newer 21Board. Its changes show here once this device is updated too.` };
@@ -11366,6 +11366,14 @@
       else if (Picker.side) Picker.close();
       else if (HistorySheet.isOpen) HistorySheet.escape();   // (a version's column, then the list, then Settings)
       else if (Settings.isOpen) Settings.close(true);
+    });
+    // No browser menu on a right-click, a long press, or the menu key, except in a text box (spell-check, Cut, Copy,
+    // Paste). Developer mode keeps it everywhere, for Inspect, and so does the widget dev window. The SDK does the same
+    // inside each widget. Other sites' windows keep their own.
+    document.addEventListener('contextmenu', e => {
+      const t = e.target;
+      if (S.settings.devMode || LAB || (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)$/.test(t.type))))) return;
+      e.preventDefault();
     });
 
     $('#import-input').addEventListener('change', e => {

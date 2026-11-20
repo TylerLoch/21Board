@@ -511,7 +511,7 @@ const VIMEO_OPEN = (id, hash, start) => `https://vimeo.com/${id}${hash ? '/' + h
 // A Drive file's label in the History (Drive gives no title without signing in): "Google Drive video" and its id's end.
 const DRIVE_LABEL = id => `Google Drive video ${id.slice(-6)}`;
 // What the link box says to text that isn't a video's link.
-const VMSG = { empty: 'Paste a link first.', none: 'Paste a YouTube, Google Drive or Vimeo link.', folder: 'That’s a folder. Paste a link to one video.', list: 'That’s a list of videos. Paste a link to one.',
+const VMSG = { empty: 'Paste a link first.', none: 'Paste a YouTube, Google Drive, or Vimeo link.', folder: 'That’s a folder. Paste a link to one video.', list: 'That’s a list of videos. Paste a link to one.',
   doc: 'That’s a document. Paste a link to a video.', sheet: 'That’s a spreadsheet. Paste a link to a video.', slides: 'That’s a presentation. Paste a link to a video.' };
 // The tab's live player frames from any of the three sites.
 const vidFrames = p => p.frames().filter(f => /^https:\/\/(www\.youtube(-nocookie)?\.com\/embed\/|drive\.google\.com\/file\/d\/|player\.vimeo\.com\/video\/)/.test(f.url()));
@@ -640,7 +640,7 @@ const drawPic = async (p, w, h, type = 'image/png', o = {}) => Buffer.from(await
 }, [w, h, type, o]), 'base64');
 // The Picture widget's messages, word for word.
 const PMSG = {
-  type: 'Can’t show that file. Choose a PNG, JPEG, GIF, WebP, AVIF or SVG.',
+  type: 'Can’t show that file. Choose a PNG, JPEG, GIF, WebP, AVIF, or SVG.',
   svgBroken: 'That SVG couldn’t be drawn. Save it as a PNG first.',
   svgBig: 'That SVG is over 5 MB. Save it as a PNG first.',
   heic: 'Can’t show a HEIC photo. Save it as a JPEG first.',
@@ -6737,9 +6737,9 @@ const SUITES = [
     // The Widget Picker: its name, and for each widget a tooltip of one short sentence that starts with a verb.
     const tips = await page.evaluate(() => Object.fromEntries(window.__board21.catalog().map(w => [w.id, w.description])));
     const want = { timer: 'Count down with presets and an alarm.', 'task-timer': 'Count down a schedule of activities on a pie, with an alarm.', calendar: 'See the month, with today highlighted.',
-      clock: 'Show an analog or digital clock, or just the date.', notes: 'Write directions, reminders or the day’s agenda.', 'name-picker': 'Pick one to five names at random from your list.',
-      'first-then-board': 'Pick a First card and a Then card, and mark each one done.', dice: 'Roll one to six dice.', 'traffic-light': 'Show noise level or work time in red, yellow and green.',
-      'youtube-player': 'Play a video from YouTube, Google Drive or Vimeo.', image: 'Show a picture you open or paste.', '21sketch': 'Draw with the district’s whiteboard app.',
+      clock: 'Show an analog or digital clock, or just the date.', notes: 'Write directions, reminders, or the day’s agenda.', 'name-picker': 'Pick one to five names at random from your list.',
+      'first-then-board': 'Pick a First card and a Then card, and mark each one done.', dice: 'Roll one to six dice.', 'traffic-light': 'Show noise level or work time in red, yellow, and green.',
+      'youtube-player': 'Play a video from YouTube, Google Drive, or Vimeo.', image: 'Show a picture you open or paste.', '21sketch': 'Draw with the district’s whiteboard app.',
       '21timer': 'Run the district’s classroom timer app.', '21doccam': 'Show work with the district’s document camera app.', 'zones-check-in': 'Check in on how your class feels.' };
     const offTips = Object.keys(want).filter(id => tips[id] !== want[id]);
     ok(!offTips.length, `each widget’s tooltip says what it does in one sentence that starts with a verb${offTips.length ? ': ' + offTips.map(id => `${id} “${tips[id]}”`).join(', ') : ''}`);
@@ -6795,7 +6795,7 @@ const SUITES = [
       L.sync = keep.sync; L.files = keep.files;
       return out;
     });
-    ok(shared.join(' | ') === 'Up to date. Shared with the laptop. Last change WHEN. | Up to date. Shared with the laptop and the smartboard. Last change from the laptop WHEN. | Up to date. Shared with the laptop, the smartboard and 1 other. Last change from the laptop WHEN.',
+    ok(shared.join(' | ') === 'Up to date. Shared with the laptop. Last change WHEN. | Up to date. Shared with the laptop and the smartboard. Last change from the laptop WHEN. | Up to date. Shared with the laptop, the smartboard, and 1 other. Last change from the laptop WHEN.',
       `Board Sync names the device with the latest change, once (${shared.join(' | ')})`);
 
     // A background photo that can’t be used says JPEG, as the Picture widget does.
@@ -6803,7 +6803,7 @@ const SUITES = [
       const t = (await page.locator('#modal.open p').innerText()).replace(/\s+/g, ' '); await page.locator('#modal.open .btn', { hasText: 'OK' }).click(); await page.waitForTimeout(200); return t; };
     const notPic = await photoSays({ name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') });
     const badPic = await photoSays({ name: 'broken.png', mimeType: 'image/png', buffer: Buffer.from('not a picture') });
-    ok(notPic === 'Choose a JPEG, PNG or WebP picture.' && badPic === 'This picture can’t be opened here. Save it as a JPEG or PNG, then try again.', `a photo that can’t be used: “${notPic}” “${badPic}”`);
+    ok(notPic === 'Choose a JPEG, PNG, or WebP picture.' && badPic === 'This picture can’t be opened here. Save it as a JPEG or PNG, then try again.', `a photo that can’t be used: “${notPic}” “${badPic}”`);
 
     // README and the docs: the glossary’s words and its style.
     const doc = f => fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\s+/g, ' ');
@@ -6812,7 +6812,7 @@ const SUITES = [
       [/widget dev window/i.test(readme), 'README says “widget dev window”'],
       [/uploaded widget/i.test(readme + aiDoc), '“uploaded widget”'],
       [/e\.g\. when a timer ends|\(e\.g\. `https:/.test(sdkDoc), 'WIDGET-SDK says “e.g.”'],
-      [/kiosk mode, and|system fonts, and/.test(readme + devJs), 'a serial comma'],
+      [!/Storage used, kiosk mode, and/.test(readme) || !/use system fonts, and draw/.test(devJs), 'a list of three without its serial comma'],
       [!/It needs Chrome 84 or later, or Safari 16\.4 or later\. As a Home Screen app, it needs Safari 18\.4 or later\./.test(readme), 'Stay awake’s versions without “or later”'],
       [!/Choose Early readers on the laptop, and the smartboard/.test(readme), 'Board Sync’s “there”'],
       [/needs a connection/.test(readme), 'the district apps’ offline message in its old words']
@@ -6854,11 +6854,11 @@ const SUITES = [
     // The docs: 21Board's value (work stored only on the device, and in the teacher's Drive with Board Sync; online when
     // needed), what the video sites see, kiosk mode's menu and Drive there, and what IT needs to know.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), registrySrc = fs.readFileSync(path.join(ROOT, 'widgets', 'registry.js'), 'utf8');
-    ok(readme.includes('- **Private.** Your work is stored only on your device, and in your own Google Drive if you turn on Board Sync. 21Board has no servers and no accounts. - **Online only when needed.** For updates, district apps and videos.'),
+    ok(readme.includes('- **Private.** Your work is stored only on your device, and in your own Google Drive if you turn on Board Sync. 21Board has no servers and no accounts. - **Online only when needed.** For updates, district apps, and videos.'),
       'the README’s top says the work is stored only on the device (and in the teacher’s own Drive with Board Sync), and that 21Board goes online only when needed');
     ok(!/sends nothing|nothing anywhere|All data stays/.test(readme), 'and no longer says 21Board sends nothing anywhere');
     const row = readme.slice(readme.indexOf('| **Video Player**'), readme.indexOf('| **21Sketch**'));
-    ok(/^\| \*\*Video Player\*\* \|.*History/.test(row) && row.includes('YouTube, Google Drive and Vimeo see what they would on their own sites: the video, the device and any account signed in. YouTube and Vimeo also see the board\'s address.') &&
+    ok(/^\| \*\*Video Player\*\* \|.*History/.test(row) && row.includes('YouTube, Google Drive, and Vimeo see what they would on their own sites: the video, the device, and any account signed in. YouTube and Vimeo also see the board\'s address.') &&
       row.includes('oEmbed without cookies') && !/YouTube Player/.test(readme),
       'its row in Included widgets says what the three sites see, that YouTube and Vimeo also see the board’s address (the Referer) and that titles are asked for without cookies, and names the History (and the README calls it the Video Player)');
     ok(!/widget that goes online/.test(readme + registrySrc), 'the README and registry don’t call it the one built-in widget that goes online (the district apps’ windows do too)');
@@ -6874,7 +6874,7 @@ const SUITES = [
     ok(dataDoc.includes('21Board stores everything **on the device**, in the browser\'s IndexedDB. With Board Sync, the board is also in the teacher\'s Google Drive folder. 21Board has no servers.') && !/never sees any data/.test(dataDoc),
       'the data format guide says where the work is stored: on the device, and in the teacher’s Drive folder with Board Sync');
     const sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' '), prompt = fs.readFileSync(path.join(ROOT, 'docs', 'AI-PROMPT.md'), 'utf8');
-    ok(sdkDoc.includes('1. **No Internet.** No CDNs, web fonts, analytics or APIs. Keep everything in your folder, so the widget works offline and student work stays on the device. The Video Player is the only exception. 2.'),
+    ok(sdkDoc.includes('1. **No Internet.** No CDNs, web fonts, analytics, or APIs. Keep everything in your folder, so the widget works offline and student work stays on the device. The Video Player is the only exception. 2.'),
       'the SDK guide’s rule 1 is the new one, word for word');
     ok(/\*\*No network at all\*\*/.test(prompt) && /Make NO network requests/.test(prompt), 'the AI prompt keeps its rules: no network at all');
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
@@ -6886,7 +6886,7 @@ const SUITES = [
     ok(reg && reg.name === 'Video Player' && reg.version === '1.0.0' && reg.entry === 'widgets/youtube-player/index.html' && JSON.stringify(reg.files) === '["widgets/youtube-player/index.html","widgets/youtube-player/video-links.js"]' &&
       reg.clash === 'later' && reg.permissions.length === 0 && !reg.external && reg.win.width === 480 && reg.win.height === 270 && reg.win.minWidth >= 200 && reg.win.minHeight >= 200 && !reg.win.aspectRatio && reg.description,
       `it is in the registry as the Video Player (its id still youtube-player): version 1.0.0, two files (the page and video-links.js), clash 'later', no extra permissions, 480 × 270, at least 200 × 200, no shape lock (${JSON.stringify(reg && reg.win)})`);
-    ok(reg && reg.description === 'Play a video from YouTube, Google Drive or Vimeo.' && /<title>Video Player<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
+    ok(reg && reg.description === 'Play a video from YouTube, Google Drive, or Vimeo.' && /<title>Video Player<\/title>/.test(src), `its description and page title (${reg && reg.description})`);
     const manifest = JSON.parse(/<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src)[1]);
     ok(manifest.id === 'youtube-player' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => manifest.window[k] === reg.win[k]), 'its manifest block matches the registry entry');
     ok(/^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', `rgb(${[1, 3, 5].map(i => parseInt(reg.color.slice(i, i + 2), 16)).join(', ')})`) >= 4.5 && reg.color.toLowerCase() !== '#ef4444',
@@ -6903,7 +6903,7 @@ const SUITES = [
     ok(await ytMenu(page) === '', `the link box has no window menu items of its own (${await ytMenu(page)})`);
     const box = await ytWin(page).locator('html').evaluate(() => ({ title: document.querySelector('#ask h1').textContent, help: document.getElementById('help').textContent, go: document.getElementById('go').textContent.trim(),
       label: document.getElementById('link').getAttribute('aria-label'), focused: document.activeElement === document.getElementById('link') }));
-    ok(box.title === 'Show a video' && box.help === 'Paste a link from YouTube, Google Drive or Vimeo.' && box.go === 'Show video' && box.label === 'Video link' && !box.focused,
+    ok(box.title === 'Show a video' && box.help === 'Paste a link from YouTube, Google Drive, or Vimeo.' && box.go === 'Show video' && box.label === 'Video link' && !box.focused,
       `the link box: a short title, one line of help, a field and a button, in sentence case, and the field isn't focused by itself (no keyboard popping up): ${JSON.stringify(box)}`);
 
     // Links: every form it reads, and what it turns away.
@@ -8464,7 +8464,7 @@ const SUITES = [
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' ');
     const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
     const row = readme.indexOf('| **Picture** |') >= 0 ? readme.slice(readme.indexOf('| **Picture** |'), readme.indexOf('|', readme.indexOf('| **Picture** |') + 16) + 400) : '';
-    ok(/PNG, JPEG, GIF, WebP or AVIF/.test(row) && readme.indexOf('| **Picture** |') > readme.indexOf('### Included widgets'), 'the README’s Included widgets has a Picture row naming the five kinds of picture');
+    ok(/PNG, JPEG, GIF, WebP, or AVIF/.test(row) && readme.indexOf('| **Picture** |') > readme.indexOf('### Included widgets'), 'the README’s Included widgets has a Picture row naming the five kinds of picture');
     ok(/\| \*\*Paste\*\* \|[^|]*Ctrl\+V/.test(readme) && /ClipboardAllowedForUrls/.test(readme), 'the README says how to paste a picture, and tells IT how to allow the Paste button ahead of time');
     ok(/\| `file` \| `\(file, \{ reason \}\)` \|/.test(sdkDoc) && /new Picture window/.test(sdkDoc), 'the SDK guide has the file event, and says what happens to a picture pasted or dropped in a widget');
     ok(/\{ src, w, h, name, bytes \}/.test(dataDoc) && /"b21pic"/.test(dataDoc), 'the data format guide has the Picture’s content and how Board history keeps pictures');
@@ -8874,7 +8874,7 @@ const SUITES = [
   }],
   ['Widget Picker: Paste (both corners at 1366 × 768 in every Text style and Size, with one page and 12, every widget in view, six columns from 150%; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)', async (browser) => {
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
-    ok(/\| \*\*Buttons\*\* \| The Widget Picker's bottom row: Paste, Export, Import, Lock, Full screen and Settings\. \|/.test(readme), 'the README’s Buttons row starts with Paste');
+    ok(/\| \*\*Buttons\*\* \| The Widget Picker's bottom row: Paste, Export, Import, Lock, Full screen, and Settings\. \|/.test(readme), 'the README’s Buttons row starts with Paste');
     ok(/\| \*\*Paste\*\* \| Ctrl\+V or ⌘V opens a copied picture in a new Picture window\. A copied video link opens in a new Video Player\. [^|]*On a touch screen, tap \*Paste\* in the Widget Picker\./.test(readme),
       'the README’s Paste row: a picture or a video link, and Paste in the Widget Picker on a touch screen');
     ok(/An animation copied from a web page pastes as a still\. Open or drop its file to keep it moving\./.test(readme), 'the README says an animation copied from a web page pastes as a still, so open or drop its file to keep it moving');
@@ -11604,7 +11604,7 @@ const SUITES = [
       ['timer', { duration: 60000, remaining: 60000, endsAt: null }, '1 minute', 'a Timer at 1 minute'],
       ['timer', { duration: 45000, remaining: 45000, endsAt: null }, '0:45', 'a Timer at 45 seconds'],
       ['dice', { values: [4] }, '4', 'one die'],
-      ['dice', { values: [3, 5, 1] }, '3, 5 and 1', 'three dice'],
+      ['dice', { values: [3, 5, 1] }, '3, 5, and 1', 'three dice'],
       ['dice', { values: [] }, '', 'Dice not rolled: no line'],
       ['traffic-light', { active: null }, '', 'a Traffic Light with no light on: no line'],
       ['traffic-light', { active: 'red' }, 'Red', 'a red Traffic Light'],
@@ -11707,7 +11707,7 @@ const SUITES = [
     // What the widget itself wouldn't show gives no line: a Timer over a day, a die that isn't 1 to 6, a picture that isn't one.
     // A Zones Check-In count over 9999 shows as 9999, in the window and in its line.
     for (const [id, data, want] of [['timer', { duration: 1e300 }, ''], ['timer', { duration: 2 * 864e5 }, ''], ['timer', { duration: -1 }, ''], ['dice', { values: [9, -1, 2.5] }, ''],
-      ['dice', { values: [1, 2, 3, 4, 5, 6, 1] }, '1, 2, 3, 4, 5 and 6'], ['dice', { values: [6, 0, 2] }, '6 and 2'], ['image', { src: {} }, ''], ['image', { src: PNG, name: 5 }, 'Pasted picture'],
+      ['dice', { values: [1, 2, 3, 4, 5, 6, 1] }, '1, 2, 3, 4, 5, and 6'], ['dice', { values: [6, 0, 2] }, '6 and 2'], ['image', { src: {} }, ''], ['image', { src: PNG, name: 5 }, 'Pasted picture'],
       ['zones-check-in', { counts: { blue: '2', green: 2.5, yellow: -1, red: 1e9 } }, 'Red 9999'], ['zones-check-in', { counts: { blue: 10000, green: 9999, yellow: null, red: true } }, 'Blue 9999, Green 9999'],
       ['zones-check-in', { counts: { blue: 12, green: 1e300, yellow: 9999, red: 10000 } }, 'Blue 12, Green 9999, Yellow 9999, Red 9999'],
       ['zones-check-in', { counts: [2, 9, 4, 1] }, ''], ['zones-check-in', { counts: 'Blue 2' }, ''], ['zones-check-in', { counts: { blue: 1, green: { n: 3 }, yellow: [4], red: 1 } }, 'Blue 1, Red 1']]) {
@@ -14694,11 +14694,11 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const allNamed = t => Object.values(APPS).every(([name]) => t.includes(name));
     await page.click('#settings [data-act="erase"]'); await page.waitForTimeout(300);
     let said = await page.locator('#modal.open').innerText();
-    ok(allNamed(said) && /Work in 21Sketch, 21Timer and 21DocCam isn’t erased here\. Clear it in each app\./.test(said), 'Erase everything says the apps keep their own work, which it doesn’t erase: ' + said.replace(/\n/g, ' '));
+    ok(allNamed(said) && /Work in 21Sketch, 21Timer, and 21DocCam isn’t erased here\. Clear it in each app\./.test(said), 'Erase everything says the apps keep their own work, which it doesn’t erase: ' + said.replace(/\n/g, ' '));
     await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await page.click('.picker-btn.left'); await page.click('[data-ctl="export"]'); await page.waitForTimeout(300);
     said = await page.locator('#modal.open').innerText();
-    ok(allNamed(said) && /Work in 21Sketch, 21Timer and 21DocCam isn’t in the file\. Save it in each app\./.test(said), 'so does Export: their work isn’t in the file');
+    ok(allNamed(said) && /Work in 21Sketch, 21Timer, and 21DocCam isn’t in the file\. Save it in each app\./.test(said), 'so does Export: their work isn’t in the file');
     await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(200);
 
     // ---- Exports and Board history keep the window, never content.
@@ -16485,7 +16485,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       `Settings → Appearance → Text style: Standard, Easier to read, Early readers; Standard is chosen (${opts.map(o => o.val + ':' + o.on).join(' ')})`);
     ok(opts[0].font === SYSTEM && opts[1].font.startsWith('"Atkinson Hyperlegible"') && opts[2].font.startsWith('"21Board Early Readers"') && opts.every(o => o.text.includes('Il1 0 ag')),
       'each choice is shown in its own letters, with a sample of the look-alikes and a 0');
-    ok(/low vision\. I,\u00a0l\u00a0and\u00a01 look different, and 0 has a line through it\./.test(opts[1].text), `Easier to read says its 0 has a line through it, as on every clock and timer (${opts[1].text})`);
+    ok(/low vision\. I,\u00a0l,\u00a0and\u00a01 look different, and 0 has a line through it\./.test(opts[1].text), `Easier to read says its 0 has a line through it, as on every clock and timer (${opts[1].text})`);
     await page.screenshot({ path: OUT + 'letters-settings.png' });
 
     for (const key of ['legible', 'early']) {
@@ -17638,7 +17638,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     fs.writeFileSync(OUT + 'colleague-light-orange.21board', JSON.stringify(exp));
     await A.p.setInputFiles('#import-input', OUT + 'colleague-light-orange.21board');
     const sub = await A.p.locator('#modal.open .btn', { hasText: 'Replace this page' }).innerText();
-    ok(/This page’s windows and content, and the theme and accent color, are replaced, here and on your other devices\. You can undo this\./.test(sub.replace(/\s+/g, ' ')), `the dialog’s Replace this page says the theme and accent color change too (${sub.replace(/\s+/g, ' ')})`);
+    ok(/This page’s windows and content are replaced, here and on your other devices\. So are the theme and accent color\. You can undo this\./.test(sub.replace(/\s+/g, ' ')), `the dialog’s Replace this page says the theme and accent color change too (${sub.replace(/\s+/g, ' ')})`);
     await A.p.locator('#modal.open .btn', { hasText: 'Replace this page' }).click();
     await A.p.locator('#toasts .toast', { hasText: 'Board imported.' }).waitFor();
     await syncNow(A.p); await deliver(A.p, B.p); await syncNow(B.p); await deliver(A.p, C.p); await syncNow(C.p);
@@ -17967,8 +17967,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await hear(A.p);
     await openSettings(B.p, ['letters']); await pick(B.p, 'theme', 'light'); await pick(B.p, 'accent', 'green'); await pick(B.p, 'letters', 'early'); await B.p.keyboard.press('Escape');
     await round(B, A);
-    ok(await look(A.p) === 'light green early' && await text(A.p) === `early ${FAM.early}` && (await heard(A.p)).includes('The smartboard changed the theme to Light, the accent color to Green and the text style to “Early readers”.'),
-      `all three: “The smartboard changed the theme to Light, the accent color to Green and the text style to “Early readers”.” (${await look(A.p)}; ${(await heard(A.p)).join(' | ')})`);
+    ok(await look(A.p) === 'light green early' && await text(A.p) === `early ${FAM.early}` && (await heard(A.p)).includes('The smartboard changed the theme to Light, the accent color to Green, and the text style to “Early readers”.'),
+      `all three: “The smartboard changed the theme to Light, the accent color to Green, and the text style to “Early readers”.” (${await look(A.p)}; ${(await heard(A.p)).join(' | ')})`);
     await round(A, B);
     ok(await look(B.p) === 'light green early', 'nothing changes back');
 
@@ -17998,12 +17998,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     };
     const offer = async f => { await A.p.setInputFiles('#import-input', f); return (await A.p.locator('#modal.open .btn', { hasText: 'Replace this page' }).innerText()).replace(/\s+/g, ' '); };
     let sub = await offer(await fileWith('colleague-all-three.21board', { theme: 'dark', accent: 'orange', letters: 'early' }));
-    ok(/This page’s windows and content, and the theme, accent color and text style, are replaced, here and on your other devices\. You can undo this\./.test(sub), `a file in another theme, accent color and text style: Replace this page names all three (${sub})`);
+    ok(/This page’s windows and content are replaced, here and on your other devices\. So are the theme, accent color, and text style\. You can undo this\./.test(sub), `a file in another theme, accent color, and text style: Replace this page names all three (${sub})`);
     await A.p.locator('#modal.open .modal-card').evaluate(e => Promise.all(e.getAnimations().map(a => a.finished))); await A.p.screenshot({ path: OUT + 'text-style-import.png' });
     await A.p.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await A.p.locator('#modal.open').waitFor({ state: 'hidden' });
     await hear(B.p);
     sub = await offer(await fileWith('colleague-easier.21board', { letters: 'legible', name: 'Fractions (Ms. Lee)' }));
-    ok(/This page’s windows and content, and the text style, are replaced, here and on your other devices\. You can undo this\./.test(sub), `a file in Easier to read: “…and the text style, are replaced, here and on your other devices…” (${sub})`);
+    ok(/This page’s windows and content are replaced, here and on your other devices\. So is the text style\. You can undo this\./.test(sub), `a file in Easier to read: “…here and on your other devices. So is the text style.” (${sub})`);
     await A.p.locator('#modal.open .btn', { hasText: 'Replace this page' }).click();
     await A.p.locator('#toasts .toast', { hasText: 'Board imported.' }).waitFor();
     await round(A, B);
@@ -18029,6 +18029,286 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   }],
 
   // (end of Board Sync merge)
+
+  // Release 2026.11.18-20: every list of three or more takes the Oxford comma ("red, yellow, and green").
+  ['Copy: Oxford commas (2026.11.18-20)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await stubVideos(ctx);
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const B = fn => page.evaluate(fn);
+    const modalText = () => page.locator('#modal.open .modal-card').innerText().then(t => t.replace(/\s+/g, ' '));
+    const frameOf = ik => page.frame({ name: 'b21-board:' + ik });
+    const connected = ik => eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+
+    // ---- 1. The strings in the spec's table, as the page and the widgets show them.
+    const tips = await B(() => Object.fromEntries(window.__board21.catalog().map(w => [w.id, w.description])));
+    ok(tips.notes === 'Write directions, reminders, or the day’s agenda.', `Notes: “${tips.notes}”`);
+    ok(tips['traffic-light'] === 'Show noise level or work time in red, yellow, and green.', `Traffic Light: “${tips['traffic-light']}”`);
+    ok(tips['youtube-player'] === 'Play a video from YouTube, Google Drive, or Vimeo.', `Video Player: “${tips['youtube-player']}”`);
+    const vp = await B(() => window.__board21.openWidget('youtube-player')); await connected(vp);
+    const vpHelp = await ytWin(page, vp).locator('#help').textContent();
+    ok(vpHelp === 'Paste a link from YouTube, Google Drive, or Vimeo.', `the Video Player’s help: “${vpHelp}”`);
+    await ytShow(page, 'hello there', vp);
+    const vpErr = (await ytLook(page, vp)).err;
+    ok(vpErr === 'Paste a YouTube, Google Drive, or Vimeo link.' && vpErr === VMSG.none, `the Video Player’s error: “${vpErr}”`);
+    const pic = await B(() => window.__board21.openWidget('image')); await connected(pic);
+    await picOpen(page, picFile('notes.txt', Buffer.from('hello'), 'text/plain'), pic, PMSG.type);
+    const picErr = (await picLook(page, pic)).err;
+    ok(picErr === 'Can’t show that file. Choose a PNG, JPEG, GIF, WebP, AVIF, or SVG.' && picErr === PMSG.type, `the Picture’s error: “${picErr}”`);
+    await page.setInputFiles('#photo-input', { name: 'notes.txt', mimeType: 'text/plain', buffer: Buffer.from('hello') }); await page.waitForSelector('#modal.open');
+    const photoErr = (await page.locator('#modal.open p').innerText()).replace(/\s+/g, ' ');
+    await page.locator('#modal.open .btn', { hasText: 'OK' }).click(); await page.waitForTimeout(200);
+    ok(photoErr === 'Choose a JPEG, PNG, or WebP picture.', `a background photo that isn’t a picture: “${photoErr}”`);
+    const hintOf = act => page.locator(`#settings .row:has([data-act="${act}"]) .hint`).first().innerText();
+    await openSettings(page, ['advanced']);
+    const erase = await hintOf('erase');
+    ok(erase === 'Every page, window, and setting on this device.', `Settings › Erase everything: “${erase}”`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await B(() => { window.__board21.store.failed = 'blocked'; });   // (as where the browser allows no storage)
+    await openSettings(page, ['advanced']);
+    const empty = await hintOf('erase');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await B(() => { window.__board21.store.failed = ''; });
+    ok(empty === 'Clears the windows, content, and settings you see now.', `Settings › Empty this board: “${empty}”`);
+    await openSettings(page, ['advanced']);
+    await page.click('#settings [data-act="hist-every"][data-val="0"]'); await page.waitForSelector('#modal.open');
+    const pause = await modalText();
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    ok(pause.includes('21Board stops saving versions as you work, when it opens, and when a note is suddenly cleared.') && pause.includes('before Reset, Delete, Close all, a photo change, Import, Erase, and going back'),
+      `Board history’s Off: “${pause}”`);
+    // Board Sync: a folder gone for a while says what may have happened to it, here and in the message's Details.
+    const L = await syncDev(browser, 'the laptop', errors);
+    await linkFolder(L.p);
+    await L.p.evaluate(() => { window.__drive = { gone: true }; }); await L.p.evaluate(() => window.__board21.link.check(true));
+    await L.p.evaluate(() => { window.__board21.link.trouble.since -= 6 * 60e3; });
+    await L.p.locator('.folder-note.left').click(); await L.p.waitForSelector('#modal.open');
+    const gone = (await L.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
+    await L.p.locator('#modal.open .btn', { hasText: 'Close' }).click(); await L.p.waitForTimeout(200);
+    ok(/If it was renamed, moved, or deleted, choose it again\./.test(gone), `Board Sync, a folder gone a while: “${gone}”`);
+    await L.p.evaluate(() => { window.__drive = {}; const l = window.__board21.link; l.trouble = null; l.stuck('missing'); });
+    await L.p.locator('.toast', { hasText: 'Couldn’t sync this board with your folder' }).locator('button', { hasText: 'Details' }).click(); await L.p.waitForSelector('#modal.open');
+    const missing = (await L.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
+    ok(/If it was renamed, moved, or deleted, choose it again in Settings › Board Sync\./.test(missing), `and the message’s Details: “${missing}”`);
+    await L.c.close();
+
+    // ---- 2. No list of three or more without its comma, wherever a teacher reads: "A, B and C" and "A, B or C".
+    // Reviewed exceptions, each [pattern, reason]: a sentence that matches but isn't a list of three. None in the app;
+    // these are in the Calculator manual and the widget starter's notes.
+    const EXCEPT = [
+      [/such as a power or a fraction/, 'two examples'],
+      [/then powers and roots/, 'two items after “then”'],
+      [/without the problem or History/, 'two items'],
+      [/the steps start over and a hidden answer/, 'two clauses'],
+      [/open this file in a browser or paste it/, 'two things to do'],
+      [/doesn['’]t show it or cache it/, 'two verbs'],
+      [/theme, light or dark/, 'the theme, then its two choices']];
+    const texts = [];   // { where, text }
+    const add = (where, text) => texts.push({ where, text: String(text || '') });
+    for (const w of await B(() => window.__board21.catalog().map(w => ({ id: w.id, d: w.description })))) add(`the registry, ${w.id}`, w.d);
+    // Settings, with Developer mode on and every group open (About too; not the license texts, which aren't ours).
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(300);
+    for (let i = 0; i < 40; i++) {
+      const g = page.locator('#settings [data-act="group"][aria-expanded="false"]:not([data-val$="-license"])').first();
+      if (!await g.count()) break;
+      await g.click(); await page.waitForTimeout(150);
+    }
+    add('Settings', await page.locator('#settings').innerText());
+    add('Settings (tooltips)', (await page.locator('#settings').evaluate(r => Array.from(r.querySelectorAll('[title], [aria-label], [aria-description], [placeholder]'), e => ['title', 'aria-label', 'aria-description', 'placeholder'].map(a => e.getAttribute(a) || '').join('\n')))).join('\n'));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    // The Widget Picker: its text and tooltips.
+    await page.click('.picker-btn.left'); await page.waitForSelector('#panel.open');
+    add('the Widget Picker', await page.locator('#panel').innerText());
+    add('the Widget Picker (tooltips)', (await page.locator('#panel').evaluate(r => Array.from(r.querySelectorAll('[title], [aria-label], [aria-description]'), e => ['title', 'aria-label', 'aria-description'].map(a => e.getAttribute(a) || '').join('\n')))).join('\n'));
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    // Each built-in widget as it opens (district apps are other sites), and its window menu.
+    const built = await B(() => window.__board21.catalog().filter(w => !w.external && !w.dev).map(w => w.id));
+    for (const id of built) {
+      const ik = await B(new Function(`return window.__board21.openWidget(${JSON.stringify(id)}, { fresh: true })`));
+      if (!await connected(ik)) { ok(false, `${id} opens`); continue; }
+      await page.waitForTimeout(700);
+      const f = frameOf(ik);
+      // (Its whole text, a line for each block, hidden parts too: a message shown later, a line a small window hides.)
+      add(`${id}`, await f.evaluate(() => { const c = document.body.cloneNode(true); c.querySelectorAll('script, style, template').forEach(e => e.remove()); c.querySelectorAll('p, div, li, h1, h2, h3, h4, button, label, option, td, th, dt, dd, summary, br, section').forEach(e => { e.before('\n'); e.after('\n'); }); return c.textContent; }) + '\n' + await f.evaluate(() => Array.from(document.querySelectorAll('[title], [aria-label], [aria-description], [placeholder], [alt]'), e => ['title', 'aria-label', 'aria-description', 'placeholder', 'alt'].map(a => e.getAttribute(a) || '').join('\n')).join('\n')));
+      add(`${id}’s window menu`, await page.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.filter(i => !i.separator).map(i => i.label).join('\n'), ik));
+      await page.evaluate(ik => window.__board21.closeWin(ik), ik); await page.waitForTimeout(200);
+    }
+    // The Calculator manual, a page of its own, and the widget starter's notes, its only words for a widget author.
+    // (Each block or note is joined into one line first: a list can wrap across lines.)
+    const src = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+    add('the Calculator manual', src('docs/calculator-manual/page-src.html').replace(/<(script|style)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, '')
+      .replace(/<\/?(?:p|div|li|h\d|section|td|th|dt|dd|br|button|summary|figcaption)\b[^>]*>/gi, '\0').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').split('\0').join('\n'));
+    add('the widget starter’s notes', (src('widgets/_template/index.html').match(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\/|(?:^[ \t]*\/\/.*\n)+/gm) || [])
+      .map(c => c.replace(/<!--|-->|\/\*|\*\/|^[ \t]*\/\/ ?/gm, '').split(/\n\s*\n|\n(?=\s*\d\. )/).map(s => s.replace(/\s+/g, ' ')).join('\n')).join('\n'));
+    const LIST = /,\s+[^,]*?[^,\s]\s+(?:and|or|nor)\s/i;
+    const found = [];
+    for (const { where, text } of texts) {
+      for (const s of text.split(/\n+|(?<=[.!?;:])\s+/)) if (LIST.test(s) && !EXCEPT.some(([re]) => re.test(s))) found.push(`${where}: “${s.trim()}”`);
+    }
+    ok(texts.length > 20 && !found.length, `no list of three or more without its comma (${texts.length} places read${found.length ? ': ' + Array.from(new Set(found)).join(' | ') : ''})`);
+    const unused = EXCEPT.filter(([re]) => !texts.some(({ text }) => text.split(/\n+|(?<=[.!?;:])\s+/).some(s => LIST.test(s) && re.test(s))));
+    ok(!unused.length, `every exception is still needed${unused.length ? ': ' + unused.map(([re]) => re).join(', ') : ''}`);
+
+    // ---- 3. The rule, in CLAUDE.md (for every word) and in the AI prompt (for the widgets it writes).
+    const claude = fs.readFileSync(path.join(ROOT, 'CLAUDE.md'), 'utf8').split('\n'), labels = claude.findIndex(l => l.startsWith('- Labels:'));
+    ok(labels > 0 && claude[labels + 1] === '- Every list of three or more takes the Oxford comma, such as "red, yellow, and green".', `CLAUDE.md’s Voice has the rule, after Labels (${claude[labels + 1]})`);
+    const prompt = fs.readFileSync(path.join(ROOT, 'docs', 'AI-PROMPT.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(prompt.includes('- Plain, short, friendly words a K–8 student or busy teacher understands. No jargon. Lists of three or more take the Oxford comma.'), 'the AI prompt asks for the Oxford comma');
+    // WIDGET-SDK's first lines, wrapped across two in the file.
+    const sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(sdkDoc.includes('21Board loads it in an `<iframe>`, saves its data, and keeps it in sync across every open copy of 21Board.'), 'WIDGET-SDK: “loads it…, saves its data, and keeps it in sync”');
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+
+  // Release 2026.11.18-20: no browser menu on a right-click or a long press, except in text boxes and Developer mode.
+  ['Right-click: no browser menu (2026.11.18-20)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await stubVideos(ctx);
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const B = fn => page.evaluate(fn);
+    const frameOf = (p, ik) => p.frame({ name: 'b21-board:' + ik });
+    const connected = (p, ik) => eventually(() => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+    // In a page or a window's frame, a listener the test adds last, on window: it runs after 21Board's and the SDK's,
+    // and records whether the menu was turned off (defaultPrevented). Then a cancelable contextmenu at an element, as
+    // a right-click, a long press, Ctrl+click, or the menu key sends it: 'prevented' or 'menu'.
+    const RECORD = () => { if (!window.__menus) { window.__menus = []; window.addEventListener('contextmenu', e => window.__menus.push(e.defaultPrevented)); } return window.__menus.length; };
+    const menuAt = (doc, sel) => doc.evaluate(([sel, RECORD]) => {
+      new Function(RECORD)();
+      const el = document.querySelector(sel);
+      if (!el) return 'no ' + sel;
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, composed: true, button: 2, buttons: 2, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+      return window.__menus[window.__menus.length - 1] ? 'prevented' : 'menu';
+    }, [sel, `(${RECORD})()`]);
+    // A real right-click (the mouse's right button) at an element's middle: what the document it lands in recorded.
+    const rightClick = async (doc, sel, off = { x: 0, y: 0 }) => {
+      const n = await doc.evaluate(new Function(`return (${RECORD})()`));
+      const r = await doc.evaluate(sel => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, sel);
+      await page.mouse.click(off.x + r.x, off.y + r.y, { button: 'right' }); await page.waitForTimeout(250);
+      return doc.evaluate(n => window.__menus.length > n ? (window.__menus[window.__menus.length - 1] ? 'prevented' : 'menu') : 'none', n);
+    };
+    const frameBox = ik => page.locator(`.win[data-ikey="${ik}"] iframe`).boundingBox();
+
+    // ---- 1. Off on the board: the empty board and its hint, a window's title bar and grip, the Widget Picker, Settings,
+    // a dialog, Board history, a message, and a padlock.
+    ok(await menuAt(page, '#desk') === 'prevented', 'the empty board');
+    ok(await menuAt(page, '#empty-hint') === 'prevented', 'the empty board’s hint');
+    // ---- 2 (on the board). A real right-click, with the mouse's right button.
+    ok(await rightClick(page, '#desk') === 'prevented', 'a real right-click on the board');
+    const tm = await B(() => window.__board21.openWidget('timer')); await connected(page, tm);
+    await B(() => window.__board21.focusWin('timer:1')); await page.waitForTimeout(200);
+    ok(await menuAt(page, `.win[data-ikey="${tm}"] .win-title`) === 'prevented', 'a window’s title bar');
+    ok(await menuAt(page, `.win[data-ikey="${tm}"] .win-label`) === 'prevented', 'its name, which opens the window menu');
+    ok(await menuAt(page, `.win[data-ikey="${tm}"] .grip.se`) === 'prevented', 'a resize handle');
+    await page.click('.picker-btn.left'); await page.waitForSelector('#panel.open');
+    ok(await menuAt(page, '#panel.open [data-widget="timer"]') === 'prevented', 'a Widget Picker tile');
+    ok(await menuAt(page, '.picker-btn.left') === 'prevented', '▦');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await openSettings(page, ['advanced']);
+    ok(await menuAt(page, '#settings .row') === 'prevented', 'a Settings row');
+    ok(await menuAt(page, '#settings [data-act="devmode"]') === 'prevented', 'a switch in Settings');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await B(() => { window.__board21.pages.rename(); }); await page.waitForSelector('#modal.open input');
+    ok(await menuAt(page, '#modal.open .modal-card h3, #modal.open .modal-card') === 'prevented', 'a dialog (Rename this page…)');
+    ok(await menuAt(page, '#modal.open .btn') === 'prevented', 'a dialog’s button');
+    // ---- 3 (on the board). A text box keeps its menu: spell-check, Cut, Copy, and Paste.
+    ok(await menuAt(page, '#modal.open input') === 'menu', 'the Rename this page… box keeps its menu');
+    await page.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await page.waitForTimeout(200);
+    await B(() => window.__board21.historySheet.open('left')); await page.waitForSelector('#history:not([hidden])', { timeout: 5000 }).catch(() => {});
+    ok(await menuAt(page, '#history') === 'prevented', 'Board history');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await B(() => window.__board21.closeWin('timer:1')); await page.waitForSelector('#toasts .toast');
+    ok(await menuAt(page, '#toasts .toast') === 'prevented', 'a message');
+    await B(() => window.__board21.openWidget('timer')); await connected(page, 'timer:1');
+    await lockBoard(page, 'widgets');
+    ok(await menuAt(page, '.lock-pad.left') === 'prevented', 'a padlock');
+    await unlockBoard(page);
+
+    // ---- 1 (in widgets). Off inside every widget that uses the SDK: a Timer's digits, a Picture's picture, and the
+    // Name Picker's wheel.
+    ok(await menuAt(frameOf(page, 'timer:1'), '#display') === 'prevented', 'inside a Timer: its digits');
+    const pic = await B(() => window.__board21.openWidget('image')); await connected(page, pic);
+    await picOpen(page, picFile('pic.png', await drawPic(page, 320, 200)), pic);
+    ok(await menuAt(frameOf(page, pic), '#img') === 'prevented', 'inside a Picture: the picture');
+    const np = await B(() => window.__board21.openWidget('name-picker')); await connected(page, np);
+    const npf = frameOf(page, np);
+    // ---- 3 (in widgets). The Name Picker's list keeps its menu, then its wheel doesn't.
+    if (!await npf.locator('#list').isVisible()) { await page.click(`.win[data-ikey="${np}"] .win-label`); await page.locator('#menu [data-act="widget"]', { hasText: /names/i }).first().click(); await page.waitForTimeout(300); }
+    ok(await menuAt(npf, '#list') === 'menu', 'the Name Picker’s list keeps its menu');
+    await npf.locator('#list').fill('Ada\nBen\nCy\nDee'); await npf.locator('#done').click(); await page.waitForTimeout(600);
+    ok(await menuAt(npf, '.wheel') === 'prevented', 'inside the Name Picker: the wheel');
+    const nt = await B(() => window.__board21.openWidget('notes')); await connected(page, nt);
+    const ntf = frameOf(page, nt);
+    await fillNote(page.frameLocator(`.win[data-ikey="${nt}"] iframe`), 'Line up by the door');
+    ok(await menuAt(ntf, '#t') === 'menu', 'Notes’ text keeps its menu');
+    const vp = await B(() => window.__board21.openWidget('youtube-player')); await connected(page, vp);
+    ok(await menuAt(frameOf(page, vp), '#link') === 'menu', 'the Video Player’s link box keeps its menu');
+    ok(await menuAt(frameOf(page, vp), '#ask h1') === 'prevented', 'and the Video Player’s title doesn’t');
+
+    // ---- 2 (in widgets). A real right-click inside a widget, and in a text box there.
+    await B(() => window.__board21.focusWin('timer:1')); await page.waitForTimeout(300);
+    const tb = await frameBox('timer:1');
+    ok(await rightClick(frameOf(page, 'timer:1'), '#display', { x: tb.x, y: tb.y }) === 'prevented', 'a real right-click inside a Timer');
+    // (Notes shows its text with tappable links until tapped; tapped, it is a text box.)
+    const nb = await frameBox(nt);
+    await page.frameLocator(`.win[data-ikey="${nt}"] iframe`).locator('#view').click(); await page.waitForTimeout(300);
+    ok(await rightClick(ntf, '#t', { x: nb.x, y: nb.y }) === 'menu', 'a real right-click in Notes’ text, once tapped, keeps the menu');
+    ok(await B(() => window.__board21.state.wins.size) === 5 && !await page.locator('#modal.open').count(), 'and nothing else happens');
+
+    // ---- 4. Developer mode: the menu everywhere on the board at once, and in a widget opened after. A widget opened
+    // before stays as it was until it's opened again.
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(300);
+    ok(await menuAt(page, '#settings .row') === 'menu', 'Developer mode on: Settings has the menu at once');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    ok(await menuAt(page, '#desk') === 'menu' && await menuAt(page, '.win[data-ikey="timer:1"] .win-title') === 'menu', 'and so do the board and a title bar');
+    const t2 = await B(() => window.__board21.openWidget('timer', { fresh: true })); await connected(page, t2); await page.waitForTimeout(300);
+    ok(await menuAt(frameOf(page, t2), '#display') === 'menu', 'a Timer opened after has the menu');
+    ok(await menuAt(frameOf(page, 'timer:1'), '#display') === 'prevented', 'a Timer opened before stays as it was');
+    await B(() => window.__board21.closeWin('timer:1')); await page.waitForTimeout(300);
+    await B(() => window.__board21.openWidget('timer')); await connected(page, 'timer:1'); await page.waitForTimeout(300);
+    const reopened = await B(() => Array.from(window.__board21.state.wins.keys()).filter(k => k.startsWith('timer:')));
+    ok(reopened.length === 2 && (await Promise.all(reopened.map(k => menuAt(frameOf(page, k), '#display')))).every(m => m === 'menu'), `once opened again, it has the menu too (${reopened.join(', ')})`);
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(300);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    ok(await menuAt(page, '#desk') === 'prevented', 'Developer mode off: off again on the board at once');
+    await page.reload(); await boardUp(page); await page.waitForTimeout(800);
+    const after = await B(() => Array.from(window.__board21.state.wins.keys()).filter(k => k.startsWith('timer:')));
+    for (const k of after) await connected(page, k);
+    ok(after.length && (await Promise.all(after.map(k => menuAt(frameOf(page, k), '#display')))).every(m => m === 'prevented'), `and in its widgets after a reload (${after.join(', ')})`);
+
+    // ---- 5. The widget dev window, and a widget on its own: unchanged (the menu stays).
+    const dv = await ctx.newPage();   // (no error listener: the test widget throws on purpose, see DEV_WIDGET)
+    await dv.goto(BASE + '__dev/widget.html'); await dv.waitForTimeout(2500);
+    const kids = f => dv.frames().filter(x => x.parentFrame() === f), dboard = kids(dv.mainFrame())[0], dwidget = dboard && kids(dboard)[0];
+    ok(!!dwidget && await menuAt(dwidget, '#n') === 'menu', 'the widget dev window: the widget keeps the menu');
+    ok(!!dboard && await menuAt(dboard, '.win .win-title') === 'menu' && await menuAt(dv.mainFrame(), 'body') === 'menu', 'and so do its window and the page around it');
+    await dv.goto('about:blank'); await dv.goto(BASE + '__dev/widget.html#b21-bare'); await dv.waitForTimeout(1500);   // (a new load, not just a new #)
+    ok(await dv.evaluate(() => !!window.Board21 && Board21.context && Board21.context.standalone) && await menuAt(dv, '#n') === 'menu', 'a widget on its own keeps the menu');
+    await dv.close();
+
+    // ---- 6. Kiosk mode: off, as on the board.
+    const kp = await ctx.newPage(); kp.on('pageerror', e => errors.push('kiosk: ' + e.message));
+    await kp.goto(BASE + '?kiosk=yes'); await boardUp(kp);
+    ok(await menuAt(kp, '#desk') === 'prevented', 'kiosk mode: the board');
+    const kt = await kp.evaluate(() => Array.from(window.__board21.state.wins.keys()).find(k => k.startsWith('timer:')) || window.__board21.openWidget('timer'));
+    await connected(kp, kt);
+    ok(await menuAt(frameOf(kp, kt), '#display') === 'prevented', 'kiosk mode: inside a Timer');
+    await kp.close();
+
+    // WIDGET-SDK: a widget's own menu calls preventDefault(), or in Developer mode and the dev window, where the SDK
+    // leaves the browser's menu on, both show.
+    const sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(sdkDoc.includes('To show a menu of your own, listen for `contextmenu` and call `preventDefault()`.'), 'WIDGET-SDK: a menu of your own calls preventDefault()');
+
+    await page.screenshot({ path: OUT + 'right-click-board.png' });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
 ];
 
 (async () => {

@@ -50,7 +50,7 @@ Keys (`<b>` = board id, one per page; `<n>` = instance number):
 
 Widget ids are limited to `a-z 0-9 -`, so keys can be split on `:`.
 
-The board id is in every key. Each **page** is a board of its own (`board:<b>`, `inst:<b>:…` and so on).
+The board id is in every key. Each **page** is a board of its own (`board:<b>`, `inst:<b>:…`, and so on).
 `settings.activeBoard` is the page every tab on the device shows, and `settings.boards` is the pages' order.
 Page ids are never reused. `settings.lastBoard` is the highest one used, and a new page also skips any id that
 still has records or Board history. A deleted page waits in `settings.deletedBoards`, records and all, while its
@@ -90,7 +90,7 @@ device only. Never synced or exported, and not in Board history.
   accentColor: "#8040c0",  // from 2026.11.18-2: the accent chosen, one of the six or a custom "#rrggbb" (lowercase);
                            //   "" before any. It shows while accent goes with it: itself, or "blue" for a custom color.
                            //   Otherwise a release before 2026.11.18-2 chose accent since, and accent shows.
-  themeAt: 1794460416170,  // when the theme, the accent and the text style were last chosen on this device (ms; set by
+  themeAt: 1794460416170,  // when the theme, the accent, and the text style were last chosen on this device (ms; set by
   accentAt: 1794460410000, //   a change made here, never by Board Sync): of two choices made apart, the later wins on
   lettersAt: 1794460420000,//   every device (lettersAt from 2026.11.17-2, accentColorAt from 2026.11.18-2)
   accentColorAt: 1794460410000,
@@ -109,14 +109,14 @@ device only. Never synced or exported, and not in Board history.
 }
 ```
 
-Only `theme`, the accent and `letters`, the text style, go into exported files, and so into the device files in the
+Only `theme`, the accent, and `letters`, the text style, go into exported files, and so into the device files in the
 Google Drive folder. Before 2026.11.17-2, `letters` stayed on the device. An export's `accent` is the accent shown:
 one of the six, or a custom color. A device file has `accent` and `accentColor` as they are stored. With Board Sync
 they are the board's, on every device linked to the folder, and the later choice wins, as for a page's name (see
 `link:sync.style` below). *Import › Replace this page* takes the file's values as a choice made here, so they sync.
 A file without `letters` leaves the text style as it is. Its Undo puts back the values it replaced, again as a
 choice made here, so that syncs too. The other ways to import, and going back in Board history, never change them.
-`locked`, `awake` and `clock` belong to this device. They are never in exports, Board history or the Google Drive
+`locked`, `awake`, and `clock` belong to this device. They are never in exports, Board history, or the Google Drive
 folder, and an import leaves them as they are.
 
 Before 2026.11.18-18, `locked` was a switch in Settings, `true` or `false`, that kept windows in place. A device
@@ -127,7 +127,7 @@ Older versions had a third choice for `awake`, `"hours"` (school hours, Monday t
 `awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"`, since the teacher wanted the screen on in class. It drops
 `awakeFrom` and `awakeTo` when it reads the record, so the next save of the settings leaves them out.
 
-Before 2026.11.18-1, `clock` was in Settings → Appearance: `"off"`, `"time"` or `"date"`, the default. 21Board
+Before 2026.11.18-1, `clock` was in Settings → Appearance: `"off"`, `"time"`, or `"date"`, the default. 21Board
 reads `"date"` as `"auto"`, because most devices saved it without anyone choosing it. It reads `"time"` as `"on"`,
 and any value it doesn't know as `"auto"`. The record keeps its old value until someone changes Clock in the corner.
 An older release reads `"on"` and `"auto"` as its own default, Time and date.
@@ -168,7 +168,7 @@ Mint `#dcfce7`, Blush `#fce7f3`, Lavender `#ede9fe`, Slate `#334155`, Chalkboard
 with either reads as the new Paper `#f3ede1`, which 21Board writes back the next time it saves the board.
 
 `pattern` is kept but not shown. Settings no longer offers patterns, and the board draws none. It is still read,
-checked, saved, exported and imported as before, so each board keeps its choice for an older 21Board, which shows
+checked, saved, exported, and imported as before, so each board keeps its choice for an older 21Board, which shows
 patterns, and for a later one that brings them back. `"handwriting"` (rows for young writers: solid top and base lines, a dashed
 midline) and `"graph"` (graph paper: fine squares, a stronger line every 5) were added later; an older 21Board shows
 no pattern for them, and an import there turns them into `"none"`. Any other value reads as `"none"`.
@@ -195,7 +195,7 @@ by itself.
 }
 ```
 
-### `link:folder`, `link:state`, `link:sync` and `link:mine-<uid>` (this device only)
+### `link:folder`, `link:state`, `link:sync`, and `link:mine-<uid>` (this device only)
 
 Board Sync's link to a shared Google Drive folder, and its bookkeeping (see README, "Board Sync"). Never exported,
 never in Board history. `link:folder` holds the folder handle Chrome gives 21Board (stored as is, not as JSON).
@@ -230,7 +230,7 @@ fingerprints and versions of the board's parts, never the board's values:
   peers: { "<dev>": { seq, seen, changedAt, name, file, at, left, missingSince, folder } },   // every device seen in the folder; changedAt and missingSince are this device's clock
   last: { dev, name, at }, gcAt, left: null,       // the last merge that changed something here; Unlink or Erase's last write
   dropped: { "<page uid>" | "<page uid> <wid>": { vv, at } },   // deletions collected here (gc) in the last 30 days
-  style: { theme: { h, v: [by, {dev: n}, t] }, accent: { h, v }, letters: { h, v }, accentColor: { h, v } } }   // the board's theme, accent and text style: their parts (below)
+  style: { theme: { h, v: [by, {dev: n}, t] }, accent: { h, v }, letters: { h, v }, accentColor: { h, v } } }   // the board's theme, accent, and text style: their parts (below)
 
 // link:mine-<page uid>: the page's parts and its windows' parts, each { h: fingerprint, v: [by, {dev: n}, t], rev }
 { uid, b, p: { exists, name, look, size, pos, photo, photoLook }, w: { "<wid>": { ikey, p: { exists, rect, open, data, conf, label } } },
@@ -241,7 +241,7 @@ fingerprints and versions of the board's parts, never the board's values:
 A part's entry may also hold:
 
 - `pending`: content versions kept beside the main one, with their values, until a copy is made.
-- `applied`, `prevH`, `prevV` and `val`: what a merge wrote to it, the fingerprint and version it had before, and
+- `applied`, `prevH`, `prevV`, and `val`: what a merge wrote to it, the fingerprint and version it had before, and
   the value written. They are kept until a change based on that write is written, and kept by a later merge that
   writes another part of the same record (see "Keeping several open copies in sync").
 - `prevHs`: when merges wrote the part again before any change here was based on them, the fingerprints it had in
@@ -263,11 +263,11 @@ a window tombstone that `keepW` names is kept as long as the page's. Neither is 
 tombstone's `seq` is the first write of this device's file that carried it, and `seen` when this device first held
 it.
 
-The parts, versions and rules belong to the merge (`board.js` section 13d, the region `Board Sync merge`). A lost
+The parts, versions, and rules belong to the merge (`board.js` section 13d, the region `Board Sync merge`). A lost
 ledger (the browser threw the database away) is rebuilt from this device's own file in the folder; with no file
 there, the folder's board is joined as on a first set-up.
 
-**The theme, accent and text style** (`settings.theme`, `settings.accent` and `settings.accentColor`,
+**The theme, accent, and text style** (`settings.theme`, `settings.accent` and `settings.accentColor`,
 `settings.letters`) are four more parts, of the board as a whole, in `link:sync.style` (the text style from
 2026.11.17-2, `accentColor` from 2026.11.18-2): `h` is the fingerprint of the value this device has, `v` its version.
 They take the later change, as a page's name does, with no copy and no Board history version. A change made here is a
@@ -276,12 +276,12 @@ change stamped with it, so that two made apart (one while unlinked, say) resolve
 entry with no `v` is a value this device had before it synced with this folder: joining it or switching to it (the
 folder's then applies), or a ledger from before 2026.11.16-4, or from before 2026.11.17-2 for the text style (each
 device keeps its own until one is chosen on any device, and takes the folder's if one was). It is no change, and
-never replaces another device's. Nor is a value never chosen here (no `themeAt`, `accentAt` or `lettersAt`: the
-default, a value from before 2026.11.16-4 or a text style from before 2026.11.17-2) that differs from its entry: one
+never replaces another device's. Nor is a value never chosen here (no `themeAt`, `accentAt`, or `lettersAt`: the
+default, a value from before 2026.11.16-4, or a text style from before 2026.11.17-2) that differs from its entry: one
 only received, which a ledger rebuilt from this device's file, written before its last merge, doesn't have yet. A
 ledger from before then, which has no entry for it at all, takes a value chosen here since (on the newer release,
 before its first round: while Chrome asks to reconnect the folder after the update, say) as a change, at its time.
-Linking an empty folder (`seed`) makes this device's a version: one chosen here at its `themeAt`, `accentAt` or
+Linking an empty folder (`seed`) makes this device's a version: one chosen here at its `themeAt`, `accentAt`, or
 `lettersAt` (not at the counters this device brings from another folder, which say nothing about when it was chosen),
 one never chosen here at the lowest counter there is, 1, with `t` 0, so that when two or more devices set up the same
 folder at once, before any has another's file, a choice made on one of them wins on all (of two, the later; none
@@ -353,7 +353,7 @@ file. See "The .21board file".
           "merged": { "<dev>": <seq> },                                        // the newest seq of each other device this file includes
           "gone": { "pages": [{ "uid", "exists", "cover" }], "windows": [{ "page", "wid", "exists", "cover" }] },   // deletions
           "left": null | { "at": … } | { "at": …, "erased": true },              // Unlink, Erase everything
-          "style": { "theme": [by, {dev: n}, t], "accent": [ … ], "letters": [ … ], "accentColor": [ … ] },   // the versions of the top-level theme, accent and text style (one with none says nothing about it)
+          "style": { "theme": [by, {dev: n}, t], "accent": [ … ], "letters": [ … ], "accentColor": [ … ] },   // the versions of the top-level theme, accent, and text style (one with none says nothing about it)
           "sum": "9be0c3…" }                                                   // the first 32 hex digits of SHA-256 of the file with "sum": ""
 ```
 
@@ -362,7 +362,7 @@ A device file is merged only if:
 - it parses;
 - `sync.v` is 1 or 2. A newer one shows *Update 21Board*. From 2026.11.18-15 every device file is 2, since it may
   name pictures in `Photos/`. An earlier release merges only 1, so it shows *Update 21Board*, merges nothing from
-  such a file and never tidies `Photos/` meanwhile. 21Board still reads files from earlier releases, pictures and
+  such a file, and never tidies `Photos/` meanwhile. 21Board still reads files from earlier releases, pictures and
   all;
 - its parts have the expected shapes (a malformed page or window is skipped, never taken for a deletion);
 - its checksum matches (a file cut short, or mixing old and new bytes, can still parse);
@@ -376,21 +376,21 @@ it empty. A file with this device's key that this device didn't write (a copied 
 installs take new ids. Another device's file is deleted only once it says it
 left, 60 days after, and everything in it is merged here, and only as it was read: one whose size or date changed
 since (a device that linked again, say) is read again first. The last write before *Change…* (to the folder it
-leaves), *Unlink* or *Erase everything*, the one with `left`, also carries the pages deleted here whose Undo is
+leaves), *Unlink*, or *Erase everything*, the one with `left`, also carries the pages deleted here whose Undo is
 still offered, as deletions: otherwise the folder left would never hear of them (*Change…* starts a new ledger for
 the next folder, *Erase everything* clears it), or only once this device links it again (*Unlink*).
 
 **`Photos/`**: each background photo and each picture in a window's content once, as the picture file itself (its
 bytes, not base64), named `<the first 32 hex digits of the SHA-256 of its bytes>.jpg` (or `.png`, `.webp`, and for a
 window's picture `.gif` or `.avif` too). Pages and windows with the same picture share the file. An animated GIF,
-PNG, WebP or AVIF is the same bytes, so it still moves. A write puts each picture there first if it isn't there
+PNG, WebP, or AVIF is the same bytes, so it still moves. A write puts each picture there first if it isn't there
 whole (and again if it is over 3 days old and this device has just started naming it, so tidying can't take it); if
 that fails, the write fails and no file names it. A picture the last write named (`link:sync.pics`) isn't looked at
 again, so a write for typing in a note touches nothing in `Photos/`. The fingerprint is worked out once per picture.
 A device reads a picture another device's file names when that content wins, from `Photos/` or a `Photos (n)`
 beside it. The file is checked as an imported photo is: a plain fingerprint name (no paths), its type by its first
 bytes, its bytes' SHA-256 matching its name (so half a file still arriving isn't used), under 16e6 characters as a
-data URL, and it must open. A background photo is a JPEG, PNG or WebP of about 6.5 MP at most. A window's picture
+data URL, and it must open. A background photo is a JPEG, PNG, or WebP of about 6.5 MP at most. A window's picture
 must be the type its name says, at most 50 MP, and at most 5 MB if it moves. Whether it moves, and its size in pixels
 where its header shows it, are read before it is decoded. The content made with it must have the
 fingerprint the file gives (`vh.data`). Until it can be used, the page keeps its photo and the window keeps what it
@@ -402,8 +402,8 @@ good is read again 30 seconds later, or once its size or date changes.
 looks at least an hour apart (`seen`; a note over 2 days old is taken afresh). So a copy made before a picture was
 removed still opens whole. A look happens at most once in 20 hours (`at`), after a full round, not while any device
 file or history copy in the folder can't be read or no device file was found, and not in the first `LINK_ARRIVE_MS`
-(10 minutes) after 21Board opens, the device wakes or the folder comes back. A copy never changes, so each device
-reads each one once and keeps what it names in `copies`, by its name, size and date. A `formatVersion: 1` copy names
+(10 minutes) after 21Board opens, the device wakes, or the folder comes back. A copy never changes, so each device
+reads each one once and keeps what it names in `copies`, by its name, size, and date. A `formatVersion: 1` copy names
 nothing, so only its first bytes are read. Every copy from before 2026.11.18-15 is one. A picture this device's file
 names that is missing from `Photos/` is put again at the next round. Other files in `Photos/` are left alone.
 
@@ -422,7 +422,7 @@ choices, so picking a color hides the photo and picking *Photo* shows it again (
 the top-left) is the part that stays in view when cropped (the CSS `background-position`); `fade` (0–0.7)
 blends it toward the board color. Everything about the photo is in these two records, none of it in
 `board:<b>`; without these records the board shows its color. With Board Sync the photo is part of the page, like
-its color: putting one on, changing how it is shown or removing it reaches the other devices (the picture itself
+its color: putting one on, changing how it is shown, or removing it reaches the other devices (the picture itself
 goes through the folder's `Photos/`).
 
 Chosen in Settings → Appearance → Background → *Photo…*, then shrunk on the device (long side at most 2560 px,
@@ -451,7 +451,7 @@ and let each device set its own photo. The board still works without it.
 ```
 
 `wid` (`^[\w.@~-]{1,120}$`) is the window's identity across devices: `<widgetId>@<createdAt>` when it is made, with
-`.2`, `.3`… if that is taken on the page. Reopening a closed window, going back in Board history, *Put back* and
+`.2`, `.3`… if that is taken on the page. Reopening a closed window, going back in Board history, *Put back*, and
 Import › *Replace* keep it; Import › *Add* gives each window a new one (and a `createdAt` of its own). A window
 without one (from before) gets its default the first time Board Sync looks at the board; of two windows with the
 same `wid`, the higher instance number gets a new one. `z` is this device's own: Board Sync never takes another
@@ -460,7 +460,7 @@ device's.
 `copyOf` marks a copy that Board Sync kept when the same window's content was changed on two devices at once: `wid`
 is the original window's, `from` the device whose version this is (its Board Sync id), `name` that device's name,
 `at` when that version was made. Its title bar shows "Copy · 9:41 AM". It becomes `null` once the copy is moved,
-resized or changed, and the copy is then an ordinary window.
+resized, or changed, and the copy is then an ordinary window.
 
 `rect` is where the teacher *put* the window, in **layout space** (below). It only changes when
 the window is moved or resized, never because the screen changed.
@@ -477,8 +477,8 @@ zoom factor, so the board looks the same everywhere:
   arrangement. Pointer movement is divided by the zoom, so drags follow the finger.
 - **Fill** (`shape: "free"`; Settings → Appearance → Board shape): the board is the whole window at zoom = `scale`. Windows that don't
   fit a smaller window are moved inside when drawn (their saved rect is kept).
-- **Scale** (`scale`): how big windows, title bars and menus are, as on a 1920 × 1080 screen (at 1.0, a
-  window's CSS px are screen px there). Changing it multiplies every rect's position, width and content
+- **Scale** (`scale`): how big windows, title bars, and menus are, as on a 1920 × 1080 screen (at 1.0, a
+  window's CSS px are screen px there). Changing it multiplies every rect's position, width, and content
   height by `old/new` (the title bar stays 40 px), so windows keep their place and content area on the
   board, their contents are drawn bigger or smaller, and fixed-shape widgets keep their exact shape. Board chrome (menus,
   the Widget Picker, Settings, toasts, dialogs) is drawn at this scale too.
@@ -495,14 +495,14 @@ Exports write the board's `scale` and `shape`, and the space the rects are in as
 Any JSON value the widget saved. Each widget sets its own format; document it at the top of the
 widget's script. No record means nothing saved (`null` in the SDK).
 
-The Picture widget (`image`) saves `{ src, w, h, name, bytes }`. `src` is a PNG, JPEG, GIF, WebP or AVIF `data:`
+The Picture widget (`image`) saves `{ src, w, h, name, bytes }`. `src` is a PNG, JPEG, GIF, WebP, or AVIF `data:`
 URL, its type checked by its bytes. `w` and `h` are its size in pixels, `name` the file's name, `""` when pasted, and
 `bytes` its size. `{ src: null }` is no picture, after *Remove picture*. Its config is `{ fit: "whole" | "fill" }`.
 In a Board Sync device file or a Board history copy in the folder, a `src` of 32,768 characters or more is
 `{ "b21photo": … }`, naming its picture in `Photos/`. A smaller one stays in the file. See "The .21board file".
 
 The Calculator (`calculator`) saves its engine's `serialize()`: `{ v: 2, expr, mode, pct?, closed?, frac?, history }`.
-`expr` is the problem on the canvas, as its keys were pressed. `mode` is `"edit"`, `"done"` or `"error"`, `pct` the
+`expr` is the problem on the canvas, as its keys were pressed. `mode` is `"edit"`, `"done"`, or `"error"`, `pct` the
 percent rule it was worked out with, `closed` the number of `)` and box ends that = added, and `frac: true` that ⇄
 shows its answer in the other form. `history` is the last 20 problems worked out, `{ expr, pct }`, newest first. After
 an =, the first is the one on the canvas. In `expr`, a number is `{ n: "12.5" }`, with `neg: true` after ±, and an
@@ -528,7 +528,7 @@ with the board's records and never exported. Three object stores:
 
 | Store | Key | Value |
 | --- | --- | --- |
-| `meta` | `id` = `<b>:<at, 13 digits>:<tab id>` | what a version looks like (below), for lists, previews and comparisons |
+| `meta` | `id` = `<b>:<at, 13 digits>:<tab id>` | what a version looks like (below), for lists, previews, and comparisons |
 | `body` | `id` | `{ id, exp }`: a full export of the board (as in a `.21board` file) with `instances[].createdAt`, `snapshot: {at, kind, label}`, and `media: {ref, look}` instead of the photo |
 | `photo` | `key` = `<addedAt>-<bytes>-<w>x<h>`, or `pic-<hash>-<length>` for a window's picture | each background photo once: `{ key, data, w, h, bytes, name, addedAt, thumb, lastUsed }`. Also each picture in a window's content once (below) |
 
@@ -561,7 +561,7 @@ A picture stays while any version names it. A version of a page with pictures co
 them, usually a few KB.
 
 `sig` is the content fingerprint, so identical versions aren't saved twice. Window stacking order doesn't count,
-nor do the theme, accent and text style, which going back never changes. Versions saved before Board Sync merged
+nor do the theme, accent, and text style, which going back never changes. Versions saved before Board Sync merged
 boards may have `reason: "load"` and `link: "sent" | "loaded"`; `link` is ignored now. While the board is linked to
 a folder, versions saved when 21Board opens aren't copied to it unless saved by hand. They may hold only work merged
 from other devices, which those devices copy themselves. Retention is in README, "Board history". Settings for this
@@ -569,7 +569,7 @@ device only: `historyEvery` (minutes, 0 = off; default 10) and `historyFolder` (
 
 **Folder copies:** `<shared folder>/Board history/<board name> <YYYY-MM-DD> <HH.MM>[ saved] (<device>) [<uid6>-<dev4>].21board`
 (local time; `uid6` and `dev4` are the first characters of the board's uid and the device id). A valid `.21board`
-file: the version's body plus `history: {at, kind, label, by, from}`, without theme, accent, text style or the photo.
+file: the version's body plus `history: {at, kind, label, by, from}`, without theme, accent, text style, or the photo.
 Its windows' pictures are named in `Photos/` (put there first), and it is then `formatVersion: 2`.
 Each device thins only files with its own `dev4` (by name only); files ending in ` saved` are never removed.
 
@@ -579,10 +579,10 @@ Each device thins only files with its own `dev4` (by name only); files ending in
   (`timer:1`, then `timer:2`, …).
 - **Closing** a window only sets `open: false`. Its `data`/`conf` stay.
 - Opening the widget again reopens the **lowest-numbered closed instance**, restoring its position,
-  size and content. With `timer:1` and `timer:2` both closed: first open → `timer:1`,
+  size, and content. With `timer:1` and `timer:2` both closed: first open → `timer:1`,
   second → `timer:2`, third → new `timer:3`.
 - **Reset** (window menu) deletes that instance's `data` and `conf` and restores the default size.
-- **Delete** (Settings → This page → Windows) removes the `inst`, `data` and `conf` records.
+- **Delete** (Settings → This page → Windows) removes the `inst`, `data`, and `conf` records.
 - Records for a widget that isn't installed are kept (and exported) but not shown.
 - A widget marked `single` in the registry, as the district apps are, has one window. Opening it while it is
   open brings that window forward instead of creating a second instance. *Add to this page* leaves out the
@@ -602,7 +602,7 @@ Several tabs or windows of 21Board can be open on one device. All show the same 
    `BroadcastChannel("21board-sync")` (or, in older browsers, writes it to
    `localStorage["21board-sync"]` to fire a `storage` event, as 21Sketch does).
 3. Other tabs re-read just those keys and apply any record whose `rev` is newer than the one they
-   last saw. Windows move, open or close; widgets get `data` / `config` events.
+   last saw. Windows move, open, or close; widgets get `data` / `config` events.
 4. While someone is dragging or resizing, incoming changes are held and applied when the gesture
    ends, so a window never jumps out from under a finger.
 5. When a tab becomes visible again (or is restored from the back/forward cache), it re-reads
@@ -628,7 +628,7 @@ at the board finds both and keeps both. Each record a tab writes also says what 
 | `u` | `1`: written by the Undo of a merge, so that other devices can say "The laptop undid …". |
 
 `settings` is written as a **patch**: only the keys a change gave are put over the stored record, inside the
-transaction (and the keys an older 21Board used, `devWidgets`, `awakeFrom` and `awakeTo`, are dropped), and
+transaction (and the keys an older 21Board used, `devWidgets`, `awakeFrom`, and `awakeTo`, are dropped), and
 `deletedBoards`/`deletedAt` change only by adding or removing a page, so a tab with an old copy of the settings can't
 write its old lists (or `boards`) over newer ones. For the same reason a settings patch still waiting in a tab is
 never dropped when another tab's settings arrive: the tab shows them with its patch over them, then writes it.
@@ -641,12 +641,12 @@ clash, both kept, never an overwrite.
 
 - **Nothing is written before the stored board has been read.** At start-up the database is opened (tried up
   to three times, 10 seconds at most each) and every record is read (tried twice; then one by one, so a single
-  unreadable `media`, `data` or `conf` record is left out, and left as it is, instead of hiding the board).
+  unreadable `media`, `data`, or `conf` record is left out, and left as it is, instead of hiding the board).
   If that fails, or start-up throws, the tab shows a message with *Try again* and stays read-only.
 - **A failed write is kept.** The changes stay queued in the tab (a newer change to the same record wins) and
   are tried again with the next change, after 5 seconds, then every 30. Meanwhile the board shows *Not saved*,
   and Export includes the queued changes. An error that means "out of space" (`QuotaExceededError`, or a
-  message about quota, no space or a failed blob write) first makes room in Board history, a little at a
+  message about quota, no space, or a failed blob write) first makes room in Board history, a little at a
   time (the photos kept with older versions, then the 10 oldest versions; see README, "Board history"), and
   retries after each step, up to 4 times. If the transaction still fails, its records are written one at a
   time, so only the ones that can't be stored stay queued.
@@ -722,15 +722,15 @@ holding it, so it stays small (a page with no photo has no `media`):
 }
 ```
 
-`file` must be exactly 32 lowercase hex digits and `.jpg`, `.png` or `.webp`; anything else (a path, `..`, another
+`file` must be exactly 32 lowercase hex digits and `.jpg`, `.png`, or `.webp`; anything else (a path, `..`, another
 name) is read as saying nothing about the photo, and the device keeps its own. Opened with Import, such a file
 gets the photo from `Photos/` in the folder this device is linked to, or from this device if it has it.
 Otherwise the device keeps its own. To give a board to someone, use Export, since the board files in the folder
-don't hold their photos. Exports, backups and Board history work as before, with the photo inside or left out.
+don't hold their photos. Exports, backups, and Board history work as before, with the photo inside or left out.
 
 **Pictures in windows.** A device file, and a Board history copy in the folder, names each picture in a window's
 content in `Photos/` instead of holding it. A picture is a base64 `data:` URL in a top-level field of `data`, at least
-32,768 and under 16e6 characters long. Its first bytes make it a PNG, JPEG, GIF, WebP or AVIF. Its base64 is
+32,768 and under 16e6 characters long. Its first bytes make it a PNG, JPEG, GIF, WebP, or AVIF. Its base64 is
 standard, so the picture read back is the same string. Board history keeps each picture of 32,768 characters or more
 once, too. The rule holds for every widget. Anything else stays in the file, a small icon too.
 
@@ -748,12 +748,12 @@ Opened with Import, or with *Go back* in Board history, each picture comes from 
 refuses such a file ("made by a newer version of 21Board"). An export always holds its pictures.
 
 Optional, ignored by older readers: `instances[].createdAt` (which window is which, kept by Board history),
-`history: {at, kind, label, by, from}` (a Board history copy), `media.ref` (a photo kept in Board history) and
+`history: {at, kind, label, by, from}` (a Board history copy), `media.ref` (a photo kept in Board history), and
 `pages` (below).
 
 ### Every page in one file
 
-*Export → All pages*, *Back up now* and the backup reminders save every page. With one page that is exactly the
+*Export → All pages*, *Back up now*, and the backup reminders save every page. With one page that is exactly the
 file above. With more, it is **still `formatVersion: 1`**: the file is the page that was shown, as above, plus
 `pages`, every page in order, with `{ "main": true }` in that page's place:
 
@@ -777,16 +777,16 @@ the file is made anyway, the teacher is told which pages are incomplete, and it 
 Importing a one-page file offers three choices:
 
 - **Open as a new page**, the suggested choice. The file becomes a new page right after the page shown, with the
-  file's name, background, photo, size and shape, but not its theme, accent color or text style. It keeps the file's `board.uid`
+  file's name, background, photo, size, and shape, but not its theme, accent color, or text style. It keeps the file's `board.uid`
   unless a page on this device already has it (then it gets a new one), so the same file opened on two linked
   devices is one page. Undo takes the page away again.
 - **Replace this page** removes this page's windows and content, then loads the file, with its board name,
-  background, theme, accent color and text style. The page keeps its `board.uid`, whatever board the file was.
-  With Board Sync, the new content reaches the same page on the other devices as edits. The theme, accent color and
+  background, theme, accent color, and text style. The page keeps its `board.uid`, whatever board the file was.
+  With Board Sync, the new content reaches the same page on the other devices as edits. The theme, accent color, and
   text style count as a choice made on this device, so they reach the other devices too. The dialog says so when
   they differ from this board's. Its Undo goes back to the version saved before, and chooses again the theme,
-  accent color and text style it replaced.
-- **Add to this page** keeps everything here, including the theme, accent color and text style, and adds the
+  accent color, and text style it replaced.
+- **Add to this page** keeps everything here, including the theme, accent color, and text style, and adds the
   file's windows. Each gets the next free instance number for its widget, and windows are nudged into free
   space. Each added window gets a new `wid` and a `createdAt` of its own; *Replace this page* keeps the file's
   `wid`s (or makes the default from their `createdAt`), so a restored backup of a page is the same windows on every
@@ -800,7 +800,7 @@ Importing an all-pages file offers two choices:
   though the pages they replace have it, so a restored backup is the same boards in the Google Drive folder.
 
 Either way it is all or nothing. If a page can't be added, those that were go again and this device's pages stay.
-The theme, accent color and text style stay as they are.
+The theme, accent color, and text style stay as they are.
 
 *Replace this page* keeps this page's background photo unless the file brings one. It takes the file's `scale` and
 `shape`, so the board looks exactly as it did, zoomed to fit this screen. A file from before board sizes existed is

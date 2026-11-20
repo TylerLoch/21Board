@@ -1,11 +1,11 @@
 # Future upgrades
 
 Major changes kept for later. None is scheduled. Each needs its own design before work starts, and each
-touches the SDK, Board Sync or every widget, so it's bigger than one widget's release.
+touches the SDK, Board Sync, or every widget, so it's bigger than one widget's release.
 
 ## Storage shared by a widget's windows
 
-A widget's content belongs to one window (`Board21.save`). It syncs, exports and goes back in Board history
+A widget's content belongs to one window (`Board21.save`). It syncs, exports, and goes back in Board history
 with that window. A new window starts empty. Some lists would be better shared by all of a widget's windows.
 The first is the Video Player's History, its last 5 videos, which each window now keeps for itself.
 
@@ -37,7 +37,7 @@ What it would involve:
 - Finding one again: This page › Windows sorted or searched by name, or a widget's saved copies offered from its
   tile in the Widget Picker.
 - Where it is kept: with the window, not its content. That means deciding:
-  - whether it goes into exports, blank templates and Board history;
+  - whether it goes into exports, blank templates, and Board history;
   - how Board Sync merges a copy renamed on two devices;
   - what Reset does to it.
 - The SDK: whether a widget can suggest a name or read the one it was given, which means a new call and protocol
@@ -54,5 +54,5 @@ What it would involve:
   style.
 - Dates and times in the language's own form.
 - The SDK passing the language to widgets, as it does the theme. The built-in widgets translated.
-- The README, the widget guide and the AI prompt telling widget authors how.
+- The README, the widget guide, and the AI prompt telling widget authors how.
 - Tests in each language. Right-to-left languages would also need the layout mirrored.

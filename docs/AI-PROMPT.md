@@ -1,6 +1,6 @@
 # Building a widget with an AI tool
 
-Make your own 21Board widget by describing it to an AI tool such as Gemini Canvas, ChatGPT or Claude.
+Make your own 21Board widget by describing it to an AI tool such as Gemini Canvas, ChatGPT, or Claude.
 Paste one of the prompts below, then describe your widget. The tool writes one HTML file, and its preview
 shows the widget in a real 21Board window, the **dev window**.
 
@@ -17,7 +17,7 @@ shows the widget in a real 21Board window, the **dev window**.
 2. **Paste the prompt**, using the copy button at the top right of its box. Below it, **describe your
    widget** (see the next section) and send it.
 3. **Look at the preview.** It shows the widget in the dev window: the real 21Board window with its title
-   bar, resize handles and window menu (⌄). Try it the way a class would:
+   bar, resize handles, and window menu (⌄). Try it the way a class would:
    - drag a corner to make the window as small as it goes, then *Fill the board* from the window menu;
    - switch *Light* to *Dark* in the dev window's toolbar, and try **−** / **+** (the size of windows and
      menus);
@@ -32,7 +32,7 @@ shows the widget in a real 21Board window, the **dev window**.
    button. In 21Board, turn on **Settings → Advanced → Developer mode**. Under **Test a widget**, tap
    **Upload file…** and pick the file. This works on Chromebooks, Chrome on Windows and Mac, and iPad Safari.
    The widget opens in a window named *Your Widget (test)*. To see a new version, upload the file again.
-   - A test widget stays **on that device only**. It isn't in exports, templates, Board history or the
+   - A test widget stays **on that device only**. It isn't in exports, templates, Board history, or the
      Google Drive folder. Another device shows *Widget not installed* for it.
    - To share a widget with everyone, send it to the 21Board team. In the dev window, ⋯ ▸
      **Copy for 21Board** copies the file and the entry they need.
@@ -82,36 +82,36 @@ answering.
 # Build a 21Board widget
 
 Write a **21Board widget**: one small web page that runs in a window on a classroom smartboard,
-Chromebook or iPad, for K–8 teachers and students. 21Board gives it a window the teacher can move,
-resize and close, saves its data on the device and keeps every open copy of the board in sync. Build
+Chromebook, or iPad, for K–8 teachers and students. 21Board gives it a window the teacher can move,
+resize, and close, saves its data on the device, and keeps every open copy of the board in sync. Build
 the widget I describe after this prompt. If I haven't described one, ask me what it should do.
 
 ## Hard rules
 
-- We need **one plain HTML file** (no React, JSX, TypeScript, libraries or build step). `<!DOCTYPE html>`
+- We need **one plain HTML file** (no React, JSX, TypeScript, libraries, or build step). `<!DOCTYPE html>`
   is the very first line, then `<html lang="en">`.
 - In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly
-  `<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>` (no async, defer or type=module).
+  `<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>` (no async, defer, or type=module).
 - That address is public, and the SDK works in your preview. There it runs the widget in a real 21Board
-  window, with everything the board gives it. Use `Board21` directly. Write no mock, stub or fallback for
+  window, with everything the board gives it. Use `Board21` directly. Write no mock, stub, or fallback for
   it, and don't check that it loaded. If your preview says `Board21 is not defined`, it blocked the SDK.
   Tell me in one line and leave the code as it is.
 - The next line is a manifest:
   `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
   Replace "my-widget" and "My Widget" with my widget's name.
-  - The id is lowercase letters, digits and dashes. Strict JSON: no comments, no trailing commas.
+  - The id is lowercase letters, digits, and dashes. Strict JSON: no comments, no trailing commas.
   - You may add `"description"` (one short sentence for teachers) and `"color"` (a `#hex` for its tile),
     and change the `window` sizes and keys to suit the widget (see *Window size*).
 - Then `<meta name="viewport" content="width=device-width, initial-scale=1">`, a `<title>` with the
   widget's name, one `<style>`, the markup, and one `<script>` at the end of `<body>`.
 - **No network at all**: no Tailwind or other CDNs, no web fonts, no external images, no `fetch`. Draw
-  pictures with inline SVG, CSS or emoji. Write no `http://` or `https://` address anywhere in your own
+  pictures with inline SVG, CSS, or emoji. Write no `http://` or `https://` address anywhere in your own
   script code, not even the SVG namespace (inline `<svg>` markup doesn't need `xmlns`; for
   `createElementNS` take it from an `<svg>` in the page: `svgEl.namespaceURI`).
-- **No storage of your own**: never use localStorage, sessionStorage, IndexedDB or cookies, and don't
+- **No storage of your own**: never use localStorage, sessionStorage, IndexedDB, or cookies, and don't
   name them in comments either (the checks look for the words). Save only with `Board21.save` /
   `Board21.saveConfig`.
-- No `alert()`, `confirm()` or `prompt()` (nor functions of your own with those names): show messages and
+- No `alert()`, `confirm()`, or `prompt()` (nor functions of your own with those names): show messages and
   "Are you sure?" inside the widget. No `autofocus` and no `.focus()` on load (it pops up the on-screen
   keyboard); focus a text box only after the tap that opened it.
 
@@ -188,20 +188,20 @@ the widget I describe after this prompt. If I haven't described one, ask me what
   the first time).
 - **Content**, `Board21.save(state)`: the work (names, scores, answers, text, timer state).
   **Config**, `Board21.saveConfig(cfg)`: preferences (mode, colors, options). Teachers share boards as
-  templates, which keep config and leave content out, so **anything that names, scores or records a
+  templates, which keep config and leave content out, so **anything that names, scores, or records a
   student is content, never config.** Setup that names no student (job titles, word lists, categories)
   can go in config, so a shared template keeps it; content then refers to those items by a stable id,
   not by position.
 - The window menu's *Reset* clears both and reloads the widget at its manifest size: `start()` sees
   `ctx.data` and `ctx.config` as `null` again, as the first time.
 - Save the whole small JSON object whenever it changes. No need to await: 21Board batches writes, skips
-  unchanged ones and retries by itself. Keep it to kilobytes.
+  unchanged ones, and retries by itself. Keep it to kilobytes.
 - Handle `Board21.on('data', d => …)` and `Board21.on('config', c => …)` by re-rendering from the value
   given: the board can be open in several tabs (smartboard and teacher laptop), and an import or an earlier
   version can replace it. Your own `save()` / `saveConfig()` never come back as events. If a text box is
   being typed in, update it only if its value differs (for a box read as a list, one name per line,
   compare the lists, not the raw text), and keep the cursor.
-- **Check what you load**: `ctx.data`, `ctx.config` and both events can come from a file someone
+- **Check what you load**: `ctx.data`, `ctx.config`, and both events can come from a file someone
   imported. Check every field's type and range. Show text with `textContent` (or `setAttribute`),
   never `innerHTML`.
 - **Times**: save wall-clock times (`endsAt: Date.now() + ms`), not ticking counters, and don't save on
@@ -212,7 +212,7 @@ the widget I describe after this prompt. If I haven't described one, ask me what
 ## Window menu
 
 Settings and rarely used commands go in the window's menu (the ⌄ beside the widget's name), above the
-board's own *Fill the board*, *Reset* and *Close*. Set it with `Board21.menu.set([...])`, react in
+board's own *Fill the board*, *Reset*, and *Close*. Set it with `Board21.menu.set([...])`, react in
 `Board21.on('menu', id => …)`.
 
 - `{ id: 'edit', label: 'Edit names…' }`: a command.
@@ -223,7 +223,7 @@ board's own *Fill the board*, *Reset* and *Close*. Set it with `Board21.menu.set
   a row of up to 12 color circles; tapping one sends its id. Colors `#rgb` or `#rrggbb` only.
 - At most **24 items** (a swatch row counts as one). Every command and checkmark item has its own id.
   Short labels. Icons are optional (an inline `<svg …>` string only).
-- **Call `menu.set()` again whenever a checkmark, label or disabled state changes** (not on every tick).
+- **Call `menu.set()` again whenever a checkmark, label, or disabled state changes** (not on every tick).
 
 ## Window size
 
@@ -246,7 +246,7 @@ the same for the padlocks in its top corners, down from the top of your content.
   manifest's minimum and the teacher's own size by itself. If the teacher moves or resizes it while it
   is bigger, it keeps that. A reload shows the normal size again.
 - **A lasting change of size** (the teacher picks a layout that needs another shape):
-  `Board21.window.setSize(w, h)`. It is fitted to the min/max sizes, shape and the board, keeps its
+  `Board21.window.setSize(w, h)`. It is fitted to the min/max sizes, shape, and the board, keeps its
   top-left corner where it can (it may move to stay on the board and out of other windows' way), takes
   the window out of *Fill the board*, and is saved with the board (kept after a reload, the same in every
   tab). So skip it when `Board21.context.window.maximized`. To undo it later, first keep
@@ -254,7 +254,7 @@ the same for the padlocks in its top corners, down from the top of your content.
   (the teacher resized it).
 - `Board21.window.setAspectRatio(16 / 9)` (or `null`) changes the shape lock, e.g. per mode;
   `setMaxSize(w, h)` (`null` removes it); `setResizable(false)` hides the resize grips.
-- `setMinSize`, `setMaxSize`, `setAspectRatio`, `setResizable`, `setDragFromContent`, `setTitle` and
+- `setMinSize`, `setMaxSize`, `setAspectRatio`, `setResizable`, `setDragFromContent`, `setTitle`, and
   the menu last until the widget reloads: set them again in `start()` from config and state.
 - **At *Fill the board***, the board's two Widget Picker buttons cover the window's bottom-left and
   bottom-right corners, up to about 140px in from each side on a small screen. Center the main button
@@ -274,7 +274,7 @@ the same for the padlocks in its top corners, down from the top of your content.
 - `Board21.on('theme', (theme, palette) => …)`: the CSS variables are already updated; redraw only
   canvases (take colors from `palette` or `getComputedStyle`).
 - `Board21.on('focus' | 'blur', …)`: the window was selected or deselected. **`blur` also fires when the
-  teacher taps the empty board while the window stays in view**: never pause, hide or stop on blur.
+  teacher taps the empty board while the window stays in view**: never pause, hide, or stop on blur.
 - `Board21.on('beforeclose', () => …)`: save anything not yet saved, right away (no awaiting).
 - Useful context: `ctx.instance`; `ctx.window`; `ctx.theme` (`'light'`/`'dark'`); `ctx.palette`
   (the variables' colors, for canvas); `ctx.locale` (for dates and numbers:
@@ -288,7 +288,7 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 - The widget needs drags or typing everywhere (drawing, a text editor, sorting by dragging): set
   `"dragFromContent": false` in the manifest's `window`.
 - One area needs drags (a sketch pad, a slider made of divs): put `data-b21-nodrag` on it. Text boxes,
-  selects, range sliders and `<canvas>` never move the window anyway.
+  selects, range sliders, and `<canvas>` never move the window anyway.
 - It depends on the view: `Board21.window.setDragFromContent(false)` while the editor shows, `true` when
   it closes.
 - Update buttons in place (text, attributes, classes); don't rebuild them with `innerHTML` on every
@@ -316,7 +316,7 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
   `--b21-warning`, `--b21-font`, `--b21-radius`. Any color of your own gets a dark version under
   `[data-b21-theme="dark"]`. Strong colors only for meaning (done, warning) or a theme the teacher picks.
 - **The teacher's text style**: `--b21-font` can change while the widget is open (21Board's Settings →
-  Appearance → *Text style*). Give `button`, `input`, `textarea` and `select` `font: inherit` (as the skeleton's
+  Appearance → *Text style*). Give `button`, `input`, `textarea`, and `select` `font: inherit` (as the skeleton's
   do), so they follow it too. A resize event comes after a change, and again once the new font has loaded, so text
   fitted on `addEventListener('resize', …)` (the skeleton's `fitAll()`) fits again by itself.
 - **Touch first**: tap targets at least 48px, no hover-only controls, `touch-action: manipulation`, no
@@ -324,18 +324,19 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 - **Motion**: short and purposeful; none under `@media (prefers-reduced-motion: reduce)`.
 - **Sound only when the teacher turns it on** (a checkmark menu item saved in config). Make it with the
   Web Audio API (no sound files), and create the `AudioContext` on a tap: browsers block sound before one.
-- Plain, short, friendly words a K–8 student or busy teacher understands. No jargon.
+- Plain, short, friendly words a K–8 student or busy teacher understands. No jargon. Lists of three or more take
+  the Oxford comma.
 
 ## Before you answer, check
 
 - [ ] `<!DOCTYPE html>` first; the SDK tag exactly as given, the first script, right after `<meta charset="utf-8">`; the manifest next, valid JSON, its id and name replaced.
-- [ ] `Board21` used directly, with no mock, stub or fallback.
-- [ ] No address, CDN, font, image or fetch from the Internet; no `http(s)://` in your own script code; no localStorage, sessionStorage, IndexedDB or cookies (not even in comments); no alert/confirm/prompt; no autofocus; no React.
+- [ ] `Board21` used directly, with no mock, stub, or fallback.
+- [ ] No address, CDN, font, image, or fetch from the Internet; no `http(s)://` in your own script code; no localStorage, sessionStorage, IndexedDB, or cookies (not even in comments); no alert/confirm/prompt; no autofocus; no React.
 - [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render and call `setMenu()`.
 - [ ] Anything about a student saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
 - [ ] Menu: at most 24 items, each with its own id, swatches `#hex` (at most 12 per row); `menu.set()` called again when state changes.
 - [ ] Works and reads well at `minWidth` × `minHeight` with the most items (no text under 14px) and at Fill the board (no buttons in the bottom corners, or in the top ones while the board is locked), in light and dark; only an editor's list scrolls; 48px tap targets.
-- [ ] Typing, drawing or dragging areas: `dragFromContent: false`, `data-b21-nodrag` or `setDragFromContent`.
+- [ ] Typing, drawing, or dragging areas: `dragFromContent: false`, `data-b21-nodrag`, or `setDragFromContent`.
 - [ ] A bigger editor uses `setMinSize(…)` and `setMinSize(null, null)`; `setSize` only after a tap and never when maximized.
 
 ## Your answer
@@ -352,17 +353,17 @@ again.
 The essentials only, for trying out an idea. For a widget you will keep, use the full prompt.
 
 ````markdown
-Build the widget I describe below as a 21Board widget (a window on a K–8 classroom smartboard). We need **one plain HTML file** (no React, no build step), starting with `<!DOCTYPE html>`. In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly `<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>` (no async, defer or type=module). That address is public, and the SDK works in your preview, where it runs the widget in a real 21Board window. Use `Board21` directly, with no mock, stub or fallback.
+Build the widget I describe below as a 21Board widget (a window on a K–8 classroom smartboard). We need **one plain HTML file** (no React, no build step), starting with `<!DOCTYPE html>`. In `<head>`, right after `<meta charset="utf-8">`, the first script must be exactly `<script src="https://tylerloch.github.io/21Board/sdk/board21.js"></script>` (no async, defer, or type=module). That address is public, and the SDK works in your preview, where it runs the widget in a real 21Board window. Use `Board21` directly, with no mock, stub, or fallback.
 
 The next line is a manifest:
 `<script type="application/json" id="board21-widget">{"id":"my-widget","name":"My Widget","version":"1.0.0","window":{"width":400,"height":300,"minWidth":240,"minHeight":180}}</script>`.
-Replace "my-widget" and "My Widget" with my widget's name. Add `"dragFromContent":false` to `window` if the widget needs typing, drawing or dragging.
+Replace "my-widget" and "My Widget" with my widget's name. Add `"dragFromContent":false` to `window` if the widget needs typing, drawing, or dragging.
 
-Start with `const ctx = await Board21.ready()` and draw from `ctx.data`. Save content with `Board21.save(state)` and preferences with `Board21.saveConfig(cfg)`; anything about students (names, scores) is content, never config. Handle `Board21.on('data', …)` and `Board21.on('config', …)` by re-rendering from the value given and setting the menu again (your own saves don't come back as events). Check the type of every loaded field and show text with `textContent`, never `innerHTML`. Save timers as wall-clock times (`endsAt`). Never use localStorage, sessionStorage, IndexedDB or cookies (don't even name them in comments).
+Start with `const ctx = await Board21.ready()` and draw from `ctx.data`. Save content with `Board21.save(state)` and preferences with `Board21.saveConfig(cfg)`; anything about students (names, scores) is content, never config. Handle `Board21.on('data', …)` and `Board21.on('config', …)` by re-rendering from the value given and setting the menu again (your own saves don't come back as events). Check the type of every loaded field and show text with `textContent`, never `innerHTML`. Save timers as wall-clock times (`endsAt`). Never use localStorage, sessionStorage, IndexedDB, or cookies (don't even name them in comments).
 
 Put settings and rarely used commands in the window menu with `Board21.menu.set([...])` (at most 24 items, each with an id; `checked: true/false` for options; `#hex` colors only; call it again when state changes) and react in `Board21.on('menu', id => …)`. Do editing in a separate view with a Done button: while it shows, call `Board21.window.setMinSize(w, h)` for room and `setDragFromContent(false)`; when done, `setMinSize(null, null)` and `setDragFromContent(true)`. Never resize the window on load. Use `Board21.window.setTitle('…')` for status and `requestAttention()` when a timer ends. Don't pause anything on `blur`.
 
-Style with plain CSS using `var(--b21-bg)`, `--b21-surface`, `--b21-surface-2`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`, `--b21-font` (they switch for dark mode). Give `button`, `input`, `textarea` and `select` `font: inherit`, so they use the text style the teacher picked too. Big, bold, kid-readable text that grows with the window (`min(13vw, 24vh)`), one obvious main button that grows with the window too (`font-size: clamp(17px, 5vmin, 40px)`), and an empty state that says what to do. When the window fills the board, the board's own buttons cover its bottom corners, so center the main button.
+Style with plain CSS using `var(--b21-bg)`, `--b21-surface`, `--b21-surface-2`, `--b21-text`, `--b21-muted`, `--b21-border`, `--b21-accent`, `--b21-on-accent`, `--b21-font` (they switch for dark mode). Give `button`, `input`, `textarea`, and `select` `font: inherit`, so they use the text style the teacher picked too. Big, bold, kid-readable text that grows with the window (`min(13vw, 24vh)`), one obvious main button that grows with the window too (`font-size: clamp(17px, 5vmin, 40px)`), and an empty state that says what to do. When the window fills the board, the board's own buttons cover its bottom corners, so center the main button.
 Make NO network requests: no Tailwind or other CDNs, no web fonts, no external images, no `http(s)://` in scripts. Fill the window (`html, body {margin:0; height:100%; overflow:hidden}`) with flex/grid and %/vmin so it works at every size without scrolling (an editor's long list may scroll), with no text under 14px. Tap targets at least 48px. No alert/confirm/prompt or autofocus.
 Output the whole file in one code block.
 ````
