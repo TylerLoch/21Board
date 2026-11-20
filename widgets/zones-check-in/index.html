@@ -61,11 +61,18 @@
   .count { font-size: min(42cqh, 26cqw); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
   .hide-counts .count { display: none; }
   .hide-counts .face { font-size: min(42cqh, 32cqw); }
-  /* The feeling words, in a slot two lines high on every card, so the four cards line up. */
-  .words { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; box-sizing: content-box;
-           height: 2.4em; padding: 0 10px clamp(6px, 4cqh, 16px); font-size: clamp(14px, min(6.5cqh, 5.6cqw), 26px); font-weight: 600; line-height: 1.2; }
-  .words span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; text-wrap: balance; }
-  @container zone (height < 150px) or (width < 180px) { .words { display: none; } }
+  /* The feelings: a chip for each, its face and its word (just the face on a narrow card), lighter than the card. They
+     sit in a slot two rows high on every card, so the four cards line up. */
+  .feelings { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: .3em;
+              height: 3.3em; padding: 0 8px clamp(6px, 4cqh, 16px); overflow: hidden;
+              font-size: clamp(14px, min(5.6cqh, 4.6cqw), 24px); font-weight: 650; line-height: 1.2; }
+  .feel { display: inline-flex; align-items: center; gap: .25em; padding: .1em .55em .1em .3em; border-radius: 999px; white-space: nowrap;
+          background: rgb(255 255 255 / .8); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--strong) 22%, transparent); }
+  [data-b21-theme="dark"] .feel { background: rgb(255 255 255 / .13); box-shadow: none; }
+  .feel i { font-style: normal; font-size: 1.2em; line-height: 1; }
+  .feel b { font-weight: inherit; }
+  @container zone (width < 190px) { .feel { padding: .1em .25em; } .feel b { display: none; } }
+  @container zone (height < 150px) or (width < 180px) { .feelings { display: none; } }
   /* "+1" (or ✓ while counts are hidden) after a tap */
   .float { position: absolute; top: 4%; right: 8%; font-size: clamp(16px, min(16cqh, 12cqw), 60px); font-weight: 800; pointer-events: none;
            animation: rise .8s ease-out forwards; }
@@ -94,7 +101,7 @@
   .tools button:focus-visible { outline: none; }
   .tools button:focus-visible .chip, .tools button:focus-visible .pill { outline: 3px solid var(--on); outline-offset: 3px; }
   .hide-counts .tools .minus { display: none; }
-  @container zone (width < 250px) { .pill { padding: 0; } .pill b { display: none; } }
+  .zone.tight .pill { padding: 0; } .zone.tight .pill b { display: none; }   /* (fitHead: the name wouldn't fit beside "Ideas") */
   @container zone (width < 190px) { .tools .minus { display: none; } }
   @container zone (height < 90px) or (width < 150px) { .tools { display: none; } }
 
@@ -199,7 +206,7 @@
     <div class="zone">
       <button type="button" class="tap">
         <span class="head"><span class="name"></span></span>
-        <span class="body"><span class="main"><span class="face" aria-hidden="true"></span><span class="count"></span></span><span class="words"><span></span></span></span>
+        <span class="body"><span class="main"><span class="face" aria-hidden="true"></span><span class="count"></span></span><span class="feelings"></span></span>
       </button>
       <div class="tools">
         <button type="button" class="minus"><span class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></span></button>
@@ -218,22 +225,24 @@
   //   undo    the counts before each of the last changes, oldest first, each as [blue, green, yellow, red].
   //   Counts are how the class feels, so they are content: templates never carry them.
   // Config (Board21.saveConfig): { classSize, showCounts, daily, sound }. Setup that names no student.
+  // Each zone: its big face, its feelings (a face and a word each, the words of the page this widget came from), and
+  // its ideas.
   const ZONES = [
-    { id: 'blue', name: 'Blue', face: '😴', words: 'Sad • Tired • Sick • Slow', lead: 'Ideas to wake up your body', pitch: 392, ideas: [
+    { id: 'blue', name: 'Blue', face: '😴', feelings: [['😢', 'Sad'], ['😴', 'Tired'], ['🤒', 'Sick'], ['🐢', 'Slow']], lead: 'Ideas to wake up your body', pitch: 392, ideas: [
       ['💧', 'Drink water', 'Take five slow sips.'],
       ['🙆', 'Stretch', 'Reach up high, then touch your toes.'],
       ['🌬️', 'Belly breaths', 'Take three deep breaths into your belly.'],
       ['🚶', 'Take a walk', 'Walk slowly around the room.']] },
-    { id: 'green', name: 'Green', face: '😊', words: 'Ready to Learn • Calm • Happy', lead: 'Ideas to keep it going', pitch: 523.25, ideas: [
+    { id: 'green', name: 'Green', face: '😊', feelings: [['🤓', 'Ready to Learn'], ['😌', 'Calm'], ['😊', 'Happy']], lead: 'Ideas to keep it going', pitch: 523.25, ideas: [
       ['⭐', 'Keep learning', 'You’re ready to focus and do your best.'],
       ['🤝', 'Help a friend', 'See if someone needs a hand or a smile.'],
       ['🎯', 'Set a goal', 'Choose what to finish first today.']] },
-    { id: 'yellow', name: 'Yellow', face: '🤪', words: 'Elevated • Silly • Frustrated', lead: 'Ideas to slow down', pitch: 659.25, ideas: [
+    { id: 'yellow', name: 'Yellow', face: '🤪', feelings: [['🤩', 'Elevated'], ['🤪', 'Silly'], ['😤', 'Frustrated']], lead: 'Ideas to slow down', pitch: 659.25, ideas: [
       ['🧱', 'Wall push-ups', 'Push against the wall five times.'],
       ['🖐️', '5, 4, 3, 2, 1', 'Find 5 things you see, 4 you can touch, 3 you hear, 2 you smell and 1 you taste.'],
       ['🪑', 'Calm corner', 'Sit quietly for two minutes.'],
       ['🧸', 'Use a fidget', 'Squeeze a stress ball, quietly.']] },
-    { id: 'red', name: 'Red', face: '😡', words: 'Angry • Intense • Overwhelmed', lead: 'Ideas to calm down', pitch: 783.99, ideas: [
+    { id: 'red', name: 'Red', face: '😡', feelings: [['😡', 'Angry'], ['😣', 'Intense'], ['🤯', 'Overwhelmed']], lead: 'Ideas to calm down', pitch: 783.99, ideas: [
       ['🛑', 'Take space', 'Go to the calm-down spot.'],
       ['🌬️', 'Breathe with the circle', 'In for 4, hold for 4, out for 4, hold for 4.'],
       ['🧊', 'Cool down', 'Hold something cold, or wash your hands in cool water.'],
@@ -338,18 +347,32 @@
 
   // ---- The cards, made once and then only updated (a button replaced under a finger loses its tap)
   const cards = {};
-  // The zone's name keeps clear of the buttons on its colored top, however many of them show at this size.
-  const toolsSeen = new ResizeObserver(list => {
-    for (const e of list) e.target.parentNode.style.setProperty('--tools', (e.target.offsetWidth ? e.target.offsetWidth + 6 : 0) + 'px');
-  });
+  // Each zone's name keeps clear of the buttons on its colored top. Where a name wouldn't fit beside "Ideas", every pill
+  // shows just the bulb, so the four cards match. Again whenever the cards change size, the letters change, or "−"
+  // comes or goes (Show counts).
+  function fitHeads() {
+    const all = IDS.map(id => cards[id]);
+    const room = () => { for (const c of all) c.node.style.setProperty('--tools', (c.tools.offsetWidth ? c.tools.offsetWidth + 6 : 0) + 'px'); };
+    for (const c of all) c.node.classList.remove('tight');
+    room();
+    if (all.some(c => c.name.scrollWidth > c.name.clientWidth + 1)) { for (const c of all) c.node.classList.add('tight'); room(); }
+  }
+  let fitDue = 0;
+  const fitSoon = () => { if (!fitDue) fitDue = requestAnimationFrame(() => { fitDue = 0; fitHeads(); }); };
+  const cardSeen = new ResizeObserver(fitSoon);
+  addEventListener('resize', fitSoon);
   for (const z of ZONES) {
     const node = $('card-tpl').content.firstElementChild.cloneNode(true);
     node.dataset.z = z.id;
-    const c = cards[z.id] = { node, tap: node.querySelector('.tap'), body: node.querySelector('.body'), count: node.querySelector('.count'), minus: node.querySelector('.minus') };
+    const c = cards[z.id] = { node, tap: node.querySelector('.tap'), body: node.querySelector('.body'), count: node.querySelector('.count'), minus: node.querySelector('.minus'),
+      name: node.querySelector('.name'), tools: node.querySelector('.tools') };
     node.querySelector('.name').textContent = z.name;
     node.querySelector('.face').textContent = z.face;
-    // (A phrase stays on one line, and a • stays with the word before it: "Ready to Learn •" / "Calm • Happy".)
-    node.querySelector('.words span').textContent = z.words.split(' • ').map(w => w.replace(/ /g, '\u00a0')).join('\u00a0• ');
+    for (const [face, word] of z.feelings) {
+      const chip = document.createElement('span'), i = document.createElement('i'), b = document.createElement('b');
+      chip.className = 'feel'; i.textContent = face; b.textContent = word;
+      chip.append(i, b); node.querySelector('.feelings').append(chip);
+    }
     const ib = node.querySelector('.idea-btn');
     ib.setAttribute('aria-label', `${z.name} zone ideas`);
     ib.addEventListener('click', () => openIdeas(z.id, ib));
@@ -357,7 +380,7 @@
     c.minus.addEventListener('click', () => takeOne(z.id));
     c.tap.addEventListener('click', () => checkIn(z.id));
     for (const b of [c.tap, c.minus]) b.addEventListener('keydown', e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); });
-    toolsSeen.observe(node.querySelector('.tools'));
+    cardSeen.observe(node);
     $('grid').appendChild(node);
   }
   const bars = {};
@@ -412,7 +435,7 @@
   let menuWas = '', titleWas = null;
   function render() {
     const cur = shown(), n = total(cur), size = config.classSize;
-    document.body.classList.toggle('hide-counts', !config.showCounts);
+    if (document.body.classList.contains('hide-counts') === config.showCounts) { document.body.classList.toggle('hide-counts', !config.showCounts); fitHeads(); }
     for (const z of ZONES) {
       const c = cards[z.id], k = cur.counts[z.id];
       if (c.count.textContent !== String(k)) c.count.textContent = k;
@@ -421,7 +444,7 @@
         c.minus.disabled = !k;
         if (keys) c.tap.focus();   // (a button that can't be pressed loses the keyboard)
       }
-      c.tap.setAttribute('aria-label', `${z.name}: ${z.words.split(' • ').join(', ')}` + (config.showCounts ? `. ${k} checked in` : ''));
+      c.tap.setAttribute('aria-label', `${z.name}: ${z.feelings.map(f => f[1]).join(', ')}` + (config.showCounts ? `. ${k} checked in` : ''));
     }
     // The bar: each zone's share of the class (of those checked in, without a class size). One color while counts are hidden.
     const base = Math.max(size, n);
