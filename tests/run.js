@@ -11023,7 +11023,7 @@ const SUITES = [
       ['timer', { duration: 60000, remaining: 60000, endsAt: null }, '1 minute', 'a Timer at 1 minute'],
       ['timer', { duration: 45000, remaining: 45000, endsAt: null }, '0:45', 'a Timer at 45 seconds'],
       ['dice', { values: [4] }, '4', 'one die'],
-      ['dice', { values: [3, 5, 1] }, '3, 5 and 1', 'three dice'],
+      ['dice', { values: [3, 5, 1] }, '3, 5, and 1', 'three dice'],
       ['dice', { values: [] }, '', 'Dice not rolled: no line'],
       ['traffic-light', { active: null }, '', 'a Traffic Light with no light on: no line'],
       ['traffic-light', { active: 'red' }, 'Red', 'a red Traffic Light'],
@@ -11121,7 +11121,7 @@ const SUITES = [
     ok(!bad.length, `content of any shape, for each widget, never throws and gives a line of at most 80 characters (${bad.slice(0, 6).join(' | ')})`);
     // What the widget itself wouldn't show gives no line: a Timer over a day, a die that isn't 1 to 6, a picture that isn't one.
     for (const [id, data, want] of [['timer', { duration: 1e300 }, ''], ['timer', { duration: 2 * 864e5 }, ''], ['timer', { duration: -1 }, ''], ['dice', { values: [9, -1, 2.5] }, ''],
-      ['dice', { values: [1, 2, 3, 4, 5, 6, 1] }, '1, 2, 3, 4, 5 and 6'], ['dice', { values: [6, 0, 2] }, '6 and 2'], ['image', { src: {} }, ''], ['image', { src: PNG, name: 5 }, 'Pasted picture']]) {
+      ['dice', { values: [1, 2, 3, 4, 5, 6, 1] }, '1, 2, 3, 4, 5, and 6'], ['dice', { values: [6, 0, 2] }, '6 and 2'], ['image', { src: {} }, ''], ['image', { src: PNG, name: 5 }, 'Pasted picture']]) {
       const got = await line(data, id);
       ok(got === want, `${id} ${JSON.stringify(data)}: “${want}”, as the widget reads it (${JSON.stringify(got)})`);
     }
