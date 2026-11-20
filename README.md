@@ -101,7 +101,7 @@ widget.
 | **Board history** | Undo a big change, or recover from a curious student. Settings → Classroom → **Board history…** lists earlier versions in a column beside Settings. Tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board, and can be undone. *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. An empty board offers *Go back to an earlier version*. Each window's menu has *Earlier versions…*. |
 | **Kiosk mode** | For a ChromeOS kiosk with no sign-in, add `?kiosk=yes` to the address. Full screen and Board Sync go away, and a red ✕ Quit follows the Settings gear. See [Kiosk mode](#kiosk-mode). |
 | **Several tabs** | 21Board tabs and windows on one computer stay in sync. |
-| **Updates** | When a new version is ready, a message offers *Update* or *Later*. *Update* takes a second or two, and the board and its content stay as they are. Otherwise the new version takes over the next time 21Board starts. Until then, a dot shows on ▦ and the Settings gear, and *Update now* is at the top of Settings. Settings → About shows the version in use. |
+| **Updates** | When a new version is ready, a message offers *Update* or *Later*. *Update* takes a second or two, and the board and its content stay as they are. Otherwise the new version takes over the next time 21Board starts. Until then, a dot shows on ▦ and the Settings gear, and *Update now* is at the top of Settings. After an update, the board says “Updated to …” once. Settings → About shows the version in use. |
 
 **For IT:** *Paste* asks once to see the clipboard. The Chrome policy `ClipboardAllowedForUrls` with
 `https://boardapp.ccsd21.org` allows it ahead of time. Ctrl+V never asks.

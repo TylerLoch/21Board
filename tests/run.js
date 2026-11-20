@@ -12739,8 +12739,8 @@ const SUITES = [
     ok(build2 !== build1 && (await shown(a)).startsWith(`21Board TEST-2 (${build2}) · `) && (await shown(b)).startsWith(`21Board TEST-2 (${build2}) · `) && await a.evaluate(() => caches.keys().then(k => k.join())) === `21board-TEST-2-${build2}`,
       'both tabs then say the new release in Settings, and only its offline copy is kept');
     await settings(a);
-    // (Each tab may also say “Updated to TEST-2.” as it starts again: suite "Updated to:". Any other message counts.)
-    ok((await both(noteText)).join() === 'kept through the update,kept through the update' && (await both(p => p.locator('.win').count())).join() === '2,2' && (await both(p => p.locator('.toast').filter({ hasNotText: 'Updated to TEST-2.' }).count())).join() === '0,0' &&
+    // (Each tab may also say “Updated to TEST-2.” once as it starts again: suite "Updated to:". Any other message counts.)
+    ok((await both(noteText)).join() === 'kept through the update,kept through the update' && (await both(p => p.locator('.win').count())).join() === '2,2' && (await both(p => p.locator('.toast').allTextContents())).every(ts => ts.length <= 1 && ts.every(t => t === 'Updated to TEST-2.')) &&
       (await both(p => p.locator('.picker-btn .dot').count())).join() === '0,0' && await a.locator('#settings #st-update').isHidden() && (await both(p => p.evaluate(() => [...document.querySelectorAll('.picker-btn')].map(b => b.getAttribute('aria-label')).join()))).join() === 'Widget Picker,Widget Picker,Widget Picker,Widget Picker',
       'the windows and their content are as they were, and the prompt, the dots and the line in Settings are gone');
     await a.keyboard.press('Escape');
@@ -13069,7 +13069,7 @@ const SUITES = [
   }],
   // "Updated to …" (board.js section 15, updatedNote): the first time a tab runs a release this device hasn't run before,
   // the board says so once. The device keeps the last release it ran in localStorage["21board-last-release"].
-  ['Updated to: the first time a new version opens (a first run says nothing; another release recorded: said once, not after a reload or in another tab; a later release recorded; a tab that starts hidden; storage that throws, the board’s storage blocked; kiosk; never in the widget dev window or lab; never pushes out another message; a real update, by Update and with every tab closed; the docs)', async (browser) => {
+  ['Updated to: the first time a new version opens (a first run says nothing; a board from before this note, nothing recorded: said; another release recorded: said once, not after a reload or in another tab; a later release recorded; a tab that starts hidden; storage that throws, the board’s storage blocked; kiosk; never in the widget dev window or lab; never pushes out another message; a real update, by Update and with every tab closed; the docs)', async (browser) => {
     const errors = [];
     const KEY = '21board-last-release', OLD = JSON.stringify({ version: '2026.11.1-1', build: '0000aaaa' });   // (an earlier release, never this one)
     // Every toast a page shows from its start (window.__said), and on cue (sessionStorage 'test-fake') messages already
@@ -13108,6 +13108,14 @@ const SUITES = [
     const NOTE = `Updated to ${v.version}.`;
     await settle(page);
     ok(!(await said(page)).length && await keptAs(page, v), `a first run on a new device says nothing, and records the release (${await kept(page)})`);
+    // ---- a device that ran 21Board before this note (2026.11.18-16 or earlier): a board, nothing recorded. Said once.
+    await page.evaluate(() => window.__board21.openWidget('notes'));
+    await page.waitForFunction(() => { const w = window.__board21.state.wins.get('notes:1'); return w && w.connected; }, null, { timeout: 8000 });
+    await page.evaluate(k => localStorage.removeItem(k), KEY);
+    await page.reload(); await boardUp(page); await settle(page);
+    ok((await said(page)).join(' | ') === NOTE && await keptAs(page, v), `a device with a board from before this note, nothing recorded, says “${NOTE}” (${(await said(page)).join(' | ') || 'nothing'}; ${await kept(page)})`);
+    await page.reload(); await boardUp(page); await settle(page);
+    ok(!(await said(page)).length, `once: a reload says nothing (${(await said(page)).join(' | ') || 'nothing'})`);
     await ctx.close();
 
     // ---- a device that last ran another release: said once as the board opens; a reload and another tab say nothing
@@ -13131,30 +13139,46 @@ const SUITES = [
     await ctx.close();
 
     // ---- a tab that starts hidden (restored in the background): nothing until it is first shown, then the note
-    ctx = await device(OLD);
-    await ctx.addInitScript(() => {
+    const HIDDEN = () => {
       if (window.top !== window) return;
       let vis = 'hidden';
       Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => vis });
       Object.defineProperty(document, 'hidden', { configurable: true, get: () => vis !== 'visible' });
       window.__show = () => { vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); };
-    });
+    };
+    ctx = await device(OLD);
+    await ctx.addInitScript(HIDDEN);
     page = await open(ctx); await settle(page);
     const hidden = { said: await said(page), kept: await kept(page) };
     await page.evaluate(() => window.__show()); await settle(page);
     ok(!hidden.said.length && hidden.kept === OLD && (await said(page)).join(' | ') === NOTE && await keptAs(page, v),
       `a tab that starts hidden waits, and says it when first shown (hidden: ${hidden.said.join(' | ') || 'nothing'}; shown: ${(await said(page)).join(' | ') || 'nothing'})`);
     await ctx.close();
+    // A new device whose first tab starts hidden records at once: a second tab, shown first, has nothing to say either.
+    ctx = await device();
+    await ctx.addInitScript(HIDDEN);
+    page = await open(ctx); await settle(page);
+    const firstKept = await kept(page);
+    const h2 = await open(ctx); await settle(h2);
+    await h2.evaluate(() => window.__show()); await settle(h2);
+    await page.evaluate(() => window.__show()); await settle(page);
+    const hiddenSaid = (await said(h2)).concat(await said(page));
+    ok(await keptAs(page, v) && firstKept === (await kept(page)) && !hiddenSaid.length,
+      `a new device’s first tab records the release even while hidden, so no tab says it (${firstKept}; ${hiddenSaid.join(' | ') || 'nothing'})`);
+    await ctx.close();
 
     // ---- storage that throws (site data blocked): nothing is said, and the board works
     ctx = await device();
     await ctx.addInitScript(() => { if (window.top === window) Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Access is denied for this document.', 'SecurityError'); } }); });
-    page = await open(ctx);
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') errors.push('[console] ' + m.text()); });   // (a start-up problem after the board is up is only logged)
+    await page.goto(BASE); await boardUp(page);
     await page.evaluate(() => window.__board21.openWidget('notes'));
     const works = await page.waitForFunction(() => { const w = window.__board21.state.wins.get('notes:1'); return w && w.connected; }, null, { timeout: 8000 }).then(() => true, () => false);
     await settle(page);
     const threw = await page.evaluate(() => { try { return !localStorage; } catch (e) { return true; } });
-    ok(threw && works && !(await said(page)).length && !errors.length, `where storage throws, nothing is said and the board works (${errors.join(' | ') || 'no errors'})`);
+    const started = await eventually(() => page.evaluate(() => window.__board21.history.started), 5000);   // (start-up went on past the note)
+    ok(threw && works && started && !(await said(page)).length && !errors.length, `where storage throws, nothing is said and the board works (${started ? 'started' : 'start-up stopped'}; ${errors.join(' | ') || 'no errors'})`);
     await ctx.close();
 
     // ---- the board's storage blocked by the browser: only that is said; the note waits for a start where the board is saved
@@ -13240,17 +13264,20 @@ const SUITES = [
     deploy('updnote', { version: 'TEST-3', change: marked('v3') });
     await updateCheck(page); await ready(page);
     await prompt(page).locator('button', { hasText: 'Later' }).click();
+    await page.evaluate(k => localStorage.removeItem(k), KEY);   // (as on a device from before this note: Tyler’s update to 2026.11.18-17)
     await page.close();
     page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
     await page.goto(url);
     const on3 = await on(page, 'v3'); await settle(page);
-    ok(on3 && (await said(page)).join(' | ') === 'Updated to TEST-3.', `Later, then every tab closed: TEST-3 takes over as 21Board opens again, which says “Updated to TEST-3.” (${(await said(page)).join(' | ') || 'nothing'})`);
+    ok(on3 && (await said(page)).join(' | ') === 'Updated to TEST-3.' && await keptAs(page, { version: 'TEST-3', build: SITES.updnote.build }),
+      `Later, then every tab closed, on a device from before this note: TEST-3 takes over as 21Board opens again, which says “Updated to TEST-3.” (${(await said(page)).join(' | ') || 'nothing'})`);
     await ctx.close();
 
     // ---- the docs
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), data = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
-    ok(readme.includes('After an update, the board says **“Updated to …”** once.') && data.includes('`localStorage["21board-last-release"]`'),
-      'the README says the board says “Updated to …” once after an update, and the data format guide names the key');
+    const row = (readme.match(/\| \*\*Updates\*\* \|[^|]*\|/) || [''])[0];
+    ok(readme.includes('After an update, the board says **“Updated to …”** once.') && row.includes('After an update, the board says “Updated to …” once.') && data.includes('`localStorage["21board-last-release"]`'),
+      'the README says the board says “Updated to …” once after an update, for IT and for teachers (Updates), and the data format guide names the key');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Dialogs: a name, the keyboard stays inside and goes back where it was', async (browser) => {

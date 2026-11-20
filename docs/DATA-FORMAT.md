@@ -66,7 +66,7 @@ database away under an open board, every page is written back, not just the one 
 storage can't be read still has every page.
 
 Outside the database, `localStorage["21board-last-release"]` notes the last release this device ran, such as
-`{"version": "2026.11.18-17", "build": "3fa9c1d2"}`. When a new one opens, the board says "Updated to …" once. This
+`{"version":"2026.11.12-1","build":"3fa9c1d2"}`. When another one opens, the board says "Updated to …" once. This
 device only. Never synced or exported, and not in Board history.
 
 ---
