@@ -56,8 +56,8 @@
     .reach .face { font-size: min(20cqh, 40cqw); }
     .reach .count { font-size: min(28cqh, calc(108cqw / max(2, var(--len, 1)))); }   /* (--len: its digits, so 100 fits too) */
     .reach.hide-counts .face { font-size: min(26cqh, 56cqw); }
-    /* (Room for four on every card, from the top, so the four cards line up.) */
-    .reach .feelings { flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: .4em;
+    /* (Room for four on every card, stacked from the bottom, so the four cards line up and so do their last feelings.) */
+    .reach .feelings { flex-direction: column; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: .4em;
                        height: 6.9em; padding-bottom: clamp(10px, 5cqh, 48px); font-size: clamp(14px, min(3.4cqh, 6cqw), 30px); }
   }
   .zone { position: relative; min-width: 0; min-height: 0; container: zone / size; --head: clamp(36px, 22cqh, 76px); }
