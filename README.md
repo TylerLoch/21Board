@@ -104,8 +104,8 @@ widget.
 | **Several tabs** | 21Board tabs and windows on one computer stay in sync. |
 | **Updates** | When a new version is ready, a message offers *Update* or *Later*. *Update* takes a second or two, and the board and its content stay as they are. Otherwise the new version takes over the next time 21Board starts. Until then, a dot shows on ▦ and the Settings gear, and *Update now* is at the top of Settings. After an update, the board says “Updated to …” once. Settings → About shows the version in use. |
 
-A right-click or a long press shows no browser menu, except in text boxes. Developer mode brings it back. District
-apps and videos keep their own.
+A right-click or a long press shows no browser menu, except on links and in text boxes. Developer mode brings it
+back. District apps and videos keep their own.
 
 **For IT:** *Paste* asks once to see the clipboard. The Chrome policy `ClipboardAllowedForUrls` with
 `https://boardapp.ccsd21.org` allows it ahead of time. Ctrl+V never asks.

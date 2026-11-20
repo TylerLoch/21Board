@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.20-1';
-  const BOARD_BUILD = '35f70d7b';
+  const BOARD_VERSION = '2026.11.20-2';
+  const BOARD_BUILD = 'a65d99ed';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -7842,7 +7842,20 @@
       calculator: d => calcLine(listOf(listOf(d.expr).length ? d.expr : (listOf(d.history)[0] || {}).expr)),
       'first-then-board': d => { const f = strOf(d.first && d.first.label), t = strOf(d.then && d.then.label); return f && t ? `First ${f}, then ${t}` : f ? `First ${f}` : t ? `Then ${t}` : ''; },
       'task-timer': d => listOf(d.tasks).map(t => { const n = strOf(t && t.name), e = strOf(t && t.emoji); return e && n.startsWith(e + ' ') ? n.slice(e.length + 1).trim() : n; }).filter(Boolean).join(', '),
-      'youtube-player': d => { if (!d.videoId) return ''; const e = listOf(d.history).find(e => e && e.videoId === d.videoId); return strOf(e && e.title) || strOf(d.videoUrl); },
+      // The video's title. Without one, the site's name and "video", such as "Vimeo video". The names are a copy of the
+      // widget's SOURCES. A Drive video never has a title. Content saved before Drive and Vimeo has no source, so it's
+      // YouTube's. Content the widget reads as no video gives no line, by video-links.js's checks. The dev window
+      // doesn't load video-links.js, so there only the types are checked.
+      'youtube-player': d => {
+        const L = self.B21VideoLinks, s = d.source === undefined ? 'youtube' : d.source;
+        const sites = { youtube: ['YouTube', v => L.isId(v)], drive: ['Google Drive', v => L.DRIVE_ID.test(v), 'resourceKey', v => L.DRIVE_KEY.test(v)],
+          vimeo: ['Vimeo', v => L.VIMEO_ID.test(v), 'hash', v => L.VIMEO_HASH.test(v)] };
+        const [name, isId, key, isKey] = Object.prototype.hasOwnProperty.call(sites, s) ? sites[s] : [];
+        if (!name || typeof d.videoId !== 'string' || typeof d.videoUrl !== 'string') return '';
+        if (L && (!isId(d.videoId) || d.videoUrl.length > L.MAX_LINK || (key && d[key] !== undefined && d[key] !== '' && !(typeof d[key] === 'string' && isKey(d[key]))))) return '';
+        const e = listOf(d.history).find(e => e && e.videoId === d.videoId);
+        return strOf(e && e.title) || `${name} video`;
+      },
       timer: d => {
         if (typeof d.duration !== 'number' || !(d.duration >= 0 && d.duration <= 864e5)) return '';   // a day at most, as the Timer allows
         const s = Math.ceil(d.duration / 1000), m = Math.floor(s / 60);
@@ -11367,12 +11380,13 @@
       else if (HistorySheet.isOpen) HistorySheet.escape();   // (a version's column, then the list, then Settings)
       else if (Settings.isOpen) Settings.close(true);
     });
-    // No browser menu on a right-click, a long press, or the menu key, except in a text box (spell-check, Cut, Copy,
-    // Paste). Developer mode keeps it everywhere, for Inspect, and so does the widget dev window. The SDK does the same
-    // inside each widget. Other sites' windows keep their own.
+    // No browser menu on a right-click, a long press, or the menu key. Links keep it, for Copy link address and Open in
+    // new tab. Text boxes keep it too, for spell-check, Cut, Copy, and Paste. Developer mode keeps it everywhere, for
+    // Inspect, and so does the widget dev window. The SDK does the same inside each widget. Other sites' windows keep
+    // their own.
     document.addEventListener('contextmenu', e => {
       const t = e.target;
-      if (S.settings.devMode || LAB || (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)$/.test(t.type))))) return;
+      if (S.settings.devMode || LAB || (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)$/.test(t.type)) || (t.closest && t.closest('a[href]'))))) return;
       e.preventDefault();
     });
 
