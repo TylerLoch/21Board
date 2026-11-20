@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="be8285f4">
+<html lang="en" data-build="2850eddb">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -759,9 +759,9 @@
     /* At the end of a window's menu. */
     .lock-note { display: flex; align-items: center; flex: 0 0 auto; max-width: 280px; margin: 0; padding: 8px 12px; gap: 10px; color: var(--muted); font-size: 14px; line-height: 1.4; }
     .lock-note > svg { width: 20px; height: 20px; }
-    /* A locked empty page says so, with no "Tap ▦…" and no "Go back to an earlier version". */
+    /* A locked empty page says only "The board is locked.": no "Your board is ready", "Tap ▦…" or "Go back to an earlier version". */
     #empty-hint .lock-hint { display: none; }
-    body.windows-locked #empty-hint > .small:not(.lock-hint), body.windows-locked #empty-hint .rescue { display: none; }
+    body.windows-locked #empty-hint > .big, body.windows-locked #empty-hint > .small:not(.lock-hint), body.windows-locked #empty-hint .rescue { display: none; }
     body.windows-locked #empty-hint .lock-hint { display: block; }
 
     /* Stay awake: its warning and status lines (only when they apply) */
@@ -825,7 +825,10 @@
       <button class="ctl" data-ctl="paste" title="Paste" aria-label="Paste" hidden></button>
       <button class="ctl" data-ctl="export" title="Export board" aria-label="Export board"></button>
       <button class="ctl" data-ctl="import" title="Import board" aria-label="Import board"></button>
-      <button class="ctl" data-ctl="lock" title="Lock" aria-label="Lock" aria-haspopup="dialog"></button>
+      <button class="ctl" data-ctl="lock" title="Lock" aria-label="Lock" aria-haspopup="dialog" hidden></button>
+      <!-- (Hidden: for a board.js from before Lock, which draws Dark mode here, for a launch or two after an update. Lock
+           shows once this release's board.js draws it. Remove the Dark mode button in a later release.) -->
+      <button class="ctl" data-ctl="theme" hidden></button>
       <button class="ctl" data-ctl="fullscreen" title="Full screen" aria-label="Full screen"></button>
       <button class="ctl" data-ctl="settings" title="Settings" aria-label="Settings"></button>
       <button class="ctl" data-ctl="quit" title="Quit 21Board" aria-label="Quit 21Board" hidden></button>

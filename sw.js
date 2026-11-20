@@ -14,14 +14,14 @@
 const VERSION = '2026.11.18-18';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'be8285f4';
+const BUILD = '2850eddb';
 const FILES = {
-  './': 'be221dcf22a05929',
-  'index.html': 'be221dcf22a05929',
-  'board.js': '91dc63ef27bed77b',
+  './': 'af6e9d0c70741335',
+  'index.html': 'af6e9d0c70741335',
+  'board.js': 'bee458e8989736ce',
   'sdk/board21.js': 'ba3de867e376915e',
   'sdk/board21-dev.js': 'f7a43b8c7a88a9e8',
-  'sdk/dev/board-shell.js': '78b8e46f05dc4eda',
+  'sdk/dev/board-shell.js': '0d8b538e03ffe213',
   'sdk/lab.html': '53da73e5ab2bad8b',
   'widgets/registry.js': '200438390e9c516d',
   'manifest.webmanifest': '31bc5d66238072ca',
@@ -51,7 +51,7 @@ const FILES = {
   'widgets/name-picker/style-wheel.js': 'bd3793376cdfc9e7',
   'widgets/name-picker/style-spotlight.js': 'd2ffd9ead362cf90',
   'widgets/name-picker/style-lotto.js': 'fc46b85bc0bf5ff7',
-  'widgets/first-then-board/index.html': '1467ccddd22e8d1f',
+  'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
   'widgets/youtube-player/index.html': '93aec54e1209816b',

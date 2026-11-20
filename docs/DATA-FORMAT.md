@@ -120,8 +120,8 @@ choice made here, so that syncs too. The other ways to import, and going back in
 folder, and an import leaves them as they are.
 
 Before 2026.11.18-18, `locked` was a switch in Settings, `true` or `false`, that kept windows in place. A device
-locked then now reads as `"widgets"`, which does the same. So does any other value but `false` and `"all"`. An older
-21Board reads any value but `false` as its switch on.
+locked then now reads as `"widgets"`, which does the same. So does any other truthy value but `"all"`. An older
+21Board reads any truthy value as its switch on.
 
 Older versions had a third choice for `awake`, `"hours"` (school hours, Monday to Friday, from `awakeFrom` to
 `awakeTo`, `"HH:MM"`). 21Board reads `"hours"` as `"on"`, since the teacher wanted the screen on in class. It drops

@@ -10849,12 +10849,12 @@ const SUITES = [
     await fillNote(note(), 'scribble'); await page.waitForTimeout(400);
     await H(() => window.__board21.deleteInstance('dice:1')); await page.waitForTimeout(1500);
     await H(() => window.__board21.closeWin('timer:1')); await page.waitForTimeout(800);
-    // Find it in Board history (Settings → Classroom, the second row: Go back to an earlier version).
+    // Find it in Board history (Settings → Classroom, the first row: Go back to an earlier version).
     await openSettings(page);
     const goBack = await page.evaluate(() => { const b = document.querySelector('#settings [data-act="hist-open"]'), r = b.closest('.row'), h = [...document.querySelectorAll('#settings h3')].filter(e => e.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING).pop();
       const rows = []; for (let e = h.nextElementSibling; e && e.tagName !== 'H3'; e = e.nextElementSibling) if (e.matches('.row')) rows.push(e);
-      return { section: h.textContent, second: rows.indexOf(r), label: r.querySelector('.lbl').textContent, plain: !b.classList.contains('primary') }; });
-    ok(goBack.section === 'Classroom' && goBack.second === 1 && goBack.label === 'Go back to an earlier version' && goBack.plain, `Settings → Classroom → “Go back to an earlier version” (Board history…) is the second row (${JSON.stringify(goBack)})`);
+      return { section: h.textContent, first: rows.indexOf(r), label: r.querySelector('.lbl').textContent, plain: !b.classList.contains('primary') }; });
+    ok(goBack.section === 'Classroom' && goBack.first === 0 && goBack.label === 'Go back to an earlier version' && goBack.plain, `Settings → Classroom → “Go back to an earlier version” (Board history…) is the first row (${JSON.stringify(goBack)})`);
     await page.click('#settings [data-act="hist-open"]'); await page.waitForTimeout(1200);
     ok(await page.locator('#history.open .hist-row').count() >= 5, 'the Board history sheet lists the versions');
     await page.screenshot({ path: OUT + '80-history-sheet.png' });
@@ -14384,7 +14384,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const row = await B(() => {
         const ctl = Array.from(document.querySelectorAll('#panel .panel-controls .ctl')).filter(b => !b.hidden), x = c => { const b = document.querySelector(`#panel [data-ctl="${c}"]`).getBoundingClientRect(); return b.left + b.width / 2; };
         const l = document.querySelector('#panel [data-ctl="lock"]');
-        return { ctl: ctl.map(b => b.dataset.ctl), theme: !!document.querySelector('[data-ctl="theme"]'), title: l && l.title, label: l && l.getAttribute('aria-label'), pad: !!l && /M8 10\.5V7\.5a4 4 0 0 1 8 0v3/.test(l.innerHTML),
+        return { ctl: ctl.map(b => b.dataset.ctl), theme: !!document.querySelector('[data-ctl="theme"]:not([hidden])'), title: l && l.title, label: l && l.getAttribute('aria-label'), pad: !!l && /M8 10\.5V7\.5a4 4 0 0 1 8 0v3/.test(l.innerHTML),
           between: !!l && Math.min(x('import'), x('fullscreen')) < x('lock') && x('lock') < Math.max(x('import'), x('fullscreen')) };
       });
       ok(JSON.stringify(row.ctl) === JSON.stringify(['paste', 'export', 'import', 'lock', 'fullscreen', 'settings']) && !row.theme && row.title === 'Lock' && row.label === 'Lock' && row.pad && row.between,
@@ -14493,6 +14493,31 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await unlockBoard(page);
     }
     ok(await B(async () => (await window.__board21.store.getMany(['settings']))[0].value.locked) === false, 'unlocking stores false');
+
+    // ---- Locking closes what is open: the Widget Picker, Settings, Board history, a window’s menu, the Pages menu, and a
+    // dialog, which ends as Cancel. Here another tab locks.
+    const other = await ctx.newPage(); other.on('pageerror', e => errors.push('tab 2: ' + e.message));
+    await other.goto(BASE); await boardUp(other);
+    const shown = () => B(() => ({ picker: document.getElementById('panel').classList.contains('open'), settings: !!document.querySelector('#settings.open'), history: !!document.querySelector('#history.open'),
+      menu: document.getElementById('menu').classList.contains('open'), pages: document.getElementById('pages-menu').classList.contains('open'), dialog: !!document.querySelector('#modal.open') }));
+    const name0 = await B(() => window.__board21.state.board.name);
+    const opened = [
+      ['the Widget Picker', 'picker', () => page.click('.picker-btn.left')],
+      ['Settings', 'settings', () => openSettings(page)],
+      ['Board history', 'history', async () => { await openSettings(page); await page.click('#settings [data-act="hist-open"]'); }],
+      ['a window’s menu', 'menu', () => page.click('.win[data-ikey="notes:1"] .win-label')],
+      ['the Pages menu', 'pages', async () => { await page.click('.picker-btn.left'); await page.click('#panel.open [data-ctl="pages"]'); }],
+      ['Rename this page…', 'dialog', async () => { await page.click('.picker-btn.left'); await page.click('#panel.open [data-ctl="pages"]'); await page.waitForTimeout(300); await page.click('#pages-menu [data-act="rename"]'); await page.fill('#modal.open input', 'Renamed'); }]];
+    for (const [what, key, open] of opened) {
+      await open(); await page.waitForTimeout(400);
+      const was = (await shown())[key];
+      await lockBoard(other, 'widgets'); await page.waitForTimeout(800);
+      const now = await shown();
+      ok(was && await lockIs() === 'widgets windows -' && !Object.values(now).some(Boolean), `${what} open here, and another tab locks: it closes (${was ? JSON.stringify(now) : 'it didn’t open'})`);
+      await unlockBoard(other); await page.waitForTimeout(500);
+    }
+    ok(await B(() => window.__board21.state.board.name) === name0, `the dialog ended as Cancel: the page keeps its name (${await B(() => window.__board21.state.board.name)})`);
+    await other.close();
 
     // ---- Not in the widget dev window (Lock is always off there).
     const dev = await ctx.newPage(); dev.on('pageerror', e => { if (!/boom from the widget/.test(e.message)) errors.push('dev window: ' + e.message); });
@@ -14657,20 +14682,59 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(JSON.stringify(ctl) === JSON.stringify(['paste', 'export', 'import', 'lock', 'settings', 'quit']), `its Widget Picker has Lock (${ctl.join(', ')})`);
     await k.close();
 
-    // ---- A page from an earlier build (no styles for the padlocks yet: the board restarts once, but until then) still
-    // shows them, in the top corners, big enough, and holding one unlocks.
-    const old = await ctx.newPage(); old.on('pageerror', e => errors.push('older page: ' + e.message));
-    const html = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8').split('\n').filter(l => !/lock-pad|lock-tip|lock-ring|lock-everything/.test(l)).join('\n');
-    await old.route(BASE, route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html }));
+    // ---- A page and board.js from different builds, as a device can have for a launch or two after an update: the board
+    // starts again once, then starts with what it has. First, the page of 2026.11.18-17 as it shipped (tests/fixtures),
+    // with Dark mode where Lock goes and no styles for the padlocks, and this board.js. It starts. The padlocks show in
+    // the top corners, big enough, and holding one unlocks. Its Widget Picker then has Lock where Dark mode was.
+    const mixed = await browser.newContext({ viewport: { width: 1366, height: 768 }, hasTouch: true, serviceWorkers: 'block' });
+    const old = await mixed.newPage(); old.on('pageerror', e => errors.push('older page: ' + e.message));
     await old.goto(BASE); await boardUp(old);
     await old.evaluate(() => window.__board21.writer.patch('settings', 'settings', { set: { locked: 'all' } }));
-    await old.reload(); await boardUp(old); await old.waitForTimeout(400);
-    const bare = await old.evaluate(() => Array.from(document.querySelectorAll('.lock-pad')).map(b => { const r = b.getBoundingClientRect(), cs = getComputedStyle(b); return { pos: cs.position, w: r.width, h: r.height, top: r.top, x: r.left < innerWidth / 2 ? r.left : innerWidth - r.right, shown: cs.display !== 'none' && cs.visibility !== 'hidden', hit: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b || b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) }; }));
-    ok(bare.length === 2 && bare.every(b => b.pos === 'fixed' && b.shown && b.hit && b.w >= 44 && b.h >= 44 && b.top < 40 && b.x < 40), `the padlocks show anyway, in the top corners, 44 px or more, and take a press (${JSON.stringify(bare[0])})`);
-    const co = await pad('left', old);
-    await old.mouse.move(co.x, co.y); await old.mouse.down(); await old.waitForTimeout(2300); await old.mouse.up(); await old.waitForTimeout(500);
-    ok(!await locked(old) && await old.evaluate(() => Array.from(document.querySelectorAll('.lock-pad')).every(b => getComputedStyle(b).display === 'none')), 'and holding one unlocks, and they go');
-    await old.close();
+    await old.evaluate(() => window.__board21.writer.settled(3000));
+    const oldPage = fs.readFileSync(path.join(__dirname, 'fixtures', 'index-2026.11.18-17.html'), 'utf8');
+    await old.route(BASE, route => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: oldPage }));
+    await old.reload();
+    const up = await boardUp(old).then(() => true, () => false);
+    const cover = await old.evaluate(() => { const s = document.getElementById('startup'); return s ? s.innerText.replace(/\s+/g, ' ').trim() : ''; });
+    const builds = await old.evaluate(() => [document.documentElement.dataset.build, window.__board21 && window.__board21.build]);
+    ok(up && !cover && builds[0] === '6dd5cd15' && builds[1] !== builds[0], `2026.11.18-17’s page with this board.js: the board starts (${builds.join(' with ')}${cover ? ': ' + cover : ''})`);
+    if (up) {
+      const bare = await old.evaluate(() => Array.from(document.querySelectorAll('.lock-pad')).map(b => { const r = b.getBoundingClientRect(), cs = getComputedStyle(b); return { pos: cs.position, w: r.width, h: r.height, top: r.top, x: r.left < innerWidth / 2 ? r.left : innerWidth - r.right, shown: cs.display !== 'none' && cs.visibility !== 'hidden', hit: document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b || b.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)) }; }));
+      ok(bare.length === 2 && bare.every(b => b.pos === 'fixed' && b.shown && b.hit && b.w >= 44 && b.h >= 44 && b.top < 40 && b.x < 40), `the padlocks show anyway, in the top corners, 44 px or more, and take a press (${JSON.stringify(bare[0])})`);
+      const co = await pad('left', old);
+      await old.mouse.move(co.x, co.y); await old.mouse.down(); await old.waitForTimeout(2300); await old.mouse.up(); await old.waitForTimeout(500);
+      ok(!await locked(old) && await old.evaluate(() => Array.from(document.querySelectorAll('.lock-pad')).every(b => getComputedStyle(b).display === 'none')), 'and holding one unlocks, and they go');
+      await old.click('.picker-btn.left'); await old.waitForTimeout(300);
+      const row = await old.evaluate(() => { const l = document.querySelector('#panel [data-ctl="lock"]'); return { ctl: Array.from(document.querySelectorAll('#panel .panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl), title: l && l.title, pad: !!l && /M8 10\.5V7\.5a4 4 0 0 1 8 0v3/.test(l.innerHTML) }; });
+      ok(JSON.stringify(row.ctl) === JSON.stringify(['paste', 'export', 'import', 'lock', 'fullscreen', 'settings']) && row.title === 'Lock' && row.pad, `its Widget Picker has Lock where Dark mode was (${row.ctl.join(', ')})`);
+      await old.click('#panel.open [data-ctl="lock"]'); await old.waitForTimeout(300);
+      ok(await old.evaluate(() => (document.querySelector('#modal.open h3') || {}).textContent) === 'Lock the board', 'and Lock asks how');
+      await old.keyboard.press('Escape'); await old.waitForTimeout(200);
+    }
+    await mixed.close();
+    // The other way round: this page with a board.js from before Lock, which draws Dark mode in the Widget Picker and
+    // knows no Lock (this board.js with 2026.11.18-17's lines put back: its build, its Dark mode button). It starts, and
+    // its Widget Picker has no blank button: the page keeps a hidden Dark mode button for it, and Lock stays hidden.
+    let earlier = fs.readFileSync(path.join(ROOT, 'board.js'), 'utf8');
+    // (Each line must be there, but the last two: this release's own safeguards for the mix, taken out.)
+    for (const [from, to, must = true] of [[/const BOARD_VERSION = '[^']*';/, "const BOARD_VERSION = '2026.11.18-17';"], [/const BOARD_BUILD = '[^']*';/, "const BOARD_BUILD = '6dd5cd15';"],
+      [/set\('lock', 'lock', 'Lock'\)\.hidden = !!LAB;/, "set('theme', 'gear', 'Dark mode');"], [/ if \(!b\) return \{\};/, '', false], [/\n[^\n]*th\.dataset\.ctl = 'lock'[^\n]*/, '', false]]) {
+      if (must && !from.test(earlier)) throw new Error('board.js has changed: put back 2026.11.18-17’s lines by hand (' + from + ')');
+      earlier = earlier.replace(from, to);
+    }
+    const mixed2 = await browser.newContext({ viewport: { width: 1366, height: 768 }, serviceWorkers: 'block' });
+    const np = await mixed2.newPage(); np.on('pageerror', e => errors.push('earlier board.js: ' + e.message));
+    await np.route(BASE + 'board.js', route => route.fulfill({ status: 200, contentType: 'text/javascript; charset=utf-8', body: earlier }));
+    await np.goto(BASE);
+    const up2 = await boardUp(np).then(() => true, () => false);
+    const cover2 = await np.evaluate(() => { const s = document.getElementById('startup'); return s ? s.innerText.replace(/\s+/g, ' ').trim() : ''; });
+    ok(up2 && !cover2 && await np.evaluate(() => window.__board21.version) === '2026.11.18-17', `this page with a board.js from before Lock: the board starts (${cover2 || 'no start-up message'})`);
+    if (up2) {
+      await np.click('.picker-btn.left'); await np.waitForTimeout(300);
+      const row2 = await np.evaluate(() => Array.from(document.querySelectorAll('#panel .panel-controls .ctl')).filter(b => !b.hidden).map(b => b.dataset.ctl + (b.querySelector('svg') ? '' : ' (blank)')));
+      ok(JSON.stringify(row2) === JSON.stringify(['paste', 'export', 'import', 'fullscreen', 'settings']), `its Widget Picker has no blank button, no Lock and no Dark mode (${row2.join(', ')})`);
+    }
+    await mixed2.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -14741,8 +14805,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await B(() => window.__board21.pages.ids().length === 2), 'no new page');
     // An empty page: “The board is locked.”, and no “Go back to an earlier version”.
     const empty = await B(() => { const h = document.getElementById('empty-hint'), shown = el => !!el && !el.closest('[hidden]') && getComputedStyle(el).display !== 'none';
-      return { lock: shown(h.querySelector('.lock-hint')) && h.querySelector('.lock-hint').textContent, tap: shown(h.querySelector(':scope > .small:not(.lock-hint)')), rescue: shown(h.querySelector('.rescue')) }; });
-    ok(empty.lock === 'The board is locked.' && !empty.tap && !empty.rescue, `an empty page says “The board is locked.”: not “Tap ▦…”, nor “Go back to an earlier version” (${JSON.stringify(empty)})`);
+      return { lock: shown(h.querySelector('.lock-hint')) && h.querySelector('.lock-hint').textContent, ready: shown(h.querySelector('.big')), tap: shown(h.querySelector(':scope > .small:not(.lock-hint)')), rescue: shown(h.querySelector('.rescue')) }; });
+    ok(empty.lock === 'The board is locked.' && !empty.ready && !empty.tap && !empty.rescue, `an empty page says only “The board is locked.”: not “Your board is ready”, “Tap ▦…” or “Go back to an earlier version” (${JSON.stringify(empty)})`);
     await B(() => window.__board21.pages.go(1)); await page.waitForFunction(() => window.__board21.state.boardId === 1 && window.__board21.state.wins.size === 5 && !window.__board21.pages.busy, null, { timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(400);
     // Messages show with no buttons.
@@ -14849,12 +14913,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await unlockBoard(page); await page.waitForTimeout(300);
     i = await info();
     ok(i.corners && i.corners.top.height === 0, 'unlocked again: clear');
-    // The built-in widgets that keep clear of the bottom corners keep clear of the padlocks too, filling the board:
-    // the Calculator's keys, the Name Picker's Done (its list of names) and the Video Player's video start below them.
+    // The built-in widgets keep clear of the padlocks, filling the board: the Calculator's keys, the Name Picker's Done
+    // (its list of names), the Video Player's video and the First/Then Board's buttons start below them.
     await B(() => window.__board21.setMaximized('notes:1', false));
     const below = { calculator: () => { const g = document.getElementById('grid'); return g.getBoundingClientRect().top + parseFloat(getComputedStyle(g).paddingTop); },
       'name-picker': () => document.getElementById('done').getBoundingClientRect().top,
-      'youtube-player': () => parseFloat(getComputedStyle(document.getElementById('player')).getPropertyValue('--clear-top')) || 0 };
+      'youtube-player': () => parseFloat(getComputedStyle(document.getElementById('player')).getPropertyValue('--clear-top')) || 0,
+      'first-then-board': () => document.querySelector('.top-nav').getBoundingClientRect().top };
     for (const [id, fn] of Object.entries(below)) {
       const ik = await B(id => window.__board21.openWidget(id), id); await page.waitForTimeout(1500);
       await B(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(600);
@@ -14868,6 +14933,21 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(Math.abs(await f.evaluate(fn) - was) <= 1, `${id}: unlocked, back as it was`);
       await B(ik => window.__board21.closeWin(ik, { quiet: true }), ik); await page.waitForTimeout(300);
     }
+    // ---- The shape tip (a 16:9 board in a wide window): hidden while the board is locked, either way. Its Fill the
+    // window would change the board's shape, and with it where every window is.
+    await page.setViewportSize({ width: 1500, height: 560 });
+    await B(() => window.__board21.setBoardShape('16:9')); await page.waitForTimeout(500);
+    const tipShown = () => B(() => { const h = document.getElementById('shape-hint'); return !h.hidden && getComputedStyle(h).display !== 'none' && h.getBoundingClientRect().width > 0; });
+    ok(await tipShown(), 'unlocked, a 16:9 board in a wide window shows the shape tip');
+    for (const mode of ['widgets', 'all']) {
+      await lockBoard(page, mode); await page.waitForTimeout(300);
+      const hid = !await tipShown();
+      await B(() => document.querySelector('#shape-hint [data-act="unlock"]').click()); await page.waitForTimeout(300);
+      const shape = await B(() => window.__board21.state.board.shape);
+      ok(hid && shape === '16:9', `${mode === 'all' ? 'Lock everything' : 'Widgets still work'}: no shape tip, and its Fill the window changes nothing (${hid ? 'hidden' : 'shown'}, ${shape})`);
+      await unlockBoard(page);
+    }
+    ok(await tipShown(), 'unlocked: the tip is back');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

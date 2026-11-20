@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-18';
-  const BOARD_BUILD = 'be8285f4';
+  const BOARD_BUILD = '2850eddb';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -1637,6 +1637,7 @@
         const b = e.target.closest('[data-act]');
         if (!b) return;
         if (b.dataset.act === 'unlock') {
+          if (Lock.refuse()) return;   // (hidden while locked: update)
           if (!setBoardShape('free')) return;   // refused (someone is moving a window); it said why
           if (Settings.isOpen) Settings.render();
           toast('The board now fills the window. Change it in Settings › Appearance › Board shape.');
@@ -1649,7 +1650,8 @@
       if (!this.el) return;
       const L = canvas(), bw = L.w * Zoom.s, bh = L.h * Zoom.s;
       const unused = Zoom.vw && Zoom.vh ? 1 - (bw * bh) / (Zoom.vw * Zoom.vh) : 0;
-      let show = !freeShape() && !this.hidden && unused > 0.3;
+      // (Not while the board is locked, section 12b: filling the window moves every window, and Settings won't open.)
+      let show = !freeShape() && !this.hidden && !Lock.on() && unused > 0.3;
       this.el.hidden = !show;
       if (!show) return;
       const ui = Zoom.ui;
@@ -2253,7 +2255,7 @@
     windowOp(op, args) {
       const inst = this.inst;
       if (!inst) return;
-      if ((op === 'maximize' || op === 'restore' || op === 'close') && Lock.on()) return;   // windows locked (section 12b)
+      if ((op === 'maximize' || op === 'restore' || op === 'close') && Lock.on()) return;   // locked (section 12b)
       const posOrNull = v => (typeof v === 'number' && v > 0 && isFinite(v)) ? v : null;
       switch (op) {
         case 'setSize': {
@@ -2264,7 +2266,7 @@
           // (A window opened for a picture pasted or dropped on the board keeps its middle there: section 15c.)
           const at = this.keepAt; this.keepAt = null;
           const r = resolveMove({ x: at ? at.x - s.w / 2 : inst.rect.x, y: at ? at.y - s.h / 2 : inst.rect.y, w: s.w, h: s.h }, obstacles(this), view, screenPx(RESISTANCE.strong), S.settings.snapping);
-          // (Windows locked: one that fills the board keeps filling it, and gets this size when restored. Section 12b.)
+          // (Locked: one that fills the board keeps filling it, and gets this size when restored. Section 12b.)
           saveInst(this.ikey, Object.assign({}, inst, { rect: r, maximized: !!inst.maximized && Lock.on() }));
           this.layout(true);
           break;
@@ -2612,7 +2614,7 @@
     // Drags that start inside a widget (section 9a), called once the press has moved past the slop.
     // `key` is the pointerId, or a string for two-finger drags. Fails if someone else has this window.
     beginAt(key, win, x, y, type) {
-      if (this.holds(win) || Lock.refuse()) return false;   // (windows locked: the widget keeps the press, section 12b)
+      if (this.holds(win) || Lock.refuse()) return false;   // (locked: the widget keeps the press, section 12b)
       this.map.set(key, {
         id: key, win, kind: 'content', handle: null, el: null, type,
         sx: x, sy: y, x, y,
@@ -2653,7 +2655,7 @@
         // Past that, the window is moved from where the press began, so it is under the pointer at once.
         const slop = it.kind === 'title' || it.onLabel ? TAP_SLOP[it.type] || DRAG_THRESHOLD : DRAG_THRESHOLD;
         if (Math.hypot(it.x - it.sx, it.y - it.sy) < slop) return;
-        if (it.refused || Lock.refuse()) { it.refused = true; return; }   // windows locked (section 12b)
+        if (it.refused || Lock.refuse()) { it.refused = true; return; }   // locked (section 12b)
         it.moved = true;
         it.win.keepAt = null;   // (moved by hand: no longer kept where a picture opened it, section 15c)
         document.body.classList.add('busy');
@@ -3030,6 +3032,10 @@
 
     init() {
       this.el = $('#panel');
+      // A page from before Lock (2026.11.18-17 and earlier: for a launch or two after an update, the page and this
+      // script can be from different builds) has Dark mode where Lock goes. Its button becomes Lock.
+      const th = $('[data-ctl="theme"]', this.el);
+      if (th && !$('[data-ctl="lock"]', this.el)) th.dataset.ctl = 'lock';
       for (const side of ['left', 'right']) {
         const b = $(`.picker-btn.${side}`);
         b.innerHTML = svg('waffle', 'fill');
@@ -3131,7 +3137,8 @@
     renderControls() {
       if (!this.el) return;
       const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
+      // (A control the page doesn't have, from another build: nothing to draw.)
+      const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); if (!b) return {}; b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
       Pages.renderControls(this.el);
       set('paste', 'paste', 'Paste').hidden = !!LAB || !Pictures.canRead();   // (section 15c; the widget dev window has no Picture or Video Player)
       set('export', 'export', 'Export board');
@@ -3281,7 +3288,7 @@
       }
       endGroup();
       if (html) html += '<div class="menu-sep"></div>';
-      const locked = Lock.on();   // (windows locked: the widget's own items, and a district app's, section 12b)
+      const locked = Lock.on();   // (locked: the widget's own items, and a district app's, section 12b)
       if (!locked) html += w.inst.maximized ? item('restore', svg('restore'), 'Restore size') : item('maximize', svg('maximize'), 'Fill the board');
       if (w.widget.external) {
         // A district app keeps its own work: there is none here to reset or to go back to. Reload: a window that
@@ -4103,6 +4110,7 @@
     }
     if (Menu.win) { Menu.render(); Menu.position(); }
     Pages.closeMenu();
+    ShapeHint.update();
     notifyCorners();   // (the padlocks over a window that fills the board: cornerReach)
   }
 
@@ -5537,7 +5545,7 @@
   }
 
   async function importFile(file) {
-    if (!await Lock.letIn(file)) return;   // windows locked: unlock first (section 12b)
+    if (!await Lock.letIn(file)) return;   // locked: refused, or unlock first (section 12b)
     let parsed;
     try { parsed = parseBoardFile(await file.text()); } catch (err) {
       await dialog({ title: 'Can’t import this file', message: err.message, actions: [{ label: 'OK', value: true, kind: 'primary' }] });
@@ -11046,8 +11054,8 @@
   // Sync holds this device's file back until then, so other devices never get the window empty (Link.filling). A paste
   // or drop inside a widget that the widget didn't take comes here too (the SDK passes it on; a .21board file dropped
   // there imports, as on the board), except from a widget uploaded in Developer mode. A paste in the board's own text
-  // fields, or while a dialog is open, is theirs. Not while windows are locked (section 12b): the board says how to
-  // unlock, as it does for a window moved.
+  // fields, or while a dialog is open, is theirs. Not while the board is locked (section 12b): it says so, as it does
+  // for a window moved.
   // A video link pasted or dropped on the board opens in a new Video Player (widgets/youtube-player) the same way, as if
   // pasted into its link box: text that is one link (no other words) to a YouTube, Google Drive or Vimeo video, as the
   // Video Player's own reader sees it (video-links.js, which index.html loads, so the two never disagree). Other text,
@@ -11103,7 +11111,7 @@
     // The Widget Picker's Paste: what Ctrl+V on the board does, with the clipboard read through the browser (Chrome asks
     // once). A picture first, else its text, which may be a video link. The Widget Picker closes when a window opens.
     async fromClipboard() {
-      if (Lock.refuse()) return;   // (windows locked: no window, as for Ctrl+V)
+      if (Lock.refuse()) return;   // (locked: no window, as for Ctrl+V)
       let items = null, blocked = false, text = '';
       try { items = await navigator.clipboard.read(); } catch (e) { blocked = !!e && e.name === 'NotAllowedError'; }
       let pic = null;
