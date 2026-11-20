@@ -17504,8 +17504,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await L.c.close();
 
     // ---- 2. No list of three or more without its comma, wherever a teacher reads: "A, B and C" and "A, B or C".
-    // Reviewed exceptions, each [pattern, reason]: a sentence that matches but isn't a list of three. None today.
-    const EXCEPT = [];
+    // Reviewed exceptions, each [pattern, reason]: a sentence that matches but isn't a list of three. None in the app;
+    // these are in the Calculator manual and the widget starter's notes.
+    const EXCEPT = [
+      [/such as a power or a fraction/, 'two examples'],
+      [/then powers and roots/, 'two items after “then”'],
+      [/without the problem or History/, 'two items'],
+      [/the steps start over and a hidden answer/, 'two clauses'],
+      [/open this file in a browser or paste it/, 'two things to do'],
+      [/doesn['’]t show it or cache it/, 'two verbs'],
+      [/theme, light or dark/, 'the theme, then its two choices']];
     const texts = [];   // { where, text }
     const add = (where, text) => texts.push({ where, text: String(text || '') });
     for (const w of await B(() => window.__board21.catalog().map(w => ({ id: w.id, d: w.description })))) add(`the registry, ${w.id}`, w.d);
@@ -17536,6 +17544,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       add(`${id}’s window menu`, await page.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.filter(i => !i.separator).map(i => i.label).join('\n'), ik));
       await page.evaluate(ik => window.__board21.closeWin(ik), ik); await page.waitForTimeout(200);
     }
+    // The Calculator manual, a page of its own, and the widget starter's notes, its only words for a widget author.
+    // (Each block or note is joined into one line first: a list can wrap across lines.)
+    const src = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+    add('the Calculator manual', src('docs/calculator-manual/page-src.html').replace(/<(script|style)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, '')
+      .replace(/<\/?(?:p|div|li|h\d|section|td|th|dt|dd|br|button|summary|figcaption)\b[^>]*>/gi, '\0').replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').split('\0').join('\n'));
+    add('the widget starter’s notes', (src('widgets/_template/index.html').match(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\/|(?:^[ \t]*\/\/.*\n)+/gm) || [])
+      .map(c => c.replace(/<!--|-->|\/\*|\*\/|^[ \t]*\/\/ ?/gm, '').split(/\n\s*\n|\n(?=\s*\d\. )/).map(s => s.replace(/\s+/g, ' ')).join('\n')).join('\n'));
     const LIST = /,\s+[^,]*?[^,\s]\s+(?:and|or|nor)\s/i;
     const found = [];
     for (const { where, text } of texts) {
@@ -17550,6 +17565,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(labels > 0 && claude[labels + 1] === '- Every list of three or more takes the Oxford comma, such as "red, yellow, and green".', `CLAUDE.md’s Voice has the rule, after Labels (${claude[labels + 1]})`);
     const prompt = fs.readFileSync(path.join(ROOT, 'docs', 'AI-PROMPT.md'), 'utf8').replace(/\s+/g, ' ');
     ok(prompt.includes('- Plain, short, friendly words a K–8 student or busy teacher understands. No jargon. Lists of three or more take the Oxford comma.'), 'the AI prompt asks for the Oxford comma');
+    // WIDGET-SDK's first lines, wrapped across two in the file.
+    const sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(sdkDoc.includes('21Board loads it in an `<iframe>`, saves its data, and keeps it in sync across every open copy of 21Board.'), 'WIDGET-SDK: “loads it…, saves its data, and keeps it in sync”');
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
@@ -17691,6 +17709,11 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await connected(kp, kt);
     ok(await menuAt(frameOf(kp, kt), '#display') === 'prevented', 'kiosk mode: inside a Timer');
     await kp.close();
+
+    // WIDGET-SDK: a widget's own menu calls preventDefault(), or in Developer mode and the dev window, where the SDK
+    // leaves the browser's menu on, both show.
+    const sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(sdkDoc.includes('To show a menu of your own, listen for `contextmenu` and call `preventDefault()`.'), 'WIDGET-SDK: a menu of your own calls preventDefault()');
 
     await page.screenshot({ path: OUT + 'right-click-board.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));

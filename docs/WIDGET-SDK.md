@@ -1,7 +1,7 @@
 # 21Board Widget SDK
 
-A **widget** is a small web page in a 21Board window. 21Board loads it in an `<iframe>`, saves its
-data and keeps it in sync across every open copy of 21Board. The teacher can move and resize its window.
+A **widget** is a small web page in a 21Board window. 21Board loads it in an `<iframe>`, saves its data, and keeps
+it in sync across every open copy of 21Board. The teacher can move and resize its window.
 
 Widgets talk to the board through one script: `sdk/board21.js`, which defines `window.Board21`.
 
@@ -242,7 +242,7 @@ place of your widget. To take them yourself, call `preventDefault()` in a `paste
 or an element.
 
 **Right-click.** The SDK turns off the browser's menu in your widget, except in text boxes, in Developer mode, and
-in the dev window. To show a menu of your own, listen for `contextmenu`.
+in the dev window. To show a menu of your own, listen for `contextmenu` and call `preventDefault()`.
 
 ---
 
