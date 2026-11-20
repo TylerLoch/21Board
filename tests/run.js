@@ -761,6 +761,85 @@ const ZC = {
     await p.click(`.win[data-ikey="${k}"] .win-label`);
     await p.locator('#menu [data-act="widget"]').filter({ hasText: new RegExp('^\\s*' + label + '\\s*$') }).first().click();
     await p.waitForTimeout(450);
+  },
+  // What is wrong with a Zones Check-In as drawn now: text under 14 px, a zone’s name or a feeling cut off, a count or
+  // face over the colored top or the feelings, and (corners: filling the board) anything under the board’s corner buttons
+  // or padlocks.
+  problems: async (page, where, corners, K = ZC.K) => {
+    const f = await ZC.zf(page, K).locator('html').evaluate(() => {
+      const out = [], vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+      const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n; (n = walk.nextNode());) {
+        const e = n.parentElement;
+        if (!n.textContent.trim() || !e || e.closest('.sr, template, .float') || !e.closest('.view.on') || !vis(e)) continue;
+        const fs = parseFloat(getComputedStyle(e).fontSize);
+        if (fs < 13.95) out.push(`“${n.textContent.trim().slice(0, 16)}” at ${fs.toFixed(1)} px`);
+      }
+      for (const z of document.querySelectorAll('.zone')) {
+        const id = z.dataset.z, tap = z.querySelector('.tap').getBoundingClientRect(), head = z.querySelector('.head').getBoundingClientRect(), name = z.querySelector('.name');
+        if (name.scrollWidth > name.clientWidth + 1) out.push(`${id}: its name is cut`);
+        const nr = document.createRange(); nr.selectNodeContents(name); const nb = nr.getBoundingClientRect();
+        const tools = [...z.querySelectorAll('.tools .chip, .tools .pill')].filter(vis).map(e => e.getBoundingClientRect());
+        if (tools.some(t => t.left < nb.right - 0.5 && t.right > nb.left + 0.5)) out.push(`${id}: its name runs under “−” or Ideas`);
+        if (nb.right > tap.right + 0.5 || nb.left < tap.left - 0.5) out.push(`${id}: its name runs out of the card`);
+        const fl = z.querySelector('.feelings'), flOn = vis(fl), flr = fl.getBoundingClientRect();
+        if (flOn) for (const c of fl.querySelectorAll('.feel')) {
+          if (!vis(c)) continue;
+          const r = c.getBoundingClientRect();
+          if (r.top < flr.top - 0.5 || r.bottom > flr.bottom + 0.5 || r.left < Math.max(flr.left, tap.left) - 0.5 || r.right > Math.min(flr.right, tap.right) + 0.5) out.push(`${id}: “${c.textContent}” is cut off`);
+        }
+        const below = flOn ? flr.top : tap.bottom;
+        const cnt = z.querySelector('.count'), face = z.querySelector('.face');
+        for (const [what, e, k] of [['count', cnt, 0.12], ['face', face, 0.02]]) {
+          if (!vis(e)) continue;
+          const r = e.getBoundingClientRect(), slack = parseFloat(getComputedStyle(e).fontSize) * k;
+          if (r.top + slack < head.bottom - 0.5) out.push(`${id}: its ${what} is over the colored top`);
+          if (r.bottom - slack > below + 0.5) out.push(`${id}: its ${what} is over the feelings`);
+          if (r.left < tap.left - 0.5 || r.right > tap.right + 0.5) out.push(`${id}: its ${what} runs out of the card`);
+        }
+      }
+      // What the board's buttons must not cover: the cards, their buttons, the status line and the bar.
+      const parts = [...document.querySelectorAll('.view.on .tap, .view.on .tools .chip, .view.on .tools .pill, .view.on #status, .view.on .bar')].filter(vis)
+        .map(e => { const r = e.getBoundingClientRect(); return { name: e.id || e.className.split(' ')[0] + (e.closest('.zone') ? ' ' + e.closest('.zone').dataset.z : ''), x: r.left, y: r.top, w: r.width, h: r.height }; });
+      return { out, parts, iw: innerWidth, ih: innerHeight, theme: document.documentElement.getAttribute('data-b21-theme') };
+    });
+    const top = await page.evaluate(k => {
+      const vis = e => { const s = getComputedStyle(e), b = e.getBoundingClientRect(); return !e.hidden && s.display !== 'none' && s.visibility !== 'hidden' && b.width > 0; };
+      const r = document.querySelector(`.win[data-ikey="${k}"] iframe`).getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height, marks: [...document.querySelectorAll('.picker-btn, .corner-clock, .lock-pad')].filter(vis).map(e => { const b = e.getBoundingClientRect(); return { name: e.className.split(' ').slice(0, 2).join('.'), x: b.left, y: b.top, w: b.width, h: b.height }; }) };
+    }, K);
+    const sx = top.w / f.iw, sy = top.h / f.ih;
+    const under = [];
+    for (const m of corners ? top.marks : []) for (const q of f.parts) {
+      const x = top.x + q.x * sx, y = top.y + q.y * sy, w = q.w * sx, h = q.h * sy;
+      if (Math.min(m.x + m.w, x + w) - Math.max(m.x, x) > 0.5 && Math.min(m.y + m.h, y + h) - Math.max(m.y, y) > 0.5) under.push(`${q.name} under ${m.name}`);
+    }
+    return { where, list: f.out.concat(under), marks: top.marks.length, theme: f.theme, size: `${f.iw} × ${f.ih}` };
+  },
+  // How the four cards sit (2026.11.20-2): 'row' (side by side, Blue to Red, their tops and bottoms matching), '2x2',
+  // 'column' or 'other'. old: what the rules before one row give for the zones' size (a row only when very wide, or
+  // wide and short; a column when very tall; else two by two). For each card, where its face, count and feelings are.
+  // h: the height the board gives the window's content.
+  arrange: async (page, K = ZC.K) => {
+    const x = await ZC.zf(page, K).locator('html').evaluate(() => {
+      const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+      const box = e => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; };
+      const near = (a, b) => Math.abs(a - b) <= 1;
+      const cards = ['blue', 'green', 'yellow', 'red'].map(z => {
+        const n = document.querySelector(`.zone[data-z="${z}"]`), q = s => n.querySelector(s), fs = e => parseFloat(getComputedStyle(e).fontSize);
+        return { z, card: box(q('.tap')), face: box(q('.face')), faceFs: fs(q('.face')), count: vis(q('.count')) ? box(q('.count')) : null, countFs: fs(q('.count')),
+          feel: [...n.querySelectorAll('.feel')].filter(vis).map(box) };
+      });
+      const c = cards.map(k => k.card);
+      const shape = c.every(k => near(k.t, c[0].t) && near(k.b, c[0].b)) && c.every((k, i) => !i || k.l >= c[i - 1].r - 1) ? 'row'
+        : near(c[0].t, c[1].t) && near(c[2].t, c[3].t) && c[2].t >= c[0].b - 1 && near(c[0].l, c[2].l) && near(c[1].l, c[3].l) && c[1].l >= c[0].r - 1 ? '2x2'
+        : c.every(k => near(k.l, c[0].l)) && c.every((k, i) => !i || k.t >= c[i - 1].b - 1) ? 'column' : 'other';
+      const zr = document.querySelector('#main .zones').getBoundingClientRect(), a = zr.width / zr.height;
+      const old = a > 3.2 || (a > 2.2 && zr.width >= 800 && zr.height < 310) ? 'row' : a < 0.7 ? 'column' : '2x2';
+      return { shape, old, reach: document.body.classList.contains('reach'), cards, foot: box(document.querySelector('#main .foot')), gap: parseFloat(getComputedStyle(document.getElementById('grid')).rowGap) };
+    });
+    x.h = await page.evaluate(k => { const w = window.__board21.state.wins.get(k); return w ? w.info().height : 0; }, K);
+    return x;
   }
 };
 
@@ -6633,59 +6712,7 @@ const SUITES = [
     await zf(page).locator('#edit-done').click(); await page.waitForTimeout(400);
     await setCornerClock(page, 'on');
 
-    // What is wrong with the layout as drawn now: text under 14 px, a zone's name or a feeling cut off, a count or face
-    // over the colored top or the feelings, and (filling the board) anything under the board's corner buttons or padlocks.
-    const problems = async (where, corners) => {
-      const f = await zf(page).locator('html').evaluate(() => {
-        const out = [], vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
-        const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-        for (let n; (n = walk.nextNode());) {
-          const e = n.parentElement;
-          if (!n.textContent.trim() || !e || e.closest('.sr, template, .float') || !e.closest('.view.on') || !vis(e)) continue;
-          const fs = parseFloat(getComputedStyle(e).fontSize);
-          if (fs < 13.95) out.push(`“${n.textContent.trim().slice(0, 16)}” at ${fs.toFixed(1)} px`);
-        }
-        for (const z of document.querySelectorAll('.zone')) {
-          const id = z.dataset.z, tap = z.querySelector('.tap').getBoundingClientRect(), head = z.querySelector('.head').getBoundingClientRect(), name = z.querySelector('.name');
-          if (name.scrollWidth > name.clientWidth + 1) out.push(`${id}: its name is cut`);
-          const nr = document.createRange(); nr.selectNodeContents(name); const nb = nr.getBoundingClientRect();
-          const tools = [...z.querySelectorAll('.tools .chip, .tools .pill')].filter(vis).map(e => e.getBoundingClientRect());
-          if (tools.some(t => t.left < nb.right - 0.5 && t.right > nb.left + 0.5)) out.push(`${id}: its name runs under “−” or Ideas`);
-          if (nb.right > tap.right + 0.5 || nb.left < tap.left - 0.5) out.push(`${id}: its name runs out of the card`);
-          const fl = z.querySelector('.feelings'), flOn = vis(fl), flr = fl.getBoundingClientRect();
-          if (flOn) for (const c of fl.querySelectorAll('.feel')) {
-            if (!vis(c)) continue;
-            const r = c.getBoundingClientRect();
-            if (r.top < flr.top - 0.5 || r.bottom > flr.bottom + 0.5 || r.left < Math.max(flr.left, tap.left) - 0.5 || r.right > Math.min(flr.right, tap.right) + 0.5) out.push(`${id}: “${c.textContent}” is cut off`);
-          }
-          const below = flOn ? flr.top : tap.bottom;
-          const cnt = z.querySelector('.count'), face = z.querySelector('.face');
-          for (const [what, e, k] of [['count', cnt, 0.12], ['face', face, 0.02]]) {
-            if (!vis(e)) continue;
-            const r = e.getBoundingClientRect(), slack = parseFloat(getComputedStyle(e).fontSize) * k;
-            if (r.top + slack < head.bottom - 0.5) out.push(`${id}: its ${what} is over the colored top`);
-            if (r.bottom - slack > below + 0.5) out.push(`${id}: its ${what} is over the feelings`);
-            if (r.left < tap.left - 0.5 || r.right > tap.right + 0.5) out.push(`${id}: its ${what} runs out of the card`);
-          }
-        }
-        // What the board's buttons must not cover: the cards, their buttons, the status line and the bar.
-        const parts = [...document.querySelectorAll('.view.on .tap, .view.on .tools .chip, .view.on .tools .pill, .view.on #status, .view.on .bar')].filter(vis)
-          .map(e => { const r = e.getBoundingClientRect(); return { name: e.id || e.className.split(' ')[0] + (e.closest('.zone') ? ' ' + e.closest('.zone').dataset.z : ''), x: r.left, y: r.top, w: r.width, h: r.height }; });
-        return { out, parts, iw: innerWidth, ih: innerHeight, theme: document.documentElement.getAttribute('data-b21-theme') };
-      });
-      const top = await page.evaluate(k => {
-        const vis = e => { const s = getComputedStyle(e), b = e.getBoundingClientRect(); return !e.hidden && s.display !== 'none' && s.visibility !== 'hidden' && b.width > 0; };
-        const r = document.querySelector(`.win[data-ikey="${k}"] iframe`).getBoundingClientRect();
-        return { x: r.left, y: r.top, w: r.width, h: r.height, marks: [...document.querySelectorAll('.picker-btn, .corner-clock, .lock-pad')].filter(vis).map(e => { const b = e.getBoundingClientRect(); return { name: e.className.split(' ').slice(0, 2).join('.'), x: b.left, y: b.top, w: b.width, h: b.height }; }) };
-      }, K);
-      const sx = top.w / f.iw, sy = top.h / f.ih;
-      const under = [];
-      for (const m of corners ? top.marks : []) for (const q of f.parts) {
-        const x = top.x + q.x * sx, y = top.y + q.y * sy, w = q.w * sx, h = q.h * sy;
-        if (Math.min(m.x + m.w, x + w) - Math.max(m.x, x) > 0.5 && Math.min(m.y + m.h, y + h) - Math.max(m.y, y) > 0.5) under.push(`${q.name} under ${m.name}`);
-      }
-      return { where, list: f.out.concat(under), marks: top.marks.length, theme: f.theme, size: `${f.iw} × ${f.ih}` };
-    };
+    const problems = (where, corners) => ZC.problems(page, where, corners);
     const SIZES = [['260 × 220', { x: 40, y: 40, w: 260, h: 260 }], ['the default size', { x: 40, y: 40, w: 560, h: 460 }], ['very wide', { x: 10, y: 40, w: 1340, h: 300 }], ['very tall', { x: 530, y: 10, w: 300, h: 740 }]];
     const bad = [], seen = [];
     for (const theme of ['light', 'dark']) {
@@ -6726,6 +6753,204 @@ const SUITES = [
     });
     ok(dev.text === 'Zones Check-In (test)' && dev.whole, `its tile shows the whole name, “(test)” too (${JSON.stringify(dev)})`);
     await page.keyboard.press('Escape');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  // ---- Zones Check-In in one row (2026.11.20-2). Filling the board, and over 500 px tall, the four zones sit side by side,
+  // so every card reaches down to where students can tap it.
+  ['Zones Check-In: one row when it fills the board', async (browser) => {
+    let ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    let page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page);
+    const { K, zf, connected, choose, arrange, problems } = ZC;
+    await page.evaluate(() => window.__board21.openWidget('zones-check-in'));
+    ok(await connected(page), '(the Zones Check-In connects)');
+    const home = { x: 60, y: 60, w: 560, h: 460 };   // (the size it opens at)
+    // The board's shape ('16:9' or 'free', Fill), its Size and the screen; the window not filling it, at r.
+    const put = async (shape, sc, vw, vh, r = home, p = page) => {
+      await p.setViewportSize({ width: vw, height: vh });
+      await p.evaluate(([k, shape, sc, r]) => { const B = window.__board21; B.setMaximized(k, false); B.setBoardShape(shape); B.setBoardScale(sc); B.setRect(k, r); }, [K, shape, sc, r]);
+      await p.waitForTimeout(400);
+    };
+    const fill = (on, p = page) => p.evaluate(([k, on]) => window.__board21.setMaximized(k, on), [K, on]);
+    const settled = async (want, p = page) => { await eventually(async () => (await arrange(p)).shape === want, 3000); await p.waitForTimeout(150); return arrange(p); };
+    const setCounts = async (counts, p = page) => {
+      await choose(p, 'Edit counts'); await p.waitForTimeout(400);
+      for (const [id, n] of Object.entries(counts)) await zf(p).locator('#n-' + id).fill(String(n));
+      await zf(p).locator('#edit-done').click(); await p.waitForTimeout(400);
+    };
+    await put('16:9', 0.8, 1366, 768);
+    await setCounts({ blue: 2, green: 9, yellow: 4, red: 1 });
+    const ROW = '1366 × 768 at 80%';
+
+    // ---- 1. The 16:9 board at 1366 × 768 and 1920 × 1080, at Size 80% (a new board's) and 100%.
+    const R1 = { row: [], reach: [], stack: [], line: [], back: [] }, seen1 = [];
+    for (const [vw, vh] of [[1366, 768], [1920, 1080]]) for (const sc of [0.8, 1]) {
+      const where = `${vw} × ${vh} at ${sc * 100}%`;
+      await put('16:9', sc, vw, vh); await fill(true);
+      const x = await settled('row');
+      seen1.push(`${where}: ${x.shape}, ${x.h} px tall`);
+      if (!(x.shape === 'row' && x.reach)) R1.row.push(`${where}: ${x.shape}`);
+      const high = x.cards.filter(k => !(x.foot.t - k.card.b >= -0.5 && x.foot.t - k.card.b <= x.gap + 1)).map(k => `${k.z} ends ${Math.round(x.foot.t - k.card.b)} px above it`);
+      if (high.length) R1.reach.push(`${where}: ${high.join(', ')}`);
+      const st = [];
+      for (const k of x.cards) {
+        if (!k.count || k.face.b > k.count.t + 1) st.push(`${k.z}: its face isn’t above its count`);
+        if (k.count && k.feel.length && k.feel[0].t < k.count.b - 1) st.push(`${k.z}: its feelings aren’t below its count`);
+        if (k.feel.length !== (k.z === 'blue' ? 4 : 3) || k.feel.some((f, i) => i && f.t < k.feel[i - 1].b - 0.5)) st.push(`${k.z}: its ${k.feel.length} feelings aren’t one per line`);
+      }
+      if (st.length) R1.stack.push(`${where}: ${st.join(', ')}`);
+      const spread = f => { const v = x.cards.map(f).filter(v => v !== null); return v.length === 4 ? Math.max(...v) - Math.min(...v) : Infinity; };
+      const lines = { faces: spread(k => (k.face.t + k.face.b) / 2), counts: spread(k => k.count ? (k.count.t + k.count.b) / 2 : null), 'last feelings': spread(k => k.feel.length ? k.feel[k.feel.length - 1].b : null) };
+      const off = Object.entries(lines).filter(([, v]) => !(v <= 1)).map(([n, v]) => `${n} ${v.toFixed(1)} px apart`);
+      if (off.length) R1.line.push(`${where}: ${off.join(', ')}`);
+      if (where === ROW) await page.screenshot({ path: OUT + 'zones-row-16-9.png' });
+      await fill(false); const y = await settled('2x2');
+      await fill(true); const z = await settled('row');
+      if (!(y.shape === '2x2' && !y.reach && z.shape === 'row' && z.reach)) R1.back.push(`${where}: Restore size ${y.shape}, Fill the board ${z.shape}`);
+    }
+    ok(!R1.row.length && seen1.length === 4, `the 16:9 board, filled: one row of four cards, Blue to Red, their tops and bottoms matching (${R1.row.join(' | ') || seen1.join('; ')})`);
+    ok(!R1.reach.length, `the cards reach down to just above the bottom row (${R1.reach.join(' | ') || '4 boards'})`);
+    ok(!R1.stack.length, `in each card the face sits above the count, and the feelings below it, one per line (${R1.stack.join(' | ') || '4 boards'})`);
+    ok(!R1.line.length, `the faces line up, the counts line up, and so do the last feelings’ bottoms, within 1 px (${R1.line.join(' | ') || '4 boards'})`);
+    ok(!R1.back.length, `Restore size: two by two again, and Fill the board: one row again (${R1.back.join(' | ') || '4 boards'})`);
+
+    // ---- 2. The Fill board shape: a filled window over 500 px tall is one row. 500 px or less, or not filling the board,
+    // the rules before: two by two, a row when very wide, a column when very tall.
+    const tall = [], short = [];
+    for (const [vw, vh, sc, over] of [[1024, 768, 1, true], [1280, 700, 1, true], [1024, 541, 1, true], [1280, 700, 1.5, false], [1024, 540, 1, false]]) {
+      await put('free', sc, vw, vh); await fill(true);
+      const x = await settled(over ? 'row' : '2x2');
+      (over ? tall : short).push({ where: `${vw} × ${vh}${sc !== 1 ? ` at ${sc * 100}%` : ''}, ${x.h} px tall: ${x.shape}`, good: over ? x.h > 500 && x.shape === 'row' && x.reach : x.h <= 500 && x.shape === '2x2' && x.shape === x.old && !x.reach });
+      if (vw === 1024 && vh === 768) await page.screenshot({ path: OUT + 'zones-row-ipad.png' });
+    }
+    const said = l => l.map(c => c.where).join('; ');
+    ok(tall.every(c => c.good), `the Fill board shape: a filled window over 500 px tall is one row, as on an iPad (${said(tall)})`);
+    ok(short.every(c => c.good) && tall.every(c => c.good), `a filled window 500 px tall or less keeps the rules before: two by two (${said(short)}). The line is at 500 px (${tall[2].where})`);
+    const loose = [];
+    for (const [label, r] of [['260 × 220', { x: 40, y: 40, w: 260, h: 260 }], ['the default size', home], ['very wide', { x: 10, y: 40, w: 1340, h: 300 }], ['tall', { x: 600, y: 60, w: 600, h: 900 }], ['very tall', { x: 600, y: 60, w: 500, h: 900 }], ['as big as the board', { x: 0, y: 0, w: 1920, h: 1080 }]]) {
+      await put('free', 1, 1920, 1080, r);
+      const x = await arrange(page);
+      loose.push({ where: `${label} (${x.h} px tall): ${x.shape}`, good: x.shape === x.old && !x.reach && (label !== 'very tall' || x.shape === 'column') });
+    }
+    await fill(true); const big = await settled('row');
+    ok(loose.every(c => c.good) && big.shape === 'row', `a window that doesn’t fill the board keeps the rules before at every size, a very tall one in one column of four (${said(loose)}). Filled, the same board is one row (${big.shape})`);
+
+    // ---- 3. Counts of 7, 128, 12 and 9999, from the Counts view: each fits inside its card.
+    await put('16:9', 1, 1366, 768); await fill(true); await settled('row');
+    await setCounts({ blue: 7, green: 128, yellow: 12, red: 9999 });
+    const BOARDS = [['16:9', 0.8, 1366, 768], ['16:9', 1, 1366, 768], ['free', 1, 1024, 768], ['free', 1, 1024, 541], ['free', 1.25, 1024, 768], ['free', 0.5, 1920, 1080]];
+    const name = ([shape, sc, vw, vh]) => `${shape === 'free' ? 'Fill' : shape} ${vw} × ${vh} at ${sc * 100}%`;
+    const fits = [], fitSeen = [];
+    for (const b of BOARDS) {
+      await put(...b); await fill(true);
+      const x = await settled('row'), p = await problems(page, name(b), true);
+      const k = x.cards.map(c => !c.count ? `${c.z}: no count` : c.count.t < c.face.b - 1 ? `${c.z}: its count is over its face` : c.count.l < c.card.l - 0.5 || c.count.r > c.card.r + 0.5 ? `${c.z}: its count is cut off` : '').filter(Boolean);
+      const all = (x.shape === 'row' ? [] : [x.shape]).concat(k, p.list);
+      (all.length ? fits : fitSeen).push(`${name(b)}${all.length ? ': ' + all.join(', ') : ` (${x.cards.map(c => Math.round(c.countFs)).join(', ')} px)`}`);
+      if (b[3] === 541) await page.screenshot({ path: OUT + 'zones-row-counts.png' });
+    }
+    ok(!fits.length, `counts of 7, 128, 12 and 9999 in one row: each fits inside its card, nothing cut off, no count over the face or the feelings (${fits.join(' | ') || fitSeen.join('; ')})`);
+    await setCounts({ blue: 2, green: 9, yellow: 4, red: 1 });
+
+    // ---- 4. Show counts off, in one row: no counts, the faces bigger, nothing cut off.
+    const hid = [], hidSeen = [];
+    for (const b of [BOARDS[0], BOARDS[2]]) {
+      await put(...b); await fill(true);
+      const x0 = await settled('row');
+      await choose(page, 'Show counts');
+      const x1 = await settled('row'), p = await problems(page, name(b), true);
+      const bad = (x1.shape === 'row' ? [] : [x1.shape]).concat(x1.cards.filter(c => c.count).map(c => `${c.z}: its count shows`), x1.cards.filter((c, i) => !(c.faceFs > x0.cards[i].faceFs)).map(c => `${c.z}: its face isn’t bigger`), p.list);
+      (bad.length ? hid : hidSeen).push(`${name(b)}${bad.length ? ': ' + bad.join(', ') : ` (faces ${Math.round(x0.cards[0].faceFs)} → ${Math.round(x1.cards[0].faceFs)} px)`}`);
+      if (b === BOARDS[0]) await page.screenshot({ path: OUT + 'zones-row-no-counts.png' });
+      await choose(page, 'Show counts');
+    }
+    ok(!hid.length, `Show counts off, in one row: no counts, the faces bigger, nothing cut off (${hid.join(' | ') || hidSeen.join('; ')})`);
+
+    // ---- 5. Filling a locked board, with the corner clock on, light and dark.
+    await setCornerClock(page, 'on');
+    const lockBad = [], lockSeen = [];
+    for (const theme of ['light', 'dark']) {
+      await setTheme(page, theme);
+      ok(await eventually(async () => (await zf(page).locator('html').getAttribute('data-b21-theme')) === theme), `(${theme} theme)`);
+      for (const b of [BOARDS[0], BOARDS[2], ['free', 1, 1920, 1080]]) {
+        await put(...b); await fill(true);
+        await lockBoard(page, 'widgets'); await page.waitForTimeout(600);
+        const x = await settled('row'), p = await problems(page, `${theme}, ${name(b)}, locked`, true);
+        if (x.shape !== 'row') p.list.unshift(x.shape);
+        if (p.marks < 5) p.list.push(`only ${p.marks} of the board’s 5 corner buttons are there`);   // (▦ twice, the clock, two padlocks)
+        (p.list.length ? lockBad : lockSeen).push(`${p.where}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+        if (b === BOARDS[0]) await page.screenshot({ path: OUT + `zones-row-locked-${theme}.png` });
+        await unlockBoard(page);
+      }
+    }
+    ok(!lockBad.length && lockSeen.length === 6, `filling a locked board with the corner clock on, light and dark: one row, no text under 14 px, no zone name or feeling cut off, nothing under the board’s corner buttons, clock, or padlocks (${lockBad.join(' | ') || lockSeen.join('; ')})`);
+    await setTheme(page, 'light');
+    await setCornerClock(page, 'auto');   // (the default: only in full screen)
+
+    // ---- 7. Full screen, and a Fill board's window resized across 500 px, switch the layout without a reload.
+    const mark = () => zf(page).locator('html').evaluate(() => { window.__same = 'same page'; });
+    const same = () => zf(page).locator('html').evaluate(() => window.__same === 'same page').catch(() => false);
+    // ⛶ in the Widget Picker (which stays open), then the screen's new size (this browser's full screen keeps its size,
+    // and can't be resized). The Widget Picker closes again.
+    const cdp0 = await ctx.newCDPSession(page);
+    const screen = async (w, h) => {
+      if (!await page.locator('#panel.open').count()) await page.click('.picker-btn.left');
+      await page.click('#panel.open [data-ctl="fullscreen"]'); await page.waitForTimeout(400);
+      await cdp0.send('Emulation.setDeviceMetricsOverride', { width: w, height: h, deviceScaleFactor: 1, mobile: false });
+      await page.waitForTimeout(300);
+      if (await page.locator('#panel.open').count()) { await page.click('.picker-btn.left'); await page.waitForTimeout(300); }
+    };
+    // (A Chromebook's 1366 × 768 screen at Size 125%: a tab is about 1366 × 657, 486 px tall when filled; full screen, 574.)
+    await put('free', 1.25, 1366, 657); await fill(true);
+    const f0 = await settled('2x2'); await mark();
+    await screen(1366, 768);
+    const f1 = await settled('row'), inFull = await page.evaluate(() => !!document.fullscreenElement);
+    await screen(1366, 657);
+    const f2 = await settled('2x2'), outFull = await page.evaluate(() => !document.fullscreenElement);
+    ok(f0.shape === '2x2' && inFull && f1.shape === 'row' && outFull && f2.shape === '2x2' && await same(),
+      `full screen on a Fill board: in a tab ${f0.h} px tall, ${f0.shape}; full screen ${f1.h} px, ${f1.shape}; out again ${f2.h} px, ${f2.shape}. No reload`);
+    await put('free', 1, 1024, 768); await fill(true);
+    const s0 = await settled('row'); await mark();
+    await page.setViewportSize({ width: 1024, height: 520 }); const s1 = await settled('2x2');
+    await page.setViewportSize({ width: 1024, height: 768 }); const s2 = await settled('row');
+    ok(s0.shape === 'row' && s1.shape === '2x2' && s2.shape === 'row' && await same(),
+      `a Fill board’s window resized across 500 px switches: ${s0.h} px tall ${s0.shape}, ${s1.h} px ${s1.shape}, ${s2.h} px ${s2.shape}. No reload`);
+    // The README's Included widgets says so, its other words kept.
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
+    const row = (/\| \*\*Zones Check-In\*\* \|[^|]*\|/.exec(readme) || [''])[0];
+    ok(/^\| \*\*Zones Check-In\*\* \| Check-ins kept as \*content\*,.* and an Ideas view with a breathing circle\. Filling the board, the four zones sit in one row, in every student's reach \|$/.test(row),
+      `the README’s Zones Check-In row ends “Filling the board, the four zones sit in one row, in every student's reach” (…${row.slice(-100)})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+
+    // ---- 6. Taps still count in one row: real touches (CDP), low on each card, and two at once on two cards.
+    ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, hasTouch: true });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push('touch: ' + e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    await page.evaluate(() => window.__board21.openWidget('zones-check-in'));
+    ok(await connected(page), '(the Zones Check-In connects, on a touch screen)');
+    await fill(true, page);
+    const t0 = await settled('row', page);
+    const cdp = await ctx.newCDPSession(page);
+    const T = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+    const low = async zone => { const b = await zf(page).locator(`.zone[data-z="${zone}"] .tap`).boundingBox(); return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height * 0.85) }; };
+    const counts = async () => (await ZC.look(page)).counts;
+    const P = {};
+    for (const zone of ['blue', 'green', 'yellow', 'red']) P[zone] = await low(zone);
+    let a = await counts();
+    for (const zone of ['blue', 'green', 'yellow', 'red']) { await T('touchStart', [{ ...P[zone], id: 1 }]); await page.waitForTimeout(70); await T('touchEnd', []); await page.waitForTimeout(400); }
+    let d = (await counts()).map((v, i) => v - a[i]).join();
+    ok(t0.shape === 'row' && d === '1,1,1,1', `in one row (${t0.shape}), a tap low on each card counts one, ${Math.min(...Object.values(P).map(q => q.y))} px down a 768 px screen (${d})`);
+    a = await counts();
+    await T('touchStart', [{ ...P.blue, id: 1 }]); await page.waitForTimeout(30);
+    await T('touchStart', [{ ...P.blue, id: 1 }, { ...P.red, id: 2 }]); await page.waitForTimeout(60);
+    await T('touchEnd', [{ ...P.red, id: 2 }]); await page.waitForTimeout(30);
+    await T('touchEnd', []); await page.waitForTimeout(700);
+    d = (await counts()).map((v, i) => v - a[i]).join();
+    ok(t0.shape === 'row' && d === '1,0,0,1', `two students touching Blue and Red at once, in one row: both count (${d})`);
+    await page.screenshot({ path: OUT + 'zones-row-taps.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
