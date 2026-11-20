@@ -52,7 +52,7 @@
   .tap { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 18px; overflow: hidden;
          background: var(--tint); color: var(--ink); box-shadow: inset 0 0 0 2px var(--strong); text-align: center; transition: transform .08s, filter .15s; }
   .tap:active { transform: scale(.985); filter: brightness(.96); }
-  .tap:focus-visible, .foot button:focus-visible { outline: 4px solid var(--b21-accent); outline-offset: 2px; }
+  .tap:focus-visible { outline: 4px solid var(--b21-accent); outline-offset: 2px; }
   .head { flex: 0 0 auto; display: flex; align-items: center; box-sizing: border-box; height: var(--head);
           padding: 0 max(clamp(10px, 5cqw, 22px), var(--tools, 0px)) 0 clamp(10px, 5cqw, 22px); background: var(--strong); color: var(--on); text-align: left; }
   .name { font-size: clamp(16px, min(12cqh, 11cqw), 46px); font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -107,13 +107,9 @@
   @container zone (width < 190px) { .tools .minus { display: none; } }
   @container zone (height < 90px) or (width < 150px) { .tools { display: none; } }
 
-  /* ---- The bottom: Undo, and how many have checked in. Kept clear of the board's own buttons (--reach, --low). */
-  .foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: clamp(8px, 3vmin, 18px);
-          padding: 0 var(--reach, 0px); min-height: max(48px, calc(var(--low, 0px) - var(--pad))); }
-  .foot button { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 6px; min-height: 48px; padding: 0 clamp(10px, 3vmin, 24px);
-                 border: 0; border-radius: 999px; background: var(--b21-surface-2); font-size: clamp(14px, min(3.6vh, 4.4vw), 20px); font-weight: 650; }
-  .foot button[hidden] { display: none; }
-  .foot svg { width: 1.1em; height: 1.1em; }
+  /* ---- The bottom: how many have checked in. Kept clear of the board's own buttons (--reach, --low). */
+  .foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+          padding: 0 var(--reach, 0px); min-height: max(0px, calc(var(--low, 0px) - var(--pad))); }
   .progress { flex: 0 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
   .bar { height: clamp(8px, 2.4vh, 16px); border-radius: 999px; background: var(--b21-surface-2); display: flex; overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: var(--strong); transition: width .3s ease; }
@@ -168,7 +164,7 @@
 
   /* Windows High Contrast: borders in place of the edges and fills it takes away */
   @media (forced-colors: active) {
-    .tap, .foot button, .done, .step button { border: 2px solid; }
+    .tap, .done, .step button { border: 2px solid; }
     .bar { border: 1px solid; } .bar i { forced-color-adjust: none; background: CanvasText; }
     .ring, .ball { box-sizing: border-box; border: 3px solid; }
   }
@@ -187,7 +183,6 @@
   <section class="view" id="main">
     <div class="zones"><div class="grid" id="grid"></div></div>
     <div class="foot">
-      <button type="button" id="undo" hidden><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>Undo</button>
       <div class="progress"><div class="bar" id="bar" aria-hidden="true"></div><div id="status"></div></div>
     </div>
   </section>
@@ -486,11 +481,6 @@
     for (const id of IDS) bars[id].style.width = config.showCounts && base ? (cur.counts[id] / base * 100) + '%' : '0';
     barAll.style.width = !config.showCounts && base ? (n / base * 100) + '%' : '0';
     $('status').textContent = !n ? 'Tap your zone to check in' : !size ? `${n} checked in` : n === size ? 'Everyone’s checked in' : `${n} of ${size} checked in`;
-    if ($('undo').hidden !== !cur.undo.length) {
-      const keys = !cur.undo.length && $('undo').matches(':focus-visible');
-      $('undo').hidden = !cur.undo.length;
-      if (keys) cards[IDS[0]].tap.focus();   // (it hides itself when there is nothing left to undo)
-    }
     const title = !n ? '' : size ? `${n} of ${size}` : `${n} checked in`;
     if (title !== titleWas) { titleWas = title; Board21.window.setTitle(title); }
     setMenu(cur, n);
@@ -641,7 +631,6 @@
     else if (id === 'daily') { config.daily = !config.daily; saveConfig(); render(); }
     else if (id === 'sound') { config.sound = !config.sound; saveConfig(); render(); if (config.sound) Sound.sample(); else Sound.stop(); }
   });
-  $('undo').onclick = undo;
 
   // ---- Changed in another copy of the board (the smartboard and a laptop), or by an import
   Board21.on('data', d => { state = readState(d); render(true); });
