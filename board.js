@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-19';
-  const BOARD_BUILD = 'a16ee49f';
+  const BOARD_BUILD = '799273d7';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -7821,7 +7821,7 @@
       'task-timer': d => listOf(d.tasks).map(t => { const n = strOf(t && t.name), e = strOf(t && t.emoji); return e && n.startsWith(e + ' ') ? n.slice(e.length + 1).trim() : n; }).filter(Boolean).join(', '),
       'youtube-player': d => { if (!d.videoId) return ''; const e = listOf(d.history).find(e => e && e.videoId === d.videoId); return strOf(e && e.title) || strOf(d.videoUrl); },
       timer: d => {
-        if (typeof d.duration !== 'number' || !(d.duration >= 0 && d.duration <= 864e5)) return '';   // (a day at most, as the Timer reads it)
+        if (typeof d.duration !== 'number' || !(d.duration >= 0 && d.duration <= 864e5)) return '';   // a day at most, as the Timer allows
         const s = Math.ceil(d.duration / 1000), m = Math.floor(s / 60);
         return s % 60 ? `${m}:${String(s % 60).padStart(2, '0')}` : m === 1 ? '1 minute' : `${m} minutes`;
       },
