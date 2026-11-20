@@ -87,7 +87,7 @@ widget.
 | | |
 | --- | --- |
 | **Widget Picker** | The ▦ button in **either** bottom corner, so you can reach it from both sides of the board. Tap a widget to open it. Tap ▦ or anywhere else to close. |
-| **Buttons** | The Widget Picker's bottom row: Paste, Export, Import, Dark mode, Full screen and Settings. |
+| **Buttons** | The Widget Picker's bottom row: Paste, Export, Import, Lock, Full screen and Settings. |
 | **Pages** | A page for each lesson or part of the day, with its own windows, content, background and name. The Widget Picker's bottom row ends with **‹ Page 2 of 3 ›**. ‹ and › go to the page before and after, and on the last page › is **+** for a new page. Tap *Page* for the Pages menu. Tap a page there to go to it, or choose **New page**, **Duplicate this page**, **Rename this page…**, **Move left / right** or **Delete this page…**, which has Undo. A new page takes this page's size, shape and background color. Every tab on the device shows the same page, and 21Board opens on the page it last showed. With Board Sync, every device has the same pages in the same order, and each shows its own page. Widgets on other pages don't run. A Timer shows the right time when you come back, but its alarm won't ring on another page. |
 | **Move a window** | Drag its title bar. In widgets without typing, such as Clock, Timer, Calendar and Dice, drag anywhere inside. In widgets with typing, such as Notes, drag inside with two fingers. The Video Player's video takes every tap, so move or bring forward its window by the title bar. Windows snap next to each other and resist overlapping. Keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
@@ -99,6 +99,7 @@ widget.
 | **Paste** | Ctrl+V or ⌘V opens a copied picture in a new Picture window. A copied video link opens in a new Video Player. Dropping either on the board does the same. On a touch screen, tap *Paste* in the Widget Picker. An animation copied from a web page pastes as a still. Open or drop its file to keep it moving. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so your layout looks the same on a laptop and the smartboard. In Settings, *Fill* lets the board take any window's shape, and you can change the size of windows and menus. |
 | **Board history** | Undo a big change, or recover from a curious student. Settings → Classroom → **Board history…** lists earlier versions in a column beside Settings. Tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board, and can be undone. *Put back* brings back one window. Undo also appears after Reset, Delete, Close all and Import. An empty board offers *Go back to an earlier version*. Each window's menu has *Earlier versions…*. |
+| **Lock** | Tap **Lock** in the Widget Picker, then choose. *Lock everything*: nothing on the board responds. Timers and videos keep going. *Widgets still work*: windows can't move, resize or close, and widgets can still be used. Either way ▦ stays put and won't open. A tap says “The board is locked.” A 🔒 sits in the top corner above each ▦. To unlock, hold 🔒 for 2 seconds. A quick tap shows *Hold to unlock*. On a keyboard, press Enter on 🔒, then *Unlock*. Every tab on this device locks and unlocks together. Messages show without their buttons. Under *Widgets still work*, a file dropped on the board asks to unlock first. *Lock everything* refuses it. |
 | **Kiosk mode** | For a ChromeOS kiosk with no sign-in, add `?kiosk=yes` to the address. Full screen and Board Sync go away, and a red ✕ Quit follows the Settings gear. See [Kiosk mode](#kiosk-mode). |
 | **Several tabs** | 21Board tabs and windows on one computer stay in sync. |
 | **Updates** | When a new version is ready, a message offers *Update* or *Later*. *Update* takes a second or two, and the board and its content stay as they are. Otherwise the new version takes over the next time 21Board starts. Until then, a dot shows on ▦ and the Settings gear, and *Update now* is at the top of Settings. After an update, the board says “Updated to …” once. Settings → About shows the version in use. |
@@ -119,9 +120,6 @@ time Settings opens.
   When the board can't sync, it says what's wrong. Not in kiosk mode, the dev window or browsers without it.
   See [Board Sync](#board-sync).
 - **Classroom**
-  - **Lock windows in place:** widgets still work, but no one can move, resize, close or add windows, and Close all
-    is off. It applies to every tab on this device. A file dropped on the board asks to unlock first. Changes from
-    your other devices still arrive through Board Sync. To unlock, hold ▦ for 2 seconds or use the switch.
   - **Go back to an earlier version:** *Board history…* opens beside Settings, which stays open. Tap it again to
     close it. A line here says when history is paused or short of space. See
     [Board history](#board-history).
@@ -381,13 +379,13 @@ being typed in, is due again.
   typed in. The change lands a moment later. A window menu left open for a minute closes.
 - **The page shown** says "Updated from the laptop." with Undo. A new message comes at most once a minute, and the
   one showing updates in place. Other pages change quietly, and say so once when you next go to them, with when they
-  changed there. **Undo** puts the page back on every device. While windows are locked, merges still apply, since
+  changed there. **Undo** puts the page back on every device. While the board is locked, merges still apply, since
   Lock is for hands on this screen and your own changes from another device still count. They come without Undo, and
   locking takes away an Undo already shown. A clash where your text stayed in the window says so without Undo,
   because the other device kept its own version as the copy. Several pages deleted at once on another device make
   one message, "3 pages were deleted on the laptop.", with one Undo that leaves you on the page you're on.
 - **Theme, accent color and text style belong to the board.** The latest choice, made on any device, shows on all of
-  them at once, in every tab, even while windows are locked. Set the laptop to Dark and the smartboard turns dark.
+  them at once, in every tab, even while the board is locked. Set the laptop to Dark and the smartboard turns dark.
   Choose Early readers on the laptop, and the smartboard's text and widgets change too. If Settings is open, it shows
   the new choice in place without being redrawn. The device that shows the change says who made it, in one message:
   "The laptop changed the theme to Dark and the accent color to Green.", "The laptop changed the text style to “Early
@@ -400,7 +398,7 @@ being typed in, is due again.
   text style until one is chosen on any of your devices, or takes one already chosen on another updated device. A
   device on a release before 2026.11.18-2 shows Blue for a custom accent color until it updates. The page shown,
   Lock, Stay awake, the clock and the Widget Picker's corners stay on each device. Settings says "On all your
-  devices." beside Theme, Accent color and Text style, "This device only." beside Lock, Stay awake and the clock,
+  devices." beside Theme, Accent color and Text style, "This device only." beside Stay awake and the clock,
   and "This page, on all your devices." beside the page's own settings.
 
 **Settings → Board Sync** has three rows:

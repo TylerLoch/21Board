@@ -231,7 +231,8 @@ Sizes are the window's content area, without its 40px title bar, in the same px 
 `await Board21.window.getInfo()`: `{ width, height, x, y, maximized, focused, zoom, corners }`. `zoom` is how much
 bigger the board draws the window. A canvas uses `devicePixelRatio × zoom` pixels per CSS px to stay sharp, capped at
 about 3. Treat a missing `zoom` as 1. `corners` is sent only while the window fills the board: `{ left, right, height }`,
-how far the board's own buttons reach into its bottom corners, in CSS px. Keep your buttons out of them.
+how far the board's own buttons reach into its bottom corners, in CSS px. While the board is locked, `corners.top` does
+the same for the padlocks in its top corners, down from the top of your content. Keep your buttons out of them.
 
 - **Manifest `window`**: `width`, `height` (the size it opens at), `minWidth`, `minHeight` (the smallest
   it can be: the widget must still work there), and optionally `maxWidth`, `maxHeight`, `aspectRatio`
@@ -333,7 +334,7 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 - [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render and call `setMenu()`.
 - [ ] Anything about a student saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
 - [ ] Menu: at most 24 items, each with its own id, swatches `#hex` (at most 12 per row); `menu.set()` called again when state changes.
-- [ ] Works and reads well at `minWidth` × `minHeight` with the most items (no text under 14px) and at Fill the board (no buttons in the bottom corners), in light and dark; only an editor's list scrolls; 48px tap targets.
+- [ ] Works and reads well at `minWidth` × `minHeight` with the most items (no text under 14px) and at Fill the board (no buttons in the bottom corners, or in the top ones while the board is locked), in light and dark; only an editor's list scrolls; 48px tap targets.
 - [ ] Typing, drawing or dragging areas: `dragFromContent: false`, `data-b21-nodrag` or `setDragFromContent`.
 - [ ] A bigger editor uses `setMinSize(…)` and `setMinSize(null, null)`; `setSize` only after a tap and never when maximized.
 

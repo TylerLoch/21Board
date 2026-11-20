@@ -41,6 +41,7 @@ a { color: var(--accent); text-underline-offset: 3px; }
 img { display: block; max-width: 100%; height: auto; }
 :focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 6px; }
 .waf { width: 1.05em; height: 1.05em; vertical-align: -0.16em; fill: currentColor; display: inline-block; }
+.padlock { width: 1.05em; height: 1.05em; vertical-align: -0.16em; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; display: inline-block; }
 
 /* The chalkboard */
 .hero { background: var(--slate); color: var(--chalk); margin-top: calc(-1 * env(safe-area-inset-top, 0px)); padding-top: calc(env(safe-area-inset-top, 0px) + 44px); padding-bottom: 0;
@@ -177,7 +178,7 @@ footer.end b { color: var(--ink); }
   <header><h2>Start in three taps</h2><p>There’s nothing to install, no account and no Save button. Every change is saved on the device as you work.</p></header>
   <ol class="steps">
     <li><h3>Open 21Board</h3><p>In Chrome, go to <b>boardapp.ccsd21.org</b>. A new board says “Your board is ready.”</p><img src="shots/empty.jpg" width="2732" height="1536" loading="lazy" alt="An empty 21Board page with the words Your board is ready, and Tap the Widget Picker button in either bottom corner to open a widget."></li>
-    <li><h3>Tap [W]</h3><p>The Widget Picker sits in both bottom corners, so you can reach it from either side of the board. Settings is the gear in its bottom row.</p><img src="shots/picker.jpg" width="990" height="686" loading="lazy" alt="The Widget Picker open, with 15 colorful widget tiles and a row of buttons below: Paste, Export, Import, Dark mode, Full screen, Settings and the page control."></li>
+    <li><h3>Tap [W]</h3><p>The Widget Picker sits in both bottom corners, so you can reach it from either side of the board. Settings is the gear in its bottom row.</p><img src="shots/picker.jpg" width="990" height="686" loading="lazy" alt="The Widget Picker open, with 15 colorful widget tiles and a row of buttons below: Paste, Export, Import, Lock, Full screen, Settings and the page control."></li>
     <li><h3>Tap a widget</h3><p>It opens in its own window. Open as many as you like, and come back to them tomorrow just as you left them.</p><img src="shots/w-timer.jpg" width="960" height="734" loading="lazy" alt="A Timer window counting down 4 minutes 54 seconds, with preset buttons from 1 to 15 minutes."></li>
   </ol>
 </section>
@@ -362,8 +363,8 @@ footer.end b { color: var(--ink); }
     <div class="card"><h3>Move, resize, fill</h3><img src="shots/menu.jpg" width="1028" height="1116" loading="lazy" alt="The Notes window menu open, with themes, paper colors and Fill the board, Reset and Close."><ul><li>Tap a window to select it. Drag to move it, and pull a corner to resize.</li><li>Double-tap the title bar to fill the board.</li><li>Tap the name ⌄ for the window menu.</li><li>Close keeps what’s inside. Open the widget again and it’s all there.</li></ul></div>
     <div class="card"><h3>A page for each subject</h3><img src="shots/pages.jpg" width="1026" height="914" loading="lazy" alt="The Widget Picker showing Page 2 of 3, with the pages Morning, Math and Science."><ul><li>Tap ‹ Page › at the end of the Widget Picker.</li><li>On the last page, tap + to add one.</li><li>Tap Page, then Rename this page…</li><li>Try Morning, Math and Science, or one page per class period.</li></ul></div>
     <div class="card wide"><div class="txt"><h3>Letters made for young readers</h3><p>Settings › Appearance › Text style changes the letters on the board and in most widgets.</p><ul><li><b>Early readers</b> has an a and a g shaped the way children write them.</li><li><b>Easier to read</b> uses Atkinson Hyperlegible, made for people with low vision. I, l and 1 look different.</li></ul></div><img src="shots/textstyle.jpg" width="2732" height="1536" loading="lazy" alt="Settings with Early readers chosen, and a note in the Early readers letters saying We read a big book."></div>
-    <div class="card wide"><div class="txt"><h3>Dark mode for lights-off moments</h3><p>Tap the moon in the Widget Picker. The board and its widgets go dark, except 21Sketch, 21Timer and 21DocCam.</p><ul><li>Settings › Appearance also has Background, with a photo if you like, and Accent color.</li><li>Back row can’t read it? Settings › Advanced › Size of windows and menus, then tap +. It sets the page you’re on.</li></ul></div><img src="shots/hero-board-dark.jpg" width="2732" height="1536" loading="lazy" alt="A dark board with a digital clock, a chalkboard note, a Task Timer pie, a First/Then Board and two dice."></div>
-    <div class="card"><h3>Lock windows in place</h3><p>Students can still start a Timer, roll the Dice and type in Notes, but nothing moves, closes or opens.</p><ul><li>Settings › Classroom › Lock windows in place.</li><li>To unlock, hold [W] for 2 seconds.</li><li>It’s not a password. The Widget Picker shows everyone how to unlock.</li></ul></div>
+    <div class="card wide"><div class="txt"><h3>Dark mode for lights-off moments</h3><p>Open Settings › Appearance and set Theme to Dark. The board and its widgets go dark, except 21Sketch, 21Timer and 21DocCam.</p><ul><li>Settings › Appearance also has Background, with a photo if you like, and Accent color.</li><li>Back row can’t read it? Settings › Advanced › Size of windows and menus, then tap +. It sets the page you’re on.</li></ul></div><img src="shots/hero-board-dark.jpg" width="2732" height="1536" loading="lazy" alt="A dark board with a digital clock, a chalkboard note, a Task Timer pie, a First/Then Board and two dice."></div>
+    <div class="card"><h3>Lock the board</h3><p>Tap [W], then [L] in its bottom row, and choose.</p><img src="shots/lock.jpg" width="784" height="622" loading="lazy" alt="Lock the board, with the choices Lock everything and Widgets still work."><ul><li><b>Lock everything</b> for a video or a test. Nothing responds to a tap.</li><li><b>Widgets still work</b> lets students start a Timer, roll the Dice and type in Notes. Windows stay put.</li><li>To unlock, hold [L] in a top corner for 2 seconds.</li><li>It’s not a password. A tap on [L] says “Hold to unlock.”</li></ul></div>
     <div class="card"><h3>Stay awake</h3><p>Keeps the screen from dimming during a long reading block.</p><ul><li>Settings › Classroom › Stay awake.</li><li>Turn it off when you step away, since a screen that never sleeps never locks.</li></ul></div>
   </div>
 </section>
@@ -395,18 +396,18 @@ footer.end b { color: var(--ink); }
     <details><summary>Do I need to press Save?</summary><p>No. Every change is saved on this device as you work. There’s nothing to sign in to.</p></details>
     <details><summary>I closed a window by mistake. Is it gone?</summary><p>No. Tap [W] and open the same widget. It comes back with everything in it.</p></details>
     <details><summary>A student closed every window. Now what?</summary><p>The empty board says “Windows gone?” Tap Go back to an earlier version. If someone used Close all, tap Undo on its message.</p></details>
-    <details><summary>The windows won’t move.</summary><p>If [W] shows a padlock, they’re locked. Press and hold [W] for 2 seconds until the ring fills, or turn off Lock windows in place in Settings. Notes and other windows you type in move by the title bar.</p></details>
+    <details><summary>The windows won’t move.</summary><p>If [L] shows in a top corner, the board is locked. Hold it for 2 seconds until the ring fills. Notes and other windows you type in move by the title bar.</p></details>
     <details><summary>Everything looks small on the big panel.</summary><p>Open Settings › Advanced › Size of windows and menus and tap +. It sets the page you’re on. Full screen in the Widget Picker gives the board the whole screen.</p></details>
     <details><summary>Will a Timer ring if I switch pages?</summary><p>No. Only the page you’re on runs. The Timer shows the right time when you come back.</p></details>
     <details><summary>Does it work without Wi-Fi?</summary><p>Yes, once it has opened online on that device. Video Player, 21Sketch, 21Timer and 21DocCam need the Internet. Board Sync catches up once you’re back online.</p></details>
     <details><summary>Why are there gray bands beside my board?</summary><p>The board is widescreen, so it looks the same on every screen. To use the whole window, tap Fill the window on the tip, or choose Fill in Settings › Appearance › Board shape.</p></details>
     <details><summary>Can my co-teacher see my board?</summary><p>Only if you share your 21Board folder with them in Google Drive as an Editor. Then you share one board through Board Sync.</p></details>
-    <details><summary>Which version do I have?</summary><p>Open Settings. The About row shows it, such as Version 2026.11.18-16. Read it to IT when you ask for help.</p></details>
+    <details><summary>Which version do I have?</summary><p>Open Settings. The About row shows it, such as Version 2026.11.18-18. Read it to IT when you ask for help.</p></details>
   </div>
 </section>
 
 <footer class="end">
-  <p><b>21Board</b> · Version 2026.11.18-16</p>
+  <p><b>21Board</b> · Version 2026.11.18-18</p>
   <p>Made with Love and Stubbornness by the CCSD21 Technology Services team at Gill Center, Wheeling, Illinois.</p>
   <p>Screenshots are from the real app. Names, notes and pictures in them are examples.</p>
 </footer>

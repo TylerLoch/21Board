@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-17';
-  const BOARD_BUILD = '6dd5cd15';
+  const BOARD_VERSION = '2026.11.18-18';
+  const BOARD_BUILD = '2850eddb';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -110,7 +110,7 @@
     historyFolder: true,     // Board history: also keep copies in the linked Google Drive folder (about one an hour)
 
     // Classroom features (this device only: never exported or sent to the Drive folder). See section 12b.
-    locked: false,           // Lock windows in place
+    locked: false,           // Lock (the Widget Picker's Lock): false | 'all' (Lock everything) | 'widgets' (Widgets still work)
 
     awake: 'off',            // Stay awake: 'off' | 'on' (while 21Board shows). An older 'hours' (school hours) reads as 'on'.
 
@@ -253,8 +253,7 @@
     export: '<path d="M6 3h10l4 4v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M8 3v4.5h7V3"/><path d="M7 21v-6.5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1V21"/>', // floppy disk: Save (also Settings > Back up now)
     import: '<path d="M3 18V7a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v1.5"/><path d="M3 18a2 2 0 0 0 2 2h12.5a2 2 0 0 0 1.9-1.4L22 11H7.6a2 2 0 0 0-1.9 1.4z"/>', // open folder: Open
     paste: '<path d="M9 4.5H7a2 2 0 0 0-2 2V19a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V6.5a2 2 0 0 0-2-2h-2"/><rect x="9" y="2.5" width="6" height="4" rx="1.2"/>', // clipboard: Paste
-    moon: '<path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5z"/>',
-    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    lock: '<rect x="5" y="10.5" width="14" height="10.5" rx="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/>',   // a padlock: Lock (section 12b)
     gear: '<path d="M19.23 9.66L19.41 10.30L21.92 10.75L21.92 13.25L19.41 13.70L18.77 15.46L18.44 16.04L19.90 18.13L18.13 19.90L16.04 18.44L14.34 19.23L13.70 19.41L13.25 21.92L10.75 21.92L10.30 19.41L8.54 18.77L7.96 18.44L5.87 19.90L4.10 18.13L5.56 16.04L4.77 14.34L4.59 13.70L2.08 13.25L2.08 10.75L4.59 10.30L5.23 8.54L5.56 7.96L4.10 5.87L5.87 4.10L7.96 5.56L9.66 4.77L10.30 4.59L10.75 2.08L13.25 2.08L13.70 4.59L15.46 5.23L16.04 5.56L18.13 4.10L19.90 5.87L18.44 7.96Z"/><circle cx="12" cy="12" r="3.2"/>',
     fullscreen: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
     fullscreenExit: '<path d="M8 3v3a2 2 0 0 1-2 2H3"/><path d="M21 8h-3a2 2 0 0 1-2-2V3"/><path d="M3 16h3a2 2 0 0 1 2 2v3"/><path d="M16 21v-3a2 2 0 0 1 2-2h3"/>',
@@ -1157,6 +1156,10 @@
         // Stay awake (section 12b) used to have school hours: 'hours' with a From and To. Now it's on or off, and a
         // device that kept the screen on in school hours keeps it on (the teacher wanted it awake in class).
         if (S.settings.awake === 'hours') S.settings.awake = 'on';
+        // Lock used to be one switch (true), which kept windows in place while widgets worked: that is Widgets still
+        // work. (An older 21Board reads any value but false as that switch on, and unlocks by holding ▦, which unlocks
+        // every tab here too. That is fine.)
+        if (S.settings.locked && S.settings.locked !== 'all') S.settings.locked = 'widgets';
         for (const k of OLD_SETTINGS) delete S.settings[k];   // (and from the record, with the next change: updateSettings)
         applySettings();
         break;
@@ -1634,6 +1637,7 @@
         const b = e.target.closest('[data-act]');
         if (!b) return;
         if (b.dataset.act === 'unlock') {
+          if (Lock.refuse()) return;   // (hidden while locked: update)
           if (!setBoardShape('free')) return;   // refused (someone is moving a window); it said why
           if (Settings.isOpen) Settings.render();
           toast('The board now fills the window. Change it in Settings › Appearance › Board shape.');
@@ -1646,7 +1650,8 @@
       if (!this.el) return;
       const L = canvas(), bw = L.w * Zoom.s, bh = L.h * Zoom.s;
       const unused = Zoom.vw && Zoom.vh ? 1 - (bw * bh) / (Zoom.vw * Zoom.vh) : 0;
-      let show = !freeShape() && !this.hidden && unused > 0.3;
+      // (Not while the board is locked, section 12b: filling the window moves every window, and Settings won't open.)
+      let show = !freeShape() && !this.hidden && !Lock.on() && unused > 0.3;
       this.el.hidden = !show;
       if (!show) return;
       const ui = Zoom.ui;
@@ -2134,7 +2139,8 @@
       // zoom: how much bigger the window is drawn than its CSS size (the board's Size, the screen), so a canvas can stay sharp.
       const i = { width: Math.round(d.w), height: Math.round(d.h - TITLE_H), x: Math.round(d.x), y: Math.round(d.y), maximized: !!(this.inst && this.inst.maximized), focused: S.focused === this.ikey,
         zoom: Math.round(Zoom.s * 100) / 100 };
-      // corners: in a window that fills the board, the room the board's own buttons and clock take over its bottom corners.
+      // corners: in a window that fills the board, the room the board's own buttons and clock take over its bottom corners
+      // (and, while locked, the padlocks over its top ones: corners.top).
       if (i.maximized) i.corners = cornerReach();
       return i;
     }
@@ -2142,7 +2148,7 @@
     notifyInfo() {
       if (!this.connected) return;
       const i = this.info(), c = i.corners;
-      const sig = [i.width, i.height, i.maximized, i.focused, i.zoom, c ? [c.left, c.right, c.height].join('/') : ''].join();
+      const sig = [i.width, i.height, i.maximized, i.focused, i.zoom, c ? [c.left, c.right, c.height, c.top.left, c.top.right, c.top.height].join('/') : ''].join();
       if (sig === this.lastInfo) return;
       this.lastInfo = sig;
       this.post('window', { info: i });
@@ -2249,7 +2255,7 @@
     windowOp(op, args) {
       const inst = this.inst;
       if (!inst) return;
-      if ((op === 'maximize' || op === 'restore' || op === 'close') && Lock.on()) return;   // windows locked (section 12b)
+      if ((op === 'maximize' || op === 'restore' || op === 'close') && Lock.on()) return;   // locked (section 12b)
       const posOrNull = v => (typeof v === 'number' && v > 0 && isFinite(v)) ? v : null;
       switch (op) {
         case 'setSize': {
@@ -2260,7 +2266,7 @@
           // (A window opened for a picture pasted or dropped on the board keeps its middle there: section 15c.)
           const at = this.keepAt; this.keepAt = null;
           const r = resolveMove({ x: at ? at.x - s.w / 2 : inst.rect.x, y: at ? at.y - s.h / 2 : inst.rect.y, w: s.w, h: s.h }, obstacles(this), view, screenPx(RESISTANCE.strong), S.settings.snapping);
-          // (Windows locked: one that fills the board keeps filling it, and gets this size when restored. Section 12b.)
+          // (Locked: one that fills the board keeps filling it, and gets this size when restored. Section 12b.)
           saveInst(this.ikey, Object.assign({}, inst, { rect: r, maximized: !!inst.maximized && Lock.on() }));
           this.layout(true);
           break;
@@ -2608,7 +2614,7 @@
     // Drags that start inside a widget (section 9a), called once the press has moved past the slop.
     // `key` is the pointerId, or a string for two-finger drags. Fails if someone else has this window.
     beginAt(key, win, x, y, type) {
-      if (this.holds(win) || Lock.refuse()) return false;   // (windows locked: the widget keeps the press, section 12b)
+      if (this.holds(win) || Lock.refuse()) return false;   // (locked: the widget keeps the press, section 12b)
       this.map.set(key, {
         id: key, win, kind: 'content', handle: null, el: null, type,
         sx: x, sy: y, x, y,
@@ -2649,7 +2655,7 @@
         // Past that, the window is moved from where the press began, so it is under the pointer at once.
         const slop = it.kind === 'title' || it.onLabel ? TAP_SLOP[it.type] || DRAG_THRESHOLD : DRAG_THRESHOLD;
         if (Math.hypot(it.x - it.sx, it.y - it.sy) < slop) return;
-        if (it.refused || Lock.refuse()) { it.refused = true; return; }   // windows locked (section 12b)
+        if (it.refused || Lock.refuse()) { it.refused = true; return; }   // locked (section 12b)
         it.moved = true;
         it.win.keepAt = null;   // (moved by hand: no longer kept where a picture opened it, section 15c)
         document.body.classList.add('busy');
@@ -3026,6 +3032,10 @@
 
     init() {
       this.el = $('#panel');
+      // A page from before Lock (2026.11.18-17 and earlier: for a launch or two after an update, the page and this
+      // script can be from different builds) has Dark mode where Lock goes. Its button becomes Lock.
+      const th = $('[data-ctl="theme"]', this.el);
+      if (th && !$('[data-ctl="lock"]', this.el)) th.dataset.ctl = 'lock';
       for (const side of ['left', 'right']) {
         const b = $(`.picker-btn.${side}`);
         b.innerHTML = svg('waffle', 'fill');
@@ -3047,9 +3057,11 @@
       if (document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', () => { this.fitRow(); this.fitNames(); });
     },
 
-    toggle(side) { if (this.side === side) this.close(); else this.open(side); },
+    // Locked (section 12b), ▦ stays where it is but doesn't open: a tap says the board is locked.
+    toggle(side) { if (Lock.refuse()) return; if (this.side === side) this.close(); else this.open(side); },
 
     open(side) {
+      if (Lock.on()) return;
       closePopups();
       this.side = side;
       this.render();
@@ -3084,7 +3096,6 @@
       this.el.style.setProperty('--cols', String(cols));
       this.el.classList.toggle('narrow', cols < 5);
       this.fitRow();
-      if (Lock.on()) { $('.panel-widgets', this.el).innerHTML = Lock.pickerNote(); return; }   // windows locked: none opens (section 12b)
       $('.panel-widgets', this.el).innerHTML = widgets.map(a => {
         const c = counts.get(a.id) || 0;
         // A long name is cut to two lines (…): the tooltip starts with it in full, and it is what a screen reader says
@@ -3125,15 +3136,15 @@
 
     renderControls() {
       if (!this.el) return;
-      const dark = resolvedTheme() === 'dark';
       const fsOn = !!(document.fullscreenElement || document.webkitFullscreenElement);
-      const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
+      // (A control the page doesn't have, from another build: nothing to draw.)
+      const set = (ctl, icon, label) => { const b = $(`[data-ctl="${ctl}"]`, this.el); if (!b) return {}; b.innerHTML = svg(icon); b.title = label; b.setAttribute('aria-label', label); return b; };
       Pages.renderControls(this.el);
       set('paste', 'paste', 'Paste').hidden = !!LAB || !Pictures.canRead();   // (section 15c; the widget dev window has no Picture or Video Player)
       set('export', 'export', 'Export board');
-      set('import', 'import', 'Import board').hidden = Lock.on();   // (windows locked: section 12b)
+      set('import', 'import', 'Import board');
       set('quit', 'quit', 'Quit 21Board').hidden = !KIOSK;
-      set('theme', dark ? 'sun' : 'moon', dark ? 'Light mode' : 'Dark mode');
+      set('lock', 'lock', 'Lock').hidden = !!LAB;   // (section 12b; never on in the widget dev window. Dark mode is in Settings › Appearance › Theme)
       const fs = set('fullscreen', fsOn ? 'fullscreenExit' : 'fullscreen', fsOn ? 'Exit full screen' : 'Full screen');
       fs.hidden = KIOSK || !(document.fullscreenEnabled || document.webkitFullscreenEnabled);
       // A new version is waiting (section 15): a dot on the ▦ buttons and on Settings, where "Update now" is.
@@ -3157,7 +3168,7 @@
         case 'export': this.close(); exportFlow(); break;
         case 'quit': this.close(); quitApp(); break;
         case 'import': this.close(); $('#import-input').click(); break;
-        case 'theme': updateSettings({ theme: resolvedTheme() === 'dark' ? 'light' : 'dark' }); this.renderControls(); break;
+        case 'lock': this.close(); Lock.ask(side); break;
         case 'fullscreen': toggleFullscreen(); break;
         case 'settings': this.close(); Settings.open(side); break;
         case 'prev': Pages.step(-1); break;
@@ -3277,7 +3288,7 @@
       }
       endGroup();
       if (html) html += '<div class="menu-sep"></div>';
-      const locked = Lock.on();   // (windows locked: the widget's own items, and a district app's, section 12b)
+      const locked = Lock.on();   // (locked: the widget's own items, and a district app's, section 12b)
       if (!locked) html += w.inst.maximized ? item('restore', svg('restore'), 'Restore size') : item('maximize', svg('maximize'), 'Fill the board');
       if (w.widget.external) {
         // A district app keeps its own work: there is none here to reset or to go back to. Reload: a window that
@@ -3741,7 +3752,6 @@
         item('new', svg('plus'), 'New page') + item('dup', svg('copy'), 'Duplicate this page') + item('rename', svg('pencil'), 'Rename this page…') +
         (ids.length > 1 ? item('left', svg('back'), 'Move left', i < 1 ? 'disabled' : '') + item('right', svg('open'), 'Move right', i >= ids.length - 1 ? 'disabled' : '') : '') +
         item('delete', svg('trash'), 'Delete this page…', ids.length < 2 ? 'disabled' : '', 'danger');
-      Lock.trimPages(this.menuEl);   // (windows locked: only going to a page, section 12b)
       this.open = true;
       this.menuEl.classList.add('open');
       const ind = $('[data-ctl="pages"]', Picker.el);
@@ -3806,8 +3816,8 @@
   //   (banners: a save problem, a new version ready)
   //   Board Sync   (Chrome and Edge: section 13b) the folder and how syncing is going (Change…, Unlink), this
   //                device's name, history copies in the folder
-  //   Classroom    Lock windows in place, Go back to an earlier version (Board history, as a column beside
-  //                Settings: section 13c), Close all windows, Stay awake
+  //   Classroom    Go back to an earlier version (Board history, as a column beside Settings: section 13c), Close all
+  //                windows, Stay awake
   //   This page    Windows ▸
   //   Appearance   Theme, Background ▸, Accent color, Text style ▸, Board shape
   //   Advanced ▸   Widget Picker, Clock in the corner, Size of windows and menus, moving windows, board history, backups
@@ -3820,10 +3830,11 @@
   // Settings → Appearance → Background: one set of choices (the theme's, colors, Custom…, the photo). It's this
   // page's background (board.background, and its photo in media:<b>:background*).
   // =====================================================================
-  // 12b. Classroom features: lock windows, stay awake, clock in the corner, text style
+  // 12b. Classroom features: lock, stay awake, clock in the corner, text style
   // ---------------------------------------------------------------------
   // Each feature keeps its code in its own part below and is wired in through these hooks:
-  // applySettings() calls applyClassroom(); Settings.render shows the rows; Settings.act passes actions on.
+  // applySettings() calls applyClassroom(); Settings.render shows the rows; Settings.act passes actions on. (Lock is
+  // the Widget Picker's, not Settings'.)
   // Lock, Stay awake and the clock belong to this device (DEFAULT_SETTINGS, "Classroom features"); the text style is
   // the whole board's, like the theme and accent color.
 
@@ -3834,7 +3845,7 @@
     applyClock();
   }
 
-  // Settings → Classroom: lock, go back (board history, section 13c), close all, stay awake.
+  // Settings → Classroom: go back (board history, section 13c), close all, stay awake.
   // While Board Sync is set up (section 13b), the settings that stay on this device say so (the board's own ones
   // say "This page, on all your devices.": pageScope; the theme, accent color and text style, the whole board's, "On
   // all your devices.": allDevices, labelled).
@@ -3842,126 +3853,171 @@
   const allDevices = () => (Link.dir ? 'On all your devices.' : '');
   const labelled = lbl => (Link.dir ? `<div><div class="lbl">${lbl}</div><div class="hint">${allDevices()}</div></div>` : `<div class="lbl">${lbl}</div>`);
   function classroomSettings(sw, seg) {
-    const rows = lockSettings(sw, seg) + historyOpenRow() + closeAllRow() + awakeSettings(sw, seg);
+    const rows = historyOpenRow() + closeAllRow() + awakeSettings(sw, seg);
     return rows ? `<h3>Classroom</h3>${rows}` : '';
   }
 
   function classroomAct(act, val) {
-    return lockAct(act, val) || awakeAct(act, val) || clockAct(act, val) || letterAct(act, val);
+    return awakeAct(act, val) || clockAct(act, val) || letterAct(act, val);
   }
 
-  // ---- Lock windows in place
-  // settings.locked: the windows stay where the teacher put them, and students still use what's in them (start a
-  // timer, roll the dice, type in a note). It's in the settings record, so every tab on this device follows it, and
-  // a reload and kiosk mode keep it. While it's on:
+  // ---- Lock
+  // The Widget Picker's Lock asks how (ask): Lock everything, or Widgets still work. settings.locked is false, 'all'
+  // or 'widgets' (mode). It's in the settings record, so every tab on this device follows it, and a reload and kiosk
+  // mode keep it. Not in the widget dev window. Under either lock:
+  // - ▦ stays where it is, so nothing moves on screen, but doesn't open (Picker.toggle): no new windows, no ‹ Page ›,
+  //   no Settings or Board history, no Full screen. (Escape and F11 still leave full screen.) Locking closes the
+  //   Widget Picker, the Pages menu, window menus, Settings, Board history and any dialog (applyLock).
   // - no moving windows (title bar, from inside, two fingers: Inter refuses them), no resizing (no handles), no Fill
-  //   the board by two taps on a title bar. A refused gesture says why, at most every few seconds (refuse).
-  // - a window's menu keeps the widget's own items (and a district app's Reload and Open … on its own), nothing that
-  //   fills, resets, goes back or closes. A widget's own calls to close, fill or restore its window are refused, as
-  //   other window calls it can't make are (setSize and setMinSize still work: its editor still gets room).
-  // - the Widget Picker opens no windows and has no Import: it says how to unlock instead. ‹ Page › still flips
-  //   pages (teachers do, mid-lesson), but there's no new page, and the Pages menu only goes to a page.
-  // - a file dropped on the board or opened with 21Board asks to unlock first (it would change the windows). (Board
-  //   Sync's merges still apply: Lock stops hands on this screen, not the teacher's own changes from another device.)
-  // - Settings (where the switch is) and Board history stay the teacher's: only Close all, one tap with no question,
-  //   waits. (Opening or deleting a saved window there, or going back to a version, still works.)
-  // To unlock: press and hold ▦ for 2 seconds, with a ring filling around it (let go sooner: a tap, as before; slide
-  // off: nothing), or turn the switch off in Settings (the keyboard's way). Not in the widget dev window.
+  //   the board by two taps on a title bar. A window's menu keeps the widget's own items (and a district app's Reload
+  //   and Open … on its own), nothing that fills, resets, goes back or closes. A widget's own calls to close, fill or
+  //   restore its window are refused, as other window calls it can't make are (setSize and setMinSize still work).
+  // - a tap on ▦, a refused move, Paste and a file dropped say "The board is locked." (refuse: at most every 5
+  //   seconds, whatever said it). Only the Lock dialog and the padlock itself say how to unlock: students read too.
+  // - messages show without their buttons (Update, Later, Back up, Board history, Undo: toast), and one already
+  //   showing loses them. Board Sync's merges still apply: Lock stops hands on this screen, not the teacher's own
+  //   changes from another device.
+  // Lock everything also makes the board inert (applyLock): windows (district apps too), the notes above ▦ and the
+  // shape tip take no tap, focus or key. inert, not a see-through cover over the board: a cover stops taps, but Tab
+  // and keys would still reach the windows behind it. A tap anywhere says the board is locked. Timers, videos, the
+  // clock, Stay awake and Board Sync keep going (a ringing Task Timer: unlock to stop it), a widget in full screen
+  // leaves it, so the padlocks show, and a file is refused. Widgets still work asks before opening a file (letIn).
+  // To unlock: hold 🔒 in a top corner (a padlock above each ▦: place) for 2 seconds while a ring fills (let go
+  // sooner: "Hold to unlock" beside it; slide off: nothing). A click with no press (the keyboard, a screen reader,
+  // Switch Access) asks first.
   const LOCK_HOLD_MS = 2000;
-  const LOCK_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10.5" rx="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>';
-  // ▦ in a sentence: the button's own picture.
-  const LOCK_KEY = `<svg class="fill lock-waffle" viewBox="0 0 24 24" role="img" aria-label="the Widget Picker button">${ICONS.waffle}</svg>`;
-  const LOCK_HOW = `Hold ${LOCK_KEY} for 2 seconds to unlock.`;
-  // The ring around ▦: a rounded square around the button's (3 px out, the same curve), from the top middle, clockwise.
+  const LOCK_ICON = svg('lock');
+  // 🔒 in a sentence: the padlock's own picture.
+  const LOCK_KEY = `<svg class="lock-key" viewBox="0 0 24 24" role="img" aria-label="the padlock">${ICONS.lock}</svg>`;
+  // The ring around 🔒: a rounded square around the button's (3 px out, the same curve), from the top middle, clockwise.
   const LOCK_RING = 'M34 3H46A19 19 0 0 1 65 22V46A19 19 0 0 1 46 65H22A19 19 0 0 1 3 46V22A19 19 0 0 1 22 3Z';
   const Lock = {
     ready: false,
-    was: false,      // what applyLock last saw
-    hold: null,      // a press on ▦ while locked: { id, side, btn, at, state: 'holding' | 'off' | 'done', timer, raf, ring }
-    eat: false,      // the browser's click after such a press (the press was answered when it ended)
+    was: false,      // the mode applyLock last saw
+    pads: {},        // the padlocks, by side
+    bare: false,     // a page from before the padlocks: no styles for them (init)
+    hold: null,      // a press on a padlock: { id, side, btn, at, state: 'holding' | 'off' | 'done', timer, raf, ring }
+    keep: null,      // the padlock held to unlock: it stays until let go, so the click that follows lands on it
+    eat: false,      // the browser's click after a press on a padlock (the press was answered: it ends in no click of its own)
+    pressId: null,   // that press, until it ends (a press the browser took away still ends: its click comes then)
     toldAt: 0,
     letting: false,  // "Unlock and open" a file: the lock goes once the teacher picks how to open it (letGo)
-    on() { return !LAB && !!S.settings.locked; },
-    // A move, resize or fill of a window: refused while locked (true), and said why, at most every 5 seconds.
+    // false, 'all' (Lock everything) or 'widgets' (Widgets still work).
+    mode() { const v = S.settings.locked; return LAB || !v ? false : v === 'all' ? 'all' : 'widgets'; },
+    on() { return !!this.mode(); },
+    // A tap or a try that the lock refuses (true), and said, at most every 5 seconds.
     refuse() {
       if (!this.on()) return false;
-      if (Date.now() - this.toldAt > 5000) {
-        this.toldAt = Date.now();
-        $('span', toast('Windows are locked. Hold ▦ for 2 seconds to unlock.')).innerHTML = 'Windows are locked. ' + LOCK_HOW;
-      }
+      if (Date.now() - this.toldAt > 5000) { this.toldAt = Date.now(); toast('The board is locked.'); }
       return true;
     },
-    // In the Widget Picker, in place of the widgets.
-    pickerNote() { return `<div class="lock-note" role="note">${LOCK_ICON}<span><b>Windows are locked.</b> ${LOCK_HOW}</span></div>`; },
     // At the end of a window's menu, in place of Fill the board, Reset and Close.
-    menuNote() { return `<div class="lock-note in-menu" role="note">${LOCK_ICON}<span>Windows are locked. ${LOCK_HOW}</span></div>`; },
-    // The Pages menu: only going to a page (no new, copied, renamed, moved or deleted pages).
-    trimPages(el) { if (this.on()) $$('.menu-sep, [data-act]:not([data-act="go"])', el).forEach(n => n.remove()); },
-    // A file opened onto the board (dropped on it, or opened with 21Board) changes its windows: unlock first. The
-    // lock goes when the teacher then picks how to open it (letGo): backing out of that question leaves it locked.
+    menuNote() { return `<div class="lock-note" role="note">${LOCK_ICON}<span>The board is locked.</span></div>`; },
+    // The Widget Picker's Lock: how, with how to unlock. The keyboard then goes to a padlock: ▦ won't open.
+    async ask(side) {
+      if (LAB) return;
+      const c = S.settings.pickerCorners, where = c === 'left' ? 'the top left corner' : c === 'right' ? 'the top right corner' : 'a top corner';
+      const mode = await dialog({ title: 'Lock the board', html: `<p>To unlock, hold ${LOCK_KEY} in ${where} for 2 seconds.</p>`, actions: [
+        { label: 'Lock everything', sub: 'Nothing on the board responds. Timers and videos keep going.', value: 'all', choice: true },
+        { label: 'Widgets still work', sub: 'Widgets can’t move, but can still be used.', value: 'widgets', choice: true },
+        { label: 'Cancel', value: null }] });
+      if (mode !== 'all' && mode !== 'widgets') return;
+      updateSettings({ locked: mode });
+      toast('Locked.');
+      const pad = [this.pads[side], this.pads.left, this.pads.right].find(b => b && !b.hidden);
+      if (pad) pad.focus({ preventScroll: true });
+    },
+    unlock() { updateSettings({ locked: false }); toast('Unlocked.'); },
+    // A file opened onto the board (dropped on it, or opened with 21Board) changes its windows. Lock everything
+    // refuses it. Widgets still work asks to unlock first: the lock goes when the teacher then picks how to open it
+    // (letGo), and backing out of that question leaves it locked.
     async letIn(file, verb = 'open') {
       this.letting = false;
       if (!this.on()) return true;
-      const yes = await dialog({ title: 'Windows are locked', message: `To ${verb} “${String(file && file.name || 'this file').replace(/\.21board$/i, '')}”, unlock the windows first. You can lock them again in Settings.`,
+      if (this.mode() === 'all') { this.refuse(); return false; }
+      const yes = await dialog({ title: 'The board is locked', message: `To ${verb} “${String(file && file.name || 'this file').replace(/\.21board$/i, '')}”, unlock the board first.`,
         actions: [{ label: `Unlock and ${verb}`, value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
-      this.letting = !!yes;
+      this.letting = !!yes && this.on();   // (unlocked meanwhile, in another tab: it just opens)
       return !!yes;
     },
     letGo() {
       if (this.letting && this.on()) updateSettings({ locked: false });
       this.letting = false;
     },
-    // Settings, while open: the switch and Close all, in place. Settings isn't drawn again while someone is in one of
-    // its text boxes (Settings.render), but the lock can change meanwhile: ▦ held with a finger (which leaves the
-    // focus in the box until it lets go), or another tab. Tapped, a switch showing the wrong state would do the
-    // opposite of what it shows.
-    paint() {
-      if (!Settings.isOpen) return;
-      const on = this.on(), sw = $('[data-act="lock-windows"]', Settings.body), all = $('[data-act="close-all"]', Settings.body);
-      if (sw) { sw.classList.toggle('on', on); sw.setAttribute('aria-checked', String(on)); }
-      if (all) { all.disabled = on; const hint = $('.hint', all.closest('.row')), say = closeAllHint(); if (hint && hint.textContent !== say) hint.textContent = say; }
-    },
 
-    // ---- press and hold ▦ to unlock
+    // ---- the padlocks, and holding one to unlock
     init() {
       if (this.ready) return;
       this.ready = true;
       for (const side of ['left', 'right']) {
-        const b = Picker.btns[side];
+        const b = this.pads[side] = document.createElement('button');
+        b.className = 'lock-pad ' + side;
+        b.hidden = true;
+        b.setAttribute('aria-label', 'Unlock');
+        b.setAttribute('aria-description', 'Hold for 2 seconds.');
+        b.innerHTML = `${LOCK_ICON}<span class="lock-tip" role="status" hidden>Hold to unlock</span>`;
+        document.body.appendChild(b);
+        // A page from before the padlocks has no styles for them (for a launch or two after an update, the page and
+        // this script can be from different builds). A padlock that didn't show would leave a board under Lock
+        // everything stuck: the essentials, so that it still shows, takes a press, and hides.
+        if (getComputedStyle(b).position !== 'fixed') {
+          this.bare = true;
+          b.style.cssText = `position:fixed;z-index:1001;top:16px;${side}:16px;width:56px;height:56px;border-radius:16px;border:1px solid #e5e7eb;background:#fff;color:#4b5563;align-items:center;justify-content:center;touch-action:none;display:none`;
+          $('.lock-tip', b).style.cssText = `position:absolute;top:12px;${side === 'left' ? 'left' : 'right'}:66px;padding:6px 12px;border-radius:16px;background:#1f2937;color:#fff;font-size:15px;font-weight:600;white-space:nowrap;pointer-events:none`;
+        }
         b.addEventListener('pointerdown', e => this.press(e, side));
-        b.addEventListener('contextmenu', e => { if (this.on() || this.hold) e.preventDefault(); });   // (a long press: no menu)
+        b.addEventListener('contextmenu', e => e.preventDefault());   // (a long press: no menu)
         b.addEventListener('lostpointercapture', e => this.release(e, true));   // (the browser took the press away: it ends here)
+        b.addEventListener('click', e => this.clicked(e, side));
       }
-      // (On the window: the press is captured by its button, and a release elsewhere must still be heard.)
+      // (On the window: the press is captured by its padlock, and a release elsewhere must still be heard.)
       window.addEventListener('pointermove', e => this.slide(e), true);
-      window.addEventListener('pointerup', e => this.release(e, false), true);
-      window.addEventListener('pointercancel', e => this.release(e, true), true);
-      window.addEventListener('click', e => {
-        if (!this.eat || !e.target.closest || !e.target.closest('.picker-btn')) return;
-        this.eat = false;
-        e.preventDefault(); e.stopImmediatePropagation();
+      window.addEventListener('pointerup', e => { this.ended(e); this.release(e, false); }, true);
+      window.addEventListener('pointercancel', e => { this.ended(e); this.release(e, true); }, true);
+      // Lock everything: a tap anywhere else says so. (Not in a dialog: "Unlock the board?" is one.)
+      document.addEventListener('pointerdown', e => {
+        if (this.mode() === 'all' && e.isTrusted && !(e.target.closest && e.target.closest('.lock-pad, #modal'))) this.refuse();
       }, true);
-      // A locked empty page says so, in place of "Tap ▦ … to open a widget".
+      // A locked empty page says so, in place of "Tap ▦ … to open a widget" (and of "Go back to an earlier version").
       const hint = $('#empty-hint .small');
-      if (hint) hint.insertAdjacentHTML('afterend', `<div class="small lock-hint">Windows are locked. ${LOCK_HOW}</div>`);
+      if (hint) hint.insertAdjacentHTML('afterend', '<div class="small lock-hint">The board is locked.</div>');
+    },
+    // A padlock above each ▦ (Settings › Advanced › Widget Picker) while locked, and the one held to unlock until let go.
+    place() {
+      const on = this.on();
+      for (const side of ['left', 'right']) {
+        const b = this.pads[side], show = (on && !Picker.btns[side].hidden) || this.keep === b;
+        if (!show) this.tip(b, false);
+        if (b.hidden === !show) continue;
+        b.hidden = !show;
+        if (this.bare) b.style.display = show ? 'flex' : 'none';
+      }
+    },
+    // "Hold to unlock" beside a padlock, for about 2 seconds (a quick tap).
+    tip(b, on) {
+      const t = $('.lock-tip', b);
+      clearTimeout(b.tipT);
+      t.hidden = !on;
+      if (on) b.tipT = setTimeout(() => { t.hidden = true; }, 2000);
     },
     press(e, side) {
       if (!e.isTrusted) return;   // (a script's press is no hold)
-      this.eat = false;
+      this.eat = true; this.pressId = e.pointerId; clearTimeout(this.eatT);
       if (!this.on() || (e.pointerType === 'mouse' && e.button !== 0)) return;
       if (this.hold && this.hold.state !== 'holding') this.hold = null;   // (over, but its release never came)
       if (this.hold) return;
-      const btn = Picker.btns[side];
+      const btn = this.pads[side];
+      this.tip(btn, false);
       try { btn.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
       const h = this.hold = { id: e.pointerId, side, btn, at: performance.now(), state: 'holding' };
       h.timer = setTimeout(() => this.done(h), LOCK_HOLD_MS);
       h.raf = requestAnimationFrame(() => this.draw(h));
     },
-    // Sliding off the button: not a hold, and not a tap.
+    // Sliding off the padlock, past a finger's tap slop: not a hold, and not a tap.
     slide(e) {
       const h = this.hold;
       if (!h || e.pointerId !== h.id || h.state !== 'holding') return;
-      const r = h.btn.getBoundingClientRect(), m = 8;
+      const r = h.btn.getBoundingClientRect(), m = TAP_SLOP.touch;
       if (e.clientX < r.left - m || e.clientX > r.right + m || e.clientY < r.top - m || e.clientY > r.bottom + m) { h.state = 'off'; this.stop(h); }
     },
     release(e, cancelled) {
@@ -3969,19 +4025,33 @@
       if (!h || e.pointerId !== h.id) return;
       this.hold = null;
       if (h.state !== 'done') this.stop(h);
-      // Answered here, whatever the browser makes of it (a click, or none after a long touch).
-      this.eat = true;
+      if (h.state === 'holding' && !cancelled) this.tip(h.btn, true);   // let go sooner: how to unlock
+      if (h.state === 'done') setTimeout(() => { this.stop(h); if (this.keep === h.btn) this.keep = null; this.place(); notifyCorners(); }, 300);
+    },
+    // A press on a padlock has ended. Its click, if the browser makes one, comes now: it was answered (eat). (None comes
+    // after a long touch: the next click is one of its own.)
+    ended(e) {
+      if (e.pointerId !== this.pressId) return;
+      this.pressId = null;
       clearTimeout(this.eatT); this.eatT = setTimeout(() => { this.eat = false; }, 800);
-      if (h.state === 'holding' && !cancelled) Picker.toggle(h.side);   // let go sooner: a tap, as before
+    },
+    // A click with no press before it (Enter or Space, a screen reader, Switch Access) asks first. A script's: nothing.
+    async clicked(e, side) {
+      if (this.eat) { this.eat = false; e.preventDefault(); return; }
+      if (!e.isTrusted || !this.on() || this.hold) return;
+      const yes = await dialog({ title: 'Unlock the board?', actions: [{ label: 'Unlock', value: true, kind: 'primary' }, { label: 'Cancel', value: false }] });
+      if (!yes || !this.on()) return;
+      this.unlock();
+      const b = [Picker.btns[side], Picker.btns.left, Picker.btns.right].find(x => !x.hidden);   // (the padlock is gone)
+      if (b) b.focus({ preventScroll: true });
     },
     done(h) {
       if (this.hold !== h || h.state !== 'holding') return;
       h.state = 'done';
       cancelAnimationFrame(h.raf);
       this.ring(h, 1);
-      setTimeout(() => this.stop(h), 400);
-      updateSettings({ locked: false });
-      toast('Windows are unlocked. Lock them again in Settings.');
+      this.keep = h.btn;
+      this.unlock();
     },
     draw(h) {
       if (this.hold !== h || h.state !== 'holding') return;
@@ -3996,6 +4066,11 @@
         h.ring = document.createElement('span');
         h.ring.className = 'lock-ring';
         h.ring.innerHTML = `<svg viewBox="0 0 68 68" aria-hidden="true"><path class="track" d="${LOCK_RING}"/><path class="fill" pathLength="100" d="${LOCK_RING}"/></svg>`;
+        if (this.bare) {
+          h.ring.style.cssText = 'position:absolute;inset:-7px;pointer-events:none';
+          $('svg', h.ring).style.cssText = 'width:100%;height:100%;overflow:visible';
+          for (const p of $$('path', h.ring)) p.style.cssText = `fill:none;stroke:#2563eb;stroke-width:4;stroke-linecap:round;opacity:${p.classList.contains('track') ? .22 : 1}`;
+        }
         h.btn.appendChild(h.ring);
       }
       $('.fill', h.ring).style.strokeDasharray = `${(t * 100).toFixed(2)} 100`;
@@ -4007,47 +4082,42 @@
   };
 
   function applyLock() {
-    const on = Lock.on();
+    const mode = Lock.mode(), all = mode === 'all';
     Lock.init();
-    document.body.classList.toggle('windows-locked', on);
-    // A padlock on each ▦.
-    for (const b of [Picker.btns.left, Picker.btns.right]) {
-      let badge = $('.lock-badge', b);
-      if (on && !badge) { badge = document.createElement('span'); badge.className = 'lock-badge'; badge.innerHTML = LOCK_ICON; b.appendChild(badge); }
-      if (!on && badge) badge.remove();
-      if (on) b.setAttribute('aria-description', 'Windows are locked. Press and hold for 2 seconds to unlock.'); else b.removeAttribute('aria-description');
-    }
-    Lock.paint();
-    if (on === Lock.was) return;
-    Lock.was = on;
+    document.body.classList.toggle('windows-locked', !!mode);
+    document.body.classList.toggle('lock-everything', all);
+    // Lock everything: nothing on the board takes a tap, focus or key (inert). The padlocks and ▦ are outside it.
+    for (const el of $$('#desk, #shape-hint, .save-note, .folder-note')) if (el.inert !== all) el.inert = all;
+    Lock.place();
+    if (mode === Lock.was) return;
+    Lock.was = mode;
     const h = Lock.hold;
-    if (!on && h && h.state === 'holding') { h.state = 'off'; Lock.stop(h); }   // (unlocked meanwhile: that press is nothing now)
-    if (on) {
+    if (!mode && h && h.state === 'holding') { h.state = 'off'; Lock.stop(h); }   // (unlocked meanwhile: that press is nothing now)
+    if (mode) {
       for (const key of Array.from(Inter.map.keys())) Inter.end({ pointerId: key }, true);   // (being moved here: it goes back)
       Menu.confirming = false;   // (Reset?)
-      MergeUI.locked();   // (a merge's Undo isn't offered while locked)
+      closePopups();
+      if (dialogResolve) dialogResolve(null);
+      toastsLocked();
+      if (all) {
+        // (A widget in full screen, as the Video Player's may be, would hide the padlocks. The board's own full screen
+        // doesn't.)
+        const d = document, fe = d.fullscreenElement || d.webkitFullscreenElement;
+        if (fe && fe !== d.documentElement) { try { (d.exitFullscreen || d.webkitExitFullscreen).call(d); } catch (e) { /* stays */ } }
+        const f = d.activeElement;
+        if (f && f !== d.body && f.closest && f.closest('#desk')) { f.blur(); window.focus(); }   // (a widget had the keyboard)
+      }
     }
     if (Menu.win) { Menu.render(); Menu.position(); }
     Pages.closeMenu();
+    ShapeHint.update();
+    notifyCorners();   // (the padlocks over a window that fills the board: cornerReach)
   }
 
-  function lockSettings(sw) {
-    if (LAB) return '';   // (the widget dev window: one widget, whose window its developer moves and resizes)
-    return `<div class="row"><div><div class="lbl">Lock windows in place</div><div class="hint">Widgets still work. ${LOCK_HOW}${deviceOnly(' ')}</div></div>${sw('lock-windows', Lock.on(), 'Lock windows in place')}</div>`;
-  }
-
-  // Settings → Classroom → Close all: off while the windows are locked, saying why (Settings.render, Lock.paint).
-  function closeAllHint() {
-    return Lock.on() ? 'Unlock windows first.' : SaveNote.state() ? 'On this page. Their content is kept while 21Board stays open.' : 'On this page. Their content is kept.';
-  }
+  // Settings → Classroom → Close all windows (Settings.render). Settings doesn't open while the board is locked.
   function closeAllRow() {
-    return `<div class="row"><div><div class="lbl">Close all windows</div><div class="hint">${closeAllHint()}</div></div><button class="btn" data-act="close-all"${Lock.on() ? ' disabled' : ''}>${svg('windows')}Close all</button></div>`;
-  }
-
-  function lockAct(act) {
-    if (act !== 'lock-windows' || LAB) return false;
-    updateSettings({ locked: !Lock.on() });
-    return true;
+    const hint = SaveNote.state() ? 'On this page. Their content is kept while 21Board stays open.' : 'On this page. Their content is kept.';
+    return `<div class="row"><div><div class="lbl">Close all windows</div><div class="hint">${hint}</div></div><button class="btn" data-act="close-all">${svg('windows')}Close all</button></div>`;
   }
 
   // ---- Stay awake
@@ -4311,19 +4381,25 @@
 
   function applyClock() { CornerClock.apply(); }
 
-  // What a window that fills the board is told about its bottom corners (its info's `corners`): how far in from its
-  // left and right edges, and up from its bottom, the board's own buttons there reach (▦, and the clock beside one),
-  // in its CSS px. Such a window's content ends at the bottom of the screen, and its sides are the screen's sides.
+  // What a window that fills the board is told about its corners (its info's `corners`): how far in from its left and
+  // right edges, and up from its bottom, the board's own buttons there reach (▦, and the clock beside one), in its CSS
+  // px. corners.top: the same for its top corners, down from the top of its content: the padlocks while the board is
+  // locked (section 12b), else all 0. Such a window's content ends at the bottom of the screen, its sides are the
+  // screen's sides, and its title bar runs along the top (the padlocks sit over its ends, which only drag: refused).
   function cornerReach() {
     const vw = window.innerWidth, vh = window.innerHeight, s = Zoom.s || 1;
-    let left = 0, right = 0, top = vh;
-    for (const e of $$('.picker-btn:not([hidden]), .corner-clock:not([hidden])')) {
-      const r = e.getBoundingClientRect();
-      if (!r.width) continue;
-      if (r.left + r.width / 2 < vw / 2) left = Math.max(left, r.right); else right = Math.max(right, vw - r.left);
-      top = Math.min(top, r.top);
-    }
-    return { left: Math.ceil(left / s), right: Math.ceil(right / s), height: Math.ceil((vh - top) / s) };
+    const reach = (sel, from) => {   // (from: the content's top on screen, for the top corners)
+      let left = 0, right = 0, edge = from === undefined ? vh : from;
+      for (const e of $$(sel)) {
+        const r = e.getBoundingClientRect();
+        if (!r.width) continue;
+        if (r.left + r.width / 2 < vw / 2) left = Math.max(left, r.right); else right = Math.max(right, vw - r.left);
+        edge = from === undefined ? Math.min(edge, r.top) : Math.max(edge, r.bottom);
+      }
+      const height = from === undefined ? vh - edge : edge - from;
+      return height > 0 ? { left: Math.ceil(left / s), right: Math.ceil(right / s), height: Math.ceil(height / s) } : { left: 0, right: 0, height: 0 };
+    };
+    return Object.assign(reach('.picker-btn:not([hidden]), .corner-clock:not([hidden])'), { top: reach('.lock-pad:not([hidden])', TITLE_H * s) });
   }
   // The clock or a ▦ button came, went or changed width: tell the windows that fill the board, once the code running now
   // is done. When the screen changed size, the layout that's coming tells them instead, with their new size and zoom in
@@ -4826,6 +4902,7 @@
     // Board history's columns beside it (moved too, as they are). Otherwise it opens at the top (the browser keeps where
     // it was scrolled to while it's hidden). The keyboard goes into it, as into those columns.
     open(side, opts = {}) {
+      if (Lock.on()) return;   // (section 12b)
       const groups = new Set(this.groups), top = this.body.scrollTop, keep = !!opts.again && HistorySheet.beside;
       closePopups({ keepSettings: keep, keepHistory: keep });
       this.side = side === 'right' ? 'right' : 'left';
@@ -5098,7 +5175,7 @@
           }
           break;
         }
-        case 'close-all': if (!Lock.on()) await closeAll(); this.render(); break;   // (its button is off while locked)
+        case 'close-all': if (!Lock.on()) await closeAll(); this.render(); break;   // (never while locked: section 12b)
         case 'inst-open': { const i = S.insts.get(val); if (i) openSpecific(val); this.render(); break; }
         case 'inst-delete': {
           const i = S.insts.get(val);
@@ -5468,7 +5545,7 @@
   }
 
   async function importFile(file) {
-    if (!await Lock.letIn(file)) return;   // windows locked: unlock first (section 12b)
+    if (!await Lock.letIn(file)) return;   // locked: refused, or unlock first (section 12b)
     let parsed;
     try { parsed = parseBoardFile(await file.text()); } catch (err) {
       await dialog({ title: 'Can’t import this file', message: err.message, actions: [{ label: 'OK', value: true, kind: 'primary' }] });
@@ -8348,6 +8425,7 @@
     // opts: ikey (one window's versions), beside (from Settings, which stays open), back (a function: what the
     // keyboard goes back to afterwards; otherwise where it was).
     async open(side, opts = {}) {
+      if (Lock.on()) return;   // (section 12b)
       const from = document.activeElement;
       closePopups({ keepHistory: true, keepSettings: !!opts.beside });
       this.side = side === 'right' ? 'right' : 'left';
@@ -10184,7 +10262,7 @@
       else text = `Updated from ${this.names(by)}.`;
       // (nothing written here to undo: the device whose text stayed in the window, where the copy arrived made elsewhere)
       if (!seedHere.ops.length && !seedHere.swaps.length) button = null;
-      if (locked || !button) { this.merge(text, null, seedHere); return; }   // (windows locked: no Undo; Board history has it)
+      if (locked || !button) { this.merge(text, null, seedHere); return; }   // (locked: no Undo; Board history has it)
       this.merge(text, button, seedHere);
     },
     // The theme, accent color or text style changed on another device ({by, theme, accent, accentColor, letters}): they
@@ -10235,7 +10313,7 @@
     // changed it since; a clash is undone by swapping, so the other device's version stays, as the copy. It syncs:
     // written as this device's changes, marked as an Undo (u), and Board history keeps the page as it was first.
     async undo(ops, swaps, from) {
-      if (Lock.on()) { toast('Windows are locked. Find the earlier version in Board history.'); return; }
+      if (Lock.refuse()) return;
       if (!ops.length && !swaps.length) return;
       const b = S.boardId;
       await BoardHistory.before('undo', `Before undoing the changes from ${this.names(from)}`);
@@ -10280,10 +10358,6 @@
       Picker.renderControls();
       Link.changed(keys, { now: true });   // (a round at once, and this device's file written at once)
       toast(missed ? 'Undone, except for later changes.' : 'Undone. Your other devices get this too.');
-    },
-    // Windows were locked: no Undo is offered (anyone can tap the smartboard). Board history still has it.
-    locked() {
-      for (const t of [this.t].concat(this.said)) { const b = t && t.isConnected && $('button', t); if (b && /^(Undo|Redo)$/.test(b.textContent)) b.remove(); }
     },
     // A page is shown again: if another device changed it while it wasn't shown here, say so once.
     pageShown(uid) {
@@ -10362,9 +10436,14 @@
 
   // At most three show. A new one makes room by taking away the oldest, keeping waiting questions (no timeout).
   // opts.minor: a note that matters least ("Updated to …", updatedNote). It never takes another's place (with three
-  // showing, it isn't shown: null), and it is the first to make room.
+  // showing, it isn't shown: null), and it is the first to make room. While the board is locked (section 12b), its
+  // words show without its buttons: anyone can tap the smartboard. (A question with nothing left to tap goes in time.)
   function toast(text, opts = {}) {
     const host = $('#toasts');
+    if (Lock.on() && (opts.action || opts.dismiss)) {
+      opts = Object.assign({}, opts, { action: null, dismiss: null });
+      if (opts.timeout === 0) opts.timeout = PAGE_UNDO_MS;
+    }
     if (opts.minor && host.children.length >= 3) return null;
     while (host.children.length >= 3) { const all = Array.from(host.children); (all.find(c => c.minor) || all.find(c => !c.sticky) || host.firstChild).remove(); }
     const t = document.createElement('div');
@@ -10393,6 +10472,16 @@
     const timeout = opts.timeout === undefined ? 4200 : opts.timeout;
     if (timeout) setTimeout(remove, timeout); else t.sticky = true;
     return t;
+  }
+
+  // The board has just been locked (applyLock): the messages showing lose their buttons. One left with nothing to tap
+  // goes in time. (A merge's goes with its Undo time: MergeUI.merge.)
+  function toastsLocked() {
+    for (const t of $$('#toasts .toast')) {
+      const had = $$('button', t);
+      for (const b of had) b.remove();
+      if (had.length && t.sticky && t !== MergeUI.t) setTimeout(() => t.remove2(), PAGE_UNDO_MS);
+    }
   }
 
   // A small note above the Widget Picker buttons, one in each corner (SaveNote, FolderNote). A page from before
@@ -10965,8 +11054,8 @@
   // Sync holds this device's file back until then, so other devices never get the window empty (Link.filling). A paste
   // or drop inside a widget that the widget didn't take comes here too (the SDK passes it on; a .21board file dropped
   // there imports, as on the board), except from a widget uploaded in Developer mode. A paste in the board's own text
-  // fields, or while a dialog is open, is theirs. Not while windows are locked (section 12b): the board says how to
-  // unlock, as it does for a window moved.
+  // fields, or while a dialog is open, is theirs. Not while the board is locked (section 12b): it says so, as it does
+  // for a window moved.
   // A video link pasted or dropped on the board opens in a new Video Player (widgets/youtube-player) the same way, as if
   // pasted into its link box: text that is one link (no other words) to a YouTube, Google Drive or Vimeo video, as the
   // Video Player's own reader sees it (video-links.js, which index.html loads, so the two never disagree). Other text,
@@ -11022,7 +11111,7 @@
     // The Widget Picker's Paste: what Ctrl+V on the board does, with the clipboard read through the browser (Chrome asks
     // once). A picture first, else its text, which may be a video link. The Widget Picker closes when a window opens.
     async fromClipboard() {
-      if (Lock.refuse()) return;   // (windows locked: no window, as for Ctrl+V)
+      if (Lock.refuse()) return;   // (locked: no window, as for Ctrl+V)
       let items = null, blocked = false, text = '';
       try { items = await navigator.clipboard.read(); } catch (e) { blocked = !!e && e.name === 'NotAllowedError'; }
       let pic = null;
@@ -11075,7 +11164,7 @@
     HistorySheet.init();
     ShapeHint.init();
     const rescueBtn = $('#empty-hint .rescue button');
-    if (rescueBtn) rescueBtn.addEventListener('click', () => HistorySheet.open('left'));
+    if (rescueBtn) rescueBtn.addEventListener('click', () => { if (!Lock.refuse()) HistorySheet.open('left'); });
     $('#desk').addEventListener('pointerdown', onDeskPointerDown);
     document.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && e.isPrimary) forgetStaleTouches(e.pointerId); }, true);
     document.addEventListener('pointermove', e => Inter.move(e));
@@ -11139,6 +11228,8 @@
     window.addEventListener('dragover', e => { if (dropped(e, 'Files') || (dropped(e, 'text/uri-list') && !field(e.target))) e.preventDefault(); });
     window.addEventListener('drop', e => {
       const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0], at = () => toLayout({ left: e.clientX, top: e.clientY, width: 0, height: 0 });
+      // Lock everything (section 12b): nothing opens, and the board says why. (Still taken: the browser would open it.)
+      if (Lock.mode() === 'all' && (f || (dropped(e, 'text/uri-list') && !field(e.target)))) { e.preventDefault(); Lock.refuse(); return; }
       if (!f && dropped(e, 'text/uri-list')) {
         if (field(e.target)) return;
         e.preventDefault();
@@ -11311,7 +11402,7 @@
     openWidget, closeWin, focusWin, resetWin, deleteInstance, setMaximized,
     buildExport, applyImport: (obj, mode) => applyImport(parseBoardFile(JSON.stringify(obj)), mode), reloadAll, rebuildAll,
     catalog: () => Array.from(catalog.values()), link: Link, history: BoardHistory, historySheet: HistorySheet, historyPlan, pages: Pages, updateBoard,
-    merge: Merge, mergeUI: MergeUI, applyMerged, placeCopy, zTop, raced: Raced, writer: Writer, accentNow
+    merge: Merge, mergeUI: MergeUI, applyMerged, placeCopy, zTop, raced: Raced, writer: Writer, accentNow, lock: Lock
   };
 
   // (A problem after the board is up is logged, as before; before that, the teacher is told.)
