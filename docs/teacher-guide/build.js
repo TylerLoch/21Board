@@ -33,7 +33,9 @@ t = t.split('{{version}}').join(version);
 const tiles = Object.fromEntries(JSON.parse(fs.readFileSync(path.join(HERE, 'tiles.json'), 'utf8')).map(w => [w.id, w]));
 const tile = id => { if (!tiles[id]) throw new Error('No tile for ' + id); return tiles[id]; };
 const icon = (id, sm) => `<span class="ticon${sm ? ' sm' : ''}" style="--c:${tile(id).color}" aria-hidden="true">${tile(id).icon}</span>`;
-t = t.replace(/\{\{tile:([\w-]+)\}\}/g, (m, id) => `<a class="tile" href="#w-${id}">${icon(id)}<span>${tile(id).name}</span></a>`);
+// (A hyphenated word stays on one line: "Zones / Check-In", as in the Widget Picker.)
+const tileName = name => name.replace(/[^\s-]+(?:-[^\s-]+)+/g, w => `<span class="nobr">${w}</span>`);
+t = t.replace(/\{\{tile:([\w-]+)\}\}/g, (m, id) => `<a class="tile" href="#w-${id}">${icon(id)}<span>${tileName(tile(id).name)}</span></a>`);
 t = t.replace(/\{\{icon:([\w-]+)\}\}/g, (m, id) => icon(id, true));
 
 const left = t.replace(/__proto__/g, '').match(/\{\{|__[A-Z]+__/);

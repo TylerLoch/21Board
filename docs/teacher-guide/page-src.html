@@ -83,6 +83,7 @@ section.block { padding-block: 56px 8px; display: grid; gap: 26px; scroll-margin
 .tiles { display: flex; flex-wrap: wrap; gap: 6px; }
 .tile { width: 92px; display: grid; justify-items: center; gap: 6px; padding: 8px 2px 6px; border-radius: 14px; text-decoration: none; color: var(--ink); font-size: 14px; line-height: 1.15; text-align: center; }
 .tile:hover { background: var(--accent-soft); }
+.tile .nobr { white-space: nowrap; }
 .ticon { width: 54px; height: 54px; border-radius: 15px; display: grid; place-items: center; color: #fff; background: var(--c); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.12); flex: none; }
 .ticon svg { width: 30px; height: 30px; stroke: currentColor; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .ticon.sm { width: 46px; height: 46px; border-radius: 13px; }
@@ -178,19 +179,19 @@ footer.end b { color: var(--ink); }
   <header><h2>Start in three taps</h2><p>There’s nothing to install, no account, and no Save button. Every change is saved on the device as you work.</p></header>
   <ol class="steps">
     <li><h3>Open 21Board</h3><p>Open it from your Apps menu. A new board says “Your board is ready.”</p><img src="shots/empty.jpg" width="2732" height="1536" loading="lazy" alt="An empty 21Board page with the words Your board is ready, and Tap the Widget Picker button in either bottom corner to open a widget."></li>
-    <li><h3>Tap [W]</h3><p>The Widget Picker sits in both bottom corners, so you can reach it from either side of the board. Settings is the gear in its bottom row.</p><img src="shots/picker.jpg" width="990" height="686" loading="lazy" alt="The Widget Picker open, with 15 colorful widget tiles and a row of buttons below: Paste, Export, Import, Lock, Full screen, Settings, and the page control."></li>
+    <li><h3>Tap [W]</h3><p>The Widget Picker sits in both bottom corners, so you can reach it from either side of the board. Settings is the gear in its bottom row.</p><img src="shots/picker.jpg" width="990" height="892" loading="lazy" alt="The Widget Picker open, with 16 colorful widget tiles and a row of buttons below: Paste, Export, Import, Lock, Full screen, Settings, and the page control."></li>
     <li><h3>Tap a widget</h3><p>It opens in its own window. Open as many as you like, and come back to them tomorrow just as you left them.</p><img src="shots/w-timer.jpg" width="960" height="734" loading="lazy" alt="A Timer window counting down 4 minutes 54 seconds, with preset buttons from 1 to 15 minutes."></li>
   </ol>
 </section>
 
 <section class="block" id="widgets">
-  <header><h2>Meet the widgets</h2><p>Fifteen tools, each one tap away. Tap a tile to see what it does, with ideas from kindergarten to eighth grade.</p></header>
+  <header><h2>Meet the widgets</h2><p>Sixteen tools, each one tap away. Tap a tile to see what it does, with ideas from kindergarten to eighth grade.</p></header>
   <div class="picker">
     <div class="groups">
       <div class="grp"><h3>Time</h3><div class="tiles">{{tile:timer}}{{tile:task-timer}}{{tile:clock}}{{tile:calendar}}</div></div>
       <div class="grp"><h3>Words and pictures</h3><div class="tiles">{{tile:notes}}{{tile:image}}{{tile:youtube-player}}</div></div>
       <div class="grp"><h3>Math and chance</h3><div class="tiles">{{tile:calculator}}{{tile:dice}}{{tile:name-picker}}</div></div>
-      <div class="grp"><h3>Routines</h3><div class="tiles">{{tile:traffic-light}}{{tile:first-then-board}}</div></div>
+      <div class="grp"><h3>Routines</h3><div class="tiles">{{tile:traffic-light}}{{tile:first-then-board}}{{tile:zones-check-in}}</div></div>
       <div class="grp"><h3>District apps</h3><div class="tiles">{{tile:21sketch}}{{tile:21timer}}{{tile:21doccam}}</div></div>
     </div>
   </div>
@@ -302,7 +303,7 @@ footer.end b { color: var(--ink); }
     </div>
   </article>
 
-  <h3 class="gtitle">Routines <span>Traffic Light, First/Then Board</span></h3>
+  <h3 class="gtitle">Routines <span>Traffic Light, First/Then Board, Zones Check-In</span></h3>
 
   <article class="w" id="w-traffic-light">
     <figure class="shot" style="margin:0"><img src="shots/w-traffic-light.jpg" width="528" height="1108" loading="lazy" alt="A traffic light with yellow lit."></figure>
@@ -321,6 +322,16 @@ footer.end b { color: var(--ink); }
       <div><h4>Try it</h4><ol><li>Tap the FIRST card and pick a picture, or search.</li><li>Tap the THEN card and pick what comes next.</li><li>When the first task is done, tap ⭐ and choose First done.</li></ol></div>
       <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Math ➔ Snack time, from Presets in the menu. When math is done, the Snack time card glows.</span></li><li><span class="grade">Any</span><span>Deep breaths ➔ a favorite activity, with the 💜 Calm theme.</span></li><li><span class="grade">K–5</span><span>Clean up ➔ Line up before lunch.</span></li></ul></div>
       <div><h4>Good to know</h4><ul class="good"><li>62 picture cards in 7 groups.</li><li>Turn off Sound for a quiet room, and Animation to calm the motion.</li></ul></div>
+    </div>
+  </article>
+
+  <article class="w" id="w-zones-check-in">
+    <figure class="shot" style="margin:0"><img src="shots/w-zones-check-in.jpg" width="734" height="620" loading="lazy" alt="Zones Check-In with four cards: Blue 2, Green 9, Yellow 4, Red 1, and 16 checked in."></figure>
+    <div class="txt">
+      <div class="head">{{icon:zones-check-in}}<div><h3>Zones Check-In</h3><p>Students tap the zone that matches how they feel.</p></div></div>
+      <div><h4>Try it</h4><ol><li>Students tap their zone’s card as they come in.</li><li>Tap − on a card to take back a wrong tap.</li><li>Tap Ideas for ways to calm down or wake up, with a breathing circle.</li><li>Set your class size in Zones Check-In ⌄ › Class size.</li></ol></div>
+      <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Morning arrival. Each student taps a card before sitting down.</span></li><li><span class="grade">3–5</span><span>Check in again after recess. Start over is in the menu.</span></li><li><span class="grade">6–8</span><span>Turn off Show counts, so no one sees how many chose each zone.</span></li><li><span class="grade">Any</span><span>Open Ideas for the zone most students chose, and breathe with the circle together.</span></li></ul></div>
+      <div><h4>Good to know</h4><ul class="good"><li>Counts clear each new day. Turn off Clear each day in the menu to keep them.</li><li>Counts are only stored on your computer and your Google Drive.</li><li>A Blank template never keeps the counts.</li></ul></div>
     </div>
   </article>
 

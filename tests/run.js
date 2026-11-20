@@ -731,6 +731,39 @@ const hslOf = hex => {
 };
 const hueGap = (a, b) => Math.min(Math.abs(a - b), 360 - Math.abs(a - b));
 
+// The Zones Check-In's windows (2026.11.20-1): the frame, what it shows, what the board saved, its menu, and an item
+// chosen from it as a teacher does.
+const ZC = {
+  K: 'zones-check-in:1',
+  zf: (p, k = ZC.K) => p.frameLocator(`.win[data-ikey="${k}"] iframe`),
+  connected: (p, k = ZC.K, ms) => eventually(() => p.evaluate(k => { const w = window.__board21.state.wins.get(k); return !!(w && w.connected); }, k), ms),
+  saved: (p, k = ZC.K) => p.evaluate(k => window.__board21.state.data.get(k) || null, k),
+  conf: (p, k = ZC.K) => p.evaluate(k => window.__board21.state.conf.get(k) || null, k),
+  look: async (p, k = ZC.K) => {
+    const x = await ZC.zf(p, k).locator('html').evaluate(() => {
+      const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+      const Z = ['blue', 'green', 'yellow', 'red'], card = z => document.querySelector(`.zone[data-z="${z}"]`);
+      return {
+        view: ['main', 'ideas', 'edit'].find(v => document.getElementById(v).classList.contains('on')) || '',
+        counts: Z.map(z => +card(z).querySelector('.count').textContent),
+        shown: Z.map(z => vis(card(z).querySelector('.count'))),
+        minus: Z.map(z => { const m = card(z).querySelector('.minus'); return { disabled: m.disabled, shown: vis(m) }; }),
+        status: document.getElementById('status').textContent,
+        bar: { zones: Z.map(z => parseFloat(document.querySelector(`#bar i[data-z="${z}"]`).style.width) || 0), all: parseFloat(document.querySelector('#bar i.all').style.width) || 0 },
+        undoButton: [...document.querySelectorAll('button, [role="button"]')].filter(b => /undo/i.test([b.textContent, b.getAttribute('aria-label'), b.title, b.id, b.className].join(' '))).map(b => b.outerHTML.slice(0, 80)).join(' ')
+      };
+    });
+    x.title = await p.evaluate(k => { const w = window.__board21.state.wins.get(k); return w ? w.subtitle : null; }, k);
+    return x;
+  },
+  menuOf: (p, k = ZC.K) => p.evaluate(k => { const w = window.__board21.state.wins.get(k); return w ? w.menuItems.map(i => i.separator ? '—' : i.heading ? `[${i.label}]` : (i.checked === true ? '✓ ' : i.checked === false ? '☐ ' : '') + i.label + (i.disabled ? ' (off)' : '')).join(' | ') : ''; }, k),
+  choose: async (p, label, k = ZC.K) => {
+    await p.click(`.win[data-ikey="${k}"] .win-label`);
+    await p.locator('#menu [data-act="widget"]').filter({ hasText: new RegExp('^\\s*' + label + '\\s*$') }).first().click();
+    await p.waitForTimeout(450);
+  }
+};
+
 const SUITES = [
   ['Windows, data and multi-tab sync', async (browser) => {
   const wins = page => page.evaluate(() => Object.fromEntries(Array.from(window.__board21.state.wins.values()).sort((a,b)=>a.ikey<b.ikey?-1:1).map(w => [w.ikey, Object.assign({}, w.disp)])));
@@ -3091,9 +3124,9 @@ const SUITES = [
     await openPicker('right');
     await check('Standard, the right corner’s panel');
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-right.png' });
-    // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits without scrolling. With
-    // Developer mode's tiles (SDK Playground, the uploaded widget) there are four rows, which scroll inside the panel; a
-    // teacher's tiles (Developer mode off) are three rows, all in view.
+    // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits on the screen. Its
+    // tiles are four rows, which scroll inside the panel: Developer mode's (SDK Playground, the uploaded widget), and a
+    // teacher's 16 since the Zones Check-In (2026.11.20-1).
     await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(300);
     await openPicker('left');
     await check('200%');
@@ -3106,7 +3139,7 @@ const SUITES = [
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     await openPicker('left');
     fit = await fitNow();
-    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && fit.rows === 3 && !fit.scrolls, `at 200% a teacher’s ${fit.n} tiles, three rows, are all in view without scrolling (top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
+    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && fit.n === 16 && fit.rows === 4 && fit.scrolls, `at 200% the panel with a teacher’s ${fit.n} tiles, four rows that scroll inside it, fits on the screen (${fit.rows} rows; top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
 
@@ -6152,6 +6185,451 @@ const SUITES = [
     ok(errors.length === 0, 'no page errors' + (errors.length ? ': ' + errors.join(' | ') : ''));
     await ctx.close();
   }],
+  // ---- Zones Check-In (2026.11.20-1). Students tap the zone that matches how they feel; the teacher sees how many.
+  ['Zones Check-In: check in, −, the menu, Counts, two tabs', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const { K, zf, connected, saved, look, menuOf, choose } = ZC;
+    await page.evaluate(() => window.__board21.openWidget('zones-check-in'));
+    ok(await connected(page), 'the Zones Check-In opens from the board and connects');
+    await page.evaluate(k => window.__board21.setRect(k, { x: 60, y: 60, w: 560, h: 460 }), K); await page.waitForTimeout(500);
+    const z = zf(page);
+    const MENU0 = 'Undo (off) | Start over (off) | Class size | Edit counts | — | [Ideas] | Blue zone | Green zone | Yellow zone | Red zone | — | ✓ Show counts | ✓ Clear each day | ☐ Sound';
+    ok(await eventually(async () => await menuOf(page) === MENU0), `its menu: Undo, Start over, Class size, Edit counts, then Ideas for each zone, then Show counts (on), Clear each day (on), Sound (off) (${await menuOf(page)})`);
+    let x = await look(page);
+    ok(x.counts.join() === '0,0,0,0' && x.status === 'Tap your zone to check in' && x.title === '' && x.minus.every(m => m.disabled && m.shown), `it starts at none: “Tap your zone to check in”, no title, each “−” disabled (${JSON.stringify(x)})`);
+    ok(!x.undoButton, `no Undo button on the board (${x.undoButton})`);
+
+    // Four taps, one on each card.
+    const tap = async (zone, p = page) => { await zf(p).locator(`.zone[data-z="${zone}"] .tap`).click(); await p.waitForTimeout(120); };
+    for (const zone of ['blue', 'green', 'yellow', 'red']) await tap(zone);
+    ok(await eventually(async () => JSON.stringify(((await saved(page)) || {}).counts) === '{"blue":1,"green":1,"yellow":1,"red":1}'), `four taps save { blue, green, yellow, red } (${JSON.stringify(((await saved(page)) || {}).counts)})`);
+    x = await look(page);
+    ok(x.counts.join() === '1,1,1,1' && x.status === '4 checked in' && x.title === '4 checked in', `the cards, the status line and the title follow: “4 checked in” (${x.counts}; ${x.status}; ${x.title})`);
+    ok(/^\d{4}-\d{2}-\d{2}$/.test((await saved(page)).day) && (await saved(page)).undo.length === 4, `the day of the change and 4 steps for Undo are saved (${JSON.stringify(await saved(page))})`);
+    ok(await menuOf(page) === MENU0.replace('Undo (off) | Start over (off)', 'Undo | Start over'), `Undo and Start over can now be chosen (${await menuOf(page)})`);
+
+    // Class size 25, from the Counts view.
+    await choose(page, 'Class size');
+    ok(await eventually(() => z.locator('#edit').isVisible()), 'Class size opens the Counts view');
+    await page.waitForTimeout(400);
+    await z.locator('#n-size').fill('25');
+    ok(await eventually(async () => ((await ZC.conf(page)) || {}).classSize === 25), 'a class size of 25 is saved as the widget’s setting');
+    await z.locator('#edit-done').click(); await page.waitForTimeout(400);
+    x = await look(page);
+    ok(x.view === 'main' && x.status === '4 of 25 checked in' && x.title === '4 of 25', `Done: “4 of 25 checked in”, and the title says 4 of 25 (${x.status}; ${x.title})`);
+
+    // "−" takes one away, and is disabled at 0.
+    await z.locator('.zone[data-z="blue"] .minus').click(); await page.waitForTimeout(150);
+    x = await look(page);
+    ok(x.counts.join() === '0,1,1,1' && x.minus[0].disabled && !x.minus[1].disabled && x.status === '3 of 25 checked in', `“−” on Blue takes one away; at 0 it is disabled (${x.counts}; ${x.status})`);
+    await z.locator('.zone[data-z="blue"] .minus').click({ force: true }).catch(() => {}); await page.waitForTimeout(150);
+    ok((await look(page)).counts.join() === '0,1,1,1' && JSON.stringify((await saved(page)).counts) === '{"blue":0,"green":1,"yellow":1,"red":1}', 'a tap on the disabled “−” changes nothing');
+
+    // A second tab shows each change.
+    const page2 = await ctx.newPage(); page2.on('pageerror', e => errors.push('tab 2: ' + e.message));
+    await page2.goto(BASE); await boardUp(page2); await freeBoard(page2);
+    ok(await connected(page2), '(a second tab, with the same window)');
+    const same = async () => JSON.stringify((await look(page2)).counts) === JSON.stringify((await look(page)).counts) && (await look(page2)).status === (await look(page)).status;
+    ok(await eventually(same), `the second tab shows the same counts (${(await look(page2)).counts})`);
+    await tap('green'); await page.waitForTimeout(400); await tap('green');
+    ok(await eventually(async () => (await look(page2)).counts.join() === '0,3,1,1' && (await look(page2)).status === '5 of 25 checked in'), `a tap in one tab shows in the other (${(await look(page2)).counts}; ${(await look(page2)).status})`);
+
+    // Start over, then the menu's Undo, brings the counts back.
+    await choose(page, 'Start over');
+    x = await look(page);
+    ok(x.counts.join() === '0,0,0,0' && x.status === 'Tap your zone to check in' && x.title === '', `Start over: every zone at 0 (${x.counts}; ${x.status})`);
+    ok(await eventually(async () => (await look(page2)).counts.join() === '0,0,0,0'), 'and in the other tab');
+    await choose(page, 'Undo');
+    x = await look(page);
+    ok(x.counts.join() === '0,3,1,1' && x.status === '5 of 25 checked in', `Undo in the menu brings the counts back (${x.counts}; ${x.status})`);
+    ok(await eventually(async () => (await look(page2)).counts.join() === '0,3,1,1'), 'in both tabs');
+
+    // One Undo after an editing session in Counts takes back the whole session, and only it.
+    await tap('red');
+    ok((await look(page)).counts.join() === '0,3,1,2', '(a tap on Red: 0, 3, 1, 2)');
+    await choose(page, 'Edit counts'); await page.waitForTimeout(400);
+    for (let i = 0; i < 3; i++) { await z.locator('.row[data-z="blue"] button[data-by="1"]').click(); await page.waitForTimeout(80); }
+    await z.locator('#n-yellow').fill('7');
+    await z.locator('.row[data-z="green"] button[data-by="-1"]').click();
+    ok(await eventually(async () => JSON.stringify((await saved(page)).counts) === '{"blue":3,"green":2,"yellow":7,"red":2}'), `editing in Counts saves as it goes (${JSON.stringify((await saved(page)).counts)})`);
+    await z.locator('#edit-done').click(); await page.waitForTimeout(400);
+    await choose(page, 'Undo');
+    ok((await look(page)).counts.join() === '0,3,1,2', `one Undo takes back the whole editing session, and only it (${(await look(page)).counts})`);
+    await choose(page, 'Undo');
+    ok((await look(page)).counts.join() === '0,3,1,1', `the next Undo takes back the tap before it (${(await look(page)).counts})`);
+    ok(await eventually(async () => (await look(page2)).counts.join() === '0,3,1,1'), 'the other tab follows each Undo');
+
+    // Show counts off: no numbers on the cards, no "−", and one color in the bar, for the total.
+    x = await look(page);
+    ok(x.shown.every(Boolean) && x.bar.zones.filter(w => w > 0).length === 3 && x.bar.all === 0, `with counts shown, the bar has each zone’s share in its color (${JSON.stringify(x.bar)})`);
+    await choose(page, 'Show counts');
+    x = await look(page);
+    ok(x.shown.every(s => !s) && x.minus.every(m => !m.shown) && x.bar.zones.every(w => w === 0) && x.bar.all > 0, `Show counts off hides every card’s number and “−”, and the bar is one color for the total (${JSON.stringify(x)})`);
+    ok(((await ZC.conf(page)) || {}).showCounts === false && /✓ Clear each day/.test(await menuOf(page)) && !/✓ Show counts/.test(await menuOf(page)), `saved as a setting, and the menu shows it off (${await menuOf(page)})`);
+    ok(await eventually(async () => (await look(page2)).shown.every(s => !s)), 'the other tab hides them too');
+    await tap('yellow');
+    ok(await eventually(async () => JSON.stringify((await saved(page)).counts) === '{"blue":0,"green":3,"yellow":2,"red":1}') && (await look(page)).status === '6 of 25 checked in', `a tap still counts while they are hidden (${(await look(page)).status})`);
+    ok(await eventually(async () => (await look(page2)).status === '6 of 25 checked in'), 'and shows in the other tab');
+    await choose(page, 'Show counts');
+    ok((await look(page)).shown.every(Boolean) && (await look(page)).counts.join() === '0,3,2,1', 'Show counts on again: the numbers are back');
+    ok(!(await look(page)).undoButton && !(await look(page2)).undoButton, 'no Undo button on the board, in either tab');
+    await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'zones-check-in.png' });
+    await page2.close();
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Zones Check-In: taps (two at once, a hand resting on the board, a double touch, a drag)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, hasTouch: true });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const { K, zf, connected, look } = ZC;
+    await page.evaluate(() => window.__board21.openWidget('zones-check-in'));
+    ok(await connected(page), '(the Zones Check-In connects)');
+    const put = () => page.evaluate(k => window.__board21.setRect(k, { x: 300, y: 80, w: 700, h: 560 }), K);
+    await put(); await page.waitForTimeout(600);
+    const z = zf(page);
+    // Real touches, through Chromium's own input (CDP). touchStart lists every finger down; touchEnd the fingers that lift
+    // (none listed: all of them).
+    const cdp = await ctx.newCDPSession(page);
+    const T = (type, touchPoints) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints });
+    const at = async (sel, dy = 15) => { const b = await z.locator(sel).boundingBox(); return { x: Math.round(b.x + b.width / 2), y: Math.round(b.y + b.height / 2 + dy) }; };
+    const counts = async () => (await look(page)).counts;
+    const rect = () => page.evaluate(k => { const r = window.__board21.state.insts.get(k).rect; return `${Math.round(r.x)},${Math.round(r.y)}`; }, K);
+    const run = async (what, fn, want) => {
+      await put(); await page.waitForTimeout(450);
+      const P = {};
+      for (const zone of ['blue', 'green', 'yellow', 'red']) P[zone] = await at(`.zone[data-z="${zone}"] .tap`);
+      P.status = await at('#status', 0);
+      const a = await counts(), r0 = await rect();
+      await fn(P); await page.waitForTimeout(700);
+      const b = await counts(), r1 = await rect(), d = b.map((v, i) => v - a[i]).join();
+      return { d, moved: r0 !== r1, r0, r1 };
+    };
+    let r = await run('one touch', async P => { await T('touchStart', [{ ...P.blue, id: 1 }]); await page.waitForTimeout(70); await T('touchEnd', []); });
+    ok(r.d === '1,0,0,0' && !r.moved, `a touch on Blue counts one (${r.d})`);
+    r = await run('two at once', async P => {
+      await T('touchStart', [{ ...P.blue, id: 1 }]); await page.waitForTimeout(30);
+      await T('touchStart', [{ ...P.blue, id: 1 }, { ...P.red, id: 2 }]); await page.waitForTimeout(60);
+      await T('touchEnd', [{ ...P.red, id: 2 }]); await page.waitForTimeout(30);
+      await T('touchEnd', []);
+    });
+    ok(r.d === '1,0,0,1' && !r.moved, `two students touching Blue and Red at once: both count (${r.d})`);
+    r = await run('a hand on the board', async P => {
+      const rest = { x: 150, y: 420 };   // (the empty board, beside the window)
+      await T('touchStart', [{ ...rest, id: 5 }]); await page.waitForTimeout(100);
+      for (let i = 0; i < 2; i++) { await T('touchStart', [{ ...rest, id: 5 }, { ...P.green, id: 6 + i }]); await page.waitForTimeout(80); await T('touchEnd', [{ ...P.green, id: 6 + i }]); await page.waitForTimeout(500); }
+      await T('touchEnd', []);
+    });
+    ok(r.d === '0,2,0,0', `taps on Green while a hand rests on the board: each counts (${r.d})`);
+    r = await run('a hand on the window', async P => {
+      await T('touchStart', [{ ...P.status, id: 5 }]); await page.waitForTimeout(100);
+      await T('touchStart', [{ ...P.status, id: 5 }, { ...P.yellow, id: 6 }]); await page.waitForTimeout(80); await T('touchEnd', [{ ...P.yellow, id: 6 }]); await page.waitForTimeout(300);
+      await T('touchEnd', []);
+    });
+    ok(r.d === '0,0,1,0' && !r.moved, `a tap on Yellow while a hand rests on the window’s bottom row counts, and the window stays (${r.d}${r.moved ? `; moved ${r.r0} → ${r.r1}` : ''})`);
+    r = await run('a double touch', async P => {
+      for (let i = 0; i < 2; i++) { await T('touchStart', [{ ...P.yellow, id: 10 + i }]); await page.waitForTimeout(50); await T('touchEnd', []); await page.waitForTimeout(60); }
+    });
+    ok(r.d === '0,0,1,0', `a double touch on one card counts once (${r.d})`);
+    r = await run('a drag', async P => {
+      await T('touchStart', [{ ...P.green, id: 1 }]);
+      for (let i = 1; i <= 10; i++) { await page.waitForTimeout(16); await T('touchMove', [{ x: P.green.x + 12 * i, y: P.green.y + 6 * i, id: 1 }]); }
+      await page.waitForTimeout(30); await T('touchEnd', []);
+    });
+    ok(r.d === '0,0,0,0' && r.moved, `a touch drag from a card moves the window and counts nothing (${r.d}; ${r.r0} → ${r.r1})`);
+    r = await run('a tap after the drag', async P => { await T('touchStart', [{ ...P.red, id: 1 }]); await page.waitForTimeout(70); await T('touchEnd', []); });
+    ok(r.d === '0,0,0,1', `the next tap counts as usual (${r.d})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Zones Check-In: a crafted file, and a new day', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message)); page.on('console', m => { if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push('console: ' + m.text()); });
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const { zf, saved, look, menuOf, choose } = ZC;
+    const evil = '"><img src=x onerror="top.document.title=\'PWNED\'">';
+    const win = (i, data, config) => ({ widgetId: 'zones-check-in', instance: i + 1, open: true, z: i + 1, rect: { x: 10 + (i % 3) * 450, y: 10 + Math.floor(i / 3) * 370, w: 440, h: 360 }, data, config });
+    const BIG = Array.from({ length: 200000 }, (_, k) => k % 7 ? [k % 10000, 1e9, -3, 2.5] : 'x');
+    const HOSTILE = [
+      [{ day: 'yesterday', counts: { blue: '7', green: -3, yellow: 1e9, red: 2.5 }, undo: BIG }, { classSize: 1e9, showCounts: 'no', daily: 'off', sound: 'yes' }],
+      [{ day: ['2026-11-20'], counts: [5, 6, 7, 8], undo: { 0: [1, 2, 3, 4], length: 1 } }, [25, true]],
+      [{ day: evil, counts: { blue: evil, green: true, yellow: [3], red: { n: 4 } }, undo: [[1, 2, 3], 'x', null, [1e9, -1, 2.5, '4'], [1, 2, 3, 4, 5], [[1], {}, 'a', 7]] }, { classSize: -4, showCounts: 0, daily: null, sound: 1 }],
+      [{ day: 20261120, counts: { blue: 12, green: 1e300, yellow: 9999, red: 10000 }, undo: Array.from({ length: 50 }, (_, k) => [k, k, k, k]) }, { classSize: 30.5, showCounts: false }],
+      [{ PROTO: { counts: { blue: 50 } }, counts: { PROTO: { blue: 9 }, green: 2 }, undo: [] }, { PROTO: { showCounts: false, classSize: 30 } }],
+      ['just text', 'text'],
+      [null, null]
+    ];
+    const crafted = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Zones from a file' }, instances: HOSTILE.map(([d, c], i) => win(i, d, c)) };
+    fs.writeFileSync(OUT + 'zones-crafted.21board', JSON.stringify(crafted).replace(/"PROTO"/g, '"__proto__"'));
+    await page.setInputFiles('#import-input', OUT + 'zones-crafted.21board'); await page.waitForTimeout(300);
+    await page.click('#modal .btn:has-text("Replace this page")');
+    const keys = HOSTILE.map((_, i) => 'zones-check-in:' + (i + 1));
+    ok(await eventually(async () => (await Promise.all(keys.map(k => ZC.connected(page, k, 300)))).every(Boolean), 20000), 'a crafted file opens: all its Zones Check-In windows start');
+    await page.waitForTimeout(800);
+    const fine = n => Number.isInteger(n) && n >= 0 && n <= 9999;
+    const statusOk = s => /^(Tap your zone to check in|\d{1,5} checked in|\d{1,5} of \d{1,2} checked in|Everyone’s checked in)$/.test(s) && (!/ of (\d+)/.test(s) || +/ of (\d+)/.exec(s)[1] <= 99);
+    const drawn = [];
+    for (const k of keys) {
+      const x = await look(page, k);
+      const made = await zf(page, k).locator('html').evaluate(() => document.querySelectorAll('img, [onerror], [onload]').length);
+      if (!(x.counts.every(fine) && statusOk(x.status) && made === 0)) drawn.push(`${k}: ${JSON.stringify(x.counts)} “${x.status}”${made ? `, ${made} elements made` : ''}`);
+    }
+    ok(!drawn.length && await page.title() !== 'PWNED', `every window draws safely: each count a whole number from 0 to 9999, a class size of 99 at most, nothing from the file as markup (${drawn.join(' | ') || keys.length + ' windows'})`);
+    const x1 = await look(page, keys[0]), x4 = await look(page, keys[3]), x5 = await look(page, keys[4]);
+    ok(x1.counts.join() === '0,0,9999,0' && x1.status === '9999 of 99 checked in' && x4.counts.join() === '12,9999,9999,9999' && x5.counts.join() === '0,2,0,0',
+      `only whole numbers count, 9999 at most, and a class size of 99 at most (${x1.counts}, “${x1.status}” | ${x4.counts} | ${x5.counts})`);
+    ok(x1.shown.every(Boolean) && x4.shown.every(s => !s) && x5.shown.every(Boolean), 'Show counts is on unless the file says false');
+    // Each window's Undo keeps at most 20 changes of four counts: a tap saves what the widget kept.
+    for (const k of keys) { await zf(page, k).locator('.zone[data-z="blue"] .tap').click(); await page.waitForTimeout(150); }
+    await page.waitForTimeout(600);
+    const kept = [];
+    for (const k of keys) {
+      const d = await saved(page, k);
+      if (!(d && d.undo.length <= 20 && d.undo.every(u => Array.isArray(u) && u.length === 4 && u.every(fine)) && Object.values(d.counts).every(fine) && Object.keys(d.counts).join() === 'blue,green,yellow,red' && /^\d{4}-\d{2}-\d{2}$/.test(d.day)))
+        kept.push(`${k}: ${JSON.stringify(d).slice(0, 160)}`);
+    }
+    ok(!kept.length, `after a tap, each window saves four whole counts, today’s date and an Undo of 20 changes at most (${kept.join(' | ') || keys.length + ' windows'})`);
+    const u1 = (await saved(page, keys[0])).undo, u4 = (await saved(page, keys[3])).undo;
+    ok(u1.length === 20 && u4.length === 20 && JSON.stringify(u4[u4.length - 1]) === '[12,9999,9999,9999]', `200,000 changes in a file: Undo keeps the last 20 (${u1.length}, ${u4.length}; the last ${JSON.stringify(u4[u4.length - 1])})`);
+    ok(await menuOf(page, keys[0]) !== '' && /^Undo \| Start over/.test(await menuOf(page, keys[0])), `(its menu works: ${await menuOf(page, keys[0])})`);
+    ok(await page.title() !== 'PWNED', 'nothing in the file ran');
+
+    // A new day. Content saved yesterday: with Clear each day on (the default) it shows as none, and the first tap
+    // starts today's counts. With it off, yesterday's counts show.
+    const yesterday = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
+    const OLD = { day: yesterday, counts: { blue: 3, green: 5, yellow: 0, red: 2 }, undo: [[3, 4, 0, 2]] };
+    const days = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Yesterday' }, instances: [win(0, OLD, null), win(1, OLD, { classSize: 0, showCounts: true, daily: false, sound: false })] };
+    await page.evaluate(f => window.__board21.applyImport(f, 'replace'), days);
+    ok(await eventually(async () => (await Promise.all(['zones-check-in:1', 'zones-check-in:2'].map(k => ZC.connected(page, k, 300)))).every(Boolean)), '(two windows, both saved yesterday: Clear each day on, and off)');
+    await page.waitForTimeout(600);
+    let a = await look(page, 'zones-check-in:1'), b = await look(page, 'zones-check-in:2');
+    ok(a.counts.join() === '0,0,0,0' && a.status === 'Tap your zone to check in' && /^Undo \(off\) \| Start over \(off\)/.test(await menuOf(page, 'zones-check-in:1')),
+      `Clear each day on: yesterday’s counts show as none, with nothing to undo (${a.counts}; ${a.status}; ${await menuOf(page, 'zones-check-in:1')})`);
+    ok(b.counts.join() === '3,5,0,2' && b.status === '10 checked in', `Clear each day off: yesterday’s counts show (${b.counts}; ${b.status})`);
+    await zf(page, 'zones-check-in:1').locator('.zone[data-z="green"] .tap').click();
+    const today = await page.evaluate(() => { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); });
+    ok(await eventually(async () => JSON.stringify(await saved(page, 'zones-check-in:1')) === JSON.stringify({ day: today, counts: { blue: 0, green: 1, yellow: 0, red: 0 }, undo: [[0, 0, 0, 0]] })),
+      `the first tap starts today’s counts (${JSON.stringify(await saved(page, 'zones-check-in:1'))})`);
+    await choose(page, 'Undo', 'zones-check-in:1');
+    a = await look(page, 'zones-check-in:1');
+    ok(a.counts.join() === '0,0,0,0', `and Undo goes back to none, not to yesterday (${a.counts})`);
+    // Clear each day turned on in the second window: yesterday's counts go.
+    await choose(page, 'Clear each day', 'zones-check-in:2');
+    b = await look(page, 'zones-check-in:2');
+    ok(b.counts.join() === '0,0,0,0' && ((await ZC.conf(page, 'zones-check-in:2')) || {}).daily === true, `turning Clear each day on hides yesterday’s counts (${b.counts})`);
+    await choose(page, 'Clear each day', 'zones-check-in:2');
+    ok((await look(page, 'zones-check-in:2')).counts.join() === '3,5,0,2', 'and off again shows them');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Zones Check-In: a Blank template, Board history, offline', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const { K, zf, connected, look, choose } = ZC;
+    await page.evaluate(() => window.__board21.history.cfg({ quiet: 36e5, every: 36e5, skipOpen: true }));   // (no automatic versions meanwhile)
+    await page.evaluate(() => window.__board21.openWidget('zones-check-in'));
+    ok(await connected(page), '(the Zones Check-In connects)');
+    await page.evaluate(k => window.__board21.setRect(k, { x: 60, y: 60, w: 560, h: 460 }), K); await page.waitForTimeout(500);
+    const z = zf(page);
+    // Blue 2, Green 9, Yellow 4, Red 1, typed in Counts, with a class size of 25.
+    await choose(page, 'Edit counts'); await page.waitForTimeout(400);
+    for (const [id, n] of [['size', 25], ['blue', 2], ['green', 9], ['yellow', 4], ['red', 1]]) await z.locator('#n-' + id).fill(String(n));
+    await z.locator('#edit-done').click(); await page.waitForTimeout(400);
+    ok((await look(page)).counts.join() === '2,9,4,1' && (await look(page)).status === '16 of 25 checked in', `(Blue 2, Green 9, Yellow 4, Red 1: ${(await look(page)).status})`);
+    await choose(page, 'Clear each day'); await choose(page, 'Sound');
+    await page.waitForTimeout(400);
+
+    // A Blank template keeps the window and its settings, never the counts.
+    const full = await page.evaluate(() => window.__board21.buildExport('full')), tpl = await page.evaluate(() => window.__board21.buildExport('template'));
+    const fi = full.instances.find(i => i.widgetId === 'zones-check-in'), ti = tpl.instances.find(i => i.widgetId === 'zones-check-in');
+    const CONF = '{"classSize":25,"showCounts":true,"daily":false,"sound":true}';
+    ok(!!fi && JSON.stringify(fi.data.counts) === '{"blue":2,"green":9,"yellow":4,"red":1}' && JSON.stringify(fi.config) === CONF, `a full export has the counts and the settings (${JSON.stringify(fi && fi.data && fi.data.counts)})`);
+    ok(!!ti && ti.data === null && JSON.stringify(ti.config) === CONF && !JSON.stringify(tpl).includes('"counts"'), `a Blank template has the settings and no counts (${JSON.stringify(ti)})`);
+    await page.evaluate(f => window.__board21.applyImport(f, 'add'), tpl);
+    ok(await eventually(() => connected(page, 'zones-check-in:2', 300)), '(the template, added to the page)');
+    await page.waitForTimeout(500);
+    const t2 = await look(page, 'zones-check-in:2');
+    ok(t2.counts.join() === '0,0,0,0' && t2.status === 'Tap your zone to check in' && /✓ Sound/.test(await ZC.menuOf(page, 'zones-check-in:2')), `its window starts at none, with the template’s settings (${t2.counts}; ${await ZC.menuOf(page, 'zones-check-in:2')})`);
+    await page.evaluate(() => window.__board21.closeWin('zones-check-in:2')); await page.waitForTimeout(300);
+
+    // Board history: the window's line names the zones with check-ins.
+    await openSettings(page);
+    await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open [data-act="save"]');
+    await page.click('#history [data-act="save"]'); await page.waitForSelector('#modal.open input');
+    await page.fill('#modal.open input', 'Morning check-in'); await page.click('#modal.open .btn.primary');
+    await page.locator('#toasts .toast', { hasText: 'Version saved.' }).waitFor();
+    const vid = await page.evaluate(async () => { await window.__board21.history.reload(); const m = window.__board21.history.metas.find(m => m.manual); return m && m.id; });
+    await page.locator(`#history .hist-row[data-val="${vid}"]`).click();
+    await page.waitForSelector('#history-detail.open .inst');
+    const rows = Object.fromEntries(await page.$$eval('#history-detail.open .inst .meta', els => els.map(e => [e.querySelector('b').textContent, e.querySelector('span').textContent])));
+    ok(rows['Zones Check-In'] === 'Blue 2, Green 9, Yellow 4, Red 1', `Board history: “Blue 2, Green 9, Yellow 4, Red 1” (${JSON.stringify(rows)})`);
+    await page.waitForTimeout(500); await page.screenshot({ path: OUT + 'zones-history.png' });
+    for (let k = 0; k < 4 && await page.locator('#settings.open, #history.open, #history-detail.open').count(); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(250); }
+    await choose(page, 'Start over');
+    ok((await look(page)).counts.join() === '0,0,0,0', '(Start over: all at 0)');
+    await page.evaluate(() => window.__board21.history.save('After Start over')); await page.waitForTimeout(800);
+    const zero = await page.evaluate(async k => { await window.__board21.history.reload(); const m = window.__board21.history.metas.find(m => m.label === 'After Start over'); return m && m.wins && m.wins[k] ? m.wins[k][5] : null; }, K);
+    ok(zero === '', `and none for a version with every zone at 0 (${JSON.stringify(zero)})`);
+
+    // The offline copy has its page, and the release stamp matches.
+    const vm = require('vm');
+    const box = { addEventListener() {} }; box.self = box;
+    box.importScripts = (...files) => files.forEach(f => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), box));
+    vm.createContext(box);
+    const list = vm.runInContext(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8') + '\n;PRECACHE;', box);
+    ok(list.includes('widgets/zones-check-in/index.html'), 'its page is in the offline copy (sw.js PRECACHE)');
+    ok(stamped(), STAMPED);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Zones Check-In: the registry, and its layout (260 × 220, the default size, very wide, very tall, filling the board unlocked and locked, light and dark)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const { K, zf, connected, look, choose } = ZC;
+    // The registry entry, and the widget's own manifest block matches it.
+    const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'zones-check-in'); return a && { name: a.name, version: a.version, entry: a.entry, files: a.files, clash: a.clash, permissions: a.permissions, win: a.win, color: a.color, icon: a.icon, external: !!a.external, single: !!a.single, description: a.description }; });
+    ok(!!reg && reg.name === 'Zones Check-In' && reg.version === '1.0.0' && reg.entry === 'widgets/zones-check-in/index.html' && JSON.stringify(reg.files) === '["widgets/zones-check-in/index.html"]' && !reg.clash &&
+      reg.permissions.length === 0 && !reg.external && !reg.single && reg.win.width === 560 && reg.win.height === 420 && reg.win.minWidth === 260 && reg.win.minHeight === 220 && !reg.win.aspectRatio && reg.win.dragFromContent !== false,
+      `it is in the registry as Zones Check-In: one file, no clash (Board Sync keeps both), not single, 560 × 420, at least 260 × 220 (${JSON.stringify(reg && reg.win)})`);
+    ok(!!reg && reg.description === 'Check in on how your class feels.', `its tooltip: “Check in on how your class feels.” (${reg && reg.description})`);
+    const src = fs.readFileSync(path.join(ROOT, 'widgets', 'zones-check-in', 'index.html'), 'utf8');
+    const mf = /<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src), manifest = mf ? JSON.parse(mf[1]) : {};
+    ok(!!reg && manifest.id === 'zones-check-in' && manifest.name === reg.name && manifest.version === reg.version && manifest.description === reg.description && manifest.color === reg.color &&
+      ['width', 'height', 'minWidth', 'minHeight'].every(k => (manifest.window || {})[k] === reg.win[k]) && /<title>Zones Check-In<\/title>/.test(src), 'its manifest block matches the registry entry');
+    const others = await page.evaluate(() => window.__board21.catalog().filter(w => w.id !== 'zones-check-in').map(w => String(w.color || '').toLowerCase()));
+    ok(!!reg && /^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', rgbOf(reg.color)) >= 4.5 && !others.includes(reg.color.toLowerCase()), `its tile is a color of its own (${reg && reg.color}), the white icon readable on it`);
+    const order = await page.evaluate(() => window.BOARD21_WIDGETS.map(w => w.id));
+    ok(order.indexOf('zones-check-in') === order.indexOf('first-then-board') + 1, 'it follows the First/Then Board in the registry');
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
+    const row = (/\| \*\*Zones Check-In\*\* \|[^|]*\|/.exec(readme) || [''])[0];
+    ok(readme.indexOf(row) > readme.indexOf('| **First/Then Board** |') && readme.indexOf(row) < readme.indexOf('## Adding a widget') && /\*content\*/.test(row) && /the last 20 changes/.test(row),
+      `the README’s Included widgets has a Zones Check-In row after the First/Then Board (${row.slice(0, 90)}…)`);
+    ok(dataDoc.includes('`{ day, counts: { blue, green, yellow, red }, undo }`') && dataDoc.includes('`{ classSize, showCounts, daily, sound }`'), 'docs/DATA-FORMAT.md gives its content and its config');
+    await page.click('.picker-btn.left'); await page.waitForTimeout(300);
+    const tile = page.locator('#panel [data-widget="zones-check-in"]');
+    ok(await tile.count() === 1 && (await tile.innerText()).trim() === 'Zones Check-In' && (await tile.getAttribute('title')) === 'Zones Check-In\nCheck in on how your class feels.', 'the Widget Picker has its tile, with its tooltip');
+    // Its name wraps after "Zones", never after the hyphen ("Zones Check- / In"), in every Text style.
+    const lines = () => page.locator('#panel [data-widget="zones-check-in"] .widget-name').evaluate(n => {
+      const out = []; let top = null;
+      const walk = document.createTreeWalker(n, NodeFilter.SHOW_TEXT);
+      for (let t; (t = walk.nextNode());) for (let i = 0; i < t.length; i++) {
+        const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 1);
+        const y = Math.round(r.getBoundingClientRect().top);
+        if (top === null || y !== top) out.push('');
+        top = y; out[out.length - 1] += t.data[i];
+      }
+      return out.map(s => s.trim()).join(' / ');
+    });
+    const wraps = [`standard: ${await lines()}`];
+    for (const [style, fam] of [['legible', 'Atkinson Hyperlegible'], ['early', '21Board Early Readers'], ['standard']]) {
+      await page.keyboard.press('Escape'); await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
+      if (fam) await page.waitForFunction(fam => Array.from(document.fonts).filter(f => f.family.replace(/"/g, '') === fam && f.status === 'loaded').length >= 2, fam);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+      if (fam) { await page.click('.picker-btn.left'); await page.waitForTimeout(300); wraps.push(`${style}: ${await lines()}`); await page.keyboard.press('Escape'); await page.waitForTimeout(200); }
+    }
+    ok(wraps.every(w => / Zones \/ Check-In$/.test(w.replace(/^\w+:/, ''))), `its tile reads “Zones / Check-In” on two lines, in every Text style (${wraps.join('; ')})`);
+    if (!await page.locator('#panel.open').count()) { await page.click('.picker-btn.left'); await page.waitForTimeout(300); }
+    await tile.click();
+    ok(await connected(page), 'tapping it opens a window, which connects');
+    await page.waitForTimeout(500);
+    const rect0 = await page.evaluate(k => window.__board21.state.insts.get(k).rect, K);
+    ok(Math.round(rect0.w) === 560 && Math.round(rect0.h) === 460, `it opens at 560 × 420, with its title bar (${JSON.stringify(rect0)})`);
+    // Some check-ins, through Counts.
+    await choose(page, 'Edit counts'); await page.waitForTimeout(400);
+    for (const [id, n] of [['blue', 2], ['green', 9], ['yellow', 4], ['red', 1]]) await zf(page).locator('#n-' + id).fill(String(n));
+    await zf(page).locator('#edit-done').click(); await page.waitForTimeout(400);
+    await setCornerClock(page, 'on');
+
+    // What is wrong with the layout as drawn now: text under 14 px, a zone's name or a feeling cut off, a count or face
+    // over the colored top or the feelings, and (filling the board) anything under the board's corner buttons or padlocks.
+    const problems = async (where, corners) => {
+      const f = await zf(page).locator('html').evaluate(() => {
+        const out = [], vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+        const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+        for (let n; (n = walk.nextNode());) {
+          const e = n.parentElement;
+          if (!n.textContent.trim() || !e || e.closest('.sr, template, .float') || !e.closest('.view.on') || !vis(e)) continue;
+          const fs = parseFloat(getComputedStyle(e).fontSize);
+          if (fs < 13.95) out.push(`“${n.textContent.trim().slice(0, 16)}” at ${fs.toFixed(1)} px`);
+        }
+        for (const z of document.querySelectorAll('.zone')) {
+          const id = z.dataset.z, tap = z.querySelector('.tap').getBoundingClientRect(), head = z.querySelector('.head').getBoundingClientRect(), name = z.querySelector('.name');
+          if (name.scrollWidth > name.clientWidth + 1) out.push(`${id}: its name is cut`);
+          const nr = document.createRange(); nr.selectNodeContents(name); const nb = nr.getBoundingClientRect();
+          const tools = [...z.querySelectorAll('.tools .chip, .tools .pill')].filter(vis).map(e => e.getBoundingClientRect());
+          if (tools.some(t => t.left < nb.right - 0.5 && t.right > nb.left + 0.5)) out.push(`${id}: its name runs under “−” or Ideas`);
+          if (nb.right > tap.right + 0.5 || nb.left < tap.left - 0.5) out.push(`${id}: its name runs out of the card`);
+          const fl = z.querySelector('.feelings'), flOn = vis(fl), flr = fl.getBoundingClientRect();
+          if (flOn) for (const c of fl.querySelectorAll('.feel')) {
+            if (!vis(c)) continue;
+            const r = c.getBoundingClientRect();
+            if (r.top < flr.top - 0.5 || r.bottom > flr.bottom + 0.5 || r.left < Math.max(flr.left, tap.left) - 0.5 || r.right > Math.min(flr.right, tap.right) + 0.5) out.push(`${id}: “${c.textContent}” is cut off`);
+          }
+          const below = flOn ? flr.top : tap.bottom;
+          const cnt = z.querySelector('.count'), face = z.querySelector('.face');
+          for (const [what, e, k] of [['count', cnt, 0.12], ['face', face, 0.02]]) {
+            if (!vis(e)) continue;
+            const r = e.getBoundingClientRect(), slack = parseFloat(getComputedStyle(e).fontSize) * k;
+            if (r.top + slack < head.bottom - 0.5) out.push(`${id}: its ${what} is over the colored top`);
+            if (r.bottom - slack > below + 0.5) out.push(`${id}: its ${what} is over the feelings`);
+            if (r.left < tap.left - 0.5 || r.right > tap.right + 0.5) out.push(`${id}: its ${what} runs out of the card`);
+          }
+        }
+        // What the board's buttons must not cover: the cards, their buttons, the status line and the bar.
+        const parts = [...document.querySelectorAll('.view.on .tap, .view.on .tools .chip, .view.on .tools .pill, .view.on #status, .view.on .bar')].filter(vis)
+          .map(e => { const r = e.getBoundingClientRect(); return { name: e.id || e.className.split(' ')[0] + (e.closest('.zone') ? ' ' + e.closest('.zone').dataset.z : ''), x: r.left, y: r.top, w: r.width, h: r.height }; });
+        return { out, parts, iw: innerWidth, ih: innerHeight, theme: document.documentElement.getAttribute('data-b21-theme') };
+      });
+      const top = await page.evaluate(k => {
+        const vis = e => { const s = getComputedStyle(e), b = e.getBoundingClientRect(); return !e.hidden && s.display !== 'none' && s.visibility !== 'hidden' && b.width > 0; };
+        const r = document.querySelector(`.win[data-ikey="${k}"] iframe`).getBoundingClientRect();
+        return { x: r.left, y: r.top, w: r.width, h: r.height, marks: [...document.querySelectorAll('.picker-btn, .corner-clock, .lock-pad')].filter(vis).map(e => { const b = e.getBoundingClientRect(); return { name: e.className.split(' ').slice(0, 2).join('.'), x: b.left, y: b.top, w: b.width, h: b.height }; }) };
+      }, K);
+      const sx = top.w / f.iw, sy = top.h / f.ih;
+      const under = [];
+      for (const m of corners ? top.marks : []) for (const q of f.parts) {
+        const x = top.x + q.x * sx, y = top.y + q.y * sy, w = q.w * sx, h = q.h * sy;
+        if (Math.min(m.x + m.w, x + w) - Math.max(m.x, x) > 0.5 && Math.min(m.y + m.h, y + h) - Math.max(m.y, y) > 0.5) under.push(`${q.name} under ${m.name}`);
+      }
+      return { where, list: f.out.concat(under), marks: top.marks.length, theme: f.theme, size: `${f.iw} × ${f.ih}` };
+    };
+    const SIZES = [['260 × 220', { x: 40, y: 40, w: 260, h: 260 }], ['the default size', { x: 40, y: 40, w: 560, h: 460 }], ['very wide', { x: 10, y: 40, w: 1340, h: 300 }], ['very tall', { x: 530, y: 10, w: 300, h: 740 }]];
+    const bad = [], seen = [];
+    for (const theme of ['light', 'dark']) {
+      await setTheme(page, theme);
+      ok(await eventually(async () => (await zf(page).locator('html').getAttribute('data-b21-theme')) === theme), `(${theme} theme)`);
+      for (const [label, r] of SIZES) {
+        await page.evaluate(([k, r]) => { window.__board21.setMaximized(k, false); window.__board21.setRect(k, r); }, [K, r]); await page.waitForTimeout(600);
+        const p = await problems(`${theme}, ${label}`, false);
+        (p.list.length ? bad : seen).push(`${p.where} (${p.size})${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+        await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + `zones-${theme}-${label.replace(/\W+/g, '-')}.png` });
+      }
+      for (const locked of [false, true]) {
+        await page.evaluate(k => window.__board21.setMaximized(k, true), K); await page.waitForTimeout(600);
+        if (locked) { await lockBoard(page, 'widgets'); await page.waitForTimeout(600); }
+        const p = await problems(`${theme}, filling the board${locked ? ', locked' : ''}`, true);
+        const want = locked ? 5 : 3;   // (▦ twice and the clock; locked, the two padlocks too)
+        if (p.marks < want) p.list.push(`only ${p.marks} of the board’s ${want} corner buttons are there`);
+        (p.list.length ? bad : seen).push(`${p.where} (${p.size})${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+        await page.screenshot({ path: OUT + `zones-${theme}-fill${locked ? '-locked' : ''}.png` });
+        if (locked) await unlockBoard(page);
+      }
+      await page.evaluate(k => window.__board21.setMaximized(k, false), K); await page.waitForTimeout(400);
+    }
+    ok(!bad.length && seen.length === 12, `at 260 × 220, the default size, very wide, very tall and filling the board (unlocked and locked, with the corner clock on), light and dark: no text under 14 px, no name or feeling cut off, no count or face over the colored top or the feelings, nothing under the board’s corner buttons or padlocks (${bad.join(' | ') || seen.length + ' layouts'})`);
+    await setTheme(page, 'light');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ['Copy: words no other suite checks (Widget Picker tooltips and its name, closing a window, Delete page with closed windows, Duplicate, Calendar, Timer, Task Timer, Board Sync with several devices, a photo that can’t be used, the widget dev window and lab, the docs)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
@@ -6163,7 +6641,7 @@ const SUITES = [
       clock: 'Show an analog or digital clock, or just the date.', notes: 'Write directions, reminders or the day’s agenda.', 'name-picker': 'Pick one to five names at random from your list.',
       'first-then-board': 'Pick a First card and a Then card, and mark each one done.', dice: 'Roll one to six dice.', 'traffic-light': 'Show noise level or work time in red, yellow and green.',
       'youtube-player': 'Play a video from YouTube, Google Drive or Vimeo.', image: 'Show a picture you open or paste.', '21sketch': 'Draw with the district’s whiteboard app.',
-      '21timer': 'Run the district’s classroom timer app.', '21doccam': 'Show work with the district’s document camera app.' };
+      '21timer': 'Run the district’s classroom timer app.', '21doccam': 'Show work with the district’s document camera app.', 'zones-check-in': 'Check in on how your class feels.' };
     const offTips = Object.keys(want).filter(id => tips[id] !== want[id]);
     ok(!offTips.length, `each widget’s tooltip says what it does in one sentence that starts with a verb${offTips.length ? ': ' + offTips.map(id => `${id} “${tips[id]}”`).join(', ') : ''}`);
     const panelName = await page.evaluate(() => [document.getElementById('panel').getAttribute('aria-label'), ...['export', 'import', 'quit'].map(c => document.querySelector(`#panel [data-ctl="${c}"]`).getAttribute('aria-label'))].join(' | '));
@@ -8295,7 +8773,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Widget Picker: Paste (both corners at 1366 × 768 in every Text style and Size, with one page and 12, every widget in view; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)', async (browser) => {
+  ['Widget Picker: Paste (both corners at 1366 × 768 in every Text style and Size, with one page and 12, every widget in view up to 125%; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)', async (browser) => {
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     ok(/\| \*\*Buttons\*\* \| The Widget Picker's bottom row: Paste, Export, Import, Lock, Full screen and Settings\. \|/.test(readme), 'the README’s Buttons row starts with Paste');
     ok(/\| \*\*Paste\*\* \| Ctrl\+V or ⌘V opens a copied picture in a new Picture window\. A copied video link opens in a new Video Player\. [^|]*On a touch screen, tap \*Paste\* in the Widget Picker\./.test(readme),
@@ -8334,7 +8812,10 @@ const SUITES = [
     }, side);
     // Paste placed well; and every widget in view, none scrolled out of sight (as on ba52951, before Paste).
     const good = w => w.there && w.shown && w.label === 'Paste/Paste' && w.icon && w.first && w.row && w.apart && w.tappable && w.onScreen && w.inPanel && w.noScroll && w.clear && w.big;
-    const allSeen = w => w.tiles >= 15 && w.seen === w.tiles && !w.tilesScroll;
+    const allSeen = w => w.tiles >= 16 && w.seen === w.tiles && !w.tilesScroll;
+    // Sixteen tiles since the Zones Check-In (2026.11.20-1): four rows, which from 150% on a 768 px screen don't all fit.
+    // The first three are in view, and the fourth scrolls into view inside the panel.
+    const threeRows = w => w.tiles >= 16 && w.seen >= 15 && w.tilesScroll;
     for (const style of ['standard', 'legible', 'early']) {
       if (style !== 'standard') {
         await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
@@ -8359,17 +8840,18 @@ const SUITES = [
         for (const side of ['left', 'right']) {
           await openPicker(side);
           const w = await where(side);
-          if (!good(w) || !allSeen(w) || w.cols !== 5) bad.push(Object.assign({ sc, side }, w));
+          if (!good(w) || !(sc < 1.5 ? allSeen(w) : threeRows(w)) || w.cols !== 5) bad.push(Object.assign({ sc, side }, w));
         }
       }
       ok(!bad.length && await page.locator('#panel .page-ind b').textContent() === '12 of 12',
-        `${style}, 12 pages, every Size from both corners: Paste fits as at 100%, five columns, every widget in view (${bad.length ? JSON.stringify(bad) : SIZES.length * 2 + ' cases'})`);
+        `${style}, 12 pages, every Size from both corners: Paste fits as at 100%, five columns, every widget in view up to 125%, and from 150% three rows in view and the fourth a scroll away (${bad.length ? JSON.stringify(bad) : SIZES.length * 2 + ' cases'})`);
     }
     await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]');
     // Smaller screens: five columns from 600 px of room, as on ba52951. ‹ Page › ends the row of buttons where that row
     // clears the other corner's ▦, else it has a row of its own.
-    for (const [vw, vh, sc, wide, all, what] of [[1180, 820, 1.75, true, true, 'an iPad Air, Size 175%'], [1180, 820, 2, false, false, 'an iPad Air, Size 200%'],
-      [1280, 1024, 2, false, true, '1280 × 1024, Size 200%'], [768, 1024, 1.25, false, true, 'an iPad upright, Size 125%']]) {
+    // (Four rows of tiles: at 175% on an iPad Air and 200% on 1280 × 1024 the fourth is a scroll away.)
+    for (const [vw, vh, sc, wide, all, what] of [[1180, 820, 1.75, true, false, 'an iPad Air, Size 175%'], [1180, 820, 2, false, false, 'an iPad Air, Size 200%'],
+      [1280, 1024, 2, false, false, '1280 × 1024, Size 200%'], [768, 1024, 1.25, false, true, 'an iPad upright, Size 125%']]) {
       await page.setViewportSize({ width: vw, height: vh }); await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
       for (const side of ['left', 'right']) {
         await openPicker(side);
@@ -11004,6 +11486,8 @@ const SUITES = [
       notes: { text: AGENDA }
     };
     const FT = SAVED['first-then-board'];
+    // (Kept apart from SAVED, whose windows section 6 measured on 84edbe5.)
+    const ZONES = { day: '2026-11-20', counts: { blue: 2, green: 9, yellow: 4, red: 1 }, undo: [[2, 9, 4, 0], [2, 8, 4, 1]] };
 
     // ---- 1. Each built-in widget in its own terms.
     const CASES = [
@@ -11064,6 +11548,10 @@ const SUITES = [
       ['calculator', calc([{ ans: '7' }, { n: '2' }]), 'Ans × 2', 'a number after an earlier answer shows its ×'],
       ['calculator', calc([]), '', 'a Calculator with nothing in it: no line'],
       ['calculator', calc([{ n: '2' }, 'sin', { n: '3' }]), '2 sin 3 edit', 'a Calculator token it doesn’t know: the text in its content'],
+      ['zones-check-in', ZONES, 'Blue 2, Green 9, Yellow 4, Red 1', 'a Zones Check-In: each zone with check-ins, in order'],
+      ['zones-check-in', { day: '2026-11-20', counts: { blue: 0, green: 3, yellow: 0, red: 1 }, undo: [] }, 'Green 3, Red 1', 'a Zones Check-In with zones at 0: they are left out'],
+      ['zones-check-in', { day: '2026-11-20', counts: { blue: 0, green: 0, yellow: 0, red: 0 }, undo: [[0, 1, 0, 0]] }, '', 'a Zones Check-In with every zone at 0: no line'],
+      ['zones-check-in', { day: null, undo: [] }, '', 'a Zones Check-In with no counts: no line'],
       ['notes', { text: '  \n\t ' }, '', 'Notes with only spaces: no line'],
       ['clock', null, '', 'a Clock: no line']
     ];
@@ -11111,7 +11599,7 @@ const SUITES = [
       const shapes = [null, undefined, [], 'text', 42, { names: 5 }, { values: '6' }, { tasks: [null] }, { expr: [{}] }, { first: 'Math' }, deep,
         { names: [null, 5, {}], tasks: 'x', values: [null], history: [null], expr: null, src: {}, active: 'constructor', text: 5, duration: '300000', first: { label: 7 }, videoId: 'x' }];
       const out = [];
-      for (const id of ['name-picker', 'calculator', 'first-then-board', 'task-timer', 'youtube-player', 'timer', 'dice', 'traffic-light', 'image', 'notes', 'clock', 'constructor', 'counter']) {
+      for (const id of ['name-picker', 'calculator', 'first-then-board', 'task-timer', 'youtube-player', 'timer', 'dice', 'traffic-light', 'image', 'notes', 'zones-check-in', 'clock', 'constructor', 'counter']) {
         shapes.forEach((d, k) => {
           try { const s = window.__board21.history.excerptOf(d, id); if (typeof s !== 'string' || s.length > 80) out.push(`${id} #${k}: ${JSON.stringify(s)}`); } catch (e) { out.push(`${id} #${k} throws ${e.message}`); }
         });
@@ -11121,7 +11609,9 @@ const SUITES = [
     ok(!bad.length, `content of any shape, for each widget, never throws and gives a line of at most 80 characters (${bad.slice(0, 6).join(' | ')})`);
     // What the widget itself wouldn't show gives no line: a Timer over a day, a die that isn't 1 to 6, a picture that isn't one.
     for (const [id, data, want] of [['timer', { duration: 1e300 }, ''], ['timer', { duration: 2 * 864e5 }, ''], ['timer', { duration: -1 }, ''], ['dice', { values: [9, -1, 2.5] }, ''],
-      ['dice', { values: [1, 2, 3, 4, 5, 6, 1] }, '1, 2, 3, 4, 5 and 6'], ['dice', { values: [6, 0, 2] }, '6 and 2'], ['image', { src: {} }, ''], ['image', { src: PNG, name: 5 }, 'Pasted picture']]) {
+      ['dice', { values: [1, 2, 3, 4, 5, 6, 1] }, '1, 2, 3, 4, 5 and 6'], ['dice', { values: [6, 0, 2] }, '6 and 2'], ['image', { src: {} }, ''], ['image', { src: PNG, name: 5 }, 'Pasted picture'],
+      ['zones-check-in', { counts: { blue: '2', green: 2.5, yellow: -1, red: 1e9 } }, ''], ['zones-check-in', { counts: { blue: 10000, green: 9999, yellow: null, red: true } }, 'Green 9999'],
+      ['zones-check-in', { counts: [2, 9, 4, 1] }, ''], ['zones-check-in', { counts: 'Blue 2' }, ''], ['zones-check-in', { counts: { blue: 1, green: { n: 3 }, yellow: [4], red: 1 } }, 'Blue 1, Red 1']]) {
       const got = await line(data, id);
       ok(got === want, `${id} ${JSON.stringify(data)}: “${want}”, as the widget reads it (${JSON.stringify(got)})`);
     }

@@ -128,6 +128,19 @@ self.BOARD21_WIDGETS = [
     permissions: []
   },
   {
+    // Students' check-ins are its content: no clash, so Board Sync keeps both. Not single: each window keeps its own counts.
+    id: 'zones-check-in',
+    name: 'Zones Check-In',
+    description: 'Check in on how your class feels.',
+    version: '1.0.0',
+    entry: 'widgets/zones-check-in/index.html',
+    files: ['widgets/zones-check-in/index.html'],
+    color: '#15803d',
+    icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><circle cx="9" cy="9.75" r="1.1" fill="currentColor" stroke="none"/><circle cx="15" cy="9.75" r="1.1" fill="currentColor" stroke="none"/></svg>',
+    window: { width: 560, height: 420, minWidth: 260, minHeight: 220 },
+    permissions: []
+  },
+  {
     id: 'dice',
     name: 'Dice',
     description: 'Roll one to six dice.',

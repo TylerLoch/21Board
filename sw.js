@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.18-19';
+const VERSION = '2026.11.20-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '799273d7';
+const BUILD = 'f76b82fe';
 const FILES = {
-  './': '963a0f6fb82188ef',
-  'index.html': '963a0f6fb82188ef',
-  'board.js': 'ee90a5ca8388f298',
+  './': '4902bc1390d5be7e',
+  'index.html': '4902bc1390d5be7e',
+  'board.js': '66199afb036de949',
   'sdk/board21.js': 'ba3de867e376915e',
   'sdk/board21-dev.js': 'f7a43b8c7a88a9e8',
-  'sdk/dev/board-shell.js': 'bb7c59288a26a21a',
+  'sdk/dev/board-shell.js': 'c1526dfe1a7253fa',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '200438390e9c516d',
+  'widgets/registry.js': 'dd85354e147f11ae',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -52,6 +52,7 @@ const FILES = {
   'widgets/name-picker/style-spotlight.js': 'd2ffd9ead362cf90',
   'widgets/name-picker/style-lotto.js': 'fc46b85bc0bf5ff7',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
+  'widgets/zones-check-in/index.html': 'f4a0adbff4262006',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
   'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
   'widgets/youtube-player/index.html': '93aec54e1209816b',

@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-19';
-  const BOARD_BUILD = '799273d7';
+  const BOARD_VERSION = '2026.11.20-1';
+  const BOARD_BUILD = 'f76b82fe';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -416,6 +416,9 @@
     }
   }
   const getWidget = id => catalog.get(id) || null;
+  // A tile's name, as markup. A short hyphenated word stays on one line, so a name wraps as "Zones / Check-In", not
+  // "Zones Check- / In" (index.html, .widget-name .nobr). A longer one may still break anywhere, to fit its tile.
+  const tileName = name => esc(name).replace(/[^\s-]+(?:-[^\s-]+)+/g, w => w.length <= 10 ? `<span class="nobr">${w}</span>` : w);
   const pickerWidgets = () => Array.from(catalog.values())
     .filter(a => S.settings.devMode || (!a.devOnly && !a.dev))
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -3103,7 +3106,7 @@
         const about = a.description && a.description !== a.name ? a.description : '';
         return `<button class="widget-tile" role="listitem" data-widget="${esc(a.id)}" aria-label="${esc(a.name)}"` +
           `${about ? ` aria-description="${esc(about)}"` : ''} title="${esc(about ? a.name + '\n' + about : a.name)}">` +
-          `<span class="widget-icon" style="--c:${esc(a.color)}">${a.icon}</span><span class="widget-name">${esc(a.name)}</span>` +
+          `<span class="widget-icon" style="--c:${esc(a.color)}">${a.icon}</span><span class="widget-name">${tileName(a.name)}</span>` +
           (c ? `<span class="badge" aria-label="${c} open">${c}</span>` : '') +
           (a.dev || a.devOnly ? '<span class="devtag">DEV</span>' : '') + '</button>';
       }).join('') || '<div class="empty-note" style="grid-column:1/-1;padding:16px">No widgets installed.</div>';
@@ -7827,6 +7830,12 @@
       },
       dice: d => { const v = listOf(d.values).slice(0, 6).filter(v => Number.isInteger(v) && v >= 1 && v <= 6); return v.length > 1 ? `${v.slice(0, -1).join(', ')} and ${v[v.length - 1]}` : v.join(''); },
       'traffic-light': d => ['red', 'yellow', 'green'].includes(d.active) ? d.active[0].toUpperCase() + d.active.slice(1) : '',
+      // The zones with check-ins, in order ("Blue 2, Green 9, Red 1"). Only whole numbers from 1 to 9999 count.
+      'zones-check-in': d => {
+        const c = d && d.counts && typeof d.counts === 'object' ? d.counts : {};
+        return [['blue', 'Blue'], ['green', 'Green'], ['yellow', 'Yellow'], ['red', 'Red']]
+          .filter(([k]) => Object.prototype.hasOwnProperty.call(c, k) && Number.isInteger(c[k]) && c[k] >= 1 && c[k] <= 9999).map(([k, name]) => `${name} ${c[k]}`).join(', ');
+      },
       image: d => typeof d.src === 'string' && d.src ? strOf(d.name) || 'Pasted picture' : '',
       notes: d => strOf(d.text)
     },
