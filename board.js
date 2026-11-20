@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.18-16';
-  const BOARD_BUILD = '1fa8fb20';
+  const BOARD_VERSION = '2026.11.18-17';
+  const BOARD_BUILD = '6dd5cd15';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -10360,10 +10360,15 @@
     try { if (el.tagName === 'IFRAME') el.contentWindow.focus(); else el.focus({ preventScroll: true }); } catch (e) { /* stays where it is */ }
   }
 
+  // At most three show. A new one makes room by taking away the oldest, keeping waiting questions (no timeout).
+  // opts.minor: a note that matters least ("Updated to …", updatedNote). It never takes another's place (with three
+  // showing, it isn't shown: null), and it is the first to make room.
   function toast(text, opts = {}) {
     const host = $('#toasts');
-    while (host.children.length >= 3) (Array.from(host.children).find(c => !c.sticky) || host.firstChild).remove();   // keep waiting questions
+    if (opts.minor && host.children.length >= 3) return null;
+    while (host.children.length >= 3) { const all = Array.from(host.children); (all.find(c => c.minor) || all.find(c => !c.sticky) || host.firstChild).remove(); }
     const t = document.createElement('div');
+    t.minor = !!opts.minor;
     t.className = 'toast';
     t.innerHTML = `<span>${esc(text)}</span>`;
     const remove = () => { t.classList.add('out'); setTimeout(() => t.remove(), 260); };
@@ -10523,6 +10528,7 @@
   //     21Board starts);
   //   - starts again when a new copy takes over: "Update" was tapped, in this tab or in another one (a tab
   //     whose board isn't saved is left alone, with "Update" still on offer: nothing is lost unasked);
+  //   - says "Updated to …" once, the first time a new version opens (updatedNote);
   //   - a tab that was opened before there was a copy (the first visit) is handed to the copy only when both
   //     are the same build: until then it keeps using the network. (Handing over takes every such tab at
   //     once. One that runs another build offers "Update" there and then; until it is tapped, a widget it
@@ -10632,6 +10638,33 @@
       message: unsaved === 'unsaved' ? 'Your latest changes aren’t saved yet. Update now and they’ll be lost.' : 'This board isn’t being saved. Update now and it’ll be lost.',
       actions: [{ label: 'Update', value: true, kind: 'danger' }, { label: 'Later', value: false }] })) return;
     applyUpdate();
+  }
+
+  // "Updated to …": the first time this device runs a release, the board says so once, as it opens (boot). The prompt
+  // above shows only while a new version arrives; one that takes over at start, after every tab closed, would
+  // otherwise go unnoticed. localStorage["21board-last-release"] keeps the last release run here, {version, build}:
+  // this device only, never synced, exported or in Board history.
+  //   - Any other build counts, an earlier one too: builds have no order, and a test build may have run here.
+  //   - A new device (no board yet, nothing recorded) records it at once and says nothing: a new teacher has nothing
+  //     to compare it with. A board with nothing recorded ran a release from before this note (2026.11.18-16 or
+  //     earlier): that is an update (ranBefore, from boot).
+  //   - The tab that says it records it at once, so a reload, a tab opened later or the installed app says nothing
+  //     more. (Two tabs that start at the very same moment may both say it. That is fine.)
+  //   - A tab that starts hidden, restored in the background, waits until it is seen.
+  //   - It never takes another message's place (toast's minor). With three showing, it waits for the next start.
+  //   - Not in test mode (the dev window's board shares this site's storage), where the board isn't saved
+  //     (Store.failed), or where storage throws.
+  function updatedNote(ranBefore) {
+    if (LAB || Store.failed) return;
+    const KEY = '21board-last-release';
+    let last;
+    try { last = localStorage.getItem(KEY); } catch (e) { return; }
+    try { last = JSON.parse(last); } catch (e) { last = null; }   // (unreadable: as if nothing were recorded)
+    if (last && last.build === BOARD_BUILD) return;
+    const record = () => { try { localStorage.setItem(KEY, JSON.stringify({ version: BOARD_VERSION, build: BOARD_BUILD })); } catch (e) { /* it may be said again */ } };
+    if (!(last && last.build) && !ranBefore) { record(); return; }   // a new device
+    if (document.visibilityState !== 'visible') { document.addEventListener('visibilitychange', () => updatedNote(ranBefore), { once: true }); return; }
+    if (toast(`Updated to ${BOARD_VERSION}.`, { minor: true })) record();
   }
 
   /*
@@ -11248,6 +11281,7 @@
       await reloadAll(true, { pick: !LAB });
     }
     Store.loaded = true;
+    const ranBefore = Known.size > 0;   // (before this start writes anything: a new device has no records; see updatedNote)
     // Theme Auto is the default for new devices (since 2026.11.16-1). A device from before that never saved a setting
     // was showing Light: it keeps it. (It has records already; a new device, or one just erased, has none.) The
     // settings are saved either way, so that the next start can tell.
@@ -11263,6 +11297,7 @@
     if (!LAB && S.settings.activeBoard !== S.boardId) updateSettings({ activeBoard: S.boardId });   // (its page was gone)
     if (!LAB) Pages.purgeLater();   // deleted pages whose Undo is (or will soon be) over
     if (LAB) { LabBridge.start(); return; }   // test mode: no offline cache, install, file opening or backup reminders
+    updatedNote(ranBefore);   // ("Updated to …", now that the board is up)
     if (!KIOSK) setupFileLaunch();
     Persist.init();
     Link.start();

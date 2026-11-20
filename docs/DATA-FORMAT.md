@@ -65,6 +65,10 @@ While 21Board is open, each tab also holds the other pages' records in memory. I
 database away under an open board, every page is written back, not just the one shown. A backup made when
 storage can't be read still has every page.
 
+Outside the database, `localStorage["21board-last-release"]` notes the last release this device ran, such as
+`{"version":"2026.11.12-1","build":"3fa9c1d2"}`. When another one opens, the board says "Updated to …" once. This
+device only. Never synced or exported, and not in Board history.
+
 ---
 
 ## Record types

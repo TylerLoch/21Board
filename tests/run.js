@@ -12739,7 +12739,8 @@ const SUITES = [
     ok(build2 !== build1 && (await shown(a)).startsWith(`21Board TEST-2 (${build2}) · `) && (await shown(b)).startsWith(`21Board TEST-2 (${build2}) · `) && await a.evaluate(() => caches.keys().then(k => k.join())) === `21board-TEST-2-${build2}`,
       'both tabs then say the new release in Settings, and only its offline copy is kept');
     await settings(a);
-    ok((await both(noteText)).join() === 'kept through the update,kept through the update' && (await both(p => p.locator('.win').count())).join() === '2,2' && (await both(p => p.locator('.toast').count())).join() === '0,0' &&
+    // (Each tab may also say “Updated to TEST-2.” once as it starts again: suite "Updated to:". Any other message counts.)
+    ok((await both(noteText)).join() === 'kept through the update,kept through the update' && (await both(p => p.locator('.win').count())).join() === '2,2' && (await both(p => p.locator('.toast').allTextContents())).every(ts => ts.length <= 1 && ts.every(t => t === 'Updated to TEST-2.')) &&
       (await both(p => p.locator('.picker-btn .dot').count())).join() === '0,0' && await a.locator('#settings #st-update').isHidden() && (await both(p => p.evaluate(() => [...document.querySelectorAll('.picker-btn')].map(b => b.getAttribute('aria-label')).join()))).join() === 'Widget Picker,Widget Picker,Widget Picker,Widget Picker',
       'the windows and their content are as they were, and the prompt, the dots and the line in Settings are gone');
     await a.keyboard.press('Escape');
@@ -13064,6 +13065,219 @@ const SUITES = [
       ok(loads === 2 && await page.evaluate(() => document.documentElement.dataset.build === '00000000') && await page.locator('.win').count() === 1, 'if they still differ after that, it doesn’t go round in circles: the board starts with what there is');
       await ctx.close();
     }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  // "Updated to …" (board.js section 15, updatedNote): the first time a tab runs a release this device hasn't run before,
+  // the board says so once. The device keeps the last release it ran in localStorage["21board-last-release"].
+  ['Updated to: the first time a new version opens (a first run says nothing; a board from before this note, nothing recorded: said; another release recorded: said once, not after a reload or in another tab; a later release recorded; a tab that starts hidden; storage that throws, the board’s storage blocked; kiosk; never in the widget dev window or lab; never pushes out another message; a real update, by Update and with every tab closed; the docs)', async (browser) => {
+    const errors = [];
+    const KEY = '21board-last-release', OLD = JSON.stringify({ version: '2026.11.1-1', build: '0000aaaa' });   // (an earlier release, never this one)
+    // Every toast a page shows from its start (window.__said), and on cue (sessionStorage 'test-fake') messages already
+    // showing as the board starts: 'nv' (“A new version of 21Board is ready.”) or '3' (three messages).
+    const HEAR = () => {
+      window.__said = [];
+      let fake = null;
+      try { fake = window.top === window && sessionStorage.getItem('test-fake'); if (fake) sessionStorage.removeItem('test-fake'); } catch (e) { /* no storage */ }
+      new MutationObserver(ms => {
+        for (const m of ms) for (const n of m.addedNodes) if (n.classList && n.classList.contains('toast')) window.__said.push((n.querySelector('span') || n).textContent);
+        const host = fake && document.getElementById('toasts');
+        if (!host) return;
+        for (const t of fake === 'nv' ? ['A new version of 21Board is ready.'] : ['One', 'Two', 'Three']) { const d = document.createElement('div'); d.className = 'toast fake'; d.innerHTML = `<span>${t}</span>`; host.appendChild(d); }
+        fake = null;
+      }).observe(document, { childList: true, subtree: true });
+    };
+    // A device that last ran another release (recorded once, before its first start: not again at a reload or in another tab).
+    const SEED = old => { if (window.top !== window || localStorage.getItem('test-seeded')) return; localStorage.setItem('test-seeded', '1'); localStorage.setItem('21board-last-release', old); };
+    const device = async (seed, opts = {}) => {
+      const c = await browser.newContext(Object.assign({ viewport: { width: 1366, height: 768 } }, opts));
+      await c.addInitScript(HEAR);
+      if (seed) await c.addInitScript(SEED, seed);
+      return c;
+    };
+    const open = async (c, url = BASE) => { const p = await c.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.goto(url); await boardUp(p); return p; };
+    const said = p => p.evaluate(() => (window.__said || []).filter(t => /^Updated to/.test(t)));
+    const kept = p => p.evaluate(k => localStorage.getItem(k), KEY);
+    const keptAs = async (p, v) => { try { const r = JSON.parse(await kept(p)); return !!r && r.version === v.version && r.build === v.build; } catch (e) { return false; } };
+    const settle = p => p.waitForTimeout(1500);   // (the note comes as the board comes up)
+    const kids = (p, f) => p.frames().filter(x => x.parentFrame() === f);
+
+    // ---- a first run on a new device: nothing is said, and the release is recorded
+    let ctx = await device();
+    let page = await open(ctx);
+    const v = await page.evaluate(() => ({ version: window.__board21.version, build: window.__board21.build }));
+    const NOTE = `Updated to ${v.version}.`;
+    await settle(page);
+    ok(!(await said(page)).length && await keptAs(page, v), `a first run on a new device says nothing, and records the release (${await kept(page)})`);
+    // ---- a device that ran 21Board before this note (2026.11.18-16 or earlier): a board, nothing recorded. Said once.
+    await page.evaluate(() => window.__board21.openWidget('notes'));
+    await page.waitForFunction(() => { const w = window.__board21.state.wins.get('notes:1'); return w && w.connected; }, null, { timeout: 8000 });
+    await page.evaluate(k => localStorage.removeItem(k), KEY);
+    await page.reload(); await boardUp(page); await settle(page);
+    ok((await said(page)).join(' | ') === NOTE && await keptAs(page, v), `a device with a board from before this note, nothing recorded, says “${NOTE}” (${(await said(page)).join(' | ') || 'nothing'}; ${await kept(page)})`);
+    await page.reload(); await boardUp(page); await settle(page);
+    ok(!(await said(page)).length, `once: a reload says nothing (${(await said(page)).join(' | ') || 'nothing'})`);
+    await ctx.close();
+
+    // ---- a device that last ran another release: said once as the board opens; a reload and another tab say nothing
+    ctx = await device(OLD);
+    page = await open(ctx);
+    await settle(page);
+    const look = await page.locator('#toasts .toast', { hasText: 'Updated to' }).evaluateAll(ts => ts.map(t => ({ text: t.textContent, buttons: t.querySelectorAll('button').length })));
+    ok((await said(page)).join(' | ') === NOTE && look.length === 1 && look[0].text === NOTE && look[0].buttons === 0, `a device that last ran another release says “${NOTE}” once as the board opens, with no button (${(await said(page)).join(' | ') || 'nothing'})`);
+    ok(await keptAs(page, v), `and records this release at once (${await kept(page)})`);
+    ok(await eventually(async () => !(await page.locator('#toasts .toast', { hasText: 'Updated to' }).count()), 6000), 'it goes by itself, as other messages do');
+    await page.reload(); await boardUp(page); await settle(page);
+    ok(!(await said(page)).length, `a reload says nothing (${(await said(page)).join(' | ') || 'nothing'})`);
+    const p2 = await open(ctx); await settle(p2);
+    ok(!(await said(p2)).length, `nor does another tab opened after it (${(await said(p2)).join(' | ') || 'nothing'})`);
+    await ctx.close();
+
+    // ---- a later release recorded (a device that ran a test build, then this one): said as well
+    ctx = await device(JSON.stringify({ version: '2099.1.1-1', build: 'ffffffff' }));
+    page = await open(ctx); await settle(page);
+    ok((await said(page)).join(' | ') === NOTE && await keptAs(page, v), `after a later release, an earlier one says “${NOTE}” too (${(await said(page)).join(' | ') || 'nothing'})`);
+    await ctx.close();
+
+    // ---- a tab that starts hidden (restored in the background): nothing until it is first shown, then the note
+    const HIDDEN = () => {
+      if (window.top !== window) return;
+      let vis = 'hidden';
+      Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => vis });
+      Object.defineProperty(document, 'hidden', { configurable: true, get: () => vis !== 'visible' });
+      window.__show = () => { vis = 'visible'; document.dispatchEvent(new Event('visibilitychange')); };
+    };
+    ctx = await device(OLD);
+    await ctx.addInitScript(HIDDEN);
+    page = await open(ctx); await settle(page);
+    const hidden = { said: await said(page), kept: await kept(page) };
+    await page.evaluate(() => window.__show()); await settle(page);
+    ok(!hidden.said.length && hidden.kept === OLD && (await said(page)).join(' | ') === NOTE && await keptAs(page, v),
+      `a tab that starts hidden waits, and says it when first shown (hidden: ${hidden.said.join(' | ') || 'nothing'}; shown: ${(await said(page)).join(' | ') || 'nothing'})`);
+    await ctx.close();
+    // A new device whose first tab starts hidden records at once: a second tab, shown first, has nothing to say either.
+    ctx = await device();
+    await ctx.addInitScript(HIDDEN);
+    page = await open(ctx); await settle(page);
+    const firstKept = await kept(page);
+    const h2 = await open(ctx); await settle(h2);
+    await h2.evaluate(() => window.__show()); await settle(h2);
+    await page.evaluate(() => window.__show()); await settle(page);
+    const hiddenSaid = (await said(h2)).concat(await said(page));
+    ok(await keptAs(page, v) && firstKept === (await kept(page)) && !hiddenSaid.length,
+      `a new device’s first tab records the release even while hidden, so no tab says it (${firstKept}; ${hiddenSaid.join(' | ') || 'nothing'})`);
+    await ctx.close();
+
+    // ---- storage that throws (site data blocked): nothing is said, and the board works
+    ctx = await device();
+    await ctx.addInitScript(() => { if (window.top === window) Object.defineProperty(window, 'localStorage', { configurable: true, get() { throw new DOMException('Access is denied for this document.', 'SecurityError'); } }); });
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') errors.push('[console] ' + m.text()); });   // (a start-up problem after the board is up is only logged)
+    await page.goto(BASE); await boardUp(page);
+    await page.evaluate(() => window.__board21.openWidget('notes'));
+    const works = await page.waitForFunction(() => { const w = window.__board21.state.wins.get('notes:1'); return w && w.connected; }, null, { timeout: 8000 }).then(() => true, () => false);
+    await settle(page);
+    const threw = await page.evaluate(() => { try { return !localStorage; } catch (e) { return true; } });
+    const started = await eventually(() => page.evaluate(() => window.__board21.history.started), 5000);   // (start-up went on past the note)
+    ok(threw && works && started && !(await said(page)).length && !errors.length, `where storage throws, nothing is said and the board works (${started ? 'started' : 'start-up stopped'}; ${errors.join(' | ') || 'no errors'})`);
+    await ctx.close();
+
+    // ---- the board's storage blocked by the browser: only that is said; the note waits for a start where the board is saved
+    ctx = await device(OLD);
+    await ctx.addInitScript(() => { if (window.top === window) localStorage.setItem('test-faults', JSON.stringify({ open: 'blocked' })); });
+    await ctx.addInitScript(STORAGE_FAULTS);
+    page = await open(ctx); await settle(page);
+    ok(await page.evaluate(() => window.__board21.store.failed === 'blocked') && await page.locator('.toast', { hasText: 'blocking storage' }).count() === 1 && !(await said(page)).length && await kept(page) === OLD,
+      `where the browser blocks the board’s storage, only that is said, and nothing is recorded (${(await said(page)).join(' | ') || 'nothing'}; ${await kept(page)})`);
+    await ctx.close();
+
+    // ---- kiosk mode says it too
+    ctx = await device(OLD);
+    page = await open(ctx, BASE + '?kiosk=yes'); await settle(page);
+    ok(await page.evaluate(() => document.body.classList.contains('kiosk')) && (await said(page)).join(' | ') === NOTE, `kiosk mode says it too (${(await said(page)).join(' | ') || 'nothing'})`);
+    await ctx.close();
+
+    // ---- the widget dev window and the widget lab: their test board says nothing and records nothing; the board then does
+    ctx = await device(OLD);
+    const dv = await ctx.newPage();   // (no error listener: the test widget throws on purpose, see DEV_WIDGET)
+    const inBoard = async () => {
+      const board = kids(dv, dv.mainFrame())[0];
+      return board ? board.evaluate(() => ({ lab: !!window.__board21 && window.__board21.store.loaded,
+        said: Array.from(document.querySelectorAll('#toasts .toast span'), s => s.textContent).concat(window.__said || []).filter(t => /^Updated to/.test(t)) })) : null;
+    };
+    await dv.goto(BASE + '__dev/widget.html'); await dv.waitForTimeout(3000);
+    const devSaid = await inBoard(), devKept = await kept(dv);
+    await dv.goto(BASE + 'sdk/lab.html'); await dv.waitForTimeout(400);
+    await dv.click('#sample'); await dv.click('#run'); await dv.waitForTimeout(3500);
+    const labSaid = await inBoard(), labKept = await kept(dv);
+    ok(!!devSaid && devSaid.lab && !devSaid.said.length && devKept === OLD, `the widget dev window’s board says nothing, and records nothing (${JSON.stringify(devSaid)}; ${devKept})`);
+    ok(!!labSaid && labSaid.lab && !labSaid.said.length && labKept === OLD, `nor does the widget lab’s (${JSON.stringify(labSaid)}; ${labKept})`);
+    await dv.close();
+    page = await open(ctx); await settle(page);
+    ok((await said(page)).join(' | ') === NOTE, `and 21Board itself says it next (${(await said(page)).join(' | ') || 'nothing'})`);
+    await ctx.close();
+
+    // ---- it never pushes out another message: with three showing, it waits for the next start; and it is the first to go
+    ctx = await device();
+    page = await open(ctx);
+    await page.evaluate(() => { window.__board21.openWidget('notes'); window.__board21.openWidget('notes'); });
+    await page.waitForFunction(() => window.__board21.state.wins.size === 2 && [...window.__board21.state.wins.values()].every(w => w.connected), null, { timeout: 8000 });
+    await page.evaluate(([k, old]) => { localStorage.setItem(k, old); sessionStorage.setItem('test-fake', '3'); }, [KEY, OLD]);
+    await page.reload(); await boardUp(page); await settle(page);
+    const full = { said: await said(page), toasts: await page.locator('#toasts .toast').allTextContents(), kept: await kept(page) };
+    ok(!full.said.length && full.toasts.join() === 'One,Two,Three' && full.kept === OLD, `with three messages showing as the board opens, it says nothing and pushes none out (${full.toasts.join(' | ')})`);
+    await page.reload(); await boardUp(page); await settle(page);
+    ok((await said(page)).join(' | ') === NOTE && await keptAs(page, v), `it is said the next time 21Board opens (${(await said(page)).join(' | ') || 'nothing'})`);
+    // “A new version of 21Board is ready.” already showing (a still newer release waiting), then two windows closed at once
+    await page.evaluate(([k, old]) => { localStorage.setItem(k, old); sessionStorage.setItem('test-fake', 'nv'); }, [KEY, OLD]);
+    await page.reload(); await boardUp(page);
+    await page.locator('#toasts .toast', { hasText: NOTE }).waitFor({ timeout: 5000 }).catch(() => {});
+    const order = await page.locator('#toasts .toast').allTextContents();
+    await page.evaluate(() => Promise.all([window.__board21.closeWin('notes:1'), window.__board21.closeWin('notes:2')]));
+    await page.waitForTimeout(400);
+    const after = await page.locator('#toasts .toast:not(.out)').allTextContents();
+    ok(order.join(' | ') === `A new version of 21Board is ready. | ${NOTE}` && after.length === 3 && after[0] === 'A new version of 21Board is ready.' && after.filter(t => /closed\./.test(t)).length === 2 && !after.includes(NOTE),
+      `with “A new version of 21Board is ready.” showing, it comes after it; when two more messages come, it goes, not that one (${order.join(' | ')} → ${after.join(' | ')})`);
+    await ctx.close();
+
+    // ---- a real update through the offline copy: TEST-1, then TEST-2 offered and Update tapped, then TEST-3 left with
+    // Later and taking over when 21Board opens again after its only tab closed
+    ok(stamped(), STAMPED);
+    deploy('updnote', { version: 'TEST-1', change: marked('v1') });
+    const url = BASE + '__site/updnote/';
+    ctx = await device();
+    page = await open(ctx, url);
+    await page.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 });
+    await settle(page);
+    ok(!(await said(page)).length && await keptAs(page, { version: 'TEST-1', build: SITES.updnote.build }), `(TEST-1, a first run: nothing said; ${await kept(page)})`);
+    const ready = p => p.waitForFunction(() => !!window.__board21 && !!window.__board21.state.sw.updateReady, null, { timeout: 20000 });
+    const prompt = p => p.locator('#toasts .toast', { hasText: 'A new version of 21Board is ready.' });
+    const on = (p, r) => eventually(() => p.evaluate(r => window.__rel === r && !!window.__board21 && window.__board21.store.loaded && !document.getElementById('startup'), r), 20000);
+    deploy('updnote', { version: 'TEST-2', change: marked('v2') });
+    await updateCheck(page); await ready(page);
+    await prompt(page).locator('button', { hasText: 'Update' }).click();
+    const on2 = await on(page, 'v2'); await settle(page);
+    ok(on2 && (await said(page)).join(' | ') === 'Updated to TEST-2.' && await keptAs(page, { version: 'TEST-2', build: SITES.updnote.build }),
+      `Update tapped: the tab starts again on TEST-2 and says “Updated to TEST-2.” (${(await said(page)).join(' | ') || 'nothing'})`);
+    await page.screenshot({ path: OUT + 'updated-to.png' });
+    await page.reload(); await boardUp(page); await settle(page);
+    ok(!(await said(page)).length, `once: a reload says nothing (${(await said(page)).join(' | ') || 'nothing'})`);
+    deploy('updnote', { version: 'TEST-3', change: marked('v3') });
+    await updateCheck(page); await ready(page);
+    await prompt(page).locator('button', { hasText: 'Later' }).click();
+    await page.evaluate(k => localStorage.removeItem(k), KEY);   // (as on a device from before this note: Tyler’s update to 2026.11.18-17)
+    await page.close();
+    page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    await page.goto(url);
+    const on3 = await on(page, 'v3'); await settle(page);
+    ok(on3 && (await said(page)).join(' | ') === 'Updated to TEST-3.' && await keptAs(page, { version: 'TEST-3', build: SITES.updnote.build }),
+      `Later, then every tab closed, on a device from before this note: TEST-3 takes over as 21Board opens again, which says “Updated to TEST-3.” (${(await said(page)).join(' | ') || 'nothing'})`);
+    await ctx.close();
+
+    // ---- the docs
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), data = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
+    const row = (readme.match(/\| \*\*Updates\*\* \|[^|]*\|/) || [''])[0];
+    ok(readme.includes('After an update, the board says **“Updated to …”** once.') && row.includes('After an update, the board says “Updated to …” once.') && data.includes('`localStorage["21board-last-release"]`'),
+      'the README says the board says “Updated to …” once after an update, for IT and for teachers (Updates), and the data format guide names the key');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Dialogs: a name, the keyboard stays inside and goes back where it was', async (browser) => {
