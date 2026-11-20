@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="f76b82fe">
+<html lang="en" data-build="5bac91de">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -149,6 +149,8 @@
     #empty-hint .small { font-size: clamp(14px, 1.5vw, 18px); opacity: .7; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; justify-content: center; }
     #empty-hint .small svg { width: 22px; height: 22px; }
     #empty-hint[hidden] { display: flex; opacity: 0; }
+    /* The Widget Picker open: the hint, which points at ▦, steps aside (board.js, Picker.open). */
+    body.picking #empty-hint { opacity: 0; visibility: hidden; transition: opacity .18s, visibility .18s; }
     /* Shown only if board.js never gets going (files missing, a browser too old): after 6 seconds, while the Widget
        Picker buttons are still empty. Any version of board.js fills them as its first step. */
     #boot-note { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; text-align: center; color: var(--muted); font-size: 18px; line-height: 1.4; pointer-events: none; visibility: hidden; }
@@ -319,6 +321,7 @@
       display: grid; grid-template-columns: repeat(var(--cols, 4), 96px); gap: 0 6px; justify-content: space-between;
       overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 2px;
     }
+    .panel.six .panel-widgets { column-gap: 2px; }   /* (six columns, where five rows don't fit: board.js, Picker.fitCols) */
     /* The icon at the top and the name under it, with room for two lines, so the icons in a row line up whatever their
        names. A longer name ends in … (the tile's tooltip and accessible name have it in full: board.js, Picker).
        104px tall, and no gap between rows (the 10px above each icon parts them): rows are 104px apart, as before. */

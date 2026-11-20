@@ -3124,9 +3124,9 @@ const SUITES = [
     await openPicker('right');
     await check('Standard, the right corner’s panel');
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-right.png' });
-    // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits on the screen. Its
-    // tiles are four rows, which scroll inside the panel: Developer mode's (SDK Playground, the uploaded widget), and a
-    // teacher's 16 since the Zones Check-In (2026.11.20-1).
+    // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits on the screen. Where
+    // five columns would need four rows, it has six (since the Zones Check-In, 2026.11.20-1): a teacher's 16 tiles and
+    // Developer mode's 18 are three rows, all in view.
     await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(300);
     await openPicker('left');
     await check('200%');
@@ -3139,7 +3139,7 @@ const SUITES = [
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     await openPicker('left');
     fit = await fitNow();
-    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && fit.n === 16 && fit.rows === 4 && fit.scrolls, `at 200% the panel with a teacher’s ${fit.n} tiles, four rows that scroll inside it, fits on the screen (${fit.rows} rows; top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
+    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && fit.n === 16 && fit.rows === 3 && !fit.scrolls, `at 200% a teacher’s ${fit.n} tiles, three rows of six, are all in view without scrolling (${fit.rows} rows; top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
 
@@ -6276,6 +6276,35 @@ const SUITES = [
     await choose(page, 'Show counts');
     ok((await look(page)).shown.every(Boolean) && (await look(page)).counts.join() === '0,3,2,1', 'Show counts on again: the numbers are back');
     ok(!(await look(page)).undoButton && !(await look(page2)).undoButton, 'no Undo button on the board, in either tab');
+
+    // Each card's feelings: the original page's words, in order, a face beside each.
+    const feels = await z.locator('html').evaluate(() => Object.fromEntries(['blue', 'green', 'yellow', 'red'].map(id => [id,
+      [...document.querySelectorAll(`.zone[data-z="${id}"] .feel`)].map(f => f.querySelector('i').textContent + ' ' + f.querySelector('b').textContent).join(', ')])));
+    const FEELS = { blue: '😢 Sad, 😴 Tired, 🤒 Sick, 🐢 Slow', green: '🤓 Ready to Learn, 😌 Calm, 😊 Happy', yellow: '🤩 Elevated, 🤪 Silly, 😤 Frustrated', red: '😡 Angry, 😣 Intense, 🤯 Overwhelmed' };
+    ok(JSON.stringify(feels) === JSON.stringify(FEELS), `each card’s feelings, a face beside each word, in order (${JSON.stringify(feels)})`);
+
+    // Ideas: Blue's pill opens Blue's ideas, with the breathing circle (in for 4, then hold). Done goes back. The menu's
+    // Red zone opens Red's.
+    const ideas = () => z.locator('html').evaluate(() => ({ on: document.getElementById('ideas').classList.contains('on'), title: document.getElementById('idea-title').textContent,
+      items: [...document.querySelectorAll('#idea-items li b')].map(b => b.textContent).join(', '), word: document.getElementById('breath-word').textContent, ball: +(/scale\(([\d.]+)\)/.exec(document.getElementById('ball').style.transform) || [0, 0])[1] }));
+    await z.locator('.zone[data-z="blue"] .idea-btn').click(); await page.waitForTimeout(500);
+    const i1 = await ideas();
+    ok(i1.on && /Blue zone$/.test(i1.title) && i1.items === 'Drink water, Stretch, Belly breaths, Take a walk' && i1.word === 'Breathe in',
+      `Blue’s Ideas: its four ideas, and the circle says “Breathe in” (${JSON.stringify(i1)})`);
+    ok(await eventually(async () => (await ideas()).word === 'Hold', 7000) && (await ideas()).ball === 1 && i1.ball > 0 && i1.ball < 0.9,
+      `about 4 s later it says “Hold”, the circle grown to full size (scale ${i1.ball} → ${(await ideas()).ball})`);
+    await z.locator('#idea-done').click(); await page.waitForTimeout(400);
+    ok((await look(page)).view === 'main', 'Done goes back to the cards');
+    await choose(page, 'Red zone');
+    const i2 = await ideas();
+    ok(i2.on && /Red zone$/.test(i2.title) && i2.items === 'Take space, Breathe with the circle, Cool down, Talk to your teacher', `Red zone in the menu opens Red’s ideas (${JSON.stringify(i2)})`);
+    await z.locator('#idea-done').click(); await page.waitForTimeout(400);
+
+    // Everyone in: a class size of 6, with 6 checked in.
+    await choose(page, 'Class size');
+    await z.locator('#n-size').fill('6'); await z.locator('#edit-done').click(); await page.waitForTimeout(400);
+    x = await look(page);
+    ok(x.view === 'main' && x.status === 'Everyone’s checked in' && x.title === '6 of 6', `6 of a class of 6: “Everyone’s checked in” (${x.status}; ${x.title})`);
     await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'zones-check-in.png' });
     await page2.close();
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
@@ -6335,6 +6364,18 @@ const SUITES = [
       for (let i = 0; i < 2; i++) { await T('touchStart', [{ ...P.yellow, id: 10 + i }]); await page.waitForTimeout(50); await T('touchEnd', []); await page.waitForTimeout(60); }
     });
     ok(r.d === '0,0,1,0', `a double touch on one card counts once (${r.d})`);
+    // Two students on one card at once: both fingers down together, lifting together or a moment apart. Both count.
+    for (const lift of [0, 100]) {
+      r = await run('two on one card', async () => {
+        const g = await z.locator('.zone[data-z="green"] .tap').boundingBox(), y = Math.round(g.y + g.height * 0.6);
+        const L = { x: Math.round(g.x + g.width * 0.2), y, id: 20 }, R = { x: Math.round(g.x + g.width * 0.8), y, id: 21 };
+        await T('touchStart', [L]); await page.waitForTimeout(30);
+        await T('touchStart', [L, R]); await page.waitForTimeout(150);
+        if (lift) { await T('touchEnd', [L]); await page.waitForTimeout(lift); }
+        await T('touchEnd', []);
+      });
+      ok(r.d === '0,2,0,0' && !r.moved, `two students touching Green at once, lifting ${lift ? lift + ' ms apart' : 'together'}: both count (${r.d})`);
+    }
     r = await run('a drag', async P => {
       await T('touchStart', [{ ...P.green, id: 1 }]);
       for (let i = 1; i <= 10; i++) { await page.waitForTimeout(16); await T('touchMove', [{ x: P.green.x + 12 * i, y: P.green.y + 6 * i, id: 1 }]); }
@@ -6478,6 +6519,28 @@ const SUITES = [
     const zero = await page.evaluate(async k => { await window.__board21.history.reload(); const m = window.__board21.history.metas.find(m => m.label === 'After Start over'); return m && m.wins && m.wins[k] ? m.wins[k][5] : null; }, K);
     ok(zero === '', `and none for a version with every zone at 0 (${JSON.stringify(zero)})`);
 
+    // A new day. With Clear each day on, counts from a day before the version's show as none in the window, and so in its
+    // line. A version saved that day has them. With Clear each day off, they show.
+    const dates = await page.evaluate(() => { const d = new Date(); d.setDate(d.getDate() - 1); d.setHours(9, 0, 0, 0);
+      return { day: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'), at: d.toISOString() }; });
+    const OLD = { day: dates.day, counts: { blue: 3, green: 5, yellow: 0, red: 2 }, undo: [] };
+    const one = (config, exportedAt) => ({ format: '21board', formatVersion: 1, kind: 'full', exportedAt, board: { name: 'Morning' },
+      instances: [{ widgetId: 'zones-check-in', instance: 1, open: true, z: 1, rect: { x: 60, y: 60, w: 560, h: 460 }, data: OLD, config }] });
+    const lineOf = exp => page.evaluate(([exp, k]) => window.__board21.history.winsOf(exp)[k][5], [exp, K]);
+    const nowAt = new Date().toISOString(), ON = { classSize: 0, showCounts: true, daily: true, sound: false };
+    const days = [await lineOf(one(ON, nowAt)), await lineOf(one(null, nowAt)), await lineOf(one(ON, dates.at)), await lineOf(one(Object.assign({}, ON, { daily: false }), nowAt))];
+    ok(days.join(' | ') === ' |  | Blue 3, Green 5, Red 2 | Blue 3, Green 5, Red 2',
+      `yesterday’s counts: no line today with Clear each day on (or no settings), their line in a version from yesterday, and with it off (${JSON.stringify(days)})`);
+    await page.evaluate(f => window.__board21.applyImport(f, 'replace'), one(ON, nowAt));
+    ok(await eventually(() => connected(page)), '(this morning: a window whose counts are from yesterday)');
+    await page.waitForTimeout(600);
+    await page.click(`.win[data-ikey="${K}"] .win-label`); await page.click('#menu [data-act="history"]');
+    await page.waitForSelector('#history.open .inst .meta');
+    const now = await page.$$eval('#history.open .inst .meta', els => els.map(e => e.querySelector('b').textContent + ': ' + e.querySelector('span').textContent)[0]);
+    const shows = await look(page);
+    ok(shows.counts.join() === '0,0,0,0' && now === 'Now: (empty)', `Earlier versions… says what the window shows: none (${shows.counts}; “${now}”)`);
+    for (let k = 0; k < 4 && await page.locator('#settings.open, #history.open, #history-detail.open').count(); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(250); }
+
     // The offline copy has its page, and the release stamp matches.
     const vm = require('vm');
     const box = { addEventListener() {} }; box.self = box;
@@ -6514,6 +6577,27 @@ const SUITES = [
     ok(readme.indexOf(row) > readme.indexOf('| **First/Then Board** |') && readme.indexOf(row) < readme.indexOf('## Adding a widget') && /\*content\*/.test(row) && /the last 20 changes/.test(row),
       `the README’s Included widgets has a Zones Check-In row after the First/Then Board (${row.slice(0, 90)}…)`);
     ok(dataDoc.includes('`{ day, counts: { blue, green, yellow, red }, undo }`') && dataDoc.includes('`{ classSize, showCounts, daily, sound }`'), 'docs/DATA-FORMAT.md gives its content and its config');
+    // The empty board's hint, which points at ▦, steps aside while the Widget Picker is open, so the picker's four rows of
+    // tiles never cover it. It is back once the picker closes.
+    const hintSeen = () => page.evaluate(() => {
+      const P = document.getElementById('panel'), pr = P.getBoundingClientRect(), hint = document.getElementById('empty-hint');
+      const shown = !hint.hidden && getComputedStyle(hint).visibility !== 'hidden' && +getComputedStyle(hint).opacity > 0;
+      const over = shown && P.classList.contains('open') ? [...hint.querySelectorAll('.big, .small')].filter(e => { const r = e.getBoundingClientRect();
+        return r.width && Math.min(pr.right, r.right) - Math.max(pr.left, r.left) > 0.5 && Math.min(pr.bottom, r.bottom) - Math.max(pr.top, r.top) > 0.5; }).length : 0;
+      return { shown, over };
+    });
+    const hints = [];
+    for (const [vw, vh] of [[1024, 768], [1180, 820]]) for (const sc of [0.8, 1]) {
+      await page.setViewportSize({ width: vw, height: vh }); await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
+      const before = await hintSeen();
+      await page.click('.picker-btn.left'); await page.waitForTimeout(450);
+      const open = await hintSeen();
+      await page.keyboard.press('Escape'); await page.waitForTimeout(450);
+      const after = await hintSeen();
+      if (!(before.shown && !open.shown && !open.over && after.shown && !await page.locator('#panel.open').count())) hints.push(`${vw} × ${vh} at ${sc * 100}%: ${JSON.stringify({ before, open, after })}`);
+    }
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
+    ok(!hints.length, `the empty board’s hint steps aside while the Widget Picker is open, so no tile covers it, and is back once it closes (1024 × 768 and 1180 × 820, Size 80% and 100%: ${hints.join(' | ') || '4 cases'})`);
     await page.click('.picker-btn.left'); await page.waitForTimeout(300);
     const tile = page.locator('#panel [data-widget="zones-check-in"]');
     ok(await tile.count() === 1 && (await tile.innerText()).trim() === 'Zones Check-In' && (await tile.getAttribute('title')) === 'Zones Check-In\nCheck in on how your class feels.', 'the Widget Picker has its tile, with its tooltip');
@@ -6627,6 +6711,21 @@ const SUITES = [
     }
     ok(!bad.length && seen.length === 12, `at 260 × 220, the default size, very wide, very tall and filling the board (unlocked and locked, with the corner clock on), light and dark: no text under 14 px, no name or feeling cut off, no count or face over the colored top or the feelings, nothing under the board’s corner buttons or padlocks (${bad.join(' | ') || seen.length + ' layouts'})`);
     await setTheme(page, 'light');
+
+    // A copy uploaded in Developer mode is “Zones Check-In (test)”. Its tile shows the whole name, “(test)” too.
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]');
+    await page.setInputFiles('#widget-input', path.join(ROOT, 'widgets', 'zones-check-in', 'index.html'));
+    ok(await eventually(() => page.evaluate(() => window.__board21.state.insts.has('dev-zones-check-in:1'))), '(a copy uploaded in Developer mode opens)');
+    await page.waitForTimeout(800);
+    for (let k = 0; k < 3 && await page.locator('#settings.open, #panel.open').count(); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(200); }
+    await page.click('.picker-btn.left'); await page.waitForTimeout(400);
+    const dev = await page.locator('#panel [data-widget="dev-zones-check-in"] .widget-name').evaluate(n => {
+      const was = n.classList.contains('fits'); n.classList.remove('fits');
+      const r = { text: n.textContent, whole: n.scrollHeight <= n.clientHeight + 1 };
+      n.classList.toggle('fits', was); return r;
+    });
+    ok(dev.text === 'Zones Check-In (test)' && dev.whole, `its tile shows the whole name, “(test)” too (${JSON.stringify(dev)})`);
+    await page.keyboard.press('Escape');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -8773,7 +8872,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Widget Picker: Paste (both corners at 1366 × 768 in every Text style and Size, with one page and 12, every widget in view up to 125%; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)', async (browser) => {
+  ['Widget Picker: Paste (both corners at 1366 × 768 in every Text style and Size, with one page and 12, every widget in view, six columns from 150%; five columns on smaller screens, ‹ Page › on a row of its own where the buttons need the room; a picture opens a Picture window, a video link a Video Player; nothing to paste, a link it can’t play, blocked, windows locked; hidden with no clipboard to read; kiosk; the README)', async (browser) => {
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     ok(/\| \*\*Buttons\*\* \| The Widget Picker's bottom row: Paste, Export, Import, Lock, Full screen and Settings\. \|/.test(readme), 'the README’s Buttons row starts with Paste');
     ok(/\| \*\*Paste\*\* \| Ctrl\+V or ⌘V opens a copied picture in a new Picture window\. A copied video link opens in a new Video Player\. [^|]*On a touch screen, tap \*Paste\* in the Widget Picker\./.test(readme),
@@ -8813,9 +8912,6 @@ const SUITES = [
     // Paste placed well; and every widget in view, none scrolled out of sight (as on ba52951, before Paste).
     const good = w => w.there && w.shown && w.label === 'Paste/Paste' && w.icon && w.first && w.row && w.apart && w.tappable && w.onScreen && w.inPanel && w.noScroll && w.clear && w.big;
     const allSeen = w => w.tiles >= 16 && w.seen === w.tiles && !w.tilesScroll;
-    // Sixteen tiles since the Zones Check-In (2026.11.20-1): four rows, which from 150% on a 768 px screen don't all fit.
-    // The first three are in view, and the fourth scrolls into view inside the panel.
-    const threeRows = w => w.tiles >= 16 && w.seen >= 15 && w.tilesScroll;
     for (const style of ['standard', 'legible', 'early']) {
       if (style !== 'standard') {
         await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
@@ -8840,24 +8936,25 @@ const SUITES = [
         for (const side of ['left', 'right']) {
           await openPicker(side);
           const w = await where(side);
-          if (!good(w) || !(sc < 1.5 ? allSeen(w) : threeRows(w)) || w.cols !== 5) bad.push(Object.assign({ sc, side }, w));
+          // (Sixteen tiles since the Zones Check-In, 2026.11.20-1: from 150% four rows of five don't fit, three of six do.)
+          if (!good(w) || !allSeen(w) || w.cols !== (sc < 1.5 ? 5 : 6)) bad.push(Object.assign({ sc, side }, w));
         }
       }
       ok(!bad.length && await page.locator('#panel .page-ind b').textContent() === '12 of 12',
-        `${style}, 12 pages, every Size from both corners: Paste fits as at 100%, five columns, every widget in view up to 125%, and from 150% three rows in view and the fourth a scroll away (${bad.length ? JSON.stringify(bad) : SIZES.length * 2 + ' cases'})`);
+        `${style}, 12 pages, every Size from both corners: Paste fits as at 100%, five columns and six from 150%, every widget in view (${bad.length ? JSON.stringify(bad) : SIZES.length * 2 + ' cases'})`);
     }
     await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]');
-    // Smaller screens: five columns from 600 px of room, as on ba52951. ‹ Page › ends the row of buttons where that row
-    // clears the other corner's ▦, else it has a row of its own.
-    // (Four rows of tiles: at 175% on an iPad Air and 200% on 1280 × 1024 the fourth is a scroll away.)
-    for (const [vw, vh, sc, wide, all, what] of [[1180, 820, 1.75, true, false, 'an iPad Air, Size 175%'], [1180, 820, 2, false, false, 'an iPad Air, Size 200%'],
-      [1280, 1024, 2, false, false, '1280 × 1024, Size 200%'], [768, 1024, 1.25, false, true, 'an iPad upright, Size 125%']]) {
+    // Smaller screens: five columns from 600 px of room, as on ba52951, and six where four rows of five don't fit and
+    // three of six do. ‹ Page › ends the row of buttons where that row clears the other corner's ▦, else it has a row of
+    // its own. (On an iPad Air at 175%, six don't fit beside the other ▦: the fourth row of five is a scroll away.)
+    for (const [vw, vh, sc, cols, wide, all, what] of [[1180, 820, 1.75, 5, true, false, 'an iPad Air, Size 175%'], [1180, 820, 2, 5, false, false, 'an iPad Air, Size 200%'],
+      [1280, 1024, 2, 6, false, true, '1280 × 1024, Size 200%'], [768, 1024, 1.25, 5, false, true, 'an iPad upright, Size 125%']]) {
       await page.setViewportSize({ width: vw, height: vh }); await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
       for (const side of ['left', 'right']) {
         await openPicker(side);
         const w = await where(side);
-        ok(good(w) && w.cols === 5 && w.narrow === !wide && (!all || allSeen(w)) && w.seen >= 10,
-          `${what}, the ${side} corner: five columns, ‹ Page › ${wide ? 'beside the buttons' : 'on a row of its own'}, Paste placed well, ${all ? 'every widget in view' : `${w.seen} of ${w.tiles} widgets in view`} (${JSON.stringify(w)})`);
+        ok(good(w) && w.cols === cols && w.narrow === !wide && (!all || allSeen(w)) && w.seen >= 10,
+          `${what}, the ${side} corner: ${cols === 6 ? 'six' : 'five'} columns, ‹ Page › ${wide ? 'beside the buttons' : 'on a row of its own'}, Paste placed well, ${all ? 'every widget in view' : `${w.seen} of ${w.tiles} widgets in view`} (${JSON.stringify(w)})`);
         if (side === 'left') await page.locator('#panel').screenshot({ path: OUT + `widget-picker-paste-${vw}x${vh}-${sc * 100}.png` });
       }
     }
@@ -11608,9 +11705,11 @@ const SUITES = [
     });
     ok(!bad.length, `content of any shape, for each widget, never throws and gives a line of at most 80 characters (${bad.slice(0, 6).join(' | ')})`);
     // What the widget itself wouldn't show gives no line: a Timer over a day, a die that isn't 1 to 6, a picture that isn't one.
+    // A Zones Check-In count over 9999 shows as 9999, in the window and in its line.
     for (const [id, data, want] of [['timer', { duration: 1e300 }, ''], ['timer', { duration: 2 * 864e5 }, ''], ['timer', { duration: -1 }, ''], ['dice', { values: [9, -1, 2.5] }, ''],
       ['dice', { values: [1, 2, 3, 4, 5, 6, 1] }, '1, 2, 3, 4, 5 and 6'], ['dice', { values: [6, 0, 2] }, '6 and 2'], ['image', { src: {} }, ''], ['image', { src: PNG, name: 5 }, 'Pasted picture'],
-      ['zones-check-in', { counts: { blue: '2', green: 2.5, yellow: -1, red: 1e9 } }, ''], ['zones-check-in', { counts: { blue: 10000, green: 9999, yellow: null, red: true } }, 'Green 9999'],
+      ['zones-check-in', { counts: { blue: '2', green: 2.5, yellow: -1, red: 1e9 } }, 'Red 9999'], ['zones-check-in', { counts: { blue: 10000, green: 9999, yellow: null, red: true } }, 'Blue 9999, Green 9999'],
+      ['zones-check-in', { counts: { blue: 12, green: 1e300, yellow: 9999, red: 10000 } }, 'Blue 12, Green 9999, Yellow 9999, Red 9999'],
       ['zones-check-in', { counts: [2, 9, 4, 1] }, ''], ['zones-check-in', { counts: 'Blue 2' }, ''], ['zones-check-in', { counts: { blue: 1, green: { n: 3 }, yellow: [4], red: 1 } }, 'Blue 1, Red 1']]) {
       const got = await line(data, id);
       ok(got === want, `${id} ${JSON.stringify(data)}: “${want}”, as the widget reads it (${JSON.stringify(got)})`);
@@ -14798,9 +14897,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       `+ makes a blank “Page 2”, goes there, and the Widget Picker stays open (${JSON.stringify(s)})`);
     ok(look.join() === '1.25,16:9,#1f3a2c,grid', `a new page takes this page’s size, shape, color and pattern (${look.join()})`);
     ok(flash.on && flash.text === 'Page 2', `“Page 2” shows in the middle of the board (${JSON.stringify(flash)})`);
-    ok(await page.locator('#empty-hint').isVisible(), 'a blank page says “Your board is ready”');
     ok(!(await page.evaluate(() => document.querySelector('[data-ctl="prev"]').disabled)), '‹ works on the second page');
-    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+    // (The hint steps aside while the Widget Picker is open, since 2026.11.20-1.)
+    ok(await page.locator('#empty-hint').isVisible(), 'a blank page says “Your board is ready” once the Widget Picker closes');
     await page.evaluate(() => { window.__board21.openWidget('timer'); window.__board21.openWidget('dice'); }); await settle(1200);
     await openPicker(); await page.click('[data-ctl="prev"]');
     await page.waitForFunction(() => window.__board21.state.boardId === 1);

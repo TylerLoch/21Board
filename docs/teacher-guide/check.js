@@ -6,8 +6,8 @@
  *   node docs/teacher-guide/check.js
  *
  * At 1366 × 768, 1920 × 1080 and 390 × 844, light and dark, it fails on: a console error, a page that scrolls
- * sideways, a screenshot that doesn't load or has no alt text, a link to a section that isn't there, or a widget
- * tile with no section. Screenshots of the first screen go to dist/check/.
+ * sideways, a screenshot that doesn't load or has no alt text, a link to a section that isn't there, a widget
+ * tile with no section, or widget tiles that don't line up in rows. Screenshots of the first screen go to dist/check/.
  */
 'use strict';
 const { chromium } = require('playwright');
@@ -79,6 +79,8 @@ async function checkOne(browser, base, w, h, scheme) {
       noAlt: imgs.filter(i => !i.hasAttribute('alt') || (!i.alt.trim() && i.getAttribute('role') !== 'presentation')).map(i => i.getAttribute('src')),
       deadLinks: [...new Set(links.filter(id => !ids.has(id)))],
       tiles: document.querySelectorAll('a.tile').length,
+      // Each tile's height and where its icon sits in it: all the same, so the tiles of every group line up in rows.
+      tileShapes: [...new Set([...document.querySelectorAll('a.tile')].map(t => { const r = t.getBoundingClientRect(), i = t.querySelector('.ticon').getBoundingClientRect(); return `${Math.round(r.height)}/${Math.round(i.top - r.top)}`; }))],
       bg: getComputedStyle(document.body).backgroundColor,
     };
   });
@@ -87,6 +89,7 @@ async function checkOne(browser, base, w, h, scheme) {
   if (r.broken.length) fail(where, 'screenshots that don\'t load: ' + r.broken.join(', ')); else ok('every screenshot loads');
   if (r.noAlt.length) fail(where, 'screenshots with no alt text: ' + r.noAlt.join(', ')); else ok('every screenshot has alt text');
   if (r.deadLinks.length) fail(where, 'links to missing sections: #' + r.deadLinks.join(', #')); else ok(`every link has its section (${r.tiles} widget tiles)`);
+  if (r.tileShapes.length !== 1) fail(where, 'widget tiles of different heights, or icons at different places in them (height/icon top): ' + r.tileShapes.join(', ')); else ok(`the widget tiles line up in rows (${r.tileShapes[0]})`);
   await page.evaluate(() => scrollTo(0, 0));
   await page.screenshot({ path: path.join(OUT, `${w}x${h}-${scheme}.png`) });
   await ctx.close();

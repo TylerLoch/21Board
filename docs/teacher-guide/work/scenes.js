@@ -169,9 +169,7 @@ SCENES.picker = async () => {
   const tiles = await p.locator('#panel .widget-tile').count();
   log('  tiles', tiles, JSON.stringify(await p.$$eval('#panel .widget-tile .widget-name', els => els.map(e => e.textContent))));
   log('  controls', JSON.stringify(await p.$$eval('#panel .panel-controls [data-ctl]', els => els.filter(e => !e.hidden).map(e => e.dataset.ctl + ':' + (e.getAttribute('aria-label') || e.textContent)))));
-  // (Its top row is now level with the hint on the empty board, just beside it: the hint is hidden, so the crop shows
-  // the panel alone.)
-  await p.evaluate(() => { document.getElementById('empty-hint').style.visibility = 'hidden'; });
+  // (The hint on the empty board steps aside while the Widget Picker is open: the crop shows the panel alone.)
   const b = await p.locator('#panel').boundingBox(), btn = await p.locator('.picker-btn.left').boundingBox();
   await shot(p, 'picker.jpg', padded(union(b, btn), 24));
   await ctx.close();

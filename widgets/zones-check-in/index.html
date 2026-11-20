@@ -324,9 +324,9 @@
   const lastTap = {};
   let viewAt = -Infinity;
   const settling = () => performance.now() - viewAt < GUARD;   // (the view has just changed: a double touch's second touch)
-  function checkIn(id) {
+  function checkIn(id, together) {
     const t = performance.now();
-    if (settling() || t - (lastTap[id] || -Infinity) < GUARD) return;
+    if (settling() || (!together && t - (lastTap[id] || -Infinity) < GUARD)) return;   // (two fingers down at once: two students)
     lastTap[id] = t;
     if (!change(c => { c[id] += 1; })) return;
     const n = shown().counts[id];
@@ -391,14 +391,14 @@
     // A tap counts when the finger lifts: a browser sends no click while another touch is down (two students at once, a
     // hand resting on the board). A click with no lift just before it (the mouse, the keyboard) counts too.
     const downs = new Map();
-    c.tap.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') downs.set(e.pointerId, [e.clientX, e.clientY]); });
+    c.tap.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') { if (e.isPrimary) downs.clear(); downs.set(e.pointerId, [e.clientX, e.clientY, downs.size > 0]); } });
     c.tap.addEventListener('pointercancel', e => downs.delete(e.pointerId));
     c.tap.addEventListener('pointerup', e => {
-      const at = downs.get(e.pointerId);
+      const at = downs.get(e.pointerId), together = !!at && (at[2] || downs.size > 1);
       downs.delete(e.pointerId);
       if (!at || Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 16) return;   // (a slide, not a tap)
       c.liftAt = performance.now();
-      checkIn(z.id);
+      checkIn(z.id, together);
     });
     c.tap.addEventListener('click', () => { if (performance.now() - (c.liftAt || -Infinity) > 1000) checkIn(z.id); });
     for (const b of [c.tap, c.minus]) b.addEventListener('keydown', e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); });

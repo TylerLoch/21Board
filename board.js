@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.20-1';
-  const BOARD_BUILD = 'f76b82fe';
+  const BOARD_BUILD = '5bac91de';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -418,6 +418,7 @@
   const getWidget = id => catalog.get(id) || null;
   // A tile's name, as markup. A short hyphenated word stays on one line, so a name wraps as "Zones / Check-In", not
   // "Zones Check- / In" (index.html, .widget-name .nobr). A longer one may still break anywhere, to fit its tile.
+  // Only a built-in widget's: an uploaded copy's name ends in " (test)", which a word kept whole would push out of view.
   const tileName = name => esc(name).replace(/[^\s-]+(?:-[^\s-]+)+/g, w => w.length <= 10 ? `<span class="nobr">${w}</span>` : w);
   const pickerWidgets = () => Array.from(catalog.values())
     .filter(a => S.settings.devMode || (!a.devOnly && !a.dev))
@@ -3071,8 +3072,10 @@
       this.renderControls();
       this.el.classList.remove('left', 'right');
       this.el.classList.add(side, 'open');
+      document.body.classList.add('picking');   // (the empty board's hint, which points at ▦, steps aside: index.html)
       this.fitRow();
       this.fitNames();
+      this.fitCols();
       for (const s of ['left', 'right']) {
         this.btns[s].classList.toggle('active', s === side);
         this.btns[s].setAttribute('aria-expanded', String(s === side));
@@ -3084,6 +3087,7 @@
       if (!this.side) return;
       this.side = null;
       this.el.classList.remove('open');
+      document.body.classList.remove('picking');
       for (const s of ['left', 'right']) { this.btns[s].classList.remove('active'); this.btns[s].setAttribute('aria-expanded', 'false'); }
     },
 
@@ -3094,9 +3098,10 @@
       const widgets = pickerWidgets();
       // The panel is drawn at Zoom.ui. Five columns where the screen has room for them, else four or three, with
       // ‹ Page › on a row of its own above the controls (narrow). With five, ‹ Page › ends the controls' row where that
-      // row clears the other corner's ▦ button (fitRow).
+      // row clears the other corner's ▦ button (fitRow). Six where five rows wouldn't all fit and six do (fitCols).
       const room = window.innerWidth / Zoom.ui, cols = room >= 600 ? 5 : room < 440 ? 3 : 4;
       this.el.style.setProperty('--cols', String(cols));
+      this.el.classList.remove('six');
       this.el.classList.toggle('narrow', cols < 5);
       this.fitRow();
       $('.panel-widgets', this.el).innerHTML = widgets.map(a => {
@@ -3106,19 +3111,33 @@
         const about = a.description && a.description !== a.name ? a.description : '';
         return `<button class="widget-tile" role="listitem" data-widget="${esc(a.id)}" aria-label="${esc(a.name)}"` +
           `${about ? ` aria-description="${esc(about)}"` : ''} title="${esc(about ? a.name + '\n' + about : a.name)}">` +
-          `<span class="widget-icon" style="--c:${esc(a.color)}">${a.icon}</span><span class="widget-name">${tileName(a.name)}</span>` +
+          `<span class="widget-icon" style="--c:${esc(a.color)}">${a.icon}</span><span class="widget-name">${a.dev || a.devOnly ? esc(a.name) : tileName(a.name)}</span>` +
           (c ? `<span class="badge" aria-label="${c} open">${c}</span>` : '') +
           (a.dev || a.devOnly ? '<span class="devtag">DEV</span>' : '') + '</button>';
       }).join('') || '<div class="empty-note" style="grid-column:1/-1;padding:16px">No widgets installed.</div>';
       this.fitNames();
+      this.fitCols();
     },
 
-    // Five columns: ‹ Page › at the end of the controls' row where the panel then clears the other corner's ▦ (and
-    // fits the screen), else on a row of its own (narrow). Measured as drawn, so only while the panel is open, in the
-    // panel's own px: offsetLeft and offsetWidth leave out its zoom and its opening animation.
-    fitRow() {
+    // Five columns whose rows don't all fit the screen's height (a large size on a short screen): six, a little closer
+    // together (index.html, .panel.six), where all of their rows fit. Else five, and the tiles scroll. Measured as
+    // drawn, so only while the panel is open.
+    fitCols() {
       const P = this.el;
       if (!P || !P.classList.contains('open') || P.style.getPropertyValue('--cols') !== '5') return;
+      const g = $('.panel-widgets', P), fits = () => g.scrollHeight <= g.clientHeight + 1 && g.scrollWidth <= g.clientWidth + 1 && P.scrollWidth <= P.clientWidth + 1;
+      if (fits()) return;
+      const six = on => { P.style.setProperty('--cols', on ? '6' : '5'); P.classList.toggle('six', on); this.fitRow(); };
+      six(true);
+      if (!fits()) six(false);
+    },
+
+    // Five or six columns: ‹ Page › at the end of the controls' row where the panel then clears the other corner's ▦
+    // (and fits the screen), else on a row of its own (narrow). Measured as drawn, so only while the panel is open, in
+    // the panel's own px: offsetLeft and offsetWidth leave out its zoom and its opening animation.
+    fitRow() {
+      const P = this.el;
+      if (!P || !P.classList.contains('open') || +P.style.getPropertyValue('--cols') < 5) return;
       P.classList.remove('narrow');
       const o = this.btns[this.side === 'right' ? 'left' : 'right'], row = $('.panel-controls', P), GAP = 4;
       const clear = row.scrollWidth <= row.clientWidth + 1 && (o.hidden || !o.offsetWidth ||
@@ -7816,7 +7835,8 @@
         .map(i => i.maximized ? [ikeyOf(i.widgetId, i.instance), 0, 0, vp.width, vp.height] : [ikeyOf(i.widgetId, i.instance), Math.round(i.rect.x), Math.round(i.rect.y), Math.round(i.rect.w), Math.round(i.rect.h)]);
       return { bg: bg.color || null, pattern: bg.pattern || 'none', shape: exp.board && exp.board.shape === 'free' ? 'free' : '16:9', vw: vp.width, vh: vp.height, wins };
     },
-    // Each built-in widget's line, read from its content d, in its own terms. '' is no line.
+    // Each built-in widget's line, read from its content d, in its own terms. '' is no line. (A line that needs them also
+    // has the window's config c and the version's time at.)
     lines: {
       'name-picker': d => listOf(d.names).map(strOf).filter(Boolean).join(', '),
       calculator: d => calcLine(listOf(listOf(d.expr).length ? d.expr : (listOf(d.history)[0] || {}).expr)),
@@ -7830,11 +7850,15 @@
       },
       dice: d => { const v = listOf(d.values).slice(0, 6).filter(v => Number.isInteger(v) && v >= 1 && v <= 6); return v.length > 1 ? `${v.slice(0, -1).join(', ')} and ${v[v.length - 1]}` : v.join(''); },
       'traffic-light': d => ['red', 'yellow', 'green'].includes(d.active) ? d.active[0].toUpperCase() + d.active.slice(1) : '',
-      // The zones with check-ins, in order ("Blue 2, Green 9, Red 1"). Only whole numbers from 1 to 9999 count.
-      'zones-check-in': d => {
-        const c = d && d.counts && typeof d.counts === 'object' ? d.counts : {};
+      // The zones with check-ins, in order ("Blue 2, Green 9, Red 1"), as the window showed them: whole numbers, 9999 at
+      // most. With Clear each day on, counts from a day before the version's show as none.
+      'zones-check-in': (d, c, at) => {
+        const n = d && d.counts && typeof d.counts === 'object' ? d.counts : {}, day = d && typeof d.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.day) ? d.day : null;
+        const t = typeof at === 'string' || typeof at === 'number' ? new Date(at) : null;   // (an export's exportedAt)
+        const then = t && !isNaN(t) ? t.getFullYear() + '-' + String(t.getMonth() + 1).padStart(2, '0') + '-' + String(t.getDate()).padStart(2, '0') : null;
+        if (!(c && c.daily === false) && day && then && day !== then) return '';
         return [['blue', 'Blue'], ['green', 'Green'], ['yellow', 'Yellow'], ['red', 'Red']]
-          .filter(([k]) => Object.prototype.hasOwnProperty.call(c, k) && Number.isInteger(c[k]) && c[k] >= 1 && c[k] <= 9999).map(([k, name]) => `${name} ${c[k]}`).join(', ');
+          .filter(([k]) => Object.prototype.hasOwnProperty.call(n, k) && Number.isInteger(n[k]) && n[k] >= 1).map(([k, name]) => `${name} ${Math.min(n[k], 9999)}`).join(', ');
       },
       image: d => typeof d.src === 'string' && d.src ? strOf(d.name) || 'Pasted picture' : '',
       notes: d => strOf(d.text)
@@ -7842,9 +7866,9 @@
     // A few words about a window's content, 80 characters at most. A built-in widget has its own line, above. Any other
     // widget shows the text in its content, each piece once, without pictures. Content can come from a file or an older
     // 21Board, so a line that fails shows the text instead.
-    excerptOf(v, widgetId) {
+    excerptOf(v, widgetId, c, at) {
       let s = null;
-      try { if (Object.prototype.hasOwnProperty.call(this.lines, widgetId)) s = this.lines[widgetId](v); } catch (e) { /* the text, below */ }
+      try { if (Object.prototype.hasOwnProperty.call(this.lines, widgetId)) s = this.lines[widgetId](v, c, at); } catch (e) { /* the text, below */ }
       if (typeof s !== 'string') {
         const out = [], seen = new Set(), todo = [v];
         for (let n = -1; todo.length && n <= 80;) {   // n is the length so far, spaces included
@@ -7869,7 +7893,7 @@
       const w = {};
       for (const i of exp.instances) {
         const d = i.data == null ? '' : JSON.stringify(i.data), c = i.config == null ? '' : JSON.stringify(i.config);
-        w[ikeyOf(i.widgetId, i.instance)] = [i.open ? 1 : 0, i.createdAt || 0, d ? hash53(d) : '', c ? hash53(c) : '', d.length, this.excerptOf(i.data, i.widgetId), i.maximized ? 1 : 0];
+        w[ikeyOf(i.widgetId, i.instance)] = [i.open ? 1 : 0, i.createdAt || 0, d ? hash53(d) : '', c ? hash53(c) : '', d.length, this.excerptOf(i.data, i.widgetId, i.config, exp.exportedAt), i.maximized ? 1 : 0];
       }
       return w;
     },
