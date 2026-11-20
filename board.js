@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.20-1';
-  const BOARD_BUILD = '35f70d7b';
+  const BOARD_VERSION = '2026.11.20-2';
+  const BOARD_BUILD = '9e6d00d3';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -7842,7 +7842,14 @@
       calculator: d => calcLine(listOf(listOf(d.expr).length ? d.expr : (listOf(d.history)[0] || {}).expr)),
       'first-then-board': d => { const f = strOf(d.first && d.first.label), t = strOf(d.then && d.then.label); return f && t ? `First ${f}, then ${t}` : f ? `First ${f}` : t ? `Then ${t}` : ''; },
       'task-timer': d => listOf(d.tasks).map(t => { const n = strOf(t && t.name), e = strOf(t && t.emoji); return e && n.startsWith(e + ' ') ? n.slice(e.length + 1).trim() : n; }).filter(Boolean).join(', '),
-      'youtube-player': d => { if (!d.videoId) return ''; const e = listOf(d.history).find(e => e && e.videoId === d.videoId); return strOf(e && e.title) || strOf(d.videoUrl); },
+      // The video's title. Without one, the site's name from the widget's SOURCES and "video", such as "Vimeo video". A
+      // Drive video never has a title. Content saved before Drive and Vimeo has no source: it's YouTube's.
+      'youtube-player': d => {
+        const site = { youtube: 'YouTube', drive: 'Google Drive', vimeo: 'Vimeo' }, s = d.source === undefined ? 'youtube' : d.source;
+        if (!d.videoId || !Object.prototype.hasOwnProperty.call(site, s)) return '';
+        const e = listOf(d.history).find(e => e && e.videoId === d.videoId);
+        return strOf(e && e.title) || `${site[s]} video`;
+      },
       timer: d => {
         if (typeof d.duration !== 'number' || !(d.duration >= 0 && d.duration <= 864e5)) return '';   // a day at most, as the Timer allows
         const s = Math.ceil(d.duration / 1000), m = Math.floor(s / 60);
@@ -11367,12 +11374,12 @@
       else if (HistorySheet.isOpen) HistorySheet.escape();   // (a version's column, then the list, then Settings)
       else if (Settings.isOpen) Settings.close(true);
     });
-    // No browser menu on a right-click, a long press, or the menu key, except in a text box (spell-check, Cut, Copy,
-    // Paste). Developer mode keeps it everywhere, for Inspect, and so does the widget dev window. The SDK does the same
-    // inside each widget. Other sites' windows keep their own.
+    // No browser menu on a right-click, a long press, or the menu key, except on a link (Copy link address, Open in new
+    // tab) and in a text box (spell-check, Cut, Copy, Paste). Developer mode keeps it everywhere, for Inspect, and so
+    // does the widget dev window. The SDK does the same inside each widget. Other sites' windows keep their own.
     document.addEventListener('contextmenu', e => {
       const t = e.target;
-      if (S.settings.devMode || LAB || (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)$/.test(t.type))))) return;
+      if (S.settings.devMode || LAB || (t && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)$/.test(t.type)) || (t.closest && t.closest('a[href]'))))) return;
       e.preventDefault();
     });
 

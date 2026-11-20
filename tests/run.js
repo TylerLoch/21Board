@@ -11613,7 +11613,7 @@ const SUITES = [
       ['task-timer', { totalMode: 'sum', totalMinutes: 60, tasks: [{ emoji: '📚', name: 'Math', minutes: 20, color: '#ff5e57' }, { emoji: '', name: 'Snack', minutes: 10, color: '#ffc048' }] },
         'Math, Snack', 'a Task Timer whose names have no emoji'],
       ['youtube-player', { source: 'youtube', videoId: 'aqz-KE-bpKQ', videoUrl: 'https://youtu.be/aqz-KE-bpKQ?t=30', start: 30, history: [{ source: 'youtube', videoId: 'aqz-KE-bpKQ', videoUrl: 'https://youtu.be/aqz-KE-bpKQ?t=30', start: 30 }] },
-        'https://youtu.be/aqz-KE-bpKQ?t=30', 'a Video Player with no title yet: its link as pasted'],
+        'YouTube video', 'a Video Player with no title yet: its site’s name'],
       ['youtube-player', { videoId: null, videoUrl: '', history: SAVED['youtube-player'].history }, '', 'a Video Player with no video: no line'],
       ['youtube-player', { source: 'vimeo', videoId: '76979871', videoUrl: 'https://vimeo.com/76979871', history: [SAVED['youtube-player'].history[0], { source: 'vimeo', videoId: '76979871', videoUrl: 'https://vimeo.com/76979871', title: 'The New Vimeo Player' }] },
         'The New Vimeo Player', 'a Video Player: the title of the video showing, not of another in its History'],
@@ -11744,7 +11744,7 @@ const SUITES = [
     await page.waitForTimeout(700); await win('name-picker:1').locator('#stage').click();
     await win('timer:1').locator('#chips button[data-min="5"]').click(); await win('timer:1').locator('#go').click();
     await win('dice:1').locator('#roll').click();
-    const DRIVE_LINK = `https://drive.google.com/file/d/${D1}/view?usp=sharing`;   // (Drive gives no title: the line is the link)
+    const DRIVE_LINK = `https://drive.google.com/file/d/${D1}/view?usp=sharing`;   // (Drive gives no title: the line is “Google Drive video”)
     await ytShow(page, DRIVE_LINK);
     ok(await eventually(async () => ((await data('timer:1')) || {}).endsAt > 0 && (((await data('dice:1')) || {}).values || []).length === 2), '(a Name Picker with a pick, a Timer running and two Dice rolled)');
     const rolled = (await data('dice:1')).values;
@@ -11761,13 +11761,13 @@ const SUITES = [
     ok(np === NAMES.join(', ') && NAMES.every(n => np.split(n).length === 2), `Windows in this version: the Name Picker’s line has each name once (${np})`);
     ok(rows.Timer === '5 minutes', `the Timer’s says 5 minutes (${rows.Timer})`);
     ok(rows.Dice === `${rolled[0]} and ${rolled[1]}`, `the Dice’s says what they rolled, ${rolled.join(' and ')} (${rows.Dice})`);
-    ok(rows['Video Player'] === DRIVE_LINK.slice(0, 79) + '…', `a Video Player with no title: its link (${rows['Video Player']})`);
+    ok(rows['Video Player'] === 'Google Drive video', `a Video Player with no title: its site’s name, “Google Drive video” (${rows['Video Player']})`);
     const fits = () => page.$$eval('.open .inst .meta', els => els.map(m => {
       const row = m.closest('.inst').getBoundingClientRect(), s = m.querySelector('span').getBoundingClientRect();
       return s.right <= row.right + 0.5 && m.scrollWidth <= m.clientWidth ? '' : m.querySelector('b').textContent;
     }).filter(Boolean));
     const over = await fits();
-    ok(!over.length, `each line stays inside its row, a long link too (${over.join(', ')})`);
+    ok(!over.length, `each line stays inside its row (${over.join(', ')})`);
     await page.waitForTimeout(600); await page.screenshot({ path: OUT + 'history-lines.png' });
     for (let k = 0; k < 4 && await page.locator('#settings.open, #history.open, #history-detail.open').count(); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(250); }
     await win('timer:1').locator('#go').click();   // (paused: the version saved is now an earlier one)
@@ -11782,7 +11782,7 @@ const SUITES = [
     await page.locator('.win[data-ikey="youtube-player:1"] .win-label').click(); await page.waitForTimeout(250);
     await page.click('#menu [data-act="history"]'); await page.waitForSelector('#history.open .hist-intro'); await page.waitForTimeout(600);
     const vOver = await fits();
-    ok(!vOver.length, `the Video Player’s own earlier versions: its link stays inside its row (${vOver.join(', ')})`);
+    ok(!vOver.length, `the Video Player’s own earlier versions: its line stays inside its row (${vOver.join(', ')})`);
     await page.keyboard.press('Escape');
 
     // ---- 6. Nothing else changes: a version's sig and each window's other entries are as 84edbe5 made them.
@@ -18306,6 +18306,189 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(sdkDoc.includes('To show a menu of your own, listen for `contextmenu` and call `preventDefault()`.'), 'WIDGET-SDK: a menu of your own calls preventDefault()');
 
     await page.screenshot({ path: OUT + 'right-click-board.png' });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+
+  // Release 2026.11.20-2: a link keeps the browser's menu (Copy link address, Open in new tab), a Video Player's line in
+  // Board history is its video's title or the site's name and "video", and CLAUDE.md's own lists take the Oxford comma.
+  ['Links, video lines, and CLAUDE.md (2026.11.20-2)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    await stubVideos(ctx);
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const B = (fn, arg) => page.evaluate(fn, arg);
+    const frameOf = ik => page.frame({ name: 'b21-board:' + ik });
+    const connected = ik => eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+    const frameBox = ik => page.locator(`.win[data-ikey="${ik}"] iframe`).boundingBox();
+    // As in the right-click suite (2026.11.18-20): a listener the test adds last, on window, records whether the menu was
+    // turned off (defaultPrevented). menuAt sends a cancelable contextmenu at an element; rightClick uses the mouse's
+    // right button. Each says 'prevented' or 'menu'.
+    const RECORD = () => { if (!window.__menus) { window.__menus = []; window.addEventListener('contextmenu', e => window.__menus.push(e.defaultPrevented)); } return window.__menus.length; };
+    const menuAt = (doc, sel) => doc.evaluate(([sel, RECORD]) => {
+      new Function(RECORD)();
+      const el = document.querySelector(sel);
+      if (!el) return 'no ' + sel;
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, composed: true, button: 2, buttons: 2, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+      return window.__menus[window.__menus.length - 1] ? 'prevented' : 'menu';
+    }, [sel, `(${RECORD})()`]);
+    const rightClick = async (doc, sel, off = { x: 0, y: 0 }) => {
+      const n = await doc.evaluate(new Function(`return (${RECORD})()`));
+      const r = await doc.evaluate(sel => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, sel);
+      await page.mouse.click(off.x + r.x, off.y + r.y, { button: 'right' }); await page.waitForTimeout(250);
+      return doc.evaluate(n => window.__menus.length > n ? (window.__menus[window.__menus.length - 1] ? 'prevented' : 'menu') : 'none', n);
+    };
+
+    // ---- 1. A link in Notes' reading view, in a note not yet tapped: a real right-click keeps the browser's menu, and the
+    // note stays as it is.
+    const nt = await B(() => window.__board21.openWidget('notes')); await connected(nt);
+    await B(ik => window.__board21.setRect(ik, { x: 40, y: 40, w: 560, h: 260 }), nt); await page.waitForTimeout(300);
+    const ntf = frameOf(nt);
+    await fillNote(page.frameLocator(`.win[data-ikey="${nt}"] iframe`), 'Class site: https://ccsd21.org/calendar for today');
+    await page.mouse.click(900, 640); await page.waitForTimeout(300);   // (a tap elsewhere: the note is read again)
+    const reading = () => ntf.evaluate(() => !document.body.classList.contains('editing') && !!document.querySelector('#view a[href]'));
+    ok(await reading(), '(a note not yet tapped, with a link)');
+    ok(await rightClick(ntf, '#view a', await frameBox(nt)) === 'menu', 'a real right-click on a link in a note not yet tapped keeps the browser’s menu');
+    ok(await reading(), 'and the note stays as it is');
+
+    // ---- 2. Something inside a link counts as on it: its text in a <span>, its icon. In a widget uploaded in Developer
+    // mode, then opened again with Developer mode off (so the SDK in it turns the menu off), and on the board.
+    const LINKS = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Links</title>
+<script type="application/json" id="board21-widget">{"id":"links","name":"Links","window":{"width":360,"height":300}}</script>
+<style>body{margin:0;padding:12px;font:18px system-ui}body>*{display:block;margin:0 0 12px}</style></head><body>
+<a id="site" href="https://example.org/room12"><span id="site-text">Room 12</span> <svg id="site-icon" width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="8"/></svg></a>
+<a id="bare"><span id="bare-text">No address</span></a>
+<button id="btn" type="button">Roll</button>
+<div id="tap">Tap to pick</div>
+</body></html>`;
+    await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(300);
+    fs.writeFileSync(OUT + 'links-widget.html', LINKS);
+    await page.setInputFiles('#widget-input', OUT + 'links-widget.html');
+    const lk = 'dev-links:1';
+    ok(await connected(lk), '(a widget file uploaded in Developer mode opens)');
+    await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(300);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await B(ik => window.__board21.closeWin(ik), lk); await page.waitForTimeout(300);
+    await B(() => window.__board21.openWidget('dev-links'));
+    ok(await connected(lk) && await eventually(async () => frameOf(lk).evaluate(() => !!Board21.context && Board21.context.devMode === false)), '(Developer mode off, and the widget opened again)');
+    await B(ik => window.__board21.setRect(ik, { x: 640, y: 40, w: 360, h: 300 }), lk); await page.waitForTimeout(400);
+    const lw = frameOf(lk);
+    ok(await menuAt(lw, '#site-text') === 'menu', 'in a widget: a link’s text, in a <span>, keeps the browser’s menu');
+    ok(await menuAt(lw, '#site-icon circle') === 'menu', 'and so does its icon');
+    ok(await menuAt(lw, '#site') === 'menu', 'and the link itself');
+    ok(await rightClick(lw, '#site-text', await frameBox(lk)) === 'menu', 'a real right-click there too');
+    // On the board: links added to its page for the test (21Board shows none of its own), their text in a <span>.
+    await B(() => {
+      const add = (id, href, text, top) => {
+        const a = document.createElement('a'); a.id = id; if (href) a.href = href;
+        a.innerHTML = `<span id="${id}-text">${text}</span>`;
+        a.style.cssText = `position:fixed;left:640px;top:${top}px;z-index:9999;padding:4px;background:#fff;font:20px system-ui`;
+        document.body.appendChild(a);
+      };
+      add('t-link', 'https://example.org/room12', 'Room 12', 420); add('t-bare', null, 'No address', 470);
+    });
+    ok(await menuAt(page, '#t-link-text') === 'menu', 'on the board: a link’s text, in a <span>, keeps the browser’s menu');
+    ok(await rightClick(page, '#t-link-text') === 'menu', 'a real right-click there too');
+
+    // ---- 3. Still no menu: a button and a plain <div> in a widget, an <a> with no href, the empty board, a window's
+    // title bar, and a note's text beside its link.
+    ok(await menuAt(lw, '#btn') === 'prevented', 'in a widget, still none: a button');
+    ok(await menuAt(lw, '#tap') === 'prevented', 'a plain <div>');
+    ok(await menuAt(lw, '#bare-text') === 'prevented' && await menuAt(lw, '#bare') === 'prevented', 'an <a> with no href, and its text');
+    ok(await menuAt(page, '#t-bare-text') === 'prevented', 'on the board, still none: an <a> with no href');
+    ok(await menuAt(page, '#desk') === 'prevented', 'the empty board');
+    ok(await menuAt(page, `.win[data-ikey="${nt}"] .win-title`) === 'prevented', 'a window’s title bar');
+    ok(await menuAt(ntf, '#view') === 'prevented', 'a note’s text beside its link');
+    await B(() => { for (const id of ['t-link', 't-bare']) document.getElementById(id).remove(); });
+
+    // ---- 4. Board history: a Video Player's line is its video's title. With none, the site's name and "video", never
+    // its link or id. Read from BoardHistory.lines, then from a version saved with these windows, shown in Board history:
+    // the version's windows, and Now in each window's Earlier versions….
+    const cut = s => s.slice(0, s.lastIndexOf(' ', 79)).replace(/[,;:.]+$/, '') + '…';   // (over 80 characters: as excerptOf cuts it)
+    const shown = s => s.length > 80 ? cut(s) : s;
+    const yt = { source: 'youtube', videoId: VID2, videoUrl: `https://youtu.be/${VID2}?t=30`, start: 30 }, dr = { source: 'drive', videoId: D1, videoUrl: `https://drive.google.com/file/d/${D1}/view?usp=sharing` };
+    const vi = { source: 'vimeo', videoId: V1, videoUrl: `https://vimeo.com/${V1}` }, dm = { source: 'dailymotion', videoId: 'x7tgad0', videoUrl: 'https://www.dailymotion.com/video/x7tgad0' };
+    const old = { videoId: VID2, videoUrl: `https://www.youtube.com/watch?v=${VID2}` };   // (saved before Drive and Vimeo: no source, no History)
+    const listed = (v, title) => Object.assign({}, v, { history: [Object.assign({}, v, title ? { title } : {})] });   // (its History: this video)
+    const BUNNY = YT_TITLES[VID2], LONG = 'The Water Cycle for Kids: Evaporation, Condensation, and Precipitation, with a Song to Sing Along';
+    // [content, its line, what it is]. The first eight are windows on the board too.
+    const VIDEOS = [
+      [listed(yt), 'YouTube video', 'YouTube, no title yet'],
+      [listed(dr), 'Google Drive video', 'Google Drive, which never has a title'],
+      [listed(vi), 'Vimeo video', 'Vimeo, no title yet'],
+      [old, 'YouTube video', 'content saved before Drive and Vimeo (no source)'],
+      [listed(yt, BUNNY), BUNNY, 'YouTube with a title'],
+      [{ videoId: null, videoUrl: '', history: listed(yt, BUNNY).history }, '', 'no video: no line'],
+      [listed(dm), '', 'a site it doesn’t know: no line'],
+      [listed(vi, LONG), LONG, 'Vimeo with a long title'],
+      [listed(vi, VIMEO_TITLES[V1]), VIMEO_TITLES[V1], 'Vimeo with a title'],
+      [Object.assign({}, old, { history: [Object.assign({}, old, { title: BUNNY })] }), BUNNY, 'no source, with a title'],
+      [listed(dm, 'Volcanoes'), '', 'a site it doesn’t know, with a title: no line'],
+      [listed(Object.assign({}, yt, { source: 'toString' })), '', 'a source named like a built-in property (toString): no line'],
+      [listed(Object.assign({}, yt, { source: null })), '', 'a source of null: no line']
+    ];
+    const got = await B(list => list.map(d => [window.__board21.history.lines['youtube-player'](d), window.__board21.history.excerptOf(d, 'youtube-player')]), VIDEOS.map(v => v[0]));
+    VIDEOS.forEach(([, want, what], k) => ok(got[k][0] === want && got[k][1] === shown(want), `BoardHistory.lines: ${what}: “${shown(want)}” (${JSON.stringify(got[k])})`));
+    const WINS = VIDEOS.slice(0, 8), vk = k => 'youtube-player:' + (k + 1), nameOf = k => 'Video Player' + (k ? ' ' + (k + 1) : '');
+    const exp = { format: '21board', formatVersion: 1, kind: 'full', exportedAt: new Date().toISOString(), board: { name: 'Videos' },
+      instances: WINS.map(([data], k) => ({ widgetId: 'youtube-player', instance: k + 1, open: true, z: k + 1, rect: { x: 8 + 338 * (k % 4), y: 8 + 300 * Math.floor(k / 4), w: 330, h: 280 }, data, config: null })) };
+    await B(f => window.__board21.applyImport(f, 'replace'), exp); await freeBoard(page);   // (the file's board is Widescreen)
+    const up = [];
+    for (let k = 0; k < WINS.length; k++) up.push(await connected(vk(k)));
+    ok(up.every(Boolean), `(the ${WINS.length} Video Players open: ${up.join(', ')})`);
+    await page.waitForTimeout(1200);
+    const kept = await B(n => Array.from({ length: n }, (_, k) => JSON.stringify(window.__board21.state.data.get('youtube-player:' + (k + 1)))), WINS.length);
+    ok(kept.every((s, k) => s === JSON.stringify(WINS[k][0])), `(each window’s content is as it was imported${kept.filter((s, k) => s !== JSON.stringify(WINS[k][0])).map(s => ': ' + s).join('')})`);
+    await B(() => window.__board21.history.save('Videos'));
+    const vid = await B(async () => { await window.__board21.history.reload(); const m = window.__board21.history.metas.find(m => m.label === 'Videos'); return m ? m.id : null; });
+    const saved = await B(([id, n]) => { const m = window.__board21.history.metas.find(m => m.id === id), w = (m && m.wins) || {}; return Array.from({ length: n }, (_, k) => w['youtube-player:' + (k + 1)] ? w['youtube-player:' + (k + 1)][5] : null); }, [vid, WINS.length]);
+    ok(!!vid && saved.every((s, k) => s === shown(WINS[k][1])), `the version saved keeps each window’s line (${JSON.stringify(saved)})`);
+    await openSettings(page);
+    await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open [data-act="save"]');
+    await page.locator(`#history .hist-row[data-val="${vid}"]`).click();
+    await page.waitForSelector('#history-detail.open .inst');
+    const rows = Object.fromEntries(await page.$$eval('#history-detail.open .inst .meta', els => els.map(e => [e.querySelector('b').textContent, e.querySelector('span').textContent])));
+    WINS.forEach(([, want, what], k) => ok(rows[nameOf(k)] === shown(want), `Board history, Windows in this version: ${what}: “${shown(want)}” (${JSON.stringify(rows[nameOf(k)])})`));
+    const fits = () => page.$$eval('.open .inst .meta', els => els.map(m => {
+      const row = m.closest('.inst').getBoundingClientRect(), s = m.querySelector('span').getBoundingClientRect();
+      return s.right <= row.right + 0.5 && m.scrollWidth <= m.clientWidth ? '' : m.querySelector('b').textContent;
+    }).filter(Boolean));
+    const over = await fits();
+    ok(!over.length, `each line stays inside its row, a long title too (${over.join(', ')})`);
+    await page.waitForTimeout(500); await page.screenshot({ path: OUT + 'video-lines.png' });
+    for (let k = 0; k < 4 && await page.locator('#settings.open, #history.open, #history-detail.open').count(); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(250); }
+    const nows = [];
+    for (let k = 0; k < WINS.length; k++) {
+      await page.click(`.win[data-ikey="${vk(k)}"] .win-label`); await page.click('#menu [data-act="history"]');
+      await page.waitForSelector('#history.open .hist-intro'); await page.waitForTimeout(300);
+      nows.push(await page.$$eval('#history.open .inst .meta', els => els.length ? els[0].querySelector('b').textContent + ': ' + els[0].querySelector('span').textContent : ''));
+      if (WINS[k][1] === LONG) { const o = await fits(); ok(!o.length, `its Earlier versions…: a long title stays inside its row (${o.join(', ')})`); await page.screenshot({ path: OUT + 'video-lines-now.png' }); }
+      await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    }
+    WINS.forEach(([, want, what], k) => ok(nows[k] === 'Now: ' + (shown(want) || '(empty)'), `Earlier versions…, Now: ${what}: “${shown(want) || '(empty)'}” (${nows[k]})`));
+
+    // ---- 5. CLAUDE.md: its own lists of three take the Oxford comma, five of them (Tyler approved each). Wrapped lines
+    // are joined first.
+    const claude = fs.readFileSync(path.join(ROOT, 'CLAUDE.md'), 'utf8').replace(/\s*\n\s*/g, ' ');
+    for (const [was, now] of [
+      ['See README.md, docs/WIDGET-SDK.md and docs/DATA-FORMAT.md.', 'See README.md, docs/WIDGET-SDK.md, and docs/DATA-FORMAT.md.'],
+      ['Going online for updates, district apps and videos is fine.', 'Going online for updates, district apps, and videos is fine.'],
+      ['Cut hedges, qualifiers, parentheticals and stacked clauses.', 'Cut hedges, qualifiers, parentheticals, and stacked clauses.'],
+      ['tools/release-workflow.js builds, reviews and fixes each release.', 'tools/release-workflow.js builds, reviews, and fixes each release.'],
+      ['Every change to the interface, a widget or how the board behaves', 'Every change to the interface, a widget, or how the board behaves']]) {
+      ok(claude.includes(now) && !claude.includes(was), `CLAUDE.md: “${now}”`);
+    }
+    ok(claude.split('Build it, check it, then publish it again to that link.').length === 3, 'CLAUDE.md: “Build it, check it, then publish it”, a sequence, stays as it is');
+
+    // The docs say links keep the menu.
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(readme.includes('A right-click or a long press shows no browser menu, except on links and in text boxes. Developer mode brings it back.'), 'README: “except on links and in text boxes”');
+    ok(sdkDoc.includes('**Right-click.** The SDK turns off the browser\'s menu in your widget, except on links, in text boxes, in Developer mode, and in the dev window. To show a menu of your own, listen for `contextmenu` and call `preventDefault()`.'),
+      'WIDGET-SDK: “except on links, in text boxes, in Developer mode, and in the dev window”');
+
+    ok(stamped(), STAMPED);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

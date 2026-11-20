@@ -1,11 +1,11 @@
 # 21Board
 
-A static, offline PWA "smartboard OS" for CCSD21 (K-8). See README.md, docs/WIDGET-SDK.md and docs/DATA-FORMAT.md.
+A static, offline PWA "smartboard OS" for CCSD21 (K-8). See README.md, docs/WIDGET-SDK.md, and docs/DATA-FORMAT.md.
 
 ## Core value
 
 Your work is stored only on the device, and in the teacher's own Google Drive folder when Board Sync is on. 21Board
-has no servers. Going online for updates, district apps and videos is fine. Storing user data online is not.
+has no servers. Going online for updates, district apps, and videos is fine. Storing user data online is not.
 
 ## Voice: every label and every line of prose
 
@@ -13,7 +13,7 @@ Write like Apple. Less is more. Every word must earn its place.
 
 - Short, clear, warm. One idea per sentence. Fragments are fine ("Never on the Internet.").
 - Lead with what the teacher cares about. Leave out how it works unless they need it.
-- Cut hedges, qualifiers, parentheticals and stacked clauses. If a sentence needs "(…)", rewrite it or drop it.
+- Cut hedges, qualifiers, parentheticals, and stacked clauses. If a sentence needs "(…)", rewrite it or drop it.
 - Use teachers' words (board, window, widget, page), not the system's.
 - Labels: one to three words, sentence case, no end punctuation. Buttons are verbs. A hint is one short sentence.
 - Every list of three or more takes the Oxford comma, such as "red, yellow, and green".
@@ -27,7 +27,7 @@ After: "Your work is stored only on this device."
 
 ## Releasing
 
-Every release follows docs/RELEASING.md, from the spec to the report. tools/release-workflow.js builds, reviews and
+Every release follows docs/RELEASING.md, from the spec to the report. tools/release-workflow.js builds, reviews, and
 fixes each release. tools/test-halves.js runs the whole test file.
 
 ## Calculator manual
@@ -39,5 +39,5 @@ link.
 ## Teacher Guide
 
 docs/teacher-guide/ is the Teacher Guide, published at https://claude.ai/artifact/2vXnMT4JJAkm5y6dnjC8YG.
-Every change to the interface, a widget or how the board behaves updates the guide in the same change: its words and
+Every change to the interface, a widget, or how the board behaves updates the guide in the same change: its words and
 the screenshots that show it. Build it, check it, then publish it again to that link. Its README has the steps.
