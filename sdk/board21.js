@@ -432,7 +432,7 @@
     role = 'bare';
     devNote = started === 'not-first'
       ? 'To try this widget in a 21Board window, make the SDK the first script in <head>.'
-      : started === 'not-loadable' ? 'To try this widget in a 21Board window, load the SDK with a plain <script src="\u2026/sdk/board21.js">. No async, defer or module.' : '';
+      : started === 'not-loadable' ? 'To try this widget in a 21Board window, load the SDK with a plain <script src="\u2026/sdk/board21.js">. No async, defer, or module.' : '';
   } else if (role === 'bare' && window.__board21DevNote !== undefined) {
     devNote = window.__board21DevNote ? 'The 21Board dev window could not start: ' + window.__board21DevNote : '';
   }
@@ -470,6 +470,13 @@
     // Tapping anywhere in the widget brings its window to the front.
     window.addEventListener('pointerdown', function () { post('activate'); }, true);
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape') post('key', { key: 'Escape' }); }, true);
+    // No browser menu on a right-click or a long press, as on the board, except in a text box. In Developer mode
+    // (init's devMode) it stays, for Inspect. A widget can still listen for 'contextmenu' to show a menu of its own.
+    document.addEventListener('contextmenu', function (e) {
+      var t = e.target;
+      if ((context && context.devMode) || (t && t.nodeType === 1 && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)$/.test(t.type))))) return;
+      e.preventDefault();
+    });
     // A paste or a drop of files that the widget didn't take (preventDefault() on the document or an element) goes to the
     // board, which opens the pictures in new Picture windows. So does a paste of one link (no spaces): the board opens a
     // Video Player for a video's. A paste in a text field is the field's. A dropped file never opens in place of the

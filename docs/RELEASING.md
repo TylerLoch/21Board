@@ -22,11 +22,11 @@ git worktree add -b <key> <spec folder>/wt claude/focused-curie-9oovoy
 Then run `tools/release-workflow.js` with Claude Code's Workflow tool. Its top lists the args. It runs four agents:
 
 - **Build.** Writes the tests first and shows they fail on the old code. Then builds the change, updates the docs and the
-  guides, stamps the release and commits.
+  guides, stamps the release, and commits.
 - **Review**, two at once:
   - **Behaviour** tries to get around the change, the way a curious student would.
-  - **Look, words and tests** compares the screens to the mockups and every string to CLAUDE.md's voice.
-- **Fix.** Reproduces each finding and adds a failing test. Then fixes it, stamps again and takes the final screenshots.
+  - **Look, words, and tests** compares the screens to the mockups and every string to CLAUDE.md's voice.
+- **Fix.** Reproduces each finding and adds a failing test. Then fixes it, stamps again, and takes the final screenshots.
 
 If the workflow stops without a result, resume it with the same args.
 
@@ -84,9 +84,9 @@ git push -u origin claude/focused-curie-9oovoy
 
 ## 7. Publish
 
-Build, check and publish each one again to its link in CLAUDE.md:
+Build, check, and publish each one again to its link in CLAUDE.md:
 
-- the Teacher Guide, after any change to the interface, a widget or how the board behaves;
+- the Teacher Guide, after any change to the interface, a widget, or how the board behaves;
 - the Calculator manual, after any change to the Calculator.
 
 Each one's README has the steps.

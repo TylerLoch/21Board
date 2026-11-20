@@ -173,7 +173,7 @@
     var add = function (level, title, detail, fix) { out.push({ level: level, title: title, detail: detail || '', fix: fix || '' }); };
     if (!info.manifest) add(info.widget.fromRegistry ? 'info' : 'warn', 'No manifest block', 'The dev window guessed the window’s size and name' + (info.widget.fromRegistry ? ' from widgets/registry.js' : '') + '.',
       'Add near the top of <head>: <script type="application/json" id="board21-widget">{"id": "' + info.widget.id + '", "name": "' + info.widget.name + '", "version": "1.0.0", "window": {"width": 400, "height": 300, "minWidth": 200, "minHeight": 150}}</script>');
-    else if (!ID_RE.test(info.manifest.id || '')) add('warn', 'The manifest has no valid "id"', 'An id is lowercase letters, digits and dashes, e.g. "seating-chart".', 'Set "id" in the board21-widget manifest block to a short lowercase name with dashes.');
+    else if (!ID_RE.test(info.manifest.id || '')) add('warn', 'The manifest has no valid "id"', 'An id is lowercase letters, digits, and dashes, e.g. "seating-chart".', 'Set "id" in the board21-widget manifest block to a short lowercase name with dashes.');
     var scripts = doc.querySelectorAll('script[src]');
     var sdkFirst = false;
     for (var i = 0; i < doc.scripts.length; i++) { var s = doc.scripts[i]; if (s.type === 'application/json') continue; sdkFirst = !!(s.src && /board21(\.min)?\.js/.test(s.getAttribute('src'))); break; }
@@ -187,14 +187,14 @@
     });
     (code.match(/https?:\/\/[^\s'")]+/g) || []).forEach(function (u) { if (!/board21/.test(u)) hosts[u.replace(/^https?:\/\//, '').split('/')[0]] = 1; });
     var hl = Object.keys(hosts);
-    if (hl.length) add('warn', 'Loads files from the Internet: ' + hl.join(', '), '21Board works offline, so a widget must bring everything it needs. No CDN libraries, web fonts or placeholder images.',
-      'Remove every external file: ' + hl.join(', ') + '. Write your own CSS instead of using a framework, use system fonts and draw images with inline SVG.');
-    if (/\b(localStorage|sessionStorage|indexedDB)\b|document\.cookie/.test(code)) add('warn', 'Stores data itself', 'localStorage, sessionStorage, IndexedDB and cookies bypass 21Board. The data won’t sync or be backed up, and every window of the widget shares it.',
+    if (hl.length) add('warn', 'Loads files from the Internet: ' + hl.join(', '), '21Board works offline, so a widget must bring everything it needs. No CDN libraries, web fonts, or placeholder images.',
+      'Remove every external file: ' + hl.join(', ') + '. Write your own CSS instead of using a framework, use system fonts, and draw images with inline SVG.');
+    if (/\b(localStorage|sessionStorage|indexedDB)\b|document\.cookie/.test(code)) add('warn', 'Stores data itself', 'localStorage, sessionStorage, IndexedDB, and cookies bypass 21Board. The data won’t sync or be backed up, and every window of the widget shares it.',
       'Replace localStorage/sessionStorage/IndexedDB with Board21.save(data) and Board21.saveConfig(config); load with const ctx = await Board21.ready() and ctx.data / ctx.config.');
-    if (/\b(alert|confirm|prompt)\s*\(/.test(code)) add('warn', 'Uses alert(), confirm() or prompt()', 'They freeze the whole board, and AI previews often don’t allow them.', 'Replace alert/confirm/prompt with a small message or confirmation shown inside the widget.');
+    if (/\b(alert|confirm|prompt)\s*\(/.test(code)) add('warn', 'Uses alert(), confirm(), or prompt()', 'They freeze the whole board, and AI previews often don’t allow them.', 'Replace alert/confirm/prompt with a small message or confirmation shown inside the widget.');
     if (doc.querySelector('[autofocus]')) add('info', 'Has autofocus', 'Opening the widget would steal the keyboard from whatever the teacher is using.', 'Remove the autofocus attribute.');
-    if (/type=["']text\/babel["']|\bimport\s+React\b|from\s+["']react["']/.test(src)) add('err', 'Uses React/JSX', 'Widgets are one plain HTML file with no build step.', 'Rewrite as a single HTML file in plain JavaScript, with no React, JSX or build step.');
-    if (code && !/Board21\.(ready|load)\b/.test(code)) add('warn', 'Never calls Board21.ready()', 'The widget can’t get its saved data, theme or size without it.', 'Start the widget with const ctx = await Board21.ready(); then render ctx.data.');
+    if (/type=["']text\/babel["']|\bimport\s+React\b|from\s+["']react["']/.test(src)) add('err', 'Uses React/JSX', 'Widgets are one plain HTML file with no build step.', 'Rewrite as a single HTML file in plain JavaScript, with no React, JSX, or build step.');
+    if (code && !/Board21\.(ready|load)\b/.test(code)) add('warn', 'Never calls Board21.ready()', 'The widget can’t get its saved data, theme, or size without it.', 'Start the widget with const ctx = await Board21.ready(); then render ctx.data.');
     if (/Board21\.save\s*\(/.test(code) && !/on\(\s*["']data["']/.test(code)) add('info', 'Doesn’t listen for "data"', 'If the board is open in two tabs, or a backup is imported, this widget keeps showing old content.', 'Add Board21.on("data", data => render(data)) so changes made elsewhere show up.');
     if (lastMenu) {
       var items = lastMenu.items || [];
@@ -479,7 +479,7 @@
         h.textContent = 'How this works';
         b.innerHTML = '<div class="help">' +
           '<p>This is the real 21Board. Your widget is in an ordinary window on a test board, ' + (st.screen === 'pane' ? 'the size of this pane' : 'drawn as on a ' + esc((function (s) { return s.id === 'chromebook' ? s.label : s.label.toLowerCase(); })(SCREENS.filter(function (x) { return x.id === st.screen; })[0] || SCREENS[0])) + ' and scaled to fit') + '.</p>' +
-          '<p><b>Try it like a teacher.</b> Drag the title bar. Tap the window, then drag its handles to resize it. Tap its name for the menu. Double-tap the title bar to fill the board. ▦ in a bottom corner opens the Widget Picker and Settings. Open another window there, or change the theme, accent and size.</p>' +
+          '<p><b>Try it like a teacher.</b> Drag the title bar. Tap the window, then drag its handles to resize it. Tap its name for the menu. Double-tap the title bar to fill the board. ▦ in a bottom corner opens the Widget Picker and Settings. Open another window there, or change the theme, accent, and size.</p>' +
           '<p><b>Saved data</b> is a test copy, kept apart from real boards. In AI previews it usually lasts only until the preview reloads. Data ▸ Copy keeps it.</p>' +
           '<p><b>Just the widget:</b> ⋯ ▸ Show the widget on its own, or add <code>#b21-bare</code> to the address.</p>' +
           '<p>The widget’s errors also appear in this page’s console as “[widget] …”. The SDK must be the first script in &lt;head&gt; for this window to appear.</p>' +
