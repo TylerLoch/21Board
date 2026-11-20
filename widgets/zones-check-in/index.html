@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">{"id":"zones-check-in","name":"Zones Check-In","version":"1.0.0","description":"Check in on how your class feels.","color":"#15803d","window":{"width":560,"height":420,"minWidth":260,"minHeight":220}}</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Zones Check-In</title>
+<style>
+  /* The four zones' colors: --z-<zone> fills a card's top and the bar, -on is text on it, -tint is the card, -ink is
+     text on the card, --mark the zone's color on white. Each element with data-z="<zone>" gets them as --strong, --on, --tint and --ink. */
+  :root {
+    --z-blue: #2563eb; --z-blue-on: #fff; --z-blue-tint: #dbeafe; --z-blue-ink: #1e3a8a;
+    --z-green: #15803d; --z-green-on: #fff; --z-green-tint: #dcfce7; --z-green-ink: #14532d;
+    --z-yellow: #facc15; --z-yellow-on: #422006; --z-yellow-tint: #fef9c3; --z-yellow-ink: #713f12;
+    --z-red: #dc2626; --z-red-on: #fff; --z-red-tint: #fee2e2; --z-red-ink: #7f1d1d;
+  }
+  [data-b21-theme="dark"] {
+    --z-blue-tint: #172554; --z-blue-ink: #dbeafe;
+    --z-green-tint: #052e16; --z-green-ink: #dcfce7;
+    --z-yellow: #eab308; --z-yellow-on: #1c1917; --z-yellow-tint: #3b2a07; --z-yellow-ink: #fef9c3;
+    --z-red-tint: #450a0a; --z-red-ink: #fee2e2;
+  }
+  [data-z="blue"] { --strong: var(--z-blue); --on: var(--z-blue-on); --tint: var(--z-blue-tint); --ink: var(--z-blue-ink); --mark: #1d4ed8; }
+  [data-z="green"] { --strong: var(--z-green); --on: var(--z-green-on); --tint: var(--z-green-tint); --ink: var(--z-green-ink); --mark: #15803d; }
+  [data-z="yellow"] { --strong: var(--z-yellow); --on: var(--z-yellow-on); --tint: var(--z-yellow-tint); --ink: var(--z-yellow-ink); --mark: #a16207; }
+  [data-z="red"] { --strong: var(--z-red); --on: var(--z-red-on); --tint: var(--z-red-tint); --ink: var(--z-red-ink); --mark: #dc2626; }
+
+  html, body { margin: 0; height: 100%; overflow: hidden; }
+  body { background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font);
+         touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+  button, input { font: inherit; color: inherit; }
+  input { user-select: text; -webkit-user-select: text; }   /* (iPad types only in boxes that can be selected) */
+  button { cursor: pointer; }
+  svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* Views. --top: the padlocks over the top corners of a window that fills a locked board. --low and --reach: how far
+     up and in the board's own buttons sit over the bottom corners of a window that fills the board (fitCorners). */
+  .view { position: absolute; inset: 0; display: none; flex-direction: column; box-sizing: border-box;
+          --pad: clamp(8px, 2.5vmin, 18px); gap: var(--pad); padding: calc(var(--pad) + var(--top, 0px)) var(--pad) var(--pad); }
+  .view.on { display: flex; }
+  #ideas, #edit { padding-bottom: max(var(--pad), var(--low, 0px)); }
+
+  /* ---- The four zones: two by two, in a row when the window is wide, in a column when it is tall */
+  .zones { flex: 1; min-height: 0; container: zones / size; }
+  .grid { height: 100%; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: var(--pad); }
+  /* (A row only where it beats two by two: very wide, or wide and too short for two rows of cards with their feelings.) */
+  @container zones (aspect-ratio > 3.2) or ((aspect-ratio > 2.2) and (width >= 800px) and (height < 310px)) { .grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
+  @container zones (aspect-ratio < 0.7) { .grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
+  .zone { position: relative; min-width: 0; min-height: 0; container: zone / size; --head: clamp(36px, 22cqh, 76px); }
+  .tap { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 18px; overflow: hidden;
+         background: var(--tint); color: var(--ink); box-shadow: inset 0 0 0 2px var(--strong); text-align: center; transition: transform .08s, filter .15s; }
+  .tap:active { transform: scale(.985); filter: brightness(.96); }
+  .tap:focus-visible { outline: 4px solid var(--b21-accent); outline-offset: 2px; }
+  .head { flex: 0 0 auto; display: flex; align-items: center; box-sizing: border-box; height: var(--head);
+          padding: 0 max(clamp(10px, 5cqw, 22px), var(--tools, 0px)) 0 clamp(10px, 5cqw, 22px); background: var(--strong); color: var(--on); text-align: left; }
+  .name { font-size: clamp(16px, min(12cqh, 11cqw), 46px); font-weight: 800; line-height: 1.1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
+  .main { position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 4cqw; }
+  .face { font-size: min(30cqh, 20cqw); line-height: 1; }
+  .count { font-size: min(42cqh, 26cqw); font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+  .hide-counts .count { display: none; }
+  .hide-counts .face { font-size: min(30cqh, 26cqw); }
+  /* The feelings: a chip for each, its face and its word (just the face on a narrow card), lighter than the card. They
+     sit in a slot two rows high on every card, so the four cards line up. */
+  .feelings { flex: 0 0 auto; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: .3em;
+              height: 3.3em; padding: 0 8px clamp(6px, 4cqh, 16px); overflow: hidden;
+              font-size: clamp(14px, min(5.6cqh, 4.6cqw), 24px); font-weight: 650; line-height: 1.2; }
+  .feel { display: inline-flex; align-items: center; gap: .25em; padding: .1em .55em .1em .3em; border-radius: 999px; white-space: nowrap;
+          background: rgb(255 255 255 / .8); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--strong) 22%, transparent); }
+  [data-b21-theme="dark"] .feel { background: rgb(255 255 255 / .13); box-shadow: none; }
+  .feel i { font-style: normal; font-size: 1.2em; line-height: 1; }
+  .feel b { font-weight: inherit; }
+  @container zone (width < 190px) { .feel { padding: .1em .25em; } .feel b { display: none; } }
+  @container zone (height < 150px) or (width < 180px) { .feelings { display: none; } }
+  /* "+1" (or ✓ while counts are hidden) after a tap */
+  .float { position: absolute; top: 4%; right: 8%; font-size: clamp(16px, min(16cqh, 12cqw), 60px); font-weight: 800; pointer-events: none;
+           animation: rise .8s ease-out forwards; }
+  @keyframes rise { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-60%); } }
+  .float.check { top: 50%; right: auto; left: 50%; display: grid; place-items: center; width: 1.5em; height: 1.5em; margin: -.75em 0 0 -.75em;
+                 border-radius: 50%; background: var(--strong); color: var(--on); font-size: clamp(20px, min(28cqh, 22cqw), 100px); animation: checked 1s ease-out forwards; }
+  @keyframes checked { 0% { opacity: 0; transform: scale(.6); } 20% { opacity: 1; transform: scale(1); } 70% { opacity: 1; } 100% { opacity: 0; } }
+  .count.pop { animation: pop .3s ease-out; }
+  @keyframes pop { 40% { transform: scale(1.18); } }
+  /* On the card's colored top: "−" takes one away (shown with the counts) and "💡 Ideas" opens the zone's ideas (just
+     the bulb on a narrow card). White on every zone, marked in the zone's color (--mark). Each button is at least 48 px
+     square; what shows sits in the middle of the colored top (--ph: its height). */
+  .tools { position: absolute; top: 0; right: 0; display: flex; padding-right: clamp(2px, 1.5cqw, 8px); --ph: clamp(24px, calc(var(--head) * .56), 40px); }
+  .tools button { height: max(48px, var(--head)); min-width: 48px; padding: 0 3px; border: 0; background: none;
+                  display: flex; align-items: flex-start; justify-content: center; }
+  .chip, .pill { box-sizing: border-box; height: var(--ph); margin-top: calc((var(--head) - var(--ph)) / 2); border-radius: 999px;
+                 background: #fff; color: var(--mark); box-shadow: 0 1px 3px rgb(0 0 0 / .2); transition: transform .08s, opacity .15s; }
+  .chip { display: grid; place-items: center; width: var(--ph); }
+  .chip svg { width: 58%; height: 58%; stroke-width: 3; }
+  .pill { display: inline-flex; align-items: center; justify-content: center; gap: .3em; min-width: var(--ph); padding: 0 .75em 0 .6em;
+          font-size: clamp(14px, calc(var(--ph) * .5), 20px); font-weight: 700; }
+  .pill svg { width: 1.2em; height: 1.2em; flex: 0 0 auto; stroke-width: 2.3; }
+  .tools button:active .chip, .tools button:active .pill { transform: scale(.92); }
+  .minus:disabled { cursor: default; }
+  .minus:disabled .chip { opacity: .45; box-shadow: none; }
+  .tools button:focus-visible { outline: none; }
+  .tools button:focus-visible .chip, .tools button:focus-visible .pill { outline: 3px solid var(--on); outline-offset: 3px; }
+  .hide-counts .tools .minus { display: none; }
+  @container zone (height >= 90px) and (width >= 150px) { .tap, .tools { --head: clamp(48px, 22cqh, 76px); } }
+  .zone.tight .pill { padding: 0; } .zone.tight .pill b { display: none; }   /* (fitHead: the name wouldn't fit beside "Ideas") */
+  @container zone (width < 190px) { .tools .minus { display: none; } }
+  @container zone (height < 90px) or (width < 150px) { .tools { display: none; } }
+
+  /* ---- The bottom: how many have checked in. Kept clear of the board's own buttons (--reach, --low). */
+  .foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+          padding: 0 var(--reach, 0px); min-height: max(0px, calc(var(--low, 0px) - var(--pad))); }
+  .progress { flex: 0 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+  .bar { height: clamp(8px, 2.4vh, 16px); border-radius: 999px; background: var(--b21-surface-2); display: flex; overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--strong); transition: width .3s ease; }
+  .bar i.all { background: var(--b21-accent); }
+  #status { font-size: clamp(14px, min(3.8vh, 5vw), 22px); font-weight: 650; line-height: 1.15; color: var(--b21-muted); text-align: center; text-wrap: balance;
+            display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  @media (max-height: 300px) { .bar { display: none; } }
+  @media (max-height: 229px) { .foot { display: none; } }
+
+  /* ---- Ideas and Counts: a heading with Done, then the view's own part */
+  .sub-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .sub-head h2 { margin: 0; min-width: 0; font-size: clamp(20px, 6vmin, 56px); font-weight: 800; line-height: 1.25;
+                 white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .done { flex: 0 0 auto; min-height: max(48px, 1.9em); padding: 0 clamp(18px, 4vmin, 30px); border: 0; border-radius: 999px;
+          background: var(--b21-accent); color: var(--b21-on-accent); font-size: clamp(16px, 3.6vmin, 32px); font-weight: 700; }
+  .done:focus-visible { outline: 4px solid var(--b21-text); outline-offset: 2px; }
+
+  #ideas { background: var(--tint); color: var(--ink); }
+  .idea-wrap { flex: 1; min-height: 0; container: ideas / size; }
+  .idea-body { height: 100%; display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: var(--pad); }
+  @container ideas (aspect-ratio < 0.9) { .idea-body { grid-template-columns: 1fr; grid-template-rows: minmax(120px, 1fr) auto; } }
+  .breathe { min-width: 0; min-height: 0; container: breathe / size; display: grid; place-items: center; }
+  .ring { position: relative; width: min(96cqw, 96cqh); aspect-ratio: 1; border-radius: 50%; display: grid; place-items: center;
+          box-shadow: inset 0 0 0 3px var(--mark); }
+  .ball { position: absolute; inset: 0; border-radius: 50%; background: color-mix(in srgb, var(--strong) 38%, transparent); transform: scale(.5);
+          box-shadow: inset 0 0 0 3px var(--mark); }
+  [data-b21-theme="dark"] :is(.ring, .ball) { box-shadow: inset 0 0 0 3px color-mix(in srgb, var(--strong) 70%, var(--ink)); }
+  .breath-say { position: relative; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+  #breath-word { font-size: clamp(16px, 11cqmin, 88px); font-weight: 800; }
+  #breath-count { font-size: clamp(16px, 13cqmin, 112px); font-weight: 800; font-variant-numeric: tabular-nums; opacity: .75; }
+  .idea-list { min-width: 0; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+  .idea-list h3 { margin: 0; font-size: clamp(16px, 3.4vmin, 40px); font-weight: 700; }
+  .idea-list ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .idea-list li { display: flex; align-items: flex-start; gap: 12px; padding: clamp(8px, 2vmin, 24px); border-radius: 14px;
+                  background: var(--b21-surface); color: var(--b21-text); box-shadow: inset 0 0 0 1px var(--b21-border); }
+  .idea-list .ic { font-size: clamp(24px, 5vmin, 64px); line-height: 1; }
+  .idea-list b { display: block; font-size: clamp(16px, 3.2vmin, 40px); line-height: 1.2; }
+  .idea-list small { display: block; font-size: clamp(14px, 2.8vmin, 34px); line-height: 1.3; color: var(--b21-muted); }
+
+  .rows { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 60px; border-bottom: 1px solid var(--b21-border); }
+  .row:first-child { border-bottom-width: 3px; }
+  .row label { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: clamp(16px, 3.4vmin, 24px); font-weight: 700; }
+  .row label .dot { flex: 0 0 auto; width: 18px; height: 18px; border-radius: 50%; background: var(--strong); }
+  .step { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; }
+  .step button { width: 48px; height: 48px; padding: 0; border: 0; border-radius: 50%; background: var(--b21-surface-2); font-size: 26px; font-weight: 700; line-height: 1; }
+  .step button:focus-visible { outline: 4px solid var(--b21-accent); outline-offset: 2px; }
+  .step input { width: 3.4em; height: 48px; box-sizing: border-box; border: 1px solid var(--b21-border); border-radius: 12px; background: var(--b21-surface);
+                text-align: center; font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; -moz-appearance: textfield; appearance: textfield; }
+  .step input::-webkit-outer-spin-button, .step input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .step input:focus { outline: none; border-color: var(--b21-accent); box-shadow: 0 0 0 2px var(--b21-accent); }
+
+  /* Windows High Contrast: borders in place of the edges and fills it takes away */
+  @media (forced-colors: active) {
+    .tap, .done, .step button { border: 2px solid; }
+    .bar { border: 1px solid; } .bar i { forced-color-adjust: none; background: CanvasText; }
+    .ring, .ball { box-sizing: border-box; border: 3px solid; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .tap, .tap:active { transition: none; transform: none; }
+    .chip, .pill, .tools button:active .chip, .tools button:active .pill { transition: none; transform: none; }
+    .count.pop { animation: none; }
+    .float, .float.check { animation: fade 1s ease-in forwards; }
+    @keyframes fade { from { opacity: 1; } to { opacity: 0; } }
+    .bar i { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <section class="view" id="main">
+    <div class="zones"><div class="grid" id="grid"></div></div>
+    <div class="foot">
+      <div class="progress"><div class="bar" id="bar" aria-hidden="true"></div><div id="status"></div></div>
+    </div>
+  </section>
+  <div class="sr" id="said" role="status" aria-live="polite" aria-atomic="true"></div>
+
+  <section class="view" id="ideas">
+    <div class="sub-head"><h2 id="idea-title"></h2><button type="button" class="done" id="idea-done">Done</button></div>
+    <div class="idea-wrap"><div class="idea-body">
+      <div class="breathe">
+        <p class="sr">Breathe with the circle. In for 4, hold for 4, out for 4, hold for 4.</p>
+        <div class="ring" aria-hidden="true"><div class="ball" id="ball"></div><div class="breath-say"><span id="breath-word"></span><span id="breath-count"></span></div></div>
+      </div>
+      <div class="idea-list"><h3 id="idea-lead"></h3><ul id="idea-items"></ul></div>
+    </div></div>
+  </section>
+
+  <section class="view" id="edit">
+    <div class="sub-head"><h2>Counts</h2><button type="button" class="done" id="edit-done">Done</button></div>
+    <div class="rows" id="rows">
+      <div class="row"><label for="n-size">Class size</label>
+        <div class="step"><button type="button" data-step="size" data-by="-1" aria-label="Class size, one less">−</button><input id="n-size" data-n="size" type="number" inputmode="numeric" min="0" max="99" placeholder="–"><button type="button" data-step="size" data-by="1" aria-label="Class size, one more">+</button></div>
+      </div>
+    </div>
+  </section>
+
+  <template id="card-tpl">
+    <div class="zone">
+      <button type="button" class="tap">
+        <span class="head"><span class="name"></span></span>
+        <span class="body"><span class="main"><span class="face" aria-hidden="true"></span><span class="count"></span></span><span class="feelings"></span></span>
+      </button>
+      <div class="tools">
+        <button type="button" class="minus"><span class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12h12"/></svg></span></button>
+        <button type="button" class="idea-btn"><span class="pill"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6"/><path d="M10 21h4"/><path d="M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2v.2h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></svg><b>Ideas</b></span></button>
+      </div>
+    </div>
+  </template>
+  <template id="row-tpl">
+    <div class="row"><label><span class="dot"></span><span class="lbl"></span></label>
+      <div class="step"><button type="button" data-by="-1">−</button><input type="number" inputmode="numeric" min="0" max="9999"><button type="button" data-by="1">+</button></div>
+    </div>
+  </template>
+<script>
+  // Content (Board21.save): { day, counts: { blue, green, yellow, red }, undo }
+  //   day     the date of the last change ('2026-11-20'). With Clear each day, counts from an earlier day show as none.
+  //   undo    the counts before each of the last changes, oldest first, each as [blue, green, yellow, red].
+  //   Counts are how the class feels, so they are content: templates never carry them.
+  // Config (Board21.saveConfig): { classSize, showCounts, daily, sound }. Setup that names no student.
+  // Each zone: its big face, its feelings (a face and a word each, the words of the page this widget came from), and
+  // its ideas.
+  const ZONES = [
+    { id: 'blue', name: 'Blue', face: '😴', feelings: [['😢', 'Sad'], ['😴', 'Tired'], ['🤒', 'Sick'], ['🐢', 'Slow']], lead: 'Ideas to wake up your body', pitch: 392, ideas: [
+      ['💧', 'Drink water', 'Take 5 slow sips.'],
+      ['🙆', 'Stretch', 'Reach up high, then touch your toes.'],
+      ['🌬️', 'Belly breaths', 'Take 3 deep breaths into your belly.'],
+      ['🚶', 'Take a walk', 'Walk slowly around the room.']] },
+    { id: 'green', name: 'Green', face: '😊', feelings: [['🤓', 'Ready to Learn'], ['😌', 'Calm'], ['😊', 'Happy']], lead: 'Ideas to stay green', pitch: 523.25, ideas: [
+      ['⭐', 'Keep learning', 'You’re ready to focus and do your best.'],
+      ['🤝', 'Help a friend', 'See if someone needs help or a smile.'],
+      ['🎯', 'Set a goal', 'Choose what to finish first today.']] },
+    { id: 'yellow', name: 'Yellow', face: '🤪', feelings: [['🤩', 'Elevated'], ['🤪', 'Silly'], ['😤', 'Frustrated']], lead: 'Ideas to slow down', pitch: 659.25, ideas: [
+      ['🧱', 'Wall push-ups', 'Push against the wall 5 times.'],
+      ['🖐️', '5, 4, 3, 2, 1', 'Find 5 things you see, 4 you can touch, 3 you hear, 2 you smell, and 1 you taste.'],
+      ['🪑', 'Calm corner', 'Sit quietly for 2 minutes.'],
+      ['🧸', 'Use a fidget', 'Quietly squeeze a stress ball.']] },
+    { id: 'red', name: 'Red', face: '😡', feelings: [['😡', 'Angry'], ['😣', 'Intense'], ['🤯', 'Overwhelmed']], lead: 'Ideas to calm down', pitch: 783.99, ideas: [
+      ['🛑', 'Take space', 'Go to the calm corner.'],
+      ['🌬️', 'Breathe with the circle', 'In for 4, hold for 4, out for 4, hold for 4.'],
+      ['🧊', 'Cool down', 'Hold something cold, or wash your hands in cool water.'],
+      ['💬', 'Talk to your teacher', 'Let them know you need help.']] }
+  ];
+  const IDS = ZONES.map(z => z.id);
+  const ZONE = Object.fromEntries(ZONES.map(z => [z.id, z]));
+  const MOST = 9999;       // in one zone (a school year of check-ins, with Clear each day off)
+  const MOST_CLASS = 99;   // class size
+  const KEEP = 20;         // changes Undo can take back
+  const GUARD = 350;       // ms: a second tap on the same zone this soon is one tap (a double touch)
+  const BREATH = [['Breathe in', 4], ['Hold', 4], ['Breathe out', 4], ['Hold', 4]];   // seconds
+  const $ = id => document.getElementById(id);
+  const motion = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const reduced = () => !!(motion && motion.matches);
+
+  const blank = () => ({ day: null, counts: Object.fromEntries(IDS.map(id => [id, 0])), undo: [] });
+  let state = blank();
+  let config = readConfig(null);
+  let view = 'main', ideaZone = null, editMark = null, opener = null;
+
+  // Saved content and config can come from an imported file, so every field is checked: a count is a whole number
+  // from 0 to 9999, a day is a date, Undo keeps at most 20 changes of four counts each.
+  function whole(v, most) { return Number.isInteger(v) ? Math.min(most, Math.max(0, v)) : 0; }
+  function readState(d) {
+    d = d && typeof d === 'object' ? d : {};
+    const c = d.counts && typeof d.counts === 'object' ? d.counts : {};
+    return {
+      day: typeof d.day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d.day) ? d.day : null,
+      counts: Object.fromEntries(IDS.map(id => [id, whole(c[id], MOST)])),
+      undo: Array.isArray(d.undo) ? d.undo.filter(u => Array.isArray(u) && u.length === IDS.length).slice(-KEEP).map(u => u.map(v => whole(v, MOST))) : []
+    };
+  }
+  function readConfig(c) {
+    c = c && typeof c === 'object' ? c : {};
+    return { classSize: whole(c.classSize, MOST_CLASS), showCounts: c.showCounts !== false, daily: c.daily !== false, sound: c.sound === true };
+  }
+  const save = () => Promise.resolve(Board21.save(state)).catch(() => {});   // (21Board keeps trying by itself)
+  const saveConfig = () => Promise.resolve(Board21.saveConfig(config)).catch(() => {});
+
+  // Today on this device, as '2026-11-20'.
+  function today() { const d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  // What shows now. With Clear each day, counts from an earlier day show as none, and there is nothing to undo.
+  function shown() { return config.daily && state.day && state.day !== today() ? blank() : state; }
+  const total = s => IDS.reduce((n, id) => n + s.counts[id], 0);
+
+  // Every change starts from what shows, keeps the counts before it for Undo (unless keep is false), and is saved.
+  function change(fn, keep = true) {
+    const cur = shown(), before = IDS.map(id => cur.counts[id]);
+    const counts = { ...cur.counts };
+    fn(counts);
+    for (const id of IDS) counts[id] = whole(counts[id], MOST);
+    if (IDS.every((id, i) => counts[id] === before[i])) return false;
+    state = { day: today(), counts, undo: keep ? cur.undo.concat([before]).slice(-KEEP) : cur.undo.slice() };
+    save(); render();
+    return true;
+  }
+  let undoAt = -Infinity;
+  function undo() {
+    const cur = shown(), t = performance.now();
+    if (!cur.undo.length || t - undoAt < GUARD) return;   // (a double touch takes back one change, not two)
+    undoAt = t;
+    const rest = cur.undo.slice(), last = rest.pop();
+    state = { day: today(), counts: Object.fromEntries(IDS.map((id, i) => [id, last[i]])), undo: rest };
+    save(); render();
+    say(`Undone. ${total(shown())} checked in`);
+  }
+  function startOver() {
+    if (change(c => { for (const id of IDS) c[id] = 0; })) say('Counts cleared');
+  }
+
+  // ---- A student checks in
+  const lastTap = {};
+  let viewAt = -Infinity;
+  const settling = () => performance.now() - viewAt < GUARD;   // (the view has just changed: a double touch's second touch)
+  function checkIn(id, together) {
+    const t = performance.now();
+    if (settling() || (!together && t - (lastTap[id] || -Infinity) < GUARD)) return;   // (two fingers down at once: two students)
+    lastTap[id] = t;
+    if (!change(c => { c[id] += 1; })) return;
+    const n = shown().counts[id];
+    cheer(id);
+    Sound.play(ZONE[id].pitch);
+    say(config.showCounts ? `${ZONE[id].name}, ${n}` : 'Checked in');
+  }
+  // "−" on a card: a student tapped the wrong zone.
+  function takeOne(id) {
+    const t = performance.now();
+    if (settling() || t - (lastTap['-' + id] || -Infinity) < GUARD) return;
+    lastTap['-' + id] = t;
+    if (!change(c => { c[id] -= 1; })) return;
+    cheer(id, '−1');
+    say(`${ZONE[id].name}, ${shown().counts[id]}`);
+  }
+  function cheer(id, text) {
+    const card = cards[id];
+    const f = document.createElement('span');
+    f.className = text || config.showCounts ? 'float' : 'float check';
+    f.setAttribute('aria-hidden', 'true');
+    f.textContent = text || (config.showCounts ? '+1' : '✓');
+    f.addEventListener('animationend', () => f.remove());
+    setTimeout(() => f.remove(), 1500);   // (if the animation never runs)
+    (text || config.showCounts ? card.body : card.main).appendChild(f);   // (the check mark on the face, clear of the feelings)
+    card.count.classList.remove('pop'); void card.count.offsetWidth; card.count.classList.add('pop');
+  }
+
+  // ---- The cards, made once and then only updated (a button replaced under a finger loses its tap)
+  const cards = {};
+  // Each zone's name keeps clear of the buttons on its colored top. Where a name wouldn't fit beside "Ideas", every pill
+  // shows just the bulb, so the four cards match. Again whenever the cards change size, the letters change, or "−"
+  // comes or goes (Show counts).
+  function fitHeads() {
+    const all = IDS.map(id => cards[id]);
+    const room = () => { for (const c of all) c.node.style.setProperty('--tools', (c.tools.offsetWidth ? c.tools.offsetWidth + 6 : 0) + 'px'); };
+    for (const c of all) c.node.classList.remove('tight');
+    room();
+    if (all.some(c => c.name.scrollWidth > c.name.clientWidth + 1)) { for (const c of all) c.node.classList.add('tight'); room(); }
+  }
+  let fitDue = 0;
+  const fitSoon = () => { if (!fitDue) fitDue = requestAnimationFrame(() => { fitDue = 0; fitHeads(); }); };
+  const cardSeen = new ResizeObserver(fitSoon);
+  addEventListener('resize', fitSoon);
+  for (const z of ZONES) {
+    const node = $('card-tpl').content.firstElementChild.cloneNode(true);
+    node.dataset.z = z.id;
+    const c = cards[z.id] = { node, tap: node.querySelector('.tap'), body: node.querySelector('.body'), count: node.querySelector('.count'), minus: node.querySelector('.minus'),
+      name: node.querySelector('.name'), tools: node.querySelector('.tools'), idea: node.querySelector('.idea-btn'), main: node.querySelector('.main') };
+    node.querySelector('.name').textContent = z.name;
+    node.querySelector('.face').textContent = z.face;
+    for (const [face, word] of z.feelings) {
+      const chip = document.createElement('span'), i = document.createElement('i'), b = document.createElement('b');
+      chip.className = 'feel'; i.textContent = face; b.textContent = word;
+      chip.append(i, b); node.querySelector('.feelings').append(chip);
+    }
+    const ib = node.querySelector('.idea-btn');
+    ib.setAttribute('aria-label', `${z.name} zone ideas`);
+    ib.addEventListener('click', () => { if (!settling()) openIdeas(z.id, ib); });
+    c.minus.setAttribute('aria-label', `${z.name}, one less`);
+    c.minus.addEventListener('click', () => takeOne(z.id));
+    // A tap counts when the finger lifts: a browser sends no click while another touch is down (two students at once, a
+    // hand resting on the board). A click with no lift just before it (the mouse, the keyboard) counts too.
+    const downs = new Map();
+    c.tap.addEventListener('pointerdown', e => { if (e.pointerType !== 'mouse') { if (e.isPrimary) downs.clear(); downs.set(e.pointerId, [e.clientX, e.clientY, downs.size > 0]); } });
+    c.tap.addEventListener('pointercancel', e => downs.delete(e.pointerId));
+    c.tap.addEventListener('pointerup', e => {
+      const at = downs.get(e.pointerId), together = !!at && (at[2] || downs.size > 1);
+      downs.delete(e.pointerId);
+      if (!at || Math.hypot(e.clientX - at[0], e.clientY - at[1]) > 16) return;   // (a slide, not a tap)
+      c.liftAt = performance.now();
+      checkIn(z.id, together);
+    });
+    c.tap.addEventListener('click', () => { if (performance.now() - (c.liftAt || -Infinity) > 1000) checkIn(z.id); });
+    for (const b of [c.tap, c.minus]) b.addEventListener('keydown', e => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); });
+    cardSeen.observe(node);
+    $('grid').appendChild(node);
+  }
+  const bars = {};
+  for (const z of ZONES) { const i = document.createElement('i'); i.dataset.z = z.id; bars[z.id] = i; $('bar').appendChild(i); }
+  const barAll = document.createElement('i'); barAll.className = 'all'; $('bar').appendChild(barAll);
+
+  // ---- The counts editor: class size, then a row for each zone
+  for (const z of ZONES) {
+    const row = $('row-tpl').content.firstElementChild.cloneNode(true);
+    row.dataset.z = z.id;
+    const rowFace = document.createElement('span'); rowFace.setAttribute('aria-hidden', 'true'); rowFace.textContent = z.face + ' ';
+    row.querySelector('.lbl').replaceChildren(rowFace, z.name);
+    const input = row.querySelector('input');
+    input.id = 'n-' + z.id; input.dataset.n = z.id;
+    row.querySelector('label').htmlFor = input.id;
+    const [less, more] = row.querySelectorAll('button');
+    less.dataset.step = more.dataset.step = z.id;
+    less.setAttribute('aria-label', `${z.name}, one less`);
+    more.setAttribute('aria-label', `${z.name}, one more`);
+    $('rows').appendChild(row);
+  }
+  const inputs = [...document.querySelectorAll('#rows input')];
+  const valueOf = key => key === 'size' ? config.classSize : shown().counts[key];
+  function setValue(key, v) {
+    if (key === 'size') {
+      v = whole(v, MOST_CLASS);
+      if (v === config.classSize) return;
+      config.classSize = v; saveConfig(); render();
+    } else {
+      // One Undo takes back a whole editing session. An edit joins the session's step only while that step is still the
+      // last change: after Undo, Start over or a tap in another copy, the next edit is a step of its own.
+      const cur = shown(), joins = !!editMark && cur.undo.length > 0 && IDS.every(id => cur.counts[id] === editMark[id]);
+      if (change(c => { c[key] = v; }, !joins)) editMark = { ...state.counts };
+    }
+  }
+  $('rows').addEventListener('click', e => {
+    const b = e.target.closest('button[data-step]');
+    if (b) setValue(b.dataset.step, valueOf(b.dataset.step) + Number(b.dataset.by));
+  });
+  for (const input of inputs) {
+    input.addEventListener('input', () => {
+      const t = input.value.trim(), v = t === '' ? 0 : Number(t);
+      if (Number.isInteger(v)) setValue(input.dataset.n, v);
+    });
+    input.addEventListener('change', () => fillInputs(true));   // (then shows the number kept, such as 9999 for 15000)
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') input.blur(); });
+  }
+  // The boxes show the numbers kept. One being typed in changes only if its number is different, and not at all for a
+  // change from another copy (what is typed next wins).
+  function fillInputs(all, remote) {
+    for (const input of inputs) {
+      const v = valueOf(input.dataset.n), text = input.dataset.n === 'size' && !v ? '' : String(v);
+      const typing = !all && document.activeElement === input;
+      if (typing && remote) continue;
+      if (typing ? (input.value.trim() === '' ? 0 : Number(input.value)) !== v : input.value !== text) input.value = text;
+    }
+  }
+
+  // ---- Drawing
+  let menuWas = '', titleWas = null;
+  function render(remote) {
+    const cur = shown(), n = total(cur), size = config.classSize;
+    if (document.body.classList.contains('hide-counts') === config.showCounts) { document.body.classList.toggle('hide-counts', !config.showCounts); fitHeads(); }
+    for (const z of ZONES) {
+      const c = cards[z.id], k = cur.counts[z.id];
+      if (c.count.textContent !== String(k)) c.count.textContent = k;
+      if (c.minus.disabled !== !k) {
+        const keys = !k && c.minus.matches(':focus-visible');
+        c.minus.disabled = !k;
+        if (keys) c.tap.focus();   // (a button that can't be pressed loses the keyboard)
+      }
+      c.tap.setAttribute('aria-label', `${z.name}: ${z.feelings.map(f => f[1]).join(', ')}` + (config.showCounts ? `. ${k} checked in` : ''));
+    }
+    // The bar: each zone's share of the class (of those checked in, without a class size). One color while counts are hidden.
+    const base = Math.max(size, n);
+    for (const id of IDS) bars[id].style.width = config.showCounts && base ? (cur.counts[id] / base * 100) + '%' : '0';
+    barAll.style.width = !config.showCounts && base ? (n / base * 100) + '%' : '0';
+    $('status').textContent = !n ? 'Tap your zone to check in' : !size ? `${n} checked in` : n === size ? 'Everyone’s checked in' : `${n} of ${size} checked in`;
+    const title = !n ? '' : size ? `${n} of ${size}` : `${n} checked in`;
+    if (title !== titleWas) { titleWas = title; Board21.window.setTitle(title); }
+    setMenu(cur, n);
+    if (view === 'edit') fillInputs(false, remote);
+  }
+  function setMenu(cur, n) {
+    const items = [
+      { id: 'undo', label: 'Undo', disabled: !cur.undo.length },
+      { id: 'clear', label: 'Start over', disabled: !n },
+      { id: 'size', label: 'Class size' },
+      { id: 'edit', label: 'Edit counts' },
+      { separator: true },
+      { heading: true, label: 'Ideas' },
+      ...ZONES.map(z => ({ id: 'ideas:' + z.id, label: `${z.name} zone` })),
+      { separator: true },
+      { id: 'counts', label: 'Show counts', checked: config.showCounts },
+      { id: 'daily', label: 'Clear each day', checked: config.daily },
+      { id: 'sound', label: 'Sound', checked: config.sound }
+    ];
+    const key = JSON.stringify(items);
+    if (key !== menuWas) { menuWas = key; Board21.menu.set(items); }
+  }
+  // Screen readers hear each check-in ("Blue, 5"), and Undo and Start over.
+  let sayTimer = 0;
+  function say(text) {
+    clearTimeout(sayTimer);
+    $('said').textContent = '';
+    sayTimer = setTimeout(() => { $('said').textContent = text; }, 80);   // (a change, even for the same words)
+  }
+
+  // ---- Views. Ideas and Counts need room for a while: the window grows to fit them, then goes back.
+  function setView(v) {
+    const was = view;
+    view = v;
+    if (v !== was) viewAt = performance.now();
+    for (const id of ['main', 'ideas', 'edit']) $(id).classList.toggle('on', id === v);
+    if (v !== 'ideas') stopBreath();
+    if (v === 'ideas') Board21.window.setMinSize(440, 430);
+    else if (v === 'edit') Board21.window.setMinSize(340, 430);
+    else if (was !== 'main') Board21.window.setMinSize(null, null);
+    Board21.window.setDragFromContent(v !== 'edit');   // (typing numbers)
+    render();
+  }
+  function openIdeas(id, from) {
+    const z = ZONE[id];
+    if (!z) return;
+    opener = from && from.matches(':focus-visible') ? from : null;   // (from the keyboard: Done takes the focus, and gives it back)
+    ideaZone = id;
+    $('ideas').dataset.z = id;
+    const face = document.createElement('span'); face.setAttribute('aria-hidden', 'true'); face.textContent = z.face + ' ';
+    $('idea-title').replaceChildren(face, `${z.name} zone`);
+    $('idea-lead').textContent = z.lead;
+    const ul = $('idea-items');
+    ul.textContent = '';
+    for (const [icon, name, hint] of z.ideas) {
+      const li = document.createElement('li'), ic = document.createElement('span'), txt = document.createElement('span'), b = document.createElement('b'), s = document.createElement('small');
+      ic.className = 'ic'; ic.setAttribute('aria-hidden', 'true'); ic.textContent = icon;
+      b.textContent = name; s.textContent = hint;
+      txt.append(b, s); li.append(ic, txt); ul.appendChild(li);
+    }
+    $('idea-items').parentNode.scrollTop = 0;
+    setView('ideas');
+    startBreath();
+    if (opener) $('idea-done').focus();
+  }
+  function openEdit(from) {
+    opener = from || null;
+    editMark = null;
+    setView('edit');
+    fillInputs(true);
+    $('rows').scrollTop = 0;
+  }
+  function back() {
+    const from = view, to = opener, a = document.activeElement;
+    const keys = !!a && $(from).contains(a) && a.matches(':focus-visible');   // (Done or Escape from the keyboard)
+    opener = null;
+    setView('main');
+    if (to && document.contains(to)) to.focus();
+    else if (keys) {   // (the button it was on went with its view): the zone's Ideas button, or the first card
+      const c = cards[from === 'ideas' ? ideaZone : IDS[0]];
+      (from === 'ideas' && c.idea.offsetParent ? c.idea : c.tap).focus();
+    }
+  }
+  $('idea-done').onclick = () => { if (!settling()) back(); };
+  $('edit-done').onclick = () => { if (settling()) return; fillInputs(true); back(); };
+  addEventListener('keydown', e => { if (e.key === 'Escape' && view !== 'main') { e.preventDefault(); back(); } });
+
+  // ---- Breathing: the circle grows for 4 s, holds, shrinks for 4 s and holds, with the words and a count of 4 to 1.
+  // (With reduce motion on, only the words and the count change.)
+  let breathRaf = 0, breathAt = 0, breathWas = '';
+  function startBreath() {
+    stopBreath();
+    breathAt = performance.now();
+    const step = () => { drawBreath(); breathRaf = requestAnimationFrame(step); };
+    step();
+  }
+  function stopBreath() { cancelAnimationFrame(breathRaf); breathRaf = 0; breathWas = ''; }
+  function drawBreath() {
+    const len = BREATH.reduce((s, p) => s + p[1], 0);
+    let t = ((performance.now() - breathAt) / 1000) % len, i = 0;
+    while (t >= BREATH[i][1]) { t -= BREATH[i][1]; i++; }
+    const [word, secs] = BREATH[i], left = secs - Math.floor(t), ease = x => 0.5 - Math.cos(Math.PI * x) / 2;
+    const s = reduced() ? 0.8 : i === 0 ? 0.5 + 0.5 * ease(t / secs) : i === 1 ? 1 : i === 2 ? 1 - 0.5 * ease(t / secs) : 0.5;
+    $('ball').style.transform = `scale(${s.toFixed(4)})`;
+    const key = word + left;
+    if (key !== breathWas) { breathWas = key; $('breath-word').textContent = word; $('breath-count').textContent = left; }
+  }
+
+  // ---- Sound: off until a teacher ticks it. A soft two-note chime for each check-in, higher from blue to red.
+  // Made here with Web Audio, and started by the first tap in the window (browsers allow sound only after one).
+  const Sound = (() => {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    let ctx = null;
+    function note(at, f, len, vol) {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(f, at);
+      g.gain.setValueAtTime(0.0001, at);
+      g.gain.exponentialRampToValueAtTime(vol, at + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      o.connect(g).connect(ctx.destination); o.start(at); o.stop(at + len + 0.02);
+    }
+    return {
+      wake() {
+        if (!config.sound || !AC || (navigator.userActivation && !navigator.userActivation.hasBeenActive)) return;
+        try {
+          if (!ctx || ctx.state === 'closed') ctx = new AC();
+          if (ctx.state !== 'running') ctx.resume().catch(() => {});
+        } catch (e) { ctx = null; /* no sound on this device */ }
+      },
+      play(f) {
+        if (!config.sound || !ctx || document.hidden) return;
+        try { const t = ctx.currentTime + 0.01; note(t, f, 0.35, 0.16); note(t + 0.09, f * 1.5, 0.6, 0.12); } catch (e) { /* no sound */ }
+      },
+      sample() { this.wake(); if (ctx) Promise.resolve(ctx.state === 'running' || ctx.resume()).then(() => this.play(ZONE.green.pitch), () => {}); },
+      stop() { if (ctx) ctx.close().catch(() => {}); ctx = null; }
+    };
+  })();
+  for (const type of ['pointerdown', 'pointerup', 'click', 'keydown']) addEventListener(type, () => Sound.wake(), true);
+
+  // ---- The window menu
+  Board21.on('menu', id => {
+    id = String(id);
+    if (id === 'undo') undo();
+    else if (id === 'clear') startOver();
+    else if (id === 'edit' || id === 'size') openEdit();
+    else if (id.startsWith('ideas:')) openIdeas(id.slice(6));
+    else if (id === 'counts') { config.showCounts = !config.showCounts; saveConfig(); render(); }
+    else if (id === 'daily') { config.daily = !config.daily; saveConfig(); render(); }
+    else if (id === 'sound') { config.sound = !config.sound; saveConfig(); render(); if (config.sound) Sound.sample(); else Sound.stop(); }
+  });
+
+  // ---- Changed in another copy of the board (the smartboard and a laptop), or by an import
+  Board21.on('data', d => { state = readState(d); render(true); });
+  Board21.on('config', c => { config = readConfig(c); if (!config.sound) Sound.stop(); render(true); });
+
+  // ---- The board's own buttons over a window that fills it: the bottom row and the views keep clear of them
+  function fitCorners() {
+    const w = Board21.context && Board21.context.window, c = w && w.maximized && w.corners;
+    const px = v => Math.min(2000, Math.max(0, Number(v) || 0));
+    const reach = c ? Math.max(px(c.left), px(c.right)) : 0, low = reach ? px(c.height) : 0;
+    const t = c && c.top, top = t && (px(t.left) || px(t.right)) ? px(t.height) : 0;
+    const s = document.documentElement.style;
+    s.setProperty('--reach', reach + 'px'); s.setProperty('--low', low + 'px'); s.setProperty('--top', top + 'px');
+  }
+  Board21.on('resize', fitCorners);
+
+  // ---- A new day: with Clear each day the counts start again at none (checked now and then, and when the board shows again)
+  let dayWas = today();
+  setInterval(() => { if (today() !== dayWas) { dayWas = today(); render(); } }, 20000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) { dayWas = today(); render(); } });
+
+  async function start() {
+    const ctx = await Board21.ready();
+    state = readState(ctx.data);
+    config = readConfig(ctx.config);
+    fitCorners();
+    setView('main');
+  }
+  start();
+</script>
+</body>
+</html>

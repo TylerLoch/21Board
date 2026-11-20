@@ -49,6 +49,13 @@
   "description": "Pick a First card and a Then card, and mark each one done."
  },
  {
+  "id": "zones-check-in",
+  "name": "Zones Check-In",
+  "color": "#15803d",
+  "icon": "<svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M8.5 14.5a4.5 4.5 0 0 0 7 0\"/><circle cx=\"9\" cy=\"9.75\" r=\"1.1\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"15\" cy=\"9.75\" r=\"1.1\" fill=\"currentColor\" stroke=\"none\"/></svg>",
+  "description": "Check in on how your class feels."
+ },
+ {
   "id": "dice",
   "name": "Dice",
   "color": "#10b981",

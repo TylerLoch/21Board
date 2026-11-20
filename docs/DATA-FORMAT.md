@@ -511,6 +511,10 @@ the boxes `"^" "sqrt" "root" "frac" "sep" "end"`. Answers aren't saved. They're 
 that doesn't check out is left out. Its config is every menu setting and which panels show: `{ canvas, history, steps,
 words, advanced, hide, fractions, test, percent: "of" | "apple", swap }`.
 
+The Zones Check-In (`zones-check-in`) saves `{ day, counts: { blue, green, yellow, red }, undo }`. `day` is the date of
+the last change, `YYYY-MM-DD`. `undo` is up to 20 earlier counts, each `[blue, green, yellow, red]`. Its config is
+`{ classSize, showCounts, daily, sound }`.
+
 The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
 their own work in their own site's storage on the device. Their windows have an `inst` record like any other,
 and exports and Board history carry that (with `data` and `config` null), never an address.

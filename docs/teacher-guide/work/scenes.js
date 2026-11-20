@@ -74,6 +74,14 @@ async function rollDice(p, ik, n = 3) {
     if (new Set(vals).size === vals.length) break;
   }
 }
+// Zones Check-In: counts typed in its Counts view (Zones Check-In ⌄ › Edit counts), then Done.
+async function zonesCounts(p, ik, counts) {
+  await choose(p, ik, 'Edit counts', { exact: true });
+  const f = frame(p, ik);
+  for (const [zone, n] of Object.entries(counts)) await f.locator('#n-' + zone).fill(String(n));
+  await f.locator('#edit-done').click();
+  await wait(p, 900);   // (the bar grows to its place)
+}
 async function calcType(p, ik, keys) {
   const f = frame(p, ik);
   await f.locator('#app').click({ position: { x: 5, y: 5 } }).catch(() => {});
@@ -154,15 +162,16 @@ SCENES.heroDark = async () => {
   await ctx.close();
 };
 
-// ---- 3. picker.jpg: the Widget Picker, all 15 tiles
+// ---- 3. picker.jpg: the Widget Picker, all 16 tiles
 SCENES.picker = async () => {
   const { ctx, p } = await newBoard();
   await pickerOpen(p, 'left');
   const tiles = await p.locator('#panel .widget-tile').count();
   log('  tiles', tiles, JSON.stringify(await p.$$eval('#panel .widget-tile .widget-name', els => els.map(e => e.textContent))));
   log('  controls', JSON.stringify(await p.$$eval('#panel .panel-controls [data-ctl]', els => els.filter(e => !e.hidden).map(e => e.dataset.ctl + ':' + (e.getAttribute('aria-label') || e.textContent)))));
+  // (The hint on the empty board steps aside while the Widget Picker is open: the crop shows the panel alone.)
   const b = await p.locator('#panel').boundingBox(), btn = await p.locator('.picker-btn.left').boundingBox();
-  await shot(p, 'picker.jpg', clear(padded(union(b, btn), 24), union(await p.locator('#empty-hint .big').boundingBox(), await p.locator('#empty-hint .small').first().boundingBox())));
+  await shot(p, 'picker.jpg', padded(union(b, btn), 24));
   await ctx.close();
 };
 
@@ -175,6 +184,7 @@ const W = {
   notes: { r: { w: 820, h: 640 }, set: (p, ik) => typeNote(p, ik, AGENDA) },
   'name-picker': { r: { w: 900, h: 700 }, set: async (p, ik) => { await addNames(p, ik); await choose(p, ik, 'Spinning wheel', { exact: true }); await pickName(p, ik); } },
   'first-then-board': { r: { w: 1080, h: 760 }, set: async (p, ik) => { await ftCard(p, ik, 'first', 'math', 'Math'); await ftCard(p, ik, 'then', 'play', 'Playground'); } },
+  'zones-check-in': { r: { w: 560, h: 460 }, set: (p, ik) => zonesCounts(p, ik, { blue: 2, green: 9, yellow: 4, red: 1 }) },   // (the size it opens at)
   dice: { r: { w: 820, h: 560 }, set: (p, ik) => rollDice(p, ik, 3) },
   'traffic-light': { r: { w: 380, h: 890 }, set: (p, ik) => light(p, ik, 'yellow') },
   'youtube-player': { r: { w: 960, h: 580 } },
