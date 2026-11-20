@@ -18334,12 +18334,21 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, composed: true, button: 2, buttons: 2, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
       return window.__menus[window.__menus.length - 1] ? 'prevented' : 'menu';
     }, [sel, `(${RECORD})()`]);
-    const rightClick = async (doc, sel, off = { x: 0, y: 0 }) => {
+    const rightClick = async (doc, sel, off = { x: 0, y: 0 }, host = null) => {
       const n = await doc.evaluate(new Function(`return (${RECORD})()`));
-      const r = await doc.evaluate(sel => { const b = document.querySelector(sel).getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, sel);
+      const r = await doc.evaluate(([sel, host]) => { const b = (host ? document.querySelector(host).shadowRoot : document).querySelector(sel).getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, [sel, host]);
       await page.mouse.click(off.x + r.x, off.y + r.y, { button: 'right' }); await page.waitForTimeout(250);
       return doc.evaluate(n => window.__menus.length > n ? (window.__menus[window.__menus.length - 1] ? 'prevented' : 'menu') : 'none', n);
     };
+    // menuAt for an element inside a web component's open shadow root: its host, then the element in it.
+    const menuInShadow = (doc, host, sel) => doc.evaluate(([host, sel, RECORD]) => {
+      new Function(RECORD)();
+      const h = document.querySelector(host), el = h && h.shadowRoot && h.shadowRoot.querySelector(sel);
+      if (!el) return 'no ' + host + ' ' + sel;
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, composed: true, button: 2, buttons: 2, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+      return window.__menus[window.__menus.length - 1] ? 'prevented' : 'menu';
+    }, [host, sel, `(${RECORD})()`]);
 
     // ---- 1. A link in Notes' reading view, in a note not yet tapped: a real right-click keeps the browser's menu, and the
     // note stays as it is.
@@ -18354,14 +18363,17 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await reading(), 'and the note stays as it is');
 
     // ---- 2. Something inside a link counts as on it: its text in a <span>, its icon. In a widget uploaded in Developer
-    // mode, then opened again with Developer mode off (so the SDK in it turns the menu off), and on the board.
+    // mode, then opened again with Developer mode off (so the SDK in it turns the menu off), and on the board. A link
+    // inside a web component counts too, and so does a text box there.
     const LINKS = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Links</title>
-<script type="application/json" id="board21-widget">{"id":"links","name":"Links","window":{"width":360,"height":300}}</script>
+<script type="application/json" id="board21-widget">{"id":"links","name":"Links","window":{"width":360,"height":340}}</script>
 <style>body{margin:0;padding:12px;font:18px system-ui}body>*{display:block;margin:0 0 12px}</style></head><body>
 <a id="site" href="https://example.org/room12"><span id="site-text">Room 12</span> <svg id="site-icon" width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="8"/></svg></a>
 <a id="bare"><span id="bare-text">No address</span></a>
 <button id="btn" type="button">Roll</button>
 <div id="tap">Tap to pick</div>
+<x-card id="card"></x-card>
+<script>customElements.define('x-card', class extends HTMLElement { constructor() { super(); this.attachShadow({ mode: 'open' }).innerHTML = '<a id="sh" href="https://example.org/shadow"><span id="sh-text">Shadow link</span></a> <span id="sh-plain">Plain</span> <input id="sh-in" type="text" value="Box">'; } });</script>
 </body></html>`;
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.waitForTimeout(300);
     fs.writeFileSync(OUT + 'links-widget.html', LINKS);
@@ -18373,12 +18385,15 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await B(ik => window.__board21.closeWin(ik), lk); await page.waitForTimeout(300);
     await B(() => window.__board21.openWidget('dev-links'));
     ok(await connected(lk) && await eventually(async () => frameOf(lk).evaluate(() => !!Board21.context && Board21.context.devMode === false)), '(Developer mode off, and the widget opened again)');
-    await B(ik => window.__board21.setRect(ik, { x: 640, y: 40, w: 360, h: 300 }), lk); await page.waitForTimeout(400);
+    await B(ik => window.__board21.setRect(ik, { x: 640, y: 40, w: 360, h: 340 }), lk); await page.waitForTimeout(400);
     const lw = frameOf(lk);
     ok(await menuAt(lw, '#site-text') === 'menu', 'in a widget: a link’s text, in a <span>, keeps the browser’s menu');
     ok(await menuAt(lw, '#site-icon circle') === 'menu', 'and so does its icon');
     ok(await menuAt(lw, '#site') === 'menu', 'and the link itself');
     ok(await rightClick(lw, '#site-text', await frameBox(lk)) === 'menu', 'a real right-click there too');
+    ok(await menuInShadow(lw, '#card', '#sh-text') === 'menu', 'a link inside a web component, its text in a <span>, keeps it too');
+    ok(await rightClick(lw, '#sh-text', await frameBox(lk), '#card') === 'menu', 'a real right-click there too');
+    ok(await menuInShadow(lw, '#card', '#sh-in') === 'menu', 'and so does a text box inside a web component');
     // On the board: links added to its page for the test (21Board shows none of its own), their text in a <span>.
     await B(() => {
       const add = (id, href, text, top) => {
@@ -18397,6 +18412,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(await menuAt(lw, '#btn') === 'prevented', 'in a widget, still none: a button');
     ok(await menuAt(lw, '#tap') === 'prevented', 'a plain <div>');
     ok(await menuAt(lw, '#bare-text') === 'prevented' && await menuAt(lw, '#bare') === 'prevented', 'an <a> with no href, and its text');
+    ok(await menuInShadow(lw, '#card', '#sh-plain') === 'prevented' && await menuAt(lw, '#card') === 'prevented', 'a web component, beside the link inside it');
     ok(await menuAt(page, '#t-bare-text') === 'prevented', 'on the board, still none: an <a> with no href');
     ok(await menuAt(page, '#desk') === 'prevented', 'the empty board');
     ok(await menuAt(page, `.win[data-ikey="${nt}"] .win-title`) === 'prevented', 'a window’s title bar');
@@ -18404,8 +18420,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await B(() => { for (const id of ['t-link', 't-bare']) document.getElementById(id).remove(); });
 
     // ---- 4. Board history: a Video Player's line is its video's title. With none, the site's name and "video", never
-    // its link or id. Read from BoardHistory.lines, then from a version saved with these windows, shown in Board history:
-    // the version's windows, and Now in each window's Earlier versions….
+    // its link or id. Content the widget reads as no video gives no line. Read from BoardHistory.lines, then from a
+    // version saved with these windows, shown in Board history: the version's windows, and Now in each window's Earlier
+    // versions…. A note holding one long link shows that a line with no spaces stays inside its row.
     const cut = s => s.slice(0, s.lastIndexOf(' ', 79)).replace(/[,;:.]+$/, '') + '…';   // (over 80 characters: as excerptOf cuts it)
     const shown = s => s.length > 80 ? cut(s) : s;
     const yt = { source: 'youtube', videoId: VID2, videoUrl: `https://youtu.be/${VID2}?t=30`, start: 30 }, dr = { source: 'drive', videoId: D1, videoUrl: `https://drive.google.com/file/d/${D1}/view?usp=sharing` };
@@ -18413,7 +18430,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const old = { videoId: VID2, videoUrl: `https://www.youtube.com/watch?v=${VID2}` };   // (saved before Drive and Vimeo: no source, no History)
     const listed = (v, title) => Object.assign({}, v, { history: [Object.assign({}, v, title ? { title } : {})] });   // (its History: this video)
     const BUNNY = YT_TITLES[VID2], LONG = 'The Water Cycle for Kids: Evaporation, Condensation, and Precipitation, with a Song to Sing Along';
-    // [content, its line, what it is]. The first eight are windows on the board too.
+    // [content, its line, what it is]. The first nine are windows on the board too.
     const VIDEOS = [
       [listed(yt), 'YouTube video', 'YouTube, no title yet'],
       [listed(dr), 'Google Drive video', 'Google Drive, which never has a title'],
@@ -18423,51 +18440,89 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       [{ videoId: null, videoUrl: '', history: listed(yt, BUNNY).history }, '', 'no video: no line'],
       [listed(dm), '', 'a site it doesn’t know: no line'],
       [listed(vi, LONG), LONG, 'Vimeo with a long title'],
+      [{ source: 'youtube', videoId: VID2 }, '', 'no link: no line, as the window shows no video'],
       [listed(vi, VIMEO_TITLES[V1]), VIMEO_TITLES[V1], 'Vimeo with a title'],
       [Object.assign({}, old, { history: [Object.assign({}, old, { title: BUNNY })] }), BUNNY, 'no source, with a title'],
       [listed(dm, 'Volcanoes'), '', 'a site it doesn’t know, with a title: no line'],
       [listed(Object.assign({}, yt, { source: 'toString' })), '', 'a source named like a built-in property (toString): no line'],
-      [listed(Object.assign({}, yt, { source: null })), '', 'a source of null: no line']
+      [listed(Object.assign({}, yt, { source: null })), '', 'a source of null: no line'],
+      // Damaged content, as the widget's readEntry reads it (video-links.js): each site's id, the link's length, and
+      // Vimeo's hash or Drive's resource key.
+      [{ source: 'youtube', videoId: VID2, history: [Object.assign({}, yt, { title: BUNNY })] }, '', 'no link, with a title in its History: no line'],
+      [listed(Object.assign({}, yt, { videoId: 42 })), '', 'an id that isn’t text: no line'],
+      [listed(Object.assign({}, yt, { videoId: 'videoseries' })), '', 'a playlist’s id (videoseries): no line'],
+      [listed(Object.assign({}, dr, { videoId: 'short' })), '', 'a Drive id too short: no line'],
+      [listed(Object.assign({}, vi, { videoId: 'room12' })), '', 'a Vimeo id that isn’t a number: no line'],
+      [listed(Object.assign({}, yt, { videoUrl: `https://youtu.be/${VID2}?x=${'a'.repeat(2000)}` })), '', 'a link over 2,000 characters: no line'],
+      [listed(Object.assign({}, vi, { hash: VH })), 'Vimeo video', 'an unlisted Vimeo video, no title yet'],
+      [listed(Object.assign({}, vi, { hash: 'room 12' })), '', 'a damaged Vimeo hash: no line'],
+      [listed(Object.assign({}, dr, { resourceKey: RK })), 'Google Drive video', 'a Drive video with its resource key'],
+      [listed(Object.assign({}, dr, { resourceKey: 7 })), '', 'a damaged Drive resource key: no line']
     ];
     const got = await B(list => list.map(d => [window.__board21.history.lines['youtube-player'](d), window.__board21.history.excerptOf(d, 'youtube-player')]), VIDEOS.map(v => v[0]));
-    VIDEOS.forEach(([, want, what], k) => ok(got[k][0] === want && got[k][1] === shown(want), `BoardHistory.lines: ${what}: “${shown(want)}” (${JSON.stringify(got[k])})`));
-    const WINS = VIDEOS.slice(0, 8), vk = k => 'youtube-player:' + (k + 1), nameOf = k => 'Video Player' + (k ? ' ' + (k + 1) : '');
+    VIDEOS.forEach(([, want, what], k) => ok(got[k][0] === want && got[k][1] === shown(want), `BoardHistory.lines: ${what}: “${shown(want)}” (${JSON.stringify(got[k]).slice(0, 300)})`));
+    // The sites' names are the widget's own (its SOURCES), which the board keeps a copy of.
+    const SITES = [...fs.readFileSync(path.join(ROOT, 'widgets', 'youtube-player', 'index.html'), 'utf8').matchAll(/(\w+): \{\s*name: '([^']+)', open: 'Open in /g)].map(m => [m[1], m[2]]);
+    const plain = { youtube: yt, drive: dr, vimeo: vi };
+    ok(SITES.length === 3 && SITES.every(([s]) => plain[s]), `(the widget’s three sites: ${JSON.stringify(SITES)})`);
+    const named = await B(list => list.map(d => window.__board21.history.lines['youtube-player'](d)), SITES.map(([s]) => listed(plain[s] || yt)));
+    SITES.forEach(([s, name], k) => ok(named[k] === `${name} video`, `the site’s name is the widget’s: “${name} video” (${named[k]})`));
+    // In the widget dev window, which doesn't load video-links.js, the line skips the checks that need it.
+    const bare = await B(list => { const L = self.B21VideoLinks; self.B21VideoLinks = undefined; try { return list.map(d => window.__board21.history.lines['youtube-player'](d)); } finally { self.B21VideoLinks = L; } },
+      [listed(yt), listed(dr), { source: 'youtube', videoId: VID2 }]);
+    ok(JSON.stringify(bare) === JSON.stringify(['YouTube video', 'Google Drive video', '']), `without video-links.js, as in the dev window: the site’s name, and no line for no link (${JSON.stringify(bare)})`);
+    const NOTE_LINK = 'https://docs.google.com/document/d/1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789abcdefghij/edit?usp=sharing', NOTE_LINE = NOTE_LINK.slice(0, 79) + '…';
+    const WINS = VIDEOS.slice(0, 9), vk = k => 'youtube-player:' + (k + 1), nameOf = k => 'Video Player' + (k ? ' ' + (k + 1) : '');
+    const at = k => ({ x: 8 + 270 * (k % 5), y: 8 + 300 * Math.floor(k / 5), w: 262, h: 280 });
     const exp = { format: '21board', formatVersion: 1, kind: 'full', exportedAt: new Date().toISOString(), board: { name: 'Videos' },
-      instances: WINS.map(([data], k) => ({ widgetId: 'youtube-player', instance: k + 1, open: true, z: k + 1, rect: { x: 8 + 338 * (k % 4), y: 8 + 300 * Math.floor(k / 4), w: 330, h: 280 }, data, config: null })) };
+      instances: WINS.map(([data], k) => ({ widgetId: 'youtube-player', instance: k + 1, open: true, z: k + 1, rect: at(k), data, config: null }))
+        .concat([{ widgetId: 'notes', instance: 1, open: true, z: WINS.length + 1, rect: at(WINS.length), data: { text: NOTE_LINK }, config: null }]) };
     await B(f => window.__board21.applyImport(f, 'replace'), exp); await freeBoard(page);   // (the file's board is Widescreen)
     const up = [];
     for (let k = 0; k < WINS.length; k++) up.push(await connected(vk(k)));
-    ok(up.every(Boolean), `(the ${WINS.length} Video Players open: ${up.join(', ')})`);
+    ok(up.every(Boolean) && await connected('notes:1'), `(the ${WINS.length} Video Players and the note open: ${up.join(', ')})`);
     await page.waitForTimeout(1200);
     const kept = await B(n => Array.from({ length: n }, (_, k) => JSON.stringify(window.__board21.state.data.get('youtube-player:' + (k + 1)))), WINS.length);
     ok(kept.every((s, k) => s === JSON.stringify(WINS[k][0])), `(each window’s content is as it was imported${kept.filter((s, k) => s !== JSON.stringify(WINS[k][0])).map(s => ': ' + s).join('')})`);
+    // The board and the widget agree: a window has no line exactly when it shows the link box.
+    const look = ik => frameOf(ik).evaluate(() => { const $ = id => document.getElementById(id); return !$('ask').hidden ? 'link box' : !$('player').hidden ? 'player' : '?'; });
+    const looks = [];
+    for (let k = 0; k < WINS.length; k++) looks.push(await look(vk(k)));
+    ok(looks.every((l, k) => l === (WINS[k][1] ? 'player' : 'link box')), `each window shows the link box exactly when its line is empty (${looks.join(', ')})`);
     await B(() => window.__board21.history.save('Videos'));
     const vid = await B(async () => { await window.__board21.history.reload(); const m = window.__board21.history.metas.find(m => m.label === 'Videos'); return m ? m.id : null; });
-    const saved = await B(([id, n]) => { const m = window.__board21.history.metas.find(m => m.id === id), w = (m && m.wins) || {}; return Array.from({ length: n }, (_, k) => w['youtube-player:' + (k + 1)] ? w['youtube-player:' + (k + 1)][5] : null); }, [vid, WINS.length]);
-    ok(!!vid && saved.every((s, k) => s === shown(WINS[k][1])), `the version saved keeps each window’s line (${JSON.stringify(saved)})`);
+    const saved = await B(([id, n]) => { const m = window.__board21.history.metas.find(m => m.id === id), w = (m && m.wins) || {}; return Array.from({ length: n }, (_, k) => w['youtube-player:' + (k + 1)] ? w['youtube-player:' + (k + 1)][5] : null).concat([w['notes:1'] ? w['notes:1'][5] : null]); }, [vid, WINS.length]);
+    ok(!!vid && saved.every((s, k) => s === (k < WINS.length ? shown(WINS[k][1]) : NOTE_LINE)), `the version saved keeps each window’s line (${JSON.stringify(saved)})`);
     await openSettings(page);
     await page.click('#settings [data-act="hist-open"]'); await page.waitForSelector('#history.open [data-act="save"]');
     await page.locator(`#history .hist-row[data-val="${vid}"]`).click();
     await page.waitForSelector('#history-detail.open .inst');
     const rows = Object.fromEntries(await page.$$eval('#history-detail.open .inst .meta', els => els.map(e => [e.querySelector('b').textContent, e.querySelector('span').textContent])));
     WINS.forEach(([, want, what], k) => ok(rows[nameOf(k)] === shown(want), `Board history, Windows in this version: ${what}: “${shown(want)}” (${JSON.stringify(rows[nameOf(k)])})`));
+    ok(rows.Notes === NOTE_LINE && !/\s/.test(rows.Notes), `(the note’s line is its link, with no spaces: ${rows.Notes})`);
     const fits = () => page.$$eval('.open .inst .meta', els => els.map(m => {
       const row = m.closest('.inst').getBoundingClientRect(), s = m.querySelector('span').getBoundingClientRect();
       return s.right <= row.right + 0.5 && m.scrollWidth <= m.clientWidth ? '' : m.querySelector('b').textContent;
     }).filter(Boolean));
     const over = await fits();
-    ok(!over.length, `each line stays inside its row, a long title too (${over.join(', ')})`);
+    ok(!over.length, `each line stays inside its row, a long title and a link in a note too (${over.join(', ')})`);
     await page.waitForTimeout(500); await page.screenshot({ path: OUT + 'video-lines.png' });
     for (let k = 0; k < 4 && await page.locator('#settings.open, #history.open, #history-detail.open').count(); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(250); }
+    const nowOf = async ik => {
+      await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.click('#menu [data-act="history"]');
+      await page.waitForSelector('#history.open .hist-intro'); await page.waitForTimeout(300);
+      return page.$$eval('#history.open .inst .meta', els => els.length ? els[0].querySelector('b').textContent + ': ' + els[0].querySelector('span').textContent : '');
+    };
     const nows = [];
     for (let k = 0; k < WINS.length; k++) {
-      await page.click(`.win[data-ikey="${vk(k)}"] .win-label`); await page.click('#menu [data-act="history"]');
-      await page.waitForSelector('#history.open .hist-intro'); await page.waitForTimeout(300);
-      nows.push(await page.$$eval('#history.open .inst .meta', els => els.length ? els[0].querySelector('b').textContent + ': ' + els[0].querySelector('span').textContent : ''));
+      nows.push(await nowOf(vk(k)));
       if (WINS[k][1] === LONG) { const o = await fits(); ok(!o.length, `its Earlier versions…: a long title stays inside its row (${o.join(', ')})`); await page.screenshot({ path: OUT + 'video-lines-now.png' }); }
       await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     }
     WINS.forEach(([, want, what], k) => ok(nows[k] === 'Now: ' + (shown(want) || '(empty)'), `Earlier versions…, Now: ${what}: “${shown(want) || '(empty)'}” (${nows[k]})`));
+    const noteNow = await nowOf('notes:1'), noteOver = await fits();
+    ok(noteNow === 'Now: ' + NOTE_LINE && !noteOver.length, `the note’s Earlier versions…: its link stays inside its row (${noteNow}${noteOver.length ? '; over: ' + noteOver.join(', ') : ''})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
 
     // ---- 5. CLAUDE.md: its own lists of three take the Oxford comma, five of them (Tyler approved each). Wrapped lines
     // are joined first.

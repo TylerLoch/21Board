@@ -470,12 +470,12 @@
     // Tapping anywhere in the widget brings its window to the front.
     window.addEventListener('pointerdown', function () { post('activate'); }, true);
     window.addEventListener('keydown', function (e) { if (e.key === 'Escape') post('key', { key: 'Escape' }); }, true);
-    // No browser menu on a right-click or a long press, as on the board, except on a link and in a text box. In
-    // Developer mode (init's devMode) it stays, for Inspect. A widget can still listen for 'contextmenu' to show a menu
-    // of its own.
+    // No browser menu on a right-click or a long press, as on the board. Links and text boxes keep it, even inside a web
+    // component. So does Developer mode, for Inspect. A widget can still listen for 'contextmenu' to show a menu of its
+    // own.
     document.addEventListener('contextmenu', function (e) {
-      var t = e.target;
-      if ((context && context.devMode) || (t && t.nodeType === 1 && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)$/.test(t.type)) || t.closest('a[href]')))) return;
+      var path = e.composedPath ? e.composedPath() : [e.target], t = path[0];
+      if ((context && context.devMode) || (t && t.nodeType === 1 && (t.isContentEditable || t.tagName === 'TEXTAREA' || (t.tagName === 'INPUT' && /^(text|search|url|email|tel|number|password)$/.test(t.type)))) || path.some(function (n) { return n.nodeType === 1 && n.matches('a[href]'); })) return;
       e.preventDefault();
     });
     // A paste or a drop of files that the widget didn't take (preventDefault() on the document or an element) goes to the
