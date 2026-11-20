@@ -344,6 +344,31 @@ SCENES.textstyle = async () => {
   await ctx.close();
 };
 
+// ---- 9b. appearance.jpg: a photo behind the board and a Purple accent, with Settings › Appearance › Background open
+SCENES.appearance = async () => {
+  const { ctx, p } = await newBoard();
+  const ik = {};
+  for (const id of ['clock', 'notes', 'timer']) ik[id] = await addWin(p, id);
+  await setRect(p, ik.clock, { x: 1000, y: 120, w: 640, h: 400 });
+  await setRect(p, ik.notes, { x: 1000, y: 560, w: 820, h: 620 });
+  await setRect(p, ik.timer, { x: 1700, y: 120, w: 620, h: 400 });
+  await wait(p, 800);
+  await choose(p, ik.clock, 'Digital', { exact: true });
+  await typeNote(p, ik.notes, 'Field trip Friday\nBring a water bottle.');
+  await startTimer(p, ik.timer, '10m');
+  await p.setInputFiles('#photo-input', path.join(__dirname, 'hills.jpg')); await wait(p, 1500);
+  await deselect(p);
+  await openSettings(p, ['bg']);
+  await p.click('#settings [data-act="accent"][data-val="purple"]'); await wait(p, 1200);
+  // Scroll Settings so Appearance starts at the top: Theme, every background color, the photo, and Accent color.
+  await p.evaluate(() => { const r = document.querySelector('#settings [data-act="theme"]').closest('.row'), b = r.closest('.sheet-body');
+    const h = r.previousElementSibling && /Appearance/.test(r.previousElementSibling.textContent) ? r.previousElementSibling : r;
+    b.scrollTop += h.getBoundingClientRect().top - b.getBoundingClientRect().top - 8; });
+  await wait(p, 500);
+  await shot(p, 'appearance.jpg');
+  await ctx.close();
+};
+
 // ---- 10. kiosk.jpg: the Widget Picker in kiosk mode
 SCENES.kiosk = async () => {
   const { ctx, p } = await newBoard({ query: '?kiosk=yes' });
