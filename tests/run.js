@@ -3,7 +3,7 @@
  *
  *   npm install --no-save playwright && npx playwright install chromium   (once)
  *   node tests/run.js
- *   node tools/test-halves.js   the same, as two processes at once (about 40 minutes)
+ *   node tools/test-halves.js   the same in two halves at once, in about 40 minutes
  *
  * Starts a static server for the repo, then drives Chromium through the
  * windowing system, storage, multi-tab sync, export/import, offline mode,
@@ -17206,6 +17206,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
 ];
 
 (async () => {
+  // PART=k/n runs the k-th of n slices of the suites, in order. tools/test-halves.js runs PART=1/2 and 2/2 at once.
+  const part = /^(\d+)\/(\d+)$/.exec(process.env.PART || '');
+  if (process.env.PART && !(part && +part[1] >= 1 && +part[1] <= +part[2])) { console.error(`PART must be k/n, such as 1/2. It is ${process.env.PART}.`); process.exit(2); }
+  const [from, to] = part ? [Math.floor(SUITES.length * (part[1] - 1) / part[2]), Math.floor(SUITES.length * part[1] / part[2])] : [0, SUITES.length];
   const server = http.createServer(async (req, res) => {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p.startsWith('/__dev/') && DEV_ROUTES[p]) { res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' }); res.end(DEV_ROUTES[p](new URL(req.url, 'http://x').searchParams)); return; }
@@ -17237,10 +17241,6 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     return c;
   };
   const only = process.argv[2];
-  // PART=k/n runs the k-th of n slices of the suites, in order. tools/test-halves.js runs PART=1/2 and 2/2 at once.
-  const part = /^(\d+)\/(\d+)$/.exec(process.env.PART || '');
-  if (process.env.PART && !(part && +part[1] >= 1 && +part[1] <= +part[2])) { console.error(`PART must be k/n, such as 1/2. It is ${process.env.PART}.`); process.exit(2); }
-  const [from, to] = part ? [Math.floor(SUITES.length * (part[1] - 1) / part[2]), Math.floor(SUITES.length * part[1] / part[2])] : [0, SUITES.length];
   for (const [i, [title, fn]] of SUITES.entries()) {
     if (i < from || i >= to) continue;
     if (only && !title.toLowerCase().includes(only.toLowerCase())) continue;

@@ -755,9 +755,9 @@ The *Board Sync* suites play two or three devices sharing a Google Drive folder,
 device is a browser profile of its own. The tests bring files from one device's folder to another's as Google Drive
 would: late, cut short, out of order or twice, with clocks that disagree. `node tests/merge.js` tests the merge
 itself, `board.js` section 13d, in Node with no browser: the rules, reading device files, and a randomized run of
-devices changing and merging one board. It takes a couple of minutes, and `tests/run.js` runs it as a suite too. A
-whole `node tests/run.js` takes over half an hour. `node tools/test-halves.js` runs it as two halves at once and adds
-up the results. It takes a filter too, and won't start while another test run is going.
+devices changing and merging one board. It takes a couple of minutes, and `tests/run.js` runs it as a suite too.
+`node tools/test-halves.js` runs the whole of `tests/run.js` as two halves at once, in about 40 minutes, and adds up
+the results. It takes a filter too. It won't start while another test run is going.
 
 `node tests/calc-engine.js` tests the Calculator's math in Node, with the answers Desmos gave. It runs as a suite too.
 

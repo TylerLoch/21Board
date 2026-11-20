@@ -24,6 +24,11 @@ t = t.split('[W]').join(waf);
 // [L] is the padlock (Lock, and the padlocks in the top corners while the board is locked).
 t = t.split('[L]').join('<svg class="padlock" viewBox="0 0 24 24" role="img" aria-label="the padlock"><rect x="5" y="10.5" width="14" height="10.5" rx="2.2"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg>');
 
+// {{version}} is the release's name, VERSION in sw.js.
+const version = (/const VERSION = '([^']+)'/.exec(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8')) || [])[1];
+if (!version) throw new Error('No VERSION in sw.js');
+t = t.split('{{version}}').join(version);
+
 // {{tile:id}} is a link to a widget's section, {{icon:id}} its small icon. tiles.json has each widget's name, icon and color.
 const tiles = Object.fromEntries(JSON.parse(fs.readFileSync(path.join(HERE, 'tiles.json'), 'utf8')).map(w => [w.id, w]));
 const tile = id => { if (!tiles[id]) throw new Error('No tile for ' + id); return tiles[id]; };

@@ -11,8 +11,7 @@ export const meta = {
 // docs/RELEASING.md has the whole routine, and what to pass.
 //
 // args: {
-//   repo,             the main checkout, e.g. /home/user/21Board
-//   key, title,       a short name, and the release's name and one-line summary
+//   title,            the release's name and one-line summary
 //   spec,             the spec's path. Its folder gets the logs, shots/ and final-shots/
 //   wt, branch, base, the worktree, its branch, and the commit it starts from
 //   version,          VERSION in sw.js for this release
@@ -21,8 +20,10 @@ export const meta = {
 //   lensLook,         what the look, words and tests reviewer compares
 //   buildNote?, note? extra words for the builder, and for the fixer
 // }
-const A = args
-const CLAUDE_MD = `${A.repo}/CLAUDE.md`
+const A = args || {}
+const missing = ['title', 'spec', 'wt', 'branch', 'base', 'version', 'shots', 'lensBehaviour', 'lensLook'].filter(k => !A[k])
+if (missing.length) { log('missing args: ' + missing.join(', ')); return { missing } }
+const CLAUDE_MD = `${A.wt}/CLAUDE.md`
 const CPU = 'Memory is tight (16 GB, no swap; an earlier run crashed the machine) and another build may be testing: before starting any test process (tests/run.js or your own browser scripts), check `pgrep -fc "node tests/run.js"`; if 2 or more are running, wait and poll every 30 s. Run at most 1 test process of your own at a time, never more than one Chromium of your own, and close every browser you open. A failure seen while other tests ran: rerun it alone once before treating it as real, and report both runs.'
 const VOICE = `Every label, message, hint and line of docs you add or change follows ${CLAUDE_MD} ("Voice"): Apple-like, less is more, every word earns its place. Reread each one before you commit.`
 const GUIDES = `The Teacher Guide (docs/teacher-guide) is part of every release that changes the interface, a widget or how the board behaves: update its words and retake the screenshots that show the change (its README has the steps), then run its build.js and check.js. If the Calculator changes, do the same for docs/calculator-manual. Don't publish either; the session publishes them after the merge.`
@@ -65,15 +66,16 @@ Tests changed: ${JSON.stringify(built.tests_changed)}
 ${r.lens}
 Also check every new or changed string against ${CLAUDE_MD} ("Voice"), and that the Teacher Guide says and shows what the board now does.
 Report only problems you reproduced or can show from the code or docs, each with evidence (scripts and logs next to your worktree) and a concrete fix.`, { label: 'review-' + r.key, phase: 'Review', schema: REVIEW_SCHEMA })))
-const findings = reviews.filter(Boolean).flatMap((r, i) => (r.findings || []).map(f => ({ ...f, from: REVIEWS[i].key })))
-log(`${findings.length} findings`)
+const findings = reviews.flatMap((r, i) => r ? (r.findings || []).map(f => ({ ...f, from: REVIEWS[i].key })) : [])
+const lost = REVIEWS.filter((r, i) => !reviews[i]).map(r => r.key)
+log(`${findings.length} findings${lost.length ? '; no result from ' + lost.join(', ') : ''}`)
 
 phase('Fix')
 const fixed = await agent(`You are finishing a release of 21Board (a static offline PWA for a K-8 school district): ${A.title}. The spec: ${A.spec}. The work is on branch ${A.branch} in ${A.wt}, at commit ${built.commit}. ${CPU} ${VOICE} ${GUIDES}${A.note ? '\n\n' + A.note : ''}
 
 Tests the builder changed: ${JSON.stringify(built.tests_changed)}
 Two reviewers' findings:
-${JSON.stringify(findings, null, 1)}
+${JSON.stringify(findings, null, 1)}${lost.length ? '\nNo result came back from the ' + lost.join(' and ') + ' review. Say so in open_issues.' : ''}
 What they found fine: ${JSON.stringify(reviews.filter(Boolean).map(r => r.checked_ok))}
 
 For each finding: reproduce it first. If real, write or extend a test that fails, fix it, see it pass. If not real or not worth it, say why. Then re-stamp if any file changed (node tools/build-sdk.js and node tools/release.js, both again with --check; VERSION stays '${A.version}'), rerun the spec's suites plus every suite whose code or expectations you changed, and commit on ${A.branch} with the spec's trailers (a new commit; don't amend). Leave the worktree clean. Never push.
