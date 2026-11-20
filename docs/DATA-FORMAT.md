@@ -540,7 +540,8 @@ with the board's records and never exported. Three object stores:
   deletedAt }                                                                         // the page was deleted then (ms)
 ```
 
-`excerpt` is a few words about the window's content, such as a Timer's `5 minutes` or the text in an uploaded widget.
+`excerpt` is a few words about the window's content, such as a Timer's `5 minutes`. A widget that isn't built in
+shows its text.
 
 Versions before Board Sync merges (`reason: "merge"`, "Before changes from the laptop") may be of a page that isn't
 shown: `uid` and `name` are that page's. A risky merge (deleting or bringing back, emptying content, a clash, a photo

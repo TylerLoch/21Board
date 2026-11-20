@@ -10976,6 +10976,7 @@ const SUITES = [
   // each built-in widget in its own terms, any other widget the text in its content, each piece once.
   ["Board history: each window's line (2026.11.18-19)", async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    await stubVideos(ctx);
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await page.waitForTimeout(600); await freeBoard(page);
@@ -11045,7 +11046,22 @@ const SUITES = [
       ['calculator', calc([{ n: '2' }, '^', { n: '3' }, 'end']), '2^3', 'a power'],
       ['calculator', calc([{ n: '2' }, '^', { n: '3' }, '+', { n: '1' }, 'end']), '2^(3 + 1)', 'a power of more than one number'],
       ['calculator', calc([{ n: '25' }, '%of', { n: '80' }]), '25% of 80', 'a percent of'],
-      ['calculator', calc(['pi', '*', { ans: '7/2' }, '/', { n: '1' }, 'frac', { n: '1' }, 'sep', { n: '2' }, 'end']), 'π × Ans ÷ 1 1/2', 'π, an earlier answer and a mixed number'],
+      ['calculator', calc(['pi', '*', { ans: '7/2' }, '/', { n: '1' }, 'frac', { n: '1' }, 'sep', { n: '2' }, 'end']), 'π × Ans ÷ (1 1/2)', 'π, an earlier answer and a mixed number'],
+      ['calculator', calc(['sqrt', { n: '16' }, 'end', { n: '2' }]), '√16 × 2', 'a number after a square root shows its ×'],
+      ['calculator', calc([{ n: '5' }, '^', { n: '2' }, 'end', { n: '3' }]), '5^2 × 3', 'a number after a power shows its ×'],
+      ['calculator', calc(['frac', { n: '1' }, 'sep', { n: '2' }, 'end', { n: '3' }]), '1/2 × 3', 'a number after a fraction shows its ×'],
+      ['calculator', calc([{ n: '1.5' }, 'frac', { n: '1' }, 'sep', { n: '2' }, 'end']), '1.5 × 1/2', 'a fraction after a decimal shows its ×'],
+      ['calculator', calc([{ n: '1' }, 'frac', { n: '1' }, 'sep', { n: '2' }, 'end']), '1 1/2', 'a mixed number has no ×'],
+      ['calculator', calc([{ n: '6' }, '/', 'frac', { n: '3' }, 'sep', { n: '4' }, 'end']), '6 ÷ (3/4)', 'a fraction you divide by, in parentheses'],
+      ['calculator', calc(['frac', { n: '1' }, 'sep', { n: '2' }, 'end', '/', 'frac', { n: '3' }, 'sep', { n: '4' }, 'end']), '1/2 ÷ (3/4)', 'a fraction divided by a fraction'],
+      ['calculator', calc(['frac', { n: '3' }, 'sep', { n: '4' }, 'end', '^', { n: '2' }, 'end']), '(3/4)^2', 'a fraction squared'],
+      ['calculator', calc(['(', { n: '2' }, '^', { n: '3' }, 'end', ')', '^', { n: '2' }, 'end']), '(2^3)^2', 'a power of a power'],
+      ['calculator', calc([{ n: '5' }, '-', { n: '3', neg: true }]), '5 − (−3)', 'a negative number after a sign, in parentheses'],
+      ['calculator', calc([{ n: '2' }, '*', 'neg', { n: '3' }]), '2 × (−3)', 'a minus sign after ×'],
+      ['calculator', calc([{ n: '3', neg: true }, '^', { n: '2' }, 'end']), '(−3)^2', 'a negative number squared'],
+      ['calculator', calc(['neg', { n: '3' }, '^', { n: '2' }, 'end']), '−3^2', 'minus 3 squared'],
+      ['calculator', calc([{ n: '2' }, 'pi', '(', { n: '3' }, '+', { n: '4' }, ')', 'sqrt', { n: '16' }, 'end']), '2π(3 + 4)√16', '2π, 2(3 + 4) and 3√16 have no ×'],
+      ['calculator', calc([{ ans: '7' }, { n: '2' }]), 'Ans × 2', 'a number after an earlier answer shows its ×'],
       ['calculator', calc([]), '', 'a Calculator with nothing in it: no line'],
       ['calculator', calc([{ n: '2' }, 'sin', { n: '3' }]), '2 sin 3 edit', 'a Calculator token it doesn’t know: the text in its content'],
       ['notes', { text: '  \n\t ' }, '', 'Notes with only spaces: no line'],
@@ -11055,6 +11071,34 @@ const SUITES = [
       const got = await line(data, id);
       ok(got === want, `${what}: “${want}” (${JSON.stringify(got)})`);
     }
+
+    // The Calculator's line is the problem as the Calculator writes it (state().expression.text), apart from its powers:
+    // the line's 2^3 is its 2³. Problems typed with its own keys, then 3000 random ones.
+    const CE = require(path.join(__dirname, '..', 'widgets', 'calculator', 'calc-engine.js')), SUP = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+    const asCalc = s => {   // 2^3 as 2³: a power that is a whole number, unless its base ends in one already
+      for (let end = s.length; ;) {
+        const k = s.lastIndexOf('^', end - 1); if (k < 0) return s;
+        const m = /^\^([0-9]+)(?![0-9.%⁰¹²³⁴⁵⁶⁷⁸⁹])/.exec(s.slice(k));
+        if (m && !/[⁰¹²³⁴⁵⁶⁷⁸⁹]$/.test(s.slice(0, k))) s = s.slice(0, k) + m[1].replace(/[0-9]/g, d => SUP[d]) + s.slice(k + m[0].length);
+        end = k;
+      }
+    };
+    const TYPED = ['3÷4+1÷8', '√16→2', '5²3', '2^3→4', 'a/b1↓2→3', 'a/b3↓4→²', '6÷a/b3↓4→', 'a/b1↓2→÷a/b3↓4→', '2a/b1↓2→÷a/b3↓4→', '5−3±', '2×3±', '1.5a/b1↓2→',
+      'πa/b1↓2→', '(1+2)a/b1↓2→', '(1+2)3', '2π', '2(3+4)', '3√16', '√9→√16', '∛27', '25%80', '1a/b1↓2→', '−(−3)', '(2^3→)²', '2^−1', '3±²', '−3²'];
+    const probs = TYPED.map(k => { const c = CE.create({ separators: 'none' }); c.input(k); c.press('equals'); return [k, c]; });
+    ok(probs.every(([, c]) => c.serialize().mode === 'done'), '(each problem typed is worked out)');
+    const KEYS = ['0', '1', '2', '3', '5', '9', 'point', 'add', 'subtract', 'multiply', 'divide', 'open', 'close', 'negate', 'square', 'percent', 'sqrt', 'cbrt', 'root', 'pi',
+      'power', 'fraction', 'right', 'down'];
+    let seed = 7; const rnd = n => (seed = (seed * 1103515245 + 12345) % 2147483648) % n;
+    for (let k = 0; probs.length < TYPED.length + 3000; k++) {
+      const c = CE.create({ percent: k % 2 ? 'simple' : 'of', separators: 'none' });
+      for (let j = 2 + rnd(10); j > 0; j--) c.press(KEYS[rnd(KEYS.length)]);
+      c.press('equals');
+      if (c.serialize().mode === 'done' && c.state().expression.text.length <= 80) probs.push([`random ${k}`, c]);
+    }
+    const got = await H(list => list.map(d => window.__board21.history.excerptOf(d, 'calculator')), probs.map(([, c]) => c.serialize()));
+    const differ = probs.map(([k, c], j) => [k, c.state().expression.text, got[j]]).filter(([, shown, g]) => asCalc(g) !== shown);
+    ok(!differ.length, `the Calculator’s line is the problem as the Calculator writes it: ${TYPED.length} problems typed with its keys and 3000 random ones (${differ.length} differ: ${differ.slice(0, 4).map(d => d.join(' → ')).join(' | ')})`);
 
     // ---- 2. Any other widget: the text in its content, each piece once.
     ok(await line({ a: 'x', b: ['x', 'y'], c: 'x' }, 'counter') === 'x y', `another widget: its text, each piece once (${JSON.stringify(await line({ a: 'x', b: ['x', 'y'], c: 'x' }, 'counter'))})`);
@@ -11075,23 +11119,34 @@ const SUITES = [
       return out;
     });
     ok(!bad.length, `content of any shape, for each widget, never throws and gives a line of at most 80 characters (${bad.slice(0, 6).join(' | ')})`);
+    // What the widget itself wouldn't show gives no line: a Timer over a day, a die that isn't 1 to 6, a picture that isn't one.
+    for (const [id, data, want] of [['timer', { duration: 1e300 }, ''], ['timer', { duration: 2 * 864e5 }, ''], ['timer', { duration: -1 }, ''], ['dice', { values: [9, -1, 2.5] }, ''],
+      ['dice', { values: [1, 2, 3, 4, 5, 6, 1] }, '1, 2, 3, 4, 5 and 6'], ['dice', { values: [6, 0, 2] }, '6 and 2'], ['image', { src: {} }, ''], ['image', { src: PNG, name: 5 }, 'Pasted picture']]) {
+      const got = await line(data, id);
+      ok(got === want, `${id} ${JSON.stringify(data)}: “${want}”, as the widget reads it (${JSON.stringify(got)})`);
+    }
 
     // ---- 4. At most 80 characters, cut at a space.
     const FORTY = ['Aaliyah', 'Ben', 'Carlos', 'Dana', 'Eli', 'Fatima', 'Gus', 'Hana', 'Isaac', 'Jada', 'Kai', 'Luis', 'Maya', 'Noah', 'Olivia', 'Priya', 'Quinn', 'Rosa', 'Sam', 'Tariq',
       'Uma', 'Victor', 'Wren', 'Xavier', 'Yara', 'Zane', 'Amir', 'Bella', 'Chloe', 'Diego', 'Emma', 'Finn', 'Grace', 'Hugo', 'Ivy', 'Jonah', 'Kira', 'Leo', 'Mia', 'Nico'];
     const long = await line({ names: FORTY, left: FORTY, picked: [] }, 'name-picker'), full = FORTY.join(', ');
-    ok(long.length <= 80 && long.endsWith('…') && full.startsWith(long.slice(0, -1)) && full[long.length - 1] === ' ', `40 names: at most 80 characters, cut at a space, then … (${long.length}: ${long})`);
+    const cut = long.slice(0, -1);
+    ok(long.length <= 80 && long.endsWith('…') && full.startsWith(cut) && full.startsWith(', ', cut.length) && !/[,\s]$/.test(cut), `40 names: at most 80 characters, cut after a whole name, then … with no comma before it (${long.length}: ${long})`);
+    const said = await line({ text: 'Bring your library books. '.repeat(5) }, 'notes');
+    ok(said === 'Bring your library books. Bring your library books. Bring your library books…', `a note cut after a full stop: no . before the … (${said})`);
     const word = await line({ a: 'x'.repeat(200) }, 'counter'), just = await line({ a: 'y'.repeat(80) }, 'counter');
     ok(word === 'x'.repeat(79) + '…' && just === 'y'.repeat(80), `no space to cut at: 79 characters, then …; 80 stay as they are (${word.length}, ${just.length})`);
+    const apples = await line({ text: '🍎'.repeat(50) }, 'notes'), family = await line({ text: 'a'.repeat(77) + '👨‍👩‍👧' }, 'notes'), accent = await line({ text: 'x'.repeat(78) + 'e\u0301zz' }, 'notes');
+    ok(apples === '🍎'.repeat(39) + '…' && family === 'a'.repeat(77) + '…' && accent === 'x'.repeat(78) + '…', `no space to cut at: an emoji, or a letter and its accent, stays whole (${JSON.stringify([apples.slice(-3), family.slice(-3), accent.slice(-3)])})`);
 
     // ---- 5. End to end, through the widgets themselves: a Name Picker with 8 names and one pick, a Timer started at
     // 5 minutes and a pair of Dice rolled, then Board history › Save this version now.
     await H(() => window.__board21.history.cfg({ quiet: 36e5, every: 36e5, skipOpen: true }));   // (no automatic versions meanwhile)
     const win = ik => page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
     const data = ik => H(ik => window.__board21.state.data.get(ik) || null, ik);
-    for (const [id, x] of [['name-picker', 20], ['timer', 450], ['dice', 880]]) {
+    for (const [id, x, y] of [['name-picker', 20, 20], ['timer', 450, 20], ['dice', 880, 20], ['youtube-player', 450, 420]]) {
       await H(id => window.__board21.openWidget(id), id); await page.waitForTimeout(800);
-      await H(([ik, x]) => window.__board21.setRect(ik, { x, y: 20, w: 400, h: 380 }), [id + ':1', x]);
+      await H(([ik, x, y]) => window.__board21.setRect(ik, { x, y, w: 400, h: y > 20 ? 280 : 380 }), [id + ':1', x, y]);
     }
     await page.waitForTimeout(400);
     await win('name-picker:1').locator('#list').fill(NAMES.join('\n')); await win('name-picker:1').locator('#done').click();
@@ -11100,6 +11155,8 @@ const SUITES = [
     await page.waitForTimeout(700); await win('name-picker:1').locator('#stage').click();
     await win('timer:1').locator('#chips button[data-min="5"]').click(); await win('timer:1').locator('#go').click();
     await win('dice:1').locator('#roll').click();
+    const DRIVE_LINK = `https://drive.google.com/file/d/${D1}/view?usp=sharing`;   // (Drive gives no title: the line is the link)
+    await ytShow(page, DRIVE_LINK);
     ok(await eventually(async () => ((await data('timer:1')) || {}).endsAt > 0 && (((await data('dice:1')) || {}).values || []).length === 2), '(a Name Picker with a pick, a Timer running and two Dice rolled)');
     const rolled = (await data('dice:1')).values;
     await openSettings(page);
@@ -11115,6 +11172,13 @@ const SUITES = [
     ok(np === NAMES.join(', ') && NAMES.every(n => np.split(n).length === 2), `Windows in this version: the Name Picker’s line has each name once (${np})`);
     ok(rows.Timer === '5 minutes', `the Timer’s says 5 minutes (${rows.Timer})`);
     ok(rows.Dice === `${rolled[0]} and ${rolled[1]}`, `the Dice’s says what they rolled, ${rolled.join(' and ')} (${rows.Dice})`);
+    ok(rows['Video Player'] === DRIVE_LINK.slice(0, 79) + '…', `a Video Player with no title: its link (${rows['Video Player']})`);
+    const fits = () => page.$$eval('.open .inst .meta', els => els.map(m => {
+      const row = m.closest('.inst').getBoundingClientRect(), s = m.querySelector('span').getBoundingClientRect();
+      return s.right <= row.right + 0.5 && m.scrollWidth <= m.clientWidth ? '' : m.querySelector('b').textContent;
+    }).filter(Boolean));
+    const over = await fits();
+    ok(!over.length, `each line stays inside its row, a long link too (${over.join(', ')})`);
     await page.waitForTimeout(600); await page.screenshot({ path: OUT + 'history-lines.png' });
     for (let k = 0; k < 4 && await page.locator('#settings.open, #history.open, #history-detail.open').count(); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(250); }
     await win('timer:1').locator('#go').click();   // (paused: the version saved is now an earlier one)
@@ -11125,6 +11189,11 @@ const SUITES = [
     const own = await page.$$eval('#history.open .inst .meta span', els => els.map(e => e.textContent));
     ok(own.length >= 2 && !own.includes('(empty)') && own.every(t => t === '5 minutes'), `the Timer’s own earlier versions: no row says “(empty)” (${own.join(' | ')})`);
     await page.screenshot({ path: OUT + 'history-lines-timer.png' });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+    await page.locator('.win[data-ikey="youtube-player:1"] .win-label').click(); await page.waitForTimeout(250);
+    await page.click('#menu [data-act="history"]'); await page.waitForSelector('#history.open .hist-intro'); await page.waitForTimeout(600);
+    const vOver = await fits();
+    ok(!vOver.length, `the Video Player’s own earlier versions: its link stays inside its row (${vOver.join(', ')})`);
     await page.keyboard.press('Escape');
 
     // ---- 6. Nothing else changes: a version's sig and each window's other entries are as 84edbe5 made them.

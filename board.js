@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.18-19';
-  const BOARD_BUILD = '9b1f9846';
+  const BOARD_BUILD = 'a16ee49f';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -7613,31 +7613,86 @@
   // or [].
   const strOf = s => typeof s === 'string' ? s.trim() : '';
   const listOf = a => Array.isArray(a) ? a : [];
-  // A Calculator problem on one line, as the Calculator shows it, such as 3 ÷ 4, 2 × (3 + 4), 3/4 from the fraction
-  // key, √16, ³√27, 2^(3 + 1) or 25% of 80. It reads the tokens calc-engine.js saves with tokenOut. A token it doesn't
-  // know throws.
+  // A Calculator problem on one line, as the Calculator writes it in plain text, such as 3/4 from the fraction key,
+  // √16 × 2, 6 ÷ (3/4), 5 − (−3) or 25% of 80. A power reads 2^3, where the Calculator shows 2³, and an earlier answer
+  // reads Ans. It reads the tokens calc-engine.js saves (tokenOut) as its parse() does, and adds the × and parentheses
+  // its draw() adds in plain text. A token it doesn't know throws.
   function calcLine(t) {
-    const SAID = { '+': ' + ', '-': ' − ', '*': ' × ', '/': ' ÷ ', '(': '(', ')': ')', neg: '−', '%': '%', '%of': '% of ', pi: 'π', ans: 'Ans' };
-    const one = s => /^([0-9.]+|π|Ans)?$/.test(s) ? s : `(${s})`;   // parentheses around a box with more than a number
     let i = 0;
-    const box = () => { const s = run(); if (t[i] === 'sep' || t[i] === 'end') i++; return s; };
-    const run = () => {   // the tokens up to the end of their box
-      let s = '';
-      while (i < t.length && t[i] !== 'sep' && t[i] !== 'end') {
-        const x = t[i++];
-        if (typeof x === 'string' && Object.prototype.hasOwnProperty.call(SAID, x)) s += SAID[x];
-        else if (x === '^' || x === 'sqrt') s += (x === '^' ? '^' : '√') + one(box());
-        else if (x === 'root') { const n = box(); s += (/^[0-9]+$/.test(n) ? n.replace(/[0-9]/g, d => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]) : `(${n})`) + '√' + one(box()); }
-        else if (x === 'frac') { const a = box(); s += (/[0-9]$/.test(s) ? ' ' : '') + one(a) + '/' + one(box()); }   // a mixed number reads 1 1/2
-        else if (x && typeof x.n === 'string') s += (/[)π%]$/.test(s) ? ' × ' : '') + (x.neg ? '−' : '') + x.n;
-        else if (x && typeof x === 'object' && 'ans' in x) s += 'Ans';
-        else throw new Error('Not a Calculator token');
+    const at = (...a) => a.includes(t[i]);
+    const whole = x => !!x && typeof x === 'object' && typeof x.n === 'string' && !x.neg && /^[0-9]+$/.test(x.n);
+    // The tokens as a tree, the loosest first: + −, then % of, then × ÷ and 2π, then −x, x^□ and x%.
+    const box = () => { const a = sum(); if (at('sep', 'end')) i++; return a; };
+    const sum = () => { let a = of(); while (at('+', '-')) a = { k: t[i++], a, b: of() }; return a; };
+    const of = () => { let a = product(); while (at('%of')) { i++; a = { k: 'of', a, b: product() }; } return a; };
+    const product = () => {
+      for (let a = factor(); ;) {
+        if (at('*', '/')) a = { k: t[i++], a, b: factor() };
+        else if ((t[i] && typeof t[i] === 'object') || at('ans', 'pi', '(', 'sqrt', 'root', 'frac')) a = { k: 'imp', a, b: factor() };
+        else return a;
       }
-      return s;
     };
-    const s = run();
+    const factor = () => {
+      if (at('neg')) { i++; return { k: 'neg', a: factor() }; }
+      for (let a = part(); ;) {
+        if (at('^')) { i++; a = { k: '^', a, b: box() }; }
+        else if (at('%')) { i++; a = { k: '%', a }; }
+        else return a;
+      }
+    };
+    const part = () => {
+      const x = t[i++];
+      if (x && typeof x === 'object') {
+        if (typeof x.n !== 'string') { if ('ans' in x) return { k: 'ans' }; throw new Error('Not a Calculator token'); }
+        if (whole(x) && t[i] === 'frac' && whole(t[i + 1]) && t[i + 2] === 'sep' && whole(t[i + 3]) && (i + 4 === t.length || t[i + 4] === 'end')) {
+          const s = `${x.n} ${t[i + 1].n}/${t[i + 3].n}`;   // a whole number, then a fraction of whole numbers: 1 1/2
+          i += t[i + 4] ? 5 : 4;
+          return { k: 'mixed', s };
+        }
+        return { k: 'num', s: (x.neg ? '−' : '') + x.n, neg: !!x.neg };
+      }
+      switch (x) {
+        case 'ans': return { k: 'ans' };
+        case 'pi': return { k: 'pi' };
+        case '(': { const a = sum(), closed = at(')'); if (closed) i++; return { k: '(', a, closed }; }
+        case 'sqrt': return { k: 'sqrt', a: box() };
+        case 'root': return { k: 'root', b: box(), a: box() };
+        case 'frac': return { k: 'frac', a: box(), b: box() };
+      }
+      i--;
+      return { k: '' };   // nothing there yet, as after 3 +
+    };
+    const tree = sum();
     if (i < t.length) throw new Error('Not a Calculator problem');
-    return s;
+    // The tree as text. c is where a part sits: right after a sign ('right'), after ÷ ('divisor'), as a power's base
+    // ('base'), after a minus sign ('neg'), alone in a power or root ('box'), or as a root's index ('index').
+    const NEG = { right: 1, divisor: 1, base: 1, neg: 1, box: 1, index: 1 }, FRAC = { divisor: 1, base: 1, index: 1 };
+    const OP = { '+': ' + ', '-': ' − ', '*': ' × ', '/': ' ÷ ', imp: '', of: '% of ', '^': '^' };
+    const first = n => { while (n.k in OP || n.k === '%') n = n.a; return n.k; };
+    const last = n => { while (n.k in OP) n = n.b; return n.k; };
+    const alone = n => /^(num|ans|pi|\(|sqrt|root|%|neg|\^|)$/.test(n.k);   // in a box with no parentheses: 2^3, √π
+    const p = (s, yes) => yes ? `(${s})` : s;
+    const inBox = n => p(draw(n, 'box'), !alone(n));
+    const draw = (n, c) => {
+      switch (n.k) {
+        case 'num': return p(n.s, n.neg && NEG[c]);
+        case 'mixed': return p(n.s, FRAC[c] || c === 'box');
+        case 'ans': return 'Ans';
+        case 'pi': return 'π';
+        case '': return '';
+        case '(': return '(' + draw(n.a, '') + (n.closed ? ')' : '');
+        case 'neg': return p('−' + draw(n.a, 'neg'), NEG[c]);
+        case '%': return draw(n.a, c) + '%';
+        case 'sqrt': return '√' + inBox(n.a);
+        case 'root': { const x = draw(n.b, 'index'); return (/^[0-9]+$/.test(x) ? x.replace(/[0-9]/g, d => '⁰¹²³⁴⁵⁶⁷⁸⁹'[d]) : `(${x})`) + '√' + inBox(n.a); }
+        case 'frac': return p(p(draw(n.a, ''), !alone(n.a)) + '/' + p(draw(n.b, ''), !alone(n.b)), FRAC[c]);
+        case '^': return p(draw(n.a, 'base'), n.a.k === '^') + '^' + inBox(n.b);
+      }
+      // + − × ÷ and % of. 2π, 2(3 + 4) and 3√16 have no ×, but a number or fraction after another part shows it: √16 × 2.
+      const op = n.k !== 'imp' ? OP[n.k] : /^(num|ans|mixed|frac)$/.test(first(n.b)) || last(n.a) === '%' ? ' × ' : '';
+      return draw(n.a, c === 'right' || c === 'divisor' || c === 'neg' ? 'right' : c === 'box' ? 'box' : '') + op + draw(n.b, n.k === '/' ? 'divisor' : 'right');
+    };
+    return draw(tree, '');
   }
 
   const BoardHistory = {
@@ -7766,13 +7821,13 @@
       'task-timer': d => listOf(d.tasks).map(t => { const n = strOf(t && t.name), e = strOf(t && t.emoji); return e && n.startsWith(e + ' ') ? n.slice(e.length + 1).trim() : n; }).filter(Boolean).join(', '),
       'youtube-player': d => { if (!d.videoId) return ''; const e = listOf(d.history).find(e => e && e.videoId === d.videoId); return strOf(e && e.title) || strOf(d.videoUrl); },
       timer: d => {
-        if (!Number.isFinite(d.duration) || d.duration < 0) return '';
+        if (typeof d.duration !== 'number' || !(d.duration >= 0 && d.duration <= 864e5)) return '';   // (a day at most, as the Timer reads it)
         const s = Math.ceil(d.duration / 1000), m = Math.floor(s / 60);
         return s % 60 ? `${m}:${String(s % 60).padStart(2, '0')}` : m === 1 ? '1 minute' : `${m} minutes`;
       },
-      dice: d => { const v = listOf(d.values).filter(Number.isFinite); return v.length > 1 ? `${v.slice(0, -1).join(', ')} and ${v[v.length - 1]}` : v.join(''); },
+      dice: d => { const v = listOf(d.values).slice(0, 6).filter(v => Number.isInteger(v) && v >= 1 && v <= 6); return v.length > 1 ? `${v.slice(0, -1).join(', ')} and ${v[v.length - 1]}` : v.join(''); },
       'traffic-light': d => ['red', 'yellow', 'green'].includes(d.active) ? d.active[0].toUpperCase() + d.active.slice(1) : '',
-      image: d => d.src ? strOf(d.name) || 'Pasted picture' : '',
+      image: d => typeof d.src === 'string' && d.src ? strOf(d.name) || 'Pasted picture' : '',
       notes: d => strOf(d.text)
     },
     // A few words about a window's content, 80 characters at most. A built-in widget has its own line, above. Any other
@@ -7792,8 +7847,14 @@
       }
       s = s.replace(/\s+/g, ' ').trim();
       if (s.length <= 80) return s;
-      const cut = s.lastIndexOf(' ', 79);
-      return (cut > 0 ? s.slice(0, cut) : s.slice(0, 79)) + '…';
+      // Cut at the last space, and drop a comma or full stop left before the ellipsis. With no space, cut after the last
+      // whole letter or emoji that fits.
+      const cut = s.lastIndexOf(' ', 79), words = cut > 0 ? s.slice(0, cut).replace(/[,;:.]+$/, '') : '';
+      if (words) return words + '…';
+      const each = typeof Intl.Segmenter === 'function' ? new Intl.Segmenter().segment(s) : null;
+      let head = '';
+      for (const g of each || s) { const x = each ? g.segment : g; if (head.length + x.length > 79) break; head += x; }
+      return head + '…';
     },
     winsOf(exp) {
       const w = {};
