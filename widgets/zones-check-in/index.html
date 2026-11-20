@@ -48,6 +48,18 @@
   /* (A row only where it beats two by two: very wide, or wide and too short for two rows of cards with their feelings.) */
   @container zones (aspect-ratio > 3.2) or ((aspect-ratio > 2.2) and (width >= 800px) and (height < 310px)) { .grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
   @container zones (aspect-ratio < 0.7) { .grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
+  /* Filling a board, and over 500 px tall: always side by side, so every card reaches down to where students can tap it
+     (fitCorners, .reach). Each card is then tall: its face over its count, and its feelings one under another. */
+  .reach .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: 1fr; }
+  @container zone (aspect-ratio < 0.9) {
+    .reach .main { flex-direction: column; gap: 2cqh; }
+    .reach .face { font-size: min(20cqh, 40cqw); }
+    .reach .count { font-size: min(28cqh, calc(108cqw / max(2, var(--len, 1)))); }   /* (--len: its digits, so 100 fits too) */
+    .reach.hide-counts .face { font-size: min(26cqh, 56cqw); }
+    /* (Room for four on every card, from the top, so the four cards line up.) */
+    .reach .feelings { flex-direction: column; flex-wrap: nowrap; justify-content: flex-start; align-items: center; gap: .4em;
+                       height: 6.9em; padding-bottom: clamp(10px, 5cqh, 48px); font-size: clamp(14px, min(3.4cqh, 6cqw), 30px); }
+  }
   .zone { position: relative; min-width: 0; min-height: 0; container: zone / size; --head: clamp(36px, 22cqh, 76px); }
   .tap { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 18px; overflow: hidden;
          background: var(--tint); color: var(--ink); box-shadow: inset 0 0 0 2px var(--strong); text-align: center; transition: transform .08s, filter .15s; }
@@ -468,7 +480,7 @@
     if (document.body.classList.contains('hide-counts') === config.showCounts) { document.body.classList.toggle('hide-counts', !config.showCounts); fitHeads(); }
     for (const z of ZONES) {
       const c = cards[z.id], k = cur.counts[z.id];
-      if (c.count.textContent !== String(k)) c.count.textContent = k;
+      if (c.count.textContent !== String(k)) { c.count.textContent = k; c.count.style.setProperty('--len', String(k).length); }
       if (c.minus.disabled !== !k) {
         const keys = !k && c.minus.matches(':focus-visible');
         c.minus.disabled = !k;
@@ -644,6 +656,8 @@
     const t = c && c.top, top = t && (px(t.left) || px(t.right)) ? px(t.height) : 0;
     const s = document.documentElement.style;
     s.setProperty('--reach', reach + 'px'); s.setProperty('--low', low + 'px'); s.setProperty('--top', top + 'px');
+    // (The height the board gives: the frame may not have its new size yet.)
+    document.body.classList.toggle('reach', !!(w && w.maximized) && (Number(w.height) || innerHeight) > 500);
   }
   Board21.on('resize', fitCorners);
 
