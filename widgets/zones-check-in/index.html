@@ -48,7 +48,7 @@
   /* (A row only where it beats two by two: very wide, or wide and too short for two rows of cards with their feelings.) */
   @container zones (aspect-ratio > 3.2) or ((aspect-ratio > 2.2) and (width >= 800px) and (height < 310px)) { .grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
   @container zones (aspect-ratio < 0.7) { .grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
-  /* Filling a board, and over 500 px tall: always side by side, so every card reaches down to where students can tap it
+  /* Filling a board at least 850 × 480 px: always side by side, so every card reaches down to where students can tap it
      (fitCorners, .reach). Each card is then tall: its face over its count, and its feelings one under another. */
   .reach .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: 1fr; }
   @container zone (aspect-ratio < 0.9) {
@@ -663,8 +663,10 @@
     const t = c && c.top, top = t && (px(t.left) || px(t.right)) ? px(t.height) : 0;
     const s = document.documentElement.style;
     s.setProperty('--reach', reach + 'px'); s.setProperty('--low', low + 'px'); s.setProperty('--top', top + 'px');
-    // (The height the board gives: the frame may not have its new size yet.)
-    document.body.classList.toggle('reach', !!(w && w.maximized) && (Number(w.height) || innerHeight) > 500);
+    // One row when it fills a board at least 850 × 480 px: wide enough that every card keeps its "−" and its words.
+    // (The size the board gives: the frame may not have its new size yet.)
+    const wide = (Number(w && w.width) || innerWidth) >= 850, tall = (Number(w && w.height) || innerHeight) >= 480;
+    document.body.classList.toggle('reach', !!(w && w.maximized) && wide && tall);
   }
   Board21.on('resize', fitCorners);
 
