@@ -38,8 +38,8 @@
  *                Use it when the content is only a setting, such as a timer's time. Otherwise both are kept, one as a copy.
  *   external     true = one of the district's own apps, loaded from its own site. `entry` is its https address
  *                and `files` is empty. The app keeps its own work, and its own offline copy once it has one.
- *                21Board saves only where its window is. No SDK. The board reads one message, from 21Timer: how
- *                much time is left, for the Traffic Light. It stores nothing from it. See README, "District apps".
+ *                21Board saves only where its window is. No SDK. For the Traffic Light, the board reads how much
+ *                time 21Timer has left. It stores nothing. See README, "District apps".
  */
 self.BOARD21_WIDGETS = [
   {

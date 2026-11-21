@@ -76,7 +76,8 @@
   const DAY = 24 * 3600000;
 
   // Saved content can come from an imported file, so it is checked before it is used: times are numbers of
-  // milliseconds, a day at most.
+  // milliseconds, a day at most. (board.js reads it the same way for the Traffic Light, in Timers.ofTimer: keep the two
+  // in step.)
   function readState(d) {
     const ms = (v, or) => typeof v === 'number' && v >= 0 && v <= DAY ? v : or;
     const duration = ms(d && d.duration, state.duration);

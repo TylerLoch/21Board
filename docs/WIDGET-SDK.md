@@ -118,6 +118,7 @@ The **context**:
   sdkProtocol: 1,
   host: 'board',             // 'board', 'dev' (the dev window's test board), or 'standalone'
   kiosk: false,              // ChromeOS kiosk mode (?kiosk=yes): links can't open new windows
+  timers: [ ... ],           // the built-in Traffic Light and Clock only (see Events); [] standalone
   standalone: false
 }
 ```
@@ -422,10 +423,11 @@ What `external: true` changes:
 - **No SDK.** The page belongs to another site, and the board never connects to it. It sends the page nothing,
   not even the theme. Nothing is saved for it on the board. The app keeps its own work on the device (IndexedDB,
   localStorage), as it does when opened on its own.
-- **One message, from 21Timer.** The board reads how much time is left, for the Traffic Light, and stores nothing.
-  21Timer sends it from its 2.0 release: `{ type: '21timer:status', version: 1, state, endsAt, remaining, warnMs }`.
-  The board takes it only from the frame of an open 21Timer window, from 21Timer's own origin, with every number
-  checked. It ignores everything else from the apps.
+- **One message, from 21Timer.** For the Traffic Light, the board reads how much time 21Timer has left. It stores
+  nothing. 21Timer sends it from its 2.0 release:
+  `{ type: '21timer:status', version: 1, state, endsAt, remaining, warnMs }`. The board takes it only from the frame
+  of an open 21Timer window, from 21Timer's own origin, with every number checked. It ignores everything else from
+  the apps.
 - **Not in 21Board's offline copy or release stamp.** `sw.js` leaves it out. Offline, the window shows the app
   only if the app keeps its own offline copy, with its own service worker. 21Board shows "Offline" beside the
   window's name and says so once in a toast. It can't tell whether the app loaded.

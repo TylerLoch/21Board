@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.21-2';
-  const BOARD_BUILD = '61ea9d8d';
+  const BOARD_BUILD = 'ab92fd87';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2345,17 +2345,18 @@
     // The Timer's warning in minutes: 0, 1, 2, or 5; missing or unknown is 1. The Timer's own rules
     // (widgets/timer/index.html: warnMin, readState, render): keep the two in step.
     warnMin: c => (c && [0, 1, 2, 5].includes(c.warn) ? c.warn : 1),
-    // A Timer's entry: running while endsAt is a number; done at 0 left; paused partway. Idle, or a record that
-    // doesn't check out as the Timer checks it, gives none.
+    // A Timer's entry, from its content read as the Timer's readState reads it: a length that isn't 0 to a day is the
+    // Timer's 5 minutes, such a time left is the whole length, and an end that isn't a number within a day isn't
+    // running. Then running while it has an end; done at 0 left; paused partway. Idle gives none.
     ofTimer(id, d, c, now) {
-      const ms = v => typeof v === 'number' && v >= 0 && v <= 864e5;
-      if (!d || typeof d !== 'object' || !ms(d.duration) || !ms(d.remaining)) return null;
-      const runs = typeof d.endsAt === 'number';
-      if (runs ? !(isFinite(d.endsAt) && d.endsAt - now <= 864e5) : d.endsAt != null) return null;
-      const W = this.warnMin(c) * 60000, warnMs = d.duration > W ? W : 0;   // (none for a timer no longer than its warning)
-      if (runs) return { id, endsAt: d.endsAt, remaining: null, warnMs };
-      if (d.remaining <= 0 && d.duration > 0) return { id, endsAt: null, remaining: 0, warnMs };
-      if (d.remaining > 0 && d.remaining < d.duration) return { id, endsAt: null, remaining: d.remaining, warnMs };
+      if (!d || typeof d !== 'object') return null;
+      const ms = (v, or) => (typeof v === 'number' && v >= 0 && v <= 864e5 ? v : or);
+      const duration = ms(d.duration, 5 * 60000), remaining = ms(d.remaining, duration);
+      const endsAt = typeof d.endsAt === 'number' && d.endsAt - now <= 864e5 ? d.endsAt : null;
+      const W = this.warnMin(c) * 60000, warnMs = duration > W ? W : 0;   // (none for a timer no longer than its warning)
+      if (endsAt !== null) return { id, endsAt, remaining: null, warnMs };
+      if (remaining <= 0 && duration > 0) return { id, endsAt: null, remaining: 0, warnMs };
+      if (remaining > 0 && remaining < duration) return { id, endsAt: null, remaining, warnMs };
       return null;
     },
     // 21Timer's message, from its 2.0 release, when it opens and on every change:

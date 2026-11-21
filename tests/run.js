@@ -18954,6 +18954,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
           thin: Math.min(s.box.w, s.box.h) / Math.max(s.box.w, s.box.h)
         };
       };
+      const shaped = t => Math.abs(t - 170 / 380) < 0.01;   // (the light at 170 × 380: a 153 × 342 housing)
       const size = async (w, h) => { await page.evaluate(([ik, w, h]) => window.__board21.setRect(ik, { x: 60, y: 60, w, h: h + 40 }), [ik, w, h]); await page.waitForTimeout(400); return shape(); };
       const px = s => `${Math.round(s.box.w)} × ${Math.round(s.box.h)} in ${s.W} × ${s.H}, lamps ${s.lamps.map(l => Math.round(l.w)).join('/')} px`;
       let s = await size(170, 380), j = judge(s);
@@ -18961,7 +18962,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(Math.abs(s.box.w - 153) <= 3 && Math.abs(s.box.h - 342) <= 3 && Math.abs(s.box.x - 8.5) <= 3 && Math.abs(s.box.y - 19) <= 3 && s.lamps.every(l => Math.abs(l.w - 95) <= 3 && Math.abs(l.h - 95) <= 3),
         `and it looks as before: a 153 × 342 light, 95 px lamps, within a few pixels (${px(s)})`);
       s = await size(200, 200); j = judge(s);
-      ok(s.W === 200 && s.H === 200 && j.column && j.inside && j.thin <= 0.46, `200 × 200, a square: upright, and still a traffic light, not a box (${px(s)}, ${j.thin.toFixed(2)})`);
+      ok(s.W === 200 && s.H === 200 && j.column && j.inside && shaped(j.thin), `200 × 200, a square: upright, and still the same light, not a box (${px(s)}, ${j.thin.toFixed(2)})`);
       await F(page, ik, () => { window.__same = 1; });
       s = await size(380, 170); j = judge(s);
       ok(s.W === 380 && s.H === 170 && j.row && j.inside && j.order === 'red,yellow,green', `380 × 170: sideways, red on the left of yellow on the left of green, all inside (${px(s)})`);
@@ -18975,9 +18976,25 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       for (const [w, h] of [[90, 90], [91, 90], [120, 600], [600, 120], [1000, 170], [170, 780], [400, 401], [401, 400]]) {
         s = await size(w, h); j = judge(s);
         const want = w > h ? j.row : j.column;
-        if (s.W !== w || s.H !== h || !want || !j.inside || j.thin > 0.46) odd.push(`${w} × ${h}: ${px(s)}${want ? '' : ' (turned the wrong way)'}`);
+        if (s.W !== w || s.H !== h || !want || !j.inside || !shaped(j.thin)) odd.push(`${w} × ${h}: ${px(s)}${want ? '' : ' (turned the wrong way)'}`);
       }
-      ok(!odd.length, `at every size, upright when height ≥ width and sideways when wider, the lamps never overlap or spill out, and it's never a box${odd.length ? ': ' + odd.join('; ') : ''}`);
+      ok(!odd.length, `at every size, upright when height ≥ width and sideways when wider, the lamps never overlap or spill out, and it's always the same light${odd.length ? ': ' + odd.join('; ') : ''}`);
+      // A long window gets the same light, centered, not a long bar.
+      s = await size(1000, 170); j = judge(s);
+      ok(j.row && Math.abs(s.box.w - 342) <= 3 && Math.abs(s.box.h - 153) <= 3 && Math.abs(s.box.x + s.box.w / 2 - 500) <= 1 && s.lamps.every(l => Math.abs(l.w - 95) <= 3),
+        `1000 × 170: the same light as at 380 × 170, centered, not a long bar (${px(s)})`);
+      s = await size(170, 700); j = judge(s);
+      ok(j.column && Math.abs(s.box.w - 153) <= 3 && Math.abs(s.box.h - 342) <= 3 && Math.abs(s.box.y + s.box.h / 2 - 350) <= 1 && s.lamps.every(l => Math.abs(l.w - 95) <= 3),
+        `170 × 700: the same light as at 170 × 380, centered (${px(s)})`);
+      // A browser without container query units (iPadOS before 16, Chrome before 105) skips every size given in them.
+      await F(page, ik, () => { const st = document.querySelector('style'); window.__css = st.textContent; st.textContent = st.textContent.replace(/[^;{}]*\dcq(?:w|h|i|b|min|max)\b[^;{}]*;?/g, '').replace(/container-type:[^;}]*;?/g, ''); });
+      const old = [];
+      for (const [w, h] of [[380, 170], [600, 120], [1000, 170], [170, 380], [120, 600], [170, 700], [200, 200]]) {
+        s = await size(w, h); j = judge(s);
+        if (!(w > h ? j.row : j.column) || !j.inside || !shaped(j.thin)) old.push(`${w} × ${h}: ${px(s)}`);
+      }
+      await F(page, ik, () => { document.querySelector('style').textContent = window.__css; });
+      ok(!old.length, `in a browser without container query units, the lamps stay inside the light too${old.length ? ': ' + old.join('; ') : ''}`);
       await size(170, 380);
       await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(600);
       s = await shape(); j = judge(s);
@@ -19065,6 +19082,24 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await page.waitForTimeout(1500);
       a = await amber();
       ok(a.yes && await recsOf(page, ik) === before, `nothing is saved for the warning (${before})`);
+      // It keeps its warning when it loads again, and when another tab changes it. Picking a sound after either keeps it.
+      await choose(page, ik, 'warn:0');
+      await page.evaluate(ik => window.__board21.state.wins.get(ik).reload(), ik); await page.waitForTimeout(300);
+      await connected(page, ik); await page.waitForTimeout(500);
+      m = await menuOf(page, ik);
+      ok(/✓ Off/.test(m) && !/✓ 1 minute/.test(m), `loaded again: Off is still chosen (${m})`);
+      await remote(run(30000));
+      a = await amber();
+      ok(a.no && await subOf(page, ik) === 'Running', `and with 30 seconds left it isn’t amber (${JSON.stringify(a.l)})`);
+      await choose(page, ik, 'sound:chime');
+      c = await confOf(page, ik);
+      ok(!!c && c.sound === 'chime' && c.warn === 0, `picking a sound then keeps Off (${JSON.stringify(c)})`);
+      await page.evaluate(ik => window.__board21.state.wins.get(ik).post('config', { config: { sound: 'bell', warn: 2 }, reason: 'remote' }), ik); await page.waitForTimeout(300);
+      m = await menuOf(page, ik);
+      ok(/✓ Bell/.test(m) && /✓ 2 minutes/.test(m), `2 minutes chosen in another tab shows here (${m})`);
+      await choose(page, ik, 'sound:marimba');
+      c = await confOf(page, ik);
+      ok(!!c && c.sound === 'marimba' && c.warn === 2, `and picking a sound then keeps it (${JSON.stringify(c)})`);
       await ctx.close();
     });
 
@@ -19150,6 +19185,19 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(warns.every(Boolean), `the list’s warnMs follows each Timer’s warning: 2 minutes, Off, an unknown one as 1 minute, and none for a 1-minute Timer (${warns.join(', ')})`);
       // Following writes nothing: through green, yellow, and red, the light's records don't change.
       await page.evaluate(ik => window.__board21.closeWin(ik, { quiet: true }), T2);
+      // A Timer from a crafted file: the board reads it as the Timer does, so the light agrees with the Timer's amber.
+      const crafted = [];
+      for (const [what, d] of [
+        ['a time left that isn’t a number', { duration: 300000, remaining: 'x', endsAt: Date.now() + 30000 }],
+        ['an end more than a day away', { duration: 300000, remaining: 30000, endsAt: Date.now() + 2 * 864e5 }],
+        ['an end that isn’t a number', { duration: 300000, remaining: 30000, endsAt: 'soon' }],
+        ['a length that isn’t a number', { duration: 'x', remaining: 30000, endsAt: null }]
+      ]) {
+        await setTimer(page, T1, d);
+        const agree = await eventually(async () => await F(page, T1, () => document.body.classList.contains('warn')) && looks(await lightOf(page, L), 'yellow'), 2000);
+        if (!agree) crafted.push(`${what}: Timer ${await subOf(page, T1)}, light ${await said(page, L)}, list ${await timersIn(L)}`);
+      }
+      ok(!crafted.length, `a Timer from a crafted file, in its warning: amber, and the light yellow${crafted.length ? ': ' + crafted.join('; ') : ''}`);
       await setTimer(page, T1, run(200000));
       ok(await shows(page, L, 'green'), 'green');
       const recs0 = await recsOf(page, L);
@@ -19168,11 +19216,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const B = await ctx.newPage(); B.on('pageerror', e => errors.push('B: ' + e.message));
       await B.goto(BASE); await boardUp(B); await connected(B, L);
       ok(await shows(page, L, 'green') && await shows(B, L, 'green'), 'two tabs: both green');
+      // A tap while following shows in the other tab too, until the next phase.
+      await lamp('red');
+      ok(await shows(page, L, 'red', 1500) && await shows(B, L, 'red', 2000) && await still(B, L, 'red', 1000), `a tap on red in one tab shows red in the other too (${await said(page, L)} | ${await said(B, L)})`);
       const recs1 = await recsOf(page, L);
       await setTimer(page, T1, run(61200));
       ok(await shows(page, L, 'yellow', 3500) && await shows(B, L, 'yellow', 3500), `both turn yellow at its warning (${await said(page, L)} | ${await said(B, L)})`);
       await page.waitForTimeout(500);
       ok(await recsOf(page, L) === recs1 && await recsOf(B, L) === recs1, 'and neither writes the light’s content');
+      await lamp('green', B);
+      ok(await shows(B, L, 'green', 1500) && await shows(page, L, 'green', 2000) && await still(page, L, 'green', 1000), `a tap on green in the other tab shows in both (${await said(page, L)} | ${await said(B, L)})`);
       await B.close();
       // A Timer on another page is ignored.
       await page.frameLocator(`.win[data-ikey="${T1}"] iframe`).locator('#reset').click();

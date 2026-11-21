@@ -8,15 +8,15 @@
 <style>
   html, body { margin: 0; height: 100%; }
   body { background: var(--b21-bg); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; display: flex; align-items: center; justify-content: center; }
-  /* The light keeps its shape in any window, centered: 90% of the window's long side, and its thin side at most 0.45 of
-     that, as at 170 × 380. Wider than tall, it lies on its side, red on the left as on real sideways signals. The lamps
-     are sized from the light itself (container units). */
-  .housing { container-type: size; flex: none; height: 90vh; width: min(90vw, 40.5vh); border-radius: min(16.2vw, 7.29vh); background: #1f2937; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; box-shadow: inset 0 -6px 0 rgba(0,0,0,.35); }
+  /* The same light in any window, bigger or smaller, centered: the light at 170 × 380. Its long side is 90% of the
+     window's at most, and its thin side 0.447 to 0.45 of its long side (201.2 = 90 × 380 / 170). Wider than tall, it
+     lies on its side, red on the left as on real sideways signals. Each lamp is 25/90 of the light's long side. */
+  .housing { flex: none; height: min(90vh, 201.2vw); width: min(90vw, 40.5vh); border-radius: min(16.2vw, 7.29vh); background: #1f2937; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; box-shadow: inset 0 -6px 0 rgba(0,0,0,.35); }
   [data-b21-theme="dark"] .housing { background: #0b0f17; box-shadow: inset 0 0 0 2px #374151; }
-  .lamp { flex: none; width: min(72%, 25vh); width: min(72cqw, 27.78cqh); aspect-ratio: 1; border-radius: 50%; border: 0; cursor: pointer; padding: 0; opacity: .22; transition: opacity .2s, box-shadow .2s, transform .1s; }
+  .lamp { flex: none; width: min(25vh, 55.9vw); aspect-ratio: 1; border-radius: 50%; border: 0; cursor: pointer; padding: 0; opacity: .22; transition: opacity .2s, box-shadow .2s, transform .1s; }
   @media (orientation: landscape) {
-    .housing { width: 90vw; height: min(90vh, 40.5vw); border-radius: min(16.2vh, 7.29vw); flex-direction: row; }
-    .lamp { width: min(72%, 25vw); width: min(72cqh, 27.78cqw); }
+    .housing { width: min(90vw, 201.2vh); height: min(90vh, 40.5vw); border-radius: min(16.2vh, 7.29vw); flex-direction: row; }
+    .lamp { width: min(25vw, 55.9vh); }
   }
   .lamp:active { transform: scale(.96); }
   .lamp.red { background: #ef4444; } .lamp.yellow { background: #facc15; } .lamp.green { background: #22c55e; }
@@ -41,7 +41,8 @@
   let state = { active: null };
   let config = {};
   let timers = [];     // [{ id, endsAt, remaining, warnMs }]: endsAt while running, else remaining (0 when done)
-  let tapped = null;   // a tap while following: what was followed then ('' for nothing). Its color shows until that changes.
+  let tapped = null;   // a tap while following, here or in another tab: what was followed then ('' for nothing). Its color
+                       // shows until that changes.
   let drawn = null;
   const following = () => config.follow === true;
 
@@ -123,7 +124,14 @@
   const num = v => typeof v === 'number' && isFinite(v);
   const readTimers = l => (Array.isArray(l) ? l : []).filter(t => t && typeof t.id === 'string' && (num(t.endsAt) || num(t.remaining)))
     .map(t => ({ id: t.id, endsAt: num(t.endsAt) ? t.endsAt : null, remaining: num(t.endsAt) ? null : t.remaining, warnMs: num(t.warnMs) && t.warnMs > 0 ? t.warnMs : 0 }));
-  Board21.on('data', d => { state = readState(d); render(); });
+  // The teacher's color from another tab or device. While following, it shows here too until the followed color next
+  // changes, as it does where it was tapped.
+  Board21.on('data', d => {
+    const next = readState(d);
+    if (following() && next.active !== state.active) tapped = followKey(followed(Date.now()));
+    state = next;
+    render();
+  });
   Board21.on('config', c => { config = readConfig(c); render(); });
   Board21.on('timers', l => { timers = readTimers(l); render(); });
   Board21.ready().then(ctx => {

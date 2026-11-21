@@ -516,8 +516,8 @@ the last change, `YYYY-MM-DD`. `undo` is up to 20 earlier counts, each `[blue, g
 `{ classSize, showCounts, daily, sound }`.
 
 The Timer (`timer`) saves `{ duration, remaining, endsAt }`, in ms. `endsAt` is when it ends while running, else
-`null`. Its config is `{ sound, warn }`. `warn` is the warning near the end, in minutes. It's `0` for Off, `1`, `2`, or
-`5`, and a missing or unknown one reads as `1`. The warning itself is never saved.
+`null`. Its config is `{ sound, warn }`. `warn` is how many minutes before the end it turns amber. It's `0` for Off,
+`1`, `2`, or `5`, and a missing or unknown one reads as `1`. Whether it is amber is never saved.
 
 The Traffic Light (`traffic-light`) saves `{ active: "red" | "yellow" | "green" | null }`, the color the teacher
 chose. Its config is `{ follow: true }` while Follow timers is on. The color it follows is never saved.
