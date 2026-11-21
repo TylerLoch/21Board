@@ -2122,6 +2122,112 @@ test('toggle off: a saved ⇄ loaded is drawn as answerAs asks', () => {
   assert.strictEqual(b.state().display, '0.125');
 });
 
+// ---- 25. In words tells (−3)² from −3² (2026.11.21-3) ------------------------------------------------------------------
+// Where the drawing puts parentheses around a negative base of a power, the words say them, as for typed ones. Elsewhere
+// the words stay as they were.
+const NEG_BASE = 'open parenthesis negative 3 close parenthesis';
+test('words: 3 ± a² is (−3)², and says its parentheses', () => {
+  const s = calc('3±²');
+  assert.strictEqual(s.equation.text, '(−3)² = 9');
+  assert.strictEqual(s.equation.speech, `${NEG_BASE} squared equals 9`);
+  assert.ok(s.equation.html.includes(`aria-label="${NEG_BASE} squared equals 9"`), s.equation.html.slice(0, 120));
+  assert.strictEqual(typed('3±²').state().expression.speech, `${NEG_BASE} squared`, 'while it is typed, for In words');
+  assert.strictEqual(calc('(−3)²').equation.speech, `${NEG_BASE} squared equals 9`, 'the same words as typed parentheses');
+});
+test('words: ± with aᵇ, and inside a longer problem', () => {
+  assert.strictEqual(calc('3±^3').equation.speech, `${NEG_BASE} cubed equals negative 27`);
+  assert.strictEqual(calc('3±^4').equation.speech, `${NEG_BASE} to the power of 4 equals 81`);
+  assert.strictEqual(calc('2+3±²').equation.speech, `2 plus ${NEG_BASE} squared equals 11`);
+});
+test('words: a negative ans squared says its parentheses', () => {
+  const c = typed('0−3=');
+  c.press('square');
+  assert.strictEqual(c.state().expression.text, '(−3)²');
+  assert.strictEqual(c.state().expression.speech, `${NEG_BASE} squared`);
+  c.press('equals');
+  assert.strictEqual(c.state().equation.speech, `${NEG_BASE} squared equals 9`);
+  const d = typed('0−3=');
+  d.input('2+'); d.press('ans'); d.press('square'); d.press('equals');
+  assert.strictEqual(d.state().equation.text, '2 + (−3)² = 11');
+  assert.strictEqual(d.state().equation.speech, `2 plus ${NEG_BASE} squared equals 11`);
+});
+test('words: a negative History answer with aᵇ says its parentheses', () => {
+  const c = typed('0−3=');
+  c.input('5+');
+  assert.ok(c.useAnswer(0));
+  c.press('power'); c.input('3=');
+  assert.strictEqual(c.state().equation.text, '5 + (−3)³ = −22');
+  assert.strictEqual(c.state().equation.speech, `5 plus ${NEG_BASE} cubed equals negative 22`);
+  assert.strictEqual(c.state().history[0].expression.speech, `5 plus ${NEG_BASE} cubed`, 'and on its History line');
+});
+test('words: the steps say the parentheses they draw', () => {
+  const st = calc('(2−5)²').steps;
+  assert.strictEqual(st[1].text, '(−3)²');
+  assert.strictEqual(st[1].speech, `${NEG_BASE} squared`);
+  assert.strictEqual(st[1].work.speech, `${NEG_BASE} squared equals 9`);
+  assert.strictEqual(calc('3±²').steps[0].speech, `${NEG_BASE} squared`);
+});
+test('words: −3², 2 − 3 ±, −(−3), and other negatives keep their words', () => {
+  assert.strictEqual(calc('−3²').equation.speech, 'negative 3 squared equals negative 9');
+  assert.strictEqual(calc('2−3±').equation.speech, '2 minus negative 3 equals 5');
+  assert.strictEqual(calc('−(−3)').equation.speech, 'negative open parenthesis negative 3 close parenthesis equals 3');
+  assert.strictEqual(calc('−−3').equation.speech, 'negative negative 3 equals 3');
+  assert.strictEqual(calc('4×3±').equation.speech, '4 times negative 3 equals negative 12');
+  assert.strictEqual(calc('3±×2').equation.speech, 'negative 3 times 2 equals negative 6');
+  assert.strictEqual(calc('2^3±').equation.speech, '2 to the power of negative 3 equals 0.125', 'a negative power, not a base');
+  assert.strictEqual(calc('3^2').equation.speech, '3 squared equals 9');
+  assert.strictEqual(calc('2^3→²').equation.speech, '2 cubed squared equals 64', 'a power as a base, (2³)²: unchanged');
+  assert.strictEqual(calc('1⁄2→²').equation.speech, '1 over 2 squared equals 0.25', 'a fraction as a base, (1/2)²: unchanged');
+});
+test('words: only the words change, not the drawing', () => {
+  for (const k of ['3±²', '3±^3', '2+3±²', '(2−5)²']) {
+    const s = calc(k);
+    assert.strictEqual(s.equation.html.replace(/ aria-label="[^"]*"/g, '').includes('open parenthesis'), false, k);
+    assert.ok(/<span class="ce-paren">\(<\/span><span class="ce-num">−3<\/span><span class="ce-paren">\)<\/span>/.test(s.equation.html) || k === '(2−5)²', k);
+    assert.ok(s.equation.mathml.includes('<mo>(</mo>') || k === '(2−5)²', k);
+  }
+});
+// A fraction is negative when its top or its bottom, not both, is: (−3/2)² is drawn in parentheses, so it says them.
+const NEG_FRAC = 'open parenthesis negative 3 over 2 close parenthesis';
+test('words: a negative fraction as a base says its parentheses', () => {
+  const s = calc('a/b 3± → 2 →²');
+  assert.strictEqual(s.equation.text, '(−3/2)² = 2.25');
+  assert.strictEqual(s.equation.speech, `${NEG_FRAC} squared equals 2.25`);
+  assert.strictEqual(typed('a/b 3± → 2 →²').state().expression.speech, `${NEG_FRAC} squared`, 'while it is typed, and with Hide the answer');
+  assert.strictEqual(calc('a/b −3 → 2 →²').equation.speech, `${NEG_FRAC} squared equals 2.25`, 'a typed − on top');
+  assert.strictEqual(calc('a/b 3 → 2± →²').equation.speech, 'open parenthesis 3 over negative 2 close parenthesis squared equals 2.25', '± on the bottom');
+  assert.strictEqual(calc('3±⁄2→²').equation.speech, `${NEG_FRAC} squared equals 2.25`, 'the ⁄ key');
+  assert.strictEqual(calc('a/b 3± → 2 →^3').equation.speech, `${NEG_FRAC} cubed equals negative 3.375`, 'with aᵇ');
+  assert.strictEqual(calc('1 a/b 1± → 2 →²').equation.speech, '1 times open parenthesis negative 1 over 2 close parenthesis squared equals 0.25', 'inside a longer problem');
+});
+test('words: a negative ans or History answer on top of a fraction, as a base, says its parentheses', () => {
+  const c = typed('0−3=a/b');
+  c.press('ans'); c.input('→2→²');
+  assert.strictEqual(c.state().expression.text, '(−3/2)²');
+  assert.strictEqual(c.state().expression.speech, `${NEG_FRAC} squared`);
+  const h = typed('0−3=a/b');
+  assert.ok(h.useAnswer(0));
+  h.input('→2→²=');
+  assert.strictEqual(h.state().equation.text, '(−3/2)² = 2.25');
+  assert.strictEqual(h.state().equation.speech, `${NEG_FRAC} squared equals 2.25`);
+  assert.strictEqual(h.state().history[0].expression.speech, `${NEG_FRAC} squared`, 'and on its History line');
+});
+test('words: −(3/2)², (−3/−2)², and (1/2)² keep their words', () => {
+  assert.strictEqual(calc('−a/b 3 → 2 →²').equation.speech, 'negative 3 over 2 squared equals negative 2.25');
+  assert.strictEqual(typed('−a/b 3 → 2 →²').state().expression.speech, 'negative 3 over 2 squared', 'with Hide the answer, still not (−3/2)²');
+  assert.strictEqual(calc('a/b 3± → 2± →²').equation.speech, 'negative 3 over negative 2 squared equals 2.25', 'a positive fraction');
+  assert.strictEqual(calc('a/b 1 → 2 →²').equation.speech, '1 over 2 squared equals 0.25');
+  assert.strictEqual(calc('a/b 3± → 2 →').equation.speech, 'negative 3 over 2 equals negative 1.5', 'not a base');
+  const s = calc('a/b 3± → 2 →²');
+  assert.strictEqual(s.equation.html.replace(/ aria-label="[^"]*"/g, '').includes('open parenthesis'), false, 'only the words change');
+});
+
+// ---- 26. ± is "opposite", the word grades 6 and 7 use (Amplify Desmos Math) --------------------------------------------
+test('the ± key is called “opposite”', () => {
+  assert.strictEqual(C.KEYS.negate.label, '±');
+  assert.strictEqual(C.KEYS.negate.name, 'opposite');
+});
+
 // ---- Results ----------------------------------------------------------------------------------------------------------
 for (const f of failures) console.log('FAIL ' + f);
 console.log(`\n${passed} passed, ${failed} failed`);

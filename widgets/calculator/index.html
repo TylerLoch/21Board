@@ -162,12 +162,13 @@
   .hpick.clip, .hans.clip { -webkit-mask-image: linear-gradient(to left, transparent, #000 1.6em); mask-image: linear-gradient(to left, transparent, #000 1.6em); }
   .hempty { padding: .8em .7em; color: var(--b21-muted); font-size: .8em; }
 
-  /* ---- Keys: ÷ × − + = down the right, in the accent color. Advanced keys are two rows above. */
+  /* ---- Keys: ÷ × − + = down the right, in the accent color. Advanced keys are two rows above. AC sits over (, ⌫ over )
+     and √, and ± over ÷, so every edge meets the columns below. */
   #keys {
     grid-area: keys; container: pad / size; min-width: 0; min-height: 0; --rows: 6;
     display: grid; gap: var(--g, 6px); grid-template-columns: repeat(12, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), minmax(0, 1fr));
     grid-template-areas:
-      "ac ac ac ac del del del del neg neg neg neg"
+      "ac ac ac del del del del del del neg neg neg"
       "open open open close close close sqrt sqrt sqrt div div div"
       "d7 d7 d7 d8 d8 d8 d9 d9 d9 mul mul mul"
       "d4 d4 d4 d5 d5 d5 d6 d6 d6 sub sub sub"
@@ -179,22 +180,25 @@
     grid-template-areas:
       "sq sq sq pow pow pow root root root cbrt cbrt cbrt"
       "pi pi pi pct pct pct frac frac frac right right right"
-      "ac ac ac ac del del del del neg neg neg neg"
+      "ac ac ac del del del del del del neg neg neg"
       "open open open close close close sqrt sqrt sqrt div div div"
       "d7 d7 d7 d8 d8 d8 d9 d9 d9 mul mul mul"
       "d4 d4 d4 d5 d5 d5 d6 d6 d6 sub sub sub"
       "d1 d1 d1 d2 d2 d2 d3 d3 d3 add add add"
       "d0 d0 d0 pt pt pt ans ans ans eq eq eq";
   }
-  /* Test practice: Desmos Four-Function's keys (its clear all and ⌫ on top, no ±) */
+  /* Test practice: Desmos Four-Function's keys, no ±. Its clear all and ⌫ sit flat in a strip on top, clear all in the
+     middle of the pad, so the pad has 24 columns. clear all takes 8 of them, so its label has room for the focus ring and
+     the pressed key. The keys below keep their size and place. */
   #app.test #keys {
+    grid-template-columns: repeat(24, minmax(0, 1fr));
     grid-template-areas:
-      "ac ac ac ac ac ac del del del del del del"
-      "open open open close close close sqrt sqrt sqrt div div div"
-      "d7 d7 d7 d8 d8 d8 d9 d9 d9 mul mul mul"
-      "d4 d4 d4 d5 d5 d5 d6 d6 d6 sub sub sub"
-      "d1 d1 d1 d2 d2 d2 d3 d3 d3 add add add"
-      "d0 d0 d0 pt pt pt ans ans ans eq eq eq";
+      ". . . . . . . . ac ac ac ac ac ac ac ac del del del del del del . ."
+      "open open open open open open close close close close close close sqrt sqrt sqrt sqrt sqrt sqrt div div div div div div"
+      "d7 d7 d7 d7 d7 d7 d8 d8 d8 d8 d8 d8 d9 d9 d9 d9 d9 d9 mul mul mul mul mul mul"
+      "d4 d4 d4 d4 d4 d4 d5 d5 d5 d5 d5 d5 d6 d6 d6 d6 d6 d6 sub sub sub sub sub sub"
+      "d1 d1 d1 d1 d1 d1 d2 d2 d2 d2 d2 d2 d3 d3 d3 d3 d3 d3 add add add add add add"
+      "d0 d0 d0 d0 d0 d0 pt pt pt pt pt pt ans ans ans ans ans ans eq eq eq eq eq eq";
   }
   .key {
     --kb: color-mix(in srgb, var(--b21-surface-2), var(--b21-text) 4%);
@@ -208,6 +212,8 @@
   .key.adv { --kb: var(--b21-accent-soft); --ks: .84; display: none; }
   #app.adv:not(.test) .key.adv { display: flex; }
   #app.test .key[data-key="negate"] { display: none; }
+  #app.test .key[data-key="clear"], #app.test .key[data-key="backspace"] { --kb: transparent; --ks: .9; color: color-mix(in srgb, var(--b21-text) 78%, transparent); }
+  #app.test .key[data-key="clear"] .w { font-size: max(.8em, 12px); font-weight: 400; white-space: nowrap; }
   .key.op { --kb: var(--b21-accent); color: var(--b21-on-accent); --ks: 1.22; font-weight: 400; }
   .key.op:active, .key.op.hit { background: color-mix(in srgb, var(--b21-accent), var(--b21-text) 22%); }
   .key.op.pending { background: var(--b21-on-accent); color: var(--b21-accent); box-shadow: inset 0 0 0 max(3px, .08em) var(--b21-accent); }
@@ -352,6 +358,9 @@
     b.innerHTML = html; b.setAttribute('aria-label', E.KEYS[k].name);
     el.keys.appendChild(b); keyBtn[k] = b;
   }
+  // In Test practice, AC is Desmos's clear all, in its words, as its label and its name. Leaving brings AC back.
+  const TEST_CLEAR = 'clear all';
+  const AC = { html: keyBtn.clear.innerHTML, name: keyBtn.clear.getAttribute('aria-label') };
 
   // ---- What isn't saved: the steps on screen, a hidden answer shown, a message
   let shown = 0;            // steps on screen: 0 is the whole problem; 1 to n write them out, the answer last
@@ -673,6 +682,8 @@
     });
     DIMMABLE.forEach(k => keyBtn[k].setAttribute('aria-disabled', String(s.can[k] === false)));
     keyBtn.percent.setAttribute('aria-label', cfg.percent === 'apple' ? 'percent' : E.KEYS.percent.name);
+    setHTML(keyBtn.clear, cfg.test ? `<span class="w">${TEST_CLEAR}</span>` : AC.html);
+    keyBtn.clear.setAttribute('aria-label', cfg.test ? TEST_CLEAR : AC.name);
     // The key whose box holds the cursor is ringed, and → is filled: it is the way out.
     const box = s.mode === 'edit' && (s.boxKey === 'cbrt' ? 'root' : s.boxKey);
     BOX_KEYS.forEach(k => keyBtn[k].classList.toggle('inbox', k === box));
