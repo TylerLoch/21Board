@@ -41,6 +41,9 @@
   @media (prefers-reduced-motion: reduce) { body.done { animation: none; } }
   body.done button { background: rgba(255,255,255,.25); color: inherit; }
   body.done .chips button { box-shadow: inset 0 0 0 1.5px currentColor; background: transparent; }
+  /* Near the end (Warning in the menu): the bar and the digits turn amber. */
+  body.warn .bar > div { background: var(--b21-warning); }
+  body.warn .display { color: var(--b21-warning); }
 </style>
 </head>
 <body>
@@ -63,8 +66,10 @@
 
   // Content (saved with Board21.save):  { duration, remaining, endsAt }
   //   endsAt is a wall-clock time while running, so every open copy of 21Board shows the same countdown.
-  // Config (Board21.saveConfig):          { sound: 'beep' | 'chime' | 'bell' | 'marimba' | 'gentle' | 'alarm' | 'off' }
+  // Config (Board21.saveConfig):          { sound: 'beep' | 'chime' | 'bell' | 'marimba' | 'gentle' | 'alarm' | 'off', warn }
   //   (older timers saved sound: true/false, read as 'beep'/'off')
+  //   warn: the warning near the end, in minutes: 0 (Off), 1, 2, or 5. Older timers have none: 1. Every key is kept, and
+  //   each is checked when it is read (soundName, warnMin).
   let state = { duration: 5 * 60000, remaining: 5 * 60000, endsAt: null };
   let config = { sound: 'beep' };
   let finishedAlerted = false;
@@ -77,6 +82,12 @@
     const duration = ms(d && d.duration, state.duration);
     return { duration, remaining: ms(d && d.remaining, duration), endsAt: d && typeof d.endsAt === 'number' && d.endsAt - Date.now() <= DAY ? d.endsAt : null };
   }
+
+  // The warning, in minutes. Missing or unknown reads as 1. (board.js reads it the same way for the Traffic Light, in
+  // Timers.warnMin: keep the two in step.)
+  const WARNS = [0, 1, 2, 5];
+  const warnMin = () => WARNS.includes(config.warn) ? config.warn : 1;
+  const readConfig = c => (c && typeof c === 'object' && !Array.isArray(c) ? Object.assign({}, c) : { sound: 'beep' });
 
   const running = () => state.endsAt !== null;
   const left = () => running() ? Math.max(0, state.endsAt - Date.now()) : state.remaining;
@@ -97,9 +108,14 @@
     // Only touch the button when it changes: replacing its icon under a finger would lose the press.
     const label = running() ? 'Pause' : 'Start';
     if ($('go').getAttribute('aria-label') !== label || !$('go').firstChild) { $('go').innerHTML = running() ? PAUSE : PLAY; $('go').setAttribute('aria-label', label); }
+    // The warning: in its last minutes, running or paused, for a timer longer than the warning. Worked out on every
+    // render and never saved, so every copy agrees. (board.js, Timers.ofTimer, has the same rule.)
+    const W = warnMin() * 60000;
+    const warn = !done && (running() || ms < state.duration) && W > 0 && state.duration > W && ms <= W;
     document.body.classList.toggle('done', done);
+    document.body.classList.toggle('warn', warn);
     document.querySelectorAll('#chips button').forEach(b => b.classList.toggle('on', +b.dataset.min * 60000 === state.duration));
-    Board21.window.setTitle(done ? 'Done!' : running() ? 'Running' : (ms < state.duration ? 'Paused' : ''));
+    Board21.window.setTitle(done ? 'Done!' : warn ? 'Almost done' : running() ? 'Running' : (ms < state.duration ? 'Paused' : ''));
   }
 
   function tick() {
@@ -259,14 +275,17 @@
   $('chips').innerHTML = PRESETS.map(m => `<button data-min="${m}">${m}m</button>`).join('');
   $('chips').onclick = e => { const b = e.target.closest('button'); if (b) setDuration(+b.dataset.min * 60000); };
 
-  // Window menu: pick the alarm sound (picking one plays it), or turn it off.
+  // Window menu: pick the alarm sound (picking one plays it), or turn it off; then the warning near the end.
   function setMenu() {
-    const cur = soundName();
+    const cur = soundName(), w = warnMin();
     Board21.menu.set([
       ...Object.keys(SOUNDS).map(k => ({ id: 'sound:' + k, label: SOUNDS[k].label, checked: cur === k })),
       { id: 'sound:off', label: 'No sound', checked: cur === 'off' },
       { separator: true },
-      { id: 'test', label: 'Play sound', disabled: cur === 'off' }
+      { id: 'test', label: 'Play sound', disabled: cur === 'off' },
+      { separator: true },
+      { heading: true, label: 'Warning' },
+      ...WARNS.map(m => ({ id: 'warn:' + m, label: m === 0 ? 'Off' : m === 1 ? '1 minute' : m + ' minutes', checked: w === m }))
     ]);
   }
 
@@ -277,6 +296,11 @@
       if (config.sound !== 'off') playSound(config.sound);
     }
     if (id === 'test') playSound(soundName());
+    const w = /^warn:(\d)$/.exec(id);
+    if (w && WARNS.includes(+w[1])) {
+      config.warn = +w[1];
+      Board21.saveConfig(config); setMenu(); render();
+    }
   });
 
   // Another 21Board tab (or an import) changed this timer.
@@ -291,11 +315,11 @@
     }
     render();
   });
-  Board21.on('config', c => { config = { sound: c ? c.sound : 'beep' }; setMenu(); plan(); });
+  Board21.on('config', c => { config = readConfig(c); setMenu(); plan(); render(); });
 
   Board21.ready().then(ctx => {
     if (ctx.data) state = readState(ctx.data);
-    if (ctx.config) config = { sound: ctx.config.sound };
+    if (ctx.config) config = readConfig(ctx.config);
     if (left() <= 0 && state.duration > 0) finishedAlerted = true; // finished while closed
     setMenu();
     render();

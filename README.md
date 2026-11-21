@@ -218,7 +218,7 @@ tests/run.js            Browser tests. See Tests.
 
 | Widget | Shows off |
 | --- | --- |
-| **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio, with no sound files |
+| **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio, with no sound files. It turns amber near the end, 1 minute by default. The warning is worked out on every render and never saved |
 | **Task Timer** | A schedule of activities as a pie with a countdown kept in step across tabs; a repeating alarm set ahead on the sound's own clock, rung by one copy of the board |
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
 | **Clock** | Analog, digital, or date only; an aspect-ratio lock that changes at runtime, 1:1 for analog and 2.2:1 for digital or date; a config-only widget |
@@ -227,7 +227,7 @@ tests/run.js            Browser tests. See Tests.
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Zones Check-In** | Check-ins kept as *content*, so templates never carry them. A tap counts when the finger lifts, so two students tapping at once both count. "−" and Undo, the last 20 changes. Clear each day, by the device's date. A face beside each feeling word, and an Ideas view with a breathing circle. When it fills the board and is at least 850 × 480 px, the four zones sit in one row, in every student's reach |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
-| **Traffic Light** | Tall fixed-shape window, title status text |
+| **Traffic Light** | Turns sideways in a window wider than tall, and keeps its shape in any window with container query units. Follow timers shows the color of the Timer or 21Timer closest to ending, from the board's `timers` event. That color is worked out in every tab and never saved. Title status text |
 | **Video Player** | A YouTube, Google Drive, or Vimeo video from its link. A link pasted or dropped on the board opens one too. The board reads it with the widget's own `video-links.js`. YouTube, Google Drive, and Vimeo see what they would on their own sites: the video, the device, and any account signed in. YouTube and Vimeo also see the board's address. Controls in the window menu, since nothing may cover the player. A History of the last 5 videos, kept in the content and titled by YouTube's and Vimeo's oEmbed without cookies. Clear of the board's corner buttons when it fills the board (`corners`). Never under 200 × 200 px on screen (`zoom`). A message when offline |
 | **Picture** | A picture opened, pasted, or dropped on the board. PNG, JPEG, GIF, WebP, or AVIF, animations too. An SVG is drawn as a picture, so nothing in it runs. Kept in the window's content. A still over 1 MB or 3840 px is redrawn as a WebP, 2560 px at most. An animation is kept as it is, up to 5 MB. The window takes the picture's shape. *Whole picture* or *Crop to fill* in its menu. Board history keeps each picture once |
 | **Calculator** | Its math in one engine, `calc-engine.js`, with its own Node tests. Every menu setting kept in the window's config. The window widens for History, grows for Advanced keys, and gives the room back (`setSize`). See [Calculator](#calculator) |
@@ -642,7 +642,8 @@ copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the
   alerts and printing, pop-ups, and downloads. They also allow full screen, the clipboard, sound, and the camera
   for 21DocCam. Tested with copies of the apps, all of this works: saving PNG and project files, full screen,
   copying a picture, the camera, sound, alerts, printing, and the app's own offline copy. The sandbox stops an app
-  from sending 21Board's tab elsewhere. 21Board takes no messages from the apps and sends them none.
+  from sending 21Board's tab elsewhere. 21Board sends the apps nothing. It reads one message from 21Timer, how much
+  time is left, for the Traffic Light, and stores nothing. 21Timer sends it from its 2.0 release.
 - **Kiosk.** The apps work in a kiosk like any widget, without *Open in new tab*, since a kiosk can't open tabs.
   An app saves its offline copy only when its page loads, and in a kiosk that happens only in its window. For a
   kiosk to use the apps offline, launch it online once **with each app's window open**, after that app's offline
@@ -748,8 +749,9 @@ node tests/run.js            # all suites
 node tests/run.js offline    # only the suites whose title contains "offline"
 ```
 
-The *District apps* suite uses stand-ins for 21Sketch, 21Timer, and 21DocCam, and the *Video Player* suites use
-stand-ins for YouTube, Google Drive, and Vimeo. The tests never reach the real sites.
+The *District apps* suite uses stand-ins for 21Sketch, 21Timer, and 21DocCam. The *Traffic Light sideways* suite uses
+them for 21Timer's message. The *Video Player* suites use stand-ins for YouTube, Google Drive, and Vimeo. The tests
+never reach the real sites.
 
 The second *Opens maximized* suite installs 21Board as an app in a real Chrome window, on an Xvfb screen of its own,
 and in Chrome's headless mode. It needs Xvfb, the package with `xvfb-run`, and the full Chromium that `npx

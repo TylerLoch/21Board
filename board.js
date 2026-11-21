@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.21-1';
-  const BOARD_BUILD = 'b53ce8c4';
+  const BOARD_VERSION = '2026.11.21-2';
+  const BOARD_BUILD = '61ea9d8d';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -377,7 +377,8 @@
       // only a setting); otherwise both are kept, the other as a labelled copy (section 13d).
       clash: a.clash === 'later' ? 'later' : null,
       // A district app from its own site (registry only: a test widget never is). Its address comes from the
-      // registry and nowhere else; it has no SDK, so the board takes no messages from it and sends it nothing.
+      // registry and nowhere else. It has no SDK: the board sends it nothing, and reads one message only, 21Timer's
+      // time left for the Traffic Light (Timers.fromApp), which it never stores.
       external: a.external === true && !extra.dev && /^https:\/\//i.test(a.entry),
       win: {
         width: pos(w.width, 400), height: pos(w.height, 300),
@@ -1005,6 +1006,7 @@
       if (msg.op === 'reset' && msg.board === S.boardId && msg.ikey) {
         S.data.delete(msg.ikey); S.conf.delete(msg.ikey);
         const w = S.wins.get(msg.ikey); if (w) w.reload();
+        Timers.soon();
       }
       if (Array.isArray(msg.keys) && msg.keys.length) {
         if (Inter.active) msg.keys.forEach(k => Inter.deferredKeys.add(k));
@@ -1132,6 +1134,7 @@
     applySettings(); applyBoard();
     // Another page is shown now (opts.pick): board history is that page's.
     if (S.boardId !== was) { BoardHistory.switched(); await BoardHistory.reload(); HistorySheet.refresh(); updateHint(); Picker.renderControls(); }
+    Timers.soon();
   }
   // Every page has a unique id (board.uid): Board Sync matches pages by it on every device.
   function ensureUid() { if (!UID_RE.test(S.board.uid || '')) updateBoard({ uid: newId() }); }
@@ -1196,6 +1199,7 @@
         if (value === null || value === undefined) map.delete(k.ikey); else map.set(k.ikey, value);
         const w = S.wins.get(k.ikey);
         if (w) w.post(k.kind === 'data' ? 'data' : 'config', k.kind === 'data' ? { data: value, reason: 'remote' } : { config: value, reason: 'remote' });
+        Timers.soon();
         break;
       }
     }
@@ -1220,6 +1224,7 @@
   }
 
   function afterBulkApply() {
+    Timers.soon();
     updateFocus();
     Pages.follow();   // another tab went to another page
     Picker.render();
@@ -1490,6 +1495,7 @@
       S.wins.delete(ikey);
       if (Menu.win === w) Menu.close();
     }
+    Timers.soon();   // (a Timer or 21Timer window opened or closed)
   }
 
   // =====================================================================
@@ -1586,7 +1592,7 @@
   const screenPx = px => px / Zoom.s;
 
   // Scale a window's rect by k, keeping its title bar the standard height: the content area is what scales, so
-  // a fixed-shape widget (Clock, Traffic Light) keeps its exact shape and a scale change can be undone.
+  // a fixed-shape widget (the Clock) keeps its exact shape and a scale change can be undone.
   const r2 = v => Math.round(v * 100) / 100;
   const scaleRect = (r, k, dx = 0, dy = 0) => ({ x: r2(r.x * k + dx), y: r2(r.y * k + dy), w: r2(r.w * k), h: r2(Math.max(10, r.h - TITLE_H) * k + TITLE_H) });
 
@@ -2017,6 +2023,7 @@
 
     createFrame() {
       if (this.iframe) this.iframe.remove();
+      if (this.app) { this.app = null; Timers.soon(); }   // (21Timer's last message was from the page that was here)
       const f = document.createElement('iframe');
       const sealed = this.widget.sealed;
       f.title = this.widget.name;
@@ -2066,6 +2073,7 @@
 
     destroy() {
       Inter.forget(this, false);
+      if (this.app) { this.app = null; Timers.soon(); }
       if (this.iframe) this.iframe.src = 'about:blank';
       this.el.remove();
     }
@@ -2192,17 +2200,17 @@
           this.lastInfo = '';
           const theme = resolvedTheme();
           const inst = this.inst;
-          this.post('init', {
-            context: {
-              sdkProtocol: SDK_PROTOCOL, boardVersion: BOARD_VERSION,
-              widgetId: this.widget.id, widgetName: this.widget.name, widgetVersion: this.widget.version, instance: inst.n,
-              data: clone(S.data.get(this.ikey)), config: clone(S.conf.get(this.ikey)),
-              theme, palette: paletteFor(theme), window: this.info(),
-              locale: navigator.language || 'en-US', devMode: !!S.settings.devMode || !!LAB,
-              host: LAB ? 'dev' : 'board',  // 'dev': the widget dev window (the SDK then reports errors to it)
-              kiosk: KIOSK                  // ChromeOS kiosk: links can't open new windows, no file access by default
-            }
-          });
+          const context = {
+            sdkProtocol: SDK_PROTOCOL, boardVersion: BOARD_VERSION,
+            widgetId: this.widget.id, widgetName: this.widget.name, widgetVersion: this.widget.version, instance: inst.n,
+            data: clone(S.data.get(this.ikey)), config: clone(S.conf.get(this.ikey)),
+            theme, palette: paletteFor(theme), window: this.info(),
+            locale: navigator.language || 'en-US', devMode: !!S.settings.devMode || !!LAB,
+            host: LAB ? 'dev' : 'board',  // 'dev': the widget dev window (the SDK then reports errors to it)
+            kiosk: KIOSK                  // ChromeOS kiosk: links can't open new windows, no file access by default
+          };
+          if (Timers.follows(this)) context.timers = Timers.forInit(this);   // (the Traffic Light and the Clock only)
+          this.post('init', { context });
           this.loadingEl.classList.add('done');
           Pictures.deliver(this);   // (a picture pasted or dropped on the board, for this new window: section 15c)
           break;
@@ -2253,6 +2261,7 @@
       if (v === null) { map.delete(this.ikey); p = Writer.del(key); }
       else { map.set(this.ikey, v); p = Writer.put(key, kind, v); }
       if (kind === 'data') unlabel(this.ikey);   // (a copy whose content is changed is an ordinary window now)
+      Timers.soon();   // (a Timer's content or config)
       p.then(ok => { if (ok === false) this.ack(reqId, false, null, 'Not saved yet'); else { stored(); this.ack(reqId, true); } });   // (not saved: the board keeps it and tries again)
     }
 
@@ -2308,15 +2317,98 @@
   window.addEventListener('message', e => {
     const m = e.data;
     if (LAB) LabBridge.relayUp(e);
+    // 21Timer's one message, how much time is left, for the Traffic Light. Not an SDK message: Timers.fromApp checks it.
+    if (m && typeof m === 'object' && m.type === '21timer:status' && !('b21' in m)) { Timers.fromApp(e, m); return; }
     if (!m || m.b21 !== SDK_PROTOCOL || typeof m.type !== 'string') return;
     // An uploaded file's window (sealed off, see DevFiles) has an opaque origin, 'null': heard only from its own frame.
     const sealed = ORIGIN !== '*' && e.origin === 'null';
     if (ORIGIN !== '*' && e.origin !== location.origin && !sealed) return;
     for (const w of S.wins.values()) {
-      // (Never from a district app's page: it is another site, even where the origin can't be checked: file://.)
+      // (No SDK message from a district app's page: it is another site, even where the origin can't be checked: file://.)
       if (w.iframe && w.iframe.contentWindow === e.source) { if (!w.widget.external && (!sealed || w.widget.sealed)) w.handle(m); return; }
     }
   });
+
+  // ---------------------------------------------------------------------
+  // The timers a Traffic Light follows (and the Clock, from its next release): each Timer and 21Timer window open on
+  // the page shown that is running, paused, or done, as [{ id, endsAt, remaining, warnMs }], sorted by id. id is the
+  // window's ikey; endsAt the wall-clock end while running, else null; remaining the ms left while paused, 0 when done,
+  // else null; warnMs the warning in ms, or 0. It goes to those two widgets only, as the SDK event 'timers' and in
+  // their init context, and again whenever it changes. A Timer's entry comes from its content and config, which sync
+  // already, and 21Timer's from its last message, held on its window only. So nothing new is saved, and every tab and
+  // device works out the same colors.
+  // ---------------------------------------------------------------------
+  const TIMER_FOLLOWERS = new Set(['traffic-light', 'clock']);
+  const Timers = {
+    t: 0,
+    follows: w => TIMER_FOLLOWERS.has(w.widget.id) && !w.widget.sealed,
+    // The Timer's warning in minutes: 0, 1, 2, or 5; missing or unknown is 1. The Timer's own rules
+    // (widgets/timer/index.html: warnMin, readState, render): keep the two in step.
+    warnMin: c => (c && [0, 1, 2, 5].includes(c.warn) ? c.warn : 1),
+    // A Timer's entry: running while endsAt is a number; done at 0 left; paused partway. Idle, or a record that
+    // doesn't check out as the Timer checks it, gives none.
+    ofTimer(id, d, c, now) {
+      const ms = v => typeof v === 'number' && v >= 0 && v <= 864e5;
+      if (!d || typeof d !== 'object' || !ms(d.duration) || !ms(d.remaining)) return null;
+      const runs = typeof d.endsAt === 'number';
+      if (runs ? !(isFinite(d.endsAt) && d.endsAt - now <= 864e5) : d.endsAt != null) return null;
+      const W = this.warnMin(c) * 60000, warnMs = d.duration > W ? W : 0;   // (none for a timer no longer than its warning)
+      if (runs) return { id, endsAt: d.endsAt, remaining: null, warnMs };
+      if (d.remaining <= 0 && d.duration > 0) return { id, endsAt: null, remaining: 0, warnMs };
+      if (d.remaining > 0 && d.remaining < d.duration) return { id, endsAt: null, remaining: d.remaining, warnMs };
+      return null;
+    },
+    // 21Timer's message, from its 2.0 release, when it opens and on every change:
+    //   { type: '21timer:status', version: 1, state: 'idle' | 'running' | 'paused' | 'done', endsAt, remaining, warnMs }
+    // Taken only from the frame of an open 21Timer window, from 21Timer's own origin, with every field checked as the
+    // Timer checks its content (ms from 0 to a day, an end within a day of now). Anything else is ignored.
+    fromApp(e, m) {
+      for (const w of S.wins.values()) {
+        if (!w.iframe || w.iframe.contentWindow !== e.source) continue;
+        let origin = null;
+        try { origin = new URL(w.widget.entry).origin; } catch (err) { /* no address */ }
+        if (w.widget.id !== '21timer' || !w.widget.external || e.origin !== origin) return;
+        const a = this.readApp(m, Date.now());
+        if (a) { w.app = a; this.soon(); }
+        return;
+      }
+    },
+    readApp(m, now) {
+      const ms = v => typeof v === 'number' && v >= 0 && v <= 864e5;
+      if (m.version !== 1 || !['idle', 'running', 'paused', 'done'].includes(m.state) || !ms(m.warnMs)) return null;
+      if (m.endsAt !== null && !(typeof m.endsAt === 'number' && Math.abs(m.endsAt - now) <= 864e5)) return null;
+      if (m.remaining !== null && !ms(m.remaining)) return null;
+      if ((m.state === 'running' && m.endsAt === null) || (m.state === 'paused' && m.remaining === null)) return null;
+      return { state: m.state, endsAt: m.endsAt, remaining: m.remaining, warnMs: m.warnMs };
+    },
+    ofApp(id, a) {
+      if (!a) return null;
+      if (a.state === 'running') return { id, endsAt: a.endsAt, remaining: null, warnMs: a.warnMs };
+      if (a.state === 'paused') return { id, endsAt: null, remaining: a.remaining, warnMs: a.warnMs };
+      if (a.state === 'done') return { id, endsAt: null, remaining: 0, warnMs: a.warnMs };
+      return null;
+    },
+    list() {
+      const now = Date.now(), out = [];
+      for (const [ik, w] of S.wins) {
+        const id = w.widget.id;
+        const e = id === 'timer' && !w.widget.sealed ? this.ofTimer(ik, S.data.get(ik), S.conf.get(ik), now) : id === '21timer' && w.widget.external ? this.ofApp(ik, w.app) : null;
+        if (e) out.push(e);
+      }
+      return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+    },
+    forInit(w) { const l = this.list(); w.timersSig = JSON.stringify(l); return l; },
+    // Whatever may have changed the list: once the change has landed, each follower whose list changed gets it.
+    soon() { if (!this.t) this.t = setTimeout(() => { this.t = 0; this.send(); }, 0); },
+    send() {
+      let list = null, sig = '';
+      for (const w of S.wins.values()) {
+        if (!w.connected || !this.follows(w)) continue;
+        if (!list) { list = this.list(); sig = JSON.stringify(list); }
+        if (w.timersSig !== sig) { w.timersSig = sig; w.post('timers', { timers: list }); }
+      }
+    }
+  };
 
   // A copy kept from a clash (Board Sync): whose version it is ("The laptop’s", "This device’s"; lower case inside a
   // sentence) and when it was made ("9:41 AM", or "Nov 9" on another day; long: "Nov 9 at 9:41 AM").
@@ -2557,6 +2649,7 @@
     Sync.announce([], { op: 'reset', board: b, ikey });
     const w = S.wins.get(ikey);
     if (w) w.reload();
+    Timers.soon();
     return beforeId;
   }
 

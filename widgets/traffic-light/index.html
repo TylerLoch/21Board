@@ -7,10 +7,17 @@
 <script src="../../sdk/board21.js"></script>
 <style>
   html, body { margin: 0; height: 100%; }
-  body { background: var(--b21-bg); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; }
-  .housing { position: absolute; inset: 5%; border-radius: 18% / 8%; background: #1f2937; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; box-shadow: inset 0 -6px 0 rgba(0,0,0,.35); }
+  body { background: var(--b21-bg); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; display: flex; align-items: center; justify-content: center; }
+  /* The light keeps its shape in any window, centered: 90% of the window's long side, and its thin side at most 0.45 of
+     that, as at 170 × 380. Wider than tall, it lies on its side, red on the left as on real sideways signals. The lamps
+     are sized from the light itself (container units). */
+  .housing { container-type: size; flex: none; height: 90vh; width: min(90vw, 40.5vh); border-radius: min(16.2vw, 7.29vh); background: #1f2937; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; box-shadow: inset 0 -6px 0 rgba(0,0,0,.35); }
   [data-b21-theme="dark"] .housing { background: #0b0f17; box-shadow: inset 0 0 0 2px #374151; }
-  .lamp { width: min(72%, 25vh); aspect-ratio: 1; border-radius: 50%; border: 0; cursor: pointer; padding: 0; opacity: .22; transition: opacity .2s, box-shadow .2s, transform .1s; }
+  .lamp { flex: none; width: min(72%, 25vh); width: min(72cqw, 27.78cqh); aspect-ratio: 1; border-radius: 50%; border: 0; cursor: pointer; padding: 0; opacity: .22; transition: opacity .2s, box-shadow .2s, transform .1s; }
+  @media (orientation: landscape) {
+    .housing { width: 90vw; height: min(90vh, 40.5vw); border-radius: min(16.2vh, 7.29vw); flex-direction: row; }
+    .lamp { width: min(72%, 25vw); width: min(72cqh, 27.78cqw); }
+  }
   .lamp:active { transform: scale(.96); }
   .lamp.red { background: #ef4444; } .lamp.yellow { background: #facc15; } .lamp.green { background: #22c55e; }
   .lamp.on { opacity: 1; }
@@ -26,29 +33,104 @@
     <button class="lamp green" data-c="green" aria-label="Green"></button>
   </div>
 <script>
-  // Content: { active: 'red' | 'yellow' | 'green' | null }
+  // Content: { active: 'red' | 'yellow' | 'green' | null }, the color the teacher chose.
+  // Config:  { follow: true } while Follow timers is on: the light shows the color of the Timer or 21Timer on the page
+  //   that is closest to ending (the board's 'timers'). That color is worked out here, the same in every tab and on
+  //   every device, from what the board sends. It is never saved.
   const LABELS = { red: 'Red', yellow: 'Yellow', green: 'Green' };
   let state = { active: null };
+  let config = {};
+  let timers = [];     // [{ id, endsAt, remaining, warnMs }]: endsAt while running, else remaining (0 when done)
+  let tapped = null;   // a tap while following: what was followed then ('' for nothing). Its color shows until that changes.
+  let drawn = null;
+  const following = () => config.follow === true;
+
+  // The timer with the least time left (a finished one has none, so it wins), and its color: red at the end, yellow in
+  // its warning, green before. A paused timer keeps its color. null when there is none.
+  function followed(now) {
+    let best = null, left = Infinity;
+    for (const t of timers) {
+      const l = t.endsAt !== null ? t.endsAt - now : t.remaining;
+      if (l < left) { best = t; left = l; }
+    }
+    if (!best) return null;
+    return { id: best.id, color: left <= 0 ? 'red' : best.warnMs > 0 && left <= best.warnMs ? 'yellow' : 'green' };
+  }
+  const followKey = f => (f ? f.id + ' ' + f.color : '');
+  // The color on screen: the teacher's, unless it follows a timer and nothing was tapped since that timer's color changed.
+  function shown() {
+    if (!following()) return state.active;
+    const f = followed(Date.now());
+    if (tapped !== null && tapped !== followKey(f)) tapped = null;
+    return f && tapped === null ? f.color : state.active;
+  }
 
   function render() {
-    document.querySelectorAll('.lamp').forEach(b => { b.classList.toggle('on', b.dataset.c === state.active); b.setAttribute('aria-pressed', String(b.dataset.c === state.active)); });
-    Board21.window.setTitle(state.active ? LABELS[state.active] : '');
-    Board21.menu.set([
-      ...Object.keys(LABELS).map(c => ({ id: c, label: LABELS[c], checked: state.active === c })),
-      { id: 'off', label: 'All off', disabled: !state.active }
-    ]);
+    const c = shown(), sig = [c, state.active, following()].join();
+    if (sig !== drawn) {
+      drawn = sig;
+      document.querySelectorAll('.lamp').forEach(b => { b.classList.toggle('on', b.dataset.c === c); b.setAttribute('aria-pressed', String(b.dataset.c === c)); });
+      Board21.window.setTitle(c ? LABELS[c] : '');
+      Board21.menu.set([
+        ...Object.keys(LABELS).map(k => ({ id: k, label: LABELS[k], checked: c === k })),
+        { id: 'off', label: 'All off', disabled: !c },
+        { separator: true },
+        { id: 'follow', label: 'Follow timers', checked: following() }
+      ]);
+    }
+    plan();
   }
-  function set(c) { state = { active: c }; Board21.save(state); render(); }
+  // Wakes for the next change of color: a timer reaching its warning or its end, or a running one overtaking a paused
+  // or finished one. (render also runs every second, in case a sleeping device missed one.)
+  let wake = 0;
+  function plan() {
+    clearTimeout(wake);
+    if (!following()) return;
+    const now = Date.now();
+    let next = Infinity;
+    const at = t => { if (t > now && t < next) next = t; };
+    for (const t of timers) {
+      if (t.endsAt === null) continue;
+      at(t.endsAt - t.warnMs); at(t.endsAt);
+      for (const o of timers) if (o.endsAt === null) at(t.endsAt - o.remaining);
+    }
+    if (next < Infinity) wake = setTimeout(render, Math.min(next - now + 20, 60000));
+  }
+
+  // The teacher's color: saved and shown at once, also while following.
+  function set(c) {
+    state = { active: c };
+    tapped = following() ? followKey(followed(Date.now())) : null;
+    Board21.save(state);
+    render();
+  }
 
   document.querySelector('.housing').addEventListener('click', e => {
     const b = e.target.closest('.lamp');
-    if (b) set(state.active === b.dataset.c ? null : b.dataset.c);
+    if (b) set(shown() === b.dataset.c ? null : b.dataset.c);
   });
-  Board21.on('menu', id => set(id === 'off' ? null : id));
-  // (Saved content can come from an imported file: a lamp is on only if it names one of the three.)
+  Board21.on('menu', id => {
+    if (id === 'follow') {
+      config = Object.assign({}, config, { follow: !following() });
+      tapped = null;
+      Board21.saveConfig(config);
+      render();
+    } else if (id === 'off' || Object.prototype.hasOwnProperty.call(LABELS, id)) set(id === 'off' ? null : id);
+  });
+  // (Saved content and config can come from an imported file: a lamp is on only if it names one of the three.)
   const readState = d => ({ active: d && Object.prototype.hasOwnProperty.call(LABELS, d.active) ? d.active : null });
+  const readConfig = c => (c && typeof c === 'object' && !Array.isArray(c) ? c : {});
+  const num = v => typeof v === 'number' && isFinite(v);
+  const readTimers = l => (Array.isArray(l) ? l : []).filter(t => t && typeof t.id === 'string' && (num(t.endsAt) || num(t.remaining)))
+    .map(t => ({ id: t.id, endsAt: num(t.endsAt) ? t.endsAt : null, remaining: num(t.endsAt) ? null : t.remaining, warnMs: num(t.warnMs) && t.warnMs > 0 ? t.warnMs : 0 }));
   Board21.on('data', d => { state = readState(d); render(); });
-  Board21.ready().then(ctx => { state = readState(ctx.data); render(); });
+  Board21.on('config', c => { config = readConfig(c); render(); });
+  Board21.on('timers', l => { timers = readTimers(l); render(); });
+  Board21.ready().then(ctx => {
+    state = readState(ctx.data); config = readConfig(ctx.config); timers = readTimers(ctx.timers);
+    render();
+    setInterval(render, 1000);
+  });
 </script>
 </body>
 </html>
