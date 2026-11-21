@@ -241,8 +241,8 @@ link opens a new Video Player. In a widget uploaded in Developer mode, they do n
 place of your widget. To take them yourself, call `preventDefault()` in a `paste` or `drop` listener on the document
 or an element.
 
-**Right-click.** The SDK turns off the browser's menu in your widget, except in text boxes, in Developer mode, and
-in the dev window. To show a menu of your own, listen for `contextmenu` and call `preventDefault()`.
+**Right-click.** The SDK turns off the browser's menu in your widget, except on links, in text boxes, in Developer
+mode, and in the dev window. To show a menu of your own, listen for `contextmenu` and call `preventDefault()`.
 
 ---
 
