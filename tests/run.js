@@ -7037,8 +7037,8 @@ const SUITES = [
     // The README's Included widgets says so, its other words kept.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     const row = (/\| \*\*Zones Check-In\*\* \|[^|]*\|/.exec(readme) || [''])[0];
-    ok(/^\| \*\*Zones Check-In\*\* \| Check-ins kept as \*content\*,.* and an Ideas view with a breathing circle\. When it fills a board at least 850 × 480 px, the four zones sit in one row, in every student's reach \|$/.test(row),
-      `the README’s Zones Check-In row ends “When it fills a board at least 850 × 480 px, the four zones sit in one row, in every student's reach” (…${row.slice(-100)})`);
+    ok(/^\| \*\*Zones Check-In\*\* \| Check-ins kept as \*content\*,.* and an Ideas view with a breathing circle\. When it fills the board and is at least 850 × 480 px, the four zones sit in one row, in every student's reach \|$/.test(row),
+      `the README’s Zones Check-In row ends “When it fills the board and is at least 850 × 480 px, the four zones sit in one row, in every student's reach” (…${row.slice(-100)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
 
