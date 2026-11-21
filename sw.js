@@ -14,11 +14,11 @@
 const VERSION = '2026.11.21-3';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '88ba5753';
+const BUILD = '9554b85f';
 const FILES = {
-  './': 'b566e977b0f2cca5',
-  'index.html': 'b566e977b0f2cca5',
-  'board.js': '27cd9e1444fe646b',
+  './': 'b922466050f71cc7',
+  'index.html': 'b922466050f71cc7',
+  'board.js': 'a4697f252ddec0e2',
   'sdk/board21.js': '97e07868a5349382',
   'sdk/board21-dev.js': 'f7c7181b53d5025a',
   'sdk/dev/board-shell.js': 'b855220e82bbedad',
@@ -58,8 +58,8 @@ const FILES = {
   'widgets/youtube-player/index.html': '32fa8d870d4a57d4',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
-  'widgets/calculator/index.html': 'cecd869585a67666',
-  'widgets/calculator/calc-engine.js': 'be99e2dbcc9b2d58',
+  'widgets/calculator/index.html': '4df2f9490d47fe15',
+  'widgets/calculator/calc-engine.js': '13c22550e41dad53',
   'widgets/sdk-playground/index.html': '0dff97332041a455'
 };
 const CACHE_PREFIX = '21board-';

@@ -169,10 +169,11 @@ button.wm-i:hover:not(:disabled) { background: var(--surface-2); }
 .kp i { font-family: Georgia, "Times New Roman", serif; }
 .kp sup { font-size: .62em; line-height: 0; position: relative; top: -.42em; }
 .kp .k3 { grid-column: span 3; } .kp .k6 { grid-column: span 6; }
-/* Test practice: 24 columns, so clear all can sit in the middle. Its keys span 6 of them, the same size as elsewhere. */
+/* Test practice: 24 columns, so clear all can sit in the middle. Its keys span 6 of them, the same size as elsewhere,
+   and clear all spans 8, as in the widget. */
 .kp.k24 { grid-template-columns: repeat(24, minmax(0, 1fr)); }
 .kp .flat { background: transparent; color: color-mix(in srgb, var(--text) 78%, transparent); font-weight: 400; }
-.kp .ca { grid-column: 10 / span 6; }
+.kp .ca { grid-column: 9 / span 8; }
 .key-notes { margin: 16px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 6px 18px; }
 .key-notes dt, .key-notes dd { margin: 0; padding: 11px 0; border-top: 1px solid var(--border); }
 .key-notes dt:first-of-type, .key-notes dt:first-of-type + dd { border-top: 0; }
@@ -441,7 +442,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
         <div class="pg-card">
           <h3>Test practice</h3>
           <div class="kp k24" aria-label="Test practice keys" role="img">
-            <span class="flat k6 ca w">clear all</span><span class="flat k6">⌫</span>
+            <span class="flat ca w">clear all</span><span class="flat k6">⌫</span>
             <span class="fn k6">(</span><span class="fn k6">)</span><span class="fn k6">√</span><span class="op k6">÷</span>
             <span class="k6">7</span><span class="k6">8</span><span class="k6">9</span><span class="op k6">×</span>
             <span class="k6">4</span><span class="k6">5</span><span class="k6">6</span><span class="op k6">−</span>
@@ -536,6 +537,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
             <li>= after a lone number shows its value. A problem that starts with ×, ÷, or + works on the 0 on screen. Desmos shows no answer for either.</li>
             <li>A faint comma groups the digits, as in 1,234,567. Desmos uses a narrow space.</li>
             <li>Answers below 10⁻³²⁴ say “Too small to show”. Desmos shows 0.</li>
+            <li>3 × (−2) where Desmos writes 3×−2.</li>
           </ul>
         </div>
       </div>

@@ -18907,7 +18907,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).click({ timeout: 3000 });
       await page.waitForTimeout(700);
     };
-    const cfg = async () => Object.assign({ canvas: true, history: false, words: false, advanced: false, test: false, swap: false }, await page.evaluate(ik => window.__board21.state.conf.get(ik) || {}, ik));
+    const cfg = async () => Object.assign({ canvas: true, history: false, words: false, advanced: false, test: false, swap: false, hide: false }, await page.evaluate(ik => window.__board21.state.conf.get(ik) || {}, ik));
     const set = async (label, key, on) => { if ((await cfg())[key] !== on) await choose(label); };
     const setSize = (w, h) => page.evaluate(([ik, w, h]) => window.__board21.setRect(ik, Object.assign({}, window.__board21.state.insts.get(ik).rect, { w, h: h + 40 })), [ik, w, h]).then(() => page.waitForTimeout(700));
     const press = async keys => { await front(); for (const k of keys) await W.locator(`#keys .key[data-key="${k}"]`).click({ timeout: 3000 }); await page.waitForTimeout(250); };
@@ -18946,7 +18946,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await set('Advanced keys', 'advanced', false); await setSize(900, 600);
     // Key order, tab order, labels, and spoken names stay as they were.
     const order = await W.locator('html').evaluate(() => [...document.querySelectorAll('#keys .key')].slice(8, 11).map(b => [b.dataset.key, b.textContent.trim() || b.querySelector('svg') && 'svg', b.getAttribute('aria-label')].join(':')).join(' '));
-    ok(order === 'clear:AC:all clear backspace:svg:delete negate:±:change sign', `the row keeps its order, labels, and spoken names (${order})`);
+    ok(order === 'clear:AC:all clear backspace:svg:delete negate:±:opposite', `the row keeps its order and labels, and ± is called “opposite” (${order})`);
     // Canvas off (the phone layout), History on, and Swap sides: still lined up.
     for (const [label, key] of [['Canvas', 'canvas'], ['History', 'history'], ['Swap sides', 'swap']]) {
       await choose(label); await setSize(900, 600);
@@ -19016,6 +19016,23 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(s.label.lines === 1 && s.label.l >= s.label.kl - 0.5 && s.label.r <= s.label.kr + 0.5 && s.label.px >= 12, `280 × 400: “clear all” fits on one line, inside its key (${s.label.w.toFixed(1)} px in ${s.label.kw.toFixed(1)}, ${s.label.lines} line, ${s.label.px.toFixed(1)} px type)`);
     ok(!!k.k.clear && near((k.k.clear.l + k.k.clear.r) / 2, (k.pad.l + k.pad.r) / 2) && !!k.k.backspace && k.k.backspace.l > k.k.clear.r, `280 × 400: clear all still centered, ⌫ beside it (${span(k, 'clear')}, ${span(k, 'backspace')})`);
     await page.screenshot({ path: OUT + 'calculator-strip-280.png' });
+    // clear all leaves room around its label for the focus ring and the pressed key: 4 px or more on each side, with
+    // History on, in a tall window, in a big one, and in Early readers, whose letters are widest. (A bigger viewport
+    // holds the big windows.)
+    await page.setViewportSize({ width: 1600, height: 1200 }); await page.waitForTimeout(500);
+    const room = s => Math.min(s.label.l - s.label.kl, s.label.kr - s.label.r);
+    const roomy = async what => { const k = await keysAt(), s = await strip(); ok(s.label.lines === 1 && room(s) >= 4,
+      `${what}: “clear all” has 4 px or more on each side inside its key (${k.vw} × ${k.vh}: ${s.label.w.toFixed(1)} px in ${s.label.kw.toFixed(1)}, ${room(s).toFixed(1)} px to spare, ${s.label.px.toFixed(1)} px type)`); };
+    for (const [w, h, hist] of [[900, 600, false], [700, 900, false], [900, 600, true], [600, 900, true], [1100, 700, true], [1400, 1100, true]]) {
+      await set('History', 'history', hist); await setSize(w, h);
+      await roomy(`${w} × ${h}${hist ? ', History on' : ''}`);
+    }
+    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="early"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(800);
+    await setSize(1400, 1100); await roomy('Early readers, 1400 × 1100, History on');
+    await setSize(1500, 900); await roomy('Early readers, 1500 × 900, History on');
+    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(500);
+    await set('History', 'history', false);
+    await page.setViewportSize({ width: 1366, height: 768 }); await page.waitForTimeout(500);
     await setSize(900, 600);
     // After a reload, Test practice still says clear all.
     await page.reload(); await boardUp(page); await page.waitForTimeout(1500);
@@ -19054,15 +19071,29 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await press(['clear', '2', 'subtract', '3', 'negate', 'equals']);
     w = await words();
     ok(w.said === '2 minus negative 3 equals 5', `2 − 3 ± keeps its words (${w.said})`);
+    // A negative fraction as a base, (−3/2)², says its parentheses too, with Hide the answer on. −(3/2)² keeps its words.
+    const NEGF = 'open parenthesis negative 3 over 2 close parenthesis';
+    await press(['clear', 'fraction', '3', 'negate', 'right', '2', 'right', 'square', 'equals']);
+    w = await words();
+    ok(w.said === `${NEGF} squared equals 2.25` && w.live === w.said && w.eqLabel === w.said && w.hist === `${NEGF} squared`, `a/b 3 ± → 2 → a²: (−3/2)² says its parentheses (${w.said} | ${w.live} | ${w.hist})`);
+    await set('Hide the answer', 'hide', true);
+    await press(['clear', 'fraction', '3', 'negate', 'right', '2', 'right', 'square', 'equals']);
+    const hidden = await words();
+    await press(['clear', 'subtract', 'fraction', '3', 'right', '2', 'right', 'square', 'equals']);
+    w = await words();
+    ok(hidden.said === `${NEGF} squared` && w.said === 'negative 3 over 2 squared' && hidden.said !== w.said,
+      `with Hide the answer on, (−3/2)² and −(3/2)² say different words (${hidden.said} | ${w.said})`);
+    await set('Hide the answer', 'hide', false);
 
     // ---- 4. The docs: the manual's drawings and lines.
     const man = fs.readFileSync(path.join(ROOT, 'docs', 'calculator-manual', 'page-src.html'), 'utf8');
     const TOP = '<span class="fn k3 w">AC</span><span class="fn k6">⌫</span><span class="fn k3">±</span>';
     ok(man.split(TOP).length === 3 && !/class="fn k4/.test(man), 'the manual draws AC, ⌫, and ± as 3, 6, and 3 columns, in Keys and in Advanced keys');
-    ok(/<span class="flat k6 ca w">clear all<\/span><span class="flat k6">⌫<\/span>/.test(man), 'the manual draws Test practice’s strip, clear all in the middle and ⌫ beside it');
+    ok(/<span class="flat ca w">clear all<\/span><span class="flat k6">⌫<\/span>/.test(man) && /\.kp \.ca \{ grid-column: 9 \/ span 8; \}/.test(man), 'the manual draws Test practice’s strip, clear all 8 columns wide in the middle and ⌫ beside it');
     const plain = man.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
     for (const line of ['Desmos Four-Function’s keys, as on NWEA MAP. No ± key, so students type − first.', 'The state test’s calculator has ±. Test practice matches MAP, which has none.',
-      'Changes the number you’re typing, or the answer, to its opposite.', '± makes the number itself negative, so 3 ± a² is (−3)² = 9.']) ok(plain.includes(line), `the manual: “${line}”`);
+      'Changes the number you’re typing, or the answer, to its opposite.', '± makes the number itself negative, so 3 ± a² is (−3)² = 9.',
+      '3 × (−2) where Desmos writes 3×−2.']) ok(plain.includes(line), `the manual: “${line}”`);
     ok(stamped(), STAMPED);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();

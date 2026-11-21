@@ -769,6 +769,9 @@
   // A negative base of a power says its parentheses too, as typed ones do, so (−3)² isn't heard as −3². That holds for
   // an ans box as well, which the stylized equation draws without them. (Only the speech backend says them.)
   const saysParens = (B, ctx, neg, x) => neg && ctx === 'base' ? B.saidParens(x) : x;
+  // A fraction is negative when its top or its bottom, not both, is a negative number: (−3/2)², (3/−2)².
+  const startsNeg = (n, R) => n.k === 'cur' ? startsNeg(n.a, R) :
+    n.k === 'neg' || ((n.k === 'num' || n.k === 'mixed') && !!n.tok.neg) || (n.k === 'val' && !!formatValue(n.v, R.f).neg);
   // In plain text, a power, root or fraction part that is more than one number gets parentheses: 2^(3 + 1), √(9 + 16).
   const NO_WRAP = { num: 1, val: 1, pi: 1, group: 1, sqrt: 1, root: 1, pct: 1, neg: 1, hole: 1, noans: 1 };
   function wrapText(n) {
@@ -809,7 +812,7 @@
       case 'root': s = B.root(draw(node.b, B, 'index', R), draw(node.a, B, 'radicand', R), wrapText(node.b), wrapText(node.a), indexNumber(node.b)); break;
       case 'frac': {
         const x = B.over(draw(node.a, B, 'frac', R), draw(node.b, B, 'frac', R), wrapText(node.a), wrapText(node.b));
-        s = paren(x, B.linear ? ctx === 'divisor' || ctx === 'base' || ctx === 'index' : ctx === 'base');
+        s = saysParens(B, ctx, startsNeg(node.a, R) !== startsNeg(node.b, R), paren(x, B.linear ? ctx === 'divisor' || ctx === 'base' || ctx === 'index' : ctx === 'base'));
         break;
       }
       case 'pct': s = draw(node.a, B, ctx, R) + B.pct(); break;
@@ -1056,7 +1059,7 @@
     clear: { label: 'AC', name: 'all clear' },
     clearEntry: { label: 'C', name: 'clear entry' },
     backspace: { label: '⌫', name: 'delete' },
-    negate: { label: '±', name: 'change sign' },
+    negate: { label: '±', name: 'opposite' },
     percent: { label: '%', name: 'percent of' },
     open: { label: '(', name: 'open parenthesis' },
     close: { label: ')', name: 'close parenthesis' },

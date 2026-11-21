@@ -188,11 +188,12 @@
       "d0 d0 d0 pt pt pt ans ans ans eq eq eq";
   }
   /* Test practice: Desmos Four-Function's keys, no ±. Its clear all and ⌫ sit flat in a strip on top, clear all in the
-     middle of the pad, so the pad has 24 columns. The keys below keep their size and place. */
+     middle of the pad, so the pad has 24 columns. clear all takes 8 of them, so its label has room for the focus ring and
+     the pressed key. The keys below keep their size and place. */
   #app.test #keys {
     grid-template-columns: repeat(24, minmax(0, 1fr));
     grid-template-areas:
-      ". . . . . . . . . ac ac ac ac ac ac del del del del del del . . ."
+      ". . . . . . . . ac ac ac ac ac ac ac ac del del del del del del . ."
       "open open open open open open close close close close close close sqrt sqrt sqrt sqrt sqrt sqrt div div div div div div"
       "d7 d7 d7 d7 d7 d7 d8 d8 d8 d8 d8 d8 d9 d9 d9 d9 d9 d9 mul mul mul mul mul mul"
       "d4 d4 d4 d4 d4 d4 d5 d5 d5 d5 d5 d5 d6 d6 d6 d6 d6 d6 sub sub sub sub sub sub"
