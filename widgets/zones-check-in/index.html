@@ -52,10 +52,12 @@
      (fitCorners, .reach). Each card is then tall: its face over its count, and its feelings one under another. */
   .reach .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: 1fr; }
   @container zone (aspect-ratio < 0.9) {
-    .reach .main { flex-direction: column; gap: 2cqh; }
-    .reach .face { font-size: min(20cqh, 40cqw); }
+    /* (--room: the card's height under its colored top and over its feelings. On a short card, such as on a locked board,
+       the face and the count shrink to fit it.) */
+    .reach .main { flex-direction: column; gap: min(2cqh, .04 * var(--room)); --room: calc(100cqh - var(--head) - 6.9 * clamp(14px, min(3.4cqh, 6cqw), 30px) - clamp(10px, 5cqh, 48px)); }
+    .reach .face { font-size: min(20cqh, 40cqw, .4 * var(--room)); }
     /* (--len: its digits, so 100 fits too. Its line stays as tall as two digits, so the faces still line up.) */
-    .reach .count { font-size: min(28cqh, calc(108cqw / max(2, var(--len, 1)))); height: min(28cqh, 54cqw); display: flex; align-items: center; }
+    .reach .count { font-size: min(28cqh, calc(108cqw / max(2, var(--len, 1))), .56 * var(--room)); height: min(28cqh, 54cqw, .56 * var(--room)); display: flex; align-items: center; }
     .reach.hide-counts .face { font-size: min(26cqh, 56cqw); }
     /* (Room for four on every card, stacked from the bottom, so the four cards line up and so do their last feelings.) */
     .reach .feelings { flex-direction: column; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: .4em;

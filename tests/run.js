@@ -820,7 +820,7 @@ const ZC = {
   // How the four cards sit (2026.11.20-3): 'row' (side by side, Blue to Red, their tops and bottoms matching), '2x2',
   // 'column' or 'other'. old: what the rules before one row give for the zones' size (a row only when very wide, or
   // wide and short; a column when very tall; else two by two). For each card, where its face, count and feelings are.
-  // h: the height the board gives the window's content.
+  // shows: how many "−", Ideas and feeling words show. w and h: the size the board gives the window's content.
   arrange: async (page, K = ZC.K) => {
     const x = await ZC.zf(page, K).locator('html').evaluate(() => {
       const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
@@ -837,9 +837,10 @@ const ZC = {
         : c.every(k => near(k.l, c[0].l)) && c.every((k, i) => !i || k.t >= c[i - 1].b - 1) ? 'column' : 'other';
       const zr = document.querySelector('#main .zones').getBoundingClientRect(), a = zr.width / zr.height;
       const old = a > 3.2 || (a > 2.2 && zr.width >= 800 && zr.height < 310) ? 'row' : a < 0.7 ? 'column' : '2x2';
-      return { shape, old, reach: document.body.classList.contains('reach'), cards, foot: box(document.querySelector('#main .foot')), gap: parseFloat(getComputedStyle(document.getElementById('grid')).rowGap) };
+      const shows = Object.fromEntries([['minus', '.tools .minus'], ['ideas', '.tools .idea-btn'], ['words', '.feel b']].map(([n, s]) => [n, [...document.querySelectorAll('#main ' + s)].filter(vis).length]));
+      return { shape, old, reach: document.body.classList.contains('reach'), cards, shows, foot: box(document.querySelector('#main .foot')), gap: parseFloat(getComputedStyle(document.getElementById('grid')).rowGap) };
     });
-    x.h = await page.evaluate(k => { const w = window.__board21.state.wins.get(k); return w ? w.info().height : 0; }, K);
+    Object.assign(x, await page.evaluate(k => { const w = window.__board21.state.wins.get(k), i = w ? w.info() : {}; return { w: i.width || 0, h: i.height || 0 }; }, K));
     return x;
   }
 };
@@ -6757,8 +6758,8 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  // ---- Zones Check-In in one row (2026.11.20-3). Filling the board, and over 500 px tall, the four zones sit side by side,
-  // so every card reaches down to where students can tap it.
+  // ---- Zones Check-In in one row (2026.11.20-3; from 850 × 480 px since 2026.11.21-1). Filling a board at least
+  // 850 × 480 px, the four zones sit side by side, so every card reaches down to where students can tap it.
   ['Zones Check-In: one row when it fills the board', async (browser) => {
     let ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     let page = await ctx.newPage();
@@ -6817,18 +6818,29 @@ const SUITES = [
     ok(!R1.line.length, `the faces line up, the counts line up, and so do the last feelings’ bottoms, within 1 px (${R1.line.join(' | ') || '4 boards'})`);
     ok(!R1.back.length, `Restore size: two by two again, and Fill the board: one row again (${R1.back.join(' | ') || '4 boards'})`);
 
-    // ---- 2. The Fill board shape: a filled window over 500 px tall is one row. 500 px or less, or not filling the board,
-    // the rules before: two by two, a row when very wide, a column when very tall.
-    const tall = [], short = [];
-    for (const [vw, vh, sc, over] of [[1024, 768, 1, true], [1280, 700, 1, true], [1024, 541, 1, true], [1280, 700, 1.5, false], [1024, 540, 1, false]]) {
-      await put('free', sc, vw, vh); await fill(true);
-      const x = await settled(over ? 'row' : '2x2');
-      (over ? tall : short).push({ where: `${vw} × ${vh}${sc !== 1 ? ` at ${sc * 100}%` : ''}, ${x.h} px tall: ${x.shape}`, good: over ? x.h > 500 && x.shape === 'row' && x.reach : x.h <= 500 && x.shape === '2x2' && x.shape === x.old && !x.reach });
-      if (vw === 1024 && vh === 768) await page.screenshot({ path: OUT + 'zones-row-ipad.png' });
-    }
+    // ---- 2. The lines: a filled window at least 850 × 480 px is one row. Smaller, or not filling the board, the rules
+    // before: two by two, a row when very wide, a column when very tall.
+    const lined = async ([shape, sc, vw, vh], over) => {
+      await put(shape, sc, vw, vh); await fill(true);
+      const x = await settled(over ? 'row' : '2x2'), big = x.w >= 850 && x.h >= 480;
+      return { x, where: `${shape === 'free' ? 'Fill' : shape} ${vw} × ${vh}${sc !== 1 ? ` at ${sc * 100}%` : ''}, ${x.w} × ${x.h} px: ${x.shape}`,
+        good: over ? big && x.shape === 'row' && x.reach : !big && x.shape === '2x2' && x.shape === x.old && !x.reach };
+    };
     const said = l => l.map(c => c.where).join('; ');
-    ok(tall.every(c => c.good), `the Fill board shape: a filled window over 500 px tall is one row, as on an iPad (${said(tall)})`);
-    ok(short.every(c => c.good) && tall.every(c => c.good), `a filled window 500 px tall or less keeps the rules before: two by two (${said(short)}). The line is at 500 px (${tall[2].where})`);
+    // The height line. (A Chromebook's 1366 × 768 screen at Size 125%: a tab is about 1366 × 657, 486 px tall when filled.)
+    const tall = [], short = [];
+    for (const b of [['free', 1, 1024, 768], ['free', 1, 1280, 700], ['free', 1, 1024, 520], ['16:9', 2, 1366, 768], ['16:9', 1.75, 1366, 768], ['free', 1.25, 1366, 657]]) {
+      tall.push(await lined(b, true));
+      if (b[3] === 768 && b[1] === 1) await page.screenshot({ path: OUT + 'zones-row-ipad.png' });
+      if (b[0] === '16:9' && b[1] === 2) await page.screenshot({ path: OUT + 'zones-row-200.png' });
+    }
+    for (const b of [['free', 1, 1024, 519], ['free', 1.5, 1280, 700]]) short.push(await lined(b, false));
+    ok(tall.every(c => c.good), `a filled window at least 480 px tall is one row: the Fill board as on an iPad, at 480 px, the 16:9 board at Size 200% and 175%, and a Chromebook tab at 125% (${said(tall)})`);
+    ok(short.every(c => c.good) && tall[2].good, `a filled window under 480 px tall keeps the rules before: two by two (${said(short)}). The line is at 480 px (${tall[2].where})`);
+    // The width line. At 850 px every card shows its “−”, its Ideas, and all its feeling words.
+    const at850 = await lined(['free', 1.25, 1063, 768], true), at849 = await lined(['free', 1.25, 1061, 768], false);
+    const all850 = at850.x.shows, whole = all850.minus === 4 && all850.ideas === 4 && all850.words === 13;
+    ok(at850.good && whole && at849.good, `the line is at 850 px wide: one row at 850 px, with 4 “−”, 4 Ideas, and 13 feeling words (${at850.where}: ${all850.minus}, ${all850.ideas}, ${all850.words}). Two by two at 849 px, as before (${at849.where})`);
     const loose = [];
     for (const [label, r] of [['260 × 220', { x: 40, y: 40, w: 260, h: 260 }], ['the default size', home], ['very wide', { x: 10, y: 40, w: 1340, h: 300 }], ['tall', { x: 600, y: 60, w: 600, h: 900 }], ['very tall', { x: 600, y: 60, w: 500, h: 900 }], ['as big as the board', { x: 0, y: 0, w: 1920, h: 1080 }]]) {
       await put('free', 1, 1920, 1080, r);
@@ -6839,11 +6851,13 @@ const SUITES = [
     ok(loose.every(c => c.good) && big.shape === 'row', `a window that doesn’t fill the board keeps the rules before at every size, a very tall one in one column of four (${said(loose)}). Filled, the same board is one row (${big.shape})`);
 
     // ---- 3. Counts of 7, 128, 12 and 9999, from the Counts view: each fits inside its card, and the faces still line up.
-    // (Fill 1024 × 768 at 80%, a new board's Size on an iPad, and 1280 × 800 at 100%: where “Yellow” once ended in “…”.)
+    // (Fill 1024 × 768 at 80%, a new board's Size on an iPad, and 1280 × 800 at 100%: where “Yellow” once ended in “…”.
+    // Fill 1063 × 650 at 125%: the smallest row, 850 × 480 px. The 16:9 board at Size 200%: 960 × 500 px.)
     await put('16:9', 1, 1366, 768); await fill(true); await settled('row');
     await setCounts({ blue: 7, green: 128, yellow: 12, red: 9999 });
-    const BOARDS = [['16:9', 0.8, 1366, 768], ['16:9', 1, 1366, 768], ['free', 1, 1024, 768], ['free', 1, 1024, 541], ['free', 1.25, 1024, 768], ['free', 0.5, 1920, 1080],
-      ['free', 0.8, 1024, 768], ['free', 1, 1280, 800], ['16:9', 0.8, 1920, 1080]];
+    const BOARDS = [['16:9', 0.8, 1366, 768], ['16:9', 1, 1366, 768], ['free', 1, 1024, 768], ['free', 1, 1024, 541], ['free', 1.25, 1063, 650], ['free', 0.5, 1920, 1080],
+      ['free', 0.8, 1024, 768], ['free', 1, 1280, 800], ['16:9', 0.8, 1920, 1080], ['16:9', 2, 1366, 768]];
+    const SMALLEST = BOARDS[4];
     const name = ([shape, sc, vw, vh]) => `${shape === 'free' ? 'Fill' : shape} ${vw} × ${vh} at ${sc * 100}%`;
     const fits = [], fitSeen = [], faces = [], faceSeen = [];
     for (const b of BOARDS) {
@@ -6858,6 +6872,22 @@ const SUITES = [
     }
     ok(!fits.length, `counts of 7, 128, 12 and 9999 in one row: each fits inside its card, nothing cut off, no count over the face or the feelings (${fits.join(' | ') || fitSeen.join('; ')})`);
     ok(!faces.length, `counts of 7, 128, 12 and 9999 in one row: the faces still line up, within 1 px (${faces.join(' | ') || faceSeen.join('; ')})`);
+    // The smallest row, 850 × 480 px, light and dark: the counts fit, the faces line up, and every card keeps its “−”, its
+    // Ideas, and all its feeling words.
+    const least = [], leastSeen = [];
+    for (const theme of ['light', 'dark']) {
+      await setTheme(page, theme);
+      await put(...SMALLEST); await fill(true);
+      const x = await settled('row'), p = await problems(page, `${theme}, ${name(SMALLEST)}`, true), tops = x.cards.map(c => c.face.t);
+      const bad = (x.shape === 'row' ? [] : [x.shape]).concat(p.theme === theme ? [] : [`the ${p.theme} theme`],
+        x.cards.filter(c => !c.count || c.count.l < c.card.l - 0.5 || c.count.r > c.card.r + 0.5 || c.count.t < c.face.b - 1).map(c => `${c.z}: its count doesn’t fit`),
+        Math.max(...tops) - Math.min(...tops) <= 1 ? [] : [`the faces ${(Math.max(...tops) - Math.min(...tops)).toFixed(1)} px apart`],
+        x.shows.minus === 4 && x.shows.ideas === 4 && x.shows.words === 13 ? [] : [`${x.shows.minus} “−”, ${x.shows.ideas} Ideas, ${x.shows.words} words`], p.list);
+      (bad.length ? least : leastSeen).push(`${p.where}, ${x.w} × ${x.h} px${bad.length ? ': ' + bad.join(', ') : ''}`);
+      await page.screenshot({ path: OUT + `zones-row-smallest-${theme}.png` });
+    }
+    await setTheme(page, 'light');
+    ok(!least.length && leastSeen.length === 2, `the smallest row, light and dark: counts of 7, 128, 12, and 9999 fit, the faces line up, 4 “−”, 4 Ideas, and 13 feeling words, nothing cut off, no text under 14 px (${least.join(' | ') || leastSeen.join('; ')})`);
     await setCounts({ blue: 2, green: 9, yellow: 4, red: 1 });
 
     // ---- 4. Show counts off, in one row: no counts, the faces bigger, nothing cut off.
@@ -6874,22 +6904,21 @@ const SUITES = [
     }
     ok(!hid.length, `Show counts off, in one row: no counts, the faces bigger, nothing cut off (${hid.join(' | ') || hidSeen.join('; ')})`);
 
-    // ---- Cards under 190 px wide in one row (an iPad at Size 125%, or upright): every feeling still shows its word, one
-    // per line. (“−” hides on any card under 190 px wide, so the name keeps its room. Undo is in the menu.)
+    // ---- Narrow filled windows, under 850 px wide (an iPad upright, or at Size 125%), keep the rules before: two by two,
+    // as release 2026.11.20-1 drew them, each face beside its count. Every card keeps its “−”, its Ideas, and all its
+    // feeling words.
     const narrow = [], narrowSeen = [];
-    for (const b of [['free', 1.25, 1024, 768], ['free', 1, 820, 1180], ['free', 1, 768, 1024]]) {
+    for (const b of [['free', 1, 768, 1024], ['free', 1.25, 768, 1024], ['free', 1, 820, 1180], ['free', 1.25, 1024, 768]]) {
       await put(...b); await fill(true);
-      const x = await settled('row'), p = await problems(page, name(b), true);
-      const v = await zf(page).locator('html').evaluate(() => {
-        const on = e => e.getBoundingClientRect().width > 0 && getComputedStyle(e).display !== 'none';
-        return { words: [...document.querySelectorAll('.feel b')].filter(on).length, minus: [...document.querySelectorAll('.tools .minus')].filter(on).length };
-      });
-      const lines = x.cards.filter(k => k.feel.length !== (k.z === 'blue' ? 4 : 3) || k.feel.some((f, i) => i && f.t < k.feel[i - 1].b - 0.5)).map(k => `${k.z}: not one per line`);
-      const bad = (x.shape === 'row' ? [] : [x.shape]).concat(v.words === 13 ? [] : [`${v.words} of 13 words`], lines, p.list);
-      (bad.length ? narrow : narrowSeen).push(`${name(b)}, cards ${Math.round(x.cards[0].card.w)} px${bad.length ? ': ' + bad.join(', ') : `: 13 words, “−” on ${v.minus} of 4`}`);
-      if (b[2] === 1024) await page.screenshot({ path: OUT + 'zones-row-narrow.png' });
+      const x = await settled('2x2'), p = await problems(page, name(b), true);
+      const filled = await page.evaluate(k => window.__board21.state.insts.get(k).maximized === true, K);
+      const beside = x.cards.filter(k => !(k.count && k.face.r <= k.count.l + 1 && Math.abs((k.face.t + k.face.b) / 2 - (k.count.t + k.count.b) / 2) <= 8)).map(k => `${k.z}: its face isn’t beside its count`);
+      const bad = (filled ? [] : ['not filling the board']).concat(x.shape === '2x2' && x.shape === x.old && !x.reach ? [] : [`${x.shape}${x.reach ? ', reach' : ''} (before: ${x.old})`], beside,
+        x.shows.minus === 4 && x.shows.ideas === 4 && x.shows.words === 13 ? [] : [`${x.shows.minus} “−”, ${x.shows.ideas} Ideas, ${x.shows.words} words`], p.list);
+      (bad.length ? narrow : narrowSeen).push(`${name(b)}, ${x.w} × ${x.h} px, cards ${Math.round(x.cards[0].card.w)} px${bad.length ? ': ' + bad.join(', ') : ''}`);
+      if (b[2] === 768 && b[1] === 1.25) await page.screenshot({ path: OUT + 'zones-row-narrow.png' });
     }
-    ok(!narrow.length, `cards under 190 px wide in one row: every feeling shows its word, one per line, nothing cut off (${narrow.join(' | ') || narrowSeen.join('; ')})`);
+    ok(!narrow.length && narrowSeen.length === 4, `filled windows under 850 px wide keep the rules before: two by two, each face beside its count, 4 “−”, 4 Ideas, and 13 feeling words, nothing cut off (${narrow.join(' | ') || narrowSeen.join('; ')})`);
 
     // ---- 5. Filling a locked board, with the corner clock on, light and dark.
     await setCornerClock(page, 'on');
@@ -6897,7 +6926,7 @@ const SUITES = [
     for (const theme of ['light', 'dark']) {
       await setTheme(page, theme);
       ok(await eventually(async () => (await zf(page).locator('html').getAttribute('data-b21-theme')) === theme), `(${theme} theme)`);
-      for (const b of [BOARDS[0], BOARDS[2], ['free', 1, 1920, 1080], BOARDS[6], BOARDS[7]]) {
+      for (const b of [BOARDS[0], BOARDS[2], ['free', 1, 1920, 1080], BOARDS[6], BOARDS[7], SMALLEST, BOARDS[9]]) {
         await put(...b); await fill(true);
         await lockBoard(page, 'widgets'); await page.waitForTimeout(600);
         const x = await settled('row'), p = await problems(page, `${theme}, ${name(b)}, locked`, true);
@@ -6908,11 +6937,12 @@ const SUITES = [
         await unlockBoard(page);
       }
     }
-    ok(!lockBad.length && lockSeen.length === 10,`filling a locked board with the corner clock on, light and dark: one row, no text under 14 px, no zone name or feeling cut off, nothing under the board’s corner buttons, clock, or padlocks (${lockBad.join(' | ') || lockSeen.join('; ')})`);
+    ok(!lockBad.length && lockSeen.length === 14, `filling a locked board with the corner clock on, light and dark: one row, no text under 14 px, no zone name or feeling cut off, nothing under the board’s corner buttons, clock, or padlocks (${lockBad.join(' | ') || lockSeen.join('; ')})`);
     await setTheme(page, 'light');
     await setCornerClock(page, 'auto');   // (the default: only in full screen)
 
-    // ---- 7. Full screen, and a Fill board's window resized across 500 px, switch the layout without a reload.
+    // ---- 7. Full screen, and a Fill board's window resized across 480 px tall or 850 px wide, switch the layout without a
+    // reload.
     const mark = () => zf(page).locator('html').evaluate(() => { window.__same = 'same page'; });
     const same = () => zf(page).locator('html').evaluate(() => window.__same === 'same page').catch(() => false);
     // ⛶ in the Widget Picker (which stays open), then the screen's new size (this browser's full screen keeps its size,
@@ -6925,26 +6955,32 @@ const SUITES = [
       await page.waitForTimeout(300);
       if (await page.locator('#panel.open').count()) { await page.click('.picker-btn.left'); await page.waitForTimeout(300); }
     };
-    // (A Chromebook's 1366 × 768 screen at Size 125%: a tab is about 1366 × 657, 486 px tall when filled; full screen, 574.)
-    await put('free', 1.25, 1366, 657); await fill(true);
+    // (A 1920 × 1080 screen at Size 200%: a tab is about 1920 × 960, 440 px tall when filled; full screen, 500.)
+    await put('free', 2, 1920, 960); await fill(true);
     const f0 = await settled('2x2'); await mark();
-    await screen(1366, 768);
+    await screen(1920, 1080);
     const f1 = await settled('row'), inFull = await page.evaluate(() => !!document.fullscreenElement);
-    await screen(1366, 657);
+    await screen(1920, 960);
     const f2 = await settled('2x2'), outFull = await page.evaluate(() => !document.fullscreenElement);
     ok(f0.shape === '2x2' && inFull && f1.shape === 'row' && outFull && f2.shape === '2x2' && await same(),
       `full screen on a Fill board: in a tab ${f0.h} px tall, ${f0.shape}; full screen ${f1.h} px, ${f1.shape}; out again ${f2.h} px, ${f2.shape}. No reload`);
     await put('free', 1, 1024, 768); await fill(true);
     const s0 = await settled('row'); await mark();
-    await page.setViewportSize({ width: 1024, height: 520 }); const s1 = await settled('2x2');
-    await page.setViewportSize({ width: 1024, height: 768 }); const s2 = await settled('row');
+    await page.setViewportSize({ width: 1024, height: 519 }); const s1 = await settled('2x2');
+    await page.setViewportSize({ width: 1024, height: 520 }); const s2 = await settled('row');
     ok(s0.shape === 'row' && s1.shape === '2x2' && s2.shape === 'row' && await same(),
-      `a Fill board’s window resized across 500 px switches: ${s0.h} px tall ${s0.shape}, ${s1.h} px ${s1.shape}, ${s2.h} px ${s2.shape}. No reload`);
+      `a Fill board’s window resized across 480 px switches: ${s0.h} px tall ${s0.shape}, ${s1.h} px ${s1.shape}, ${s2.h} px ${s2.shape}. No reload`);
+    await put('free', 1.25, 1063, 768); await fill(true);
+    const v0 = await settled('row'); await mark();
+    await page.setViewportSize({ width: 1061, height: 768 }); const v1 = await settled('2x2');
+    await page.setViewportSize({ width: 1063, height: 768 }); const v2 = await settled('row');
+    ok(v0.shape === 'row' && v1.shape === '2x2' && v2.shape === 'row' && await same(),
+      `and across 850 px wide: ${v0.w} px wide ${v0.shape}, ${v1.w} px ${v1.shape}, ${v2.w} px ${v2.shape}. No reload`);
     // The README's Included widgets says so, its other words kept.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     const row = (/\| \*\*Zones Check-In\*\* \|[^|]*\|/.exec(readme) || [''])[0];
-    ok(/^\| \*\*Zones Check-In\*\* \| Check-ins kept as \*content\*,.* and an Ideas view with a breathing circle\. When it fills the board, the four zones sit in one row, in every student's reach \|$/.test(row),
-      `the README’s Zones Check-In row ends “When it fills the board, the four zones sit in one row, in every student's reach” (…${row.slice(-100)})`);
+    ok(/^\| \*\*Zones Check-In\*\* \| Check-ins kept as \*content\*,.* and an Ideas view with a breathing circle\. When it fills a board at least 850 × 480 px, the four zones sit in one row, in every student's reach \|$/.test(row),
+      `the README’s Zones Check-In row ends “When it fills a board at least 850 × 480 px, the four zones sit in one row, in every student's reach” (…${row.slice(-100)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
 
