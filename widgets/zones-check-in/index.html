@@ -48,13 +48,14 @@
   /* (A row only where it beats two by two: very wide, or wide and too short for two rows of cards with their feelings.) */
   @container zones (aspect-ratio > 3.2) or ((aspect-ratio > 2.2) and (width >= 800px) and (height < 310px)) { .grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
   @container zones (aspect-ratio < 0.7) { .grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
-  /* Filling a board at least 850 × 480 px: always side by side, so every card reaches down to where students can tap it
-     (fitCorners, .reach). Each card is then tall: its face over its count, and its feelings one under another. */
+  /* Filling the board, with a window at least 850 × 480 px: always side by side, so every card reaches down to where
+     students can tap it (fitCorners, .reach). Each card is then tall: its face over its count, and its feelings one under
+     another. */
   .reach .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: 1fr; }
   @container zone (aspect-ratio < 0.9) {
     /* (--room: the card's height under its colored top and over its feelings. On a short card, such as on a locked board,
        the face and the count shrink to fit it.) */
-    .reach .main { flex-direction: column; gap: min(2cqh, .04 * var(--room)); --room: calc(100cqh - var(--head) - 6.9 * clamp(14px, min(3.4cqh, 6cqw), 30px) - clamp(10px, 5cqh, 48px)); }
+    .reach .main { flex-direction: column; gap: min(2cqh, .04 * var(--room)); --room: calc(100cqh - var(--head) - 6.9 * clamp(14px, min(3.4cqh, 6cqw), 30px) - clamp(10px, 5cqh, 48px) - var(--edge, 0px)); }
     .reach .face { font-size: min(20cqh, 40cqw, .4 * var(--room)); }
     /* (--len: its digits, so 100 fits too. Its line stays as tall as two digits, so the faces still line up.) */
     .reach .count { font-size: min(28cqh, calc(108cqw / max(2, var(--len, 1))), .56 * var(--room)); height: min(28cqh, 54cqw, .56 * var(--room)); display: flex; align-items: center; }
@@ -184,6 +185,8 @@
   /* Windows High Contrast: borders in place of the edges and fills it takes away */
   @media (forced-colors: active) {
     .tap, .done, .step button { border: 2px solid; }
+    .tap { --edge: 4px; }   /* (its border, top and bottom: --room) */
+    .feelings { position: relative; }   /* (over the count's backplate, which runs past its line) */
     .bar { border: 1px solid; } .bar i { forced-color-adjust: none; background: CanvasText; }
     .ring, .ball { box-sizing: border-box; border: 3px solid; }
   }
@@ -665,12 +668,13 @@
     const t = c && c.top, top = t && (px(t.left) || px(t.right)) ? px(t.height) : 0;
     const s = document.documentElement.style;
     s.setProperty('--reach', reach + 'px'); s.setProperty('--low', low + 'px'); s.setProperty('--top', top + 'px');
-    // One row when it fills a board at least 850 × 480 px: wide enough that every card keeps its "−" and its words.
-    // (The size the board gives: the frame may not have its new size yet.)
+    // One row when it fills the board and its window is at least 850 × 480 px: wide enough that every card keeps its
+    // "−" and its words. (The size the board gives: the frame may not have its new size yet.)
     const wide = (Number(w && w.width) || innerWidth) >= 850, tall = (Number(w && w.height) || innerHeight) >= 480;
     document.body.classList.toggle('reach', !!(w && w.maximized) && wide && tall);
   }
   Board21.on('resize', fitCorners);
+  addEventListener('resize', fitCorners);   // (and the frame's own size, once it has it: a board that sends no width or height)
 
   // ---- A new day: with Clear each day the counts start again at none (checked now and then, and when the board shows again)
   let dayWas = today();

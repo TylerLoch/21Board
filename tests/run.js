@@ -6758,8 +6758,8 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  // ---- Zones Check-In in one row (2026.11.20-3; from 850 × 480 px since 2026.11.21-1). Filling a board at least
-  // 850 × 480 px, the four zones sit side by side, so every card reaches down to where students can tap it.
+  // ---- Zones Check-In in one row (2026.11.20-3; from 850 × 480 px since 2026.11.21-1). Filling the board, with a window
+  // at least 850 × 480 px, the four zones sit side by side, so every card reaches down to where students can tap it.
   ['Zones Check-In: one row when it fills the board', async (browser) => {
     let ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     let page = await ctx.newPage();
@@ -6776,7 +6776,14 @@ const SUITES = [
       await p.waitForTimeout(400);
     };
     const fill = (on, p = page) => p.evaluate(([k, on]) => window.__board21.setMaximized(k, on), [K, on]);
-    const settled = async (want, p = page) => { await eventually(async () => (await arrange(p)).shape === want, 3000); await p.waitForTimeout(150); return arrange(p); };
+    // The layout wanted, once the window has finished moving to its new size: two reads in a row, 150 ms apart, find every
+    // card where it was (for at most about 3 s more).
+    const settled = async (want, p = page) => {
+      await eventually(async () => (await arrange(p)).shape === want, 3000);
+      let a = await arrange(p);
+      for (let i = 0; i < 20; i++) { await p.waitForTimeout(150); const b = await arrange(p); if (JSON.stringify(b.cards) === JSON.stringify(a.cards)) return b; a = b; }
+      return a;
+    };
     const setCounts = async (counts, p = page) => {
       await choose(p, 'Edit counts'); await p.waitForTimeout(400);
       for (const [id, n] of Object.entries(counts)) await zf(p).locator('#n-' + id).fill(String(n));
@@ -6976,6 +6983,57 @@ const SUITES = [
     await page.setViewportSize({ width: 1063, height: 768 }); const v2 = await settled('row');
     ok(v0.shape === 'row' && v1.shape === '2x2' && v2.shape === 'row' && await same(),
       `and across 850 px wide: ${v0.w} px wide ${v0.shape}, ${v1.w} px ${v1.shape}, ${v2.w} px ${v2.shape}. No reload`);
+    // A board that sends no width or height in its window info: the widget reads its frame's own size, once the frame has
+    // it. (The board's messages to the frame lose both, the board's timing kept.) Restore size, then Fill the board.
+    await page.evaluate(k => {
+      const w = window.__board21.state.wins.get(k), cut = i => { if (!i) return i; i = Object.assign({}, i); delete i.width; delete i.height; return i; };
+      w.__post = w.post;
+      w.post = function (type, payload) {
+        if (type === 'window' && payload) payload = Object.assign({}, payload, { info: cut(payload.info) });
+        if (type === 'init' && payload && payload.context) payload = Object.assign({}, payload, { context: Object.assign({}, payload.context, { window: cut(payload.context.window) }) });
+        return w.__post.call(this, type, payload);
+      };
+      w.reload();
+    }, K);
+    ok(await connected(page), '(the Zones Check-In connects again, on a board that sends no width or height)');
+    await put(...SMALLEST); await fill(true);
+    const n0 = await settled('row'), sent = await zf(page).locator('html').evaluate(() => ['width', 'height'].filter(f => f in Board21.context.window));
+    ok(n0.shape === 'row' && n0.reach && !sent.length,
+      `a board that sends no width or height: Restore size, then Fill the board, ${n0.w} × ${n0.h} px, is one row (${n0.shape}${n0.reach ? ', reach' : ''}; sent ${sent.join(' and ') || 'neither'})`);
+    await page.evaluate(k => { const w = window.__board21.state.wins.get(k); w.post = w.__post; delete w.__post; w.reload(); }, K);
+    ok(await connected(page), '(and again, on the board as it is)');
+
+    // ---- 8. Windows High Contrast (forced colors) on the shortest rows, open and locked with the corner clock on: the
+    // counts hide none of the feelings, and nothing is cut off or over the colored top. (What the feelings look like as
+    // drawn, and with the counts hidden: the same, when no count paints over them. The board's notes are hidden meanwhile.)
+    const feelShot = async hide => {
+      await zf(page).locator('html').evaluate((_, h) => { document.querySelectorAll('.count').forEach(c => { c.style.visibility = h ? 'hidden' : ''; }); }, !!hide);
+      await page.waitForTimeout(150);
+      const r = await zf(page).locator('html').evaluate(() => {
+        const f = [...document.querySelectorAll('#main .feelings')].map(e => e.getBoundingClientRect());
+        return { l: Math.min(...f.map(q => q.left)), t: Math.min(...f.map(q => q.top)), r: Math.max(...f.map(q => q.right)), b: Math.max(...f.map(q => q.bottom)), iw: innerWidth, ih: innerHeight };
+      });
+      const fr = await page.locator(`.win[data-ikey="${K}"] iframe`).boundingBox(), sx = fr.width / r.iw, sy = fr.height / r.ih;
+      return (await page.screenshot({ clip: { x: fr.x + r.l * sx, y: fr.y + r.t * sy, width: (r.r - r.l) * sx, height: (r.b - r.t) * sy } })).toString('base64');
+    };
+    await page.emulateMedia({ forcedColors: 'active' });
+    const quiet = await page.addStyleTag({ content: '#toasts { visibility: hidden !important; }' });
+    await setCornerClock(page, 'on');
+    const hc = [], hcSeen = [];
+    for (const b of [SMALLEST, ['free', 1, 1024, 520], BOARDS[9], ['free', 1.25, 1366, 657]]) for (const locked of [false, true]) {
+      await put(...b); await fill(true);
+      if (locked) { await lockBoard(page, 'widgets'); await page.waitForTimeout(600); }
+      const x = await settled('row'), p = await problems(page, `${name(b)}${locked ? ', locked' : ''}`, true);
+      const hidden = await feelShot() !== await feelShot(true);
+      await feelShot(false);
+      const bad = (x.shape === 'row' ? [] : [x.shape]).concat(hidden ? ['a count hides part of a feeling'] : [], p.list);
+      (bad.length ? hc : hcSeen).push(`${p.where}, ${x.w} × ${x.h} px${bad.length ? ': ' + bad.join(', ') : ''}`);
+      if (b === BOARDS[9] && locked) await page.screenshot({ path: OUT + 'zones-row-forced-colors.png' });
+      if (locked) await unlockBoard(page);
+    }
+    ok(!hc.length && hcSeen.length === 8, `Windows High Contrast, the shortest rows, open and locked with the corner clock on: the counts hide none of the feelings, nothing is cut off, no face or count over the colored top (${hc.join(' | ') || hcSeen.join('; ')})`);
+    await setCornerClock(page, 'auto');
+    await page.emulateMedia({ forcedColors: 'none' }); await quiet.evaluate(e => e.remove());
     // The README's Included widgets says so, its other words kept.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     const row = (/\| \*\*Zones Check-In\*\* \|[^|]*\|/.exec(readme) || [''])[0];
