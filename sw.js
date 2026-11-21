@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.21-2';
+const VERSION = '2026.11.21-4';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'ab92fd87';
+const BUILD = '6db9c1ee';
 const FILES = {
-  './': '2bd9c9b15873d00d',
-  'index.html': '2bd9c9b15873d00d',
-  'board.js': '112d1301de615932',
+  './': 'b4ae11ee6aafa533',
+  'index.html': 'b4ae11ee6aafa533',
+  'board.js': '796ac9980863e337',
   'sdk/board21.js': 'aa5d5880e3a9c4a1',
   'sdk/board21-dev.js': 'f7c7181b53d5025a',
   'sdk/dev/board-shell.js': 'b855220e82bbedad',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '2ccafb6aa62090d7',
+  'widgets/registry.js': '6f4cd12f9337378d',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -40,7 +40,7 @@ const FILES = {
   'widgets/timer/index.html': '52a0094eeebbb200',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
-  'widgets/clock/index.html': '21a98aa1d345b489',
+  'widgets/clock/index.html': 'c2fd6078bd5c4268',
   'widgets/notes/index.html': '0dc57fad3cd2fca1',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',

@@ -83,12 +83,13 @@ self.BOARD21_WIDGETS = [
     id: 'clock',
     name: 'Clock',
     description: 'Show an analog or digital clock, or just the date.',
-    version: '1.0.0',
+    version: '2.0.0',
     entry: 'widgets/clock/index.html',
     files: ['widgets/clock/index.html'],
     color: '#2563eb',
     icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
     window: { width: 300, height: 300, minWidth: 140, minHeight: 140, aspectRatio: 1 },
+    clash: 'later',   // its content is a set time and a mark, like a timer's time
     permissions: []
   },
   {

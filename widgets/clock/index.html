@@ -7,138 +7,1009 @@
 <script src="../../sdk/board21.js"></script>
 <style>
   html, body { margin: 0; height: 100%; }
-  body { background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font); overflow: hidden; user-select: none; -webkit-user-select: none; }
-  #analog { position: absolute; inset: 4%; width: 92%; height: 92%; }
-  #analog .face { fill: var(--b21-surface); stroke: var(--b21-border); stroke-width: 1.5; }
-  #analog .tick { stroke: var(--b21-muted); stroke-linecap: round; }
-  #analog .tick.major { stroke: var(--b21-text); }
-  #analog text { fill: var(--b21-text); font-weight: 600; font-size: 12px; text-anchor: middle; dominant-baseline: central; font-family: var(--b21-font); }
-  #analog .hand { stroke: var(--b21-text); stroke-linecap: round; }
-  #analog .second { stroke: var(--b21-danger); }
-  #analog .hub { fill: var(--b21-danger); }
-  #digital { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 2vh; padding: 0 3vw; }
-  #time { font-size: min(24vw, 62vh); font-weight: 700; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; line-height: 1; white-space: nowrap; }
-  #time small { font-size: .38em; font-weight: 600; color: var(--b21-muted); margin-left: .15em; }
-  #date { font-size: min(6vw, 14vh); color: var(--b21-muted); font-weight: 500; }
-  body.digital #analog, body.date #analog { display: none; }
-  body.digital #digital { display: flex; }
-  #dateonly { position: absolute; inset: 0; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 1vh; text-align: center; padding: 0 4vw; overflow: hidden; }
-  body.date #dateonly { display: flex; }
+  body {
+    background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font); overflow: hidden; user-select: none; -webkit-user-select: none;
+    --serif: Tinos, "Times New Roman", Times, "Liberation Serif", "Noto Serif", Georgia, serif;
+    /* Teaching face: fixed colors, never the accent */
+    --hour: #c2410c; --minute: #00468c; --rim: #cbd5e1;
+    /* Old face: ivory and brass */
+    --ro-face: #fbf6e9; --ro-face-2: #ede1c4; --ro-ink: #2b2219; --ro-hand: #1c2433; --ro-sec: #8f2f1f;
+    --ro-ring-hi: #ecd496; --ro-ring: #b08a45; --ro-ring-lo: #6f5225;
+    /* LED look: an LCD in light theme, with no glow */
+    --panel: color-mix(in srgb, var(--b21-accent) 8%, #e7eae3);
+    --seg: color-mix(in srgb, var(--b21-accent) 24%, #161a1f);
+    --seg-off: .075;
+  }
+  [data-b21-theme="dark"] body {
+    --hour: #ee6f1c; --minute: #93d2ff; --rim: #4b4b4b;
+    --ro-face: #241f18; --ro-face-2: #12100c; --ro-ink: #d9b56c; --ro-hand: #f3dca0; --ro-sec: #e07a5f;
+    --ro-ring-hi: #c49d58; --ro-ring: #7a5a2a; --ro-ring-lo: #3a2a12;
+    /* An LED in dark theme: a soft glow in the accent */
+    --panel: color-mix(in srgb, var(--b21-accent) 5%, #0e0f10);
+    --seg: color-mix(in srgb, var(--b21-accent) 88%, #ffffff);
+    --seg-off: .07;
+    --glow-a: color-mix(in srgb, var(--b21-accent) 55%, transparent);
+    --glow-b: color-mix(in srgb, var(--b21-accent) 20%, transparent);
+  }
+  #clock { position: absolute; inset: 0; }
+  #ana, #dig, #dateonly, #words { position: absolute; }
+  [hidden] { display: none !important; }
+
+  /* ---- Analog faces: each draws into a 200 × 200 viewBox centered on (100, 100) */
+  #analog { position: absolute; display: block; overflow: visible; }
+  #analog text { font-family: var(--b21-font); }
+  .face.settable { touch-action: none; cursor: grab; }
+  .face.settable.dragging { cursor: grabbing; }
+  .face.markable { cursor: pointer; }
+  .face:focus-visible { outline: 3px solid var(--b21-accent); outline-offset: 4px; border-radius: 50%; }
+  .grab, .halo { display: none; }
+  .face.settable .grab, .face.settable .halo { display: inline; }
+  .halo { fill: currentColor; fill-opacity: 0; stroke: currentColor; stroke-width: 1.4; opacity: .45; }
+  .face.drag-h .hand-h .halo, .face.drag-m .hand-m .halo { fill-opacity: .4; }
+  .grab { fill: currentColor; stroke: var(--face-bg); stroke-width: 1.6; }
+  /* Simple */
+  .f-simple { --face-bg: var(--b21-surface); }
+  .f-simple .hand-h, .f-simple .hand-m { color: var(--b21-text); }
+  .fs-face { fill: var(--b21-surface); stroke: var(--b21-border); stroke-width: 1.5; }
+  .fs-tick { stroke: var(--b21-muted); stroke-linecap: round; }
+  .fs-tick.major { stroke: var(--b21-text); }
+  #analog .fs-num { fill: var(--b21-text); font-weight: 600; font-size: 13px; text-anchor: middle; dominant-baseline: central; }
+  .fs-hand { stroke: var(--b21-text); stroke-linecap: round; }
+  .fs-sec { stroke: var(--b21-danger); stroke-linecap: round; }
+  .fs-hub { fill: var(--b21-danger); }
+  /* Old */
+  .f-old { --face-bg: var(--ro-face); }
+  .f-old .hand { color: var(--ro-hand); }
+  .ro-s1 { stop-color: var(--ro-face); } .ro-s2 { stop-color: var(--ro-face-2); }
+  .ro-b1 { stop-color: var(--ro-ring-hi); } .ro-b2 { stop-color: var(--ro-ring); } .ro-b3 { stop-color: var(--ro-ring-lo); }
+  .ro-edge { fill: none; stroke: rgba(0, 0, 0, .28); stroke-width: .8; }
+  .ro-line { fill: none; stroke: var(--ro-ink); }
+  #analog .ro-num { fill: var(--ro-ink); font: 400 18px var(--serif); text-anchor: middle; dominant-baseline: central; letter-spacing: -.3px; }
+  .ro-hand-f { fill: var(--ro-hand); stroke: var(--ro-face); stroke-width: 1.1; paint-order: stroke; stroke-linejoin: round; }
+  .ro-hand-s { fill: none; stroke: var(--ro-hand); }
+  .ro-hand-u { fill: none; stroke: var(--ro-face); }
+  .ro-sec { stroke: var(--ro-sec); stroke-linecap: round; }
+  .ro-sec-f { fill: var(--ro-sec); }
+  .ro-hub-c { fill: var(--ro-ring); }
+  /* Teaching */
+  .f-teaching { --face-bg: var(--b21-bg); }
+  .f-teaching .hand-h { color: var(--hour); }
+  .f-teaching .hand-m { color: var(--minute); }
+  .t-face { fill: var(--b21-bg); stroke: var(--rim); stroke-width: 2.5; }
+  .t-tick { stroke: var(--b21-muted); stroke-width: 1; }
+  .t-tick.major { stroke: var(--minute); stroke-width: 2.4; stroke-linecap: round; }
+  #analog .t-mn { fill: var(--minute); font-weight: 700; font-size: 10px; text-anchor: middle; dominant-baseline: central; }
+  #analog .t-hn { fill: var(--hour); font-weight: 700; font-size: 22px; text-anchor: middle; dominant-baseline: central; }
+  #analog .t-hn.two { letter-spacing: -.6px; }
+  #analog .t-ap { fill: var(--b21-text); font-weight: 700; font-size: 10px; text-anchor: middle; dominant-baseline: central; }
+  .t-hh { fill: var(--hour); stroke: var(--b21-bg); stroke-width: 2.5; paint-order: stroke; stroke-linejoin: round; }
+  .t-mh { fill: var(--minute); stroke: var(--b21-bg); stroke-width: 2.5; paint-order: stroke; stroke-linejoin: round; }
+  .t-sec { stroke: var(--b21-text); stroke-width: 1.3; stroke-linecap: round; }
+  .t-hub { fill: var(--b21-text); } .t-hub-c { fill: var(--b21-bg); }
+  /* Mark a time: a wedge under the numerals and the hands */
+  .mk-w, .mk-full { fill: var(--b21-accent); opacity: .24; }
+  .mk-warn { fill: var(--b21-warning); opacity: .4; }
+  .mk-edge { stroke: var(--b21-accent); stroke-width: 3.5; stroke-linecap: round; }
+  .mk-edge.warn { stroke: var(--b21-warning); }
+
+  /* ---- Digital */
+  #dig.led { background: var(--panel); }
+  .both #dig.led { border-radius: 12px; }
+  #readout { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2%; padding: 5% 4%; box-sizing: border-box; }
+  .quiz #readout { cursor: pointer; }
+  .set #readout { top: 52px; bottom: 52px; padding-block: 0; }
+  #time { font-weight: 700; font-size: var(--fs, 40px); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; white-space: nowrap; color: var(--b21-text); }
+  .pd-ap { font-size: .38em; font-weight: 600; color: var(--b21-muted); margin-left: .15em; letter-spacing: 0; }
+  /* While setting the time, the hours keep a two-digit box and a.m./p.m. a fixed width, so the arrows never move. */
+  .set .pd-h { display: inline-block; min-width: 2ch; text-align: right; }
+  .set .pd-m { display: inline-block; }   /* (the same box as the hours, so their arrows line up) */
+  .set .pd-ap { display: inline-block; min-width: 2.6em; text-align: left; }
+  .teach .pd-h { color: var(--hour); }
+  .teach .pd-m { color: var(--minute); }
+  #q { position: absolute; display: flex; align-items: center; justify-content: center; font-weight: 700; line-height: 1; color: var(--b21-text); }
+  .led #q { color: var(--seg); text-shadow: 0 0 .06em var(--glow-a, transparent), 0 0 .25em var(--glow-b, transparent); }
+  #date { color: var(--b21-muted); font-weight: 500; white-space: nowrap; }
+  .led #date { color: var(--seg); opacity: .8; }
+  .led-svg { display: block; flex: 1 1 0; min-height: 0; width: 100%; overflow: visible; filter: none; }
+  [data-b21-theme="dark"] .led-svg { filter: drop-shadow(0 0 calc(var(--u, 1px) * 2.2) var(--glow-a)) drop-shadow(0 0 calc(var(--u, 1px) * 9) var(--glow-b)); }
+  .seg-p { fill: var(--seg); opacity: var(--seg-off); transition: opacity .18s ease-out; }
+  .seg-p.on { opacity: 1; transition-duration: .12s; }
+  .ind { fill: var(--seg); opacity: var(--seg-off); font: 700 15px var(--b21-font); letter-spacing: .6px; transition: opacity .18s ease-out; }
+  .ind.on { opacity: 1; transition-duration: .12s; }
+  .arrow { position: absolute; display: none; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 11px; color: var(--b21-muted); background: color-mix(in srgb, var(--b21-text) 6%, transparent); z-index: 4; touch-action: manipulation; cursor: pointer; }
+  .arrow svg { width: 16px; height: 16px; fill: currentColor; }
+  .arrow:hover { background: color-mix(in srgb, var(--b21-text) 11%, transparent); }
+  .arrow:active { background: color-mix(in srgb, var(--b21-accent) 28%, transparent); }
+  .arrow:focus-visible { outline: 3px solid var(--b21-accent); outline-offset: 2px; }
+  .led .arrow { color: var(--seg); background: color-mix(in srgb, var(--seg) 10%, transparent); }
+  .set #dig .arrow { display: grid; }
+
+  /* ---- Time in words, and Date only */
+  #words { display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--b21-text); white-space: nowrap; overflow: hidden; }
+  #dateonly { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1vh; text-align: center; padding: 0 4vw; overflow: hidden; box-sizing: border-box; }
   #weekday { font-size: min(17vw, 40vh); font-weight: 800; line-height: 1.05; white-space: nowrap; }
   #fulldate { font-size: min(8vw, 20vh); font-weight: 600; color: var(--b21-muted); white-space: nowrap; }
+
+  /* ---- Set the time: the Set badge and Now stay on screen */
+  #badge, #now { display: none; position: absolute; z-index: 5; font-family: var(--b21-font); }
+  .set #badge, .set #now { display: block; }
+  #badge { top: 9px; left: 9px; padding: 3px 10px; border-radius: 999px; background: var(--b21-accent); color: var(--b21-on-accent); font-size: 12.5px; font-weight: 700; letter-spacing: .03em; }
+  #now { top: 6px; right: 6px; min-width: 66px; min-height: 44px; padding: 0 16px; border: 0; border-radius: 999px; background: var(--b21-bg); color: var(--b21-text); box-shadow: 0 0 0 1.5px var(--b21-border), 0 2px 10px rgba(0, 0, 0, .08); font-size: 15px; font-weight: 700; cursor: pointer; }
+  #now:hover { box-shadow: 0 0 0 1.5px var(--b21-accent), 0 2px 10px rgba(0, 0, 0, .08); }
+  #now:focus-visible { outline: 3px solid var(--b21-accent); outline-offset: 2px; }
+
+  @media (prefers-reduced-motion: reduce) {
+    .seg-p, .ind, .seg-p.on, .ind.on { transition: none; }
+  }
 </style>
 </head>
 <body>
-  <svg id="analog" viewBox="0 0 200 200" aria-label="Analog clock">
-    <circle class="face" cx="100" cy="100" r="96"/>
-    <g id="ticks"></g>
-    <line id="h" class="hand" x1="100" y1="100" x2="100" y2="54" stroke-width="7"/>
-    <line id="m" class="hand" x1="100" y1="100" x2="100" y2="28" stroke-width="4.5"/>
-    <line id="s" class="hand second" x1="100" y1="114" x2="100" y2="20" stroke-width="2"/>
-    <circle class="hub" cx="100" cy="100" r="4.5"/>
-  </svg>
-  <div id="digital"><div id="time"></div><div id="date"></div></div>
-  <div id="dateonly"><div id="weekday"></div><div id="fulldate"></div></div>
+  <div id="clock">
+    <div id="ana"></div>
+    <div id="dig">
+      <div id="readout"><div id="q" role="button" tabindex="0" aria-label="Show the time" hidden>?</div><div id="date"></div></div>
+    </div>
+    <div id="words" aria-hidden="true"></div>
+    <div id="dateonly"><div id="weekday"></div><div id="fulldate"></div></div>
+    <span id="badge">Set</span>
+    <button id="now" type="button">Now</button>
+  </div>
 <script>
-  // Config only (no content): { style: 'analog' | 'digital' | 'date', hour24, seconds, date }
-  const DEFAULTS = { style: 'analog', hour24: false, seconds: true, date: true };
-  let config = Object.assign({}, DEFAULTS);
-  const ASPECT = { analog: 1, digital: 2.2, date: 2.2 };
-  // Saved settings can come from an imported file, so they are checked before they are used.
-  const readConfig = c => {
-    const out = {};
-    for (const k in DEFAULTS) out[k] = c && typeof c[k] === typeof DEFAULTS[k] ? c[k] : DEFAULTS[k];
-    if (!Object.prototype.hasOwnProperty.call(ASPECT, out.style)) out.style = DEFAULTS.style;
+  // Content: { set, markAt }, the lesson.
+  //   set: null when not setting the time; { at: null } while setting it but following the real time (after Now);
+  //   { at: 0 to 1439 }, minutes since midnight, for a set time.
+  //   markAt: the teacher's mark (Mark a time), a wall-clock time in ms, or null.
+  // Config: { analog, digital, dateOnly, face: 'simple' | 'old' | 'teaching', led, seconds, date, hour24, words, upright,
+  //   iv, hourOnly, mark, quiz, snap5 }, and style for a 21Board before this one: 'analog' for analog only, 'digital'
+  //   when digital shows (alone or with analog), 'date' for Date only. An older config is { style, hour24, seconds, date }.
+  // Whether Quiz shows ? or the time is never saved.
+  const NS = 'http://www.w3.org/2000/svg';
+  const RAD = Math.PI / 180, DAY = 1440;
+  const mod = (a, n) => ((a % n) + n) % n;
+  const wrap180 = d => mod(d + 180, 360) - 180;
+  const r2 = v => Math.round(v * 100) / 100;
+  const P = (r, deg) => [r2(100 + r * Math.sin(deg * RAD)), r2(100 - r * Math.cos(deg * RAD))];
+  const ease = p => p < .5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2;
+  const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)');
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
+  const pad2 = n => String(n).padStart(2, '0');
+  const h12 = hh => hh % 12 || 12;
+  const hm = T => { const t = mod(Math.round(T), DAY); return [Math.floor(t / 60), t % 60]; };
+  const nowMinutes = d => d.getHours() * 60 + d.getMinutes() + d.getSeconds() / 60 + d.getMilliseconds() / 60000;
+  const apOf = (hh, dots) => hh < 12 ? (dots ? 'a.m.' : 'AM') : (dots ? 'p.m.' : 'PM');
+  const isObj = v => !!v && typeof v === 'object' && !Array.isArray(v);
+
+  // ---------------------------------------------------------------- Time in words
+  // 10:15 is "quarter past ten", 5:34 "twenty-six minutes to six", and 12:00 "noon" or "midnight".
+  const ONES = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen'];
+  const TENS = ['', '', 'twenty', 'thirty', 'forty', 'fifty'];
+  const num = n => n < 20 ? ONES[n] : TENS[Math.floor(n / 10)] + (n % 10 ? '-' + ONES[n % 10] : '');
+  function inWords(hh, mm) {
+    const hr = n => num(h12(mod(n, 24)));
+    const mins = n => n % 5 ? num(n) + (n === 1 ? ' minute' : ' minutes') : num(n);
+    if (mm === 0) return hh === 0 ? 'midnight' : hh === 12 ? 'noon' : hr(hh) + " o'clock";
+    if (mm === 15) return 'quarter past ' + hr(hh);
+    if (mm === 30) return 'half past ' + hr(hh);
+    if (mm === 45) return 'quarter to ' + hr(hh + 1);
+    if (mm < 30) return mins(mm) + ' past ' + hr(hh);
+    return mins(60 - mm) + ' to ' + hr(hh + 1);
+  }
+
+  // ---------------------------------------------------------------- Saved state, checked before it is used
+  // (Saved settings and content can come from an imported file.)
+  const FACES_IDS = ['simple', 'old', 'teaching'];
+  const FLAGS = ['led', 'seconds', 'date', 'hour24', 'words', 'upright', 'iv', 'hourOnly', 'mark', 'quiz', 'snap5'];
+  function readConfig(c) {
+    c = isObj(c) ? c : {};
+    const out = { analog: true, digital: false, dateOnly: false, face: FACES_IDS.includes(c.face) ? c.face : 'simple' };
+    FLAGS.forEach(k => { out[k] = c[k] === true; });
+    if (['analog', 'digital', 'dateOnly'].some(k => typeof c[k] === 'boolean')) {
+      out.dateOnly = c.dateOnly === true;
+      out.analog = !out.dateOnly && c.analog === true;
+      out.digital = !out.dateOnly && c.digital === true;
+      if (!out.dateOnly && !out.analog && !out.digital) out.analog = true;   // (one of them always shows)
+    } else {   // an older config: style alone says what shows
+      out.analog = c.style !== 'digital' && c.style !== 'date';
+      out.digital = c.style === 'digital';
+      out.dateOnly = c.style === 'date';
+    }
     return out;
+  }
+  const writeConfig = c => Object.assign({}, c, { style: c.dateOnly ? 'date' : c.digital ? 'digital' : 'analog' });
+  function readState(d) {
+    const s = isObj(d) && isObj(d.set) ? d.set : null;
+    const at = s && (s.at === null || (Number.isInteger(s.at) && s.at >= 0 && s.at < DAY)) ? s.at : undefined;
+    const m = isObj(d) && typeof d.markAt === 'number' && isFinite(d.markAt) && d.markAt > 0 ? d.markAt : null;
+    return { set: at === undefined ? null : { at }, markAt: m };
+  }
+
+  // ---------------------------------------------------------------- Faces
+  // A grab dot on a hand while setting the time, with a thin ring that fills while that hand is dragged. The dots sit on
+  // the tick ring, clear of the numerals.
+  const grab = (y, r, ring = r * 1.8) => `<circle class="halo" cx="100" cy="${y}" r="${r2(ring)}"/><circle class="grab" cx="100" cy="${y}" r="${r}"/>`;
+  // Each face: its hand lengths (len), how far out a Mark a time wedge reaches (wr), the dial (bg, with the wedge's
+  // place under the ticks and numerals), and the hands.
+  const FACES = {
+    simple: {
+      len: { h: 46, m: 81 }, wr: 88,
+      bg() {
+        let s = '<circle class="fs-face" cx="100" cy="100" r="96"/><g class="under"></g>';
+        for (let i = 0; i < 60; i++) {
+          const major = i % 5 === 0, a = i * 6, [x1, y1] = P(major ? 80 : 86, a), [x2, y2] = P(91, a);
+          s += `<line class="fs-tick${major ? ' major' : ''}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${major ? 2.5 : 1.2}"/>`;
+          if (major) { const [x, y] = P(65.5, a); s += `<text class="fs-num" x="${x}" y="${y}">${i / 5 || 12}</text>`; }
+        }
+        return s;
+      },
+      hands() {
+        return `<g class="hand hand-h"><line class="fs-hand" x1="100" y1="100" x2="100" y2="54" stroke-width="7"/>${grab(60, 5)}</g>` +
+          `<g class="hand hand-m"><line class="fs-hand" x1="100" y1="100" x2="100" y2="19" stroke-width="4.5"/>${grab(18, 4.5)}</g>` +
+          '<g class="hand hand-s"><line class="fs-sec" x1="100" y1="114" x2="100" y2="20" stroke-width="2"/></g>' +
+          '<circle class="fs-hub" cx="100" cy="100" r="4.5"/>';
+      }
+    },
+    old: {
+      len: { h: 54, m: 84 }, wr: 85,
+      bg(o, id) {
+        const N = ['XII', 'I', 'II', 'III', o.iv ? 'IV' : 'IIII', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
+        let s = `<defs><linearGradient id="rb${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="ro-b1"/><stop offset=".5" class="ro-b2"/><stop offset="1" class="ro-b3"/></linearGradient>` +
+          `<radialGradient id="rf${id}" cx=".5" cy=".44" r=".6"><stop offset=".55" class="ro-s1"/><stop offset="1" class="ro-s2"/></radialGradient></defs>` +
+          `<circle cx="100" cy="100" r="96" fill="url(#rb${id})"/><circle class="ro-edge" cx="100" cy="100" r="95.6"/>` +
+          `<circle cx="100" cy="100" r="90" fill="url(#rf${id})"/><circle class="ro-edge" cx="100" cy="100" r="90"/><g class="under"></g>` +
+          '<circle class="ro-line" cx="100" cy="100" r="85" stroke-width=".8"/><circle class="ro-line" cx="100" cy="100" r="79.5" stroke-width=".6"/>' +
+          '<circle class="ro-line" cx="100" cy="100" r="51" stroke-width=".6"/><circle class="ro-line" cx="100" cy="100" r="48.5" stroke-width=".35"/>';
+        for (let i = 0; i < 60; i++) {   // the railroad minute track
+          const a = i * 6, five = i % 5 === 0, [x1, y1] = P(79.5, a), [x2, y2] = P(85, a);
+          s += `<line class="ro-line" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="${five ? 1.9 : .6}"/>`;
+        }
+        // The numerals turn with the dial, as on real clocks, or all stand upright.
+        for (let i = 0; i < 12; i++) {
+          const a = i * 30, [x, y] = P(65.5, a);
+          s += `<text class="ro-num" x="${x}" y="${y}"${o.upright || !a ? '' : ` transform="rotate(${a} ${x} ${y})"`}>${N[i]}</text>`;
+        }
+        return s;
+      },
+      // Breguet hands: a shaft that tapers to a hollow moon, then a tip with slightly hollow sides. Each part is outlined
+      // in the dial's color, so a hand stays clear of the numerals it crosses.
+      hands() {
+        return '<g class="hand hand-h">' +
+            '<circle class="ro-hand-u" cx="100" cy="68" r="5" stroke-width="3.8"/>' +
+            '<path class="ro-hand-f" d="M98.2 104L99.15 72.5L100.85 72.5L101.8 104Z"/>' +
+            '<path class="ro-hand-f" d="M98.1 63.6Q99.6 55.5 100 45.5Q100.4 55.5 101.9 63.6Z"/>' +
+            '<circle class="ro-hand-s" cx="100" cy="68" r="5" stroke-width="2.2"/>' +
+            grab(68, 3.1, 9.5) + '</g>' +
+          '<g class="hand hand-m">' +
+            '<circle class="ro-hand-u" cx="100" cy="52" r="3.8" stroke-width="3.4"/>' +
+            '<path class="ro-hand-f" d="M98.5 104L99.35 56L100.65 56L101.5 104Z"/>' +
+            '<path class="ro-hand-f" d="M98.6 48.6Q99.75 31 100 16Q100.25 31 101.4 48.6Z"/>' +
+            '<circle class="ro-hand-s" cx="100" cy="52" r="3.8" stroke-width="1.8"/>' +
+            grab(19, 4.5) + '</g>' +
+          '<g class="hand hand-s"><line class="ro-sec" x1="100" y1="118" x2="100" y2="17" stroke-width="1.1"/><circle class="ro-sec-f" cx="100" cy="113.5" r="3.1"/></g>' +
+          '<circle class="ro-hand-f" cx="100" cy="100" r="4.4"/><circle class="ro-hub-c" cx="100" cy="100" r="1.5"/>';
+      }
+    },
+    // Big orange hours, small blue minutes from 00 at the top to 55, and a.m. or p.m. on the face.
+    teaching: {
+      len: { h: 49, m: 82.5 }, wr: 79.5,
+      // Where a.m. or p.m. can sit, best first. It takes the first spot clear of both hands.
+      apSpots: [[100, 125], [100, 75], [125, 100], [75, 100]],
+      bg() {
+        let s = '<circle class="t-face" cx="100" cy="100" r="96.5"/><g class="under"></g>';
+        for (let i = 0; i < 60; i++) {
+          const a = i * 6, major = i % 5 === 0, [x1, y1] = P(major ? 75.5 : 77, a), [x2, y2] = P(79.5, a);
+          s += `<line class="t-tick${major ? ' major' : ''}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"/>`;
+          if (major) { const [x, y] = P(87.5, a); s += `<text class="t-mn" x="${x}" y="${y}">${pad2(i)}</text>`; }
+        }
+        for (let i = 1; i <= 12; i++) { const [x, y] = P(58.5, i * 30); s += `<text class="t-hn${i > 9 ? ' two' : ''}" x="${x}" y="${y}">${i}</text>`; }
+        return s + '<text class="t-ap" x="100" y="125">a.m.</text>';
+      },
+      hands() {
+        return '<g class="hand hand-h"><path class="t-hh" d="M96.3 108L96.3 62L94.6 60.2Q97.2 53.6 100 51Q102.8 53.6 105.4 60.2L103.7 62L103.7 108Q100 111 96.3 108Z"/>' + grab(60, 5) + '</g>' +
+          '<g class="hand hand-m"><path class="t-mh" d="M97.8 110L97.8 29L100 17.5L102.2 29L102.2 110Q100 112.5 97.8 110Z"/>' + grab(22.5, 4.5) + '</g>' +
+          '<g class="hand hand-s"><line class="t-sec" x1="100" y1="114" x2="100" y2="16"/></g>' +
+          '<circle class="t-hub" cx="100" cy="100" r="6.7"/><circle class="t-hub-c" cx="100" cy="100" r="2.2"/>';
+      }
+    }
   };
 
-  const ticks = document.getElementById('ticks');
-  let html = '';
-  for (let i = 0; i < 60; i++) {
-    const major = i % 5 === 0, a = i * Math.PI / 30;
-    const r1 = major ? 80 : 86, r2 = 91;
-    html += `<line class="tick${major ? ' major' : ''}" stroke-width="${major ? 2.5 : 1.2}" x1="${100 + r1 * Math.sin(a)}" y1="${100 - r1 * Math.cos(a)}" x2="${100 + r2 * Math.sin(a)}" y2="${100 - r2 * Math.cos(a)}"/>`;
-    if (major) { const n = i / 5 || 12, rt = 69; html += `<text x="${100 + rt * Math.sin(a)}" y="${100 - rt * Math.cos(a)}">${n}</text>`; }
-  }
-  ticks.innerHTML = html;
-
-  // Long day names (e.g. "воскресенье", "quinta-feira") and long times (12:38:52 PM) shrink to fit the window
-  // instead of being cut off.
-  function fit(el) {
-    el.style.fontSize = '';
-    const box = el.parentNode;
-    const avail = box.clientWidth - parseFloat(getComputedStyle(box).paddingLeft) * 2;
-    if (el.scrollWidth > avail && avail > 0) el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) * avail / el.scrollWidth * 0.98) + 'px';
-  }
-  function setFitted(id, text) {
-    const el = document.getElementById(id);
-    if (el.textContent !== text) { el.textContent = text; fit(el); }
-  }
-  const fitAll = () => ['weekday', 'fulldate', 'time'].forEach(id => fit(document.getElementById(id)));
-  addEventListener('resize', fitAll);
-
-  const rot = (id, deg) => document.getElementById(id).setAttribute('transform', `rotate(${deg} 100 100)`);
-
-  function render() {
-    const d = new Date();
-    const h = d.getHours(), m = d.getMinutes(), s = d.getSeconds();
-    const locale = Board21.context ? Board21.context.locale : undefined;
-    if (config.style === 'date') {
-      setFitted('weekday', d.toLocaleDateString(locale, { weekday: 'long' }));
-      setFitted('fulldate', d.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' }));
-    } else if (config.style === 'analog') {
-      rot('h', (h % 12) * 30 + m * 0.5);
-      rot('m', m * 6 + s * 0.1);
-      rot('s', s * 6);
-      document.getElementById('s').style.display = config.seconds ? '' : 'none';
-    } else {
-      const hh = config.hour24 ? String(h).padStart(2, '0') : String(h % 12 || 12);
-      const ampm = config.hour24 ? '' : `<small>${h < 12 ? 'AM' : 'PM'}</small>`;
-      const html = `${hh}:${String(m).padStart(2, '0')}${config.seconds ? ':' + String(s).padStart(2, '0') : ''}${ampm}`;
-      const t = document.getElementById('time');
-      if (t.dataset.html !== html) {   // only when it changes
-        t.innerHTML = html; t.dataset.html = html;
-        // Fitted again only when the time gets longer or shorter (every digit is as wide as "0"), so it doesn't flicker.
-        const shape = html.replace(/\d/g, '0');
-        if (t.dataset.shape !== shape) { t.dataset.shape = shape; fit(t); }
+  let uid = 0;
+  class AnalogFace {
+    constructor() {
+      this.id = ++uid;
+      this.svg = document.createElementNS(NS, 'svg');
+      this.svg.setAttribute('viewBox', '0 0 200 200');
+      this.svg.id = 'analog';
+      this.o = { kind: 'simple', iv: false, upright: false };
+      this.build();
+    }
+    set(o) {
+      const changed = Object.keys(o).some(k => this.o[k] !== o[k]);
+      Object.assign(this.o, o);
+      if (changed) this.build();
+    }
+    build() {
+      const F = FACES[this.o.kind];
+      this.F = F; this.len = F.len;
+      this.svg.setAttribute('class', 'face f-' + this.o.kind);
+      this.svg.innerHTML = F.bg(this.o, this.id) + F.hands(this.o);
+      this.hH = $('.hand-h', this.svg); this.hM = $('.hand-m', this.svg); this.hS = $('.hand-s', this.svg);
+      this.apEl = $('.t-ap', this.svg); this.under = $('.under', this.svg);
+      this.k = {};
+      this.mk = null;
+    }
+    rot(el, key, deg) {
+      const v = r2(deg);
+      if (this.k[key] !== v) { this.k[key] = v; el.setAttribute('transform', `rotate(${v} 100 100)`); }
+    }
+    // T: minutes since midnight (any real number). The hour hand is geared to it, so it moves smoothly.
+    draw(T, sec, hideMinute) {
+      this.rot(this.hH, 'h', mod(T / 60, 12) * 30);
+      this.rot(this.hM, 'm', mod(T, 60) * 6);
+      const ss = sec != null;
+      if (this.k.ss !== ss) { this.k.ss = ss; this.hS.style.display = ss ? '' : 'none'; }
+      if (ss) this.rot(this.hS, 's', sec * 6);
+      const hide = !!hideMinute;
+      if (this.k.hide !== hide) { this.k.hide = hide; this.hM.style.display = hide ? 'none' : ''; }
+      if (this.apEl) {
+        const t = mod(T, DAY) < 720 ? 'a.m.' : 'p.m.';
+        if (this.k.ap !== t) { this.k.ap = t; this.apEl.textContent = t; }
+        this.placeAp(T, hide);
       }
-      const date = document.getElementById('date');
-      date.style.display = config.date ? '' : 'none';
-      date.textContent = d.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' });
+    }
+    // Teaching face: a.m. or p.m. takes the first spot clear of both hands, so a hand never covers it.
+    placeAp(T, hide) {
+      const S = this.F.apSpots, hd = mod(T / 60, 12) * 30, md = mod(T, 60) * 6;
+      const key = Math.round(hd * 2) + ':' + (hide ? '-' : Math.round(md * 2));
+      if (this.k.lab === key) return;
+      this.k.lab = key;
+      const under = (cx, cy, hw, hh, deg, len, w) => {
+        for (let r = 9; r <= len; r += 2) { const [x, y] = P(r, deg); if (Math.abs(x - cx) < hw + w && Math.abs(y - cy) < hh + w) return true; }
+        return false;
+      };
+      const ok = n => { const [x, y] = S[n]; return !under(x, y, 11, 4.5, hd, this.len.h, 4.5) && (hide || !under(x, y, 11, 4.5, md, this.len.m, 3)); };
+      const j = S.findIndex((_, n) => ok(n)), i = j >= 0 ? j : (this.k.spot || 0);
+      if (this.k.spot !== i) { this.k.spot = i; this.apEl.setAttribute('x', S[i][0]); this.apEl.setAttribute('y', S[i][1]); }
+    }
+    // Mark a time: a wedge in the accent from the minute hand (at angle a1) over the next `mins` minutes, its last `warn`
+    // minutes in the warning color. Longer than an hour, it fills the whole ring. null: no wedge.
+    wedge(a1, mins, warn) {
+      const key = mins == null ? '' : [r2(a1), r2(mins), r2(warn || 0)].join();
+      if (this.k.wedge === key) return;
+      this.k.wedge = key;
+      if (!this.mk) {
+        this.under.innerHTML = '<circle class="mk-full" cx="100" cy="100"/><path class="mk-w"/><path class="mk-warn"/><line class="mk-edge"/>';
+        this.mk = { full: $('.mk-full', this.under), w: $('.mk-w', this.under), warn: $('.mk-warn', this.under), edge: $('.mk-edge', this.under) };
+        this.mk.full.setAttribute('r', this.F.wr);
+      }
+      const m = this.mk, r = this.F.wr, show = (el, on) => { el.style.display = on ? '' : 'none'; };
+      const sector = (from, to) => { const [x1, y1] = P(r, from), [x2, y2] = P(r, to); return `M100 100L${x1} ${y1}A${r} ${r} 0 ${to - from > 180 ? 1 : 0} 1 ${x2} ${y2}Z`; };
+      if (mins == null) { [m.full, m.w, m.warn, m.edge].forEach(el => show(el, false)); return; }
+      const full = mins > 60;
+      show(m.full, full);
+      const a2 = a1 + Math.min(359.9, mins * 6), w = full ? 0 : Math.min(mins, warn || 0), aw = a2 - w * 6;
+      show(m.w, !full && aw - a1 > .05);
+      if (!full && aw - a1 > .05) m.w.setAttribute('d', sector(a1, aw));
+      show(m.warn, !full && w > 0);
+      if (!full && w > 0) m.warn.setAttribute('d', sector(aw, a2));
+      show(m.edge, !full);
+      if (!full) {
+        const [sx, sy] = P(r * .8, a2), [ex, ey] = P(r, a2);
+        Object.entries({ x1: sx, y1: sy, x2: ex, y2: ey }).forEach(([k, v]) => m.edge.setAttribute(k, v));
+        m.edge.classList.toggle('warn', w > 0);
+      }
     }
   }
 
+  // ---------------------------------------------------------------- Digital: plain, and the LED look
+  // Seven segments per digit. Each fades on and off (a CSS opacity transition), so nothing ever switches hard.
+  const SEG = (() => {
+    const W = 56, H = 100, t = 11, g = 1.4, k = t / 2;
+    const hz = (x1, x2, y) => `${x1},${y} ${x1 + k},${y - k} ${x2 - k},${y - k} ${x2},${y} ${x2 - k},${y + k} ${x1 + k},${y + k}`;
+    const vt = (x, y1, y2) => `${x},${y1} ${x + k},${y1 + k} ${x + k},${y2 - k} ${x},${y2} ${x - k},${y2 - k} ${x - k},${y1 + k}`;
+    const L = k, R = W - k, T = k, M = H / 2, B = H - k;
+    return { a: hz(L + g, R - g, T), b: vt(R, T + g, M - g), c: vt(R, M + g, B - g), d: hz(L + g, R - g, B), e: vt(L, M + g, B - g), f: vt(L, T + g, M - g), g: hz(L + g, R - g, M) };
+  })();
+  const DIGITS = { 0: 'abcdef', 1: 'bc', 2: 'abged', 3: 'abgcd', 4: 'fgbc', 5: 'afgcd', 6: 'afgedc', 7: 'abc', 8: 'abcdefg', 9: 'abcdfg', ' ': '' };
+
+  class SegDisplay {
+    constructor(o) {
+      this.o = o;
+      const dg = (x, y, s, keys = 'abcdefg') => `<g class="dg" transform="translate(${x} ${y})${s !== 1 ? ` scale(${s})` : ''}">` +
+        keys.split('').map(k => `<polygon class="seg-p" data-k="${k}" points="${SEG[k]}"/>`).join('') + '</g>';
+      // 12-hour time: the first hour digit is a half digit that can only show 1, as on real clocks. The time stays centered.
+      const half = !!o.ap;
+      let s = '<g transform="skewX(-6)">' + `<g class="grp-h">${dg(0, 0, 1, half ? 'bc' : 'abcdefg')}${dg(70, 0, 1)}</g>` +
+        '<rect class="seg-p on" x="136" y="25" width="10" height="10" rx="1.5"/><rect class="seg-p on" x="136" y="65" width="10" height="10" rx="1.5"/>' +
+        `<g class="grp-m">${dg(160, 0, 1)}${dg(230, 0, 1)}</g>`;
+      let end = 286;
+      if (o.secs) { s += `<g class="grp-s">${dg(304, 48, .52)}${dg(340, 48, .52)}</g>`; end = 369; }
+      if (o.ap) {
+        const y1 = o.secs ? 15 : 34, y2 = o.secs ? 35 : 60;
+        s += `<text class="ind" x="305" y="${y1}">AM</text><text class="ind" x="305" y="${y2}">PM</text>`;
+        end = Math.max(end, 334);
+      }
+      s += '</g>';
+      this.vb = half ? [29, -6, end - 19, 112] : [-16, -6, end + 26, 112];
+      this.el = document.createElementNS(NS, 'svg');
+      this.el.setAttribute('class', 'led-svg');
+      this.el.setAttribute('viewBox', this.vb.join(' '));
+      this.el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      this.el.setAttribute('role', 'img');
+      this.el.innerHTML = s;
+      this.digits = $$('.dg', this.el).map(g => $$('.seg-p', g));
+      this.ind = $$('.ind', this.el);
+      // The hour arrows sit over the ones digit in 12-hour time, where every hour from 1 to 9 is lit.
+      this.hourEl = half ? $$('.dg', this.el)[1] : $('.grp-h', this.el); this.minEl = $('.grp-m', this.el);
+    }
+    show(hh, mm, ss, hour24) {
+      const H = hour24 ? pad2(hh) : String(h12(hh)).padStart(2, ' ');
+      const chars = H + pad2(mm) + (this.o.secs && ss != null ? pad2(ss) : '');
+      for (let i = 0; i < chars.length; i++) {
+        const lit = DIGITS[chars[i]];
+        for (const seg of this.digits[i]) seg.classList.toggle('on', lit.includes(seg.dataset.k));
+      }
+      if (this.ind.length) { this.ind[0].classList.toggle('on', hh < 12); this.ind[1].classList.toggle('on', hh >= 12); }
+      this.el.setAttribute('aria-label', `${hour24 ? pad2(hh) : h12(hh)}:${pad2(mm)}${hour24 ? '' : ' ' + apOf(hh, true)}`);
+      return false;
+    }
+  }
+
+  class PlainDisplay {
+    constructor(o) {
+      this.o = o;
+      this.el = document.createElement('div');
+      this.el.id = 'time';
+      this.el.innerHTML = '<span class="pd-h"></span><span class="pd-c">:</span><span class="pd-m"></span>' +
+        (o.secs ? '<span class="pd-s"></span>' : '') + (o.ap ? '<span class="pd-ap"></span>' : '');
+      this.hourEl = $('.pd-h', this.el); this.minEl = $('.pd-m', this.el);
+      this.onesX = !!o.ap;   // While setting the time the hour keeps a two-digit box: in 12-hour time its arrows sit over the ones digit.
+      this.sEl = $('.pd-s', this.el); this.apEl = $('.pd-ap', this.el);
+      this.shape = '';
+    }
+    show(hh, mm, ss, hour24) {
+      const H = hour24 ? pad2(hh) : String(h12(hh));
+      this.hourEl.textContent = H; this.minEl.textContent = pad2(mm);
+      if (this.sEl) this.sEl.textContent = ss != null ? ':' + pad2(ss) : '';
+      if (this.apEl) this.apEl.textContent = apOf(hh, this.o.teach);
+      const shape = H.length + (this.apEl ? this.apEl.textContent : '');
+      if (shape !== this.shape) { this.shape = shape; return true; }   // wider or narrower: fit again
+      return false;
+    }
+  }
+
+  // ---------------------------------------------------------------- The window
+  let config = readConfig(null);
+  let state = readState(null);
+  let timers = [];          // the board's list: [{ id, endsAt, remaining, warnMs }]
+  let revealed = false;     // Quiz: the time shows instead of ?. Never saved.
+  let T = null;             // the set time shown, in minutes (a real number while a hand is dragged); null: the real time
+  let anim = null;          // { from, to, t0, dur }: the hands on their way to T, or to the real time after Now
+  let mode = 'analog', showA = true, showD = false, setOn = false;
+  let disp = null, dkey = null, rkey = null, dayKey = null, lastLabel = null, wordsKey = null, nudge = 0;
+  let sentRatio, sentMin = '';
+
+  const root = $('#clock'), ana = $('#ana'), dig = $('#dig'), readout = $('#readout'), dline = $('#date');
+  const qEl = $('#q'), wordsEl = $('#words'), dt = $('#dateonly'), badge = $('#badge'), nowBtn = $('#now');
+  const face = new AnalogFace();
+  ana.append(face.svg);
+  const ICON = { up: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 4.5l7 9.5H3z"/></svg>', down: '<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 15.5L3 6h14z"/></svg>' };
+  const arrows = {};
+  [['hu', 'Hours up', 'up'], ['hd', 'Hours down', 'down'], ['mu', 'Minutes up', 'up'], ['md', 'Minutes down', 'down']].forEach(([k, label, ic]) => {
+    const b = document.createElement('button');
+    b.className = 'arrow'; b.type = 'button'; b.innerHTML = ICON[ic];
+    b.setAttribute('aria-label', label); b.dataset.k = k;
+    holdRepeat(b, () => step(k));
+    dig.append(b); arrows[k] = b;
+  });
+
+  const snap = () => (config.snap5 ? 5 : 1);
+  const quizOn = () => config.quiz && showA && showD;
+  const asked = () => quizOn() && !revealed;   // the digital clock shows ?
+
+  // The shape: 1:1 analog, 2.2:1 digital and Date only, each with room for Time in words. Analog and digital together:
+  // no lock. While setting the time the window keeps room for the arrows, the Set badge, and Now.
+  const WORDS_A = 0.15, WORDS_D = 0.12;
+  function shape() {
+    const ratio = mode === 'combo' ? null : mode === 'analog' ? (config.words ? 1 / (1 + WORDS_A) : 1)
+      : mode === 'digital' && config.words ? 1 / (1 / 2.2 + WORDS_D) : 2.2;
+    if (ratio !== sentRatio) { sentRatio = ratio; Board21.window.setAspectRatio(ratio); }
+    const m = !setOn || mode === 'date' ? [null, null] : mode === 'analog' ? [240, 240] : mode === 'digital' ? [440, 200] : [360, config.words ? 250 : 220];
+    if (m.join() !== sentMin) { sentMin = m.join(); Board21.window.setMinSize(m[0], m[1]); }
+  }
+
   function apply() {
-    document.body.classList.toggle('digital', config.style === 'digital');
-    document.body.classList.toggle('date', config.style === 'date');
-    Board21.window.setAspectRatio(ASPECT[config.style]);
-    Board21.menu.set([
-      { id: 'analog', label: 'Analog', checked: config.style === 'analog' },
-      { id: 'digital', label: 'Digital', checked: config.style === 'digital' },
-      { id: 'date', label: 'Date only', checked: config.style === 'date' },
+    const c = config;
+    showA = c.analog && !c.dateOnly;
+    showD = c.digital && !c.dateOnly;
+    mode = c.dateOnly ? 'date' : showA && showD ? 'combo' : showA ? 'analog' : 'digital';
+    setOn = !!state.set;
+    if (!setOn) { T = null; anim = null; }
+    const teach = c.face === 'teaching' && showA;
+    root.className = [mode === 'combo' ? 'both' : '', setOn && mode !== 'date' ? 'set' : '', quizOn() ? 'quiz' : ''].filter(Boolean).join(' ');
+    face.set({ kind: c.face, iv: c.iv, upright: c.upright });
+    const settable = setOn && showA, markable = c.mark && showA;
+    face.svg.classList.toggle('settable', settable);
+    face.svg.classList.toggle('markable', markable && !settable);
+    if (settable) { face.svg.setAttribute('tabindex', '0'); face.svg.setAttribute('role', 'slider'); face.svg.setAttribute('aria-valuemin', '0'); face.svg.setAttribute('aria-valuemax', '1439'); }
+    else { face.svg.removeAttribute('tabindex'); face.svg.setAttribute('role', 'img'); ['aria-valuetext', 'aria-valuenow', 'aria-valuemin', 'aria-valuemax'].forEach(a => face.svg.removeAttribute(a)); }
+    ana.hidden = !showA; dig.hidden = !showD; dt.hidden = mode !== 'date';
+    const key = [c.led, c.seconds && !setOn, c.hour24, teach, c.date].join();
+    if (key !== rkey) {
+      rkey = key;
+      const o = { secs: c.seconds && !setOn, ap: !c.hour24, teach };
+      if (disp) disp.el.remove();
+      disp = c.led ? new SegDisplay(o) : new PlainDisplay(o);
+      readout.className = teach ? 'teach' : '';
+      readout.insertBefore(disp.el, qEl);
+      dkey = null;
+    }
+    dig.classList.toggle('led', c.led);
+    dline.hidden = !c.date;
+    showQuiz();
+    shape();
+    menu();
+    dkey = null; dayKey = null; lastLabel = null; wordsKey = null; face.k.wedge = null;
+    layout();
+    tick();
+  }
+
+  // The window menu: headings, at most 21 items. Items in brackets in the comments show only when their condition holds.
+  function menu() {
+    const c = config, items = [
+      { heading: true, label: 'Show' },
+      { id: 'analog', label: 'Analog', checked: showA },
+      { id: 'digital', label: 'Digital', checked: showD },
+      { id: 'date', label: 'Date only', checked: c.dateOnly },
+      { heading: true, label: 'Clock face' },
+      { id: 'face:simple', label: 'Simple', checked: c.face === 'simple', disabled: !showA },
+      { id: 'face:old', label: 'Old', checked: c.face === 'old', disabled: !showA },
+      { id: 'face:teaching', label: 'Teaching', checked: c.face === 'teaching', disabled: !showA }
+    ];
+    if (c.face === 'old') items.push({ id: 'upright', label: 'Upright numerals', checked: c.upright, disabled: !showA }, { id: 'iv', label: 'IV for four', checked: c.iv, disabled: !showA });   // [Old]
+    if (c.face === 'teaching') items.push({ id: 'hourOnly', label: 'Hour hand only', checked: c.hourOnly, disabled: !showA });   // [Teaching]
+    items.push(
       { separator: true },
-      { id: 'seconds', label: 'Show seconds', checked: !!config.seconds, disabled: config.style === 'date' },
-      { id: 'hour24', label: '24-hour time', checked: !!config.hour24, disabled: config.style !== 'digital' },
-      { id: 'showdate', label: 'Show date', checked: !!config.date, disabled: config.style !== 'digital' }
-    ]);
-    render();
-    fitAll();
+      { id: 'led', label: 'LED look', checked: c.led, disabled: !showD },
+      { id: 'seconds', label: 'Show seconds', checked: c.seconds, disabled: c.dateOnly || setOn },
+      { id: 'showdate', label: 'Show date', checked: c.date, disabled: !showD },
+      { id: 'hour24', label: '24-hour time', checked: c.hour24, disabled: !showD },
+      { id: 'words', label: 'Time in words', checked: c.words, disabled: c.dateOnly },
+      { separator: true },
+      { id: 'mark', label: 'Mark a time', checked: c.mark, disabled: !showA });
+    if (showA && showD) items.push({ id: 'quiz', label: 'Quiz', checked: c.quiz });   // [Analog and Digital]
+    items.push({ id: 'set', label: 'Set the time', checked: setOn, disabled: c.dateOnly && !setOn });
+    if (setOn) items.push({ id: 'snap5', label: '5-minute steps', checked: c.snap5 });   // [setting the time]
+    Board21.menu.set(items);
   }
 
   Board21.on('menu', id => {
-    if (id === 'analog' || id === 'digital') config.style = id;
-    else if (id === 'date') config.style = 'date';
-    else if (id === 'showdate') config.date = !config.date;
-    else if (id in config) config[id] = !config[id];
-    Board21.saveConfig(config);
+    const c = config;
+    if (id === 'analog' || id === 'digital') {
+      if (c.dateOnly) { c.dateOnly = false; c.analog = id === 'analog'; c.digital = id === 'digital'; }
+      else {
+        const other = id === 'analog' ? 'digital' : 'analog';
+        if (c[id] && !c[other]) { menu(); return; }   // the last one shown stays
+        c[id] = !c[id];
+      }
+    } else if (id === 'date') {
+      if (c.dateOnly) { c.dateOnly = false; c.analog = true; c.digital = false; }
+      else { c.dateOnly = true; c.analog = false; c.digital = false; }
+    } else if (id.startsWith('face:') && FACES_IDS.includes(id.slice(5))) c.face = id.slice(5);
+    else if (id === 'showdate') c.date = !c.date;
+    else if (id === 'set') { if (setOn) endSet(); else startSet(); return; }
+    else if (FLAGS.includes(id)) { c[id] = !c[id]; if (id === 'quiz') revealed = false; }
+    else return;
+    Board21.saveConfig(writeConfig(c));
     apply();
   });
-  Board21.on('config', c => { config = readConfig(c); apply(); });
 
+  // ---------------------------------------------------------------- Layout
+  function layout() {
+    const W = innerWidth, H = innerHeight;
+    if (!W || !H) return;
+    const words = config.words && mode !== 'date';
+    const lineH = !words ? 0 : mode === 'analog' ? Math.min(W * WORDS_A, H * WORDS_A / (1 + WORDS_A)) : mode === 'digital' ? Math.min(W * WORDS_D, H * .25) : Math.min(W, H) * .13;
+    const h = H - lineH;
+    let A = null, D = null;
+    if (mode === 'analog') A = [0, 0, W, h];
+    else if (mode === 'digital') D = [0, 0, W, h];
+    else if (mode === 'combo') {
+      // Side by side when the window is wider than tall, analog on top otherwise.
+      const wide = W > H;
+      if (wide) { const s = Math.min(h, W * .5); A = [0, 0, s, h]; D = [s, 0, W - s, h]; }
+      else { const s = Math.min(W, h * .6); A = [0, 0, W, s]; D = [0, s, W, h - s]; }
+      root.classList.toggle('wide', wide);
+      if (config.led) {
+        const m = Math.round(Math.min(W, H) * .045);
+        D = [D[0] + (wide ? 0 : m), D[1] + (wide ? m : 0), D[2] - (wide ? m : 2 * m), D[3] - (wide ? 2 * m : m)];
+        // Side by side, the panel hugs the digits and sits centered beside the dial, like an LCD module.
+        if (wide && disp && disp.vb) {
+          const vb = disp.vb;
+          const need = D[2] * (.2 + .92 * vb[3] / vb[2]) + (config.date ? D[2] * .1 : 0) + (setOn ? 104 : 0);
+          if (need < D[3]) D = [D[0], Math.round((h - need) / 2), D[2], Math.round(need)];
+        }
+      }
+    }
+    const place = (el, r) => { if (r) Object.assign(el.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px' }); };
+    place(ana, A); place(dig, D);
+    if (mode === 'date') place(dt, [0, 0, W, H]);
+    if (A) {
+      let s = Math.min(A[2], A[3]) * (mode === 'combo' ? .9 : .92);
+      // While setting the time, the dial stays clear of the Set badge and Now in the top corners.
+      if (setOn) {
+        const cx = A[0] + A[2] / 2, cy = A[1] + A[3] / 2;
+        for (const el of [badge, nowBtn]) {
+          const l = el.offsetLeft, t = el.offsetTop, r = l + el.offsetWidth, b = t + el.offsetHeight;
+          const gap = Math.hypot(Math.max(l - cx, 0, cx - r), Math.max(t - cy, 0, cy - b));
+          if (el.offsetWidth) s = Math.min(s, 2 * (gap - 4) / .96);
+        }
+        s = Math.max(s, Math.min(A[2], A[3]) * .6);
+      }
+      Object.assign(face.svg.style, { width: s + 'px', height: s + 'px', left: (A[2] - s) / 2 + 'px', top: (A[3] - s) / 2 + 'px' });
+    }
+    wordsEl.hidden = !words;
+    if (words) { place(wordsEl, [0, h, W, lineH]); wordsEl.style.paddingBottom = Math.round(lineH * .12) + 'px'; fitWords(); }
+    readout.style.paddingLeft = readout.style.paddingRight = ''; nudge = 0;
+    fit();
+    fitDate();
+  }
+  addEventListener('resize', layout);
+
+  function fitWords() {
+    const el = wordsEl, H = el.clientHeight, W = el.clientWidth;
+    if (!H || !W) return;
+    el.style.fontSize = Math.max(10, H * .62) + 'px';
+    const span = el.firstChild;
+    if (span && span.offsetWidth > W * .94) el.style.fontSize = Math.max(8, H * .62 * W * .94 / span.offsetWidth) + 'px';
+  }
+
+  // Long day names (e.g. "воскресенье", "quinta-feira") shrink to fit the window instead of being cut off.
+  function fitText(el) {
+    el.style.fontSize = '';
+    const box = el.parentNode, avail = box.clientWidth - parseFloat(getComputedStyle(box).paddingLeft) * 2;
+    if (el.scrollWidth > avail && avail > 0) el.style.fontSize = (parseFloat(getComputedStyle(el).fontSize) * avail / el.scrollWidth * 0.98) + 'px';
+  }
+  const fitDate = () => { if (mode === 'date') ['weekday', 'fulldate'].forEach(id => fitText(document.getElementById(id))); };
+
+  function fit() {
+    if (!showD || !disp) return;
+    const R = readout, W = R.clientWidth, H = R.clientHeight;
+    if (!W || !H) return;
+    const dl = config.date;
+    if (dl) dline.style.fontSize = Math.max(11, Math.min(H * .12, W * .055)) + 'px';
+    const dlH = dl ? dline.offsetHeight + H * .03 : 0;
+    const cs = getComputedStyle(R), padY = parseFloat(cs.paddingTop) || 0;
+    const avail = W - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    let qh;
+    if (disp instanceof PlainDisplay) {
+      // As big as the room is tall, then smaller only if it's too wide (el.style.fontSize: shrunk to fit).
+      const el = disp.el, fs = Math.max(10, (H - dlH - padY * 2) * .86);
+      el.style.fontSize = ''; el.style.setProperty('--fs', fs + 'px');
+      if (el.scrollWidth > avail) el.style.fontSize = (fs * avail / el.scrollWidth * .98) + 'px';
+      qh = el.style.fontSize ? parseFloat(el.style.fontSize) : fs;
+    } else {
+      const r = disp.el.getBoundingClientRect(), vb = disp.vb;
+      const u = Math.min(r.width / vb[2], r.height / vb[3]);
+      if (u > 0) disp.el.style.setProperty('--u', u.toFixed(3) + 'px');
+      qh = vb[3] * u * .85;
+    }
+    // Quiz: ? sits over the digits, which keep their place, so nothing moves when it flips.
+    const b = R.getBoundingClientRect(), r = disp.el.getBoundingClientRect();
+    Object.assign(qEl.style, { left: r.left - b.left + 'px', top: r.top - b.top + 'px', width: r.width + 'px', height: r.height + 'px', fontSize: Math.max(10, qh) + 'px' });
+    placeArrows();
+  }
+
+  // ▲ and ▼ above and below the hours and the minutes. They stay where they are while the time changes.
+  function placeArrows() {
+    if (!setOn || !showD || !disp) return;
+    const base = dig.getBoundingClientRect(), bh = base.height, at = {};
+    const put = (k, el, upward) => {
+      const r = el.getBoundingClientRect();
+      const cx = el === disp.hourEl && disp.onesX ? r.right - r.width / 4 : (r.left + r.right) / 2;
+      at[k] = [Math.round(cx - base.left - 22), Math.round(upward ? Math.max(3, r.top - base.top - 49) : Math.min(bh - 47, r.bottom - base.top + 5))];
+    };
+    put('hu', disp.hourEl, true); put('hd', disp.hourEl, false);
+    put('mu', disp.minEl, true); put('md', disp.minEl, false);
+    // Small digits: keep the hour and minute arrows a finger apart.
+    const gap = at.mu[0] - at.hu[0];
+    if (gap < 48) { const d = Math.ceil((48 - gap) / 2); at.hu[0] -= d; at.hd[0] -= d; at.mu[0] += d; at.md[0] += d; }
+    // Now and the Set badge share the window's top corners. In a small window an arrow could land under one, so the
+    // digits move away from it and fit again.
+    if (nudge < 4) {
+      let padL = 0, padR = 0;
+      const blocks = [nowBtn, badge].map(e => e.getBoundingClientRect()).filter(b => b.width);
+      for (const k in at) {
+        const l = base.left + at[k][0] - 4, t = base.top + at[k][1] - 4, r = l + 52, b = t + 52;
+        for (const o of blocks) {
+          if (r <= o.left || l >= o.right || b <= o.top || t >= o.bottom) continue;
+          if ((o.left + o.right) / 2 > base.left + base.width / 2) padR = Math.max(padR, r - o.left); else padL = Math.max(padL, o.right - l);
+        }
+      }
+      if (padL || padR) {
+        const cs = getComputedStyle(readout);
+        if (padR) readout.style.paddingRight = (parseFloat(cs.paddingRight) || 0) + 2 * padR + 'px';
+        if (padL) readout.style.paddingLeft = (parseFloat(cs.paddingLeft) || 0) + 2 * padL + 'px';
+        nudge++;
+        fit();
+        return;
+      }
+    }
+    for (const k in at) { arrows[k].style.left = at[k][0] + 'px'; arrows[k].style.top = at[k][1] + 'px'; }
+  }
+
+  // ---------------------------------------------------------------- Set the time
+  const realMinute = () => Math.floor(nowMinutes(new Date()));
+  function saveState() { Board21.save({ set: state.set ? { at: state.set.at } : null, markAt: state.markAt }); }
+  function startSet() {
+    T = realMinute(); anim = null;
+    state.set = { at: T };
+    saveState(); apply();
+  }
+  function endSet() {
+    state.set = null; T = null; anim = null;
+    saveState(); apply();
+  }
+  // A new set time, from a drag, an arrow, or a key. In Quiz the digital clock asks again, so the hands never give the answer away.
+  function setTime(v, save) {
+    const was = T == null ? null : Math.round(T);
+    T = v;
+    if (was !== Math.round(v) && revealed) { revealed = false; render(); }
+    if (save) { state.set = { at: mod(Math.round(T), DAY) }; saveState(); }
+  }
+  // The shown time (with the hands on their way somewhere, where they are now).
+  function shownT() {
+    if (anim) { const p = Math.min(1, (performance.now() - anim.t0) / anim.dur); return anim.from + (anim.to - anim.from) * ease(p); }
+    return T != null ? T : nowMinutes(new Date());
+  }
+  function tweenTo(to, dur) {
+    const from = shownT();
+    anim = reduceMotion.matches || !dur ? null : { from, to, t0: performance.now(), dur };
+    setTime(to, true);
+    if (!anim) T = mod(T, DAY);
+    loop();
+  }
+  // ▲ and ▼: the minutes go to the next step (10:03 → 10:05 with 5-minute steps), wrap, and carry into the hours.
+  function step(k) {
+    if (!setOn) return;
+    const s = snap(), base = T != null ? Math.round(T) : realMinute();
+    const to = k === 'hu' ? base + 60 : k === 'hd' ? base - 60 : k === 'mu' ? Math.floor(base / s + 1e-9) * s + s : Math.ceil(base / s - 1e-9) * s - s;
+    if (T == null) T = base;   // (after Now: from the real time)
+    tweenTo(to, k[0] === 'h' ? 420 : 160);
+  }
+  // Now: back to the real time, still setting the time. The next drag or arrow sets a time again.
+  nowBtn.addEventListener('click', () => {
+    if (!setOn) return;
+    const from = shownT(), diff = mod(nowMinutes(new Date()) - from + 720, DAY) - 720;
+    T = null;
+    anim = reduceMotion.matches ? null : { from, to: from + diff, t0: performance.now(), dur: Math.min(800, 260 + Math.abs(diff) * 1.2), now: true };
+    state.set = { at: null };
+    saveState(); apply(); loop();
+  });
+  // Hold an arrow to repeat it. A keyboard click (detail 0) steps once.
+  function holdRepeat(btn, fn) {
+    let t1 = 0, t2 = 0;
+    const stop = () => { clearTimeout(t1); clearInterval(t2); };
+    btn.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
+      e.preventDefault(); stop(); fn();
+      t1 = setTimeout(() => { t2 = setInterval(fn, 110); }, 450);
+      try { btn.setPointerCapture(e.pointerId); } catch (err) { /* gone */ }
+    });
+    ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => btn.addEventListener(ev, stop));
+    btn.addEventListener('click', e => { if (e.detail === 0) fn(); });
+  }
+
+  // Drag a hand. The minute hand carries the hour hand like gears: a full turn is one hour, and the angle is unwrapped,
+  // so passing 12 moves the hour on or back. Dragging the hour hand turns the minute hand too. A press grabs the hand
+  // where it is: only movement changes the time.
+  function toSvg(e) {
+    const m = face.svg.getScreenCTM();
+    if (!m) return { x: 100, y: 100 };
+    const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(m.inverse());
+    return { x: p.x, y: p.y };
+  }
+  const angleAt = p => mod(Math.atan2(p.x - 100, -(p.y - 100)) / RAD, 360);
+  function segDist(p, deg, len) {
+    const [tx, ty] = P(len, deg), vx = tx - 100, vy = ty - 100;
+    const t = Math.max(0, Math.min(1, ((p.x - 100) * vx + (p.y - 100) * vy) / (vx * vx + vy * vy)));
+    return Math.hypot(p.x - 100 - t * vx, p.y - 100 - t * vy);
+  }
+  let drag = null, press = null;
+  const hourOnly = () => config.hourOnly && config.face === 'teaching';
+  face.svg.addEventListener('pointerdown', e => {
+    press = null;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const p = toSvg(e);
+    if (Math.hypot(p.x - 100, p.y - 100) > 100) return;
+    const t = shownT(), dh = segDist(p, mod(t / 60, 12) * 30, face.len.h), dm = hourOnly() ? Infinity : segDist(p, mod(t, 60) * 6, face.len.m);
+    press = { onHand: Math.min(dh, dm) < 14, moved: false };
+    if (!setOn || !showA) return;
+    const which = hourOnly() || (dh < dm && dh < 24) ? 'h' : 'm';
+    if (anim) { anim = null; if (T != null) T = mod(T, DAY); }
+    drag = { id: e.pointerId, which, last: angleAt(p) };
+    e.preventDefault();
+    try { face.svg.setPointerCapture(e.pointerId); } catch (err) { /* gone */ }
+    face.svg.classList.add('dragging', 'drag-' + which);
+  });
+  const stopDrag = () => { drag = null; face.svg.classList.remove('dragging', 'drag-h', 'drag-m'); };
+  face.svg.addEventListener('pointermove', e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    if (!setOn) { stopDrag(); return; }   // Set the time turned off during the drag
+    const a = angleAt(toSvg(e)), d = wrap180(a - drag.last);
+    if (!d) return;
+    drag.last = a;
+    if (press) press.moved = true;
+    if (T == null) T = nowMinutes(new Date());   // (after Now: from the real time)
+    setTime(T + (drag.which === 'm' ? d / 6 : d * 2), false);
+    tick();
+  });
+  const dragUp = e => {
+    if (!drag || e.pointerId !== drag.id) return;
+    const moved = press && press.moved;
+    stopDrag();
+    if (setOn && moved && T != null) { const s = snap(); tweenTo(Math.round(T / s) * s, 180); }
+  };
+  face.svg.addEventListener('pointerup', dragUp);
+  face.svg.addEventListener('pointercancel', dragUp);
+  face.svg.addEventListener('keydown', e => {
+    if (!setOn || !showA) return;
+    const d = { ArrowUp: 1, ArrowRight: 1, ArrowDown: -1, ArrowLeft: -1, PageUp: 60, PageDown: -60 }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    step(Math.abs(d) > 1 ? (d > 0 ? 'hu' : 'hd') : (d > 0 ? 'mu' : 'md'));
+  });
+
+  // ---------------------------------------------------------------- Mark a time
+  // A tap on the face marks that minute, the next time it comes round: from the real time, or from the set time.
+  face.svg.addEventListener('click', e => {
+    const pr = press; press = null;
+    if (!config.mark || !showA || !pr || pr.moved || (setOn && pr.onHand)) return;
+    const p = toSvg(e);
+    if (Math.hypot(p.x - 100, p.y - 100) > 100) return;
+    const minute = mod(Math.round(angleAt(p) / 6), 60), from = T != null ? Math.round(T) : nowMinutes(new Date());
+    let c = Math.floor(from / 60) * 60 + minute;
+    if (c <= from + (T != null ? 0 : .25)) c += 60;
+    const d = new Date();
+    d.setHours(Math.floor(c / 60), c % 60, 0, 0);
+    state.markAt = d.getTime();
+    saveState();
+    face.k.wedge = null;
+    tick();
+  });
+  // The timer the wedge follows: the running one that ends soonest. null when none runs.
+  function followedTimer(now) {
+    let best = null;
+    for (const t of timers) if (t.endsAt !== null && t.endsAt > now && (!best || t.endsAt < best.endsAt)) best = t;
+    return best;
+  }
+  // The wedge, as minutes from the minute hand: [minutes, warning minutes], or null for none.
+  function wedgeNow(t) {
+    if (!config.mark || !showA) return null;
+    const now = Date.now();
+    if (T != null) {   // a set time: from it to the teacher's mark. Timers aren't followed.
+      if (state.markAt == null) return null;
+      const m = new Date(state.markAt), M = m.getHours() * 60 + m.getMinutes();
+      const d = mod(M - t + 720, DAY) - 720;
+      return d > 0 ? [d, 0] : null;
+    }
+    const f = followedTimer(now);
+    if (f) return [(f.endsAt - now) / 60000, f.warnMs / 60000];
+    if (state.markAt != null && state.markAt > now) return [(state.markAt - now) / 60000, 0];
+    return null;
+  }
+  const num0 = v => typeof v === 'number' && isFinite(v);
+  const readTimers = l => (Array.isArray(l) ? l : []).filter(t => t && typeof t.id === 'string' && (num0(t.endsAt) || num0(t.remaining)))
+    .map(t => ({ id: t.id, endsAt: num0(t.endsAt) ? t.endsAt : null, remaining: num0(t.endsAt) ? null : t.remaining, warnMs: num0(t.warnMs) && t.warnMs > 0 ? t.warnMs : 0 }));
+
+  // ---------------------------------------------------------------- Quiz
+  // The digital clock shows ? until it's tapped. Another tap asks again.
+  function flip() { if (!quizOn()) return; revealed = !revealed; render(); }
+  dig.addEventListener('click', e => { if (!e.target.closest('.arrow')) flip(); });
+  qEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+  function showQuiz() {
+    const ask = asked();
+    qEl.hidden = !ask;
+    if (disp) disp.el.style.visibility = ask ? 'hidden' : '';
+  }
+  function render() {
+    showQuiz();
+    wordsKey = null; lastLabel = null;
+    tick();
+  }
+
+  // ---------------------------------------------------------------- Each tick
+  function tick() {
+    const d = new Date();
+    let t, sec = null;
+    if (anim) {
+      const p = Math.min(1, (performance.now() - anim.t0) / anim.dur);
+      t = anim.from + (anim.to - anim.from) * ease(p);
+      if (p >= 1) { anim = null; if (T != null) T = mod(T, DAY); t = T != null ? T : nowMinutes(d); }
+    } else if (T != null) t = T;
+    else {
+      t = nowMinutes(d);
+      if (reduceMotion.matches) t = Math.floor(t);   // (reduced motion: no sweeping hands, a step each minute)
+      if (config.seconds && !setOn) sec = d.getSeconds();
+    }
+    const live = T == null && !anim;
+    const shown = live ? Math.floor(t) : drag ? Math.round(t / snap()) * snap() : Math.round(t);
+    const [hh, mm] = hm(shown);
+    if (showA) {
+      face.draw(t, sec, hourOnly());
+      const w = wedgeNow(t), lag = live ? nowMinutes(d) - t : 0;   // (a hand that steps each minute is behind the real time)
+      face.wedge(mod(t, 60) * 6, w ? w[0] + lag : null, w ? w[1] : 0);
+    }
+    if (showD && disp) {
+      const ss = sec;
+      const k = shown + ':' + ss + ':' + config.hour24;
+      if (k !== dkey) { dkey = k; if (disp.show(hh, mm, ss, config.hour24)) fit(); }
+    }
+    if (config.words && mode !== 'date') {
+      const ask = asked(), wk = ask ? '?' : hh * 60 + mm;
+      if (wk !== wordsKey) {
+        wordsKey = wk;
+        wordsEl.style.visibility = ask ? 'hidden' : '';
+        wordsEl.innerHTML = '';
+        const span = document.createElement('span');
+        span.textContent = inWords(hh, mm);
+        wordsEl.append(span);
+        fitWords();
+      }
+    }
+    if (mode === 'date' || (showD && config.date)) {
+      const day = d.toDateString();
+      if (day !== dayKey) {
+        dayKey = day;
+        const locale = Board21.context ? Board21.context.locale : undefined;
+        dline.textContent = d.toLocaleDateString(locale, { weekday: 'long', month: 'long', day: 'numeric' });
+        const wd = d.toLocaleDateString(locale, { weekday: 'long' }), fd = d.toLocaleDateString(locale, { month: 'long', day: 'numeric', year: 'numeric' });
+        const we = $('#weekday'), fe = $('#fulldate');
+        if (we.textContent !== wd) we.textContent = wd;
+        if (fe.textContent !== fd) fe.textContent = fd;
+        fitDate();
+        if (config.date) fit();
+      }
+    }
+    // What a screen reader hears, once a minute.
+    const label = `${h12(hh)}:${pad2(mm)} ${apOf(hh, true)}`, settable = setOn && showA;
+    if (label + settable !== lastLabel) {
+      lastLabel = label + settable;
+      if (settable) { face.svg.setAttribute('aria-valuenow', hh * 60 + mm); face.svg.setAttribute('aria-valuetext', label); face.svg.setAttribute('aria-label', 'Set the time. Drag a hand or use the arrow keys.'); }
+      else face.svg.setAttribute('aria-label', 'Clock showing ' + label);
+      qEl.setAttribute('aria-label', revealed ? 'Hide the time' : 'Show the time');
+    }
+  }
+  // While the hands are on their way somewhere, every frame; else four times a second.
+  let looping = false;
+  function loop() {
+    if (looping) return;
+    looping = true;
+    const f = () => { tick(); if (anim) requestAnimationFrame(f); else looping = false; };
+    requestAnimationFrame(f);
+  }
+
+  // ---------------------------------------------------------------- From the board
+  function take(d) {
+    const next = readState(d), was = T == null ? null : Math.round(T);
+    state = next;
+    if (drag) return;   // (a drag under way keeps its time; its release saves it)
+    T = state.set && state.set.at != null ? state.set.at : null;
+    if (T !== was && T != null && revealed) revealed = false;
+    anim = null;
+  }
+  Board21.on('data', d => { take(d); apply(); render(); });
+  Board21.on('config', c => { config = readConfig(c); apply(); render(); });
+  Board21.on('timers', l => { timers = readTimers(l); face.k.wedge = null; tick(); });
   Board21.ready().then(ctx => {
     config = readConfig(ctx.config);
+    take(ctx.data);
+    timers = readTimers(ctx.timers);
     apply();
-    setInterval(render, 250);
+    render();
+    setInterval(() => { if (!anim) tick(); }, 250);
+    // Fonts and the text style can arrive after the first layout.
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(layout);
   });
 </script>
 </body>

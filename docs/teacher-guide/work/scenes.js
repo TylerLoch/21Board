@@ -149,6 +149,7 @@ SCENES.heroDark = async () => {
   await setRect(p, ik.dice, { x: 1540, y: 650, w: 800, h: 550 });
   await wait(p, 800);
   await choose(p, ik.clock, 'Digital', { exact: true });
+  await choose(p, ik.clock, 'Analog', { exact: true });   // (digital alone)
   await choose(p, ik.notes, 'Chalkboard', { exact: true });
   await typeNote(p, ik.notes, 'Do now\nWrite three words that rhyme with cat.');
   await taskSchedule(p, ik['task-timer'], [{ name: 'Reading', min: 20, emoji: 'book' }, { name: 'Writing', min: 15, emoji: 'pencil' }, { name: 'Clean up', min: 5, emoji: 'broom' }]);
@@ -180,7 +181,6 @@ const W = {
   timer: { r: { w: 760, h: 560 }, set: async (p, ik) => { await startTimer(p, ik); await wait(p, 6000); } },
   'task-timer': { r: { w: 760, h: 1000 }, set: async (p, ik) => { await taskSchedule(p, ik, [{ name: 'Reading', min: 20, emoji: 'book' }, { name: 'Writing', min: 15, emoji: 'pencil' }, { name: 'Clean up', min: 5, emoji: 'broom' }]); await frame(p, ik).locator('#btn-playpause').click(); await wait(p, 5000); } },
   calendar: { r: { w: 840, h: 760 } },
-  clock: { r: { w: 640, h: 680 } },
   notes: { r: { w: 820, h: 640 }, set: (p, ik) => typeNote(p, ik, AGENDA) },
   'name-picker': { r: { w: 900, h: 700 }, set: async (p, ik) => { await addNames(p, ik); await choose(p, ik, 'Spinning wheel', { exact: true }); await pickName(p, ik); } },
   'first-then-board': { r: { w: 1080, h: 760 }, set: async (p, ik) => { await ftCard(p, ik, 'first', 'math', 'Math'); await ftCard(p, ik, 'then', 'play', 'Playground'); } },
@@ -250,6 +250,58 @@ SCENES['w-traffic-light'] = async () => {
   log('  titles', JSON.stringify(await p.$$eval('.win .win-label', els => els.map(e => e.innerText))));
   await shot(p, 'w-traffic-light.jpg', await around(p, [tl, tm], 24));
   if (blocked.length) log('  blocked', JSON.stringify(blocked.slice(0, 10)));
+  await ctx.close();
+};
+
+// The Clock card: Set the time with the Teaching face and the digital time beside it, set to 2:50 p.m.
+SCENES['w-clock'] = async () => {
+  const { ctx, p } = await newBoard();
+  const ik = await addWin(p, 'clock');
+  await setRect(p, ik, { x: 700, y: 365, w: 1000, h: 560 });
+  await wait(p, 800);
+  await choose(p, ik, 'Teaching', { exact: true });
+  await choose(p, ik, 'Digital', { exact: true });
+  await choose(p, ik, 'Set the time', { exact: true });
+  await choose(p, ik, '5-minute steps', { exact: true });
+  const tap = async (k, n) => { for (let i = 0; i < n; i++) { await frame(p, ik).locator(`#dig .arrow[data-k="${k}"]`).click(); await wait(p, 500); } };
+  await tap('hu', 6); await tap('mu', 6);   // 8:20 a.m. → 2:50 p.m.
+  await deselect(p);
+  await wait(p, 600);
+  log('  menu', JSON.stringify(await p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.map(i => i.label), ik)));
+  await shot(p, 'w-clock.jpg', await around(p, ik, 24));
+  await ctx.close();
+};
+// The three faces at 8:20: Simple, Old, and Teaching.
+SCENES['w-clock-faces'] = async () => {
+  const { ctx, p } = await newBoard();
+  const iks = [];
+  for (const [i, face] of ['Simple', 'Old', 'Teaching'].entries()) {
+    const ik = await addWin(p, 'clock');
+    await setRect(p, ik, { x: 380 + i * 560, y: 365, w: 520, h: 560 });
+    await wait(p, 500);
+    if (face !== 'Simple') await choose(p, ik, face, { exact: true });
+    iks.push(ik);
+  }
+  await deselect(p);
+  await wait(p, 600);
+  await shot(p, 'w-clock-faces.jpg', await around(p, iks, 24));
+  await ctx.close();
+};
+// The LED look in dark theme, with seconds.
+SCENES['w-clock-led'] = async () => {
+  const { ctx, p } = await newBoard();
+  await darkMode(p);
+  const ik = await addWin(p, 'clock');
+  await setRect(p, ik, { x: 750, y: 400, w: 900, h: 450 });
+  await wait(p, 800);
+  await choose(p, ik, 'Digital', { exact: true });
+  await choose(p, ik, 'Analog', { exact: true });
+  await choose(p, ik, 'LED look', { exact: true });
+  await choose(p, ik, 'Show seconds', { exact: true });
+  await deselect(p);
+  await wait(p, 800);
+  await p.waitForFunction(() => Date.now() % 1000 > 400 && Date.now() % 1000 < 700, null, { polling: 20 });   // (no segment mid-fade)
+  await shot(p, 'w-clock-led.jpg', await around(p, ik, 24));
   await ctx.close();
 };
 
@@ -383,6 +435,7 @@ SCENES.appearance = async () => {
   await setRect(p, ik.timer, { x: 1700, y: 120, w: 620, h: 400 });
   await wait(p, 800);
   await choose(p, ik.clock, 'Digital', { exact: true });
+  await choose(p, ik.clock, 'Analog', { exact: true });   // (digital alone)
   await typeNote(p, ik.notes, 'Field trip Friday\nBring a water bottle.');
   await startTimer(p, ik.timer, '10m');
   await p.setInputFiles('#photo-input', path.join(__dirname, 'hills.jpg')); await wait(p, 1500);

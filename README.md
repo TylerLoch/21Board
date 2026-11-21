@@ -221,7 +221,7 @@ tests/run.js            Browser tests. See Tests.
 | **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio, with no sound files. It turns amber near the end, 1 minute by default. The warning is worked out on every render and never saved |
 | **Task Timer** | A schedule of activities as a pie with a countdown kept in step across tabs; a repeating alarm set ahead on the sound's own clock, rung by one copy of the board |
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
-| **Clock** | Analog, digital, or date only; an aspect-ratio lock that changes at runtime, 1:1 for analog and 2.2:1 for digital or date; a config-only widget |
+| **Clock** | Simple, Old, and Teaching faces, and an LED look. Analog and digital together have no shape lock: side by side when wide, analog on top when tall. Alone, the lock changes at runtime: 1:1 for analog, 2.2:1 for digital or Date only, and a little taller with Time in words. Set the time drags geared hands or taps ▲ and ▼, and saves the time as content. Mark a time shades the face to the teacher's mark, or to the end of the running timer that ends soonest (`timers`). Quiz hides the digital time until it's tapped, and never saves that. Time in words writes the time under the clock |
 | **Notes** | Text that grows to fill the note, tappable web links, colors and the Chalkboard and Whiteboard themes with bundled hand-drawn fonts, live text sync that keeps the cursor |
 | **Name Picker** | Student names kept as *content*, so templates never include them. Four ways to pick, each in its own file: Big name, Spinning wheel, Spotlight, and Lotto. One to five winners at a time, set in the window menu and kept by templates. The pick is drawn and saved before the show, so every open copy lands on the same names |
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
@@ -374,8 +374,8 @@ being typed in, is due again.
   place, whether it's open, its content, and its settings. A window moved on the laptop and typed in on the
   smartboard keeps both changes. Changes to different windows never clash.
 - **The same content changed on both,** such as two edits to one note: both are kept. The later one stays in the
-  window, and the other appears beside it as a labeled copy, "Copy · 9:41 AM". For the Timer, Dice, Traffic Light,
-  Video Player, Picture, and Calculator, the later one wins. For the Video Player that includes its History,
+  window, and the other appears beside it as a labeled copy, "Copy · 9:41 AM". For the Timer, Clock, Dice, Traffic
+  Light, Video Player, Picture, and Calculator, the later one wins. For the Video Player that includes its History,
   so a video added on the other device meanwhile drops out, and Board history keeps it. Anything else changed on
   both, such as a window moved on both, takes the later change, and Board history keeps a version from before it.
 - **Deleting** a page or window on any device deletes it everywhere, with Undo and Board history. An edit on a

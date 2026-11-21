@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.21-2';
-  const BOARD_BUILD = 'ab92fd87';
+  const BOARD_VERSION = '2026.11.21-4';
+  const BOARD_BUILD = '6db9c1ee';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -7957,6 +7957,13 @@
       },
       dice: d => { const v = listOf(d.values).slice(0, 6).filter(v => Number.isInteger(v) && v >= 1 && v <= 6); return andList(v); },
       'traffic-light': d => ['red', 'yellow', 'green'].includes(d.active) ? d.active[0].toUpperCase() + d.active.slice(1) : '',
+      // A set time, as the Clock reads it ("Set to 2:50 p.m."). Following the real time, or not setting it: no line.
+      clock: d => {
+        const t = d.set && d.set.at;
+        if (!Number.isInteger(t) || t < 0 || t >= 1440) return '';
+        const h = Math.floor(t / 60);
+        return `Set to ${h % 12 || 12}:${String(t % 60).padStart(2, '0')} ${h < 12 ? 'a.m.' : 'p.m.'}`;
+      },
       // The zones with check-ins, in order ("Blue 2, Green 9, Red 1"), as the window showed them: whole numbers, 9999 at
       // most. With Clear each day on, counts from a day before the version's show as none.
       'zones-check-in': (d, c, at) => {
