@@ -2096,10 +2096,14 @@ const SUITES = [
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     const pick1 = await page.evaluate(() => document.querySelector('.picker-btn.left').getBoundingClientRect().width);
     ok(v.ui === '0.9' && Math.abs(pick1 / pick0 - 0.9 / 0.8) < 0.02, `the Widget Picker buttons follow the size (${Math.round(pick0)} → ${Math.round(pick1)}px)`);
+    // The Timer's menu is 15 items since its Warning choices (2026.11.21-2), too tall to open under a title at y 300 here.
+    const keep = await page.evaluate(() => Object.assign({}, window.__board21.state.insts.get('timer:1').rect));
+    await page.evaluate(r => window.__board21.setRect('timer:1', Object.assign({}, r, { y: 40 })), keep); await page.waitForTimeout(200);
     await page.click('.win[data-ikey="timer:1"] .win-label'); await page.waitForTimeout(300);
     const m = await page.evaluate(() => { const r = document.getElementById('menu').getBoundingClientRect(), l = document.querySelector('.win-label.open').getBoundingClientRect(); return { top: r.top, left: r.left, right: r.right, bottom: r.bottom, lb: l.bottom, lx: l.left + l.width / 2, cx: (r.left + r.right) / 2 }; });
-    ok(m.top >= m.lb && m.top - m.lb < 20 && Math.abs(m.cx - m.lx) < 30 && m.right <= 1600 && m.bottom <= 900, 'window menus (drawn at the board size) still open right under their title');
-    await page.keyboard.press('Escape');
+    ok(m.top >= m.lb && m.top - m.lb < 20 && Math.abs(m.cx - m.lx) < 30 && m.right <= 1600 && m.bottom <= 900, `window menus (drawn at the board size) still open right under their title (${Math.round(m.top - m.lb)} px below it)`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    await page.evaluate(r => window.__board21.setRect('timer:1', r), keep); await page.waitForTimeout(200);
 
     // Up to 200% and back: windows come back exactly as they were (minimum sizes aren't saved on the way).
     await page.evaluate(() => window.__board21.openWidget('clock')); await page.waitForTimeout(1200);
