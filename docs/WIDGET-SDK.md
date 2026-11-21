@@ -390,11 +390,11 @@ Add an entry to `widgets/registry.js`:
 ```
 
 `clash: 'later'` is for a widget whose content is only a setting or scratch work: the Timer's time, the Clock's set
-time, the Dice faces, the Traffic Light's light, the Video Player's video and History, which picture a Picture window
-shows, and the Calculator's problem and History. When Board Sync finds a window's content changed on two devices at
-once, it keeps the later change, and Board history keeps the other. Without `clash`, it keeps both, the other as a labeled copy
-beside the window. Leave it out when the content holds anything typed, such as notes, names, or a task list, so
-nothing anyone typed is lost.
+time and mark, the Dice faces, the Traffic Light's light, the Video Player's video and History, which picture a
+Picture window shows, and the Calculator's problem and History. When Board Sync finds a window's content changed on
+two devices at once, it keeps the later change, and Board history keeps the other. Without `clash`, it keeps both,
+the other as a labeled copy beside the window. Leave it out when the content holds anything typed, such as notes,
+names, or a task list, so nothing anyone typed is lost.
 
 Then **change `VERSION` in `sw.js` and run `node tools/release.js`** so installed copies download the new
 files (see README, "Deploying"). Devices save a release for offline use only as a whole. A widget file

@@ -15,10 +15,11 @@
     /* Old face: ivory and brass */
     --ro-face: #fbf6e9; --ro-face-2: #ede1c4; --ro-ink: #2b2219; --ro-hand: #1c2433; --ro-sec: #8f2f1f;
     --ro-ring-hi: #ecd496; --ro-ring: #b08a45; --ro-ring-lo: #6f5225;
-    /* LED look: an LCD in light theme, with no glow */
+    /* LED look: an LCD in light theme, with no glow. Lit segments cast a faint shadow on the panel. */
     --panel: color-mix(in srgb, var(--b21-accent) 8%, #e7eae3);
     --seg: color-mix(in srgb, var(--b21-accent) 24%, #161a1f);
     --seg-off: .075;
+    --seg-shadow: rgba(20, 26, 20, .17);
   }
   [data-b21-theme="dark"] body {
     --hour: #ee6f1c; --minute: #93d2ff; --rim: #4b4b4b;
@@ -97,6 +98,7 @@
   .both #dig.led { border-radius: 12px; }
   #readout { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2%; padding: 5% 4%; box-sizing: border-box; }
   .quiz #readout { cursor: pointer; }
+  .quiz #readout:focus-visible { outline: 3px solid var(--b21-accent); outline-offset: -4px; border-radius: 12px; }
   .set #readout { top: 52px; bottom: 52px; padding-block: 0; }
   #time { font-weight: 700; font-size: var(--fs, 40px); line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; white-space: nowrap; color: var(--b21-text); }
   .pd-ap { font-size: .38em; font-weight: 600; color: var(--b21-muted); margin-left: .15em; letter-spacing: 0; }
@@ -110,7 +112,7 @@
   .led #q { color: var(--seg); text-shadow: 0 0 .06em var(--glow-a, transparent), 0 0 .25em var(--glow-b, transparent); }
   #date { color: var(--b21-muted); font-weight: 500; white-space: nowrap; }
   .led #date { color: var(--seg); opacity: .8; }
-  .led-svg { display: block; flex: 1 1 0; min-height: 0; width: 100%; overflow: visible; filter: none; }
+  .led-svg { display: block; flex: 1 1 0; min-height: 0; width: 100%; overflow: visible; filter: drop-shadow(calc(var(--u, 1px) * 1.3) calc(var(--u, 1px) * 1.8) calc(var(--u, 1px) * .6) var(--seg-shadow)); }
   [data-b21-theme="dark"] .led-svg { filter: drop-shadow(0 0 calc(var(--u, 1px) * 2.2) var(--glow-a)) drop-shadow(0 0 calc(var(--u, 1px) * 9) var(--glow-b)); }
   .seg-p { fill: var(--seg); opacity: var(--seg-off); transition: opacity .18s ease-out; }
   .seg-p.on { opacity: 1; transition-duration: .12s; }
@@ -147,7 +149,7 @@
   <div id="clock">
     <div id="ana"></div>
     <div id="dig">
-      <div id="readout"><div id="q" role="button" tabindex="0" aria-label="Show the time" hidden>?</div><div id="date"></div></div>
+      <div id="readout"><div id="q" aria-hidden="true" hidden>?</div><div id="date"></div></div>
     </div>
     <div id="words" aria-hidden="true"></div>
     <div id="dateonly"><div id="weekday"></div><div id="fulldate"></div></div>
@@ -157,8 +159,9 @@
 <script>
   // Content: { set, markAt }, the lesson.
   //   set: null when not setting the time; { at: null } while setting it but following the real time (after Now);
-  //   { at: 0 to 1439 }, minutes since midnight, for a set time.
-  //   markAt: the teacher's mark (Mark a time), a wall-clock time in ms, or null.
+  //   { at: 0 to 1439 }, minutes since midnight, for a set time, and { at, mark } once the teacher marks a time on it.
+  //   mark is in minutes since midnight too. It belongs to the set time: Now and unchecking Set the time drop it.
+  //   markAt: the teacher's mark (Mark a time) on the real time, a wall-clock time in ms, or null.
   // Config: { analog, digital, dateOnly, face: 'simple' | 'old' | 'teaching', led, seconds, date, hour24, words, upright,
   //   iv, hourOnly, mark, quiz, snap5 }, and style for a 21Board before this one: 'analog' for analog only, 'digital'
   //   when digital shows (alone or with analog), 'date' for Date only. An older config is { style, hour24, seconds, date }.
@@ -205,9 +208,10 @@
     const out = { analog: true, digital: false, dateOnly: false, face: FACES_IDS.includes(c.face) ? c.face : 'simple' };
     FLAGS.forEach(k => { out[k] = c[k] === true; });
     if (['analog', 'digital', 'dateOnly'].some(k => typeof c[k] === 'boolean')) {
-      out.dateOnly = c.dateOnly === true;
-      out.analog = !out.dateOnly && c.analog === true;
-      out.digital = !out.dateOnly && c.digital === true;
+      const flag = (k, d) => typeof c[k] === 'boolean' ? c[k] : d;   // a bad value takes that key's default
+      out.dateOnly = flag('dateOnly', false);
+      out.analog = !out.dateOnly && flag('analog', true);
+      out.digital = !out.dateOnly && flag('digital', false);
       if (!out.dateOnly && !out.analog && !out.digital) out.analog = true;   // (one of them always shows)
     } else {   // an older config: style alone says what shows
       out.analog = c.style !== 'digital' && c.style !== 'date';
@@ -217,22 +221,25 @@
     return out;
   }
   const writeConfig = c => Object.assign({}, c, { style: c.dateOnly ? 'date' : c.digital ? 'digital' : 'analog' });
+  const isMinute = v => Number.isInteger(v) && v >= 0 && v < DAY;
+  const setOf = (at, mark) => at != null && isMinute(mark) ? { at, mark } : { at };   // (no mark: no key)
   function readState(d) {
     const s = isObj(d) && isObj(d.set) ? d.set : null;
-    const at = s && (s.at === null || (Number.isInteger(s.at) && s.at >= 0 && s.at < DAY)) ? s.at : undefined;
+    const at = s && (s.at === null || isMinute(s.at)) ? s.at : undefined;
     const m = isObj(d) && typeof d.markAt === 'number' && isFinite(d.markAt) && d.markAt > 0 ? d.markAt : null;
-    return { set: at === undefined ? null : { at }, markAt: m };
+    return { set: at === undefined ? null : setOf(at, s.mark), markAt: m };
   }
 
   // ---------------------------------------------------------------- Faces
   // A grab dot on a hand while setting the time, with a thin ring that fills while that hand is dragged. The dots sit on
   // the tick ring, clear of the numerals.
   const grab = (y, r, ring = r * 1.8) => `<circle class="halo" cx="100" cy="${y}" r="${r2(ring)}"/><circle class="grab" cx="100" cy="${y}" r="${r}"/>`;
-  // Each face: its hand lengths (len), how far out a Mark a time wedge reaches (wr), the dial (bg, with the wedge's
-  // place under the ticks and numerals), and the hands.
+  // Each face: its hand lengths (len), how far out a Mark a time wedge reaches (wr), where the line at the wedge's end
+  // starts (es, and esUp with upright numerals: outside the hour numbers, so it never looks like a hand), the dial (bg,
+  // with the wedge's place under the ticks and numerals), and the hands.
   const FACES = {
     simple: {
-      len: { h: 46, m: 81 }, wr: 88,
+      len: { h: 46, m: 81 }, wr: 88, es: 78,
       bg() {
         let s = '<circle class="fs-face" cx="100" cy="100" r="96"/><g class="under"></g>';
         for (let i = 0; i < 60; i++) {
@@ -250,7 +257,7 @@
       }
     },
     old: {
-      len: { h: 54, m: 84 }, wr: 85,
+      len: { h: 54, m: 84 }, wr: 85, es: 80, esUp: 83.5,   // (an upright VIII reaches into the minute track)
       bg(o, id) {
         const N = ['XII', 'I', 'II', 'III', o.iv ? 'IV' : 'IIII', 'V', 'VI', 'VII', 'VIII', 'IX', 'X', 'XI'];
         let s = `<defs><linearGradient id="rb${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" class="ro-b1"/><stop offset=".5" class="ro-b2"/><stop offset="1" class="ro-b3"/></linearGradient>` +
@@ -291,7 +298,7 @@
     },
     // Big orange hours, small blue minutes from 00 at the top to 55, and a.m. or p.m. on the face.
     teaching: {
-      len: { h: 49, m: 82.5 }, wr: 79.5,
+      len: { h: 49, m: 82.5 }, wr: 79.5, es: 75.5,
       // Where a.m. or p.m. can sit, best first. It takes the first spot clear of both hands.
       apSpots: [[100, 125], [100, 75], [125, 100], [75, 100]],
       bg() {
@@ -330,7 +337,7 @@
     }
     build() {
       const F = FACES[this.o.kind];
-      this.F = F; this.len = F.len;
+      this.F = F; this.len = F.len; this.es = (this.o.upright && F.esUp) || F.es;
       this.svg.setAttribute('class', 'face f-' + this.o.kind);
       this.svg.innerHTML = F.bg(this.o, this.id) + F.hands(this.o);
       this.hH = $('.hand-h', this.svg); this.hM = $('.hand-m', this.svg); this.hS = $('.hand-s', this.svg);
@@ -394,7 +401,7 @@
       if (!full && w > 0) m.warn.setAttribute('d', sector(aw, a2));
       show(m.edge, !full);
       if (!full) {
-        const [sx, sy] = P(r * .8, a2), [ex, ey] = P(r, a2);
+        const [sx, sy] = P(this.es, a2), [ex, ey] = P(r, a2);
         Object.entries({ x1: sx, y1: sy, x2: ex, y2: ey }).forEach(([k, v]) => m.edge.setAttribute(k, v));
         m.edge.classList.toggle('warn', w > 0);
       }
@@ -623,11 +630,14 @@
       if (config.led) {
         const m = Math.round(Math.min(W, H) * .045);
         D = [D[0] + (wide ? 0 : m), D[1] + (wide ? m : 0), D[2] - (wide ? m : 2 * m), D[3] - (wide ? 2 * m : m)];
-        // Side by side, the panel hugs the digits and sits centered beside the dial, like an LCD module.
-        if (wide && disp && disp.vb) {
-          const vb = disp.vb;
-          const need = D[2] * (.2 + .92 * vb[3] / vb[2]) + (config.date ? D[2] * .1 : 0) + (setOn ? 104 : 0);
-          if (need < D[3]) D = [D[0], Math.round((h - need) / 2), D[2], Math.round(need)];
+        // Side by side, the panel hugs the digits and sits centered beside the dial, like an LCD module. While setting
+        // the time it starts below Now, which sits in the top right corner.
+        if (wide) {
+          const lo = setOn ? Math.max(D[1], nowBtn.offsetTop + nowBtn.offsetHeight + 6) : D[1], hi = D[1] + D[3];
+          let need = hi - lo;
+          if (disp && disp.vb) need = Math.min(need, D[2] * (.2 + .92 * disp.vb[3] / disp.vb[2]) + (config.date ? D[2] * .1 : 0) + (setOn ? 104 : 0));
+          const top = Math.min(Math.max(Math.round((h - need) / 2), lo), hi - need);
+          D = [D[0], Math.round(top), D[2], Math.round(need)];
         }
       }
     }
@@ -740,7 +750,7 @@
 
   // ---------------------------------------------------------------- Set the time
   const realMinute = () => Math.floor(nowMinutes(new Date()));
-  function saveState() { Board21.save({ set: state.set ? { at: state.set.at } : null, markAt: state.markAt }); }
+  function saveState() { Board21.save({ set: state.set ? setOf(state.set.at, state.set.mark) : null, markAt: state.markAt }); }
   function startSet() {
     T = realMinute(); anim = null;
     state.set = { at: T };
@@ -755,7 +765,7 @@
     const was = T == null ? null : Math.round(T);
     T = v;
     if (was !== Math.round(v) && revealed) { revealed = false; render(); }
-    if (save) { state.set = { at: mod(Math.round(T), DAY) }; saveState(); }
+    if (save) { state.set = setOf(mod(Math.round(T), DAY), state.set && state.set.mark); saveState(); }
   }
   // The shown time (with the hands on their way somewhere, where they are now).
   function shownT() {
@@ -861,7 +871,8 @@
   });
 
   // ---------------------------------------------------------------- Mark a time
-  // A tap on the face marks that minute, the next time it comes round: from the real time, or from the set time.
+  // A tap on the face marks that minute, the next time it comes round. On the real time it's markAt, a time today or
+  // tomorrow. On a set time it's the set time's own mark, kept with it, so it never shades the real time later.
   face.svg.addEventListener('click', e => {
     const pr = press; press = null;
     if (!config.mark || !showA || !pr || pr.moved || (setOn && pr.onHand)) return;
@@ -870,9 +881,12 @@
     const minute = mod(Math.round(angleAt(p) / 6), 60), from = T != null ? Math.round(T) : nowMinutes(new Date());
     let c = Math.floor(from / 60) * 60 + minute;
     if (c <= from + (T != null ? 0 : .25)) c += 60;
-    const d = new Date();
-    d.setHours(Math.floor(c / 60), c % 60, 0, 0);
-    state.markAt = d.getTime();
+    if (T != null) state.set = setOf(mod(Math.round(T), DAY), mod(c, DAY));
+    else {
+      const d = new Date();
+      d.setHours(Math.floor(c / 60), c % 60, 0, 0);
+      state.markAt = d.getTime();
+    }
     saveState();
     face.k.wedge = null;
     tick();
@@ -887,9 +901,10 @@
   function wedgeNow(t) {
     if (!config.mark || !showA) return null;
     const now = Date.now();
-    if (T != null) {   // a set time: from it to the teacher's mark. Timers aren't followed.
-      if (state.markAt == null) return null;
-      const m = new Date(state.markAt), M = m.getHours() * 60 + m.getMinutes();
+    if (T != null) {   // a set time: from it to its own mark, or to a real mark still to come. Timers aren't followed.
+      let M = state.set && state.set.mark != null ? state.set.mark : null;
+      if (M == null && state.markAt != null && state.markAt > now) { const m = new Date(state.markAt); M = m.getHours() * 60 + m.getMinutes(); }
+      if (M == null) return null;
       const d = mod(M - t + 720, DAY) - 720;
       return d > 0 ? [d, 0] : null;
     }
@@ -903,14 +918,17 @@
     .map(t => ({ id: t.id, endsAt: num0(t.endsAt) ? t.endsAt : null, remaining: num0(t.endsAt) ? null : t.remaining, warnMs: num0(t.warnMs) && t.warnMs > 0 ? t.warnMs : 0 }));
 
   // ---------------------------------------------------------------- Quiz
-  // The digital clock shows ? until it's tapped. Another tap asks again.
+  // The digital clock shows ? until it's tapped. Another tap asks again. On a keyboard the readout is the button, in
+  // both states, so focus stays on it and a screen reader hears "Show the time" and then "Hide the time".
   function flip() { if (!quizOn()) return; revealed = !revealed; render(); }
   dig.addEventListener('click', e => { if (!e.target.closest('.arrow')) flip(); });
-  qEl.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); flip(); } });
+  readout.addEventListener('keydown', e => { if (quizOn() && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); flip(); } });
   function showQuiz() {
     const ask = asked();
     qEl.hidden = !ask;
     if (disp) disp.el.style.visibility = ask ? 'hidden' : '';
+    if (quizOn()) { readout.setAttribute('role', 'button'); readout.tabIndex = 0; readout.setAttribute('aria-label', revealed ? 'Hide the time' : 'Show the time'); }
+    else ['role', 'tabindex', 'aria-label'].forEach(a => readout.removeAttribute(a));
   }
   function render() {
     showQuiz();
@@ -977,7 +995,6 @@
       lastLabel = label + settable;
       if (settable) { face.svg.setAttribute('aria-valuenow', hh * 60 + mm); face.svg.setAttribute('aria-valuetext', label); face.svg.setAttribute('aria-label', 'Set the time. Drag a hand or use the arrow keys.'); }
       else face.svg.setAttribute('aria-label', 'Clock showing ' + label);
-      qEl.setAttribute('aria-label', revealed ? 'Hide the time' : 'Show the time');
     }
   }
   // While the hands are on their way somewhere, every frame; else four times a second.

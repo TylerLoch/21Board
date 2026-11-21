@@ -524,13 +524,15 @@ chose. Its config is `{ follow: true }` while Follow timers is on. The color it 
 
 The Clock (`clock`) saves `{ set, markAt }`, the lesson. `set` is `null` when not setting the time, `{ at: null }`
 while setting it but following the real time after *Now*, and `{ at }` for a set time, in minutes since midnight from
-`0` to `1439`. `markAt` is the teacher's mark from *Mark a time*, a wall-clock time in ms, or `null`. A bad value reads
-as `null`. Board Sync keeps the later change, as for the Timer. Its config is every menu setting: `{ analog, digital,
-dateOnly, face, led, seconds, date, hour24, words, upright, iv, hourOnly, mark, quiz, snap5 }`. `face` is `"simple"`,
-`"old"`, or `"teaching"`, and the rest are `true` or `false`. Each key is checked when read. A bad one takes its
-default, which is Analog, the Simple face, and everything else off. The config also keeps `style` for an older 21Board:
-`"analog"` for analog only, `"digital"` when digital shows, and `"date"` for Date only. A config from before
-2026.11.21-4 is `{ style, hour24, seconds, date }` and reads the same way. Whether Quiz shows ? is never saved.
+`0` to `1439`. A mark tapped on a set time is kept with it as `{ at, mark }`, in minutes since midnight too. *Now* and
+unchecking *Set the time* drop it. `markAt` is the teacher's mark on the real time from *Mark a time*, a wall-clock
+time in ms, or `null`. A bad value reads as `null`. Board Sync keeps the later change, as for the Timer. Its config is
+every menu setting: `{ analog, digital, dateOnly, face, led, seconds, date, hour24, words, upright, iv, hourOnly,
+mark, quiz, snap5 }`. `face` is `"simple"`, `"old"`, or `"teaching"`, and the rest are `true` or `false`. Each key is
+checked when read. A bad one takes its default, which is Analog, the Simple face, and everything else off. The config
+also keeps `style` for an older 21Board: `"analog"` for analog only, `"digital"` when digital shows, and `"date"` for
+Date only. A config from before 2026.11.21-4 is `{ style, hour24, seconds, date }` and reads the same way. Whether
+Quiz shows ? is never saved.
 
 The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
 their own work in their own site's storage on the device. Their windows have an `inst` record like any other,

@@ -128,6 +128,8 @@ SCENES.hero = async () => {
   await typeNote(p, ik.notes, AGENDA_LONG);
   await addNames(p, ik['name-picker']);
   await light(p, ik['traffic-light'], 'green');
+  // The wheel lands on Ben, as the guide's alt text says: its fair draw takes this random number.
+  await frame(p, ik['name-picker']).locator('html').evaluate(() => { crypto.getRandomValues = a => { a[0] = 1; return a; }; });
   await pickName(p, ik['name-picker']);
   await startTimer(p, ik.timer);
   await wait(p, 9000);
