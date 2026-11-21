@@ -612,6 +612,7 @@
       ghost: () => '<span class="ce-paren ce-ghost">)</span>',
       autoOpen: () => '<span class="ce-paren">(</span>',
       autoClose: () => '<span class="ce-paren">)</span>',
+      saidParens: x => x,
       sup: (b, x) => `<span class="ce-pow">${b}<sup class="ce-sup">${x}</sup></span>`,
       sqrt: x => `<span class="ce-sqrt"><span class="ce-radic">√</span><span class="ce-radicand">${x}</span></span>`,
       root: (n, x) => `<span class="ce-root"><span class="ce-index">${n}</span><span class="ce-sqrt"><span class="ce-radic">√</span><span class="ce-radicand">${x}</span></span></span>`,
@@ -650,6 +651,7 @@
       ghost: () => '<mo class="ce-ghost">)</mo>',
       autoOpen: () => '<mo>(</mo>',
       autoClose: () => '<mo>)</mo>',
+      saidParens: x => x,
       sup: (b, x) => `<msup><mrow>${b}</mrow><mrow>${x}</mrow></msup>`,
       sqrt: x => `<msqrt>${x}</msqrt>`,
       root: (n, x) => `<mroot><mrow>${x}</mrow><mrow>${n}</mrow></mroot>`,
@@ -688,6 +690,7 @@
       ghost: () => '',
       autoOpen: () => '(',
       autoClose: () => ')',
+      saidParens: x => x,
       // 2³ when the power is a plain whole number (and the base doesn't already end in one), otherwise 2^x or 2^(…)
       sup: (b, x, wrap) => wrap ? `${b}^(${x})` : /^−?[0-9][0-9, ]*$/.test(x) && !/[⁰¹²³⁴⁵⁶⁷⁸⁹]$/.test(b) ? b + superscript(x.replace(/[, ]/g, '')) : `${b}^${x}`,
       sqrt: (x, wrap) => '√' + wrapIf(x, wrap),
@@ -726,6 +729,7 @@
       ghost: () => '',
       autoOpen: () => '',
       autoClose: () => '',
+      saidParens: x => ` open parenthesis ${x} close parenthesis `,   // (around a negative base: see saysParens)
       sup: (b, x) => x === '2' ? `${b} squared` : x === '3' ? `${b} cubed` : `${b} to the power of ${x}`,
       sqrt: x => `the square root of ${x}`,
       root: (n, x, wn, wx, k) => k === 3 ? `the cube root of ${x}` : k ? `the ${ordinal(k)} root of ${x}` : `the root ${n} of ${x}`,
@@ -762,6 +766,9 @@
     if ((q.kind === 'frac' || q.kind === 'mixed') && (ctx === 'base' || (B.linear && FRAC_CTX[ctx]))) return true;
     return q.neg && needsParens(B, ctx);
   }
+  // A negative base of a power says its parentheses too, as typed ones do, so (−3)² isn't heard as −3². That holds for
+  // an ans box as well, which the stylized equation draws without them. (Only the speech backend says them.)
+  const saysParens = (B, ctx, neg, x) => neg && ctx === 'base' ? B.saidParens(x) : x;
   // In plain text, a power, root or fraction part that is more than one number gets parentheses: 2^(3 + 1), √(9 + 16).
   const NO_WRAP = { num: 1, val: 1, pi: 1, group: 1, sqrt: 1, root: 1, pct: 1, neg: 1, hole: 1, noans: 1 };
   function wrapText(n) {
@@ -787,17 +794,17 @@
     switch (node.k) {
       case 'hole': s = B.hole(node.cursor && R.cursor, !!SLOT_CTX[ctx]); break;
       case 'cur': s = draw(node.a, B, ctx, R) + (R.cursor ? B.cursor() : ''); break;
-      case 'num': { const p = typedPiece(node.tok); s = paren(B.number(p), pieceNeedsParens(B, p, ctx)); break; }
+      case 'num': { const p = typedPiece(node.tok); s = saysParens(B, ctx, p.neg, paren(B.number(p), pieceNeedsParens(B, p, ctx))); break; }
       case 'val': s = drawValue(node.v, B, ctx, R.f, R.more, node.ans); break;
       case 'noans': s = B.chip(B.linear ? 'ans' : ''); break;
       case 'pi': s = B.pi(); break;
       case 'mixed': {
         const p = { kind: 'mixed', neg: node.tok.neg, whole: node.tok.s, num: node.num.s, den: node.den.s, rounded: false };
-        s = paren(B.number(p), pieceNeedsParens(B, p, ctx));
+        s = saysParens(B, ctx, p.neg, paren(B.number(p), pieceNeedsParens(B, p, ctx)));
         break;
       }
       case 'group': s = B.open() + draw(node.a, B, 'group', R) + (node.closed ? B.close() : B.ghost()); break;
-      case 'neg': s = paren(B.minus() + draw(node.a, B, 'afterNeg', R), needsParens(B, ctx)); break;
+      case 'neg': s = saysParens(B, ctx, true, paren(B.minus() + draw(node.a, B, 'afterNeg', R), needsParens(B, ctx))); break;
       case 'sqrt': s = B.sqrt(draw(node.a, B, 'radicand', R), wrapText(node.a)); break;
       case 'root': s = B.root(draw(node.b, B, 'index', R), draw(node.a, B, 'radicand', R), wrapText(node.b), wrapText(node.a), indexNumber(node.b)); break;
       case 'frac': {
@@ -835,8 +842,8 @@
   function drawValue(v, B, ctx, f, more, chip) {
     const p = formatValue(v, f);
     if (more) { p.more = p.rounded; if (p.fallback) p.fallback.more = true; }
-    if (chip && !B.linear) return B.chip(B.number(p));   // ans, as Desmos shows it: the number in a box marked "ans"
-    return pieceNeedsParens(B, p, ctx) ? B.autoOpen() + B.number(p) + B.autoClose() : B.number(p);
+    if (chip && !B.linear) return saysParens(B, ctx, p.neg, B.chip(B.number(p)));   // ans, as Desmos shows it: the number in a box marked "ans"
+    return saysParens(B, ctx, p.neg, pieceNeedsParens(B, p, ctx) ? B.autoOpen() + B.number(p) + B.autoClose() : B.number(p));
   }
   // "= answer" (or ≈ when the answer shown is rounded and the option is on).
   function drawAnswer(Bs, B, p, f) {

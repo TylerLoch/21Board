@@ -18889,6 +18889,184 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  // ---- 2026.11.21-3: the Calculator's top row lines up (AC 3 columns, ⌫ 6, ± 3), Test practice gets Desmos's flat strip
+  // (clear all in the middle of the pad, ⌫ beside it), and In words says the parentheses drawn around a negative base.
+  ['Calculator’s top row, Test practice’s strip, and In words for (−3)² (2026.11.21-3)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const ik = await addWin(page, 'calculator');
+    ok(await eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik)), `a Calculator opens (${ik})`);
+    await page.waitForTimeout(600);
+    const W = page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const front = () => page.evaluate(ik => { if (window.__board21.state.focused !== ik) window.__board21.focusWin(ik); }, ik);
+    const choose = async label => {
+      await front();
+      await page.click(`.win[data-ikey="${ik}"] .win-label`);
+      await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).click({ timeout: 3000 });
+      await page.waitForTimeout(700);
+    };
+    const cfg = async () => Object.assign({ canvas: true, history: false, words: false, advanced: false, test: false, swap: false }, await page.evaluate(ik => window.__board21.state.conf.get(ik) || {}, ik));
+    const set = async (label, key, on) => { if ((await cfg())[key] !== on) await choose(label); };
+    const setSize = (w, h) => page.evaluate(([ik, w, h]) => window.__board21.setRect(ik, Object.assign({}, window.__board21.state.insts.get(ik).rect, { w, h: h + 40 })), [ik, w, h]).then(() => page.waitForTimeout(700));
+    const press = async keys => { await front(); for (const k of keys) await W.locator(`#keys .key[data-key="${k}"]`).click({ timeout: 3000 }); await page.waitForTimeout(250); };
+    const near = (a, b, d = 1) => Math.abs(a - b) <= d;
+    // Every key's box (null when hidden), the pad's, and the keys' smallest height.
+    const keysAt = () => W.locator('html').evaluate(() => {
+      const shown = e => !!e && e.getClientRects().length > 0;
+      const box = e => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height }; };
+      const keys = [...document.querySelectorAll('#keys .key')], out = { k: {} };
+      for (const e of keys) out.k[e.dataset.key] = shown(e) ? box(e) : null;
+      const pad = document.getElementById('keys');
+      out.pad = box(pad); out.gap = parseFloat(getComputedStyle(pad).columnGap);
+      out.minH = Math.min(...keys.filter(shown).map(e => e.getBoundingClientRect().height));
+      out.layout = document.getElementById('app').dataset.layout; out.theme = document.documentElement.getAttribute('data-b21-theme');
+      out.vw = innerWidth; out.vh = innerHeight;
+      return out;
+    });
+    const span = (k, n) => k.k[n] ? `${n} ${k.k[n].l.toFixed(1)}–${k.k[n].r.toFixed(1)}` : `${n} hidden`;
+    const lined = k => { const c = k.k; return !!(c.clear && c.backspace && c.negate && c.open && c.close && c.sqrt && c.divide) &&
+      near(c.clear.l, c.open.l) && near(c.clear.r, c.open.r) && near(c.backspace.l, c.close.l) && near(c.backspace.r, c.sqrt.r) &&
+      near(c.negate.l, c.divide.l) && near(c.negate.r, c.divide.r) && near(c.clear.t, c.backspace.t) && near(c.clear.t, c.negate.t); };
+    const row = k => ['clear', 'backspace', 'negate', 'open', 'close', 'sqrt', 'divide'].map(n => span(k, n)).join(', ');
+
+    // ---- 1. The top row lines up, Basic and Advanced, light and dark, at 900 × 600 and the smallest window, 280 × 400.
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMedia({ colorScheme: scheme }); await page.waitForTimeout(400);
+      for (const [w, h] of [[900, 600], [280, 400]]) {
+        for (const adv of [false, true]) {
+          await set('Advanced keys', 'advanced', adv); await setSize(w, h);
+          const k = await keysAt();
+          ok(k.theme === scheme && lined(k), `${scheme}, ${w} × ${h}, ${adv ? 'Advanced' : 'Basic'}: AC over (, ⌫ from ) to √, ± over ÷ (${k.vw} × ${k.vh}: ${row(k)})`);
+        }
+      }
+    }
+    await page.emulateMedia({ colorScheme: 'light' }); await page.waitForTimeout(300);
+    await set('Advanced keys', 'advanced', false); await setSize(900, 600);
+    // Key order, tab order, labels, and spoken names stay as they were.
+    const order = await W.locator('html').evaluate(() => [...document.querySelectorAll('#keys .key')].slice(8, 11).map(b => [b.dataset.key, b.textContent.trim() || b.querySelector('svg') && 'svg', b.getAttribute('aria-label')].join(':')).join(' '));
+    ok(order === 'clear:AC:all clear backspace:svg:delete negate:±:change sign', `the row keeps its order, labels, and spoken names (${order})`);
+    // Canvas off (the phone layout), History on, and Swap sides: still lined up.
+    for (const [label, key] of [['Canvas', 'canvas'], ['History', 'history'], ['Swap sides', 'swap']]) {
+      await choose(label); await setSize(900, 600);
+      const k = await keysAt();
+      ok(lined(k), `${label} ${key === 'canvas' ? 'off' : 'on'}: the top row still lines up (${k.layout}: ${row(k)})`);
+      await choose(label);
+    }
+    await setSize(900, 600);
+
+    // ---- 2. Test practice: Desmos's strip. clear all centered on the pad, ⌫ just right of it, both flat and a key row tall.
+    const basic = await keysAt();
+    await choose('Test practice');
+    const strip = () => W.locator('html').evaluate(() => {
+      const $ = s => document.querySelector(s), ac = $('#keys .key[data-key="clear"]'), del = $('#keys .key[data-key="backspace"]');
+      const g = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+      // A color as drawn over the window's background (alpha and color-mix() included), as rgb().
+      const over = (c, bg) => { g.clearRect(0, 0, 1, 1); g.fillStyle = bg; g.fillRect(0, 0, 1, 1); g.fillStyle = c; g.fillRect(0, 0, 1, 1); const d = g.getImageData(0, 0, 1, 1).data; return `rgb(${d[0]}, ${d[1]}, ${d[2]})`; };
+      const bg = getComputedStyle(document.body).backgroundColor;
+      // (The label's own text: one box for each line it takes.)
+      const range = document.createRange(), text = document.createTreeWalker(ac, NodeFilter.SHOW_TEXT).nextNode();
+      if (text) range.selectNodeContents(text);
+      const lines = text ? new Set([...range.getClientRects()].filter(r => r.width > 0).map(r => Math.round(r.top))).size : 0, tr = range.getBoundingClientRect(), br = ac.getBoundingClientRect();
+      const press = b => { b.style.transition = 'none'; b.classList.add('hit'); const c = getComputedStyle(b).backgroundColor; b.classList.remove('hit'); b.style.transition = ''; return c; };
+      return {
+        text: ac.textContent.trim(), name: ac.getAttribute('aria-label'), after: getComputedStyle(ac, '::after').content, delName: del.getAttribute('aria-label'),
+        bg: [getComputedStyle(ac).backgroundColor, getComputedStyle(del).backgroundColor], pressed: [press(ac), press(del)],
+        ink: [over(getComputedStyle(ac).color, bg), over(getComputedStyle(del).color, bg), over(bg, bg)],
+        label: { lines, l: tr.left, r: tr.right, w: tr.width, kl: br.left, kr: br.right, kw: br.width, px: parseFloat(getComputedStyle(ac.firstElementChild || ac).fontSize) }
+      };
+    });
+    let k = await keysAt(), s = await strip();
+    const c = k.k, mid = (k.pad.l + k.pad.r) / 2;
+    ok(!!c.clear && near((c.clear.l + c.clear.r) / 2, mid), `clear all is centered on the pad (${c.clear && ((c.clear.l + c.clear.r) / 2).toFixed(1)} against ${mid.toFixed(1)})`);
+    ok(!!c.clear && !!c.backspace && c.backspace.l > c.clear.r && near(c.backspace.l - c.clear.r, k.gap) && near(c.backspace.t, c.clear.t) && near(c.backspace.h, c.clear.h),
+      `⌫ sits just right of it, in the same row (${span(k, 'clear')}, ${span(k, 'backspace')}, gap ${k.gap.toFixed(1)})`);
+    ok(!!c.clear && near(c.clear.h, c['7'].h) && near(c.clear.t, k.pad.t), `both are as tall as a key row, on top of the pad (${c.clear && c.clear.h.toFixed(1)} against 7’s ${c['7'].h.toFixed(1)})`);
+    ok(!c.negate, 'no ± key shows');
+    const below = ['open', 'close', 'sqrt', 'divide', '7', '8', '9', 'multiply', '4', '5', '6', 'subtract', '1', '2', '3', 'add', '0', 'point', 'ans', 'equals'];
+    const moved = below.filter(n => !c[n] || !['l', 'r', 't', 'b'].every(e => near(c[n][e], basic.k[n][e])));
+    ok(!moved.length, `the keys below keep their size and place (${moved.length ? 'moved: ' + moved.join(', ') : below.length + ' keys'})`);
+    ok(s.text === 'clear all' && s.name === 'clear all' && /^(none|normal)$/.test(s.after) && s.delName === 'delete', `the clear all key says “clear all”, as its text and its name, with nothing drawn by CSS (“${s.text}”, “${s.name}”, ::after ${s.after}; ⌫: ${s.delName})`);
+    ok(await W.getByRole('button', { name: 'clear all', exact: true }).count() === 1 && await W.getByRole('button', { name: 'all clear', exact: true }).count() === 0, 'a screen reader finds one “clear all” button, and no “all clear”');
+    for (const scheme of ['light', 'dark']) {
+      await page.emulateMedia({ colorScheme: scheme }); await page.waitForTimeout(500);
+      s = await strip();
+      ok(s.bg.every(b => b === 'rgba(0, 0, 0, 0)') && s.pressed.every(b => b !== 'rgba(0, 0, 0, 0)'), `${scheme}: both are flat, with no key color, and darken when pressed (${s.bg.join(', ')}; pressed ${s.pressed.join(', ')})`);
+      ok(contrast(s.ink[0], s.ink[2]) >= 4.5 && contrast(s.ink[1], s.ink[2]) >= 3, `${scheme}: clear all reads 4.5:1 or more, ⌫ 3:1 (${contrast(s.ink[0], s.ink[2]).toFixed(1)}, ${contrast(s.ink[1], s.ink[2]).toFixed(1)})`);
+      await page.screenshot({ path: OUT + `calculator-strip-${scheme}.png` });
+    }
+    await page.emulateMedia({ colorScheme: 'light' }); await page.waitForTimeout(300);
+    // The focus ring every key has: Tab to clear all.
+    await W.locator('#app').click({ position: { x: 3, y: 3 } });
+    let ring = null;
+    for (let i = 0; i < 25 && !ring; i++) {
+      await page.keyboard.press('Tab');
+      ring = await W.locator('html').evaluate(() => { const a = document.activeElement; if (!a || !a.dataset || a.dataset.key !== 'clear') return null; const cs = getComputedStyle(a); return `${cs.outlineStyle} ${cs.outlineWidth}`; });
+    }
+    ok(ring === 'solid 3px', `Tab to clear all shows the focus ring every key has (${ring})`);
+    // F9 is ±: Test practice still has none.
+    await W.locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.press('F9'); await page.waitForTimeout(250);
+    const f9 = await W.locator('html').evaluate(() => (document.getElementById('note').textContent || document.getElementById('hint').textContent).trim());
+    ok(f9 === 'Test practice has no ± key.', `F9 still says “Test practice has no ± key.” (${f9})`);
+    // The smallest window, 280 × 400: every key 44 px tall or more, and the label on one line, inside its key.
+    await setSize(280, 400);
+    k = await keysAt(); s = await strip();
+    ok(k.minH >= 44 && Object.values(k.k).filter(Boolean).every(b => b.w >= 44), `280 × 400: every key is 44 px or more (${k.minH.toFixed(1)} px tall; ⌫ ${k.k.backspace && k.k.backspace.w.toFixed(1)} px wide)`);
+    ok(s.label.lines === 1 && s.label.l >= s.label.kl - 0.5 && s.label.r <= s.label.kr + 0.5 && s.label.px >= 12, `280 × 400: “clear all” fits on one line, inside its key (${s.label.w.toFixed(1)} px in ${s.label.kw.toFixed(1)}, ${s.label.lines} line, ${s.label.px.toFixed(1)} px type)`);
+    ok(!!k.k.clear && near((k.k.clear.l + k.k.clear.r) / 2, (k.pad.l + k.pad.r) / 2) && !!k.k.backspace && k.k.backspace.l > k.k.clear.r, `280 × 400: clear all still centered, ⌫ beside it (${span(k, 'clear')}, ${span(k, 'backspace')})`);
+    await page.screenshot({ path: OUT + 'calculator-strip-280.png' });
+    await setSize(900, 600);
+    // After a reload, Test practice still says clear all.
+    await page.reload(); await boardUp(page); await page.waitForTimeout(1500);
+    s = await strip();
+    ok(s.text === 'clear all' && s.name === 'clear all', `after a reload, still “clear all” (${s.text}, ${s.name})`);
+    // Leaving Test practice brings back AC, its name, and ±, lined up again.
+    await choose('Test practice');
+    k = await keysAt(); s = await strip();
+    ok(s.text === 'AC' && s.name === 'all clear' && !!k.k.negate && lined(k) && s.bg.every(b => b !== 'rgba(0, 0, 0, 0)'), `Test practice off: AC, its name, and ± come back, with their key color (${s.text}, ${s.name}; ${row(k)})`);
+
+    // ---- 3. In words tells (−3)² from −3²: the In words line, the screen reader, and History.
+    await set('Advanced keys', 'advanced', true); await set('In words', 'words', true); await set('History', 'history', true);
+    await setSize(1300, 640);
+    const NEG = 'open parenthesis negative 3 close parenthesis';
+    const words = () => W.locator('html').evaluate(() => {
+      const lines = [...document.querySelectorAll('#history .hline')], last = lines[lines.length - 1], m = last && last.querySelector('.hpick .ce-math');
+      return { eq: document.getElementById('eq').textContent.replace(/\s+/g, ' ').trim(), said: document.getElementById('said').textContent.trim(), live: document.getElementById('live').textContent.trim(),
+        eqLabel: (document.querySelector('#eq .ce-math') || { getAttribute: () => '' }).getAttribute('aria-label'), hist: m ? m.getAttribute('aria-label') : '' };
+    });
+    await press(['clear', '3', 'negate', 'square', 'equals']);
+    let w = await words();
+    ok(w.said === `${NEG} squared equals 9` && w.live === w.said && w.eqLabel === w.said && w.hist === `${NEG} squared`,
+      `3 ± a²: In words, the screen reader, and History say “${NEG} squared equals 9” (${w.said} | ${w.live} | ${w.hist})`);
+    await page.screenshot({ path: OUT + 'calculator-words-neg-base.png' });
+    await press(['clear', 'subtract', '3', 'square', 'equals']);
+    w = await words();
+    ok(w.said === 'negative 3 squared equals negative 9' && w.live === w.said && w.hist === 'negative 3 squared', `−3² keeps its words (${w.said} | ${w.live} | ${w.hist})`);
+    await press(['clear', '0', 'subtract', '3', 'equals', 'square', 'equals']);
+    w = await words();
+    ok(w.said === `${NEG} squared equals 9` && w.live === w.said && w.hist === `${NEG} squared`, `a negative answer squared says its parentheses (${w.said} | ${w.hist})`);
+    await press(['clear', '5', 'add']);
+    await W.locator('#history .hans[aria-label="Use −3"]').first().click(); await page.waitForTimeout(200);
+    await press(['power', '3', 'equals']);
+    w = await words();
+    ok(w.said === `5 plus ${NEG} cubed equals negative 22` && w.live === w.said && w.hist === `5 plus ${NEG} cubed`, `a negative History answer with aᵇ says its parentheses (${w.said} | ${w.hist})`);
+    await press(['clear', '2', 'subtract', '3', 'negate', 'equals']);
+    w = await words();
+    ok(w.said === '2 minus negative 3 equals 5', `2 − 3 ± keeps its words (${w.said})`);
+
+    // ---- 4. The docs: the manual's drawings and lines.
+    const man = fs.readFileSync(path.join(ROOT, 'docs', 'calculator-manual', 'page-src.html'), 'utf8');
+    const TOP = '<span class="fn k3 w">AC</span><span class="fn k6">⌫</span><span class="fn k3">±</span>';
+    ok(man.split(TOP).length === 3 && !/class="fn k4/.test(man), 'the manual draws AC, ⌫, and ± as 3, 6, and 3 columns, in Keys and in Advanced keys');
+    ok(/<span class="flat k6 ca w">clear all<\/span><span class="flat k6">⌫<\/span>/.test(man), 'the manual draws Test practice’s strip, clear all in the middle and ⌫ beside it');
+    const plain = man.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+    for (const line of ['Desmos Four-Function’s keys, as on NWEA MAP. No ± key, so students type − first.', 'The state test’s calculator has ±. Test practice matches MAP, which has none.',
+      'Changes the number you’re typing, or the answer, to its opposite.', '± makes the number itself negative, so 3 ± a² is (−3)² = 9.']) ok(plain.includes(line), `the manual: “${line}”`);
+    ok(stamped(), STAMPED);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
 ];
 
 (async () => {
