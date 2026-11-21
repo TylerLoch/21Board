@@ -919,10 +919,12 @@ const SUITES = [
     await drag(page, { x: ce.x + ce.width / 2, y: ce.y + ce.height / 2 }, { x: ce.x + ce.width / 2 - 90, y: ce.y + ce.height / 2 });
     c = (await wins(page))['clock:1'];
     ok(Math.abs(c.w / (c.h - 40) - 1) < 0.02, `clock keeps 1:1 content when resized from the side (${c.w}x${c.h - 40})`);
-    // switch to digital via the window menu → aspect 2.2
+    // switch to digital via the window menu → aspect 2.2. (Digital adds to Analog, so Analog comes off too.)
     await page.click('.win[data-ikey="clock:1"] .win-label'); await page.waitForTimeout(200);
     await page.screenshot({ path: OUT + '10-window-menu.png' });
     await page.click('#menu [data-act="widget"][data-id="digital"]'); await page.waitForTimeout(500);
+    await page.click('.win[data-ikey="clock:1"] .win-label'); await page.waitForTimeout(200);
+    await page.click('#menu [data-act="widget"][data-id="analog"]'); await page.waitForTimeout(500);
     c = (await wins(page))['clock:1'];
     ok(Math.abs(c.w / (c.h - 40) - 2.2) < 0.03, `digital clock switches aspect to 2.2 (${c.w}x${c.h - 40})`);
 
@@ -3352,7 +3354,8 @@ const SUITES = [
     await page.evaluate(() => window.__board21.openWidget('clock'));
     const dig = page.frameLocator('.win[data-ikey="clock:1"] iframe');
     await dig.locator('#analog').waitFor();
-    await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="digital"]');
+    // (Digital alone: Digital, then Analog off. Seconds are off until Show seconds.)
+    for (const id of ['digital', 'analog', 'seconds']) { await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click(`#menu [data-id="${id}"]`); await page.waitForTimeout(300); }
     const timeBox = () => dig.locator('#time').evaluate(el => { const r = el.getBoundingClientRect(); return { text: el.textContent, vw: innerWidth, fits: r.width > 0 && r.left >= 0 && r.right <= innerWidth }; });
     const cut = [];
     for (const [iso, text] of [['2026-11-09T10:05:13', '10:05:13AM'], ['2026-11-09T11:38:52', '11:38:52AM'], ['2026-11-09T12:59:59', '12:59:59PM']]) {
@@ -3997,7 +4000,7 @@ const SUITES = [
       inFrame('traffic-light', () => document.querySelectorAll('.lamp.on').length)
     ]);
     ok(shown[0] === evil + ' | 0 | 1 of 2 left' && shown[1] === evil, 'Name Picker and Notes show such text as plain text (a name is whatever was typed)');
-    ok(shown[2] === '05:00' && /^\d\d?:\d\d:\d\d[AP]M$/.test(shown[3]) && /^Sun/.test(shown[4]) && shown[5] === 0, `Timer, Clock, Calendar and Traffic Light fall back to their usual settings (${shown.slice(2).join(', ')})`);
+    ok(shown[2] === '05:00' && /^\d\d?:\d\d[AP]M$/.test(shown[3]) && /^Sun/.test(shown[4]) && shown[5] === 0, `Timer, Clock, Calendar and Traffic Light fall back to their usual settings (${shown.slice(2).join(', ')})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
@@ -16930,6 +16933,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     for (const id of ['clock', 'clock', 'timer', 'calendar', 'notes', 'name-picker', 'task-timer']) await page.evaluate(id => window.__board21.openWidget(id), id);
     await page.waitForTimeout(1500);
     await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="digital"]'); await page.waitForTimeout(300);
+    await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="analog"]'); await page.waitForTimeout(300);
     await page.click('.win[data-ikey="clock:2"] .win-label'); await page.click('#menu [data-id="date"]'); await page.waitForTimeout(300);
     await page.evaluate(() => {
       const b = window.__board21;
@@ -16945,6 +16949,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     });
     await page.waitForTimeout(1200);
     const w = ik => page.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('html');
+    // (Since 2026.11.21-4 Digital adds to Analog, so the first Clock unchecks Analog to fill its window with the time.)
+    const alone = await w('clock:1').evaluate(() => document.getElementById('ana').hidden && !document.getElementById('dig').hidden && innerWidth - document.getElementById('dig').offsetWidth < 2);
+    ok(alone, 'the first Clock shows digital alone, across its window');
     // An element's text: how far it sticks out of the room it has (inside its parent's padding, or its own with
     // own, and the window), how wide it is, and whether it was shrunk to fit.
     const where = (ik, sel, own) => w(ik).evaluate((html, [sel, own]) => {
@@ -19539,6 +19546,688 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(stamped(), STAMPED);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
+  }],
+
+  // Release 2026.11.21-4: the Clock makeover. Simple, Old, and Teaching faces, the LED look, analog and digital
+  // together, Set the time, Mark a time (following the Timers on the page), Quiz, Hour hand only, and Time in words.
+  ['Clock makeover (2026.11.21-4)', async (browser) => {
+    const errors = [];
+    // Each part runs on its own: one that stops early is reported, and the next still runs.
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const frameL = (p, ik) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const F = (p, ik, fn, arg) => frameL(p, ik).locator('html').evaluate(fn, arg);
+    const connected = (p, ik) => eventually(() => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+    // The window menu as a line: [Heading], ✓ checked, (off) disabled, — a line.
+    const menuOf = (p, ik) => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.map(i => i.separator ? '—' : i.heading ? `[${i.label}]` : (i.checked ? '✓ ' : '') + i.label + (i.disabled ? ' (off)' : '')).join(' | '), ik);
+    // A window's ⌄ menu, and the item with this id in it, as a teacher taps it. False when there's no such item, or it's off.
+    const choose = async (p, ik, id) => {
+      await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.waitForTimeout(200);
+      const it = p.locator(`#menu [data-id="${id}"]`);
+      if (!await it.count() || await it.isDisabled()) { await p.keyboard.press('Escape'); await p.waitForTimeout(150); return false; }
+      await it.click(); await p.waitForTimeout(350); return true;
+    };
+    const confOf = (p, ik) => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
+    const dataOf = (p, ik) => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
+    const ratioOf = (p, ik) => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return w.rt.ratio === undefined ? w.widget.win.aspectRatio : w.rt.ratio; }, ik);
+    const size = (p, ik, w, h) => p.evaluate(([ik, w, h]) => window.__board21.setRect(ik, { x: 40, y: 40, w, h: h + 40 }), [ik, w, h]);
+    // Content or config saved in the window and shown there, as a change from another tab or device arrives.
+    const put = (p, ik, kind, v) => p.evaluate(async ([ik, kind, v]) => {
+      const w = window.__board21.state.wins.get(ik), B = w.iframe.contentWindow.Board21;
+      if (kind === 'data') { await B.save(v); w.post('data', { data: v, reason: 'remote' }); } else { await B.saveConfig(v); w.post('config', { config: v, reason: 'remote' }); }
+    }, [ik, kind, v]);
+    // Chicago time on Friday, Nov 20, 2026: the page's clock, fixed (timers still run).
+    const AT = (hhmm, ss = '00') => `2026-11-20T${hhmm}:${ss}-06:00`;
+    const ms = hhmm => Date.parse(AT(hhmm));
+    const newBoard = async (hhmm, opts = {}) => {
+      const ctx = await browser.newContext(Object.assign({ viewport: { width: 1400, height: 900 }, timezoneId: 'America/Chicago', locale: 'en-US' }, opts));
+      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      if (hhmm) await page.clock.setFixedTime(AT(hhmm));
+      await page.goto(BASE); await boardUp(page); await freeBoard(page);
+      return { ctx, page };
+    };
+    const openClock = async (page, w, h) => {
+      const ik = await addWin(page, 'clock'); await connected(page, ik);
+      if (w) { await size(page, ik, w, h); await page.waitForTimeout(400); }
+      return ik;
+    };
+    // The Clock as it looks.
+    const look = (p, ik) => F(p, ik, () => {
+      const q = s => document.querySelector(s);
+      const vis = el => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden' && getComputedStyle(el).display !== 'none';
+      const rot = el => { const m = /rotate\(\s*([-\d.]+)/.exec((el && el.getAttribute('transform')) || ''); return m ? +m[1] : 0; };
+      const box = el => { if (!el) return null; const r = el.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, r: r.right, b: r.bottom }; };
+      const svg = q('#analog'), hand = c => svg && svg.querySelector(c);
+      return {
+        face: svg ? ((svg.getAttribute('class') || '').match(/\bf-(\w+)/) || [])[1] || null : null,
+        analog: vis(svg), digital: vis(q('#dig')), dateOnly: vis(q('#dateonly')),
+        settable: !!svg && svg.classList.contains('settable'),
+        h: rot(hand('.hand-h')), m: rot(hand('.hand-m')), minuteHand: vis(hand('.hand-m')), secondHand: vis(hand('.hand-s')),
+        time: vis(q('#time')) ? q('#time').textContent : null, led: vis(q('.led-svg')),
+        q: vis(q('#q')) ? q('#q').textContent : null,
+        words: vis(q('#words')) ? q('#words').textContent : null,
+        date: vis(q('#date')) ? q('#date').textContent : null,
+        badge: vis(q('#badge')) ? q('#badge').textContent : null, now: vis(q('#now')) ? q('#now').textContent : null,
+        label: svg && svg.getAttribute('aria-label'), valuetext: svg && svg.getAttribute('aria-valuetext'),
+        valuenow: svg && svg.getAttribute('aria-valuenow'), valuemin: svg && svg.getAttribute('aria-valuemin'), valuemax: svg && svg.getAttribute('aria-valuemax'),
+        W: innerWidth, H: innerHeight, ana: box(svg), dig: box(q('#dig')), nowBox: box(q('#now')), badgeBox: box(q('#badge')),
+        arrows: Array.from(document.querySelectorAll('#dig .arrow')).filter(vis).map(b => Object.assign(box(b), { k: b.dataset.k }))
+      };
+    });
+    // A point on the face, r of its 100 units out from the middle at deg degrees (0 is 12 o'clock), in page px.
+    const faceAt = async (p, ik) => {
+      const b = await frameL(p, ik).locator('#analog').boundingBox(), s = b.width / 200, cx = b.x + b.width / 2, cy = b.y + b.height / 2;
+      return (deg, r) => [cx + r * s * Math.sin(deg * Math.PI / 180), cy - r * s * Math.cos(deg * Math.PI / 180)];
+    };
+    // A drag on the face from one angle to another, r units out, as a mouse does it.
+    const dragFace = async (p, ik, from, to, r) => {
+      const at = await faceAt(p, ik);
+      await p.mouse.move(...at(from, r)); await p.mouse.down();
+      const n = Math.max(2, Math.ceil(Math.abs(to - from) / 3));
+      for (let i = 1; i <= n; i++) await p.mouse.move(...at(from + (to - from) * i / n, r));
+      await p.mouse.up(); await p.waitForTimeout(700);
+    };
+    const tapFace = async (p, ik, deg, r) => { const at = await faceAt(p, ik); await p.mouse.click(...at(deg, r)); await p.waitForTimeout(400); };
+    const pressFace = async (p, ik, deg, r) => { const at = await faceAt(p, ik); await p.mouse.move(...at(deg, r)); await p.mouse.down(); await p.waitForTimeout(250); await p.mouse.up(); await p.waitForTimeout(400); };
+    const near = (a, b, d = 1) => Math.abs(((a - b) % 360 + 540) % 360 - 180) <= d;
+    // Mark a time's wedge: each sector's start, end, and size in degrees, and its fill. full: the whole ring.
+    const wedgeOf = (p, ik) => F(p, ik, () => {
+      const svg = document.querySelector('#analog');
+      if (!svg) return null;
+      const ang = (x, y) => ((Math.atan2(x - 100, -(y - 100)) * 180 / Math.PI) % 360 + 360) % 360;
+      const sector = el => {
+        if (!el || getComputedStyle(el).display === 'none') return null;
+        const n = (el.getAttribute('d') || '').match(/-?[\d.]+/g);
+        if (!n || n.length < 11) return null;
+        const v = n.map(Number), a = ang(v[2], v[3]), b = ang(v[9], v[10]);
+        return { from: a, to: b, span: ((b - a) % 360 + 360) % 360, fill: getComputedStyle(el).fill };
+      };
+      const full = svg.querySelector('.mk-full'), w = sector(svg.querySelector('.mk-w')), warn = sector(svg.querySelector('.mk-warn'));
+      const probe = document.createElement('i'); probe.style.color = 'var(--b21-warning)'; document.body.appendChild(probe);
+      const amber = getComputedStyle(probe).color; probe.remove();
+      return { w, warn, full: !!full && getComputedStyle(full).display !== 'none', shown: !!(w || warn) || (!!full && getComputedStyle(full).display !== 'none'),
+        from: w ? w.from : warn ? warn.from : null, span: (w ? w.span : 0) + (warn ? warn.span : 0), amber };
+    });
+    const wedgeIs = (wd, from, span, d = 1) => !!wd && wd.shown && !wd.full && near(wd.from, from, d) && Math.abs(wd.span - span) <= d;
+    const said = wd => JSON.stringify(wd && { from: wd.from && Math.round(wd.from * 10) / 10, span: Math.round(wd.span * 10) / 10, warn: wd.warn && Math.round(wd.warn.span * 10) / 10, full: wd.full });
+
+    // ---- 1. The menu: every item, when it shows, and when it's off.
+    await part('Menu', async () => {
+      const { ctx, page } = await newBoard('14:50');
+      const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'clock'); return a && { clash: a.clash, description: a.description, win: a.win }; });
+      ok(!!reg && reg.clash === 'later' && reg.description === 'Show an analog or digital clock, or just the date.' && reg.win.aspectRatio === 1 && reg.win.width === 300 && reg.win.height === 300,
+        `the registry: clash 'later', as for the Timer's time; the same description; 1:1 at 300 × 300 to start (${JSON.stringify(reg)})`);
+      const ik = await openClock(page);
+      let m = await menuOf(page, ik);
+      ok(m === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LED look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time',
+        `a new Clock: Show (Analog, Digital, Date only), Clock face (Simple, Old, Teaching), a line, LED look, Show seconds, Show date, 24-hour time, Time in words, a line, Mark a time, Set the time; LED, date, and 24-hour off without Digital (${m})`);
+      await choose(page, ik, 'face:old');
+      m = await menuOf(page, ik);
+      ok(m.includes('[Clock face] | Simple | ✓ Old | Teaching | Upright numerals | IV for four | —') && !m.includes('Hour hand only'), `Old: Upright numerals and IV for four right after the faces (${m})`);
+      await choose(page, ik, 'face:teaching');
+      m = await menuOf(page, ik);
+      ok(m.includes('[Clock face] | Simple | Old | ✓ Teaching | Hour hand only | —') && !m.includes('Upright numerals') && !m.includes('IV for four'), `Teaching: Hour hand only right after the faces (${m})`);
+      await choose(page, ik, 'digital');
+      m = await menuOf(page, ik);
+      ok(m.startsWith('[Show] | ✓ Analog | ✓ Digital | Date only |') && m.includes('— | LED look | Show seconds | Show date | 24-hour time | Time in words | — | Mark a time | Quiz | Set the time'),
+        `Digital too: both checked, LED, date, and 24-hour on, and Quiz between Mark a time and Set the time (${m})`);
+      await choose(page, ik, 'analog');
+      m = await menuOf(page, ik);
+      ok(m.startsWith('[Show] | Analog | ✓ Digital | Date only | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) | Hour hand only (off) |') && m.includes('Mark a time (off) | Set the time') && !m.includes('Quiz'),
+        `Analog off: the faces, Hour hand only, and Mark a time are off, and Quiz is gone (${m})`);
+      ok(await choose(page, ik, 'digital') && (await menuOf(page, ik)).startsWith('[Show] | Analog | ✓ Digital |') && (await confOf(page, ik)).digital === true, 'unchecking the last one shown does nothing');
+      await choose(page, ik, 'date');
+      m = await menuOf(page, ik);
+      ok(m.startsWith('[Show] | Analog | Digital | ✓ Date only | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) |') && m.includes('LED look (off) | Show seconds (off) | Show date (off) | 24-hour time (off)') && m.includes('Mark a time (off)'),
+        `Date only turns both off; the faces, LED, seconds, date, 24-hour, and Mark a time are off (${m})`);
+      await choose(page, ik, 'analog');
+      m = await menuOf(page, ik);
+      ok(m.startsWith('[Show] | ✓ Analog | Digital | Date only |'), `Analog turns Date only off (${m})`);
+      await choose(page, ik, 'set');
+      m = await menuOf(page, ik);
+      ok(m.endsWith('| Mark a time | ✓ Set the time | 5-minute steps'), `Set the time: 5-minute steps shows after it, unchecked (${m})`);
+      await choose(page, ik, 'set');
+      ok(!(await menuOf(page, ik)).includes('5-minute steps'), 'and goes when Set the time is unchecked');
+      // Never more than 24, in every combination: what the Clock sends, before the board's own limit.
+      await F(page, ik, () => { const o = Board21.menu.set.bind(Board21.menu); window.__menus = []; Board21.menu.set = items => { window.__menus.push(items.length); return o(items); }; });
+      let most = 0, where = '', over = [];
+      for (const show of [{ analog: true, digital: false }, { analog: false, digital: true }, { analog: true, digital: true }, { dateOnly: true }])
+        for (const face of ['simple', 'old', 'teaching']) for (const set of [null, { at: 600 }]) for (const quiz of [false, true]) {
+          const c = Object.assign({ analog: false, digital: false, dateOnly: false, face, led: true, seconds: true, date: true, hour24: true, words: true, upright: true, iv: true, hourOnly: true, mark: true, quiz, snap5: true }, show);
+          await put(page, ik, 'data', { set, markAt: null }); await put(page, ik, 'config', c); await page.waitForTimeout(120);
+          const n = await F(page, ik, () => window.__menus[window.__menus.length - 1]), board = (await page.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.length, ik));
+          if (n > most) { most = n; where = JSON.stringify(show) + ' ' + face + (set ? ' set' : ''); }
+          if (!(n <= 24) || board !== n) over.push(`${JSON.stringify(show)} ${face}${set ? ' set' : ''}${quiz ? ' quiz' : ''}: ${n}`);
+        }
+      ok(!over.length && most === 21, `never more than 24 items in any combination; the most is 21, Old with both shown while setting the time (${most}: ${where}${over.length ? '; over: ' + over.join(', ') : ''})`);
+      await ctx.close();
+    });
+
+    // ---- 2. Saved settings: older ones, bad ones, and style still written.
+    await part('Config', async () => {
+      const { ctx, page } = await newBoard('14:50');
+      const win = (i, config) => ({ widgetId: 'clock', instance: i + 1, open: true, z: i + 1, rect: { x: 20 + (i % 3) * 420, y: 20 + Math.floor(i / 3) * 330, w: 400, h: 300 }, data: null, config });
+      const configs = [
+        { style: 'analog', hour24: true, seconds: true, date: true },
+        { style: 'digital', hour24: true, seconds: false, date: true },
+        { style: 'date', hour24: false, seconds: true, date: false },
+        null,
+        { style: 'weird', face: 'fancy', analog: 'yes', led: 1, seconds: 'true', quiz: null, snap5: {}, mark: [], words: 'on', hour24: 'x' },
+        { analog: false, digital: false, dateOnly: false, face: 'old', iv: true },
+        { analog: 'yes', digital: true }
+      ];
+      await page.evaluate(o => window.__board21.applyImport(o, 'replace'), { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Clocks' }, instances: configs.map((c, i) => win(i, c)) });
+      const iks = configs.map((c, i) => 'clock:' + (i + 1));
+      ok(await eventually(async () => (await Promise.all(iks.map(ik => connected(page, ik)))).every(Boolean)), '(the seven Clocks are up)');
+      await page.waitForTimeout(800);
+      const [m0, m1, m2, m3, m4, m5, m6] = await Promise.all(iks.map(ik => menuOf(page, ik)));
+      const [l0, l1, l2, l3, l4, l5, l6] = await Promise.all(iks.map(ik => look(page, ik)));
+      ok(m0.startsWith('[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple |') && m0.includes('✓ Show seconds') && l0.analog && !l0.digital && l0.secondHand, `an older 'analog': analog only, Simple, its seconds kept (${m0})`);
+      ok(m1.startsWith('[Show] | Analog | ✓ Digital | Date only |') && m1.includes('✓ 24-hour time') && m1.includes('✓ Show date') && l1.digital && !l1.analog && l1.time === '14:50' && !!l1.date, `an older 'digital': digital only, 24-hour time, the date (${m1}; ${l1.time})`);
+      ok(m2.startsWith('[Show] | Analog | Digital | ✓ Date only |') && l2.dateOnly && !l2.analog && !l2.digital, `an older 'date': Date only (${m2})`);
+      ok(m3 === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LED look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time' && l3.analog && !l3.secondHand,
+        `none saved: analog only, the Simple face, everything else off (${m3})`);
+      ok(m4 === m3 && l4.face === 'simple', `bad values fall back, each to its own default (${m4})`);
+      ok(m5.startsWith('[Show] | ✓ Analog | Digital | Date only | [Clock face] | Simple | ✓ Old | Teaching | Upright numerals | ✓ IV for four |') && l5.analog, `nothing shown: analog shows, and the rest is kept (${m5})`);
+      ok(m6.startsWith('[Show] | ✓ Analog | ✓ Digital | Date only |') && l6.analog && l6.digital, `a bad Analog takes its own default, on, beside a good Digital (${m6})`);
+      // style is written with every change, for a device on an older 21Board.
+      const ik = iks[3], keys = 'analog,digital,dateOnly,face,led,seconds,date,hour24,words,upright,iv,hourOnly,mark,quiz,snap5,style';
+      const styles = [];
+      for (const id of ['digital', 'analog', 'date', 'analog']) { await choose(page, ik, id); const c = await confOf(page, ik); styles.push(c && c.style); }
+      ok(styles.join() === 'digital,digital,date,analog', `style is still written: 'digital' with analog and alone, 'date', 'analog' (${styles.join()})`);
+      const c = await confOf(page, ik);
+      ok(!!c && Object.keys(c).sort().join() === keys.split(',').sort().join() && c.face === 'simple' && c.analog === true && c.digital === false, `the config has every key (${JSON.stringify(c)})`);
+      await ctx.close();
+    });
+
+    // ---- 3. Faces.
+    await part('Faces', async () => {
+      const { ctx, page } = await newBoard('10:10');
+      const ik = await openClock(page, 600, 600);
+      const nums = () => F(page, ik, () => Array.from(document.querySelectorAll('#analog .ro-num')).map(t => { const m = t.getCTM(); return [t.textContent, Math.round(((Math.atan2(m.b, m.a) * 180 / Math.PI) + 360) % 360)]; }));
+      await choose(page, ik, 'face:old');
+      let n = await nums();
+      ok(n.map(x => x[0]).join() === 'XII,I,II,III,IIII,V,VI,VII,VIII,IX,X,XI', `the Old face writes four as IIII (${n.map(x => x[0]).join()})`);
+      ok(n.length === 12 && n.every(([, a], i) => near(a, i * 30)), `its numerals turn with the dial: VI upside down (${n.map(x => x[1]).join()})`);
+      await choose(page, ik, 'iv');
+      n = await nums();
+      ok(n[4] && n[4][0] === 'IV' && (await confOf(page, ik)).iv === true, `IV for four: IV (${n.map(x => x[0]).join()})`);
+      await choose(page, ik, 'upright');
+      n = await nums();
+      ok(n.length === 12 && n.every(([, a]) => near(a, 0)) && (await confOf(page, ik)).upright === true, `Upright numerals: every numeral stands upright (${n.map(x => x[1]).join()})`);
+      await choose(page, ik, 'face:teaching');
+      const colors = () => F(page, ik, () => {
+        const f = s => { const e = document.querySelector('#analog ' + s); return e ? getComputedStyle(e).fill : null; };
+        const mn = Array.from(document.querySelectorAll('#analog .t-mn'));
+        return { hn: f('.t-hn'), mn: f('.t-mn'), hh: f('.t-hh'), mh: f('.t-mh'), labels: mn.map(t => t.textContent).join(), top: (mn.slice().sort((a, b) => a.getAttribute('y') - b.getAttribute('y'))[0] || {}).textContent,
+          hours: Array.from(document.querySelectorAll('#analog .t-hn')).map(t => t.textContent).join(), ap: (document.querySelector('#analog .t-ap') || {}).textContent };
+      });
+      let c = await colors();
+      const ORANGE_L = 'rgb(194, 65, 12)', BLUE_L = 'rgb(0, 70, 140)', ORANGE_D = 'rgb(238, 111, 28)', BLUE_D = 'rgb(147, 210, 255)';
+      ok(c.hn === ORANGE_L && c.hh === ORANGE_L && c.mn === BLUE_L && c.mh === BLUE_L, `Teaching, light: hours and the hour hand #C2410C, minutes and the minute hand #00468C (${JSON.stringify(c)})`);
+      ok(c.labels === '00,05,10,15,20,25,30,35,40,45,50,55' && c.top === '00' && c.hours === '1,2,3,4,5,6,7,8,9,10,11,12' && c.ap === 'a.m.', `big hours 1 to 12, small minutes 05 to 55 with 00 at the top, and a.m. on the face (${c.labels}; top ${c.top}; ${c.ap})`);
+      await setTheme(page, 'dark');
+      c = await colors();
+      ok(c.hn === ORANGE_D && c.hh === ORANGE_D && c.mn === BLUE_D && c.mh === BLUE_D, `dark: #EE6F1C and #93D2FF (${JSON.stringify(c)})`);
+      await openSettings(page, ['bg']); await page.click('#settings [data-act="accent"][data-val="purple"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(500);
+      c = await colors();
+      ok(c.hn === ORANGE_D && c.mn === BLUE_D, `never the accent: the same with Purple (${c.hn}, ${c.mn})`);
+      // No element or text names Judy, nor Learning Clock: in the window, in the widget, or in the docs.
+      const html = await F(page, ik, () => document.documentElement.outerHTML);
+      const files = ['widgets/clock/index.html', 'widgets/registry.js', 'README.md', 'docs/DATA-FORMAT.md', 'docs/WIDGET-SDK.md', 'docs/teacher-guide/page-src.html'];
+      const named = files.filter(f => /judy|learning clock/i.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+      ok(!/judy|learning clock/i.test(html) && !named.length, `nothing says Judy or Learning Clock${named.length ? ': ' + named.join(', ') : ''}`);
+      await ctx.close();
+    });
+
+    // ---- 4. The LED look.
+    await part('LED', async () => {
+      const { ctx, page } = await newBoard('10:10');
+      const ik = await openClock(page);
+      await choose(page, ik, 'digital'); await choose(page, ik, 'analog'); await choose(page, ik, 'led');
+      await page.waitForTimeout(500);
+      const seg = () => F(page, ik, () => {
+        const off = document.querySelector('.seg-p:not(.on)'), on = document.querySelector('.seg-p.on'), svg = document.querySelector('.led-svg');
+        const d = e => e && getComputedStyle(e);
+        const probe = document.createElement('i'); probe.style.color = 'var(--b21-accent)'; document.body.appendChild(probe);
+        const accent = getComputedStyle(probe).color; probe.remove();
+        return off && on && svg ? { offOp: +d(off).opacity, onOp: +d(on).opacity, offT: d(off).transitionDuration, onT: d(on).transitionDuration, prop: d(off).transitionProperty, filter: d(svg).filter,
+          u: parseFloat(d(svg).getPropertyValue('--u')) || 1, accent,
+          panel: getComputedStyle(document.getElementById('dig')).backgroundColor, bg: getComputedStyle(document.body).backgroundColor } : null;
+      });
+      // Each drop-shadow in a filter: its color, its offset, and its blur.
+      const shadows = f => Array.from(String(f).matchAll(/drop-shadow\((rgba?\(([^)]*)\))\s+(-?[\d.]+)px\s+(-?[\d.]+)px\s+(-?[\d.]+)px\)/g))
+        .map(m => { const c = m[2].split(',').map(Number); return { rgb: c.slice(0, 3), a: c.length > 3 ? c[3] : 1, x: +m[3], y: +m[4], blur: +m[5] }; });
+      const rgbIn = c => (String(c).match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+      const far = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]) > 80;
+      let s = await seg();
+      const secs = t => parseFloat(t) * (/ms$/.test(t) ? 0.001 : 1);
+      ok(!!s && secs(s.onT) >= 0.1 && secs(s.onT) <= 0.2 && secs(s.offT) >= 0.1 && secs(s.offT) <= 0.2 && /opacity|all/.test(s.prop), `each segment fades on and off in about 120 to 180 ms (${s && s.onT}, ${s && s.offT})`);
+      ok(!!s && s.offOp > 0.02 && s.offOp < 0.2 && s.onOp === 1, `unlit segments are faint but visible (${s && s.offOp})`);
+      const sh = s ? shadows(s.filter) : [];
+      ok(!!s && sh.length >= 1 && sh.every(d => d.a > 0 && d.a <= .3 && d.blur <= s.u + .01 && d.x > 0 && d.y > 0 && far(d.rgb, rgbIn(s.accent))) && s.panel !== s.bg,
+        `light theme is an LCD on a tinted panel: lit segments cast a faint shadow, and nothing glows in the accent (${s && s.filter}; --u ${s && s.u}; ${s && s.panel})`);
+      await setTheme(page, 'dark');
+      s = await seg();
+      ok(!!s && /drop-shadow/.test(s.filter) && /rgb/.test(s.filter) && !/^(drop-shadow\(rgba\(0, 0, 0, 0\)[^)]*\)\s*)+$/.test(s.filter), `dark theme is an LED with a soft glow (${s && s.filter})`);
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.waitForTimeout(200);
+      s = await seg();
+      ok(!!s && secs(s.onT) === 0 && secs(s.offT) === 0, `reduced motion: no fades (${s && s.onT}, ${s && s.offT})`);
+      await ctx.close();
+    });
+
+    // ---- 5. Analog and digital together: the window's shape decides.
+    await part('Together', async () => {
+      const { ctx, page } = await newBoard('10:10');
+      const ik = await openClock(page);
+      ok(await ratioOf(page, ik) === 1, 'analog alone: 1:1');
+      await choose(page, ik, 'words');
+      const rw = await ratioOf(page, ik);
+      ok(rw > 0.8 && rw < 0.95, `with Time in words, room for the line below (${rw})`);
+      await choose(page, ik, 'words');
+      await choose(page, ik, 'digital');
+      ok(await ratioOf(page, ik) === null, `both: no shape lock (${await ratioOf(page, ik)})`);
+      const layoutAt = async (w, h) => { await size(page, ik, w, h); await page.waitForTimeout(500); return look(page, ik); };
+      const side = l => !!l.ana && !!l.dig && l.ana.r <= l.dig.x + 1, stacked = l => !!l.ana && !!l.dig && l.ana.b <= l.dig.y + 1;
+      const out = [];
+      for (const [w, h, want] of [[420, 400, 'side'], [400, 420, 'stacked'], [700, 300, 'side'], [300, 700, 'stacked'], [401, 400, 'side'], [400, 401, 'stacked']]) {
+        const l = await layoutAt(w, h);
+        const got = side(l) ? 'side' : stacked(l) ? 'stacked' : 'neither';
+        if (got !== want || l.W !== w || l.H !== h) out.push(`${w} × ${h}: ${got} in ${l.W} × ${l.H}`);
+      }
+      ok(!out.length, `side by side when wider than tall, analog on top otherwise, across square, and the window keeps any shape${out.length ? ': ' + out.join('; ') : ''}`);
+      await choose(page, ik, 'analog');
+      ok(await ratioOf(page, ik) === 2.2, `digital alone: 2.2:1 (${await ratioOf(page, ik)})`);
+      await choose(page, ik, 'date');
+      ok(await ratioOf(page, ik) === 2.2, `Date only: 2.2:1 (${await ratioOf(page, ik)})`);
+      await ctx.close();
+    });
+
+    // ---- 6. Set the time.
+    await part('Set the time', async () => {
+      const { ctx, page } = await newBoard('14:50');
+      const ik = await openClock(page, 600, 600);
+      await choose(page, ik, 'face:teaching');
+      await choose(page, ik, 'set');
+      let l = await look(page, ik), d = await dataOf(page, ik);
+      ok(JSON.stringify(d) === '{"set":{"at":890},"markAt":null}' && l.badge === 'Set' && l.now === 'Now' && l.settable, `Set the time: the Set badge, Now, and grab dots; the time is saved in the content (${JSON.stringify(d)})`);
+      ok(l.label === 'Set the time. Drag a hand or use the arrow keys.' && l.valuetext === '2:50 p.m.' && l.valuenow === '890' && l.valuemin === '0' && l.valuemax === '1439',
+        `a screen reader hears “${l.label}” and “${l.valuetext}”, a slider from 0 to 1439 at 890 (${l.valuemin}, ${l.valuemax}, ${l.valuenow})`);
+      const c0 = await confOf(page, ik);
+      ok(!(c0 && c0.snap5) && (await menuOf(page, ik)).endsWith('| ✓ Set the time | 5-minute steps'), '5-minute steps is off by default');
+      // The minute hand past 12 carries the hour: 2:50 → 3:10.
+      await dragFace(page, ik, 300, 420, 70);
+      d = await dataOf(page, ik); l = await look(page, ik);
+      ok(d && d.set && d.set.at === 910 && near(l.m, 60) && near(l.h, 95), `dragging the minute hand past 12 moves the hour on: 3:10 (${JSON.stringify(d)}; hands ${l.h}°, ${l.m}°)`);
+      await dragFace(page, ik, 420, 300, 70);
+      d = await dataOf(page, ik);
+      ok(d && d.set && d.set.at === 890, `and back past 12, the hour back: 2:50 (${JSON.stringify(d)})`);
+      await dragFace(page, ik, 300, 420, 70);
+      // The hour hand turns the minute hand too: 3:10 → 3:40.
+      await dragFace(page, ik, 95, 110, 35);
+      d = await dataOf(page, ik); l = await look(page, ik);
+      ok(d && d.set && d.set.at === 940 && near(l.m, 240) && near(l.h, 110), `dragging the hour hand moves the minute hand: 3:40 (${JSON.stringify(d)}; hands ${l.h}°, ${l.m}°)`);
+      // A press without moving changes nothing.
+      for (const [deg, r] of [[240, 70], [110, 35], [0, 50], [180, 90]]) await pressFace(page, ik, deg, r);
+      d = await dataOf(page, ik); l = await look(page, ik);
+      ok(d && d.set && d.set.at === 940 && near(l.m, 240), `a press on a hand or the face, without moving, changes nothing (${JSON.stringify(d)})`);
+      // Single minutes, then steps of five.
+      await dragFace(page, ik, 240, 282, 70);
+      d = await dataOf(page, ik);
+      ok(d && d.set && d.set.at === 947, `a drag lands on single minutes: 3:47 (${JSON.stringify(d)})`);
+      await choose(page, ik, 'snap5');
+      await dragFace(page, ik, 282, 324, 70);
+      d = await dataOf(page, ik);
+      ok(d && d.set && d.set.at % 5 === 0 && Math.abs(d.set.at - 954) <= 3 && (await confOf(page, ik)).snap5 === true, `with 5-minute steps, on a multiple of five (${JSON.stringify(d)})`);
+      // The arrow keys on the face.
+      await frameL(page, ik).locator('#analog').focus();
+      await page.keyboard.press('ArrowUp'); await page.waitForTimeout(500);
+      const k1 = (await dataOf(page, ik)).set.at;
+      await page.keyboard.press('PageDown'); await page.waitForTimeout(600);
+      const k2 = (await dataOf(page, ik)).set.at;
+      ok(k1 === Math.floor(d.set.at / 5) * 5 + 5 && k2 === k1 - 60, `the arrow keys: ▲ a step, Page Down an hour back (${d.set.at} → ${k1} → ${k2})`);
+      await choose(page, ik, 'snap5');
+      // ▲ and ▼ carry, wrap, and flip a.m. and p.m., and the arrows never move.
+      await choose(page, ik, 'digital');
+      await size(page, ik, 760, 420); await page.waitForTimeout(500);
+      const arrow = async k => { await frameL(page, ik).locator(`#dig .arrow[data-k="${k}"]`).click(); await page.waitForTimeout(600); const v = await look(page, ik); return [(await dataOf(page, ik)).set.at, v.time]; };
+      await put(page, ik, 'data', { set: { at: 719 }, markAt: null }); await page.waitForTimeout(400);
+      const steps = [await arrow('mu'), await arrow('hd')];
+      await put(page, ik, 'data', { set: { at: 0 }, markAt: null }); await page.waitForTimeout(400);
+      steps.push(await arrow('md'), await arrow('mu'), await arrow('hu'));
+      ok(JSON.stringify(steps) === JSON.stringify([[720, '12:00p.m.'], [660, '11:00a.m.'], [1439, '11:59p.m.'], [0, '12:00a.m.'], [60, '1:00a.m.']]),
+        `▲ and ▼: 11:59 a.m. ▲ 12:00 p.m., ▼ hour 11:00 a.m.; 12:00 a.m. ▼ 11:59 p.m., ▲ 12:00 a.m., ▲ hour 1:00 a.m. (${JSON.stringify(steps)})`);
+      const at = async () => (await look(page, ik)).arrows.map(a => `${a.k}@${Math.round(a.x)},${Math.round(a.y)}`).join(' ');
+      await put(page, ik, 'data', { set: { at: 590 }, markAt: null }); await page.waitForTimeout(500);
+      const a0 = await at(); await arrow('hu'); const a1 = await at(); await arrow('hu'); await arrow('hu'); const a2 = await at();
+      l = await look(page, ik);
+      ok(a0.split(' ').length === 4 && a0 === a1 && a1 === a2 && l.arrows.every(a => a.w >= 44 && a.h >= 44), `the arrows never move: 9:50, 10:50, and 12:50 p.m. (${a0} | ${a1} | ${a2})`);
+      const ar = k => l.arrows.find(a => a.k === k) || { y: NaN };
+      ok(Math.abs(ar('hu').y - ar('mu').y) < 1 && Math.abs(ar('hd').y - ar('md').y) < 1, `the hour and minute arrows line up: ▲ with ▲, ▼ with ▼ (${a2})`);
+      // Saved with the board: it's still set after a reload.
+      const before = await dataOf(page, ik);
+      await page.reload(); await boardUp(page); await connected(page, ik); await page.waitForTimeout(1200);
+      l = await look(page, ik);
+      ok(JSON.stringify(await dataOf(page, ik)) === JSON.stringify(before) && l.badge === 'Set' && l.time === '12:50p.m.' && near(l.m, 300), `the set time survives a reload (${JSON.stringify(before)}; ${l.time})`);
+      // Now: back to the real time, still setting it.
+      await frameL(page, ik).locator('#now').click(); await page.waitForTimeout(1200);
+      l = await look(page, ik); d = await dataOf(page, ik);
+      ok(JSON.stringify(d) === '{"set":{"at":null},"markAt":null}' && l.badge === 'Set' && l.now === 'Now' && l.settable && l.time === '2:50p.m.' && near(l.m, 300), `Now: the real time, and still setting it (${JSON.stringify(d)}; ${l.time}; ${l.badge})`);
+      await page.clock.setFixedTime(AT('14:53'));
+      ok(await eventually(async () => { const v = await look(page, ik); return v.time === '2:53p.m.' && near(v.m, 318); }, 3000), `and it keeps time: 2:53 (${(await look(page, ik)).time})`);
+      ok((await menuOf(page, ik)).endsWith('| ✓ Set the time | 5-minute steps') && (await look(page, ik)).arrows.length === 4, 'the menu still says Set the time, and the arrows stay');
+      // The next drag sets a time again.
+      await dragFace(page, ik, 318, 378, 70);
+      d = await dataOf(page, ik);
+      ok(d && d.set && d.set.at === 903, `the next drag sets a time again: 3:03 (${JSON.stringify(d)})`);
+      // Only Set the time ends it.
+      await choose(page, ik, 'set');
+      l = await look(page, ik); d = await dataOf(page, ik);
+      ok(d && d.set === null && !l.badge && !l.now && !l.settable && l.arrows.length === 0 && l.time === '2:53p.m.' && !(await menuOf(page, ik)).includes('5-minute steps'),
+        `unchecking Set the time ends it: the real time, no badge, no Now (${JSON.stringify(d)}; ${l.time})`);
+      // At the window's default size, Now is finger-sized and the dial stays clear of it and of the badge.
+      await choose(page, ik, 'digital');
+      await page.evaluate(ik => window.__board21.setRect(ik, { x: 40, y: 40, w: 300, h: 340 }), ik); await page.waitForTimeout(400);
+      await choose(page, ik, 'set'); await page.waitForTimeout(400);
+      l = await look(page, ik);
+      const clear = (b, f) => { const cx = f.x + f.w / 2, cy = f.y + f.h / 2, R = f.w / 2 * 0.965; return Math.hypot(Math.max(b.x - cx, 0, cx - b.r), Math.max(b.y - cy, 0, cy - b.b)) >= R; };
+      ok(l.W === 300 && l.nowBox && l.nowBox.h >= 44 && l.nowBox.w >= 44 && clear(l.nowBox, l.ana) && clear(l.badgeBox, l.ana), `at 300 × 300, Now is at least 44 px and the dial is clear of it and of the badge (${JSON.stringify(l.nowBox)}; dial ${JSON.stringify(l.ana)})`);
+      await ctx.close();
+    });
+
+    // ---- 7. Mark a time.
+    await part('Mark a time', async () => {
+      const { ctx, page } = await newBoard('10:00');
+      const ik = await openClock(page, 600, 600);
+      ok(await choose(page, ik, 'mark') && (await confOf(page, ik)).mark === true, 'Mark a time is saved with the Clock');
+      await tapFace(page, ik, 90, 60);
+      let d = await dataOf(page, ik), wd = await wedgeOf(page, ik);
+      ok(d && d.markAt === ms('10:15') && wedgeIs(wd, 0, 90), `a tap at the 3 marks 10:15, and the wedge runs from the minute hand to it (${JSON.stringify(d)}; ${said(wd)})`);
+      await page.clock.setFixedTime(AT('10:05')); await page.waitForTimeout(600);
+      wd = await wedgeOf(page, ik);
+      ok(wedgeIs(wd, 30, 60), `at 10:05 it has shrunk to 10 minutes (${said(wd)})`);
+      await page.clock.setFixedTime(AT('10:16')); await page.waitForTimeout(600);
+      wd = await wedgeOf(page, ik);
+      ok(!!wd && !wd.shown, `after the mark it's gone (${said(wd)})`);
+      const order = await F(page, ik, () => { const w = document.querySelector('#analog .mk-w'), n = document.querySelector('#analog .fs-num'), h = document.querySelector('#analog .hand-h'); return !!w && !!n && !!h && !!(w.compareDocumentPosition(n) & 4) && !!(w.compareDocumentPosition(h) & 4); });
+      ok(order, 'the wedge is drawn under the numerals and the hands');
+      // Following timers.
+      await page.clock.setFixedTime(AT('10:20')); await page.waitForTimeout(300);
+      await tapFace(page, ik, 270, 60);
+      ok((await dataOf(page, ik)).markAt === ms('10:45'), 'the teacher marks 10:45');
+      const T1 = await addWin(page, 'timer'); await connected(page, T1);
+      await page.evaluate(T1 => window.__board21.setRect(T1, { x: 700, y: 40, w: 380, h: 300 }), T1);
+      const setTimer = (ik, s) => page.evaluate(async ([ik, s]) => { const w = window.__board21.state.wins.get(ik); await w.iframe.contentWindow.Board21.save(s); w.post('data', { data: s, reason: 'remote' }); }, [ik, s]);
+      await setTimer(T1, { duration: 600000, remaining: 600000, endsAt: ms('10:28') });
+      ok(await eventually(async () => wedgeIs(await wedgeOf(page, ik), 120, 48)), `a Timer running to 10:28: the wedge ends at its end (${said(await wedgeOf(page, ik))})`);
+      wd = await wedgeOf(page, ik);
+      ok(!!wd.warn && Math.abs(wd.warn.span - 6) <= 1 && wd.warn.fill === wd.amber && !!wd.w && Math.abs(wd.w.span - 42) <= 1, `its last minute, its warning, is in the warning color (${said(wd)}; ${wd.warn && wd.warn.fill} vs ${wd.amber})`);
+      const T2 = await addWin(page, 'timer'); await connected(page, T2);
+      await page.evaluate(T2 => window.__board21.setRect(T2, { x: 700, y: 380, w: 380, h: 300 }), T2);
+      await setTimer(T2, { duration: 300000, remaining: 300000, endsAt: ms('10:23') });
+      ok(await eventually(async () => wedgeIs(await wedgeOf(page, ik), 120, 18)), `two Timers: it follows the one that ends soonest (${said(await wedgeOf(page, ik))})`);
+      await page.evaluate(T2 => window.__board21.closeWin(T2, { quiet: true }), T2);
+      await setTimer(T1, { duration: 600000, remaining: 300000, endsAt: null });
+      ok(await eventually(async () => wedgeIs(await wedgeOf(page, ik), 120, 150)), `a paused Timer draws nothing: the teacher's mark is back (${said(await wedgeOf(page, ik))})`);
+      await setTimer(T1, { duration: 600000, remaining: 600000, endsAt: ms('10:22') });
+      ok(await eventually(async () => wedgeIs(await wedgeOf(page, ik), 120, 12)), 'running again: followed');
+      await page.clock.setFixedTime(AT('10:23'));
+      ok(await eventually(async () => wedgeIs(await wedgeOf(page, ik), 138, 132)), `when it ends, the teacher's mark shows again (${said(await wedgeOf(page, ik))})`);
+      // Set mode with a set time: from it to the teacher's mark; timers aren't followed.
+      await setTimer(T1, { duration: 600000, remaining: 600000, endsAt: ms('10:28') });
+      ok(await eventually(async () => wedgeIs(await wedgeOf(page, ik), 138, 30)), '(the Timer runs to 10:28)');
+      await choose(page, ik, 'set');
+      await frameL(page, ik).locator('#analog').focus(); await page.keyboard.press('ArrowUp'); await page.waitForTimeout(500);
+      wd = await wedgeOf(page, ik);
+      ok((await dataOf(page, ik)).set.at === 624 && wedgeIs(wd, 144, 126), `a set time, 10:24: from it to the mark, not to the Timer (${said(wd)})`);
+      await frameL(page, ik).locator('#now').click(); await page.waitForTimeout(1200);
+      ok(await eventually(async () => wedgeIs(await wedgeOf(page, ik), 138, 30)), `after Now, the real time: the Timer again (${said(await wedgeOf(page, ik))})`);
+      await choose(page, ik, 'set');
+      // Longer than an hour: the whole ring.
+      await setTimer(T1, { duration: 864e5 / 4, remaining: 864e5 / 4, endsAt: ms('12:00') });
+      ok(await eventually(async () => { const w = await wedgeOf(page, ik); return !!w && w.full; }), `more than an hour away: the whole ring (${said(await wedgeOf(page, ik))})`);
+      // No analog face, no wedge.
+      await choose(page, ik, 'digital'); await choose(page, ik, 'analog');
+      ok((await menuOf(page, ik)).includes('✓ Mark a time (off)'), 'digital alone: Mark a time stays in the menu, off');
+      await ctx.close();
+    });
+
+    // ---- 7b. A 21Timer in the list works the same way.
+    await part('Mark a time: 21Timer', async () => {
+      const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 }, timezoneId: 'America/Chicago', locale: 'en-US' });
+      await ctx.route(/^https?:\/\/([^/]*\.)?ccsd21\.org(:\d+)?\//, route => {
+        const u = new URL(route.request().url());
+        if (u.origin === 'https://timerapp.ccsd21.org' && u.pathname === '/') return route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: '<!doctype html><title>21Timer stand-in</title><body>21Timer stand-in<script>window.__up = 1;</script></body>' });
+        return route.fulfill({ status: 404, body: '' });
+      });
+      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      await page.clock.setFixedTime(AT('10:20'));
+      await page.goto(BASE); await boardUp(page); await freeBoard(page);
+      const ik = await openClock(page, 500, 500);
+      await choose(page, ik, 'mark');
+      await page.evaluate(() => window.__board21.openWidget('21timer'));
+      await page.evaluate(() => window.__board21.setRect('21timer:1', { x: 600, y: 40, w: 420, h: 330 }));
+      const app = () => page.frames().find(f => f.url() === 'https://timerapp.ccsd21.org/');
+      ok(await eventually(async () => !!app() && await app().evaluate(() => window.__up === 1)), '(the 21Timer stand-in is up)');
+      const send = m => app().evaluate(m => parent.postMessage(m, '*'), Object.assign({ type: '21timer:status', version: 1, state: 'running', endsAt: null, remaining: null, warnMs: 60000 }, m));
+      await send({ endsAt: ms('10:24') });
+      ok(await eventually(async () => { const w = await wedgeOf(page, ik); return wedgeIs(w, 120, 24) && !!w.warn && Math.abs(w.warn.span - 6) <= 1; }), `21Timer running to 10:24: the wedge ends there, its last minute in the warning color (${said(await wedgeOf(page, ik))})`);
+      await send({ state: 'paused', remaining: 120000 });
+      ok(await eventually(async () => { const w = await wedgeOf(page, ik); return !!w && !w.shown; }), `paused: no wedge (${said(await wedgeOf(page, ik))})`);
+      await ctx.close();
+    });
+
+    // ---- 7c. A mark tapped on a set time belongs to that set time.
+    await part('Mark a time: on a set time', async () => {
+      const { ctx, page } = await newBoard('09:00');
+      const ik = await openClock(page, 600, 600);
+      await choose(page, ik, 'mark'); await choose(page, ik, 'set');
+      await put(page, ik, 'data', { set: { at: 890 }, markAt: null }); await page.waitForTimeout(500);
+      await tapFace(page, ik, 60, 60);   // the 10, with the clock set to 2:50 p.m.
+      let d = await dataOf(page, ik), wd = await wedgeOf(page, ik);
+      ok(!!d && !!d.set && d.set.at === 890 && d.set.mark === 910 && d.markAt === null && wedgeIs(wd, 300, 120),
+        `a tap on a set time marks the set time's 3:10, kept with it: the wedge runs 2:50 to 3:10 (${JSON.stringify(d)}; ${said(wd)})`);
+      await frameL(page, ik).locator('#analog').focus(); await page.keyboard.press('ArrowUp'); await page.waitForTimeout(500);
+      d = await dataOf(page, ik); wd = await wedgeOf(page, ik);
+      ok(d.set.at === 891 && d.set.mark === 910 && wedgeIs(wd, 306, 114), `a new set time keeps the mark, and the wedge shrinks (${JSON.stringify(d)}; ${said(wd)})`);
+      await choose(page, ik, 'set');
+      d = await dataOf(page, ik); wd = await wedgeOf(page, ik);
+      ok(!!d && d.set === null && d.markAt === null && !!wd && !wd.shown, `unchecking Set the time: the real 9:00 with no wedge (${JSON.stringify(d)}; ${said(wd)})`);
+      // A mark from an earlier day has passed, and a set time doesn't bring it back.
+      await choose(page, ik, 'set');
+      await put(page, ik, 'data', { set: { at: 600 }, markAt: ms('10:15') - 864e5 }); await page.waitForTimeout(500);
+      wd = await wedgeOf(page, ik);
+      ok(!!wd && !wd.shown, `yesterday's 10:15 mark, with the clock set to 10:00: no wedge (${said(wd)})`);
+      // A mark on the real time still to come shows on a set time, until the set time gets its own. Now drops that one.
+      await put(page, ik, 'data', { set: { at: 600 }, markAt: ms('10:15') }); await page.waitForTimeout(500);
+      wd = await wedgeOf(page, ik);
+      ok(wedgeIs(wd, 0, 90), `today's 10:15 mark, still to come, with the clock set to 10:00: 15 minutes (${said(wd)})`);
+      await tapFace(page, ik, 180, 60);
+      d = await dataOf(page, ik); wd = await wedgeOf(page, ik);
+      ok(d.set.mark === 630 && d.markAt === ms('10:15') && wedgeIs(wd, 0, 180), `a tap on the 6 marks the set time's 10:30 and leaves today's mark (${JSON.stringify(d)}; ${said(wd)})`);
+      await frameL(page, ik).locator('#now').click(); await page.waitForTimeout(1200);
+      d = await dataOf(page, ik); wd = await wedgeOf(page, ik);
+      ok(JSON.stringify(d.set) === '{"at":null}' && d.markAt === ms('10:15') && !!wd && wd.full, `Now drops the set time's mark; today's, 75 minutes away, fills the ring (${JSON.stringify(d)}; ${said(wd)})`);
+      await put(page, ik, 'data', { set: { at: 600, mark: 2000 }, markAt: null }); await page.waitForTimeout(400);
+      wd = await wedgeOf(page, ik);
+      ok(!!wd && !wd.shown, `a bad mark reads as none (${said(wd)})`);
+      await ctx.close();
+    });
+
+    // ---- 7d. The line at the end of the wedge stays clear of the hour numbers, so it never looks like a hand.
+    await part('Mark a time: the line at its end', async () => {
+      const { ctx, page } = await newBoard('10:00');
+      const ik = await openClock(page, 600, 600);
+      await choose(page, ik, 'mark');
+      await tapFace(page, ik, 90, 60);   // 10:15, so there's a wedge and a line
+      const out = [];
+      for (const face of ['simple', 'old', 'old upright', 'teaching']) {
+        if (face === 'old upright') await choose(page, ik, 'upright');
+        else if (face !== 'simple') await choose(page, ik, 'face:' + face);
+        await page.waitForTimeout(300);
+        // The line, swept round the dial in 1° steps, against each hour number's ink (measured on a canvas in the same
+        // font, so the empty room in a line of text doesn't count).
+        const hits = await F(page, ik, () => {
+          const svg = document.querySelector('#analog'), e = svg.querySelector('.mk-edge');
+          if (!e || getComputedStyle(e).display === 'none') return ['no line'];
+          const a = k => +e.getAttribute(k), sw = parseFloat(getComputedStyle(e).strokeWidth) || 0;
+          const r1 = Math.hypot(a('x1') - 100, a('y1') - 100) - sw / 2, r2 = Math.hypot(a('x2') - 100, a('y2') - 100) + sw / 2;
+          const cv = document.createElement('canvas').getContext('2d');
+          cv.textAlign = 'center'; cv.textBaseline = 'middle';
+          const nums = Array.from(svg.querySelectorAll('.fs-num, .ro-num, .t-hn')).map(t => {
+            const cs = getComputedStyle(t);
+            cv.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+            cv.letterSpacing = cs.letterSpacing === 'normal' ? '0px' : cs.letterSpacing;
+            const m = cv.measureText(t.textContent), x = +t.getAttribute('x'), y = +t.getAttribute('y');
+            const tf = t.transform.baseVal.consolidate();
+            return { t: t.textContent, x0: x - m.actualBoundingBoxLeft, x1: x + m.actualBoundingBoxRight, y0: y - m.actualBoundingBoxAscent, y1: y + m.actualBoundingBoxDescent, inv: tf ? tf.matrix.inverse() : null };
+          });
+          const out = new Set();
+          for (let deg = 0; deg < 360; deg++) {
+            const s = Math.sin(deg * Math.PI / 180), c = Math.cos(deg * Math.PI / 180);
+            for (let r = r1; r <= r2; r += .5) for (const o of [-sw / 2, 0, sw / 2]) {
+              const X = 100 + r * s + o * c, Y = 100 - r * c + o * s;
+              for (const n of nums) {
+                const q = n.inv ? new DOMPoint(X, Y).matrixTransform(n.inv) : { x: X, y: Y };
+                if (q.x > n.x0 && q.x < n.x1 && q.y > n.y0 && q.y < n.y1) out.add(`${n.t} at ${deg}°`);
+              }
+            }
+          }
+          return Array.from(out);
+        });
+        if (hits.length) out.push(`${face}: ${hits.slice(0, 5).join(', ')}${hits.length > 5 ? ` and ${hits.length - 5} more` : ''}`);
+      }
+      ok(!out.length, `on every face, and with Upright numerals, the line at the wedge's end never touches an hour number${out.length ? ': ' + out.join('; ') : ''}`);
+      await ctx.close();
+    });
+
+    // ---- 7e. Setting the time with the LED look, side by side: the panel stays clear of Now.
+    await part('Set the time with the LED look', async () => {
+      const { ctx, page } = await newBoard('14:50');
+      const ik = await openClock(page);
+      await choose(page, ik, 'digital'); await choose(page, ik, 'led'); await choose(page, ik, 'set');
+      const out = [], seen = [];
+      for (const [w, h, words] of [[700, 300, false], [360, 220, false], [360, 250, true], [1300, 760, false]]) {
+        if (words !== !!(await confOf(page, ik)).words) await choose(page, ik, 'words');
+        await size(page, ik, w, h); await page.waitForTimeout(700);
+        const g = await F(page, ik, () => {
+          const box = el => { const r = el.getBoundingClientRect(); return { x: Math.round(r.left), y: Math.round(r.top), r: Math.round(r.right), b: Math.round(r.bottom) }; };
+          return { W: innerWidth, H: innerHeight, dig: box(document.getElementById('dig')), now: box(document.getElementById('now')), svg: box(document.querySelector('.led-svg')),
+            wide: document.getElementById('clock').classList.contains('wide'), arrows: Array.from(document.querySelectorAll('#dig .arrow')).filter(b => b.offsetWidth).length };
+        });
+        const onPanel = !(g.now.r <= g.dig.x || g.now.x >= g.dig.r || g.now.b <= g.dig.y || g.now.y >= g.dig.b);
+        const off = Math.abs((g.svg.x + g.svg.r) / 2 - (g.dig.x + g.dig.r) / 2);
+        seen.push(`${w} × ${h}${words ? ' with words' : ''}: panel ${g.dig.y} to ${g.dig.b}, Now to ${g.now.b}`);
+        if (g.W !== w || g.H !== h || !g.wide || onPanel || off > 3 || g.dig.b > g.H || g.arrows !== 4)
+          out.push(`${w} × ${h}${words ? ' with words' : ''} in ${g.W} × ${g.H}: ${onPanel ? 'Now sits on the panel; ' : ''}${off > 3 ? `the digits are ${Math.round(off)} px off centre; ` : ''}${g.arrows} arrows (panel ${JSON.stringify(g.dig)}, Now ${JSON.stringify(g.now)})`);
+      }
+      ok(!out.length, `side by side, the LED panel starts below Now, and its digits stay centred (${out.length ? out.join('; ') : seen.join('; ')})`);
+      await ctx.close();
+    });
+
+    // ---- 8. Quiz.
+    await part('Quiz', async () => {
+      const { ctx, page } = await newBoard('14:50');
+      const ik = await openClock(page, 700, 360);
+      ok(!(await menuOf(page, ik)).includes('Quiz'), 'analog alone: no Quiz');
+      await choose(page, ik, 'digital'); await size(page, ik, 700, 360); await page.waitForTimeout(400);
+      ok(await choose(page, ik, 'quiz') && (await confOf(page, ik)).quiz === true, 'Quiz, with both shown');
+      let l = await look(page, ik);
+      ok(l.q === '?' && l.time === null && l.analog, `the digital clock shows ? (${l.q}, ${l.time})`);
+      const tapDigital = async () => { await frameL(page, ik).locator('#readout').click(); await page.waitForTimeout(350); return look(page, ik); };
+      l = await tapDigital();
+      ok(l.q === null && l.time === '2:50PM', `a tap shows the time (${l.time})`);
+      l = await tapDigital();
+      ok(l.q === '?' && l.time === null, 'another tap flips it back to ?');
+      // On a keyboard: one button in both states, so focus stays on it, and a screen reader hears each label.
+      const keys = () => F(page, ik, () => {
+        const r = document.getElementById('readout'), q = document.getElementById('q'), a = document.activeElement;
+        return { focus: a && a.id, role: r.getAttribute('role'), tab: r.tabIndex, label: r.getAttribute('aria-label'),
+          qQuiet: q.getAttribute('aria-hidden') === 'true' && !q.hasAttribute('tabindex') && !q.hasAttribute('role') };
+      });
+      await frameL(page, ik).locator('#readout').focus();
+      let k = await keys();
+      ok(k.focus === 'readout' && k.role === 'button' && k.tab === 0 && k.label === 'Show the time' && k.qQuiet, `the keyboard reaches it: a button, “${k.label}” (${JSON.stringify(k)})`);
+      await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+      l = await look(page, ik); k = await keys();
+      ok(l.time === '2:50PM' && k.focus === 'readout' && k.label === 'Hide the time', `Enter shows the time, focus stays, and it says “${k.label}” (${l.time}; ${JSON.stringify(k)})`);
+      await page.keyboard.press('Enter'); await page.waitForTimeout(300);
+      l = await look(page, ik); k = await keys();
+      ok(l.q === '?' && l.time === null && k.focus === 'readout' && k.label === 'Show the time', `Enter again: ? again, “${k.label}” (${JSON.stringify(k)})`);
+      await page.keyboard.press('Space'); await page.waitForTimeout(300);
+      const sp = (await look(page, ik)).time;
+      await page.keyboard.press('Space'); await page.waitForTimeout(300);
+      ok(sp === '2:50PM' && (await look(page, ik)).q === '?', `Space flips it too (${sp})`);
+      await choose(page, ik, 'words'); await page.waitForTimeout(300);
+      l = await look(page, ik);
+      ok(l.q === '?' && l.words === null, `Time in words is hidden while it shows ? (${l.words})`);
+      l = await tapDigital();
+      ok(l.time === '2:50PM' && l.words === 'ten to three', `and shows with the time (${l.words})`);
+      // A new set time asks again, so the hands never give the answer away.
+      await choose(page, ik, 'set'); await page.waitForTimeout(300);
+      l = await look(page, ik);
+      ok(l.time === '2:50PM', 'Set the time alone sets no new time: still shown');
+      await frameL(page, ik).locator('#dig .arrow[data-k="mu"]').click(); await page.waitForTimeout(500);
+      l = await look(page, ik);
+      ok(l.q === '?' && l.words === null, `▲ sets a new time: ? again (${l.q})`);
+      l = await tapDigital();
+      ok(l.time === '2:51PM', `(shown: ${l.time})`);
+      await dragFace(page, ik, 306, 330, 70);
+      l = await look(page, ik);
+      ok(l.q === '?', `dragging the hands: ? again (${l.q})`);
+      // Never saved.
+      await tapDigital();
+      const d = await dataOf(page, ik), c = await confOf(page, ik);
+      ok(d && Object.keys(d).sort().join() === 'markAt,set' && !('revealed' in c) && Object.keys(c).length === 16, `whether it shows ? is never saved (${JSON.stringify(d)})`);
+      await page.reload(); await boardUp(page); await connected(page, ik); await page.waitForTimeout(1200);
+      l = await look(page, ik);
+      ok(l.q === '?', `after a reload: ? (${l.q})`);
+      await choose(page, ik, 'analog');
+      l = await look(page, ik); k = await keys();
+      ok(l.q === null && !!l.time && !(await menuOf(page, ik)).includes('Quiz') && !k.role && k.tab === -1 && !k.label, `digital alone: no Quiz, the time shows, and it's no button (${l.time}; ${JSON.stringify(k)})`);
+      await ctx.close();
+    });
+
+    // ---- 9. Hour hand only, and Time in words.
+    await part('Hour hand only and Time in words', async () => {
+      const { ctx, page } = await newBoard('10:15');
+      const ik = await openClock(page, 500, 500);
+      ok(!(await menuOf(page, ik)).includes('Hour hand only'), 'Simple: no Hour hand only');
+      await choose(page, ik, 'face:teaching');
+      ok(await choose(page, ik, 'hourOnly') && (await confOf(page, ik)).hourOnly === true, 'Teaching: Hour hand only');
+      let l = await look(page, ik);
+      const minutes = await F(page, ik, () => Array.from(document.querySelectorAll('#analog .t-mn')).filter(t => getComputedStyle(t).display !== 'none').length);
+      ok(!l.minuteHand && minutes === 12 && l.analog, `the minute hand is hidden; the minute numbers stay (${minutes})`);
+      await choose(page, ik, 'face:simple');
+      l = await look(page, ik);
+      ok(l.minuteHand && !(await menuOf(page, ik)).includes('Hour hand only'), 'another face: the minute hand is back');
+      await choose(page, ik, 'words'); await page.waitForTimeout(300);
+      l = await look(page, ik);
+      ok(l.words === 'quarter past ten', `Time in words: “${l.words}” at 10:15`);
+      await choose(page, ik, 'set');
+      const wordsAt = async at => { await put(page, ik, 'data', { set: { at }, markAt: null }); await page.waitForTimeout(400); return (await look(page, ik)).words; };
+      const want = [[615, 'quarter past ten'], [720, 'noon'], [0, 'midnight'], [334, 'twenty-six minutes to six'], [585, 'quarter to ten'], [1022, 'two minutes past five'], [781, 'one minute past one']];
+      const got = [];
+      for (const [at] of want) got.push(await wordsAt(at));
+      ok(JSON.stringify(got) === JSON.stringify(want.map(w => w[1])), `10:15, noon, midnight, 5:34, 9:45, 5:02, and 1:01 (${got.join(' | ')})`);
+      await choose(page, ik, 'digital'); await choose(page, ik, 'analog');
+      ok(await wordsAt(334) === 'twenty-six minutes to six', 'digital too');
+      await choose(page, ik, 'set');
+      await choose(page, ik, 'date');
+      l = await look(page, ik);
+      ok(l.dateOnly && l.words === null, 'Date only: no words');
+      await ctx.close();
+    });
+
+    // ---- 10. Board history: a set Clock says so, briefly.
+    await part('Board history', async () => {
+      const { ctx, page } = await newBoard('10:15');
+      const lines = await page.evaluate(() => [{ set: { at: 890 }, markAt: null }, { set: { at: 0 }, markAt: null }, { set: { at: null }, markAt: null }, { set: null, markAt: 5 }, { set: { at: 2000 } }, { set: { at: 890, mark: 910 }, markAt: null }].map(d => window.__board21.history.excerptOf(d, 'clock')));
+      ok(JSON.stringify(lines) === JSON.stringify(['Set to 2:50 p.m.', 'Set to 12:00 a.m.', '', '', '', 'Set to 2:50 p.m.']), `a set time's line: “Set to 2:50 p.m.”, with its mark too; nothing otherwise (${JSON.stringify(lines)})`);
+      await ctx.close();
+    });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
 ];
 
