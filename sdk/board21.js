@@ -32,7 +32,7 @@
   // from the old page doesn't count.)
   if (window.Board21 && window.Board21.page === document.documentElement) return;
 
-  var SDK_VERSION = '1.3.0';
+  var SDK_VERSION = '1.4.0';
   var PROTOCOL = 1;
   var ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   var me = document.currentScript;
@@ -229,7 +229,7 @@
       widgetId: standaloneId(), widgetName: String(man.name || document.title || 'Widget'), widgetVersion: String(man.version || ''), instance: 1,
       data: s.data === undefined ? null : s.data, config: s.config === undefined ? null : s.config,
       theme: theme, palette: PALETTES[theme], window: windowInfo(),
-      locale: navigator.language || 'en-US', devMode: true, host: 'standalone'
+      locale: navigator.language || 'en-US', devMode: true, host: 'standalone', timers: []
     };
     applyTheme(theme);
     window.addEventListener('resize', function () { emit('resize', windowInfo()); });
@@ -338,6 +338,11 @@
         if ((listeners.file || []).length) emit('file', f[0], f[1]); else heldFiles.push(f);
         break;
       }
+      // The Timers and 21Timer on the page, for the built-in Traffic Light and Clock: [{ id, endsAt, remaining, warnMs }].
+      case 'timers':
+        if (context) context.timers = m.timers;
+        emit('timers', clone(m.timers));
+        break;
     }
   });
 
@@ -525,7 +530,7 @@
     /** 'light' or 'dark'. */
     get theme() { return context ? context.theme : 'light'; },
 
-    /** Subscribe: 'data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose', 'file' (the Picture widget's). Returns an unsubscribe function. */
+    /** Subscribe: 'data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose', 'file' (the Picture widget's), 'timers' (the Traffic Light's and the Clock's). Returns an unsubscribe function. */
     on: function (event, fn) {
       (listeners[event] = listeners[event] || []).push(fn);
       if (event === 'file' && heldFiles.length) {

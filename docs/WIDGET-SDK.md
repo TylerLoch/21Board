@@ -118,6 +118,7 @@ The **context**:
   sdkProtocol: 1,
   host: 'board',             // 'board', 'dev' (the dev window's test board), or 'standalone'
   kiosk: false,              // ChromeOS kiosk mode (?kiosk=yes): links can't open new windows
+  timers: [ ... ],           // the built-in Traffic Light and Clock only (see Events); [] standalone
   standalone: false
 }
 ```
@@ -226,6 +227,7 @@ and links are stripped. Up to 24 items. A swatch row counts as one and holds up 
 | `menu` | `(id, item)` | One of your menu items was tapped. |
 | `beforeclose` | — | The window is about to close. Save anything pending *synchronously* (call `save()`). |
 | `file` | `(file, { reason })` | A picture or a video link pasted or dropped on the board, for the window the board opened for it. A link comes as a `text/uri-list` file. `reason` is `'paste'` or `'drop'`. Only the built-in Picture and Video Player widgets get it. |
+| `timers` | `(timers)` | The Timers and 21Timer on the page shown that are running, paused, or done, each `{ id, endsAt, remaining, warnMs }`. `endsAt` is the end while running, else `null`. `remaining` is the time left while paused, `0` when done, else `null`. `warnMs` is the warning, or `0`. Times are in ms. Fires when the list changes. `context.timers` has it from the start. Only the built-in Traffic Light and Clock get it. |
 
 ### Other
 
@@ -418,9 +420,14 @@ changed without a new release never reaches them.
 
 What `external: true` changes:
 
-- **No SDK.** The page belongs to another site, and the board never connects to it. It takes no messages from
-  the page and sends it nothing, not even the theme. Nothing is saved for it on the board. The app keeps its own
-  work on the device (IndexedDB, localStorage), as it does when opened on its own.
+- **No SDK.** The page belongs to another site, and the board never connects to it. It sends the page nothing,
+  not even the theme. Nothing is saved for it on the board. The app keeps its own work on the device (IndexedDB,
+  localStorage), as it does when opened on its own.
+- **One message, from 21Timer.** For the Traffic Light, the board reads how much time 21Timer has left. It stores
+  nothing. 21Timer sends it from its 2.0 release:
+  `{ type: '21timer:status', version: 1, state, endsAt, remaining, warnMs }`. The board takes it only from the frame
+  of an open 21Timer window, from 21Timer's own origin, with every number checked. It ignores everything else from
+  the apps.
 - **Not in 21Board's offline copy or release stamp.** `sw.js` leaves it out. Offline, the window shows the app
   only if the app keeps its own offline copy, with its own service worker. 21Board shows "Offline" beside the
   window's name and says so once in a toast. It can't tell whether the app loaded.

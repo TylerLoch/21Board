@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.21-1';
+const VERSION = '2026.11.21-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'b53ce8c4';
+const BUILD = 'ab92fd87';
 const FILES = {
-  './': 'eee11acccb1d3c8c',
-  'index.html': 'eee11acccb1d3c8c',
-  'board.js': '207515c2bd37df05',
-  'sdk/board21.js': '97e07868a5349382',
+  './': '2bd9c9b15873d00d',
+  'index.html': '2bd9c9b15873d00d',
+  'board.js': '112d1301de615932',
+  'sdk/board21.js': 'aa5d5880e3a9c4a1',
   'sdk/board21-dev.js': 'f7c7181b53d5025a',
   'sdk/dev/board-shell.js': 'b855220e82bbedad',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': 'a769cf6a75729bbb',
+  'widgets/registry.js': '2ccafb6aa62090d7',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -37,7 +37,7 @@ const FILES = {
   'fonts/EarlyReaders-Regular.woff2': 'e96901beca9ae308',
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
-  'widgets/timer/index.html': '6f2d2f7354a10fe6',
+  'widgets/timer/index.html': '52a0094eeebbb200',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
   'widgets/clock/index.html': '21a98aa1d345b489',
@@ -54,13 +54,13 @@ const FILES = {
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
   'widgets/zones-check-in/index.html': '864a20929f03aad1',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
-  'widgets/traffic-light/index.html': 'ef3aaa87ecd1bdc1',
+  'widgets/traffic-light/index.html': 'f261e137988dc107',
   'widgets/youtube-player/index.html': '32fa8d870d4a57d4',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
   'widgets/calculator/index.html': 'c17d1f43f6e11556',
   'widgets/calculator/calc-engine.js': '2591c6f99c951cd6',
-  'widgets/sdk-playground/index.html': '0dff97332041a455'
+  'widgets/sdk-playground/index.html': '12cf5a8c7f820850'
 };
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION + '-' + BUILD;

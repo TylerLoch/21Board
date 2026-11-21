@@ -515,6 +515,13 @@ The Zones Check-In (`zones-check-in`) saves `{ day, counts: { blue, green, yello
 the last change, `YYYY-MM-DD`. `undo` is up to 20 earlier counts, each `[blue, green, yellow, red]`. Its config is
 `{ classSize, showCounts, daily, sound }`.
 
+The Timer (`timer`) saves `{ duration, remaining, endsAt }`, in ms. `endsAt` is when it ends while running, else
+`null`. Its config is `{ sound, warn }`. `warn` is how many minutes before the end it turns amber. It's `0` for Off,
+`1`, `2`, or `5`, and a missing or unknown one reads as `1`. Whether it is amber is never saved.
+
+The Traffic Light (`traffic-light`) saves `{ active: "red" | "yellow" | "green" | null }`, the color the teacher
+chose. Its config is `{ follow: true }` while Follow timers is on. The color it follows is never saved.
+
 The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
 their own work in their own site's storage on the device. Their windows have an `inst` record like any other,
 and exports and Board history carry that (with `data` and `config` null), never an address.

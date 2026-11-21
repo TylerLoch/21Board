@@ -186,7 +186,6 @@ const W = {
   'first-then-board': { r: { w: 1080, h: 760 }, set: async (p, ik) => { await ftCard(p, ik, 'first', 'math', 'Math'); await ftCard(p, ik, 'then', 'play', 'Playground'); } },
   'zones-check-in': { r: { w: 560, h: 460 }, set: (p, ik) => zonesCounts(p, ik, { blue: 2, green: 9, yellow: 4, red: 1 }) },   // (the size it opens at)
   dice: { r: { w: 820, h: 560 }, set: (p, ik) => rollDice(p, ik, 3) },
-  'traffic-light': { r: { w: 380, h: 890 }, set: (p, ik) => light(p, ik, 'yellow') },
   'youtube-player': { r: { w: 960, h: 580 } },
   image: { r: { w: 1080, h: 760 }, set: async (p, ik) => { await openPicture(p, ik, path.join(HERE, 'water-cycle.svg')); await setRect(p, ik, { x: 660, y: 245, w: 1080, h: 760 }); await wait(p, 800); } },
   calculator: { r: { w: 900, h: 640 }, at: { x: 200, y: 120 }, set: async (p, ik) => { await choose(p, ik, 'History', { exact: true }); await calcType(p, ik, ['Digit2', 'Digit5', 'Shift+Equal', 'Digit1', 'Digit7', 'Enter']); await calcType(p, ik, ['Digit1', 'Digit2', 'Shift+Digit8', 'Digit4', 'Enter']); } },
@@ -234,6 +233,25 @@ for (const [id, cfg] of Object.entries(W)) {
     await ctx.close();
   };
 }
+
+// The Traffic Light on its side, following a Timer in its warning (Follow timers): yellow beside the amber Timer.
+SCENES['w-traffic-light'] = async () => {
+  const { ctx, p, blocked } = await newBoard();
+  const tl = await addWin(p, 'traffic-light'), tm = await addWin(p, 'timer');
+  await setRect(p, tl, { x: 600, y: 470, w: 520, h: 290 });
+  await setRect(p, tm, { x: 1160, y: 400, w: 640, h: 430 });
+  await wait(p, 800);
+  await startTimer(p, tm);   // 5 minutes
+  await choose(p, tl, 'Follow timers', { exact: true });
+  await S.later(p, 4 * 60000 + 15000);   // 45 seconds left: the Timer's warning
+  await wait(p, 2500);
+  await deselect(p);
+  await wait(p, 300);
+  log('  titles', JSON.stringify(await p.$$eval('.win .win-label', els => els.map(e => e.innerText))));
+  await shot(p, 'w-traffic-light.jpg', await around(p, [tl, tm], 24));
+  if (blocked.length) log('  blocked', JSON.stringify(blocked.slice(0, 10)));
+  await ctx.close();
+};
 
 // ---- 5. menu.jpg: the Notes window's menu
 SCENES.menu = async () => {

@@ -231,8 +231,8 @@
   const EXAMPLE_NAMES = { checkmarks: 'Checkmarks', heading: 'Heading', swatches: 'Swatches', icon: 'Icon' };
 
   // ---- Events, and what a handler gets.
-  const EVENTS = ['data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose', 'file'];
-  const SIGNATURES = { data: '(data, { reason })', config: '(config, { reason })', theme: '(theme, palette)', resize: '(info)', focus: '()', blur: '()', menu: '(id, item)', beforeclose: '()', file: '(file, { reason })' };
+  const EVENTS = ['data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose', 'file', 'timers'];
+  const SIGNATURES = { data: '(data, { reason })', config: '(config, { reason })', theme: '(theme, palette)', resize: '(info)', focus: '()', blur: '()', menu: '(id, item)', beforeclose: '()', file: '(file, { reason })', timers: '(timers)' };
 
   // ---- Every call. args: [name, kind, default, nullable]. prop: a value read, not called.
   const json = v => JSON.stringify(v, null, 2);
@@ -463,7 +463,7 @@
   wide.addEventListener('change', () => { showTab(current); if (wide.matches) Log.toEnd(); });
 
   // ---- State: content, config, window info and the context, as they are now.
-  const CONTEXT_KEYS = ['widgetId', 'widgetName', 'widgetVersion', 'instance', 'theme', 'text-style', 'palette', 'locale', 'devMode', 'boardVersion', 'sdkProtocol', 'host', 'kiosk', 'standalone'];
+  const CONTEXT_KEYS = ['widgetId', 'widgetName', 'widgetVersion', 'instance', 'theme', 'text-style', 'palette', 'locale', 'devMode', 'boardVersion', 'sdkProtocol', 'host', 'kiosk', 'timers', 'standalone'];   // (on the board, only the Traffic Light and Clock get timers: — here)
   const WINDOW_KEYS = ['width', 'height', 'x', 'y', 'maximized', 'focused', 'zoom', 'corners'];
   const SECTIONS = { data: 'Content', config: 'Config' };
   // The text style the teacher chose, from the font that leads --b21-font.
