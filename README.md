@@ -8,7 +8,7 @@ Widgets are built on their own and dropped in.
 
 - Plain HTML, CSS, JavaScript, and SVG. **No libraries, build step, or server code.**
 - Installable PWA that **works offline**
-- **Private.** Your work is stored only on your device, and in your own Google Drive if you turn on Board Sync.
+- **Private.** Your work is stored only on your device, and in your school Google Drive if you turn on Board Sync.
   21Board has no servers and no accounts.
 - **Online only when needed.** For updates, district apps, and videos.
 - Production: <https://boardapp.ccsd21.org>
@@ -553,7 +553,7 @@ repeats the last step, so 5 + 5 = = = counts by 5s. A faint comma groups the dig
 - **Canvas:** the big problem and its steps. Off, a small display sits above the keys, as on a phone.
 - **History:** your problems, one to a line, the newest at the bottom. Tap a line to change it, or its answer to use
   it.
-- **Steps:** Next step, Back, and Show all, with PEMDAS lit. A clicker's Page Down works too.
+- **Steps:** Next step, Back, and Show all, with each step's rule lit. A clicker's Page Down works too.
 - **In words:** "2 plus 3 times 4 equals 14" under the problem.
 - **Advanced keys:** a² aᵇ ⁿ√ ∛ π % a/b →. Off to start.
 - **Hide the answer:** the class predicts, then taps to see.

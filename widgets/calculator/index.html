@@ -105,19 +105,21 @@
     .lw { grid-column: 2; margin: 0 0 .25em; font-size: .52em; }
   }
 
-  /* Under the board: PEMDAS lit for the step on screen, and the step buttons */
+  /* Under the board: the rule cells, in Amplify's order, with the step on screen's rule lit; then the step buttons */
   #player { flex: 0 0 auto; align-items: center; gap: .55em; height: clamp(52px, 12cqh, 112px); font-size: clamp(14px, min(3.7cqh, 2.6cqw), 32px); border-top: 1px solid var(--b21-border); }
-  .pemdas { flex: 1 1 auto; display: inline-flex; gap: .1em; min-width: 0; overflow: hidden; }
-  .pemdas b { display: inline-grid; place-items: center; width: 1.25em; height: 1.4em; border-radius: .38em; font-size: max(16px, .9em); font-weight: 700; color: var(--b21-muted); transition: background-color .2s, color .2s; }
-  .pemdas b.lit { background: var(--b21-accent); color: var(--b21-on-accent); }
-  .pemdas b.soft { background: var(--b21-accent-soft); color: var(--b21-text); }
+  .rules { flex: 1 1 auto; display: inline-flex; gap: .14em; min-width: 0; overflow: hidden; }
+  .rules b { flex: 0 0 auto; display: inline-block; height: 1.4em; padding: 0 .27em; border-radius: .38em; font-size: max(16px, .9em); font-weight: 700; line-height: 1.4em; white-space: nowrap; word-spacing: -.12em; color: var(--b21-muted); transition: background-color .2s, color .2s; }
+  .rules b.lit { background: var(--b21-accent); color: var(--b21-on-accent); }
+  .rules b.soft { background: var(--b21-accent-soft); color: var(--b21-text); }
+  .rules i { font-family: Georgia, "Times New Roman", serif; font-style: italic; }
+  .rules sup { font-size: .62em; line-height: 0; vertical-align: baseline; position: relative; top: -.42em; margin-left: .04em; }
   .btn { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; gap: .3em; height: max(44px, 2.5em); min-width: max(44px, 2.5em); padding: 0 1em; border: 0; border-radius: 999px; background: var(--b21-surface-2); font-weight: 600; white-space: nowrap; cursor: pointer; }
   .btn svg { width: 1.15em; height: 1.15em; stroke-width: 2.3; }
   .btn.icon { padding: 0; }
   .btn.primary { background: var(--b21-accent); color: var(--b21-on-accent); }
   .btn:disabled { opacity: .4; cursor: default; }
   .btn:not(:disabled):active { filter: brightness(.92); }
-  @container cv (max-width: 399.98px) { .pemdas { visibility: hidden; } }
+  @container cv (max-width: 399.98px) { .rules { visibility: hidden; } }
 
   /* The compact display: the problem in small type above the big number */
   .xline { display: flex; justify-content: flex-end; min-width: 0; overflow: hidden; }
@@ -239,7 +241,7 @@
   @keyframes pop { 0% { opacity: 0; transform: scale(.6); } 100% { opacity: 1; transform: none; } }
   @media (prefers-reduced-motion: reduce) {
     .ln.on.in, .lw.on.in, .shown .ce-ans, #big.shown { animation: none; }
-    .key, .track, .knob, .pemdas b { transition: none; }
+    .key, .track, .knob, .rules b { transition: none; }
     .key:active, .key.hit { transform: none; }
   }
 </style>
@@ -262,7 +264,7 @@
           <ol id="chain" aria-label="Steps"></ol>
         </div>
         <div id="player">
-          <span class="pemdas" aria-hidden="true"><b>P</b><b>E</b><b>M</b><b>D</b><b>A</b><b>S</b></span>
+          <span class="rules" aria-hidden="true"><b data-rule="P">( )</b><b data-rule="E"><i>x</i><sup><i>n</i></sup> √</b><b data-rule="MD">× ÷</b><b data-rule="AS">+ −</b></span>
           <button type="button" class="btn icon" id="back" aria-label="Back"></button>
           <button type="button" class="btn primary" id="next"><span>Next step</span></button>
           <button type="button" class="btn" id="all">Show all</button>
@@ -343,7 +345,7 @@
 
   const el = {
     app: $('app'), grid: $('grid'), canvas: $('canvas'), card: $('card'), board: $('board'), eq: $('eq'), eqline: document.querySelector('.eqline'),
-    eqToggle: $('eqToggle'), said: $('said'), note: $('note'), chain: $('chain'), player: $('player'), pemdas: Array.from(document.querySelectorAll('.pemdas b')),
+    eqToggle: $('eqToggle'), said: $('said'), note: $('note'), chain: $('chain'), player: $('player'), rules: Array.from(document.querySelectorAll('.rules b')),
     count: $('count'), rule: $('rule'), back: $('back'), next: $('next'), all: $('all'), hide: $('hide'),
     disp: $('disp'), xline: document.querySelector('.xline'), x: $('x'), bigline: document.querySelector('.bigline'), big: $('big'), bigToggle: $('bigToggle'), hint: $('hint'),
     keys: $('keys'), history: $('history'), hlist: $('hlist'), live: $('live')
@@ -629,15 +631,14 @@
     let words = '', bad = false;
     if (cur && cur.error) { words = cur.error.short; bad = true; }
     if (cur && !cur.final && cur.rule) {
-      const letters = { P: 'P', E: 'E', MD: 'MD', AS: 'AS' }[cur.rule] || '';   // O (the opposite) lights none
-      letters.split('').forEach(l => lit.add(l));
-      // Inside parentheses, P is why it goes first and the operation shows softly. Inside a √, a power or a
-      // fraction, nothing says P: the words say "Inside first".
-      if (cur.inside) letters.split('').forEach(l => { if (l !== 'P') { lit.delete(l); soft.add(l); } });
+      // P lights ( ), E xⁿ √, MD × ÷, and AS + −. O (the opposite) lights none.
+      if (cur.rule !== 'O') (cur.inside && cur.rule !== 'P' ? soft : lit).add(cur.rule);
+      // Inside parentheses, ( ) is why it goes first and the operation's cell shows softly. Inside a √, a power or a
+      // fraction, nothing lights ( ): the words say "Inside first".
       if (cur.inside === 'parens') lit.add('P');
       if (!bad) words = cur.inside === 'parens' ? E.RULES.P : cur.inside === 'box' ? E.RULES.G : (E.RULES[cur.rule] || '');
     }
-    el.pemdas.forEach((b, i) => { const l = 'PEMDAS'[i]; b.className = lit.has(l) ? (bad ? 'soft' : 'lit') : soft.has(l) ? 'soft' : ''; });
+    el.rules.forEach(b => { const r = b.dataset.rule; b.className = lit.has(r) ? (bad ? 'soft' : 'lit') : soft.has(r) ? 'soft' : ''; });
     el.rule.textContent = cfg.steps ? words : '';
     el.rule.classList.toggle('bad', bad);
     const end = n > 0 && shown >= n, canGo = (work && !end) || ready;

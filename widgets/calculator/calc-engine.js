@@ -864,8 +864,9 @@
     '+': [1, 'add', 'AS'], '-': [1, 'subtract', 'AS'], of: [2, 'percent', 'MD'], mixed: [2, 'divide', 'MD'],
     sqrt: [3, 'root', 'E'], root: [3, 'root', 'E'], pct: [3, 'percent', 'MD'], neg: [3, 'sign', 'O'], group: [4, 'parens', 'P']
   };
-  // P E MD AS light those PEMDAS letters. O (the opposite of a number, −(−3) = 3) and G (inside a root, a power or a
-  // fraction) light none, or P softly.
+  // The words for each step's rule. On the canvas, P E MD AS light the rule cells ( ), xⁿ √, × ÷, and + −. O (the
+  // opposite of a number, −(−3) = 3) lights none. G (inside a root, a power or a fraction) shows the operation's cell
+  // softly.
   const RULES = {
     P: 'Parentheses first',
     G: 'Inside first',
@@ -1302,19 +1303,28 @@
         if (!b || !ended()) return false;
         return push(b === 'paren' ? { t: 'close' } : b === 'numer' || b === 'index' ? { t: 'sep' } : { t: 'end' });
       }
-      case 'negate': {
-        if (done) { S.tokens = [ans(negate(S.result), true)]; S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true; }
+      case 'negate': {   // the opposite. 0 is its own opposite, so ± leaves a 0 alone (6.NS.C.6a).
+        if (done) {
+          if (isZero(S.result)) return false;
+          S.tokens = [ans(negate(S.result), true)]; S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true;
+        }
         if (failed) fresh();
         const t = last();
-        if (t && t.t === 'num') return setLast({ t: 'num', s: t.s, neg: !t.neg });
+        if (t && t.t === 'num') {
+          if (!/[1-9]/.test(t.s)) return t.neg && setLast({ t: 'num', s: t.s, neg: false });   // 0, 0., 0.00 (a − that ⌫ left comes off)
+          return setLast({ t: 'num', s: t.s, neg: !t.neg });
+        }
         if (t && t.t === 'ans') return !isZero(t.v) && setLast(ans(negate(t.v), t.auto));
         if (t && t.t === 'prev') {   // −ans (sheet): a minus sign in front, or off again
           const b = S.tokens[S.tokens.length - 2];
           if (b && b.t === 'neg') return tryTokens(S.tokens.slice(0, -2).concat([t]));
           return tryTokens(S.tokens.slice(0, -1).concat([{ t: 'neg' }, t]));
         }
-        if (t && OPERAND_END[t.t]) return false;   // after ), π, a box, %: nothing being typed to change
-        return push({ t: 'num', s: '0', neg: true });   // −0, ready for digits
+        if (t && t.t === 'neg') return pop();   // a lone − goes again
+        // Nothing typed yet (the display's 0), or after ), π, a box, %: nothing to change. After an operator, (, √, or
+        // a box opening, a lone −, as − starts there: 5 + ± 3 is 5 + (−3).
+        if (!t || OPERAND_END[t.t]) return false;
+        return push({ t: 'neg' });
       }
       case 'ans': {
         if (sheet) return useValue(S, { t: 'prev' });

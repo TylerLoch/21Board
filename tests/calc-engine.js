@@ -363,9 +363,10 @@ test('± on a number being typed, and again', () => {
   c.press('±');
   assert.strictEqual(c.state().display, '12');
 });
-test('± with nothing typed starts −0, and digits go after it', () => {
+test('± after an operator starts a lone −, as − does, and digits go after it', () => {
   const c = typed('5+±');
-  assert.strictEqual(c.state().display, '−0');
+  assert.strictEqual(c.state().expression.text, typed('5+−').state().expression.text);
+  assert.ok(!/−0/.test(c.state().display + c.state().expression.text));
   c.input('3=');
   assert.strictEqual(c.state().equation.text, '5 + (−3) = 2');
 });
@@ -2226,6 +2227,106 @@ test('words: −(3/2)², (−3/−2)², and (1/2)² keep their words', () => {
 test('the ± key is called “opposite”', () => {
   assert.strictEqual(C.KEYS.negate.label, '±');
   assert.strictEqual(C.KEYS.negate.name, 'opposite');
+});
+
+// ---- 27. ± leaves 0 alone, since 0 is its own opposite (6.NS.C.6a); the steps' rules (2026.11.22-1) -------------------
+// No −0, −0., or −0.00 on the display, in the problem, or in its words. (−0.5 is a number: it may show.)
+const NEG0 = /−0(?:\.0*)?(?![.0-9])/, SAID0 = /negative 0(?:\.0*)?(?![.0-9])/;
+function noNegZero(c, what) {
+  const st = c.state();
+  for (const s of [st.display, st.expression.text, st.equation.text]) assert.ok(!NEG0.test(s || ''), `${what}: no −0 (${s})`);
+  for (const s of [st.expression.speech, st.equation.speech]) assert.ok(!SAID0.test(s || ''), `${what}: no “negative 0” (${s})`);
+}
+test('± leaves 0 alone: a new calculator, AC, 0, 0., and 0.00 change nothing', () => {
+  const c = fresh();
+  assert.strictEqual(c.press('±'), false, 'a new calculator');
+  assert.strictEqual(c.state().display, '0');
+  noNegZero(c, '±');
+  c.input('5+3='); c.press('clear');
+  const before = JSON.stringify(c.serialize());
+  assert.strictEqual(c.press('±'), false, 'after AC');
+  assert.strictEqual(JSON.stringify(c.serialize()), before);
+  noNegZero(c, 'AC ±');
+  for (const s of ['0', '0.', '0.00', '.', '5+0', '5×0.0']) {
+    const d = typed(s), was = d.state().display;
+    assert.strictEqual(d.press('±'), false, s);
+    assert.strictEqual(d.state().display, was, s);
+    noNegZero(d, s + ' ±');
+  }
+  assert.strictEqual(calc('0±3').equation.text, '3 = 3', 'digits after it make a plain number');
+});
+test('± right after an operator starts a lone −, as − does there, and a second ± takes it away', () => {
+  for (const op of ['+', '−', '×', '÷']) {
+    const a = typed('5' + op), b = typed('5' + op + '−');
+    assert.strictEqual(a.press('±'), true, op);
+    assert.deepStrictEqual(a.serialize(), b.serialize(), op);
+    assert.strictEqual(a.state().display, b.state().display, op);
+    assert.strictEqual(a.state().expression.text, b.state().expression.text, op);
+    noNegZero(a, `5 ${op} ±`);
+    assert.strictEqual(a.press('±'), true, op + ' twice');
+    assert.deepStrictEqual(a.serialize(), typed('5' + op).serialize(), `${op}: the second ± takes the − away`);
+  }
+  assert.strictEqual(calc('5+±3').equation.text, '5 + (−3) = 2');
+  assert.strictEqual(calc('5+±±3').equation.text, '5 + 3 = 8');
+  assert.strictEqual(calc('5×±3').equation.text, '5 × (−3) = −15');
+  const c = typed('5+−');
+  assert.strictEqual(c.press('±'), true, 'a − typed there goes too');
+  assert.deepStrictEqual(c.serialize(), typed('5+').serialize());
+});
+test('± where a number starts, inside (, √, a power, or a fraction, starts a lone − too', () => {
+  for (const [k, same] of [['(', '(−'], ['√', '√−'], ['2^', '2^−'], ['a/b', 'a/b−']]) {
+    const a = typed(k);
+    assert.strictEqual(a.press('±'), true, k);
+    assert.deepStrictEqual(a.serialize(), typed(same).serialize(), k);
+    noNegZero(a, k + ' ±');
+  }
+  assert.strictEqual(calc('(±3)').equation.text, '(−3) = −3');
+});
+test('± still flips every other number, and an answer; an answer of 0 and ) are left alone', () => {
+  assert.strictEqual(typed('3±').state().display, '−3');
+  assert.strictEqual(typed('3±±').state().display, '3');
+  assert.strictEqual(typed('0.5±').state().display, '−0.5');
+  assert.strictEqual(typed('2+3=±').state().display, '−5');
+  const z = typed('5−5=');
+  assert.strictEqual(z.press('±'), false, 'an answer of 0');
+  assert.strictEqual(z.state().display, '0');
+  noNegZero(z, '5 − 5 = ±');
+  assert.strictEqual(typed('(2)').press('±'), false);
+});
+test('± takes the sign off a negative 0 that ⌫ leaves, and then leaves it alone', () => {
+  const c = typed('0.5±');
+  c.press('backspace');
+  assert.strictEqual(c.state().display, '−0.');
+  assert.strictEqual(c.press('±'), true);
+  assert.strictEqual(c.state().display, '0.');
+  assert.strictEqual(c.press('±'), false);
+  noNegZero(c, '0.5 ± ⌫ ±');
+});
+test('In words never says “negative 0” after ±', () => {
+  for (const s of ['±', '0±', '0.±', '5+±', '5+±±', '5−5=±', '(±', '5+0±']) {
+    const c = typed(s);
+    noNegZero(c, s);
+    assert.ok(!SAID0.test(c.state().expression.speech || ''), s);
+  }
+  assert.strictEqual(calc('5+±3').equation.speech, '5 plus negative 3 equals 2');
+});
+test('the steps keep their rules: P, E, MD (with % of), AS, O, inside parentheses or a box', () => {
+  const rules = s => calc(s).steps.filter(x => !x.final).map(x => x.rule + (x.inside ? ' ' + x.inside : ''));
+  assert.deepStrictEqual(rules('2+3×4'), ['MD', 'AS']);
+  assert.deepStrictEqual(rules('(2+3)×4'), ['AS parens', 'MD']);
+  assert.deepStrictEqual(rules('2^3'), ['E']);
+  assert.deepStrictEqual(rules('√16'), ['E']);
+  assert.deepStrictEqual(rules('√9+16'), ['AS box', 'E']);
+  assert.deepStrictEqual(rules('−(−3)'), ['O']);
+  assert.deepStrictEqual(rules('10%×50'), ['MD']);
+  assert.deepStrictEqual(rules('((2))'), ['P']);
+  assert.deepStrictEqual(Object.keys(C.RULES).sort(), ['AS', 'E', 'G', 'MD', 'O', 'P']);
+  assert.strictEqual(C.RULES.P, 'Parentheses first');
+  assert.strictEqual(C.RULES.G, 'Inside first');
+  assert.strictEqual(C.RULES.E, 'Exponents and roots');
+  assert.strictEqual(C.RULES.MD, 'Multiply and divide, left to right');
+  assert.strictEqual(C.RULES.AS, 'Add and subtract, left to right');
+  assert.strictEqual(C.RULES.O, 'The opposite');
 });
 
 // ---- Results ----------------------------------------------------------------------------------------------------------

@@ -2871,8 +2871,8 @@ const SUITES = [
     await linkFolder(D.p, 'the laptop');
     await open(D.p, ['about']);
     a = await about(D.p);
-    ok(!!a && a.parts.includes('Your work is stored only on this device and in your Drive folder.') && !a.parts.includes('Your work is stored only on this device.'),
-      `with Board Sync: “Your work is stored only on this device and in your Drive folder.” (${a && a.parts.filter(x => /stored/.test(x)).join(' | ')})`);
+    ok(!!a && a.parts.includes('Your work is stored only on this device and in your school Google Drive.') && !a.parts.includes('Your work is stored only on this device.'),
+      `with Board Sync: “Your work is stored only on this device and in your school Google Drive.” (${a && a.parts.filter(x => /stored/.test(x)).join(' | ')})`);
     await D.c.close();
 
     // ---- The widget dev window: a short About below Advanced, with the version and the SDK protocol, and nothing
@@ -7203,8 +7203,8 @@ const SUITES = [
     // The docs: 21Board's value (work stored only on the device, and in the teacher's Drive with Board Sync; online when
     // needed), what the video sites see, kiosk mode's menu and Drive there, and what IT needs to know.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), registrySrc = fs.readFileSync(path.join(ROOT, 'widgets', 'registry.js'), 'utf8');
-    ok(readme.includes('- **Private.** Your work is stored only on your device, and in your own Google Drive if you turn on Board Sync. 21Board has no servers and no accounts. - **Online only when needed.** For updates, district apps, and videos.'),
-      'the README’s top says the work is stored only on the device (and in the teacher’s own Drive with Board Sync), and that 21Board goes online only when needed');
+    ok(readme.includes('- **Private.** Your work is stored only on your device, and in your school Google Drive if you turn on Board Sync. 21Board has no servers and no accounts. - **Online only when needed.** For updates, district apps, and videos.'),
+      'the README’s top says the work is stored only on the device (and in the teacher’s school Google Drive with Board Sync), and that 21Board goes online only when needed');
     ok(!/sends nothing|nothing anywhere|All data stays/.test(readme), 'and no longer says 21Board sends nothing anywhere');
     const row = readme.slice(readme.indexOf('| **Video Player**'), readme.indexOf('| **21Sketch**'));
     ok(/^\| \*\*Video Player\*\* \|.*History/.test(row) && row.includes('YouTube, Google Drive, and Vimeo see what they would on their own sites: the video, the device, and any account signed in. YouTube and Vimeo also see the board\'s address.') &&
@@ -8383,7 +8383,7 @@ const SUITES = [
         hist: lines.map(l => ({ expr: plain(l.querySelector('.hpick')), ans: plain(l.querySelector('.hans')), pick: (l.querySelector('.hpick') || {}).getAttribute && l.querySelector('.hpick').getAttribute('aria-label'), use: l.querySelector('.hans') && l.querySelector('.hans').getAttribute('aria-label') })),
         histEmpty: shown($('history')) ? plain(document.querySelector('#history .hempty')) : '',
         count: plain($('count')), next: plain($('next')), chain: [...document.querySelectorAll('#chain li.on')].map(li => plain(li.querySelector('.lx'))),
-        lit: [...document.querySelectorAll('#player .pemdas b.lit')].map(b => b.textContent).join(''), player: shown($('player')),
+        lit: [...document.querySelectorAll('#player .rules b.lit')].map(b => b.textContent).join(''), player: shown($('player')),
         hide: $('hide') ? $('hide').getAttribute('aria-checked') : null, live: $('live') ? $('live').textContent : '',
         focus: document.activeElement === document.body, vw: innerWidth, vh: innerHeight, theme: document.documentElement.getAttribute('data-b21-theme')
       };
@@ -8572,7 +8572,7 @@ const SUITES = [
     await press(['clear']); await press('2+3×4='); L = await look();
     ok(L.eq === '2 + 3 × 4 = 14', `2 + 3 × 4 = 14 (${L.eq})`);
     await W().locator('#next').click(); await page.waitForTimeout(250); L = await look();
-    ok(L.count === 'Step 1 of 3' && L.lit === 'MD' && L.chain.join(' | ') === '2 + 3 × 4', `Next step: step 1 of 3, × first, M and D lit (${L.count}, ${L.lit}, ${L.chain.join(' | ')})`);
+    ok(L.count === 'Step 1 of 3' && L.lit === '× ÷' && L.chain.join(' | ') === '2 + 3 × 4', `Next step: step 1 of 3, × first, × ÷ lit (${L.count}, ${L.lit}, ${L.chain.join(' | ')})`);
     await W().locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.press('PageDown'); await page.waitForTimeout(250); L = await look();
     ok(L.count === 'Step 2 of 3' && L.chain.join(' | ') === '2 + 3 × 4 | 2 + 12', `a clicker’s Page Down goes on (${L.count}: ${L.chain.join(' | ')})`);
     await page.keyboard.press('PageUp'); await page.waitForTimeout(250); L = await look();
@@ -10190,7 +10190,7 @@ const SUITES = [
     await openSettings(A.p);
     await A.p.click('#settings [data-act="link-setup"]');
     const step1 = await said(A.p), steps = await A.p.locator('#modal.open .setup-steps li').allInnerTexts();
-    ok(/Board Sync keeps your board in a Google Drive folder, so your laptop and smartboard share it\./.test(step1) && steps.length === 3 &&
+    ok(/Board Sync keeps your board in your school Google Drive, so your laptop and smartboard share it\./.test(step1) && steps.length === 3 &&
       /The first time, tap New folder and name it 21Board\. On your other device, pick this same folder\. To work on a board with a co-teacher, share this folder with them as an Editor\.$/.test(steps[1]),
       `step 1 says what Board Sync does, and step 2 to pick the same folder on the other device and how to share it (${steps[1]})`);
     await A.p.locator('#modal.open .btn', { hasText: 'Choose folder…' }).click();
@@ -10230,7 +10230,7 @@ const SUITES = [
       'while linked, the page’s own settings say “This page, on all your devices.”, the device’s own say “This device only.”, and Theme, Accent color and Text style “On all your devices.”');
     await openSettings(A.p, ['about']);
     const footer = (await A.p.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
-    ok(footer.endsWith(' Your work is stored only on this device and in your Drive folder.') && !/sends nothing/.test(footer), `About says the work is stored only here and in the Drive folder (${footer})`);
+    ok(footer.endsWith(' Your work is stored only on this device and in your school Google Drive.') && !/sends nothing/.test(footer), `About says the work is stored only here and in the school Google Drive (${footer})`);
     await A.p.keyboard.press('Escape');
     // A placeholder-only device writes nothing, even after a Timer was opened and closed on it with no content. A new
     // device's first page is "Page 1".
@@ -20225,6 +20225,251 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const lines = await page.evaluate(() => [{ set: { at: 890 }, markAt: null }, { set: { at: 0 }, markAt: null }, { set: { at: null }, markAt: null }, { set: null, markAt: 5 }, { set: { at: 2000 } }, { set: { at: 890, mark: 910 }, markAt: null }].map(d => window.__board21.history.excerptOf(d, 'clock')));
       ok(JSON.stringify(lines) === JSON.stringify(['Set to 2:50 p.m.', 'Set to 12:00 a.m.', '', '', '', 'Set to 2:50 p.m.']), `a set time's line: “Set to 2:50 p.m.”, with its mark too; nothing otherwise (${JSON.stringify(lines)})`);
       await ctx.close();
+    });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  // Release 2026.11.22-1: Tyler's Yes picks from the Standards Alignment doc. Steps light four rule cells in Amplify's
+  // order, ( ), xⁿ √, × ÷, and + −, in place of the PEMDAS letters (6.EE.A.2c). ± leaves 0 alone (6.NS.C.6a). 21Board
+  // says "your school Google Drive" where it tells a teacher where their work goes (5:125-AP1 G.3). The Teacher Guide's
+  // grade labels follow where the Illinois standards place each skill.
+  ['Standards picks: rule cells, ± and 0, school Drive, and grade labels (2026.11.22-1)', async (browser) => {
+    const errors = [];
+    // Each part runs on its own: one that stops early is reported, and the next still runs.
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const CELLS = ['( )', 'xⁿ √', '× ÷', '+ −'];
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    // A board with one Calculator, and what to do with it: its keys, its menu, its size, and the Steps row as it shows.
+    const calcBoard = async (opts = {}) => {
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      const page = await ctx.newPage();
+      page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE); await boardUp(page); await freeBoard(page);
+      const ik = await addWin(page, 'calculator');
+      await eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+      await page.waitForTimeout(600);
+      const W = page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+      const front = () => page.evaluate(ik => { if (window.__board21.state.focused !== ik) window.__board21.focusWin(ik); }, ik);
+      const press = async keys => { await front(); for (const k of keys) await W.locator(`#keys .key[data-key="${k}"]`).click({ timeout: 3000 }); await page.waitForTimeout(200); };
+      const choose = async label => {
+        await front();
+        await page.click(`.win[data-ikey="${ik}"] .win-label`);
+        await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).click({ timeout: 3000 });
+        await page.waitForTimeout(600);
+      };
+      const setSize = (w, h) => page.evaluate(([ik, w, h]) => window.__board21.setRect(ik, Object.assign({}, window.__board21.state.insts.get(ik).rect, { w, h: h + 40 })), [ik, w, h]).then(() => page.waitForTimeout(700));
+      const next = async () => { await W.locator('#next').click(); await page.waitForTimeout(250); };
+      // The Steps row: each cell's label as drawn (a <sup> n is ⁿ), which are lit and soft, whether all of it shows, and
+      // the rule's words.
+      const rules = () => W.locator('html').evaluate(() => {
+        const $ = id => document.getElementById(id), row = document.querySelector('#player .rules');
+        const label = b => Array.from(b.childNodes).map(n => n.nodeName === 'SUP' ? n.textContent.replace(/n/g, 'ⁿ') : n.textContent).join('').replace(/\s+/g, ' ').trim();
+        const out = { cells: [], lit: [], soft: [], words: $('rule').textContent, count: $('count').textContent, cv: $('canvas').getBoundingClientRect().width,
+          old: !!document.querySelector('.pemdas') || /\bP\s*E\s*M\s*D\s*A\s*S\b/.test($('player').textContent) };
+        if (!row) return out;
+        const cells = Array.from(row.children), r = row.getBoundingClientRect(), back = $('back').getBoundingClientRect();
+        const x = row.querySelector('i'), sup = row.querySelector('sup');
+        return Object.assign(out, {
+          cells: cells.map(label), lit: cells.filter(b => b.classList.contains('lit')).map(label), soft: cells.filter(b => b.classList.contains('soft')).map(label),
+          aria: row.getAttribute('aria-hidden'), shown: $('player').getClientRects().length > 0 && getComputedStyle(row).visibility !== 'hidden',
+          // Every cell whole inside the row, and the row clear of Back.
+          fit: cells.every(b => { const c = b.getBoundingClientRect(); return c.width > 0 && c.left >= r.left - 0.5 && c.right <= r.right + 0.5; }) && r.right <= back.left + 0.5 && row.scrollWidth <= row.clientWidth + 0.5,
+          room: Math.round((r.right - Math.max(...cells.map(b => b.getBoundingClientRect().right))) * 10) / 10,
+          italic: !!x && x.textContent === 'x' && getComputedStyle(x).fontStyle === 'italic', sup: !!x && !!sup && sup.textContent === 'n' && !!sup.closest('b') && sup.closest('b') === x.closest('b'),
+          px: parseFloat(getComputedStyle(cells[0]).fontSize)
+        });
+      });
+      return { ctx, page, ik, W, press, choose, setSize, next, rules };
+    };
+    const show = r => `${r.cells.join(' | ')}; lit ${r.lit.join(' | ') || 'none'}; soft ${r.soft.join(' | ') || 'none'}; “${r.words}”`;
+
+    // ---- 1. The Steps row: four rule cells, lit as each step's rule says.
+    await part('Rule cells', async () => {
+      const C = await calcBoard();
+      let r = await C.rules();
+      ok(same(r.cells, CELLS) && r.aria === 'true' && !r.old, `the Steps row has four cells, ( ), xⁿ √, × ÷, and + −, hidden from a screen reader, and no PEMDAS letters (${r.cells.join(' | ')}; aria-hidden ${r.aria})`);
+      ok(r.italic && r.sup, `the x is italic and the n a superscript, as the keys draw a and b (italic ${r.italic}, sup ${r.sup})`);
+      // 2 + 3 × 4: × ÷, then + −, then none on the answer.
+      await C.press(['clear', '2', 'add', '3', 'multiply', '4', 'equals']); await C.next(); r = await C.rules();
+      ok(same(r.lit, ['× ÷']) && !r.soft.length && r.words === 'Multiply and divide, left to right', `2 + 3 × 4, step 1: × ÷ lights (${show(r)})`);
+      await C.next(); r = await C.rules();
+      ok(same(r.lit, ['+ −']) && !r.soft.length && r.words === 'Add and subtract, left to right', `step 2: + − lights (${show(r)})`);
+      await C.next(); r = await C.rules();
+      ok(!r.lit.length && !r.soft.length, `the answer lights none (${show(r)})`);
+      // (2 + 3) × 4: ( ) lights with + − soft, then × ÷.
+      await C.press(['clear', 'open', '2', 'add', '3', 'close', 'multiply', '4', 'equals']); await C.next(); r = await C.rules();
+      ok(same(r.lit, ['( )']) && same(r.soft, ['+ −']) && r.words === 'Parentheses first', `(2 + 3) × 4, step 1: ( ) lights, + − soft (${show(r)})`);
+      await C.next(); r = await C.rules();
+      ok(same(r.lit, ['× ÷']) && !r.soft.length, `step 2: × ÷ lights (${show(r)})`);
+      // 2³ and √9: xⁿ √.
+      await C.choose('Advanced keys');
+      await C.press(['clear', '2', 'power', '3', 'equals']); await C.next(); r = await C.rules();
+      ok(same(r.lit, ['xⁿ √']) && !r.soft.length && r.words === 'Exponents and roots', `2³: xⁿ √ lights (${show(r)})`);
+      await C.press(['clear', 'sqrt', '9', 'equals']); await C.next(); r = await C.rules();
+      ok(same(r.lit, ['xⁿ √']), `√9: xⁿ √ lights (${show(r)})`);
+      // √(9 + 16): inside the root, + − soft and nothing on ( ). Then the root.
+      await C.press(['clear', 'sqrt', '9', 'add', '1', '6', 'equals']); await C.next(); r = await C.rules();
+      ok(!r.lit.length && same(r.soft, ['+ −']) && r.words === 'Inside first', `√(9 + 16), step 1: + − soft, nothing on ( ) (${show(r)})`);
+      await C.next(); r = await C.rules();
+      ok(same(r.lit, ['xⁿ √']), `step 2, √25: xⁿ √ lights (${show(r)})`);
+      // 10% of 50: × ÷.
+      await C.press(['clear', '1', '0', 'percent', '5', '0', 'equals']); await C.next(); r = await C.rules();
+      ok(same(r.lit, ['× ÷']), `10% of 50: × ÷ lights (${show(r)})`);
+      await C.choose('Advanced keys');
+      // −(−3): the opposite lights none.
+      await C.press(['clear', 'subtract', 'open', 'subtract', '3', 'close', 'equals']); await C.next(); r = await C.rules();
+      ok(!r.lit.length && !r.soft.length && r.words === 'The opposite', `−(−3) lights none (${show(r)})`);
+      // An error shows soft: 5 + 3 ÷ (2 − 2), at Can't divide by 0.
+      await C.press(['clear', '5', 'add', '3', 'divide', 'open', '2', 'subtract', '2', 'close', 'equals']); await C.next(); await C.next(); r = await C.rules();
+      ok(!r.lit.length && same(r.soft, ['× ÷']) && /divide by 0/.test(r.words), `an error shows its cell soft (${show(r)})`);
+      await C.ctx.close();
+    });
+
+    // ---- 2. The cells fit wherever the letters showed: from a canvas 400 px wide. Below that they hide. Light and dark,
+    // every accent, and all three text styles.
+    await part('Rule cells: size, colors, and text styles', async () => {
+      const C = await calcBoard();
+      await C.press(['clear', '2', 'add', '3', 'multiply', '4', 'equals']); await C.next();
+      // The window width where the canvas is first 400 px wide, beside the keys at 600 px tall.
+      let at400 = null, below = null;
+      for (let w = 696; w <= 712 && !at400; w++) { await C.setSize(w, 600); const r = await C.rules(); if (r.cv >= 400) at400 = [w, r]; else below = [w, r]; }
+      ok(!!at400 && at400[1].cv < 401 && at400[1].shown && at400[1].fit, `a canvas ${at400 && at400[1].cv.toFixed(1)} px wide: all four cells show, whole, clear of Back (${at400 && at400[1].room} px to spare)`);
+      ok(!!below && below[1].cv < 400 && !below[1].shown, `a canvas ${below && below[1].cv.toFixed(1)} px wide: they hide, as the letters did`);
+      // The stacked layout, a canvas just over 400 px wide, and big windows.
+      for (const [w, h] of [[420, 900], [900, 600], [1300, 640]]) {
+        await C.setSize(w, h); const r = await C.rules();
+        ok(r.shown && r.fit, `${w} × ${h}, a canvas ${r.cv.toFixed(1)} px wide: the cells fit (${r.room} px to spare, ${(r.px || 0).toFixed(1)} px type)`);
+      }
+      // Every text style, at the narrowest canvas that shows them.
+      for (const style of ['legible', 'early', 'standard']) {
+        await openSettings(C.page, ['letters']); await C.page.click(`#settings [data-act="letters"][data-val="${style}"]`); await C.page.keyboard.press('Escape'); await C.page.waitForTimeout(900);
+        await C.setSize(at400 ? at400[0] : 704, 600); const r = await C.rules();
+        ok(r.shown && r.fit && same(r.cells, CELLS), `${style}, a canvas ${r.cv.toFixed(1)} px wide: the four cells fit (${r.room} px to spare)`);
+      }
+      await C.setSize(900, 600);
+      // Colors: the lit cell, a soft cell, and a plain one read on the canvas, light and dark, in every accent.
+      await C.press(['clear', 'open', '2', 'add', '3', 'close', 'multiply', '4', 'equals']); await C.next();
+      const inks = () => C.W.locator('html').evaluate(() => {
+        const g = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+        const over = (c, bg) => { g.clearRect(0, 0, 1, 1); g.fillStyle = bg; g.fillRect(0, 0, 1, 1); g.fillStyle = c; g.fillRect(0, 0, 1, 1); const d = g.getImageData(0, 0, 1, 1).data; return `rgb(${d[0]}, ${d[1]}, ${d[2]})`; };
+        const card = getComputedStyle(document.getElementById('card')).backgroundColor, theme = document.documentElement.getAttribute('data-b21-theme');
+        const one = sel => { const b = document.querySelector(sel); if (!b) return null; b.style.transition = 'none'; const cs = getComputedStyle(b), bg = over(cs.backgroundColor, card); return { fg: over(cs.color, bg), bg }; };
+        return { theme, lit: one('.rules b.lit'), soft: one('.rules b.soft'), plain: one('.rules b:not(.lit):not(.soft)') };
+      });
+      const bad = [];
+      for (const theme of ['light', 'dark']) {
+        await setTheme(C.page, theme);
+        for (const accent of ['blue', 'purple', 'red', 'orange', 'green', 'slate']) {
+          await openSettings(C.page, ['bg']); await C.page.click(`#settings [data-act="accent"][data-val="${accent}"]`); await C.page.keyboard.press('Escape'); await C.page.waitForTimeout(400);
+          const k = await inks();
+          if (!k.lit || !k.soft || !k.plain || k.theme !== theme || contrast(k.lit.fg, k.lit.bg) < 4.5 || contrast(k.soft.fg, k.soft.bg) < 4.5 || contrast(k.plain.fg, k.plain.bg) < 3)
+            bad.push(`${theme} ${accent}: ${JSON.stringify(k)}`);
+        }
+      }
+      ok(!bad.length, `light and dark, in all six accents: the lit cell and a soft one read 4.5:1 or more, a plain one 3:1${bad.length ? ': ' + bad.join(' | ') : ''}`);
+      await C.ctx.close();
+    });
+
+    // ---- 3. ± leaves 0 alone; right after an operator it starts a lone −.
+    await part('± and 0', async () => {
+      const C = await calcBoard();
+      await C.choose('In words');
+      const said = [];
+      const look = async () => {
+        const l = await C.W.locator('html').evaluate(() => {
+          const t = id => { const e = document.getElementById(id); if (!e) return ''; const c = e.cloneNode(true); c.querySelectorAll('.ce-anslabel, .ce-cursor, .heq').forEach(n => n.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); };
+          return { eq: t('eq'), big: t('big'), x: t('x'), said: t('said'), live: t('live') };
+        });
+        said.push(l.said, l.live);
+        return l;
+      };
+      const NEG0 = /−\s?0(?:\.0*)?(?![.0-9])/;
+      const neg0 = l => [l.eq, l.big, l.x, l.said].some(s => NEG0.test(s));
+      await C.press(['clear']); let a = await look();
+      await C.press(['negate']); let b = await look();
+      ok(same(a, b) && !neg0(b), `AC, then ± changes nothing (${b.eq || b.big})`);
+      await C.press(['0']); a = await look(); await C.press(['negate']); b = await look();
+      ok(same(a, b) && !neg0(b), `0 ± changes nothing (${b.eq})`);
+      await C.press(['point']); a = await look(); await C.press(['negate']); b = await look();
+      ok(same(a, b) && !neg0(b) && /0\./.test(b.eq), `0. ± changes nothing (${b.eq})`);
+      await C.press(['clear', '5', 'add', 'negate']); b = await look();
+      ok(!neg0(b), `5 + ± shows no −0 (${b.eq})`);
+      await C.press(['3', 'equals']); b = await look();
+      ok(b.eq === '5 + (−3) = 2', `5 + ± 3 = is 2 (${b.eq})`);
+      await C.press(['clear', '5', 'add', 'negate', 'negate', '3', 'equals']); b = await look();
+      ok(b.eq === '5 + 3 = 8', `5 + ± ± 3 = is 8 (${b.eq})`);
+      await C.press(['clear', '3', 'negate']); b = await look();
+      await C.press(['negate']); const b2 = await look();
+      ok(b.eq === '−3' && b2.eq === '3', `3 ± is −3, and 3 ± ± is 3 (${b.eq}, ${b2.eq})`);
+      await C.press(['clear', '5', 'subtract', '5', 'equals']); a = await look(); await C.press(['negate']); b = await look();
+      ok(a.eq === '5 − 5 = 0' && same(a, b), `an answer of 0, then ±, stays 0 (${b.eq})`);
+      ok(!said.some(s => /negative 0(?:\.0*)?(?![.0-9])/.test(s)), `In words never says “negative 0” (${said.filter(Boolean).slice(-3).join(' | ')})`);
+      // Test practice still has no ±, and F9 says so.
+      await C.choose('Test practice');
+      await C.W.locator('#app').click({ position: { x: 3, y: 3 } }); await C.page.keyboard.press('F9'); await C.page.waitForTimeout(250);
+      const f9 = await C.W.locator('html').evaluate(() => (document.getElementById('note').textContent || document.getElementById('hint').textContent).trim());
+      ok(f9 === 'Test practice has no ± key.', `F9 still says “Test practice has no ± key.” (${f9})`);
+      await C.ctx.close();
+    });
+
+    // ---- 4. "your school Google Drive": README, the Teacher Guide, Board Sync's set-up, and Settings › About.
+    await part('Drive words', async () => {
+      const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
+      const guide = fs.readFileSync(path.join(ROOT, 'docs', 'teacher-guide', 'page-src.html'), 'utf8').replace(/\s+/g, ' ');
+      const OWN = /your own (Google )?Drive|your Drive folder|and your Google Drive|in your own Drive/i;
+      ok(readme.includes('- **Private.** Your work is stored only on your device, and in your school Google Drive if you turn on Board Sync.') && !OWN.test(readme),
+        'README: “and in your school Google Drive if you turn on Board Sync”, and no “your own Google Drive”');
+      const card = id => { const i = guide.indexOf(`id="${id}"`); return i < 0 ? '' : guide.slice(i, guide.indexOf('</article>', i)); };
+      const lines = [
+        [card('w-name-picker'), 'Names are only stored on your computer and your school Google Drive.'],
+        [card('w-zones-check-in'), 'Counts are only stored on your computer and your school Google Drive.'],
+        [guide, 'Board Sync keeps one board on all your devices, through a folder in your school Google Drive.'],
+        [guide, 'Turn on Board Sync and Chrome also keeps a copy in a folder you choose, in your school Google Drive.']];
+      for (const [where, line] of lines) ok(where.includes(line), `the Teacher Guide: “${line}”`);
+      ok(!OWN.test(guide), 'the Teacher Guide never says “your own Google Drive” or “your Google Drive”');
+      const app = ['board.js', 'index.html'].map(f => fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')).join('\n');
+      ok(!OWN.test(app), 'board.js and index.html say no “your own Google Drive” or “your Drive folder” to a teacher');
+      // Board Sync's set-up says it.
+      const D = await driveDevice(browser); D.p.on('pageerror', e => errors.push('[sync] ' + e.message));
+      await D.p.goto(BASE); await boardUp(D.p);
+      await openSettings(D.p);
+      await D.p.click('#settings [data-act="link-setup"]'); await D.p.waitForSelector('#modal.open');
+      const setup = (await D.p.locator('#modal.open .modal-card').innerText()).replace(/\s+/g, ' ');
+      ok(setup.includes('Board Sync keeps your board in your school Google Drive, so your laptop and smartboard share it.'), `Board Sync’s set-up: “Board Sync keeps your board in your school Google Drive, …” (${setup.slice(0, 160)})`);
+      await D.p.locator('#modal.open .btn', { hasText: 'Cancel' }).click(); await D.p.keyboard.press('Escape'); await D.p.waitForTimeout(300);
+      // Settings › About, once linked.
+      await linkFolder(D.p, 'the laptop');
+      await openSettings(D.p, ['about']);
+      const about = (await D.p.locator('#settings .about').innerText()).replace(/\s+/g, ' ');
+      ok(about.includes('Your work is stored only on this device and in your school Google Drive.') && !/your Drive folder/.test(about), `Settings › About with Board Sync: “… and in your school Google Drive.” (${about.slice(-90)})`);
+      await D.c.close();
+    });
+
+    // ---- 5. The Teacher Guide's grade labels follow the standards; the docs name each step's rule, not PEMDAS.
+    await part('Grade labels and docs', async () => {
+      const guide = fs.readFileSync(path.join(ROOT, 'docs', 'teacher-guide', 'page-src.html'), 'utf8');
+      const ideas = id => { const i = guide.indexOf(`id="${id}"`), j = guide.indexOf('<ul class="ideas">', i), k = guide.indexOf('</ul>', j);
+        return i < 0 || j < 0 ? [] : Array.from(guide.slice(j, k).matchAll(/<li><span class="grade">([^<]*)<\/span><span>([^<]*)<\/span><\/li>/g)).map(m => [m[1], m[2]]); };
+      const want = {
+        'w-calculator': [['K–2', 'Choral count. Type 10 + 10, then press = again and again. Grade 2 can try 5 + 5.'], ['3–6', 'Order of operations. Type 2 + 3 × 4, then Next step. Each step lights its rule.'], ['6–8', 'Test practice matches the calculator on NWEA MAP.']],
+        'w-dice': [['K–2', 'Turn off Show total. Students add, then turn it on to check.'], ['2–3', 'Roll 3 dice. Who can make the biggest three-digit number?'], ['4–5', 'Roll 6 dice. Who can make the biggest six-digit number?'], ['6–7', 'Predict the most common total. Then roll 2 dice 30 times and tally.']]
+      };
+      for (const [id, list] of Object.entries(want)) { const got = ideas(id); ok(same(got, list), `the guide’s ${id.slice(2)} ideas: ${got.map(g => g[0] + ' ' + g[1]).join(' / ')}`); }
+      const clock = ideas('w-clock');
+      ok(same(clock[0], ['1', 'Teaching with Hour hand only. Read the hour first, then add the minute hand.']) && clock.length === 5 && same(clock.slice(1).map(c => c[0]), ['K–2', '1–3', '3–5', '6–8']),
+        `the guide’s Clock ideas: Hour hand only is grade 1, the rest as they were (${clock.map(c => c[0]).join(', ')})`);
+      ok(/\[1, 2, 3, 4, 5, 6\]\.map\(n => \(\{ id: 'n' \+ n/.test(fs.readFileSync(path.join(ROOT, 'widgets', 'dice', 'index.html'), 'utf8')), 'the Dice rolls up to 6 dice, as the new idea asks');
+      // PEMDAS is gone from the widget, the guides, and README. The manual draws the four cells.
+      const files = ['widgets/calculator/index.html', 'widgets/calculator/calc-engine.js', 'README.md', 'docs/teacher-guide/page-src.html', 'docs/calculator-manual/page-src.html'];
+      const named = files.filter(f => /pemdas/i.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));
+      ok(!named.length, `nothing says PEMDAS${named.length ? ': ' + named.join(', ') : ''}`);
+      const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
+      ok(readme.includes("- **Steps:** Next step, Back, and Show all, with each step's rule lit."), 'README: “with each step’s rule lit”');
+      const man = fs.readFileSync(path.join(ROOT, 'docs', 'calculator-manual', 'page-src.html'), 'utf8'), manText = man.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+      ok(manText.includes('Each step lights its rule.') && manText.includes('Each step marks what comes next and lights its rule.'), 'the manual: “Each step lights its rule.” and “… lights its rule.”');
+      ok(['( )', '<i>x</i><sup><i>n</i></sup> √', '× ÷', '+ −'].every(c => man.includes(c)) && /class="rules"/.test(man), 'the manual draws the four rule cells in its own steps');
+      ok(stamped(), STAMPED);
     });
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
