@@ -4,8 +4,8 @@ A static, offline PWA "smartboard OS" for CCSD21 (K-8). See README.md, docs/WIDG
 
 ## Core value
 
-Your work is stored only on the device, and in the teacher's own Google Drive folder when Board Sync is on. 21Board
-has no servers. Going online for updates, district apps, and videos is fine. Storing user data online is not.
+Your work is stored only on the device, and in the teacher's school Google Drive folder when Board Sync is on.
+21Board has no servers. Going online for updates, district apps, and videos is fine. Storing user data online is not.
 
 ## Voice: every label and every line of prose
 
