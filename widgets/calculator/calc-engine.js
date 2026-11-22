@@ -864,8 +864,9 @@
     '+': [1, 'add', 'AS'], '-': [1, 'subtract', 'AS'], of: [2, 'percent', 'MD'], mixed: [2, 'divide', 'MD'],
     sqrt: [3, 'root', 'E'], root: [3, 'root', 'E'], pct: [3, 'percent', 'MD'], neg: [3, 'sign', 'O'], group: [4, 'parens', 'P']
   };
-  // P E MD AS light those PEMDAS letters. O (the opposite of a number, −(−3) = 3) and G (inside a root, a power or a
-  // fraction) light none, or P softly.
+  // The words for each step's rule. On the canvas, P E MD AS light the rule cells ( ), xⁿ √, × ÷, and + −. O (the
+  // opposite of a number, −(−3) = 3) lights none. G (inside a root, a power or a fraction) shows the operation's cell
+  // softly.
   const RULES = {
     P: 'Parentheses first',
     G: 'Inside first',
@@ -1098,6 +1099,13 @@
   const blank = () => ({ tokens: [], mode: 'edit', result: null, error: null, notice: null, closed: 0, pct: 'of', frac: false, history: [] });
   const digitCount = s => s.replace('.', '').length - (s.startsWith('0.') ? 1 : 0);
   const zero = () => ({ t: 'num', s: '0', neg: false });
+  // A number is finished when something else is pressed: "5." becomes "5", and a 0 keeps no sign, since 0 is its own
+  // opposite ("−0" typed after ±, or left by ⌫, becomes 0). null when it stays as it is.
+  function finished(t) {
+    if (!t || t.t !== 'num') return null;
+    const dot = t.s.endsWith('.'), neg = !!t.neg && /[1-9]/.test(t.s);
+    return dot || neg !== !!t.neg ? { t: 'num', s: dot ? t.s.slice(0, -1) || '0' : t.s, neg } : null;
+  }
   // The tokens that = adds to close every box still open (null when a fraction's top or a root's index is still open).
   function closers(tokens) {
     const boxes = openBoxes(tokens) || [];
@@ -1174,8 +1182,7 @@
     // auto: the answer = left on screen (iPhone: a digit typed right after it starts a new number in its place)
     const ans = (v, auto) => auto ? { t: 'ans', v, auto: true } : { t: 'ans', v };
     const fromAnswer = (...after) => { S.tokens = [ans(S.result, true)].concat(after); S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true; };
-    // A number is finished when something else is pressed: "5." becomes "5".
-    const finish = () => { const t = last(); if (t && t.t === 'num' && t.s.endsWith('.')) S.tokens = S.tokens.slice(0, -1).concat([{ t: 'num', s: t.s.slice(0, -1) || '0', neg: t.neg }]); };
+    const finish = () => { const f = finished(last()); if (f) S.tokens = S.tokens.slice(0, -1).concat([f]); };
     const top = () => { const b = openBoxes(S.tokens) || []; return b[b.length - 1] || null; };
     const lastEndsPower = () => last() && last().t === 'end' && (openBoxes(S.tokens.slice(0, -1)) || []).pop() === 'pow';
     const ended = () => last() && OPERAND_END[last().t];
@@ -1189,6 +1196,7 @@
         if (digitCount(t.s) >= LIMITS.digits) { S.notice = info('digits'); return false; }
         return setLast({ t: 'num', s: t.s + key, neg: t.neg });
       }
+      if (t && t.t === 'neg' && t.pm) return setLast({ t: 'num', s: key, neg: true });   // after ±: the number itself is negative, so ± 3 a² is (−3)²
       if (t && t.t === 'ans' && t.auto) return setLast({ t: 'num', s: key, neg: false });   // right after =, √ or ±
       if (endsMixed(S.tokens)) { S.notice = info('adjacent'); return false; }   // 1⅔ then 4 (Desmos refuses it too)
       return push({ t: 'num', s: key, neg: false });   // after ans it multiplies: ans2 (as Desmos)
@@ -1202,6 +1210,7 @@
           if (digitCount(t.s) >= LIMITS.digits) { S.notice = info('digits'); return false; }
           return setLast({ t: 'num', s: t.s + '.', neg: t.neg });
         }
+        if (t && t.t === 'neg' && t.pm) return setLast({ t: 'num', s: '0.', neg: true });
         if (t && t.t === 'ans' && t.auto) return setLast({ t: 'num', s: '0.', neg: false });
         if (endsMixed(S.tokens)) { S.notice = info('adjacent'); return false; }
         return push({ t: 'num', s: '0.', neg: false });   // ans.5 is ans × 0.5 (as Desmos)
@@ -1302,19 +1311,29 @@
         if (!b || !ended()) return false;
         return push(b === 'paren' ? { t: 'close' } : b === 'numer' || b === 'index' ? { t: 'sep' } : { t: 'end' });
       }
-      case 'negate': {
-        if (done) { S.tokens = [ans(negate(S.result), true)]; S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true; }
+      case 'negate': {   // the opposite. 0 is its own opposite, so ± leaves a 0 alone (6.NS.C.6a).
+        if (done) {
+          if (isZero(S.result)) return false;
+          S.tokens = [ans(negate(S.result), true)]; S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true;
+        }
         if (failed) fresh();
         const t = last();
-        if (t && t.t === 'num') return setLast({ t: 'num', s: t.s, neg: !t.neg });
+        if (t && t.t === 'num') {
+          if (!/[1-9]/.test(t.s)) return t.neg && setLast({ t: 'num', s: t.s, neg: false });   // 0, 0., 0.00 (a − that ⌫ left comes off)
+          return setLast({ t: 'num', s: t.s, neg: !t.neg });
+        }
         if (t && t.t === 'ans') return !isZero(t.v) && setLast(ans(negate(t.v), t.auto));
         if (t && t.t === 'prev') {   // −ans (sheet): a minus sign in front, or off again
           const b = S.tokens[S.tokens.length - 2];
           if (b && b.t === 'neg') return tryTokens(S.tokens.slice(0, -2).concat([t]));
           return tryTokens(S.tokens.slice(0, -1).concat([{ t: 'neg' }, t]));
         }
-        if (t && OPERAND_END[t.t]) return false;   // after ), π, a box, %: nothing being typed to change
-        return push({ t: 'num', s: '0', neg: true });   // −0, ready for digits
+        if (t && t.t === 'neg') return pop();   // a lone − goes again
+        // Nothing typed yet (the display's 0), or after ), π, a box, %: nothing to change. After an operator, (, √, or
+        // a box opening, a lone −, as − starts there. pm: the digits typed next make a negative number, as ± after
+        // them would, so 5 + ± 3 is 5 + (−3). It saves as − does.
+        if (!t || OPERAND_END[t.t]) return false;
+        return push({ t: 'neg', pm: true });
       }
       case 'ans': {
         if (sheet) return useValue(S, { t: 'prev' });
@@ -1413,7 +1432,8 @@
       return true;
     }
     const t = S.tokens[S.tokens.length - 1];
-    if (t.t === 'num' && t.s.endsWith('.')) S.tokens = S.tokens.slice(0, -1).concat([{ t: 'num', s: t.s.slice(0, -1) || '0', neg: t.neg }]);
+    const f = finished(t);
+    if (f) S.tokens = S.tokens.slice(0, -1).concat([f]);
     if (S.tokens.length >= LIMITS.tokens) { S.notice = info('long'); return false; }
     if (!canFollow(t, tok)) return false;
     S.tokens = S.tokens.concat([tok]);

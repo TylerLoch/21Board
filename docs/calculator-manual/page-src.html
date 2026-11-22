@@ -187,10 +187,12 @@ button.wm-i:hover:not(:disabled) { background: var(--surface-2); }
 .steps-ex li:first-child { border-top: 0; }
 .steps-ex .lead { color: var(--muted); width: .8em; text-align: right; }
 .steps-ex .wk { font-size: 15px; color: var(--muted); }
-.pemdas { display: inline-flex; gap: 2px; margin-left: auto; }
-.pemdas b { display: inline-grid; place-items: center; width: 22px; height: 24px; border-radius: 6px; font-size: 13px; font-weight: 700; color: var(--muted); }
-.pemdas b.lit { background: var(--accent); color: var(--on-accent); }
-.pemdas b.soft { background: var(--accent-soft); color: var(--text); }
+.rules { display: inline-flex; gap: 2px; margin-left: auto; }
+.rules b { display: inline-block; height: 24px; padding: 0 5px; border-radius: 6px; font-size: 13px; font-weight: 700; line-height: 24px; white-space: nowrap; word-spacing: -.12em; color: var(--muted); }
+.rules b.lit { background: var(--accent); color: var(--on-accent); }
+.rules b.soft { background: var(--accent-soft); color: var(--text); }
+.rules i { font-family: Georgia, "Times New Roman", serif; font-style: italic; }
+.rules sup { font-size: .62em; line-height: 0; vertical-align: baseline; position: relative; top: -.42em; margin-left: .04em; }
 .hide-ex { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 12px; padding: 12px 16px; border-radius: 12px; background: var(--surface-2); font-size: 26px; }
 .pg-btn { margin-top: 10px; height: 34px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text); font: 600 14px var(--font); cursor: pointer; }
 .pg-btn:hover { background: var(--surface-2); }
@@ -260,7 +262,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
   .steps-ex { font-size: 18px; }
   .kbd-table th, .kbd-table td { padding: 10px 12px; }
   .kbd-table td:first-child { white-space: normal; width: 45%; }
-  .pemdas { margin-left: 0; }
+  .rules { margin-left: 0; }
 }
 
 /* The engine's math drawing (CalcEngine.CSS), for the examples on this page */
@@ -477,7 +479,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
           <h3>Steps</h3>
           <ul>
             <li><b>Next step</b> works out the part that’s marked and marks the next. It works before = too.</li>
-            <li>PEMDAS lights the letter for each step.</li>
+            <li>Each step lights its rule.</li>
             <li><b>Back</b> goes back a step. <b>Show all</b> writes out every step. <b>Replay</b> starts again.</li>
             <li>A clicker works too. Page Down is Next step, and Page Up is Back.</li>
             <li>The top of the canvas counts the steps. In a wide window, it names each rule too.</li>
@@ -492,7 +494,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
         </div>
       </div>
       <h3 style="margin-top:22px">Every step of 3 + 4 × 2 ÷ (1 − 5)²</h3>
-      <p class="pg-muted pg-small" style="margin-top:4px">Each step marks what comes next and lights its PEMDAS letter.</p>
+      <p class="pg-muted pg-small" style="margin-top:4px">Each step marks what comes next and lights its rule.</p>
       <ol class="steps-ex cx" id="steps-list"></ol>
       <div class="pg-card" style="margin-top:12px">
         <h3>In words</h3>
@@ -952,20 +954,20 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
     b.querySelector('.pg-more').textContent = open ? 'Hide' : list.children.length - 1 + ' steps';
   });
 
-  // Every step of one problem, with PEMDAS lit as the canvas lights it (the widget's renderPlayer)
+  // Every step of one problem, with its rule cell lit as the canvas lights it (the widget's renderPlayer)
   (function () {
     const s = E.calc('3+4×2÷(1−5)²', WIDGET);
-    const letters = st => {
+    const CELLS = [['P', '( )'], ['E', '<i>x</i><sup><i>n</i></sup> √'], ['MD', '× ÷'], ['AS', '+ −']];
+    const cells = st => {
       const lit = new Set(), soft = new Set();
       if (!st.final && st.rule) {
-        ({ P: 'P', E: 'E', MD: 'MD', AS: 'AS' }[st.rule] || '').split('').forEach(l => lit.add(l));
-        if (st.inside) Array.from(lit).forEach(l => { if (l !== 'P') { lit.delete(l); soft.add(l); } });
+        if (st.rule !== 'O') (st.inside && st.rule !== 'P' ? soft : lit).add(st.rule);
         if (st.inside === 'parens') lit.add('P');
       }
-      return '<span class="pemdas" aria-hidden="true">' + 'PEMDAS'.split('').map(l => `<b class="${lit.has(l) ? 'lit' : soft.has(l) ? 'soft' : ''}">${l}</b>`).join('') + '</span>';
+      return '<span class="rules" aria-hidden="true">' + CELLS.map(([r, h]) => `<b class="${lit.has(r) ? 'lit' : soft.has(r) ? 'soft' : ''}">${h}</b>`).join('') + '</span>';
     };
     $('steps-list').innerHTML = s.steps.map((st, i) =>
-      `<li><span class="lead" aria-hidden="true">${i ? '=' : ''}</span><span>${st.html}</span>${st.work ? `<span class="wk">${st.work.html}</span>` : ''}${st.final ? '' : letters(st)}</li>`).join('');
+      `<li><span class="lead" aria-hidden="true">${i ? '=' : ''}</span><span>${st.html}</span>${st.work ? `<span class="wk">${st.work.html}</span>` : ''}${st.final ? '' : cells(st)}</li>`).join('');
   })();
 
   // Hide the answer: tap the ? to show it. (Try again is the page's, to tap the ? once more.)

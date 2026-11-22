@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.21-4';
-  const BOARD_BUILD = '54224276';
+  const BOARD_VERSION = '2026.11.22-1';
+  const BOARD_BUILD = 'c0600e09';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4736,7 +4736,7 @@
   function aboutSettings(note) {
     // (Each on a line of its own: the release, the offline copy when it is another build (refreshStatus), where work is stored.)
     const release = `<div class="about"><span>21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}</span><span id="st-cache"></span>${note ? '' : `
-      <span>${Link.dir ? 'Your work is stored only on this device and in your Drive folder.' : 'Your work is stored only on this device.'}</span>`}</div>`;
+      <span>${Link.dir ? 'Your work is stored only on this device and in your school Google Drive.' : 'Your work is stored only on this device.'}</span>`}</div>`;
     const content = LAB ? release : `<div class="about-top">
         <img class="about-gear" src="icons/gear-21.png" alt="21 gear">
         <p class="about-made">Made with Love and Stubbornness by the CCSD21 Technology Services team at Gill Center, Wheeling, Illinois, USA</p>
@@ -6267,7 +6267,7 @@
       if (!this.supported) return false;
       const go = await dialog({
         title: 'Set up Board Sync', cls: 'setup',
-        message: 'Board Sync keeps your board in a Google Drive folder, so your laptop and smartboard share it.',
+        message: 'Board Sync keeps your board in your school Google Drive, so your laptop and smartboard share it.',
         html: SYNC_ART + '<ol class="setup-steps">' +
           '<li>Tap <b>Choose folder…</b> below. In the window that opens, go to <b>Google Drive › My Drive</b>.</li>' +
           '<li>The first time, tap <b>New folder</b> and name it <b>21Board</b>. On your other device, pick this same folder. To work on a board with a co-teacher, share this folder with them as an Editor.</li>' +
