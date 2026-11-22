@@ -20296,7 +20296,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await C.next(); r = await C.rules();
       ok(same(r.lit, ['+ −']) && !r.soft.length && r.words === 'Add and subtract, left to right', `step 2: + − lights (${show(r)})`);
       await C.next(); r = await C.rules();
-      ok(!r.lit.length && !r.soft.length, `the answer lights none (${show(r)})`);
+      ok(same(r.cells, CELLS) && !r.lit.length && !r.soft.length, `the answer lights none (${show(r)})`);
       // (2 + 3) × 4: ( ) lights with + − soft, then × ÷.
       await C.press(['clear', 'open', '2', 'add', '3', 'close', 'multiply', '4', 'equals']); await C.next(); r = await C.rules();
       ok(same(r.lit, ['( )']) && same(r.soft, ['+ −']) && r.words === 'Parentheses first', `(2 + 3) × 4, step 1: ( ) lights, + − soft (${show(r)})`);
@@ -20319,7 +20319,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await C.choose('Advanced keys');
       // −(−3): the opposite lights none.
       await C.press(['clear', 'subtract', 'open', 'subtract', '3', 'close', 'equals']); await C.next(); r = await C.rules();
-      ok(!r.lit.length && !r.soft.length && r.words === 'The opposite', `−(−3) lights none (${show(r)})`);
+      ok(same(r.cells, CELLS) && !r.lit.length && !r.soft.length && r.words === 'The opposite', `−(−3) lights none (${show(r)})`);
       // An error shows soft: 5 + 3 ÷ (2 − 2), at Can't divide by 0.
       await C.press(['clear', '5', 'add', '3', 'divide', 'open', '2', 'subtract', '2', 'close', 'equals']); await C.next(); await C.next(); r = await C.rules();
       ok(!r.lit.length && same(r.soft, ['× ÷']) && /divide by 0/.test(r.words), `an error shows its cell soft (${show(r)})`);
@@ -20335,7 +20335,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       let at400 = null, below = null;
       for (let w = 696; w <= 712 && !at400; w++) { await C.setSize(w, 600); const r = await C.rules(); if (r.cv >= 400) at400 = [w, r]; else below = [w, r]; }
       ok(!!at400 && at400[1].cv < 401 && at400[1].shown && at400[1].fit, `a canvas ${at400 && at400[1].cv.toFixed(1)} px wide: all four cells show, whole, clear of Back (${at400 && at400[1].room} px to spare)`);
-      ok(!!below && below[1].cv < 400 && !below[1].shown, `a canvas ${below && below[1].cv.toFixed(1)} px wide: they hide, as the letters did`);
+      ok(!!below && below[1].cv < 400 && below[1].cells.length === 4 && !below[1].shown, `a canvas ${below && below[1].cv.toFixed(1)} px wide: they hide, as the letters did (${below && below[1].cells.length} cells)`);
       // The stacked layout, a canvas just over 400 px wide, and big windows.
       for (const [w, h] of [[420, 900], [900, 600], [1300, 640]]) {
         await C.setSize(w, h); const r = await C.rules();
@@ -20399,12 +20399,27 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(b.eq === '5 + (−3) = 2', `5 + ± 3 = is 2 (${b.eq})`);
       await C.press(['clear', '5', 'add', 'negate', 'negate', '3', 'equals']); b = await look();
       ok(b.eq === '5 + 3 = 8', `5 + ± ± 3 = is 8 (${b.eq})`);
+      await C.press(['clear', '5', 'add', 'negate', '3', 'negate', 'equals']); b = await look();
+      ok(b.eq === '5 + 3 = 8', `5 + ± 3 ± = is 5 + 3 = 8, as before (${b.eq})`);
+      await C.press(['clear', '5', 'add', 'negate', '0', 'equals']); b = await look();
+      ok(b.eq === '5 + 0 = 5' && !neg0(b), `5 + ± 0 = is 5 + 0 = 5, with no −0 (${b.eq})`);
+      await C.press(['clear', '0', 'point', '5', 'negate', 'backspace', 'backspace', 'equals']); b = await look();
+      ok(b.eq === '0 = 0' && !neg0(b), `0.5 ± ⌫ ⌫ = is 0 = 0, with no −0 (${b.eq})`);
+      await C.choose('Advanced keys');
+      await C.press(['clear', '5', 'multiply', 'negate', '3', 'square', 'equals']); b = await look();
+      ok(b.eq === '5 × (−3)2 = 45', `5 × ± 3 a² = is 5 × (−3)² = 45, as before: ± makes the number itself negative (${b.eq}, the 2 a power)`);
+      await C.choose('Advanced keys');
       await C.press(['clear', '3', 'negate']); b = await look();
       await C.press(['negate']); const b2 = await look();
       ok(b.eq === '−3' && b2.eq === '3', `3 ± is −3, and 3 ± ± is 3 (${b.eq}, ${b2.eq})`);
       await C.press(['clear', '5', 'subtract', '5', 'equals']); a = await look(); await C.press(['negate']); b = await look();
       ok(a.eq === '5 − 5 = 0' && same(a, b), `an answer of 0, then ±, stays 0 (${b.eq})`);
       ok(!said.some(s => /negative 0(?:\.0*)?(?![.0-9])/.test(s)), `In words never says “negative 0” (${said.filter(Boolean).slice(-3).join(' | ')})`);
+      await C.choose('History');
+      const hist = await C.W.locator('html').evaluate(() => Array.from(document.querySelectorAll('#hlist .hline')).map(li => [li.textContent, ...Array.from(li.querySelectorAll('[aria-label]')).map(b => b.getAttribute('aria-label'))].join(' ')).join(' | '));
+      const z = /−\s?0(?:\.0*)?(?![.0-9])|negative 0(?:\.0*)?(?![.0-9])/.exec(hist);
+      ok(/Change 5 \+ 0\b/.test(hist) && !z, `History has 5 + 0, with no −0 (${z ? hist.slice(Math.max(0, z.index - 60), z.index + 20) : hist.split(' | ').filter(l => /\+ 0\b/.test(l)).join(' | ')})`);
+      await C.choose('History');
       // Test practice still has no ±, and F9 says so.
       await C.choose('Test practice');
       await C.W.locator('#app').click({ position: { x: 3, y: 3 } }); await C.page.keyboard.press('F9'); await C.page.waitForTimeout(250);
@@ -20420,12 +20435,15 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const OWN = /your own (Google )?Drive|your Drive folder|and your Google Drive|in your own Drive/i;
       ok(readme.includes('- **Private.** Your work is stored only on your device, and in your school Google Drive if you turn on Board Sync.') && !OWN.test(readme),
         'README: “and in your school Google Drive if you turn on Board Sync”, and no “your own Google Drive”');
+      ok(readme.includes('- **Board Sync**, in Chrome and Edge: one board on all your devices, the smartboard too, through a folder in your school Google Drive.'),
+        'README: Board Sync works “through a folder in your school Google Drive”');
       const card = id => { const i = guide.indexOf(`id="${id}"`); return i < 0 ? '' : guide.slice(i, guide.indexOf('</article>', i)); };
       const lines = [
         [card('w-name-picker'), 'Names are only stored on your computer and your school Google Drive.'],
         [card('w-zones-check-in'), 'Counts are only stored on your computer and your school Google Drive.'],
         [guide, 'Board Sync keeps one board on all your devices, through a folder in your school Google Drive.'],
-        [guide, 'Turn on Board Sync and Chrome also keeps a copy in a folder you choose, in your school Google Drive.']];
+        [guide, 'Turn on Board Sync and Chrome also keeps a copy in a folder you choose, in your school Google Drive.'],
+        [guide, 'Settings › Advanced › Back up now saves every page in one .21board file. Keep it in your school Google Drive or on a USB drive.']];
       for (const [where, line] of lines) ok(where.includes(line), `the Teacher Guide: “${line}”`);
       ok(!OWN.test(guide), 'the Teacher Guide never says “your own Google Drive” or “your Google Drive”');
       const app = ['board.js', 'index.html'].map(f => fs.readFileSync(path.join(ROOT, f), 'utf8').split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n')).join('\n');
@@ -20456,9 +20474,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         'w-dice': [['K–2', 'Turn off Show total. Students add, then turn it on to check.'], ['2–3', 'Roll 3 dice. Who can make the biggest three-digit number?'], ['4–5', 'Roll 6 dice. Who can make the biggest six-digit number?'], ['6–7', 'Predict the most common total. Then roll 2 dice 30 times and tally.']]
       };
       for (const [id, list] of Object.entries(want)) { const got = ideas(id); ok(same(got, list), `the guide’s ${id.slice(2)} ideas: ${got.map(g => g[0] + ' ' + g[1]).join(' / ')}`); }
-      const clock = ideas('w-clock');
-      ok(same(clock[0], ['1', 'Teaching with Hour hand only. Read the hour first, then add the minute hand.']) && clock.length === 5 && same(clock.slice(1).map(c => c[0]), ['K–2', '1–3', '3–5', '6–8']),
-        `the guide’s Clock ideas: Hour hand only is grade 1, the rest as they were (${clock.map(c => c[0]).join(', ')})`);
+      const clock = ideas('w-clock'), hour = clock.find(c => c[1] === 'Teaching with Hour hand only. Read the hour first, then add the minute hand.');
+      ok(!!hour && hour[0] === '1' && same(clock.map(c => c[0]), ['K–2', '1', '1–3', '3–5', '6–8']),
+        `the guide’s Clock ideas: Hour hand only is grade 1, and the chips run in grade order (${clock.map(c => c[0]).join(', ')})`);
       ok(/\[1, 2, 3, 4, 5, 6\]\.map\(n => \(\{ id: 'n' \+ n/.test(fs.readFileSync(path.join(ROOT, 'widgets', 'dice', 'index.html'), 'utf8')), 'the Dice rolls up to 6 dice, as the new idea asks');
       // PEMDAS is gone from the widget, the guides, and README. The manual draws the four cells.
       const files = ['widgets/calculator/index.html', 'widgets/calculator/calc-engine.js', 'README.md', 'docs/teacher-guide/page-src.html', 'docs/calculator-manual/page-src.html'];

@@ -2329,6 +2329,35 @@ test('the steps keep their rules: P, E, MD (with % of), AS, O, inside parenthese
   assert.strictEqual(C.RULES.O, 'The opposite');
 });
 
+// ---- 28. Review fixes: digits after ± make a negative number, as before; a finished 0 keeps no sign (2026.11.22-1) ---
+test('digits typed after ± make the number itself negative, as before, so a power sees (−3)', () => {
+  assert.strictEqual(calc('5+±3²').equation.text, '5 + (−3)² = 14');
+  assert.strictEqual(calc('5×±3²').equation.text, '5 × (−3)² = 45');
+  assert.strictEqual(calc('(±3²)').equation.text, '((−3)²) = 9');
+  assert.strictEqual(calc('2×±4^3').equation.text, '2 × (−4)³ = −128');
+  assert.strictEqual(calc('5+±0.5²').equation.text, '5 + (−0.5)² = 5.25');
+  assert.strictEqual(calc('5+±.5²').equation.text, '5 + (−0.5)² = 5.25');
+  assert.strictEqual(calc('5+±3±').equation.text, '5 + 3 = 8');
+  assert.strictEqual(calc('5+±3±').equation.speech, '5 plus 3 equals 8');
+  assert.strictEqual(typed('5+±3').state().display, '−3');
+  assert.strictEqual(typed('√±9').state().display, '−9');
+  assert.strictEqual(calc('5×3±²').equation.text, '5 × (−3)² = 45', '± after the number, as before');
+  assert.strictEqual(calc('5+−3²').equation.text, '5 + (−3²) = −4', 'the − key is unchanged');
+});
+test('a 0 typed after ±, or left by ⌫, keeps no sign once it is finished', () => {
+  for (const [s, eq] of [['5+±0', '5 + 0 = 5'], ['(±0)×3', '(0) × 3 = 0'], ['5×±0.0', '5 × 0.0 = 0'],
+    ['0.5±⌫⌫', '0 = 0'], ['5+0.5±⌫⌫', '5 + 0 = 5'], ['5+±0×2', '5 + 0 × 2 = 5']]) {
+    const c = typed(s + '=');
+    assert.strictEqual(c.state().equation.text, eq, s);
+    noNegZero(c, s + ' =');
+    assert.ok(!c.state().history.some(h => NEG0.test(h.equation.text) || SAID0.test(h.equation.speech || '')), s + ': History');
+  }
+  const a = typed('2+3=AC5+±0ans=');
+  assert.strictEqual(a.state().equation.text, '5 + 0 × 5 = 5', 'before ans too');
+  assert.strictEqual(typed('0.5±⌫7').state().display, '−0.7', 'while you type, ⌫ keeps the sign');
+  assert.strictEqual(calc('5+±03').equation.text, '5 + (−3) = 2');
+});
+
 // ---- Results ----------------------------------------------------------------------------------------------------------
 for (const f of failures) console.log('FAIL ' + f);
 console.log(`\n${passed} passed, ${failed} failed`);

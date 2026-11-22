@@ -117,10 +117,10 @@ such as a small preview, "Standard", or "3 windows". It opens below its row, whi
 time Settings opens.
 
 - **At the top, when needed:** a save problem with *Back up now*, or *A new version is ready* with *Update now*.
-- **Board Sync**, in Chrome and Edge: one board on all your devices, the smartboard too, through a Google Drive
-  folder. *Set up…* shows how to make the folder, then you pick it. Once linked, it has three rows: the folder and
-  how syncing is going, with *Change…* and *Unlink*; this device's name; and *Keep history copies in the folder*.
-  When the board can't sync, it says what's wrong. Not in kiosk mode, the dev window, or browsers without it.
+- **Board Sync**, in Chrome and Edge: one board on all your devices, the smartboard too, through a folder in your
+  school Google Drive. *Set up…* shows how to make the folder, then you pick it. Once linked, it has three rows: the
+  folder and how syncing is going, with *Change…* and *Unlink*; this device's name; and *Keep history copies in the
+  folder*. When the board can't sync, it says what's wrong. Not in kiosk mode, the dev window, or browsers without it.
   See [Board Sync](#board-sync).
 - **Classroom**
   - **Go back to an earlier version:** *Board history…* opens beside Settings, which stays open. Tap it again to

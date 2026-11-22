@@ -14,11 +14,11 @@
 const VERSION = '2026.11.22-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'ec5a9546';
+const BUILD = 'c0600e09';
 const FILES = {
-  './': '7b553c6ee52aaf7b',
-  'index.html': '7b553c6ee52aaf7b',
-  'board.js': '9434f658be1e2d26',
+  './': '78c0cf23c712552a',
+  'index.html': '78c0cf23c712552a',
+  'board.js': 'adb1575415e22ff4',
   'sdk/board21.js': 'aa5d5880e3a9c4a1',
   'sdk/board21-dev.js': 'f7c7181b53d5025a',
   'sdk/dev/board-shell.js': 'b855220e82bbedad',
@@ -59,7 +59,7 @@ const FILES = {
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
   'widgets/calculator/index.html': '9ae1547c8955c143',
-  'widgets/calculator/calc-engine.js': '3864ce8739d7e0ed',
+  'widgets/calculator/calc-engine.js': 'cfe106e83cbc182f',
   'widgets/sdk-playground/index.html': '12cf5a8c7f820850'
 };
 const CACHE_PREFIX = '21board-';
