@@ -294,25 +294,32 @@
   // Content (Board21.save): the engine's serialize(), the problem on the canvas and History (docs/DATA-FORMAT.md):
   //   { v: 2, expr, mode, pct?, closed?, frac?, history: [{ expr, pct }] }. The engine checks it all on load.
   // Config (Board21.saveConfig): every menu setting, and which panels show:
-  //   { canvas, history, steps, words, advanced, hide, fractions, test, percent: 'of' | 'apple', swap }
-  const DEFAULTS = Object.freeze({ canvas: true, history: false, steps: true, words: false, advanced: false, hide: false, fractions: false, test: false, percent: 'of', swap: false });
-  const FLAGS = ['canvas', 'history', 'steps', 'words', 'advanced', 'hide', 'fractions', 'test', 'swap'];
+  //   { canvas, history, steps, words, advanced, hide, answers: 'decimal' | 'fraction' | 'remainder', fractions, test,
+  //     percent: 'of' | 'apple', swap }
+  // fractions is answers === 'fraction', written for older releases, which read only it (answers came in 2026.11.23-1).
+  // A config without answers reads fractions: true as 'fraction'. test is Test practice: off while TEST_PRACTICE is.
+  const DEFAULTS = Object.freeze({ canvas: true, history: false, steps: true, words: false, advanced: false, hide: false, answers: 'decimal', test: false, percent: 'of', swap: false });
+  const FLAGS = ['canvas', 'history', 'steps', 'words', 'advanced', 'hide', 'test', 'swap'];
+  const ANSWERS = ['decimal', 'fraction', 'remainder'];
   function readConfig(c) {
     const out = Object.assign({}, DEFAULTS);
     if (!c || typeof c !== 'object' || Array.isArray(c)) return out;
     for (const k of FLAGS) if (own(c, k) && typeof c[k] === 'boolean') out[k] = c[k];
+    if (!TEST_PRACTICE) out.test = false;   // (a window from an older release, here or on another device)
     if (c.percent === 'of' || c.percent === 'apple') out.percent = c.percent;
+    out.answers = ANSWERS.includes(c.answers) ? c.answers : c.fractions === true ? 'fraction' : 'decimal';
     return out;
   }
   let cfg = Object.assign({}, DEFAULTS);
 
-  // Test practice: Desmos Four-Function's keys and its 7 digits, as on NWEA MAP.
+  // Test practice: Desmos Four-Function's keys and its 7 digits, as on NWEA MAP. It isn't in the menu for now.
+  const TEST_PRACTICE = false;   // true brings back the Test practice menu item
   const TEST_KEYS = ['digits', 'point', 'add', 'subtract', 'multiply', 'divide', 'open', 'close', 'sqrt', 'ans'];
   const NOT_IN_TEST = new Set(['negate', 'percent', 'power', 'square', 'root', 'cbrt', 'pi', 'fraction', 'over']);
   const TEST_WORDS = { pi: 'pi', cbrt: 'cbrt', nthroot: 'root', frac: 'fraction' };   // ...and those typed as words
   const engineOptions = () => cfg.test
     ? { digits: 7, keys: TEST_KEYS, toggle: false, answerAs: 'decimal', slash: 'divide', percent: cfg.percent }
-    : { digits: 10, keys: null, toggle: true, answerAs: cfg.fractions ? 'fraction' : 'decimal', slash: cfg.advanced ? 'fraction' : 'divide', percent: cfg.percent };
+    : { digits: 10, keys: null, toggle: true, answerAs: cfg.answers, slash: cfg.advanced ? 'fraction' : 'divide', percent: cfg.percent };
   const calc = E.create(Object.assign({ separators: 'faint', historySize: 20 }, engineOptions()));
 
   const SVG = d => `<svg viewBox="0 0 24 24" aria-hidden="true">${d}</svg>`;
@@ -382,7 +389,7 @@
     savedData = j;
     Board21.save(d).catch(() => {});   // (not stored yet: the board keeps it and tries again)
   }
-  const saveConfig = () => Board21.saveConfig(Object.assign({}, cfg)).catch(() => {});
+  const saveConfig = () => Board21.saveConfig(Object.assign({}, cfg, { fractions: cfg.answers === 'fraction' })).catch(() => {});
 
   // ---- Pressing keys
   function press(k) {
@@ -576,7 +583,8 @@
     }
     return esc(t).replace(/(\d),(?=\d{3}(?!\d))/g, '$1<span class="ce-sep">,</span>');
   }
-  const toggleLabel = s => s.answer && s.answer.asFraction ? 'Show as a decimal' : 'Show as a fraction';
+  const TOGGLE = { decimal: 'Show as a decimal', fraction: 'Show as a fraction', remainder: 'Show with a remainder' };
+  const toggleLabel = s => TOGGLE[(s.answer && s.answer.toggleTo) || 'fraction'];
   function setToggle(btn, s) {
     const on = s.mode === 'done' && !!s.answer && s.answer.canToggle && !answerHidden(s);
     btn.hidden = !on;
@@ -595,7 +603,7 @@
     setToggle(el.eqToggle, s);
     // The steps, written out as on a whiteboard: each line is the one before with the marked part worked out. Every
     // line is laid out from the start (hidden until its turn), so the text never jumps as they appear.
-    const ck = steps.map(st => st.html).join('|') + '|' + (s.answer ? s.answer.asFraction : '');
+    const ck = steps.map(st => st.html).join('|') + '|' + (s.answer ? s.answer.toggleTo : '');
     if (ck !== chainKey) {
       chainKey = ck;
       el.chain.innerHTML = steps.map((st, i) => {
@@ -702,9 +710,10 @@
     if (!s.history.length) { el.hlist.innerHTML = '<li class="hempty">Your problems show here.</li>'; return; }
     let html = '';
     for (let i = s.history.length - 1; i >= 0; i--) {   // the oldest at the top, the newest at the bottom
-      const h = s.history[i], hid = i === 0 && hideNewest;
+      // (An answer with a remainder is named in words, "Use 3 remainder 2", as a screen reader hears it everywhere else.)
+      const h = s.history[i], hid = i === 0 && hideNewest, useName = h.answer.form === 'remainder' ? h.answer.speech : h.answer.text;
       html += `<li class="hline${i === 0 && cur ? ' cur' : ''}"><button type="button" class="hpick" data-i="${i}" aria-label="Change ${esc(h.expression.text)}" title="Change this problem">${noCursor(h.expression.html)}</button>` +
-        `<button type="button" class="hans" data-i="${i}"${hid ? ' disabled aria-label="Answer hidden"' : ` aria-label="Use ${esc(h.answer.text)}" title="Use this answer"`}><span class="heq" aria-hidden="true">=</span>${hid ? '?' : h.answer.html}</button></li>`;
+        `<button type="button" class="hans" data-i="${i}"${hid ? ' disabled aria-label="Answer hidden"' : ` aria-label="Use ${esc(useName)}" title="Use this answer"`}><span class="heq" aria-hidden="true">=</span>${hid ? '?' : h.answer.html}</button></li>`;
     }
     const had = el.hlist.contains(document.activeElement), was = el.hlist.scrollTop;
     el.hlist.innerHTML = html;
@@ -734,6 +743,7 @@
   function setMenu(s) {
     s = s || calc.state();
     const off = !cfg.canvas;
+    // Answers: one of three, under its heading. Desmos % shows under Advanced keys while they're on, as % is one of them.
     const items = [
       { heading: true, label: 'Show' },
       { id: 'canvas', label: 'Canvas', checked: cfg.canvas },
@@ -741,25 +751,30 @@
       { id: 'steps', label: 'Steps', checked: cfg.steps, disabled: off },
       { id: 'words', label: 'In words', checked: cfg.words, disabled: off },
       { separator: true },
+      { heading: true, label: 'Answers' },
+      { id: 'answers-decimal', label: 'As decimals', checked: cfg.answers === 'decimal', disabled: cfg.test },
+      { id: 'answers-fraction', label: 'As fractions', checked: cfg.answers === 'fraction', disabled: cfg.test },
+      { id: 'answers-remainder', label: 'With remainders', checked: cfg.answers === 'remainder', disabled: cfg.test },
+      { separator: true },
       { id: 'advanced', label: 'Advanced keys', checked: cfg.advanced, disabled: cfg.test },
+      cfg.advanced && { id: 'percent', label: 'Desmos %', checked: cfg.percent === 'of', disabled: cfg.test },
       { id: 'hide', label: 'Hide the answer', checked: cfg.hide },
-      { id: 'fractions', label: 'Answers as fractions', checked: cfg.fractions, disabled: cfg.test },
-      { id: 'test', label: 'Test practice', checked: cfg.test },
-      { id: 'percent', label: '50 + 10% = 55', checked: cfg.percent === 'apple', disabled: cfg.test },
+      TEST_PRACTICE && { id: 'test', label: 'Test practice', checked: cfg.test },
       { id: 'swap', label: 'Swap sides', checked: cfg.swap },
       { separator: true },
       { id: 'clear-history', label: 'Clear history', icon: ICON.trash, disabled: !s.history.length }
-    ];
+    ].filter(Boolean);
     const sig = JSON.stringify(items);
     if (sig !== menuNow) { menuNow = sig; Board21.menu.set(items); }
   }
   Board21.on('menu', id => {
     if (id === 'clear-history') { calc.clearHistory(); render(); save(); return; }
     if (id === 'hide') { setHide(!cfg.hide); return; }
-    if (!own(DEFAULTS, id)) return;
-    const was = cfg, next = Object.assign({}, cfg);
-    if (id === 'percent') next.percent = cfg.percent === 'apple' ? 'of' : 'apple';
-    else next[id] = !cfg[id];
+    const was = cfg, next = Object.assign({}, cfg), answers = /^answers-(\w+)$/.exec(id);
+    if (answers) { if (!ANSWERS.includes(answers[1]) || answers[1] === cfg.answers) return; next.answers = answers[1]; }
+    else if (id === 'percent') next.percent = cfg.percent === 'apple' ? 'of' : 'apple';
+    else if (FLAGS.includes(id) && (id !== 'test' || TEST_PRACTICE)) next[id] = !cfg[id];
+    else return;
     // A panel turned on widens the window by its width, and Advanced keys make it taller; turned off, they give it back.
     const change = id === 'history' || id === 'canvas' || id === 'advanced' ? sizeChange(id, next[id]) : null;
     useConfig(next, was);
@@ -771,11 +786,9 @@
   function useConfig(next, was) {
     cfg = next;
     if (was.steps !== cfg.steps || was.canvas !== cfg.canvas) { shown = 0; lastShown = 0; }
+    // The answer on screen follows the Answers choice at once (a new answerAs shows it in that form, ⇄ undone).
     calc.setOptions(engineOptions());
-    // The answer on screen follows Answers as fractions at once; new ones start in that form anyway (answerAs).
-    const s = calc.state();
-    if (was.fractions !== cfg.fractions && s.mode === 'done' && s.answer && s.answer.canToggle && s.answer.asFraction !== (cfg.fractions && !cfg.test)) calc.toggleFraction();
-    if (was.fractions !== cfg.fractions || was.test !== cfg.test) save();
+    if (was.answers !== cfg.answers || was.test !== cfg.test) save();
     layout();
     render();
   }

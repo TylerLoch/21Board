@@ -9,7 +9,7 @@
  * sideways, a chip with no section, a live example left empty, Desmos figures that don't add up, a menu on the page
  * that differs from the widget's own, a demo that doesn't fit the first screen beside its menu, keys too small to
  * tap at phone width, or a demo that doesn't answer (2 + 3 × 4 = shows 14; History in the page's menu shows a History
- * line; Test practice gives 7-digit answers). It also runs the demo inside a sandboxed frame, as the viewer may, and
+ * line; With remainders gives 17 ÷ 5 = 3 R 2; Desmos % shows under Advanced keys while they're on). It also runs the demo inside a sandboxed frame, as the viewer may, and
  * in one that starts hidden and shows later. It checks that the page and the demo follow a data-theme the host sets,
  * and that each chip is marked once tapped. Screenshots go to dist/shots/, at deviceScaleFactor 2.
  */
@@ -118,7 +118,19 @@ async function checkOne(browser, base, w, h, scheme) {
     if (!same(drawn.slice(0, live.length), live)) fail(where, 'the drawn menu differs from the widget\'s: ' + JSON.stringify(live));
     else if (!same(drawn.slice(live.length).map(d => d.label), ['Fill the board', 'Reset', 'Close'])) fail(where, 'the drawn menu should end with Fill the board, Reset and Close');
     else ok(`the drawn menu matches the widget's ${live.length} items, ticks and greyed-out ones`);
-    if (!same(terms, live.map(l => l.label))) fail(where, 'the menu\'s list of items differs from the widget\'s'); else ok('every menu item explained, in order');
+    const heads = sel => page.$$eval(sel, hs => hs.map(h => h.textContent));
+    if (!same(await heads('#menu-drawn .wm-h'), await heads('#calc-menu .wm-h'))) fail(where, 'the drawn menu\'s headings differ from the widget\'s: ' + JSON.stringify(await heads('#calc-menu .wm-h')));
+    else ok('the drawn menu has the widget\'s headings: ' + (await heads('#calc-menu .wm-h')).join(', '));
+    // The list explains every item, Desmos % too, which shows while Advanced keys are on.
+    await page.click('#menu-advanced');
+    await page.waitForSelector('#menu-percent');
+    const withAdv = await page.$$eval('#calc-menu button.wm-i', bs => bs.filter(b => b.id !== 'menu-reset').map(b => b.querySelector('.wm-l').textContent));
+    const pct = await page.getAttribute('#menu-percent', 'aria-checked');
+    await page.click('#menu-advanced');
+    await page.waitForSelector('#menu-percent', { state: 'detached' });
+    if (withAdv[withAdv.indexOf('Advanced keys') + 1] !== 'Desmos %' || pct !== 'true') fail(where, 'Desmos % should sit right under Advanced keys, checked: ' + JSON.stringify(withAdv) + ', ' + pct);
+    else ok('Desmos % sits under Advanced keys while they\'re on, checked, and goes when they\'re off');
+    if (!same(terms, withAdv)) fail(where, 'the menu\'s list of items differs from the widget\'s: ' + JSON.stringify(withAdv)); else ok('every menu item explained, in order');
 
     // The demo answers
     await press(page, frame, ['2', 'add', '3', 'multiply', '4', 'equals']);
@@ -138,14 +150,13 @@ async function checkOne(browser, base, w, h, scheme) {
     await page.evaluate(() => scrollTo(0, 0));
     await page.screenshot({ path: path.join(SHOTS, `top-${w}-${scheme}.png`) });
 
-    await page.click('#menu-test');
-    await frame.waitForSelector('#app.test');
-    await press(page, frame, ['clear', '1', 'divide', '3', 'equals']);
-    const t = await answerText(frame);
-    const digits = ((/=\s*([\d.,]+)/.exec(t) || [])[1] || '').replace(/\D/g, '').replace(/^0+/, '');
-    if (digits.length !== 7) fail(where, `Test practice: 1 ÷ 3 = shows "${t}"`); else ok('Test practice: ' + t.replace(/\s+/g, ' ').trim());
-    const greyed = await page.$$eval('#calc-menu button[disabled]', bs => bs.map(b => b.textContent.trim()));
-    if (!same(greyed, ['Advanced keys', 'Answers as fractions', '50 + 10% = 55'])) fail(where, 'greyed out in Test practice: ' + greyed.join(', ')); else ok('greyed out in Test practice: ' + greyed.join(', '));
+    await page.click('#menu-answers-remainder');
+    await page.waitForSelector('#menu-answers-remainder[aria-checked="true"]');
+    await press(page, frame, ['clear', '1', '7', 'divide', '5', 'equals']);
+    const t = (await answerText(frame)).replace(/\s+/g, ' ').trim();
+    if (!/=\s*3 R 2$/.test(t)) fail(where, `With remainders: 17 ÷ 5 = shows "${t}"`); else ok('With remainders: ' + t);
+    await page.click('#menu-answers-decimal');
+    await page.waitForSelector('#menu-answers-decimal[aria-checked="true"]');
 
     if (w === 1366 && scheme === 'light') await extras(page, frame, where);
     await scrollCheck(page, where, 'at the end');
@@ -171,8 +182,6 @@ async function extras(page, frame, where) {
     ok('the accent reaches the demo');
   } catch (e) { fail(where, 'the accent didn\'t reach the demo'); }
   await page.click('#accent-blue');
-  await page.click('#menu-test');
-  await frame.waitForSelector('#app:not(.test)');
   const order = async () => frame.evaluate(() => getComputedStyle(document.getElementById('grid')).gridTemplateAreas);
   await page.click('#menu-swap');
   await page.waitForTimeout(200);

@@ -29,7 +29,7 @@
 }(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 
-  const VERSION = '0.2.2';
+  const VERSION = '0.3.0';
 
   // ---- Limits ------------------------------------------------------------------------------------------------------
   const LIMITS = Object.freeze({
@@ -260,6 +260,7 @@
   //   { kind: 'sci', neg, mant, exp }           1.2 × 10¹⁵
   //   { kind: 'frac', neg, num, den }           7/2         { kind: 'mixed', neg, whole, num, den }   3 1/2
   //   { kind: 'rep', neg, int, pre, rep, fallback }   0.1 6̅ (a bar over the repeating digits; `fallback` is rounded)
+  //   { kind: 'rem', neg, q, r }                     3 R 2 (answerAs 'remainder': see remainderOf)
   // and `rounded`: true when what's shown isn't exactly the value (the equation can then say ≈).
   const fixed = (neg, int, dec, rounded) => ({ kind: 'fixed', neg, int, dec, point: dec.length > 0, rounded });
   const roundHalfUp = (n, d) => (2n * n + d) / (2n * d);   // school rounding: 5 or more rounds up (n ≥ 0)
@@ -317,6 +318,25 @@
     }
     return n.toString().length > LIMITS.fracDigits ? null : { kind: 'frac', neg, num: n.toString(), den: d.toString(), rounded: false };
   }
+  // Remainders (answerAs 'remainder'): 17 ÷ 5 = 3 R 2. An answer has one when the last step of its problem is a whole
+  // number ÷ a whole number, neither negative, that doesn't divide evenly: rem { q, r } (BigInts). 17.0 ÷ 5 counts, and
+  // so does (20 + 3) ÷ 5. Only for that answer: a negative side, a fraction typed with a/b, or another step after it,
+  // and the answer is a decimal. a, b: the step's two values; v: the answer.
+  function remainderOf(a, b, v) {
+    if (!a || !b || !v || !a.e || !b.e || !v.e || a.d !== 1n || b.d !== 1n || a.n < 0n || b.n <= 0n) return null;
+    if (v.n * b.n !== a.n * v.d) return null;   // (the answer is a ÷ b itself, not made negative after it)
+    const r = a.n % b.n;
+    return r === 0n ? null : { q: a.n / b.n, r };
+  }
+  // 3 R 2, with the digit rules of other answers: a quotient or a remainder that would be rounded or in × 10ⁿ makes it
+  // a decimal instead (null).
+  function remainderPiece(rem, f) {
+    const whole = n => { if (n === 0n) return '0'; const p = roundedPiece(false, n, 1n, true, f.digits); return p.kind === 'fixed' && !p.rounded ? p.int : null; };
+    const q = rem && whole(rem.q), r = rem && whole(rem.r);
+    return q && r ? { kind: 'rem', neg: false, q, r, rounded: false } : null;
+  }
+  // An answer's piece: its remainder (answerAs 'remainder', when it has one), otherwise formatValue.
+  const answerPiece = (v, f, rem) => (f.answerAs === 'remainder' && remainderPiece(rem, f)) || formatValue(v, f);
   // 1/6 = 0.1666… → int '0', pre '1', rep '6'. Null when the repeating part doesn't fit in 15 digits.
   function repeatingPiece(neg, n, d, digits) {
     const int = (n / d).toString(), room = LIMITS.digits - int.length, seen = new Map();
@@ -600,6 +620,7 @@
           case 'sci': return `<span class="ce-sci"><span class="ce-num">${sg}${esc(p.mant)}${more}</span><span class="ce-op">${T}×${T}</span><span class="ce-num">10<sup class="ce-sup">${esc(expText(p.exp))}</sup></span></span>`;
           case 'frac': return (sg ? `<span class="ce-num">${sg}</span>` : '') + this.fracOf(p.num, p.den);
           case 'mixed': return `<span class="ce-mixed"><span class="ce-num">${sg}${group3H(p.whole, sep)}</span>${this.fracOf(p.num, p.den)}</span>`;
+          case 'rem': return `<span class="ce-rem"><span class="ce-num">${group3H(p.q, sep)}</span><span class="ce-r">${T}R${T}</span><span class="ce-num">${group3H(p.r, sep)}</span></span>`;
         }
         return '';
       },
@@ -640,6 +661,7 @@
           case 'sci': return sg(`<mrow><mn>${esc(p.mant)}${more}</mn><mo>×</mo><msup><mn>10</mn>${p.exp < 0 ? `<mrow><mo>${MINUS}</mo><mn>${-p.exp}</mn></mrow>` : `<mn>${p.exp}</mn>`}</msup></mrow>`);
           case 'frac': return sg(`<mfrac><mn>${esc(group3(p.num, sep))}</mn><mn>${esc(group3(p.den, sep))}</mn></mfrac>`);
           case 'mixed': return sg(`<mrow><mn>${esc(group3(p.whole, sep))}</mn><mfrac><mn>${esc(group3(p.num, sep))}</mn><mn>${esc(group3(p.den, sep))}</mn></mfrac></mrow>`);
+          case 'rem': return `<mrow><mn>${esc(group3(p.q, sep))}</mn><mtext> R </mtext><mn>${esc(group3(p.r, sep))}</mn></mrow>`;
         }
         return '';
       },
@@ -679,6 +701,7 @@
           case 'sci': return `${sg}${p.mant}${more} × 10${superscript(expText(p.exp))}`;
           case 'frac': return `${sg}${group3(p.num, sep)}/${group3(p.den, sep)}`;
           case 'mixed': return `${sg}${group3(p.whole, sep)} ${group3(p.num, sep)}/${group3(p.den, sep)}`;
+          case 'rem': return `${group3(p.q, sep)} R ${group3(p.r, sep)}`;
         }
         return '';
       },
@@ -718,6 +741,7 @@
           case 'sci': return `${sg}${p.mant} times 10 to the power of ${p.exp < 0 ? 'negative ' : ''}${Math.abs(p.exp)}`;
           case 'frac': return `${sg}${g(p.num)} over ${g(p.den)}`;
           case 'mixed': return `${sg}${g(p.whole)} and ${g(p.num)} over ${g(p.den)}`;
+          case 'rem': return `${g(p.q)} remainder ${g(p.r)}`;
         }
         return '';
       },
@@ -953,14 +977,22 @@
     throw new Error('Nothing to work out');
   }
   // tokens must be complete (no holes, every box closed). prev: the value ans stands for (sheet). Answers
-  // { value, error (a code) } and, with Bs, steps (each drawn four ways).
+  // { value, error (a code), rem (the answer's remainder, remainderOf) } and, with Bs, steps (each drawn four ways).
   function solve(tokens, pctMode, o, f, Bs, prev) {
     const root = { k: 'top', a: parse(tokens, pctMode, prev) };
     setParents(root.a, root);
     const steps = [], R = { f, mark: null, more: true, cursor: false };
     const line = mark => { R.mark = mark; const r = rendered(Bs, B => draw(root.a, B, 'start', R)); R.mark = null; return r; };
     const H = Bs ? Bs.H : backends(f).H;
-    let error = null;
+    let error = null, last = null;   // last: the last step, { c, region, v, a, b } (a and b: its two values, for a ÷)
+    const L = n => leafValue(loneGroup(n) ? n.a : n);
+    // A step's work: what it worked out, = its value (or the answer's piece, for the last step).
+    const workOf = (c, region, p) => rendered(Bs, B => {
+      const lhs = c.op === 'percent' && c.node.base
+        ? draw(c.node, B, 'start', R) + B.word('of') + draw(c.node.base.a, B, 'start', R)
+        : draw(c.node.k === 'group' ? region : c.node, B, 'start', R);
+      return lhs + B.eq(f.approxSign && Bs.pick(B, p).rounded) + B.number(p);
+    });
     tidy(root, f, H);
     for (let guard = 0; guard < 1000; guard++) {
       const list = [];
@@ -977,32 +1009,28 @@
         if (Bs) steps.push(Object.assign(line(region), { rule: c.rule, op: c.op, inParens: c.depth > 0, inside: c.inside, work: null, error: info(error) }));
         break;
       }
-      if (Bs) {
-        const work = rendered(Bs, B => {
-          const lhs = c.op === 'percent' && c.node.base
-            ? draw(c.node, B, 'start', R) + B.word('of') + draw(c.node.base.a, B, 'start', R)
-            : draw(c.node.k === 'group' ? region : c.node, B, 'start', R);
-          const p = formatValue(v, f);
-          return lhs + B.eq(f.approxSign && Bs.pick(B, p).rounded) + B.number(p);
-        });
-        steps.push(Object.assign(line(region), { rule: c.rule, op: c.op, inParens: c.depth > 0 && c.op !== 'parens', inside: c.op === 'parens' ? null : c.inside, work, error: null }));
-      }
+      const div = c.node.k === 'bin' && c.node.op === '/';
+      last = { c, region, v, a: div ? L(c.node.a) : null, b: div ? L(c.node.b) : null };
+      if (Bs) steps.push(Object.assign(line(region), { rule: c.rule, op: c.op, inParens: c.depth > 0 && c.op !== 'parens', inside: c.op === 'parens' ? null : c.inside, work: workOf(c, region, formatValue(v, f)), error: null }));
       replaceNode(region, { k: 'val', v });
       tidy(root, f, H);
     }
-    let value = null;
+    let value = null, rem = null;
     if (!error) {
       try { value = inRange(leafValue(root.a)); } catch (e) {
         if (!(e instanceof CalcError)) throw e;
         error = e.code; value = null;
       }
+      rem = value && last ? remainderOf(last.a, last.b, value) : null;
       if (Bs) {
-        const p = value ? formatValue(value, f) : null;
+        const p = value ? answerPiece(value, f, rem) : null;
+        // The last step's work shows the answer as the answer shows: 17 ÷ 5 = 3 R 2.
+        if (p && p.kind === 'rem') steps[steps.length - 1].work = workOf(last.c, last.region, p);
         steps.push(Object.assign(p ? rendered(Bs, B => B.answer(B.number(p))) : line(null),
           { rule: null, op: null, inParens: false, inside: null, work: null, error: error ? info(error) : null, final: true }));
       }
     }
-    return { value, error, steps };
+    return { value, error, steps, rem };
   }
 
   // ---- Options -----------------------------------------------------------------------------------------------------
@@ -1014,7 +1042,8 @@
                               // softly: the 21Board widget's) · 'none'
     approxSign: false,        // true: the equation says ≈ when the answer shown is rounded (Desmos always says =)
     zeroPowerZero: 'one',     // 0⁰: 'one' (as Desmos) or 'error' (a friendly message)
-    answerAs: 'decimal',      // 'decimal' | 'fraction' (7/2) | 'mixed' (3 1/2): how exact answers are shown at first
+    answerAs: 'decimal',      // 'decimal' | 'fraction' (7/2) | 'mixed' (3 1/2) | 'remainder' (17 ÷ 5 = 3 R 2, other
+                              // answers as decimals; one display only, a sheet shows decimals): how answers show at first
     stackedDivision: false,   // the stylized equation shows ÷ as a fraction bar
     repeatingBar: false,      // the stylized equation shows 1 ÷ 3 = 0.3̅ (a bar over the repeating digits)
     slash: 'divide',          // the / key on a keyboard: 'divide' (÷, as Desmos Four-Function) or 'fraction' (a stacked
@@ -1034,7 +1063,7 @@
     if (!isObj(o)) return r;
     const choose = (k, allowed) => { if (own(o, k) && allowed.includes(o[k])) r[k] = o[k]; };
     choose('percent', ['of', 'simple', 'apple']);
-    choose('answerAs', ['decimal', 'fraction', 'mixed']);
+    choose('answerAs', ['decimal', 'fraction', 'mixed', 'remainder']);
     choose('zeroPowerZero', ['error', 'one']);
     choose('digits', [10, 7]);
     choose('separators', ['space', 'comma', 'faint', 'none']);
@@ -1096,7 +1125,7 @@
 
   // ---- Key presses -------------------------------------------------------------------------------------------------
   // What one problem needs, as a plain object, so a press can be tried on a copy (canPress).
-  const blank = () => ({ tokens: [], mode: 'edit', result: null, error: null, notice: null, closed: 0, pct: 'of', frac: false, history: [] });
+  const blank = () => ({ tokens: [], mode: 'edit', result: null, rem: null, error: null, notice: null, closed: 0, pct: 'of', frac: false, history: [] });
   const digitCount = s => s.replace('.', '').length - (s.startsWith('0.') ? 1 : 0);
   const zero = () => ({ t: 'num', s: '0', neg: false });
   // A number is finished when something else is pressed: "5." becomes "5", and a 0 keeps no sign, since 0 is its own
@@ -1158,7 +1187,7 @@
   // sheet: a line of the sheet (ans is the line above, and the sheet handles =, AC, undo and moving between lines).
   // A key that does nothing leaves everything as it was (a dimmed ) doesn't turn "7." into "7").
   function pressOn(S, key, o, solveFn, sheet) {
-    const kept = { tokens: S.tokens, mode: S.mode, result: S.result, error: S.error, closed: S.closed, frac: S.frac };
+    const kept = { tokens: S.tokens, mode: S.mode, result: S.result, rem: S.rem, error: S.error, closed: S.closed, frac: S.frac };
     const changed = pressKey(S, key, o, solveFn, sheet);
     if (!changed) Object.assign(S, kept);
     return changed;
@@ -1505,18 +1534,21 @@
     const cache = new WeakMap();   // a problem's worked-out steps (keyed by its token list), drawn with the current options
     let drawKey = '', Bs = backends(displayOpts(o));
     // ⇄'s other form, while the toggle is on: with it off (Test practice), the answer is in the form answerAs asks for.
-    const other = () => S.frac && o.toggle ? otherForm(o.answerAs) : null;
+    // remShown: the answer on screen is shown with its remainder (or would be, before ⇄).
+    const remShown = () => S.mode === 'done' && o.answerAs === 'remainder' && !!remainderPiece(S.rem, displayOpts(o));
+    const other = () => S.frac && o.toggle ? otherForm(o.answerAs, remShown()) : null;
     const fopts = () => displayOpts(o, other());
+    const toggleable = () => S.mode === 'done' && (!!fractionForm(S.result) || remShown());
 
     // = : works the problem out and keeps the answer (and adds it to the history).
     function solveState(Tt) {
       const r = solve(Tt.tokens, o.percent, o, displayOpts(o), null, null);
       Tt.pct = o.percent;
       Tt.frac = false;
-      if (r.error) { Tt.mode = 'error'; Tt.error = info(r.error); Tt.result = null; return true; }
-      Tt.mode = 'done'; Tt.result = r.value; Tt.error = null;
+      if (r.error) { Tt.mode = 'error'; Tt.error = info(r.error); Tt.result = null; Tt.rem = null; return true; }
+      Tt.mode = 'done'; Tt.result = r.value; Tt.rem = r.rem; Tt.error = null;
       if (!trivial(parse(Tt.tokens, o.percent, null)) && o.historySize > 0) {
-        Tt.history = [{ tokens: Tt.tokens, value: r.value, pct: o.percent }].concat(Tt.history).slice(0, o.historySize);
+        Tt.history = [{ tokens: Tt.tokens, value: r.value, pct: o.percent, rem: r.rem }].concat(Tt.history).slice(0, o.historySize);
       }
       return true;
     }
@@ -1529,7 +1561,7 @@
     function canPress(key) {
       const k = keyName(key);
       if (!k || !allowed(o, k)) return false;
-      if (k === 'toggle') return o.toggle && S.mode === 'done' && !!fractionForm(S.result);
+      if (k === 'toggle') return o.toggle && toggleable();
       if (k === 'equals') {
         if (S.mode === 'error' || (!S.tokens.length && S.mode === 'edit')) return false;
         if (S.mode === 'done') return o.repeatEquals && !!repeatTail(S.tokens);
@@ -1539,7 +1571,7 @@
       return pressOn(Tt, k, o, () => true, false);
     }
     function toggleFraction() {
-      if (!o.toggle || S.mode !== 'done' || !fractionForm(S.result)) return false;
+      if (!o.toggle || !toggleable()) return false;
       S.frac = !S.frac;
       return true;
     }
@@ -1559,13 +1591,13 @@
       const k = JSON.stringify(fopts());
       if (k !== drawKey) { drawKey = k; Bs = backends(fopts()); }
     }
-    function equationOf(tokens, pct, value, cursor) {
+    function equationOf(tokens, pct, value, cursor, rem) {
       const f = fopts(), R = { f, mark: null, more: true, cursor };
       const tree = parse(cursor ? tokens.concat([{ t: 'cursor' }]) : tokens, pct, null);
       const expr = rendered(Bs, B => draw(tree, B, 'start', R));
       if (!value) return { expression: expr, equation: expr };
       R.cursor = false;
-      const p = formatValue(value, f);
+      const p = answerPiece(value, f, rem);
       return { expression: expr, equation: rendered(Bs, B => draw(tree, B, 'start', R) + drawAnswer(Bs, B, p, f)) };
     }
 
@@ -1582,8 +1614,8 @@
         boxKey: S.mode === 'edit' ? boxKeyOf(tokens) : null,
         error: S.error, notice: S.notice, steps: [], history: [], can: {}, options: Object.assign({}, o)
       };
-      const showValue = (v, kind) => {
-        const p = formatValue(v, f);
+      const showValue = (v, kind, rem) => {
+        const p = answerPiece(v, f, rem);
         out.display = Bs.T.number(p); out.displayHtml = Bs.H.number(p); out.displayKind = kind;
       };
       if (S.mode === 'edit') {
@@ -1602,24 +1634,29 @@
           } else out.displayKind = 'running';
         }
         if (tokens.length && !findHole(tree, null) && !trivial(tree)) {
-          try { out.preview = Object.assign(answerOf(Bs, displayOpts(o), inRange(evaluate(tree, o)), false, o.toggle), { error: null }); }
+          try {
+            const v = inRange(evaluate(tree, o));
+            // (With remainders, the answer as = will show it: worked out step by step, its boxes closed, for the last step.)
+            const add = o.answerAs === 'remainder' && closers(tokens), rem = add ? solve(tokens.concat(add), o.percent, o, displayOpts(o), null, null).rem : null;
+            out.preview = Object.assign(answerOf(Bs, displayOpts(o), v, false, o.toggle, rem), { error: null });
+          }
           catch (e) { if (!(e instanceof CalcError)) throw e; out.preview = { text: '', html: '', mathml: '', speech: '', error: info(e.code) }; }
         }
       } else {
         const r = worked(S.tokens, S.pct);
         out.steps = r.steps;
         if (S.mode === 'done') {
-          out.answer = answerOf(Bs, displayOpts(o), S.result, other(), o.toggle);
-          Object.assign(out, equationOf(tokens, S.pct, S.result, false));
-          showValue(S.result, 'answer');
+          out.answer = answerOf(Bs, displayOpts(o), S.result, other(), o.toggle, S.rem);
+          Object.assign(out, equationOf(tokens, S.pct, S.result, false, S.rem));
+          showValue(S.result, 'answer', S.rem);
         } else {
           Object.assign(out, equationOf(tokens, S.pct, null, false));
           out.display = S.error.short; out.displayHtml = esc(S.error.short); out.displayKind = 'error';
         }
       }
       out.history = S.history.map(h => {
-        const eq = equationOf(h.tokens, h.pct, h.value, false);
-        return { equation: eq.equation, expression: eq.expression, answer: answerOf(Bs, displayOpts(o), h.value, false, o.toggle) };
+        const eq = equationOf(h.tokens, h.pct, h.value, false, h.rem);
+        return { equation: eq.equation, expression: eq.expression, answer: answerOf(Bs, displayOpts(o), h.value, false, o.toggle, h.rem) };
       });
       for (const k of ['backspace', 'clear', 'clearEntry', 'equals', 'point', 'close', 'open', 'negate', 'square', 'percent', 'sqrt', 'cbrt',
         'root', 'pi', 'power', 'add', 'subtract', 'multiply', 'divide', 'fraction', 'over', 'right', '0', 'ans', 'toggle']) out.can[k] = canPress(k);
@@ -1671,7 +1708,7 @@
         let r = null;
         if (tokens && pct) { try { r = solve(tokens, pct, o, displayOpts(o), null, null); } catch (e) { r = null; } }
         if (!r || r.error || trivial(parse(tokens, pct, null))) { ok = false; continue; }
-        S.history.push({ tokens, value: r.value, pct });
+        S.history.push({ tokens, value: r.value, pct, rem: r.rem });
       }
       S.history = S.history.slice(0, o.historySize);
       const mode = ['edit', 'done', 'error'].includes(data.mode) ? data.mode : null;
@@ -1682,8 +1719,8 @@
       if (!pct || !Number.isInteger(closed) || closed < 0 || closed > LIMITS.depth || closed > tokens.length ||
           !tokens.slice(tokens.length - closed).every(t => t.t === 'close' || t.t === 'end')) return false;
       const r = solve(tokens, pct, o, displayOpts(o), null, null);
-      Object.assign(S, { tokens, closed, pct, mode: r.error ? 'error' : 'done', result: r.value, error: r.error ? info(r.error) : null });
-      if (data.frac === true && S.mode === 'done' && fractionForm(S.result)) S.frac = true;
+      Object.assign(S, { tokens, closed, pct, mode: r.error ? 'error' : 'done', result: r.value, rem: r.rem, error: r.error ? info(r.error) : null });
+      if (data.frac === true && toggleable()) S.frac = true;
       return ok && (r.error ? 'error' : 'done') === mode;
     }
 
@@ -1696,8 +1733,10 @@
       state,
       options: () => Object.assign({}, o),
       setOptions(partial) {
+        const was = o.answerAs;
         o = readOptions(Object.assign({}, o, isObj(partial) ? partial : {}));
         S.history = S.history.slice(0, o.historySize);
+        if (o.answerAs !== was) S.frac = false;   // the answer on screen shows in the new form at once, and ⇄ starts over
         return Object.assign({}, o);
       },
       toggleFraction,
@@ -1727,11 +1766,13 @@
     return v && v.e && v.d !== 1n ? fractionPiece(v.n < 0n, absB(v.n), v.d, false) : null;
   }
   // The toggle shows the other form: a fraction when answers start as decimals, a decimal when they start as fractions.
-  const otherForm = as => as === 'decimal' ? 'fraction' : 'decimal';
+  // With remainders: a decimal for an answer shown with its remainder (remShown), otherwise a fraction.
+  const otherForm = (as, remShown) => as === 'decimal' || (as === 'remainder' && !remShown) ? 'fraction' : 'decimal';
   // An answer, drawn, with everything a layout needs to show it and its toggle. as: the form to show ('decimal',
-  // 'fraction', 'mixed'), or null for the form answers start in (f.answerAs).
-  function answerOf(Bs, f, v, as, toggle) {
-    const p = formatValue(v, Object.assign({}, f, { answerAs: as || f.answerAs }));
+  // 'fraction', 'mixed'), or null for the form answers start in (f.answerAs). rem: its remainder (remainderOf), if any.
+  // form: the form shown ('decimal', 'fraction', or 'remainder'); toggleTo: the one ⇄ shows next, or null.
+  function answerOf(Bs, f, v, as, toggle, rem) {
+    const p = answerPiece(v, Object.assign({}, f, { answerAs: as || f.answerAs }), rem);
     const fr = p.kind === 'frac' || p.kind === 'mixed';
     const r = rendered(Bs, B => B.number(p));
     const forms = {};
@@ -1739,7 +1780,11 @@
       const q = formatValue(v, Object.assign({}, f, { answerAs: as }));
       forms[as] = (as === 'decimal' || q.kind === 'frac' || q.kind === 'mixed') ? { text: Bs.T.number(q), html: Bs.H.wrap(Bs.H.number(q), Bs.S.number(q)) } : null;
     }
-    return Object.assign(r, { exact: v.e, rounded: Bs.pick(Bs.T, p).rounded, value: valueOut(v), forms, canToggle: toggle !== false && !!fractionForm(v), asFraction: !!fr });
+    const rp = f.answerAs === 'remainder' ? remainderPiece(rem, f) : null;
+    forms.remainder = rp ? { text: Bs.T.number(rp), html: Bs.H.wrap(Bs.H.number(rp), Bs.S.number(rp)) } : null;
+    const form = p.kind === 'rem' ? 'remainder' : fr ? 'fraction' : 'decimal', canToggle = toggle !== false && (!!fractionForm(v) || !!rp);
+    return Object.assign(r, { exact: v.e, rounded: Bs.pick(Bs.T, p).rounded, value: valueOut(v), forms, canToggle, asFraction: !!fr, form,
+      toggleTo: !canToggle ? null : form !== 'decimal' ? 'decimal' : rp ? 'remainder' : 'fraction' });
   }
 
   // ---- Lines (createSheet) -----------------------------------------------------------------------------------------
