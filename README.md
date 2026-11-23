@@ -555,11 +555,12 @@ repeats the last step, so 5 + 5 = = = counts by 5s. A faint comma groups the dig
   it.
 - **Steps:** Next step, Back, and Show all, with each step's rule lit. A clicker's Page Down works too.
 - **In words:** "2 plus 3 times 4 equals 14" under the problem.
+- **Answers:** as decimals, as fractions, or with remainders. Decimals to start. With remainders, 17 ÷ 5 = 3 R 2, and
+  any other answer is a decimal. ⇄ beside an answer switches that one.
 - **Advanced keys:** a² aᵇ ⁿ√ ∛ π % a/b →. Off to start.
+- **Desmos %:** under Advanced keys, while they're on. On, % means "% of", as in Desmos. Off, 50 + 10% = 55, as on
+  iPhone. On to start.
 - **Hide the answer:** the class predicts, then taps to see.
-- **Answers as fractions:** answers start as fractions. ⇄ beside an answer switches that one.
-- **Test practice:** Desmos Four-Function's keys and 7 digits, as on NWEA MAP.
-- **50 + 10% = 55:** % as on iPhone. Off, it's Desmos's "% of".
 - **Swap sides:** the panels change sides, for a teacher on the left of a flat panel.
 - **Clear history:** empties History.
 

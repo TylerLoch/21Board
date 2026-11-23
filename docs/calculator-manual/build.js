@@ -73,9 +73,9 @@ if (!historySize) fail('no historySize in the widget');
 const version = (/^const VERSION = '([^']+)'/m.exec(sw) || [])[1];
 if (!version) fail('no VERSION in sw.js');
 
-// ---- The Desmos figures. The widget's options outside Test practice; if the widget changes them, check the
-// figures and the page's "Different on purpose" against the new ones, then change both lines here.
-const OPTIONS_LINE = "{ digits: 10, keys: null, toggle: true, answerAs: cfg.fractions ? 'fraction' : 'decimal', slash: cfg.advanced ? 'fraction' : 'divide', percent: cfg.percent }";
+// ---- The Desmos figures. The widget's options, with As decimals and Desmos % (its first settings); if the widget
+// changes them, check the figures and the page's "Different on purpose" against the new ones, then change both lines here.
+const OPTIONS_LINE = "{ digits: 10, keys: null, toggle: true, answerAs: cfg.answers, slash: cfg.advanced ? 'fraction' : 'divide', percent: cfg.percent }";
 const CREATE_LINE = "E.create(Object.assign({ separators: 'faint', historySize: " + historySize + " }, engineOptions()))";
 once(widget, OPTIONS_LINE, 'the widget\'s engine options');
 once(widget, CREATE_LINE, 'the widget\'s engine');

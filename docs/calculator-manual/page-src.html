@@ -169,11 +169,6 @@ button.wm-i:hover:not(:disabled) { background: var(--surface-2); }
 .kp i { font-family: Georgia, "Times New Roman", serif; }
 .kp sup { font-size: .62em; line-height: 0; position: relative; top: -.42em; }
 .kp .k3 { grid-column: span 3; } .kp .k6 { grid-column: span 6; }
-/* Test practice: 24 columns, so clear all can sit in the middle. Its keys span 6 of them, the same size as elsewhere,
-   and clear all spans 8, as in the widget. */
-.kp.k24 { grid-template-columns: repeat(24, minmax(0, 1fr)); }
-.kp .flat { background: transparent; color: color-mix(in srgb, var(--text) 78%, transparent); font-weight: 400; }
-.kp .ca { grid-column: 9 / span 8; }
 .key-notes { margin: 16px 0 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 0 18px; background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 6px 18px; }
 .key-notes dt, .key-notes dd { margin: 0; padding: 11px 0; border-top: 1px solid var(--border); }
 .key-notes dt:first-of-type, .key-notes dt:first-of-type + dd { border-top: 0; }
@@ -376,11 +371,13 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Steps</span><svg class="wm-ck" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">In words</span></div>
             <div class="wm-sep"></div>
+            <div class="wm-h">Answers</div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">As decimals</span><svg class="wm-ck" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">As fractions</span></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">With remainders</span></div>
+            <div class="wm-sep"></div>
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Advanced keys</span></div>
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Hide the answer</span></div>
-            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Answers as fractions</span></div>
-            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Test practice</span></div>
-            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">50 + 10% = 55</span></div>
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Swap sides</span></div>
             <div class="wm-sep"></div>
             <div class="wm-i off"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></span><span class="wm-l">Clear history</span></div>
@@ -396,11 +393,12 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
           <dt>History</dt><dd>Your problems, one to a line, the newest at the bottom. Tap one to change it. Tap its answer to use it.</dd>
           <dt>Steps</dt><dd>Next step, Back, and Show all, under the problem.<span class="grey">Greyed out while Canvas is off.</span></dd>
           <dt>In words</dt><dd>“2 plus 3 times 4 equals 14” under the problem.<span class="grey">Greyed out while Canvas is off.</span></dd>
-          <dt>Advanced keys</dt><dd>Adds a² aᵇ ⁿ√ ∛ π % a/b and → above the keys.<span class="grey">Greyed out in Test practice.</span></dd>
+          <dt>As decimals</dt><dd>Answers start as decimals, such as 0.125. ⇄ switches one to a fraction.</dd>
+          <dt>As fractions</dt><dd>Answers start as fractions, such as 1/8. ⇄ switches one to a decimal.</dd>
+          <dt>With remainders</dt><dd>A whole number ÷ a whole number shows its remainder, such as 17 ÷ 5 = 3 R 2. Other answers are decimals.</dd>
+          <dt>Advanced keys</dt><dd>Adds a² aᵇ ⁿ√ ∛ π % a/b and → above the keys.</dd>
+          <dt>Desmos %</dt><dd>On, % means “% of”, as in Desmos. Off, 50 + 10% = 55, as on iPhone.<span class="grey">Shows while Advanced keys are on.</span></dd>
           <dt>Hide the answer</dt><dd>The answer hides behind a ? until you tap it. The class predicts first.</dd>
-          <dt>Answers as fractions</dt><dd>Answers start as fractions. ⇄ switches one to a decimal.<span class="grey">Greyed out in Test practice.</span></dd>
-          <dt>Test practice</dt><dd>Desmos Four-Function’s keys and 7 digits, as on NWEA MAP.</dd>
-          <dt>50 + 10% = 55</dt><dd>% works as on iPhone. Off, % means “% of”, as in Desmos.<span class="grey">Greyed out in Test practice.</span></dd>
           <dt>Swap sides</dt><dd>The panels trade sides.</dd>
           <dt>Clear history</dt><dd>Empties History.<span class="grey">Greyed out while History is empty.</span></dd>
         </dl>
@@ -440,20 +438,6 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
             <span class="k3">0</span><span class="k3">.</span><span class="k3 w">ans</span><span class="op k3">=</span>
           </div>
           <p>Two more rows on top. Tick Advanced keys in the menu.</p>
-        </div>
-        <div class="pg-card">
-          <h3>Test practice</h3>
-          <div class="kp k24" aria-label="Test practice keys" role="img">
-            <span class="flat ca w">clear all</span><span class="flat k6">⌫</span>
-            <span class="fn k6">(</span><span class="fn k6">)</span><span class="fn k6">√</span><span class="op k6">÷</span>
-            <span class="k6">7</span><span class="k6">8</span><span class="k6">9</span><span class="op k6">×</span>
-            <span class="k6">4</span><span class="k6">5</span><span class="k6">6</span><span class="op k6">−</span>
-            <span class="k6">1</span><span class="k6">2</span><span class="k6">3</span><span class="op k6">+</span>
-            <span class="k6">0</span><span class="k6">.</span><span class="k6 w">ans</span><span class="op k6">=</span>
-          </div>
-          <p>Desmos Four-Function’s keys, as on NWEA MAP. No ± key, so students type − first. Answers show 7 digits.</p>
-          <p>The state test’s calculator has ±. Test practice matches MAP, which has none.</p>
-          <div class="pg-ex" data-keys="1÷3" data-opts='{"test":true}'></div>
         </div>
       </div>
       <dl class="key-notes">
@@ -526,7 +510,6 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
             <li>ans shows as a small box with its number.</li>
             <li>⇄ switches an answer like 0.125 to 1/8 and back.</li>
             <li>10 digits. Past a billion, 1.07374182 × 10⁹.</li>
-            <li>Test practice has Desmos Four-Function’s keys and 7 digits.</li>
             <li>The same typing, such as ^, sqrt, and pi.</li>
           </ul>
         </div>
@@ -579,8 +562,14 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
         </div>
         <div class="pg-card pg-rule">
           <h3>Percent</h3>
-          <p>% means “% of”, as in Desmos, so the problem reads true as written. Tick 50 + 10% = 55 in the menu for the iPhone way.</p>
-          <div class="pg-exs"><div class="pg-ex" data-keys="10%50"></div><div class="pg-ex" data-keys="50+10%50"></div><div class="pg-ex" data-keys="50+10%" data-opts='{"percent":"apple"}' data-tag="Ticked"></div></div>
+          <p>% means “% of”, as in Desmos, so the problem reads true as written. For the iPhone way, turn on Advanced keys, then untick Desmos %.</p>
+          <div class="pg-exs"><div class="pg-ex" data-keys="10%50"></div><div class="pg-ex" data-keys="50+10%50"></div><div class="pg-ex" data-keys="50+10%" data-opts='{"percent":"apple"}' data-tag="Desmos % off"></div></div>
+        </div>
+        <div class="pg-card pg-rule">
+          <h3>Remainders</h3>
+          <p>Pick With remainders in the menu. A whole number ÷ a whole number shows its remainder. Any other answer is a decimal. ⇄ switches 3 R 2 to 3.4.</p>
+          <p>Go on from 3 R 2, and ans shows 3.4. With Advanced keys on, / types a fraction. Tap ÷ instead.</p>
+          <div class="pg-exs"><div class="pg-ex" data-keys="17÷5" data-opts='{"answers":"remainder"}'></div><div class="pg-ex" data-keys="(20+3)÷5" data-opts='{"answers":"remainder"}'></div><div class="pg-ex" data-keys="2+17÷5" data-opts='{"answers":"remainder"}'></div></div>
         </div>
         <div class="pg-card pg-rule">
           <h3>Repeated =</h3>
@@ -627,7 +616,6 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
           </tbody>
         </table>
       </div>
-      <p class="pg-note">In Test practice, a key it doesn’t have says so, such as “Test practice has no aᵇ key.”</p>
     </div>
   </section>
 
@@ -903,8 +891,8 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
   // ---- Live examples, drawn by the engine with the widget's own options
   if (!E) return;
   const WIDGET = { separators: 'faint', historySize: 20, digits: 10, keys: null, toggle: true, answerAs: 'decimal', slash: 'divide', percent: 'of' };
-  const TEST = { digits: 7, keys: ['digits', 'point', 'add', 'subtract', 'multiply', 'divide', 'open', 'close', 'sqrt', 'ans'], toggle: false };
-  const optsOf = o => Object.assign({}, WIDGET, o && o.test ? TEST : {}, o && o.percent ? { percent: o.percent } : {});
+  // data-opts: the menu's settings, { "percent": "apple" } or { "answers": "fraction" | "remainder" }
+  const optsOf = o => Object.assign({}, WIDGET, o && o.percent ? { percent: o.percent } : {}, o && /^(decimal|fraction|remainder)$/.test(o.answers) ? { answerAs: o.answers } : {});
   const SWAP = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/></svg>';
   const noCursor = html => html.replace(/<span class="ce-cursor"><\/span>/g, '');
   const ruleOf = st => st.rule === 'O' ? E.RULES.O : st.inside === 'parens' ? E.RULES.P : st.inside === 'box' ? E.RULES.G : (E.RULES[st.rule] || '');

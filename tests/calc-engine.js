@@ -2358,6 +2358,161 @@ test('a 0 typed after ±, or left by ⌫, keeps no sign once it is finished', ()
   assert.strictEqual(calc('5+±03').equation.text, '5 + (−3) = 2');
 });
 
+// ---- 29. Answers with remainders (2026.11.23-1) ------------------------------------------------------------------------
+// answerAs 'remainder': when the last step is a whole number ÷ a whole number that doesn't divide evenly, the answer is
+// a quotient and a remainder, 17 ÷ 5 = 3 R 2. Any other answer is a decimal, as with answerAs 'decimal'.
+const REM = { answerAs: 'remainder' };
+test('remainders: options read answerAs remainder', () => {
+  assert.strictEqual(C.readOptions(REM).answerAs, 'remainder');
+  assert.strictEqual(fresh().setOptions(REM).answerAs, 'remainder');
+});
+test('remainders: a whole number ÷ a whole number that doesn\'t divide evenly', () => {
+  for (const [keys, text, speech] of [
+    ['17÷5', '17 ÷ 5 = 3 R 2', '17 divided by 5 equals 3 remainder 2'],
+    ['(20+3)÷5', '(20 + 3) ÷ 5 = 4 R 3', 'open parenthesis 20 plus 3 close parenthesis divided by 5 equals 4 remainder 3'],
+    ['17.0÷5', '17.0 ÷ 5 = 3 R 2', '17.0 divided by 5 equals 3 remainder 2'],
+    ['3÷5', '3 ÷ 5 = 0 R 3', '3 divided by 5 equals 0 remainder 3'],
+    ['(17÷5)', '(17 ÷ 5) = 3 R 2', 'open parenthesis 17 divided by 5 close parenthesis equals 3 remainder 2']
+  ]) {
+    const s = calc(keys, REM);
+    assert.strictEqual(s.equation.text, text, keys);
+    assert.strictEqual(s.equation.speech, speech, keys + ': in words');
+    assert.strictEqual(s.display, text.split(' = ')[1], keys + ': the display');
+    assert.strictEqual(s.answer.text, text.split(' = ')[1], keys + ': the answer');
+    assert.strictEqual(s.answer.form, 'remainder', keys + ': its form');
+  }
+});
+test('remainders: divides evenly', () => {
+  assert.strictEqual(calc('15÷5', REM).equation.text, '15 ÷ 5 = 3');
+  assert.strictEqual(calc('0÷5', REM).equation.text, '0 ÷ 5 = 0');
+});
+test('remainders: any other answer is a decimal', () => {
+  for (const [keys, text] of [['2+17÷5', '2 + 17 ÷ 5 = 5.4'], ['7.5÷2', '7.5 ÷ 2 = 3.75'], ['−17÷5', '−17 ÷ 5 = −3.4'],
+    ['17÷−5', '17 ÷ (−5) = −3.4'], ['−(17÷5)', '−(17 ÷ 5) = −3.4'], ['17÷5×1', '17 ÷ 5 × 1 = 3.4'], ['17⁄5', '17/5 = 3.4'], ['a/b17↓5', '17/5 = 3.4'],
+    ['1⁄2→+1÷2', '1/2 + 1 ÷ 2 = 1']]) {
+    const s = calc(keys, REM);
+    assert.strictEqual(s.equation.text, text, keys);
+    assert.ok(!/R/.test(s.display) && s.answer.form === 'decimal', keys + ': ' + s.display);
+  }
+});
+test('remainders: ÷ 0 says what it says today', () => {
+  const s = calc('17÷0', REM);
+  assert.strictEqual(s.mode, 'error');
+  assert.strictEqual(s.error.short, calc('17÷0').error.short);
+});
+test('remainders: the steps stay as they are, and the last one shows the remainder', () => {
+  const texts = s => s.steps.map(st => st.text), works = s => s.steps.filter(st => st.work).map(st => st.work.text);
+  let s = calc('17÷5', REM);
+  assert.deepStrictEqual(texts(s), ['17 ÷ 5', '3 R 2']);
+  assert.deepStrictEqual(works(s), ['17 ÷ 5 = 3 R 2']);
+  assert.strictEqual(s.steps[s.steps.length - 1].speech, '3 remainder 2');
+  s = calc('(20+3)÷5', REM);
+  assert.deepStrictEqual(texts(s), texts(calc('(20+3)÷5')).slice(0, -1).concat(['4 R 3']));
+  assert.deepStrictEqual(works(s), ['20 + 3 = 23', '23 ÷ 5 = 4 R 3']);
+  s = calc('2+17÷5', REM);
+  assert.deepStrictEqual(works(s), ['17 ÷ 5 = 3.4', '2 + 3.4 = 5.4']);
+});
+test('remainders: History shows the answer as it was shown', () => {
+  const c = typed('17÷5=2+17÷5=', REM), h = c.state().history;
+  assert.strictEqual(h[1].equation.text, '17 ÷ 5 = 3 R 2');
+  assert.strictEqual(h[1].answer.text, '3 R 2');
+  assert.strictEqual(h[0].equation.text, '2 + 17 ÷ 5 = 5.4');
+});
+test('remainders: the answer shows as you type', () => {
+  assert.strictEqual(typed('17÷5', REM).state().preview.text, '3 R 2');
+  assert.strictEqual(typed('(20+3)÷5', REM).state().preview.text, '4 R 3');
+  assert.strictEqual(typed('(17÷5', REM).state().preview.text, '3 R 2');
+  assert.strictEqual(typed('2+17÷5', REM).state().preview.text, '5.4');
+  assert.strictEqual(typed('17÷5').state().preview.text, '3.4');
+});
+test('remainders: ⇄ switches between 3 R 2 and 3.4', () => {
+  const c = typed('17÷5=', REM);
+  assert.strictEqual(c.state().answer.canToggle, true);
+  assert.strictEqual(c.state().answer.toggleTo, 'decimal');
+  assert.strictEqual(c.press('toggle'), true);
+  assert.strictEqual(c.state().display, '3.4');
+  assert.strictEqual(c.state().equation.text, '17 ÷ 5 = 3.4');
+  assert.strictEqual(c.state().answer.form, 'decimal');
+  assert.strictEqual(c.state().answer.toggleTo, 'remainder');
+  assert.strictEqual(c.state().steps[c.state().steps.length - 1].text, '3.4');
+  c.press('toggle');
+  assert.strictEqual(c.state().equation.text, '17 ÷ 5 = 3 R 2');
+  // Another answer switches to its fraction, as in As decimals.
+  const d = typed('2+17÷5=', REM);
+  assert.strictEqual(d.state().answer.toggleTo, 'fraction');
+  d.press('toggle');
+  assert.strictEqual(d.state().display, '27/5');
+  // As decimals and As fractions work as before.
+  const e = typed('17÷5=');
+  assert.strictEqual(e.state().answer.toggleTo, 'fraction');
+  e.press('toggle');
+  assert.strictEqual(e.state().display, '17/5');
+  const f = typed('17÷5=', { answerAs: 'fraction' });
+  assert.strictEqual(f.state().display, '17/5');
+  assert.strictEqual(f.state().answer.toggleTo, 'decimal');
+  f.press('toggle');
+  assert.strictEqual(f.state().display, '3.4');
+});
+test('remainders: ans holds the exact value, 17/5', () => {
+  assert.strictEqual(typed('17÷5=×5=', REM).state().display, '17');
+  assert.strictEqual(typed('17÷5=+0.6=', REM).state().display, '4');
+  const c = typed('17÷5=', REM);
+  assert.strictEqual(c.serialize().history[0].expr.length, 3);
+  c.input('AC');
+  c.useAnswer(0);
+  c.input('×5=');
+  assert.strictEqual(c.state().display, '17');
+});
+test('remainders: large numbers follow the digit rules of other answers', () => {
+  assert.strictEqual(calc('999999999÷2', REM).display, g('499_999_999 R 1'));
+  assert.strictEqual(calc('999999999÷2', Object.assign({ separators: 'faint' }, REM)).display, '499,999,999 R 1');
+  assert.strictEqual(calc('5÷12345678901', REM).display, '0 R 5');
+  assert.strictEqual(typed('5÷12345678901=', REM).state().answer.canToggle, true, '⇄ shows its decimal, though it has no fraction');
+  for (const keys of ['12345678901÷2', '12345678901÷20000000000']) {
+    const s = calc(keys, REM);
+    assert.strictEqual(s.display, calc(keys).display, keys + ': as a decimal');
+  }
+});
+test('remainders: a new answerAs redraws the answer on screen at once, and ⇄ starts over', () => {
+  const c = typed('17÷5=');
+  assert.strictEqual(c.state().display, '3.4');
+  c.setOptions(REM);
+  assert.strictEqual(c.state().display, '3 R 2');
+  c.press('toggle');
+  assert.strictEqual(c.state().display, '3.4');
+  c.setOptions({ answerAs: 'fraction' });
+  assert.strictEqual(c.state().display, '17/5');
+  c.setOptions({ answerAs: 'decimal' });
+  assert.strictEqual(c.state().display, '3.4');
+  c.setOptions(REM);
+  assert.strictEqual(c.state().history[0].answer.text, '3 R 2');
+});
+test('remainders: saved and loaded', () => {
+  const a = typed('17÷5=', REM);
+  const b = fresh(REM);
+  assert.strictEqual(b.load(a.serialize()), true);
+  assert.strictEqual(b.state().display, '3 R 2');
+  assert.strictEqual(b.state().history[0].answer.text, '3 R 2');
+  a.press('toggle');
+  const d = a.serialize();
+  assert.strictEqual(d.frac, true);
+  b.load(d);
+  assert.strictEqual(b.state().display, '3.4');
+  const small = typed('5÷12345678901=', REM);
+  small.press('toggle');
+  b.load(small.serialize());
+  assert.strictEqual(b.state().answer.form, 'decimal', 'a ⇄ with no fraction loads too');
+});
+test('remainders: HTML and MathML', () => {
+  const s = calc('17÷5', REM);
+  assert.ok(/<span class="ce-ans">[\s\S]*3[\s\S]*R[\s\S]*2[\s\S]*<\/span>/.test(s.equation.html), s.equation.html);
+  assert.ok(s.equation.html.includes('aria-label="17 divided by 5 equals 3 remainder 2"'));
+  assert.ok(/<mn>3<\/mn>[\s\S]*R[\s\S]*<mn>2<\/mn>/.test(s.equation.mathml), s.equation.mathml);
+});
+test('remainders: a sheet shows its answers as decimals', () => {
+  assert.strictEqual(sheet('17÷5', REM).state().lines[0].result.text, '3.4');
+});
+
 // ---- Results ----------------------------------------------------------------------------------------------------------
 for (const f of failures) console.log('FAIL ' + f);
 console.log(`\n${passed} passed, ${failed} failed`);
