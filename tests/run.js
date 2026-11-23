@@ -20850,9 +20850,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(L.eq === '17 ÷ 5 = 3.4' && L.toggle === 'Show with a remainder' && L.said === '17 divided by 5 equals 3.4', `⇄: 3.4, then “Show with a remainder” (${L.eq}; ${L.toggle})`);
       await C.W.locator('#eqToggle').click(); await C.page.waitForTimeout(250); L = await C.look();
       ok(L.eq === '17 ÷ 5 = 3 R 2', `⇄ again: 3 R 2 (${L.eq})`);
-      // ans goes on from 17/5.
+      // ans goes on from 17/5, and shows it as 17/5 (2026.11.23-4).
       await C.press('×5='); L = await C.look();
-      ok(L.eq === '3.4 × 5 = 17', `× right after it goes on from 17/5: ${L.eq}`);
+      const ansBox = await C.W.locator('#eq .ce-ansref .ce-frac').evaluate(f => f.querySelector('.ce-numer').textContent + '/' + f.querySelector('.ce-denom').textContent).catch(() => null);
+      ok(ansBox === '17/5' && / × 5 = 17$/.test(L.eq), `× right after it goes on from 17/5, shown as 17/5: ${ansBox}; ${L.eq}`);
       // Hide the answer hides it like any other.
       await C.choose('Hide the answer'); await C.press(['clear']); await C.press('17÷5='); L = await C.look();
       const hl = L.hist[L.hist.length - 1] || {};
@@ -20901,7 +20902,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const cardOf = h => { const j = man.indexOf(`<h3>${h}</h3>`); return j < 0 ? '' : man.slice(j, man.indexOf('<div class="pg-exs">', j)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '); };
       ok(cardOf('Percent').includes('For the iPhone way, turn on Advanced keys, then untick Desmos %.') && !cardOf('Percent').includes('Untick Desmos % in the menu'),
         `the manual’s Percent card: “For the iPhone way, turn on Advanced keys, then untick Desmos %.” (${cardOf('Percent').trim()})`);
-      ok(cardOf('Remainders').includes('Go on from 3 R 2, and ans shows 3.4.') && cardOf('Remainders').includes('With Advanced keys on, / types a fraction. Tap ÷ instead.'),
+      ok(cardOf('Remainders').includes('Go on from 3 R 2, and ans shows 17/5.') && cardOf('Remainders').includes('With Advanced keys on, / types a fraction. Tap ÷ instead.'),
         `the manual’s Remainders card: what ans shows, and / with Advanced keys on (${cardOf('Remainders').trim()})`);
       const guide = read('docs/teacher-guide/page-src.html'), i = guide.indexOf('id="w-calculator"'), card = guide.slice(i, guide.indexOf('</article>', i));
       const ideas = Array.from(card.matchAll(/<li><span class="grade">([^<]*)<\/span><span>([^<]*)<\/span><\/li>/g)).map(x => x[1]);
@@ -20910,6 +20911,243 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       // Test practice was the card's only idea past grade 5. Percent takes its place: 6.RP.A.3c and 7.RP.A.3.
       ok(/<span class="grade">6–7<\/span><span>Percent\. Turn on Advanced keys in Calculator ⌄, then type 15 % 80\. It shows 15% of 80 = 12\.<\/span>/.test(card),
         'the Teacher Guide: a grade 6–7 idea for percent');
+      ok(stamped(), STAMPED);
+    });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  // ---- 2026.11.23-4: the R in 3 R 2 is grey at full strength (look C in the mockups): the board's muted color, the
+  // digits' size and weight, and 4.5:1 or more wherever it is drawn. Going on from an answer shown with a remainder puts
+  // 17/5 in the ans box, drawn as As fractions draws it, so a grade 4 class doesn't see a decimal it never saw.
+  ['Calculator: a grey R, and 17/5 after a remainder (2026.11.23-4)', async (browser) => {
+    const errors = [];
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const NAME = { '+': 'add', '−': 'subtract', '×': 'multiply', '÷': 'divide', '=': 'equals', '.': 'point', '(': 'open', ')': 'close', '%': 'percent' };
+    // The board's muted color, and the one History's answer box and Steps' work use in light, where muted reaches only
+    // 4.4:1 on their grey: 90% muted, 10% text.
+    const MUTED = { light: 'rgb(107, 114, 128)', dark: 'rgb(156, 163, 175)' }, MIXED = 'rgb(99, 107, 121)';
+    const near = (a, b) => !!a && !!b && a.match(/[\d.]+/g).slice(0, 3).every((v, i) => Math.abs(v - b.match(/[\d.]+/g)[i]) <= 1);
+    const calcBoard = async () => {
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      const page = await ctx.newPage();
+      page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE); await boardUp(page); await freeBoard(page);
+      const ik = await addWin(page, 'calculator');
+      await eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+      await page.waitForTimeout(600);
+      const W = page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+      const front = () => page.evaluate(ik => { if (window.__board21.state.focused !== ik) window.__board21.focusWin(ik); }, ik);
+      const press = async keys => {
+        await front();
+        for (const k of typeof keys === 'string' ? Array.from(keys).map(c => NAME[c] || c) : keys) await W.locator(`#keys .key[data-key="${k}"]`).click({ timeout: 3000 });
+        await page.waitForTimeout(250);
+      };
+      const choose = async label => {
+        await front();
+        await page.click(`.win[data-ikey="${ik}"] .win-label`);
+        await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).click({ timeout: 3000 });
+        await page.waitForTimeout(600);
+      };
+      // What shows: a stacked fraction written n/d, an ans box as { text, stacked }, and History's lines.
+      const look = () => W.locator('html').evaluate(() => {
+        const $ = id => document.getElementById(id), shown = e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+        const plain = e => {
+          if (!e) return '';
+          const c = e.cloneNode(true);
+          c.querySelectorAll('.ce-anslabel, .ce-cursor, .heq').forEach(n => n.remove());
+          c.querySelectorAll('.ce-frac').forEach(f => f.replaceWith(f.querySelector('.ce-numer').textContent + '/' + f.querySelector('.ce-denom').textContent));
+          return c.textContent.replace(/\s+/g, ' ').trim();
+        };
+        const box = e => { const b = e && e.querySelector('.ce-ansref'); if (!b) return null; const f = b.querySelector('.ce-frac'); return { text: plain(b), stacked: !!f && !!f.querySelector('.ce-numer') && !!f.querySelector('.ce-denom') }; };
+        const tg = shown($('eqToggle')) ? $('eqToggle') : shown($('bigToggle')) ? $('bigToggle') : null;
+        return {
+          eq: plain($('eq')), box: box($('eq')), eqLabel: (document.querySelector('#eq .ce-math') || { getAttribute: () => '' }).getAttribute('aria-label'),
+          said: shown($('said')) ? plain($('said')) : '', live: $('live').textContent, toggle: tg ? tg.getAttribute('aria-label') : null,
+          reveal: shown(document.querySelector('#eq .reveal')), x: plain($('x')), xBox: box($('x')), big: plain($('big')), bigFrac: !!$('big').querySelector('.ce-frac'),
+          hist: [...document.querySelectorAll('#history .hline')].filter(shown).map(l => ({ expr: plain(l.querySelector('.hpick')), box: box(l.querySelector('.hpick')), ans: plain(l.querySelector('.hans')), use: l.querySelector('.hans').getAttribute('aria-label') })),
+          work: [...document.querySelectorAll('#chain li.on .lw.on .work')].map(plain)
+        };
+      });
+      // The R at sel, and the digits just before it: colors as rgb() (color-mix() too, drawn on a canvas and read
+      // back), the solid background behind it, its opacity and every opacity above it, size and weight.
+      const R = sel => W.locator('html').evaluate((html, sel) => {
+        const g2 = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+        const rgb = c => { g2.clearRect(0, 0, 1, 1); g2.fillStyle = '#000'; g2.fillStyle = c; g2.fillRect(0, 0, 1, 1); const d = g2.getImageData(0, 0, 1, 1).data; return `rgb(${d[0]}, ${d[1]}, ${d[2]})`; };
+        const cs = e => getComputedStyle(e), clear = b => /rgba\(0, 0, 0, 0\)|transparent/.test(b);
+        const solid = e => { for (let n = e; n; n = n.parentElement) { const b = cs(n).backgroundColor; if (b && !clear(b)) return rgb(b); } return rgb(cs(document.body).backgroundColor); };
+        const r = document.querySelector(sel);
+        if (!r || !r.getClientRects().length) return null;
+        const d = r.previousElementSibling;
+        let all = 1;
+        for (let n = r; n; n = n.parentElement) all *= +cs(n).opacity;
+        return { text: r.textContent.trim(), color: rgb(cs(r).color), bg: solid(r), opacity: cs(r).opacity, all, size: cs(r).fontSize, weight: cs(r).fontWeight,
+          digit: d && d.classList.contains('ce-num') ? { color: rgb(cs(d).color), size: cs(d).fontSize, weight: cs(d).fontWeight } : null };
+      }, sel);
+      const sep = () => W.locator('html').evaluate(() => { const s = document.querySelector('#eq .ce-sep'); return s ? { color: getComputedStyle(s).color, opacity: getComputedStyle(s).opacity } : null; });
+      const reload = async () => { await page.reload(); await boardUp(page); await page.waitForTimeout(1500); };
+      // Canvas off: where the problem line and the big display sit in the display.
+      const disp = () => W.locator('html').evaluate(() => {
+        const r = s => document.querySelector(s).getBoundingClientRect(), d = r('#disp'), xl = r('.xline'), x = r('#x'), b = r('#big');
+        return { top: d.top, bottom: d.bottom, xline: xl.height, xH: x.height, xTop: x.top, xBottom: x.bottom, bigTop: b.top, bigBottom: b.bottom };
+      });
+      const shows = (D, where) => ok(D.xH > 0 && D.xline >= D.xH - 1 && D.xTop >= D.top - 1 && D.xBottom <= D.bigTop + 1 && D.bigBottom <= D.bottom + 1,
+        `${where} (the problem line ${D.xline.toFixed(0)}px tall, its text ${D.xH.toFixed(0)}px, at ${D.xTop.toFixed(0)}–${D.xBottom.toFixed(0)}; the display ${D.top.toFixed(0)}–${D.bottom.toFixed(0)}; the big answer ${D.bigTop.toFixed(0)}–${D.bigBottom.toFixed(0)})`);
+      // Settings › Accent › Custom…, a teacher's own color.
+      const custom = async hex => {
+        await openSettings(page);
+        await page.locator('#set-accent-custom').evaluate((el, hex) => { el.value = hex; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, hex);
+        await page.waitForTimeout(500); await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+      };
+      return { ctx, page, ik, W, front, press, choose, look, R, sep, reload, disp, shows, custom };
+    };
+    // The R in one place: the color it should have, at full strength, the digits' size and weight, and its contrast.
+    // (distinct: the digits beside it are another color. While typing, the whole answer is muted, the R too.)
+    const checkR = (r, where, want, distinct = true) => {
+      const min = 4.5, c = r ? contrast(r.color, r.bg) : 0, grey = r ? (Math.max(...r.color.match(/\d+/g).map(Number)) - Math.min(...r.color.match(/\d+/g).map(Number))) <= 30 : false;
+      ok(!!r && r.text === 'R' && near(r.color, want) && r.opacity === '1' && r.all === 1 && grey && !!r.digit && r.size === r.digit.size && r.weight === r.digit.weight && (!distinct || r.color !== r.digit.color) && c >= min,
+        `${where}: the R is grey, ${want}, at full strength, the digits’ size and weight, ${min}:1 or more (${r ? `${r.color} on ${r.bg}, ${c.toFixed(2)}:1, opacity ${r.opacity}/${r.all}, ${r.size} ${r.weight} beside ${r.digit && r.digit.size} ${r.digit && r.digit.weight} ${r.digit && r.digit.color}` : 'not drawn'})`);
+    };
+
+    // ---- 1. The R, light and dark: the canvas, History, the work of the last step, while typing, the big display.
+    await part('The grey R', async () => {
+      const C = await calcBoard();
+      await C.choose('With remainders'); await C.choose('History'); await C.choose('In words');
+      for (const scheme of ['light', 'dark']) {
+        await C.page.emulateMedia({ colorScheme: scheme }); await C.page.waitForTimeout(500);
+        await C.press(['clear']); await C.press('17÷5='); await C.press('1234567÷8=');
+        let L = await C.look();
+        ok(L.eq === '1,234,567 ÷ 8 = 154,320 R 7' && L.eqLabel === '1,234,567 divided by 8 equals 154,320 remainder 7' && L.said === L.eqLabel && L.live === L.eqLabel,
+          `${scheme}: the words are as before: “${L.eq}”, and a screen reader and In words hear “${L.eqLabel}”`);
+        const two = L.hist.slice(-2), uses = two.map(h => h.use);
+        ok(JSON.stringify(two.map(h => h.expr + ' = ' + h.ans)) === JSON.stringify(['17 ÷ 5 = 3 R 2', '1,234,567 ÷ 8 = 154,320 R 7']) && uses[0] === 'Use 3 remainder 2' && uses[1] === 'Use 154,320 remainder 7',
+          `${scheme}: History shows both, its buttons named as before (${uses.join(' | ')})`);
+        const M = MUTED[scheme], box = scheme === 'light' ? MIXED : M;
+        checkR(await C.R('#eq .ce-ans .ce-r'), `${scheme}, the canvas`, M);
+        checkR(await C.R('#history .hline:last-child .hans .ce-r'), `${scheme}, History’s newest line (marked)`, box);
+        checkR(await C.R('#history .hline:first-child .hans .ce-r'), `${scheme}, History’s first line`, box);
+        // A highlighted background: the pointer over History's answer box. Never under 3:1.
+        await C.W.locator('#history .hline:last-child .hans').hover(); await C.page.waitForTimeout(250);
+        const hov = await C.R('#history .hline:last-child .hans .ce-r');
+        ok(!!hov && contrast(hov.color, hov.bg) >= 3, `${scheme}: with the pointer over History’s answer, still 3:1 or more (${hov && contrast(hov.color, hov.bg).toFixed(2)}:1 on ${hov && hov.bg})`);
+        await C.page.mouse.move(5, 5);
+        const s = await C.sep();
+        ok(!!s && near(s.color, M) && s.opacity === '0.6', `${scheme}: the faint comma is as before, muted at .6 (${s && s.color}, ${s && s.opacity})`);
+        // The steps: the last step's work, 23 ÷ 5 = 4 R 3, once its marked part is worked out.
+        await C.press(['clear']); await C.press('(20+3)÷5='); await C.W.locator('#all').click(); await C.page.waitForTimeout(700);
+        L = await C.look();
+        ok(JSON.stringify(L.work) === JSON.stringify(['20 + 3 = 23', '23 ÷ 5 = 4 R 3']), `${scheme}: Steps as before (${L.work.join(' | ')})`);
+        checkR(await C.R('#chain li.on .lw.on .work .ce-r'), `${scheme}, the work of the last step`, box);
+        checkR(await C.R('#chain li.fin .ce-r'), `${scheme}, the answer at the end of the steps`, M);
+        // While typing: the answer as it will show, in the muted color already.
+        await C.press(['clear']); await C.press('17÷5');
+        checkR(await C.R('#eq .prev .ce-r'), `${scheme}, the answer while typing`, M, false);
+        // The big display, with Canvas off.
+        await C.choose('Canvas'); await C.press(['clear']); await C.press('17÷5=');
+        checkR(await C.R('#big .ce-r'), `${scheme}, the big display with Canvas off`, M);
+        await C.page.screenshot({ path: OUT + `calculator-grey-r-${scheme}.png` });
+        await C.choose('Canvas');
+      }
+      // The pointer over History's answer, with the Custom… accent that tints it most: white in dark, black in light.
+      // Never under 3:1, and still grey beside the digits.
+      for (const [scheme, hex] of [['dark', '#ffffff'], ['light', '#000000']]) {
+        await C.page.emulateMedia({ colorScheme: scheme }); await C.custom(hex);
+        await C.press(['clear']); await C.press('17÷5=');
+        await C.W.locator('#history .hline:last-child .hans').hover(); await C.page.waitForTimeout(250);
+        const r = await C.R('#history .hline:last-child .hans .ce-r'), c = r ? contrast(r.color, r.bg) : 0, d = r && r.digit ? contrast(r.color, r.digit.color) : 0;
+        const grey = !!r && (Math.max(...r.color.match(/\d+/g).map(Number)) - Math.min(...r.color.match(/\d+/g).map(Number))) <= 30;
+        ok(c >= 3 && grey && d >= 1.8, `${scheme}, Custom… ${hex}: with the pointer over History’s answer, the R is still 3:1 or more, and grey beside the digits (${r && r.color} on ${r && r.bg}, ${c.toFixed(2)}:1; ${d.toFixed(2)}:1 against the digits)`);
+        await C.page.mouse.move(5, 5);
+      }
+      await C.page.emulateMedia({ colorScheme: 'light' });
+      await C.ctx.close();
+    });
+
+    // ---- 2. Going on from 3 R 2: 17/5 in the ans box, every way to go on. Other answers as before.
+    await part('Going on', async () => {
+      const C = await calcBoard();
+      await C.choose('With remainders'); await C.choose('History'); await C.choose('In words');
+      await C.press(['clear']); await C.press('17÷5=×5='); let L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17' && L.box && L.box.text === '17/5' && L.box.stacked, `17 ÷ 5 = then × 5 =: “${L.eq}”, a stacked 17/5 in the ans box (${JSON.stringify(L.box)})`);
+      ok(L.said === '17 over 5 times 5 equals 17' && L.eqLabel === L.said, `In words and a screen reader: “${L.said}”`);
+      const last = L.hist[L.hist.length - 1] || {};
+      ok(last.expr === '17/5 × 5' && last.box && last.box.stacked && last.ans === '17', `History shows it the same way (${JSON.stringify(last)})`);
+      await C.press(['clear']); await C.press('100÷3=='); L = await C.look();
+      ok(L.box && L.box.text === '100/3' && L.box.stacked && L.eq === '100/3 ÷ 3 = 11.11111111', `100 ÷ 3 = 33 R 1, then = again: “${L.eq}”`);
+      await C.press(['clear']); await C.press('17÷5='); await C.press(['ans']); L = await C.look();
+      ok(L.eq === '17/5' && L.box && L.box.stacked, `the ans key after 3 R 2: ${L.eq}`);
+      await C.press(['clear']); await C.press('17÷5=÷5='); L = await C.look();
+      ok(L.eq === '17/5 ÷ 5 = 0.68', `17/5 ÷ 5 isn’t a whole number ÷ a whole number: ${L.eq}`);
+      // History's Use on a 3 R 2 line.
+      await C.press(['clear']);
+      const use = C.W.locator('#history .hans[aria-label="Use 3 remainder 2"]').first();
+      await C.front(); await use.click(); await C.page.waitForTimeout(250); L = await C.look();
+      ok(L.eq === '17/5' && L.box && L.box.stacked, `History’s “Use 3 remainder 2” puts in 17/5 (${L.eq})`);
+      await C.press('×5='); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17', `...and × 5 = gives ${L.eq}`);
+      // The box follows the answer it came from.
+      for (const [keys, eq] of [['2+17÷5=×5=', '5.4 × 5 = 27'], ['15÷5=×2=', '3 × 2 = 6']]) {
+        await C.press(['clear']); await C.press(keys); L = await C.look();
+        ok(L.eq === eq && !(L.box && L.box.stacked), `${keys}: ${eq} (${L.eq})`);
+      }
+      // ⇄, then going on: what As fractions does, the fraction.
+      await C.press(['clear']); await C.press('17÷5='); await C.W.locator('#eqToggle').click(); await C.page.waitForTimeout(250);
+      L = await C.look();
+      ok(L.eq === '17 ÷ 5 = 3.4', `⇄: ${L.eq}`);
+      await C.press('×5='); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17' && L.box && L.box.stacked, `⇄ to 3.4, then × 5 =: ${L.eq}, as As fractions does`);
+      // Canvas off: the problem above the big display, and the big display while typing.
+      await C.choose('Canvas'); await C.press(['clear']); await C.press('17÷5=×'); L = await C.look();
+      ok(L.x === '17/5 ×' && L.xBox && L.xBox.stacked && L.big === '17/5' && L.bigFrac, `Canvas off: “${L.x}”, and the big display shows ${L.big}`);
+      // The problem line keeps its height above a tall 17/5, also where the display is short: 1150 × 640 with History.
+      const was = await C.page.evaluate(ik => window.__board21.state.insts.get(ik).rect, C.ik);
+      for (const rect of [was, { x: 40, y: 40, w: 1150, h: 640 }]) {
+        await C.page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [C.ik, rect]); await C.page.waitForTimeout(700);
+        const size = `${rect.w} × ${rect.h}`;
+        await C.press(['clear']); await C.press('17÷5=×'); L = await C.look();
+        C.shows(await C.disp(), `${size}, Canvas off: “${L.x}” shows in full above the big ${L.big}`);
+        await C.choose('As fractions'); await C.press(['clear']); await C.press('17÷5='); L = await C.look();
+        C.shows(await C.disp(), `${size}, Canvas off, As fractions: “${L.x}” shows in full above the big ${L.big}`);
+        await C.choose('With remainders');
+      }
+      await C.page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [C.ik, was]); await C.page.waitForTimeout(700);
+      await C.choose('Canvas');
+      // Hide the answer works as before.
+      await C.choose('Hide the answer'); await C.press(['clear']); await C.press('17÷5=×5='); L = await C.look();
+      ok(L.reveal && L.eq === '17/5 × 5 = ?' && (L.hist[L.hist.length - 1] || {}).ans === '?', `Hide the answer: ${L.eq}`);
+      await C.W.locator('#eq .reveal').click(); await C.page.waitForTimeout(300); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17', `a tap shows it: ${L.eq}`);
+      await C.choose('Hide the answer');
+      // Saved: the board opened again shows the same.
+      await C.press(['clear']); await C.press('17÷5=×5='); await C.page.waitForTimeout(800); await C.reload(); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17' && L.box && L.box.stacked, `opened again: ${L.eq}`);
+      // As decimals and As fractions as before.
+      await C.choose('As decimals'); await C.press(['clear']); await C.press('17÷5=×5='); L = await C.look();
+      ok(L.eq === '3.4 × 5 = 17' && L.box && !L.box.stacked, `As decimals: ${L.eq}`);
+      await C.choose('As fractions'); await C.press(['clear']); await C.press('17÷5='); await C.W.locator('#eqToggle').click(); await C.page.waitForTimeout(250); await C.press('×5='); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17' && L.box && L.box.stacked, `As fractions, ⇄ to 3.4, then × 5 =: ${L.eq}`);
+      await C.page.screenshot({ path: OUT + 'calculator-17-5.png' });
+      await C.ctx.close();
+    });
+
+    // ---- 3. The docs, and the 6–7 idea kept.
+    await part('Docs', async () => {
+      const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+      const man = read('docs/calculator-manual/page-src.html');
+      const j = man.indexOf('<h3>Remainders</h3>'), card = man.slice(j, man.indexOf('<div class="pg-exs">', j)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      ok(card.includes('Go on from 3 R 2, and ans shows 17/5. With Advanced keys on, / types a fraction. Tap ÷ instead.') && !card.includes('ans shows 3.4'),
+        `the manual’s Remainders card: “Go on from 3 R 2, and ans shows 17/5.” (${card.trim()})`);
+      const ceCss = (/^\.ce-r \{[^}]*\}$/m.exec(read('widgets/calculator/calc-engine.js')) || [''])[0];
+      ok(ceCss === '.ce-r { color: var(--b21-muted, #6b7280); }' && man.includes('/*@CECSS*/') && /\.cx \{[^}]*--b21-muted: var\(--muted\)/.test(man),
+        `the manual’s examples draw the R in the page’s own muted color: the engine’s “${ceCss}”, under .cx, which takes --b21-muted from the page`);
+      ok(/\.ce-r\b/.test(read('docs/calculator-manual/check.js')), 'the manual’s check.js measures its R');
+      for (const f of ['README.md', 'docs/DATA-FORMAT.md']) ok(!/ans shows 3\.4|ans (?:is|shows) a decimal/i.test(read(f)), `${f}: nothing says ans shows a decimal after a remainder`);
+      const data = read('docs/DATA-FORMAT.md').replace(/\s+/g, ' ');
+      ok(data.includes('an answer used again is `{ ans: "7/2" }`, with `rem: true` when it was shown with a remainder. With remainders shows that box as a fraction, such as 17/5.') && !data.includes('Its box then shows a fraction'),
+        'DATA-FORMAT: a saved ans box from a remainder answer has rem: true, and With remainders shows it as a fraction');
+      const guide = read('docs/teacher-guide/page-src.html');
+      ok(guide.includes('<li><span class="grade">6–7</span><span>Percent. Turn on Advanced keys in Calculator ⌄, then type 15 % 80. It shows 15% of 80 = 12.</span></li>'),
+        'the Teacher Guide keeps its 6–7 Percent idea');
       ok(stamped(), STAMPED);
     });
 

@@ -9,7 +9,8 @@
  * sideways, a chip with no section, a live example left empty, Desmos figures that don't add up, a menu on the page
  * that differs from the widget's own, a demo that doesn't fit the first screen beside its menu, keys too small to
  * tap at phone width, or a demo that doesn't answer (2 + 3 × 4 = shows 14; History in the page's menu shows a History
- * line; With remainders gives 17 ÷ 5 = 3 R 2; Desmos % shows under Advanced keys while they're on). It also runs the demo inside a sandboxed frame, as the viewer may, and
+ * line; With remainders gives 17 ÷ 5 = 3 R 2, its R muted and 4.5:1 or more, in the demo and the page's example; Desmos %
+ * shows under Advanced keys while they're on). It also runs the demo inside a sandboxed frame, as the viewer may, and
  * in one that starts hidden and shows later. It checks that the page and the demo follow a data-theme the host sets,
  * and that each chip is marked once tapped. Screenshots go to dist/shots/, at deviceScaleFactor 2.
  */
@@ -155,6 +156,13 @@ async function checkOne(browser, base, w, h, scheme) {
     await press(page, frame, ['clear', '1', '7', 'divide', '5', 'equals']);
     const t = (await answerText(frame)).replace(/\s+/g, ' ').trim();
     if (!/=\s*3 R 2$/.test(t)) fail(where, `With remainders: 17 ÷ 5 = shows "${t}"`); else ok('With remainders: ' + t);
+    // The R: the muted color at full strength, 4.5:1 or more, in the demo and in the page's own example
+    for (const [what, target, sel] of [['the demo', frame, '#eq .ce-r, #big .ce-r'], ['the Remainders example', page, '.pg-ex[data-keys="17÷5"] .ce-r']]) {
+      const r = await theR(target, sel);
+      const c = r ? ratio(r.color, r.bg) : 0;
+      if (!r || r.color.join() !== r.muted.join() || r.all !== 1 || c < 4.5) fail(where, `${what}: the R is ${r ? `rgb(${r.color}) at ${r.all} on rgb(${r.bg}), ${c.toFixed(2)}:1, muted rgb(${r.muted})` : 'not drawn'}`);
+      else ok(`${what}: the R is muted, rgb(${r.color}), at full strength, ${c.toFixed(1)}:1`);
+    }
     await page.click('#menu-answers-decimal');
     await page.waitForSelector('#menu-answers-decimal[aria-checked="true"]');
 
@@ -339,6 +347,27 @@ async function checkSandboxed(browser, base) {
   } finally {
     await ctx.close();
   }
+}
+
+// The R in 3 R 2 at sel (the one showing): its color, the muted color, the background it sits on (each [r, g, b]), and its opacity with
+// every opacity above it
+async function theR(target, sel) {
+  return target.evaluate(sel => {
+    const g2 = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+    const rgb = c => { g2.clearRect(0, 0, 1, 1); g2.fillStyle = '#000'; g2.fillStyle = c; g2.fillRect(0, 0, 1, 1); return Array.from(g2.getImageData(0, 0, 1, 1).data.slice(0, 3)); };
+    const cs = e => getComputedStyle(e), clear = b => /rgba\(0, 0, 0, 0\)|transparent/.test(b);
+    const r = Array.from(document.querySelectorAll(sel)).find(e => e.getClientRects().length);   // (the one showing)
+    if (!r) return null;
+    let bg = null, all = 1;
+    for (let n = r; n; n = n.parentElement) { const b = cs(n).backgroundColor; if (!bg && b && !clear(b)) bg = rgb(b); all *= +cs(n).opacity; }
+    return { color: rgb(cs(r).color), muted: rgb(cs(r).getPropertyValue('--b21-muted').trim()), bg: bg || rgb(cs(document.body).backgroundColor), all };
+  }, sel);
+}
+// Contrast, as WCAG counts it
+function ratio(a, b) {
+  const lum = c => c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+  const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+  return (x + 0.05) / (y + 0.05);
 }
 
 // Taps on the demo's keys. (Playwright can't scroll the page to an element in the widget, whose #app is fixed: the
