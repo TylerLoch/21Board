@@ -19838,6 +19838,19 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await setTheme(page, 'light');
       m = await menuOf(page, ik);
       ok(m.includes('| ✓ LCD look |') && !m.includes('LED look'), `back to light: LCD look again (${m})`);
+      // Auto, the menu open from the keyboard on LCD look, and the system turns dark: the keyboard stays on it.
+      await setTheme(page, 'system');
+      await page.focus(`.win[data-ikey="${ik}"] .win-label`); await page.keyboard.press('Enter'); await page.waitForTimeout(250);
+      const kb = () => page.evaluate(() => { const a = document.activeElement, l = document.querySelector('#menu [data-id="led"] .label');
+        return { open: !!document.querySelector('#menu.open'), inMenu: !!a.closest('#menu'), id: a.dataset.id || a.dataset.act || a.tagName, label: l && l.textContent }; });
+      for (let i = 0; i < 12 && (await kb()).id !== 'led'; i++) await page.keyboard.press('ArrowDown');
+      const k0 = await kb();
+      await page.emulateMedia({ colorScheme: 'dark' }); await page.waitForTimeout(500);
+      const k1 = await kb();
+      await page.keyboard.press('ArrowDown'); const k2 = await kb();
+      ok(k0.id === 'led' && k0.label === 'LCD look' && k1.open && k1.inMenu && k1.id === 'led' && k1.label === 'LED look' && k2.id === 'seconds',
+        `the theme changes with the menu open: the label follows, and the keyboard stays on it, so ↓ goes on to Show seconds (${JSON.stringify([k0, k1, k2])})`);
+      await page.keyboard.press('Escape'); await page.emulateMedia({ colorScheme: 'light' });
       await setTheme(page, 'dark');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.waitForTimeout(200);

@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.23-1';
-  const BOARD_BUILD = 'e97f4cc3';
+  const BOARD_BUILD = '1fb3890e';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3376,12 +3376,21 @@
     render() {
       const w = this.win;
       if (!w) return;
+      // Drawn again while open (a widget sends its items again, as the Clock does when the theme changes): the item
+      // that had the keyboard keeps it, if it's still there and on.
+      const had = this.el.classList.contains('open') && this.el.contains(document.activeElement) ? document.activeElement : null;
+      const show = html => {
+        this.el.innerHTML = html;
+        if (!had) return;
+        const b = $$('button:not(:disabled)', this.el).find(b => b.dataset.act === had.dataset.act && b.dataset.id === had.dataset.id);
+        if (b) b.focus();
+      };
       const item = (act, icon, label, extra = '', cls = '') =>
         `<button class="menu-item ${cls}" role="menuitem" data-act="${act}" ${extra}><span class="icon-slot">${icon}</span><span class="label">${esc(label)}</span></button>`;
       if (this.confirming) {
         const name = `${w.widget.name}${w.inst.n > 1 ? ' ' + w.inst.n : ''}`;
-        this.el.innerHTML = `<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything in this window and restores its starting size.${BoardHistory.enabled() ? ' Board history keeps a version.' : ''}</div>` +
-          item('reset-yes', svg('reset'), 'Reset', '', 'danger') + item('reset-no', '', 'Cancel');
+        show(`<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything in this window and restores its starting size.${BoardHistory.enabled() ? ' Board history keeps a version.' : ''}</div>` +
+          item('reset-yes', svg('reset'), 'Reset', '', 'danger') + item('reset-no', '', 'Cancel'));
         return;
       }
       // A heading and the items under it (up to a line or the next heading) are one group, named by the heading, so a
@@ -3417,7 +3426,7 @@
         if (w.inst.copyOf) html += item('delete-copy', svg('trash'), 'Delete this copy', '', 'danger');   // (Board Sync: a copy kept from a clash)
       }
       html += locked ? (w.widget.external ? '<div class="menu-sep"></div>' : '') + Lock.menuNote() : item('close', svg('close'), 'Close');
-      this.el.innerHTML = html;
+      show(html);
     },
 
     position() {
