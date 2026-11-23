@@ -8344,7 +8344,7 @@ const SUITES = [
     for (const line of String(r.stdout || '').split('\n').filter(l => /^FAIL /.test(l)).slice(0, 20)) console.log('   ' + line.trim());
     ok(r.status === 0 && m && +m[2] === 0 && +m[1] >= 764, `tests/calc-engine.js: ${m ? `${m[1]} passed, ${m[2]} failed` : 'no result'}${!m ? ': ' + String(r.stderr || '').split('\n').slice(0, 4).join(' ') : ''}`);
   }],
-  ['Calculator: the Widget Picker and a new window (canvas on the left, History hidden), the keys, = = =, History on and off and its lines, percent, faint digit groups, Advanced keys, Test practice, Steps, Hide the answer, In words, fractions, the keyboard, Swap sides, saved and kept apart, Reset, light and dark, the menu, the smallest size, the docs', async (browser) => {
+  ['Calculator: the Widget Picker and a new window (canvas on the left, History hidden), the keys, = = =, History on and off and its lines, percent, faint digit groups, Advanced keys, Steps, Hide the answer, In words, Answers, the keyboard, Swap sides, saved and kept apart, Reset, light and dark, the menu, the smallest size, the docs', async (browser) => {
     const dir = path.join(ROOT, 'widgets', 'calculator'), file = path.join(dir, 'index.html'), src = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
     const engineSrc = fs.existsSync(path.join(dir, 'calc-engine.js')) ? fs.readFileSync(path.join(dir, 'calc-engine.js'), 'utf8') : '';
     ok(!!src && !!engineSrc && !/--b21-[\w-]+\s*:/.test(src) && !/localStorage|indexedDB|XMLHttpRequest|sessionStorage|fetch\(/.test(src + engineSrc) && !/https?:\/\/(?!www\.w3\.org\/)/.test(src + engineSrc.replace(/\/\/.*$/gm, '')),
@@ -8354,7 +8354,7 @@ const SUITES = [
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
     const sec = readme.indexOf('## Calculator') >= 0 ? readme.slice(readme.indexOf('## Calculator'), readme.indexOf('## ', readme.indexOf('## Calculator') + 5)) : '';
     ok(readme.indexOf('| **Calculator** |') > readme.indexOf('### Included widgets') && readme.indexOf('| **Calculator** |') < readme.indexOf('## Adding a widget'), 'the README’s Included widgets has a Calculator row');
-    ok(/Desmos/.test(sec) && ['Canvas', 'History', 'Steps', 'In words', 'Advanced keys', 'Hide the answer', 'Answers as fractions', 'Test practice', '50 + 10% = 55', 'Swap sides'].every(w => sec.includes(w)),
+    ok(/Desmos/.test(sec) && ['Canvas', 'History', 'Steps', 'In words', 'Answers', 'Advanced keys', 'Desmos %', 'Hide the answer', 'Swap sides'].every(w => sec.includes(w)),
       `the README has a Calculator section: Desmos’s math, and every item of its menu (${sec.length} characters)`);
     ok(/`calculator`/.test(dataDoc) && /serialize\(\)|"v": 2|v: 2/.test(dataDoc) && /percent/.test(dataDoc) && /advanced/.test(dataDoc) && /swap/.test(dataDoc), 'the data format guide has the Calculator’s content and config');
 
@@ -8426,7 +8426,6 @@ const SUITES = [
     const setSize = (w, h) => page.evaluate(([w, h]) => window.__board21.setRect('calculator:1', Object.assign({}, window.__board21.state.insts.get('calculator:1').rect, { w, h: h + 40 })), [w, h]).then(() => page.waitForTimeout(600));
     const BASIC = 'clear,backspace,negate,open,close,sqrt,divide,7,8,9,multiply,4,5,6,subtract,1,2,3,add,0,point,ans,equals';
     const ADV = ['square', 'power', 'root', 'cbrt', 'pi', 'percent', 'fraction', 'right'];
-    const TEST = 'clear,backspace,open,close,sqrt,divide,7,8,9,multiply,4,5,6,subtract,1,2,3,add,0,point,ans,equals';
     const sorted = s => String(s).split(',').sort().join();
 
     // ---- The registry and the Widget Picker
@@ -8457,7 +8456,7 @@ const SUITES = [
     ok(L.keyMin >= 44, `every key is 44 px or larger (${L.keyMin.toFixed(1)})`);
     ok(L.player && /Next step/.test(L.next) && L.hide === 'false', `Steps show inside the canvas, with Next step, and the Hide the answer switch is off (${L.next})`);
     ok(L.focus, 'nothing in it takes the focus by itself');
-    const MENU0 = '[Show] | ✓ Canvas | History | ✓ Steps | In words | — | Advanced keys | Hide the answer | Answers as fractions | Test practice | 50 + 10% = 55 | Swap sides | — | (off) Clear history';
+    const MENU0 = '[Show] | ✓ Canvas | History | ✓ Steps | In words | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | Swap sides | — | (off) Clear history';
     let mtext = await menu();
     ok(mtext === MENU0, `its window menu (${mtext})`);
     ok(!/digit|group|comma|separat/i.test(mtext || 'digit'), 'no digit-group item in the menu');
@@ -8513,17 +8512,18 @@ const SUITES = [
     await choose('History');
     await page.evaluate(r => window.__board21.setRect('calculator:1', r), r0); await page.waitForTimeout(600);
 
-    // ---- Percent: Desmos's "% of" by default; iPhone's 50 + 10% = 55 as a menu setting
+    // ---- Percent: Desmos's "% of" by default; Desmos % unchecked (under Advanced keys) is iPhone's 50 + 10% = 55
     await press(['clear']); await type('10%50='); L = await look();
     ok(L.eq === '10% of 50 = 5', `10% of 50 = 5, as Desmos (${L.eq})`);
-    await choose('50 + 10% = 55');
+    await choose('Advanced keys'); await choose('Desmos %');
     await press(['clear']); await type('50+10%='); L = await look();
-    ok(L.eq === '50 + 10% = 55' && ((await conf()) || {}).percent === 'apple' && /✓ 50 \+ 10% = 55/.test(await menu()), `with 50 + 10% = 55 ticked: 50 + 10% = 55, saved as a setting (${L.eq}, ${JSON.stringify(await conf())})`);
+    ok(L.eq === '50 + 10% = 55' && ((await conf()) || {}).percent === 'apple' && /\| ✓ Advanced keys \| Desmos % \|/.test(await menu()), `with Desmos % unchecked: 50 + 10% = 55, saved as a setting (${L.eq}, ${JSON.stringify(await conf())})`);
     const pctName = () => W().locator('#keys .key[data-key="percent"]').getAttribute('aria-label');
     ok(await pctName() === 'percent', `a screen reader calls the % key “percent” then (${await pctName()})`);
-    await choose('50 + 10% = 55');
+    await choose('Desmos %');
     await press(['clear']); await type('50+10%5='); L = await look();
-    ok(L.eq === '50 + 10% of 5 = 50.5' && ((await conf()) || {}).percent === 'of' && await pctName() === 'percent of', `untick it: Desmos’s % of again, and the key is “percent of” (${L.eq})`);
+    ok(L.eq === '50 + 10% of 5 = 50.5' && ((await conf()) || {}).percent === 'of' && await pctName() === 'percent of', `check it again: Desmos’s % of again, and the key is “percent of” (${L.eq})`);
+    await choose('Advanced keys');
 
     // ---- Digit groups: a faint comma, its own element; a plain comma wherever it is read
     await press(['clear']); await press('1234567');
@@ -8551,21 +8551,6 @@ const SUITES = [
     let L2b = await look(ik2);
     ok(ik2 === 'calculator:2' && sorted(L2b.keys) === sorted(BASIC), `a second Calculator window starts with Advanced keys off (${ik2}: ${L2b.keys.length} keys)`);
 
-    // ---- Test practice: Desmos Four-Function's keys and 7 digits, as on NWEA MAP; Advanced keys hide
-    await choose('Test practice'); L = await look();
-    mtext = await menu();
-    ok(sorted(L.keys) === sorted(TEST) && L.keys.length === 22 && L.keyMin >= 44, `Test practice: Desmos Four-Function’s keys, with no ± and no Advanced keys (${L.keys.join(' ')})`);
-    ok(/\(off\) ✓ Advanced keys/.test(mtext) && /✓ Test practice/.test(mtext), `Advanced keys can’t be changed while it is on, and keep their tick (${mtext})`);
-    await press(['clear']); await press('2÷3='); L = await look();
-    ok(L.eq === '2 ÷ 3 = 0.6666667', `answers have 7 digits, as on the test (${L.eq})`);
-    await W().locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.type('2^3'); await page.waitForTimeout(200); L = await look();
-    ok(L.eq === '2' && /^Test practice has no aᵇ key\.$/.test(L.note || L.hint), `a key the test has no button for does nothing when typed, and says so; the digit after it is kept out too (${L.eq}; ${L.note || L.hint})`);
-    await press(['clear']); await type('2pi3'); const Lpi = await look();
-    await press(['clear']); await type('9cbrt8'); L = await look();
-    ok(Lpi.eq === '2' && /^Test practice has no π key\.$/.test(Lpi.note || Lpi.hint) && L.eq === '9' && /^Test practice has no ∛ key\.$/.test(L.note || L.hint),
-      `so is one typed as a word, such as pi or cbrt (${Lpi.eq}; ${Lpi.note || Lpi.hint} / ${L.eq}; ${L.note || L.hint})`);
-    await choose('Test practice'); await press(['clear']); await press('2÷3='); L = await look();
-    ok(L.eq === '2 ÷ 3 = 0.6666666667' && sorted(L.keys) === sorted(BASIC + ',' + ADV.join()), `off again: 10 digits, and the Advanced keys come back (${L.eq})`);
     await choose('Advanced keys');
 
     // ---- Steps, as in Teach: Next step, Back, Show all, and a clicker's Page Down and Page Up
@@ -8614,22 +8599,16 @@ const SUITES = [
     ok(await W().locator('#hlist').evaluate(e => e.scrollTop + e.clientHeight >= e.scrollHeight - 2), 'a new line scrolls History to the bottom');
     await choose('History');
 
-    // ---- Answers as decimals first; ⇄ switches one; Answers as fractions flips the window
+    // ---- Answers: As decimals first; ⇄ switches one; As fractions flips the window
     await press(['clear']); await press('1÷8='); L = await look();
     ok(L.eq === '1 ÷ 8 = 0.125' && L.toggle, `answers start as decimals, with ⇄ beside them (${L.eq})`);
     await W().locator('#eqToggle').click(); await page.waitForTimeout(200); L = await look();
     ok(L.frac && /1\s?8$/.test(L.eq.replace(/\s/g, ' ').trim()), `⇄ shows that answer as a fraction (${L.eq})`);
-    await choose('Answers as fractions'); await press(['clear']); await press('3÷4='); L = await look();
-    ok(L.frac && ((await conf()) || {}).fractions === true, `Answers as fractions: new answers start as fractions (${L.eq})`);
+    await choose('As fractions'); await press(['clear']); await press('3÷4='); L = await look();
+    ok(L.frac && ((await conf()) || {}).fractions === true && ((await conf()) || {}).answers === 'fraction', `As fractions: new answers start as fractions (${L.eq})`);
     await W().locator('#eqToggle').click(); await page.waitForTimeout(200); L = await look();
     ok(L.eq === '3 ÷ 4 = 0.75', `and ⇄ shows one as a decimal (${L.eq})`);
-    await choose('Test practice'); L = await look();
-    ok(L.eq === '3 ÷ 4 = 0.75' && !L.toggle, `Test practice has no ⇄, and that answer stays 0.75 (${L.eq})`);
-    await choose('Test practice'); await choose('Answers as fractions');
-    await press(['clear']); await press('1÷8='); await W().locator('#eqToggle').click(); await page.waitForTimeout(200);
-    await choose('Test practice'); L = await look();
-    ok(L.eq === '1 ÷ 8 = 0.125' && !L.frac && !L.toggle, `1 ÷ 8 made 1/8 with ⇄ shows 0.125 in Test practice (${L.eq})`);
-    await choose('Test practice');
+    await choose('As decimals');
 
     // ---- The keyboard: digits, + - * / ^ % ( ) ., Enter or =, Backspace, sqrt, pi, ans
     await press(['clear']); await W().locator('#app').click({ position: { x: 3, y: 3 } });
@@ -8667,20 +8646,20 @@ const SUITES = [
     await choose('Swap sides'); await choose('History');
 
     // ---- Saved: content is the problem and History, config every setting; kept after a reload, apart between windows
-    await choose('Advanced keys'); await choose('History'); await choose('50 + 10% = 55');
+    await choose('Advanced keys'); await choose('History'); await choose('Desmos %');
     await press(['clear']); await press('6×7=');
     const d1 = await data(), f1 = await conf();
     ok(!!d1 && d1.v === 2 && Array.isArray(d1.expr) && d1.mode === 'done' && Array.isArray(d1.history) && d1.history.length >= 5, `content is the engine’s saved problem and History (${JSON.stringify(d1).slice(0, 120)}…)`);
-    ok(!!f1 && f1.canvas === true && f1.history === true && f1.steps === true && f1.words === false && f1.advanced === true && f1.hide === false && f1.fractions === false && f1.test === false && f1.percent === 'apple' && f1.swap === false,
+    ok(!!f1 && f1.canvas === true && f1.history === true && f1.steps === true && f1.words === false && f1.advanced === true && f1.hide === false && f1.answers === 'decimal' && f1.fractions === false && f1.test === false && f1.percent === 'apple' && f1.swap === false,
       `config is every menu setting and which panels show (${JSON.stringify(f1)})`);
     await press('1+1=', ik2);
     const histLen = (await look()).hist.length;
     await page.waitForTimeout(1200);
     await page.reload(); await boardUp(page); await page.waitForTimeout(1500);
     L = await look(); L2b = await look(ik2);
-    ok(L.eq === '6 × 7 = 42' && L.hist.length === histLen && sorted(L.keys) === sorted(BASIC + ',' + ADV.join()) && L.order.join() === 'canvas,keys,history' && /✓ 50 \+ 10% = 55/.test(await menu()),
+    ok(L.eq === '6 × 7 = 42' && L.hist.length === histLen && sorted(L.keys) === sorted(BASIC + ',' + ADV.join()) && L.order.join() === 'canvas,keys,history' && /\| ✓ Advanced keys \| Desmos % \|/.test(await menu()),
       `after a reload: the same problem, History, keys and settings (${L.eq}; ${L.hist.length} lines; ${L.keys.length} keys)`);
-    ok(L2b.eq === '1 + 1 = 2' && sorted(L2b.keys) === sorted(BASIC) && L2b.hist.length === 0 && !/✓ 50/.test(await menu(ik2)), `the second window kept its own (${L2b.eq}; ${L2b.keys.length} keys)`);
+    ok(L2b.eq === '1 + 1 = 2' && sorted(L2b.keys) === sorted(BASIC) && L2b.hist.length === 0 && ((await conf(ik2)) || {}).percent !== 'apple', `the second window kept its own (${L2b.eq}; ${L2b.keys.length} keys)`);
 
     // ---- Reset: back to a new window
     await front('calculator:1');
@@ -8766,7 +8745,7 @@ const SUITES = [
       await c3.close();
     }
 
-    // ---- The smallest window: the keys stay 44 px or larger, with Advanced keys and in Test practice too
+    // ---- The smallest window: the keys stay 44 px or larger, with Advanced keys too
     await page.evaluate(() => window.__board21.setRect('calculator:1', Object.assign({}, window.__board21.state.insts.get('calculator:1').rect, { w: 280, h: 440 }))); await page.waitForTimeout(600);
     L = await look();
     ok(L.layout === 'stack' && L.keyMin >= 44 && L.keysInside && L.panels.some(p => p.n === 'display'), `280 × 400: a display above the keys, every key 44 px or more and in view (${L.layout}, ${L.keyMin.toFixed(1)} px)`);
@@ -8774,9 +8753,6 @@ const SUITES = [
     ok(L.keys.length === 31 && L.keyMin >= 44 && L.keysInside, `with Advanced keys too (the window grows to fit them: ${L.vw} × ${L.vh}, ${L.keyMin.toFixed(1)} px)`);
     await choose('Advanced keys'); await page.waitForTimeout(500); L = await look();
     ok(L.vh === 400 && L.keyMin >= 44, `and gives the height back after (${L.vw} × ${L.vh})`);
-    await choose('Test practice'); L = await look();
-    ok(L.keys.length === 22 && L.keyMin >= 44 && L.keysInside, `in Test practice too (${L.keyMin.toFixed(1)} px)`);
-    await choose('Test practice');
     // History in a narrow window: the window widens by its width, and it shows beside the display and keys.
     c = await contentOf(page, 'calculator:1');
     await choose('History'); c2 = await contentOf(page, 'calculator:1'); L = await look();
@@ -19338,9 +19314,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
-  // ---- 2026.11.21-3: the Calculator's top row lines up (AC 3 columns, ⌫ 6, ± 3), Test practice gets Desmos's flat strip
-  // (clear all in the middle of the pad, ⌫ beside it), and In words says the parentheses drawn around a negative base.
-  ['Calculator’s top row, Test practice’s strip, and In words for (−3)² (2026.11.21-3)', async (browser) => {
+  // ---- 2026.11.21-3: the Calculator's top row lines up (AC 3 columns, ⌫ 6, ± 3), and In words says the parentheses drawn
+  // around a negative base. (Its part on Test practice's strip went with Test practice's menu item, in 2026.11.23-1.)
+  ['Calculator’s top row and In words for (−3)² (2026.11.21-3)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -19405,94 +19381,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     }
     await setSize(900, 600);
 
-    // ---- 2. Test practice: Desmos's strip. clear all centered on the pad, ⌫ just right of it, both flat and a key row tall.
-    const basic = await keysAt();
-    await choose('Test practice');
-    const strip = () => W.locator('html').evaluate(() => {
-      const $ = s => document.querySelector(s), ac = $('#keys .key[data-key="clear"]'), del = $('#keys .key[data-key="backspace"]');
-      const g = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
-      // A color as drawn over the window's background (alpha and color-mix() included), as rgb().
-      const over = (c, bg) => { g.clearRect(0, 0, 1, 1); g.fillStyle = bg; g.fillRect(0, 0, 1, 1); g.fillStyle = c; g.fillRect(0, 0, 1, 1); const d = g.getImageData(0, 0, 1, 1).data; return `rgb(${d[0]}, ${d[1]}, ${d[2]})`; };
-      const bg = getComputedStyle(document.body).backgroundColor;
-      // (The label's own text: one box for each line it takes.)
-      const range = document.createRange(), text = document.createTreeWalker(ac, NodeFilter.SHOW_TEXT).nextNode();
-      if (text) range.selectNodeContents(text);
-      const lines = text ? new Set([...range.getClientRects()].filter(r => r.width > 0).map(r => Math.round(r.top))).size : 0, tr = range.getBoundingClientRect(), br = ac.getBoundingClientRect();
-      const press = b => { b.style.transition = 'none'; b.classList.add('hit'); const c = getComputedStyle(b).backgroundColor; b.classList.remove('hit'); b.style.transition = ''; return c; };
-      return {
-        text: ac.textContent.trim(), name: ac.getAttribute('aria-label'), after: getComputedStyle(ac, '::after').content, delName: del.getAttribute('aria-label'),
-        bg: [getComputedStyle(ac).backgroundColor, getComputedStyle(del).backgroundColor], pressed: [press(ac), press(del)],
-        ink: [over(getComputedStyle(ac).color, bg), over(getComputedStyle(del).color, bg), over(bg, bg)],
-        label: { lines, l: tr.left, r: tr.right, w: tr.width, kl: br.left, kr: br.right, kw: br.width, px: parseFloat(getComputedStyle(ac.firstElementChild || ac).fontSize) }
-      };
-    });
-    let k = await keysAt(), s = await strip();
-    const c = k.k, mid = (k.pad.l + k.pad.r) / 2;
-    ok(!!c.clear && near((c.clear.l + c.clear.r) / 2, mid), `clear all is centered on the pad (${c.clear && ((c.clear.l + c.clear.r) / 2).toFixed(1)} against ${mid.toFixed(1)})`);
-    ok(!!c.clear && !!c.backspace && c.backspace.l > c.clear.r && near(c.backspace.l - c.clear.r, k.gap) && near(c.backspace.t, c.clear.t) && near(c.backspace.h, c.clear.h),
-      `⌫ sits just right of it, in the same row (${span(k, 'clear')}, ${span(k, 'backspace')}, gap ${k.gap.toFixed(1)})`);
-    ok(!!c.clear && near(c.clear.h, c['7'].h) && near(c.clear.t, k.pad.t), `both are as tall as a key row, on top of the pad (${c.clear && c.clear.h.toFixed(1)} against 7’s ${c['7'].h.toFixed(1)})`);
-    ok(!c.negate, 'no ± key shows');
-    const below = ['open', 'close', 'sqrt', 'divide', '7', '8', '9', 'multiply', '4', '5', '6', 'subtract', '1', '2', '3', 'add', '0', 'point', 'ans', 'equals'];
-    const moved = below.filter(n => !c[n] || !['l', 'r', 't', 'b'].every(e => near(c[n][e], basic.k[n][e])));
-    ok(!moved.length, `the keys below keep their size and place (${moved.length ? 'moved: ' + moved.join(', ') : below.length + ' keys'})`);
-    ok(s.text === 'clear all' && s.name === 'clear all' && /^(none|normal)$/.test(s.after) && s.delName === 'delete', `the clear all key says “clear all”, as its text and its name, with nothing drawn by CSS (“${s.text}”, “${s.name}”, ::after ${s.after}; ⌫: ${s.delName})`);
-    ok(await W.getByRole('button', { name: 'clear all', exact: true }).count() === 1 && await W.getByRole('button', { name: 'all clear', exact: true }).count() === 0, 'a screen reader finds one “clear all” button, and no “all clear”');
-    for (const scheme of ['light', 'dark']) {
-      await page.emulateMedia({ colorScheme: scheme }); await page.waitForTimeout(500);
-      s = await strip();
-      ok(s.bg.every(b => b === 'rgba(0, 0, 0, 0)') && s.pressed.every(b => b !== 'rgba(0, 0, 0, 0)'), `${scheme}: both are flat, with no key color, and darken when pressed (${s.bg.join(', ')}; pressed ${s.pressed.join(', ')})`);
-      ok(contrast(s.ink[0], s.ink[2]) >= 4.5 && contrast(s.ink[1], s.ink[2]) >= 3, `${scheme}: clear all reads 4.5:1 or more, ⌫ 3:1 (${contrast(s.ink[0], s.ink[2]).toFixed(1)}, ${contrast(s.ink[1], s.ink[2]).toFixed(1)})`);
-      await page.screenshot({ path: OUT + `calculator-strip-${scheme}.png` });
-    }
-    await page.emulateMedia({ colorScheme: 'light' }); await page.waitForTimeout(300);
-    // The focus ring every key has: Tab to clear all.
-    await W.locator('#app').click({ position: { x: 3, y: 3 } });
-    let ring = null;
-    for (let i = 0; i < 25 && !ring; i++) {
-      await page.keyboard.press('Tab');
-      ring = await W.locator('html').evaluate(() => { const a = document.activeElement; if (!a || !a.dataset || a.dataset.key !== 'clear') return null; const cs = getComputedStyle(a); return `${cs.outlineStyle} ${cs.outlineWidth}`; });
-    }
-    ok(ring === 'solid 3px', `Tab to clear all shows the focus ring every key has (${ring})`);
-    // F9 is ±: Test practice still has none.
-    await W.locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.press('F9'); await page.waitForTimeout(250);
-    const f9 = await W.locator('html').evaluate(() => (document.getElementById('note').textContent || document.getElementById('hint').textContent).trim());
-    ok(f9 === 'Test practice has no ± key.', `F9 still says “Test practice has no ± key.” (${f9})`);
-    // The smallest window, 280 × 400: every key 44 px tall or more, and the label on one line, inside its key.
-    await setSize(280, 400);
-    k = await keysAt(); s = await strip();
-    ok(k.minH >= 44 && Object.values(k.k).filter(Boolean).every(b => b.w >= 44), `280 × 400: every key is 44 px or more (${k.minH.toFixed(1)} px tall; ⌫ ${k.k.backspace && k.k.backspace.w.toFixed(1)} px wide)`);
-    ok(s.label.lines === 1 && s.label.l >= s.label.kl - 0.5 && s.label.r <= s.label.kr + 0.5 && s.label.px >= 12, `280 × 400: “clear all” fits on one line, inside its key (${s.label.w.toFixed(1)} px in ${s.label.kw.toFixed(1)}, ${s.label.lines} line, ${s.label.px.toFixed(1)} px type)`);
-    ok(!!k.k.clear && near((k.k.clear.l + k.k.clear.r) / 2, (k.pad.l + k.pad.r) / 2) && !!k.k.backspace && k.k.backspace.l > k.k.clear.r, `280 × 400: clear all still centered, ⌫ beside it (${span(k, 'clear')}, ${span(k, 'backspace')})`);
-    await page.screenshot({ path: OUT + 'calculator-strip-280.png' });
-    // clear all leaves room around its label for the focus ring and the pressed key: 4 px or more on each side, with
-    // History on, in a tall window, in a big one, and in Early readers, whose letters are widest. (A bigger viewport
-    // holds the big windows.)
-    await page.setViewportSize({ width: 1600, height: 1200 }); await page.waitForTimeout(500);
-    const room = s => Math.min(s.label.l - s.label.kl, s.label.kr - s.label.r);
-    const roomy = async what => { const k = await keysAt(), s = await strip(); ok(s.label.lines === 1 && room(s) >= 4,
-      `${what}: “clear all” has 4 px or more on each side inside its key (${k.vw} × ${k.vh}: ${s.label.w.toFixed(1)} px in ${s.label.kw.toFixed(1)}, ${room(s).toFixed(1)} px to spare, ${s.label.px.toFixed(1)} px type)`); };
-    for (const [w, h, hist] of [[900, 600, false], [700, 900, false], [900, 600, true], [600, 900, true], [1100, 700, true], [1400, 1100, true]]) {
-      await set('History', 'history', hist); await setSize(w, h);
-      await roomy(`${w} × ${h}${hist ? ', History on' : ''}`);
-    }
-    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="early"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(800);
-    await setSize(1400, 1100); await roomy('Early readers, 1400 × 1100, History on');
-    await setSize(1500, 900); await roomy('Early readers, 1500 × 900, History on');
-    await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(500);
-    await set('History', 'history', false);
-    await page.setViewportSize({ width: 1366, height: 768 }); await page.waitForTimeout(500);
-    await setSize(900, 600);
-    // After a reload, Test practice still says clear all.
-    await page.reload(); await boardUp(page); await page.waitForTimeout(1500);
-    s = await strip();
-    ok(s.text === 'clear all' && s.name === 'clear all', `after a reload, still “clear all” (${s.text}, ${s.name})`);
-    // Leaving Test practice brings back AC, its name, and ±, lined up again.
-    await choose('Test practice');
-    k = await keysAt(); s = await strip();
-    ok(s.text === 'AC' && s.name === 'all clear' && !!k.k.negate && lined(k) && s.bg.every(b => b !== 'rgba(0, 0, 0, 0)'), `Test practice off: AC, its name, and ± come back, with their key color (${s.text}, ${s.name}; ${row(k)})`);
-
-    // ---- 3. In words tells (−3)² from −3²: the In words line, the screen reader, and History.
+    // ---- 2. In words tells (−3)² from −3²: the In words line, the screen reader, and History.
     await set('Advanced keys', 'advanced', true); await set('In words', 'words', true); await set('History', 'history', true);
     await setSize(1300, 640);
     const NEG = 'open parenthesis negative 3 close parenthesis';
@@ -19534,14 +19423,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       `with Hide the answer on, (−3/2)² and −(3/2)² say different words (${hidden.said} | ${w.said})`);
     await set('Hide the answer', 'hide', false);
 
-    // ---- 4. The docs: the manual's drawings and lines.
+    // ---- 3. The docs: the manual's drawings and lines.
     const man = fs.readFileSync(path.join(ROOT, 'docs', 'calculator-manual', 'page-src.html'), 'utf8');
     const TOP = '<span class="fn k3 w">AC</span><span class="fn k6">⌫</span><span class="fn k3">±</span>';
     ok(man.split(TOP).length === 3 && !/class="fn k4/.test(man), 'the manual draws AC, ⌫, and ± as 3, 6, and 3 columns, in Keys and in Advanced keys');
-    ok(/<span class="flat ca w">clear all<\/span><span class="flat k6">⌫<\/span>/.test(man) && /\.kp \.ca \{ grid-column: 9 \/ span 8; \}/.test(man), 'the manual draws Test practice’s strip, clear all 8 columns wide in the middle and ⌫ beside it');
     const plain = man.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
-    for (const line of ['Desmos Four-Function’s keys, as on NWEA MAP. No ± key, so students type − first.', 'The state test’s calculator has ±. Test practice matches MAP, which has none.',
-      'Changes the number you’re typing, or the answer, to its opposite.', '± makes the number itself negative, so 3 ± a² is (−3)² = 9.',
+    for (const line of ['Changes the number you’re typing, or the answer, to its opposite.', '± makes the number itself negative, so 3 ± a² is (−3)² = 9.',
       '3 × (−2) where Desmos writes 3×−2.']) ok(plain.includes(line), `the manual: “${line}”`);
     ok(stamped(), STAMPED);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
@@ -20420,11 +20307,6 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const z = /−\s?0(?:\.0*)?(?![.0-9])|negative 0(?:\.0*)?(?![.0-9])/.exec(hist);
       ok(/Change 5 \+ 0\b/.test(hist) && !z, `History has 5 + 0, with no −0 (${z ? hist.slice(Math.max(0, z.index - 60), z.index + 20) : hist.split(' | ').filter(l => /\+ 0\b/.test(l)).join(' | ')})`);
       await C.choose('History');
-      // Test practice still has no ±, and F9 says so.
-      await C.choose('Test practice');
-      await C.W.locator('#app').click({ position: { x: 3, y: 3 } }); await C.page.keyboard.press('F9'); await C.page.waitForTimeout(250);
-      const f9 = await C.W.locator('html').evaluate(() => (document.getElementById('note').textContent || document.getElementById('hint').textContent).trim());
-      ok(f9 === 'Test practice has no ± key.', `F9 still says “Test practice has no ± key.” (${f9})`);
       await C.ctx.close();
     });
 
@@ -20470,7 +20352,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const ideas = id => { const i = guide.indexOf(`id="${id}"`), j = guide.indexOf('<ul class="ideas">', i), k = guide.indexOf('</ul>', j);
         return i < 0 || j < 0 ? [] : Array.from(guide.slice(j, k).matchAll(/<li><span class="grade">([^<]*)<\/span><span>([^<]*)<\/span><\/li>/g)).map(m => [m[1], m[2]]); };
       const want = {
-        'w-calculator': [['K–2', 'Choral count. Type 10 + 10, then press = again and again. Grade 2 can try 5 + 5.'], ['3–6', 'Order of operations. Type 2 + 3 × 4, then Next step. Each step lights its rule.'], ['6–8', 'Test practice matches the calculator on NWEA MAP.']],
+        'w-calculator': [['K–2', 'Choral count. Type 10 + 10, then press = again and again. Grade 2 can try 5 + 5.'], ['3–6', 'Order of operations. Type 2 + 3 × 4, then Next step. Each step lights its rule.'], ['4–5', 'Remainders. Pick With remainders in Calculator ⌄, then type 17 ÷ 5.']],
         'w-dice': [['K–2', 'Turn off Show total. Students add, then turn it on to check.'], ['2–3', 'Roll 3 dice. Who can make the biggest three-digit number?'], ['4–5', 'Roll 6 dice. Who can make the biggest six-digit number?'], ['6–7', 'Predict the most common total. Then roll 2 dice 30 times and tally.']]
       };
       for (const [id, list] of Object.entries(want)) { const got = ideas(id); ok(same(got, list), `the guide’s ${id.slice(2)} ideas: ${got.map(g => g[0] + ' ' + g[1]).join(' / ')}`); }
@@ -20487,6 +20369,241 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const man = fs.readFileSync(path.join(ROOT, 'docs', 'calculator-manual', 'page-src.html'), 'utf8'), manText = man.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
       ok(manText.includes('Each step lights its rule.') && manText.includes('Each step marks what comes next and lights its rule.'), 'the manual: “Each step lights its rule.” and “… lights its rule.”');
       ok(['( )', '<i>x</i><sup><i>n</i></sup> √', '× ÷', '+ −'].every(c => man.includes(c)) && /class="rules"/.test(man), 'the manual draws the four rule cells in its own steps');
+      ok(stamped(), STAMPED);
+    });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  // ---- 2026.11.23-1: the Calculator's menu. Test practice leaves it (its code stays, behind TEST_PRACTICE), 50 + 10% = 55
+  // becomes Desmos %, shown under Advanced keys while they're on, and Answers as fractions becomes a group of three:
+  // As decimals, As fractions, and With remainders (17 ÷ 5 = 3 R 2).
+  ['Calculator: Answers group, Desmos %, and no Test practice (2026.11.23-1)', async (browser) => {
+    const errors = [];
+    // Each part runs on its own: one that stops early is reported, and the next still runs.
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const sorted = s => String(s).split(',').sort().join();
+    const BASIC = 'clear,backspace,negate,open,close,sqrt,divide,7,8,9,multiply,4,5,6,subtract,1,2,3,add,0,point,ans,equals';
+    const ADV = 'square,power,root,cbrt,pi,percent,fraction,right';
+    const MENU_OFF = '[Show] | ✓ Canvas | History | ✓ Steps | In words | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | Swap sides | — | (off) Clear history';
+    const MENU_ON = MENU_OFF.replace('| Advanced keys |', '| ✓ Advanced keys | ✓ Desmos % |');
+    const head = m => String(m).replace(/ \| — \| (\(off\) )?Clear history$/, '');   // (Clear history is greyed out while History is empty)
+    const NAME = { '+': 'add', '−': 'subtract', '×': 'multiply', '÷': 'divide', '=': 'equals', '.': 'point', '(': 'open', ')': 'close', '%': 'percent' };
+    // A board with one Calculator (on a board that is the screen, unless free is false), and what to do with it.
+    const calcBoard = async (free = true) => {
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      const page = await ctx.newPage();
+      page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE); await boardUp(page);
+      if (free) await freeBoard(page);
+      const ik = await addWin(page, 'calculator');
+      await eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+      await page.waitForTimeout(600);
+      const W = page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+      const front = () => page.evaluate(ik => { if (window.__board21.state.focused !== ik) window.__board21.focusWin(ik); }, ik);
+      const press = async keys => {
+        await front();
+        for (const k of typeof keys === 'string' ? Array.from(keys).map(c => NAME[c] || c) : keys) await W.locator(`#keys .key[data-key="${k}"]`).click({ timeout: 3000 });
+        await page.waitForTimeout(200);
+      };
+      const type = async text => { await front(); await W.locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.type(text); await page.waitForTimeout(250); };
+      const choose = async label => {
+        await front();
+        await page.click(`.win[data-ikey="${ik}"] .win-label`);
+        await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).click({ timeout: 3000 });
+        await page.waitForTimeout(600);
+      };
+      const menu = () => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return w ? w.menuItems.map(i => i.separator ? '—' : i.heading ? `[${i.label}]` : (i.disabled ? '(off) ' : '') + (i.checked ? '✓ ' : '') + i.label).join(' | ') : null; }, ik);
+      const conf = () => page.evaluate(ik => window.__board21.state.conf.get(ik) || {}, ik);
+      // A config saved in the window and sent to it, as one arrives from another tab, Board Sync, an import, or Board
+      // history; then, with reload, opened again, as an older window on this device.
+      const put = v => page.evaluate(async ([ik, v]) => {
+        const w = window.__board21.state.wins.get(ik), B = w.iframe.contentWindow.Board21;
+        await B.saveConfig(v); w.post('config', { config: v, reason: 'remote' });
+      }, [ik, v]).then(() => page.waitForTimeout(500));
+      const reload = async () => { await page.reload(); await boardUp(page); await page.waitForTimeout(1500); };
+      const look = () => W.locator('html').evaluate(() => {
+        const $ = id => document.getElementById(id), shown = e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+        const plain = e => { if (!e) return ''; const c = e.cloneNode(true); c.querySelectorAll('.ce-anslabel, .ce-cursor, .heq').forEach(n => n.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); };
+        const tg = shown($('eqToggle')) ? $('eqToggle') : shown($('bigToggle')) ? $('bigToggle') : null, ac = document.querySelector('#keys .key[data-key="clear"]');
+        return {
+          eq: plain($('eq')), eqLabel: (document.querySelector('#eq .ce-math') || { getAttribute: () => '' }).getAttribute('aria-label'), said: shown($('said')) ? plain($('said')) : '',
+          note: plain($('note')), hint: plain($('hint')), reveal: shown(document.querySelector('#eq .reveal')), toggle: tg ? tg.getAttribute('aria-label') : null,
+          frac: !!document.querySelector('#eq .ce-ans .ce-frac'), live: $('live').textContent,
+          hist: [...document.querySelectorAll('#history .hline')].filter(shown).map(l => ({ expr: plain(l.querySelector('.hpick')), ans: plain(l.querySelector('.hans')) })),
+          chain: [...document.querySelectorAll('#chain li.on')].map(li => plain(li.querySelector('.lx'))),
+          work: [...document.querySelectorAll('#chain li.on .lw.on .work')].map(plain),
+          keys: [...document.querySelectorAll('#keys .key')].filter(shown).map(k => k.dataset.key), test: $('app').classList.contains('test'),
+          ac: plain(ac), acName: ac.getAttribute('aria-label')
+        };
+      });
+      return { ctx, page, ik, W, front, press, type, choose, menu, conf, put, reload, look };
+    };
+
+    // ---- 1. The menu: no Test practice; Answers, a group of three; Desmos % under Advanced keys while they're on.
+    await part('Menu', async () => {
+      const C = await calcBoard();
+      let m = await C.menu();
+      ok(m === MENU_OFF, `a new window: no Test practice, Answers with As decimals checked, and no Desmos % while Advanced keys are off (${m})`);
+      await C.front(); await C.page.click(`.win[data-ikey="${C.ik}"] .win-label`); await C.page.waitForTimeout(300);
+      const grp = await C.page.evaluate(() => { const g = document.querySelector('#menu .menu-group[aria-label="Answers"]'); return g ? [...g.querySelectorAll('[role="menuitemcheckbox"]')].map(b => `${b.textContent.trim()} ${b.getAttribute('aria-checked')}`) : null; });
+      ok(same(grp, ['As decimals true', 'As fractions false', 'With remainders false']), `a screen reader hears the group as “Answers, As decimals, checked” (${JSON.stringify(grp)})`);
+      await C.page.keyboard.press('Escape'); await C.page.waitForTimeout(200);
+      await C.choose('Advanced keys'); m = await C.menu();
+      ok(m === MENU_ON, `Advanced keys on: Desmos % right under them, checked (${m})`);
+      await C.press(['clear']); await C.type('10%50='); let L = await C.look();
+      ok(L.eq === '10% of 50 = 5', `Desmos % on: % means “% of” (${L.eq})`);
+      await C.choose('Desmos %'); await C.press(['clear']); await C.type('50+10%='); L = await C.look();
+      ok(L.eq === '50 + 10% = 55' && (await C.conf()).percent === 'apple' && /\| ✓ Advanced keys \| Desmos % \|/.test(await C.menu()), `unchecked: 50 + 10% = 55, saved as percent 'apple' (${L.eq}, ${(await C.conf()).percent})`);
+      await C.choose('Desmos %'); await C.press(['clear']); await C.type('50+10%5='); L = await C.look();
+      ok(L.eq === '50 + 10% of 5 = 50.5' && (await C.conf()).percent === 'of', `checked again: “% of” again (${L.eq})`);
+      // Advanced keys off: Desmos % is gone, and its value is kept. The keyboard still types %, and the value decides it.
+      await C.choose('Desmos %'); await C.choose('Advanced keys'); m = await C.menu();
+      ok(head(m) === head(MENU_OFF) && (await C.conf()).percent === 'apple', `Advanced keys off: Desmos % leaves the menu, and stays unchecked (${m}; ${(await C.conf()).percent})`);
+      await C.press(['clear']); await C.type('50+10%='); L = await C.look();
+      ok(!L.keys.includes('percent') && L.eq === '50 + 10% = 55', `with no % key showing, the keyboard types %, and Desmos % still decides it (${L.eq})`);
+      await C.choose('Advanced keys'); m = await C.menu();
+      ok(/\| ✓ Advanced keys \| Desmos % \| Hide the answer \|/.test(m), `Advanced keys on again: Desmos % comes back unchecked (${m})`);
+      await C.ctx.close();
+      // The menu fits a 1366 × 768 board, with Advanced keys on, near the top of the board and near the bottom.
+      const B = await calcBoard(false);
+      await B.choose('Advanced keys');
+      for (const [where, y] of [['near the top', 0], ['near the bottom', 100000]]) {
+        await B.page.evaluate(([ik, y]) => window.__board21.setRect(ik, Object.assign({}, window.__board21.state.insts.get(ik).rect, { x: 200, y })), [B.ik, y]); await B.page.waitForTimeout(600);
+        await B.front(); await B.page.click(`.win[data-ikey="${B.ik}"] .win-label`); await B.page.waitForTimeout(400);
+        const r = await B.page.evaluate(ik => {
+          const e = document.getElementById('menu'), b = e.getBoundingClientRect(), w = document.querySelector(`.win[data-ikey="${ik}"]`).getBoundingClientRect();
+          return { cls: e.className, top: Math.round(b.top), bottom: Math.round(b.bottom), scrolls: e.scrollHeight > e.clientHeight + 1, win: [Math.round(w.top), Math.round(w.bottom)], items: [...e.querySelectorAll('.menu-item')].map(i => i.textContent.trim()) };
+        }, B.ik);
+        ok(!r.scrolls && r.top >= 0 && r.bottom <= 768 && r.items.includes('Desmos %') && !/compact|tight|cols/.test(r.cls) && (where === 'near the top' ? r.win[0] < 60 : r.win[1] > 768 - 60),
+          `${where} (the window from ${r.win[0]} to ${r.win[1]}): the whole menu fits, ${r.top} to ${r.bottom}, without scrolling or tighter rows (${r.items.length} items; ${r.cls})`);
+        await B.page.keyboard.press('Escape'); await B.page.waitForTimeout(200);
+      }
+      await B.ctx.close();
+    });
+
+    // ---- 2. Settings from before: fractions: true, test: true, and percent: 'apple'; what's saved now.
+    await part('Older settings', async () => {
+      const C = await calcBoard();
+      await C.put({ fractions: true }); let m = await C.menu();
+      ok(/\[Answers\] \| As decimals \| ✓ As fractions \| With remainders \|/.test(m), `{ fractions: true } arriving: As fractions checked (${m})`);
+      await C.reload(); m = await C.menu();
+      await C.press(['clear']); await C.press('3÷4='); let L = await C.look();
+      ok(/\[Answers\] \| As decimals \| ✓ As fractions \| With remainders \|/.test(m) && L.frac, `{ fractions: true } opened again: As fractions checked, and 3 ÷ 4 shows 3/4 (${m}; ${L.eq})`);
+      await C.put({ answers: 'nonsense', fractions: true }); m = await C.menu();
+      ok(/✓ As fractions/.test(m), `an answers value it doesn’t know reads fractions instead (${m})`);
+      const normal = (L, what, keys = BASIC) => ok(!L.test && sorted(L.keys) === sorted(keys) && L.ac === 'AC' && L.acName === 'all clear',
+        `${what}: a normal Calculator, with AC, ±, and every key (${L.keys.length} keys; ${L.ac}, “${L.acName}”)`);
+      await C.put({ test: true }); L = await C.look(); m = await C.menu();
+      normal(L, '{ test: true } arriving');
+      ok(head(m) === head(MENU_OFF), `nothing greyed out, and no Test practice (${m})`);
+      await C.press(['clear']); await C.press('2÷3='); L = await C.look();
+      ok(L.eq === '2 ÷ 3 = 0.6666666667', `10 digits (${L.eq})`);
+      await C.reload(); L = await C.look();
+      normal(L, '{ test: true } opened again');
+      await C.type('2pi'); await C.page.keyboard.press('Enter'); await C.page.waitForTimeout(250); L = await C.look();
+      ok(L.eq === '2π = 6.283185307' && !/has no/.test(L.note + L.hint), `the keyboard types pi, with no message (${L.eq}; ${L.note || L.hint})`);
+      await C.press(['clear']); await C.W.locator('#app').click({ position: { x: 3, y: 3 } }); await C.page.keyboard.type('5'); await C.page.keyboard.press('F9'); await C.page.waitForTimeout(250); L = await C.look();
+      ok(L.eq === '−5' && !/has no/.test(L.note + L.hint), `F9 is ± (${L.eq})`);
+      await C.put({ test: true, advanced: true, fractions: true }); L = await C.look(); m = await C.menu();
+      normal(L, '{ test: true, advanced: true } arriving', BASIC + ',' + ADV);
+      ok(head(m) === head(MENU_ON.replace('✓ As decimals | As fractions', 'As decimals | ✓ As fractions')), `Advanced keys and As fractions can be changed (${m})`);
+      await C.choose('With remainders');
+      const saved = await C.conf();
+      ok(saved.answers === 'remainder' && saved.fractions === false && saved.test === false, `saving writes answers, the fractions an older release reads, and test off (${JSON.stringify(saved)})`);
+      await C.put({ percent: 'apple' }); await C.reload(); m = await C.menu();
+      ok(head(m) === head(MENU_OFF), `{ percent: 'apple' } opened again: no Desmos % while Advanced keys are off (${m})`);
+      await C.choose('Advanced keys'); m = await C.menu();
+      ok(/\| ✓ Advanced keys \| Desmos % \|/.test(m), `Advanced keys on: Desmos % unchecked (${m})`);
+      for (const [label, answers, fractions] of [['As fractions', 'fraction', true], ['With remainders', 'remainder', false], ['As decimals', 'decimal', false]]) {
+        await C.choose(label); const c = await C.conf();
+        ok(c.answers === answers && c.fractions === fractions && /✓ /.test(await C.menu()), `${label}: saved as answers '${c.answers}', fractions ${c.fractions}`);
+      }
+      // Reset: a new window's menu.
+      await C.front(); await C.page.click(`.win[data-ikey="${C.ik}"] .win-label`); await C.page.locator('#menu [data-act="reset"]').click(); await C.page.locator('#menu [data-act="reset-yes"]').click();
+      await C.page.waitForTimeout(1500);
+      ok(await C.menu() === MENU_OFF, 'Reset: the menu as new');
+      await C.ctx.close();
+    });
+
+    // ---- 3. With remainders: 17 ÷ 5 = 3 R 2. Any other answer is a decimal.
+    await part('Remainders', async () => {
+      const C = await calcBoard();
+      await C.choose('With remainders');
+      ok(/\[Answers\] \| As decimals \| As fractions \| ✓ With remainders \|/.test(await C.menu()) && (await C.conf()).answers === 'remainder', 'With remainders checked, and saved');
+      for (const [keys, eq] of [['17÷5=', '17 ÷ 5 = 3 R 2'], ['15÷5=', '15 ÷ 5 = 3'], ['(20+3)÷5=', '(20 + 3) ÷ 5 = 4 R 3'], ['17.0÷5=', '17.0 ÷ 5 = 3 R 2'],
+        ['2+17÷5=', '2 + 17 ÷ 5 = 5.4'], ['7.5÷2=', '7.5 ÷ 2 = 3.75'], ['−17÷5=', '−17 ÷ 5 = −3.4']]) {
+        await C.press(['clear']); await C.press(keys); const L = await C.look();
+        ok(L.eq === eq, `${keys}: ${eq} (${L.eq})`);
+      }
+      await C.press(['clear']); await C.press('17÷0='); let L = await C.look();
+      ok(/Can’t divide by 0/.test(L.note) && L.eq === '17 ÷ 0', `17 ÷ 0 says what it says today (${L.eq}; ${L.note})`);
+      // In words, the screen reader, History, and the last step.
+      await C.choose('In words'); await C.choose('History');
+      await C.press(['clear']); await C.press('17÷5='); L = await C.look();
+      ok(L.said === '17 divided by 5 equals 3 remainder 2' && L.eqLabel === L.said && L.live === L.said, `In words: “${L.said}”, and a screen reader hears it too (${L.live})`);
+      const last = L.hist[L.hist.length - 1] || {};
+      ok(last.expr === '17 ÷ 5' && last.ans === '3 R 2', `History: 17 ÷ 5 = 3 R 2 (${JSON.stringify(last)})`);
+      await C.page.screenshot({ path: OUT + 'calculator-remainder.png' });
+      await C.W.locator('#all').click(); await C.page.waitForTimeout(300); L = await C.look();
+      ok(same(L.chain, ['17 ÷ 5', '3 R 2']) && same(L.work, ['17 ÷ 5 = 3 R 2']), `Steps: 17 ÷ 5, then 3 R 2 (${L.chain.join(' | ')}; ${L.work.join(' | ')})`);
+      await C.press(['clear']); await C.press('(20+3)÷5='); await C.W.locator('#all').click(); await C.page.waitForTimeout(300); L = await C.look();
+      ok(L.chain[L.chain.length - 1] === '4 R 3' && same(L.work, ['20 + 3 = 23', '23 ÷ 5 = 4 R 3']), `(20 + 3) ÷ 5: the same steps, the last one 4 R 3 (${L.chain.join(' | ')}; ${L.work.join(' | ')})`);
+      // ⇄: 3 R 2 and 3.4.
+      await C.press(['clear']); await C.press('17÷5='); L = await C.look();
+      ok(L.toggle === 'Show as a decimal', `⇄ beside 3 R 2 is “Show as a decimal” (${L.toggle})`);
+      await C.W.locator('#eqToggle').click(); await C.page.waitForTimeout(250); L = await C.look();
+      ok(L.eq === '17 ÷ 5 = 3.4' && L.toggle === 'Show with a remainder' && L.said === '17 divided by 5 equals 3.4', `⇄: 3.4, then “Show with a remainder” (${L.eq}; ${L.toggle})`);
+      await C.W.locator('#eqToggle').click(); await C.page.waitForTimeout(250); L = await C.look();
+      ok(L.eq === '17 ÷ 5 = 3 R 2', `⇄ again: 3 R 2 (${L.eq})`);
+      // ans goes on from 17/5.
+      await C.press('×5='); L = await C.look();
+      ok(L.eq === '3.4 × 5 = 17', `× right after it goes on from 17/5: ${L.eq}`);
+      // Hide the answer hides it like any other.
+      await C.choose('Hide the answer'); await C.press(['clear']); await C.press('17÷5='); L = await C.look();
+      const hl = L.hist[L.hist.length - 1] || {};
+      ok(L.reveal && !/R/.test(L.eq) && L.said === '17 divided by 5' && hl.ans === '?', `Hide the answer hides it, in History too (${L.eq}; ${L.said}; ${hl.ans})`);
+      await C.W.locator('#eq .reveal').click(); await C.page.waitForTimeout(300); L = await C.look();
+      ok(L.eq === '17 ÷ 5 = 3 R 2', `a tap shows 3 R 2 (${L.eq})`);
+      await C.choose('Hide the answer');
+      // Picking another choice changes the answer on screen at once.
+      await C.choose('As decimals'); L = await C.look();
+      ok(L.eq === '17 ÷ 5 = 3.4', `As decimals: 3.4 at once (${L.eq})`);
+      await C.choose('As fractions'); L = await C.look();
+      ok(L.frac && /17\s?5$/.test(L.eq), `As fractions: 17/5 at once (${L.eq})`);
+      await C.choose('With remainders'); L = await C.look();
+      ok(L.eq === '17 ÷ 5 = 3 R 2', `With remainders: 3 R 2 at once (${L.eq})`);
+      await C.W.locator('#eqToggle').click(); await C.page.waitForTimeout(250);
+      await C.choose('As fractions'); L = await C.look();
+      ok(L.frac, `3 R 2 switched to 3.4, then As fractions: 17/5 (${L.eq})`);
+      await C.ctx.close();
+    });
+
+    // ---- 4. Test practice's code stays, behind one constant; no Test practice where a teacher reads; the docs.
+    await part('Code kept and docs', async () => {
+      const src = fs.readFileSync(path.join(ROOT, 'widgets', 'calculator', 'index.html'), 'utf8');
+      ok(/const TEST_PRACTICE = false;\s*\/\/[^\n]*true brings/i.test(src) && /const TEST_KEYS = /.test(src) && /const NOT_IN_TEST = /.test(src) && /const TEST_WORDS = /.test(src) &&
+        /#app\.test #keys \{/.test(src) && /const TEST_CLEAR = 'clear all';/.test(src) && /has no \$\{E\.KEYS\[refused\]\.label\} key\./.test(src),
+        'Test practice’s code stays: its CSS, TEST_KEYS, NOT_IN_TEST, TEST_WORDS, clear all, and its message, behind const TEST_PRACTICE = false');
+      const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+      for (const f of ['README.md', 'docs/calculator-manual/page-src.html', 'docs/teacher-guide/page-src.html', 'docs/DATA-FORMAT.md']) {
+        const t = read(f).replace(/<(script|style)\b[\s\S]*?<\/\1>|<!--[\s\S]*?-->/gi, ''), hit = /test practice|clear all|NWEA|50 \+ 10% = 55 in the menu|Answers as fractions/i.exec(t);
+        ok(!hit, `${f}: no Test practice, and none of the old names${hit ? ` (“${t.slice(Math.max(0, hit.index - 40), hit.index + 40)}”)` : ''}`);
+      }
+      const readme = read('README.md').replace(/\s+/g, ' '), sec = readme.slice(readme.indexOf('## Calculator'), readme.indexOf('## District apps'));
+      const order = ['**Canvas:**', '**History:**', '**Steps:**', '**In words:**', '**Answers:**', '**Advanced keys:**', '**Desmos %:**', '**Hide the answer:**', '**Swap sides:**', '**Clear history:**'];
+      ok(order.every((w, i) => sec.indexOf(w) >= 0 && (!i || sec.indexOf(w) > sec.indexOf(order[i - 1]))), 'README: the menu list in the menu’s order, with Answers and Desmos %');
+      ok(sec.includes('as decimals, as fractions, or with remainders') && sec.includes('17 ÷ 5 = 3 R 2') && sec.includes('Decimals to start') && /Desmos %:\*\* [^-]*Advanced keys/.test(sec) &&
+        sec.includes('On, % means "% of", as in Desmos. Off, 50 + 10% = 55, as on iPhone.'), 'README: the three choices and the default, and what Desmos % does and when it shows');
+      const data = read('docs/DATA-FORMAT.md').replace(/\s+/g, ' ');
+      ok(/answers: "decimal" \| "fraction" \| "remainder"/.test(data) && /`fractions`/.test(data), 'DATA-FORMAT: the config’s answers, and the fractions written for older releases');
+      const man = read('docs/calculator-manual/page-src.html'), manText = man.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
+      ok(/data-keys="17÷5" data-opts='\{"answers":"remainder"\}'/.test(man) && manText.includes('On, % means “% of”, as in Desmos. Off, 50 + 10% = 55, as on iPhone.'), 'the manual: a live 17 ÷ 5 with remainders, and what Desmos % does');
+      const guide = read('docs/teacher-guide/page-src.html'), i = guide.indexOf('id="w-calculator"'), card = guide.slice(i, guide.indexOf('</article>', i));
+      const ideas = Array.from(card.matchAll(/<li><span class="grade">([^<]*)<\/span><span>([^<]*)<\/span><\/li>/g)).map(x => x[1]);
+      ok(/<span class="grade">4–5<\/span><span>Remainders\. Pick With remainders in Calculator ⌄, then type 17 ÷ 5\.<\/span>/.test(card) && same(ideas, ['K–2', '3–6', '4–5']),
+        `the Teacher Guide: a grade 4–5 idea for remainders, the ideas in grade order (${ideas.join(', ')})`);
       ok(stamped(), STAMPED);
     });
 

@@ -509,7 +509,9 @@ an =, the first is the one on the canvas. In `expr`, a number is `{ n: "12.5" }`
 answer used again is `{ ans: "7/2" }`. Everything else is a string: `"+" "-" "*" "/" "(" ")" "neg" "%" "%of" "pi"`, and
 the boxes `"^" "sqrt" "root" "frac" "sep" "end"`. Answers aren't saved. They're worked out again on load, and anything
 that doesn't check out is left out. Its config is every menu setting and which panels show: `{ canvas, history, steps,
-words, advanced, hide, fractions, test, percent: "of" | "apple", swap }`.
+words, advanced, hide, answers: "decimal" | "fraction" | "remainder", fractions, test, percent: "of" | "apple", swap }`.
+`fractions` is `answers === "fraction"`, for releases before 2026.11.23-1, which read only `fractions`. A config with no
+`answers` reads `fractions: true` as `"fraction"`. `test` is always `false`.
 
 The Zones Check-In (`zones-check-in`) saves `{ day, counts: { blue, green, yellow, red }, undo }`. `day` is the date of
 the last change, `YYYY-MM-DD`. `undo` is up to 20 earlier counts, each `[blue, green, yellow, red]`. Its config is
