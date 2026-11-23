@@ -821,7 +821,7 @@ const ZC = {
   // 'column' or 'other'. old: what the rules before one row give for the zones' size (a row only when very wide, or
   // wide and short; a column when very tall; else two by two). For each card, where its face, count and feelings are.
   // shows: how many "−", Ideas and feeling words show. w and h: the size the board gives the window's content.
-  // The check-in line and its bar (2026.11.23-2): summary (the part of the view that holds them), status (the line), words
+  // The check-in line and its bar (2026.11.23-3): summary (the part of the view that holds them), status (the line), words
   // (the line's text itself) and bar, each as drawn, or null when hidden. iw and ih: the window's content in its own px.
   // filled and corners: whether it fills the board, and the corners the board tells it of. marks: the board's ▦, clock
   // and padlocks over the screen, in the window's own px.
@@ -859,7 +859,7 @@ const ZC = {
     }, [K, x.iw, x.ih]));
     return x;
   },
-  // Where the check-in line and its bar sit (2026.11.23-2), from arrange: what is wrong. Above the cards, the line, then
+  // Where the check-in line and its bar sit (2026.11.23-3), from arrange: what is wrong. Above the cards, the line, then
   // the bar, then the cards one gap below them, the line's text and the bar centered over the cards. A window 300 px tall
   // or less hides the bar, and one 229 px tall or less the line too. Filling a locked board, the line and the bar sit
   // between the padlocks, under neither, and the cards start one gap below the padlocks too (corners.top).
@@ -886,7 +886,7 @@ const ZC = {
     }
     return out;
   },
-  // Where the cards end (2026.11.23-2), from arrange: what is wrong. One gap above the window's bottom. Filling the board,
+  // Where the cards end (2026.11.23-3), from arrange: what is wrong. One gap above the window's bottom. Filling the board,
   // just above the board's buttons in its bottom corners (the view's bottom less corners.height), and under none of them.
   ends: x => {
     const out = [], px = n => Math.round(n * 10) / 10, c = x.cards.map(k => k.card), bottom = Math.max(...c.map(k => k.b));
@@ -6777,7 +6777,7 @@ const SUITES = [
     const problems = (where, corners) => ZC.problems(page, where, corners);
     const SIZES = [['260 × 220', { x: 40, y: 40, w: 260, h: 260 }], ['the default size', { x: 40, y: 40, w: 560, h: 460 }], ['very wide', { x: 10, y: 40, w: 1340, h: 300 }], ['very tall', { x: 530, y: 10, w: 300, h: 740 }]];
     const bad = [], seen = [];
-    // (2026.11.23-2) Where the line and its bar sit, and where the cards end, in each of these layouts.
+    // (2026.11.23-3) Where the line and its bar sit, and where the cards end, in each of these layouts.
     const tops = [], topSeen = [];
     const placed = async where => {
       const a = await ZC.arrange(page), l = ZC.atTop(a).concat(ZC.ends(a));
@@ -6861,7 +6861,7 @@ const SUITES = [
     await put('16:9', 0.8, 1366, 768);
     await setCounts({ blue: 2, green: 9, yellow: 4, red: 1 });
     const ROW = '1366 × 768 at 80%';
-    // (2026.11.23-2) Where the line and its bar sit in each layout this suite visits, and where the cards end (ZC.atTop,
+    // (2026.11.23-3) Where the line and its bar sit in each layout this suite visits, and where the cards end (ZC.atTop,
     // ZC.ends). Said at the end.
     const TOP = { bad: [], seen: [] };
     const top = (where, x) => { const l = ZC.atTop(x).concat(ZC.ends(x)); (l.length ? TOP.bad : TOP.seen).push(`${where}, ${x.iw} × ${x.ih}${x.filled ? ', filled' : ''}${l.length ? ': ' + l.join(', ') : ''}`); };
@@ -6874,7 +6874,7 @@ const SUITES = [
       const x = await settled('row');
       seen1.push(`${where}: ${x.shape}, ${x.h} px tall`);
       if (!(x.shape === 'row' && x.reach)) R1.row.push(`${where}: ${x.shape}`);
-      // (2026.11.23-2) Filling the board, every card ends just above the board's buttons in its bottom corners, and
+      // (2026.11.23-3) Filling the board, every card ends just above the board's buttons in its bottom corners, and
       // under none of them. Not filling it, one gap above its bottom (y, below).
       const high = ZC.ends(x);
       if (high.length) R1.reach.push(`${where}, filled: ${high.join(', ')}`);
@@ -6908,7 +6908,7 @@ const SUITES = [
     // ---- 2. The lines: a filled window at least 850 × 480 px is one row. Smaller, or not filling the board, the rules
     // before: two by two, a row when very wide, a column when very tall.
     // (want: the shape the rules before give the cards' area, under the line: two by two, or a row where it is wide and
-    // short. Since 2026.11.23-2 the strip between the board's buttons below the cards is empty, so the area is shorter.)
+    // short. Since 2026.11.23-3 the strip between the board's buttons below the cards is empty, so the area is shorter.)
     const lined = async ([shape, sc, vw, vh], over, want = '2x2') => {
       await put(shape, sc, vw, vh); await fill(true);
       const x = await settled(over ? 'row' : want), big = x.w >= 850 && x.h >= 480;
@@ -7167,10 +7167,10 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  // ---- Zones Check-In's line and bar at the top (2026.11.23-2). "Tap your zone to check in" and the color bar sit above
+  // ---- Zones Check-In's line and bar at the top (2026.11.23-3). "Tap your zone to check in" and the color bar sit above
   // the cards. On a locked board filling the window, between the padlocks. Filling the board, the cards end just above
   // the board's own buttons. The window's title keeps its count, so the count shows twice.
-  ['Zones Check-In: the line and bar at the top, between the padlocks, short windows, and the title’s count (2026.11.23-2)', async (browser) => {
+  ['Zones Check-In: the line and bar at the top, between the padlocks, short windows, and the title’s count (2026.11.23-3)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -19781,8 +19781,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         `the registry: clash 'later', as for the Timer's time; the same description; 1:1 at 300 × 300 to start (${JSON.stringify(reg)})`);
       const ik = await openClock(page);
       let m = await menuOf(page, ik);
-      ok(m === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LED look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time',
-        `a new Clock: Show (Analog, Digital, Date only), Clock face (Simple, Old, Teaching), a line, LED look, Show seconds, Show date, 24-hour time, Time in words, a line, Mark a time, Set the time; LED, date, and 24-hour off without Digital (${m})`);
+      ok(m === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time',
+        `a new Clock: Show (Analog, Digital, Date only), Clock face (Simple, Old, Teaching), a line, LCD look, Show seconds, Show date, 24-hour time, Time in words, a line, Mark a time, Set the time; LCD, date, and 24-hour off without Digital (${m})`);
       await choose(page, ik, 'face:old');
       m = await menuOf(page, ik);
       ok(m.includes('[Clock face] | Simple | ✓ Old | Teaching | Upright numerals | IV for four | —') && !m.includes('Hour hand only'), `Old: Upright numerals and IV for four right after the faces (${m})`);
@@ -19791,8 +19791,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(m.includes('[Clock face] | Simple | Old | ✓ Teaching | Hour hand only | —') && !m.includes('Upright numerals') && !m.includes('IV for four'), `Teaching: Hour hand only right after the faces (${m})`);
       await choose(page, ik, 'digital');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Show] | ✓ Analog | ✓ Digital | Date only |') && m.includes('— | LED look | Show seconds | Show date | 24-hour time | Time in words | — | Mark a time | Quiz | Set the time'),
-        `Digital too: both checked, LED, date, and 24-hour on, and Quiz between Mark a time and Set the time (${m})`);
+      ok(m.startsWith('[Show] | ✓ Analog | ✓ Digital | Date only |') && m.includes('— | LCD look | Show seconds | Show date | 24-hour time | Time in words | — | Mark a time | Quiz | Set the time'),
+        `Digital too: both checked, LCD, date, and 24-hour on, and Quiz between Mark a time and Set the time (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
       ok(m.startsWith('[Show] | Analog | ✓ Digital | Date only | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) | Hour hand only (off) |') && m.includes('Mark a time (off) | Set the time') && !m.includes('Quiz'),
@@ -19800,8 +19800,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(await choose(page, ik, 'digital') && (await menuOf(page, ik)).startsWith('[Show] | Analog | ✓ Digital |') && (await confOf(page, ik)).digital === true, 'unchecking the last one shown does nothing');
       await choose(page, ik, 'date');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Show] | Analog | Digital | ✓ Date only | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) |') && m.includes('LED look (off) | Show seconds (off) | Show date (off) | 24-hour time (off)') && m.includes('Mark a time (off)'),
-        `Date only turns both off; the faces, LED, seconds, date, 24-hour, and Mark a time are off (${m})`);
+      ok(m.startsWith('[Show] | Analog | Digital | ✓ Date only | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) |') && m.includes('LCD look (off) | Show seconds (off) | Show date (off) | 24-hour time (off)') && m.includes('Mark a time (off)'),
+        `Date only turns both off; the faces, LCD, seconds, date, 24-hour, and Mark a time are off (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
       ok(m.startsWith('[Show] | ✓ Analog | Digital | Date only |'), `Analog turns Date only off (${m})`);
@@ -19847,7 +19847,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(m0.startsWith('[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple |') && m0.includes('✓ Show seconds') && l0.analog && !l0.digital && l0.secondHand, `an older 'analog': analog only, Simple, its seconds kept (${m0})`);
       ok(m1.startsWith('[Show] | Analog | ✓ Digital | Date only |') && m1.includes('✓ 24-hour time') && m1.includes('✓ Show date') && l1.digital && !l1.analog && l1.time === '14:50' && !!l1.date, `an older 'digital': digital only, 24-hour time, the date (${m1}; ${l1.time})`);
       ok(m2.startsWith('[Show] | Analog | Digital | ✓ Date only |') && l2.dateOnly && !l2.analog && !l2.digital, `an older 'date': Date only (${m2})`);
-      ok(m3 === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LED look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time' && l3.analog && !l3.secondHand,
+      ok(m3 === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time' && l3.analog && !l3.secondHand,
         `none saved: analog only, the Simple face, everything else off (${m3})`);
       ok(m4 === m3 && l4.face === 'simple', `bad values fall back, each to its own default (${m4})`);
       ok(m5.startsWith('[Show] | ✓ Analog | Digital | Date only | [Clock face] | Simple | ✓ Old | Teaching | Upright numerals | ✓ IV for four |') && l5.analog, `nothing shown: analog shows, and the rest is kept (${m5})`);
@@ -19866,6 +19866,28 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await part('Faces', async () => {
       const { ctx, page } = await newBoard('10:10');
       const ik = await openClock(page, 600, 600);
+      // Simple: the dot in the middle is the hands' color, and red only with the red second hand.
+      const hub = () => F(page, ik, () => {
+        const f = s => { const e = document.querySelector('#analog ' + s); return e ? getComputedStyle(e).fill : null; };
+        const sec = document.querySelector('#analog .hand-s');
+        return { hub: f('.fs-hub'), sec: sec ? getComputedStyle(document.querySelector('#analog .fs-sec')).stroke : null, secShown: !!sec && getComputedStyle(sec).display !== 'none' };
+      });
+      const handOf = () => F(page, ik, () => getComputedStyle(document.querySelector('#analog .fs-hand')).stroke);
+      let hb = await hub(), hand = await handOf();
+      ok(!hb.secShown && hb.hub === hand && hb.hub !== hb.sec, `Simple without seconds: the dot in the middle matches the hands, not red (${JSON.stringify(hb)}; hands ${hand})`);
+      await choose(page, ik, 'seconds');
+      hb = await hub();
+      ok(hb.secShown && hb.hub === hb.sec && hb.hub !== hand, `Show seconds: the dot is red, with the second hand (${JSON.stringify(hb)})`);
+      await choose(page, ik, 'set');
+      hb = await hub();
+      ok(!hb.secShown && hb.hub === hand, `Set the time hides the second hand, and the dot matches the hands again (${JSON.stringify(hb)})`);
+      await choose(page, ik, 'set'); await choose(page, ik, 'seconds');
+      hb = await hub();
+      ok(!hb.secShown && hb.hub === hand, `seconds off: the dot matches the hands (${JSON.stringify(hb)})`);
+      await setTheme(page, 'dark');
+      hb = await hub(); hand = await handOf();
+      ok(!hb.secShown && hb.hub === hand && hb.hub !== hb.sec, `dark: the dot matches the light hands (${JSON.stringify(hb)}; hands ${hand})`);
+      await setTheme(page, 'light');
       const nums = () => F(page, ik, () => Array.from(document.querySelectorAll('#analog .ro-num')).map(t => { const m = t.getCTM(); return [t.textContent, Math.round(((Math.atan2(m.b, m.a) * 180 / Math.PI) + 360) % 360)]; }));
       await choose(page, ik, 'face:old');
       let n = await nums();
@@ -19929,9 +19951,30 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const sh = s ? shadows(s.filter) : [];
       ok(!!s && sh.length >= 1 && sh.every(d => d.a > 0 && d.a <= .3 && d.blur <= s.u + .01 && d.x > 0 && d.y > 0 && far(d.rgb, rgbIn(s.accent))) && s.panel !== s.bg,
         `light theme is an LCD on a tinted panel: lit segments cast a faint shadow, and nothing glows in the accent (${s && s.filter}; --u ${s && s.u}; ${s && s.panel})`);
+      let m = await menuOf(page, ik);
+      ok(m.includes('| ✓ LCD look |') && !m.includes('LED look'), `light theme: the menu says LCD look (${m})`);
       await setTheme(page, 'dark');
       s = await seg();
       ok(!!s && /drop-shadow/.test(s.filter) && /rgb/.test(s.filter) && !/^(drop-shadow\(rgba\(0, 0, 0, 0\)[^)]*\)\s*)+$/.test(s.filter), `dark theme is an LED with a soft glow (${s && s.filter})`);
+      m = await menuOf(page, ik);
+      ok(m.includes('| ✓ LED look |') && !m.includes('LCD look'), `dark theme: the menu says LED look, with the window still open (${m})`);
+      await setTheme(page, 'light');
+      m = await menuOf(page, ik);
+      ok(m.includes('| ✓ LCD look |') && !m.includes('LED look'), `back to light: LCD look again (${m})`);
+      // Auto, the menu open from the keyboard on LCD look, and the system turns dark: the keyboard stays on it.
+      await setTheme(page, 'system');
+      await page.focus(`.win[data-ikey="${ik}"] .win-label`); await page.keyboard.press('Enter'); await page.waitForTimeout(250);
+      const kb = () => page.evaluate(() => { const a = document.activeElement, l = document.querySelector('#menu [data-id="led"] .label');
+        return { open: !!document.querySelector('#menu.open'), inMenu: !!a.closest('#menu'), id: a.dataset.id || a.dataset.act || a.tagName, label: l && l.textContent }; });
+      for (let i = 0; i < 12 && (await kb()).id !== 'led'; i++) await page.keyboard.press('ArrowDown');
+      const k0 = await kb();
+      await page.emulateMedia({ colorScheme: 'dark' }); await page.waitForTimeout(500);
+      const k1 = await kb();
+      await page.keyboard.press('ArrowDown'); const k2 = await kb();
+      ok(k0.id === 'led' && k0.label === 'LCD look' && k1.open && k1.inMenu && k1.id === 'led' && k1.label === 'LED look' && k2.id === 'seconds',
+        `the theme changes with the menu open: the label follows, and the keyboard stays on it, so ↓ goes on to Show seconds (${JSON.stringify([k0, k1, k2])})`);
+      await page.keyboard.press('Escape'); await page.emulateMedia({ colorScheme: 'light' });
+      await setTheme(page, 'dark');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.waitForTimeout(200);
       s = await seg();

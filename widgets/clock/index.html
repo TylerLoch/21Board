@@ -15,7 +15,7 @@
     /* Old face: ivory and brass */
     --ro-face: #fbf6e9; --ro-face-2: #ede1c4; --ro-ink: #2b2219; --ro-hand: #1c2433; --ro-sec: #8f2f1f;
     --ro-ring-hi: #ecd496; --ro-ring: #b08a45; --ro-ring-lo: #6f5225;
-    /* LED look: an LCD in light theme, with no glow. Lit segments cast a faint shadow on the panel. */
+    /* LCD look, in light theme: no glow. Lit segments cast a faint shadow on the panel. */
     --panel: color-mix(in srgb, var(--b21-accent) 8%, #e7eae3);
     --seg: color-mix(in srgb, var(--b21-accent) 24%, #161a1f);
     --seg-off: .075;
@@ -25,7 +25,7 @@
     --hour: #ee6f1c; --minute: #93d2ff; --rim: #4b4b4b;
     --ro-face: #241f18; --ro-face-2: #12100c; --ro-ink: #d9b56c; --ro-hand: #f3dca0; --ro-sec: #e07a5f;
     --ro-ring-hi: #c49d58; --ro-ring: #7a5a2a; --ro-ring-lo: #3a2a12;
-    /* An LED in dark theme: a soft glow in the accent */
+    /* LED look, in dark theme: a soft glow in the accent */
     --panel: color-mix(in srgb, var(--b21-accent) 5%, #0e0f10);
     --seg: color-mix(in srgb, var(--b21-accent) 88%, #ffffff);
     --seg-off: .07;
@@ -57,7 +57,8 @@
   #analog .fs-num { fill: var(--b21-text); font-weight: 600; font-size: 13px; text-anchor: middle; dominant-baseline: central; }
   .fs-hand { stroke: var(--b21-text); stroke-linecap: round; }
   .fs-sec { stroke: var(--b21-danger); stroke-linecap: round; }
-  .fs-hub { fill: var(--b21-danger); }
+  .fs-hub { fill: var(--b21-text); }
+  .secs .fs-hub { fill: var(--b21-danger); }   /* red only with the second hand */
   /* Old */
   .f-old { --face-bg: var(--ro-face); }
   .f-old .hand { color: var(--ro-hand); }
@@ -354,7 +355,7 @@
       this.rot(this.hH, 'h', mod(T / 60, 12) * 30);
       this.rot(this.hM, 'm', mod(T, 60) * 6);
       const ss = sec != null;
-      if (this.k.ss !== ss) { this.k.ss = ss; this.hS.style.display = ss ? '' : 'none'; }
+      if (this.k.ss !== ss) { this.k.ss = ss; this.hS.style.display = ss ? '' : 'none'; this.svg.classList.toggle('secs', ss); }
       if (ss) this.rot(this.hS, 's', sec * 6);
       const hide = !!hideMinute;
       if (this.k.hide !== hide) { this.k.hide = hide; this.hM.style.display = hide ? 'none' : ''; }
@@ -408,7 +409,7 @@
     }
   }
 
-  // ---------------------------------------------------------------- Digital: plain, and the LED look
+  // ---------------------------------------------------------------- Digital: plain, and the LED or LCD look
   // Seven segments per digit. Each fades on and off (a CSS opacity transition), so nothing ever switches hard.
   const SEG = (() => {
     const W = 56, H = 100, t = 11, g = 1.4, k = t / 2;
@@ -577,7 +578,7 @@
     if (c.face === 'teaching') items.push({ id: 'hourOnly', label: 'Hour hand only', checked: c.hourOnly, disabled: !showA });   // [Teaching]
     items.push(
       { separator: true },
-      { id: 'led', label: 'LED look', checked: c.led, disabled: !showD },
+      { id: 'led', label: Board21.theme === 'dark' ? 'LED look' : 'LCD look', checked: c.led, disabled: !showD },
       { id: 'seconds', label: 'Show seconds', checked: c.seconds, disabled: c.dateOnly || setOn },
       { id: 'showdate', label: 'Show date', checked: c.date, disabled: !showD },
       { id: 'hour24', label: '24-hour time', checked: c.hour24, disabled: !showD },
@@ -1018,6 +1019,7 @@
   Board21.on('data', d => { take(d); apply(); render(); });
   Board21.on('config', c => { config = readConfig(c); apply(); render(); });
   Board21.on('timers', l => { timers = readTimers(l); face.k.wedge = null; tick(); });
+  Board21.on('theme', menu);   // LED look in dark theme, LCD look in light
   Board21.ready().then(ctx => {
     config = readConfig(ctx.config);
     take(ctx.data);
