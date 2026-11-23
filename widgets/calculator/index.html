@@ -122,7 +122,7 @@
   @container cv (max-width: 399.98px) { .rules { visibility: hidden; } }
 
   /* The compact display: the problem in small type above the big number */
-  .xline { display: flex; justify-content: flex-end; min-width: 0; overflow: hidden; }
+  .xline { flex: 0 0 auto; display: flex; justify-content: flex-end; min-width: 0; overflow: hidden; }
   .xline.clip { -webkit-mask-image: linear-gradient(to right, transparent, var(--b21-text) 2.2em); mask-image: linear-gradient(to right, transparent, var(--b21-text) 2.2em); }
   #x { flex: 0 0 auto; white-space: nowrap; color: var(--b21-muted); font-size: clamp(13px, min(15cqh, 7cqw), 64px); line-height: 1.35; min-height: 1.35em; }
   .bigline { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
@@ -160,7 +160,11 @@
   .hans:disabled { cursor: default; color: var(--b21-accent); }
   .hans .ce-frac { font-size: .72em; }
   .hpick:active, .hans:not(:disabled):active { filter: brightness(.94); }
-  @media (hover: hover) { .hpick:hover { color: var(--b21-accent); } .hans:not(:disabled):hover { background: color-mix(in srgb, var(--b21-accent) 18%, var(--b21-surface-2)); } }
+  @media (hover: hover) {
+    .hpick:hover { color: var(--b21-accent); } .hans:not(:disabled):hover { background: color-mix(in srgb, var(--b21-accent) 18%, var(--b21-surface-2)); }
+    /* In dark, a pale Custom… accent makes that background light. The R takes the light theme's mix there, 3:1 or more. */
+    :root[data-b21-theme="dark"] .hans:not(:disabled):hover .ce-r { color: color-mix(in srgb, var(--b21-muted) 90%, var(--b21-text)); }
+  }
   .hpick.clip, .hans.clip { -webkit-mask-image: linear-gradient(to left, transparent, #000 1.6em); mask-image: linear-gradient(to left, transparent, #000 1.6em); }
   .hempty { padding: .8em .7em; color: var(--b21-muted); font-size: .8em; }
 

@@ -20707,7 +20707,20 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       }, sel);
       const sep = () => W.locator('html').evaluate(() => { const s = document.querySelector('#eq .ce-sep'); return s ? { color: getComputedStyle(s).color, opacity: getComputedStyle(s).opacity } : null; });
       const reload = async () => { await page.reload(); await boardUp(page); await page.waitForTimeout(1500); };
-      return { ctx, page, ik, W, front, press, choose, look, R, sep, reload };
+      // Canvas off: where the problem line and the big display sit in the display.
+      const disp = () => W.locator('html').evaluate(() => {
+        const r = s => document.querySelector(s).getBoundingClientRect(), d = r('#disp'), xl = r('.xline'), x = r('#x'), b = r('#big');
+        return { top: d.top, bottom: d.bottom, xline: xl.height, xH: x.height, xTop: x.top, xBottom: x.bottom, bigTop: b.top, bigBottom: b.bottom };
+      });
+      const shows = (D, where) => ok(D.xH > 0 && D.xline >= D.xH - 1 && D.xTop >= D.top - 1 && D.xBottom <= D.bigTop + 1 && D.bigBottom <= D.bottom + 1,
+        `${where} (the problem line ${D.xline.toFixed(0)}px tall, its text ${D.xH.toFixed(0)}px, at ${D.xTop.toFixed(0)}–${D.xBottom.toFixed(0)}; the display ${D.top.toFixed(0)}–${D.bottom.toFixed(0)}; the big answer ${D.bigTop.toFixed(0)}–${D.bigBottom.toFixed(0)})`);
+      // Settings › Accent › Custom…, a teacher's own color.
+      const custom = async hex => {
+        await openSettings(page);
+        await page.locator('#set-accent-custom').evaluate((el, hex) => { el.value = hex; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, hex);
+        await page.waitForTimeout(500); await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+      };
+      return { ctx, page, ik, W, front, press, choose, look, R, sep, reload, disp, shows, custom };
     };
     // The R in one place: the color it should have, at full strength, the digits' size and weight, and its contrast.
     // (distinct: the digits beside it are another color. While typing, the whole answer is muted, the R too.)
@@ -20756,6 +20769,17 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         await C.page.screenshot({ path: OUT + `calculator-grey-r-${scheme}.png` });
         await C.choose('Canvas');
       }
+      // The pointer over History's answer, with the Custom… accent that tints it most: white in dark, black in light.
+      // Never under 3:1, and still grey beside the digits.
+      for (const [scheme, hex] of [['dark', '#ffffff'], ['light', '#000000']]) {
+        await C.page.emulateMedia({ colorScheme: scheme }); await C.custom(hex);
+        await C.press(['clear']); await C.press('17÷5=');
+        await C.W.locator('#history .hline:last-child .hans').hover(); await C.page.waitForTimeout(250);
+        const r = await C.R('#history .hline:last-child .hans .ce-r'), c = r ? contrast(r.color, r.bg) : 0, d = r && r.digit ? contrast(r.color, r.digit.color) : 0;
+        const grey = !!r && (Math.max(...r.color.match(/\d+/g).map(Number)) - Math.min(...r.color.match(/\d+/g).map(Number))) <= 30;
+        ok(c >= 3 && grey && d >= 1.8, `${scheme}, Custom… ${hex}: with the pointer over History’s answer, the R is still 3:1 or more, and grey beside the digits (${r && r.color} on ${r && r.bg}, ${c.toFixed(2)}:1; ${d.toFixed(2)}:1 against the digits)`);
+        await C.page.mouse.move(5, 5);
+      }
       await C.page.emulateMedia({ colorScheme: 'light' });
       await C.ctx.close();
     });
@@ -20796,6 +20820,18 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       // Canvas off: the problem above the big display, and the big display while typing.
       await C.choose('Canvas'); await C.press(['clear']); await C.press('17÷5=×'); L = await C.look();
       ok(L.x === '17/5 ×' && L.xBox && L.xBox.stacked && L.big === '17/5' && L.bigFrac, `Canvas off: “${L.x}”, and the big display shows ${L.big}`);
+      // The problem line keeps its height above a tall 17/5, also where the display is short: 1150 × 640 with History.
+      const was = await C.page.evaluate(ik => window.__board21.state.insts.get(ik).rect, C.ik);
+      for (const rect of [was, { x: 40, y: 40, w: 1150, h: 640 }]) {
+        await C.page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [C.ik, rect]); await C.page.waitForTimeout(700);
+        const size = `${rect.w} × ${rect.h}`;
+        await C.press(['clear']); await C.press('17÷5=×'); L = await C.look();
+        C.shows(await C.disp(), `${size}, Canvas off: “${L.x}” shows in full above the big ${L.big}`);
+        await C.choose('As fractions'); await C.press(['clear']); await C.press('17÷5='); L = await C.look();
+        C.shows(await C.disp(), `${size}, Canvas off, As fractions: “${L.x}” shows in full above the big ${L.big}`);
+        await C.choose('With remainders');
+      }
+      await C.page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [C.ik, was]); await C.page.waitForTimeout(700);
       await C.choose('Canvas');
       // Hide the answer works as before.
       await C.choose('Hide the answer'); await C.press(['clear']); await C.press('17÷5=×5='); L = await C.look();
@@ -20822,11 +20858,14 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const j = man.indexOf('<h3>Remainders</h3>'), card = man.slice(j, man.indexOf('<div class="pg-exs">', j)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
       ok(card.includes('Go on from 3 R 2, and ans shows 17/5. With Advanced keys on, / types a fraction. Tap ÷ instead.') && !card.includes('ans shows 3.4'),
         `the manual’s Remainders card: “Go on from 3 R 2, and ans shows 17/5.” (${card.trim()})`);
-      ok(/\.cx \{[^}]*--b21-muted: var\(--muted\)/.test(man), 'the manual’s examples draw the R in the page’s own muted color');
+      const ceCss = (/^\.ce-r \{[^}]*\}$/m.exec(read('widgets/calculator/calc-engine.js')) || [''])[0];
+      ok(ceCss === '.ce-r { color: var(--b21-muted, #6b7280); }' && man.includes('/*@CECSS*/') && /\.cx \{[^}]*--b21-muted: var\(--muted\)/.test(man),
+        `the manual’s examples draw the R in the page’s own muted color: the engine’s “${ceCss}”, under .cx, which takes --b21-muted from the page`);
       ok(/\.ce-r\b/.test(read('docs/calculator-manual/check.js')), 'the manual’s check.js measures its R');
       for (const f of ['README.md', 'docs/DATA-FORMAT.md']) ok(!/ans shows 3\.4|ans (?:is|shows) a decimal/i.test(read(f)), `${f}: nothing says ans shows a decimal after a remainder`);
       const data = read('docs/DATA-FORMAT.md').replace(/\s+/g, ' ');
-      ok(data.includes('an answer used again is `{ ans: "7/2" }`, with `rem: true`'), 'DATA-FORMAT: a saved ans box from a remainder answer has rem: true');
+      ok(data.includes('an answer used again is `{ ans: "7/2" }`, with `rem: true` when it was shown with a remainder. With remainders shows that box as a fraction, such as 17/5.') && !data.includes('Its box then shows a fraction'),
+        'DATA-FORMAT: a saved ans box from a remainder answer has rem: true, and With remainders shows it as a fraction');
       const guide = read('docs/teacher-guide/page-src.html');
       ok(guide.includes('<li><span class="grade">6–7</span><span>Percent. Turn on Advanced keys in Calculator ⌄, then type 15 % 80. It shows 15% of 80 = 12.</span></li>'),
         'the Teacher Guide keeps its 6–7 Percent idea');
