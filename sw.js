@@ -11,14 +11,14 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.23-1';
+const VERSION = '2026.11.23-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'b3e66c4d';
+const BUILD = 'deb9f612';
 const FILES = {
-  './': '31d1c0ccaca1fbe6',
-  'index.html': '31d1c0ccaca1fbe6',
-  'board.js': 'ac6cda6c7cf0c200',
+  './': 'cc95813ed270feca',
+  'index.html': 'cc95813ed270feca',
+  'board.js': 'eaf48b5d85ca5fcb',
   'sdk/board21.js': 'aa5d5880e3a9c4a1',
   'sdk/board21-dev.js': 'f7c7181b53d5025a',
   'sdk/dev/board-shell.js': 'b855220e82bbedad',
@@ -58,8 +58,8 @@ const FILES = {
   'widgets/youtube-player/index.html': '32fa8d870d4a57d4',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
-  'widgets/calculator/index.html': 'e535cc3c4f2bef80',
-  'widgets/calculator/calc-engine.js': '1888d007a43b7f5f',
+  'widgets/calculator/index.html': 'ce457854e044206b',
+  'widgets/calculator/calc-engine.js': 'dc632b07ce6c63b3',
   'widgets/sdk-playground/index.html': '12cf5a8c7f820850'
 };
 const CACHE_PREFIX = '21board-';
