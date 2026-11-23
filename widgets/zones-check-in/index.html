@@ -48,25 +48,26 @@
   /* (A row only where it beats two by two: very wide, or wide and too short for two rows of cards with their feelings.) */
   @container zones (aspect-ratio > 3.2) or ((aspect-ratio > 2.2) and (width >= 800px) and (height < 310px)) { .grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
   @container zones (aspect-ratio < 0.7) { .grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
-  /* Filling the board, with a window at least 850 × 480 px: always side by side, so every card reaches down to where
-     students can tap it (fitCorners, .reach). Each card is then tall: its face over its count, and its feelings one under
-     another. */
-  .reach .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: 1fr; }
+  /* A row whenever each card can be at least 190 px wide, so it keeps its "−" and Ideas, in a window wider than it is
+     tall (fitRow, .one-row). Filling the board, with a window at least 850 × 480 px: always a row, so every card reaches down
+     to where students can tap it (fitCorners, .reach). Each card is then tall: its face over its count, and its feelings
+     one under another. */
+  .one-row .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); grid-template-rows: 1fr; }
   @container zone (aspect-ratio < 0.9) {
     /* (--room: the card's height under its colored top and over its feelings. On a short card, such as on a locked board,
        the face and the count shrink to fit it.) */
-    .reach .main { flex-direction: column; gap: min(2cqh, .04 * var(--room)); --room: calc(100cqh - var(--head) - 6.9 * clamp(14px, min(3.4cqh, 6cqw), 30px) - clamp(10px, 5cqh, 48px) - var(--edge, 0px)); }
-    .reach .face { font-size: min(20cqh, 40cqw, .4 * var(--room)); }
+    .one-row .main { flex-direction: column; gap: min(2cqh, .04 * var(--room)); --room: calc(100cqh - var(--head) - 6.9 * clamp(14px, min(3.4cqh, 6cqw), 30px) - clamp(10px, 5cqh, 48px) - var(--edge, 0px)); }
+    .one-row .face { font-size: min(20cqh, 40cqw, .4 * var(--room)); }
     /* (--len: its digits, so 100 fits too. Its line stays as tall as two digits, so the faces still line up.) */
-    .reach .count { font-size: min(28cqh, calc(108cqw / max(2, var(--len, 1))), .56 * var(--room)); height: min(28cqh, 54cqw, .56 * var(--room)); display: flex; align-items: center; }
-    .reach.hide-counts .face { font-size: min(26cqh, 56cqw); }
+    .one-row .count { font-size: min(28cqh, calc(108cqw / max(2, var(--len, 1))), .56 * var(--room)); height: min(28cqh, 54cqw, .56 * var(--room)); display: flex; align-items: center; }
+    .one-row.hide-counts .face { font-size: min(26cqh, 56cqw); }
     /* (Room for four on every card, stacked from the bottom, so the four cards line up and so do their last feelings.) */
-    .reach .feelings { flex-direction: column; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: .4em;
+    .one-row .feelings { flex-direction: column; flex-wrap: nowrap; justify-content: flex-end; align-items: center; gap: .4em;
                        height: 6.9em; padding-bottom: clamp(10px, 5cqh, 48px); font-size: clamp(14px, min(3.4cqh, 6cqw), 30px); }
   }
   /* (One per line, a feeling keeps its word on a card down to 150 px wide.) */
   @container zone (aspect-ratio < 0.9) and (width >= 150px) {
-    .reach .feelings { display: flex; } .reach .feel { padding: .1em .55em .1em .3em; } .reach .feel b { display: inline; }
+    .one-row .feelings { display: flex; } .one-row .feel { padding: .1em .55em .1em .3em; } .one-row .feel b { display: inline; }
   }
   .zone { position: relative; min-width: 0; min-height: 0; container: zone / size; --head: clamp(36px, 22cqh, 76px); }
   .tap { position: absolute; inset: 0; display: flex; flex-direction: column; padding: 0; border: 0; border-radius: 18px; overflow: hidden;
@@ -672,7 +673,17 @@
     // "−" and its words. (The size the board gives: the frame may not have its new size yet.)
     const wide = (Number(w && w.width) || innerWidth) >= 850, tall = (Number(w && w.height) || innerHeight) >= 480;
     document.body.classList.toggle('reach', !!(w && w.maximized) && wide && tall);
+    fitRow();
   }
+  // A row whenever each card can be at least 190 px wide and the cards' area is wider than it is tall (or it fills the board)
+  function fitRow() {
+    const a = document.querySelector('#main .zones'), g = document.querySelector('#main .grid');
+    if (!a || !a.clientWidth) return;
+    const gap = parseFloat(getComputedStyle(g).columnGap) || 0, aw = a.clientWidth, ah = a.clientHeight;
+    const row = document.body.classList.contains('reach') || ((aw - 3 * gap) / 4 >= 190 && aw >= ah);
+    document.body.classList.toggle('one-row', row);
+  }
+  new ResizeObserver(fitRow).observe(document.querySelector('#main .zones'));
   Board21.on('resize', fitCorners);
   addEventListener('resize', fitCorners);   // (and the frame's own size, once it has it: a board that sends no width or height)
 
