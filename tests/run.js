@@ -19658,8 +19658,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         `the registry: clash 'later', as for the Timer's time; the same description; 1:1 at 300 × 300 to start (${JSON.stringify(reg)})`);
       const ik = await openClock(page);
       let m = await menuOf(page, ik);
-      ok(m === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LED look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time',
-        `a new Clock: Show (Analog, Digital, Date only), Clock face (Simple, Old, Teaching), a line, LED look, Show seconds, Show date, 24-hour time, Time in words, a line, Mark a time, Set the time; LED, date, and 24-hour off without Digital (${m})`);
+      ok(m === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time',
+        `a new Clock: Show (Analog, Digital, Date only), Clock face (Simple, Old, Teaching), a line, LCD look, Show seconds, Show date, 24-hour time, Time in words, a line, Mark a time, Set the time; LCD, date, and 24-hour off without Digital (${m})`);
       await choose(page, ik, 'face:old');
       m = await menuOf(page, ik);
       ok(m.includes('[Clock face] | Simple | ✓ Old | Teaching | Upright numerals | IV for four | —') && !m.includes('Hour hand only'), `Old: Upright numerals and IV for four right after the faces (${m})`);
@@ -19668,8 +19668,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(m.includes('[Clock face] | Simple | Old | ✓ Teaching | Hour hand only | —') && !m.includes('Upright numerals') && !m.includes('IV for four'), `Teaching: Hour hand only right after the faces (${m})`);
       await choose(page, ik, 'digital');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Show] | ✓ Analog | ✓ Digital | Date only |') && m.includes('— | LED look | Show seconds | Show date | 24-hour time | Time in words | — | Mark a time | Quiz | Set the time'),
-        `Digital too: both checked, LED, date, and 24-hour on, and Quiz between Mark a time and Set the time (${m})`);
+      ok(m.startsWith('[Show] | ✓ Analog | ✓ Digital | Date only |') && m.includes('— | LCD look | Show seconds | Show date | 24-hour time | Time in words | — | Mark a time | Quiz | Set the time'),
+        `Digital too: both checked, LCD, date, and 24-hour on, and Quiz between Mark a time and Set the time (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
       ok(m.startsWith('[Show] | Analog | ✓ Digital | Date only | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) | Hour hand only (off) |') && m.includes('Mark a time (off) | Set the time') && !m.includes('Quiz'),
@@ -19677,8 +19677,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(await choose(page, ik, 'digital') && (await menuOf(page, ik)).startsWith('[Show] | Analog | ✓ Digital |') && (await confOf(page, ik)).digital === true, 'unchecking the last one shown does nothing');
       await choose(page, ik, 'date');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Show] | Analog | Digital | ✓ Date only | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) |') && m.includes('LED look (off) | Show seconds (off) | Show date (off) | 24-hour time (off)') && m.includes('Mark a time (off)'),
-        `Date only turns both off; the faces, LED, seconds, date, 24-hour, and Mark a time are off (${m})`);
+      ok(m.startsWith('[Show] | Analog | Digital | ✓ Date only | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) |') && m.includes('LCD look (off) | Show seconds (off) | Show date (off) | 24-hour time (off)') && m.includes('Mark a time (off)'),
+        `Date only turns both off; the faces, LCD, seconds, date, 24-hour, and Mark a time are off (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
       ok(m.startsWith('[Show] | ✓ Analog | Digital | Date only |'), `Analog turns Date only off (${m})`);
@@ -19724,7 +19724,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(m0.startsWith('[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple |') && m0.includes('✓ Show seconds') && l0.analog && !l0.digital && l0.secondHand, `an older 'analog': analog only, Simple, its seconds kept (${m0})`);
       ok(m1.startsWith('[Show] | Analog | ✓ Digital | Date only |') && m1.includes('✓ 24-hour time') && m1.includes('✓ Show date') && l1.digital && !l1.analog && l1.time === '14:50' && !!l1.date, `an older 'digital': digital only, 24-hour time, the date (${m1}; ${l1.time})`);
       ok(m2.startsWith('[Show] | Analog | Digital | ✓ Date only |') && l2.dateOnly && !l2.analog && !l2.digital, `an older 'date': Date only (${m2})`);
-      ok(m3 === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LED look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time' && l3.analog && !l3.secondHand,
+      ok(m3 === '[Show] | ✓ Analog | Digital | Date only | [Clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | Show date (off) | 24-hour time (off) | Time in words | — | Mark a time | Set the time' && l3.analog && !l3.secondHand,
         `none saved: analog only, the Simple face, everything else off (${m3})`);
       ok(m4 === m3 && l4.face === 'simple', `bad values fall back, each to its own default (${m4})`);
       ok(m5.startsWith('[Show] | ✓ Analog | Digital | Date only | [Clock face] | Simple | ✓ Old | Teaching | Upright numerals | ✓ IV for four |') && l5.analog, `nothing shown: analog shows, and the rest is kept (${m5})`);
@@ -19743,6 +19743,28 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await part('Faces', async () => {
       const { ctx, page } = await newBoard('10:10');
       const ik = await openClock(page, 600, 600);
+      // Simple: the dot in the middle is the hands' color, and red only with the red second hand.
+      const hub = () => F(page, ik, () => {
+        const f = s => { const e = document.querySelector('#analog ' + s); return e ? getComputedStyle(e).fill : null; };
+        const sec = document.querySelector('#analog .hand-s');
+        return { hub: f('.fs-hub'), sec: sec ? getComputedStyle(document.querySelector('#analog .fs-sec')).stroke : null, secShown: !!sec && getComputedStyle(sec).display !== 'none' };
+      });
+      const handOf = () => F(page, ik, () => getComputedStyle(document.querySelector('#analog .fs-hand')).stroke);
+      let hb = await hub(), hand = await handOf();
+      ok(!hb.secShown && hb.hub === hand && hb.hub !== hb.sec, `Simple without seconds: the dot in the middle matches the hands, not red (${JSON.stringify(hb)}; hands ${hand})`);
+      await choose(page, ik, 'seconds');
+      hb = await hub();
+      ok(hb.secShown && hb.hub === hb.sec && hb.hub !== hand, `Show seconds: the dot is red, with the second hand (${JSON.stringify(hb)})`);
+      await choose(page, ik, 'set');
+      hb = await hub();
+      ok(!hb.secShown && hb.hub === hand, `Set the time hides the second hand, and the dot matches the hands again (${JSON.stringify(hb)})`);
+      await choose(page, ik, 'set'); await choose(page, ik, 'seconds');
+      hb = await hub();
+      ok(!hb.secShown && hb.hub === hand, `seconds off: the dot matches the hands (${JSON.stringify(hb)})`);
+      await setTheme(page, 'dark');
+      hb = await hub(); hand = await handOf();
+      ok(!hb.secShown && hb.hub === hand && hb.hub !== hb.sec, `dark: the dot matches the light hands (${JSON.stringify(hb)}; hands ${hand})`);
+      await setTheme(page, 'light');
       const nums = () => F(page, ik, () => Array.from(document.querySelectorAll('#analog .ro-num')).map(t => { const m = t.getCTM(); return [t.textContent, Math.round(((Math.atan2(m.b, m.a) * 180 / Math.PI) + 360) % 360)]; }));
       await choose(page, ik, 'face:old');
       let n = await nums();
@@ -19806,9 +19828,17 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const sh = s ? shadows(s.filter) : [];
       ok(!!s && sh.length >= 1 && sh.every(d => d.a > 0 && d.a <= .3 && d.blur <= s.u + .01 && d.x > 0 && d.y > 0 && far(d.rgb, rgbIn(s.accent))) && s.panel !== s.bg,
         `light theme is an LCD on a tinted panel: lit segments cast a faint shadow, and nothing glows in the accent (${s && s.filter}; --u ${s && s.u}; ${s && s.panel})`);
+      let m = await menuOf(page, ik);
+      ok(m.includes('| ✓ LCD look |') && !m.includes('LED look'), `light theme: the menu says LCD look (${m})`);
       await setTheme(page, 'dark');
       s = await seg();
       ok(!!s && /drop-shadow/.test(s.filter) && /rgb/.test(s.filter) && !/^(drop-shadow\(rgba\(0, 0, 0, 0\)[^)]*\)\s*)+$/.test(s.filter), `dark theme is an LED with a soft glow (${s && s.filter})`);
+      m = await menuOf(page, ik);
+      ok(m.includes('| ✓ LED look |') && !m.includes('LCD look'), `dark theme: the menu says LED look, with the window still open (${m})`);
+      await setTheme(page, 'light');
+      m = await menuOf(page, ik);
+      ok(m.includes('| ✓ LCD look |') && !m.includes('LED look'), `back to light: LCD look again (${m})`);
+      await setTheme(page, 'dark');
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.waitForTimeout(200);
       s = await seg();

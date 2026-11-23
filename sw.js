@@ -11,14 +11,14 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.22-1';
+const VERSION = '2026.11.23-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'c0600e09';
+const BUILD = 'e97f4cc3';
 const FILES = {
-  './': '78c0cf23c712552a',
-  'index.html': '78c0cf23c712552a',
-  'board.js': 'adb1575415e22ff4',
+  './': '7911199937a80908',
+  'index.html': '7911199937a80908',
+  'board.js': '4c8e66d5330f1635',
   'sdk/board21.js': 'aa5d5880e3a9c4a1',
   'sdk/board21-dev.js': 'f7c7181b53d5025a',
   'sdk/dev/board-shell.js': 'b855220e82bbedad',
@@ -40,7 +40,7 @@ const FILES = {
   'widgets/timer/index.html': '52a0094eeebbb200',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
-  'widgets/clock/index.html': '20ff1062d23fe4a1',
+  'widgets/clock/index.html': '5378fb549103992e',
   'widgets/notes/index.html': '0dc57fad3cd2fca1',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
