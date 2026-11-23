@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.23-3';
-  const BOARD_BUILD = '74a74fdc';
+  const BOARD_VERSION = '2026.11.23-4';
+  const BOARD_BUILD = 'daa392cd';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2151,9 +2151,11 @@
       // zoom: how much bigger the window is drawn than its CSS size (the board's Size, the screen), so a canvas can stay sharp.
       const i = { width: Math.round(d.w), height: Math.round(d.h - TITLE_H), x: Math.round(d.x), y: Math.round(d.y), maximized: !!(this.inst && this.inst.maximized), focused: S.focused === this.ikey,
         zoom: Math.round(Zoom.s * 100) / 100 };
-      // corners: in a window that fills the board, the room the board's own buttons and clock take over its bottom corners
-      // (and, while locked, the padlocks over its top ones: corners.top).
-      if (i.maximized) i.corners = cornerReach();
+      // corners: the room the board's own buttons and clock take over its bottom corners (and, while locked, the padlocks
+      // over its top ones: corners.top). Always for a window that fills the board; for any other, only while one of them
+      // is over it.
+      const c = i.maximized ? cornerReach() : cornersOver(d);
+      if (c) i.corners = c;
       return i;
     }
 
@@ -4236,7 +4238,7 @@
     if (Menu.win) { Menu.render(); Menu.position(); }
     Pages.closeMenu();
     ShapeHint.update();
-    notifyCorners();   // (the padlocks over a window that fills the board: cornerReach)
+    notifyCorners();   // (the padlocks over the windows: cornerReach, cornersOver)
   }
 
   // Settings → Classroom → Close all windows (Settings.render). Settings doesn't open while the board is locked.
@@ -4506,11 +4508,14 @@
 
   function applyClock() { CornerClock.apply(); }
 
+  // The board's own buttons over windows: ▦, and the clock beside one, in the bottom corners, and the padlocks in the top
+  // corners while the board is locked (section 12b).
+  const CORNER_LOW = '.picker-btn:not([hidden]), .corner-clock:not([hidden])', CORNER_TOP = '.lock-pad:not([hidden])';
   // What a window that fills the board is told about its corners (its info's `corners`): how far in from its left and
   // right edges, and up from its bottom, the board's own buttons there reach (▦, and the clock beside one), in its CSS
   // px. corners.top: the same for its top corners, down from the top of its content: the padlocks while the board is
-  // locked (section 12b), else all 0. Such a window's content ends at the bottom of the screen, its sides are the
-  // screen's sides, and its title bar runs along the top (the padlocks sit over its ends, which only drag: refused).
+  // locked, else all 0. Such a window's content ends at the bottom of the screen, its sides are the screen's sides, and
+  // its title bar runs along the top (the padlocks sit over its ends, which only drag: refused).
   function cornerReach() {
     const vw = window.innerWidth, vh = window.innerHeight, s = Zoom.s || 1;
     const reach = (sel, from) => {   // (from: the content's top on screen, for the top corners)
@@ -4524,16 +4529,40 @@
       const height = from === undefined ? vh - edge : edge - from;
       return height > 0 ? { left: Math.ceil(left / s), right: Math.ceil(right / s), height: Math.ceil(height / s) } : { left: 0, right: 0, height: 0 };
     };
-    return Object.assign(reach('.picker-btn:not([hidden]), .corner-clock:not([hidden])'), { top: reach('.lock-pad:not([hidden])', TITLE_H * s) });
+    return Object.assign(reach(CORNER_LOW), { top: reach(CORNER_TOP, TITLE_H * s) });
   }
-  // The clock or a ▦ button came, went or changed width: tell the windows that fill the board, once the code running now
-  // is done. When the screen changed size, the layout that's coming tells them instead, with their new size and zoom in
-  // the same message. (initUI's resize listener, which asks for that layout, runs before the clock's: CornerClock.listen.)
+  // What any other window is told while the board's own buttons sit over it (2026.11.23-4): the same, measured from its
+  // own content on screen (d: its rect, as applyRect draws it), counting only the buttons over that content. Each counts
+  // for the side of the window its middle is on. null when none is over it: such a window is told nothing.
+  function cornersOver(d) {
+    const s = Zoom.s || 1, X = Math.round(Zoom.ox + d.x * s), Y = Math.round(Zoom.oy + d.y * s);
+    const l = X, t = Y + TITLE_H * s, r = X + Math.round(d.w) * s, b = Y + Math.round(d.h) * s;
+    if (r <= l || b <= t) return null;
+    let any = false;
+    const reach = (sel, top) => {
+      let left = 0, right = 0, edge = top ? t : b;
+      for (const e of $$(sel)) {
+        const q = e.getBoundingClientRect();
+        if (!q.width || q.right <= l || q.left >= r || q.bottom <= t || q.top >= b) continue;
+        any = true;
+        if (q.left + q.width / 2 < (l + r) / 2) left = Math.max(left, q.right - l); else right = Math.max(right, r - q.left);
+        edge = top ? Math.max(edge, q.bottom) : Math.min(edge, q.top);
+      }
+      const height = top ? edge - t : b - edge;
+      return height > 0 ? { left: Math.ceil(left / s), right: Math.ceil(right / s), height: Math.ceil(height / s) } : { left: 0, right: 0, height: 0 };
+    };
+    const c = Object.assign(reach(CORNER_LOW), { top: reach(CORNER_TOP, true) });
+    return any ? c : null;
+  }
+  // The clock, a ▦ button or a padlock came, went or changed width: tell every window, once the code running now is done
+  // (each hears only a change to its own info: those that fill the board, and those the buttons sit over or did). When
+  // the screen changed size, the layout that's coming tells them instead, with their new size and zoom in the same
+  // message. (initUI's resize listener, which asks for that layout, runs before the clock's: CornerClock.listen.)
   let cornersDue = false;
   function notifyCorners() {
     if (cornersDue) return;
     cornersDue = true;
-    Promise.resolve().then(() => { cornersDue = false; if (layoutRaf) return; for (const w of S.wins.values()) if (w.inst && w.inst.maximized) w.notifyInfo(); });
+    Promise.resolve().then(() => { cornersDue = false; if (layoutRaf) return; for (const w of S.wins.values()) if (w.inst) w.notifyInfo(); });
   }
 
   // Settings → Advanced, after Widget Picker. What Auto does is said; On and Off say themselves. What doesn't fit right

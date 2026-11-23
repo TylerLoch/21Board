@@ -35,8 +35,8 @@
   svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-  /* Views. --top and --top-in: how far down and in the padlocks sit over the top corners of a window that fills a locked
-     board. --low: how far up the board's own buttons sit over its bottom corners when it fills the board (fitCorners). */
+  /* Views. --top and --top-in: how far down and in the padlocks of a locked board sit over the window's top corners.
+     --low: how far up the board's own buttons sit over its bottom corners. Whenever the board says (fitCorners). */
   .view { position: absolute; inset: 0; display: none; flex-direction: column; box-sizing: border-box;
           --pad: clamp(8px, 2.5vmin, 18px); gap: var(--pad); padding: calc(var(--pad) + var(--top, 0px)) var(--pad) max(var(--pad), var(--low, 0px)); }
   .view.on { display: flex; }
@@ -45,7 +45,7 @@
   /* ---- The four zones: two by two, in a row when the window is wide, in a column when it is tall */
   .zones { flex: 1; min-height: 0; container: zones / size; }
   .grid { height: 100%; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: var(--pad); }
-  /* (A row only where it beats two by two: very wide, or wide and too short for two rows of cards with their feelings.) */
+  /* (The rows for small, very wide windows. Bigger ones: .one-row, below.) */
   @container zones (aspect-ratio > 3.2) or ((aspect-ratio > 2.2) and (width >= 800px) and (height < 310px)) { .grid { grid-template-columns: repeat(4, 1fr); grid-template-rows: 1fr; } }
   @container zones (aspect-ratio < 0.7) { .grid { grid-template-columns: 1fr; grid-template-rows: repeat(4, 1fr); } }
   /* A row whenever each card can be at least 190 px wide, so it keeps its "−" and Ideas, in a window wider than it is
@@ -661,9 +661,10 @@
   Board21.on('data', d => { state = readState(d); render(true); });
   Board21.on('config', c => { config = readConfig(c); if (!config.sound) Sound.stop(); render(true); });
 
-  // ---- The board's own buttons and padlocks over a window that fills it: the cards and the top line keep clear of them
+  // ---- The board's own buttons and padlocks over the window, filling the board or not: the cards and the top line keep
+  // clear of them
   function fitCorners() {
-    const w = Board21.context && Board21.context.window, c = w && w.maximized && w.corners;
+    const w = Board21.context && Board21.context.window, c = w && w.corners;
     const px = v => Math.min(2000, Math.max(0, Number(v) || 0));
     const low = c && (px(c.left) || px(c.right)) ? px(c.height) : 0;
     const t = c && c.top, top = t && (px(t.left) || px(t.right)) ? px(t.height) : 0, topIn = top ? Math.max(px(t.left), px(t.right)) : 0;
