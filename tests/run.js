@@ -821,10 +821,10 @@ const ZC = {
   // 'column' or 'other'. old: what the rules before one row give for the zones' size (a row only when very wide, or
   // wide and short; a column when very tall; else two by two). For each card, where its face, count and feelings are.
   // shows: how many "−", Ideas and feeling words show. w and h: the size the board gives the window's content.
-  // The check-in line and its bar (2026.11.23-1): summary (the part of the view that holds them), status (the line) and
-  // bar, each as drawn, or null when hidden. iw and ih: the window's content in its own px. filled and corners: whether
-  // it fills the board, and the corners the board tells it of. marks: the board's ▦, clock and padlocks over the screen,
-  // in the window's own px.
+  // The check-in line and its bar (2026.11.23-1): summary (the part of the view that holds them), status (the line), words
+  // (the line's text itself) and bar, each as drawn, or null when hidden. iw and ih: the window's content in its own px.
+  // filled and corners: whether it fills the board, and the corners the board tells it of. marks: the board's ▦, clock
+  // and padlocks over the screen, in the window's own px.
   arrange: async (page, K = ZC.K) => {
     const x = await ZC.zf(page, K).locator('html').evaluate(() => {
       const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
@@ -844,7 +844,8 @@ const ZC = {
       const old = a > 3.2 || (a > 2.2 && zr.width >= 800 && zr.height < 310) ? 'row' : a < 0.7 ? 'column' : '2x2';
       const shows = Object.fromEntries([['minus', '.tools .minus'], ['ideas', '.tools .idea-btn'], ['words', '.feel b']].map(([n, s]) => [n, [...document.querySelectorAll('#main ' + s)].filter(vis).length]));
       return { shape, old, reach: document.body.classList.contains('reach'), cards, shows, gap: parseFloat(getComputedStyle(document.getElementById('grid')).rowGap),
-        summary: shown(document.querySelector('#main .summary')), status: shown(document.getElementById('status')), bar: shown(document.getElementById('bar')), iw: innerWidth, ih: innerHeight };
+        summary: shown(document.querySelector('#main .summary')), status: shown(document.getElementById('status')), bar: shown(document.getElementById('bar')), iw: innerWidth, ih: innerHeight,
+        words: (() => { const e = document.getElementById('status'); if (!vis(e) || !e.textContent.trim()) return null; const r = document.createRange(); r.selectNodeContents(e); const b = r.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width, h: b.height }; })() };
     });
     Object.assign(x, await page.evaluate(([k, iw, ih]) => {
       const w = window.__board21.state.wins.get(k), i = w ? w.info() : {};
@@ -859,9 +860,9 @@ const ZC = {
     return x;
   },
   // Where the check-in line and its bar sit (2026.11.23-1), from arrange: what is wrong. Above the cards, the line, then
-  // the bar, then the cards one gap below them, the line and the bar centered over the cards. A window 300 px tall or less
-  // hides the bar, and one 229 px tall or less the line too. Filling a locked board, the line and the bar sit between
-  // the padlocks, under neither, and the cards start one gap below the padlocks too (corners.top).
+  // the bar, then the cards one gap below them, the line's text and the bar centered over the cards. A window 300 px tall
+  // or less hides the bar, and one 229 px tall or less the line too. Filling a locked board, the line and the bar sit
+  // between the padlocks, under neither, and the cards start one gap below the padlocks too (corners.top).
   atTop: x => {
     const out = [], px = n => Math.round(n * 10) / 10, c = x.cards.map(k => k.card);
     const top = Math.min(...c.map(k => k.t)), mid = (Math.min(...c.map(k => k.l)) + Math.max(...c.map(k => k.r))) / 2;
@@ -874,7 +875,7 @@ const ZC = {
     const ct = (x.filled && x.corners && x.corners.top) || {}, lock = ct.left || ct.right ? ct.height : 0;
     const want = Math.max(last ? last.b : 0, lock) + x.gap;
     if (Math.abs(top - want) > 1) out.push(`the cards start at ${px(top)} px, not one gap below the ${lock > (last ? last.b : 0) ? 'padlocks' : last ? name : 'top'} (${px(want)})`);
-    for (const [n, b] of [['line', x.status], ['bar', x.bar]]) if (b && Math.abs((b.l + b.r) / 2 - mid) > 1) out.push(`the ${n} isn’t centered over the cards (${px((b.l + b.r) / 2)}, not ${px(mid)})`);
+    for (const [n, b] of [['line', x.status], ['line’s text', x.words], ['bar', x.bar]]) if (b && Math.abs((b.l + b.r) / 2 - mid) > 1) out.push(`the ${n} isn’t centered over the cards (${px((b.l + b.r) / 2)}, not ${px(mid)})`);
     const pads = x.filled ? x.marks.filter(m => m.name === 'lock-pad') : [];
     if (pads.length) {
       const padB = Math.max(...pads.map(p => p.b)), side = p => (p.l + p.r) / 2 < x.iw / 2;
@@ -7255,10 +7256,11 @@ const SUITES = [
 
     // ---- 4. Filling a locked board, both lock modes, with the corner clock on, light and dark: the line and the bar sit
     // between the padlocks, under neither, and the cards start below them. The smallest row, the 16:9 board at Size 200%,
-    // a Chromebook tab at 125%, and an iPad upright.
+    // a Chromebook tab at 125%, and an iPad upright at 100% and 125%. (At 125% the iPad's board is 614 px wide, narrow
+    // enough that the line would reach the padlocks if the window didn't keep it between them.)
     await part('Between the padlocks', async () => {
       await setCornerClock(page, 'on');
-      const BOARDS = [[['free', 1.25, 1063, 650], 'row'], [['16:9', 2, 1920, 1080], 'row'], [['free', 1.25, 1366, 657], 'row'], [['free', 1, 768, 1024], '2x2']];
+      const BOARDS = [[['free', 1.25, 1063, 650], 'row'], [['16:9', 2, 1920, 1080], 'row'], [['free', 1.25, 1366, 657], 'row'], [['free', 1, 768, 1024], '2x2'], [['free', 1.25, 768, 1024], '2x2']];
       const bad = [], seen = [];
       for (const theme of ['light', 'dark']) {
         await setTheme(page, theme);
@@ -7275,7 +7277,7 @@ const SUITES = [
         }
       }
       await setTheme(page, 'light');
-      ok(!bad.length && seen.length === 16, `filling a locked board, Lock everything and Widgets still work, with the corner clock on, light and dark: the line and the bar sit between the padlocks, under neither, and the cards start one gap below them and end just above the board’s buttons. Nothing cut off, no text under 14 px (${bad.join(' | ') || seen.join('; ')})`);
+      ok(!bad.length && seen.length === 20, `filling a locked board, Lock everything and Widgets still work, with the corner clock on, light and dark: the line and the bar sit between the padlocks, under neither, and the cards start one gap below them and end just above the board’s buttons. Nothing cut off, no text under 14 px (${bad.join(' | ') || seen.join('; ')})`);
     });
 
     // ---- 5. Short windows: at 300 px tall the bar hides and the line stays at the top. At 229 px the line hides too. On a
