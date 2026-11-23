@@ -35,12 +35,12 @@
   svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-  /* Views. --top: the padlocks over the top corners of a window that fills a locked board. --low and --reach: how far
-     up and in the board's own buttons sit over the bottom corners of a window that fills the board (fitCorners). */
+  /* Views. --top and --top-in: how far down and in the padlocks sit over the top corners of a window that fills a locked
+     board. --low: how far up the board's own buttons sit over its bottom corners when it fills the board (fitCorners). */
   .view { position: absolute; inset: 0; display: none; flex-direction: column; box-sizing: border-box;
-          --pad: clamp(8px, 2.5vmin, 18px); gap: var(--pad); padding: calc(var(--pad) + var(--top, 0px)) var(--pad) var(--pad); }
+          --pad: clamp(8px, 2.5vmin, 18px); gap: var(--pad); padding: calc(var(--pad) + var(--top, 0px)) var(--pad) max(var(--pad), var(--low, 0px)); }
   .view.on { display: flex; }
-  #ideas, #edit { padding-bottom: max(var(--pad), var(--low, 0px)); }
+  #main { padding-top: var(--pad); }   /* (its top line sits between the padlocks: .summary) */
 
   /* ---- The four zones: two by two, in a row when the window is wide, in a column when it is tall */
   .zones { flex: 1; min-height: 0; container: zones / size; }
@@ -127,9 +127,9 @@
   @container zone (width < 190px) { .tools .minus { display: none; } }
   @container zone (height < 90px) or (width < 150px) { .tools { display: none; } }
 
-  /* ---- The bottom: how many have checked in. Kept clear of the board's own buttons (--reach, --low). */
-  .foot { flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
-          padding: 0 var(--reach, 0px); min-height: max(0px, calc(var(--low, 0px) - var(--pad))); }
+  /* ---- The top: how many have checked in. Between the padlocks of a locked board (--top-in), and the cards below them. */
+  .summary { flex: 0 0 auto; display: flex; align-items: center; justify-content: center;
+             padding: 0 var(--top-in, 0px); min-height: max(0px, calc(var(--top, 0px) - var(--pad))); }
   .progress { flex: 0 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 5px; }
   .bar { height: clamp(8px, 2.4vh, 16px); border-radius: 999px; background: var(--b21-surface-2); display: flex; overflow: hidden; }
   .bar i { display: block; height: 100%; width: 0; background: var(--strong); transition: width .3s ease; }
@@ -137,7 +137,7 @@
   #status { font-size: clamp(14px, min(3.8vh, 5vw), 22px); font-weight: 650; line-height: 1.15; color: var(--b21-muted); text-align: center; text-wrap: balance;
             display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
   @media (max-height: 300px) { .bar { display: none; } }
-  @media (max-height: 229px) { .foot { display: none; } }
+  @media (max-height: 229px) { .summary { display: none; } #main { padding-top: calc(var(--pad) + var(--top, 0px)); } }
 
   /* ---- Ideas and Counts: a heading with Done, then the view's own part */
   .sub-head { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -203,10 +203,10 @@
 </head>
 <body>
   <section class="view" id="main">
-    <div class="zones"><div class="grid" id="grid"></div></div>
-    <div class="foot">
-      <div class="progress"><div class="bar" id="bar" aria-hidden="true"></div><div id="status"></div></div>
+    <div class="summary">
+      <div class="progress"><div id="status"></div><div class="bar" id="bar" aria-hidden="true"></div></div>
     </div>
+    <div class="zones"><div class="grid" id="grid"></div></div>
   </section>
   <div class="sr" id="said" role="status" aria-live="polite" aria-atomic="true"></div>
 
@@ -660,14 +660,14 @@
   Board21.on('data', d => { state = readState(d); render(true); });
   Board21.on('config', c => { config = readConfig(c); if (!config.sound) Sound.stop(); render(true); });
 
-  // ---- The board's own buttons over a window that fills it: the bottom row and the views keep clear of them
+  // ---- The board's own buttons and padlocks over a window that fills it: the cards and the top line keep clear of them
   function fitCorners() {
     const w = Board21.context && Board21.context.window, c = w && w.maximized && w.corners;
     const px = v => Math.min(2000, Math.max(0, Number(v) || 0));
-    const reach = c ? Math.max(px(c.left), px(c.right)) : 0, low = reach ? px(c.height) : 0;
-    const t = c && c.top, top = t && (px(t.left) || px(t.right)) ? px(t.height) : 0;
+    const low = c && (px(c.left) || px(c.right)) ? px(c.height) : 0;
+    const t = c && c.top, top = t && (px(t.left) || px(t.right)) ? px(t.height) : 0, topIn = top ? Math.max(px(t.left), px(t.right)) : 0;
     const s = document.documentElement.style;
-    s.setProperty('--reach', reach + 'px'); s.setProperty('--low', low + 'px'); s.setProperty('--top', top + 'px');
+    s.setProperty('--low', low + 'px'); s.setProperty('--top', top + 'px'); s.setProperty('--top-in', topIn + 'px');
     // One row when it fills the board and its window is at least 850 × 480 px: wide enough that every card keeps its
     // "−" and its words. (The size the board gives: the frame may not have its new size yet.)
     const wide = (Number(w && w.width) || innerWidth) >= 850, tall = (Number(w && w.height) || innerHeight) >= 480;
