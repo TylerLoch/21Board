@@ -821,10 +821,15 @@ const ZC = {
   // 'column' or 'other'. old: what the rules before one row give for the zones' size (a row only when very wide, or
   // wide and short; a column when very tall; else two by two). For each card, where its face, count and feelings are.
   // shows: how many "−", Ideas and feeling words show. w and h: the size the board gives the window's content.
+  // The check-in line and its bar (2026.11.23-1): summary (the part of the view that holds them), status (the line) and
+  // bar, each as drawn, or null when hidden. iw and ih: the window's content in its own px. filled and corners: whether
+  // it fills the board, and the corners the board tells it of. marks: the board's ▦, clock and padlocks over the screen,
+  // in the window's own px.
   arrange: async (page, K = ZC.K) => {
     const x = await ZC.zf(page, K).locator('html').evaluate(() => {
       const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
       const box = e => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; };
+      const shown = e => e && vis(e) ? box(e) : null;
       const near = (a, b) => Math.abs(a - b) <= 1;
       const cards = ['blue', 'green', 'yellow', 'red'].map(z => {
         const n = document.querySelector(`.zone[data-z="${z}"]`), q = s => n.querySelector(s), fs = e => parseFloat(getComputedStyle(e).fontSize);
@@ -838,10 +843,57 @@ const ZC = {
       const zr = document.querySelector('#main .zones').getBoundingClientRect(), a = zr.width / zr.height;
       const old = a > 3.2 || (a > 2.2 && zr.width >= 800 && zr.height < 310) ? 'row' : a < 0.7 ? 'column' : '2x2';
       const shows = Object.fromEntries([['minus', '.tools .minus'], ['ideas', '.tools .idea-btn'], ['words', '.feel b']].map(([n, s]) => [n, [...document.querySelectorAll('#main ' + s)].filter(vis).length]));
-      return { shape, old, reach: document.body.classList.contains('reach'), cards, shows, foot: box(document.querySelector('#main .foot')), gap: parseFloat(getComputedStyle(document.getElementById('grid')).rowGap) };
+      return { shape, old, reach: document.body.classList.contains('reach'), cards, shows, gap: parseFloat(getComputedStyle(document.getElementById('grid')).rowGap),
+        summary: shown(document.querySelector('#main .summary')), status: shown(document.getElementById('status')), bar: shown(document.getElementById('bar')), iw: innerWidth, ih: innerHeight };
     });
-    Object.assign(x, await page.evaluate(k => { const w = window.__board21.state.wins.get(k), i = w ? w.info() : {}; return { w: i.width || 0, h: i.height || 0 }; }, K));
+    Object.assign(x, await page.evaluate(([k, iw, ih]) => {
+      const w = window.__board21.state.wins.get(k), i = w ? w.info() : {};
+      const f = document.querySelector(`.win[data-ikey="${k}"] iframe`).getBoundingClientRect(), sx = f.width / iw, sy = f.height / ih;
+      const vis = e => { const s = getComputedStyle(e), b = e.getBoundingClientRect(); return !e.hidden && s.display !== 'none' && s.visibility !== 'hidden' && b.width > 0; };
+      const marks = [...document.querySelectorAll('.picker-btn, .corner-clock, .lock-pad')].filter(vis).map(e => {
+        const b = e.getBoundingClientRect();
+        return { name: e.classList[0], l: (b.left - f.left) / sx, t: (b.top - f.top) / sy, r: (b.right - f.left) / sx, b: (b.bottom - f.top) / sy };
+      });
+      return { w: i.width || 0, h: i.height || 0, filled: !!i.maximized, corners: i.corners || null, marks };
+    }, [K, x.iw, x.ih]));
     return x;
+  },
+  // Where the check-in line and its bar sit (2026.11.23-1), from arrange: what is wrong. Above the cards, the line, then
+  // the bar, then the cards one gap below them, the line and the bar centered over the cards. A window 300 px tall or less
+  // hides the bar, and one 229 px tall or less the line too. Filling a locked board, the line and the bar sit between
+  // the padlocks, under neither, and the cards start one gap below the padlocks too (corners.top).
+  atTop: x => {
+    const out = [], px = n => Math.round(n * 10) / 10, c = x.cards.map(k => k.card);
+    const top = Math.min(...c.map(k => k.t)), mid = (Math.min(...c.map(k => k.l)) + Math.max(...c.map(k => k.r))) / 2;
+    const line = x.ih > 229, bar = x.ih > 300;
+    if (!!x.status !== line) out.push(line ? 'no line' : `the line shows at ${x.ih} px tall`);
+    if (!!x.bar !== bar) out.push(bar ? 'no bar' : `the bar shows at ${x.ih} px tall`);
+    if (x.status && x.bar && x.status.b > x.bar.t + 0.5) out.push(`the line (${px(x.status.t)} to ${px(x.status.b)}) isn’t above the bar (${px(x.bar.t)} to ${px(x.bar.b)})`);
+    const last = x.bar || x.status, name = x.bar ? 'bar' : 'line';
+    if (last && last.b > top + 0.5) out.push(`the ${name} (${px(last.t)} to ${px(last.b)}) isn’t above the cards (from ${px(top)})`);
+    const ct = (x.filled && x.corners && x.corners.top) || {}, lock = ct.left || ct.right ? ct.height : 0;
+    const want = Math.max(last ? last.b : 0, lock) + x.gap;
+    if (Math.abs(top - want) > 1) out.push(`the cards start at ${px(top)} px, not one gap below the ${lock > (last ? last.b : 0) ? 'padlocks' : last ? name : 'top'} (${px(want)})`);
+    for (const [n, b] of [['line', x.status], ['bar', x.bar]]) if (b && Math.abs((b.l + b.r) / 2 - mid) > 1) out.push(`the ${n} isn’t centered over the cards (${px((b.l + b.r) / 2)}, not ${px(mid)})`);
+    const pads = x.filled ? x.marks.filter(m => m.name === 'lock-pad') : [];
+    if (pads.length) {
+      const padB = Math.max(...pads.map(p => p.b)), side = p => (p.l + p.r) / 2 < x.iw / 2;
+      const from = Math.max(0, ...pads.filter(side).map(p => p.r)), to = Math.min(x.iw, ...pads.filter(p => !side(p)).map(p => p.l));
+      for (const [n, b] of [['line', x.status], ['bar', x.bar]]) if (b && (b.l < from - 0.5 || b.r > to + 0.5)) out.push(`the ${n} (${px(b.l)} to ${px(b.r)}) isn’t between the padlocks (${px(from)} to ${px(to)})`);
+      if (x.status && x.status.t >= padB) out.push(`the line (from ${px(x.status.t)}) is below the padlocks (to ${px(padB)})`);
+      if (top < padB - 0.5) out.push(`the cards (from ${px(top)}) start under the padlocks (to ${px(padB)})`);
+    }
+    return out;
+  },
+  // Where the cards end (2026.11.23-1), from arrange: what is wrong. One gap above the window's bottom. Filling the board,
+  // just above the board's buttons in its bottom corners (the view's bottom less corners.height), and under none of them.
+  ends: x => {
+    const out = [], px = n => Math.round(n * 10) / 10, c = x.cards.map(k => k.card), bottom = Math.max(...c.map(k => k.b));
+    const ct = (x.filled && x.corners) || {}, low = ct.left || ct.right ? ct.height : 0, want = x.ih - Math.max(x.gap, low);
+    if (Math.abs(bottom - want) > 1) out.push(`the cards end at ${px(bottom)} px, not ${low > x.gap ? 'just above the board’s buttons' : 'one gap above the bottom'} (${px(want)})`);
+    for (const m of x.filled ? x.marks.filter(m => m.name !== 'lock-pad') : []) for (const [i, k] of c.entries())
+      if (Math.min(m.r, k.r) - Math.max(m.l, k.l) > 0.5 && k.b > m.t + 0.5) out.push(`${x.cards[i].z} ends under ${m.name} (${px(k.b)}, below ${px(m.t)})`);
+    return out;
   }
 };
 
@@ -6447,7 +6499,7 @@ const SUITES = [
       await T('touchStart', [{ ...P.status, id: 5 }, { ...P.yellow, id: 6 }]); await page.waitForTimeout(80); await T('touchEnd', [{ ...P.yellow, id: 6 }]); await page.waitForTimeout(300);
       await T('touchEnd', []);
     });
-    ok(r.d === '0,0,1,0' && !r.moved, `a tap on Yellow while a hand rests on the window’s bottom row counts, and the window stays (${r.d}${r.moved ? `; moved ${r.r0} → ${r.r1}` : ''})`);
+    ok(r.d === '0,0,1,0' && !r.moved, `a tap on Yellow while a hand rests on the window’s check-in line counts, and the window stays (${r.d}${r.moved ? `; moved ${r.r0} → ${r.r1}` : ''})`);
     r = await run('a double touch', async P => {
       for (let i = 0; i < 2; i++) { await T('touchStart', [{ ...P.yellow, id: 10 + i }]); await page.waitForTimeout(50); await T('touchEnd', []); await page.waitForTimeout(60); }
     });
@@ -6724,6 +6776,12 @@ const SUITES = [
     const problems = (where, corners) => ZC.problems(page, where, corners);
     const SIZES = [['260 × 220', { x: 40, y: 40, w: 260, h: 260 }], ['the default size', { x: 40, y: 40, w: 560, h: 460 }], ['very wide', { x: 10, y: 40, w: 1340, h: 300 }], ['very tall', { x: 530, y: 10, w: 300, h: 740 }]];
     const bad = [], seen = [];
+    // (2026.11.23-1) Where the line and its bar sit, and where the cards end, in each of these layouts.
+    const tops = [], topSeen = [];
+    const placed = async where => {
+      const a = await ZC.arrange(page), l = ZC.atTop(a).concat(ZC.ends(a));
+      (l.length ? tops : topSeen).push(`${where} (${a.iw} × ${a.ih}, ${a.shape})${l.length ? ': ' + l.join(', ') : ''}`);
+    };
     for (const theme of ['light', 'dark']) {
       await setTheme(page, theme);
       ok(await eventually(async () => (await zf(page).locator('html').getAttribute('data-b21-theme')) === theme), `(${theme} theme)`);
@@ -6731,6 +6789,7 @@ const SUITES = [
         await page.evaluate(([k, r]) => { window.__board21.setMaximized(k, false); window.__board21.setRect(k, r); }, [K, r]); await page.waitForTimeout(600);
         const p = await problems(`${theme}, ${label}`, false);
         (p.list.length ? bad : seen).push(`${p.where} (${p.size})${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+        await placed(p.where);
         await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + `zones-${theme}-${label.replace(/\W+/g, '-')}.png` });
       }
       for (const locked of [false, true]) {
@@ -6740,12 +6799,14 @@ const SUITES = [
         const want = locked ? 5 : 3;   // (▦ twice and the clock; locked, the two padlocks too)
         if (p.marks < want) p.list.push(`only ${p.marks} of the board’s ${want} corner buttons are there`);
         (p.list.length ? bad : seen).push(`${p.where} (${p.size})${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+        await placed(p.where);
         await page.screenshot({ path: OUT + `zones-${theme}-fill${locked ? '-locked' : ''}.png` });
         if (locked) await unlockBoard(page);
       }
       await page.evaluate(k => window.__board21.setMaximized(k, false), K); await page.waitForTimeout(400);
     }
     ok(!bad.length && seen.length === 12, `at 260 × 220, the default size, very wide, very tall and filling the board (unlocked and locked, with the corner clock on), light and dark: no text under 14 px, no name or feeling cut off, no count or face over the colored top or the feelings, nothing under the board’s corner buttons or padlocks (${bad.join(' | ') || seen.length + ' layouts'})`);
+    ok(!tops.length && topSeen.length === 12, `in the same 12 layouts, the line and its bar are at the top: the line, then the bar, then the cards one gap below, the line and bar centered over the cards, between the padlocks when locked, the bar hidden at 300 px tall or less and the line at 229 or less. The cards end one gap above the window’s bottom, or filling the board, just above the board’s buttons (${tops.join(' | ') || topSeen.join('; ')})`);
     await setTheme(page, 'light');
 
     // A copy uploaded in Developer mode is “Zones Check-In (test)”. Its tile shows the whole name, “(test)” too.
@@ -6799,6 +6860,10 @@ const SUITES = [
     await put('16:9', 0.8, 1366, 768);
     await setCounts({ blue: 2, green: 9, yellow: 4, red: 1 });
     const ROW = '1366 × 768 at 80%';
+    // (2026.11.23-1) Where the line and its bar sit in each layout this suite visits, and where the cards end (ZC.atTop,
+    // ZC.ends). Said at the end.
+    const TOP = { bad: [], seen: [] };
+    const top = (where, x) => { const l = ZC.atTop(x).concat(ZC.ends(x)); (l.length ? TOP.bad : TOP.seen).push(`${where}, ${x.iw} × ${x.ih}${x.filled ? ', filled' : ''}${l.length ? ': ' + l.join(', ') : ''}`); };
 
     // ---- 1. The 16:9 board at 1366 × 768 and 1920 × 1080, at Size 80% (a new board's) and 100%.
     const R1 = { row: [], reach: [], stack: [], line: [], back: [] }, seen1 = [];
@@ -6808,8 +6873,11 @@ const SUITES = [
       const x = await settled('row');
       seen1.push(`${where}: ${x.shape}, ${x.h} px tall`);
       if (!(x.shape === 'row' && x.reach)) R1.row.push(`${where}: ${x.shape}`);
-      const high = x.cards.filter(k => !(x.foot.t - k.card.b >= -0.5 && x.foot.t - k.card.b <= x.gap + 1)).map(k => `${k.z} ends ${Math.round(x.foot.t - k.card.b)} px above it`);
-      if (high.length) R1.reach.push(`${where}: ${high.join(', ')}`);
+      // (2026.11.23-1) Filling the board, every card ends just above the board's buttons in its bottom corners, and
+      // under none of them. Not filling it, one gap above its bottom (y, below).
+      const high = ZC.ends(x);
+      if (high.length) R1.reach.push(`${where}, filled: ${high.join(', ')}`);
+      top(where, x);
       const st = [];
       for (const k of x.cards) {
         if (!k.count || k.face.b > k.count.t + 1) st.push(`${k.z}: its face isn’t above its count`);
@@ -6823,22 +6891,29 @@ const SUITES = [
       if (off.length) R1.line.push(`${where}: ${off.join(', ')}`);
       if (where === ROW) await page.screenshot({ path: OUT + 'zones-row-16-9.png' });
       await fill(false); const y = await settled('2x2');
+      const yEnds = ZC.ends(y);
+      if (yEnds.length) R1.reach.push(`${where}, the size it opens at: ${yEnds.join(', ')}`);
+      top(`${where}, the size it opens at`, y);
       await fill(true); const z = await settled('row');
+      top(`${where}, filled again`, z);
       if (!(y.shape === '2x2' && !y.reach && z.shape === 'row' && z.reach)) R1.back.push(`${where}: Restore size ${y.shape}, Fill the board ${z.shape}`);
     }
     ok(!R1.row.length && seen1.length === 4, `the 16:9 board, filled: one row of four cards, Blue to Red, their tops and bottoms matching (${R1.row.join(' | ') || seen1.join('; ')})`);
-    ok(!R1.reach.length, `the cards reach down to just above the bottom row (${R1.reach.join(' | ') || '4 boards'})`);
+    ok(!R1.reach.length, `filling the board, every card ends just above the board’s buttons in its bottom corners, and under none of them. Not filling it, the cards end one gap above its bottom (${R1.reach.join(' | ') || '4 boards, filled and not'})`);
     ok(!R1.stack.length, `in each card the face sits above the count, and the feelings below it, one per line (${R1.stack.join(' | ') || '4 boards'})`);
     ok(!R1.line.length, `the faces line up, the counts line up, and so do the last feelings’ bottoms, within 1 px (${R1.line.join(' | ') || '4 boards'})`);
     ok(!R1.back.length, `Restore size: two by two again, and Fill the board: one row again (${R1.back.join(' | ') || '4 boards'})`);
 
     // ---- 2. The lines: a filled window at least 850 × 480 px is one row. Smaller, or not filling the board, the rules
     // before: two by two, a row when very wide, a column when very tall.
-    const lined = async ([shape, sc, vw, vh], over) => {
+    // (want: the shape the rules before give the cards' area, under the line: two by two, or a row where it is wide and
+    // short. Since 2026.11.23-1 the strip between the board's buttons below the cards is empty, so the area is shorter.)
+    const lined = async ([shape, sc, vw, vh], over, want = '2x2') => {
       await put(shape, sc, vw, vh); await fill(true);
-      const x = await settled(over ? 'row' : '2x2'), big = x.w >= 850 && x.h >= 480;
+      const x = await settled(over ? 'row' : want), big = x.w >= 850 && x.h >= 480;
+      top(`${shape === 'free' ? 'Fill' : shape} ${vw} × ${vh}${sc !== 1 ? ` at ${sc * 100}%` : ''}`, x);
       return { x, where: `${shape === 'free' ? 'Fill' : shape} ${vw} × ${vh}${sc !== 1 ? ` at ${sc * 100}%` : ''}, ${x.w} × ${x.h} px: ${x.shape}`,
-        good: over ? big && x.shape === 'row' && x.reach : !big && x.shape === '2x2' && x.shape === x.old && !x.reach };
+        good: over ? big && x.shape === 'row' && x.reach : !big && x.shape === want && x.shape === x.old && !x.reach };
     };
     const said = l => l.map(c => c.where).join('; ');
     // The height line. (A Chromebook's 1366 × 768 screen at Size 125%: a tab is about 1366 × 657, 486 px tall when filled.)
@@ -6848,9 +6923,9 @@ const SUITES = [
       if (b[3] === 768 && b[1] === 1) await page.screenshot({ path: OUT + 'zones-row-ipad.png' });
       if (b[0] === '16:9' && b[1] === 2) await page.screenshot({ path: OUT + 'zones-row-200.png' });
     }
-    for (const b of [['free', 1, 1024, 519], ['free', 1.5, 1280, 700]]) short.push(await lined(b, false));
+    for (const [b, want] of [[['free', 1, 1024, 519], '2x2'], [['free', 1.5, 1280, 700], 'row']]) short.push(await lined(b, false, want));
     ok(tall.every(c => c.good), `a filled window at least 480 px tall is one row: the Fill board as on an iPad, at 480 px, the 16:9 board at Size 200% and 175%, and a Chromebook tab at 125% (${said(tall)})`);
-    ok(short.every(c => c.good) && tall[2].good, `a filled window under 480 px tall keeps the rules before: two by two (${said(short)}). The line is at 480 px (${tall[2].where})`);
+    ok(short.every(c => c.good) && tall[2].good, `a filled window under 480 px tall keeps the rules before: two by two, or a row where the cards’ area is wide and short (${said(short)}). The line is at 480 px (${tall[2].where})`);
     // The width line. At 850 px every card shows its “−”, its Ideas, and all its feeling words.
     const at850 = await lined(['free', 1.25, 1063, 768], true), at849 = await lined(['free', 1.25, 1061, 768], false);
     const all850 = at850.x.shows, whole = all850.minus === 4 && all850.ideas === 4 && all850.words === 13;
@@ -6859,9 +6934,11 @@ const SUITES = [
     for (const [label, r] of [['260 × 220', { x: 40, y: 40, w: 260, h: 260 }], ['the default size', home], ['very wide', { x: 10, y: 40, w: 1340, h: 300 }], ['tall', { x: 600, y: 60, w: 600, h: 900 }], ['very tall', { x: 600, y: 60, w: 500, h: 900 }], ['as big as the board', { x: 0, y: 0, w: 1920, h: 1080 }]]) {
       await put('free', 1, 1920, 1080, r);
       const x = await arrange(page);
+      top(`Fill 1920 × 1080, ${label}`, x);
       loose.push({ where: `${label} (${x.h} px tall): ${x.shape}`, good: x.shape === x.old && !x.reach && (label !== 'very tall' || x.shape === 'column') });
     }
     await fill(true); const big = await settled('row');
+    top('Fill 1920 × 1080', big);
     ok(loose.every(c => c.good) && big.shape === 'row', `a window that doesn’t fill the board keeps the rules before at every size, a very tall one in one column of four (${said(loose)}). Filled, the same board is one row (${big.shape})`);
 
     // ---- 3. Counts of 7, 128, 12 and 9999, from the Counts view: each fits inside its card, and the faces still line up.
@@ -6877,6 +6954,7 @@ const SUITES = [
     for (const b of BOARDS) {
       await put(...b); await fill(true);
       const x = await settled('row'), p = await problems(page, name(b), true);
+      top(`${name(b)}, counts of 7, 128, 12, and 9999`, x);
       const k = x.cards.map(c => !c.count ? `${c.z}: no count` : c.count.t < c.face.b - 1 ? `${c.z}: its count is over its face` : c.count.l < c.card.l - 0.5 || c.count.r > c.card.r + 0.5 ? `${c.z}: its count is cut off` : '').filter(Boolean);
       const all = (x.shape === 'row' ? [] : [x.shape]).concat(k, p.list);
       (all.length ? fits : fitSeen).push(`${name(b)}${all.length ? ': ' + all.join(', ') : ` (${x.cards.map(c => Math.round(c.countFs)).join(', ')} px)`}`);
@@ -6893,6 +6971,7 @@ const SUITES = [
       await setTheme(page, theme);
       await put(...SMALLEST); await fill(true);
       const x = await settled('row'), p = await problems(page, `${theme}, ${name(SMALLEST)}`, true), tops = x.cards.map(c => c.face.t);
+      top(`${theme}, ${name(SMALLEST)}`, x);
       const bad = (x.shape === 'row' ? [] : [x.shape]).concat(p.theme === theme ? [] : [`the ${p.theme} theme`],
         x.cards.filter(c => !c.count || c.count.l < c.card.l - 0.5 || c.count.r > c.card.r + 0.5 || c.count.t < c.face.b - 1).map(c => `${c.z}: its count doesn’t fit`),
         Math.max(...tops) - Math.min(...tops) <= 1 ? [] : [`the faces ${(Math.max(...tops) - Math.min(...tops)).toFixed(1)} px apart`],
@@ -6911,6 +6990,7 @@ const SUITES = [
       const x0 = await settled('row');
       await choose(page, 'Show counts');
       const x1 = await settled('row'), p = await problems(page, name(b), true);
+      top(`${name(b)}, Show counts off`, x1);
       const bad = (x1.shape === 'row' ? [] : [x1.shape]).concat(x1.cards.filter(c => c.count).map(c => `${c.z}: its count shows`), x1.cards.filter((c, i) => !(c.faceFs > x0.cards[i].faceFs)).map(c => `${c.z}: its face isn’t bigger`), p.list);
       (bad.length ? hid : hidSeen).push(`${name(b)}${bad.length ? ': ' + bad.join(', ') : ` (faces ${Math.round(x0.cards[0].faceFs)} → ${Math.round(x1.cards[0].faceFs)} px)`}`);
       if (b === BOARDS[0]) await page.screenshot({ path: OUT + 'zones-row-no-counts.png' });
@@ -6925,6 +7005,7 @@ const SUITES = [
     for (const b of [['free', 1, 768, 1024], ['free', 1.25, 768, 1024], ['free', 1, 820, 1180], ['free', 1.25, 1024, 768]]) {
       await put(...b); await fill(true);
       const x = await settled('2x2'), p = await problems(page, name(b), true);
+      top(name(b), x);
       const filled = await page.evaluate(k => window.__board21.state.insts.get(k).maximized === true, K);
       const beside = x.cards.filter(k => !(k.count && k.face.r <= k.count.l + 1 && Math.abs((k.face.t + k.face.b) / 2 - (k.count.t + k.count.b) / 2) <= 8)).map(k => `${k.z}: its face isn’t beside its count`);
       const bad = (filled ? [] : ['not filling the board']).concat(x.shape === '2x2' && x.shape === x.old && !x.reach ? [] : [`${x.shape}${x.reach ? ', reach' : ''} (before: ${x.old})`], beside,
@@ -6944,6 +7025,7 @@ const SUITES = [
         await put(...b); await fill(true);
         await lockBoard(page, 'widgets'); await page.waitForTimeout(600);
         const x = await settled('row'), p = await problems(page, `${theme}, ${name(b)}, locked`, true);
+        top(`${theme}, ${name(b)}, locked`, x);
         if (x.shape !== 'row') p.list.unshift(x.shape);
         if (p.marks < 5) p.list.push(`only ${p.marks} of the board’s 5 corner buttons are there`);   // (▦ twice, the clock, two padlocks)
         (p.list.length ? lockBad : lockSeen).push(`${p.where}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
@@ -6976,18 +7058,21 @@ const SUITES = [
     const f1 = await settled('row'), inFull = await page.evaluate(() => !!document.fullscreenElement);
     await screen(1920, 960);
     const f2 = await settled('2x2'), outFull = await page.evaluate(() => !document.fullscreenElement);
+    top('Fill 1920 × 960 at 200%', f0); top('Fill 1920 × 1080 at 200%, full screen', f1); top('Fill 1920 × 960 at 200%, out of full screen', f2);
     ok(f0.shape === '2x2' && inFull && f1.shape === 'row' && outFull && f2.shape === '2x2' && await same(),
       `full screen on a Fill board: in a tab ${f0.h} px tall, ${f0.shape}; full screen ${f1.h} px, ${f1.shape}; out again ${f2.h} px, ${f2.shape}. No reload`);
     await put('free', 1, 1024, 768); await fill(true);
     const s0 = await settled('row'); await mark();
     await page.setViewportSize({ width: 1024, height: 519 }); const s1 = await settled('2x2');
     await page.setViewportSize({ width: 1024, height: 520 }); const s2 = await settled('row');
+    top('Fill 1024 × 768', s0); top('Fill 1024 × 519', s1); top('Fill 1024 × 520', s2);
     ok(s0.shape === 'row' && s1.shape === '2x2' && s2.shape === 'row' && await same(),
       `a Fill board’s window resized across 480 px switches: ${s0.h} px tall ${s0.shape}, ${s1.h} px ${s1.shape}, ${s2.h} px ${s2.shape}. No reload`);
     await put('free', 1.25, 1063, 768); await fill(true);
     const v0 = await settled('row'); await mark();
     await page.setViewportSize({ width: 1061, height: 768 }); const v1 = await settled('2x2');
     await page.setViewportSize({ width: 1063, height: 768 }); const v2 = await settled('row');
+    top('Fill 1063 × 768 at 125%', v0); top('Fill 1061 × 768 at 125%', v1); top('Fill 1063 × 768 at 125%, again', v2);
     ok(v0.shape === 'row' && v1.shape === '2x2' && v2.shape === 'row' && await same(),
       `and across 850 px wide: ${v0.w} px wide ${v0.shape}, ${v1.w} px ${v1.shape}, ${v2.w} px ${v2.shape}. No reload`);
     // A board that sends no width or height in its window info: the widget reads its frame's own size, once the frame has
@@ -7005,6 +7090,7 @@ const SUITES = [
     ok(await connected(page), '(the Zones Check-In connects again, on a board that sends no width or height)');
     await put(...SMALLEST); await fill(true);
     const n0 = await settled('row'), sent = await zf(page).locator('html').evaluate(() => ['width', 'height'].filter(f => f in Board21.context.window));
+    top(`${name(SMALLEST)}, a board that sends no width or height`, n0);
     ok(n0.shape === 'row' && n0.reach && !sent.length,
       `a board that sends no width or height: Restore size, then Fill the board, ${n0.w} × ${n0.h} px, is one row (${n0.shape}${n0.reach ? ', reach' : ''}; sent ${sent.join(' and ') || 'neither'})`);
     await page.evaluate(k => { const w = window.__board21.state.wins.get(k); w.post = w.__post; delete w.__post; w.reload(); }, K);
@@ -7031,6 +7117,7 @@ const SUITES = [
       await put(...b); await fill(true);
       if (locked) { await lockBoard(page, 'widgets'); await page.waitForTimeout(600); }
       const x = await settled('row'), p = await problems(page, `${name(b)}${locked ? ', locked' : ''}`, true);
+      top(`Windows High Contrast, ${name(b)}${locked ? ', locked' : ''}`, x);
       const hidden = await feelShot() !== await feelShot(true);
       await feelShot(false);
       const bad = (x.shape === 'row' ? [] : [x.shape]).concat(hidden ? ['a count hides part of a feeling'] : [], p.list);
@@ -7041,6 +7128,7 @@ const SUITES = [
     ok(!hc.length && hcSeen.length === 8, `Windows High Contrast, the shortest rows, open and locked with the corner clock on: the counts hide none of the feelings, nothing is cut off, no face or count over the colored top (${hc.join(' | ') || hcSeen.join('; ')})`);
     await setCornerClock(page, 'auto');
     await page.emulateMedia({ forcedColors: 'none' }); await quiet.evaluate(e => e.remove());
+    ok(!TOP.bad.length && TOP.seen.length === 79, `in each of the ${TOP.bad.length + TOP.seen.length} layouts above, one row and two by two, filled and not, unlocked and locked, light and dark: the line, then its bar, then the cards one gap below, centered over them, between the padlocks when locked. The cards end one gap above the window’s bottom, or filling the board, just above the board’s buttons (${TOP.bad.join(' | ') || TOP.seen.length + ' layouts'})`);
     // The README's Included widgets says so, its other words kept.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     const row = (/\| \*\*Zones Check-In\*\* \|[^|]*\|/.exec(readme) || [''])[0];
@@ -7075,6 +7163,152 @@ const SUITES = [
     d = (await counts()).map((v, i) => v - a[i]).join();
     ok(t0.shape === 'row' && d === '1,0,0,1', `two students touching Blue and Red at once, in one row: both count (${d})`);
     await page.screenshot({ path: OUT + 'zones-row-taps.png' });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  // ---- Zones Check-In's line and bar at the top (2026.11.23-1). "Tap your zone to check in" and the color bar sit above
+  // the cards. On a locked board filling the window, between the padlocks. Filling the board, the cards end just above
+  // the board's own buttons. The window's title keeps its count, so the count shows twice.
+  ['Zones Check-In: the line and bar at the top, between the padlocks, short windows, and the title’s count (2026.11.23-1)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    // Each part runs on its own: one that stops early is reported, and the next still runs.
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const { K, zf, connected, look, choose, arrange, problems, atTop, ends } = ZC;
+    await page.evaluate(() => window.__board21.openWidget('zones-check-in'));
+    ok(await connected(page), '(the Zones Check-In connects)');
+    const home = { x: 60, y: 60, w: 560, h: 460 };   // (the size it opens at)
+    // The board's shape ('16:9' or 'free', Fill), its Size and the screen; the window not filling it, at r.
+    const put = async (shape, sc, vw, vh, r = home) => {
+      await page.setViewportSize({ width: vw, height: vh });
+      await page.evaluate(([k, shape, sc, r]) => { const B = window.__board21; B.setMaximized(k, false); B.setBoardShape(shape); B.setBoardScale(sc); B.setRect(k, r); }, [K, shape, sc, r]);
+      await page.waitForTimeout(400);
+    };
+    const fill = on => page.evaluate(([k, on]) => window.__board21.setMaximized(k, on), [K, on]);
+    // The layout once the window has finished moving: two reads in a row, 150 ms apart, find every card and the line where
+    // they were (for at most about 3 s).
+    const still = async () => {
+      const at = a => JSON.stringify([a.cards.map(c => c.card), a.status, a.bar]);
+      let a = await arrange(page);
+      for (let i = 0; i < 20; i++) { await page.waitForTimeout(150); const b = await arrange(page); if (at(b) === at(a)) return b; a = b; }
+      return a;
+    };
+    const setCounts = async counts => {
+      await choose(page, 'Edit counts'); await page.waitForTimeout(400);
+      for (const [id, n] of Object.entries(counts)) await zf(page).locator('#n-' + id).fill(String(n));
+      await zf(page).locator('#edit-done').click(); await page.waitForTimeout(400);
+    };
+    const name = ([shape, sc, vw, vh]) => `${shape === 'free' ? 'Fill' : shape} ${vw} × ${vh} at ${sc * 100}%`;
+    const top = x => Math.min(...x.cards.map(k => k.card.t)), bottom = x => Math.max(...x.cards.map(k => k.card.b));
+    // Where the line (its words to its bar) and the cards are, rounded: 'line 11 to 44, cards 54 to 410'.
+    const where = x => `${x.iw} × ${x.ih}, ${x.shape}: line ${x.status ? `${Math.round(x.status.t)} to ${Math.round((x.bar || x.status).b)}` : 'hidden'}${x.status && !x.bar ? ' (no bar)' : ''}, cards ${Math.round(top(x))} to ${Math.round(bottom(x))}`;
+    const titleBar = () => page.locator(`.win[data-ikey="${K}"] .win-label .sub`).evaluate(e => getComputedStyle(e).display !== 'none' && e.getBoundingClientRect().width > 0 ? e.textContent : '');
+
+    // ---- 1. With no check-ins, "Tap your zone to check in" at the top, then the bar, then the cards.
+    await part('No check-ins', async () => {
+      await put('free', 1, 1366, 768);
+      const x = await still(), l = atTop(x).concat(ends(x)), s = (await look(page)).status;
+      ok(s === 'Tap your zone to check in' && !l.length && !!x.status && !!x.bar && x.status.b <= x.bar.t + 0.5 && x.bar.b <= top(x) + 0.5,
+        `with no check-ins, “Tap your zone to check in” is at the top, then the bar, then the cards (“${s}”; ${l.join(', ') || where(x)})`);
+      await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'zones-top-empty.png' });
+    });
+
+    // ---- 2. The title keeps its count: "16 checked in" in the window's title and in the line above the cards, both. The
+    // title still shows it while Ideas or Counts is open.
+    await part('The title’s count', async () => {
+      await setCounts({ blue: 2, green: 9, yellow: 4, red: 1 });
+      const x = await still(), z = await look(page), bar = await titleBar();
+      ok(z.status === '16 checked in' && z.title === '16 checked in' && bar === '16 checked in' && !!x.status && x.status.b <= top(x) + 0.5,
+        `“16 checked in” shows twice: in the window’s title and in the line above the cards (line “${z.status}”, title “${z.title}”, title bar “${bar}”; ${where(x)})`);
+      await choose(page, 'Blue zone');
+      const ideas = { view: (await look(page)).view, title: await titleBar() };
+      await zf(page).locator('#idea-done').click(); await page.waitForTimeout(400);
+      await choose(page, 'Edit counts'); await page.waitForTimeout(300);
+      const counts = { view: (await look(page)).view, title: await titleBar() };
+      await zf(page).locator('#edit-done').click(); await page.waitForTimeout(400);
+      ok(ideas.view === 'ideas' && ideas.title === '16 checked in' && counts.view === 'edit' && counts.title === '16 checked in' && (await look(page)).view === 'main',
+        `the title still says “16 checked in” while Ideas or Counts is open (${JSON.stringify({ ideas, counts })})`);
+      await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'zones-top-16.png' });
+    });
+
+    // ---- 3. Where the spec measured them, to the pixel (window content in its own px, rounded).
+    await part('Measured', async () => {
+      const TABLE = [
+        ['the window, the size it opens at', ['free', 1, 1366, 768], false, null, '2x2', '560 × 420, 2x2: line 11 to 44, cards 54 to 410'],
+        ['the 16:9 board at Size 200%, filled', ['16:9', 2, 1920, 1080], true, null, 'row', '960 × 500, row: line 13 to 51, cards 64 to 428'],
+        ['a Chromebook tab at Size 125%, filled, locked, the clock on', ['free', 1.25, 1366, 657], true, 'widgets', 'row', '1093 × 486, row: line 12 to 50, cards 62 to 414'],
+        ['an iPad upright, filled', ['free', 1, 768, 1024], true, null, '2x2', '768 × 984, 2x2: line 18 to 64, cards 82 to 912']];
+      const off = [], seen = [];
+      for (const [label, b, filled, lock, , want] of TABLE) {
+        if (lock) await setCornerClock(page, 'on');
+        await put(...b); if (filled) await fill(true);
+        if (lock) { await lockBoard(page, lock); await page.waitForTimeout(600); }
+        const x = await still(), got = where(x);
+        const close = got.match(/\d+/g).length === want.match(/\d+/g).length && got.match(/\d+/g).every((n, i) => Math.abs(n - want.match(/\d+/g)[i]) <= 1) && got.replace(/\d+/g, '') === want.replace(/\d+/g, '');
+        (close ? seen : off).push(`${label}: ${got}${close ? '' : `, not ${want}`}`);
+        if (lock) { await unlockBoard(page); await setCornerClock(page, 'auto'); }
+      }
+      ok(!off.length && seen.length === 4, `where the spec measured the line and the cards, within 1 px (${off.join(' | ') || seen.join('; ')})`);
+    });
+
+    // ---- 4. Filling a locked board, both lock modes, with the corner clock on, light and dark: the line and the bar sit
+    // between the padlocks, under neither, and the cards start below them. The smallest row, the 16:9 board at Size 200%,
+    // a Chromebook tab at 125%, and an iPad upright.
+    await part('Between the padlocks', async () => {
+      await setCornerClock(page, 'on');
+      const BOARDS = [[['free', 1.25, 1063, 650], 'row'], [['16:9', 2, 1920, 1080], 'row'], [['free', 1.25, 1366, 657], 'row'], [['free', 1, 768, 1024], '2x2']];
+      const bad = [], seen = [];
+      for (const theme of ['light', 'dark']) {
+        await setTheme(page, theme);
+        for (const mode of ['widgets', 'all']) for (const [b, shape] of BOARDS) {
+          await put(...b); await fill(true);
+          await lockBoard(page, mode); await page.waitForTimeout(600);
+          const x = await still(), p = await problems(page, `${theme}, ${name(b)}, ${mode === 'all' ? 'Lock everything' : 'Widgets still work'}`, true);
+          const l = (x.shape === shape ? [] : [x.shape]).concat(atTop(x), ends(x), p.list, p.theme === theme ? [] : [`the ${p.theme} theme`],
+            x.marks.filter(m => m.name === 'lock-pad').length === 2 ? [] : [`${x.marks.filter(m => m.name === 'lock-pad').length} padlocks`], x.status && x.bar ? [] : ['the line or the bar is hidden']);
+          (l.length ? bad : seen).push(`${p.where}, ${where(x)}${l.length ? ': ' + l.join(', ') : ''}`);
+          if (mode === 'widgets' && b[2] === 1366) await page.screenshot({ path: OUT + `zones-top-locked-${theme}.png` });
+          if (mode === 'all' && b[0] === '16:9') await page.screenshot({ path: OUT + `zones-top-locked-all-200-${theme}.png` });
+          await unlockBoard(page);
+        }
+      }
+      await setTheme(page, 'light');
+      ok(!bad.length && seen.length === 16, `filling a locked board, Lock everything and Widgets still work, with the corner clock on, light and dark: the line and the bar sit between the padlocks, under neither, and the cards start one gap below them and end just above the board’s buttons. Nothing cut off, no text under 14 px (${bad.join(' | ') || seen.join('; ')})`);
+    });
+
+    // ---- 5. Short windows: at 300 px tall the bar hides and the line stays at the top. At 229 px the line hides too. On a
+    // locked board filling a short window, the cards still start below the padlocks.
+    await part('Short windows', async () => {
+      await setCornerClock(page, 'on');
+      await put('free', 1, 1366, 768);
+      const bad = [], seen = [];
+      for (const h of [301, 300, 230, 229]) {
+        await page.evaluate(([k, r]) => window.__board21.setRect(k, r), [K, { x: 60, y: 60, w: 560, h: h + 40 }]); await page.waitForTimeout(500);
+        const x = await still(), l = atTop(x).concat(ends(x));
+        const want = h > 300 ? 'the line and the bar' : h > 229 ? 'the line, no bar' : 'neither';
+        const got = x.status && x.bar ? 'the line and the bar' : x.status ? 'the line, no bar' : x.bar ? 'the bar, no line' : 'neither';
+        if (got !== want) l.unshift(got);
+        (l.length ? bad : seen).push(`${h} px tall, ${want}: ${where(x)}${l.length ? ': ' + l.join(', ') : ''}`);
+        await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + `zones-top-${h}.png` });
+      }
+      ok(!bad.length && seen.length === 4, `a window 301 px tall shows the line and the bar. At 300 px the bar hides and the line stays at the top, the cards one gap below it. At 230 px the line still shows, and at 229 it hides too (${bad.join(' | ') || seen.join('; ')})`);
+      const low = [], lowSeen = [];
+      for (const vh of [340, 269]) for (const mode of ['widgets', 'all']) {
+        await put('free', 1, 1024, vh); await fill(true);
+        await lockBoard(page, mode); await page.waitForTimeout(600);
+        const x = await still(), l = atTop(x), pads = x.marks.filter(m => m.name === 'lock-pad');
+        if (pads.length !== 2) l.push(`${pads.length} padlocks`);
+        if (!x.filled) l.push('not filling the board');
+        (l.length ? low : lowSeen).push(`Fill 1024 × ${vh}, ${mode === 'all' ? 'Lock everything' : 'Widgets still work'}, ${where(x)}, padlocks to ${pads.length ? Math.round(Math.max(...pads.map(p => p.b))) : '—'}${l.length ? ': ' + l.join(', ') : ''}`);
+        if (mode === 'widgets') await page.screenshot({ path: OUT + `zones-top-short-locked-${vh}.png` });
+        await unlockBoard(page);
+      }
+      ok(!low.length && lowSeen.length === 4, `filling a locked board 300 px tall, the line sits between the padlocks with no bar. At 229 px it hides, and the cards still start below the padlocks, one gap down (${low.join(' | ') || lowSeen.join('; ')})`);
+      await setCornerClock(page, 'auto');
+    });
+
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
