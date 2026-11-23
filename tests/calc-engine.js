@@ -2358,7 +2358,7 @@ test('a 0 typed after ±, or left by ⌫, keeps no sign once it is finished', ()
   assert.strictEqual(calc('5+±03').equation.text, '5 + (−3) = 2');
 });
 
-// ---- 26. Answers with remainders (2026.11.23-1) ------------------------------------------------------------------------
+// ---- 29. Answers with remainders (2026.11.23-1) ------------------------------------------------------------------------
 // answerAs 'remainder': when the last step is a whole number ÷ a whole number that doesn't divide evenly, the answer is
 // a quotient and a remainder, 17 ÷ 5 = 3 R 2. Any other answer is a decimal, as with answerAs 'decimal'.
 const REM = { answerAs: 'remainder' };

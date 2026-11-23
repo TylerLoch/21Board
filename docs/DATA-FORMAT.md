@@ -511,7 +511,8 @@ the boxes `"^" "sqrt" "root" "frac" "sep" "end"`. Answers aren't saved. They're 
 that doesn't check out is left out. Its config is every menu setting and which panels show: `{ canvas, history, steps,
 words, advanced, hide, answers: "decimal" | "fraction" | "remainder", fractions, test, percent: "of" | "apple", swap }`.
 `fractions` is `answers === "fraction"`, for releases before 2026.11.23-1, which read only `fractions`. A config with no
-`answers` reads `fractions: true` as `"fraction"`. `test` is always `false`.
+`answers` reads `fractions: true` as `"fraction"`. `test` is saved as `false`. A `true` from an older release
+reads as `false`.
 
 The Zones Check-In (`zones-check-in`) saves `{ day, counts: { blue, green, yellow, red }, undo }`. `day` is the date of
 the last change, `YYYY-MM-DD`. `undo` is up to 20 earlier counts, each `[blue, green, yellow, red]`. Its config is

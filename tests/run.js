@@ -20352,7 +20352,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const ideas = id => { const i = guide.indexOf(`id="${id}"`), j = guide.indexOf('<ul class="ideas">', i), k = guide.indexOf('</ul>', j);
         return i < 0 || j < 0 ? [] : Array.from(guide.slice(j, k).matchAll(/<li><span class="grade">([^<]*)<\/span><span>([^<]*)<\/span><\/li>/g)).map(m => [m[1], m[2]]); };
       const want = {
-        'w-calculator': [['K–2', 'Choral count. Type 10 + 10, then press = again and again. Grade 2 can try 5 + 5.'], ['3–6', 'Order of operations. Type 2 + 3 × 4, then Next step. Each step lights its rule.'], ['4–5', 'Remainders. Pick With remainders in Calculator ⌄, then type 17 ÷ 5.']],
+        'w-calculator': [['K–2', 'Choral count. Type 10 + 10, then press = again and again. Grade 2 can try 5 + 5.'], ['3–6', 'Order of operations. Type 2 + 3 × 4, then Next step. Each step lights its rule.'], ['4–5', 'Remainders. Pick With remainders in Calculator ⌄, then type 17 ÷ 5.'], ['6–7', 'Percent. Turn on Advanced keys in Calculator ⌄, then type 15 % 80. It shows 15% of 80 = 12.']],
         'w-dice': [['K–2', 'Turn off Show total. Students add, then turn it on to check.'], ['2–3', 'Roll 3 dice. Who can make the biggest three-digit number?'], ['4–5', 'Roll 6 dice. Who can make the biggest six-digit number?'], ['6–7', 'Predict the most common total. Then roll 2 dice 30 times and tally.']]
       };
       for (const [id, list] of Object.entries(want)) { const got = ideas(id); ok(same(got, list), `the guide’s ${id.slice(2)} ideas: ${got.map(g => g[0] + ' ' + g[1]).join(' / ')}`); }
@@ -20467,20 +20467,31 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(/\| ✓ Advanced keys \| Desmos % \| Hide the answer \|/.test(m), `Advanced keys on again: Desmos % comes back unchecked (${m})`);
       await C.ctx.close();
       // The menu fits a 1366 × 768 board, with Advanced keys on, near the top of the board and near the bottom.
+      const menuBox = async C => {
+        await C.front(); await C.page.click(`.win[data-ikey="${C.ik}"] .win-label`); await C.page.waitForTimeout(400);
+        return C.page.evaluate(ik => {
+          const e = document.getElementById('menu'), b = e.getBoundingClientRect(), w = document.querySelector(`.win[data-ikey="${ik}"]`).getBoundingClientRect();
+          return { cls: e.className, top: Math.round(b.top), bottom: Math.round(b.bottom), scrolls: e.scrollHeight > e.clientHeight + 1, win: [Math.round(w.top), Math.round(w.bottom)], items: [...e.querySelectorAll('.menu-item')].map(i => i.textContent.trim()) };
+        }, C.ik);
+      };
       const B = await calcBoard(false);
       await B.choose('Advanced keys');
       for (const [where, y] of [['near the top', 0], ['near the bottom', 100000]]) {
         await B.page.evaluate(([ik, y]) => window.__board21.setRect(ik, Object.assign({}, window.__board21.state.insts.get(ik).rect, { x: 200, y })), [B.ik, y]); await B.page.waitForTimeout(600);
-        await B.front(); await B.page.click(`.win[data-ikey="${B.ik}"] .win-label`); await B.page.waitForTimeout(400);
-        const r = await B.page.evaluate(ik => {
-          const e = document.getElementById('menu'), b = e.getBoundingClientRect(), w = document.querySelector(`.win[data-ikey="${ik}"]`).getBoundingClientRect();
-          return { cls: e.className, top: Math.round(b.top), bottom: Math.round(b.bottom), scrolls: e.scrollHeight > e.clientHeight + 1, win: [Math.round(w.top), Math.round(w.bottom)], items: [...e.querySelectorAll('.menu-item')].map(i => i.textContent.trim()) };
-        }, B.ik);
+        const r = await menuBox(B);
         ok(!r.scrolls && r.top >= 0 && r.bottom <= 768 && r.items.includes('Desmos %') && !/compact|tight|cols/.test(r.cls) && (where === 'near the top' ? r.win[0] < 60 : r.win[1] > 768 - 60),
           `${where} (the window from ${r.win[0]} to ${r.win[1]}): the whole menu fits, ${r.top} to ${r.bottom}, without scrolling or tighter rows (${r.items.length} items; ${r.cls})`);
         await B.page.keyboard.press('Escape'); await B.page.waitForTimeout(200);
       }
       await B.ctx.close();
+      // A board that is the screen: the window is the board's full height with Advanced keys on. The menu takes compact
+      // rows there, as other tall windows' menus do, and still fits without scrolling.
+      const F = await calcBoard(true);
+      await F.choose('Advanced keys');
+      const f = await menuBox(F);
+      ok(!f.scrolls && f.top >= 0 && f.bottom <= 768 && f.items.includes('Desmos %') && f.items.length === 15,
+        `a board that is the screen (the window from ${f.win[0]} to ${f.win[1]}): the whole menu fits, ${f.top} to ${f.bottom}, without scrolling (${f.items.length} items; ${f.cls})`);
+      await F.ctx.close();
     });
 
     // ---- 2. Settings from before: fractions: true, test: true, and percent: 'apple'; what's saved now.
@@ -20545,6 +20556,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(L.said === '17 divided by 5 equals 3 remainder 2' && L.eqLabel === L.said && L.live === L.said, `In words: “${L.said}”, and a screen reader hears it too (${L.live})`);
       const last = L.hist[L.hist.length - 1] || {};
       ok(last.expr === '17 ÷ 5' && last.ans === '3 R 2', `History: 17 ÷ 5 = 3 R 2 (${JSON.stringify(last)})`);
+      // Its answer button is named in words, as the screen reader hears the answer everywhere else.
+      const useName = await C.W.locator('#history .hline .hans').last().getAttribute('aria-label');
+      ok(useName === 'Use 3 remainder 2', `History’s answer button is “Use 3 remainder 2”, not “Use 3 R 2” (${useName})`);
       await C.page.screenshot({ path: OUT + 'calculator-remainder.png' });
       await C.W.locator('#all').click(); await C.page.waitForTimeout(300); L = await C.look();
       ok(same(L.chain, ['17 ÷ 5', '3 R 2']) && same(L.work, ['17 ÷ 5 = 3 R 2']), `Steps: 17 ÷ 5, then 3 R 2 (${L.chain.join(' | ')}; ${L.work.join(' | ')})`);
@@ -20598,12 +20612,25 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         sec.includes('On, % means "% of", as in Desmos. Off, 50 + 10% = 55, as on iPhone.'), 'README: the three choices and the default, and what Desmos % does and when it shows');
       const data = read('docs/DATA-FORMAT.md').replace(/\s+/g, ' ');
       ok(/answers: "decimal" \| "fraction" \| "remainder"/.test(data) && /`fractions`/.test(data), 'DATA-FORMAT: the config’s answers, and the fractions written for older releases');
+      // A stored test: true from an older release stays stored until this device saves the window's settings again.
+      ok(data.includes('`test` is saved as `false`. A `true` from an older release reads as `false`.') && !/`test` is always `false`/.test(data),
+        'DATA-FORMAT: test is saved as false, and a true from an older release reads as false');
       const man = read('docs/calculator-manual/page-src.html'), manText = man.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ');
       ok(/data-keys="17÷5" data-opts='\{"answers":"remainder"\}'/.test(man) && manText.includes('On, % means “% of”, as in Desmos. Off, 50 + 10% = 55, as on iPhone.'), 'the manual: a live 17 ÷ 5 with remainders, and what Desmos % does');
+      // The Percent card says Desmos % is found under Advanced keys. The Remainders card says what ans shows next, and
+      // that / with Advanced keys on types a fraction, which never shows a remainder.
+      const cardOf = h => { const j = man.indexOf(`<h3>${h}</h3>`); return j < 0 ? '' : man.slice(j, man.indexOf('<div class="pg-exs">', j)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '); };
+      ok(cardOf('Percent').includes('For the iPhone way, turn on Advanced keys, then untick Desmos %.') && !cardOf('Percent').includes('Untick Desmos % in the menu'),
+        `the manual’s Percent card: “For the iPhone way, turn on Advanced keys, then untick Desmos %.” (${cardOf('Percent').trim()})`);
+      ok(cardOf('Remainders').includes('Go on from 3 R 2, and ans shows 3.4.') && cardOf('Remainders').includes('With Advanced keys on, / types a fraction. Tap ÷ instead.'),
+        `the manual’s Remainders card: what ans shows, and / with Advanced keys on (${cardOf('Remainders').trim()})`);
       const guide = read('docs/teacher-guide/page-src.html'), i = guide.indexOf('id="w-calculator"'), card = guide.slice(i, guide.indexOf('</article>', i));
       const ideas = Array.from(card.matchAll(/<li><span class="grade">([^<]*)<\/span><span>([^<]*)<\/span><\/li>/g)).map(x => x[1]);
-      ok(/<span class="grade">4–5<\/span><span>Remainders\. Pick With remainders in Calculator ⌄, then type 17 ÷ 5\.<\/span>/.test(card) && same(ideas, ['K–2', '3–6', '4–5']),
+      ok(/<span class="grade">4–5<\/span><span>Remainders\. Pick With remainders in Calculator ⌄, then type 17 ÷ 5\.<\/span>/.test(card) && same(ideas, ['K–2', '3–6', '4–5', '6–7']),
         `the Teacher Guide: a grade 4–5 idea for remainders, the ideas in grade order (${ideas.join(', ')})`);
+      // Test practice was the card's only idea past grade 5. Percent takes its place: 6.RP.A.3c and 7.RP.A.3.
+      ok(/<span class="grade">6–7<\/span><span>Percent\. Turn on Advanced keys in Calculator ⌄, then type 15 % 80\. It shows 15% of 80 = 12\.<\/span>/.test(card),
+        'the Teacher Guide: a grade 6–7 idea for percent');
       ok(stamped(), STAMPED);
     });
 

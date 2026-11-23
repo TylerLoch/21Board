@@ -710,9 +710,10 @@
     if (!s.history.length) { el.hlist.innerHTML = '<li class="hempty">Your problems show here.</li>'; return; }
     let html = '';
     for (let i = s.history.length - 1; i >= 0; i--) {   // the oldest at the top, the newest at the bottom
-      const h = s.history[i], hid = i === 0 && hideNewest;
+      // (An answer with a remainder is named in words, "Use 3 remainder 2", as a screen reader hears it everywhere else.)
+      const h = s.history[i], hid = i === 0 && hideNewest, useName = h.answer.form === 'remainder' ? h.answer.speech : h.answer.text;
       html += `<li class="hline${i === 0 && cur ? ' cur' : ''}"><button type="button" class="hpick" data-i="${i}" aria-label="Change ${esc(h.expression.text)}" title="Change this problem">${noCursor(h.expression.html)}</button>` +
-        `<button type="button" class="hans" data-i="${i}"${hid ? ' disabled aria-label="Answer hidden"' : ` aria-label="Use ${esc(h.answer.text)}" title="Use this answer"`}><span class="heq" aria-hidden="true">=</span>${hid ? '?' : h.answer.html}</button></li>`;
+        `<button type="button" class="hans" data-i="${i}"${hid ? ' disabled aria-label="Answer hidden"' : ` aria-label="Use ${esc(useName)}" title="Use this answer"`}><span class="heq" aria-hidden="true">=</span>${hid ? '?' : h.answer.html}</button></li>`;
     }
     const had = el.hlist.contains(document.activeElement), was = el.hlist.scrollTop;
     el.hlist.innerHTML = html;
