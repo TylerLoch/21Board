@@ -51,13 +51,18 @@ const mins = ms => `${Math.max(1, Math.round(ms / 60e3))} min`;
     (/([^/:]+)\/([^/]+?)(?:\.git)?\/?$/.exec(git('remote', 'get-url', 'origin')) || []).slice(1).join('/');
   if (!repo) stop('can’t tell the GitHub repository from the origin remote.');
   const sha = git('rev-parse', ref + '^{commit}'), short = sha.slice(0, 7);
+  // The branch whose run to prefer: the one named, else this checkout's.
+  const here = git('rev-parse', '--abbrev-ref', 'HEAD');
+  const branch = ref === 'HEAD' || /^[0-9a-f]{7,40}$/.test(ref) ? (here === 'HEAD' ? '' : here) : ref.replace(/^origin\//, '');
   if (!await gh(`repos/${repo}/commits/${sha}`, { quiet: true })) stop(`GitHub doesn’t have ${short}. Push it first.`);
 
   // GitHub starts the run a few seconds after the push.
   let run;
   for (const t0 = Date.now(); ;) {
-    run = (await gh(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=30`)).workflow_runs
-      .find(r => (r.path || '').startsWith('.github/workflows/tests.yml'));
+    // The same commit pushed to two branches has a run on each: this branch's first, then one that wasn't stopped.
+    const runs = (await gh(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=30`)).workflow_runs
+      .filter(r => (r.path || '').startsWith('.github/workflows/tests.yml'));
+    run = runs.find(r => r.head_branch === branch) || runs.find(r => r.conclusion !== 'cancelled') || runs[0];
     if (run) break;
     if (Date.now() - t0 > 3 * 60e3) stop(`GitHub hasn’t started a test run for ${short}.`);
     await sleep(15e3);
