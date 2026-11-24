@@ -4057,7 +4057,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  // ---- 2026.11.23-5: a row of short choices in a window menu (numbers, such as the Name Picker's Names at a time).
+  // ---- 2026.11.24-1: a row of short choices in a window menu (numbers, such as the Name Picker's Names at a time).
   ['Window menu: a row of choices', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
     const page = await ctx.newPage();
@@ -4569,7 +4569,7 @@ const SUITES = [
       }
       return { over, clock: board.some(c => c.what === 'clock'), round: own.some(e => e.id === 'round' && !e.hidden), stack: await np(cp).locator('.foot').evaluate(f => f.classList.contains('stack')) };
     };
-    // The line under the stage (2026.11.23-5): the status in the middle of its space, wrapping onto even lines, and Start
+    // The line under the stage (2026.11.24-1): the status in the middle of its space, wrapping onto even lines, and Start
     // over in the middle of its own. The foot stacks only when the status would need more than two lines beside the
     // main button, or Start over wouldn't fit on one; stacked, each is in the middle of its half.
     const footLook = () => np(cp).locator('html').evaluate(() => {
@@ -4667,7 +4667,7 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await xctx.close();
   }],
-  // ---- 2026.11.23-5: Groups, a fifth way to use the Name Picker: the names go into 2 to 6 random groups.
+  // ---- 2026.11.24-1: Groups, a fifth way to use the Name Picker: the names go into 2 to 6 random groups.
   ['Name Picker: Groups', async (browser) => {
     // Every sound a style asks the host for (the host plays it only with Sound ticked), the sounds the page starts, and
     // the notes it plays.
@@ -4850,6 +4850,9 @@ const SUITES = [
     cs = await cards();
     ok(cs.length === 6 && (await saved()).groupId === g.groupId && await text('#go') === 'Make 3 groups' && await text('#status') === '6 groups of 4' && await items() === MENU_G(3),
       `Groups 3: the 6 cards stay, “6 groups of 4”, and the button says “Make 3 groups” (${await text('#go')})`);
+    await page.reload(); await boardUp(page);
+    ok(await eventually(async () => (await cards().catch(() => [])).length === 6) && await eventually(async () => await text('#go') === 'Make 3 groups'),
+      `after a reload too: the 6 cards, and “Make 3 groups” (${await text('#go')})`);
     await menu('groups:6');
     ok(await text('#go') === 'Shuffle again', 'back to 6: “Shuffle again”');
     await menu('groups:3');

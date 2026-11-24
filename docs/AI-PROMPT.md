@@ -221,7 +221,9 @@ board's own *Fill the board*, *Reset*, and *Close*. Set it with `Board21.menu.se
 - `{ id: 'clear', label: 'Clear', disabled: true }`, `{ separator: true }`, `{ heading: true, label: 'Size' }`.
 - `{ label: 'Color', swatches: [{ id: 'color:blue', label: 'Blue', color: '#bfdbfe', checked: true }, …] }`:
   a row of up to 12 color circles; tapping one sends its id. Colors `#rgb` or `#rrggbb` only.
-- At most **24 items** (a swatch row counts as one). Every command and checkmark item has its own id.
+- `{ label: 'Size', choices: [{ id: 'size:1', label: '1', checked: true }, …] }`: a row of up to 12 short
+  choices, such as numbers, drawn like the swatches. A label shows up to 3 characters.
+- At most **24 items** (a row of swatches or choices counts as one). Every command and checkmark item has its own id.
   Short labels. Icons are optional (an inline `<svg …>` string only).
 - **Call `menu.set()` again whenever a checkmark, label, or disabled state changes** (not on every tick).
 

@@ -669,7 +669,9 @@ window.NamePicker = {
   Board21.ready().then(ctx => {
     state = readState(ctx.data);
     config = readConfig(ctx.config);
-    drawnWith = state.groups.length ? config.groups : 0;
+    // (The number the groups on screen were made with isn't saved: the menu's, unless there are more groups than that,
+    // as when the menu's number was lowered since.)
+    drawnWith = state.groups.length ? Math.max(state.groups.length, config.groups) : 0;
     // A brand-new Name Picker opens as the Spinning wheel. One that already has names or settings (from before there
     // were styles) keeps Big name, as it looked before.
     if (!ctx.config && !state.names.length) { config.style = 'wheel'; saveConfig(); }

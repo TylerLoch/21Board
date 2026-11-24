@@ -14,11 +14,11 @@
 const VERSION = '2026.11.24-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'eea4a3a8';
+const BUILD = 'f5ee3917';
 const FILES = {
-  './': '9b7021b4775e8892',
-  'index.html': '9b7021b4775e8892',
-  'board.js': 'c5948e693a95c99f',
+  './': '7cdd2378097fe830',
+  'index.html': '7cdd2378097fe830',
+  'board.js': '1109c29e822fc90d',
   'sdk/board21.js': '49eb974f9c58c568',
   'sdk/board21-dev.js': '2f49d8ee8ed67380',
   'sdk/dev/board-shell.js': '1cbb707950606505',
@@ -46,7 +46,7 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': 'a3ee4ae9689b45c9',
+  'widgets/name-picker/index.html': 'caefb79ae628ad38',
   'widgets/name-picker/style-bigname.js': '9d6775ffa5fb7f17',
   'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
   'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
