@@ -826,7 +826,7 @@ const ZC = {
   // (the line's text itself) and bar, each as drawn, or null when hidden. iw and ih: the window's content in its own px.
   // filled and corners: whether it fills the board, and the corners the board tells it of. marks: the board's ▦, clock
   // and padlocks over the screen, in the window's own px, and whether each is over the window's content (over).
-  // (2026.11.23-4) oneRow: the one-row class. rule, area, fine and want: below.
+  // (2026.11.24-4) oneRow: the one-row class. rule, area, fine and want: below.
   arrange: async (page, K = ZC.K) => {
     const x = await ZC.zf(page, K).locator('html').evaluate(() => {
       const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
@@ -844,7 +844,7 @@ const ZC = {
         : c.every(k => near(k.l, c[0].l)) && c.every((k, i) => !i || k.t >= c[i - 1].b - 1) ? 'column' : 'other';
       const zs = document.querySelector('#main .zones'), zr = zs.getBoundingClientRect(), a = zr.width / zr.height;
       const old = a > 3.2 || (a > 2.2 && zr.width >= 800 && zr.height < 310) ? 'row' : a < 0.7 ? 'column' : '2x2';
-      // (2026.11.23-4) A row whenever each card can be at least 190 px wide and the cards' area is at least as wide as it
+      // (2026.11.24-4) A row whenever each card can be at least 190 px wide and the cards' area is at least as wide as it
       // is tall: rule. area: the cards' area, in whole px.
       // (Review fix) rule reads the area to the fraction of a pixel, as the cards are drawn (fine). A window that doesn't
       // fill the board gets its layout from its size, not from where it sits: its area as if the board's buttons in its
@@ -869,7 +869,7 @@ const ZC = {
       });
       return { w: i.width || 0, h: i.height || 0, filled: !!i.maximized, corners: i.corners || null, marks };
     }, [K, x.iw, x.ih]));
-    // want: the layout wanted (2026.11.23-4). A row where the rule says, or filling the board at least 850 × 480 px. Else
+    // want: the layout wanted (2026.11.24-4). A row where the rule says, or filling the board at least 850 × 480 px. Else
     // the rules before: a row when very wide, or wide and short, a column when very tall, else two by two.
     x.want = x.rule || (x.filled && x.w >= 850 && x.h >= 480) ? 'row' : x.old;
     return x;
@@ -877,7 +877,7 @@ const ZC = {
   // Where the check-in line and its bar sit (2026.11.23-3), from arrange: what is wrong. Above the cards, the line, then
   // the bar, then the cards one gap below them, the line's text and the bar centered over the cards. A window 300 px tall
   // or less hides the bar, and one 229 px tall or less the line too. Under the padlocks of a locked board, filling it or
-  // (2026.11.23-4) not, the line and the bar sit between them, under neither, and the cards start one gap below the
+  // (2026.11.24-4) not, the line and the bar sit between them, under neither, and the cards start one gap below the
   // padlocks too (corners.top).
   atTop: x => {
     const out = [], px = n => Math.round(n * 10) / 10, c = x.cards.map(k => k.card);
@@ -903,7 +903,7 @@ const ZC = {
     return out;
   },
   // Where the cards end (2026.11.23-3), from arrange: what is wrong. One gap above the window's bottom. Under the board's
-  // buttons in its bottom corners, filling it or (2026.11.23-4) not, just above them (the view's bottom less
+  // buttons in its bottom corners, filling it or (2026.11.24-4) not, just above them (the view's bottom less
   // corners.height), and under none of them.
   ends: x => {
     const out = [], px = n => Math.round(n * 10) / 10, c = x.cards.map(k => k.card), bottom = Math.max(...c.map(k => k.b));
@@ -913,6 +913,194 @@ const ZC = {
       if (Math.min(m.r, k.r) - Math.max(m.l, k.l) > 0.5 && k.b > m.t + 0.5) out.push(`${x.cards[i].z} ends under ${m.name} (${px(k.b)}, below ${px(m.t)})`);
     return out;
   }
+};
+
+// ---- Weather (2026.11.24-3). Its five sites never answer for real: every context aborts them (the browser.newContext
+// wrapper at the end), and a Weather suite answers them with stubWeather, from tests/fixtures/weather/: real answers from
+// Mon Nov 23 2026, about 11:50 AM Central (Open-Meteo's times as unix seconds, as the widget asks for them).
+const WX_HOSTS = /^https:\/\/((api|air-quality-api|archive-api|geocoding-api)\.open-meteo\.com|api\.weather\.gov)\//;
+const WX_AT = '2026-11-23T11:50:00-06:00';
+const WX_FIX = n => JSON.parse(fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'weather', n), 'utf8'));
+// A fixture moved s seconds later: Open-Meteo's unix times (each "time"), and the Weather Service's times with an offset.
+function wxShift(v, s, key) {
+  if (!s) return v;
+  if (Array.isArray(v)) return v.map(x => wxShift(x, s, key));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, wxShift(x, s, k)]));
+  if (key === 'time' && typeof v === 'number') return v + s;
+  if (typeof v === 'string') return v.replace(/(\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d)?)([+-]\d\d:\d\d)/g, (m, t, z) => {
+    const off = (z[0] === '-' ? -1 : 1) * (+z.slice(1, 3) * 60 + +z.slice(4, 6)), at = Date.parse(t + z) + s * 1000;
+    return new Date(at + off * 6e4).toISOString().slice(0, t.length) + z;
+  });
+  return v;
+}
+// wx.asked: each request, { host, path, url, query, cookie, referer, origin }. wx.answers, by "host/path" (the longest
+// that starts the request's wins): a fixture's file name, a function of the URL giving one of these, { json }, { status,
+// headers, body }, { abort: true } (no connection, as when a school's filter blocks it), or { hang: true } (no answer).
+// wx.shift moves every fixture's times that many seconds later; wx.later[key] moves one answer's times further.
+async function stubWeather(ctx, more = {}) {
+  const wx = { asked: [], shift: 0, later: {}, answers: Object.assign({
+      'api.open-meteo.com/v1/forecast': u => +u.searchParams.get('latitude') < 30 ? 'om-forecast-honolulu.json' : 'om-forecast-wheeling.json',
+      'air-quality-api.open-meteo.com/v1/air-quality': 'om-airquality-wheeling.json',
+      'archive-api.open-meteo.com/v1/archive': 'om-archive-2019-01-30.json',
+      'geocoding-api.open-meteo.com/v1/search': u => /^wheel/i.test(u.searchParams.get('name')) ? 'om-geocode-wheeling.json' : /^honol/i.test(u.searchParams.get('name')) ? 'om-geocode-honolulu.json' : { json: { generationtime_ms: 0.2 } },
+      'api.weather.gov/points/42.1392,-87.929': 'nws-points-wheeling.json',
+      'api.weather.gov/points/21.3069,-157.8583': 'nws-points-honolulu.json',
+      'api.weather.gov/gridpoints/LOT/65,84/stations': 'nws-stations-LOT-65-84.json',
+      'api.weather.gov/gridpoints/LOT/65,84/forecast': 'nws-forecast-LOT-65-84.json',
+      'api.weather.gov/gridpoints/LOT/65,84/forecast/hourly': 'nws-forecast-hourly-LOT-65-84.json',
+      'api.weather.gov/gridpoints/HFO/154,145/stations': 'nws-stations-HFO-154-145.json',
+      'api.weather.gov/gridpoints/HFO/154,145/forecast': 'nws-forecast-HFO-154-145.json',
+      'api.weather.gov/stations/KPWK/observations': 'nws-observations-KPWK.json',
+      'api.weather.gov/stations/PHNL/observations': 'nws-observations-PHNL.json',
+      'api.weather.gov/alerts/active': 'nws-alerts-wheeling-empty.json' }, more),
+    count: re => wx.asked.filter(a => !re || re.test(a.url)).length,
+    hosts: () => [...new Set(wx.asked.map(a => a.host))].sort() };
+  await ctx.route(WX_HOSTS, async r => {
+    const req = r.request(), u = new URL(req.url()), h = await req.allHeaders().catch(() => ({})), at = u.host + decodeURIComponent(u.pathname);
+    wx.asked.push({ host: u.host, path: u.pathname, url: u.href, query: Object.fromEntries(u.searchParams), origin: h.origin || '', cookie: h.cookie || '', referer: h.referer || '' });
+    const key = Object.keys(wx.answers).filter(k => at === k || at.startsWith(k + '/') || at.startsWith(k + '?') || (k.endsWith('/') && at.startsWith(k))).sort((a, b) => b.length - a.length)[0];
+    let t = key ? wx.answers[key] : { status: 404 };
+    if (typeof t === 'function') t = t(u);
+    if (t && t.delay) await new Promise(res => setTimeout(res, t.delay));
+    if (t && t.hang) return;
+    if (t && t.abort) return r.abort('internetdisconnected').catch(() => {});
+    const s = wx.shift + ((key && wx.later[key]) || 0);
+    const body = typeof t === 'string' ? JSON.stringify(wxShift(WX_FIX(t), s)) : t && 'json' in t ? JSON.stringify(t.json) : (t && t.body) || '';
+    return r.fulfill({ status: (t && t.status) || 200, headers: Object.assign({ 'access-control-allow-origin': '*' }, (t && t.headers) || {}),
+      contentType: u.host === 'api.weather.gov' ? 'application/geo+json' : 'application/json', body }).catch(() => {});
+  });
+  return wx;
+}
+// A Weather window, from the board: WXT.F runs fn in its page, WXT.text is what it shows (no-break spaces as spaces).
+const WXT = {
+  K: 'weather:1',
+  wf: (p, k = WXT.K) => p.frameLocator(`.win[data-ikey="${k}"] iframe`),
+  // (Its frame by name, so fn gets arg as its first parameter, as page.evaluate gives it.)
+  F: async (p, fn, arg, k = WXT.K) => {
+    let f = null;
+    for (let i = 0; i < 50 && !(f = p.frame({ name: 'b21-board:' + k })); i++) await p.waitForTimeout(100);
+    if (!f) throw new Error(`no frame for ${k}`);
+    return f.evaluate(fn, arg);
+  },
+  text: (p, k = WXT.K) => WXT.F(p, () => (document.getElementById('app') || document.body).innerText.replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' '), null, k),
+  connected: (p, k = WXT.K) => eventually(() => p.evaluate(k => { const w = window.__board21.state.wins.get(k); return !!w && w.connected; }, k)),
+  // Until the window shows the weather (or ms pass).
+  drawn: (p, k = WXT.K, ms = 8000) => eventually(() => WXT.F(p, () => !!document.querySelector('#app .wx') && !document.querySelector('#app .loading'), null, k), ms),
+  menuOf: (p, k = WXT.K) => p.evaluate(k => { const w = window.__board21.state.wins.get(k); return w ? w.menuItems.map(i => i.separator ? '—' : i.heading ? `[${i.label}]` : (i.checked === true ? '✓ ' : i.checked === false ? '☐ ' : '') + i.label + (i.disabled ? ' (off)' : '')).join(' | ') : ''; }, k),
+  choose: async (p, id, k = WXT.K) => {
+    await p.click(`.win[data-ikey="${k}"] .win-label`); await p.waitForTimeout(200);
+    const it = p.locator(`#menu [data-act="widget"][data-id="${id}"]`);
+    if (!await it.count() || await it.isDisabled()) { await p.keyboard.press('Escape'); await p.waitForTimeout(150); return false; }
+    await it.click(); await p.waitForTimeout(400); return true;
+  },
+  conf: (p, k = WXT.K) => p.evaluate(k => window.__board21.state.conf.get(k) || null, k),
+  data: (p, k = WXT.K) => p.evaluate(k => window.__board21.state.data.get(k) || null, k),
+  // Content size w × h (the title bar is added), out of Fill the board.
+  size: (p, w, h, k = WXT.K) => p.evaluate(([k, w, h]) => { const b = window.__board21; b.setMaximized(k, false); b.setRect(k, { x: 20, y: 20, w, h: h + 40 }); }, [k, w, h]).then(() => p.waitForTimeout(500)),
+  // Content or config arriving from another tab or device.
+  put: (p, kind, v, k = WXT.K) => p.evaluate(async ([k, kind, v]) => {
+    const w = window.__board21.state.wins.get(k), B = w.iframe.contentWindow.Board21;
+    if (kind === 'data') { await B.save(v); w.post('data', { data: v, reason: 'remote' }); } else { await B.saveConfig(v); w.post('config', { config: v, reason: 'remote' }); }
+  }, [k, kind, v]),
+  // A board in Chicago at the fixtures' moment (at: null keeps the real time; clock: 'install' lets it run), with the
+  // weather sites stubbed. Its page errors go to errors.
+  board: async (browser, errors, { at = WX_AT, clock = 'fixed', opts = {}, query = '', more = {} } = {}) => {
+    const ctx = await browser.newContext(Object.assign({ viewport: { width: 1366, height: 768 }, timezoneId: 'America/Chicago', locale: 'en-US' }, opts));
+    const wx = await stubWeather(ctx, more);
+    const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+    if (at && clock === 'fixed') await page.clock.setFixedTime(at);
+    if (at && clock === 'install') await page.clock.install({ time: at });
+    await page.goto(BASE + query); await boardUp(page); await freeBoard(page);
+    return { ctx, page, wx };
+  },
+  // Runs an installed clock on by min minutes, a minute at a time, letting each minute's answers arrive. (Jumping
+  // further at once would fire each request's 10-second wait before its stubbed answer could come.)
+  later: async (p, min) => { for (let i = 0; i < min; i++) { await p.clock.fastForward(60e3); await p.waitForTimeout(25); } await p.waitForTimeout(300); },
+  open: async (p, k = WXT.K) => { await p.evaluate(() => window.__board21.openWidget('weather', { fresh: true })); await WXT.connected(p, k); await WXT.drawn(p, k); await p.waitForTimeout(300); },
+  // What is wrong with the window as drawn now: it scrolls, text under 14 px, text cut off or running out of its card or
+  // the window, text over text, and (corners: it fills the board) a part or a line of Now under the board's corner
+  // buttons or padlocks.
+  problems: async (p, corners, k = WXT.K) => {
+    const f = await WXT.F(p, () => {
+      const out = [], de = document.documentElement, words = [];
+      const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+      if (de.scrollWidth > innerWidth + 1 || de.scrollHeight > innerHeight + 1) out.push(`it scrolls (${de.scrollWidth} × ${de.scrollHeight})`);
+      const walk = document.createTreeWalker(document.getElementById('app'), NodeFilter.SHOW_TEXT);
+      for (let n; (n = walk.nextNode());) {
+        const e = n.parentElement, t = n.textContent.trim();
+        if (!t || !e || e.closest('.sr, svg') || !vis(e)) continue;
+        const fs = parseFloat(getComputedStyle(e).fontSize);
+        if (fs < 13.95) out.push(`“${t.slice(0, 18)}” at ${fs.toFixed(1)} px`);
+        const r = document.createRange(); r.selectNodeContents(n); const b = r.getBoundingClientRect();
+        const sc = e.closest('.scroll'), sb = sc && sc.getBoundingClientRect();
+        if (sc && (b.top < sb.top - 0.5 || b.bottom > sb.bottom + 0.5)) continue;   // (scrolled out of view, in a view that scrolls)
+        if (b.left < -0.5 || b.top < -0.5 || b.right > innerWidth + 0.5 || b.bottom > innerHeight + 0.5) out.push(`“${t.slice(0, 18)}” runs out of the window`);
+        // (Its ink, line by line: the box less the room above capitals and below the line.)
+        for (const q of r.getClientRects()) if (q.width > 1 && q.height > 1) words.push({ e, t, l: q.left + 0.5, r: q.right - 0.5, top: q.top + 0.22 * fs, bot: q.bottom - 0.2 * fs });
+        const box = e.closest('.card, .band, .tg b, .rb, .chip, .aqpill');
+        if (box) { const c = box.getBoundingClientRect(); if (b.left < c.left - 0.5 || b.right > c.right + 0.5 || b.top < c.top - 0.5 || b.bottom > c.bottom + 0.5) out.push(`“${t.slice(0, 18)}” runs out of its ${box.className.split(' ')[0]}`); }
+        const s = getComputedStyle(e);
+        if ((s.textOverflow === 'ellipsis' || s.overflow === 'hidden') && e.scrollWidth > e.clientWidth + 1) out.push(`“${t.slice(0, 18)}” is cut off`);
+      }
+      // Text over text: two words, neither inside the other, whose ink meets.
+      const over = new Set();
+      for (let i = 0; i < words.length; i++) for (let j = i + 1; j < words.length; j++) {
+        const A = words[i], B = words[j];
+        if (A.e === B.e || A.e.contains(B.e) || B.e.contains(A.e)) continue;
+        if (Math.min(A.r, B.r) - Math.max(A.l, B.l) > 1 && Math.min(A.bot, B.bot) - Math.max(A.top, B.top) > 1) over.add(`“${A.t.slice(0, 18)}” runs over “${B.t.slice(0, 18)}”`);
+      }
+      out.push(...over);
+      // Words in a picture (the compass's N, E, S, and W): their size as drawn, the picture's scale included.
+      for (const t of document.querySelectorAll('#app svg text')) {
+        if (!vis(t) || t.closest('.sr')) continue;
+        const m = t.getScreenCTM(), px = parseFloat(getComputedStyle(t).fontSize) * (m ? Math.hypot(m.a, m.b) : 1);
+        if (px < 13.95) out.push(`“${t.textContent.trim().slice(0, 18)}” at ${px.toFixed(1)} px in a picture`);
+      }
+      // A part's own box inside the window, and inside its card.
+      for (const c of document.querySelectorAll('#app .in > *, #app .smalls > *')) {
+        if (!vis(c)) continue;
+        const r = c.getBoundingClientRect();
+        if (r.left < -0.5 || r.top < -0.5 || r.right > innerWidth + 0.5 || r.bottom > innerHeight + 0.5) out.push(`${c.className.split(' ').slice(0, 2).join('.')} runs out of the window`);
+        if (c.matches('.card') && c.scrollHeight > c.clientHeight + 2) out.push(`${c.className.split(' ').slice(0, 2).join('.')} overflows its card (${c.scrollHeight} > ${c.clientHeight})`);
+      }
+      const parts = [...document.querySelectorAll('#app .card, #app .hero, #app .hero > *, #app .band, #app .rb')].filter(vis).map(e => { const r = e.getBoundingClientRect(); return { name: e.className.split(' ').slice(0, 2).join('.'), x: r.left, y: r.top, w: r.width, h: r.height }; });
+      return { out, parts, iw: innerWidth, ih: innerHeight, layout: ((document.querySelector('#app .wx') || {}).className || '').split(' ').find(c => /^L-/.test(c)) || '' };
+    }, null, k);
+    const top = await p.evaluate(k => {
+      const vis = e => { const s = getComputedStyle(e), b = e.getBoundingClientRect(); return !e.hidden && s.display !== 'none' && s.visibility !== 'hidden' && b.width > 0; };
+      const r = document.querySelector(`.win[data-ikey="${k}"] iframe`).getBoundingClientRect();
+      return { x: r.left, y: r.top, w: r.width, h: r.height, marks: [...document.querySelectorAll('.picker-btn, .corner-clock, .lock-pad')].filter(vis).map(e => { const b = e.getBoundingClientRect(); return { name: e.className.split(' ').slice(0, 2).join('.'), x: b.left, y: b.top, w: b.width, h: b.height }; }) };
+    }, k);
+    const sx = top.w / f.iw, sy = top.h / f.ih;
+    for (const m of corners ? top.marks : []) for (const q of f.parts) {
+      const x = top.x + q.x * sx, y = top.y + q.y * sy, w = q.w * sx, h = q.h * sy;
+      if (Math.min(m.x + m.w, x + w) - Math.max(m.x, x) > 0.5 && Math.min(m.y + m.h, y + h) - Math.max(m.y, y) > 0.5) f.out.push(`${q.name} under ${m.name}`);
+    }
+    return { list: f.out, marks: top.marks.length, size: `${f.iw} × ${f.ih}`, layout: f.layout };
+  },
+  // The window's parts as drawn: which cards show, the grid's empty tracks (a gap a hidden part left), and the layout.
+  parts: (p, k = WXT.K) => WXT.F(p, () => {
+    const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
+    const wx = document.querySelector('#app .wx'), inn = wx && wx.querySelector(':scope > .in');
+    if (!inn) return null;
+    const has = sel => [...wx.querySelectorAll(sel)].some(vis);
+    const kids = [...inn.children].filter(vis).map(e => e.getBoundingClientRect()), cs = getComputedStyle(inn), b = inn.getBoundingClientRect();
+    // Each grid row and column must hold part of a child: an empty track is a gap.
+    const gaps = [];
+    for (const [dir, list, start, gap] of [['row', cs.gridTemplateRows, b.top + parseFloat(cs.paddingTop), parseFloat(cs.rowGap) || 0], ['column', cs.gridTemplateColumns, b.left + parseFloat(cs.paddingLeft), parseFloat(cs.columnGap) || 0]]) {
+      if (!list || list === 'none') continue;
+      let at = start;
+      for (const t of list.split(' ').map(parseFloat)) {
+        const from = at, to = at + t;
+        if (t > 1 && !kids.some(r => (dir === 'row' ? Math.min(r.bottom, to) - Math.max(r.top, from) : Math.min(r.right, to) - Math.max(r.left, from)) > 0.5)) gaps.push(`an empty ${dir} (${Math.round(from)} to ${Math.round(to)})`);
+        at = to + gap;
+      }
+    }
+    return { layout: (wx.className.split(' ').find(c => /^L-/.test(c)) || '').slice(2), hero: has('.hero'), hourly: has('.hourly'), days: has('.daysc') ? 7 : has('.week') ? wx.querySelectorAll('.week .col').length : 0,
+      wear: has('.wear') ? 'card' : has('.wl') ? 'line' : '', sun: has('.sun'), moon: has('.moon'), moonline: has('.moonline'), wind: has('.windc'), air: has('.air'),
+      windLine: /Wind \d/.test((wx.querySelector('.hero') || {}).textContent || ''), airLine: /Air quality \d/.test((wx.querySelector('.hero') || {}).textContent || ''),
+      feels: /Feels like/.test((wx.querySelector('.hero') || {}).textContent || ''), gaps, units: [...wx.querySelectorAll('.unit')].filter(vis).map(u => u.textContent + ':' + (u.closest('.temp') ? 'temp' : 'elsewhere')) };
+  }, null, k)
 };
 
 const SUITES = [
@@ -1226,7 +1414,7 @@ const SUITES = [
     const conn = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).map(w => [w.ikey, w.connected]));
     ok(conn.length === ids.length && conn.every(c => c[1]), 'every widget loads and connects offline: ' + JSON.stringify(conn));
     const styles = await page.frameLocator('.win[data-ikey="name-picker:1"] iframe').locator('html').evaluate(() => Object.keys(NamePicker.styles).sort().join());
-    ok(styles === 'lotto,name,spotlight,wheel', `the Name Picker has all four of its styles offline (${styles})`);
+    ok(styles === 'groups,lotto,name,spotlight,wheel', `the Name Picker has all five of its styles offline (${styles})`);
     await page.screenshot({ path: OUT + '30-offline-all-widgets.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
@@ -2749,11 +2937,12 @@ const SUITES = [
     });
     // The marks About's text must show, in this order.
     const MARKS = ['[icons/gear-21.png "', SENTENCE, `21Board ${VERSION} (`, ' · Widget SDK protocol 1', 'Your work is stored only on this device.', 'License', '© 2026 Community Consolidated School District 21',
-      'Code', 'Apache 2.0', 'Docs', 'CC BY 4.0', 'Credits', 'Atkinson Hyperlegible', 'Andika', 'Excalifont', 'Crayon Libre', 'YouTube', '[icons/goat.png "'];
+      'Code', 'Apache 2.0', 'Docs', 'CC BY 4.0', 'Credits', 'Atkinson Hyperlegible', 'Andika', 'Excalifont', 'Crayon Libre', 'Weather data', 'YouTube', '[icons/goat.png "'];
     const inOrder = (text, marks) => { let at = -1; for (const m of marks) { const i = text.indexOf(m, at + 1); if (i < 0) return `“${m}” missing or out of order`; at = i; } return ''; };
     // (Each font and its license are names, on lines of their own: no end period. The trademark line is two sentences.)
     const CREDITS = ['Atkinson Hyperlegible by the Braille Institute / SIL Open Font License 1.1', 'Andika by SIL International / SIL Open Font License 1.1',
-      'Excalifont by Excalidraw / SIL Open Font License 1.1', 'Crayon Libre by GGBotNet / CC0 1.0', 'YouTube and Google Drive are trademarks of Google LLC. Vimeo is a trademark of Vimeo.com, Inc.'];
+      'Excalifont by Excalidraw / SIL Open Font License 1.1', 'Crayon Libre by GGBotNet / CC0 1.0', 'Weather data by Open-Meteo / CC BY 4.0',
+      'Weather data by the National Weather Service / Public domain', 'YouTube and Google Drive are trademarks of Google LLC. Vimeo is a trademark of Vimeo.com, Inc.'];
     // Settings opened on that side, with the groups named open (those that are there).
     const open = async (p, groups = [], side = 'left') => {
       await openSettings(p, [], side);
@@ -2783,7 +2972,7 @@ const SUITES = [
     ok(!miss && a.open && /^\[icons\/gear-21\.png "[^"]+"\]/.test(a.text) && /\[icons\/goat\.png "[^"]+"\]$/.test(a.text),
       `open, top to bottom: the 21 gear, the sentence, the version and the storage line, License, Credits, the goat at the very bottom (${miss || a.parts.length + ' parts'})`);
     ok(!!a && a.parts.includes(SENTENCE), `the sentence, exactly: “${SENTENCE}”`);
-    ok(!!a && a.credits.join(' | ') === CREDITS.join(' | '), `Credits: the four fonts with their makers and licenses, and the three video sites’ owners (${a && a.credits.join(' | ')})`);
+    ok(!!a && a.credits.join(' | ') === CREDITS.join(' | '), `Credits: the four fonts with their makers and licenses, the weather’s two sources, and the three video sites’ owners (${a && a.credits.join(' | ')})`);
     ok(!!a && a.imgs.length === 2 && a.imgs.map(i => i.alt).join() === '21 gear,Goat' && a.imgs.every(i => i.done && i.w > 0), `the two pictures load, each with a short alt text (${a && a.imgs.map(i => `${i.src} “${i.alt}” ${i.w}×${i.h}`).join(', ')})`);
     await page.screenshot({ path: OUT + 'about-open.png' });
 
@@ -3282,8 +3471,8 @@ const SUITES = [
     await check('Standard, the right corner’s panel');
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-right.png' });
     // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits on the screen. Where
-    // five columns would need four rows, it has six (since the Zones Check-In, 2026.11.20-1): a teacher's 16 tiles and
-    // Developer mode's 18 are three rows, all in view.
+    // five columns would need four rows, it has six (since the Zones Check-In, 2026.11.20-1): a teacher's 17 tiles (with
+    // Weather, 2026.11.24-3) are three rows, all in view. Developer mode's 19 are four, and the tiles scroll.
     await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(300);
     await openPicker('left');
     await check('200%');
@@ -3296,7 +3485,7 @@ const SUITES = [
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     await openPicker('left');
     fit = await fitNow();
-    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && fit.n === 16 && fit.rows === 3 && !fit.scrolls, `at 200% a teacher’s ${fit.n} tiles, three rows of six, are all in view without scrolling (${fit.rows} rows; top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
+    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && fit.n === 17 && fit.rows === 3 && !fit.scrolls, `at 200% a teacher’s ${fit.n} tiles, three rows of six, are all in view without scrolling (${fit.rows} rows; top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
 
@@ -4074,6 +4263,182 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  // ---- 2026.11.24-1: a row of short choices in a window menu (numbers, such as the Name Picker's Names at a time).
+  ['Window menu: a row of choices', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    await page.evaluate(() => window.__board21.openWidget('notes'));
+    await eventually(() => page.evaluate(() => { const w = window.__board21.state.wins.get('notes:1'); return !!(w && w.connected && w.menuItems.length); }));
+    await page.waitForTimeout(300);
+    const f = page.frameLocator('.win[data-ikey="notes:1"] iframe');
+    const ROW = (n, on, label = 'Names at a time') => ({ id: 'winners', label, choices: Array.from({ length: n }, (_, i) => ({ id: 'winners:' + (i + 1), label: String(i + 1), checked: i + 1 === on })) });
+    const MENU6 = [{ heading: true, label: 'Names at a time' }, ROW(6, 3), { separator: true }, { id: 'other', label: 'Other' }];
+    // The test's menu, in place of Notes' own (which Notes would otherwise send again, as when the theme changes), and
+    // every id the widget hears from it.
+    const setMenu = items => f.locator('body').evaluate((b, items) => {
+      if (!window.__got) {
+        window.__got = []; Board21.on('menu', id => window.__got.push(id));
+        const set = Board21.menu.set; window.__set = items => set.call(Board21.menu, items); Board21.menu.set = () => Promise.resolve();
+      }
+      return window.__set(items);
+    }, items);
+    const got = () => f.locator('body').evaluate(() => window.__got.slice());
+    const closeMenu = async () => { if (await page.locator('#menu.open').count()) { await page.keyboard.press('Escape'); await page.waitForTimeout(200); } };
+    const openMenu = async () => { await closeMenu(); await page.click('.win[data-ikey="notes:1"] .win-label'); await page.waitForTimeout(300); };
+    const look = () => page.evaluate(() => {
+      const row = document.querySelector('#menu .menu-choices'), ui = window.__board21.zoom.ui || 1;
+      const sw = sel => { const e = document.querySelector(sel); return e ? getComputedStyle(e).boxShadow : null; };
+      return {
+        row: row && { role: row.getAttribute('role'), name: row.getAttribute('aria-label') },
+        bs: [...document.querySelectorAll('#menu .menu-choices button')].map(b => {
+          const cs = getComputedStyle(b), r = b.getBoundingClientRect();
+          return { text: b.textContent, id: b.dataset.id, role: b.getAttribute('role'), checked: b.getAttribute('aria-checked'), name: b.getAttribute('aria-label'),
+            w: r.width / ui, h: r.height / ui, top: r.top / ui, radius: cs.borderRadius, bg: cs.backgroundColor, color: cs.color, shadow: cs.boxShadow, fs: cs.fontSize, fw: cs.fontWeight };
+        }),
+        markup: document.querySelectorAll('#menu b, #menu img, #menu i, #menu script').length,
+        swatchOn: sw('#menu .swatch[aria-checked="true"]'), swatchOff: sw('#menu .swatch[aria-checked="false"]'), swatchW: (() => { const e = document.querySelector('#menu .swatch'); return e ? e.getBoundingClientRect().width / ui : 0; })(),
+        tokens: (() => { const t = document.createElement('i'); document.getElementById('menu').appendChild(t); const v = n => { t.style.color = `var(${n})`; return getComputedStyle(t).color; }; const out = { primary: v('--primary'), text: v('--text'), hover: v('--hover-bg') }; t.remove(); return out; })(),
+        menuW: document.getElementById('menu').getBoundingClientRect().width / ui
+      };
+    });
+    // Notes' own menu, for its swatches: a choice looks like one.
+    const swatches = {};
+    for (const theme of ['light', 'dark']) {
+      if (theme === 'dark') await setTheme(page, 'dark');
+      await openMenu(); swatches[theme] = await look(); await closeMenu();
+    }
+    await setTheme(page, 'light');
+
+    await setMenu(MENU6); await page.waitForTimeout(200);
+    for (const theme of ['light', 'dark']) {
+      if (theme === 'dark') await setTheme(page, 'dark');
+      await openMenu();
+      const L = await look(), on = L.bs.filter(b => b.checked === 'true'), off = L.bs.filter(b => b.checked !== 'true');
+      if (theme === 'light') {
+        ok(L.bs.length === 6 && L.bs.map(b => b.text).join() === '1,2,3,4,5,6' && L.bs.every(b => Math.abs(b.top - L.bs[0].top) < 0.5),
+          `a row of 6 choices: 6 circles with their labels, on one line (${L.bs.map(b => b.text + '@' + Math.round(b.top)).join(' ')}; the menu ${Math.round(L.menuW)} px wide)`);
+        const sw = swatches.light.swatchW;
+        ok(sw > 20 && L.bs.length === 6 && L.bs.every(b => Math.abs(b.w - sw) < 0.6 && Math.abs(b.h - sw) < 0.6 && b.radius === '50%' && b.fs === '16px' && b.fw === '650'),
+          `each a circle the size of Notes’ swatches, ${sw} px, its label 16 px at weight 650 (${L.bs.map(b => b.w.toFixed(1) + '×' + b.h.toFixed(1) + ' ' + b.fs + ' ' + b.fw).join(', ')})`);
+        ok(L.row && L.row.role === 'group' && L.row.name === 'Names at a time' && L.bs.every(b => b.role === 'menuitemradio' && b.name === b.text && b.id === 'winners:' + b.text)
+          && on.length === 1 && on[0].text === '3' && off.every(b => b.checked === 'false'),
+          `the row is a group named “Names at a time”; each choice a menuitemradio named by its label, 3 checked (${JSON.stringify(L.row)}, ${L.bs.map(b => b.role + ' ' + b.name + ' ' + b.checked).join(', ')})`);
+        ok(await page.getByRole('group', { name: 'Names at a time' }).getByRole('menuitemradio', { name: '3', checked: true }).count() >= 1,
+          'so a screen reader says “Names at a time, 3, checked”');
+      }
+      const S = swatches[theme];
+      ok(on.length === 1 && on[0].shadow === S.swatchOn && on[0].color === L.tokens.primary && off.every(b => b.shadow === S.swatchOff && b.color === L.tokens.text && b.bg === L.tokens.hover),
+        `${theme}: the chosen one has the swatch’s ring and its label in the accent; the others the swatch’s faint edge, on the hover color (chosen: ${on[0] && on[0].shadow} / swatch: ${S.swatchOn}; others: ${off[0] && off[0].shadow} / ${S.swatchOff})`);
+      await closeMenu();
+    }
+    await setTheme(page, 'light');
+
+    // A tap sends its id, as a swatch's does; the arrow keys, Home, and End go through the choices.
+    await openMenu();
+    await page.click('#menu [data-id="winners:4"]');
+    ok(await eventually(async () => (await got()).includes('winners:4')) && await page.locator('#menu.open').count() === 0, `tapping 4 sends “winners:4” to the widget, and the menu closes (${(await got()).join(', ')})`);
+    await page.focus('.win[data-ikey="notes:1"] .win-label'); await page.keyboard.press('Enter'); await page.waitForTimeout(250);
+    const at = () => page.evaluate(() => { const a = document.activeElement; return a.closest('#menu') ? (a.querySelector('.label') || a).textContent.trim() : a.tagName; });
+    const walk = [await at()];
+    for (const key of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'End', 'Home', 'ArrowUp', 'ArrowDown']) { await page.keyboard.press(key); walk.push(await at()); }
+    ok(walk.join(', ') === '1, 2, 3, 2, Close, 1, Close, 1', `the arrow keys, Home, and End move through the choices (${walk.join(', ')})`);
+    // The keyboard's ring shows on the chosen one too: outside its ring, not under it.
+    const ringOf = () => page.evaluate(() => {
+      const a = document.activeElement, cs = getComputedStyle(a);
+      const reach = Math.max(0, ...cs.boxShadow.split(/,(?![^(]*\))/).filter(s => !/inset/.test(s)).map(s => parseFloat((s.match(/-?[\d.]+px/g) || [])[3]) || 0));
+      return { label: a.textContent, shown: a.matches(':focus-visible') && cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2, offset: parseFloat(cs.outlineOffset), reach };
+    });
+    await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown');
+    const chosenRing = await ringOf();
+    await page.keyboard.press('ArrowUp');
+    const otherRing = await ringOf();
+    await page.keyboard.press('ArrowUp');
+    ok(chosenRing.label === '3' && chosenRing.shown && chosenRing.reach >= 5 && chosenRing.offset > chosenRing.reach && otherRing.label === '2' && otherRing.shown && otherRing.offset > otherRing.reach,
+      `the keyboard’s ring shows outside the chosen one’s ring (3: ${chosenRing.offset} px out, its ring ${chosenRing.reach} px; 2: ${otherRing.offset} px out, no ring)`);
+    for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
+    const six = await at(); await page.keyboard.press('ArrowDown');
+    ok(six === '6' && await at() === 'Other', `and on past the last choice (${six}, then ${await at()})`);
+    await page.keyboard.press('ArrowUp'); await page.keyboard.press('Enter');
+    ok(await eventually(async () => (await got()).slice(-1)[0] === 'winners:6'), 'Enter on a choice sends its id');
+    await closeMenu();
+
+    // At most 12 in a row; a label shows at most 3 characters, always as text.
+    await setMenu([ROW(15, 1)]); await page.waitForTimeout(200); await openMenu();
+    let L = await look();
+    ok(L.bs.length === 12 && L.bs.map(b => b.text).join() === '1,2,3,4,5,6,7,8,9,10,11,12', `15 choices: the first 12 show (${L.bs.length})`);
+    await setMenu([{ id: 'r', label: '<img src=x onerror="window.top.__pwned = 1">', choices: [{ id: 'a', label: '1234' }, { id: 'b', label: 'Seven', checked: true }, { id: 'c', label: '<b>bold</b>' }, { id: 'd', label: '<i' }, { id: '', label: 'no id' }, { id: 'e', label: '' }, { id: 'f', label: '   ' }, { id: 'g' }] }]);
+    await page.waitForTimeout(200); await openMenu();
+    L = await look();
+    ok(L.bs.map(b => b.text).join('|') === '123|Sev|<b>|<i' && L.bs.map(b => b.name).join('|') === '123|Sev|<b>|<i',
+      `a label of 4 or more characters shows 3 (“1234” → ${L.bs[0] && L.bs[0].text}, “Seven” → ${L.bs[1] && L.bs[1].text}); a choice with no id or no label is left out (${L.bs.map(b => b.text).join('|')})`);
+    ok(!L.markup && L.row && L.row.name === '<img src=x onerror="window.top.__pwned = 1">' && !(await page.evaluate(() => window.__pwned)),
+      `labels with markup show as text, never markup (${L.markup} elements; the row named ${L.row && L.row.name})`);
+    await closeMenu();
+    const items = await page.evaluate(() => window.__board21.state.wins.get('notes:1').menuItems);
+    ok(items.length === 1 && items[0].choices.length === 4 && items[0].choices.every(c => typeof c.id === 'string' && c.id.length <= 64 && typeof c.label === 'string' && [...c.label].length <= 3 && typeof c.checked === 'boolean'),
+      `the board keeps only ids, short labels and checked (${JSON.stringify(items[0])})`);
+    // A wide label of 3 characters gets smaller letters, so all of it shows, in a menu of any size. One that fits keeps
+    // its size. Every choice is the size of a swatch in the same menu.
+    const DAYS = { id: 'day', label: 'Day', choices: ['Mon', 'Wed', 'XXL', 'WWW', '12', '7'].map((l, i) => ({ id: 'day:' + i, label: l, checked: i === 1 })) };
+    const labels = () => page.evaluate(() => ({ cls: document.getElementById('menu').className.replace(/\b(menu|open)\b/g, '').trim() || 'roomy',
+      sw: (e => e ? e.getBoundingClientRect().width : 0)(document.querySelector('#menu .swatch')),
+      bs: [...document.querySelectorAll('#menu .menu-choice')].map(b => { const r = document.createRange(); r.selectNodeContents(b);
+        return { text: b.textContent, w: r.getBoundingClientRect().width, room: b.getBoundingClientRect().width, fs: parseFloat(getComputedStyle(b).fontSize) }; }) }));
+    // (More items above the row make the menu compact, then tight: the first menu of each kind is checked.)
+    const kinds = [], KINDS = ['roomy', 'compact', 'compact tight'];
+    for (let pad = 0; pad <= 22 && kinds.length < KINDS.length; pad = pad ? pad + 1 : 10) {   // (22 and the two rows: the 24 a menu holds)
+      await setMenu(Array.from({ length: pad }, (_, i) => ({ id: 'i' + i, label: 'Item ' + i })).concat([DAYS, { id: 'col', label: 'Color', swatches: [{ id: 'col:y', label: 'Yellow', color: '#fef08a' }] }])); await page.waitForTimeout(200); await openMenu();
+      const F = await labels(), fs = t => (F.bs.find(b => b.text === t) || {}).fs;
+      if (F.cls !== KINDS[kinds.length]) { await closeMenu(); continue; }
+      kinds.push(F.cls);
+      ok(F.bs.length === 6 && F.bs.every(b => b.w <= b.room * 0.8 + 0.5) && fs('12') === fs('7') && fs('WWW') < fs('7'),
+        `${F.cls} menu: every label inside its circle, a wide one in smaller letters (${F.bs.map(b => `${b.text} ${b.w.toFixed(1)}/${b.room.toFixed(1)} px at ${b.fs.toFixed(1)}`).join(', ')})`);
+      ok(F.sw > 20 && F.bs.every(b => Math.abs(b.room - F.sw) < 0.6), `${F.cls} menu: each choice the size of the swatch beside it (${F.bs[0] && F.bs[0].room.toFixed(1)} px, the swatch ${F.sw.toFixed(1)} px)`);
+      await closeMenu();
+    }
+    ok(kinds.join() === 'roomy,compact,compact tight', `in a roomy, a compact, and a tight menu (${kinds.join(' | ')})`);
+    await setMenu([{ id: 'r', label: 'Long', choices: [{ id: 'x'.repeat(200), label: '9' }] }]); await page.waitForTimeout(200);
+    ok((await page.evaluate(() => window.__board21.state.wins.get('notes:1').menuItems[0].choices[0].id.length)) === 64, 'an id is cut to 64 characters');
+    // The row counts as one of the 24 items.
+    await setMenu(Array.from({ length: 23 }, (_, i) => ({ id: 'i' + i, label: 'Item ' + i })).concat([ROW(6, 1), { id: 'late', label: 'Late' }])); await page.waitForTimeout(200);
+    const many = await page.evaluate(() => window.__board21.state.wins.get('notes:1').menuItems);
+    ok(many.length === 24 && !!many[23].choices && many[23].choices.length === 6, `the row is one of the 24 items (${many.length}; the 24th ${many[23] && many[23].choices ? 'is the row' : 'isn’t'})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+
+    // Outside the board: the SDK's stand-in menu lists each choice as an option, with ✓ on the chosen one.
+    const sctx = await browser.newContext({ viewport: { width: 900, height: 600 } });
+    const sp = await sctx.newPage(); sp.on('pageerror', e => errors.push('[standalone] ' + e.message));
+    await sp.goto(BASE + 'widgets/notes/index.html#b21-bare');
+    await sp.waitForFunction(() => window.Board21 && Board21.context && Board21.context.standalone);
+    await sp.evaluate(MENU6 => { window.__got = []; Board21.on('menu', id => window.__got.push(id)); return Board21.menu.set(MENU6); }, MENU6);
+    const opts = await sp.evaluate(() => [...document.querySelectorAll('select option')].map(o => o.textContent));
+    ok(opts.includes('Names at a time: 1') && opts.includes('✓ Names at a time: 3') && opts.filter(o => /^(✓ )?Names at a time: \d$/.test(o)).length === 6,
+      `the standalone menu lists “Names at a time: 3”, with ✓ on the chosen one (${opts.join(' | ')})`);
+    await sp.selectOption('select', 'winners:5');
+    ok(await eventually(() => sp.evaluate(() => window.__got.includes('winners:5'))), 'choosing one there sends its id');
+    const sdkV = await sp.evaluate(() => Board21.version), atLeast = (v, w) => { const a = v.split('.').map(Number), b = w.split('.').map(Number); return a[0] > b[0] || (a[0] === b[0] && (a[1] > b[1] || (a[1] === b[1] && a[2] >= b[2]))); };
+    ok(atLeast(sdkV, '1.5.0'), `the SDK that knows a row of choices is 1.5.0 or later (${sdkV})`);
+    await sctx.close();
+
+    // The widget dev window warns about a row the board would cut.
+    const dctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
+    const dp = await dctx.newPage();
+    await dp.goto(BASE + 'sdk/lab.html'); await dp.waitForTimeout(400);
+    const menu13 = `Board21.menu.set([{ heading: true, label: 'Names at a time' }, { id: 'n', label: 'Names at a time', choices: Array.from({ length: 11 }, (_, i) => ({ id: 'n:' + i, label: String(i + 1) })).concat([{ id: 'n:four', label: 'Four' }, { id: 'n:blank', label: ' ' }]) }]);`;
+    const src = DEV_WIDGET(BASE + 'sdk/board21.js').replace(/Board21\.menu\.set\(\[\{ id: 'add'[^\n]*\]\);/, menu13);
+    await dp.fill('#code', src); await dp.click('#run');
+    const titles = () => dp.evaluate(() => window.__board21DevWindow ? window.__board21DevWindow.state().checks.map(c => c.title) : []);
+    ok(src.includes(menu13) && await eventually(async () => (await titles()).some(t => /13 choices/.test(t)), 10000) && (await titles()).some(t => /Four/.test(t) && /3 characters/.test(t))
+      && (await titles()).some(t => t === 'Choice “n:blank” has no label'),
+      `the dev window’s Checks warn about 13 choices in a row, a label longer than 3 characters, and a choice with no label (${(await titles()).join(' | ')})`);
+    await dctx.close();
+    const aiPrompt = fs.readFileSync(path.join(ROOT, 'docs', 'AI-PROMPT.md'), 'utf8');
+    ok(/- \[ \] Menu: [^\n]*swatches `#hex` and choices of 3 characters or fewer/.test(aiPrompt), 'docs/AI-PROMPT.md’s checklist has the row of choices');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
   ['Name Picker: two students with one name, typing is kept, adding a name', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
     const page = await ctx.newPage();
@@ -4129,13 +4494,15 @@ const SUITES = [
     const saved = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
     const conf = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
     const menu = async (id, p = page, ik = 'name-picker:1') => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
-    // The window's menu as the board has it: "Label", "Label ✓" (ticked), "Label (off)" (can't be used), "# Heading", "—" (a line).
+    // The window's menu as the board has it: "Label", "Label ✓" (ticked), "Label (off)" (can't be used), "# Heading", "—" (a line),
+    // "[1 ✓ 2 3]" (a row of choices).
     const items = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems
-      .map(i => i.separator ? '—' : i.heading ? '# ' + i.label : i.label + (i.checked ? ' ✓' : '') + (i.disabled ? ' (off)' : '')).join(' | '), ik);
-    const MENU = (style, n, { noRepeats = true, startOver = false, sound = false, quick = false } = {}) => ['# Pick with',
-      ...[['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto']].map(([id, label]) => label + (id === style ? ' ✓' : '')),
-      '# Winners each time', ...[1, 2, 3, 4, 5].map(k => k + (k === n ? ' ✓' : '')), '—',
-      'No repeats' + (noRepeats ? ' ✓' : ''), 'Start over' + (startOver ? '' : ' (off)'), 'Edit names', 'Sound' + (sound ? ' ✓' : ''), 'Quick' + (quick ? ' ✓' : '')].join(' | ');
+      .map(i => i.separator ? '—' : i.heading ? '# ' + i.label : i.choices ? '[' + i.choices.map(c => c.label + (c.checked ? ' ✓' : '')).join(' ') + ']'
+        : i.label + (i.checked ? ' ✓' : '') + (i.disabled ? ' (off)' : '')).join(' | '), ik);
+    const MENU = (style, n, { noRepeats = true, startOver = false, sound = false, quick = false } = {}) => ['Edit names', '—', '# Pick with',
+      ...[['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto'], ['groups', 'Groups']].map(([id, label]) => label + (id === style ? ' ✓' : '')),
+      '# Names at a time', '[' + [1, 2, 3, 4, 5, 6].map(k => k + (k === n ? ' ✓' : '')).join(' ') + ']', '—',
+      'No repeats' + (noRepeats ? ' ✓' : ''), 'Start over' + (startOver ? '' : ' (off)'), 'Sound' + (sound ? ' ✓' : ''), 'Quick' + (quick ? ' ✓' : '')].join(' | ');
     const showing = (p = page, ik) => np(p, ik).locator('body').evaluate(b => b.classList.contains('showing'));
     const idle = (p = page, ik) => eventually(async () => !(await showing(p, ik)), 12000);
     const text = (sel, p = page, ik) => np(p, ik).locator(sel).textContent();
@@ -4155,7 +4522,7 @@ const SUITES = [
     // ---- A new Name Picker opens as the Spinning wheel; the menu has everything (option A).
     await page.evaluate(() => window.__board21.openWidget('name-picker'));
     ok(await eventually(async () => ((await conf()) || {}).style === 'wheel'), `a new Name Picker opens as the Spinning wheel, and saves that (${JSON.stringify(await conf())})`);
-    ok(await eventually(async () => await items() === MENU('wheel', 1)), 'its menu: “Pick with” the four styles, “Winners each time” 1 to 5, then No repeats, Start over, Edit names, Sound, Quick: ' + await items());
+    ok(await eventually(async () => await items() === MENU('wheel', 1)), 'its menu: Edit names on top, “Pick with” the five ways, “Names at a time” 1 to 6 in a row, then No repeats, Start over, Sound, Quick: ' + await items());
     await np().locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan');
     await np().locator('#done').click(); await page.waitForTimeout(300);
     ok(await text('#status') === '6 of 6 left' && await text('#go') === 'Pick a name' && await np().locator('#round').isHidden(), 'with names: “6 of 6 left”, “Pick a name”, and no Start over yet');
@@ -4209,7 +4576,7 @@ const SUITES = [
 
     // ---- Several winners in Big name. No repeats across picks; fewer left than asked.
     await menu('winners:3');
-    ok((await conf()).winners === 3 && await text('#go') === 'Pick 3' && await items() === MENU('name', 3), 'Winners each time: 3 is saved, ticked, and the button says “Pick 3”');
+    ok((await conf()).winners === 3 && await text('#go') === 'Pick 3' && await items() === MENU('name', 3), 'Names at a time: 3 is saved, ticked, and the button says “Pick 3”');
     let t0 = Date.now();
     const p1 = await pickNow();
     const rolling = await np().locator('.bn-list').getAttribute('aria-hidden');
@@ -4289,7 +4656,7 @@ const SUITES = [
     await dl.saveAs(OUT + 'name-picker-template.21board');
     const tpl = JSON.parse(fs.readFileSync(OUT + 'name-picker-template.21board', 'utf8')), tp = tpl.instances.find(i => i.widgetId === 'name-picker');
     ok(tpl.kind === 'template' && tp && tp.data === null && tp.config.style === 'name' && tp.config.winners === 3 && tp.config.noRepeats === false && !JSON.stringify(tpl).includes('Secretname'),
-      `a template keeps the style and Winners each time, not the names (${JSON.stringify(tp && tp.config)})`);
+      `a template keeps the style and Names at a time, not the names (${JSON.stringify(tp && tp.config)})`);
 
     // ---- A board from a file: pickers from before styles keep Big name; older content loads; junk falls back.
     const win = (instance, data, config) => ({ widgetId: 'name-picker', instance, open: true, z: instance, rect: { x: 20 + (instance - 1) * 430, y: 20, w: 420, h: 360 }, data, config });
@@ -4297,19 +4664,24 @@ const SUITES = [
       win(1, { names: ['Ava', 'Leo', 'Mia'], left: ['Leo', 'Mia'], current: 'Ava' }, null),
       win(2, null, { noRepeats: false }),
       win(3, { names: ['Ava', 7, '  ', 'Leo', null], left: ['Zed', 'Leo', 5, 'Leo'], picked: ['Leo', 'Zed', {}, 'Leo', 'Ava', 'Ava'], pickId: '<b>x</b>', current: 3 },
-        { style: 'disco', winners: 9, quick: 'yes', sound: 1, noRepeats: 'no' })
+        { style: 'disco', winners: 7, quick: 'yes', sound: 1, noRepeats: 'no' }),
+      win(4, { names: ['Ava', 'Leo', 'Mia', 'Noah', 'Zoe', 'Ethan', 'Sofia', 'Liam'], left: ['Sofia', 'Liam'], picked: ['Mia', 'Ava', 'Zoe', 'Leo', 'Ethan', 'Noah'], pickId: 'mwp2g7b7-pg6utj' },
+        { style: 'name', winners: 6, noRepeats: true })
     ] };
     fs.writeFileSync(OUT + 'name-pickers.21board', JSON.stringify(file));
     await page.setInputFiles('#import-input', OUT + 'name-pickers.21board'); await page.waitForTimeout(300);
     await page.click('#modal .btn:has-text("Replace this page")');
-    ok(await eventually(async () => (await Promise.all([1, 2, 3].map(n => items(page, 'name-picker:' + n).catch(() => '')))).every(Boolean)), 'the board from the file opens with its three pickers');
+    ok(await eventually(async () => (await Promise.all([1, 2, 3, 4].map(n => items(page, 'name-picker:' + n).catch(() => '')))).every(Boolean)), 'the board from the file opens with its four pickers');
     await page.waitForTimeout(500);
     ok(JSON.stringify(await bigNames(page, 'name-picker:1')) === '["Ava"]' && await text('#status', page, 'name-picker:1') === '2 of 3 left' && await items(page, 'name-picker:1') === MENU('name', 1, { startOver: true })
       && await conf(page, 'name-picker:1') === null, 'one with names from before styles (only `current`) keeps Big name and shows its pick: Ava, 2 of 3 left');
     ok(await items(page, 'name-picker:2') === MENU('name', 1, { noRepeats: false }) && await np(page, 'name-picker:2').locator('#list').isVisible(),
       'one with settings from before styles and no names keeps Big name too (and asks for names)');
     ok(await items(page, 'name-picker:3') === MENU('name', 1, { startOver: true }) && JSON.stringify(await bigNames(page, 'name-picker:3')) === '["Leo","Ava"]'
-      && await text('#status', page, 'name-picker:3') === '1 of 2 left', 'junk in a file falls back: Big name, 1 winner, Quick and Sound off; only names in the list, each student once');
+      && await text('#status', page, 'name-picker:3') === '1 of 2 left', 'junk in a file falls back: Big name, 1 winner (for 7), Quick and Sound off; only names in the list, each student once');
+    ok(await items(page, 'name-picker:4') === MENU('name', 6, { startOver: true }) && JSON.stringify(await bigNames(page, 'name-picker:4')) === '["Mia","Ava","Zoe","Leo","Ethan","Noah"]'
+      && await np(page, 'name-picker:4').locator('.bn-num').count() === 6 && await fits(page, 'name-picker:4') && await text('#status', page, 'name-picker:4') === '2 of 8 left'
+      && await text('#go', page, 'name-picker:4') === 'Pick the last 2', `six at a time from a file: 6 ticked in the row, its six winners numbered on the stage, “2 of 8 left”, “Pick the last 2” (${await items(page, 'name-picker:4')})`);
     st = await pickNow(page, 'name-picker:3'); await idle(page, 'name-picker:3');
     ok(JSON.stringify(st.names) === '["Ava","Leo"]' && JSON.stringify(st.picked) === '["Leo"]' && !st.left.length && st.current === 'Leo' && /^[a-z0-9]+-[a-z0-9]+$/.test(st.pickId),
       `and its next pick is saved clean (${JSON.stringify(st)})`);
@@ -4442,18 +4814,596 @@ const SUITES = [
       }
       return { over, clock: board.some(c => c.what === 'clock'), round: own.some(e => e.id === 'round' && !e.hidden), stack: await np(cp).locator('.foot').evaluate(f => f.classList.contains('stack')) };
     };
-    const seenCorners = [];
-    for (const [w, h, shape, sc] of [[1920, 1080, '16:9', 0.8], [1920, 1080, '16:9', 1.75], [1920, 1080, '16:9', 2], [1366, 768, '16:9', 1.25], [1366, 768, '16:9', 2], [1366, 768, 'free', 1.75]]) {
+    // The line under the stage (2026.11.24-1): the status in the middle of its space, wrapping onto even lines, and Start
+    // over in the middle of its own. The foot stacks only when the status would need more than two lines beside the
+    // main button, or Start over wouldn't fit on one; stacked, each is in the middle of its half.
+    const footLook = () => np(cp).locator('html').evaluate(() => {
+      const foot = document.querySelector('.foot'), go = document.getElementById('go'), st = document.getElementById('status'), rd = document.getElementById('round');
+      const box = e => e.getBoundingClientRect(), fr = box(foot), gr = box(go), sr = box(st), rr = box(rd), cs = getComputedStyle(st), lh = parseFloat(cs.lineHeight);
+      const stack = foot.classList.contains('stack'), roundOn = !rd.hidden && rr.width > 0, gap = parseFloat(getComputedStyle(foot).columnGap) || 0;
+      // The column beside the main button, and what the status and Start over would need there.
+      const col = (fr.width - gr.width - 2 * gap) / 2;
+      // (A copy, in the same letters: it has no id, so it takes them from the original.)
+      const probe = (e, css) => { const c = e.cloneNode(true), k = getComputedStyle(e); c.removeAttribute('id'); c.hidden = false;
+        Object.assign(c.style, { position: 'absolute', left: '0', top: '0', visibility: 'hidden', fontSize: k.fontSize, fontFamily: k.fontFamily, fontWeight: k.fontWeight, lineHeight: k.lineHeight, letterSpacing: k.letterSpacing, padding: k.padding }, css);
+        document.body.appendChild(c); const r = c.getBoundingClientRect(); c.remove(); return r; };
+      const need = probe(st, { display: 'block', width: 'max-content', maxWidth: Math.max(0, col) + 'px', textWrap: 'balance', whiteSpace: 'normal' });
+      const needLines = !st.textContent ? 0 : col < 1 ? 99 : Math.round(need.height / lh);
+      const roundW = roundOn ? probe(rd, { whiteSpace: 'nowrap', width: 'max-content' }).width : 0;
+      const halves = [[fr.left, fr.left + (fr.width - gap) / 2], [fr.right - (fr.width - gap) / 2, fr.right]];
+      const cols = stack ? (roundOn ? halves : [[fr.left, fr.right]]) : [[fr.left, gr.left - gap], [gr.right + gap, fr.right]];
+      const mid = c => (c[0] + c[1]) / 2, off = (r, c) => Math.round(Math.abs((r.left + r.right) / 2 - mid(c)) * 10) / 10;
+      return { stack, roundOn, col: Math.round(col), needLines, roundW: Math.round(roundW), lines: st.textContent ? Math.round(sr.height / lh) : 0, text: st.textContent,
+        statusOff: st.textContent ? off(sr, cols[0]) : 0, roundOff: roundOn ? off(rr, cols[cols.length - 1]) : 0,
+        align: cs.textAlign, wrap: cs.textWrap || cs.textWrapStyle || '', goMid: Math.round(Math.abs((gr.left + gr.right) / 2 - innerWidth / 2)), inside: sr.left >= fr.left - 0.5 && sr.right <= fr.right + 0.5 };
+    });
+    const footOk = f => f.statusOff <= 1.5 && f.roundOff <= 1.5 && f.align === 'center' && f.wrap === 'balance' && f.goMid <= 1.5 && f.inside
+      && f.stack === (f.needLines > 2 || (f.roundOn && f.roundW > f.col + 0.5)) && (f.stack || f.lines <= 2);
+    const seenCorners = [], feet = [];
+    const SIZES = [[1920, 1080, '16:9', 0.8], [1920, 1080, '16:9', 1.75], [1920, 1080, '16:9', 2], [1366, 768, '16:9', 1.25], [1366, 768, '16:9', 2], [1366, 768, 'free', 1.75]];
+    for (const [w, h, shape, sc] of SIZES) {
       await cp.setViewportSize({ width: w, height: h });
       await cp.evaluate(([shape, sc]) => { window.__board21.setBoardShape(shape); window.__board21.setBoardScale(sc); }, [shape, sc]);
       await cp.waitForTimeout(700);
-      const u = await underCorners();
+      const u = await underCorners(), f = await footLook();
       seenCorners.push(`${w}×${h} ${shape} ${sc * 100}%: ${u.over.length ? u.over.join(', ') : 'clear'}${u.stack ? ' (stacked)' : ''}`);
+      feet.push(f);
       ok(u.clock && u.round && !u.over.length && (sc > 1 || !u.stack), `${seenCorners[seenCorners.length - 1]}: the clock is there, and nothing of the picker’s is under it or ▦${sc > 1 ? '' : ', all on one row'}`);
+      ok(footOk(f), `${w}×${h} ${shape} ${sc * 100}%: “${f.text}” in the middle of its space (${f.statusOff} px off, ${f.align}, ${f.wrap}, ${f.lines} line${f.lines === 1 ? '' : 's'}), Start over in the middle of its own (${f.roundOff} px off), the main button in the middle; ${f.stack ? 'stacked' : 'one row'}, as it needs (${f.needLines} lines beside the button, Start over ${f.roundW} of ${f.col} px)`);
       if (w === 1920 && sc === 1.75) await cp.screenshot({ path: OUT + 'name-picker-corners-175.png' });
     }
+    ok(feet.some(f => f.stack), `the foot still stacks where the board’s corners leave too little room (${feet.map(f => f.stack ? 'stacked' : 'row').join(', ')})`);
+    // Groups: “4 groups of 6 or 7” goes onto two even lines beside the main button before the foot stacks.
+    await menu('edit', cp);
+    await np(cp).locator('#list').fill(['Ava', 'Ben', 'Carlos', 'Dana', 'Eli', 'Fatima', 'Gus', 'Hana', 'Ivy', 'Jamal', 'Kai', 'Lena', 'Mateo', 'Nora', 'Omar', 'Priya', 'Quinn', 'Rosa', 'Sam', 'Tariq', 'Uma', 'Vic', 'Wen', 'Xavier', 'Zoe'].join('\n'));
+    await np(cp).locator('#done').click(); await cp.waitForTimeout(300);
+    await menu('style:groups', cp); await menu('groups:4', cp); await menu('quick', cp);
+    await np(cp).locator('#go').click(); await idle(cp);
+    const gfeet = [];
+    for (const [w, h, shape, sc] of SIZES.concat([[1366, 768, '16:9', 1.5], [1366, 768, '16:9', 1.75], [1920, 1080, '16:9', 1.5]])) {
+      await cp.setViewportSize({ width: w, height: h });
+      await cp.evaluate(([shape, sc]) => { window.__board21.setBoardShape(shape); window.__board21.setBoardScale(sc); }, [shape, sc]);
+      await cp.waitForTimeout(700);
+      const u = await underCorners(), f = await footLook();
+      gfeet.push(`${w}×${h} ${shape} ${sc * 100}%: ${f.lines} line${f.lines === 1 ? '' : 's'}${f.stack ? ', stacked' : ''}`);
+      ok(f.text === '4 groups of 6 or 7' && !u.over.length && footOk(f), `Groups, ${gfeet[gfeet.length - 1]}: “${f.text}” in the middle of its space (${f.statusOff} px off), clear of the corners, stacked only if it needs more than two lines (${f.needLines})`);
+      if (f.lines === 2 && !f.stack && !gfeet.shot) { gfeet.shot = true; await cp.screenshot({ path: OUT + 'name-picker-foot-two-lines.png' }); }
+    }
+    ok(gfeet.some(x => /: 2 lines$/.test(x)), `“4 groups of 6 or 7” wraps onto two lines beside the main button before the foot stacks (${gfeet.join('; ')})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await cctx.close();
+
+    // ---- Six at a time, in every way to pick: six winners, saved, shown, and announced, each show done within 10 s
+    // (4 s with Quick: the host's own limits, so a show that runs over ends there instead, and fails here).
+    errors.length = 0;
+    const xctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const xp = await xctx.newPage(); watch(xp, 'six');
+    await xp.goto(BASE); await boardUp(xp); await freeBoard(xp);
+    await xp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(xp)) || {}).style === 'wheel');
+    await xp.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 760, h: 560 }));
+    const TWELVE = ['Ava', 'Leo', 'Mia', 'Noah', 'Zoe', 'Ethan', 'Sofia', 'Liam', 'Amara', 'Kenji', 'Diego', 'Fatima'];
+    await np(xp).locator('#list').fill(TWELVE.join('\n')); await np(xp).locator('#done').click(); await xp.waitForTimeout(300);
+    await menu('winners:6', xp); await menu('norepeat', xp);
+    ok((await conf(xp)).winners === 6 && await text('#go', xp) === 'Pick 6' && await items(xp) === MENU('wheel', 6, { noRepeats: false }),
+      `Names at a time: 6 is saved, ticked in the row, and the button says “Pick 6” (${await items(xp)})`);
+    const SHOWN = { name: '.bn-name', wheel: '.wheel-nm', spotlight: '.spotlight-cname', lotto: '.lotto-name .lotto-text' };
+    for (const quick of [false, true]) {
+      if (quick) await menu('quick', xp);
+      for (const style of ['wheel', 'name', 'spotlight', 'lotto']) {
+        if ((await conf(xp)).style !== style) await menu('style:' + style, xp);
+        await idle(xp); await xp.waitForTimeout(200);
+        const t0 = Date.now(), p6 = await pickNow(xp);
+        await idle(xp);
+        const took = Date.now() - t0;
+        const onStage = await np(xp).locator('html').evaluate((h, sel) => [...document.querySelectorAll(sel)].map(e => e.textContent), SHOWN[style]);
+        ok(p6.picked.length === 6 && new Set(p6.picked).size === 6 && p6.picked.every(n => TWELVE.includes(n)) && sameList(onStage, p6.picked)
+          && await eventually(async () => await said(xp) === 'Picked: ' + p6.picked.join(', '), 2000) && took < (quick ? 3800 : 9500),
+          `${quick ? 'Quick, ' : ''}${style}: six winners saved, on the stage, and heard, in ${took} ms (${p6.picked.join(', ')}; shown: ${onStage.join(', ')})`);
+        if (style === 'name') ok(await np(xp).locator('.bn-num').count() === 6 && await fits(xp), 'Big name numbers the six 1 to 6, and they fit the window');
+        if (style === 'lotto') ok(await np(xp).locator('.lotto-sock').count() === 6, `Lotto has six sockets (${await np(xp).locator('.lotto-sock').count()})`);
+        if (style === 'wheel') {
+          const wl = await inFrame(() => document.querySelector('.style-root')._wheel(), xp);
+          ok(wl.under.length === 6 && wl.hub === 'SPIN× 6', `the wheel has six arrows, and SPIN says “× 6” (${wl.under.length} arrows, ${JSON.stringify(wl.hub)})`);
+        }
+        if (!quick) await xp.screenshot({ path: OUT + `name-picker-6-${style}.png` });
+      }
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await xctx.close();
+  }],
+  // ---- 2026.11.24-1: Groups, a fifth way to use the Name Picker: the names go into 2 to 6 random groups.
+  ['Name Picker: Groups', async (browser) => {
+    // Every sound a style asks the host for (the host plays it only with Sound ticked), the sounds the page starts, and
+    // the notes it plays.
+    const SPY = () => {
+      window.__sounds = [];
+      let np;
+      Object.defineProperty(window, 'NamePicker', { configurable: true, get: () => np, set: v => {
+        np = v;
+        const register = v.register;
+        v.register = function (id, style) {
+          const mount = style.mount;
+          style.mount = function (root, host) {
+            const sound = host.sound;
+            host.sound = function (name) { window.__sounds.push(name); return sound.apply(this, arguments); };
+            return mount.call(this, root, host);
+          };
+          return register.call(this, id, style);
+        };
+      } });
+      window.__calls = 0;
+      for (const fn of ['setTimeout', 'setInterval', 'requestAnimationFrame']) { const f = window[fn]; window[fn] = function () { window.__calls++; return f.apply(this, arguments); }; }
+      if (!window.AudioContext) return;
+      window.__audio = 0; window.__notes = 0;
+      const A = window.AudioContext, base = (window.BaseAudioContext || A).prototype;
+      window.AudioContext = class extends A { constructor(o) { super(o); window.__audio++; } };
+      for (const fn of ['createOscillator', 'createBufferSource']) { const f = base[fn]; base[fn] = function () { window.__notes++; return f.apply(this, arguments); }; }
+    };
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+    await ctx.addInitScript(SPY);
+    const page = await ctx.newPage();
+    const errors = [];
+    const watch = (p, tab) => { p.on('pageerror', e => errors.push(`[${tab}] ${e.message}`)); p.on('console', m => { if (m.type() === 'error' && /name-picker/.test(m.location().url || '')) errors.push(`[${tab} console] ${m.text()}`); }); };
+    watch(page, 'tab 1');
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const np = (p = page, ik = 'name-picker:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const saved = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
+    const conf = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
+    const menu = async (id, p = page, ik = 'name-picker:1') => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const items = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems
+      .map(i => i.separator ? '—' : i.heading ? '# ' + i.label : i.choices ? '[' + i.choices.map(c => c.label + (c.checked ? ' ✓' : '')).join(' ') + ']'
+        : i.label + (i.checked ? ' ✓' : '') + (i.disabled ? ' (off)' : '')).join(' | '), ik);
+    const STYLES = [['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto'], ['groups', 'Groups']];
+    const MENU_G = (k, { sound = false, quick = false } = {}) => ['Edit names', '—', '# Pick with', ...STYLES.map(([id, l]) => l + (id === 'groups' ? ' ✓' : '')),
+      '# Groups', '[' + [2, 3, 4, 5, 6].map(x => x + (x === k ? ' ✓' : '')).join(' ') + ']', '—', 'Sound' + (sound ? ' ✓' : ''), 'Quick' + (quick ? ' ✓' : '')].join(' | ');
+    const MENU_P = (style, n, { startOver = false, sound = false, quick = false } = {}) => ['Edit names', '—', '# Pick with', ...STYLES.map(([id, l]) => l + (id === style ? ' ✓' : '')),
+      '# Names at a time', '[' + [1, 2, 3, 4, 5, 6].map(x => x + (x === n ? ' ✓' : '')).join(' ') + ']', '—', 'No repeats ✓', 'Start over' + (startOver ? '' : ' (off)'),
+      'Sound' + (sound ? ' ✓' : ''), 'Quick' + (quick ? ' ✓' : '')].join(' | ');
+    const showing = (p = page, ik) => np(p, ik).locator('body').evaluate(b => b.classList.contains('showing'));
+    const idle = (p = page, ik) => eventually(async () => !(await showing(p, ik)), 12000);
+    const text = (sel, p = page, ik) => np(p, ik).locator(sel).textContent();
+    const said = (p = page, ik) => text('#said', p, ik);
+    const inFrame = (fn, p = page, ik, arg) => np(p, ik).locator('html').evaluate(fn, arg);
+    const setNames = async (list, p = page, ik) => { await menu('edit', p, ik); await np(p, ik).locator('#list').fill(list.join('\n')); await np(p, ik).locator('#done').click(); await p.waitForTimeout(300); };
+    const sameList = (a, b) => a.slice().sort().join() === b.slice().sort().join();
+    // The cards on the stage: each one's heading and names, in order.
+    const cards = (p = page, ik) => inFrame(() => [...document.querySelectorAll('.groups-card')].map(c => ({ head: (c.querySelector('.groups-head') || {}).textContent,
+      names: [...c.querySelectorAll('.groups-name')].map(n => n.textContent) })), p, ik);
+    const tiles = (p = page, ik) => inFrame(() => [...document.querySelectorAll('.groups-tile')].map(t => t.textContent), p, ik);
+    const announced = groups => groups.map((g, i) => `Group ${i + 1}: ${g.join(', ')}.`).join(' ');
+    // Taps the main button and answers the groups once the board has them.
+    const drawNow = async (p = page, ik) => {
+      const was = ((await saved(p, ik)) || {}).groupId;
+      await np(p, ik).locator('#go').click();
+      await eventually(async () => ((await saved(p, ik)) || {}).groupId !== was, 3000);
+      return saved(p, ik);
+    };
+    // How the cards fit: every name's words inside its card and its own line, no line over another, every name one size,
+    // the cards inside the stage and apart, and each card's names in the middle of it (as much room left as right).
+    const fitLook = (p = page, ik) => inFrame(() => {
+      const stage = document.getElementById('stage').getBoundingClientRect(), bad = [], sizes = new Set();
+      const inside = (r, o, e = 0.5) => r.left >= o.left - e && r.right <= o.right + e && r.top >= o.top - e && r.bottom <= o.bottom + e;
+      const over = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0.5 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 0.5;
+      const cs = [...document.querySelectorAll('.groups-card')], texts = [];
+      cs.forEach((c, i) => {
+        const cr = c.getBoundingClientRect();
+        if (!inside(cr, stage)) bad.push(`card ${i + 1} outside the stage`);
+        cs.slice(i + 1).forEach((d, j) => { if (over(cr, d.getBoundingClientRect())) bad.push(`cards ${i + 1} and ${i + j + 2} overlap`); });
+        for (const n of c.querySelectorAll('.groups-name')) {
+          const rg = document.createRange(); rg.selectNodeContents(n); const r = rg.getBoundingClientRect();
+          sizes.add(getComputedStyle(n).fontSize);
+          const line = n.getBoundingClientRect();
+          if (!inside(r, cr) || !inside(line, cr) || n.scrollWidth > n.clientWidth + 1) bad.push(`“${n.textContent}” overflows card ${i + 1}`);
+          for (const t of texts) if (over(line, t.r)) bad.push(`“${n.textContent}” is over “${t.name}”`);
+          texts.push({ r: line, name: n.textContent });
+        }
+        const ns = [...c.querySelectorAll('.groups-name')].map(n => n.getBoundingClientRect());
+        const left = Math.min(...ns.map(r => r.left)) - cr.left, right = cr.right - Math.max(...ns.map(r => r.right));
+        if (ns.length && Math.abs(left - right) > 2) bad.push(`card ${i + 1}'s names are off the middle (${left.toFixed(1)} px left, ${right.toFixed(1)} px right)`);
+      });
+      const fs = [...sizes].map(parseFloat);
+      return { bad, sizes: [...sizes], fs: fs.length ? Math.min(...fs) : 0, cards: cs.length, w: stage.width, h: stage.height };
+    }, p, ik);
+
+    // ---- Groups in the menu: a fifth way, its own row of numbers, and no No repeats or Start over.
+    await page.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf()) || {}).style === 'wheel');
+    await page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 900, h: 640 }));
+    const N24 = ['Ava', 'Ben', 'Carlos', 'Dana', 'Eli', 'Fatima', 'Gus', 'Hana', 'Ivy', 'Jamal', 'Kai', 'Lena', 'Mateo', 'Nora', 'Omar', 'Priya', 'Quinn', 'Rosa', 'Sam', 'Tariq', 'Uma', 'Vic', 'Wen', 'Zoe'];
+    await np().locator('#list').fill(N24.join('\n')); await np().locator('#done').click(); await page.waitForTimeout(300);
+    // A pick round first, so we can see Groups leave it alone.
+    const p1 = await (async () => { await np().locator('#go').click(); await idle(); return saved(); })();
+    const p2 = await (async () => { await np().locator('#go').click(); await idle(); return saved(); })();
+    const roundWas = { status: await text('#status'), picked: p2.picked.slice(), left: p2.left.slice() };
+    ok(p1.picked.length === 1 && p2.left.length === 22 && roundWas.status === '22 of 24 left', `two picks on the wheel first (${p1.picked}, ${p2.picked}; ${roundWas.status})`);
+    await menu('style:groups');
+    ok((await conf()).style === 'groups' && (await conf()).groups === 4 && await eventually(async () => await items() === MENU_G(4)),
+      `Groups is a fifth way under Pick with; its row reads Groups, 2 to 6, 4 to start with; No repeats and Start over leave the menu (${await items()})`);
+    ok(await text('#status') === '24 names' && await text('#go') === 'Make 4 groups' && await np().locator('#round').isHidden(), `“24 names”, “Make 4 groups”, no Start over (${await text('#status')}, ${await text('#go')})`);
+    let tl = await tiles();
+    ok(tl.join() === N24.join() && !(await cards()).length, `before any groups, every name waits on the stage as a tile (${tl.length})`);
+    const tileFit = await inFrame(() => { const s = document.getElementById('stage').getBoundingClientRect(); const ts = [...document.querySelectorAll('.groups-tile')];
+      return { sizes: [...new Set(ts.map(t => getComputedStyle(t).fontSize))], out: ts.filter(t => { const r = t.getBoundingClientRect(); return r.left < s.left - 0.5 || r.right > s.right + 0.5 || r.top < s.top - 0.5 || r.bottom > s.bottom + 0.5 || t.scrollWidth > t.clientWidth + 1; }).map(t => t.textContent) }; });
+    ok(tileFit.sizes.length === 1 && parseFloat(tileFit.sizes[0]) >= 20 && !tileFit.out.length, `the tiles are one size, as large as they all fit (${tileFit.sizes.join()}; ${tileFit.out.join(', ') || 'all in'})`);
+    ok((await saved()).left.length === 22 && JSON.stringify((await saved()).picked) === JSON.stringify(p2.picked), 'choosing Groups leaves the pick round as it was');
+
+    // ---- 24 names, Groups 6: the show, about 3 s, a pop as each name lands and a chime.
+    await menu('groups:6');
+    ok((await conf()).groups === 6 && await text('#go') === 'Make 6 groups' && await items() === MENU_G(6), `Groups 6: saved, ticked in the row, and the button says “Make 6 groups” (${await items()})`);
+    await inFrame(() => { window.__sounds.length = 0; });
+    let t0 = Date.now();
+    let g = await drawNow();
+    const during = { go: await text('#go'), showing: await showing(), status: await text('#status') };
+    await idle();
+    let took = Date.now() - t0;
+    ok(Array.isArray(g.groups) && g.groups.length === 6 && g.groups.every(x => x.length === 4) && sameList(g.groups.flat(), N24) && /^[a-z0-9]+-[a-z0-9]+-66$/.test(g.groupId),
+      `the groups are saved before the show: 6 groups of 4, everyone once, with a groupId that ends with Groups 6 and the 6 groups made (${JSON.stringify(g.groups)}, ${g.groupId})`);
+    ok(during.showing && during.go === 'Show now' && during.status === '24 names', `during the show: “Show now”, and the status as it was (${JSON.stringify(during)})`);
+    ok(took > 2300 && took < 3900, `the show takes about 3 s (${took} ms)`);
+    let cs = await cards();
+    ok(cs.length === 6 && cs.every((c, i) => c.head === 'Group ' + (i + 1) && JSON.stringify(c.names) === JSON.stringify(g.groups[i])),
+      `6 cards, Group 1 to Group 6, each with its names in deal order (${cs.map(c => c.head + ': ' + c.names.join(' ')).join(' / ')})`);
+    ok(await text('#status') === '6 groups of 4' && await text('#go') === 'Shuffle again' && await np().locator('#round').isHidden(), `“6 groups of 4”, “Shuffle again” (${await text('#status')}, ${await text('#go')})`);
+    ok(await eventually(async () => await said() === announced(g.groups)), `screen readers hear “${(await said()).slice(0, 60)}…”`);
+    let snd = await inFrame(() => ({ sounds: window.__sounds.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
+    ok(snd.sounds.filter(s => s === 'pop').length === 24 && snd.sounds.filter(s => s === 'chime').length === 1 && snd.sounds[snd.sounds.length - 1] === 'chime' && snd.notes === 0 && snd.audio === 0,
+      `a pop as each name lands, then a chime (asked for: ${snd.sounds.filter(s => s === 'pop').length} pops, ${snd.sounds.filter(s => s === 'chime').length} chime), and with Sound off nothing plays`);
+    const heads = await inFrame(() => {
+      const tok = n => { const t = document.createElement('i'); document.body.appendChild(t); t.style.color = `var(${n})`; const c = getComputedStyle(t).color; t.remove(); return c; };
+      return { want: ['--np-c1', '--np-c2', '--np-c3', '--np-c4', '--np-c6', '--np-c7'].map(tok), ink: tok('--np-ink'),
+        got: [...document.querySelectorAll('.groups-head')].map(h => getComputedStyle(h).backgroundColor), inks: [...document.querySelectorAll('.groups-head')].map(h => getComputedStyle(h).color) };
+    });
+    ok(JSON.stringify(heads.got) === JSON.stringify(heads.want) && heads.inks.every(c => c === heads.ink), `each card's heading in red, orange, yellow, green, blue, and purple, its words in --np-ink (${heads.got.join(' ')})`);
+    await page.waitForTimeout(400);   // (the last name's pop as it lands)
+    let fl = await fitLook();
+    ok(!fl.bad.length && fl.sizes.length === 1, `every name inside its card, all one size (${fl.sizes.join()}; ${fl.bad.slice(0, 3).join('; ') || 'ok'})`);
+    await page.screenshot({ path: OUT + 'name-picker-groups-6.png' });
+    // Nothing runs between shows.
+    await page.waitForTimeout(300);
+    let c0 = await inFrame(() => window.__calls); await page.waitForTimeout(1200);
+    ok(await inFrame(() => window.__calls) === c0, 'nothing runs after the show: no timers or animation frames');
+
+    // ---- Shuffle again starts from the groups on screen; a tap skips to the end; Quick halves the show.
+    let was = g;
+    await np().locator('#go').click(); await page.waitForTimeout(150);
+    const gathering = await inFrame(() => ({ stack: !!document.querySelector('.groups-stack'), gathering: document.querySelectorAll('.groups-ghost').length }));
+    await page.waitForTimeout(600);
+    await np().locator('#stage').click(); await page.waitForTimeout(150);
+    g = await saved();
+    cs = await cards();
+    ok(g.groupId !== was.groupId && gathering.stack && gathering.gathering === 24 && !(await showing()) && cs.length === 6 && cs.every((c, i) => JSON.stringify(c.names) === JSON.stringify(g.groups[i]))
+      && await inFrame(() => !document.querySelector('.groups-fly') && [...document.querySelectorAll('.groups-name')].every(n => getComputedStyle(n).opacity === '1')),
+      `Shuffle again: new groups (the names gather into a stack first: ${JSON.stringify(gathering)}); a tap on the stage skips to the end, every name in its card`);
+    ok(await eventually(async () => await said() === announced(g.groups)) && await text('#go') === 'Shuffle again', 'and screen readers hear the new groups');
+    await menu('quick');
+    ok(await items() === MENU_G(6, { quick: true }), 'Quick is ticked');
+    t0 = Date.now(); await drawNow(); await idle(); took = Date.now() - t0;
+    ok(took > 1000 && took < 2300, `with Quick the show takes about 1.5 s (${took} ms)`);
+    await menu('quick');
+
+    // ---- Sound on: the pops and the chime play.
+    await menu('sound');
+    const n0 = await inFrame(() => window.__notes || 0);
+    await inFrame(() => { window.__sounds.length = 0; });
+    await np().locator('#go').click(); await idle();
+    snd = await inFrame(() => ({ sounds: window.__sounds.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
+    ok(snd.audio >= 1 && snd.notes - n0 >= 24 + 3 && snd.sounds.filter(s => s === 'pop').length === 24 && snd.sounds.filter(s => s === 'chime').length === 1,
+      `with Sound on the pops and the chime play (${snd.notes - n0} notes)`);
+    await menu('sound');
+
+    // ---- Changing the number keeps the cards; the button says what it will do.
+    g = await saved();
+    await menu('groups:3');
+    cs = await cards();
+    ok(cs.length === 6 && (await saved()).groupId === g.groupId && await text('#go') === 'Make 3 groups' && await text('#status') === '6 groups of 4' && await items() === MENU_G(3),
+      `Groups 3: the 6 cards stay, “6 groups of 4”, and the button says “Make 3 groups” (${await text('#go')})`);
+    await page.reload(); await boardUp(page);
+    ok(await eventually(async () => (await cards().catch(() => [])).length === 6) && await eventually(async () => await text('#go') === 'Make 3 groups'),
+      `after a reload too: the 6 cards, and “Make 3 groups” (${await text('#go')})`);
+    await menu('groups:6');
+    ok(await text('#go') === 'Shuffle again', 'back to 6: “Shuffle again”');
+    await menu('groups:3');
+    g = await drawNow(); await idle();
+    ok(g.groups.length === 3 && g.groups.every(x => x.length === 8) && (await cards()).length === 3 && await text('#status') === '3 groups of 8' && await text('#go') === 'Shuffle again',
+      `“Make 3 groups” makes 3 groups of 8 (${await text('#status')})`);
+    // Raised since the draw: “Make 4 groups”, after a reload too.
+    await menu('groups:4');
+    const raised = await text('#go');
+    await page.reload(); await boardUp(page);
+    ok(raised === 'Make 4 groups' && await eventually(async () => (await cards().catch(() => [])).length === 3) && await eventually(async () => await text('#go') === 'Make 4 groups'),
+      `Groups 4 with 3 groups up: “${raised}”, and after a reload “${await text('#go')}”`);
+    await menu('groups:3');
+    ok(await text('#go') === 'Shuffle again', 'back to 3: “Shuffle again”');
+
+    // ---- Back to the pick round: Spinning wheel shows the same round and last winners.
+    await menu('style:wheel');
+    ok(await text('#status') === roundWas.status && JSON.stringify((await saved()).picked) === JSON.stringify(roundWas.picked) && await items() === MENU_P('wheel', 1, { startOver: true })
+      && sameList(await np().locator('html').evaluate(() => [...document.querySelectorAll('.wheel-nm')].map(e => e.textContent)), roundWas.picked),
+      `Wheel → Groups → Wheel: the same “${roundWas.status}”, the last winners (${roundWas.picked}), and No repeats and Start over are back`);
+    const p3 = await (async () => { await np().locator('#go').click(); await idle(); return saved(); })();
+    ok(p3.left.length === 21 && roundWas.left.includes(p3.picked[0]), `and No repeats picks up where it left off (${p3.picked}, ${p3.left.length} left)`);
+    await menu('style:groups');
+    cs = await cards();
+    ok(cs.length >= 1 && JSON.stringify(cs.map(c => c.names)) === JSON.stringify((await saved()).groups), 'switching to Groups shows the last groups');
+
+    // ---- Another way chosen in the middle of a show: screen readers hear that show's result, never the other way's.
+    await np().locator('#go').click(); await page.waitForTimeout(400);
+    const dealing = await saved(), wasShowing = await showing();
+    await menu('style:wheel');
+    ok(wasShowing && await eventually(async () => await said() === announced(dealing.groups), 3000),
+      `the wheel chosen while groups deal: screen readers hear the new groups (${(await said()).slice(0, 50)}…)`);
+    await np().locator('#go').click(); await page.waitForTimeout(400);
+    const spinning = await saved(), wasSpinning = await showing();
+    await menu('style:groups');
+    ok(wasSpinning && await eventually(async () => await said() === 'Picked: ' + spinning.picked.join(', '), 3000),
+      `Groups chosen while the wheel spins: they hear the pick (${(await said()).slice(0, 50)})`);
+
+    // ---- 25 names, Groups 4: groups differ by one at most, the first ones larger.
+    await menu('groups:4');
+    await setNames(N24.concat(['Xavier']));
+    ok((await cards()).flatMap(c => c.names).includes('Xavier') && await text('#go') === 'Make 4 groups', 'a 25th name joins the groups on screen');
+    g = await drawNow(); await idle();
+    ok(JSON.stringify(g.groups.map(x => x.length)) === '[7,6,6,6]' && await text('#status') === '4 groups of 6 or 7' && JSON.stringify((await cards()).map(c => c.names.length)) === '[7,6,6,6]',
+      `25 names in 4 groups: 7, 6, 6, 6, and “4 groups of 6 or 7” (${g.groups.map(x => x.length)}; ${await text('#status')})`);
+    await page.waitForTimeout(400);
+    fl = await fitLook();
+    ok(!fl.bad.length && fl.sizes.length === 1, `the cards fit, every name one size (${fl.sizes.join()}; ${fl.bad.slice(0, 3).join('; ') || 'ok'})`);
+
+    // ---- Editing names while groups are up.
+    let before = await cards();
+    const gone = before[1].names[0];
+    await setNames(N24.concat(['Xavier']).filter(n => n !== gone));
+    let after = await cards();
+    ok(after.length === 4 && !after.flatMap(c => c.names).includes(gone) && JSON.stringify(after[1].names) === JSON.stringify(before[1].names.slice(1))
+      && JSON.stringify(after.map(c => c.names.length)) === '[7,5,6,6]' && await text('#status') === '4 groups of 5 to 7' && await text('#go') === 'Shuffle again',
+      `a removed name (${gone}) leaves its card; the status updates (${await text('#status')}), and the button stays “Shuffle again”`);
+    await setNames(N24.concat(['Xavier']).filter(n => n !== gone).concat(['Yara']));
+    after = await cards();
+    ok(after[1].names.includes('Yara') && JSON.stringify(after.map(c => c.names.length)) === '[7,6,6,6]' && await text('#go') === 'Shuffle again',
+      `a new name (Yara) joins the smallest group (${after.map(c => c.names.length)})`);
+    await setNames(N24.concat(['Xavier']).filter(n => n !== gone).concat(['Yara', 'Zed']));
+    after = await cards();
+    const zedIn = after.findIndex(c => c.names.includes('Zed'));
+    ok(zedIn >= 1 && JSON.stringify(after.map(c => c.names.length).sort()) === '[6,6,7,7]', `another (Zed) joins one of the smallest, chosen at random (Group ${zedIn + 1})`);
+    before = after;
+    const whole = before[2].names;
+    await setNames(before.flatMap(c => c.names).filter(n => !whole.includes(n)));
+    after = await cards();
+    ok(after.length === 3 && after.map(c => c.head).join() === 'Group 1,Group 2,Group 3' && JSON.stringify(after.map(c => c.names)) === JSON.stringify([before[0].names, before[1].names, before[3].names])
+      && /^3 groups of/.test(await text('#status')) && await text('#go') === 'Shuffle again',
+      `removing a whole group's names removes its card; the others keep their order, numbered 1 to 3 (${after.map(c => c.head + ' ' + c.names.length).join(', ')})`);
+    const st = await saved();
+    ok(JSON.stringify(st.groups) === JSON.stringify(after.map(c => c.names)), 'the groups are saved as they are shown');
+
+    // ---- Saved: a reload shows the groups, and so does a second tab; a new draw in one plays the show in the other.
+    g = await saved();
+    const page2 = await ctx.newPage(); watch(page2, 'tab 2');
+    await page2.goto(BASE); await boardUp(page2); await freeBoard(page2);
+    ok(await eventually(async () => JSON.stringify((await cards(page2)).map(c => c.names)) === JSON.stringify(g.groups)) && await text('#go', page2) === 'Shuffle again',
+      'a second tab shows the same groups');
+    await page.reload(); await boardUp(page);
+    ok(await eventually(async () => JSON.stringify((await cards()).map(c => c.names)) === JSON.stringify(g.groups)) && !(await showing()) && await text('#go') === 'Shuffle again',
+      'after a reload the groups are still there, with no show');
+    const g2 = await drawNow();
+    ok(await eventually(() => showing(page2), 2000), 'a new draw in one tab plays the show in the other');
+    await idle(); await idle(page2);
+    ok(JSON.stringify((await cards(page2)).map(c => c.names)) === JSON.stringify(g2.groups) && await eventually(async () => await said(page2) === announced(g2.groups)),
+      'and both end on the same groups');
+    await page2.close();
+
+    // ---- A template keeps Groups and the number, never the names or groups.
+    await menu('groups:5');
+    await page.click('.picker-btn.right'); await page.click('[data-ctl="export"]'); await page.waitForTimeout(200);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="1"]')]);
+    await dl.saveAs(OUT + 'name-picker-groups-template.21board');
+    const tpl = JSON.parse(fs.readFileSync(OUT + 'name-picker-groups-template.21board', 'utf8')), tp = tpl.instances.find(i => i.widgetId === 'name-picker');
+    ok(tpl.kind === 'template' && tp && tp.data === null && tp.config.style === 'groups' && tp.config.groups === 5 && !N24.some(n => JSON.stringify(tpl).includes('"' + n + '"')),
+      `a template keeps Groups and the number, and no names or groups (${JSON.stringify(tp && tp.config)})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+
+    // ---- Small classes: 3 names with Groups at 4 make 3 groups; 1 name, 1 group.
+    errors.length = 0;
+    const smallIks = [];
+    for (const [list, go, status] of [[['Ava', 'Ben', 'Carlos'], 'Make 3 groups', '3 groups of 1'], [['Ava'], 'Make 1 group', '1 group of 1']]) {
+      const ik = await page.evaluate(() => window.__board21.openWidget('name-picker'));
+      smallIks.push(ik);
+      await eventually(async () => ((await conf(page, ik)) || {}).style === 'wheel');
+      await np(page, ik).locator('#list').fill(list.join('\n')); await np(page, ik).locator('#done').click(); await page.waitForTimeout(300);
+      await menu('style:groups', page, ik); await menu('quick', page, ik);
+      ok(await text('#go', page, ik) === go && await text('#status', page, ik) === (list.length === 1 ? '1 name' : list.length + ' names'), `${list.length} name${list.length > 1 ? 's' : ''}, Groups 4: “${await text('#go', page, ik)}”`);
+      const s = await drawNow(page, ik); await idle(page, ik);
+      cs = await cards(page, ik);
+      ok(s.groups.length === list.length && cs.length === list.length && cs.every(c => c.names.length === 1) && sameList(cs.flatMap(c => c.names), list) && await text('#status', page, ik) === status
+        && await text('#go', page, ik) === 'Shuffle again', `then ${cs.length} card${cs.length > 1 ? 's' : ''} of 1, “${await text('#status', page, ik)}”`);
+    }
+    // A short list that grows: 1 name drawn with Groups 4 made 1 group. A second name joins it, and the button says what
+    // a tap makes now, “Make 2 groups”.
+    const ik1 = smallIks[1];
+    await page.evaluate(ik => window.__board21.focusWin(ik), ik1); await setNames(['Ava', 'Ben'], page, ik1);
+    ok(await text('#status', page, ik1) === '1 group of 2' && await text('#go', page, ik1) === 'Make 2 groups',
+      `1 name drawn with Groups 4, then a second name: “${await text('#status', page, ik1)}”, “${await text('#go', page, ik1)}”`);
+    const two = await drawNow(page, ik1); await idle(page, ik1);
+    ok(two.groups.length === 2 && await text('#status', page, ik1) === '2 groups of 1' && await text('#go', page, ik1) === 'Shuffle again',
+      `and a tap makes 2 groups of 1 (${await text('#status', page, ik1)}, “${await text('#go', page, ik1)}”)`);
+    // The 3 groups of 1, with the number raised since: “Make 3 groups”, after a reload too. Then the whole class added:
+    // they join the 3 groups, and the button says what a tap makes now, “Make 4 groups”.
+    const ik3 = smallIks[0], front = () => page.evaluate(ik => window.__board21.focusWin(ik), ik3);
+    await front(); await menu('groups:5', page, ik3);
+    const raised3 = await text('#go', page, ik3);
+    await page.reload(); await boardUp(page);
+    ok(raised3 === 'Make 3 groups' && await eventually(async () => (await cards(page, ik3).catch(() => [])).length === 3) && await eventually(async () => await text('#go', page, ik3) === 'Make 3 groups'),
+      `3 names drawn with Groups 4, then Groups 5: “${raised3}”, and after a reload “${await text('#go', page, ik3)}”`);
+    await front(); await menu('groups:4', page, ik3);
+    ok(await text('#go', page, ik3) === 'Shuffle again', 'back to 4: “Shuffle again”');
+    await front(); await setNames(N24, page, ik3);
+    ok(await text('#status', page, ik3) === '3 groups of 8' && await text('#go', page, ik3) === 'Make 4 groups',
+      `the whole class added: “${await text('#status', page, ik3)}”, and the button says what a tap makes, “${await text('#go', page, ik3)}”`);
+    const grown = await drawNow(page, ik3); await idle(page, ik3);
+    ok(grown.groups.length === 4 && await text('#status', page, ik3) === '4 groups of 6' && await text('#go', page, ik3) === 'Shuffle again',
+      `and a tap makes 4 groups of 6 (${await text('#status', page, ik3)})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+
+    // ---- Fair: with 8 names in 2 groups, each name is in Group 1 about half the time, and every two share a group
+    // sometimes. (Reduce motion: each draw is on screen at once. Every draw the page saves is counted.)
+    errors.length = 0;
+    const rctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, reducedMotion: 'reduce' });
+    await rctx.addInitScript(SPY);
+    const rp = await rctx.newPage(); watch(rp, 'reduce motion');
+    await rp.goto(BASE); await boardUp(rp); await freeBoard(rp);
+    await rp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(rp)) || {}).style === 'wheel');
+    const N8 = ['Ava', 'Ben', 'Carlos', 'Dana', 'Eli', 'Fatima', 'Gus', 'Hana'];
+    await np(rp).locator('#list').fill(N8.join('\n')); await np(rp).locator('#done').click(); await rp.waitForTimeout(300);
+    await menu('style:groups', rp); await menu('groups:2', rp); await menu('sound', rp);
+    // Reduce motion: the groups fade in, nothing moves, and the chime still plays.
+    await inFrame(() => { window.__sounds.length = 0; window.__moved = []; const a = Element.prototype.animate; Element.prototype.animate = function (k) { window.__moved.push(JSON.stringify(k)); return a.apply(this, arguments); }; }, rp);
+    const n1 = await inFrame(() => window.__notes || 0, rp);
+    const rg = await drawNow(rp);
+    const look = await inFrame(() => ({ fade: [...document.querySelectorAll('.groups-card')].every(c => c.classList.contains('groups-fade')), fly: document.querySelectorAll('.groups-fly, .groups-stack').length,
+      moved: window.__moved.filter(k => /transform|left|top|translate/.test(k)).length,
+      css: document.getAnimations().filter(a => a.effect && a.effect.getKeyframes().some(k => 'transform' in k || 'left' in k || 'top' in k || 'translate' in k)).length }), rp);
+    ok(!(await showing(rp)) && rg.groups.length === 2 && look.fade && !look.fly && !look.moved && !look.css && await eventually(async () => await said(rp) === announced(rg.groups)),
+      `with reduce motion the groups fade in, with nothing moving (${JSON.stringify(look)})`);
+    ok(await eventually(async () => await inFrame(() => window.__notes || 0, rp) - n1 >= 3) && !(await inFrame(() => window.__sounds.includes('pop'), rp)),
+      `and the chime still plays when Sound is on (${await inFrame(() => window.__notes || 0, rp) - n1} notes, no pops)`);
+    await menu('sound', rp);
+    const draws = await inFrame(() => {
+      const out = [], save = Board21.save;
+      Board21.save = function (d) { if (d && d.groups && d.groups.length) out.push(d.groups.map(g => g.slice())); return save.apply(this, arguments); };
+      for (let i = 0; i < 400; i++) document.getElementById('go').click();
+      Board21.save = save;
+      return out;
+    }, rp);
+    const inOne = Object.fromEntries(N8.map(n => [n, 0])), pairs = new Set();
+    for (const d of draws) {
+      for (const n of d[0]) inOne[n]++;
+      for (const grp of d) for (const a of grp) for (const b of grp) if (a < b) pairs.add(a + '+' + b);
+    }
+    const shares = N8.map(n => Math.round(inOne[n] / draws.length * 100));
+    ok(draws.length === 400 && draws.every(d => d.length === 2 && d[0].length === 4 && d[1].length === 4 && sameList(d.flat(), N8)), `400 draws, each 2 groups of 4 with everyone once (${draws.length})`);
+    ok(shares.every(s => s >= 35 && s <= 65), `each name is in Group 1 between 35% and 65% of the time (${N8.map((n, i) => n + ' ' + shares[i] + '%').join(', ')})`);
+    ok(pairs.size === 28, `every two names share a group sometimes (${pairs.size} of 28 pairs)`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await rctx.close();
+
+    // ---- A board from a file: groups are checked as picks are. Names not in the list, a student in two groups, 7
+    // groups, empty groups, things that aren't names, and huge lists are dropped, without errors. A student the groups
+    // leave out joins the smallest group, so no one is left off the stage.
+    errors.length = 0;
+    const ictx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
+    const ip = await ictx.newPage(); watch(ip, 'import');
+    await ip.goto(BASE); await boardUp(ip); await freeBoard(ip);
+    const A8 = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8'];
+    const win = (instance, data, config) => ({ widgetId: 'name-picker', instance, open: true, z: instance, rect: { x: 10 + ((instance - 1) % 3) * 520, y: 10 + Math.floor((instance - 1) / 3) * 440, w: 500, h: 420 }, data, config });
+    const file = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Groups' }, instances: [
+      win(1, { names: ['Ava', 'Ben', 'Carlos', 'Dana', 'Ava'], groups: [['Ava', 'Zed', ' Ben '], ['Ben', 'Carlos', 7, null, {}, ['Dana']], [], ['Ava', 'Ava', 'Dana'], 'Eli', ['Carlos']], groupId: 'mwp2g7b7-pg6utj' }, { style: 'groups', groups: 9 }),
+      win(2, { names: A8, groups: [['A1'], ['A2'], ['A3'], ['A4'], ['A5'], ['A6'], ['A7', 'A8']], groupId: 'mwp2g7b7-pg6utk' }, { style: 'groups', groups: 3 }),
+      win(3, { names: ['Ava', 'Ben'], groups: Array.from({ length: 100000 }, () => ['Ava']), groupId: '<b>x</b>' }, { style: 'groups', groups: 1 }),
+      win(4, { names: ['Ava', 'Ben'], groups: [Array.from({ length: 200000 }, () => 'Ben').concat(['Ava'])], groupId: 5 }, { style: 'groups', groups: 'x' }),
+      win(5, { names: ['Ava', 'Ben'], groups: 'Ava,Ben', groupId: null }, { style: 'groups', groups: 2 }),
+      win(6, { names: ['Ava', 'Ben', 'Carlos', 'Dana'], groups: [[['Ava']], ['Ben']], groupId: 'mwp2g7b7-pg6utl' }, { style: 'groups', groups: 2 })
+    ] };
+    fs.writeFileSync(OUT + 'name-picker-groups.21board', JSON.stringify(file));
+    const tImport = Date.now();
+    await ip.setInputFiles('#import-input', OUT + 'name-picker-groups.21board'); await ip.waitForTimeout(300);
+    await ip.click('#modal .btn:has-text("Replace this page")');
+    ok(await eventually(async () => (await Promise.all([1, 2, 3, 4, 5, 6].map(n => items(ip, 'name-picker:' + n).catch(() => '')))).every(Boolean), 15000), 'the board from the file opens with its six pickers');
+    await ip.waitForTimeout(800);
+    const C = async n => (await cards(ip, 'name-picker:' + n)).map(c => c.names);
+    ok(JSON.stringify(await C(1)) === '[["Ava","Ben"],["Carlos"],["Ava","Dana"]]' && await items(ip, 'name-picker:1') === MENU_G(4)
+      && await text('#status', ip, 'name-picker:1') === '3 groups of 1 or 2', `only names in the list, each student once, no empty groups; Groups 9 falls back to 4 (${JSON.stringify(await C(1))}, ${await text('#status', ip, 'name-picker:1')})`);
+    ok(JSON.stringify(await C(2)) === '[["A1","A7"],["A2","A8"],["A3"],["A4"],["A5"],["A6"]]' && await text('#status', ip, 'name-picker:2') === '6 groups of 1 or 2',
+      `at most 6 groups; A7 and A8, left out with the 7th, join the smallest groups (${JSON.stringify(await C(2))}, ${await text('#status', ip, 'name-picker:2')})`);
+    ok(JSON.stringify(await C(3)) === '[["Ava","Ben"]]' && JSON.stringify(await C(4)) === '[["Ben","Ava"]]' && Date.now() - tImport < 15000, `huge lists are cut short, quickly (${JSON.stringify(await C(3))}, ${JSON.stringify(await C(4))}, ${Date.now() - tImport} ms)`);
+    ok(JSON.stringify(await C(6)) === '[["Ben","Ava","Carlos","Dana"]]' && await text('#status', ip, 'name-picker:6') === '1 group of 4',
+      `a group of lists is dropped, and everyone the groups leave out joins the one left (${JSON.stringify(await C(6))}, ${await text('#status', ip, 'name-picker:6')})`);
+    // A crafted file with a long list and many strings that aren't names reads quickly: the list is read once, not
+    // searched again for every string.
+    const cost = await inFrame(() => {
+      const names = Array.from({ length: 3000 }, (_, i) => 'Student ' + i), junk = Array.from({ length: 4000 }, (_, i) => 'Nobody ' + i);
+      const t = performance.now(), s = readState({ names, groups: Array.from({ length: 100 }, () => junk), left: Array.from({ length: 100 }, () => junk).flat(), picked: junk });
+      return { ms: Math.round(performance.now() - t), names: s.names.length, groups: s.groups.length, left: s.left.length, picked: s.picked.length };
+    }, ip, 'name-picker:1');
+    ok(cost.ms < 500 && cost.names === 3000 && !cost.groups && !cost.left && !cost.picked, `3,000 names with 400,000 strings that aren’t names read in ${cost.ms} ms (${JSON.stringify(cost)})`);
+    ok(!(await C(5)).length && (await tiles(ip, 'name-picker:5')).join() === 'Ava,Ben' && await text('#go', ip, 'name-picker:5') === 'Make 2 groups', 'groups that aren’t a list are dropped: the names wait as tiles, “Make 2 groups”');
+    const clean = await drawNow(ip, 'name-picker:1'); await idle(ip, 'name-picker:1');
+    ok(clean.groups.length === 4 && sameList(clean.groups.flat(), ['Ava', 'Ben', 'Carlos', 'Dana', 'Ava']) && /^[a-z0-9]+-[a-z0-9]+-44$/.test(clean.groupId), `and the next draw is saved clean (${JSON.stringify(clean.groups)})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ictx.close();
+
+    // ---- Fit: the smallest window and one that fills the board, 30 names in 2 groups and long names; every name in
+    // its card and one size. A change of theme, accent, or Text style fits them again.
+    errors.length = 0;
+    const fctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const fp = await fctx.newPage(); watch(fp, 'fit');
+    await fp.goto(BASE); await boardUp(fp); await freeBoard(fp);
+    await fp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(fp)) || {}).style === 'wheel');
+    const N30 = N24.concat(['Xavier', 'Yara', 'Leo', 'Mia', 'Noah', 'Sofia']);
+    const LONG = ['Maximiliana-Guadalupe', 'Bartholomew Alexander', 'Anne-Sophie', 'Christopher', 'Jo', 'Oluwaseun', 'Krzysztof', 'Xiomara Isabel', 'Ty', 'Wilhelmina'];
+    await np(fp).locator('#list').fill(N30.join('\n')); await np(fp).locator('#done').click(); await fp.waitForTimeout(300);
+    await menu('style:groups', fp); await menu('groups:2', fp); await menu('quick', fp);
+    await drawNow(fp); await idle(fp);
+    const fits = [];
+    for (const [label, list, k] of [['30 names in 2 groups', N30, 2], ['long names in 3 groups', LONG, 3], ['30 names in 6 groups', N30, 6]]) {
+      if (k !== 2 || list !== N30) { await setNames(list, fp); await menu('groups:' + k, fp); await drawNow(fp); await idle(fp); }
+      for (const [w, h, max] of [[360, 270, false], [900, 600, false], [0, 0, true]]) {
+        if (max) await fp.evaluate(() => window.__board21.setMaximized('name-picker:1', true));
+        else { await fp.evaluate(() => window.__board21.setMaximized('name-picker:1', false)); await fp.evaluate(([w, h]) => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w, h }), [w, h]); }
+        await fp.waitForTimeout(700);
+        const f = await fitLook(fp);
+        fits.push(`${label}, ${max ? 'filling the board' : w + '×' + h}: ${f.sizes.join()}${f.bad.length ? ' ✗' : ''}`);
+        ok(f.cards === k && !f.bad.length && f.sizes.length === 1, `${label}, ${max ? 'filling the board' : w + '×' + h}: every name in its card, one size (${f.sizes.join()}; ${f.bad.slice(0, 3).join('; ') || 'ok'})`);
+        if (label === '30 names in 2 groups' && max) await fp.screenshot({ path: OUT + 'name-picker-groups-30-full.png' });
+        if (label === 'long names in 3 groups' && w === 360) await fp.screenshot({ path: OUT + 'name-picker-groups-long-small.png' });
+      }
+    }
+    // A 25th name joins 6 groups of 4: its group takes another column, and every card's names stay in its middle.
+    await fp.evaluate(() => window.__board21.setMaximized('name-picker:1', false));
+    await setNames(N24, fp); await menu('groups:6', fp); await drawNow(fp); await idle(fp);
+    await setNames(N24.concat(['Xavier']), fp);
+    for (const [w, h] of [[560, 420], [900, 640]]) {
+      await fp.evaluate(([w, h]) => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w, h }), [w, h]); await fp.waitForTimeout(700);
+      const f = await fitLook(fp);
+      ok(f.cards === 6 && !f.bad.length && f.sizes.length === 1, `25 names in 6 groups, ${w}×${h}: each card's names in its middle (${f.sizes.join()}; ${f.bad.slice(0, 3).join('; ') || 'ok'})`);
+      if (w === 900) await fp.screenshot({ path: OUT + 'name-picker-groups-25-in-6.png' });
+    }
+    await fp.evaluate(() => window.__board21.setMaximized('name-picker:1', false));
+    await fp.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 700, h: 500 })); await fp.waitForTimeout(600);
+    const fsWas = (await fitLook(fp)).fs;
+    await setTheme(fp, 'dark');
+    let fd = await fitLook(fp);
+    ok(!fd.bad.length && fd.sizes.length === 1 && Math.abs(fd.fs - fsWas) < 1 && await inFrame(() => getComputedStyle(document.querySelector('.groups-card')).backgroundColor !== 'rgb(255, 255, 255)', fp),
+      `dark theme: the cards in dark colors, every name still fits (${fd.sizes.join()})`);
+    await fp.screenshot({ path: OUT + 'name-picker-groups-dark.png' });
+    await openSettings(fp, ['bg']); await fp.click('#settings [data-act="accent"][data-val="purple"]'); await fp.keyboard.press('Escape'); await fp.waitForTimeout(500);
+    fd = await fitLook(fp);
+    ok(!fd.bad.length && fd.sizes.length === 1, `a new accent: every name still fits (${fd.sizes.join()})`);
+    // Text style: the names in its letters, fitted again. Then long names in a small window, where the width sets the
+    // size, in Early readers and in Easier to read (Atkinson Hyperlegible).
+    const nameFont = () => inFrame(() => getComputedStyle(document.querySelector('.groups-name')).fontFamily, fp);
+    const letters = async val => { await openSettings(fp, ['letters']); await fp.click(`#settings [data-act="letters"][data-val="${val}"]`); await fp.keyboard.press('Escape'); await fp.waitForTimeout(800); };
+    await letters('early');
+    fd = await fitLook(fp);
+    let font = await nameFont();
+    ok(!fd.bad.length && fd.sizes.length === 1 && /21Board Early Readers/.test(font), `Text style Early readers: the names in its letters, fitted again (${fd.sizes.join()}; ${font})`);
+    await setNames(LONG, fp); await menu('groups:3', fp); await drawNow(fp); await idle(fp);
+    await fp.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 360, h: 270 })); await fp.waitForTimeout(700);
+    for (const [val, label, family] of [['early', 'Early readers', /21Board Early Readers/], ['legible', 'Easier to read', /Atkinson Hyperlegible/]]) {
+      if (val !== 'early') await letters(val);
+      fd = await fitLook(fp); font = await nameFont();
+      ok(fd.cards === 3 && !fd.bad.length && fd.sizes.length === 1 && family.test(font), `${label}, long names at 360×270: in its letters, every name in its card, one size (${fd.sizes.join()}; ${font}; ${fd.bad.slice(0, 3).join('; ') || 'ok'})`);
+    }
+    // The data format names what the Name Picker saves.
+    const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(dataDoc.includes('The Name Picker (`name-picker`) saves `{ names, left, picked, pickId, current, groups, groupId }`') && dataDoc.includes('`{ noRepeats, style, winners, groups, quick, sound }`')
+      && dataDoc.includes('`"lotto"`, or `"groups"`') && dataDoc.includes('`winners` is 1 to 6 and `groups` is 2 to 6'), 'docs/DATA-FORMAT.md gives its content and its config, Groups too');
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+    ok(readme.includes('Five styles, each in its own file: Big name, Spinning wheel, Spotlight, Lotto, and Groups.'), 'README.md names the five styles, Groups too');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await fctx.close();
   }],
   // ---- Name Picker style suite: Spinning wheel
   ['Name Picker: Spinning wheel', async (browser) => {
@@ -5030,7 +5980,7 @@ const SUITES = [
 
     // ---- Five winners: one light collects them in turn, numbered, in about 6 s. Last pick's winner is crossed out.
     await menu(page, 'winners:5');
-    ok(await text(page, '#go') === 'Pick 5', 'Winners each time 5: “Pick 5”');
+    ok(await text(page, '#go') === 'Pick 5', 'Names at a time 5: “Pick 5”');
     await spy(page);
     t0 = Date.now(); st = await pickNow(page); await idle(page); took = Date.now() - t0;
     bad = await landed(page, st);
@@ -6923,7 +7873,7 @@ const SUITES = [
     ok(!R1.back.length, `Restore size: two by two again, and Fill the board: one row again (${R1.back.join(' | ') || '4 boards'})`);
 
     // ---- 2. The lines: a filled window at least 850 × 480 px is one row. Smaller, or not filling the board, the rules
-    // before: two by two, a row when very wide, a column when very tall. Since 2026.11.23-4, also a row whenever each card
+    // before: two by two, a row when very wide, a column when very tall. Since 2026.11.24-4, also a row whenever each card
     // can be 190 px wide in a cards' area at least as wide as it is tall (x.want).
     // (want: the shape wanted for the cards' area, under the line. Since 2026.11.23-3 the strip between the board's
     // buttons below the cards is empty, so the area is shorter.)
@@ -6944,12 +7894,12 @@ const SUITES = [
     }
     for (const [b, want] of [[['free', 1, 1024, 519], 'row'], [['free', 1.5, 1280, 700], 'row']]) short.push(await lined(b, false, want));
     ok(tall.every(c => c.good), `a filled window at least 480 px tall is one row: the Fill board as on an iPad, at 480 px, the 16:9 board at Size 200% and 175%, and a Chromebook tab at 125% (${said(tall)})`);
-    ok(short.every(c => c.good) && tall[2].good, `a filled window under 480 px tall follows the rule for any window (2026.11.23-4): a row, its cards at least 190 px wide in an area wider than tall, though not .reach (${said(short)}). The .reach line is at 480 px (${tall[2].where})`);
+    ok(short.every(c => c.good) && tall[2].good, `a filled window under 480 px tall follows the rule for any window (2026.11.24-4): a row, its cards at least 190 px wide in an area wider than tall, though not .reach (${said(short)}). The .reach line is at 480 px (${tall[2].where})`);
     // The width line. At 850 px every card shows its “−”, its Ideas, and all its feeling words.
     const at850 = await lined(['free', 1.25, 1063, 768], true), at849 = await lined(['free', 1.25, 1061, 768], false, 'row');
     const all850 = at850.x.shows, whole = all850.minus === 4 && all850.ideas === 4 && all850.words === 13, all849 = at849.x.shows;
     ok(at850.good && whole && at849.good && all849.minus === 4 && all849.ideas === 4 && all849.words === 13,
-      `the .reach line is at 850 px wide: one row at 850 px, with 4 “−”, 4 Ideas, and 13 feeling words (${at850.where}: ${all850.minus}, ${all850.ideas}, ${all850.words}). At 849 px, a row too since 2026.11.23-4, by the rule for any window, with ${all849.minus} “−”, ${all849.ideas} Ideas, and ${all849.words} words (${at849.where})`);
+      `the .reach line is at 850 px wide: one row at 850 px, with 4 “−”, 4 Ideas, and 13 feeling words (${at850.where}: ${all850.minus}, ${all850.ideas}, ${all850.words}). At 849 px, a row too since 2026.11.24-4, by the rule for any window, with ${all849.minus} “−”, ${all849.ideas} Ideas, and ${all849.words} words (${at849.where})`);
     const loose = [];
     for (const [label, r] of [['260 × 220', { x: 40, y: 40, w: 260, h: 260 }], ['the default size', home], ['very wide', { x: 10, y: 40, w: 1340, h: 300 }], ['tall', { x: 600, y: 60, w: 600, h: 900 }], ['very tall', { x: 600, y: 60, w: 500, h: 900 }], ['as big as the board', { x: 0, y: 0, w: 1920, h: 1080 }]]) {
       await put('free', 1, 1920, 1080, r);
@@ -6959,7 +7909,7 @@ const SUITES = [
     }
     await fill(true); const big = await settled('row');
     top('Fill 1920 × 1080', big);
-    ok(loose.every(c => c.good) && big.shape === 'row', `a window that doesn’t fill the board: the rules before, and since 2026.11.23-4 a row wherever each card can be 190 px wide in an area wider than tall, as in a window as big as the board. A very tall one is one column of four (${said(loose)}). Filled, the same board is one row (${big.shape})`);
+    ok(loose.every(c => c.good) && big.shape === 'row', `a window that doesn’t fill the board: the rules before, and since 2026.11.24-4 a row wherever each card can be 190 px wide in an area wider than tall, as in a window as big as the board. A very tall one is one column of four (${said(loose)}). Filled, the same board is one row (${big.shape})`);
 
     // ---- 3. Counts of 7, 128, 12 and 9999, from the Counts view: each fits inside its card, and the faces still line up.
     // (Fill 1024 × 768 at 80%, a new board's Size on an iPad, and 1280 × 800 at 100%: where “Yellow” once ended in “…”.
@@ -7058,7 +8008,7 @@ const SUITES = [
     await setCornerClock(page, 'auto');   // (the default: only in full screen)
 
     // ---- 7. Full screen, and a Fill board's window resized across 480 px tall or 850 px wide, switch .reach without a
-    // reload. Since 2026.11.23-4 these are rows on both sides of those lines. A window resized across the width where its
+    // reload. Since 2026.11.24-4 these are rows on both sides of those lines. A window resized across the width where its
     // cards reach 190 px switches the layout, again without a reload.
     const mark = () => zf(page).locator('html').evaluate(() => { window.__same = 'same page'; });
     const same = () => zf(page).locator('html').evaluate(() => window.__same === 'same page').catch(() => false);
@@ -7082,7 +8032,7 @@ const SUITES = [
     top('Fill 1920 × 960 at 200%', f0); top('Fill 1920 × 1080 at 200%, full screen', f1); top('Fill 1920 × 960 at 200%, out of full screen', f2);
     const said7 = x => `${x.w} × ${x.h} px, ${x.shape}${x.reach ? ', .reach' : ''}`;
     ok(f0.shape === 'row' && !f0.reach && inFull && f1.shape === 'row' && f1.reach && outFull && f2.shape === 'row' && !f2.reach && await same(),
-      `full screen on a Fill board at 200%: a row in a tab too (2026.11.23-4), and .reach only in full screen (in a tab ${said7(f0)}; full screen ${said7(f1)}; out again ${said7(f2)}). No reload`);
+      `full screen on a Fill board at 200%: a row in a tab too (2026.11.24-4), and .reach only in full screen (in a tab ${said7(f0)}; full screen ${said7(f1)}; out again ${said7(f2)}). No reload`);
     await put('free', 1, 1024, 768); await fill(true);
     const s0 = await settled('row'); await mark();
     await page.setViewportSize({ width: 1024, height: 519 }); const s1 = await settled('row');
@@ -7097,7 +8047,7 @@ const SUITES = [
     top('Fill 1063 × 768 at 125%', v0); top('Fill 1061 × 768 at 125%', v1); top('Fill 1063 × 768 at 125%, again', v2);
     ok(v0.shape === 'row' && v0.reach && v1.shape === 'row' && !v1.reach && v2.shape === 'row' && v2.reach && await same(),
       `and across 850 px wide, the same (${said7(v0)}; ${said7(v1)}; ${said7(v2)}). No reload`);
-    // (2026.11.23-4) Under 480 px tall, where .reach never is: across the width where each card reaches 190 px, the layout
+    // (2026.11.24-4) Under 480 px tall, where .reach never is: across the width where each card reaches 190 px, the layout
     // switches, a row only on the wide side. (Fill 821 × 519 at 100%: 821 × 479 px, the pad 11.975 px, the line at 819.9 px.)
     await page.evaluate(() => window.__board21.setBoardScale(1));
     await page.setViewportSize({ width: 821, height: 519 }); const n1 = await settled('row');
@@ -7164,7 +8114,7 @@ const SUITES = [
     // The README's Included widgets says so, its other words kept.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     const row = (/\| \*\*Zones Check-In\*\* \|[^|]*\|/.exec(readme) || [''])[0];
-    // (2026.11.23-4: its last sentence says when the zones sit in one row now, and that the cards keep clear of the buttons.)
+    // (2026.11.24-4: its last sentence says when the zones sit in one row now, and that the cards keep clear of the buttons.)
     ok(/^\| \*\*Zones Check-In\*\* \| Check-ins kept as \*content\*,.* and an Ideas view with a breathing circle\. The four zones sit in one row once the window is about 830 px wide and wider than it is tall, and always when it fills a board at least 850 × 480 px\. The cards keep clear of the board's own buttons \|$/.test(row),
       `the README’s Zones Check-In row ends “The four zones sit in one row once the window is about 830 px wide and wider than it is tall, and always when it fills a board at least 850 × 480 px. The cards keep clear of the board's own buttons”, with no period, as every row there (…${row.slice(-180)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
@@ -7346,12 +8296,13 @@ const SUITES = [
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  // ---- Zones Check-In in one row at more sizes, clear of the board's buttons (2026.11.23-4). The four zones sit in one
+  // ---- Zones Check-In in one row at more sizes, clear of the board's buttons (2026.11.24-4). The four zones sit in one
   // row whenever each card can be at least 190 px wide and the cards' area is at least as wide as it is tall (fitRow,
   // .one-row): a window about 830 px wide. The board tells any window its own buttons sit over where they are (corners),
   // not only one that fills it, and the Zones Check-In keeps its cards, its line and its bar clear of them.
-  ['Zones Check-In: one row at more sizes, clear of the board’s buttons (2026.11.23-4)', async (browser) => {
+  ['Zones Check-In: one row at more sizes, clear of the board’s buttons (2026.11.24-4)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+    await stubWeather(ctx);   // (the Weather widget, in part 8, asks only the stubs)
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     // Each part runs on its own: one that stops early is reported, and the next still runs.
@@ -7549,6 +8500,24 @@ const SUITES = [
       const base = `${where}, ${x.iw} × ${x.ih}, cards end at ${Math.round(Math.max(...x.cards.map(c => c.card.b)))} of ${x.ih}${x.corners ? ` (corners ${x.corners.left}/${x.corners.right}/${x.corners.height})` : ''}`;
       return { l, said: more => `${base}${more || ''}${l.length ? ': ' + l.join(', ') : ''}` };
     };
+    // ---- Tyler's choice (2026.11.24-4): a window under the board's buttons always keeps clear of them, even a small one.
+    // The window it opens at, 560 × 420, parked in a bottom corner under ▦ and the clock: still two by two, its cards end
+    // just above them, with 4 “−” and 4 Ideas. Its cards get shorter, so its feeling words may hide until it moves.
+    await part('A small window in a corner keeps clear', async () => {
+      const B80 = ['16:9', 0.8, 1920, 1080];
+      await clock('on');
+      const bad = [], seen = [];
+      for (const [label, win] of [['560 × 420, bottom right, under ▦ and the clock', { w: 560, h: 420, x: 1840, y: 890 }], ['560 × 420, bottom left, under ▦', { w: 560, h: 420, x: 0, y: 890 }]]) {
+        await put(...B80, win);
+        const x = await still(), p = await problems(page, label, true), s = x.shows;
+        const l = (x.shape === '2x2' && !x.oneRow ? [] : [`${x.shape}${x.oneRow ? ', .one-row' : ''}`]).concat(
+          x.corners && x.marks.some(m => m.over) ? [] : ['not under the buttons'], s.minus === 4 && s.ideas === 4 ? [] : [`${s.minus} “−”, ${s.ideas} Ideas`], ends(x), p.list);
+        (l.length ? bad : seen).push(`${label}: ${x.iw} × ${x.ih}, ${x.shape}, cards ${card(x)}, ${s.words} words${x.corners ? ` (corners ${x.corners.left}/${x.corners.right}/${x.corners.height})` : ''}${l.length ? ': ' + l.join(', ') : ''}`);
+      }
+      await clock('auto');
+      ok(!bad.length && seen.length === 2, `the window it opens at, parked in a bottom corner, keeps clear of ▦ and the clock: two by two, the cards ending just above them, with 4 “−” and 4 Ideas (${bad.join(' | ') || seen.join('; ')})`);
+    });
+
     await part('The ▦ fix at Size 200%', async () => {
       const bad = [], seen = [], B200 = ['16:9', 2, 1920, 1080];
       for (const theme of ['light', 'dark']) {
@@ -7782,7 +8751,7 @@ const SUITES = [
       await page.evaluate(k => window.__board21.closeWin(k), K); await page.waitForTimeout(300);
       await clock('on');
       const bad = [], seen = [];
-      for (const id of ['calculator', 'first-then-board', 'name-picker', 'youtube-player']) {
+      for (const id of ['calculator', 'first-then-board', 'name-picker', 'youtube-player', 'weather']) {
         const key = await page.evaluate(id => window.__board21.openWidget(id), id);
         await eventually(() => page.evaluate(k => { const w = window.__board21.state.wins.get(k); return !!(w && w.connected); }, key));
         await page.waitForTimeout(600);
@@ -7799,7 +8768,7 @@ const SUITES = [
         }
         await page.evaluate(k => window.__board21.closeWin(k), key); await page.waitForTimeout(300);
       }
-      ok(!bad.length && seen.length === 8, `the Calculator, First/Then Board, Name Picker, and YouTube Player, dragged to cover the board at Size 200% with the clock on, unlocked and locked: told of the buttons, and every element where it is when the board tells them nothing (${bad.join(' | ') || seen.join('; ')})`);
+      ok(!bad.length && seen.length === 10, `the Calculator, First/Then Board, Name Picker, YouTube Player, and Weather, dragged to cover the board at Size 200% with the clock on, unlocked and locked: told of the buttons, and every element where it is when the board tells them nothing (${bad.join(' | ') || seen.join('; ')})`);
       const readers = [];
       for (const d of fs.readdirSync(path.join(ROOT, 'widgets'))) {
         const f = path.join(ROOT, 'widgets', d, 'index.html');
@@ -7817,8 +8786,8 @@ const SUITES = [
         `the README’s Zones Check-In row ends with when the zones sit in one row, and that the cards keep clear of the board’s own buttons (…${row.slice(-200)})`);
       const sdk = read('docs/WIDGET-SDK.md'), info = sdk.split('\n').find(l => l.startsWith('| `Board21.window.getInfo()` |')) || '';
       ok(info.includes('`corners` is sent while the window fills the board, and to any other window the board\'s own buttons sit over: `{ left, right, height }`') && !info.includes('is sent only while') &&
-        info.includes('An older 21Board doesn\'t send `corners`. A 21Board before 2026.11.23-4 sends it only while the window fills the board. `corners.top`') && info.includes('A 21Board before 2026.11.18-18 doesn\'t send it.'),
-        `docs/WIDGET-SDK.md: corners goes to a window that fills the board and to any other the board’s buttons sit over, and a 21Board before 2026.11.23-4 sends it only to the first (${info.slice(info.indexOf('`corners` is sent'), info.indexOf('`corners` is sent') + 140)}…)`);
+        info.includes('An older 21Board doesn\'t send `corners`. A 21Board before 2026.11.24-4 sends it only while the window fills the board. `corners.top`') && info.includes('A 21Board before 2026.11.18-18 doesn\'t send it.'),
+        `docs/WIDGET-SDK.md: corners goes to a window that fills the board and to any other the board’s buttons sit over, and a 21Board before 2026.11.24-4 sends it only to the first (${info.slice(info.indexOf('`corners` is sent'), info.indexOf('`corners` is sent') + 140)}…)`);
       const guide = read('docs/teacher-guide/page-src.html'), i = guide.indexOf('id="w-zones-check-in"'), zc = guide.slice(i, guide.indexOf('</article>', i));
       ok(zc.includes('<li>Make the window wide and the zones line up in one row. Fill the board to put them in every student’s reach.</li>') && !zc.includes('Fill the board and the zones line up in one row'),
         'the Teacher Guide’s Zones Check-In card: “Make the window wide and the zones line up in one row. Fill the board to put them in every student’s reach.”');
@@ -7836,12 +8805,15 @@ const SUITES = [
     // The Widget Picker: its name, and for each widget a tooltip of one short sentence that starts with a verb.
     const tips = await page.evaluate(() => Object.fromEntries(window.__board21.catalog().map(w => [w.id, w.description])));
     const want = { timer: 'Count down with presets and an alarm.', 'task-timer': 'Count down a schedule of activities on a pie, with an alarm.', calendar: 'See the month, with today highlighted.',
-      clock: 'Show an analog or digital clock, or just the date.', notes: 'Write directions, reminders, or the day’s agenda.', 'name-picker': 'Pick one to five names at random from your list.',
+      clock: 'Show an analog or digital clock, or just the date.', notes: 'Write directions, reminders, or the day’s agenda.', 'name-picker': 'Pick one to six names at random, or make groups.',
       'first-then-board': 'Pick a First card and a Then card, and mark each one done.', dice: 'Roll one to six dice.', 'traffic-light': 'Show noise level or work time in red, yellow, and green.',
       'youtube-player': 'Play a video from YouTube, Google Drive, or Vimeo.', image: 'Show a picture you open or paste.', '21sketch': 'Draw with the district’s whiteboard app.',
-      '21timer': 'Run the district’s classroom timer app.', '21doccam': 'Show work with the district’s document camera app.', 'zones-check-in': 'Check in on how your class feels.' };
+      '21timer': 'Run the district’s classroom timer app.', '21doccam': 'Show work with the district’s document camera app.', 'zones-check-in': 'Check in on how your class feels.',
+      weather: 'See the weather and what to wear.' };
     const offTips = Object.keys(want).filter(id => tips[id] !== want[id]);
     ok(!offTips.length, `each widget’s tooltip says what it does in one sentence that starts with a verb${offTips.length ? ': ' + offTips.map(id => `${id} “${tips[id]}”`).join(', ') : ''}`);
+    const guideTiles = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs', 'teacher-guide', 'tiles.json'), 'utf8')), offGuide = guideTiles.filter(t => t.description !== tips[t.id]);
+    ok(guideTiles.length >= 15 && !offGuide.length, `the Teacher Guide’s tiles.json has each widget’s tooltip${offGuide.length ? ': ' + offGuide.map(t => `${t.id} “${t.description}”`).join(', ') : ''}`);
     const panelName = await page.evaluate(() => [document.getElementById('panel').getAttribute('aria-label'), ...['export', 'import', 'quit'].map(c => document.querySelector(`#panel [data-ctl="${c}"]`).getAttribute('aria-label'))].join(' | '));
     ok(panelName === 'Widget Picker | Export board | Import board | Quit 21Board', `screen readers hear the Widget Picker by its name, and its buttons by what they do (${panelName})`);
 
@@ -7953,7 +8925,7 @@ const SUITES = [
     // The docs: 21Board's value (work stored only on the device, and in the teacher's Drive with Board Sync; online when
     // needed), what the video sites see, kiosk mode's menu and Drive there, and what IT needs to know.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' '), registrySrc = fs.readFileSync(path.join(ROOT, 'widgets', 'registry.js'), 'utf8');
-    ok(readme.includes('- **Private.** Your work is stored only on your device, and in your school Google Drive if you turn on Board Sync. 21Board has no servers and no accounts. - **Online only when needed.** For updates, district apps, and videos.'),
+    ok(readme.includes('- **Private.** Your work is stored only on your device, and in your school Google Drive if you turn on Board Sync. 21Board has no servers and no accounts. - **Online only when needed.** For updates, district apps, videos, and the weather.'),
       'the README’s top says the work is stored only on the device (and in the teacher’s school Google Drive with Board Sync), and that 21Board goes online only when needed');
     ok(!/sends nothing|nothing anywhere|All data stays/.test(readme), 'and no longer says 21Board sends nothing anywhere');
     const row = readme.slice(readme.indexOf('| **Video Player**'), readme.indexOf('| **21Sketch**'));
@@ -7973,7 +8945,7 @@ const SUITES = [
     ok(dataDoc.includes('21Board stores everything **on the device**, in the browser\'s IndexedDB. With Board Sync, the board is also in the teacher\'s Google Drive folder. 21Board has no servers.') && !/never sees any data/.test(dataDoc),
       'the data format guide says where the work is stored: on the device, and in the teacher’s Drive folder with Board Sync');
     const sdkDoc = fs.readFileSync(path.join(ROOT, 'docs', 'WIDGET-SDK.md'), 'utf8').replace(/\s+/g, ' '), prompt = fs.readFileSync(path.join(ROOT, 'docs', 'AI-PROMPT.md'), 'utf8');
-    ok(sdkDoc.includes('1. **No Internet.** No CDNs, web fonts, analytics, or APIs. Keep everything in your folder, so the widget works offline and student work stays on the device. The Video Player is the only exception. 2.'),
+    ok(sdkDoc.includes('1. **No Internet.** No CDNs, web fonts, analytics, or APIs. Keep everything in your folder, so the widget works offline and student work stays on the device. The Video Player and Weather are the only exceptions. 2.'),
       'the SDK guide’s rule 1 is the new one, word for word');
     ok(/\*\*No network at all\*\*/.test(prompt) && /Make NO network requests/.test(prompt), 'the AI prompt keeps its rules: no network at all');
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
@@ -12771,7 +13743,7 @@ const SUITES = [
       const shapes = [null, undefined, [], 'text', 42, { names: 5 }, { values: '6' }, { tasks: [null] }, { expr: [{}] }, { first: 'Math' }, deep,
         { names: [null, 5, {}], tasks: 'x', values: [null], history: [null], expr: null, src: {}, active: 'constructor', text: 5, duration: '300000', first: { label: 7 }, videoId: 'x' }];
       const out = [];
-      for (const id of ['name-picker', 'calculator', 'first-then-board', 'task-timer', 'youtube-player', 'timer', 'dice', 'traffic-light', 'image', 'notes', 'zones-check-in', 'clock', 'constructor', 'counter']) {
+      for (const id of ['name-picker', 'calculator', 'first-then-board', 'task-timer', 'youtube-player', 'timer', 'dice', 'traffic-light', 'image', 'notes', 'zones-check-in', 'clock', 'weather', 'constructor', 'counter']) {
         shapes.forEach((d, k) => {
           try { const s = window.__board21.history.excerptOf(d, id); if (typeof s !== 'string' || s.length > 80) out.push(`${id} #${k}: ${JSON.stringify(s)}`); } catch (e) { out.push(`${id} #${k} throws ${e.message}`); }
         });
@@ -15334,20 +16306,21 @@ const SUITES = [
     await mp.focus('.win[data-ikey="name-picker:1"] .win-label'); await mp.keyboard.press('Enter');
     const walk = [await where()];
     for (const key of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'End', 'ArrowDown', 'Home', 'ArrowUp']) { await mp.keyboard.press(key); walk.push(await where()); }
-    ok(walk.join(', ') === 'Big name, Spinning wheel, Spotlight, Spinning wheel, Close, Big name, Big name, Close', `the arrow keys, Home and End go from item to item, round from the last to the first (${walk.join(', ')})`);
-    await mp.keyboard.press('Home'); await mp.keyboard.press('ArrowDown'); await mp.keyboard.press('ArrowDown'); await mp.keyboard.press('Enter');
+    ok(walk.join(', ') === 'Edit names, Big name, Spinning wheel, Big name, Close, Edit names, Edit names, Close', `the arrow keys, Home and End go from item to item, round from the last to the first (${walk.join(', ')})`);
+    await mp.keyboard.press('Home'); for (let i = 0; i < 3; i++) await mp.keyboard.press('ArrowDown'); await mp.keyboard.press('Enter');
     ok(await eventually(async () => await style() === 'spotlight') && await mp.locator('#menu.open').count() === 0 && await where() === 'the window’s name', `Enter chooses one (Spotlight), closes the menu and leaves the keyboard on the window’s name (${await where()})`);
     await mp.keyboard.press('Enter');
-    ok(await mp.getByRole('group', { name: 'Winners each time' }).getByRole('menuitemcheckbox').count() === 5
+    ok(await mp.getByRole('group', { name: 'Names at a time' }).getByRole('menuitemradio').count() === 6
+      && await mp.getByRole('group', { name: 'Names at a time' }).getByRole('menuitemradio', { name: '1', checked: true }).count() === 1
       && await mp.getByRole('group', { name: 'Pick with' }).getByRole('menuitemcheckbox', { name: 'Spotlight', checked: true }).count() === 1,
-      'screen readers hear each heading with the items under it (“Winners each time”: 1 to 5; “Pick with”: Spotlight, checked)');
+      'screen readers hear each heading with the items under it (“Names at a time”: 1 to 6, 1 checked; “Pick with”: Spotlight, checked)');
     await mp.keyboard.press('End'); await mp.keyboard.press('ArrowUp'); await mp.keyboard.press('Enter');
     ok(await mp.locator('#menu.open .menu-confirm').count() === 1 && await where() === 'Reset', `Reset by keyboard asks first, with the keyboard on its answer (${await where()})`);
     await mp.keyboard.press('Escape');
     ok(await where() === 'the window’s name' && await mp.evaluate(() => window.__board21.state.insts.has('name-picker:1')), 'Escape leaves it as it was');
     // A widget that takes the keyboard for what was chosen still gets it: Edit names puts it in the names list.
-    await mp.keyboard.press('Enter'); await mp.keyboard.press('End');
-    for (let i = 0; i < 9 && await where() !== 'Edit names'; i++) await mp.keyboard.press('ArrowUp');
+    await mp.keyboard.press('Enter'); await mp.keyboard.press('Home');
+    ok(await where() === 'Edit names', `Edit names is the menu’s first item (${await where()})`);
     await mp.keyboard.press('Enter'); await mp.waitForTimeout(300);
     const inList = await mp.frameLocator('.win[data-ikey="name-picker:1"] iframe').locator('html').evaluate(() => document.hasFocus() && document.activeElement.id === 'list');
     ok(inList, 'choosing Edit names by keyboard puts the keyboard in the names list, as a tap does');
@@ -19608,7 +20581,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     const claude = fs.readFileSync(path.join(ROOT, 'CLAUDE.md'), 'utf8').replace(/\s*\n\s*/g, ' ');
     for (const [was, now] of [
       ['See README.md, docs/WIDGET-SDK.md and docs/DATA-FORMAT.md.', 'See README.md, docs/WIDGET-SDK.md, and docs/DATA-FORMAT.md.'],
-      ['Going online for updates, district apps and videos is fine.', 'Going online for updates, district apps, and videos is fine.'],
+      ['Going online for updates, district apps and videos is fine.', 'Going online for updates, district apps, videos, and the weather is fine.'],
       ['Cut hedges, qualifiers, parentheticals and stacked clauses.', 'Cut hedges, qualifiers, parentheticals, and stacked clauses.'],
       ['tools/release-workflow.js builds, reviews and fixes each release.', 'tools/release-workflow.js builds, reviews, and fixes each release.'],
       ['Every change to the interface, a widget or how the board behaves', 'Every change to the interface, a widget, or how the board behaves']]) {
@@ -21364,9 +22337,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(L.eq === '17 ÷ 5 = 3.4' && L.toggle === 'Show with a remainder' && L.said === '17 divided by 5 equals 3.4', `⇄: 3.4, then “Show with a remainder” (${L.eq}; ${L.toggle})`);
       await C.W.locator('#eqToggle').click(); await C.page.waitForTimeout(250); L = await C.look();
       ok(L.eq === '17 ÷ 5 = 3 R 2', `⇄ again: 3 R 2 (${L.eq})`);
-      // ans goes on from 17/5.
+      // ans goes on from 17/5, and shows it as 17/5 (2026.11.23-4).
       await C.press('×5='); L = await C.look();
-      ok(L.eq === '3.4 × 5 = 17', `× right after it goes on from 17/5: ${L.eq}`);
+      const ansBox = await C.W.locator('#eq .ce-ansref .ce-frac').evaluate(f => f.querySelector('.ce-numer').textContent + '/' + f.querySelector('.ce-denom').textContent).catch(() => null);
+      ok(ansBox === '17/5' && / × 5 = 17$/.test(L.eq), `× right after it goes on from 17/5, shown as 17/5: ${ansBox}; ${L.eq}`);
       // Hide the answer hides it like any other.
       await C.choose('Hide the answer'); await C.press(['clear']); await C.press('17÷5='); L = await C.look();
       const hl = L.hist[L.hist.length - 1] || {};
@@ -21415,7 +22389,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const cardOf = h => { const j = man.indexOf(`<h3>${h}</h3>`); return j < 0 ? '' : man.slice(j, man.indexOf('<div class="pg-exs">', j)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' '); };
       ok(cardOf('Percent').includes('For the iPhone way, turn on Advanced keys, then untick Desmos %.') && !cardOf('Percent').includes('Untick Desmos % in the menu'),
         `the manual’s Percent card: “For the iPhone way, turn on Advanced keys, then untick Desmos %.” (${cardOf('Percent').trim()})`);
-      ok(cardOf('Remainders').includes('Go on from 3 R 2, and ans shows 3.4.') && cardOf('Remainders').includes('With Advanced keys on, / types a fraction. Tap ÷ instead.'),
+      ok(cardOf('Remainders').includes('Go on from 3 R 2, and ans shows 17/5.') && cardOf('Remainders').includes('With Advanced keys on, / types a fraction. Tap ÷ instead.'),
         `the manual’s Remainders card: what ans shows, and / with Advanced keys on (${cardOf('Remainders').trim()})`);
       const guide = read('docs/teacher-guide/page-src.html'), i = guide.indexOf('id="w-calculator"'), card = guide.slice(i, guide.indexOf('</article>', i));
       const ideas = Array.from(card.matchAll(/<li><span class="grade">([^<]*)<\/span><span>([^<]*)<\/span><\/li>/g)).map(x => x[1]);
@@ -21428,6 +22402,1595 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     });
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  // ---- Weather (2026.11.24-3): a new built-in widget that goes online for the weather. Its sites never answer for real:
+  // stubWeather answers from tests/fixtures/weather/, as they did on Mon Nov 23 2026 at 11:50 AM Central.
+  ['Weather: the registry, the Widget Picker, a new window on Wheeling, its menu, and the docs (2026.11.24-3)', async (browser) => {
+    const errors = [];
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const { K, F, text } = WXT;
+    const norm = s => String(s || '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
+
+    // ---- 1. The registry, its page, and the Widget Picker.
+    await part('Registry', async () => {
+      const { ctx, page } = await WXT.board(browser, errors);
+      const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'weather'); return a && { name: a.name, version: a.version, entry: a.entry, files: a.files, clash: a.clash, permissions: a.permissions, win: a.win, color: a.color, icon: a.icon, external: !!a.external, single: !!a.single, devOnly: !!a.devOnly, description: a.description }; });
+      ok(!!reg && reg.name === 'Weather' && reg.version === '1.0.0' && reg.entry === 'widgets/weather/index.html' && reg.files[0] === 'widgets/weather/index.html' && reg.files.every(f => /^widgets\/weather\/[\w.-]+$/.test(f) && fs.existsSync(path.join(ROOT, f))) &&
+        reg.clash === 'later' && reg.permissions.length === 0 && !reg.external && !reg.single && !reg.devOnly && reg.win.width === 480 && reg.win.height === 360 && reg.win.minWidth === 260 && reg.win.minHeight === 220,
+        `it is in the registry as Weather: 480 × 360, at least 260 × 220, clash 'later', no permissions (${JSON.stringify(reg && { files: reg.files, win: reg.win, clash: reg.clash })})`);
+      ok(!!reg && reg.description === 'See the weather and what to wear.' && reg.color === '#0369a1', `its tooltip and color: “See the weather and what to wear.”, #0369a1 (${reg && reg.description}, ${reg && reg.color})`);
+      const others = await page.evaluate(() => window.__board21.catalog().filter(w => w.id !== 'weather').map(w => String(w.color || '').toLowerCase()));
+      ok(!!reg && /^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', rgbOf(reg.color)) >= 4.5 && !others.includes(reg.color.toLowerCase()), `its tile is a color of its own, the white icon readable on it (${reg && contrast('rgb(255, 255, 255)', rgbOf(reg.color)).toFixed(2)}:1)`);
+      const order = await page.evaluate(() => window.BOARD21_WIDGETS.map(w => w.id));
+      ok(order.indexOf('weather') === order.indexOf('calculator') + 1 && order.indexOf('21sketch') === order.indexOf('weather') + 1, 'it follows the Calculator in the registry, before the district apps');
+      const src = fs.existsSync(path.join(ROOT, 'widgets', 'weather', 'index.html')) ? fs.readFileSync(path.join(ROOT, 'widgets', 'weather', 'index.html'), 'utf8') : '';
+      const mf = /<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src), manifest = mf ? JSON.parse(mf[1]) : {};
+      ok(!!reg && manifest.id === 'weather' && manifest.name === reg.name && manifest.version === reg.version && manifest.description === reg.description && manifest.color === reg.color &&
+        ['width', 'height', 'minWidth', 'minHeight'].every(k => (manifest.window || {})[k] === reg.win[k]) && /<title>Weather<\/title>/.test(src) && /^<!DOCTYPE html>/.test(src) &&
+        /<meta charset="utf-8">\s*<script src="\.\.\/\.\.\/sdk\/board21\.js"><\/script>/.test(src), 'its manifest block matches the registry entry, and the SDK is its first script');
+      ok(!!src && !/\b(localStorage|sessionStorage|indexedDB)\b|document\.cookie|\b(alert|confirm|prompt)\s*\(|autofocus|navigator\.geolocation/.test(src.replace(/<!--[\s\S]*?-->/g, '')), 'it keeps nothing itself, never asks where the device is, and never stops the board with a dialog');
+      const hosts = [...new Set((src.match(/https:\/\/[a-z0-9.-]+/g) || []))].sort();
+      ok(hosts.join(' ') === 'https://air-quality-api.open-meteo.com https://api.open-meteo.com https://api.weather.gov https://archive-api.open-meteo.com https://geocoding-api.open-meteo.com https://open-meteo.com', `it names only the five weather sites, and Open-Meteo's own (${hosts.join(' ')})`);
+      const vm = require('vm'), box = { addEventListener() {} }; box.self = box;
+      box.importScripts = (...files) => files.forEach(f => vm.runInContext(fs.readFileSync(path.join(ROOT, f), 'utf8'), box));
+      vm.createContext(box);
+      const list = vm.runInContext(fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8') + '\n;PRECACHE;', box);
+      ok(!!reg && reg.files.every(f => list.includes(f)), 'its files are in the offline copy (sw.js PRECACHE)');
+      await page.click('.picker-btn.left'); await page.waitForTimeout(300);
+      const tiles = await page.locator('#panel .widget-tile').count(), tile = page.locator('#panel [data-widget="weather"]');
+      ok(tiles === 17 && await tile.count() === 1 && (await tile.innerText()).trim() === 'Weather' && (await tile.getAttribute('title')) === 'Weather\nSee the weather and what to wear.', `the Widget Picker has 17 tiles, Weather’s with its tooltip (${tiles})`);
+      await page.keyboard.press('Escape');
+      await ctx.close();
+    });
+
+    // ---- 2. A new window from the Widget Picker, on Mon Nov 23 (no school): Wheeling, from the five sites only.
+    await part('A new window', async () => {
+      const { ctx, page, wx } = await WXT.board(browser, errors);
+      await page.click('.picker-btn.left'); await page.waitForTimeout(200);
+      await page.click('#panel [data-widget="weather"]');
+      ok(await WXT.connected(page) && await WXT.drawn(page), 'tapping its tile opens a window, which connects and draws the weather');
+      await page.waitForTimeout(800);
+      const rect = await page.evaluate(k => window.__board21.state.insts.get(k).rect, K);
+      ok(Math.round(rect.w) === 480 && Math.round(rect.h) === 400, `it opens at 480 × 360, Medium (${JSON.stringify(rect)})`);
+      const s = await F(page, () => {
+        const q = s => document.querySelector('#app ' + s), t = e => e ? e.textContent.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim() : null;
+        return { layout: (q('.wx') || {}).className, place: t(q('.place')), temp: t(q('.temp')), unit: t(q('.temp .unit')), unitDim: q('.temp .unit') ? getComputedStyle(q('.temp .unit')).color : '',
+          src: [...document.querySelectorAll('#app .hero .src')].map(t), cond: t(q('.hero .cond')), hl: t(q('.hero .hl')),
+          week: [...document.querySelectorAll('#app .week .col')].map(c => [t(c.querySelector('.n')), t(c.querySelector('.h')), t(c.querySelector('.l'))].join(' ')), weekHead: t(q('.week') && q('.week').closest('.card').querySelector('h3')),
+          wear: { buttons: [...document.querySelectorAll('#app .wl .tg b')].map(t), says: t(q('.wl .says')), items: [...document.querySelectorAll('#app .wl [data-item]')].map(e => e.dataset.item) } };
+      });
+      ok(/\bL-m\b/.test(s.layout) && s.place === 'Wheeling' && s.temp === '39°F' && s.unit === 'F' && s.src.includes('At Chicago Executive Airport') && s.cond === 'Sunny' && s.hl === 'H 40° L 25°',
+        `it shows Wheeling, 39°F with a dim F, “At Chicago Executive Airport”, Sunny, and H 40° L 25° (${JSON.stringify(s).slice(0, 400)})`);
+      ok(s.week.join(' | ') === 'Today 40° 25° | Tue 40° 23° | Wed 44° 33° | Thu 45° 42° | Fri 49° 39°' && /Open-Meteo/.test(s.weekHead || ''), `the week: Today 40/25, Tue 40/23, Wed 44/33, Thu 45/42, Fri 49/39, with Open-Meteo in its heading (${s.week.join(' | ')}; ${s.weekHead})`);
+      ok(s.wear.buttons.join() === 'Mon, Nov 30' && s.wear.says === 'Dress for chilly weather.' && s.wear.items.join() === 'coat', `What to wear shows only Mon, Nov 30: “Dress for chilly weather.” and a coat (${JSON.stringify(s.wear)})`);
+      const hosts = wx.hosts();
+      ok(hosts.length && hosts.every(h => /^(api|air-quality-api|archive-api|geocoding-api)\.open-meteo\.com$|^api\.weather\.gov$/.test(h)) && wx.asked.every(a => !a.cookie && !a.referer),
+        `it asks only the weather sites, with no cookie and no Referer (${hosts.join(', ')}; ${wx.asked.length} requests)`);
+      ok(wx.asked.some(a => a.path === '/points/42.1392,-87.929') && wx.asked.some(a => a.path === '/v1/forecast' && a.query.current && a.query.timeformat === 'unixtime' && a.query.forecast_days === '8' && a.query.timezone === 'America/Chicago'),
+        'it looks Wheeling up at the Weather Service at 4 decimals, and asks Open-Meteo for 8 days in unix time, with Now, the first time');
+      await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-new.png' });
+      await ctx.close();
+    });
+
+    // ---- 3. The menu: exactly spec §7.1's items, which fit; the link to Open-Meteo, and none in kiosk mode.
+    await part('The menu', async () => {
+      const { ctx, page } = await WXT.board(browser, errors);
+      await ctx.route(/^https:\/\/open-meteo\.com\//, r => r.fulfill({ status: 200, contentType: 'text/html', body: '<title>Open-Meteo stand-in</title>' }));
+      await WXT.open(page);
+      const m = await WXT.menuOf(page);
+      const MENU = '[Show] | ✓ Hourly forecast | ✓ 7-day forecast | ✓ What to wear | ✓ Sunrise and sunset | ✓ Moon | ✓ Wind | ✓ Air quality | ✓ Watches | — | On a date… | Location… | ☐ Simple words | ☐ No motion | — | [Units] | ✓ °F and mph | ☐ °C and km/h | — | Forecast from Open-Meteo | Now from the National Weather Service (off) | Air quality from Open-Meteo and Copernicus (off)';
+      const n = await page.evaluate(k => window.__board21.state.wins.get(k).menuItems.length, K);
+      ok(m === MENU && n === 22, `its menu, 22 items (${n}: ${m})`);
+      const icon = await page.evaluate(k => (window.__board21.state.wins.get(k).menuItems.find(i => i.label === 'Forecast from Open-Meteo') || {}).icon || '', K);
+      ok(/M14 4h6v6/.test(icon), 'Forecast from Open-Meteo has the board’s open-in-a-tab icon');
+      for (const [where, y] of [['near the top', 0], ['near the bottom', 100000]]) {
+        await page.evaluate(([k, y]) => window.__board21.setRect(k, Object.assign({}, window.__board21.state.insts.get(k).rect, { x: 300, y })), [K, y]); await page.waitForTimeout(500);
+        await page.click(`.win[data-ikey="${K}"] .win-label`); await page.waitForTimeout(400);
+        const r = await page.evaluate(() => { const e = document.getElementById('menu'), b = e.getBoundingClientRect(); return { cls: e.className, top: Math.round(b.top), bottom: Math.round(b.bottom), scrolls: e.scrollHeight > e.clientHeight + 1 }; });
+        ok(!r.scrolls && r.top >= 0 && r.bottom <= 768 && !/\bcols\b/.test(r.cls), `${where}: the whole menu fits on a 1366 × 768 board without scrolling or two columns (${r.top} to ${r.bottom}; ${r.cls})`);
+        await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+      }
+      const [pop] = await Promise.all([ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null), WXT.choose(page, 'open')]);
+      ok(!!pop && /^https:\/\/open-meteo\.com\/?$/.test(pop.url()), `Forecast from Open-Meteo opens open-meteo.com in a new tab (${pop && pop.url()})`);
+      if (pop) await pop.close();
+      await ctx.close();
+      const k = await WXT.board(browser, errors, { query: '?kiosk=yes' });
+      await WXT.open(k.page);
+      const km = await WXT.menuOf(k.page);
+      ok(!/Forecast from Open-Meteo/.test(km) && /Now from the National Weather Service/.test(km), `in kiosk mode the menu has no link (${km.split(' | ').length} items)`);
+      await k.ctx.close();
+    });
+
+    // ---- 4. The docs say what it does and what it reaches.
+    await part('Docs', async () => {
+      const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8'), flat = f => read(f).replace(/\s+/g, ' ');
+      const readme = flat('README.md'), sdkDoc = flat('docs/WIDGET-SDK.md'), dataDoc = flat('docs/DATA-FORMAT.md'), claude = flat('CLAUDE.md');
+      ok(readme.includes('- **Online only when needed.** For updates, district apps, videos, and the weather.'), 'README: “Online only when needed. For updates, district apps, videos, and the weather.”');
+      ok(claude.includes('Going online for updates, district apps, videos, and the weather is fine.'), 'CLAUDE.md: “Going online for updates, district apps, videos, and the weather is fine.”');
+      ok(sdkDoc.includes('offline and student work stays on the device. The Video Player and Weather are the only exceptions. 2.'), 'the SDK guide’s rule 1: “The Video Player and Weather are the only exceptions.”');
+      const row = (/\| \*\*Weather\*\* \|[^|]*\|/.exec(readme) || [''])[0];
+      ok(!!row && readme.indexOf(row) > readme.indexOf('| **Calculator** |') && readme.indexOf(row) < readme.indexOf('| **21Sketch** |') &&
+        row.includes('Forecast and air quality from Open-Meteo, and the weather right now, watches, and warnings from the National Weather Service, with plain `fetch()`.') && row.includes('The 7 days and what to wear from the last forecast kept as content'),
+        `README: a Weather row after the Calculator’s (${row.slice(0, 120)}…)`);
+      const sec = readme.slice(readme.indexOf('## Weather'), readme.indexOf('## District apps'));
+      const items = ['**Show:**', '**On a date…:**', '**Location…:**', '**Simple words:**', '**No motion:**', '**Units:**', '**Forecast from Open-Meteo:**'];
+      const at = items.map(i => sec.indexOf(i));
+      ok(readme.indexOf('## Weather') > readme.indexOf('## Calculator') && at.every((x, i) => x > 0 && (!i || x > at[i - 1])) && sec.includes('**How often it asks.** Only while the window shows.') && sec.includes('**Offline.** It tries for new weather first.') && !/clear all/i.test(sec),
+        `README: a Weather section, its menu in the menu’s order, how often it asks, and offline (${at.join(', ')})`);
+      ok(readme.includes('connect-src https://api.open-meteo.com https://air-quality-api.open-meteo.com https://archive-api.open-meteo.com https://geocoding-api.open-meteo.com https://api.weather.gov') &&
+        readme.includes('Open-Meteo allows 10,000 calls a day from each Internet address. A window showing all day uses about 18. Past that, Weather uses the National Weather Service\'s forecast.'),
+        'README For IT: the five sites a CSP needs for its page, and Open-Meteo’s daily limit');
+      ok(dataDoc.includes('`{ saved: { at, place, days, wear } }`') && dataDoc.includes('`{ place: { id, name, region, country, lat, lon, tz }, units, hide, simple, still, date }`') &&
+        dataDoc.indexOf('Weather (`weather`) saves') > dataDoc.indexOf('The Clock (`clock`)'), 'docs/DATA-FORMAT.md gives its content and its config, after the Clock’s');
+      const tiles = JSON.parse(read('docs/teacher-guide/tiles.json')), t = tiles.find(x => x.id === 'weather');
+      const reg = (() => { const box = { self: {} }; require('vm').runInNewContext(read('widgets/registry.js'), box); return box.self.BOARD21_WIDGETS.find(w => w.id === 'weather'); })();
+      ok(!!t && !!reg && ['name', 'color', 'icon', 'description'].every(k => t[k] === reg[k]) && tiles.indexOf(t) === tiles.findIndex(x => x.id === 'calculator') + 1, 'the Teacher Guide’s tiles.json has Weather as the registry has it, after the Calculator');
+      const guide = read('docs/teacher-guide/page-src.html'), i = guide.indexOf('id="w-weather"'), card = i < 0 ? '' : guide.slice(i, guide.indexOf('</article>', i));
+      ok(i > 0 && guide.includes('{{tile:weather}}') && guide.includes('Seventeen tools') && card.includes('What to wear goes by what the temperature feels like from 8 AM to 3:30 PM, or to 12 PM on a half day.') &&
+        ['Coldest below 10°F', 'Coldest 10°F to 31°F', 'Coldest 32°F to 44°F', 'Coldest 45°F to 59°F', 'Coldest 60°F or more', 'Warmest 75°F or more', 'Rain 40% or more', 'Snow 40% or more'].every(r => card.includes(`<td>${r}</td>`)),
+        'the Teacher Guide: a Weather card with its What to wear table, and “Seventeen tools”');
+      ok(guide.includes('Weather sends only a town, nothing about you or your class.') && guide.includes('Weather shows the last forecast it saved.'), 'the Teacher Guide’s privacy box and its FAQ name Weather');
+    });
+
+    ok(stamped(), STAMPED);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  ['Weather: every size, light and dark, filling the board locked and unlocked, the Show list, and the unit letter', async (browser) => {
+    const errors = [];
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const { K } = WXT;
+    // ---- 1. Each layout at its smallest and as the mockup draws it, light and dark, then filling the board unlocked and
+    // locked (the corner clock on, so every corner mark shows), with the parts spec §5.1 gives each.
+    await part('Sizes', async () => {
+      const { ctx, page } = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } } });
+      await WXT.open(page);
+      await setCornerClock(page, 'on');
+      const WANT = {
+        s: x => x.hero && !x.days && !x.wear && !x.hourly && !x.sun,
+        m: x => x.hero && x.days === 5 && x.wear === 'line' && !x.sun && !x.hourly,
+        l: x => x.hero && x.feels && x.windLine && x.airLine && x.days === 7 && x.wear === 'card' && x.sun && x.moonline && !x.hourly && !x.wind,
+        xl: x => x.hero && x.hourly && x.wear === 'card' && x.days === 7 && x.sun && x.wind && x.moon && x.air };
+      const SIZES = [['s', 'Small at its smallest', 260, 220], ['s', 'Small', 340, 260], ['m', 'Medium at its smallest', 380, 280], ['m', 'Medium', 480, 360], ['l', 'Large at its smallest', 760, 480], ['l', 'Large', 900, 560], ['xl', 'Fill the board’s layout', 1600, 860]];
+      const bad = [], seen = [], ref = [];
+      for (const theme of ['light', 'dark']) {
+        await setTheme(page, theme);
+        for (const [L, label, w, h] of SIZES) {
+          await WXT.size(page, w, h);
+          const p = await WXT.problems(page, false), x = await WXT.parts(page);
+          if (L === 'l' && w === 900) ref.push(`${theme}: ` + await WXT.F(page, () => { const wx = document.querySelector('#app .wx'); return (['tight', 'tighter', 'tightest'].filter(c => wx.classList.contains(c)).join('+') || 'no step') + ', ' + (parseFloat(getComputedStyle(wx.querySelector('.temp')).fontSize) / parseFloat(getComputedStyle(wx).fontSize)).toFixed(2) + 'em'; }));
+          if (!x || x.layout !== L) p.list.push(`the layout is ${x && x.layout}, not ${L}`);
+          else if (!WANT[L](x)) p.list.push(`its parts: ${JSON.stringify(x)}`);
+          if (x && x.gaps.length) p.list.push(...x.gaps);
+          (p.list.length ? bad : seen).push(`${theme}, ${label} (${p.size})${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+          await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + `weather-${theme}-${label.replace(/\W+/g, '-')}.png` });
+        }
+        for (const [vw, vh, L] of [[1680, 1000, 'xl'], [1100, 640, 'xl'], [1000, 640, 'l']]) for (const locked of [false, true]) {
+          await page.setViewportSize({ width: vw, height: vh }); await page.waitForTimeout(300);
+          await page.evaluate(k => window.__board21.setMaximized(k, true), K); await page.waitForTimeout(600);
+          if (locked) { await lockBoard(page, 'widgets'); await page.waitForTimeout(600); }
+          const p = await WXT.problems(page, true), x = await WXT.parts(page), want = locked ? 5 : 3;
+          if (!x || x.layout !== L) p.list.push(`the layout is ${x && x.layout}, not ${L}`);
+          if (p.marks < want) p.list.push(`only ${p.marks} of the board’s ${want} corner marks show`);
+          (p.list.length ? bad : seen).push(`${theme}, filling a ${vw} × ${vh} board${locked ? ', locked' : ''} (${p.size})${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+          await page.screenshot({ path: OUT + `weather-${theme}-fill-${vw}${locked ? '-locked' : ''}.png` });
+          if (locked) await unlockBoard(page);
+          await page.evaluate(k => window.__board21.setMaximized(k, false), K); await page.waitForTimeout(300);
+        }
+        await page.setViewportSize({ width: 1680, height: 1000 }); await page.waitForTimeout(300);
+      }
+      ok(!bad.length && seen.length === 26, `Small, Medium, Large, and Fill the board, each at its smallest too, light and dark, and filling the board unlocked and locked: each layout’s parts, no text under 14 px, nothing cut off or out of its card, no gap, nothing under the board’s corner marks (${bad.join(' | ') || seen.length + ' layouts'})`);
+      // (A card 2 px into its own padding takes no step, so Large's own size looks as the mockup does.)
+      ok(ref.length === 2 && ref.every(r => /: no step, 5\.40em$/.test(r)), `at 900 × 560, Large’s own size, it draws the mockup’s sizes: no step, and the temperature at 5.4em (${ref.join(' | ')})`);
+      await ctx.close();
+    });
+
+    // ---- 2. The Show list hides each part at Medium, Large, and Fill the board, with no gap and no overflow; alone, and
+    // in the mockup's Round 3 combinations. The unit letter is on the big temperature only.
+    await part('Show list', async () => {
+      const { ctx, page } = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } } });
+      await WXT.open(page);
+      const KEYS = ['hourly', 'days', 'wear', 'sun', 'moon', 'wind', 'air'];
+      const GONE = { hourly: x => !x.hourly, days: x => !x.days, wear: x => !x.wear, sun: x => !x.sun, moon: x => !x.moon && !x.moonline, wind: x => !x.wind && !x.windLine, air: x => !x.air && !x.airLine };
+      const COMBOS = [['wear'], ['sun', 'moon'], ['hourly', 'wind'], ['hourly', 'wear', 'sun', 'wind', 'air'], ['days'], ['days', 'hourly', 'wear'], ['days', 'wear', 'sun', 'moon']];
+      const bad = [], seen = [], units = [];
+      for (const [L, w, h] of [['m', 480, 360], ['l', 760, 480], ['l', 900, 560], ['xl', 1600, 860]]) {
+        await WXT.size(page, w, h);
+        for (const hide of KEYS.map(k => [k]).concat(COMBOS)) {
+          const c = Object.assign({}, await WXT.conf(page), { hide });
+          await WXT.put(page, 'config', c); await page.waitForTimeout(250);
+          const p = await WXT.problems(page, false), x = await WXT.parts(page);
+          if (!x || x.layout !== L) p.list.push(`layout ${x && x.layout}`);
+          else { for (const k of hide) if (!GONE[k](x)) p.list.push(`${k} still shows`); p.list.push(...x.gaps); if (!x.hero) p.list.push('no Now'); }
+          if (x && !(x.units.length === 1 && x.units[0] === 'F:temp')) units.push(`${L} without ${hide.join(', ')}: ${x.units.join(', ')}`);
+          (p.list.length ? bad : seen).push(`${L} (${w} × ${h}) without ${hide.join(', ')}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+          if ((L !== 'm' || hide.length > 1) && w !== 760) await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + `weather-hide-${L}-${hide.join('-')}.png` });
+        }
+      }
+      ok(!bad.length && seen.length === 56, `each Show item hides its part at Medium, Large (at its smallest too), and Fill the board, alone and in the mockup’s combinations, with no gap, no overflow, and no text over text (${bad.join(' | ') || seen.length + ' layouts'})`);
+      ok(!units.length, `the dim F is on the big temperature and nowhere else (${units.join(' | ') || 'every layout'})`);
+      // Medium without the 7 days: the hourly forecast takes their place. Without both and What to wear, Now fills it.
+      await WXT.size(page, 480, 360);
+      await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { hide: ['days'] })); await page.waitForTimeout(250);
+      let x = await WXT.parts(page);
+      ok(!!x && x.hourly && !x.days, 'Medium without the 7 days shows the hourly forecast in their place');
+      // The Now view (tap the temperature) with wind hidden, and the unit letter there.
+      await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { hide: ['wind'] })); await page.waitForTimeout(250);
+      await WXT.wf(page).locator('#app .hero[data-go="now"]').click(); await page.waitForTimeout(300);
+      const now = await WXT.F(page, () => ({ title: (document.querySelector('#app .bar2 .title') || {}).textContent, wind: !!document.querySelector('#app .windc'), units: [...document.querySelectorAll('#app .unit')].map(u => u.textContent + (u.closest('.temp') ? ':temp' : '')), text: document.getElementById('app').innerText }));
+      ok(now.title === 'Now' && !now.wind && now.units.join() === 'F:temp' && /Feels like/.test(now.text) && /Air quality/.test(now.text) && /High, low, and air quality from Open-Meteo/.test(now.text), `the Now view follows the Show list: no wind; feels like and air quality; the F on its temperature (${JSON.stringify(now).slice(0, 300)})`);
+      const hl = await WXT.F(page, () => document.querySelector('#app .dnow .hl').textContent.replace(/\u00a0/g, '+'));
+      ok(hl === 'High 40°++ Low 25°', `its high and low, three spaces apart as in Large: “High 40°   Low 25°” (${hl})`);
+      { const pr = await WXT.problems(page, false); ok(!pr.list.length, `the Now view fits (${pr.list.join(', ') || pr.size})`); }
+      await WXT.wf(page).locator('#app [data-go="main"]').first().click(); await page.waitForTimeout(300);
+      // Watches hide the watch band; a warning still shows.
+      await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { hide: [] }));
+      await ctx.close();
+      for (const [file, hide, want] of [['nws-alerts-midland.json', [], /^watch: Freeze Watch/], ['nws-alerts-midland.json', ['watches'], /^$/], ['nws-alerts-fortworth.json', ['watches'], /^warn: Freeze Warning/]]) {
+        const b = await WXT.board(browser, errors, { more: { 'api.weather.gov/alerts/active': file } });
+        await WXT.open(b.page);
+        if (hide.length) { await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide })); await b.page.waitForTimeout(300); }
+        const got = await WXT.F(b.page, () => { const b = document.querySelector('#app .band'); return b ? b.className.replace('band ', '') + ': ' + b.textContent.replace(/\u00a0/g, ' ').trim() : ''; });
+        ok(want.test(got), `${file.includes('midland') ? 'a Freeze Watch' : 'a Freeze Warning'}${hide.length ? ', with Watches unticked' : ''}: ${want.source === '^$' ? 'no band' : 'its band shows'} (${got || 'no band'})`);
+        await b.ctx.close();
+      }
+    });
+
+    // ---- 3. Filling the board at a larger board Size (Settings › Size of windows and menus), locked and unlocked, with
+    // and without a saved forecast offline: the parts scale to the height the corner strips leave.
+    await part('Board Size', async () => {
+      const b = await WXT.board(browser, errors, { at: '2026-12-01T11:50:00-06:00' });
+      b.wx.shift = 8 * 86400;
+      await WXT.open(b.page);
+      const bad = [], seen = [];
+      for (const off of [false, true]) {
+        if (off) { await eventually(async () => !!((await WXT.data(b.page)) || {}).saved); await b.ctx.setOffline(true); await b.page.waitForTimeout(400); }
+        for (const [vw, vh] of [[1366, 768], [1280, 800], [1920, 1080]]) for (const scale of [1.5, 2]) for (const locked of [false, true]) {
+          await b.page.setViewportSize({ width: vw, height: vh }); await b.page.waitForTimeout(200);
+          await b.page.evaluate(s => window.__board21.setBoardScale(s), scale); await b.page.waitForTimeout(300);
+          await b.page.evaluate(k => window.__board21.setMaximized(k, true), K); await b.page.waitForTimeout(700);
+          if (locked) { await lockBoard(b.page, 'widgets'); await b.page.waitForTimeout(700); }
+          // (Online, with the 7-day forecast hidden too, and the small cards: Now has a taller row to fill.)
+          for (const hide of off ? [[]] : [[], ['days'], ['sun', 'moon', 'wind', 'air']]) {
+            if (hide.length) { await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide })); await b.page.waitForTimeout(300); }
+            const p = await WXT.problems(b.page, true), x = await WXT.parts(b.page), list = p.list.concat(x ? x.gaps : ['nothing drawn']);
+            (list.length ? bad : seen).push(`${off ? 'offline, ' : ''}${vw} × ${vh} at Size ${scale}${locked ? ', locked' : ''}${hide.length ? ' without ' + hide.join(', ') : ''} (${p.size}, ${x && x.layout})${list.length ? ': ' + list.join(', ') : ''}`);
+          }
+          if (!off) { await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: [] })); await b.page.waitForTimeout(300); }
+          if (scale === 1.5 && vw === 1366 && !locked) await b.page.screenshot({ path: OUT + `weather-fill-size-1.5${off ? '-offline' : ''}.png` });
+          if (locked) await unlockBoard(b.page);
+          await b.page.evaluate(k => window.__board21.setMaximized(k, false), K); await b.page.waitForTimeout(200);
+        }
+      }
+      ok(!bad.length && seen.length === 48, `filling the board at Size 1.5 and 2, on 1366 × 768, 1280 × 800, and 1920 × 1080, locked and unlocked, online and offline, and online without the 7-day forecast or the small cards: everything fits, with no text over text, clear of the corner marks (${bad.join(' | ') || seen.length + ' layouts'})`);
+      await b.ctx.close();
+    });
+
+    // ---- 4. Every height of each layout, with no band, a warning, and offline: the spacing closes up as it must.
+    await part('Heights', async () => {
+      const bad = []; let n = 0;
+      const H = { m: [[480, 759], [280, 305, 330, 355, 380, 405, 430, 455, 479]], l: [[900, 1299], [480, 520, 540, 580, 620, 680, 759]], xl: [[1300, 1600], [760, 800, 860, 900]] };
+      for (const state of ['plain', 'warning', 'offline']) {
+        const b = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } }, more: state === 'warning' ? { 'api.weather.gov/alerts/active': 'nws-alerts-fortworth.json' } : {} });
+        await WXT.open(b.page);
+        if (state === 'offline') { await eventually(async () => !!((await WXT.data(b.page)) || {}).saved); await b.ctx.setOffline(true); await b.page.waitForTimeout(400); }
+        for (const [L, [ws, hs]] of Object.entries(H)) for (const w of ws) for (const h of hs) {
+          await WXT.size(b.page, w, h); n++;
+          const p = await WXT.problems(b.page, false), x = await WXT.parts(b.page), list = p.list.concat(x ? x.gaps : ['nothing drawn']);
+          if (x && x.layout !== L) list.push(`layout ${x.layout}`);
+          if (list.length) bad.push(`${state}, ${w} × ${h}: ${list.join(', ')}`);
+        }
+        await b.ctx.close();
+      }
+      ok(!bad.length && n === 120, `Medium, Large, and Fill the board at every height, with no band, a warning, and offline: nothing runs out of its card (${bad.join(' | ') || n + ' sizes'})`);
+    });
+
+    // ---- 5. The views at their smallest: Now, and On a date with its chart. Words in a picture count too.
+    await part('Smallest views', async () => {
+      const b = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } } });
+      await WXT.open(b.page);
+      const bad = [], seen = [];
+      // The compass: its size, its letters, and how far W and E keep from the ticks beside them (x 14 and 86 of 100).
+      const compass = () => WXT.F(b.page, () => {
+        const c = [...document.querySelectorAll('#app svg.compass')].find(e => e.getBoundingClientRect().width > 0), g = c && c.querySelector('.nesw');
+        if (!g) return null;
+        const t = [...g.querySelectorAll('text')], box = n => t.find(e => e.textContent === n).getBBox(), W = box('W'), E = box('E');
+        return { px: Math.round(c.getBoundingClientRect().width), letters: getComputedStyle(g).display !== 'none', w: +(W.x - 14).toFixed(1), e: +(86 - E.x - E.width).toFixed(1) };
+      });
+      let now480 = null;
+      for (const [w, h] of [[380, 280], [480, 360], [600, 420], [900, 560]]) {
+        await WXT.size(b.page, w, h);
+        await WXT.wf(b.page).locator('#app .hero[data-go="now"]').click(); await b.page.waitForTimeout(250);
+        const p = await WXT.problems(b.page, false);
+        (p.list.length ? bad : seen).push(`the Now view at ${w} × ${h}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+        if (w === 380) await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-now-380x280.png' });
+        if (w === 480) now480 = Object.assign({}, await compass(), { temp: await WXT.F(b.page, () => Math.round(parseFloat(getComputedStyle(document.querySelector('#app .dnow .temp')).fontSize))) });
+        await WXT.wf(b.page).locator('#app [data-go="main"]').first().click(); await b.page.waitForTimeout(200);
+      }
+      // At its default size the Now view draws as the mockup does: a 99 px compass with its letters, and a 58 px temperature.
+      ok(!!now480 && now480.px >= 95 && now480.letters && now480.temp >= 56, `the Now view at 480 × 360 keeps the mockup’s compass, with N, E, S, and W, and its temperature (${JSON.stringify(now480)})`);
+      // W and E clear of their ticks as the letters grow to 14 px: Fill the board's wind card, and the Now view without air quality.
+      const near = [];
+      for (const [w, h, v] of [[1300, 760], [1500, 860], [420, 320, 'now'], [480, 360, 'now']]) {
+        await WXT.size(b.page, w, h);
+        if (v) { await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: ['air'] })); await b.page.waitForTimeout(250); await WXT.wf(b.page).locator('#app .hero[data-go="now"]').click(); await b.page.waitForTimeout(250); }
+        const c = await compass();
+        if (!c || !c.letters || c.w < 0.5 || c.e < 0.5) near.push(`${w} × ${h}${v ? ', the Now view without air quality' : ''}: ${JSON.stringify(c)}`);
+        else seen.push(`the compass at ${w} × ${h}: ${JSON.stringify(c)}`);
+        if (v) { await WXT.wf(b.page).locator('#app [data-go="main"]').first().click(); await b.page.waitForTimeout(200); await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: [] })); await b.page.waitForTimeout(250); }
+      }
+      ok(!near.length, `the compass’s W and E stay clear of the ticks beside them as they grow to 14 px (${near.join(' | ') || 'all clear'})`);
+      await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { date: '2019-01-30' })); await b.page.waitForTimeout(800);
+      for (const [w, h] of [[260, 220], [380, 280], [480, 360], [760, 480], [900, 560]]) {
+        await WXT.size(b.page, w, h);
+        for (const end of [false, true]) {
+          await WXT.F(b.page, end => { const s = document.querySelector('#app .dscroll'); if (s) s.scrollTop = end ? s.scrollHeight : 0; }, end); await b.page.waitForTimeout(150);
+          const p = await WXT.problems(b.page, false), c = await WXT.F(b.page, () => { const e = document.querySelector('#app .chart'); return e ? Math.round(e.getBoundingClientRect().height) : 0; });
+          if (c < 100) p.list.push(`its chart is ${c} px tall`);
+          (p.list.length ? bad : seen).push(`On a date at ${w} × ${h}${end ? ', scrolled to the chart' : ''}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+        }
+        if (w === 480) await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-on-a-date-480x360.png' });
+      }
+      ok(!bad.length, `the Now view and On a date at their smallest: every word 14 px or more, in the compass and the chart too, nothing cut off, and the chart over 100 px tall (${bad.join(' | ') || seen.length + ' views'})`);
+      await WXT.size(b.page, 480, 360);
+      const bar = await WXT.F(b.page, () => document.querySelector('#app .pick').innerText.trim());
+      ok(bar === 'Wed, January 30, 2019', `at 480 × 360 the bar has the whole date (${bar})`);
+      await b.ctx.close();
+    });
+
+    // ---- 6. A long warning at Medium's smallest, a band at its default size, and the 7-day forecast hidden.
+    await part('Long warnings', async () => {
+      const fw = WX_FIX('nws-alerts-fortworth.json'), bad = [];
+      for (const ev of ['Severe Thunderstorm Warning', 'Extreme Cold Warning', 'Freeze Warning']) {
+        const x = JSON.parse(JSON.stringify(fw)); x.features[0].properties.event = ev;
+        const b = await WXT.board(browser, errors, { more: { 'api.weather.gov/alerts/active': { json: x } } });
+        await WXT.open(b.page);
+        for (const [w, h] of [[380, 280], [420, 300], [480, 360]]) for (const hide of [[], ['days'], ['days', 'wear']]) {
+          await WXT.size(b.page, w, h);
+          await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide })); await b.page.waitForTimeout(250);
+          const p = await WXT.problems(b.page, false), x = await WXT.parts(b.page), band = await WXT.F(b.page, () => { const e = document.querySelector('#app .band'); return e ? { t: e.innerText.replace(/\s+/g, ' ').trim(), h: e.getBoundingClientRect().height, fs: parseFloat(getComputedStyle(e).fontSize) } : null; });
+          const list = p.list.concat(x ? x.gaps : []);
+          if (!band || !band.t.startsWith(ev)) list.push(`the band reads “${band && band.t}”`);
+          else if (band.h > band.fs * 2.4) list.push(`the band takes two lines (${Math.round(band.h)} px)`);
+          if (list.length) bad.push(`${ev} at ${w} × ${h}${hide.length ? ' without ' + hide.join(', ') : ''}: ${list.join(', ')}`);
+          if (ev === 'Severe Thunderstorm Warning' && w === 380 && !hide.length) await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-long-warning-380x280.png' });
+        }
+        await b.ctx.close();
+      }
+      ok(!bad.length, `a long warning at Medium’s smallest sizes, with the 7-day forecast and What to wear hidden too: one line, and everything fits (${bad.join(' | ') || 'all'})`);
+      // At the default size a band leaves the week its pictures.
+      const b = await WXT.board(browser, errors, { more: { 'api.weather.gov/alerts/active': 'nws-alerts-fortworth.json' } });
+      await WXT.open(b.page);
+      const ic = await WXT.F(b.page, () => Math.round(document.querySelector('#app .week svg').getBoundingClientRect().width));
+      ok(ic >= 24, `at 480 × 360 with a warning, the week’s pictures stay ${ic} px wide, 24 or more`);
+      await b.ctx.close();
+    });
+
+    // ---- 7. Settings › Appearance › Text style reaches every word, and the window still fits in wider letters.
+    await part('Text style', async () => {
+      const { ctx, page } = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } } });
+      await WXT.open(page);
+      const bad = [];
+      for (const [key, fam] of [['legible', 'Atkinson Hyperlegible'], ['early', '21Board Early Readers']]) {
+        await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${key}"]`); await page.keyboard.press('Escape'); await page.waitForTimeout(1200);
+        await WXT.choose(page, 'place');
+        const off = await WXT.F(page, fam => { const out = new Set(); const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          for (let n; (n = walk.nextNode());) { const e = n.parentElement; if (e && /[A-Za-z0-9]/.test(n.textContent) && e.getBoundingClientRect().width && !getComputedStyle(e).fontFamily.startsWith(`"${fam}"`)) out.add(e.tagName.toLowerCase() + ' “' + n.textContent.trim().slice(0, 16) + '”'); }
+          const i = document.querySelector('#sheet input'); if (i && !getComputedStyle(i).fontFamily.startsWith(`"${fam}"`)) out.add('the search field');
+          return [...out]; }, fam);
+        await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+        ok(!off.length, `${key}: every word in Weather is in ${fam}, the Location sheet too (${off.slice(0, 5).join(', ') || 'all'})`);
+        if (key !== 'legible') continue;
+        for (const [w, h] of [[260, 220], [380, 280], [480, 360], [760, 480], [900, 560], [1600, 860]]) for (const hide of [[], ['days'], ['wear', 'days'], ['hourly', 'wear', 'sun', 'wind', 'air']]) {
+          await WXT.size(page, w, h);
+          await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { hide })); await page.waitForTimeout(200);
+          const p = await WXT.problems(page, false), x = await WXT.parts(page), list = p.list.concat(x ? x.gaps : []);
+          if (list.length) bad.push(`${w} × ${h}${hide.length ? ' without ' + hide.join(', ') : ''}: ${list.join(', ')}`);
+        }
+        await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { hide: [] }));
+      }
+      ok(!bad.length, `in Easier to read, each size and the Show list still fit (${bad.join(' | ') || 'all'})`);
+      await ctx.close();
+    });
+
+    ok(stamped(), STAMPED);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  ['Weather: What to wear and school days, °C, the sources, and watches and warnings', async (browser) => {
+    const errors = [];
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const { K, F, text } = WXT;
+    const at = s => Date.parse(s);
+    // ---- 1. Which day What to wear shows, from the district calendar, and what it says: the widget's own functions.
+    await part('School days and clothes', async () => {
+      const { ctx, page } = await WXT.board(browser, errors);
+      await WXT.open(page);
+      const W = (fn, arg) => F(page, ([fn, arg]) => { const W = window.B21Weather; return W ? W[fn](...arg) : null; }, [fn, arg]);
+      // (What it opens on, then the other button: "only" when today has no school.)
+      const plan = async t => { const p = await W('plan', [at(t)]); return !p ? null : !p.today ? 'only ' + p.label : p.show === 'today' ? 'Today, then ' + p.label : p.label + ', then Today'; };
+      const CASES = [['2026-11-20T13:59:00-06:00', 'Today, then Mon, Nov 30'], ['2026-11-20T14:00:00-06:00', 'Mon, Nov 30, then Today'], ['2026-11-23T09:00:00-06:00', 'only Mon, Nov 30'],
+        ['2026-12-18T14:30:00-06:00', 'Tue, Jan 5, then Today'], ['2027-03-19T15:00:00-05:00', 'Mon, Mar 29, then Today'], ['2027-04-05T09:00:00-05:00', 'Today, then Wed'],
+        ['2027-05-27T09:00:00-05:00', 'Today, then Fri'], ['2027-05-28T14:30:00-05:00', 'Tue, then Today'], ['2027-01-15T09:00:00-06:00', 'Today, then Tue']];
+      const got = [];
+      for (const [t, want] of CASES) { const g = await plan(t); if (g !== want) got.push(`${t}: ${g}, not ${want}`); }
+      ok(!got.length, `the next school day: Fri Nov 20 before 2 PM opens on Today with Mon, Nov 30; from 2 PM on Mon, Nov 30; Nov 23 only Mon, Nov 30; Dec 18 after 2 PM Jan 5; Mar 19 Mar 29; Apr 5 Apr 7; May 27 May 28; May 28 after 2 PM Jun 1, a weekday after the calendar; Fri Jan 15 Tue Jan 19 (${got.join(' | ') || CASES.length + ' cases'})`);
+      const dates = await F(page, ts => ts.map(t => { const p = window.B21Weather.plan(Date.parse(t)); return p.next; }), CASES.map(c => c[0]));
+      ok(dates.join() === '2026-11-30,2026-11-30,2026-11-30,2027-01-05,2027-03-29,2027-04-07,2027-05-28,2027-06-01,2027-01-19', `and its dates (${dates.join()})`);
+      const labels = await F(page, () => [window.B21Weather.label('2026-11-24', '2026-11-23'), window.B21Weather.label('2026-11-29', '2026-11-23'), window.B21Weather.label('2026-11-30', '2026-11-23')]);
+      ok(labels.join(' | ') === 'Tue | Sun | Mon, Nov 30', `its name: “Tue” within 6 days, “Mon, Nov 30” from 7 (${labels.join(' | ')})`);
+      const tier = f => F(page, f => { const a = window.B21Weather.advise([{ temp: f, feels: f, pop: 0 }]); return a.advice + ' ' + a.items.join(','); }, f);
+      const TIERS = [[9.9, 'Dress for very cold weather. coat,hat,gloves,scarf'], [10, 'Dress for cold weather. coat,hat,gloves'], [31.9, 'Dress for cold weather. coat,hat,gloves'], [32, 'Dress for chilly weather. coat'],
+        [44.9, 'Dress for chilly weather. coat'], [45, 'Dress for cool weather. jacket'], [59.9, 'Dress for cool weather. jacket'], [60, 'Dress for mild weather. tshirt']];
+      const tiers = [];
+      for (const [f, want] of TIERS) { const g = await tier(f); if (g !== want) tiers.push(`${f}: ${g}`); }
+      ok(!tiers.length, `each row at its edges: 9.9 very cold, 10 cold, 31.9 cold, 32 chilly, 44.9 chilly, 45 cool, 59.9 cool, 60 mild (${tiers.join(' | ') || 'all'})`);
+      const mix = await F(page, () => { const A = h => { const a = window.B21Weather.advise(h); return a.advice + ' ' + a.items.join(','); };
+        return [A([{ temp: 60, feels: 60, pop: 0 }, { temp: 75, feels: 75, pop: 0 }]), A([{ temp: 50, feels: 50, pop: 0 }, { temp: 80, feels: 80, pop: 0 }]),
+          A([{ temp: 40, feels: 35, pop: 40 }]), A([{ temp: 32, feels: 25, pop: 40 }]), A([{ temp: 40, feels: 35, pop: 39 }])]; });
+      ok(mix[0] === 'Dress for warm weather. tshirt,shorts' && mix[1] === 'Dress for cool weather. jacket', `warm only when the coldest is 60° or more: 60 and 75 warm, 50 and 80 cool (${mix[0]} | ${mix[1]})`);
+      ok(mix[2] === 'Dress for chilly weather. Bring a rain jacket. coat,rain' && mix[3] === 'Dress for cold weather. Wear boots. coat,hat,gloves,boots' && mix[4] === 'Dress for chilly weather. coat',
+        `rain at 40% above 32°F adds a rain jacket, snow at 40% at 32°F or below adds boots (${mix.slice(2).join(' | ')})`);
+      const hours = await F(page, () => [window.B21Weather.hours('2027-02-18').join('–'), window.B21Weather.hours('2026-12-01').join('–')]);
+      ok(hours.join(' | ') === '8–11 | 8–15', `a half day counts 8 AM to 11 AM, a full day 8 AM to 3 PM (${hours.join(' | ')})`);
+      await ctx.close();
+      // On Dec 18 after 2 PM (the fixtures moved 25 days), Jan 5 is past the forecast.
+      const late = await WXT.board(browser, errors, { at: '2026-12-18T14:30:00-06:00' });
+      late.wx.shift = 25 * 86400;
+      await WXT.open(late.page); await WXT.size(late.page, 900, 560);
+      const lt = await text(late.page);
+      ok(/Tue, Jan 5/.test(lt) && /Its forecast isn’t out yet\./.test(lt) && !await WXT.F(late.page, () => !!document.querySelector('#app .wear .items figure')), `past the forecast: Tue, Jan 5, “Its forecast isn’t out yet.”, and no clothes (${lt.slice(0, 200)})`);
+      await late.ctx.close();
+      // On a school day (Tue Dec 1, the fixtures moved 8 days), Large: Today, with the next school day a tap away.
+      const sd = await WXT.board(browser, errors, { at: '2026-12-01T11:50:00-06:00' });
+      sd.wx.shift = 8 * 86400;
+      await WXT.open(sd.page); await WXT.size(sd.page, 900, 560);
+      const w1 = await F(sd.page, () => ({ b: [...document.querySelectorAll('#app .wear .tg b')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')).join(','), advice: document.querySelector('#app .wear .advice').textContent, note: document.querySelector('#app .wear .note').textContent.replace(/\u00a0/g, ' ') }));
+      ok(w1.b === 'Today*,Wed' && w1.advice === 'Dress for cold weather.' && w1.note === 'Feels like 31° now. High of 40° at 2 PM.', `a school day before 2 PM opens on Today, with Wed a tap away (${JSON.stringify(w1)})`);
+      await WXT.wf(sd.page).locator('#app .wear [data-wear="next"]').click(); await sd.page.waitForTimeout(300);
+      const w2 = await F(sd.page, () => ({ b: [...document.querySelectorAll('#app .wear .tg b')].map(b => b.textContent + (b.classList.contains('on') ? '*' : '')).join(','), advice: document.querySelector('#app .wear .advice').textContent, note: document.querySelector('#app .wear .note').textContent.replace(/\u00a0/g, ' ') }));
+      ok(w2.b === 'Today,Wed*' && w2.advice === 'Dress for cold weather.' && w2.note === 'Feels like 18° at 8 AM. High of 40° at 2 PM.', `tapping Wed shows its advice and its note (${JSON.stringify(w2)})`);
+      await sd.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-school-day.png' });
+      await sd.ctx.close();
+    });
+
+    // ---- 2. °C from the menu, rounded once from the sources' numbers: never −0. km/h.
+    await part('°C', async () => {
+      const { ctx, page } = await WXT.board(browser, errors);
+      await WXT.open(page);
+      await WXT.choose(page, 'units:c');
+      const m = await F(page, () => ({ temp: document.querySelector('#app .temp').textContent, hl: document.querySelector('#app .hero .hl').textContent.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ') }));
+      ok(m.temp === '4°C' && m.hl === 'H 5° L −4°', `°C at Medium: 39.2°F is 4°C, H 40.4 is 5°, L 25.0 is −4° (${JSON.stringify(m)})`);
+      await WXT.size(page, 900, 560);
+      const l = await F(page, () => [...document.querySelectorAll('#app .hero .more')].map(e => e.textContent.replace(/\u00a0/g, ' ').trim()));
+      ok(l[0] === 'Feels like 0° · Wind 22 km/h NW', `Large: feels like 31.2°F shows 0°, not −0°, and wind 13.8 mph shows 22 km/h (${l.join(' | ')})`);
+      ok(((await WXT.conf(page)) || {}).units === 'c', '°C is saved with the window');
+      await ctx.close();
+    });
+
+    // ---- 3. Where Now and the forecast come from.
+    await part('Sources', async () => {
+      // A report more than 90 minutes old: Now from Open-Meteo's current, labeled.
+      let b = await WXT.board(browser, errors);
+      b.wx.later['api.weather.gov/stations/KPWK/observations'] = -2 * 3600;
+      await WXT.open(b.page);
+      let s = await F(b.page, () => [...document.querySelectorAll('#app .hero .src')].map(e => e.textContent.replace(/\u00a0/g, ' ')).join(' | ') + ' / ' + document.querySelector('#app .temp').textContent);
+      ok(/^From Open-Meteo/.test(s) && /\/ 39°F$/.test(s), `a report over 90 minutes old: Now from Open-Meteo’s current, labeled (${s})`);
+      await WXT.size(b.page, 900, 560);
+      s = await F(b.page, () => document.querySelector('#app .hero .src').textContent.replace(/\u00a0/g, ' '));
+      ok(s === 'From Open-Meteo, 11:45 AM', `Large adds its time (${s})`);
+      await b.ctx.close();
+      // No sky text in any of the 12 reports: the sky of the forecast's current hour (11 AM, mostly sunny).
+      const obs = WX_FIX('nws-observations-KPWK.json'); obs.features.forEach(f => { f.properties.textDescription = ''; });
+      b = await WXT.board(browser, errors, { more: { 'api.weather.gov/stations/KPWK/observations': { json: obs } } });
+      await WXT.open(b.page);
+      s = await F(b.page, () => document.querySelector('#app .hero .cond').textContent.trim());
+      ok(s === 'Mostly sunny', `no sky in the reports: the sky of the forecast’s current hour (${s})`);
+      await b.ctx.close();
+      // Open-Meteo turns the school away (429): the National Weather Service's forecast, until Retry-After has passed.
+      b = await WXT.board(browser, errors, { clock: 'install', more: { 'api.open-meteo.com/v1/forecast': { status: 429, headers: { 'retry-after': '5400', 'access-control-expose-headers': 'retry-after' }, json: { error: true, reason: 'Daily API request limit exceeded. Please try again tomorrow.' } } } });
+      await WXT.open(b.page);
+      await b.page.clock.runFor(15000);
+      s = await F(b.page, () => [...document.querySelectorAll('#app .week .col')].map(c => ['.n', '.h', '.l'].map(k => c.querySelector(k).textContent).join(' ')).join(' | '));
+      ok(s === 'Today 42° 25° | Tue 43° 31° | Wed 45° 36° | Thu 44° 36° | Fri 46° 35°', `a 429: the week from the National Weather Service (${s})`);
+      await WXT.size(b.page, 900, 560);
+      s = await F(b.page, () => (document.querySelector('#app .hero .foot') || {}).textContent.replace(/\u00a0/g, ' '));
+      ok(/^Forecast from the National Weather Service, \d/.test(s), `its credit: “${s}”`);
+      const om = () => b.wx.count(/api\.open-meteo\.com\/v1\/forecast/), nws = () => b.wx.count(/gridpoints\/LOT\/65,84\/forecast$/);
+      const was = [om(), nws()];
+      await WXT.later(b.page, 61);
+      const mid = [om(), nws()];
+      await WXT.later(b.page, 60);
+      const end = [om(), nws()];
+      ok(mid[0] === was[0] && mid[1] > was[1] && end[0] > mid[0], `it asks Open-Meteo again only once Retry-After (1.5 hours) has passed, and the Weather Service meanwhile (Open-Meteo ${was[0]}, ${mid[0]}, ${end[0]}; the Weather Service ${was[1]}, ${mid[1]}, ${end[1]})`);
+      await b.ctx.close();
+      // A school day (Tue Dec 1, 11:50 AM) with Open-Meteo turning the school away: the Weather Service's hours start at
+      // this hour, and the school hours still ahead are enough for Today.
+      const T429 = { 'api.open-meteo.com/v1/forecast': { status: 429, headers: { 'retry-after': '5400', 'access-control-expose-headers': 'retry-after' }, json: { error: true } } };
+      b = await WXT.board(browser, errors, { at: '2026-12-01T11:50:00-06:00', more: T429 });
+      b.wx.shift = 8 * 86400;
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560); await b.page.waitForTimeout(500);
+      const wl = await F(b.page, () => ({ b: [...document.querySelectorAll('#app .wear .tg b')].map(x => x.textContent + (x.classList.contains('on') ? '*' : '')).join(','), advice: (document.querySelector('#app .wear .advice') || {}).textContent, items: [...document.querySelectorAll('#app .wear [data-item]')].map(e => e.dataset.item).join() }));
+      ok(wl.b === 'Today*,Wed' && wl.advice === 'Dress for cold weather.' && wl.items === 'coat,hat,gloves', `a school day on the Weather Service’s forecast: Today says “Dress for cold weather.” with a coat, hat, and gloves (${JSON.stringify(wl)})`);
+      await WXT.size(b.page, 480, 360);
+      const ml = await F(b.page, () => (document.querySelector('#app .wl .says') || {}).textContent);
+      ok(ml === 'Dress for cold weather.', `and so does Medium’s line (${ml})`);
+      const sw = ((await WXT.data(b.page)) || { saved: { wear: {} } }).saved.wear['2026-12-01'];
+      ok(!!sw && sw.advice === 'Dress for cold weather.', `and it saves that, not “Its forecast isn’t out yet.” (${JSON.stringify(sw)})`);
+      await b.ctx.close();
+      // Honolulu: PHNL's newest temperature is 2 hours old, so Now is Open-Meteo's, and times are Hawaii's.
+      b = await WXT.board(browser, errors);
+      await WXT.open(b.page);
+      await WXT.put(b.page, 'config', { place: { id: 5856195, name: 'Honolulu', region: 'Hawaii', country: 'United States', lat: 21.30694, lon: -157.85834, tz: 'Pacific/Honolulu' }, units: 'f', hide: [], simple: false, still: false, date: null });
+      await WXT.size(b.page, 900, 560); await WXT.drawn(b.page); await b.page.waitForTimeout(1200);
+      s = await F(b.page, () => ({ place: document.querySelector('#app .place').textContent, src: document.querySelector('#app .hero .src').textContent.replace(/\u00a0/g, ' '), rise: [...document.querySelectorAll('#app .sunrow b')].map(e => e.textContent.replace(/\u00a0/g, ' ')).join(' ') }));
+      ok(s.place === 'Honolulu' && s.src === 'From Open-Meteo, 8 AM' && /^6:47 AM 5:4\d PM$/.test(s.rise), `Honolulu: Now from Open-Meteo, its time and sunrise in Hawaii time (${JSON.stringify(s)})`);
+      ok(b.wx.asked.some(a => a.path === '/stations/PHNL/observations') && b.wx.asked.some(a => a.path === '/v1/forecast' && a.query.timezone === 'Pacific/Honolulu' && a.query.latitude === '21.30694'), 'it asked about Honolulu: its forecast, and its airport’s reports');
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-honolulu.png' });
+      await b.ctx.close();
+      // A place outside the U.S. (the Weather Service answers 404): no alerts, and Now from Open-Meteo.
+      b = await WXT.board(browser, errors, { more: { 'api.weather.gov/points/51.5085,-0.1257': { status: 404, json: { title: 'Data Unavailable For Requested Point' } } } });
+      await WXT.open(b.page);
+      const n0 = b.wx.count(/alerts\/active/);
+      await WXT.put(b.page, 'config', { place: { id: 2643743, name: 'London', region: 'England', country: 'United Kingdom', lat: 51.50853, lon: -0.12574, tz: 'Europe/London' }, units: 'c', hide: [], simple: false, still: false, date: null });
+      await b.page.waitForTimeout(1500);
+      s = await F(b.page, () => document.querySelector('#app .place').textContent + ' / ' + [...document.querySelectorAll('#app .hero .src')].map(e => e.textContent).join(' | '));
+      const m = await WXT.menuOf(b.page);
+      ok(/^London \/ From Open-Meteo/.test(s) && b.wx.count(/alerts\/active/) === n0 && !b.wx.asked.some(a => /stations\/.*\/observations/.test(a.path) && /London/.test(a.url)) && !/National Weather Service/.test(m),
+        `outside the U.S.: Now from Open-Meteo, no alerts asked for, and no Weather Service line in the menu (${s}; ${m.split(' | ').length} items)`);
+      await b.ctx.close();
+    });
+
+    // ---- 4. Watches and warnings.
+    await part('Alerts', async () => {
+      const band = p => F(p, () => { const b = document.querySelector('#app .band'); return b ? b.className.replace(/^band /, '') + ': ' + b.textContent.replace(/\u00a0/g, ' ').trim() : ''; });
+      let b = await WXT.board(browser, errors, { more: { 'api.weather.gov/alerts/active': 'nws-alerts-fortworth.json' } });
+      await WXT.open(b.page);
+      let s = await band(b.page);
+      ok(s === 'warn: Freeze Warning Tue 11 PM to Wed 9 AM', `a Freeze Warning: an orange band, “Freeze Warning” and “Tue 11 PM to Wed 9 AM” (${s})`);
+      const bg = await F(b.page, () => getComputedStyle(document.querySelector('#app .band')).backgroundColor);
+      ok(bg === 'rgb(255, 138, 61)', `orange (${bg})`);
+      await WXT.wf(b.page).locator('#app .band').click(); await b.page.waitForTimeout(300);
+      const v = await text(b.page);
+      ok(/Watches and warnings/.test(v) && /Freeze Warning/.test(v) && /Tue 11 PM to Wed 9 AM/.test(v) && v.includes('Sub-freezing temperatures as low as 27 expected.') && v.includes('Areas along and west of a line from Gainesville to Fort Worth to Meridian to Lampasas.') &&
+        /What to do/.test(v) && v.includes('A Freeze Warning means that the season\'s first episode of sub-freezing temperatures are likely to occur.') && /From the National Weather Service/.test(v) && !/WHAT\.\.\.|WHERE\.\.\.|Montague/.test(v),
+        `tapped: the event, its time span, what and where without their labels, What to do, and “From the National Weather Service” (${v.slice(0, 300)})`);
+      { const pr = await WXT.problems(b.page, false); ok(!pr.list.length, `the alert view fits (${pr.list.join(', ') || pr.size})`); }
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-warning-view.png' });
+      await b.ctx.close();
+      b = await WXT.board(browser, errors, { more: { 'api.weather.gov/alerts/active': 'nws-alerts-midland.json' } });
+      await WXT.open(b.page);
+      s = await band(b.page);
+      ok(s === 'watch: Freeze Watch Wed 12 AM to 9 AM', `a Freeze Watch, in Central time: a yellow band, “Wed 12 AM to 9 AM” (${s})`);
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-watch.png' });
+      await b.ctx.close();
+      // Never shown: a Cancel, an EXP or CAN action, one that has ended, a marine warning, and the Winter Storm Warnings of Nov 20 and 21.
+      const fw = WX_FIX('nws-alerts-fortworth.json'), one = f => { const x = JSON.parse(JSON.stringify(fw)); f(x.features[0].properties); return { json: x }; };
+      const NEVER = [['a Cancel', one(p => { p.messageType = 'Cancel'; })], ['an EXP action', one(p => { p.parameters.VTEC = ['/O.EXP.KFWD.FZ.W.0003.261125T0500Z-261125T1500Z/']; })],
+        ['a CAN action', one(p => { p.parameters.VTEC = ['/O.CAN.KFWD.FZ.W.0003.261125T0500Z-261125T1500Z/']; })], ['one that has ended', one(p => { p.onset = '2026-11-23T05:00:00-06:00'; p.ends = '2026-11-23T09:00:00-06:00'; })],
+        ['a Gale Warning', one(p => { p.event = 'Gale Warning'; })], ['an advisory', one(p => { p.event = 'Wind Advisory'; })], ['the Winter Storm Warnings of Nov 20 and 21', 'nws-alerts-wsw.json']];
+      const shown = [];
+      for (const [what, ans] of NEVER) {
+        b = await WXT.board(browser, errors, { more: { 'api.weather.gov/alerts/active': ans } });
+        await WXT.open(b.page);
+        const got = await band(b.page);
+        if (got) shown.push(`${what}: ${got}`);
+        await b.ctx.close();
+      }
+      ok(!shown.length, `Cancel messages, EXP and CAN actions, ended alerts, marine warnings, and advisories never show (${shown.join(' | ') || NEVER.length + ' cases'})`);
+      // A warning that ends at 8:30 PM, seen at 7:55 PM: it goes when it ends, though nothing is asked from 8 PM to 6 AM.
+      const late = JSON.parse(JSON.stringify(fw)), lp = late.features[0].properties;
+      Object.assign(lp, { sent: '2026-11-23T15:00:00-06:00', effective: '2026-11-23T15:00:00-06:00', onset: '2026-11-23T21:00:00-06:00', ends: '2026-11-23T22:30:00-06:00', expires: '2026-11-23T22:30:00-06:00' });
+      lp.parameters.VTEC = ['/O.NEW.KFWD.FZ.W.0003.261124T0300Z-261124T0430Z/'];
+      b = await WXT.board(browser, errors, { at: '2026-11-23T19:55:00-06:00', clock: 'install', more: { 'api.weather.gov/alerts/active': { json: late } } });
+      await WXT.open(b.page);
+      const b0 = await band(b.page);
+      await WXT.later(b.page, 70);   // (9:05 PM)
+      const b1 = await band(b.page);
+      await WXT.later(b.page, 90);   // (10:35 PM)
+      const b2 = await band(b.page), asked = b.wx.count(/alerts\/active/);
+      ok(b0 === 'warn: Freeze Warning Mon 9 PM to 10:30 PM' && b1 === 'warn: Freeze Warning Until 10:30 PM' && b2 === '' && asked === 1,
+        `a warning from 9 PM to 10:30 PM, seen from 7:55 PM: its span reads “Until 10:30 PM” once it starts, and it goes at 10:30 PM, with no request after 8 PM (${b0} | ${b1} | “${b2}”; asked ${asked} time)`);
+      await b.ctx.close();
+    });
+
+    ok(stamped(), STAMPED);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  ['Weather: saving, Board Sync and Board history, refresh clocks, offline, and No motion', async (browser) => {
+    const errors = [];
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const { K, F, text } = WXT;
+    const HNL = { id: 5856195, name: 'Honolulu', region: 'Hawaii', country: 'United States', lat: 21.30694, lon: -157.85834, tz: 'Pacific/Honolulu' };
+    // ---- 1. Settings go in config, and stay; the forecast goes in content, tagged with its place.
+    await part('Saving', async () => {
+      const { ctx, page } = await WXT.board(browser, errors);
+      await WXT.open(page);
+      ok(await eventually(async () => { const d = await WXT.data(page); return !!(d && d.saved && d.saved.place === 4916311 && d.saved.days.length === 7 && d.saved.wear && d.saved.wear['2026-11-30']); }),
+        'the forecast is saved in the window’s content, tagged with its place: 7 days, and What to wear for Mon, Nov 30');
+      const d0 = await WXT.data(page);
+      ok(!!d0 && d0.saved.days[0].date === '2026-11-23' && Math.round(d0.saved.days[0].high) === 40 && d0.saved.wear['2026-11-30'].advice === 'Dress for chilly weather.' && !/now/i.test(JSON.stringify(d0.saved.wear)),
+        `its days and What to wear, without “Feels like … now” (${JSON.stringify(d0).slice(0, 300)})`);
+      for (const id of ['units:c', 'show:moon', 'simple', 'still']) await WXT.choose(page, id);
+      await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { place: HNL }));
+      await WXT.choose(page, 'simple');
+      await WXT.choose(page, 'date'); await page.waitForTimeout(300);
+      let c = await WXT.conf(page);
+      ok(!!c && c.units === 'c' && c.hide.join() === 'moon' && c.simple === false && c.still === true && c.place.id === 5856195 && c.date === '2026-11-22', `units, the Show list, Simple words, No motion, the place, and the date go in config (${JSON.stringify(c)})`);
+      const page2 = await ctx.newPage(); page2.on('pageerror', e => errors.push('tab 2: ' + e.message));
+      await page2.clock.setFixedTime(WX_AT); await page2.goto(BASE); await boardUp(page2);
+      ok(await eventually(async () => JSON.stringify(await WXT.conf(page2)) === JSON.stringify(c)), 'another tab has them');
+      await page2.close();
+      await page.reload(); await boardUp(page); await WXT.connected(page); await page.waitForTimeout(1000);
+      const t = await text(page), sub = await page.evaluate(k => window.__board21.state.wins.get(k).subtitle, K);
+      ok(JSON.stringify(await WXT.conf(page)) === JSON.stringify(c) && /Back to today/.test(t) && sub === 'Nov 22, 2026', `after a reload: the same settings, On a date on Nov 22, 2026 (${sub}; ${t.replace(/\n+/g, ' / ').slice(0, 80)})`);
+      const tpl = await page.evaluate(() => window.__board21.buildExport('template')), ti = tpl.instances.find(i => i.widgetId === 'weather');
+      ok(!!ti && ti.data === null && JSON.stringify(ti.config) === JSON.stringify(c), 'a template keeps its settings, and never its forecast');
+      await ctx.close();
+    });
+
+    // ---- 2. A refresh with the same forecast saves nothing: the window's record, Board history, and Board Sync's files.
+    await part('Same forecast, no save', async () => {
+      const A = await syncDev(browser, 'the smartboard', errors);
+      const wx = await stubWeather(A.c);
+      await setClock(A.p, Date.parse(WX_AT) - Date.now()); await A.p.reload(); await boardUp(A.p);   // (the fixtures' morning)
+      await A.p.evaluate(() => window.__board21.history.cfg({ quiet: 300, every: 600, skipOpen: true }));
+      await A.p.evaluate(() => window.__board21.openWidget('weather', { fresh: true }));
+      ok(await WXT.connected(A.p) && await eventually(async () => !!((await WXT.data(A.p)) || {}).saved), 'a window on a linked board saves its forecast');
+      await linkFolder(A.p); await syncNow(A.p); await A.p.waitForTimeout(1500); await syncNow(A.p);
+      const rec = () => A.p.evaluate(async k => { const B = window.__board21, r = (await B.store.getAll()).find(r => r.key === `data:${B.state.boardId}:${k}`); return r ? JSON.stringify(r) : null; }, K);
+      const before = await rec(), metas = await A.p.evaluate(async () => { await window.__board21.history.reload(); return window.__board21.history.metas.length; });
+      const writes = await A.p.evaluate(() => (window.__writes || []).length), n = wx.count(/v1\/forecast/);
+      await F(A.p, () => window.B21Weather.refresh());
+      ok(await eventually(async () => wx.count(/v1\/forecast/) > n), 'it asks for the forecast again');
+      await A.p.waitForTimeout(2500); await syncNow(A.p);
+      const after = await rec(), metas2 = await A.p.evaluate(async () => { await window.__board21.history.reload(); return window.__board21.history.metas.length; }), writes2 = await A.p.evaluate(() => (window.__writes || []).length);
+      ok(!!before && before === after && metas2 === metas && writes2 === writes, `the same forecast again saves nothing: the record, Board history (${metas} versions, then ${metas2}), and Board Sync’s writes (${writes}, then ${writes2}) are unchanged`);
+      const line = await A.p.evaluate(k => window.__board21.history.excerptOf(window.__board21.state.data.get(k), 'weather', window.__board21.state.conf.get(k)), K);
+      ok(/^Wheeling forecast, [A-Z][a-z]{2} \d{1,2}$/.test(line), `Board history’s line for it: “${line}”`);
+      await A.c.close();
+    });
+
+    // ---- 3. Crafted config and content take the defaults, with no page error.
+    await part('Crafted', async () => {
+      const { ctx, page } = await WXT.board(browser, errors);
+      await WXT.open(page);
+      const BAD = [{ place: { id: 1, name: 'X', lat: 999, lon: -87, tz: 'America/Chicago' } }, { place: { id: 1, name: 'X', lat: 42, lon: -87, tz: 'Mars/Olympus' } }, { hide: ['<img src=x onerror=alert(1)>'] },
+        { place: { id: 1, name: 'x'.repeat(100000), lat: 42, lon: -87, tz: 'America/Chicago' } }, { units: '<b>', simple: 'yes', still: 7, date: '1800-01-01' }, 'text', [1, 2], 42];
+      const wrong = [];
+      for (const c of BAD) {
+        await WXT.put(page, 'config', c); await page.waitForTimeout(300);
+        const s = await F(page, () => ({ place: (document.querySelector('#app .place') || {}).textContent || '', imgs: document.querySelectorAll('#app img').length, date: !!document.querySelector('#app .V-date, #app .wx.V-date') }));
+        if (s.imgs || s.date || (s.place !== 'Wheeling' && s.place.length > 60)) wrong.push(`${JSON.stringify(c).slice(0, 60)}: ${JSON.stringify(s).slice(0, 80)}`);
+      }
+      const names = await F(page, () => document.querySelector('#app .place') && document.querySelector('#app .place').textContent);
+      for (const d of [{ saved: { at: 'x', place: 4916311, days: 'no', wear: 5 } }, { saved: { at: Date.now(), place: 4916311, days: [{ date: '<img>', code: 'x', low: {}, high: [], rain: null }], wear: { '<img>': { advice: '<img src=x>' } } } }, 'text', null, [1]]) {
+        await WXT.put(page, 'data', d); await page.waitForTimeout(300);
+        const imgs = await F(page, () => document.querySelectorAll('#app img').length);
+        if (imgs) wrong.push(`content ${JSON.stringify(d).slice(0, 60)} drew a picture`);
+      }
+      ok(!wrong.length, `crafted config and content (bad coordinates, an unknown time zone, markup in the Show list, a huge name, bad types) take the defaults (${wrong.join(' | ') || 'all'}; ${names})`);
+      const wx = await F(page, () => document.querySelectorAll('#app .wx').length);
+      ok(wx === 1, 'and it still draws the weather');
+      await ctx.close();
+      // Times no date can be made from, drawn offline: the window keeps drawing (a menu change, a new size).
+      for (const [what, mut] of [['saved.at 1e20', x => { x.at = 1e20; }], ['each wear.at 1e15', x => { for (const k of Object.keys(x.wear)) x.wear[k].at = 1e15; }], ['saved.at -1e16', x => { x.at = -1e16; }]]) {
+        const b = await WXT.board(browser, errors), logs = [];
+        b.page.on('console', m => { if (/RangeError|listener for .* failed/.test(m.text())) logs.push(m.text().slice(0, 120)); });
+        await WXT.open(b.page);
+        await eventually(async () => !!((await WXT.data(b.page)) || {}).saved);
+        const d = JSON.parse(JSON.stringify(await WXT.data(b.page))); mut(d.saved);
+        await b.ctx.setOffline(true); await b.page.waitForTimeout(300);
+        await WXT.put(b.page, 'data', d); await b.page.waitForTimeout(400);
+        await WXT.choose(b.page, 'units:c'); await WXT.size(b.page, 900, 560);
+        const t = await text(b.page);
+        ok(!logs.length && /You’re offline\./.test(t) && (/\d°C/.test(t) || /The weather shows once you’re online\./.test(t)), `content with ${what}, offline: no error, and it still draws after °C and a new size (${logs.join(' | ') || t.replace(/\n+/g, ' / ').slice(0, 90)})`);
+        await b.ctx.close();
+      }
+      // Temperatures no place could have, drawn offline: a dash, never “1e+300°”.
+      {
+        const b = await WXT.board(browser, errors);
+        await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+        await eventually(async () => !!((await WXT.data(b.page)) || {}).saved);
+        const d = JSON.parse(JSON.stringify(await WXT.data(b.page)));
+        Object.assign(d.saved.days[0], { high: 1e300, low: -1e300 });
+        for (const w of Object.values(d.saved.wear)) Object.assign(w, { high: 1e21, feels8: -1e21 });
+        await b.ctx.setOffline(true); await b.page.waitForTimeout(300);
+        await WXT.put(b.page, 'data', d); await b.page.waitForTimeout(400);
+        const got = [];
+        for (const [w, h] of [[900, 560], [480, 360]]) {
+          await WXT.size(b.page, w, h);
+          const t = await text(b.page), pr = await WXT.problems(b.page, false);
+          got.push({ size: `${w} × ${h}`, ok: /You’re offline\./.test(t) && /Today’s high/.test(t) && !/\de[+-]?\d/.test(t) && !pr.list.length, t: t.replace(/\n+/g, ' / ').slice(0, 110), pr: pr.list.slice(0, 3) });
+        }
+        ok(got.every(g => g.ok), `content with a high of 1e300°, a low of −1e300°, and What to wear at ±1e21°, offline: the window draws, with no such number (${JSON.stringify(got)})`);
+        await b.ctx.close();
+      }
+    });
+
+    // ---- 4. Each part on its own clock, only while the window shows, and never on a timer from 8 PM to 6 AM.
+    await part('Refresh clocks', async () => {
+      const { ctx, page, wx } = await WXT.board(browser, errors, { clock: 'install' });
+      await WXT.open(page);
+      const C = { now: /stations\/KPWK\/observations/, forecast: /api\.open-meteo\.com\/v1\/forecast/, air: /air-quality/, alerts: /alerts\/active/ };
+      const counts = () => Object.fromEntries(Object.entries(C).map(([k, re]) => [k, wx.count(re)]));
+      const c0 = counts();
+      // (Each half hour the airport's newest report is half an hour newer.)
+      for (let i = 1; i <= 8; i++) { wx.later['api.weather.gov/stations/KPWK/observations'] = i * 1800; await WXT.later(page, 30); }
+      await WXT.later(page, 1);
+      const c1 = counts(), d = Object.fromEntries(Object.keys(C).map(k => [k, c1[k] - c0[k]]));
+      ok(c0.now === 1 && c0.forecast === 1 && c0.air === 1 && c0.alerts === 1 && d.now === 8 && d.forecast === 4 && d.air === 1 && d.alerts === 48,
+        `in 4 hours from 11:50 AM: Now every 30 minutes, the forecast every hour, air quality every 4 hours, and alerts every 5 minutes (on open ${JSON.stringify(c0)}, then ${JSON.stringify(d)})`);
+      // Hidden, it asks nothing. Shown again, it asks for what's stale.
+      await F(page, () => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); Object.defineProperty(document, 'hidden', { value: true, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+      const h0 = counts();
+      await WXT.later(page, 90);
+      const h1 = counts();
+      ok(JSON.stringify(h0) === JSON.stringify(h1), `hidden for 90 minutes, it asks nothing (${JSON.stringify(h0)}, then ${JSON.stringify(h1)})`);
+      await F(page, () => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); Object.defineProperty(document, 'hidden', { value: false, configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+      await page.clock.runFor(5000); await page.waitForTimeout(1500);
+      const h2 = counts();
+      ok(h2.now === h1.now + 1 && h2.forecast === h1.forecast + 1 && h2.alerts === h1.alerts + 1 && h2.air === h1.air, `shown again, it asks at once for Now, the forecast, and alerts, which are stale, and not air quality (${JSON.stringify(h2)})`);
+      await ctx.close();
+      // The airport's report always 2 hours old, so Now comes from Open-Meteo: still one forecast an hour, each with Now.
+      const st = await WXT.board(browser, errors, { clock: 'install' });
+      st.wx.later['api.weather.gov/stations/KPWK/observations'] = -2 * 3600;
+      await WXT.open(st.page);
+      const om = () => st.wx.asked.filter(a => a.host === 'api.open-meteo.com'), s0 = om().length, src = await F(st.page, () => document.querySelector('#app .hero .src').textContent);
+      for (let i = 1; i <= 8; i++) { st.wx.later['api.weather.gov/stations/KPWK/observations'] = i * 1800 - 2 * 3600; await WXT.later(st.page, 30); }
+      await WXT.later(st.page, 1);
+      const s1 = om().slice(s0);
+      ok(s0 === 1 && s1.length === 4 && s1.every(a => a.query.current) && /^From Open-Meteo/.test(src), `with Now from Open-Meteo, it asks Open-Meteo once an hour, each time with Now: about 18 calls a day, as README says (on open ${s0}, then ${s1.length} in 4 hours, ${s1.filter(a => a.query.current).length} with Now; ${src})`);
+      await st.ctx.close();
+      // From 8 PM to 6 AM nothing on a timer; a window opened at 9 PM asks once.
+      const q = await WXT.board(browser, errors, { clock: 'install', at: '2026-11-23T21:00:00-06:00' });
+      await WXT.open(q.page);
+      const q0 = Object.fromEntries(Object.entries(C).map(([k, re]) => [k, q.wx.count(re)]));
+      await WXT.later(q.page, 30); await q.page.clock.fastForward(8 * 3600e3); await WXT.later(q.page, 1);
+      const q1 = Object.fromEntries(Object.entries(C).map(([k, re]) => [k, q.wx.count(re)]));
+      ok(Object.values(q0).every(n => n === 1) && JSON.stringify(q0) === JSON.stringify(q1), `opened at 9 PM it asks once for each part, then nothing until 6 AM (${JSON.stringify(q0)}, at 5:31 AM ${JSON.stringify(q1)})`);
+      await WXT.later(q.page, 45);
+      const q2 = Object.fromEntries(Object.entries(C).map(([k, re]) => [k, q.wx.count(re)]));
+      ok(Object.keys(C).every(k => q2[k] > q1[k]), `after 6 AM it asks again (${JSON.stringify(q2)})`);
+      await q.ctx.close();
+    });
+
+    // ---- 5. Offline.
+    await part('Offline', async () => {
+      const { ctx, page, wx } = await WXT.board(browser, errors);
+      await WXT.open(page);
+      ok(await eventually(async () => !!((await WXT.data(page)) || {}).saved), 'online, the forecast is saved');
+      await ctx.setOffline(true); await page.waitForTimeout(600);
+      let t = await text(page), p = await WXT.parts(page);
+      ok(/You’re offline\./.test(t) && /Updated 11:50 AM/.test(t) && p && p.days === 5 && p.wear === 'line' && !/At Chicago Executive Airport/.test(t) && /Today’s high/.test(t) && /\b40°/.test(t) && /Dress for chilly weather\./.test(t),
+        `going offline: “You’re offline.”, “Updated 11:50 AM”, today’s high, the days and What to wear from the save, and no Now (${t.replace(/\n+/g, ' / ').slice(0, 220)})`);
+      await WXT.size(page, 1600, 860);
+      p = await WXT.parts(page);
+      ok(!!p && !p.hourly && !p.wind && !p.air && p.days === 7 && p.sun, `offline at Fill the board: no hourly forecast, wind, or air quality; the 7 days and the sun (${JSON.stringify(p).slice(0, 200)})`);
+      await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-offline-xl.png' });
+      await WXT.size(page, 480, 360);
+      await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-offline.png' });
+      const n = wx.asked.length;
+      await ctx.setOffline(false);
+      ok(await eventually(async () => wx.asked.length > n && !/You’re offline/.test(await text(page)), 6000), 'back online, it asks again by itself and drops the band');
+      // A save from Fri Nov 20 at 7:02 AM: only its days from today on, and the band names the day.
+      const d = await WXT.data(page), old = JSON.parse(JSON.stringify(d));
+      old.saved.at = Date.parse('2026-11-20T07:02:00-06:00');
+      old.saved.days = old.saved.days.map((x, i) => Object.assign({}, x, { date: ['2026-11-20', '2026-11-21', '2026-11-22', '2026-11-23', '2026-11-24', '2026-11-25', '2026-11-26'][i] }));
+      await ctx.setOffline(true); await WXT.put(page, 'data', old); await page.waitForTimeout(500);
+      t = await text(page); p = await WXT.parts(page);
+      ok(/Updated Fri 7:02 AM/.test(t) && p && p.days === 4, `a save from Friday: “Updated Fri 7:02 AM”, and only its 4 days from today on (${p && p.days}; ${t.replace(/\n+/g, ' / ').slice(0, 160)})`);
+      await ctx.close();
+      // Nothing saved, offline.
+      const HANG = { 'api.open-meteo.com/v1/forecast': { hang: true }, 'air-quality-api.open-meteo.com/v1/air-quality': { hang: true }, 'api.weather.gov/points/42.1392,-87.929': { hang: true }, 'api.weather.gov/alerts/active': { hang: true } };
+      let b = await WXT.board(browser, errors, { more: HANG });
+      await b.page.evaluate(() => window.__board21.openWidget('weather', { fresh: true })); await WXT.connected(b.page); await b.page.waitForTimeout(500);
+      const t0 = await text(b.page), n0 = b.wx.asked.length;
+      await b.ctx.setOffline(true); await b.page.waitForTimeout(500);
+      t = await text(b.page);
+      ok(/Getting the weather…/.test(t0) && /You’re offline\./.test(t) && /The weather shows once you’re online\./.test(t), `nothing saved: “Getting the weather…”, then offline “You’re offline.” and “The weather shows once you’re online.” (${t0} | ${t.replace(/\n+/g, ' / ')})`);
+      await WXT.choose(b.page, 'units:c'); await b.page.waitForTimeout(300);
+      ok(b.wx.asked.length === n0, 'offline, it asks nothing');
+      await b.ctx.close();
+      // Online, but every site fails.
+      const FAIL = { 'api.open-meteo.com/v1/forecast': { abort: true }, 'air-quality-api.open-meteo.com/v1/air-quality': { abort: true }, 'api.weather.gov/points/42.1392,-87.929': { abort: true }, 'api.weather.gov/alerts/active': { abort: true } };
+      b = await WXT.board(browser, errors, { clock: 'install', more: FAIL });
+      await b.page.evaluate(() => window.__board21.openWidget('weather', { fresh: true })); await WXT.connected(b.page);
+      await b.page.clock.runFor(20000);
+      t = await text(b.page);
+      ok(/Can’t get the weather\./.test(t) && /It tries again on its own\./.test(t), `online, every site failing, nothing saved: “Can’t get the weather.” and “It tries again on its own.” (${t.replace(/\n+/g, ' / ')})`);
+      await WXT.put(b.page, 'data', d); await b.page.waitForTimeout(300);
+      await F(b.page, () => window.B21Weather.refresh()); await b.page.clock.runFor(20000);
+      t = await text(b.page);
+      ok(/Can’t get new weather\./.test(t) && /Updated 11:50 AM/.test(t) && /Dress for chilly weather\./.test(t), `with a save: “Can’t get new weather.” and “Updated 11:50 AM”, and the saved forecast (${t.replace(/\n+/g, ' / ').slice(0, 160)})`);
+      await b.ctx.close();
+      // Every site failing after a good start (a school's filter, an outage): once the forecast is two hours old, the
+      // saved view with “Can’t get new weather.”, and the band goes when the weather comes again.
+      b = await WXT.board(browser, errors, { at: '2026-11-23T09:50:00-06:00', clock: 'install' });
+      b.wx.shift = -2 * 3600;   // (the answers as at 9:50 AM)
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+      ok(await eventually(async () => !!((await WXT.data(b.page)) || {}).saved), 'a good start: the forecast is saved');
+      const good = Object.assign({}, b.wx.answers);
+      for (const k of Object.keys(b.wx.answers)) b.wx.answers[k] = { abort: true };
+      await WXT.later(b.page, 100);
+      const t1 = await text(b.page);
+      await WXT.later(b.page, 80);
+      const t2 = await text(b.page), p2 = await WXT.parts(b.page);
+      ok(!/Can’t get new weather/.test(t1) && /Can’t get new weather\./.test(t2) && /Updated 9:50 AM/.test(t2) && !/From Open-Meteo|At Chicago Executive Airport/.test(t2) && p2 && !p2.wind && !p2.air && p2.days === 7,
+        `three hours of every site failing: at 11:30 AM it still shows the weather; by 12:50 PM “Can’t get new weather.” and “Updated 9:50 AM”, the saved days, and no Now (${t1.replace(/\n+/g, ' / ').slice(0, 80)} | ${t2.replace(/\n+/g, ' / ').slice(0, 140)})`);
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-failing.png' });
+      Object.assign(b.wx.answers, good);
+      await WXT.later(b.page, 65);
+      const t3 = await text(b.page);
+      ok(!/Can’t get new weather/.test(t3) && /At Chicago Executive Airport|From Open-Meteo, \d/.test(t3), `the next answer drops the band (${t3.replace(/\n+/g, ' / ').slice(0, 100)})`);
+      await b.ctx.close();
+      // Only the forecasts failing for two hours, with the airport's report old, while the alerts still come: not every
+      // source fails, so a warning in force still shows. Once the alerts fail too: “Can’t get new weather.”
+      b = await WXT.board(browser, errors, { clock: 'install', more: { 'api.weather.gov/alerts/active': 'nws-alerts-fortworth.json' } });
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+      await eventually(async () => !!((await WXT.data(b.page)) || {}).saved);
+      const band = () => F(b.page, () => { const e = document.querySelector('#app .band'); return e ? e.className.replace('band ', '') + ': ' + e.textContent.replace(/\u00a0/g, ' ').trim() : ''; });
+      b.wx.answers['api.open-meteo.com/v1/forecast'] = { abort: true };
+      for (const k of ['api.weather.gov/gridpoints/LOT/65,84/forecast', 'api.weather.gov/gridpoints/LOT/65,84/forecast/hourly']) b.wx.answers[k] = { status: 500, json: {} };
+      b.wx.later['api.weather.gov/stations/KPWK/observations'] = -3 * 3600;
+      const a0 = b.wx.count(/alerts\/active/);
+      await WXT.later(b.page, 130);
+      const w1 = await band(), a1 = b.wx.count(/alerts\/active/);
+      b.wx.answers['api.weather.gov/alerts/active'] = { status: 500, json: {} };
+      await WXT.later(b.page, 6);
+      const w2 = await band();
+      ok(/^warn: Freeze Warning/.test(w1) && a1 - a0 >= 20 && /^off: Can’t get new weather\. Updated 11:50 AM/.test(w2),
+        `the forecasts failing for two hours while ${a1 - a0} alerts answer: the warning still shows (“${w1}”); the alerts failing too: “${w2}”`);
+      await b.ctx.close();
+    });
+
+    // ---- 6. No motion, from the menu or the device; snow in two layers.
+    await part('Motion', async () => {
+      const moving = p => F(p, () => { const fx = document.querySelector('#app .fx'); return fx ? fx.getAnimations({ subtree: true }).length : -1; });
+      const obs = WX_FIX('nws-observations-KPWK.json'); obs.features.forEach(f => { f.properties.textDescription = 'Light Snow'; });
+      let b = await WXT.board(browser, errors, { more: { 'api.weather.gov/stations/KPWK/observations': { json: obs } } });
+      await WXT.open(b.page);
+      const snow = await F(b.page, () => [...document.querySelectorAll('#app .fx .sway')].map(s => getComputedStyle(s).animationDuration + '/' + (s.querySelector('[class^="snow-"]') ? getComputedStyle(s.querySelector('[class^="snow-"]')).animationDuration : '-')));
+      ok(snow.length === 2 && snow[0] !== snow[1] && snow.every(s => !/\/-$/.test(s)), `snow: two faint layers, each drifting on its own path, at different speeds (${snow.join(', ')})`);
+      ok(await moving(b.page) > 0, `the sky moves (${await moving(b.page)} animations)`);
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-snow.png' });
+      await WXT.choose(b.page, 'still');
+      ok(await moving(b.page) === 0 && ((await WXT.conf(b.page)) || {}).still === true, 'No motion stops every animation in the sky, and is saved');
+      await b.ctx.close();
+      b = await WXT.board(browser, errors, { opts: { reducedMotion: 'reduce' } });
+      await WXT.open(b.page);
+      ok(await moving(b.page) === 0, 'with Reduce motion on the device, the sky is still too');
+      await b.ctx.close();
+      // Large by day, snowing, for half an hour of the window's 20-second redraws: what it shows changes (the sun moves on),
+      // and the moving sky carries on through it, never taken out of the page to start over.
+      b = await WXT.board(browser, errors, { clock: 'install', more: { 'api.weather.gov/stations/KPWK/observations': { json: obs } } });
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560); await b.page.clock.runFor(2000);
+      await F(b.page, () => {
+        window.__sky = document.querySelector('#app .fx i').getAnimations()[0]; window.__views = 0; window.__redraws = 0;
+        new MutationObserver(rs => { for (const r of rs) if (r.target.id === 'view') window.__views++; else if (r.target.classList.contains('wx')) window.__redraws++; })
+          .observe(document.getElementById('view'), { childList: true, subtree: true });
+      });
+      for (let i = 0; i < 90; i++) { await b.page.clock.fastForward(20e3); await b.page.waitForTimeout(30); }
+      const sky = await F(b.page, () => { const a = document.querySelector('#app .fx i').getAnimations()[0]; return { views: window.__views, redraws: window.__redraws, same: a === window.__sky, state: a && a.playState, sky: document.querySelector('#app .fx').dataset.sc }; });
+      ok(sky.redraws > 0 && sky.views === 0 && sky.same && sky.state === 'running' && sky.sky === 'snow-d', `half an hour of redraws in Large: the window drew again ${sky.redraws} times, and the snowy sky stayed in the page, still moving (${JSON.stringify(sky)})`);
+      await b.ctx.close();
+    });
+
+    ok(stamped(), STAMPED);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  ['Weather: Location, On a date, and Simple words', async (browser) => {
+    const errors = [];
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const { K, F, text } = WXT;
+    // ---- 1. Location: search as you type. Other towns named Wheeling never show.
+    await part('Location', async () => {
+      const { ctx, page, wx } = await WXT.board(browser, errors);
+      await WXT.open(page);
+      await WXT.choose(page, 'place');
+      const field = WXT.wf(page).locator('#app .sheet input');
+      ok(await field.count() === 1 && (await field.getAttribute('placeholder')) === 'Search for a town' && /Location/.test(await text(page)), 'Location… opens a sheet with a search field');
+      const results = () => F(page, () => [...document.querySelectorAll('#app .sheet .res li')].map(li => li.innerText.replace(/\s*\n\s*/g, ' / ').trim()));
+      await field.fill('Wheeling'); await page.waitForTimeout(900);
+      let r = await results();
+      ok(r.length === 1 && /^Wheeling \/ Illinois, United States/.test(r[0]) && /✓/.test(r[0]), `searching “Wheeling” lists only Wheeling, Illinois, checked (${r.join(' | ')})`);
+      await field.fill('Zzz'); await page.waitForTimeout(900);
+      ok(/No towns found\./.test(await text(page)), 'no results: “No towns found.”');
+      await field.fill('Honolulu'); await page.waitForTimeout(900);
+      r = await results();
+      ok(r.length === 1 && /^Honolulu \/ Hawaii, United States/.test(r[0]), `“Honolulu” lists Honolulu (${r.join(' | ')})`);
+      const n = wx.count(/latitude=21\.30694/);
+      await WXT.wf(page).locator('#app .sheet .res li').first().click(); await page.waitForTimeout(1200);
+      const c = await WXT.conf(page), sub = await page.evaluate(k => window.__board21.state.wins.get(k).subtitle, K);
+      ok(!!c && c.place.id === 5856195 && c.place.tz === 'Pacific/Honolulu' && wx.count(/latitude=21\.30694/) > n && /Honolulu/.test(await text(page)) && !sub && await page.locator(`.win[data-ikey="${K}"] .win-label`).innerText() === 'Weather',
+        `choosing it refreshes the window for Honolulu, and the title stays Weather (${JSON.stringify(c && c.place)}; “${sub || ''}”)`);
+      // (The sheet's box stays in the page, hidden and empty, while it's closed.)
+      const sheetOpen = () => F(page, () => [...document.querySelectorAll('#app .sheet')].some(s => !s.hidden && s.getClientRects().length > 0));
+      await WXT.choose(page, 'place');
+      const esc0 = await sheetOpen();
+      await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+      ok(esc0 && !await sheetOpen(), `Escape closes it (${esc0 ? 'open' : 'never opened'}, then ${await sheetOpen() ? 'still open' : 'closed'})`);
+      await WXT.choose(page, 'place');
+      const tap0 = await sheetOpen(), wb = await page.locator(`.win[data-ikey="${K}"] iframe`).boundingBox();
+      await page.mouse.click(wb.x + 12, wb.y + wb.height / 2); await page.waitForTimeout(300);   // (beside the panel)
+      ok(tap0 && !await sheetOpen(), `tapping outside it closes it too (${tap0 ? 'open' : 'never opened'}, then ${await sheetOpen() ? 'still open' : 'closed'})`);
+      await ctx.setOffline(true);
+      await WXT.choose(page, 'place');
+      await WXT.wf(page).locator('#app .sheet input').fill('Chicago'); await page.waitForTimeout(900);
+      ok(/Search needs the Internet\./.test(await text(page)), 'offline: “Search needs the Internet.”');
+      await ctx.close();
+    });
+
+    // ---- 2. On a date: Jan 30, 2019.
+    await part('On a date', async () => {
+      const { ctx, page, wx } = await WXT.board(browser, errors);
+      await WXT.open(page); await WXT.size(page, 900, 560);
+      await WXT.choose(page, 'date'); await page.waitForTimeout(500);
+      const input = WXT.wf(page).locator('#app input[type="date"]');
+      ok(await input.count() === 1 && (await input.getAttribute('min')) === '1940-01-01' && (await input.getAttribute('max')) === '2026-11-22', 'On a date… opens on yesterday; its date picker runs from Jan 1, 1940 to yesterday');
+      await input.fill('2019-01-30'); await input.dispatchEvent('change'); await page.waitForTimeout(800);
+      const t = await text(page), sub = await page.evaluate(k => window.__board21.state.wins.get(k).subtitle, K);
+      const big = await F(page, () => document.querySelector('#app .temp').textContent);
+      ok(big === '−13°F' && /Wed, January 30, 2019/.test(t) && /Low −25°/.test(t) && /Feels like −38° · Wind 15 mph/.test(t) && /Snow 0 inches · Rain 0 inches/.test(t) && /53° colder/.test(t) && /Today’s high is 40°\./.test(t) && /Back to today/.test(t) && /From Open-Meteo/.test(t),
+        `Jan 30, 2019: −13°F, Low −25°, 53° colder, Today’s high is 40°. (${big}; ${t.replace(/\n+/g, ' / ').slice(0, 300)})`);
+      ok(sub === 'Jan 30, 2019', `the title’s subtitle: “${sub}”`);
+      ok(wx.asked.some(a => a.host === 'archive-api.open-meteo.com' && a.query.start_date === '2019-01-30' && a.query.end_date === '2019-01-30'), 'it asked Open-Meteo’s archive for that day');
+      { const pr = await WXT.problems(page, false); ok(!pr.list.length, `On a date fits (${pr.list.join(', ') || pr.size})`); }
+      await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-on-a-date.png' });
+      // The chart's line never runs through the high's or the low's number: the high's sits above its dot, the low's
+      // below. Jan 30, 2019, and a day that peaks mid-afternoon, large and small.
+      const through = () => F(page, () => {
+        const s = document.querySelector('#app .dscroll'); if (s) s.scrollTop = s.scrollHeight;
+        const ch = document.querySelector('#app .chart'), path = ch.querySelector('path[fill="none"]'), m = path.getScreenCTM(), segs = [];
+        for (const run of path.getAttribute('d').split('M').filter(Boolean)) {
+          const pts = run.split('L').map(p => p.split(',').map(Number)).map(([x, y]) => ({ x: m.a * x + m.e, y: m.d * y + m.f }));
+          for (let i = 1; i < pts.length; i++) segs.push([pts[i - 1], pts[i]]);
+        }
+        // (How much of a segment lies in a box: Liang–Barsky.)
+        const inBox = (a, b, r) => {
+          let t0 = 0, t1 = 1; const dx = b.x - a.x, dy = b.y - a.y;
+          for (const [p, q] of [[-dx, a.x - r.l], [dx, r.r - a.x], [-dy, a.y - r.t], [dy, r.b - a.y]]) {
+            if (!p) { if (q < 0) return 0; continue; }
+            const t = q / p; if (p < 0) { if (t > t1) return 0; t0 = Math.max(t0, t); } else { if (t < t0) return 0; t1 = Math.min(t1, t); }
+          }
+          return t1 > t0 ? (t1 - t0) * Math.hypot(dx, dy) : 0;
+        };
+        // (Each number's ink, and half the line's width around it.)
+        return [...ch.querySelectorAll('.lab')].map(e => {
+          const q = e.getBoundingClientRect(), fs = parseFloat(getComputedStyle(e).fontSize), r = { l: q.left - 1.2, r: q.right + 1.2, t: q.top + 0.22 * fs - 1.2, b: q.bottom - 0.2 * fs + 1.2 };
+          const n = segs.reduce((sum, [a, b]) => sum + inBox(a, b, r), 0);
+          return e.textContent.trim() + (n > 0.5 ? ` under ${n.toFixed(1)} px of line` : '');
+        });
+      });
+      const peak = WX_FIX('om-archive-2019-01-30.json'), p0 = Date.parse('2019-10-03T05:00:00Z') / 1000;
+      const temps = [70, 71, 72, 72.5, 73, 74, 75, 76, 78, 80, 82, 83, 84, 84.5, 84, 82, 79, 75, 70, 66, 62, 59, 57, 55];
+      peak.hourly.time = temps.map((_, i) => p0 + i * 3600); peak.hourly.temperature_2m = temps; peak.daily.time = [p0];
+      Object.assign(peak.daily, { temperature_2m_max: [84.5], temperature_2m_min: [55], weather_code: [1] });
+      const labs = [];
+      for (const date of ['2019-01-30', '2019-10-03']) {
+        if (date !== '2019-01-30') { wx.answers['archive-api.open-meteo.com/v1/archive'] = { json: peak }; await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { date })); await page.waitForTimeout(800); }
+        for (const [w, h] of [[900, 560], [480, 360], [380, 280]]) { await WXT.size(page, w, h); labs.push(`${date} at ${w} × ${h}: ${(await through()).join(', ')}`); }
+      }
+      ok(labs.length === 6 && labs.every(l => /: \S+°, \S+°$/.test(l) && !/ under /.test(l)), `the chart’s line runs through neither the high nor the low (${labs.join(' | ')})`);
+      await WXT.size(page, 900, 560);
+      await WXT.wf(page).locator('#app [data-act="today"]').click(); await page.waitForTimeout(500);
+      ok(((await WXT.conf(page)) || {}).date === null && !(await page.evaluate(k => window.__board21.state.wins.get(k).subtitle, K)), 'Back to today returns, and the subtitle goes');
+      // A summer day: the archive keeps standard time all year, so its hours run from 1 AM daylight time. The chart puts
+      // each at its own time, and a missing hour is a gap.
+      const sum = WX_FIX('om-archive-2019-01-30.json'), t0 = Date.parse('2019-07-15T06:00:00Z') / 1000;
+      sum.hourly.time = sum.hourly.time.map((t, i) => t0 + i * 3600); sum.daily.time = [t0];
+      sum.hourly.temperature_2m = sum.hourly.temperature_2m.map((f, i) => (i === 10 ? null : 70 + i / 2));
+      Object.assign(sum.daily, { temperature_2m_max: [81.5], temperature_2m_min: [70], weather_code: [1] });
+      wx.answers['archive-api.open-meteo.com/v1/archive'] = { json: sum };
+      await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { date: '2019-07-15' })); await page.waitForTimeout(800);
+      const ch = await F(page, () => ({ ticks: [...document.querySelectorAll('#app .chart .tk')].map(e => e.textContent.replace(/\u00a0/g, ' ') + '@' + e.style.left), runs: (document.querySelector('#app .chart svg path[fill="none"]').getAttribute('d').match(/M/g) || []).length }));
+      // (6 AM daylight time is the archive's 6th hour, 11:00 UTC: 10 + 280 × 5 / 23 of the 300-wide drawing.)
+      ok(ch.ticks.join(' | ') === '6 AM@23.62% | 12 PM@47.97% | 6 PM@72.32%' && ch.runs === 2, `a summer day’s chart: 6 AM, 12 PM, and 6 PM at their own hours, and a gap where an hour is missing (${ch.ticks.join(' | ')}; ${ch.runs} runs)`);
+      // The archive failing while online: “Can’t get the weather.”, then once more after 5 to 10 seconds.
+      let tries = 0;
+      wx.answers['archive-api.open-meteo.com/v1/archive'] = () => (++tries === 1 ? { status: 500, json: { error: true } } : 'om-archive-2019-01-30.json');
+      await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { date: '2019-01-30' })); await page.waitForTimeout(600);
+      const f1 = await text(page);
+      ok(/Can’t get the weather\./.test(f1) && !/No weather for that date/.test(f1), `the archive failing while online: “Can’t get the weather.” (${f1.replace(/\n+/g, ' / ').slice(0, 100)})`);
+      ok(await eventually(async () => /Low −25°/.test(await text(page)), 14000) && tries === 2, `it tries once more by itself, and shows the day (${tries} tries)`);
+      await ctx.setOffline(true);
+      await WXT.choose(page, 'date'); await page.waitForTimeout(500);
+      ok(/On a date needs the Internet\./.test(await text(page)), 'offline: “On a date needs the Internet.”');
+      await ctx.close();
+    });
+
+    // ---- 3. Simple words, for the day What to wear shows.
+    await part('Simple words', async () => {
+      let b = await WXT.board(browser, errors, { at: '2026-12-01T11:50:00-06:00' });
+      b.wx.shift = 8 * 86400;
+      await WXT.open(b.page);
+      await WXT.choose(b.page, 'simple');
+      let s = await F(b.page, () => ({ say: (document.querySelector('#app .say') || {}).textContent, items: [...document.querySelectorAll('#app .simple figcaption')].map(e => e.textContent), chip: (document.querySelector('#app .chip') || {}).textContent, credit: (document.querySelector('#app .simple .src') || {}).textContent }));
+      ok(s.say === 'Cold and sunny.' && s.items.join() === 'Coat,Hat,Gloves' && s.chip === '39°' && s.credit === 'At Chicago Executive Airport. Forecast from Open-Meteo', `Tue Dec 1 before 2 PM: “Cold and sunny.” with a coat, hat, and gloves (${JSON.stringify(s)})`);
+      await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: ['wear', 'days', 'hourly'] })); await b.page.waitForTimeout(300);
+      s = await F(b.page, () => ({ say: (document.querySelector('#app .say') || {}).textContent, items: [...document.querySelectorAll('#app .simple figcaption')].map(e => e.textContent) }));
+      ok(s.say === 'Cold and sunny.' && s.items.length === 3, 'it ignores the Show list');
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-simple.png' });
+      { const pr = await WXT.problems(b.page, false); ok(!pr.list.length, `Simple words fits (${pr.list.join(', ') || pr.size})`); }
+      // In Small its credit takes two lines: the sentence stays clear of it, in Early readers' letters too.
+      const small = async (pg, tag) => {
+        const bad = [];
+        for (const [w, h] of [[260, 220], [300, 250], [340, 270]]) { await WXT.size(pg, w, h); const pr = await WXT.problems(pg, false); if (pr.list.length) bad.push(`${tag} at ${w} × ${h}: ${pr.list.join(', ')}`); }
+        return bad;
+      };
+      const smallBad = await small(b.page, '“Cold and sunny.”');
+      await b.ctx.close();
+      // Mon Nov 23, no school: Mon Nov 30, its forecast's sky (cloudy).
+      b = await WXT.board(browser, errors);
+      await WXT.open(b.page);
+      await WXT.choose(b.page, 'simple');
+      s = await F(b.page, () => ({ say: (document.querySelector('#app .say') || {}).textContent, items: [...document.querySelectorAll('#app .simple figcaption')].map(e => e.textContent) }));
+      ok(s.say === 'Chilly and cloudy.' && s.items.join() === 'Coat', `Mon Nov 23 follows Mon Nov 30: “Chilly and cloudy.”, the sky of Monday’s forecast, with a coat (${JSON.stringify(s)})`);
+      smallBad.push(...await small(b.page, '“Chilly and cloudy.”'));
+      await openSettings(b.page, ['letters']); await b.page.click('#settings [data-act="letters"][data-val="early"]'); await b.page.keyboard.press('Escape'); await b.page.waitForTimeout(1200);
+      smallBad.push(...await small(b.page, 'Early readers'));
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-simple-small-early.png' });
+      ok(!smallBad.length, `Simple words in Small windows, from 260 × 220: the sentence clear of the credit, and everything fits (${smallBad.join(' | ') || 'all'})`);
+      await b.ctx.close();
+    });
+
+    ok(stamped(), STAMPED);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  // ---- 2026.11.23-4: the R in 3 R 2 is grey at full strength (look C in the mockups): the board's muted color, the
+  // digits' size and weight, and 4.5:1 or more wherever it is drawn. Going on from an answer shown with a remainder puts
+  // 17/5 in the ans box, drawn as As fractions draws it, so a grade 4 class doesn't see a decimal it never saw.
+  ['Calculator: a grey R, and 17/5 after a remainder (2026.11.23-4)', async (browser) => {
+    const errors = [];
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const NAME = { '+': 'add', '−': 'subtract', '×': 'multiply', '÷': 'divide', '=': 'equals', '.': 'point', '(': 'open', ')': 'close', '%': 'percent' };
+    // The board's muted color, and the one History's answer box and Steps' work use in light, where muted reaches only
+    // 4.4:1 on their grey: 90% muted, 10% text.
+    const MUTED = { light: 'rgb(107, 114, 128)', dark: 'rgb(156, 163, 175)' }, MIXED = 'rgb(99, 107, 121)';
+    const near = (a, b) => !!a && !!b && a.match(/[\d.]+/g).slice(0, 3).every((v, i) => Math.abs(v - b.match(/[\d.]+/g)[i]) <= 1);
+    const calcBoard = async () => {
+      const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+      const page = await ctx.newPage();
+      page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE); await boardUp(page); await freeBoard(page);
+      const ik = await addWin(page, 'calculator');
+      await eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+      await page.waitForTimeout(600);
+      const W = page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+      const front = () => page.evaluate(ik => { if (window.__board21.state.focused !== ik) window.__board21.focusWin(ik); }, ik);
+      const press = async keys => {
+        await front();
+        for (const k of typeof keys === 'string' ? Array.from(keys).map(c => NAME[c] || c) : keys) await W.locator(`#keys .key[data-key="${k}"]`).click({ timeout: 3000 });
+        await page.waitForTimeout(250);
+      };
+      const choose = async label => {
+        await front();
+        await page.click(`.win[data-ikey="${ik}"] .win-label`);
+        await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).click({ timeout: 3000 });
+        await page.waitForTimeout(600);
+      };
+      // What shows: a stacked fraction written n/d, an ans box as { text, stacked }, and History's lines.
+      const look = () => W.locator('html').evaluate(() => {
+        const $ = id => document.getElementById(id), shown = e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+        const plain = e => {
+          if (!e) return '';
+          const c = e.cloneNode(true);
+          c.querySelectorAll('.ce-anslabel, .ce-cursor, .heq').forEach(n => n.remove());
+          c.querySelectorAll('.ce-frac').forEach(f => f.replaceWith(f.querySelector('.ce-numer').textContent + '/' + f.querySelector('.ce-denom').textContent));
+          return c.textContent.replace(/\s+/g, ' ').trim();
+        };
+        const box = e => { const b = e && e.querySelector('.ce-ansref'); if (!b) return null; const f = b.querySelector('.ce-frac'); return { text: plain(b), stacked: !!f && !!f.querySelector('.ce-numer') && !!f.querySelector('.ce-denom') }; };
+        const tg = shown($('eqToggle')) ? $('eqToggle') : shown($('bigToggle')) ? $('bigToggle') : null;
+        return {
+          eq: plain($('eq')), box: box($('eq')), eqLabel: (document.querySelector('#eq .ce-math') || { getAttribute: () => '' }).getAttribute('aria-label'),
+          said: shown($('said')) ? plain($('said')) : '', live: $('live').textContent, toggle: tg ? tg.getAttribute('aria-label') : null,
+          reveal: shown(document.querySelector('#eq .reveal')), x: plain($('x')), xBox: box($('x')), big: plain($('big')), bigFrac: !!$('big').querySelector('.ce-frac'),
+          hist: [...document.querySelectorAll('#history .hline')].filter(shown).map(l => ({ expr: plain(l.querySelector('.hpick')), box: box(l.querySelector('.hpick')), ans: plain(l.querySelector('.hans')), use: l.querySelector('.hans').getAttribute('aria-label') })),
+          work: [...document.querySelectorAll('#chain li.on .lw.on .work')].map(plain)
+        };
+      });
+      // The R at sel, and the digits just before it: colors as rgb() (color-mix() too, drawn on a canvas and read
+      // back), the solid background behind it, its opacity and every opacity above it, size and weight.
+      const R = sel => W.locator('html').evaluate((html, sel) => {
+        const g2 = document.createElement('canvas').getContext('2d', { willReadFrequently: true });
+        const rgb = c => { g2.clearRect(0, 0, 1, 1); g2.fillStyle = '#000'; g2.fillStyle = c; g2.fillRect(0, 0, 1, 1); const d = g2.getImageData(0, 0, 1, 1).data; return `rgb(${d[0]}, ${d[1]}, ${d[2]})`; };
+        const cs = e => getComputedStyle(e), clear = b => /rgba\(0, 0, 0, 0\)|transparent/.test(b);
+        const solid = e => { for (let n = e; n; n = n.parentElement) { const b = cs(n).backgroundColor; if (b && !clear(b)) return rgb(b); } return rgb(cs(document.body).backgroundColor); };
+        const r = document.querySelector(sel);
+        if (!r || !r.getClientRects().length) return null;
+        const d = r.previousElementSibling;
+        let all = 1;
+        for (let n = r; n; n = n.parentElement) all *= +cs(n).opacity;
+        return { text: r.textContent.trim(), color: rgb(cs(r).color), bg: solid(r), opacity: cs(r).opacity, all, size: cs(r).fontSize, weight: cs(r).fontWeight,
+          digit: d && d.classList.contains('ce-num') ? { color: rgb(cs(d).color), size: cs(d).fontSize, weight: cs(d).fontWeight } : null };
+      }, sel);
+      const sep = () => W.locator('html').evaluate(() => { const s = document.querySelector('#eq .ce-sep'); return s ? { color: getComputedStyle(s).color, opacity: getComputedStyle(s).opacity } : null; });
+      const reload = async () => { await page.reload(); await boardUp(page); await page.waitForTimeout(1500); };
+      // Canvas off: where the problem line and the big display sit in the display.
+      const disp = () => W.locator('html').evaluate(() => {
+        const r = s => document.querySelector(s).getBoundingClientRect(), d = r('#disp'), xl = r('.xline'), x = r('#x'), b = r('#big');
+        return { top: d.top, bottom: d.bottom, xline: xl.height, xH: x.height, xTop: x.top, xBottom: x.bottom, bigTop: b.top, bigBottom: b.bottom };
+      });
+      const shows = (D, where) => ok(D.xH > 0 && D.xline >= D.xH - 1 && D.xTop >= D.top - 1 && D.xBottom <= D.bigTop + 1 && D.bigBottom <= D.bottom + 1,
+        `${where} (the problem line ${D.xline.toFixed(0)}px tall, its text ${D.xH.toFixed(0)}px, at ${D.xTop.toFixed(0)}–${D.xBottom.toFixed(0)}; the display ${D.top.toFixed(0)}–${D.bottom.toFixed(0)}; the big answer ${D.bigTop.toFixed(0)}–${D.bigBottom.toFixed(0)})`);
+      // Settings › Accent › Custom…, a teacher's own color.
+      const custom = async hex => {
+        await openSettings(page);
+        await page.locator('#set-accent-custom').evaluate((el, hex) => { el.value = hex; el.dispatchEvent(new Event('input', { bubbles: true })); el.dispatchEvent(new Event('change', { bubbles: true })); }, hex);
+        await page.waitForTimeout(500); await page.keyboard.press('Escape'); await page.waitForTimeout(400);
+      };
+      return { ctx, page, ik, W, front, press, choose, look, R, sep, reload, disp, shows, custom };
+    };
+    // The R in one place: the color it should have, at full strength, the digits' size and weight, and its contrast.
+    // (distinct: the digits beside it are another color. While typing, the whole answer is muted, the R too.)
+    const checkR = (r, where, want, distinct = true) => {
+      const min = 4.5, c = r ? contrast(r.color, r.bg) : 0, grey = r ? (Math.max(...r.color.match(/\d+/g).map(Number)) - Math.min(...r.color.match(/\d+/g).map(Number))) <= 30 : false;
+      ok(!!r && r.text === 'R' && near(r.color, want) && r.opacity === '1' && r.all === 1 && grey && !!r.digit && r.size === r.digit.size && r.weight === r.digit.weight && (!distinct || r.color !== r.digit.color) && c >= min,
+        `${where}: the R is grey, ${want}, at full strength, the digits’ size and weight, ${min}:1 or more (${r ? `${r.color} on ${r.bg}, ${c.toFixed(2)}:1, opacity ${r.opacity}/${r.all}, ${r.size} ${r.weight} beside ${r.digit && r.digit.size} ${r.digit && r.digit.weight} ${r.digit && r.digit.color}` : 'not drawn'})`);
+    };
+
+    // ---- 1. The R, light and dark: the canvas, History, the work of the last step, while typing, the big display.
+    await part('The grey R', async () => {
+      const C = await calcBoard();
+      await C.choose('With remainders'); await C.choose('History'); await C.choose('In words');
+      for (const scheme of ['light', 'dark']) {
+        await C.page.emulateMedia({ colorScheme: scheme }); await C.page.waitForTimeout(500);
+        await C.press(['clear']); await C.press('17÷5='); await C.press('1234567÷8=');
+        let L = await C.look();
+        ok(L.eq === '1,234,567 ÷ 8 = 154,320 R 7' && L.eqLabel === '1,234,567 divided by 8 equals 154,320 remainder 7' && L.said === L.eqLabel && L.live === L.eqLabel,
+          `${scheme}: the words are as before: “${L.eq}”, and a screen reader and In words hear “${L.eqLabel}”`);
+        const two = L.hist.slice(-2), uses = two.map(h => h.use);
+        ok(JSON.stringify(two.map(h => h.expr + ' = ' + h.ans)) === JSON.stringify(['17 ÷ 5 = 3 R 2', '1,234,567 ÷ 8 = 154,320 R 7']) && uses[0] === 'Use 3 remainder 2' && uses[1] === 'Use 154,320 remainder 7',
+          `${scheme}: History shows both, its buttons named as before (${uses.join(' | ')})`);
+        const M = MUTED[scheme], box = scheme === 'light' ? MIXED : M;
+        checkR(await C.R('#eq .ce-ans .ce-r'), `${scheme}, the canvas`, M);
+        checkR(await C.R('#history .hline:last-child .hans .ce-r'), `${scheme}, History’s newest line (marked)`, box);
+        checkR(await C.R('#history .hline:first-child .hans .ce-r'), `${scheme}, History’s first line`, box);
+        // A highlighted background: the pointer over History's answer box. Never under 3:1.
+        await C.W.locator('#history .hline:last-child .hans').hover(); await C.page.waitForTimeout(250);
+        const hov = await C.R('#history .hline:last-child .hans .ce-r');
+        ok(!!hov && contrast(hov.color, hov.bg) >= 3, `${scheme}: with the pointer over History’s answer, still 3:1 or more (${hov && contrast(hov.color, hov.bg).toFixed(2)}:1 on ${hov && hov.bg})`);
+        await C.page.mouse.move(5, 5);
+        const s = await C.sep();
+        ok(!!s && near(s.color, M) && s.opacity === '0.6', `${scheme}: the faint comma is as before, muted at .6 (${s && s.color}, ${s && s.opacity})`);
+        // The steps: the last step's work, 23 ÷ 5 = 4 R 3, once its marked part is worked out.
+        await C.press(['clear']); await C.press('(20+3)÷5='); await C.W.locator('#all').click(); await C.page.waitForTimeout(700);
+        L = await C.look();
+        ok(JSON.stringify(L.work) === JSON.stringify(['20 + 3 = 23', '23 ÷ 5 = 4 R 3']), `${scheme}: Steps as before (${L.work.join(' | ')})`);
+        checkR(await C.R('#chain li.on .lw.on .work .ce-r'), `${scheme}, the work of the last step`, box);
+        checkR(await C.R('#chain li.fin .ce-r'), `${scheme}, the answer at the end of the steps`, M);
+        // While typing: the answer as it will show, in the muted color already.
+        await C.press(['clear']); await C.press('17÷5');
+        checkR(await C.R('#eq .prev .ce-r'), `${scheme}, the answer while typing`, M, false);
+        // The big display, with Canvas off.
+        await C.choose('Canvas'); await C.press(['clear']); await C.press('17÷5=');
+        checkR(await C.R('#big .ce-r'), `${scheme}, the big display with Canvas off`, M);
+        await C.page.screenshot({ path: OUT + `calculator-grey-r-${scheme}.png` });
+        await C.choose('Canvas');
+      }
+      // The pointer over History's answer, with the Custom… accent that tints it most: white in dark, black in light.
+      // Never under 3:1, and still grey beside the digits.
+      for (const [scheme, hex] of [['dark', '#ffffff'], ['light', '#000000']]) {
+        await C.page.emulateMedia({ colorScheme: scheme }); await C.custom(hex);
+        await C.press(['clear']); await C.press('17÷5=');
+        await C.W.locator('#history .hline:last-child .hans').hover(); await C.page.waitForTimeout(250);
+        const r = await C.R('#history .hline:last-child .hans .ce-r'), c = r ? contrast(r.color, r.bg) : 0, d = r && r.digit ? contrast(r.color, r.digit.color) : 0;
+        const grey = !!r && (Math.max(...r.color.match(/\d+/g).map(Number)) - Math.min(...r.color.match(/\d+/g).map(Number))) <= 30;
+        ok(c >= 3 && grey && d >= 1.8, `${scheme}, Custom… ${hex}: with the pointer over History’s answer, the R is still 3:1 or more, and grey beside the digits (${r && r.color} on ${r && r.bg}, ${c.toFixed(2)}:1; ${d.toFixed(2)}:1 against the digits)`);
+        await C.page.mouse.move(5, 5);
+      }
+      await C.page.emulateMedia({ colorScheme: 'light' });
+      await C.ctx.close();
+    });
+
+    // ---- 2. Going on from 3 R 2: 17/5 in the ans box, every way to go on. Other answers as before.
+    await part('Going on', async () => {
+      const C = await calcBoard();
+      await C.choose('With remainders'); await C.choose('History'); await C.choose('In words');
+      await C.press(['clear']); await C.press('17÷5=×5='); let L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17' && L.box && L.box.text === '17/5' && L.box.stacked, `17 ÷ 5 = then × 5 =: “${L.eq}”, a stacked 17/5 in the ans box (${JSON.stringify(L.box)})`);
+      ok(L.said === '17 over 5 times 5 equals 17' && L.eqLabel === L.said, `In words and a screen reader: “${L.said}”`);
+      const last = L.hist[L.hist.length - 1] || {};
+      ok(last.expr === '17/5 × 5' && last.box && last.box.stacked && last.ans === '17', `History shows it the same way (${JSON.stringify(last)})`);
+      await C.press(['clear']); await C.press('100÷3=='); L = await C.look();
+      ok(L.box && L.box.text === '100/3' && L.box.stacked && L.eq === '100/3 ÷ 3 = 11.11111111', `100 ÷ 3 = 33 R 1, then = again: “${L.eq}”`);
+      await C.press(['clear']); await C.press('17÷5='); await C.press(['ans']); L = await C.look();
+      ok(L.eq === '17/5' && L.box && L.box.stacked, `the ans key after 3 R 2: ${L.eq}`);
+      await C.press(['clear']); await C.press('17÷5=÷5='); L = await C.look();
+      ok(L.eq === '17/5 ÷ 5 = 0.68', `17/5 ÷ 5 isn’t a whole number ÷ a whole number: ${L.eq}`);
+      // History's Use on a 3 R 2 line.
+      await C.press(['clear']);
+      const use = C.W.locator('#history .hans[aria-label="Use 3 remainder 2"]').first();
+      await C.front(); await use.click(); await C.page.waitForTimeout(250); L = await C.look();
+      ok(L.eq === '17/5' && L.box && L.box.stacked, `History’s “Use 3 remainder 2” puts in 17/5 (${L.eq})`);
+      await C.press('×5='); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17', `...and × 5 = gives ${L.eq}`);
+      // The box follows the answer it came from.
+      for (const [keys, eq] of [['2+17÷5=×5=', '5.4 × 5 = 27'], ['15÷5=×2=', '3 × 2 = 6']]) {
+        await C.press(['clear']); await C.press(keys); L = await C.look();
+        ok(L.eq === eq && !(L.box && L.box.stacked), `${keys}: ${eq} (${L.eq})`);
+      }
+      // ⇄, then going on: what As fractions does, the fraction.
+      await C.press(['clear']); await C.press('17÷5='); await C.W.locator('#eqToggle').click(); await C.page.waitForTimeout(250);
+      L = await C.look();
+      ok(L.eq === '17 ÷ 5 = 3.4', `⇄: ${L.eq}`);
+      await C.press('×5='); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17' && L.box && L.box.stacked, `⇄ to 3.4, then × 5 =: ${L.eq}, as As fractions does`);
+      // Canvas off: the problem above the big display, and the big display while typing.
+      await C.choose('Canvas'); await C.press(['clear']); await C.press('17÷5=×'); L = await C.look();
+      ok(L.x === '17/5 ×' && L.xBox && L.xBox.stacked && L.big === '17/5' && L.bigFrac, `Canvas off: “${L.x}”, and the big display shows ${L.big}`);
+      // The problem line keeps its height above a tall 17/5, also where the display is short: 1150 × 640 with History.
+      const was = await C.page.evaluate(ik => window.__board21.state.insts.get(ik).rect, C.ik);
+      for (const rect of [was, { x: 40, y: 40, w: 1150, h: 640 }]) {
+        await C.page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [C.ik, rect]); await C.page.waitForTimeout(700);
+        const size = `${rect.w} × ${rect.h}`;
+        await C.press(['clear']); await C.press('17÷5=×'); L = await C.look();
+        C.shows(await C.disp(), `${size}, Canvas off: “${L.x}” shows in full above the big ${L.big}`);
+        await C.choose('As fractions'); await C.press(['clear']); await C.press('17÷5='); L = await C.look();
+        C.shows(await C.disp(), `${size}, Canvas off, As fractions: “${L.x}” shows in full above the big ${L.big}`);
+        await C.choose('With remainders');
+      }
+      await C.page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [C.ik, was]); await C.page.waitForTimeout(700);
+      await C.choose('Canvas');
+      // Hide the answer works as before.
+      await C.choose('Hide the answer'); await C.press(['clear']); await C.press('17÷5=×5='); L = await C.look();
+      ok(L.reveal && L.eq === '17/5 × 5 = ?' && (L.hist[L.hist.length - 1] || {}).ans === '?', `Hide the answer: ${L.eq}`);
+      await C.W.locator('#eq .reveal').click(); await C.page.waitForTimeout(300); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17', `a tap shows it: ${L.eq}`);
+      await C.choose('Hide the answer');
+      // Saved: the board opened again shows the same.
+      await C.press(['clear']); await C.press('17÷5=×5='); await C.page.waitForTimeout(800); await C.reload(); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17' && L.box && L.box.stacked, `opened again: ${L.eq}`);
+      // As decimals and As fractions as before.
+      await C.choose('As decimals'); await C.press(['clear']); await C.press('17÷5=×5='); L = await C.look();
+      ok(L.eq === '3.4 × 5 = 17' && L.box && !L.box.stacked, `As decimals: ${L.eq}`);
+      await C.choose('As fractions'); await C.press(['clear']); await C.press('17÷5='); await C.W.locator('#eqToggle').click(); await C.page.waitForTimeout(250); await C.press('×5='); L = await C.look();
+      ok(L.eq === '17/5 × 5 = 17' && L.box && L.box.stacked, `As fractions, ⇄ to 3.4, then × 5 =: ${L.eq}`);
+      await C.page.screenshot({ path: OUT + 'calculator-17-5.png' });
+      await C.ctx.close();
+    });
+
+    // ---- 3. The docs, and the 6–7 idea kept.
+    await part('Docs', async () => {
+      const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+      const man = read('docs/calculator-manual/page-src.html');
+      const j = man.indexOf('<h3>Remainders</h3>'), card = man.slice(j, man.indexOf('<div class="pg-exs">', j)).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+      ok(card.includes('Go on from 3 R 2, and ans shows 17/5. With Advanced keys on, / types a fraction. Tap ÷ instead.') && !card.includes('ans shows 3.4'),
+        `the manual’s Remainders card: “Go on from 3 R 2, and ans shows 17/5.” (${card.trim()})`);
+      const ceCss = (/^\.ce-r \{[^}]*\}$/m.exec(read('widgets/calculator/calc-engine.js')) || [''])[0];
+      ok(ceCss === '.ce-r { color: var(--b21-muted, #6b7280); }' && man.includes('/*@CECSS*/') && /\.cx \{[^}]*--b21-muted: var\(--muted\)/.test(man),
+        `the manual’s examples draw the R in the page’s own muted color: the engine’s “${ceCss}”, under .cx, which takes --b21-muted from the page`);
+      ok(/\.ce-r\b/.test(read('docs/calculator-manual/check.js')), 'the manual’s check.js measures its R');
+      for (const f of ['README.md', 'docs/DATA-FORMAT.md']) ok(!/ans shows 3\.4|ans (?:is|shows) a decimal/i.test(read(f)), `${f}: nothing says ans shows a decimal after a remainder`);
+      const data = read('docs/DATA-FORMAT.md').replace(/\s+/g, ' ');
+      ok(data.includes('an answer used again is `{ ans: "7/2" }`, with `rem: true` when it was shown with a remainder. With remainders shows that box as a fraction, such as 17/5.') && !data.includes('Its box then shows a fraction'),
+        'DATA-FORMAT: a saved ans box from a remainder answer has rem: true, and With remainders shows it as a fraction');
+      const guide = read('docs/teacher-guide/page-src.html');
+      ok(guide.includes('<li><span class="grade">6–7</span><span>Percent. Turn on Advanced keys in Calculator ⌄, then type 15 % 80. It shows 15% of 80 = 12.</span></li>'),
+        'the Teacher Guide keeps its 6–7 Percent idea');
+      ok(stamped(), STAMPED);
+    });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  ['Calculator: stacks in a tall window (2026.11.24-2)', async (browser) => {
+    const errors = [];
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const r1 = n => Math.round(n * 10) / 10, kdim = L => `${r1(L.kw)} × ${r1(L.kh)}`;
+    const clampN = (lo, v, hi) => Math.max(lo, Math.min(v, hi));
+    // The Calculator's padding and gap for a window w × h, as its metrics() works them out.
+    const pad = (w, h) => { const m = Math.min(w, h); return { P: clampN(8, m * .02, 28), G: clampN(5, m * .013, 16) }; };
+    // What side by side gave a key on the old code (2026.11.23-4), from its layout(): the keys' column at most 40% of the
+    // width, each key a sixth of the height. Basic keys, the canvas on, History off.
+    const oldSide = (w, h) => {
+      const { P, G } = pad(w, h), availH = h - 2 * P, keysW = clampN(4 * 44.5 + 3 * G, availH * 4 / 6 * 1.12, (w - 2 * P) * .4);
+      return { kw: (keysW - 3 * G) / 4, kh: (availH - 5 * G) / 6 };
+    };
+    // Today's keys under the compact display (Canvas off), from layout(): their height and their column's width.
+    const oldUnder = (w, h, rows = 6) => {
+      const { P, G } = pad(w, h), mainW = w - 2 * P, availH = h - 2 * P;
+      const keysH = clampN(rows * 44.5 + (rows - 1) * G, Math.min(mainW * rows / 4 * .72, availH * .7), availH - G - 76);
+      return { h: keysH, w: Math.min(mainW, Math.round(keysH * 4 / rows * 1.5)) };
+    };
+    // A board 1920 × 1200, the screen at 100%, so window px are screen px, with a Calculator window on it.
+    const ctx = await browser.newContext({ viewport: { width: 1920, height: 1200 } });
+    const page = await ctx.newPage();
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    let ik = await addWin(page, 'calculator');
+    await eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+    await page.waitForTimeout(600);
+    const W = () => page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const front = () => page.evaluate(ik => { if (window.__board21.state.focused !== ik) window.__board21.focusWin(ik); }, ik);
+    const choose = async label => {
+      await front();
+      await page.click(`.win[data-ikey="${ik}"] .win-label`);
+      await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).click({ timeout: 3000 });
+      await page.waitForTimeout(700);
+    };
+    const ticked = label => page.evaluate(([ik, label]) => { const w = window.__board21.state.wins.get(ik), i = w && w.menuItems.find(i => i.label === label); return !!(i && i.checked); }, [ik, label]);
+    const set = async (label, on) => { if (await ticked(label) !== on) await choose(label); };
+    const size = async (w, h, wait = 450) => { await page.evaluate(([ik, w, h]) => window.__board21.setRect(ik, { x: 40, y: 20, w, h: h + 40 }), [ik, w, h]); await page.waitForTimeout(wait); };
+    const content = () => contentOf(page, ik);
+    // What the window shows: its layout, the 7 key's size (every digit key has it), the smallest side of any key, and
+    // where the canvas, the display, the keys, and History are.
+    const look = () => W().locator('html').evaluate(() => {
+      const $ = id => document.getElementById(id), shown = e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+      const box = e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, r: r.right, b: r.bottom }; };
+      const keys = [...document.querySelectorAll('#keys .key')].filter(shown).map(box), seven = box(document.querySelector('#keys .key[data-key="7"]'));
+      return {
+        layout: $('app').dataset.layout, vw: innerWidth, vh: innerHeight, kw: seven.w, kh: seven.h, n: keys.length,
+        keyMin: Math.min(...keys.map(k => Math.min(k.w, k.h))), inside: keys.every(k => k.x >= -0.5 && k.y >= -0.5 && k.r <= innerWidth + 0.5 && k.b <= innerHeight + 0.5),
+        card: shown($('card')) ? box($('card')) : null, disp: shown($('disp')) ? box($('disp')) : null, player: shown($('player')),
+        keys: box($('keys')), hist: shown($('history')) ? box($('history')) : null, eq: $('eq').textContent.replace(/\s+/g, ' ').trim()
+      };
+    });
+    // Every change of layout from now on, as "side→stack".
+    const watch = () => W().locator('html').evaluate(() => {
+      const app = document.getElementById('app');
+      window.__flips = [];
+      if (window.__flipObs) window.__flipObs.disconnect();
+      window.__flipObs = new MutationObserver(ms => ms.forEach((m, i) => {
+        const now = i + 1 < ms.length ? ms[i + 1].oldValue : app.dataset.layout;
+        if (m.oldValue !== now) window.__flips.push(m.oldValue + '→' + now);
+      }));
+      window.__flipObs.observe(app, { attributes: true, attributeFilter: ['data-layout'], attributeOldValue: true });
+    });
+    const flips = () => W().locator('html').evaluate(() => window.__flips || []);
+    const above = L => !!L.card && L.card.b <= L.keys.y + 1;
+    const TYLER = [640, 1016];   // Tyler's window, from his screenshot: 0.63 wide for each 1 tall
+
+    // ---- 1. Tyler's window and other tall ones stack: the canvas above the keys, and bigger keys than side by side gave.
+    await part('Tall windows stack', async () => {
+      // As in his picture: Desmos % off, so 5 + 10% means 5 and 10% more; In words, and Hide the answer, on.
+      await set('Advanced keys', true); await set('Desmos %', false); await set('Advanced keys', false); await set('In words', true); await set('Hide the answer', true);
+      await front(); await W().locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.type('5+10%='); await page.waitForTimeout(300);
+      for (const [w, h, what] of [[...TYLER, 'Tyler’s window'], [600, 960, 'a narrower one'], [700, 1000, 'a wider one'], [760, 1100, 'a big one'], [900, 1100, 'a wide, tall one']]) {
+        await size(w, h); const L = await look(), o = oldSide(w, h);
+        ok(L.layout === 'stack' && above(L) && Math.min(L.kw, L.kh) > Math.min(o.kw, o.kh) + 1,
+          `${w} × ${h}, ${what}: the canvas above the keys, each key ${kdim(L)}, its shorter side bigger than side by side gave it (${r1(o.kw)} × ${r1(o.kh)}) (${L.layout})`);
+        if (w === TYLER[0]) {
+          ok(L.player && /^5\s*\+\s*10%\s*=\s*\?$/.test(L.eq), `there the canvas keeps its steps, and shows ${L.eq}`);
+          await page.screenshot({ path: OUT + 'calculator-tall-tyler.png', clip: { x: 40, y: 20, width: w, height: h + 40 } });
+        }
+      }
+      await size(...TYLER); await page.reload(); await boardUp(page); await page.waitForTimeout(1500);
+      const L = await look();
+      ok(L.layout === 'stack', `after a reload, Tyler’s window still stacks (${L.layout})`);
+      await set('Hide the answer', false); await set('In words', false);
+    });
+
+    // ---- 2. A new window, 900 × 600, stays side by side: Basic keys, Advanced keys, and History.
+    await part('900 × 600 stays side by side', async () => {
+      await size(900, 600, 700); await watch();
+      let L = await look();
+      ok(L.layout === 'side' && L.card && L.card.r <= L.keys.x + 1, `900 × 600: the canvas beside the keys (${L.layout}, keys ${kdim(L)})`);
+      const k0 = Math.min(L.kw, L.kh);
+      await choose('Advanced keys'); await page.waitForTimeout(500); L = await look(); let c = await content();
+      ok(L.layout === 'side' && L.n === 31 && c.h > 600 && Math.abs(Math.min(L.kw, L.kh) - k0) <= 2.5,
+        `Advanced keys: still side by side, the window taller (${c.w} × ${c.h}), each key as big as before (${r1(Math.min(L.kw, L.kh))}, was ${r1(k0)})`);
+      await choose('Advanced keys'); await page.waitForTimeout(500); L = await look(); c = await content();
+      ok(L.layout === 'side' && c.w === 900 && c.h === 600 && Math.abs(Math.min(L.kw, L.kh) - k0) <= 1, `Advanced keys off: 900 × 600 again, side by side (${c.w} × ${c.h}, ${L.layout})`);
+      await choose('History'); L = await look(); c = await content();
+      ok(L.layout === 'side' && !!L.hist && c.w > 900, `History: wider (${c.w} × ${c.h}), still side by side (${L.layout})`);
+      await choose('History'); c = await content();
+      ok(c.w === 900 && c.h === 600 && (await look()).layout === 'side', `History off: 900 × 600 again (${c.w} × ${c.h})`);
+      // History on where the board has no room to widen: History narrows, and the canvas stays beside the keys.
+      await set('History', true); await size(960, 600); L = await look();
+      ok(L.layout === 'side' && !!L.hist, `History in a 960 × 600 window: still side by side (${L.layout})`);
+      await set('History', false); await size(900, 600);
+      const f = await flips();
+      ok(!f.length, `no flips through all of that (${f.join(', ') || 'none'})`);
+    });
+
+    // ---- 3. Advanced keys on and off near the switch, and at 900 × 600: no flip; the keys keep their size, and the canvas
+    // its steps, side by side and stacked.
+    let Hs = 0;
+    await part('Advanced keys never flip it', async () => {
+      // Where it switches at 700 px wide, from side by side, 10 px at a time.
+      await size(700, 600);
+      for (let h = 600; h <= 1000 && !Hs; h += 10) { await size(700, h, 300); if ((await look()).layout === 'stack') Hs = h; }
+      ok(Hs > 600 && Hs < 760, `700 px wide, it stacks from about ${Hs || 'never'} px tall`);
+      Hs = Hs || 700;
+      for (const [h, want] of [[Hs - 20, 'side'], [Hs + 20, 'stack']]) {
+        await size(700, 600); await size(700, h, 600); await watch();
+        const L0 = await look(), c0 = await content(), k0 = Math.min(L0.kw, L0.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L1 = await look(), k1 = Math.min(L1.kw, L1.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L2 = await look(), c2 = await content(), k2 = Math.min(L2.kw, L2.kh), f = await flips();
+        ok(L0.layout === want && L1.layout === want && L2.layout === want && !f.length && L1.n === 31 && L1.keyMin >= 44,
+          `700 × ${h}, ${want === 'side' ? 'side by side' : 'stacked'}: Advanced keys on and off, it stays ${want === 'side' ? 'side by side' : 'stacked'} (${[L0, L1, L2].map(l => l.layout).join(', ')}; flips: ${f.join(', ') || 'none'})`);
+        ok(Math.abs(k1 - k0) <= 1.5 && L1.player && Math.abs(k2 - k0) <= 1 && c2.w === c0.w && c2.h === c0.h,
+          `and the keys keep their size: ${r1(k0)}, ${r1(k1)} with Advanced keys, ${r1(k2)} after; the canvas keeps its steps (${L1.player ? 'shown' : 'hidden'}; ${c0.w} × ${c0.h}, then ${c2.w} × ${c2.h})`);
+      }
+      // Stacked just past the switch: Advanced keys make the window taller, so the keys keep their size and the canvas its
+      // steps. Turned off, the window is its own size again.
+      for (const [w, h] of [[640, 670], [620, 660], [700, 730], [900, 840]]) {
+        await size(w, 600); await size(w, h, 600); await watch();
+        const L0 = await look(), c0 = await content(), k0 = Math.min(L0.kw, L0.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L1 = await look(), c1 = await content(), k1 = Math.min(L1.kw, L1.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L2 = await look(), c2 = await content(), f = await flips();
+        ok(L0.layout === 'stack' && L0.player && L1.layout === 'stack' && L1.player && L1.n === 31 && c1.h > c0.h && Math.abs(k1 - k0) <= 1.5,
+          `${w} × ${h}, stacked: Advanced keys make it taller (${c1.w} × ${c1.h}), each key as big as before (${r1(k1)}, was ${r1(k0)}), and the canvas keeps its steps (${L1.player ? 'shown' : 'hidden'})`);
+        ok(L2.layout === 'stack' && c2.w === c0.w && c2.h === c0.h && !f.length, `and off: ${c2.w} × ${c2.h} again, still stacked (flips: ${f.join(', ') || 'none'})`);
+      }
+      // With History beside the keys, Advanced keys never push the canvas above them: History widens as the window grows.
+      // History turned on in a 1000 × 640 window, which widens it; and a window 1250 × 560 with History on.
+      for (const [w, h, sized] of [[1000, 640, false], [1250, 560, true]]) {
+        if (sized) { await set('History', true); await size(w, h, 600); } else { await size(w, h, 600); await choose('History'); }
+        await watch();
+        const L0 = await look(), c0 = await content(), k0 = Math.min(L0.kw, L0.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L1 = await look(), c1 = await content(), k1 = Math.min(L1.kw, L1.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L2 = await look(), c2 = await content(), f = await flips();
+        ok(L0.layout === 'side' && !!L0.hist && L1.layout === 'side' && !!L1.hist && L1.n === 31 && c1.h > c0.h && k1 >= .8 * k0 && L2.layout === 'side' && c2.w === c0.w && c2.h === c0.h && !f.length,
+          `${w} × ${h}${sized ? ' with History' : `, then History (${c0.w} × ${c0.h})`}, then Advanced keys: taller (${c1.w} × ${c1.h}), still side by side, each key ${r1(k1)}, was ${r1(k0)}; off: ${c2.w} × ${c2.h} (${[L0, L1, L2].map(l => l.layout).join(', ')}; flips: ${f.join(', ') || 'none'})`);
+        await choose('History');
+      }
+    });
+
+    // ---- 4. Dragging the window's bottom edge, or its right edge, across the switch, a finger's few px back now and then:
+    // it switches once.
+    await part('A drag switches once', async () => {
+      await size(700, 600, 600); await front(); await watch();
+      const drag = async (from, to, grip = 's') => {
+        const g = await page.locator(`.win[data-ikey="${ik}"] .grip.${grip}`).boundingBox();
+        const x0 = g.x + g.width / 2, y0 = g.y + g.height / 2, dir = Math.sign(to - from), at = d => grip === 's' ? [x0, y0 + d] : [x0 + d, y0];
+        await page.mouse.move(...at(0)); await page.mouse.down();
+        let d = 0;
+        while ((to - from) * ((to - from) - d) > 0) {
+          d += 8 * dir; await page.mouse.move(...at(d)); await page.waitForTimeout(34);
+          d -= 4 * dir; await page.mouse.move(...at(d)); await page.waitForTimeout(34);
+        }
+        await page.mouse.move(...at(to - from)); await page.waitForTimeout(80); await page.mouse.up(); await page.waitForTimeout(500);
+      };
+      await drag(600, 860);
+      let c = await content(), f = await flips(), L = await look();
+      ok(c.h > 820 && L.layout === 'stack' && f.length === 1 && f[0] === 'side→stack', `dragged from 700 × 600 to ${c.w} × ${c.h}: it stacks once (${f.join(', ') || 'no switch'})`);
+      await watch(); await drag(860, 600);
+      c = await content(); f = await flips(); L = await look();
+      ok(c.h < 640 && L.layout === 'side' && f.length === 1 && f[0] === 'stack→side', `and back to ${c.w} × ${c.h}: side by side again, once (${f.join(', ') || 'no switch'})`);
+      // The right edge, 600 px tall: narrower than the canvas beside the keys allows, and back.
+      await size(700, 600, 600); await front(); await watch(); await drag(700, 560, 'e');
+      c = await content(); f = await flips(); L = await look();
+      ok(c.w < 580 && L.layout === 'stack' && f.length === 1 && f[0] === 'side→stack', `the right edge from 700 × 600 to ${c.w} × ${c.h}: it stacks once (${f.join(', ') || 'no switch'})`);
+      await watch(); await drag(560, 700, 'e');
+      c = await content(); f = await flips(); L = await look();
+      ok(c.w > 680 && L.layout === 'side' && f.length === 1 && f[0] === 'stack→side', `and back to ${c.w} × ${c.h}: side by side again, once (${f.join(', ') || 'no switch'})`);
+    });
+
+    // ---- 5. The sweep: wide to tall and wide to narrow, Basic and Advanced keys, History off and on. Every key 44 px or
+    // more; a window much taller than wide stacks; side by side never gives keys twice as tall as wide; stacked keys are
+    // never more than 1.5 times as wide as tall; stacked where the canvas could sit beside, its steps still show.
+    await part('The sweep', async () => {
+      const widths = [], heights = [];
+      for (let w = 1100; w >= 500; w -= 50) widths.push([w, 640]);
+      for (let h = 500; h <= 1100; h += 50) heights.push([700, h]);
+      let small = [], tallSide = [], worstSide = { r: 0 }, worstStack = { r: 0 }, noSteps = [];
+      for (const adv of [false, true]) for (const hist of [false, true]) {
+        await set('Advanced keys', adv); await set('History', hist);
+        for (const [name, list] of [['width 1100 to 500 at 640 tall', widths], ['height 500 to 1100 at 700 wide', heights], ['Tyler’s shape', [TYLER]]]) {
+          await size(...list[0], 600);
+          const rows = [];
+          for (const [w, h] of list) {
+            await size(w, h, 350); const L = await look();
+            rows.push(Object.assign({ w, h }, L));
+            const at = `${w} × ${h}${adv ? ', Advanced' : ''}${hist ? ', History' : ''}`;
+            if (L.keyMin < 44 || !L.inside) small.push(`${at}: ${r1(L.keyMin)}`);
+            if (h >= 1.2 * w && L.layout !== 'stack') tallSide.push(at);
+            if (L.layout === 'side' && L.kh / L.kw > worstSide.r) worstSide = { r: L.kh / L.kw, at, k: kdim(L) };
+            if (L.layout === 'stack' && L.card && L.kw / L.kh > worstStack.r) worstStack = { r: L.kw / L.kh, at, k: kdim(L) };
+            if (!hist && w >= 620 && L.layout === 'stack' && L.card && !L.player) noSteps.push(at);
+          }
+          // Where it switches, and each key's shape either side.
+          const sw = rows.slice(1).map((r, i) => [rows[i], r]).filter(([a, b]) => a.layout !== b.layout).map(([a, b]) => `${a.w} × ${a.h} ${a.layout} ${kdim(a)} → ${b.w} × ${b.h} ${b.layout} ${kdim(b)}`);
+          console.log(`    ${adv ? 'Advanced' : 'Basic'}, History ${hist ? 'on' : 'off'}, ${name}: ${sw.join('; ') || 'no switch (' + rows[0].layout + ')'}`);
+          console.log('      ' + rows.map(r => `${r.w}×${r.h} ${r.layout[1]} ${Math.round(r.kw)}×${Math.round(r.kh)}`).join(' | '));
+        }
+      }
+      ok(!small.length, `every key 44 px or more, and in its window, across the sweep (${small.join(', ') || 'all'})`);
+      ok(!tallSide.length, `every window at least 1.2 times as tall as wide stacks (${tallSide.join(', ') || 'all'})`);
+      ok(worstSide.r <= 2, `side by side, a key is at most ${r1(worstSide.r)} times as tall as wide (${worstSide.at}: ${worstSide.k})`);
+      ok(worstStack.r <= 1.52, `stacked under the canvas, a key is at most ${r1(worstStack.r * 100) / 100} times as wide as tall (${worstStack.at}: ${worstStack.k})`);
+      ok(!noSteps.length, `stacked where the canvas could sit beside the keys, its steps still show (${noSteps.join(', ') || 'all'})`);
+      await set('Advanced keys', false); await set('History', false);
+    });
+
+    // ---- 6. Canvas off keeps today's compact display. Swap sides works stacked and side by side. Canvas, History, and
+    // Reset in Tyler's window: no flip, and its size comes back.
+    await part('Canvas off, Swap sides, and Reset', async () => {
+      for (const [w, h] of [TYLER, [900, 600]]) {
+        await size(w, h); await set('Canvas', false); await page.waitForTimeout(300);
+        const L = await look(), o = oldUnder(L.vw, L.vh);
+        ok(L.layout === 'stack' && !!L.disp && !L.card && L.disp.b <= L.keys.y + 1 && Math.abs(L.keys.w - o.w) <= 1 && Math.abs(L.keys.h - o.h) <= 1,
+          `${w} × ${h}, Canvas off: the display above the keys, as today (keys ${r1(L.keys.w)} × ${r1(L.keys.h)}, today ${r1(o.w)} × ${r1(o.h)}, in ${L.vw} × ${L.vh})`);
+        await set('Canvas', true);
+      }
+      // Swap sides, side by side: the keys, then the canvas. Stacked, with History: History, then the canvas above the keys.
+      await size(900, 600); await choose('Swap sides'); let L = await look();
+      ok(L.layout === 'side' && L.card && L.keys.r <= L.card.x + 1, `Swap sides at 900 × 600: the keys, then the canvas (${L.layout})`);
+      await size(...TYLER); await choose('History'); L = await look();
+      ok(L.layout === 'stack' && above(L) && !!L.hist && L.hist.r <= L.card.x + 1 && L.hist.r <= L.keys.x + 1, `Swap sides in Tyler’s window, with History: History on the left, the canvas above the keys (${L.layout})`);
+      await choose('History'); await choose('Swap sides');
+      // Canvas and History off and on: no flip, and the window keeps its size.
+      await size(...TYLER, 600); await watch();
+      const c0 = await content();
+      await choose('Canvas'); await choose('Canvas'); let c = await content(); L = await look();
+      ok(L.layout === 'stack' && above(L) && c.w === c0.w && c.h === c0.h, `Tyler’s window, Canvas off and on: the canvas back above the keys, the window still ${c.w} × ${c.h}`);
+      await choose('History'); const ch = await content(); const Lh = await look(); await choose('History'); c = await content(); L = await look();
+      ok(Lh.layout === 'stack' && ch.w > c0.w && L.layout === 'stack' && c.w === c0.w && c.h === c0.h, `History on and off: wider (${ch.w}), still stacked, then ${c.w} × ${c.h} again`);
+      let f = await flips();
+      ok(!f.length, `no flips (${f.join(', ') || 'none'})`);
+      // Reset: a new window, 900 × 600, side by side, and it stays so.
+      await front(); await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.locator('#menu [data-act="reset"]').click(); await page.locator('#menu [data-act="reset-yes"]').click();
+      await page.waitForTimeout(1500); await watch(); await page.waitForTimeout(1200);
+      c = await content(); L = await look(); f = await flips();
+      ok(c.w === 900 && c.h === 600 && L.layout === 'side' && !f.length, `Reset: 900 × 600, side by side, and it stays so (${c.w} × ${c.h}, ${L.layout}; flips: ${f.join(', ') || 'none'})`);
+      // Near the switch, a window sits where it was. History on and off, Fill the board and back, and the canvas off and on
+      // leave it there, at its own size.
+      const trip = async (w, h, from, what) => {
+        await size(w, from, 600); await size(w, h, 600);
+        const L0 = await look(), c0 = await content(), seen = [];
+        if (what.includes('History')) { await choose('History'); seen.push((await look()).layout); await choose('History'); seen.push((await look()).layout); }
+        if (what.includes('Fill')) {
+          await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(900); seen.push((await look()).layout);
+          await page.evaluate(ik => window.__board21.setMaximized(ik, false), ik); await page.waitForTimeout(900); seen.push((await look()).layout);
+        }
+        if (what.includes('Canvas')) { await choose('Canvas'); await choose('Canvas'); seen.push((await look()).layout); }
+        await page.waitForTimeout(300);
+        const L1 = await look(), c1 = await content();
+        ok(L1.layout === L0.layout && c1.w === c0.w && c1.h === c0.h, `${w} × ${h}, reached from ${w} × ${from} (${L0.layout === 'side' ? 'side by side' : 'stacked'}): ${what.join(', ')}, then still ${L1.layout === 'side' ? 'side by side' : 'stacked'} at ${c1.w} × ${c1.h} (on the way: ${seen.join(', ')})`);
+      };
+      await trip(700, 697, 600, ['History', 'Fill', 'Canvas']);
+      await trip(700, 697, 800, ['History', 'Fill']);
+      await trip(640, 660, 560, ['History', 'Fill', 'Canvas']);
+      await trip(640, 660, 800, ['History', 'Fill', 'Canvas']);
+      // The canvas turned on in a window about as wide as tall widens it, side by side, as before. (From a stacked one.)
+      await size(700, 800, 600); await set('Canvas', false); await size(700, 700, 600);
+      await choose('Canvas'); c = await content(); L = await look();
+      ok(L.layout === 'side' && c.w > 1200 && c.h === 700, `the canvas on in a 700 × 700 window: wider (${c.w} × ${c.h}), side by side (${L.layout})`);
+      await choose('Canvas'); c = await content();
+      ok(c.w === 700 && c.h === 700, `and off: 700 × 700 again (${c.w} × ${c.h})`);
+      await set('Canvas', true);
+    });
+
+    // ---- 7. Fill the board stays side by side: a 16:9 board, and the screen at 1366 × 768 and 1920 × 1080, History off and on.
+    await part('Fill the board', async () => {
+      await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(600);
+      for (const [vw, vh, shape] of [[1366, 768, '16:9'], [1366, 768, 'free'], [1920, 1080, 'free'], [1920, 1080, '16:9']]) {
+        await page.setViewportSize({ width: vw, height: vh });
+        await page.evaluate(([shape]) => { window.__board21.setBoardShape(shape); window.__board21.setBoardScale(shape === 'free' ? 1 : 0.8); }, [shape]);
+        await page.waitForTimeout(700);
+        for (const hist of [false, true]) {
+          await set('History', hist); const L = await look();
+          ok(L.layout === 'side' && !!L.hist === hist && L.keyMin >= 44, `Fill the board, a ${shape === 'free' ? 'board the size of the screen' : '16:9 board'} at ${vw} × ${vh}, History ${hist ? 'on' : 'off'}: side by side (${L.vw} × ${L.vh}, keys ${kdim(L)})`);
+        }
+        await set('History', false);
+      }
+      await page.evaluate(ik => window.__board21.setMaximized(ik, false), ik); await page.waitForTimeout(400);
+    });
+
+    // ---- 8. The docs: the README and the manual say tall windows stack too.
+    await part('Docs', async () => {
+      const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+      const readme = read('README.md').replace(/\s+/g, ' '), sec = readme.slice(readme.indexOf('## Calculator'), readme.indexOf('## ', readme.indexOf('## Calculator') + 5));
+      ok(/\btall or narrow window/i.test(sec) && /canvas moves above (?:the keys|them)/.test(sec), 'the README’s Calculator section says the canvas moves above the keys in a tall or narrow window');
+      ok(sec.includes('Turning on History or the canvas widens the window, where the board has room. In a tall window, the canvas goes above the keys. Advanced keys make it taller.') && !/above the keys instead/.test(sec),
+        'the README: in a tall window, turning on the canvas puts it above the keys; History still widens it');
+      const man = read('docs/calculator-manual/page-src.html');
+      ok(man.includes('<h3>Tall or narrow windows</h3>') && !man.includes('<h3>Narrow windows</h3>'), 'the manual’s card is “Tall or narrow windows”');
+      ok(stamped(), STAMPED);
+    });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
   }],
 ];
 
@@ -21464,6 +24027,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   browser.newContext = async opts => {
     const c = await newContext(opts);
     await c.addInitScript(() => { window.showSaveFilePicker = undefined; });
+    // No suite reaches the weather sites. A Weather suite answers them with stubWeather, whose route runs first.
+    await c.route(WX_HOSTS, r => r.abort('internetdisconnected').catch(() => {}));
     return c;
   };
   const only = process.argv[2];

@@ -221,7 +221,9 @@ board's own *Fill the board*, *Reset*, and *Close*. Set it with `Board21.menu.se
 - `{ id: 'clear', label: 'Clear', disabled: true }`, `{ separator: true }`, `{ heading: true, label: 'Size' }`.
 - `{ label: 'Color', swatches: [{ id: 'color:blue', label: 'Blue', color: '#bfdbfe', checked: true }, …] }`:
   a row of up to 12 color circles; tapping one sends its id. Colors `#rgb` or `#rrggbb` only.
-- At most **24 items** (a swatch row counts as one). Every command and checkmark item has its own id.
+- `{ label: 'Size', choices: [{ id: 'size:1', label: '1', checked: true }, …] }`: a row of up to 12 short
+  choices, such as numbers, drawn like the swatches. A label shows up to 3 characters.
+- At most **24 items** (a row of swatches or choices counts as one). Every command and checkmark item has its own id.
   Short labels. Icons are optional (an inline `<svg …>` string only).
 - **Call `menu.set()` again whenever a checkmark, label, or disabled state changes** (not on every tick).
 
@@ -335,7 +337,7 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 - [ ] No address, CDN, font, image, or fetch from the Internet; no `http(s)://` in your own script code; no localStorage, sessionStorage, IndexedDB, or cookies (not even in comments); no alert/confirm/prompt; no autofocus; no React.
 - [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render and call `setMenu()`.
 - [ ] Anything about a student saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
-- [ ] Menu: at most 24 items, each with its own id, swatches `#hex` (at most 12 per row); `menu.set()` called again when state changes.
+- [ ] Menu: at most 24 items, each with its own id, swatches `#hex` and choices of 3 characters or fewer (at most 12 per row); `menu.set()` called again when state changes.
 - [ ] Works and reads well at `minWidth` × `minHeight` with the most items (no text under 14px) and at Fill the board (no buttons in the bottom corners, or in the top ones while the board is locked), in light and dark; only an editor's list scrolls; 48px tap targets.
 - [ ] Typing, drawing, or dragging areas: `dragFromContent: false`, `data-b21-nodrag`, or `setDragFromContent`.
 - [ ] A bigger editor uses `setMinSize(…)` and `setMinSize(null, null)`; `setSize` only after a tap and never when maximized.

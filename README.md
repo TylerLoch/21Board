@@ -10,7 +10,7 @@ Widgets are built on their own and dropped in.
 - Installable PWA that **works offline**
 - **Private.** Your work is stored only on your device, and in your school Google Drive if you turn on Board Sync.
   21Board has no servers and no accounts.
-- **Online only when needed.** For updates, district apps, and videos.
+- **Online only when needed.** For updates, district apps, videos, and the weather.
 - Production: <https://boardapp.ccsd21.org>
 
 ---
@@ -223,14 +223,15 @@ tests/run.js            Browser tests. See Tests.
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
 | **Clock** | Simple, Old, and Teaching faces, and an LCD look that glows as LED look in dark theme. Together, analog and digital sit side by side when wide and stacked when tall, with no shape lock. Alone, the lock changes at runtime: 1:1 for analog and 2.2:1 for digital or Date only, each taller with Time in words. With Set the time, drag geared hands or tap ▲ and ▼. The set time is saved as content. Mark a time shades the face to the teacher's mark, or to the end of the running timer that ends soonest, from the board's `timers` event. Quiz hides the digital time until it's tapped, and never saves that. Time in words writes the time under the clock |
 | **Notes** | Text that grows to fill the note, tappable web links, colors and the Chalkboard and Whiteboard themes with bundled hand-drawn fonts, live text sync that keeps the cursor |
-| **Name Picker** | Student names kept as *content*, so templates never include them. Four ways to pick, each in its own file: Big name, Spinning wheel, Spotlight, and Lotto. One to five winners at a time, set in the window menu and kept by templates. The pick is drawn and saved before the show, so every open copy lands on the same names |
+| **Name Picker** | Student names kept as *content*, so templates never include them. Five styles, each in its own file: Big name, Spinning wheel, Spotlight, Lotto, and Groups. One to six names at a time, set in the window menu and kept by templates. Groups puts the class into 2 to 6 random groups. The pick and the groups are drawn and saved before the show, so every open copy lands on the same names |
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Zones Check-In** | Check-ins kept as *content*, so templates never carry them. A tap counts when the finger lifts, so two students tapping at once both count. "−" and Undo, the last 20 changes. Clear each day, by the device's date. A face beside each feeling word, and an Ideas view with a breathing circle. The four zones sit in one row once the window is about 830 px wide and wider than it is tall, and always when it fills a board at least 850 × 480 px. The cards keep clear of the board's own buttons |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Turns sideways in a window wider than tall, and keeps its shape in any window. Follow timers shows the color of the Timer or 21Timer closest to ending, from the board's `timers` event. That color is worked out in every tab and never saved. Title status text |
 | **Video Player** | A YouTube, Google Drive, or Vimeo video from its link. A link pasted or dropped on the board opens one too. The board reads it with the widget's own `video-links.js`. YouTube, Google Drive, and Vimeo see what they would on their own sites: the video, the device, and any account signed in. YouTube and Vimeo also see the board's address. Controls in the window menu, since nothing may cover the player. A History of the last 5 videos, kept in the content and titled by YouTube's and Vimeo's oEmbed without cookies. Clear of the board's corner buttons when it fills the board (`corners`). Never under 200 × 200 px on screen (`zoom`). A message when offline |
 | **Picture** | A picture opened, pasted, or dropped on the board. PNG, JPEG, GIF, WebP, or AVIF, animations too. An SVG is drawn as a picture, so nothing in it runs. Kept in the window's content. A still over 1 MB or 3840 px is redrawn as a WebP, 2560 px at most. An animation is kept as it is, up to 5 MB. The window takes the picture's shape. *Whole picture* or *Crop to fill* in its menu. Board history keeps each picture once |
-| **Calculator** | Its math in one engine, `calc-engine.js`, with its own Node tests. Every menu setting kept in the window's config. The window widens for History, grows for Advanced keys, and gives the room back (`setSize`). See [Calculator](#calculator) |
+| **Calculator** | Its math in one engine, `calc-engine.js`, with its own Node tests. Every menu setting kept in the window's config. The window widens for History, grows for Advanced keys, and gives the room back (`setSize`). The canvas sits beside the keys or above them, whichever makes the keys bigger. See [Calculator](#calculator) |
+| **Weather** | Forecast and air quality from Open-Meteo, and the weather right now, watches, and warnings from the National Weather Service, with plain `fetch()`. They see the place, the device's Internet address, and the board's address. No cookies. Each part asks on its own clock, only while the window shows, and never on a timer from 8 PM to 6 AM. Sun, moon, and school days worked out on the device. Four layouts by the window's size. Every menu setting and the place kept in the window's config. The 7 days and what to wear from the last forecast kept as content, saved only when they'd look different, and shown offline (`clash: 'later'`). See [Weather](#weather) |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
@@ -375,9 +376,10 @@ being typed in, is due again.
   smartboard keeps both changes. Changes to different windows never clash.
 - **The same content changed on both,** such as two edits to one note: both are kept. The later one stays in the
   window, and the other appears beside it as a labeled copy, "Copy · 9:41 AM". For the Timer, Clock, Dice, Traffic
-  Light, Video Player, Picture, and Calculator, the later one wins. For the Video Player that includes its History,
-  so a video added on the other device meanwhile drops out, and Board history keeps it. Anything else changed on
-  both, such as a window moved on both, takes the later change, and Board history keeps a version from before it.
+  Light, Video Player, Picture, Calculator, and Weather, the later one wins. For the Video Player that includes its
+  History, so a video added on the other device meanwhile drops out, and Board history keeps it. Anything else
+  changed on both, such as a window moved on both, takes the later change, and Board history keeps a version from
+  before it.
 - **Deleting** a page or window on any device deletes it everywhere, with Undo and Board history. An edit on a
   device that hadn't seen the deletion yet brings it back, so no one's work disappears unseen. A page brought back
   on one device, by its Undo or Board history › Deleted pages › *Bring back*, comes back on the others, which say
@@ -512,8 +514,8 @@ For a ChromeOS kiosk app, where no one signs in, open 21Board with **`?kiosk=yes
   would land unseen in the kiosk's Downloads. Settings keeps **Back up now**, and *Erase everything* offers *Export
   a backup first*, as everywhere else. A backup on a USB drive is the only copy off the kiosk.
 - Links in Notes show as plain text, since a kiosk can't open new windows. For the same reason, the window menus of
-  the [district apps](#district-apps) have no *Open in new tab*, and the Video Player's
-  has no *Open in …*.
+  the [district apps](#district-apps) have no *Open in new tab*, the Video Player's has no *Open in …*, and
+  Weather's has no *Forecast from Open-Meteo*.
 - No one is signed in, so a Google Drive video plays only if it's shared with *Anyone with the link*.
 - Everything else works as usual: widgets, saving on the device, Board history, and Undo. Widgets can check
   `Board21.context.kiosk`. Without the parameter, or with `?kiosk=no`, nothing changes.
@@ -542,7 +544,7 @@ typing on a touch-only panel; and that the board is still there after airplane m
 ## Calculator
 
 A calculator for the front of the room. The problem fills a big canvas, as a textbook writes it. Its steps play one at
-a time. The keys sit beside it, with ÷ × − + = down the right.
+a time. The keys sit beside it, with ÷ × − + = down the right. In a tall or narrow window, the canvas moves above them.
 
 **Desmos's math.** Teachers use Desmos, so the Calculator works problems out the same way. % means "% of", so 10% of
 50 = 5. Where Desmos says "undefined", the Calculator says what went wrong, such as "Can't divide by 0". Another =
@@ -564,12 +566,42 @@ repeats the last step, so 5 + 5 = = = counts by 5s. A faint comma groups the dig
 - **Swap sides:** the panels change sides, for a teacher on the left of a flat panel.
 - **Clear history:** empties History.
 
-Turning on History or the canvas widens the window, where the board has room. Advanced keys make it taller. Turning
-them off gives the room back.
+Turning on History or the canvas widens the window, where the board has room. In a tall window, the canvas goes above
+the keys. Advanced keys make it taller. Turning them off gives the room back.
 
 Keyboards work too. Type digits, + - * / ^ % ( ), and the point, then Enter or =. Type sqrt, pi, or ans as letters.
 
 The manual, with the real Calculator to try, is in [docs/calculator-manual/](docs/calculator-manual/).
+
+## Weather
+
+The weather outside, for the front of the room. It opens on Wheeling, Illinois, with a sky that matches the weather.
+The forecast and air quality come from Open-Meteo. The temperature right now comes from the National Weather
+Service's nearest station, Chicago Executive Airport for Wheeling.
+
+**What it shows.** The weather right now, the hourly forecast, the 7-day forecast, what to wear, sunrise and sunset,
+the moon, wind, air quality, and watches and warnings. A small window shows only the weather right now. A bigger one
+shows more. Tap a part to fill the window with it.
+
+**What to wear** goes by what the temperature feels like from 8 AM to 3:30 PM. Before 2 PM on a school day it opens
+on today. Otherwise it opens on the next school day. School days come from the district calendar, built in.
+
+**The window menu.** Each window keeps its own place and settings, and so do templates.
+
+- **Show:** Hourly forecast, 7-day forecast, What to wear, Sunrise and sunset, Moon, Wind, Air quality, and
+  Watches. Hidden parts leave no gap. Warnings always show.
+- **On a date…:** the weather on any day from Jan 1, 1940 to yesterday, compared with today.
+- **Location…:** search for a town. Weather never asks where the device is.
+- **Simple words:** one picture, one sentence, and the clothes, for K–2.
+- **No motion:** a still sky. It's still too when the device asks for less motion.
+- **Units:** °F and mph, or °C and km/h.
+- **Forecast from Open-Meteo:** opens Open-Meteo's site. Not in kiosk mode.
+
+**How often it asks.** Only while the window shows. The weather right now every 30 minutes, the forecast every hour,
+air quality every 4 hours, and watches and warnings every 5 minutes. Nothing on a timer from 8 PM to 6 AM.
+
+**Offline.** It tries for new weather first. If none comes, it says so and shows the 7 days and what to wear from the
+last forecast it saved.
 
 ## District apps
 
@@ -634,6 +666,11 @@ copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the
   https://www.youtube.com https://vimeo.com` for titles. Drive plays what the signed-in account can open. In a
   kiosk, or with third-party cookies blocked, only files shared with *Anyone with the link* play. YouTube's player
   also contacts Google's ad servers.
+- **Weather.** A CSP for its page, `widgets/weather/index.html`, needs `connect-src https://api.open-meteo.com
+  https://air-quality-api.open-meteo.com https://archive-api.open-meteo.com https://geocoding-api.open-meteo.com
+  https://api.weather.gov`. A web filter must allow those five sites too. No cookies, sign-in, or key. Open-Meteo
+  allows 10,000 calls a day from each Internet address. A window showing all day uses about 18. Past that, Weather
+  uses the National Weather Service's forecast.
 - **Camera (21DocCam).** Chrome asks for the camera on behalf of the page in the address bar, `boardapp.ccsd21.org`.
   Its prompt names that site and remembers the answer for it. On managed devices, allow the camera for
   `https://boardapp.ccsd21.org`, and for `https://doccamapp.ccsd21.org` so the app works on its own too. In the
@@ -752,7 +789,8 @@ node tests/run.js offline    # only the suites whose title contains "offline"
 
 The *District apps* suite uses stand-ins for 21Sketch, 21Timer, and 21DocCam. The *Traffic Light sideways* suite has
 its own stand-ins for 21Timer and 21Sketch. The *Video Player* suites use stand-ins for YouTube, Google Drive, and
-Vimeo. The tests never reach the real sites.
+Vimeo. The *Weather* suites answer for Open-Meteo and the National Weather Service with saved answers from
+`tests/fixtures/weather/`. The tests never reach the real sites.
 
 The second *Opens maximized* suite installs 21Board as an app in a real Chrome window, on an Xvfb screen of its own,
 and in Chrome's headless mode. It needs Xvfb, the package with `xvfb-run`, and the full Chromium that `npx

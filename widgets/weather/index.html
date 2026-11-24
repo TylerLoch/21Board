@@ -1,0 +1,1715 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">{"id":"weather","name":"Weather","version":"1.0.0","description":"See the weather and what to wear.","color":"#0369a1","window":{"width":480,"height":360,"minWidth":260,"minHeight":220}}</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weather</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #3d4654; }
+  #app, #view { position: fixed; inset: 0; }
+  button, input { font: inherit; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@property --inset { syntax: "<length>"; inherits: true; initial-value: 0px; }
+/* ===== The widget's own look (the approved mockup's): each window draws its sky from the weather. No text under 14 px:
+   every size smaller than the base is floored there, as max(14px, …). ===== */
+.wx { --u: 1; --fs: 16px; position: relative; width: 100%; height: 100%; overflow: hidden; color: #fff; isolation: isolate;
+  font: 400 max(14px, calc(var(--fs) * var(--u))) / 1.25 var(--b21-font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif);
+  background: linear-gradient(180deg, var(--s1), var(--s2)); text-shadow: 0 1px 3px rgba(0,0,0,.16);
+  --card: rgba(6,26,58,.2); --edge: rgba(255,255,255,.15); --dim: rgba(255,255,255,.9); --track: rgba(0,0,0,.2); --inset: .9em; }
+.wx * { box-sizing: border-box; }
+.wx svg { display: block; flex: none; }
+.wx .ic { width: 1.3em; height: 1.3em; }
+.wx [data-go], .wx [data-wear], .wx [data-act] { cursor: pointer; }
+.wx [data-go]:focus-visible, .wx [data-wear]:focus-visible, .wx button:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.sc-clear-d  { --s1: #1462c4; --s2: #3a85cc; }
+.sc-partly-d { --s1: #2869b3; --s2: #5a8cc0; }
+.sc-cloudy-d { --s1: #4c5c70; --s2: #6a7a8e; --card: rgba(18,28,44,.2); }
+.sc-fog-d    { --s1: #55606c; --s2: #6c7682; --card: rgba(18,28,44,.2); }
+.sc-rain-d   { --s1: #3b4a5e; --s2: #5f7085; --card: rgba(8,18,34,.22); }
+.sc-snow-d   { --s1: #4c6080; --s2: #6a7d97; --card: rgba(14,30,56,.22); }
+.sc-storm    { --s1: #1d2033; --s2: #44445e; --card: rgba(255,255,255,.08); }
+.sc-clear-n  { --s1: #071129; --s2: #1b3060; --card: rgba(255,255,255,.08); }
+.sc-partly-n, .sc-cloudy-n, .sc-fog-n { --s1: #131a29; --s2: #333f54; --card: rgba(255,255,255,.08); }
+.sc-rain-n   { --s1: #10161f; --s2: #2a3444; --card: rgba(255,255,255,.07); }
+.sc-snow-n   { --s1: #1d2840; --s2: #42506b; --card: rgba(255,255,255,.08); }
+.sc-warm-d   { --s1: #0f6fc9; --s2: #45b1e6; }
+.sc-dusk     { background: linear-gradient(180deg, #213f7c 0%, #56589a 46%, #b9707a 78%, #e99a68 100%); --card: rgba(24,18,60,.22); }
+.sc-off      { --s1: #3d4654; --s2: #5f6979; --card: rgba(255,255,255,.08); }
+
+/* Moving sky: transforms only, no blur, so older smartboards keep up */
+.wx .fx { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: -1; }
+.wx .fx i { position: absolute; display: block; }
+.wx .glow { inset: 0; opacity: .6; background: radial-gradient(circle at 90% -8%, rgba(255,232,160,.5), rgba(255,232,160,0) 45%); }
+.wx .dglow { inset: 0; background: radial-gradient(ellipse 70% 45% at 50% 108%, rgba(255,206,128,.55), rgba(255,206,128,0)); }
+.wx .stars { inset: 0 0 30% 0; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><g fill='white'><circle cx='9' cy='14' r='.9' opacity='.8'/><circle cx='47' cy='7' r='.6' opacity='.6'/><circle cx='83' cy='22' r='1.1' opacity='.9'/><circle cx='112' cy='9' r='.6' opacity='.5'/><circle cx='28' cy='48' r='.7' opacity='.6'/><circle cx='66' cy='57' r='.9' opacity='.8'/><circle cx='101' cy='70' r='.6' opacity='.5'/><circle cx='14' cy='92' r='1' opacity='.7'/><circle cx='54' cy='101' r='.6' opacity='.5'/><circle cx='89' cy='108' r='.8' opacity='.7'/></g></svg>") 0 0 / 7.5em 7.5em;
+  -webkit-mask: linear-gradient(#000, transparent); mask: linear-gradient(#000, transparent); }
+.wx .cl { width: 34em; height: 11em; border-radius: 50%; background: radial-gradient(closest-side, rgba(255,255,255,var(--a,.22)), rgba(255,255,255,0)); animation: wx-drift 80s linear infinite alternate; }
+.wx .rain-a, .wx .rain-b, .wx .snow-a, .wx .snow-b { left: 0; right: 0; bottom: 0; will-change: transform; }
+/* Rain: each drop fades in from the top, faintest where it starts */
+.wx .rain-a { top: -7.5em; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='48' height='120'><defs><linearGradient id='d' x2='0' y2='1'><stop offset='0' stop-color='white' stop-opacity='0'/><stop offset='1' stop-color='white' stop-opacity='.24'/></linearGradient></defs><g fill='url(%23d)'><rect x='6' y='4' width='1.3' height='18' rx='.65'/><rect x='30' y='36' width='1.3' height='18' rx='.65'/><rect x='18' y='68' width='1.3' height='18' rx='.65'/><rect x='41' y='94' width='1.3' height='18' rx='.65'/></g></svg>") 0 0 / 3em 7.5em; animation: wx-fall75 1.5s linear infinite; }
+.wx .rain-b { top: -10em; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='64' height='160'><defs><linearGradient id='d' x2='0' y2='1'><stop offset='0' stop-color='white' stop-opacity='0'/><stop offset='1' stop-color='white' stop-opacity='.16'/></linearGradient></defs><g fill='url(%23d)'><rect x='14' y='10' width='1.7' height='26' rx='.85'/><rect x='46' y='64' width='1.7' height='26' rx='.85'/><rect x='30' y='116' width='1.7' height='26' rx='.85'/></g></svg>") 0 0 / 4em 10em; animation: wx-fall10 1.25s linear infinite; }
+.wx .sway { inset: 0 -3em; }
+.wx .sw-a { animation: wx-sway-a 5.3s ease-in-out infinite alternate; }
+.wx .sw-b { animation: wx-sway-b 8.7s ease-in-out -3s infinite alternate; }
+.wx .snow-a { top: -11em; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='176' height='176'><defs><radialGradient id='f'><stop offset='0' stop-color='white'/><stop offset='.55' stop-color='white' stop-opacity='.8'/><stop offset='1' stop-color='white' stop-opacity='0'/></radialGradient></defs><g fill='url(%23f)'><circle cx='120' cy='111' r='2.9' opacity='0.47'/><circle cx='137' cy='140' r='3.0' opacity='0.48'/><circle cx='44' cy='5' r='3.6' opacity='0.44'/><circle cx='16' cy='137' r='3.8' opacity='0.41'/><circle cx='11' cy='172' r='3.1' opacity='0.53'/><circle cx='107' cy='11' r='4.4' opacity='0.43'/><circle cx='24' cy='163' r='3.6' opacity='0.44'/><circle cx='141' cy='25' r='2.9' opacity='0.58'/><circle cx='97' cy='62' r='3.5' opacity='0.47'/><circle cx='10' cy='149' r='3.0' opacity='0.41'/><circle cx='40' cy='166' r='4.2' opacity='0.57'/></g></svg>") 0 0 / 11em 11em; animation: wx-fall11 12s linear infinite; }
+.wx .snow-b { top: -15em; background: url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='240' height='240'><defs><radialGradient id='f'><stop offset='0' stop-color='white'/><stop offset='.55' stop-color='white' stop-opacity='.8'/><stop offset='1' stop-color='white' stop-opacity='0'/></radialGradient></defs><g fill='url(%23f)'><circle cx='181' cy='139' r='2.5' opacity='0.40'/><circle cx='114' cy='197' r='1.7' opacity='0.29'/><circle cx='210' cy='99' r='2.7' opacity='0.32'/><circle cx='93' cy='236' r='2.1' opacity='0.33'/><circle cx='25' cy='171' r='1.6' opacity='0.45'/><circle cx='118' cy='132' r='2.2' opacity='0.40'/><circle cx='146' cy='133' r='1.9' opacity='0.37'/><circle cx='43' cy='84' r='1.8' opacity='0.44'/><circle cx='143' cy='75' r='2.0' opacity='0.27'/><circle cx='194' cy='185' r='1.7' opacity='0.32'/><circle cx='161' cy='213' r='2.4' opacity='0.44'/><circle cx='234' cy='228' r='2.1' opacity='0.37'/><circle cx='118' cy='91' r='2.7' opacity='0.30'/><circle cx='41' cy='20' r='2.7' opacity='0.41'/><circle cx='116' cy='199' r='2.5' opacity='0.26'/><circle cx='71' cy='101' r='1.9' opacity='0.28'/><circle cx='82' cy='214' r='1.7' opacity='0.45'/><circle cx='115' cy='62' r='2.5' opacity='0.44'/></g></svg>") 0 0 / 15em 15em; animation: wx-fall15 26s linear infinite; }
+.wx .flash { inset: 0; background: #fff; opacity: 0; animation: wx-flash 9s infinite; }
+.wx .fog-a, .wx .fog-b { left: -40%; right: -40%; height: 9em; border-radius: 50%; opacity: .5; background: radial-gradient(closest-side, rgba(255,255,255,.22), rgba(255,255,255,0)); animation: wx-drift 50s ease-in-out infinite alternate; }
+@keyframes wx-drift { to { transform: translateX(7em); } }
+@keyframes wx-fall11 { to { transform: translateY(11em); } }
+@keyframes wx-fall15 { to { transform: translateY(15em); } }
+@keyframes wx-sway-a { from { transform: translateX(-1.4em); } to { transform: translateX(1.4em); } }
+@keyframes wx-sway-b { from { transform: translateX(1em); } to { transform: translateX(-1em); } }
+@keyframes wx-fall75 { to { transform: translateY(7.5em); } }
+@keyframes wx-fall10 { to { transform: translateY(10em); } }
+@keyframes wx-flash { 0%, 90%, 100% { opacity: 0; } 91% { opacity: .3; } 92% { opacity: 0; } 93.5% { opacity: .18; } 95% { opacity: 0; } }
+.wx.still .fx i { animation: none; }
+@media (prefers-reduced-motion: reduce) { .wx .fx i { animation: none; } }
+
+.wx .in { position: relative; height: 100%; display: grid; gap: .75em; padding: 1em; min-height: 0; }
+.wx .hero { padding-inline: var(--inset); min-width: 0; }
+.wx .place { font-weight: 600; font-size: 1.05em; overflow-wrap: anywhere; }
+.wx .temp { white-space: nowrap; font-weight: 300; line-height: .92; letter-spacing: -.045em; font-size: 4.4em; font-variant-numeric: lining-nums; }
+.wx .temp .deg { letter-spacing: 0; }
+.wx .temp .unit { font-size: max(14px, .3em); font-weight: 500; color: var(--dim); opacity: .8; vertical-align: top; position: relative; top: .34em; margin-left: .05em; letter-spacing: 0; }
+.wx .src { font-size: max(14px, .68em); color: var(--dim); font-weight: 600; letter-spacing: .01em; }
+.wx .cond { display: flex; align-items: center; gap: .35em; font-weight: 600; }
+.wx .hl, .wx .more { color: var(--dim); font-weight: 500; font-variant-numeric: tabular-nums; }
+.wx .hl b { color: #fff; font-weight: 600; }
+.wx .more { display: flex; align-items: center; gap: .35em; flex-wrap: wrap; }
+.wx .aqd { width: .62em; height: .62em; border-radius: 50%; display: inline-block; flex: none; box-shadow: 0 0 0 .12em rgba(0,0,0,.18); }
+.wx .foot { font-size: max(14px, .66em); color: var(--dim); font-weight: 500; }
+
+/* Alerts and offline: a band across the top, tapped for more */
+.wx .band { display: flex; align-items: center; gap: .45em; border-radius: .8em; padding: .45em .75em .45em .6em; font-weight: 700; font-size: max(14px, .82em); line-height: 1.2; text-shadow: none; min-width: 0; }
+.wx .band svg { width: 1.25em; height: 1.25em; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.wx .band span { font-weight: 500; }
+.wx .band .go { margin-left: auto; opacity: .7; }
+.wx .band { padding-left: calc(var(--inset) + 1px); }
+.wx .band.warn { background: #ff8a3d; color: #2a1000; }
+.wx .band.watch { background: #ffd54d; color: #2a2100; }
+.wx .band.off { background: rgba(255,255,255,.9); color: #1f2937; }
+
+.wx .card { position: relative; background: var(--card); border: 1px solid var(--edge); border-radius: 1em; padding: .7em var(--inset) .8em; min-width: 0; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+.wx h3 { margin: 0 0 .55em; font-size: max(14px, .74em); font-weight: 600; color: var(--dim); display: flex; align-items: center; gap: .4em; padding-bottom: .55em; border-bottom: 1px solid var(--edge); letter-spacing: .01em; flex: none; white-space: nowrap; }
+.wx h3 svg { width: 1.2em; height: 1.2em; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.wx h3 .when { margin-left: auto; color: #fff; font-weight: 700; }
+.wx h3 .chev { margin-left: auto; width: 1em; height: 1em; opacity: .8; }
+.wx h3 .when + .chev { margin-left: .2em; }
+.wx h3 .cr { margin-left: auto; font-weight: 500; font-size: max(14px, .9em); }
+.wx h3 .cr + .chev { margin-left: .35em; }
+
+/* Hours */
+.wx .sum { font-size: max(14px, .9em); font-weight: 500; margin: -.1em 0 .6em; }
+.wx .hours { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); flex: 1; align-items: center; }
+.wx .hours.two { grid-auto-flow: row; grid-template-columns: repeat(var(--cols, 6), minmax(0, 1fr)); row-gap: .6em; }
+.wx .hr { display: grid; justify-items: center; gap: .3em; text-align: center; grid-template-rows: auto auto .7em auto; }
+.wx .hr .pop { grid-row: 3; }
+.wx .hr .v { grid-row: 4; }
+.wx .hr .t { font-size: max(14px, .8em); font-weight: 600; color: var(--dim); white-space: nowrap; }
+.wx .hr:first-child .t { color: #fff; }
+.wx .hr .hi { width: 1.9em; height: 1.9em; }
+.wx .hr .v { font-size: 1.1em; font-weight: 600; }
+.wx .hr .v.sm { font-size: max(14px, .8em); }
+.wx .pop { font-size: max(14px, .66em); font-weight: 800; color: #c4ecff; line-height: 1; }
+
+/* Seven days */
+.wx .days { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-rows: minmax(0, 1fr); flex: 1; }
+.wx .days li { display: grid; grid-template-columns: 3.4em 2.2em 2.5em minmax(2em, 1fr) 2.5em; align-items: center; gap: .55em; border-top: 1px solid var(--edge); min-height: 2.1em; }
+.wx .days li:first-child { border-top: 0; }
+.wx .days .d { font-weight: 600; }
+.wx .days .di { display: grid; justify-items: center; gap: .1em; }
+.wx .days .di svg { width: 1.6em; height: 1.6em; }
+.wx .days .lo { color: var(--dim); text-align: right; font-weight: 500; font-variant-numeric: tabular-nums; }
+.wx .days .hi { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.wx .bar { position: relative; height: .36em; border-radius: 1em; background: var(--track); }
+.wx .bar i { position: absolute; top: 0; bottom: 0; border-radius: 1em; }
+.wx .bar b { position: absolute; top: 50%; width: .62em; height: .62em; margin: -.31em 0 0 -.31em; border-radius: 50%; background: #fff; box-shadow: 0 0 0 .14em rgba(0,0,0,.28); }
+
+/* What to wear */
+.wx .items { display: flex; gap: .75em; flex-wrap: wrap; align-items: flex-start; }
+.wx .items figure { margin: 0; display: grid; justify-items: center; gap: .3em; }
+.wx .dot { width: 2.7em; height: 2.7em; border-radius: 50%; background: rgba(255,255,255,.17); display: grid; place-items: center; }
+.wx .dot svg { width: 1.65em; height: 1.65em; fill: none; stroke: #fff; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.wx figcaption { font-size: max(14px, .74em); font-weight: 600; color: #fff; }
+.wx .advice { font-weight: 650; font-size: 1.12em; line-height: 1.2; margin: 0 0 .55em; text-wrap: balance; }
+.wx .eg { font-size: max(14px, .7em); font-weight: 600; color: var(--dim); margin: 0 0 .35em; }
+.wx .note { font-size: max(14px, .85em); color: var(--dim); font-weight: 500; margin: .6em 0 0; }
+.wx .wear .body { flex: 1; display: grid; align-content: center; min-height: 0; }
+.wx .tg { display: inline-flex; background: rgba(0,0,0,.2); border-radius: 2em; padding: .18em; gap: .1em; flex: none; }
+.wx .tg b { font-weight: 600; padding: .35em .85em; border-radius: 2em; color: var(--dim); min-width: 3.6em; text-align: center; white-space: nowrap; }
+.wx .tg b.on { background: #fff; color: #17406f; text-shadow: none; }
+.wx .wear .tg { justify-self: start; margin-top: .7em; font-size: max(14px, .9em); }
+
+/* Sun, moon, wind, and air */
+.wx .arc { width: 100%; height: auto; flex: 1; min-height: 0; }
+.wx .sunrow { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; margin-top: .3em; gap: .5em; }
+.wx .sunrow div { display: grid; }
+.wx .sunrow div:last-child { text-align: right; }
+.wx .sunrow small, .wx .k { font-size: max(14px, .72em); color: var(--dim); font-weight: 600; }
+.wx .sunrow b { font-weight: 600; white-space: nowrap; }
+.wx .daylight { font-size: max(14px, .78em); color: var(--dim); margin-top: .35em; font-weight: 500; }
+.wx .moonline { display: flex; align-items: center; gap: .45em; margin-top: .55em; padding-top: .55em; border-top: 1px solid var(--edge); font-size: max(14px, .85em); font-weight: 500; }
+.wx .moonline svg { width: 1.4em; height: 1.4em; }
+.wx .moonbody { flex: 1; display: grid; grid-template-columns: auto 1fr; gap: 1em; align-items: center; min-height: 0; }
+.wx .moonbody svg { width: 5.4em; height: 5.4em; }
+.wx .windbody { flex: 1; display: grid; grid-template-columns: auto 1fr; gap: 1em; align-items: center; min-height: 0; }
+.wx .compass { width: 6.2em; height: 6.2em; }
+.wx .big { font-size: 2em; font-weight: 400; line-height: 1; letter-spacing: -.02em; }
+.wx .big small { font-size: max(14px, .45em); font-weight: 600; letter-spacing: 0; margin-left: .15em; }
+.wx .stack { display: grid; gap: .35em; align-content: center; min-width: 0; }
+.wx .stack span { color: var(--dim); font-size: max(14px, .85em); font-weight: 500; }
+.wx .stack .name { color: #fff; font-weight: 600; font-size: 1.05em; }
+.wx .aqpill { justify-self: start; font-weight: 700; font-size: max(14px, .85em); padding: .2em .7em; border-radius: 1em; text-shadow: none; }
+.wx .aqscale { position: relative; height: .45em; border-radius: 1em; margin: .8em 0 .2em; background: linear-gradient(90deg, #00e400 0 16.6%, #ffff00 16.6% 33.3%, #ff7e00 33.3% 50%, #ff0000 50% 66.6%, #8f3f97 66.6% 83.3%, #7e0023 83.3%); }
+.wx .aqscale b { position: absolute; top: 50%; width: .8em; height: .8em; margin: -.4em 0 0 -.4em; border-radius: 50%; background: #fff; box-shadow: 0 0 0 .15em rgba(0,0,0,.35); }
+
+/* Small: just now */
+.L-s .in { place-content: center; justify-items: center; text-align: center; gap: .5em; }
+.L-s .hero { display: grid; justify-items: center; gap: .12em; padding: 0; }
+.L-s .temp { font-size: 4.5em; margin: .04em 0 .06em .2em; }
+.L-s .cond .ic { width: 1.45em; height: 1.45em; }
+.L-s .band { margin-bottom: .3em; }
+.L-s.has-band .temp { font-size: 3.4em; }
+.L-s.has-band .in { gap: .3em; }
+.L-s.has-band .band { margin-bottom: 0; }
+.L-s.V-detail .in { place-content: stretch; justify-items: stretch; text-align: left; }
+.L-s .scroll { -webkit-mask: linear-gradient(#000 80%, transparent); mask: linear-gradient(#000 80%, transparent); padding-bottom: 1em; }
+
+/* Medium: now, the week, and what to wear */
+.L-m .in { grid-template-rows: auto minmax(0, 1fr) auto; gap: .65em; }
+.L-m.has-band .in { grid-template-rows: auto auto minmax(0, 1fr) auto; gap: .55em; }
+.L-m.has-band h3 { margin-bottom: .25em; padding-bottom: .3em; }
+.L-m .right .cond .chev { width: .85em; height: .85em; opacity: .8; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.L-m.has-band .temp { font-size: 3.4em; }
+.L-m .hero { display: grid; grid-template-columns: 1fr auto; align-items: end; gap: .5em; }
+.L-m .hero > .left { display: grid; gap: .12em; min-width: 0; }
+.L-m .temp { font-size: 3.9em; margin-left: -.04em; }
+.L-m .right { display: grid; justify-items: end; text-align: right; gap: .15em; padding-bottom: .15em; }
+.L-m .right .bigic { width: 2.5em; height: 2.5em; margin-bottom: .1em; }
+.L-m h3 { margin-bottom: .35em; padding-bottom: .4em; }
+.L-m .week { display: grid; grid-template-columns: repeat(var(--n, 5), minmax(0, 1fr)); align-items: center; flex: 1; }
+.L-m .week .col { display: grid; justify-items: center; gap: .18em; text-align: center; font-variant-numeric: tabular-nums; }
+.L-m .week .col + .col { border-left: 1px solid var(--edge); }
+.L-m .week .n { font-size: max(14px, .82em); font-weight: 600; color: var(--dim); }
+.L-m .week .col:first-child .n { color: #fff; }
+.L-m .week svg { width: 1.8em; height: 1.8em; }
+.L-m .week .h { font-weight: 600; font-size: 1.05em; }
+.L-m .week .l { color: var(--dim); font-size: max(14px, .88em); }
+.L-m .wl { flex-direction: row; align-items: center; gap: .7em; padding: .5em .6em; }
+.L-m .wl .tg { font-size: max(14px, .85em); }
+.L-m .wl .tg b { min-width: 3.4em; padding: .45em .7em; }
+.L-m .wl .items { gap: .3em; flex-wrap: nowrap; }
+.L-m .wl .dot { width: 2em; height: 2em; }
+.L-m .wl .dot svg { width: 1.25em; height: 1.25em; }
+.L-m .wl .says { font-weight: 600; font-size: max(14px, .9em); min-width: 0; line-height: 1.2; }
+
+/* Large: now and what to wear, beside the week and the sun */
+.L-l .in { grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); grid-template-rows: minmax(0, 1fr) auto; grid-template-areas: "hero days" "wear sun"; gap: .8em; padding: 1.1em; }
+.L-l .band, .L-xl .band { grid-area: band; justify-self: start; }
+.L-l.has-band .in { grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "band days" "hero days" "wear sun"; }
+.L-l.has-band .temp { font-size: 4.2em; }
+.L-l.has-band .hero { gap: .18em; }
+.L-l.has-band .hero .more + .more { display: none; }
+.L-l .hero, .L-xl .hero { grid-area: hero; display: grid; align-content: center; gap: .28em; }
+.L-l .temp { font-size: 5.4em; margin: .02em 0 .02em -.05em; }
+.L-l .cond, .L-xl .cond { font-size: 1.15em; }
+.L-l .daysc, .L-xl .daysc { grid-area: days; }
+.L-l .wear, .L-xl .wear { grid-area: wear; }
+.L-l .sun, .L-xl .sun { grid-area: sun; }
+.L-l .arc { max-height: 4.2em; }
+.L-l .days li { grid-template-columns: 3em 3.3em 2.3em minmax(2em, 1fr) 2.3em; gap: .5em; min-height: 1.6em; }
+.L-l .days .di { grid-auto-flow: column; justify-content: start; align-items: center; gap: .25em; }
+.L-l .days .di svg { width: 1.35em; height: 1.35em; }
+
+/* Fill the board: everything */
+.L-xl .in { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.15fr) minmax(0, .95fr) minmax(0, .95fr); grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "hero hourly hourly hourly" "wear days sun windc" "wear days moon air"; gap: 1em; padding: 1.3em 1.5em; }
+.L-xl.has-band .in { grid-template-rows: auto auto minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "band band band band" "hero hourly hourly hourly" "wear days sun windc" "wear days moon air"; }
+.L-xl .temp { font-size: 6.4em; margin: .02em 0 .02em -.05em; }
+.L-xl .hourly { grid-area: hourly; }
+.L-xl .windc { grid-area: windc; }
+.L-xl .moon { grid-area: moon; }
+.L-xl .air { grid-area: air; }
+.L-xl .wear .dot { width: 4em; height: 4em; }
+.L-xl .wear .dot svg { width: 2.4em; height: 2.4em; }
+.L-xl .wear figcaption { font-size: max(14px, .85em); }
+.L-xl .wear .items { gap: 1em; }
+.L-xl .wear .note { font-size: max(14px, .95em); }
+.L-xl .wear .advice { font-size: 1.5em; margin-bottom: .6em; }
+.L-xl .days li { gap: .7em; }
+.L-xl .compass { width: 5.6em; height: 5.6em; }
+.L-xl .smalls { grid-area: smalls; display: grid; gap: 1em; min-height: 0; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); }
+.L-xl .smalls.n1, .L-xl .smalls.n2 { grid-template-columns: minmax(0, 1fr); }
+.L-xl .smalls.n3 > :last-child { grid-column: span 2; }
+.L-xl .smalls > .card { grid-area: auto; }
+.L-l .moon { grid-area: moon; }
+.L-l.l-solo .hero, .L-xl .in > .hero:only-of-type { align-content: center; }
+.L-m.m-big .hero { align-self: center; }
+.L-m.m-big .temp { font-size: 5em; }
+.wx .dnow .cards.n2 { grid-template-rows: minmax(0, 1fr); }
+.wx .dnow .cards.n2 .windc { grid-row: auto; }
+.wx .dnow .cards.n1 { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); }
+
+/* Details: a part, opened to fill the window */
+.wx .bar2 { display: flex; align-items: center; gap: .6em; min-width: 0; }
+.wx .bar2 .title { font-weight: 700; font-size: 1.05em; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wx .rb { display: inline-flex; align-items: center; gap: .35em; font: inherit; font-weight: 600; color: #fff; background: rgba(255,255,255,.18); border: 0; border-radius: 2em; padding: .45em .9em .45em .6em; text-shadow: none; flex: none; white-space: nowrap; position: relative; }
+.wx .rb svg { width: 1.1em; height: 1.1em; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.wx .rb.sq { padding: .45em; }
+.wx .rb.solid { margin-left: auto; background: #fff; color: #1b4f8f; padding: .45em .9em; }
+.wx .rb:disabled { opacity: .4; cursor: default; }
+.wx.V-detail .in { grid-template-rows: auto minmax(0, 1fr) auto; }
+.wx .in > .foot { margin: 0; padding-inline: var(--inset); }
+.wx .dnow { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: .7em; min-height: 0; }
+.wx .dnow .hero { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .1em 1em; }
+.wx.V-detail .dnow .temp { font-size: 3.6em; grid-row: span 3; }
+.wx .dnow .cards { display: grid; grid-template-columns: 1.25fr 1fr; grid-template-rows: auto minmax(0, 1fr); gap: .6em; min-height: 0; }
+.wx .air .row1 .big { font-size: 1.6em; color: #fff; }
+.wx .dnow .card { padding-top: .55em; padding-bottom: .5em; }
+.wx .dnow .stack { gap: .2em; }
+.wx .dnow .card h3 { margin-bottom: .35em; padding-bottom: .4em; }
+.wx .dnow .windc { grid-row: span 2; }
+.wx .dair { display: grid; align-content: center; gap: .5em; padding-inline: var(--inset); min-height: 0; overflow: hidden; }
+.wx .dair .big { font-size: 3.6em; font-weight: 300; }
+.wx .dair p { margin: 0; color: var(--dim); font-weight: 500; }
+.wx .scroll { overflow: auto; min-height: 0; padding-inline: var(--inset); display: grid; gap: .6em; align-content: start; }
+.wx .scroll h4 { margin: 0; font-size: 1.5em; line-height: 1.1; }
+.wx .scroll .k { font-size: max(14px, .78em); }
+.wx .scroll p { margin: 0; font-size: max(14px, .92em); line-height: 1.35; }
+.wx .scroll .lab { font-size: max(14px, .72em); font-weight: 700; color: var(--dim); margin-top: .3em; }
+.wx .scroll .alert + .alert { border-top: 1px solid var(--edge); padding-top: .8em; }
+.wx .scroll .alert { display: grid; gap: .6em; }
+
+.wx.V-detail .days li { min-height: 0; }
+.wx.V-detail .days .di svg { width: 1.4em; height: 1.4em; }
+.wx.V-detail .days .di { grid-auto-flow: column; justify-content: start; align-items: center; gap: .25em; }
+.wx.V-detail .days li { grid-template-columns: 3.4em 3.8em 2.5em minmax(2em, 1fr) 2.5em; }
+.wx .air .row1 { display: flex; align-items: center; gap: .5em; flex-wrap: wrap; }
+
+/* On a date */
+.wx.V-date .in { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); grid-template-rows: auto minmax(0, 1fr) auto; grid-template-areas: "bar bar" "hero chart" "hero side"; }
+.wx.V-date .bar2 { grid-area: bar; }
+.wx.V-date .hero { grid-area: hero; display: grid; align-content: center; gap: .3em; }
+.wx.V-date .temp { font-size: 5.4em; }
+.wx.V-date .chartc { grid-area: chart; }
+.wx.V-date .side { grid-area: side; display: grid; grid-template-columns: 1fr 1fr; gap: .8em; }
+.wx .chart { width: 100%; flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(3.5em, 1fr) auto; }
+.wx .chart .plot { position: relative; min-height: 0; margin-block: 1.35em; }
+.wx .chart svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.wx .chart .pt { position: absolute; width: .5em; height: .5em; margin: -.25em 0 0 -.25em; border-radius: 50%; background: #fff; }
+/* The high's number above its dot and the low's below it, where the line never runs */
+.wx .chart .lab { position: absolute; margin: 0; transform: translate(.5em, -100%); font-size: max(14px, .8em); font-weight: 700; color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wx .chart .lab.end { transform: translate(calc(-100% - .5em), -100%); }
+.wx .chart .lab.lo { transform: translate(.5em, 0); }
+.wx .chart .lab.lo.end { transform: translate(calc(-100% - .5em), 0); }
+.wx .chart .tks { position: relative; height: 1.5em; margin-top: .25em; }
+.wx .chart .tk { position: absolute; top: 0; transform: translateX(-50%); font-size: max(14px, .72em); color: var(--dim); white-space: nowrap; }
+.wx .chart .tk.first { transform: none; }
+.wx .chart.few .tk.six { display: none; }
+.wx .cmp b { font-size: 1.6em; font-weight: 400; display: block; letter-spacing: -.02em; }
+.wx .cmp span { font-size: max(14px, .85em); color: var(--dim); }
+.wx .pick { position: relative; padding-left: .9em; }
+.wx .pick .ds, .wx.short-date .pick .dl { display: none; }
+.wx.short-date .pick .ds { display: inline; }
+.wx .pick input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; border: 0; padding: 0; cursor: pointer; }
+.wx .pick input::-webkit-calendar-picker-indicator { position: absolute; inset: 0; width: auto; height: auto; opacity: 0; cursor: pointer; }
+/* On a date in a smaller window: the bar, then the day, Sun, Compared with today, and the chart, scrolling */
+.wx.V-date.d-m .in, .wx.V-date.d-s .in { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); grid-template-areas: "bar" "body"; gap: .6em; padding: .8em; }
+.wx.V-date .dscroll { grid-area: body; padding-inline: 0; align-content: start; }
+.wx.V-date.d-m .dscroll { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.wx.V-date .dscroll .hero, .wx.V-date .dscroll .side, .wx.V-date .dscroll .chartc { grid-area: auto; }
+.wx.V-date .dscroll .hero { align-content: start; }
+.wx.V-date .dscroll .side { grid-template-columns: minmax(0, 1fr); gap: .5em; }
+.wx.V-date .dscroll .chartc { grid-column: 1 / -1; min-height: 14.7em; }
+.wx.V-date .dscroll .temp { font-size: 3.4em; }
+.wx.V-date .dscroll .cmp b { font-size: 1.3em; }
+.wx.V-date.d-m .bar2, .wx.V-date.d-s .bar2 { flex-wrap: wrap; row-gap: .4em; }
+.wx.V-date .dscroll h3 { white-space: normal; }
+
+/* Offline */
+.wx .hilabel { font-size: max(14px, .7em); font-weight: 700; color: var(--dim); letter-spacing: .02em; }
+.wx .in.offmsg { grid-template-rows: auto auto; align-content: center; place-content: center; justify-items: center; text-align: center; gap: .4em; }
+.wx .offmsg b { font-size: 1.15em; }
+.wx .offmsg span { color: var(--dim); }
+
+/* Simple words */
+.wx .simple { place-content: center; justify-items: center; text-align: center; gap: .55em; grid-template-rows: repeat(4, auto); }
+.wx .simple .bigic { width: 5.6em; height: 5.6em; }
+.wx .simple .say { font-size: 2.1em; font-weight: 700; line-height: 1.1; letter-spacing: -.01em; }
+.wx .simple .items { justify-content: center; }
+.wx .simple .src { position: absolute; bottom: .9em; left: 0; right: 0; }
+.V-simple.lift .simple { padding-bottom: 3.4em; }
+.V-simple.lift .simple .bigic { width: 4em; height: 4em; }
+.wx .chip { position: absolute; top: .9em; right: 1em; font-weight: 700; background: rgba(255,255,255,.2); border-radius: 1em; padding: .2em .65em; }
+
+/* Short for its size: text stays at 14 px or more, so the spacing closes up instead, a step at a time (tight, tighter,
+   tightest), until every part fits. fit() measures each step as drawn. A band in Medium keeps to one line (brief). */
+.wx.brief .band > span { display: none; }
+.L-m.tight .in { padding: .7em .8em; gap: .45em; }
+.L-m.tight .temp { font-size: 3.1em; }
+.L-m.tight .hero > .left, .L-m.tight .right { gap: 0; }
+.L-m.tight .card { padding-top: .45em; padding-bottom: .5em; }
+.L-m.tight h3 { margin-bottom: .2em; padding-bottom: .25em; }
+.L-m.tight .week .col { gap: .05em; }
+.L-m.tight .week svg { width: 1.6em; height: 1.6em; }
+.L-m.tight .wl { padding: .3em .5em; }
+.L-m.tight .wl .tg b { padding: .3em .65em; }
+.L-m.tight.has-band .in { gap: .4em; }
+.L-m.tight.has-band .band { padding-top: .3em; padding-bottom: .3em; }
+.L-m.tighter .right .bigic { width: 2em; height: 2em; }
+.L-m.tighter .week svg { width: 1.3em; height: 1.3em; }
+.L-m.tighter .wl .dot { width: 1.8em; height: 1.8em; }
+.L-m.tighter .hr .hi { width: 1.5em; height: 1.5em; }
+.L-m.tighter.has-band .temp { font-size: 2.7em; }
+.L-m.tighter.has-band .card { padding-top: .35em; padding-bottom: .4em; }
+.L-m.tighter.has-band .wl { padding: .25em .5em; }
+.L-m.tighter.has-band .wl .tg b { padding: .2em .6em; }
+.L-m.tightest .week svg { width: 1.1em; height: 1.1em; }
+.L-m.tightest .hr { gap: 0; }
+.L-m.tightest .hr .hi { width: 1.3em; height: 1.3em; }
+.L-m.tightest .hours:not(.pops) .hr { grid-template-rows: auto auto 0 auto; }
+.L-m.tightest .temp { font-size: 2.7em; }
+.L-m.tightest .wl .dot { width: 1.6em; height: 1.6em; }
+.L-l.tight .in { padding: .8em; gap: .6em; }
+.L-l.tight .temp { font-size: 4.2em; }
+.L-l.tight.has-band .temp { font-size: 3.4em; }
+.L-l.tight .hero { gap: .15em; }
+.L-l.tight .card { padding-top: .5em; padding-bottom: .55em; }
+.L-l.tight h3 { margin-bottom: .3em; padding-bottom: .3em; }
+.L-l.tight .days li { min-height: 0; gap: .4em; }
+.L-l.tight .days .di svg { width: 1.15em; height: 1.15em; }
+.L-l.tight .wear .dot { width: 2.1em; height: 2.1em; }
+.L-l.tight .wear .dot svg { width: 1.3em; height: 1.3em; }
+.L-l.tight .advice { margin-bottom: .3em; }
+.L-l.tight .eg { margin-bottom: .2em; }
+.L-l.tight .note { margin-top: .3em; }
+.L-l.tight .wear .tg { margin-top: .4em; }
+.L-l.tight .arc { max-height: 3em; }
+.L-l.tight .moonline { margin-top: .35em; padding-top: .35em; }
+.L-l.tight .daylight { margin-top: .15em; }
+.L-l.tighter .in { padding: .6em .7em; gap: .45em; }
+.L-l.tighter .temp { font-size: 3.6em; }
+.L-l.tighter.has-band .temp { font-size: 3em; }
+.L-l.tighter .card { padding-top: .4em; padding-bottom: .45em; }
+.L-l.tighter h3 { margin-bottom: .2em; padding-bottom: .25em; }
+.L-l.tighter .days li { gap: .3em; }
+.L-l.tighter .days .di svg { width: 1em; height: 1em; }
+.L-l.tighter .wear .dot { width: 1.8em; height: 1.8em; }
+.L-l.tighter .arc { max-height: 2.2em; }
+.L-l.tighter .eg { display: none; }
+.V-detail.tight .in { padding: .7em .9em; gap: .5em; }
+.V-detail.tight .rb { padding: .3em .8em .3em .5em; }
+.V-detail.tight .dnow { gap: .45em; }
+.V-detail.tight .dnow .hero { gap: 0 .8em; }
+.V-detail.tight .dnow .cards { gap: .45em; }
+.V-detail.tight .dnow .card { padding-top: .4em; padding-bottom: .45em; }
+.V-detail.tight .dnow .card h3 { margin-bottom: .2em; padding-bottom: .25em; }
+.V-detail.tight .windbody { gap: .6em; }
+.V-detail.tight .dnow .big { font-size: 1.6em; }
+.V-detail.tight .days li { gap: .4em; }
+/* (The Now view closes its spacing first, then draws a smaller temperature and compass, and at its smallest puts its
+   cards side by side, the wind without its compass.) */
+.V-detail.tighter .dnow .temp { font-size: 2.9em; }
+.V-detail.tighter .dnow .cards { grid-template-columns: 1fr 1.2fr; }
+.V-detail.tighter .compass { width: 4.4em; height: 4.4em; }
+.V-detail.tightest .dnow .cards { grid-template-columns: none; grid-auto-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-auto-flow: column; }
+.V-detail.tightest .dnow .windc { grid-row: auto; }
+.V-detail.tightest .dnow .compass { display: none; }
+.V-detail.tightest .dnow .windbody { grid-template-columns: minmax(0, 1fr); }
+.L-s .bar2 .title { white-space: normal; overflow: visible; }
+.L-xl.tight .in { padding: .8em 1em; gap: .6em; }
+.L-xl.tight .temp { font-size: 4.4em; }
+.L-xl.tight .hero { gap: .1em; }
+.L-xl.tight .card { padding-top: .45em; padding-bottom: .5em; }
+.L-xl.tight h3 { margin-bottom: .25em; padding-bottom: .25em; }
+.L-xl.tight .sum { margin-bottom: .3em; }
+.L-xl.tight .hr { gap: .15em; }
+.L-xl.tight .hr .hi { width: 1.5em; height: 1.5em; }
+.L-xl.tight .days li { min-height: 0; gap: .4em; }
+.L-xl.tight .days .di svg { width: 1.2em; height: 1.2em; }
+.L-xl.tight .smalls { gap: .6em; }
+.L-xl.tight .compass { width: 3.6em; height: 3.6em; }
+.L-xl.tight .windbody, .L-xl.tight .moonbody { gap: .6em; }
+.L-xl.tight .moonbody svg { width: 3.2em; height: 3.2em; }
+.L-xl.tight .big { font-size: 1.6em; }
+.L-xl.tight .stack { gap: .1em; }
+.L-xl.tight .aqscale { margin: .4em 0 .1em; }
+.L-xl.tight .arc { max-height: 3em; }
+.L-xl.tight .sunrow { margin-top: .1em; }
+.L-xl.tight .daylight { margin-top: .1em; }
+.L-xl.tight .wear .dot { width: 2.6em; height: 2.6em; }
+.L-xl.tight .wear .dot svg { width: 1.6em; height: 1.6em; }
+.L-xl.tight .wear .advice { font-size: 1.2em; margin-bottom: .3em; }
+.L-xl.tight .wear .note { font-size: max(14px, .9em); margin-top: .35em; }
+.L-xl.tight .wear .tg { margin-top: .45em; }
+.L-xl.tighter .temp { font-size: 3.8em; }
+.L-xl.tighter .in { gap: .5em; }
+.L-xl.tighter .hr .hi { width: 1.3em; height: 1.3em; }
+.L-xl.tighter .hr { gap: .05em; }
+.L-xl.tighter .hours:not(.pops) .hr { grid-template-rows: auto auto 0 auto; }
+.L-xl.tighter .days .di svg { width: 1em; height: 1em; }
+.L-xl.tighter .arc { max-height: 2.2em; }
+
+/* Fill the board: clear of the board's buttons in its corners, and of its padlocks while locked */
+.wx.filled .in { padding-top: max(1em, var(--top, 0px)); padding-bottom: max(1em, var(--low, 0px)); }
+.wx.filled.L-l .in { padding-top: max(1.1em, var(--top, 0px)); padding-bottom: max(1.1em, var(--low, 0px)); }
+.wx.filled.L-xl .in { padding-top: max(1.3em, var(--top, 0px)); padding-bottom: max(1.3em, var(--low, 0px)); }
+
+/* Location: a sheet over the window, in the board's own colors */
+#sheet[hidden] { display: none; }
+#sheet { position: fixed; inset: 0; z-index: 2; background: rgba(4,12,30,.5); display: grid; place-items: center; font: 400 16px/1.25 var(--b21-font, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif); }
+#sheet .panel { background: var(--b21-surface, #fff); color: var(--b21-text, #1f2937); border-radius: 14px; padding: 14px 16px 16px; width: min(380px, calc(100% - 24px)); max-height: calc(100% - 24px);
+  box-shadow: 0 16px 48px rgba(0,0,0,.35); display: flex; flex-direction: column; min-height: 0; }
+#sheet h4 { margin: 0 0 10px; font-size: 18px; }
+#sheet .search { border: 2px solid var(--b21-accent, #2563eb); border-radius: 10px; padding: 6px 10px; display: flex; gap: 8px; align-items: center; flex: none; }
+#sheet .search svg { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--b21-muted, #5b6472); stroke-width: 2; stroke-linecap: round; }
+#sheet .search input { border: 0; outline: 0; background: none; color: inherit; flex: 1; min-width: 0; font-size: 16px; padding: 2px 0; }
+#sheet .res { list-style: none; margin: 8px 0 0; padding: 0; overflow: auto; min-height: 0; }
+#sheet .res li { display: flex; align-items: center; gap: 10px; padding: 9px 6px; border-top: 1px solid var(--b21-border, #e2e5ea); cursor: pointer; border-radius: 8px; }
+#sheet .res li:first-child { border-top: 0; }
+#sheet .res li:hover, #sheet .res li:focus-visible { background: var(--b21-accent-soft, #e8f0fe); outline: 0; }
+#sheet .res b { display: block; font-weight: 600; }
+#sheet .res small { color: var(--b21-muted, #5b6472); display: block; font-size: 14px; }
+#sheet .res .ok { margin-left: auto; color: var(--b21-accent, #2563eb); font-weight: 700; }
+#sheet .msg { margin: 10px 2px 0; color: var(--b21-muted, #5b6472); font-size: 15px; }
+#sheet .msg:empty { display: none; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <!-- Weather: three shapes (sun, moon, cloud) make every icon -->
+  <symbol id="w-sun" viewBox="0 0 32 32"><path d="M16 3.5v3M16 25.5v3M3.5 16h3M25.5 16h3M7.2 7.2l2.1 2.1M22.7 22.7l2.1 2.1M7.2 24.8l2.1-2.1M22.7 9.3l2.1-2.1" stroke="#FFC83D" stroke-width="2.4" stroke-linecap="round"/><circle cx="16" cy="16" r="6.6" fill="#FFC83D"/></symbol>
+  <symbol id="w-moon" viewBox="0 0 32 32"><path d="M19.5 5A11 11 0 1 0 27 22.5 10 10 0 0 1 19.5 5z" fill="#F4EFC8"/></symbol>
+  <symbol id="w-cloud" viewBox="0 0 32 32"><g fill="currentColor"><circle cx="10" cy="19.5" r="5.5"/><circle cx="17" cy="14.5" r="7.5"/><circle cx="23.5" cy="19.5" r="5.5"/><rect x="10" y="17" width="13.5" height="8"/></g></symbol>
+  <symbol id="w-1d" viewBox="0 0 32 32"><use href="#w-sun"/><use href="#w-cloud" x="10" y="11" width="21" height="21" color="#fff"/></symbol>
+  <symbol id="w-1n" viewBox="0 0 32 32"><use href="#w-moon"/><use href="#w-cloud" x="10" y="11" width="21" height="21" color="#E8EEF6"/></symbol>
+  <symbol id="w-2d" viewBox="0 0 32 32"><use href="#w-sun" x="-3" y="-4" width="26" height="26"/><use href="#w-cloud" x="3" y="5" width="28" height="28" color="#fff"/></symbol>
+  <symbol id="w-2n" viewBox="0 0 32 32"><use href="#w-moon" x="-3" y="-4" width="26" height="26"/><use href="#w-cloud" x="3" y="5" width="28" height="28" color="#E8EEF6"/></symbol>
+  <symbol id="w-3" viewBox="0 0 32 32"><use href="#w-cloud" x="-4" y="-5" width="27" height="27" color="#BCC8D6"/><use href="#w-cloud" x="3" y="4" width="28" height="28" color="#fff"/></symbol>
+  <symbol id="w-fog" viewBox="0 0 32 32"><use href="#w-cloud" y="-5" color="#fff"/><path d="M6 24.5h20M9.5 29h13" stroke="#DCE4EE" stroke-width="2.3" stroke-linecap="round"/></symbol>
+  <symbol id="w-drz" viewBox="0 0 32 32"><use href="#w-cloud" y="-5" color="#fff"/><path d="M11 24.5l-.8 2M17 26.5l-.8 2M23 24.5l-.8 2" stroke="#6CC8FF" stroke-width="2.3" stroke-linecap="round"/></symbol>
+  <symbol id="w-rain" viewBox="0 0 32 32"><use href="#w-cloud" y="-5" color="#fff"/><path d="M11 23.5l-2 5M17 23.5l-2 5M23 23.5l-2 5" stroke="#6CC8FF" stroke-width="2.4" stroke-linecap="round"/></symbol>
+  <symbol id="w-snow" viewBox="0 0 32 32"><use href="#w-cloud" y="-5" color="#fff"/><g fill="#fff"><circle cx="10" cy="24.5" r="1.8"/><circle cx="16.5" cy="24.5" r="1.8"/><circle cx="23" cy="24.5" r="1.8"/><circle cx="13.2" cy="29" r="1.8"/><circle cx="19.8" cy="29" r="1.8"/></g></symbol>
+  <symbol id="w-storm" viewBox="0 0 32 32"><use href="#w-cloud" y="-5" color="#E3E8F0"/><path d="M17.5 19.5l-5 6.5h4l-2 5 6.5-7.5h-4l2.5-4z" fill="#FFD43B"/></symbol>
+  <symbol id="w-sset" viewBox="0 0 32 32"><path d="M9.5 23a6.5 6.5 0 0 1 13 0z" fill="#FFB547"/><path d="M5 23h22M16 5v8M12.5 9.5L16 13l3.5-3.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+  <symbol id="w-srise" viewBox="0 0 32 32"><path d="M9.5 23a6.5 6.5 0 0 1 13 0z" fill="#FFC83D"/><path d="M5 23h22M16 13V5M12.5 8.5L16 5l3.5 3.5" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/></symbol>
+  <!-- Card labels -->
+  <symbol id="u-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="u-cal" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></symbol>
+  <symbol id="u-shirt" viewBox="0 0 24 24"><path d="M8.5 4L4 6.5l1.8 3.6 2.2-1V20h8V9.1l2.2 1 1.8-3.6L15.5 4c-.6 1.3-1.9 2-3.5 2s-2.9-.7-3.5-2z"/></symbol>
+  <symbol id="u-sun" viewBox="0 0 24 24"><path d="M4 18h16M7.5 18a4.5 4.5 0 0 1 9 0M12 6.5V9M5.6 10.6l1.6 1.6M18.4 10.6l-1.6 1.6"/></symbol>
+  <symbol id="u-moon" viewBox="0 0 24 24"><path d="M15 4.5a8 8 0 1 0 4.5 12.5 6.5 6.5 0 0 1-4.5-12.5z"/></symbol>
+  <symbol id="u-wind" viewBox="0 0 24 24"><path d="M3 9h11a3 3 0 1 0-3-3M3 13h15a3 3 0 1 1-3 3M3 17h7"/></symbol>
+  <symbol id="u-air" viewBox="0 0 24 24"><path d="M4 8h9M4 12h14M4 16h9"/><circle cx="17" cy="8" r="1.4"/><circle cx="17" cy="16" r="1.4"/></symbol>
+  <symbol id="u-thermo" viewBox="0 0 24 24"><path d="M10 14V5a2 2 0 0 1 4 0v9a4 4 0 1 1-4 0z"/></symbol>
+  <symbol id="u-warn" viewBox="0 0 24 24"><path d="M12 3.5L2.5 20h19z"/><path d="M12 10v4.5M12 17.3v.2"/></symbol>
+  <symbol id="u-off" viewBox="0 0 24 24"><path d="M3 9a14 14 0 0 1 18 0M6.5 12.5a9 9 0 0 1 11 0M10 16a4 4 0 0 1 4 0M4 4l16 16"/></symbol>
+  <symbol id="u-left" viewBox="0 0 24 24"><path d="M14.5 5.5L8 12l6.5 6.5"/></symbol>
+  <symbol id="u-right" viewBox="0 0 24 24"><path d="M9.5 5.5L16 12l-6.5 6.5"/></symbol>
+  <symbol id="u-chart" viewBox="0 0 24 24"><path d="M4 19h16M5 15l4.5-5 4 3L19 6"/></symbol>
+  <symbol id="u-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></symbol>
+  <!-- What to wear -->
+  <symbol id="c-coat" viewBox="0 0 24 24"><path d="M8.5 3.5L4.2 6 2.6 15l3 .8L7 11.2V21h10v-9.8l1.4 4.6 3-.8-1.6-9-4.3-2.5"/><path d="M8.5 3.5c.9 1.7 2 2.5 3.5 2.5s2.6-.8 3.5-2.5M12 6v15M7 14h3.5M13.5 14H17"/></symbol>
+  <symbol id="c-jacket" viewBox="0 0 24 24"><path d="M8.5 3.5L4.5 6 3 14l2.5.7L7 11v10h10V11l1.5 3.7L21 14l-1.5-8-4-2.5"/><path d="M8.5 3.5L12 8l3.5-4.5M12 8v13"/></symbol>
+  <symbol id="c-rain" viewBox="0 0 24 24"><path d="M8 6.5c0-2.5 1.8-4 4-4s4 1.5 4 4"/><path d="M8 6.5L4.5 8.5 3 15.5l2.5.7L7 12.5V21h10v-8.5l1.5 3.7 2.5-.7-1.5-7-3.5-2"/><path d="M12 6.5V21"/><path d="M9.5 15.5v1.5M14.5 15.5v1.5"/></symbol>
+  <symbol id="c-hat" viewBox="0 0 24 24"><path d="M5 16.5a7 7 0 0 1 14 0"/><rect x="4" y="16.5" width="16" height="3.5" rx="1.2"/><circle cx="12" cy="7.6" r="1.8"/></symbol>
+  <symbol id="c-gloves" viewBox="0 0 24 24"><path d="M8 20.5V15l-2.4-3.4a1.6 1.6 0 0 1 2.6-1.9L9 10.8V7a3.5 3.5 0 0 1 7 0v13.5z"/><path d="M8 17.5h8"/></symbol>
+  <symbol id="c-scarf" viewBox="0 0 24 24"><path d="M5.5 5h13v3.5c0 1.6-2.9 2.8-6.5 2.8S5.5 10.1 5.5 8.5z"/><path d="M13 11.2V20l2.3-1.3L17.5 20v-9.5"/><path d="M13.5 17h4"/></symbol>
+  <symbol id="c-boots" viewBox="0 0 24 24"><path d="M7 3.5h5.5V13l5 2.2a2.5 2.5 0 0 1 1.5 2.3v2.5H7z"/><path d="M7 17.5h12"/></symbol>
+  <symbol id="c-tshirt" viewBox="0 0 24 24"><path d="M8.5 4L4 6.5l1.8 3.6 2.2-1V20h8V9.1l2.2 1 1.8-3.6L15.5 4c-.6 1.3-1.9 2-3.5 2s-2.9-.7-3.5-2z"/></symbol>
+  <symbol id="c-shorts" viewBox="0 0 24 24"><path d="M5.5 5h13l1 13h-5.5L12 11l-2 7H4.5z"/><path d="M5.5 8h13"/></symbol>
+</svg>
+<div id="app"><div id="view"></div><div id="sheet" class="sheet" hidden></div></div>
+<script src="calendar.js"></script>
+<script>
+  // Content (Board21.save): { saved: { at, place, days, wear, from } }, the last forecast drawn, for offline.
+  //   at     when what's saved last changed, in ms. place: the place's GeoNames id. from: "nws" when the Weather
+  //          Service's forecast was the backup (else left out).
+  //   days   the 7 days as drawn: { date: 'YYYY-MM-DD' (the place's), code, low, high, rain }, °F unrounded.
+  //   wear   What to wear for today and the next school day, by date: { label, advice, items, feels8, high, at }, or
+  //          { label, none: true } past the forecast. Never "Feels like … now": it changes every half hour.
+  //   Saved only when it would draw differently (whole degrees, tens of percent), never because time passed.
+  // Config (Board21.saveConfig): { place: { id, name, region, country, lat, lon, tz }, units: 'f' | 'c',
+  //   hide: [...parts], simple, still, date: 'YYYY-MM-DD' | null }. Every menu setting and the place: no student's data.
+  // Each window asks on its own: its own place, clocks, and saves. Nothing is kept outside the board.
+  'use strict';
+  const HOST = { forecast: 'https://api.open-meteo.com', air: 'https://air-quality-api.open-meteo.com', archive: 'https://archive-api.open-meteo.com',
+    search: 'https://geocoding-api.open-meteo.com', nws: 'https://api.weather.gov' };
+  const SITE = 'https://open-meteo.com/';
+  const WHEELING = { id: 4916311, name: 'Wheeling', region: 'Illinois', country: 'United States', lat: 42.13919, lon: -87.92896, tz: 'America/Chicago' };
+  const PARTS = [['hourly', 'Hourly forecast'], ['days', '7-day forecast'], ['wear', 'What to wear'], ['sun', 'Sunrise and sunset'], ['moon', 'Moon'], ['wind', 'Wind'], ['air', 'Air quality'], ['watches', 'Watches']];
+  const MIN = 6e4, HOUR = 36e5;
+  const EVERY = { now: 30 * MIN, forecast: HOUR, air: 4 * HOUR, alerts: 5 * MIN };
+  const WAIT = 10000;          // a request's longest wait
+  const TOO_OLD = 90 * MIN;    // Now from the Weather Service, before it comes from Open-Meteo instead
+  const AIR_KEEP = 8 * HOUR;   // air quality from an older answer is hidden
+  const NB = ' ';
+  const EXT_ICON = '<svg viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10"/></svg>';
+  const CAL = self.B21WeatherCalendar || { noSchool: [], halfDays: [] };
+  const NO_SCHOOL = new Set(CAL.noSchool), HALF = new Set(CAL.halfDays);
+  const $ = id => document.getElementById(id);
+  const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+  const fin = v => typeof v === 'number' && isFinite(v);
+  const num0 = v => (fin(v) ? v : null);
+  // A time a date can be made from, in unix seconds: from 1900 to 2100. (Intl throws on one too far out.)
+  const okT = t => fin(t) && t > -2208988800 && t < 4102444800;
+  // A temperature that could be real, in °F: the air within ±150°, feels like within ±200° (a heat index can pass 150°).
+  const tF = (v, max = 150) => (fin(v) && v > -max && v < max ? v : null);
+
+  // ---- Dates and times, in the place's time zone. Every time is rounded to the minute before it is shown.
+  const fmts = new Map();
+  const fmt = (tz, o) => { const k = tz + JSON.stringify(o); if (!fmts.has(k)) fmts.set(k, new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, o))); return fmts.get(k); };
+  function partsOf(ms, tz) {
+    const o = {};
+    for (const p of fmt(tz, { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(ms)) o[p.type] = p.value;
+    return { ymd: `${o.year}-${o.month}-${o.day}`, h: +o.hour % 24, m: +o.minute };
+  }
+  const ymdOf = (ms, tz) => partsOf(ms, tz).ymd;
+  const round = ms => Math.round(ms / MIN) * MIN;
+  function clock(ms, tz) { const p = partsOf(round(ms), tz), h12 = p.h % 12 || 12; return (p.m ? `${h12}:${String(p.m).padStart(2, '0')}` : `${h12}`) + NB + (p.h < 12 ? 'AM' : 'PM'); }
+  const dUTC = s => { const [y, m, d] = s.split('-').map(Number); return Date.UTC(y, m - 1, d); };
+  const addDays = (s, n) => new Date(dUTC(s) + n * 864e5).toISOString().slice(0, 10);
+  const daysBetween = (a, b) => Math.round((dUTC(b) - dUTC(a)) / 864e5);
+  const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'], WDL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'], MONL = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+  const wd = s => new Date(dUTC(s)).getUTCDay();
+  const monthDay = s => `${MON[+s.slice(5, 7) - 1]} ${+s.slice(8, 10)}`;
+  const YMD = /^\d{4}-\d{2}-\d{2}$/;
+  const realDay = s => typeof s === 'string' && YMD.test(s) && new Date(dUTC(s)).toISOString().slice(0, 10) === s;
+  // "Today", "Tue" within 6 days, then "Mon, Nov 30".
+  const label = (d, today) => { const n = daysBetween(today, d); return n <= 6 ? WD[wd(d)] : `${WD[wd(d)]}, ${monthDay(d)}`; };
+  // "7:02 AM" today, "Fri 7:02 AM" within 6 days, "Nov 20" before that.
+  function updated(ms, tz) { const d = ymdOf(ms, tz), n = daysBetween(d, ymdOf(Date.now(), tz)); return n <= 0 ? clock(ms, tz) : n <= 6 ? `${WD[wd(d)]} ${clock(ms, tz)}` : monthDay(d); }
+  // Quiet hours, by the device's own clock: no timed requests from 8 PM until 6 AM and this window's own minute.
+  const OFFSET = Math.floor(Math.random() * 15);
+  function quiet(ms) { const t = new Date(ms), h = t.getHours(); return h >= 20 || h < 6 || (h === 6 && t.getMinutes() < OFFSET); }
+
+  // ---- School days: the district's calendar, whatever the place. After it, weekdays.
+  const isSchool = s => { const d = wd(s); return d > 0 && d < 6 && !NO_SCHOOL.has(s); };
+  function nextSchool(s) { for (let i = 1; i < 400; i++) { const d = addDays(s, i); if (isSchool(d)) return d; } return addDays(s, 1); }
+  const schoolHours = s => (HALF.has(s) ? [8, 11] : [8, 15]);
+  // Which day What to wear shows: Today on a school day before 2 PM, else the next school day (Today a tap away).
+  function plan(ms) {
+    const p = partsOf(ms, config.place.tz), school = isSchool(p.ymd), next = nextSchool(p.ymd);
+    return { today: school ? p.ymd : null, show: school && p.h < 14 ? 'today' : 'next', next, label: label(next, p.ymd), day: p.ymd };
+  }
+
+  // ---- What to wear: by feels like over the school hours (°F, whatever the units). The coldest hour picks the row.
+  const CLOTHES = { coat: 'Coat', jacket: 'Jacket', rain: 'Rain jacket', hat: 'Hat', gloves: 'Gloves', scarf: 'Scarf', boots: 'Boots', tshirt: 'T-shirt', shorts: 'Shorts' };
+  const TIER = { 'very cold': ['coat', 'hat', 'gloves', 'scarf'], cold: ['coat', 'hat', 'gloves'], chilly: ['coat'], cool: ['jacket'], mild: ['tshirt'], warm: ['tshirt', 'shorts'] };
+  function advise(list) {
+    const f = list.map(h => h.feels).filter(fin);
+    if (!f.length) return null;
+    const lo = Math.min(...f), hi = Math.max(...f);
+    const tier = lo < 10 ? 'very cold' : lo < 32 ? 'cold' : lo < 45 ? 'chilly' : lo < 60 ? 'cool' : hi >= 75 ? 'warm' : 'mild';
+    const rain = list.some(h => h.pop >= 40 && h.temp > 32), snow = list.some(h => h.pop >= 40 && fin(h.temp) && h.temp <= 32);
+    return { tier, advice: `Dress for ${tier} weather.` + (rain ? ' Bring a rain jacket.' : '') + (snow ? ' Wear boots.' : ''),
+      items: TIER[tier].concat(rain ? ['rain'] : [], snow ? ['boots'] : []) };
+  }
+  const ADVICE = /^Dress for (very cold|cold|chilly|cool|mild|warm) weather\.( Bring a rain jacket\.)?( Wear boots\.)?$/;
+  // A day's What to wear from the hourly forecast, or none when the forecast doesn't reach its school hours. Today, the
+  // hours still ahead are enough: the Weather Service's forecast starts at this hour.
+  function wearFor(day, hours, today) {
+    const [a, b] = schoolHours(day), tz = config.place.tz, hr = h => partsOf(h.t * 1000, tz).h;
+    const in_ = hours.filter(h => { const p = partsOf(h.t * 1000, tz); return p.ymd === day && p.h >= a && p.h <= b && p.m === 0; });
+    const from = day === today ? Math.max(a, partsOf(Date.now(), tz).h) : a;
+    const whole = in_.length >= b - a + 1 || (from <= b && in_.filter(h => hr(h) >= from).length >= b - from + 1);
+    const got = whole && advise(in_);
+    if (!got) return { label: day === today ? 'Today' : label(day, today), none: true };
+    let high = null, at = null;
+    for (const h of in_) if (fin(h.temp) && (high === null || h.temp > high)) { high = h.temp; at = h.t; }
+    const h8 = in_.find(h => partsOf(h.t * 1000, tz).h === 8);
+    return { label: day === today ? 'Today' : label(day, today), advice: got.advice, items: got.items, feels8: h8 ? num0(h8.feels) : null, high, at };
+  }
+
+  // ---- Sun and moon, worked out on the device (NOAA sunrise and sunset, Meeus moon phases), for the place's day.
+  const RAD = Math.PI / 180;
+  function moonEventJd(k) {
+    const T = k / 1236.85, q = Math.round((k - Math.floor(k)) * 4) % 4, s = Math.sin, E = 1 - 0.002516 * T;
+    const M = (2.5534 + 29.1053567 * k) * RAD, m = (201.5643 + 385.81693528 * k + 0.0107582 * T * T) * RAD, F = (160.7108 + 390.67050284 * k - 0.0016118 * T * T) * RAD;
+    let jd = 2451550.09766 + 29.530588861 * k + 0.00015437 * T * T - 69 / 86400;   // minus delta T, about 69 s
+    if (q % 2 === 0) jd += (q ? -0.40614 : -0.4072) * s(m) + (q ? 0.17302 : 0.17241) * E * s(M) + 0.01608 * s(2 * m) + 0.01039 * s(2 * F) + 0.00739 * E * s(m - M) - 0.00514 * E * s(m + M) + 0.00208 * E * E * s(2 * M);
+    else jd += -0.62801 * s(m) + 0.17172 * E * s(M) - 0.01183 * E * s(m + M) + 0.00862 * s(2 * m) + 0.00804 * s(2 * F) + 0.00454 * E * s(m - M) + 0.00204 * E * E * s(2 * M) + (q === 1 ? 1 : -1) * (0.00306 - 0.00038 * E * Math.cos(M) + 0.00026 * Math.cos(m));
+    return jd;
+  }
+  const MAIN = ['New moon', 'First quarter', 'Full moon', 'Last quarter'];
+  // The moon at a moment: the four main names on the place's calendar day of the event, the in-between names on other
+  // days, the fraction lit, and the times of the main phases from this lunation on.
+  function moonPhase(ms, tz) {
+    const jd = ms / 864e5 + 2440587.5, toMs = j => (j - 2440587.5) * 864e5;
+    let k = Math.floor((jd - 2451550.09766) / 29.530588861);
+    if (moonEventJd(k) > jd) k--;
+    if (moonEventJd(k + 1) <= jd) k++;
+    const ev = [0, 0.25, 0.5, 0.75, 1].map(f => moonEventJd(k + f));
+    const T = (jd - 2451545) / 36525, s = Math.sin;
+    const D = (297.8501921 + 445267.1114034 * T) * RAD, Ms = (357.5291092 + 35999.0502909 * T) * RAD, Mm = (134.9633964 + 477198.8675055 * T) * RAD;
+    const i = Math.PI - D - (6.289 * s(Mm) - 2.1 * s(Ms) + 1.274 * s(2 * D - Mm) + 0.658 * s(2 * D) + 0.214 * s(2 * Mm) + 0.11 * s(D)) * RAD;
+    const day = ymdOf(ms, tz);
+    let seg = 0;
+    while (seg < 3 && jd >= ev[seg + 1]) seg++;
+    let name = ['Waxing crescent', 'Waxing gibbous', 'Waning gibbous', 'Waning crescent'][seg];
+    for (let n = 0; n < 5; n++) if (ymdOf(toMs(ev[n]), tz) === day) name = MAIN[n % 4];
+    const phases = [0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75].map(f => ({ name: MAIN[Math.round(f * 4) % 4], at: round(toMs(moonEventJd(k + f))) }));
+    return { fraction: (1 + Math.cos(i)) / 2, waxing: seg < 2, name, phases };
+  }
+  // "Full moon today", "… tomorrow", "… on Thursday" within 6 days, or "… on Dec 23".
+  function nextPhase(m, ms, tz) {
+    const today = ymdOf(ms, tz), p = m.phases.find(x => ymdOf(x.at, tz) >= today);
+    if (!p) return '';
+    const d = ymdOf(p.at, tz), n = daysBetween(today, d);
+    return p.name + (n === 0 ? ' today' : n === 1 ? ' tomorrow' : n <= 6 ? ` on ${WDL[wd(d)]}` : ` on ${monthDay(d)}`);
+  }
+  // Sunrise and sunset on the place's calendar day s, rounded to the minute. null for a sun that doesn't rise or set.
+  function sunTimes(s, lat, lon) {
+    const day0 = dUTC(s);
+    function event(dir, min) {
+      for (let pass = 0; pass < 2; pass++) {
+        const T = ((day0 + min * 6e4) / 864e5 + 2440587.5 - 2451545) / 36525;
+        const L = (280.46646 + T * (36000.76983 + T * 0.0003032)) * RAD, M = (357.52911 + T * (35999.05029 - 0.0001537 * T)) * RAD;
+        const e = 0.016708634 - T * (0.000042037 + 0.0000001267 * T);
+        const C = Math.sin(M) * (1.914602 - T * (0.004817 + 0.000014 * T)) + Math.sin(2 * M) * (0.019993 - 0.000101 * T) + Math.sin(3 * M) * 0.000289;
+        const om = (125.04 - 1934.136 * T) * RAD, lam = L + (C - 0.00569 - 0.00478 * Math.sin(om)) * RAD;
+        const eps = (23 + (26 + (21.448 - T * (46.815 + T * (0.00059 - T * 0.001813))) / 60) / 60 + 0.00256 * Math.cos(om)) * RAD;
+        const dec = Math.asin(Math.sin(eps) * Math.sin(lam)), y = Math.pow(Math.tan(eps / 2), 2);
+        const eqt = 4 / RAD * (y * Math.sin(2 * L) - 2 * e * Math.sin(M) + 4 * e * y * Math.sin(M) * Math.cos(2 * L) - 0.5 * y * y * Math.sin(4 * L) - 1.25 * e * e * Math.sin(2 * M));
+        const c = Math.cos(90.833 * RAD) / (Math.cos(lat * RAD) * Math.cos(dec)) - Math.tan(lat * RAD) * Math.tan(dec);
+        if (c < -1 || c > 1) return null;
+        min = 720 - 4 * lon - eqt + dir * 4 * Math.acos(c) / RAD;
+      }
+      return round(day0 + min * 6e4);
+    }
+    return { rise: event(-1, 720 - 4 * lon - 360), set: event(1, 720 - 4 * lon + 360) };
+  }
+  const sunOn = ms => { const pl = config.place; return sunTimes(ymdOf(ms, pl.tz), pl.lat, pl.lon); };
+  function isDay(ms) { const s = sunOn(ms); return !s.rise || !s.set ? partsOf(ms, config.place.tz).h >= 6 && partsOf(ms, config.place.tz).h < 18 : ms >= s.rise && ms < s.set; }
+
+  // ---- Weather codes and the Weather Service's words, as the groups the sky is drawn from.
+  const group = c => c <= 0 ? 'clear' : c === 1 ? 'mostly' : c === 2 ? 'partly' : c === 3 ? 'cloudy' : c === 45 || c === 48 ? 'fog'
+    : c <= 57 ? 'drizzle' : c <= 67 || (c >= 80 && c <= 82) ? 'rain' : c <= 77 || c === 85 || c === 86 ? 'snow' : c >= 95 ? 'storm' : 'cloudy';
+  const CODE = { clear: 0, mostly: 1, partly: 2, cloudy: 3, fog: 45, drizzle: 53, rain: 63, snow: 73, storm: 95 };
+  function codeOfText(t) {
+    if (typeof t !== 'string' || !t.trim()) return null;
+    const has = w => new RegExp('\\b' + w + '\\b', 'i').test(t);
+    const g = has('Freezing Fog') ? 'fog' : has('Thunder\\w*') ? 'storm' : ['Snow', 'Flurries', 'Sleet', 'Ice', 'Freezing'].some(has) ? 'snow' : ['Rain', 'Showers'].some(has) ? 'rain'
+      : has('Drizzle') ? 'drizzle' : ['Fog', 'Mist', 'Haze', 'Smoke'].some(has) ? 'fog' : has('Overcast') || (has('Cloudy') && !has('Partly Cloudy')) ? 'cloudy' : has('Partly') ? 'partly'
+      : has('Mostly Sunny') || has('Mostly Clear') || has('Few') ? 'mostly' : ['Sunny', 'Clear', 'Fair'].some(has) ? 'clear' : 'cloudy';
+    return CODE[g];
+  }
+
+  // ---- Settings and saved data. Both can come from an imported file, so every field is checked.
+  function zoneOk(tz) { try { if (typeof tz !== 'string' || !tz || tz.length > 64) return false; new Intl.DateTimeFormat('en-US', { timeZone: tz }); return true; } catch (e) { return false; } }
+  const text80 = v => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : '');
+  function readPlace(p) {
+    if (!p || typeof p !== 'object') return null;
+    const name = text80(p.name), region = text80(p.region), country = text80(p.country);
+    if (!Number.isInteger(p.id) || p.id <= 0 || !name || name.length > 80 || region.length > 80 || country.length > 80) return null;
+    if (!fin(p.lat) || !fin(p.lon) || p.lat < -90 || p.lat > 90 || p.lon < -180 || p.lon > 180 || !zoneOk(p.tz)) return null;
+    return { id: p.id, name, region, country, lat: p.lat, lon: p.lon, tz: p.tz };
+  }
+  function readConfig(c) {
+    c = c && typeof c === 'object' && !Array.isArray(c) ? c : {};
+    const place = readPlace(c.place) || Object.assign({}, WHEELING);
+    const keys = PARTS.map(p => p[0]);
+    const hide = Array.isArray(c.hide) ? keys.filter(k => c.hide.includes(k)) : [];
+    const date = realDay(c.date) && c.date >= '1940-01-01' && c.date < ymdOf(Date.now(), place.tz) ? c.date : null;
+    return { place, units: c.units === 'c' ? 'c' : 'f', hide, simple: c.simple === true, still: c.still === true, date };
+  }
+  function readSaved(d) {
+    const s = d && typeof d === 'object' && d.saved;
+    if (!s || typeof s !== 'object' || !fin(s.at) || s.at < Date.UTC(2020, 0, 1) || s.at > Date.now() + 864e5 || !Number.isInteger(s.place) || !Array.isArray(s.days)) return null;
+    const days = s.days.slice(0, 8).filter(x => x && realDay(x.date) && Number.isInteger(x.code) && x.code >= 0 && x.code <= 99)
+      .map(x => ({ date: x.date, code: x.code, low: tF(x.low), high: tF(x.high), rain: fin(x.rain) ? Math.max(0, Math.min(100, x.rain)) : null }));
+    const wear = {};
+    if (s.wear && typeof s.wear === 'object') for (const [k, w] of Object.entries(s.wear).slice(0, 4)) {
+      if (!realDay(k) || !w || typeof w !== 'object') continue;
+      const lab = text80(w.label).slice(0, 20);
+      if (!lab) continue;
+      if (w.none === true) { wear[k] = { label: lab, none: true }; continue; }
+      if (typeof w.advice !== 'string' || !ADVICE.test(w.advice) || !Array.isArray(w.items)) continue;
+      wear[k] = { label: lab, advice: w.advice, items: w.items.filter(i => Object.prototype.hasOwnProperty.call(CLOTHES, i)).slice(0, 6), feels8: tF(w.feels8, 200), high: tF(w.high), at: okT(w.at) ? w.at : null };
+    }
+    return { at: s.at, place: s.place, days, wear, from: s.from === 'nws' ? 'nws' : undefined };
+  }
+  const save = () => Promise.resolve(Board21.save({ saved })).catch(() => {});   // (21Board keeps trying by itself)
+  const saveConfig = () => Promise.resolve(Board21.saveConfig(config)).catch(() => {});
+
+  // ---- State. A part that fails leaves what it feeds as it was.
+  let config = readConfig(null), saved = null, kiosk = false, started = false;
+  let gen = 0;                 // the place's turn: an answer for an earlier place is dropped
+  let nws = null;              // the Weather Service's lookup: { grid, x, y, station, name } | { abroad: true }
+  let nwsAsk = null;           // its request, while asking
+  let obs = null;              // Now from the airport: { at, t, feels, code, wind, gust, dir }
+  let fc = null;               // the forecast: { at, from, hours: [{ t, temp, feels, pop, code }], days: [{ date, code, low, high, rain }], current, currentAt }
+  let air = null;              // { at, now, days: { date: max } }
+  let alerts = [];             // the watches and warnings in force
+  let failed = false;          // every forecast source failed, with nothing in hand
+  let fcFailAt = 0;            // when the forecast's last try failed (Open-Meteo and the backup), since it last arrived
+  let alertsFailAt = 0;        // when the alerts' last try failed, since they last arrived
+  let nowAsked = false;        // the forecast on its way asks for Now too
+  let omBlockedUntil = 0;      // Open-Meteo's Retry-After
+  let view = 'main', wearPick = null, planWas = '';
+  let day = null;              // On a date: { date, state: 'wait' | 'ok' | 'none' (no weather that day) | 'fail' | 'off', … }
+  const clocks = { now: { last: 0, busy: false }, forecast: { last: 0, busy: false }, air: { last: 0, busy: false }, alerts: { last: 0, busy: false } };
+  const online = () => navigator.onLine !== false;
+  const shown = k => !config.hide.includes(k);
+
+  // ---- Asking. No cookies, no Referer, no custom headers (so no preflight), 10 s at most.
+  function get(url) {
+    const stop = typeof AbortController === 'function' ? new AbortController() : null, timer = setTimeout(() => { if (stop) stop.abort(); }, WAIT);
+    return fetch(url, { credentials: 'omit', referrerPolicy: 'no-referrer', cache: 'no-store', signal: stop ? stop.signal : undefined })
+      .then(r => r.status === 429 ? Promise.reject({ status: 429, after: Number(r.headers.get('retry-after')) }) : r.ok ? r.json() : Promise.reject({ status: r.status }))
+      .finally(() => clearTimeout(timer));
+  }
+  const d4 = x => String(+x.toFixed(4));   // the Weather Service redirects a point with more than 4 decimals
+  const q = o => Object.entries(o).map(([k, v]) => k + '=' + encodeURIComponent(v).replace(/%2C/g, ',')).join('&');
+  const pl = () => config.place;
+  // Open-Meteo's forecast. With Now when the airport's report won't do.
+  const forecastUrl = withNow => `${HOST.forecast}/v1/forecast?` + q({ latitude: pl().lat, longitude: pl().lon, hourly: 'temperature_2m,apparent_temperature,precipitation_probability,weather_code',
+    daily: 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max', forecast_days: 8, timezone: pl().tz, timeformat: 'unixtime', temperature_unit: 'fahrenheit', wind_speed_unit: 'mph' })
+    + (withNow ? '&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,wind_direction_10m,wind_gusts_10m,is_day' : '');
+
+  // The Weather Service's lookup, once per place: its grid, and its nearest station. Abroad it answers 404.
+  function lookup() {
+    if (nws) return Promise.resolve(nws);
+    if (nwsAsk) return nwsAsk;
+    const g = gen;
+    nwsAsk = get(`${HOST.nws}/points/${d4(pl().lat)},${d4(pl().lon)}`).then(j => {
+      const p = j && j.properties || {};
+      if (!/^[A-Z]{3}$/.test(p.gridId) || !Number.isInteger(p.gridX) || !Number.isInteger(p.gridY) || p.gridX < 0 || p.gridY < 0 || p.gridX > 999 || p.gridY > 999) return Promise.reject({ status: 0 });
+      const grid = { grid: p.gridId, x: p.gridX, y: p.gridY };
+      return get(`${HOST.nws}/gridpoints/${grid.grid}/${grid.x},${grid.y}/stations`).then(s => {
+        const f = (s && Array.isArray(s.features) ? s.features : []).map(f => f && f.properties).find(p => p && /^[A-Z0-9]{3,5}$/.test(p.stationIdentifier));
+        if (!f) return Promise.reject({ status: 0 });
+        return Object.assign(grid, { station: f.stationIdentifier, name: stationName(f.stationIdentifier, f.name) });
+      });
+    }, e => (e && e.status === 404 ? { abroad: true } : Promise.reject(e)))
+      .then(v => { if (g === gen) { nws = v; setMenu(); } return v; })
+      .finally(() => { if (g === gen) nwsAsk = null; });
+    return nwsAsk;
+  }
+  // KPWK's name is the airport's old one. Every other station: the part after the last comma.
+  function stationName(id, n) {
+    if (id === 'KPWK') return 'Chicago Executive Airport';
+    n = text80(n);
+    const i = n.lastIndexOf(',');
+    return (i >= 0 ? n.slice(i + 1).trim() : n).slice(0, 60) || id;
+  }
+
+  // Each part on its own clock. A failure is tried once more after 5 to 10 seconds, then waits for the next turn.
+  function ask(part, retry) {
+    const c = clocks[part];
+    if (c.busy || !online()) return;
+    c.busy = true; c.last = Date.now();
+    const g = gen;
+    ASK[part]().then(() => { c.busy = false; if (g === gen) draw(); }, err => {
+      c.busy = false;
+      if (g !== gen) return;
+      if (!retry && !(err && err.status === 429) && !(err && err.status === 404)) setTimeout(() => { if (g === gen && visible()) ask(part, true); }, 5000 + Math.random() * 5000);
+      draw();
+    }).catch(() => {});
+  }
+  const ASK = {
+    now: () => lookup().then(n => {
+      if (n.abroad) return needNow();
+      const g = gen;
+      return get(`${HOST.nws}/stations/${n.station}/observations?limit=12`).then(j => { if (g === gen) takeObs(j); return needNow(); });
+    }),
+    forecast: () => {
+      const g = gen, withNow = !fc || !nowFresh();   // (the first time, and while Now comes from Open-Meteo)
+      if (Date.now() < omBlockedUntil) return backup(g);
+      nowAsked = withNow;
+      return get(forecastUrl(withNow)).then(j => {
+        nowAsked = false;
+        if (g !== gen) return;
+        const f = readOM(j);
+        if (!f) return Promise.reject({ status: 0 });
+        if (!f.current && fc && fc.current && fc.from === 'om') { f.current = fc.current; f.currentAt = fc.currentAt; }
+        fc = f; failed = false; fcFailAt = 0; keep();
+        return needNow();   // (Now grew too old while it was on its way)
+      }, e => {
+        nowAsked = false;
+        if (e && e.status === 429) omBlockedUntil = Date.now() + (e.after > 0 ? e.after * 1000 : HOUR);
+        return backup(g).catch(() => Promise.reject(e));
+      });
+    },
+    air: () => {
+      const g = gen;
+      return get(`${HOST.air}/v1/air-quality?` + q({ latitude: pl().lat, longitude: pl().lon, current: 'us_aqi', hourly: 'us_aqi', forecast_days: 5, timezone: pl().tz, timeformat: 'unixtime' }))
+        .then(j => { if (g === gen) air = readAir(j) || air; });
+    },
+    alerts: () => {
+      const g = gen;
+      return lookup().then(n => {
+        if (n.abroad) { alerts = []; return; }
+        return get(`${HOST.nws}/alerts/active?point=${d4(pl().lat)},${d4(pl().lon)}&status=actual`).then(j => { if (g === gen) alerts = readAlerts(j); });
+      }).then(() => { if (g === gen) alertsFailAt = 0; }, e => { if (g === gen) alertsFailAt = Date.now(); return Promise.reject(e); });
+    }
+  };
+  // The Weather Service's forecast, while Open-Meteo is down or has turned the school away.
+  function backup(g) {
+    return lookup().then(n => {
+      if (n.abroad) return Promise.reject({ status: 0 });
+      const base = `${HOST.nws}/gridpoints/${n.grid}/${n.x},${n.y}/forecast`;
+      return Promise.all([get(base), get(base + '/hourly')]).then(([d, h]) => {
+        if (g !== gen) return;
+        const f = readNWS(d, h);
+        if (!f) return Promise.reject({ status: 0 });
+        fc = f; failed = false; fcFailAt = 0; keep();
+      });
+    }).catch(e => { if (g === gen) { if (!fc) failed = true; fcFailAt = Date.now(); } return Promise.reject(e); });
+  }
+  // Now is too old, or abroad: Open-Meteo's own. Each forecast asks for it then, once an hour. At once only when the
+  // forecast in hand has none from this hour, and none is on its way or due.
+  function needNow() {
+    if (nowFresh() || Date.now() < omBlockedUntil) return;
+    if (fc && fc.from === 'om' && fc.currentAt && Date.now() - fc.currentAt < EVERY.forecast) return;
+    const f = clocks.forecast;
+    if (f.busy ? nowAsked : f.last && Date.now() - f.last >= EVERY.forecast) return;   // (the forecast on its way, or due now, brings it)
+    const g = gen;
+    return get(forecastUrl(true)).then(j => { const f = readOM(j); if (g === gen && f) { fc = f; failed = false; fcFailAt = 0; keep(); } }).catch(() => {});
+  }
+  const nowFresh = () => !!(obs && obs.t != null && Date.now() - obs.at <= TOO_OLD);
+
+  // ---- Reading what comes back. Every field can be missing or null.
+  const arr = (o, k) => (o && Array.isArray(o[k]) ? o[k] : []);
+  function readOM(j) {
+    const h = j && j.hourly, d = j && j.daily, tz = pl().tz;
+    const hours = arr(h, 'time').map((t, i) => ({ t, temp: num0(arr(h, 'temperature_2m')[i]), feels: num0(arr(h, 'apparent_temperature')[i]), pop: num0(arr(h, 'precipitation_probability')[i]), code: num0(arr(h, 'weather_code')[i]) }))
+      .filter(x => okT(x.t));
+    const days = arr(d, 'time').map((t, i) => ({ date: okT(t) ? ymdOf(t * 1000 + 6 * HOUR, tz) : null, code: num0(arr(d, 'weather_code')[i]), low: num0(arr(d, 'temperature_2m_min')[i]), high: num0(arr(d, 'temperature_2m_max')[i]), rain: num0(arr(d, 'precipitation_probability_max')[i]) }))
+      .filter(x => x.date && fin(x.code));
+    if (!hours.length || !days.length) return null;
+    const c = j.current;
+    const current = c && okT(c.time) && fin(c.temperature_2m) ? { at: c.time * 1000, t: c.temperature_2m, feels: num0(c.apparent_temperature), code: fin(c.weather_code) ? c.weather_code : null,
+      wind: num0(c.wind_speed_10m), gust: num0(c.wind_gusts_10m), dir: num0(c.wind_direction_10m) } : null;
+    return { at: Date.now(), from: 'om', hours, days, current, currentAt: current ? Date.now() : 0 };
+  }
+  const C2F = c => c * 9 / 5 + 32, KMH = 1.609344;
+  const val = q => (q && fin(q.value) ? q.value : null);
+  function takeObs(j) {
+    const fs = arr(j, 'features').map(f => f && f.properties).filter(p => p && Date.parse(p.timestamp) > 0).sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp));
+    const p = fs.find(p => val(p.temperature) !== null);
+    if (!p) return;
+    const at = Date.parse(p.timestamp);
+    if (obs && obs.at > at) return;   // (different copies of "latest": never an older one over a newer one)
+    const sky = fs.find(x => typeof x.textDescription === 'string' && x.textDescription.trim());
+    const t = C2F(val(p.temperature)), wc = val(p.windChill), hx = val(p.heatIndex), w = val(p.windSpeed), g = val(p.windGust), dir = val(p.windDirection);
+    obs = { at, t, feels: wc !== null ? C2F(wc) : hx !== null ? C2F(hx) : t, code: sky ? codeOfText(sky.textDescription) : null,
+      wind: w !== null ? w / KMH : null, gust: g !== null ? g / KMH : null, dir: w ? dir : null };
+  }
+  // The Weather Service's forecast: a day's high from its daytime period, its low from the night after.
+  function readNWS(d, h) {
+    const tz = pl().tz, ps = arr(d && d.properties, 'periods').filter(p => p && fin(p.temperature) && Date.parse(p.startTime) > 0);
+    const pop = p => (p && p.probabilityOfPrecipitation && fin(p.probabilityOfPrecipitation.value) ? p.probabilityOfPrecipitation.value : 0);
+    const days = [];
+    for (let i = 0; i < ps.length; i++) {
+      const p = ps[i], date = ymdOf(Date.parse(p.startTime), tz);
+      if (p.isDaytime) { const n = ps[i + 1] && !ps[i + 1].isDaytime ? ps[i + 1] : null; days.push({ date, code: codeOfText(p.shortForecast) ?? 3, high: p.temperature, low: n ? n.temperature : null, rain: Math.max(pop(p), pop(n)) }); if (n) i++; }
+      else if (!days.length) days.push({ date, code: codeOfText(p.shortForecast) ?? 3, high: null, low: p.temperature, rain: pop(p) });
+    }
+    const hours = arr(h && h.properties, 'periods').filter(p => p && fin(p.temperature) && Date.parse(p.startTime) > 0).map(p => {
+      const t = p.temperature, v = +(String(p.windSpeed || '').match(/(\d+(?:\.\d+)?)\s*mph\s*$/) || [, NaN])[1];
+      return { t: Date.parse(p.startTime) / 1000, temp: t, feels: chill(t, v), pop: pop(p), code: codeOfText(p.shortForecast) ?? 3 };
+    });
+    if (!days.length || !hours.length) return null;
+    return { at: Date.now(), from: 'nws', hours, days, current: null, currentAt: 0 };
+  }
+  const chill = (t, v) => (t <= 50 && v > 3 ? 35.74 + 0.6215 * t - 35.75 * Math.pow(v, 0.16) + 0.4275 * t * Math.pow(v, 0.16) : t);
+  function readAir(j) {
+    const h = j && j.hourly, now = j && j.current && fin(j.current.us_aqi) ? j.current.us_aqi : null, days = {};
+    arr(h, 'time').forEach((t, i) => { const v = arr(h, 'us_aqi')[i]; if (okT(t) && fin(v)) { const d = ymdOf(t * 1000, pl().tz); days[d] = Math.max(days[d] || 0, v); } });
+    return now === null && !Object.keys(days).length ? null : { at: Date.now(), now, days };
+  }
+  // Watches and warnings: the newest message for each event, then only those still in force.
+  const NOT_HERE = new Set(['Gale', 'Storm', 'Hurricane Force Wind', 'Heavy Freezing Spray', 'Hazardous Seas', 'Special Marine', 'Law Enforcement', 'Hazardous Materials',
+    'Nuclear Power Plant', 'Radiological Hazard', 'Shelter In Place', 'Civil Danger', 'Fire', 'Earthquake', 'Volcano', 'Ashfall']);
+  function readAlerts(j) {
+    const by = new Map(), now = Date.now();
+    for (const f of arr(j, 'features')) {
+      const p = f && f.properties;
+      if (!p || typeof p.event !== 'string' || !(Date.parse(p.sent) > 0)) continue;
+      const was = by.get(p.event);
+      if (!was || Date.parse(p.sent) > Date.parse(was.sent)) by.set(p.event, p);
+    }
+    const out = [];
+    for (const p of by.values()) {
+      const vtec = arr(p.parameters, 'VTEC').find(v => typeof v === 'string') || '', act = (/^\/[OTEX]\.([A-Z]{3})\./.exec(vtec) || [])[1];
+      const ends = Date.parse(p.ends) || null, until = ends || Date.parse(p.expires) || null;
+      const m = /^(.*) (Warning|Watch)$/.exec(p.event.trim());
+      if (p.messageType === 'Cancel' || act === 'CAN' || act === 'EXP' || (until && until <= now) || !m || NOT_HERE.has(m[1])) continue;
+      out.push({ event: p.event.trim().slice(0, 80), kind: m[2] === 'Warning' ? 'warn' : 'watch', start: Date.parse(p.onset) || Date.parse(p.effective) || null, end: ends, until,
+        text: whatWhere(p.description), todo: paras(p.instruction), sent: Date.parse(p.sent) });
+    }
+    return out.sort((a, b) => (a.kind === b.kind ? b.sent - a.sent : a.kind === 'warn' ? -1 : 1));
+  }
+  // Hard-wrapped lines joined, blank lines kept as paragraphs.
+  const paras = t => (typeof t === 'string' ? t.slice(0, 4000).split(/\n\s*\n/).map(x => x.replace(/\s*\n\s*/g, ' ').trim()).filter(Boolean) : []);
+  function whatWhere(t) {
+    if (typeof t !== 'string') return [];
+    const part = k => { const m = new RegExp('\\*\\s*' + k + '\\.\\.\\.([\\s\\S]*?)(?=\\n\\s*\\*\\s*[A-Z][A-Z ]*\\.\\.\\.|$)').exec(t); return m ? paras(m[1]) : []; };
+    const w = part('WHAT').concat(part('WHERE'));
+    return w.length ? w : paras(t.replace(/^\s*\*\s*[A-Z][A-Z ]*\.\.\./gm, ''));
+  }
+  // "Until 6 PM", "Until Wed 9 AM", "Tue 11 PM to Wed 9 AM", "Wed 12 AM to 9 AM", "Until further notice", "From Tue 11 PM".
+  function span(a) {
+    const tz = pl().tz, now = Date.now(), today = ymdOf(now, tz), dayOf = ms => ymdOf(ms, tz), at = ms => `${WD[wd(dayOf(ms))]} ${clock(ms, tz)}`;
+    const started = !a.start || a.start <= now;
+    if (!a.end) return started ? 'Until further notice' : `From ${at(a.start)}`;
+    if (started) return dayOf(a.end) === today ? `Until ${clock(a.end, tz)}` : `Until ${at(a.end)}`;
+    return dayOf(a.start) === dayOf(a.end) ? `${at(a.start)} to ${clock(a.end, tz)}` : `${at(a.start)} to ${at(a.end)}`;
+  }
+
+  // ---- What the window draws, from what's in hand: live, or the saved forecast offline.
+  // Now: the airport's report while it's fresh, else the newer of Open-Meteo's and the report (in the quiet hours
+  // nothing new comes, so never an older reading over a newer one).
+  function nowOf() {
+    const om = fc && fc.current;
+    let n = nowFresh() || (obs && !(om && om.at >= obs.at)) ? Object.assign({ src: 'nws' }, obs) : om ? Object.assign({ src: 'om' }, om) : null;
+    if (!n) return null;
+    if (n.code == null) { const h = fc && hourAt(Date.now()); n.code = h && fin(h.code) ? h.code : om && fin(om.code) ? om.code : 3; }
+    return n;
+  }
+  const hourAt = ms => fc.hours.filter(h => h.t * 1000 <= ms).pop() || fc.hours[0];
+  function model() {
+    const tz = pl().tz, now = Date.now(), today = ymdOf(now, tz), pln = plan(now);
+    const s = saved && saved.place === pl().id ? saved : null;
+    // Online, but every source has failed for a while (a school's filter, an outage): the saved view, as offline. The
+    // forecast is two turns old and its last try failed, Now from the airport is too old, and the alerts' last try failed
+    // too (abroad there are none). While the alerts still come, a warning still shows.
+    const lost = !!(fc && fcFailAt && now - fc.at >= 2 * EVERY.forecast && !nowFresh() && (alertsFailAt || (nws && nws.abroad)) && s);
+    const off = !online() || (failed && !fc) || lost;
+    const src = off ? (s && s.from) || 'om' : fc ? fc.from : 'om';
+    // (An alert that ends while no request runs, in the quiet hours, goes when it ends.)
+    const d = { place: pl().name, src, offline: off ? { kind: online() ? 'fail' : 'off', when: s ? updated(s.at, tz) : '' } : null, alerts: off ? [] : alerts.filter(a => !a.until || a.until > now) };
+    const sun = sunOn(now), m = moonPhase(now, tz);
+    const daylight = sun.rise && sun.set ? Math.round((sun.set - sun.rise) / MIN) : null;
+    // (The sun moves along its arc in steps of 2%, and the moon by whole percent, so time alone seldom redraws.)
+    d.sun = { rise: sun.rise ? clock(sun.rise, tz) : '–', set: sun.set ? clock(sun.set, tz) : '–', f: sun.rise && sun.set && now >= sun.rise && now < sun.set ? Math.round((now - sun.rise) / (sun.set - sun.rise) * 50) / 50 : null,
+      daylight: daylight === null ? '' : `${Math.floor(daylight / 60)} hr ${daylight % 60} min` };
+    d.moon = { fraction: Math.round(m.fraction * 100) / 100, waxing: m.waxing, name: m.name, next: nextPhase(m, now, tz) };
+    let days;
+    if (off) days = s ? s.days.filter(x => x.date >= today).slice(0, 7) : [];
+    else days = fc ? fc.days.filter(x => x.date >= today).slice(0, 7) : [];
+    if (off && !days.length) return Object.assign(d, { empty: true });
+    if (!off && !fc) return Object.assign(d, { empty: true, loading: !failed });
+    d.days = days.map((x, i) => [i ? WD[wd(x.date)] : 'Today', x.code, x.low, x.high, x.rain, x.date]);
+    d.today = { lo: days[0] && days[0].date === today ? days[0].low : null, hi: days[0] && days[0].date === today ? days[0].high : null };
+    if (off && !(days[0] && days[0].date === today)) return Object.assign(d, { empty: true });
+    // What to wear: today and the next school day.
+    const w = { today: null, next: null };
+    // (A day the forecast in hand doesn't cover, such as today's school hours once the backup is in use: the saved advice.)
+    const live = day => { if (!day) return null; const w0 = wearFor(day, fc.hours, today); return w0.none && s && s.wear[day] && !s.wear[day].none ? kept(day) : w0; };
+    const kept = day => (day && s && s.wear[day] ? Object.assign({}, s.wear[day], { label: day === today ? 'Today' : label(day, today) }) : null);
+    if (off) { w.today = kept(pln.today); w.next = kept(pln.next); } else { w.today = live(pln.today); w.next = live(pln.next); }
+    if (!w.next && w.today) { w.next = w.today; w.today = null; }
+    d.wear = w.next ? w : null;
+    d.plan = pln;
+    if (off) return d;
+    // Live only: Now, the hours, air quality.
+    const n = nowOf();
+    if (n) {
+      const s1 = sun.set, day = isDay(now);
+      d.now = { t: n.t, feels: n.feels, code: n.code, day, dusk: day && s1 && now >= s1 - 30 * MIN && now < s1, wind: n.wind, gust: n.gust, dir: n.dir,
+        at: clock(n.at, tz), station: n.src === 'nws' && nws && nws.name ? nws.name : null };
+      const ft = Math.round(n.feels), tt = Math.round(n.t);
+      d.now.why = !fin(n.feels) ? '' : ft < tt ? 'Wind makes it feel colder.' : ft > tt && tt >= 80 ? 'Humidity makes it feel warmer.' : 'About the same as the temperature.';
+    }
+    d.updated = clock(fc.at, tz);
+    d.hours = hoursOf(d.now, now);
+    d.sum = summary(d.hours.filter(h => typeof h[2] === 'number'));
+    d.warm = !!(d.now && d.now.day && d.now.t >= 75 && /clear|mostly/.test(group(d.now.code)));
+    if (air && now - air.at < AIR_KEEP && (fin(air.now) || air.days[today] != null)) {
+      const dd = Object.keys(air.days).filter(x => x >= today).sort();
+      d.air = { aqi: Math.round(fin(air.now) ? air.now : air.days[today]), later: airLater(dd.map(x => [x, air.days[x]]), today) };
+    }
+    return d;
+  }
+  // Now, then the next 11 hours, with sunrise or sunset at its minute when it falls inside.
+  function hoursOf(n, now) {
+    const tz = pl().tz, next = fc.hours.filter(h => h.t * 1000 > now).slice(0, 11), cur = hourAt(now);
+    const out = [['Now', n ? n.t : cur.temp, n ? n.code : cur.code, n ? n.day : isDay(now), cur ? cur.pop : null, now]];
+    for (const h of next) out.push([clock(h.t * 1000, tz), h.temp, h.code, isDay(h.t * 1000 + 30 * MIN), h.pop, h.t * 1000]);
+    const end = out[out.length - 1][5], evs = [];
+    for (const dd of [0, 1]) { const s = sunTimes(addDays(ymdOf(now, tz), dd), pl().lat, pl().lon); if (s.rise) evs.push([s.rise, 'sunrise']); if (s.set) evs.push([s.set, 'sunset']); }
+    for (const [at, kind] of evs) if (at > now && at < end) { const i = out.findIndex(h => h[5] > at); out.splice(i, 0, [clock(at, tz), null, kind, 1, null, at]); }
+    return out;
+  }
+  // The next 12 hours by sky: "Sunny until 3 PM, then cloudy until 8 PM." Clear and mostly are one sky.
+  function summary(hours) {
+    const g = h => { const x = group(h[2]); return x === 'mostly' ? 'clear' : x; }, runs = [];
+    for (const h of hours) { if (!runs.length || g(runs[runs.length - 1].first) !== g(h)) runs.push({ first: h }); }
+    if (!runs.length) return '';
+    const W = r => words(group(r.first[2]), r.first[3]), lc = s => s[0].toLowerCase() + s.slice(1);
+    if (runs.length === 1) return `${W(runs[0])} ${runs[0].first[3] ? 'all day' : 'tonight'}.`;
+    const t = r => r.first[0];
+    if (runs.length === 2) return `${W(runs[0])} until ${t(runs[1])}, then ${lc(W(runs[1]))}.`;
+    return `${W(runs[0])} until ${t(runs[1])}, then ${lc(W(runs[1]))} until ${t(runs[2])}.`;
+  }
+  // "Good today. Moderate on Wednesday." or "Good through Friday."
+  function airLater(list, today) {
+    if (!list.length) return '';
+    const cat = v => aqCat(v)[1], first = cat(list[0][1]), diff = list.find(x => cat(x[1]) !== first);
+    const name = x => WDL[wd(x[0])];
+    return diff ? `${first} today. ${cat(diff[1])} on ${name(diff)}.` : list.length > 1 ? `${first} through ${name(list[list.length - 1])}.` : `${first} today.`;
+  }
+
+  // ---- Saving: only when what's saved would draw differently (whole degrees, tens of percent). Never offline, never
+  // an error or an empty forecast, never from a data event. A save for another place stays until this place's arrives.
+  function keep() {
+    if (!started || !fc || !online()) return;
+    const tz = pl().tz, today = ymdOf(Date.now(), tz), pln = plan(Date.now());
+    const days = fc.days.filter(x => x.date >= today).slice(0, 7);
+    if (!days.length || days[0].date !== today) return;
+    const wear = {};
+    for (const d of [pln.today, pln.next]) if (d) {
+      const w = wearFor(d, fc.hours, today), was = saved && saved.place === pl().id && saved.wear[d];
+      wear[d] = !w.none ? w : was && !was.none ? was : { label: w.label, none: true };   // (never advice replaced by none)
+    }
+    const next = { at: Date.now(), place: pl().id, days: days.map(x => ({ date: x.date, code: x.code, low: x.low, high: x.high, rain: x.rain })), wear };
+    if (fc.from === 'nws') next.from = 'nws';
+    if (saved && saved.place === next.place && sameSave(saved, next)) return;
+    saved = next; save();
+  }
+  function sameSave(a, b) {
+    const r = v => (fin(v) ? Math.round(v) : null), r10 = v => (fin(v) ? Math.round(v / 10) : null);
+    const key = s => JSON.stringify([s.place, s.from || '', s.days.map(x => [x.date, x.code, r(x.low), r(x.high), r10(x.rain)]),
+      Object.keys(s.wear).sort().map(k => { const w = s.wear[k]; return [k, w.label, w.none ? 1 : 0, w.advice || '', (w.items || []).join(), r(w.feels8), r(w.high), w.at || null]; })]);
+    return key(a) === key(b);
+  }
+
+  // ---- Refreshing: each part when it's older than its turn, only while the window shows, never on a timer from 8 PM
+  // to 6 AM. On open, on wake, and back online, a part older than its turn is asked for at once.
+  const visible = () => document.visibilityState !== 'hidden';
+  function stale(force) { if (!started || !online()) return; for (const k of Object.keys(clocks)) if (force || Date.now() - clocks[k].last >= EVERY[k]) ask(k); }
+  function tick() {
+    const p = plan(Date.now()), key = p.day + p.show;
+    if (key !== planWas) { planWas = key; wearPick = null; keep(); }
+    draw();   // (Time moves on: an alert's span, or its end. draw() changes the page only when what it shows changes.)
+    if (!started || !visible() || !online() || quiet(Date.now())) return;
+    stale(false);
+  }
+  function newPlace() {
+    gen++; nws = null; nwsAsk = null; obs = null; fc = null; air = null; alerts = []; failed = false; alertsFailAt = 0; omBlockedUntil = 0; day = null;
+    for (const c of Object.values(clocks)) { c.last = 0; c.busy = false; }
+    view = 'main'; wearPick = null;
+    stale(true);
+  }
+
+  // ---- On a date: one day from Open-Meteo's archive, from Jan 1, 1940 to yesterday. A failed request is tried once
+  // more after 5 to 10 seconds, as the other parts are.
+  function askDay(retry) {
+    const want = config.date;
+    if (!want) { day = null; return; }
+    if (day && day.date === want && day.state !== 'off' && day.state !== 'fail') return;
+    if (!online()) { day = { date: want, state: 'off' }; return; }
+    day = { date: want, state: 'wait' };
+    const g = gen, tz = pl().tz;
+    get(`${HOST.archive}/v1/archive?` + q({ latitude: pl().lat, longitude: pl().lon, start_date: want, end_date: want, hourly: 'temperature_2m',
+      daily: 'weather_code,temperature_2m_max,temperature_2m_min,apparent_temperature_min,wind_speed_10m_max,rain_sum,snowfall_sum', timezone: tz, timeformat: 'unixtime',
+      temperature_unit: 'fahrenheit', wind_speed_unit: 'mph', precipitation_unit: 'inch' })).then(j => {
+      if (g !== gen || config.date !== want) return;
+      const d = j && j.daily, i = arr(d, 'time').findIndex(t => okT(t) && ymdOf(t * 1000 + 6 * HOUR, tz) === want), x = k => num0(arr(d, k)[i]);
+      const temps = arr(j && j.hourly, 'temperature_2m');
+      const hours = arr(j && j.hourly, 'time').slice(0, 48).map((t, k) => ({ t, f: num0(temps[k]) })).filter(h => okT(h.t));
+      day = i < 0 || x('temperature_2m_max') === null ? { date: want, state: 'none' }
+        : { date: want, state: 'ok', code: fin(x('weather_code')) ? x('weather_code') : 3, hi: x('temperature_2m_max'), lo: x('temperature_2m_min'), feels: x('apparent_temperature_min'),
+          wind: x('wind_speed_10m_max'), snow: x('snowfall_sum'), rain: x('rain_sum'), hours: hours.filter(h => h.f !== null).length >= 2 ? hours : null };
+      draw();
+    }).catch(() => {
+      if (g !== gen || config.date !== want) return;
+      day = { date: want, state: online() ? 'fail' : 'off' }; draw();
+      if (!retry && online()) setTimeout(() => { if (g === gen && config.date === want && day && day.state === 'fail') { askDay(true); draw(); } }, 5000 + Math.random() * 5000);
+    });
+  }
+  function setDate(d) {
+    config.date = d; saveConfig(); askDay(); draw();
+  }
+  const yesterday = () => addDays(ymdOf(Date.now(), pl().tz), -1);
+
+  // ---- Drawing: the approved mockup's code (WX), fed from model(). Text from the sites is escaped.
+  const REF = { s: [260, 220, 16], m: [480, 360, 16], l: [900, 560, 17], xl: [1600, 860, 19] };
+  // A window that fills the board draws everything from 1100 × 600.
+  const layout = (w, h, max) => (max && w >= 1100 && h >= 600 ? 'xl' : w < 380 || h < 280 ? 's' : w < 760 || h < 480 ? 'm' : w < 1300 || h < 760 ? 'l' : 'xl');
+  const use = (id, cls) => `<svg class="${cls || 'ic'}" aria-hidden="true"><use href="#${id}"/></svg>`;
+  const chev = use('u-right', 'chev');
+  const U = o => `<span class="unit">${o.c ? 'C' : 'F'}</span>`;
+  const go = v => ` data-go="${v}" role="button" tabindex="0"`;
+  const WORDS = { clear: ['Sunny', 'Clear'], mostly: ['Mostly sunny', 'Mostly clear'], partly: ['Partly cloudy'], cloudy: ['Cloudy'], fog: ['Fog'],
+    drizzle: ['Drizzle'], rain: ['Rain'], snow: ['Snow'], storm: ['Thunderstorms'] };
+  const words = (g, day) => WORDS[g][day ? 0 : 1] || WORDS[g][0];
+  const ICON = { clear: ['w-sun', 'w-moon'], mostly: ['w-1d', 'w-1n'], partly: ['w-2d', 'w-2n'], cloudy: ['w-3'], fog: ['w-fog'], drizzle: ['w-drz'], rain: ['w-rain'], snow: ['w-snow'], storm: ['w-storm'] };
+  const icon = (code, day) => { const a = ICON[group(code)]; return a[day ? 0 : 1] || a[0]; };
+  const scene = (g, day, dusk) => (g === 'storm' ? 'storm' : dusk && /clear|mostly|partly/.test(g) ? 'dusk' : ({ mostly: 'clear', drizzle: 'rain' }[g] || g) + (day ? '-d' : '-n'));
+  function sky(sc) {
+    const b = sc.replace(/-[dn]$/, ''), night = /-n$/.test(sc);
+    let s = '';
+    if (sc === 'clear-d' || sc === 'warm-d') s += '<i class="glow"></i>';
+    if (sc === 'dusk') s += '<i class="dglow"></i>';
+    if (night && /clear|partly/.test(b)) s += '<i class="stars"></i>';
+    if (b === 'partly' || sc === 'dusk') s += '<i class="cl" style="--a:.2;top:6%;left:-18%"></i><i class="cl" style="--a:.13;top:34%;left:48%;animation-duration:120s"></i>';
+    if (/cloudy|rain|snow|storm|fog/.test(b)) s += '<i class="cl" style="--a:.16;top:-4%;left:-25%"></i><i class="cl" style="--a:.12;top:22%;left:40%;animation-duration:110s"></i><i class="cl" style="--a:.1;top:55%;left:-5%;animation-duration:140s"></i>';
+    if (b === 'rain' || b === 'storm') s += '<i class="rain-a"></i><i class="rain-b"></i>';
+    if (b === 'snow') s += '<i class="sway sw-b"><i class="snow-b"></i></i><i class="sway sw-a"><i class="snow-a"></i></i>';
+    if (b === 'storm') s += '<i class="flash"></i>';
+    if (b === 'fog') s += '<i class="fog-a" style="top:30%"></i><i class="fog-b" style="top:62%;animation-duration:70s"></i>';
+    return `<div class="fx" data-sc="${sc}">${s}</div>`;
+  }
+
+  // Numbers: unrounded °F and mph in, rounded once here. A real minus sign, and never −0.
+  const num = (f, o) => { if (!fin(f)) return '–'; const v = Math.round(o.c ? (f - 32) * 5 / 9 : f); return (v < 0 ? '−' : '') + Math.abs(v); };
+  const T = (f, o) => num(f, o) + '°';
+  const speedN = (mph, o) => Math.round(o.c ? mph * KMH : mph);
+  const speed = (mph, o) => (fin(mph) ? speedN(mph, o) + NB + (o.c ? 'km/h' : 'mph') : '–');
+  const amount = (inch, o) => { if (!fin(inch)) return '–'; const v = Math.round((o.c ? inch * 2.54 : inch) * 10) / 10; return o.c ? `${v}${NB}cm` : `${v}${NB}${v === 1 ? 'inch' : 'inches'}`; };
+  const DIRS = ['north', 'northeast', 'east', 'southeast', 'south', 'southwest', 'west', 'northwest'];
+  const ABBR = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const dirIdx = d => Math.round((((d % 360) + 360) % 360) / 45) % 8;
+  const STOPS = [[-10, [150, 180, 255]], [20, [110, 192, 255]], [40, [80, 214, 200]], [55, [155, 227, 106]], [68, [255, 216, 77]], [80, [255, 159, 67]], [95, [255, 94, 87]]];
+  function tcol(f) {
+    let i = 0; while (i < STOPS.length - 2 && f > STOPS[i + 1][0]) i++;
+    const [a, ca] = STOPS[i], [b, cb] = STOPS[i + 1], k = Math.max(0, Math.min(1, (f - a) / (b - a)));
+    return `rgb(${ca.map((v, j) => Math.round(v + (cb[j] - v) * k)).join(',')})`;
+  }
+  // U.S. AQI: the EPA's categories and colors
+  const AQ = [[50, 'Good', '#00e400', '#062a00', 'Clean air. Good for everyone outside.'],
+    [100, 'Moderate', '#ffff00', '#2a2a00', 'Fine for most people. Very sensitive people should take it easy outside.'],
+    [150, 'Unhealthy for sensitive groups', '#ff7e00', '#2a1400', 'Children should take it easy outside.'],
+    [200, 'Unhealthy', '#ff0000', '#fff', 'Children should keep play short and easy, or move it inside. Everyone should take it easy.'],
+    [300, 'Very unhealthy', '#8f3f97', '#fff', 'Children should play inside. Everyone should avoid hard activity outside.'],
+    [500, 'Hazardous', '#7e0023', '#fff', 'Everyone should stay inside.']];
+  const aqCat = v => AQ.find(c => v <= c[0]) || AQ[5];
+  const aqPos = v => { const i = AQ.indexOf(aqCat(v)), lo = i ? AQ[i - 1][0] : 0; return Math.min(100, (i + (v - lo) / (AQ[i][0] - lo)) / 6 * 100).toFixed(1); };
+  // Moon: the lit part, drawn for the fraction lit, on the right while waxing
+  function moonSvg(f, waxing, cls) {
+    const r = 10, cx = 16, cy = 16, rx = Math.abs(1 - 2 * f) * r;
+    const s1 = waxing ? 1 : 0, s2 = waxing ? (f > 0.5 ? 1 : 0) : (f > 0.5 ? 0 : 1);
+    const lit = f > 0.99 ? '<circle cx="16" cy="16" r="10" fill="#F4EFC8"/>' : f < 0.01 ? '' : `<path d="M${cx} ${cy - r}A${r} ${r} 0 0 ${s1} ${cx} ${cy + r}A${rx.toFixed(2)} ${r} 0 0 ${s2} ${cx} ${cy - r}z" fill="#F4EFC8"/>`;
+    return `<svg class="${cls || 'ic'}" viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10" fill="#2c3854"/>${lit}</svg>`;
+  }
+  const by = d => (d.src === 'nws' ? 'the National Weather Service' : 'Open-Meteo');
+  const credit = d => `Forecast from ${by(d)}`;
+  // Under the temperature: where Now comes from, with the report's time in Large, Fill the board, and the Now view.
+  const src = (d, L) => (d.offline || !d.now ? '' : `<div class="src">${d.now.station ? 'At ' + esc(d.now.station) : 'From Open-Meteo'}${L === 'l' || L === 'xl' ? ', ' + d.now.at : ''}</div>`);
+  const watchesOk = a => a.kind === 'warn' || shown('watches');
+  function band(d, o, L) {
+    if (d.offline) return `<div class="band off">${use('u-off')}${d.offline.kind === 'off' ? 'You’re offline.' : 'Can’t get new weather.'}${L === 's' || !d.offline.when ? '' : ` <span>Updated ${d.offline.when}</span>`}</div>`;
+    const a = d.alerts.find(watchesOk);
+    if (!a) return '';
+    return `<div class="band ${a.kind}"${go('alert')}>${use('u-warn')}${esc(a.event)}${L === 's' ? '' : ` <span>${span(a)}</span>`}${L === 's' ? '' : use('u-right', 'go')}</div>`;
+  }
+  const aqd = v => `<i class="aqd" style="background:${aqCat(v)[2]}"></i>`;
+  function hero(d, o, L) {
+    const n = d.now, place = `<div class="place">${esc(d.place)}</div>`, hi = T(d.today.hi, o), lo = T(d.today.lo, o);
+    if (d.offline) {
+      const c0 = d.days[0][1], hiN = `<div class="temp">${num(d.today.hi, o)}<span class="deg">°</span>${U(o)}</div>`;
+      if (L === 's') return `<div class="hero">${place}<div class="hilabel">High</div>${hiN}<div class="cond">${use(icon(c0, 1))}${words(group(c0), 1)}</div><div class="hl">Low <b>${lo}</b></div><div class="src">${credit(d)}</div></div>`;
+      if (L === 'm') return `<div class="hero"><div class="left">${place}<div class="hilabel">Today’s high</div>${hiN}</div><div class="right">${use(icon(c0, 1), 'bigic')}<div class="cond">${words(group(c0), 1)}</div><div class="hl">Low <b>${lo}</b></div></div></div>`;
+      return `<div class="hero">${place}<div class="hilabel">Today’s high</div>${hiN}<div class="cond">${use(icon(c0, 1))}${words(group(c0), 1)}</div><div class="hl">Low <b>${lo}</b></div><div class="foot">${credit(d)}</div></div>`;
+    }
+    const g = n ? group(n.code) : 'cloudy', day = n ? n.day : true;
+    const temp = `<div class="temp">${n ? num(n.t, o) : '–'}<span class="deg">°</span>${U(o)}</div>`;
+    if (L === 's') return `<div class="hero">${place}${temp}<div class="cond">${use(icon(CODE[g], day))}${words(g, day)}</div><div class="hl">H <b>${hi}</b>&nbsp; L <b>${lo}</b></div>${src(d, L)}<div class="src">${credit(d)}</div></div>`;
+    if (L === 'm') {
+      const aq = d.air && d.air.aqi >= 101 && shown('air') ? `<div class="src more">${aqd(d.air.aqi)}Air quality ${d.air.aqi}</div>` : '';
+      return `<div class="hero"${go('now')}><div class="left">${place}${temp}${src(d, L)}${o.mCredit || d.src === 'nws' ? `<div class="src">${credit(d)}</div>` : ''}${aq}</div><div class="right">${use(icon(CODE[g], day), 'bigic')}<div class="cond">${words(g, day)}${chev}</div><div class="hl">H <b>${hi}</b>&nbsp; L <b>${lo}</b></div></div></div>`;
+    }
+    const wind = !n || !fin(n.wind) ? '' : ` · Wind ${speed(n.wind, o)}${fin(n.dir) && Math.round(n.wind) > 0 ? ' ' + ABBR[dirIdx(n.dir)] : ''}`;
+    const c = d.air && aqCat(d.air.aqi);
+    return `<div class="hero"${go('now')}>${place}${temp}${src(d, L)}<div class="cond">${use(icon(CODE[g], day))}${words(g, day)}</div>
+      <div class="hl">High <b>${hi}</b>&nbsp;&nbsp; Low <b>${lo}</b></div>
+      ${n ? `<div class="more">Feels like ${T(n.feels, o)}${shown('wind') ? wind : ''}</div>` : ''}
+      ${shown('air') && d.air ? `<div class="more">${aqd(d.air.aqi)}Air quality ${d.air.aqi}, ${c[1].toLowerCase()}</div>` : ''}
+      <div class="foot">${credit(d)}, ${d.updated}</div></div>`;
+  }
+
+  function hourly(d, o, max, two, compact) {
+    const list = d.hours.slice(0, max);
+    const items = list.map(h => h[2] === 'sunset' || h[2] === 'sunrise'
+      ? `<div class="hr"><span class="t">${h[0]}</span>${use(h[2] === 'sunset' ? 'w-sset' : 'w-srise', 'hi')}<span class="v sm">${h[2] === 'sunset' ? 'Sunset' : 'Sunrise'}</span></div>`
+      : `<div class="hr"><span class="t">${h[0]}</span>${use(icon(h[2], h[3]), 'hi')}${h[4] >= 30 ? `<span class="pop">${Math.round(h[4])}%</span>` : ''}<span class="v">${T(h[1], o)}</span></div>`).join('');
+    return `<section class="card hourly"${go('hours')}><h3>${use('u-clock')}Hourly forecast${compact && d.src !== 'nws' ? '<span class="cr">Open-Meteo</span>' : ''}${chev}</h3>${compact ? '' : `<p class="sum">${d.sum}</p>`}<div class="hours${two ? ' two' : ''}${list.some(h => typeof h[2] === 'number' && h[4] >= 30) ? ' pops' : ''}"${two ? ` style="--cols:${Math.ceil(list.length / 2)}"` : ''}>${items}</div></section>`;
+  }
+
+  function days(d, o) {
+    const lows = d.days.map(x => x[2]).filter(fin), highs = d.days.map(x => x[3]).filter(fin);
+    const lo = Math.min(...lows, ...highs), hi = Math.max(...highs, ...lows), span_ = hi - lo || 1;
+    const pct = v => ((v - lo) / span_ * 100).toFixed(1);
+    const rows = d.days.map((x, i) => {
+      const a = fin(x[2]) ? x[2] : x[3], b = fin(x[3]) ? x[3] : x[2];
+      const now = i === 0 && !d.offline && d.now && fin(d.now.t) ? `<b style="left:${Math.max(0, Math.min(100, pct(d.now.t)))}%"></b>` : '';
+      const barI = fin(a) && fin(b) ? `<i style="left:${pct(a)}%;right:${(100 - pct(b)).toFixed(1)}%;background:linear-gradient(90deg,${tcol(a)},${tcol(b)})"></i>` : '';
+      return `<li><span class="d">${x[0]}</span><span class="di">${use(icon(x[1], 1))}${x[4] >= 30 ? `<span class="pop">${Math.round(x[4])}%</span>` : ''}</span>
+        <span class="lo">${T(x[2], o)}</span><span class="bar">${barI}${now}</span><span class="hi">${T(x[3], o)}</span></li>`;
+    }).join('');
+    return `<section class="card daysc"${go('days')}><h3>${use('u-cal')}7-day forecast${chev}</h3><ol class="days">${rows}</ol></section>`;
+  }
+
+  // What to wear: Today, or the next school day
+  const pickOf = (d, o) => (!d.wear ? null : o.wear === 'next' || !d.wear.today ? 'next' : 'today');
+  const toggle = (d, o) => (!d.wear.today ? `<span class="tg"><b class="on">${esc(d.wear.next.label)}</b></span>`
+    : `<span class="tg" role="group" aria-label="What to wear"><b data-wear="today" role="button" tabindex="0"${pickOf(d, o) === 'today' ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>Today</b><b data-wear="next" role="button" tabindex="0"${pickOf(d, o) === 'next' ? ' class="on" aria-pressed="true"' : ' aria-pressed="false"'}>${esc(d.wear.next.label)}</b></span>`);
+  function wearItems(items, caps) {
+    return `<div class="items">${items.map(k => `<figure data-item="${k}"><span class="dot"${caps === false ? ` role="img" aria-label="${CLOTHES[k]}"` : ''}>${use('c-' + k)}</span>${caps === false ? '' : `<figcaption>${CLOTHES[k]}</figcaption>`}</figure>`).join('')}</div>`;
+  }
+  function note(d, o, k) {
+    const w = d.wear[k], tz = pl().tz, high = fin(w.high) && fin(w.at) ? `High of ${T(w.high, o)} at ${clock(w.at * 1000, tz)}.` : '';
+    if (k === 'today') return (!d.offline && d.now && fin(d.now.feels) ? `Feels like ${T(d.now.feels, o)} now. ` : '') + high;
+    return (fin(w.feels8) ? `Feels like ${T(w.feels8, o)} at 8${NB}AM. ` : '') + high;
+  }
+  function wear(d, o) {
+    const k = pickOf(d, o), w = d.wear[k];
+    const body = w.none ? '<p class="advice">Its forecast isn’t out yet.</p>'
+      : `<p class="advice">${w.advice}</p><p class="eg">For example</p>${wearItems(w.items)}<p class="note">${note(d, o, k).trim()}</p>`;
+    return `<section class="card wear"><h3>${use('u-shirt')}What to wear</h3><div class="body">${body}${toggle(d, o)}</div></section>`;
+  }
+  // Medium shows up to 4: rain jacket and boots first, then the row's clothes.
+  function wearLine(d, o) {
+    const w = d.wear[pickOf(d, o)];
+    if (w.none) return `<section class="card wl">${toggle(d, o)}<span class="says">Its forecast isn’t out yet.</span></section>`;
+    const items = w.items.filter(i => i === 'rain' || i === 'boots').concat(w.items.filter(i => i !== 'rain' && i !== 'boots')).slice(0, 4);
+    return `<section class="card wl">${toggle(d, o)}${wearItems(items, false)}<span class="says">${w.advice}</span></section>`;
+  }
+
+  function sunArc(f) {
+    const parts = ['<path d="M6 72H194" stroke="rgba(255,255,255,.35)" stroke-width="1.5"/>',
+      '<path d="M16 72A84 58 0 0 1 184 72" fill="none" stroke="rgba(255,255,255,.4)" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round"/>'];
+    if (f != null) {
+      const th = Math.PI * (1 - f), x = (100 + 84 * Math.cos(th)).toFixed(1), y = (72 - 58 * Math.sin(th)).toFixed(1);
+      parts.push(`<path d="M16 72A84 58 0 0 1 ${x} ${y}" fill="none" stroke="#FFD66B" stroke-width="3" stroke-linecap="round"/>`,
+        `<circle cx="${x}" cy="${y}" r="13" fill="#FFD66B" opacity=".22"/><circle cx="${x}" cy="${y}" r="7" fill="#FFD66B"/>`);
+    }
+    return `<svg class="arc" viewBox="0 0 200 80" preserveAspectRatio="xMidYMax meet" aria-hidden="true">${parts.join('')}</svg>`;
+  }
+  function sun(d, o, L) {
+    const s = d.sun, m = d.moon;
+    const moonline = L === 'xl' || !shown('moon') ? '' : `<div class="moonline">${moonSvg(m.fraction, m.waxing)}${m.next}</div>`;
+    return `<section class="card sun"${go('sun')}><h3>${use('u-sun')}Sunrise and sunset${chev}</h3>${sunArc(s.f)}
+      <div class="sunrow"><div><small>Sunrise</small><b>${s.rise}</b></div><div><small>Sunset</small><b>${s.set}</b></div></div>
+      ${s.daylight ? `<div class="daylight">${s.daylight} of daylight</div>` : ''}${moonline}</section>`;
+  }
+  function moon(d) {
+    const m = d.moon;
+    return `<section class="card moon"${go('sun')}><h3>${use('u-moon')}Moon${chev}</h3><div class="moonbody">${moonSvg(m.fraction, m.waxing)}<div class="stack"><span class="name">${m.name}</span><span>${m.next}</span><span>${Math.round(m.fraction * 100)}% lit</span></div></div></section>`;
+  }
+  // The arrow points where the wind blows to. A calm report has no direction: no arrow.
+  function compass(dir) {
+    let ticks = '';
+    for (let a = 0; a < 360; a += 30) ticks += `<path d="M50 7v${a % 90 ? 4 : 7}" transform="rotate(${a} 50 50)"/>`;
+    const arrow = fin(dir) ? `<g transform="rotate(${(dir + 180) % 360} 50 50)"><path d="M50 74V30" stroke="#fff" stroke-width="3" stroke-linecap="round"/><path d="M50 18l-7 13h14z" fill="#fff"/><circle cx="50" cy="76" r="4" fill="none" stroke="#fff" stroke-width="2.5"/></g>` : '';
+    return `<svg class="compass" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="43" fill="none" stroke="rgba(255,255,255,.3)" stroke-width="1.5"/>
+      <g stroke="rgba(255,255,255,.55)" stroke-width="1.5">${ticks}</g>
+      <g class="nesw" fill="rgba(255,255,255,.85)" font-size="13" font-weight="700" text-anchor="middle" font-family="inherit"><text x="50" y="29">N</text><text x="79" y="55">E</text><text x="50" y="83">S</text><text x="21" y="55">W</text></g>${arrow}</svg>`;
+  }
+  function wind(d, o, here) {
+    const n = d.now, calm = !fin(n.dir) || Math.round(n.wind) === 0;
+    return `<section class="card windc"${here ? '' : go('now')}><h3>${use('u-wind')}Wind${here ? '' : chev}</h3><div class="windbody">${compass(calm ? null : n.dir)}
+      <div class="stack"><div class="big">${fin(n.wind) ? speedN(n.wind, o) : '–'}<small>${o.c ? 'km/h' : 'mph'}</small></div>
+      ${fin(n.gust) && Math.round(n.gust) > 0 ? `<span>Gusts ${speed(n.gust, o)}</span>` : ''}${calm ? '' : `<span>From the ${DIRS[dirIdx(n.dir)]}</span>`}</div></div></section>`;
+  }
+  function airCard(d, mini, here) {
+    const v = d.air.aqi, c = aqCat(v), pill = `<span class="aqpill" style="background:${c[2]};color:${c[3]}">${c[1]}</span>`;
+    const head = `<h3>${use('u-air')}Air quality${here ? '' : chev}</h3>`, tap = here ? '' : go('air');
+    if (mini) return `<section class="card air"${tap}>${head}<div class="stack" style="flex:1"><div class="row1"><span class="big">${v}</span>${pill}</div></div></section>`;
+    return `<section class="card air"${tap}>${head}<div class="stack" style="flex:1"><div class="big">${v}</div>${pill}<div class="aqscale"><b style="left:${aqPos(v)}%"></b></div></div></section>`;
+  }
+  function week5(d, o) {
+    const list = d.days.slice(0, 5);
+    const cols = list.map(x => `<div class="col"><span class="n">${x[0]}</span>${use(icon(x[1], 1))}<span class="h">${T(x[3], o)}</span><span class="l">${T(x[2], o)}</span></div>`).join('');
+    return `<section class="card"${go('days')}><h3>${use('u-cal')}7-day forecast${d.src !== 'nws' ? '<span class="cr">Open-Meteo</span>' : ''}${chev}</h3><div class="week" style="--n:${list.length}">${cols}</div></section>`;
+  }
+
+  function frame(L, sc, o, body, extra, grid) {
+    const [rw, rh, fs] = REF[L];
+    // (Filling the board, the strips its corner buttons and padlocks take are left out.)
+    const u = Math.max(0.7, Math.min(1.8, Math.min(o.w / rw, (o.h - (o.max ? corners.low + corners.top : 0)) / rh)));
+    return `<div class="wx L-${L} sc-${sc}${o.still ? ' still' : ''}${o.max ? ' filled' : ''}${extra || ''}" style="--u:${u.toFixed(3)};--fs:${fs}px">${sky(sc)}<div class="in"${grid ? ` style='${grid}'` : ''}>${body}</div></div>`;
+  }
+  // Grids that close up around hidden parts
+  const tpl = (cols, rows, areas) => `grid-template-columns:${cols};grid-template-rows:${rows.join(' ')};grid-template-areas:${areas.map(a => `"${a}"`).join(' ')}`;
+  function solo(band, wear) {
+    const rows = [], areas = [];
+    if (band) { rows.push('auto'); areas.push(wear ? 'band band' : 'band'); }
+    rows.push('minmax(0,1fr)'); areas.push(wear ? 'hero wear' : 'hero');
+    return tpl(wear ? 'minmax(0,1fr) minmax(0,1fr)' : 'minmax(0,1fr)', rows, areas);
+  }
+  function gridL(band, wear, top, bot) {
+    if (!top && !bot) return solo(band, wear);
+    const rows = [], areas = [], last = wear || (top && bot);
+    if (band) { rows.push('auto'); areas.push(`band ${top || bot}`); }
+    rows.push('minmax(0,1fr)'); areas.push(`hero ${top || bot}`);
+    if (last) { rows.push('auto'); areas.push(`${wear ? 'wear' : 'hero'} ${bot || top}`); }
+    return tpl('minmax(0,1fr) minmax(0,1.08fr)', rows, areas);
+  }
+  function gridXL(band, wear, hr, dy, sm) {
+    const lower = dy && sm ? 'days smalls' : dy ? 'days days' : sm ? 'smalls smalls' : '';
+    const r1 = hr ? 'hourly hourly' : lower, r2 = hr ? lower || 'hourly hourly' : lower;
+    if (!r1) return solo(band, wear);
+    const rows = [], areas = [];
+    if (band) { rows.push('auto'); areas.push('band band band'); }
+    rows.push(hr && lower ? 'auto' : 'minmax(0,1fr)', 'minmax(0,1fr)'); areas.push(`hero ${r1}`, `${wear ? 'wear' : 'hero'} ${r2}`);
+    return tpl('minmax(0,1.2fr) minmax(0,1.15fr) minmax(0,1.9fr)', rows, areas);
+  }
+  const sceneOf = d => {
+    if (d.offline) return scene(group(d.days[0][1]), isDay(Date.now()));
+    if (d.warm) return 'warm-d';
+    return d.now ? scene(group(d.now.code), d.now.day, d.now.dusk) : scene(group(d.days[0][1]), isDay(Date.now()));
+  };
+
+  function render(d, o) {
+    if (d.empty) return message(o, d.loading ? ['Getting the weather…'] : !online() ? ['You’re offline.', 'The weather shows once you’re online.'] : ['Can’t get the weather.', 'It tries again on its own.'], d.loading);
+    if (o.simple) return simple(d, o);
+    const L = layout(o.w, o.h, o.max);
+    let v = o.view;
+    if (d.offline && v !== 'days' && v !== 'sun') v = 'main';
+    if ((v === 'alert' && !d.alerts.some(watchesOk)) || (v === 'air' && !d.air) || (L === 's' && v !== 'alert')) v = 'main';
+    if (v !== 'main') return detail(d, o, v, L);
+    const b = band(d, o, L);
+    let body, grid = '', extra = (b ? ' has-band' : '') + (d.offline ? ' is-off' : '');   // (fit() closes up a short window)
+    if (L === 's') body = b + hero(d, o, L);
+    else if (L === 'm') {
+      const mid = shown('days') ? week5(d, o) : shown('hourly') && !d.offline ? hourly(d, o, 6, false, true) : '';
+      const wl = shown('wear') && d.wear ? wearLine(d, o) : '';
+      body = b + hero(d, Object.assign({}, o, { mCredit: !mid }), L) + mid + wl;
+      grid = 'grid-template-rows:' + [b && 'auto', mid ? 'auto' : 'minmax(0,1fr)', mid && 'minmax(0,1fr)', wl && 'auto'].filter(Boolean).join(' ');
+      if (!mid) extra += ' m-big';
+    } else if (L === 'l') {
+      const top = shown('days') ? days(d, o) : '', wr = shown('wear') && d.wear ? wear(d, o) : '';
+      const bot = shown('sun') ? sun(d, o, L) : shown('moon') ? moon(d) : '';
+      body = b + hero(d, o, L) + top + wr + bot;
+      grid = gridL(!!b, !!wr, top && 'days', bot && (shown('sun') ? 'sun' : 'moon'));
+      if (!top && !bot) extra += ' l-solo';
+    } else {
+      const hr = shown('hourly') && !d.offline ? hourly(d, o, 12 + (d.hours.slice(0, 13).some(h => typeof h[2] !== 'number') ? 1 : 0)) : '';
+      const wr = shown('wear') && d.wear ? wear(d, o) : '', dy = shown('days') ? days(d, o) : '';
+      const sm = [shown('sun') && sun(d, o, L), !d.offline && shown('wind') && d.now && wind(d, o), shown('moon') && moon(d), !d.offline && shown('air') && d.air && airCard(d)].filter(Boolean);
+      body = b + hero(d, o, L) + hr + wr + dy + (sm.length ? `<div class="smalls n${sm.length}">${sm.join('')}</div>` : '');
+      grid = gridXL(!!b, !!wr, !!hr, !!dy, !!sm.length);
+    }
+    return frame(L, sceneOf(d), o, body, extra, grid);
+  }
+
+  // Details: one part, filling the window. ‹ Back returns.
+  const back = title => `<div class="bar2"><button type="button" class="rb" data-go="main">${use('u-left')}Back</button><span class="title">${title}</span></div>`;
+  function detail(d, o, v, L0) {
+    const L = L0 === 's' ? 's' : 'm', n = d.now;
+    const foot = `<p class="foot">${credit(d)}</p>`, noHead = s => s.replace(/<h3>[\s\S]*?<\/h3>/, '').replace(/ data-go="\w+" role="button" tabindex="0"/, '');
+    let body;
+    if (v === 'days') body = back('7-day forecast') + noHead(days(d, o)) + foot;
+    else if (v === 'hours') body = back('Hourly forecast') + noHead(hourly(d, o, 13, true)) + foot;
+    else if (v === 'sun') {
+      const cs = [shown('sun') && sun(d, o, 'xl'), shown('moon') && moon(d)].filter(Boolean).map(c => c.replace(chev, '').replace(/ data-go="sun" role="button" tabindex="0"/, ''));
+      if (!cs.length) cs.push(sun(d, o, 'xl').replace(chev, '').replace(/ data-go="sun" role="button" tabindex="0"/, ''));
+      body = back(shown('sun') || !shown('moon') ? (shown('moon') ? 'Sun and moon' : 'Sunrise and sunset') : 'Moon') + `<div class="cards" style="display:grid;grid-template-columns:${cs.length > 1 ? '1.3fr 1fr' : '1fr'};gap:.6em;min-height:0">${cs.join('')}</div>`;
+    } else if (v === 'air') {
+      const a = d.air.aqi, c = aqCat(a);
+      body = back('Air quality') + `<div class="dair"><div class="big">${a}</div><span class="aqpill" style="background:${c[2]};color:${c[3]}">${c[1]}</span>
+        <div class="aqscale"><b style="left:${aqPos(a)}%"></b></div><p>${c[4]}</p>${d.air.later ? `<p>${d.air.later}</p>` : ''}</div><p class="foot">U.S. Air Quality Index from Open-Meteo and Copernicus</p>`;
+    } else if (v === 'alert') {
+      const list = d.alerts.filter(watchesOk).map(a => `<div class="alert"><h4>${esc(a.event)}</h4><span class="k">${span(a)}</span>${a.text.map(p => `<p>${esc(p)}</p>`).join('')}${a.todo.length ? `<p class="lab">What to do</p>${a.todo.map(p => `<p>${esc(p)}</p>`).join('')}` : ''}</div>`).join('');
+      body = back('Watches and warnings') + `<div class="scroll">${list}</div><p class="foot">From the National Weather Service</p>`;
+    } else {
+      const g = n ? group(n.code) : 'cloudy', day = n ? n.day : true;
+      const cards = [shown('wind') && n ? wind(d, o, true) : '', shown('air') && d.air ? airCard(d, true) : '',
+        n && fin(n.feels) ? `<section class="card"><h3>${use('u-thermo')}Feels like</h3><div class="stack" style="flex:1"><div class="big">${T(n.feels, o)}</div>${n.why ? `<span>${n.why}</span>` : ''}</div></section>` : ''].filter(Boolean);
+      const hl = d.src === 'nws' ? 'High and low from the National Weather Service' : shown('air') && d.air ? 'High, low, and air quality from Open-Meteo' : 'High and low from Open-Meteo';
+      body = back('Now') + `<div class="dnow"><div class="hero"><div class="temp">${n ? num(n.t, o) : '–'}<span class="deg">°</span>${U(o)}</div><div class="cond">${use(icon(CODE[g], day))}${words(g, day)}</div>${src(d, 'l')}<div class="hl">High <b>${T(d.today.hi, o)}</b>&nbsp;&nbsp; Low <b>${T(d.today.lo, o)}</b></div></div>
+        <div class="cards n${cards.length}">${cards.join('')}</div></div><p class="foot">${hl}</p>`;
+    }
+    return frame(L, sceneOf(d), o, body, ' V-detail');
+  }
+  function message(o, lines, loading) {
+    return frame('m', 'off', o, `<b>${lines[0]}</b>${lines[1] ? `<span>${lines[1]}</span>` : ''}`, loading ? ' loading' : '').replace('class="in"', 'class="in offmsg"');
+  }
+
+  // On a date: the day's high, its sky, the low, feels like at its lowest, the strongest wind, snow and rain, the day's
+  // temperatures, sunrise and sunset worked out here, and the day compared with today.
+  // The day's temperatures, each at its own time (the archive keeps standard time all year, so a summer day starts at
+  // 1 AM), with a gap where one is missing. The low sits on the base line, as in the mockup. The words are HTML over the
+  // drawing, so they stay 14 px or more.
+  function chart(hs, o, date) {
+    const W = 300, H = 100, X0 = 10, X1 = 290, Y0 = 16, Y1 = 100, tz = pl().tz, c = f => (o.c ? (f - 32) * 5 / 9 : f);
+    const t0 = hs[0].t, span = hs[hs.length - 1].t - t0 || 1, ok = hs.filter(h => h.f !== null);
+    const vals = ok.map(h => c(h.f)), mn = Math.min(...vals), sp = Math.max(...vals) - mn || 1;
+    const x = h => X0 + (X1 - X0) * (h.t - t0) / span, y = h => Y0 + (Y1 - Y0) * (1 - (c(h.f) - mn) / sp);
+    const segs = [[]];
+    for (const h of hs) { if (h.f === null) segs.push([]); else segs[segs.length - 1].push(h); }
+    const P = h => x(h).toFixed(1) + ',' + y(h).toFixed(1), runs = segs.filter(g => g.length);
+    const line = runs.map(g => 'M' + g.map(P).join('L')).join('');
+    const area = runs.filter(g => g.length > 1).map(g => `M${x(g[0]).toFixed(1)},${H}L${g.map(P).join('L')}L${x(g[g.length - 1]).toFixed(1)},${H}Z`).join('');
+    const pc = (v, of) => (v / of * 100).toFixed(2) + '%';
+    const hi = ok.reduce((a, b) => (b.f > a.f ? b : a)), lo = ok.reduce((a, b) => (b.f < a.f ? b : a));
+    const mark = (h, k) => `<i class="pt" style="left:${pc(x(h), W)};top:${pc(y(h), H)}"></i><b class="lab ${k}${x(h) / W > .6 ? ' end' : ''}" style="left:${pc(x(h), W)};top:${pc(y(h), H)}">${T(h.f, o)}</b>`;
+    const ticks = hs.map(h => [h, partsOf(h.t * 1000, tz)]).filter(([h, p]) => p.ymd === date && p.m === 0 && p.h % 6 === 0)
+      .map(([h, p]) => `<span class="tk${x(h) - X0 < 1 ? ' first' : ''}${p.h % 12 ? ' six' : ''}" style="left:${pc(x(h), W)}">${clock(h.t * 1000, tz)}</span>`).join('');
+    const stroke = 'vector-effect="non-scaling-stroke"';
+    return `<div class="chart"><div class="plot"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="M${X0} ${H}H${X1}" stroke="rgba(255,255,255,.3)" ${stroke}/><path d="${area}" fill="rgba(255,255,255,.14)"/>
+      <path d="${line}" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" ${stroke}/></svg>${mark(hi, 'hi')}${hi === lo ? '' : mark(lo, 'lo')}</div><div class="tks">${ticks}</div></div>`;
+  }
+  const longDate = s => `${WD[wd(s)]}, ${MONL[+s.slice(5, 7) - 1]} ${+s.slice(8, 10)}, ${s.slice(0, 4)}`;
+  const shortDate = s => `${monthDay(s)}, ${s.slice(0, 4)}`;
+  function renderDate(o, today) {
+    const L0 = layout(o.w, o.h, o.max), small = L0 === 's' || L0 === 'm', dt = config.date, y = yesterday(), cls = ' V-date' + (L0 === 's' ? ' d-s' : L0 === 'm' ? ' d-m' : '');
+    const bar = `<div class="bar2"><button type="button" class="rb sq" data-act="prev" aria-label="Day before"${dt <= '1940-01-01' ? ' disabled' : ''}>${use('u-left')}</button>`
+      + `<span class="rb pick">${use('u-cal')}<span class="dl">${longDate(dt)}</span><span class="ds">${shortDate(dt)}</span><input type="date" min="1940-01-01" max="${y}" value="${dt}" aria-label="Date"></span>`
+      + `<button type="button" class="rb sq" data-act="next" aria-label="Day after"${dt >= y ? ' disabled' : ''}>${use('u-right')}</button><button type="button" class="rb solid" data-act="today">Back to today</button></div>`;
+    const st = day && day.date === dt ? day.state : 'wait';
+    if (st !== 'ok') {
+      const msg = st === 'off' ? 'On a date needs the Internet.' : st === 'none' ? 'No weather for that date.' : st === 'fail' ? 'Can’t get the weather.' : 'Getting the weather…';
+      return frame('l', 'off', o, bar + `<div class="offmsg" style="display:grid;place-content:center;text-align:center"><b>${msg}</b></div>`, cls, "grid-template-columns:minmax(0,1fr);grid-template-rows:auto minmax(0,1fr);grid-template-areas:'bar' 'msg'");
+    }
+    const h = day, g = group(h.code), s = sunTimes(dt, pl().lat, pl().lon), tz = pl().tz;
+    let cmp = '';
+    if (today && fin(today.hi)) {
+      const diff = Math.round(o.c ? (h.hi - today.hi) * 5 / 9 : h.hi - today.hi);
+      cmp = `<b>${diff === 0 ? 'Same as today' : `${Math.abs(diff)}° ${diff > 0 ? 'warmer' : 'colder'}`}</b><span>Today’s high is ${T(today.hi, o)}.</span>`;
+    }
+    const parts = `<div class="hero"><div class="place">${esc(pl().name)}</div><div class="cond">${use(icon(h.code, 1))}${words(g, 1)}</div><div class="hilabel">High</div>
+        <div class="temp">${num(h.hi, o)}<span class="deg">°</span>${U(o)}</div>
+        <div class="hl">Low <b>${T(h.lo, o)}</b></div>
+        <div class="more">Feels like ${T(h.feels, o)} · Wind ${speed(h.wind, o)}</div><div class="more">Snow ${amount(h.snow, o)} · Rain ${amount(h.rain, o)}</div><div class="foot">From Open-Meteo</div></div>
+      ${h.hours ? `<section class="card chartc"><h3>${use('u-chart')}Through the day</h3>${chart(h.hours, o, dt)}</section>` : ''}
+      <div class="side"><section class="card"><h3>${use('u-sun')}Sun</h3><div class="sunrow"><div><small>Sunrise</small><b>${s.rise ? clock(s.rise, tz) : '–'}</b></div><div><small>Sunset</small><b>${s.set ? clock(s.set, tz) : '–'}</b></div></div></section>
+        ${cmp ? `<section class="card cmp"><h3>${use('u-thermo')}Compared with today</h3>${cmp}</section>` : ''}</div>`;
+    // (Smaller windows: the chart after the rest, all of it scrolling under the bar.)
+    const body = small ? bar + `<div class="scroll dscroll">${parts.replace(/(<section class="card chartc">[\s\S]*?<\/section>)([\s\S]*)$/, '$2$1')}</div>` : bar + parts;
+    return frame('l', scene(g, 1), o, body, cls);
+  }
+
+  // Simple words, for K–2: one big picture, one sentence, and the clothes, for the day What to wear shows.
+  function simple(d, o) {
+    const L = layout(o.w, o.h, o.max), k = pickOf(d, o), w = k && d.wear[k];
+    let code, day = true;
+    if (k === 'today' && d.now) { code = d.now.code; day = d.now.day; }
+    else { const want = k === 'today' ? d.plan.today : d.plan.next, x = (d.allDays || []).find(x => x.date === want); code = x ? x.code : d.days[0][1]; }
+    const g = group(code), skyw = { clear: day ? 'sunny' : 'clear', mostly: day ? 'sunny' : 'clear', partly: 'cloudy', cloudy: 'cloudy', fog: 'foggy', drizzle: 'rainy', rain: 'rainy', snow: 'snowy', storm: 'stormy' }[g];
+    const tier = w && !w.none ? (w.advice.match(/for (.+?) weather/) || [, 'cold'])[1] : null;
+    const say = tier ? `${tier[0].toUpperCase() + tier.slice(1)} and ${skyw}.` : 'Its forecast isn’t out yet.';
+    const chip = d.now && !d.offline ? `<span class="chip">${T(d.now.t, o)}</span>` : '';
+    const body = `${chip}${use(icon(code, day), 'bigic')}<div class="say">${say}</div>${L === 's' || !tier ? '' : wearItems(w.items)}<div class="src">${d.now && d.now.station && !d.offline ? 'At ' + esc(d.now.station) + '. ' : ''}${credit(d)}</div>`;
+    return frame(L === 's' ? 's' : 'm', sceneOf(d), o, body, ' V-simple').replace('class="in"', 'class="in simple"');
+  }
+
+  // ---- The window: drawn again only when what it shows changes. The moving sky carries on while the sky stays the same:
+  // it stays in the page, and only the rest is drawn again. (Taken out of the page, even for a moment, it starts over.)
+  let drawn = '', titleWas = null, menuWas = '';
+  function draw() {
+    if (!started) return;
+    const info = Board21.context && Board21.context.window;
+    const o = { w: innerWidth, h: innerHeight, max: !!(info && info.maximized), c: config.units === 'c', view, wear: wearPick || plan(Date.now()).show, still: config.still, simple: config.simple };
+    let html;
+    if (config.date) { const m = model(); html = renderDate(o, m.today); }
+    else { const m = model(); if (!m.empty) m.allDays = !m.offline && fc ? fc.days : (saved && saved.place === pl().id ? saved.days : []); html = render(m, o); }
+    if (html !== drawn) {
+      const v = $('view'), a = document.activeElement, keyOf = e => e && e.closest && e.closest('#view') && ['data-go', 'data-wear', 'data-act'].map(k => e.getAttribute(k) || '').join('|');
+      const focusKey = keyOf(a), t = document.createElement('template');
+      t.innerHTML = html;
+      const nw = t.content.firstElementChild, ow = v.firstElementChild, nf = nw && nw.querySelector(':scope > .fx'), of = ow && ow.querySelector(':scope > .fx');
+      if (of && nf && of.dataset.sc === nf.dataset.sc && v.childNodes.length === 1 && t.content.childNodes.length === 1) {
+        for (const { name } of [...ow.attributes]) if (!nw.hasAttribute(name)) ow.removeAttribute(name);
+        for (const { name, value } of [...nw.attributes]) if (ow.getAttribute(name) !== value) ow.setAttribute(name, value);
+        for (const k of [...ow.childNodes]) if (k !== of) k.remove();
+        nf.remove(); ow.append(...nw.childNodes);
+      } else v.replaceChildren(t.content);
+      if (focusKey) { const e = [...v.querySelectorAll('[data-go], [data-wear], [data-act]')].find(e => keyOf(e) === focusKey); if (e) e.focus(); }
+      drawn = html;
+    }
+    fit();
+    const title = config.date ? shortDate(config.date) : '';
+    if (title !== titleWas) { titleWas = title; Board21.window.setTitle(title); }
+    setMenu();
+  }
+  // ---- Fitting what's drawn, measured: the mockup's sizes, closed up a step at a time while a part runs out of its card,
+  // or Now out of its row (a short window, the board's corner strips, a long warning, wider letters). A card may run
+  // 2 px into its own padding. Run on every draw, so a new size or text style is measured again.
+  const STEPS = ['tight', 'tighter', 'tightest'];
+  const wraps = e => { e.style.whiteSpace = 'nowrap'; const w = e.scrollWidth > e.clientWidth + 1; e.style.whiteSpace = ''; return w; };
+  // Now, centered in its row, may run a little into the space around it, but never onto another part, under the board's
+  // corner marks, or past half the window's margin.
+  function spills(hero, inn) {
+    const r = inn.getBoundingClientRect(), s = getComputedStyle(inn), near = [...inn.children].filter(e => e !== hero).map(e => e.getBoundingClientRect()).filter(q => q.height);
+    const top = r.top + Math.max(parseFloat(s.paddingTop) / 2, corners.top), bottom = r.bottom - Math.max(parseFloat(s.paddingBottom) / 2, corners.low);
+    return [...hero.children].some(k => { const q = k.getBoundingClientRect(); return q.height && (q.top < top - 1 || q.bottom > bottom + 1 || near.some(o => q.top < o.bottom - 1 && q.bottom > o.top + 1 && q.left < o.right - 1 && q.right > o.left + 1)); });
+  }
+  function fit() {
+    const wx = $('view').querySelector('.wx'), inn = wx && wx.querySelector(':scope > .in');
+    if (!inn) return;
+    wx.classList.remove(...STEPS, 'brief', 'short-date', 'lift');
+    const band = inn.querySelector(':scope > .band.warn, :scope > .band.watch');
+    const over = () => inn.scrollHeight > inn.clientHeight + 1 || [...inn.querySelectorAll('.card')].some(c => c.scrollHeight > c.clientHeight + 2) || [...inn.querySelectorAll(':scope > .hero')].some(h => spills(h, inn));
+    // A warning in Medium keeps to one line, without its time span if need be. Tapped, it shows the span.
+    if (band && wx.classList.contains('L-m') && wraps(band)) wx.classList.add('brief');
+    if (!wx.matches('.V-simple, .V-date, .L-s:not(.V-detail)')) for (const k of STEPS) { if (!over()) break; wx.classList.add(k); }
+    if (band && over()) wx.classList.add('brief');
+    // Simple words: the sentence and the clothes keep clear of the credit under them (lift).
+    const cr = wx.classList.contains('V-simple') && inn.querySelector(':scope > .src'), above = cr && cr.previousElementSibling;
+    if (above && above.getBoundingClientRect().bottom > cr.getBoundingClientRect().top - 1) wx.classList.add('lift');
+    // On a date: the long date while the bar holds it on one line.
+    const bar = wx.classList.contains('V-date') && inn.querySelector(':scope > .bar2');
+    if (bar) { const k = [...bar.children], top = k[0].getBoundingClientRect().bottom; if (bar.scrollWidth > bar.clientWidth + 1 || k.some(e => e.getBoundingClientRect().top >= top - 1)) wx.classList.add('short-date'); }
+    // Words drawn in a picture keep to 14 px: the compass's N, E, S, and W, scaled to it, or left out when it's small.
+    // W and E move in as they grow, clear of the ticks beside them.
+    for (const c of wx.querySelectorAll('svg.compass')) {
+      const g = c.querySelector('.nesw'), k = c.getBoundingClientRect().width / 100;
+      if (!g || !k) continue;
+      const size = Math.max(13, 14 / k), x = 14.5 + 0.6 * size, [, e, , w] = g.querySelectorAll('text');
+      g.setAttribute('font-size', size.toFixed(1)); g.style.display = 14 / k > 17 ? 'none' : '';
+      w.setAttribute('x', x.toFixed(1)); e.setAttribute('x', (100 - x).toFixed(1));
+    }
+    // On a date's chart: 12 AM and 12 PM only, when 6 AM and 6 PM would touch them.
+    for (const ch of wx.querySelectorAll('.chart')) {
+      ch.classList.remove('few');
+      const r = [...ch.querySelectorAll('.tk')].map(t => t.getBoundingClientRect());
+      if (r.some((a, i) => i && a.left < r[i - 1].right + 8)) ch.classList.add('few');
+    }
+  }
+  let drawSoon = 0;
+  const redraw = () => { if (!drawSoon) drawSoon = requestAnimationFrame(() => { drawSoon = 0; fitCorners(); draw(); }); };
+
+  // ---- The window menu: the Show list, On a date, Location, Simple words, No motion, units, and the credits.
+  function setMenu() {
+    const items = [{ heading: true, label: 'Show' }, ...PARTS.map(([k, l]) => ({ id: 'show:' + k, label: l, checked: shown(k) })), { separator: true },
+      { id: 'date', label: 'On a date…' }, { id: 'place', label: 'Location…' }, { id: 'simple', label: 'Simple words', checked: config.simple }, { id: 'still', label: 'No motion', checked: config.still },
+      { separator: true }, { heading: true, label: 'Units' }, { id: 'units:f', label: '°F and mph', checked: config.units === 'f' }, { id: 'units:c', label: '°C and km/h', checked: config.units === 'c' },
+      { separator: true }, ...(kiosk ? [] : [{ id: 'open', label: 'Forecast from Open-Meteo', icon: EXT_ICON }]),
+      ...(nws && nws.abroad ? [] : [{ id: 'credit-nws', label: 'Now from the National Weather Service', disabled: true }]),
+      { id: 'credit-air', label: 'Air quality from Open-Meteo and Copernicus', disabled: true }];
+    const key = JSON.stringify(items);
+    if (key !== menuWas) { menuWas = key; Board21.menu.set(items); }
+  }
+  Board21.on('menu', id => {
+    id = String(id);
+    if (id.startsWith('show:') && PARTS.some(p => p[0] === id.slice(5))) {
+      const k = id.slice(5), hide = shown(k) ? config.hide.concat(k) : config.hide.filter(x => x !== k);
+      config.hide = PARTS.map(p => p[0]).filter(x => hide.includes(x)); saveConfig(); draw();
+    } else if (id === 'date') setDate(config.date || yesterday());
+    else if (id === 'place') openSheet();
+    else if (id === 'simple') { config.simple = !config.simple; saveConfig(); draw(); }
+    else if (id === 'still') { config.still = !config.still; saveConfig(); draw(); }
+    else if (id === 'units:f' || id === 'units:c') { config.units = id.slice(6); saveConfig(); draw(); }
+    else if (id === 'open' && !kiosk) window.open(SITE, '_blank', 'noopener,noreferrer');
+  });
+
+  // ---- Location: search for a town. Other towns named Wheeling never show. No location services.
+  let searchTimer = 0, searchTurn = 0;
+  function openSheet() {
+    const s = $('sheet');
+    s.innerHTML = `<div class="panel" role="dialog" aria-modal="true" aria-label="Location"><h4>Location</h4><label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5 5"/></svg>`
+      + '<input type="search" placeholder="Search for a town" aria-label="Search for a town" autocomplete="off" spellcheck="false"></label><ul class="res"></ul><p class="msg" role="status"></p></div>';
+    s.hidden = false;
+    const input = s.querySelector('input');
+    input.addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => search(input.value), 300); });
+    showResults([pl()], '');
+    try { window.focus(); } catch (e) { /* the board keeps the focus */ }
+    input.focus();
+  }
+  function closeSheet() { clearTimeout(searchTimer); searchTurn++; $('sheet').hidden = true; $('sheet').textContent = ''; }
+  function showResults(list, msg) {
+    const s = $('sheet'), ul = s.querySelector('.res');
+    if (!ul) return;
+    ul.textContent = '';
+    for (const p of list) {
+      const li = document.createElement('li'), box = document.createElement('div'), b = document.createElement('b'), small = document.createElement('small');
+      li.tabIndex = 0; b.textContent = p.name; small.textContent = [p.region, p.country].filter(Boolean).join(', ');
+      box.append(b, small); li.append(box);
+      if (p.id === pl().id) { const ok = document.createElement('span'); ok.className = 'ok'; ok.textContent = '✓'; li.append(ok); li.setAttribute('aria-current', 'true'); }
+      li.addEventListener('click', () => choose(p));
+      li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(p); } });
+      ul.append(li);
+    }
+    s.querySelector('.msg').textContent = msg;
+  }
+  function search(text) {
+    const t = String(text || '').trim().slice(0, 80), turn = ++searchTurn;
+    if (t.length < 2) return showResults([pl()], '');
+    if (!online()) return showResults([], 'Search needs the Internet.');
+    get(`${HOST.search}/v1/search?` + q({ name: t, count: 10, language: 'en', format: 'json' })).then(j => {
+      if (turn !== searchTurn) return;
+      const wheeling = /^wheeling/i.test(t);
+      const list = arr(j, 'results').map(r => r && readPlace({ id: r.id, name: r.name, region: r.admin1 || '', country: r.country || '', lat: r.latitude, lon: r.longitude, tz: r.timezone })).filter(Boolean)
+        .filter(p => (wheeling ? p.id === WHEELING.id : !(/^wheeling$/i.test(p.name) && p.id !== WHEELING.id)));
+      showResults(list, list.length ? '' : 'No towns found.');
+    }).catch(e => { if (turn === searchTurn) showResults([], e && e.status ? 'No towns found.' : 'Search needs the Internet.'); });
+  }
+  function choose(p) {
+    closeSheet();
+    if (p.id === pl().id) return;
+    config.place = p; config.date = null; saveConfig();
+    newPlace(); draw();
+  }
+  $('sheet').addEventListener('click', e => { if (e.target === $('sheet')) closeSheet(); });
+
+  // ---- Taps, keys, and the date picker.
+  $('view').addEventListener('click', e => {
+    const t = e.target.closest('[data-go], [data-wear], [data-act]');
+    if (!t) return;
+    if (t.dataset.wear) { wearPick = t.dataset.wear; draw(); }
+    else if (t.dataset.go) { view = t.dataset.go; draw(); }
+    else if (t.dataset.act === 'today') setDate(null);
+    else if (t.dataset.act === 'prev' || t.dataset.act === 'next') { const d = addDays(config.date, t.dataset.act === 'prev' ? -1 : 1); if (d >= '1940-01-01' && d <= yesterday()) setDate(d); }
+  });
+  $('view').addEventListener('keydown', e => {
+    const t = e.target.closest && e.target.closest('[data-go]:not(button), [data-wear]');
+    if (t && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); t.click(); }
+  });
+  $('view').addEventListener('change', e => {
+    if (!e.target.matches('input[type="date"]')) return;
+    const v = e.target.value;
+    if (realDay(v) && v >= '1940-01-01' && v <= yesterday()) setDate(v);
+  });
+  $('view').addEventListener('click', e => { const i = e.target.closest('input[type="date"]'); if (i && i.showPicker) try { i.showPicker(); } catch (err) { /* the browser opens it itself */ } });
+  addEventListener('keydown', e => {
+    if (e.key !== 'Escape') return;
+    if (!$('sheet').hidden) { e.preventDefault(); closeSheet(); } else if (view !== 'main' && !config.date) { e.preventDefault(); view = 'main'; draw(); }
+  });
+
+  // ---- The board's own buttons and padlocks over a window that fills it: the parts keep clear of them.
+  function fitCorners() {
+    const w = Board21.context && Board21.context.window, c = w && w.maximized && w.corners;
+    const px = v => Math.min(2000, Math.max(0, Number(v) || 0));
+    const low = c && (px(c.left) || px(c.right)) ? px(c.height) : 0;
+    const t = c && c.top, top = t && (px(t.left) || px(t.right)) ? px(t.height) : 0;
+    document.documentElement.style.setProperty('--low', low + 'px'); document.documentElement.style.setProperty('--top', top + 'px');
+    corners.low = low; corners.top = top;
+  }
+  const corners = { low: 0, top: 0 };
+
+  // ---- Changed in another tab or on another device, or by an import. Checked, taken, drawn. Never saved from here.
+  Board21.on('config', c => {
+    const was = config.place;
+    config = readConfig(c);
+    const p = config.place;
+    if (p.id !== was.id || p.lat !== was.lat || p.lon !== was.lon || p.tz !== was.tz) newPlace();
+    if (config.date) askDay(); else day = null;
+    draw();
+  });
+  Board21.on('data', d => { saved = readSaved(d); draw(); });
+  Board21.on('resize', redraw);
+  addEventListener('resize', redraw);
+  addEventListener('online', () => { stale(true); if (config.date) { day = null; askDay(); } draw(); });
+  addEventListener('offline', () => { if (config.date) { day = null; askDay(); } draw(); });
+  document.addEventListener('visibilitychange', () => { if (visible()) { stale(false); draw(); } });
+
+  // The widget's own rules, for its tests: which day What to wear shows, a day's name, school hours, the advice.
+  self.B21Weather = { plan: ms => plan(ms), label, hours: schoolHours, advise, refresh: () => stale(true) };
+
+  async function start() {
+    const ctx = await Board21.ready();
+    kiosk = !!ctx.kiosk;
+    config = readConfig(ctx.config);
+    saved = readSaved(ctx.data);
+    started = true;
+    const p = plan(Date.now()); planWas = p.day + p.show;
+    fitCorners();
+    if (config.date) askDay();
+    draw();
+    stale(true);
+    setInterval(tick, 20000);
+  }
+  start();
+</script>
+</body>
+</html>

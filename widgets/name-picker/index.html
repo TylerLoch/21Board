@@ -12,13 +12,14 @@
  * The host owns everything except the stage: the names and the edit view, saving and syncing between copies,
  * the fair draw, the window menu, the main button, the status line, Start over, Sound, Quick, reduce motion,
  * the double-tap guard and what screen readers hear. A style owns only the stage: it draws the names, and puts
- * on the show that lands on the winners the host has already drawn and saved. A style never draws winners.
+ * on the show that lands on the winners (or, for Groups, deals the groups) the host has already drawn and saved.
+ * A style never draws winners or groups.
  *
  * Each style is one file in this folder, style-<name>.js (Big name: style-bigname.js), loaded by a <script>
  * tag below and listed in widgets/registry.js (so it is in the offline copy). Its CSS goes in the same file, as
  * `css`, with every class starting with its id ("wheel-…"). The file registers the style:
  *
- *   NamePicker.register('wheel', {           // id: 'name' | 'wheel' | 'spotlight' | 'lotto' (config.style)
+ *   NamePicker.register('wheel', {           // id: 'name' | 'wheel' | 'spotlight' | 'lotto' | 'groups' (config.style)
  *     css: `.wheel-hub { … }`,               // optional; added to the page once
  *     mount(root, host) {                    // root: an empty <div> that fills the stage (position: absolute; inset: 0)
  *       …build the stage inside root…
@@ -28,13 +29,15 @@
  *
  * What the host calls (show and play are needed; the others if the style has a use for them):
  *   show(view, how)  Draw `view` as it is, with no show. The first draw; after a reload; after a change of style,
- *                    names, No repeats, Winners each time or Start over; and a pick that gets no show here.
- *                    how.fade is true for a NEW pick shown without its show (reduce motion is on, or it was
- *                    picked in another copy a while ago): fade the winners in, about 0.3 s, nothing moving.
+ *                    names, No repeats, Names at a time, Groups or Start over; and a pick that gets no show here.
+ *                    It may come again with nothing new: leave the stage as it is then.
+ *                    how.fade is true for a NEW pick (or new groups) shown without its show (reduce motion is on,
+ *                    or it was made in another copy a while ago): fade it in, about 0.3 s, nothing moving.
  *                    Only called while the stage is on screen and there is at least one name.
  *   play(view)       The show for a pick that has just been drawn. Start from what is on the stage (the last
- *                    show() or play()) and land on view.winners, then call host.done() (within 10 s, or 4 s with
- *                    Quick, or the host calls skip()). Never called with reduce motion on.
+ *                    show() or play()) and land on view.winners (Groups: deal out view.groups), then call
+ *                    host.done() (within 10 s, or 4 s with Quick, or the host calls skip()). Never called with
+ *                    reduce motion on.
  *   skip()           Jump to the end of the show at once: the winners on screen, nothing left running. The host
  *                    calls it for a tap after the double-tap guard, a menu change, a pick from another copy, the
  *                    page being hidden, or a show that ran too long. No need to call host.done() after it.
@@ -47,14 +50,17 @@
  *   picked     one true/false for each entry: picked in this round of No repeats, so out of the draw for the next
  *              pick. The last pick's winners are included. All false when No repeats is off.
  *              (So in play(view) the names that were in the draw are the ones not picked, plus the winners.)
- *   winners    the entries picked last time, in pick order (number 1 first): 1 to 5 of them, or none before the
+ *   winners    the entries picked last time, in pick order (number 1 first): 1 to 6 of them, or none before the
  *              first pick and after Start over.
  *   pickId     changes with every pick (null before the first). The same pickId is the same pick.
- *   count      "Winners each time", 1 to 5, as the teacher chose it.
+ *   count      "Names at a time", 1 to 6, as the teacher chose it.
  *   next       how many the next pick will take: count, or fewer when fewer names are left (0: everyone has been
  *              picked, and the main button starts over).
  *   noRepeats, quick   the menu's ticks. quick: make the show about 1.5 s long.
  *   reduced    the device asks for less motion (play() is never called then).
+ *   groups     Groups: the entries in each group, one list per group in order (Group 1 first), each in deal order:
+ *              [[4, 0, 9], [2, 7], …]. Every entry is in one group at most. [] before the first draw.
+ *   groupId    changes with every draw of groups, as pickId does with picks (null before the first).
  *
  * `host`, one for each mount (its calls do nothing once the style is destroyed):
  *   host.done()                 the show has finished: the winners are on screen.
@@ -97,6 +103,7 @@ window.NamePicker = {
 <script src="style-wheel.js"></script>
 <script src="style-spotlight.js"></script>
 <script src="style-lotto.js"></script>
+<script src="style-groups.js"></script>
 <style>
   :root {
     --np-bg: var(--b21-bg); --np-surface: var(--b21-surface); --np-text: var(--b21-text); --np-muted: var(--b21-muted); --np-border: var(--b21-border);
@@ -123,19 +130,20 @@ window.NamePicker = {
   #empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 12px; color: var(--b21-muted); font-weight: 600; font-size: clamp(14px, min(5vw, 8vh), 40px); }
   /* The main button in the middle (in reach from either side of a flat panel), the status and Start over beside it, all
      kept off the bottom corners, where the board's own buttons and clock sit over a window that fills the board
-     (--np-corners: how far in they reach, from fitFoot()). Where that leaves too little room beside the main button,
-     the status and Start over go on a row above it. */
+     (--np-corners: how far in they reach, from fitFoot()). Where that leaves too little room beside the main button
+     (the status would need more than two lines, or Start over more than one), both go on a row above it. */
   .foot { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 8px; width: 100%; max-width: min(680px, 100vw - 2 * var(--np-corners, 0px)); margin: 0 auto; }
   .foot.stack { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); row-gap: 4px; }
   .foot.stack #go { grid-row: 2; grid-column: 1 / -1; justify-self: center; }
-  .foot.stack:has(#round[hidden]) #status { grid-column: 1 / -1; justify-self: center; text-align: center; }
-  .foot.measure #status, .foot.measure #round { white-space: nowrap; }
+  .foot.stack:has(#round[hidden]) #status { grid-column: 1 / -1; }
+  .foot.measure #round { white-space: nowrap; }
   button { font: inherit; border: 0; cursor: pointer; border-radius: 999px; background: var(--b21-surface-2); color: var(--b21-text); height: clamp(36px, 12vh, 64px); padding: 0 clamp(12px, 4vw, 28px); font-size: clamp(14px, 4.5vh, 22px); font-weight: 650; }
   button.primary { background: var(--b21-accent); color: var(--b21-on-accent); min-width: min(40vw, 320px); white-space: nowrap; }
   button:disabled { opacity: .45; cursor: default; }
   button.small { height: auto; min-height: clamp(30px, 9vh, 44px); font-size: clamp(12px, 3.4vh, 16px); padding: 4px 14px; font-weight: 600; line-height: 1.1; }
-  #status { justify-self: end; text-align: right; font-size: clamp(12px, 3.6vh, 17px); color: var(--b21-muted); line-height: 1.2; }
-  #round { justify-self: start; }
+  /* The status and Start over each sit in the middle of their space; the status wraps onto even lines. */
+  #status { justify-self: center; text-align: center; text-wrap: balance; font-size: clamp(12px, 3.6vh, 17px); color: var(--b21-muted); line-height: 1.2; }
+  #round { justify-self: center; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   textarea { flex: 1; min-height: 0; resize: none; border-radius: 12px; border: 1px solid var(--b21-border); background: var(--b21-surface); color: var(--b21-text); font: inherit; font-size: clamp(14px, 4vh, 20px); padding: 10px 12px; outline: none; line-height: 1.4; }
   textarea:focus { border-color: var(--b21-accent); }
@@ -154,7 +162,8 @@ window.NamePicker = {
     <textarea id="list" placeholder="Ada&#10;Grace&#10;Katherine&#10;…" spellcheck="false" aria-label="Names, one per line"></textarea>
   </section>
 <script>
-  // Content (Board21.save): { names, left, picked, pickId, current }. Names are content, so templates never carry them.
+  // Content (Board21.save): { names, left, picked, pickId, current, groups, groupId }. Names are content, so templates
+  // never carry them.
   //   names   the list. The same name can be in it more than once: two Emmas are two students.
   //   left    with No repeats: the names not picked yet in this round, once for each student still to go (null: all).
   //   picked  the winners of the last pick, in pick order; [] before the first pick and after Start over.
@@ -162,37 +171,64 @@ window.NamePicker = {
   //           that sees a new one shows the same winners: with the show if the pick is new and that copy is on screen
   //           and not busy, otherwise straight away.
   //   current picked[0], for copies of 21Board from before several winners (they only know names, left and current).
-  // Config (Board21.saveConfig): { noRepeats, style: 'name' | 'wheel' | 'spotlight' | 'lotto', winners: 1-5, quick, sound }
-  //   Settings, so templates keep them. A new Name Picker starts as the wheel; one from before styles keeps Big name.
-  const STYLES = [['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto']];
-  const MOST = 5;           // winners at a time
+  //   groups  Groups: the names in each group, one list per group, in deal order; [] before the first draw. Apart
+  //           from the pick round: each keeps its own.
+  //   groupId a new one with every draw of groups, made as pickId is, and ending with the menu's Groups number and how
+  //           many groups that made: "…-43" is Groups 4 with 3 names. (So every copy, and a reload, knows whether the
+  //           main button reads Shuffle again.)
+  // Config (Board21.saveConfig): { noRepeats, style: 'name' | 'wheel' | 'spotlight' | 'lotto' | 'groups', winners: 1-6,
+  //   groups: 2-6, quick, sound }. Settings, so templates keep them. A new Name Picker starts as the wheel; one from
+  //   before styles keeps Big name.
+  const STYLES = [['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto'], ['groups', 'Groups']];
+  const MOST = 6;           // names at a time
+  const MOST_GROUPS = 6;    // groups (2 at least)
   const GUARD = 600;        // ms: a second tap this soon after Pick is a double tap, not "skip to the result"
   const FRESH = 10000;      // ms: a pick made in another copy this recently gets its show here too
   const $ = id => document.getElementById(id);
   const motion = window.matchMedia ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   const reduced = () => !!(motion && motion.matches);
 
-  let state = { names: [], left: null, picked: [], pickId: null, current: null };
+  let state = { names: [], left: null, picked: [], pickId: null, current: null, groups: [], groupId: null };
   let config = readConfig(null);
   let mounted = null;       // the style on the stage: { id, root, api, live }
   let showing = null;       // the show running: { at (when it started), timer (ends it if the style never says) }
   let editAsked = false;    // the names list was opened here on purpose (Edit names, Add names), not just for a new picker
 
+  // How many of each name `list` holds, and taking one of them (false: none left). A long list from a file is read
+  // once, not searched again for every name in it.
+  const tally = list => { const m = new Map(); for (const n of list) m.set(n, (m.get(n) || 0) + 1); return m; };
+  const takeOne = (m, n) => { const c = m.get(n); if (!c) return false; m.set(n, c - 1); return true; };
   // `list` without one of each name in `gone`.
-  const without = (list, gone) => { const out = list.slice(); for (const n of gone) { const i = out.indexOf(n); if (i >= 0) out.splice(i, 1); } return out; };
+  const without = (list, gone) => { const m = tally(gone); return list.filter(n => !takeOne(m, n)); };
   // The names of `list` that are in `names`, each student at most once, in the order of `list`.
-  const among = (names, list) => { const room = names.slice(), out = []; for (const n of list) { const i = room.indexOf(n); if (i >= 0) { room.splice(i, 1); out.push(n); } } return out; };
+  const among = (names, list) => { const m = tally(names); return list.filter(n => takeOne(m, n)); };
 
   // Saved content can come from an imported file, so it is checked before it is used: names are lines of text,
-  // `left` and `picked` can only hold names that are in the list, and a pick is 1 to 5 names.
+  // `left` and `picked` can only hold names that are in the list, and a pick is 1 to 6 names. Groups as picks are.
   function readState(d) {
     const texts = v => Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : null;
+    const id = v => typeof v === 'string' && /^[a-z0-9-]{1,40}$/i.test(v) ? v : null;
     d = d && typeof d === 'object' ? d : {};
     const names = texts(d.names) || [], left = texts(d.left);
     // (Content from before several winners has only `current`.)
     const picked = among(names, texts(d.picked) || texts([d.current]) || []).slice(0, MOST);
-    const pickId = typeof d.pickId === 'string' && /^[a-z0-9-]{1,40}$/i.test(d.pickId) ? d.pickId : null;
-    return { names, left: left && without(names, without(names, left)), picked, pickId, current: picked[0] || null };
+    const groups = readGroups(d.groups, names);
+    return { names, left: left && without(names, without(names, left)), picked, pickId: id(d.pickId), current: picked[0] || null,
+      groups, groupId: groups.length ? id(d.groupId) : null };
+  }
+  // Groups hold only names in the list, each student in one group at most, 6 groups at most, none empty. (A huge list
+  // in a file is cut short first.) Every student is in a group: one the groups leave out joins the smallest, the first
+  // of them, so every copy of the board reads the same groups.
+  function readGroups(list, names) {
+    const room = tally(names), out = [];
+    for (const g of Array.isArray(list) ? list.slice(0, 100) : []) {
+      if (!Array.isArray(g)) continue;
+      const kept = g.slice(0, names.length + 1000).filter(n => typeof n === 'string' && takeOne(room, n.trim())).map(n => n.trim());
+      if (kept.length) out.push(kept);
+      if (out.length === MOST_GROUPS) break;
+    }
+    if (out.length) for (const n of names) if (takeOne(room, n)) out.reduce((a, b) => b.length < a.length ? b : a).push(n);
+    return out;
   }
   function readConfig(c) {
     c = c && typeof c === 'object' ? c : {};
@@ -200,6 +236,7 @@ window.NamePicker = {
       noRepeats: c.noRepeats !== false,
       style: STYLES.some(s => s[0] === c.style) ? c.style : 'name',
       winners: Number.isInteger(c.winners) && c.winners >= 1 && c.winners <= MOST ? c.winners : 1,
+      groups: Number.isInteger(c.groups) && c.groups >= 2 && c.groups <= MOST_GROUPS ? c.groups : 4,
       quick: c.quick === true,
       sound: c.sound === true
     };
@@ -209,6 +246,13 @@ window.NamePicker = {
   const pool = () => config.noRepeats ? (state.left || state.names) : state.names;
   const pickVisible = () => $('pick').classList.contains('on');
   const canStartOver = () => config.noRepeats && state.names.length > 0 && pool().length < state.names.length;
+  const grouping = () => config.style === 'groups';
+  // The groups on screen: the menu's Groups number they were made with, and how many groups that made, from the end of
+  // groupId. Groups that don't say (from a file) count as made with the menu's number.
+  function drawnAs() {
+    const G = state.groups, m = /-([2-6])([1-6])$/.exec(state.groupId || '');
+    return m && +m[2] <= +m[1] && +m[2] >= G.length ? { with: +m[1], k: +m[2] } : { with: config.groups, k: G.length };
+  }
 
   // ---- The fair draw: every name still in has the same chance, and one pick never takes the same student twice.
   // Uniform 0 … n-1 (crypto where there is one, without the small bias a plain remainder would give).
@@ -245,8 +289,11 @@ window.NamePicker = {
       const j = last.indexOf(n);
       if (j >= 0) { picked[i] = true; last.splice(j, 1); }
     }
+    // Groups: each group's names as entries, two students with one name being two entries.
+    const left = names.map(() => true), entry = n => { const i = names.findIndex((x, j) => left[j] && x === n); if (i >= 0) left[i] = false; return i; };
+    const groups = state.groups.map(g => g.map(entry).filter(i => i >= 0)).filter(g => g.length);
     return { names: names.slice(), picked, winners, pickId: state.pickId, count: config.winners, next: Math.min(config.winners, pool().length),
-      noRepeats: config.noRepeats, quick: config.quick, reduced: reduced() };
+      noRepeats: config.noRepeats, quick: config.quick, reduced: reduced(), groups, groupId: state.groupId };
   }
 
   // ---- Helpers for styles
@@ -310,17 +357,33 @@ window.NamePicker = {
   }
   function renderChrome() {
     const N = state.names.length, p = pool(), k = Math.min(config.winners, p.length);
-    // The button says how many it will pick ("Pick 3"), and when fewer are left than that ("Pick the last 2").
-    $('go').textContent = !N ? 'Add names' : showing ? 'Show now' : !p.length ? 'Start over'
-      : k < config.winners && config.noRepeats ? (k === 1 ? 'Pick the last one' : `Pick the last ${k}`)
-      : k > 1 ? `Pick ${k}` : state.picked.length ? 'Pick again' : 'Pick a name';
-    // (The count changes once the winners are on screen, so it gives nothing away during the show.)
-    if (!showing) {
-      $('status').textContent = !N ? '' : config.noRepeats ? `${p.length} of ${N} left` : N === 1 ? '1 name' : `${N} names`;
-      $('round').hidden = !canStartOver() || !p.length;   // (with everyone picked the main button says Start over: never two side by side)
+    if (grouping()) {
+      // The button says what it will do: "Make 4 groups" (as many as there are names, at most), or "Shuffle again" for
+      // groups made with the menu's number, when a tap makes as many groups as that draw did, or as are on screen. (Names
+      // added or taken out since don't change it, unless the number of groups would.) The status says what is on
+      // screen: "24 names", or "4 groups of 6 or 7".
+      const g = Math.min(config.groups, N), G = state.groups, was = drawnAs();
+      $('go').textContent = !N ? 'Add names' : showing ? 'Show now' : G.length && was.with === config.groups && (g === was.k || g === G.length) ? 'Shuffle again'
+        : g === 1 ? 'Make 1 group' : `Make ${g} groups`;
+      if (!showing) { $('status').textContent = !N ? '' : G.length ? groupsLine(G) : N === 1 ? '1 name' : `${N} names`; $('round').hidden = true; }
+    } else {
+      // The button says how many it will pick ("Pick 3"), and when fewer are left than that ("Pick the last 2").
+      $('go').textContent = !N ? 'Add names' : showing ? 'Show now' : !p.length ? 'Start over'
+        : k < config.winners && config.noRepeats ? (k === 1 ? 'Pick the last one' : `Pick the last ${k}`)
+        : k > 1 ? `Pick ${k}` : state.picked.length ? 'Pick again' : 'Pick a name';
+      // (The count changes once the winners are on screen, so it gives nothing away during the show.)
+      if (!showing) {
+        $('status').textContent = !N ? '' : config.noRepeats ? `${p.length} of ${N} left` : N === 1 ? '1 name' : `${N} names`;
+        $('round').hidden = !canStartOver() || !p.length;   // (with everyone picked the main button says Start over: never two side by side)
+      }
     }
     setMenu();
     fitFoot();
+  }
+  // "6 groups of 4", "4 groups of 6 or 7". (Names taken out after the draw can make it "4 groups of 5 to 7".)
+  function groupsLine(G) {
+    const n = G.map(g => g.length), lo = Math.min(...n), hi = Math.max(...n);
+    return `${G.length} group${G.length === 1 ? '' : 's'} of ${lo === hi ? lo : hi - lo === 1 ? `${lo} or ${hi}` : `${lo} to ${hi}`}`;
   }
   // How far in the board's buttons and clock reach over this window's bottom corners (Board21 says so for a window that
   // fills the board): the foot keeps that far in from both sides, so the main button stays in the middle.
@@ -337,27 +400,34 @@ window.NamePicker = {
     if (reach) foot.style.setProperty('--np-corners', reach + 'px'); else foot.style.removeProperty('--np-corners');
     foot.classList.remove('stack');
     if (!reach) return;
-    // The status and Start over each get half of what the main button leaves; not enough for either on one line: stack.
+    // The status and Start over each get half of what the main button leaves. The status may take two lines there,
+    // and Start over one. Any more, or a word too long for it: both go on a row above the main button.
+    const st = $('status'), col = (foot.clientWidth - $('go').offsetWidth) / 2 - 8;
+    const lines = st.textContent ? st.offsetHeight / (parseFloat(getComputedStyle(st).lineHeight) || 1) : 0;
     foot.classList.add('measure');
-    const need = Math.max($('status').offsetWidth, $('round').hidden ? 0 : $('round').offsetWidth);
+    const round = $('round').hidden ? 0 : $('round').offsetWidth;
     foot.classList.remove('measure');
-    if (need > (foot.clientWidth - $('go').offsetWidth) / 2 - 8) foot.classList.add('stack');
+    if (lines > 2.5 || st.offsetWidth > col + 1 || round > col + 1) foot.classList.add('stack');
   }
+  // Edit names on top, with the board's own pencil. Then the ways to pick, and a row of numbers: Names at a time, or in
+  // Groups how many groups. No repeats and Start over are for picking, so Groups leaves them out.
+  const PENCIL = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
   function setMenu() {
+    const row = (id, label, from, to, on) => [{ heading: true, label },
+      { id, label, choices: Array.from({ length: to - from + 1 }, (_, i) => ({ id: id + ':' + (from + i), label: String(from + i), checked: on === from + i })) }];
     Board21.menu.set([
+      { id: 'edit', label: 'Edit names', icon: PENCIL },
+      { separator: true },
       { heading: true, label: 'Pick with' },
       ...STYLES.map(([id, label]) => ({ id: 'style:' + id, label, checked: config.style === id })),
-      { heading: true, label: 'Winners each time' },
-      ...Array.from({ length: MOST }, (_, i) => ({ id: 'winners:' + (i + 1), label: String(i + 1), checked: config.winners === i + 1 })),
+      ...(grouping() ? row('groups', 'Groups', 2, MOST_GROUPS, config.groups) : row('winners', 'Names at a time', 1, MOST, config.winners)),
       { separator: true },
-      { id: 'norepeat', label: 'No repeats', checked: config.noRepeats },
-      { id: 'round', label: 'Start over', disabled: !canStartOver() },
-      { id: 'edit', label: 'Edit names' },
+      ...(grouping() ? [] : [{ id: 'norepeat', label: 'No repeats', checked: config.noRepeats }, { id: 'round', label: 'Start over', disabled: !canStartOver() }]),
       { id: 'sound', label: 'Sound', checked: config.sound },
       { id: 'quick', label: 'Quick', checked: config.quick }
     ]);
   }
-  // Screen readers hear the winners once they are on screen ("Picked: Ava, Leo").
+  // Screen readers hear the winners once they are on screen ("Picked: Ava, Leo"), or the groups ("Group 1: Ava, Ben.").
   let sayTimer = 0;
   function say(text) {
     clearTimeout(sayTimer);
@@ -365,7 +435,8 @@ window.NamePicker = {
     if (text) sayTimer = setTimeout(() => { $('said').textContent = text; }, 80);   // (a change, even for the same words)
   }
   function announce() {
-    if (state.picked.length) say('Picked: ' + state.picked.join(', ') + (config.noRepeats && !pool().length ? '. Everyone has been picked.' : ''));
+    if (grouping()) { if (state.groups.length) say(state.groups.map((g, i) => `Group ${i + 1}: ${g.join(', ')}.`).join(' ')); }
+    else if (state.picked.length) say('Picked: ' + state.picked.join(', ') + (config.noRepeats && !pool().length ? '. Everyone has been picked.' : ''));
   }
 
   function setView(v, focus, draw = true) {
@@ -383,6 +454,7 @@ window.NamePicker = {
   function pick() {
     if (!state.names.length) { setView('edit', true); return; }
     if (showing) { if (performance.now() - showing.at >= GUARD) skipShow(); return; }
+    if (grouping()) { makeGroups(); return; }
     const p = pool();
     if (!p.length) { startOver(); return; }   // (the button reads "Start over")
     const k = Math.min(config.winners, p.length), at = draw(p.length, k);
@@ -391,6 +463,16 @@ window.NamePicker = {
     state.current = state.picked[0];
     state.pickId = newPickId();
     save();   // before the show: every copy of the board shows these winners, and a reload shows them too
+    startShow();
+  }
+  // Groups, as fair as the picks: every name shuffled, then dealt out in turn (Group 1, Group 2, … and round again), so
+  // the groups differ by one at most, and every student is as likely to be in any group. Fewer names than the menu's
+  // number: one group for each name. Saved before the show, as a pick is.
+  function makeGroups() {
+    const names = state.names, k = Math.min(config.groups, names.length), order = draw(names.length, names.length);
+    state.groups = Array.from({ length: k }, (_, g) => order.filter((_, j) => j % k === g).map(i => names[i]));
+    state.groupId = newPickId() + '-' + config.groups + k;   // (see drawnAs())
+    save();
     startShow();
   }
   function startShow() {
@@ -443,8 +525,21 @@ window.NamePicker = {
     const names = $('list').value.split('\n').map(s => s.trim()).filter(Boolean);
     if (names.join('\n') === state.names.join('\n')) return;
     const gone = without(state.names, state.left || state.names), picked = among(names, state.picked);
-    state = { names, left: without(names, gone), picked, pickId: state.pickId, current: picked[0] || null };
+    state = { names, left: without(names, gone), picked, pickId: state.pickId, current: picked[0] || null, groups: regroup(names), groupId: state.groupId };
+    if (!state.groups.length) state.groupId = null;
     save();
+  }
+  // The groups on screen, for an edited list: a name taken out leaves its group (a group left with no one goes, and the
+  // ones after it move up), and a new name joins the smallest group (one of them at random).
+  function regroup(names) {
+    const room = tally(names);
+    const groups = state.groups.map(g => g.filter(n => takeOne(room, n))).filter(g => g.length);
+    if (groups.length) for (const n of names) {
+      if (!takeOne(room, n)) continue;
+      const least = Math.min(...groups.map(g => g.length)), small = groups.filter(g => g.length === least);
+      small[random(small.length)].push(n);
+    }
+    return groups;
   }
   $('list').oninput = readList;
   $('done').onclick = () => { const had = document.activeElement === $('done'); readList(); setView('pick'); if (had) $('go').focus(); };
@@ -520,11 +615,14 @@ window.NamePicker = {
   Board21.on('menu', id => {
     const [what, val] = String(id).split(':');
     if (what === 'style' && STYLES.some(s => s[0] === val)) {
+      skipShow();     // (a show ends first, with its own result read out, before the stage changes)
       config.style = val; saveConfig();
-      mountStyle();   // (ends a show, with the result on screen)
+      mountStyle();
       render();
     } else if (what === 'winners' && +val >= 1 && +val <= MOST) {
       skipShow(); config.winners = +val; saveConfig(); render();
+    } else if (what === 'groups' && +val >= 2 && +val <= MOST_GROUPS) {
+      skipShow(); config.groups = +val; saveConfig(); render();   // (the groups on screen stay: the button says Make 3 groups)
     } else if (id === 'norepeat') {
       skipShow();
       config.noRepeats = !config.noRepeats;
@@ -540,7 +638,7 @@ window.NamePicker = {
 
   // ---- Changed in another copy of the board (another tab, the smartboard), or by an import.
   Board21.on('data', d => {
-    const next = readState(d), was = state.pickId;
+    const next = readState(d), was = state;
     if (JSON.stringify(next) === JSON.stringify(state)) return;   // (nothing new: a show running goes on)
     skipShow();
     state = next;
@@ -550,17 +648,21 @@ window.NamePicker = {
       if (state.names.length && !editAsked && !(document.hasFocus() && document.activeElement === $('list'))) setView('pick', false, false);
       else $('list').value = state.names.join('\n');
     }
-    const isNew = !!state.pickId && state.pickId !== was && state.picked.length > 0;
-    // A pick made just now gets its show here too (if this copy is on screen); an older one is shown as it is.
-    if (isNew && Math.abs(Date.now() - pickedAt(state.pickId)) < FRESH) startShow();
+    const newPick = !!state.pickId && state.pickId !== was.pickId && state.picked.length > 0;
+    const newGroups = !!state.groupId && state.groupId !== was.groupId && state.groups.length > 0;
+    const isNew = grouping() ? newGroups : newPick, made = grouping() ? state.groupId : state.pickId;
+    // A pick (or groups) made just now gets its show here too (if this copy is on screen); an older one is shown as it is.
+    if (isNew && Math.abs(Date.now() - pickedAt(made)) < FRESH) startShow();
     else { render(isNew ? { fade: true } : undefined); if (isNew) announce(); }
   });
   Board21.on('config', c => {
-    const was = config;
-    config = readConfig(c);
-    if (!c && !state.names.length) config.style = 'wheel';   // (reset in another copy: it starts again as a new one)
+    const next = readConfig(c);
+    if (!c && !state.names.length) next.style = 'wheel';   // (reset in another copy: it starts again as a new one)
+    const changed = ['style', 'winners', 'groups', 'noRepeats'].some(k => next[k] !== config[k]);
+    if (changed) skipShow();   // (before the change: the show's own result is read out)
+    config = next;
     if (!config.sound) Sound.stop();
-    if (config.style !== was.style || config.winners !== was.winners || config.noRepeats !== was.noRepeats) { skipShow(); mountStyle(); render(); }
+    if (changed) { mountStyle(); render(); }
     else renderChrome();
   });
   Board21.on('theme', () => call('theme'));

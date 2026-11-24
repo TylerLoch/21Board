@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.23-4';
-  const BOARD_BUILD = '9f73a5b4';
+  const BOARD_VERSION = '2026.11.24-4';
+  const BOARD_BUILD = 'b5da34b7';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2239,6 +2239,15 @@
                 })).filter(s => s.id && s.color)
               });
             }
+            // A row of short choices, such as numbers: drawn like the swatches, each label at most 3 characters. A choice
+            // with no label is left out, as a swatch with no color is.
+            if (Array.isArray(i.choices)) {
+              return Object.assign(item, {
+                choices: i.choices.slice(0, 12).map(c => ({
+                  id: String((c && c.id) || '').slice(0, 64), label: Array.from(String((c && c.label) || '')).slice(0, 3).join(''), checked: !!(c && c.checked)
+                })).filter(c => c.id && c.label.trim())
+              });
+            }
             // (No icon from an uploaded file: markup in the board's own menu would be outside its seal.)
             return Object.assign(item, { icon: this.widget.sealed ? '' : safeSVG(i.icon), checked: typeof i.checked === 'boolean' ? i.checked : undefined, disabled: !!i.disabled, separator: !!i.separator });
           });
@@ -3396,7 +3405,7 @@
         return;
       }
       // A heading and the items under it (up to a line or the next heading) are one group, named by the heading, so a
-      // screen reader says "Winners each time, 3, checked". (The group takes no room: .menu-group is display: contents.)
+      // screen reader says "Names at a time, 3, checked". (The group takes no room: .menu-group is display: contents.)
       let html = '', group = false;
       const endGroup = () => { if (group) html += '</div>'; group = false; };
       for (const i of w.menuItems) {
@@ -3407,6 +3416,11 @@
           html += `<div class="menu-swatches" role="group" aria-label="${esc(i.label)}">` + i.swatches.map(s =>
             `<button class="swatch" role="menuitemradio" aria-checked="${s.checked}" aria-label="${esc(s.label)}" title="${esc(s.label)}" ` +
             `data-act="widget" data-id="${esc(s.id)}" style="--sw:${s.color};--swbg:${s.background || s.color}"></button>`).join('') + '</div>';
+          continue;
+        }
+        if (i.choices) {
+          html += `<div class="menu-choices" role="group" aria-label="${esc(i.label)}">` + i.choices.map(c =>
+            `<button class="menu-choice" role="menuitemradio" aria-checked="${c.checked}" aria-label="${esc(c.label)}" data-act="widget" data-id="${esc(c.id)}">${esc(c.label)}</button>`).join('') + '</div>';
           continue;
         }
         const check = i.checked === true ? svg('check', 'check') : '';
@@ -3429,6 +3443,20 @@
       }
       html += locked ? (w.widget.external ? '<div class="menu-sep"></div>' : '') + Lock.menuNote() : item('close', svg('close'), 'Close');
       show(html);
+      if (this.el.classList.contains('open')) this.fitChoices();
+    },
+
+    // A choice's label too wide for its circle ("Wed", "XXL") gets smaller letters, so all of it shows. (--fit scales the
+    // label's size in the CSS. Measured once the menu has its size: compact and tight circles are smaller.)
+    fitChoices() {
+      const bs = $$('.menu-choice', this.el);
+      for (const b of bs) b.style.setProperty('--fit', '1');
+      const fits = bs.map(b => {
+        const r = document.createRange(); r.selectNodeContents(b);
+        const text = r.getBoundingClientRect().width, room = b.getBoundingClientRect().width * 0.78;
+        return text > room && room > 0 ? room / text : 1;
+      });
+      bs.forEach((b, i) => { if (fits[i] < 1) b.style.setProperty('--fit', fits[i].toFixed(3)); });
     },
 
     position() {
@@ -3472,6 +3500,7 @@
       }
       this.el.style.left = x / ui + 'px';
       this.el.style.top = y / ui + 'px';
+      this.fitChoices();
     },
 
     act(act, id) {
@@ -4531,7 +4560,7 @@
     };
     return Object.assign(reach(CORNER_LOW), { top: reach(CORNER_TOP, TITLE_H * s) });
   }
-  // What any other window is told while the board's own buttons sit over it (2026.11.23-4): the same, measured from its
+  // What any other window is told while the board's own buttons sit over it (2026.11.24-4): the same, measured from its
   // own content on screen (d: its rect, as applyRect draws it), counting only the buttons over that content. Each counts
   // for the side of the window its middle is on. null when none is over it: such a window is told nothing.
   // (The buttons don't move with the windows. Their boxes are read once for all the windows laid out together, and again
@@ -4778,7 +4807,8 @@
   const ABOUT_LICENSES = [['code-license', 'Code', 'Apache 2.0', 'LICENSE'], ['docs-license', 'Docs', 'CC BY 4.0', 'LICENSE-DOCS']];
   const OFL = 'SIL Open Font License 1.1';
   const ABOUT_FONTS = [['Atkinson Hyperlegible', 'by the Braille Institute', OFL], ['Andika', 'by SIL International', OFL],
-    ['Excalifont', 'by Excalidraw', OFL], ['Crayon Libre', 'by GGBotNet', 'CC0 1.0']];
+    ['Excalifont', 'by Excalidraw', OFL], ['Crayon Libre', 'by GGBotNet', 'CC0 1.0'],
+    ['Weather data', 'by Open-Meteo', 'CC BY 4.0'], ['Weather data', 'by the National Weather Service', 'Public domain']];   // (the fonts, then the Weather widget's two sources)
   function aboutSettings(note) {
     // (Each on a line of its own: the release, the offline copy when it is another build (refreshStatus), where work is stored.)
     const release = `<div class="about"><span>21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}</span><span id="st-cache"></span>${note ? '' : `
@@ -8021,6 +8051,16 @@
           .filter(([k]) => Object.prototype.hasOwnProperty.call(n, k) && Number.isInteger(n[k]) && n[k] >= 1).map(([k, name]) => `${name} ${Math.min(n[k], 9999)}`).join(', ');
       },
       image: d => typeof d.src === 'string' && d.src ? strOf(d.name) || 'Pasted picture' : '',
+      // The place and the day its forecast arrived ("Wheeling forecast, Nov 23"), not the forecast's numbers. A window
+      // with no settings saved is on Wheeling. A saved forecast for another place than the window's says nothing.
+      weather: (d, c) => {
+        const s = d && d.saved, p = c && c.place && typeof c.place === 'object' ? c.place : { id: 4916311, name: 'Wheeling', tz: 'America/Chicago' };
+        if (!s || typeof s !== 'object' || typeof s.at !== 'number' || !isFinite(s.at) || s.place !== p.id) return '';
+        const name = strOf(p.name);
+        let day = '';
+        try { day = new Date(s.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: typeof p.tz === 'string' ? p.tz : undefined }); } catch (e) { day = new Date(s.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+        return name ? `${name} forecast, ${day}` : '';
+      },
       notes: d => strOf(d.text)
     },
     // A few words about a window's content, 80 characters at most. A built-in widget has its own line, above. Any other

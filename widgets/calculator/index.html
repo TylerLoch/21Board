@@ -14,8 +14,9 @@
 <script>document.getElementById('engine-css').textContent = window.CalcEngine ? CalcEngine.CSS : '';</script>
 <style>
   /* Calculator: Teach's canvas and steps, its keys, and History drawn as Desmos draws its lines. The panels sit side by
-     side, left to right (Swap sides mirrors them): the canvas, the keys, History. The script sets the grid for the
-     window's size (layout()); the rules here draw each panel. Colors come only from the --b21-* variables. */
+     side, left to right (Swap sides mirrors them): the canvas, the keys, History. In a tall or narrow window the canvas
+     sits above the keys. The script sets the grid for the window's size (layout()); the rules here draw each panel.
+     Colors come only from the --b21-* variables. */
   html, body { margin: 0; height: 100%; }
   body {
     --shadow: color-mix(in srgb, var(--b21-text) 16%, transparent);
@@ -122,7 +123,7 @@
   @container cv (max-width: 399.98px) { .rules { visibility: hidden; } }
 
   /* The compact display: the problem in small type above the big number */
-  .xline { display: flex; justify-content: flex-end; min-width: 0; overflow: hidden; }
+  .xline { flex: 0 0 auto; display: flex; justify-content: flex-end; min-width: 0; overflow: hidden; }
   .xline.clip { -webkit-mask-image: linear-gradient(to right, transparent, var(--b21-text) 2.2em); mask-image: linear-gradient(to right, transparent, var(--b21-text) 2.2em); }
   #x { flex: 0 0 auto; white-space: nowrap; color: var(--b21-muted); font-size: clamp(13px, min(15cqh, 7cqw), 64px); line-height: 1.35; min-height: 1.35em; }
   .bigline { display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-width: 0; }
@@ -160,7 +161,11 @@
   .hans:disabled { cursor: default; color: var(--b21-accent); }
   .hans .ce-frac { font-size: .72em; }
   .hpick:active, .hans:not(:disabled):active { filter: brightness(.94); }
-  @media (hover: hover) { .hpick:hover { color: var(--b21-accent); } .hans:not(:disabled):hover { background: color-mix(in srgb, var(--b21-accent) 18%, var(--b21-surface-2)); } }
+  @media (hover: hover) {
+    .hpick:hover { color: var(--b21-accent); } .hans:not(:disabled):hover { background: color-mix(in srgb, var(--b21-accent) 18%, var(--b21-surface-2)); }
+    /* In dark, a pale Custom… accent makes that background light. The R takes the light theme's mix there, 3:1 or more. */
+    :root[data-b21-theme="dark"] .hans:not(:disabled):hover .ce-r { color: color-mix(in srgb, var(--b21-muted) 90%, var(--b21-text)); }
+  }
   .hpick.clip, .hans.clip { -webkit-mask-image: linear-gradient(to left, transparent, #000 1.6em); mask-image: linear-gradient(to left, transparent, #000 1.6em); }
   .hempty { padding: .8em .7em; color: var(--b21-muted); font-size: .8em; }
 
@@ -235,6 +240,9 @@
   .ce-radic { display: inline-block; transform: scaleY(1.06); transform-origin: 50% 100%; }
   .ce-radicand { display: inline-block; line-height: .84; border-top: .07em solid currentColor; padding: .07em .08em .02em .04em; }
   .ce-ansref { color: var(--b21-accent); }
+  /* The R in 3 R 2 is muted (the engine's .ce-r). On the grey of History's answers and the steps' work, light muted
+     reaches only 4.4:1, so it is a touch darker there: 4.9:1. */
+  :root:not([data-b21-theme="dark"]) .hans .ce-r, :root:not([data-b21-theme="dark"]) .work .ce-r { color: color-mix(in srgb, var(--b21-muted) 90%, var(--b21-text)); }
 
   @keyframes rise { from { opacity: 0; transform: translateY(.35em); } to { opacity: 1; transform: none; } }
   @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
@@ -777,6 +785,7 @@
     else return;
     // A panel turned on widens the window by its width, and Advanced keys make it taller; turned off, they give it back.
     const change = id === 'history' || id === 'canvas' || id === 'advanced' ? sizeChange(id, next[id]) : null;
+    if (change) hold();
     useConfig(next, was);
     saveConfig();
     if (change) change();
@@ -794,10 +803,11 @@
   }
 
   // ---- The window's size: panels and Advanced keys turned on or off
-  // Turning History or the canvas on widens the window by that panel's width, where the board has room. Advanced keys
-  // beside the canvas make it taller, so the keys keep their size. Turning one off gives the room back: turned back while
-  // the window is still the size the board gave it, it goes back to the size it had before, exactly. A window that fills
-  // the board keeps its size, and its panels share it.
+  // Turning History or the canvas on widens the window by that panel's width, where the board has room. (In a window
+  // taller than wide, a canvas that fits above the keys with its steps needs no more width.) Advanced keys make it
+  // taller, so the keys keep their size. Turning one off gives the room back: turned back while the window is still the
+  // size the board gave it, it goes back to the size it had before, exactly. A window that fills the board keeps its
+  // size, and its panels share it.
   const sized = {};   // 'history', 'canvas' or 'advanced' → { on, from, to }: its last change, the size before and the size given
   // The window's own size. While Advanced keys raise its smallest height, the board draws it taller than that.
   function ownSize(info) {
@@ -812,16 +822,20 @@
     let to;
     if (rec && rec.on !== on && Math.abs(rec.to.w - w) <= 2 && Math.abs(rec.to.h - h) <= 2) to = rec.from;
     else if (what === 'advanced') {
-      // Two more rows of keys: taller by enough that a key's shorter side stays as it is (beside the canvas only; under
-      // a display, the board draws the window taller meanwhile, in layout()).
-      if (!on || cfg.test || el.app.dataset.layout !== 'side') return null;
-      const r = keyBtn[7].getBoundingClientRect(), k = Math.min(r.width, r.height);
-      let H = h;
-      for (let i = 0; i < 2; i++) { const m = metrics(w, H); H = Math.ceil(8 * k + 7 * m.G + m.PT + m.PB); }
+      // Two more rows of keys: taller by enough that a key's shorter side stays as it is (advancedHeight()). Under the
+      // small display, the board draws the window taller meanwhile, in layout().
+      if (!on) return null;
+      const r = keyBtn[7].getBoundingClientRect(), H = advancedHeight(w, h, Math.min(r.width, r.height), cfg, placed.own);
       if (H <= h + 2) return null;
       to = { w, h: H };
     }
-    else if (on) to = { w: w + (what === 'history' ? histWidth(h) : canvasWidth(h)) + M.G, h };
+    else if (on) {
+      if (what === 'canvas' && h > w) {
+        const L = plan(w, h, Object.assign({}, cfg, { canvas: true }), placed.own);
+        if (!L.side && L.mainW >= CANVAS_MIN && L.canvasH >= STEPS_MIN - .5) return null;
+      }
+      to = { w: w + (what === 'history' ? histWidth(h) : canvasWidth(h)) + M.G, h };
+    }
     else {
       // (Only a panel beside the others has a width to give back: a canvas above the keys has none.)
       const beside = what === 'history' ? el.app.classList.contains('hist') : el.app.dataset.layout === 'side';
@@ -842,9 +856,9 @@
   }
 
   // ---- Layout: which panels show where, for the window's size. Every key stays 44 px or more.
-  const KEY = 44.5, HIST_MIN = 200, CANVAS_MIN = 340, DISP_MIN = 76;
-  function metrics(W, H) {
-    const m = Math.min(W, H), rows = !cfg.test && cfg.advanced ? 8 : 6;
+  const KEY = 44.5, HIST_MIN = 200, CANVAS_MIN = 340, DISP_MIN = 76, STEPS_MIN = 252, LEAN = .02, BAND = 8;
+  function metrics(W, H, rows = !cfg.test && cfg.advanced ? 8 : 6) {
+    const m = Math.min(W, H);
     const P = clamp(8, m * .02, 28), G = clamp(5, m * .013, 16);
     // Filling the board, the window keeps clear of the board's buttons in its bottom corners, and of the padlocks in its
     // top ones while the board is locked.
@@ -855,42 +869,97 @@
   }
   const histWidth = h => Math.round(clamp(240, h * .6, 480));
   const canvasWidth = h => Math.round(h * .86);
-  let minNow = null, baseH = 0;   // the smallest height asked of the board for Advanced keys, and the height before it
-  function layout() {
-    const W = innerWidth, H = innerHeight;
-    if (!W || !H) return;
-    const M = metrics(W, H), { P, PT, PB, G, rows } = M, availW = W - 2 * P, availH = H - PT - PB;
+  // Where the panels go in a window W × H, with config c. The canvas sits beside the keys or above them, whichever gives a
+  // key the longer shorter side. Basic keys decide, so turning Advanced keys on or off never moves the canvas. Above the
+  // keys, in a window wide enough to have it beside them, the canvas keeps 252 px for its steps. `was` is where the
+  // canvas went last: it stays there until the other place is 2% better, and goes back beside the keys only with 8 px of
+  // width to spare, so dragging an edge across moves it only once.
+  function plan(W, H, c, was) {
+    const M = metrics(W, H, !c.test && c.advanced ? 8 : 6), { P, PT, PB, G, rows } = M, availW = W - 2 * P, availH = H - PT - PB;
+    const spare = was === 'stack' ? BAND : 0;
     // History: at its width beside everything else, or narrower down to 200 px; where even that doesn't fit, it hides.
     let hw = 0;
-    if (cfg.history) {
+    if (c.history) {
       hw = Math.min(histWidth(H), availW - G - M.keysMinW);
       // (Narrower still, where that keeps the canvas beside the keys.)
       const room = Math.floor(availW - G - (CANVAS_MIN + G) / .6);
-      if (cfg.canvas && availH >= M.keysMinH && room >= HIST_MIN) hw = Math.min(hw, room);
+      if (c.canvas && availH >= M.keysMinH && room >= HIST_MIN + spare / .6) hw = Math.min(hw, room);
       if (hw < HIST_MIN) hw = 0;
     }
     const mainW = availW - (hw ? hw + G : 0);
-    // The canvas beside the keys when both fit; otherwise it, or the compact display, sits above them. (Whether the
-    // canvas fits beside them is a matter of width alone, so the room asked for Advanced keys below never flips it.)
-    const keysW = clamp(M.keysMinW, availH * 4 / rows * 1.12, mainW * .4);
-    const besideByWidth = cfg.canvas && mainW * .6 - G >= CANVAS_MIN;
-    const side = besideByWidth && availH >= M.keysMinH && mainW - keysW - G >= CANVAS_MIN;
+    // (Whether the canvas could sit beside the keys is a matter of width, and of where it was, so the room asked for
+    // Advanced keys in layout() never moves it. With History, the 8 px are History's to give up.)
+    const besideByWidth = c.canvas && mainW * .6 - G >= CANVAS_MIN + (hw ? 0 : spare);
+    // For n rows of keys: their column beside the canvas, and their height and width under it. Under the canvas, a key
+    // is at most 1.5 times as wide as tall.
+    const keysW = n => clamp(M.keysMinW, availH * 4 / n * 1.12, mainW * .4);
+    const keysH = n => clamp(n * KEY + (n - 1) * G, Math.min(mainW * n / 4 * .72, availH * .7, besideByWidth ? availH - G - STEPS_MIN : Infinity), availH - G - DISP_MIN);
+    const kcap = n => Math.round(c.canvas ? 6 * (keysH(n) - (n - 1) * G) / n + 3 * G : keysH(n) * 4 / n * 1.5);
+    // A Basic key's shorter side, beside the canvas and under it
+    const beside = Math.min((keysW(6) - 3 * G) / 4, (availH - 5 * G) / 6);
+    const under = Math.min((Math.min(mainW, kcap(6)) - 3 * G) / 4, (keysH(6) - 5 * G) / 6);
+    const lean = was === 'side' ? LEAN : was === 'stack' ? -LEAN : 0;
+    const side = besideByWidth && availH >= M.keysMinH && mainW - keysW(rows) - G >= CANVAS_MIN && under <= beside * (1 + lean);
+    const L = { M, availH, hw, mainW, besideByWidth, side, keysW: keysW(rows), keysH: keysH(rows), kcap: kcap(rows) };
+    // A key's shorter side, and the canvas's height, as layout() draws them
+    L.key = side ? Math.min((L.keysW - 3 * G) / 4, (availH - (rows - 1) * G) / rows) : Math.min((Math.min(mainW, L.kcap) - 3 * G) / 4, (L.keysH - (rows - 1) * G) / rows);
+    L.canvasH = !c.canvas ? 0 : side ? availH : availH - G - L.keysH;
+    return L;
+  }
+  // Advanced keys turned on in a window w × h, where the canvas is `was` and a key's shorter side is k: the height that
+  // keeps each key so, or 0 for none. Beside the canvas, the window grows only as far as the canvas stays beside the
+  // keys: History widens as it grows. Above the keys, where the canvas could sit beside them, it grows until the keys
+  // keep their size and the canvas its steps, or failing that, its steps. Elsewhere the keys share the window, as today.
+  function advancedHeight(w, h, k, c, was) {
+    if (c.test || !c.canvas) return 0;
+    const a = Object.assign({}, c, { advanced: true }), L = plan(w, h, c, was);
+    if (L.side) {
+      let H = h;
+      for (let i = 0; i < 2; i++) { const m = metrics(w, H); H = Math.ceil(8 * k + 7 * m.G + m.PT + m.PB); }
+      while (H > h && !plan(w, H, a, 'side').side) H--;
+      return H;
+    }
+    if (!L.besideByWidth) return 0;
+    const now = plan(w, h, a, 'stack').key, most = h + Math.ceil(4 * (k + L.M.G));
+    let steps = 0;
+    for (let H = h + 1; H <= most; H++) {
+      const A = plan(w, H, a, 'stack');
+      if (A.side || A.canvasH < STEPS_MIN - .5) continue;
+      if (A.key >= k - 1) return H;
+      if (!steps && A.key >= now) steps = H;
+    }
+    return steps;
+  }
+  let minNow = null, baseH = 0;   // the smallest height asked of the board for Advanced keys, and the height before it
+  // Where the canvas went last, 'side' or 'stack' (plan()'s `was`): in the window at its own size, and filling the board.
+  // It's kept while the window changes size for a panel, or fills the board or stops: at sizes on the way, the canvas may
+  // sit in the other place for a moment.
+  const placed = { own: null, fill: null };
+  let held = 0, filled = null;
+  function hold() { held = performance.now() + 600; setTimeout(soon, 650); }
+  function layout() {
+    const W = innerWidth, H = innerHeight;
+    if (!W || !H) return;
+    const info = Board21.context && Board21.context.window, at = info && info.maximized ? 'fill' : 'own';
+    if (filled !== null && filled !== at) hold();
+    filled = at;
+    const L = plan(W, H, cfg, placed[at]), { M, hw, side } = L, { P, PT, PB, G, rows } = M;
+    if (cfg.canvas && performance.now() >= held) placed[at] = side ? 'side' : 'stack';
     const s = el.grid.style, swap = cfg.swap;
     if (side) {
-      const cols = [['canvas', 'minmax(0, 1fr)'], ['keys', keysW + 'px']].concat(hw ? [['hist', hw + 'px']] : []);
+      const cols = [['canvas', 'minmax(0, 1fr)'], ['keys', L.keysW + 'px']].concat(hw ? [['hist', hw + 'px']] : []);
       if (swap) cols.reverse();
       s.gridTemplateColumns = cols.map(c => c[1]).join(' ');
       s.gridTemplateRows = 'minmax(0, 1fr)';
       s.gridTemplateAreas = `"${cols.map(c => c[0]).join(' ')}"`;
     } else {
-      const keysH = clamp(M.keysMinH, Math.min(mainW * rows / 4 * .72, availH * .7), availH - G - DISP_MIN);
       const cols = [['main', 'minmax(0, 1fr)']].concat(hw ? [['hist', hw + 'px']] : []);
       if (swap) cols.reverse();
       const row = top => cols.map(c => c[0] === 'main' ? top : 'hist').join(' ');
       s.gridTemplateColumns = cols.map(c => c[1]).join(' ');
-      s.gridTemplateRows = `minmax(0, 1fr) ${keysH}px`;
+      s.gridTemplateRows = `minmax(0, 1fr) ${L.keysH}px`;
       s.gridTemplateAreas = `"${row('canvas')}" "${row('keys')}"`;
-      el.app.style.setProperty('--kcap', Math.round(keysH * 4 / rows * 1.5) + 'px');
+      el.app.style.setProperty('--kcap', L.kcap + 'px');
     }
     el.app.dataset.layout = side ? 'side' : 'stack';
     el.app.classList.toggle('hist', !!hw);
@@ -898,7 +967,7 @@
     s.padding = `${PT}px ${P}px ${PB}px`; s.setProperty('--g', G + 'px');
     el.app.style.setProperty('--hf', clamp(16, (hw || 240) * .072, 40) + 'px');
     // Advanced keys need a taller window when they sit under a display: the board draws it taller meanwhile.
-    const need = rows > 6 ? Math.ceil(2 * P + M.keysMinH + (besideByWidth ? 0 : G + DISP_MIN)) + 1 : 0;
+    const need = rows > 6 ? Math.ceil(2 * P + M.keysMinH + (L.besideByWidth ? 0 : G + DISP_MIN)) + 1 : 0;
     const min = need > 400 ? need : null;
     if (min !== minNow && Board21.embedded) {
       if (min && !minNow) baseH = (Board21.context && Board21.context.window && Board21.context.window.height) || H;

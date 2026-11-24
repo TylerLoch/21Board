@@ -2513,6 +2513,171 @@ test('remainders: a sheet shows its answers as decimals', () => {
   assert.strictEqual(sheet('17÷5', REM).state().lines[0].result.text, '3.4');
 });
 
+// ---- 30. A grey R, and 17/5 after a remainder (2026.11.23-4) ---------------------------------------------------------
+// The R in 3 R 2 is drawn in the muted color at full strength. Going on from an answer shown with a remainder puts its
+// exact value in the ans box as a fraction, 17/5, drawn as As fractions draws its ans box. Any other box is as before.
+const ansBox = html => { const m = /<span class="ce-ansref">([\s\S]*?)<span class="ce-anslabel">/.exec(html || ''); return m ? m[1] : ''; };
+const stacked = (html, n, d) => ansBox(html).includes(`<span class="ce-frac ce-value"><span class="ce-numer"><span class="ce-num">${n}</span></span><span class="ce-denom"><span class="ce-num">${d}</span></span></span>`);
+const stepWorks = s => s.steps.filter(st => st.work).map(st => st.work.text);
+test('grey R: the stylesheet draws the R muted, at full strength, and the faint comma as before', () => {
+  const rule = /\n\.ce-r \{([^}]*)\}/.exec(C.CSS);
+  assert.ok(rule, 'a .ce-r rule');
+  assert.strictEqual(rule[1].trim(), 'color: var(--b21-muted, #6b7280);', 'only its color, the muted one, with no opacity');
+  assert.ok(C.CSS.includes('\n.ce-sep { color: var(--b21-muted, #6b7280); opacity: .6; }\n'), 'the faint comma as before');
+  const s = calc('17÷5', REM);
+  assert.ok(s.equation.html.includes('<span class="ce-r"> R </span>'), s.equation.html);
+  assert.strictEqual(s.equation.text, '17 ÷ 5 = 3 R 2');
+  assert.strictEqual(s.equation.speech, '17 divided by 5 equals 3 remainder 2');
+  assert.ok(/<mtext> R <\/mtext>/.test(s.equation.mathml), s.equation.mathml);
+});
+test('17/5 after a remainder: an operator right after =', () => {
+  const c = typed('17÷5=×5', REM);
+  assert.strictEqual(c.state().expression.text, '17/5 × 5');
+  assert.ok(stacked(c.state().expression.html, '17', '5'), c.state().expression.html);
+  c.press('equals');
+  const s = c.state();
+  assert.strictEqual(s.equation.text, '17/5 × 5 = 17');
+  assert.strictEqual(s.equation.speech, '17 over 5 times 5 equals 17');
+  assert.ok(stacked(s.equation.html, '17', '5'), s.equation.html);
+  assert.ok(/<mfrac><mn>17<\/mn><mn>5<\/mn><\/mfrac>/.test(s.equation.mathml), s.equation.mathml);
+  // Drawn as As fractions draws its ans box, to the letter.
+  const f = typed('17÷5=×5=', { answerAs: 'fraction' }).state();
+  for (const k of ['text', 'html', 'mathml', 'speech']) assert.strictEqual(s.equation[k], f.equation[k], k);
+  for (const [keys, text] of [['17÷5=+1=', '17/5 + 1 = 4.4'], ['17÷5=−1=', '17/5 − 1 = 2.4'], ['17÷5=²=', '(17/5)² = 11.56'],
+    ['17÷5=√=', '√(17/5) = 1.843908891'], ['17÷5=±', '−17/5']]) {
+    const t = typed(keys, REM).state();
+    assert.strictEqual(t.mode === 'done' ? t.equation.text : t.expression.text, text, keys);
+  }
+});
+test('17/5 after a remainder: = again', () => {
+  const s = typed('100÷3==', REM).state();
+  assert.strictEqual(s.equation.text, '100/3 ÷ 3 = 11.11111111');
+  assert.strictEqual(s.equation.speech, '100 over 3 divided by 3 equals 11.11111111');
+  assert.ok(stacked(s.equation.html, '100', '3'), s.equation.html);
+  assert.strictEqual(typed('17÷5==', REM).state().equation.text, '17/5 ÷ 5 = 0.68');
+});
+test('17/5 after a remainder: the ans key, and History’s Use', () => {
+  let c = typed('17÷5=ans', REM);
+  assert.strictEqual(c.state().expression.text, '17/5');
+  assert.ok(stacked(c.state().expression.html, '17', '5'));
+  c = typed('17÷5=AC2+ans', REM);   // (ans while typing: the newest History line's answer)
+  assert.strictEqual(c.state().expression.text, '2 + 17/5');
+  c = typed('17÷5=15÷5=', REM);
+  assert.strictEqual(c.useAnswer(1), true);
+  assert.strictEqual(c.state().expression.text, '17/5');
+  assert.ok(stacked(c.state().expression.html, '17', '5'));
+  c.input('×5=');
+  assert.strictEqual(c.state().equation.text, '17/5 × 5 = 17');
+  c.useAnswer(1);
+  assert.strictEqual(c.state().expression.text, '3', 'a whole number is a whole number');
+});
+test('17/5 after a remainder: while typing, the display shows the box as the box shows it', () => {
+  assert.strictEqual(typed('17÷5=×', REM).state().display, '17/5');
+  assert.strictEqual(typed('17÷5=±', REM).state().display, '−17/5');
+  assert.strictEqual(typed('2+17÷5=×', REM).state().display, '5.4');
+});
+test('17/5 after a remainder: the box follows the answer it came from', () => {
+  assert.strictEqual(typed('2+17÷5=×5=', REM).state().equation.text, '5.4 × 5 = 27');
+  assert.strictEqual(typed('15÷5=×2=', REM).state().equation.text, '3 × 2 = 6');
+  assert.strictEqual(typed('7.5÷2=×2=', REM).state().equation.text, '3.75 × 2 = 7.5');
+  assert.strictEqual(typed('17÷5×1=×5=', REM).state().equation.text, '3.4 × 5 = 17');
+  const c = typed('2+17÷5=', REM);
+  c.useAnswer(0);
+  assert.strictEqual(c.state().expression.text, '5.4');
+  // A value with no fraction the Calculator can show: the decimal, as before.
+  const far = typed('5÷12345678901=×2=', REM).state();
+  assert.strictEqual(typed('5÷12345678901=', REM).state().display, '0 R 5');
+  assert.strictEqual(far.equation.text, typed('5÷12345678901=×2=').state().equation.text);
+});
+test('17/5 after a remainder: ⇄ then going on does what As fractions does', () => {
+  // As fractions: ⇄ shows 3.4, and going on, the box shows 17/5.
+  const f = typed('17÷5=', { answerAs: 'fraction' });
+  f.press('toggle');
+  assert.strictEqual(f.state().display, '3.4');
+  f.input('×5=');
+  assert.strictEqual(f.state().equation.text, '17/5 × 5 = 17');
+  const c = typed('17÷5=', REM);
+  c.press('toggle');
+  assert.strictEqual(c.state().display, '3.4');
+  c.input('×5=');
+  assert.strictEqual(c.state().equation.text, '17/5 × 5 = 17');
+  // ⇄ on a later answer switches only that answer.
+  const d = typed('17÷5=×5÷3=', REM);
+  assert.strictEqual(d.state().equation.text, '17/5 × 5 ÷ 3 = 5 R 2');
+  d.press('toggle');
+  assert.strictEqual(d.state().equation.text, '17/5 × 5 ÷ 3 = 5.666666667');
+});
+test('17/5 after a remainder: the new answer follows the usual rule, step by step', () => {
+  const s = typed('17÷5=÷5=', REM).state();
+  assert.strictEqual(s.equation.text, '17/5 ÷ 5 = 0.68');
+  assert.deepStrictEqual(s.steps.map(st => st.text), ['17/5 ÷ 5', '0.68']);
+  assert.deepStrictEqual(stepWorks(s), ['17/5 ÷ 5 = 0.68']);
+  assert.strictEqual(typed('17÷5=×5=', REM).state().answer.form, 'decimal');
+  const t = typed('17÷5=+3÷5=', REM).state();
+  assert.deepStrictEqual(stepWorks(t), ['3 ÷ 5 = 0.6', '17/5 + 0.6 = 4']);
+});
+test('17/5 after a remainder: History, saving, and loading keep the box', () => {
+  const c = typed('17÷5=×5=', REM), h = c.state().history[0];
+  assert.strictEqual(h.equation.text, '17/5 × 5 = 17');
+  assert.strictEqual(h.expression.speech, '17 over 5 times 5');
+  assert.ok(stacked(h.expression.html, '17', '5'));
+  const d = c.serialize();
+  assert.deepStrictEqual(d.expr[0], { ans: '17/5', rem: true });
+  assert.deepStrictEqual(d.history[0].expr[0], { ans: '17/5', rem: true });
+  const b = fresh(REM);
+  assert.strictEqual(b.load(JSON.parse(JSON.stringify(d))), true);
+  assert.strictEqual(b.state().equation.text, '17/5 × 5 = 17');
+  assert.strictEqual(b.state().history[0].equation.text, '17/5 × 5 = 17');
+  const e = fresh(REM);
+  e.load(typed('17÷5=×', REM).serialize());
+  assert.strictEqual(e.state().expression.text, '17/5 ×');
+  // A box saved before this release has no rem, and shows its decimal, as it did.
+  const old = fresh(REM);
+  assert.strictEqual(old.load({ v: 2, expr: [{ ans: '17/5' }, '*', { n: '5' }], mode: 'done', pct: 'of', closed: 0, history: [] }), true);
+  assert.strictEqual(old.state().equation.text, '3.4 × 5 = 17');
+  assert.strictEqual(fresh(REM).load({ v: 2, expr: [{ ans: '17/5', rem: 'yes' }], mode: 'edit', history: [] }), false, 'rem is true or false');
+});
+test('17/5 after a remainder: As decimals and As fractions show the box their own way', () => {
+  const c = typed('17÷5=×5=', REM);
+  c.setOptions({ answerAs: 'decimal' });
+  assert.strictEqual(c.state().equation.text, '3.4 × 5 = 17');
+  c.setOptions({ answerAs: 'fraction' });
+  assert.strictEqual(c.state().equation.text, '17/5 × 5 = 17');
+  c.setOptions(REM);
+  assert.strictEqual(c.state().equation.text, '17/5 × 5 = 17');
+});
+test('17/5 after a remainder: As decimals and As fractions give what they gave in 2026.11.23-1', () => {
+  const SEQ = ['17÷5=×5=', '100÷3==', '17÷5=ans', '17÷5=±', '17÷5=√=', '17÷5=²=', '17÷5=÷5=', '17÷5=⇄×5=', '2+17÷5=×5=', '17÷5=×', '15÷5=×2=', '17÷5=×5÷3=⇄'];
+  const WAS = {
+    decimal: [['3.4 × 5 = 17', '3.4 times 5 equals 17', '17'], ['33.33333333… ÷ 3 = 11.11111111', '33.33333333 divided by 3 equals 11.11111111', '11.11111111'],
+      ['3.4', '3.4', '3.4'], ['−3.4', 'negative 3.4', '−3.4'], ['√3.4 = 1.843908891', 'the square root of 3.4 equals 1.843908891', '1.843908891'],
+      ['3.4² = 11.56', '3.4 squared equals 11.56', '11.56'], ['3.4 ÷ 5 = 0.68', '3.4 divided by 5 equals 0.68', '0.68'], ['3.4 × 5 = 17', '3.4 times 5 equals 17', '17'],
+      ['5.4 × 5 = 27', '5.4 times 5 equals 27', '27'], ['3.4 ×', '3.4 times', '3.4'], ['3 × 2 = 6', '3 times 2 equals 6', '6'],
+      ['17/5 × 5 ÷ 3 = 17/3', '17 over 5 times 5 divided by 3 equals 17 over 3', '17/3']],
+    fraction: [['17/5 × 5 = 17', '17 over 5 times 5 equals 17', '17'], ['100/3 ÷ 3 = 100/9', '100 over 3 divided by 3 equals 100 over 9', '100/9'],
+      ['17/5', '17 over 5', '17/5'], ['−17/5', 'negative 17 over 5', '−17/5'], ['√(17/5) = 1.843908891', 'the square root of 17 over 5 equals 1.843908891', '1.843908891'],
+      ['(17/5)² = 289/25', '17 over 5 squared equals 289 over 25', '289/25'], ['17/5 ÷ 5 = 17/25', '17 over 5 divided by 5 equals 17 over 25', '17/25'],
+      ['17/5 × 5 = 17', '17 over 5 times 5 equals 17', '17'], ['27/5 × 5 = 27', '27 over 5 times 5 equals 27', '27'], ['17/5 ×', '17 over 5 times', '17/5'],
+      ['3 × 2 = 6', '3 times 2 equals 6', '6'], ['3.4 × 5 ÷ 3 = 5.666666667', '3.4 times 5 divided by 3 equals 5.666666667', '5.666666667']]
+  };
+  // (Everything drawn, saved, and in History, for every problem: the same as 2026.11.23-1 drew it.)
+  const HASH = { decimal: 'b9d1324d88b7d44a', fraction: '0f93b9b83180b474' };
+  for (const as of ['decimal', 'fraction']) {
+    const o = as === 'decimal' ? {} : { answerAs: as };
+    let all = '';
+    SEQ.forEach((keys, i) => {
+      const c = typed(keys, o), s = c.state(), show = s.mode === 'done' ? s.equation : s.expression;
+      assert.deepStrictEqual([show.text, show.speech, s.display], WAS[as][i], `${as}: ${keys}`);
+      all += show.html + show.mathml + s.displayHtml + JSON.stringify(c.serialize()) + s.history.map(h => h.equation.html + h.answer.html).join('');
+    });
+    const u = typed('17÷5=15÷5=', o);
+    u.useAnswer(1); u.input('×5=');
+    assert.strictEqual(u.state().equation.text, as === 'decimal' ? '3.4 × 5 = 17' : '17/5 × 5 = 17', `${as}: History’s Use`);
+    all += u.state().equation.html + JSON.stringify(u.serialize());
+    assert.strictEqual(require('crypto').createHash('sha256').update(all).digest('hex').slice(0, 16), HASH[as], `${as}: drawn and saved exactly as in 2026.11.23-1`);
+  }
+});
+
 // ---- Results ----------------------------------------------------------------------------------------------------------
 for (const f of failures) console.log('FAIL ' + f);
 console.log(`\n${passed} passed, ${failed} failed`);

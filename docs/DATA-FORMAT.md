@@ -506,7 +506,8 @@ The Calculator (`calculator`) saves its engine's `serialize()`: `{ v: 2, expr, m
 percent rule it was worked out with, `closed` the number of `)` and box ends that = added, and `frac: true` that ⇄
 shows its answer in the other form. `history` is the last 20 problems worked out, `{ expr, pct }`, newest first. After
 an =, the first is the one on the canvas. In `expr`, a number is `{ n: "12.5" }`, with `neg: true` after ±, and an
-answer used again is `{ ans: "7/2" }`. Everything else is a string: `"+" "-" "*" "/" "(" ")" "neg" "%" "%of" "pi"`, and
+answer used again is `{ ans: "7/2" }`, with `rem: true` when it was shown with a remainder. With remainders shows
+that box as a fraction, such as 17/5. Everything else is a string: `"+" "-" "*" "/" "(" ")" "neg" "%" "%of" "pi"`, and
 the boxes `"^" "sqrt" "root" "frac" "sep" "end"`. Answers aren't saved. They're worked out again on load, and anything
 that doesn't check out is left out. Its config is every menu setting and which panels show: `{ canvas, history, steps,
 words, advanced, hide, answers: "decimal" | "fraction" | "remainder", fractions, test, percent: "of" | "apple", swap }`.
@@ -536,6 +537,28 @@ checked when read. A bad one takes its default, which is Analog, the Simple face
 also keeps `style` for an older 21Board: `"analog"` for analog only, `"digital"` when digital shows, and `"date"` for
 Date only. A config from before 2026.11.21-4 is `{ style, hour24, seconds, date }` and reads the same way. Whether
 Quiz shows ? is never saved.
+
+The Name Picker (`name-picker`) saves `{ names, left, picked, pickId, current, groups, groupId }`. `names` is the
+list, once for each student. `left` is who is still to go in a round of No repeats, or `null` for everyone. `picked`
+is the last pick, 1 to 6 names, and `pickId` changes with every pick. `current` is `picked[0]`, for releases before
+several winners. `groups` is each group's names in deal order, 6 groups at most. `groupId` changes with every draw. It
+ends with the Groups number and how many groups that made, such as `-43` for Groups 4 with 3 names. Names in `left`,
+`picked`, and `groups` that aren't in `names` are dropped when read, and a name in no group joins the smallest group.
+Its config is `{ noRepeats, style, winners, groups, quick, sound }`. `style` is `"name"`, `"wheel"`, `"spotlight"`,
+`"lotto"`, or `"groups"`. `winners` is 1 to 6 and `groups` is 2 to 6. A bad one takes its default, 1 or 4.
+
+Weather (`weather`) saves `{ saved: { at, place, days, wear } }`, the last forecast it showed, for offline. `at` is when
+that last changed, in ms. `place` is its place's GeoNames `id`. `days` is the 7 days as drawn, each `{ date, code,
+low, high, rain }`, in °F and unrounded. `wear` is What to wear for today and the next school day, by date: `{ label,
+advice, items, feels8, high, at }`, or `{ label, none: true }` past the forecast. `saved.from` is `"nws"` when the
+National Weather Service's forecast was the backup. It saves only when the window would look different, in whole
+degrees and tens of percent, so a few times a day at most. A save for another place is ignored. The weather right now,
+the hourly forecast, wind, air quality, and watches and warnings are never saved. Board Sync keeps the later change, as
+for the Timer. Its config is every menu setting and the place: `{ place: { id, name, region, country, lat, lon, tz },
+units, hide, simple, still, date }`. `units` is `"f"` or `"c"`. `hide` lists the parts the Show list hides, any of
+`"hourly"`, `"days"`, `"wear"`, `"sun"`, `"moon"`, `"wind"`, `"air"`, and `"watches"`. `still` is No motion. `date` is
+`"YYYY-MM-DD"` while On a date is open, else `null`. Each key is checked when read. A bad one takes its default:
+Wheeling, °F, nothing hidden, and the rest off.
 
 The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
 their own work in their own site's storage on the device. Their windows have an `inst` record like any other,

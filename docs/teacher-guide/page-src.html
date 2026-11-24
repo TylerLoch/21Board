@@ -107,6 +107,14 @@ section.block { padding-block: 56px 8px; display: grid; gap: 26px; scroll-margin
 .grade { font-size: 13px; font-weight: 700; color: var(--title-ink); background: var(--titlebar); border-radius: 999px; padding: 2px 8px; text-align: center; white-space: nowrap; }
 .good { color: var(--muted); }
 .w .more { font-size: 16px; }
+/* A card's table, under its picture and words (Weather's What to wear) */
+.w .wear { grid-column: 1 / -1; padding: 22px 26px 26px; border-top: 1px solid var(--line); display: grid; gap: 10px; min-width: 0; }
+.w .wear p { color: var(--muted); font-size: 17px; max-width: 70ch; }
+.wear-box { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
+.wear-box table { width: 100%; border-collapse: collapse; font-size: 17px; line-height: 1.35; }
+.wear-box th, .wear-box td { text-align: left; vertical-align: top; padding: 9px 14px; border-top: 1px solid var(--line); }
+.wear-box thead th { border-top: 0; font-size: 13px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); background: var(--soft); }
+.wear-box td:first-child { white-space: nowrap; }
 
 /* Your board, keep it safe */
 .duo { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
@@ -150,6 +158,9 @@ footer.end b { color: var(--ink); }
   .groups { grid-template-columns: minmax(0, 1fr); }
   .tile { width: 84px; font-size: 13px; }
   .w .txt { padding: 20px 18px 22px; }
+  .w .wear { padding: 20px 18px 22px; }
+  .wear-box th, .wear-box td { padding: 8px 10px; font-size: 15px; }
+  .wear-box td:first-child { white-space: normal; }
   .ideas li { grid-template-columns: minmax(0, 1fr); gap: 2px; }
   .grade { justify-self: start; }
   .screen { padding: 6px 6px 0; border-radius: 12px 12px 0 0; }
@@ -179,19 +190,19 @@ footer.end b { color: var(--ink); }
   <header><h2>Start in three taps</h2><p>There’s nothing to install, no account, and no Save button. Every change is saved on the device as you work.</p></header>
   <ol class="steps">
     <li><h3>Open 21Board</h3><p>Open it from your Apps menu. A new board says “Your board is ready.”</p><img src="shots/empty.jpg" width="2732" height="1536" loading="lazy" alt="An empty 21Board page with the words Your board is ready, and Tap the Widget Picker button in either bottom corner to open a widget."></li>
-    <li><h3>Tap [W]</h3><p>The Widget Picker sits in both bottom corners, so you can reach it from either side of the board. Settings is the gear in its bottom row.</p><img src="shots/picker.jpg" width="990" height="892" loading="lazy" alt="The Widget Picker open, with 16 colorful widget tiles and a row of buttons below: Paste, Export, Import, Lock, Full screen, Settings, and the page control."></li>
+    <li><h3>Tap [W]</h3><p>The Widget Picker sits in both bottom corners, so you can reach it from either side of the board. Settings is the gear in its bottom row.</p><img src="shots/picker.jpg" width="990" height="892" loading="lazy" alt="The Widget Picker open, with 17 colorful widget tiles and a row of buttons below: Paste, Export, Import, Lock, Full screen, Settings, and the page control."></li>
     <li><h3>Tap a widget</h3><p>It opens in its own window. Open as many as you like, and come back to them tomorrow just as you left them.</p><img src="shots/w-timer.jpg" width="960" height="734" loading="lazy" alt="A Timer window counting down 4 minutes 54 seconds, with preset buttons from 1 to 15 minutes."></li>
   </ol>
 </section>
 
 <section class="block" id="widgets">
-  <header><h2>Meet the widgets</h2><p>Sixteen tools, each one tap away. Tap a tile to see what it does, with ideas from kindergarten to eighth grade.</p></header>
+  <header><h2>Meet the widgets</h2><p>Seventeen tools, each one tap away. Tap a tile to see what it does, with ideas from kindergarten to eighth grade.</p></header>
   <div class="picker">
     <div class="groups">
       <div class="grp"><h3>Time</h3><div class="tiles">{{tile:timer}}{{tile:task-timer}}{{tile:clock}}{{tile:calendar}}</div></div>
       <div class="grp"><h3>Words and pictures</h3><div class="tiles">{{tile:notes}}{{tile:image}}{{tile:youtube-player}}</div></div>
       <div class="grp"><h3>Math and chance</h3><div class="tiles">{{tile:calculator}}{{tile:dice}}{{tile:name-picker}}</div></div>
-      <div class="grp"><h3>Routines</h3><div class="tiles">{{tile:traffic-light}}{{tile:first-then-board}}{{tile:zones-check-in}}</div></div>
+      <div class="grp"><h3>Routines</h3><div class="tiles">{{tile:traffic-light}}{{tile:first-then-board}}{{tile:zones-check-in}}{{tile:weather}}</div></div>
       <div class="grp"><h3>District apps</h3><div class="tiles">{{tile:21sketch}}{{tile:21timer}}{{tile:21doccam}}</div></div>
     </div>
   </div>
@@ -294,16 +305,16 @@ footer.end b { color: var(--ink); }
   </article>
 
   <article class="w" id="w-name-picker">
-    <figure class="shot" style="margin:0"><img src="shots/w-name-picker.jpg" width="1120" height="892" loading="lazy" alt="Name Picker as a spinning wheel of eight first names, landed on Eli."><figcaption>The names are examples.</figcaption></figure>
+    <figure class="shot" style="margin:0;gap:16px;align-content:center"><img src="shots/w-name-picker.jpg" width="1120" height="892" loading="lazy" alt="Name Picker as a spinning wheel of eight first names, landed on Eli."><img src="shots/w-name-picker-groups.jpg" width="1120" height="892" loading="lazy" alt="Name Picker in Groups, eight first names in two groups of four."><figcaption>The names are examples.</figcaption></figure>
     <div class="txt">
-      <div class="head">{{icon:name-picker}}<div><h3>Name Picker</h3><p>Picks one to five students at random, with a little show.</p></div></div>
-      <div><h4>Try it</h4><ol><li>Type or paste your class list, one name per line, and tap Done.</li><li>Tap SPIN, or Pick a name.</li><li>Tap Name Picker ⌄ for Big name, Spinning wheel, Spotlight, or Lotto.</li></ol></div>
-      <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Pick the line leader with the Spinning wheel.</span></li><li><span class="grade">Any</span><span>Cold-call fairly. No repeats is on, so everyone gets a turn before anyone goes twice.</span></li><li><span class="grade">3–5</span><span>Make groups. Set Winners each time to 4.</span></li></ul></div>
-      <div><h4>Good to know</h4><ul class="good"><li>Pick up to five names at once. Choose how many under Winners each time in Name Picker ⌄.</li><li>Names are only stored on your computer and your school Google Drive.</li><li>A Blank template never keeps the names, so it’s safe to share.</li></ul></div>
+      <div class="head">{{icon:name-picker}}<div><h3>Name Picker</h3><p>Picks one to six students at random, or makes groups.</p></div></div>
+      <div><h4>Try it</h4><ol><li>Type or paste your class list, one name per line, and tap Done.</li><li>Tap SPIN, or Pick a name.</li><li>Tap Name Picker ⌄ for Big name, Spinning wheel, Spotlight, Lotto, or Groups.</li></ol></div>
+      <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Pick the line leader with the Spinning wheel.</span></li><li><span class="grade">Any</span><span>Cold-call fairly. No repeats is on, so everyone gets a turn before anyone goes twice.</span></li><li><span class="grade">3–5</span><span>Make groups. Choose Groups, then how many.</span></li></ul></div>
+      <div><h4>Good to know</h4><ul class="good"><li>Pick up to six names at once. Choose how many under Names at a time in Name Picker ⌄.</li><li>Names are only stored on your computer and your school Google Drive.</li><li>A Blank template never keeps the names, so it’s safe to share.</li></ul></div>
     </div>
   </article>
 
-  <h3 class="gtitle">Routines <span>Traffic Light, First/Then Board, Zones Check-In</span></h3>
+  <h3 class="gtitle">Routines <span>Traffic Light, First/Then Board, Zones Check-In, Weather</span></h3>
 
   <article class="w" id="w-traffic-light">
     <figure class="shot" style="margin:0"><img src="shots/w-traffic-light.jpg" width="1460" height="586" loading="lazy" alt="A traffic light on its side with yellow lit, beside a Timer in amber with 42 seconds left."></figure>
@@ -332,6 +343,33 @@ footer.end b { color: var(--ink); }
       <div><h4>Try it</h4><ol><li>Students tap their zone’s card as they come in.</li><li>Tap − on a card to take back a wrong tap.</li><li>Tap Ideas for ways to calm down or wake up, with a breathing circle.</li><li>Set your class size in Zones Check-In ⌄ › Class size.</li></ol></div>
       <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Morning arrival. Each student taps a card before sitting down.</span></li><li><span class="grade">3–5</span><span>Check in again after recess. Start over is in the menu.</span></li><li><span class="grade">6–8</span><span>Turn off Show counts, so no one sees how many chose each zone.</span></li><li><span class="grade">Any</span><span>Open Ideas for the zone most students chose, and breathe with the circle together.</span></li></ul></div>
       <div><h4>Good to know</h4><ul class="good"><li>Make the window wide and the zones line up in one row. Fill the board to put them in every student’s reach.</li><li>Counts clear each new day. Turn off Clear each day in the menu to keep them.</li><li>Counts are only stored on your computer and your school Google Drive.</li><li>A Blank template never keeps the counts.</li></ul></div>
+    </div>
+  </article>
+
+  <article class="w" id="w-weather">
+    <figure class="shot" style="margin:0"><img src="shots/w-weather.jpg" width="1348" height="916" loading="lazy" alt="Weather in Wheeling on a school morning, 39°F and sunny, with the 7-day forecast, a coat, hat, and gloves to wear today, and sunrise and sunset."><figcaption>The forecast is an example.</figcaption></figure>
+    <div class="txt">
+      <div class="head">{{icon:weather}}<div><h3>Weather</h3><p>The weather outside, and what to wear.</p></div></div>
+      <div><h4>Try it</h4><ol><li>Open Weather. It shows Wheeling.</li><li>Make the window bigger to see more.</li><li>Tap a part, such as the week, to see all of it. Tap ‹ Back to return.</li><li>Tap Weather ⌄ › Location… for another town.</li></ol></div>
+      <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Weather helper. Turn on Simple words in Weather ⌄. The helper reads the sentence and the clothes.</span></li><li><span class="grade">K–2</span><span>When a warning shows, tap it. Talk about how a forecast keeps us safe.</span></li><li><span class="grade">3–5</span><span>Open a second Weather for a town far away. How is its week different?</span></li><li><span class="grade">6</span><span>Choose °C and km/h on a cold day. Find the high and the low on a number line.</span></li><li><span class="grade">6–8</span><span>The polar vortex. In Weather ⌄ › On a date…, look up Jan 30, 2019. Compare it with today.</span></li></ul></div>
+      <div><h4>Good to know</h4><ul class="good"><li>It never asks where you are. It sends only a town, nothing about you or your class.</li><li>Offline, it shows the last forecast it saved.</li><li>Warnings always show. Hide watches in Weather ⌄.</li><li>Turn on No motion in Weather ⌄ for a still sky.</li></ul></div>
+    </div>
+    <div class="wear">
+      <h4>What to wear</h4>
+      <p>What to wear goes by what the temperature feels like from 8 AM to 3:30 PM, or to 12 PM on a half day. The coldest hour picks the row. A day is warm only when its coldest hour is 60°F or more. Rain and snow add to any row.</p>
+      <div class="wear-box"><table>
+        <thead><tr><th scope="col">When</th><th scope="col">Advice</th><th scope="col">For example</th></tr></thead>
+        <tbody>
+          <tr><td>Coldest below 10°F</td><td>Dress for very cold weather.</td><td>Coat, hat, gloves, and scarf</td></tr>
+          <tr><td>Coldest 10°F to 31°F</td><td>Dress for cold weather.</td><td>Coat, hat, and gloves</td></tr>
+          <tr><td>Coldest 32°F to 44°F</td><td>Dress for chilly weather.</td><td>Coat</td></tr>
+          <tr><td>Coldest 45°F to 59°F</td><td>Dress for cool weather.</td><td>Jacket</td></tr>
+          <tr><td>Coldest 60°F or more</td><td>Dress for mild weather.</td><td>T-shirt</td></tr>
+          <tr><td>Warmest 75°F or more</td><td>Dress for warm weather.</td><td>T-shirt and shorts</td></tr>
+          <tr><td>Rain 40% or more</td><td>Bring a rain jacket.</td><td>Rain jacket</td></tr>
+          <tr><td>Snow 40% or more</td><td>Wear boots.</td><td>Boots</td></tr>
+        </tbody>
+      </table></div>
     </div>
   </article>
 
@@ -388,7 +426,7 @@ footer.end b { color: var(--ink); }
     <div class="card"><h3>Laptop to smartboard</h3><p>Board Sync keeps one board on all your devices, through a folder in your school Google Drive.</p><ol><li>Settings › Board Sync › Set up…</li><li>Choose folder… In My Drive, make a folder named 21Board.</li><li>Name this device, such as Laptop.</li><li>On the smartboard, do the same and pick the same folder.</li></ol><p>Works in Chrome and Edge on computers and Chromebooks. Not on an iPad, or on a shared panel no one signs in to.</p></div>
   </div>
   <div class="note" role="note"><b>One thing to remember</b><p>Your board lives on the device. Clearing the browser’s data, or a reset Chromebook, erases it there. Back up, or turn on Board Sync, before that happens.</p></div>
-  <div class="privacy"><h3>Your work stays yours</h3><p>Your boards, notes, name lists, and pictures are stored only on this device. 21Board has no servers and no accounts, so there’s nowhere else for them to go. Turn on Board Sync and Chrome also keeps a copy in a folder you choose, in your school Google Drive. When a video plays, YouTube, Google Drive, or Vimeo see what they would on their own sites.</p></div>
+  <div class="privacy"><h3>Your work stays yours</h3><p>Your boards, notes, name lists, and pictures are stored only on this device. 21Board has no servers and no accounts, so there’s nowhere else for them to go. Turn on Board Sync and Chrome also keeps a copy in a folder you choose, in your school Google Drive. When a video plays, YouTube, Google Drive, or Vimeo see what they would on their own sites. Weather sends only a town, nothing about you or your class.</p></div>
 </section>
 
 <section class="block" id="build">
@@ -409,7 +447,7 @@ footer.end b { color: var(--ink); }
     <details><summary>The windows won’t move.</summary><p>If [L] shows in a top corner, the board is locked. Hold it for 2 seconds until the ring fills. Notes and other windows you type in move by the title bar.</p></details>
     <details><summary>Everything looks small on the big panel.</summary><p>Open Settings › Advanced › Size of windows and menus and tap +. It sets the page you’re on. Full screen in the Widget Picker gives the board the whole screen.</p></details>
     <details><summary>Will a Timer ring if I switch pages?</summary><p>No. Only the page you’re on runs. The Timer shows the right time when you come back.</p></details>
-    <details><summary>Does it work without Wi-Fi?</summary><p>Yes, once it has opened online on that device. Video Player, 21Sketch, 21Timer, and 21DocCam need the Internet. Board Sync catches up once you’re back online.</p></details>
+    <details><summary>Does it work without Wi-Fi?</summary><p>Yes, once it has opened online on that device. Video Player, 21Sketch, 21Timer, and 21DocCam need the Internet. Weather shows the last forecast it saved. Board Sync catches up once you’re back online.</p></details>
     <details><summary>Why are there gray bands beside my board?</summary><p>The board is widescreen, so it looks the same on every screen. To use the whole window, tap Fill the window on the tip, or choose Fill in Settings › Appearance › Board shape.</p></details>
     <details><summary>Can my co-teacher see my board?</summary><p>Only if you share your 21Board folder with them in Google Drive as an Editor. Then you share one board through Board Sync.</p></details>
     <details><summary>Which version do I have?</summary><p>Open Settings. The About row shows it, such as Version {{version}}. Read it to IT when you ask for help.</p></details>

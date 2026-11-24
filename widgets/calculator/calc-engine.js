@@ -337,6 +337,11 @@
   }
   // An answer's piece: its remainder (answerAs 'remainder', when it has one), otherwise formatValue.
   const answerPiece = (v, f, rem) => (f.answerAs === 'remainder' && remainderPiece(rem, f)) || formatValue(v, f);
+  // Going on from an answer shown with a remainder, 17 ÷ 5 = 3 R 2, the ans box shows its exact value as As fractions
+  // shows it, 17/5, so a class doesn't meet a decimal it never saw: 17/5 × 5 = 17. A box from any other answer is drawn
+  // as before (2 + 17 ÷ 5 = 5.4 gives 5.4), and so is every box with As decimals or As fractions. f.remBoxes: With
+  // remainders is on (⇄ doesn't change it). A value with no fraction that fits shows its decimal.
+  const boxOpts = (f, node) => node.rem && f.remBoxes ? Object.assign({}, f, { answerAs: 'fraction' }) : f;
   // 1/6 = 0.1666… → int '0', pre '1', rep '6'. Null when the repeating part doesn't fit in 15 digits.
   function repeatingPiece(neg, n, d, digits) {
     const int = (n / d).toString(), room = LIMITS.digits - int.length, seen = new Map();
@@ -370,7 +375,8 @@
   const ordinal = n => n + (n % 100 >= 11 && n % 100 <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th');
 
   // ---- Tokens, boxes and the parser --------------------------------------------------------------------------------
-  // Tokens: { t: 'num', s: '12.5', neg } (typed; neg = made negative with ±) · { t: 'ans', v } (an earlier answer) ·
+  // Tokens: { t: 'num', s: '12.5', neg } (typed; neg = made negative with ±) · { t: 'ans', v, rem } (an earlier answer;
+  // rem: it was shown with a remainder, so its box shows a fraction: see boxOpts) ·
   // { t: 'prev' } (sheet: ans, the answer of the line above, kept up to date) · { t: 'pi' } ·
   // { t: 'op', v: '+' | '-' | '*' | '/' } · { t: 'neg' } (a minus sign in front) · { t: 'pct' } (n%, Simple and Apple
   // percent) · { t: 'of' } (Desmos's "% of") · { t: 'open' } · { t: 'close' } ·
@@ -511,7 +517,7 @@
             return m;
           }
           return { k: 'num', tok: t };
-        case 'ans': i++; return { k: 'val', v: t.v, ans: true };
+        case 'ans': i++; return t.rem ? { k: 'val', v: t.v, ans: true, rem: true } : { k: 'val', v: t.v, ans: true };
         case 'prev': i++; return prev ? { k: 'val', v: prev, ans: true, live: true } : { k: 'noans' };
         case 'pi': i++; return { k: 'pi' };
         case 'open': {
@@ -822,7 +828,7 @@
       case 'hole': s = B.hole(node.cursor && R.cursor, !!SLOT_CTX[ctx]); break;
       case 'cur': s = draw(node.a, B, ctx, R) + (R.cursor ? B.cursor() : ''); break;
       case 'num': { const p = typedPiece(node.tok); s = saysParens(B, ctx, p.neg, paren(B.number(p), pieceNeedsParens(B, p, ctx))); break; }
-      case 'val': s = drawValue(node.v, B, ctx, R.f, R.more, node.ans); break;
+      case 'val': s = drawValue(node.v, B, ctx, boxOpts(R.f, node), R.more, node.ans); break;
       case 'noans': s = B.chip(B.linear ? 'ans' : ''); break;
       case 'pi': s = B.pi(); break;
       case 'mixed': {
@@ -936,9 +942,9 @@
       for (const c of kids(n)) walk(c);
       if (n.k === 'neg' && n.a.k === 'num' && !n.a.tok.neg) { replaceNode(n, { k: 'num', tok: { t: 'num', s: n.a.tok.s, neg: true } }); changed = true; }
       else if (n.k === 'neg' && n.a.k === 'mixed' && !n.a.tok.neg) { replaceNode(n, Object.assign({}, n.a, { tok: { t: 'num', s: n.a.tok.s, neg: true } })); changed = true; }
-      else if (n.k === 'neg' && n.a.k === 'val' && sign(n.a.v) > 0) { replaceNode(n, { k: 'val', v: negate(n.a.v) }); changed = true; }
+      else if (n.k === 'neg' && n.a.k === 'val' && sign(n.a.v) > 0) { replaceNode(n, Object.assign({ k: 'val', v: negate(n.a.v) }, n.a.rem ? { rem: true } : null)); changed = true; }
       else if (n.k === 'group' && n.closed && (n.a.k === 'num' || n.a.k === 'val')) {
-        const p = n.a.k === 'num' ? typedPiece(n.a.tok) : formatValue(n.a.v, f);
+        const p = n.a.k === 'num' ? typedPiece(n.a.tok) : formatValue(n.a.v, boxOpts(f, n.a));
         if (pieceNeedsParens(H, p, ctxOf(n))) { replaceNode(n, n.a); changed = true; }
       }
     };
@@ -1075,7 +1081,9 @@
     return r;
   }
   const displayOpts = (o, answerAs) => ({ answerAs: answerAs || o.answerAs, stackedDivision: o.stackedDivision, approxSign: o.approxSign,
-    repeatingBar: o.repeatingBar, separators: o.separators, digits: o.digits });
+    repeatingBar: o.repeatingBar, separators: o.separators, digits: o.digits, remBoxes: o.answerAs === 'remainder' });
+  // The answer was shown with its remainder (or would be, before ⇄): an ans box made from it gets rem (see boxOpts).
+  const shownWithRem = (o, rem) => o.answerAs === 'remainder' && !!remainderPiece(rem, displayOpts(o));
 
   // ---- Keys --------------------------------------------------------------------------------------------------------
   // Canonical names, with labels (Desmos's where Desmos has the key) and spoken names. press() also takes the aliases.
@@ -1208,9 +1216,11 @@
     const push = (...toks) => tryTokens(S.tokens.concat(toks));
     const setLast = tok => tryTokens(S.tokens.slice(0, -1).concat([tok]));
     const pop = () => { S.tokens = S.tokens.slice(0, -1); return true; };
-    // auto: the answer = left on screen (iPhone: a digit typed right after it starts a new number in its place)
-    const ans = (v, auto) => auto ? { t: 'ans', v, auto: true } : { t: 'ans', v };
-    const fromAnswer = (...after) => { S.tokens = [ans(S.result, true)].concat(after); S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true; };
+    // auto: the answer = left on screen (iPhone: a digit typed right after it starts a new number in its place). rem: it
+    // was shown with a remainder (shownWithRem).
+    const ans = (v, auto, rem) => Object.assign({ t: 'ans', v }, auto ? { auto: true } : null, rem ? { rem: true } : null);
+    const remShown = () => S.mode === 'done' && shownWithRem(o, S.rem);
+    const fromAnswer = (...after) => { S.tokens = [ans(S.result, true, remShown())].concat(after); S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true; };
     const finish = () => { const f = finished(last()); if (f) S.tokens = S.tokens.slice(0, -1).concat([f]); };
     const top = () => { const b = openBoxes(S.tokens) || []; return b[b.length - 1] || null; };
     const lastEndsPower = () => last() && last().t === 'end' && (openBoxes(S.tokens.slice(0, -1)) || []).pop() === 'pow';
@@ -1299,7 +1309,7 @@
       }
       case 'sqrt': case 'cbrt': {
         const box = key === 'sqrt' ? [{ t: 'sqrt' }] : [{ t: 'root', cube: true }, { t: 'num', s: '3', neg: false }, { t: 'sep' }];
-        if (done) { S.tokens = box.concat([ans(S.result, true)]); S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true; }   // √ of the answer
+        if (done) { S.tokens = box.concat([ans(S.result, true, remShown())]); S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true; }   // √ of the answer
         if (failed) fresh();
         finish();
         return push(...box);
@@ -1343,7 +1353,7 @@
       case 'negate': {   // the opposite. 0 is its own opposite, so ± leaves a 0 alone (6.NS.C.6a).
         if (done) {
           if (isZero(S.result)) return false;
-          S.tokens = [ans(negate(S.result), true)]; S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true;
+          S.tokens = [ans(negate(S.result), true, remShown())]; S.mode = 'edit'; S.result = null; S.closed = 0; S.frac = false; return true;
         }
         if (failed) fresh();
         const t = last();
@@ -1351,7 +1361,7 @@
           if (!/[1-9]/.test(t.s)) return t.neg && setLast({ t: 'num', s: t.s, neg: false });   // 0, 0., 0.00 (a − that ⌫ left comes off)
           return setLast({ t: 'num', s: t.s, neg: !t.neg });
         }
-        if (t && t.t === 'ans') return !isZero(t.v) && setLast(ans(negate(t.v), t.auto));
+        if (t && t.t === 'ans') return !isZero(t.v) && setLast(ans(negate(t.v), t.auto, t.rem));
         if (t && t.t === 'prev') {   // −ans (sheet): a minus sign in front, or off again
           const b = S.tokens[S.tokens.length - 2];
           if (b && b.t === 'neg') return tryTokens(S.tokens.slice(0, -2).concat([t]));
@@ -1366,8 +1376,9 @@
       }
       case 'ans': {
         if (sheet) return useValue(S, { t: 'prev' });
-        const v = S.mode === 'done' ? S.result : S.history.length ? S.history[0].value : null;
-        return v ? useValue(S, { t: 'ans', v }) : false;
+        if (S.mode === 'done') return useValue(S, ans(S.result, false, remShown()));
+        const h = S.history[0];
+        return h ? useValue(S, ans(h.value, false, shownWithRem(o, h.rem))) : false;
       }
       case 'backspace': {
         if (done || failed) {   // back to the problem, to fix it (the boxes = closed open again)
@@ -1408,7 +1419,7 @@
           if (!o.repeatEquals) return false;
           const tail = repeatTail(S.tokens);
           if (!tail || tail.length >= LIMITS.tokens) return false;
-          S.tokens = [ans(S.result)].concat(tail);
+          S.tokens = [ans(S.result, false, remShown())].concat(tail);
           S.closed = 0;
           return solveFn(S);
         }
@@ -1470,7 +1481,8 @@
   }
 
   // ---- Saving: tokens as plain JSON ---------------------------------------------------------------------------------
-  // Numbers { n: '12.5' } or { n: '12.5', neg: true } · answers { ans: '7/2' } (exact) or { ans: 1.4142135623730951 } ·
+  // Numbers { n: '12.5' } or { n: '12.5', neg: true } · answers { ans: '7/2' } (exact) or { ans: 1.4142135623730951 },
+  // with rem: true when shown with a remainder (its box shows 17/5; releases before 2026.11.23-4 skip it) ·
   // everything else a string: '+' '-' '*' '/' '(' ')' 'neg' '%' '%of' 'pi' 'ans' (sheet: the line above), and the
   // boxes '^' 'sqrt' 'root' 'frac' 'sep' 'end'.
   const TOKEN_OUT = { open: '(', close: ')', neg: 'neg', pct: '%', of: '%of', pi: 'pi', prev: 'ans', pow: '^', sqrt: 'sqrt', root: 'root', frac: 'frac', sep: 'sep', end: 'end' };
@@ -1480,7 +1492,7 @@
   const valueOut = v => v.e ? (v.d === 1n ? v.n.toString() : v.n + '/' + v.d) : v.x;
   function tokenOut(t) {
     if (t.t === 'num') return t.neg ? { n: t.s, neg: true } : { n: t.s };
-    if (t.t === 'ans') return { ans: valueOut(t.v) };
+    if (t.t === 'ans') return t.rem ? { ans: valueOut(t.v), rem: true } : { ans: valueOut(t.v) };
     if (t.t === 'op') return t.v;
     return TOKEN_OUT[t.t];
   }
@@ -1509,7 +1521,11 @@
       if (own(x, 'neg') && x.neg !== true && x.neg !== false) return null;
       return { t: 'num', s: x.n, neg: x.neg === true };
     }
-    if (own(x, 'ans')) { const v = valueIn(x.ans); return v ? { t: 'ans', v } : null; }
+    if (own(x, 'ans')) {
+      if (own(x, 'rem') && x.rem !== true && x.rem !== false) return null;
+      const v = valueIn(x.ans);
+      return !v ? null : x.rem === true ? { t: 'ans', v, rem: true } : { t: 'ans', v };
+    }
     return null;
   }
   // A whole saved problem: every token known, in an order the keys could have made, within the limits.
@@ -1535,7 +1551,7 @@
     let drawKey = '', Bs = backends(displayOpts(o));
     // ⇄'s other form, while the toggle is on: with it off (Test practice), the answer is in the form answerAs asks for.
     // remShown: the answer on screen is shown with its remainder (or would be, before ⇄).
-    const remShown = () => S.mode === 'done' && o.answerAs === 'remainder' && !!remainderPiece(S.rem, displayOpts(o));
+    const remShown = () => S.mode === 'done' && shownWithRem(o, S.rem);
     const other = () => S.frac && o.toggle ? otherForm(o.answerAs, remShown()) : null;
     const fopts = () => displayOpts(o, other());
     const toggleable = () => S.mode === 'done' && (!!fractionForm(S.result) || remShown());
@@ -1627,7 +1643,11 @@
         } else if (last) {
           const n = shownNode(tree);
           if (n) {
-            try { showValue(evaluate(n, o), 'running'); } catch (e) {
+            // (An ans box, alone or made negative, shows as the box shows it: 17/5 after 3 R 2.)
+            let b = n;
+            while ((b.k === 'neg' || b.k === 'group') && b.a) b = b.a;
+            const fb = b.k === 'val' ? boxOpts(f, b) : f;
+            try { const p = formatValue(evaluate(n, o), fb); out.display = Bs.T.number(p); out.displayHtml = Bs.H.number(p); out.displayKind = 'running'; } catch (e) {
               if (!(e instanceof CalcError)) throw e;
               out.display = info(e.code).short; out.displayHtml = esc(out.display); out.displayKind = 'warning';
             }
@@ -1742,7 +1762,7 @@
       toggleFraction,
       useAnswer(i) {
         const h = S.history[i === undefined ? 0 : i];
-        return h ? useValue(S, { t: 'ans', v: h.value }) : false;
+        return h ? useValue(S, Object.assign({ t: 'ans', v: h.value }, shownWithRem(o, h.rem) ? { rem: true } : null)) : false;
       },
       useExpression(i) {
         const h = S.history[i === undefined ? 0 : i];
@@ -2068,6 +2088,7 @@
 .ce-rep { text-decoration: overline; text-decoration-thickness: .07em; }
 .ce-ghost { opacity: .35; }
 .ce-sep { color: var(--b21-muted, #6b7280); opacity: .6; }
+.ce-r { color: var(--b21-muted, #6b7280); }
 .ce-hole { display: inline-block; min-width: .55em; height: .8em; margin: 0 .06em; vertical-align: -.06em; border: .07em dashed currentColor; border-radius: .12em; opacity: .45; }
 .ce-cursor { display: inline-block; width: 0; height: 1.05em; margin: 0 .03em; vertical-align: -.15em; border-left: .08em solid var(--b21-accent, #2563eb); animation: ce-blink 1.1s steps(1) infinite; }
 .ce-hole .ce-cursor { height: .7em; vertical-align: top; }

@@ -1,0 +1,1 @@
+{"type":"Feature","properties":{"gridId":"LOT","gridX":65,"gridY":84,"forecast":"https://api.weather.gov/gridpoints/LOT/65,84/forecast","forecastHourly":"https://api.weather.gov/gridpoints/LOT/65,84/forecast/hourly","observationStations":"https://api.weather.gov/gridpoints/LOT/65,84/stations","timeZone":"America/Chicago"}}

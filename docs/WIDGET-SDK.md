@@ -65,7 +65,7 @@ two the same.
 ## Rules for widgets
 
 1. **No Internet.** No CDNs, web fonts, analytics, or APIs. Keep everything in your folder, so the widget works
-   offline and student work stays on the device. The Video Player is the only exception.
+   offline and student work stays on the device. The Video Player and Weather are the only exceptions.
 2. **No direct storage.** Don't use IndexedDB, `localStorage`, cookies, or `sessionStorage`.
    Use `Board21.save()` / `Board21.saveConfig()`. That's what makes export/import, templates,
    reset, multi-tab sync, and multiple instances work.
@@ -149,7 +149,7 @@ Sizes are the **content area**, the iframe, without the 40px title bar.
 | `Board21.window.focus()` | Select the window and bring it to the front. |
 | `Board21.window.maximize()` / `restore()` | Fill the board / return to normal size. |
 | `Board21.window.close()` | Close the window. Its data is kept. |
-| `Board21.window.getInfo()` | Promise of `{ width, height, x, y, maximized, focused, zoom, corners }`. `zoom` is how much bigger the board draws the window than its CSS size. On the 16:9 board it is the board's Size times how much the screen enlarges the board: 0.57 at Size 80% on a 1366×768 Chromebook, 1.5 at Size 150% on a 1920×1080 panel. On the *Fill* board shape it is the Size. For sharp lines and letters, a canvas uses `devicePixelRatio × zoom` pixels per CSS px, capped at about 3. An older 21Board doesn't send `zoom`: treat a missing one as 1. `corners` is sent while the window fills the board, and to any other window the board's own buttons sit over: `{ left, right, height }`, how far ▦ and the clock beside one reach in from the window's left and right edges and up from its bottom, in its CSS px. The clock shows only in full screen by default, so `corners` changes as 21Board enters and leaves full screen. Keep buttons and text out of those corners. An older 21Board doesn't send `corners`. A 21Board before 2026.11.23-4 sends it only while the window fills the board. `corners.top` does the same for the padlocks in the top corners while the board is locked, measured down from the top of the content. Unlocked, it's all 0. A 21Board before 2026.11.18-18 doesn't send it. |
+| `Board21.window.getInfo()` | Promise of `{ width, height, x, y, maximized, focused, zoom, corners }`. `zoom` is how much bigger the board draws the window than its CSS size. On the 16:9 board it is the board's Size times how much the screen enlarges the board: 0.57 at Size 80% on a 1366×768 Chromebook, 1.5 at Size 150% on a 1920×1080 panel. On the *Fill* board shape it is the Size. For sharp lines and letters, a canvas uses `devicePixelRatio × zoom` pixels per CSS px, capped at about 3. An older 21Board doesn't send `zoom`: treat a missing one as 1. `corners` is sent while the window fills the board, and to any other window the board's own buttons sit over: `{ left, right, height }`, how far ▦ and the clock beside one reach in from the window's left and right edges and up from its bottom, in its CSS px. The clock shows only in full screen by default, so `corners` changes as 21Board enters and leaves full screen. Keep buttons and text out of those corners. An older 21Board doesn't send `corners`. A 21Board before 2026.11.24-4 sends it only while the window fills the board. `corners.top` does the same for the padlocks in the top corners while the board is locked, measured down from the top of the content. Unlocked, it's all 0. A 21Board before 2026.11.18-18 doesn't send it. |
 
 While the board is locked (*Lock* in the Widget Picker), `maximize()`, `restore()`, and `close()` do nothing. `setSize()` on a window that fills the board only sets the size it returns to when restored. Other calls work as usual.
 
@@ -189,7 +189,7 @@ Board21.on('menu', id => { /* an item was tapped */ });
 Board21.menu.clear();
 ```
 
-Two extras for grouping choices (see `widgets/notes`):
+Three extras for grouping choices (see `widgets/notes` and `widgets/name-picker`):
 
 ```js
 Board21.menu.set([
@@ -200,18 +200,24 @@ Board21.menu.set([
     { id: 'color:yellow', label: 'Yellow', color: '#fef08a', checked: true },
     { id: 'color:blue', label: 'Blue', color: '#bfdbfe' },
     { id: 'chalk:white', label: 'White chalk', color: '#f4f7f2', background: '#2f4a3a' }  // background: shown around the color
+  ] },
+  { id: 'size', label: 'Size', choices: [                          // one row of short choices, drawn like swatches
+    { id: 'size:1', label: '1', checked: true },
+    { id: 'size:2', label: '2' }
   ] }
 ]);
 ```
 
-Tapping a swatch sends its `id` to `Board21.on('menu', …)` like any item. Colors must be `#hex`,
+A row of choices is for numbers and other short labels. A label shows up to 3 characters.
+
+Tapping a swatch or a choice sends its `id` to `Board21.on('menu', …)` like any item. Colors must be `#hex`,
 `rgb()`, or `hsl()`. A heading and the items under it, up to a separator or the next heading, are one group
 for screen readers, named by the heading ("Theme, Dark, not checked"). So a short label like `'3'` is fine
 under a heading that says what it is. The menu works from the keyboard too: the arrow keys, Home, and End move
 between items, and Enter chooses one.
 
 Call `menu.set()` again whenever an item's state changes. Icons must be inline `<svg>`; scripts
-and links are stripped. Up to 24 items. A swatch row counts as one and holds up to 12 colors.
+and links are stripped. Up to 24 items. A row of swatches or choices counts as one and holds up to 12.
 
 ### Events
 
@@ -391,10 +397,10 @@ Add an entry to `widgets/registry.js`:
 
 `clash: 'later'` is for a widget whose content is only a setting or scratch work: the Timer's time, the Clock's set
 time and mark, the Dice faces, the Traffic Light's light, the Video Player's video and History, which picture a
-Picture window shows, and the Calculator's problem and History. When Board Sync finds a window's content changed on
-two devices at once, it keeps the later change, and Board history keeps the other. Without `clash`, it keeps both,
-the other as a labeled copy beside the window. Leave it out when the content holds anything typed, such as notes,
-names, or a task list, so nothing anyone typed is lost.
+Picture window shows, the Calculator's problem and History, and the forecast a Weather window saved. When Board Sync
+finds a window's content changed on two devices at once, it keeps the later change, and Board history keeps the
+other. Without `clash`, it keeps both, the other as a labeled copy beside the window. Leave it out when the content
+holds anything typed, such as notes, names, or a task list, so nothing anyone typed is lost.
 
 Then **change `VERSION` in `sw.js` and run `node tools/release.js`** so installed copies download the new
 files (see README, "Deploying"). Devices save a release for offline use only as a whole. A widget file
