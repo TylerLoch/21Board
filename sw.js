@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.23-3';
+const VERSION = '2026.11.23-4';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '74a74fdc';
+const BUILD = 'b477fe11';
 const FILES = {
-  './': 'b94854cb2701b2fb',
-  'index.html': 'b94854cb2701b2fb',
-  'board.js': '7513420e793c4e72',
+  './': '1426fbd49043eab7',
+  'index.html': '1426fbd49043eab7',
+  'board.js': 'a12f410cc8989682',
   'sdk/board21.js': 'aa5d5880e3a9c4a1',
   'sdk/board21-dev.js': 'f7c7181b53d5025a',
   'sdk/dev/board-shell.js': 'b855220e82bbedad',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '6f4cd12f9337378d',
+  'widgets/registry.js': '23db056a8a430f76',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -60,6 +60,8 @@ const FILES = {
   'widgets/image/index.html': 'af8342c7d8c343fa',
   'widgets/calculator/index.html': 'e535cc3c4f2bef80',
   'widgets/calculator/calc-engine.js': '1888d007a43b7f5f',
+  'widgets/weather/index.html': 'adea5c20ae6478b2',
+  'widgets/weather/calendar.js': '6b801ee9abb6d70d',
   'widgets/sdk-playground/index.html': '12cf5a8c7f820850'
 };
 const CACHE_PREFIX = '21board-';

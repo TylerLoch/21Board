@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.23-3';
-  const BOARD_BUILD = '74a74fdc';
+  const BOARD_VERSION = '2026.11.23-4';
+  const BOARD_BUILD = 'b477fe11';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4741,7 +4741,8 @@
   const ABOUT_LICENSES = [['code-license', 'Code', 'Apache 2.0', 'LICENSE'], ['docs-license', 'Docs', 'CC BY 4.0', 'LICENSE-DOCS']];
   const OFL = 'SIL Open Font License 1.1';
   const ABOUT_FONTS = [['Atkinson Hyperlegible', 'by the Braille Institute', OFL], ['Andika', 'by SIL International', OFL],
-    ['Excalifont', 'by Excalidraw', OFL], ['Crayon Libre', 'by GGBotNet', 'CC0 1.0']];
+    ['Excalifont', 'by Excalidraw', OFL], ['Crayon Libre', 'by GGBotNet', 'CC0 1.0'],
+    ['Weather data', 'by Open-Meteo', 'CC BY 4.0'], ['Weather data', 'by the National Weather Service', 'Public domain']];   // (the fonts, then the Weather widget's two sources)
   function aboutSettings(note) {
     // (Each on a line of its own: the release, the offline copy when it is another build (refreshStatus), where work is stored.)
     const release = `<div class="about"><span>21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}</span><span id="st-cache"></span>${note ? '' : `
@@ -7984,6 +7985,16 @@
           .filter(([k]) => Object.prototype.hasOwnProperty.call(n, k) && Number.isInteger(n[k]) && n[k] >= 1).map(([k, name]) => `${name} ${Math.min(n[k], 9999)}`).join(', ');
       },
       image: d => typeof d.src === 'string' && d.src ? strOf(d.name) || 'Pasted picture' : '',
+      // The place and the day its forecast arrived ("Wheeling forecast, Nov 23"), not the forecast's numbers. A window
+      // with no settings saved is on Wheeling. A saved forecast for another place than the window's says nothing.
+      weather: (d, c) => {
+        const s = d && d.saved, p = c && c.place && typeof c.place === 'object' ? c.place : { id: 4916311, name: 'Wheeling', tz: 'America/Chicago' };
+        if (!s || typeof s !== 'object' || typeof s.at !== 'number' || !isFinite(s.at) || s.place !== p.id) return '';
+        const name = strOf(p.name);
+        let day = '';
+        try { day = new Date(s.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: typeof p.tz === 'string' ? p.tz : undefined }); } catch (e) { day = new Date(s.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+        return name ? `${name} forecast, ${day}` : '';
+      },
       notes: d => strOf(d.text)
     },
     // A few words about a window's content, 80 characters at most. A built-in widget has its own line, above. Any other

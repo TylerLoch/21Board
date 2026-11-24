@@ -537,6 +537,19 @@ also keeps `style` for an older 21Board: `"analog"` for analog only, `"digital"`
 Date only. A config from before 2026.11.21-4 is `{ style, hour24, seconds, date }` and reads the same way. Whether
 Quiz shows ? is never saved.
 
+Weather (`weather`) saves `{ saved: { at, place, days, wear } }`, the last forecast it showed, for offline. `at` is when
+that last changed, in ms. `place` is its place's GeoNames `id`. `days` is the 7 days as drawn, each `{ date, code,
+low, high, rain }`, in °F and unrounded. `wear` is What to wear for today and the next school day, by date: `{ label,
+advice, items, feels8, high, at }`, or `{ label, none: true }` past the forecast. `saved.from` is `"nws"` when the
+National Weather Service's forecast was the backup. It saves only when the window would look different, in whole
+degrees and tens of percent, so a few times a day at most. A save for another place is ignored. The weather right now,
+the hourly forecast, wind, air quality, and watches and warnings are never saved. Board Sync keeps the later change, as
+for the Timer. Its config is every menu setting and the place: `{ place: { id, name, region, country, lat, lon, tz },
+units, hide, simple, still, date }`. `units` is `"f"` or `"c"`. `hide` lists the parts the Show list hides, any of
+`"hourly"`, `"days"`, `"wear"`, `"sun"`, `"moon"`, `"wind"`, `"air"`, and `"watches"`. `still` is No motion. `date` is
+`"YYYY-MM-DD"` while On a date is open, else `null`. Each key is checked when read. A bad one takes its default:
+Wheeling, °F, nothing hidden, and the rest off.
+
 The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
 their own work in their own site's storage on the device. Their windows have an `inst` record like any other,
 and exports and Board history carry that (with `data` and `config` null), never an address.

@@ -1,0 +1,1 @@
+{"type":"Feature","properties":{"gridId":"HFO","gridX":154,"gridY":145,"forecast":"https://api.weather.gov/gridpoints/HFO/154,145/forecast","forecastHourly":"https://api.weather.gov/gridpoints/HFO/154,145/forecast/hourly","observationStations":"https://api.weather.gov/gridpoints/HFO/154,145/stations","timeZone":"Pacific/Honolulu"}}
