@@ -4,6 +4,7 @@
  *   npm install --no-save playwright && npx playwright install chromium   (once)
  *   node tests/run.js
  *   node tools/test-halves.js   the same in two halves at once, in about 40 minutes
+ *   node tools/ci-wait.js       waits for GitHub to run it on the pushed commit, in 10 parts at once
  *
  * Starts a static server for the repo, then drives Chromium through the
  * windowing system, storage, multi-tab sync, export/import, offline mode,
@@ -19,8 +20,17 @@ const OUT = path.join(__dirname, 'output') + path.sep;
 fs.mkdirSync(OUT, { recursive: true });
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.svg': 'image/svg+xml', '.png': 'image/png', '.21board': 'application/json', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8' };
 
-let fails = 0, passes = 0;
-const ok = (cond, msg) => { if (cond) passes++; else fails++; console.log((cond ? '  ✓ ' : '  ✗ FAIL ') + msg); };
+let fails = 0, passes = 0, SUITE = '';
+// On GitHub, each failure is also an annotation, so it shows on the run's page.
+const ghEscape = (x, prop) => {
+  const s = String(x).replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+  return prop ? s.replace(/:/g, '%3A').replace(/,/g, '%2C') : s;
+};
+const ok = (cond, msg) => {
+  if (cond) passes++; else fails++;
+  console.log((cond ? '  ✓ ' : '  ✗ FAIL ') + msg);
+  if (!cond && process.env.GITHUB_ACTIONS) console.log(`::error title=${ghEscape(SUITE, true)}::${ghEscape(msg)}`);
+};
 let BASE;
 
 // Most suites test window behavior on a board that is simply the screen at 100% (Settings →
@@ -24407,11 +24417,28 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   }],
 ];
 
+// The suites in part k of n. Each part gets about the same share of the seconds in tests/timings.json, which
+// node tools/ci-wait.js --save-timings writes. A suite it doesn't list counts as the average. The longest suite goes
+// first, each to the part with the least time so far. Within a part, suites run in file order.
+function partOf(k, n) {
+  let saved = {};
+  try { saved = JSON.parse(fs.readFileSync(path.join(__dirname, 'timings.json'), 'utf8')); } catch (e) {}
+  const known = SUITES.map(([t]) => saved[t]).filter(x => x > 0);
+  const avg = known.length ? known.reduce((a, b) => a + b, 0) / known.length : 1;
+  const secs = SUITES.map(([t]) => saved[t] > 0 ? saved[t] : avg);
+  const load = Array(n).fill(0), owner = [];
+  for (const i of [...SUITES.keys()].sort((a, b) => secs[b] - secs[a] || a - b)) {
+    const j = load.indexOf(Math.min(...load));
+    load[j] += secs[i]; owner[i] = j;
+  }
+  return new Set([...SUITES.keys()].filter(i => owner[i] === k - 1));
+}
+
 (async () => {
-  // PART=k/n runs the k-th of n slices of the suites, in order. tools/test-halves.js runs PART=1/2 and 2/2 at once.
+  // PART=k/n runs the k-th of n parts. tools/test-halves.js runs PART=1/2 and 2/2 at once, and GitHub runs 10 parts.
   const part = /^(\d+)\/(\d+)$/.exec(process.env.PART || '');
   if (process.env.PART && !(part && +part[1] >= 1 && +part[1] <= +part[2])) { console.error(`PART must be k/n, such as 1/2. It is ${process.env.PART}.`); process.exit(2); }
-  const [from, to] = part ? [Math.floor(SUITES.length * (part[1] - 1) / part[2]), Math.floor(SUITES.length * part[1] / part[2])] : [0, SUITES.length];
+  const mine = part ? partOf(+part[1], +part[2]) : new Set(SUITES.keys());
   const server = http.createServer(async (req, res) => {
     let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
     if (p.startsWith('/__dev/') && DEV_ROUTES[p]) { res.writeHead(200, { 'Content-Type': 'text/html', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' }); res.end(DEV_ROUTES[p](new URL(req.url, 'http://x').searchParams)); return; }
@@ -24445,14 +24472,20 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     return c;
   };
   const only = process.argv[2];
+  const times = {};
   for (const [i, [title, fn]] of SUITES.entries()) {
-    if (i < from || i >= to) continue;
+    if (!mine.has(i)) continue;
     if (only && !title.toLowerCase().includes(only.toLowerCase())) continue;
     console.log('\n' + title);
+    SUITE = title;
+    const t0 = Date.now();
     try { await fn(browser); } catch (err) { ok(false, 'suite crashed: ' + (err && err.stack || err)); }
+    times[title] = Math.round((Date.now() - t0) / 1000);
   }
   await browser.close();
   server.close();
+  // On GitHub, each suite's seconds, for node tools/ci-wait.js --save-timings.
+  if (process.env.GITHUB_ACTIONS) console.log('\nSuite times: ' + JSON.stringify(times));
   console.log(`\n${passes} passed, ${fails} failed`);
   process.exit(fails ? 1 : 0);
 })();
