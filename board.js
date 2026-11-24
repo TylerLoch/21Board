@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.24-1';
-  const BOARD_BUILD = '63d4970c';
+  const BOARD_BUILD = '11005b72';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2302,10 +2302,12 @@
     refit() {
       const inst = this.inst, c = this.constraints(), r = inst.rect;
       // Save only a change of shape (aspect ratio). Min/max sizes are applied when drawing, so a size
-      // setting that briefly makes a window smaller than its minimum doesn't lose its real size. The new
-      // shape fits the board, so the size saved is the size shown, and a later change of shape starts there.
+      // setting that briefly makes a window smaller than its minimum doesn't lose its real size. On the 16:9
+      // board the new shape fits the board, so the size saved is the size shown, and a later change of shape
+      // starts there. On Fill each tab's board is its own screen, and two tabs of one page at different sizes
+      // would each save their own, so there the new shape isn't fitted to the board.
       const ratioOff = c.ratio && Math.abs((r.w / Math.max(1, r.h - TITLE_H)) / c.ratio - 1) > 0.01;
-      const s = ratioOff ? fitSize(r.w, r.h, c, boundsRect()) : null;
+      const s = ratioOff ? fitSize(r.w, r.h, c, freeShape() ? null : boundsRect()) : null;
       if (s && (s.w !== Math.round(r.w) || s.h !== Math.round(r.h))) {
         const cx = inst.rect.x + inst.rect.w / 2;
         saveInst(this.ikey, Object.assign({}, inst, { rect: { x: Math.round(cx - s.w / 2), y: inst.rect.y, w: s.w, h: s.h } }));

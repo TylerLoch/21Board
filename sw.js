@@ -14,16 +14,16 @@
 const VERSION = '2026.11.24-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '63d4970c';
+const BUILD = '11005b72';
 const FILES = {
-  './': 'b6a2296757d7bf42',
-  'index.html': 'b6a2296757d7bf42',
-  'board.js': '3240f96fc93cb56f',
+  './': 'c41ecfa312887b65',
+  'index.html': 'c41ecfa312887b65',
+  'board.js': 'e310ef93a604fbf1',
   'sdk/board21.js': 'aa5d5880e3a9c4a1',
   'sdk/board21-dev.js': 'f7c7181b53d5025a',
   'sdk/dev/board-shell.js': 'b855220e82bbedad',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '6c55bb309f3b672c',
+  'widgets/registry.js': '31fa757764de68c1',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -40,7 +40,7 @@ const FILES = {
   'widgets/timer/index.html': '52a0094eeebbb200',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
-  'widgets/clock/index.html': '93e7399ba5da82cd',
+  'widgets/clock/index.html': '35e9df5a1ab6fd99',
   'widgets/notes/index.html': '0dc57fad3cd2fca1',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',

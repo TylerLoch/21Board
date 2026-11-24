@@ -650,13 +650,18 @@
 
   // What the layout needs to know: the Set badge and Now, the board's buttons in the bottom corners, the digital time's
   // shape, and the date's widths in em. Boxes here are [left, top, right, bottom].
-  let refKey = null;
+  let refKey = null, lowKey = '[]';
+  // Filling the board, the board's own buttons sit in the window's bottom corners (▦, and the clock beside one). They
+  // count once the window has the size the board gives it (i, Board21's window info), not while it grows to fill the
+  // board.
+  function lowOf(i, W, H) {
+    const cn = i && i.maximized && i.corners && Math.abs(i.width - W) <= 2 && Math.abs(i.height - H) <= 2 ? i.corners : null;
+    return cn && cn.height > 0 ? [[0, H - cn.height, cn.left, H], [W - cn.right, H - cn.height, W, H]].filter(c => c[2] > c[0]) : [];
+  }
   function measure(W, H) {
     const corners = setOn && timeOn ? [badge, nowBtn].filter(el => el.offsetWidth)
       .map(el => [el.offsetLeft, el.offsetTop, el.offsetLeft + el.offsetWidth, el.offsetTop + el.offsetHeight]) : [];
-    // Filling the board, the board's own buttons sit in the window's bottom corners (▦, and the clock beside one).
-    const info = Board21.context && Board21.context.window, cn = info && info.maximized && info.corners;
-    const low = cn && cn.height > 0 ? [[0, H - cn.height, cn.left, H], [W - cn.right, H - cn.height, W, H]].filter(c => c[2] > c[0]) : [];
+    const low = lowOf(Board21.context && Board21.context.window, W, H);
     let emW = config.hour24 ? 2.7 : 3.6, vb = null;
     if (showD && disp && disp.vb) vb = disp.vb;
     else if (showD && disp) {
@@ -759,16 +764,15 @@
     mg[0] = Math.max(mg[0], below(Y, m) - Y[1]);
     o.mg = mg;
     dateSize(o, m, style, small);
-    // Filling the board, the date keeps clear of the board's buttons in the bottom corners: where it would reach one,
-    // its room ends 8 px above them.
-    const top = Math.min(...m.low.map(c => c[1])) - 8;
-    if (Y[1] + Y[3] - mg[2] > top && m.low.some(c => reaches(o, c))) { mg[2] = Y[1] + Y[3] - top; dateSize(o, m, style, small); }
+    if (m.low.length) lift(o, m);
   }
   // The date's size in the room its margins leave.
   function dateSize(o, m, style, small) {
     const Y = o.Y, A = o.A, D = o.D, mg = o.mg;
     const w = Y[2] - mg[1] - mg[3], h = Y[3] - mg[0] - mg[2];
-    if (o.where === 'alone') { o.date = dateFill(w, h, m.dm); return; }
+    // (Filling the board, no bigger than keeps it clear of the board's buttons: see clearMax.)
+    const clear = m.low.length ? (f, s) => clearMax(o, m, f, s) : null;
+    if (o.where === 'alone') { o.date = dateFill(w, h, m.dm, clear); return; }
     // The month and day: readable at lo and 12 px, and as big as hi with room to spare, its biggest text never more
     // than a fifth of the dial. (small: a window too small for that, as big as one line can be across it.) A stack
     // needs its year (ST.yr / ST.md of it) at 12 px too, and may grow for that while its weekday stays under 40% of
@@ -778,15 +782,40 @@
     const read = small ? Math.min(MIN_PX, o.W * .9 / m.dm.ln) : Math.max(lo, MIN_PX), most = Math.max(read, Math.min(hi, cap));
     const year = MIN_PX * ST.md / ST.yr, lead = !D ? Infinity : stack ? Math.max(.4 * o.t * k, Math.min(year, .6 * o.t * k)) : .4 * o.t;
     const need = stack ? Math.max(read, year) : read, grow = Math.max(most, Math.min(lead, cap));
-    const f = dateAt(style, 1, m.dm), fit = Math.max(0, Math.min(w / f.ew, h / f.eh)) * k;
+    const f = dateAt(style, 1, m.dm);
+    let fit = Math.max(0, Math.min(w / f.ew, h / f.eh)) * k;
+    if (m.low.length) fit = clearMax(o, m, f, fit / k) * k;
     const md = Math.min(Math.max(most, need), fit);
     o.date = Object.assign(f, { md, size: md / k, fits: fit >= need - .01, ok: need <= grow + .01 });
   }
-  // Whether the date, centered in its room, comes within 8 px of the box c.
-  function reaches(o, c) {
-    const Y = o.Y, mg = o.mg, f = o.date, w = f.ew * f.size, h = f.eh * f.size;
-    const x = Y[0] + mg[3] + (Y[2] - mg[1] - mg[3] - w) / 2, y = Y[1] + mg[0] + (Y[3] - mg[0] - mg[2] - h) / 2;
-    return x < c[2] + 8 && x + w > c[0] - 8 && y < c[3] + 8 && y + h > c[1] - 8;
+
+  // Filling the board, the board's buttons sit in the bottom corners (m.low). The date stays 8 px clear of them. It
+  // moves up into empty room, or shrinks. Each line counts by its own width, for the longest weekday and month.
+  // The date's lines at `size` with its top at y, each centered in its room: [left, top, right, bottom].
+  function lines(o, dm, style, size, y) {
+    const Y = o.Y, mg = o.mg, cx = Y[0] + mg[3] + (Y[2] - mg[1] - mg[3]) / 2;
+    const rows = style === 'stack' ? [[dm.wd, 1, 1.08], [dm.md, ST.md, 1.12], [dm.yr, ST.yr, 1.2]] : [[dm.ln, 1, LINE_H]];
+    return rows.map(([ew, k, lh]) => { const w = ew * k * size, h = lh * k * size, r = [cx - w / 2, y, cx + w / 2, y + h]; y += h; return r; });
+  }
+  const clearOf = (rs, low) => rs.every(r => low.every(c => r[2] <= c[0] - 8 || r[0] >= c[2] + 8 || r[3] <= c[1] - 8 || r[1] >= c[3] + 8));
+  // The date's top, centered in its room.
+  const dateTop = o => o.Y[1] + o.mg[0] + (o.Y[3] - o.mg[0] - o.mg[2] - o.date.eh * o.date.size) / 2;
+  // The biggest size up to s that stays clear at the top of its room. It only grows with the room, so a bigger room
+  // never makes the date fit less.
+  function clearMax(o, m, f, s) {
+    const y = o.Y[1] + o.mg[0], ok = v => clearOf(lines(o, m.dm, f.style, v, y), m.low);
+    if (ok(s)) return s;
+    let lo = 0, hi = s;
+    for (let i = 0; i < 20; i++) { const mid = (lo + hi) / 2; if (ok(mid)) lo = mid; else hi = mid; }
+    return lo;
+  }
+  // The date moves up from the middle of its room just as far as it must to stay clear.
+  function lift(o, m) {
+    const f = o.date, y = dateTop(o), y0 = o.Y[1] + o.mg[0];
+    let up = 0;
+    for (const r of lines(o, m.dm, f.style, f.size, y)) for (const c of m.low) if (r[2] > c[0] - 8 && r[0] < c[2] + 8 && r[3] > c[1] - 8) up = Math.max(up, r[3] - c[1] + 8);
+    up = Math.min(up, y - y0);
+    if (up > 0) o.mg[2] += 2 * up;
   }
 
   // The date's shape as a stack or one line: its biggest text's size, and its width and height in that size.
@@ -795,9 +824,11 @@
     return { style, size, md: stack ? size * ST.md : size, ew: stack ? Math.max(dm.wd, dm.md * ST.md, dm.yr * ST.yr) : dm.ln, eh: stack ? ST.h : LINE_H, fits: true, ok: true };
   }
   // The date alone fills its window: a stack, or one line where that's bigger or the stack's year would be too small.
-  function dateFill(w, h, dm) {
+  // (clear: what keeps it clear of the board's buttons.)
+  function dateFill(w, h, dm, clear) {
     const s = dateAt('stack', 1, dm), l = dateAt('line', 1, dm);
-    const fs = Math.max(0, Math.min(w / s.ew, h / s.eh)), fl = Math.max(0, Math.min(w / l.ew, h / l.eh));
+    let fs = Math.max(0, Math.min(w / s.ew, h / s.eh)), fl = Math.max(0, Math.min(w / l.ew, h / l.eh));
+    if (clear) { fs = clear(s, fs); fl = clear(l, fl); }
     const stack = fs * ST.md >= fl && fs * ST.yr >= MIN_PX;
     return Object.assign(stack ? s : l, { size: stack ? fs : fl, md: stack ? fs * ST.md : fl, fits: true });
   }
@@ -813,15 +844,29 @@
     const base = arrange(W, H, null, 0, m);
     const size = o => Math.min(o.A && base.d ? o.d / base.d : 1, o.D && base.t ? o.t / base.t : 1);
     const words = !showA || !showD || config.words;
+    // The least room that keeps the date readable at `where` in `style`, in a window W2 wide, or 0 when there's none.
+    const least = (W2, where, len, style, small) => {
+      const at = x => arrange(W2, H, where, x, m, style, small);
+      let lo = 0, hi = len * .5;
+      if (hi <= 1 || !at(hi).date.fits) return 0;
+      while (hi - lo > .25) { const mid = (lo + hi) / 2; if (at(mid).date.fits) hi = mid; else lo = mid; }
+      return at(hi).date.ok ? hi : 0;   // (not a stack whose year would be under 12 px, or bigger than the time allows)
+    };
+    // Taller than wide with analog and digital, the dial grows with the width and the digital time's room shrinks, until
+    // the dial takes 60% of the height. The date goes under the digital time only in a style that still fits then, so
+    // it never flips back and forth as the window grows. A stack goes under both clocks only where the dial still spans
+    // the window, so the dial doesn't shrink when the stack comes as the window grows taller.
+    const W2 = showA && showD && W <= H ? Math.max(W, H * .6) : W;
     for (const small of [false, true]) {
       const tries = [];
       const add = (where, len) => { for (const style of ['stack', 'line']) {
         const at = x => arrange(W, H, where, x, m, style, small);
-        let lo = 0, hi = len * .5;
-        if (hi <= 1 || !at(hi).date.fits) continue;
-        while (hi - lo > .25) { const mid = (lo + hi) / 2; if (at(mid).date.fits) hi = mid; else lo = mid; }
-        if (!at(hi).date.ok) continue;   // (a stack whose year would be under 12 px, or bigger than the time allows)
-        const s = size(at(hi)), keep = x => { const o = at(x); return o.date.fits && o.date.ok && size(o) >= s - 1e-4; };
+        let hi = least(W, where, len, style, small), lo;
+        if (!hi) continue;
+        if (where === 'col' && W2 > W && !least(W2, where, H - Math.min(W2, H * .6), style, small)) continue;
+        const o = at(hi);
+        if (where === 'below' && style === 'stack' && showA && showD && W <= H && o.A[3] < o.A[2] - .5) continue;
+        const s = size(o), keep = x => { const o = at(x); return o.date.fits && o.date.ok && size(o) >= s - 1e-4; };
         lo = hi; hi = len - 1;
         if (keep(hi)) lo = hi;
         else while (hi - lo > .25) { const mid = (lo + hi) / 2; if (keep(mid)) lo = mid; else hi = mid; }
@@ -832,7 +877,12 @@
       if (words || (!tries.length && W > H)) add('below', H);
       add('side', W);
       if (!tries.length) continue;
-      const top = Math.max(...tries.map(t => t.s)), near = tries.filter(t => t.s >= top - 1e-4);
+      const top = Math.max(...tries.map(t => t.s));
+      let near = tries.filter(t => t.s >= top - 1e-4);
+      // Side by side, the clocks grow with the width and the room under them shrinks, so a stack there soon gives way to
+      // the line again. On a tie under both clocks, the line wins.
+      const under = st => near.some(t => t.o.where === 'below' && t.o.date.style === st);
+      if (showA && showD && W > H && under('line') && under('stack')) near = near.filter(t => !(t.o.where === 'below' && t.o.date.style === 'stack'));
       const big = Math.max(...near.map(t => t.o.date.md));
       return near.find(t => t.o.date.md >= big * .98).o;
     }
@@ -866,7 +916,11 @@
   function layout() {
     const W = innerWidth, H = innerHeight;
     if (!W || !H) return;
-    const o = settle(choose(W, H, measure(W, H)));
+    // Filling the board, a date already clear of the board's buttons changes nothing. Otherwise the layout keeps it clear.
+    const m = measure(W, H);
+    lowKey = JSON.stringify(m.low);
+    let o = settle(choose(W, H, m.low.length ? Object.assign({}, m, { low: [] }) : m));
+    if (m.low.length && o.Y && !clearOf(lines(o, m.dm, o.date.style, o.date.size, dateTop(o)), m.low)) o = settle(choose(W, H, m));
     root.classList.toggle('wide', showA && showD && W > H);   // (analog and digital side by side)
     const place = (el, r) => { if (r) Object.assign(el.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px' }); };
     place(ana, o.A); place(dig, o.D); place(dayEl, o.Y);
@@ -890,12 +944,9 @@
     fit();
   }
   addEventListener('resize', layout);
-  // Filling the board, the board's buttons come and go in the bottom corners with no change of size.
-  let lowKey = '';
-  Board21.on('resize', i => {
-    const c = i && i.maximized && i.corners, k = c ? [c.left, c.right, c.height].join() : '';
-    if (k !== lowKey) { lowKey = k; layout(); }
-  });
+  // Filling the board, the board's buttons come and go in the bottom corners with no change of size. (lowKey: the
+  // buttons the last layout kept clear of.)
+  Board21.on('resize', i => { if (JSON.stringify(lowOf(i, innerWidth, innerHeight)) !== lowKey) layout(); });
 
   function fitWords() {
     const el = wordsEl, H = el.clientHeight, W = el.clientWidth;

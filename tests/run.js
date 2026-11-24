@@ -18690,7 +18690,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       [/the steps start over and a hidden answer/, 'two clauses'],
       [/open this file in a browser or paste it/, 'two things to do'],
       [/doesn['’]t show it or cache it/, 'two verbs'],
-      [/theme, light or dark/, 'the theme, then its two choices']];
+      [/theme, light or dark/, 'the theme, then its two choices'],
+      [/the time, analog or digital, and the date/, 'the time, its two kinds, then the date']];
     const texts = [];   // { where, text }
     const add = (where, text) => texts.push({ where, text: String(text || '') });
     for (const w of await B(() => window.__board21.catalog().map(w => ({ id: w.id, d: w.description })))) add(`the registry, ${w.id}`, w.d);
@@ -19800,8 +19801,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await part('Menu', async () => {
       const { ctx, page } = await newBoard('14:50');
       const reg = await page.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'clock'); return a && { clash: a.clash, description: a.description, win: a.win }; });
-      ok(!!reg && reg.clash === 'later' && reg.description === 'Show the time, analog or digital, and the date.' && reg.win.aspectRatio === 1 && reg.win.width === 300 && reg.win.height === 300,
-        `the registry: clash 'later', as for the Timer's time; its description; 1:1 at 300 × 300 to start (${JSON.stringify(reg)})`);
+      ok(!!reg && reg.clash === 'later' && reg.description === 'Show the time, analog or digital, and the date.' && !reg.win.aspectRatio && reg.win.width === 300 && reg.win.height === 300,
+        `the registry: clash 'later', as for the Timer's time; its description; 300 × 300 to start, with no shape lock, as the Clock sets its own for each mix (${JSON.stringify(reg)})`);
       const ik = await openClock(page);
       let m = await menuOf(page, ik);
       ok(m === '[Show] | ✓ Analog | Digital | Date | [Clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | 24-hour time (off) | Time in words | — | Mark a time | Set the time',
@@ -20956,19 +20957,20 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(seen.length === 8 && !off.length, `filling the board with Clock in the corner on, the date stays clear of the board’s buttons in the corners (${seen.join('; ')})${off.length ? ': ' + off.join('; ') : ''}`);
     });
 
-    // ---- 13. Date off and on again in a wide Analog + Date window, wider than the board is tall: the window keeps the
-    // size it took with Date off.
+    // ---- 13. Date off and on again in a wide Analog + Date window on the 16:9 board, wider than the board is tall: the
+    // window keeps the size it took with Date off. (On Fill a new shape isn't fitted to the board. See part 17.)
     await part('Date off and on, wide', async () => {
       const { ctx, page } = await newBoard(FRI, { viewport: { width: 1366, height: 768 } });
+      await page.evaluate(() => window.__board21.setBoardShape('16:9')); await page.waitForTimeout(300);
       const ik = await openClock(page);
       await mix(page, ik, 'ad'); await size(page, ik, 1150, 400);
       const inner = () => F(page, ik, () => [innerWidth, innerHeight].join(' × '));
       const a = await inner();
       await choose(page, ik, 'date');
-      const b = await inner(), rb = await rectOf(page, ik);
+      const b = await inner(), rb = await rectOf(page, ik), B = await page.evaluate(() => window.__board21.boundsRect());
       await choose(page, ik, 'date');
       const c = await inner();
-      ok(a === '1150 × 400' && b === c && rb.h <= 768, `Analog + Date 1150 × 400 on a 1366 × 768 board, Date off, then on: the window keeps the size it had with Date off (${a} → ${b}, saved ${rb.w} × ${rb.h - 40} → ${c})`);
+      ok(a === '1150 × 400' && b === c && rb.h <= B.h, `Analog + Date 1150 × 400 on the 16:9 board (${B.w} × ${B.h}), Date off, then on: the window keeps the size it had with Date off (${a} → ${b}, saved ${rb.w} × ${rb.h - 40} → ${c})`);
       await ctx.close();
     });
 
@@ -21003,10 +21005,12 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     });
 
     // ---- 16. Small windows where a stack fits with its year at 12 px: the date is that stack, not a line under 12 px.
+    // (All three at 150 × 300 keeps a small line. A stack there would give way to a much smaller dial as the window
+    // grows. See part 19.)
     await part('Small windows', async () => {
       const { ctx, page } = await newBoard(FRI);
       const off = [], seen = [];
-      for (const [m, extra, sizes] of [['dd', null, [[140, 140], [150, 180]]], ['dd', 'words', [[150, 180]]], ['dd', 'led', [[140, 140]]], ['all', null, [[150, 300], [170, 360]]]]) {
+      for (const [m, extra, sizes] of [['dd', null, [[140, 140], [150, 180]]], ['dd', 'words', [[150, 180]]], ['dd', 'led', [[140, 140]]], ['all', null, [[170, 360]]]]) {
         const ik = await openClock(page);
         await mix(page, ik, m); if (extra) await choose(page, ik, extra);
         for (const [w, h] of sizes) {
@@ -21019,6 +21023,311 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       }
       ok(!off.length, `small windows where a stack fits: the date is a stack with its year at 12 px, smaller than the time, and overlapping nothing (${seen.join('; ')})${off.length ? ': off: ' + off.join('; ') : ''}`);
       await ctx.close();
+    });
+
+    // ---- 17. Two tabs of one page on the Fill board, a big screen and a laptop. Date off in a wide Analog + Date window
+    // in one tab: both tabs keep one size, the one that's saved. (On Fill each tab's board is its own screen.)
+    await part('Two tabs on Fill', async () => {
+      const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, timezoneId: 'America/Chicago', locale: 'en-US' });
+      const tab = async () => { const p = await ctx.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.setFixedTime(FRI); return p; };
+      const A = await tab();
+      await A.goto(BASE); await boardUp(A); await freeBoard(A);
+      const ik = await openClock(A); await mix(A, ik, 'ad');
+      await A.evaluate(ik => window.__board21.setRect(ik, { x: 100, y: 100, w: 1700, h: 640 }), ik); await A.waitForTimeout(600);
+      const B = await tab();
+      await B.setViewportSize({ width: 1366, height: 768 });
+      await B.goto(BASE); await boardUp(B); await connected(B, ik); await B.waitForTimeout(800);
+      await A.bringToFront(); await A.waitForTimeout(200);
+      await choose(A, ik, 'date'); await A.waitForTimeout(2000);
+      const a = await rectOf(A, ik), b = await rectOf(B, ik);
+      await B.close(); await A.close();
+      const C = await tab();
+      await C.goto(BASE); await boardUp(C); await connected(C, ik); await C.waitForTimeout(600);
+      const c = await rectOf(C, ik);
+      const R = r => `${Math.round(r.w)} × ${Math.round(r.h - 40)} at ${Math.round(r.x)}, ${Math.round(r.y)}`, same = (r, s) => ['x', 'y', 'w', 'h'].every(k => Math.abs(r[k] - s[k]) < 1);
+      ok(same(a, b) && same(a, c) && Math.abs(a.w - (a.h - 40)) < 2,
+        `Fill, two tabs at 1920 × 1080 and 1366 × 768, Analog + Date 1700 × 600, Date off in the first: both tabs keep one square size, the one saved (${R(a)}; ${R(b)}; saved ${R(c)})`);
+      await ctx.close();
+    });
+
+    // ---- 18. A Clock comes back at the shape it had: closed and opened again from the Widget Picker, Reset then Undo,
+    // Delete then Undo, put back from Board history, and Import (Replace). Two or three views keep any shape; Analog
+    // alone keeps 1:1, and Digital alone 2.2:1.
+    await part('Back at its shape', async () => {
+      const { ctx, page } = await newBoard(FRI, { viewport: { width: 1700, height: 1000 } });
+      await page.evaluate(() => window.__board21.history.cfg({ quiet: 36e5, every: 36e5, skipOpen: true }));   // (no automatic versions meanwhile)
+      const MIXES = Object.assign({ a2: ['digital'], a: [], d: ['digital', 'analog'] }, MIX), NAMES = Object.assign({ a2: 'Analog + Digital', a: 'Analog', d: 'Digital' }, NAME);
+      const CASES = [['ad', 600, 300, 20, 20], ['dd', 640, 260, 640, 20], ['all', 700, 300, 20, 380], ['a2', 600, 280, 740, 380], ['a', 300, 300, 1360, 20], ['d', 440, 200, 20, 740]];
+      const wins = [];
+      for (const [m, w, h, x, y] of CASES) {
+        const ik = await openClock(page);
+        for (const id of MIXES[m]) await choose(page, ik, id);
+        await page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, { x, y, w, h: h + 40 }]); await page.waitForTimeout(400);
+        wins.push({ m, ik, want: await rectOf(page, ik) });
+      }
+      const off = [], seen = [];
+      const check = async path => {
+        await page.waitForTimeout(1200);
+        for (const { m, ik, want } of wins) {
+          const r = await rectOf(page, ik);
+          if (!r || Math.abs(r.w - want.w) > 1 || Math.abs(r.h - want.h) > 1) off.push(`${path}, ${NAMES[m]}: ${Math.round(want.w)} × ${Math.round(want.h - 40)} came back ${r ? `${Math.round(r.w)} × ${Math.round(r.h - 40)}` : 'missing'}`);
+        }
+        seen.push(path);
+      };
+      const toastUndo = async text => { await page.locator('.toast', { hasText: text }).locator('button', { hasText: 'Undo' }).click(); await page.waitForTimeout(600); };
+      // A window's ⌄ menu item, the window brought to the front first.
+      const act = async (ik, a) => {
+        await page.evaluate(ik => window.__board21.focusWin(ik), ik); await page.waitForTimeout(150);
+        await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200); await page.click(`#menu [data-act="${a}"]`); await page.waitForTimeout(300);
+      };
+      for (const { ik } of wins) {
+        await act(ik, 'close'); await page.waitForTimeout(200);
+        await page.click('.picker-btn.left'); await page.waitForTimeout(200); await page.click('#panel.open [data-widget="clock"]'); await page.waitForTimeout(300);
+        if (await page.locator('#panel.open').count()) await page.click('.picker-btn.left');
+        await connected(page, ik);
+      }
+      await check('closed, then opened from the Widget Picker');
+      for (const { ik } of wins) {
+        await act(ik, 'reset'); await page.click('#menu [data-act="reset-yes"]'); await page.waitForTimeout(800); await toastUndo('was reset'); await connected(page, ik);
+      }
+      await check('Reset, then Undo');
+      for (const { ik } of wins) {
+        await openSettings(page, ['saved']);
+        await page.click(`#settings [data-act="inst-delete"][data-val="${ik}"]`); await page.waitForTimeout(200);
+        await page.click('#modal .btn.danger'); await page.waitForTimeout(500);
+        await page.keyboard.press('Escape'); await page.waitForTimeout(300);
+        await toastUndo('Deleted'); await connected(page, ik);
+      }
+      await check('Delete, then Undo');
+      const vid = await page.evaluate(() => window.__board21.history.save('The Clocks'));
+      for (const { ik } of wins) await page.evaluate(ik => { const r = window.__board21.state.insts.get(ik).rect; window.__board21.setRect(ik, Object.assign({}, r, { w: 400, h: 440 })); }, ik);
+      await page.waitForTimeout(800);
+      for (const { ik } of wins) { await page.evaluate(([id, ik]) => window.__board21.history.putBack(id, ik), [vid, ik]); await page.waitForTimeout(400); await connected(page, ik); }
+      await check('put back from Board history');
+      await page.evaluate(async () => { const b = window.__board21, exp = await b.buildExport(); await b.applyImport(exp, 'replace'); });
+      for (const { ik } of wins) await connected(page, ik);
+      await check('Export, then Import (Replace)');
+      ok(seen.length === 5 && !off.length, `each Clock comes back at its shape: Analog + Date, Digital + Date, all three, and Analog + Digital as they were, Analog alone 1:1, and Digital alone 2.2:1 (${seen.join('; ')})${off.length ? ': ' + off.join('; ') : ''}`);
+      await ctx.close();
+    });
+
+    // ---- 19. Drags 1 px at a time, wider from 140 to 460 px at 280 to 420 px tall, for every mix, with and without the
+    // LCD look and Time in words, and taller from 140 to 460 px at 150 and 180 px wide, for every mix with the digital
+    // time and the date alone. The dial and the time never shrink by more than 1 px, and once the date is readable its
+    // place or style changes at most once on each side of the square. (At the square, analog and digital go from one
+    // over the other to side by side, as in 2026.11.23-4.) The frame is sized directly and the Clock lays out at once, so
+    // each step is the Clock's own layout without waiting for the board. (Not yet checked: Analog + Date dragged taller at
+    // 150 to 200 px wide still goes from a small line to a stack with a smaller dial.)
+    await part('Drags', async () => {
+      const { ctx, page } = await newBoard(FRI, { viewport: { width: 1700, height: 1000 } });
+      const off = [], seen = [];
+      let steps = 0;
+      for (const [m, extras] of [['ad', []], ['ad', ['words']], ['dd', []], ['dd', ['led']], ['dd', ['words']], ['dd', ['led', 'words']], ['all', []], ['all', ['led']], ['all', ['words']], ['all', ['led', 'words']], ['y', []]]) {
+        const ik = await openClock(page);
+        await mix(page, ik, m); for (const id of extras) await choose(page, ik, id);
+        await size(page, ik, 1400, 900);
+        const at = `${NAME[m]}${extras.map(e => e === 'led' ? ', LCD look' : ', Time in words').join('')}`;
+        const runs = await page.evaluate(([ik, taller]) => {
+          const fr = document.querySelector(`.win[data-ikey="${ik}"] iframe`), W = fr.contentWindow, q = s => fr.contentDocument.querySelector(s);
+          const vis = el => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0;
+          const one = (w, h) => {
+            fr.style.width = w + 'px'; fr.style.height = h + 'px';
+            if (W.innerWidth !== w || W.innerHeight !== h) return { w, h, bad: `${W.innerWidth} × ${W.innerHeight}` };
+            W.layout();
+            const svg = q('#analog'), seg = q('.led-svg'), stack = vis(q('#stack')), line = !stack && vis(q('#line'));
+            let t = null;
+            if (seg && vis(seg)) { const r = seg.getBoundingClientRect(), vb = seg.viewBox.baseVal; t = 100 * Math.min(r.width / vb.width, r.height / vb.height); }
+            else if (vis(q('#time'))) t = parseFloat(W.getComputedStyle(q('#time')).fontSize);
+            const ana = vis(svg) ? svg.getBoundingClientRect() : null, dig = vis(q('#dig')) ? q('#dig').getBoundingClientRect() : null;
+            const d = (stack || line) ? q(stack ? '#stack' : '#line').getBoundingClientRect() : null, clocks = [ana, dig].filter(Boolean);
+            const where = !d ? '-' : !clocks.length ? 'alone' : d.left >= Math.max(...clocks.map(c => c.right)) - 2 ? 'beside' : d.top >= Math.max(...clocks.map(c => c.bottom)) - 2 ? 'under' : 'under the digital time';
+            return { w, h, dial: ana ? ana.width : null, t, k: `${where}, ${stack ? 'stack' : 'line'}`, yr: stack ? parseFloat(W.getComputedStyle(q('#year')).fontSize) : line ? parseFloat(W.getComputedStyle(q('#line')).fontSize) : null };
+          };
+          const drags = [];
+          for (const h of [280, 290, 300, 310, 320, 330, 340, 360, 380, 400, 420]) { const d = []; for (let w = 140; w <= 460; w++) d.push(one(w, h)); drags.push({ name: `wider at ${h} px tall`, d }); }
+          if (taller) for (const w of [150, 180]) { const d = []; for (let h = 140; h <= 460; h++) d.push(one(w, h)); drags.push({ name: `taller at ${w} px wide`, d }); }
+          fr.style.width = fr.style.height = '';
+          return drags;
+        }, [ik, m !== 'ad']);
+        await page.evaluate(ik => window.__board21.deleteInstance(ik), ik); await page.waitForTimeout(200);
+        let n = 0;
+        for (const { name, d } of runs) {
+          const bad = d.filter(s => s.bad), jumps = [];
+          let changes = 0, last = null, side = null;
+          d.forEach((s, i) => {
+            steps++;
+            const wide = s.w > s.h;
+            if (wide !== side) { side = wide; last = null; changes = 0; }
+            if (i && d[i - 1].w > d[i - 1].h === wide && !s.bad && !d[i - 1].bad) {
+              const p = d[i - 1];
+              if (s.dial != null && p.dial != null && s.dial < p.dial - 1) jumps.push(`${p.w} × ${p.h} → ${s.w} × ${s.h}: dial ${p.dial.toFixed(1)} → ${s.dial.toFixed(1)}`);
+              if (s.t != null && p.t != null && s.t < p.t - 1) jumps.push(`${p.w} × ${p.h} → ${s.w} × ${s.h}: time ${p.t.toFixed(1)} → ${s.t.toFixed(1)}`);
+            }
+            if (!(s.yr >= 11.95)) return;   // (a date too small to be readable yet)
+            if (last && s.k !== last && ++changes === 2) jumps.push(`${s.w} × ${s.h}: the date changes again, to ${s.k}`);
+            last = s.k;
+          });
+          if (bad.length) jumps.push(`${bad.length} steps at the wrong size`);
+          if (jumps.length) off.push(`${at}, ${name}: ${jumps.slice(0, 4).join('; ')}`);
+          n++;
+        }
+        seen.push(`${at} (${n})`);
+      }
+      ok(!off.length && seen.length === 11 && steps === 38841 + 9 * 2 * 321, `dragging wider 1 px at a time at 280 to 420 px tall, and taller at 150 and 180 px wide, the dial and the time never shrink by more than 1 px, and the readable date changes its place or style at most once on each side of the square (${steps} steps: ${seen.join(', ')})${off.length ? ': ' + off.join(' | ') : ''}`);
+      await ctx.close();
+    });
+
+    // ---- 20. Filling the board: wherever the date is already clear of the board's buttons in the bottom corners, the
+    // Clock is exactly as it is in a window of the same size that doesn't fill the board. Where it isn't, the date moves
+    // up or shrinks to stay 8 px clear. On the longest date, Wednesday, September 30 (the room is measured for the
+    // longest). Then the board grows 4 px at a time with a Clock filling it, and the time and the date never shrink.
+    await part('Filling the board, as without the corners', async () => {
+      const off = [], same = [], cut = [];
+      const lookAt = async (page, ik) => {
+        const l = await look(page, ik), c = await F(page, ik, () => Board21.context.window.corners || null);
+        return Object.assign(l, { corners: c });
+      };
+      // The date's lines, each its own box, and how close they come to the corner zones.
+      const gap = (l, c) => {
+        const zones = [[0, l.H - c.height, c.left, l.H], [l.W - c.right, l.H - c.height, l.W, l.H]].filter(z => z[2] > z[0]);
+        return Math.min(...l.parts.map(p => Math.min(...zones.map(z => Math.max(z[0] - p.r, p.x - z[2], z[1] - p.b, p.y - z[3])))));
+      };
+      // (Within 1 px. The digital time's width is measured from what it showed last, so two ways to one size can differ by
+      // a fraction of a pixel.)
+      const near = (a, b) => (a == null && b == null) || (a != null && b != null && Math.abs(a - b) <= 1);
+      for (const [vw, vh, corner, cases] of [[1366, 768, null, [['dd', 'words'], ['dd'], ['all'], ['all', 'words'], ['ad'], ['y']]], [1366, 657, null, [['dd'], ['dd', 'words']]],
+        [1024, 600, null, [['dd', 'words'], ['dd', 'words', 'set']]], [1536, 730, null, [['dd'], ['dd', 'words']]], [1280, 800, 'on', [['dd'], ['dd', 'led'], ['all'], ['y']]], [1024, 768, 'on', [['dd'], ['all', 'words'], ['ad']]],
+        [1280, 720, 'on', [['dd', 'words'], ['all', 'words']]], [1536, 864, 'on', [['dd', 'words']]]]) {
+        const { ctx, page } = await newBoard(WED, { viewport: { width: vw, height: vh } });
+        if (corner) await setCornerClock(page, corner);
+        for (const [m, ...extras] of cases) {
+          const ik = await openClock(page, 600, 400);
+          await mix(page, ik, m); for (const id of extras) await choose(page, ik, id);
+          await page.evaluate(([ik, w, h]) => window.__board21.setRect(ik, { x: 0, y: 0, w, h }), [ik, vw, vh]); await page.waitForTimeout(700);
+          const a = await lookAt(page, ik);
+          await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(900);
+          const b = await lookAt(page, ik);
+          await page.evaluate(ik => window.__board21.deleteInstance(ik), ik); await page.waitForTimeout(300);
+          const name = `${NAME[m]}${extras.map(e => ({ words: ', Time in words', led: ', LCD look', set: ', setting the time' })[e]).join('')} on ${vw} × ${vh}${corner ? ', Clock in the corner On' : ''}`;
+          if (!b.corners) { off.push(`${name}: no corners (${JSON.stringify(b.corners)})`); continue; }
+          // (The date alone keeps its 2.2:1 shape unless it fills the board, so it has no window of the same size.)
+          const g0 = a.W === b.W && a.H === b.H ? gap(a, b.corners) : -Infinity, g1 = gap(b, b.corners);
+          if (g0 >= 10) {
+            same.push(`${name}: ${Math.round(g0)} px clear`);
+            const keys = l => [l.t, l.dial && l.dial.w, l.sizes && l.sizes.big, l.sizes && l.sizes.md, l.date && l.date.x, l.date && l.date.y, l.time && l.time.y];
+            if (a.where !== b.where || a.stack !== b.stack || keys(a).some((v, i) => !near(v, keys(b)[i]))) off.push(`${name}: the date was ${Math.round(g0)} px clear, yet filling the board changes it: ${said(a)} → ${said(b)}`);
+          } else {
+            cut.push(`${name}: ${g0 > -Infinity ? Math.round(g0) + ' → ' : ''}${Math.round(g1)} px`);
+            // (8 px clear, less the suite's 2 px for font boxes)
+            if (!(g1 >= 6) || clashes(b).length) off.push(`${name}: the date comes within ${Math.round(g1)} px of the board’s buttons${clashes(b).length ? ', overlaps ' + clashes(b).join(', ') : ''} (${said(b)})`);
+          }
+        }
+        await ctx.close();
+      }
+      ok(!off.length && same.length >= 10 && cut.length >= 4, `filling the board, a date already clear of the board’s buttons changes nothing (${same.join('; ')}), and one that isn’t moves up or shrinks to stay 8 px clear (${cut.join('; ')})${off.length ? ': off: ' + off.join(' | ') : ''}`);
+      const drops = [], ran = [];
+      for (const corner of ['off', 'on']) {
+        const { ctx, page } = await newBoard(WED, { viewport: { width: 1366, height: 700 } });
+        await setCornerClock(page, corner);
+        const ik = await openClock(page, 600, 400);
+        await mix(page, ik, 'dd'); await choose(page, ik, 'words');
+        await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(900);
+        let last = null;
+        for (let vh = 700; vh <= 820; vh += 4) {
+          await page.setViewportSize({ width: 1366, height: vh }); await page.waitForTimeout(450);
+          const l = await look(page, ik), now = { at: `${l.W} × ${l.H}`, t: l.t, md: l.sizes && l.sizes.md };
+          if (last && (now.t < last.t - 1 || !(now.md >= last.md - 1))) drops.push(`Clock in the corner ${corner === 'on' ? 'On' : 'Off'}, ${last.at} → ${now.at}: time ${last.t.toFixed(1)} → ${now.t.toFixed(1)}, date ${last.md && last.md.toFixed(1)} → ${now.md && now.md.toFixed(1)}`);
+          last = now;
+        }
+        ran.push(`Clock in the corner ${corner === 'on' ? 'On' : 'Off'}: time ${last.t.toFixed(1)} at ${last.at}`);
+        await ctx.close();
+      }
+      ok(!drops.length && ran.length === 2, `Digital + Date with Time in words filling a board that grows from 1366 × 700 to 1366 × 820, 4 px at a time: the time and the date never shrink (${ran.join('; ')})${drops.length ? ': ' + drops.join(' | ') : ''}`);
+    });
+
+    // ---- 21. Maximizing from the ⌄ menu: nothing changes before the window starts to grow, and then the time only grows.
+    // The board's buttons count only once the window has its full size.
+    await part('Maximizing', async () => {
+      const off = [], seen = [];
+      for (const [vw, vh, m, extras] of [[1366, 768, 'dd', ['words']], [1024, 768, 'all', ['words']], [1920, 1080, 'all', ['words']]]) {
+        const { ctx, page } = await newBoard(FRI, { viewport: { width: vw, height: vh } });
+        const ik = await openClock(page);
+        await mix(page, ik, m); for (const id of extras) await choose(page, ik, id);
+        await page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, { x: Math.round((vw - 600) / 2), y: Math.round((vh - 440) / 2), w: 600, h: 440 }]);
+        await page.mouse.move(5, 5); await page.waitForTimeout(500);
+        await F(page, ik, () => {
+          // Each layout as it's made, after the Clock's own handlers for the window's resize and the board's news of it.
+          window.__frames = []; window.__rec = true;
+          const q = s => document.querySelector(s), vis = el => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0;
+          const f = () => {
+            if (!window.__rec) return;
+            const stack = vis(q('#stack')), line = !stack && vis(q('#line'));
+            const d = stack || line ? q(stack ? '#stack' : '#line').getBoundingClientRect() : null, c = ['#analog', '#dig'].map(q).filter(vis).map(e => e.getBoundingClientRect());
+            const where = !d || !c.length ? '-' : d.left >= Math.max(...c.map(r => r.right)) - 2 ? 'beside' : d.top >= Math.max(...c.map(r => r.bottom)) - 2 ? 'under' : 'under the digital time';
+            window.__frames.push({ w: innerWidth, h: innerHeight, t: vis(q('#time')) ? parseFloat(getComputedStyle(q('#time')).fontSize) : null,
+              date: stack ? parseFloat(getComputedStyle(q('#weekday')).fontSize) : line ? parseFloat(getComputedStyle(q('#line')).fontSize) : null, style: (stack ? 'stack' : line ? 'line' : '-') + ' ' + where });
+          };
+          f(); addEventListener('resize', f); Board21.on('resize', f);
+        });
+        await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200); await page.click('#menu [data-act="maximize"]');
+        await page.waitForTimeout(900);
+        const frames = await F(page, ik, () => { window.__rec = false; return window.__frames; });
+        // (The board's news can come before the window's own resize, so a record can show the last layout at the next size.)
+        const [b0] = frames, end = frames[frames.length - 1], grow = [];
+        for (let i = 1; i < frames.length; i++) {
+          const p = frames[i - 1], s = frames[i];
+          if (s.w >= end.w - 2 && s.h >= end.h - 2) break;   // (at its full size, where the board's buttons count)
+          if (s.w === b0.w && s.h === b0.h && (s.style !== b0.style || Math.abs(s.date - b0.date) > 1 || Math.abs(s.t - b0.t) > 1)) grow.push(`still ${s.w} × ${s.h}: time ${b0.t} → ${s.t}, date ${b0.style} ${b0.date} → ${s.style} ${s.date}`);
+          else if (s.t != null && p.t != null && s.t < p.t - 1) grow.push(`${p.w} × ${p.h} → ${s.w} × ${s.h}: time ${p.t} → ${s.t}`);
+        }
+        const name = `${NAME[m]} with Time in words on ${vw} × ${vh}`;
+        seen.push(`${name}: ${new Set(frames.map(f => f.w + '×' + f.h)).size} sizes`);
+        if (grow.length || new Set(frames.map(f => f.w)).size < 3) off.push(`${name}: ${grow.join('; ') || 'no frames while it grew'}`);
+        await ctx.close();
+      }
+      ok(!off.length && seen.length === 3, `maximizing, the time and the date don’t change before the window starts to grow, and then the time only grows (${seen.join('; ')})${off.length ? ': ' + off.join(' | ') : ''}`);
+    });
+
+    // ---- 22. Already filling the board: Clock in the corner turned On in Settings, then Off, and Full screen on Auto. The
+    // date lays out again each time, clear of the corner clock.
+    await part('The corner clock comes and goes', async () => {
+      const off = [], seen = [];
+      const state = async (page, ik, what) => {
+        await page.waitForTimeout(800);
+        const l = await look(page, ik), c = await F(page, ik, () => Board21.context.window.corners || null);
+        const marks = await page.evaluate(ik => {
+          const f = document.querySelector(`.win[data-ikey="${ik}"] iframe`).getBoundingClientRect();
+          return Array.from(document.querySelectorAll('.picker-btn, .corner-clock')).filter(e => !e.hidden && e.getClientRects().length && getComputedStyle(e).visibility !== 'hidden')
+            .map(e => { const r = e.getBoundingClientRect(); return { x: r.left - f.left, y: r.top - f.top, r: r.right - f.left, b: r.bottom - f.top, clock: e.classList.contains('corner-clock') }; });
+        }, ik);
+        const hit = l.parts.filter(p => marks.some(z => p.x < z.r + 2 && p.r > z.x - 2 && p.y < z.b + 2 && p.b > z.y - 2));
+        seen.push(`${what}: ${marks.some(z => z.clock) ? 'corner clock' : 'no corner clock'}, ${l.stack ? 'stack' : 'line'} ${l.sizes && l.sizes.big}px`);
+        if (hit.length || !l.date) off.push(`${what}: the date is under the board’s buttons (${said(l)}; corners ${JSON.stringify(c)})`);
+        return marks.some(z => z.clock);
+      };
+      for (const [vw, vh, m] of [[1024, 768, 'all'], [1366, 768, 'dd']]) {
+        const { ctx, page } = await newBoard(FRI, { viewport: { width: vw, height: vh } });
+        await setCornerClock(page, 'off');
+        const ik = await openClock(page, 700, 500);
+        await mix(page, ik, m); await choose(page, ik, 'words');
+        await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik);
+        await state(page, ik, `${NAME[m]} on ${vw} × ${vh}, Off`);
+        await setCornerClock(page, 'on');
+        if (!await state(page, ik, 'then On')) off.push('no corner clock after On');
+        await setCornerClock(page, 'off');
+        await state(page, ik, 'then Off');
+        await ctx.close();
+      }
+      const { ctx, page } = await newBoard(FRI, { viewport: { width: 1024, height: 768 } });
+      const ik = await openClock(page, 700, 500);
+      await mix(page, ik, 'all'); await choose(page, ik, 'words');
+      await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik);
+      await state(page, ik, 'all three on 1024 × 768, Auto');
+      await page.click('.picker-btn.left'); await page.waitForTimeout(300); await page.click('.panel.open [data-ctl="fullscreen"]'); await page.waitForTimeout(600);
+      if (await page.locator('#panel.open').count()) { await page.keyboard.press('Escape'); await page.waitForTimeout(300); }
+      if (!await state(page, ik, 'then Full screen')) off.push('no corner clock in full screen');
+      await ctx.close();
+      ok(!off.length, `filling the board, the date stays clear of the corner clock as it comes and goes (${seen.join('; ')})${off.length ? ': off: ' + off.join(' | ') : ''}`);
     });
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
