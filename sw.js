@@ -14,11 +14,11 @@
 const VERSION = '2026.11.24-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '43e6935c';
+const BUILD = '24f847c7';
 const FILES = {
-  './': '03fb167f70c6ea92',
-  'index.html': '03fb167f70c6ea92',
-  'board.js': '424cb642196beed4',
+  './': '8ede40aafa17f1f3',
+  'index.html': '8ede40aafa17f1f3',
+  'board.js': '9842fd9abada779c',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
@@ -46,17 +46,17 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': '000d200f226bef2b',
+  'widgets/name-picker/index.html': 'd3ccafa2031f5da6',
   'widgets/name-picker/style-bigname.js': '9d6775ffa5fb7f17',
   'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
   'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
   'widgets/name-picker/style-lotto.js': 'b34332daca17e15b',
-  'widgets/name-picker/style-versus.js': 'deb0d199a2f85b4b',
-  'widgets/name-picker/vs-lightning.js': 'f5c1581014f258d2',
+  'widgets/name-picker/style-versus.js': 'bddfb2171e15b305',
+  'widgets/name-picker/vs-lightning.js': '6d34946be8338ab8',
   'widgets/name-picker/vs-forged.js': '07556f56a9ccea89',
   'widgets/name-picker/vs-crest.js': 'feebe4739cde7dbb',
   'widgets/name-picker/vs-comic.js': '282eeb9624080002',
-  'widgets/name-picker/vs-flame.js': 'b0745bbced51dbff',
+  'widgets/name-picker/vs-flame.js': 'f7f0828ff757f68c',
   'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
   'widgets/name-picker/style-bracket.js': 'bf64e3a8072c82fa',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',

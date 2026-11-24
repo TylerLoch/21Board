@@ -118,6 +118,8 @@
   const E = {
     size: 0.57,
     aspect: VB[2] / VB[3],
+    // In dark theme its glow reaches past the top of the box by 0.02 of its height (measured).
+    reach: 0.02,
     hit: HIT,
     markup(state, { dark, h } = {}) {
       const k = uid(), cold = state === 'waiting', pal = cold ? STEEL : FIRE, ds = cold ? BODY : BURN, small = h && h < 90;

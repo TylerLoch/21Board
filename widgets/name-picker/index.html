@@ -109,6 +109,8 @@
  * dealLook()); style-versus.js draws them. An emblem:
  *   size, aspect     its box: height = size × the stage's smaller side, width = height × aspect. (Beside the names
  *                    the box takes at most 38% of the stage's width, so a narrow window leaves them room.)
+ *   reach            optional: how far its art at rest goes past the box, above and below, as a share of the box's
+ *                    height (0 when it stays inside). Names above and below the emblem clear it.
  *   hit              { normal, quick }: ms from the start of the slam's animations to the moment of impact
  *   css              optional; added to the page once
  *   markup(state, { dark, w, h })   SVG that fills the box: state 'final', or 'waiting' (no pair on the stage)

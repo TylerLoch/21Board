@@ -48,6 +48,8 @@
     // Sized to sit with the other four looks. The box is a little wider than the art (1.1), so the names keep 10 px or more.
     size: 0.47,
     aspect: 1.14,
+    // At rest the bolt's tips reach past the box, above and below, by 0.145 of its height (measured, light and dark).
+    reach: 0.15,
     // The moment of impact, in ms from the start of the animations (anims[0].ready), not from the call.
     hit: { normal: 300, quick: 120 },
     markup(state, { dark, h = 200 } = {}) {
