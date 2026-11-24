@@ -15,6 +15,7 @@ NamePicker.register('name', {
 .bn-pop .bn-row { animation: bn-pop .35s ease-out both; }
 .bn-pop .bn-row:nth-child(2) { animation-delay: .05s; } .bn-pop .bn-row:nth-child(3) { animation-delay: .1s; }
 .bn-pop .bn-row:nth-child(4) { animation-delay: .15s; } .bn-pop .bn-row:nth-child(5) { animation-delay: .2s; }
+.bn-pop .bn-row:nth-child(6) { animation-delay: .25s; }
 .bn-fade { animation: bn-fade .3s ease-out both; }
 @keyframes bn-pop { 0% { transform: scale(.85); } 60% { transform: scale(1.06); } 100% { transform: scale(1); } }
 @keyframes bn-fade { from { opacity: 0; } to { opacity: 1; } }

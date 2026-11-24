@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.23-5';
+const VERSION = '2026.11.24-3';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '61f8ed07';
+const BUILD = 'c68604e9';
 const FILES = {
-  './': '9e1160ff8026d99b',
-  'index.html': '9e1160ff8026d99b',
-  'board.js': 'd7b585d692676c03',
-  'sdk/board21.js': 'aa5d5880e3a9c4a1',
-  'sdk/board21-dev.js': 'f7c7181b53d5025a',
-  'sdk/dev/board-shell.js': 'b855220e82bbedad',
+  './': '3ab5edc628a99832',
+  'index.html': '3ab5edc628a99832',
+  'board.js': '61ac3faf6d75d463',
+  'sdk/board21.js': 'd4ac31b44e3ea26e',
+  'sdk/board21-dev.js': '4bc3617a17b2185c',
+  'sdk/dev/board-shell.js': '200e2628e5b24e79',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '23db056a8a430f76',
+  'widgets/registry.js': 'f3b020871a9a9714',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -46,11 +46,12 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': 'da5392353e884870',
-  'widgets/name-picker/style-bigname.js': 'f8620d2f1d12c8c5',
-  'widgets/name-picker/style-wheel.js': 'bd3793376cdfc9e7',
-  'widgets/name-picker/style-spotlight.js': 'd2ffd9ead362cf90',
-  'widgets/name-picker/style-lotto.js': 'fc46b85bc0bf5ff7',
+  'widgets/name-picker/index.html': 'dafc0937d3bee1ab',
+  'widgets/name-picker/style-bigname.js': '9d6775ffa5fb7f17',
+  'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
+  'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
+  'widgets/name-picker/style-lotto.js': 'b34332daca17e15b',
+  'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
   'widgets/zones-check-in/index.html': '135e19d8f4a8f0d7',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
@@ -58,11 +59,11 @@ const FILES = {
   'widgets/youtube-player/index.html': '32fa8d870d4a57d4',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
-  'widgets/calculator/index.html': '0edbe1006dc9bd68',
+  'widgets/calculator/index.html': 'b3d6a1b8824d0f0f',
   'widgets/calculator/calc-engine.js': 'b02a2ec1c5e86079',
   'widgets/weather/index.html': '2d0976a1c1a5fead',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',
-  'widgets/sdk-playground/index.html': '12cf5a8c7f820850'
+  'widgets/sdk-playground/index.html': '865e44d9a5333e9d'
 };
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION + '-' + BUILD;

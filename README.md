@@ -223,14 +223,14 @@ tests/run.js            Browser tests. See Tests.
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
 | **Clock** | Simple, Old, and Teaching faces, and an LCD look that glows as LED look in dark theme. Together, analog and digital sit side by side when wide and stacked when tall, with no shape lock. Alone, the lock changes at runtime: 1:1 for analog and 2.2:1 for digital or Date only, each taller with Time in words. With Set the time, drag geared hands or tap ▲ and ▼. The set time is saved as content. Mark a time shades the face to the teacher's mark, or to the end of the running timer that ends soonest, from the board's `timers` event. Quiz hides the digital time until it's tapped, and never saves that. Time in words writes the time under the clock |
 | **Notes** | Text that grows to fill the note, tappable web links, colors and the Chalkboard and Whiteboard themes with bundled hand-drawn fonts, live text sync that keeps the cursor |
-| **Name Picker** | Student names kept as *content*, so templates never include them. Four ways to pick, each in its own file: Big name, Spinning wheel, Spotlight, and Lotto. One to five winners at a time, set in the window menu and kept by templates. The pick is drawn and saved before the show, so every open copy lands on the same names |
+| **Name Picker** | Student names kept as *content*, so templates never include them. Five styles, each in its own file: Big name, Spinning wheel, Spotlight, Lotto, and Groups. One to six names at a time, set in the window menu and kept by templates. Groups puts the class into 2 to 6 random groups. The pick and the groups are drawn and saved before the show, so every open copy lands on the same names |
 | **First/Then Board** | Picture-card schedule for students: a card picker with search, done marks, seasonal themes, a chime made with Web Audio |
 | **Zones Check-In** | Check-ins kept as *content*, so templates never carry them. A tap counts when the finger lifts, so two students tapping at once both count. "−" and Undo, the last 20 changes. Clear each day, by the device's date. A face beside each feeling word, and an Ideas view with a breathing circle. When it fills the board and is at least 850 × 480 px, the four zones sit in one row, in every student's reach |
 | **Dice** | Responsive SVG sizing; blank dice tumble in 3D and land on the saved values in every open copy |
 | **Traffic Light** | Turns sideways in a window wider than tall, and keeps its shape in any window. Follow timers shows the color of the Timer or 21Timer closest to ending, from the board's `timers` event. That color is worked out in every tab and never saved. Title status text |
 | **Video Player** | A YouTube, Google Drive, or Vimeo video from its link. A link pasted or dropped on the board opens one too. The board reads it with the widget's own `video-links.js`. YouTube, Google Drive, and Vimeo see what they would on their own sites: the video, the device, and any account signed in. YouTube and Vimeo also see the board's address. Controls in the window menu, since nothing may cover the player. A History of the last 5 videos, kept in the content and titled by YouTube's and Vimeo's oEmbed without cookies. Clear of the board's corner buttons when it fills the board (`corners`). Never under 200 × 200 px on screen (`zoom`). A message when offline |
 | **Picture** | A picture opened, pasted, or dropped on the board. PNG, JPEG, GIF, WebP, or AVIF, animations too. An SVG is drawn as a picture, so nothing in it runs. Kept in the window's content. A still over 1 MB or 3840 px is redrawn as a WebP, 2560 px at most. An animation is kept as it is, up to 5 MB. The window takes the picture's shape. *Whole picture* or *Crop to fill* in its menu. Board history keeps each picture once |
-| **Calculator** | Its math in one engine, `calc-engine.js`, with its own Node tests. Every menu setting kept in the window's config. The window widens for History, grows for Advanced keys, and gives the room back (`setSize`). See [Calculator](#calculator) |
+| **Calculator** | Its math in one engine, `calc-engine.js`, with its own Node tests. Every menu setting kept in the window's config. The window widens for History, grows for Advanced keys, and gives the room back (`setSize`). The canvas sits beside the keys or above them, whichever makes the keys bigger. See [Calculator](#calculator) |
 | **Weather** | Forecast and air quality from Open-Meteo, and the weather right now, watches, and warnings from the National Weather Service, with plain `fetch()`. They see the place, the device's Internet address, and the board's address. No cookies. Each part asks on its own clock, only while the window shows, and never on a timer from 8 PM to 6 AM. Sun, moon, and school days worked out on the device. Four layouts by the window's size. Every menu setting and the place kept in the window's config. The 7 days and what to wear from the last forecast kept as content, saved only when they'd look different, and shown offline (`clash: 'later'`). See [Weather](#weather) |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
@@ -544,7 +544,7 @@ typing on a touch-only panel; and that the board is still there after airplane m
 ## Calculator
 
 A calculator for the front of the room. The problem fills a big canvas, as a textbook writes it. Its steps play one at
-a time. The keys sit beside it, with ÷ × − + = down the right.
+a time. The keys sit beside it, with ÷ × − + = down the right. In a tall or narrow window, the canvas moves above them.
 
 **Desmos's math.** Teachers use Desmos, so the Calculator works problems out the same way. % means "% of", so 10% of
 50 = 5. Where Desmos says "undefined", the Calculator says what went wrong, such as "Can't divide by 0". Another =
@@ -566,8 +566,8 @@ repeats the last step, so 5 + 5 = = = counts by 5s. A faint comma groups the dig
 - **Swap sides:** the panels change sides, for a teacher on the left of a flat panel.
 - **Clear history:** empties History.
 
-Turning on History or the canvas widens the window, where the board has room. Advanced keys make it taller. Turning
-them off gives the room back.
+Turning on History or the canvas widens the window, where the board has room. In a tall window, the canvas goes above
+the keys. Advanced keys make it taller. Turning them off gives the room back.
 
 Keyboards work too. Type digits, + - * / ^ % ( ), and the point, then Enter or =. Type sqrt, pi, or ans as letters.
 

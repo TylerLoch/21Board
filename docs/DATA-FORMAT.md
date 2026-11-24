@@ -538,6 +538,15 @@ also keeps `style` for an older 21Board: `"analog"` for analog only, `"digital"`
 Date only. A config from before 2026.11.21-4 is `{ style, hour24, seconds, date }` and reads the same way. Whether
 Quiz shows ? is never saved.
 
+The Name Picker (`name-picker`) saves `{ names, left, picked, pickId, current, groups, groupId }`. `names` is the
+list, once for each student. `left` is who is still to go in a round of No repeats, or `null` for everyone. `picked`
+is the last pick, 1 to 6 names, and `pickId` changes with every pick. `current` is `picked[0]`, for releases before
+several winners. `groups` is each group's names in deal order, 6 groups at most. `groupId` changes with every draw. It
+ends with the Groups number and how many groups that made, such as `-43` for Groups 4 with 3 names. Names in `left`,
+`picked`, and `groups` that aren't in `names` are dropped when read, and a name in no group joins the smallest group.
+Its config is `{ noRepeats, style, winners, groups, quick, sound }`. `style` is `"name"`, `"wheel"`, `"spotlight"`,
+`"lotto"`, or `"groups"`. `winners` is 1 to 6 and `groups` is 2 to 6. A bad one takes its default, 1 or 4.
+
 Weather (`weather`) saves `{ saved: { at, place, days, wear } }`, the last forecast it showed, for offline. `at` is when
 that last changed, in ms. `place` is its place's GeoNames `id`. `days` is the 7 days as drawn, each `{ date, code,
 low, high, rain }`, in °F and unrounded. `wear` is What to wear for today and the next school day, by date: `{ label,
