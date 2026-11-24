@@ -3,7 +3,7 @@
  * The whole class is on the stage as a grid of name tiles, in list order, so every student can find their own name.
  * On Pick the class dims and a yellow light hops from tile to tile, quick at first and slowing like a game-show board,
  * and lands on the winner, whose tile grows into a big name card. Several winners: the one light collects them in
- * turn and numbers them 1, 2, 3; later stops are shorter, so five take about 6 seconds (one takes about 4).
+ * turn and numbers them 1, 2, 3; later stops are shorter, so six take about 6½ seconds (one takes about 4).
  * No repeats: tiles never move, so a name stays in the same place all lesson. Students picked earlier in the round
  * get a tick and a line through, and the light never lands on them (they aren't in the draw).
  * The host draws the winners; this file only puts on the show that lands on them. How a style plugs in: the comment
@@ -98,11 +98,11 @@ NamePicker.register('spotlight', {
     const P = 'spotlight-';
     const MIN_FS = 10;   // px: a tile name smaller than this is shortened instead ("Anne-S.", "Maximil…")
     const TRAIL = 140;   // ms: how quickly the light's trail fades
-    // How long each part of the show takes (ms), by the number of winners (1 to 5). The light's first run, each
+    // How long each part of the show takes (ms), by the number of winners (1 to 6). The light's first run, each
     // further run (shorter: later winners are collected more quickly), and its rest on each winner. Then the cards grow.
-    const NORMAL = { first: [3000, 2400, 2000, 1800, 1700], next: [0, 800, 700, 560, 480], rest: [420, 280, 260, 240, 220],
-      gap1: 120, gapN: 105, hops: 4, start: 60, grow: 560, stagger: 90, back: 260 };   // about 4 s for one, 5 s for three, 6 s for five
-    const QUICK = { first: [800, 600, 500, 420, 360], next: [0, 170, 130, 110, 100], rest: [120, 70, 60, 50, 40],
+    const NORMAL = { first: [3000, 2400, 2000, 1800, 1700, 1600], next: [0, 800, 700, 560, 480, 440], rest: [420, 280, 260, 240, 220, 210],
+      gap1: 120, gapN: 105, hops: 4, start: 60, grow: 560, stagger: 90, back: 260 };   // about 4 s for one, 5 s for three, 6½ s for six
+    const QUICK = { first: [800, 600, 500, 420, 360, 330], next: [0, 170, 130, 110, 100, 90], rest: [120, 70, 60, 50, 40, 35],
       gap1: 90, gapN: 70, hops: 2, start: 40, grow: 320, stagger: 30, back: 160 };      // about 1½ s for any number
     const SVG = 'http://www.w3.org/2000/svg';
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));

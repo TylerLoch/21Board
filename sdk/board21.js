@@ -246,11 +246,11 @@
     renderStandaloneMenu();
   }
 
-  // A menu item (or a swatch inside a row of swatches) by id.
+  // A menu item (or a swatch or choice inside a row) by id.
   function findMenuItem(id) {
     for (var k = 0; k < menuItems.length; k++) {
-      var i = menuItems[k];
-      if (i.swatches) { for (var j = 0; j < i.swatches.length; j++) if (i.swatches[j].id === id) return i.swatches[j]; }
+      var i = menuItems[k], row = i.swatches || i.choices;
+      if (row) { for (var j = 0; j < row.length; j++) if (row[j].id === id) return row[j]; }
       else if (!i.heading && !i.separator && i.id === id) return i;
     }
     return null;
@@ -258,6 +258,7 @@
 
   // A tiny stand-in for the window menu, so custom menu items can be tested standalone.
   var standaloneMenuBtn = null;
+  var CHAR = /[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S]/g;   // one character (an emoji too)
   function renderStandaloneMenu() {
     if (!standalone || !document.body) return;
     if (!menuItems.length) { if (standaloneMenuBtn) { standaloneMenuBtn.remove(); standaloneMenuBtn = null; } return; }
@@ -275,11 +276,12 @@
     var opt = function (id, label, checked) {
       return '<option value="' + String(id).replace(/"/g, '&quot;') + '">' + (checked ? '\u2713 ' : '') + String(label).replace(/</g, '&lt;') + '</option>';
     };
-    // As in the board: at most 24 items and 12 swatches per row.
+    // As in the board: at most 24 items, 12 swatches or choices per row, and 3 characters of a choice's label.
     standaloneMenuBtn.innerHTML = '<option value="">Menu \u25be</option>' + menuItems.slice(0, 24).map(function (i) {
       if (i.separator) return '<option disabled>\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500</option>';
       if (i.heading) return '<option disabled>\u2014 ' + String(i.label).replace(/</g, '&lt;') + ' \u2014</option>';
       if (i.swatches) return i.swatches.slice(0, 12).map(function (s) { return opt(s.id, i.label + ': ' + s.label, s.checked); }).join('');
+      if (i.choices) return i.choices.slice(0, 12).map(function (c) { return opt(c.id, i.label + ': ' + (c.label.match(CHAR) || []).slice(0, 3).join(''), c.checked); }).join('');
       return i.disabled ? '<option disabled>' + String(i.label).replace(/</g, '&lt;') + '</option>' : opt(i.id, i.label, i.checked);
     }).join('');
   }
@@ -582,13 +584,19 @@
     menu: {
       /** items: [{ id, label, icon?: '<svg…>', checked?: bool, disabled?: bool, separator?: bool }
        *          | { heading: true, label }                                           (a small section label)
-       *          | { label, swatches: [{ id, label, color: '#hex', background?: '#hex', checked?: bool }] }]  (a row of colors) */
+       *          | { label, swatches: [{ id, label, color: '#hex', background?: '#hex', checked?: bool }] }  (a row of colors)
+       *          | { label, choices: [{ id, label, checked?: bool }] }]  (a row of short choices, such as numbers: up to 12,
+       *            each label up to 3 characters) */
       set: function (items) {
         menuItems = (items || []).map(function (i) {
           i = i || {};
           if (i.heading) return { heading: true, label: String(i.label || '') };
           if (Array.isArray(i.swatches)) return { id: String(i.id || ''), label: String(i.label || ''), swatches: i.swatches.map(function (s) {
             return { id: String(s.id || ''), label: String(s.label || ''), color: String(s.color || ''), background: s.background ? String(s.background) : undefined, checked: !!s.checked };
+          }) };
+          if (Array.isArray(i.choices)) return { id: String(i.id || ''), label: String(i.label || ''), choices: i.choices.map(function (c) {
+            c = c || {};
+            return { id: String(c.id || ''), label: String(c.label == null ? '' : c.label), checked: !!c.checked };
           }) };
           return { id: String(i.id || ''), label: String(i.label || ''), icon: i.icon || '', checked: i.checked == null ? undefined : !!i.checked, disabled: !!i.disabled, separator: !!i.separator };
         });

@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.23-4';
-  const BOARD_BUILD = 'd03fb00d';
+  const BOARD_VERSION = '2026.11.24-1';
+  const BOARD_BUILD = 'eea4a3a8';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2237,6 +2237,14 @@
                 })).filter(s => s.id && s.color)
               });
             }
+            // A row of short choices, such as numbers: drawn like the swatches, each label at most 3 characters.
+            if (Array.isArray(i.choices)) {
+              return Object.assign(item, {
+                choices: i.choices.slice(0, 12).map(c => ({
+                  id: String((c && c.id) || '').slice(0, 64), label: Array.from(String((c && c.label) || '')).slice(0, 3).join(''), checked: !!(c && c.checked)
+                })).filter(c => c.id)
+              });
+            }
             // (No icon from an uploaded file: markup in the board's own menu would be outside its seal.)
             return Object.assign(item, { icon: this.widget.sealed ? '' : safeSVG(i.icon), checked: typeof i.checked === 'boolean' ? i.checked : undefined, disabled: !!i.disabled, separator: !!i.separator });
           });
@@ -3394,7 +3402,7 @@
         return;
       }
       // A heading and the items under it (up to a line or the next heading) are one group, named by the heading, so a
-      // screen reader says "Winners each time, 3, checked". (The group takes no room: .menu-group is display: contents.)
+      // screen reader says "Names at a time, 3, checked". (The group takes no room: .menu-group is display: contents.)
       let html = '', group = false;
       const endGroup = () => { if (group) html += '</div>'; group = false; };
       for (const i of w.menuItems) {
@@ -3405,6 +3413,11 @@
           html += `<div class="menu-swatches" role="group" aria-label="${esc(i.label)}">` + i.swatches.map(s =>
             `<button class="swatch" role="menuitemradio" aria-checked="${s.checked}" aria-label="${esc(s.label)}" title="${esc(s.label)}" ` +
             `data-act="widget" data-id="${esc(s.id)}" style="--sw:${s.color};--swbg:${s.background || s.color}"></button>`).join('') + '</div>';
+          continue;
+        }
+        if (i.choices) {
+          html += `<div class="menu-choices" role="group" aria-label="${esc(i.label)}">` + i.choices.map(c =>
+            `<button class="menu-choice" role="menuitemradio" aria-checked="${c.checked}" aria-label="${esc(c.label)}" data-act="widget" data-id="${esc(c.id)}">${esc(c.label)}</button>`).join('') + '</div>';
           continue;
         }
         const check = i.checked === true ? svg('check', 'check') : '';

@@ -201,10 +201,14 @@
       if (items.length > 24) add('warn', 'The menu has ' + items.length + ' items', 'The board shows the first 24.', 'Keep the window menu to 24 items or fewer.');
       items.forEach(function (it) {
         if (!it) return;
-        if (!it.heading && !it.separator && !it.swatches && !it.id) add('warn', 'A menu item has no id: “' + (it.label || '') + '”', '', 'Give every menu item a unique id.');
+        if (!it.heading && !it.separator && !it.swatches && !it.choices && !it.id) add('warn', 'A menu item has no id: “' + (it.label || '') + '”', '', 'Give every menu item a unique id.');
         if (Array.isArray(it.swatches)) {
           if (it.swatches.length > 12) add('warn', 'The “' + it.label + '” swatch row has ' + it.swatches.length + ' colors', 'The board shows the first 12.', 'Use at most 12 swatches in a row.');
           it.swatches.forEach(function (sw) { if (sw && !/^#[0-9a-f]{3}([0-9a-f]{3})?$/i.test(sw.color || '')) add('warn', 'Swatch “' + (sw.label || sw.id) + '” isn’t a #hex color (' + sw.color + ')', 'The board leaves it out.', 'Give every swatch a color like "#dc2626".'); });
+        }
+        if (Array.isArray(it.choices)) {
+          if (it.choices.length > 12) add('warn', 'The “' + it.label + '” row has ' + it.choices.length + ' choices', 'The board shows the first 12.', 'Use at most 12 choices in a row.');
+          it.choices.forEach(function (c) { if (c && (String(c.label || '').match(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S]/g) || []).length > 3) add('warn', 'Choice “' + c.label + '” is longer than 3 characters', 'The board shows the first 3.', 'Give every choice a label of 3 characters or fewer, like "12".'); });
         }
         if (it.icon && !/^\s*<svg/i.test(it.icon)) add('info', 'A menu icon isn’t an <svg>', 'The board drops icons that aren’t inline SVG.', 'Use an inline <svg> string for menu icons, or none.');
       });

@@ -80,7 +80,7 @@ NamePicker.register('lotto', {
     const fmt = v => String(Math.round(v * 10) / 10);
 
     // How long each part takes (seconds). A ball rolls to the drum's exit, down the chute, then hops into its socket.
-    // Normal: the balls tumble for a while, then come out about a second apart (one name about 3½ s, five about 6 s).
+    // Normal: the balls tumble for a while, then come out about a second apart (one name about 3½ s, six about 6½ s).
     // Quick: about 1½ s in all, however many names.
     function timeline(k, quick) {
       const T = quick ? { exit: 0.14, chute: 0.2, drop: 0.3 } : { exit: 0.3, chute: 0.42, drop: 0.5 };
@@ -594,7 +594,7 @@ NamePicker.register('lotto', {
       const fresh = view.names.join('\n') !== namesKey;
       arrange(view, how);
       shown = view.winners.slice();
-      sockets = shown.length || clamp(view.next || view.count || 1, 1, 5);
+      sockets = shown.length || clamp(view.next || view.count || 1, 1, 6);
       if (fresh) sizeKey = '';
       relayout(false);
       // A new pick shown without its show (reduce motion, or picked in another copy a while ago) fades in.
