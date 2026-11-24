@@ -14,16 +14,16 @@
 const VERSION = '2026.11.24-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'dc44cdb9';
+const BUILD = '04d454ec';
 const FILES = {
-  './': '455ce154f47190dd',
-  'index.html': '455ce154f47190dd',
-  'board.js': 'e9e561566a7dd1b3',
+  './': '37d76030acc4eb2f',
+  'index.html': '37d76030acc4eb2f',
+  'board.js': '86c00c4777197447',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '3e680fead9d69ece',
+  'widgets/registry.js': '64594a78d1ab0797',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -46,11 +46,17 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': 'c7e3d0c7cfb8b8a8',
+  'widgets/name-picker/index.html': '71e4ba1ec418701b',
   'widgets/name-picker/style-bigname.js': '9d6775ffa5fb7f17',
   'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
   'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
   'widgets/name-picker/style-lotto.js': 'b34332daca17e15b',
+  'widgets/name-picker/style-versus.js': 'afdcf432173e09a1',
+  'widgets/name-picker/vs-lightning.js': 'f5c1581014f258d2',
+  'widgets/name-picker/vs-forged.js': '07556f56a9ccea89',
+  'widgets/name-picker/vs-crest.js': 'feebe4739cde7dbb',
+  'widgets/name-picker/vs-comic.js': '282eeb9624080002',
+  'widgets/name-picker/vs-flame.js': 'b0745bbced51dbff',
   'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
   'widgets/name-picker/style-bracket.js': '5604b8f838b2f9a2',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',

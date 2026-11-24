@@ -899,7 +899,7 @@ const ZC = {
 };
 
 // The Name Picker's ways to pick, as its window menu lists them under Pick with: [config.style, label].
-const NP_STYLES = [['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto'], ['groups', 'Groups'], ['bracket', 'Bracket']];
+const NP_STYLES = [['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto'], ['versus', 'Versus'], ['groups', 'Groups'], ['bracket', 'Bracket']];
 
 const SUITES = [
   ['Windows, data and multi-tab sync', async (browser) => {
@@ -4303,6 +4303,9 @@ const SUITES = [
     // Bracket: everyone plays, so no row of numbers; No repeats and Start over are for picking, so they leave, as in Groups.
     const MENU_B = ({ sound = false, quick = false } = {}) => ['Edit names', '—', '# Pick with', ...NP_STYLES.map(([id, label]) => label + (id === 'bracket' ? ' ✓' : '')),
       '—', 'Sound' + (sound ? ' ✓' : ''), 'Quick' + (quick ? ' ✓' : '')].join(' | ');
+    // Versus: always two, so no row of numbers. No repeats and Start over stay.
+    const MENU_V = ({ startOver = false } = {}) => ['Edit names', '—', '# Pick with', ...NP_STYLES.map(([id, label]) => label + (id === 'versus' ? ' ✓' : '')),
+      '—', 'No repeats ✓', 'Start over' + (startOver ? '' : ' (off)'), 'Sound', 'Quick'].join(' | ');
     const showing = (p = page, ik) => np(p, ik).locator('body').evaluate(b => b.classList.contains('showing'));
     const idle = (p = page, ik) => eventually(async () => !(await showing(p, ik)), 12000);
     const text = (sel, p = page, ik) => np(p, ik).locator(sel).textContent();
@@ -4379,6 +4382,15 @@ const SUITES = [
     await menu('style:name');
     ok(await items() === MENU('name', 1, { startOver: true }) && (await saved()).left.length === mid.left.length && sameList(await bigNames(), mid.picked),
       'back to Big name: the row of numbers, No repeats, and Start over are back, with the round and the last pick as they were');
+    // ---- Versus in the menu: Versus ticked under Pick with, no row of numbers (always two), then No repeats, Start over,
+    // Sound, and Quick. The round goes on; Names at a time stays as it was.
+    await menu('style:versus');
+    const inVersus = { conf: await conf(), items: await items(), left: (await saved()).left.length, go: await text('#go'), status: await text('#status'), round: await np().locator('#round').isVisible() };
+    ok(inVersus.conf.style === 'versus' && inVersus.conf.winners === confWas.winners && inVersus.items === MENU_V({ startOver: true }) && inVersus.left === mid.left.length
+      && inVersus.go === (mid.left.length > 1 ? 'Pick 2' : 'Pick the last one') && inVersus.status === `${mid.left.length} of 6 left` && inVersus.round,
+      `Versus: ticked under Pick with, no row of numbers, then No repeats, Start over, Sound, and Quick; “${inVersus.go}”, and the round as it was, “${inVersus.status}” (${inVersus.items})`);
+    await menu('style:name');
+    ok(await items() === MENU('name', 1, { startOver: true }) && sameList(await bigNames(), mid.picked), 'back to Big name: Names at a time is 1 again, with the last pick as it was');
 
     // ---- Start over: everyone back in.
     await menu('round');
@@ -4515,6 +4527,10 @@ const SUITES = [
       ok(!was && await eventually(async () => (await said(rp)).startsWith('Picked: ' + p.picked.join(', ')), 1000), `with reduce motion, the ${style} style has no show: the winners are on screen at once (${p.picked})`);
     }
     ok(await np(rp).locator('.bn-list').evaluate(e => e.classList.contains('bn-fade')) && JSON.stringify(await bigNames(rp)) === JSON.stringify((await saved(rp)).picked), 'Big name fades them in');
+    await menu('style:versus', rp); await menu('round', rp);
+    const pv = await pickNow(rp);
+    ok(!(await showing(rp)) && pv.picked.length === 2 && await eventually(async () => await said(rp) === `${pv.picked[0]} versus ${pv.picked[1]}.`, 1000), `with reduce motion Versus has no show either: the pair is on screen at once (${pv.picked.join(' versus ')})`);
+    await menu('style:name', rp);
     if (errors.length) ok(false, 'no page errors (and none from sound that can’t start): ' + errors.join(' | '));
     await rctx.close();
 
@@ -5210,7 +5226,7 @@ const SUITES = [
     }
     // The data format names what the Name Picker saves.
     const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
-    ok(/The Name Picker \(`name-picker`\) saves `\{ names, left, picked, pickId, [^}]*current, groups, groupId[, }]/.test(dataDoc) && dataDoc.includes('`{ noRepeats, style, winners, groups, quick, sound }`')
+    ok(/The Name Picker \(`name-picker`\) saves `\{ names, left, picked, pickId, [^}]*current, [^}]*groups, groupId[, }]/.test(dataDoc) && dataDoc.includes('`{ noRepeats, style, winners, groups, quick, sound }`')
       && /`style` is `"name"`, [^.]*`"groups"`/.test(dataDoc) && dataDoc.includes('`winners` is 1 to 6 and `groups` is 2 to 6'), 'docs/DATA-FORMAT.md gives its content and its config, Groups too');
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
     ok(/ styles, each in its own file: Big name, Spinning wheel, Spotlight, Lotto, [^.]*Groups/.test(readme), 'README.md names the styles, Groups too');
@@ -5821,6 +5837,440 @@ const SUITES = [
     ok(/ styles, each in its own file: [^.]*Groups, and Bracket\./.test(readme) && readme.includes('Bracket draws the class into a tournament, and a tap moves each winner on.'), 'README.md names Bracket, in one short sentence');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await fctx.close();
+  }],
+  // ---- 2026.11.24-2: Versus, two students picked at random face off, and a VS emblem slams down between them, in one
+  // of five looks.
+  ['Name Picker: Versus', async (browser) => {
+    const LOOKS = ['lightning', 'forged', 'crest', 'comic', 'flame'];
+    // Every sound a style asks the host for, and for the slam how far the slam's own animations are at that moment; the
+    // sounds the page starts, and the notes it plays.
+    const SPY = () => {
+      window.__sounds = []; window.__slamAt = [];
+      let np;
+      Object.defineProperty(window, 'NamePicker', { configurable: true, get: () => np, set: v => {
+        np = v;
+        const register = v.register;
+        v.register = function (id, style) {
+          const mount = style.mount;
+          style.mount = function (root, host) {
+            const sound = host.sound;
+            host.sound = function (name) {
+              window.__sounds.push(name);
+              if (name === 'slam') window.__slamAt.push(Math.max(0, ...document.getAnimations().filter(a => !(a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('.versus-name'))).map(a => a.currentTime || 0)));
+              return sound.apply(this, arguments);
+            };
+            return mount.call(this, root, host);
+          };
+          return register.call(this, id, style);
+        };
+      } });
+      if (!window.AudioContext) return;
+      window.__audio = 0; window.__notes = 0;
+      const A = window.AudioContext, base = (window.BaseAudioContext || A).prototype;
+      window.AudioContext = class extends A { constructor(o) { super(o); window.__audio++; } };
+      for (const fn of ['createOscillator', 'createBufferSource']) { const f = base[fn]; base[fn] = function () { window.__notes++; return f.apply(this, arguments); }; }
+    };
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, acceptDownloads: true });
+    await ctx.addInitScript(SPY);
+    const page = await ctx.newPage();
+    const errors = [];
+    const watch = (p, tab) => { p.on('pageerror', e => errors.push(`[${tab}] ${e.message}`)); p.on('console', m => { if (m.type() === 'error' && /name-picker/.test(m.location().url || '')) errors.push(`[${tab} console] ${m.text()}`); }); };
+    watch(page, 'tab 1');
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const np = (p = page, ik = 'name-picker:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const saved = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
+    const conf = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
+    const menu = async (id, p = page, ik = 'name-picker:1') => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const items = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems
+      .map(i => i.separator ? '—' : i.heading ? '# ' + i.label : i.choices ? '[' + i.choices.map(c => c.label + (c.checked ? ' ✓' : '')).join(' ') + ']'
+        : i.label + (i.checked ? ' ✓' : '') + (i.disabled ? ' (off)' : '')).join(' | '), ik);
+    // Versus: always two, so no row of numbers. No repeats and Start over stay, as in the other ways to pick.
+    const MENU_V = ({ noRepeats = true, startOver = false, sound = false, quick = false } = {}) => ['Edit names', '—', '# Pick with', ...NP_STYLES.map(([id, l]) => l + (id === 'versus' ? ' ✓' : '')),
+      '—', 'No repeats' + (noRepeats ? ' ✓' : ''), 'Start over' + (startOver ? '' : ' (off)'), 'Sound' + (sound ? ' ✓' : ''), 'Quick' + (quick ? ' ✓' : '')].join(' | ');
+    const showing = (p = page, ik) => np(p, ik).locator('body').evaluate(b => b.classList.contains('showing'));
+    const idle = (p = page, ik) => eventually(async () => !(await showing(p, ik)), 12000);
+    const text = (sel, p = page, ik) => np(p, ik).locator(sel).textContent();
+    const said = (p = page, ik) => text('#said', p, ik);
+    const inFrame = (fn, p = page, ik, arg) => np(p, ik).locator('html').evaluate(fn, arg);
+    const setNames = async (list, p = page, ik) => { await menu('edit', p, ik); await np(p, ik).locator('#list').fill(list.join('\n')); await np(p, ik).locator('#done').click(); await p.waitForTimeout(300); };
+    const sameList = (a, b) => a.slice().sort().join() === b.slice().sort().join();
+    const pickNow = async (p = page, ik) => {
+      const was = ((await saved(p, ik)) || {}).pickId;
+      await np(p, ik).locator('#go').click();
+      await eventually(async () => ((await saved(p, ik)) || {}).pickId !== was, 3000);
+      return saved(p, ik);
+    };
+    // The Versus stage: its look, whether it waits, its two names (the left one first), what it holds, and whether its
+    // emblem is its look's markup at rest (for the waiting stage or a pick, at this box's size; ids aside).
+    const vs = (p = page, ik) => inFrame(() => {
+      const v = document.querySelector('.style-root[data-style="versus"] .versus');
+      if (!v) return null;
+      const box = v.querySelector('.versus-box'), E = NamePicker.looks[v.dataset.look], waiting = v.classList.contains('versus-waiting');
+      const norm = html => {
+        const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((m, i) => [m[1], i]).sort((a, b) => b[0].length - a[0].length);
+        for (const [id, i] of ids) html = html.split(id).join('#' + i + '#');
+        return html;
+      };
+      let rest = false;
+      if (E && box) { const t = document.createElement('div'); t.innerHTML = E.markup(waiting ? 'waiting' : 'final', { dark: document.documentElement.getAttribute('data-b21-theme') === 'dark', w: parseFloat(box.style.width), h: parseFloat(box.style.height) }); rest = norm(t.innerHTML) === norm(box.innerHTML); }
+      return { look: v.dataset.look, waiting, names: [...v.querySelectorAll('.versus-name')].map(n => n.textContent), kids: [...v.children].map(c => c.className).join(' | '), rest,
+        styled: [v, ...v.querySelectorAll('*')].filter(e => /transform|opacity|clip|filter/.test(e.getAttribute('style') || '')).length,
+        anims: v.getAnimations({ subtree: true }).length, running: document.getAnimations().filter(a => a.playState === 'running').length, texts: v.querySelectorAll('text').length,
+        sizes: [...v.querySelectorAll('.versus-name')].map(n => n.style.fontSize).join() };
+    }, p, ik);
+    const KIDS = 'versus-side versus-l | versus-side versus-r | versus-cut vs-cut | versus-name | versus-name | versus-box';
+    // Only the sides, the slash, the names, and the emblem at rest: nothing a show added, and nothing running.
+    const clean = s => !!s && s.kids.replace(/ versus-fade/g, '') === KIDS && s.rest && !s.styled && !s.anims && !s.running && !s.texts;
+
+    // ---- Versus in the menu: after Lotto. Names at a time stays as it was.
+    await page.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf()) || {}).style === 'wheel');
+    await page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 540, h: 400 }));
+    const N24 = ['Ava', 'Ben', 'Carlos', 'Dana', 'Eli', 'Fatima', 'Gus', 'Hana', 'Ivy', 'Jamal', 'Kai', 'Lena', 'Mateo', 'Nora', 'Omar', 'Priya', 'Quinn', 'Rosa', 'Sam', 'Tariq', 'Uma', 'Vic', 'Wen', 'Zoe'];
+    await np().locator('#list').fill(N24.join('\n')); await np().locator('#done').click(); await page.waitForTimeout(300);
+    await menu('winners:3');
+    await menu('style:versus');
+    ok((await conf()).style === 'versus' && (await conf()).winners === 3 && await eventually(async () => await items() === MENU_V()),
+      `Versus comes after Lotto under Pick with, ticked; no row of numbers, then No repeats, Start over, Sound, and Quick (${await items()})`);
+    ok(await text('#status') === '24 of 24 left' && await text('#go') === 'Pick 2' && await np().locator('#round').isHidden(), `“24 of 24 left” and “Pick 2” (${await text('#status')}, ${await text('#go')})`);
+    let s = await vs();
+    ok(s && s.waiting && s.names.join() === '?,?' && LOOKS.includes(s.look) && clean(s), `before the first pick: “?” on each side, the sides grey, and a look waiting (${s && s.look}; ${JSON.stringify(s)})`);
+    ok(await inFrame(() => getComputedStyle(document.querySelector('.versus-l')).filter) !== 'none', 'the waiting sides are desaturated');
+    await page.screenshot({ path: OUT + 'name-picker-versus-waiting.png' });
+
+    // ---- A pick: two different students, saved with a pickId and a look before the show. The show: about 3 s, with a tick
+    // for each flicker, a pop as each name locks in, the slam at the look's moment of impact, and the chime.
+    await menu('sound');
+    await inFrame(() => { window.__sounds.length = 0; window.__slamAt.length = 0; });
+    const n0 = await inFrame(() => window.__notes || 0);
+    let t0 = Date.now(), st = await pickNow();
+    const during = { go: await text('#go'), showing: await showing(), status: await text('#status') };
+    await idle();
+    let took = Date.now() - t0;
+    ok(st.picked.length === 2 && st.picked[0] !== st.picked[1] && st.picked.every(n => N24.includes(n)) && st.left.length === 22 && st.picked.every(n => !st.left.includes(n))
+      && /^[a-z0-9]+-[a-z0-9]+$/.test(st.pickId) && LOOKS.includes(st.versusLook) && st.current === st.picked[0],
+      `a pick takes two different students, saved before the show with a pickId and its look (${st.picked.join(' versus ')}, ${st.versusLook})`);
+    ok(during.go === 'Show now' && during.showing && during.status === '24 of 24 left', `during the show: “Show now”, the status as it was (${JSON.stringify(during)})`);
+    ok(took > 2300 && took < 3800, `the show takes about 3 s (${took} ms)`);
+    s = await vs();
+    ok(s.names.join() === st.picked.join() && s.look === st.versusLook && !s.waiting && clean(s),
+      `then ${st.picked[0]} on the left and ${st.picked[1]} on the right, in the ${s.look} look, with only the emblem at rest: nothing the show added, nothing running (${JSON.stringify(s)})`);
+    ok(await text('#status') === '22 of 24 left' && await text('#go') === 'Pick 2' && await np().locator('#round').isVisible() && await eventually(async () => await said() === `${st.picked[0]} versus ${st.picked[1]}.`),
+      `“22 of 24 left”, “Pick 2”, Start over, and screen readers hear “${await said()}”`);
+    let snd = await inFrame(() => ({ sounds: window.__sounds.slice(), at: window.__slamAt.slice(), notes: window.__notes || 0, audio: window.__audio || 0, hit: NamePicker.looks[document.querySelector('.versus').dataset.look].hit }));
+    ok(snd.sounds.filter(x => x === 'tick').length >= 8 && snd.sounds.filter(x => x !== 'tick').join() === 'pop,pop,slam,chime' && snd.audio >= 1 && snd.notes - n0 >= 12,
+      `with Sound on: a tick for each flicker (${snd.sounds.filter(x => x === 'tick').length}), a pop as each name locks in, the slam, and the chime (${snd.sounds.filter(x => x !== 'tick').join(', ')}; ${snd.notes - n0} notes)`);
+    ok(snd.at.length === 1 && Math.abs(snd.at[0] - snd.hit.normal) <= 50, `the slam’s thud comes at the look’s moment of impact, on the slam’s own clock (${Math.round(snd.at[0])} ms into it; ${st.versusLook} hits at ${snd.hit.normal})`);
+    await page.screenshot({ path: OUT + 'name-picker-versus.png' });
+
+    // ---- A tap on the stage skips the show, while the names flicker or during the slam, and so does Show now. Nothing the
+    // show added is left. Quick: about 1.5 s.
+    for (const [ms, how] of [[700, 'a tap'], [2150, 'a tap'], [2150, 'Show now']]) {
+      await idle();
+      st = await pickNow();
+      await page.waitForTimeout(ms - 150);
+      await np().locator(how === 'a tap' ? '#stage' : '#go').click(); await page.waitForTimeout(150);
+      s = await vs();
+      ok(!(await showing()) && (await saved()).pickId === st.pickId && s.names.join() === st.picked.join() && s.look === st.versusLook && clean(s) && await text('#go') === 'Pick 2',
+        `${how} ${ms} ms into the show skips it: the pair and the ${s.look} emblem at rest, nothing left of the show, nothing running (${JSON.stringify(s)})`);
+    }
+    await menu('quick');
+    ok(await items() === MENU_V({ startOver: true, sound: true, quick: true }), 'Quick is ticked');
+    await idle(); t0 = Date.now(); st = await pickNow(); await idle(); took = Date.now() - t0;
+    s = await vs();
+    ok(took > 1000 && took < 2300 && clean(s) && s.look === st.versusLook, `with Quick the show takes about 1.5 s (${took} ms), and ends as clean`);
+    snd = await inFrame(() => ({ at: window.__slamAt.slice(-1)[0], hit: NamePicker.looks[document.querySelector('.versus').dataset.look].hit }));
+    ok(Math.abs(snd.at - snd.hit.quick) <= 50, `with Quick the thud comes at the quick slam’s impact (${Math.round(snd.at)} ms; ${st.versusLook} hits at ${snd.hit.quick})`);
+    st = await pickNow(); await page.waitForTimeout(950); await np().locator('#stage').click(); await page.waitForTimeout(150);
+    ok(!(await showing()) && clean(await vs()), 'a tap during the quick slam skips it, as clean');
+    await menu('quick');
+
+    // ---- Start over: the waiting stage again, in a look drawn at random each time it appears.
+    const overs = [];
+    for (let i = 0; i < 8; i++) {
+      await idle(); await pickNow(); await page.waitForTimeout(650); await np().locator('#stage').click(); await idle();
+      await menu('round');
+      const w = await vs();
+      overs.push(w && w.waiting && w.names.join() === '?,?' && clean(w) ? w.look : 'not waiting ' + JSON.stringify(w));
+    }
+    ok(overs.every(l => LOOKS.includes(l)) && new Set(overs).size >= 2 && await text('#status') === '24 of 24 left' && await text('#go') === 'Pick 2',
+      `after Start over: “?” on each side and a look waiting, drawn at random each time (${overs.join(', ')})`);
+
+    // ---- No repeats off: picks from everyone ("24 names"). Every look, after its show and after a skip in the middle of its
+    // slam: only the sides, the slash, the names, and the emblem at rest, and nothing running. The thud at each look's impact.
+    await menu('norepeat');
+    ok(await text('#status') === '24 names' && await text('#go') === 'Pick 2' && await items() === MENU_V({ noRepeats: false, sound: true }), `No repeats off: “24 names”, “Pick 2” (${await text('#status')})`);
+    const ended = {}, skipped = {}, thuds = {};
+    for (let i = 0; i < 20; i++) {
+      await idle();
+      await inFrame(() => { window.__slamAt.length = 0; });
+      st = await pickNow();
+      if (i < 10) await idle(); else { await page.waitForTimeout(1950); await np().locator('#stage').click(); await page.waitForTimeout(150); }
+      s = await vs();
+      const fine = !(await showing()) && s.look === st.versusLook && s.names.join() === st.picked.join() && clean(s), bag = i < 10 ? ended : skipped;
+      if (bag[st.versusLook] === undefined || bag[st.versusLook] === true) bag[st.versusLook] = fine || JSON.stringify(s);
+      if (i < 10) thuds[st.versusLook] = await inFrame(() => { const v = document.querySelector('.versus'); return Math.round(window.__slamAt[0] - NamePicker.looks[v.dataset.look].hit.normal); });
+    }
+    ok(LOOKS.every(l => ended[l] === true), `every look, after its show: nothing the show added is left, and nothing runs (${JSON.stringify(ended)})`);
+    ok(LOOKS.every(l => skipped[l] === true), `every look, skipped in the middle of its slam: the same (${JSON.stringify(skipped)})`);
+    ok(LOOKS.every(l => typeof thuds[l] === 'number' && Math.abs(thuds[l]) <= 50), `every look’s thud comes at its own moment of impact (ms off: ${JSON.stringify(thuds)})`);
+    await menu('sound'); await menu('norepeat');
+
+    // ---- Names at a time stays as the teacher chose it: back in Big name, the button picks 3.
+    await menu('style:name');
+    ok((await conf()).winners === 3 && /^Pick (3|the last)/.test(await text('#go')), `back in Big name, Names at a time is still 3 (${await text('#go')})`);
+    await menu('style:versus');
+
+    // ---- Saved, reloaded, and synced.
+    await idle(); st = await pickNow(); await idle();
+    await page.reload(); await boardUp(page);
+    ok(await eventually(async () => { const v = await vs().catch(() => null); return v && v.look === st.versusLook && v.names.join() === st.picked.join(); }) && !(await showing()) && clean(await vs()),
+      `a reload shows the pair in its look (${st.versusLook}), with no show`);
+    const page2 = await ctx.newPage(); watch(page2, 'tab 2');
+    await page2.goto(BASE); await boardUp(page2); await freeBoard(page2);
+    await eventually(async () => ((await vs(page2).catch(() => null)) || {}).look === st.versusLook);
+    st = await pickNow();
+    ok(await eventually(() => showing(page2), 2000), 'a pick in one tab plays its show in the other');
+    await idle(); await idle(page2);
+    const s1 = await vs(), s2 = await vs(page2);
+    ok(s2.look === st.versusLook && s1.look === st.versusLook && s2.names.join() === st.picked.join() && clean(s2) && await eventually(async () => await said(page2) === `${st.picked[0]} versus ${st.picked[1]}.`),
+      `in the same look (${s1.look}, ${s2.look}), on the same pair, and screen readers there hear it too`);
+    await page2.close();
+
+    // ---- A template keeps Versus, and no names.
+    await page.click('.picker-btn.right'); await page.click('[data-ctl="export"]'); await page.waitForTimeout(200);
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#modal .btn[data-i="1"]')]);
+    await dl.saveAs(OUT + 'name-picker-versus-template.21board');
+    const tpl = JSON.parse(fs.readFileSync(OUT + 'name-picker-versus-template.21board', 'utf8')), tp = tpl.instances.find(i => i.widgetId === 'name-picker');
+    ok(tpl.kind === 'template' && tp && tp.data === null && tp.config.style === 'versus' && !N24.some(n => JSON.stringify(tpl).includes('"' + n + '"')),
+      `a template keeps Versus, and no names (${JSON.stringify(tp && tp.config)})`);
+
+    // ---- One name: Versus needs 2. "Add names" opens the list.
+    await setNames(['Ava']);
+    const one = { empty: await np().locator('#empty').isVisible() ? await text('#empty') : '', go: await text('#go'), status: await text('#status'), round: await np().locator('#round').isHidden() };
+    ok(one.empty === 'Versus needs 2 names.' && one.go === 'Add names' && one.status === '' && one.round, `one name: “${one.empty}”, “${one.go}” (${JSON.stringify(one)})`);
+    await page.screenshot({ path: OUT + 'name-picker-versus-one-name.png' });
+    await np().locator('#go').click(); await page.waitForTimeout(200);
+    ok(await np().locator('#edit').evaluate(e => e.classList.contains('on')), '“Add names” opens the names list');
+    await np().locator('#list').fill('Mateo\nJamal'); await np().locator('#done').click(); await page.waitForTimeout(300);
+    ok(!(await np().locator('#empty').isVisible()) && await text('#go') === 'Pick 2', 'two names: Pick 2');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+
+    // ---- Reduce motion: the pair and the emblem fade in, with no flicker, slam, flash, or shake. The chime still plays.
+    errors.length = 0;
+    const rctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' });
+    await rctx.addInitScript(SPY);
+    const rp = await rctx.newPage(); watch(rp, 'reduce motion');
+    await rp.goto(BASE); await boardUp(rp); await freeBoard(rp);
+    await rp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(rp)) || {}).style === 'wheel');
+    await np(rp).locator('#list').fill(N24.join('\n')); await np(rp).locator('#done').click(); await rp.waitForTimeout(300);
+    await menu('style:versus', rp); await menu('sound', rp);
+    await inFrame(() => { window.__sounds.length = 0; window.__moved = []; const a = Element.prototype.animate; Element.prototype.animate = function (k) { window.__moved.push(JSON.stringify(k)); return a.apply(this, arguments); }; }, rp);
+    const n1 = await inFrame(() => window.__notes || 0, rp);
+    st = await pickNow(rp);
+    const calm = await inFrame(() => ({ fade: [...document.querySelectorAll('.versus-name, .versus-box')].every(e => e.classList.contains('versus-fade')), moved: window.__moved.length,
+      css: document.getAnimations().filter(a => a.effect && a.effect.getKeyframes().some(k => Object.keys(k).some(p => !['offset', 'computedOffset', 'easing', 'composite', 'opacity'].includes(p)))).length,
+      sounds: window.__sounds.slice() }), rp);
+    ok(!(await showing(rp)) && (await vs(rp)).names.join() === st.picked.join() && (await vs(rp)).look === st.versusLook && calm.fade && !calm.moved && !calm.css && !calm.sounds.length,
+      `with reduce motion the pair and the emblem fade in: no flicker, slam, flash, or shake (${JSON.stringify(calm)})`);
+    ok(await eventually(async () => await inFrame(() => window.__notes || 0, rp) - n1 >= 3) && await eventually(async () => await said(rp) === `${st.picked[0]} versus ${st.picked[1]}.`),
+      'and the chime still plays, and screen readers hear the pair');
+    await rp.waitForTimeout(400);
+    ok(clean(await vs(rp)), 'once faded in, nothing runs');
+    await menu('sound', rp);
+
+    // ---- No repeats: 24 names go in 12 pairs, no one twice; then Start over. 25 names: after 12 pairs, "Pick the last one"
+    // pairs the last student with someone else in the list.
+    const pairs = async n => inFrame((_, n) => {
+      const out = [], save = Board21.save;
+      Board21.save = function (d) { if (d && d.picked) out.push({ picked: d.picked.slice(), left: d.left && d.left.length, look: d.versusLook }); return save.apply(this, arguments); };
+      for (let i = 0; i < n; i++) document.getElementById('go').click();
+      Board21.save = save;
+      return { out, go: document.getElementById('go').textContent, status: document.getElementById('status').textContent };
+    }, rp, undefined, n);
+    await menu('round', rp);
+    let r = await pairs(12);
+    ok(r.out.length === 12 && r.out.every(x => x.picked.length === 2) && sameList(r.out.flatMap(x => x.picked), N24) && r.go === 'Start over' && r.status === '0 of 24 left',
+      `No repeats: 24 names go in 12 pairs, everyone once (${r.out.map(x => x.picked.join('/')).slice(0, 4).join(', ')}, …); then “${r.go}”, “${r.status}”`);
+    ok(await eventually(async () => / Everyone has been picked\.$/.test(await said(rp))), `screen readers hear that everyone has been picked (${await said(rp)})`);
+    await np(rp).locator('#go').click(); await rp.waitForTimeout(200);
+    const N25 = N24.concat(['Xavier']);
+    await setNames(N25, rp);
+    r = await pairs(12);
+    const lastOne = { go: await text('#go', rp), status: await text('#status', rp) };
+    const left1 = (await saved(rp)).left;
+    r.last = await pairs(1);
+    const lp = r.last.out[0];
+    ok(r.out.length === 12 && lastOne.go === 'Pick the last one' && lastOne.status === '1 of 25 left' && left1.length === 1,
+      `25 names: after 12 pairs, “${lastOne.go}”, “${lastOne.status}” (${left1})`);
+    ok(lp && lp.picked.length === 2 && lp.picked.includes(left1[0]) && lp.picked[0] !== lp.picked[1] && r.out.flatMap(x => x.picked).includes(lp.picked.find(n => n !== left1[0])) && lp.left === 0
+      && r.last.go === 'Start over' && r.last.status === '0 of 25 left', `it pairs ${left1[0]} with someone else in the list (${lp && lp.picked.join(' versus ')}); then “${r.last.go}”, “${r.last.status}”`);
+
+    // ---- The deck: a new picker's first 10 picks play each of the five looks twice, and over 50 picks no look plays twice
+    // in a row.
+    const ikD = await rp.evaluate(() => window.__board21.openWidget('name-picker'));
+    await eventually(async () => ((await conf(rp, ikD)) || {}).style === 'wheel');
+    await np(rp, ikD).locator('#list').fill(N24.join('\n')); await np(rp, ikD).locator('#done').click(); await rp.waitForTimeout(300);
+    await menu('style:versus', rp, ikD); await menu('norepeat', rp, ikD);
+    const deck = await inFrame(() => {
+      const out = [], save = Board21.save;
+      Board21.save = function (d) { if (d && d.picked) out.push(d.versusLook); return save.apply(this, arguments); };
+      for (let i = 0; i < 50; i++) document.getElementById('go').click();
+      Board21.save = save;
+      return out;
+    }, rp, ikD);
+    const first10 = LOOKS.map(l => deck.slice(0, 10).filter(x => x === l).length), twice = deck.filter((x, i) => i && x === deck[i - 1]).length;
+    ok(deck.length === 50 && first10.every(c => c === 2) && !twice, `the first 10 picks play each look twice (${first10.join(', ')}), and none plays twice in a row over 50 (${deck.slice(0, 12).join(' ')} …)`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await rctx.close();
+
+    // ---- No look is fixed: over many new Name Pickers, every look shows up waiting, and every look plays as the first pick.
+    errors.length = 0;
+    const wctx = await browser.newContext({ viewport: { width: 1600, height: 900 }, reducedMotion: 'reduce' });
+    const wp = await wctx.newPage(); watch(wp, 'new pickers');
+    await wp.goto(BASE); await boardUp(wp); await freeBoard(wp);
+    const pickers = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Pickers' }, instances: Array.from({ length: 8 }, (_, i) => ({ widgetId: 'name-picker', instance: i + 1, open: true, z: i + 1,
+      rect: { x: 10 + (i % 4) * 390, y: 10 + Math.floor(i / 4) * 430, w: 380, h: 420 }, data: { names: N24.slice(0, 6) }, config: { style: 'versus' } })) };
+    const waited = [], firsts = [];
+    for (let round = 0; round < 6; round++) {
+      await wp.evaluate(o => window.__board21.applyImport(o, 'replace'), pickers);
+      for (let i = 1; i <= 8; i++) {
+        const ik = 'name-picker:' + i;
+        await eventually(async () => !!(await vs(wp, ik).catch(() => null)), 15000);
+        const w = await vs(wp, ik);
+        if (w.waiting) waited.push(w.look);
+        const was = ((await saved(wp, ik)) || {}).pickId;
+        await inFrame(() => document.getElementById('go').click(), wp, ik);
+        await eventually(async () => ((await saved(wp, ik)) || {}).pickId !== was, 3000);
+        firsts.push((await saved(wp, ik)).versusLook);
+      }
+    }
+    const count = list => LOOKS.map(l => l + ' ' + list.filter(x => x === l).length).join(', ');
+    ok(waited.length === 48 && LOOKS.every(l => waited.includes(l)), `48 new Name Pickers wait in every look (${count(waited)})`);
+    ok(firsts.length === 48 && LOOKS.every(l => firsts.includes(l)), `and every look plays as a first pick (${count(firsts)})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await wctx.close();
+
+    // ---- A board from a file, at 1:1 (each emblem measured in screen pixels): every look, in two pickers each. A saved look
+    // shows with no show; one we don't have, or none, gets one of the five. No look has text, and no two pickers share an
+    // id. Long names fit their side and stay at least 8 px clear of the emblem at 360 × 270, at 540 × 400, and filling the
+    // board, in every Text style.
+    errors.length = 0;
+    const ictx = await browser.newContext({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 1 });
+    const ip = await ictx.newPage(); watch(ip, 'file');
+    await ip.goto(BASE); await boardUp(ip); await freeBoard(ip);
+    const LONG = ['Alexandria', 'Maximiliano'];
+    const looked = (n, look, pair) => ({ widgetId: 'name-picker', instance: n, open: true, z: n, rect: { x: 10 + ((n - 1) % 6) * 220, y: 10 + Math.floor((n - 1) / 6) * 300, w: 360, h: 270 },
+      data: { names: LONG, left: null, picked: pair, pickId: 'mwp2g7b7-pg6ut' + n, versusLook: look }, config: { style: 'versus' } });
+    const file = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Looks' }, instances: LOOKS.map((l, i) => looked(i + 1, l, LONG))
+      .concat(LOOKS.map((l, i) => looked(i + 6, l, LONG.slice().reverse())), [looked(11, 'disco', LONG), looked(12, undefined, LONG)]) };
+    fs.writeFileSync(OUT + 'name-picker-versus-looks.21board', JSON.stringify(file));
+    await ip.setInputFiles('#import-input', OUT + 'name-picker-versus-looks.21board'); await ip.waitForTimeout(300);
+    await ip.click('#modal .btn:has-text("Replace this page")');
+    const IK = n => 'name-picker:' + n;
+    ok(await eventually(async () => (await Promise.all(Array.from({ length: 12 }, (_, i) => vs(ip, IK(i + 1)).catch(() => null)))).every(Boolean), 15000), 'the board from the file opens with its twelve pickers');
+    await ip.waitForTimeout(600);
+    const shown = await Promise.all(Array.from({ length: 12 }, (_, i) => vs(ip, IK(i + 1))));
+    ok(LOOKS.every((l, i) => shown[i].look === l && shown[i + 5].look === l && clean(shown[i]) && clean(shown[i + 5])) && shown.slice(0, 5).every(x => x.names.join() === LONG.join())
+      && !(await showing(ip, IK(1))), `each picker shows its saved look, at rest, with no show (${shown.slice(0, 5).map(x => x.look).join(', ')})`);
+    ok(LOOKS.includes(shown[10].look) && LOOKS.includes(shown[11].look) && clean(shown[10]) && shown[10].names.join() === LONG.join(),
+      `a look we don’t have, or none, gets one of the five (${shown[10].look}, ${shown[11].look})`);
+    const marks = await inFrame(() => Object.entries(NamePicker.looks).map(([id, E]) => [id, [true, false].flatMap(dark => ['final', 'waiting'].flatMap(st => [40, 200].map(h => E.markup(st, { dark, w: h * 1.2, h })))).some(m => /<text\b/i.test(m))]), ip, IK(1));
+    ok(marks.length === 5 && marks.every(([, t]) => !t) && shown.every(x => !x.texts), `no look draws text: light and dark, waiting and final, big and small (${marks.map(([id, t]) => id + (t ? ' has text' : ' paths')).join(', ')})`);
+    const idsOf = ik => inFrame(() => [...document.querySelectorAll('.versus [id]')].map(e => e.id), ip, ik);
+    const clash = [];
+    for (let i = 1; i <= 5; i++) {
+      const a = await idsOf(IK(i)), b = await idsOf(IK(i + 5));
+      if (!a.length || new Set(a).size !== a.length || new Set(b).size !== b.length || a.some(x => b.includes(x))) clash.push(LOOKS[i - 1]);
+    }
+    ok(!clash.length, `two Name Pickers in the same look have no clashing ids, in every look (${clash.join(', ') || 'none clash'})`);
+    // The ink of the names and of the emblem, shot apart on black and on white (what differs is their alpha): each name's
+    // smallest gap to the emblem (ink is alpha over 60 of 255, as the looks were measured), whether it is whole inside the
+    // stage, and whether any name crosses the middle.
+    // (The board at 100%, so a window's px are screen px. While a picker is shot, the other windows are hidden: a shot takes
+    // in whatever is on top.)
+    await freeBoard(ip);
+    const inkGaps = async ik => {
+      const css = v => inFrame((_, c) => { let e = document.getElementById('ink-test'); if (!e) { e = document.createElement('style'); e.id = 'ink-test'; document.head.appendChild(e); } e.textContent = c; }, ip, ik, v);
+      const others = v => ip.evaluate(v => { let e = document.getElementById('ink-test'); if (!e) { e = document.createElement('style'); e.id = 'ink-test'; document.head.appendChild(e); } e.textContent = v; }, v);
+      await others(`.win:not([data-ikey="${ik}"]) { visibility: hidden !important; }`);
+      const shots = {};
+      for (const [part, hide] of [['n', '.versus-box'], ['e', '.versus-name']]) for (const bg of ['black', 'white']) {
+        await css(`.stage { border-radius: 0 !important; box-shadow: none !important; } .versus-side, .versus-cut, ${hide} { visibility: hidden !important; } .versus { background: ${bg} !important; }`);
+        shots[part + bg] = (await np(ip, ik).locator('.versus').screenshot()).toString('base64');
+      }
+      await css(''); await others('');
+      return inFrame(async (_, s) => {
+        const img = async b => { const i = new Image(); i.src = 'data:image/png;base64,' + b; await i.decode(); const c = document.createElement('canvas'); c.width = i.naturalWidth; c.height = i.naturalHeight; const g = c.getContext('2d'); g.drawImage(i, 0, 0); return g.getImageData(0, 0, c.width, c.height); };
+        const [nb, nw, eb, ew] = await Promise.all(['nblack', 'nwhite', 'eblack', 'ewhite'].map(k => img(s[k])));
+        const W = nb.width, H = nb.height;
+        const ink = (b, w) => { const m = new Uint8Array(W * H); for (let i = 0, j = 0; i < m.length; i++, j += 4) m[i] = 255 - (w.data[j] - b.data[j] + w.data[j + 1] - b.data[j + 1] + w.data[j + 2] - b.data[j + 2]) / 3 > 60 ? 1 : 0; return m; };
+        // (A shot on a fraction of a pixel takes in a sliver of what is around the stage: its outer 2 px don't count.)
+        const N = ink(nb, nw), E = ink(eb, ew), edge = (m, i, x, y) => x === 0 || y === 0 || x === W - 1 || y === H - 1 || !m[i - 1] || !m[i + 1] || !m[i - W] || !m[i + W];
+        for (const m of [N, E]) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (x < 2 || y < 2 || x >= W - 2 || y >= H - 2) m[y * W + x] = 0;
+        const out = { W, H };
+        for (const [side, x0, x1] of [['L', 0, W >> 1], ['R', W >> 1, W]]) {
+          let over = 0, bx0 = W, bx1 = -1, by0 = H, by1 = -1;
+          const pts = [];
+          for (let y = 0; y < H; y++) for (let x = x0; x < x1; x++) {
+            const i = y * W + x;
+            if (!N[i]) continue;
+            if (E[i]) over++;
+            bx0 = Math.min(bx0, x); bx1 = Math.max(bx1, x); by0 = Math.min(by0, y); by1 = Math.max(by1, y);
+            if (edge(N, i, x, y)) pts.push(x, y);
+          }
+          if (bx1 < 0) { out[side] = { gap: -999 }; continue; }
+          let best = 999 * 999;
+          if (!over) {
+            const ex = [];
+            for (let y = Math.max(0, by0 - 60); y < Math.min(H, by1 + 60); y++) for (let x = Math.max(0, bx0 - 60); x < Math.min(W, bx1 + 60); x++) { const i = y * W + x; if (E[i] && edge(E, i, x, y)) ex.push(x, y); }
+            for (let a = 0; a < pts.length; a += 2) for (let b = 0; b < ex.length; b += 2) { const dx = pts[a] - ex[b], dy = pts[a + 1] - ex[b + 1], d = dx * dx + dy * dy; if (d < best) best = d; }
+          }
+          out[side] = { gap: over ? -over : Math.round((Math.sqrt(best) - 1) * 10) / 10, inside: bx0 > 2 && by0 > 2 && bx1 < W - 3 && by1 < H - 3 };
+        }
+        let mid = 0;
+        for (let y = 0; y < H; y++) for (let x = (W >> 1) - 2; x <= (W >> 1) + 2; x++) mid += N[y * W + x];
+        out.mid = mid;
+        return out;
+      }, ip, ik, shots);
+    };
+    const letters = async val => { await openSettings(ip, ['letters']); await ip.click(`#settings [data-act="letters"][data-val="${val}"]`); await ip.keyboard.press('Escape'); await ip.waitForTimeout(900); };
+    const tight = [], worst = {};
+    for (const [val, label] of [['standard', 'the device’s letters'], ['early', 'Early readers'], ['legible', 'Easier to read']]) {
+      if (val !== 'standard') await letters(val);
+      for (const size of [[360, 270], [540, 400], null]) {
+        const where = size ? size.join(' × ') : 'filling the board';
+        for (let n = 1; n <= 10; n++) {
+          const ik = IK(n);
+          if (size) await ip.evaluate(([ik, w, h]) => { window.__board21.setRect(ik, { x: 300, y: 120, w, h }); window.__board21.focusWin(ik); }, [ik, ...size]);
+          else await ip.evaluate(ik => { window.__board21.focusWin(ik); window.__board21.setMaximized(ik, true); }, ik);
+          await ip.waitForTimeout(450);
+          const g = await inkGaps(ik), look = LOOKS[(n - 1) % 5], k = `${label}, ${where}`;
+          const min = Math.min(g.L.gap, g.R.gap);
+          worst[k] = Math.min(worst[k] === undefined ? 999 : worst[k], min);
+          if (!(min >= 8 && g.L.inside && g.R.inside && !g.mid)) tight.push(`${look} ${n > 5 ? 'Maximiliano/Alexandria' : 'Alexandria/Maximiliano'}, ${k} (${g.W}×${g.H}): ${g.L.gap} / ${g.R.gap} px${g.L.inside && g.R.inside ? '' : ', cut off'}${g.mid ? ', across the middle' : ''}`);
+          if (!size) await ip.evaluate(ik => window.__board21.setMaximized(ik, false), ik);
+          if (n === 1 && val === 'standard') await ip.screenshot({ path: OUT + `name-picker-versus-fit-${size ? size.join('x') : 'board'}.png` });
+        }
+      }
+    }
+    ok(!tight.length, `long names fit their side, at least 8 px clear of the emblem, in every look, both ways round, at 360 × 270, 540 × 400, and filling the board, in every Text style (closest: ${JSON.stringify(worst)}${tight.length ? '; ' + tight.slice(0, 4).join(' | ') : ''})`);
+    // Dark theme: the slash goes dark, and every look draws its dark markup.
+    await setTheme(ip, 'dark');
+    await ip.waitForTimeout(400);
+    const dk = await Promise.all(Array.from({ length: 5 }, (_, i) => vs(ip, IK(i + 1))));
+    const cut = await inFrame(() => getComputedStyle(document.querySelector('.versus-cut')).backgroundColor, ip, IK(1));
+    ok(cut === 'rgb(17, 24, 39)' && dk.every(clean), `dark theme: the slash is #111827, and every emblem is its look’s dark markup (${cut})`);
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ictx.close();
+
+    // ---- The docs: what the Name Picker saves, and what it does.
+    const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(/saves `\{ names, [^}]*versusLook[^}]*\}`/.test(dataDoc) && /`versusLook` is /.test(dataDoc) && /`style` is [^.]*`"versus"`/.test(dataDoc), 'docs/DATA-FORMAT.md gives versusLook and the style');
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+    ok(/Seven styles, each in its own file: Big name, Spinning wheel, Spotlight, Lotto, Versus, Groups, and Bracket\./.test(readme) && /Versus [^.|]*\./.test(readme), 'README.md names Versus, in one short sentence');
   }],
   // ---- Name Picker style suite: Spinning wheel
   ['Name Picker: Spinning wheel', async (browser) => {
@@ -20046,9 +20496,10 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await L.c.close();
 
     // ---- 2. No list of three or more without its comma, wherever a teacher reads: "A, B and C" and "A, B or C".
-    // Reviewed exceptions, each [pattern, reason]: a sentence that matches but isn't a list of three. None in the app;
-    // these are in the Calculator manual and the widget starter's notes.
+    // Reviewed exceptions, each [pattern, reason]: a sentence that matches but isn't a list of three. One in the app, the
+    // Name Picker's tooltip; the rest are in the Calculator manual and the widget starter's notes.
     const EXCEPT = [
+      [/Pick names at random, or make groups and brackets/, 'two things to do'],
       [/such as a power or a fraction/, 'two examples'],
       [/then powers and roots/, 'two items after “then”'],
       [/without the problem or History/, 'two items'],

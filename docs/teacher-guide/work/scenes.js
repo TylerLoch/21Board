@@ -258,7 +258,32 @@ SCENES['w-name-picker-groups'] = async () => {
   await ctx.close();
 };
 
-// ---- 4c. w-name-picker-bracket.jpg: 24 names partway through a bracket, under the wheel and the groups in the card.
+// ---- 4c. w-name-picker-versus.jpg: two of the guide's eight names face off after the slam, in the Lightning look, beside
+// the wheel and the groups in the card.
+SCENES['w-name-picker-versus'] = async () => {
+  const { ctx, p } = await newBoard();
+  const ik = await addWin(p, 'name-picker');
+  await setRect(p, ik, { x: 750, y: 295, w: 900, h: 700 });   // (the wheel's size and place: W['name-picker'])
+  await wait(p, 800);
+  await addNames(p, ik);
+  await choose(p, ik, 'Versus', { exact: true });
+  await frame(p, ik).locator('html').evaluate(() => {
+    // The same pair every time, Fatima versus Ben: the fair draw takes these random numbers.
+    const seq = [5, 0];
+    crypto.getRandomValues = a => { a[0] = seq.length ? seq.shift() : 1; return a; };
+    // The Lightning look: the deck of looks is shuffled with Math.random, and this leaves it in order, Lightning first.
+    Math.random = () => 0.9999;
+  });
+  await pickName(p, ik, 5000);
+  await deselect(p);
+  await wait(p, 300);
+  log('  look', await frame(p, ik).locator('.versus').getAttribute('data-look'), 'names', JSON.stringify(await frame(p, ik).locator('html').evaluate(() => [...document.querySelectorAll('.versus-name')].map(n => n.textContent))));
+  log('  foot', JSON.stringify(await frame(p, ik).locator('.foot').innerText()));
+  await shot(p, 'w-name-picker-versus.jpg', await around(p, ik, 24));
+  await ctx.close();
+};
+
+// ---- 4d. w-name-picker-bracket.jpg: 24 names partway through a bracket, under the wheel and the groups in the card.
 const NAMES24 = NAMES.concat(['Ivy', 'Jamal', 'Kai', 'Lena', 'Mateo', 'Nora', 'Omar', 'Priya', 'Quinn', 'Rosa', 'Sam', 'Tariq', 'Uma', 'Vic', 'Wen', 'Zoe']);
 SCENES['w-name-picker-bracket'] = async () => {
   const { ctx, p } = await newBoard();
