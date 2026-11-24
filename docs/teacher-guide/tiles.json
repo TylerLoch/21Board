@@ -25,7 +25,7 @@
   "name": "Clock",
   "color": "#2563eb",
   "icon": "<svg viewBox=\"0 0 24 24\"><circle cx=\"12\" cy=\"12\" r=\"9\"/><path d=\"M12 7v5l3 2\"/></svg>",
-  "description": "Show an analog or digital clock, or just the date."
+  "description": "Show the time, analog or digital, and the date."
  },
  {
   "id": "notes",

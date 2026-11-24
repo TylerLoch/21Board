@@ -82,7 +82,7 @@ self.BOARD21_WIDGETS = [
   {
     id: 'clock',
     name: 'Clock',
-    description: 'Show an analog or digital clock, or just the date.',
+    description: 'Show the time, analog or digital, and the date.',
     version: '2.0.0',
     entry: 'widgets/clock/index.html',
     files: ['widgets/clock/index.html'],
