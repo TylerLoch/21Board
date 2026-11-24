@@ -24006,15 +24006,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
 
 // ---- Waits that end early ----
 // page.waitForTimeout(ms) ends as soon as every open page is quiet: nothing it has started is due before the wait would
-// end. QUIET runs in every page and frame and keeps count of timers, frames, animations, scrolling, fetches, and
-// IndexedDB writes. A wait still takes its whole time where a fake clock replaced the timers, in a page QUIET can't
+// end. QUIET runs in every page and frame and keeps count of timers, frames, animations, scrolling, fetches, IndexedDB
+// writes, and frames still loading. Repeating timers don't count: they're always due. A test that needs time to pass
+// uses hold. A wait still takes its whole time where a fake clock replaced the timers, in a page QUIET can't
 // see into, in a suite in FIXED_WAITS, and with WAITS=fixed. hold(page, ms) always takes the whole time.
 const QUIET = () => {
   if (window.__b21quiet) return;
   const now = Date.now.bind(Date);   // a test may change Date.now later
   const timers = new Map(), frames = new Set(), asked = new Map();
   let busy = 0, scrolled = 0;
-  const st = window.setTimeout, ct = window.clearTimeout, si = window.setInterval, ci = window.clearInterval;
+  const st = window.setTimeout, ct = window.clearTimeout;
   const raf = window.requestAnimationFrame, caf = window.cancelAnimationFrame, ric = window.requestIdleCallback;
   const run = (fn, self, args) => typeof fn === 'function' ? fn.apply(self, args) : (0, eval)(String(fn));
   function setTimeout(fn, ms, ...a) {
@@ -24022,21 +24023,14 @@ const QUIET = () => {
     timers.set(id, now() + Math.max(0, +ms || 0)); asked.set(id, +ms || 0);
     return id;
   }
-  function setInterval(fn, ms, ...a) {
-    const every = Math.max(4, +ms || 0);
-    const id = si.call(window, function () { timers.set(id, now() + every); return run(fn, this, arguments); }, ms, ...a);
-    timers.set(id, now() + every); asked.set(id, every);
-    return id;
-  }
   function clearTimeout(id) { timers.delete(id); return ct.call(window, id); }
-  function clearInterval(id) { timers.delete(id); return ci.call(window, id); }
   function requestAnimationFrame(fn) {
     const id = raf.call(window, t => { frames.delete(id); return fn(t); });
     frames.add(id);
     return id;
   }
   function cancelAnimationFrame(id) { frames.delete(id); return caf.call(window, id); }
-  Object.assign(window, { setTimeout, setInterval, clearTimeout, clearInterval, requestAnimationFrame, cancelAnimationFrame });
+  Object.assign(window, { setTimeout, clearTimeout, requestAnimationFrame, cancelAnimationFrame });
   if (ric) window.requestIdleCallback = (fn, o) => { busy++; return ric.call(window, d => { busy--; return fn(d); }, o); };
   const f = window.fetch;
   if (f) window.fetch = function () { busy++; return f.apply(this, arguments).then(r => { busy--; return r; }, e => { busy--; throw e; }); };
@@ -24050,6 +24044,9 @@ const QUIET = () => {
     };
   }
   window.addEventListener('scroll', () => { scrolled = now(); }, true);
+  const loaded = new WeakSet();   // frames whose page has loaded
+  // (On document: a frame's load event never reaches window.)
+  document.addEventListener('load', e => { if (e.target && e.target.tagName === 'IFRAME') loaded.add(e.target); }, true);
   // One frame, on the page's own clock, so waiting for it isn't counted as work.
   window.__b21frame = () => new Promise(r => { raf.call(window, () => r()); st.call(window, r, 50); });
   // true when nothing is due before deadline (ms since 1970), what is due if something is, 'unknown' after a fake clock.
@@ -24060,6 +24057,10 @@ const QUIET = () => {
     if (frames.size) return 'frame';
     if (now() - scrolled < 100) return 'scroll';
     if (document.fonts && document.fonts.status === 'loading') return 'fonts';
+    for (const f of document.querySelectorAll('iframe')) {
+      const src = f.getAttribute('src');
+      if (!loaded.has(f) && (f.hasAttribute('srcdoc') || (src && src !== 'about:blank'))) return 'a frame loading';
+    }
     for (const [id, due] of timers) {
       const ms = asked.get(id);
       if (due <= deadline && (ms < 1000 || ms <= span)) return `timer ${ms} ms`;
@@ -24074,7 +24075,9 @@ const QUIET = () => {
   };
 };
 // Suites whose waits always take their whole time. A title starts with one of these.
-const FIXED_WAITS = [];
+// Board Sync's devices get each other's files on the test's own schedule, which no page can see. Zones Check-In
+// ignores a tap too soon after its view changes, and its tests wait that out.
+const FIXED_WAITS = ['Board Sync', 'Board history: copies in the Board Sync folder', 'Zones Check-In', 'Lock: Lock in the Widget Picker'];
 let fixedSuite = false;
 const WAITED = {};   // per suite: [seconds asked, seconds waited]
 const WHY = process.env.WAITS_REPORT ? {} : null;   // what kept waits going, for WAITS_REPORT=1
