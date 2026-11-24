@@ -663,6 +663,7 @@
 
   // ---- The board's own buttons and padlocks over the window, filling the board or not: the cards and the top line keep
   // clear of them
+  let under = 0;   // (how far up the buttons sit over the bottom of a window that doesn't fill the board: fitRow)
   function fitCorners() {
     const w = Board21.context && Board21.context.window, c = w && w.corners;
     const px = v => Math.min(2000, Math.max(0, Number(v) || 0));
@@ -670,17 +671,20 @@
     const t = c && c.top, top = t && (px(t.left) || px(t.right)) ? px(t.height) : 0, topIn = top ? Math.max(px(t.left), px(t.right)) : 0;
     const s = document.documentElement.style;
     s.setProperty('--low', low + 'px'); s.setProperty('--top', top + 'px'); s.setProperty('--top-in', topIn + 'px');
+    under = w && w.maximized ? 0 : low;
     // One row when it fills the board and its window is at least 850 × 480 px: wide enough that every card keeps its
     // "−" and its words. (The size the board gives: the frame may not have its new size yet.)
     const wide = (Number(w && w.width) || innerWidth) >= 850, tall = (Number(w && w.height) || innerHeight) >= 480;
     document.body.classList.toggle('reach', !!(w && w.maximized) && wide && tall);
     fitRow();
   }
-  // A row whenever each card can be at least 190 px wide and the cards' area is wider than it is tall (or it fills the board)
+  // A row whenever each card can be at least 190 px wide and the cards' area is wider than it is tall (or it fills the board).
+  // To the fraction of a pixel, as the cards are drawn. A window that doesn't fill the board takes its layout from its size,
+  // not from where it sits: its area as if the board's buttons weren't over its bottom corners.
   function fitRow() {
     const a = document.querySelector('#main .zones'), g = document.querySelector('#main .grid');
     if (!a || !a.clientWidth) return;
-    const gap = parseFloat(getComputedStyle(g).columnGap) || 0, aw = a.clientWidth, ah = a.clientHeight;
+    const gap = parseFloat(getComputedStyle(g).columnGap) || 0, r = a.getBoundingClientRect(), aw = r.width, ah = r.height + Math.max(0, under - gap);
     const row = document.body.classList.contains('reach') || ((aw - 3 * gap) / 4 >= 190 && aw >= ah);
     document.body.classList.toggle('one-row', row);
   }

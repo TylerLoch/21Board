@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.23-4';
-  const BOARD_BUILD = 'daa392cd';
+  const BOARD_BUILD = '9f73a5b4';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -4534,16 +4534,23 @@
   // What any other window is told while the board's own buttons sit over it (2026.11.23-4): the same, measured from its
   // own content on screen (d: its rect, as applyRect draws it), counting only the buttons over that content. Each counts
   // for the side of the window its middle is on. null when none is over it: such a window is told nothing.
+  // (The buttons don't move with the windows. Their boxes are read once for all the windows laid out together, and again
+  // once that code is done or notifyCorners says they changed.)
+  let cornerBoxes = null;
   function cornersOver(d) {
     const s = Zoom.s || 1, X = Math.round(Zoom.ox + d.x * s), Y = Math.round(Zoom.oy + d.y * s);
     const l = X, t = Y + TITLE_H * s, r = X + Math.round(d.w) * s, b = Y + Math.round(d.h) * s;
     if (r <= l || b <= t) return null;
+    if (!cornerBoxes) {
+      const boxes = sel => $$(sel).map(e => e.getBoundingClientRect()).filter(q => q.width);
+      cornerBoxes = { low: boxes(CORNER_LOW), top: boxes(CORNER_TOP) };
+      Promise.resolve().then(() => { cornerBoxes = null; });
+    }
     let any = false;
-    const reach = (sel, top) => {
+    const reach = (boxes, top) => {
       let left = 0, right = 0, edge = top ? t : b;
-      for (const e of $$(sel)) {
-        const q = e.getBoundingClientRect();
-        if (!q.width || q.right <= l || q.left >= r || q.bottom <= t || q.top >= b) continue;
+      for (const q of boxes) {
+        if (q.right <= l || q.left >= r || q.bottom <= t || q.top >= b) continue;
         any = true;
         if (q.left + q.width / 2 < (l + r) / 2) left = Math.max(left, q.right - l); else right = Math.max(right, r - q.left);
         edge = top ? Math.max(edge, q.bottom) : Math.min(edge, q.top);
@@ -4551,7 +4558,7 @@
       const height = top ? edge - t : b - edge;
       return height > 0 ? { left: Math.ceil(left / s), right: Math.ceil(right / s), height: Math.ceil(height / s) } : { left: 0, right: 0, height: 0 };
     };
-    const c = Object.assign(reach(CORNER_LOW), { top: reach(CORNER_TOP, true) });
+    const c = Object.assign(reach(cornerBoxes.low), { top: reach(cornerBoxes.top, true) });
     return any ? c : null;
   }
   // The clock, a ▦ button or a padlock came, went or changed width: tell every window, once the code running now is done
@@ -4560,6 +4567,7 @@
   // message. (initUI's resize listener, which asks for that layout, runs before the clock's: CornerClock.listen.)
   let cornersDue = false;
   function notifyCorners() {
+    cornerBoxes = null;
     if (cornersDue) return;
     cornersDue = true;
     Promise.resolve().then(() => { cornersDue = false; if (layoutRaf) return; for (const w of S.wins.values()) if (w.inst) w.notifyInfo(); });

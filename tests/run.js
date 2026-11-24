@@ -826,7 +826,7 @@ const ZC = {
   // (the line's text itself) and bar, each as drawn, or null when hidden. iw and ih: the window's content in its own px.
   // filled and corners: whether it fills the board, and the corners the board tells it of. marks: the board's ▦, clock
   // and padlocks over the screen, in the window's own px, and whether each is over the window's content (over).
-  // (2026.11.23-4) oneRow: the one-row class. rule, area and want: below.
+  // (2026.11.23-4) oneRow: the one-row class. rule, area, fine and want: below.
   arrange: async (page, K = ZC.K) => {
     const x = await ZC.zf(page, K).locator('html').evaluate(() => {
       const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
@@ -846,9 +846,14 @@ const ZC = {
       const old = a > 3.2 || (a > 2.2 && zr.width >= 800 && zr.height < 310) ? 'row' : a < 0.7 ? 'column' : '2x2';
       // (2026.11.23-4) A row whenever each card can be at least 190 px wide and the cards' area is at least as wide as it
       // is tall: rule. area: the cards' area, in whole px.
-      const gap = parseFloat(getComputedStyle(document.getElementById('grid')).columnGap) || 0, area = { w: zs.clientWidth, h: zs.clientHeight };
+      // (Review fix) rule reads the area to the fraction of a pixel, as the cards are drawn (fine). A window that doesn't
+      // fill the board gets its layout from its size, not from where it sits: its area as if the board's buttons in its
+      // bottom corners weren't over it (their strip, less the pad it has anyway).
+      const gap = parseFloat(getComputedStyle(document.getElementById('grid')).columnGap) || 0, area = { w: zs.clientWidth, h: zs.clientHeight }, fine = { w: zr.width, h: zr.height };
+      const cw = (window.Board21 && Board21.context && Board21.context.window) || {}, cc = !cw.maximized && cw.corners, low = cc && (cc.left || cc.right) ? cc.height : 0;
       const shows = Object.fromEntries([['minus', '.tools .minus'], ['ideas', '.tools .idea-btn'], ['words', '.feel b'], ['ideasWord', '.pill b']].map(([n, s]) => [n, [...document.querySelectorAll('#main ' + s)].filter(vis).length]));
-      return { shape, old, reach: document.body.classList.contains('reach'), oneRow: document.body.classList.contains('one-row'), area, rule: (area.w - 3 * gap) / 4 >= 190 && area.w >= area.h,
+      return { shape, old, reach: document.body.classList.contains('reach'), oneRow: document.body.classList.contains('one-row'), area, fine,
+        rule: (fine.w - 3 * gap) / 4 >= 190 && fine.w >= fine.h + Math.max(0, low - gap),
         cards, shows, gap: parseFloat(getComputedStyle(document.getElementById('grid')).rowGap),
         summary: shown(document.querySelector('#main .summary')), status: shown(document.getElementById('status')), bar: shown(document.getElementById('bar')), iw: innerWidth, ih: innerHeight,
         words: (() => { const e = document.getElementById('status'); if (!vis(e) || !e.textContent.trim()) return null; const r = document.createRange(); r.selectNodeContents(e); const b = r.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: b.width, h: b.height }; })() };
@@ -7092,12 +7097,16 @@ const SUITES = [
     top('Fill 1063 × 768 at 125%', v0); top('Fill 1061 × 768 at 125%', v1); top('Fill 1063 × 768 at 125%, again', v2);
     ok(v0.shape === 'row' && v0.reach && v1.shape === 'row' && !v1.reach && v2.shape === 'row' && v2.reach && await same(),
       `and across 850 px wide, the same (${said7(v0)}; ${said7(v1)}; ${said7(v2)}). No reload`);
-    // (2026.11.23-4) At 824 px wide each card would be under 190 px: two by two, then a row again at 850 px.
-    await page.setViewportSize({ width: 1030, height: 768 }); const n1 = await settled('2x2');
-    await page.setViewportSize({ width: 1063, height: 768 }); const n2 = await settled('row');
-    top('Fill 1030 × 768 at 125%', n1); top('Fill 1063 × 768 at 125%, a third time', n2);
-    ok(v2.shape === 'row' && n1.shape === '2x2' && !n1.rule && n2.shape === 'row' && await same(),
-      `across the width where each card reaches 190 px, the layout switches: ${said7(v2)}; ${said7(n1)} (cards could be ${((n1.area.w - 3 * n1.gap) / 4).toFixed(1)} px); ${said7(n2)}. No reload`);
+    // (2026.11.23-4) Under 480 px tall, where .reach never is: across the width where each card reaches 190 px, the layout
+    // switches, a row only on the wide side. (Fill 821 × 519 at 100%: 821 × 479 px, the pad 11.975 px, the line at 819.9 px.)
+    await page.evaluate(() => window.__board21.setBoardScale(1));
+    await page.setViewportSize({ width: 821, height: 519 }); const n1 = await settled('row');
+    await page.setViewportSize({ width: 819, height: 519 }); const n2 = await settled('2x2');
+    await page.setViewportSize({ width: 821, height: 519 }); const n3 = await settled('row');
+    top('Fill 821 × 519', n1); top('Fill 819 × 519', n2); top('Fill 821 × 519, again', n3);
+    const could = x => ((x.fine.w - 3 * x.gap) / 4).toFixed(2);
+    ok(n1.shape === 'row' && n1.oneRow && !n1.reach && n2.shape === '2x2' && !n2.oneRow && !n2.reach && n3.shape === 'row' && n3.oneRow && !n3.reach && await same(),
+      `under 480 px tall, across the width where each card reaches 190 px, the layout switches: ${said7(n1)} (cards ${could(n1)} px); ${said7(n2)} (cards could be ${could(n2)} px); ${said7(n3)}. No reload`);
     // A board that sends no width or height in its window info: the widget reads its frame's own size, once the frame has
     // it. (The board's messages to the frame lose both, the board's timing kept.) Restore size, then Fill the board.
     await page.evaluate(k => {
@@ -7151,13 +7160,13 @@ const SUITES = [
     ok(!hc.length && hcSeen.length === 8, `Windows High Contrast, the shortest rows, open and locked with the corner clock on: the counts hide none of the feelings, nothing is cut off, no face or count over the colored top (${hc.join(' | ') || hcSeen.join('; ')})`);
     await setCornerClock(page, 'auto');
     await page.emulateMedia({ forcedColors: 'none' }); await quiet.evaluate(e => e.remove());
-    ok(!TOP.bad.length && TOP.seen.length === 81, `in each of the ${TOP.bad.length + TOP.seen.length} layouts above, one row and two by two, filled and not, unlocked and locked, light and dark: the line, then its bar, then the cards one gap below, centered over them, between the padlocks when locked. The cards end one gap above the window’s bottom, or under the board’s buttons, filling the board or not, just above them (${TOP.bad.join(' | ') || TOP.seen.length + ' layouts'})`);
+    ok(!TOP.bad.length && TOP.seen.length === 82, `in each of the ${TOP.bad.length + TOP.seen.length} layouts above, one row and two by two, filled and not, unlocked and locked, light and dark: the line, then its bar, then the cards one gap below, centered over them, between the padlocks when locked. The cards end one gap above the window’s bottom, or under the board’s buttons, filling the board or not, just above them (${TOP.bad.join(' | ') || TOP.seen.length + ' layouts'})`);
     // The README's Included widgets says so, its other words kept.
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8').replace(/\s+/g, ' ');
     const row = (/\| \*\*Zones Check-In\*\* \|[^|]*\|/.exec(readme) || [''])[0];
     // (2026.11.23-4: its last sentence says when the zones sit in one row now, and that the cards keep clear of the buttons.)
-    ok(/^\| \*\*Zones Check-In\*\* \| Check-ins kept as \*content\*,.* and an Ideas view with a breathing circle\. The four zones sit in one row once the window is about 830 px wide and wider than it is tall, and always when it fills a board at least 850 × 480 px\. The cards keep clear of the board's own buttons\. \|$/.test(row),
-      `the README’s Zones Check-In row ends “The four zones sit in one row once the window is about 830 px wide and wider than it is tall, and always when it fills a board at least 850 × 480 px. The cards keep clear of the board's own buttons.” (…${row.slice(-180)})`);
+    ok(/^\| \*\*Zones Check-In\*\* \| Check-ins kept as \*content\*,.* and an Ideas view with a breathing circle\. The four zones sit in one row once the window is about 830 px wide and wider than it is tall, and always when it fills a board at least 850 × 480 px\. The cards keep clear of the board's own buttons \|$/.test(row),
+      `the README’s Zones Check-In row ends “The four zones sit in one row once the window is about 830 px wide and wider than it is tall, and always when it fills a board at least 850 × 480 px. The cards keep clear of the board's own buttons”, with no period, as every row there (…${row.slice(-180)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
 
@@ -7477,6 +7486,29 @@ const SUITES = [
       const fH = await flips();
       ok(fW === 'row, not' && fH === 'not, row' && !wW.length && !wH.length,
         `resizing slowly across both lines and back, 1 px at a time: one switch each way, never a flicker (${W0 - 6} to ${W0 + 5} px wide and back: ${fW}; ${H0 - 6} to ${H0 + 5} px tall and back: ${fH}${wW.concat(wH).length ? '; ' + wW.concat(wH).join(', ') : ''})`);
+      // (Review fix) Where the pad is a fraction of a pixel: 2.5vmin of a window 370, 490, 545, 570, or 650 px tall. Across
+      // the width where each card reaches 190 px, 1 px at a time (at 490 px tall, out and back): every row has every card at
+      // least 190 px wide, with 4 “−”, 4 Ideas, and 13 feeling words, and one switch each way. (At 821 × 490 the cards’ area
+      // is 796.5 px, so each card could be 189.94 px: two by two.)
+      const thin = [], thinSeen = [];
+      let f490 = '';
+      for (const h of [370, 490, 545, 570, 650]) {
+        const line = 760 + 5 * h / 40, both = h === 490, lo = Math.floor(line) - (both ? 6 : 3), hi = Math.ceil(line) + (both ? 6 : 3);
+        await at(lo, h); if (both) await watch();
+        let first = '';
+        for (const w of both ? span(lo, hi).concat(span(hi - 1, lo)) : span(lo, hi)) {
+          await page.evaluate(([k, r]) => window.__board21.setRect(k, r), [K, { x: 400, y: 0, w, h: h + 40 }]); await page.waitForTimeout(120);
+          const x = await arrange(page), s = x.shows, least = Math.min(...x.cards.map(c => c.card.w));
+          const l = (x.oneRow === x.rule && x.shape === (x.rule ? 'row' : '2x2') ? [] : [`${x.shape}${x.oneRow ? ', .one-row' : ''}`]).concat(
+            !x.oneRow || (least >= 190 - 0.001 && s.minus === 4 && s.ideas === 4 && s.words === 13) ? [] : [`cards ${least.toFixed(2)} px wide, ${s.minus} “−”, ${s.ideas} Ideas, ${s.words} words`]);
+          if (l.length) thin.push(`${x.iw} × ${x.ih}: ${l.join(', ')}`);
+          if (x.oneRow && !first) first = `${h} px tall: a row from ${x.iw} px, cards ${least.toFixed(2)} px`;
+        }
+        thinSeen.push(first || `${h} px tall: no row`);
+        if (both) f490 = await flips();
+      }
+      ok(!thin.length && f490 === 'row, not' && thinSeen.every(t => !t.endsWith('no row')),
+        `where the pad is a fraction of a pixel, 1 px at a time across the width where each card reaches 190 px: every row has its cards at least 190 px wide, 4 “−”, 4 Ideas, and 13 words. At 490 px tall, out and back, one switch each way (${thinSeen.join('; ')}; 490 px tall: ${f490 || 'no switch'}${thin.length ? '; ' + thin.join(' | ') : ''})`);
     });
 
     // ---- 3. Two by two stays at the size it opens at, at 260 × 220, and in windows taller than they are wide. A very tall,
@@ -7492,6 +7524,17 @@ const SUITES = [
         (l.length ? bad : seen).push(`${label}: ${x.iw} × ${x.ih}, ${x.shape}, cards ${card(x)}${l.length ? ': ' + l.join(', ') : ''}`);
       }
       ok(!bad.length && seen.length === 6, `two by two at the size it opens at, at 260 × 220, and in windows taller than they are wide; one column in very tall, narrow ones (${bad.join(' | ') || seen.join('; ')})`);
+      // (Review fix) The layout comes from the window's size, not from where it sits: 900 × 1000 parked in a bottom corner,
+      // under a ▦, stays two by two, its cards clear of the ▦, with 4 “−”, 4 Ideas, and 13 feeling words.
+      const parked = [], parkedSeen = [];
+      for (const [label, win] of [['900 × 1000, bottom left', { w: 900, h: 1000, x: 0, y: 310 }], ['900 × 1000, bottom right', { w: 900, h: 1000, x: 1500, y: 310 }]]) {
+        await put(...B80, win);
+        const x = await still(), p = await problems(page, label, true), s = x.shows;
+        const l = (x.shape === '2x2' && !x.oneRow ? [] : [`${x.shape}${x.oneRow ? ', .one-row' : ''}`]).concat(
+          x.corners && x.marks.some(m => m.over && m.name === 'picker-btn') ? [] : ['not under a ▦'], s.minus === 4 && s.ideas === 4 && s.words === 13 ? [] : [`${s.minus} “−”, ${s.ideas} Ideas, ${s.words} words`], ends(x), p.list);
+        (l.length ? parked : parkedSeen).push(`${label}: ${x.iw} × ${x.ih}, ${x.shape}, cards ${card(x)}${x.corners ? ` (corners ${x.corners.left}/${x.corners.right}/${x.corners.height})` : ''}${l.length ? ': ' + l.join(', ') : ''}`);
+      }
+      ok(!parked.length && parkedSeen.length === 2, `a window taller than wide parked in a bottom corner, under a ▦, stays two by two, its cards clear of it, with every “−”, Ideas, and feeling word (${parked.join(' | ') || parkedSeen.join('; ')})`);
     });
 
     // ---- 4. The ▦ fix: a window dragged to cover the board at Size 200%, light and dark, with both Widget Picker corners,
@@ -7681,6 +7724,33 @@ const SUITES = [
       await page.evaluate(k => window.__board21.setMaximized(k, false), K);
     });
 
+    // ---- 7b. (Review fix) The clock getting wider at 10:00, with no layout and no setting changed in between: a window
+    // dragged to cover the board hears its new corners at once (notifyCorners), and its cards stay clear of the clock. (A
+    // board of its own, its clock set to 9:59.)
+    await part('The clock getting wider', async () => {
+      const c2 = await browser.newContext({ viewport: { width: 1920, height: 1080 }, timezoneId: 'UTC', locale: 'en-US' });
+      try {
+        const p2 = await c2.newPage();
+        p2.on('pageerror', e => errors.push(e.message));
+        await p2.clock.install({ time: new Date('2026-11-24T09:59:00Z') });
+        await p2.goto(BASE); await boardUp(p2);
+        await p2.evaluate(() => { window.__board21.setBoardShape('free'); window.__board21.setBoardScale(1); });
+        await p2.evaluate(() => window.__board21.openWidget('zones-check-in'));
+        ok(await connected(p2), '(the Zones Check-In connects, at 9:59)');
+        await setCornerClock(p2, 'on');
+        await p2.evaluate(k => { const B = window.__board21, v = B.boundsRect(); B.setRect(k, { x: v.x, y: v.y, w: v.w, h: v.h }); }, K);
+        await p2.waitForTimeout(800);
+        const heard = () => zf(p2).locator('html').evaluate(() => (Board21.context.window && Board21.context.window.corners) || null);
+        const time = () => p2.evaluate(() => document.querySelector('.corner-clock').textContent.trim());
+        const a = await arrange(p2), aHeard = await heard(), aTime = await time();
+        await p2.clock.fastForward('01:00'); await p2.waitForTimeout(800);
+        const b = await arrange(p2), bHeard = await heard(), bTime = await time();
+        const fmt = c => c ? `${c.left}/${c.right}/${c.height}` : 'none';
+        ok(!!a.corners && !!b.corners && !b.filled && b.corners.right > a.corners.right && JSON.stringify(aHeard) === JSON.stringify(a.corners) && JSON.stringify(bHeard) === JSON.stringify(b.corners) && !ends(b).length,
+          `the clock getting wider at 10:00, nothing else changed: a window dragged to cover the board hears its new corners at once, its cards clear of the clock (“${aTime}”: the board says ${fmt(a.corners)}, the window heard ${fmt(aHeard)}; “${bTime}”: the board says ${fmt(b.corners)}, the window heard ${fmt(bHeard)}${ends(b).length ? ': ' + ends(b).join(', ') : ''})`);
+      } finally { await c2.close(); }
+    });
+
     // ---- 8. Every other widget that reads corners reads it only while its window fills the board, so in a window dragged
     // under the board's buttons it is drawn exactly as before: every element where it was when the board sent no corners to
     // such a window. Size 200%, the clock on, unlocked and locked. And no widget but the Zones Check-In and the SDK
@@ -7743,7 +7813,7 @@ const SUITES = [
     await part('Docs', async () => {
       const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
       const readme = read('README.md').replace(/\s+/g, ' '), row = (/\| \*\*Zones Check-In\*\* \|[^|]*\|/.exec(readme) || [''])[0];
-      ok(row.endsWith(' The four zones sit in one row once the window is about 830 px wide and wider than it is tall, and always when it fills a board at least 850 × 480 px. The cards keep clear of the board\'s own buttons. |') && !row.includes('in every student\'s reach'),
+      ok(row.endsWith(' The four zones sit in one row once the window is about 830 px wide and wider than it is tall, and always when it fills a board at least 850 × 480 px. The cards keep clear of the board\'s own buttons |') && !row.includes('in every student\'s reach'),
         `the README’s Zones Check-In row ends with when the zones sit in one row, and that the cards keep clear of the board’s own buttons (…${row.slice(-200)})`);
       const sdk = read('docs/WIDGET-SDK.md'), info = sdk.split('\n').find(l => l.startsWith('| `Board21.window.getInfo()` |')) || '';
       ok(info.includes('`corners` is sent while the window fills the board, and to any other window the board\'s own buttons sit over: `{ left, right, height }`') && !info.includes('is sent only while') &&
