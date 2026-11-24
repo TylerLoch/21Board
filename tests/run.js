@@ -24004,6 +24004,108 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   }],
 ];
 
+// ---- Waits that end early ----
+// page.waitForTimeout(ms) ends as soon as every open page is quiet: nothing it has started is due before the wait would
+// end. QUIET runs in every page and frame and keeps count of timers, frames, animations, scrolling, fetches, and
+// IndexedDB writes. A wait still takes its whole time where a fake clock replaced the timers, in a page QUIET can't
+// see into, in a suite in FIXED_WAITS, and with WAITS=fixed. hold(page, ms) always takes the whole time.
+const QUIET = () => {
+  if (window.__b21quiet) return;
+  const now = Date.now.bind(Date);   // a test may change Date.now later
+  const timers = new Map(), frames = new Set(), asked = new Map();
+  let busy = 0, scrolled = 0;
+  const st = window.setTimeout, ct = window.clearTimeout, si = window.setInterval, ci = window.clearInterval;
+  const raf = window.requestAnimationFrame, caf = window.cancelAnimationFrame, ric = window.requestIdleCallback;
+  const run = (fn, self, args) => typeof fn === 'function' ? fn.apply(self, args) : (0, eval)(String(fn));
+  function setTimeout(fn, ms, ...a) {
+    const id = st.call(window, function () { timers.delete(id); return run(fn, this, arguments); }, ms, ...a);
+    timers.set(id, now() + Math.max(0, +ms || 0)); asked.set(id, +ms || 0);
+    return id;
+  }
+  function setInterval(fn, ms, ...a) {
+    const every = Math.max(4, +ms || 0);
+    const id = si.call(window, function () { timers.set(id, now() + every); return run(fn, this, arguments); }, ms, ...a);
+    timers.set(id, now() + every); asked.set(id, every);
+    return id;
+  }
+  function clearTimeout(id) { timers.delete(id); return ct.call(window, id); }
+  function clearInterval(id) { timers.delete(id); return ci.call(window, id); }
+  function requestAnimationFrame(fn) {
+    const id = raf.call(window, t => { frames.delete(id); return fn(t); });
+    frames.add(id);
+    return id;
+  }
+  function cancelAnimationFrame(id) { frames.delete(id); return caf.call(window, id); }
+  Object.assign(window, { setTimeout, setInterval, clearTimeout, clearInterval, requestAnimationFrame, cancelAnimationFrame });
+  if (ric) window.requestIdleCallback = (fn, o) => { busy++; return ric.call(window, d => { busy--; return fn(d); }, o); };
+  const f = window.fetch;
+  if (f) window.fetch = function () { busy++; return f.apply(this, arguments).then(r => { busy--; return r; }, e => { busy--; throw e; }); };
+  if (window.IDBDatabase) {
+    const tx = IDBDatabase.prototype.transaction;
+    IDBDatabase.prototype.transaction = function () {
+      const t = tx.apply(this, arguments);
+      let open = true; const end = () => { if (open) { open = false; busy--; } };
+      busy++; t.addEventListener('complete', end); t.addEventListener('abort', end);
+      return t;
+    };
+  }
+  window.addEventListener('scroll', () => { scrolled = now(); }, true);
+  // One frame, on the page's own clock, so waiting for it isn't counted as work.
+  window.__b21frame = () => new Promise(r => { raf.call(window, () => r()); st.call(window, r, 50); });
+  // true when nothing is due before deadline (ms since 1970), what is due if something is, 'unknown' after a fake clock.
+  // A wait of span ms counts timers up to 1 s, and timers no longer than itself: a 500 ms wait ignores a toast's 4.2 s.
+  window.__b21quiet = (deadline, span) => {
+    if (window.setTimeout !== setTimeout || window.requestAnimationFrame !== requestAnimationFrame) return 'unknown';
+    if (busy > 0) return 'fetch or IndexedDB';
+    if (frames.size) return 'frame';
+    if (now() - scrolled < 100) return 'scroll';
+    if (document.fonts && document.fonts.status === 'loading') return 'fonts';
+    for (const [id, due] of timers) {
+      const ms = asked.get(id);
+      if (due <= deadline && (ms < 1000 || ms <= span)) return `timer ${ms} ms`;
+    }
+    for (const a of document.getAnimations()) {
+      if (a.playState !== 'running' && !a.pending) continue;
+      const t = a.effect && a.effect.getComputedTiming();
+      if (!t || !isFinite(t.endTime)) continue;
+      if (now() + (t.endTime - (t.localTime || 0)) / Math.abs(a.playbackRate || 1) <= deadline) return `animation ${a.animationName || a.transitionProperty || a.id || '?'} ${Math.round(t.endTime)} ms`;
+    }
+    return true;
+  };
+};
+// Suites whose waits always take their whole time. A title starts with one of these.
+const FIXED_WAITS = [];
+let fixedSuite = false;
+const WAITED = {};   // per suite: [seconds asked, seconds waited]
+const WHY = process.env.WAITS_REPORT ? {} : null;   // what kept waits going, for WAITS_REPORT=1
+let hold;
+// Makes page.waitForTimeout end once every page is quiet, checked twice a frame apart. Waits up to 60 ms aren't worth it.
+function earlyWaits(Page) {
+  const real = Page.prototype.waitForTimeout;
+  hold = (page, ms) => real.call(page, ms);
+  if (process.env.WAITS === 'fixed') return;
+  const timeLeft = (deadline, v) => new Promise(r => setTimeout(() => r(v), Math.max(0, deadline - Date.now())));
+  Page.prototype.waitForTimeout = async function (ms) {
+    const t0 = Date.now(), deadline = t0 + ms;
+    const tally = () => { const w = WAITED[SUITE] || (WAITED[SUITE] = [0, 0]); w[0] += ms / 1000; w[1] += (Date.now() - t0) / 1000; };
+    if (fixedSuite || !(ms > 60)) { await real.call(this, ms); tally(); return; }
+    const browser = this.context().browser();
+    let calm = 0;
+    while (calm < 2 && Date.now() < deadline - 20) {
+      await Promise.race([this.mainFrame().evaluate(() => window.__b21frame ? window.__b21frame() : 0).catch(() => {}), timeLeft(deadline)]);
+      const pages = browser ? browser.contexts().flatMap(c => c.pages()) : [this];
+      const says = await Promise.all(pages.flatMap(p => p.frames()).map(fr =>
+        Promise.race([fr.evaluate(([d, s]) => window.__b21quiet ? window.__b21quiet(d, s) : 'unknown', [deadline, ms]).catch(() => 'gone'), timeLeft(deadline, false)])));
+      const why = says.find(q => q !== true && q !== 'gone');
+      if (why && WHY) WHY[why] = (WHY[why] || 0) + 1;
+      if (why === 'unknown') break;
+      calm = why ? 0 : calm + 1;
+    }
+    if (calm < 2) await real.call(this, Math.max(0, deadline - Date.now()));
+    tally();
+  };
+}
+
 // The suites in part k of n. Each part gets about the same share of the seconds in tests/timings.json, which
 // node tools/ci-wait.js --save-timings writes. A suite it doesn't list counts as the average. The longest suite goes
 // first, each to the part with the least time so far. Within a part, suites run in file order.
@@ -24048,12 +24150,14 @@ function partOf(k, n) {
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   BASE = `http://127.0.0.1:${server.address().port}/`;
   const browser = await chromium.launch();
+  { const c = await browser.newContext(); earlyWaits(Object.getPrototypeOf(await c.newPage()).constructor); await c.close(); }
   // Headless Chromium can't answer a native Save dialog, so contexts use the download fallback by default.
   // The "Review fixes" suite stubs showSaveFilePicker itself to test that path.
   const newContext = browser.newContext.bind(browser);
   browser.newContext = async opts => {
     const c = await newContext(opts);
     await c.addInitScript(() => { window.showSaveFilePicker = undefined; });
+    await c.addInitScript(QUIET);
     // No suite reaches the weather sites. A Weather suite answers them with stubWeather, whose route runs first.
     await c.route(WX_HOSTS, r => r.abort('internetdisconnected').catch(() => {}));
     return c;
@@ -24065,6 +24169,7 @@ function partOf(k, n) {
     if (only && !title.toLowerCase().includes(only.toLowerCase())) continue;
     console.log('\n' + title);
     SUITE = title;
+    fixedSuite = FIXED_WAITS.some(t => title.startsWith(t));
     const t0 = Date.now();
     try { await fn(browser); } catch (err) { ok(false, 'suite crashed: ' + (err && err.stack || err)); }
     times[title] = Math.round((Date.now() - t0) / 1000);
@@ -24073,6 +24178,9 @@ function partOf(k, n) {
   server.close();
   // On GitHub, each suite's seconds, for node tools/ci-wait.js --save-timings.
   if (process.env.GITHUB_ACTIONS) console.log('\nSuite times: ' + JSON.stringify(times));
+  // Seconds the suites asked to wait, and waited. WAITS_REPORT=1 prints them here too.
+  if (WHY) console.log('\nWhat kept waits going: ' + JSON.stringify(WHY));
+  if (process.env.GITHUB_ACTIONS || process.env.WAITS_REPORT) console.log('\nSuite waits: ' + JSON.stringify(Object.fromEntries(Object.entries(WAITED).map(([k, [a, w]]) => [k, [Math.round(a), Math.round(w)]]))));
   console.log(`\n${passes} passed, ${fails} failed`);
   process.exit(fails ? 1 : 0);
 })();

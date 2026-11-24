@@ -49,6 +49,7 @@ jobs:
         run: node tests/run.js
         env:
           PART: ${{ matrix.part }}/${{ strategy.job-total }}
+          WAITS_REPORT: 1
 
       - name: Keep screenshots
         if: failure()
