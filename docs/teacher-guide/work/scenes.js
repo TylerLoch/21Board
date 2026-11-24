@@ -258,6 +258,35 @@ SCENES['w-name-picker-groups'] = async () => {
   await ctx.close();
 };
 
+// ---- 4c. w-name-picker-bracket.jpg: 24 names partway through a bracket, under the wheel and the groups in the card.
+const NAMES24 = NAMES.concat(['Ivy', 'Jamal', 'Kai', 'Lena', 'Mateo', 'Nora', 'Omar', 'Priya', 'Quinn', 'Rosa', 'Sam', 'Tariq', 'Uma', 'Vic', 'Wen', 'Zoe']);
+SCENES['w-name-picker-bracket'] = async () => {
+  const { ctx, p } = await newBoard();
+  const ik = await addWin(p, 'name-picker');
+  await setRect(p, ik, { x: 450, y: 250, w: 1500, h: 790 });
+  await wait(p, 800);
+  await addNames(p, ik, NAMES24);
+  await choose(p, ik, 'Bracket', { exact: true });
+  // The same bracket every time: the fair draw takes this random number.
+  await frame(p, ik).locator('html').evaluate(() => { crypto.getRandomValues = a => { a[0] = 1; return a; }; });
+  await pickName(p, ik, 5000);
+  // Partway, as a class plays it: the first round, then the left half's first two matches of round 2.
+  const f = frame(p, ik);
+  const ready = () => f.locator('html').evaluate(() => [...document.querySelectorAll('.bracket-ready')].map(e => +e.dataset.spot).sort((a, b) => b - a));
+  for (let i = 0; i < 10; i++) {
+    const r = await ready(), first = r.filter(s => s >= 32), next = first.length ? first : r.filter(s => s < 24).reverse();
+    // (Each match's winner: the top name, or the bottom one, by turns.)
+    const s = (next[0] & ~1) + (i % 3 === 1 ? 1 : 0);
+    await f.locator(`.bracket-spot[data-spot="${s}"]`).click();
+    await wait(p, 450);
+  }
+  await deselect(p);
+  await wait(p, 300);
+  log('  foot', JSON.stringify(await f.locator('.foot').innerText()));
+  await shot(p, 'w-name-picker-bracket.jpg', await around(p, ik, 24));
+  await ctx.close();
+};
+
 // The Traffic Light on its side, following a Timer in its warning (Follow timers): yellow beside the amber Timer.
 SCENES['w-traffic-light'] = async () => {
   const { ctx, p, blocked } = await newBoard();

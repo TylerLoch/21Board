@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.24-1';
+const VERSION = '2026.11.24-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'a80639f2';
+const BUILD = 'dc44cdb9';
 const FILES = {
-  './': 'a62c0628c0713e4e',
-  'index.html': 'a62c0628c0713e4e',
-  'board.js': 'eeee0b82fcc28e6f',
+  './': '455ce154f47190dd',
+  'index.html': '455ce154f47190dd',
+  'board.js': 'e9e561566a7dd1b3',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '5be64dde42c5f1ec',
+  'widgets/registry.js': '3e680fead9d69ece',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -46,12 +46,13 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': 'dafc0937d3bee1ab',
+  'widgets/name-picker/index.html': 'c7e3d0c7cfb8b8a8',
   'widgets/name-picker/style-bigname.js': '9d6775ffa5fb7f17',
   'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
   'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
   'widgets/name-picker/style-lotto.js': 'b34332daca17e15b',
   'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
+  'widgets/name-picker/style-bracket.js': '5604b8f838b2f9a2',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
   'widgets/zones-check-in/index.html': '135e19d8f4a8f0d7',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',

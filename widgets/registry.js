@@ -107,11 +107,11 @@ self.BOARD21_WIDGETS = [
   {
     id: 'name-picker',
     name: 'Name Picker',
-    description: 'Pick one to six names at random, or make groups.',
+    description: 'Pick names at random, or make groups and brackets.',
     version: '2.0.0',
     entry: 'widgets/name-picker/index.html',
     // (One file for each pick style: the page loads them all.)
-    files: ['widgets/name-picker/index.html', 'widgets/name-picker/style-bigname.js', 'widgets/name-picker/style-wheel.js', 'widgets/name-picker/style-spotlight.js', 'widgets/name-picker/style-lotto.js', 'widgets/name-picker/style-groups.js'],
+    files: ['widgets/name-picker/index.html', 'widgets/name-picker/style-bigname.js', 'widgets/name-picker/style-wheel.js', 'widgets/name-picker/style-spotlight.js', 'widgets/name-picker/style-lotto.js', 'widgets/name-picker/style-groups.js', 'widgets/name-picker/style-bracket.js'],
     color: '#8b5cf6',
     icon: '<svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="4"/><path d="M3 21v-1a7 7 0 0 1 11-5.7"/><path d="M17 14l1.2 2.6 2.8.4-2 2 .5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-2 2.8-.4z"/></svg>',
     window: { width: 420, height: 320, minWidth: 260, minHeight: 200 },
