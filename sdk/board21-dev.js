@@ -208,7 +208,10 @@
         }
         if (Array.isArray(it.choices)) {
           if (it.choices.length > 12) add('warn', 'The “' + it.label + '” row has ' + it.choices.length + ' choices', 'The board shows the first 12.', 'Use at most 12 choices in a row.');
-          it.choices.forEach(function (c) { if (c && (String(c.label || '').match(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S]/g) || []).length > 3) add('warn', 'Choice “' + c.label + '” is longer than 3 characters', 'The board shows the first 3.', 'Give every choice a label of 3 characters or fewer, like "12".'); });
+          it.choices.forEach(function (c) {
+            if (c && !String(c.label || '').trim()) add('warn', 'Choice “' + (c.id || '') + '” has no label', 'The board leaves it out.', 'Give every choice a short label, like "3".');
+            else if (c && (String(c.label || '').match(/[\uD800-\uDBFF][\uDC00-\uDFFF]|[\s\S]/g) || []).length > 3) add('warn', 'Choice “' + c.label + '” is longer than 3 characters', 'The board shows the first 3.', 'Give every choice a label of 3 characters or fewer, like "12".');
+          });
         }
         if (it.icon && !/^\s*<svg/i.test(it.icon)) add('info', 'A menu icon isn’t an <svg>', 'The board drops icons that aren’t inline SVG.', 'Use an inline <svg> string for menu icons, or none.');
       });

@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.24-1';
-  const BOARD_BUILD = 'f5ee3917';
+  const BOARD_BUILD = 'a80639f2';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2237,12 +2237,13 @@
                 })).filter(s => s.id && s.color)
               });
             }
-            // A row of short choices, such as numbers: drawn like the swatches, each label at most 3 characters.
+            // A row of short choices, such as numbers: drawn like the swatches, each label at most 3 characters. A choice
+            // with no label is left out, as a swatch with no color is.
             if (Array.isArray(i.choices)) {
               return Object.assign(item, {
                 choices: i.choices.slice(0, 12).map(c => ({
                   id: String((c && c.id) || '').slice(0, 64), label: Array.from(String((c && c.label) || '')).slice(0, 3).join(''), checked: !!(c && c.checked)
-                })).filter(c => c.id)
+                })).filter(c => c.id && c.label.trim())
               });
             }
             // (No icon from an uploaded file: markup in the board's own menu would be outside its seal.)
@@ -3440,6 +3441,20 @@
       }
       html += locked ? (w.widget.external ? '<div class="menu-sep"></div>' : '') + Lock.menuNote() : item('close', svg('close'), 'Close');
       show(html);
+      if (this.el.classList.contains('open')) this.fitChoices();
+    },
+
+    // A choice's label too wide for its circle ("Wed", "XXL") gets smaller letters, so all of it shows. (--fit scales the
+    // label's size in the CSS. Measured once the menu has its size: compact and tight circles are smaller.)
+    fitChoices() {
+      const bs = $$('.menu-choice', this.el);
+      for (const b of bs) b.style.setProperty('--fit', '1');
+      const fits = bs.map(b => {
+        const r = document.createRange(); r.selectNodeContents(b);
+        const text = r.getBoundingClientRect().width, room = b.getBoundingClientRect().width * 0.78;
+        return text > room && room > 0 ? room / text : 1;
+      });
+      bs.forEach((b, i) => { if (fits[i] < 1) b.style.setProperty('--fit', fits[i].toFixed(3)); });
     },
 
     position() {
@@ -3483,6 +3498,7 @@
       }
       this.el.style.left = x / ui + 'px';
       this.el.style.top = y / ui + 'px';
+      this.fitChoices();
     },
 
     act(act, id) {

@@ -96,16 +96,17 @@ NamePicker.register('groups', {
         }
       }
       if (!best) return null;
-      const { across, down, cw, ic, per, fs } = best;
+      const { across, down, cw, per, fs } = best;
       // The heading: about 0.6 of the names' size, at least 11 px where the card has room, never wider than the card.
       const hf = Math.min(Math.max(fs * 0.62, 11), (cw - 8) / headW), hh = Math.min(Math.max(hf * 1.7, fs * C.head), best.chMax * 0.4);
       const ch = Math.min(best.chMax, hh + (C.top + per * C.line + C.bottom) * fs);
       const y0 = (H - (down * ch + (down - 1) * gap)) / 2;
-      const colW = longest * fs + 2, gx = C.colGap * fs, inner = ic * colW + (ic - 1) * gx;
+      const colW = longest * fs + 2, gx = C.colGap * fs;
       const out = groups.map((g, i) => {
         const r = Math.floor(i / across), inRow = r === down - 1 ? k - r * across : across, c = i % across;
         const x = (W - (inRow * cw + (inRow - 1) * gap)) / 2 + c * (cw + gap), y = y0 + r * (ch + gap);
-        const x0 = (cw - inner) / 2;
+        // (Each card's names sit in the middle of it: a smaller group may fill fewer columns than the largest.)
+        const own = Math.max(1, Math.ceil(g.length / per)), x0 = (cw - (own * colW + (own - 1) * gx)) / 2;
         return { x, y, w: cw, h: ch, hh, hf, at: g.map((_, j) => ({ x: x0 + Math.floor(j / per) * (colW + gx), y: hh + C.top * fs + (j % per) * C.line * fs, w: colW, h: C.line * fs })) };
       });
       // The stack waits under the cards where there's room, else in the middle of the stage.

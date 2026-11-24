@@ -4113,8 +4113,9 @@ const SUITES = [
       if (theme === 'light') {
         ok(L.bs.length === 6 && L.bs.map(b => b.text).join() === '1,2,3,4,5,6' && L.bs.every(b => Math.abs(b.top - L.bs[0].top) < 0.5),
           `a row of 6 choices: 6 circles with their labels, on one line (${L.bs.map(b => b.text + '@' + Math.round(b.top)).join(' ')}; the menu ${Math.round(L.menuW)} px wide)`);
-        ok(L.bs.every(b => Math.abs(b.w - 38) < 0.6 && Math.abs(b.h - 38) < 0.6 && b.radius === '50%' && b.fs === '16px' && b.fw === '650'),
-          `each a circle the size of a swatch, 38 px, its label 16 px at weight 650 (${L.bs.map(b => b.w.toFixed(1) + '×' + b.h.toFixed(1) + ' ' + b.fs + ' ' + b.fw).join(', ')})`);
+        const sw = swatches.light.swatchW;
+        ok(sw > 20 && L.bs.length === 6 && L.bs.every(b => Math.abs(b.w - sw) < 0.6 && Math.abs(b.h - sw) < 0.6 && b.radius === '50%' && b.fs === '16px' && b.fw === '650'),
+          `each a circle the size of Notes’ swatches, ${sw} px, its label 16 px at weight 650 (${L.bs.map(b => b.w.toFixed(1) + '×' + b.h.toFixed(1) + ' ' + b.fs + ' ' + b.fw).join(', ')})`);
         ok(L.row && L.row.role === 'group' && L.row.name === 'Names at a time' && L.bs.every(b => b.role === 'menuitemradio' && b.name === b.text && b.id === 'winners:' + b.text)
           && on.length === 1 && on[0].text === '3' && off.every(b => b.checked === 'false'),
           `the row is a group named “Names at a time”; each choice a menuitemradio named by its label, 3 checked (${JSON.stringify(L.row)}, ${L.bs.map(b => b.role + ' ' + b.name + ' ' + b.checked).join(', ')})`);
@@ -4137,6 +4138,19 @@ const SUITES = [
     const walk = [await at()];
     for (const key of ['ArrowDown', 'ArrowDown', 'ArrowUp', 'End', 'Home', 'ArrowUp', 'ArrowDown']) { await page.keyboard.press(key); walk.push(await at()); }
     ok(walk.join(', ') === '1, 2, 3, 2, Close, 1, Close, 1', `the arrow keys, Home, and End move through the choices (${walk.join(', ')})`);
+    // The keyboard's ring shows on the chosen one too: outside its ring, not under it.
+    const ringOf = () => page.evaluate(() => {
+      const a = document.activeElement, cs = getComputedStyle(a);
+      const reach = Math.max(0, ...cs.boxShadow.split(/,(?![^(]*\))/).filter(s => !/inset/.test(s)).map(s => parseFloat((s.match(/-?[\d.]+px/g) || [])[3]) || 0));
+      return { label: a.textContent, shown: a.matches(':focus-visible') && cs.outlineStyle !== 'none' && parseFloat(cs.outlineWidth) >= 2, offset: parseFloat(cs.outlineOffset), reach };
+    });
+    await page.keyboard.press('ArrowDown'); await page.keyboard.press('ArrowDown');
+    const chosenRing = await ringOf();
+    await page.keyboard.press('ArrowUp');
+    const otherRing = await ringOf();
+    await page.keyboard.press('ArrowUp');
+    ok(chosenRing.label === '3' && chosenRing.shown && chosenRing.reach >= 5 && chosenRing.offset > chosenRing.reach && otherRing.label === '2' && otherRing.shown && otherRing.offset > otherRing.reach,
+      `the keyboard’s ring shows outside the chosen one’s ring (3: ${chosenRing.offset} px out, its ring ${chosenRing.reach} px; 2: ${otherRing.offset} px out, no ring)`);
     for (let i = 0; i < 5; i++) await page.keyboard.press('ArrowDown');
     const six = await at(); await page.keyboard.press('ArrowDown');
     ok(six === '6' && await at() === 'Other', `and on past the last choice (${six}, then ${await at()})`);
@@ -4148,17 +4162,37 @@ const SUITES = [
     await setMenu([ROW(15, 1)]); await page.waitForTimeout(200); await openMenu();
     let L = await look();
     ok(L.bs.length === 12 && L.bs.map(b => b.text).join() === '1,2,3,4,5,6,7,8,9,10,11,12', `15 choices: the first 12 show (${L.bs.length})`);
-    await setMenu([{ id: 'r', label: '<img src=x onerror="window.top.__pwned = 1">', choices: [{ id: 'a', label: '1234' }, { id: 'b', label: 'Seven', checked: true }, { id: 'c', label: '<b>bold</b>' }, { id: 'd', label: '<i' }, { id: '', label: 'no id' }] }]);
+    await setMenu([{ id: 'r', label: '<img src=x onerror="window.top.__pwned = 1">', choices: [{ id: 'a', label: '1234' }, { id: 'b', label: 'Seven', checked: true }, { id: 'c', label: '<b>bold</b>' }, { id: 'd', label: '<i' }, { id: '', label: 'no id' }, { id: 'e', label: '' }, { id: 'f', label: '   ' }, { id: 'g' }] }]);
     await page.waitForTimeout(200); await openMenu();
     L = await look();
     ok(L.bs.map(b => b.text).join('|') === '123|Sev|<b>|<i' && L.bs.map(b => b.name).join('|') === '123|Sev|<b>|<i',
-      `a label of 4 or more characters shows 3 (“1234” → ${L.bs[0] && L.bs[0].text}, “Seven” → ${L.bs[1] && L.bs[1].text}); a choice with no id is left out (${L.bs.map(b => b.text).join('|')})`);
+      `a label of 4 or more characters shows 3 (“1234” → ${L.bs[0] && L.bs[0].text}, “Seven” → ${L.bs[1] && L.bs[1].text}); a choice with no id or no label is left out (${L.bs.map(b => b.text).join('|')})`);
     ok(!L.markup && L.row && L.row.name === '<img src=x onerror="window.top.__pwned = 1">' && !(await page.evaluate(() => window.__pwned)),
       `labels with markup show as text, never markup (${L.markup} elements; the row named ${L.row && L.row.name})`);
     await closeMenu();
     const items = await page.evaluate(() => window.__board21.state.wins.get('notes:1').menuItems);
     ok(items.length === 1 && items[0].choices.length === 4 && items[0].choices.every(c => typeof c.id === 'string' && c.id.length <= 64 && typeof c.label === 'string' && [...c.label].length <= 3 && typeof c.checked === 'boolean'),
       `the board keeps only ids, short labels and checked (${JSON.stringify(items[0])})`);
+    // A wide label of 3 characters gets smaller letters, so all of it shows, in a menu of any size. One that fits keeps
+    // its size. Every choice is the size of a swatch in the same menu.
+    const DAYS = { id: 'day', label: 'Day', choices: ['Mon', 'Wed', 'XXL', 'WWW', '12', '7'].map((l, i) => ({ id: 'day:' + i, label: l, checked: i === 1 })) };
+    const labels = () => page.evaluate(() => ({ cls: document.getElementById('menu').className.replace(/\b(menu|open)\b/g, '').trim() || 'roomy',
+      sw: (e => e ? e.getBoundingClientRect().width : 0)(document.querySelector('#menu .swatch')),
+      bs: [...document.querySelectorAll('#menu .menu-choice')].map(b => { const r = document.createRange(); r.selectNodeContents(b);
+        return { text: b.textContent, w: r.getBoundingClientRect().width, room: b.getBoundingClientRect().width, fs: parseFloat(getComputedStyle(b).fontSize) }; }) }));
+    // (More items above the row make the menu compact, then tight: the first menu of each kind is checked.)
+    const kinds = [], KINDS = ['roomy', 'compact', 'compact tight'];
+    for (let pad = 0; pad <= 22 && kinds.length < KINDS.length; pad = pad ? pad + 1 : 10) {   // (22 and the two rows: the 24 a menu holds)
+      await setMenu(Array.from({ length: pad }, (_, i) => ({ id: 'i' + i, label: 'Item ' + i })).concat([DAYS, { id: 'col', label: 'Color', swatches: [{ id: 'col:y', label: 'Yellow', color: '#fef08a' }] }])); await page.waitForTimeout(200); await openMenu();
+      const F = await labels(), fs = t => (F.bs.find(b => b.text === t) || {}).fs;
+      if (F.cls !== KINDS[kinds.length]) { await closeMenu(); continue; }
+      kinds.push(F.cls);
+      ok(F.bs.length === 6 && F.bs.every(b => b.w <= b.room * 0.8 + 0.5) && fs('12') === fs('7') && fs('WWW') < fs('7'),
+        `${F.cls} menu: every label inside its circle, a wide one in smaller letters (${F.bs.map(b => `${b.text} ${b.w.toFixed(1)}/${b.room.toFixed(1)} px at ${b.fs.toFixed(1)}`).join(', ')})`);
+      ok(F.sw > 20 && F.bs.every(b => Math.abs(b.room - F.sw) < 0.6), `${F.cls} menu: each choice the size of the swatch beside it (${F.bs[0] && F.bs[0].room.toFixed(1)} px, the swatch ${F.sw.toFixed(1)} px)`);
+      await closeMenu();
+    }
+    ok(kinds.join() === 'roomy,compact,compact tight', `in a roomy, a compact, and a tight menu (${kinds.join(' | ')})`);
     await setMenu([{ id: 'r', label: 'Long', choices: [{ id: 'x'.repeat(200), label: '9' }] }]); await page.waitForTimeout(200);
     ok((await page.evaluate(() => window.__board21.state.wins.get('notes:1').menuItems[0].choices[0].id.length)) === 64, 'an id is cut to 64 characters');
     // The row counts as one of the 24 items.
@@ -4179,19 +4213,24 @@ const SUITES = [
       `the standalone menu lists “Names at a time: 3”, with ✓ on the chosen one (${opts.join(' | ')})`);
     await sp.selectOption('select', 'winners:5');
     ok(await eventually(() => sp.evaluate(() => window.__got.includes('winners:5'))), 'choosing one there sends its id');
+    const sdkV = await sp.evaluate(() => Board21.version), atLeast = (v, w) => { const a = v.split('.').map(Number), b = w.split('.').map(Number); return a[0] > b[0] || (a[0] === b[0] && (a[1] > b[1] || (a[1] === b[1] && a[2] >= b[2]))); };
+    ok(atLeast(sdkV, '1.5.0'), `the SDK that knows a row of choices is 1.5.0 or later (${sdkV})`);
     await sctx.close();
 
     // The widget dev window warns about a row the board would cut.
     const dctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
     const dp = await dctx.newPage();
     await dp.goto(BASE + 'sdk/lab.html'); await dp.waitForTimeout(400);
-    const menu13 = `Board21.menu.set([{ heading: true, label: 'Names at a time' }, { id: 'n', label: 'Names at a time', choices: Array.from({ length: 12 }, (_, i) => ({ id: 'n:' + i, label: String(i + 1) })).concat([{ id: 'n:four', label: 'Four' }]) }]);`;
+    const menu13 = `Board21.menu.set([{ heading: true, label: 'Names at a time' }, { id: 'n', label: 'Names at a time', choices: Array.from({ length: 11 }, (_, i) => ({ id: 'n:' + i, label: String(i + 1) })).concat([{ id: 'n:four', label: 'Four' }, { id: 'n:blank', label: ' ' }]) }]);`;
     const src = DEV_WIDGET(BASE + 'sdk/board21.js').replace(/Board21\.menu\.set\(\[\{ id: 'add'[^\n]*\]\);/, menu13);
     await dp.fill('#code', src); await dp.click('#run');
     const titles = () => dp.evaluate(() => window.__board21DevWindow ? window.__board21DevWindow.state().checks.map(c => c.title) : []);
-    ok(src.includes(menu13) && await eventually(async () => (await titles()).some(t => /13 choices/.test(t)), 10000) && (await titles()).some(t => /Four/.test(t) && /3 characters/.test(t)),
-      `the dev window’s Checks warn about 13 choices in a row, and a label longer than 3 characters (${(await titles()).join(' | ')})`);
+    ok(src.includes(menu13) && await eventually(async () => (await titles()).some(t => /13 choices/.test(t)), 10000) && (await titles()).some(t => /Four/.test(t) && /3 characters/.test(t))
+      && (await titles()).some(t => t === 'Choice “n:blank” has no label'),
+      `the dev window’s Checks warn about 13 choices in a row, a label longer than 3 characters, and a choice with no label (${(await titles()).join(' | ')})`);
     await dctx.close();
+    const aiPrompt = fs.readFileSync(path.join(ROOT, 'docs', 'AI-PROMPT.md'), 'utf8');
+    ok(/- \[ \] Menu: [^\n]*swatches `#hex` and choices of 3 characters or fewer/.test(aiPrompt), 'docs/AI-PROMPT.md’s checklist has the row of choices');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
   ['Name Picker: two students with one name, typing is kept, adding a name', async (browser) => {
@@ -4735,7 +4774,7 @@ const SUITES = [
       return saved(p, ik);
     };
     // How the cards fit: every name's words inside its card and its own line, no line over another, every name one size,
-    // the cards inside the stage and apart.
+    // the cards inside the stage and apart, and each card's names in the middle of it (as much room left as right).
     const fitLook = (p = page, ik) => inFrame(() => {
       const stage = document.getElementById('stage').getBoundingClientRect(), bad = [], sizes = new Set();
       const inside = (r, o, e = 0.5) => r.left >= o.left - e && r.right <= o.right + e && r.top >= o.top - e && r.bottom <= o.bottom + e;
@@ -4753,6 +4792,9 @@ const SUITES = [
           for (const t of texts) if (over(line, t.r)) bad.push(`“${n.textContent}” is over “${t.name}”`);
           texts.push({ r: line, name: n.textContent });
         }
+        const ns = [...c.querySelectorAll('.groups-name')].map(n => n.getBoundingClientRect());
+        const left = Math.min(...ns.map(r => r.left)) - cr.left, right = cr.right - Math.max(...ns.map(r => r.right));
+        if (ns.length && Math.abs(left - right) > 2) bad.push(`card ${i + 1}'s names are off the middle (${left.toFixed(1)} px left, ${right.toFixed(1)} px right)`);
       });
       const fs = [...sizes].map(parseFloat);
       return { bad, sizes: [...sizes], fs: fs.length ? Math.min(...fs) : 0, cards: cs.length, w: stage.width, h: stage.height };
@@ -4789,8 +4831,8 @@ const SUITES = [
     const during = { go: await text('#go'), showing: await showing(), status: await text('#status') };
     await idle();
     let took = Date.now() - t0;
-    ok(Array.isArray(g.groups) && g.groups.length === 6 && g.groups.every(x => x.length === 4) && sameList(g.groups.flat(), N24) && /^[a-z0-9]+-[a-z0-9]+$/.test(g.groupId),
-      `the groups are saved before the show: 6 groups of 4, everyone once, with a groupId (${JSON.stringify(g.groups)}, ${g.groupId})`);
+    ok(Array.isArray(g.groups) && g.groups.length === 6 && g.groups.every(x => x.length === 4) && sameList(g.groups.flat(), N24) && /^[a-z0-9]+-[a-z0-9]+-66$/.test(g.groupId),
+      `the groups are saved before the show: 6 groups of 4, everyone once, with a groupId that ends with Groups 6 and the 6 groups made (${JSON.stringify(g.groups)}, ${g.groupId})`);
     ok(during.showing && during.go === 'Show now' && during.status === '24 names', `during the show: “Show now”, and the status as it was (${JSON.stringify(during)})`);
     ok(took > 2300 && took < 3900, `the show takes about 3 s (${took} ms)`);
     let cs = await cards();
@@ -4859,6 +4901,14 @@ const SUITES = [
     g = await drawNow(); await idle();
     ok(g.groups.length === 3 && g.groups.every(x => x.length === 8) && (await cards()).length === 3 && await text('#status') === '3 groups of 8' && await text('#go') === 'Shuffle again',
       `“Make 3 groups” makes 3 groups of 8 (${await text('#status')})`);
+    // Raised since the draw: “Make 4 groups”, after a reload too.
+    await menu('groups:4');
+    const raised = await text('#go');
+    await page.reload(); await boardUp(page);
+    ok(raised === 'Make 4 groups' && await eventually(async () => (await cards().catch(() => [])).length === 3) && await eventually(async () => await text('#go') === 'Make 4 groups'),
+      `Groups 4 with 3 groups up: “${raised}”, and after a reload “${await text('#go')}”`);
+    await menu('groups:3');
+    ok(await text('#go') === 'Shuffle again', 'back to 3: “Shuffle again”');
 
     // ---- Back to the pick round: Spinning wheel shows the same round and last winners.
     await menu('style:wheel');
@@ -4870,6 +4920,18 @@ const SUITES = [
     await menu('style:groups');
     cs = await cards();
     ok(cs.length >= 1 && JSON.stringify(cs.map(c => c.names)) === JSON.stringify((await saved()).groups), 'switching to Groups shows the last groups');
+
+    // ---- Another way chosen in the middle of a show: screen readers hear that show's result, never the other way's.
+    await np().locator('#go').click(); await page.waitForTimeout(400);
+    const dealing = await saved(), wasShowing = await showing();
+    await menu('style:wheel');
+    ok(wasShowing && await eventually(async () => await said() === announced(dealing.groups), 3000),
+      `the wheel chosen while groups deal: screen readers hear the new groups (${(await said()).slice(0, 50)}…)`);
+    await np().locator('#go').click(); await page.waitForTimeout(400);
+    const spinning = await saved(), wasSpinning = await showing();
+    await menu('style:groups');
+    ok(wasSpinning && await eventually(async () => await said() === 'Picked: ' + spinning.picked.join(', '), 3000),
+      `Groups chosen while the wheel spins: they hear the pick (${(await said()).slice(0, 50)})`);
 
     // ---- 25 names, Groups 4: groups differ by one at most, the first ones larger.
     await menu('groups:4');
@@ -4936,8 +4998,10 @@ const SUITES = [
 
     // ---- Small classes: 3 names with Groups at 4 make 3 groups; 1 name, 1 group.
     errors.length = 0;
+    const smallIks = [];
     for (const [list, go, status] of [[['Ava', 'Ben', 'Carlos'], 'Make 3 groups', '3 groups of 1'], [['Ava'], 'Make 1 group', '1 group of 1']]) {
       const ik = await page.evaluate(() => window.__board21.openWidget('name-picker'));
+      smallIks.push(ik);
       await eventually(async () => ((await conf(page, ik)) || {}).style === 'wheel');
       await np(page, ik).locator('#list').fill(list.join('\n')); await np(page, ik).locator('#done').click(); await page.waitForTimeout(300);
       await menu('style:groups', page, ik); await menu('quick', page, ik);
@@ -4947,6 +5011,31 @@ const SUITES = [
       ok(s.groups.length === list.length && cs.length === list.length && cs.every(c => c.names.length === 1) && sameList(cs.flatMap(c => c.names), list) && await text('#status', page, ik) === status
         && await text('#go', page, ik) === 'Shuffle again', `then ${cs.length} card${cs.length > 1 ? 's' : ''} of 1, “${await text('#status', page, ik)}”`);
     }
+    // A short list that grows: 1 name drawn with Groups 4 made 1 group. A second name joins it, and the button says what
+    // a tap makes now, “Make 2 groups”.
+    const ik1 = smallIks[1];
+    await page.evaluate(ik => window.__board21.focusWin(ik), ik1); await setNames(['Ava', 'Ben'], page, ik1);
+    ok(await text('#status', page, ik1) === '1 group of 2' && await text('#go', page, ik1) === 'Make 2 groups',
+      `1 name drawn with Groups 4, then a second name: “${await text('#status', page, ik1)}”, “${await text('#go', page, ik1)}”`);
+    const two = await drawNow(page, ik1); await idle(page, ik1);
+    ok(two.groups.length === 2 && await text('#status', page, ik1) === '2 groups of 1' && await text('#go', page, ik1) === 'Shuffle again',
+      `and a tap makes 2 groups of 1 (${await text('#status', page, ik1)}, “${await text('#go', page, ik1)}”)`);
+    // The 3 groups of 1, with the number raised since: “Make 3 groups”, after a reload too. Then the whole class added:
+    // they join the 3 groups, and the button says what a tap makes now, “Make 4 groups”.
+    const ik3 = smallIks[0], front = () => page.evaluate(ik => window.__board21.focusWin(ik), ik3);
+    await front(); await menu('groups:5', page, ik3);
+    const raised3 = await text('#go', page, ik3);
+    await page.reload(); await boardUp(page);
+    ok(raised3 === 'Make 3 groups' && await eventually(async () => (await cards(page, ik3).catch(() => [])).length === 3) && await eventually(async () => await text('#go', page, ik3) === 'Make 3 groups'),
+      `3 names drawn with Groups 4, then Groups 5: “${raised3}”, and after a reload “${await text('#go', page, ik3)}”`);
+    await front(); await menu('groups:4', page, ik3);
+    ok(await text('#go', page, ik3) === 'Shuffle again', 'back to 4: “Shuffle again”');
+    await front(); await setNames(N24, page, ik3);
+    ok(await text('#status', page, ik3) === '3 groups of 8' && await text('#go', page, ik3) === 'Make 4 groups',
+      `the whole class added: “${await text('#status', page, ik3)}”, and the button says what a tap makes, “${await text('#go', page, ik3)}”`);
+    const grown = await drawNow(page, ik3); await idle(page, ik3);
+    ok(grown.groups.length === 4 && await text('#status', page, ik3) === '4 groups of 6' && await text('#go', page, ik3) === 'Shuffle again',
+      `and a tap makes 4 groups of 6 (${await text('#status', page, ik3)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
 
@@ -4994,7 +5083,8 @@ const SUITES = [
     await rctx.close();
 
     // ---- A board from a file: groups are checked as picks are. Names not in the list, a student in two groups, 7
-    // groups, empty groups, things that aren't names, and huge lists are dropped, without errors.
+    // groups, empty groups, things that aren't names, and huge lists are dropped, without errors. A student the groups
+    // leave out joins the smallest group, so no one is left off the stage.
     errors.length = 0;
     const ictx = await browser.newContext({ viewport: { width: 1600, height: 900 } });
     const ip = await ictx.newPage(); watch(ip, 'import');
@@ -5006,22 +5096,34 @@ const SUITES = [
       win(2, { names: A8, groups: [['A1'], ['A2'], ['A3'], ['A4'], ['A5'], ['A6'], ['A7', 'A8']], groupId: 'mwp2g7b7-pg6utk' }, { style: 'groups', groups: 3 }),
       win(3, { names: ['Ava', 'Ben'], groups: Array.from({ length: 100000 }, () => ['Ava']), groupId: '<b>x</b>' }, { style: 'groups', groups: 1 }),
       win(4, { names: ['Ava', 'Ben'], groups: [Array.from({ length: 200000 }, () => 'Ben').concat(['Ava'])], groupId: 5 }, { style: 'groups', groups: 'x' }),
-      win(5, { names: ['Ava', 'Ben'], groups: 'Ava,Ben', groupId: null }, { style: 'groups', groups: 2 })
+      win(5, { names: ['Ava', 'Ben'], groups: 'Ava,Ben', groupId: null }, { style: 'groups', groups: 2 }),
+      win(6, { names: ['Ava', 'Ben', 'Carlos', 'Dana'], groups: [[['Ava']], ['Ben']], groupId: 'mwp2g7b7-pg6utl' }, { style: 'groups', groups: 2 })
     ] };
     fs.writeFileSync(OUT + 'name-picker-groups.21board', JSON.stringify(file));
     const tImport = Date.now();
     await ip.setInputFiles('#import-input', OUT + 'name-picker-groups.21board'); await ip.waitForTimeout(300);
     await ip.click('#modal .btn:has-text("Replace this page")');
-    ok(await eventually(async () => (await Promise.all([1, 2, 3, 4, 5].map(n => items(ip, 'name-picker:' + n).catch(() => '')))).every(Boolean), 15000), 'the board from the file opens with its five pickers');
+    ok(await eventually(async () => (await Promise.all([1, 2, 3, 4, 5, 6].map(n => items(ip, 'name-picker:' + n).catch(() => '')))).every(Boolean), 15000), 'the board from the file opens with its six pickers');
     await ip.waitForTimeout(800);
     const C = async n => (await cards(ip, 'name-picker:' + n)).map(c => c.names);
     ok(JSON.stringify(await C(1)) === '[["Ava","Ben"],["Carlos"],["Ava","Dana"]]' && await items(ip, 'name-picker:1') === MENU_G(4)
       && await text('#status', ip, 'name-picker:1') === '3 groups of 1 or 2', `only names in the list, each student once, no empty groups; Groups 9 falls back to 4 (${JSON.stringify(await C(1))}, ${await text('#status', ip, 'name-picker:1')})`);
-    ok(JSON.stringify(await C(2)) === '[["A1"],["A2"],["A3"],["A4"],["A5"],["A6"]]', `at most 6 groups (${JSON.stringify(await C(2))})`);
-    ok(JSON.stringify(await C(3)) === '[["Ava"]]' && JSON.stringify(await C(4)) === '[["Ben"]]' && Date.now() - tImport < 15000, `huge lists are cut short, quickly (${JSON.stringify(await C(3))}, ${JSON.stringify(await C(4))}, ${Date.now() - tImport} ms)`);
+    ok(JSON.stringify(await C(2)) === '[["A1","A7"],["A2","A8"],["A3"],["A4"],["A5"],["A6"]]' && await text('#status', ip, 'name-picker:2') === '6 groups of 1 or 2',
+      `at most 6 groups; A7 and A8, left out with the 7th, join the smallest groups (${JSON.stringify(await C(2))}, ${await text('#status', ip, 'name-picker:2')})`);
+    ok(JSON.stringify(await C(3)) === '[["Ava","Ben"]]' && JSON.stringify(await C(4)) === '[["Ben","Ava"]]' && Date.now() - tImport < 15000, `huge lists are cut short, quickly (${JSON.stringify(await C(3))}, ${JSON.stringify(await C(4))}, ${Date.now() - tImport} ms)`);
+    ok(JSON.stringify(await C(6)) === '[["Ben","Ava","Carlos","Dana"]]' && await text('#status', ip, 'name-picker:6') === '1 group of 4',
+      `a group of lists is dropped, and everyone the groups leave out joins the one left (${JSON.stringify(await C(6))}, ${await text('#status', ip, 'name-picker:6')})`);
+    // A crafted file with a long list and many strings that aren't names reads quickly: the list is read once, not
+    // searched again for every string.
+    const cost = await inFrame(() => {
+      const names = Array.from({ length: 3000 }, (_, i) => 'Student ' + i), junk = Array.from({ length: 4000 }, (_, i) => 'Nobody ' + i);
+      const t = performance.now(), s = readState({ names, groups: Array.from({ length: 100 }, () => junk), left: Array.from({ length: 100 }, () => junk).flat(), picked: junk });
+      return { ms: Math.round(performance.now() - t), names: s.names.length, groups: s.groups.length, left: s.left.length, picked: s.picked.length };
+    }, ip, 'name-picker:1');
+    ok(cost.ms < 500 && cost.names === 3000 && !cost.groups && !cost.left && !cost.picked, `3,000 names with 400,000 strings that aren’t names read in ${cost.ms} ms (${JSON.stringify(cost)})`);
     ok(!(await C(5)).length && (await tiles(ip, 'name-picker:5')).join() === 'Ava,Ben' && await text('#go', ip, 'name-picker:5') === 'Make 2 groups', 'groups that aren’t a list are dropped: the names wait as tiles, “Make 2 groups”');
     const clean = await drawNow(ip, 'name-picker:1'); await idle(ip, 'name-picker:1');
-    ok(clean.groups.length === 4 && sameList(clean.groups.flat(), ['Ava', 'Ben', 'Carlos', 'Dana', 'Ava']) && /^[a-z0-9]+-[a-z0-9]+$/.test(clean.groupId), `and the next draw is saved clean (${JSON.stringify(clean.groups)})`);
+    ok(clean.groups.length === 4 && sameList(clean.groups.flat(), ['Ava', 'Ben', 'Carlos', 'Dana', 'Ava']) && /^[a-z0-9]+-[a-z0-9]+-44$/.test(clean.groupId), `and the next draw is saved clean (${JSON.stringify(clean.groups)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ictx.close();
 
@@ -5052,6 +5154,16 @@ const SUITES = [
         if (label === 'long names in 3 groups' && w === 360) await fp.screenshot({ path: OUT + 'name-picker-groups-long-small.png' });
       }
     }
+    // A 25th name joins 6 groups of 4: its group takes another column, and every card's names stay in its middle.
+    await fp.evaluate(() => window.__board21.setMaximized('name-picker:1', false));
+    await setNames(N24, fp); await menu('groups:6', fp); await drawNow(fp); await idle(fp);
+    await setNames(N24.concat(['Xavier']), fp);
+    for (const [w, h] of [[560, 420], [900, 640]]) {
+      await fp.evaluate(([w, h]) => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w, h }), [w, h]); await fp.waitForTimeout(700);
+      const f = await fitLook(fp);
+      ok(f.cards === 6 && !f.bad.length && f.sizes.length === 1, `25 names in 6 groups, ${w}×${h}: each card's names in its middle (${f.sizes.join()}; ${f.bad.slice(0, 3).join('; ') || 'ok'})`);
+      if (w === 900) await fp.screenshot({ path: OUT + 'name-picker-groups-25-in-6.png' });
+    }
     await fp.evaluate(() => window.__board21.setMaximized('name-picker:1', false));
     await fp.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 700, h: 500 })); await fp.waitForTimeout(600);
     const fsWas = (await fitLook(fp)).fs;
@@ -5063,11 +5175,27 @@ const SUITES = [
     await openSettings(fp, ['bg']); await fp.click('#settings [data-act="accent"][data-val="purple"]'); await fp.keyboard.press('Escape'); await fp.waitForTimeout(500);
     fd = await fitLook(fp);
     ok(!fd.bad.length && fd.sizes.length === 1, `a new accent: every name still fits (${fd.sizes.join()})`);
-    await openSettings(fp, ['letters']); await fp.click('#settings [data-act="letters"][data-val="early"]'); await fp.keyboard.press('Escape'); await fp.waitForTimeout(800);
+    // Text style: the names in its letters, fitted again. Then long names in a small window, where the width sets the
+    // size, in Early readers and in Easier to read (Atkinson Hyperlegible).
+    const nameFont = () => inFrame(() => getComputedStyle(document.querySelector('.groups-name')).fontFamily, fp);
+    const letters = async val => { await openSettings(fp, ['letters']); await fp.click(`#settings [data-act="letters"][data-val="${val}"]`); await fp.keyboard.press('Escape'); await fp.waitForTimeout(800); };
+    await letters('early');
     fd = await fitLook(fp);
-    const font = await inFrame(() => getComputedStyle(document.querySelector('.groups-name')).fontFamily, fp);
-    ok(!fd.bad.length && fd.sizes.length === 1 && /Andika|Lexend|early|Comic|Atkinson/i.test(font) === /Andika|Lexend|early|Comic|Atkinson/i.test(await inFrame(() => getComputedStyle(document.body).fontFamily, fp)),
-      `Text style Early readers: the names in its letters, fitted again (${fd.sizes.join()}; ${font})`);
+    let font = await nameFont();
+    ok(!fd.bad.length && fd.sizes.length === 1 && /21Board Early Readers/.test(font), `Text style Early readers: the names in its letters, fitted again (${fd.sizes.join()}; ${font})`);
+    await setNames(LONG, fp); await menu('groups:3', fp); await drawNow(fp); await idle(fp);
+    await fp.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 360, h: 270 })); await fp.waitForTimeout(700);
+    for (const [val, label, family] of [['early', 'Early readers', /21Board Early Readers/], ['legible', 'Easier to read', /Atkinson Hyperlegible/]]) {
+      if (val !== 'early') await letters(val);
+      fd = await fitLook(fp); font = await nameFont();
+      ok(fd.cards === 3 && !fd.bad.length && fd.sizes.length === 1 && family.test(font), `${label}, long names at 360×270: in its letters, every name in its card, one size (${fd.sizes.join()}; ${font}; ${fd.bad.slice(0, 3).join('; ') || 'ok'})`);
+    }
+    // The data format names what the Name Picker saves.
+    const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
+    ok(dataDoc.includes('The Name Picker (`name-picker`) saves `{ names, left, picked, pickId, current, groups, groupId }`') && dataDoc.includes('`{ noRepeats, style, winners, groups, quick, sound }`')
+      && dataDoc.includes('`"lotto"`, or `"groups"`') && dataDoc.includes('`winners` is 1 to 6 and `groups` is 2 to 6'), 'docs/DATA-FORMAT.md gives its content and its config, Groups too');
+    const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
+    ok(readme.includes('Five styles, each in its own file: Big name, Spinning wheel, Spotlight, Lotto, and Groups.'), 'README.md names the five styles, Groups too');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await fctx.close();
   }],
@@ -7961,6 +8089,8 @@ const SUITES = [
       '21timer': 'Run the district’s classroom timer app.', '21doccam': 'Show work with the district’s document camera app.', 'zones-check-in': 'Check in on how your class feels.' };
     const offTips = Object.keys(want).filter(id => tips[id] !== want[id]);
     ok(!offTips.length, `each widget’s tooltip says what it does in one sentence that starts with a verb${offTips.length ? ': ' + offTips.map(id => `${id} “${tips[id]}”`).join(', ') : ''}`);
+    const guideTiles = JSON.parse(fs.readFileSync(path.join(ROOT, 'docs', 'teacher-guide', 'tiles.json'), 'utf8')), offGuide = guideTiles.filter(t => t.description !== tips[t.id]);
+    ok(guideTiles.length >= 15 && !offGuide.length, `the Teacher Guide’s tiles.json has each widget’s tooltip${offGuide.length ? ': ' + offGuide.map(t => `${t.id} “${t.description}”`).join(', ') : ''}`);
     const panelName = await page.evaluate(() => [document.getElementById('panel').getAttribute('aria-label'), ...['export', 'import', 'quit'].map(c => document.querySelector(`#panel [data-ctl="${c}"]`).getAttribute('aria-label'))].join(' | '));
     ok(panelName === 'Widget Picker | Export board | Import board | Quit 21Board', `screen readers hear the Widget Picker by its name, and its buttons by what they do (${panelName})`);
 

@@ -336,7 +336,7 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 - [ ] No address, CDN, font, image, or fetch from the Internet; no `http(s)://` in your own script code; no localStorage, sessionStorage, IndexedDB, or cookies (not even in comments); no alert/confirm/prompt; no autofocus; no React.
 - [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render and call `setMenu()`.
 - [ ] Anything about a student saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
-- [ ] Menu: at most 24 items, each with its own id, swatches `#hex` (at most 12 per row); `menu.set()` called again when state changes.
+- [ ] Menu: at most 24 items, each with its own id, swatches `#hex` and choices of 3 characters or fewer (at most 12 per row); `menu.set()` called again when state changes.
 - [ ] Works and reads well at `minWidth` × `minHeight` with the most items (no text under 14px) and at Fill the board (no buttons in the bottom corners, or in the top ones while the board is locked), in light and dark; only an editor's list scrolls; 48px tap targets.
 - [ ] Typing, drawing, or dragging areas: `dragFromContent: false`, `data-b21-nodrag`, or `setDragFromContent`.
 - [ ] A bigger editor uses `setMinSize(…)` and `setMinSize(null, null)`; `setSize` only after a tap and never when maximized.

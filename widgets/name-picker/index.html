@@ -173,7 +173,9 @@ window.NamePicker = {
   //   current picked[0], for copies of 21Board from before several winners (they only know names, left and current).
   //   groups  Groups: the names in each group, one list per group, in deal order; [] before the first draw. Apart
   //           from the pick round: each keeps its own.
-  //   groupId a new one with every draw of groups, made as pickId is.
+  //   groupId a new one with every draw of groups, made as pickId is, and ending with the menu's Groups number and how
+  //           many groups that made: "…-43" is Groups 4 with 3 names. (So every copy, and a reload, knows whether the
+  //           main button reads Shuffle again.)
   // Config (Board21.saveConfig): { noRepeats, style: 'name' | 'wheel' | 'spotlight' | 'lotto' | 'groups', winners: 1-6,
   //   groups: 2-6, quick, sound }. Settings, so templates keep them. A new Name Picker starts as the wheel; one from
   //   before styles keeps Big name.
@@ -191,13 +193,15 @@ window.NamePicker = {
   let mounted = null;       // the style on the stage: { id, root, api, live }
   let showing = null;       // the show running: { at (when it started), timer (ends it if the style never says) }
   let editAsked = false;    // the names list was opened here on purpose (Edit names, Add names), not just for a new picker
-  let drawnWith = 0;        // the Groups number the groups on screen were made with: while it is still the menu's, the
-                            // main button reads Shuffle again (taking names out or adding them doesn't change it)
 
+  // How many of each name `list` holds, and taking one of them (false: none left). A long list from a file is read
+  // once, not searched again for every name in it.
+  const tally = list => { const m = new Map(); for (const n of list) m.set(n, (m.get(n) || 0) + 1); return m; };
+  const takeOne = (m, n) => { const c = m.get(n); if (!c) return false; m.set(n, c - 1); return true; };
   // `list` without one of each name in `gone`.
-  const without = (list, gone) => { const out = list.slice(); for (const n of gone) { const i = out.indexOf(n); if (i >= 0) out.splice(i, 1); } return out; };
+  const without = (list, gone) => { const m = tally(gone); return list.filter(n => !takeOne(m, n)); };
   // The names of `list` that are in `names`, each student at most once, in the order of `list`.
-  const among = (names, list) => { const room = names.slice(), out = []; for (const n of list) { const i = room.indexOf(n); if (i >= 0) { room.splice(i, 1); out.push(n); } } return out; };
+  const among = (names, list) => { const m = tally(names); return list.filter(n => takeOne(m, n)); };
 
   // Saved content can come from an imported file, so it is checked before it is used: names are lines of text,
   // `left` and `picked` can only hold names that are in the list, and a pick is 1 to 6 names. Groups as picks are.
@@ -213,19 +217,17 @@ window.NamePicker = {
       groups, groupId: groups.length ? id(d.groupId) : null };
   }
   // Groups hold only names in the list, each student in one group at most, 6 groups at most, none empty. (A huge list
-  // in a file is cut short first.)
+  // in a file is cut short first.) Every student is in a group: one the groups leave out joins the smallest, the first
+  // of them, so every copy of the board reads the same groups.
   function readGroups(list, names) {
-    const room = names.slice(), out = [];
+    const room = tally(names), out = [];
     for (const g of Array.isArray(list) ? list.slice(0, 100) : []) {
       if (!Array.isArray(g)) continue;
-      const kept = [];
-      for (const n of g.slice(0, names.length + 1000)) {
-        const i = typeof n === 'string' ? room.indexOf(n.trim()) : -1;
-        if (i >= 0) kept.push(room.splice(i, 1)[0]);
-      }
+      const kept = g.slice(0, names.length + 1000).filter(n => typeof n === 'string' && takeOne(room, n.trim())).map(n => n.trim());
       if (kept.length) out.push(kept);
       if (out.length === MOST_GROUPS) break;
     }
+    if (out.length) for (const n of names) if (takeOne(room, n)) out.reduce((a, b) => b.length < a.length ? b : a).push(n);
     return out;
   }
   function readConfig(c) {
@@ -245,6 +247,12 @@ window.NamePicker = {
   const pickVisible = () => $('pick').classList.contains('on');
   const canStartOver = () => config.noRepeats && state.names.length > 0 && pool().length < state.names.length;
   const grouping = () => config.style === 'groups';
+  // The groups on screen: the menu's Groups number they were made with, and how many groups that made, from the end of
+  // groupId. Groups that don't say (from a file) count as made with the menu's number.
+  function drawnAs() {
+    const G = state.groups, m = /-([2-6])([1-6])$/.exec(state.groupId || '');
+    return m && +m[2] <= +m[1] && +m[2] >= G.length ? { with: +m[1], k: +m[2] } : { with: config.groups, k: G.length };
+  }
 
   // ---- The fair draw: every name still in has the same chance, and one pick never takes the same student twice.
   // Uniform 0 … n-1 (crypto where there is one, without the small bias a plain remainder would give).
@@ -351,9 +359,11 @@ window.NamePicker = {
     const N = state.names.length, p = pool(), k = Math.min(config.winners, p.length);
     if (grouping()) {
       // The button says what it will do: "Make 4 groups" (as many as there are names, at most), or "Shuffle again" for
-      // groups made with the menu's number. The status says what is on screen: "24 names", or "4 groups of 6 or 7".
-      const g = Math.min(config.groups, N), G = state.groups;
-      $('go').textContent = !N ? 'Add names' : showing ? 'Show now' : G.length && drawnWith === config.groups ? 'Shuffle again'
+      // groups made with the menu's number, when a tap makes as many groups as that draw did, or as are on screen. (Names
+      // added or taken out since don't change it, unless the number of groups would.) The status says what is on
+      // screen: "24 names", or "4 groups of 6 or 7".
+      const g = Math.min(config.groups, N), G = state.groups, was = drawnAs();
+      $('go').textContent = !N ? 'Add names' : showing ? 'Show now' : G.length && was.with === config.groups && (g === was.k || g === G.length) ? 'Shuffle again'
         : g === 1 ? 'Make 1 group' : `Make ${g} groups`;
       if (!showing) { $('status').textContent = !N ? '' : G.length ? groupsLine(G) : N === 1 ? '1 name' : `${N} names`; $('round').hidden = true; }
     } else {
@@ -461,8 +471,7 @@ window.NamePicker = {
   function makeGroups() {
     const names = state.names, k = Math.min(config.groups, names.length), order = draw(names.length, names.length);
     state.groups = Array.from({ length: k }, (_, g) => order.filter((_, j) => j % k === g).map(i => names[i]));
-    state.groupId = newPickId();
-    drawnWith = config.groups;
+    state.groupId = newPickId() + '-' + config.groups + k;   // (see drawnAs())
     save();
     startShow();
   }
@@ -523,9 +532,10 @@ window.NamePicker = {
   // The groups on screen, for an edited list: a name taken out leaves its group (a group left with no one goes, and the
   // ones after it move up), and a new name joins the smallest group (one of them at random).
   function regroup(names) {
-    const room = names.slice();
-    const groups = state.groups.map(g => g.filter(n => { const i = room.indexOf(n); if (i >= 0) room.splice(i, 1); return i >= 0; })).filter(g => g.length);
-    if (groups.length) for (const n of room) {
+    const room = tally(names);
+    const groups = state.groups.map(g => g.filter(n => takeOne(room, n))).filter(g => g.length);
+    if (groups.length) for (const n of names) {
+      if (!takeOne(room, n)) continue;
       const least = Math.min(...groups.map(g => g.length)), small = groups.filter(g => g.length === least);
       small[random(small.length)].push(n);
     }
@@ -605,8 +615,9 @@ window.NamePicker = {
   Board21.on('menu', id => {
     const [what, val] = String(id).split(':');
     if (what === 'style' && STYLES.some(s => s[0] === val)) {
+      skipShow();     // (a show ends first, with its own result read out, before the stage changes)
       config.style = val; saveConfig();
-      mountStyle();   // (ends a show, with the result on screen)
+      mountStyle();
       render();
     } else if (what === 'winners' && +val >= 1 && +val <= MOST) {
       skipShow(); config.winners = +val; saveConfig(); render();
@@ -639,18 +650,19 @@ window.NamePicker = {
     }
     const newPick = !!state.pickId && state.pickId !== was.pickId && state.picked.length > 0;
     const newGroups = !!state.groupId && state.groupId !== was.groupId && state.groups.length > 0;
-    if (newGroups) drawnWith = config.groups;
     const isNew = grouping() ? newGroups : newPick, made = grouping() ? state.groupId : state.pickId;
     // A pick (or groups) made just now gets its show here too (if this copy is on screen); an older one is shown as it is.
     if (isNew && Math.abs(Date.now() - pickedAt(made)) < FRESH) startShow();
     else { render(isNew ? { fade: true } : undefined); if (isNew) announce(); }
   });
   Board21.on('config', c => {
-    const was = config;
-    config = readConfig(c);
-    if (!c && !state.names.length) config.style = 'wheel';   // (reset in another copy: it starts again as a new one)
+    const next = readConfig(c);
+    if (!c && !state.names.length) next.style = 'wheel';   // (reset in another copy: it starts again as a new one)
+    const changed = ['style', 'winners', 'groups', 'noRepeats'].some(k => next[k] !== config[k]);
+    if (changed) skipShow();   // (before the change: the show's own result is read out)
+    config = next;
     if (!config.sound) Sound.stop();
-    if (config.style !== was.style || config.winners !== was.winners || config.groups !== was.groups || config.noRepeats !== was.noRepeats) { skipShow(); mountStyle(); render(); }
+    if (changed) { mountStyle(); render(); }
     else renderChrome();
   });
   Board21.on('theme', () => call('theme'));
@@ -669,9 +681,6 @@ window.NamePicker = {
   Board21.ready().then(ctx => {
     state = readState(ctx.data);
     config = readConfig(ctx.config);
-    // (The number the groups on screen were made with isn't saved: the menu's, unless there are more groups than that,
-    // as when the menu's number was lowered since.)
-    drawnWith = state.groups.length ? Math.max(state.groups.length, config.groups) : 0;
     // A brand-new Name Picker opens as the Spinning wheel. One that already has names or settings (from before there
     // were styles) keeps Big name, as it looked before.
     if (!ctx.config && !state.names.length) { config.style = 'wheel'; saveConfig(); }

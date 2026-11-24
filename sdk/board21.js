@@ -32,7 +32,7 @@
   // from the old page doesn't count.)
   if (window.Board21 && window.Board21.page === document.documentElement) return;
 
-  var SDK_VERSION = '1.4.0';
+  var SDK_VERSION = '1.5.0';
   var PROTOCOL = 1;
   var ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   var me = document.currentScript;

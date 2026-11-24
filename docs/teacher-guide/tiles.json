@@ -39,7 +39,7 @@
   "name": "Name Picker",
   "color": "#8b5cf6",
   "icon": "<svg viewBox=\"0 0 24 24\"><circle cx=\"10\" cy=\"8\" r=\"4\"/><path d=\"M3 21v-1a7 7 0 0 1 11-5.7\"/><path d=\"M17 14l1.2 2.6 2.8.4-2 2 .5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-2 2.8-.4z\"/></svg>",
-  "description": "Pick one to five names at random from your list."
+  "description": "Pick one to six names at random, or make groups."
  },
  {
   "id": "first-then-board",
