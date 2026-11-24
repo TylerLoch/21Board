@@ -17206,8 +17206,15 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         else if (fill && p.shrunk && p.w < p.room * 0.95) bad.push(`${what} was shrunk for other letters (${Math.round(p.w)} px in ${Math.round(p.room)})`);
       };
       fits('Clock time', await where('clock:1', '#time'));
-      // (The date's stack or line, in the room #day leaves inside its padding. Its sizes are set inline: not shrinking.)
+      // (The date's stack or line, in the room #day leaves inside its padding. Its sizes are set inline: not shrinking.
+      // It fills that room, in width or in height.)
       fits('Clock date', await where('clock:2', '#day > :not([hidden])'), false);
+      const dateFill = await w('clock:2').evaluate(() => {
+        const d = document.getElementById('day'), el = document.querySelector(document.getElementById('stack').hidden ? '#line' : '#stack');
+        const b = d.getBoundingClientRect(), r = el.getBoundingClientRect(), cs = getComputedStyle(d), px = k => parseFloat(cs[k]) || 0;
+        return Math.max(r.width / (b.width - px('paddingLeft') - px('paddingRight')), r.height / (b.height - px('paddingTop') - px('paddingBottom')));
+      });
+      if (!(dateFill >= .95)) bad.push(`Clock date fills ${Math.round(dateFill * 100)}% of its room`);
       fits('Timer', await where('timer:1', '#display'), false);
       fits('Calendar month', await where('calendar:1', '#title', true));
       const note = await w('notes:1').evaluate(() => { const v = document.getElementById('view'); return { sh: v.scrollHeight, ch: v.clientHeight, sw: v.scrollWidth, cw: v.clientWidth, fs: parseFloat(getComputedStyle(v).fontSize) }; });
@@ -20491,6 +20498,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const sizes = stack ? { big: fs(q('#weekday')), md: fs(q('#monthday')), yr: fs(q('#year')) } : line ? { big: fs(q('#line')), md: fs(q('#line')), yr: fs(q('#line .yr')) } : null;
       let yearBelow = null;
       if (stack) { const m = ink(q('#monthday')), y = ink(q('#year')); yearBelow = !!m && !!y && (y.y + y.b) / 2 > m.b - m.h * .2; }
+      // fill: how much of #day's room, inside its padding, the stack or line takes, in width or in height.
+      let fill = null;
+      if (stack || line) {
+        const d = q('#day'), b = d.getBoundingClientRect(), cs = getComputedStyle(d), r = q(stack ? '#stack' : '#line').getBoundingClientRect();
+        const px = k => parseFloat(cs[k]) || 0;
+        fill = Math.max(r.width / (b.width - px('paddingLeft') - px('paddingRight')), r.height / (b.height - px('paddingTop') - px('paddingBottom')));
+      }
       let where = null;
       const clocks = [dial, time].filter(Boolean);
       if (date && clocks.length) {
@@ -20501,7 +20515,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         else where = 'among the clocks';
       }
       const ob = el => vis(el) ? bx(el.getBoundingClientRect()) : null;
-      return { W: innerWidth, H: innerHeight, dial, time, t, date, parts, text, stack, line, sizes, yearBelow, where,
+      return { W: innerWidth, H: innerHeight, dial, time, t, date, parts, text, stack, line, sizes, yearBelow, fill, where,
         words: vis(q('#words')) ? ink(q('#words')) : null, wordsText: vis(q('#words')) ? q('#words').textContent : null, q: vis(q('#q')),
         badge: ob(q('#badge')), now: ob(q('#now')), arrows: Array.from(document.querySelectorAll('#dig .arrow')).filter(vis).map(ob),
         panel: q('#clock').classList.contains('panel'), clockBg: getComputedStyle(q('#clock')).backgroundColor,
@@ -20573,13 +20587,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       all: [[360, 300, 'under the digital time', 'stack'], [1000, 480, 'under the digital time', 'stack'], [480, 860, 'under the digital time', 'stack'], [1300, 420, 'under the digital time', 'line']]
     };
     const GROW = ['dd 420 560', 'all 480 860', 'all 1000 480'];
+    // More sizes, with no place to check: all three wide and short, where a fifth of the dial holds the date back, and the
+    // date alone at its default and twice that.
+    const MORE = { all: [[1600, 300], [1400, 260]], y: [[308, 140], [660, 300]] };
     // (Each mix gets a Clock of its own: a closed one would open again from the Widget Picker.)
     const layouts = async (at, opts) => {
-      const { ctx, page } = await newBoard(at, opts), got = {};
-      for (const m of Object.keys(PLACES)) {
+      const { ctx, page } = await newBoard(at, Object.assign({ viewport: { width: 1700, height: 1000 } }, opts)), got = {};
+      for (const m of ['ad', 'dd', 'all', 'y']) {
         const ik = await openClock(page);
         await mix(page, ik, m);
-        for (const [w, h] of PLACES[m]) { await size(page, ik, w, h); got[`${m} ${w} ${h}`] = await look(page, ik); }
+        for (const [w, h] of [...(PLACES[m] || []), ...(MORE[m] || [])]) { await size(page, ik, w, h); got[`${m} ${w} ${h}`] = await look(page, ik); }
       }
       await ctx.close();
       return got;
@@ -20587,21 +20604,24 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     let fri = null;
     await part('Places and sizes', async () => {
       fri = await layouts(FRI);
-      const place = [], grow = [], year = [], clash = [], leads = [];
-      for (const m of Object.keys(PLACES)) for (const [w, h, where, style] of PLACES[m]) {
+      const place = [], grow = [], year = [], clash = [], leads = [], fill = [];
+      for (const m of ['ad', 'dd', 'all', 'y']) for (const [w, h, where, style] of [...(PLACES[m] || []), ...(MORE[m] || [])]) {
         const k = `${m} ${w} ${h}`, l = fri[k], at = `${NAME[m]} ${w} × ${h}`;
-        if (l.W !== w || l.H !== h || l.where !== where || !(style === 'stack' ? l.stack : l.line)) place.push(`${at}: ${said(l)}, not ${where}, ${style}`);
+        if (where && (l.W !== w || l.H !== h || l.where !== where || !(style === 'stack' ? l.stack : l.line))) place.push(`${at}: ${said(l)}, not ${where}, ${style}`);
         if (GROW.includes(k) && !(l.sizes && l.t && l.sizes.md >= .35 * l.t - 1 && l.sizes.md < l.t)) grow.push(`${at}: ${said(l)}`);
         if (!(l.sizes && l.sizes.yr >= 11.95 && /2026/.test(l.text) && (!l.stack || l.yearBelow))) year.push(`${at}: ${l.text}, ${said(l)}`);
         const c = clashes(l);
         if (c.length) clash.push(`${at}: ${c.join(', ')}`);
-        if (!l.sizes || (l.t && !(l.sizes.big < l.t)) || (l.dial && !(l.sizes.big <= l.dial.w / 5 + .5))) leads.push(`${at}: ${said(l)}`);
+        // (Font sizes are set to 0.01 px.)
+        if (!l.sizes || (l.t && !(l.sizes.big < l.t)) || (l.dial && !(l.sizes.big <= l.dial.w / 5 + .01))) leads.push(`${at}: ${said(l)}`);
+        if (m === 'y' && !(l.W === w && l.H === h && l.fill >= .95)) fill.push(`${at}: ${l.W} × ${l.H}, ${Math.round(l.fill * 100)}%`);
       }
       ok(!place.length, `the date’s place and style at the mockups’ sizes: Analog + Date a line under at 300 × 300, a stack under at 420 × 640, beside at 720 × 420 and 1100 × 420; Digital + Date a line under at 440 × 200 and 720 × 320, a stack under at 420 × 560, beside at 1100 × 300; all three a stack under the digital time at 360 × 300, 1000 × 480, and 480 × 860, a line at 1300 × 420${place.length ? ': ' + place.join('; ') : ''}`);
       ok(!grow.length, `with room to spare the month and day grow to 35% of the time, and stay smaller: Digital + Date 420 × 560, all three 480 × 860 and 1000 × 480 (${GROW.map(k => fri[k] && fri[k].sizes ? `${Math.round(fri[k].sizes.md * 10) / 10} of ${Math.round(fri[k].t * 10) / 10}` : '-').join(', ')}${grow.length ? '; short: ' + grow.join('; ') : ''})`);
       ok(!year.length, `the year shows in every mix and size, 12 px or more, under the month and day in the stack${year.length ? ': ' + year.join('; ') : ''}`);
       ok(!clash.length, `the date never overlaps the dial, the digital time, or Time in words, and stays in the window${clash.length ? ': ' + clash.join('; ') : ''}`);
-      ok(!leads.length, `the time leads: the date’s biggest text is smaller than the time and no more than a fifth of the dial${leads.length ? ': ' + leads.join('; ') : ''}`);
+      ok(!leads.length, `the time leads: the date’s biggest text is smaller than the time and no more than a fifth of the dial, all three at 1600 × 300 and 1400 × 260 too (${['all 1600 300', 'all 1400 260'].map(k => fri[k] && fri[k].sizes && fri[k].dial ? `${Math.round(fri[k].sizes.big * 100) / 100} of ${Math.round(fri[k].dial.w / 5 * 100) / 100}` : '-').join(', ')})${leads.length ? ': ' + leads.join('; ') : ''}`);
+      ok(!fill.length, `the date alone fills its window: at 308 × 140 and 660 × 300 its stack or line takes 95% of the room’s width or height (${MORE.y.map(([w, h]) => fri[`y ${w} ${h}`] && Math.round(fri[`y ${w} ${h}`].fill * 100) + '%').join(', ')})${fill.length ? ': ' + fill.join('; ') : ''}`);
     });
 
     // ---- 3. The same every day: Wednesday, September 30 lays out as Friday, November 20, in English and in Spanish.
@@ -20609,13 +20629,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const off = [], near = (x, y) => (x == null && y == null) || (x != null && y != null && Math.abs(x - y) <= 1);
       for (const [k, a] of Object.entries(one || {})) {
         const b = two[k];
-        if (!a.where || !b || a.where !== b.where || a.stack !== b.stack || !near(a.t, b.t) || !near(a.dial && a.dial.w, b.dial && b.dial.w)) off.push(`${k}: ${said(a)} | ${b && said(b)}`);
+        if (!a.text || !b || a.where !== b.where || a.stack !== b.stack || !near(a.t, b.t) || !near(a.dial && a.dial.w, b.dial && b.dial.w) || !near(a.sizes && a.sizes.big, b.sizes && b.sizes.big)) off.push(`${k}: ${said(a)} | ${b && said(b)}`);
       }
       return off;
     };
     await part('Same every day', async () => {
       const off = sameDays(fri, await layouts(WED));
-      ok(!!fri && !off.length, `the place, the style, and the clocks’ sizes are the same on Wednesday, September 30 as on Friday, November 20 (within 1 px)${off.length ? ': ' + off.join('; ') : ''}`);
+      ok(!!fri && !off.length, `the place, the style, and the sizes of the clocks and the date are the same on Wednesday, September 30 as on Friday, November 20 (within 1 px)${off.length ? ': ' + off.join('; ') : ''}`);
       const es = { locale: 'es-US' }, off2 = sameDays(await layouts(FRI, es), await layouts(WED, es));
       ok(!off2.length, `in Spanish too: viernes, 20 de noviembre, and miércoles, 30 de septiembre${off2.length ? ': ' + off2.join('; ') : ''}`);
     });
@@ -20866,6 +20886,138 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         `a Digital window with Show date opens as Digital + Date, at the same size (${now[0]}; ${JSON.stringify(before[0])} → ${JSON.stringify(after[0])}; ${la.text})`);
       ok(now[1] === '[Show] | Analog | Digital | ✓ Date' && !lb.time && !lb.dial && /Friday/.test(lb.text || '') && same(before[1], after[1]),
         `a Date only window opens as the date alone, at the same size (${now[1]}; ${JSON.stringify(before[1])} → ${JSON.stringify(after[1])}; ${lb.text})`);
+      await ctx.close();
+    });
+
+    // ---- 11. Without the date, the clocks look as they did in 2026.11.23-4 (tests/fixtures), within 1 px: the time's
+    // size, the LCD panel beside the dial, while setting the time too, and Time in words.
+    await part('Without the date, as before', async () => {
+      const OLD = fs.readFileSync(path.join(__dirname, 'fixtures', 'clock-2026.11.23-4.html'));
+      const CASES = [['Analog + Digital', ['digital'], [[1600, 300], [1000, 480], [500, 500]]], ['Analog + Digital, LCD look', ['digital', 'led'], [[1000, 480], [1300, 420]]],
+        ['Analog + Digital, LCD look, setting the time', ['digital', 'led', 'set'], [[1000, 480]]], ['Analog + Digital, Time in words', ['digital', 'words'], [[1000, 480], [480, 860], [500, 500]]],
+        ['Digital, Time in words', ['digital', 'analog', 'words'], [[440, 260]]]];
+      const clocks = async old => {
+        const ctx = await browser.newContext({ viewport: { width: 1700, height: 1000 }, timezoneId: 'America/Chicago', locale: 'en-US', serviceWorkers: 'block' });
+        if (old) await ctx.route(/\/widgets\/clock\/index\.html(\?.*)?$/, r => r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: OLD }));
+        const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+        await page.clock.setFixedTime(FRI);
+        await page.goto(BASE); await boardUp(page); await freeBoard(page);
+        const got = {};
+        for (const [name, ids, sizes] of CASES) {
+          const ik = await openClock(page);
+          for (const id of ids) await choose(page, ik, id);
+          for (const [w, h] of sizes) {
+            await size(page, ik, w, h);
+            got[`${name} ${w} × ${h}`] = await F(page, ik, () => {
+              const q = s => document.querySelector(s), vis = el => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0;
+              const seg = q('.led-svg'), wd = q('#words');
+              let t = null;
+              if (vis(seg)) { const r = seg.getBoundingClientRect(), vb = seg.viewBox.baseVal; t = Math.min(r.width / vb.width, r.height / vb.height) * vb.height; }
+              else if (vis(q('#time'))) t = parseFloat(getComputedStyle(q('#time')).fontSize);
+              return { size: `${innerWidth} × ${innerHeight}`, t, panel: vis(seg) ? q('#dig').getBoundingClientRect().height : null, words: vis(wd) ? parseFloat(getComputedStyle(wd).fontSize) : null };
+            });
+          }
+        }
+        await ctx.close();
+        return got;
+      };
+      const was = await clocks(true), now = await clocks(false), off = [];
+      const near = (a, b) => (a == null && b == null) || (a != null && b != null && Math.abs(a - b) <= 1);
+      for (const [k, a] of Object.entries(was)) {
+        const b = now[k], r = v => v == null ? '-' : Math.round(v * 10) / 10;
+        if (!b || a.size !== b.size || !near(a.t, b.t) || !near(a.panel, b.panel) || !near(a.words, b.words))
+          off.push(`${k}: time ${r(a.t)} → ${r(b && b.t)}, panel ${r(a.panel)} → ${r(b && b.panel)}, words ${r(a.words)} → ${r(b && b.words)}`);
+      }
+      ok(Object.keys(was).length === 10 && !off.length, `without the date, the time, the LCD panel, and Time in words are as they were, within 1 px (${Object.keys(was).length} windows)${off.length ? ': ' + off.join('; ') : ''}`);
+    });
+
+    // ---- 12. Filling the board with Clock in the corner on: the date keeps clear of the board's buttons in the window's
+    // bottom corners (Board21.window corners), as the SDK asks.
+    await part('Filling the board', async () => {
+      const off = [], seen = [];
+      for (const [vw, vh, cases] of [[1366, 768, [['dd', 'words'], ['all', 'words'], ['dd'], ['all'], ['ad'], ['y']]], [1024, 768, [['all', 'words'], ['dd', 'words']]]]) {
+        const { ctx, page } = await newBoard(FRI, { viewport: { width: vw, height: vh } });
+        await setCornerClock(page, 'on');
+        for (const [m, extra] of cases) {
+          const ik = await openClock(page, 700, 500);
+          await mix(page, ik, m); if (extra) await choose(page, ik, extra);
+          await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(900);
+          const c = await F(page, ik, () => Board21.context.window.corners || null), l = await look(page, ik);
+          await page.evaluate(ik => window.__board21.deleteInstance(ik), ik); await page.waitForTimeout(300);
+          const at = `${NAME[m]}${extra ? ' with Time in words' : ''} on ${vw} × ${vh}`;
+          if (!c || !(c.height > 0 && c.right > 100)) { off.push(`${at}: no corner clock (${JSON.stringify(c)})`); continue; }
+          const zones = [[0, l.H - c.height, c.left, l.H], [l.W - c.right, l.H - c.height, l.W, l.H]];
+          const under = l.parts.some(p => zones.some(z => p.x < z[2] - 2 && p.r > z[0] + 2 && p.y < z[3] - 2 && p.b > z[1] + 2)), cl = clashes(l);
+          seen.push(`${at}: ${l.where || 'alone'}, ${l.stack ? 'stack' : 'line'}`);
+          if (under || cl.length) off.push(`${at}: ${said(l)}${under ? ', under the corner buttons' : ''}${cl.length ? ', overlaps ' + cl.join(', ') : ''}`);
+        }
+        await ctx.close();
+      }
+      ok(seen.length === 8 && !off.length, `filling the board with Clock in the corner on, the date stays clear of the board’s buttons in the corners (${seen.join('; ')})${off.length ? ': ' + off.join('; ') : ''}`);
+    });
+
+    // ---- 13. Date off and on again in a wide Analog + Date window, wider than the board is tall: the window keeps the
+    // size it took with Date off.
+    await part('Date off and on, wide', async () => {
+      const { ctx, page } = await newBoard(FRI, { viewport: { width: 1366, height: 768 } });
+      const ik = await openClock(page);
+      await mix(page, ik, 'ad'); await size(page, ik, 1150, 400);
+      const inner = () => F(page, ik, () => [innerWidth, innerHeight].join(' × '));
+      const a = await inner();
+      await choose(page, ik, 'date');
+      const b = await inner(), rb = await rectOf(page, ik);
+      await choose(page, ik, 'date');
+      const c = await inner();
+      ok(a === '1150 × 400' && b === c && rb.h <= 768, `Analog + Date 1150 × 400 on a 1366 × 768 board, Date off, then on: the window keeps the size it had with Date off (${a} → ${b}, saved ${rb.w} × ${rb.h - 40} → ${c})`);
+      await ctx.close();
+    });
+
+    // ---- 14. Dragging all three with the LCD look from 180 to 200 px wide, 1 px at a time: the date changes its place or
+    // style at most once, the year stays 12 px or more, and the dial never shrinks as the window grows.
+    await part('A narrow drag', async () => {
+      const { ctx, page } = await newBoard(FRI);
+      const ik = await openClock(page);
+      await mix(page, ik, 'all'); await choose(page, ik, 'led');
+      const steps = [];
+      for (let w = 180; w <= 200; w++) { await size(page, ik, w, 360); const l = await look(page, ik); steps.push({ w, l, k: `${l.where}, ${l.stack ? 'stack' : 'line'}` }); }
+      const changes = steps.filter((s, i) => i && s.k !== steps[i - 1].k).length;
+      const small = steps.filter(s => !(s.l.sizes && s.l.sizes.yr >= 11.95)), shrinks = steps.filter((s, i) => i && s.l.dial && steps[i - 1].l.dial && s.l.dial.w < steps[i - 1].l.dial.w - .5);
+      ok(changes <= 1 && !small.length && !shrinks.length, `all three, LCD look, 180 to 200 × 360: ${changes} change${changes === 1 ? '' : 's'} of the date’s place or style, the year 12 px or more, and the dial never smaller (${steps.map(s => `${s.w}: ${s.l.stack ? 'S' : 'L'} ${s.l.sizes && Math.round(s.l.sizes.yr * 10) / 10} d${s.l.dial && Math.round(s.l.dial.w)}`).join(' | ')})`);
+      await ctx.close();
+    });
+
+    // ---- 15. A screen reader hears the date once, in the language's own order, as the stack or as the line.
+    await part('Screen readers', async () => {
+      const off = [], seen = [];
+      for (const [locale, want] of [['ja-JP', '2026年11月20日金曜日'], ['en-US', 'Friday, November 20, 2026']]) {
+        const { ctx, page } = await newBoard(FRI, { locale });
+        for (const [m, w, h] of [['y', 308, 140], ['dd', 440, 200]]) {
+          const ik = await openClock(page); await mix(page, ik, m); await size(page, ik, w, h);
+          const l = await look(page, ik), heard = (await frameL(page, ik).locator('#day').ariaSnapshot()).replace(/\s+/g, ' ');
+          seen.push(`${locale} ${l.stack ? 'stack' : 'line'}: ${heard}`);
+          if (!heard.includes(want) || heard.split('2026').length !== 2) off.push(`${locale} ${NAME[m]}: ${heard}`);
+        }
+        await ctx.close();
+      }
+      ok(!off.length && seen.some(s => / stack:/.test(s)) && seen.some(s => / line:/.test(s)), `a screen reader hears the date in its language’s own order, once (${seen.join('; ')})${off.length ? ': off: ' + off.join('; ') : ''}`);
+    });
+
+    // ---- 16. Small windows where a stack fits with its year at 12 px: the date is that stack, not a line under 12 px.
+    await part('Small windows', async () => {
+      const { ctx, page } = await newBoard(FRI);
+      const off = [], seen = [];
+      for (const [m, extra, sizes] of [['dd', null, [[140, 140], [150, 180]]], ['dd', 'words', [[150, 180]]], ['dd', 'led', [[140, 140]]], ['all', null, [[150, 300], [170, 360]]]]) {
+        const ik = await openClock(page);
+        await mix(page, ik, m); if (extra) await choose(page, ik, extra);
+        for (const [w, h] of sizes) {
+          await size(page, ik, w, h);
+          const l = await look(page, ik), c = clashes(l), at = `${NAME[m]}${extra === 'words' ? ' with Time in words' : extra === 'led' ? ' with the LCD look' : ''} ${w} × ${h}`;
+          seen.push(`${at}: ${l.stack ? 'stack' : 'line'}, year ${l.sizes && Math.round(l.sizes.yr * 10) / 10} px`);
+          if (!(l.W === w && l.H === h && l.stack && l.sizes.yr >= 11.95 && l.sizes.big < l.t) || c.length) off.push(`${at}: ${said(l)}${c.length ? ', overlaps ' + c.join(', ') : ''}`);
+        }
+        await page.evaluate(ik => window.__board21.deleteInstance(ik), ik); await page.waitForTimeout(200);
+      }
+      ok(!off.length, `small windows where a stack fits: the date is a stack with its year at 12 px, smaller than the time, and overlapping nothing (${seen.join('; ')})${off.length ? ': off: ' + off.join('; ') : ''}`);
       await ctx.close();
     });
 

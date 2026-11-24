@@ -129,7 +129,7 @@
   /* ---- Time in words, and the date: a stack (the weekday; the month and day; the year) or one line. layout() sizes
      them. The ruler measures the date's words, 100px tall: every weekday and month, so the date gets the room of the
      longest. */
-  #words { display: flex; align-items: center; justify-content: center; box-sizing: border-box; font-weight: 600; color: var(--b21-text); white-space: nowrap; overflow: hidden; }
+  #words { display: flex; align-items: center; justify-content: center; font-weight: 600; color: var(--b21-text); white-space: nowrap; overflow: hidden; }
   #day { display: flex; align-items: center; justify-content: center; text-align: center; white-space: nowrap; overflow: hidden; box-sizing: border-box; color: var(--b21-text); }
   #stack { display: flex; flex-direction: column; align-items: center; }
   #weekday, .r-wd { font-weight: 800; line-height: 1.08; }
@@ -139,6 +139,8 @@
   #year, #line .yr { color: var(--b21-muted); }
   #ruler { position: fixed; left: -20000px; top: 0; visibility: hidden; pointer-events: none; white-space: nowrap; font-size: 100px; }
   #ruler span { position: absolute; left: 0; top: 0; }
+  /* What a screen reader hears: the date as one line, in the language's own order */
+  #said { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   /* With the LCD or LED look and no analog clock, the whole window is the panel, and the date takes its colors. */
   #clock.panel { background: var(--panel); }
   .panel #day, .panel #words { color: var(--seg); text-shadow: .03em .04em .02em var(--seg-shadow); }
@@ -165,7 +167,7 @@
       <div id="readout"><div id="q" aria-hidden="true" hidden>?</div></div>
     </div>
     <div id="words" aria-hidden="true"></div>
-    <div id="day"><div id="stack"><div id="weekday"></div><div id="monthday"></div><div id="year"></div></div><div id="line"></div></div>
+    <div id="day"><div id="stack" aria-hidden="true"><div id="weekday"></div><div id="monthday"></div><div id="year"></div></div><div id="line" aria-hidden="true"></div><span id="said"></span></div>
     <span id="badge">Set</span>
     <button id="now" type="button">Now</button>
   </div>
@@ -521,7 +523,7 @@
 
   const root = $('#clock'), ana = $('#ana'), dig = $('#dig'), readout = $('#readout');
   const qEl = $('#q'), wordsEl = $('#words'), badge = $('#badge'), nowBtn = $('#now');
-  const dayEl = $('#day'), stackEl = $('#stack'), weekdayEl = $('#weekday'), monthdayEl = $('#monthday'), yearEl = $('#year'), lineEl = $('#line');
+  const dayEl = $('#day'), stackEl = $('#stack'), weekdayEl = $('#weekday'), monthdayEl = $('#monthday'), yearEl = $('#year'), lineEl = $('#line'), saidEl = $('#said');
   const ruler = $('#ruler');
   const face = new AnalogFace();
   ana.append(face.svg);
@@ -592,7 +594,7 @@
     tick();
   }
 
-  // The window menu: headings, at most 21 items. Items in brackets in the comments show only when their condition holds.
+  // The window menu: headings, at most 20 items. Items in brackets in the comments show only when their condition holds.
   function menu() {
     const c = config, items = [
       { heading: true, label: 'Show' },
@@ -646,11 +648,15 @@
   const SIZE = { a: [.07, .09], d: [.2, .35], led: [.2, .3] }, MIN_PX = 12;
   const ST = { md: .8, yr: .6, h: 1.08 + .8 * 1.12 + .6 * 1.2 }, LINE_H = 1.2;   // the stack: sizes and height in weekdays
 
-  // What the layout needs to know: the Set badge and Now, the digital time's shape, and the date's widths in em.
+  // What the layout needs to know: the Set badge and Now, the board's buttons in the bottom corners, the digital time's
+  // shape, and the date's widths in em. Boxes here are [left, top, right, bottom].
   let refKey = null;
-  function measure() {
+  function measure(W, H) {
     const corners = setOn && timeOn ? [badge, nowBtn].filter(el => el.offsetWidth)
       .map(el => [el.offsetLeft, el.offsetTop, el.offsetLeft + el.offsetWidth, el.offsetTop + el.offsetHeight]) : [];
+    // Filling the board, the board's own buttons sit in the window's bottom corners (▦, and the clock beside one).
+    const info = Board21.context && Board21.context.window, cn = info && info.maximized && info.corners;
+    const low = cn && cn.height > 0 ? [[0, H - cn.height, cn.left, H], [W - cn.right, H - cn.height, W, H]].filter(c => c[2] > c[0]) : [];
     let emW = config.hour24 ? 2.7 : 3.6, vb = null;
     if (showD && disp && disp.vb) vb = disp.vb;
     else if (showD && disp) {
@@ -666,7 +672,7 @@
       const widest = c => Math.max(.1, ...$$('.' + c, ruler).map(em));
       dm = { wd: widest('r-wd'), md: widest('r-md'), yr: widest('r-yr'), ln: widest('r-ln') };
     }
-    return { corners, emW, vb, dm };
+    return { corners, low, emW, vb, dm };
   }
   // A box's top, moved below the Set badge or Now when one sits over it.
   const below = (r, m) => m.corners.reduce((y, c) => c[0] < r[0] + r[2] && c[2] > r[0] && c[1] < r[1] + r[3] && c[3] + 6 > y ? Math.max(y, c[3] + 6) : y, r[1]);
@@ -713,23 +719,26 @@
   function digitalIn(o, W, H, m) {
     let D = o.D;
     const wide = W > H, module = config.led && showA;
-    // Beside the dial, the LCD or LED panel keeps a margin on every side but the dial's, which has its own.
+    // Beside the dial, the LCD or LED panel keeps a margin on every side but the dial's, which has its own. (Not rounded,
+    // so the time grows steadily with the window.)
     if (module) {
-      const g = Math.round(Math.min(W, H) * .045), l = wide ? 0 : g, t = wide ? g : 0;
+      const g = Math.min(W, H) * .045, l = wide ? 0 : g, t = wide ? g : 0;
       D = [D[0] + l, D[1] + t, D[2] - l - g, D[3] - t - g];
     }
-    // The padding of a 2.2:1 window, top, right, bottom, and left. Right under the time, the date gets close, as the
-    // old Show date was.
-    const k = Math.max(0, Math.min(D[3], D[2] / 2.2)), pad = [.11 * k, .088 * k, .11 * k, .088 * k];
+    // The padding, top, right, bottom, and left: 5% and 4% of the width, as before. With the date, a box wider than 2.2:1
+    // pads as a 2.2:1 box of its height, and right under the time the date gets close, as the old Show date was.
+    const k = !showY ? D[2] / 2.2 : Math.max(0, Math.min(D[3], D[2] / 2.2)), pad = [.11 * k, .088 * k, .11 * k, .088 * k];
     const Y = o.Y;
     if (Y && !module && under(Y, D)) pad[2] = pad[0] * .2;
     const v = setOn ? 104 : pad[0] + pad[2];   // (setting the time: rows for the arrows instead)
     const w = D[2] - pad[1] - pad[3];
-    // Side by side with the dial, the panel hugs the digits and sits centered in its place, like an LCD module.
+    // Side by side with the dial, the panel hugs the digits and sits centered in its place, like an LCD module. (Without
+    // the date, as tall as before.)
     if (module && wide && m.vb) {
-      const lo = below(D, m), hi = D[1] + D[3], need = Math.min(hi - lo, w * m.vb[3] / m.vb[2] + v);
+      const lo = below(D, m), hi = D[1] + D[3], r = m.vb[3] / m.vb[2];
+      const need = Math.min(hi - lo, !showY ? D[2] * (.2 + .92 * r) + (setOn ? 104 : 0) : w * r + v);
       const top = Math.min(Math.max(D[1] + (D[3] - need) / 2, lo), hi - need);
-      D = [D[0], Math.round(top), D[2], Math.round(need)];
+      D = [D[0], top, D[2], need];
     }
     const h = D[3] - v;
     o.D = D; o.pad = pad;
@@ -749,19 +758,35 @@
       : o.where === 'alone' ? [E, across(Y[2]), E, across(Y[2])] : [near, across(Y[2]), E, across(Y[2])];
     mg[0] = Math.max(mg[0], below(Y, m) - Y[1]);
     o.mg = mg;
+    dateSize(o, m, style, small);
+    // Filling the board, the date keeps clear of the board's buttons in the bottom corners: where it would reach one,
+    // its room ends 8 px above them.
+    const top = Math.min(...m.low.map(c => c[1])) - 8;
+    if (Y[1] + Y[3] - mg[2] > top && m.low.some(c => reaches(o, c))) { mg[2] = Y[1] + Y[3] - top; dateSize(o, m, style, small); }
+  }
+  // The date's size in the room its margins leave.
+  function dateSize(o, m, style, small) {
+    const Y = o.Y, A = o.A, D = o.D, mg = o.mg;
     const w = Y[2] - mg[1] - mg[3], h = Y[3] - mg[0] - mg[2];
     if (o.where === 'alone') { o.date = dateFill(w, h, m.dm); return; }
     // The month and day: readable at lo and 12 px, and as big as hi with room to spare, its biggest text never more
     // than a fifth of the dial. (small: a window too small for that, as big as one line can be across it.) A stack
     // needs its year (ST.yr / ST.md of it) at 12 px too, and may grow for that while its weekday stays under 40% of
-    // the time and a fifth of the dial.
+    // the time and a fifth of the dial. Where 40% is too small for that, the weekday may reach 60% of the time.
     const stack = style === 'stack', k = stack ? ST.md : 1, cap = A ? .2 * o.d * k : Infinity;
     const [lo, hi] = D ? (config.led ? SIZE.led : SIZE.d).map(s => s * o.t) : SIZE.a.map(s => s * o.d);
     const read = small ? Math.min(MIN_PX, o.W * .9 / m.dm.ln) : Math.max(lo, MIN_PX), most = Math.max(read, Math.min(hi, cap));
-    const need = stack ? Math.max(read, MIN_PX * ST.md / ST.yr) : read, grow = Math.max(most, Math.min(D ? .4 * o.t * k : Infinity, cap));
+    const year = MIN_PX * ST.md / ST.yr, lead = !D ? Infinity : stack ? Math.max(.4 * o.t * k, Math.min(year, .6 * o.t * k)) : .4 * o.t;
+    const need = stack ? Math.max(read, year) : read, grow = Math.max(most, Math.min(lead, cap));
     const f = dateAt(style, 1, m.dm), fit = Math.max(0, Math.min(w / f.ew, h / f.eh)) * k;
     const md = Math.min(Math.max(most, need), fit);
     o.date = Object.assign(f, { md, size: md / k, fits: fit >= need - .01, ok: need <= grow + .01 });
+  }
+  // Whether the date, centered in its room, comes within 8 px of the box c.
+  function reaches(o, c) {
+    const Y = o.Y, mg = o.mg, f = o.date, w = f.ew * f.size, h = f.eh * f.size;
+    const x = Y[0] + mg[3] + (Y[2] - mg[1] - mg[3] - w) / 2, y = Y[1] + mg[0] + (Y[3] - mg[0] - mg[2] - h) / 2;
+    return x < c[2] + 8 && x + w > c[0] - 8 && y < c[3] + 8 && y + h > c[1] - 8;
   }
 
   // The date's shape as a stack or one line: its biggest text's size, and its width and height in that size.
@@ -841,7 +866,7 @@
   function layout() {
     const W = innerWidth, H = innerHeight;
     if (!W || !H) return;
-    const o = settle(choose(W, H, measure()));
+    const o = settle(choose(W, H, measure(W, H)));
     root.classList.toggle('wide', showA && showD && W > H);   // (analog and digital side by side)
     const place = (el, r) => { if (r) Object.assign(el.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px' }); };
     place(ana, o.A); place(dig, o.D); place(dayEl, o.Y);
@@ -855,12 +880,22 @@
       dayEl.style.padding = o.mg.map(v => v.toFixed(1) + 'px').join(' ');
     }
     wordsEl.hidden = !o.L;
-    // (With the date beside, Time in words is the last line in its column: it sits a little higher, clear of the edge.)
-    if (o.L) { place(wordsEl, o.L); wordsEl.style.paddingBottom = Math.round(o.L[3] * (o.where === 'side' ? .3 : .12)) + 'px'; fitWords(); }
+    // With the date, Time in words keeps to its line, padding and all, clear of the date. (With the date beside, it's the
+    // last line in its column: it sits a little higher, clear of the edge.) Without the date, it's as before.
+    if (o.L) {
+      wordsEl.style.boxSizing = showY ? 'border-box' : '';
+      place(wordsEl, o.L); wordsEl.style.paddingBottom = Math.round(o.L[3] * (o.where === 'side' ? .3 : .12)) + 'px'; fitWords();
+    }
     readout.style.paddingLeft = readout.style.paddingRight = ''; nudge = 0;
     fit();
   }
   addEventListener('resize', layout);
+  // Filling the board, the board's buttons come and go in the bottom corners with no change of size.
+  let lowKey = '';
+  Board21.on('resize', i => {
+    const c = i && i.maximized && i.corners, k = c ? [c.left, c.right, c.height].join() : '';
+    if (k !== lowKey) { lowKey = k; layout(); }
+  });
 
   function fitWords() {
     const el = wordsEl, H = el.clientHeight, W = el.clientWidth;
@@ -870,8 +905,9 @@
     if (span && span.offsetWidth > W * .94) el.style.fontSize = Math.max(8, H * .62 * W * .94 / span.offsetWidth) + 'px';
   }
 
-  // Today's date in the window's language: the stack's three lines and the line, its year muted. The ruler gets every
-  // weekday and month too, so the layout can make room for the longest.
+  // Today's date in the window's language: the stack's three lines and the line, its year muted. A screen reader hears
+  // the line, once, in the language's own order. The ruler gets every weekday and month too, so the layout can make room
+  // for the longest.
   const LINE = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
   const fmt = (d, o) => d.toLocaleDateString(Board21.context ? Board21.context.locale : undefined, o);
   let dateYear = 0;
@@ -885,6 +921,7 @@
       s.className = 'yr'; s.textContent = p.value;
       lineEl.append(s);
     }
+    saidEl.textContent = lineEl.textContent;
     ruler.textContent = '';
     const add = (c, t, k) => { const s = document.createElement('span'); s.className = c; s.textContent = t; if (k != null) s.dataset.k = k; ruler.append(s); };
     dateYear = d.getFullYear();
