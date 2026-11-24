@@ -21263,7 +21263,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(!f.length, `no flips through all of that (${f.join(', ') || 'none'})`);
     });
 
-    // ---- 3. Advanced keys on and off near the switch, and at 900 × 600: no flip; side by side, the keys keep their size.
+    // ---- 3. Advanced keys on and off near the switch, and at 900 × 600: no flip; the keys keep their size, and the canvas
+    // its steps, side by side and stacked.
     let Hs = 0;
     await part('Advanced keys never flip it', async () => {
       // Where it switches at 700 px wide, from side by side, 10 px at a time.
@@ -21280,24 +21281,52 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         const L2 = await look(), c2 = await content(), k2 = Math.min(L2.kw, L2.kh), f = await flips();
         ok(L0.layout === want && L1.layout === want && L2.layout === want && !f.length && L1.n === 31 && L1.keyMin >= 44,
           `700 × ${h}, ${want === 'side' ? 'side by side' : 'stacked'}: Advanced keys on and off, it stays ${want === 'side' ? 'side by side' : 'stacked'} (${[L0, L1, L2].map(l => l.layout).join(', ')}; flips: ${f.join(', ') || 'none'})`);
-        ok((want === 'stack' || Math.abs(k1 - k0) <= 1.5) && Math.abs(k2 - k0) <= 1 && c2.w === c0.w && c2.h === c0.h,
-          `and the keys keep their size: ${r1(k0)}, ${r1(k1)} with Advanced keys, ${r1(k2)} after (${c0.w} × ${c0.h}, then ${c2.w} × ${c2.h})`);
+        ok(Math.abs(k1 - k0) <= 1.5 && L1.player && Math.abs(k2 - k0) <= 1 && c2.w === c0.w && c2.h === c0.h,
+          `and the keys keep their size: ${r1(k0)}, ${r1(k1)} with Advanced keys, ${r1(k2)} after; the canvas keeps its steps (${L1.player ? 'shown' : 'hidden'}; ${c0.w} × ${c0.h}, then ${c2.w} × ${c2.h})`);
+      }
+      // Stacked just past the switch: Advanced keys make the window taller, so the keys keep their size and the canvas its
+      // steps. Turned off, the window is its own size again.
+      for (const [w, h] of [[640, 670], [620, 660], [700, 730], [900, 840]]) {
+        await size(w, 600); await size(w, h, 600); await watch();
+        const L0 = await look(), c0 = await content(), k0 = Math.min(L0.kw, L0.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L1 = await look(), c1 = await content(), k1 = Math.min(L1.kw, L1.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L2 = await look(), c2 = await content(), f = await flips();
+        ok(L0.layout === 'stack' && L0.player && L1.layout === 'stack' && L1.player && L1.n === 31 && c1.h > c0.h && Math.abs(k1 - k0) <= 1.5,
+          `${w} × ${h}, stacked: Advanced keys make it taller (${c1.w} × ${c1.h}), each key as big as before (${r1(k1)}, was ${r1(k0)}), and the canvas keeps its steps (${L1.player ? 'shown' : 'hidden'})`);
+        ok(L2.layout === 'stack' && c2.w === c0.w && c2.h === c0.h && !f.length, `and off: ${c2.w} × ${c2.h} again, still stacked (flips: ${f.join(', ') || 'none'})`);
+      }
+      // With History beside the keys, Advanced keys never push the canvas above them: History widens as the window grows.
+      // History turned on in a 1000 × 640 window, which widens it; and a window 1250 × 560 with History on.
+      for (const [w, h, sized] of [[1000, 640, false], [1250, 560, true]]) {
+        if (sized) { await set('History', true); await size(w, h, 600); } else { await size(w, h, 600); await choose('History'); }
+        await watch();
+        const L0 = await look(), c0 = await content(), k0 = Math.min(L0.kw, L0.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L1 = await look(), c1 = await content(), k1 = Math.min(L1.kw, L1.kh);
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L2 = await look(), c2 = await content(), f = await flips();
+        ok(L0.layout === 'side' && !!L0.hist && L1.layout === 'side' && !!L1.hist && L1.n === 31 && c1.h > c0.h && k1 >= .8 * k0 && L2.layout === 'side' && c2.w === c0.w && c2.h === c0.h && !f.length,
+          `${w} × ${h}${sized ? ' with History' : `, then History (${c0.w} × ${c0.h})`}, then Advanced keys: taller (${c1.w} × ${c1.h}), still side by side, each key ${r1(k1)}, was ${r1(k0)}; off: ${c2.w} × ${c2.h} (${[L0, L1, L2].map(l => l.layout).join(', ')}; flips: ${f.join(', ') || 'none'})`);
+        await choose('History');
       }
     });
 
-    // ---- 4. Dragging the window's bottom edge across the switch, a finger's few px back now and then: it switches once.
+    // ---- 4. Dragging the window's bottom edge, or its right edge, across the switch, a finger's few px back now and then:
+    // it switches once.
     await part('A drag switches once', async () => {
       await size(700, 600, 600); await front(); await watch();
-      const drag = async (from, to) => {
-        const g = await page.locator(`.win[data-ikey="${ik}"] .grip.s`).boundingBox();
-        const x = g.x + g.width / 2, y0 = g.y + g.height / 2, dir = Math.sign(to - from);
-        await page.mouse.move(x, y0); await page.mouse.down();
-        let y = y0;
-        while ((to - from) * (y0 + (to - from) - y) > 0) {
-          y += 8 * dir; await page.mouse.move(x, y); await page.waitForTimeout(34);
-          y -= 4 * dir; await page.mouse.move(x, y); await page.waitForTimeout(34);
+      const drag = async (from, to, grip = 's') => {
+        const g = await page.locator(`.win[data-ikey="${ik}"] .grip.${grip}`).boundingBox();
+        const x0 = g.x + g.width / 2, y0 = g.y + g.height / 2, dir = Math.sign(to - from), at = d => grip === 's' ? [x0, y0 + d] : [x0 + d, y0];
+        await page.mouse.move(...at(0)); await page.mouse.down();
+        let d = 0;
+        while ((to - from) * ((to - from) - d) > 0) {
+          d += 8 * dir; await page.mouse.move(...at(d)); await page.waitForTimeout(34);
+          d -= 4 * dir; await page.mouse.move(...at(d)); await page.waitForTimeout(34);
         }
-        await page.mouse.move(x, y0 + (to - from)); await page.waitForTimeout(80); await page.mouse.up(); await page.waitForTimeout(500);
+        await page.mouse.move(...at(to - from)); await page.waitForTimeout(80); await page.mouse.up(); await page.waitForTimeout(500);
       };
       await drag(600, 860);
       let c = await content(), f = await flips(), L = await look();
@@ -21305,6 +21334,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await watch(); await drag(860, 600);
       c = await content(); f = await flips(); L = await look();
       ok(c.h < 640 && L.layout === 'side' && f.length === 1 && f[0] === 'stack→side', `and back to ${c.w} × ${c.h}: side by side again, once (${f.join(', ') || 'no switch'})`);
+      // The right edge, 600 px tall: narrower than the canvas beside the keys allows, and back.
+      await size(700, 600, 600); await front(); await watch(); await drag(700, 560, 'e');
+      c = await content(); f = await flips(); L = await look();
+      ok(c.w < 580 && L.layout === 'stack' && f.length === 1 && f[0] === 'side→stack', `the right edge from 700 × 600 to ${c.w} × ${c.h}: it stacks once (${f.join(', ') || 'no switch'})`);
+      await watch(); await drag(560, 700, 'e');
+      c = await content(); f = await flips(); L = await look();
+      ok(c.w > 680 && L.layout === 'side' && f.length === 1 && f[0] === 'stack→side', `and back to ${c.w} × ${c.h}: side by side again, once (${f.join(', ') || 'no switch'})`);
     });
 
     // ---- 5. The sweep: wide to tall and wide to narrow, Basic and Advanced keys, History off and on. Every key 44 px or
@@ -21328,7 +21364,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
             if (h >= 1.2 * w && L.layout !== 'stack') tallSide.push(at);
             if (L.layout === 'side' && L.kh / L.kw > worstSide.r) worstSide = { r: L.kh / L.kw, at, k: kdim(L) };
             if (L.layout === 'stack' && L.card && L.kw / L.kh > worstStack.r) worstStack = { r: L.kw / L.kh, at, k: kdim(L) };
-            if (!adv && !hist && w >= 620 && L.layout === 'stack' && L.card && !L.player) noSteps.push(at);
+            if (!hist && w >= 620 && L.layout === 'stack' && L.card && !L.player) noSteps.push(at);
           }
           // Where it switches, and each key's shape either side.
           const sw = rows.slice(1).map((r, i) => [rows[i], r]).filter(([a, b]) => a.layout !== b.layout).map(([a, b]) => `${a.w} × ${a.h} ${a.layout} ${kdim(a)} → ${b.w} × ${b.h} ${b.layout} ${kdim(b)}`);
@@ -21374,6 +21410,32 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await page.waitForTimeout(1500); await watch(); await page.waitForTimeout(1200);
       c = await content(); L = await look(); f = await flips();
       ok(c.w === 900 && c.h === 600 && L.layout === 'side' && !f.length, `Reset: 900 × 600, side by side, and it stays so (${c.w} × ${c.h}, ${L.layout}; flips: ${f.join(', ') || 'none'})`);
+      // Near the switch, a window sits where it was. History on and off, Fill the board and back, and the canvas off and on
+      // leave it there, at its own size.
+      const trip = async (w, h, from, what) => {
+        await size(w, from, 600); await size(w, h, 600);
+        const L0 = await look(), c0 = await content(), seen = [];
+        if (what.includes('History')) { await choose('History'); seen.push((await look()).layout); await choose('History'); seen.push((await look()).layout); }
+        if (what.includes('Fill')) {
+          await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(900); seen.push((await look()).layout);
+          await page.evaluate(ik => window.__board21.setMaximized(ik, false), ik); await page.waitForTimeout(900); seen.push((await look()).layout);
+        }
+        if (what.includes('Canvas')) { await choose('Canvas'); await choose('Canvas'); seen.push((await look()).layout); }
+        await page.waitForTimeout(300);
+        const L1 = await look(), c1 = await content();
+        ok(L1.layout === L0.layout && c1.w === c0.w && c1.h === c0.h, `${w} × ${h}, reached from ${w} × ${from} (${L0.layout === 'side' ? 'side by side' : 'stacked'}): ${what.join(', ')}, then still ${L1.layout === 'side' ? 'side by side' : 'stacked'} at ${c1.w} × ${c1.h} (on the way: ${seen.join(', ')})`);
+      };
+      await trip(700, 697, 600, ['History', 'Fill', 'Canvas']);
+      await trip(700, 697, 800, ['History', 'Fill']);
+      await trip(640, 660, 560, ['History', 'Fill', 'Canvas']);
+      await trip(640, 660, 800, ['History', 'Fill', 'Canvas']);
+      // The canvas turned on in a window about as wide as tall widens it, side by side, as before. (From a stacked one.)
+      await size(700, 800, 600); await set('Canvas', false); await size(700, 700, 600);
+      await choose('Canvas'); c = await content(); L = await look();
+      ok(L.layout === 'side' && c.w > 1200 && c.h === 700, `the canvas on in a 700 × 700 window: wider (${c.w} × ${c.h}), side by side (${L.layout})`);
+      await choose('Canvas'); c = await content();
+      ok(c.w === 700 && c.h === 700, `and off: 700 × 700 again (${c.w} × ${c.h})`);
+      await set('Canvas', true);
     });
 
     // ---- 7. Fill the board stays side by side: a 16:9 board, and the screen at 1366 × 768 and 1920 × 1080, History off and on.
@@ -21397,6 +21459,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
       const readme = read('README.md').replace(/\s+/g, ' '), sec = readme.slice(readme.indexOf('## Calculator'), readme.indexOf('## ', readme.indexOf('## Calculator') + 5));
       ok(/\btall or narrow window/i.test(sec) && /canvas moves above (?:the keys|them)/.test(sec), 'the README’s Calculator section says the canvas moves above the keys in a tall or narrow window');
+      ok(sec.includes('Turning on History or the canvas widens the window, where the board has room. In a tall window, the canvas goes above the keys. Advanced keys make it taller.') && !/above the keys instead/.test(sec),
+        'the README: in a tall window, turning on the canvas puts it above the keys; History still widens it');
       const man = read('docs/calculator-manual/page-src.html');
       ok(man.includes('<h3>Tall or narrow windows</h3>') && !man.includes('<h3>Narrow windows</h3>'), 'the manual’s card is “Tall or narrow windows”');
       ok(stamped(), STAMPED);
