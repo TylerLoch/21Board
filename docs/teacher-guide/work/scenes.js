@@ -165,7 +165,7 @@ SCENES.heroDark = async () => {
   await ctx.close();
 };
 
-// ---- 3. picker.jpg: the Widget Picker, all 16 tiles
+// ---- 3. picker.jpg: the Widget Picker, all 17 tiles
 SCENES.picker = async () => {
   const { ctx, p } = await newBoard();
   await pickerOpen(p, 'left');
@@ -326,6 +326,21 @@ SCENES['w-clock-led'] = async () => {
   await wait(p, 800);
   await p.waitForFunction(() => Date.now() % 1000 > 400 && Date.now() % 1000 < 700, null, { polling: 20 });   // (no segment mid-fade)
   await shot(p, 'w-clock-led.jpg', await around(p, ik, 24));
+  await ctx.close();
+};
+
+// The Weather card: Large, on a school morning before 2 PM (Tue Dec 1, the tests' answers moved 8 days), so What to
+// wear opens on Today with Wednesday a tap away.
+SCENES['w-weather'] = async () => {
+  const { ctx, p, blocked } = await newBoard({ at: Date.parse('2026-12-01T11:50:00-06:00'), weatherDays: 8 });
+  const ik = await addWin(p, 'weather');
+  await setRect(p, ik, { x: 650, y: 285, w: 1100, h: 720 });   // (Large: its content under 1300 × 760)
+  await wait(p, 3000);   // (the answers in, the sky drawn)
+  await deselect(p);
+  await wait(p, 300);
+  log('  text', JSON.stringify((await frame(p, ik).locator('#app').innerText()).replace(/\s+/g, ' ').slice(0, 160)));
+  await shot(p, 'w-weather.jpg', await around(p, ik, 24));
+  if (blocked.length) log('  blocked', JSON.stringify(blocked.slice(0, 10)));
   await ctx.close();
 };
 

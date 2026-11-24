@@ -91,6 +91,13 @@
   "description": "Work out problems and show each step."
  },
  {
+  "id": "weather",
+  "name": "Weather",
+  "color": "#0369a1",
+  "icon": "<svg viewBox=\"0 0 24 24\"><circle cx=\"9\" cy=\"9\" r=\"3.2\"/><path d=\"M9 2.8v1.4M2.8 9h1.4M4.6 4.6l1 1M13.4 4.6l-1 1\"/><path d=\"M8.5 19.5h9a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6 1 3 3 0 0 0 .2 6z\"/></svg>",
+  "description": "See the weather and what to wear."
+ },
+ {
   "id": "21sketch",
   "name": "21Sketch",
   "color": "#4f46e5",
