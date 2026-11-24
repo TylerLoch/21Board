@@ -189,7 +189,7 @@ Board21.on('menu', id => { /* an item was tapped */ });
 Board21.menu.clear();
 ```
 
-Two extras for grouping choices (see `widgets/notes`):
+Three extras for grouping choices (see `widgets/notes` and `widgets/name-picker`):
 
 ```js
 Board21.menu.set([
@@ -200,18 +200,24 @@ Board21.menu.set([
     { id: 'color:yellow', label: 'Yellow', color: '#fef08a', checked: true },
     { id: 'color:blue', label: 'Blue', color: '#bfdbfe' },
     { id: 'chalk:white', label: 'White chalk', color: '#f4f7f2', background: '#2f4a3a' }  // background: shown around the color
+  ] },
+  { id: 'size', label: 'Size', choices: [                          // one row of short choices, drawn like swatches
+    { id: 'size:1', label: '1', checked: true },
+    { id: 'size:2', label: '2' }
   ] }
 ]);
 ```
 
-Tapping a swatch sends its `id` to `Board21.on('menu', …)` like any item. Colors must be `#hex`,
+A row of choices is for numbers and other short labels. A label shows up to 3 characters.
+
+Tapping a swatch or a choice sends its `id` to `Board21.on('menu', …)` like any item. Colors must be `#hex`,
 `rgb()`, or `hsl()`. A heading and the items under it, up to a separator or the next heading, are one group
 for screen readers, named by the heading ("Theme, Dark, not checked"). So a short label like `'3'` is fine
 under a heading that says what it is. The menu works from the keyboard too: the arrow keys, Home, and End move
 between items, and Enter chooses one.
 
 Call `menu.set()` again whenever an item's state changes. Icons must be inline `<svg>`; scripts
-and links are stripped. Up to 24 items. A swatch row counts as one and holds up to 12 colors.
+and links are stripped. Up to 24 items. A row of swatches or choices counts as one and holds up to 12.
 
 ### Events
 

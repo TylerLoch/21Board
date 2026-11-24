@@ -224,11 +224,19 @@
         { id: 'chalk:white', label: 'White chalk', color: '#f4f7f2', background: '#2f4a3a' }
       ] }
     ],
+    choices: [
+      { heading: true, label: 'Size' },
+      { id: 'size', label: 'Size', choices: [
+        { id: 'size:1', label: '1', checked: true },
+        { id: 'size:2', label: '2' },
+        { id: 'size:3', label: '3' }
+      ] }
+    ],
     icon: [
       { id: 'options', label: 'Options…', icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>' }
     ]
   };
-  const EXAMPLE_NAMES = { checkmarks: 'Checkmarks', heading: 'Heading', swatches: 'Swatches', icon: 'Icon' };
+  const EXAMPLE_NAMES = { checkmarks: 'Checkmarks', heading: 'Heading', swatches: 'Swatches', choices: 'Choices', icon: 'Icon' };
 
   // ---- Events, and what a handler gets.
   const EVENTS = ['data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose', 'file', 'timers'];
