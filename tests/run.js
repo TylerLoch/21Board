@@ -20155,7 +20155,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       [/the steps start over and a hidden answer/, 'two clauses'],
       [/open this file in a browser or paste it/, 'two things to do'],
       [/doesn['’]t show it or cache it/, 'two verbs'],
-      [/theme, light or dark/, 'the theme, then its two choices']];
+      [/theme, light or dark/, 'the theme, then its two choices'],
+      [/With no room at all, it hides and stays ticked/, 'a phrase, then two verbs']];
     const texts = [];   // { where, text }
     const add = (where, text) => texts.push({ where, text: String(text || '') });
     for (const w of await B(() => window.__board21.catalog().map(w => ({ id: w.id, d: w.description })))) add(`the registry, ${w.id}`, w.d);
@@ -23913,19 +23914,20 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
           `${w} × ${h}, Canvas off: the display above the keys, as today (keys ${r1(L.keys.w)} × ${r1(L.keys.h)}, today ${r1(o.w)} × ${r1(o.h)}, in ${L.vw} × ${L.vh})`);
         await set('Canvas', true);
       }
-      // Swap sides, side by side: the keys, then the canvas. Stacked, with History: History, then the canvas above the keys.
+      // Swap sides, side by side: the keys, then the canvas. Stacked, with History: History across the top (2026.11.24-5), then
+      // the canvas above the keys.
       await size(900, 600); await choose('Swap sides'); let L = await look();
       ok(L.layout === 'side' && L.card && L.keys.r <= L.card.x + 1, `Swap sides at 900 × 600: the keys, then the canvas (${L.layout})`);
       await size(...TYLER); await choose('History'); L = await look();
-      ok(L.layout === 'stack' && above(L) && !!L.hist && L.hist.r <= L.card.x + 1 && L.hist.r <= L.keys.x + 1, `Swap sides in Tyler’s window, with History: History on the left, the canvas above the keys (${L.layout})`);
+      ok(L.layout === 'stack' && above(L) && !!L.hist && L.hist.b <= L.card.y + 1 && L.hist.w >= L.card.w - 1, `Swap sides in Tyler’s window, with History: History across the top, the canvas above the keys (${L.layout})`);
       await choose('History'); await choose('Swap sides');
-      // Canvas and History off and on: no flip, and the window keeps its size.
+      // Canvas and History off and on: no flip, and the window keeps its size. (History goes across the top: 2026.11.24-5.)
       await size(...TYLER, 600); await watch();
       const c0 = await content();
       await choose('Canvas'); await choose('Canvas'); let c = await content(); L = await look();
       ok(L.layout === 'stack' && above(L) && c.w === c0.w && c.h === c0.h, `Tyler’s window, Canvas off and on: the canvas back above the keys, the window still ${c.w} × ${c.h}`);
       await choose('History'); const ch = await content(); const Lh = await look(); await choose('History'); c = await content(); L = await look();
-      ok(Lh.layout === 'stack' && ch.w > c0.w && L.layout === 'stack' && c.w === c0.w && c.h === c0.h, `History on and off: wider (${ch.w}), still stacked, then ${c.w} × ${c.h} again`);
+      ok(Lh.layout === 'stack' && ch.w === c0.w && L.layout === 'stack' && c.w === c0.w && c.h === c0.h, `History on and off: the same width (${ch.w}), still stacked, then ${c.w} × ${c.h} again`);
       let f = await flips();
       ok(!f.length, `no flips (${f.join(', ') || 'none'})`);
       // Reset: a new window, 900 × 600, side by side, and it stays so.
@@ -23982,10 +23984,421 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
       const readme = read('README.md').replace(/\s+/g, ' '), sec = readme.slice(readme.indexOf('## Calculator'), readme.indexOf('## ', readme.indexOf('## Calculator') + 5));
       ok(/\btall or narrow window/i.test(sec) && /canvas moves above (?:the keys|them)/.test(sec), 'the README’s Calculator section says the canvas moves above the keys in a tall or narrow window');
-      ok(sec.includes('Turning on History or the canvas widens the window, where the board has room. In a tall window, the canvas goes above the keys. Advanced keys make it taller.') && !/above the keys instead/.test(sec),
+      ok(sec.includes('Turning on History or the canvas widens the window, where the board has room. In a tall window, the canvas goes above the keys, and History across the top. Advanced keys make the window taller.') && !/above the keys instead/.test(sec),
         'the README: in a tall window, turning on the canvas puts it above the keys; History still widens it');
       const man = read('docs/calculator-manual/page-src.html');
       ok(man.includes('<h3>Tall or narrow windows</h3>') && !man.includes('<h3>Narrow windows</h3>'), 'the manual’s card is “Tall or narrow windows”');
+      ok(stamped(), STAMPED);
+    });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
+  ['Calculator: History across the top in a tall window (2026.11.24-5)', async (browser) => {
+    const errors = [];
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const r1 = n => Math.round(n * 10) / 10, kdim = L => `${r1(L.kw)} × ${r1(L.kh)}`, kmin = L => Math.min(L.kw, L.kh);
+    const clampN = (lo, v, hi) => Math.max(lo, Math.min(v, hi));
+    const padOf = (w, h) => clampN(8, Math.min(w, h) * .02, 28);
+    // Layout numbers recorded from the old code (b540c11), to the hundredth of a px: the window, History, the keys, the 7
+    // key, and the canvas. RECORD=1 prints them instead of checking them.
+    const RECORD = !!process.env.RECORD;
+    const OLD = {
+      'new 900 × 600, History on': '1268×600 in 1268×600 | hist 896.00,12.00,360.00,576.00 | keys 537.73,12.00,350.47,576.00 | 7 81.77×89.50 | canvas 12.00,12.00,517.94,576.00',
+      '960 × 600 with History': '960×600 in 960×600 | hist 600.00,12.00,348.00,576.00 | keys 360.13,12.00,232.08,576.00 | 7 52.17×89.50 | canvas 12.00,12.00,340.33,576.00',
+      '1000 × 640, History on': '1392×640 in 1392×640 | hist 995.20,12.80,384.00,614.41 | keys 597.27,12.80,389.63,614.41 | 7 91.17×95.48 | canvas 12.80,12.80,576.16,614.41',
+      'Fill, 16:9 board at 1366 × 768': '2401×1310 | hist 1894.81,26.19,480.00,1165.81 | keys 1137.78,26.19,741.03,1165.81 | 7 173.25×180.97 | canvas 26.19,26.19,1095.59,1165.81',
+      'Fill, screen-size board at 1366 × 768': '1366×728 | hist 914.45,14.55,437.00,632.00 | keys 548.84,14.55,356.16,632.00 | 7 81.94×97.45 | canvas 14.55,14.55,524.84,632.00',
+      'Fill, screen-size board at 1920 × 1080': '1920×1040 | hist 1419.20,20.80,480.00,933.69 | keys 851.75,20.80,553.94,933.69 | 7 128.34×144.34 | canvas 20.80,20.80,817.44,933.69',
+      'Fill, 16:9 board at 1920 × 1080': '2400×1310 | hist 1893.81,26.19,480.00,1195.81 | keys 1137.19,26.19,740.63,1195.81 | 7 173.16×185.97 | canvas 26.19,26.19,1095.00,1195.81'
+    };
+    // History-off layouts across section 5's sizes, one short hash a size: Basic and Advanced keys, Canvas on and off.
+    const OLD_OFF = {
+      'Basic, Canvas on': '1100x900:013c48 1050x900:716a31 1000x900:76d85c 950x900:83c7d7 900x900:b74772 850x900:d949b7 800x900:31350f 750x900:c90011 700x900:199fca 650x900:b4fe77 600x900:3f4a81 550x900:18e768 500x900:4e57b1 450x900:182e78 400x900:7edeb2 520x500:9f7739 520x550:053117 520x600:e702d5 520x650:7f94e9 520x700:e5bfff 520x750:5c9ba6 520x800:ac4607 520x850:809dfb 520x900:6fb063 520x950:5c8e80 520x1000:08f950 520x1050:aac5e7 520x1100:9360ab 640x500:eb0217 640x550:328793 640x600:c8dbc7 640x650:9305e1 640x700:65b1c8 640x750:da03da 640x800:88c58d 640x850:3bf417 640x900:f69784 640x950:38dfd4 640x1000:3f9d8d 640x1050:202b93 640x1100:c6803d 700x500:246ca8 700x550:c619ec 700x600:6b02c6 700x650:0f66b7 700x700:7800a5 700x750:44340f 700x800:33bc48 700x850:5aac3e 700x900:199fca 700x950:0c7e7f 700x1000:afae5a 700x1050:502922 700x1100:55a8fa 640x1016:25aa72',
+      'Basic, Canvas off': '1100x900:49ea56 1050x900:94d493 1000x900:ef1c4c 950x900:461f00 900x900:bdd210 850x900:1320fb 800x900:2587f2 750x900:238ec8 700x900:97ea21 650x900:5cab5f 600x900:3f4a81 550x900:18e768 500x900:4e57b1 450x900:182e78 400x900:7edeb2 520x500:4a8326 520x550:074627 520x600:574cce 520x650:620fe5 520x700:58120c 520x750:9c271b 520x800:ac4607 520x850:809dfb 520x900:6fb063 520x950:5c8e80 520x1000:08f950 520x1050:aac5e7 520x1100:9360ab 640x500:838b58 640x550:75b678 640x600:39c85d 640x650:c263c6 640x700:871a26 640x750:b81eda 640x800:13bd55 640x850:eacbda 640x900:538f15 640x950:38dfd4 640x1000:3f9d8d 640x1050:202b93 640x1100:c6803d 700x500:d9eac4 700x550:6afae7 700x600:e27aaf 700x650:d6571b 700x700:35c806 700x750:a016dc 700x800:9fe0bb 700x850:7f2975 700x900:97ea21 700x950:7820ab 700x1000:6073d5 700x1050:502922 700x1100:55a8fa 640x1016:25aa72',
+      'Advanced, Canvas on': '1100x900:47e681 1050x900:842fcd 1000x900:dc6b8b 950x900:c78869 900x900:8a0e95 850x900:3e12c6 800x900:712ff3 750x900:a81af6 700x900:33684f 650x900:23af2e 600x900:cba71e 550x900:431cea 500x900:39585b 450x900:966c5f 400x900:267164 520x500:3122de 520x550:44ae43 520x600:512ff0 520x650:a7815f 520x700:460f1a 520x750:d824d8 520x800:bc2504 520x850:d75d7b 520x900:5473ff 520x950:68ab96 520x1000:228aa9 520x1050:95c163 520x1100:defdb5 640x500:fd3a4b 640x550:0b936a 640x600:8488ae 640x650:4dbac4 640x700:70de10 640x750:1cfb4e 640x800:110f26 640x850:d0ed47 640x900:e352be 640x950:257338 640x1000:ed343b 640x1050:0ce152 640x1100:1ff8c4 700x500:183380 700x550:bf8fcc 700x600:93663f 700x650:92a80b 700x700:00b445 700x750:97edbc 700x800:7bc906 700x850:39d933 700x900:33684f 700x950:40e963 700x1000:5938ac 700x1050:e087f5 700x1100:8381cf 640x1016:56ab9f',
+      'Advanced, Canvas off': '1100x900:609191 1050x900:7f1753 1000x900:a58e80 950x900:b63d66 900x900:cd5e69 850x900:d52c04 800x900:33be3f 750x900:cf3a70 700x900:dda880 650x900:82b870 600x900:017fc7 550x900:f82f6c 500x900:41e872 450x900:966c5f 400x900:267164 520x500:da41b7 520x550:18335c 520x600:b7081a 520x650:f87683 520x700:cf675c 520x750:c2dc4e 520x800:8417a8 520x850:b09e14 520x900:ec5748 520x950:eaac54 520x1000:ab025e 520x1050:95c163 520x1100:defdb5 640x500:685026 640x550:f281ec 640x600:578954 640x650:a5dc46 640x700:aae366 640x750:002de2 640x800:6c6aca 640x850:fea1e5 640x900:9ed1ed 640x950:352d95 640x1000:0c5bf9 640x1050:bb9a92 640x1100:595f48 700x500:b3216e 700x550:2a4acf 700x600:4d54f4 700x650:1aef83 700x700:a1b97a 700x750:68fdea 700x800:7e9e78 700x850:adf05c 700x900:dda880 700x950:bd6410 700x1000:bad461 700x1050:8ca8b8 700x1100:6ff4e5 640x1016:128a5c'
+    };
+    const hash = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0').slice(0, 6); };
+    // A board 1920 × 1400, the screen at 100%, so window px are screen px, with a Calculator window on it. (Tall enough
+    // for Advanced keys to grow a 640 × 1016 window.)
+    const ctx = await browser.newContext({ viewport: { width: 1920, height: 1400 } });
+    const page = await ctx.newPage();
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const ik = await addWin(page, 'calculator');
+    await eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+    await page.waitForTimeout(600);
+    const W = () => page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const front = () => page.evaluate(ik => { if (window.__board21.state.focused !== ik) window.__board21.focusWin(ik); }, ik);
+    const choose = async label => {
+      await front();
+      await page.click(`.win[data-ikey="${ik}"] .win-label`);
+      await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: new RegExp('^' + label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$') }) }).click({ timeout: 3000 });
+      await page.waitForTimeout(700);
+    };
+    const ticked = label => page.evaluate(([ik, label]) => { const w = window.__board21.state.wins.get(ik), i = w && w.menuItems.find(i => i.label === label); return !!(i && i.checked); }, [ik, label]);
+    const set = async (label, on) => { if (await ticked(label) !== on) await choose(label); };
+    const size = async (w, h, wait = 450) => { await page.evaluate(([ik, w, h]) => window.__board21.setRect(ik, { x: 40, y: 20, w, h: h + 40 }), [ik, w, h]); await page.waitForTimeout(wait); };
+    const content = () => contentOf(page, ik);
+    const type = async t => { await front(); await W().locator('#app').click({ position: { x: 3, y: 3 } }); await page.keyboard.type(t); await page.waitForTimeout(350); };
+    // What the window shows: where History is (from the grid: 'top' when it has a row of its own above the rest), the 7
+    // key's size, the smallest side of any key, the boxes of the canvas, the display, the keys, and History, and History's
+    // lines: how many show in full, and whether the newest does.
+    const look = () => W().locator('html').evaluate(() => {
+      const $ = id => document.getElementById(id), shown = e => !!e && e.getClientRects().length > 0 && getComputedStyle(e).visibility !== 'hidden';
+      const box = e => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height, r: r.right, b: r.bottom }; };
+      const keys = [...document.querySelectorAll('#keys .key')].filter(shown).map(box), seven = box(document.querySelector('#keys .key[data-key="7"]'));
+      const areas = $('grid').style.gridTemplateAreas || '', rows = areas.match(/"[^"]*"/g) || [];
+      const place = !/hist/.test(areas) ? 'none' : rows.length > 1 && rows[0].replace(/"/g, '').trim().split(/\s+/).every(a => a === 'hist') && !rows.slice(1).some(r => /hist/.test(r)) ? 'top' : 'beside';
+      const hl = $('hlist'), hr = hl.getBoundingClientRect(), lines = [...hl.querySelectorAll('li')];
+      const inFull = l => { const r = l.getBoundingClientRect(); return r.height > 0 && r.top >= hr.top - .5 && r.bottom <= hr.bottom + .5; };
+      return {
+        place, layout: $('app').dataset.layout, vw: innerWidth, vh: innerHeight, kw: seven.w, kh: seven.h, n: keys.length,
+        keyMin: Math.min(...keys.map(k => Math.min(k.w, k.h))), inside: keys.every(k => k.x >= -0.5 && k.y >= -0.5 && k.r <= innerWidth + 0.5 && k.b <= innerHeight + 0.5),
+        card: shown($('card')) ? box($('card')) : null, disp: shown($('disp')) ? box($('disp')) : null, canvas: box($('canvas')), player: shown($('player')),
+        keys: box($('keys')), seven, hist: shown($('history')) ? box($('history')) : null, hf: parseFloat(getComputedStyle(hl).fontSize),
+        lines: lines.length, full: lines.filter(inFull).length, newest: lines.length ? inFull(lines[lines.length - 1]) : false,
+        empty: (hl.querySelector('.hempty') || {}).textContent || '', cur: !!hl.querySelector('.hline.cur'),
+        eq: $('eq').textContent.replace(/\s+/g, ' ').trim()
+      };
+    });
+    // Every move of History from now on, as "beside→top", read from the grid each time the Calculator lays it out.
+    const watch = () => W().locator('html').evaluate(() => {
+      const grid = document.getElementById('grid');
+      const where = () => { const a = grid.style.gridTemplateAreas || '', rows = a.match(/"[^"]*"/g) || []; return !/hist/.test(a) ? 'none' : rows.length > 1 && rows[0].replace(/"/g, '').trim().split(/\s+/).every(x => x === 'hist') && !rows.slice(1).some(r => /hist/.test(r)) ? 'top' : 'beside'; };
+      window.__moves = []; window.__at = where();
+      if (window.__moveObs) window.__moveObs.disconnect();
+      window.__moveObs = new MutationObserver(() => { const now = where(); if (now !== window.__at) { window.__moves.push(window.__at + '→' + now); window.__at = now; } });
+      window.__moveObs.observe(grid, { attributes: true, attributeFilter: ['style'] });
+    });
+    const moves = () => W().locator('html').evaluate(() => window.__moves || []);
+    // The layout numbers that must not change: the window, History, the keys, the 7 key, and the canvas.
+    // (Filling the board, the window's own size is not what shows.)
+    const numbers = async (fill = false) => {
+      const L = await look(), c = await content(), f = n => n.toFixed(2), b = x => x ? [x.x, x.y, x.w, x.h].map(f).join(',') : '-';
+      return `${fill ? '' : `${c.w}×${c.h} in `}${L.vw}×${L.vh} | hist ${b(L.hist)} | keys ${b(L.keys)} | 7 ${f(L.kw)}×${f(L.kh)} | canvas ${b(L.canvas)}`;
+    };
+    const keep = (name, now) => {
+      if (RECORD) { console.log(`    RECORD ${JSON.stringify(name)}: ${JSON.stringify(now)},`); return; }
+      ok(now === OLD[name], `${name}: the same layout as before (${now}${now === OLD[name] ? '' : `; before: ${OLD[name]}`})`);
+    };
+    // History spans the window above the canvas (or the small display) and the keys.
+    const across = L => !!L.hist && L.place === 'top' && L.hist.w >= L.vw - 2 * padOf(L.vw, L.vh) - 1 && L.hist.b <= (L.card || L.disp || L.canvas).y + 1 && L.hist.b <= L.keys.y + 1;
+    const where = L => L.place === 'top' ? 'across the top' : L.place === 'beside' ? 'beside the keys' : 'hidden';
+    const MOCK = { '640×1016': 74, '520×860': 56 };   // mockup A: the keys 111 × 74 and 85 × 56
+
+    // ---- 1. Section 2 first: a new window, 900 × 600, with History on; 960 × 600 with History; 1000 × 640, History on.
+    await part('What must not change', async () => {
+      await size(900, 600, 700); await choose('History');
+      keep('new 900 × 600, History on', await numbers());
+      await size(960, 600, 700);
+      keep('960 × 600 with History', await numbers());
+      await choose('History'); await size(1000, 640, 700); await choose('History');
+      keep('1000 × 640, History on', await numbers());
+      await choose('History');
+    });
+
+    // ---- 2. Every History-off layout, across section 5's sizes, as before.
+    const SWEEP = [];
+    for (let w = 1100; w >= 400; w -= 50) SWEEP.push(['width 1100 to 400 at 900 tall', w, 900]);
+    for (const w of [520, 640, 700]) for (let h = 500; h <= 1100; h += 50) SWEEP.push([`height 500 to 1100 at ${w} wide`, w, h]);
+    SWEEP.push(['Tyler’s window', 640, 1016]);
+    await part('History off, as before', async () => {
+      await set('History', false);
+      for (const adv of [false, true]) for (const canvas of [true, false]) {
+        await set('Advanced keys', adv); await set('Canvas', canvas);
+        const name = `${adv ? 'Advanced' : 'Basic'}, Canvas ${canvas ? 'on' : 'off'}`, got = [];
+        let prev = '';
+        for (const [run, w, h] of SWEEP) {
+          if (run !== prev) { await size(w, h, 600); prev = run; }
+          await size(w, h, 300); got.push(`${w}x${h}:${hash(await numbers())}`);
+        }
+        if (RECORD) { console.log(`    RECORD_OFF ${JSON.stringify(name)}: ${JSON.stringify(got.join(' '))},`); continue; }
+        const was = OLD_OFF[name].split(' '), bad = got.filter((g, i) => g !== was[i]);
+        ok(!bad.length && was.length === got.length, `History off, ${name}: every size as before (${bad.length ? 'changed at ' + bad.map(b => b.split(':')[0]).join(', ') : got.length + ' sizes'})`);
+      }
+      await set('Advanced keys', false); await set('Canvas', true);
+    });
+
+    // ---- 3. Tyler’s window and 520 × 860, in mockup A’s setup: History spans the window above the canvas, the keys are as
+    // big as the mockup’s, the steps show, three lines or more show in full, and the newest is in view.
+    await part('History across the top', async () => {
+      await size(1000, 700, 600);
+      await set('Advanced keys', true); await set('Desmos %', false); await set('Advanced keys', false); await set('In words', true); await set('History', true);
+      await type('12*4='); await type('125-37='); await type('3.5*2=');
+      await set('Hide the answer', true); await type('5+10%=');
+      for (const [w, h] of [[640, 1016], [520, 860]]) {
+        await size(w, h, 700); const L = await look(), m = MOCK[`${w}×${h}`];
+        ok(across(L), `${w} × ${h}: History across the top, the window’s width, above the canvas (History ${L.hist ? r1(L.hist.w) + ' × ' + r1(L.hist.h) : 'hidden'}, ${where(L)})`);
+        ok(kmin(L) >= m - .5 && L.keyMin >= 44.45, `and each key ${kdim(L)}, its shorter side at least mockup A’s ${m}`);
+        ok(L.player && /^5\s*\+\s*10%\s*=\s*\?$/.test(L.eq), `the canvas keeps its steps (${L.player ? 'shown' : 'hidden'}), and shows ${L.eq}`);
+        ok(L.full >= 3 && L.newest && L.lines === 4, `${L.full} of History’s ${L.lines} lines show in full, at ${r1(L.hf)} px, and the newest is in view (${L.newest})`);
+        if (w === 640) await page.screenshot({ path: OUT + 'calculator-history-top.png', clip: { x: 40, y: 20, width: w, height: h + 40 } });
+      }
+      // Its look: the rounded panel, the lines, and the current line’s accent bar.
+      const panel = await W().locator('#history').evaluate(h => { const cs = getComputedStyle(h), cur = h.querySelector('.hline.cur'), bar = cur && getComputedStyle(cur, '::before'); return { radius: parseFloat(cs.borderTopLeftRadius), ring: cs.boxShadow, bar: bar ? bar.backgroundColor : '', barW: bar ? parseFloat(bar.width) : 0 }; });
+      const accent = await W().locator('html').evaluate(() => getComputedStyle(document.body).getPropertyValue('--b21-accent').trim());
+      ok(panel.radius >= 12 && /inset/.test(panel.ring), `the band is History’s rounded panel (${panel.radius} px, ${panel.ring})`);
+      ok(panel.barW >= 3, `the newest line, on the canvas, has its accent bar (${panel.bar}, ${panel.barW} px; accent ${accent})`);
+      // In the band, tapping a problem changes it, and tapping an answer uses it.
+      await set('Hide the answer', false); await set('In words', false);
+      await W().locator('#history .hline').nth(1).locator('.hpick').click(); await page.waitForTimeout(250);
+      let L = await look();
+      ok(/^125 − 37( = 88)?$/.test(L.eq), `tapping 125 − 37 in the band puts it on the canvas to change (${L.eq})`);
+      await front(); await page.keyboard.press('Backspace'); await type('8='); L = await look();
+      ok(L.eq === '125 − 38 = 87' && L.lines === 5 && L.newest, `changed and worked out, it is a new line at the bottom, in view (${L.eq}; ${L.lines} lines)`);
+      await W().locator('#keys .key[data-key="clear"]').click(); await W().locator('#history .hline').first().locator('.hans').click(); await page.waitForTimeout(200); await type('+2='); L = await look();
+      ok(/^48\s*(ans)?\s*\+ 2 = 50$/.test(L.eq), `tapping 12 × 4’s answer uses it: ${L.eq}`);
+    });
+
+    // ---- 4. Nothing moves History at the same size: Advanced keys, the canvas, Steps, In words, Swap sides, Hide the
+    // answer, an answer setting, or a new problem. In Tyler’s window, and near the switch either way.
+    const toggles = async () => {
+      for (const label of ['Canvas', 'Steps', 'In words', 'Swap sides', 'Hide the answer', 'As fractions', 'As decimals']) { await choose(label); if (!/^As /.test(label)) await choose(label); }
+      await type('7*8=');
+    };
+    await part('Toggles never move History', async () => {
+      // (830 px wide, at 1016 tall, is inside the dead band: History stays where it was.)
+      for (const [w, h, fw, fh] of [[640, 1016, 640, 1016], [830, 1016, 760, 1016], [830, 1016, 900, 1016]]) {
+        await size(fw, fh, 600); await size(w, h, 600); await watch();
+        const L0 = await look(), c0 = await content();
+        await toggles();
+        await choose('Advanced keys'); await page.waitForTimeout(500); const La = await look();
+        await choose('Advanced keys'); await page.waitForTimeout(500);
+        const L1 = await look(), c1 = await content(), mv = await moves();
+        ok(!mv.length && L1.place === L0.place && La.place === L0.place && c1.w === c0.w && c1.h === c0.h,
+          `${w} × ${h}${fw !== w || fh !== h ? `, reached from ${fw} × ${fh}` : ''}: History stays ${where(L0)} through Canvas, Steps, In words, Swap sides, Hide the answer, As fractions, a new problem, and Advanced keys (moves: ${mv.join(', ') || 'none'}; ${c1.w} × ${c1.h})`);
+      }
+      // Advanced keys in a window with History across the top: taller, each key as big as before; off, the size comes back.
+      for (const [w, h] of [[640, 1016], [520, 860]]) {
+        await size(w, h, 600); await watch();
+        const L0 = await look(), c0 = await content();
+        await choose('Advanced keys'); await page.waitForTimeout(600);
+        const L1 = await look(), c1 = await content();
+        await choose('Advanced keys'); await page.waitForTimeout(600);
+        const L2 = await look(), c2 = await content(), mv = await moves();
+        ok(L0.place === 'top' && L1.place === 'top' && L1.n === 31 && c1.h > c0.h && Math.abs(kmin(L1) - kmin(L0)) <= 1.5 && L1.player,
+          `${w} × ${h}, Advanced keys: taller (${c1.w} × ${c1.h}), each key as big as before (${r1(kmin(L1))}, was ${r1(kmin(L0))}), History still across the top, the steps still there`);
+        ok(L2.place === 'top' && c2.w === c0.w && c2.h === c0.h && !mv.length, `and off: ${c2.w} × ${c2.h} again (moves: ${mv.join(', ') || 'none'})`);
+      }
+    });
+
+    // ---- 4b. A panel gives back the width it took only while it's still where it was. Inside the dead band, History or
+    // the canvas may sit in the other place at the same size, with no width to give back.
+    await part('A panel gives back only the width it took', async () => {
+      // The canvas: beside the keys under History at 800 × 800 reached from 700 × 800, above them reached from 900 × 800.
+      await size(700, 800, 600); await size(800, 800, 600);
+      let L = await look(); const cA = await content();
+      await choose('Canvas'); const cOff = await content(); await choose('Canvas'); let c = await content();
+      ok(L.place === 'top' && L.layout === 'side' && cOff.w < cA.w && c.w === cA.w && c.h === cA.h,
+        `800 × 800, reached from 700 × 800: History across the top, the canvas beside the keys; Canvas off gives its width back (${cOff.w} × ${cOff.h}) and on takes it again (${c.w} × ${c.h})`);
+      // (Turned back on there, the canvas widens the window, as in any window not taller than wide.)
+      await size(900, 800, 600); await size(800, 800, 600); L = await look();
+      await choose('Canvas'); c = await content(); const Loff = await look(); await choose('Canvas');
+      ok(L.place === 'beside' && L.layout === 'stack' && c.w === 800 && c.h === 800 && Loff.place === 'beside',
+        `and reached from 900 × 800: History beside the keys, the canvas above them; Canvas off keeps the size, with no width to give back (${c.w} × ${c.h}, History ${where(Loff)})`);
+      // History: beside the keys at 830 × 1016 reached from 900 × 1016, across the top reached from 760 × 1016.
+      await size(900, 1016, 600); await size(830, 1016, 600);
+      L = await look(); await choose('History'); const hOff = await content(); await choose('History'); c = await content();
+      ok(L.place === 'beside' && hOff.w < 830 && c.w === 830 && c.h === 1016, `830 × 1016, reached from 900 × 1016: History beside the keys; off gives its width back (${hOff.w} × ${hOff.h}) and on takes it again (${c.w} × ${c.h})`);
+      await size(760, 1016, 600); await size(830, 1016, 600); L = await look();
+      await choose('History'); c = await content(); await choose('History'); const c3 = await content(); const L3 = await look();
+      ok(L.place === 'top' && c.w === 830 && c.h === 1016 && c3.w === 830 && c3.h === 1016 && L3.place === 'top',
+        `and reached from 760 × 1016: History across the top; off and on keep the size (${c.w} × ${c.h}; then ${c3.w} × ${c3.h}, ${where(L3)})`);
+    });
+
+    // ---- 5. Dragging an edge across the switch, a finger’s few px back now and then: History moves once each way.
+    await part('A drag moves History once', async () => {
+      const drag = async (from, to, grip = 's') => {
+        const g = await page.locator(`.win[data-ikey="${ik}"] .grip.${grip}`).boundingBox();
+        const x0 = g.x + g.width / 2, y0 = g.y + g.height / 2, dir = Math.sign(to - from), at = d => grip === 's' ? [x0, y0 + d] : [x0 + d, y0];
+        await page.mouse.move(...at(0)); await page.mouse.down();
+        let d = 0;
+        while ((to - from) * ((to - from) - d) > 0) {
+          d += 8 * dir; await page.mouse.move(...at(d)); await page.waitForTimeout(34);
+          d -= 4 * dir; await page.mouse.move(...at(d)); await page.waitForTimeout(34);
+        }
+        await page.mouse.move(...at(to - from)); await page.waitForTimeout(80); await page.mouse.up(); await page.waitForTimeout(500);
+      };
+      // (At 640 and 1180 tall, the canvas could move beside the keys under History as the window widens: History still
+      // moves once each way.)
+      for (const [w0, h0, from, to, grip, a, b] of [[640, 560, 560, 780, 's', 'beside', 'top'], [700, 1016, 700, 920, 'e', 'top', 'beside'],
+        [420, 640, 420, 720, 'e', 'top', 'beside'], [800, 1180, 800, 1300, 'e', 'top', 'beside']]) {
+        await size(w0, h0, 600); await front(); await watch();
+        const L0 = await look();
+        await drag(from, to, grip); let c = await content(), L = await look(), mv = await moves();
+        ok(L0.place === a && L.place === b && mv.length === 1 && mv[0] === `${a}→${b}`, `the ${grip === 's' ? 'bottom' : 'right'} edge from ${w0} × ${h0} to ${c.w} × ${c.h}: History moves ${a === 'top' ? 'from the top to beside the keys' : 'from beside the keys to the top'} once (${mv.join(', ') || 'no move'})`);
+        await watch(); await drag(to, from, grip); c = await content(); L = await look(); mv = await moves();
+        ok(L.place === a && mv.length === 1 && mv[0] === `${b}→${a}`, `and back to ${c.w} × ${c.h}: back once (${mv.join(', ') || 'no move'})`);
+      }
+    });
+
+    // ---- 6. History’s place is kept while the window changes size for a panel, or fills the board and stops. A reload
+    // uses the plain comparison.
+    await part('Kept, and a reload', async () => {
+      // 700 × 700, reached from 700 × 800: History across the top, the canvas beside the keys under it. Not across the top
+      // when the window starts at 700 × 700.
+      await size(700, 800, 600); await size(700, 700, 600); await watch();
+      const L0 = await look(), c0 = await content();
+      await choose('Canvas'); const cOff = await content(); const Loff = await look(); await choose('Canvas');
+      let L = await look(), c = await content();
+      ok(L0.place === 'top' && L.place === 'top' && c.w === c0.w && c.h === c0.h, `700 × 700, reached from 700 × 800: History across the top; Canvas off (${cOff.w} × ${cOff.h}, ${where(Loff)}) and on, it’s still across the top at ${c.w} × ${c.h}`);
+      await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(900); const Lf = await look();
+      await page.evaluate(ik => window.__board21.setMaximized(ik, false), ik); await page.waitForTimeout(900);
+      L = await look(); c = await content();
+      ok(L.place === 'top' && c.w === c0.w && c.h === c0.h, `Fill the board (${where(Lf)}) and back: still across the top at ${c.w} × ${c.h}`);
+      await page.reload(); await boardUp(page); await page.waitForTimeout(1500);
+      L = await look();
+      ok(L.place === 'beside', `after a reload, 700 × 700 takes the plain comparison: History beside the keys (${where(L)})`);
+      await size(640, 1016, 600); await page.reload(); await boardUp(page); await page.waitForTimeout(1500);
+      L = await look();
+      ok(across(L), `after a reload, Tyler’s window has History across the top (${where(L)})`);
+    });
+
+    // ---- 7. Turning History on and off: in Tyler’s window it keeps the size; in 900 × 600 it widens and gives back.
+    await part('History on and off', async () => {
+      await set('History', false); await size(640, 1016, 600); await watch();
+      await choose('History'); let c = await content(), L = await look();
+      ok(c.w === 640 && c.h === 1016 && across(L), `History on in 640 × 1016: the window keeps its size (${c.w} × ${c.h}), History across the top`);
+      await choose('History'); c = await content();
+      ok(c.w === 640 && c.h === 1016, `History off: still ${c.w} × ${c.h}`);
+      await choose('History'); c = await content(); L = await look();
+      ok(c.w === 640 && c.h === 1016 && across(L), `back on: across the top again, ${c.w} × ${c.h}`);
+      await choose('History'); await size(900, 600, 600);
+      await choose('History'); c = await content(); L = await look();
+      ok(c.w > 1200 && c.h === 600 && L.place === 'beside', `History on in 900 × 600: wider (${c.w} × ${c.h}), History beside the keys`);
+      await choose('History'); c = await content();
+      ok(c.w === 900 && c.h === 600, `History off: 900 × 600 again (${c.w} × ${c.h})`);
+      // Swap sides doesn’t move the band. The panels under it swap.
+      await set('History', true); await size(640, 1016, 600); await choose('Swap sides'); L = await look();
+      ok(across(L), `Swap sides in Tyler’s window: History stays across the top (${where(L)})`);
+      await size(700, 800, 600); L = await look(); await choose('Swap sides'); const Lu = await look();
+      ok(across(L) && across(Lu) && L.layout === 'side' && L.keys.r <= L.card.x + 1 && Lu.card.r <= Lu.keys.x + 1,
+        `700 × 800: History across the top, the canvas beside the keys under it; Swap sides puts the keys on the left (${L.layout}), and back`);
+      // A window at least 1.2 times as tall as wide keeps the canvas above the keys under History, with its steps.
+      for (const [w, h] of [[700, 900], [640, 800]]) {
+        await size(w, h, 600); L = await look();
+        ok(across(L) && L.layout === 'stack' && L.card && L.card.b <= L.keys.y + 1 && L.player && L.keyMin >= 44.45,
+          `${w} × ${h}: History across the top, the canvas above the keys with its steps (${L.layout}, steps ${L.player ? 'shown' : 'hidden'}, keys ${kdim(L)})`);
+      }
+      // The empty note in the band.
+      await choose('Clear history'); L = await look();
+      ok(across(L) && L.empty === 'Your problems show here.', `Clear history: the band says “${L.empty}”`);
+    });
+
+    // ---- 7b. Three lines show in full, with lines as teachers make them: short problems, long ones, fraction answers, and
+    // problems typed with the fraction key and a power. Each problem keeps to one line, its answer beside it, and no line
+    // shows cut through at the band's top edge.
+    await part('Three lines in full', async () => {
+      const key = async k => { await W().locator(`#keys .key[data-key="${k}"]`).click(); await page.waitForTimeout(60); };
+      const band = () => W().locator('html').evaluate(() => {
+        const hl = document.getElementById('hlist'), hr = hl.getBoundingClientRect();
+        const cut = [...hl.querySelectorAll('.hline')].map(l => { const r = l.getBoundingClientRect(), hid = Math.max(0, hr.top - r.top) + Math.max(0, r.bottom - hr.bottom); return { h: r.height, hid }; })
+          .filter(l => l.hid > 4 && l.hid < l.h - 4).length;
+        const ans = [...hl.querySelectorAll('.hline')].filter(l => { const r = l.getBoundingClientRect(); return r.top >= hr.top - .5 && r.bottom <= hr.bottom + .5; })
+          .map(l => l.querySelector('.hans')).filter(a => a.classList.contains('clip') || a.getBoundingClientRect().right > hr.right + .5).length;
+        return { cut, clipped: ans };
+      });
+      const sizes = [[400, 700], [520, 860], [640, 1016], [720, 730], [760, 800], [778, 812]];
+      const check = async what => {
+        const bad = [];
+        for (const [w, h] of sizes) {
+          await size(w, h, 650); const L = await look(), b = await band();
+          if (L.place !== 'top' || L.full < 3 || !L.newest || b.cut || b.clipped) bad.push(`${w} × ${h}: ${where(L)}, ${L.full} of ${L.lines} in full at ${r1(L.hf)} px, newest ${L.newest}, ${b.cut} cut, ${b.clipped} answers cut`);
+        }
+        ok(!bad.length, `${what}: three lines or more show in full, the newest in view, none cut through, every answer whole (${bad.join('; ') || sizes.map(s => s.join(' × ')).join(', ')})`);
+      };
+      await set('History', true);   // (History is empty: 'History on and off' cleared it.)
+      for (const t of ['12*4=', '125-37=', '3.5*2=', '7*8=']) await type(t);
+      await check('Four short problems');
+      for (const t of ['1234567+7654321-1234567+7654321=', '99999*88888+77777*66666=', '123.45*678.9+1011.12*13.14=']) await type(t);
+      await check('Then three long problems');
+      await choose('Clear history'); await choose('As fractions');
+      for (const t of ['1/3+1/7=', '5/6-1/4=', '7/8*2/3=']) await type(t);
+      await check('As fractions, three fraction answers');
+      await choose('As decimals'); await set('Advanced keys', true);
+      for (let i = 0; i < 3; i++) {
+        await front(); await key('clear'); await key('fraction'); await key('3'); await key('right'); await key('4'); await key('right');
+        await key('add'); await key('2'); await key('power'); await key(String(i + 2)); await key('right'); await key('equals');
+      }
+      await set('Advanced keys', false);
+      await check('Three problems typed with the fraction key and a power');
+      // Kept across the top as the window gets shorter, the canvas or the small display above the keys keeps 76 px, or
+      // History hides.
+      for (const canvas of [true, false]) {
+        await set('Canvas', canvas); await size(400, 600, 600);
+        const low = [];
+        for (const h of [588, 584, 580, 576, 572, 568]) {
+          await size(400, h, 350); const L = await look(), above = L.card || L.disp;
+          if (L.place === 'top' && (!above || above.h < 75.5)) low.push(`400 × ${h}: ${above ? r1(above.h) : 'none'}`);
+        }
+        ok(!low.length, `Canvas ${canvas ? 'on' : 'off'}, from 400 × 600 down to 400 × 568: across the top, the ${canvas ? 'canvas' : 'display'} above the keys keeps 76 px (${low.join(', ') || 'all'})`);
+      }
+      await choose('Clear history');
+    });
+
+    // ---- 8. The sweep: History on, Basic and Advanced keys, Canvas on and off. Every key 44.5 px or more. Where History
+    // switches, with a key’s shape and History’s size either side, and every size where it hides.
+    await part('The sweep', async () => {
+      await set('History', true); for (const t of ['1+1=', '2+2=', '3+3=', '4+4=']) await type(t);
+      const small = [], hides = [], over = [];
+      for (const adv of [false, true]) for (const canvas of [true, false]) {
+        await set('Advanced keys', adv); await set('Canvas', canvas);
+        let prev = '', rows = [];
+        const flush = name => {
+          if (!rows.length) return;
+          const sw = rows.slice(1).map((r, i) => [rows[i], r]).filter(([a, b]) => a.place !== b.place).map(([a, b]) => `${a.w} × ${a.h} ${where(a)}, key ${kdim(a)}, History ${a.hist ? r1(a.hist.w) + ' × ' + r1(a.hist.h) : '-'} → ${b.w} × ${b.h} ${where(b)}, key ${kdim(b)}, History ${b.hist ? r1(b.hist.w) + ' × ' + r1(b.hist.h) : '-'}`);
+          console.log(`    ${adv ? 'Advanced' : 'Basic'}, Canvas ${canvas ? 'on' : 'off'}, ${name}: ${sw.join('; ') || 'no switch (' + where(rows[0]) + ')'}`);
+          console.log('      ' + rows.map(r => `${r.w}×${r.h} ${r.place[0]} ${Math.round(r.kw)}×${Math.round(r.kh)}`).join(' | '));
+          rows = [];
+        };
+        for (const [run, w, h] of SWEEP) {
+          if (run !== prev) { flush(prev); await size(w, h, 600); prev = run; }
+          await size(w, h, 300); const L = Object.assign({ w, h }, await look()); rows.push(L);
+          const at = `${w} × ${h}${adv ? ', Advanced' : ''}${canvas ? '' : ', Canvas off'}`;
+          if (L.keyMin < 44.45 || !L.inside) small.push(`${at}: ${r1(L.keyMin)}`);
+          if (L.place === 'none') hides.push(at);
+          if (L.place === 'top' && L.full < 3 && L.lines >= 3) over.push(`${at}: ${L.full}`);
+        }
+        flush(prev);
+      }
+      ok(!small.length, `every key 44.5 px or more, and in its window, across the sweep (${small.join(', ') || 'all'})`);
+      ok(!over.length, `across the top, three lines show in full (${over.join(', ') || 'all'})`);
+      console.log(`    History hides at: ${hides.join(', ') || 'no size'}`);
+      await set('Advanced keys', false); await set('Canvas', true);
+      // The smallest window: History hides, and stays ticked.
+      await size(280, 400, 600); const L = await look();
+      ok(L.place === 'none' && !L.hist && await ticked('History') && L.keyMin >= 44.45, `280 × 400: History hides and stays ticked (${where(L)}; keys ${r1(L.keyMin)})`);
+    });
+
+    // ---- 9. Fill the board with History on: a 16:9 board and one the size of the screen, at 1366 × 768 and 1920 × 1080.
+    await part('Fill the board, as before', async () => {
+      await set('History', true);
+      await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(600);
+      for (const [vw, vh, shape] of [[1366, 768, '16:9'], [1366, 768, 'free'], [1920, 1080, 'free'], [1920, 1080, '16:9']]) {
+        await page.setViewportSize({ width: vw, height: vh });
+        await page.evaluate(([shape]) => { window.__board21.setBoardShape(shape); window.__board21.setBoardScale(shape === 'free' ? 1 : 0.8); }, [shape]);
+        await page.waitForTimeout(900);
+        keep(`Fill, ${shape === 'free' ? 'screen-size' : '16:9'} board at ${vw} × ${vh}`, await numbers(true));
+      }
+      await page.evaluate(ik => window.__board21.setMaximized(ik, false), ik); await page.waitForTimeout(400);
+    });
+
+    // ---- 10. The docs’ new words, and the stamp.
+    await part('Docs', async () => {
+      const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+      const plain = s => s.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
+      const man = plain(read('docs/calculator-manual/page-src.html'));
+      ok(man.includes('In a tall window, History moves to the top. With no room at all, it hides and stays ticked.') && !man.includes('History hides when there’s no room for it'),
+        'the manual’s Tall or narrow windows card: “In a tall window, History moves to the top. With no room at all, it hides and stays ticked.”');
+      ok(man.includes('Tick History and the window widens to fit it, where the board has room. A tall window keeps its width, and History goes on top. Advanced keys make the window taller.'),
+        'the manual’s Growing card: “A tall window keeps its width, and History goes on top. Advanced keys make the window taller.”');
+      const readme = read('README.md').replace(/\s+/g, ' ');
+      ok(readme.includes('In a tall window, the canvas goes above the keys, and History across the top.'), 'the README: “In a tall window, the canvas goes above the keys, and History across the top.”');
+      ok(readme.includes('The canvas sits beside the keys or above them, and History beside them or across the top, whichever makes the keys bigger.'),
+        'the README’s Included widgets row: “and History beside them or across the top, whichever makes the keys bigger.”');
+      ok(/const VERSION = '2026\.11\.24-5'/.test(read('sw.js')), 'VERSION is 2026.11.24-5');
       ok(stamped(), STAMPED);
     });
 
