@@ -5100,7 +5100,7 @@ const SUITES = [
     const draws = await inFrame(() => {
       const out = [], save = Board21.save;
       Board21.save = function (d) { if (d && d.groups && d.groups.length) out.push(d.groups.map(g => g.slice())); return save.apply(this, arguments); };
-      for (let i = 0; i < 400; i++) document.getElementById('go').click();
+      for (let i = 0; i < 400; i++) { drewAt = -1e9; document.getElementById('go').click(); }   // (each a tap of its own, not a double tap)
       Board21.save = save;
       return out;
     }, rp);
@@ -5349,7 +5349,36 @@ const SUITES = [
       if (!T || T.t < -0.5 || T.l < -0.5 || T.r > R.width + 0.5) bad.push('the trophy is outside the stage');
       else for (const a of spots) if (over(T, a.r)) bad.push(`the trophy is over spot ${a.s}`);
       const fs = [...sizes].map(parseFloat);
-      return { bad, sizes: [...sizes], fs: fs.length ? Math.min(...fs) : 0, spots: spots.length, lines: lines.length, w: R.width, h: R.height };
+      // As large as fits: the widest name fills most of its spot, or the names are as tall as the spots allow.
+      const named = spots.filter(a => a.s !== 1 && a.e.textContent), cs = a => getComputedStyle(a.e), inner = a => a.e.clientWidth - parseFloat(cs(a).paddingLeft) - parseFloat(cs(a).paddingRight);
+      const wide = named.length ? Math.max(...named.map(a => { const rg = document.createRange(); rg.selectNodeContents(a.e); return rg.getBoundingClientRect().width / inner(a); })) : 0;
+      const tall = named.length ? parseFloat(cs(named[0]).fontSize) / named[0].e.clientHeight : 0;
+      return { bad, sizes: [...sizes], fs: fs.length ? Math.min(...fs) : 0, spots: spots.length, lines: lines.length, w: R.width, h: R.height,
+        fill: { wide: Math.round(wide * 100) / 100, tall: Math.round(tall * 100) / 100 }, big: wide >= 0.75 || tall >= 0.5 };
+    }, p, ik);
+    // The line under the stage: the status, the main button, and Undo (or Start over) apart, and inside the window.
+    const footApart = (p = page, ik) => inFrame(() => {
+      const W = innerWidth, bad = [], R = ['status', 'go', 'undo', 'round'].map(id => document.getElementById(id)).filter(e => !e.hidden && e.textContent).map(e => ({ id: e.id, r: e.getBoundingClientRect() }));
+      for (const [i, a] of R.entries()) {
+        if (a.r.left < -0.5 || a.r.right > W + 0.5 || a.r.bottom > innerHeight + 0.5) bad.push(a.id + ' outside');
+        for (const b of R.slice(i + 1)) if (Math.min(a.r.right, b.r.right) - Math.max(a.r.left, b.r.left) > 0.5 && Math.min(a.r.bottom, b.r.bottom) - Math.max(a.r.top, b.r.top) > 0.5) bad.push(a.id + '/' + b.id);
+      }
+      return bad;
+    }, p, ik);
+    // How far a color stands out from another: the WCAG contrast ratio of two 'rgb(…)' colors.
+    const contrast = (a, b) => {
+      const lum = c => { const [r, g, b2] = c.match(/[\d.]+/g).slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b2; };
+      const [x, y] = [lum(a), lum(b)].sort((m, n) => n - m);
+      return Math.round((x + 0.05) / (y + 0.05) * 100) / 100;
+    };
+    // The bracket's colors on the stage: a loser's name, the lines, the dashed spots, the grey trophy, and the halo around
+    // a ready spot (drawn over the stage on a canvas, as it shows).
+    const colors = (p = page, ik) => inFrame(() => {
+      const stage = getComputedStyle(document.getElementById('stage')).backgroundColor, cs = sel => { const e = document.querySelector(sel); return e && getComputedStyle(e); };
+      const over = c => { const g = document.createElement('canvas').getContext('2d'); g.fillStyle = stage; g.fillRect(0, 0, 1, 1); g.fillStyle = c; g.fillRect(0, 0, 1, 1); const d = g.getImageData(0, 0, 1, 1).data; return `rgb(${d[0]}, ${d[1]}, ${d[2]})`; };
+      const out = cs('.bracket-spot.bracket-out'), ready = cs('.bracket-spot.bracket-ready'), m = ready && /^(.*\)) (-?[\d.]+px ?){4}$/.exec(ready.boxShadow);
+      return { stage, out: out && out.color, outOpacity: out && out.opacity, line: cs('.bracket-lines path:not(.bracket-won)').stroke, dashed: (cs('.bracket-spot.bracket-empty') || {}).borderTopColor,
+        trophy: cs('.bracket-trophy:not(.bracket-gold)') ? cs('.bracket-trophy').color : null, halo: m ? over(m[1]) : null, haloW: m ? parseFloat(ready.boxShadow.trim().split(' ').pop()) : 0 };
     }, p, ik);
 
     // ---- Bracket in the menu: after Groups, and then only Sound and Quick.
@@ -5427,6 +5456,15 @@ const SUITES = [
       return { undo: Math.abs((ur.left + ur.right) / 2 - (g.right + gap + fr.right) / 2), status: Math.abs((sr.left + sr.right) / 2 - (fr.left + g.left - gap) / 2), arrow: !!u.querySelector('svg'), row: Math.abs((ur.top + ur.bottom) / 2 - (g.top + g.bottom) / 2) };
     });
     ok(foot.arrow && foot.undo <= 1.5 && foot.status <= 1.5 && foot.row <= 1.5, `Undo has its arrow and sits in the middle of its space, as Start over does, and the status in the middle of its own (${JSON.stringify(foot)})`);
+    // In a narrow window, Undo and the status go on a row above the main button when they don't fit beside it.
+    const narrow = [];
+    for (const [w, h] of [[300, 680], [300, 520], [340, 600], [260, 320], [260, 700], [260, 200]]) {
+      await page.evaluate(r => window.__board21.setRect('name-picker:1', r), { x: 40, y: 40, w, h }); await page.waitForTimeout(300);
+      const bad = await footApart();
+      if (bad.length) narrow.push(`${w}×${h}: ${bad.join(', ')}`);
+    }
+    await page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 1100, h: 700 })); await page.waitForTimeout(300);
+    ok(!narrow.length, `in narrow windows the status, the main button, and Undo stay apart and inside the window (${narrow.join(' | ') || '300×680, 300×520, 340×600, 260×320, 260×700, 260×200'})`);
     ok(await inFrame(() => window.__sounds.join()) === 'pop', `a pop as it lands (${await inFrame(() => window.__sounds.join())})`);
     await tap(s0); await tap(s0 ^ 1);
     ok((await saved()).bracket.picks.length === 1, 'a decided match doesn’t change with another tap');
@@ -5442,7 +5480,12 @@ const SUITES = [
     ok(fin.join() === '2,3' && spotOf(b, 1).empty && b.trophy === false, `the final: spots 2 and 3 ready, the champion’s spot empty, the trophy grey (${fin})`);
     await inFrame(() => { window.__sounds.length = 0; });
     const champ = spotOf(b, 2).name;
-    await tap(2); await page.waitForTimeout(500);
+    await tap(2);
+    const landing = await inFrame(() => { const c = document.querySelector('.bracket-spot[data-spot="1"]'), s = getComputedStyle(c);
+      return { bg: s.backgroundColor, ink: s.color, dashed: s.borderTopStyle, trophy: document.querySelector('.bracket-trophy').classList.contains('bracket-gold'), fly: !!document.querySelector('.bracket-fly') }; });
+    ok(landing.fly && landing.bg === 'rgba(0, 0, 0, 0)' && landing.ink === 'rgba(0, 0, 0, 0)' && landing.dashed === 'dashed' && !landing.trophy,
+      `while the last name slides there, the champion’s spot stays dashed and empty, and the trophy grey (${JSON.stringify(landing)})`);
+    await page.waitForTimeout(500);
     b = await board();
     const gold = await inFrame(() => {
       const tok = n => { const t = document.createElement('i'); document.body.appendChild(t); t.style.color = `var(${n})`; const c = getComputedStyle(t).color; t.remove(); return c; };
@@ -5473,12 +5516,12 @@ const SUITES = [
       && await np().locator('#undo').isHidden() && await inFrame(() => document.activeElement.id) === 'go',
       'back to the draw: Undo hides (nothing before this bracket), and the keyboard is on the main button');
     // Three taps, then Shuffle again: Undo brings that bracket back with its three taps.
-    const A = await play(3);
+    const A = await play(3), idA = (await saved()).bracketId;
     await page.waitForTimeout(400);
     st = await drawNow(); await idle();
-    ok(JSON.stringify(st.bracket.before) === JSON.stringify({ seeds: A.seeds, picks: A.picks }) && st.bracket.picks.length === 0 && JSON.stringify(st.bracket.seeds) !== JSON.stringify(A.seeds)
+    ok(JSON.stringify(st.bracket.before) === JSON.stringify({ seeds: A.seeds, picks: A.picks, id: idA }) && st.bracket.picks.length === 0 && JSON.stringify(st.bracket.seeds) !== JSON.stringify(A.seeds)
       && await np().locator('#undo').isVisible() && await text('#status') === '23 matches left',
-      'Shuffle again keeps the bracket it replaced as before, with its taps; Undo shows, as a bracket came before');
+      'Shuffle again keeps the bracket it replaced as before, with its taps and its bracketId; Undo shows, as a bracket came before');
     await play(1);
     await np().locator('#undo').click(); await page.waitForTimeout(400);
     ok((await saved()).bracket.picks.length === 0 && JSON.stringify((await saved()).bracket.seeds) === JSON.stringify(st.bracket.seeds), 'Undo takes back the new bracket’s tap');
@@ -5545,7 +5588,11 @@ const SUITES = [
     await page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 1100, h: 700 })); await page.waitForTimeout(400);
 
     // ---- A tap skips the show; so does Show now. Nothing it added is left. Quick halves it. Sound on plays it.
-    await np().locator('#go').click(); await page.waitForTimeout(700);
+    // While the names deal out, no spot can be tabbed to.
+    await np().locator('#go').click(); await page.waitForTimeout(300);
+    const keys = await inFrame(() => { const a = document.activeElement, n = [...document.querySelectorAll('.bracket-spot')].filter(e => { e.focus(); return document.activeElement === e; }).length; a.focus(); return n; });
+    await page.waitForTimeout(400);
+    ok(keys === 0 && await showing(), `during the draw no spot takes the keyboard (${keys})`);
     await np().locator('#stage').click(); await page.waitForTimeout(150);
     st = await saved(); b = await board();
     ok(!(await showing()) && !st.bracket.picks.length && b.spots.filter(x => x.round === 1 || x.bye).every(x => x.name) && sameList(b.spots.filter(x => x.round === 1 || x.bye).map(x => x.name), st.bracket.seeds)
@@ -5588,8 +5635,10 @@ const SUITES = [
       'editing the names keeps the bracket as drawn, with its taps');
     st = await drawNow(); await idle();
     ok(sameList(st.bracket.seeds, N8) && (await board()).spots.length === 15 && await text('#status') === '7 matches left', `Shuffle again uses the new list (${st.bracket.seeds.join(', ')})`);
+    await setNames(N24.concat(N24.map(n => n + ' B'), N24.slice(0, 17).map(n => n + ' C')));
+    ok((await board()).spots.length === 15 && await text('#go') === 'Edit names' && await text('#status') === '65 names', `65 names: the bracket stays, “${await text('#status')}”, and “${await text('#go')}”`);
     await setNames(['Ava']);
-    ok((await board()).spots.length === 15 && await text('#go') === 'Add names', 'one name left: the bracket stays, and the button reads “Add names”');
+    ok((await board()).spots.length === 15 && await text('#go') === 'Add names' && await text('#status') === '', `one name left: the bracket stays, no status, and the button reads “Add names” (${await text('#status')})`);
     await np().locator('#go').click(); await page.waitForTimeout(200);
     ok(await np().locator('#edit').evaluate(e => e.classList.contains('on')), 'which opens the names list');
     await np().locator('#list').fill(N24.join('\n')); await np().locator('#done').click(); await page.waitForTimeout(300);
@@ -5611,6 +5660,30 @@ const SUITES = [
     ok(await eventually(() => showing(page2), 2000), 'a new draw in one tab plays its show in the other');
     await idle(); await idle(page2);
     ok(JSON.stringify((await board(page2)).spots.map(x => x.name)) === JSON.stringify((await board()).spots.map(x => x.name)) && (await saved(page2)).bracketId === nb.bracketId, 'and both end on the same bracket');
+    // Undo brings back the bracket before with its own bracketId: no draw show in the other tab, even one that missed
+    // the Shuffle again (a window drag there holds changes until it ends).
+    const shows = () => inFrame(() => window.__shows, page2);
+    await inFrame(() => { window.__shows = 0; new MutationObserver(() => { if (document.body.classList.contains('showing') && !window.__on) window.__shows++; window.__on = document.body.classList.contains('showing'); }).observe(document.body, { attributes: true, attributeFilter: ['class'] }); }, page2);
+    const prevId = nb.bracket.before && nb.bracket.before.id;
+    await np().locator('#undo').click(); await page.waitForTimeout(800);
+    ok(prevId && (await saved()).bracketId === prevId && await eventually(async () => (await board(page2)).won.length === 3) && await shows() === 0,
+      `Undo brings back the bracket before with its own bracketId (${prevId}), and the other tab shows it with no draw show`);
+    const grab = await page2.locator('.win[data-ikey="name-picker:1"] .win-title').boundingBox(), from = { x: grab.x + grab.width - 30, y: grab.y + grab.height / 2 };
+    await page2.mouse.move(from.x, from.y); await page2.mouse.down();
+    for (let i = 1; i <= 5; i++) { await page2.mouse.move(from.x + 4 * i, from.y); await page2.waitForTimeout(16); }
+    await drawNow(); await np().locator('#go').click(); await idle();
+    await np().locator('#undo').click(); await page.waitForTimeout(400);
+    await page2.mouse.up(); await page2.waitForTimeout(800);
+    ok(await shows() === 0 && (await saved(page2)).bracketId === prevId && (await board(page2)).won.length === 3 && !(await showing(page2)),
+      `a tab that missed the Shuffle again sees its bracket come back with no draw show (${await shows()} shows)`);
+    // The keyboard there stays in the picker when Undo here takes away its Undo, or a new draw here takes away its spot.
+    await np(page2).locator('#undo').focus();
+    for (let i = 0; i < 3; i++) await np().locator('#undo').click();
+    ok(await eventually(async () => await np(page2).locator('#undo').isHidden()) && await eventually(async () => await inFrame(() => document.activeElement.id, page2) === 'go'),
+      `when Undo here hides Undo there, the keyboard there goes to the main button (${await inFrame(() => document.activeElement.id || document.activeElement.tagName, page2)})`);
+    await np(page2).locator(`.bracket-spot[data-spot="${readyOf(await board(page2))[0]}"]`).focus();
+    await drawNow(); await idle(); await idle(page2);
+    ok(await inFrame(() => document.activeElement.id, page2) === 'go', `when a new draw here takes away its spot, the keyboard there goes to the main button (${await inFrame(() => document.activeElement.id || document.activeElement.tagName, page2)})`);
     await page2.close();
 
     // ---- A template keeps Bracket, and no names or bracket.
@@ -5674,15 +5747,26 @@ const SUITES = [
     await tap(rr[0], rp); await rp.waitForTimeout(100);
     ok((await saved(rp)).bracket.picks.length === 1 && !(await inFrame(() => window.__moved.filter(k => /transform|left|top|translate/.test(k)).length, rp)) && !(await inFrame(() => !!document.querySelector('.bracket-fly'), rp)),
       'a tap with reduce motion moves the name on with nothing sliding');
+    // A double tap on Shuffle again with reduce motion (no show to skip) draws once, so Undo still brings back the bracket
+    // the class was playing.
+    const played4 = await play(3, rp);
+    await inFrame(() => { window.__ids = []; const s = Board21.save; window.__save = s; Board21.save = function (d) { if (d && d.bracketId && window.__ids[window.__ids.length - 1] !== d.bracketId) window.__ids.push(d.bracketId); return s.apply(this, arguments); }; }, rp);
+    await np(rp).locator('#go').dblclick(); await rp.waitForTimeout(700);
+    const draws2 = await inFrame(() => { Board21.save = window.__save; return window.__ids.slice(); }, rp);
+    await np(rp).locator('#undo').click(); await rp.waitForTimeout(300);
+    const back2 = (await saved(rp)).bracket;
+    ok(draws2.length === 1 && JSON.stringify(back2.seeds) === JSON.stringify(played4.seeds) && JSON.stringify(back2.picks) === JSON.stringify(played4.picks) && played4.picks.length === 4,
+      `a double tap on Shuffle again with reduce motion draws once (${draws2.length}), and Undo brings back the bracket with its 4 taps (${back2.picks.length})`);
     await menu('sound', rp);
     const sizes = await inFrame(() => {
       const out = [], list = document.getElementById('list');
       for (let n = 2; n <= 64; n++) {
         list.value = Array.from({ length: n }, (_, i) => 'S' + (i + 1)).join('\n'); list.oninput();
-        document.getElementById('go').click();
+        drewAt = -1e9; document.getElementById('go').click();   // (each a tap of its own, not a double tap)
         const spots = [...document.querySelectorAll('.bracket-spot')].map(e => ({ s: +e.dataset.spot, round: +e.dataset.round, bye: e.hasAttribute('data-bye'), name: e.textContent }));
         const kids = s => spots.filter(x => x.s >> 1 === s && x.round === 1);
-        out.push({ n, status: document.getElementById('status').textContent, total: spots.length, r1: spots.filter(x => x.round === 1).length,
+        const mid = s => { const r = document.querySelector(`.bracket-spot[data-spot="${s}"]`).getBoundingClientRect(); return r.top + r.height / 2; };
+        out.push({ n, jog: Math.abs(mid(2) - mid(3)), status: document.getElementById('status').textContent, total: spots.length, r1: spots.filter(x => x.round === 1).length,
           byes: spots.filter(x => x.bye).map(x => x.s), r2: spots.filter(x => x.round === 2).map(x => ({ s: x.s, name: x.name, bye: x.bye, kids: kids(x.s).length })),
           seeds: spots.filter(x => x.round === 1 || x.bye).map(x => x.name).sort().join() === Array.from({ length: n }, (_, i) => 'S' + (i + 1)).sort().join() });
       }
@@ -5701,10 +5785,11 @@ const SUITES = [
       if (P > 2 && z.r2.some(x => !x.bye && x.kids !== 2)) problems.push('a bye meets a bye');
       if (Math.max(...halves) - Math.min(...halves) > 1 || Math.max(...quarters) - Math.min(...quarters) > 1) problems.push(`byes split ${halves} / ${quarters}`);
       if (!z.seeds) problems.push('not every name once');
+      if (z.jog > 0.5) problems.push(`spots 2 and 3 ${z.jog.toFixed(1)} px apart in height`);
       if (problems.length) badSize.push(`${z.n}: ${problems.join(', ')}`);
     }
     const t6 = sizes.find(z => z.n === 6), t24 = sizes.find(z => z.n === 24), t32 = sizes.find(z => z.n === 32);
-    ok(sizes.length === 63 && !badSize.length, `2 to 64 names: P, the byes, N − P/2 first-round matches, and N − 1 in all; no bye meets a bye; byes split evenly (${badSize.slice(0, 4).join(' | ') || 'all 63 sizes'})`);
+    ok(sizes.length === 63 && !badSize.length, `2 to 64 names: P, the byes, N − P/2 first-round matches, and N − 1 in all; no bye meets a bye; byes split evenly; the lines into the champion’s spot run straight across (${badSize.slice(0, 4).join(' | ') || 'all 63 sizes'})`);
     ok(t6.byes.length === 2 && t6.r1 === 4 && t6.status === '5 matches left' && t24.byes.length === 8 && t24.r1 === 16 && t24.status === '23 matches left' && !t32.byes.length && t32.r1 === 32,
       'the table: 6 → 8, 2 byes, 2 first matches, 5 in all; 24 → 32, 8 byes, 8 first, 23 in all; 32 → no byes');
     // Fair: over 600 draws of 6 names, each name gets a bye about a third of the time (seeds 1 and 2 get the byes).
@@ -5712,7 +5797,7 @@ const SUITES = [
     const draws = await inFrame(() => {
       const out = [], save = Board21.save;
       Board21.save = function (d) { if (d && d.bracket) out.push(d.bracket.seeds.slice()); return save.apply(this, arguments); };
-      for (let i = 0; i < 600; i++) document.getElementById('go').click();
+      for (let i = 0; i < 600; i++) { drewAt = -1e9; document.getElementById('go').click(); }   // (each a tap of its own, not a double tap)
       Board21.save = save;
       return out;
     }, rp);
@@ -5775,7 +5860,7 @@ const SUITES = [
     }, ip, IK(1));
     ok(cost.ms < 200 && cost.seeds === 64 && cost.picks === 1 && cost.before === 0 && cost.deeper === undefined, `64 seeds with a million taps read in ${cost.ms} ms (${JSON.stringify(cost)})`);
     const clean = await drawNow(ip, IK(3)); await idle(ip, IK(3));
-    ok(sameList(clean.bracket.seeds, S(8)) && JSON.stringify(clean.bracket.before) === JSON.stringify({ seeds: ['A', 'B', 'C', 'D'], picks: [5] }) && /^[a-z0-9]+-[a-z0-9]+$/.test(clean.bracketId),
+    ok(sameList(clean.bracket.seeds, S(8)) && JSON.stringify(clean.bracket.before) === JSON.stringify({ seeds: ['A', 'B', 'C', 'D'], picks: [5], id: 'mwp2g7b7-pg6utl' }) && /^[a-z0-9]+-[a-z0-9]+$/.test(clean.bracketId),
       `the next draw is saved clean, the bracket before it as read (${JSON.stringify(clean.bracket.before)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ictx.close();
@@ -5801,7 +5886,13 @@ const SUITES = [
       await drawNow(fp); await idle(fp); await play(taps, fp); await fp.waitForTimeout(400);
       const f = await fitLook(fp);
       fits.push(`${label}: ${f.sizes.join()}`);
-      ok(f.spots === 2 * list.length - 1 && !f.bad.length && f.sizes.length === 1, `${label}, ${w ? w + '×' + h : 'filling the board'}: every spot apart, every name in its spot and one size, the lines meeting their spots (${f.sizes.join()}; ${f.bad.slice(0, 3).join('; ') || 'ok'})`);
+      ok(f.spots === 2 * list.length - 1 && !f.bad.length && f.sizes.length === 1 && f.big && (list.length !== 8 || f.fs >= 8),
+        `${label}, ${w ? w + '×' + h : 'filling the board'}: every spot apart, every name in its spot and one size, as large as fits, the lines meeting their spots (${f.sizes.join()}; ${JSON.stringify(f.fill)}; ${f.bad.slice(0, 3).join('; ') || 'ok'})`);
+      if (list.length === 64) {
+        const halo = await inFrame(() => { const r = [...document.querySelectorAll('.bracket-ready')].map(e => e.getBoundingClientRect()), w = parseFloat(getComputedStyle(document.querySelector('.bracket-ready')).boxShadow.trim().split(' ').pop());
+          let gap = 1e9; for (const a of r) for (const b of r) if (a !== b && Math.abs(a.left - b.left) < 1 && b.top > a.top) gap = Math.min(gap, b.top - a.bottom); return { w, gap: Math.round(gap * 10) / 10 }; }, fp);
+        ok(halo.w > 0 && 2 * halo.w <= halo.gap + 0.1, `64 names: the halos of ready spots one above the other never meet (${JSON.stringify(halo)})`);
+      }
       await fp.screenshot({ path: OUT + `name-picker-bracket-fit-${list.length}.png` });
     }
     await fp.evaluate(() => window.__board21.setMaximized('name-picker:1', false));
@@ -5809,7 +5900,12 @@ const SUITES = [
     await fp.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 900, h: 560 })); await fp.waitForTimeout(500);
     await drawNow(fp); await idle(fp); await play(9, fp); await fp.waitForTimeout(400);
     const fsWas = (await fitLook(fp)).fs;
-    await setTheme(fp, 'dark');
+    for (const theme of ['light', 'dark']) {
+      if (theme === 'dark') await setTheme(fp, 'dark');
+      const c = await colors(fp), k = { out: contrast(c.out, c.stage), line: contrast(c.line, c.stage), dashed: contrast(c.dashed, c.stage), trophy: contrast(c.trophy, c.stage), halo: contrast(c.halo, c.stage) };
+      ok(c.outOpacity === '1' && k.out >= 4.5 && k.line >= 3 && k.dashed >= 3 && k.trophy >= 3 && k.halo >= (theme === 'light' ? 1.15 : 1.3),
+        `${theme} theme: a loser’s name stays readable (${k.out}:1), the lines, dashed spots, and grey trophy stand out (${k.line}, ${k.dashed}, ${k.trophy}:1), and the halo around a ready spot shows (${k.halo}:1)`);
+    }
     let fd = await fitLook(fp);
     const darkLook = await inFrame(() => { const s = document.querySelector('.bracket-spot:not(.bracket-empty)'); return { bg: getComputedStyle(s).backgroundColor, line: getComputedStyle(document.querySelector('.bracket-lines path:not(.bracket-won)')).stroke }; }, fp);
     ok(!fd.bad.length && fd.sizes.length === 1 && Math.abs(fd.fs - fsWas) < 1 && darkLook.bg !== 'rgb(255, 255, 255)' && darkLook.line !== 'rgb(203, 213, 225)', `dark theme: the spots and lines in dark colors, every name still fits (${fd.sizes.join()}; ${JSON.stringify(darkLook)})`);
@@ -5832,7 +5928,8 @@ const SUITES = [
     // The docs: what the Name Picker saves, and what it does.
     const dataDoc = fs.readFileSync(path.join(ROOT, 'docs', 'DATA-FORMAT.md'), 'utf8').replace(/\s+/g, ' ');
     ok(/saves `\{ names, [^}]*groupId, [^}]*bracket, bracketId[^}]*\}`/.test(dataDoc) && dataDoc.includes('`bracket` is the bracket on the stage, or `null`')
-      && /`style` is [^.]*`"bracket"`/.test(dataDoc), 'docs/DATA-FORMAT.md gives the bracket, its id, and the style');
+      && /`style` is [^.]*`"bracket"`/.test(dataDoc) && dataDoc.includes('`{ seeds, picks, id }`'), 'docs/DATA-FORMAT.md gives the bracket, its id, the bracket before with its id, and the style');
+    ok(/\.w \.head p \{[^}]*text-wrap: pretty/.test(fs.readFileSync(path.join(ROOT, 'docs', 'teacher-guide', 'page-src.html'), 'utf8')), 'the Teacher Guide’s card heads never leave one word alone on a line');
     const readme = fs.readFileSync(path.join(ROOT, 'README.md'), 'utf8');
     ok(/ styles, each in its own file: [^.]*Groups, and Bracket\./.test(readme) && readme.includes('Bracket draws the class into a tournament, and a tap moves each winner on.'), 'README.md names Bracket, in one short sentence');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
@@ -5855,7 +5952,7 @@ const SUITES = [
           style.mount = function (root, host) {
             const sound = host.sound;
             host.sound = function (name) {
-              window.__sounds.push(name);
+              window.__sounds.push(name); (window.__soundLog = window.__soundLog || []).push([name, performance.now()]);
               if (name === 'slam') window.__slamAt.push(Math.max(0, ...document.getAnimations().filter(a => !(a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('.versus-name'))).map(a => a.currentTime || 0)));
               return sound.apply(this, arguments);
             };
@@ -5967,8 +6064,9 @@ const SUITES = [
     // show added is left. Quick: about 1.5 s.
     for (const [ms, how] of [[700, 'a tap'], [2150, 'a tap'], [2150, 'Show now']]) {
       await idle();
+      const t = Date.now();
       st = await pickNow();
-      await page.waitForTimeout(ms - 150);
+      await page.waitForTimeout(ms - (Date.now() - t));   // (counted from the tap that picked: a tap before 600 ms is a double tap)
       await np().locator(how === 'a tap' ? '#stage' : '#go').click(); await page.waitForTimeout(150);
       s = await vs();
       ok(!(await showing()) && (await saved()).pickId === st.pickId && s.names.join() === st.picked.join() && s.look === st.versusLook && clean(s) && await text('#go') === 'Pick 2',
@@ -6014,6 +6112,38 @@ const SUITES = [
     ok(LOOKS.every(l => ended[l] === true), `every look, after its show: nothing the show added is left, and nothing runs (${JSON.stringify(ended)})`);
     ok(LOOKS.every(l => skipped[l] === true), `every look, skipped in the middle of its slam: the same (${JSON.stringify(skipped)})`);
     ok(LOOKS.every(l => typeof thuds[l] === 'number' && Math.abs(thuds[l]) <= 50), `every look’s thud comes at its own moment of impact (ms off: ${JSON.stringify(thuds)})`);
+    // A show cut short any other way ends as clean too (No repeats is off: every pick from everyone), while the names flicker or during the slam: the page hidden, a switch
+    // to Big name and back, Edit names and Done, or a resize (in the slam it ends the show; before, the show goes on).
+    // No thud after it, and the show is over.
+    const hide = v => inFrame((_, v) => {
+      if (v) { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); }
+      else { delete document.hidden; delete document.visibilityState; }
+      document.dispatchEvent(new Event('visibilitychange'));
+    }, page, undefined, v);
+    const CUTS = [['the page hidden', 0, () => hide(true)], ['a switch to Big name and back', 280, async () => { await menu('style:name'); await eventually(async () => (await conf()).style === 'name'); await menu('style:versus'); await eventually(async () => (await conf()).style === 'versus'); }],
+      ['Edit names and Done', 280, async () => { await menu('edit'); await np().locator('#done').click(); await page.waitForTimeout(200); }],
+      ['a resize', 0, () => page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 600, h: 440 }))]];
+    const cutShort = [];
+    // (When the show ends: the body loses .showing.)
+    await inFrame(() => new MutationObserver(() => { if (!document.body.classList.contains('showing')) window.__endedAt = performance.now(); }).observe(document.body, { attributes: true, attributeFilter: ['class'] }));
+    for (const [how, lead, act] of CUTS) for (const ms of [700, 2150]) {
+      await idle();
+      st = await pickNow();
+      await page.waitForTimeout(ms - 150 - lead);
+      await act();
+      // (A resize while the names flicker: the show goes on to its end.)
+      if (how === 'a resize' && ms < 1950) await idle(); else await page.waitForTimeout(450);
+      const on = await showing();
+      // The sounds the style asked for once the show had ended (the chime of a show a resize ends in its slam is its end).
+      const after = await inFrame(() => (window.__soundLog || []).filter(x => x[1] > window.__endedAt + 1).map(x => x[0]));
+      if (how === 'the page hidden') await hide(false);
+      if (how === 'a resize') { await page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 540, h: 400 })); await page.waitForTimeout(300); }
+      s = await vs();
+      const style = (await conf()).style;
+      if (on || style !== 'versus' || !clean(s) || s.names.join() !== st.picked.join() || s.look !== st.versusLook || after.some(x => x !== 'chime'))
+        cutShort.push(`${how} at ${ms} ms: ${JSON.stringify({ on, style, after: after.join(' '), s })}`);
+    }
+    ok(!cutShort.length, `a show cut short by the page hidden, a switch of style and back, Edit names, or a resize ends as clean, with no thud after (${cutShort.slice(0, 2).join(' | ') || 'all 8'})`);
     await menu('sound'); await menu('norepeat');
 
     // ---- Names at a time stays as the teacher chose it: back in Big name, the button picks 3.
@@ -6079,6 +6209,15 @@ const SUITES = [
       'and the chime still plays, and screen readers hear the pair');
     await rp.waitForTimeout(400);
     ok(clean(await vs(rp)), 'once faded in, nothing runs');
+    // A double tap with reduce motion (no show to skip) makes one pick: two students leave the round, not four.
+    await inFrame(() => { window.__ids = []; const s = Board21.save; window.__save = s; Board21.save = function (d) { if (d && d.pickId && window.__ids[window.__ids.length - 1] !== d.pickId) window.__ids.push(d.pickId); return s.apply(this, arguments); }; }, rp);
+    const leftWas = (await saved(rp)).left.length;
+    await np(rp).locator('#go').dblclick(); await rp.waitForTimeout(700);
+    const dbl = await inFrame(() => { Board21.save = window.__save; return window.__ids.slice(); }, rp);
+    st = await saved(rp);
+    ok(dbl.length === 1 && st.left.length === leftWas - 2 && await text('#status', rp) === `${st.left.length} of 24 left` && (await vs(rp)).names.join() === st.picked.join()
+      && await eventually(async () => await said(rp) === `${st.picked[0]} versus ${st.picked[1]}.`),
+      `a double tap with reduce motion makes one pick (${dbl.length}): ${leftWas} → ${st.left.length} left, and screen readers hear “${await said(rp)}”`);
     await menu('sound', rp);
 
     // ---- No repeats: 24 names go in 12 pairs, no one twice; then Start over. 25 names: after 12 pairs, "Pick the last one"
@@ -6086,7 +6225,7 @@ const SUITES = [
     const pairs = async n => inFrame((_, n) => {
       const out = [], save = Board21.save;
       Board21.save = function (d) { if (d && d.picked) out.push({ picked: d.picked.slice(), left: d.left && d.left.length, look: d.versusLook }); return save.apply(this, arguments); };
-      for (let i = 0; i < n; i++) document.getElementById('go').click();
+      for (let i = 0; i < n; i++) { drewAt = -1e9; document.getElementById('go').click(); }   // (each a tap of its own, not a double tap)
       Board21.save = save;
       return { out, go: document.getElementById('go').textContent, status: document.getElementById('status').textContent };
     }, rp, undefined, n);
@@ -6095,6 +6234,7 @@ const SUITES = [
     ok(r.out.length === 12 && r.out.every(x => x.picked.length === 2) && sameList(r.out.flatMap(x => x.picked), N24) && r.go === 'Start over' && r.status === '0 of 24 left',
       `No repeats: 24 names go in 12 pairs, everyone once (${r.out.map(x => x.picked.join('/')).slice(0, 4).join(', ')}, …); then “${r.go}”, “${r.status}”`);
     ok(await eventually(async () => / Everyone has been picked\.$/.test(await said(rp))), `screen readers hear that everyone has been picked (${await said(rp)})`);
+    await rp.waitForTimeout(700);   // (a tap of its own, not the second of a double tap)
     await np(rp).locator('#go').click(); await rp.waitForTimeout(200);
     const N25 = N24.concat(['Xavier']);
     await setNames(N25, rp);
@@ -6117,7 +6257,7 @@ const SUITES = [
     const deck = await inFrame(() => {
       const out = [], save = Board21.save;
       Board21.save = function (d) { if (d && d.picked) out.push(d.versusLook); return save.apply(this, arguments); };
-      for (let i = 0; i < 50; i++) document.getElementById('go').click();
+      for (let i = 0; i < 50; i++) { drewAt = -1e9; document.getElementById('go').click(); }   // (each a tap of its own, not a double tap)
       Board21.save = save;
       return out;
     }, rp, ikD);
@@ -6211,10 +6351,12 @@ const SUITES = [
         const N = ink(nb, nw), E = ink(eb, ew), edge = (m, i, x, y) => x === 0 || y === 0 || x === W - 1 || y === H - 1 || !m[i - 1] || !m[i + 1] || !m[i - W] || !m[i + W];
         for (const m of [N, E]) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (x < 2 || y < 2 || x >= W - 2 || y >= H - 2) m[y * W + x] = 0;
         const out = { W, H };
-        for (const [side, x0, x1] of [['L', 0, W >> 1], ['R', W >> 1, W]]) {
+        // (Names above and below the emblem, in a tall stage: the top half and the bottom half.)
+        const halves = s.tall ? [['L', 0, W, 0, H >> 1], ['R', 0, W, H >> 1, H]] : [['L', 0, W >> 1, 0, H], ['R', W >> 1, W, 0, H]];
+        for (const [side, x0, x1, y0, y1] of halves) {
           let over = 0, bx0 = W, bx1 = -1, by0 = H, by1 = -1;
           const pts = [];
-          for (let y = 0; y < H; y++) for (let x = x0; x < x1; x++) {
+          for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
             const i = y * W + x;
             if (!N[i]) continue;
             if (E[i]) over++;
@@ -6231,23 +6373,26 @@ const SUITES = [
           out[side] = { gap: over ? -over : Math.round((Math.sqrt(best) - 1) * 10) / 10, inside: bx0 > 2 && by0 > 2 && bx1 < W - 3 && by1 < H - 3 };
         }
         let mid = 0;
-        for (let y = 0; y < H; y++) for (let x = (W >> 1) - 2; x <= (W >> 1) + 2; x++) mid += N[y * W + x];
-        out.mid = mid;
+        if (s.tall) { for (let y = (H >> 1) - 2; y <= (H >> 1) + 2; y++) for (let x = 0; x < W; x++) mid += N[y * W + x]; }
+        else for (let y = 0; y < H; y++) for (let x = (W >> 1) - 2; x <= (W >> 1) + 2; x++) mid += N[y * W + x];
+        out.mid = mid; out.tall = s.tall;
         return out;
-      }, ip, ik, shots);
+      }, ip, ik, Object.assign(shots, { tall: await inFrame(() => document.querySelector('.versus-name').getBoundingClientRect().bottom < document.querySelector('.versus-box').getBoundingClientRect().top, ip, ik) }));
     };
     const letters = async val => { await openSettings(ip, ['letters']); await ip.click(`#settings [data-act="letters"][data-val="${val}"]`); await ip.keyboard.press('Escape'); await ip.waitForTimeout(900); };
-    const tight = [], worst = {};
+    const tight = [], worst = {}, sizesAt = {};
     for (const [val, label] of [['standard', 'the device’s letters'], ['early', 'Early readers'], ['legible', 'Easier to read']]) {
       if (val !== 'standard') await letters(val);
-      for (const size of [[360, 270], [540, 400], null]) {
+      // (In the device's letters, square and narrow windows too, down to the smallest, 260 × 200.)
+      for (const size of [[360, 270], [540, 400], null].concat(val === 'standard' ? [[260, 200], [400, 400], [420, 420], [300, 520], [300, 640]] : [])) {
         const where = size ? size.join(' × ') : 'filling the board';
         for (let n = 1; n <= 10; n++) {
           const ik = IK(n);
           if (size) await ip.evaluate(([ik, w, h]) => { window.__board21.setRect(ik, { x: 300, y: 120, w, h }); window.__board21.focusWin(ik); }, [ik, ...size]);
           else await ip.evaluate(ik => { window.__board21.focusWin(ik); window.__board21.setMaximized(ik, true); }, ik);
           await ip.waitForTimeout(450);
-          const g = await inkGaps(ik), look = LOOKS[(n - 1) % 5], k = `${label}, ${where}`;
+          const g = await inkGaps(ik), look = LOOKS[(n - 1) % 5], k = `${label}, ${where}${g.tall ? ' (above and below)' : ''}`;
+          if (val === 'standard' && size) sizesAt[where] = Math.min(sizesAt[where] || 999, await inFrame(() => parseFloat(document.querySelector('.versus-name').style.fontSize), ip, ik));
           const min = Math.min(g.L.gap, g.R.gap);
           worst[k] = Math.min(worst[k] === undefined ? 999 : worst[k], min);
           if (!(min >= 8 && g.L.inside && g.R.inside && !g.mid)) tight.push(`${look} ${n > 5 ? 'Maximiliano/Alexandria' : 'Alexandria/Maximiliano'}, ${k} (${g.W}×${g.H}): ${g.L.gap} / ${g.R.gap} px${g.L.inside && g.R.inside ? '' : ', cut off'}${g.mid ? ', across the middle' : ''}`);
@@ -6256,7 +6401,24 @@ const SUITES = [
         }
       }
     }
-    ok(!tight.length, `long names fit their side, at least 8 px clear of the emblem, in every look, both ways round, at 360 × 270, 540 × 400, and filling the board, in every Text style (closest: ${JSON.stringify(worst)}${tight.length ? '; ' + tight.slice(0, 4).join(' | ') : ''})`);
+    ok(!tight.length, `long names fit their side, at least 8 px clear of the emblem, in every look, both ways round, at 360 × 270, 540 × 400, and filling the board, in every Text style, and at 260 × 200, 400 × 400, 420 × 420, 300 × 520, and 300 × 640 (closest: ${JSON.stringify(worst)}${tight.length ? '; ' + tight.slice(0, 4).join(' | ') : ''})`);
+    // Readable in a square or narrow window: a narrow, tall Name Picker beside the board's other windows.
+    ok(sizesAt['400 × 400'] >= 14 && sizesAt['420 × 420'] >= 14 && sizesAt['300 × 520'] >= 20 && sizesAt['300 × 640'] >= 20,
+      `long names stay readable in square and tall windows, in every look (smallest, px: ${JSON.stringify(sizesAt)})`);
+    // From a square window up, a taller window never makes the names smaller. (In a wider one the emblem grows with the
+    // stage's height, as the looks were designed, until it takes 38% of the width.)
+    await letters('standard');
+    const growth = [];
+    for (const w of [300, 400]) for (let n = 1; n <= 5; n++) {
+      const row = [];
+      for (const h of [w, w * 1.3, w * 1.7, w * 2.1].map(Math.round)) {
+        await ip.evaluate(([ik, w, h]) => { window.__board21.setRect(ik, { x: 300, y: 60, w, h }); window.__board21.focusWin(ik); }, [IK(n), w, h]);
+        await ip.waitForTimeout(350);
+        row.push([h, await inFrame(() => parseFloat(document.querySelector('.versus-name').style.fontSize), ip, IK(n))]);
+      }
+      if (row.some(([, f], i) => i && f < row[i - 1][1] * 0.97)) growth.push(`${LOOKS[n - 1]} at ${w} wide: ${row.map(([h, f]) => h + ':' + f).join(' ')}`);
+    }
+    ok(!growth.length, `in every look, from a square window up, a taller window never makes the names smaller, at 300 and 400 wide (${growth.slice(0, 2).join(' | ') || 'all 10'})`);
     // Dark theme: the slash goes dark, and every look draws its dark markup.
     await setTheme(ip, 'dark');
     await ip.waitForTimeout(400);

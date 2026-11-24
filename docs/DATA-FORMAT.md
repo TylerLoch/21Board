@@ -542,19 +542,23 @@ The Name Picker (`name-picker`) saves
 `{ names, left, picked, pickId, current, versusLook, groups, groupId, bracket, bracketId }`. `names` is the list, once
 for each student. `left` is who is still to go in a round of No repeats, or `null` for everyone. `picked` is the last
 pick, 1 to 6 names, and `pickId` changes with every pick. `current` is `picked[0]`, for releases before several winners.
-`versusLook` is the look a Versus pick plays in: `"lightning"`, `"forged"`, `"crest"`, `"comic"`, or `"flame"`, or
-`null`. An unknown look gets one at random. `groups` is each group's names in deal order, 6 groups at most. `groupId`
-changes with every draw. It ends with the Groups number and how many groups that made, such as `-43` for Groups 4 with 3
-names. Names in `left`, `picked`, and `groups` that aren't in `names` are dropped when read, and a name in no group
-joins the smallest group. `bracket` is the bracket on the stage, or `null`: `{ seeds, picks, before }`. `seeds` is its 2
-to 64 names, seed 1 first, as they were drawn. Editing `names` doesn't change them. `picks` is each tap in order, as the
-number of the spot whose name moved on. Spot 1 is the champion's, spots `2k` and `2k + 1` play for spot `k`, and the
-first round is spots `P` to `2P - 1` in standard seed order, `P` being the number of seeds rounded up to a power of 2.
-`before` is the bracket the last Shuffle again replaced, as `{ seeds, picks }`, or `null`. `bracketId` changes with
-every draw. When read, a bracket with more than 64 seeds is dropped, and its taps stop at the first one that can't be
-made. Its config is `{ noRepeats, style, winners, groups, quick, sound }`. `style` is `"name"`, `"wheel"`,
-`"spotlight"`, `"lotto"`, `"versus"`, `"groups"`, or `"bracket"`. `winners` is 1 to 6 and `groups` is 2 to 6. A bad one
-takes its default, 1 or 4.
+`versusLook` is the look of a Versus pick: `"lightning"`, `"forged"`, `"crest"`, `"comic"`, `"flame"`, or `null` for
+other picks. An unknown look gets one at random. `groups` is each group's names in deal order, 6 groups at most.
+`groupId` changes with every draw. It ends with the Groups number and how many groups that made, such as `-43` for
+Groups 4 with 3 names. Names in `left`, `picked`, and `groups` that aren't in `names` are dropped when read, and a name
+in no group joins the smallest group. `bracket` is the bracket on the stage, or `null`: `{ seeds, picks, before }`.
+`seeds` is its 2 to 64 names, seed 1 first, as they were drawn. Editing `names` doesn't change them. `picks` is each tap
+in order, as the number of the spot whose name moved on. Spot 1 is the champion's, and spots `2k` and `2k + 1` play for
+spot `k`. The first round is spots `P` to `2P - 1`, `P` being the number of seeds rounded up to a power of 2. They hold
+the seeds in standard order, such as `[1, 4, 2, 3]` for 4. Seed `s` meets seed `P + 1 - s`, and the top seeds meet last.
+Seeds above the number of names are byes. A student who meets a bye in spots `2k` and `2k + 1` starts in spot `k`, and
+those two stay empty. `before` is the bracket the last Shuffle again replaced, as `{ seeds, picks, id }`, or `null`. Its
+`id` is that bracket's `bracketId`, and Undo brings both back. `bracketId` changes with every draw, and is kept only
+with a bracket. When read, seeds that aren't text or are blank are dropped, and the rest are trimmed. A bracket with
+more than 64 seeds, or fewer than 2 left, is dropped. Its taps stop at the first one that can't be made. `before` is
+read the same way, with no `before` of its own. Its config is `{ noRepeats, style, winners, groups, quick, sound }`.
+`style` is `"name"`, `"wheel"`, `"spotlight"`, `"lotto"`, `"versus"`, `"groups"`, or `"bracket"`. `winners` is 1 to 6
+and `groups` is 2 to 6. A bad one takes its default, 1 or 4.
 
 The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
 their own work in their own site's storage on the device. Their windows have an `inst` record like any other,

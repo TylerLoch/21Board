@@ -11,8 +11,9 @@
  */
 NamePicker.register('bracket', {
   css: `
-.bracket { position: absolute; inset: 0; overflow: hidden; line-height: 1; --bracket-line: #cbd5e1; }
-[data-b21-theme="dark"] .bracket { --bracket-line: #4b5563; }
+/* --bracket-line: the lines, the dashed spots, and the grey trophy, at 3:1 on the stage. --bracket-halo: around a ready spot. */
+.bracket { position: absolute; inset: 0; overflow: hidden; line-height: 1; --bracket-line: #7c8a9e; --bracket-halo: color-mix(in srgb, var(--b21-accent) 18%, transparent); }
+[data-b21-theme="dark"] .bracket { --bracket-line: #6b7280; --bracket-halo: color-mix(in srgb, var(--b21-accent) 25%, transparent); }
 .bracket *, .bracket *::before, .bracket *::after { box-sizing: border-box; }
 /* A name: waiting on the stage before the first draw, in a spot of the bracket, in the stack, or on its way. */
 .bracket-tile, .bracket-spot, .bracket-stack i, .bracket-top, .bracket-fly {
@@ -23,12 +24,14 @@ NamePicker.register('bracket', {
 [data-b21-theme="dark"] .bracket-top, [data-b21-theme="dark"] .bracket-fly { background: var(--b21-surface-2); }
 .bracket-spot { overflow: hidden; transition: opacity .2s; }
 .bracket-spot.bracket-empty { background: transparent; border: 1.5px dashed var(--bracket-line); }
-.bracket-spot.bracket-ready { border: 2px solid var(--b21-accent); box-shadow: 0 0 0 3px var(--b21-accent-soft); cursor: pointer; }
-.bracket-spot.bracket-out { color: var(--b21-muted); opacity: .5; }
+.bracket-spot.bracket-ready { border: 2px solid var(--b21-accent); box-shadow: 0 0 0 var(--bracket-halo-w, 3px) var(--bracket-halo); cursor: pointer; }
+/* A student who lost: dimmed by its color, which stays readable (4.5:1). */
+.bracket-spot.bracket-out { color: var(--b21-muted); background: transparent; }
 .bracket-spot.bracket-champ { border-width: 2px; }
-.bracket-spot.bracket-champ:not(.bracket-empty) { background: var(--np-win); color: var(--np-ink); border: 0; box-shadow: 0 6px 18px rgba(245, 158, 11, .35); }
+.bracket-spot.bracket-champ:not(.bracket-empty):not(.bracket-wait) { background: var(--np-win); color: var(--np-ink); border: 0; box-shadow: 0 6px 18px rgba(245, 158, 11, .35); }
 /* A spot a name is on its way to: empty until it lands. */
 .bracket-spot.bracket-wait { background: transparent; border: 1.5px dashed var(--bracket-line); box-shadow: none; color: transparent; }
+.bracket-spot.bracket-champ.bracket-wait { border-width: 2px; }
 .bracket-spot.bracket-hide { color: transparent; }
 .bracket-spot:focus { outline: none; }
 .bracket-spot:focus-visible { outline: 3px solid var(--b21-accent); outline-offset: 3px; }
@@ -92,18 +95,21 @@ NamePicker.register('bracket', {
 
     // ---- The bracket's shape, in columns and rows, worked out once for each bracket. A spot drawn with nothing feeding it
     // (a first-round spot, or a bye's student in round 2) takes one row; any other sits halfway between the two that
-    // feed it. Each half sits in the middle of the height, so byes make a half shorter, not emptier.
+    // feed it. Byes make a half shorter, not emptier. The halves line up on their last spots (2 and 3), so the lines into
+    // the champion's spot run straight across.
     function shape() {
       const P = B.P, D = depth(P), rows = new Map();
       const lone = s => s >= P || !B.shown[2 * s];
       const units = s => lone(s) ? 1 : units(2 * s) + units(2 * s + 1);
-      const most = Math.max(units(2), units(3));
       const place = (s, top) => {
         if (lone(s)) { rows.set(s, top + 0.5); return; }
         place(2 * s, top); place(2 * s + 1, top + units(2 * s));
         rows.set(s, (rows.get(2 * s) + rows.get(2 * s + 1)) / 2);
       };
-      place(2, (most - units(2)) / 2); place(3, (most - units(3)) / 2);
+      place(2, 0); place(3, 0);
+      const R = Math.max(rows.get(2), rows.get(3)), down = [R - rows.get(2), R - rows.get(3)];
+      if (down[0] || down[1]) { rows.clear(); place(2, down[0]); place(3, down[1]); }
+      const most = Math.max(down[0] + units(2), down[1] + units(3));
       const out = [];
       for (let s = 2; s < 2 * P; s++) if (B.shown[s]) out.push({ s, half: s >> (depth(s) - 1) === 2 ? 0 : 1, L: D - depth(s), u: rows.get(s) });
       // Reading order: the left half top to bottom, then the right half (and the champion's spot last).
@@ -177,7 +183,7 @@ NamePicker.register('bracket', {
       // With room to spare below (a small class), the bracket and its trophy sit in the middle of the stage together.
       const top = cy - ch / 2 - gap - ts, bottom = Math.max(...spots.map(sp => y0(sp) + (sp.s === 1 ? ch : sh) / 2));
       const dy = Math.max(0, (H - bottom - top) / 2);
-      return { W, H, colW, sw, sh, cw, ch, fs, cfs, x, y: sp => y0(sp) + dy, padY, trophy: { x: W / 2 - ts / 2, y: top + dy, w: ts, h: ts } };
+      return { W, H, colW, rowH, sw, sh, cw, ch, fs, cfs, x, y: sp => y0(sp) + dy, padY, trophy: { x: W / 2 - ts / 2, y: top + dy, w: ts, h: ts } };
     }
     // Tiles, before the first draw: every grid is tried, and the one with the largest names wins. Every name one size.
     function tileLayout() {
@@ -222,6 +228,7 @@ NamePicker.register('bracket', {
       for (let pass = 0; pass < 2; pass++) {
         L = bracketLayout();
         if (!L) return;
+        box.style.setProperty('--bracket-halo-w', px(clamp((L.rowH - L.sh) / 2 - 0.5, 0, 3)));   // (halos never meet)
         const radius = px(clamp(L.sh * 0.3, 3, 10));
         for (const sp of spots) {
           place(sp.el, rectOf(sp));
@@ -396,6 +403,7 @@ NamePicker.register('bracket', {
       for (const a of r.anims) { a.onfinish = null; try { a.cancel(); } catch (e) { /* gone */ } }
       for (const e of r.extra) e.remove();
       for (const sp of spots) { sp.el.classList.remove(P_ + 'wait'); if (skipping) sp.el.classList.remove(P_ + 'land'); }
+      box.inert = false;
       if (!skipping) host.done();
     }
 
@@ -431,6 +439,7 @@ NamePicker.register('bracket', {
       if (!B || !L || !box.animate) { host.done(); return; }
       const T = view.quick ? QUICK : NORMAL, plan = schedule(T);
       for (const s of plan.order) at.get(s).el.classList.add(P_ + 'wait');
+      box.inert = true;   // (no spot can be tabbed to or tapped until the names have landed)
       run = { t0: performance.now(), T, ev: plan.ev, order: plan.order, ei: 0, anims: [], extra: [], landed: 0, popAt: -1e9, deck: null, top: null };
       openStack();
       gather(from, T);

@@ -21,6 +21,8 @@ NamePicker.register('versus', {
 .versus-name { position: absolute; transform: translate(-50%, -50%) skewX(-9deg); color: #fff; font-weight: 900; font-style: italic; white-space: nowrap;
   line-height: 1; -webkit-text-stroke: .07em #111827; paint-order: stroke fill; text-shadow: .04em .07em 0 rgba(0, 0, 0, .45); }
 .versus-blur { filter: blur(1.5px); opacity: .85; }
+/* Above and below the emblem, the names are in front of it: the looks' slams come down through them. */
+.versus-tall .versus-name { z-index: 1; }
 .versus-probe { left: 0; top: 0; transform: none; font-size: 100px; visibility: hidden; }
 .versus-box { position: absolute; transform: translate(-50%, -50%); }
 .versus-box > svg { display: block; width: 100%; height: 100%; overflow: visible; }
@@ -61,7 +63,9 @@ NamePicker.register('versus', {
 
     // ---- Layout. The emblem's box sits in the middle, its look's own size. Both names are one size, as large as fits
     // each side while clear of the box, up to 22% of the stage's height: the left one a little above the middle, the
-    // right one a little below.
+    // right one a little below. Beside the names the box takes at most 38% of the stage's width, so a narrow window
+    // leaves them room. In a stage taller than wide the names may go above and below the box instead, the left one at
+    // the top on the left, the right one at the bottom on the right, when that makes them larger.
     const widths = new Map();
     let fam = '';
     function em(text) {   // a name's width at 1 px, in the stage's letters
@@ -71,22 +75,36 @@ NamePicker.register('versus', {
       if (w === undefined) { const p = host.el('span', 'versus-name versus-probe', stage, text); w = p.offsetWidth / 100; p.remove(); widths.set(text, w); }
       return w;
     }
-    function geo(look) {
-      const W = stage.clientWidth, H = stage.clientHeight, E = LOOKS[look] || {};
-      const bh = Math.min(W, H) * clamp(E.size || 0.5, 0.3, 0.7), bw = bh * clamp(E.aspect || 1, 0.6, 2), edge = W * 0.04;
-      // (Each name's room ends a little inside the box: the looks are narrower there. 2 px more keeps a long name 8 px
-      // clear of the emblem through its slam in a small window.)
-      return { W, H, bw, bh, edge, aw: W / 2 - bw * 0.42 - edge - 2 };
+    function geo(look, pair) {
+      const W = stage.clientWidth, H = stage.clientHeight, E = LOOKS[look] || {}, asp = clamp(E.aspect || 1, 0.6, 2), edge = W * 0.04;
+      const h0 = Math.min(W, H) * clamp(E.size || 0.5, 0.3, 0.7), bh = Math.min(h0, W * 0.38 / asp), bw = bh * asp;
+      // (Each name's room ends a little inside the box: the looks are narrower there. A few px more keeps a long name 8 px
+      // clear of the emblem through its slam, more in a small window.)
+      const g = { W, H, bw, bh, edge, tall: false, top: H * 0.22, aw: W / 2 - bw * 0.42 - edge - Math.max(2, 12 - 0.06 * bw) };
+      if (!(H > W && pair)) return g;
+      // (Above and below: the box its look's own size, and each name across the stage, in the middle of its band, at
+      // least 10 px clear of the box.)
+      const band = (H - h0) / 2, t = { W, H, bw: h0 * asp, bh: h0, edge, tall: true, band, top: Math.min(H * 0.22, (band - 20) / 1.25), aw: W - 2 * edge };
+      return size(t, pair) > size(g, pair) ? t : g;
     }
     // (1.12: room for the letters' lean and outline.)
-    const fit = (g, text) => Math.max(1, Math.min(g.H * 0.22, g.aw / (Math.max(0.3, em(text)) * 1.12)));
+    const fit = (g, text) => Math.max(1, Math.min(g.top, g.aw / (Math.max(0.3, em(text)) * 1.12)));
+    const size = (g, pair) => Math.min(fit(g, pair[0]), fit(g, pair[1]));
     function place(look, pair) {
-      const g = geo(look);
+      const g = geo(look, pair);
       if (!(g.W > 0 && g.H > 0 && g.aw > 0)) return g;
-      g.fs = Math.min(fit(g, pair[0]), fit(g, pair[1]));
-      [[g.edge + g.aw / 2, 0.42], [g.W - g.edge - g.aw / 2, 0.58]].forEach(([x, y], i) => Object.assign(names[i].style, { left: px(x), top: px(g.H * y), fontSize: px(g.fs) }));
+      g.fs = size(g, pair);
+      stage.classList.toggle('versus-tall', g.tall);
+      pair.forEach((text, i) => put(g, i, text, g.fs));
       Object.assign(box.style, { left: px(g.W / 2), top: px(g.H / 2), width: px(g.bw), height: px(g.bh) });
       return g;
+    }
+    // A name, i: 0 the left one, 1 the right one, at fs px. Above and below the box, it starts at the left edge or ends
+    // at the right one.
+    function put(g, i, text, fs) {
+      let x = i ? g.W - g.edge - g.aw / 2 : g.edge + g.aw / 2, y = g.H * (i ? 0.58 : 0.42);
+      if (g.tall) { const w = Math.min(g.aw, em(text) * fs * 1.12); x = i ? g.W - g.edge - w / 2 : g.edge + w / 2; y = i ? g.H - g.band / 2 : g.band / 2; }
+      Object.assign(names[i].style, { left: px(x), top: px(y), fontSize: px(fs) });
     }
     // The look's emblem in its box, drawn fresh.
     function emblem(look, state, g) {
@@ -140,7 +158,7 @@ NamePicker.register('versus', {
         let t, n = 0;
         do t = any(r.deck); while (++n < 8 && r.deck.length > 2 && (t === names[i].textContent || t === names[1 - i].textContent));
         names[i].textContent = t;
-        names[i].style.fontSize = px(Math.min(r.g.fs, fit(r.g, t)));
+        put(r.g, i, t, Math.min(r.g.fs, fit(r.g, t)));
       }
       host.sound('tick', { volume: 0.6 });
     }
@@ -149,7 +167,7 @@ NamePicker.register('versus', {
       const r = run, n = names[i];
       r.locked[i] = true;
       n.textContent = r.pair[i];
-      n.style.fontSize = px(r.g.fs);
+      put(r.g, i, r.pair[i], r.g.fs);
       n.classList.remove('versus-blur');
       n.removeAttribute('aria-hidden');
       if (n.animate) r.anims.push(n.animate([{ transform: NAME + ' scale(.8)' }, { transform: NAME + ' scale(1.12)', offset: 0.6 }, { transform: NAME }], { duration: r.T.pop, easing: 'ease-out' }));
@@ -231,12 +249,12 @@ NamePicker.register('versus', {
           // The slam is laid out for the stage it began on: if that changes, the show ends there.
           if (run.slammed) { if (stage.clientWidth !== run.g.W || stage.clientHeight !== run.g.H) finish(); return; }
           run.g = place(run.look, run.pair);
-          for (let i = 0; i < 2; i++) if (!run.locked[i] && run.g.fs > 0) names[i].style.fontSize = px(Math.min(run.g.fs, fit(run.g, names[i].textContent)));
+          for (let i = 0; i < 2; i++) if (!run.locked[i] && run.g.fs > 0) put(run.g, i, names[i].textContent, Math.min(run.g.fs, fit(run.g, names[i].textContent)));
           return;
         }
         if (now) relayout();
       },
-      theme() { if (!dead && stage && now && !run) emblem(now.look, now.pair ? 'final' : 'waiting', geo(now.look)); },
+      theme() { if (!dead && stage && now && !run) emblem(now.look, now.pair ? 'final' : 'waiting', geo(now.look, now.pair || ['?', '?'])); },
       destroy() { dead = true; end(false); if (stage) stage.remove(); }
     };
   }

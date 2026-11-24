@@ -32,7 +32,8 @@
  *                    names, No repeats, Names at a time, Groups or Start over; and a pick that gets no show here.
  *                    It may come again with nothing new: leave the stage as it is then.
  *                    how.fade is true for a NEW pick (or new groups, or a new bracket) shown without its show (reduce
- *                    motion is on, or it was made in another copy a while ago): fade it in, about 0.3 s, nothing moving.
+ *                    motion is on, or it was made in another copy a while ago), and for the bracket Undo brings back:
+ *                    fade it in, about 0.3 s, nothing moving.
  *                    Bracket: how.moved is the spot whose name a tap here has just moved on (to spot >> 1): slide it
  *                    there, about 0.3 s (0.15 s with Quick, at once with reduce motion), with host.sound('pop') as it
  *                    lands, and 'chime' too when it lands in spot 1. how.back is the spot Undo here has just taken a name
@@ -106,13 +107,16 @@
  * vs-<id>.js (vs-lightning.js, vs-forged.js, vs-crest.js, vs-comic.js, vs-flame.js), loaded by a <script> tag below,
  * listed in widgets/registry.js, and registered with NamePicker.look(id, emblem). The host deals the looks (see
  * dealLook()); style-versus.js draws them. An emblem:
- *   size, aspect     its box: height = size × the stage's smaller side, width = height × aspect
+ *   size, aspect     its box: height = size × the stage's smaller side, width = height × aspect. (Beside the names
+ *                    the box takes at most 38% of the stage's width, so a narrow window leaves them room.)
  *   hit              { normal, quick }: ms from the start of the slam's animations to the moment of impact
  *   css              optional; added to the page once
- *   markup(state, { dark, w, h })   SVG that fills the box: state 'final', or 'waiting' (before the first pick)
- *   slam(box, { quick, stage }), impact(stage, { quick })   the entrance, as Web Animations (fill 'both'). box is the
- *                    emblem's div, centered on the stage with translate(-50%, -50%); stage holds the sides, the slash
- *                    (.vs-cut), the names and the box. Never called on 'waiting'.
+ *   markup(state, { dark, w, h })   SVG that fills the box: state 'final', or 'waiting' (no pair on the stage)
+ *   slam(box, { quick, stage })     returns its Web Animations (fill 'both'). box is the emblem's div, centered on the
+ *                    stage with translate(-50%, -50%); stage holds the sides, the slash (.vs-cut), the names and the box.
+ *   impact(stage, { quick })        optional; returns its own Web Animations.
+ *                    The show ends when they all finish, and the thud is timed from the first one's start. Neither is
+ *                    called on 'waiting'.
  *
  * Colors and letters: use the board's CSS tokens (--b21-bg, -surface, -surface-2, -text, -muted, -border, -accent,
  * -on-accent, -accent-soft, -danger, -success, -warning, -radius, -font) and these extras, set below for light and
@@ -258,7 +262,8 @@ window.NamePicker = {
   //           seeds: its names, seed 1 first (2 to 64), as they were at the draw: editing the list doesn't change it.
   //           picks: the taps in order, each the spot whose name moved on (see NamePicker.bracket). The bracket on the
   //           stage is always seeds played through picks. before: the bracket the last Shuffle again replaced, as
-  //           { seeds, picks }, or null: Undo brings it back once this one has no taps left. One level only.
+  //           { seeds, picks, id } (id: its bracketId), or null: Undo brings it back, with its id, once this one has no
+  //           taps left. One level only.
   //   bracketId a new one with every draw of a bracket, made as pickId is: a copy that sees a new one plays the draw.
   // Config (Board21.saveConfig): { noRepeats, style: 'name' | 'wheel' | 'spotlight' | 'lotto' | 'versus' | 'groups' |
   //   'bracket', winners: 1-6, groups: 2-6, quick, sound }. Settings, so templates keep them. A new Name Picker starts as the wheel;
@@ -278,6 +283,7 @@ window.NamePicker = {
   let mounted = null;       // the style on the stage: { id, root, api, live }
   let showing = null;       // the show running: { at (when it started), timer (ends it if the style never says) }
   let editAsked = false;    // the names list was opened here on purpose (Edit names, Add names), not just for a new picker
+  let drewAt = -1e9;        // when this copy last drew a pick, groups, or a bracket (performance.now())
 
   // How many of each name `list` holds, and taking one of them (false: none left). A long list from a file is read
   // once, not searched again for every name in it.
@@ -291,8 +297,8 @@ window.NamePicker = {
   // Saved content can come from an imported file, so it is checked before it is used: names are lines of text,
   // `left` and `picked` can only hold names that are in the list, and a pick is 1 to 6 names. Groups as picks are.
   const texts = v => Array.isArray(v) ? v.filter(x => typeof x === 'string' && x.trim()).map(x => x.trim()) : null;
+  const id = v => typeof v === 'string' && /^[a-z0-9-]{1,40}$/i.test(v) ? v : null;   // (a pickId, groupId, or bracketId)
   function readState(d) {
-    const id = v => typeof v === 'string' && /^[a-z0-9-]{1,40}$/i.test(v) ? v : null;
     d = d && typeof d === 'object' ? d : {};
     const names = texts(d.names) || [], left = texts(d.left);
     // (Content from before several winners has only `current`.)
@@ -304,13 +310,14 @@ window.NamePicker = {
   // A look we have, or null (a file may name one we don't).
   const lookOf = v => typeof v === 'string' && Object.prototype.hasOwnProperty.call(NamePicker.looks, v) ? v : null;
   // A bracket is 2 to 64 seeds, each a line of text (more than 64 is no bracket at all). Its taps count while each is
-  // one that can be made, and the rest are dropped. The bracket before it is checked the same way, with none of its own.
+  // one that can be made, and the rest are dropped. The bracket before it is checked the same way, with none of its own,
+  // and keeps its bracketId (id), for Undo.
   function readBracket(b, top) {
     if (!b || typeof b !== 'object' || !Array.isArray(b.seeds) || b.seeds.length > MOST_SEEDS) return null;
     const seeds = texts(b.seeds);
     if (seeds.length < 2) return null;
     const picks = NamePicker.bracket.play(seeds, Array.isArray(b.picks) ? b.picks : []).picks;
-    return top ? { seeds, picks, before: readBracket(b.before, false) } : { seeds, picks };
+    return top ? { seeds, picks, before: readBracket(b.before, false) } : { seeds, picks, id: id(b.id) };
   }
   // Groups hold only names in the list, each student in one group at most, 6 groups at most, none empty. (A huge list
   // in a file is cut short first.) Every student is in a group: one the groups leave out joins the smallest, the first
@@ -507,7 +514,8 @@ window.NamePicker = {
       // names or too many. The status says what is on the stage: "24 names", "23 matches left", "Ava wins".
       const B = played(), left = B ? state.bracket.seeds.length - 1 - B.picks.length : 0;
       $('go').textContent = showing ? 'Show now' : N < 2 ? 'Add names' : N > MOST_SEEDS ? 'Edit names' : B ? 'Shuffle again' : 'Make a bracket';
-      if (!showing) $('status').textContent = B ? (left ? `${left} match${left === 1 ? '' : 'es'} left` : `${state.bracket.seeds[B.at[1]]} wins`) : N < 2 ? '' : `${N} names`;
+      // (Too few names, or too many: as with no bracket, so the button's Add names or Edit names has its reason.)
+      if (!showing) $('status').textContent = N < 2 ? '' : N > MOST_SEEDS || !B ? `${N} names` : left ? `${left} match${left === 1 ? '' : 'es'} left` : `${state.bracket.seeds[B.at[1]]} wins`;
       $('round').hidden = true;
     } else {
       // The button says how many it will pick ("Pick 3"), and when fewer are left than that ("Pick the last 2"). Versus
@@ -533,7 +541,6 @@ window.NamePicker = {
   }
   // How far in the board's buttons and clock reach over this window's bottom corners (Board21 says so for a window that
   // fills the board): the foot keeps that far in from both sides, so the main button stays in the middle.
-  let footReach = 0;
   function fitFoot() {
     const w = Board21.context && Board21.context.window, c = w && w.maximized && w.corners;
     // (While the board is locked, its padlocks over the top corners: both views start below them.)
@@ -541,19 +548,17 @@ window.NamePicker = {
     for (const v of document.querySelectorAll('.view')) { v.classList.toggle('clear-top', top > 0); if (top) v.style.setProperty('--np-top', top + 'px'); else v.style.removeProperty('--np-top'); }
     const reach = c ? Math.min(2000, Math.max(0, Number(c.left) || 0, Number(c.right) || 0)) : 0;
     const foot = $('go').parentNode;
-    if (!reach && !footReach) return;
-    footReach = reach;
     if (reach) foot.style.setProperty('--np-corners', reach + 'px'); else foot.style.removeProperty('--np-corners');
     foot.classList.remove('stack');
-    if (!reach) return;
     // The status and Start over (or Undo) each get half of what the main button leaves. The status may take two lines
-    // there, and Start over one. Any more, or a word too long for it: both go on a row above the main button.
+    // there. Start over may too in a window, but only one when it fills the board. Undo is one word. Any more, or a word
+    // too long for it: both go on a row above the main button.
     const st = $('status'), col = (foot.clientWidth - $('go').offsetWidth) / 2 - 8;
-    const lines = st.textContent ? st.offsetHeight / (parseFloat(getComputedStyle(st).lineHeight) || 1) : 0;
-    foot.classList.add('measure');
+    const lines = st.textContent && getComputedStyle(st).visibility !== 'hidden' ? st.offsetHeight / (parseFloat(getComputedStyle(st).lineHeight) || 1) : 0;
+    if (reach) foot.classList.add('measure');
     const round = Math.max($('round').hidden ? 0 : $('round').offsetWidth, $('undo').hidden ? 0 : $('undo').offsetWidth);
     foot.classList.remove('measure');
-    if (lines > 2.5 || st.offsetWidth > col + 1 || round > col + 1) foot.classList.add('stack');
+    if (lines > 2.5 || (lines && st.offsetWidth > col + 1) || round > col + 1) foot.classList.add('stack');
   }
   // Edit names on top, with the board's own pencil. Then the ways to pick, and a row of numbers: Names at a time, or in
   // Groups how many groups. Versus and Bracket have no number: Versus is always two, and in Bracket everyone plays. No
@@ -604,6 +609,8 @@ window.NamePicker = {
   function pick() {
     if (state.names.length < (versus() ? 2 : 1)) { setView('edit', true); return; }   // (the button reads "Add names")
     if (showing) { if (performance.now() - showing.at >= GUARD) skipShow(); return; }
+    // A double tap with no show to skip (reduce motion is on): the second tap draws nothing.
+    if (performance.now() - drewAt < GUARD) return;
     if (grouping()) { makeGroups(); return; }
     if (bracketing()) { makeBracket(); return; }
     const p = pool();
@@ -622,6 +629,7 @@ window.NamePicker = {
     state.current = state.picked[0];
     state.versusLook = versus() ? dealLook() : null;   // (saved with the pick: every copy plays it in the same look)
     state.pickId = newPickId();
+    drewAt = performance.now();
     save();   // before the show: every copy of the board shows these winners, and a reload shows them too
     startShow();
   }
@@ -632,18 +640,20 @@ window.NamePicker = {
     const names = state.names, k = Math.min(config.groups, names.length), order = draw(names.length, names.length);
     state.groups = Array.from({ length: k }, (_, g) => order.filter((_, j) => j % k === g).map(i => names[i]));
     state.groupId = newPickId() + '-' + config.groups + k;   // (see drawnAs())
+    drewAt = performance.now();
     save();
     startShow();
   }
   // A bracket, as fair as the picks: every name shuffled onto seeds 1 to N (see NamePicker.bracket), so every student is
   // as likely to get a bye, or any spot. Too few names or too many: the list opens (the button says Add names or Edit
-  // names). The bracket on the stage is kept as `before`, for Undo. Saved before the show, as a pick is.
+  // names). The bracket on the stage is kept as `before`, with its bracketId, for Undo. Saved before the show, as a pick is.
   function makeBracket() {
     const names = state.names;
     if (names.length < 2 || names.length > MOST_SEEDS) { setView('edit', true); return; }
     const was = state.bracket;
-    state.bracket = { seeds: draw(names.length, names.length).map(i => names[i]), picks: [], before: was ? { seeds: was.seeds, picks: was.picks } : null };
+    state.bracket = { seeds: draw(names.length, names.length).map(i => names[i]), picks: [], before: was ? { seeds: was.seeds, picks: was.picks, id: state.bracketId } : null };
     state.bracketId = newPickId();
+    drewAt = performance.now();
     save();
     startShow();
   }
@@ -655,7 +665,8 @@ window.NamePicker = {
     save();
     moved({ moved: spot });
   }
-  // Undo: the last tap, the name going back; with none left, the bracket the last Shuffle again replaced, with its taps.
+  // Undo: the last tap, the name going back; with none left, the bracket the last Shuffle again replaced, with its taps
+  // and its bracketId (so a copy that never saw the Shuffle again sees no new draw).
   function undo() {
     if (showing || !canUndo()) return;
     const b = state.bracket;
@@ -666,6 +677,7 @@ window.NamePicker = {
       moved({ back: spot });
     } else {
       state.bracket = { seeds: b.before.seeds, picks: b.before.picks, before: null };
+      if (b.before.id) state.bracketId = b.before.id;
       save();
       moved({ fade: true });
     }
@@ -679,7 +691,10 @@ window.NamePicker = {
     renderChrome();
     renderStage(how);
     if (how.moved) say(tapSaid(how.moved));
-    if ((inStage && !$('stage').contains(document.activeElement)) || (had === $('undo') && $('undo').hidden)) $('go').focus();
+    keepKeys(had, inStage);
+  }
+  function keepKeys(had, inStage) {
+    if ((inStage && !$('stage').contains(document.activeElement)) || (had === $('undo') && $('undo').hidden)) $('go').focus({ preventScroll: true });
   }
   function startShow() {
     say('');
@@ -823,6 +838,7 @@ window.NamePicker = {
 
   // ---- The window menu: everything is here, nothing on the window for students to change.
   Board21.on('menu', id => {
+    drewAt = -1e9;   // (a choice here between two taps on the main button: they are no double tap)
     const [what, val] = String(id).split(':');
     if (what === 'style' && STYLES.some(s => s[0] === val)) {
       skipShow();     // (a show ends first, with its own result read out, before the stage changes)
@@ -850,6 +866,7 @@ window.NamePicker = {
   Board21.on('data', d => {
     const next = readState(d), was = state;
     if (JSON.stringify(next) === JSON.stringify(state)) return;   // (nothing new: a show running goes on)
+    const had = document.activeElement, inStage = $('stage').contains(had);
     skipShow();
     state = next;
     if ($('edit').classList.contains('on')) {
@@ -861,7 +878,9 @@ window.NamePicker = {
     const newPick = !!state.pickId && state.pickId !== was.pickId && state.picked.length > 0;
     if (newPick) lookPlayed(state.versusLook);   // (so this copy doesn't play it again next)
     const newGroups = !!state.groupId && state.groupId !== was.groupId && state.groups.length > 0;
-    const newBracket = !!state.bracketId && state.bracketId !== was.bracketId && !!state.bracket;
+    // (Undo brings back the bracket before, with its own bracketId: no new draw.)
+    const undone = !!(was.bracket && was.bracket.before && was.bracket.before.id === state.bracketId);
+    const newBracket = !!state.bracketId && state.bracketId !== was.bracketId && !!state.bracket && !undone;
     const isNew = grouping() ? newGroups : bracketing() ? newBracket : newPick, made = grouping() ? state.groupId : bracketing() ? state.bracketId : state.pickId;
     // A pick (or groups, or a bracket) made just now gets its show here too (if this copy is on screen); an older one is
     // shown as it is. A tap in a bracket just shows, and screen readers here hear it too.
@@ -869,6 +888,8 @@ window.NamePicker = {
     else { render(isNew ? { fade: true } : undefined); if (isNew) announce(); }
     const b0 = was.bracket, b1 = state.bracket;
     if (bracketing() && !isNew && b0 && b1 && b1.picks.length === b0.picks.length + 1 && b1.seeds.join('\n') === b0.seeds.join('\n')) say(tapSaid(b1.picks[b1.picks.length - 1]));
+    // The keyboard, if it is in this window, stays in the picker when the spot or Undo it was on goes.
+    if (document.hasFocus()) keepKeys(had, inStage);
   });
   Board21.on('config', c => {
     const next = readConfig(c);
