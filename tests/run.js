@@ -1001,10 +1001,11 @@ const WXT = {
   later: async (p, min) => { for (let i = 0; i < min; i++) { await p.clock.fastForward(60e3); await p.waitForTimeout(25); } await p.waitForTimeout(300); },
   open: async (p, k = WXT.K) => { await p.evaluate(() => window.__board21.openWidget('weather', { fresh: true })); await WXT.connected(p, k); await WXT.drawn(p, k); await p.waitForTimeout(300); },
   // What is wrong with the window as drawn now: it scrolls, text under 14 px, text cut off or running out of its card or
-  // the window, and (corners: it fills the board) a part under the board's corner buttons or padlocks.
+  // the window, text over text, and (corners: it fills the board) a part or a line of Now under the board's corner
+  // buttons or padlocks.
   problems: async (p, corners, k = WXT.K) => {
     const f = await WXT.F(p, () => {
-      const out = [], de = document.documentElement;
+      const out = [], de = document.documentElement, words = [];
       const vis = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
       if (de.scrollWidth > innerWidth + 1 || de.scrollHeight > innerHeight + 1) out.push(`it scrolls (${de.scrollWidth} × ${de.scrollHeight})`);
       const walk = document.createTreeWalker(document.getElementById('app'), NodeFilter.SHOW_TEXT);
@@ -1017,11 +1018,21 @@ const WXT = {
         const sc = e.closest('.scroll'), sb = sc && sc.getBoundingClientRect();
         if (sc && (b.top < sb.top - 0.5 || b.bottom > sb.bottom + 0.5)) continue;   // (scrolled out of view, in a view that scrolls)
         if (b.left < -0.5 || b.top < -0.5 || b.right > innerWidth + 0.5 || b.bottom > innerHeight + 0.5) out.push(`“${t.slice(0, 18)}” runs out of the window`);
+        // (Its ink, line by line: the box less the room above capitals and below the line.)
+        for (const q of r.getClientRects()) if (q.width > 1 && q.height > 1) words.push({ e, t, l: q.left + 0.5, r: q.right - 0.5, top: q.top + 0.22 * fs, bot: q.bottom - 0.2 * fs });
         const box = e.closest('.card, .band, .tg b, .rb, .chip, .aqpill');
         if (box) { const c = box.getBoundingClientRect(); if (b.left < c.left - 0.5 || b.right > c.right + 0.5 || b.top < c.top - 0.5 || b.bottom > c.bottom + 0.5) out.push(`“${t.slice(0, 18)}” runs out of its ${box.className.split(' ')[0]}`); }
         const s = getComputedStyle(e);
         if ((s.textOverflow === 'ellipsis' || s.overflow === 'hidden') && e.scrollWidth > e.clientWidth + 1) out.push(`“${t.slice(0, 18)}” is cut off`);
       }
+      // Text over text: two words, neither inside the other, whose ink meets.
+      const over = new Set();
+      for (let i = 0; i < words.length; i++) for (let j = i + 1; j < words.length; j++) {
+        const A = words[i], B = words[j];
+        if (A.e === B.e || A.e.contains(B.e) || B.e.contains(A.e)) continue;
+        if (Math.min(A.r, B.r) - Math.max(A.l, B.l) > 1 && Math.min(A.bot, B.bot) - Math.max(A.top, B.top) > 1) over.add(`“${A.t.slice(0, 18)}” runs over “${B.t.slice(0, 18)}”`);
+      }
+      out.push(...over);
       // Words in a picture (the compass's N, E, S, and W): their size as drawn, the picture's scale included.
       for (const t of document.querySelectorAll('#app svg text')) {
         if (!vis(t) || t.closest('.sr')) continue;
@@ -1035,7 +1046,7 @@ const WXT = {
         if (r.left < -0.5 || r.top < -0.5 || r.right > innerWidth + 0.5 || r.bottom > innerHeight + 0.5) out.push(`${c.className.split(' ').slice(0, 2).join('.')} runs out of the window`);
         if (c.matches('.card') && c.scrollHeight > c.clientHeight + 2) out.push(`${c.className.split(' ').slice(0, 2).join('.')} overflows its card (${c.scrollHeight} > ${c.clientHeight})`);
       }
-      const parts = [...document.querySelectorAll('#app .card, #app .hero, #app .band, #app .rb')].filter(vis).map(e => { const r = e.getBoundingClientRect(); return { name: e.className.split(' ').slice(0, 2).join('.'), x: r.left, y: r.top, w: r.width, h: r.height }; });
+      const parts = [...document.querySelectorAll('#app .card, #app .hero, #app .hero > *, #app .band, #app .rb')].filter(vis).map(e => { const r = e.getBoundingClientRect(); return { name: e.className.split(' ').slice(0, 2).join('.'), x: r.left, y: r.top, w: r.width, h: r.height }; });
       return { out, parts, iw: innerWidth, ih: innerHeight, layout: ((document.querySelector('#app .wx') || {}).className || '').split(' ').find(c => /^L-/.test(c)) || '' };
     }, null, k);
     const top = await p.evaluate(k => {
@@ -21244,12 +21255,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         l: x => x.hero && x.feels && x.windLine && x.airLine && x.days === 7 && x.wear === 'card' && x.sun && x.moonline && !x.hourly && !x.wind,
         xl: x => x.hero && x.hourly && x.wear === 'card' && x.days === 7 && x.sun && x.wind && x.moon && x.air };
       const SIZES = [['s', 'Small at its smallest', 260, 220], ['s', 'Small', 340, 260], ['m', 'Medium at its smallest', 380, 280], ['m', 'Medium', 480, 360], ['l', 'Large at its smallest', 760, 480], ['l', 'Large', 900, 560], ['xl', 'Fill the board’s layout', 1600, 860]];
-      const bad = [], seen = [];
+      const bad = [], seen = [], ref = [];
       for (const theme of ['light', 'dark']) {
         await setTheme(page, theme);
         for (const [L, label, w, h] of SIZES) {
           await WXT.size(page, w, h);
           const p = await WXT.problems(page, false), x = await WXT.parts(page);
+          if (L === 'l' && w === 900) ref.push(`${theme}: ` + await WXT.F(page, () => { const wx = document.querySelector('#app .wx'); return (['tight', 'tighter', 'tightest'].filter(c => wx.classList.contains(c)).join('+') || 'no step') + ', ' + (parseFloat(getComputedStyle(wx.querySelector('.temp')).fontSize) / parseFloat(getComputedStyle(wx).fontSize)).toFixed(2) + 'em'; }));
           if (!x || x.layout !== L) p.list.push(`the layout is ${x && x.layout}, not ${L}`);
           else if (!WANT[L](x)) p.list.push(`its parts: ${JSON.stringify(x)}`);
           if (x && x.gaps.length) p.list.push(...x.gaps);
@@ -21271,6 +21283,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         await page.setViewportSize({ width: 1680, height: 1000 }); await page.waitForTimeout(300);
       }
       ok(!bad.length && seen.length === 26, `Small, Medium, Large, and Fill the board, each at its smallest too, light and dark, and filling the board unlocked and locked: each layout’s parts, no text under 14 px, nothing cut off or out of its card, no gap, nothing under the board’s corner marks (${bad.join(' | ') || seen.length + ' layouts'})`);
+      // (A card 2 px into its own padding takes no step, so Large's own size looks as the mockup does.)
+      ok(ref.length === 2 && ref.every(r => /: no step, 5\.40em$/.test(r)), `at 900 × 560, Large’s own size, it draws the mockup’s sizes: no step, and the temperature at 5.4em (${ref.join(' | ')})`);
       await ctx.close();
     });
 
@@ -21283,7 +21297,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const GONE = { hourly: x => !x.hourly, days: x => !x.days, wear: x => !x.wear, sun: x => !x.sun, moon: x => !x.moon && !x.moonline, wind: x => !x.wind && !x.windLine, air: x => !x.air && !x.airLine };
       const COMBOS = [['wear'], ['sun', 'moon'], ['hourly', 'wind'], ['hourly', 'wear', 'sun', 'wind', 'air'], ['days'], ['days', 'hourly', 'wear'], ['days', 'wear', 'sun', 'moon']];
       const bad = [], seen = [], units = [];
-      for (const [L, w, h] of [['m', 480, 360], ['l', 900, 560], ['xl', 1600, 860]]) {
+      for (const [L, w, h] of [['m', 480, 360], ['l', 760, 480], ['l', 900, 560], ['xl', 1600, 860]]) {
         await WXT.size(page, w, h);
         for (const hide of KEYS.map(k => [k]).concat(COMBOS)) {
           const c = Object.assign({}, await WXT.conf(page), { hide });
@@ -21292,11 +21306,11 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
           if (!x || x.layout !== L) p.list.push(`layout ${x && x.layout}`);
           else { for (const k of hide) if (!GONE[k](x)) p.list.push(`${k} still shows`); p.list.push(...x.gaps); if (!x.hero) p.list.push('no Now'); }
           if (x && !(x.units.length === 1 && x.units[0] === 'F:temp')) units.push(`${L} without ${hide.join(', ')}: ${x.units.join(', ')}`);
-          (p.list.length ? bad : seen).push(`${L} without ${hide.join(', ')}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
-          if (L !== 'm' || hide.length > 1) await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + `weather-hide-${L}-${hide.join('-')}.png` });
+          (p.list.length ? bad : seen).push(`${L} (${w} × ${h}) without ${hide.join(', ')}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+          if ((L !== 'm' || hide.length > 1) && w !== 760) await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + `weather-hide-${L}-${hide.join('-')}.png` });
         }
       }
-      ok(!bad.length && seen.length === 42, `each Show item hides its part at Medium, Large, and Fill the board, alone and in the mockup’s combinations, with no gap and no overflow (${bad.join(' | ') || seen.length + ' layouts'})`);
+      ok(!bad.length && seen.length === 56, `each Show item hides its part at Medium, Large (at its smallest too), and Fill the board, alone and in the mockup’s combinations, with no gap, no overflow, and no text over text (${bad.join(' | ') || seen.length + ' layouts'})`);
       ok(!units.length, `the dim F is on the big temperature and nowhere else (${units.join(' | ') || 'every layout'})`);
       // Medium without the 7 days: the hourly forecast takes their place. Without both and What to wear, Now fills it.
       await WXT.size(page, 480, 360);
@@ -21334,19 +21348,24 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const bad = [], seen = [];
       for (const off of [false, true]) {
         if (off) { await eventually(async () => !!((await WXT.data(b.page)) || {}).saved); await b.ctx.setOffline(true); await b.page.waitForTimeout(400); }
-        for (const [vw, vh] of [[1366, 768], [1280, 800]]) for (const scale of [1.5, 2]) for (const locked of [false, true]) {
+        for (const [vw, vh] of [[1366, 768], [1280, 800], [1920, 1080]]) for (const scale of [1.5, 2]) for (const locked of [false, true]) {
           await b.page.setViewportSize({ width: vw, height: vh }); await b.page.waitForTimeout(200);
           await b.page.evaluate(s => window.__board21.setBoardScale(s), scale); await b.page.waitForTimeout(300);
           await b.page.evaluate(k => window.__board21.setMaximized(k, true), K); await b.page.waitForTimeout(700);
           if (locked) { await lockBoard(b.page, 'widgets'); await b.page.waitForTimeout(700); }
-          const p = await WXT.problems(b.page, true), x = await WXT.parts(b.page), list = p.list.concat(x ? x.gaps : ['nothing drawn']);
-          (list.length ? bad : seen).push(`${off ? 'offline, ' : ''}${vw} × ${vh} at Size ${scale}${locked ? ', locked' : ''} (${p.size}, ${x && x.layout})${list.length ? ': ' + list.join(', ') : ''}`);
+          // (Online, with the 7-day forecast hidden too, and the small cards: Now has a taller row to fill.)
+          for (const hide of off ? [[]] : [[], ['days'], ['sun', 'moon', 'wind', 'air']]) {
+            if (hide.length) { await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide })); await b.page.waitForTimeout(300); }
+            const p = await WXT.problems(b.page, true), x = await WXT.parts(b.page), list = p.list.concat(x ? x.gaps : ['nothing drawn']);
+            (list.length ? bad : seen).push(`${off ? 'offline, ' : ''}${vw} × ${vh} at Size ${scale}${locked ? ', locked' : ''}${hide.length ? ' without ' + hide.join(', ') : ''} (${p.size}, ${x && x.layout})${list.length ? ': ' + list.join(', ') : ''}`);
+          }
+          if (!off) { await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: [] })); await b.page.waitForTimeout(300); }
           if (scale === 1.5 && vw === 1366 && !locked) await b.page.screenshot({ path: OUT + `weather-fill-size-1.5${off ? '-offline' : ''}.png` });
           if (locked) await unlockBoard(b.page);
           await b.page.evaluate(k => window.__board21.setMaximized(k, false), K); await b.page.waitForTimeout(200);
         }
       }
-      ok(!bad.length && seen.length === 16, `filling the board at Size 1.5 and 2, on 1366 × 768 and 1280 × 800, locked and unlocked, online and offline: everything fits, clear of the corner marks (${bad.join(' | ') || seen.length + ' layouts'})`);
+      ok(!bad.length && seen.length === 48, `filling the board at Size 1.5 and 2, on 1366 × 768, 1280 × 800, and 1920 × 1080, locked and unlocked, online and offline, and online without the 7-day forecast or the small cards: everything fits, with no text over text, clear of the corner marks (${bad.join(' | ') || seen.length + ' layouts'})`);
       await b.ctx.close();
     });
 
@@ -21371,17 +21390,39 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
 
     // ---- 5. The views at their smallest: Now, and On a date with its chart. Words in a picture count too.
     await part('Smallest views', async () => {
-      const b = await WXT.board(browser, errors);
+      const b = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } } });
       await WXT.open(b.page);
       const bad = [], seen = [];
+      // The compass: its size, its letters, and how far W and E keep from the ticks beside them (x 14 and 86 of 100).
+      const compass = () => WXT.F(b.page, () => {
+        const c = [...document.querySelectorAll('#app svg.compass')].find(e => e.getBoundingClientRect().width > 0), g = c && c.querySelector('.nesw');
+        if (!g) return null;
+        const t = [...g.querySelectorAll('text')], box = n => t.find(e => e.textContent === n).getBBox(), W = box('W'), E = box('E');
+        return { px: Math.round(c.getBoundingClientRect().width), letters: getComputedStyle(g).display !== 'none', w: +(W.x - 14).toFixed(1), e: +(86 - E.x - E.width).toFixed(1) };
+      });
+      let now480 = null;
       for (const [w, h] of [[380, 280], [480, 360], [600, 420], [900, 560]]) {
         await WXT.size(b.page, w, h);
         await WXT.wf(b.page).locator('#app .hero[data-go="now"]').click(); await b.page.waitForTimeout(250);
         const p = await WXT.problems(b.page, false);
         (p.list.length ? bad : seen).push(`the Now view at ${w} × ${h}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
         if (w === 380) await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-now-380x280.png' });
+        if (w === 480) now480 = Object.assign({}, await compass(), { temp: await WXT.F(b.page, () => Math.round(parseFloat(getComputedStyle(document.querySelector('#app .dnow .temp')).fontSize))) });
         await WXT.wf(b.page).locator('#app [data-go="main"]').first().click(); await b.page.waitForTimeout(200);
       }
+      // At its default size the Now view draws as the mockup does: a 99 px compass with its letters, and a 58 px temperature.
+      ok(!!now480 && now480.px >= 95 && now480.letters && now480.temp >= 56, `the Now view at 480 × 360 keeps the mockup’s compass, with N, E, S, and W, and its temperature (${JSON.stringify(now480)})`);
+      // W and E clear of their ticks as the letters grow to 14 px: Fill the board's wind card, and the Now view without air quality.
+      const near = [];
+      for (const [w, h, v] of [[1300, 760], [1500, 860], [420, 320, 'now'], [480, 360, 'now']]) {
+        await WXT.size(b.page, w, h);
+        if (v) { await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: ['air'] })); await b.page.waitForTimeout(250); await WXT.wf(b.page).locator('#app .hero[data-go="now"]').click(); await b.page.waitForTimeout(250); }
+        const c = await compass();
+        if (!c || !c.letters || c.w < 0.5 || c.e < 0.5) near.push(`${w} × ${h}${v ? ', the Now view without air quality' : ''}: ${JSON.stringify(c)}`);
+        else seen.push(`the compass at ${w} × ${h}: ${JSON.stringify(c)}`);
+        if (v) { await WXT.wf(b.page).locator('#app [data-go="main"]').first().click(); await b.page.waitForTimeout(200); await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide: [] })); await b.page.waitForTimeout(250); }
+      }
+      ok(!near.length, `the compass’s W and E stay clear of the ticks beside them as they grow to 14 px (${near.join(' | ') || 'all clear'})`);
       await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { date: '2019-01-30' })); await b.page.waitForTimeout(800);
       for (const [w, h] of [[260, 220], [380, 280], [480, 360], [760, 480], [900, 560]]) {
         await WXT.size(b.page, w, h);
@@ -21750,6 +21791,25 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         ok(!logs.length && /You’re offline\./.test(t) && (/\d°C/.test(t) || /The weather shows once you’re online\./.test(t)), `content with ${what}, offline: no error, and it still draws after °C and a new size (${logs.join(' | ') || t.replace(/\n+/g, ' / ').slice(0, 90)})`);
         await b.ctx.close();
       }
+      // Temperatures no place could have, drawn offline: a dash, never “1e+300°”.
+      {
+        const b = await WXT.board(browser, errors);
+        await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+        await eventually(async () => !!((await WXT.data(b.page)) || {}).saved);
+        const d = JSON.parse(JSON.stringify(await WXT.data(b.page)));
+        Object.assign(d.saved.days[0], { high: 1e300, low: -1e300 });
+        for (const w of Object.values(d.saved.wear)) Object.assign(w, { high: 1e21, feels8: -1e21 });
+        await b.ctx.setOffline(true); await b.page.waitForTimeout(300);
+        await WXT.put(b.page, 'data', d); await b.page.waitForTimeout(400);
+        const got = [];
+        for (const [w, h] of [[900, 560], [480, 360]]) {
+          await WXT.size(b.page, w, h);
+          const t = await text(b.page), pr = await WXT.problems(b.page, false);
+          got.push({ size: `${w} × ${h}`, ok: /You’re offline\./.test(t) && /Today’s high/.test(t) && !/\de[+-]?\d/.test(t) && !pr.list.length, t: t.replace(/\n+/g, ' / ').slice(0, 110), pr: pr.list.slice(0, 3) });
+        }
+        ok(got.every(g => g.ok), `content with a high of 1e300°, a low of −1e300°, and What to wear at ±1e21°, offline: the window draws, with no such number (${JSON.stringify(got)})`);
+        await b.ctx.close();
+      }
     });
 
     // ---- 4. Each part on its own clock, only while the window shows, and never on a timer from 8 PM to 6 AM.
@@ -21868,6 +21928,24 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const t3 = await text(b.page);
       ok(!/Can’t get new weather/.test(t3) && /At Chicago Executive Airport|From Open-Meteo, \d/.test(t3), `the next answer drops the band (${t3.replace(/\n+/g, ' / ').slice(0, 100)})`);
       await b.ctx.close();
+      // Only the forecasts failing for two hours, with the airport's report old, while the alerts still come: not every
+      // source fails, so a warning in force still shows. Once the alerts fail too: “Can’t get new weather.”
+      b = await WXT.board(browser, errors, { clock: 'install', more: { 'api.weather.gov/alerts/active': 'nws-alerts-fortworth.json' } });
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+      await eventually(async () => !!((await WXT.data(b.page)) || {}).saved);
+      const band = () => F(b.page, () => { const e = document.querySelector('#app .band'); return e ? e.className.replace('band ', '') + ': ' + e.textContent.replace(/\u00a0/g, ' ').trim() : ''; });
+      b.wx.answers['api.open-meteo.com/v1/forecast'] = { abort: true };
+      for (const k of ['api.weather.gov/gridpoints/LOT/65,84/forecast', 'api.weather.gov/gridpoints/LOT/65,84/forecast/hourly']) b.wx.answers[k] = { status: 500, json: {} };
+      b.wx.later['api.weather.gov/stations/KPWK/observations'] = -3 * 3600;
+      const a0 = b.wx.count(/alerts\/active/);
+      await WXT.later(b.page, 130);
+      const w1 = await band(), a1 = b.wx.count(/alerts\/active/);
+      b.wx.answers['api.weather.gov/alerts/active'] = { status: 500, json: {} };
+      await WXT.later(b.page, 6);
+      const w2 = await band();
+      ok(/^warn: Freeze Warning/.test(w1) && a1 - a0 >= 20 && /^off: Can’t get new weather\. Updated 11:50 AM/.test(w2),
+        `the forecasts failing for two hours while ${a1 - a0} alerts answer: the warning still shows (“${w1}”); the alerts failing too: “${w2}”`);
+      await b.ctx.close();
     });
 
     // ---- 6. No motion, from the menu or the device; snow in two layers.
@@ -21886,6 +21964,19 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       b = await WXT.board(browser, errors, { opts: { reducedMotion: 'reduce' } });
       await WXT.open(b.page);
       ok(await moving(b.page) === 0, 'with Reduce motion on the device, the sky is still too');
+      await b.ctx.close();
+      // Large by day, snowing, for half an hour of the window's 20-second redraws: what it shows changes (the sun moves on),
+      // and the moving sky carries on through it, never taken out of the page to start over.
+      b = await WXT.board(browser, errors, { clock: 'install', more: { 'api.weather.gov/stations/KPWK/observations': { json: obs } } });
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560); await b.page.clock.runFor(2000);
+      await F(b.page, () => {
+        window.__sky = document.querySelector('#app .fx i').getAnimations()[0]; window.__views = 0; window.__redraws = 0;
+        new MutationObserver(rs => { for (const r of rs) if (r.target.id === 'view') window.__views++; else if (r.target.classList.contains('wx')) window.__redraws++; })
+          .observe(document.getElementById('view'), { childList: true, subtree: true });
+      });
+      for (let i = 0; i < 90; i++) { await b.page.clock.fastForward(20e3); await b.page.waitForTimeout(30); }
+      const sky = await F(b.page, () => { const a = document.querySelector('#app .fx i').getAnimations()[0]; return { views: window.__views, redraws: window.__redraws, same: a === window.__sky, state: a && a.playState, sky: document.querySelector('#app .fx').dataset.sc }; });
+      ok(sky.redraws > 0 && sky.views === 0 && sky.same && sky.state === 'running' && sky.sky === 'snow-d', `half an hour of redraws in Large: the window drew again ${sky.redraws} times, and the snowy sky stayed in the page, still moving (${JSON.stringify(sky)})`);
       await b.ctx.close();
     });
 
@@ -21951,6 +22042,42 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(wx.asked.some(a => a.host === 'archive-api.open-meteo.com' && a.query.start_date === '2019-01-30' && a.query.end_date === '2019-01-30'), 'it asked Open-Meteo’s archive for that day');
       { const pr = await WXT.problems(page, false); ok(!pr.list.length, `On a date fits (${pr.list.join(', ') || pr.size})`); }
       await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-on-a-date.png' });
+      // The chart's line never runs through the high's or the low's number: the high's sits above its dot, the low's
+      // below. Jan 30, 2019, and a day that peaks mid-afternoon, large and small.
+      const through = () => F(page, () => {
+        const s = document.querySelector('#app .dscroll'); if (s) s.scrollTop = s.scrollHeight;
+        const ch = document.querySelector('#app .chart'), path = ch.querySelector('path[fill="none"]'), m = path.getScreenCTM(), segs = [];
+        for (const run of path.getAttribute('d').split('M').filter(Boolean)) {
+          const pts = run.split('L').map(p => p.split(',').map(Number)).map(([x, y]) => ({ x: m.a * x + m.e, y: m.d * y + m.f }));
+          for (let i = 1; i < pts.length; i++) segs.push([pts[i - 1], pts[i]]);
+        }
+        // (How much of a segment lies in a box: Liang–Barsky.)
+        const inBox = (a, b, r) => {
+          let t0 = 0, t1 = 1; const dx = b.x - a.x, dy = b.y - a.y;
+          for (const [p, q] of [[-dx, a.x - r.l], [dx, r.r - a.x], [-dy, a.y - r.t], [dy, r.b - a.y]]) {
+            if (!p) { if (q < 0) return 0; continue; }
+            const t = q / p; if (p < 0) { if (t > t1) return 0; t0 = Math.max(t0, t); } else { if (t < t0) return 0; t1 = Math.min(t1, t); }
+          }
+          return t1 > t0 ? (t1 - t0) * Math.hypot(dx, dy) : 0;
+        };
+        // (Each number's ink, and half the line's width around it.)
+        return [...ch.querySelectorAll('.lab')].map(e => {
+          const q = e.getBoundingClientRect(), fs = parseFloat(getComputedStyle(e).fontSize), r = { l: q.left - 1.2, r: q.right + 1.2, t: q.top + 0.22 * fs - 1.2, b: q.bottom - 0.2 * fs + 1.2 };
+          const n = segs.reduce((sum, [a, b]) => sum + inBox(a, b, r), 0);
+          return e.textContent.trim() + (n > 0.5 ? ` under ${n.toFixed(1)} px of line` : '');
+        });
+      });
+      const peak = WX_FIX('om-archive-2019-01-30.json'), p0 = Date.parse('2019-10-03T05:00:00Z') / 1000;
+      const temps = [70, 71, 72, 72.5, 73, 74, 75, 76, 78, 80, 82, 83, 84, 84.5, 84, 82, 79, 75, 70, 66, 62, 59, 57, 55];
+      peak.hourly.time = temps.map((_, i) => p0 + i * 3600); peak.hourly.temperature_2m = temps; peak.daily.time = [p0];
+      Object.assign(peak.daily, { temperature_2m_max: [84.5], temperature_2m_min: [55], weather_code: [1] });
+      const labs = [];
+      for (const date of ['2019-01-30', '2019-10-03']) {
+        if (date !== '2019-01-30') { wx.answers['archive-api.open-meteo.com/v1/archive'] = { json: peak }; await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { date })); await page.waitForTimeout(800); }
+        for (const [w, h] of [[900, 560], [480, 360], [380, 280]]) { await WXT.size(page, w, h); labs.push(`${date} at ${w} × ${h}: ${(await through()).join(', ')}`); }
+      }
+      ok(labs.length === 6 && labs.every(l => /: \S+°, \S+°$/.test(l) && !/ under /.test(l)), `the chart’s line runs through neither the high nor the low (${labs.join(' | ')})`);
+      await WXT.size(page, 900, 560);
       await WXT.wf(page).locator('#app [data-act="today"]').click(); await page.waitForTimeout(500);
       ok(((await WXT.conf(page)) || {}).date === null && !(await page.evaluate(k => window.__board21.state.wins.get(k).subtitle, K)), 'Back to today returns, and the subtitle goes');
       // A summer day: the archive keeps standard time all year, so its hours run from 1 AM daylight time. The chart puts
@@ -21990,6 +22117,13 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ok(s.say === 'Cold and sunny.' && s.items.length === 3, 'it ignores the Show list');
       await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-simple.png' });
       { const pr = await WXT.problems(b.page, false); ok(!pr.list.length, `Simple words fits (${pr.list.join(', ') || pr.size})`); }
+      // In Small its credit takes two lines: the sentence stays clear of it, in Early readers' letters too.
+      const small = async (pg, tag) => {
+        const bad = [];
+        for (const [w, h] of [[260, 220], [300, 250], [340, 270]]) { await WXT.size(pg, w, h); const pr = await WXT.problems(pg, false); if (pr.list.length) bad.push(`${tag} at ${w} × ${h}: ${pr.list.join(', ')}`); }
+        return bad;
+      };
+      const smallBad = await small(b.page, '“Cold and sunny.”');
       await b.ctx.close();
       // Mon Nov 23, no school: Mon Nov 30, its forecast's sky (cloudy).
       b = await WXT.board(browser, errors);
@@ -21997,6 +22131,11 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await WXT.choose(b.page, 'simple');
       s = await F(b.page, () => ({ say: (document.querySelector('#app .say') || {}).textContent, items: [...document.querySelectorAll('#app .simple figcaption')].map(e => e.textContent) }));
       ok(s.say === 'Chilly and cloudy.' && s.items.join() === 'Coat', `Mon Nov 23 follows Mon Nov 30: “Chilly and cloudy.”, the sky of Monday’s forecast, with a coat (${JSON.stringify(s)})`);
+      smallBad.push(...await small(b.page, '“Chilly and cloudy.”'));
+      await openSettings(b.page, ['letters']); await b.page.click('#settings [data-act="letters"][data-val="early"]'); await b.page.keyboard.press('Escape'); await b.page.waitForTimeout(1200);
+      smallBad.push(...await small(b.page, 'Early readers'));
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-simple-small-early.png' });
+      ok(!smallBad.length, `Simple words in Small windows, from 260 × 220: the sentence clear of the credit, and everything fits (${smallBad.join(' | ') || 'all'})`);
       await b.ctx.close();
     });
 

@@ -266,7 +266,7 @@
 .wx .in > .foot { margin: 0; padding-inline: var(--inset); }
 .wx .dnow { display: grid; grid-template-rows: auto minmax(0, 1fr); gap: .7em; min-height: 0; }
 .wx .dnow .hero { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: .1em 1em; }
-.wx .dnow .temp { font-size: 3.6em; grid-row: span 3; }
+.wx.V-detail .dnow .temp { font-size: 3.6em; grid-row: span 3; }
 .wx .dnow .cards { display: grid; grid-template-columns: 1.25fr 1fr; grid-template-rows: auto minmax(0, 1fr); gap: .6em; min-height: 0; }
 .wx .air .row1 .big { font-size: 1.6em; color: #fff; }
 .wx .dnow .card { padding-top: .55em; padding-bottom: .5em; }
@@ -298,11 +298,14 @@
 .wx.V-date .chartc { grid-area: chart; }
 .wx.V-date .side { grid-area: side; display: grid; grid-template-columns: 1fr 1fr; gap: .8em; }
 .wx .chart { width: 100%; flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(3.5em, 1fr) auto; }
-.wx .chart .plot { position: relative; min-height: 0; }
+.wx .chart .plot { position: relative; min-height: 0; margin-block: 1.35em; }
 .wx .chart svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
 .wx .chart .pt { position: absolute; width: .5em; height: .5em; margin: -.25em 0 0 -.25em; border-radius: 50%; background: #fff; }
-.wx .chart .lab { position: absolute; transform: translate(.5em, -50%); font-size: max(14px, .8em); font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.wx .chart .lab.end { transform: translate(calc(-100% - .5em), -50%); }
+/* The high's number above its dot and the low's below it, where the line never runs */
+.wx .chart .lab { position: absolute; margin: 0; transform: translate(.5em, -100%); font-size: max(14px, .8em); font-weight: 700; color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.wx .chart .lab.end { transform: translate(calc(-100% - .5em), -100%); }
+.wx .chart .lab.lo { transform: translate(.5em, 0); }
+.wx .chart .lab.lo.end { transform: translate(calc(-100% - .5em), 0); }
 .wx .chart .tks { position: relative; height: 1.5em; margin-top: .25em; }
 .wx .chart .tk { position: absolute; top: 0; transform: translateX(-50%); font-size: max(14px, .72em); color: var(--dim); white-space: nowrap; }
 .wx .chart .tk.first { transform: none; }
@@ -321,7 +324,7 @@
 .wx.V-date .dscroll .hero, .wx.V-date .dscroll .side, .wx.V-date .dscroll .chartc { grid-area: auto; }
 .wx.V-date .dscroll .hero { align-content: start; }
 .wx.V-date .dscroll .side { grid-template-columns: minmax(0, 1fr); gap: .5em; }
-.wx.V-date .dscroll .chartc { grid-column: 1 / -1; min-height: 12em; }
+.wx.V-date .dscroll .chartc { grid-column: 1 / -1; min-height: 14.7em; }
 .wx.V-date .dscroll .temp { font-size: 3.4em; }
 .wx.V-date .dscroll .cmp b { font-size: 1.3em; }
 .wx.V-date.d-m .bar2, .wx.V-date.d-s .bar2 { flex-wrap: wrap; row-gap: .4em; }
@@ -339,6 +342,8 @@
 .wx .simple .say { font-size: 2.1em; font-weight: 700; line-height: 1.1; letter-spacing: -.01em; }
 .wx .simple .items { justify-content: center; }
 .wx .simple .src { position: absolute; bottom: .9em; left: 0; right: 0; }
+.V-simple.lift .simple { padding-bottom: 3.4em; }
+.V-simple.lift .simple .bigic { width: 4em; height: 4em; }
 .wx .chip { position: absolute; top: .9em; right: 1em; font-weight: 700; background: rgba(255,255,255,.2); border-radius: 1em; padding: .2em .65em; }
 
 /* Short for its size: text stays at 14 px or more, so the spacing closes up instead, a step at a time (tight, tighter,
@@ -400,19 +405,21 @@
 .V-detail.tight .rb { padding: .3em .8em .3em .5em; }
 .V-detail.tight .dnow { gap: .45em; }
 .V-detail.tight .dnow .hero { gap: 0 .8em; }
-.V-detail.tight .dnow .temp { font-size: 2.9em; }
-.V-detail.tight .dnow .cards { gap: .45em; grid-template-columns: 1fr 1.2fr; }
+.V-detail.tight .dnow .cards { gap: .45em; }
 .V-detail.tight .dnow .card { padding-top: .4em; padding-bottom: .45em; }
 .V-detail.tight .dnow .card h3 { margin-bottom: .2em; padding-bottom: .25em; }
-.V-detail.tight .compass { width: 4.4em; height: 4.4em; }
 .V-detail.tight .windbody { gap: .6em; }
 .V-detail.tight .dnow .big { font-size: 1.6em; }
 .V-detail.tight .days li { gap: .4em; }
-/* (Now at its smallest: its cards side by side, the wind without its compass) */
-.V-detail.tighter .dnow .cards { grid-template-columns: none; grid-auto-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-auto-flow: column; }
-.V-detail.tighter .dnow .windc { grid-row: auto; }
-.V-detail.tighter .dnow .compass { display: none; }
-.V-detail.tighter .dnow .windbody { grid-template-columns: minmax(0, 1fr); }
+/* (The Now view closes its spacing first, then draws a smaller temperature and compass, and at its smallest puts its
+   cards side by side, the wind without its compass.) */
+.V-detail.tighter .dnow .temp { font-size: 2.9em; }
+.V-detail.tighter .dnow .cards { grid-template-columns: 1fr 1.2fr; }
+.V-detail.tighter .compass { width: 4.4em; height: 4.4em; }
+.V-detail.tightest .dnow .cards { grid-template-columns: none; grid-auto-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); grid-auto-flow: column; }
+.V-detail.tightest .dnow .windc { grid-row: auto; }
+.V-detail.tightest .dnow .compass { display: none; }
+.V-detail.tightest .dnow .windbody { grid-template-columns: minmax(0, 1fr); }
 .L-s .bar2 .title { white-space: normal; overflow: visible; }
 .L-xl.tight .in { padding: .8em 1em; gap: .6em; }
 .L-xl.tight .temp { font-size: 4.4em; }
@@ -550,6 +557,8 @@
   const num0 = v => (fin(v) ? v : null);
   // A time a date can be made from, in unix seconds: from 1900 to 2100. (Intl throws on one too far out.)
   const okT = t => fin(t) && t > -2208988800 && t < 4102444800;
+  // A temperature that could be real, in °F: the air within ±150°, feels like within ±200° (a heat index can pass 150°).
+  const tF = (v, max = 150) => (fin(v) && v > -max && v < max ? v : null);
 
   // ---- Dates and times, in the place's time zone. Every time is rounded to the minute before it is shown.
   const fmts = new Map();
@@ -713,7 +722,7 @@
     const s = d && typeof d === 'object' && d.saved;
     if (!s || typeof s !== 'object' || !fin(s.at) || s.at < Date.UTC(2020, 0, 1) || s.at > Date.now() + 864e5 || !Number.isInteger(s.place) || !Array.isArray(s.days)) return null;
     const days = s.days.slice(0, 8).filter(x => x && realDay(x.date) && Number.isInteger(x.code) && x.code >= 0 && x.code <= 99)
-      .map(x => ({ date: x.date, code: x.code, low: num0(x.low), high: num0(x.high), rain: fin(x.rain) ? Math.max(0, Math.min(100, x.rain)) : null }));
+      .map(x => ({ date: x.date, code: x.code, low: tF(x.low), high: tF(x.high), rain: fin(x.rain) ? Math.max(0, Math.min(100, x.rain)) : null }));
     const wear = {};
     if (s.wear && typeof s.wear === 'object') for (const [k, w] of Object.entries(s.wear).slice(0, 4)) {
       if (!realDay(k) || !w || typeof w !== 'object') continue;
@@ -721,7 +730,7 @@
       if (!lab) continue;
       if (w.none === true) { wear[k] = { label: lab, none: true }; continue; }
       if (typeof w.advice !== 'string' || !ADVICE.test(w.advice) || !Array.isArray(w.items)) continue;
-      wear[k] = { label: lab, advice: w.advice, items: w.items.filter(i => Object.prototype.hasOwnProperty.call(CLOTHES, i)).slice(0, 6), feels8: num0(w.feels8), high: num0(w.high), at: okT(w.at) ? w.at : null };
+      wear[k] = { label: lab, advice: w.advice, items: w.items.filter(i => Object.prototype.hasOwnProperty.call(CLOTHES, i)).slice(0, 6), feels8: tF(w.feels8, 200), high: tF(w.high), at: okT(w.at) ? w.at : null };
     }
     return { at: s.at, place: s.place, days, wear, from: s.from === 'nws' ? 'nws' : undefined };
   }
@@ -739,6 +748,7 @@
   let alerts = [];             // the watches and warnings in force
   let failed = false;          // every forecast source failed, with nothing in hand
   let fcFailAt = 0;            // when the forecast's last try failed (Open-Meteo and the backup), since it last arrived
+  let alertsFailAt = 0;        // when the alerts' last try failed, since they last arrived
   let nowAsked = false;        // the forecast on its way asks for Now too
   let omBlockedUntil = 0;      // Open-Meteo's Retry-After
   let view = 'main', wearPick = null, planWas = '';
@@ -831,11 +841,13 @@
       return get(`${HOST.air}/v1/air-quality?` + q({ latitude: pl().lat, longitude: pl().lon, current: 'us_aqi', hourly: 'us_aqi', forecast_days: 5, timezone: pl().tz, timeformat: 'unixtime' }))
         .then(j => { if (g === gen) air = readAir(j) || air; });
     },
-    alerts: () => lookup().then(n => {
-      if (n.abroad) { alerts = []; return; }
+    alerts: () => {
       const g = gen;
-      return get(`${HOST.nws}/alerts/active?point=${d4(pl().lat)},${d4(pl().lon)}&status=actual`).then(j => { if (g === gen) alerts = readAlerts(j); });
-    })
+      return lookup().then(n => {
+        if (n.abroad) { alerts = []; return; }
+        return get(`${HOST.nws}/alerts/active?point=${d4(pl().lat)},${d4(pl().lon)}&status=actual`).then(j => { if (g === gen) alerts = readAlerts(j); });
+      }).then(() => { if (g === gen) alertsFailAt = 0; }, e => { if (g === gen) alertsFailAt = Date.now(); return Promise.reject(e); });
+    }
   };
   // The Weather Service's forecast, while Open-Meteo is down or has turned the school away.
   function backup(g) {
@@ -966,17 +978,19 @@
     const tz = pl().tz, now = Date.now(), today = ymdOf(now, tz), pln = plan(now);
     const s = saved && saved.place === pl().id ? saved : null;
     // Online, but every source has failed for a while (a school's filter, an outage): the saved view, as offline. The
-    // forecast is two turns old and its last try failed, and Now from the airport is too old.
-    const lost = !!(fc && fcFailAt && now - fc.at >= 2 * EVERY.forecast && !nowFresh() && s);
+    // forecast is two turns old and its last try failed, Now from the airport is too old, and the alerts' last try failed
+    // too (abroad there are none). While the alerts still come, a warning still shows.
+    const lost = !!(fc && fcFailAt && now - fc.at >= 2 * EVERY.forecast && !nowFresh() && (alertsFailAt || (nws && nws.abroad)) && s);
     const off = !online() || (failed && !fc) || lost;
     const src = off ? (s && s.from) || 'om' : fc ? fc.from : 'om';
     // (An alert that ends while no request runs, in the quiet hours, goes when it ends.)
     const d = { place: pl().name, src, offline: off ? { kind: online() ? 'fail' : 'off', when: s ? updated(s.at, tz) : '' } : null, alerts: off ? [] : alerts.filter(a => !a.until || a.until > now) };
     const sun = sunOn(now), m = moonPhase(now, tz);
     const daylight = sun.rise && sun.set ? Math.round((sun.set - sun.rise) / MIN) : null;
-    d.sun = { rise: sun.rise ? clock(sun.rise, tz) : '–', set: sun.set ? clock(sun.set, tz) : '–', f: sun.rise && sun.set && now >= sun.rise && now < sun.set ? (now - sun.rise) / (sun.set - sun.rise) : null,
+    // (The sun moves along its arc in steps of 2%, and the moon by whole percent, so time alone seldom redraws.)
+    d.sun = { rise: sun.rise ? clock(sun.rise, tz) : '–', set: sun.set ? clock(sun.set, tz) : '–', f: sun.rise && sun.set && now >= sun.rise && now < sun.set ? Math.round((now - sun.rise) / (sun.set - sun.rise) * 50) / 50 : null,
       daylight: daylight === null ? '' : `${Math.floor(daylight / 60)} hr ${daylight % 60} min` };
-    d.moon = { fraction: m.fraction, waxing: m.waxing, name: m.name, next: nextPhase(m, now, tz) };
+    d.moon = { fraction: Math.round(m.fraction * 100) / 100, waxing: m.waxing, name: m.name, next: nextPhase(m, now, tz) };
     let days;
     if (off) days = s ? s.days.filter(x => x.date >= today).slice(0, 7) : [];
     else days = fc ? fc.days.filter(x => x.date >= today).slice(0, 7) : [];
@@ -1079,7 +1093,7 @@
     stale(false);
   }
   function newPlace() {
-    gen++; nws = null; nwsAsk = null; obs = null; fc = null; air = null; alerts = []; failed = false; omBlockedUntil = 0; day = null;
+    gen++; nws = null; nwsAsk = null; obs = null; fc = null; air = null; alerts = []; failed = false; alertsFailAt = 0; omBlockedUntil = 0; day = null;
     for (const c of Object.values(clocks)) { c.last = 0; c.busy = false; }
     view = 'main'; wearPick = null;
     stale(true);
@@ -1414,9 +1428,10 @@
   // On a date: the day's high, its sky, the low, feels like at its lowest, the strongest wind, snow and rain, the day's
   // temperatures, sunrise and sunset worked out here, and the day compared with today.
   // The day's temperatures, each at its own time (the archive keeps standard time all year, so a summer day starts at
-  // 1 AM), with a gap where one is missing. The words are HTML over the drawing, so they stay 14 px or more.
+  // 1 AM), with a gap where one is missing. The low sits on the base line, as in the mockup. The words are HTML over the
+  // drawing, so they stay 14 px or more.
   function chart(hs, o, date) {
-    const W = 300, H = 100, X0 = 10, X1 = 290, Y0 = 16, Y1 = 88, tz = pl().tz, c = f => (o.c ? (f - 32) * 5 / 9 : f);
+    const W = 300, H = 100, X0 = 10, X1 = 290, Y0 = 16, Y1 = 100, tz = pl().tz, c = f => (o.c ? (f - 32) * 5 / 9 : f);
     const t0 = hs[0].t, span = hs[hs.length - 1].t - t0 || 1, ok = hs.filter(h => h.f !== null);
     const vals = ok.map(h => c(h.f)), mn = Math.min(...vals), sp = Math.max(...vals) - mn || 1;
     const x = h => X0 + (X1 - X0) * (h.t - t0) / span, y = h => Y0 + (Y1 - Y0) * (1 - (c(h.f) - mn) / sp);
@@ -1427,12 +1442,12 @@
     const area = runs.filter(g => g.length > 1).map(g => `M${x(g[0]).toFixed(1)},${H}L${g.map(P).join('L')}L${x(g[g.length - 1]).toFixed(1)},${H}Z`).join('');
     const pc = (v, of) => (v / of * 100).toFixed(2) + '%';
     const hi = ok.reduce((a, b) => (b.f > a.f ? b : a)), lo = ok.reduce((a, b) => (b.f < a.f ? b : a));
-    const mark = h => `<i class="pt" style="left:${pc(x(h), W)};top:${pc(y(h), H)}"></i><b class="lab${x(h) / W > .6 ? ' end' : ''}" style="left:${pc(x(h), W)};top:${pc(y(h), H)}">${T(h.f, o)}</b>`;
+    const mark = (h, k) => `<i class="pt" style="left:${pc(x(h), W)};top:${pc(y(h), H)}"></i><b class="lab ${k}${x(h) / W > .6 ? ' end' : ''}" style="left:${pc(x(h), W)};top:${pc(y(h), H)}">${T(h.f, o)}</b>`;
     const ticks = hs.map(h => [h, partsOf(h.t * 1000, tz)]).filter(([h, p]) => p.ymd === date && p.m === 0 && p.h % 6 === 0)
       .map(([h, p]) => `<span class="tk${x(h) - X0 < 1 ? ' first' : ''}${p.h % 12 ? ' six' : ''}" style="left:${pc(x(h), W)}">${clock(h.t * 1000, tz)}</span>`).join('');
     const stroke = 'vector-effect="non-scaling-stroke"';
     return `<div class="chart"><div class="plot"><svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true"><path d="M${X0} ${H}H${X1}" stroke="rgba(255,255,255,.3)" ${stroke}/><path d="${area}" fill="rgba(255,255,255,.14)"/>
-      <path d="${line}" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" ${stroke}/></svg>${mark(hi)}${hi === lo ? '' : mark(lo)}</div><div class="tks">${ticks}</div></div>`;
+      <path d="${line}" fill="none" stroke="#fff" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" ${stroke}/></svg>${mark(hi, 'hi')}${hi === lo ? '' : mark(lo, 'lo')}</div><div class="tks">${ticks}</div></div>`;
   }
   const longDate = s => `${WD[wd(s)]}, ${MONL[+s.slice(5, 7) - 1]} ${+s.slice(8, 10)}, ${s.slice(0, 4)}`;
   const shortDate = s => `${monthDay(s)}, ${s.slice(0, 4)}`;
@@ -1478,7 +1493,8 @@
     return frame(L === 's' ? 's' : 'm', sceneOf(d), o, body, ' V-simple').replace('class="in"', 'class="in simple"');
   }
 
-  // ---- The window: drawn again only when what it shows changes. The moving sky carries on while the sky stays the same.
+  // ---- The window: drawn again only when what it shows changes. The moving sky carries on while the sky stays the same:
+  // it stays in the page, and only the rest is drawn again. (Taken out of the page, even for a moment, it starts over.)
   let drawn = '', titleWas = null, menuWas = '';
   function draw() {
     if (!started) return;
@@ -1488,11 +1504,16 @@
     if (config.date) { const m = model(); html = renderDate(o, m.today); }
     else { const m = model(); if (!m.empty) m.allDays = !m.offline && fc ? fc.days : (saved && saved.place === pl().id ? saved.days : []); html = render(m, o); }
     if (html !== drawn) {
-      const v = $('view'), oldFx = v.querySelector('.fx'), a = document.activeElement, keyOf = e => e && e.closest && e.closest('#view') && ['data-go', 'data-wear', 'data-act'].map(k => e.getAttribute(k) || '').join('|');
-      const focusKey = keyOf(a);
-      v.innerHTML = html;
-      const nf = v.querySelector('.fx');
-      if (oldFx && nf && oldFx.dataset.sc === nf.dataset.sc) nf.replaceWith(oldFx);
+      const v = $('view'), a = document.activeElement, keyOf = e => e && e.closest && e.closest('#view') && ['data-go', 'data-wear', 'data-act'].map(k => e.getAttribute(k) || '').join('|');
+      const focusKey = keyOf(a), t = document.createElement('template');
+      t.innerHTML = html;
+      const nw = t.content.firstElementChild, ow = v.firstElementChild, nf = nw && nw.querySelector(':scope > .fx'), of = ow && ow.querySelector(':scope > .fx');
+      if (of && nf && of.dataset.sc === nf.dataset.sc && v.childNodes.length === 1 && t.content.childNodes.length === 1) {
+        for (const { name } of [...ow.attributes]) if (!nw.hasAttribute(name)) ow.removeAttribute(name);
+        for (const { name, value } of [...nw.attributes]) if (ow.getAttribute(name) !== value) ow.setAttribute(name, value);
+        for (const k of [...ow.childNodes]) if (k !== of) k.remove();
+        nf.remove(); ow.append(...nw.childNodes);
+      } else v.replaceChildren(t.content);
       if (focusKey) { const e = [...v.querySelectorAll('[data-go], [data-wear], [data-act]')].find(e => keyOf(e) === focusKey); if (e) e.focus(); }
       drawn = html;
     }
@@ -1501,29 +1522,42 @@
     if (title !== titleWas) { titleWas = title; Board21.window.setTitle(title); }
     setMenu();
   }
-  // ---- Fitting what's drawn, measured: the mockup's sizes, closed up a step at a time while a part runs out of its card
-  // (a short window, the board's corner strips, a long warning, wider letters). Run on every draw, so a new size or
-  // text style is measured again.
+  // ---- Fitting what's drawn, measured: the mockup's sizes, closed up a step at a time while a part runs out of its card,
+  // or Now out of its row (a short window, the board's corner strips, a long warning, wider letters). A card may run
+  // 2 px into its own padding. Run on every draw, so a new size or text style is measured again.
   const STEPS = ['tight', 'tighter', 'tightest'];
   const wraps = e => { e.style.whiteSpace = 'nowrap'; const w = e.scrollWidth > e.clientWidth + 1; e.style.whiteSpace = ''; return w; };
+  // Now, centered in its row, may run a little into the space around it, but never onto another part, under the board's
+  // corner marks, or past half the window's margin.
+  function spills(hero, inn) {
+    const r = inn.getBoundingClientRect(), s = getComputedStyle(inn), near = [...inn.children].filter(e => e !== hero).map(e => e.getBoundingClientRect()).filter(q => q.height);
+    const top = r.top + Math.max(parseFloat(s.paddingTop) / 2, corners.top), bottom = r.bottom - Math.max(parseFloat(s.paddingBottom) / 2, corners.low);
+    return [...hero.children].some(k => { const q = k.getBoundingClientRect(); return q.height && (q.top < top - 1 || q.bottom > bottom + 1 || near.some(o => q.top < o.bottom - 1 && q.bottom > o.top + 1 && q.left < o.right - 1 && q.right > o.left + 1)); });
+  }
   function fit() {
     const wx = $('view').querySelector('.wx'), inn = wx && wx.querySelector(':scope > .in');
     if (!inn) return;
-    wx.classList.remove(...STEPS, 'brief', 'short-date');
+    wx.classList.remove(...STEPS, 'brief', 'short-date', 'lift');
     const band = inn.querySelector(':scope > .band.warn, :scope > .band.watch');
-    const over = () => inn.scrollHeight > inn.clientHeight + 1 || [...inn.querySelectorAll('.card')].some(c => c.scrollHeight > c.clientHeight + 1);
+    const over = () => inn.scrollHeight > inn.clientHeight + 1 || [...inn.querySelectorAll('.card')].some(c => c.scrollHeight > c.clientHeight + 2) || [...inn.querySelectorAll(':scope > .hero')].some(h => spills(h, inn));
     // A warning in Medium keeps to one line, without its time span if need be. Tapped, it shows the span.
     if (band && wx.classList.contains('L-m') && wraps(band)) wx.classList.add('brief');
     if (!wx.matches('.V-simple, .V-date, .L-s:not(.V-detail)')) for (const k of STEPS) { if (!over()) break; wx.classList.add(k); }
     if (band && over()) wx.classList.add('brief');
+    // Simple words: the sentence and the clothes keep clear of the credit under them (lift).
+    const cr = wx.classList.contains('V-simple') && inn.querySelector(':scope > .src'), above = cr && cr.previousElementSibling;
+    if (above && above.getBoundingClientRect().bottom > cr.getBoundingClientRect().top - 1) wx.classList.add('lift');
     // On a date: the long date while the bar holds it on one line.
     const bar = wx.classList.contains('V-date') && inn.querySelector(':scope > .bar2');
     if (bar) { const k = [...bar.children], top = k[0].getBoundingClientRect().bottom; if (bar.scrollWidth > bar.clientWidth + 1 || k.some(e => e.getBoundingClientRect().top >= top - 1)) wx.classList.add('short-date'); }
     // Words drawn in a picture keep to 14 px: the compass's N, E, S, and W, scaled to it, or left out when it's small.
+    // W and E move in as they grow, clear of the ticks beside them.
     for (const c of wx.querySelectorAll('svg.compass')) {
       const g = c.querySelector('.nesw'), k = c.getBoundingClientRect().width / 100;
       if (!g || !k) continue;
-      g.setAttribute('font-size', Math.max(13, 14 / k).toFixed(1)); g.style.display = 14 / k > 17 ? 'none' : '';
+      const size = Math.max(13, 14 / k), x = 14.5 + 0.6 * size, [, e, , w] = g.querySelectorAll('text');
+      g.setAttribute('font-size', size.toFixed(1)); g.style.display = 14 / k > 17 ? 'none' : '';
+      w.setAttribute('x', x.toFixed(1)); e.setAttribute('x', (100 - x).toFixed(1));
     }
     // On a date's chart: 12 AM and 12 PM only, when 6 AM and 6 PM would touch them.
     for (const ch of wx.querySelectorAll('.chart')) {
