@@ -51,15 +51,23 @@ version from `sw.js`.
 
 ## 4. Test everything
 
-From the worktree:
+Push the release branch. GitHub runs the whole of `tests/run.js` in 10 parts at once.
 
 ```bash
-node tools/test-halves.js
+git push -u origin <key>
 ```
 
-It runs the whole of `tests/run.js` as two halves at once, in about 40 minutes. Never run more than two test
-processes at once. The machine has 16 GB and no swap. Before a failure counts, rerun its suite alone with
+Then, from the worktree, run this in the background. It costs nothing while it waits.
+
+```bash
+node tools/ci-wait.js
+```
+
+It prints each part and every failure. Before a failure counts, rerun its suite alone with
 `node tests/run.js "<suite title>"`.
+
+`node tools/test-halves.js` runs everything on this machine instead, in about 40 minutes. Never run more than two test
+processes at once. The machine has 16 GB and no swap.
 
 ## 5. Merge
 
@@ -71,12 +79,22 @@ git merge --no-ff --no-commit <key>
 
 Resolve each conflict hunk by hunk. Never take a whole file from one side.
 
-If the main branch moved since the branch was made, stamp again and test everything again. The stamp's lines in
-`sw.js` and `index.html` conflict then. Never fix them by hand. Then commit with the spec's trailers.
+If the main branch moved since the branch was made, the stamp's lines in `sw.js` and `index.html` conflict. Never fix
+them by hand. Stamp again instead. Then commit with the spec's trailers.
+
+If the main branch moved, test the merge before you push it:
+
+```bash
+git push origin HEAD:<key>
+```
+
+```bash
+node tools/ci-wait.js
+```
 
 ## 6. Push
 
-Push the main branch only. No pull requests. If the push fails, try again.
+Push the main branch. No pull requests. If the push fails, try again.
 
 ```bash
 git push -u origin claude/focused-curie-9oovoy
@@ -95,4 +113,4 @@ Each one's README has the steps.
 
 - Send Tyler the final screenshots and anything left open.
 - If the release answers a row in the tracker, update that row.
-- Remove the worktree, then its branch.
+- Remove the worktree, then its branch. Delete it on GitHub too, with `git push origin --delete <key>`.

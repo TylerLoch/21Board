@@ -56,7 +56,8 @@ const mins = ms => `${Math.max(1, Math.round(ms / 60e3))} min`;
   // GitHub starts the run a few seconds after the push.
   let run;
   for (const t0 = Date.now(); ;) {
-    run = (await gh(`repos/${repo}/actions/workflows/tests.yml/runs?head_sha=${sha}&per_page=10`)).workflow_runs[0];
+    run = (await gh(`repos/${repo}/actions/runs?head_sha=${sha}&per_page=30`)).workflow_runs
+      .find(r => (r.path || '').startsWith('.github/workflows/tests.yml'));
     if (run) break;
     if (Date.now() - t0 > 3 * 60e3) stop(`GitHub hasn’t started a test run for ${short}.`);
     await sleep(15e3);
