@@ -567,7 +567,7 @@ repeats the last step, so 5 + 5 = = = counts by 5s. A faint comma groups the dig
 - **Clear history:** empties History.
 
 Turning on History or the canvas widens the window, where the board has room. In a tall window, the canvas goes above
-the keys, and History across the top. Advanced keys make it taller. Turning them off gives the room back.
+the keys, and History across the top. Advanced keys make the window taller. Turning them off gives the room back.
 
 Keyboards work too. Type digits, + - * / ^ % ( ), and the point, then Enter or =. Type sqrt, pi, or ans as letters.
 

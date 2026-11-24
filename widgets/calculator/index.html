@@ -168,6 +168,10 @@
   }
   .hpick.clip, .hans.clip { -webkit-mask-image: linear-gradient(to left, transparent, #000 1.6em); mask-image: linear-gradient(to left, transparent, #000 1.6em); }
   .hempty { padding: .8em .7em; color: var(--b21-muted); font-size: .8em; }
+  /* Across the top, each problem keeps to one line, its answer beside it, so three lines show in full. (A long problem is
+     drawn smaller, then fades, as above. The band ends on whole lines: fitBand().) */
+  #app.htop .hline { flex-wrap: nowrap; }
+  #app.htop .hans { flex-shrink: 0; max-width: 60%; }
 
   /* ---- Keys: ÷ × − + = down the right, in the accent color. Advanced keys are two rows above. AC sits over (, ⌫ over )
      and √, and ± over ÷, so every edge meets the columns below. */
@@ -715,7 +719,7 @@
     // It scrolls to the newest line when History shows, moves, and when a line is added. Otherwise it stays where it was.
     const top = s.history.length + '|' + (s.history.length ? s.history[0].equation.html : ''), toEnd = histKey === null || top !== histTop;
     histKey = key; histTop = top;
-    if (!s.history.length) { el.hlist.innerHTML = '<li class="hempty">Your problems show here.</li>'; return; }
+    if (!s.history.length) { el.hlist.innerHTML = '<li class="hempty">Your problems show here.</li>'; fitBand(); return; }
     let html = '';
     for (let i = s.history.length - 1; i >= 0; i--) {   // the oldest at the top, the newest at the bottom
       // (An answer with a remainder is named in words, "Use 3 remainder 2", as a screen reader hears it everywhere else.)
@@ -727,7 +731,24 @@
     el.hlist.innerHTML = html;
     if (had) el.app.focus({ preventScroll: true });
     fitHistory(true);
+    fitBand();
     el.hlist.scrollTop = toEnd ? el.hlist.scrollHeight : was;
+  }
+  // Across the top, the band ends on whole lines: as many of the newest as fit, so none shows cut through at its top
+  // edge. The rest of the band is plain panel, under the newest line. (Each line is a whole number of px tall there, so
+  // the band ends exactly on one.)
+  function fitBand() {
+    const lines = [...el.hlist.children], top = el.app.classList.contains('htop');
+    lines.forEach(l => { l.style.minHeight = ''; });
+    let max = '';
+    if (top) {
+      const hs = lines.map(l => Math.ceil(l.getBoundingClientRect().height - .01)), room = el.history.clientHeight;
+      lines.forEach((l, i) => { l.style.minHeight = hs[i] + 'px'; });
+      let sum = 0, i = hs.length - 1;
+      for (; i >= 0 && sum + hs[i] <= room; i--) sum += hs[i];
+      if (i >= 0 && sum > 0) max = sum + 'px';
+    }
+    if (el.hlist.style.maxHeight !== max) el.hlist.style.maxHeight = max;
   }
   // (Scrolled to its newest line, it stays there while the window changes size: across the top, it may hold fewer lines.)
   let histEnd = true;
@@ -811,7 +832,7 @@
   // top.) Advanced keys make it taller, so the keys keep their size. Turning one off gives the room back: turned back
   // while the window is still the size the board gave it, it goes back to the size it had before, exactly. A window that
   // fills the board keeps its size, and its panels share it.
-  const sized = {};   // 'history', 'canvas' or 'advanced' → { on, from, to }: its last change, the size before and the size given
+  const sized = {};   // 'history', 'canvas' or 'advanced' → { on, from, to, look }: its last change, the size before, the size given, and where things went
   // The window's own size. While Advanced keys raise its smallest height, the board draws it taller than that.
   function ownSize(info) {
     const h = info.height || innerHeight;
@@ -823,7 +844,10 @@
     const { w, h } = ownSize(info), M = metrics(w, h), rec = sized[what];
     delete sized[what];
     let to;
-    if (rec && rec.on !== on && Math.abs(rec.to.w - w) <= 2 && Math.abs(rec.to.h - h) <= 2) to = rec.from;
+    // (History or the canvas gives back the size it took only while things are where they went then: at the same size,
+    // History or the canvas may sit in the other place, with no width to give back.)
+    const same = !rec || what === 'advanced' || !rec.look || rec.look === el.app.dataset.layout + '|' + histNow;
+    if (rec && rec.on !== on && Math.abs(rec.to.w - w) <= 2 && Math.abs(rec.to.h - h) <= 2 && same) to = rec.from;
     else if (what === 'advanced') {
       // Two more rows of keys: taller by enough that a key's shorter side stays as it is (advancedHeight()). Under the
       // small display, the board draws the window taller meanwhile, in layout().
@@ -875,10 +899,10 @@
   }
   const histWidth = h => Math.round(clamp(240, h * .6, 480));
   const canvasWidth = h => Math.round(h * .86);
-  // History across the top: a band about a quarter of the window's height, its lines sized by the window's width. 180 px
-  // holds three lines at the largest size.
+  // History across the top: a band about a quarter of the window's height. Its lines are sized by the window's width,
+  // and small enough that three show in full, even with a fraction or a power in each.
   const histBand = availH => Math.round(clamp(180, availH * .24, 300));
-  const bandFont = W => clamp(16, W * .04, 30);
+  const bandFont = (W, band) => clamp(16, Math.min(W * .04, (band - 6) / 7.3), 30);
   // Where the panels go in a window W × H, with config c. The canvas sits beside the keys or above them, whichever gives a
   // key the longer shorter side. Basic keys decide, so turning Advanced keys on or off never moves the canvas. Above the
   // keys, in a window wide enough to have it beside them, the canvas keeps 252 px for its steps. History sits beside the
@@ -905,13 +929,17 @@
     if (c.canvas && availH >= M.keysMinH && room >= HIST_MIN && room < hw && (room >= HIST_MIN + spare / .6 || !fit(M, availW, availH, room, c, was).side)) hw = room;
     return hw < HIST_MIN ? 0 : hw;
   }
-  // The canvas and the keys in availW × availH, beside History hw px wide or none. `below`: under History across the top.
+  // The canvas and the keys in availW × availH, beside History hw px wide or none. `below`: under History across the top,
+  // or 'above' there with the canvas held above the keys, as histAt() weighs it.
   function fit(M, availW, availH, hw, c, was, below) {
     const { G, rows } = M, spare = was === 'stack' ? BAND : 0;
     const mainW = availW - (hw ? hw + G : 0);
     // (Whether the canvas could sit beside the keys is a matter of width, and of where it was, so the room asked for
-    // Advanced keys in layout() never moves it. With History, the 8 px are History's to give up.)
-    const besideByWidth = c.canvas && mainW * .6 - G >= CANVAS_MIN + (hw ? 0 : spare);
+    // Advanced keys in layout() never moves it. With History, the 8 px are History's to give up. Under History across
+    // the top, a window at least 1.2 times as tall as wide keeps the canvas above the keys, as it does without History.
+    // Once there, it stays until the window is 8 px shorter than that.)
+    const tall = below === 'above' || (!!below && M.H >= 1.2 * M.W - spare);
+    const besideByWidth = !tall && c.canvas && mainW * .6 - G >= CANVAS_MIN + (hw ? 0 : spare);
     // (Under History across the top, a canvas 340 px wide keeps its steps too, where every key still gets 44.5 px.)
     const steps = n => besideByWidth || (!!below && c.canvas && mainW >= CANVAS_MIN && availH - G - STEPS_MIN >= n * KEY + (n - 1) * G);
     // For n rows of keys: their column beside the canvas, and their height and width under it. Under the canvas, a key
@@ -931,20 +959,22 @@
     return L;
   }
   // Where History goes in a window W × H: 'beside' the keys, 'top' across the top, or '' where neither fits (it hides and
-  // stays ticked). It goes where a Basic key gets the longer shorter side, and beside wins ties. Across the top fits in a
-  // window taller than wide, where every key still gets 44.5 px and the canvas or display above them 76. (In a wide
-  // window, History stays beside the keys, as today: turned on, it widens the window for that.) Basic keys with the
+  // stays ticked). It goes where a Basic key gets the longer shorter side, and beside wins ties. Across the top, that key
+  // is weighed with the canvas above it, even where the canvas then sits beside the keys: weighed there, History would
+  // move back and forth as the right edge is dragged. Across the top fits in a window taller than wide, where every key
+  // still gets 44.5 px and the canvas or display above them 76. (The band always holds three lines: bandFont().) In a
+  // wide window, History stays beside the keys, as today: turned on, it widens the window for that. Basic keys with the
   // canvas on decide, so turning Advanced keys or the canvas on or off never moves History. Where it went last
-  // (`was.hist`), it stays until the other place is 2% better, there and 8 px either way, so dragging an edge across moves
-  // it only once.
+  // (`was.hist`), it stays until the other place is 2% better, there and 8 px either way, so dragging an edge across
+  // moves it only once.
   function histAt(W, H, c, was) {
     const b = Object.assign({}, c, { advanced: false, canvas: true }), from = was.hist;
     const look = (W, H) => {
       const M = metrics(W, H, 6), { P, PT, PB, G } = M, availW = W - 2 * P, availH = H - PT - PB;
       const hw = besideWidth(M, availW, availH, b, was.canvas), under = availH - histBand(availH) - G;
-      // (Across the top keeps fitting 8 px past where it starts to.)
-      const slack = from === 'top' ? BAND : 0, top = H > W - slack && under >= M.keysMinH + G + DISP_MIN - slack;
-      return { hw, top, kb: hw ? fit(M, availW, availH, hw, b, was.canvas).key : 0, kt: top ? fit(M, availW, under, 0, b, was.under, true).key : 0 };
+      // (Across the top starts to fit 8 px past where it keeps fitting, so the canvas or display above the keys keeps 76.)
+      const slack = from === 'top' ? BAND : 0, top = H > W - slack && under >= M.keysMinH + G + DISP_MIN + BAND - slack;
+      return { hw, top, kb: hw ? fit(M, availW, availH, hw, b, was.canvas).key : 0, kt: top ? fit(M, availW, under, 0, b, 'stack', 'above').key : 0 };
     };
     const L = look(W, H);
     if (!L.top) return L.hw ? 'beside' : '';
@@ -1041,11 +1071,13 @@
     el.app.classList.toggle('htop', !!L.top);
     el.app.classList.toggle('swap', swap);
     s.padding = `${PT}px ${P}px ${PB}px`; s.setProperty('--g', G + 'px');
-    el.app.style.setProperty('--hf', (L.top ? bandFont(W) : clamp(16, (hw || 240) * .072, 40)) + 'px');
+    el.app.style.setProperty('--hf', (L.top ? bandFont(W, L.band) : clamp(16, (hw || 240) * .072, 40)) + 'px');
     // History moved: it scrolls to the newest line, as when it shows.
     const where = L.top ? 'top' : hw ? 'beside' : '';
     if (where && histNow && where !== histNow) histKey = null;
     histNow = where;
+    // (Once a panel's change has landed, it notes where things went.)
+    if (performance.now() >= held) for (const k in sized) if (!sized[k].look) sized[k].look = el.app.dataset.layout + '|' + where;
     // Advanced keys need a taller window when they sit under a display: the board draws it taller meanwhile. (Under
     // History across the top, by its band too, as high as it is at that height.)
     let need = rows > 6 ? Math.ceil(2 * P + M.keysMinH + (L.besideByWidth ? 0 : G + DISP_MIN)) + 1 : 0;
@@ -1098,7 +1130,7 @@
   // (Work is done in the next frame: changing sizes inside a ResizeObserver callback makes the browser complain.)
   let frame = 0;
   function refit() {
-    frame = 0; layout(); histFit = ''; render();
+    frame = 0; layout(); histFit = ''; render(); fitBand();
     if (histEnd && el.app.classList.contains('hist')) el.hlist.scrollTop = el.hlist.scrollHeight;
   }
   const soon = () => { if (!frame) frame = requestAnimationFrame(refit); };
