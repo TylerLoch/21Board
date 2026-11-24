@@ -51,7 +51,7 @@ version from `sw.js`.
 
 ## 4. Test everything
 
-Push the release branch. GitHub runs the whole of `tests/run.js` in 10 parts at once, in about 12 minutes.
+Push the release branch. GitHub runs the whole of `tests/run.js` in 15 parts at once, in about 12 minutes.
 
 ```bash
 git push -u origin <key>

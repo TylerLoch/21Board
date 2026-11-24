@@ -6,7 +6,7 @@
  *   node tools/ci-wait.js <commit>         the run for that commit or branch
  *   node tools/ci-wait.js --save-timings   also saves each suite's seconds to tests/timings.json, to balance the parts
  *
- * .github/workflows/tests.yml runs tests/run.js in 10 parts at once on every push. This prints nothing while it waits,
+ * .github/workflows/tests.yml runs tests/run.js in 15 parts at once on every push. This prints nothing while it waits,
  * so Claude can run it in the background for free. It needs the GitHub CLI, gh, signed in.
  * Exits 0 if every test passed, 1 if a test failed or a part stopped, and 2 if there's no run to wait for.
  */
