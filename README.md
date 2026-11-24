@@ -210,8 +210,11 @@ LICENSE-DOCS            CC BY 4.0 (the documentation)
 NOTICE                  Copyright and credits that copies keep
 tools/release.js        Stamps a release with its name and build. See Deploying.
 tools/test-halves.js    Runs tests/run.js as two halves at once. See Tests.
+tools/ci-wait.js        Waits for GitHub to test a push and prints the failures. See Tests.
 tools/release-workflow.js  Builds, reviews, and fixes a release with Claude Code. See docs/RELEASING.md.
 tests/run.js            Browser tests. See Tests.
+tests/timings.json      How long each suite takes, to split the tests evenly
+.github/workflows/tests.yml  Runs the tests on GitHub for every push. See Tests.
 ```
 
 ### Included widgets
@@ -803,6 +806,12 @@ itself, `board.js` section 13d, in Node with no browser: the rules, reading devi
 devices changing and merging one board. It takes a couple of minutes, and `tests/run.js` runs it as a suite too.
 `node tools/test-halves.js` runs the whole of `tests/run.js` as two halves at once, in about 40 minutes, and adds up
 the results. It takes a filter too. It won't start while another test run is going.
+
+GitHub runs the whole of `tests/run.js` for every push, in 10 parts at once, in about 12 minutes. It installs the
+fonts the tests are written with, so text measures the same. `.github/fonts/` makes Inter the system font.
+`node tools/ci-wait.js` waits for the pushed commit's run, then prints each part and every failure. It prints nothing
+while it waits. It needs the GitHub CLI, `gh`. Add `--save-timings` to save how long each suite took to
+`tests/timings.json`. `PART=k/n` uses those times to give each part about the same work.
 
 `node tests/calc-engine.js` tests the Calculator's math in Node, with the answers Desmos gave. It runs as a suite too.
 
