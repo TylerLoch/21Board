@@ -1022,6 +1022,12 @@ const WXT = {
         const s = getComputedStyle(e);
         if ((s.textOverflow === 'ellipsis' || s.overflow === 'hidden') && e.scrollWidth > e.clientWidth + 1) out.push(`“${t.slice(0, 18)}” is cut off`);
       }
+      // Words in a picture (the compass's N, E, S, and W): their size as drawn, the picture's scale included.
+      for (const t of document.querySelectorAll('#app svg text')) {
+        if (!vis(t) || t.closest('.sr')) continue;
+        const m = t.getScreenCTM(), px = parseFloat(getComputedStyle(t).fontSize) * (m ? Math.hypot(m.a, m.b) : 1);
+        if (px < 13.95) out.push(`“${t.textContent.trim().slice(0, 18)}” at ${px.toFixed(1)} px in a picture`);
+      }
       // A part's own box inside the window, and inside its card.
       for (const c of document.querySelectorAll('#app .in > *, #app .smalls > *')) {
         if (!vis(c)) continue;
@@ -21301,6 +21307,8 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await WXT.wf(page).locator('#app .hero[data-go="now"]').click(); await page.waitForTimeout(300);
       const now = await WXT.F(page, () => ({ title: (document.querySelector('#app .bar2 .title') || {}).textContent, wind: !!document.querySelector('#app .windc'), units: [...document.querySelectorAll('#app .unit')].map(u => u.textContent + (u.closest('.temp') ? ':temp' : '')), text: document.getElementById('app').innerText }));
       ok(now.title === 'Now' && !now.wind && now.units.join() === 'F:temp' && /Feels like/.test(now.text) && /Air quality/.test(now.text) && /High, low, and air quality from Open-Meteo/.test(now.text), `the Now view follows the Show list: no wind; feels like and air quality; the F on its temperature (${JSON.stringify(now).slice(0, 300)})`);
+      const hl = await WXT.F(page, () => document.querySelector('#app .dnow .hl').textContent.replace(/\u00a0/g, '+'));
+      ok(hl === 'High 40°++ Low 25°', `its high and low, three spaces apart as in Large: “High 40°   Low 25°” (${hl})`);
       { const pr = await WXT.problems(page, false); ok(!pr.list.length, `the Now view fits (${pr.list.join(', ') || pr.size})`); }
       await WXT.wf(page).locator('#app [data-go="main"]').first().click(); await page.waitForTimeout(300);
       // Watches hide the watch band; a warning still shows.
@@ -21314,6 +21322,136 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         ok(want.test(got), `${file.includes('midland') ? 'a Freeze Watch' : 'a Freeze Warning'}${hide.length ? ', with Watches unticked' : ''}: ${want.source === '^$' ? 'no band' : 'its band shows'} (${got || 'no band'})`);
         await b.ctx.close();
       }
+    });
+
+    // ---- 3. Filling the board at a larger board Size (Settings › Size of windows and menus), locked and unlocked, with
+    // and without a saved forecast offline: the parts scale to the height the corner strips leave.
+    await part('Board Size', async () => {
+      const b = await WXT.board(browser, errors, { at: '2026-12-01T11:50:00-06:00' });
+      b.wx.shift = 8 * 86400;
+      await WXT.open(b.page);
+      const bad = [], seen = [];
+      for (const off of [false, true]) {
+        if (off) { await eventually(async () => !!((await WXT.data(b.page)) || {}).saved); await b.ctx.setOffline(true); await b.page.waitForTimeout(400); }
+        for (const [vw, vh] of [[1366, 768], [1280, 800]]) for (const scale of [1.5, 2]) for (const locked of [false, true]) {
+          await b.page.setViewportSize({ width: vw, height: vh }); await b.page.waitForTimeout(200);
+          await b.page.evaluate(s => window.__board21.setBoardScale(s), scale); await b.page.waitForTimeout(300);
+          await b.page.evaluate(k => window.__board21.setMaximized(k, true), K); await b.page.waitForTimeout(700);
+          if (locked) { await lockBoard(b.page, 'widgets'); await b.page.waitForTimeout(700); }
+          const p = await WXT.problems(b.page, true), x = await WXT.parts(b.page), list = p.list.concat(x ? x.gaps : ['nothing drawn']);
+          (list.length ? bad : seen).push(`${off ? 'offline, ' : ''}${vw} × ${vh} at Size ${scale}${locked ? ', locked' : ''} (${p.size}, ${x && x.layout})${list.length ? ': ' + list.join(', ') : ''}`);
+          if (scale === 1.5 && vw === 1366 && !locked) await b.page.screenshot({ path: OUT + `weather-fill-size-1.5${off ? '-offline' : ''}.png` });
+          if (locked) await unlockBoard(b.page);
+          await b.page.evaluate(k => window.__board21.setMaximized(k, false), K); await b.page.waitForTimeout(200);
+        }
+      }
+      ok(!bad.length && seen.length === 16, `filling the board at Size 1.5 and 2, on 1366 × 768 and 1280 × 800, locked and unlocked, online and offline: everything fits, clear of the corner marks (${bad.join(' | ') || seen.length + ' layouts'})`);
+      await b.ctx.close();
+    });
+
+    // ---- 4. Every height of each layout, with no band, a warning, and offline: the spacing closes up as it must.
+    await part('Heights', async () => {
+      const bad = []; let n = 0;
+      const H = { m: [[480, 759], [280, 305, 330, 355, 380, 405, 430, 455, 479]], l: [[900, 1299], [480, 520, 540, 580, 620, 680, 759]], xl: [[1300, 1600], [760, 800, 860, 900]] };
+      for (const state of ['plain', 'warning', 'offline']) {
+        const b = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } }, more: state === 'warning' ? { 'api.weather.gov/alerts/active': 'nws-alerts-fortworth.json' } : {} });
+        await WXT.open(b.page);
+        if (state === 'offline') { await eventually(async () => !!((await WXT.data(b.page)) || {}).saved); await b.ctx.setOffline(true); await b.page.waitForTimeout(400); }
+        for (const [L, [ws, hs]] of Object.entries(H)) for (const w of ws) for (const h of hs) {
+          await WXT.size(b.page, w, h); n++;
+          const p = await WXT.problems(b.page, false), x = await WXT.parts(b.page), list = p.list.concat(x ? x.gaps : ['nothing drawn']);
+          if (x && x.layout !== L) list.push(`layout ${x.layout}`);
+          if (list.length) bad.push(`${state}, ${w} × ${h}: ${list.join(', ')}`);
+        }
+        await b.ctx.close();
+      }
+      ok(!bad.length && n === 120, `Medium, Large, and Fill the board at every height, with no band, a warning, and offline: nothing runs out of its card (${bad.join(' | ') || n + ' sizes'})`);
+    });
+
+    // ---- 5. The views at their smallest: Now, and On a date with its chart. Words in a picture count too.
+    await part('Smallest views', async () => {
+      const b = await WXT.board(browser, errors);
+      await WXT.open(b.page);
+      const bad = [], seen = [];
+      for (const [w, h] of [[380, 280], [480, 360], [600, 420], [900, 560]]) {
+        await WXT.size(b.page, w, h);
+        await WXT.wf(b.page).locator('#app .hero[data-go="now"]').click(); await b.page.waitForTimeout(250);
+        const p = await WXT.problems(b.page, false);
+        (p.list.length ? bad : seen).push(`the Now view at ${w} × ${h}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+        if (w === 380) await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-now-380x280.png' });
+        await WXT.wf(b.page).locator('#app [data-go="main"]').first().click(); await b.page.waitForTimeout(200);
+      }
+      await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { date: '2019-01-30' })); await b.page.waitForTimeout(800);
+      for (const [w, h] of [[260, 220], [380, 280], [480, 360], [760, 480], [900, 560]]) {
+        await WXT.size(b.page, w, h);
+        for (const end of [false, true]) {
+          await WXT.F(b.page, end => { const s = document.querySelector('#app .dscroll'); if (s) s.scrollTop = end ? s.scrollHeight : 0; }, end); await b.page.waitForTimeout(150);
+          const p = await WXT.problems(b.page, false), c = await WXT.F(b.page, () => { const e = document.querySelector('#app .chart'); return e ? Math.round(e.getBoundingClientRect().height) : 0; });
+          if (c < 100) p.list.push(`its chart is ${c} px tall`);
+          (p.list.length ? bad : seen).push(`On a date at ${w} × ${h}${end ? ', scrolled to the chart' : ''}${p.list.length ? ': ' + p.list.join(', ') : ''}`);
+        }
+        if (w === 480) await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-on-a-date-480x360.png' });
+      }
+      ok(!bad.length, `the Now view and On a date at their smallest: every word 14 px or more, in the compass and the chart too, nothing cut off, and the chart over 100 px tall (${bad.join(' | ') || seen.length + ' views'})`);
+      await WXT.size(b.page, 480, 360);
+      const bar = await WXT.F(b.page, () => document.querySelector('#app .pick').innerText.trim());
+      ok(bar === 'Wed, January 30, 2019', `at 480 × 360 the bar has the whole date (${bar})`);
+      await b.ctx.close();
+    });
+
+    // ---- 6. A long warning at Medium's smallest, a band at its default size, and the 7-day forecast hidden.
+    await part('Long warnings', async () => {
+      const fw = WX_FIX('nws-alerts-fortworth.json'), bad = [];
+      for (const ev of ['Severe Thunderstorm Warning', 'Extreme Cold Warning', 'Freeze Warning']) {
+        const x = JSON.parse(JSON.stringify(fw)); x.features[0].properties.event = ev;
+        const b = await WXT.board(browser, errors, { more: { 'api.weather.gov/alerts/active': { json: x } } });
+        await WXT.open(b.page);
+        for (const [w, h] of [[380, 280], [420, 300], [480, 360]]) for (const hide of [[], ['days'], ['days', 'wear']]) {
+          await WXT.size(b.page, w, h);
+          await WXT.put(b.page, 'config', Object.assign({}, await WXT.conf(b.page), { hide })); await b.page.waitForTimeout(250);
+          const p = await WXT.problems(b.page, false), x = await WXT.parts(b.page), band = await WXT.F(b.page, () => { const e = document.querySelector('#app .band'); return e ? { t: e.innerText.replace(/\s+/g, ' ').trim(), h: e.getBoundingClientRect().height, fs: parseFloat(getComputedStyle(e).fontSize) } : null; });
+          const list = p.list.concat(x ? x.gaps : []);
+          if (!band || !band.t.startsWith(ev)) list.push(`the band reads “${band && band.t}”`);
+          else if (band.h > band.fs * 2.4) list.push(`the band takes two lines (${Math.round(band.h)} px)`);
+          if (list.length) bad.push(`${ev} at ${w} × ${h}${hide.length ? ' without ' + hide.join(', ') : ''}: ${list.join(', ')}`);
+          if (ev === 'Severe Thunderstorm Warning' && w === 380 && !hide.length) await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-long-warning-380x280.png' });
+        }
+        await b.ctx.close();
+      }
+      ok(!bad.length, `a long warning at Medium’s smallest sizes, with the 7-day forecast and What to wear hidden too: one line, and everything fits (${bad.join(' | ') || 'all'})`);
+      // At the default size a band leaves the week its pictures.
+      const b = await WXT.board(browser, errors, { more: { 'api.weather.gov/alerts/active': 'nws-alerts-fortworth.json' } });
+      await WXT.open(b.page);
+      const ic = await WXT.F(b.page, () => Math.round(document.querySelector('#app .week svg').getBoundingClientRect().width));
+      ok(ic >= 24, `at 480 × 360 with a warning, the week’s pictures stay ${ic} px wide, 24 or more`);
+      await b.ctx.close();
+    });
+
+    // ---- 7. Settings › Appearance › Text style reaches every word, and the window still fits in wider letters.
+    await part('Text style', async () => {
+      const { ctx, page } = await WXT.board(browser, errors, { opts: { viewport: { width: 1680, height: 1000 } } });
+      await WXT.open(page);
+      const bad = [];
+      for (const [key, fam] of [['legible', 'Atkinson Hyperlegible'], ['early', '21Board Early Readers']]) {
+        await openSettings(page, ['letters']); await page.click(`#settings [data-act="letters"][data-val="${key}"]`); await page.keyboard.press('Escape'); await page.waitForTimeout(1200);
+        await WXT.choose(page, 'place');
+        const off = await WXT.F(page, fam => { const out = new Set(); const walk = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          for (let n; (n = walk.nextNode());) { const e = n.parentElement; if (e && /[A-Za-z0-9]/.test(n.textContent) && e.getBoundingClientRect().width && !getComputedStyle(e).fontFamily.startsWith(`"${fam}"`)) out.add(e.tagName.toLowerCase() + ' “' + n.textContent.trim().slice(0, 16) + '”'); }
+          const i = document.querySelector('#sheet input'); if (i && !getComputedStyle(i).fontFamily.startsWith(`"${fam}"`)) out.add('the search field');
+          return [...out]; }, fam);
+        await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+        ok(!off.length, `${key}: every word in Weather is in ${fam}, the Location sheet too (${off.slice(0, 5).join(', ') || 'all'})`);
+        if (key !== 'legible') continue;
+        for (const [w, h] of [[260, 220], [380, 280], [480, 360], [760, 480], [900, 560], [1600, 860]]) for (const hide of [[], ['days'], ['wear', 'days'], ['hourly', 'wear', 'sun', 'wind', 'air']]) {
+          await WXT.size(page, w, h);
+          await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { hide })); await page.waitForTimeout(200);
+          const p = await WXT.problems(page, false), x = await WXT.parts(page), list = p.list.concat(x ? x.gaps : []);
+          if (list.length) bad.push(`${w} × ${h}${hide.length ? ' without ' + hide.join(', ') : ''}: ${list.join(', ')}`);
+        }
+        await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { hide: [] }));
+      }
+      ok(!bad.length, `in Easier to read, each size and the Show list still fit (${bad.join(' | ') || 'all'})`);
+      await ctx.close();
     });
 
     ok(stamped(), STAMPED);
@@ -21427,6 +21565,20 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const end = [om(), nws()];
       ok(mid[0] === was[0] && mid[1] > was[1] && end[0] > mid[0], `it asks Open-Meteo again only once Retry-After (1.5 hours) has passed, and the Weather Service meanwhile (Open-Meteo ${was[0]}, ${mid[0]}, ${end[0]}; the Weather Service ${was[1]}, ${mid[1]}, ${end[1]})`);
       await b.ctx.close();
+      // A school day (Tue Dec 1, 11:50 AM) with Open-Meteo turning the school away: the Weather Service's hours start at
+      // this hour, and the school hours still ahead are enough for Today.
+      const T429 = { 'api.open-meteo.com/v1/forecast': { status: 429, headers: { 'retry-after': '5400', 'access-control-expose-headers': 'retry-after' }, json: { error: true } } };
+      b = await WXT.board(browser, errors, { at: '2026-12-01T11:50:00-06:00', more: T429 });
+      b.wx.shift = 8 * 86400;
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560); await b.page.waitForTimeout(500);
+      const wl = await F(b.page, () => ({ b: [...document.querySelectorAll('#app .wear .tg b')].map(x => x.textContent + (x.classList.contains('on') ? '*' : '')).join(','), advice: (document.querySelector('#app .wear .advice') || {}).textContent, items: [...document.querySelectorAll('#app .wear [data-item]')].map(e => e.dataset.item).join() }));
+      ok(wl.b === 'Today*,Wed' && wl.advice === 'Dress for cold weather.' && wl.items === 'coat,hat,gloves', `a school day on the Weather Service’s forecast: Today says “Dress for cold weather.” with a coat, hat, and gloves (${JSON.stringify(wl)})`);
+      await WXT.size(b.page, 480, 360);
+      const ml = await F(b.page, () => (document.querySelector('#app .wl .says') || {}).textContent);
+      ok(ml === 'Dress for cold weather.', `and so does Medium’s line (${ml})`);
+      const sw = ((await WXT.data(b.page)) || { saved: { wear: {} } }).saved.wear['2026-12-01'];
+      ok(!!sw && sw.advice === 'Dress for cold weather.', `and it saves that, not “Its forecast isn’t out yet.” (${JSON.stringify(sw)})`);
+      await b.ctx.close();
       // Honolulu: PHNL's newest temperature is 2 hours old, so Now is Open-Meteo's, and times are Hawaii's.
       b = await WXT.board(browser, errors);
       await WXT.open(b.page);
@@ -21487,6 +21639,20 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
         await b.ctx.close();
       }
       ok(!shown.length, `Cancel messages, EXP and CAN actions, ended alerts, marine warnings, and advisories never show (${shown.join(' | ') || NEVER.length + ' cases'})`);
+      // A warning that ends at 8:30 PM, seen at 7:55 PM: it goes when it ends, though nothing is asked from 8 PM to 6 AM.
+      const late = JSON.parse(JSON.stringify(fw)), lp = late.features[0].properties;
+      Object.assign(lp, { sent: '2026-11-23T15:00:00-06:00', effective: '2026-11-23T15:00:00-06:00', onset: '2026-11-23T21:00:00-06:00', ends: '2026-11-23T22:30:00-06:00', expires: '2026-11-23T22:30:00-06:00' });
+      lp.parameters.VTEC = ['/O.NEW.KFWD.FZ.W.0003.261124T0300Z-261124T0430Z/'];
+      b = await WXT.board(browser, errors, { at: '2026-11-23T19:55:00-06:00', clock: 'install', more: { 'api.weather.gov/alerts/active': { json: late } } });
+      await WXT.open(b.page);
+      const b0 = await band(b.page);
+      await WXT.later(b.page, 70);   // (9:05 PM)
+      const b1 = await band(b.page);
+      await WXT.later(b.page, 90);   // (10:35 PM)
+      const b2 = await band(b.page), asked = b.wx.count(/alerts\/active/);
+      ok(b0 === 'warn: Freeze Warning Mon 9 PM to 10:30 PM' && b1 === 'warn: Freeze Warning Until 10:30 PM' && b2 === '' && asked === 1,
+        `a warning from 9 PM to 10:30 PM, seen from 7:55 PM: its span reads “Until 10:30 PM” once it starts, and it goes at 10:30 PM, with no request after 8 PM (${b0} | ${b1} | “${b2}”; asked ${asked} time)`);
+      await b.ctx.close();
     });
 
     ok(stamped(), STAMPED);
@@ -21569,6 +21735,20 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const wx = await F(page, () => document.querySelectorAll('#app .wx').length);
       ok(wx === 1, 'and it still draws the weather');
       await ctx.close();
+      // Times no date can be made from, drawn offline: the window keeps drawing (a menu change, a new size).
+      for (const [what, mut] of [['saved.at 1e20', x => { x.at = 1e20; }], ['each wear.at 1e15', x => { for (const k of Object.keys(x.wear)) x.wear[k].at = 1e15; }], ['saved.at -1e16', x => { x.at = -1e16; }]]) {
+        const b = await WXT.board(browser, errors), logs = [];
+        b.page.on('console', m => { if (/RangeError|listener for .* failed/.test(m.text())) logs.push(m.text().slice(0, 120)); });
+        await WXT.open(b.page);
+        await eventually(async () => !!((await WXT.data(b.page)) || {}).saved);
+        const d = JSON.parse(JSON.stringify(await WXT.data(b.page))); mut(d.saved);
+        await b.ctx.setOffline(true); await b.page.waitForTimeout(300);
+        await WXT.put(b.page, 'data', d); await b.page.waitForTimeout(400);
+        await WXT.choose(b.page, 'units:c'); await WXT.size(b.page, 900, 560);
+        const t = await text(b.page);
+        ok(!logs.length && /You’re offline\./.test(t) && (/\d°C/.test(t) || /The weather shows once you’re online\./.test(t)), `content with ${what}, offline: no error, and it still draws after °C and a new size (${logs.join(' | ') || t.replace(/\n+/g, ' / ').slice(0, 90)})`);
+        await b.ctx.close();
+      }
     });
 
     // ---- 4. Each part on its own clock, only while the window shows, and never on a timer from 8 PM to 6 AM.
@@ -21595,6 +21775,16 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const h2 = counts();
       ok(h2.now === h1.now + 1 && h2.forecast === h1.forecast + 1 && h2.alerts === h1.alerts + 1 && h2.air === h1.air, `shown again, it asks at once for Now, the forecast, and alerts, which are stale, and not air quality (${JSON.stringify(h2)})`);
       await ctx.close();
+      // The airport's report always 2 hours old, so Now comes from Open-Meteo: still one forecast an hour, each with Now.
+      const st = await WXT.board(browser, errors, { clock: 'install' });
+      st.wx.later['api.weather.gov/stations/KPWK/observations'] = -2 * 3600;
+      await WXT.open(st.page);
+      const om = () => st.wx.asked.filter(a => a.host === 'api.open-meteo.com'), s0 = om().length, src = await F(st.page, () => document.querySelector('#app .hero .src').textContent);
+      for (let i = 1; i <= 8; i++) { st.wx.later['api.weather.gov/stations/KPWK/observations'] = i * 1800 - 2 * 3600; await WXT.later(st.page, 30); }
+      await WXT.later(st.page, 1);
+      const s1 = om().slice(s0);
+      ok(s0 === 1 && s1.length === 4 && s1.every(a => a.query.current) && /^From Open-Meteo/.test(src), `with Now from Open-Meteo, it asks Open-Meteo once an hour, each time with Now: about 18 calls a day, as README says (on open ${s0}, then ${s1.length} in 4 hours, ${s1.filter(a => a.query.current).length} with Now; ${src})`);
+      await st.ctx.close();
       // From 8 PM to 6 AM nothing on a timer; a window opened at 9 PM asks once.
       const q = await WXT.board(browser, errors, { clock: 'install', at: '2026-11-23T21:00:00-06:00' });
       await WXT.open(q.page);
@@ -21656,6 +21846,26 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await F(b.page, () => window.B21Weather.refresh()); await b.page.clock.runFor(20000);
       t = await text(b.page);
       ok(/Can’t get new weather\./.test(t) && /Updated 11:50 AM/.test(t) && /Dress for chilly weather\./.test(t), `with a save: “Can’t get new weather.” and “Updated 11:50 AM”, and the saved forecast (${t.replace(/\n+/g, ' / ').slice(0, 160)})`);
+      await b.ctx.close();
+      // Every site failing after a good start (a school's filter, an outage): once the forecast is two hours old, the
+      // saved view with “Can’t get new weather.”, and the band goes when the weather comes again.
+      b = await WXT.board(browser, errors, { at: '2026-11-23T09:50:00-06:00', clock: 'install' });
+      b.wx.shift = -2 * 3600;   // (the answers as at 9:50 AM)
+      await WXT.open(b.page); await WXT.size(b.page, 900, 560);
+      ok(await eventually(async () => !!((await WXT.data(b.page)) || {}).saved), 'a good start: the forecast is saved');
+      const good = Object.assign({}, b.wx.answers);
+      for (const k of Object.keys(b.wx.answers)) b.wx.answers[k] = { abort: true };
+      await WXT.later(b.page, 100);
+      const t1 = await text(b.page);
+      await WXT.later(b.page, 80);
+      const t2 = await text(b.page), p2 = await WXT.parts(b.page);
+      ok(!/Can’t get new weather/.test(t1) && /Can’t get new weather\./.test(t2) && /Updated 9:50 AM/.test(t2) && !/From Open-Meteo|At Chicago Executive Airport/.test(t2) && p2 && !p2.wind && !p2.air && p2.days === 7,
+        `three hours of every site failing: at 11:30 AM it still shows the weather; by 12:50 PM “Can’t get new weather.” and “Updated 9:50 AM”, the saved days, and no Now (${t1.replace(/\n+/g, ' / ').slice(0, 80)} | ${t2.replace(/\n+/g, ' / ').slice(0, 140)})`);
+      await b.page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-failing.png' });
+      Object.assign(b.wx.answers, good);
+      await WXT.later(b.page, 65);
+      const t3 = await text(b.page);
+      ok(!/Can’t get new weather/.test(t3) && /At Chicago Executive Airport|From Open-Meteo, \d/.test(t3), `the next answer drops the band (${t3.replace(/\n+/g, ' / ').slice(0, 100)})`);
       await b.ctx.close();
     });
 
@@ -21742,6 +21952,24 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       await page.locator(`.win[data-ikey="${K}"]`).screenshot({ path: OUT + 'weather-on-a-date.png' });
       await WXT.wf(page).locator('#app [data-act="today"]').click(); await page.waitForTimeout(500);
       ok(((await WXT.conf(page)) || {}).date === null && !(await page.evaluate(k => window.__board21.state.wins.get(k).subtitle, K)), 'Back to today returns, and the subtitle goes');
+      // A summer day: the archive keeps standard time all year, so its hours run from 1 AM daylight time. The chart puts
+      // each at its own time, and a missing hour is a gap.
+      const sum = WX_FIX('om-archive-2019-01-30.json'), t0 = Date.parse('2019-07-15T06:00:00Z') / 1000;
+      sum.hourly.time = sum.hourly.time.map((t, i) => t0 + i * 3600); sum.daily.time = [t0];
+      sum.hourly.temperature_2m = sum.hourly.temperature_2m.map((f, i) => (i === 10 ? null : 70 + i / 2));
+      Object.assign(sum.daily, { temperature_2m_max: [81.5], temperature_2m_min: [70], weather_code: [1] });
+      wx.answers['archive-api.open-meteo.com/v1/archive'] = { json: sum };
+      await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { date: '2019-07-15' })); await page.waitForTimeout(800);
+      const ch = await F(page, () => ({ ticks: [...document.querySelectorAll('#app .chart .tk')].map(e => e.textContent.replace(/\u00a0/g, ' ') + '@' + e.style.left), runs: (document.querySelector('#app .chart svg path[fill="none"]').getAttribute('d').match(/M/g) || []).length }));
+      // (6 AM daylight time is the archive's 6th hour, 11:00 UTC: 10 + 280 × 5 / 23 of the 300-wide drawing.)
+      ok(ch.ticks.join(' | ') === '6 AM@23.62% | 12 PM@47.97% | 6 PM@72.32%' && ch.runs === 2, `a summer day’s chart: 6 AM, 12 PM, and 6 PM at their own hours, and a gap where an hour is missing (${ch.ticks.join(' | ')}; ${ch.runs} runs)`);
+      // The archive failing while online: “Can’t get the weather.”, then once more after 5 to 10 seconds.
+      let tries = 0;
+      wx.answers['archive-api.open-meteo.com/v1/archive'] = () => (++tries === 1 ? { status: 500, json: { error: true } } : 'om-archive-2019-01-30.json');
+      await WXT.put(page, 'config', Object.assign({}, await WXT.conf(page), { date: '2019-01-30' })); await page.waitForTimeout(600);
+      const f1 = await text(page);
+      ok(/Can’t get the weather\./.test(f1) && !/No weather for that date/.test(f1), `the archive failing while online: “Can’t get the weather.” (${f1.replace(/\n+/g, ' / ').slice(0, 100)})`);
+      ok(await eventually(async () => /Low −25°/.test(await text(page)), 14000) && tries === 2, `it tries once more by itself, and shows the day (${tries} tries)`);
       await ctx.setOffline(true);
       await WXT.choose(page, 'date'); await page.waitForTimeout(500);
       ok(/On a date needs the Internet\./.test(await text(page)), 'offline: “On a date needs the Internet.”');
