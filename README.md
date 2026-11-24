@@ -788,7 +788,10 @@ opened, and keep their layout as it looks on that screen. The code is section **
 npm install --no-save playwright && npx playwright install chromium
 node tests/run.js            # all suites
 node tests/run.js offline    # only the suites whose title contains "offline"
+node tests/run.js offline --verbose   # every check, not only the failures
 ```
+
+Each suite prints its failures and how many checks passed.
 
 The *District apps* suite uses stand-ins for 21Sketch, 21Timer, and 21DocCam. The *Traffic Light sideways* suite has
 its own stand-ins for 21Timer and 21Sketch. The *Video Player* suites use stand-ins for YouTube, Google Drive, and
