@@ -807,7 +807,7 @@ devices changing and merging one board. It takes a couple of minutes, and `tests
 `node tools/test-halves.js` runs the whole of `tests/run.js` as two halves at once, in about 40 minutes, and adds up
 the results. It takes a filter too. It won't start while another test run is going.
 
-GitHub runs the whole of `tests/run.js` for every push, in 10 parts at once, in about 12 minutes. It installs the
+GitHub runs the whole of `tests/run.js` for every push, in 15 parts at once, in about 9 minutes. It installs the
 fonts the tests are written with, so text measures the same. `.github/fonts/` makes Inter the system font.
 `node tools/ci-wait.js` waits for the pushed commit's run, then prints each part and every failure. It prints nothing
 while it waits. It needs the GitHub CLI, `gh`. Add `--save-timings` to save how long each suite took to

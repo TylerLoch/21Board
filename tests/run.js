@@ -4,7 +4,7 @@
  *   npm install --no-save playwright && npx playwright install chromium   (once)
  *   node tests/run.js
  *   node tools/test-halves.js   the same in two halves at once, in about 40 minutes
- *   node tools/ci-wait.js       waits for GitHub to run it on the pushed commit, in 10 parts at once
+ *   node tools/ci-wait.js       waits for GitHub to run it on the pushed commit, in 15 parts at once
  *
  * Starts a static server for the repo, then drives Chromium through the
  * windowing system, storage, multi-tab sync, export/import, offline mode,
@@ -24435,7 +24435,7 @@ function partOf(k, n) {
 }
 
 (async () => {
-  // PART=k/n runs the k-th of n parts. tools/test-halves.js runs PART=1/2 and 2/2 at once, and GitHub runs 10 parts.
+  // PART=k/n runs the k-th of n parts. tools/test-halves.js runs PART=1/2 and 2/2 at once, and GitHub runs 15 parts.
   const part = /^(\d+)\/(\d+)$/.exec(process.env.PART || '');
   if (process.env.PART && !(part && +part[1] >= 1 && +part[1] <= +part[2])) { console.error(`PART must be k/n, such as 1/2. It is ${process.env.PART}.`); process.exit(2); }
   const mine = part ? partOf(+part[1], +part[2]) : new Set(SUITES.keys());
