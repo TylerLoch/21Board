@@ -230,7 +230,7 @@ tests/run.js            Browser tests. See Tests.
 | **Traffic Light** | Turns sideways in a window wider than tall, and keeps its shape in any window. Follow timers shows the color of the Timer or 21Timer closest to ending, from the board's `timers` event. That color is worked out in every tab and never saved. Title status text |
 | **Video Player** | A YouTube, Google Drive, or Vimeo video from its link. A link pasted or dropped on the board opens one too. The board reads it with the widget's own `video-links.js`. YouTube, Google Drive, and Vimeo see what they would on their own sites: the video, the device, and any account signed in. YouTube and Vimeo also see the board's address. Controls in the window menu, since nothing may cover the player. A History of the last 5 videos, kept in the content and titled by YouTube's and Vimeo's oEmbed without cookies. Clear of the board's corner buttons when it fills the board (`corners`). Never under 200 × 200 px on screen (`zoom`). A message when offline |
 | **Picture** | A picture opened, pasted, or dropped on the board. PNG, JPEG, GIF, WebP, or AVIF, animations too. An SVG is drawn as a picture, so nothing in it runs. Kept in the window's content. A still over 1 MB or 3840 px is redrawn as a WebP, 2560 px at most. An animation is kept as it is, up to 5 MB. The window takes the picture's shape. *Whole picture* or *Crop to fill* in its menu. Board history keeps each picture once |
-| **Calculator** | Its math in one engine, `calc-engine.js`, with its own Node tests. Every menu setting kept in the window's config. The window widens for History, grows for Advanced keys, and gives the room back (`setSize`). See [Calculator](#calculator) |
+| **Calculator** | Its math in one engine, `calc-engine.js`, with its own Node tests. Every menu setting kept in the window's config. The window widens for History, grows for Advanced keys, and gives the room back (`setSize`). The canvas sits beside the keys or above them, whichever makes the keys bigger. See [Calculator](#calculator) |
 | **21Sketch** | The district's drawing app, live from sketchapp.ccsd21.org: a window that points to another site (`external`), one window only (`single`). See [District apps](#district-apps) |
 | **21Timer** | The district's classroom timer, live from timerapp.ccsd21.org, with its own themes and sounds |
 | **21DocCam** | The district's document camera, live from doccamapp.ccsd21.org: the one window allowed the camera |
@@ -542,7 +542,7 @@ typing on a touch-only panel; and that the board is still there after airplane m
 ## Calculator
 
 A calculator for the front of the room. The problem fills a big canvas, as a textbook writes it. Its steps play one at
-a time. The keys sit beside it, with ÷ × − + = down the right.
+a time. The keys sit beside it, with ÷ × − + = down the right. In a tall or narrow window, the canvas moves above them.
 
 **Desmos's math.** Teachers use Desmos, so the Calculator works problems out the same way. % means "% of", so 10% of
 50 = 5. Where Desmos says "undefined", the Calculator says what went wrong, such as "Can't divide by 0". Another =
@@ -564,8 +564,8 @@ repeats the last step, so 5 + 5 = = = counts by 5s. A faint comma groups the dig
 - **Swap sides:** the panels change sides, for a teacher on the left of a flat panel.
 - **Clear history:** empties History.
 
-Turning on History or the canvas widens the window, where the board has room. Advanced keys make it taller. Turning
-them off gives the room back.
+Turning on History or the canvas widens the window, where the board has room. In a tall window, the canvas goes above
+the keys. Advanced keys make it taller. Turning them off gives the room back.
 
 Keyboards work too. Type digits, + - * / ^ % ( ), and the point, then Enter or =. Type sqrt, pi, or ans as letters.
 
