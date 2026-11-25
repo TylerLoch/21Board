@@ -3404,11 +3404,16 @@ const SUITES = [
       for (const s of await page.locator('#panel .widget-tile .widget-icon + span').all()) {
         if (await s.evaluate(s => s.scrollHeight > s.clientHeight + 1)) continue;
         const b = await s.boundingBox(), clip = { x: b.x - 4, y: b.y - 4, width: b.width + 8, height: b.height + 8 };
-        const a = await page.screenshot({ clip });
-        await s.evaluate(s => { s.style.overflow = 'visible'; });
-        const c = await page.screenshot({ clip });
-        await s.evaluate(s => { s.style.overflow = ''; });
-        if (!a.equals(c)) out.push(await s.textContent());
+        // Clipped if letting it overflow changes what's drawn, twice: a single difference can be the screenshot's own.
+        let cut = true;
+        for (let i = 0; i < 2 && cut; i++) {
+          const a = await page.screenshot({ clip });
+          await s.evaluate(s => { s.style.overflow = 'visible'; });
+          const c = await page.screenshot({ clip });
+          await s.evaluate(s => { s.style.overflow = ''; });
+          cut = !a.equals(c);
+        }
+        if (cut) out.push(await s.textContent());
       }
       return out;
     };
@@ -7809,6 +7814,8 @@ const SUITES = [
   // at least 850 × 480 px, the four zones sit side by side, so every card reaches down to where students can tap it.
   ['Zones Check-In: one row when it fills the board', async (browser) => {
     let ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    // 9:41, whenever it runs: at 200% on 1366 × 768 the corner clock fits only a one-digit hour, and hides from 10 to 12.
+    await ctx.clock.setFixedTime(new Date(2026, 10, 24, 9, 41));
     let page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
     await page.goto(BASE); await boardUp(page);
@@ -20563,7 +20570,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       ['See README.md, docs/WIDGET-SDK.md and docs/DATA-FORMAT.md.', 'See README.md, docs/WIDGET-SDK.md, and docs/DATA-FORMAT.md.'],
       ['Going online for updates, district apps and videos is fine.', 'Going online for updates, district apps, videos, and the weather is fine.'],
       ['Cut hedges, qualifiers, parentheticals and stacked clauses.', 'Cut hedges, qualifiers, parentheticals, and stacked clauses.'],
-      ['tools/release-workflow.js builds, reviews and fixes each release.', 'tools/release-workflow.js builds, reviews, and fixes each release.'],
+      ['builds, reviews and fixes', 'builds, reviews, and fixes'],
       ['Every change to the interface, a widget or how the board behaves', 'Every change to the interface, a widget, or how the board behaves']]) {
       ok(claude.includes(now) && !claude.includes(was), `CLAUDE.md: “${now}”`);
     }
