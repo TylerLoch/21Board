@@ -62,21 +62,30 @@ NamePicker.register('versus', {
     }
 
     // ---- Layout. The emblem's box sits in the middle, its look's own size. Both names are one size, as large as fits
-    // each side while clear of the box, up to 22% of the stage's height: the left one a little above the middle, the
-    // right one a little below. Beside the names the box takes at most 38% of the stage's width, so a narrow window
-    // leaves them room. The names go above and below the box instead, the left one at the top on the left, the right
-    // one at the bottom on the right, when that makes them larger by more than 1.1 times the stage's width over its
-    // height: 1.1 times larger in a square stage, twice in one 1.8 times as wide as tall, and just larger in a tall
-    // one. Short names in a wide window stay beside the emblem. When a resize moves the names, their size changes by
-    // just that much.
-    const widths = new Map();
+    // each side while clear of the box, up to 22% of the stage's height. The left one sits a little above the middle and
+    // the right one a little below. Beside the names the box takes at most 38% of the stage's width, so a narrow window
+    // leaves them room.
+    // The names may go above and below the box instead. The left one goes at the top on the left, and the right one at
+    // the bottom on the right. A tall window puts them there when that makes them larger. A wide window keeps them beside
+    // the box unless above and below makes them twice as large. Small names need less. At 15 px beside the box they need
+    // 1.5 times, and at 10 px any gain at all.
+    const widths = new Map(), pen = document.createElement('canvas').getContext('2d');
     let fam = '';
-    function em(text) {   // a name's width at 1 px, in the stage's letters
+    // A name's width at 1 px in the stage's letters, and how far its letters reach above or below its middle.
+    function em(text) {
       const f = getComputedStyle(stage).fontFamily;
       if (f !== fam) { fam = f; widths.clear(); }
-      let w = widths.get(text);
-      if (w === undefined) { const p = host.el('span', 'versus-name versus-probe', stage, text); w = p.offsetWidth / 100; p.remove(); widths.set(text, w); }
-      return w;
+      let m = widths.get(text);
+      if (m === undefined) {
+        const p = host.el('span', 'versus-name versus-probe', stage, text), s = getComputedStyle(p);
+        pen.font = `${s.fontStyle} ${s.fontWeight} 100px ${s.fontFamily}`;
+        // (The middle sits above the baseline by half the font's ascent less its descent. 4 and 8 add the outline, and
+        // the shadow below it.)
+        const k = pen.measureText(text), mid = (k.fontBoundingBoxAscent - k.fontBoundingBoxDescent) / 2;
+        m = { w: p.offsetWidth / 100, h: Math.max(k.actualBoundingBoxAscent - mid + 4, k.actualBoundingBoxDescent + mid + 8) / 100 || 0 };
+        p.remove(); widths.set(text, m);
+      }
+      return m;
     }
     function geo(look, pair) {
       const W = stage.clientWidth, H = stage.clientHeight, E = LOOKS[look] || {}, asp = clamp(E.aspect || 1, 0.6, 2), edge = W * 0.04;
@@ -84,13 +93,19 @@ NamePicker.register('versus', {
       // (Each name's room ends a little inside the box: the looks are narrower there. A few px more keeps a long name 8 px
       // clear of the emblem through its slam, more in a small window.)
       const g = { W, H, bw, bh, edge, tall: false, top: H * 0.22, aw: W / 2 - bw * 0.42 - edge - Math.max(2, 12 - 0.06 * bw) };
-      // (Above and below: the box its look's own size, and each name across the stage, in the middle of its band, at
-      // least 10 px clear of the emblem's art, which may reach past its box.)
-      const band = (H - h0 * (1 + 2 * clamp(E.reach || 0, 0, 0.5))) / 2, t = { W, H, bw: h0 * asp, bh: h0, edge, tall: true, band, top: Math.min(H * 0.22, (band - 20) / 1.25), aw: W - 2 * edge };
-      return size(t, pair) > size(g, pair) * Math.max(1, 1.1 * W / H) ? t : g;
+      // (Above and below: the box its look's own size, and each name across the stage in the middle of its band. Its
+      // letters stay 10 px clear of the stage's edge and of the emblem's art, which may reach past its box.)
+      const band = (H - h0 * (1 + 2 * clamp(E.reach || 0, 0, 0.5))) / 2, t = { W, H, bw: h0 * asp, bh: h0, edge, tall: true, band, top: H * 0.22, aw: W - 2 * edge };
+      // (A tall window is at least as tall as it is wide, below its title bar.)
+      const win = document.documentElement, beside = size(g, pair);
+      return size(t, pair) > beside * (win.clientHeight >= win.clientWidth ? 1 : clamp(beside / 10, 1, 2)) ? t : g;
     }
-    // (1.12: room for the letters' lean and outline.)
-    const fit = (g, text) => Math.max(1, Math.min(g.top, g.aw / (Math.max(0.3, em(text)) * 1.12)));
+    // (1.12: room for the letters' lean and outline. Above and below, 0.625 is room for most names' letters on each side
+    // of their middle.)
+    const fit = (g, text) => {
+      const m = em(text), top = g.tall ? Math.min(g.top, (g.band / 2 - 10) / Math.max(0.625, m.h)) : g.top;
+      return Math.max(1, Math.min(top, g.aw / (Math.max(0.3, m.w) * 1.12)));
+    };
     const size = (g, pair) => Math.min(fit(g, pair[0]), fit(g, pair[1]));
     function place(look, pair) {
       const g = geo(look, pair);
@@ -105,7 +120,7 @@ NamePicker.register('versus', {
     // at the right one.
     function put(g, i, text, fs) {
       let x = i ? g.W - g.edge - g.aw / 2 : g.edge + g.aw / 2, y = g.H * (i ? 0.58 : 0.42);
-      if (g.tall) { const w = Math.min(g.aw, em(text) * fs * 1.12); x = i ? g.W - g.edge - w / 2 : g.edge + w / 2; y = i ? g.H - g.band / 2 : g.band / 2; }
+      if (g.tall) { const w = Math.min(g.aw, em(text).w * fs * 1.12); x = i ? g.W - g.edge - w / 2 : g.edge + w / 2; y = i ? g.H - g.band / 2 : g.band / 2; }
       Object.assign(names[i].style, { left: px(x), top: px(y), fontSize: px(fs) });
     }
     // The look's emblem in its box, drawn fresh.

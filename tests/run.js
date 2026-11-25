@@ -6384,10 +6384,10 @@ const SUITES = [
     const tight = [], worst = {}, sizesAt = {};
     for (const [val, label] of [['standard', 'the device’s letters'], ['early', 'Early readers'], ['legible', 'Easier to read']]) {
       if (val !== 'standard') await letters(val);
-      // (In the device's letters, square and narrow windows too, down to the smallest, 260 × 200, and stages just taller
-      // than wide, or about square, where the names go above and below the emblem. Long names go above and below in
-      // 400 × 460 and 900 × 700 too, and in some looks at 540 × 460.)
-      for (const size of [[360, 270], [540, 400], null].concat(val === 'standard' ? [[260, 200], [400, 400], [420, 420], [400, 460], [400, 500], [360, 480], [300, 400], [300, 520], [300, 640], [540, 460], [900, 700]] : [])) {
+      // (In the device's letters, square and narrow windows too, down to the smallest, 260 × 200, and tall windows, where
+      // the names go above and below the emblem. Long names go above and below at 400 × 400 too, and in some looks at
+      // 420 × 420, 540 × 460, and 900 × 700. Every Text style takes two tall windows: Early readers' letters reach deepest.)
+      for (const size of [[360, 270], [540, 400], null, [360, 480], [300, 400]].concat(val === 'standard' ? [[260, 200], [400, 400], [420, 420], [400, 460], [400, 500], [300, 520], [300, 640], [540, 460], [900, 700]] : [])) {
         const where = size ? size.join(' × ') : 'filling the board';
         for (let n = 1; n <= 10; n++) {
           const ik = IK(n);
@@ -6404,7 +6404,7 @@ const SUITES = [
         }
       }
     }
-    ok(!tight.length, `long names fit their side, at least 8 px clear of the emblem beside them and 10 px above and below it, in every look, both ways round, at 360 × 270, 540 × 400, and filling the board, in every Text style, and at 260 × 200, 400 × 400, 420 × 420, 400 × 460, 400 × 500, 360 × 480, 300 × 400, 300 × 520, 300 × 640, 540 × 460, and 900 × 700 (closest: ${JSON.stringify(worst)}${tight.length ? '; ' + tight.slice(0, 4).join(' | ') : ''})`);
+    ok(!tight.length, `long names fit their side, at least 8 px clear of the emblem beside them and 10 px above and below it, in every look, both ways round, at 360 × 270, 540 × 400, filling the board, 360 × 480, and 300 × 400, in every Text style, and at 260 × 200, 400 × 400, 420 × 420, 400 × 460, 400 × 500, 300 × 520, 300 × 640, 540 × 460, and 900 × 700 (closest: ${JSON.stringify(worst)}${tight.length ? '; ' + tight.slice(0, 4).join(' | ') : ''})`);
     // Readable in a square or narrow window: a narrow, tall Name Picker beside the board's other windows.
     ok(sizesAt['400 × 400'] >= 14 && sizesAt['420 × 420'] >= 14 && sizesAt['300 × 520'] >= 20 && sizesAt['300 × 640'] >= 20,
       `long names stay readable in square and tall windows, in every look (smallest, px: ${JSON.stringify(sizesAt)})`);
@@ -6425,28 +6425,33 @@ const SUITES = [
       if (row.some(([, f], i) => i && f < row[i - 1][1] * 0.97)) growth.push(`${LOOKS[n - 1]} at ${w} wide: ${row.map(([h, f]) => h + ':' + f).join(' ')}`);
     }
     ok(!growth.length, `in every look, from a square window up, a taller window never makes the names smaller, at 300 and 400 wide (${growth.slice(0, 2).join(' | ') || 'all 10'})`);
-    // A teacher drags a corner, 10 px at a time: long names never drop below half their size from one step to the next.
-    // One width, 400, at heights from 380 to 540, and one height, 460, at widths from 300 to 560. At 400 × 460 they are
-    // about as large as at 400 × 480.
-    const drops = [], near = [];
+    // A teacher drags a corner, 10 px at a time: long names never drop below half their size from one step to the next,
+    // nor under 12 px from 1.5 times that. One width, 400, at heights from 380 to 540, one height, 460, at widths from 300
+    // to 560, and a small window, 260 tall, at widths from 260 to 360. At 400 × 460 they are about as large as at 400 × 480.
+    const drops = [], near = [], tiny = [];
     for (let n = 1; n <= 5; n++) {
       const at = async (w, h) => {
         await ip.evaluate(([ik, w, h]) => { window.__board21.setRect(ik, { x: 300, y: 60, w, h }); window.__board21.focusWin(ik); }, [IK(n), w, h]);
         await ip.waitForTimeout(250);
         return inFrame(() => parseFloat(document.querySelector('.versus-name').style.fontSize), ip, IK(n));
       };
-      const paths = [[], []];
+      const paths = [[], [], []];
       for (let h = 380; h <= 540; h += 10) paths[0].push([400, h, await at(400, h)]);
       for (let w = 300; w <= 560; w += 10) paths[1].push([w, 460, await at(w, 460)]);
+      for (let w = 260; w <= 360; w += 10) paths[2].push([w, 260, await at(w, 260)]);
+      const step = (p, i) => `${LOOKS[n - 1]}: ${p[i - 1][0]} × ${p[i - 1][1]} ${p[i - 1][2]} px, ${p[i][0]} × ${p[i][1]} ${p[i][2]} px`;
       for (const p of paths) {
         const i = p.findIndex(([, , f], i) => i && Math.min(f, p[i - 1][2]) < Math.max(f, p[i - 1][2]) * 0.5);
-        if (i > 0) drops.push(`${LOOKS[n - 1]}: ${p[i - 1][0]} × ${p[i - 1][1]} ${p[i - 1][2]} px, ${p[i][0]} × ${p[i][1]} ${p[i][2]} px`);
+        if (i > 0) drops.push(step(p, i));
+        const j = p.findIndex(([, , f], i) => i && Math.min(f, p[i - 1][2]) < 12 && Math.max(f, p[i - 1][2]) >= Math.min(f, p[i - 1][2]) * 1.5);
+        if (j > 0) tiny.push(step(p, j));
       }
       const f = h => paths[0].find(([, hh]) => hh === h)[2];
       if (!(f(460) >= f(480) * 0.8)) near.push(`${LOOKS[n - 1]}: ${f(460)} and ${f(480)} px`);
     }
     ok(!near.length, `in every look, long names at 400 × 460 are about as large as at 400 × 480 (${near.join(' | ') || 'all 5'})`);
     ok(!drops.length, `in every look, dragging a corner 10 px at a time, long names never drop below half their size from one step to the next (${drops.slice(0, 3).join(' | ') || 'all 5'})`);
+    ok(!tiny.length, `in every look, dragging a corner 10 px at a time, long names never drop under 12 px from 1.5 times that, down to 260 × 260 (${tiny.slice(0, 3).join(' | ') || 'all 5'})`);
     // Dark theme: the slash goes dark, and every look draws its dark markup.
     await setTheme(ip, 'dark');
     await ip.waitForTimeout(400);
@@ -6468,6 +6473,30 @@ const SUITES = [
       }
     }
     ok(!darkTight.length, `dark theme: long names above and below the emblem stay at least 10 px clear of it, in every look, both ways round, at 400 × 460, 400 × 470, and 360 × 480 (closest: ${JSON.stringify(darkWorst)}${darkTight.length ? '; ' + darkTight.slice(0, 4).join(' | ') : ''})`);
+    // Wide windows keep the names beside the emblem, as designed, and so do short names in a wide window close to
+    // square. A tall window puts them above and below it, in every look.
+    const PAIRS = [['Mateo', 'Jamal'], ['Alexandria', 'Maximiliano'], ['Fatima', 'Ben']];
+    const paired = (n, look, pair) => ({ widgetId: 'name-picker', instance: n, open: true, z: n, rect: { x: 10 + ((n - 1) % 5) * 250, y: 10 + Math.floor((n - 1) / 5) * 250, w: 360, h: 270 },
+      data: { names: pair, left: null, picked: pair, pickId: 'mwp2g7b7-pl6ut' + n, versusLook: look }, config: { style: 'versus' } });
+    const pfile = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Pairs' }, instances: PAIRS.flatMap((pair, p) => LOOKS.map((l, i) => paired(p * 5 + i + 1, l, pair))) };
+    fs.writeFileSync(OUT + 'name-picker-versus-pairs.21board', JSON.stringify(pfile));
+    await ip.setInputFiles('#import-input', OUT + 'name-picker-versus-pairs.21board'); await ip.waitForTimeout(300);
+    await ip.click('#modal .btn:has-text("Replace this page")');
+    ok(await eventually(async () => (await Promise.all(Array.from({ length: 15 }, (_, i) => vs(ip, IK(i + 1)).catch(() => null)))).every(x => x && x.names.length === 2), 15000), 'a board from a file opens with fifteen pickers, three pairs in every look');
+    await ip.waitForTimeout(600);
+    const placed = [];
+    for (const [size, p, want] of [[[540, 400], 0, 'side'], [[540, 400], 1, 'side'], [[360, 270], 1, 'side'], [null, 0, 'side'], [[900, 700], 2, 'side'], [[720, 660], 0, 'side'], [[400, 460], 0, 'tall']]) {
+      for (let i = 0; i < 5; i++) {
+        const ik = IK(p * 5 + i + 1);
+        if (size) await ip.evaluate(([ik, w, h]) => { window.__board21.setRect(ik, { x: 20, y: 20, w, h }); window.__board21.focusWin(ik); }, [ik, ...size]);
+        else await ip.evaluate(ik => { window.__board21.focusWin(ik); window.__board21.setMaximized(ik, true); }, ik);
+        await ip.waitForTimeout(350);
+        const tall = await inFrame(() => document.querySelector('.versus').classList.contains('versus-tall'), ip, ik);
+        if ((tall ? 'tall' : 'side') !== want) placed.push(`${LOOKS[i]} ${PAIRS[p].join('/')} at ${size ? size.join(' × ') : 'filling the board'}: ${tall ? 'above and below' : 'beside'}`);
+        if (!size) await ip.evaluate(ik => window.__board21.setMaximized(ik, false), ik);
+      }
+    }
+    ok(!placed.length, `in every look, names stay beside the emblem at 540 × 400 (Mateo/Jamal and Alexandria/Maximiliano), 360 × 270 (Alexandria/Maximiliano), filling the board (Mateo/Jamal), 900 × 700 (Fatima/Ben), and 720 × 660 (Mateo/Jamal), and go above and below it at 400 × 460 (Mateo/Jamal) (${placed.slice(0, 4).join(' | ') || 'all 35'})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ictx.close();
 

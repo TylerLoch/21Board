@@ -92,6 +92,8 @@ ${ex}<path d="${gv + gs}" fill="${p.ink}" stroke="${p.ink}" stroke-width="${2 * 
   NamePicker.look('crest', {
     size: SIZE,
     aspect: ASPECT,
+    // At rest its art reaches past the bottom of the box by 0.01 of its height (measured, light and dark).
+    reach: 0.01,
     hit: { normal: FULL.H, quick: QUICK.H },
     markup(state, { dark, h } = {}) {
       const p = PAL[state === 'waiting' ? 'waiting' : 'final'], i = uid(), u = s => `url(#${i}${s})`;
