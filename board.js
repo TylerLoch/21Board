@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.24-1';
-  const BOARD_BUILD = '50919a44';
+  const BOARD_VERSION = '2026.11.24-6';
+  const BOARD_BUILD = 'f0b96442';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2151,9 +2151,11 @@
       // zoom: how much bigger the window is drawn than its CSS size (the board's Size, the screen), so a canvas can stay sharp.
       const i = { width: Math.round(d.w), height: Math.round(d.h - TITLE_H), x: Math.round(d.x), y: Math.round(d.y), maximized: !!(this.inst && this.inst.maximized), focused: S.focused === this.ikey,
         zoom: Math.round(Zoom.s * 100) / 100 };
-      // corners: in a window that fills the board, the room the board's own buttons and clock take over its bottom corners
-      // (and, while locked, the padlocks over its top ones: corners.top).
-      if (i.maximized) i.corners = cornerReach();
+      // corners: the room the board's own buttons and clock take over its bottom corners (and, while locked, the padlocks
+      // over its top ones: corners.top). Always for a window that fills the board; for any other, only while one of them
+      // is over it.
+      const c = i.maximized ? cornerReach() : cornersOver(d);
+      if (c) i.corners = c;
       return i;
     }
 
@@ -2235,6 +2237,15 @@
                   id: String((s && s.id) || '').slice(0, 64), label: String((s && s.label) || '').slice(0, 40),
                   color: safeColor(s && s.color), background: safeColor(s && s.background), checked: !!(s && s.checked)
                 })).filter(s => s.id && s.color)
+              });
+            }
+            // A row of short choices, such as numbers: drawn like the swatches, each label at most 3 characters. A choice
+            // with no label is left out, as a swatch with no color is.
+            if (Array.isArray(i.choices)) {
+              return Object.assign(item, {
+                choices: i.choices.slice(0, 12).map(c => ({
+                  id: String((c && c.id) || '').slice(0, 64), label: Array.from(String((c && c.label) || '')).slice(0, 3).join(''), checked: !!(c && c.checked)
+                })).filter(c => c.id && c.label.trim())
               });
             }
             // (No icon from an uploaded file: markup in the board's own menu would be outside its seal.)
@@ -3397,7 +3408,7 @@
         return;
       }
       // A heading and the items under it (up to a line or the next heading) are one group, named by the heading, so a
-      // screen reader says "Winners each time, 3, checked". (The group takes no room: .menu-group is display: contents.)
+      // screen reader says "Names at a time, 3, checked". (The group takes no room: .menu-group is display: contents.)
       let html = '', group = false;
       const endGroup = () => { if (group) html += '</div>'; group = false; };
       for (const i of w.menuItems) {
@@ -3408,6 +3419,11 @@
           html += `<div class="menu-swatches" role="group" aria-label="${esc(i.label)}">` + i.swatches.map(s =>
             `<button class="swatch" role="menuitemradio" aria-checked="${s.checked}" aria-label="${esc(s.label)}" title="${esc(s.label)}" ` +
             `data-act="widget" data-id="${esc(s.id)}" style="--sw:${s.color};--swbg:${s.background || s.color}"></button>`).join('') + '</div>';
+          continue;
+        }
+        if (i.choices) {
+          html += `<div class="menu-choices" role="group" aria-label="${esc(i.label)}">` + i.choices.map(c =>
+            `<button class="menu-choice" role="menuitemradio" aria-checked="${c.checked}" aria-label="${esc(c.label)}" data-act="widget" data-id="${esc(c.id)}">${esc(c.label)}</button>`).join('') + '</div>';
           continue;
         }
         const check = i.checked === true ? svg('check', 'check') : '';
@@ -3430,6 +3446,20 @@
       }
       html += locked ? (w.widget.external ? '<div class="menu-sep"></div>' : '') + Lock.menuNote() : item('close', svg('close'), 'Close');
       show(html);
+      if (this.el.classList.contains('open')) this.fitChoices();
+    },
+
+    // A choice's label too wide for its circle ("Wed", "XXL") gets smaller letters, so all of it shows. (--fit scales the
+    // label's size in the CSS. Measured once the menu has its size: compact and tight circles are smaller.)
+    fitChoices() {
+      const bs = $$('.menu-choice', this.el);
+      for (const b of bs) b.style.setProperty('--fit', '1');
+      const fits = bs.map(b => {
+        const r = document.createRange(); r.selectNodeContents(b);
+        const text = r.getBoundingClientRect().width, room = b.getBoundingClientRect().width * 0.78;
+        return text > room && room > 0 ? room / text : 1;
+      });
+      bs.forEach((b, i) => { if (fits[i] < 1) b.style.setProperty('--fit', fits[i].toFixed(3)); });
     },
 
     position() {
@@ -3473,6 +3503,7 @@
       }
       this.el.style.left = x / ui + 'px';
       this.el.style.top = y / ui + 'px';
+      this.fitChoices();
     },
 
     act(act, id) {
@@ -4239,7 +4270,7 @@
     if (Menu.win) { Menu.render(); Menu.position(); }
     Pages.closeMenu();
     ShapeHint.update();
-    notifyCorners();   // (the padlocks over a window that fills the board: cornerReach)
+    notifyCorners();   // (the padlocks over the windows: cornerReach, cornersOver)
   }
 
   // Settings → Classroom → Close all windows (Settings.render). Settings doesn't open while the board is locked.
@@ -4509,11 +4540,14 @@
 
   function applyClock() { CornerClock.apply(); }
 
+  // The board's own buttons over windows: ▦, and the clock beside one, in the bottom corners, and the padlocks in the top
+  // corners while the board is locked (section 12b).
+  const CORNER_LOW = '.picker-btn:not([hidden]), .corner-clock:not([hidden])', CORNER_TOP = '.lock-pad:not([hidden])';
   // What a window that fills the board is told about its corners (its info's `corners`): how far in from its left and
   // right edges, and up from its bottom, the board's own buttons there reach (▦, and the clock beside one), in its CSS
   // px. corners.top: the same for its top corners, down from the top of its content: the padlocks while the board is
-  // locked (section 12b), else all 0. Such a window's content ends at the bottom of the screen, its sides are the
-  // screen's sides, and its title bar runs along the top (the padlocks sit over its ends, which only drag: refused).
+  // locked, else all 0. Such a window's content ends at the bottom of the screen, its sides are the screen's sides, and
+  // its title bar runs along the top (the padlocks sit over its ends, which only drag: refused).
   function cornerReach() {
     const vw = window.innerWidth, vh = window.innerHeight, s = Zoom.s || 1;
     const reach = (sel, from) => {   // (from: the content's top on screen, for the top corners)
@@ -4527,16 +4561,48 @@
       const height = from === undefined ? vh - edge : edge - from;
       return height > 0 ? { left: Math.ceil(left / s), right: Math.ceil(right / s), height: Math.ceil(height / s) } : { left: 0, right: 0, height: 0 };
     };
-    return Object.assign(reach('.picker-btn:not([hidden]), .corner-clock:not([hidden])'), { top: reach('.lock-pad:not([hidden])', TITLE_H * s) });
+    return Object.assign(reach(CORNER_LOW), { top: reach(CORNER_TOP, TITLE_H * s) });
   }
-  // The clock or a ▦ button came, went or changed width: tell the windows that fill the board, once the code running now
-  // is done. When the screen changed size, the layout that's coming tells them instead, with their new size and zoom in
-  // the same message. (initUI's resize listener, which asks for that layout, runs before the clock's: CornerClock.listen.)
+  // What any other window is told while the board's own buttons sit over it (2026.11.24-4): the same, measured from its
+  // own content on screen (d: its rect, as applyRect draws it), counting only the buttons over that content. Each counts
+  // for the side of the window its middle is on. null when none is over it: such a window is told nothing.
+  // (The buttons don't move with the windows. Their boxes are read once for all the windows laid out together, and again
+  // once that code is done or notifyCorners says they changed.)
+  let cornerBoxes = null;
+  function cornersOver(d) {
+    const s = Zoom.s || 1, X = Math.round(Zoom.ox + d.x * s), Y = Math.round(Zoom.oy + d.y * s);
+    const l = X, t = Y + TITLE_H * s, r = X + Math.round(d.w) * s, b = Y + Math.round(d.h) * s;
+    if (r <= l || b <= t) return null;
+    if (!cornerBoxes) {
+      const boxes = sel => $$(sel).map(e => e.getBoundingClientRect()).filter(q => q.width);
+      cornerBoxes = { low: boxes(CORNER_LOW), top: boxes(CORNER_TOP) };
+      Promise.resolve().then(() => { cornerBoxes = null; });
+    }
+    let any = false;
+    const reach = (boxes, top) => {
+      let left = 0, right = 0, edge = top ? t : b;
+      for (const q of boxes) {
+        if (q.right <= l || q.left >= r || q.bottom <= t || q.top >= b) continue;
+        any = true;
+        if (q.left + q.width / 2 < (l + r) / 2) left = Math.max(left, q.right - l); else right = Math.max(right, r - q.left);
+        edge = top ? Math.max(edge, q.bottom) : Math.min(edge, q.top);
+      }
+      const height = top ? edge - t : b - edge;
+      return height > 0 ? { left: Math.ceil(left / s), right: Math.ceil(right / s), height: Math.ceil(height / s) } : { left: 0, right: 0, height: 0 };
+    };
+    const c = Object.assign(reach(cornerBoxes.low), { top: reach(cornerBoxes.top, true) });
+    return any ? c : null;
+  }
+  // The clock, a ▦ button or a padlock came, went or changed width: tell every window, once the code running now is done
+  // (each hears only a change to its own info: those that fill the board, and those the buttons sit over or did). When
+  // the screen changed size, the layout that's coming tells them instead, with their new size and zoom in the same
+  // message. (initUI's resize listener, which asks for that layout, runs before the clock's: CornerClock.listen.)
   let cornersDue = false;
   function notifyCorners() {
+    cornerBoxes = null;
     if (cornersDue) return;
     cornersDue = true;
-    Promise.resolve().then(() => { cornersDue = false; if (layoutRaf) return; for (const w of S.wins.values()) if (w.inst && w.inst.maximized) w.notifyInfo(); });
+    Promise.resolve().then(() => { cornersDue = false; if (layoutRaf) return; for (const w of S.wins.values()) if (w.inst) w.notifyInfo(); });
   }
 
   // Settings → Advanced, after Widget Picker. What Auto does is said; On and Off say themselves. What doesn't fit right
@@ -4744,7 +4810,8 @@
   const ABOUT_LICENSES = [['code-license', 'Code', 'Apache 2.0', 'LICENSE'], ['docs-license', 'Docs', 'CC BY 4.0', 'LICENSE-DOCS']];
   const OFL = 'SIL Open Font License 1.1';
   const ABOUT_FONTS = [['Atkinson Hyperlegible', 'by the Braille Institute', OFL], ['Andika', 'by SIL International', OFL],
-    ['Excalifont', 'by Excalidraw', OFL], ['Crayon Libre', 'by GGBotNet', 'CC0 1.0']];
+    ['Excalifont', 'by Excalidraw', OFL], ['Crayon Libre', 'by GGBotNet', 'CC0 1.0'],
+    ['Weather data', 'by Open-Meteo', 'CC BY 4.0'], ['Weather data', 'by the National Weather Service', 'Public domain']];   // (the fonts, then the Weather widget's two sources)
   function aboutSettings(note) {
     // (Each on a line of its own: the release, the offline copy when it is another build (refreshStatus), where work is stored.)
     const release = `<div class="about"><span>21Board <span id="st-version">${esc(RELEASE)}</span> · Widget SDK protocol ${SDK_PROTOCOL}</span><span id="st-cache"></span>${note ? '' : `
@@ -7987,6 +8054,16 @@
           .filter(([k]) => Object.prototype.hasOwnProperty.call(n, k) && Number.isInteger(n[k]) && n[k] >= 1).map(([k, name]) => `${name} ${Math.min(n[k], 9999)}`).join(', ');
       },
       image: d => typeof d.src === 'string' && d.src ? strOf(d.name) || 'Pasted picture' : '',
+      // The place and the day its forecast arrived ("Wheeling forecast, Nov 23"), not the forecast's numbers. A window
+      // with no settings saved is on Wheeling. A saved forecast for another place than the window's says nothing.
+      weather: (d, c) => {
+        const s = d && d.saved, p = c && c.place && typeof c.place === 'object' ? c.place : { id: 4916311, name: 'Wheeling', tz: 'America/Chicago' };
+        if (!s || typeof s !== 'object' || typeof s.at !== 'number' || !isFinite(s.at) || s.place !== p.id) return '';
+        const name = strOf(p.name);
+        let day = '';
+        try { day = new Date(s.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: typeof p.tz === 'string' ? p.tz : undefined }); } catch (e) { day = new Date(s.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); }
+        return name ? `${name} forecast, ${day}` : '';
+      },
       notes: d => strOf(d.text)
     },
     // A few words about a window's content, 80 characters at most. A built-in widget has its own line, above. Any other

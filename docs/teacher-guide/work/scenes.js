@@ -165,7 +165,7 @@ SCENES.heroDark = async () => {
   await ctx.close();
 };
 
-// ---- 3. picker.jpg: the Widget Picker, all 16 tiles
+// ---- 3. picker.jpg: the Widget Picker, all 17 tiles
 SCENES.picker = async () => {
   const { ctx, p } = await newBoard();
   await pickerOpen(p, 'left');
@@ -184,7 +184,9 @@ const W = {
   'task-timer': { r: { w: 760, h: 1000 }, set: async (p, ik) => { await taskSchedule(p, ik, [{ name: 'Reading', min: 20, emoji: 'book' }, { name: 'Writing', min: 15, emoji: 'pencil' }, { name: 'Clean up', min: 5, emoji: 'broom' }]); await frame(p, ik).locator('#btn-playpause').click(); await wait(p, 5000); } },
   calendar: { r: { w: 840, h: 760 } },
   notes: { r: { w: 820, h: 640 }, set: (p, ik) => typeNote(p, ik, AGENDA) },
-  'name-picker': { r: { w: 900, h: 700 }, set: async (p, ik) => { await addNames(p, ik); await choose(p, ik, 'Spinning wheel', { exact: true }); await pickName(p, ik); } },
+  // (The wheel lands on Eli, as the guide's alt text says: its fair draw takes this random number.)
+  'name-picker': { r: { w: 900, h: 700 }, set: async (p, ik) => { await addNames(p, ik); await choose(p, ik, 'Spinning wheel', { exact: true });
+    await frame(p, ik).locator('html').evaluate(() => { crypto.getRandomValues = a => { a[0] = 4; return a; }; }); await pickName(p, ik); } },
   'first-then-board': { r: { w: 1080, h: 760 }, set: async (p, ik) => { await ftCard(p, ik, 'first', 'math', 'Math'); await ftCard(p, ik, 'then', 'play', 'Playground'); } },
   'zones-check-in': { r: { w: 560, h: 460 }, set: (p, ik) => zonesCounts(p, ik, { blue: 2, green: 9, yellow: 4, red: 1 }) },   // (the size it opens at)
   dice: { r: { w: 820, h: 560 }, set: (p, ik) => rollDice(p, ik, 3) },
@@ -235,6 +237,26 @@ for (const [id, cfg] of Object.entries(W)) {
     await ctx.close();
   };
 }
+
+// ---- 4b. w-name-picker-groups.jpg: the guide's eight names in two groups, beside the wheel in the Name Picker's card.
+SCENES['w-name-picker-groups'] = async () => {
+  const { ctx, p } = await newBoard();
+  const ik = await addWin(p, 'name-picker');
+  await setRect(p, ik, { x: 750, y: 295, w: 900, h: 700 });   // (the wheel's size and place: W['name-picker'])
+  await wait(p, 800);
+  await addNames(p, ik);
+  await choose(p, ik, 'Groups', { exact: true });
+  await choose(p, ik, '2', { exact: true });
+  // The same groups every time: the fair draw takes this random number.
+  await frame(p, ik).locator('html').evaluate(() => { crypto.getRandomValues = a => { a[0] = 1; return a; }; });
+  await pickName(p, ik, 5000);
+  await deselect(p);
+  await wait(p, 300);
+  log('  groups', JSON.stringify(await frame(p, ik).locator('html').evaluate(() => [...document.querySelectorAll('.groups-card')].map(c => c.innerText.replace(/\s+/g, ' ').trim()))));
+  log('  foot', JSON.stringify(await frame(p, ik).locator('.foot').innerText()));
+  await shot(p, 'w-name-picker-groups.jpg', await around(p, ik, 24));
+  await ctx.close();
+};
 
 // The Traffic Light on its side, following a Timer in its warning (Follow timers): yellow beside the amber Timer.
 SCENES['w-traffic-light'] = async () => {
@@ -305,6 +327,21 @@ SCENES['w-clock-led'] = async () => {
   await wait(p, 800);
   await p.waitForFunction(() => Date.now() % 1000 > 400 && Date.now() % 1000 < 700, null, { polling: 20 });   // (no segment mid-fade)
   await shot(p, 'w-clock-led.jpg', await around(p, ik, 24));
+  await ctx.close();
+};
+
+// The Weather card: Large, on a school morning before 2 PM (Tue Dec 1, the tests' answers moved 8 days), so What to
+// wear opens on Today with Wednesday a tap away.
+SCENES['w-weather'] = async () => {
+  const { ctx, p, blocked } = await newBoard({ at: Date.parse('2026-12-01T11:50:00-06:00'), weatherDays: 8 });
+  const ik = await addWin(p, 'weather');
+  await setRect(p, ik, { x: 650, y: 285, w: 1100, h: 720 });   // (Large: its content under 1300 × 760)
+  await wait(p, 3000);   // (the answers in, the sky drawn)
+  await deselect(p);
+  await wait(p, 300);
+  log('  text', JSON.stringify((await frame(p, ik).locator('#app').innerText()).replace(/\s+/g, ' ').slice(0, 160)));
+  await shot(p, 'w-weather.jpg', await around(p, ik, 24));
+  if (blocked.length) log('  blocked', JSON.stringify(blocked.slice(0, 10)));
   await ctx.close();
 };
 

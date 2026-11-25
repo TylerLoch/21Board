@@ -2,7 +2,7 @@
  * Name Picker style: Spinning wheel.
  * A game-show wheel with SPIN in the middle and the arrow at 3 o'clock, so the winning name reads left to right. A spin
  * takes about 4 seconds (with Quick about 1½), then the winners show in a banner over the bottom of the wheel.
- * Several winners: one spin with up to five numbered arrows over the top half of the wheel. The names are dealt again
+ * Several winners: one spin with up to six numbered arrows over the top half of the wheel. The names are dealt again
  * while the wheel winds up, so that each arrow lands on its winner, and the banner lists them 1, 2, 3 in arrow order.
  * No repeats: names picked earlier leave the wheel as the next spin starts, so the wheel shows who is still in.
  * The host draws the winners; the wheel only lands on them. How a style plugs in: the comment at the top of index.html.

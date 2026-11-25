@@ -39,7 +39,7 @@
   "name": "Name Picker",
   "color": "#8b5cf6",
   "icon": "<svg viewBox=\"0 0 24 24\"><circle cx=\"10\" cy=\"8\" r=\"4\"/><path d=\"M3 21v-1a7 7 0 0 1 11-5.7\"/><path d=\"M17 14l1.2 2.6 2.8.4-2 2 .5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-2 2.8-.4z\"/></svg>",
-  "description": "Pick one to five names at random from your list."
+  "description": "Pick one to six names at random, or make groups."
  },
  {
   "id": "first-then-board",
@@ -89,6 +89,13 @@
   "color": "#1e3a8a",
   "icon": "<svg viewBox=\"0 0 24 24\"><rect x=\"5\" y=\"2.5\" width=\"14\" height=\"19\" rx=\"2.5\"/><path d=\"M8.5 6.5h7v3h-7z\"/><circle cx=\"9\" cy=\"13.5\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"12\" cy=\"13.5\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"15\" cy=\"13.5\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"9\" cy=\"17\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"12\" cy=\"17\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/><circle cx=\"15\" cy=\"17\" r=\".9\" fill=\"currentColor\" stroke=\"none\"/></svg>",
   "description": "Work out problems and show each step."
+ },
+ {
+  "id": "weather",
+  "name": "Weather",
+  "color": "#0369a1",
+  "icon": "<svg viewBox=\"0 0 24 24\"><circle cx=\"9\" cy=\"9\" r=\"3.2\"/><path d=\"M9 2.8v1.4M2.8 9h1.4M4.6 4.6l1 1M13.4 4.6l-1 1\"/><path d=\"M8.5 19.5h9a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6 1 3 3 0 0 0 .2 6z\"/></svg>",
+  "description": "See the weather and what to wear."
  },
  {
   "id": "21sketch",

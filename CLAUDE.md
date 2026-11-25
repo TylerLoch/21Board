@@ -5,7 +5,8 @@ A static, offline PWA "smartboard OS" for CCSD21 (K-8). See README.md, docs/WIDG
 ## Core value
 
 Your work is stored only on the device, and in the teacher's school Google Drive folder when Board Sync is on.
-21Board has no servers. Going online for updates, district apps, and videos is fine. Storing user data online is not.
+21Board has no servers. Going online for updates, district apps, videos, and the weather is fine. Storing user data
+online is not.
 
 ## Voice: every label and every line of prose
 
@@ -27,8 +28,9 @@ After: "Your work is stored only on this device."
 
 ## Releasing
 
-Every release follows docs/RELEASING.md, from the spec to the report. tools/release-workflow.js builds, reviews, and
-fixes each release. tools/test-halves.js runs the whole test file.
+Every release follows docs/RELEASING.md, from the spec to the report. A small change takes its short path. Every other
+release runs tools/release-workflow.js, which builds, reviews, and fixes it. GitHub runs the whole test file on every
+push. tools/ci-wait.js waits for it and prints the failures. Run it in the background.
 
 ## Calculator manual
 

@@ -107,11 +107,11 @@ self.BOARD21_WIDGETS = [
   {
     id: 'name-picker',
     name: 'Name Picker',
-    description: 'Pick one to five names at random from your list.',
+    description: 'Pick one to six names at random, or make groups.',
     version: '2.0.0',
     entry: 'widgets/name-picker/index.html',
     // (One file for each pick style: the page loads them all.)
-    files: ['widgets/name-picker/index.html', 'widgets/name-picker/style-bigname.js', 'widgets/name-picker/style-wheel.js', 'widgets/name-picker/style-spotlight.js', 'widgets/name-picker/style-lotto.js'],
+    files: ['widgets/name-picker/index.html', 'widgets/name-picker/style-bigname.js', 'widgets/name-picker/style-wheel.js', 'widgets/name-picker/style-spotlight.js', 'widgets/name-picker/style-lotto.js', 'widgets/name-picker/style-groups.js'],
     color: '#8b5cf6',
     icon: '<svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="4"/><path d="M3 21v-1a7 7 0 0 1 11-5.7"/><path d="M17 14l1.2 2.6 2.8.4-2 2 .5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-2 2.8-.4z"/></svg>',
     window: { width: 420, height: 320, minWidth: 260, minHeight: 200 },
@@ -169,8 +169,8 @@ self.BOARD21_WIDGETS = [
     permissions: []
   },
   {
-    // The one built-in widget that loads other companies' sites: its window plays a video from YouTube, Google Drive or
-    // Vimeo (README). Its id is from when it played YouTube only, kept so saved boards and files still open it.
+    // Its window plays a video from another company's site: YouTube, Google Drive or Vimeo (README). Its id is from
+    // when it played YouTube only, kept so saved boards and files still open it.
     id: 'youtube-player',
     name: 'Video Player',
     description: 'Play a video from YouTube, Google Drive, or Vimeo.',
@@ -219,6 +219,22 @@ self.BOARD21_WIDGETS = [
     window: { width: 900, height: 600, minWidth: 280, minHeight: 400 },
     clash: 'later',   // its content is scratch work, a problem and its History: the later change wins, Board history keeps the other
     permissions: []
+  },
+  {
+    // Goes online for the weather: the forecast and air quality from Open-Meteo, and the weather right now, watches and
+    // warnings from the National Weather Service (README, Weather). Offline, it shows the forecast saved in its window.
+    // calendar.js is the district's school year, for What to wear.
+    id: 'weather',
+    name: 'Weather',
+    description: 'See the weather and what to wear.',
+    version: '1.0.0',
+    entry: 'widgets/weather/index.html',
+    files: ['widgets/weather/index.html', 'widgets/weather/calendar.js'],
+    color: '#0369a1',
+    icon: '<svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.8v1.4M2.8 9h1.4M4.6 4.6l1 1M13.4 4.6l-1 1"/><path d="M8.5 19.5h9a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6 1 3 3 0 0 0 .2 6z"/></svg>',
+    window: { width: 480, height: 360, minWidth: 260, minHeight: 220 },
+    clash: 'later',   // its content is the last forecast it saved, which changes by itself: the later one wins, Board history keeps the other
+    permissions: []   // (never the device's location: a teacher searches for a town)
   },
   // The district's own apps, each from its own site (they keep their own work; see `external` above). Their pages
   // are another site's, so their windows move by the title bar only: dragFromContent false.

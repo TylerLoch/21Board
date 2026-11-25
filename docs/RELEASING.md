@@ -1,11 +1,38 @@
 # Releasing 21Board
 
-Every release follows these steps.
+Every release follows these steps. A small change takes the short path below.
+
+## Small changes
+
+A small change is a fix or tweak teachers would barely notice: a bug, a word, or one setting. It adds no widget, no
+layout, and nothing to saved data. Most are under 50 lines of code.
+
+1. Write what changes and the test that shows it, in a few lines. No mockups.
+2. Make a branch from main. Write the test, see it fail, then make the change.
+3. Update the docs and guides where they say otherwise. Stamp the next free version, as in step 3.
+4. Run the suites the change touches. Then push the branch and wait for GitHub, as in step 4.
+5. Merge, push, publish, and report, as in steps 5 to 8.
+
+No workflow and no reviews. If the change grows, or touches layout or saved data, take the full steps instead.
+
+## Writing tests
+
+Test what the change does, with the fewest checks that prove it.
+
+- Check each rule once, at two or three sizes: the smallest, the usual, and the largest.
+- Use the helpers the area's tests already have before writing new ones.
+- Check what teachers see and what's saved. Leave out exact pixel positions unless the spec sets them.
+- Don't check the docs' words. The review reads them.
+- Change an old test only when the behavior it checks has changed.
+- Add to the feature's suite, in its area's file in `tests/suites/`. Start a new suite only for a new feature.
+- Name a suite for what it tests, not for its release.
+- Don't tie a check to this release. A recorded layout or a version number fails the next one.
 
 ## 1. Spec
 
 Write down exactly what to build: Tyler's decisions, every word on screen, the tests, and the docs and guides to update.
-A change people will see gets mockups first. Tyler approves them before anything is built.
+The tests follow "Writing tests". A change people will see gets mockups first. Tyler approves them before anything is
+built.
 
 End the spec with the commit trailers this session uses. Every commit in the release carries them.
 
@@ -51,15 +78,23 @@ version from `sw.js`.
 
 ## 4. Test everything
 
-From the worktree:
+Push the release branch. GitHub runs the whole of `tests/run.js` in 15 parts at once, in about 9 minutes.
 
 ```bash
-node tools/test-halves.js
+git push -u origin <key>
 ```
 
-It runs the whole of `tests/run.js` as two halves at once, in about 40 minutes. Never run more than two test
-processes at once. The machine has 16 GB and no swap. Before a failure counts, rerun its suite alone with
+Then, from the worktree, run this in the background. It costs nothing while it waits.
+
+```bash
+node tools/ci-wait.js
+```
+
+It prints each part and every failure. Before a failure counts, rerun its suite alone with
 `node tests/run.js "<suite title>"`.
+
+`node tools/test-halves.js` runs everything on this machine instead, in about 40 minutes. Never run more than two test
+processes at once. The machine has 16 GB and no swap.
 
 ## 5. Merge
 
@@ -71,12 +106,22 @@ git merge --no-ff --no-commit <key>
 
 Resolve each conflict hunk by hunk. Never take a whole file from one side.
 
-If the main branch moved since the branch was made, stamp again and test everything again. The stamp's lines in
-`sw.js` and `index.html` conflict then. Never fix them by hand. Then commit with the spec's trailers.
+If the main branch moved since the branch was made, the stamp's lines in `sw.js` and `index.html` conflict. Never fix
+them by hand. Stamp again instead. Then commit with the spec's trailers.
+
+If the main branch moved, test the merge before you push it:
+
+```bash
+git push origin HEAD:<key>
+```
+
+```bash
+node tools/ci-wait.js
+```
 
 ## 6. Push
 
-Push the main branch only. No pull requests. If the push fails, try again.
+Push the main branch. No pull requests. If the push fails, try again.
 
 ```bash
 git push -u origin claude/focused-curie-9oovoy
@@ -95,4 +140,4 @@ Each one's README has the steps.
 
 - Send Tyler the final screenshots and anything left open.
 - If the release answers a row in the tracker, update that row.
-- Remove the worktree, then its branch.
+- Remove the worktree, then its branch. Delete it on GitHub too, with `git push origin --delete <key>`.

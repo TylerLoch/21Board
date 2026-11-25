@@ -2,7 +2,8 @@
 //   node docs/teacher-guide/work/shoot.js [scene ...]     (no scene: all of them)
 // Serves this 21Board checkout on a free port, drives one Chromium at 1366 x 768 (deviceScaleFactor 2), and writes
 // JPEGs (quality 82) to ../shots/. Never reaches YouTube, Vimeo or Google: those requests are aborted. The district
-// apps (*.ccsd21.org) are fetched with curl through the session's proxy and handed to the page.
+// apps (*.ccsd21.org) are fetched with curl through the session's proxy and handed to the page. Weather gets the tests'
+// saved answers (tests/fixtures/weather), so nothing reaches Open-Meteo or the National Weather Service.
 const { chromium } = require('playwright');
 const http = require('http');
 const fs = require('fs');
@@ -53,17 +54,41 @@ function curl(url) {
   return p;
 }
 
+// Weather's sites: the tests' saved answers from Mon Nov 23 2026, moved `days` later, as tests/lib.js stubWeather gives
+// them (Open-Meteo's unix times, and the Weather Service's times with an offset).
+const WX_SITES = /^https:\/\/((api|air-quality-api|archive-api|geocoding-api)\.open-meteo\.com|api\.weather\.gov)\//;
+const WX_FILES = { 'api.open-meteo.com/v1/forecast': 'om-forecast-wheeling.json', 'air-quality-api.open-meteo.com/v1/air-quality': 'om-airquality-wheeling.json',
+  'archive-api.open-meteo.com/v1/archive': 'om-archive-2019-01-30.json', 'geocoding-api.open-meteo.com/v1/search': 'om-geocode-wheeling.json',
+  'api.weather.gov/points/42.1392,-87.929': 'nws-points-wheeling.json', 'api.weather.gov/gridpoints/LOT/65,84/stations': 'nws-stations-LOT-65-84.json',
+  'api.weather.gov/gridpoints/LOT/65,84/forecast': 'nws-forecast-LOT-65-84.json', 'api.weather.gov/gridpoints/LOT/65,84/forecast/hourly': 'nws-forecast-hourly-LOT-65-84.json',
+  'api.weather.gov/stations/KPWK/observations': 'nws-observations-KPWK.json', 'api.weather.gov/alerts/active': 'nws-alerts-wheeling-empty.json' };
+function wxShift(v, s, key) {
+  if (Array.isArray(v)) return v.map(x => wxShift(x, s, key));
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, wxShift(x, s, k)]));
+  if (key === 'time' && typeof v === 'number') return v + s;
+  if (typeof v === 'string') return v.replace(/(\d{4}-\d\d-\d\dT\d\d:\d\d(?::\d\d)?)([+-]\d\d:\d\d)/g, (m, t, z) => {
+    const off = (z[0] === '-' ? -1 : 1) * (+z.slice(1, 3) * 60 + +z.slice(4, 6)), at = Date.parse(t + z) + s * 1000;
+    return new Date(at + off * 6e4).toISOString().slice(0, t.length) + z;
+  });
+  return v;
+}
+function weatherAnswer(url, days) {
+  const u = new URL(url), at = u.host + decodeURIComponent(u.pathname), f = WX_FILES[at];
+  if (!f) return { status: 404, body: '{}' };
+  return { status: 200, body: JSON.stringify(wxShift(JSON.parse(fs.readFileSync(path.join(ROOT, 'tests', 'fixtures', 'weather', f), 'utf8')), days * 86400)) };
+}
+
 let BASE, browser;
 const LOG = [];
 const log = (...a) => { const s = a.join(' '); LOG.push(s); console.log(s); try { fs.appendFileSync(path.join(__dirname, 'run.log'), s + '\n'); } catch (e) {} };
 
 // The boards are shot as a school morning: the page's clock reads 8:20 AM Central on Friday, Nov 20, 2026 (Date shifted
-// in every frame, as tests/run.js CLOCK does; timers still run in real time).
+// in every frame, as tests/lib.js CLOCK does; timers still run in real time).
 const MORNING = Date.parse('2026-11-20T08:20:00-06:00');
 const SHIFT = () => { const D = Date, real = D.now.bind(D), off = () => +window.__shift || 0; window.Date = class extends D { constructor(...a) { if (a.length) super(...a); else super(real() + off()); } static now() { return real() + off(); } }; };
 // Moves the board's clock on (in every frame), as if that much time had passed.
 const later = async (p, ms) => { for (const f of p.frames()) await f.evaluate(ms => { window.__shift = (+window.__shift || 0) + ms; }, ms).catch(() => {}); };
-async function newBoard({ query = '', dark = false, camera = false, at = MORNING } = {}) {
+async function newBoard({ query = '', dark = false, camera = false, at = MORNING, weatherDays = 0 } = {}) {
   const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 2, colorScheme: dark ? 'dark' : 'light', serviceWorkers: 'block', permissions: camera ? ['camera'] : [], timezoneId: 'America/Chicago', locale: 'en-US' });
   if (at) await ctx.addInitScript(`window.__shift = ${at - Date.now()}; (${SHIFT})();`);
   const blocked = [];
@@ -73,6 +98,10 @@ async function newBoard({ query = '', dark = false, camera = false, at = MORNING
     if (/^https:\/\/(sketchapp|timerapp|doccamapp)\.ccsd21\.org\//.test(u)) {
       const got = await curl(u);
       return r.fulfill({ status: got.status, contentType: got.type, body: got.body });
+    }
+    if (WX_SITES.test(u)) {
+      const got = weatherAnswer(u, weatherDays);
+      return r.fulfill({ status: got.status, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: got.body });
     }
     blocked.push(u);
     return r.abort();
@@ -86,7 +115,7 @@ async function newBoard({ query = '', dark = false, camera = false, at = MORNING
   return { ctx, p, blocked };
 }
 
-// A window of this widget on the page shown (returns its ikey), as tests/run.js addWin does.
+// A window of this widget on the page shown (returns its ikey), as tests/lib.js addWin does.
 const addWin = (p, id) => p.evaluate(async id => { const before = new Set(window.__board21.state.insts.keys()); window.__board21.openWidget(id); await new Promise(r => setTimeout(r, 900)); return Array.from(window.__board21.state.insts.keys()).find(k => !before.has(k)); }, id);
 const frame = (p, ik) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
 const setRect = (p, ik, r) => p.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, r]);

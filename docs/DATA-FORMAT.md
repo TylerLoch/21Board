@@ -539,10 +539,32 @@ default, which is Analog, the Simple face, and everything else off. With no view
 For an older 21Board the config also keeps `dateOnly`, `date`, and `style`. `dateOnly` is `true` for the date alone.
 `date` is `true` for the date with Digital. `style` is `"date"` for the date alone, `"digital"` when digital shows, and
 `"analog"` otherwise. An older 21Board shows Digital and the date as Digital with Show date, the date alone as Date
-only, and Analog and the date as Analog. A config without `dateView` is from before 2026.11.24-1. Its `dateOnly` is the
+only, and Analog and the date as Analog. A config without `dateView` is from before 2026.11.24-6. Its `dateOnly` is the
 date alone, and its `date` adds the date only where Digital shows. A config from before 2026.11.21-4 is
 `{ style, hour24, seconds, date }`. There `"date"` is the date alone, and `"digital"` with `date` is Digital and the
 date. Whether Quiz shows ? is never saved.
+
+The Name Picker (`name-picker`) saves `{ names, left, picked, pickId, current, groups, groupId }`. `names` is the
+list, once for each student. `left` is who is still to go in a round of No repeats, or `null` for everyone. `picked`
+is the last pick, 1 to 6 names, and `pickId` changes with every pick. `current` is `picked[0]`, for releases before
+several winners. `groups` is each group's names in deal order, 6 groups at most. `groupId` changes with every draw. It
+ends with the Groups number and how many groups that made, such as `-43` for Groups 4 with 3 names. Names in `left`,
+`picked`, and `groups` that aren't in `names` are dropped when read, and a name in no group joins the smallest group.
+Its config is `{ noRepeats, style, winners, groups, quick, sound }`. `style` is `"name"`, `"wheel"`, `"spotlight"`,
+`"lotto"`, or `"groups"`. `winners` is 1 to 6 and `groups` is 2 to 6. A bad one takes its default, 1 or 4.
+
+Weather (`weather`) saves `{ saved: { at, place, days, wear } }`, the last forecast it showed, for offline. `at` is when
+that last changed, in ms. `place` is its place's GeoNames `id`. `days` is the 7 days as drawn, each `{ date, code,
+low, high, rain }`, in °F and unrounded. `wear` is What to wear for today and the next school day, by date: `{ label,
+advice, items, feels8, high, at }`, or `{ label, none: true }` past the forecast. `saved.from` is `"nws"` when the
+National Weather Service's forecast was the backup. It saves only when the window would look different, in whole
+degrees and tens of percent, so a few times a day at most. A save for another place is ignored. The weather right now,
+the hourly forecast, wind, air quality, and watches and warnings are never saved. Board Sync keeps the later change, as
+for the Timer. Its config is every menu setting and the place: `{ place: { id, name, region, country, lat, lon, tz },
+units, hide, simple, still, date }`. `units` is `"f"` or `"c"`. `hide` lists the parts the Show list hides, any of
+`"hourly"`, `"days"`, `"wear"`, `"sun"`, `"moon"`, `"wind"`, `"air"`, and `"watches"`. `still` is No motion. `date` is
+`"YYYY-MM-DD"` while On a date is open, else `null`. Each key is checked when read. A bad one takes its default:
+Wheeling, °F, nothing hidden, and the rest off.
 
 The district apps (`external` in the registry: `21sketch`, `21timer`, `21doccam`) never have these: they keep
 their own work in their own site's storage on the device. Their windows have an `inst` record like any other,
