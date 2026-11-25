@@ -465,7 +465,7 @@ module.exports = T => {
       const lamp = (c, p = page) => p.frameLocator(`.win[data-ikey="${L}"] iframe`).locator(`.lamp.${c}`).click();
       const timersIn = (ik, p = page) => F(p, ik, () => JSON.stringify(Board21.context.timers === undefined ? 'none' : Board21.context.timers));
       const menu = await menuOf(page, L);
-      ok(menu === 'Red | Yellow | Green | All off | — | Follow timers' && await confOf(page, L) === null, `the menu: Red, Yellow, Green, All off, a line, then Follow timers, off (${menu})`);
+      ok(menu === 'All off | — | Follow timers' && await confOf(page, L) === null, `the menu: All off, a line, then Follow timers, off; the colors are tapped on the light (${menu})`);
       await lamp('red');
       ok(await shows(page, L, 'red') && JSON.stringify(await dataOf(page, L)) === '{"active":"red"}', 'the teacher taps red');
       await setTimer(page, T1, run(200000));
