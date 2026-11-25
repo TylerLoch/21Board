@@ -54,7 +54,7 @@ function curl(url) {
   return p;
 }
 
-// Weather's sites: the tests' saved answers from Mon Nov 23 2026, moved `days` later, as tests/run.js stubWeather gives
+// Weather's sites: the tests' saved answers from Mon Nov 23 2026, moved `days` later, as tests/lib.js stubWeather gives
 // them (Open-Meteo's unix times, and the Weather Service's times with an offset).
 const WX_SITES = /^https:\/\/((api|air-quality-api|archive-api|geocoding-api)\.open-meteo\.com|api\.weather\.gov)\//;
 const WX_FILES = { 'api.open-meteo.com/v1/forecast': 'om-forecast-wheeling.json', 'air-quality-api.open-meteo.com/v1/air-quality': 'om-airquality-wheeling.json',
@@ -83,7 +83,7 @@ const LOG = [];
 const log = (...a) => { const s = a.join(' '); LOG.push(s); console.log(s); try { fs.appendFileSync(path.join(__dirname, 'run.log'), s + '\n'); } catch (e) {} };
 
 // The boards are shot as a school morning: the page's clock reads 8:20 AM Central on Friday, Nov 20, 2026 (Date shifted
-// in every frame, as tests/run.js CLOCK does; timers still run in real time).
+// in every frame, as tests/lib.js CLOCK does; timers still run in real time).
 const MORNING = Date.parse('2026-11-20T08:20:00-06:00');
 const SHIFT = () => { const D = Date, real = D.now.bind(D), off = () => +window.__shift || 0; window.Date = class extends D { constructor(...a) { if (a.length) super(...a); else super(real() + off()); } static now() { return real() + off(); } }; };
 // Moves the board's clock on (in every frame), as if that much time had passed.
@@ -115,7 +115,7 @@ async function newBoard({ query = '', dark = false, camera = false, at = MORNING
   return { ctx, p, blocked };
 }
 
-// A window of this widget on the page shown (returns its ikey), as tests/run.js addWin does.
+// A window of this widget on the page shown (returns its ikey), as tests/lib.js addWin does.
 const addWin = (p, id) => p.evaluate(async id => { const before = new Set(window.__board21.state.insts.keys()); window.__board21.openWidget(id); await new Promise(r => setTimeout(r, 900)); return Array.from(window.__board21.state.insts.keys()).find(k => !before.has(k)); }, id);
 const frame = (p, ik) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
 const setRect = (p, ik, r) => p.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, r]);

@@ -24,7 +24,7 @@ Test what the change does, with the fewest checks that prove it.
 - Check what teachers see and what's saved. Leave out exact pixel positions unless the spec sets them.
 - Don't check the docs' words. The review reads them.
 - Change an old test only when the behavior it checks has changed.
-- Add to the feature's suite. Start a new suite only for a new feature.
+- Add to the feature's suite, in its area's file in `tests/suites/`. Start a new suite only for a new feature.
 
 ## 1. Spec
 
