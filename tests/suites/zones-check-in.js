@@ -17,8 +17,8 @@ module.exports = T => {
     ok(await connected(page), 'the Zones Check-In opens from the board and connects');
     await page.evaluate(k => window.__board21.setRect(k, { x: 60, y: 60, w: 560, h: 460 }), K); await page.waitForTimeout(500);
     const z = zf(page);
-    const MENU0 = 'Undo (off) | Start over (off) | Class size | Edit counts | — | [Ideas] | Blue zone | Green zone | Yellow zone | Red zone | — | ✓ Show counts | ✓ Clear each day | ☐ Sound';
-    ok(await eventually(async () => await menuOf(page) === MENU0), `its menu: Undo, Start over, Class size, Edit counts, then Ideas for each zone, then Show counts (on), Clear each day (on), Sound (off) (${await menuOf(page)})`);
+    const MENU0 = 'Undo (off) | Start over (off) | Edit | — | ✓ Show counts | ✓ Clear each day | ☐ Sound';
+    ok(await eventually(async () => await menuOf(page) === MENU0), `its menu: Undo, Start over, Edit, then Show counts (on), Clear each day (on), Sound (off) (${await menuOf(page)})`);
     let x = await look(page);
     ok(x.counts.join() === '0,0,0,0' && x.status === 'Tap your zone to check in' && x.title === '' && x.minus.every(m => m.disabled && m.shown), `it starts at none: “Tap your zone to check in”, no title, each “−” disabled (${JSON.stringify(x)})`);
     ok(!x.undoButton, `no Undo button on the board (${x.undoButton})`);
@@ -33,8 +33,8 @@ module.exports = T => {
     ok(await menuOf(page) === MENU0.replace('Undo (off) | Start over (off)', 'Undo | Start over'), `Undo and Start over can now be chosen (${await menuOf(page)})`);
 
     // Class size 25, from the Counts view.
-    await choose(page, 'Class size');
-    ok(await eventually(() => z.locator('#edit').isVisible()), 'Class size opens the Counts view');
+    await choose(page, 'Edit');
+    ok(await eventually(() => z.locator('#edit').isVisible()), 'Edit opens the Counts view');
     await page.waitForTimeout(400);
     await z.locator('#n-size').fill('25');
     ok(await eventually(async () => ((await ZC.conf(page)) || {}).classSize === 25), 'a class size of 25 is saved as the widget’s setting');
@@ -71,7 +71,7 @@ module.exports = T => {
     // One Undo after an editing session in Counts takes back the whole session, and only it.
     await tap('red');
     ok((await look(page)).counts.join() === '0,3,1,2', '(a tap on Red: 0, 3, 1, 2)');
-    await choose(page, 'Edit counts'); await page.waitForTimeout(400);
+    await choose(page, 'Edit'); await page.waitForTimeout(400);
     for (let i = 0; i < 3; i++) { await z.locator('.row[data-z="blue"] button[data-by="1"]').click(); await page.waitForTimeout(80); }
     await z.locator('#n-yellow').fill('7');
     await z.locator('.row[data-z="green"] button[data-by="-1"]').click();
@@ -104,8 +104,8 @@ module.exports = T => {
     const FEELS = { blue: '😢 Sad, 😴 Tired, 🤒 Sick, 🐢 Slow', green: '🤓 Ready to Learn, 😌 Calm, 😊 Happy', yellow: '🤩 Elevated, 🤪 Silly, 😤 Frustrated', red: '😡 Angry, 😣 Intense, 🤯 Overwhelmed' };
     ok(JSON.stringify(feels) === JSON.stringify(FEELS), `each card’s feelings, a face beside each word, in order (${JSON.stringify(feels)})`);
 
-    // Ideas: Blue's pill opens Blue's ideas, with the breathing circle (in for 4, then hold). Done goes back. The menu's
-    // Red zone opens Red's.
+    // Ideas: Blue's pill opens Blue's ideas, with the breathing circle (in for 4, then hold). Done goes back. Red's
+    // pill opens Red's.
     const ideas = () => z.locator('html').evaluate(() => ({ on: document.getElementById('ideas').classList.contains('on'), title: document.getElementById('idea-title').textContent,
       items: [...document.querySelectorAll('#idea-items li b')].map(b => b.textContent).join(', '), word: document.getElementById('breath-word').textContent, ball: +(/scale\(([\d.]+)\)/.exec(document.getElementById('ball').style.transform) || [0, 0])[1] }));
     await z.locator('.zone[data-z="blue"] .idea-btn').click(); await page.waitForTimeout(500);
@@ -116,13 +116,13 @@ module.exports = T => {
       `about 4 s later it says “Hold”, the circle grown to full size (scale ${i1.ball} → ${(await ideas()).ball})`);
     await z.locator('#idea-done').click(); await page.waitForTimeout(400);
     ok((await look(page)).view === 'main', 'Done goes back to the cards');
-    await choose(page, 'Red zone');
+    await z.locator('.zone[data-z="red"] .idea-btn').click(); await page.waitForTimeout(500);
     const i2 = await ideas();
-    ok(i2.on && /Red zone$/.test(i2.title) && i2.items === 'Take space, Breathe with the circle, Cool down, Talk to your teacher', `Red zone in the menu opens Red’s ideas (${JSON.stringify(i2)})`);
+    ok(i2.on && /Red zone$/.test(i2.title) && i2.items === 'Take space, Breathe with the circle, Cool down, Talk to your teacher', `Red’s pill opens Red’s ideas (${JSON.stringify(i2)})`);
     await z.locator('#idea-done').click(); await page.waitForTimeout(400);
 
     // Everyone in: a class size of 6, with 6 checked in.
-    await choose(page, 'Class size');
+    await choose(page, 'Edit');
     await z.locator('#n-size').fill('6'); await z.locator('#edit-done').click(); await page.waitForTimeout(400);
     x = await look(page);
     ok(x.view === 'main' && x.status === 'Everyone’s checked in' && x.title === '6 of 6', `6 of a class of 6: “Everyone’s checked in” (${x.status}; ${x.title})`);
@@ -301,7 +301,7 @@ module.exports = T => {
     await page.evaluate(k => window.__board21.setRect(k, { x: 60, y: 60, w: 560, h: 460 }), K); await page.waitForTimeout(500);
     const z = zf(page);
     // Blue 2, Green 9, Yellow 4, Red 1, typed in Counts, with a class size of 25.
-    await choose(page, 'Edit counts'); await page.waitForTimeout(400);
+    await choose(page, 'Edit'); await page.waitForTimeout(400);
     for (const [id, n] of [['size', 25], ['blue', 2], ['green', 9], ['yellow', 4], ['red', 1]]) await z.locator('#n-' + id).fill(String(n));
     await z.locator('#edit-done').click(); await page.waitForTimeout(400);
     ok((await look(page)).counts.join() === '2,9,4,1' && (await look(page)).status === '16 of 25 checked in', `(Blue 2, Green 9, Yellow 4, Red 1: ${(await look(page)).status})`);
@@ -449,7 +449,7 @@ module.exports = T => {
     const rect0 = await page.evaluate(k => window.__board21.state.insts.get(k).rect, K);
     ok(Math.round(rect0.w) === 560 && Math.round(rect0.h) === 460, `it opens at 560 × 420, with its title bar (${JSON.stringify(rect0)})`);
     // Some check-ins, through Counts.
-    await choose(page, 'Edit counts'); await page.waitForTimeout(400);
+    await choose(page, 'Edit'); await page.waitForTimeout(400);
     for (const [id, n] of [['blue', 2], ['green', 9], ['yellow', 4], ['red', 1]]) await zf(page).locator('#n-' + id).fill(String(n));
     await zf(page).locator('#edit-done').click(); await page.waitForTimeout(400);
     await setCornerClock(page, 'on');
@@ -536,7 +536,7 @@ module.exports = T => {
       return a;
     };
     const setCounts = async (counts, p = page) => {
-      await choose(p, 'Edit counts'); await p.waitForTimeout(400);
+      await choose(p, 'Edit'); await p.waitForTimeout(400);
       for (const [id, n] of Object.entries(counts)) await zf(p).locator('#n-' + id).fill(String(n));
       await zf(p).locator('#edit-done').click(); await p.waitForTimeout(400);
     };
@@ -888,7 +888,7 @@ module.exports = T => {
       return a;
     };
     const setCounts = async counts => {
-      await choose(page, 'Edit counts'); await page.waitForTimeout(400);
+      await choose(page, 'Edit'); await page.waitForTimeout(400);
       for (const [id, n] of Object.entries(counts)) await zf(page).locator('#n-' + id).fill(String(n));
       await zf(page).locator('#edit-done').click(); await page.waitForTimeout(400);
     };
@@ -914,10 +914,10 @@ module.exports = T => {
       const x = await still(), z = await look(page), bar = await titleBar();
       ok(z.status === '16 checked in' && z.title === '16 checked in' && bar === '16 checked in' && !!x.status && x.status.b <= top(x) + 0.5,
         `“16 checked in” shows twice: in the window’s title and in the line above the cards (line “${z.status}”, title “${z.title}”, title bar “${bar}”; ${where(x)})`);
-      await choose(page, 'Blue zone');
+      await zf(page).locator('.zone[data-z="blue"] .idea-btn').click(); await page.waitForTimeout(450);
       const ideas = { view: (await look(page)).view, title: await titleBar() };
       await zf(page).locator('#idea-done').click(); await page.waitForTimeout(400);
-      await choose(page, 'Edit counts'); await page.waitForTimeout(300);
+      await choose(page, 'Edit'); await page.waitForTimeout(300);
       const counts = { view: (await look(page)).view, title: await titleBar() };
       await zf(page).locator('#edit-done').click(); await page.waitForTimeout(400);
       ok(ideas.view === 'ideas' && ideas.title === '16 checked in' && counts.view === 'edit' && counts.title === '16 checked in' && (await look(page)).view === 'main',
@@ -1055,7 +1055,7 @@ module.exports = T => {
       side = v;
     };
     const clock = mode => setCornerClock(page, mode, from());
-    await choose(page, 'Edit counts'); await page.waitForTimeout(400);
+    await choose(page, 'Edit'); await page.waitForTimeout(400);
     for (const [id, n] of [['blue', 2], ['green', 9], ['yellow', 4], ['red', 1]]) await zf(page).locator('#n-' + id).fill(String(n));
     await zf(page).locator('#edit-done').click(); await page.waitForTimeout(400);
 
