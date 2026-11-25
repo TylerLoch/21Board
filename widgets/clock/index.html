@@ -648,8 +648,8 @@
   const SIZE = { a: [.07, .09], d: [.2, .35], led: [.2, .3] }, MIN_PX = 12;
   const ST = { md: .8, yr: .6, h: 1.08 + .8 * 1.12 + .6 * 1.2 }, LINE_H = 1.2;   // the stack: sizes and height in weekdays
 
-  // What the layout needs to know: the Set badge and Now, the board's buttons in the bottom corners, the digital time's
-  // shape, and the date's widths in em. Boxes here are [left, top, right, bottom].
+  // What the layout needs to know: the Set badge and Now in the top corners (tops), the board's buttons in the bottom
+  // corners (low), the digital time's shape, and the date's widths in em. Boxes here are [left, top, right, bottom].
   let refKey = null, lowKey = '[]';
   // Filling the board, the board's own buttons sit in the window's bottom corners (▦, and the clock beside one). They
   // count once the window has the size the board gives it (i, Board21's window info), not while it grows to fill the
@@ -662,7 +662,7 @@
     return cn && cn.height > 0 ? [[0, H - cn.height, cn.left, H], [W - cn.right, H - cn.height, W, H]].filter(c => c[2] > c[0]) : [];
   }
   function measure(W, H) {
-    const corners = setOn && timeOn ? [badge, nowBtn].filter(el => el.offsetWidth)
+    const tops = setOn && timeOn ? [badge, nowBtn].filter(el => el.offsetWidth)
       .map(el => [el.offsetLeft, el.offsetTop, el.offsetLeft + el.offsetWidth, el.offsetTop + el.offsetHeight]) : [];
     const low = lowOf(Board21.context && Board21.context.window, W, H);
     let emW = config.hour24 ? 2.7 : 3.6, vb = null;
@@ -682,10 +682,10 @@
       const ink = c => { const s = $('.' + c, ruler), g = document.createRange(); g.selectNodeContents(s); const a = g.getBoundingClientRect(); return a.height > 0 ? [(a.top - s.getBoundingClientRect().top) / 100, a.height / 100] : null; };
       dm = { wd: widest('r-wd'), md: widest('r-md'), yr: widest('r-yr'), ln: widest('r-ln'), ink: { wd: ink('r-wd'), md: ink('r-md'), yr: ink('r-yr'), ln: ink('r-ln') } };
     }
-    return { corners, low, emW, vb, dm };
+    return { tops, low, emW, vb, dm };
   }
   // A box's top, moved below the Set badge or Now when one sits over it.
-  const below = (r, m) => m.corners.reduce((y, c) => c[0] < r[0] + r[2] && c[2] > r[0] && c[1] < r[1] + r[3] && c[3] + 6 > y ? Math.max(y, c[3] + 6) : y, r[1]);
+  const below = (r, m) => m.tops.reduce((y, c) => c[0] < r[0] + r[2] && c[2] > r[0] && c[1] < r[1] + r[3] && c[3] + 6 > y ? Math.max(y, c[3] + 6) : y, r[1]);
 
   // Where everything goes with the date at `where` ('side', 'below', 'col', 'alone', or null for no date) in `style`,
   // taking x px of the width or height. Boxes are [left, top, width, height]. d: the dial's size. t: the time's size.
@@ -718,9 +718,9 @@
   function dialIn(A, m) {
     let s = Math.min(A[2], A[3]) * (showD ? .9 : .92);
     // While setting the time, the dial stays clear of the Set badge and Now in the top corners.
-    if (m.corners.length) {
+    if (m.tops.length) {
       const cx = A[0] + A[2] / 2, cy = A[1] + A[3] / 2;
-      for (const c of m.corners) s = Math.min(s, 2 * (Math.hypot(Math.max(c[0] - cx, 0, cx - c[2]), Math.max(c[1] - cy, 0, cy - c[3])) - 4) / .96);
+      for (const c of m.tops) s = Math.min(s, 2 * (Math.hypot(Math.max(c[0] - cx, 0, cx - c[2]), Math.max(c[1] - cy, 0, cy - c[3])) - 4) / .96);
       s = Math.max(s, Math.min(A[2], A[3]) * .6);
     }
     return Math.max(0, s);

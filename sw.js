@@ -14,11 +14,11 @@
 const VERSION = '2026.11.24-6';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'f0b96442';
+const BUILD = 'e3d8cfd0';
 const FILES = {
-  './': 'e847c584bd363810',
-  'index.html': 'e847c584bd363810',
-  'board.js': 'a4da08bd3b793ef2',
+  './': '60c37b986aeeb79c',
+  'index.html': '60c37b986aeeb79c',
+  'board.js': '01666c57f60034d6',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
@@ -40,7 +40,7 @@ const FILES = {
   'widgets/timer/index.html': '52a0094eeebbb200',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
-  'widgets/clock/index.html': '1ebf99380910a2b1',
+  'widgets/clock/index.html': '84a293ea5ca125a1',
   'widgets/notes/index.html': '0dc57fad3cd2fca1',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
