@@ -1543,7 +1543,7 @@ module.exports = T => {
     ok(/loaded/.test(offFonts) && !/error/.test(offFonts) && offWidget, `offline, the letters load in 21Board (${offFonts}) and in a widget (${offWidget})`);
     await off.close();
 
-    // Fitting: the Clock (digital and date only), Calendar's month, a note that fits its text, and the Timer and
+    // Fitting: the Clock (digital, and the date alone), Calendar's month, a note that fits its text, and the Timer and
     // Name Picker (sized by CSS) in narrow windows. After each change (to a font not yet loaded, and back to
     // one that is), the text fits: nothing sticks out, and text that was shrunk to fit fills its room again.
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
@@ -1555,6 +1555,7 @@ module.exports = T => {
     await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="digital"]'); await page.waitForTimeout(300);
     await page.click('.win[data-ikey="clock:1"] .win-label'); await page.click('#menu [data-id="analog"]'); await page.waitForTimeout(300);
     await page.click('.win[data-ikey="clock:2"] .win-label'); await page.click('#menu [data-id="date"]'); await page.waitForTimeout(300);
+    await page.click('.win[data-ikey="clock:2"] .win-label'); await page.click('#menu [data-id="analog"]'); await page.waitForTimeout(300);
     await page.evaluate(() => {
       const b = window.__board21;
       b.setRect('clock:1', { x: 10, y: 10, w: 300, h: 176 }); b.setRect('clock:2', { x: 330, y: 10, w: 300, h: 176 });
@@ -1569,7 +1570,8 @@ module.exports = T => {
     });
     await page.waitForTimeout(1200);
     const w = ik => page.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('html');
-    // (Since 2026.11.21-4 Digital adds to Analog, so the first Clock unchecks Analog to fill its window with the time.)
+    // (Since 2026.11.21-4 Digital adds to Analog, and since 2026.11.24-6 Date does too, so each Clock unchecks Analog: the
+    // first fills its window with the time, the second with the date.)
     const alone = await w('clock:1').evaluate(() => document.getElementById('ana').hidden && !document.getElementById('dig').hidden && innerWidth - document.getElementById('dig').offsetWidth < 2);
     ok(alone, 'the first Clock shows digital alone, across its window');
     // An element's text: how far it sticks out of the room it has (inside its parent's padding, or its own with
@@ -1599,8 +1601,15 @@ module.exports = T => {
         else if (fill && p.shrunk && p.w < p.room * 0.95) bad.push(`${what} was shrunk for other letters (${Math.round(p.w)} px in ${Math.round(p.room)})`);
       };
       fits('Clock time', await where('clock:1', '#time'));
-      fits('Clock weekday', await where('clock:2', '#weekday'));
-      fits('Clock date', await where('clock:2', '#fulldate'));
+      // (The date's stack or line, in the room #day leaves inside its padding. Its sizes are set inline: not shrinking.
+      // It fills that room, in width or in height.)
+      fits('Clock date', await where('clock:2', '#day > :not([hidden])'), false);
+      const dateFill = await w('clock:2').evaluate(() => {
+        const d = document.getElementById('day'), el = document.querySelector(document.getElementById('stack').hidden ? '#line' : '#stack');
+        const b = d.getBoundingClientRect(), r = el.getBoundingClientRect(), cs = getComputedStyle(d), px = k => parseFloat(cs[k]) || 0;
+        return Math.max(r.width / (b.width - px('paddingLeft') - px('paddingRight')), r.height / (b.height - px('paddingTop') - px('paddingBottom')));
+      });
+      if (!(dateFill >= .95)) bad.push(`Clock date fills ${Math.round(dateFill * 100)}% of its room`);
       fits('Timer', await where('timer:1', '#display'), false);
       fits('Calendar month', await where('calendar:1', '#title', true));
       const note = await w('notes:1').evaluate(() => { const v = document.getElementById('view'); return { sh: v.scrollHeight, ch: v.clientHeight, sw: v.scrollWidth, cw: v.clientWidth, fs: parseFloat(getComputedStyle(v).fontSize) }; });

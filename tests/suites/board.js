@@ -1021,7 +1021,7 @@ module.exports = T => {
     // The Widget Picker: its name, and for each widget a tooltip of one short sentence that starts with a verb.
     const tips = await page.evaluate(() => Object.fromEntries(window.__board21.catalog().map(w => [w.id, w.description])));
     const want = { timer: 'Count down with presets and an alarm.', 'task-timer': 'Count down a schedule of activities on a pie, with an alarm.', calendar: 'See the month, with today highlighted.',
-      clock: 'Show an analog or digital clock, or just the date.', notes: 'Write directions, reminders, or the day’s agenda.', 'name-picker': 'Pick one to six names at random, or make groups.',
+      clock: 'Show the time, analog or digital, and the date.', notes: 'Write directions, reminders, or the day’s agenda.', 'name-picker': 'Pick one to six names at random, or make groups.',
       'first-then-board': 'Pick a First card and a Then card, and mark each one done.', dice: 'Roll one to six dice.', 'traffic-light': 'Show noise level or work time in red, yellow, and green.',
       'youtube-player': 'Play a video from YouTube, Google Drive, or Vimeo.', image: 'Show a picture you open or paste.', '21sketch': 'Draw with the district’s whiteboard app.',
       '21timer': 'Run the district’s classroom timer app.', '21doccam': 'Show work with the district’s document camera app.', 'zones-check-in': 'Check in on how your class feels.',
@@ -1733,7 +1733,8 @@ module.exports = T => {
       [/open this file in a browser or paste it/, 'two things to do'],
       [/doesn['’]t show it or cache it/, 'two verbs'],
       [/theme, light or dark/, 'the theme, then its two choices'],
-      [/With no room at all, it hides and stays ticked/, 'a phrase, then two verbs']];
+      [/With no room at all, it hides and stays ticked/, 'a phrase, then two verbs'],
+      [/the time, analog or digital, and the date/, 'the time, its two kinds, then the date']];
     const texts = [];   // { where, text }
     const add = (where, text) => texts.push({ where, text: String(text || '') });
     for (const w of await B(() => window.__board21.catalog().map(w => ({ id: w.id, d: w.description })))) add(`the registry, ${w.id}`, w.d);

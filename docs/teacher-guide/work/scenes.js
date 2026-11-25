@@ -311,7 +311,7 @@ SCENES['w-clock-faces'] = async () => {
   await shot(p, 'w-clock-faces.jpg', await around(p, iks, 24));
   await ctx.close();
 };
-// The LED look in dark theme, with seconds.
+// The LED look in dark theme, with seconds and the date.
 SCENES['w-clock-led'] = async () => {
   const { ctx, p } = await newBoard();
   await darkMode(p);
@@ -322,6 +322,7 @@ SCENES['w-clock-led'] = async () => {
   await choose(p, ik, 'Analog', { exact: true });
   await choose(p, ik, 'LED look', { exact: true });
   await choose(p, ik, 'Show seconds', { exact: true });
+  await choose(p, ik, 'Date', { exact: true });
   await deselect(p);
   await wait(p, 800);
   await p.waitForFunction(() => Date.now() % 1000 > 400 && Date.now() % 1000 < 700, null, { polling: 20 });   // (no segment mid-fade)
