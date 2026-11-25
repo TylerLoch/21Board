@@ -515,11 +515,7 @@
     const items = [
       { id: 'undo', label: 'Undo', disabled: !cur.undo.length },
       { id: 'clear', label: 'Start over', disabled: !n },
-      { id: 'size', label: 'Class size' },
-      { id: 'edit', label: 'Edit counts' },
-      { separator: true },
-      { heading: true, label: 'Ideas' },
-      ...ZONES.map(z => ({ id: 'ideas:' + z.id, label: `${z.name} zone` })),
+      { id: 'edit', label: 'Edit' },
       { separator: true },
       { id: 'counts', label: 'Show counts', checked: config.showCounts },
       { id: 'daily', label: 'Clear each day', checked: config.daily },
@@ -650,8 +646,7 @@
     id = String(id);
     if (id === 'undo') undo();
     else if (id === 'clear') startOver();
-    else if (id === 'edit' || id === 'size') openEdit();
-    else if (id.startsWith('ideas:')) openIdeas(id.slice(6));
+    else if (id === 'edit') openEdit();
     else if (id === 'counts') { config.showCounts = !config.showCounts; saveConfig(); render(); }
     else if (id === 'daily') { config.daily = !config.daily; saveConfig(); render(); }
     else if (id === 'sound') { config.sound = !config.sound; saveConfig(); render(); if (config.sound) Sound.sample(); else Sound.stop(); }
