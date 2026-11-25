@@ -212,7 +212,9 @@ tools/release.js        Stamps a release with its name and build. See Deploying.
 tools/test-halves.js    Runs tests/run.js as two halves at once. See Tests.
 tools/ci-wait.js        Waits for GitHub to test a push and prints the failures. See Tests.
 tools/release-workflow.js  Builds, reviews, and fixes a release with Claude Code. See docs/RELEASING.md.
-tests/run.js            Browser tests. See Tests.
+tests/run.js            Runs the browser tests. See Tests.
+tests/suites/<area>.js  The browser tests, one file per area, such as calculator.js or board-sync.js
+tests/lib.js            What the suites share: ok(), page helpers, fixtures, and stand-in sites
 tests/timings.json      How long each suite takes, to split the tests evenly
 .github/workflows/tests.yml  Runs the tests on GitHub for every push. See Tests.
 ```
@@ -791,7 +793,8 @@ node tests/run.js offline    # only the suites whose title contains "offline"
 node tests/run.js offline --verbose   # every check, not only the failures
 ```
 
-Each suite prints its failures and how many checks passed.
+Each suite prints its failures and how many checks passed. The suites are in `tests/suites/`, one file per area,
+and `tests/run.js` runs every file there. A new suite goes in its area's file. A new area gets a file of its own.
 
 The *District apps* suite uses stand-ins for 21Sketch, 21Timer, and 21DocCam. The *Traffic Light sideways* suite has
 its own stand-ins for 21Timer and 21Sketch. The *Video Player* suites use stand-ins for YouTube, Google Drive, and
