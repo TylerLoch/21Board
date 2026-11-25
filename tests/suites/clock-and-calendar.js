@@ -805,16 +805,16 @@ module.exports = T => {
         `Digital too: both checked, LCD and 24-hour on, and Quiz between Mark a time and Set the time (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Style] | Analog | ✓ Digital | Date | — | LCD look |') && !/clock face|Simple|Old|Teaching|Hour hand only/.test(m) && m.includes('Mark a time (off) | Choose the time') && !m.includes('Quiz'),
-        `Analog off: the clock face items are gone, Mark a time is off, and Quiz is gone (${m})`);
+      ok(m.startsWith('[Style] | Analog | ✓ Digital | Date | — | LCD look |') && !/clock face|Simple|Old|Teaching|Hour hand only|Mark a time/.test(m) && m.includes('— | Choose the time') && !m.includes('Quiz'),
+        `Analog off: the clock face items, Mark a time, and Quiz are gone (${m})`);
       ok(await choose(page, ik, 'digital') && (await menuOf(page, ik)).startsWith('[Style] | Analog | ✓ Digital |') && (await confOf(page, ik)).digital === true, 'unchecking the last one shown does nothing');
       await choose(page, ik, 'date');
       m = await menuOf(page, ik);
       ok(m.startsWith('[Style] | Analog | ✓ Digital | ✓ Date |'), `Date adds the date to Digital (${m})`);
       await choose(page, ik, 'digital');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Style] | Analog | Digital | ✓ Date | — | LCD look (off) | Show seconds (off) | 24-hour time (off) | Time written out as words (off)') && !/clock face|Teaching/.test(m) && m.includes('Mark a time (off)'),
-        `the date alone: no clock face items, and LCD, seconds, 24-hour, words, and Mark a time are off (${m})`);
+      ok(m.startsWith('[Style] | Analog | Digital | ✓ Date | — | LCD look (off) | Show seconds (off) | 24-hour time (off) | Time written out as words (off)') && !/clock face|Teaching|Mark a time/.test(m),
+        `the date alone: no clock face items or Mark a time, and LCD, seconds, 24-hour, and words are off (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
       ok(m.startsWith('[Style] | ✓ Analog | Digital | ✓ Date | [Analog clock face] | Simple | Old | ✓ Teaching | Hour hand only | —'), `Analog joins the date, and its clock face items come back (${m})`);
@@ -1171,7 +1171,7 @@ module.exports = T => {
       ok(await eventually(async () => { const w = await wedgeOf(page, ik); return !!w && w.full; }), `more than an hour away: the whole ring (${said(await wedgeOf(page, ik))})`);
       // No analog face, no wedge.
       await choose(page, ik, 'digital'); await choose(page, ik, 'analog');
-      ok((await menuOf(page, ik)).includes('✓ Mark a time (off)'), 'digital alone: Mark a time stays in the menu, off');
+      ok(!(await menuOf(page, ik)).includes('Mark a time') && (await confOf(page, ik)).mark === true, 'digital alone: Mark a time leaves the menu, and stays on for when Analog comes back');
       await ctx.close();
     });
 
@@ -1553,18 +1553,18 @@ module.exports = T => {
         `Show date is gone, with Digital and Date shown (${items.map(i => i[1]).filter(Boolean).join(', ')})`);
       await choose(page, ik, 'digital');
       let m = await menuOf(page, ik);
-      ok(m === '[Style] | Analog | Digital | ✓ Date | — | LCD look (off) | Show seconds (off) | 24-hour time (off) | Time written out as words (off) | — | Mark a time (off) | Choose the time (off)',
-        `the date alone: no clock face items, and the rest is off (${m})`);
+      ok(m === '[Style] | Analog | Digital | ✓ Date | — | LCD look (off) | Show seconds (off) | 24-hour time (off) | Time written out as words (off) | — | Choose the time (off)',
+        `the date alone: no clock face items or Mark a time, and the rest is off (${m})`);
       // Setting the time with Analog and Date, then Analog off: Set the time stays on, without 5-minute steps.
       await choose(page, ik, 'analog'); await choose(page, ik, 'set');
       m = await menuOf(page, ik);
       ok(m.endsWith('| Mark a time | ✓ Choose the time | Snap to 5-minute steps'), `Analog and Date, setting the time: 5-minute steps shows (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
-      ok(m.endsWith('| Mark a time (off) | ✓ Choose the time') && !m.includes('5-minute steps'), `then the date alone: Set the time stays on to uncheck, and 5-minute steps goes (${m})`);
+      ok(m.endsWith('| — | ✓ Choose the time') && !m.includes('5-minute steps'), `then the date alone: Set the time stays on to uncheck, and 5-minute steps goes (${m})`);
       await choose(page, ik, 'set');
       m = await menuOf(page, ik);
-      ok(m.endsWith('| Mark a time (off) | Choose the time (off)'), `unchecked, Choose the time is off with the date alone (${m})`);
+      ok(m.endsWith('| — | Choose the time (off)'), `unchecked, Choose the time is off with the date alone (${m})`);
       await ctx.close();
     });
 

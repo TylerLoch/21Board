@@ -623,8 +623,8 @@
       { id: 'seconds', label: 'Show seconds', checked: c.seconds, disabled: !timeOn || setOn },
       { id: 'hour24', label: '24-hour time', checked: c.hour24, disabled: !showD },
       { id: 'words', label: 'Time written out as words', checked: c.words, disabled: !timeOn },
-      { separator: true },
-      { id: 'mark', label: 'Mark a time', checked: c.mark, disabled: !showA });
+      { separator: true });
+    if (showA) items.push({ id: 'mark', label: 'Mark a time', checked: c.mark });   // [Analog]
     if (showA && showD) items.push({ id: 'quiz', label: 'Quiz', checked: c.quiz });   // [Analog and Digital]
     items.push({ id: 'set', label: 'Choose the time', checked: setOn, disabled: !timeOn && !setOn });
     if (setOn && timeOn) items.push({ id: 'snap5', label: 'Snap to 5-minute steps', checked: c.snap5 });   // [setting the time]
