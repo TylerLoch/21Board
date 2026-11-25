@@ -64,8 +64,11 @@ NamePicker.register('versus', {
     // ---- Layout. The emblem's box sits in the middle, its look's own size. Both names are one size, as large as fits
     // each side while clear of the box, up to 22% of the stage's height: the left one a little above the middle, the
     // right one a little below. Beside the names the box takes at most 38% of the stage's width, so a narrow window
-    // leaves them room. In a stage about square or taller the names may go above and below the box instead, the left one
-    // at the top on the left, the right one at the bottom on the right, when that makes them larger.
+    // leaves them room. The names go above and below the box instead, the left one at the top on the left, the right
+    // one at the bottom on the right, when that makes them larger by more than 1.1 times the stage's width over its
+    // height: 1.1 times larger in a square stage, twice in one 1.8 times as wide as tall, and just larger in a tall
+    // one. Short names in a wide window stay beside the emblem. When a resize moves the names, their size changes by
+    // just that much.
     const widths = new Map();
     let fam = '';
     function em(text) {   // a name's width at 1 px, in the stage's letters
@@ -81,11 +84,10 @@ NamePicker.register('versus', {
       // (Each name's room ends a little inside the box: the looks are narrower there. A few px more keeps a long name 8 px
       // clear of the emblem through its slam, more in a small window.)
       const g = { W, H, bw, bh, edge, tall: false, top: H * 0.22, aw: W / 2 - bw * 0.42 - edge - Math.max(2, 12 - 0.06 * bw) };
-      if (!(H >= W * 0.9 && pair)) return g;
       // (Above and below: the box its look's own size, and each name across the stage, in the middle of its band, at
       // least 10 px clear of the emblem's art, which may reach past its box.)
       const band = (H - h0 * (1 + 2 * clamp(E.reach || 0, 0, 0.5))) / 2, t = { W, H, bw: h0 * asp, bh: h0, edge, tall: true, band, top: Math.min(H * 0.22, (band - 20) / 1.25), aw: W - 2 * edge };
-      return size(t, pair) > size(g, pair) ? t : g;
+      return size(t, pair) > size(g, pair) * Math.max(1, 1.1 * W / H) ? t : g;
     }
     // (1.12: room for the letters' lean and outline.)
     const fit = (g, text) => Math.max(1, Math.min(g.top, g.aw / (Math.max(0.3, em(text)) * 1.12)));

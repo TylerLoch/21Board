@@ -6385,8 +6385,9 @@ const SUITES = [
     for (const [val, label] of [['standard', 'the device’s letters'], ['early', 'Early readers'], ['legible', 'Easier to read']]) {
       if (val !== 'standard') await letters(val);
       // (In the device's letters, square and narrow windows too, down to the smallest, 260 × 200, and stages just taller
-      // than wide, or about square, where the names go above and below the emblem.)
-      for (const size of [[360, 270], [540, 400], null].concat(val === 'standard' ? [[260, 200], [400, 400], [420, 420], [400, 500], [360, 480], [300, 400], [300, 520], [300, 640]] : [])) {
+      // than wide, or about square, where the names go above and below the emblem. Long names go above and below in
+      // 400 × 460 and 900 × 700 too, and in some looks at 540 × 460.)
+      for (const size of [[360, 270], [540, 400], null].concat(val === 'standard' ? [[260, 200], [400, 400], [420, 420], [400, 460], [400, 500], [360, 480], [300, 400], [300, 520], [300, 640], [540, 460], [900, 700]] : [])) {
         const where = size ? size.join(' × ') : 'filling the board';
         for (let n = 1; n <= 10; n++) {
           const ik = IK(n);
@@ -6397,13 +6398,13 @@ const SUITES = [
           if (val === 'standard' && size) sizesAt[where] = Math.min(sizesAt[where] || 999, await inFrame(() => parseFloat(document.querySelector('.versus-name').style.fontSize), ip, ik));
           const min = Math.min(g.L.gap, g.R.gap);
           worst[k] = Math.min(worst[k] === undefined ? 999 : worst[k], min);
-          if (!(min >= 8 && g.L.inside && g.R.inside && !g.mid)) tight.push(`${look} ${(n > 5 ? LONG.slice().reverse() : LONG).join('/')}, ${k} (${g.W}×${g.H}): ${g.L.gap} / ${g.R.gap} px${g.L.inside && g.R.inside ? '' : ', cut off'}${g.mid ? ', across the middle' : ''}`);
+          if (!(min >= (g.tall ? 10 : 8) && g.L.inside && g.R.inside && !g.mid)) tight.push(`${look} ${(n > 5 ? LONG.slice().reverse() : LONG).join('/')}, ${k} (${g.W}×${g.H}): ${g.L.gap} / ${g.R.gap} px${g.L.inside && g.R.inside ? '' : ', cut off'}${g.mid ? ', across the middle' : ''}`);
           if (!size) await ip.evaluate(ik => window.__board21.setMaximized(ik, false), ik);
           if (n === 1 && val === 'standard') await ip.screenshot({ path: OUT + `name-picker-versus-fit-${size ? size.join('x') : 'board'}.png` });
         }
       }
     }
-    ok(!tight.length, `long names fit their side, at least 8 px clear of the emblem, in every look, both ways round, at 360 × 270, 540 × 400, and filling the board, in every Text style, and at 260 × 200, 400 × 400, 420 × 420, 400 × 500, 360 × 480, 300 × 400, 300 × 520, and 300 × 640 (closest: ${JSON.stringify(worst)}${tight.length ? '; ' + tight.slice(0, 4).join(' | ') : ''})`);
+    ok(!tight.length, `long names fit their side, at least 8 px clear of the emblem beside them and 10 px above and below it, in every look, both ways round, at 360 × 270, 540 × 400, and filling the board, in every Text style, and at 260 × 200, 400 × 400, 420 × 420, 400 × 460, 400 × 500, 360 × 480, 300 × 400, 300 × 520, 300 × 640, 540 × 460, and 900 × 700 (closest: ${JSON.stringify(worst)}${tight.length ? '; ' + tight.slice(0, 4).join(' | ') : ''})`);
     // Readable in a square or narrow window: a narrow, tall Name Picker beside the board's other windows.
     ok(sizesAt['400 × 400'] >= 14 && sizesAt['420 × 420'] >= 14 && sizesAt['300 × 520'] >= 20 && sizesAt['300 × 640'] >= 20,
       `long names stay readable in square and tall windows, in every look (smallest, px: ${JSON.stringify(sizesAt)})`);
@@ -6424,16 +6425,38 @@ const SUITES = [
       if (row.some(([, f], i) => i && f < row[i - 1][1] * 0.97)) growth.push(`${LOOKS[n - 1]} at ${w} wide: ${row.map(([h, f]) => h + ':' + f).join(' ')}`);
     }
     ok(!growth.length, `in every look, from a square window up, a taller window never makes the names smaller, at 300 and 400 wide (${growth.slice(0, 2).join(' | ') || 'all 10'})`);
+    // A teacher drags a corner, 10 px at a time: long names never drop below half their size from one step to the next.
+    // One width, 400, at heights from 380 to 540, and one height, 460, at widths from 300 to 560. At 400 × 460 they are
+    // about as large as at 400 × 480.
+    const drops = [], near = [];
+    for (let n = 1; n <= 5; n++) {
+      const at = async (w, h) => {
+        await ip.evaluate(([ik, w, h]) => { window.__board21.setRect(ik, { x: 300, y: 60, w, h }); window.__board21.focusWin(ik); }, [IK(n), w, h]);
+        await ip.waitForTimeout(250);
+        return inFrame(() => parseFloat(document.querySelector('.versus-name').style.fontSize), ip, IK(n));
+      };
+      const paths = [[], []];
+      for (let h = 380; h <= 540; h += 10) paths[0].push([400, h, await at(400, h)]);
+      for (let w = 300; w <= 560; w += 10) paths[1].push([w, 460, await at(w, 460)]);
+      for (const p of paths) {
+        const i = p.findIndex(([, , f], i) => i && Math.min(f, p[i - 1][2]) < Math.max(f, p[i - 1][2]) * 0.5);
+        if (i > 0) drops.push(`${LOOKS[n - 1]}: ${p[i - 1][0]} × ${p[i - 1][1]} ${p[i - 1][2]} px, ${p[i][0]} × ${p[i][1]} ${p[i][2]} px`);
+      }
+      const f = h => paths[0].find(([, hh]) => hh === h)[2];
+      if (!(f(460) >= f(480) * 0.8)) near.push(`${LOOKS[n - 1]}: ${f(460)} and ${f(480)} px`);
+    }
+    ok(!near.length, `in every look, long names at 400 × 460 are about as large as at 400 × 480 (${near.join(' | ') || 'all 5'})`);
+    ok(!drops.length, `in every look, dragging a corner 10 px at a time, long names never drop below half their size from one step to the next (${drops.slice(0, 3).join(' | ') || 'all 5'})`);
     // Dark theme: the slash goes dark, and every look draws its dark markup.
     await setTheme(ip, 'dark');
     await ip.waitForTimeout(400);
     const dk = await Promise.all(Array.from({ length: 5 }, (_, i) => vs(ip, IK(i + 1))));
     const cut = await inFrame(() => getComputedStyle(document.querySelector('.versus-cut')).backgroundColor, ip, IK(1));
     ok(cut === 'rgb(17, 24, 39)' && dk.every(clean), `dark theme: the slash is #111827, and every emblem is its look’s dark markup (${cut})`);
-    // In dark theme a look may glow a little past its box. Names above and below the emblem stay 8 px clear of it still,
-    // in a stage just about square and in one just taller than wide.
+    // In dark theme a look may glow a little past its box. Names above and below the emblem stay 10 px clear of it still,
+    // in a stage a little wider than tall, one just about square, and one just taller than wide.
     const darkTight = [], darkWorst = {};
-    for (const size of [[400, 470], [360, 480]]) {
+    for (const size of [[400, 460], [400, 470], [360, 480]]) {
       const where = size.join(' × ');
       for (let n = 1; n <= 10; n++) {
         const ik = IK(n);
@@ -6441,10 +6464,10 @@ const SUITES = [
         await ip.waitForTimeout(450);
         const g = await inkGaps(ik), min = Math.min(g.L.gap, g.R.gap);
         darkWorst[where] = Math.min(darkWorst[where] === undefined ? 999 : darkWorst[where], min);
-        if (!(g.tall && min >= 8 && g.L.inside && g.R.inside && !g.mid)) darkTight.push(`${LOOKS[(n - 1) % 5]} ${(n > 5 ? LONG.slice().reverse() : LONG).join('/')}, ${where}${g.tall ? '' : ' (side by side)'}: ${g.L.gap} / ${g.R.gap} px`);
+        if (!(g.tall && min >= 10 && g.L.inside && g.R.inside && !g.mid)) darkTight.push(`${LOOKS[(n - 1) % 5]} ${(n > 5 ? LONG.slice().reverse() : LONG).join('/')}, ${where}${g.tall ? '' : ' (side by side)'}: ${g.L.gap} / ${g.R.gap} px`);
       }
     }
-    ok(!darkTight.length, `dark theme: long names above and below the emblem stay at least 8 px clear of it, in every look, both ways round, at 400 × 470 and 360 × 480 (closest: ${JSON.stringify(darkWorst)}${darkTight.length ? '; ' + darkTight.slice(0, 4).join(' | ') : ''})`);
+    ok(!darkTight.length, `dark theme: long names above and below the emblem stay at least 10 px clear of it, in every look, both ways round, at 400 × 460, 400 × 470, and 360 × 480 (closest: ${JSON.stringify(darkWorst)}${darkTight.length ? '; ' + darkTight.slice(0, 4).join(' | ') : ''})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ictx.close();
 

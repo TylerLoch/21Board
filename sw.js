@@ -14,11 +14,11 @@
 const VERSION = '2026.11.24-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '24f847c7';
+const BUILD = '2aaeaa85';
 const FILES = {
-  './': '8ede40aafa17f1f3',
-  'index.html': '8ede40aafa17f1f3',
-  'board.js': '9842fd9abada779c',
+  './': 'fa197d1870577019',
+  'index.html': 'fa197d1870577019',
+  'board.js': 'fbf89fd02b41ef3b',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
@@ -51,7 +51,7 @@ const FILES = {
   'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
   'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
   'widgets/name-picker/style-lotto.js': 'b34332daca17e15b',
-  'widgets/name-picker/style-versus.js': 'bddfb2171e15b305',
+  'widgets/name-picker/style-versus.js': '32ce7957e60a11aa',
   'widgets/name-picker/vs-lightning.js': '6d34946be8338ab8',
   'widgets/name-picker/vs-forged.js': '07556f56a9ccea89',
   'widgets/name-picker/vs-crest.js': 'feebe4739cde7dbb',
