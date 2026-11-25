@@ -957,7 +957,7 @@ module.exports = T => {
       let s = await seg();
       const secs = t => parseFloat(t) * (/ms$/.test(t) ? 0.001 : 1);
       ok(!!s && secs(s.onT) >= 0.1 && secs(s.onT) <= 0.2 && secs(s.offT) >= 0.1 && secs(s.offT) <= 0.2 && /opacity|all/.test(s.prop), `each segment fades on and off in about 120 to 180 ms (${s && s.onT}, ${s && s.offT})`);
-      ok(!!s && s.offOp > 0.02 && s.offOp < 0.2 && s.onOp === 1, `unlit segments are faint but visible (${s && s.offOp})`);
+      ok(!!s && s.offOp > 0.02 && s.offOp <= 0.05 && s.onOp === 1, `LCD: unlit segments are faint but visible, 2 to 5% (${s && s.offOp})`);
       const sh = s ? shadows(s.filter) : [];
       ok(!!s && sh.length >= 1 && sh.every(d => d.a > 0 && d.a <= .3 && d.blur <= s.u + .01 && d.x > 0 && d.y > 0 && far(d.rgb, rgbIn(s.accent))) && s.panel !== s.bg,
         `light theme is an LCD on a tinted panel: lit segments cast a faint shadow, and nothing glows in the accent (${s && s.filter}; --u ${s && s.u}; ${s && s.panel})`);
@@ -965,6 +965,7 @@ module.exports = T => {
       ok(m.includes('| ✓ LCD look |') && !m.includes('LED look'), `light theme: the menu says LCD look (${m})`);
       await setTheme(page, 'dark');
       s = await seg();
+      ok(!!s && s.offOp > 0.02 && s.offOp <= 0.05 && s.onOp === 1, `LED: unlit segments are faint but visible, 2 to 5% (${s && s.offOp})`);
       ok(!!s && /drop-shadow/.test(s.filter) && /rgb/.test(s.filter) && !/^(drop-shadow\(rgba\(0, 0, 0, 0\)[^)]*\)\s*)+$/.test(s.filter), `dark theme is an LED with a soft glow (${s && s.filter})`);
       m = await menuOf(page, ik);
       ok(m.includes('| ✓ LED look |') && !m.includes('LCD look'), `dark theme: the menu says LED look, with the window still open (${m})`);
