@@ -6425,6 +6425,18 @@ const SUITES = [
       if (row.some(([, f], i) => i && f < row[i - 1][1] * 0.97)) growth.push(`${LOOKS[n - 1]} at ${w} wide: ${row.map(([h, f]) => h + ':' + f).join(' ')}`);
     }
     ok(!growth.length, `in every look, from a square window up, a taller window never makes the names smaller, at 300 and 400 wide (${growth.slice(0, 2).join(' | ') || 'all 10'})`);
+    // A window that looks square or a little taller than wide is tall, title bar and all. Long names go above and below
+    // the emblem there in every look, where they're 1.8 to 3 times as large as beside it.
+    const squareish = [], squareFs = {};
+    for (const size of [[480, 500], [500, 500], [500, 520], [520, 540], [580, 580]]) for (let n = 1; n <= 5; n++) {
+      await ip.evaluate(([ik, w, h]) => { window.__board21.setRect(ik, { x: 300, y: 60, w, h }); window.__board21.focusWin(ik); }, [IK(n), ...size]);
+      await ip.waitForTimeout(350);
+      const [tall, f] = await inFrame(() => [document.querySelector('.versus').classList.contains('versus-tall'), parseFloat(document.querySelector('.versus-name').style.fontSize)], ip, IK(n));
+      const where = size.join(' × ');
+      squareFs[where] = Math.min(squareFs[where] || 999, f);
+      if (!tall) squareish.push(`${LOOKS[n - 1]} at ${where}: beside it, ${f} px`);
+    }
+    ok(!squareish.length, `in every look, long names go above and below the emblem at 480 × 500, 500 × 500, 500 × 520, 520 × 540, and 580 × 580 (${squareish.slice(0, 4).join(' | ') || 'smallest, px: ' + JSON.stringify(squareFs)})`);
     // A teacher drags a corner, 10 px at a time: long names never drop below half their size from one step to the next,
     // nor under 12 px from 1.5 times that. One width, 400, at heights from 380 to 540, one height, 460, at widths from 300
     // to 560, and a small window, 260 tall, at widths from 260 to 360. At 400 × 460 they are about as large as at 400 × 480.
@@ -6473,6 +6485,23 @@ const SUITES = [
       }
     }
     ok(!darkTight.length, `dark theme: long names above and below the emblem stay at least 10 px clear of it, in every look, both ways round, at 400 × 460, 400 × 470, and 360 × 480 (closest: ${JSON.stringify(darkWorst)}${darkTight.length ? '; ' + darkTight.slice(0, 4).join(' | ') : ''})`);
+    // Early readers in dark theme is the tightest fit. Its letters reach deepest, and the emblems glow a little past their
+    // boxes. One window of each layout.
+    await letters('early');
+    const earlyTight = [], earlyWorst = {};
+    for (const [size, want] of [[[540, 400], 'side'], [[440, 440], 'tall']]) {
+      const where = size.join(' × ');
+      for (let n = 1; n <= 10; n++) {
+        const ik = IK(n);
+        await ip.evaluate(([ik, w, h]) => { window.__board21.setRect(ik, { x: 300, y: 120, w, h }); window.__board21.focusWin(ik); }, [ik, ...size]);
+        await ip.waitForTimeout(450);
+        const g = await inkGaps(ik), min = Math.min(g.L.gap, g.R.gap);
+        earlyWorst[where] = Math.min(earlyWorst[where] === undefined ? 999 : earlyWorst[where], min);
+        if (!((g.tall ? 'tall' : 'side') === want && min >= (g.tall ? 10 : 8) && g.L.inside && g.R.inside && !g.mid)) earlyTight.push(`${LOOKS[(n - 1) % 5]} ${(n > 5 ? LONG.slice().reverse() : LONG).join('/')}, ${where} ${g.tall ? '(above and below)' : '(beside)'}: ${g.L.gap} / ${g.R.gap} px`);
+      }
+    }
+    await letters('standard');
+    ok(!earlyTight.length, `dark theme, Early readers: long names stay 8 px clear of the emblem beside it at 540 × 400, and 10 px above and below it at 440 × 440, in every look, both ways round (closest: ${JSON.stringify(earlyWorst)}${earlyTight.length ? '; ' + earlyTight.slice(0, 4).join(' | ') : ''})`);
     // Wide windows keep the names beside the emblem, as designed, and so do short names in a wide window close to
     // square. A tall window puts them above and below it, in every look.
     const PAIRS = [['Mateo', 'Jamal'], ['Alexandria', 'Maximiliano'], ['Fatima', 'Ben']];

@@ -37,6 +37,7 @@ NamePicker.register('versus', {
     const NORMAL = { step: 55, grow: 1.09, left: 1400, right: 1800, slam: 1950, most: 1300, pop: 300 };
     const QUICK = { step: 40, grow: 1.1, left: 650, right: 850, slam: 950, most: 750, pop: 200 };
     const NAME = 'translate(-50%, -50%) skewX(-9deg)';   // (as .versus-name)
+    const BAR = 40;   // the window's title bar, in px, above this page (docs/WIDGET-SDK.md)
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     const px = v => (Math.round(v * 10) / 10) + 'px';
     const any = list => list[Math.floor(Math.random() * list.length)];
@@ -66,9 +67,11 @@ NamePicker.register('versus', {
     // the right one a little below. Beside the names the box takes at most 38% of the stage's width, so a narrow window
     // leaves them room.
     // The names may go above and below the box instead. The left one goes at the top on the left, and the right one at
-    // the bottom on the right. A tall window puts them there when that makes them larger. A wide window keeps them beside
-    // the box unless above and below makes them twice as large. Small names need less. At 15 px beside the box they need
-    // 1.5 times, and at 10 px any gain at all.
+    // the bottom on the right. A tall window puts them there when that makes them larger. A window is tall when it's at
+    // least as tall as wide, title bar and all, as the teacher sees it. A wide window keeps them beside the box unless
+    // above and below makes them twice as large. Small names need less. At 15 px beside the box they need 1.5 times, and
+    // at 10 px any gain at all. These px are the window's own, so a board keeps its layout at every Size and on every
+    // screen.
     const widths = new Map(), pen = document.createElement('canvas').getContext('2d');
     let fam = '';
     // A name's width at 1 px in the stage's letters, and how far its letters reach above or below its middle.
@@ -96,9 +99,9 @@ NamePicker.register('versus', {
       // (Above and below: the box its look's own size, and each name across the stage in the middle of its band. Its
       // letters stay 10 px clear of the stage's edge and of the emblem's art, which may reach past its box.)
       const band = (H - h0 * (1 + 2 * clamp(E.reach || 0, 0, 0.5))) / 2, t = { W, H, bw: h0 * asp, bh: h0, edge, tall: true, band, top: H * 0.22, aw: W - 2 * edge };
-      // (A tall window is at least as tall as it is wide, below its title bar.)
+      // (The window is this page and the title bar above it.)
       const win = document.documentElement, beside = size(g, pair);
-      return size(t, pair) > beside * (win.clientHeight >= win.clientWidth ? 1 : clamp(beside / 10, 1, 2)) ? t : g;
+      return size(t, pair) > beside * (win.clientHeight + BAR >= win.clientWidth ? 1 : clamp(beside / 10, 1, 2)) ? t : g;
     }
     // (1.12: room for the letters' lean and outline. Above and below, 0.625 is room for most names' letters on each side
     // of their middle.)
