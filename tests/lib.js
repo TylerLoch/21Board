@@ -920,6 +920,9 @@ const ZC = {
   }
 };
 
+// The Name Picker's ways to pick, as its window menu lists them under Pick with: [config.style, label].
+const NP_STYLES = [['name', 'Big name'], ['wheel', 'Spinning wheel'], ['spotlight', 'Spotlight'], ['lotto', 'Lotto'], ['versus', 'Versus'], ['groups', 'Groups'], ['bracket', 'Bracket']];
+
 // ---- Weather (2026.11.24-3). Its five sites never answer for real: every context aborts them (the browser.newContext
 // wrapper at the end), and a Weather suite answers them with stubWeather, from tests/fixtures/weather/: real answers from
 // Mon Nov 23 2026, about 11:50 AM Central (Open-Meteo's times as unix seconds, as the widget asks for them).
@@ -1127,6 +1130,6 @@ module.exports = {
   DRIVE_OPEN, VIMEO_OPEN, DRIVE_LABEL, VMSG, vidFrames, DRIVE_CODE, VIMEO_CODE, stubVideos, ytWin, ytLook, ytFrames,
   ytMenu, ytData, ytChoose, ytShow, ytHistory, ytPick, picWin, picLook, picData, picConf, picMenu, picOpen, picFile,
   FIXTURE, picWins, drawPic, PMSG, padGif, padWebp, pngChunk, PNG_SIG, pngHeader, apng, alphaAt, sendFiles, copyPic,
-  copyText, contentOf, contrast, rgbOf, hexOf, mixOf, hslOf, hueGap, ZC, WX_HOSTS, WX_AT, WX_FIX, wxShift,
+  copyText, contentOf, contrast, rgbOf, hexOf, mixOf, hslOf, hueGap, ZC, NP_STYLES, WX_HOSTS, WX_AT, WX_FIX, wxShift,
   stubWeather, WXT, TESTS_DIR, setBase, setSuite, counts
 };

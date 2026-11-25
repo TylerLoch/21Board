@@ -1021,7 +1021,7 @@ module.exports = T => {
     // The Widget Picker: its name, and for each widget a tooltip of one short sentence that starts with a verb.
     const tips = await page.evaluate(() => Object.fromEntries(window.__board21.catalog().map(w => [w.id, w.description])));
     const want = { timer: 'Count down with presets and an alarm.', 'task-timer': 'Count down a schedule of activities on a pie, with an alarm.', calendar: 'See the month, with today highlighted.',
-      clock: 'Show the time, analog or digital, and the date.', notes: 'Write directions, reminders, or the day’s agenda.', 'name-picker': 'Pick one to six names at random, or make groups.',
+      clock: 'Show the time, analog or digital, and the date.', notes: 'Write directions, reminders, or the day’s agenda.', 'name-picker': 'Pick names at random, or make groups and brackets.',
       'first-then-board': 'Pick a First card and a Then card, and mark each one done.', dice: 'Roll one to six dice.', 'traffic-light': 'Show noise level or work time in red, yellow, and green.',
       'youtube-player': 'Play a video from YouTube, Google Drive, or Vimeo.', image: 'Show a picture you open or paste.', '21sketch': 'Draw with the district’s whiteboard app.',
       '21timer': 'Run the district’s classroom timer app.', '21doccam': 'Show work with the district’s document camera app.', 'zones-check-in': 'Check in on how your class feels.',
@@ -1723,9 +1723,10 @@ module.exports = T => {
     await L.c.close();
 
     // ---- 2. No list of three or more without its comma, wherever a teacher reads: "A, B and C" and "A, B or C".
-    // Reviewed exceptions, each [pattern, reason]: a sentence that matches but isn't a list of three. None in the app;
-    // these are in the Calculator manual and the widget starter's notes.
+    // Reviewed exceptions, each [pattern, reason]: a sentence that matches but isn't a list of three. One in the app, the
+    // Name Picker's tooltip; the rest are in the Calculator manual and the widget starter's notes.
     const EXCEPT = [
+      [/Pick names at random, or make groups and brackets/, 'two things to do'],
       [/such as a power or a fraction/, 'two examples'],
       [/then powers and roots/, 'two items after “then”'],
       [/without the problem or History/, 'two items'],

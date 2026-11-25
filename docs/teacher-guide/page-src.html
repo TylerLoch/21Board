@@ -99,7 +99,7 @@ section.block { padding-block: 56px 8px; display: grid; gap: 26px; scroll-margin
 .w .txt { padding: 24px 26px 26px; display: grid; gap: 16px; align-content: start; min-width: 0; }
 .w .head { display: flex; gap: 14px; align-items: center; }
 .w .head h3 { font-size: 26px; }
-.w .head p { color: var(--muted); font-size: 17px; }
+.w .head p { color: var(--muted); font-size: 17px; text-wrap: pretty; }
 .w h4 { font-size: 13px; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); margin-bottom: 6px; }
 .w ol, .w ul { margin: 0; padding-left: 22px; display: grid; gap: 5px; font-size: 17px; }
 .ideas { list-style: none; padding: 0 !important; gap: 8px !important; }
@@ -305,12 +305,12 @@ footer.end b { color: var(--ink); }
   </article>
 
   <article class="w" id="w-name-picker">
-    <figure class="shot" style="margin:0;gap:16px;align-content:center"><img src="shots/w-name-picker.jpg" width="1120" height="892" loading="lazy" alt="Name Picker as a spinning wheel of eight first names, landed on Eli."><img src="shots/w-name-picker-groups.jpg" width="1120" height="892" loading="lazy" alt="Name Picker in Groups, eight first names in two groups of four."><figcaption>The names are examples.</figcaption></figure>
+    <figure class="shot" style="margin:0;gap:16px;align-content:center;grid-template-columns:repeat(3,minmax(0,1fr))"><img src="shots/w-name-picker.jpg" width="1120" height="892" loading="lazy" alt="Name Picker as a spinning wheel of eight first names, landed on Eli." style="grid-area:1/1"><img src="shots/w-name-picker-groups.jpg" width="1120" height="892" loading="lazy" alt="Name Picker in Groups, eight first names in two groups of four." style="grid-area:2/1"><img src="shots/w-name-picker-versus.jpg" width="1120" height="892" loading="lazy" alt="Name Picker in Versus, Fatima on the red side and Ben on the blue side, a lightning VS between them." style="grid-area:1/2/3/4"><img src="shots/w-name-picker-bracket.jpg" width="1802" height="994" loading="lazy" alt="Name Picker in Bracket, 24 first names partway through, the winners moving on toward a trophy." style="grid-column:1/-1"><figcaption style="grid-column:1/-1">The names are examples.</figcaption></figure>
     <div class="txt">
-      <div class="head">{{icon:name-picker}}<div><h3>Name Picker</h3><p>Picks one to six students at random, or makes groups.</p></div></div>
-      <div><h4>Try it</h4><ol><li>Type or paste your class list, one name per line, and tap Done.</li><li>Tap SPIN, or Pick a name.</li><li>Tap Name Picker ⌄ for Big name, Spinning wheel, Spotlight, Lotto, or Groups.</li></ol></div>
-      <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Pick the line leader with the Spinning wheel.</span></li><li><span class="grade">Any</span><span>Cold-call fairly. No repeats is on, so everyone gets a turn before anyone goes twice.</span></li><li><span class="grade">3–5</span><span>Make groups. Choose Groups, then how many.</span></li></ul></div>
-      <div><h4>Good to know</h4><ul class="good"><li>Pick up to six names at once. Choose how many under Names at a time in Name Picker ⌄.</li><li>Names are only stored on your computer and your school Google Drive.</li><li>A Blank template never keeps the names, so it’s safe to share.</li></ul></div>
+      <div class="head">{{icon:name-picker}}<div><h3>Name Picker</h3><p>Picks students at random. Makes groups and brackets too.</p></div></div>
+      <div><h4>Try it</h4><ol><li>Type or paste your class list, one name per line, and tap Done.</li><li>Tap SPIN, or Pick a name.</li><li>Tap Name Picker ⌄ for Big name, Spinning wheel, Spotlight, Lotto, Versus, Groups, or Bracket.</li></ol></div>
+      <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Pick the line leader with the Spinning wheel.</span></li><li><span class="grade">Any</span><span>Cold-call fairly. No repeats is on, so everyone gets a turn before anyone goes twice.</span></li><li><span class="grade">3–5</span><span>Make groups. Choose Groups, then how many.</span></li><li><span class="grade">Any</span><span>Run a spelling bee as a Bracket. Tap the winner of each match.</span></li></ul></div>
+      <div><h4>Good to know</h4><ul class="good"><li>Pick up to six names at once. Choose how many under Names at a time in Name Picker ⌄.</li><li>Versus has five looks. Each pick plays one at random.</li><li>In Bracket, Undo takes back the last tap.</li><li>Names are only stored on your computer and your school Google Drive.</li><li>A Blank template never keeps the names, so it’s safe to share.</li></ul></div>
     </div>
   </article>
 

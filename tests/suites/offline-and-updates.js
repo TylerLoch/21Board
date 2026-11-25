@@ -2,7 +2,7 @@
 'use strict';
 module.exports = T => {
   const {
-    fs, path, ROOT, OUT, ok, freeBoard, openSettings, fillNote, DEV_WIDGET, eventually, STORAGE_FAULTS,
+    fs, path, ROOT, OUT, ok, freeBoard, openSettings, fillNote, DEV_WIDGET, eventually, STORAGE_FAULTS, NP_STYLES,
     storedRecords, release, stamped, STAMPED, SITES, deploy, marked, parts, updateCheck, boardUp, TESTS_DIR, BASE
   } = T;
   return [
@@ -49,7 +49,7 @@ module.exports = T => {
     const conn = await page.evaluate(() => Array.from(window.__board21.state.wins.values()).map(w => [w.ikey, w.connected]));
     ok(conn.length === ids.length && conn.every(c => c[1]), 'every widget loads and connects offline: ' + JSON.stringify(conn));
     const styles = await page.frameLocator('.win[data-ikey="name-picker:1"] iframe').locator('html').evaluate(() => Object.keys(NamePicker.styles).sort().join());
-    ok(styles === 'groups,lotto,name,spotlight,wheel', `the Name Picker has all five of its styles offline (${styles})`);
+    ok(styles === NP_STYLES.map(s => s[0]).sort().join(), `the Name Picker has all ${NP_STYLES.length} of its styles offline (${styles})`);
     await page.screenshot({ path: OUT + '30-offline-all-widgets.png' });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],

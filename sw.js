@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.25-1';
+const VERSION = '2026.11.25-2';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '7de401c1';
+const BUILD = 'f722e108';
 const FILES = {
-  './': '467c063dcbda548a',
-  'index.html': '467c063dcbda548a',
-  'board.js': 'f04e971237c350e2',
+  './': '4c5806754d43ada9',
+  'index.html': '4c5806754d43ada9',
+  'board.js': 'f3a56bf8c4843d5b',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '322176902bda47d3',
+  'widgets/registry.js': '9a79f1d1abd4ac84',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -46,12 +46,19 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': 'dafc0937d3bee1ab',
+  'widgets/name-picker/index.html': 'd3ccafa2031f5da6',
   'widgets/name-picker/style-bigname.js': '9d6775ffa5fb7f17',
   'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
   'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
   'widgets/name-picker/style-lotto.js': 'b34332daca17e15b',
+  'widgets/name-picker/style-versus.js': '69b38381093daac5',
+  'widgets/name-picker/vs-lightning.js': '6d34946be8338ab8',
+  'widgets/name-picker/vs-forged.js': '07556f56a9ccea89',
+  'widgets/name-picker/vs-crest.js': '5215473e36a8b620',
+  'widgets/name-picker/vs-comic.js': '282eeb9624080002',
+  'widgets/name-picker/vs-flame.js': 'f7f0828ff757f68c',
   'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
+  'widgets/name-picker/style-bracket.js': 'bf64e3a8072c82fa',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
   'widgets/zones-check-in/index.html': 'deb509cea1903444',
   'widgets/dice/index.html': 'f4e9223ca5c16dd8',
