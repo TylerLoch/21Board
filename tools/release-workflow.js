@@ -26,6 +26,7 @@ if (missing.length) { log('missing args: ' + missing.join(', ')); return { missi
 const CLAUDE_MD = `${A.wt}/CLAUDE.md`
 const CPU = 'Memory is tight (16 GB, no swap; an earlier run crashed the machine) and another build may be testing: before starting any test process (tests/run.js or your own browser scripts), check `pgrep -fc "node tests/run.js"`; if 2 or more are running, wait and poll every 30 s. Run at most 1 test process of your own at a time, never more than one Chromium of your own, and close every browser you open. A failure seen while other tests ran: rerun it alone once before treating it as real, and report both runs.'
 const VOICE = `Every label, message, hint and line of docs you add or change follows ${CLAUDE_MD} ("Voice"): Apple-like, less is more, every word earns its place. Reread each one before you commit.`
+const TESTS = 'Tests follow docs/RELEASING.md ("Writing tests"): the fewest checks that prove the change, each rule at two or three sizes, the area\'s own helpers reused, no exact pixel positions unless the spec sets them, no checks of the docs\' words, an old test changed only where the behavior it checks changed, and new checks in the feature\'s suite. tests/run.js prints only failures and a count per suite; add --verbose to see every check.'
 const GUIDES = `The Teacher Guide (docs/teacher-guide) is part of every release that changes the interface, a widget or how the board behaves: update its words and retake the screenshots that show the change (its README has the steps), then run its build.js and check.js. If the Calculator changes, do the same for docs/calculator-manual. Don't publish either; the session publishes them after the merge.`
 
 const BUILD_SCHEMA = { type: 'object', properties: {
@@ -42,7 +43,7 @@ const REVIEW_SCHEMA = { type: 'object', properties: {
 phase('Build')
 const built = await agent(`You are building a release of 21Board, a static offline PWA "smartboard OS" for a K-8 school district: ${A.title}. Read the spec first and follow it exactly: ${A.spec}.
 
-Work only in the worktree ${A.wt} (branch ${A.branch}, already created at ${A.base}). ${CPU} ${VOICE} ${GUIDES}${A.buildNote ? '\n\n' + A.buildNote : ''}
+Work only in the worktree ${A.wt} (branch ${A.branch}, already created at ${A.base}). ${CPU} ${TESTS} ${VOICE} ${GUIDES}${A.buildNote ? '\n\n' + A.buildNote : ''}
 
 Order of work: read the spec and the code it names; write the spec's tests and run them on the unchanged code to show they fail (keep the log next to the spec); build; docs and guides; stamp the release (VERSION in sw.js is '${A.version}'; node tools/build-sdk.js, then node tools/release.js, then both again with --check); run the spec's suites; commit with the spec's trailers. Never push. Screenshots (deviceScaleFactor 2) of the result into the spec's folder under shots/.
 
@@ -64,14 +65,14 @@ Strings: ${JSON.stringify(built.strings)}
 Tests changed: ${JSON.stringify(built.tests_changed)}
 
 ${r.lens}
-Also check every new or changed string against ${CLAUDE_MD} ("Voice"), and that the Teacher Guide says and shows what the board now does.
+Also check every new or changed string against ${CLAUDE_MD} ("Voice"), that the Teacher Guide says and shows what the board now does, and that the tests follow docs/RELEASING.md ("Writing tests"): flag checks the change doesn't need.
 Report only problems you reproduced or can show from the code or docs, each with evidence (scripts and logs next to your worktree) and a concrete fix.`, { label: 'review-' + r.key, phase: 'Review', schema: REVIEW_SCHEMA })))
 const findings = reviews.flatMap((r, i) => r ? (r.findings || []).map(f => ({ ...f, from: REVIEWS[i].key })) : [])
 const lost = REVIEWS.filter((r, i) => !reviews[i]).map(r => r.key)
 log(`${findings.length} findings${lost.length ? '; no result from ' + lost.join(', ') : ''}`)
 
 phase('Fix')
-const fixed = await agent(`You are finishing a release of 21Board (a static offline PWA for a K-8 school district): ${A.title}. The spec: ${A.spec}. The work is on branch ${A.branch} in ${A.wt}, at commit ${built.commit}. ${CPU} ${VOICE} ${GUIDES}${A.note ? '\n\n' + A.note : ''}
+const fixed = await agent(`You are finishing a release of 21Board (a static offline PWA for a K-8 school district): ${A.title}. The spec: ${A.spec}. The work is on branch ${A.branch} in ${A.wt}, at commit ${built.commit}. ${CPU} ${TESTS} ${VOICE} ${GUIDES}${A.note ? '\n\n' + A.note : ''}
 
 Tests the builder changed: ${JSON.stringify(built.tests_changed)}
 Two reviewers' findings:

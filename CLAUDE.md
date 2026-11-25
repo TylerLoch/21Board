@@ -28,9 +28,9 @@ After: "Your work is stored only on this device."
 
 ## Releasing
 
-Every release follows docs/RELEASING.md, from the spec to the report. tools/release-workflow.js builds, reviews, and
-fixes each release. GitHub runs the whole test file on every push. tools/ci-wait.js waits for it and prints the
-failures. Run it in the background.
+Every release follows docs/RELEASING.md, from the spec to the report. A small change takes its short path. Every other
+release runs tools/release-workflow.js, which builds, reviews, and fixes it. GitHub runs the whole test file on every
+push. tools/ci-wait.js waits for it and prints the failures. Run it in the background.
 
 ## Calculator manual
 
