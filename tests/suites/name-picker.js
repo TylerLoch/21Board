@@ -5,6 +5,11 @@ module.exports = T => {
     fs, path, ROOT, OUT, ok, freeBoard, openSettings, setTheme, setCornerClock, hear, heard, eventually, parts,
     boardUp, NP_STYLES, BASE
   } = T;
+  // The names a draw left without their pop. Each name pops as it lands, no more than about 30 a second. A name that
+  // lands within 34 ms of the last pop shares it, as two can land in one frame on a slow machine. The last name always
+  // pops. Each landing has t, when its flight left the stage, and pop, when its pop played. The flight is timed just
+  // before the style reads its clock and the pop just after, so a slow machine can only make a gap look shorter.
+  const unpopped = lands => { let at = -1e9; return lands.filter((l, i) => { if (l.pop != null) { at = l.pop; return false; } return i === lands.length - 1 || l.t - at >= 34; }).length; };
   return [
   ['Name Picker: two students with one name, typing is kept, adding a name', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
@@ -512,10 +517,12 @@ module.exports = T => {
   }],
   // ---- Groups. The names go into 2 to 6 random groups.
   ['Name Picker: Groups', async (browser) => {
-    // Every sound a style asks the host for (the host plays it only with Sound ticked), the sounds the page starts, and
-    // the notes it plays.
+    // Every sound a style asks the host for (the host plays it only with Sound ticked), each name as it lands with the
+    // time of its pop, the sounds the page starts, and the notes it plays.
     const SPY = () => {
-      window.__sounds = [];
+      window.__sounds = []; window.__lands = [];
+      const remove = Element.prototype.remove;
+      Element.prototype.remove = function () { if (this.isConnected && this.classList.contains('groups-fly')) window.__lands.push({ t: performance.now(), pop: null }); return remove.apply(this, arguments); };
       let np;
       Object.defineProperty(window, 'NamePicker', { configurable: true, get: () => np, set: v => {
         np = v;
@@ -524,7 +531,11 @@ module.exports = T => {
           const mount = style.mount;
           style.mount = function (root, host) {
             const sound = host.sound;
-            host.sound = function (name) { window.__sounds.push(name); return sound.apply(this, arguments); };
+            host.sound = function (name) {
+              const l = window.__lands[window.__lands.length - 1];
+              if (name === 'pop' && l) l.pop = performance.now();
+              window.__sounds.push(name); return sound.apply(this, arguments);
+            };
             return mount.call(this, root, host);
           };
           return register.call(this, id, style);
@@ -629,7 +640,7 @@ module.exports = T => {
     // ---- 24 names, Groups 6: the show, about 3 s, a pop as each name lands and a chime.
     await menu('groups:6');
     ok((await conf()).groups === 6 && await text('#go') === 'Make 6 groups' && await items() === MENU_G(6), `Groups 6: saved, ticked in the row, and the button says “Make 6 groups” (${await items()})`);
-    await inFrame(() => { window.__sounds.length = 0; });
+    await inFrame(() => { window.__sounds.length = 0; window.__lands.length = 0; });
     let t0 = Date.now();
     let g = await drawNow();
     const during = { go: await text('#go'), showing: await showing(), status: await text('#status') };
@@ -644,9 +655,10 @@ module.exports = T => {
       `6 cards, Group 1 to Group 6, each with its names in deal order (${cs.map(c => c.head + ': ' + c.names.join(' ')).join(' / ')})`);
     ok(await text('#status') === '6 groups of 4' && await text('#go') === 'Shuffle again' && await np().locator('#round').isHidden(), `“6 groups of 4”, “Shuffle again” (${await text('#status')}, ${await text('#go')})`);
     ok(await eventually(async () => await said() === announced(g.groups)), `screen readers hear “${(await said()).slice(0, 60)}…”`);
-    let snd = await inFrame(() => ({ sounds: window.__sounds.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
-    ok(snd.sounds.filter(s => s === 'pop').length === 24 && snd.sounds.filter(s => s === 'chime').length === 1 && snd.sounds[snd.sounds.length - 1] === 'chime' && snd.notes === 0 && snd.audio === 0,
-      `a pop as each name lands, then a chime (asked for: ${snd.sounds.filter(s => s === 'pop').length} pops, ${snd.sounds.filter(s => s === 'chime').length} chime), and with Sound off nothing plays`);
+    let snd = await inFrame(() => ({ sounds: window.__sounds.slice(), lands: window.__lands.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
+    let pops = snd.sounds.filter(s => s === 'pop').length;
+    ok(snd.lands.length === 24 && pops === snd.lands.filter(l => l.pop != null).length && !unpopped(snd.lands) && snd.sounds.filter(s => s === 'chime').length === 1 && snd.sounds[snd.sounds.length - 1] === 'chime' && snd.notes === 0 && snd.audio === 0,
+      `a pop as each name lands, then a chime (asked for: ${pops} pops for ${snd.lands.length} names, ${unpopped(snd.lands)} missing, ${snd.sounds.filter(s => s === 'chime').length} chime), and with Sound off nothing plays`);
     const heads = await inFrame(() => {
       const tok = n => { const t = document.createElement('i'); document.body.appendChild(t); t.style.color = `var(${n})`; const c = getComputedStyle(t).color; t.remove(); return c; };
       return { want: ['--np-c1', '--np-c2', '--np-c3', '--np-c4', '--np-c6', '--np-c7'].map(tok), ink: tok('--np-ink'),
@@ -683,11 +695,12 @@ module.exports = T => {
     // ---- Sound on: the pops and the chime play.
     await menu('sound');
     const n0 = await inFrame(() => window.__notes || 0);
-    await inFrame(() => { window.__sounds.length = 0; });
+    await inFrame(() => { window.__sounds.length = 0; window.__lands.length = 0; });
     await np().locator('#go').click(); await idle();
-    snd = await inFrame(() => ({ sounds: window.__sounds.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
-    ok(snd.audio >= 1 && snd.notes - n0 >= 24 + 3 && snd.sounds.filter(s => s === 'pop').length === 24 && snd.sounds.filter(s => s === 'chime').length === 1,
-      `with Sound on the pops and the chime play (${snd.notes - n0} notes)`);
+    snd = await inFrame(() => ({ sounds: window.__sounds.slice(), lands: window.__lands.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
+    pops = snd.sounds.filter(s => s === 'pop').length;
+    ok(snd.audio >= 1 && snd.lands.length === 24 && pops === snd.lands.filter(l => l.pop != null).length && !unpopped(snd.lands) && snd.notes - n0 >= pops + 3 && snd.sounds.filter(s => s === 'chime').length === 1,
+      `with Sound on the pops and the chime play (${snd.notes - n0} notes, ${pops} pops for ${snd.lands.length} names, ${unpopped(snd.lands)} missing)`);
     await menu('sound');
 
     // ---- Changing the number keeps the cards; the button says what it will do.
@@ -1004,10 +1017,12 @@ module.exports = T => {
   }],
   // ---- Bracket. Everyone goes into a tournament bracket, drawn at random; the teacher taps each match's winner.
   ['Name Picker: Bracket', async (browser) => {
-    // Every sound a style asks the host for (the host plays it only with Sound ticked), the sounds the page starts, the
-    // notes it plays, and the timers and animation frames it asks for.
+    // Every sound a style asks the host for (the host plays it only with Sound ticked), each name as it lands with the
+    // time of its pop, the sounds the page starts, the notes it plays, and the timers and animation frames it asks for.
     const SPY = () => {
-      window.__sounds = [];
+      window.__sounds = []; window.__lands = [];
+      const remove = Element.prototype.remove;
+      Element.prototype.remove = function () { if (this.isConnected && this.classList.contains('bracket-fly')) window.__lands.push({ t: performance.now(), pop: null }); return remove.apply(this, arguments); };
       let np;
       Object.defineProperty(window, 'NamePicker', { configurable: true, get: () => np, set: v => {
         np = v;
@@ -1016,7 +1031,11 @@ module.exports = T => {
           const mount = style.mount;
           style.mount = function (root, host) {
             const sound = host.sound;
-            host.sound = function (name) { window.__sounds.push(name); return sound.apply(this, arguments); };
+            host.sound = function (name) {
+              const l = window.__lands[window.__lands.length - 1];
+              if (name === 'pop' && l) l.pop = performance.now();
+              window.__sounds.push(name); return sound.apply(this, arguments);
+            };
             return mount.call(this, root, host);
           };
           return register.call(this, id, style);
@@ -1172,7 +1191,7 @@ module.exports = T => {
     await page.screenshot({ path: OUT + 'name-picker-bracket-before.png' });
 
     // ---- The draw: about 3 s, the names dealt into their spots with a pop each, and a chime.
-    await inFrame(() => { window.__sounds.length = 0; });
+    await inFrame(() => { window.__sounds.length = 0; window.__lands.length = 0; });
     let t0 = Date.now();
     let st = await drawNow();
     const drawn = st;
@@ -1183,9 +1202,10 @@ module.exports = T => {
       `the bracket is saved before the show: every name once as a seed, no taps, nothing before it, and a bracketId (${st.bracketId})`);
     ok(during.go === 'Show now' && during.status === '24 names' && during.undo && during.stack, `during the show: “Show now”, the status as it was, the names dealt from a stack (${JSON.stringify(during)})`);
     ok(took > 2300 && took < 3900, `the show takes about 3 s (${took} ms)`);
-    let snd = await inFrame(() => ({ sounds: window.__sounds.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
-    ok(snd.sounds.filter(s => s === 'pop').length === 24 && snd.sounds.filter(s => s === 'chime').length === 1 && snd.sounds[snd.sounds.length - 1] === 'chime' && !snd.notes && !snd.audio,
-      `a pop as each name lands, then a chime (${snd.sounds.filter(s => s === 'pop').length} pops), and with Sound off nothing plays`);
+    let snd = await inFrame(() => ({ sounds: window.__sounds.slice(), lands: window.__lands.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
+    let pops = snd.sounds.filter(s => s === 'pop').length;
+    ok(snd.lands.length === 24 && pops === snd.lands.filter(l => l.pop != null).length && !unpopped(snd.lands) && snd.sounds.filter(s => s === 'chime').length === 1 && snd.sounds[snd.sounds.length - 1] === 'chime' && !snd.notes && !snd.audio,
+      `a pop as each name lands, then a chime (${pops} pops for ${snd.lands.length} names, ${unpopped(snd.lands)} missing), and with Sound off nothing plays`);
     b = await board();
     const r1 = b.spots.filter(x => x.round === 1), byes = b.spots.filter(x => x.bye);
     ok(r1.length === 16 && byes.length === 8 && b.spots.length === 47 && byes.every(x => x.round === 2 && x.name) && byes.filter(x => x.half === 'L').length === 4,
@@ -1387,10 +1407,12 @@ module.exports = T => {
     await menu('quick');
     await menu('sound');
     const n0 = await inFrame(() => window.__notes || 0);
-    await inFrame(() => { window.__sounds.length = 0; });
+    await inFrame(() => { window.__sounds.length = 0; window.__lands.length = 0; });
     await np().locator('#go').click(); await idle();
-    snd = await inFrame(() => ({ sounds: window.__sounds.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
-    ok(snd.audio >= 1 && snd.notes - n0 >= 24 + 3 && snd.sounds.filter(s => s === 'pop').length === 24 && snd.sounds.filter(s => s === 'chime').length === 1, `with Sound on the pops and the chime play (${snd.notes - n0} notes)`);
+    snd = await inFrame(() => ({ sounds: window.__sounds.slice(), lands: window.__lands.slice(), notes: window.__notes || 0, audio: window.__audio || 0 }));
+    pops = snd.sounds.filter(s => s === 'pop').length;
+    ok(snd.audio >= 1 && snd.lands.length === 24 && pops === snd.lands.filter(l => l.pop != null).length && !unpopped(snd.lands) && snd.notes - n0 >= pops + 3 && snd.sounds.filter(s => s === 'chime').length === 1,
+      `with Sound on the pops and the chime play (${snd.notes - n0} notes, ${pops} pops for ${snd.lands.length} names, ${unpopped(snd.lands)} missing)`);
     await menu('sound');
 
     // ---- Switching to the wheel and back keeps the bracket and its taps; the pick round is as it was.
@@ -1713,8 +1735,8 @@ module.exports = T => {
   // ---- Versus. Two students picked at random face off, and a VS emblem slams down between them, in one of five looks.
   ['Name Picker: Versus', async (browser) => {
     const LOOKS = ['lightning', 'forged', 'crest', 'comic', 'flame'];
-    // Every sound a style asks the host for, and for the slam how far the slam's own animations are at that moment; the
-    // sounds the page starts, and the notes it plays.
+    // Every sound a style asks the host for, and for the slam how far the slam's own animations are at that moment, by
+    // the clock and on screen; the sounds the page starts, and the notes it plays.
     const SPY = () => {
       window.__sounds = []; window.__slamAt = [];
       let np;
@@ -1727,7 +1749,10 @@ module.exports = T => {
             const sound = host.sound;
             host.sound = function (name) {
               window.__sounds.push(name); (window.__soundLog = window.__soundLog || []).push([name, performance.now()]);
-              if (name === 'slam') window.__slamAt.push(Math.max(0, ...document.getAnimations().filter(a => !(a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('.versus-name'))).map(a => a.currentTime || 0)));
+              if (name === 'slam') {
+                const now = performance.now(), slam = document.getAnimations().filter(a => !(a.effect && a.effect.target && a.effect.target.closest && a.effect.target.closest('.versus-name')));
+                window.__slamAt.push({ clock: Math.max(0, ...slam.map(a => a.startTime != null ? now - a.startTime : a.currentTime || 0)), shown: Math.max(0, ...slam.map(a => a.currentTime || 0)) });
+              }
               return sound.apply(this, arguments);
             };
             return mount.call(this, root, host);
@@ -1792,6 +1817,10 @@ module.exports = T => {
     const KIDS = 'versus-side versus-l | versus-side versus-r | versus-cut vs-cut | versus-name | versus-name | versus-box';
     // Only the sides, the slash, the names, and the emblem at rest: nothing a show added, and nothing running.
     const clean = s => !!s && s.kids.replace(/ versus-fade/g, '') === KIDS && s.rest && !s.styled && !s.anims && !s.running && !s.texts;
+    // The thud comes within 50 ms of the look's impact, no sooner by the clock and no later on screen. A busy machine
+    // draws late, so the screen can trail the clock by several frames.
+    const onHit = (at, hit) => !!at && at.clock >= hit - 50 && at.shown <= hit + 50;
+    const into = at => at ? `${Math.round(at.clock)} ms into it, ${Math.round(at.shown)} on screen` : 'no thud';
 
     // ---- Versus in the menu: after Lotto. Names at a time stays as it was.
     await page.evaluate(() => window.__board21.openWidget('name-picker'));
@@ -1831,7 +1860,7 @@ module.exports = T => {
     let snd = await inFrame(() => ({ sounds: window.__sounds.slice(), at: window.__slamAt.slice(), notes: window.__notes || 0, audio: window.__audio || 0, hit: NamePicker.looks[document.querySelector('.versus').dataset.look].hit }));
     ok(snd.sounds.filter(x => x === 'tick').length >= 8 && snd.sounds.filter(x => x !== 'tick').join() === 'pop,pop,slam,chime' && snd.audio >= 1 && snd.notes - n0 >= 12,
       `with Sound on: a tick for each flicker (${snd.sounds.filter(x => x === 'tick').length}), a pop as each name locks in, the slam, and the chime (${snd.sounds.filter(x => x !== 'tick').join(', ')}; ${snd.notes - n0} notes)`);
-    ok(snd.at.length === 1 && Math.abs(snd.at[0] - snd.hit.normal) <= 50, `the slam’s thud comes at the look’s moment of impact, on the slam’s own clock (${Math.round(snd.at[0])} ms into it; ${st.versusLook} hits at ${snd.hit.normal})`);
+    ok(snd.at.length === 1 && onHit(snd.at[0], snd.hit.normal), `the slam’s thud comes at the look’s moment of impact, on the slam’s own clock (${into(snd.at[0])}; ${st.versusLook} hits at ${snd.hit.normal})`);
     await page.screenshot({ path: OUT + 'name-picker-versus.png' });
 
     // ---- A tap on the stage skips the show, while the names flicker or during the slam, and so does Show now. Nothing the
@@ -1851,7 +1880,7 @@ module.exports = T => {
     s = await vs();
     ok(took > 1000 && took < 2300 && clean(s) && s.look === st.versusLook, `with Quick the show takes about 1.5 s (${took} ms), and ends as clean`);
     snd = await inFrame(() => ({ at: window.__slamAt.slice(-1)[0], hit: NamePicker.looks[document.querySelector('.versus').dataset.look].hit }));
-    ok(Math.abs(snd.at - snd.hit.quick) <= 50, `with Quick the thud comes at the quick slam’s impact (${Math.round(snd.at)} ms; ${st.versusLook} hits at ${snd.hit.quick})`);
+    ok(onHit(snd.at, snd.hit.quick), `with Quick the thud comes at the quick slam’s impact (${into(snd.at)}; ${st.versusLook} hits at ${snd.hit.quick})`);
     st = await pickNow(); await page.waitForTimeout(950); await np().locator('#stage').click(); await page.waitForTimeout(150);
     ok(!(await showing()) && clean(await vs()), 'a tap during the quick slam skips it, as clean');
     await menu('quick');
@@ -1880,11 +1909,11 @@ module.exports = T => {
       s = await vs();
       const fine = !(await showing()) && s.look === st.versusLook && s.names.join() === st.picked.join() && clean(s), bag = i < 10 ? ended : skipped;
       if (bag[st.versusLook] === undefined || bag[st.versusLook] === true) bag[st.versusLook] = fine || JSON.stringify(s);
-      if (i < 10) thuds[st.versusLook] = await inFrame(() => { const v = document.querySelector('.versus'); return Math.round(window.__slamAt[0] - NamePicker.looks[v.dataset.look].hit.normal); });
+      if (i < 10) thuds[st.versusLook] = await inFrame(() => { const at = window.__slamAt[0], hit = NamePicker.looks[document.querySelector('.versus').dataset.look].hit.normal; return at && { clock: Math.round(at.clock - hit), shown: Math.round(at.shown - hit) }; });
     }
     ok(LOOKS.every(l => ended[l] === true), `every look, after its show: nothing the show added is left, and nothing runs (${JSON.stringify(ended)})`);
     ok(LOOKS.every(l => skipped[l] === true), `every look, skipped in the middle of its slam: the same (${JSON.stringify(skipped)})`);
-    ok(LOOKS.every(l => typeof thuds[l] === 'number' && Math.abs(thuds[l]) <= 50), `every look’s thud comes at its own moment of impact (ms off: ${JSON.stringify(thuds)})`);
+    ok(LOOKS.every(l => onHit(thuds[l], 0)), `every look’s thud comes at its own moment of impact (ms off, by the clock and on screen: ${JSON.stringify(thuds)})`);
     // A show cut short any other way ends as clean too (No repeats is off: every pick from everyone), while the names flicker or during the slam: the page hidden, a switch
     // to Big name and back, Edit names and Done, or a resize (in the slam it ends the show; before, the show goes on).
     // No thud after it, and the show is over.
