@@ -73,7 +73,7 @@
   //   source: where the video is, 'youtube', 'drive' (Google Drive) or 'vimeo'. Content saved before Drive and Vimeo
   //   (no source) is YouTube's. videoId: the video's id there (SOURCES: YouTube's 11 characters, a Drive file's id,
   //   Vimeo's number). hash: an unlisted Vimeo video's key. resourceKey: the key older Drive files shared by link need.
-  //   videoUrl: its link as it was pasted (Change video shows it again).
+  //   videoUrl: its link as it was pasted.
   //   start: where the video starts, in whole seconds, from the link's time (left out: from the beginning; Drive's player
   //   has none, so a Drive video never has one).
   //   history: the window menu's History, the last 5 different videos shown in this window, newest first, the one
@@ -92,8 +92,8 @@
   // all three: nothing drawn over any part of the player (so its controls are in the window menu, and in a window that
   // fills the board it ends above the board's own buttons and clock: keepClear), at least 200 × 200 px (keepMinimum),
   // a Referer (YouTube's and Vimeo's: a Vimeo video can be limited to some sites; Drive gets none), no autoplay, and no
-  // playing out of sight. The frame is removed whenever the link box or the offline message takes its place (Change
-  // video, Remove video here or anywhere else, a Reset, going offline), so nothing goes on playing behind them. (A
+  // playing out of sight. The frame is removed whenever the link box or the offline message takes its place (Remove
+  // video here or anywhere else, a Reset, going offline), so nothing goes on playing behind them. (A
   // window that is closed, or on a page that isn't shown, has no frame at all: the board removes it.) Taps on the video
   // go to the site's page and never reach this one or the board, so they don't bring the window forward or move it: that
   // is done by its title bar. A Drive video plays only if the account signed in on the device can open it (in a kiosk,
@@ -167,7 +167,7 @@
   let video = null;       // the saved video: { source, videoId, hash, resourceKey, videoUrl, start } (readVideo), or null
   let history = [];       // the History, newest first: [{ source, videoId, hash, resourceKey, videoUrl, start, title }]
   const titles = new Map();   // titleKey → the title YouTube or Vimeo gave this page (see Titles, above)
-  let changing = false;   // the link box shows in place of a saved video (Change video): Cancel puts the video back
+  let changing = false;   // the link box shows in place of a saved video (see useLink and 'data'): Cancel puts the video back
   let frame = null;       // the player's frame, while it shows
   let kiosk = false;      // ChromeOS kiosk: no new windows, so no Open in …
   let started = false;
@@ -234,7 +234,7 @@
     Board21.save(d).catch(() => {});   // (not stored yet: the board keeps it, says so and tries again)
   }
 
-  // What the window shows: the link box (no video, or Change video), the offline message, or the player.
+  // What the window shows: the link box (no video, or one in place of a video), the offline message, or the player.
   function show() {
     const view = !video || changing ? 'ask' : navigator.onLine === false ? 'offline' : 'player';
     if (view !== 'player') dropFrame();
@@ -260,13 +260,11 @@
   function dropFrame() { if (frame) { frame.remove(); frame = null; } }
 
   // Window menu: the player's controls (nothing may be drawn over the player itself), then the History, the video
-  // showing checked. (The link box: just the History.)
+  // showing checked. (The link box: just the History.) Remove video leaves the link box, ready for another video.
   let menuNow = null;
   function setMenu() {
     const items = !video || changing ? [] : [
-      { id: 'change', label: 'Change video' },
-      ...(kiosk ? [] : [{ id: 'open', label: SOURCES[video.source].open }]),
-      { separator: true },
+      ...(kiosk ? [] : [{ id: 'open', label: SOURCES[video.source].open }, { separator: true }]),
       { id: 'remove', label: 'Remove video' }
     ];
     if (history.length) {
@@ -329,8 +327,7 @@
     const e = /^history:/.test(id) ? history.find(x => itemId(x) === id) : null;
     if (e) { if (!video || changing || !sameEntry(e, video)) choose(e); return; }   // (the video showing: it goes on as it is)
     if (!video) return;
-    if (id === 'change') { changing = true; link.value = video.videoUrl || pageUrl(video); say(''); show(); }
-    else if (id === 'open' && !kiosk) window.open(pageUrl(video), '_blank', 'noopener,noreferrer');
+    if (id === 'open' && !kiosk) window.open(pageUrl(video), '_blank', 'noopener,noreferrer');
     else if (id === 'remove') { video = null; changing = false; link.value = ''; say(''); save(); show(); }
   });
 
@@ -347,7 +344,7 @@
   // Text pasted in this window outside the link box while it shows, or a video link pasted or dropped on the board,
   // which opened this window for it: in the link box and shown, as if pasted there.
   function useLink(text) {
-    changing = !!video;   // (a video showing: as Change video, so Cancel puts it back if the link isn't one)
+    changing = !!video;   // (a video showing: Cancel puts it back if the link isn't one)
     link.value = String(text == null ? '' : text).trim();
     say(''); show(); go();
   }
