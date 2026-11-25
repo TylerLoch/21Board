@@ -21026,7 +21026,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     });
 
     // ---- 17. Two tabs of one page on the Fill board, a big screen and a laptop. Date off in a wide Analog + Date window
-    // in one tab: both tabs keep one size, the one that's saved. (On Fill each tab's board is its own screen.)
+    // in one tab: both tabs keep one size, the one that's saved. (On Fill each tab's board is its own screen.) The size
+    // is the one main saves on Fill, 1700 × 1700, which neither screen bounds, so it can't depend on which tab's news
+    // comes first. Then Date on and off again in the laptop's tab: the same.
     await part('Two tabs on Fill', async () => {
       const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 }, timezoneId: 'America/Chicago', locale: 'en-US' });
       const tab = async () => { const p = await ctx.newPage(); p.on('pageerror', e => errors.push(e.message)); await p.clock.setFixedTime(FRI); return p; };
@@ -21037,16 +21039,23 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const B = await tab();
       await B.setViewportSize({ width: 1366, height: 768 });
       await B.goto(BASE); await boardUp(B); await connected(B, ik); await B.waitForTimeout(800);
-      await A.bringToFront(); await A.waitForTimeout(200);
-      await choose(A, ik, 'date'); await A.waitForTimeout(2000);
-      const a = await rectOf(A, ik), b = await rectOf(B, ik);
+      const R = r => `${Math.round(r.w)} × ${Math.round(r.h - 40)} at ${Math.round(r.x)}, ${Math.round(r.y)}`, same = (r, s) => ['x', 'y', 'w', 'h'].every(k => Math.abs(r[k] - s[k]) < 1);
+      const want = { x: 100, y: 100, w: 1700, h: 1740 }, seen = [];
+      let good = true;
+      for (const [P, Q, name, taps] of [[A, B, 'the first', ['date']], [B, A, 'the laptop’s', ['date', 'date']]]) {
+        await P.bringToFront(); await P.waitForTimeout(200);
+        for (const id of taps) { await choose(P, ik, id); await P.waitForTimeout(1200); }
+        await P.waitForTimeout(800);
+        const p = await rectOf(P, ik), q = await rectOf(Q, ik);
+        good = good && same(p, want) && same(q, want);
+        seen.push(`Date ${taps.length > 1 ? 'on and off' : 'off'} in ${name} tab: ${R(p)}; ${R(q)}`);
+      }
       await B.close(); await A.close();
       const C = await tab();
       await C.goto(BASE); await boardUp(C); await connected(C, ik); await C.waitForTimeout(600);
       const c = await rectOf(C, ik);
-      const R = r => `${Math.round(r.w)} × ${Math.round(r.h - 40)} at ${Math.round(r.x)}, ${Math.round(r.y)}`, same = (r, s) => ['x', 'y', 'w', 'h'].every(k => Math.abs(r[k] - s[k]) < 1);
-      ok(same(a, b) && same(a, c) && Math.abs(a.w - (a.h - 40)) < 2,
-        `Fill, two tabs at 1920 × 1080 and 1366 × 768, Analog + Date 1700 × 600, Date off in the first: both tabs keep one square size, the one saved (${R(a)}; ${R(b)}; saved ${R(c)})`);
+      ok(good && same(c, want),
+        `Fill, two tabs at 1920 × 1080 and 1366 × 768, Analog + Date 1700 × 600: both tabs keep the 1700 × 1700 square main saves, whichever tab taps (${seen.join('; ')}; saved ${R(c)})`);
       await ctx.close();
     });
 
@@ -21197,7 +21206,9 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const near = (a, b) => (a == null && b == null) || (a != null && b != null && Math.abs(a - b) <= 1);
       for (const [vw, vh, corner, cases] of [[1366, 768, null, [['dd', 'words'], ['dd'], ['all'], ['all', 'words'], ['ad'], ['y']]], [1366, 657, null, [['dd'], ['dd', 'words']]],
         [1024, 600, null, [['dd', 'words'], ['dd', 'words', 'set']]], [1536, 730, null, [['dd'], ['dd', 'words']]], [1280, 800, 'on', [['dd'], ['dd', 'led'], ['all'], ['y']]], [1024, 768, 'on', [['dd'], ['all', 'words'], ['ad']]],
-        [1280, 720, 'on', [['dd', 'words'], ['all', 'words']]], [1536, 864, 'on', [['dd', 'words']]]]) {
+        [1280, 720, 'on', [['dd', 'words'], ['all', 'words']]], [1536, 864, 'on', [['dd', 'words']]],
+        // (Where the date sits right under the time, close to the corner clock: 5, 8, and 8.4 px clear without the corners.)
+        [1366, 600, 'on', [['dd']]], [1366, 618, 'on', [['dd']]], [1366, 620, 'on', [['dd']]], [1366, 664, null, [['dd', 'led']]], [1920, 600, 'on', [['all']]]]) {
         const { ctx, page } = await newBoard(WED, { viewport: { width: vw, height: vh } });
         if (corner) await setCornerClock(page, corner);
         for (const [m, ...extras] of cases) {
@@ -21212,19 +21223,23 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
           if (!b.corners) { off.push(`${name}: no corners (${JSON.stringify(b.corners)})`); continue; }
           // (The date alone keeps its 2.2:1 shape unless it fills the board, so it has no window of the same size.)
           const g0 = a.W === b.W && a.H === b.H ? gap(a, b.corners) : -Infinity, g1 = gap(b, b.corners);
-          if (g0 >= 10) {
-            same.push(`${name}: ${Math.round(g0)} px clear`);
+          // (8 px clear, within the suite's rounding of font boxes)
+          if (g0 >= 8.3) {
+            same.push(`${name}: ${g0 >= 10 ? Math.round(g0) : g0.toFixed(1)} px clear`);
             const keys = l => [l.t, l.dial && l.dial.w, l.sizes && l.sizes.big, l.sizes && l.sizes.md, l.date && l.date.x, l.date && l.date.y, l.time && l.time.y];
             if (a.where !== b.where || a.stack !== b.stack || keys(a).some((v, i) => !near(v, keys(b)[i]))) off.push(`${name}: the date was ${Math.round(g0)} px clear, yet filling the board changes it: ${said(a)} → ${said(b)}`);
           } else {
-            cut.push(`${name}: ${g0 > -Infinity ? Math.round(g0) + ' → ' : ''}${Math.round(g1)} px`);
-            // (8 px clear, less the suite's 2 px for font boxes)
-            if (!(g1 >= 6) || clashes(b).length) off.push(`${name}: the date comes within ${Math.round(g1)} px of the board’s buttons${clashes(b).length ? ', overlaps ' + clashes(b).join(', ') : ''} (${said(b)})`);
+            cut.push(`${name}: ${g0 > -Infinity ? Math.round(g0) + ' → ' : ''}${g1.toFixed(1)} px`);
+            if (!(g1 >= 7.5) || clashes(b).length) off.push(`${name}: the date comes within ${g1.toFixed(1)} px of the board’s buttons${clashes(b).length ? ', overlaps ' + clashes(b).join(', ') : ''} (${said(b)})`);
+            // It gives up only what it must: where the date keeps its place and style and the time or dial shrinks, the
+            // date ends no more than 12 px from the buttons.
+            const less = (a.t != null && b.t < a.t - .5) || (a.dial && b.dial && b.dial.w < a.dial.w - .5);
+            if (a.W === b.W && a.H === b.H && a.where === b.where && a.stack === b.stack && less && g1 > 12) off.push(`${name}: the Clock gives up more than it must, the date ends ${g1.toFixed(1)} px from the board’s buttons (${said(a)} → ${said(b)})`);
           }
         }
         await ctx.close();
       }
-      ok(!off.length && same.length >= 10 && cut.length >= 4, `filling the board, a date already clear of the board’s buttons changes nothing (${same.join('; ')}), and one that isn’t moves up or shrinks to stay 8 px clear (${cut.join('; ')})${off.length ? ': off: ' + off.join(' | ') : ''}`);
+      ok(!off.length && same.length >= 11 && cut.length >= 6, `filling the board, a date already 8 px clear of the board’s buttons changes nothing (${same.join('; ')}), and one that isn’t moves up or shrinks to stay 8 px clear, giving up only what it must (${cut.join('; ')})${off.length ? ': off: ' + off.join(' | ') : ''}`);
       const drops = [], ran = [];
       for (const corner of ['off', 'on']) {
         const { ctx, page } = await newBoard(WED, { viewport: { width: 1366, height: 700 } });
@@ -21246,46 +21261,59 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     });
 
     // ---- 21. Maximizing from the ⌄ menu: nothing changes before the window starts to grow, and then the time only grows.
-    // The board's buttons count only once the window has its full size.
+    // The board's buttons count only once the window has its full size. Restore is the same backwards: nothing changes
+    // before the window starts to shrink, and then the time only shrinks. (With Clock in the corner On, the Clock gives
+    // up room for the corner clock on these boards.)
     await part('Maximizing', async () => {
       const off = [], seen = [];
-      for (const [vw, vh, m, extras] of [[1366, 768, 'dd', ['words']], [1024, 768, 'all', ['words']], [1920, 1080, 'all', ['words']]]) {
+      for (const [vw, vh, m, extras, corner] of [[1366, 768, 'dd', ['words']], [1024, 768, 'all', ['words']], [1920, 1080, 'all', ['words']], [1366, 657, 'dd', ['words'], 'on'], [1180, 820, 'all', ['words'], 'on']]) {
         const { ctx, page } = await newBoard(FRI, { viewport: { width: vw, height: vh } });
+        if (corner) await setCornerClock(page, corner);
         const ik = await openClock(page);
         await mix(page, ik, m); for (const id of extras) await choose(page, ik, id);
         await page.evaluate(([ik, r]) => window.__board21.setRect(ik, r), [ik, { x: Math.round((vw - 600) / 2), y: Math.round((vh - 440) / 2), w: 600, h: 440 }]);
         await page.mouse.move(5, 5); await page.waitForTimeout(500);
-        await F(page, ik, () => {
-          // Each layout as it's made, after the Clock's own handlers for the window's resize and the board's news of it.
-          window.__frames = []; window.__rec = true;
-          const q = s => document.querySelector(s), vis = el => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0;
-          const f = () => {
-            if (!window.__rec) return;
-            const stack = vis(q('#stack')), line = !stack && vis(q('#line'));
-            const d = stack || line ? q(stack ? '#stack' : '#line').getBoundingClientRect() : null, c = ['#analog', '#dig'].map(q).filter(vis).map(e => e.getBoundingClientRect());
-            const where = !d || !c.length ? '-' : d.left >= Math.max(...c.map(r => r.right)) - 2 ? 'beside' : d.top >= Math.max(...c.map(r => r.bottom)) - 2 ? 'under' : 'under the digital time';
-            window.__frames.push({ w: innerWidth, h: innerHeight, t: vis(q('#time')) ? parseFloat(getComputedStyle(q('#time')).fontSize) : null,
-              date: stack ? parseFloat(getComputedStyle(q('#weekday')).fontSize) : line ? parseFloat(getComputedStyle(q('#line')).fontSize) : null, style: (stack ? 'stack' : line ? 'line' : '-') + ' ' + where });
-          };
-          f(); addEventListener('resize', f); Board21.on('resize', f);
-        });
-        await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200); await page.click('#menu [data-act="maximize"]');
-        await page.waitForTimeout(900);
-        const frames = await F(page, ik, () => { window.__rec = false; return window.__frames; });
-        // (The board's news can come before the window's own resize, so a record can show the last layout at the next size.)
-        const [b0] = frames, end = frames[frames.length - 1], grow = [];
-        for (let i = 1; i < frames.length; i++) {
-          const p = frames[i - 1], s = frames[i];
-          if (s.w >= end.w - 2 && s.h >= end.h - 2) break;   // (at its full size, where the board's buttons count)
-          if (s.w === b0.w && s.h === b0.h && (s.style !== b0.style || Math.abs(s.date - b0.date) > 1 || Math.abs(s.t - b0.t) > 1)) grow.push(`still ${s.w} × ${s.h}: time ${b0.t} → ${s.t}, date ${b0.style} ${b0.date} → ${s.style} ${s.date}`);
-          else if (s.t != null && p.t != null && s.t < p.t - 1) grow.push(`${p.w} × ${p.h} → ${s.w} × ${s.h}: time ${p.t} → ${s.t}`);
+        const name = `${NAME[m]} with Time in words on ${vw} × ${vh}${corner ? ', Clock in the corner On' : ''}`;
+        for (const act of ['maximize', 'restore']) {
+          await F(page, ik, () => {
+            // Each layout as it's made, after the Clock's own handlers for the window's resize and the board's news of it.
+            window.__frames = []; window.__rec = true;
+            const q = s => document.querySelector(s), vis = el => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0;
+            const f = () => {
+              if (!window.__rec) return;
+              const stack = vis(q('#stack')), line = !stack && vis(q('#line'));
+              const d = stack || line ? q(stack ? '#stack' : '#line').getBoundingClientRect() : null, c = ['#analog', '#dig'].map(q).filter(vis).map(e => e.getBoundingClientRect());
+              const where = !d || !c.length ? '-' : d.left >= Math.max(...c.map(r => r.right)) - 2 ? 'beside' : d.top >= Math.max(...c.map(r => r.bottom)) - 2 ? 'under' : 'under the digital time';
+              window.__frames.push({ w: innerWidth, h: innerHeight, t: vis(q('#time')) ? parseFloat(getComputedStyle(q('#time')).fontSize) : null,
+                date: stack ? parseFloat(getComputedStyle(q('#weekday')).fontSize) : line ? parseFloat(getComputedStyle(q('#line')).fontSize) : null, style: (stack ? 'stack' : line ? 'line' : '-') + ' ' + where });
+            };
+            f();
+            if (!window.__hooked) { window.__hooked = true; addEventListener('resize', () => window.__f()); Board21.on('resize', () => window.__f()); }
+            window.__f = f;
+          });
+          await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200); await page.click(`#menu [data-act="${act}"]`);
+          await page.waitForTimeout(900);
+          const frames = await F(page, ik, () => { window.__rec = false; return window.__frames; });
+          // (The board's news can come before the window's own resize, so a record can show the last layout at the next size.)
+          const [b0] = frames, end = frames[frames.length - 1], grow = [], max = act === 'maximize';
+          let moved = false;
+          for (let i = 1; i < frames.length; i++) {
+            const p = frames[i - 1], s = frames[i];
+            if (max && s.w >= end.w - 2 && s.h >= end.h - 2) break;   // (at its full size, where the board's buttons count)
+            if (s.w === b0.w && s.h === b0.h) {
+              if (s.style !== b0.style || Math.abs(s.date - b0.date) > 1 || Math.abs(s.t - b0.t) > 1) grow.push(`still ${s.w} × ${s.h}: time ${b0.t} → ${s.t}, date ${b0.style} ${b0.date} → ${s.style} ${s.date}`);
+              continue;
+            }
+            const first = !moved; moved = true;
+            if (!max && first) continue;   // (its first smaller size, where the board's buttons stop counting)
+            if (s.t != null && p.t != null && (max ? s.t < p.t - 1 : s.t > p.t + 1)) grow.push(`${p.w} × ${p.h} → ${s.w} × ${s.h}: time ${p.t} → ${s.t}`);
+          }
+          seen.push(`${name}, ${max ? 'maximized' : 'restored'}: ${new Set(frames.map(f => f.w + '×' + f.h)).size} sizes`);
+          if (grow.length || new Set(frames.map(f => f.w)).size < 3) off.push(`${name}, ${max ? 'maximized' : 'restored'}: ${grow.join('; ') || 'no frames while it moved'}`);
         }
-        const name = `${NAME[m]} with Time in words on ${vw} × ${vh}`;
-        seen.push(`${name}: ${new Set(frames.map(f => f.w + '×' + f.h)).size} sizes`);
-        if (grow.length || new Set(frames.map(f => f.w)).size < 3) off.push(`${name}: ${grow.join('; ') || 'no frames while it grew'}`);
         await ctx.close();
       }
-      ok(!off.length && seen.length === 3, `maximizing, the time and the date don’t change before the window starts to grow, and then the time only grows (${seen.join('; ')})${off.length ? ': ' + off.join(' | ') : ''}`);
+      ok(!off.length && seen.length === 10, `maximizing, the time and the date don’t change before the window starts to grow, and then the time only grows. Restoring, the same backwards (${seen.join('; ')})${off.length ? ': ' + off.join(' | ') : ''}`);
     });
 
     // ---- 22. Already filling the board: Clock in the corner turned On in Settings, then Off, and Full screen on Auto. The

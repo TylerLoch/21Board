@@ -653,9 +653,12 @@
   let refKey = null, lowKey = '[]';
   // Filling the board, the board's own buttons sit in the window's bottom corners (▦, and the clock beside one). They
   // count once the window has the size the board gives it (i, Board21's window info), not while it grows to fill the
-  // board.
+  // board. Restored, they count until the window starts to shrink. (filled: the info while it filled the board.)
+  let filled = null;
   function lowOf(i, W, H) {
-    const cn = i && i.maximized && i.corners && Math.abs(i.width - W) <= 2 && Math.abs(i.height - H) <= 2 ? i.corners : null;
+    const at = j => !!j && Math.abs(j.width - W) <= 2 && Math.abs(j.height - H) <= 2;
+    if (i && i.maximized) filled = i; else if (!at(filled)) filled = null;
+    const j = i && i.maximized ? i : filled, cn = j && j.corners && at(j) ? j.corners : null;
     return cn && cn.height > 0 ? [[0, H - cn.height, cn.left, H], [W - cn.right, H - cn.height, W, H]].filter(c => c[2] > c[0]) : [];
   }
   function measure(W, H) {
@@ -675,7 +678,9 @@
       if (key !== refKey) { refKey = key; longestLine(); }
       const em = el => el.getBoundingClientRect().width / 100 * 1.02;   // (a little room for rounding)
       const widest = c => Math.max(.1, ...$$('.' + c, ruler).map(em));
-      dm = { wd: widest('r-wd'), md: widest('r-md'), yr: widest('r-yr'), ln: widest('r-ln') };
+      // Each line's text, as its own box inside the line: its top and its height, in em. (The line is a little taller.)
+      const ink = c => { const s = $('.' + c, ruler), g = document.createRange(); g.selectNodeContents(s); const a = g.getBoundingClientRect(); return a.height > 0 ? [(a.top - s.getBoundingClientRect().top) / 100, a.height / 100] : null; };
+      dm = { wd: widest('r-wd'), md: widest('r-md'), yr: widest('r-yr'), ln: widest('r-ln'), ink: { wd: ink('r-wd'), md: ink('r-md'), yr: ink('r-yr'), ln: ink('r-ln') } };
     }
     return { corners, low, emW, vb, dm };
   }
@@ -790,20 +795,27 @@
   }
 
   // Filling the board, the board's buttons sit in the bottom corners (m.low). The date stays 8 px clear of them. It
-  // moves up into empty room, or shrinks. Each line counts by its own width, for the longest weekday and month.
-  // The date's lines at `size` with its top at y, each centered in its room: [left, top, right, bottom].
+  // moves up into empty room, or shrinks. Each line counts by its own text, for the longest weekday and month.
+  // The date's text, line by line, at `size` with its top at y, each centered in its room: [left, top, right, bottom].
+  // (Its widths without measure's room for rounding. Drawn text rounds to the pixel, so each line gets half a pixel more
+  // above and below.)
   function lines(o, dm, style, size, y) {
     const Y = o.Y, mg = o.mg, cx = Y[0] + mg[3] + (Y[2] - mg[1] - mg[3]) / 2;
-    const rows = style === 'stack' ? [[dm.wd, 1, 1.08], [dm.md, ST.md, 1.12], [dm.yr, ST.yr, 1.2]] : [[dm.ln, 1, LINE_H]];
-    return rows.map(([ew, k, lh]) => { const w = ew * k * size, h = lh * k * size, r = [cx - w / 2, y, cx + w / 2, y + h]; y += h; return r; });
+    const rows = style === 'stack' ? [['wd', 1, 1.08], ['md', ST.md, 1.12], ['yr', ST.yr, 1.2]] : [['ln', 1, LINE_H]];
+    return rows.map(([c, k, lh]) => {
+      const s = k * size, w = dm[c] / 1.02 * s, [t, h] = (dm.ink && dm.ink[c]) || [0, lh], r = [cx - w / 2, y + t * s - .5, cx + w / 2, y + (t + h) * s + .5];
+      y += lh * s; return r;
+    });
   }
+  // How far settle() moves the date up, with the digital time right over it.
+  const rise = o => o.D && !setOn && under(o.Y, o.D) ? Math.min((config.led ? .025 : .09) * o.t, o.pad[0] * .8) : 0;
   const clearOf = (rs, low) => rs.every(r => low.every(c => r[2] <= c[0] - 8 || r[0] >= c[2] + 8 || r[3] <= c[1] - 8 || r[1] >= c[3] + 8));
   // The date's top, centered in its room.
   const dateTop = o => o.Y[1] + o.mg[0] + (o.Y[3] - o.mg[0] - o.mg[2] - o.date.eh * o.date.size) / 2;
   // The biggest size up to s that stays clear at the top of its room. It only grows with the room, so a bigger room
   // never makes the date fit less.
   function clearMax(o, m, f, s) {
-    const y = o.Y[1] + o.mg[0], ok = v => clearOf(lines(o, m.dm, f.style, v, y), m.low);
+    const y = o.Y[1] + o.mg[0] - rise(o), ok = v => clearOf(lines(o, m.dm, f.style, v, y), m.low);
     if (ok(s)) return s;
     let lo = 0, hi = s;
     for (let i = 0; i < 20; i++) { const mid = (lo + hi) / 2; if (ok(mid)) lo = mid; else hi = mid; }
@@ -813,7 +825,7 @@
   function lift(o, m) {
     const f = o.date, y = dateTop(o), y0 = o.Y[1] + o.mg[0];
     let up = 0;
-    for (const r of lines(o, m.dm, f.style, f.size, y)) for (const c of m.low) if (r[2] > c[0] - 8 && r[0] < c[2] + 8 && r[3] > c[1] - 8) up = Math.max(up, r[3] - c[1] + 8);
+    for (const r of lines(o, m.dm, f.style, f.size, y - rise(o))) for (const c of m.low) if (r[2] > c[0] - 8 && r[0] < c[2] + 8 && r[3] > c[1] - 8) up = Math.max(up, r[3] - c[1] + 8);
     up = Math.min(up, y - y0);
     if (up > 0) o.mg[2] += 2 * up;
   }
@@ -906,33 +918,43 @@
     }
     // A digital time has room above its digits for taller letters. With the date right under it, the two move up by
     // part of that room, so the space above the digits matches the space under the date.
-    if (o.D && !setOn && under(o.Y, o.D)) {
-      const dy = Math.min((config.led ? .025 : .09) * o.t, o.pad[0] * .8);
-      o.D = [o.D[0], o.D[1] - dy, o.D[2], o.D[3]]; o.Y = [o.Y[0], o.Y[1] - dy, o.Y[2], o.Y[3]];
-    }
+    const dy = rise(o);
+    if (dy) { o.D = [o.D[0], o.D[1] - dy, o.D[2], o.D[3]]; o.Y = [o.Y[0], o.Y[1] - dy, o.Y[2], o.Y[3]]; }
     return o;
+  }
+
+  const place = (el, r) => { if (r) Object.assign(el.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px' }); };
+  function drawDate(o) {
+    const f = o.date, stack = f.style === 'stack', px = v => Math.max(8, v).toFixed(2) + 'px';
+    place(dayEl, o.Y);
+    stackEl.hidden = !stack; lineEl.hidden = stack;
+    if (stack) { weekdayEl.style.fontSize = px(f.size); monthdayEl.style.fontSize = px(f.size * ST.md); yearEl.style.fontSize = px(f.size * ST.yr); }
+    else lineEl.style.fontSize = px(f.size);
+    dayEl.style.padding = o.mg.map(v => v.toFixed(1) + 'px').join(' ');
+  }
+  // The date's text as drawn, line by line: its top and bottom as drawn, and its width for the longest weekday and month.
+  function drawn(o, m) {
+    const ls = lines(o, m.dm, o.date.style, o.date.size, dateTop(o)), g = document.createRange();
+    return (o.date.style === 'stack' ? [weekdayEl, monthdayEl, yearEl] : [lineEl]).map((el, i) => {
+      g.selectNodeContents(el); const b = g.getBoundingClientRect();
+      return b.height > 0 ? [ls[i][0], b.top, ls[i][2], b.bottom] : ls[i];
+    });
   }
 
   function layout() {
     const W = innerWidth, H = innerHeight;
     if (!W || !H) return;
-    // Filling the board, a date already clear of the board's buttons changes nothing. Otherwise the layout keeps it clear.
+    // Filling the board, a date already 8 px clear of the board's buttons, as drawn, changes nothing. Otherwise the
+    // layout keeps it clear.
     const m = measure(W, H);
     lowKey = JSON.stringify(m.low);
     let o = settle(choose(W, H, m.low.length ? Object.assign({}, m, { low: [] }) : m));
-    if (m.low.length && o.Y && !clearOf(lines(o, m.dm, o.date.style, o.date.size, dateTop(o)), m.low)) o = settle(choose(W, H, m));
+    if (m.low.length && o.Y) { drawDate(o); if (!clearOf(drawn(o, m), m.low)) o = settle(choose(W, H, m)); }
     root.classList.toggle('wide', showA && showD && W > H);   // (analog and digital side by side)
-    const place = (el, r) => { if (r) Object.assign(el.style, { left: r[0] + 'px', top: r[1] + 'px', width: r[2] + 'px', height: r[3] + 'px' }); };
-    place(ana, o.A); place(dig, o.D); place(dayEl, o.Y);
+    place(ana, o.A); place(dig, o.D);
     if (o.A) { const s = o.d, A = o.A; Object.assign(face.svg.style, { width: s + 'px', height: s + 'px', left: (A[2] - s) / 2 + 'px', top: (A[3] - s) / 2 + 'px' }); }
     if (o.D) ['--pt', '--pr', '--pb', '--pl'].forEach((k, i) => readout.style.setProperty(k, o.pad[i].toFixed(1) + 'px'));
-    if (o.Y) {
-      const f = o.date, stack = f.style === 'stack', px = v => Math.max(8, v).toFixed(2) + 'px';
-      stackEl.hidden = !stack; lineEl.hidden = stack;
-      if (stack) { weekdayEl.style.fontSize = px(f.size); monthdayEl.style.fontSize = px(f.size * ST.md); yearEl.style.fontSize = px(f.size * ST.yr); }
-      else lineEl.style.fontSize = px(f.size);
-      dayEl.style.padding = o.mg.map(v => v.toFixed(1) + 'px').join(' ');
-    }
+    if (o.Y) drawDate(o);
     wordsEl.hidden = !o.L;
     // With the date, Time in words keeps to its line, padding and all, clear of the date. (With the date beside, it's the
     // last line in its column: it sits a little higher, clear of the edge.) Without the date, it's as before.
