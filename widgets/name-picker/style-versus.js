@@ -70,8 +70,8 @@ NamePicker.register('versus', {
     // the bottom on the right. A tall window puts them there when that makes them larger. A window is tall when it's at
     // least as tall as wide, title bar and all, as the teacher sees it. A wide window keeps them beside the box unless
     // above and below makes them twice as large. Small names need less. At 15 px beside the box they need 1.5 times, and
-    // at 10 px any gain at all. These px are the window's own, so a board keeps its layout at every Size and on every
-    // screen.
+    // at 10 px any gain at all. These px are the window's own, so a board keeps its layout on every screen. A change of
+    // Size can still switch it. Size gives the page more or fewer px, and the title bar keeps its 40 px.
     const widths = new Map(), pen = document.createElement('canvas').getContext('2d');
     let fam = '';
     // A name's width at 1 px in the stage's letters, and how far its letters reach above or below its middle.

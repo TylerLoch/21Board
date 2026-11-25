@@ -6385,8 +6385,9 @@ const SUITES = [
     for (const [val, label] of [['standard', 'the device’s letters'], ['early', 'Early readers'], ['legible', 'Easier to read']]) {
       if (val !== 'standard') await letters(val);
       // (In the device's letters, square and narrow windows too, down to the smallest, 260 × 200, and tall windows, where
-      // the names go above and below the emblem. Long names go above and below at 400 × 400 too, and in some looks at
-      // 420 × 420, 540 × 460, and 900 × 700. Every Text style takes two tall windows: Early readers' letters reach deepest.)
+      // the names go above and below the emblem. Long names go above and below at 400 × 400 and 420 × 420 too, and in
+      // some looks at 540 × 460 and 900 × 700. Every Text style takes two tall windows: Early readers' letters reach
+      // deepest.)
       for (const size of [[360, 270], [540, 400], null, [360, 480], [300, 400]].concat(val === 'standard' ? [[260, 200], [400, 400], [420, 420], [400, 460], [400, 500], [300, 520], [300, 640], [540, 460], [900, 700]] : [])) {
         const where = size ? size.join(' × ') : 'filling the board';
         for (let n = 1; n <= 10; n++) {
