@@ -18,7 +18,7 @@
     /* LCD look, in light theme: no glow. Lit segments cast a faint shadow on the panel. */
     --panel: color-mix(in srgb, var(--b21-accent) 8%, #e7eae3);
     --seg: color-mix(in srgb, var(--b21-accent) 24%, #161a1f);
-    --seg-off: .075;
+    --seg-off: .045;
     --seg-shadow: rgba(20, 26, 20, .17);
   }
   [data-b21-theme="dark"] body {
@@ -28,7 +28,7 @@
     /* LED look, in dark theme: a soft glow in the accent */
     --panel: color-mix(in srgb, var(--b21-accent) 5%, #0e0f10);
     --seg: color-mix(in srgb, var(--b21-accent) 88%, #ffffff);
-    --seg-off: .07;
+    --seg-off: .04;
     --glow-a: color-mix(in srgb, var(--b21-accent) 55%, transparent);
     --glow-b: color-mix(in srgb, var(--b21-accent) 20%, transparent);
   }
