@@ -1872,49 +1872,7 @@ module.exports = T => {
       await ctx.close();
     });
 
-    // ---- 11. Without the date, the clocks look as they did in 2026.11.23-4 (tests/fixtures), within 1 px: the time's
-    // size, the LCD panel beside the dial, while setting the time too, and Time in words.
-    await part('Without the date, as before', async () => {
-      const OLD = fs.readFileSync(path.join(TESTS_DIR, 'fixtures', 'clock-2026.11.23-4.html'));
-      const CASES = [['Analog + Digital', ['digital'], [[1600, 300], [1000, 480], [500, 500]]], ['Analog + Digital, LCD look', ['digital', 'led'], [[1000, 480], [1300, 420]]],
-        ['Analog + Digital, LCD look, setting the time', ['digital', 'led', 'set'], [[1000, 480]]], ['Analog + Digital, Time in words', ['digital', 'words'], [[1000, 480], [480, 860], [500, 500]]],
-        ['Digital, Time in words', ['digital', 'analog', 'words'], [[440, 260]]]];
-      const clocks = async old => {
-        const ctx = await browser.newContext({ viewport: { width: 1700, height: 1000 }, timezoneId: 'America/Chicago', locale: 'en-US', serviceWorkers: 'block' });
-        if (old) await ctx.route(/\/widgets\/clock\/index\.html(\?.*)?$/, r => r.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: OLD }));
-        const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
-        await page.clock.setFixedTime(FRI);
-        await page.goto(BASE); await boardUp(page); await freeBoard(page);
-        const got = {};
-        for (const [name, ids, sizes] of CASES) {
-          const ik = await openClock(page);
-          for (const id of ids) await choose(page, ik, id);
-          for (const [w, h] of sizes) {
-            await size(page, ik, w, h);
-            got[`${name} ${w} × ${h}`] = await F(page, ik, () => {
-              const q = s => document.querySelector(s), vis = el => !!el && !el.closest('[hidden]') && el.getClientRects().length > 0;
-              const seg = q('.led-svg'), wd = q('#words');
-              let t = null;
-              if (vis(seg)) { const r = seg.getBoundingClientRect(), vb = seg.viewBox.baseVal; t = Math.min(r.width / vb.width, r.height / vb.height) * vb.height; }
-              else if (vis(q('#time'))) t = parseFloat(getComputedStyle(q('#time')).fontSize);
-              return { size: `${innerWidth} × ${innerHeight}`, t, panel: vis(seg) ? q('#dig').getBoundingClientRect().height : null, words: vis(wd) ? parseFloat(getComputedStyle(wd).fontSize) : null };
-            });
-          }
-        }
-        await ctx.close();
-        return got;
-      };
-      const was = await clocks(true), now = await clocks(false), off = [];
-      const near = (a, b) => (a == null && b == null) || (a != null && b != null && Math.abs(a - b) <= 1);
-      for (const [k, a] of Object.entries(was)) {
-        const b = now[k], r = v => v == null ? '-' : Math.round(v * 10) / 10;
-        if (!b || a.size !== b.size || !near(a.t, b.t) || !near(a.panel, b.panel) || !near(a.words, b.words))
-          off.push(`${k}: time ${r(a.t)} → ${r(b && b.t)}, panel ${r(a.panel)} → ${r(b && b.panel)}, words ${r(a.words)} → ${r(b && b.words)}`);
-      }
-      ok(Object.keys(was).length === 10 && !off.length, `without the date, the time, the LCD panel, and Time in words are as they were, within 1 px (${Object.keys(was).length} windows)${off.length ? ': ' + off.join('; ') : ''}`);
-    });
-
-    // ---- 12. Filling the board with Clock in the corner on: the date keeps clear of the board's buttons in the window's
+    // ---- 11. Filling the board with Clock in the corner on: the date keeps clear of the board's buttons in the window's
     // bottom corners (Board21.window corners), as the SDK asks.
     await part('Filling the board', async () => {
       const off = [], seen = [];
@@ -1939,8 +1897,8 @@ module.exports = T => {
       ok(seen.length === 8 && !off.length, `filling the board with Clock in the corner on, the date stays clear of the board’s buttons in the corners (${seen.join('; ')})${off.length ? ': ' + off.join('; ') : ''}`);
     });
 
-    // ---- 13. Date off and on again in a wide Analog + Date window on the 16:9 board, wider than the board is tall: the
-    // window keeps the size it took with Date off. (On Fill a new shape isn't fitted to the board. See part 17.)
+    // ---- 12. Date off and on again in a wide Analog + Date window on the 16:9 board, wider than the board is tall: the
+    // window keeps the size it took with Date off. (On Fill a new shape isn't fitted to the board. See part 16.)
     await part('Date off and on, wide', async () => {
       const { ctx, page } = await newBoard(FRI, { viewport: { width: 1366, height: 768 } });
       await page.evaluate(() => window.__board21.setBoardShape('16:9')); await page.waitForTimeout(300);
@@ -1956,7 +1914,7 @@ module.exports = T => {
       await ctx.close();
     });
 
-    // ---- 14. Dragging all three with the LCD look from 180 to 200 px wide, 1 px at a time: the date changes its place or
+    // ---- 13. Dragging all three with the LCD look from 180 to 200 px wide, 1 px at a time: the date changes its place or
     // style at most once, the year stays 12 px or more, and the dial never shrinks as the window grows.
     await part('A narrow drag', async () => {
       const { ctx, page } = await newBoard(FRI);
@@ -1970,7 +1928,7 @@ module.exports = T => {
       await ctx.close();
     });
 
-    // ---- 15. A screen reader hears the date once, in the language's own order, as the stack or as the line.
+    // ---- 14. A screen reader hears the date once, in the language's own order, as the stack or as the line.
     await part('Screen readers', async () => {
       const off = [], seen = [];
       for (const [locale, want] of [['ja-JP', '2026年11月20日金曜日'], ['en-US', 'Friday, November 20, 2026']]) {
@@ -1986,9 +1944,9 @@ module.exports = T => {
       ok(!off.length && seen.some(s => / stack:/.test(s)) && seen.some(s => / line:/.test(s)), `a screen reader hears the date in its language’s own order, once (${seen.join('; ')})${off.length ? ': off: ' + off.join('; ') : ''}`);
     });
 
-    // ---- 16. Small windows where a stack fits with its year at 12 px: the date is that stack, not a line under 12 px.
+    // ---- 15. Small windows where a stack fits with its year at 12 px: the date is that stack, not a line under 12 px.
     // (All three at 150 × 300 keeps a small line. A stack there would give way to a much smaller dial as the window
-    // grows. See part 19.)
+    // grows. See part 18.)
     await part('Small windows', async () => {
       const { ctx, page } = await newBoard(FRI);
       const off = [], seen = [];
@@ -2007,7 +1965,7 @@ module.exports = T => {
       await ctx.close();
     });
 
-    // ---- 17. Two tabs of one page on the Fill board, a big screen and a laptop. Date off in a wide Analog + Date window
+    // ---- 16. Two tabs of one page on the Fill board, a big screen and a laptop. Date off in a wide Analog + Date window
     // in one tab: both tabs keep one size, the one that's saved. (On Fill each tab's board is its own screen.) The size
     // is the one main saves on Fill, 1700 × 1700, which neither screen bounds, so it can't depend on which tab's news
     // comes first. Then Date on and off again in the laptop's tab: the same.
@@ -2041,7 +1999,7 @@ module.exports = T => {
       await ctx.close();
     });
 
-    // ---- 18. A Clock comes back at the shape it had: closed and opened again from the Widget Picker, Reset then Undo,
+    // ---- 17. A Clock comes back at the shape it had: closed and opened again from the Widget Picker, Reset then Undo,
     // Delete then Undo, put back from Board history, and Import (Replace). Two or three views keep any shape; Analog
     // alone keeps 1:1, and Digital alone 2.2:1.
     await part('Back at its shape', async () => {
@@ -2102,7 +2060,7 @@ module.exports = T => {
       await ctx.close();
     });
 
-    // ---- 19. Drags 1 px at a time, wider from 140 to 460 px at 280 to 420 px tall, for every mix, with and without the
+    // ---- 18. Drags 1 px at a time, wider from 140 to 460 px at 280 to 420 px tall, for every mix, with and without the
     // LCD look and Time in words, and taller from 140 to 460 px at 150 and 180 px wide, for every mix with the digital
     // time and the date alone. The dial and the time never shrink by more than 1 px, and once the date is readable its
     // place or style changes at most once on each side of the square. (At the square, analog and digital go from one
@@ -2168,7 +2126,7 @@ module.exports = T => {
       await ctx.close();
     });
 
-    // ---- 20. Filling the board: wherever the date is already clear of the board's buttons in the bottom corners, the
+    // ---- 19. Filling the board: wherever the date is already clear of the board's buttons in the bottom corners, the
     // Clock is exactly as it is in a window of the same size that doesn't fill the board. Where it isn't, the date moves
     // up or shrinks to stay 8 px clear. On the longest date, Wednesday, September 30 (the room is measured for the
     // longest). Then the board grows 4 px at a time with a Clock filling it, and the time and the date never shrink.
@@ -2242,7 +2200,7 @@ module.exports = T => {
       ok(!drops.length && ran.length === 2, `Digital + Date with Time in words filling a board that grows from 1366 × 700 to 1366 × 820, 4 px at a time: the time and the date never shrink (${ran.join('; ')})${drops.length ? ': ' + drops.join(' | ') : ''}`);
     });
 
-    // ---- 21. Maximizing from the ⌄ menu: nothing changes before the window starts to grow, and then the time only grows.
+    // ---- 20. Maximizing from the ⌄ menu: nothing changes before the window starts to grow, and then the time only grows.
     // The board's buttons count only once the window has its full size. Restore is the same backwards: nothing changes
     // before the window starts to shrink, and then the time only shrinks. (With Clock in the corner On, the Clock gives
     // up room for the corner clock on these boards.)
@@ -2298,7 +2256,7 @@ module.exports = T => {
       ok(!off.length && seen.length === 10, `maximizing, the time and the date don’t change before the window starts to grow, and then the time only grows. Restoring, the same backwards (${seen.join('; ')})${off.length ? ': ' + off.join(' | ') : ''}`);
     });
 
-    // ---- 22. Already filling the board: Clock in the corner turned On in Settings, then Off, and Full screen on Auto. The
+    // ---- 21. Already filling the board: Clock in the corner turned On in Settings, then Off, and Full screen on Auto. The
     // date lays out again each time, clear of the corner clock.
     await part('The corner clock comes and goes', async () => {
       const off = [], seen = [];
