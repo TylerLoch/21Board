@@ -1086,6 +1086,10 @@ module.exports = T => {
       return saved(p, ik);
     };
     const quiet = (p = page, ik) => inFrame(() => document.getAnimations().filter(a => a.playState === 'running').length, p, ik);
+    // What still moves on the stage: a name on its way to its spot, and the animations running.
+    const moving = (p = page, ik) => inFrame(() => ({ fly: !!document.querySelector('.bracket-fly'), running: document.getAnimations().filter(a => a.playState === 'running').length }), p, ik);
+    // Waits up to 3 s until nothing moves. A tap's slide and its pop take about 0.6 s, longer on a slow machine.
+    const slid = (p = page, ik) => eventually(async () => { const m = await moving(p, ik); return !m.fly && !m.running; }, 3000);
     // How the bracket fits: every spot inside the stage and apart from the others, every name inside its spot and one size
     // (the champion's own size), each line starting at the outer edge of its spot and ending at the inner edge of the spot
     // it goes to, in the middle of each, and the trophy clear of the spots.
@@ -1209,14 +1213,14 @@ module.exports = T => {
     let s0 = readyOf(b)[0], who = spotOf(b, s0).name, foe = spotOf(b, s0 ^ 1).name;
     await tap(s0);
     const sliding = await inFrame(() => ({ fly: !!document.querySelector('.bracket-fly'), running: document.getAnimations().length }));
-    await page.waitForTimeout(500);
+    const stopped = await slid();
     b = await board();
     st = await saved();
     ok(JSON.stringify(st.bracket.picks) === JSON.stringify([s0]) && JSON.stringify(st.bracket.seeds) === JSON.stringify(before.seeds) && st.bracketId === drawn.bracketId,
       `a tap on ${who} saves it: picks [${st.bracket.picks}]`);
     ok(spotOf(b, s0 >> 1).name === who && spotOf(b, s0 ^ 1).out && !spotOf(b, s0).out && b.won.join() === String(s0) && !spotOf(b, s0).ready && !spotOf(b, s0 ^ 1).ready,
       `${who} moves on to spot ${s0 >> 1} with an accent line, and ${foe} dims`);
-    ok(sliding.fly && sliding.running > 0 && !(await quiet()) && await inFrame(() => !document.querySelector('.bracket-fly')), `it slides there, and nothing is left running (${JSON.stringify(sliding)})`);
+    ok(sliding.fly && sliding.running > 0 && stopped, `it slides there, and nothing is left running (${JSON.stringify(sliding)}, then ${JSON.stringify(await moving())})`);
     ok(await eventually(async () => await said() === `${who} moves on.`) && await text('#status') === '22 matches left' && await np().locator('#undo').isVisible() && await text('#undo') === 'Undo',
       `screen readers hear “${await said()}”; “22 matches left”, and Undo beside the button`);
     const foot = await inFrame(() => {
@@ -1247,6 +1251,8 @@ module.exports = T => {
     b = await board();
     const fin = readyOf(b);
     ok(fin.join() === '2,3' && spotOf(b, 1).empty && b.trophy === false, `the final: spots 2 and 3 ready, the champion’s spot empty, the trophy grey (${fin})`);
+    // play() goes on once a tap is saved, while the name may still be sliding. Its pop lands before the sounds are counted.
+    await slid();
     await inFrame(() => { window.__sounds.length = 0; });
     const champ = spotOf(b, 2).name;
     await tap(2);
@@ -1254,7 +1260,7 @@ module.exports = T => {
       return { bg: s.backgroundColor, ink: s.color, dashed: s.borderTopStyle, trophy: document.querySelector('.bracket-trophy').classList.contains('bracket-gold'), fly: !!document.querySelector('.bracket-fly') }; });
     ok(landing.fly && landing.bg === 'rgba(0, 0, 0, 0)' && landing.ink === 'rgba(0, 0, 0, 0)' && landing.dashed === 'dashed' && !landing.trophy,
       `while the last name slides there, the champion’s spot stays dashed and empty, and the trophy grey (${JSON.stringify(landing)})`);
-    await page.waitForTimeout(500);
+    await slid();
     b = await board();
     const gold = await inFrame(() => {
       const tok = n => { const t = document.createElement('i'); document.body.appendChild(t); t.style.color = `var(${n})`; const c = getComputedStyle(t).color; t.remove(); return c; };
@@ -1832,9 +1838,8 @@ module.exports = T => {
     // show added is left. Quick: about 1.5 s.
     for (const [ms, how] of [[700, 'a tap'], [2150, 'a tap'], [2150, 'Show now']]) {
       await idle();
-      const t = Date.now();
       st = await pickNow();
-      await page.waitForTimeout(ms - (Date.now() - t));   // (counted from the tap that picked: a tap before 600 ms is a double tap)
+      await page.waitForTimeout(ms);   // (counted once the pick is saved and its show has begun. A tap within 600 ms is a double tap.)
       await np().locator(how === 'a tap' ? '#stage' : '#go').click(); await page.waitForTimeout(150);
       s = await vs();
       ok(!(await showing()) && (await saved()).pickId === st.pickId && s.names.join() === st.picked.join() && s.look === st.versusLook && clean(s) && await text('#go') === 'Pick 2',
