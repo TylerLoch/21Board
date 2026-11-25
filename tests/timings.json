@@ -76,7 +76,7 @@
   "Updating: the prompt, Update in every tab, the version in Settings": 24,
   "Board Sync merge: wid, pos, the copy label, Delete this copy": 23,
   "Image: pasting and dropping pictures onto the board (Ctrl+V, after tapping a widget, Notes keeps its paste, an empty Picture window, text, the Paste button, locked windows, drops on the board and on windows, kiosk, offline)": 23,
-  "Video Player: nothing plays behind the link box (Remove video here and in another tab, Change video and Cancel, Reset, another page), reload, saved data checked, offline": 23,
+  "Video Player: nothing plays behind the link box (Remove video here and in another tab, Cancel, Reset, another page), reload, saved data checked, offline": 23,
   "Windows, data and multi-tab sync": 23,
   "Board Sync: Google Drive misbehaving (scenarios 32–38: offline for days, clocks, half files, old revisions, conflict copies, this device’s own file, a copied profile)": 22,
   "Board Sync: pictures in windows and Board history copies (a copy names its pictures in Photos, tidying keeps a picture any device file or copy names, in “Board history (1)” too, waits while the copies can’t be read, deletes one nobody names after a week and puts back one deleted by hand, going back to a copy or importing it puts its pictures back)": 22,
