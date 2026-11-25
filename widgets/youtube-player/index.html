@@ -80,11 +80,11 @@
   //   showing among them: [{ source, videoId, hash or resourceKey, videoUrl, start, title }], each as above, and title:
   //   the video's title from YouTube or Vimeo (cleaned, at most 200 characters; left out until it is known, and saved
   //   with the window's next change: see Titles). A video is listed once (the same source, videoId, hash or
-  //   resourceKey, and start). Remove video keeps the history; a Reset clears it. Content from before the History (no
+  //   resourceKey, and start). Change video keeps the history; a Reset clears it. Content from before the History (no
   //   history) is read as a history of just its video (or, arriving while the window is open, keeps the history it has,
   //   its video moved to the top).
   //   No video is saved as content of its own, not cleared: in Board Sync, content cleared (null) gives way to a video
-  //   picked on another device at the same time, so a later Remove video would lose. (A Reset, or a window from a
+  //   picked on another device at the same time, so a later Change video would lose. (A Reset, or a window from a
   //   blank template, has null: no video either.)
   // No config.
   //
@@ -103,7 +103,7 @@
   // asks that site's oEmbed for its title, with no cookies and no Referer (both answer the board's site: they allow it
   // by CORS). Drive has no title for a page that isn't signed in to it, so a Drive video is never asked about. The
   // video never waits for it. A title is shown as soon as it comes, and saved with the window's next change (another
-  // video, Remove video), so other tabs and devices, a reload and an export then have it without asking. It is never
+  // video, Change video), so other tabs and devices, a reload and an export then have it without asking. It is never
   // saved by itself: Board Sync would count that as a newer change, and it would win over a video picked on another
   // device in the meantime. So each tab and device asks for the titles its History is missing: when the window opens
   // online, when content without them arrives, and when the device comes back online; once per video per page load,
@@ -260,12 +260,13 @@
   function dropFrame() { if (frame) { frame.remove(); frame = null; } }
 
   // Window menu: the player's controls (nothing may be drawn over the player itself), then the History, the video
-  // showing checked. (The link box: just the History.) Remove video leaves the link box, ready for another video.
+  // showing checked. (The link box: just the History.) Change video removes the video and shows the link box, ready
+  // for another.
   let menuNow = null;
   function setMenu() {
     const items = !video || changing ? [] : [
       ...(kiosk ? [] : [{ id: 'open', label: SOURCES[video.source].open }, { separator: true }]),
-      { id: 'remove', label: 'Remove video' }
+      { id: 'remove', label: 'Change video' }
     ];
     if (history.length) {
       if (items.length) items.push({ separator: true });

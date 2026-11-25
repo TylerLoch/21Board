@@ -72,8 +72,8 @@
       drawn = sig;
       document.querySelectorAll('.lamp').forEach(b => { b.classList.toggle('on', b.dataset.c === c); b.setAttribute('aria-pressed', String(b.dataset.c === c)); });
       Board21.window.setTitle(c ? LABELS[c] : '');
+      // (The colors are tapped on the light itself.)
       Board21.menu.set([
-        ...Object.keys(LABELS).map(k => ({ id: k, label: LABELS[k], checked: c === k })),
         { id: 'off', label: 'All off', disabled: !c },
         { separator: true },
         { id: 'follow', label: 'Follow timers', checked: following() }
@@ -116,7 +116,7 @@
       tapped = null;
       Board21.saveConfig(config);
       render();
-    } else if (id === 'off' || Object.prototype.hasOwnProperty.call(LABELS, id)) set(id === 'off' ? null : id);
+    } else if (id === 'off') set(null);
   });
   // (Saved content and config can come from an imported file: a lamp is on only if it names one of the three.)
   const readState = d => ({ active: d && Object.prototype.hasOwnProperty.call(LABELS, d.active) ? d.active : null });
