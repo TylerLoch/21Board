@@ -331,7 +331,7 @@ SCENES['w-traffic-light'] = async () => {
   await ctx.close();
 };
 
-// The Clock card: Set the time with the Teaching face and the digital time beside it, set to 2:50 p.m.
+// The Clock card: Choose the time with the Teaching face and the digital time beside it, set to 2:50 p.m.
 SCENES['w-clock'] = async () => {
   const { ctx, p } = await newBoard();
   const ik = await addWin(p, 'clock');
@@ -339,8 +339,8 @@ SCENES['w-clock'] = async () => {
   await wait(p, 800);
   await choose(p, ik, 'Teaching', { exact: true });
   await choose(p, ik, 'Digital', { exact: true });
-  await choose(p, ik, 'Set the time', { exact: true });
-  await choose(p, ik, '5-minute steps', { exact: true });
+  await choose(p, ik, 'Choose the time', { exact: true });
+  await choose(p, ik, 'Snap to 5-minute steps', { exact: true });
   const tap = async (k, n) => { for (let i = 0; i < n; i++) { await frame(p, ik).locator(`#dig .arrow[data-k="${k}"]`).click(); await wait(p, 500); } };
   await tap('hu', 6); await tap('mu', 6);   // 8:20 a.m. → 2:50 p.m.
   await deselect(p);
