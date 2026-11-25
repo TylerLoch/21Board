@@ -457,8 +457,10 @@ module.exports = T => {
     await linkFolder(A.p, 'my laptop');
     // Before any copy of this board is there, Board history says so under “In your Google Drive folder”.
     await A.p.click('.picker-btn.left'); await A.p.click('[data-ctl="settings"]'); await A.p.waitForTimeout(300);
-    await A.p.click('#settings [data-act="hist-open"]'); await A.p.waitForTimeout(1500);
-    const noCopies = await A.p.locator('#history .hint', { hasText: 'No copies' }).allTextContents();
+    await A.p.click('#settings [data-act="hist-open"]');
+    // (Listing the folder can take a while on a busy machine: wait up to 8 s for the note.)
+    let noCopies = [];
+    await eventually(async () => (noCopies = await A.p.locator('#history .hint', { hasText: 'No copies' }).allTextContents()).length > 0);
     ok(noCopies.join(' | ') === 'No copies of this board there yet. 21Board adds about one an hour.', `with no copies of this board in the folder yet, Board history says so (${noCopies.join(' | ')})`);
     await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(200); await A.p.keyboard.press('Escape'); await A.p.waitForTimeout(200);
     await L(A.p, () => window.__board21.history.save('Monday')); await A.p.waitForTimeout(1500);
