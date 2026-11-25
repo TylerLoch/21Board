@@ -451,7 +451,7 @@ module.exports = T => {
   }],
   // ---- 2026.11.21-3: the Calculator's top row lines up (AC 3 columns, ⌫ 6, ± 3), and In words says the parentheses drawn
   // around a negative base. (Its part on Test practice's strip went with Test practice's menu item, in 2026.11.23-1.)
-  ['Calculator’s top row and In words for (−3)² (2026.11.21-3)', async (browser) => {
+  ['Calculator’s top row and In words for (−3)²', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -573,7 +573,7 @@ module.exports = T => {
   // ---- 2026.11.23-1: the Calculator's menu. Test practice leaves it (its code stays, behind TEST_PRACTICE), 50 + 10% = 55
   // becomes Desmos %, shown under Advanced keys while they're on, and Answers as fractions becomes a group of three:
   // As decimals, As fractions, and With remainders (17 ÷ 5 = 3 R 2).
-  ['Calculator: Answers group, Desmos %, and no Test practice (2026.11.23-1)', async (browser) => {
+  ['Calculator: Answers group, Desmos %, and no Test practice', async (browser) => {
     const errors = [];
     // Each part runs on its own: one that stops early is reported, and the next still runs.
     const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
@@ -829,7 +829,7 @@ module.exports = T => {
   // ---- 2026.11.23-4: the R in 3 R 2 is grey at full strength (look C in the mockups): the board's muted color, the
   // digits' size and weight, and 4.5:1 or more wherever it is drawn. Going on from an answer shown with a remainder puts
   // 17/5 in the ans box, drawn as As fractions draws it, so a grade 4 class doesn't see a decimal it never saw.
-  ['Calculator: a grey R, and 17/5 after a remainder (2026.11.23-4)', async (browser) => {
+  ['Calculator: a grey R, and 17/5 after a remainder', async (browser) => {
     const errors = [];
     const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
     const NAME = { '+': 'add', '−': 'subtract', '×': 'multiply', '÷': 'divide', '=': 'equals', '.': 'point', '(': 'open', ')': 'close', '%': 'percent' };
@@ -1057,7 +1057,7 @@ module.exports = T => {
 
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
-  ['Calculator: stacks in a tall window (2026.11.24-2)', async (browser) => {
+  ['Calculator: tall windows stack', async (browser) => {
     const errors = [];
     const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
     const r1 = n => Math.round(n * 10) / 10, kdim = L => `${r1(L.kw)} × ${r1(L.kh)}`;
@@ -1371,32 +1371,12 @@ module.exports = T => {
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Calculator: History across the top in a tall window (2026.11.24-5)', async (browser) => {
+  ['Calculator: History across the top in a tall window', async (browser) => {
     const errors = [];
     const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
     const r1 = n => Math.round(n * 10) / 10, kdim = L => `${r1(L.kw)} × ${r1(L.kh)}`, kmin = L => Math.min(L.kw, L.kh);
     const clampN = (lo, v, hi) => Math.max(lo, Math.min(v, hi));
     const padOf = (w, h) => clampN(8, Math.min(w, h) * .02, 28);
-    // Layout numbers recorded from the old code (b540c11), to the hundredth of a px: the window, History, the keys, the 7
-    // key, and the canvas. RECORD=1 prints them instead of checking them.
-    const RECORD = !!process.env.RECORD;
-    const OLD = {
-      'new 900 × 600, History on': '1268×600 in 1268×600 | hist 896.00,12.00,360.00,576.00 | keys 537.73,12.00,350.47,576.00 | 7 81.77×89.50 | canvas 12.00,12.00,517.94,576.00',
-      '960 × 600 with History': '960×600 in 960×600 | hist 600.00,12.00,348.00,576.00 | keys 360.13,12.00,232.08,576.00 | 7 52.17×89.50 | canvas 12.00,12.00,340.33,576.00',
-      '1000 × 640, History on': '1392×640 in 1392×640 | hist 995.20,12.80,384.00,614.41 | keys 597.27,12.80,389.63,614.41 | 7 91.17×95.48 | canvas 12.80,12.80,576.16,614.41',
-      'Fill, 16:9 board at 1366 × 768': '2401×1310 | hist 1894.81,26.19,480.00,1165.81 | keys 1137.78,26.19,741.03,1165.81 | 7 173.25×180.97 | canvas 26.19,26.19,1095.59,1165.81',
-      'Fill, screen-size board at 1366 × 768': '1366×728 | hist 914.45,14.55,437.00,632.00 | keys 548.84,14.55,356.16,632.00 | 7 81.94×97.45 | canvas 14.55,14.55,524.84,632.00',
-      'Fill, screen-size board at 1920 × 1080': '1920×1040 | hist 1419.20,20.80,480.00,933.69 | keys 851.75,20.80,553.94,933.69 | 7 128.34×144.34 | canvas 20.80,20.80,817.44,933.69',
-      'Fill, 16:9 board at 1920 × 1080': '2400×1310 | hist 1893.81,26.19,480.00,1195.81 | keys 1137.19,26.19,740.63,1195.81 | 7 173.16×185.97 | canvas 26.19,26.19,1095.00,1195.81'
-    };
-    // History-off layouts across section 5's sizes, one short hash a size: Basic and Advanced keys, Canvas on and off.
-    const OLD_OFF = {
-      'Basic, Canvas on': '1100x900:013c48 1050x900:716a31 1000x900:76d85c 950x900:83c7d7 900x900:b74772 850x900:d949b7 800x900:31350f 750x900:c90011 700x900:199fca 650x900:b4fe77 600x900:3f4a81 550x900:18e768 500x900:4e57b1 450x900:182e78 400x900:7edeb2 520x500:9f7739 520x550:053117 520x600:e702d5 520x650:7f94e9 520x700:e5bfff 520x750:5c9ba6 520x800:ac4607 520x850:809dfb 520x900:6fb063 520x950:5c8e80 520x1000:08f950 520x1050:aac5e7 520x1100:9360ab 640x500:eb0217 640x550:328793 640x600:c8dbc7 640x650:9305e1 640x700:65b1c8 640x750:da03da 640x800:88c58d 640x850:3bf417 640x900:f69784 640x950:38dfd4 640x1000:3f9d8d 640x1050:202b93 640x1100:c6803d 700x500:246ca8 700x550:c619ec 700x600:6b02c6 700x650:0f66b7 700x700:7800a5 700x750:44340f 700x800:33bc48 700x850:5aac3e 700x900:199fca 700x950:0c7e7f 700x1000:afae5a 700x1050:502922 700x1100:55a8fa 640x1016:25aa72',
-      'Basic, Canvas off': '1100x900:49ea56 1050x900:94d493 1000x900:ef1c4c 950x900:461f00 900x900:bdd210 850x900:1320fb 800x900:2587f2 750x900:238ec8 700x900:97ea21 650x900:5cab5f 600x900:3f4a81 550x900:18e768 500x900:4e57b1 450x900:182e78 400x900:7edeb2 520x500:4a8326 520x550:074627 520x600:574cce 520x650:620fe5 520x700:58120c 520x750:9c271b 520x800:ac4607 520x850:809dfb 520x900:6fb063 520x950:5c8e80 520x1000:08f950 520x1050:aac5e7 520x1100:9360ab 640x500:838b58 640x550:75b678 640x600:39c85d 640x650:c263c6 640x700:871a26 640x750:b81eda 640x800:13bd55 640x850:eacbda 640x900:538f15 640x950:38dfd4 640x1000:3f9d8d 640x1050:202b93 640x1100:c6803d 700x500:d9eac4 700x550:6afae7 700x600:e27aaf 700x650:d6571b 700x700:35c806 700x750:a016dc 700x800:9fe0bb 700x850:7f2975 700x900:97ea21 700x950:7820ab 700x1000:6073d5 700x1050:502922 700x1100:55a8fa 640x1016:25aa72',
-      'Advanced, Canvas on': '1100x900:47e681 1050x900:842fcd 1000x900:dc6b8b 950x900:c78869 900x900:8a0e95 850x900:3e12c6 800x900:712ff3 750x900:a81af6 700x900:33684f 650x900:23af2e 600x900:cba71e 550x900:431cea 500x900:39585b 450x900:966c5f 400x900:267164 520x500:3122de 520x550:44ae43 520x600:512ff0 520x650:a7815f 520x700:460f1a 520x750:d824d8 520x800:bc2504 520x850:d75d7b 520x900:5473ff 520x950:68ab96 520x1000:228aa9 520x1050:95c163 520x1100:defdb5 640x500:fd3a4b 640x550:0b936a 640x600:8488ae 640x650:4dbac4 640x700:70de10 640x750:1cfb4e 640x800:110f26 640x850:d0ed47 640x900:e352be 640x950:257338 640x1000:ed343b 640x1050:0ce152 640x1100:1ff8c4 700x500:183380 700x550:bf8fcc 700x600:93663f 700x650:92a80b 700x700:00b445 700x750:97edbc 700x800:7bc906 700x850:39d933 700x900:33684f 700x950:40e963 700x1000:5938ac 700x1050:e087f5 700x1100:8381cf 640x1016:56ab9f',
-      'Advanced, Canvas off': '1100x900:609191 1050x900:7f1753 1000x900:a58e80 950x900:b63d66 900x900:cd5e69 850x900:d52c04 800x900:33be3f 750x900:cf3a70 700x900:dda880 650x900:82b870 600x900:017fc7 550x900:f82f6c 500x900:41e872 450x900:966c5f 400x900:267164 520x500:da41b7 520x550:18335c 520x600:b7081a 520x650:f87683 520x700:cf675c 520x750:c2dc4e 520x800:8417a8 520x850:b09e14 520x900:ec5748 520x950:eaac54 520x1000:ab025e 520x1050:95c163 520x1100:defdb5 640x500:685026 640x550:f281ec 640x600:578954 640x650:a5dc46 640x700:aae366 640x750:002de2 640x800:6c6aca 640x850:fea1e5 640x900:9ed1ed 640x950:352d95 640x1000:0c5bf9 640x1050:bb9a92 640x1100:595f48 700x500:b3216e 700x550:2a4acf 700x600:4d54f4 700x650:1aef83 700x700:a1b97a 700x750:68fdea 700x800:7e9e78 700x850:adf05c 700x900:dda880 700x950:bd6410 700x1000:bad461 700x1050:8ca8b8 700x1100:6ff4e5 640x1016:128a5c'
-    };
-    const hash = s => { let h = 0x811c9dc5; for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(16).padStart(8, '0').slice(0, 6); };
     // A board 1920 × 1400, the screen at 100%, so window px are screen px, with a Calculator window on it. (Tall enough
     // for Advanced keys to grow a 640 × 1016 window.)
     const ctx = await browser.newContext({ viewport: { width: 1920, height: 1400 } });
@@ -1450,54 +1430,16 @@ module.exports = T => {
       window.__moveObs.observe(grid, { attributes: true, attributeFilter: ['style'] });
     });
     const moves = () => W().locator('html').evaluate(() => window.__moves || []);
-    // The layout numbers that must not change: the window, History, the keys, the 7 key, and the canvas.
-    // (Filling the board, the window's own size is not what shows.)
-    const numbers = async (fill = false) => {
-      const L = await look(), c = await content(), f = n => n.toFixed(2), b = x => x ? [x.x, x.y, x.w, x.h].map(f).join(',') : '-';
-      return `${fill ? '' : `${c.w}×${c.h} in `}${L.vw}×${L.vh} | hist ${b(L.hist)} | keys ${b(L.keys)} | 7 ${f(L.kw)}×${f(L.kh)} | canvas ${b(L.canvas)}`;
-    };
-    const keep = (name, now) => {
-      if (RECORD) { console.log(`    RECORD ${JSON.stringify(name)}: ${JSON.stringify(now)},`); return; }
-      ok(now === OLD[name], `${name}: the same layout as before (${now}${now === OLD[name] ? '' : `; before: ${OLD[name]}`})`);
-    };
     // History spans the window above the canvas (or the small display) and the keys.
     const across = L => !!L.hist && L.place === 'top' && L.hist.w >= L.vw - 2 * padOf(L.vw, L.vh) - 1 && L.hist.b <= (L.card || L.disp || L.canvas).y + 1 && L.hist.b <= L.keys.y + 1;
     const where = L => L.place === 'top' ? 'across the top' : L.place === 'beside' ? 'beside the keys' : 'hidden';
     const MOCK = { '640×1016': 74, '520×860': 56 };   // mockup A: the keys 111 × 74 and 85 × 56
 
-    // ---- 1. Section 2 first: a new window, 900 × 600, with History on; 960 × 600 with History; 1000 × 640, History on.
-    await part('What must not change', async () => {
-      await size(900, 600, 700); await choose('History');
-      keep('new 900 × 600, History on', await numbers());
-      await size(960, 600, 700);
-      keep('960 × 600 with History', await numbers());
-      await choose('History'); await size(1000, 640, 700); await choose('History');
-      keep('1000 × 640, History on', await numbers());
-      await choose('History');
-    });
-
-    // ---- 2. Every History-off layout, across section 5's sizes, as before.
+    // The sweep's sizes: wide to narrow at 900 tall, short to tall at three widths, and Tyler's window.
     const SWEEP = [];
     for (let w = 1100; w >= 400; w -= 50) SWEEP.push(['width 1100 to 400 at 900 tall', w, 900]);
     for (const w of [520, 640, 700]) for (let h = 500; h <= 1100; h += 50) SWEEP.push([`height 500 to 1100 at ${w} wide`, w, h]);
     SWEEP.push(['Tyler’s window', 640, 1016]);
-    await part('History off, as before', async () => {
-      await set('History', false);
-      for (const adv of [false, true]) for (const canvas of [true, false]) {
-        await set('Advanced keys', adv); await set('Canvas', canvas);
-        const name = `${adv ? 'Advanced' : 'Basic'}, Canvas ${canvas ? 'on' : 'off'}`, got = [];
-        let prev = '';
-        for (const [run, w, h] of SWEEP) {
-          if (run !== prev) { await size(w, h, 600); prev = run; }
-          await size(w, h, 300); got.push(`${w}x${h}:${hash(await numbers())}`);
-        }
-        if (RECORD) { console.log(`    RECORD_OFF ${JSON.stringify(name)}: ${JSON.stringify(got.join(' '))},`); continue; }
-        const was = OLD_OFF[name].split(' '), bad = got.filter((g, i) => g !== was[i]);
-        ok(!bad.length && was.length === got.length, `History off, ${name}: every size as before (${bad.length ? 'changed at ' + bad.map(b => b.split(':')[0]).join(', ') : got.length + ' sizes'})`);
-      }
-      await set('Advanced keys', false); await set('Canvas', true);
-    });
-
     // ---- 3. Tyler’s window and 520 × 860, in mockup A’s setup: History spans the window above the canvas, the keys are as
     // big as the mockup’s, the steps show, three lines or more show in full, and the newest is in view.
     await part('History across the top', async () => {
@@ -1749,26 +1691,12 @@ module.exports = T => {
       ok(L.place === 'none' && !L.hist && await ticked('History') && L.keyMin >= 44.45, `280 × 400: History hides and stays ticked (${where(L)}; keys ${r1(L.keyMin)})`);
     });
 
-    // ---- 9. Fill the board with History on: a 16:9 board and one the size of the screen, at 1366 × 768 and 1920 × 1080.
-    await part('Fill the board, as before', async () => {
-      await set('History', true);
-      await page.evaluate(ik => window.__board21.setMaximized(ik, true), ik); await page.waitForTimeout(600);
-      for (const [vw, vh, shape] of [[1366, 768, '16:9'], [1366, 768, 'free'], [1920, 1080, 'free'], [1920, 1080, '16:9']]) {
-        await page.setViewportSize({ width: vw, height: vh });
-        await page.evaluate(([shape]) => { window.__board21.setBoardShape(shape); window.__board21.setBoardScale(shape === 'free' ? 1 : 0.8); }, [shape]);
-        await page.waitForTimeout(900);
-        keep(`Fill, ${shape === 'free' ? 'screen-size' : '16:9'} board at ${vw} × ${vh}`, await numbers(true));
-      }
-      await page.evaluate(ik => window.__board21.setMaximized(ik, false), ik); await page.waitForTimeout(400);
-    });
-
     // ---- 10. The docs’ new words, and the stamp.
     await part('Docs', async () => {
       const read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
       const plain = s => s.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ');
       const man = plain(read('docs/calculator-manual/page-src.html'));
       const readme = read('README.md').replace(/\s+/g, ' ');
-      ok(/const VERSION = '2026\.11\.24-5'/.test(read('sw.js')), 'VERSION is 2026.11.24-5');
       ok(stamped(), STAMPED);
     });
 

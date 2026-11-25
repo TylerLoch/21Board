@@ -25,6 +25,8 @@ Test what the change does, with the fewest checks that prove it.
 - Don't check the docs' words. The review reads them.
 - Change an old test only when the behavior it checks has changed.
 - Add to the feature's suite, in its area's file in `tests/suites/`. Start a new suite only for a new feature.
+- Name a suite for what it tests, not for its release.
+- Don't tie a check to this release. A recorded layout or a version number fails the next one.
 
 ## 1. Spec
 

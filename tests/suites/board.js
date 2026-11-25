@@ -1660,7 +1660,7 @@ module.exports = T => {
   // (end of Board Sync merge)
 
   // Release 2026.11.18-20: every list of three or more takes the Oxford comma ("red, yellow, and green").
-  ['Copy: Oxford commas (2026.11.18-20)', async (browser) => {
+  ['Copy: Oxford commas', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     await stubVideos(ctx);
     const page = await ctx.newPage();
@@ -1794,7 +1794,7 @@ module.exports = T => {
 
   // Release 2026.11.20-2: a link keeps the browser's menu (Copy link address, Open in new tab), a Video Player's line in
   // Board history is its video's title or the site's name and "video", and CLAUDE.md's own lists take the Oxford comma.
-  ['Links, video lines, and CLAUDE.md (2026.11.20-2)', async (browser) => {
+  ['Links, video lines, and CLAUDE.md', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     await stubVideos(ctx);
     const page = await ctx.newPage();

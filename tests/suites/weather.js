@@ -9,7 +9,7 @@ module.exports = T => {
   return [
   // ---- Weather (2026.11.24-3): a new built-in widget that goes online for the weather. Its sites never answer for real:
   // stubWeather answers from tests/fixtures/weather/, as they did on Mon Nov 23 2026 at 11:50 AM Central.
-  ['Weather: the registry, the Widget Picker, a new window on Wheeling, its menu, and the docs (2026.11.24-3)', async (browser) => {
+  ['Weather: the registry, the Widget Picker, a new window on Wheeling, its menu, and the docs', async (browser) => {
     const errors = [];
     const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
     const { K, F, text } = WXT;

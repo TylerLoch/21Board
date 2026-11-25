@@ -861,7 +861,7 @@ module.exports = T => {
   // ---- Zones Check-In's line and bar at the top (2026.11.23-3). "Tap your zone to check in" and the color bar sit above
   // the cards. On a locked board filling the window, between the padlocks. Filling the board, the cards end just above
   // the board's own buttons. The window's title keeps its count, so the count shows twice.
-  ['Zones Check-In: the line and bar at the top, between the padlocks, short windows, and the title’s count (2026.11.23-3)', async (browser) => {
+  ['Zones Check-In: the line and bar at the top, between the padlocks, short windows, and the title’s count', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -1009,7 +1009,7 @@ module.exports = T => {
   // row whenever each card can be at least 190 px wide and the cards' area is at least as wide as it is tall (fitRow,
   // .one-row): a window about 830 px wide. The board tells any window its own buttons sit over where they are (corners),
   // not only one that fills it, and the Zones Check-In keeps its cards, its line and its bar clear of them.
-  ['Zones Check-In: one row at more sizes, clear of the board’s buttons (2026.11.24-4)', async (browser) => {
+  ['Zones Check-In: one row at more sizes, clear of the board’s buttons', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
     await stubWeather(ctx);   // (the Weather widget, in part 8, asks only the stubs)
     const page = await ctx.newPage();

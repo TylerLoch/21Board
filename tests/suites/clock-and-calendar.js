@@ -665,7 +665,7 @@ module.exports = T => {
 
   // Release 2026.11.21-4: the Clock makeover. Simple, Old, and Teaching faces, the LED look, analog and digital
   // together, Set the time, Mark a time (following the Timers on the page), Quiz, Hour hand only, and Time in words.
-  ['Clock makeover (2026.11.21-4)', async (browser) => {
+  ['Clock: faces, the LED look, Set the time, Mark a time, Quiz, and Time in words', async (browser) => {
     const errors = [];
     // Each part runs on its own: one that stops early is reported, and the next still runs.
     const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };

@@ -577,7 +577,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
   // order, ( ), xⁿ √, × ÷, and + −, in place of the PEMDAS letters (6.EE.A.2c). ± leaves 0 alone (6.NS.C.6a). 21Board
   // says "your school Google Drive" where it tells a teacher where their work goes (5:125-AP1 G.3). The Teacher Guide's
   // grade labels follow where the Illinois standards place each skill.
-  ['Standards picks: rule cells, ± and 0, school Drive, and grade labels (2026.11.22-1)', async (browser) => {
+  ['Standards picks: rule cells, ± and 0, school Drive, and grade labels', async (browser) => {
     const errors = [];
     // Each part runs on its own: one that stops early is reported, and the next still runs.
     const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };

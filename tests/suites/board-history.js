@@ -201,7 +201,7 @@ module.exports = T => {
   }],
   // Each window's line in Board history (a version's Windows in this version, and a window's own Earlier versions):
   // each built-in widget in its own terms, any other widget the text in its content, each piece once.
-  ["Board history: each window's line (2026.11.18-19)", async (browser) => {
+  ["Board history: each window's line", async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     await stubVideos(ctx);
     const page = await ctx.newPage();

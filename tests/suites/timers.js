@@ -239,7 +239,7 @@ module.exports = T => {
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
-  ['Traffic Light sideways, Follow timers, and the Timer\'s warning (2026.11.21-2)', async (browser) => {
+  ['Traffic Light sideways, Follow timers, and the Timer\'s warning', async (browser) => {
     const errors = [];
     // Each part runs on its own: one that stops early is reported, and the next still runs.
     const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };

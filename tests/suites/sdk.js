@@ -1197,7 +1197,7 @@ setTimeout(() => { let i = 0; while (i < 10) { ${fixed ? 'i++;' : '/* forgot i++
   }],
 
   // Release 2026.11.18-20: no browser menu on a right-click or a long press, except in text boxes and Developer mode.
-  ['Right-click: no browser menu (2026.11.18-20)', async (browser) => {
+  ['Right-click: no browser menu', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     await stubVideos(ctx);
     const page = await ctx.newPage();
