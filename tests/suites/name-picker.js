@@ -2209,8 +2209,9 @@ module.exports = T => {
       && await eventually(async () => await said(rp) === `${st.picked[0]} versus ${st.picked[1]}.`), `and the challenge sound still plays (${calmSounds.join()}), and screen readers hear the pair`);
     await rp.waitForTimeout(400);
     ok(clean(await vs(rp)), 'once faded in, nothing runs');
-    // A double tap with reduce motion (no show to skip) makes one pick: two students leave the round, not four.
-    await inFrame(() => { window.__ids = []; const s = Board21.save; window.__save = s; Board21.save = function (d) { if (d && d.pickId && window.__ids[window.__ids.length - 1] !== d.pickId) window.__ids.push(d.pickId); return s.apply(this, arguments); }; }, rp);
+    // A double tap with reduce motion (no show to skip) makes one pick: two students leave the round, not four. It
+    // starts fresh, since on a busy machine the pick above can be less than the guard's 600 ms ago.
+    await inFrame(() => { drewAt = -1e9; window.__ids = []; const s = Board21.save; window.__save = s; Board21.save = function (d) { if (d && d.pickId && window.__ids[window.__ids.length - 1] !== d.pickId) window.__ids.push(d.pickId); return s.apply(this, arguments); }; }, rp);
     const leftWas = (await saved(rp)).left.length;
     await np(rp).locator('#go').dblclick(); await rp.waitForTimeout(700);
     const dbl = await inFrame(() => { Board21.save = window.__save; return window.__ids.slice(); }, rp);
