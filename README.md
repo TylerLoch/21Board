@@ -224,6 +224,7 @@ tests/timings.json      How long each suite takes, to split the tests evenly
 | Widget | Shows off |
 | --- | --- |
 | **Timer** | Wall-clock state that stays in sync across tabs, `requestAttention`, checkable menu items; six alarm sounds made with Web Audio, with no sound files. It turns amber near the end, 1 minute by default. The warning is worked out on every render and never saved |
+| **Stopwatch** | Wall-clock time and laps kept in step across tabs, each taken when the finger lands. No setting moves Lap or Stop. Lap list grows a small window with `setMinSize` and scrolls by touch. Beat the record keeps the earlier records, so Bring back never loses one. A run races the best time chosen at Start. Records are content, so templates never carry them |
 | **Task Timer** | A schedule of activities as a pie with a countdown kept in step across tabs; a repeating alarm set ahead on the sound's own clock, rung by one copy of the board |
 | **Calendar** | Month view with today highlighted; week can start on Sunday or Monday |
 | **Clock** | Simple, Old, and Teaching faces, and an LCD look that glows as LED look in dark theme. Style has Analog, Digital, and Date, in any mix. The clock face items and Mark a time show only with Analog. Analog and digital sit side by side when wide and stacked when tall. The date goes beside or under them, as a stack or one line, whichever keeps the clocks biggest. Two or three views have no shape lock. Alone, the lock changes at runtime: 1:1 for analog and 2.2:1 for digital or the date, each taller with Time written out as words. With Choose the time, drag geared hands or tap ▲ and ▼. The set time is saved as content. Mark a time shades the face to the teacher's mark, or to the end of the running timer that ends soonest, from the board's `timers` event. Quiz hides the digital time until it's tapped, and never saves that. Time written out as words puts the time under the clock |
@@ -380,9 +381,9 @@ being typed in, is due again.
   place, whether it's open, its content, and its settings. A window moved on the laptop and typed in on the
   smartboard keeps both changes. Changes to different windows never clash.
 - **The same content changed on both,** such as two edits to one note: both are kept. The later one stays in the
-  window, and the other appears beside it as a labeled copy, "Copy · 9:41 AM". For the Timer, Clock, Dice, Traffic
-  Light, Video Player, Picture, Calculator, and Weather, the later one wins. For the Video Player that includes its
-  History, so a video added on the other device meanwhile drops out, and Board history keeps it. Anything else
+  window, and the other appears beside it as a labeled copy, "Copy · 9:41 AM". For the Timer, Stopwatch, Clock, Dice,
+  Traffic Light, Video Player, Picture, Calculator, and Weather, the later one wins. For the Video Player that includes
+  its History, so a video added on the other device meanwhile drops out, and Board history keeps it. Anything else
   changed on both, such as a window moved on both, takes the later change, and Board history keeps a version from
   before it.
 - **Deleting** a page or window on any device deletes it everywhere, with Undo and Board history. An edit on a
@@ -748,10 +749,10 @@ versions for the past 30 days*, *Weekly versions for the past 12 weeks*. When Bo
 it has used its share of the device's storage or the device is full, the oldest versions go first. Versions you save
 are never deleted to make room. Photos are stored once.
 
-**Going back never changes the theme, accent color, or text style,** and a running timer comes back paused. If going
-back can't finish, 21Board says why and the board stays as it was. *Erase everything* keeps Board history, so it can
-be undone. If the board as it is can't be kept first, 21Board asks before erasing. *Erase, including Board history* erases
-it too.
+**Going back never changes the theme, accent color, or text style.** A running timer comes back paused, and a running
+stopwatch comes back stopped. If going back can't finish, 21Board says why and the board stays as it was. *Erase
+everything* keeps Board history, so it can be undone. If the board as it is can't be kept first, 21Board asks before
+erasing. *Erase, including Board history* erases it too.
 
 **When the device runs out of space** and the browser refuses a save, Board history gives up a little at a time, and
 the save is tried again after each step, a few times at most. First go the photos kept with older versions, then the

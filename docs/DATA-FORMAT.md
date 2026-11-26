@@ -523,6 +523,20 @@ The Timer (`timer`) saves `{ duration, remaining, endsAt }`, in ms. `endsAt` is 
 `null`. Its config is `{ sound, warn }`. `warn` is how many minutes before the end it turns amber. It's `0` for Off,
 `1`, `2`, or `5`, and a missing or unknown one reads as `1`. Whether it is amber is never saved.
 
+The Stopwatch (`stopwatch`) saves `{ v, startedAt, banked, laps, undo, records, earlier, beat, race }`, with times in
+ms. `v` is `1`. `startedAt` is when the run last started while it runs, else `null`. `banked` is the time before that.
+`laps` is each lap's total time, oldest first, up to 999. `undo` is what Reset cleared, `{ banked, laps, at, beat,
+race }`, kept until the next Start. `records` holds the class's record for each best time, `{ short, long }`, from 5
+seconds to 99:59:59.99, or `null`. `earlier` holds, for each best time, the records that a new record or Clear record
+replaced, newest first, up to 50. Bring back takes the first and puts the record it replaces at the end, so every
+record comes round again. `race` is the best time this run races, `"short"` or `"long"`, set at Start with Beat the
+record on. Turning Beat the record off mid-run makes it `null`, so that run never sets a record. `beat` is set while
+the stopped run is the record it just set. It's `{ mode, was, undo }`, the best time, the record it beat, and
+`earlier` as it was, so Resume can put both back. Each value is checked when read, and one that doesn't fit is
+dropped. Board Sync keeps the later change, as for the Timer. Its config is `{ hundredths, laps, list, hide, record,
+goal }`. `goal` is `"short"` or `"long"`, and the rest are `true` or `false`. A bad one takes its default, which is
+Hundredths and Laps on, the rest off, and Shortest. Records are content, so a template never carries them.
+
 The Traffic Light (`traffic-light`) saves `{ active: "red" | "yellow" | "green" | null }`, the color the teacher
 chose. Its config is `{ follow: true }` while Follow timers is on. The color it follows is never saved.
 

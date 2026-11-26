@@ -190,16 +190,16 @@ footer.end b { color: var(--ink); }
   <header><h2>Start in three taps</h2><p>There’s nothing to install, no account, and no Save button. Every change is saved on the device as you work.</p></header>
   <ol class="steps">
     <li><h3>Open 21Board</h3><p>Open it from your Apps menu. A new board says “Your board is ready.”</p><img src="shots/empty.jpg" width="2732" height="1536" loading="lazy" alt="An empty 21Board page with the words Your board is ready, and Tap the Widget Picker button in either bottom corner to open a widget."></li>
-    <li><h3>Tap [W]</h3><p>The Widget Picker sits in both bottom corners, so you can reach it from either side of the board. Settings is the gear in its bottom row.</p><img src="shots/picker.jpg" width="990" height="892" loading="lazy" alt="The Widget Picker open, with 17 colorful widget tiles and a row of buttons below: Paste, Export, Import, Lock, Full screen, Settings, and the page control."></li>
+    <li><h3>Tap [W]</h3><p>The Widget Picker sits in both bottom corners, so you can reach it from either side of the board. Settings is the gear in its bottom row.</p><img src="shots/picker.jpg" width="990" height="892" loading="lazy" alt="The Widget Picker open, with 18 colorful widget tiles and a row of buttons below: Paste, Export, Import, Lock, Full screen, Settings, and the page control."></li>
     <li><h3>Tap a widget</h3><p>It opens in its own window. Open as many as you like, and come back to them tomorrow just as you left them.</p><img src="shots/w-timer.jpg" width="960" height="734" loading="lazy" alt="A Timer window counting down 4 minutes 54 seconds, with preset buttons from 1 to 15 minutes."></li>
   </ol>
 </section>
 
 <section class="block" id="widgets">
-  <header><h2>Meet the widgets</h2><p>Seventeen tools, each one tap away. Tap a tile to see what it does, with ideas from kindergarten to eighth grade.</p></header>
+  <header><h2>Meet the widgets</h2><p>Eighteen tools, each one tap away. Tap a tile to see what it does, with ideas from kindergarten to eighth grade.</p></header>
   <div class="picker">
     <div class="groups">
-      <div class="grp"><h3>Time</h3><div class="tiles">{{tile:timer}}{{tile:task-timer}}{{tile:clock}}{{tile:calendar}}</div></div>
+      <div class="grp"><h3>Time</h3><div class="tiles">{{tile:timer}}{{tile:stopwatch}}{{tile:task-timer}}{{tile:clock}}{{tile:calendar}}</div></div>
       <div class="grp"><h3>Words and pictures</h3><div class="tiles">{{tile:notes}}{{tile:image}}{{tile:youtube-player}}</div></div>
       <div class="grp"><h3>Math and chance</h3><div class="tiles">{{tile:calculator}}{{tile:dice}}{{tile:name-picker}}</div></div>
       <div class="grp"><h3>Routines</h3><div class="tiles">{{tile:traffic-light}}{{tile:first-then-board}}{{tile:zones-check-in}}{{tile:weather}}</div></div>
@@ -207,7 +207,7 @@ footer.end b { color: var(--ink); }
     </div>
   </div>
 
-  <h3 class="gtitle">Time <span>Timer, Task Timer, Clock, Calendar</span></h3>
+  <h3 class="gtitle">Time <span>Timer, Stopwatch, Task Timer, Clock, Calendar</span></h3>
 
   <article class="w" id="w-timer">
     <figure class="shot" style="margin:0"><img src="shots/w-timer.jpg" width="960" height="734" loading="lazy" alt="Timer running at 4 minutes 54 seconds, with the 5-minute preset outlined."></figure>
@@ -216,6 +216,16 @@ footer.end b { color: var(--ink); }
       <div><h4>Try it</h4><ol><li>Tap a preset: 1m, 2m, 3m, 5m, 10m, or 15m.</li><li>Tap ▶ to start and ⏸ to pause.</li><li>At zero the window flashes red and the alarm plays.</li></ol></div>
       <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Tap 3m for clean-up. The shrinking bar and the red window say time’s up, no reading needed.</span></li><li><span class="grade">3–5</span><span>Think, pair, share. Two minutes to think, then two to talk.</span></li><li><span class="grade">6–8</span><span>A 5-minute bell-ringer as students walk in. Choose Gentle for a soft ending.</span></li></ul></div>
       <div><h4>Good to know</h4><ul class="good"><li>Tap +1:00 while it runs for one more minute.</li><li>Tap Timer ⌄ in the title bar to pick a sound. It plays as you pick it.</li><li>In the last minute it turns amber. Change that in Timer ⌄.</li><li>It rings only on the page you’re on.</li></ul></div>
+    </div>
+  </article>
+
+  <article class="w" id="w-stopwatch">
+    <figure class="shot" style="margin:0"><img src="shots/w-stopwatch.jpg" width="1348" height="846" loading="lazy" alt="Stopwatch running at 26 seconds, with Lap list beside the time. Five laps, and the quickest marked Fastest lap."></figure>
+    <div class="txt">
+      <div class="head">{{icon:stopwatch}}<div><h3>Stopwatch</h3><p>Count up, with laps and a class record to beat.</p></div></div>
+      <div><h4>Try it</h4><ol><li>Tap Start. Tap Lap as each runner finishes.</li><li>Tap Stopwatch ⌄ and check Lap list to see every lap.</li><li>Tap Stop. Then tap Resume to carry on, or Reset to start over.</li></ol></div>
+      <div><h4>Ideas for class</h4><ul class="ideas"><li><span class="grade">K–2</span><span>Check Hide time and guess how long a song lasts. Tap Stop to see.</span></li><li><span class="grade">3–5</span><span>Check Beat the record for lining up. Can we beat yesterday’s time?</span></li><li><span class="grade">6–8</span><span>A lap for each runner in PE. Lap list marks the fastest lap.</span></li></ul></div>
+      <div><h4>Good to know</h4><ul class="good"><li>Only a run started with Beat the record on can set a record. It races the best time chosen at Start.</li><li>Runs under 5 seconds never count.</li><li>Bring back in Stopwatch ⌄ swaps in an earlier record. Tap it again for the next one.</li><li>Remove last lap takes back a stray tap on Lap.</li><li>Undo brings back a run you reset.</li></ul></div>
     </div>
   </article>
 

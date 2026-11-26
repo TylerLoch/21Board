@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.25-7';
-  const BOARD_BUILD = 'b6d95260';
+  const BOARD_VERSION = '2026.11.26-1';
+  const BOARD_BUILD = '8ad8b780';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -8034,6 +8034,17 @@
         const s = Math.ceil(d.duration / 1000), m = Math.floor(s / 60);
         return s % 60 ? `${m}:${String(s % 60).padStart(2, '0')}` : m === 1 ? '1 minute' : `${m} minutes`;
       },
+      // The time on it, as it shows it, and its laps ("1:13.90, 2 laps"). Running, the time when the version was saved.
+      stopwatch: (d, c, at) => {
+        const num = v => typeof v === 'number' && isFinite(v), t = typeof at === 'string' || typeof at === 'number' ? new Date(at).getTime() : NaN;
+        if (!num(d.banked) || d.banked < 0) return '';
+        const ms = Math.min(d.banked + (num(d.startedAt) && d.startedAt > 0 && isFinite(t) ? Math.max(0, t - d.startedAt) : 0), 360000000 - 10);
+        if (!(ms > 0)) return '';
+        const cs = Math.floor(ms / 10), h = Math.floor(cs / 360000), m = Math.floor(cs / 6000) % 60, s = Math.floor(cs / 100) % 60, p2 = n => String(n).padStart(2, '0');
+        const time = (h ? `${h}:${p2(m)}:${p2(s)}` : `${m}:${p2(s)}`) + (!(c && c.hundredths === false) && ms < 600000 ? '.' + p2(cs % 100) : '');
+        const n = listOf(d.laps).filter(num).length;
+        return n ? `${time}, ${n} ${n === 1 ? 'lap' : 'laps'}` : time;
+      },
       dice: d => { const v = listOf(d.values).slice(0, 6).filter(v => Number.isInteger(v) && v >= 1 && v <= 6); return andList(v); },
       'traffic-light': d => ['red', 'yellow', 'green'].includes(d.active) ? d.active[0].toUpperCase() + d.active.slice(1) : '',
       // A set time, as the Clock reads it ("Set to 2:50 p.m."). Following the real time, or not setting it: no line.
@@ -8513,10 +8524,12 @@
     },
 
     // ---- going back
-    // The built-in Timer: a running timer comes back paused with the time it had left (not ringing at once).
+    // The built-in Timer: a running timer comes back paused with the time it had left (not ringing at once). The
+    // Stopwatch: a running one comes back stopped at the time it showed.
     fix(exp, at) {
       for (const i of exp.instances || []) {
         if (i.widgetId === 'timer' && i.data && typeof i.data.endsAt === 'number') i.data = Object.assign({}, i.data, { remaining: Math.max(0, i.data.endsAt - at), endsAt: null });
+        if (i.widgetId === 'stopwatch' && i.data && typeof i.data.startedAt === 'number' && typeof i.data.banked === 'number') i.data = Object.assign({}, i.data, { banked: i.data.banked + Math.max(0, at - i.data.startedAt), startedAt: null });
       }
       return exp;
     },

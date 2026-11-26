@@ -47,6 +47,14 @@ module.exports = T => {
           badge: by(t.querySelector('.badge')), dev: by(t.querySelector('.devtag')) };
       });
     });
+    // Two shots differ by ink: a pixel more than 30 apart, as in inkSides below. (The panel's blurred backdrop can differ
+    // by a shade between any two shots, as it does under the bottom-right tile.)
+    const inkApart = (a, c) => page.evaluate(async shots => {
+      const [A, C] = await Promise.all(shots.map(async s => { const i = new Image(); i.src = 'data:image/png;base64,' + s; await i.decode();
+        const v = document.createElement('canvas'); v.width = i.width; v.height = i.height; const g = v.getContext('2d'); g.drawImage(i, 0, 0); return g.getImageData(0, 0, i.width, i.height).data; }));
+      for (let k = 0; k < A.length; k += 4) if (Math.abs(A[k] - C[k]) + Math.abs(A[k + 1] - C[k + 1]) + Math.abs(A[k + 2] - C[k + 2]) > 30) return true;
+      return false;
+    }, [a.toString('base64'), c.toString('base64')]);
     // Nothing of a name is cut off by its own box (a name cut with … aside): each looks the same drawn without its clip.
     const inkCut = async () => {
       const out = [];
@@ -60,7 +68,7 @@ module.exports = T => {
           await s.evaluate(s => { s.style.overflow = 'visible'; });
           const c = await page.screenshot({ clip });
           await s.evaluate(s => { s.style.overflow = ''; });
-          cut = !a.equals(c);
+          cut = await inkApart(a, c);
         }
         if (cut) out.push(await s.textContent());
       }
@@ -137,8 +145,8 @@ module.exports = T => {
     await check('Standard, the right corner’s panel');
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-right.png' });
     // 200% on 1366 × 768: the panel is drawn as big as the screen's height allows, and still fits on the screen. Where
-    // five columns would need four rows, it has six (since the Zones Check-In, 2026.11.20-1): a teacher's 17 tiles (with
-    // Weather, 2026.11.24-3) are three rows, all in view. Developer mode's 19 are four, and the tiles scroll.
+    // five columns would need four rows, it has six (since the Zones Check-In, 2026.11.20-1): a teacher's 18 tiles (with
+    // the Stopwatch) are three rows, all in view. Developer mode's 20 are four, and the tiles scroll.
     await page.evaluate(() => window.__board21.setBoardScale(2)); await page.waitForTimeout(300);
     await openPicker('left');
     await check('200%');
@@ -151,7 +159,7 @@ module.exports = T => {
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     await openPicker('left');
     fit = await fitNow();
-    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && fit.n === 17 && fit.rows === 3 && !fit.scrolls, `at 200% a teacher’s ${fit.n} tiles, three rows of six, are all in view without scrolling (${fit.rows} rows; top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
+    ok(fit.ui > 1.7 && fit.top >= 0 && fit.bottom <= 768 && fit.n === await page.evaluate(() => window.__board21.catalog().filter(a => !a.devOnly && !a.dev).length) && fit.rows === 3 && !fit.scrolls, `at 200% a teacher’s ${fit.n} tiles, three rows of six, are all in view without scrolling (${fit.rows} rows; top ${Math.round(fit.top)}, controls end at ${Math.round(fit.bottom)})`);
     await openSettings(page, ['advanced']); await page.click('#settings [data-act="devmode"]'); await page.keyboard.press('Escape'); await page.waitForTimeout(300);
     await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
 

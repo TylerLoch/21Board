@@ -1,8 +1,8 @@
-// The Timer, the Task Timer, and the Traffic Light.
+// The Timer, the Stopwatch, the Task Timer, and the Traffic Light.
 'use strict';
 module.exports = T => {
   const {
-    fs, path, OUT, ok, freeBoard, openSettings, addWin, hear, heard, eventually, release, boardUp, BASE
+    fs, path, OUT, ok, freeBoard, openSettings, addWin, hear, heard, eventually, release, boardUp, contrast, rgbOf, BASE
   } = T;
   return [
   ['Timer sounds', async (browser) => {
@@ -673,6 +673,467 @@ module.exports = T => {
       ok(!recs.some(k => /^(data|conf):.*:21timer:/.test(k)), 'there are no data: or conf: records for 21Timer');
       ok(await frameOf('21timer').evaluate(() => window.__heard) === 0 && await page.evaluate(() => !window.__board21.state.wins.get('21timer:1').connected), 'the board still sends 21Timer nothing');
       ok(!stray.length, 'nothing went anywhere else: ' + stray.join(' '));
+      await ctx.close();
+    });
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  ['Stopwatch', async (browser) => {
+    const errors = [];
+    // Each part runs on its own: one that stops early is reported, and the next still runs.
+    const part = async (name, fn) => { try { await fn(); } catch (err) { ok(false, `${name}: crashed: ${(err && err.stack) || err}`); } };
+    const F = (p, ik, fn, arg) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('html').evaluate(fn, arg);
+    const connected = (p, ik) => eventually(() => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+    // A board with a Stopwatch: Fill at 100% (window px are screen px), or the 16:9 board on a 1366 × 768 Chromebook
+    // at its default size (zoom 0.57).
+    const board = async (opts = {}, chromebook = false) => {
+      const ctx = await browser.newContext(Object.assign({ viewport: chromebook ? { width: 1366, height: 768 } : { width: 1200, height: 800 } }, opts));
+      const page = await ctx.newPage(); page.on('pageerror', e => errors.push(e.message));
+      await page.goto(BASE); await boardUp(page);
+      if (!chromebook) await freeBoard(page);
+      const ik = await addWin(page, 'stopwatch');
+      ok(await connected(page, ik), '(the Stopwatch opens)');
+      await page.waitForTimeout(300);
+      return { ctx, p: page, ik };
+    };
+    const size = async (p, ik, w, h) => { await p.evaluate(([ik, w, h]) => window.__board21.setRect(ik, { x: 40, y: 40, w, h: h + 40 }), [ik, w, h]); await p.waitForTimeout(600); };
+    const inner = (p, ik) => F(p, ik, () => [innerWidth, innerHeight]);
+    // What the window shows: the buttons on, the main button's word, the time as a screen reader hears it, the line
+    // under the time, the record line, the list's rows as a screen reader hears them, and the title.
+    const look = async (p, ik) => Object.assign(await F(p, ik, () => {
+      const $ = id => document.getElementById(id), shown = e => e && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden';
+      const words = el => [...el.children].filter(e => e.tagName !== 'svg' && getComputedStyle(e).display !== 'none').map(e => e.textContent).filter(Boolean).join(' ');
+      return { on: ['lap', 'reset', 'undo', 'start', 'stop'].filter(id => $(id).classList.contains('on')).join(','), main: $('startLbl').textContent, time: $('timeText').textContent,
+        phase: $('face').dataset.phase, mode: $('face').dataset.mode, veiled: $('face').classList.contains('veiled'),
+        note: shown($('note')) ? words($('note')) : '', rec: shown($('rec')) ? words($('rec')) : '',
+        rows: [...document.querySelectorAll('#lrows .lrow[aria-label]')].map(r => r.getAttribute('aria-label')) };
+    }), { title: await p.locator(`.win[data-ikey="${ik}"] .win-label .sub`).textContent() });
+    const saved = (p, ik) => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
+    const confOf = (p, ik) => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
+    // The menu as the board draws it: a line, a [heading], ✓ for a check, and (greyed) for a row greyed out.
+    const menuOf = (p, ik) => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.map(i => i.separator ? '—' : i.heading ? `[${i.label}]` : (i.checked ? '✓ ' : '') + i.label + (i.disabled ? ' (greyed)' : '')).join(' | '), ik);
+    const choose = async (p, ik, id) => {
+      await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.waitForTimeout(200);
+      const it = p.locator(`#menu [data-id="${id}"]`);
+      if (!await it.count()) { await p.keyboard.press('Escape'); await p.waitForTimeout(150); return false; }
+      await it.click(); await p.waitForTimeout(450); return true;
+    };
+    // Content and config as another tab saves them. ago: started that many ms ago.
+    const set = (p, ik, d, c) => p.evaluate(async ([ik, d, c]) => {
+      const w = window.__board21.state.wins.get(ik);
+      if (c) { await w.iframe.contentWindow.Board21.saveConfig(c); w.post('config', { config: c, reason: 'remote' }); }
+      if (d) { d = Object.assign({}, d); if (d.ago != null) { d.startedAt = Date.now() - d.ago; delete d.ago; } await w.iframe.contentWindow.Board21.save(d); w.post('data', { data: d, reason: 'remote' }); }
+      await new Promise(r => setTimeout(r, 400));
+    }, [ik, d, c]);
+    const C = o => Object.assign({ hundredths: true, laps: true, list: false, hide: false, record: false, goal: 'short' }, o);
+    // A box in the window, on the page (screen px).
+    const boxOf = (p, ik, sel) => p.evaluate(([ik, sel]) => {
+      const f = window.__board21.state.wins.get(ik).iframe, fr = f.getBoundingClientRect(), e = f.contentDocument.querySelector(sel);
+      if (!e) return null;
+      const r = e.getBoundingClientRect(), k = fr.width / f.contentWindow.innerWidth;
+      return { x: fr.left + r.left * k, y: fr.top + r.top * k, w: r.width * k, h: r.height * k, cx: fr.left + (r.left + r.width / 2) * k, cy: fr.top + (r.top + r.height / 2) * k };
+    }, [ik, sel]);
+    const same = (a, b) => !!a && !!b && ['x', 'y', 'w', 'h'].every(k => Math.abs(a[k] - b[k]) <= 1);
+    const inside = (pt, b) => pt.cx > b.x && pt.cx < b.x + b.w && pt.cy > b.y && pt.cy < b.y + b.h;
+    // A finger (the mouse) pressed on a button for hold ms. The window notes when it landed and when it lifted.
+    const spy = (p, ik) => F(p, ik, () => { if (window.__spy) return; window.__spy = 1; addEventListener('pointerdown', () => { window.__down = Date.now(); }, true); addEventListener('pointerup', () => { window.__up = Date.now(); }, true); });
+    const press = async (p, ik, id, hold = 0) => {
+      const b = await boxOf(p, ik, '#' + id);
+      await p.mouse.move(b.cx, b.cy); await p.mouse.down(); if (hold) await p.waitForTimeout(hold); await p.mouse.up();
+      await p.waitForTimeout(250);
+      return F(p, ik, () => ({ down: window.__down, up: window.__up }));
+    };
+    const tapAt = async (p, pt) => { await p.mouse.click(pt.cx, pt.cy); await p.waitForTimeout(250); };
+    const dbl = async (p, ik, id) => { const b = await boxOf(p, ik, '#' + id); await p.mouse.dblclick(b.cx, b.cy); await p.waitForTimeout(700); };
+    const settled = async (p, ik, fn) => { let d; await eventually(async () => { d = await saved(p, ik); return !!d && fn(d); }, 3000); return d; };
+
+    // ---- 1. The buttons: the time is taken when the finger lands, and a double tap never does two things.
+    await part('Buttons', async () => {
+      const { ctx, p, ik } = await board();
+      const reg = await p.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'stopwatch'); return a && { name: a.name, version: a.version, description: a.description, files: a.files, clash: a.clash, win: a.win, color: a.color, icon: a.icon }; });
+      const others = await p.evaluate(() => window.__board21.catalog().filter(w => w.id !== 'stopwatch').map(w => String(w.color || '').toLowerCase()));
+      const order = await p.evaluate(() => window.BOARD21_WIDGETS.map(w => w.id));
+      ok(!!reg && reg.name === 'Stopwatch' && reg.version === '1.0.0' && reg.description === 'Count up with laps and a class record.' && reg.files.join() === 'widgets/stopwatch/index.html' &&
+        reg.clash === 'later' && reg.win.width === 600 && reg.win.height === 380 && reg.win.minWidth === 280 && reg.win.minHeight === 200 && reg.win.dragFromContent !== false &&
+        /^<svg viewBox="0 0 24 24">/.test(reg.icon) && !others.includes(reg.color.toLowerCase()) && contrast('rgb(255, 255, 255)', rgbOf(reg.color)) >= 4.5 && order.indexOf('stopwatch') === order.indexOf('timer') + 1,
+        `the registry: Stopwatch after the Timer, 600 × 380, at least 280 × 200, clash 'later', a tile color of its own (${JSON.stringify(reg && { win: reg.win, color: reg.color })})`);
+      await size(p, ik, 600, 380); await spy(p, ik);
+      let L = await look(p, ik);
+      ok(L.on === 'start' && L.main === 'Start' && L.time === '0:00.00' && L.title === '', `idle: Start and 0:00.00 (${JSON.stringify(L)})`);
+      const start0 = await boxOf(p, ik, '#start');
+      let t = await press(p, ik, 'start', 600), d = await settled(p, ik, d => d.startedAt != null);
+      ok(d.startedAt >= t.down - 5 && d.startedAt <= t.down + 60 && t.up - t.down >= 550, `Start takes the time when the finger lands, not when it lifts (${d.startedAt - t.down} ms after it landed, lifted ${t.up - t.down} ms later)`);
+      L = await look(p, ik);
+      const stop0 = await boxOf(p, ik, '#stop');
+      ok(L.on === 'lap,stop' && L.title === 'Running' && inside(start0, stop0), `running: Lap and Stop, Start's middle inside Stop, and the title says Running (${L.on}, ${L.title})`);
+      const t0 = d.startedAt;
+      await p.waitForTimeout(1200);
+      t = await press(p, ik, 'lap', 500); d = await settled(p, ik, d => d.laps.length === 1);
+      ok(Math.abs(d.laps[0] - (t.down - t0)) <= 60, `Lap takes the time when the finger lands (${d.laps[0] - (t.down - t0)} ms off)`);
+      await p.waitForTimeout(400);
+      await dbl(p, ik, 'lap'); d = await saved(p, ik);
+      ok(d.laps.length === 2, `a double tap on Lap is one lap (${d.laps.length} laps)`);
+      await p.waitForTimeout(400);
+      t = await press(p, ik, 'stop', 500); d = await settled(p, ik, d => d.startedAt == null);
+      L = await look(p, ik);
+      ok(Math.abs(d.banked - (t.down - t0)) <= 60 && L.on === 'reset,start' && L.main === 'Resume' && L.title === 'Stopped' && same(await boxOf(p, ik, '#start'), stop0),
+        `Stop takes the time when the finger lands, and Resume takes Stop's place (${d.banked - (t.down - t0)} ms off; ${L.on}, ${L.main}, ${L.title})`);
+      const banked = d.banked;
+      await p.waitForTimeout(600);
+      t = await press(p, ik, 'start'); d = await settled(p, ik, d => d.startedAt != null);
+      ok(d.banked === banked && d.laps.length === 2 && Math.abs(d.startedAt - t.down) <= 60 && (await look(p, ik)).title === 'Running', `Resume carries on from the stopped time, with its laps (${d.banked} ms banked)`);
+      await p.waitForTimeout(600);
+      await dbl(p, ik, 'stop'); L = await look(p, ik);
+      ok(L.phase === 'stopped' && L.main === 'Resume', `a double tap on Stop stops, and stays stopped (${L.phase})`);
+      await p.waitForTimeout(600);
+      await dbl(p, ik, 'start'); L = await look(p, ik);
+      ok(L.phase === 'running', `a double tap on Resume carries on, and keeps running (${L.phase})`);
+      await p.waitForTimeout(600);
+      await press(p, ik, 'stop'); d = await settled(p, ik, d => d.startedAt == null);
+      const before = { banked: d.banked, laps: d.laps.join() };
+      await p.waitForTimeout(800);
+      await dbl(p, ik, 'reset'); L = await look(p, ik); d = await saved(p, ik);
+      ok(L.phase === 'idle' && L.on === 'undo,start' && L.time === '0:00.00' && d.banked === 0 && !!d.undo && /Undo reset/.test(await menuOf(p, ik)),
+        `a double tap on Reset resets once: Undo takes its place, and Undo reset is in the menu (${L.on}, ${await menuOf(p, ik)})`);
+      await p.waitForTimeout(800);
+      await press(p, ik, 'undo'); d = await settled(p, ik, d => d.banked > 0); L = await look(p, ik);
+      ok(d.banked === before.banked && d.laps.join() === before.laps && L.phase === 'stopped' && L.main === 'Resume', `Undo brings back the time and the laps (${d.banked}, ${d.laps.join()})`);
+      await p.waitForTimeout(800);
+      await press(p, ik, 'reset'); await p.waitForTimeout(800);
+      await dbl(p, ik, 'start'); L = await look(p, ik);
+      ok(L.phase === 'running' && L.on === 'lap,stop', `a double tap on Start starts, and keeps running (${L.phase})`);
+
+      // ---- 2. A reload, and a second tab, mid-run.
+      await p.waitForTimeout(500); await press(p, ik, 'lap'); await p.waitForTimeout(400); await press(p, ik, 'lap');
+      d = await settled(p, ik, d => d.laps.length === 2);
+      await p.reload(); await boardUp(p); await connected(p, ik); await p.waitForTimeout(500);
+      const p2 = await ctx.newPage(); p2.on('pageerror', e => errors.push(e.message));
+      await p2.goto(BASE); await boardUp(p2); await connected(p2, ik); await p2.waitForTimeout(500);
+      const [a, b] = [await look(p, ik), await look(p2, ik)];
+      const secs = s => s.split(':').reduce((m, x) => m * 60 + +x, 0), want = (Date.now() - d.startedAt) / 1000;
+      ok(a.phase === 'running' && b.phase === 'running' && Math.abs(secs(a.time) - want) <= 1.5 && Math.abs(secs(b.time) - want) <= 1.5 && a.note === b.note && /^Lap 2 /.test(a.note),
+        `after a reload and in a second tab, the same run: the same time and laps (${a.time} / ${b.time}, ${a.note} / ${b.note})`);
+      await press(p2, ik, 'stop');
+      ok(await eventually(async () => (await look(p, ik)).time === (await look(p2, ik)).time && (await look(p, ik)).phase === 'stopped'), `Stop in one tab stops both at the same time (${(await look(p, ik)).time})`);
+      await ctx.close();
+    });
+
+    // ---- 3. Lap list: its rows, Fastest lap on every tie, the end row after Stop, Remove last lap, and a list that
+    // scrolls by touch instead of moving the window.
+    await part('Lap list', async () => {
+      const { ctx, p, ik } = await board({ hasTouch: true });
+      await size(p, ik, 600, 380);
+      await set(p, ik, { banked: 92500, laps: [20000, 40000, 65000, 85000] }, C({ list: true }));
+      let L = await look(p, ik);
+      ok(L.mode === 'list' && L.rows.join(' | ') === 'Lap 1, 0:20.00, total 0:20.00, fastest lap | Lap 2, 0:20.00, total 0:40.00, fastest lap | Lap 3, 0:25.00, total 1:05.00 | Lap 4, 0:20.00, total 1:25.00, fastest lap | Stop, 0:07.50, total 1:32.50',
+        `stopped: a row for each lap, Fastest lap on every tie, and the end of the run (${L.rows.join(' | ')})`);
+      const end = await F(p, ik, () => { const r = document.querySelector('#lrows .lrow.end'); return r && { n: r.querySelector('.n').textContent, mark: !!r.querySelector('.n .sq'), tag: r.querySelector('.tag').textContent }; });
+      const tags = await F(p, ik, () => [...document.querySelectorAll('#lrows .lrow .tag')].map(t => t.textContent).filter(Boolean));
+      ok(!!end && end.n === '' && end.mark && end.tag === '' && tags.length === 3 && tags.every(t => t === 'Fastest lap'), `the end row has a stop mark, no number, and is never Fastest lap (${JSON.stringify(end)}, ${tags.join(', ')})`);
+      ok(await choose(p, ik, 'unlap'), 'Remove last lap is in the menu');
+      L = await look(p, ik);
+      ok(L.rows.join(' | ') === 'Lap 1, 0:20.00, total 0:20.00, fastest lap | Lap 2, 0:20.00, total 0:40.00, fastest lap | Lap 3, 0:25.00, total 1:05.00 | Stop, 0:27.50, total 1:32.50' && (await saved(p, ik)).laps.length === 3,
+        `Remove last lap removes the newest lap, and the end of the run stays the end (${L.rows.join(' | ')})`);
+      // Running, with 12 laps: more rows than show.
+      const laps = Array.from({ length: 12 }, (_, i) => (i + 1) * 9000);
+      await set(p, ik, { banked: 0, ago: 115000, laps });
+      const list = () => F(p, ik, () => { const l = document.getElementById('lrows'); return { top: Math.round(l.scrollTop), max: l.scrollHeight - l.clientHeight }; });
+      const rect = () => p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik);
+      let s = await list();
+      ok(s.max > 0 && s.top === s.max, `running: the list follows the newest row (${JSON.stringify(s)})`);
+      const cdp = await ctx.newCDPSession(p), lb = await boxOf(p, ik, '#lrows'), r0 = await rect();
+      const finger = async (dy) => {
+        const x = lb.cx, y = dy > 0 ? lb.y + 20 : lb.y + lb.h - 20;
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x, y, id: 1 }] });
+        for (let i = 1; i <= 12; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y: y + dy * i / 12, id: 1 }] }); await p.waitForTimeout(16); }
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await p.waitForTimeout(700);
+      };
+      await finger(110);
+      s = await list();
+      ok(s.top < s.max - 40 && await rect() === r0, `a finger drawn down the list scrolls it back, and the window stays put (${JSON.stringify(s)})`);
+      await press(p, ik, 'lap');
+      const s2 = await list();
+      ok((await saved(p, ik)).laps.length === 13 && s2.top === s.top, `scrolled away, a new lap leaves the list where the teacher put it (${s.top} → ${s2.top})`);
+      await finger(-400);
+      await press(p, ik, 'lap');
+      s = await list();
+      ok((await saved(p, ik)).laps.length === 14 && s.top === s.max && await rect() === r0, `scrolled back to the end, it follows again (${JSON.stringify(s)})`);
+      await ctx.close();
+
+      // Fill the board on a 1920 × 1080 board: a class of 30 and the end of the run show at once.
+      const ctx2 = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+      const q = await ctx2.newPage(); q.on('pageerror', e => errors.push(e.message));
+      await q.goto(BASE); await boardUp(q); await freeBoard(q);
+      const ik2 = await addWin(q, 'stopwatch'); await connected(q, ik2);
+      await q.evaluate(ik => window.__board21.setMaximized(ik, true), ik2); await q.waitForTimeout(600);
+      await set(q, ik2, { banked: 200000, laps: Array.from({ length: 30 }, (_, i) => 60000 + i * 4500) }, C({ list: true }));
+      const fit = await F(q, ik2, () => {
+        const box = document.getElementById('llist').getBoundingClientRect(), rows = [...document.querySelectorAll('#lrows .lrow[aria-label]')];
+        const scrolls = [document.getElementById('lrows'), document.getElementById('lscroll')].some(e => e.scrollHeight > e.clientHeight + 1 || e.scrollWidth > e.clientWidth + 1);
+        return { n: rows.length, all: rows.every(r => { const b = r.getBoundingClientRect(); return b.left >= box.left - 1 && b.right <= box.right + 1 && b.top >= box.top - 1 && b.bottom <= box.bottom + 1; }), scrolls, W: innerWidth, H: innerHeight };
+      });
+      ok(fit.n === 31 && fit.all && !fit.scrolls, `filling the board, 30 laps and the end of the run all show at once (${JSON.stringify(fit)})`);
+      await ctx2.close();
+    });
+
+    // ---- 4. A setting changed mid-run leaves Lap and Stop where they were, and a tap at Lap's spot never stops the run.
+    await part('Settings mid-run', async () => {
+      const { ctx, p, ik } = await board();
+      for (const [w, h] of [[600, 380], [280, 200]]) {
+        await size(p, ik, w, h);
+        for (const id of ['list', 'hide', 'laps', 'record']) {
+          await set(p, ik, { banked: 0, ago: 20000, laps: [5000] }, C());
+          await p.waitForTimeout(500);
+          const lap0 = await boxOf(p, ik, '#lap'), stop0 = await boxOf(p, ik, '#stop'), size0 = await inner(p, ik);
+          ok((await look(p, ik)).on === 'lap,stop', `(${w} × ${h}: Lap and Stop show)`);
+          const n0 = (await saved(p, ik)).laps.length;
+          const moves = [];
+          for (const turn of ['on', 'off']) {
+            await choose(p, ik, id);
+            const grew = (await inner(p, ik)).join() !== size0.join();
+            if (!grew && !same(await boxOf(p, ik, '#stop'), stop0)) moves.push(`Stop moved with ${id} ${turn}`);
+            const L = await look(p, ik);
+            if (!grew && L.on.includes('lap') && !same(await boxOf(p, ik, '#lap'), lap0)) moves.push(`Lap moved with ${id} ${turn}`);
+            await tapAt(p, lap0);
+            if ((await look(p, ik)).phase !== 'running') moves.push(`a tap at Lap's spot with ${id} ${turn} stopped the run`);
+            await p.waitForTimeout(800);
+          }
+          const d = await saved(p, ik);
+          ok(!moves.length && d.startedAt != null, `${w} × ${h}, ${id} on and off mid-run: Lap and Stop stay put, and a tap at Lap's spot never stops the run (${moves.join('; ') || (d.laps.length - n0) + ' laps tapped'})`);
+          await set(p, ik, null, C());
+        }
+      }
+      await ctx.close();
+      // A tall window: Lap list goes under the buttons, on the row’s own edges, and Lap and Stop stay put.
+      const T = await board({ viewport: { width: 1000, height: 1000 } });
+      await size(T.p, T.ik, 520, 860);
+      await set(T.p, T.ik, { banked: 0, ago: 70000, laps: [20000, 35000, 52000] }, C());
+      const row = await boxOf(T.p, T.ik, '#controls'), lapT = await boxOf(T.p, T.ik, '#lap'), stopT = await boxOf(T.p, T.ik, '#stop');
+      await choose(T.p, T.ik, 'list');
+      const list = await boxOf(T.p, T.ik, '#llist'), win = await boxOf(T.p, T.ik, 'html');
+      const under = await F(T.p, T.ik, () => ({ mode: document.getElementById('face').dataset.mode, rows: +getComputedStyle(document.getElementById('llist')).getPropertyValue('--R') }));
+      ok(under.mode === 'liststack' && same(await boxOf(T.p, T.ik, '#lap'), lapT) && same(await boxOf(T.p, T.ik, '#stop'), stopT) && list.y >= row.y + row.h &&
+        Math.abs(list.x - row.x) <= 1 && Math.abs(list.w - row.w) <= 1 && list.y + list.h <= win.y + win.h && under.rows >= 4,
+        `520 × 860: Lap list goes under Lap and Stop, which stay put, on their edges, with room for ${under.rows} rows (${JSON.stringify({ mode: under.mode, row, list, win })})`);
+      await T.ctx.close();
+    });
+
+    // ---- 5. Lap list grows a small window, and the teacher's size comes back when it's turned off. On a Chromebook,
+    // every word in the grown window is at least 14 px on the screen.
+    await part('Lap list grows the window', async () => {
+      for (const chromebook of [false, true]) {
+        const { ctx, p, ik } = await board({}, chromebook);
+        const [w, h] = chromebook ? [600, 380] : [280, 200];
+        await size(p, ik, w, h);
+        const rect0 = await p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik);
+        await set(p, ik, { banked: 0, ago: 70000, laps: [20000, 35000, 52000] }, C());
+        await choose(p, ik, 'list'); await p.waitForTimeout(500);
+        const grown = await inner(p, ik);
+        const L = await look(p, ik);
+        const px = await F(p, ik, () => {
+          const z = Board21.context.window.zoom, fs = sel => { const e = document.querySelector(sel); return e ? parseFloat(getComputedStyle(e).fontSize) * z : 0; };
+          return { z, rows: fs('#llist'), head: fs('.lhead'), tag: fs('#lrows .lrow.fast .tag'), word: (document.querySelector('#lrows .lrow.fast .tag') || {}).textContent,
+            buttons: fs('#controls'), digits: document.querySelector('.slot.dig:not(.off):not(.frac)').getBoundingClientRect().height * z };
+        });
+        ok(L.mode === 'list' && grown[0] > w && grown[1] > h && await p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik) === rect0,
+          `${chromebook ? 'Chromebook' : 'zoom 1'}, ${w} × ${h}: Lap list grows the window until the list fits beside the time, and its saved size stays (${grown.join(' × ')})`);
+        if (chromebook) ok(px.rows >= 13.95 && px.head >= 13.95 && px.tag >= 13.95 && px.word === 'Fastest lap' && px.buttons >= 13.95 && px.digits >= 34,
+          `there, every word is at least 14 px on the screen, with “Fastest lap”, and the digits 34 px (${JSON.stringify(px)})`);
+        await choose(p, ik, 'list'); await p.waitForTimeout(500);
+        ok((await inner(p, ik)).join() === [w, h].join(), `Lap list off: the teacher's ${w} × ${h} comes back (${(await inner(p, ik)).join(' × ')})`);
+        await ctx.close();
+      }
+    });
+
+    // ---- 6. Beat the record.
+    await part('Beat the record', async () => {
+      const { ctx, p, ik } = await board();
+      await size(p, ik, 600, 380); await spy(p, ik);
+      await choose(p, ik, 'record');
+      let L = await look(p, ik);
+      ok(L.mode === 'record' && L.rec === 'Next run sets the record', `on, with no record: “${L.rec}”`);
+      await press(p, ik, 'start'); L = await look(p, ik);
+      ok(L.rec === 'This run sets the record', `a run with no record to race: “${L.rec}”`);
+      await p.waitForTimeout(1500); await press(p, ik, 'stop'); L = await look(p, ik);
+      let d = await saved(p, ik);
+      ok(d.records.short === null && L.title === 'Stopped' && L.main === 'Start', `a run under 5 seconds never sets a record, and the next tap starts a new run (${L.title}, ${L.main})`);
+      // A run that started ago ms before, stopped with a tap (once Stop has been there long enough to take one).
+      const stopAt = async (ago, race = 'short') => { await set(p, ik, { banked: 0, ago, laps: [], records: d.records, earlier: d.earlier, race }); await p.waitForTimeout(300); await press(p, ik, 'stop'); d = await saved(p, ik); return look(p, ik); };
+      L = await stopAt(48550);
+      ok(d.records.short === d.banked && d.banked >= 48550 && L.title === 'New record' && L.rec === 'First record', `the first run of 5 seconds or more sets it: “${L.rec}”, and the title says ${L.title}`);
+      await set(p, ik, { banked: 0, laps: [], records: { short: 48550, long: null }, earlier: { short: [], long: [] } });
+      d = await saved(p, ik);
+      L = await stopAt(42100);
+      ok(d.records.short === d.banked && L.title === 'New record' && /^New record \d\.\d\d seconds faster$/.test(L.rec) && d.earlier.short.join() === '48550', `a faster run is a new record: “${L.rec}”`);
+      const rec = d.records.short;
+      await choose(p, ik, 'resume'); d = await saved(p, ik);
+      ok(d.startedAt != null && d.records.short === 48550, `Resume carries on, and the record it set goes back (${d.records.short})`);
+      await press(p, ik, 'stop'); d = await saved(p, ik);
+      await set(p, ik, { banked: 0, laps: [], records: { short: 42100, long: null }, earlier: { short: [48550], long: [] } });
+      d = await saved(p, ik);
+      L = await stopAt(45200);
+      ok(d.records.short === 42100 && L.title === 'Stopped' && /^Record 0:42\.10 \d\.\d\d seconds slower$/.test(L.rec), `a slower run is a miss, and says how close it came: “${L.rec}”`);
+      // A run started with it off never sets a record, even after Resume.
+      await set(p, ik, null, C());
+      await set(p, ik, { banked: 0, ago: 30000, laps: [], records: d.records, earlier: d.earlier, race: null });
+      await choose(p, ik, 'record'); L = await look(p, ik);
+      ok(L.rec === 'Next run races 0:42.10', `turned on mid-run: “${L.rec}”`);
+      await press(p, ik, 'stop'); await p.waitForTimeout(600); await press(p, ik, 'start'); await p.waitForTimeout(600); await press(p, ik, 'stop');
+      d = await saved(p, ik); L = await look(p, ik);
+      ok(d.records.short === 42100 && d.banked < 42100 && L.title === 'Stopped', `a run started with it off is faster but never a record, even after Resume (${d.banked} ms, record ${d.records.short})`);
+      // A run races the best time chosen at Start: switching to Longest and back before Stop still counts.
+      await set(p, ik, { banked: 0, ago: 35000, laps: [], records: d.records, earlier: d.earlier, race: 'short' });
+      await choose(p, ik, 'goal:long'); await choose(p, ik, 'goal:short');
+      await press(p, ik, 'stop'); d = await saved(p, ik);
+      ok(d.records.short === d.banked && d.banked < 42100 && d.earlier.short[0] === 42100, `switching the best time and back before Stop still counts (${d.records.short})`);
+      // Bring back, and the two ways a real record used to be lost: a stray record then Clear record, and two stray
+      // records in a row. Picking Bring back again and again reaches every record there ever was.
+      const round = async () => {
+        const seen = [];
+        for (let i = 0; i < 6; i++) {
+          const items = (await menuOf(p, ik)).split(' | ').filter(x => /^Bring back /.test(x));
+          if (items.length !== 1 || !await choose(p, ik, 'restore')) return { seen, rows: items.length };
+          seen.push((await saved(p, ik)).records.short);
+        }
+        return { seen, rows: 1 };
+      };
+      const real = 42100;
+      const base = { banked: 0, laps: [], records: { short: real, long: null }, earlier: { short: [48550], long: [] } };
+      await set(p, ik, base); d = await saved(p, ik);
+      L = await stopAt(6200);
+      ok(d.records.short === d.banked && L.title === 'New record', `(a stray run sets a record: ${d.records.short})`);
+      await choose(p, ik, 'clear'); d = await saved(p, ik);
+      ok(d.records.short === null && (await look(p, ik)).rec === 'Next run sets the record', 'Clear record clears it');
+      // (Each record once, then round again.)
+      const carousel = r => r.rows === 1 && r.seen.length === 6 && new Set(r.seen.slice(0, 3)).size === 3 && r.seen.slice(3).join() === r.seen.slice(0, 3).join();
+      let r = await round();
+      ok(carousel(r) && r.seen.includes(real) && r.seen.includes(48550), `a stray record, then Clear record: one Bring back row brings back the real record, then each in turn (${r.seen.join(', ')})`);
+      await set(p, ik, base); d = await saved(p, ik);
+      await stopAt(6200); await stopAt(5600);
+      ok(d.records.short === d.banked && d.banked < 7000, `(two stray records in a row: ${d.records.short})`);
+      r = await round();
+      ok(r.rows === 1 && new Set(r.seen.slice(0, 4)).size === 4 && r.seen[4] === r.seen[0] && r.seen.includes(real) && r.seen.includes(48550),
+        `two stray records: one Bring back row brings back the real record, then each in turn, and loses none (${r.seen.join(', ')})`);
+      // A real run that missed a stray record, and beats the record Bring back brings back, is the new record.
+      await set(p, ik, { banked: 0, laps: [], records: { short: 48550, long: null }, earlier: { short: [], long: [] } }); d = await saved(p, ik);
+      await stopAt(6200); L = await stopAt(45000);
+      ok(d.records.short < 7000 && /^Record 0:06\.\d\d /.test(L.rec), `(a real run misses the stray record: “${L.rec}”)`);
+      const run = d.banked;
+      await choose(p, ik, 'restore'); d = await saved(p, ik);
+      ok(d.records.short === run && d.earlier.short[0] === 48550 && (await look(p, ik)).title === 'New record', `Bring back 0:48.55: the run beat it, so the run is the record (${d.records.short}, ${d.earlier.short.join()})`);
+      await set(p, ik, { banked: 0, laps: [], records: { short: real, long: null }, earlier: { short: [48550], long: [] } });
+      ok(await choose(p, ik, 'restore') && (await saved(p, ik)).records.short === 48550 && /Bring back 0:42\.10/.test(await menuOf(p, ik)) && await choose(p, ik, 'restore') && (await saved(p, ik)).records.short === real,
+        'with two records, Bring back is a swap: picking it again swaps them back');
+      ok((await confOf(p, ik)).record === true && !('records' in (await confOf(p, ik))), 'records are content, never config');
+      await ctx.close();
+    });
+
+    // ---- 7. Hide time covers the digits while running and shows them after Stop. Reduced motion runs no animations.
+    await part('Hide time', async () => {
+      const { ctx, p, ik } = await board();
+      await size(p, ik, 600, 380);
+      await choose(p, ik, 'hide');
+      const tiles = () => F(p, ik, () => {
+        const digs = [...document.querySelectorAll('.slot.dig:not(.off)')];
+        return { n: digs.length, covered: digs.every(s => getComputedStyle(s, '::after').content !== 'none' && +getComputedStyle(s, '::after').opacity > 0.3 && +getComputedStyle(s.firstChild).opacity === 0),
+          hop: document.getAnimations().filter(a => a.animationName === 'hop').length, all: document.getAnimations().length };
+      });
+      await press(p, ik, 'start'); await p.waitForTimeout(1200);
+      let t = await tiles(), L = await look(p, ik);
+      ok(L.veiled && t.covered && t.n >= 3 && t.hop === t.n && L.time === 'Time hidden' && L.note === 'Time hidden', `running: a tile covers each digit, and each hops (${JSON.stringify(t)}, ${L.time})`);
+      await press(p, ik, 'stop'); await p.waitForTimeout(1500);
+      L = await look(p, ik); const d = await saved(p, ik);
+      const glyphs = await F(p, ik, () => [...document.querySelectorAll('.slot.dig:not(.off) > i')].every(i => +getComputedStyle(i).opacity === 1));
+      ok(!L.veiled && glyphs && /^0:0\d\.\d\d$/.test(L.time) && Math.abs(parseFloat(L.time.slice(2)) * 1000 - d.banked) < 10, `Stop shows the time (${L.time})`);
+      await p.emulateMedia({ reducedMotion: 'reduce' });
+      await press(p, ik, 'reset'); await p.waitForTimeout(800); await press(p, ik, 'start'); await p.waitForTimeout(1000);
+      t = await tiles();
+      ok(t.covered && t.all === 0, `with reduced motion the tiles hold still, and nothing animates (${JSON.stringify(t)})`);
+      await press(p, ik, 'stop'); await p.waitForTimeout(300);
+      ok((await F(p, ik, () => document.getAnimations().length)) === 0 && !(await look(p, ik)).veiled, 'and Stop shows the time without moving');
+      await ctx.close();
+    });
+
+    // ---- 8. The menu: its rows and order in each mode, and which are greyed out. A greyed row keeps its check.
+    await part('Menu', async () => {
+      const { ctx, p, ik } = await board();
+      // (A heading's id stays in the widget: the SDK sends a heading's label only.)
+      const ids = () => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.filter(i => !i.heading).map(i => i.id).join(' '), ik);
+      const cases = [
+        [{ banked: 0, laps: [] }, C(), '✓ Hundredths | ✓ Laps | Lap list | Hide time | Beat the record', 'hundredths laps list hide record'],
+        [{ banked: 0, ago: 9000, laps: [4000] }, C(), 'Remove last lap | — | ✓ Hundredths | ✓ Laps | Lap list | Hide time | Beat the record', 'unlap line:1 hundredths laps list hide record'],
+        [{ banked: 0, laps: [], undo: { banked: 9000, laps: [4000], at: Date.now() } }, C({ list: true }), 'Undo reset | — | ✓ Hundredths | ✓ Laps | ✓ Lap list | Hide time | Beat the record', 'undo line:1 hundredths laps list hide record'],
+        [{ banked: 9000, laps: [4000] }, C({ laps: false, list: true }), '✓ Hundredths | Laps | ✓ Lap list (greyed) | Hide time | Beat the record', 'hundredths laps list hide record'],
+        [{ banked: 9000, laps: [4000] }, C({ hide: true, list: true }), '✓ Hundredths | ✓ Laps (greyed) | ✓ Lap list (greyed) | ✓ Hide time | Beat the record', 'hundredths laps list hide record'],
+        [{ banked: 0, laps: [] }, C({ record: true, hide: true }), '✓ Hundredths | ✓ Laps (greyed) | Lap list (greyed) | ✓ Hide time (greyed) | ✓ Beat the record | — | [Best time] | ✓ Shortest | Longest',
+          'hundredths laps list hide record line:2 goal:short goal:long'],
+        [{ banked: 6000, laps: [], records: { short: 6000, long: null }, earlier: { short: [48550], long: [] }, race: 'short' }, C({ record: true }),
+          'Resume | Bring back 0:48.55 | Clear record | — | ✓ Hundredths | ✓ Laps (greyed) | Lap list (greyed) | Hide time (greyed) | ✓ Beat the record | — | [Best time] | ✓ Shortest | Longest',
+          'resume restore clear line:1 hundredths laps list hide record line:2 goal:short goal:long'],
+        [{ banked: 0, laps: [], records: { short: 48550, long: null } }, C({ record: true, goal: 'long' }),
+          '✓ Hundredths | ✓ Laps (greyed) | Lap list (greyed) | Hide time (greyed) | ✓ Beat the record | — | [Best time] | Shortest | ✓ Longest', 'hundredths laps list hide record line:2 goal:short goal:long']
+      ];
+      const bad = [];
+      for (const [d, c, want, wantIds] of cases) {
+        await set(p, ik, d, c); await p.waitForTimeout(200);
+        const m = await menuOf(p, ik), i = await ids();
+        if (m !== want || i !== wantIds) bad.push(`${m} [${i}]`);
+      }
+      ok(!bad.length, `the menu's rows, ids, and order in each mode, with the greyed rows, each keeping its check${bad.length ? ': ' + bad.join(' // ') : ''}`);
+      await set(p, ik, { banked: 0, laps: [] }, C({ hide: true }));
+      await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.waitForTimeout(200);
+      const row = await p.locator('#menu [data-id="laps"]').evaluate(b => ({ disabled: b.disabled, checked: b.getAttribute('aria-checked'), tick: !!b.querySelector('.check') }));
+      await p.keyboard.press('Escape');
+      ok(row.disabled && row.checked === 'true' && row.tick, `the board draws a greyed row with its check (${JSON.stringify(row)})`);
+      await ctx.close();
+    });
+
+    // ---- 9. Every button shows its icon at the smallest window, on a Chromebook (zoom 0.57).
+    await part('Icons', async () => {
+      const { ctx, p, ik } = await board({}, true);
+      await size(p, ik, 280, 200);
+      const icons = () => F(p, ik, () => {
+        const z = Board21.context.window.zoom, out = [];
+        for (const b of document.querySelectorAll('.btn.on')) {
+          const r = b.getBoundingClientRect(), i = b.querySelector('.ico').getBoundingClientRect(), w = b.querySelector('.bl').getBoundingClientRect();
+          const inB = x => x.left >= r.left - 0.5 && x.right <= r.right + 0.5 && x.top >= r.top - 0.5 && x.bottom <= r.bottom + 0.5;
+          out.push({ id: b.id, ok: i.width * z >= 6 && inB(i) && inB(w) && w.width > 0 && i.right <= w.left + 0.5 });
+        }
+        return { z, out };
+      });
+      const seen = [], bad = [];
+      const check = async () => { const r = await icons(); for (const b of r.out) { seen.push(b.id); if (!b.ok) bad.push(b.id); } return r.z; };
+      const z = await check();
+      await press(p, ik, 'start'); await p.waitForTimeout(400); await check();
+      await press(p, ik, 'stop'); await p.waitForTimeout(800); await check();
+      await press(p, ik, 'reset'); await p.waitForTimeout(400); await check();
+      ok(z < 0.6 && !bad.length && ['start', 'stop', 'reset', 'undo'].every(id => seen.includes(id)), `280 × 200 at zoom ${z.toFixed(2)}: every button shows its icon beside its word (${[...new Set(seen)].join(', ')}${bad.length ? '; without: ' + bad.join(', ') : ''})`);
+      await ctx.close();
+    });
+
+    // ---- 10. A crafted file, and the window's line in Board history.
+    await part('Crafted file and Board history', async () => {
+      const { ctx, p, ik } = await board();
+      const evil = '"><img src=x onerror="top.document.title=\'PWNED\'">';
+      const crafted = { format: '21board', formatVersion: 1, kind: 'full', board: { name: 'Races' }, instances: [
+        { widgetId: 'stopwatch', instance: 1, open: true, z: 1, rect: { x: 20, y: 20, w: 600, h: 420 },
+          config: { hundredths: evil, laps: 'yes', list: 1, hide: evil, record: [true], goal: evil },
+          data: { startedAt: evil, banked: -5, laps: [evil, 1e20, -1], records: { short: evil, long: 1e30 }, earlier: { short: [evil, 2], long: evil }, beat: { mode: evil, was: evil }, race: evil, undo: evil } }] };
+      fs.writeFileSync(OUT + 'crafted-stopwatch.21board', JSON.stringify(crafted));
+      await p.setInputFiles('#import-input', OUT + 'crafted-stopwatch.21board'); await p.waitForTimeout(300);
+      await p.click('#modal .btn:has-text("Replace this page")');
+      ok(await connected(p, 'stopwatch:1'), '(a crafted file opens)');
+      await p.waitForTimeout(800);
+      const L = await look(p, 'stopwatch:1'), marks = await F(p, 'stopwatch:1', () => document.querySelectorAll('img, [onerror]').length);
+      ok(await p.title() !== 'PWNED' && marks === 0 && L.phase === 'idle' && L.time === '0:00.00' && L.mode === 'note' && await menuOf(p, 'stopwatch:1') === '✓ Hundredths | ✓ Laps | Lap list | Hide time | Beat the record',
+        `crafted content and config are dropped: an idle Stopwatch with the usual settings (${L.time}, ${await menuOf(p, 'stopwatch:1')})`);
+      // Board history: the time on it and its laps, and a running one comes back stopped at the time it had.
+      const H = (fn, a) => p.evaluate(fn, a);
+      const lines = await H(() => { const h = window.__board21.history, at = 1795180000000;
+        return [h.excerptOf({ banked: 73900, startedAt: null, laps: [24310, 52080] }, 'stopwatch'), h.excerptOf({ banked: 0, startedAt: at - 83470, laps: [24310] }, 'stopwatch', null, new Date(at).toISOString()),
+          h.excerptOf({ banked: 73900, laps: [] }, 'stopwatch', { hundredths: false }), h.excerptOf({ banked: 0, laps: [], records: { short: 48550 } }, 'stopwatch'), h.excerptOf({ banked: 'x', laps: 7 }, 'stopwatch')]; });
+      ok(lines.join(' | ') === '1:13.90, 2 laps | 1:23.47, 1 lap | 1:13 |  | ', `Board history's line for a Stopwatch: its time and laps (${lines.join(' | ')})`);
+      const back = await H(() => window.__board21.history.fix({ instances: [{ widgetId: 'stopwatch', data: { startedAt: 1000, banked: 2000, laps: [500] } }] }, 6000).instances[0].data);
+      ok(back.startedAt === null && back.banked === 7000 && back.laps.join() === '500', `going back to a version with it running brings it back stopped at the time it had (${JSON.stringify(back)})`);
       await ctx.close();
     });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));

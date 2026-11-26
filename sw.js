@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.25-7';
+const VERSION = '2026.11.26-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'b6d95260';
+const BUILD = '8ad8b780';
 const FILES = {
-  './': '64f2b10ffcd66686',
-  'index.html': '64f2b10ffcd66686',
-  'board.js': '62b585db2d38646d',
+  './': 'ef36cf1ac0af2d6f',
+  'index.html': 'ef36cf1ac0af2d6f',
+  'board.js': '352b61923178e82e',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '9a79f1d1abd4ac84',
+  'widgets/registry.js': '043518a1a0f473da',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -38,6 +38,7 @@ const FILES = {
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
   'widgets/timer/index.html': '52a0094eeebbb200',
+  'widgets/stopwatch/index.html': '11d1641435fb92a3',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
   'widgets/clock/index.html': '4b926306ff365fe3',
