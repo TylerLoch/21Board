@@ -1743,5 +1743,56 @@ module.exports = T => {
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],
+  ['Calculator: the √ sign meets its bar in every text style', async (browser) => {
+    const errors = [];
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 }, deviceScaleFactor: 2 });
+    const page = await ctx.newPage();
+    page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    const ik = await addWin(page, 'calculator');
+    await eventually(() => page.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
+    await page.waitForTimeout(600);
+    const W = page.frameLocator(`.win[data-ikey="${ik}"] iframe`);
+    const front = () => page.evaluate(ik => { if (window.__board21.state.focused !== ik) window.__board21.focusWin(ik); }, ik);
+    await front();
+    await page.click(`.win[data-ikey="${ik}"] .win-label`);
+    await page.locator('#menu [data-act="widget"]').filter({ has: page.locator('.label', { hasText: /^History$/ }) }).click();
+    await page.waitForTimeout(600);
+    await front();
+    for (const k of ['sqrt', '9', 'equals']) await W.locator(`#keys .key[data-key="${k}"]`).click();
+    await page.waitForTimeout(400);
+    // Where the sign's last stroke turns into the bar: the first run of ink, top to bottom, in a column just left of the
+    // radicand's edge and in one on the bar to its right, in device pixels. They match when the two meet.
+    const join = async sel => {
+      const el = W.locator(sel).first(), r = await el.boundingBox(), em = await el.evaluate(e => parseFloat(getComputedStyle(e).fontSize));
+      const clip = { x: Math.floor(r.x - em * .5), y: Math.floor(r.y - em * .2), width: Math.ceil(em), height: Math.ceil(em * .45) };
+      const png = (await page.screenshot({ clip })).toString('base64');
+      return page.evaluate(async ([png, edge, em]) => {
+        const img = new Image(); img.src = 'data:image/png;base64,' + png; await img.decode();
+        const c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+        const g = c.getContext('2d', { willReadFrequently: true }); g.drawImage(img, 0, 0);
+        const d = g.getImageData(0, 0, c.width, c.height).data;
+        const ink = (x, y) => { const i = (y * c.width + x) * 4; return Math.abs(d[i] - d[0]) + Math.abs(d[i + 1] - d[1]) + Math.abs(d[i + 2] - d[2]) > 240; };
+        const run = x => { let y = 0; while (y < c.height && !ink(x, y)) y++; const top = y; while (y < c.height && ink(x, y)) y++; return top < c.height ? [top, y - 1] : null; };
+        const dpr = 2, left = Math.round((edge - em * .02) * dpr), right = Math.round((edge + em * .15) * dpr);
+        return { left: run(left), right: run(right) };
+      }, [png, r.x - clip.x, em]);
+    };
+    const meets = j => !!j.left && !!j.right && Math.abs(j.left[0] - j.right[0]) <= 1 && Math.abs(j.left[1] - j.right[1]) <= 1;
+    for (const style of ['standard', 'early']) {
+      if (style !== 'standard') {
+        await openSettings(page, ['letters']);
+        await page.click(`#settings [data-act="letters"][data-val="${style}"]`);
+        await page.waitForFunction(s => window.__board21.state.settings.letters === s, style);
+        await page.keyboard.press('Escape'); await page.waitForTimeout(1200);
+      }
+      for (const [where, sel] of [['on the canvas', '#eq .ce-radicand'], ['in History', '#history .hline .ce-radicand']]) {
+        const j = await join(sel);
+        ok(meets(j), `${style === 'early' ? 'Early readers' : 'Standard'}, ${where}: the √'s last stroke meets the bar, no gap or step (sign ${JSON.stringify(j.left)}, bar ${JSON.stringify(j.right)})`);
+      }
+    }
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
+  }],
   ];
 };

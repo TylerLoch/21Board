@@ -612,6 +612,13 @@
   const SPOKEN = { '+': 'plus', [MINUS]: 'minus', '×': 'times', '÷': 'divided by' };
   const T = '\u2009';   // thin space, around operators in the stylized equation
   const CURSOR = '<span class="ce-cursor"></span>';
+  // The √ is drawn, not typed: each font's √ meets the bar over the number in its own way, often with a gap or a step.
+  // One picture draws the bar and the sign, so they always join. The sign stretches to the radical's height, and its
+  // last stroke runs into the bar. The √ itself stays, unseen, for copying and screen readers.
+  const RADIC = '<span class="ce-radic"><span class="ce-surd">√</span><svg class="ce-surd-mark" aria-hidden="true">' +
+    '<line x1=".6em" x2="100%" y1=".035em" y2=".035em"/>' +
+    '<svg x="0" y=".035em" width=".62em" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" overflow="visible">' +
+    '<path d="M2 58L24 47L50 95L90 0L104 0"/></svg></svg></span>';
 
   function backends(f) {
     const sep = f.separators;
@@ -641,8 +648,8 @@
       autoClose: () => '<span class="ce-paren">)</span>',
       saidParens: x => x,
       sup: (b, x) => `<span class="ce-pow">${b}<sup class="ce-sup">${x}</sup></span>`,
-      sqrt: x => `<span class="ce-sqrt"><span class="ce-radic">√</span><span class="ce-radicand">${x}</span></span>`,
-      root: (n, x) => `<span class="ce-root"><span class="ce-index">${n}</span><span class="ce-sqrt"><span class="ce-radic">√</span><span class="ce-radicand">${x}</span></span></span>`,
+      sqrt: x => `<span class="ce-sqrt">${RADIC}<span class="ce-radicand">${x}</span></span>`,
+      root: (n, x) => `<span class="ce-root"><span class="ce-index">${n}</span><span class="ce-sqrt">${RADIC}<span class="ce-radicand">${x}</span></span></span>`,
       frac: (n, d) => `<span class="ce-frac"><span class="ce-numer">${n}</span><span class="ce-denom">${d}</span></span>`,
       over: (n, d) => `<span class="ce-frac"><span class="ce-numer">${n}</span><span class="ce-denom">${d}</span></span>`,
       pi: () => '<span class="ce-pi">π</span>',
@@ -2079,8 +2086,13 @@
 .ce-sup { font-size: .62em; vertical-align: super; line-height: 0; }
 .ce-sup .ce-sup { font-size: .8em; }
 .ce-sqrt, .ce-root { white-space: nowrap; }
-.ce-radic { padding-right: .02em; }
-.ce-radicand { border-top: .075em solid currentColor; padding: .08em .08em 0 .04em; }
+.ce-sqrt { display: inline-flex; position: relative; padding-left: .62em; }
+.ce-radic { position: absolute; inset: 0; }
+.ce-surd { position: absolute; opacity: 0; }
+.ce-surd-mark { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.ce-surd-mark svg { overflow: visible; }
+.ce-surd-mark path, .ce-surd-mark line { fill: none; stroke: currentColor; stroke-width: .07em; stroke-linecap: butt; stroke-linejoin: miter; stroke-miterlimit: 4; vector-effect: non-scaling-stroke; }
+.ce-radicand { padding: .15em .08em 0 .08em; }
 .ce-index { font-size: .55em; vertical-align: .95em; margin-right: -.45em; line-height: 0; }
 .ce-frac { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; font-size: .8em; margin: 0 .12em; line-height: 1.15; }
 .ce-numer { border-bottom: .09em solid currentColor; padding: 0 .18em .06em; }
