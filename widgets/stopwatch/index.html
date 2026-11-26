@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script src="../../sdk/board21.js"></script>
+<script type="application/json" id="board21-widget">{"id":"stopwatch","name":"Stopwatch","version":"1.0.0","description":"Count up with laps and a class record.","color":"#57534e","window":{"width":600,"height":380,"minWidth":280,"minHeight":200}}</script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stopwatch</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    background: var(--b21-bg); color: var(--b21-text); font-family: var(--b21-font);
+    touch-action: manipulation; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent;
+  }
+  button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; touch-action: manipulation; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+  /* The face. JS works out where everything goes from the window alone; CSS draws it. */
+  .face {
+    --ease: cubic-bezier(.2, .7, .2, 1);
+    --veil: var(--b21-accent);
+    --rest: .48;                                   /* a hidden digit at rest: 2:1 on the background */
+    --good: color-mix(in srgb, var(--b21-success) 68%, var(--b21-text));
+    --hair: var(--b21-border);
+    position: fixed; inset: 0; visibility: hidden;
+  }
+  [data-b21-theme="dark"] .face { --rest: .38; }
+  .face.ready { visibility: visible; }
+  .box { position: absolute; left: 0; top: 0; }
+  .none { display: none !important; }
+
+  /* The time. One fixed slot per character, so nothing shifts as it counts. */
+  .time-wrap { display: flex; align-items: center; justify-content: center; transition: translate .42s var(--ease); }
+  .face.line-empty .time-wrap { translate: 0 calc(var(--drop) * 1px); }
+  .face.settle-late .time-wrap { transition-delay: .9s; }
+  .time {
+    position: relative; display: flex; align-items: flex-end; white-space: nowrap;
+    font-weight: 500; line-height: 1;
+    font-variant-numeric: tabular-nums lining-nums; font-feature-settings: "tnum" 1, "lnum" 1;
+    color: var(--b21-text); transition: color .9s ease;
+  }
+  .slot { display: block; position: relative; text-align: center; text-box: trim-both cap alphabetic; }
+  .slot > i { display: inline-block; font-style: normal; }
+  .slot.off { display: none; }
+  .dig { width: calc(var(--dw) * 1em); }
+  .colon { width: calc(var(--cw) * 1em); }
+  .colon > i { translate: 0 calc(var(--cy) * 1em); }
+  .pt { width: calc(var(--pw) * 1em); }
+  .frac { font-size: calc(var(--s) * 1em); transition: color .9s ease; }
+  .face[data-phase="idle"] .time { color: color-mix(in srgb, var(--b21-text) 55%, var(--b21-bg)); }
+  .face[data-phase="running"] .frac { color: var(--b21-muted); }
+
+  /* Hide time: a tile the height of a digit covers each one. While it runs, a wave hops across them every 1.2 s:
+     each tile lifts, grows a little, and turns full accent in turn, and the colon brightens as it passes. */
+  .face.veiled .time { color: var(--veil); }
+  .face.veiled .dig > i { opacity: 0; }
+  .face.veiled .colon > i { opacity: var(--rest); }
+  .face.veiled .dig::after, .face.reveal .dig::after {
+    content: ""; position: absolute; left: 19%; right: 19%; top: 0; bottom: 0; border-radius: .085em; background: var(--veil);
+  }
+  .face.veiled .dig::after { opacity: var(--rest); }
+  .face.veiled[data-phase="running"] .dig::after { animation: hop 1.2s ease-in-out infinite both; animation-delay: calc(var(--w) * 200ms - 1.2s); }
+  .face.veiled[data-phase="running"] .colon > i { animation: pulse 1.2s ease-in-out infinite both; animation-delay: calc(var(--w) * 200ms - 1.2s); }
+  @keyframes hop {
+    0% { opacity: var(--rest); transform: none; }
+    22% { opacity: 1; transform: translateY(-.1em) scale(1.1); }
+    48%, 100% { opacity: var(--rest); transform: none; }
+  }
+  @keyframes pulse {
+    0% { opacity: var(--rest); scale: 1; }
+    22% { opacity: 1; scale: 1.1; }
+    48%, 100% { opacity: var(--rest); scale: 1; }
+  }
+  /* Stop: each tile fades, then its digit rises into the same slot, left to right. */
+  .face.reveal .dig::after { opacity: 0; animation: blockOut .24s ease-in both; animation-delay: calc(var(--i) * 80ms); }
+  .face.reveal .dig > i, .face.reveal .pt > i { animation: digIn .5s var(--ease) both; animation-delay: calc(var(--i) * 80ms + 170ms); }
+  .face.reveal .colon > i { animation: fadeIn .4s ease-out both; }
+  .face.reveal .time { transition: color .5s ease .1s; }
+  @keyframes blockOut { from { opacity: var(--rest); } to { opacity: 0; } }
+  @keyframes digIn { from { opacity: 0; transform: translateY(.06em); } }
+  @keyframes fadeIn { from { opacity: 0; } }
+  .face.reveal .frac::after { display: none; }
+
+  /* One line under the time: the latest lap, or that the time is hidden. */
+  .note {
+    text-align: center; white-space: nowrap; line-height: 1; text-box: trim-both cap alphabetic;
+    font-variant-numeric: tabular-nums; transition: opacity .2s;
+  }
+  .note.gone { opacity: 0; visibility: hidden; transition: opacity .15s, visibility 0s .15s; }
+  .note .lbl { color: var(--b21-muted); font-weight: 500; }
+  .note .val { font-weight: 600; margin-left: .45em; }
+  .note .lbl2 { margin-left: 1.3em; }
+  .note.short .lbl2, .note.short .val2 { display: none; }
+  .note .eye { display: none; width: 1em; height: 1em; vertical-align: -.12em; margin-right: .4em;
+    fill: none; stroke: var(--b21-muted); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+  .note[data-kind="hidden"] .eye { display: inline-block; }
+  .note[data-kind="hidden"] .val, .note[data-kind="hidden"] .lbl2 { display: none; }
+  .note.new .val { animation: ping 1.2s ease-out; }
+  @keyframes ping { from { color: var(--b21-accent); } }
+
+  /* Beat the record: a line above the time, and a track under it with the record's mark. The mark is one color
+     wherever it shows: the line's flag, the pole, and the pennant. */
+  .rec {
+    display: flex; align-items: center; justify-content: center; gap: .34em; white-space: nowrap; overflow: hidden;
+    line-height: 1; font-weight: 500; color: var(--b21-muted); font-variant-numeric: tabular-nums;
+  }
+  .rec > span, .rec > b { text-box: trim-both cap alphabetic; }
+  .rec svg { flex: none; width: 1em; height: 1em; }
+  .rec .flag { color: var(--b21-text); fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+  .rec .flag .pen { fill: currentColor; }
+  .rec .star { fill: currentColor; }
+  .rec b { color: var(--b21-text); font-weight: 650; }
+  .rec .diff::before { content: "\00b7"; margin: 0 .34em 0 .1em; opacity: .7; }
+  .face.best .rec { color: var(--good); }
+  .face.best .rec .lbl { font-weight: 650; }
+  .face.best .rec .diff { color: var(--b21-muted); }
+  .face.cheer .rec { animation: rise .5s var(--ease) both; }
+  .face.cheer .rec .star { animation: star .6s var(--ease) both .1s; transform-origin: 50% 55%; }
+  @keyframes rise { from { opacity: 0; transform: translateY(.45em); } }
+  @keyframes star { from { opacity: 0; transform: scale(.5) rotate(-30deg); } }
+  .face.cheer .time, .face.cheer .frac { color: var(--good); transition-duration: .25s; }
+  /* In a window too small for the line, a new record still shows: the time stays green. */
+  .face.best.noline .time, .face.best.noline .frac { color: var(--good); }
+
+  .track {
+    --rail: color-mix(in srgb, var(--b21-text) 16%, var(--b21-bg));
+    --run-a: var(--b21-accent); --run-b: color-mix(in srgb, var(--b21-muted) 42%, var(--b21-bg));
+    --mark: var(--b21-text);
+    --pen: max(calc(var(--th) * 1.05), var(--penmin, 0px));
+  }
+  .face.long .track { --run-b: var(--b21-success); }
+  .face.best .track { --run-a: var(--b21-success); --run-b: var(--b21-success); --mark: var(--b21-success); }
+  .rail, .fill, .gain { position: absolute; left: 0; top: calc(var(--th) * 1.55); height: var(--th); border-radius: 999px; }
+  .rail { right: 0; background: var(--rail); }
+  .fill { width: var(--runp, 0px); background: linear-gradient(to right, var(--run-a) 0 var(--splitp, 0px), var(--run-b) var(--splitp, 0px) 100%); }
+  .track.nofill .fill { opacity: 0; }
+  .gain { left: var(--lop, 0px); width: calc(var(--hip, 0px) - var(--lop, 0px)); border-radius: 0; opacity: 0;
+    background: color-mix(in srgb, var(--b21-success) 30%, var(--b21-bg)); }
+  .pole, .was { position: absolute; left: var(--flagp, 0px); width: max(2px, calc(var(--th) * .26)); transform: translateX(-50%); border-radius: 99px; background: var(--mark); }
+  .pole { top: 0; bottom: 0; transition: opacity .3s ease; }
+  .pole::after { content: ""; position: absolute; left: 50%; top: 0; width: calc(var(--pen) * 1.3); height: var(--pen); background: var(--mark); clip-path: polygon(0 0, 100% 50%, 0 100%); }
+  .track.noflag .pole { opacity: 0; }
+  .was { left: var(--ghostp, 0px); top: calc(var(--th) * 1.15); height: calc(var(--th) * 1.8); opacity: 0; background: var(--b21-muted); }
+  .face.best.has-ghost .gain { opacity: 1; }
+  .face.best.has-ghost .was { opacity: .6; }
+  .face.glide .fill { transition: width .8s var(--ease), opacity .4s ease; }
+  .face.glide .pole, .face.glide .was { transition: left .8s var(--ease), opacity .5s ease .3s; }
+  .face.glide .gain { transition: left .8s var(--ease), width .8s var(--ease), opacity .6s ease .25s; }
+
+  /* Buttons share one row with one place for each window size, the same in every mode. Idle Start fills it.
+     Running, Stop takes the wider right part and Lap the left, so the middle of Start is always Stop. Stopped,
+     Resume takes Stop's place and Reset takes Lap's. Each has a small icon beside its word, as tall as the word's
+     capitals and as heavy as its strokes. The icon never steps aside: in a tight row the gap and padding shrink. */
+  .controls { flex: none; }
+  .btn {
+    position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center; gap: .36em; padding: 0 .35em;
+    border-radius: 999px; font-weight: 600; line-height: 1; white-space: nowrap;
+    opacity: 0; visibility: hidden; pointer-events: none;
+    transition: opacity .16s, visibility 0s .16s;
+  }
+  .btn.on {
+    opacity: 1; visibility: visible; pointer-events: auto;
+    transition: opacity .22s .05s, left .3s var(--ease), width .3s var(--ease), transform .15s var(--ease), filter .15s;
+  }
+  .btn .ico { flex: none; width: calc(var(--ico) * 1em); height: calc(var(--ico) * 1em);
+    fill: none; stroke: currentColor; stroke-width: 3.4; stroke-linecap: round; stroke-linejoin: round; }
+  .btn .ico.solid { fill: currentColor; stroke-width: 2; }
+  .btn .bl { display: block; text-box: trim-both cap alphabetic; }
+  .controls.tight .btn { gap: .26em; padding: 0 .2em; }
+  .btn[data-at="left"] { width: calc((100% - var(--bgap) * 1px) * var(--ls, .36)); }
+  .btn[data-at="right"] { left: calc((100% - var(--bgap) * 1px) * var(--ls, .36) + var(--bgap) * 1px); width: calc((100% - var(--bgap) * 1px) * (1 - var(--ls, .36))); }
+  .btn:active { transform: scale(.97); filter: brightness(.94); }
+  [data-b21-theme="dark"] .btn:active { filter: brightness(1.12); }
+  .btn:focus { outline: none; }
+  .btn:focus-visible { outline: 3px solid var(--b21-accent); outline-offset: 3px; }
+  #start { background: var(--b21-accent); color: var(--b21-on-accent); }
+  #stop { background: var(--b21-text); color: var(--b21-bg); }
+  #lap, #reset, #undo { background: color-mix(in srgb, var(--b21-text) 11%, var(--b21-bg)); color: var(--b21-text); }
+  [data-b21-theme="dark"] #lap, [data-b21-theme="dark"] #reset, [data-b21-theme="dark"] #undo { background: color-mix(in srgb, var(--b21-text) 16%, var(--b21-bg)); }
+
+  /* Lap list: every lap in a numbered list, oldest first. Its rows are ruled from the start, so a new lap only
+     fills the next one. On a big board the rows flow into a second column, so a class of 30 fits at once. */
+  .llist { display: flex; flex-direction: column; font-variant-numeric: tabular-nums; line-height: 1; transition: opacity .3s ease-out .1s; }
+  .llist.off { opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .15s, visibility 0s .15s; }
+  .lscroll { flex: 1; min-height: 0; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; scrollbar-width: none; }
+  .lscroll::-webkit-scrollbar, .lrows::-webkit-scrollbar { display: none; }
+  .lheads { display: flex; gap: var(--cg); height: var(--headh); }
+  .lhead { flex: none; width: var(--colw); display: grid; grid-template-columns: var(--gcols); align-items: start;
+    border-bottom: 1px solid color-mix(in srgb, var(--b21-text) 22%, var(--b21-bg)); font-size: var(--tf); font-weight: 600; color: var(--b21-muted); }
+  .lhead span { text-box: trim-both cap alphabetic; text-align: right; }
+  .lrows { list-style: none; width: var(--colw); height: calc(var(--R) * var(--rowh)); overflow-y: auto; overscroll-behavior: contain;
+    scrollbar-width: none; scroll-snap-type: y mandatory; }
+  .lrows:focus, .lscroll:focus { outline: none; }
+  .lrows:focus-visible, .lscroll:focus-visible { outline: 3px solid var(--b21-accent); outline-offset: 3px; border-radius: 4px; }
+  .lrows.flow { display: grid; grid-auto-flow: column; grid-template-rows: repeat(var(--R), var(--rowh)); grid-auto-columns: var(--colw);
+    column-gap: var(--cg); width: max-content; overflow: visible; scroll-snap-type: none; }
+  .lrow { display: grid; grid-template-columns: var(--gcols); align-items: center; height: var(--rowh); white-space: nowrap;
+    border-bottom: 1px solid var(--hair); scroll-snap-align: start; }
+  .lrow.empty { border-bottom-color: color-mix(in srgb, var(--hair) 60%, var(--b21-bg)); }
+  .lrow > span { text-box: trim-both cap alphabetic; }
+  .lrow .n, .lhead span:first-child { text-align: right; padding-right: var(--g); }
+  .lrow .n { font-weight: 600; color: var(--b21-muted); }
+  .lrow .lt { text-align: right; font-weight: 500; }
+  .lrow .tag { padding-left: var(--g2); font-size: var(--tf); font-weight: 650; color: var(--good); }
+  .lrow .tot { text-align: right; font-weight: 650; }
+  .lrow.fast .lt { color: var(--good); font-weight: 600; }
+  .lrow.ghost { color: color-mix(in srgb, var(--b21-muted) 70%, var(--b21-bg)); }
+  .lrow.ghost .n { color: inherit; }
+  .lrow .sq { display: inline-block; width: .5em; height: .5em; border-radius: .1em; background: currentColor; vertical-align: .11em; }
+  .lrow.new { animation: rowIn 1.4s var(--ease); }
+  @keyframes rowIn {
+    0% { opacity: 0; background: var(--b21-accent-soft); }
+    25% { opacity: 1; background: var(--b21-accent-soft); }
+    100% { background: transparent; }
+  }
+  .lrows.up { -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.25), #000 calc(var(--rowh) * .9)); mask-image: linear-gradient(to bottom, rgba(0,0,0,.25), #000 calc(var(--rowh) * .9)); }
+  .lrows.down { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--rowh) * .9), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - var(--rowh) * .9), transparent); }
+  .lrows.up.down { -webkit-mask-image: linear-gradient(to bottom, rgba(0,0,0,.25), #000 calc(var(--rowh) * .9), #000 calc(100% - var(--rowh) * .9), transparent);
+    mask-image: linear-gradient(to bottom, rgba(0,0,0,.25), #000 calc(var(--rowh) * .9), #000 calc(100% - var(--rowh) * .9), transparent); }
+  .lscroll.left { -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,.3), #000 calc(var(--g) + 1.4em)); mask-image: linear-gradient(to right, rgba(0,0,0,.3), #000 calc(var(--g) + 1.4em)); }
+
+  #probe { position: absolute; left: -9999px; top: 0; visibility: hidden; white-space: nowrap; font-size: 100px; font-weight: 600;
+    line-height: 1; font-variant-numeric: tabular-nums; }
+
+  @supports not (text-box: trim-both cap alphabetic) {
+    .slot, .note, .btn .bl, .rec > span, .lhead span, .lrow > span { line-height: .74; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { transition: none !important; animation: none !important; }
+    .face.veiled .dig::after, .face.veiled .colon > i { opacity: calc(var(--rest) + .22); }
+  }
+</style>
+</head>
+<body>
+<main class="face" id="face" data-phase="idle" data-mode="note">
+  <p class="rec box none" id="rec"></p>
+  <div class="time-wrap box" id="timeWrap">
+    <div class="time" id="time" role="timer">
+      <span class="sr" id="timeText">0:00.00</span>
+      <span class="slot dig" data-k="h1" aria-hidden="true"><i></i></span><span class="slot dig" data-k="h2" aria-hidden="true"><i></i></span><span
+        class="slot colon" data-k="c1" aria-hidden="true"><i>:</i></span><span class="slot dig" data-k="m1" aria-hidden="true"><i></i></span><span
+        class="slot dig" data-k="m2" aria-hidden="true"><i></i></span><span class="slot colon" data-k="c2" aria-hidden="true"><i>:</i></span><span
+        class="slot dig" data-k="s1" aria-hidden="true"><i></i></span><span class="slot dig" data-k="s2" aria-hidden="true"><i></i></span><span
+        class="slot pt frac" data-k="pt" aria-hidden="true"><i>.</i></span><span class="slot dig frac" data-k="f1" aria-hidden="true"><i></i></span><span
+        class="slot dig frac" data-k="f2" aria-hidden="true"><i></i></span>
+    </div>
+  </div>
+  <div class="track box none" id="track" aria-hidden="true"><div class="rail"></div><div class="gain"></div><div class="fill"></div><div class="was"></div><div class="pole"></div></div>
+  <p class="note box" id="note"><svg class="eye" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18"/><path d="M10.6 5.1A10 10 0 0 1 12 5c6.4 0 10 7 10 7a17 17 0 0 1-3 4M6.6 6.6C3.7 8.5 2 12 2 12s3.6 7 10 7a9.6 9.6 0 0 0 5.4-1.6"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg><span
+    class="lbl" id="noteLbl"></span><span class="val" id="noteVal"></span><span class="lbl lbl2" id="noteLbl2">Total</span><span class="val val2" id="noteVal2"></span></p>
+  <div class="controls box" id="controls">
+    <button class="btn" id="lap" type="button" data-at="left"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13.6" r="7.4"/><path d="M12 13.6V10"/><path d="M9.6 2.4h4.8"/><path d="M12 2.6v3.4"/></svg><span class="bl">Lap</span></button>
+    <button class="btn" id="reset" type="button" data-at="left"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M5.2 12.8a7.1 7.1 0 1 0 2.2-5.8"/><path d="M4.6 3.6v4.5h4.5"/></svg><span class="bl">Reset</span></button>
+    <button class="btn" id="undo" type="button" data-at="left" aria-label="Undo reset"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 13.4L4.4 9l4.4-4.4"/><path d="M4.6 9h9.9a5.1 5.1 0 0 1 0 10.2H10.8"/></svg><span class="bl">Undo</span></button>
+    <button class="btn" id="start" type="button" data-at="full"><svg class="ico solid" viewBox="0 0 24 24" aria-hidden="true"><path d="M7.6 5.1v13.8a1.2 1.2 0 0 0 1.8 1l10.6-6.9a1.2 1.2 0 0 0 0-2L9.4 4.1a1.2 1.2 0 0 0-1.8 1z"/></svg><span class="bl" id="startLbl">Start</span></button>
+    <button class="btn" id="stop" type="button" data-at="right"><svg class="ico solid" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.8" y="4.8" width="14.4" height="14.4" rx="2.8"/></svg><span class="bl">Stop</span></button>
+  </div>
+  <section class="llist box off" id="llist" aria-label="Lap list">
+    <div class="lscroll" id="lscroll"><div class="lheads" id="lheads" aria-hidden="true"></div><ol class="lrows" id="lrows" aria-label="Laps"></ol></div>
+  </section>
+</main>
+<span id="probe" aria-hidden="true"></span>
+<div class="sr" id="announce" aria-live="polite"></div>
+
+<script>
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var face = $('face'), timeWrap = $('timeWrap'), timeEl = $('time'), timeText = $('timeText');
+  var note = $('note'), noteLbl = $('noteLbl'), noteVal = $('noteVal'), noteVal2 = $('noteVal2'), controls = $('controls');
+  var announceEl = $('announce'), probe = $('probe');
+  var recEl = $('rec'), track = $('track'), llist = $('llist'), lscroll = $('lscroll'), lheads = $('lheads'), lrows = $('lrows'), startLbl = $('startLbl');
+  var B = { start: $('start'), stop: $('stop'), lap: $('lap'), reset: $('reset'), undo: $('undo') };
+  var slots = {}, glyph = {};
+  Array.prototype.forEach.call(timeEl.querySelectorAll('.slot'), function (el) { slots[el.dataset.k] = el; glyph[el.dataset.k] = el.firstChild; });
+  var ALL = ['h1', 'h2', 'c1', 'm1', 'm2', 'c2', 's1', 's2', 'pt', 'f1', 'f2'];
+  var DIGS = ['h1', 'h2', 'm1', 'm2', 's1', 's2', 'f1', 'f2'];
+  var reduced = matchMedia('(prefers-reduced-motion: reduce)');
+
+  var MAX_MS = 100 * 3600 * 1000 - 10;   // 99:59:59.99
+  var TEN = 600000, HOUR = 3600000;
+  var MAX_LAPS = 999;
+  var HUND = 0.52;                        // hundredths, as a share of the main digits
+  var GUARD = 450;                        // a button ignores taps this long after it appears
+  var SLOW_GUARD = 700;                   // Reset, Undo, a fresh Start, and any button that just moved wait longer
+  var LAP_GAP = 250;                      // two laps closer than this are one hard tap
+  var UNDO_FACE = 10000;                  // Undo stays on the face this long after Reset; the menu keeps it until Start
+  var MIN_REC = 5000;                     // no class routine takes under 5 seconds: a shorter run is a slip, never a record
+  var FLAG_AT = 0.78;                     // where the record sits on the track while the class races it
+  var CLASS = 32;                         // a big board's Lap list keeps rows for a class of 30, the end of the run, and a stray tap
+  var UNDER_ROWS = 4;                     // a Lap list under the buttons gets smaller type for this many rows, and needs 3
+  var EARLIER = 50;                       // earlier records kept for each best time, for Bring back
+
+  // Saved content. undo is what Reset cleared, kept until the next Start. records holds the class's best time for
+  // each kind of goal. earlier holds, for each kind, every record that a new record or Clear record took the place of,
+  // newest first: Bring back takes the first, and the record it replaces goes to the end of the line, so no record is
+  // ever lost and every one comes round again. beat is set while the stopped run is the record it just set. race is the
+  // kind of record this run races: the best time chosen at Start, with Beat the record on. A run that started without
+  // it never sets a record.
+  var state = blank();
+  var cfg = defaults();
+  var zoom = 1, corners = null, started = false;
+
+  function blank() { return { startedAt: null, banked: 0, laps: [], undo: null, records: { short: null, long: null }, earlier: { short: [], long: [] }, beat: null, race: null }; }
+  function defaults() { return { hundredths: true, laps: true, list: false, hide: false, record: false, goal: 'short' }; }
+
+  /* ---------- Time ---------- */
+  function now() { return Date.now(); }
+  function running() { return state.startedAt != null; }
+  function elapsedAt(t) { return Math.min(MAX_MS, state.banked + (running() ? Math.max(0, t - state.startedAt) : 0)); }
+  function elapsed() { return elapsedAt(now()); }
+  function phase() { return running() ? 'running' : (state.banked > 0 || state.laps.length ? 'stopped' : 'idle'); }
+  // Which face shows. Beat the record comes first, then Hide time, then laps. A mode that sits out keeps its setting.
+  function veiled() { return cfg.hide && !cfg.record && phase() !== 'stopped'; }
+  function lapsActive() { return cfg.laps && !cfg.hide && !cfg.record; }
+  function listOn() { return lapsActive() && cfg.list; }
+  function lapsShown() { return lapsActive() && state.laps.length > 0; }
+  function record() { return state.records[cfg.goal]; }
+  function better(mode, a, b) { return mode === 'short' ? a < b : a > b; }
+  function beats(t, r) { return t >= MIN_REC && (r == null || better(cfg.goal, t, r)); }
+  function freshRecord() {
+    return cfg.record && phase() === 'stopped' && !!state.beat && state.beat.mode === cfg.goal && state.records[cfg.goal] === state.banked;
+  }
+  // This run races the chosen record: the best time chosen at Start, with Beat the record on since. Switching to the
+  // other best time and back before Stop still counts.
+  function racing() { return cfg.record && phase() !== 'idle' && state.race === cfg.goal; }
+  // With Beat the record on, a run that raced a record is over at Stop: the next tap starts the next run, even
+  // after a switch to the other best time. Anything else stopped, such as a class race with laps, carries on.
+  function freshNext() { return cfg.record && phase() === 'stopped' && state.race != null && !state.laps.length; }
+  // Hundredths matter for a reading under ten minutes, not past it.
+  function hundFor(ms) { return cfg.hundredths && ms < TEN; }
+  function faceHund() { return veiled() ? false : hundFor(elapsed()); }
+  function parts(ms) {
+    var cs = Math.floor(ms / 10);
+    return { h: Math.floor(cs / 360000), m: Math.floor(cs / 6000) % 60, s: Math.floor(cs / 100) % 60, c: cs % 100 };
+  }
+  function pad2(n) { return n < 10 ? '0' + n : String(n); }
+  function whole(p) { return p.h ? p.h + ':' + pad2(p.m) + ':' + pad2(p.s) : p.m + ':' + pad2(p.s); }
+  function fmtAs(ms, h) { var p = parts(ms); return whole(p) + (h ? '.' + pad2(p.c) : ''); }
+  function fmt(ms) { return fmtAs(ms, hundFor(ms)); }
+  function spoken(ms, h) {
+    var p = parts(ms), out = [];
+    if (h == null) h = hundFor(ms);
+    if (p.h) out.push(p.h + (p.h === 1 ? ' hour' : ' hours'));
+    if (p.m) out.push(p.m + (p.m === 1 ? ' minute' : ' minutes'));
+    var sec = h ? p.s + '.' + pad2(p.c) : String(p.s);
+    if (sec !== '0' || !out.length) out.push(sec + (sec === '1' ? ' second' : ' seconds'));
+    return out.join(' ');
+  }
+  // The difference between two times as the face shows them, so the numbers on screen add up.
+  function gainText(a, b) {
+    var d, h = hundFor(Math.max(a, b));
+    if (h) {
+      d = Math.abs(Math.floor(a / 10) - Math.floor(b / 10)) * 10;
+      return d < 60000 ? (d / 1000).toFixed(2) + ' seconds' : fmtAs(d, true);
+    }
+    d = Math.abs(Math.floor(a / 1000) - Math.floor(b / 1000)) * 1000;
+    var s = Math.round(d / 1000);
+    return s < 1 ? 'under 1 second' : s === 1 ? '1 second' : s < 60 ? s + ' seconds' : fmtAs(d, false);
+  }
+  // Which slots the time needs: M:SS(.cc), MM:SS, H:MM:SS, HH:MM:SS.
+  function klass(ms) { return ms < TEN ? 0 : ms < HOUR ? 1 : ms < 36000000 ? 2 : 3; }
+  var SHOW = [
+    ['m2', 'c2', 's1', 's2'],
+    ['m1', 'm2', 'c2', 's1', 's2'],
+    ['h2', 'c1', 'm1', 'm2', 'c2', 's1', 's2'],
+    ['h1', 'h2', 'c1', 'm1', 'm2', 'c2', 's1', 's2']
+  ];
+  function shownClass() { return veiled() ? 0 : klass(elapsed()); }
+
+  // A lap keeps hundredths while it's under ten minutes. Totals follow the run, like the face: past ten minutes
+  // every total drops them at once, so the Total column stays even.
+  function lapU(raw) { return cfg.hundredths && raw < TEN ? 10 : 1000; }
+  function totU() { return hundFor(elapsed()) ? 10 : 1000; }
+  function stretch(t, prev) { var u = lapU(t - prev); return { split: (Math.floor(t / u) - Math.floor(prev / u)) * u, sh: u === 10 }; }
+  function rowAt(i) {
+    var t = state.laps[i], s = stretch(t, i ? state.laps[i - 1] : 0), tu = totU();
+    return { n: i + 1, split: s.split, sh: s.sh, total: Math.floor(t / tu) * tu, th: tu === 10 };
+  }
+  // Stopped, the stretch from the last lap to Stop ends the list. It's the end of the run, not a numbered lap.
+  function lastStretch() {
+    var n = state.laps.length, t = state.banked, s = stretch(t, n ? state.laps[n - 1] : 0), tu = totU();
+    return s.split > 0 ? { end: true, split: s.split, sh: s.sh, total: Math.floor(t / tu) * tu, th: tu === 10 } : null;
+  }
+
+  /* ---------- Saved state ---------- */
+  function num(v) { return typeof v === 'number' && isFinite(v); }
+  function goalOk(m) { return m === 'short' || m === 'long'; }
+  function recMs(v) { return num(v) && v >= MIN_REC && v <= MAX_MS ? Math.floor(v) : null; }
+  // A line of earlier records: each a record time, each once, and not the record itself.
+  function cleanList(a, not) {
+    var out = [];
+    if (!Array.isArray(a)) return out;
+    for (var i = 0; i < a.length && out.length < EARLIER; i++) {
+      var v = recMs(a[i]);
+      if (v != null && v !== not && out.indexOf(v) < 0) out.push(v);
+    }
+    return out;
+  }
+  function cleanBeat(b, not) { return b && typeof b === 'object' && goalOk(b.mode) ? { mode: b.mode, was: recMs(b.was), undo: cleanList(b.undo, not) } : null; }
+  function cleanLaps(a, upTo) {
+    var out = [], prev = 0;
+    if (!Array.isArray(a)) return out;
+    for (var i = 0; i < a.length && out.length < MAX_LAPS; i++) {
+      var v = a[i];
+      if (!num(v) || v < prev || v > upTo) break;
+      out.push(Math.floor(v)); prev = v;
+    }
+    return out;
+  }
+  function cleanData(d) {
+    var out = blank();
+    if (!d || typeof d !== 'object') return out;
+    var t = now();
+    if (num(d.banked) && d.banked >= 0) out.banked = Math.min(Math.floor(d.banked), MAX_MS);
+    if (num(d.startedAt) && d.startedAt > 0 && d.startedAt <= t + 60000) out.startedAt = Math.min(d.startedAt, t);
+    // A run left running past the most it counts, such as over a break, stopped there, as it does with the board open.
+    if (out.startedAt != null && out.banked + (t - out.startedAt) >= MAX_MS) { out.banked = MAX_MS; out.startedAt = null; }
+    var e = out.banked + (out.startedAt != null ? t - out.startedAt : 0);
+    out.laps = cleanLaps(d.laps, e);
+    var recs = d.records && typeof d.records === 'object' ? d.records : {}, earlier = d.earlier && typeof d.earlier === 'object' ? d.earlier : {};
+    ['short', 'long'].forEach(function (m) { out.records[m] = recMs(recs[m]); out.earlier[m] = cleanList(earlier[m], out.records[m]); });
+    var stopped = out.startedAt == null && out.banked > 0;
+    if ((stopped || out.startedAt != null) && goalOk(d.race)) out.race = d.race;
+    // The new-record moment belongs to a stopped run that raced this record, is still the record, and beat the
+    // one before it.
+    var bt = stopped ? cleanBeat(d.beat, out.banked) : null;
+    if (bt && out.race === bt.mode && out.records[bt.mode] === out.banked && (bt.was == null || better(bt.mode, out.banked, bt.was))) out.beat = bt;
+    var u = d.undo;
+    if (u && typeof u === 'object' && out.startedAt == null && out.banked === 0 && !out.laps.length && num(u.banked) && u.banked > 0 && u.banked <= MAX_MS) {
+      out.undo = { banked: Math.floor(u.banked), laps: cleanLaps(u.laps, u.banked), at: num(u.at) && u.at > 0 ? Math.min(u.at, t) : 0, beat: cleanBeat(u.beat, Math.floor(u.banked)), race: goalOk(u.race) ? u.race : null };
+    }
+    return out;
+  }
+  function cleanCfg(c) {
+    var out = defaults();
+    if (c && typeof c === 'object') {
+      ['hundredths', 'laps', 'list', 'hide', 'record'].forEach(function (k) { if (typeof c[k] === 'boolean') out[k] = c[k]; });
+      if (goalOk(c.goal)) out.goal = c.goal;
+    }
+    return out;
+  }
+  function save() {
+    Board21.save({ v: 1, startedAt: state.startedAt, banked: state.banked, laps: state.laps.slice(),
+      undo: state.undo ? { banked: state.undo.banked, laps: state.undo.laps.slice(), at: state.undo.at, beat: state.undo.beat, race: state.undo.race } : null,
+      records: { short: state.records.short, long: state.records.long }, beat: state.beat,
+      earlier: { short: state.earlier.short.slice(), long: state.earlier.long.slice() }, race: state.race });
+  }
+  function saveCfg() { Board21.saveConfig({ hundredths: cfg.hundredths, laps: cfg.laps, list: cfg.list, hide: cfg.hide, record: cfg.record, goal: cfg.goal }); }
+
+  /* ---------- Actions. t is when the finger landed. ---------- */
+  // Carrying on means the stop didn't end the run, so a record it set goes back. Says which record is back.
+  function takeBack() {
+    var b = state.beat;
+    if (!b || state.records[b.mode] !== state.banked) return '';
+    state.records[b.mode] = b.was; state.earlier[b.mode] = b.undo.slice();
+    return b.was == null ? ' No record yet.' : ' Record back to ' + spoken(b.was) + '.';
+  }
+  // A record that a new one or Clear record replaces goes to the front of the line of earlier records.
+  function keep(g, v) {
+    if (v == null) return;
+    state.earlier[g] = [v].concat(state.earlier[g].filter(function (x) { return x !== v; })).slice(0, EARLIER);
+  }
+  // The stopped run becomes the record. The line keeps the one it replaced, and the beat keeps the line as it was,
+  // so Resume can put both back exactly.
+  function setRecord() {
+    var g = cfg.goal, was = state.records[g];
+    state.beat = { mode: g, was: was, undo: state.earlier[g].slice() };
+    keep(g, was);
+    state.records[g] = state.banked;
+    return was;
+  }
+  function start(t) {
+    if (running()) return;
+    var ph = phase(), fresh = freshNext(), back = '';
+    if (fresh) { state.banked = 0; state.laps = []; }   // the routine starts over; the record keeps the result
+    if (fresh || ph === 'idle') follow = true;
+    else if (ph === 'stopped') back = takeBack();
+    // A run races the record only if Beat the record is on when it starts and stays on while it runs.
+    if (fresh || ph === 'idle') state.race = cfg.record ? cfg.goal : null;
+    else if (!cfg.record) state.race = null;
+    state.beat = null; state.undo = null;
+    state.startedAt = Math.min(t, now());
+    calm(); save(); render(true);
+    if (fresh) say('New run');
+    else if (back) say('Resumed.' + back);
+  }
+  function resume() {
+    if (phase() !== 'stopped') return;
+    var back = takeBack();
+    state.beat = null; state.undo = null;
+    if (!cfg.record) state.race = null;
+    state.startedAt = now();
+    calm(); glide(); save(); render(true);
+    say('Resumed.' + back);
+  }
+  function stop(t) {
+    if (!running()) return;
+    var wasVeiled = veiled();
+    state.banked = elapsedAt(Math.min(t, now()));
+    state.startedAt = null;
+    state.laps = state.laps.filter(function (v) { return v <= state.banked; });
+    // Only a run that raced this record, with Beat the record still on, can set it.
+    var counts = racing();
+    if (!counts) state.race = null;
+    var set = false, was = null;
+    if (counts && beats(state.banked, record())) { was = setRecord(); set = true; }
+    if (wasVeiled) revealAnim();   // before drawing, so the colon fades in with the digits
+    if (set) { glide(); cheer(); }
+    save(); render(true);
+    say('Stopped at ' + spoken(state.banked) + (set ? (was == null ? '. First record.' : '. New record.') : ''));
+  }
+  function lap(t) {
+    if (!running() || !lapsActive() || cur.noRoom || state.laps.length >= MAX_LAPS) return;
+    var n = state.laps.length, prev = n ? state.laps[n - 1] : 0, e = elapsedAt(Math.min(t, now()));
+    if (n && e - prev < LAP_GAP) return;   // one hard tap the board read as two
+    state.laps.push(Math.max(prev, e));
+    save(); justLapped = true; render(true);
+    var r = rowAt(n);
+    say('Lap ' + r.n + ', ' + spoken(r.split, r.sh) + '. Total ' + spoken(r.total, r.th) + '.');
+  }
+  function reset() {
+    if (running() || phase() === 'idle') return;
+    state.undo = { banked: state.banked, laps: state.laps.slice(), at: now(), beat: state.beat, race: state.race };
+    state.banked = 0; state.laps = []; state.beat = null; state.race = null; follow = true;
+    calm(); save(); render(true);
+    say('Reset');
+  }
+  function undoReset() {
+    if (!state.undo || phase() !== 'idle') return;
+    var u = state.undo;
+    state.banked = u.banked; state.laps = u.laps; state.undo = null; state.race = u.race;
+    state.beat = u.beat && u.race === u.beat.mode && state.records[u.beat.mode] === u.banked ? u.beat : null;
+    save(); render(true);
+    say('Back to ' + spoken(state.banked));
+  }
+  function removeLap() {
+    if (!state.laps.length) return;
+    var n = state.laps.length;
+    state.laps.pop();
+    save(); render(true);
+    say('Removed lap ' + n);
+  }
+  function clearRecord() {
+    var m = cfg.goal, r = state.records[m];
+    if (r == null) return;
+    keep(m, r); state.records[m] = null; state.beat = null;
+    calm(); save(); render(true);
+    say('Record cleared');
+  }
+  // Bring back takes the newest earlier record, and the one it replaces goes to the end of the line. With two records
+  // that's a swap. With more, picking it again goes on to the next, and round, so it never loses a record.
+  // If the run on the face raced this record, missed the one it raced, and beats the one coming back, the class earned
+  // it: it's the record. A run that already was a record, and was cleared or swapped out, stays out.
+  function restoreRecord() {
+    var g = cfg.goal, line = state.earlier[g];
+    if (!line.length) return;
+    var u = line[0], old = state.records[g];
+    state.records[g] = u;
+    state.earlier[g] = line.slice(1).filter(function (x) { return x !== old; }).concat(old != null && old !== u ? [old] : []);
+    state.beat = null;
+    var set = phase() === 'stopped' && racing() && state.banked !== old && state.earlier[g].indexOf(state.banked) < 0 && beats(state.banked, u);
+    if (set) setRecord();
+    calm(); glide(); save(); render(true);
+    if (set) { cheer(); say('Record back to ' + spoken(u) + '. This run beat it. New record.'); }
+    else say('Record back to ' + spoken(u));
+  }
+  function autoStop() {
+    state.banked = MAX_MS; state.startedAt = null;
+    save(); render(false);
+  }
+
+  // The time is taken when the finger lands, and the action waits for the click, so a press that turns
+  // into moving the window does nothing. A button ignores taps just after it appears, and every button ignores
+  // taps for a moment after the row moves, so a tap aimed at the old place never lands on the new button there.
+  var pressAt = {}, shownAt = { start: 0, stop: 0, lap: 0, reset: 0, undo: 0 }, grewAt = { start: 0, stop: 0, lap: 0, reset: 0, undo: 0 }, movedAt = 0;
+  Object.keys(B).forEach(function (id) {
+    var b = B[id];
+    b.addEventListener('pointerdown', function (e) { if (e.isPrimary !== false) pressAt[id] = now(); });
+    b.addEventListener('click', function (e) {
+      var t = now(), pointer = e.detail > 0;
+      if (pointer && pressAt[id] && t - pressAt[id] < 2000) t = pressAt[id];
+      pressAt[id] = 0;
+      if (!b.classList.contains('on')) return;
+      // Reset, Undo, and a Start that begins a fresh run or drops Undo reset each clear something, so they wait longer.
+      // So does a button that just grew into another's place, such as Start into Undo's.
+      var slow = id === 'reset' || id === 'undo' || (id === 'start' && (freshNext() || (phase() === 'idle' && !!state.undo)));
+      if (pointer && (t - shownAt[id] < (slow ? SLOW_GUARD : GUARD) || t - grewAt[id] < SLOW_GUARD || t - movedAt < SLOW_GUARD)) return;
+      if (id === 'start') start(t);
+      else if (id === 'stop') stop(t);
+      else if (id === 'lap') lap(t);
+      else if (id === 'reset') reset();
+      else undoReset();
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.target && e.target.closest && e.target.closest('button')) return;
+    // (In the Lap list, Space scrolls it.)
+    if ((e.key === ' ' || e.key === 'Enter') && !(e.target.closest && e.target.closest('#llist'))) { e.preventDefault(); running() ? stop(now()) : start(now()); }
+    else if (e.key === 'l' || e.key === 'L') lap(now());
+  });
+
+  var sayTimer = 0;
+  function say(t) {
+    announceEl.textContent = '';
+    clearTimeout(sayTimer);
+    sayTimer = setTimeout(function () { announceEl.textContent = t; }, 60);
+  }
+
+  /* ---------- Metrics, measured from the teacher's font ---------- */
+  var metricsCache = {};
+  function probeEm(text) { probe.textContent = text; return probe.getBoundingClientRect().width / 100; }
+  function metrics() {
+    var fam = getComputedStyle(document.body).fontFamily;
+    if (metricsCache[fam]) return metricsCache[fam];
+    var R = 200, wt = 500;
+    probe.style.fontWeight = wt; probe.style.fontSize = R + 'px';
+    var dw = 0, d;
+    for (d = 0; d < 10; d++) { probe.textContent = String(d); dw = Math.max(dw, probe.getBoundingClientRect().width); }
+    var c = document.createElement('canvas').getContext('2d');
+    c.font = wt + ' ' + R + 'px ' + fam;
+    var dh = 0;
+    for (d = 0; d < 10; d++) dh = Math.max(dh, c.measureText(String(d)).actualBoundingBoxAscent);
+    var cap = c.measureText('H').actualBoundingBoxAscent || dh;
+    var col = c.measureText(':'), dot = c.measureText('.');
+    var colInk = col.actualBoundingBoxLeft + col.actualBoundingBoxRight;
+    var colMid = (col.actualBoundingBoxAscent - col.actualBoundingBoxDescent) / 2;
+    var dotInk = dot.actualBoundingBoxLeft + dot.actualBoundingBoxRight;
+    var ink0 = c.measureText('0'), side = Math.max(0, (dw - (ink0.actualBoundingBoxLeft + ink0.actualBoundingBoxRight)) / 2);
+    probe.style.fontWeight = ''; probe.style.fontSize = '';
+    var d6 = 0;
+    for (d = 0; d < 10; d++) d6 = Math.max(d6, probeEm(String(d)));
+    var m = {
+      dw: dw / R * 0.97,                       // a touch tighter than the font's own figure width
+      dh: (dh || R * 0.72) / R,
+      cap: (cap || R * 0.72) / R,
+      side: side / R,                          // a round digit's side bearing in its slot
+      cw: (colInk / R) + 0.17,                 // colon: its ink plus a little air each side
+      cy: -((dh / 2) - colMid) / R,            // the colon sits on the middle of the digits
+      pw: (dotInk / R) + 0.16,                 // the period, at the hundredths' size
+      // Lap line and Lap list, at their weight (600): the widest digit, the widest time, the full line, and the tag.
+      d6: d6,
+      tw: Math.max(probeEm('0:00.00'), probeEm('0:00:00'), probeEm('00:00')),
+      noteEm: probeEm('Lap 00') + 0.45 + probeEm('0:00.00') + 1.3 + probeEm('Total') + 0.45 + probeEm('0:00.00'),
+      tag: probeEm('Fastest lap'), tagS: probeEm('Fastest'),
+      // The buttons' widest labels: the narrow ones, and the wide ones.
+      small: Math.max(probeEm('Reset'), probeEm('Undo'), probeEm('Lap')),
+      wide: Math.max(probeEm('Resume'), probeEm('Start'), probeEm('Stop'))
+    };
+    // An icon is as tall as the word's capitals: its ink fills about 20 of its 24 units. A button needs its word,
+    // its icon, the gap, and room at the round ends: normally, and in a tight row.
+    m.ico = m.cap / 0.8;
+    m.smallT = m.small + m.ico + 0.26 + 0.6;
+    m.wideT = m.wide + m.ico + 0.26 + 0.6;
+    m.small += m.ico + 0.36 + 1.1;
+    m.wide += m.ico + 0.36 + 1.1;
+    metricsCache[fam] = m;
+    return m;
+  }
+  // The time's width in ems for a format: M:SS(.cc), MM:SS, H:MM:SS, HH:MM:SS.
+  function emW(M, k, hund) {
+    var nDig = [3, 4, 5, 6][k], nCol = k < 2 ? 1 : 2;
+    return nDig * M.dw + nCol * M.cw + (hund ? HUND * (M.pw + 2 * M.dw) : 0);
+  }
+  // The Lap list's columns in px at a row size and a small size: the number, with room for its digits, Lap, the tag
+  // right after it ("Fastest lap", or "Fastest" where that won't fit), and Total, with the gaps folded in.
+  function listCols(M, lf, tf, digits, word) {
+    var g = Math.round(lf * 0.6), g2 = Math.round(lf * 0.4);
+    var n = Math.ceil(digits * M.d6 * lf * 1.02 + 1) + g;
+    var t = Math.ceil(M.tw * lf * 1.03 + 2);
+    var tag = g2 + Math.ceil((word === 'Fastest' ? M.tagS : M.tag) * tf * 1.04 + 2);
+    return { n: n, t: t, tag: tag, tot: g + t, g: g, g2: g2, w: n + t + tag + g + t, word: word };
+  }
+  // The newest number in the list: the lap in progress while it counts, else the last lap.
+  function lastNumber() { var n = state.laps.length; return running() && n < MAX_LAPS ? n + 1 : n; }
+
+  /* ---------- Layout ---------- */
+  function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+  var cur = { mode: '', klass: -1, hund: null, key: '', noteShort: false, noRoom: false, L: null };
+
+  // Where everything goes, from the window alone. The buttons have one place for each window size, worked out from
+  // the face with the line under the time: the time, the line, and the buttons, centred together as one group. Every
+  // mode lays itself out around them: Laps, Hide time, and Beat the record above them, and the Lap list beside the
+  // time, or under the buttons in a window taller than it is wide. So no setting, mid-run or not, moves Lap or Stop.
+  // Within a run only the time's digits and the list's rows change, past ten minutes and past an hour.
+  // With probeOnly set, it only answers whether the Lap list fits with room to read, for the window's minimum size.
+  function plan(W, H, probeOnly) {
+    var z = zoom || 1, short = Math.min(W, H);
+    var M = metrics();
+    var k = shownClass(), hund = faceHund();
+    // The face is sized for the widest time it shows in the first hour, so it never shrinks before then. The
+    // buttons' place uses M:SS.cc always, so turning Hundredths on or off never moves them.
+    var wRef = cfg.hundredths ? emW(M, 0, true) : emW(M, 1, false);
+    var wAnc = emW(M, 0, true);
+    var wFit = Math.max(wRef, emW(M, k, hund));
+    var hEm = M.dh;
+    function fitW(w, aw, ah) { return Math.max(1, Math.min(aw / w, ah / hEm)); }
+    function fit(aw, ah) { return fitW(wRef, aw, ah); }
+
+    var pad = Math.round(clamp(short * 0.07, 14, 64));
+    var padX = Math.round(Math.max(pad, Math.min(W * 0.065, 80)));
+    var bh = Math.round(Math.max(Math.ceil(44 / z), clamp(short * 0.15, 52, 140)));
+    var bgap = Math.round(clamp(bh * 0.2, 10, 24));
+    var innerW = W - 2 * padX;
+    var cw = Math.min(Math.round(bh * 4.4 + bgap), innerW);
+    // Keep clear of the board's own buttons: the grid and the clock at the bottom, padlocks at the top.
+    var padT = pad, padB = pad, c = probeOnly ? null : corners, cornerB = 0;
+    if (c && c.top && num(c.top.height) && c.top.height > 0 && ((c.top.left || 0) > 0 || (c.top.right || 0) > 0)) padT = Math.max(pad, Math.ceil(c.top.height) + 8);
+    if (c && num(c.height) && c.height > 0 && ((c.left || 0) > 0 || (c.right || 0) > 0)) {
+      cornerB = Math.ceil(c.height);
+      if ((W - cw) / 2 < Math.max(c.left || 0, c.right || 0) + 8) padB = Math.max(pad, cornerB + 8);
+    }
+    var innerH = H - padT - padB;
+    var gap = Math.round(clamp(short * 0.075, 12, 80));
+    var minText = Math.max(14, Math.ceil(14 / z));   // at least 14 px on screen
+    var timeH = innerH - bh - gap;
+    var Fsolo = fitW(wAnc, innerW, timeH);
+    var gapF = Math.round(clamp(Fsolo * 0.13, gap, 96));   // big type gets more air above the buttons
+    if (gapF > gap) { timeH -= gapF - gap; gap = gapF; Fsolo = fitW(wAnc, innerW, timeH); }
+
+    // The buttons' place: the face with the line under the time, centred a whisker above the middle. A fifth of
+    // the time's size, so the latest lap reads from the room. At the very smallest sizes the line would squeeze
+    // the time against the title bar: then there is no line at that size, and no Lap either. Laps are kept.
+    var gapN = Math.round(gap * 0.78), sf = 0, Fn = Fsolo, Fc = Fsolo, budget = timeH;
+    for (var it = 0; it < 4; it++) {
+      sf = Math.floor(clamp(Math.min(Fn * 0.2, innerW / M.noteEm), minText, 72));
+      budget = innerH - bh - 2 * gapN - sf * M.cap;
+      Fn = fitW(wAnc, innerW, budget);
+    }
+    var noRoom = Fn < 110 && Fn < 0.95 * Fsolo && innerH - (Fn * hEm + bh + 2 * gapN + sf * M.cap) < pad * 0.5;
+    var A = {};
+    if (!noRoom) {
+      var Fa = Math.floor(Fn * 0.995), capA = Math.round(Fa * hEm), noteH = Math.round(sf * M.cap);
+      var usedA = capA + bh + 2 * gapN + noteH;
+      var moreA = Math.round(clamp((innerH - usedA) * 0.22, 0, gap * 0.6)), m6 = Math.round(moreA * 0.6);
+      gapN += m6; usedA += 2 * m6;
+      var liftA = Math.round(Math.min(Math.max(0, innerH - usedA) * 0.08, 24));
+      // The empty line's drop, and a little more lift so the face sits balanced both with and without it.
+      var drop = Math.round((gapN + noteH) * 0.45);
+      liftA = Math.min(liftA + Math.round(drop * 0.8), Math.max(0, innerH - usedA));
+      var yA = Math.round(padT + (innerH - usedA - liftA) / 2);
+      A = { y: yA + capA + 2 * gapN + noteH, F: Fa, noteY: yA + capA + gapN, noteH: noteH, gapN: gapN, drop: drop };
+      // With Hundredths off the digits are bigger, as far as the same room allows.
+      Fc = cfg.hundredths ? Fa : Math.max(Fa, Math.floor(Math.min(innerW / wRef, budget / hEm, (A.noteY - gapN - padT) / hEm) * 0.995));
+    } else {
+      var Fs = Math.floor(Fsolo * 0.995), capS = Math.round(Fs * hEm), usedS = capS + gap + bh;
+      var moreS = Math.round(clamp((innerH - usedS) * 0.22, 0, gap * 0.6)), gS = gap + moreS;
+      usedS += moreS;
+      var liftS = Math.round(Math.min(Math.max(0, innerH - usedS) * 0.08, 24));
+      var yS = Math.round(padT + (innerH - usedS - liftS) / 2);
+      A = { y: yS + capS + gS, F: Fs, timeY: yS, gS: gS };
+      Fc = cfg.hundredths ? Fs : Math.max(Fs, Math.floor(Math.min(innerW / wRef, (A.y - gS - padT) / hEm) * 0.995));
+      sf = 0;
+    }
+    var ctl = { x: Math.round((W - cw) / 2), y: A.y, w: Math.round(cw), h: bh };
+    // Everything else sits in the band above the buttons.
+    var bandH = ctl.y - gap - padT;
+
+    var mode = noRoom ? 'solo' : 'note', F = Fc;
+    var RP = null, LP = null;
+    if (cfg.record) {
+      // Beat the record: the record line above the time and the track under it, in the band. If the time would get
+      // too small on the screen, the track steps aside, then the line. The record still counts.
+      RP = { line: true, track: true };
+      // The line gets a little air under the title bar.
+      var recTop = Math.round(pad * 0.35), bandR = bandH - recTop;
+      var recFit = function () {
+        // The line and the track grow with the time, so settle on a size where all three fit.
+        var Fr = Fsolo, size = function (Fx) {
+          RP.sf = RP.line ? Math.floor(clamp(Fx * 0.21, minText, 80)) : 0;
+          RP.th = RP.track ? Math.round(clamp(Fx * 0.045, Math.max(4, 3 / z), 22)) : 0;
+          RP.gS = RP.line ? Math.round(RP.sf * 0.7) : 0;
+          RP.gT = RP.track ? Math.round(Math.max(Fx * 0.08, RP.th * 1.2)) : 0;
+          return fit(innerW, bandR - (RP.sf * M.cap + RP.gS) - (RP.gT + 3 * RP.th));
+        };
+        for (var it = 0; it < 12; it++) Fr = (Fr + size(Fr)) / 2;
+        // The size that the parts were laid out for must fit: step down until it does.
+        while (Fr > 1 && size(Fr) < Fr - 0.5) Fr = Math.max(1, size(Fr));
+        size(Fr);
+        return Fr;
+      };
+      F = recFit();
+      if (F * hEm * z < 34 && RP.track) { RP.track = false; F = recFit(); }
+      // The line is the point of the mode, so it stays down to smaller digits (24 px on the screen).
+      if (F * hEm * z < 24 && RP.line) { RP.line = false; F = recFit(); }
+      F = Math.floor(F * 0.995);
+      mode = 'record';
+    } else if (listOn()) {
+      // Lap list: beside the time, or under the buttons in a tall window, with room to read. The board grows a
+      // smaller window until it fits (syncMin). Until then, the latest lap shows on the line.
+      var E = { W: W, H: H, z: z, M: M, pad: pad, padB: padB, innerW: innerW, ctl: ctl, bandH: bandH, hEm: hEm, fit: fit,
+        Fbase: A.F, Fc: Fc, gapL: noRoom ? 0 : A.gapN, noRoom: noRoom, probe: !!probeOnly };
+      LP = listPlan(E);
+      if (probeOnly) return !!LP;
+      if (LP) { mode = LP.mode; F = LP.mode === 'list' ? Math.floor(LP.F * 0.995) : Fc; noRoom = false; }
+    }
+    if (probeOnly) return false;
+    var capH = Math.round(F * hEm);
+    var L = { noRoom: noRoom, mode: mode, F: F, sf: 0, drop: 0, bgap: bgap, k: k, hund: hund, noteShort: false, ctl: ctl };
+
+    if (mode === 'list') {
+      // The time sits in the middle of the band, beside the list, which runs from the top down.
+      L.time = { x: LP.x0, y: Math.round(padT + (bandH - capH) * 0.46), w: LP.lW, h: capH };
+      L.list = listOut(LP, LP.x0 + LP.lW + LP.gx, padT);
+    } else if (mode === 'liststack') {
+      // The time where the plain face has it, with no line under it, and the list under the buttons, on their edges.
+      L.drop = A.drop;
+      L.time = { x: padX, y: A.noteY - A.gapN - capH, w: innerW, h: capH };
+      L.list = listOut(LP, ctl.x, LP.top);
+    } else if (mode === 'record') {
+      var lineH = RP.line ? Math.round(RP.sf * M.cap) : 0, trH = RP.track ? 3 * RP.th : 0;
+      var usedR = (RP.line ? lineH + RP.gS : 0) + capH + (RP.track ? RP.gT + trH : 0);
+      var y0 = Math.round(padT + recTop + Math.max(0, bandR - usedR) * 0.45);
+      var ty = y0 + (RP.line ? lineH + RP.gS : 0);
+      if (RP.line) { L.rec = { x: padX, y: y0, w: innerW, h: lineH }; L.sf = RP.sf; }
+      L.time = { x: padX, y: ty, w: innerW, h: capH };
+      if (RP.track) {
+        // The track spans the time's digits, from the first digit's ink to the hundredths'.
+        var trW = Math.round(F * (wRef - M.side * (1 + (cfg.hundredths ? HUND : 1))));
+        L.track = { x: Math.round((W - trW) / 2), y: ty + capH + RP.gT, w: trW, h: trH, th: RP.th, pen: Math.min(trH, (RP.sf || F * 0.17) * 0.62) };
+      }
+    } else if (mode === 'note') {
+      // The time, the line under it, and the buttons. With no line to show, the time drops to the middle.
+      L.drop = A.drop; L.sf = sf;
+      L.time = { x: padX, y: A.noteY - A.gapN - capH, w: innerW, h: capH };
+      L.note = { x: padX, y: A.noteY, w: innerW, h: A.noteH };
+      L.noteShort = sf * M.noteEm > innerW;
+    } else {
+      L.time = { x: padX, y: A.timeY + Math.round(A.F * hEm) - capH, w: innerW, h: capH };
+    }
+    // Past an hour the time is wider, and only the time shrinks to fit. Nothing else moves.
+    L.Fdraw = Math.floor(Math.min(L.F, L.time.w / wFit));
+    return L;
+  }
+  // The Lap list's geometry, with room to read: every word 14 px on the screen, digits 34 px, and "Fastest lap".
+  // In a window taller than it is wide with room for 3 rows there, under the buttons on their own edges, down to the
+  // bottom, and in a square one with room for UNDER_ROWS. Otherwise beside the time in the band above the buttons. Rows get smaller until a class fits in columns,
+  // but only while the type stays readable; more columns are kept only when they hold a whole class, so wide windows
+  // keep a bigger time. In a window the usual layouts don't suit, one column beside a smaller time, so any window at
+  // least the minimum shows the list. Past lap 99 the numbers take a third digit, and the tag may say "Fastest", so the
+  // minimum never changes mid-run. Null if it won't fit.
+  function listPlan(E) {
+    var digits = E.probe ? 2 : Math.max(2, String(lastNumber()).length);
+    var words = digits > 2 ? ['Fastest lap', 'Fastest'] : ['Fastest lap'];
+    for (var i = 0; i < words.length; i++) {
+      var g = listFit(E, digits, words[i]) || (E.probe ? null : listAny(E, digits, words[i]));
+      if (g) return g;
+    }
+    return null;
+  }
+  function listType(E, lf) {
+    var tf = Math.max(Math.ceil(Math.max(14, 14 / E.z)), Math.round(lf * 0.72));
+    return { lf: lf, tf: tf, rh: Math.round(lf * 1.6), head: Math.round(Math.max(lf * 1.3, tf * 1.9)), cg: Math.round(lf * 2.5) };
+  }
+  function listFit(E, digits, word) {
+    var W = E.W, H = E.H, z = E.z, M = E.M;
+    var lfMin = Math.max(15, 14 / z), capMin = 34 / z;
+    var ways = H >= W && !E.noRoom ? ['under', 'beside'] : ['beside'];
+    for (var wi = 0; wi < ways.length; wi++) {
+      var under = ways[wi] === 'under', first = null, spare = null;
+      var lfPref = Math.max(Math.ceil(lfMin), Math.round(clamp(under ? Math.min(H * 0.036, E.innerW / 14) : Math.min(H * 0.048, W * 0.03), lfMin, 44)));
+      for (var lf = lfPref; lf >= lfMin - 1e-6; lf--) {
+        var g = listType(E, lf), cols = g.cols = listCols(M, lf, g.tf, digits, word), kMax, need;
+        if (under) {
+          g.top = E.ctl.y + E.ctl.h + E.gapL;
+          g.R = Math.floor((H - E.padB - g.top - g.head) / g.rh);
+          kMax = Math.floor((E.ctl.w + g.cg) / (cols.w + g.cg));
+          if (g.R < 3 || kMax < 1) continue;
+          need = Math.max(1, Math.ceil(CLASS / g.R));
+          g.k = need <= kMax ? need : 1;
+          g.lw = E.ctl.w;
+          g.F = E.Fc;
+          g.mode = 'liststack';
+        } else {
+          g.R = Math.floor((E.bandH - g.head) / g.rh);
+          kMax = Math.floor(((W - 2 * E.pad) * 0.56 + g.cg) / (cols.w + g.cg));
+          if (g.R < 3 || kMax < 1) continue;
+          need = Math.max(1, Math.ceil(CLASS / g.R));
+          g.k = need <= kMax ? need : 1;
+          g.lw = g.k * cols.w + (g.k - 1) * g.cg;
+          g.gx = Math.round(Math.max(E.pad, W * 0.04));
+          g.x0 = E.pad; g.lW = W - 2 * E.pad - g.lw - g.gx;
+          g.F = E.fit(g.lW, E.bandH);
+          g.mode = 'list';
+          if (g.F < 0.4 * E.Fbase) continue;
+        }
+        if (g.F * E.hEm < capMin) continue;
+        if (g.k * g.R >= CLASS) return g;
+        // Under the buttons, the rows get smaller until UNDER_ROWS show. A window taller than it is wide with room for
+        // only 3 takes the biggest type that has them. A square one puts the list beside the time.
+        if (under && g.R < UNDER_ROWS) { if (H > W && (!spare || g.R > spare.R)) spare = g; continue; }
+        if (!first) first = g;
+      }
+      if (first || spare) return first || spare;
+    }
+    return null;
+  }
+  // One column beside the time, with the margins of a window this wide in the usual shape. It needs only that width,
+  // three rows above the buttons, and 34 px digits, so a bigger window always has room for it.
+  function listAny(E, digits, word) {
+    var W = E.W, z = E.z, pad = Math.round(clamp(Math.min(E.H, W * 380 / 600) * 0.07, 14, 64));
+    var lfMin = Math.max(15, 14 / z), lfPref = Math.max(Math.ceil(lfMin), Math.round(clamp(Math.min(E.H * 0.048, W * 0.03), lfMin, 44)));
+    for (var lf = lfPref; lf >= lfMin - 1e-6; lf--) {
+      var g = listType(E, lf), cols = g.cols = listCols(E.M, lf, g.tf, digits, word);
+      g.R = Math.floor((E.bandH - g.head) / g.rh); g.k = 1; g.lw = cols.w; g.mode = 'list';
+      g.gx = Math.round(Math.max(pad, W * 0.04)); g.x0 = pad; g.lW = W - 2 * pad - g.lw - g.gx;
+      g.F = E.fit(g.lW, E.bandH);
+      if (g.R >= 3 && cols.w <= (W - 2 * pad) * 0.56 && g.F * E.hEm >= 34 / z) return g;
+    }
+    return null;
+  }
+  function listOut(G, x, top) {
+    var c = G.cols, under = G.mode === 'liststack';
+    // Under the buttons the columns share the row's width. The space left over goes after the tag, before Total, so
+    // each number stays beside its lap, as it does beside the time.
+    var colW = under ? Math.floor((G.lw - (G.k - 1) * G.cg) / G.k) : c.w;
+    return { x: x, y: top, w: G.lw, h: G.head + G.R * G.rh, k: G.k, R: G.R, rh: G.rh, head: G.head, lf: G.lf, tf: G.tf, cg: G.cg,
+      colW: colW, g: c.g, g2: c.g2, word: c.word,
+      gcols: [c.n + 'px', c.t + 'px', under ? 'minmax(' + c.tag + 'px, 1fr)' : c.tag + 'px', c.tot + 'px'].join(' ') };
+  }
+
+  function put(el, r) {
+    el.style.left = r.x + 'px'; el.style.top = r.y + 'px';
+    el.style.width = Math.max(0, r.w) + 'px'; el.style.height = Math.max(0, r.h) + 'px';
+  }
+  function layout(animate) {
+    if (!innerWidth || !innerHeight) return;
+    var L = plan(innerWidth, innerHeight);
+    var key = JSON.stringify(L);
+    if (key === cur.key) return;
+    var doFlip = animate && cur.key && !reduced.matches;
+    var before = doFlip ? snap() : null;
+    var M = metrics(), z = zoom || 1;
+    // Once a run has begun, every button ignores taps for a moment after the row moves, so a tap aimed at the old
+    // place, such as Lap's, never lands on the button that is there now, such as Stop.
+    var pc = cur.L && cur.L.ctl, nc = L.ctl;
+    if (pc && phase() !== 'idle' && (pc.x !== nc.x || pc.y !== nc.y || pc.w !== nc.w || pc.h !== nc.h)) movedAt = now();
+    face.style.setProperty('--dw', M.dw.toFixed(4)); face.style.setProperty('--cw', M.cw.toFixed(4));
+    face.style.setProperty('--cy', M.cy.toFixed(4)); face.style.setProperty('--pw', M.pw.toFixed(4));
+    face.style.setProperty('--s', HUND); face.style.setProperty('--drop', L.drop);
+    face.style.setProperty('--ico', M.ico.toFixed(3));
+    put(timeWrap, L.time); timeEl.style.fontSize = L.Fdraw + 'px';
+    put(controls, L.ctl); controls.style.setProperty('--bgap', L.bgap);
+    // One label size for the whole row. Every button keeps its icon beside its word. If that would take a word
+    // under 14 px on the screen, the gap and the padding get tighter first. At the very smallest windows the icon
+    // and the word shrink together.
+    var room = L.ctl.w - L.bgap, ls = 0.36;
+    var bfMax = clamp(L.ctl.h * 0.34, 16, 46), floor = Math.max(16, 14 / z);
+    var bf = Math.min(bfMax, room * ls / M.small, room * (1 - ls) / M.wide), tight = bf < floor;
+    if (tight) {
+      // Still too small: the left button takes a little more of the row, while Start's middle stays inside Stop.
+      ls = clamp(M.smallT / (M.smallT + M.wideT), 0.36, Math.min(0.42, (0.5 * (room + L.bgap) - L.bgap - 8) / room));
+      bf = Math.min(bfMax, room * ls / M.smallT, room * (1 - ls) / M.wideT);
+    }
+    controls.style.setProperty('--ls', ls.toFixed(3));
+    controls.classList.toggle('tight', tight);
+    controls.style.fontSize = (Math.floor(bf * 10) / 10) + 'px';
+    if (L.note) { put(note, L.note); note.style.fontSize = L.sf + 'px'; }
+    note.classList.toggle('gone', !L.note);
+    note.classList.toggle('short', L.noteShort);
+    // Beat the record
+    recEl.classList.toggle('none', !L.rec);
+    if (L.rec) { put(recEl, L.rec); recEl.style.fontSize = L.sf + 'px'; recKey = ''; }
+    track.classList.toggle('none', !L.track);
+    if (L.track) { put(track, L.track); track.style.setProperty('--th', L.track.th + 'px'); track.style.setProperty('--penmin', Math.round(L.track.pen) + 'px'); trackKey = ''; }
+    // The Lap list
+    var G = L.list;
+    llist.classList.toggle('off', !G);
+    if (G) {
+      put(llist, G);
+      llist.style.fontSize = G.lf + 'px';
+      [['--cg', G.cg], ['--colw', G.colW], ['--rowh', G.rh], ['--headh', G.head], ['--tf', G.tf], ['--g', G.g], ['--g2', G.g2]].forEach(function (p) { llist.style.setProperty(p[0], p[1] + 'px'); });
+      llist.style.setProperty('--gcols', G.gcols); llist.style.setProperty('--R', G.R);
+      listKey = '';
+    }
+    face.dataset.mode = L.mode;
+    face.classList.toggle('noline', L.mode === 'record' && !L.rec);
+    var show = SHOW[L.k];
+    ['h1', 'h2', 'c1', 'm1', 'm2', 'c2', 's1', 's2'].forEach(function (s) { slots[s].classList.toggle('off', show.indexOf(s) < 0); });
+    ['pt', 'f1', 'f2'].forEach(function (s) { slots[s].classList.toggle('off', !L.hund); });
+    // Number the visible slots left to right, for the reveal (digits) and the wave (digits and colons).
+    var i = 0, w = 0;
+    ['h1', 'h2', 'c1', 'm1', 'm2', 'c2', 's1', 's2', 'f1', 'f2'].forEach(function (s) {
+      if (slots[s].classList.contains('off')) return;
+      slots[s].style.setProperty('--w', w++);
+      if (s === 'c1' || s === 'c2') return;
+      if (s === 'f1') slots.pt.style.setProperty('--i', i);
+      slots[s].style.setProperty('--i', i++);
+    });
+    cur.mode = L.mode; cur.noRoom = L.noRoom; cur.klass = L.k; cur.hund = L.hund; cur.key = key; cur.noteShort = L.noteShort; cur.L = L;
+    if (before) flip(before);
+  }
+
+  // Move the digits and the buttons smoothly from where they were to where they are now: a new digit at ten
+  // minutes, the time stepping aside for the list, the hundredths joining a revealed time.
+  function snap() {
+    var r = { ctl: controls.getBoundingClientRect(), slots: {} };
+    ALL.forEach(function (k) { if (!slots[k].classList.contains('off')) r.slots[k] = slots[k].getBoundingClientRect(); });
+    return r;
+  }
+  function flip(before) {
+    var opts = { duration: 420, easing: 'cubic-bezier(.2,.7,.2,1)' };
+    var revealing = face.classList.contains('reveal');
+    ALL.forEach(function (k) {
+      var el = slots[k];
+      if (el.classList.contains('off')) return;
+      var a = before.slots[k], n = el.getBoundingClientRect();
+      if (!a) {
+        if (!revealing) el.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 320, delay: 120, easing: 'ease-out', fill: 'backwards' });
+        return;
+      }
+      if (!a.width || !n.width) return;
+      var s = a.width / n.width;
+      var dx = (a.left + a.width / 2) - (n.left + n.width / 2), dy = (a.top + a.height / 2) - (n.top + n.height / 2);
+      if (Math.abs(dx) < 1 && Math.abs(dy) < 1 && Math.abs(s - 1) < 0.01) return;
+      el.animate([{ transform: 'translate(' + dx + 'px,' + dy + 'px) scale(' + s + ')' }, { transform: 'none' }], opts);
+    });
+    var c = controls.getBoundingClientRect(), b = before.ctl;
+    if (Math.abs(b.top - c.top) >= 1 || Math.abs(b.left - c.left) >= 1) {
+      controls.animate([{ transform: 'translate(' + (b.left - c.left) + 'px,' + (b.top - c.top) + 'px)' }, { transform: 'none' }], opts);
+    }
+  }
+
+  face.addEventListener('animationend', function (e) {
+    if (e.animationName === 'ping') note.classList.remove('new');
+    if (e.animationName === 'rowIn') e.target.classList.remove('new');
+  });
+
+  /* ---------- Drawing ---------- */
+  var shown = {}, lastText = '';
+  function setSlot(k, v) { if (shown[k] !== v) { shown[k] = v; glyph[k].textContent = v; } }
+  function drawTime() {
+    if (running() && state.banked + (now() - state.startedAt) >= MAX_MS) { autoStop(); return; }
+    var ms = elapsed();
+    if (shownClass() !== cur.klass || faceHund() !== cur.hund) { layout(true); drawNote(false); drawList(false); }
+    var txt;
+    if (veiled()) {
+      DIGS.forEach(function (k) { setSlot(k, '0'); });
+      txt = 'Time hidden';
+    } else {
+      var p = parts(ms);
+      setSlot('h1', String(Math.floor(p.h / 10)));
+      setSlot('h2', String(p.h % 10));
+      setSlot('m1', String(Math.floor(p.m / 10)));
+      setSlot('m2', String(p.m % 10));
+      setSlot('s1', String(Math.floor(p.s / 10)));
+      setSlot('s2', String(p.s % 10));
+      if (cur.hund) { setSlot('f1', String(Math.floor(p.c / 10))); setSlot('f2', String(p.c % 10)); }
+      // Screen readers get the time once a second while it runs, and exactly when it stops.
+      txt = running() ? whole(p) : fmt(ms);
+    }
+    if (txt !== lastText) { lastText = txt; timeText.textContent = txt; }
+    paintGhost(ms);
+    if (cur.mode === 'record') drawTrack(ms);
+  }
+  var justLapped = false;
+  function drawNote(lapped) {
+    var n = state.laps.length;
+    if (veiled()) {
+      note.classList.remove('new'); face.classList.remove('line-empty');
+      note.style.visibility = ''; note.dataset.kind = 'hidden'; noteLbl.textContent = 'Time hidden'; noteVal.textContent = ''; noteVal2.textContent = '';
+      return;
+    }
+    note.dataset.kind = 'lap';
+    var lapLine = cur.mode === 'note' && lapsShown();
+    note.style.visibility = lapLine ? '' : 'hidden';
+    face.classList.toggle('line-empty', (cur.mode === 'note' && !lapLine) || cur.mode === 'liststack');
+    if (lapLine) {
+      var r = rowAt(n - 1);
+      noteLbl.textContent = 'Lap ' + r.n; noteVal.textContent = fmtAs(r.split, r.sh); noteVal2.textContent = fmtAs(r.total, r.th);
+    } else { noteLbl.textContent = 'Lap'; noteVal.textContent = '0'; noteVal2.textContent = '0'; }   // holds the line's height
+    if (lapped && lapLine && !reduced.matches) { note.classList.remove('new'); void note.offsetWidth; note.classList.add('new'); }
+  }
+
+  // The Lap list's rows: every lap, then the lap in progress (a pale row that counts) while the run takes more laps,
+  // or after Stop the stretch since the last lap, marked as the end. Idle, the ruled rows wait.
+  var listKey = '', listScroll = '', ghostT = null;
+  function listRows() {
+    var n = state.laps.length, rows = [], ph = phase();
+    for (var i = 0; i < n; i++) rows.push(rowAt(i));
+    if (ph === 'running' && n < MAX_LAPS) rows.push({ n: n + 1, ghost: true });
+    else if (ph === 'stopped' && n) { var f = lastStretch(); if (f) rows.push(f); }
+    return rows;
+  }
+  // The fastest lap gets a word, so color is never the only cue. Every lap that ties for fastest gets it. It needs
+  // three laps, the end of the run never gets it, and nothing is ever marked slowest.
+  function fastestOf(rows) {
+    var lo = Infinity, hi = -1, real = 0, out = {};
+    rows.forEach(function (r) { if (r.ghost || r.end) return; real++; lo = Math.min(lo, r.split); hi = Math.max(hi, r.split); });
+    if (real < 3 || lo === hi) return out;
+    rows.forEach(function (r, i) { if (!r.ghost && !r.end && r.split === lo) out[i] = true; });
+    return out;
+  }
+  function span(cls, text) { var s = document.createElement('span'); s.className = cls; if (text) s.textContent = text; return s; }
+  function fillRow(li, r, fast, isNew, word) {
+    var sig = !r ? 'e' : r.ghost ? 'g' + r.n : (r.end ? 'x' : r.n) + '|' + r.split + r.sh + '|' + r.total + r.th + '|' + (fast ? word : 0);
+    if (li._sig === sig) return;
+    li._sig = sig;
+    li.textContent = '';
+    li.className = 'lrow' + (!r ? ' empty' : r.ghost ? ' ghost' : r.end ? ' end' : '') + (fast ? ' fast' : '') + (isNew ? ' new' : '');
+    li.removeAttribute('aria-label');
+    if (!r || r.ghost) li.setAttribute('aria-hidden', 'true'); else li.removeAttribute('aria-hidden');
+    if (!r) return;
+    var n = span('n', r.end || r.ghost ? '' : String(r.n));
+    if (r.ghost) n.textContent = String(r.n);
+    if (r.end) { var sq = document.createElement('i'); sq.className = 'sq'; n.appendChild(sq); }
+    var lt = span('lt', r.ghost ? '' : fmtAs(r.split, r.sh)), tag = span('tag', fast ? word : ''), tot = span('tot', r.ghost ? '' : fmtAs(r.total, r.th));
+    li.appendChild(n); li.appendChild(lt); li.appendChild(tag); li.appendChild(tot);
+    if (!r.ghost) li.setAttribute('aria-label', (r.end ? 'Stop, ' : 'Lap ' + r.n + ', ') + lt.textContent + ', total ' + tot.textContent + (fast ? ', fastest lap' : ''));
+  }
+  function drawList(lapped) {
+    var G = cur.L && cur.L.list;
+    ghostT = null;
+    if (!G) { if (lrows.firstChild) { lrows.textContent = ''; lheads.textContent = ''; } listKey = ''; listScroll = ''; return; }
+    var rows = listRows(), fast = fastestOf(rows);
+    var nCols = G.k > 1 ? Math.max(G.k, Math.ceil(rows.length / G.R)) : 1;
+    var slotsN = G.k > 1 ? nCols * G.R : Math.max(G.R, rows.length);
+    var hk = nCols + '|' + G.gcols;
+    if (listKey !== hk) {
+      listKey = hk;
+      lheads.textContent = '';
+      for (var c = 0; c < nCols; c++) {
+        var h = document.createElement('div'); h.className = 'lhead';
+        ['', 'Lap', '', 'Total'].forEach(function (s) { h.appendChild(span('', s)); });
+        lheads.appendChild(h);
+      }
+    }
+    lrows.classList.toggle('flow', G.k > 1);
+    while (lrows.childElementCount < slotsN) lrows.appendChild(document.createElement('li'));
+    while (lrows.childElementCount > slotsN) lrows.removeChild(lrows.lastChild);
+    var lis = lrows.children, newest = state.laps.length - 1;
+    for (var i = 0; i < slotsN; i++) fillRow(lis[i], rows[i] || null, !!fast[i], lapped && i === newest && !reduced.matches, G.word);
+    // The newest row comes into view, unless the teacher has scrolled away from it.
+    var sk = rows.length + '|' + nCols + '|' + G.k + '|' + G.R;
+    if (sk !== listScroll) {
+      listScroll = sk;
+      if (follow) toEnd();
+    }
+    listEdges();
+    var g = lrows.querySelector('.lrow.ghost .lt');
+    ghostT = g && running() ? g : null;
+    paintGhost(elapsed());
+  }
+  // The list is a real scrolling area: a finger, a wheel, or the keyboard scrolls it, and the board never starts a
+  // window drag from it. It follows the newest row unless the teacher has scrolled away from it. Scrolling back to the
+  // end follows again, and so does a new run. One column scrolls up and down; columns scroll sideways.
+  var follow = true;
+  function scroller() { var G = cur.L && cur.L.list; return G && G.k > 1 ? lscroll : lrows; }
+  function atEnd(el) { return el === lscroll ? el.scrollWidth - el.clientWidth - el.scrollLeft <= 2 : el.scrollHeight - el.clientHeight - el.scrollTop <= 2; }
+  function toEnd() {
+    if (scroller() === lscroll) { lrows.scrollTop = 0; lscroll.scrollLeft = lscroll.scrollWidth; }
+    else { lscroll.scrollLeft = 0; lrows.scrollTop = lrows.scrollHeight; }
+  }
+  // A soft fade where rows have scrolled away, so a list that holds more says so. A list that scrolls takes the
+  // keyboard's focus too.
+  function listEdges() {
+    var G = cur.L && cur.L.list;
+    if (!G) return;
+    var multi = G.k > 1, st = lrows.scrollTop, el = scroller();
+    lrows.classList.toggle('up', !multi && st > 2);
+    lrows.classList.toggle('down', !multi && lrows.scrollHeight - lrows.clientHeight - st > 2);
+    lscroll.classList.toggle('left', multi && lscroll.scrollLeft > 2);
+    var scrolls = el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
+    [lrows, lscroll].forEach(function (x) { if (x === el && scrolls) x.tabIndex = 0; else x.removeAttribute('tabindex'); });
+  }
+  function onScroll(e) { listEdges(); if (e.target === scroller()) follow = atEnd(e.target); }
+  lrows.addEventListener('scroll', onScroll, { passive: true });
+  lscroll.addEventListener('scroll', onScroll, { passive: true });
+  // The lap in progress, ticking in its pale row.
+  function paintGhost(ms) {
+    if (!ghostT || !running()) return;
+    var n = state.laps.length, s = stretch(ms, n ? state.laps[n - 1] : 0);
+    var g = fmtAs(s.split, s.sh);
+    if (ghostT.textContent !== g) ghostT.textContent = g;
+  }
+
+  /* ---------- Beat the record ---------- */
+  var recKey = '', trackKey = '';
+  var FLAG = '<svg class="flag" viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 21.5V3"/><path class="pen" d="M6.5 3.2L19.5 8.4 6.5 13.6z"/></svg>';
+  var STAR = '<svg class="star" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6l2.85 6.05 6.6.8-4.87 4.53 1.27 6.53L12 17.27 6.15 20.5l1.27-6.53L2.55 9.45l6.6-.8z"/></svg>';
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function drawRecord() {
+    var L = cur.L;
+    if (!L || !L.rec) return;
+    var r = record(), ph = phase(), longGoal = cfg.goal === 'long', html, key;
+    if (ph !== 'idle' && !racing() && !freshRecord()) {
+      // A run that started without Beat the record, or for the other best time, never sets a record. Say so.
+      key = 'next|' + r + '|' + cfg.hundredths;
+      html = r != null ? FLAG + '<span>Next run races</span><b>' + esc(fmt(r)) + '</b>' : '<span>Next run sets the record</span>';
+    } else if (freshRecord()) {
+      var was = state.beat.was;
+      key = 'best|' + r + '|' + was + '|' + cfg.hundredths;
+      html = STAR + '<span class="lbl">' + (was == null ? 'First record' : 'New record') + '</span>' +
+        (was == null ? '' : '<span class="diff">' + esc(gainText(was, r) + (longGoal ? ' longer' : ' faster')) + '</span>');
+    } else if (r != null) {
+      // After a stop that missed, how close the class came.
+      var miss = ph === 'stopped' && state.banked >= MIN_REC && state.banked !== r && !beats(state.banked, r);
+      key = 'rec|' + r + '|' + (miss ? state.banked : 0) + '|' + cfg.goal + '|' + cfg.hundredths;
+      html = FLAG + '<span>Record</span><b>' + esc(fmt(r)) + '</b>' +
+        (miss ? '<span class="diff">' + esc(gainText(state.banked, r) + (longGoal ? ' short' : ' slower')) + '</span>' : '');
+    } else if (ph === 'running') {
+      key = 'this';
+      html = '<span>This run sets the record</span>';
+    } else {
+      // Before the first run, or a stopped run that can't count, such as after Clear record.
+      key = 'none';
+      html = '<span>Next run sets the record</span>';
+    }
+    key += '|' + L.sf + '|' + L.rec.w;
+    if (key === recKey) return;
+    recKey = key;
+    recEl.innerHTML = html;
+    // A line too long for the window gets a little smaller. If it would get much smaller, the gap drops out first.
+    var need = lineWidth();
+    if (need > L.rec.w) {
+      var d = recEl.querySelector('.diff');
+      if (d && L.rec.w / need < 0.72) { d.style.display = 'none'; need = lineWidth(); }
+      if (need > L.rec.w) recEl.style.fontSize = Math.max(11, Math.floor(L.sf * L.rec.w / need)) + 'px';
+    }
+  }
+  function lineWidth() {
+    recEl.style.fontSize = cur.L.sf + 'px';
+    var w = 0, kids = recEl.children, gapPx = parseFloat(getComputedStyle(recEl).columnGap) || 0;
+    // Layout widths, not drawn ones: the star and the line may be mid-animation.
+    for (var i = 0; i < kids.length; i++) if (kids[i].style.display !== 'none') w += (parseFloat(getComputedStyle(kids[i]).width) || 0) + (i ? gapPx : 0);
+    return Math.ceil(w);
+  }
+  function drawTrack(t) {
+    var L = cur.L;
+    if (!L || !L.track) return;
+    var r = record(), flag = null, run = 0, ghost = null;
+    if (freshRecord()) {
+      var was = state.beat.was;
+      if (was == null) flag = run = FLAG_AT;
+      else { var full = Math.max(was, t) / FLAG_AT; flag = run = t / full; ghost = was / full; }
+    } else if (r != null && (phase() === 'idle' || racing())) {
+      var sp = Math.max(r / FLAG_AT, t / 0.97);
+      flag = r / sp; run = t / sp;
+    }
+    // With no record yet, or a run that isn't racing it, there is nothing to race: the rail alone keeps its place.
+    var W = L.track.w, th = L.track.th;
+    var runPx = run > 0 ? Math.max(Math.round(run * W), th) : 0;
+    var flagPx = flag == null ? -1 : Math.round(flag * W);
+    var ghostPx = ghost == null ? flagPx : Math.round(ghost * W);
+    // Only touch the track when something moved a whole pixel.
+    var key = runPx + '|' + flagPx + '|' + ghostPx + '|' + W;
+    if (key === trackKey) return;
+    trackKey = key;
+    var s = track.style;
+    s.setProperty('--runp', runPx + 'px');
+    if (flagPx >= 0) s.setProperty('--flagp', flagPx + 'px');
+    s.setProperty('--splitp', (flagPx < 0 ? runPx : Math.min(runPx, flagPx)) + 'px');
+    s.setProperty('--ghostp', ghostPx + 'px');
+    s.setProperty('--lop', Math.min(flagPx, ghostPx) + 'px');
+    s.setProperty('--hip', Math.max(flagPx, ghostPx) + 'px');
+    track.classList.toggle('noflag', flagPx < 0);
+    track.classList.toggle('nofill', flagPx < 0);
+    face.classList.toggle('has-ghost', ghost != null);
+  }
+  // The new-record moment: the line rises in with a star, the time turns green for two seconds, and the flag
+  // glides to the new time. Nothing flashes.
+  var cheerTimer = 0, glideTimer = 0;
+  function cheer() {
+    if (reduced.matches) return;
+    face.classList.remove('cheer'); void face.offsetWidth; face.classList.add('cheer');
+    clearTimeout(cheerTimer);
+    cheerTimer = setTimeout(function () { face.classList.remove('cheer'); }, 2400);
+  }
+  function calm() { clearTimeout(cheerTimer); face.classList.remove('cheer'); }
+  function glide() {
+    if (reduced.matches) return;
+    face.classList.add('glide');
+    clearTimeout(glideTimer);
+    glideTimer = setTimeout(function () { face.classList.remove('glide'); }, 1000);
+  }
+
+  function setBtn(id, yes, at) {
+    // A button fading out keeps its place. One that appears takes its new place before it fades in.
+    var b = B[id], was = b.classList.contains('on'), moved = yes && b.dataset.at !== at;
+    if (moved) {
+      b.dataset.at = at;
+      if (!was) void b.offsetWidth;   // an appearing button takes its place before it fades in
+    }
+    // A button that appears ignores taps for a moment. One that grows into another's place waits longer.
+    if (yes && (!was || moved)) shownAt[id] = now();
+    if (yes && was && moved) grewAt[id] = now();
+    b.classList.toggle('on', yes);
+    b.setAttribute('aria-hidden', yes ? 'false' : 'true');
+    b.tabIndex = yes ? 0 : -1;
+  }
+  var settleTimer = 0;
+  function revealAnim() {
+    if (reduced.matches) return;
+    face.classList.remove('reveal'); void face.offsetWidth; face.classList.add('reveal');
+    face.classList.add('settle-late');
+    clearTimeout(revealAnim.t); clearTimeout(settleTimer);
+    revealAnim.t = setTimeout(function () { face.classList.remove('reveal'); }, 1300);
+    settleTimer = setTimeout(function () { face.classList.remove('settle-late'); }, 1500);
+  }
+
+  var lastTitle = null, lastMenu = '', undoTimer = 0, lapSeen = false;
+  function undoOnFace() { return phase() === 'idle' && !!state.undo && now() - state.undo.at < UNDO_FACE; }
+  function render(animate) {
+    var had = document.activeElement;
+    var ph = phase(), v = veiled(), lapped = justLapped;
+    justLapped = false;
+    // At the most laps a run holds, Lap leaves the face. Stop keeps its place.
+    var lapOn = ph === 'running' && lapsActive() && state.laps.length < MAX_LAPS;
+    var undoOn = undoOnFace();
+    face.dataset.phase = ph;
+    face.classList.toggle('veiled', v);
+    face.classList.toggle('best', freshRecord());
+    face.classList.toggle('long', cfg.goal === 'long');
+    if (!freshRecord()) calm();
+    layout(animate);
+    if (cur.noRoom) lapOn = false;
+    // Once Lap has shown in a run, Stop keeps the right part until the run stops, even when a setting hides Lap.
+    // A tap where Lap was never lands on Stop.
+    if (ph !== 'running') lapSeen = false; else if (lapOn) lapSeen = true;
+    setBtn('start', ph !== 'running', ph === 'stopped' || undoOn ? 'right' : 'full');
+    setBtn('stop', ph === 'running', lapOn || lapSeen ? 'right' : 'full');
+    setBtn('lap', lapOn, 'left');
+    setBtn('reset', ph === 'stopped', 'left');
+    setBtn('undo', undoOn, 'left');
+    clearTimeout(undoTimer);
+    if (undoOn) undoTimer = setTimeout(function () { render(true); }, UNDO_FACE - (now() - state.undo.at) + 20);
+    if (ph !== 'running') {
+      // After Stop the right button carries on. A run that raced the record starts the next run fresh.
+      var fresh = freshNext();
+      var label = ph === 'stopped' && !fresh ? 'Resume' : 'Start';
+      if (startLbl.textContent !== label) startLbl.textContent = label;
+      B.start.setAttribute('aria-label', ph === 'stopped' ? (fresh ? 'Start a new run' : 'Resume from ' + fmt(elapsed())) : 'Start');
+    }
+    drawTime();
+    drawNote(lapped);
+    drawList(lapped);
+    drawRecord();
+    var title = ph === 'running' ? 'Running' : ph === 'stopped' ? (freshRecord() ? 'New record' : 'Stopped') : '';
+    if (title !== lastTitle) { lastTitle = title; Board21.window.setTitle(title); }
+    setMenu();
+    syncMin();
+    schedule();
+    // Keyboard focus follows the action that took the button's place.
+    if (had && had.classList && had.classList.contains('btn') && !had.classList.contains('on')) {
+      (running() ? B.stop : B.start).focus({ preventScroll: true });
+    }
+  }
+  // Every frame while hundredths or the track move; once a second otherwise.
+  var raf = 0, tmo = 0;
+  function schedule() {
+    cancelAnimationFrame(raf); clearTimeout(tmo); raf = 0; tmo = 0;
+    if (!running() || veiled()) return;
+    if (faceHund() || cur.mode === 'record') raf = requestAnimationFrame(tick);
+    else tmo = setTimeout(tick, 1000 - (elapsed() % 1000) + 8);
+  }
+  function tick() {
+    raf = 0; tmo = 0;
+    if (!running() || veiled()) return;
+    drawTime();
+    schedule();
+  }
+
+  // The Lap list asks for the room it needs to be read: while it's on, the window's minimum is the smallest
+  // window, in the usual shape, where it fits with 14 px rows and 34 px digits on the screen. The board grows a
+  // smaller window to it, such as the default window on a Chromebook, and any window at least that big shows the list
+  // (listAny). The minimum stays the same all run, even past lap 99. The teacher's own size comes back when the list
+  // is turned off.
+  var minKey = '', minCache = {};
+  function listMin() {
+    var k = [zoom, cfg.hundredths, getComputedStyle(document.body).fontFamily].join('|');
+    if (k in minCache) return minCache[k];
+    var best = null;
+    for (var s = 0.45; s <= 3.0001; s += 0.03) {
+      var w = Math.round(600 * s), h = Math.round(380 * s);
+      if (plan(w, h, true)) { best = [Math.max(280, w), Math.max(200, h)]; break; }
+    }
+    return (minCache[k] = best);
+  }
+  function syncMin() {
+    var want = listOn() ? listMin() : null, key = want ? want.join('x') : '';
+    if (key === minKey) return;
+    minKey = key;
+    Board21.window.setMinSize(want ? want[0] : null, want ? want[1] : null);
+  }
+
+  /* ---------- Window menu ---------- */
+  var ICON = {
+    undo: '<svg viewBox="0 0 24 24"><path d="M8.6 13.6L4 9l4.6-4.6"/><path d="M4 9h10.3a5.4 5.4 0 0 1 0 10.8H10.6"/></svg>',
+    unlap: '<svg viewBox="0 0 24 24"><path d="M9.5 5H19a1.5 1.5 0 0 1 1.5 1.5v11A1.5 1.5 0 0 1 19 19H9.5L3.5 12z"/><path d="M12.5 9.5l5 5M17.5 9.5l-5 5"/></svg>',
+    resume: '<svg viewBox="0 0 24 24"><path d="M7.4 4.6v14.8a1 1 0 0 0 1.5.85l11.6-7.4a1 1 0 0 0 0-1.7L8.9 3.75a1 1 0 0 0-1.5.85z"/></svg>',
+    restore: '<svg viewBox="0 0 24 24"><path d="M6 21.5V3"/><path d="M6 3.4l12 4.8-12 4.8"/><path d="M14 19.5a4 4 0 1 0 1.2-5.2"/><path d="M14.6 12v2.6h2.6"/></svg>',
+    clear: '<svg viewBox="0 0 24 24"><path d="M6 21.5V3"/><path d="M6 3.4l12 4.8-12 4.8"/><path d="M14.5 16l5 5M19.5 16l-5 5"/></svg>'
+  };
+  function toggle(id, label, on, greyed) { var it = { id: id, label: label, checked: on }; if (greyed) it.disabled = true; return it; }
+  // The rows and their ids are the Stopwatch tab of the 21Board menus sheet, in its order. The board adds Fill the
+  // board, Reset, and Close after them.
+  function setMenu() {
+    var items = [], ph = phase();
+    if (freshNext()) items.push({ id: 'resume', label: 'Resume', icon: ICON.resume });
+    if (state.undo && ph === 'idle') items.push({ id: 'undo', label: 'Undo reset', icon: ICON.undo });
+    else if (lapsShown()) items.push({ id: 'unlap', label: 'Remove last lap', icon: ICON.unlap });
+    if (cfg.record) {
+      var r = record(), u = state.earlier[cfg.goal][0];
+      if (u != null && u !== r) items.push({ id: 'restore', label: 'Bring back ' + fmt(u), icon: ICON.restore });
+      if (r != null) items.push({ id: 'clear', label: 'Clear record', icon: ICON.clear });
+    }
+    if (items.length) items.push({ id: 'line:1', separator: true });
+    items.push({ id: 'hundredths', label: 'Hundredths', checked: cfg.hundredths });
+    // A setting that sits out is greyed out and keeps its check, so it comes back as it was.
+    var out = cfg.hide || cfg.record;
+    items.push(toggle('laps', 'Laps', cfg.laps, out));
+    items.push(toggle('list', 'Lap list', cfg.list, out || !cfg.laps));
+    items.push(toggle('hide', 'Hide time', cfg.hide, cfg.record));
+    items.push({ id: 'record', label: 'Beat the record', checked: cfg.record });
+    if (cfg.record) {
+      items.push({ id: 'line:2', separator: true }, { id: 'heading:best', heading: true, label: 'Best time' },
+        { id: 'goal:short', label: 'Shortest', checked: cfg.goal === 'short' },
+        { id: 'goal:long', label: 'Longest', checked: cfg.goal === 'long' });
+    }
+    var key = JSON.stringify(items);
+    if (key === lastMenu) return;
+    lastMenu = key;
+    Board21.menu.set(items);
+  }
+  Board21.on('menu', function (id) {
+    if (id === 'undo') return undoReset();
+    if (id === 'unlap') return removeLap();
+    if (id === 'resume') return resume();
+    if (id === 'clear') return clearRecord();
+    if (id === 'restore') return restoreRecord();
+    if (id === 'goal:short' || id === 'goal:long') {
+      var g = id === 'goal:long' ? 'long' : 'short';
+      if (g !== cfg.goal) { cfg.goal = g; calm(); glide(); saveCfg(); render(true); }
+      return;
+    }
+    if (['hundredths', 'laps', 'list', 'hide', 'record'].indexOf(id) < 0) return;
+    // Greyed-out rows do nothing.
+    if ((id === 'laps' && (cfg.hide || cfg.record)) || (id === 'list' && (!cfg.laps || cfg.hide || cfg.record)) || (id === 'hide' && cfg.record)) return;
+    var wasVeiled = veiled();
+    cfg[id] = !cfg[id];
+    note.classList.remove('new'); calm();
+    if (wasVeiled && !veiled() && phase() !== 'idle') revealAnim();
+    offRace();
+    saveCfg(); render(true);
+  });
+
+  /* ---------- Board events ---------- */
+  // A run that runs with Beat the record off is out of the race for good.
+  function offRace() { if (running() && !cfg.record && state.race) { state.race = null; save(); } }
+  Board21.on('data', function (d) { state = cleanData(d); offRace(); render(false); });
+  Board21.on('config', function (c) { cfg = cleanCfg(c); offRace(); render(false); });
+  Board21.on('theme', function () { metricsCache = {}; minCache = {}; cur.key = ''; render(false); });
+  var resizeRaf = 0, fontTimer = 0;
+  function relayout() {
+    if (resizeRaf) return;
+    resizeRaf = requestAnimationFrame(function () {
+      resizeRaf = 0;
+      var had = cur.noRoom, hadMode = cur.mode;
+      layout(false);
+      if (cur.noRoom !== had || cur.mode !== hadMode) render(false); else { drawNote(false); drawList(false); drawRecord(); drawTime(); }
+    });
+  }
+  Board21.on('resize', function (info) {
+    if (info && num(info.zoom) && info.zoom > 0) zoom = info.zoom;
+    corners = info && info.maximized && info.corners && typeof info.corners === 'object' ? info.corners : null;
+    relayout();
+    // It also fires once the teacher's font loads: measure again when things settle.
+    clearTimeout(fontTimer);
+    fontTimer = setTimeout(function () { metricsCache = {}; minCache = {}; cur.key = ''; render(false); }, 200);
+  });
+  addEventListener('resize', relayout);
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && started) render(false); });
+
+  Board21.ready().then(function (ctx) {
+    ctx = ctx || {};
+    var w = ctx.window || {};
+    if (num(w.zoom) && w.zoom > 0) zoom = w.zoom;
+    corners = w.maximized && w.corners && typeof w.corners === 'object' ? w.corners : null;
+    state = cleanData(ctx.data);
+    cfg = cleanCfg(ctx.config);
+    offRace();
+    started = true;
+    render(false);
+    face.classList.add('ready');
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(function () { metricsCache = {}; minCache = {}; cur.key = ''; render(false); });
+  });
+})();
+</script>
+</body>
+</html>

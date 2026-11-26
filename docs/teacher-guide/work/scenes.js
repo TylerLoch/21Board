@@ -30,6 +30,13 @@ async function startTimer(p, ik, chip = '5m') {
   await f.locator(`#chips button[data-min="${parseInt(chip)}"]`).click();
   await f.locator('#go').click();
 }
+// Start, then Lap after each wait, then a last wait, all through the Stopwatch's own buttons.
+async function lapsRun(p, ik, waits, last) {
+  const f = frame(p, ik);
+  await f.locator('#start').click();
+  for (const ms of waits) { await wait(p, ms); await f.locator('#lap').click(); }
+  await wait(p, last);
+}
 async function light(p, ik, c) { await frame(p, ik).locator(`.lamp.${c}`).click(); await wait(p, 200); }
 async function taskSchedule(p, ik, tasks) {
   const f = frame(p, ik);
@@ -165,7 +172,7 @@ SCENES.heroDark = async () => {
   await ctx.close();
 };
 
-// ---- 3. picker.jpg: the Widget Picker, all 17 tiles
+// ---- 3. picker.jpg: the Widget Picker, all 18 tiles
 SCENES.picker = async () => {
   const { ctx, p } = await newBoard();
   await pickerOpen(p, 'left');
@@ -181,6 +188,8 @@ SCENES.picker = async () => {
 // ---- 4. w-<id>.jpg: one window each
 const W = {
   timer: { r: { w: 760, h: 560 }, set: async (p, ik) => { await startTimer(p, ik); await wait(p, 6000); } },
+  // Running with Lap list on, after a lap for each of five runners. (The 16:9 board's default window grows for the list.)
+  stopwatch: { r: { w: 1100, h: 660 }, set: async (p, ik) => { await choose(p, ik, 'Lap list', { exact: true }); await lapsRun(p, ik, [5200, 4600, 3900, 5300, 4400], 2600); } },
   'task-timer': { r: { w: 760, h: 1000 }, set: async (p, ik) => { await taskSchedule(p, ik, [{ name: 'Reading', min: 20, emoji: 'book' }, { name: 'Writing', min: 15, emoji: 'pencil' }, { name: 'Clean up', min: 5, emoji: 'broom' }]); await frame(p, ik).locator('#btn-playpause').click(); await wait(p, 5000); } },
   calendar: { r: { w: 840, h: 760 } },
   notes: { r: { w: 820, h: 640 }, set: (p, ik) => typeNote(p, ik, AGENDA) },

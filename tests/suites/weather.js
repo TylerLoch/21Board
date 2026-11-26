@@ -42,7 +42,8 @@ module.exports = T => {
       ok(!!reg && reg.files.every(f => list.includes(f)), 'its files are in the offline copy (sw.js PRECACHE)');
       await page.click('.picker-btn.left'); await page.waitForTimeout(300);
       const tiles = await page.locator('#panel .widget-tile').count(), tile = page.locator('#panel [data-widget="weather"]');
-      ok(tiles === 17 && await tile.count() === 1 && (await tile.innerText()).trim() === 'Weather' && (await tile.getAttribute('title')) === 'Weather\nSee the weather and what to wear.', `the Widget Picker has 17 tiles, Weather’s with its tooltip (${tiles})`);
+      const teachers = await page.evaluate(() => window.__board21.catalog().filter(a => !a.devOnly && !a.dev).length);
+      ok(tiles === teachers && await tile.count() === 1 && (await tile.innerText()).trim() === 'Weather' && (await tile.getAttribute('title')) === 'Weather\nSee the weather and what to wear.', `the Widget Picker has a tile for each of a teacher’s widgets, Weather’s with its tooltip (${tiles} of ${teachers})`);
       await page.keyboard.press('Escape');
       await ctx.close();
     });
