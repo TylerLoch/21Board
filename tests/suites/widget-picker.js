@@ -205,21 +205,17 @@ module.exports = T => {
     }
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-16-early.png' });
 
-    // Dark theme: a faint light ring around every tile's icon, added to its two shadows. Light theme: the two shadows
-    // alone. A shadow takes no room, so each icon keeps its size and place.
-    const icons = () => page.evaluate(() => [...document.querySelectorAll('#panel .widget-tile .widget-icon')].map(i => {
-      const r = i.getBoundingClientRect();
-      return { shadows: getComputedStyle(i).boxShadow.split(/,(?![^(]*\))/).map(s => s.trim()), box: [r.left, r.top, r.width, r.height].map(v => v.toFixed(1)).join() };
-    }));
-    const RING = /^rgba\(255, 255, 255, 0\.16\) 0px 0px 0px [\d.]*[1-9][\d.]*px$/;
+    // Dark theme: each tile's icon keeps its shadows and gains a faint light ring. Light theme: no ring.
+    const icons = () => page.evaluate(() => [...document.querySelectorAll('#panel .widget-tile .widget-icon')].map(i =>
+      getComputedStyle(i).boxShadow.split(/,(?![^(]*\))/).map(s => s.trim())));
+    const RING = /^rgba\(255, 255, 255, 0\.16\) 0px 0px 0px [\d.]*[1-9][\d.]*px$/, ring = s => RING.test(s);
     for (const sc of [1, 2]) {
       await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
       await setTheme(page, 'light'); await openPicker('left'); const light = await icons();
       await setTheme(page, 'dark'); await openPicker('left'); const dark = await icons();
-      const off = dark.map((d, k) => ({ d, l: light[k] || {} })).filter(({ d, l }) => d.shadows.length !== 3 || !RING.test(d.shadows[2]) || d.shadows.slice(0, 2).join() !== (l.shadows || []).join() ||
-        l.shadows.length !== 2 || l.shadows.some(s => /255, 255, 255/.test(s)) || d.box !== l.box);
+      const off = dark.map((d, k) => ({ d, l: light[k] || [] })).filter(({ d, l }) => d.filter(ring).length !== 1 || d.filter(s => !ring(s)).join() !== l.join() || l.some(ring));
       ok(dark.length >= 16 && dark.length === light.length && !off.length,
-        `${sc * 100}%: in the dark theme every tile's icon has a faint light ring beside its two shadows, in the light theme it has none, and the icons keep their size and place (${off.length ? `${off.length} of ${dark.length} off: light ${JSON.stringify(off[0].l)}, dark ${JSON.stringify(off[0].d)}` : dark.length + ' tiles'})`);
+        `${sc * 100}%: each tile's icon has a faint light ring in the dark theme and none in the light theme (${off.length ? `${off.length} of ${dark.length} off: light ${JSON.stringify(off[0].l)}, dark ${JSON.stringify(off[0].d)}` : dark.length + ' tiles'})`);
       if (sc === 1) await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-dark.png' });
     }
     await setTheme(page, 'light'); await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);

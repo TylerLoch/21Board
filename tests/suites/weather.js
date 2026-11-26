@@ -24,7 +24,7 @@ module.exports = T => {
         `it is in the registry as Weather: 480 × 360, at least 260 × 220, clash 'later', no permissions (${JSON.stringify(reg && { files: reg.files, win: reg.win, clash: reg.clash })})`);
       ok(!!reg && reg.description === 'See the weather and what to wear.' && reg.color === '#0395db', `its tooltip and color: “See the weather and what to wear.”, #0395db (${reg && reg.description}, ${reg && reg.color})`);
       const others = await page.evaluate(() => window.__board21.catalog().filter(w => w.id !== 'weather').map(w => String(w.color || '').toLowerCase()));
-      ok(!!reg && /^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', rgbOf(reg.color)) >= 3 && !others.includes(reg.color.toLowerCase()), `its tile is a color of its own, the white icon readable on it (3:1, the bar for icons: ${reg && contrast('rgb(255, 255, 255)', rgbOf(reg.color)).toFixed(2)}:1)`);
+      ok(!!reg && /^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', rgbOf(reg.color)) >= 3 && !others.includes(reg.color.toLowerCase()), `its tile is a color of its own, the white icon readable on it (${reg && contrast('rgb(255, 255, 255)', rgbOf(reg.color)).toFixed(2)}:1, at least 3:1 for an icon)`);
       const order = await page.evaluate(() => window.BOARD21_WIDGETS.map(w => w.id));
       ok(order.indexOf('weather') === order.indexOf('calculator') + 1 && order.indexOf('21sketch') === order.indexOf('weather') + 1, 'it follows the Calculator in the registry, before the district apps');
       const src = fs.existsSync(path.join(ROOT, 'widgets', 'weather', 'index.html')) ? fs.readFileSync(path.join(ROOT, 'widgets', 'weather', 'index.html'), 'utf8') : '';
