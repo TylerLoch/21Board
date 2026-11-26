@@ -707,7 +707,7 @@ window.NamePicker = {
     say('');
     if (reduced() || document.hidden || !pickVisible() || !mounted || typeof mounted.api.play !== 'function') {
       render({ fade: true }); announce();
-      // Reduce motion means less movement, not less sound: the show's last sound still plays (when Sound is ticked).
+      // Reduce motion still plays the show's last sound, when Sound is ticked.
       if (reduced() && pickVisible()) Sound.play(ending());
       return;
     }
@@ -873,7 +873,7 @@ window.NamePicker = {
       },
       // Neon zap for the champion: it zaps up once more, one step higher.
       champion: (t, v, p) => {
-        // The challenge's zap and ba-BAM, shorter.
+        // The zap's rise and ba-BAM, shorter.
         synth(t, 220 * p, 880 * p, 0.24, 'sawtooth', 0.083 * v, { cut: 2600, atk: 0.2, sus: 0.6, wob: [30, 40] });
         synth(t, 440 * p, 1760 * p, 0.24, 'sawtooth', 0.042 * v, { cut: 3500, atk: 0.2, sus: 0.6, wob: [30, 40] });
         fizz(t, 900 * p, 3200 * p, 0.24, 3, 0.12 * v);
@@ -945,7 +945,8 @@ window.NamePicker = {
     else if (id === 'edit') setView('edit', true);
     else if (id === 'sound') {
       config.sound = !config.sound; saveConfig(); setMenu();
-      if (config.sound) Sound.sample(); else Sound.stop();
+      // No sample during a show. Its own sounds play.
+      if (config.sound) { if (showing) Sound.wake(); else Sound.sample(); } else Sound.stop();
     } else if (id === 'quick') { config.quick = !config.quick; saveConfig(); setMenu(); }
   });
 

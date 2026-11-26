@@ -324,11 +324,11 @@ NamePicker.register('versus', {
         if (dead || !stage) return;
         fam = ''; widths.clear();   // (the letters may have changed, or a font finished loading: measure again)
         if (run) {
-          // The slam is laid out for the stage it began on: if that changes, the show ends there.
-          if (run.slammed) { if (stage.clientWidth !== run.g.W || stage.clientHeight !== run.g.H) finish(); return; }
-          // (The build-up: the names' places, and the grey emblem at the box's new size.)
-          run.g = place(run.look, run.pair);
-          if (run.shake) emblem(run.look, 'waiting', run.g, run.shake);
+          // The show is laid out for the stage it began on. A new size ends it at once, as a skip does. It ends on the
+          // challenge sound only once the names have landed.
+          if (stage.clientWidth !== run.g.W || stage.clientHeight !== run.g.H) { if (run.landed) finish(); else { end(); host.done(); } return; }
+          // The letters changed. In the build-up, the names take their new places, and the grey emblem is drawn again.
+          if (!run.slammed) { run.g = place(run.look, run.pair); if (run.shake) emblem(run.look, 'waiting', run.g, run.shake); }
           return;
         }
         if (now) relayout();

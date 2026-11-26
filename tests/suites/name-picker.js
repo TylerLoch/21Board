@@ -1850,28 +1850,31 @@ module.exports = T => {
       return window.__played.splice(0);
     }, p, ik);
     // From now until probed(), frame by frame: when each frame is drawn, when the look's slam began (its first animation's
-    // start), and from the tap until then the light on each side: for each color of its gradient, the brightness (relative
-    // luminance) under whatever the show lays over it. And every change to the names, with the frame that draws it: the
-    // one it was made in, or the next.
+    // start), and from the frame before the tap until then the light on each side: its brightness, the mean relative
+    // luminance of its gradient's colors under whatever the show lays over them. And every change to the names, with the
+    // frame that draws it: the one it was made in, or the next.
     const probe = (p = page, ik) => inFrame(() => {
       if (window.__probe) { window.__probe.on = false; window.__probe.mo.disconnect(); }
-      const P = window.__probe = { on: true, frames: [], muts: [], slams: window.__slams.length, inFrame: false };
+      const P = window.__probe = { on: true, frames: [], muts: [], slams: window.__slams.length, inFrame: false, before: null };
       const names = () => [...document.querySelectorAll('.versus .versus-name')].map(n => n.textContent);
       const nums = s => (s.match(/[\d.]+/g) || []).map(Number), lin = v => (v /= 255) <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-      const light = () => {
+      const light = P.light = () => {
         const v = document.querySelector('.versus');
         if (!v) return null;
         const kids = [...v.children], sides = [v.querySelector('.versus-l'), v.querySelector('.versus-r')];
         const over = kids.slice(kids.indexOf(sides[1]) + 1, kids.findIndex(e => e.classList.contains('vs-cut')));
-        return sides.map((side, i) => (getComputedStyle(side).backgroundImage.match(/rgba?\([^)]*\)/g) || []).map(stop => {
-          let c = nums(stop).slice(0, 3);
-          for (const e of over) {
-            if (e.classList.contains(i ? 'versus-l' : 'versus-r')) continue;
-            const s = getComputedStyle(e), k = nums(s.backgroundColor), a = (k.length > 3 ? k[3] : 1) * +s.opacity;
-            c = c.map((x, j) => x * (1 - a) + k[j] * a);
-          }
-          return 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
-        }));
+        return sides.map((side, i) => {
+          const L = (getComputedStyle(side).backgroundImage.match(/rgba?\([^)]*\)/g) || []).map(stop => {
+            let c = nums(stop).slice(0, 3);
+            for (const e of over) {
+              if (e.classList.contains(i ? 'versus-l' : 'versus-r')) continue;
+              const s = getComputedStyle(e), k = nums(s.backgroundColor), a = (k.length > 3 ? k[3] : 1) * +s.opacity;
+              c = c.map((x, j) => x * (1 - a) + k[j] * a);
+            }
+            return 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+          });
+          return L.reduce((a, b) => a + b, 0) / L.length;
+        });
       };
       P.mo = new MutationObserver(() => P.muts.push({ names: names(), inFrame: P.inFrame, n: P.frames.length }));
       P.mo.observe(document.querySelector('.style-root[data-style="versus"]'), { subtree: true, childList: true, characterData: true });
@@ -1884,10 +1887,12 @@ module.exports = T => {
       };
       requestAnimationFrame(loop);
     }, p, ik);
-    const probed = (p = page, ik) => inFrame(() => { const P = window.__probe; P.on = false; P.mo.disconnect(); return { frames: P.frames, muts: P.muts }; }, p, ik);
-    // A tap on the main button, in the page, and the names as it leaves them, in the same task.
+    const probed = (p = page, ik) => inFrame(() => { const P = window.__probe; P.on = false; P.mo.disconnect(); return { frames: P.frames, muts: P.muts, before: P.before }; }, p, ik);
+    // A tap on the main button, in the page, and the names as it leaves them, in the same task. (The probe takes the light
+    // of the frame on screen first.)
     const tapNow = (p = page, ik) => inFrame(() => {
-      if (window.__probe) window.__probe.tapped = true;
+      const P = window.__probe;
+      if (P) { P.before = { ts: document.timeline.currentTime, light: P.light() }; P.tapped = true; }
       document.getElementById('go').click();
       return [...document.querySelectorAll('.versus .versus-name')].map(n => n.textContent + (getComputedStyle(n).filter !== 'none' ? ' (blurred)' : ''));
     }, p, ik);
@@ -1905,21 +1910,40 @@ module.exports = T => {
       if (!first || drawn(shown) !== first.ts) return `the names at ${ms(drawn(shown))}, the first frame at ${first ? ms(first.ts) : 'none'}`;
       return '';
     };
-    // The largest flash on any side: a rise in brightness and a fall (or a fall and a rise), all within a third of a
-    // second, as large as the smaller of the two. (The sides brighten steadily through the build-up. That alone is no flash.)
+    // The largest flash on any side, from the frame before the tap: a rise in brightness and a fall (or a fall and a rise),
+    // all within a third of a second, as large as the smaller of the two. (The tap dims the stage, and the sides brighten
+    // steadily through the build-up. Neither alone is a flash.)
     const flash = P => {
-      const F = P.frames.filter(f => f.light);
+      const F = [P.before].concat(P.frames).filter(f => f && f.light);
       let most = 0;
-      if (F.length) F[0].light.forEach((side, i) => side.forEach((_, c) => {
-        const v = F.map(f => [f.ts, f.light[i][c]]);
+      for (let i = 0; i < 2; i++) {
+        const v = F.map(f => [f.ts, f.light[i]]);
         for (let j = 1; j < v.length - 1; j++) for (let a = j - 1; a >= 0 && v[j][0] - v[a][0] < 1000 / 3; a--) {
           for (let b = j + 1; b < v.length && v[b][0] - v[a][0] < 1000 / 3; b++) {
             most = Math.max(most, Math.min(v[j][1] - v[a][1], v[j][1] - v[b][1]), Math.min(v[a][1] - v[j][1], v[b][1] - v[j][1]));
           }
         }
-      }));
+      }
       return Math.round(most * 1000) / 1000;
     };
+    // A pick tapped in the page, as pickNow() makes one, and the page's own clock from that tap: till(ms) waits until ms
+    // after it. skipAt(ms, how) then taps the stage or Show now, if the show is still on, and says whether it was.
+    const pickTapped = async (p = page, ik) => {
+      const was = ((await saved(p, ik)) || {}).pickId;
+      await inFrame(() => { window.__tapAt = performance.now(); document.getElementById('go').click(); }, p, ik);
+      await eventually(async () => ((await saved(p, ik)) || {}).pickId !== was, 3000);
+      return saved(p, ik);
+    };
+    const till = (ms, p = page, ik) => inFrame((_, ms) => new Promise(r => { const f = () => performance.now() - window.__tapAt >= ms ? r() : setTimeout(f, 4); f(); }), p, ik, ms);
+    const skipAt = (ms, how, p = page, ik) => inFrame((_, [ms, sel]) => new Promise(r => {
+      const f = () => {
+        if (performance.now() - window.__tapAt < ms) return setTimeout(f, 4);
+        const on = document.body.classList.contains('showing');
+        if (on) document.querySelector(sel).click();
+        r(on);
+      };
+      f();
+    }), p, ik, [ms, how === 'a tap' ? '#stage' : '#go']);
 
     // ---- Versus in the menu: after Lotto. Names at a time stays as it was.
     await page.evaluate(() => window.__board21.openWidget('name-picker'));
@@ -1968,18 +1992,19 @@ module.exports = T => {
     await page.screenshot({ path: OUT + 'name-picker-versus.png' });
 
     // ---- A tap on the stage skips the show, in the build-up or during the slam, and so does Show now. Nothing the show
-    // added is left, and no sound comes after it. Quick: about 1.1 s.
+    // added is left, and no sound comes after it. Timed from the tap: the build-up, the slam before any look's impact
+    // (1.8 s or later), and after every look's impact but before any show's end (2.26 s or later). A tap within 600 ms is a
+    // double tap. Quick: about 1.1 s.
     // (When the show ends: the body loses .showing.)
     await inFrame(() => new MutationObserver(() => { if (!document.body.classList.contains('showing')) window.__endedAt = performance.now(); }).observe(document.body, { attributes: true, attributeFilter: ['class'] }));
     const soundsAfter = () => inFrame(() => (window.__soundLog || []).filter(x => x[1] > window.__endedAt + 1).map(x => x[0]));
-    for (const [ms, how] of [[700, 'a tap'], [700, 'Show now'], [2150, 'a tap'], [2150, 'Show now']]) {
+    for (const [ms, how] of [[700, 'a tap'], [700, 'Show now'], [1750, 'Show now'], [2050, 'a tap']]) {
       await idle();
-      st = await pickNow();
-      await page.waitForTimeout(ms);   // (counted once the pick is saved and its show has begun. A tap within 600 ms is a double tap.)
-      await np().locator(how === 'a tap' ? '#stage' : '#go').click(); await page.waitForTimeout(150);
+      st = await pickTapped();
+      const on = await skipAt(ms, how); await page.waitForTimeout(150);
       s = await vs();
-      ok(!(await showing()) && (await saved()).pickId === st.pickId && s.names.join() === st.picked.join() && s.look === st.versusLook && clean(s) && await text('#go') === 'Pick 2',
-        `${how} ${ms} ms into the show skips it: the pair and the ${s.look} emblem at rest, nothing left of the show, nothing running (${JSON.stringify(s)})`);
+      ok(on && !(await showing()) && (await saved()).pickId === st.pickId && s.names.join() === st.picked.join() && s.look === st.versusLook && clean(s) && await text('#go') === 'Pick 2',
+        `${how} ${ms} ms into the show skips it: the pair and the ${s.look} emblem at rest, nothing left of the show, nothing running (${on ? '' : 'the show was already over; '}${JSON.stringify(s)})`);
       await page.waitForTimeout(250);
       const after = await soundsAfter();
       ok(!after.length, `and no drum, slam, or challenge sound after it (${after.join(', ') || 'none'})`);
@@ -1991,8 +2016,8 @@ module.exports = T => {
     ok(took > 800 && took < 2000 && clean(s) && s.look === st.versusLook, `with Quick the show takes about 1.1 s (${took} ms), and ends as clean`);
     snd = await inFrame(() => ({ at: window.__slamAt.slice(-1)[0], hit: NamePicker.looks[document.querySelector('.versus').dataset.look].hit }));
     ok(onHit(snd.at, snd.hit.quick), `with Quick the thud comes at the quick slam’s impact (${into(snd.at)}; ${st.versusLook} hits at ${snd.hit.quick})`);
-    st = await pickNow(); await page.waitForTimeout(950); await np().locator('#stage').click(); await page.waitForTimeout(150);
-    ok(!(await showing()) && clean(await vs()), 'a tap during the quick slam skips it, as clean');
+    st = await pickTapped(); const quickOn = await skipAt(750, 'a tap'); await page.waitForTimeout(150);
+    ok(quickOn && !(await showing()) && clean(await vs()), 'a tap during the quick slam skips it, as clean');
     await menu('quick');
 
     // ---- Start over: the waiting stage again, in a look drawn at random each time it appears.
@@ -2014,56 +2039,59 @@ module.exports = T => {
     for (let i = 0; i < 20; i++) {
       await idle();
       await inFrame(() => { window.__slamAt.length = 0; });
-      st = await pickNow();
-      if (i < 10) await idle(); else { await page.waitForTimeout(1950); await np().locator('#stage').click(); await page.waitForTimeout(150); }
+      st = i < 10 ? await pickNow() : await pickTapped();
+      const on = i < 10 ? await idle() : await skipAt(1750, 'a tap'); await page.waitForTimeout(150);
       s = await vs();
-      const fine = !(await showing()) && s.look === st.versusLook && s.names.join() === st.picked.join() && clean(s), bag = i < 10 ? ended : skipped;
+      const fine = on && !(await showing()) && s.look === st.versusLook && s.names.join() === st.picked.join() && clean(s), bag = i < 10 ? ended : skipped;
       if (bag[st.versusLook] === undefined || bag[st.versusLook] === true) bag[st.versusLook] = fine || JSON.stringify(s);
       if (i < 10) thuds[st.versusLook] = await inFrame(() => { const at = window.__slamAt[0], hit = NamePicker.looks[document.querySelector('.versus').dataset.look].hit.normal; return at && { clock: Math.round(at.clock - hit), shown: Math.round(at.shown - hit) }; });
     }
     ok(LOOKS.every(l => ended[l] === true), `every look, after its show: nothing the show added is left, and nothing runs (${JSON.stringify(ended)})`);
     ok(LOOKS.every(l => skipped[l] === true), `every look, skipped in the middle of its slam: the same (${JSON.stringify(skipped)})`);
     ok(LOOKS.every(l => onHit(thuds[l], 0)), `every look’s thud comes at its own moment of impact (ms off, by the clock and on screen: ${JSON.stringify(thuds)})`);
-    // A show cut short any other way ends as clean too (No repeats is off: every pick from everyone), in the build-up or during the slam: the page hidden, a switch
-    // to Big name and back, Edit names and Done, or a resize (in the slam it ends the show; before, the show goes on).
-    // No sound after it, and the show is over.
+    // A show cut short any other way ends at once, and as clean (No repeats is off: every pick from everyone): the page
+    // hidden, a switch to Big name and back, Edit names and Done, or a resize. In the build-up and after every look's impact,
+    // timed from the tap (each lead: how long its cut takes to land), and a resize in the slam before any impact too. No
+    // sound after it, and no challenge sound unless a resize ends the show after the thud. A cut before the impact plays
+    // neither.
     const hide = v => inFrame((_, v) => {
       if (v) { Object.defineProperty(document, 'hidden', { configurable: true, get: () => true }); Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' }); }
       else { delete document.hidden; delete document.visibilityState; }
       document.dispatchEvent(new Event('visibilitychange'));
     }, page, undefined, v);
-    const CUTS = [['the page hidden', 0, () => hide(true)], ['a switch to Big name and back', 280, async () => { await menu('style:name'); await eventually(async () => (await conf()).style === 'name'); await menu('style:versus'); await eventually(async () => (await conf()).style === 'versus'); }],
-      ['Edit names and Done', 280, async () => { await menu('edit'); await np().locator('#done').click(); await page.waitForTimeout(200); }],
-      ['a resize', 0, () => page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 600, h: 440 }))]];
+    const CUTS = [['the page hidden', 0, [700, 2050], () => hide(true)],
+      ['a switch to Big name and back', 280, [700, 2050], async () => { await menu('style:name'); await eventually(async () => (await conf()).style === 'name'); await menu('style:versus'); await eventually(async () => (await conf()).style === 'versus'); }],
+      ['Edit names and Done', 280, [700, 2050], async () => { await menu('edit'); await np().locator('#done').click(); await page.waitForTimeout(200); }],
+      ['a resize', 0, [700, 1750, 2050], () => page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 600, h: 440 }))]];
     const cutShort = [];
-    for (const [how, lead, act] of CUTS) for (const ms of [700, 2150]) {
+    for (const [how, lead, times, act] of CUTS) for (const ms of times) {
       await idle();
-      st = await pickNow();
-      await page.waitForTimeout(ms - 150 - lead);
+      st = await pickTapped();
+      await till(ms - lead);
       await act();
-      // (A resize in the build-up: the show goes on to its end.)
-      if (how === 'a resize' && ms < 1950) await idle(); else await page.waitForTimeout(450);
+      await page.waitForTimeout(450);
       const on = await showing();
-      // The sounds the style asked for once the show had ended (the challenge sound of a show a resize ends in its slam is its end).
-      const after = await soundsAfter();
+      // The sounds the style asked for once the show had ended, and all but the drum from the tap on.
+      const after = await soundsAfter(), heard = (await inFrame(() => (window.__soundLog || []).filter(x => x[1] >= window.__tapAt).map(x => x[0]))).filter(x => x !== 'drum').join();
       if (how === 'the page hidden') await hide(false);
       if (how === 'a resize') { await page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 540, h: 400 })); await page.waitForTimeout(300); }
       s = await vs();
       const style = (await conf()).style;
-      if (on || style !== 'versus' || !clean(s) || s.names.join() !== st.picked.join() || s.look !== st.versusLook || after.some(x => x !== 'challenge'))
-        cutShort.push(`${how} at ${ms} ms: ${JSON.stringify({ on, style, after: after.join(' '), s })}`);
+      if (on || style !== 'versus' || !clean(s) || s.names.join() !== st.picked.join() || s.look !== st.versusLook || after.length || !(heard === '' || heard === 'slam' || (how === 'a resize' && heard === 'slam,challenge')))
+        cutShort.push(`${how} at ${ms} ms: ${JSON.stringify({ on, style, heard, after: after.join(' '), s })}`);
     }
-    ok(!cutShort.length, `a show cut short by the page hidden, a switch of style and back, Edit names, or a resize ends as clean, with no sound after (${cutShort.slice(0, 2).join(' | ') || 'all 8'})`);
+    ok(!cutShort.length, `a show cut short by the page hidden, a switch of style and back, Edit names, or a resize ends at once and as clean, with no sound after, and no challenge sound but after a resize’s thud (${cutShort.slice(0, 2).join(' | ') || 'all 9'})`);
 
     // ---- The names stay hidden until the impact. With a pair on the stage, the tap on Pick 2 empties both names in its own
     // task, and they stay empty until the look's moment of impact. The pair shows in the first frame drawn at or after it.
-    // Every look, normal and Quick, at 360 × 270 and 540 × 400. And the build-up doesn't flash: at 540 × 400, no side's
-    // brightness rises and falls by 0.10 or more within a third of a second, WCAG's flash line.
+    // Every look, normal and Quick, at the smallest size, the usual size, and maximized. And the build-up doesn't flash: at
+    // the usual size, from the frame before the tap, no side's brightness rises and falls by 0.10 or more within a third of
+    // a second, WCAG's flash line.
     const unseen = [], flashes = {};
     for (const quick of [false, true]) {
       if (quick) await menu('quick');
-      for (const [w, h] of [[360, 270], [540, 400]]) {
-        await page.evaluate(([w, h]) => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w, h }), [w, h]); await page.waitForTimeout(300);
+      for (const [size, w, h] of [['the smallest size', 260, 200], ['the usual size', 420, 320], ['maximized']]) {
+        await page.evaluate(([w, h]) => { const B = window.__board21; B.setMaximized('name-picker:1', !w); if (w) B.setRect('name-picker:1', { x: 40, y: 40, w, h }); }, [w, h]); await page.waitForTimeout(300);
         for (const look of LOOKS) {
           await idle();
           await inFrame((_, look) => { deck = [look]; }, page, undefined, look);   // (the look the next pick plays)
@@ -2073,15 +2101,15 @@ module.exports = T => {
           st = await saved(); await idle();
           const P = await probed(), hit = await inFrame((_, l) => NamePicker.looks[l].hit, page, undefined, look);
           const bad = st.versusLook !== look ? `played ${st.versusLook}` : hiddenUntil(P, tap, st.picked, quick ? hit.quick : hit.normal);
-          if (bad) unseen.push(`${look}${quick ? ' (Quick)' : ''} at ${w} × ${h}: ${bad}`);
-          if (w === 540) flashes[quick ? 'Quick' : 'normal'] = Math.max(flashes[quick ? 'Quick' : 'normal'] || 0, flash(P));
+          if (bad) unseen.push(`${look}${quick ? ' (Quick)' : ''} at ${size}: ${bad}`);
+          if (w === 420) flashes[quick ? 'Quick' : 'normal'] = Math.max(flashes[quick ? 'Quick' : 'normal'] || 0, flash(P));
         }
       }
       if (quick) await menu('quick');
     }
-    await page.evaluate(() => window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 540, h: 400 })); await page.waitForTimeout(300);
-    ok(!unseen.length, `no name shows before the impact, and the pair lands in its first frame: every look, normal and Quick, at 360 × 270 and 540 × 400 (${unseen.slice(0, 3).join(' | ') || 'all 20'})`);
-    ok(flashes.normal < 0.1 && flashes.Quick < 0.1, `the build-up doesn’t flash: no side rises and falls in brightness by 0.10 within a third of a second (largest: ${JSON.stringify(flashes)})`);
+    await page.evaluate(() => { window.__board21.setMaximized('name-picker:1', false); window.__board21.setRect('name-picker:1', { x: 40, y: 40, w: 540, h: 400 }); }); await page.waitForTimeout(300);
+    ok(!unseen.length, `no name shows before the impact, and the pair lands in its first frame: every look, normal and Quick, at the smallest size, the usual size, and maximized (${unseen.slice(0, 3).join(' | ') || 'all 30'})`);
+    ok(flashes.normal < 0.1 && flashes.Quick < 0.1, `the build-up doesn’t flash: from the frame before the tap, no side rises and falls in brightness by 0.10 within a third of a second (largest: ${JSON.stringify(flashes)})`);
     await menu('sound'); await menu('norepeat');
 
     // ---- Names at a time stays as the teacher chose it: back in Big name, the button picks 3. Ticking Sound here plays the
@@ -2093,6 +2121,14 @@ module.exports = T => {
     ok(await eventually(async () => (sample = sample.concat(await played())).length > 0) && sample.join() === 'chime', `in Big name, ticking Sound plays the chime as a sample (${sample.join()})`);
     await menu('sound');
     await menu('style:versus');
+
+    // ---- Sound ticked during a show plays no sample: the show's own sounds come in, and the challenge plays once, at the end.
+    await idle(); await played();
+    await pickTapped(); await till(700); await menu('sound');   // (ticked about 1 s in)
+    await idle(); await page.waitForTimeout(200);
+    const mid = (await played()).filter(x => x !== 'drum').join();
+    ok(mid === 'slam,challenge', `Sound ticked during the show plays no sample: the slam, then the challenge once, at the end (${mid})`);
+    await menu('sound');
 
     // ---- Saved, reloaded, and synced.
     await idle(); st = await pickNow(); await idle();
