@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="d9a87cfe">
+<html lang="en" data-build="886c1918">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -447,7 +447,9 @@
     .menu.tight { padding: 4px; }
     .menu.tight .menu-item { min-height: 30px; font-size: 13px; }
     .menu.tight .menu-sep { margin: 2px 8px; }
-    .menu.open.cols { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(180px, max-content); column-gap: 4px; max-width: calc(100vw / var(--ui, 1) - 16px); }
+    .menu.open.cols { display: block; column-count: 2; column-gap: 4px; max-width: calc(100vw / var(--ui, 1) - 16px); }   /* (where the second column starts: Menu.position) */
+    .menu.cols > *, .menu.cols .menu-group > * { break-inside: avoid; }
+    .menu.cols .menu-item { display: flex; }   /* (a block, as in one column: a column can start at it) */
 
     /* ------------------------------------------------------------ Settings */
     .sheet {

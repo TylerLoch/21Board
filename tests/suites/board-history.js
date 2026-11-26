@@ -112,7 +112,8 @@ module.exports = T => {
       '“Put back” brings back one window (Notes 2) and leaves the others as they are');
     // The window menu: Go back…, to this window's earlier versions.
     await page.locator('.win[data-ikey="notes:1"] .win-label').click(); await page.waitForTimeout(250);
-    ok(await page.locator('#menu [data-act="history"]').count() === 1, 'the window menu has “Go back…”');
+    const end = await page.evaluate(() => { const k = Array.from(document.getElementById('menu').children); return k.slice(k.map(e => e.classList.contains('menu-sep')).lastIndexOf(true) + 1).map(e => e.textContent.trim()).join(' | '); });
+    ok(await page.locator('#menu [data-act="history"]').count() === 1 && end === 'Zoom to fill | Go back… | Reset… | Close', `the window menu has “Go back…”, and ends with Zoom to fill, Go back…, Reset…, and Close (${end})`);
     await page.click('#menu [data-act="history"]'); await page.waitForTimeout(1200);
     const versions = await page.locator('#history [data-act="put-here"]').count();
     ok(versions >= 2 && /Earlier versions of Notes/.test(await page.locator('#history .hist-intro').textContent()), `it lists that window’s earlier versions (${versions})`);

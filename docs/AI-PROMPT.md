@@ -250,8 +250,8 @@ content. Keep your buttons out of them.
   is bigger, it keeps that. A reload shows the normal size again.
 - **A lasting change of size** (the teacher picks a layout that needs another shape):
   `Board21.window.setSize(w, h)`. It is fitted to the min/max sizes, shape, and the board, keeps its
-  top-left corner where it can (it may move to stay on the board and out of other windows' way), takes
-  the window out of *Fill the board*, and is saved with the board (kept after a reload, the same in every
+  top-left corner where it can (it may move to stay on the board and out of other windows' way), stops
+  the window from filling the board, and is saved with the board (kept after a reload, the same in every
   tab). So skip it when `Board21.context.window.maximized`. To undo it later, first keep
   `await Board21.window.getInfo()` and set that `width`/`height` back, unless the size has changed since
   (the teacher resized it).
@@ -259,7 +259,7 @@ content. Keep your buttons out of them.
   `setMaxSize(w, h)` (`null` removes it); `setResizable(false)` hides the resize grips.
 - `setMinSize`, `setMaxSize`, `setAspectRatio`, `setResizable`, `setDragFromContent`, `setTitle`, and
   the menu last until the widget reloads: set them again in `start()` from config and state.
-- **At *Fill the board***, the board's two Widget Picker buttons cover the window's bottom-left and
+- **While the window fills the board**, the board's two Widget Picker buttons cover the window's bottom-left and
   bottom-right corners, up to about 140px in from each side on a small screen. Center the main button
   and any bottom row of buttons.
 - `Board21.window.maximize()` / `restore()`: *Zoom to fill* and *Zoom back out*. The window menu already
@@ -307,7 +307,7 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
   button, so the main view stays clean for students (a small, quiet *Edit* button on it is fine). Save
   edits as they're typed.
 - **An empty state that says what to do**, with the button that does it ("Add names to get started").
-- **Works from the minimum size to Fill the board**: the main view never scrolls or cuts off text (an
+- **Works from the minimum size to the whole board**: the main view never scrolls or cuts off text (an
   editor's long list may scroll inside). Flex/grid with `min-height: 0`, %, `vmin`, `clamp()`; size text
   in a grid of cards by the card (`.card { container-type: size }`, `font-size: min(18cqw, 40cqh)`);
   a long word in a `.fit` box, which shrinks it; extras hidden in tiny windows
@@ -338,7 +338,7 @@ The teacher can move the window by dragging anywhere inside it; a tap is still a
 - [ ] `const ctx = await Board21.ready()`; draws from `ctx.data` / `ctx.config`; `data` and `config` handlers re-render and call `setMenu()`.
 - [ ] Anything about a student saved with `save()`, preferences with `saveConfig()`; loaded values checked; saved text shown with `textContent`.
 - [ ] Menu: at most 24 items, each with its own id, swatches `#hex` and choices of 3 characters or fewer (at most 12 per row); `menu.set()` called again when state changes.
-- [ ] Works and reads well at `minWidth` × `minHeight` with the most items (no text under 14px) and at Fill the board (no buttons in the bottom corners, or in the top ones while the board is locked), in light and dark; only an editor's list scrolls; 48px tap targets.
+- [ ] Works and reads well at `minWidth` × `minHeight` with the most items (no text under 14px) and when it fills the board (no buttons in the bottom corners, or in the top ones while the board is locked), in light and dark; only an editor's list scrolls; 48px tap targets.
 - [ ] Typing, drawing, or dragging areas: `dragFromContent: false`, `data-b21-nodrag`, or `setDragFromContent`.
 - [ ] A bigger editor uses `setMinSize(…)` and `setMinSize(null, null)`; `setSize` only after a tap and never when maximized.
 

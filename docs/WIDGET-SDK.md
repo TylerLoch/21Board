@@ -138,7 +138,7 @@ Sizes are the **content area**, the iframe, without the 40px title bar.
 
 | Call | Description |
 | --- | --- |
-| `Board21.window.setSize(w, h)` | Resize the window, within its minimum and maximum size, shape lock, and the board. Its top-left corner stays put where it can, and the window stays on screen and clear of other windows where it can. It takes a maximized window out of *Fill the board*. The size is saved with the board, like a teacher's resize: kept after a reload, the same in every tab. |
+| `Board21.window.setSize(w, h)` | Resize the window, within its minimum and maximum size, shape lock, and the board. Its top-left corner stays put where it can, and the window stays on screen and clear of other windows where it can. A window that fills the board stops filling it. The size is saved with the board, like a teacher's resize: kept after a reload, the same in every tab. |
 | `Board21.window.setAspectRatio(ratio)` | Lock the content to `width / height` (e.g. `16/9`). `null` unlocks. |
 | `Board21.window.setMinSize(w, h)` | Minimum content size. `null` goes back to the registry's. A window smaller than the minimum is drawn bigger, without changing its saved size (see below). |
 | `Board21.window.setMaxSize(w, h)` | Maximum content size. `null` removes the limit. |
@@ -147,7 +147,7 @@ Sizes are the **content area**, the iframe, without the 40px title bar.
 | `Board21.window.setTitle(text)` | Short status shown after the widget name in the title bar, e.g. `"Running"`. Hidden in narrow windows. |
 | `Board21.window.requestAttention()` | Pulse the title bar, such as when a timer ends. |
 | `Board21.window.focus()` | Select the window and bring it to the front. |
-| `Board21.window.maximize()` / `restore()` | Fill the board / return to normal size. |
+| `Board21.window.maximize()` / `restore()` | *Zoom to fill* / *Zoom back out*. |
 | `Board21.window.close()` | Close the window. Its data is kept. |
 | `Board21.window.getInfo()` | Promise of `{ width, height, x, y, maximized, focused, zoom, corners }`. `zoom` is how much bigger the board draws the window than its CSS size. On the 16:9 board it is the board's Size times how much the screen enlarges the board: 0.57 at Size 80% on a 1366×768 Chromebook, 1.5 at Size 150% on a 1920×1080 panel. On the *Fill* board shape it is the Size. For sharp lines and letters, a canvas uses `devicePixelRatio × zoom` pixels per CSS px, capped at about 3. An older 21Board doesn't send `zoom`: treat a missing one as 1. `corners` is sent while the window fills the board, and to any other window the board's own buttons sit over: `{ left, right, height }`, how far ▦ and the clock beside one reach in from the window's left and right edges and up from its bottom, in its CSS px. The clock shows only in full screen by default, so `corners` changes as 21Board enters and leaves full screen. Keep buttons and text out of those corners. An older 21Board doesn't send `corners`. A 21Board before 2026.11.24-4 sends it only while the window fills the board. `corners.top` does the same for the padlocks in the top corners while the board is locked, measured down from the top of the content. Unlocked, it's all 0. A 21Board before 2026.11.18-18 doesn't send it. |
 
@@ -586,7 +586,7 @@ storage, so it can't read this site's real boards. *Edit code* goes back to the 
 - [ ] Student-identifying data is **content**, not config
 - [ ] Handles `data` events (test with two tabs)
 - [ ] Looks right in light and dark mode
-- [ ] Usable from the registry's `minWidth`×`minHeight` up to *Fill the board*
+- [ ] Usable from the registry's `minWidth`×`minHeight` up to the whole board
 - [ ] Drags: if any part of the widget needs dragging (text selection, drawing, custom sliders), it sets
       `dragFromContent: false`, or marks that area `data-b21-nodrag`
 - [ ] Every file listed in `files`

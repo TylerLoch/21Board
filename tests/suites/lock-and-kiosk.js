@@ -655,6 +655,20 @@ module.exports = T => {
     await B(() => window.__board21.setBoardScale(0.5)); await page.waitForTimeout(400);
     g = await geo();
     ok(['left', 'right'].every(s => Math.abs(g[s].w - 44) < 0.6 && Math.abs(g[s].h - 44) < 0.6 && g[s].gw < 30), `at Size 50% ▦ is ${g.left.gw.toFixed(1)} px, and the padlocks stay 44 × 44 (${g.left.w.toFixed(1)} × ${g.left.h.toFixed(1)})`);
+    // The window menu's note, which says how to unlock, shows whole at Size 50%, 80%, and 200%. (Its words: "Lock: Lock
+    // everything and Widgets still work".)
+    const notes = [];
+    for (const sc of [0.5, 0.8, 2]) {
+      await B(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(400);
+      await page.click('.win[data-ikey="notes:1"] .win-label'); await page.waitForTimeout(250);
+      notes.push(await B(sc => {
+        const m = document.getElementById('menu'), n = m.querySelector('.lock-note'), t = n && n.querySelector('span'), b = m.getBoundingClientRect(), r = n ? n.getBoundingClientRect() : {};
+        return { sc, whole: !!t && r.left >= b.left - 0.5 && r.right <= b.right + 0.5 && r.top >= b.top - 0.5 && r.bottom <= b.bottom + 0.5 && t.scrollWidth <= t.clientWidth + 1 && t.scrollHeight <= t.clientHeight + 1
+          && m.scrollHeight <= m.clientHeight + 1 && b.top >= 0 && b.bottom <= innerHeight, w: Math.round(r.width), h: Math.round(r.height) };
+      }, sc));
+      await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    }
+    ok(notes.every(n => n.whole), `the window menu’s note shows whole, inside a menu that doesn’t scroll (${notes.map(n => `${n.sc * 100}%: ${n.w} × ${n.h}${n.whole ? '' : ' NOT WHOLE'}`).join(', ')})`);
     await B(() => window.__board21.setBoardScale(0.8)); await page.waitForTimeout(400);
     // The iPad's status bar (the safe area at the top): the padlocks sit below it.
     const cdp = await ctx.newCDPSession(page);

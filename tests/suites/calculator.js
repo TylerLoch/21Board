@@ -135,10 +135,10 @@ module.exports = T => {
       const s = document.querySelector('#menu [data-act="widget"][data-id="hide"] .icon-slot svg'), r = s && s.querySelector('rect');
       if (!r) return null;
       const b = r.getBBox(), cs = getComputedStyle(r), inner = Array.from(s.children).filter(e => e !== r).map(e => e.getBBox());
-      const trash = getComputedStyle(document.querySelector('#menu [data-id="clear-history"] .icon-slot svg'));
+      const trash = getComputedStyle(document.querySelector('#menu [data-id="clear-history"] .icon-slot svg path')), PROPS = ['stroke', 'strokeWidth', 'strokeLinecap', 'strokeLinejoin', 'fill'];
       return { box: s.getAttribute('viewBox'), square: b.width === b.height, round: +r.getAttribute('rx') > 0, dashed: cs.strokeDasharray !== 'none',
         q: inner.length > 0 && inner.every(q => q.x > b.x && q.y > b.y && q.x + q.width < b.x + b.width && q.y + q.height < b.y + b.height),
-        same: cs.fill === 'none' && getComputedStyle(s).strokeWidth === trash.strokeWidth && getComputedStyle(s).color === trash.color };
+        same: Array.from(s.children).every(e => { const c = getComputedStyle(e); return PROPS.every(p => c[p] === trash[p]); }) };
     });
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     ok(!!pic && pic.box === '0 0 24 24' && pic.square && pic.round && pic.dashed && pic.q && pic.same, `Hide the answer’s picture: a rounded square, dashed, with the ? inside it, drawn as Clear history’s is (${JSON.stringify(pic)})`);
@@ -700,6 +700,32 @@ module.exports = T => {
       const f = await menuBox(F);
       ok(!f.scrolls && f.top >= 0 && f.bottom <= 768 && f.items.includes('Desmos %') && f.items.length === 15,
         `a board that is the screen (the window from ${f.win[0]} to ${f.win[1]}): the whole menu fits, ${f.top} to ${f.bottom}, without scrolling (${f.items.length} items; ${f.cls})`);
+      await F.page.keyboard.press('Escape'); await F.page.waitForTimeout(200);
+      // At a large Size the menu takes two columns. Each group stays whole in one column, and no column starts or ends
+      // with a line. With Advanced keys on and off, at Size 150%, 175%, and 200%.
+      const two = [];
+      for (const adv of ['on', 'off']) {
+        if (adv === 'off') { await F.page.evaluate(() => window.__board21.setBoardScale(0.8)); await F.page.waitForTimeout(400); await F.choose('Advanced keys'); }
+        for (const sc of [1.5, 1.75, 2]) {
+          await F.page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await F.page.waitForTimeout(400);
+          await F.front(); await F.page.click(`.win[data-ikey="${F.ik}"] .win-label`); await F.page.waitForTimeout(400);
+          two.push(Object.assign({ at: `Advanced keys ${adv}, ${sc * 100}%` }, await F.page.evaluate(() => {
+            const m = document.getElementById('menu'), b = m.getBoundingClientRect(), shown = e => e.getClientRects().length > 0;
+            const kids = [...m.querySelectorAll(':scope > :not(.menu-group), .menu-group > *')].filter(shown);
+            // (Every item is as wide as its column: one that starts past the first item's right edge is in column 2.)
+            const edge = kids[0].getBoundingClientRect().right, col = e => e.getBoundingClientRect().left >= edge - 0.5 ? 2 : 1;
+            const name = e => e.classList.contains('menu-sep') ? '—' : e.classList.contains('menu-heading') ? `[${e.textContent.trim()}]` : e.textContent.trim();
+            const cols = [1, 2].map(c => kids.filter(e => col(e) === c)).filter(l => l.length);
+            return { cols: m.classList.contains('cols'), list: cols.map(l => l.map(name).join(' | ')).join(' ‖ '),
+              split: [...m.querySelectorAll('.menu-group')].filter(g => new Set([...g.children].filter(shown).map(col)).size > 1).map(g => g.getAttribute('aria-label')),
+              lines: cols.some(l => l[0].classList.contains('menu-sep') || l[l.length - 1].classList.contains('menu-sep')),
+              fits: m.scrollHeight <= m.clientHeight + 1 && b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth };
+          })));
+          await F.page.keyboard.press('Escape'); await F.page.waitForTimeout(200);
+        }
+      }
+      ok(two.some(t => t.cols) && two.every(t => !t.split.length && !t.lines && t.fits),
+        `in two columns, each group whole in one column, no line at a column’s top or bottom, and all of it on screen (${two.map(t => `${t.at}: ${t.cols ? t.list : 'one column'}${t.split.length ? '; SPLIT: ' + t.split.join(', ') : ''}${t.lines ? '; A LINE AT AN END' : ''}${t.fits ? '' : '; DOESN’T FIT'}`).join(' / ')})`);
       await F.ctx.close();
     });
 

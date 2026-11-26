@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.26-3';
-  const BOARD_BUILD = 'd9a87cfe';
+  const BOARD_BUILD = '886c1918';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -2251,7 +2251,7 @@
             // (No icon from an uploaded file: markup in the board's own menu would be outside its seal.)
             return Object.assign(item, { icon: this.widget.sealed ? '' : safeSVG(i.icon), checked: typeof i.checked === 'boolean' ? i.checked : undefined, disabled: !!i.disabled, separator: !!i.separator });
           });
-          if (Menu.win === this) Menu.render();
+          if (Menu.win === this) { Menu.render(); Menu.position(); }   // (placed again: its size, and in two columns where each column starts, may change)
           break;
         case 'toast': toast(String(m.text || '').slice(0, 200)); break;
         case 'devLog': if (LAB) LabBridge.post('log', { level: String(m.level || 'error'), text: String(m.text || '').slice(0, 4000) }); break;
@@ -3473,7 +3473,8 @@
       const size = () => ({ width: this.el.offsetWidth * ui, height: this.el.offsetHeight * ui });
       // A menu taller than the whole screen gets tighter rows first (it should never need scrolling).
       this.el.classList.remove('compact', 'tight', 'cols');
-      this.el.style.gridTemplateRows = '';
+      const kids = $$(':scope > :not(.menu-group), .menu-group > *', this.el), n = kids.length;
+      for (const e of kids) e.style.breakBefore = e.style.display = '';
       this.el.style.maxHeight = 'none';
       // (Measured at the screen's top left: where it was last, at another zoom or by another window, it may have had
       // too little room to its right, and been squeezed to its min-width, its labels wrapped onto more lines.)
@@ -3482,10 +3483,23 @@
       if (m.height > vh - 2 * M) { this.el.classList.add('compact'); m = size(); }
       if (m.height > vh - 2 * M) { this.el.classList.add('tight'); m = size(); }
       if (m.height > vh - 2 * M) {
-        // Still too tall: two columns.
+        // Still too tall: two columns, each stacked as a menu is. The second starts at the line or heading nearest the
+        // middle, so each group stays whole in one column, or halfway if that doesn't fit. A line at the top or bottom of a
+        // column isn't drawn.
         this.el.classList.add('cols');
-        this.el.style.gridTemplateRows = `repeat(${Math.ceil($$(':scope > :not(.menu-group), .menu-group > *', this.el).length / 2)}, auto)`;
-        m = size();
+        const sep = e => e.classList.contains('menu-sep');
+        const split = at => kids.forEach((e, i) => {
+          e.style.breakBefore = i === (sep(kids[at]) ? at + 1 : at) ? 'column' : '';
+          e.style.display = sep(e) && (i === 0 || i === at - 1 || i === at || i === n - 1) ? 'none' : '';
+        });
+        const half = Math.ceil(n / 2);
+        let at = half, rows = Infinity;
+        kids.forEach((e, i) => {
+          const r = Math.max(i, n - i - (sep(e) ? 1 : 0));
+          if (i && (sep(e) || e.classList.contains('menu-heading')) && r < rows) { at = i; rows = r; }
+        });
+        split(at); m = size();
+        if (m.height > vh - 2 * M && at !== half) { split(half); m = size(); }
       }
       this.el.style.maxHeight = '';
       const below = vh - a.bottom - GAP - M, above = a.top - GAP - M;
