@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.26-2';
-  const BOARD_BUILD = 'a5ece3e4';
+  const BOARD_VERSION = '2026.11.26-3';
+  const BOARD_BUILD = 'd9a87cfe';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3351,7 +3351,7 @@
         this.act(act, b.dataset.id);
         if (!keys || !w) return;
         // Chosen from the keyboard: the keyboard goes on from the menu's first item if it stays open (Reset asks first),
-        // or from the window's name, as after Escape (Earlier versions… opens a sheet that takes it).
+        // or from the window's name, as after Escape (Go back… opens a sheet that takes it).
         if (this.win === w) { if (!this.el.contains(document.activeElement)) { const f = $('button:not(:disabled)', this.el); if (f) f.focus(); } }
         else if (S.wins.get(w.ikey) === w && act !== 'history') w.labelEl.focus();
       });
@@ -3403,7 +3403,7 @@
         `<button class="menu-item ${cls}" role="menuitem" data-act="${act}" ${extra}><span class="icon-slot">${icon}</span><span class="label">${esc(label)}</span></button>`;
       if (this.confirming) {
         const name = `${w.widget.name}${w.inst.n > 1 ? ' ' + w.inst.n : ''}`;
-        show(`<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything in this window and restores its starting size.${BoardHistory.enabled() ? ' Board history keeps a version.' : ''}</div>` +
+        show(`<div class="menu-confirm"><b>Reset ${esc(name)}?</b><br>This clears everything you did in this window.${BoardHistory.enabled() ? ' Board history keeps a version.' : ''}</div>` +
           item('reset-yes', svg('reset'), 'Reset', '', 'danger') + item('reset-no', '', 'Cancel'));
         return;
       }
@@ -3433,15 +3433,15 @@
       endGroup();
       if (html) html += '<div class="menu-sep"></div>';
       const locked = Lock.on();   // (locked: the widget's own items, and a district app's, section 12b)
-      if (!locked) html += w.inst.maximized ? item('restore', svg('restore'), 'Restore size') : item('maximize', svg('maximize'), 'Fill the board');
+      if (!locked) html += w.inst.maximized ? item('restore', svg('restore'), 'Zoom back out') : item('maximize', svg('maximize'), 'Zoom to fill');
       if (w.widget.external) {
-        // A district app keeps its own work: there is none here to reset or to go back to. Reload: a window that
+        // A district app keeps its own work: there is none here to reset or to go back to. Refresh: a window that
         // opened while the site couldn't be reached stays on the browser's error page. (A kiosk can't open tabs.)
-        html += item('reload', svg('reload'), `Reload ${w.widget.name}`);
+        html += item('reload', svg('reload'), `Refresh ${w.widget.name}`);
         if (!KIOSK) html += item('own', svg('external'), 'Open in new tab');
       } else if (!locked) {
-        if (BoardHistory.hasWindow(w.ikey)) html += item('history', svg('history'), 'Earlier versions…');
-        html += item('reset', svg('reset'), 'Reset');
+        if (BoardHistory.hasWindow(w.ikey)) html += item('history', svg('history'), 'Go back…');
+        html += item('reset', svg('reset'), 'Reset…');
         if (w.inst.copyOf) html += item('delete-copy', svg('trash'), 'Delete this copy', '', 'danger');   // (Board Sync: a copy kept from a clash)
       }
       html += locked ? (w.widget.external ? '<div class="menu-sep"></div>' : '') + Lock.menuNote() : item('close', svg('close'), 'Close');
@@ -4040,11 +4040,11 @@
   //   no Settings or Board history, no Full screen. (Escape and F11 still leave full screen.) Locking closes the
   //   Widget Picker, the Pages menu, window menus, Settings, Board history and any dialog (applyLock).
   // - no moving windows (title bar, from inside, two fingers: Inter refuses them), no resizing (no handles), no Fill
-  //   the board by two taps on a title bar. A window's menu keeps the widget's own items (and a district app's Reload
-  //   and Open … on its own), nothing that fills, resets, goes back or closes. A widget's own calls to close, fill or
+  //   the board by two taps on a title bar. A window's menu keeps the widget's own items (and a district app's Refresh
+  //   and Open in new tab), nothing that fills, resets, goes back or closes. A widget's own calls to close, fill or
   //   restore its window are refused, as other window calls it can't make are (setSize and setMinSize still work).
   // - a tap on ▦, a refused move, Paste and a file dropped say "The board is locked." (refuse: at most every 5
-  //   seconds, whatever said it). Only the Lock dialog and the padlock itself say how to unlock: students read too.
+  //   seconds, whatever said it). Only the Lock dialog, the padlock itself, and a window's menu say how to unlock.
   // - messages show without their buttons (Update, Later, Back up, Board history, Undo: toast), and one already
   //   showing loses them. Board Sync's merges still apply: Lock stops hands on this screen, not the teacher's own
   //   changes from another device.
@@ -4082,8 +4082,8 @@
       if (Date.now() - this.toldAt > 5000) { this.toldAt = Date.now(); toast('The board is locked.'); }
       return true;
     },
-    // At the end of a window's menu, in place of Fill the board, Reset and Close.
-    menuNote() { return `<div class="lock-note" role="note">${LOCK_ICON}<span>The board is locked.</span></div>`; },
+    // At the end of a window's menu, in place of Zoom to fill, Reset… and Close.
+    menuNote() { return `<div class="lock-note" role="note">${LOCK_ICON}<span>The board is locked. Hold the padlock to unlock.</span></div>`; },
     // The Widget Picker's Lock: how, with how to unlock. The keyboard then goes to a padlock: ▦ won't open.
     async ask(side) {
       if (LAB) return;

@@ -11,14 +11,14 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.26-2';
+const VERSION = '2026.11.26-3';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'a5ece3e4';
+const BUILD = 'd9a87cfe';
 const FILES = {
-  './': '77d2ac93a679a2b7',
-  'index.html': '77d2ac93a679a2b7',
-  'board.js': '55b2e65d08f4f433',
+  './': 'edc1cc61d91675aa',
+  'index.html': 'edc1cc61d91675aa',
+  'board.js': 'cdc7b7a340613081',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
@@ -61,13 +61,13 @@ const FILES = {
   'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
   'widgets/name-picker/style-bracket.js': '626ae95cae9d2924',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
-  'widgets/zones-check-in/index.html': '0e0cdcaa866f8428',
+  'widgets/zones-check-in/index.html': '12fe0adf13bb49a4',
   'widgets/dice/index.html': '7e6e22547b32875e',
   'widgets/traffic-light/index.html': '32cdeb7c2423d2a3',
   'widgets/youtube-player/index.html': '176df55af520e59f',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
-  'widgets/calculator/index.html': '059b09f734a01159',
+  'widgets/calculator/index.html': '473316f92b98fce9',
   'widgets/calculator/calc-engine.js': 'b02a2ec1c5e86079',
   'widgets/weather/index.html': '2d0976a1c1a5fead',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',

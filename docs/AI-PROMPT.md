@@ -18,7 +18,7 @@ shows the widget in a real 21Board window, the **dev window**.
    widget** (see the next section) and send it.
 3. **Look at the preview.** It shows the widget in the dev window: the real 21Board window with its title
    bar, resize handles, and window menu (⌄). Try it the way a class would:
-   - drag a corner to make the window as small as it goes, then *Fill the board* from the window menu;
+   - drag a corner to make the window as small as it goes, then *Zoom to fill* from the window menu;
    - switch *Light* to *Dark* in the dev window's toolbar, and try **−** / **+** (the size of windows and
      menus);
    - use the window menu's items, and open a second window (⋯ ▸ *Open another window*);
@@ -192,7 +192,7 @@ the widget I describe after this prompt. If I haven't described one, ask me what
   student is content, never config.** Setup that names no student (job titles, word lists, categories)
   can go in config, so a shared template keeps it; content then refers to those items by a stable id,
   not by position.
-- The window menu's *Reset* clears both and reloads the widget at its manifest size: `start()` sees
+- The window menu's *Reset…* clears both and reloads the widget at its manifest size: `start()` sees
   `ctx.data` and `ctx.config` as `null` again, as the first time.
 - Save the whole small JSON object whenever it changes. No need to await: 21Board batches writes, skips
   unchanged ones, and retries by itself. Keep it to kilobytes.
@@ -212,7 +212,7 @@ the widget I describe after this prompt. If I haven't described one, ask me what
 ## Window menu
 
 Settings and rarely used commands go in the window's menu (the ⌄ beside the widget's name), above the
-board's own *Fill the board*, *Reset*, and *Close*. Set it with `Board21.menu.set([...])`, react in
+board's own *Zoom to fill*, *Reset…*, and *Close*. Set it with `Board21.menu.set([...])`, react in
 `Board21.on('menu', id => …)`.
 
 - `{ id: 'edit', label: 'Edit names…' }`: a command.
@@ -262,8 +262,8 @@ content. Keep your buttons out of them.
 - **At *Fill the board***, the board's two Widget Picker buttons cover the window's bottom-left and
   bottom-right corners, up to about 140px in from each side on a small screen. Center the main button
   and any bottom row of buttons.
-- `Board21.window.maximize()` / `restore()`: *Fill the board* and back. The menu already offers it, so use
-  it only for a widget's own "Present" button. `focus()` and `close()` also exist.
+- `Board21.window.maximize()` / `restore()`: *Zoom to fill* and *Zoom back out*. The window menu already
+  offers both, so use them only for a widget's own "Present" button. `focus()` and `close()` also exist.
 - Lay out with CSS so a resize needs no code beyond the skeleton's `fitAll()`.
   `Board21.on('resize', info => …)` is for redrawing a `<canvas>` or switching to a compact layout.
   `Board21.context.window` always holds the current size.

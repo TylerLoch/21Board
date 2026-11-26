@@ -2,7 +2,7 @@
 'use strict';
 module.exports = T => {
   const {
-    fs, path, ROOT, OUT, ok, freeBoard, openSettings, setTheme, renamePage, fillNote, DEV_WIDGET, DRIVE_PICK,
+    fs, path, ROOT, OUT, ok, freeBoard, openSettings, setTheme, lockBoard, unlockBoard, renamePage, fillNote, DEV_WIDGET, DRIVE_PICK,
     readFolder, setUpSync, linkFolder, syncDev, hear, eventually, stamped, STAMPED, SITES, marked, parts, boardUp,
     VID2, YT_TITLES, D1, RK, V1, VH, VIMEO_TITLES, VMSG, stubVideos, ytWin, ytLook, ytShow, picLook, picOpen,
     picFile, PMSG, BASE
@@ -739,6 +739,64 @@ module.exports = T => {
     const aiPrompt = fs.readFileSync(path.join(ROOT, 'docs', 'AI-PROMPT.md'), 'utf8');
     ok(/- \[ \] Menu: [^\n]*swatches `#hex` and choices of 3 characters or fewer/.test(aiPrompt), 'docs/AI-PROMPT.md’s checklist has the row of choices');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+  // ---- The items at the end of every window's menu: Zoom to fill (Zoom back out while the window fills the board), Go
+  // back… once Board history has a version of the window, Reset… and what it asks, and Close; locked, how to unlock.
+  // (A district app's Refresh is the District apps suite's.) At Size 50%, 80%, and 200%, each shows whole, on one line
+  // but for the notes, inside a menu that doesn't scroll.
+  ['Window menu: the items at its end (Zoom to fill, Zoom back out, Go back…, Reset… and what it asks, Close, and locked, at Size 50%, 80%, and 200%)', async (browser) => {
+    const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
+    const page = await ctx.newPage();
+    const errors = []; page.on('pageerror', e => errors.push(e.message));
+    await page.goto(BASE); await boardUp(page); await freeBoard(page);
+    // (No version of the window until the test saves one: none as the board opens, none after a quiet minute.)
+    await page.evaluate(() => window.__board21.history.cfg({ skipOpen: true, quiet: 600e3 }));
+    await page.evaluate(() => window.__board21.openWidget('notes'));
+    await eventually(() => page.evaluate(() => { const w = window.__board21.state.wins.get('notes:1'); return !!(w && w.connected && w.menuItems.length); }));
+    // The menu's end as shown: what follows its last line (all of it while Reset asks), and what isn't shown whole.
+    const end = async () => {
+      if (!await page.locator('#menu.open').count()) await page.click('.win[data-ikey="notes:1"] .win-label');
+      await page.waitForTimeout(250);
+      return page.evaluate(() => {
+        const m = document.getElementById('menu'), box = m.getBoundingClientRect(), kids = Array.from(m.children);
+        const items = kids.slice(kids.map(k => k.classList.contains('menu-sep')).lastIndexOf(true) + 1);
+        const lines = e => { const r = document.createRange(); r.selectNodeContents(e); return new Set(Array.from(r.getClientRects()).filter(q => q.width > 0).map(q => Math.round(q.top))).size; };
+        const cut = e => { const r = e.getBoundingClientRect(), l = e.querySelector('.label'); return r.left < box.left - 0.5 || r.right > box.right + 0.5 || r.top < box.top - 0.5 || r.bottom > box.bottom + 0.5 || e.scrollHeight > e.clientHeight + 1 || (!!l && (lines(l) > 1 || l.scrollWidth > l.clientWidth + 1)); };
+        return { words: items.map(e => e.innerText.replace(/\s+/g, ' ').trim()).join(' | '), cut: items.filter(cut).map(e => e.innerText.trim()), scrolls: m.scrollHeight > m.clientHeight + 1 };
+      });
+    };
+    const SIZES = [0.5, 0.8, 2];
+    const size = async sc => { await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(400); };
+    const seen = { plain: [], filled: [], asks: [], back: [], locked: [] };
+    const check = (list, want, what) => ok(list.every(([, e]) => e.words === want && !e.cut.length && !e.scrolls),
+      `${what}: “${want}” (${list.map(([sc, e]) => `${sc * 100}%: ${e.words}${e.cut.length ? '; NOT WHOLE: ' + e.cut.join(', ') : ''}${e.scrolls ? '; SCROLLS' : ''}`).join(' / ')})`);
+    for (const sc of SIZES) {
+      await size(sc);
+      seen.plain.push([sc, await end()]);
+      await page.click('#menu [data-act="maximize"]'); await page.waitForTimeout(400);
+      seen.filled.push([sc, await end()]);
+      await page.click('#menu [data-act="restore"]'); await page.waitForTimeout(400);
+      await end(); await page.click('#menu [data-act="reset"]');
+      seen.asks.push([sc, await end()]);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    }
+    check(seen.plain, 'Zoom to fill | Reset… | Close', 'a Notes window’s menu ends with Zoom to fill, Reset…, and Close');
+    check(seen.filled, 'Zoom back out | Reset… | Close', 'filling the board, Zoom back out');
+    check(seen.asks, 'Reset Notes? This clears everything you did in this window. Board history keeps a version. | Reset | Cancel', 'Reset… asks first');
+    await page.evaluate(() => window.__board21.history.save('A version'));
+    for (const sc of SIZES) {
+      await size(sc);
+      seen.back.push([sc, await end()]);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+      await lockBoard(page);
+      seen.locked.push([sc, await end()]);
+      await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+      await unlockBoard(page);
+    }
+    check(seen.back, 'Zoom to fill | Go back… | Reset… | Close', 'with a version in Board history, Go back…');
+    check(seen.locked, 'The board is locked. Hold the padlock to unlock.', 'locked, how to unlock');
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+    await ctx.close();
   }],
   // ---- (end of Lotto slot)
   ['Drag windows from inside', async (browser) => {

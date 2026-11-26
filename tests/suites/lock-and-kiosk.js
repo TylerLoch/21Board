@@ -978,10 +978,10 @@ module.exports = T => {
     ok(await B(() => Array.from(document.querySelectorAll('.win[data-ikey="dice:1"] .grip')).every(g => getComputedStyle(g).display === 'none')), 'no resize handles');
     await page.mouse.click(d0.x + d0.w - 40, d0.y + 20); await page.waitForTimeout(60); await page.mouse.click(d0.x + d0.w - 40, d0.y + 20); await page.waitForTimeout(300);
     ok(!(await inst('dice:1')).maximized, 'two taps on a title bar don’t fill the board');
-    // The window menu: the widget's own items, and “The board is locked.”
+    // The window menu: the widget's own items, and “The board is locked. Hold the padlock to unlock.”
     await page.click('.win[data-ikey="clock:1"] .win-label'); await page.waitForTimeout(250);
     const m = await B(() => ({ open: document.getElementById('menu').classList.contains('open'), acts: Array.from(document.querySelectorAll('#menu [data-act]')).map(b => b.dataset.act), note: ((document.querySelector('#menu .lock-note') || {}).textContent || '').trim() }));
-    ok(m.open && m.acts.length && m.acts.every(a => a === 'widget') && m.note === 'The board is locked.', `the window menu keeps the widget’s own items, and ends with “The board is locked.” (${m.note})`);
+    ok(m.open && m.acts.length && m.acts.every(a => a === 'widget') && m.note === 'The board is locked. Hold the padlock to unlock.', `the window menu keeps the widget’s own items, and ends with “The board is locked. Hold the padlock to unlock.” (${m.note})`);
     await page.keyboard.press('Escape');
     // A widget's own close, fill and restore: refused.
     await frame('dice:1').locator('html').evaluate(() => { Board21.window.maximize(); Board21.window.close(); }); await page.waitForTimeout(500);

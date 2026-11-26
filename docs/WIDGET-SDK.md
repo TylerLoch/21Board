@@ -175,7 +175,7 @@ change the teacher asked for, such as a layout that needs another shape, use `se
 
 ### Window menu
 
-Your own items appear in the window's **⌄** menu, above *Fill the board*, *Reset*, and *Close*.
+Your own items appear in the window's **⌄** menu, above *Zoom to fill*, *Reset…*, and *Close*.
 
 ```js
 Board21.menu.set([
@@ -440,8 +440,8 @@ What `external: true` changes:
 - **The window.** The page loads over the spinner, since the board can't see when it's drawn. The board sees no
   taps inside it, only focus moving into it, as when one of its buttons is tapped. So while another window
   overlaps it from the front, it is covered, and a tap brings it forward and goes no further. With nothing
-  overlapping it, it takes every tap itself. It moves by its title bar only. Its menu has *Reload …* and
-  *Open in new tab* (not in kiosk mode), and no *Reset* or *Earlier versions*. Settings says the app keeps its
+  overlapping it, it takes every tap itself. It moves by its title bar only. Its menu has *Refresh …* and
+  *Open in new tab* (not in kiosk mode), and no *Reset…* or *Go back…*. Settings says the app keeps its
   own work, and *Erase everything* and *Export* say they don't reach it.
 - **Same sandbox** as every widget (scripts, its own storage, forms, alerts and printing, pop-ups, downloads),
   and the same `allow` list plus `permissions`. That is everything the three apps use. The sandbox still keeps
@@ -458,7 +458,7 @@ What `external: true` changes:
 Open a widget anywhere but inside 21Board, such as its own file, a local web server, GitHub Pages, or an AI
 tool's preview, and the SDK shows it in the **dev window**. It's the real 21Board, with your widget in an
 ordinary window, drawn as if on a 1920 × 1080 smartboard and scaled to fit. The title bar, resize handles,
-window menu, *Fill the board*, *Reset*, *Close*, the Widget Picker, and Settings are the board's own code
+window menu, *Zoom to fill*, *Reset…*, *Close*, the Widget Picker, and Settings are the board's own code
 (`board.js`), so what works here works on the board. Open another window from the Widget Picker, and change
 the theme, accent, and size of windows and menus in Settings.
 

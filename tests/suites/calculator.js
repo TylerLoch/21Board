@@ -125,9 +125,23 @@ module.exports = T => {
     ok(L.keyMin >= 44, `every key is 44 px or larger (${L.keyMin.toFixed(1)})`);
     ok(L.player && /Next step/.test(L.next) && L.hide === 'false', `Steps show inside the canvas, with Next step, and the Hide the answer switch is off (${L.next})`);
     ok(L.focus, 'nothing in it takes the focus by itself');
-    const MENU0 = '[Show] | ✓ Canvas | History | ✓ Steps | In words | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | Swap sides | — | (off) Clear history';
+    const MENU0 = '[Show] | ✓ Canvas | History | ✓ Steps | In words | Swap sides | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | — | (off) Clear history';
     let mtext = await menu();
     ok(mtext === MENU0, `its window menu (${mtext})`);
+    // Hide the answer's picture is the hidden answer: a rounded square with a dashed outline and a ? inside, drawn as the
+    // menu's other pictures are.
+    await page.click('.win[data-ikey="calculator:1"] .win-label'); await page.waitForTimeout(250);
+    const pic = await page.evaluate(() => {
+      const s = document.querySelector('#menu [data-act="widget"][data-id="hide"] .icon-slot svg'), r = s && s.querySelector('rect');
+      if (!r) return null;
+      const b = r.getBBox(), cs = getComputedStyle(r), inner = Array.from(s.children).filter(e => e !== r).map(e => e.getBBox());
+      const trash = getComputedStyle(document.querySelector('#menu [data-id="clear-history"] .icon-slot svg'));
+      return { box: s.getAttribute('viewBox'), square: b.width === b.height, round: +r.getAttribute('rx') > 0, dashed: cs.strokeDasharray !== 'none',
+        q: inner.length > 0 && inner.every(q => q.x > b.x && q.y > b.y && q.x + q.width < b.x + b.width && q.y + q.height < b.y + b.height),
+        same: cs.fill === 'none' && getComputedStyle(s).strokeWidth === trash.strokeWidth && getComputedStyle(s).color === trash.color };
+    });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    ok(!!pic && pic.box === '0 0 24 24' && pic.square && pic.round && pic.dashed && pic.q && pic.same, `Hide the answer’s picture: a rounded square, dashed, with the ? inside it, drawn as Clear history’s is (${JSON.stringify(pic)})`);
     ok(!/digit|group|comma|separat/i.test(mtext || 'digit'), 'no digit-group item in the menu');
 
     // ---- = = = counts by 5s, and each = adds its line to History
@@ -581,7 +595,7 @@ module.exports = T => {
     const sorted = s => String(s).split(',').sort().join();
     const BASIC = 'clear,backspace,negate,open,close,sqrt,divide,7,8,9,multiply,4,5,6,subtract,1,2,3,add,0,point,ans,equals';
     const ADV = 'square,power,root,cbrt,pi,percent,fraction,right';
-    const MENU_OFF = '[Show] | ✓ Canvas | History | ✓ Steps | In words | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | Swap sides | — | (off) Clear history';
+    const MENU_OFF = '[Show] | ✓ Canvas | History | ✓ Steps | In words | Swap sides | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | — | (off) Clear history';
     const MENU_ON = MENU_OFF.replace('| Advanced keys |', '| ✓ Advanced keys | ✓ Desmos % |');
     const head = m => String(m).replace(/ \| — \| (\(off\) )?Clear history$/, '');   // (Clear history is greyed out while History is empty)
     const NAME = { '+': 'add', '−': 'subtract', '×': 'multiply', '÷': 'divide', '=': 'equals', '.': 'point', '(': 'open', ')': 'close', '%': 'percent' };
@@ -802,7 +816,7 @@ module.exports = T => {
         ok(!hit, `${f}: no Test practice, and none of the old names${hit ? ` (“${t.slice(Math.max(0, hit.index - 40), hit.index + 40)}”)` : ''}`);
       }
       const readme = read('README.md').replace(/\s+/g, ' '), sec = readme.slice(readme.indexOf('## Calculator'), readme.indexOf('## District apps'));
-      const order = ['**Canvas:**', '**History:**', '**Steps:**', '**In words:**', '**Answers:**', '**Advanced keys:**', '**Desmos %:**', '**Hide the answer:**', '**Swap sides:**', '**Clear history:**'];
+      const order = ['**Canvas:**', '**History:**', '**Steps:**', '**In words:**', '**Swap sides:**', '**Answers:**', '**Advanced keys:**', '**Desmos %:**', '**Hide the answer:**', '**Clear history:**'];
       ok(order.every((w, i) => sec.indexOf(w) >= 0 && (!i || sec.indexOf(w) > sec.indexOf(order[i - 1]))), 'README: the menu list in the menu’s order, with Answers and Desmos %');
       const data = read('docs/DATA-FORMAT.md').replace(/\s+/g, ' ');
       ok(/answers: "decimal" \| "fraction" \| "remainder"/.test(data) && /`fractions`/.test(data), 'DATA-FORMAT: the config’s answers, and the fractions written for older releases');

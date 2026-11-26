@@ -110,9 +110,9 @@ module.exports = T => {
     await H(id => window.__board21.history.putBack(id, 'notes:2'), twoId); await page.waitForTimeout(2000);
     ok(await noteText('notes:2') === 'Second note' && await noteText('notes:1') === 'Edited after' && await H(() => JSON.stringify(window.__board21.state.insts.get('notes:1').rect)) === rect1,
       '“Put back” brings back one window (Notes 2) and leaves the others as they are');
-    // The window menu: Earlier versions of this window.
+    // The window menu: Go back…, to this window's earlier versions.
     await page.locator('.win[data-ikey="notes:1"] .win-label').click(); await page.waitForTimeout(250);
-    ok(await page.locator('#menu [data-act="history"]').count() === 1, 'the window menu has “Earlier versions…”');
+    ok(await page.locator('#menu [data-act="history"]').count() === 1, 'the window menu has “Go back…”');
     await page.click('#menu [data-act="history"]'); await page.waitForTimeout(1200);
     const versions = await page.locator('#history [data-act="put-here"]').count();
     ok(versions >= 2 && /Earlier versions of Notes/.test(await page.locator('#history .hist-intro').textContent()), `it lists that window’s earlier versions (${versions})`);
