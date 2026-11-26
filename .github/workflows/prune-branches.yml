@@ -1,0 +1,41 @@
+# Deletes every branch whose commits are all on main already, such as a release branch once main has it. Main,
+# protected branches, and any branch with a commit main doesn't have are kept. It runs after each push to main, once a
+# day, and when started by hand. Claude sessions can push but can't delete branches, so this does it for them.
+name: Prune branches
+
+on:
+  push:
+  schedule:
+    - cron: '17 9 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: prune-branches
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    if: github.event_name != 'push' || github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Delete merged branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          main=$(gh api "repos/$repo" --jq .default_branch)
+          uri() { jq -rn --arg s "$1" '$s|@uri'; }
+          gh api --paginate "repos/$repo/branches?per_page=100" --jq '.[] | select(.protected | not) | .name' |
+          while IFS= read -r b; do
+            [ "$b" = "$main" ] && continue
+            if ! ahead=$(gh api "repos/$repo/compare/$(uri "$main")...$(uri "$b")" --jq .ahead_by); then
+              echo "kept $b: couldn't compare it with $main"; continue
+            fi
+            if [ "$ahead" != 0 ]; then echo "kept $b: $ahead commits not on $main"; continue; fi
+            if gh api -X DELETE "repos/$repo/git/refs/heads/$b" > /dev/null; then echo "deleted $b"; else echo "kept $b: couldn't delete it"; fi
+          done

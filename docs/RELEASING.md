@@ -140,4 +140,5 @@ Each one's README has the steps.
 
 - Send Tyler the final screenshots and anything left open.
 - If the release answers a row in the tracker, update that row.
-- Remove the worktree, then its branch. Delete it on GitHub too, with `git push origin --delete <key>`.
+- Remove the worktree, then its branch. GitHub deletes the branch there once main has it
+  (.github/workflows/prune-branches.yml).
