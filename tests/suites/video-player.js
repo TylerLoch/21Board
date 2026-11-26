@@ -213,7 +213,7 @@ module.exports = T => {
     await A.evaluate(() => window.__board21.closeWin('youtube-player:1', { quiet: true }));
     ok(await eventually(async () => ytFrames(A).length === 0 && ytFrames(B).length === 0), 'closing the window removes the frame');
     await A.evaluate(() => window.__board21.openWidget('youtube-player'));
-    ok(await eventually(async () => (await ytLook(A)).player), 'opening it again shows the saved video');
+    ok(await eventually(async () => (await ytLook(A)).player), `opening it again shows the saved video (${await shown()})`);
     await B.close();
 
     // Offline: a calm message instead of the browser's error page; the video comes back online.
