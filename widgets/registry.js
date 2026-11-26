@@ -75,7 +75,7 @@ self.BOARD21_WIDGETS = [
     version: '1.0.0',
     entry: 'widgets/task-timer/index.html',
     files: ['widgets/task-timer/index.html'],
-    color: '#0891b2',
+    color: '#155e75',
     icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 12V3.5a8.5 8.5 0 0 1 8.5 8.5z" fill="currentColor"/><path d="M12 12l-6 6"/></svg>',
     window: { width: 420, height: 480, minWidth: 300, minHeight: 350, dragFromContent: false }, // typing in its editor: title bar or two fingers
     permissions: []
@@ -127,7 +127,7 @@ self.BOARD21_WIDGETS = [
     files: ['widgets/name-picker/index.html', 'widgets/name-picker/style-bigname.js', 'widgets/name-picker/style-wheel.js', 'widgets/name-picker/style-spotlight.js', 'widgets/name-picker/style-lotto.js', 'widgets/name-picker/style-versus.js',
       'widgets/name-picker/vs-lightning.js', 'widgets/name-picker/vs-forged.js', 'widgets/name-picker/vs-crest.js', 'widgets/name-picker/vs-comic.js', 'widgets/name-picker/vs-flame.js',
       'widgets/name-picker/style-groups.js', 'widgets/name-picker/style-bracket.js'],
-    color: '#8b5cf6',
+    color: '#a855f7',
     icon: '<svg viewBox="0 0 24 24"><circle cx="10" cy="8" r="4"/><path d="M3 21v-1a7 7 0 0 1 11-5.7"/><path d="M17 14l1.2 2.6 2.8.4-2 2 .5 2.8-2.5-1.3-2.5 1.3.5-2.8-2-2 2.8-.4z"/></svg>',
     window: { width: 420, height: 320, minWidth: 260, minHeight: 200 },
     permissions: []
@@ -139,7 +139,7 @@ self.BOARD21_WIDGETS = [
     version: '1.0.0',
     entry: 'widgets/first-then-board/index.html',
     files: ['widgets/first-then-board/index.html'],
-    color: '#65a30d',
+    color: '#0d9488',
     icon: '<svg viewBox="0 0 24 24"><rect x="2" y="5" width="7.5" height="14" rx="1.8"/><rect x="14.5" y="5" width="7.5" height="14" rx="1.8"/><path d="M10.8 12h2.6"/><path d="M12 10.3l1.7 1.7-1.7 1.7"/><path d="M3.9 12.3l1.6 1.6 2.4-3"/></svg>',
     window: { width: 540, height: 360, minWidth: 280, minHeight: 200, dragFromContent: false }, // a search box to type in
     permissions: []
@@ -164,7 +164,7 @@ self.BOARD21_WIDGETS = [
     version: '1.0.0',
     entry: 'widgets/dice/index.html',
     files: ['widgets/dice/index.html'],
-    color: '#10b981',
+    color: '#a16207',
     icon: '<svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><circle cx="8.5" cy="8.5" r="1.2" fill="currentColor"/><circle cx="15.5" cy="15.5" r="1.2" fill="currentColor"/><circle cx="12" cy="12" r="1.2" fill="currentColor"/></svg>',
     window: { width: 360, height: 240, minWidth: 200, minHeight: 160 },
     clash: 'later',
@@ -177,7 +177,7 @@ self.BOARD21_WIDGETS = [
     version: '1.0.0',
     entry: 'widgets/traffic-light/index.html',
     files: ['widgets/traffic-light/index.html'],
-    color: '#f97316',
+    color: '#27272a',
     icon: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="7" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="17" r="1.6"/></svg>',
     window: { width: 170, height: 380, minWidth: 90, minHeight: 90 },   // (no shape lock: wider than tall, it turns sideways)
     clash: 'later',
@@ -210,7 +210,7 @@ self.BOARD21_WIDGETS = [
     version: '1.0.0',
     entry: 'widgets/image/index.html',
     files: ['widgets/image/index.html'],
-    color: '#c026d3',
+    color: '#86198f',
     icon: '<svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><circle cx="8.8" cy="9.8" r="1.7"/><path d="M3.5 17.5l5.2-5.2 3.8 3.8 2.6-2.6 5.4 5.4"/></svg>',
     window: { width: 480, height: 360, minWidth: 160, minHeight: 120 },
     clash: 'later',   // its content is which picture, a choice (Board history keeps the other)
@@ -225,7 +225,7 @@ self.BOARD21_WIDGETS = [
     version: '1.0.0',
     entry: 'widgets/calculator/index.html',
     files: ['widgets/calculator/index.html', 'widgets/calculator/calc-engine.js'],
-    color: '#1e3a8a',
+    color: '#ea580c',
     icon: '<svg viewBox="0 0 24 24"><rect x="5" y="2.5" width="14" height="19" rx="2.5"/><path d="M8.5 6.5h7v3h-7z"/><circle cx="9" cy="13.5" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="13.5" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="13.5" r=".9" fill="currentColor" stroke="none"/><circle cx="9" cy="17" r=".9" fill="currentColor" stroke="none"/><circle cx="12" cy="17" r=".9" fill="currentColor" stroke="none"/><circle cx="15" cy="17" r=".9" fill="currentColor" stroke="none"/></svg>',
     // 900 × 600: the canvas beside the keys from the start, its problem big enough to read from the back of the room,
     // and keys 44 px or more on the screen of a 1366 × 768 Chromebook, where the board draws windows at 57%. Advanced
@@ -245,7 +245,7 @@ self.BOARD21_WIDGETS = [
     version: '1.0.0',
     entry: 'widgets/weather/index.html',
     files: ['widgets/weather/index.html', 'widgets/weather/calendar.js'],
-    color: '#0369a1',
+    color: '#0395db',
     icon: '<svg viewBox="0 0 24 24"><circle cx="9" cy="9" r="3.2"/><path d="M9 2.8v1.4M2.8 9h1.4M4.6 4.6l1 1M13.4 4.6l-1 1"/><path d="M8.5 19.5h9a3.5 3.5 0 0 0 .4-7 5 5 0 0 0-9.6 1 3 3 0 0 0 .2 6z"/></svg>',
     window: { width: 480, height: 360, minWidth: 260, minHeight: 220 },
     clash: 'later',   // its content is the last forecast it saved, which changes by itself: the later one wins, Board history keeps the other
@@ -259,7 +259,7 @@ self.BOARD21_WIDGETS = [
     description: 'Draw with the district’s whiteboard app.',
     entry: 'https://sketchapp.ccsd21.org/',
     files: [],
-    color: '#4f46e5',
+    color: '#312e81',
     icon: '<svg viewBox="0 0 24 24"><path d="M4.5 19.5l.8-4.3L15.6 4.9a2 2 0 0 1 2.8 0l.7.7a2 2 0 0 1 0 2.8L8.8 18.7z"/><path d="M13.8 6.7l3.5 3.5"/><path d="M12.5 20.5h7"/></svg>',
     window: { width: 900, height: 560, minWidth: 520, minHeight: 360, dragFromContent: false }, // room for its two toolbars (taller than wide, it hides one)
     permissions: [],
@@ -272,7 +272,7 @@ self.BOARD21_WIDGETS = [
     description: 'Run the district’s classroom timer app.',
     entry: 'https://timerapp.ccsd21.org/',
     files: [],
-    color: '#b45309',
+    color: '#881337',
     icon: '<svg viewBox="0 0 24 24"><path d="M6 3h12"/><path d="M6 21h12"/><path d="M7.5 3c0 4.5 4.5 5.5 4.5 9s-4.5 4.5-4.5 9"/><path d="M16.5 3c0 4.5-4.5 5.5-4.5 9s4.5 4.5 4.5 9"/></svg>',
     window: { width: 400, height: 300, minWidth: 200, minHeight: 170, dragFromContent: false }, // (the minimum is its own manifest's)
     permissions: [],
@@ -285,7 +285,7 @@ self.BOARD21_WIDGETS = [
     description: 'Show work with the district’s document camera app.',
     entry: 'https://doccamapp.ccsd21.org/',
     files: [],
-    color: '#0d9488',
+    color: '#0e1130',
     icon: '<svg viewBox="0 0 24 24"><path d="M3 20.5h18"/><path d="M6.5 20.5V5h6.5"/><rect x="12.5" y="3.5" width="7" height="4.5" rx="1.3"/><path d="M16 8v1.8"/><path d="M11.5 20.5l1-3.5h7l1 3.5"/></svg>',
     window: { width: 720, height: 480, minWidth: 360, minHeight: 260, dragFromContent: false },
     permissions: ['camera'],

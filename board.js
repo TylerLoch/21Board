@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.26-8';
-  const BOARD_BUILD = '32d21415';
+  const BOARD_VERSION = '2026.11.26-9';
+  const BOARD_BUILD = '3a7858c5';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -8927,6 +8927,7 @@
       const wins = (t.wins || []).map(([ik, x, y, w, h]) => {
         const [wid, n] = ik.split(':'), widget = getWidget(wid), c = widget ? widget.color : '#94a3b8', tb = Math.min(h, 40);
         return `<g><rect x="${x}" y="${y}" width="${w}" height="${h}" rx="14" fill="var(--surface)" stroke="${c}" stroke-width="5"/><rect x="${x}" y="${y}" width="${w}" height="${tb}" rx="14" fill="${c}"/>` +
+          `<rect class="ring" x="${x - 4}" y="${y - 4}" width="${w + 8}" height="${h + 8}" rx="18" fill="none" stroke-width="3"/>` +
           (opts.labels && w > 120 ? `<text x="${x + w / 2}" y="${y + tb * 0.72}" font-size="${Math.round(tb * 0.62)}" font-weight="700" text-anchor="middle" fill="#fff">${esc(instName(wid, +n))}</text>` : '') + '</g>';
       }).join('');
       return `<svg class="minimap" viewBox="0 0 ${t.vw} ${t.vh}" preserveAspectRatio="xMidYMid meet" aria-hidden="true"><rect width="${t.vw}" height="${t.vh}" fill="${bg}"/>${img}${wins}</svg>`;
