@@ -283,9 +283,6 @@
   var TEN = 600000, HOUR = 3600000;
   var MAX_LAPS = 999;
   var HUND = 0.52;                        // hundredths, as a share of the main digits
-  var GUARD = 450;                        // a button ignores taps this long after it appears
-  var SLOW_GUARD = 700;                   // Reset, Undo, a fresh Start, and any button that just moved wait longer
-  var LAP_GAP = 250;                      // two laps closer than this are one hard tap
   var UNDO_FACE = 10000;                  // Undo stays on the face this long after Reset; the menu keeps it until Start
   var MIN_REC = 5000;                     // no class routine takes under 5 seconds: a shorter run is a slip, never a record
   var FLAG_AT = 0.78;                     // where the record sits on the track while the class races it
@@ -515,7 +512,6 @@
   function lap(t) {
     if (!running() || !lapsActive() || cur.noRoom || state.laps.length >= MAX_LAPS) return;
     var n = state.laps.length, prev = n ? state.laps[n - 1] : 0, e = elapsedAt(Math.min(t, now()));
-    if (n && e - prev < LAP_GAP) return;   // one hard tap the board read as two
     state.laps.push(Math.max(prev, e));
     save(); justLapped = true; render(true);
     var r = rowAt(n);
@@ -573,9 +569,8 @@
   }
 
   // The time is taken when the finger lands, and the action waits for the click, so a press that turns
-  // into moving the window does nothing. A button ignores taps just after it appears, and every button ignores
-  // taps for a moment after the row moves, so a tap aimed at the old place never lands on the new button there.
-  var pressAt = {}, shownAt = { start: 0, stop: 0, lap: 0, reset: 0, undo: 0 }, grewAt = { start: 0, stop: 0, lap: 0, reset: 0, undo: 0 }, movedAt = 0;
+  // into moving the window does nothing. Every tap acts at once, even one right after another.
+  var pressAt = {};
   Object.keys(B).forEach(function (id) {
     var b = B[id];
     b.addEventListener('pointerdown', function (e) { if (e.isPrimary !== false) pressAt[id] = now(); });
@@ -584,10 +579,6 @@
       if (pointer && pressAt[id] && t - pressAt[id] < 2000) t = pressAt[id];
       pressAt[id] = 0;
       if (!b.classList.contains('on')) return;
-      // Reset, Undo, and a Start that begins a fresh run or drops Undo reset each clear something, so they wait longer.
-      // So does a button that just grew into another's place, such as Start into Undo's.
-      var slow = id === 'reset' || id === 'undo' || (id === 'start' && (freshNext() || (phase() === 'idle' && !!state.undo)));
-      if (pointer && (t - shownAt[id] < (slow ? SLOW_GUARD : GUARD) || t - grewAt[id] < SLOW_GUARD || t - movedAt < SLOW_GUARD)) return;
       if (id === 'start') start(t);
       else if (id === 'stop') stop(t);
       else if (id === 'lap') lap(t);
@@ -933,10 +924,6 @@
     var doFlip = animate && cur.key && !reduced.matches;
     var before = doFlip ? snap() : null;
     var M = metrics(), z = zoom || 1;
-    // Once a run has begun, every button ignores taps for a moment after the row moves, so a tap aimed at the old
-    // place, such as Lap's, never lands on the button that is there now, such as Stop.
-    var pc = cur.L && cur.L.ctl, nc = L.ctl;
-    if (pc && phase() !== 'idle' && (pc.x !== nc.x || pc.y !== nc.y || pc.w !== nc.w || pc.h !== nc.h)) movedAt = now();
     face.style.setProperty('--dw', M.dw.toFixed(4)); face.style.setProperty('--cw', M.cw.toFixed(4));
     face.style.setProperty('--cy', M.cy.toFixed(4)); face.style.setProperty('--pw', M.pw.toFixed(4));
     face.style.setProperty('--s', HUND); face.style.setProperty('--drop', L.drop);
@@ -1283,9 +1270,6 @@
       b.dataset.at = at;
       if (!was) void b.offsetWidth;   // an appearing button takes its place before it fades in
     }
-    // A button that appears ignores taps for a moment. One that grows into another's place waits longer.
-    if (yes && (!was || moved)) shownAt[id] = now();
-    if (yes && was && moved) grewAt[id] = now();
     b.classList.toggle('on', yes);
     b.setAttribute('aria-hidden', yes ? 'false' : 'true');
     b.tabIndex = yes ? 0 : -1;
