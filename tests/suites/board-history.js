@@ -760,7 +760,14 @@ module.exports = T => {
     // Settings is still usable: a choice there leaves Board history open.
     await page.click('#settings [data-act="theme"][data-val="dark"]'); await page.waitForTimeout(300);
     ok(await page.evaluate(() => window.__board21.state.settings.theme === 'dark') && ids(await cols(page)) === 'settings,history', 'a choice in Settings works, and Board history stays open beside it');
+    // In the versions' pictures, each window has a faint light ring outside it in dark, as the tiles do, and none in light.
+    const rings = () => page.evaluate(() => [...document.querySelectorAll('#history .hist-row .minimap g')].map(g => { const w = g.querySelector('rect'), r = g.querySelector('rect.ring');
+      return r ? { stroke: getComputedStyle(r).stroke, outside: +r.getAttribute('width') > +w.getAttribute('width') && +r.getAttribute('height') > +w.getAttribute('height') } : null; }));
+    let rs = await rings();
+    ok(rs.length > 0 && rs.every(r => r && r.stroke === 'rgba(255, 255, 255, 0.16)' && r.outside), `dark: every window in the versions’ pictures has a faint light ring outside it (${rs.length}: ${JSON.stringify(rs[0])})`);
     await page.click('#settings [data-act="theme"][data-val="light"]'); await page.waitForTimeout(200);
+    rs = await rings();
+    ok(rs.length > 0 && rs.every(r => r && r.stroke === 'none'), `light: no ring (${rs.length}: ${JSON.stringify(rs[0])})`);
     // A version: its own column, the version still marked in the list.
     await row(page, 1).click(); await page.waitForTimeout(400);
     c = await cols(page); f = await focus(page);

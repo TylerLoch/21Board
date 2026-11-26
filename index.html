@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="619d39bc">
+<html lang="en" data-build="bf416b37">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -726,6 +726,9 @@
     .hist-detail { margin: 14px 0 0; display: flex; flex-direction: column; gap: 14px; }
     .hist-sum { display: flex; flex-direction: column; gap: 8px; }
     .hist-detail .minimap { width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 10px; box-shadow: 0 0 0 1px var(--border); }
+    /* Dark: a faint light ring around each window in a version's picture, as around the tiles. */
+    .minimap .ring { stroke: none; }
+    body.dark .minimap .ring { stroke: rgba(255, 255, 255, 0.16); }
     .hist-detail p { margin: 0; font-size: 14px; line-height: 1.4; }
     .hist-detail .hist-day { margin: 6px 0 -6px; }
     .hist-detail > .btn.primary { min-height: 48px; justify-content: center; }
