@@ -1653,6 +1653,10 @@ module.exports = T => {
     ok((await st()).wins.join() === 'notes:1', `going back brings its window back${asked ? ' (asked: ' + asked.slice(0, 80) + ')' : ''}`);
     const leftover = (await B(() => window.__board21.history.tx(['meta'], 'readonly', (o, set) => { const q = o.meta.getAllKeys(); q.onsuccess = () => set(q.result.map(String)); }))).filter(k => !k.startsWith(shown + ':'));
     ok(!leftover.length, `no other page’s board history is left behind, not even a page whose Undo was still offered (${leftover.join(', ')})`);
+    // Pages.create on its own, as many suites call it. The tab stays on the new page, and going back at once works.
+    const made = await B(async () => { const P = window.__board21.pages, S = window.__board21.state, was = S.boardId, id = await P.create({ end: true, name: 'Made' }), on = S.boardId;
+      return { was, id, on, went: await P.go(was), now: S.boardId }; });
+    ok(made.id && made.on === made.id && made.went && made.now === made.was, `a page made with Pages.create is shown, and going back at once works (${JSON.stringify(made)})`);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

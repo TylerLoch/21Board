@@ -231,10 +231,14 @@ module.exports = T => {
         inPanel: r.left >= pr.left && r.right <= pr.right, noScroll: row.scrollWidth <= row.clientWidth + 1 && P.scrollWidth <= P.clientWidth + 1,
         clear: !shown.some(x => hit(x.getBoundingClientRect(), other)), big: r.width >= 44 * ui - 0.5 && r.height >= 44 * ui - 0.5, ui: Math.round(ui * 100) / 100,
         cols: +P.style.getPropertyValue('--cols'), narrow: P.classList.contains('narrow'), seen: tiles.filter(t => { const tr = t.getBoundingClientRect(); return tr.top >= wr.top - 0.5 && tr.bottom <= wr.bottom + 0.5; }).length,
-        tiles: tiles.length, tilesScroll: grid.scrollHeight > grid.clientHeight + 1 };
+        tiles: tiles.length, tilesScroll: grid.scrollHeight > grid.clientHeight + 1, page: (P.querySelector('.page-ind b') || {}).textContent };
     }, side);
-    // Paste placed well; and every widget in view, none scrolled out of sight (as on ba52951, before Paste).
-    const good = w => w.there && w.shown && w.label === 'Paste/Paste' && w.icon && w.first && w.row && w.apart && w.tappable && w.onScreen && w.inPanel && w.noScroll && w.clear && w.big;
+    // Paste placed well; and every widget in view, none scrolled out of sight (as on ba52951, before Paste). misplaced says
+    // what's wrong with Paste, in a few words for the log.
+    const PLACED = { shown: 'Paste hidden', icon: 'Paste has no icon', first: 'Paste not first', row: 'Paste off the row', apart: 'Paste over a button', tappable: 'Paste covered',
+      onScreen: 'the panel off screen', inPanel: 'Paste outside the panel', noScroll: 'the row scrolls', clear: 'a button over the other ▦', big: 'Paste under 44 px' };
+    const misplaced = w => !w.there ? ['no Paste'] : Object.keys(PLACED).filter(k => !w[k]).map(k => PLACED[k]).concat(w.label === 'Paste/Paste' ? [] : [`Paste named “${w.label}”`]);
+    const good = w => !misplaced(w).length;
     const allSeen = w => w.tiles >= 16 && w.seen === w.tiles && !w.tilesScroll;
     for (const style of ['standard', 'legible', 'early']) {
       if (style !== 'standard') {
@@ -259,13 +263,14 @@ module.exports = T => {
         await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(150);
         for (const side of ['left', 'right']) {
           await openPicker(side);
-          const w = await where(side);
+          const w = await where(side), cols = sc < 1.5 ? 5 : 6;
           // (Sixteen tiles since the Zones Check-In, 2026.11.20-1: from 150% four rows of five don't fit, three of six do.)
-          if (!good(w) || !allSeen(w) || w.cols !== (sc < 1.5 ? 5 : 6)) bad.push(Object.assign({ sc, side }, w));
+          const off = misplaced(w).concat(w.cols === cols ? [] : [`${w.cols} columns`], allSeen(w) ? [] : [`${w.seen} of ${w.tiles} widgets in view${w.tilesScroll ? ', the tiles scroll' : ''}`],
+            w.page === '12 of 12' ? [] : [`‹ Page › says “${w.page}”`]);
+          if (off.length) bad.push(`${Math.round(sc * 100)}%, ${side}: ${off.join(', ')}`);
         }
       }
-      ok(!bad.length && await page.locator('#panel .page-ind b').textContent() === '12 of 12',
-        `${style}, 12 pages, every Size from both corners: Paste fits as at 100%, five columns and six from 150%, every widget in view (${bad.length ? JSON.stringify(bad) : SIZES.length * 2 + ' cases'})`);
+      ok(!bad.length, `${style}, Page 12 of 12, every Size from both corners: Paste fits as at 100%, five columns and six from 150%, and every widget in view (${bad.join('; ') || SIZES.length * 2 + ' cases'})`);
     }
     await openSettings(page, ['letters']); await page.click('#settings [data-act="letters"][data-val="standard"]');
     // Smaller screens: five columns from 600 px of room, as on ba52951, and six where four rows of five don't fit and
