@@ -14,11 +14,11 @@
 const VERSION = '2026.11.26-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '34c1e5fe';
+const BUILD = '94e76d3f';
 const FILES = {
-  './': '1f79bb69e34dc154',
-  'index.html': '1f79bb69e34dc154',
-  'board.js': '0612d4ba00d8b2d1',
+  './': 'dedcd9150a1f85a4',
+  'index.html': 'dedcd9150a1f85a4',
+  'board.js': '62cf761383d576d4',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
@@ -38,7 +38,7 @@ const FILES = {
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
   'widgets/timer/index.html': '52a0094eeebbb200',
-  'widgets/stopwatch/index.html': '69bd4ff623381d29',
+  'widgets/stopwatch/index.html': '2a11bf4912e79294',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
   'widgets/clock/index.html': '4b926306ff365fe3',

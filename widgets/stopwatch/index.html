@@ -913,10 +913,12 @@
   }
   function listOut(G, x, top) {
     var c = G.cols, under = G.mode === 'liststack';
-    // Under the buttons the columns share the row's width, and the lap time's column takes what's left.
+    // Under the buttons the columns share the row's width. The space left over goes after the tag, before Total, so
+    // each number stays beside its lap, as it does beside the time.
     var colW = under ? Math.floor((G.lw - (G.k - 1) * G.cg) / G.k) : c.w;
     return { x: x, y: top, w: G.lw, h: G.head + G.R * G.rh, k: G.k, R: G.R, rh: G.rh, head: G.head, lf: G.lf, tf: G.tf, cg: G.cg,
-      colW: colW, g: c.g, g2: c.g2, word: c.word, gcols: [c.n + 'px', under ? '1fr' : c.t + 'px', c.tag + 'px', c.tot + 'px'].join(' ') };
+      colW: colW, g: c.g, g2: c.g2, word: c.word,
+      gcols: [c.n + 'px', c.t + 'px', under ? 'minmax(' + c.tag + 'px, 1fr)' : c.tag + 'px', c.tot + 'px'].join(' ') };
   }
 
   function put(el, r) {
