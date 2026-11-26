@@ -1570,9 +1570,12 @@
   const redraw = () => { if (!drawSoon) drawSoon = requestAnimationFrame(() => { drawSoon = 0; fitCorners(); draw(); }); };
 
   // ---- The window menu: the Show list, On a date, Location, Simple words, No motion, units, and the credits.
+  // On a date… has a calendar page with one day marked, and Location… a map pin.
+  const DATE_ICON = '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><circle cx="12" cy="15.2" r="1.7" fill="currentColor" stroke="none"/></svg>';
+  const PLACE_ICON = '<svg viewBox="0 0 24 24"><path d="M12 21s-6.5-6.2-6.5-11a6.5 6.5 0 0 1 13 0c0 4.8-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.4"/></svg>';
   function setMenu() {
     const items = [{ heading: true, label: 'Show' }, ...PARTS.map(([k, l]) => ({ id: 'show:' + k, label: l, checked: shown(k) })), { separator: true },
-      { id: 'date', label: 'On a date…' }, { id: 'place', label: 'Location…' }, { id: 'simple', label: 'Simple words', checked: config.simple }, { id: 'still', label: 'No motion', checked: config.still },
+      { id: 'date', label: 'On a date…', icon: DATE_ICON }, { id: 'place', label: 'Location…', icon: PLACE_ICON }, { id: 'simple', label: 'Simple words', checked: config.simple }, { id: 'still', label: 'No motion', checked: config.still },
       { separator: true }, { heading: true, label: 'Units' }, { id: 'units:f', label: '°F and mph', checked: config.units === 'f' }, { id: 'units:c', label: '°C and km/h', checked: config.units === 'c' },
       { separator: true }, ...(kiosk ? [] : [{ id: 'open', label: 'Forecast from Open-Meteo', icon: EXT_ICON }]),
       ...(nws && nws.abroad ? [] : [{ id: 'credit-nws', label: 'Now from the National Weather Service', disabled: true }]),

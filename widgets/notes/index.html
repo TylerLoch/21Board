@@ -110,6 +110,12 @@
     chalkboard: { label: 'Chalkboard', colors: CHALKS, key: 'chalk', fallback: 'white', heading: 'Chalk color', font: CHALK_FONT, board: { light: '#2f4a3a', dark: '#223a2c' }, look: 'chalk' },
     whiteboard: { label: 'Whiteboard', colors: MARKERS, key: 'marker', fallback: 'black', heading: 'Marker color', font: MARKER_FONT, board: { light: '#fbfcfd', dark: '#d5d9df' }, look: 'whiteboard' }
   };
+  // Each theme's picture in the menu: a note with a folded corner, a shaded board with a chalk tray, and a board on legs.
+  const THEME_PICS = {
+    sticky: '<svg viewBox="0 0 24 24"><path d="M4.5 4.5h15v9.5l-5.5 5.5h-9.5z"/><path d="M14 19.5V14h5.5"/></svg>',
+    chalkboard: '<svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="1.5" fill="currentColor" fill-opacity=".2"/><path d="M7 12.5c1.2-2.6 2.2-2.6 2.8 0s1.7 2.6 2.9 0"/><path d="M2.5 19.5h19"/></svg>',
+    whiteboard: '<svg viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="12" rx="1.5"/><path d="M7 12.5c1.2-2.6 2.2-2.6 2.8 0s1.7 2.6 2.9 0"/><path d="M8 16.5l-1.6 4.5M16 16.5l1.6 4.5"/></svg>'
+  };
   const has = (obj, k) => typeof k === 'string' && Object.prototype.hasOwnProperty.call(obj, k);
   const MIN_PX = 12, MAX_PX = 400;
   const DEFAULTS = { theme: 'sticky', color: 'yellow', chalk: 'white', marker: 'black', fit: true, px: null };
@@ -227,7 +233,7 @@
     };
     Board21.menu.set([
       { heading: true, label: 'Theme' },
-      ...Object.keys(THEMES).map(k => ({ id: 'theme:' + k, label: THEMES[k].label, checked: themeOf() === THEMES[k] })),
+      ...Object.keys(THEMES).map(k => ({ id: 'theme:' + k, label: THEMES[k].label, checked: themeOf() === THEMES[k], icon: THEME_PICS[k] })),
       { heading: true, label: th.heading },
       { id: 'colors', label: th.heading, swatches: Object.keys(th.colors).map(k => Object.assign({ id: th.key + ':' + k, label: th.colors[k].label, checked: cur === k }, swatch(k))) },
       { separator: true },
