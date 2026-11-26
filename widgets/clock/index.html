@@ -176,7 +176,7 @@
   // Content: { set, markAt }, the lesson.
   //   set: null when not setting the time; { at: null } while setting it but following the real time (after Now);
   //   { at: 0 to 1439 }, minutes since midnight, for a set time, and { at, mark } once the teacher marks a time on it.
-  //   mark is in minutes since midnight too. It belongs to the set time: Now and unchecking Set the time drop it.
+  //   mark is in minutes since midnight too. It belongs to the set time: Now and unchecking Choose the time drop it.
   //   markAt: the teacher's mark (Mark a time) on the real time, a wall-clock time in ms, or null.
   // Config: { analog, digital, dateView, face: 'simple' | 'old' | 'teaching', led, seconds, hour24, words, upright, iv,
   //   hourOnly, mark, quiz, snap5 }. analog, digital, and dateView are the three views; at least one shows.
@@ -594,31 +594,40 @@
     tick();
   }
 
+  // The views' pictures in the menu: the Clock's own face, a digital display, and the Calendar's page.
+  const PIC = {
+    analog: '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>',
+    digital: '<svg viewBox="0 0 24 24"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M7.5 9v6"/><path d="M14.5 9.2h3v2.8h-3v3h3" stroke-width="1.7"/>' +
+      '<circle cx="11" cy="10.6" r=".9" fill="currentColor" stroke="none"/><circle cx="11" cy="13.4" r=".9" fill="currentColor" stroke="none"/></svg>',
+    date: '<svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2.5"/><path d="M3.5 10h17"/><path d="M8 3v4"/><path d="M16 3v4"/><rect x="13" y="13.5" width="4" height="3.5" rx="0.8" fill="currentColor" stroke="none"/></svg>'
+  };
   // The window menu: headings, at most 20 items. Items in brackets in the comments show only when their condition holds.
   function menu() {
     const c = config, items = [
-      { heading: true, label: 'Show' },
-      { id: 'analog', label: 'Analog', checked: showA },
-      { id: 'digital', label: 'Digital', checked: showD },
-      { id: 'date', label: 'Date', checked: showY },
-      { heading: true, label: 'Clock face' },
-      { id: 'face:simple', label: 'Simple', checked: c.face === 'simple', disabled: !showA },
-      { id: 'face:old', label: 'Old', checked: c.face === 'old', disabled: !showA },
-      { id: 'face:teaching', label: 'Teaching', checked: c.face === 'teaching', disabled: !showA }
+      { heading: true, label: 'Style' },
+      { id: 'analog', label: 'Analog', checked: showA, icon: PIC.analog },
+      { id: 'digital', label: 'Digital', checked: showD, icon: PIC.digital },
+      { id: 'date', label: 'Date', checked: showY, icon: PIC.date }
     ];
-    if (c.face === 'old') items.push({ id: 'upright', label: 'Upright numerals', checked: c.upright, disabled: !showA }, { id: 'iv', label: 'IV for four', checked: c.iv, disabled: !showA });   // [Old]
-    if (c.face === 'teaching') items.push({ id: 'hourOnly', label: 'Hour hand only', checked: c.hourOnly, disabled: !showA });   // [Teaching]
+    if (showA) {   // [Analog]
+      items.push({ heading: true, label: 'Analog clock face' },
+        { id: 'face:simple', label: 'Simple', checked: c.face === 'simple' },
+        { id: 'face:old', label: 'Old', checked: c.face === 'old' },
+        { id: 'face:teaching', label: 'Teaching', checked: c.face === 'teaching' });
+      if (c.face === 'old') items.push({ id: 'upright', label: 'Upright numerals', checked: c.upright }, { id: 'iv', label: 'IV for four', checked: c.iv });   // [Old]
+      if (c.face === 'teaching') items.push({ id: 'hourOnly', label: 'Hour hand only', checked: c.hourOnly });   // [Teaching]
+    }
     items.push(
       { separator: true },
       { id: 'led', label: Board21.theme === 'dark' ? 'LED look' : 'LCD look', checked: c.led, disabled: !showD },
       { id: 'seconds', label: 'Show seconds', checked: c.seconds, disabled: !timeOn || setOn },
       { id: 'hour24', label: '24-hour time', checked: c.hour24, disabled: !showD },
-      { id: 'words', label: 'Time in words', checked: c.words, disabled: !timeOn },
-      { separator: true },
-      { id: 'mark', label: 'Mark a time', checked: c.mark, disabled: !showA });
+      { id: 'words', label: 'Time written out as words', checked: c.words, disabled: !timeOn },
+      { separator: true });
+    if (showA) items.push({ id: 'mark', label: 'Mark a time', checked: c.mark });   // [Analog]
     if (showA && showD) items.push({ id: 'quiz', label: 'Quiz', checked: c.quiz });   // [Analog and Digital]
-    items.push({ id: 'set', label: 'Set the time', checked: setOn, disabled: !timeOn && !setOn });
-    if (setOn && timeOn) items.push({ id: 'snap5', label: '5-minute steps', checked: c.snap5 });   // [setting the time]
+    items.push({ id: 'set', label: 'Choose the time', checked: setOn, disabled: !timeOn && !setOn });
+    if (setOn && timeOn) items.push({ id: 'snap5', label: 'Snap to 5-minute steps', checked: c.snap5 });   // [setting the time]
     Board21.menu.set(items);
   }
 
@@ -1173,7 +1182,7 @@
   const stopDrag = () => { drag = null; face.svg.classList.remove('dragging', 'drag-h', 'drag-m'); };
   face.svg.addEventListener('pointermove', e => {
     if (!drag || e.pointerId !== drag.id) return;
-    if (!setOn) { stopDrag(); return; }   // Set the time turned off during the drag
+    if (!setOn) { stopDrag(); return; }   // Choose the time turned off during the drag
     const a = angleAt(toSvg(e)), d = wrap180(a - drag.last);
     if (!d) return;
     drag.last = a;
@@ -1312,7 +1321,7 @@
     const label = `${h12(hh)}:${pad2(mm)} ${apOf(hh, true)}`, settable = setOn && showA;
     if (label + settable !== lastLabel) {
       lastLabel = label + settable;
-      if (settable) { face.svg.setAttribute('aria-valuenow', hh * 60 + mm); face.svg.setAttribute('aria-valuetext', label); face.svg.setAttribute('aria-label', 'Set the time. Drag a hand or use the arrow keys.'); }
+      if (settable) { face.svg.setAttribute('aria-valuenow', hh * 60 + mm); face.svg.setAttribute('aria-valuetext', label); face.svg.setAttribute('aria-label', 'Choose the time. Drag a hand or use the arrow keys.'); }
       else face.svg.setAttribute('aria-label', 'Clock showing ' + label);
     }
   }

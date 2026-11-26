@@ -529,7 +529,7 @@ chose. Its config is `{ follow: true }` while Follow timers is on. The color it 
 The Clock (`clock`) saves `{ set, markAt }`, the lesson. `set` is `null` when not setting the time, `{ at: null }`
 while setting it but following the real time after *Now*, and `{ at }` for a set time, in minutes since midnight from
 `0` to `1439`. A mark tapped on a set time is kept with it as `{ at, mark }`, in minutes since midnight too. *Now* and
-unchecking *Set the time* drop it. `markAt` is the teacher's mark on the real time from *Mark a time*, a wall-clock
+unchecking *Choose the time* drop it. `markAt` is the teacher's mark on the real time from *Mark a time*, a wall-clock
 time in ms, or `null`. A bad value reads as `null`. Board Sync keeps the later change, as for the Timer. Its config is
 every menu setting: `{ analog, digital, dateView, face, led, seconds, hour24, words, upright, iv, hourOnly, mark,
 quiz, snap5 }`. `analog`, `digital`, and `dateView` are the three views under Show, in any mix. `face` is `"simple"`,

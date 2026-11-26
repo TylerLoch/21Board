@@ -787,36 +787,40 @@ module.exports = T => {
         `the registry: clash 'later', as for the Timer's time; its description; 300 × 300 to start, with no shape lock, as the Clock sets its own for each mix (${JSON.stringify(reg)})`);
       const ik = await openClock(page);
       let m = await menuOf(page, ik);
-      ok(m === '[Show] | ✓ Analog | Digital | Date | [Clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | 24-hour time (off) | Time in words | — | Mark a time | Set the time',
-        `a new Clock: Show (Analog, Digital, Date), Clock face (Simple, Old, Teaching), a line, LCD look, Show seconds, 24-hour time, Time in words, a line, Mark a time, Set the time; LCD and 24-hour off without Digital (${m})`);
+      ok(m === '[Style] | ✓ Analog | Digital | Date | [Analog clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | 24-hour time (off) | Time written out as words | — | Mark a time | Choose the time',
+        `a new Clock: Style (Analog, Digital, Date), Analog clock face (Simple, Old, Teaching), a line, LCD look, Show seconds, 24-hour time, Time written out as words, a line, Mark a time, Choose the time; LCD and 24-hour off without Digital (${m})`);
+      await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200);
+      const pics = await page.evaluate(() => Array.from(document.querySelectorAll('#menu [data-act="widget"]')).filter(b => b.querySelector('.icon-slot svg')).map(b => b.dataset.id).join());
+      await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+      ok(pics === 'analog,digital,date', `Analog, Digital, and Date each have a picture, and no other item does (${pics})`);
       await choose(page, ik, 'face:old');
       m = await menuOf(page, ik);
-      ok(m.includes('[Clock face] | Simple | ✓ Old | Teaching | Upright numerals | IV for four | —') && !m.includes('Hour hand only'), `Old: Upright numerals and IV for four right after the faces (${m})`);
+      ok(m.includes('[Analog clock face] | Simple | ✓ Old | Teaching | Upright numerals | IV for four | —') && !m.includes('Hour hand only'), `Old: Upright numerals and IV for four right after the faces (${m})`);
       await choose(page, ik, 'face:teaching');
       m = await menuOf(page, ik);
-      ok(m.includes('[Clock face] | Simple | Old | ✓ Teaching | Hour hand only | —') && !m.includes('Upright numerals') && !m.includes('IV for four'), `Teaching: Hour hand only right after the faces (${m})`);
+      ok(m.includes('[Analog clock face] | Simple | Old | ✓ Teaching | Hour hand only | —') && !m.includes('Upright numerals') && !m.includes('IV for four'), `Teaching: Hour hand only right after the faces (${m})`);
       await choose(page, ik, 'digital');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Show] | ✓ Analog | ✓ Digital | Date |') && m.includes('— | LCD look | Show seconds | 24-hour time | Time in words | — | Mark a time | Quiz | Set the time'),
+      ok(m.startsWith('[Style] | ✓ Analog | ✓ Digital | Date |') && m.includes('— | LCD look | Show seconds | 24-hour time | Time written out as words | — | Mark a time | Quiz | Choose the time'),
         `Digital too: both checked, LCD and 24-hour on, and Quiz between Mark a time and Set the time (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Show] | Analog | ✓ Digital | Date | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) | Hour hand only (off) |') && m.includes('Mark a time (off) | Set the time') && !m.includes('Quiz'),
-        `Analog off: the faces, Hour hand only, and Mark a time are off, and Quiz is gone (${m})`);
-      ok(await choose(page, ik, 'digital') && (await menuOf(page, ik)).startsWith('[Show] | Analog | ✓ Digital |') && (await confOf(page, ik)).digital === true, 'unchecking the last one shown does nothing');
+      ok(m.startsWith('[Style] | Analog | ✓ Digital | Date | — | LCD look |') && !/clock face|Simple|Old|Teaching|Hour hand only|Mark a time/.test(m) && m.includes('— | Choose the time') && !m.includes('Quiz'),
+        `Analog off: the clock face items, Mark a time, and Quiz are gone (${m})`);
+      ok(await choose(page, ik, 'digital') && (await menuOf(page, ik)).startsWith('[Style] | Analog | ✓ Digital |') && (await confOf(page, ik)).digital === true, 'unchecking the last one shown does nothing');
       await choose(page, ik, 'date');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Show] | Analog | ✓ Digital | ✓ Date |'), `Date adds the date to Digital (${m})`);
+      ok(m.startsWith('[Style] | Analog | ✓ Digital | ✓ Date |'), `Date adds the date to Digital (${m})`);
       await choose(page, ik, 'digital');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Show] | Analog | Digital | ✓ Date | [Clock face] | Simple (off) | Old (off) | ✓ Teaching (off) |') && m.includes('LCD look (off) | Show seconds (off) | 24-hour time (off) | Time in words (off)') && m.includes('Mark a time (off)'),
-        `the date alone: the faces, LCD, seconds, 24-hour, Time in words, and Mark a time are off (${m})`);
+      ok(m.startsWith('[Style] | Analog | Digital | ✓ Date | — | LCD look (off) | Show seconds (off) | 24-hour time (off) | Time written out as words (off)') && !/clock face|Teaching|Mark a time/.test(m),
+        `the date alone: no clock face items or Mark a time, and LCD, seconds, 24-hour, and words are off (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
-      ok(m.startsWith('[Show] | ✓ Analog | Digital | ✓ Date |'), `Analog joins the date (${m})`);
+      ok(m.startsWith('[Style] | ✓ Analog | Digital | ✓ Date | [Analog clock face] | Simple | Old | ✓ Teaching | Hour hand only | —'), `Analog joins the date, and its clock face items come back (${m})`);
       await choose(page, ik, 'set');
       m = await menuOf(page, ik);
-      ok(m.endsWith('| Mark a time | ✓ Set the time | 5-minute steps'), `Set the time: 5-minute steps shows after it, unchecked (${m})`);
+      ok(m.endsWith('| Mark a time | ✓ Choose the time | Snap to 5-minute steps'), `Set the time: 5-minute steps shows after it, unchecked (${m})`);
       await choose(page, ik, 'set');
       ok(!(await menuOf(page, ik)).includes('5-minute steps'), 'and goes when Set the time is unchecked');
       // Never more than 24, in every combination: what the Clock sends, before the board's own limit.
@@ -854,14 +858,14 @@ module.exports = T => {
       await page.waitForTimeout(800);
       const [m0, m1, m2, m3, m4, m5, m6] = await Promise.all(iks.map(ik => menuOf(page, ik)));
       const [l0, l1, l2, l3, l4, l5, l6] = await Promise.all(iks.map(ik => look(page, ik)));
-      ok(m0.startsWith('[Show] | ✓ Analog | Digital | Date | [Clock face] | ✓ Simple |') && m0.includes('✓ Show seconds') && l0.analog && !l0.digital && !l0.day && l0.secondHand, `an older 'analog': analog only, Simple, its seconds kept (${m0})`);
-      ok(m1.startsWith('[Show] | Analog | ✓ Digital | ✓ Date |') && m1.includes('✓ 24-hour time') && l1.digital && !l1.analog && l1.time === '14:50' && !!l1.day, `an older 'digital' with the date: Digital and Date, 24-hour time (${m1}; ${l1.time}; ${l1.day})`);
-      ok(m2.startsWith('[Show] | Analog | Digital | ✓ Date |') && !!l2.day && !l2.analog && !l2.digital, `an older 'date': the date alone (${m2})`);
-      ok(m3 === '[Show] | ✓ Analog | Digital | Date | [Clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | 24-hour time (off) | Time in words | — | Mark a time | Set the time' && l3.analog && !l3.secondHand && !l3.day,
+      ok(m0.startsWith('[Style] | ✓ Analog | Digital | Date | [Analog clock face] | ✓ Simple |') && m0.includes('✓ Show seconds') && l0.analog && !l0.digital && !l0.day && l0.secondHand, `an older 'analog': analog only, Simple, its seconds kept (${m0})`);
+      ok(m1.startsWith('[Style] | Analog | ✓ Digital | ✓ Date |') && m1.includes('✓ 24-hour time') && l1.digital && !l1.analog && l1.time === '14:50' && !!l1.day, `an older 'digital' with the date: Digital and Date, 24-hour time (${m1}; ${l1.time}; ${l1.day})`);
+      ok(m2.startsWith('[Style] | Analog | Digital | ✓ Date |') && !!l2.day && !l2.analog && !l2.digital, `an older 'date': the date alone (${m2})`);
+      ok(m3 === '[Style] | ✓ Analog | Digital | Date | [Analog clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | 24-hour time (off) | Time written out as words | — | Mark a time | Choose the time' && l3.analog && !l3.secondHand && !l3.day,
         `none saved: analog only, the Simple face, everything else off (${m3})`);
       ok(m4 === m3 && l4.face === 'simple', `bad values fall back, each to its own default (${m4})`);
-      ok(m5.startsWith('[Show] | ✓ Analog | Digital | Date | [Clock face] | Simple | ✓ Old | Teaching | Upright numerals | ✓ IV for four |') && l5.analog, `nothing shown: analog shows, and the rest is kept (${m5})`);
-      ok(m6.startsWith('[Show] | ✓ Analog | ✓ Digital | Date |') && l6.analog && l6.digital, `a bad Analog takes its own default, on, beside a good Digital (${m6})`);
+      ok(m5.startsWith('[Style] | ✓ Analog | Digital | Date | [Analog clock face] | Simple | ✓ Old | Teaching | Upright numerals | ✓ IV for four |') && l5.analog, `nothing shown: analog shows, and the rest is kept (${m5})`);
+      ok(m6.startsWith('[Style] | ✓ Analog | ✓ Digital | Date |') && l6.analog && l6.digital, `a bad Analog takes its own default, on, beside a good Digital (${m6})`);
       // style is written with every change, for a device on an older 21Board.
       const ik = iks[3], keys = 'analog,digital,dateView,face,led,seconds,hour24,words,upright,iv,hourOnly,mark,quiz,snap5,dateOnly,date,style';
       const styles = [];
@@ -1030,10 +1034,10 @@ module.exports = T => {
       await choose(page, ik, 'set');
       let l = await look(page, ik), d = await dataOf(page, ik);
       ok(JSON.stringify(d) === '{"set":{"at":890},"markAt":null}' && l.badge === 'Set' && l.now === 'Now' && l.settable, `Set the time: the Set badge, Now, and grab dots; the time is saved in the content (${JSON.stringify(d)})`);
-      ok(l.label === 'Set the time. Drag a hand or use the arrow keys.' && l.valuetext === '2:50 p.m.' && l.valuenow === '890' && l.valuemin === '0' && l.valuemax === '1439',
+      ok(l.label === 'Choose the time. Drag a hand or use the arrow keys.' && l.valuetext === '2:50 p.m.' && l.valuenow === '890' && l.valuemin === '0' && l.valuemax === '1439',
         `a screen reader hears “${l.label}” and “${l.valuetext}”, a slider from 0 to 1439 at 890 (${l.valuemin}, ${l.valuemax}, ${l.valuenow})`);
       const c0 = await confOf(page, ik);
-      ok(!(c0 && c0.snap5) && (await menuOf(page, ik)).endsWith('| ✓ Set the time | 5-minute steps'), '5-minute steps is off by default');
+      ok(!(c0 && c0.snap5) && (await menuOf(page, ik)).endsWith('| ✓ Choose the time | Snap to 5-minute steps'), '5-minute steps is off by default');
       // The minute hand past 12 carries the hour: 2:50 → 3:10.
       await dragFace(page, ik, 300, 420, 70);
       d = await dataOf(page, ik); l = await look(page, ik);
@@ -1094,7 +1098,7 @@ module.exports = T => {
       ok(JSON.stringify(d) === '{"set":{"at":null},"markAt":null}' && l.badge === 'Set' && l.now === 'Now' && l.settable && l.time === '2:50p.m.' && near(l.m, 300), `Now: the real time, and still setting it (${JSON.stringify(d)}; ${l.time}; ${l.badge})`);
       await page.clock.setFixedTime(AT('14:53'));
       ok(await eventually(async () => { const v = await look(page, ik); return v.time === '2:53p.m.' && near(v.m, 318); }, 3000), `and it keeps time: 2:53 (${(await look(page, ik)).time})`);
-      ok((await menuOf(page, ik)).endsWith('| ✓ Set the time | 5-minute steps') && (await look(page, ik)).arrows.length === 4, 'the menu still says Set the time, and the arrows stay');
+      ok((await menuOf(page, ik)).endsWith('| ✓ Choose the time | Snap to 5-minute steps') && (await look(page, ik)).arrows.length === 4, 'the menu still says Choose the time, and the arrows stay');
       // The next drag sets a time again.
       await dragFace(page, ik, 318, 378, 70);
       d = await dataOf(page, ik);
@@ -1167,7 +1171,7 @@ module.exports = T => {
       ok(await eventually(async () => { const w = await wedgeOf(page, ik); return !!w && w.full; }), `more than an hour away: the whole ring (${said(await wedgeOf(page, ik))})`);
       // No analog face, no wedge.
       await choose(page, ik, 'digital'); await choose(page, ik, 'analog');
-      ok((await menuOf(page, ik)).includes('✓ Mark a time (off)'), 'digital alone: Mark a time stays in the menu, off');
+      ok(!(await menuOf(page, ik)).includes('Mark a time') && (await confOf(page, ik)).mark === true, 'digital alone: Mark a time leaves the menu, and stays on for when Analog comes back');
       await ctx.close();
     });
 
@@ -1422,7 +1426,7 @@ module.exports = T => {
     const connected = (p, ik) => eventually(() => p.evaluate(ik => { const w = window.__board21.state.wins.get(ik); return !!w && w.connected; }, ik));
     // The window menu as a line: [Heading], ✓ checked, (off) disabled, — a line.
     const menuOf = (p, ik) => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.map(i => i.separator ? '—' : i.heading ? `[${i.label}]` : (i.checked ? '✓ ' : '') + i.label + (i.disabled ? ' (off)' : '')).join(' | '), ik);
-    const showOf = async (p, ik) => (await menuOf(p, ik)).split(' | [Clock face]')[0];
+    const showOf = async (p, ik) => (await menuOf(p, ik)).split(/ \| (?:\[(?:Analog clock face|Clock face)\]|—)/)[0];   // (the views: up to the clock face items, or the line when they're gone)
     // A window's ⌄ menu, and the item with this id in it, as a teacher taps it. False when there's no such item, or it's off.
     const choose = async (p, ik, id) => {
       await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.waitForTimeout(200);
@@ -1523,7 +1527,7 @@ module.exports = T => {
       const { ctx, page } = await newBoard(FRI);
       const ik = await openClock(page);
       const m0 = await menuOf(page, ik);
-      ok(m0 === '[Show] | ✓ Analog | Digital | Date | [Clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | 24-hour time (off) | Time in words | — | Mark a time | Set the time',
+      ok(m0 === '[Style] | ✓ Analog | Digital | Date | [Analog clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | 24-hour time (off) | Time written out as words | — | Mark a time | Choose the time',
         `a new Clock’s menu: Show has Analog, Digital, and Date, and Show date is gone (${m0})`);
       const shown = async () => { const l = await look(page, ik); return [l.dial ? 'Analog' : '', l.time ? 'Digital' : '', l.text ? 'Date' : ''].filter(Boolean).join(' + '); };
       // Each tap, the Show items after it, and what shows. A tap on the last view shown changes nothing.
@@ -1536,7 +1540,7 @@ module.exports = T => {
       for (const [id, want, what, stays] of steps) {
         const before = JSON.stringify(await confOf(page, ik));
         if (id) await choose(page, ik, id);
-        const got = (await showOf(page, ik)).replace('[Show] | ', ''), sees = await shown();
+        const got = (await showOf(page, ik)).replace('[Style] | ', ''), sees = await shown();
         seen.add(sees);
         if (got !== want || sees !== what) off.push(`${id}: ${got} showing ${sees}, not ${want} showing ${what}`);
         if (stays && (got !== want || JSON.stringify(await confOf(page, ik)) !== before)) last.push(`${what} alone, ${id}: ${got}`);
@@ -1545,22 +1549,22 @@ module.exports = T => {
       ok(!last.length, `unchecking the last view shown does nothing, for Analog, Digital, and Date alone${last.length ? ': ' + last.join('; ') : ''}`);
       await choose(page, ik, 'date');
       const items = await page.evaluate(ik => window.__board21.state.wins.get(ik).menuItems.map(i => [i.id, i.label]), ik);
-      ok(!items.some(([id, label]) => id === 'showdate' || /show date/i.test(label || '')) && (await showOf(page, ik)) === '[Show] | Analog | ✓ Digital | ✓ Date',
+      ok(!items.some(([id, label]) => id === 'showdate' || /show date/i.test(label || '')) && (await showOf(page, ik)) === '[Style] | Analog | ✓ Digital | ✓ Date',
         `Show date is gone, with Digital and Date shown (${items.map(i => i[1]).filter(Boolean).join(', ')})`);
       await choose(page, ik, 'digital');
       let m = await menuOf(page, ik);
-      ok(m === '[Show] | Analog | Digital | ✓ Date | [Clock face] | ✓ Simple (off) | Old (off) | Teaching (off) | — | LCD look (off) | Show seconds (off) | 24-hour time (off) | Time in words (off) | — | Mark a time (off) | Set the time (off)',
-        `the date alone: the faces, LCD look, Show seconds, 24-hour time, Time in words, Mark a time, and Set the time are off (${m})`);
+      ok(m === '[Style] | Analog | Digital | ✓ Date | — | LCD look (off) | Show seconds (off) | 24-hour time (off) | Time written out as words (off) | — | Choose the time (off)',
+        `the date alone: no clock face items or Mark a time, and the rest is off (${m})`);
       // Setting the time with Analog and Date, then Analog off: Set the time stays on, without 5-minute steps.
       await choose(page, ik, 'analog'); await choose(page, ik, 'set');
       m = await menuOf(page, ik);
-      ok(m.endsWith('| Mark a time | ✓ Set the time | 5-minute steps'), `Analog and Date, setting the time: 5-minute steps shows (${m})`);
+      ok(m.endsWith('| Mark a time | ✓ Choose the time | Snap to 5-minute steps'), `Analog and Date, setting the time: 5-minute steps shows (${m})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
-      ok(m.endsWith('| Mark a time (off) | ✓ Set the time') && !m.includes('5-minute steps'), `then the date alone: Set the time stays on to uncheck, and 5-minute steps goes (${m})`);
+      ok(m.endsWith('| — | ✓ Choose the time') && !m.includes('5-minute steps'), `then the date alone: Set the time stays on to uncheck, and 5-minute steps goes (${m})`);
       await choose(page, ik, 'set');
       m = await menuOf(page, ik);
-      ok(m.endsWith('| Mark a time (off) | Set the time (off)'), `unchecked, Set the time is off with the date alone (${m})`);
+      ok(m.endsWith('| — | Choose the time (off)'), `unchecked, Choose the time is off with the date alone (${m})`);
       await ctx.close();
     });
 
@@ -1755,7 +1759,7 @@ module.exports = T => {
       const off = [];
       for (const [i, [c, want, why]] of CASES.entries()) {
         const l = await look(page, iks[i]), got = [l.dial ? 'Analog' : '', l.time ? 'Digital' : '', l.text ? 'Date' : ''].filter(Boolean).join(' + ');
-        const show = (await showOf(page, iks[i])).replace('[Show] | ', ''), checks = show.split(' | ').filter(s => s.startsWith('✓')).map(s => s.slice(2)).join(' + ');
+        const show = (await showOf(page, iks[i])).replace('[Style] | ', ''), checks = show.split(' | ').filter(s => s.startsWith('✓')).map(s => s.slice(2)).join(' + ');
         if (got !== want || checks !== want) off.push(`${why}: ${JSON.stringify(c)} shows ${got}, checks ${checks}`);
       }
       ok(!off.length, `each config shows what it says: dateView as is; dateOnly the date alone; date only with Digital; an older style; bad values their defaults; nothing shown, Analog${off.length ? ': ' + off.join('; ') : ''}`);
@@ -1866,9 +1870,9 @@ module.exports = T => {
       const now = [await showOf(page, a), await showOf(page, b)], after = [await rectOf(page, a), await rectOf(page, b)];
       const la = await look(page, a), lb = await look(page, b);
       const same = (r, s) => ['x', 'y', 'w', 'h'].every(k => Math.abs(r[k] - s[k]) < 1);
-      ok(/Date only/.test(was.join()) && now[0] === '[Show] | Analog | ✓ Digital | ✓ Date' && !!la.time && !la.dial && /Friday/.test(la.text || '') && clashes(la).length === 0 && same(before[0], after[0]),
+      ok(/Date only/.test(was.join()) && now[0] === '[Style] | Analog | ✓ Digital | ✓ Date' && !!la.time && !la.dial && /Friday/.test(la.text || '') && clashes(la).length === 0 && same(before[0], after[0]),
         `a Digital window with Show date opens as Digital + Date, at the same size (${now[0]}; ${JSON.stringify(before[0])} → ${JSON.stringify(after[0])}; ${la.text})`);
-      ok(now[1] === '[Show] | Analog | Digital | ✓ Date' && !lb.time && !lb.dial && /Friday/.test(lb.text || '') && same(before[1], after[1]),
+      ok(now[1] === '[Style] | Analog | Digital | ✓ Date' && !lb.time && !lb.dial && /Friday/.test(lb.text || '') && same(before[1], after[1]),
         `a Date only window opens as the date alone, at the same size (${now[1]}; ${JSON.stringify(before[1])} → ${JSON.stringify(after[1])}; ${lb.text})`);
       await ctx.close();
     });
