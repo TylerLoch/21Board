@@ -62,7 +62,7 @@ self.BOARD21_WIDGETS = [
     version: '1.0.0',
     entry: 'widgets/stopwatch/index.html',
     files: ['widgets/stopwatch/index.html'],
-    color: '#a16207',
+    color: '#57534e',
     icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="14" r="7.5"/><path d="M12 14l3.2-3.2"/><rect x="9.5" y="1.8" width="5" height="2.6" rx="1" fill="currentColor" stroke="none"/><path d="M12 4.4v2.1"/><path d="M17.6 7.1l1.6-1.6"/><path d="M18.4 4.6l1.8 1.8"/><path d="M12 8.2v1.2M17.8 14h-1.2M12 19.8v-1.2M6.2 14h1.2"/></svg>',
     window: { width: 600, height: 380, minWidth: 280, minHeight: 200 },
     clash: 'later',   // its content is a run's state and the class's records, like a timer's time

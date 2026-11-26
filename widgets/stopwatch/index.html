@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <script src="../../sdk/board21.js"></script>
-<script type="application/json" id="board21-widget">{"id":"stopwatch","name":"Stopwatch","version":"1.0.0","description":"Count up with laps and a class record.","color":"#a16207","window":{"width":600,"height":380,"minWidth":280,"minHeight":200}}</script>
+<script type="application/json" id="board21-widget">{"id":"stopwatch","name":"Stopwatch","version":"1.0.0","description":"Count up with laps and a class record.","color":"#57534e","window":{"width":600,"height":380,"minWidth":280,"minHeight":200}}</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Stopwatch</title>
 <style>
@@ -290,7 +290,7 @@
   var MIN_REC = 5000;                     // no class routine takes under 5 seconds: a shorter run is a slip, never a record
   var FLAG_AT = 0.78;                     // where the record sits on the track while the class races it
   var CLASS = 32;                         // a big board's Lap list keeps rows for a class of 30, the end of the run, and a stray tap
-  var UNDER_ROWS = 4;                     // a Lap list goes under the buttons only where this many rows fit there
+  var UNDER_ROWS = 4;                     // a Lap list under the buttons gets smaller type for this many rows, and needs 3
   var EARLIER = 50;                       // earlier records kept for each best time, for Bring back
 
   // Saved content. undo is what Reset cleared, kept until the next Start. records holds the class's best time for
@@ -416,8 +416,8 @@
     var t = now();
     if (num(d.banked) && d.banked >= 0) out.banked = Math.min(Math.floor(d.banked), MAX_MS);
     if (num(d.startedAt) && d.startedAt > 0 && d.startedAt <= t + 60000) out.startedAt = Math.min(d.startedAt, t);
-    // A start more than 100 hours ago isn't a real one.
-    if (out.startedAt != null && out.banked + (t - out.startedAt) >= MAX_MS) out.startedAt = null;
+    // A run left running past the most it counts, such as over a break, stopped there, as it does with the board open.
+    if (out.startedAt != null && out.banked + (t - out.startedAt) >= MAX_MS) { out.banked = MAX_MS; out.startedAt = null; }
     var e = out.banked + (out.startedAt != null ? t - out.startedAt : 0);
     out.laps = cleanLaps(d.laps, e);
     var recs = d.records && typeof d.records === 'object' ? d.records : {}, earlier = d.earlier && typeof d.earlier === 'object' ? d.earlier : {};
@@ -575,7 +575,7 @@
   // The time is taken when the finger lands, and the action waits for the click, so a press that turns
   // into moving the window does nothing. A button ignores taps just after it appears, and every button ignores
   // taps for a moment after the row moves, so a tap aimed at the old place never lands on the new button there.
-  var pressAt = {}, shownAt = { start: 0, stop: 0, lap: 0, reset: 0, undo: 0 }, movedAt = 0;
+  var pressAt = {}, shownAt = { start: 0, stop: 0, lap: 0, reset: 0, undo: 0 }, grewAt = { start: 0, stop: 0, lap: 0, reset: 0, undo: 0 }, movedAt = 0;
   Object.keys(B).forEach(function (id) {
     var b = B[id];
     b.addEventListener('pointerdown', function (e) { if (e.isPrimary !== false) pressAt[id] = now(); });
@@ -584,9 +584,10 @@
       if (pointer && pressAt[id] && t - pressAt[id] < 2000) t = pressAt[id];
       pressAt[id] = 0;
       if (!b.classList.contains('on')) return;
-      // Reset, Undo, and a Start that begins a fresh run each clear something, so they wait longer.
-      var slow = id === 'reset' || id === 'undo' || (id === 'start' && freshNext());
-      if (pointer && (t - shownAt[id] < (slow ? SLOW_GUARD : GUARD) || t - movedAt < SLOW_GUARD)) return;
+      // Reset, Undo, and a Start that begins a fresh run or drops Undo reset each clear something, so they wait longer.
+      // So does a button that just grew into another's place, such as Start into Undo's.
+      var slow = id === 'reset' || id === 'undo' || (id === 'start' && (freshNext() || (phase() === 'idle' && !!state.undo)));
+      if (pointer && (t - shownAt[id] < (slow ? SLOW_GUARD : GUARD) || t - grewAt[id] < SLOW_GUARD || t - movedAt < SLOW_GUARD)) return;
       if (id === 'start') start(t);
       else if (id === 'stop') stop(t);
       else if (id === 'lap') lap(t);
@@ -643,7 +644,7 @@
       d6: d6,
       tw: Math.max(probeEm('0:00.00'), probeEm('0:00:00'), probeEm('00:00')),
       noteEm: probeEm('Lap 00') + 0.45 + probeEm('0:00.00') + 1.3 + probeEm('Total') + 0.45 + probeEm('0:00.00'),
-      tag: probeEm('Fastest lap'),
+      tag: probeEm('Fastest lap'), tagS: probeEm('Fastest'),
       // The buttons' widest labels: the narrow ones, and the wide ones.
       small: Math.max(probeEm('Reset'), probeEm('Undo'), probeEm('Lap')),
       wide: Math.max(probeEm('Resume'), probeEm('Start'), probeEm('Stop'))
@@ -663,16 +664,17 @@
     var nDig = [3, 4, 5, 6][k], nCol = k < 2 ? 1 : 2;
     return nDig * M.dw + nCol * M.cw + (hund ? HUND * (M.pw + 2 * M.dw) : 0);
   }
-  // The Lap list's columns in px at a row size and a small size: the number, Lap, "Fastest lap" right after it, and
-  // Total, with the gaps folded in.
-  function listCols(M, lf, tf) {
-    var digits = Math.max(2, String(state.laps.length + 2).length);
+  // The Lap list's columns in px at a row size and a small size: the number, with room for its digits, Lap, the tag
+  // right after it ("Fastest lap", or "Fastest" where that won't fit), and Total, with the gaps folded in.
+  function listCols(M, lf, tf, digits, word) {
     var g = Math.round(lf * 0.6), g2 = Math.round(lf * 0.4);
     var n = Math.ceil(digits * M.d6 * lf * 1.02 + 1) + g;
     var t = Math.ceil(M.tw * lf * 1.03 + 2);
-    var tag = g2 + Math.ceil(M.tag * tf * 1.04 + 2);
-    return { n: n, t: t, tag: tag, tot: g + t, g: g, g2: g2, w: n + t + tag + g + t };
+    var tag = g2 + Math.ceil((word === 'Fastest' ? M.tagS : M.tag) * tf * 1.04 + 2);
+    return { n: n, t: t, tag: tag, tot: g + t, g: g, g2: g2, w: n + t + tag + g + t, word: word };
   }
+  // The newest number in the list: the lap in progress while it counts, else the last lap.
+  function lastNumber() { var n = state.laps.length; return running() && n < MAX_LAPS ? n + 1 : n; }
 
   /* ---------- Layout ---------- */
   function clamp(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -789,7 +791,7 @@
       // Lap list: beside the time, or under the buttons in a tall window, with room to read. The board grows a
       // smaller window until it fits (syncMin). Until then, the latest lap shows on the line.
       var E = { W: W, H: H, z: z, M: M, pad: pad, padB: padB, innerW: innerW, ctl: ctl, bandH: bandH, hEm: hEm, fit: fit,
-        Fbase: A.F, Fc: Fc, gapL: noRoom ? 0 : A.gapN, noRoom: noRoom };
+        Fbase: A.F, Fc: Fc, gapL: noRoom ? 0 : A.gapN, noRoom: noRoom, probe: !!probeOnly };
       LP = listPlan(E);
       if (probeOnly) return !!LP;
       if (LP) { mode = LP.mode; F = LP.mode === 'list' ? Math.floor(LP.F * 0.995) : Fc; noRoom = false; }
@@ -832,26 +834,40 @@
     L.Fdraw = Math.floor(Math.min(L.F, L.time.w / wFit));
     return L;
   }
-  // The Lap list's geometry, with room to read: every word 14 px on the screen, digits 34 px, and "Fastest lap". Beside
-  // the time in the band above the buttons, or in a window taller than it is wide with room for UNDER_ROWS rows there,
-  // under the buttons on their own edges, down to the bottom. Rows get smaller until a class fits in columns, but only while the type stays readable;
-  // more columns are kept only when they hold a whole class, so wide windows keep a bigger time. Null if it won't fit.
+  // The Lap list's geometry, with room to read: every word 14 px on the screen, digits 34 px, and "Fastest lap".
+  // In a window taller than it is wide with room for 3 rows there, under the buttons on their own edges, down to the
+  // bottom, and in a square one with room for UNDER_ROWS. Otherwise beside the time in the band above the buttons. Rows get smaller until a class fits in columns,
+  // but only while the type stays readable; more columns are kept only when they hold a whole class, so wide windows
+  // keep a bigger time. In a window the usual layouts don't suit, one column beside a smaller time, so any window at
+  // least the minimum shows the list. Past lap 99 the numbers take a third digit, and the tag may say "Fastest", so the
+  // minimum never changes mid-run. Null if it won't fit.
   function listPlan(E) {
+    var digits = E.probe ? 2 : Math.max(2, String(lastNumber()).length);
+    var words = digits > 2 ? ['Fastest lap', 'Fastest'] : ['Fastest lap'];
+    for (var i = 0; i < words.length; i++) {
+      var g = listFit(E, digits, words[i]) || (E.probe ? null : listAny(E, digits, words[i]));
+      if (g) return g;
+    }
+    return null;
+  }
+  function listType(E, lf) {
+    var tf = Math.max(Math.ceil(Math.max(14, 14 / E.z)), Math.round(lf * 0.72));
+    return { lf: lf, tf: tf, rh: Math.round(lf * 1.6), head: Math.round(Math.max(lf * 1.3, tf * 1.9)), cg: Math.round(lf * 2.5) };
+  }
+  function listFit(E, digits, word) {
     var W = E.W, H = E.H, z = E.z, M = E.M;
-    var lfMin = Math.max(15, 14 / z), tfMin = Math.max(14, 14 / z), capMin = 34 / z;
-    var ways = H >= W && !E.noRoom ? ['under', 'beside'] : ['beside'], spare = null;
+    var lfMin = Math.max(15, 14 / z), capMin = 34 / z;
+    var ways = H >= W && !E.noRoom ? ['under', 'beside'] : ['beside'];
     for (var wi = 0; wi < ways.length; wi++) {
-      var under = ways[wi] === 'under', first = null;
+      var under = ways[wi] === 'under', first = null, spare = null;
       var lfPref = Math.max(Math.ceil(lfMin), Math.round(clamp(under ? Math.min(H * 0.036, E.innerW / 14) : Math.min(H * 0.048, W * 0.03), lfMin, 44)));
       for (var lf = lfPref; lf >= lfMin - 1e-6; lf--) {
-        var tf = Math.max(Math.ceil(tfMin), Math.round(lf * 0.72));
-        var cols = listCols(M, lf, tf), kMax, need;
-        var g = { lf: lf, tf: tf, rh: Math.round(lf * 1.6), head: Math.round(Math.max(lf * 1.3, tf * 1.9)), cg: Math.round(lf * 2.5), cols: cols };
+        var g = listType(E, lf), cols = g.cols = listCols(M, lf, g.tf, digits, word), kMax, need;
         if (under) {
           g.top = E.ctl.y + E.ctl.h + E.gapL;
           g.R = Math.floor((H - E.padB - g.top - g.head) / g.rh);
           kMax = Math.floor((E.ctl.w + g.cg) / (cols.w + g.cg));
-          if (g.R < 2 || kMax < 1) continue;
+          if (g.R < 3 || kMax < 1) continue;
           need = Math.max(1, Math.ceil(CLASS / g.R));
           g.k = need <= kMax ? need : 1;
           g.lw = E.ctl.w;
@@ -872,20 +888,35 @@
         }
         if (g.F * E.hEm < capMin) continue;
         if (g.k * g.R >= CLASS) return g;
-        // Under the buttons, the rows get smaller until a few laps show. With no room for that, beside the time.
-        if (under && g.R < UNDER_ROWS) { if (!spare || g.R > spare.R) spare = g; continue; }
+        // Under the buttons, the rows get smaller until UNDER_ROWS show. A window taller than it is wide with room for
+        // only 3 takes the biggest type that has them. A square one puts the list beside the time.
+        if (under && g.R < UNDER_ROWS) { if (H > W && (!spare || g.R > spare.R)) spare = g; continue; }
         if (!first) first = g;
       }
-      if (first) return first;
+      if (first || spare) return first || spare;
     }
-    return spare;
+    return null;
+  }
+  // One column beside the time, with the margins of a window this wide in the usual shape. It needs only that width,
+  // three rows above the buttons, and 34 px digits, so a bigger window always has room for it.
+  function listAny(E, digits, word) {
+    var W = E.W, z = E.z, pad = Math.round(clamp(Math.min(E.H, W * 380 / 600) * 0.07, 14, 64));
+    var lfMin = Math.max(15, 14 / z), lfPref = Math.max(Math.ceil(lfMin), Math.round(clamp(Math.min(E.H * 0.048, W * 0.03), lfMin, 44)));
+    for (var lf = lfPref; lf >= lfMin - 1e-6; lf--) {
+      var g = listType(E, lf), cols = g.cols = listCols(E.M, lf, g.tf, digits, word);
+      g.R = Math.floor((E.bandH - g.head) / g.rh); g.k = 1; g.lw = cols.w; g.mode = 'list';
+      g.gx = Math.round(Math.max(pad, W * 0.04)); g.x0 = pad; g.lW = W - 2 * pad - g.lw - g.gx;
+      g.F = E.fit(g.lW, E.bandH);
+      if (g.R >= 3 && cols.w <= (W - 2 * pad) * 0.56 && g.F * E.hEm >= 34 / z) return g;
+    }
+    return null;
   }
   function listOut(G, x, top) {
     var c = G.cols, under = G.mode === 'liststack';
     // Under the buttons the columns share the row's width, and the lap time's column takes what's left.
     var colW = under ? Math.floor((G.lw - (G.k - 1) * G.cg) / G.k) : c.w;
     return { x: x, y: top, w: G.lw, h: G.head + G.R * G.rh, k: G.k, R: G.R, rh: G.rh, head: G.head, lf: G.lf, tf: G.tf, cg: G.cg,
-      colW: colW, g: c.g, g2: c.g2, gcols: [c.n + 'px', under ? '1fr' : c.t + 'px', c.tag + 'px', c.tot + 'px'].join(' ') };
+      colW: colW, g: c.g, g2: c.g2, word: c.word, gcols: [c.n + 'px', under ? '1fr' : c.t + 'px', c.tag + 'px', c.tot + 'px'].join(' ') };
   }
 
   function put(el, r) {
@@ -1041,13 +1072,13 @@
     if (lapped && lapLine && !reduced.matches) { note.classList.remove('new'); void note.offsetWidth; note.classList.add('new'); }
   }
 
-  // The Lap list's rows: every lap, then the lap in progress (a pale row that counts), or after Stop the
-  // stretch since the last lap, marked as the end. Idle, the ruled rows wait.
+  // The Lap list's rows: every lap, then the lap in progress (a pale row that counts) while the run takes more laps,
+  // or after Stop the stretch since the last lap, marked as the end. Idle, the ruled rows wait.
   var listKey = '', listScroll = '', ghostT = null;
   function listRows() {
     var n = state.laps.length, rows = [], ph = phase();
     for (var i = 0; i < n; i++) rows.push(rowAt(i));
-    if (ph === 'running') rows.push({ n: n + 1, ghost: true });
+    if (ph === 'running' && n < MAX_LAPS) rows.push({ n: n + 1, ghost: true });
     else if (ph === 'stopped' && n) { var f = lastStretch(); if (f) rows.push(f); }
     return rows;
   }
@@ -1061,8 +1092,8 @@
     return out;
   }
   function span(cls, text) { var s = document.createElement('span'); s.className = cls; if (text) s.textContent = text; return s; }
-  function fillRow(li, r, fast, isNew) {
-    var sig = !r ? 'e' : r.ghost ? 'g' + r.n : (r.end ? 'x' : r.n) + '|' + r.split + r.sh + '|' + r.total + r.th + '|' + (fast ? 1 : 0);
+  function fillRow(li, r, fast, isNew, word) {
+    var sig = !r ? 'e' : r.ghost ? 'g' + r.n : (r.end ? 'x' : r.n) + '|' + r.split + r.sh + '|' + r.total + r.th + '|' + (fast ? word : 0);
     if (li._sig === sig) return;
     li._sig = sig;
     li.textContent = '';
@@ -1073,7 +1104,7 @@
     var n = span('n', r.end || r.ghost ? '' : String(r.n));
     if (r.ghost) n.textContent = String(r.n);
     if (r.end) { var sq = document.createElement('i'); sq.className = 'sq'; n.appendChild(sq); }
-    var lt = span('lt', r.ghost ? '' : fmtAs(r.split, r.sh)), tag = span('tag', fast ? 'Fastest lap' : ''), tot = span('tot', r.ghost ? '' : fmtAs(r.total, r.th));
+    var lt = span('lt', r.ghost ? '' : fmtAs(r.split, r.sh)), tag = span('tag', fast ? word : ''), tot = span('tot', r.ghost ? '' : fmtAs(r.total, r.th));
     li.appendChild(n); li.appendChild(lt); li.appendChild(tag); li.appendChild(tot);
     if (!r.ghost) li.setAttribute('aria-label', (r.end ? 'Stop, ' : 'Lap ' + r.n + ', ') + lt.textContent + ', total ' + tot.textContent + (fast ? ', fastest lap' : ''));
   }
@@ -1098,7 +1129,7 @@
     while (lrows.childElementCount < slotsN) lrows.appendChild(document.createElement('li'));
     while (lrows.childElementCount > slotsN) lrows.removeChild(lrows.lastChild);
     var lis = lrows.children, newest = state.laps.length - 1;
-    for (var i = 0; i < slotsN; i++) fillRow(lis[i], rows[i] || null, !!fast[i], lapped && i === newest && !reduced.matches);
+    for (var i = 0; i < slotsN; i++) fillRow(lis[i], rows[i] || null, !!fast[i], lapped && i === newest && !reduced.matches, G.word);
     // The newest row comes into view, unless the teacher has scrolled away from it.
     var sk = rows.length + '|' + nCols + '|' + G.k + '|' + G.R;
     if (sk !== listScroll) {
@@ -1250,8 +1281,9 @@
       b.dataset.at = at;
       if (!was) void b.offsetWidth;   // an appearing button takes its place before it fades in
     }
-    // A button that appears, or grows under a finger, ignores taps for a moment.
+    // A button that appears ignores taps for a moment. One that grows into another's place waits longer.
     if (yes && (!was || moved)) shownAt[id] = now();
+    if (yes && was && moved) grewAt[id] = now();
     b.classList.toggle('on', yes);
     b.setAttribute('aria-hidden', yes ? 'false' : 'true');
     b.tabIndex = yes ? 0 : -1;
@@ -1272,7 +1304,8 @@
     var had = document.activeElement;
     var ph = phase(), v = veiled(), lapped = justLapped;
     justLapped = false;
-    var lapOn = ph === 'running' && lapsActive();
+    // At the most laps a run holds, Lap leaves the face. Stop keeps its place.
+    var lapOn = ph === 'running' && lapsActive() && state.laps.length < MAX_LAPS;
     var undoOn = undoOnFace();
     face.dataset.phase = ph;
     face.classList.toggle('veiled', v);
@@ -1329,11 +1362,12 @@
 
   // The Lap list asks for the room it needs to be read: while it's on, the window's minimum is the smallest
   // window, in the usual shape, where it fits with 14 px rows and 34 px digits on the screen. The board grows a
-  // smaller window to it, such as the default window on a Chromebook. The teacher's own size comes back when the list
+  // smaller window to it, such as the default window on a Chromebook, and any window at least that big shows the list
+  // (listAny). The minimum stays the same all run, even past lap 99. The teacher's own size comes back when the list
   // is turned off.
   var minKey = '', minCache = {};
   function listMin() {
-    var k = [zoom, cfg.hundredths, getComputedStyle(document.body).fontFamily, String(state.laps.length + 2).length].join('|');
+    var k = [zoom, cfg.hundredths, getComputedStyle(document.body).fontFamily].join('|');
     if (k in minCache) return minCache[k];
     var best = null;
     for (var s = 0.45; s <= 3.0001; s += 0.03) {

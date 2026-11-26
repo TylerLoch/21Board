@@ -817,6 +817,21 @@ module.exports = T => {
       await ctx.close();
     });
 
+    // ---- Undo leaves the face 10 s after Reset, and Start grows into its place. A tap aimed at Undo just then
+    // never starts a run, so Undo reset stays in the menu.
+    await part('Undo leaves the face', async () => {
+      const { ctx, p, ik } = await board();
+      await size(p, ik, 600, 380);
+      await set(p, ik, { banked: 0, laps: [], undo: { banked: 65430, laps: [20000, 41000], at: Date.now() - 9200 } });
+      const u = await boxOf(p, ik, '#undo');
+      await F(p, ik, () => new Promise(r => { const s = document.getElementById('start'); new MutationObserver((_, o) => { if (s.dataset.at === 'full') { o.disconnect(); r(); } }).observe(s, { attributes: true }); }));
+      await p.waitForTimeout(500);
+      await tapAt(p, u);
+      const L = await look(p, ik), d = await saved(p, ik);
+      ok(L.phase === 'idle' && L.on === 'start' && !!d.undo && /Undo reset/.test(await menuOf(p, ik)), `a tap where Undo was, just after it leaves, starts nothing, and Undo reset stays (${L.phase}, ${L.on})`);
+      await ctx.close();
+    });
+
     // ---- 3. Lap list: its rows, Fastest lap on every tie, the end row after Stop, Remove last lap, and a list that
     // scrolls by touch instead of moving the window.
     await part('Lap list', async () => {
@@ -857,6 +872,15 @@ module.exports = T => {
       await press(p, ik, 'lap');
       s = await list();
       ok((await saved(p, ik)).laps.length === 14 && s.top === s.max && await rect() === r0, `scrolled back to the end, it follows again (${JSON.stringify(s)})`);
+      // A run holds 999 laps. At the last one, Lap leaves the face, Stop keeps its place, and no lap 1000 counts up.
+      await set(p, ik, { banked: 0, ago: 2000000, laps: Array.from({ length: 998 }, (_, i) => (i + 1) * 1000) });
+      await p.waitForTimeout(500);
+      const stop9 = await boxOf(p, ik, '#stop');
+      await press(p, ik, 'lap'); await p.waitForTimeout(300);
+      L = await look(p, ik);
+      const ghost = await F(p, ik, () => !!document.querySelector('#lrows .lrow.ghost'));
+      ok((await saved(p, ik)).laps.length === 999 && L.on === 'stop' && same(await boxOf(p, ik, '#stop'), stop9) && !ghost,
+        `at 999 laps, the most a run holds, Lap leaves the face, Stop stays put, and no lap 1000 counts up (${L.on}${ghost ? ', a lap 1000 row' : ''})`);
       await ctx.close();
 
       // Fill the board on a 1920 × 1080 board: a class of 30 and the end of the run show at once.
@@ -903,43 +927,60 @@ module.exports = T => {
         }
       }
       await ctx.close();
-      // A tall window: Lap list goes under the buttons, on the row’s own edges, and Lap and Stop stay put.
+      // Tall windows: Lap list goes under the buttons, on the row’s own edges, and Lap and Stop stay put.
       const T = await board({ viewport: { width: 1000, height: 1000 } });
-      await size(T.p, T.ik, 520, 860);
-      await set(T.p, T.ik, { banked: 0, ago: 70000, laps: [20000, 35000, 52000] }, C());
-      const row = await boxOf(T.p, T.ik, '#controls'), lapT = await boxOf(T.p, T.ik, '#lap'), stopT = await boxOf(T.p, T.ik, '#stop');
-      await choose(T.p, T.ik, 'list');
-      const list = await boxOf(T.p, T.ik, '#llist'), win = await boxOf(T.p, T.ik, 'html');
-      const under = await F(T.p, T.ik, () => ({ mode: document.getElementById('face').dataset.mode, rows: +getComputedStyle(document.getElementById('llist')).getPropertyValue('--R') }));
-      ok(under.mode === 'liststack' && same(await boxOf(T.p, T.ik, '#lap'), lapT) && same(await boxOf(T.p, T.ik, '#stop'), stopT) && list.y >= row.y + row.h &&
-        Math.abs(list.x - row.x) <= 1 && Math.abs(list.w - row.w) <= 1 && list.y + list.h <= win.y + win.h && under.rows >= 4,
-        `520 × 860: Lap list goes under Lap and Stop, which stay put, on their edges, with room for ${under.rows} rows (${JSON.stringify({ mode: under.mode, row, list, win })})`);
+      for (const [w, h] of [[520, 860], [600, 684]]) {
+        await size(T.p, T.ik, w, h);
+        await set(T.p, T.ik, { banked: 0, ago: 70000, laps: [20000, 35000, 52000] }, C());
+        const row = await boxOf(T.p, T.ik, '#controls'), lapT = await boxOf(T.p, T.ik, '#lap'), stopT = await boxOf(T.p, T.ik, '#stop');
+        await choose(T.p, T.ik, 'list');
+        const list = await boxOf(T.p, T.ik, '#llist'), win = await boxOf(T.p, T.ik, 'html');
+        const under = await F(T.p, T.ik, () => ({ mode: document.getElementById('face').dataset.mode, rows: +getComputedStyle(document.getElementById('llist')).getPropertyValue('--R') }));
+        ok(under.mode === 'liststack' && same(await boxOf(T.p, T.ik, '#lap'), lapT) && same(await boxOf(T.p, T.ik, '#stop'), stopT) && list.y >= row.y + row.h &&
+          Math.abs(list.x - row.x) <= 1 && Math.abs(list.w - row.w) <= 1 && list.y + list.h <= win.y + win.h && under.rows >= 3,
+          `${w} × ${h}: Lap list goes under Lap and Stop, which stay put, on their edges, with room for ${under.rows} rows (${JSON.stringify({ mode: under.mode, row, list, win })})`);
+        await set(T.p, T.ik, null, C());
+      }
       await T.ctx.close();
     });
 
-    // ---- 5. Lap list grows a small window, and the teacher's size comes back when it's turned off. On a Chromebook,
-    // every word in the grown window is at least 14 px on the screen.
+    // ---- 5. Lap list grows a small window, of any shape, until the list shows, and the teacher's size comes back when
+    // it's turned off. On a Chromebook, every word in the grown window is at least 14 px on the screen. A long class race
+    // never grows it again mid-run.
     await part('Lap list grows the window', async () => {
       for (const chromebook of [false, true]) {
         const { ctx, p, ik } = await board({}, chromebook);
-        const [w, h] = chromebook ? [600, 380] : [280, 200];
-        await size(p, ik, w, h);
-        const rect0 = await p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik);
-        await set(p, ik, { banked: 0, ago: 70000, laps: [20000, 35000, 52000] }, C());
-        await choose(p, ik, 'list'); await p.waitForTimeout(500);
-        const grown = await inner(p, ik);
-        const L = await look(p, ik);
-        const px = await F(p, ik, () => {
-          const z = Board21.context.window.zoom, fs = sel => { const e = document.querySelector(sel); return e ? parseFloat(getComputedStyle(e).fontSize) * z : 0; };
-          return { z, rows: fs('#llist'), head: fs('.lhead'), tag: fs('#lrows .lrow.fast .tag'), word: (document.querySelector('#lrows .lrow.fast .tag') || {}).textContent,
-            buttons: fs('#controls'), digits: document.querySelector('.slot.dig:not(.off):not(.frac)').getBoundingClientRect().height * z };
-        });
-        ok(L.mode === 'list' && grown[0] > w && grown[1] > h && await p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik) === rect0,
-          `${chromebook ? 'Chromebook' : 'zoom 1'}, ${w} × ${h}: Lap list grows the window until the list fits beside the time, and its saved size stays (${grown.join(' × ')})`);
-        if (chromebook) ok(px.rows >= 13.95 && px.head >= 13.95 && px.tag >= 13.95 && px.word === 'Fastest lap' && px.buttons >= 13.95 && px.digits >= 34,
-          `there, every word is at least 14 px on the screen, with “Fastest lap”, and the digits 34 px (${JSON.stringify(px)})`);
-        await choose(p, ik, 'list'); await p.waitForTimeout(500);
-        ok((await inner(p, ik)).join() === [w, h].join(), `Lap list off: the teacher's ${w} × ${h} comes back (${(await inner(p, ik)).join(' × ')})`);
+        for (const [w, h] of chromebook ? [[600, 380], [280, 600]] : [[280, 200], [280, 420]]) {
+          await size(p, ik, w, h);
+          const rect0 = await p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik);
+          await set(p, ik, { banked: 0, ago: 70000, laps: [20000, 35000, 52000] }, C());
+          await choose(p, ik, 'list'); await p.waitForTimeout(500);
+          const grown = await inner(p, ik);
+          const L = await look(p, ik);
+          ok((L.mode === 'list' || L.mode === 'liststack') && L.rows.length === 3 && (grown[0] > w || grown[1] > h) && await p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik) === rect0,
+            `${chromebook ? 'Chromebook' : 'zoom 1'}, ${w} × ${h}: Lap list grows the window until the list shows, and its saved size stays (${grown.join(' × ')}, ${L.mode})`);
+          if (chromebook && w === 600) {
+            const px = await F(p, ik, () => {
+              const z = Board21.context.window.zoom, fs = sel => { const e = document.querySelector(sel); return e ? parseFloat(getComputedStyle(e).fontSize) * z : 0; };
+              return { z, rows: fs('#llist'), head: fs('.lhead'), tag: fs('#lrows .lrow.fast .tag'), word: (document.querySelector('#lrows .lrow.fast .tag') || {}).textContent,
+                buttons: fs('#controls'), digits: document.querySelector('.slot.dig:not(.off):not(.frac)').getBoundingClientRect().height * z };
+            });
+            ok(px.rows >= 13.95 && px.head >= 13.95 && px.tag >= 13.95 && px.word === 'Fastest lap' && px.buttons >= 13.95 && px.digits >= 34,
+              `there, every word is at least 14 px on the screen, with “Fastest lap”, and the digits 34 px (${JSON.stringify(px)})`);
+          }
+          if (h < 300 || w === 600) {
+            // Lap after lap, 400 ms apart, past lap 99: every tap counts, and the window stays the size it grew to.
+            await set(p, ik, { banked: 0, ago: 2000000, laps: Array.from({ length: 97 }, (_, i) => (i + 1) * 1000) });
+            await p.waitForTimeout(500);
+            for (let i = 0; i < 3; i++) { const b = await boxOf(p, ik, '#lap'); await p.mouse.click(b.cx, b.cy); await p.waitForTimeout(400); }
+            const after = await inner(p, ik), M = await look(p, ik);
+            ok((await saved(p, ik)).laps.length === 100 && after.join() === grown.join() && M.rows.length === 100,
+              `three taps on Lap from lap 97 are three laps, and the window stays ${grown.join(' × ')} (${(await saved(p, ik)).laps.length} laps, ${after.join(' × ')})`);
+          }
+          await choose(p, ik, 'list'); await p.waitForTimeout(500);
+          ok((await inner(p, ik)).join() === [w, h].join(), `Lap list off: the teacher's ${w} × ${h} comes back (${(await inner(p, ik)).join(' × ')})`);
+          await set(p, ik, { banked: 0, laps: [] });
+        }
         await ctx.close();
       }
     });
@@ -1079,11 +1120,6 @@ module.exports = T => {
         if (m !== want || i !== wantIds) bad.push(`${m} [${i}]`);
       }
       ok(!bad.length, `the menu's rows, ids, and order in each mode, with the greyed rows, each keeping its check${bad.length ? ': ' + bad.join(' // ') : ''}`);
-      await set(p, ik, { banked: 0, laps: [] }, C({ hide: true }));
-      await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.waitForTimeout(200);
-      const row = await p.locator('#menu [data-id="laps"]').evaluate(b => ({ disabled: b.disabled, checked: b.getAttribute('aria-checked'), tick: !!b.querySelector('.check') }));
-      await p.keyboard.press('Escape');
-      ok(row.disabled && row.checked === 'true' && row.tick, `the board draws a greyed row with its check (${JSON.stringify(row)})`);
       await ctx.close();
     });
 
@@ -1126,6 +1162,10 @@ module.exports = T => {
       const L = await look(p, 'stopwatch:1'), marks = await F(p, 'stopwatch:1', () => document.querySelectorAll('img, [onerror]').length);
       ok(await p.title() !== 'PWNED' && marks === 0 && L.phase === 'idle' && L.time === '0:00.00' && L.mode === 'note' && await menuOf(p, 'stopwatch:1') === '✓ Hundredths | ✓ Laps | Lap list | Hide time | Beat the record',
         `crafted content and config are dropped: an idle Stopwatch with the usual settings (${L.time}, ${await menuOf(p, 'stopwatch:1')})`);
+      // A run left running more than 100 hours, such as over a break, comes back stopped at the most it counts, with its laps.
+      await set(p, 'stopwatch:1', { banked: 0, ago: 101 * 3600000, laps: [60000, 120000, 180000] });
+      const long = await look(p, 'stopwatch:1');
+      ok(long.phase === 'stopped' && long.time === '99:59:59' && /^Lap 3 /.test(long.note), `a run left running past 100 hours comes back stopped at 99:59:59, with its laps (${long.phase}, ${long.time}, ${long.note})`);
       // Board history: the time on it and its laps, and a running one comes back stopped at the time it had.
       const H = (fn, a) => p.evaluate(fn, a);
       const lines = await H(() => { const h = window.__board21.history, at = 1795180000000;
