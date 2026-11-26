@@ -81,9 +81,9 @@ async function rollDice(p, ik, n = 3) {
     if (new Set(vals).size === vals.length) break;
   }
 }
-// Zones Check-In: counts typed in its Counts view (Zones Check-In ⌄ › Edit), then Done.
+// Zones Check-In: counts typed in its Counts view (Zones Check-In ⌄ › Edit…), then Done.
 async function zonesCounts(p, ik, counts) {
-  await choose(p, ik, 'Edit', { exact: true });
+  await choose(p, ik, 'Edit…', { exact: true });
   const f = frame(p, ik);
   for (const [zone, n] of Object.entries(counts)) await f.locator('#n-' + zone).fill(String(n));
   await f.locator('#edit-done').click();

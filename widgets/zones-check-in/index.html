@@ -511,11 +511,13 @@
     setMenu(cur, n);
     if (view === 'edit') fillInputs(false, remote);
   }
+  // Start over has the board's own Reset symbol, a circle arrow.
+  const RESET_PIC = '<svg viewBox="0 0 24 24"><path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/></svg>';
   function setMenu(cur, n) {
     const items = [
       { id: 'undo', label: 'Undo', disabled: !cur.undo.length },
-      { id: 'clear', label: 'Start over', disabled: !n },
-      { id: 'edit', label: 'Edit' },
+      { id: 'clear', label: 'Start over', icon: RESET_PIC, disabled: !n },
+      { id: 'edit', label: 'Edit…' },
       { separator: true },
       { id: 'counts', label: 'Show counts', checked: config.showCounts },
       { id: 'daily', label: 'Clear each day', checked: config.daily },
