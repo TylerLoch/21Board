@@ -1,6 +1,6 @@
 <!DOCTYPE html>
 <!-- data-build is written by tools/release.js: board.js checks that this page and it are the same build. -->
-<html lang="en" data-build="d9fae97b">
+<html lang="en" data-build="3228fc0d">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -334,6 +334,8 @@
       flex: none; width: 54px; height: 54px; border-radius: 15px; display: grid; place-items: center; color: #fff;
       background: var(--c, #64748b); box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .14), 0 2px 6px rgba(0, 0, 0, .12);
     }
+    /* Dark theme: a faint light ring keeps a dark tile's edge on a dark board. (A shadow: it takes no room.) */
+    body.dark .widget-icon { box-shadow: inset 0 -3px 0 rgba(0, 0, 0, .14), 0 2px 6px rgba(0, 0, 0, .12), 0 0 0 1px rgba(255, 255, 255, 0.16); }
     .widget-icon svg { width: 30px; height: 30px; stroke-width: 2; }
     /* Words wrap at the tile's 88px, and the box reaches 6px further each side: Chrome draws the … of a centred line it
        cuts up to half its width past the line's end. Only a name cut to two lines is clipped (.fits: Picker.fitNames in

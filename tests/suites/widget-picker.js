@@ -2,12 +2,12 @@
 'use strict';
 module.exports = T => {
   const {
-    fs, path, ROOT, OUT, ok, freeBoard, openSettings, lockBoard, unlockBoard, addWin, heard, eventually, boardUp,
+    fs, path, ROOT, OUT, ok, freeBoard, openSettings, setTheme, lockBoard, unlockBoard, addWin, heard, eventually, boardUp,
     VID2, EMBED, PLAYLIST_EMBED, D1, stubVideos, ytLook, ytData, picLook, picData, picWins, drawPic, copyPic,
     copyText, BASE
   } = T;
   return [
-  ['Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (every Text style, 5 and 3 columns, 100–150%, both corners, badges and DEV, 200%, four rows of tiles)', async (browser) => {
+  ['Widget Picker: icons in line whatever the name, two lines of room, a longer name cut with … (every Text style, 5 and 3 columns, 100–150%, both corners, badges and DEV, 200%, four rows of tiles, a ring in dark mode)', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1366, height: 768 } });
     const page = await ctx.newPage();
     const errors = []; page.on('pageerror', e => errors.push(e.message));
@@ -204,6 +204,25 @@ module.exports = T => {
       await check(`four rows, ${style}`);
     }
     await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-16-early.png' });
+
+    // Dark theme: a faint light ring around every tile's icon, added to its two shadows. Light theme: the two shadows
+    // alone. A shadow takes no room, so each icon keeps its size and place.
+    const icons = () => page.evaluate(() => [...document.querySelectorAll('#panel .widget-tile .widget-icon')].map(i => {
+      const r = i.getBoundingClientRect();
+      return { shadows: getComputedStyle(i).boxShadow.split(/,(?![^(]*\))/).map(s => s.trim()), box: [r.left, r.top, r.width, r.height].map(v => v.toFixed(1)).join() };
+    }));
+    const RING = /^rgba\(255, 255, 255, 0\.16\) 0px 0px 0px [\d.]*[1-9][\d.]*px$/;
+    for (const sc of [1, 2]) {
+      await page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await page.waitForTimeout(300);
+      await setTheme(page, 'light'); await openPicker('left'); const light = await icons();
+      await setTheme(page, 'dark'); await openPicker('left'); const dark = await icons();
+      const off = dark.map((d, k) => ({ d, l: light[k] || {} })).filter(({ d, l }) => d.shadows.length !== 3 || !RING.test(d.shadows[2]) || d.shadows.slice(0, 2).join() !== (l.shadows || []).join() ||
+        l.shadows.length !== 2 || l.shadows.some(s => /255, 255, 255/.test(s)) || d.box !== l.box);
+      ok(dark.length >= 16 && dark.length === light.length && !off.length,
+        `${sc * 100}%: in the dark theme every tile's icon has a faint light ring beside its two shadows, in the light theme it has none, and the icons keep their size and place (${off.length ? `${off.length} of ${dark.length} off: light ${JSON.stringify(off[0].l)}, dark ${JSON.stringify(off[0].d)}` : dark.length + ' tiles'})`);
+      if (sc === 1) await page.locator('#panel').screenshot({ path: OUT + 'widget-picker-dark.png' });
+    }
+    await setTheme(page, 'light'); await page.evaluate(() => window.__board21.setBoardScale(1)); await page.waitForTimeout(300);
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

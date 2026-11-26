@@ -416,7 +416,7 @@ changed without a new release never reaches them.
   id: '21sketch', name: '21Sketch', description: '…',
   entry: 'https://sketchapp.ccsd21.org/',   // the app's own https address
   files: [],                                // nothing for 21Board to save for offline use
-  color: '#4f46e5', icon: '<svg …>',
+  color: '#312e81', icon: '<svg …>',
   window: { width: 900, height: 560, minWidth: 520, minHeight: 360, dragFromContent: false },
   permissions: [],                          // 21DocCam: ['camera']
   single: true,                             // one window: a second would show the same work

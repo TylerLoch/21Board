@@ -106,7 +106,7 @@ module.exports = T => {
     const mf = /<script type="application\/json" id="board21-widget">([\s\S]*?)<\/script>/.exec(src), manifest = mf ? JSON.parse(mf[1]) : {};
     ok(!!reg && manifest.id === 'calculator' && manifest.name === reg.name && manifest.version === reg.version && ['width', 'height', 'minWidth', 'minHeight'].every(k => (manifest.window || {})[k] === reg.win[k]), 'its manifest block matches the registry entry');
     const others = await page.evaluate(() => window.__board21.catalog().filter(w => w.id !== 'calculator').map(w => String(w.color || '').toLowerCase()));
-    ok(!!reg && /^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', rgbOf(reg.color)) >= 4.5 && !others.includes(String(reg.color).toLowerCase()), `its tile is a color of its own (${reg && reg.color}), the white icon readable on it`);
+    ok(!!reg && /^<svg viewBox="0 0 24 24">/.test(reg.icon) && contrast('rgb(255, 255, 255)', rgbOf(reg.color)) >= 3 && !others.includes(String(reg.color).toLowerCase()), `its tile is a color of its own (${reg && reg.color}), the white icon readable on it (3:1, the bar for icons: ${reg && contrast('rgb(255, 255, 255)', rgbOf(reg.color)).toFixed(2)}:1)`);
     await page.click('.picker-btn.left'); await page.waitForTimeout(250);
     const tile = page.locator('[data-widget="calculator"]');
     ok(await tile.count() === 1 && (await tile.innerText()).trim() === 'Calculator', 'the Widget Picker has a Calculator tile');
