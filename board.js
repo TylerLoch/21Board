@@ -32,7 +32,7 @@
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
   const BOARD_VERSION = '2026.11.26-3';
-  const BOARD_BUILD = '886c1918';
+  const BOARD_BUILD = '0da44b7a';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3474,7 +3474,7 @@
       // A menu taller than the whole screen gets tighter rows first (it should never need scrolling).
       this.el.classList.remove('compact', 'tight', 'cols');
       const kids = $$(':scope > :not(.menu-group), .menu-group > *', this.el), n = kids.length;
-      for (const e of kids) e.style.breakBefore = e.style.display = '';
+      for (const e of kids) { e.style.breakBefore = e.style.display = ''; e.style.removeProperty('-webkit-column-break-before'); }
       this.el.style.maxHeight = 'none';
       // (Measured at the screen's top left: where it was last, at another zoom or by another window, it may have had
       // too little room to its right, and been squeezed to its min-width, its labels wrapped onto more lines.)
@@ -3489,7 +3489,9 @@
         this.el.classList.add('cols');
         const sep = e => e.classList.contains('menu-sep');
         const split = at => kids.forEach((e, i) => {
-          e.style.breakBefore = i === (sep(kids[at]) ? at + 1 : at) ? 'column' : '';
+          const first = i === (sep(kids[at]) ? at + 1 : at);
+          e.style.breakBefore = first ? 'column' : '';
+          e.style.setProperty('-webkit-column-break-before', first ? 'always' : '');   // (Safari's older name for it)
           e.style.display = sep(e) && (i === 0 || i === at - 1 || i === at || i === n - 1) ? 'none' : '';
         });
         const half = Math.ceil(n / 2);
