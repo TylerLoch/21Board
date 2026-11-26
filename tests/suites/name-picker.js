@@ -10,6 +10,23 @@ module.exports = T => {
   // pops. Each landing has t, when its flight left the stage, and pop, when its pop played. The flight is timed just
   // before the style reads its clock and the pop just after, so a slow machine can only make a gap look shorter.
   const unpopped = lands => { let at = -1e9; return lands.filter((l, i) => { if (l.pop != null) { at = l.pop; return false; } return i === lands.length - 1 || l.t - at >= 34; }).length; };
+  // Chooses an item in a picker's window menu, then waits until the board has what the picker saved and its menu again.
+  // On a busy machine that takes longer than any fixed wait. Once the picker has handled the choice, its frame asks the
+  // board for the window's size. The board answers in turn, so that answer comes after the rest.
+  const choose = async (p, ik, id) => {
+    const frame = p.frameLocator(`.win[data-ikey="${ik}"] iframe`).locator('html');
+    const n = await frame.evaluate(() => {
+      if (window.__answered == null) {
+        window.__answered = 0;
+        addEventListener('message', e => { if (e.source === parent && e.data && e.data.type === 'menu' && 'id' in e.data) Board21.window.getInfo().then(() => window.__answered++); });
+      }
+      return window.__answered;
+    });
+    await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`);
+    if (!await eventually(() => frame.evaluate((_, n) => window.__answered > n, n))) ok(false, `the board gets the picker’s answer to “${id}” in its menu (none in 8 s)`);
+    // A moment more lets what the picker does just after settle, such as the names list taking the keyboard.
+    await p.waitForTimeout(250);
+  };
   return [
   ['Name Picker: two students with one name, typing is kept, adding a name', async (browser) => {
     const ctx = await browser.newContext({ viewport: { width: 1200, height: 800 } });
@@ -65,7 +82,7 @@ module.exports = T => {
     const np = (p = page, ik = 'name-picker:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
     const saved = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
     const conf = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
-    const menu = async (id, p = page, ik = 'name-picker:1') => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const menu = (id, p = page, ik = 'name-picker:1') => choose(p, ik, id);
     // The window's menu as the board has it: "Label", "Label ✓" (ticked), "Label (off)" (can't be used), "# Heading", "—" (a line),
     // "[1 ✓ 2 3]" (a row of choices).
     const items = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems
@@ -124,7 +141,8 @@ module.exports = T => {
     const timed = async () => { await idle(); const t = Date.now(); await np().locator('#go').click(); await page.waitForTimeout(50); await idle(); return Date.now() - t; };
     const usual = await timed();
     await menu('quick');
-    ok((await conf()).quick === true && await items() === MENU('wheel', 1, { quick: true, startOver: true }), 'Quick is ticked in the menu and saved');
+    let saw = { quick: (await conf()).quick, items: await items() };
+    ok(saw.quick === true && saw.items === MENU('wheel', 1, { quick: true, startOver: true }), `Quick is ticked in the menu and saved (saved: ${saw.quick}; menu: ${saw.items})`);
     const quick = await timed();
     ok(quick < 2500 && quick < usual, `Quick makes the show shorter (${usual} ms, with Quick ${quick} ms)`);
     await menu('quick');
@@ -163,7 +181,7 @@ module.exports = T => {
     const inVersus = { conf: await conf(), items: await items(), left: (await saved()).left.length, go: await text('#go'), status: await text('#status'), round: await np().locator('#round').isVisible() };
     ok(inVersus.conf.style === 'versus' && inVersus.conf.winners === confWas.winners && inVersus.items === MENU_V({ startOver: true }) && inVersus.left === mid.left.length
       && inVersus.go === (mid.left.length > 1 ? 'Pick 2' : 'Pick the last one') && inVersus.status === `${mid.left.length} of 6 left` && inVersus.round,
-      `Versus: ticked under Pick with, no row of numbers, then No repeats, Start over, Sound, and Quick; “${inVersus.go}”, and the round as it was, “${inVersus.status}” (${inVersus.items})`);
+      `Versus: ticked under Pick with, no row of numbers, then No repeats, Start over, Sound, and Quick; “${inVersus.go}”, and the round as it was, “${inVersus.status}” (saved: ${inVersus.conf.style}, ${inVersus.conf.winners} at a time, ${inVersus.left} left; menu: ${inVersus.items})`);
     await menu('style:name');
     ok(await items() === MENU('name', 1, { startOver: true }) && sameList(await bigNames(), mid.picked), 'back to Big name: Names at a time is 1 again, with the last pick as it was');
 
@@ -230,7 +248,8 @@ module.exports = T => {
     // ---- Sound: ticked in the menu, it starts with the next tap and the show plays it.
     await menu('round');
     await menu('sound');
-    ok((await conf()).sound === true && await items() === MENU('name', 3, { sound: true }), 'Sound is ticked in the menu and saved');
+    saw = { sound: (await conf()).sound, items: await items() };
+    ok(saw.sound === true && saw.items === MENU('name', 3, { sound: true }), `Sound is ticked in the menu and saved (saved: ${saw.sound}; menu: ${saw.items})`);
     const n0 = await inFrame(() => window.__notes);
     await np().locator('#go').click(); await idle();
     const snd = await inFrame(() => [window.__audio, window.__notes]);
@@ -559,7 +578,7 @@ module.exports = T => {
     const np = (p = page, ik = 'name-picker:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
     const saved = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
     const conf = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
-    const menu = async (id, p = page, ik = 'name-picker:1') => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const menu = (id, p = page, ik = 'name-picker:1') => choose(p, ik, id);
     const items = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems
       .map(i => i.separator ? '—' : i.heading ? '# ' + i.label : i.choices ? '[' + i.choices.map(c => c.label + (c.checked ? ' ✓' : '')).join(' ') + ']'
         : i.label + (i.checked ? ' ✓' : '') + (i.disabled ? ' (off)' : '')).join(' | '), ik);
@@ -1059,7 +1078,7 @@ module.exports = T => {
     const np = (p = page, ik = 'name-picker:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
     const saved = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
     const conf = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
-    const menu = async (id, p = page, ik = 'name-picker:1') => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const menu = (id, p = page, ik = 'name-picker:1') => choose(p, ik, id);
     const items = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems
       .map(i => i.separator ? '—' : i.heading ? '# ' + i.label : i.choices ? '[' + i.choices.map(c => c.label + (c.checked ? ' ✓' : '')).join(' ') + ']'
         : i.label + (i.checked ? ' ✓' : '') + (i.disabled ? ' (off)' : '')).join(' | '), ik);
@@ -1799,7 +1818,7 @@ module.exports = T => {
     const np = (p = page, ik = 'name-picker:1') => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
     const saved = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
     const conf = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
-    const menu = async (id, p = page, ik = 'name-picker:1') => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const menu = (id, p = page, ik = 'name-picker:1') => choose(p, ik, id);
     const items = (p = page, ik = 'name-picker:1') => p.evaluate(ik => window.__board21.state.wins.get(ik).menuItems
       .map(i => i.separator ? '—' : i.heading ? '# ' + i.label : i.choices ? '[' + i.choices.map(c => c.label + (c.checked ? ' ✓' : '')).join(' ') + ']'
         : i.label + (i.checked ? ' ✓' : '') + (i.disabled ? ' (off)' : '')).join(' | '), ik);
@@ -2536,7 +2555,7 @@ module.exports = T => {
     const np = (p, ik = IK) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
     const saved = (p, ik = IK) => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
     const conf = (p, ik = IK) => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
-    const menu = async (p, id, ik = IK) => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const menu = (p, id, ik = IK) => choose(p, ik, id);
     const showing = (p, ik) => np(p, ik).locator('body').evaluate(b => b.classList.contains('showing'));
     const idle = (p, ik) => eventually(async () => !(await showing(p, ik)), 12000);
     const inFrame = (p, fn, arg, ik) => np(p, ik).locator('html').evaluate(fn, arg);
@@ -2976,7 +2995,7 @@ module.exports = T => {
     const watch = (p, tab) => { p.on('pageerror', e => errors.push(`[${tab}] ${e.message}`)); p.on('console', m => { if (m.type() === 'error' && /name-picker/.test(m.location().url || '')) errors.push(`[${tab} console] ${m.text()}`); }); };
     const np = p => p.frameLocator(`.win[data-ikey="${IK}"] iframe`);
     const saved = p => p.evaluate(ik => window.__board21.state.data.get(ik) || null, IK);
-    const menu = async (p, id) => { await p.click(`.win[data-ikey="${IK}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const menu = (p, id) => choose(p, IK, id);
     const inFrame = (p, fn, arg) => np(p).locator('html').evaluate(fn, arg);
     const showing = p => np(p).locator('body').evaluate(b => b.classList.contains('showing'));
     const idle = p => eventually(async () => !(await showing(p)), 12000);
@@ -3434,7 +3453,7 @@ module.exports = T => {
     const np = (p = page, ik = IK) => p.frameLocator(`.win[data-ikey="${ik}"] iframe`);
     const saved = (p = page, ik = IK) => p.evaluate(ik => window.__board21.state.data.get(ik) || null, ik);
     const conf = (p = page, ik = IK) => p.evaluate(ik => window.__board21.state.conf.get(ik) || null, ik);
-    const menu = async (id, p = page, ik = IK) => { await p.click(`.win[data-ikey="${ik}"] .win-label`); await p.click(`#menu [data-id="${id}"]`); await p.waitForTimeout(250); };
+    const menu = (id, p = page, ik = IK) => choose(p, ik, id);
     const showing = (p = page, ik) => np(p, ik).locator('body').evaluate(b => b.classList.contains('showing'));
     const idle = (p = page, ik) => eventually(async () => !(await showing(p, ik)), 12000);
     const inFrame = (fn, p = page, ik, arg) => np(p, ik).locator('html').evaluate(fn, arg);
