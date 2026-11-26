@@ -2,7 +2,7 @@
 'use strict';
 module.exports = T => {
   const {
-    fs, path, OUT, ok, freeBoard, openSettings, addWin, hear, heard, eventually, release, boardUp, contrast, rgbOf, BASE
+    fs, path, OUT, ok, freeBoard, openSettings, addWin, addNote, noteOf, hear, heard, eventually, release, boardUp, contrast, rgbOf, BASE
   } = T;
   return [
   ['Timer sounds', async (browser) => {
@@ -747,6 +747,21 @@ module.exports = T => {
     // Taps 150 ms apart, at places taken before.
     const quick = async (p, pts) => { for (const pt of pts) { await p.mouse.click(pt.cx, pt.cy); await p.waitForTimeout(150); } };
     const settled = async (p, ik, fn) => { let d; await eventually(async () => { d = await saved(p, ik); return !!d && fn(d); }, 3000); return d; };
+    const rectOf = (p, ik) => p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik);
+    // “Let go to stop”, if it shows: its box on the page, down to the bottom of its g and p, and its size on the screen.
+    const cueOf = (p, ik) => p.evaluate(ik => {
+      const f = window.__board21.state.wins.get(ik).iframe, fr = f.getBoundingClientRect(), cw = f.contentWindow, k = fr.width / cw.innerWidth;
+      const e = [...f.contentDocument.querySelectorAll('body *')].find(e => e.textContent.trim() === 'Let go to stop' && e.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
+        e.getBoundingClientRect().width > 2 && ![...e.children].some(c => c.textContent.trim() === 'Let go to stop'));
+      if (!e) return null;
+      const r = e.getBoundingClientRect(), cs = cw.getComputedStyle(e), c = f.contentDocument.createElement('canvas').getContext('2d');
+      c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const down = c.measureText('Let go to stop').actualBoundingBoxDescent;
+      return { x: fr.left + r.left * k, y: fr.top + r.top * k, w: r.width * k, h: (r.height + down) * k, px: parseFloat(cs.fontSize) * k };
+    }, ik);
+    const meets = (a, b) => !!a && !!b && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    // Meets, or comes within 2 px above or below: words that touch the time or a button.
+    const near = (a, b) => meets(a && { x: a.x, y: a.y - 2, w: a.w, h: a.h + 4 }, b);
 
     // ---- 1. The buttons: the time is taken when the finger lands, and every tap acts at once.
     await part('Buttons', async () => {
@@ -1158,6 +1173,198 @@ module.exports = T => {
       const back = await H(() => window.__board21.history.fix({ instances: [{ widgetId: 'stopwatch', data: { startedAt: 1000, banked: 2000, laps: [500] } }] }, 6000).instances[0].data);
       ok(back.startedAt === null && back.banked === 7000 && back.laps.join() === '500', `going back to a version with it running brings it back stopped at the time it had (${JSON.stringify(back)})`);
       await ctx.close();
+    });
+
+    // ---- 11. Start, Stop, and Lap act when the finger lands, before it lifts, and one press is one action. A drag from
+    // them never moves the window. One from the time still does.
+    await part('Act on press', async () => {
+      const { ctx, p, ik } = await board();
+      for (const [w, h] of [[600, 380], [280, 200]]) {
+        await size(p, ik, w, h); await set(p, ik, { banked: 0, laps: [] }, C()); await spy(p, ik);
+        // Down on a button: the run while the finger is down, and after it lifts.
+        const hold = async id => {
+          const b = await boxOf(p, ik, '#' + id);
+          await p.mouse.move(b.cx, b.cy); await p.mouse.down(); await p.waitForTimeout(400);
+          const during = await saved(p, ik), down = await F(p, ik, () => window.__down);
+          await p.mouse.up(); await p.waitForTimeout(400);
+          return { during: during || {}, after: await saved(p, ik) || {}, down };
+        };
+        const bad = [];
+        let r = await hold('start');
+        const t0 = r.during.startedAt;
+        if (t0 == null || Math.abs(t0 - r.down) > 60) bad.push(`Start: ${t0 == null ? 'not running' : t0 - r.down + ' ms off'} before the lift`);
+        if (r.after.startedAt !== t0) bad.push('the lift from Start did more');
+        r = await hold('lap');
+        if ((r.during.laps || []).length !== 1 || Math.abs(r.during.laps[0] - (r.down - t0)) > 60) bad.push(`Lap: ${(r.during.laps || []).join()} before the lift`);
+        if ((r.after.laps || []).length !== 1) bad.push(`${(r.after.laps || []).length} laps after the lift`);
+        r = await hold('stop');
+        if (r.during.startedAt !== null || Math.abs(r.during.banked - (r.down - t0)) > 60) bad.push(`Stop: ${r.during.startedAt !== null ? 'still running' : r.during.banked - (r.down - t0) + ' ms off'} before the lift`);
+        if (r.after.startedAt !== null || r.after.banked !== r.during.banked) bad.push('the lift from Stop did more');
+        ok(!bad.length, `${w} × ${h}: Start, Lap, and Stop act when the finger lands, before it lifts, and one press is one action (${bad.join('; ') || 'all three'})`);
+        // A drag from each button, then from the time.
+        await set(p, ik, { banked: 0, laps: [] });
+        const r0 = await rectOf(p, ik), moved = [];
+        const drag = async sel => {
+          const b = await boxOf(p, ik, sel);
+          await p.mouse.move(b.cx, b.cy); await p.mouse.down();
+          for (let i = 1; i <= 8; i++) { await p.mouse.move(b.cx + 10 * i, b.cy + 4 * i); await p.waitForTimeout(16); }
+          await p.mouse.up(); await p.waitForTimeout(400);
+        };
+        for (const id of ['start', 'lap', 'stop']) { await drag('#' + id); if (await rectOf(p, ik) !== r0) moved.push(id); }
+        const d = await saved(p, ik);
+        await drag('#timeWrap');
+        ok(!moved.length && d.startedAt === null && d.laps.length === 1 && await rectOf(p, ik) !== r0,
+          `${w} × ${h}: a drag from Start, Lap, or Stop acts and never moves the window. One from the time does (${moved.join(', ') || 'none moved'}, ${d.laps.length} laps)`);
+        // A pen's side button, or the mouse's right or middle button, does nothing.
+        const side = async (id, pointerType, button) => {
+          const b = await boxOf(p, ik, '#' + id), cdp = await ctx.newCDPSession(p);
+          for (const type of ['mousePressed', 'mouseReleased']) await cdp.send('Input.dispatchMouseEvent', { type, x: b.cx, y: b.cy, button, buttons: type === 'mouseReleased' ? 0 : button === 'right' ? 2 : 4, clickCount: 1, pointerType });
+          await cdp.detach(); await p.waitForTimeout(300);
+          return (await saved(p, ik)).startedAt != null;
+        };
+        await set(p, ik, { banked: 0, laps: [] });
+        const idle = [await side('start', 'pen', 'right'), await side('start', 'mouse', 'right')];
+        await set(p, ik, { ago: 1000, banked: 0, laps: [] });
+        const run = [await side('stop', 'pen', 'right'), await side('stop', 'mouse', 'middle')];
+        ok(!idle.some(Boolean) && run.every(Boolean), `${w} × ${h}: a pen's side button, or a right or middle click, on Start or Stop does nothing (${JSON.stringify({ started: idle, running: run })})`);
+      }
+      await ctx.close();
+      // By touch on a Chromebook, a tap on the left of a full-width Stop stops the run. Reset, which takes its place under
+      // the finger, doesn't act on the lift.
+      const T = await board({ hasTouch: true }, true), cdp = await T.ctx.newCDPSession(T.p), bad = [];
+      for (const [w, h, name, c] of [[600, 380, 'Laps off', C({ laps: false })], [600, 380, 'Hide time', C({ hide: true })], [280, 200, 'plain', C()]]) {
+        await size(T.p, T.ik, w, h); await set(T.p, T.ik, { ago: 7000, banked: 0, laps: [] }, c);
+        const s = await boxOf(T.p, T.ik, '#stop'), pt = { x: s.x + s.w * 0.15, y: s.cy, id: 1 };
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [pt] }); await T.p.waitForTimeout(90);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await T.p.waitForTimeout(500);
+        const d = await saved(T.p, T.ik), L = await look(T.p, T.ik);
+        if (d.startedAt !== null || d.banked < 7000 || d.undo || L.phase !== 'stopped') bad.push(`${name}, ${w} × ${h}: ${JSON.stringify({ banked: d.banked, undo: !!d.undo, phase: L.phase })}`);
+      }
+      ok(!bad.length, `Chromebook, by touch: a tap on the left of a full-width Stop stops the run, and Reset under the finger does nothing (${bad.join('; ') || 'Laps off, Hide time, and the smallest window'})`);
+      await T.ctx.close();
+    });
+
+    // ---- 12. A held Start: past 2 seconds the line under the time says “Let go to stop”, and the lift stops the run. A
+    // shorter hold leaves it running. A held Resume, a finger on a Chromebook, and a held Space do the same.
+    await part('Held Start', async () => {
+      const { ctx, p, ik } = await board();
+      await size(p, ik, 600, 380); await spy(p, ik);
+      const held = async () => {
+        const b = await boxOf(p, ik, '#start');
+        await p.mouse.move(b.cx, b.cy); await p.mouse.down(); await p.waitForTimeout(1500);
+        const early = await cueOf(p, ik); await p.waitForTimeout(800);
+        const late = await cueOf(p, ik), said = await F(p, ik, () => document.getElementById('announce').textContent);
+        await p.mouse.up(); await p.waitForTimeout(400);
+        const t = await F(p, ik, () => ({ down: window.__down, up: window.__up }));
+        return { early, late, said, ms: t.up - t.down, d: await saved(p, ik) };
+      };
+      let r = await held();
+      ok(!r.early && !!r.late && r.said === 'Let go to stop' && r.d.startedAt === null && Math.abs(r.d.banked - r.ms) <= 60,
+        `held 2.3 s: “Let go to stop” shows after 2 seconds, not before, and the lift stops the run (${r.early ? 'shown at 1.5 s' : r.late ? 'shown' : 'never shown'}, ${r.d.banked - r.ms} ms off the hold)`);
+      const b1 = r.d.banked;
+      r = await held();
+      ok(!r.early && !!r.late && r.d.startedAt === null && Math.abs(r.d.banked - b1 - r.ms) <= 60, `a held Resume does the same (${r.late ? 'shown' : 'never shown'}, ${r.d.banked - b1 - r.ms} ms off the hold)`);
+      await press(p, ik, 'start', 1000);
+      ok((await saved(p, ik)).startedAt != null && !await cueOf(p, ik), 'held 1 second: it keeps running');
+      // Space, with the time tapped first so the window has the keys. Key repeat never toggles the run.
+      await set(p, ik, { banked: 0, laps: [] });
+      await tapAt(p, await boxOf(p, ik, '#timeWrap'));
+      await p.keyboard.down('Space'); await p.waitForTimeout(300);
+      const on = (await saved(p, ik)).startedAt != null;
+      for (let i = 0; i < 5; i++) { await p.keyboard.down('Space'); await p.waitForTimeout(100); }
+      const still = (await saved(p, ik)).startedAt != null;
+      await p.waitForTimeout(1700);
+      const cue = !!await cueOf(p, ik);
+      await p.keyboard.up('Space'); await p.waitForTimeout(400);
+      let d = await saved(p, ik);
+      ok(on && still && cue && d.startedAt === null && d.banked >= 2000, `Space held 2.5 s starts at the press, key repeat never stops it, and the release stops it (${JSON.stringify({ on, still, cue, banked: d.banked })})`);
+      await F(p, ik, () => document.getElementById('start').focus());
+      await p.keyboard.down('Space'); await p.waitForTimeout(400); await p.keyboard.up('Space'); await p.waitForTimeout(400);
+      d = await saved(p, ik);
+      ok(d.startedAt != null && !await cueOf(p, ik), `a short Space on a focused Resume leaves it running (${d.startedAt != null ? 'running' : 'stopped'})`);
+      // L held on the focused Stop: one lap, however long the key repeats.
+      for (let i = 0; i < 6; i++) { await p.keyboard.down('l'); await p.waitForTimeout(80); }
+      await p.keyboard.up('l'); await p.waitForTimeout(300);
+      const laps = (await saved(p, ik)).laps.length;
+      ok(laps === 1, `L held with key repeat is one lap (${laps} laps)`);
+      // After typing in a Note, a click on Start gives the Stopwatch the keys, so Space stops the run.
+      const nk = await addNote(p, 'abc'), note = p.frameLocator(`.win[data-ikey="${nk}"] iframe`).locator('#t');
+      await p.evaluate(nk => window.__board21.setRect(nk, { x: 700, y: 40, w: 400, h: 300 }), nk); await p.waitForTimeout(600);
+      await set(p, ik, { banked: 0, laps: [] });
+      await note.click(); await p.keyboard.press('End');
+      await press(p, ik, 'start');
+      const began = (await saved(p, ik)).startedAt != null;
+      await p.keyboard.press('Space'); await p.waitForTimeout(400);
+      d = await saved(p, ik);
+      const text = await noteOf(p, nk);
+      ok(began && d.startedAt === null && text === 'abc', `after typing in a Note, a click on Start gives the Stopwatch the keys: Space stops the run (${JSON.stringify({ began, running: d.startedAt != null, note: text })})`);
+      await ctx.close();
+
+      // By touch on a Chromebook: the first finger holds Start and slides 40 px, a second finger laps, and both lift at
+      // 2.4 s. No pointercancel, and a long press on Start, Stop, or Lap opens no context menu.
+      const T = await board({ hasTouch: true }, true);
+      await size(T.p, T.ik, 600, 380);
+      await F(T.p, T.ik, () => { window.__cancels = 0; addEventListener('pointercancel', () => window.__cancels++, true); });
+      const cdp = await T.ctx.newCDPSession(T.p), s = await boxOf(T.p, T.ik, '#start');
+      const one = { x: s.cx, y: s.cy, id: 1 };
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [one] }); await T.p.waitForTimeout(300);
+      for (let i = 1; i <= 4; i++) { one.x -= 10; await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [one] }); await T.p.waitForTimeout(40); }
+      await T.p.waitForTimeout(340);
+      const l = await boxOf(T.p, T.ik, '#lap'), two = { x: l.cx, y: l.cy, id: 2 };
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [one, two] }); await T.p.waitForTimeout(800);
+      const early = await cueOf(T.p, T.ik); await T.p.waitForTimeout(800);
+      const late = await cueOf(T.p, T.ik), mid = await saved(T.p, T.ik) || { laps: [] };
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await T.p.waitForTimeout(500);
+      d = await saved(T.p, T.ik) || {};
+      const cancels = await F(T.p, T.ik, () => window.__cancels);
+      const menus = await F(T.p, T.ik, () => ['start', 'stop', 'lap'].map(id => { const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); document.getElementById(id).dispatchEvent(e); return e.defaultPrevented; }));
+      ok(!early && !!late && late.px >= 13.95 && mid.startedAt != null && mid.laps.length === 1 && d.startedAt === null && d.banked >= 2000 && cancels === 0 && menus.every(Boolean),
+        `Chromebook, by touch: a second finger laps, “Let go to stop” shows at ${late ? late.px.toFixed(1) : 0} px after 2 seconds, and the lift stops the run, with no pointercancel or context menu (${JSON.stringify({ early: !!early, laps: mid.laps.length, banked: d.banked, cancels, menus })})`);
+      await T.ctx.close();
+    });
+
+    // ---- 13. “Let go to stop” takes the line under the time, or its place, keeps clear of the time and the buttons, and
+    // moves nothing: not the time, the buttons, or the list. At the default size, a short one, and the smallest.
+    await part('Let go to stop', async () => {
+      const { ctx, p, ik } = await board();
+      const box = sel => boxOf(p, ik, sel);
+      for (const [w, h] of [[600, 380], [600, 280], [280, 200]]) {
+        await size(p, ik, w, h);
+        const bad = [];
+        for (const [name, c] of [['plain', C()], ['Lap list', C({ list: true })], ['Hide time', C({ hide: true })], ['Beat the record', C({ record: true })]]) {
+          await set(p, ik, { banked: 0, laps: [], records: { short: 48550, long: null } }, c); await p.waitForTimeout(400);
+          const s = await box('#start');
+          await p.mouse.move(s.cx, s.cy); await p.mouse.down(); await p.waitForTimeout(1000);
+          const sels = ['#timeWrap', '#controls', '#lap', '#stop'].concat(name === 'Lap list' ? ['#llist'] : []), before = [];
+          for (const sel of sels) before.push(await box(sel));
+          await p.waitForTimeout(1300);
+          const cue = await cueOf(p, ik), L = await look(p, ik);
+          for (const [i, sel] of sels.entries()) {
+            const now = await box(sel);
+            if (!same(before[i], now)) bad.push(`${name}: ${sel} moved`);
+            if (near(cue, now)) bad.push(`${name}: it touches ${sel}`);
+          }
+          if (!cue) bad.push(`${name}: no “Let go to stop”`);
+          if (L.note || L.rec) bad.push(`${name}: “${L.note || L.rec}” still shows`);
+          await p.mouse.up();
+          if (await cueOf(p, ik)) bad.push(`${name}: it still shows after the lift`);
+          await p.waitForTimeout(400);
+        }
+        ok(!bad.length, `${w} × ${h}: “Let go to stop” takes the line under the time in plain, Lap list, Hide time, and Beat the record, touches nothing, moves nothing, and goes at the lift (${bad.join('; ') || 'all four'})`);
+      }
+      await ctx.close();
+      // The smallest window on a Chromebook has no room under the time: the window's title says it.
+      const T = await board({}, true);
+      await size(T.p, T.ik, 280, 200);
+      const s = await boxOf(T.p, T.ik, '#start'), boxes = async () => [await boxOf(T.p, T.ik, '#timeWrap'), await boxOf(T.p, T.ik, '#controls')];
+      await T.p.mouse.move(s.cx, s.cy); await T.p.mouse.down(); await T.p.waitForTimeout(1000);
+      const before = await boxes();
+      await T.p.waitForTimeout(1300);
+      const cue = await cueOf(T.p, T.ik), L = await look(T.p, T.ik), after = await boxes();
+      await T.p.mouse.up(); await T.p.waitForTimeout(400);
+      ok((cue ? cue.px >= 13.95 && !near(cue, after[0]) && !near(cue, after[1]) : L.title === 'Let go to stop') && same(before[0], after[0]) && same(before[1], after[1]) && (await look(T.p, T.ik)).title === 'Stopped',
+        `Chromebook, 280 × 200: “Let go to stop” covers nothing, or the window's title says it, and the time and buttons stay put (${cue ? 'in the window' : 'title: ' + L.title})`);
+      await T.ctx.close();
     });
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],

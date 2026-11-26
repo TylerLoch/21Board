@@ -11,14 +11,14 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.26-10';
+const VERSION = '2026.11.26-11';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'ff7894d1';
+const BUILD = '9f9ce5c7';
 const FILES = {
-  './': '53a91d5342b58f85',
-  'index.html': '53a91d5342b58f85',
-  'board.js': 'e40596747e202486',
+  './': '0ac68359e559d713',
+  'index.html': '0ac68359e559d713',
+  'board.js': 'fe5e07c17b7bca34',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': 'ab3f1ec62f52697e',
@@ -38,7 +38,7 @@ const FILES = {
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
   'widgets/timer/index.html': '52a0094eeebbb200',
-  'widgets/stopwatch/index.html': '4deeeba6acea5586',
+  'widgets/stopwatch/index.html': '5c56c767f8f86c2a',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
   'widgets/clock/index.html': '0e18c55dfc6153cb',
