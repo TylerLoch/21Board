@@ -206,13 +206,14 @@ module.exports = T => {
     ok(await eventually(async () => ytFrames(A).length === 1 && ytFrames(B).length === 1), 'a video in both tabs again');
     await A.evaluate(() => window.__board21.pages.create({ end: true, name: 'Two' }));
     ok(await eventually(async () => ytFrames(A).length === 0 && ytFrames(B).length === 0), 'going to another page removes the frame (in every tab): nothing plays out of sight');
-    await A.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[0]));
-    ok(await eventually(async () => (await ytLook(A)).src === EMBED(VID) && ytFrames(A).length === 1), 'coming back shows the video again');
+    const went = await A.evaluate(() => window.__board21.pages.go(window.__board21.pages.ids()[0]));
+    const shown = async () => `page ${await A.evaluate(() => window.__board21.state.boardId)}, ${await A.locator('.win[data-ikey="youtube-player:1"]').count() ? 'its window' : 'no Video Player window'}, ${ytFrames(A).map(f => f.url().split('?')[0]).join(', ') || 'no video'}`;
+    ok(await eventually(async () => (await ytLook(A)).src === EMBED(VID) && ytFrames(A).length === 1), `coming back shows the video again (${went ? 'went back' : 'didn’t go back'}: ${await shown()})`);
     // Closing the window removes it too.
     await A.evaluate(() => window.__board21.closeWin('youtube-player:1', { quiet: true }));
     ok(await eventually(async () => ytFrames(A).length === 0 && ytFrames(B).length === 0), 'closing the window removes the frame');
     await A.evaluate(() => window.__board21.openWidget('youtube-player'));
-    ok(await eventually(async () => (await ytLook(A)).player), 'opening it again shows the saved video');
+    ok(await eventually(async () => (await ytLook(A)).player), `opening it again shows the saved video (${await shown()})`);
     await B.close();
 
     // Offline: a calm message instead of the browser's error page; the video comes back online.
@@ -220,7 +221,8 @@ module.exports = T => {
     a = await ytLook(A);
     ok(a.offline && !a.player && !a.ask && a.frames === 0 && ytFrames(A).length === 0, 'offline, the frame goes and a message shows in its place');
     ok(a.text === 'You’re offline. The video comes back when you’re online.', `the message: “${a.text}”`);
-    ok((await ytData(A)).videoId === VID, 'the saved video is kept');
+    const kept = await ytData(A);
+    ok(kept && kept.videoId === VID, `the saved video is kept (${kept ? kept.videoId : 'nothing saved'})`);
     ok(await ytMenu(A) === `Open in YouTube | — | Change video | — | History | ${YT_LABEL[VID]}`, `the menu still has the controls and the History (${await ytMenu(A)})`);
     loads = yt.embeds();
     await ytChoose(A, 'Change video'); await ytShow(A, `https://youtu.be/${VID2}`);

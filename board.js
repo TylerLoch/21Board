@@ -31,8 +31,8 @@
   // The release this file belongs to. Both are written by tools/release.js: the release's name (VERSION in
   // sw.js) and the build, one fingerprint for every file of the release. The page carries the build as well
   // (<html data-build>), and so does the offline copy (sw.js): section 15 keeps them from being mixed.
-  const BOARD_VERSION = '2026.11.26-1';
-  const BOARD_BUILD = '94e76d3f';
+  const BOARD_VERSION = '2026.11.26-2';
+  const BOARD_BUILD = 'a5ece3e4';
   const RELEASE = `${BOARD_VERSION} (${BOARD_BUILD})`;   // what Settings → About shows, to read out to IT
   const pageBuild = () => LAB ? BOARD_BUILD : document.documentElement.dataset.build || '';   // (the dev window's page has none)
   const SDK_PROTOCOL = 1;
@@ -3711,24 +3711,34 @@
       this.flashT = setTimeout(() => { el.classList.remove('on'); this.flashT2 = setTimeout(() => { el.hidden = true; }, 400); }, 1100);
     },
 
+    // fn adds pages and goes to them with busy held, so no other page change or follow comes between. (Until a new
+    // page is shown, settings.activeBoard still names the page before it.) New page, Duplicate, and Import hold busy
+    // already, and keep it.
+    async adding(fn) {
+      if (this.busy) return fn();
+      this.busy = true;
+      try { return await fn(); } finally { this.busy = false; this.follow(); }   // (as go: another tab may have gone elsewhere meanwhile)
+    },
     // ---- adding, duplicating, renaming, moving, deleting
     // A new page right after this one (opts.after: after that page; opts.end: at the end), and go there. It gets
     // this page's size of windows and menus, shape and background color and pattern (not the photo).
     async create(opts = {}) {
       if (!Store.loaded || Store.failed === 'unopened') return null;
-      const id = await this.nextId(), order = this.ids();
-      const at = opts.end ? order.length : order.indexOf(opts.after || S.boardId) + 1;
-      order.splice(at, 0, id);
-      const pos = this.positions(order, [id]);   // (between its neighbours, or every page numbered again if there's no room)
-      const board = Object.assign(defaultBoard(id), { name: opts.name || `Page ${at + 1}`, uid: opts.uid || newId(),
-        background: clone(S.board.background) || { color: null, pattern: 'none' }, scale: boardScale(), shape: freeShape() ? 'free' : '16:9', layout: canvasFor(boardScale()), pos: pos[id] });
-      this.note(id, board);
-      for (const [b, p] of Object.entries(pos)) if (+b !== id) this.writePos(+b, p);
-      updateSettings({ boards: order, lastBoard: Math.max(id, +S.settings.lastBoard || 1) });
-      await Writer.put(Keys.board(id), 'board', board);
-      if (await this.go(id, { inner: true, quiet: opts.quiet })) return id;
-      await this.discard([id]);   // (it couldn't be shown, e.g. a window was being moved: not left behind, empty)
-      return null;
+      return this.adding(async () => {
+        const id = await this.nextId(), order = this.ids();
+        const at = opts.end ? order.length : order.indexOf(opts.after || S.boardId) + 1;
+        order.splice(at, 0, id);
+        const pos = this.positions(order, [id]);   // (between its neighbours, or every page numbered again if there's no room)
+        const board = Object.assign(defaultBoard(id), { name: opts.name || `Page ${at + 1}`, uid: opts.uid || newId(),
+          background: clone(S.board.background) || { color: null, pattern: 'none' }, scale: boardScale(), shape: freeShape() ? 'free' : '16:9', layout: canvasFor(boardScale()), pos: pos[id] });
+        this.note(id, board);
+        for (const [b, p] of Object.entries(pos)) if (+b !== id) this.writePos(+b, p);
+        updateSettings({ boards: order, lastBoard: Math.max(id, +S.settings.lastBoard || 1) });
+        await Writer.put(Keys.board(id), 'board', board);
+        if (await this.go(id, { inner: true, quiet: opts.quiet })) return id;
+        await this.discard([id]);   // (it couldn't be shown, e.g. a window was being moved: not left behind, empty)
+        return null;
+      });
     },
     async add() {
       if (this.busy) return;
@@ -3741,16 +3751,18 @@
     // about to be replaced, whose board ids (board.uid) the file's pages may take over: a restored backup is
     // the same boards as before (in the Google Drive folder, too).
     async addFrom(list, opts = {}) {
-      const made = opts.made || [], reuse = opts.reuse || [];
-      let after = opts.end ? null : S.boardId;
-      for (const p of list) {
-        const uid = p.board.uid && !Array.from(this.info).some(([b, i]) => i.uid === p.board.uid && !reuse.includes(b)) ? p.board.uid : newId();   // (one page per board id here)
-        const id = await this.create({ after, end: !after, name: p.board.name || null, uid, quiet: true });
-        if (!id) break;
-        made.push(id); after = id;
-        await applyImport(Object.assign({}, p, { theme: null, accent: null, letters: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
-      }
-      return made;
+      return this.adding(async () => {   // (each page's content goes on to it while it is shown)
+        const made = opts.made || [], reuse = opts.reuse || [];
+        let after = opts.end ? null : S.boardId;
+        for (const p of list) {
+          const uid = p.board.uid && !Array.from(this.info).some(([b, i]) => i.uid === p.board.uid && !reuse.includes(b)) ? p.board.uid : newId();   // (one page per board id here)
+          const id = await this.create({ after, end: !after, name: p.board.name || null, uid, quiet: true });
+          if (!id) break;
+          made.push(id); after = id;
+          await applyImport(Object.assign({}, p, { theme: null, accent: null, letters: null }), 'replace', { uid, keepCreated: true, photo: 'file', history: false, fresh: true });
+        }
+        return made;
+      });
     },
     async duplicate() {
       if (this.busy) return;
