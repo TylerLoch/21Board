@@ -31,6 +31,13 @@ module.exports = T => {
     await page.click('.win[data-ikey="dice:1"] .win-label'); await page.waitForTimeout(200);
     ok(await page.locator('#menu [data-act="reset"] svg path[fill="currentColor"]').count() === 1, 'Reset icon has a solid arrowhead');
     await page.keyboard.press('Escape');
+    // Number of dice: a heading, then a row of 1 to 6, as Names at a time in the Name Picker.
+    const items = () => page.evaluate(() => window.__board21.state.wins.get('dice:1').menuItems.map(i => i.separator ? '—' : i.heading ? '# ' + i.label
+      : i.choices ? '[' + i.choices.map(c => c.label + (c.checked ? ' ✓' : '')).join(' ') + ']' : i.label + (i.checked ? ' ✓' : '')).join(' | '));
+    ok(await items() === '# Number of dice | [1 2 ✓ 3 4 5 6] | — | Show total ✓', `the menu: Number of dice, a row of 1 to 6, then Show total (${await items()})`);
+    await page.click('.win[data-ikey="dice:1"] .win-label'); await page.click('#menu [data-id="count:3"]'); await page.waitForTimeout(300);
+    ok(await eventually(async () => (await look(dice)).n === 3 && (await look(dice2)).n === 3) && await items() === '# Number of dice | [1 2 3 ✓ 4 5 6] | — | Show total ✓',
+      `tapping 3 shows 3 dice here and in the other tab, and checks 3 (${await items()})`);
     await page2.close();
 
     // A file made on purpose (imported from "a colleague", or put in a shared folder): what it says the widgets
@@ -812,7 +819,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
       const clock = ideas('w-clock'), hour = clock.find(c => c[1] === 'Teaching with Hour hand only. Read the hour first, then add the minute hand.');
       ok(!!hour && hour[0] === '1' && same(clock.map(c => c[0]), ['K–2', '1', '1–3', '3–5', '6–8']),
         `the guide’s Clock ideas: Hour hand only is grade 1, and the chips run in grade order (${clock.map(c => c[0]).join(', ')})`);
-      ok(/\[1, 2, 3, 4, 5, 6\]\.map\(n => \(\{ id: 'n' \+ n/.test(fs.readFileSync(path.join(ROOT, 'widgets', 'dice', 'index.html'), 'utf8')), 'the Dice rolls up to 6 dice, as the new idea asks');
+      ok(/\[1, 2, 3, 4, 5, 6\]\.map\(n => \(\{ id: 'count:' \+ n/.test(fs.readFileSync(path.join(ROOT, 'widgets', 'dice', 'index.html'), 'utf8')), 'the Dice rolls up to 6 dice, as the new idea asks');
       // PEMDAS is gone from the widget, the guides, and README. The manual draws the four cells.
       const files = ['widgets/calculator/index.html', 'widgets/calculator/calc-engine.js', 'README.md', 'docs/teacher-guide/page-src.html', 'docs/calculator-manual/page-src.html'];
       const named = files.filter(f => /pemdas/i.test(fs.readFileSync(path.join(ROOT, f), 'utf8')));

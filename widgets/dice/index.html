@@ -120,7 +120,8 @@
 
   function setMenu() {
     Board21.menu.set([
-      ...[1, 2, 3, 4, 5, 6].map(n => ({ id: 'n' + n, label: n === 1 ? '1 die' : `${n} dice`, checked: config.count === n })),
+      { heading: true, label: 'Number of dice' },
+      { id: 'count', label: 'Number of dice', choices: [1, 2, 3, 4, 5, 6].map(n => ({ id: 'count:' + n, label: String(n), checked: config.count === n })) },
       { separator: true },
       { id: 'total', label: 'Show total', checked: !!config.showTotal }
     ]);
@@ -132,7 +133,7 @@
 
   Board21.on('menu', id => {
     if (id === 'total') config.showTotal = !config.showTotal;
-    else if (/^n\d$/.test(id)) { config.count = +id.slice(1); state.values = []; }
+    else if (/^count:[1-6]$/.test(id)) { config.count = +id.slice(6); state.values = []; }
     Board21.saveConfig(config); setMenu(); render();
   });
   Board21.on('data', d => { state = readState(d); render(true); });
