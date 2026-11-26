@@ -744,9 +744,11 @@ module.exports = T => {
     };
     const tapAt = async (p, pt) => { await p.mouse.click(pt.cx, pt.cy); await p.waitForTimeout(250); };
     const dbl = async (p, ik, id) => { const b = await boxOf(p, ik, '#' + id); await p.mouse.dblclick(b.cx, b.cy); await p.waitForTimeout(700); };
+    // Taps 150 ms apart, at places taken before.
+    const quick = async (p, pts) => { for (const pt of pts) { await p.mouse.click(pt.cx, pt.cy); await p.waitForTimeout(150); } };
     const settled = async (p, ik, fn) => { let d; await eventually(async () => { d = await saved(p, ik); return !!d && fn(d); }, 3000); return d; };
 
-    // ---- 1. The buttons: the time is taken when the finger lands, and a double tap never does two things.
+    // ---- 1. The buttons: the time is taken when the finger lands, and every tap acts at once.
     await part('Buttons', async () => {
       const { ctx, p, ik } = await board();
       const reg = await p.evaluate(() => { const a = window.__board21.catalog().find(w => w.id === 'stopwatch'); return a && { name: a.name, version: a.version, description: a.description, files: a.files, clash: a.clash, win: a.win, color: a.color, icon: a.icon }; });
@@ -771,7 +773,7 @@ module.exports = T => {
       ok(Math.abs(d.laps[0] - (t.down - t0)) <= 60, `Lap takes the time when the finger lands (${d.laps[0] - (t.down - t0)} ms off)`);
       await p.waitForTimeout(400);
       await dbl(p, ik, 'lap'); d = await saved(p, ik);
-      ok(d.laps.length === 2, `a double tap on Lap is one lap (${d.laps.length} laps)`);
+      ok(d.laps.length === 3, `a double tap on Lap is two laps, for two runners who finish together (${d.laps.length} laps)`);
       await p.waitForTimeout(400);
       t = await press(p, ik, 'stop', 500); d = await settled(p, ik, d => d.startedAt == null);
       L = await look(p, ik);
@@ -780,55 +782,33 @@ module.exports = T => {
       const banked = d.banked;
       await p.waitForTimeout(600);
       t = await press(p, ik, 'start'); d = await settled(p, ik, d => d.startedAt != null);
-      ok(d.banked === banked && d.laps.length === 2 && Math.abs(d.startedAt - t.down) <= 60 && (await look(p, ik)).title === 'Running', `Resume carries on from the stopped time, with its laps (${d.banked} ms banked)`);
+      ok(d.banked === banked && d.laps.length === 3 && Math.abs(d.startedAt - t.down) <= 60 && (await look(p, ik)).title === 'Running', `Resume carries on from the stopped time, with its laps (${d.banked} ms banked)`);
+      // Every tap acts at once. No button waits after it appears or moves.
+      const left = await boxOf(p, ik, '#lap'), right = await boxOf(p, ik, '#stop');
       await p.waitForTimeout(600);
-      await dbl(p, ik, 'stop'); L = await look(p, ik);
-      ok(L.phase === 'stopped' && L.main === 'Resume', `a double tap on Stop stops, and stays stopped (${L.phase})`);
-      await p.waitForTimeout(600);
-      await dbl(p, ik, 'start'); L = await look(p, ik);
-      ok(L.phase === 'running', `a double tap on Resume carries on, and keeps running (${L.phase})`);
-      await p.waitForTimeout(600);
-      await press(p, ik, 'stop'); d = await settled(p, ik, d => d.startedAt == null);
-      const before = { banked: d.banked, laps: d.laps.join() };
-      await p.waitForTimeout(800);
-      await dbl(p, ik, 'reset'); L = await look(p, ik); d = await saved(p, ik);
+      await quick(p, [right, left]); L = await look(p, ik); d = await saved(p, ik);
       ok(L.phase === 'idle' && L.on === 'undo,start' && L.time === '0:00.00' && d.banked === 0 && !!d.undo && /Undo reset/.test(await menuOf(p, ik)),
-        `a double tap on Reset resets once: Undo takes its place, and Undo reset is in the menu (${L.on}, ${await menuOf(p, ik)})`);
-      await p.waitForTimeout(800);
-      await press(p, ik, 'undo'); d = await settled(p, ik, d => d.banked > 0); L = await look(p, ik);
-      ok(d.banked === before.banked && d.laps.join() === before.laps && L.phase === 'stopped' && L.main === 'Resume', `Undo brings back the time and the laps (${d.banked}, ${d.laps.join()})`);
+        `Reset 150 ms after Stop resets: Undo takes its place, and Undo reset is in the menu (${L.phase}, ${L.on})`);
+      const before = d.undo ? { banked: d.undo.banked, laps: d.undo.laps.join() } : {};
+      await quick(p, [left]); d = await settled(p, ik, d => d.banked > 0); L = await look(p, ik);
+      ok(d.banked === before.banked && d.laps.join() === before.laps && L.phase === 'stopped' && L.main === 'Resume', `Undo right after Reset brings back the time and the laps (${d.banked}, ${d.laps.join()})`);
       await p.waitForTimeout(800);
       await press(p, ik, 'reset'); await p.waitForTimeout(800);
-      await dbl(p, ik, 'start'); L = await look(p, ik);
-      ok(L.phase === 'running' && L.on === 'lap,stop', `a double tap on Start starts, and keeps running (${L.phase})`);
+      await quick(p, [await boxOf(p, ik, '#start'), left]); d = await settled(p, ik, d => d.startedAt != null && d.laps.length === 1); L = await look(p, ik);
+      ok(L.phase === 'running' && L.on === 'lap,stop' && d.laps.length === 1, `Lap 150 ms after Start is a lap (${L.phase}, ${d.laps.length} laps)`);
 
       // ---- 2. A reload, and a second tab, mid-run.
       await p.waitForTimeout(500); await press(p, ik, 'lap'); await p.waitForTimeout(400); await press(p, ik, 'lap');
-      d = await settled(p, ik, d => d.laps.length === 2);
+      d = await settled(p, ik, d => d.laps.length === 3);
       await p.reload(); await boardUp(p); await connected(p, ik); await p.waitForTimeout(500);
       const p2 = await ctx.newPage(); p2.on('pageerror', e => errors.push(e.message));
       await p2.goto(BASE); await boardUp(p2); await connected(p2, ik); await p2.waitForTimeout(500);
       const [a, b] = [await look(p, ik), await look(p2, ik)];
       const secs = s => s.split(':').reduce((m, x) => m * 60 + +x, 0), want = (Date.now() - d.startedAt) / 1000;
-      ok(a.phase === 'running' && b.phase === 'running' && Math.abs(secs(a.time) - want) <= 1.5 && Math.abs(secs(b.time) - want) <= 1.5 && a.note === b.note && /^Lap 2 /.test(a.note),
+      ok(a.phase === 'running' && b.phase === 'running' && Math.abs(secs(a.time) - want) <= 1.5 && Math.abs(secs(b.time) - want) <= 1.5 && a.note === b.note && /^Lap 3 /.test(a.note),
         `after a reload and in a second tab, the same run: the same time and laps (${a.time} / ${b.time}, ${a.note} / ${b.note})`);
       await press(p2, ik, 'stop');
       ok(await eventually(async () => (await look(p, ik)).time === (await look(p2, ik)).time && (await look(p, ik)).phase === 'stopped'), `Stop in one tab stops both at the same time (${(await look(p, ik)).time})`);
-      await ctx.close();
-    });
-
-    // ---- Undo leaves the face 10 s after Reset, and Start grows into its place. A tap aimed at Undo just then
-    // never starts a run, so Undo reset stays in the menu.
-    await part('Undo leaves the face', async () => {
-      const { ctx, p, ik } = await board();
-      await size(p, ik, 600, 380);
-      await set(p, ik, { banked: 0, laps: [], undo: { banked: 65430, laps: [20000, 41000], at: Date.now() - 9200 } });
-      const u = await boxOf(p, ik, '#undo');
-      await F(p, ik, () => new Promise(r => { const s = document.getElementById('start'); new MutationObserver((_, o) => { if (s.dataset.at === 'full') { o.disconnect(); r(); } }).observe(s, { attributes: true }); }));
-      await p.waitForTimeout(500);
-      await tapAt(p, u);
-      const L = await look(p, ik), d = await saved(p, ik);
-      ok(L.phase === 'idle' && L.on === 'start' && !!d.undo && /Undo reset/.test(await menuOf(p, ik)), `a tap where Undo was, just after it leaves, starts nothing, and Undo reset stays (${L.phase}, ${L.on})`);
       await ctx.close();
     });
 
@@ -917,8 +897,11 @@ module.exports = T => {
             if (!grew && !same(await boxOf(p, ik, '#stop'), stop0)) moves.push(`Stop moved with ${id} ${turn}`);
             const L = await look(p, ik);
             if (!grew && L.on.includes('lap') && !same(await boxOf(p, ik, '#lap'), lap0)) moves.push(`Lap moved with ${id} ${turn}`);
-            await tapAt(p, lap0);
-            if ((await look(p, ik)).phase !== 'running') moves.push(`a tap at Lap's spot with ${id} ${turn} stopped the run`);
+            // Where the window keeps its size, a tap at Lap's spot, right after the setting changes, never stops the run.
+            if (!grew) {
+              await tapAt(p, lap0);
+              if ((await look(p, ik)).phase !== 'running') moves.push(`a tap at Lap's spot with ${id} ${turn} stopped the run`);
+            }
             await p.waitForTimeout(800);
           }
           const d = await saved(p, ik);
