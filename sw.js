@@ -11,17 +11,17 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.26-3';
+const VERSION = '2026.11.26-5';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'ed741147';
+const BUILD = '6c47272b';
 const FILES = {
-  './': '0df4e0b80d22659d',
-  'index.html': '0df4e0b80d22659d',
-  'board.js': 'e5e8da26e50798a0',
+  './': '63daf468c741775b',
+  'index.html': '63daf468c741775b',
+  'board.js': '1bb5fd1bd4fa9455',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
-  'sdk/dev/board-shell.js': '200e2628e5b24e79',
+  'sdk/dev/board-shell.js': 'ae09e5f461157ea7',
   'sdk/lab.html': '53da73e5ab2bad8b',
   'widgets/registry.js': '8eb19520325ff621',
   'manifest.webmanifest': '31bc5d66238072ca',
@@ -41,7 +41,7 @@ const FILES = {
   'widgets/stopwatch/index.html': '2a11bf4912e79294',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
-  'widgets/clock/index.html': '4b926306ff365fe3',
+  'widgets/clock/index.html': '0e18c55dfc6153cb',
   'widgets/notes/index.html': '0dc57fad3cd2fca1',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
@@ -61,13 +61,13 @@ const FILES = {
   'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
   'widgets/name-picker/style-bracket.js': '626ae95cae9d2924',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
-  'widgets/zones-check-in/index.html': '8b742161b437acae',
+  'widgets/zones-check-in/index.html': 'b922a7273f91a426',
   'widgets/dice/index.html': '7e6e22547b32875e',
   'widgets/traffic-light/index.html': '32cdeb7c2423d2a3',
   'widgets/youtube-player/index.html': '176df55af520e59f',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
-  'widgets/calculator/index.html': '059b09f734a01159',
+  'widgets/calculator/index.html': '473316f92b98fce9',
   'widgets/calculator/calc-engine.js': 'b02a2ec1c5e86079',
   'widgets/weather/index.html': '2d0976a1c1a5fead',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',

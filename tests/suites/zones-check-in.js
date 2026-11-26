@@ -19,16 +19,14 @@ module.exports = T => {
     const z = zf(page);
     const MENU0 = 'Undo (off) | Start over (off) | Edit… | — | ✓ Show counts | ✓ Clear each day | ☐ Sound';
     ok(await eventually(async () => await menuOf(page) === MENU0), `its menu: Undo, Start over, Edit…, then Show counts (on), Clear each day (on), Sound (off) (${await menuOf(page)})`);
+    // Start over's picture is the board's Reset picture, the circle arrow.
+    await page.click(`.win[data-ikey="${K}"] .win-label`); await page.waitForTimeout(250);
+    const pics = await page.evaluate(() => { const draw = s => s ? Array.from(s.children).map(e => e.outerHTML).join('') : ''; return { start: draw(document.querySelector('#menu [data-id="clear"] .icon-slot svg')), reset: draw(document.querySelector('#menu [data-act="reset"] svg')) }; });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    ok(!!pics.reset && pics.start === pics.reset, `Start over has the board’s Reset picture (${pics.start || 'none'})`);
     let x = await look(page);
     ok(x.counts.join() === '0,0,0,0' && x.status === 'Tap your zone to check in' && x.title === '' && x.minus.every(m => m.disabled && m.shown), `it starts at none: “Tap your zone to check in”, no title, each “−” disabled (${JSON.stringify(x)})`);
     ok(!x.undoButton, `no Undo button on the board (${x.undoButton})`);
-    await page.click(`.win[data-ikey="${K}"] .win-label`); await page.waitForTimeout(400);
-    const pic = await page.evaluate(() => ['[data-act="widget"][data-id="clear"]', '[data-act="reset"]'].map(s => {
-      const g = document.querySelector(`#menu ${s} .icon-slot svg`);
-      return g ? [...g.querySelectorAll('*')].map(e => [e.tagName, ...['d', 'fill', 'stroke-width'].map(a => e.getAttribute(a))].join(' ')).join(' | ') : 'none';
-    }));
-    await page.keyboard.press('Escape'); await page.waitForTimeout(300);
-    ok(pic[0] !== 'none' && pic[0] === pic[1], `Start over has the same symbol as Reset (${pic[0]}; Reset ${pic[1]})`);
 
     // Four taps, one on each card.
     const tap = async (zone, p = page) => { await zf(p).locator(`.zone[data-z="${zone}"] .tap`).click(); await p.waitForTimeout(120); };

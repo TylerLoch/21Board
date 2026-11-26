@@ -697,7 +697,7 @@ module.exports = T => {
     }
 
     // The menu with a full History never scrolls: at Size 50% and 200%, on 1366 × 768 and 1920 × 1080, with a video,
-    // in the link box, and in kiosk mode, with Board history's "Earlier versions…" in it too; it doesn't go into two
+    // in the link box, and in kiosk mode, with Board history's "Go back…" in it too; it doesn't go into two
     // columns, no label takes more than two lines (Chinese, an emoji title, one in capitals), and items whose labels
     // wrap are set apart (a gap, or where the menu is tightest a line between them). (Size goes straight from 50% to
     // 200% here: the menu is measured where it has the room, not squeezed at the place it had at 50%.)
@@ -741,8 +741,8 @@ module.exports = T => {
     seen.push(await menuFits(K, '1366 × 768 200%, kiosk'));
     await K.close();
     const bad = seen.filter(m => m.scrolls || !m.inside || /cols/.test(m.mode) || m.lines > 2 || m.items < 5 || !m.apart);
-    ok(!bad.length, `the menu with a full History fits on screen without scrolling or columns, no label over two lines, items set apart (${seen.map(m => `${m.label}: ${m.w} × ${m.h} ${m.mode}, ${m.lines} line(s), gaps ${m.gaps}${m.scrolls ? ' SCROLLS' : ''}${m.inside ? '' : ' OFF SCREEN'}${m.earlier ? ', Earlier versions…' : ''}`).join('; ')})`);
-    ok(seen.filter(m => !/kiosk/.test(m.label)).every(m => m.earlier), 'with “Earlier versions…” in the menu as well');
+    ok(!bad.length, `the menu with a full History fits on screen without scrolling or columns, no label over two lines, items set apart (${seen.map(m => `${m.label}: ${m.w} × ${m.h} ${m.mode}, ${m.lines} line(s), gaps ${m.gaps}${m.scrolls ? ' SCROLLS' : ''}${m.inside ? '' : ' OFF SCREEN'}${m.earlier ? ', Go back…' : ''}`).join('; ')})`);
+    ok(seen.filter(m => !/kiosk/.test(m.label)).every(m => m.earlier), 'with “Go back…” in the menu as well');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
     await ctx.close();
   }],

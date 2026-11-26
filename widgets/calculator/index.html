@@ -342,7 +342,9 @@
     replay: SVG('<path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/>'),
     alert: SVG('<circle cx="12" cy="12" r="9"/><path d="M12 7.5v5.5M12 16.5v.01"/>'),
     swap: SVG('<path d="M4 8h15M15 4l4 4-4 4M20 16H5M9 12l-4 4 4 4"/>'),
-    trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>'
+    trash: '<svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    // Hide the answer: the hidden answer itself, a ? in a dashed rounded square (8 dashes, one on each corner and side)
+    hidden: '<svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" stroke-dasharray="3 5.142" stroke-dashoffset="-3.5"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>'
   };
 
   // [engine key, grid area, kind, label]: the Advanced keys first (they sit above the others), then row by row.
@@ -782,6 +784,7 @@
       { id: 'history', label: 'History', checked: cfg.history },
       { id: 'steps', label: 'Steps', checked: cfg.steps, disabled: off },
       { id: 'words', label: 'In words', checked: cfg.words, disabled: off },
+      { id: 'swap', label: 'Swap sides', checked: cfg.swap },
       { separator: true },
       { heading: true, label: 'Answers' },
       { id: 'answers-decimal', label: 'As decimals', checked: cfg.answers === 'decimal', disabled: cfg.test },
@@ -790,9 +793,8 @@
       { separator: true },
       { id: 'advanced', label: 'Advanced keys', checked: cfg.advanced, disabled: cfg.test },
       cfg.advanced && { id: 'percent', label: 'Desmos %', checked: cfg.percent === 'of', disabled: cfg.test },
-      { id: 'hide', label: 'Hide the answer', checked: cfg.hide },
+      { id: 'hide', label: 'Hide the answer', icon: ICON.hidden, checked: cfg.hide },
       TEST_PRACTICE && { id: 'test', label: 'Test practice', checked: cfg.test },
-      { id: 'swap', label: 'Swap sides', checked: cfg.swap },
       { separator: true },
       { id: 'clear-history', label: 'Clear history', icon: ICON.trash, disabled: !s.history.length }
     ].filter(Boolean);
