@@ -100,13 +100,13 @@
   @keyframes ping { from { color: var(--b21-accent); } }
 
   /* "Let go to stop", while a held Start waits for the lift. It takes the place of the line under the time, or of the
-     record's line, and covers nothing else. */
+     record's line, and covers nothing else. It fades in, and goes at once at the lift, as the line comes back. */
   .cue {
     text-align: center; white-space: nowrap; line-height: 1; text-box: trim-both cap alphabetic; font-weight: 600;
-    opacity: 0; visibility: hidden; transition: opacity .15s, visibility 0s .15s, translate .42s var(--ease);
+    opacity: 0; visibility: hidden; transition: translate .42s var(--ease);
   }
   .face.cueing .cue { opacity: 1; visibility: visible; transition: opacity .2s, translate .42s var(--ease); }
-  .face.line-empty .cue.drops { translate: 0 calc(var(--drop) * .5px); }
+  .face.line-empty .cue { translate: 0 calc(var(--cdrop) * 1px); }
   .face.cueing .note, .face.cueing .rec { visibility: hidden; }
 
   /* Beat the record: a line above the time, and a track under it with the record's mark. The mark is one color
@@ -581,34 +581,42 @@
     save(); render(false);
   }
 
-  // Start, Stop, and Lap act when the finger lands: any finger or pen, or the mouse's main button, so a second finger
+  // Start, Stop, and Lap act when the finger lands: any finger, or the main button of a pen or mouse, so a second finger
   // can lap while the first holds Start. A press on them never moves the window (data-b21-nodrag). The click that
   // follows a press does nothing, even on the button that took its place. A click with no press, such as from a screen
-  // reader, still acts. Reset and Undo act on the click, and a drag from them moves the window.
+  // reader, still acts. Reset and Undo act on the click, and only for a press that began on them, so the lift from Stop
+  // never resets the run. A drag from them moves the window.
   function act(id) {
     if (id === 'start') start(now());
     else if (id === 'stop') stop(now());
     else lap(now());
   }
+  var pressedOn = null;
+  controls.addEventListener('pointerdown', function (e) { pressedOn = e.target.closest ? e.target.closest('.btn') : null; }, true);
   ['start', 'stop', 'lap'].forEach(function (id) {
     var b = B[id];
     b.addEventListener('pointerdown', function (e) {
-      if ((e.pointerType === 'mouse' && e.button !== 0) || !b.classList.contains('on')) return;
+      if (e.button !== 0 || !b.classList.contains('on')) return;
       // The lift counts wherever the finger slides to.
       if (id === 'start') { try { b.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ } }
       act(id);
       if (id === 'start' && running()) holdFrom(e.pointerId);
     });
-    // A button that just went away never takes the focus.
-    b.addEventListener('mousedown', function (e) { if (!b.classList.contains('on')) e.preventDefault(); });
     b.addEventListener('click', function (e) { if (!e.detail && b.classList.contains('on')) act(id); });
     b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
   });
   ['reset', 'undo'].forEach(function (id) {
-    B[id].addEventListener('click', function () {
-      if (!B[id].classList.contains('on')) return;
+    B[id].addEventListener('click', function (e) {
+      if (!B[id].classList.contains('on') || (e.detail && pressedOn !== B[id])) return;
       if (id === 'reset') reset(); else undoReset();
     });
+  });
+  // The press gives the Stopwatch the keys. If the button pressed went away, or the press began on another one, the
+  // focus goes to the button that took its place, as it does for keys.
+  controls.addEventListener('mousedown', function (e) {
+    var b = e.target.closest ? e.target.closest('.btn') : null;
+    if (!b || (b === pressedOn && b.classList.contains('on'))) return;
+    setTimeout(function () { if (document.activeElement === b) (running() ? B.stop : B.start).focus({ preventScroll: true }); });
   });
 
   // A held Start, or a held Space or Enter that started the run. Still down at 2 seconds, it stops the run when it
@@ -649,7 +657,7 @@
       if (btn === B.lap && B.lap.classList.contains('on')) lap(now());
       else if (running()) stop(now());
       else { start(now()); if (running()) holdFrom(e.key); }
-    } else if (e.key === 'l' || e.key === 'L') lap(now());
+    } else if ((e.key === 'l' || e.key === 'L') && !e.repeat) lap(now());
   });
   document.addEventListener('keyup', function (e) {
     delete keys[e.key];
@@ -685,6 +693,8 @@
     var colMid = (col.actualBoundingBoxAscent - col.actualBoundingBoxDescent) / 2;
     var dotInk = dot.actualBoundingBoxLeft + dot.actualBoundingBoxRight;
     var ink0 = c.measureText('0'), side = Math.max(0, (dw - (ink0.actualBoundingBoxLeft + ink0.actualBoundingBoxRight)) / 2);
+    c.font = '600 ' + R + 'px ' + fam;
+    var cueDown = c.measureText('Let go to stop').actualBoundingBoxDescent;
     probe.style.fontWeight = ''; probe.style.fontSize = '';
     var d6 = 0;
     for (d = 0; d < 10; d++) d6 = Math.max(d6, probeEm(String(d)));
@@ -701,6 +711,7 @@
       tw: Math.max(probeEm('0:00.00'), probeEm('0:00:00'), probeEm('00:00')),
       noteEm: probeEm('Lap 00') + 0.45 + probeEm('0:00.00') + 1.3 + probeEm('Total') + 0.45 + probeEm('0:00.00'),
       tag: probeEm('Fastest lap'), tagS: probeEm('Fastest'), cue: probeEm('Let go to stop'),
+      cueDown: (cueDown || R * 0.21) / R,      // how far its g and p reach below the line
       // The buttons' widest labels: the narrow ones, and the wide ones.
       small: Math.max(probeEm('Reset'), probeEm('Undo'), probeEm('Lap')),
       wide: Math.max(probeEm('Resume'), probeEm('Start'), probeEm('Stop'))
@@ -886,20 +897,28 @@
     } else {
       L.time = { x: padX, y: A.timeY + Math.round(A.F * hEm) - capH, w: innerW, h: capH };
     }
-    // "Let go to stop" takes the line under the time, where the plain face has it, or the record's line. With neither,
-    // it sits in the room under the time, or above it if there's more, as in the time's column beside a Lap list. In a
-    // window with no room for it, the window's title says it instead.
-    var cueAt = function (x, w, top, bottom, f, room) {
-      f = Math.max(minText, Math.min(f, Math.floor(w / M.cue), room ? Math.floor((bottom - top) / (1.6 * M.cap)) : f));
-      var h = Math.round(f * M.cap);
-      return { x: x, y: Math.round((top + bottom - h) / 2), w: w, h: h, sf: f };
+    // "Let go to stop" takes the line under the time, where the plain face has it, or the record's line. While that line
+    // is empty, the time drops into its place, and the words go in the room left under the time. With neither line, they
+    // sit in the room under the time, or above it if there's more, as in the time's column beside a Lap list, at a fifth
+    // of the time's size. In a room, the words, down to their g and p, keep clear of the time and the buttons. In a
+    // window with no room for them, the window's title says them instead.
+    var ink = M.cap + M.cueDown, air = function (f) { return Math.max(4, Math.round(f * 0.2)); };
+    var inRoom = function (f, room) {   // the biggest size up to f that fits the room with air above and below, or 0
+      for (f = Math.min(f, Math.floor(room / ink)); f >= minText; f--) if (f * ink + 2 * air(f) <= room) return f;
+      return 0;
     };
-    if (mode === 'note' || mode === 'liststack') { L.cue = cueAt(padX, innerW, A.noteY, A.noteY + A.noteH, sf); L.cue.drops = true; }
-    else if (L.rec) L.cue = cueAt(L.rec.x, L.rec.w, L.rec.y, L.rec.y + L.rec.h, L.sf);
+    var cueAt = function (x, w, f, y, h) { return { x: x, y: Math.round(y + (h - f * M.cap) / 2), w: w, h: Math.round(f * M.cap), sf: f, drop: 0 }; };
+    if (mode === 'note' || mode === 'liststack') {
+      var below = A.noteY - A.gapN + A.drop, fn = Math.min(sf, Math.floor(innerW / M.cue));
+      fn = Math.max(minText, inRoom(fn, ctl.y - below));
+      L.cue = cueAt(padX, innerW, fn, A.noteY, A.noteH);
+      L.cue.drop = Math.round((below + ctl.y - fn * ink) / 2) - L.cue.y;
+    } else if (L.rec) L.cue = cueAt(L.rec.x, L.rec.w, Math.max(minText, Math.min(L.sf, Math.floor(L.rec.w / M.cue))), L.rec.y, L.rec.h);
     else {
-      var cf = sf || Math.floor(clamp(F * 0.2, minText, 72)), under = L.track ? L.track.y + L.track.h : L.time.y + capH;
+      var under = L.track ? L.track.y + L.track.h : L.time.y + capH;
       var top = ctl.y - under >= L.time.y - padT ? under : padT, bottom = top === under ? ctl.y : L.time.y;
-      L.cue = bottom - top >= 1.6 * M.cap * minText ? cueAt(L.time.x, L.time.w, top, bottom, cf, true) : null;
+      var fr = inRoom(Math.min(Math.floor(clamp(F * 0.2, minText, 72)), Math.floor(L.time.w / M.cue)), bottom - top);
+      L.cue = fr ? cueAt(L.time.x, L.time.w, fr, top + (bottom - top - fr * ink) / 2, fr * M.cap) : null;
     }
     // Past an hour the time is wider, and only the time shrinks to fit. Nothing else moves.
     L.Fdraw = Math.floor(Math.min(L.F, L.time.w / wFit));
@@ -1028,7 +1047,7 @@
     note.classList.toggle('gone', !L.note);
     note.classList.toggle('short', L.noteShort);
     cueEl.classList.toggle('none', !L.cue);
-    if (L.cue) { put(cueEl, L.cue); cueEl.style.fontSize = L.cue.sf + 'px'; cueEl.classList.toggle('drops', !!L.cue.drops); }
+    if (L.cue) { put(cueEl, L.cue); cueEl.style.fontSize = L.cue.sf + 'px'; cueEl.style.setProperty('--cdrop', L.cue.drop); }
     // Beat the record
     recEl.classList.toggle('none', !L.rec);
     if (L.rec) { put(recEl, L.rec); recEl.style.fontSize = L.sf + 'px'; recKey = ''; }

@@ -2,7 +2,7 @@
 'use strict';
 module.exports = T => {
   const {
-    fs, path, OUT, ok, freeBoard, openSettings, addWin, hear, heard, eventually, release, boardUp, contrast, rgbOf, BASE
+    fs, path, OUT, ok, freeBoard, openSettings, addWin, addNote, noteOf, hear, heard, eventually, release, boardUp, contrast, rgbOf, BASE
   } = T;
   return [
   ['Timer sounds', async (browser) => {
@@ -748,16 +748,20 @@ module.exports = T => {
     const quick = async (p, pts) => { for (const pt of pts) { await p.mouse.click(pt.cx, pt.cy); await p.waitForTimeout(150); } };
     const settled = async (p, ik, fn) => { let d; await eventually(async () => { d = await saved(p, ik); return !!d && fn(d); }, 3000); return d; };
     const rectOf = (p, ik) => p.evaluate(ik => JSON.stringify(window.__board21.state.insts.get(ik).rect), ik);
-    // “Let go to stop”, if it shows: its box on the page, and its size on the screen.
+    // “Let go to stop”, if it shows: its box on the page, down to the bottom of its g and p, and its size on the screen.
     const cueOf = (p, ik) => p.evaluate(ik => {
       const f = window.__board21.state.wins.get(ik).iframe, fr = f.getBoundingClientRect(), cw = f.contentWindow, k = fr.width / cw.innerWidth;
       const e = [...f.contentDocument.querySelectorAll('body *')].find(e => e.textContent.trim() === 'Let go to stop' && e.checkVisibility({ opacityProperty: true, visibilityProperty: true }) &&
         e.getBoundingClientRect().width > 2 && ![...e.children].some(c => c.textContent.trim() === 'Let go to stop'));
       if (!e) return null;
-      const r = e.getBoundingClientRect();
-      return { x: fr.left + r.left * k, y: fr.top + r.top * k, w: r.width * k, h: r.height * k, px: parseFloat(cw.getComputedStyle(e).fontSize) * k };
+      const r = e.getBoundingClientRect(), cs = cw.getComputedStyle(e), c = f.contentDocument.createElement('canvas').getContext('2d');
+      c.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      const down = c.measureText('Let go to stop').actualBoundingBoxDescent;
+      return { x: fr.left + r.left * k, y: fr.top + r.top * k, w: r.width * k, h: (r.height + down) * k, px: parseFloat(cs.fontSize) * k };
     }, ik);
     const meets = (a, b) => !!a && !!b && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+    // Meets, or comes within 2 px above or below: words that touch the time or a button.
+    const near = (a, b) => meets(a && { x: a.x, y: a.y - 2, w: a.w, h: a.h + 4 }, b);
 
     // ---- 1. The buttons: the time is taken when the finger lands, and every tap acts at once.
     await part('Buttons', async () => {
@@ -1211,8 +1215,33 @@ module.exports = T => {
         await drag('#timeWrap');
         ok(!moved.length && d.startedAt === null && d.laps.length === 1 && await rectOf(p, ik) !== r0,
           `${w} × ${h}: a drag from Start, Lap, or Stop acts and never moves the window. One from the time does (${moved.join(', ') || 'none moved'}, ${d.laps.length} laps)`);
+        // A pen's side button, or the mouse's right or middle button, does nothing.
+        const side = async (id, pointerType, button) => {
+          const b = await boxOf(p, ik, '#' + id), cdp = await ctx.newCDPSession(p);
+          for (const type of ['mousePressed', 'mouseReleased']) await cdp.send('Input.dispatchMouseEvent', { type, x: b.cx, y: b.cy, button, buttons: type === 'mouseReleased' ? 0 : button === 'right' ? 2 : 4, clickCount: 1, pointerType });
+          await cdp.detach(); await p.waitForTimeout(300);
+          return (await saved(p, ik)).startedAt != null;
+        };
+        await set(p, ik, { banked: 0, laps: [] });
+        const idle = [await side('start', 'pen', 'right'), await side('start', 'mouse', 'right')];
+        await set(p, ik, { ago: 1000, banked: 0, laps: [] });
+        const run = [await side('stop', 'pen', 'right'), await side('stop', 'mouse', 'middle')];
+        ok(!idle.some(Boolean) && run.every(Boolean), `${w} × ${h}: a pen's side button, or a right or middle click, on Start or Stop does nothing (${JSON.stringify({ started: idle, running: run })})`);
       }
       await ctx.close();
+      // By touch on a Chromebook, a tap on the left of a full-width Stop stops the run. Reset, which takes its place under
+      // the finger, doesn't act on the lift.
+      const T = await board({ hasTouch: true }, true), cdp = await T.ctx.newCDPSession(T.p), bad = [];
+      for (const [w, h, name, c] of [[600, 380, 'Laps off', C({ laps: false })], [600, 380, 'Hide time', C({ hide: true })], [280, 200, 'plain', C()]]) {
+        await size(T.p, T.ik, w, h); await set(T.p, T.ik, { ago: 7000, banked: 0, laps: [] }, c);
+        const s = await boxOf(T.p, T.ik, '#stop'), pt = { x: s.x + s.w * 0.15, y: s.cy, id: 1 };
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [pt] }); await T.p.waitForTimeout(90);
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await T.p.waitForTimeout(500);
+        const d = await saved(T.p, T.ik), L = await look(T.p, T.ik);
+        if (d.startedAt !== null || d.banked < 7000 || d.undo || L.phase !== 'stopped') bad.push(`${name}, ${w} × ${h}: ${JSON.stringify({ banked: d.banked, undo: !!d.undo, phase: L.phase })}`);
+      }
+      ok(!bad.length, `Chromebook, by touch: a tap on the left of a full-width Stop stops the run, and Reset under the finger does nothing (${bad.join('; ') || 'Laps off, Hide time, and the smallest window'})`);
+      await T.ctx.close();
     });
 
     // ---- 12. A held Start: past 2 seconds the line under the time says “Let go to stop”, and the lift stops the run. A
@@ -1253,34 +1282,53 @@ module.exports = T => {
       await p.keyboard.down('Space'); await p.waitForTimeout(400); await p.keyboard.up('Space'); await p.waitForTimeout(400);
       d = await saved(p, ik);
       ok(d.startedAt != null && !await cueOf(p, ik), `a short Space on a focused Resume leaves it running (${d.startedAt != null ? 'running' : 'stopped'})`);
+      // L held on the focused Stop: one lap, however long the key repeats.
+      for (let i = 0; i < 6; i++) { await p.keyboard.down('l'); await p.waitForTimeout(80); }
+      await p.keyboard.up('l'); await p.waitForTimeout(300);
+      const laps = (await saved(p, ik)).laps.length;
+      ok(laps === 1, `L held with key repeat is one lap (${laps} laps)`);
+      // After typing in a Note, a click on Start gives the Stopwatch the keys, so Space stops the run.
+      const nk = await addNote(p, 'abc'), note = p.frameLocator(`.win[data-ikey="${nk}"] iframe`).locator('#t');
+      await p.evaluate(nk => window.__board21.setRect(nk, { x: 700, y: 40, w: 400, h: 300 }), nk); await p.waitForTimeout(600);
+      await set(p, ik, { banked: 0, laps: [] });
+      await note.click(); await p.keyboard.press('End');
+      await press(p, ik, 'start');
+      const began = (await saved(p, ik)).startedAt != null;
+      await p.keyboard.press('Space'); await p.waitForTimeout(400);
+      d = await saved(p, ik);
+      const text = await noteOf(p, nk);
+      ok(began && d.startedAt === null && text === 'abc', `after typing in a Note, a click on Start gives the Stopwatch the keys: Space stops the run (${JSON.stringify({ began, running: d.startedAt != null, note: text })})`);
       await ctx.close();
 
-      // By touch on a Chromebook: a second finger laps while the first holds Start, and both lift at 2.4 s. No pointercancel,
-      // no context menu.
+      // By touch on a Chromebook: the first finger holds Start and slides 40 px, a second finger laps, and both lift at
+      // 2.4 s. No pointercancel, and a long press on Start, Stop, or Lap opens no context menu.
       const T = await board({ hasTouch: true }, true);
       await size(T.p, T.ik, 600, 380);
-      await F(T.p, T.ik, () => { window.__cancels = 0; window.__menus = []; addEventListener('pointercancel', () => window.__cancels++, true); addEventListener('contextmenu', e => window.__menus.push(e.defaultPrevented)); });
+      await F(T.p, T.ik, () => { window.__cancels = 0; addEventListener('pointercancel', () => window.__cancels++, true); });
       const cdp = await T.ctx.newCDPSession(T.p), s = await boxOf(T.p, T.ik, '#start');
       const one = { x: s.cx, y: s.cy, id: 1 };
-      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [one] }); await T.p.waitForTimeout(800);
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [one] }); await T.p.waitForTimeout(300);
+      for (let i = 1; i <= 4; i++) { one.x -= 10; await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [one] }); await T.p.waitForTimeout(40); }
+      await T.p.waitForTimeout(340);
       const l = await boxOf(T.p, T.ik, '#lap'), two = { x: l.cx, y: l.cy, id: 2 };
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [one, two] }); await T.p.waitForTimeout(800);
       const early = await cueOf(T.p, T.ik); await T.p.waitForTimeout(800);
       const late = await cueOf(T.p, T.ik), mid = await saved(T.p, T.ik) || { laps: [] };
       await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] }); await T.p.waitForTimeout(500);
       d = await saved(T.p, T.ik) || {};
-      const spied = await F(T.p, T.ik, () => ({ cancels: window.__cancels, menus: window.__menus }));
-      ok(!early && !!late && late.px >= 13.95 && mid.startedAt != null && mid.laps.length === 1 && d.startedAt === null && d.banked >= 2000 && spied.cancels === 0 && spied.menus.every(Boolean),
-        `Chromebook, by touch: a second finger laps, “Let go to stop” shows at ${late ? late.px.toFixed(1) : 0} px after 2 seconds, and the lift stops the run, with no pointercancel or context menu (${JSON.stringify({ early: !!early, laps: mid.laps.length, banked: d.banked, ...spied })})`);
+      const cancels = await F(T.p, T.ik, () => window.__cancels);
+      const menus = await F(T.p, T.ik, () => ['start', 'stop', 'lap'].map(id => { const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); document.getElementById(id).dispatchEvent(e); return e.defaultPrevented; }));
+      ok(!early && !!late && late.px >= 13.95 && mid.startedAt != null && mid.laps.length === 1 && d.startedAt === null && d.banked >= 2000 && cancels === 0 && menus.every(Boolean),
+        `Chromebook, by touch: a second finger laps, “Let go to stop” shows at ${late ? late.px.toFixed(1) : 0} px after 2 seconds, and the lift stops the run, with no pointercancel or context menu (${JSON.stringify({ early: !!early, laps: mid.laps.length, banked: d.banked, cancels, menus })})`);
       await T.ctx.close();
     });
 
-    // ---- 13. “Let go to stop” takes the line under the time, or its place, and moves nothing: not the time, the buttons,
-    // or the list. At the default size and the smallest.
+    // ---- 13. “Let go to stop” takes the line under the time, or its place, keeps clear of the time and the buttons, and
+    // moves nothing: not the time, the buttons, or the list. At the default size, a short one, and the smallest.
     await part('Let go to stop', async () => {
       const { ctx, p, ik } = await board();
       const box = sel => boxOf(p, ik, sel);
-      for (const [w, h] of [[600, 380], [280, 200]]) {
+      for (const [w, h] of [[600, 380], [600, 280], [280, 200]]) {
         await size(p, ik, w, h);
         const bad = [];
         for (const [name, c] of [['plain', C()], ['Lap list', C({ list: true })], ['Hide time', C({ hide: true })], ['Beat the record', C({ record: true })]]) {
@@ -1294,13 +1342,15 @@ module.exports = T => {
           for (const [i, sel] of sels.entries()) {
             const now = await box(sel);
             if (!same(before[i], now)) bad.push(`${name}: ${sel} moved`);
-            if (meets(cue, now)) bad.push(`${name}: it covers ${sel}`);
+            if (near(cue, now)) bad.push(`${name}: it touches ${sel}`);
           }
           if (!cue) bad.push(`${name}: no “Let go to stop”`);
           if (L.note || L.rec) bad.push(`${name}: “${L.note || L.rec}” still shows`);
-          await p.mouse.up(); await p.waitForTimeout(400);
+          await p.mouse.up();
+          if (await cueOf(p, ik)) bad.push(`${name}: it still shows after the lift`);
+          await p.waitForTimeout(400);
         }
-        ok(!bad.length, `${w} × ${h}: “Let go to stop” takes the line under the time in plain, Lap list, Hide time, and Beat the record, and moves nothing (${bad.join('; ') || 'all four'})`);
+        ok(!bad.length, `${w} × ${h}: “Let go to stop” takes the line under the time in plain, Lap list, Hide time, and Beat the record, touches nothing, moves nothing, and goes at the lift (${bad.join('; ') || 'all four'})`);
       }
       await ctx.close();
       // The smallest window on a Chromebook has no room under the time: the window's title says it.
@@ -1312,7 +1362,7 @@ module.exports = T => {
       await T.p.waitForTimeout(1300);
       const cue = await cueOf(T.p, T.ik), L = await look(T.p, T.ik), after = await boxes();
       await T.p.mouse.up(); await T.p.waitForTimeout(400);
-      ok((cue ? cue.px >= 13.95 && !meets(cue, after[0]) && !meets(cue, after[1]) : L.title === 'Let go to stop') && same(before[0], after[0]) && same(before[1], after[1]) && (await look(T.p, T.ik)).title === 'Stopped',
+      ok((cue ? cue.px >= 13.95 && !near(cue, after[0]) && !near(cue, after[1]) : L.title === 'Let go to stop') && same(before[0], after[0]) && same(before[1], after[1]) && (await look(T.p, T.ik)).title === 'Stopped',
         `Chromebook, 280 × 200: “Let go to stop” covers nothing, or the window's title says it, and the time and buttons stay put (${cue ? 'in the window' : 'title: ' + L.title})`);
       await T.ctx.close();
     });
