@@ -19,11 +19,14 @@ module.exports = T => {
     const z = zf(page);
     const MENU0 = 'Undo (off) | Start over (off) | Edit… | — | ✓ Show counts | ✓ Clear each day | ☐ Sound';
     ok(await eventually(async () => await menuOf(page) === MENU0), `its menu: Undo, Start over, Edit…, then Show counts (on), Clear each day (on), Sound (off) (${await menuOf(page)})`);
-    // Start over's picture is the board's Reset picture, the circle arrow.
+    // Start over's picture is the board's Reset picture, the circle arrow. Edit…'s is the board's pencil.
     await page.click(`.win[data-ikey="${K}"] .win-label`); await page.waitForTimeout(250);
-    const pics = await page.evaluate(() => { const draw = s => s ? Array.from(s.children).map(e => e.outerHTML).join('') : ''; return { start: draw(document.querySelector('#menu [data-id="clear"] .icon-slot svg')), reset: draw(document.querySelector('#menu [data-act="reset"] svg')) }; });
+    const pics = await page.evaluate(() => { const draw = s => s ? Array.from(s.children).map(e => e.outerHTML).join('') : ''; return { start: draw(document.querySelector('#menu [data-id="clear"] .icon-slot svg')), reset: draw(document.querySelector('#menu [data-act="reset"] svg')),
+      edit: [...document.querySelectorAll('#menu [data-id="edit"] .icon-slot svg path')].map(p => p.getAttribute('d')).join(' | ') }; });
     await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     ok(!!pics.reset && pics.start === pics.reset, `Start over has the board’s Reset picture (${pics.start || 'none'})`);
+    const pencil = [...((/^\s*pencil: '(.*)',$/m.exec(fs.readFileSync(path.join(ROOT, 'board.js'), 'utf8')) || [])[1] || '').matchAll(/ d="([^"]+)"/g)].map(m => m[1]).join(' | ');
+    ok(!!pencil && pics.edit === pencil, `Edit… has the board’s pencil (${pics.edit || 'none'}; the board’s ${pencil || 'none'})`);
     let x = await look(page);
     ok(x.counts.join() === '0,0,0,0' && x.status === 'Tap your zone to check in' && x.title === '' && x.minus.every(m => m.disabled && m.shown), `it starts at none: “Tap your zone to check in”, no title, each “−” disabled (${JSON.stringify(x)})`);
     ok(!x.undoButton, `no Undo button on the board (${x.undoButton})`);
