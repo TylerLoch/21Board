@@ -88,6 +88,8 @@ module.exports = T => {
       ok(m === MENU && n === 22, `its menu, 22 items (${n}: ${m})`);
       const icon = await page.evaluate(k => (window.__board21.state.wins.get(k).menuItems.find(i => i.label === 'Forecast from Open-Meteo') || {}).icon || '', K);
       ok(/M14 4h6v6/.test(icon), 'Forecast from Open-Meteo has the board’s open-in-a-tab icon');
+      const pics = await page.evaluate(k => window.__board21.state.wins.get(k).menuItems.filter(i => i.icon).map(i => i.id).join(), K);
+      ok(pics === 'date,place,open', `On a date…, Location…, and Forecast from Open-Meteo have pictures, and no other item does (${pics})`);
       for (const [where, y] of [['near the top', 0], ['near the bottom', 100000]]) {
         await page.evaluate(([k, y]) => window.__board21.setRect(k, Object.assign({}, window.__board21.state.insts.get(k).rect, { x: 300, y })), [K, y]); await page.waitForTimeout(500);
         await page.click(`.win[data-ikey="${K}"] .win-label`); await page.waitForTimeout(400);

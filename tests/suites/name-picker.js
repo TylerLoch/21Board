@@ -118,6 +118,8 @@ module.exports = T => {
     await page.evaluate(() => window.__board21.openWidget('name-picker'));
     ok(await eventually(async () => ((await conf()) || {}).style === 'wheel'), `a new Name Picker opens as the Spinning wheel, and saves that (${JSON.stringify(await conf())})`);
     ok(await eventually(async () => await items() === MENU('wheel', 1)), 'its menu: Edit names on top, “Pick with” every way, “Names at a time” 1 to 6 in a row, then No repeats, Start over, Sound, Quick: ' + await items());
+    const npPics = await page.evaluate(() => window.__board21.state.wins.get('name-picker:1').menuItems.filter(i => i.icon).map(i => i.id).join());
+    ok(npPics === 'edit,sound', `Edit names and Sound have pictures, and no other item does (${npPics})`);
     await np().locator('#list').fill('Ava\nLeo\nMia\nNoah\nZoe\nEthan');
     await np().locator('#done').click(); await page.waitForTimeout(300);
     ok(await text('#status') === '6 of 6 left' && await text('#go') === 'Pick a name' && await np().locator('#round').isHidden(), 'with names: “6 of 6 left”, “Pick a name”, and no Start over yet');

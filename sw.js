@@ -11,14 +11,14 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.26-4';
+const VERSION = '2026.11.26-5';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = 'a1ab8a58';
+const BUILD = '4b2dca2f';
 const FILES = {
-  './': '08b5ed6d67541d5b',
-  'index.html': '08b5ed6d67541d5b',
-  'board.js': '78aa20b67f5462ab',
+  './': '988a50484ff86e47',
+  'index.html': '988a50484ff86e47',
+  'board.js': '3032fce476983374',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': 'ae09e5f461157ea7',
@@ -42,12 +42,12 @@ const FILES = {
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
   'widgets/clock/index.html': '0e18c55dfc6153cb',
-  'widgets/notes/index.html': '0dc57fad3cd2fca1',
+  'widgets/notes/index.html': '84d19e7f5c6d5d64',
   'widgets/notes/fonts/CrayonLibre-21Board.woff2': '7456bd198b414e6c',
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': 'e30889ad1ecd8738',
+  'widgets/name-picker/index.html': 'b834f3f9e03916dd',
   'widgets/name-picker/style-bigname.js': '9d6775ffa5fb7f17',
   'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
   'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
@@ -69,7 +69,7 @@ const FILES = {
   'widgets/image/index.html': 'af8342c7d8c343fa',
   'widgets/calculator/index.html': '473316f92b98fce9',
   'widgets/calculator/calc-engine.js': 'b02a2ec1c5e86079',
-  'widgets/weather/index.html': '2d0976a1c1a5fead',
+  'widgets/weather/index.html': 'f6bd5737c5eaccef',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',
   'widgets/sdk-playground/index.html': '865e44d9a5333e9d'
 };
