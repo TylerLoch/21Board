@@ -659,7 +659,7 @@ Each device thins only files with its own `dev4` (by name only); files ending in
 - Opening the widget again reopens the **lowest-numbered closed instance**, restoring its position,
   size, and content. With `timer:1` and `timer:2` both closed: first open → `timer:1`,
   second → `timer:2`, third → new `timer:3`.
-- **Reset** (window menu) deletes that instance's `data` and `conf` and restores the default size.
+- **Reset…** (window menu) deletes that instance's `data` and `conf` and restores the default size.
 - **Delete** (Settings → This page → Windows) removes the `inst`, `data`, and `conf` records.
 - Records for a widget that isn't installed are kept (and exported) but not shown.
 - A widget marked `single` in the registry, as the district apps are, has one window. Opening it while it is

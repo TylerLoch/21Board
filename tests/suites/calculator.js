@@ -125,9 +125,23 @@ module.exports = T => {
     ok(L.keyMin >= 44, `every key is 44 px or larger (${L.keyMin.toFixed(1)})`);
     ok(L.player && /Next step/.test(L.next) && L.hide === 'false', `Steps show inside the canvas, with Next step, and the Hide the answer switch is off (${L.next})`);
     ok(L.focus, 'nothing in it takes the focus by itself');
-    const MENU0 = '[Show] | ✓ Canvas | History | ✓ Steps | In words | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | Swap sides | — | (off) Clear history';
+    const MENU0 = '[Show] | ✓ Canvas | History | ✓ Steps | In words | Swap sides | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | — | (off) Clear history';
     let mtext = await menu();
     ok(mtext === MENU0, `its window menu (${mtext})`);
+    // Hide the answer's picture is the hidden answer: a rounded square with a dashed outline and a ? inside, drawn as the
+    // menu's other pictures are.
+    await page.click('.win[data-ikey="calculator:1"] .win-label'); await page.waitForTimeout(250);
+    const pic = await page.evaluate(() => {
+      const s = document.querySelector('#menu [data-act="widget"][data-id="hide"] .icon-slot svg'), r = s && s.querySelector('rect');
+      if (!r) return null;
+      const b = r.getBBox(), cs = getComputedStyle(r), inner = Array.from(s.children).filter(e => e !== r).map(e => e.getBBox());
+      const trash = getComputedStyle(document.querySelector('#menu [data-id="clear-history"] .icon-slot svg path')), PROPS = ['stroke', 'strokeWidth', 'strokeLinecap', 'strokeLinejoin', 'fill'];
+      return { box: s.getAttribute('viewBox'), square: b.width === b.height, round: +r.getAttribute('rx') > 0, dashed: cs.strokeDasharray !== 'none',
+        q: inner.length > 0 && inner.every(q => q.x > b.x && q.y > b.y && q.x + q.width < b.x + b.width && q.y + q.height < b.y + b.height),
+        same: Array.from(s.children).every(e => { const c = getComputedStyle(e); return PROPS.every(p => c[p] === trash[p]); }) };
+    });
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
+    ok(!!pic && pic.box === '0 0 24 24' && pic.square && pic.round && pic.dashed && pic.q && pic.same, `Hide the answer’s picture: a rounded square, dashed, with the ? inside it, drawn as Clear history’s is (${JSON.stringify(pic)})`);
     ok(!/digit|group|comma|separat/i.test(mtext || 'digit'), 'no digit-group item in the menu');
 
     // ---- = = = counts by 5s, and each = adds its line to History
@@ -581,7 +595,7 @@ module.exports = T => {
     const sorted = s => String(s).split(',').sort().join();
     const BASIC = 'clear,backspace,negate,open,close,sqrt,divide,7,8,9,multiply,4,5,6,subtract,1,2,3,add,0,point,ans,equals';
     const ADV = 'square,power,root,cbrt,pi,percent,fraction,right';
-    const MENU_OFF = '[Show] | ✓ Canvas | History | ✓ Steps | In words | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | Swap sides | — | (off) Clear history';
+    const MENU_OFF = '[Show] | ✓ Canvas | History | ✓ Steps | In words | Swap sides | — | [Answers] | ✓ As decimals | As fractions | With remainders | — | Advanced keys | Hide the answer | — | (off) Clear history';
     const MENU_ON = MENU_OFF.replace('| Advanced keys |', '| ✓ Advanced keys | ✓ Desmos % |');
     const head = m => String(m).replace(/ \| — \| (\(off\) )?Clear history$/, '');   // (Clear history is greyed out while History is empty)
     const NAME = { '+': 'add', '−': 'subtract', '×': 'multiply', '÷': 'divide', '=': 'equals', '.': 'point', '(': 'open', ')': 'close', '%': 'percent' };
@@ -686,6 +700,32 @@ module.exports = T => {
       const f = await menuBox(F);
       ok(!f.scrolls && f.top >= 0 && f.bottom <= 768 && f.items.includes('Desmos %') && f.items.length === 15,
         `a board that is the screen (the window from ${f.win[0]} to ${f.win[1]}): the whole menu fits, ${f.top} to ${f.bottom}, without scrolling (${f.items.length} items; ${f.cls})`);
+      await F.page.keyboard.press('Escape'); await F.page.waitForTimeout(200);
+      // At a large Size the menu takes two columns. Each group stays whole in one column, and no column starts or ends
+      // with a line. With Advanced keys on and off, at Size 150%, 175%, and 200%.
+      const two = [];
+      for (const adv of ['on', 'off']) {
+        if (adv === 'off') { await F.page.evaluate(() => window.__board21.setBoardScale(0.8)); await F.page.waitForTimeout(400); await F.choose('Advanced keys'); }
+        for (const sc of [1.5, 1.75, 2]) {
+          await F.page.evaluate(sc => window.__board21.setBoardScale(sc), sc); await F.page.waitForTimeout(400);
+          await F.front(); await F.page.click(`.win[data-ikey="${F.ik}"] .win-label`); await F.page.waitForTimeout(400);
+          two.push(Object.assign({ at: `Advanced keys ${adv}, ${sc * 100}%` }, await F.page.evaluate(() => {
+            const m = document.getElementById('menu'), b = m.getBoundingClientRect(), shown = e => e.getClientRects().length > 0;
+            const kids = [...m.querySelectorAll(':scope > :not(.menu-group), .menu-group > *')].filter(shown);
+            // (Every item is as wide as its column: one that starts past the first item's right edge is in column 2.)
+            const edge = kids[0].getBoundingClientRect().right, col = e => e.getBoundingClientRect().left >= edge - 0.5 ? 2 : 1;
+            const name = e => e.classList.contains('menu-sep') ? '—' : e.classList.contains('menu-heading') ? `[${e.textContent.trim()}]` : e.textContent.trim();
+            const cols = [1, 2].map(c => kids.filter(e => col(e) === c)).filter(l => l.length);
+            return { cols: m.classList.contains('cols'), list: cols.map(l => l.map(name).join(' | ')).join(' ‖ '),
+              split: [...m.querySelectorAll('.menu-group')].filter(g => new Set([...g.children].filter(shown).map(col)).size > 1).map(g => g.getAttribute('aria-label')),
+              lines: cols.some(l => l[0].classList.contains('menu-sep') || l[l.length - 1].classList.contains('menu-sep')),
+              fits: m.scrollHeight <= m.clientHeight + 1 && b.top >= 0 && b.bottom <= innerHeight && b.left >= 0 && b.right <= innerWidth };
+          })));
+          await F.page.keyboard.press('Escape'); await F.page.waitForTimeout(200);
+        }
+      }
+      ok(two.some(t => t.cols) && two.every(t => !t.split.length && !t.lines && t.fits),
+        `in two columns, each group whole in one column, no line at a column’s top or bottom, and all of it on screen (${two.map(t => `${t.at}: ${t.cols ? t.list : 'one column'}${t.split.length ? '; SPLIT: ' + t.split.join(', ') : ''}${t.lines ? '; A LINE AT AN END' : ''}${t.fits ? '' : '; DOESN’T FIT'}`).join(' / ')})`);
       await F.ctx.close();
     });
 
@@ -802,7 +842,7 @@ module.exports = T => {
         ok(!hit, `${f}: no Test practice, and none of the old names${hit ? ` (“${t.slice(Math.max(0, hit.index - 40), hit.index + 40)}”)` : ''}`);
       }
       const readme = read('README.md').replace(/\s+/g, ' '), sec = readme.slice(readme.indexOf('## Calculator'), readme.indexOf('## District apps'));
-      const order = ['**Canvas:**', '**History:**', '**Steps:**', '**In words:**', '**Answers:**', '**Advanced keys:**', '**Desmos %:**', '**Hide the answer:**', '**Swap sides:**', '**Clear history:**'];
+      const order = ['**Canvas:**', '**History:**', '**Steps:**', '**In words:**', '**Swap sides:**', '**Answers:**', '**Advanced keys:**', '**Desmos %:**', '**Hide the answer:**', '**Clear history:**'];
       ok(order.every((w, i) => sec.indexOf(w) >= 0 && (!i || sec.indexOf(w) > sec.indexOf(order[i - 1]))), 'README: the menu list in the menu’s order, with Answers and Desmos %');
       const data = read('docs/DATA-FORMAT.md').replace(/\s+/g, ' ');
       ok(/answers: "decimal" \| "fraction" \| "remainder"/.test(data) && /`fractions`/.test(data), 'DATA-FORMAT: the config’s answers, and the fractions written for older releases');

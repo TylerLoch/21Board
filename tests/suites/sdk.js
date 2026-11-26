@@ -563,7 +563,7 @@ module.exports = T => {
     ok(await board.evaluate(() => window.__board21.state.wins.size === 1 && document.querySelector('.win .win-label .name').textContent === 'Counter'), 'the window has the real title bar with the widget\'s name');
     await tap(preview, board, '.win-label');
     const menu = await board.evaluate(() => ({ items: [...document.querySelectorAll('#menu .menu-item')].map(e => e.textContent.trim()), swatches: document.querySelectorAll('#menu .swatch').length }));
-    ok(menu.items.includes('Add one') && menu.items.includes('Fill the board') && menu.items.includes('Close') && menu.swatches === 1, `tapping the name opens the real window menu (${menu.items.join(', ')}; the swatch that isn't a #hex color is left out)`);
+    ok(menu.items.includes('Add one') && menu.items.includes('Zoom to fill') && menu.items.includes('Close') && menu.swatches === 1, `tapping the name opens the real window menu (${menu.items.join(', ')}; the swatch that isn't a #hex color is left out)`);
     await page.waitForTimeout(400);
     await tap(preview, board, '#menu [data-id="add"]');
     ok(await widget.evaluate(() => document.getElementById('n').textContent === '1') && await board.evaluate(() => JSON.stringify([...window.__board21.state.data.values()]) === '[{"count":1}]'), 'a menu item reaches the widget, and its save is stored');

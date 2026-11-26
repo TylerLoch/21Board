@@ -167,6 +167,10 @@ module.exports = T => {
     await page.mouse.dblclick(tb.x + 20, tb.y + 20); await page.waitForTimeout(400);
     const mx = (await wins(page))['timer:1'];
     ok(mx.w === 1400 && mx.h === 860, 'double-tap title bar maximizes');
+    await page.click('.win[data-ikey="timer:1"] .win-label'); await page.waitForTimeout(250);
+    const zoom = await page.evaluate(() => Array.from(document.querySelectorAll('#menu [data-act="maximize"], #menu [data-act="restore"]')).map(b => b.textContent.trim()).join());
+    ok(zoom === 'Zoom back out', `its menu then has Zoom back out (${zoom})`);
+    await page.keyboard.press('Escape'); await page.waitForTimeout(200);
     await page.mouse.dblclick(30, 20); await page.waitForTimeout(400);
     ok((await wins(page))['timer:1'].w === tb.w, 'double-tap again restores');
 
@@ -174,6 +178,8 @@ module.exports = T => {
     await page.click('.win[data-ikey="notes:1"] .win-label'); await page.waitForTimeout(150);
     await page.click('#menu [data-act="reset"]'); await page.waitForTimeout(150);
     await page.screenshot({ path: OUT + '12-reset-confirm.png' });
+    const asks = await page.evaluate(() => Array.from(document.getElementById('menu').children).map(e => e.innerText.replace(/\s+/g, ' ').trim()).join(' | '));
+    ok(asks === 'Reset Notes? This clears everything you did in this window. Board history keeps a version. | Reset | Cancel', `Reset… asks first (${asks})`);
     await page.click('#menu [data-act="reset-yes"]'); await page.waitForTimeout(800);
     ok(await frameOf(page, 'notes:1').locator('textarea').inputValue() === '', 'reset clears content');
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));

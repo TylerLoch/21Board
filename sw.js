@@ -11,17 +11,17 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.26-3';
+const VERSION = '2026.11.26-4';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '5bc67bd3';
+const BUILD = 'a1ab8a58';
 const FILES = {
-  './': 'dd3be2fcb9d3c1d9',
-  'index.html': 'dd3be2fcb9d3c1d9',
-  'board.js': '73c366c5e0b84027',
+  './': '08b5ed6d67541d5b',
+  'index.html': '08b5ed6d67541d5b',
+  'board.js': '78aa20b67f5462ab',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
-  'sdk/dev/board-shell.js': '200e2628e5b24e79',
+  'sdk/dev/board-shell.js': 'ae09e5f461157ea7',
   'sdk/lab.html': '53da73e5ab2bad8b',
   'widgets/registry.js': '8eb19520325ff621',
   'manifest.webmanifest': '31bc5d66238072ca',
@@ -61,13 +61,13 @@ const FILES = {
   'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
   'widgets/name-picker/style-bracket.js': '626ae95cae9d2924',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
-  'widgets/zones-check-in/index.html': '0e0cdcaa866f8428',
+  'widgets/zones-check-in/index.html': '12fe0adf13bb49a4',
   'widgets/dice/index.html': '7e6e22547b32875e',
   'widgets/traffic-light/index.html': '32cdeb7c2423d2a3',
   'widgets/youtube-player/index.html': '176df55af520e59f',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
-  'widgets/calculator/index.html': '059b09f734a01159',
+  'widgets/calculator/index.html': '473316f92b98fce9',
   'widgets/calculator/calc-engine.js': 'b02a2ec1c5e86079',
   'widgets/weather/index.html': '2d0976a1c1a5fead',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',

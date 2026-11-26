@@ -112,13 +112,14 @@ async function checkOne(browser, base, w, h, scheme) {
     if (inner !== scheme) fail(where, `the demo is ${inner}, the page ${scheme}`); else ok(`the demo follows the page (${scheme}, page ${look})`);
 
     // The menu drawn on the page is the widget's own, as a new window opens
-    const live = await page.$$eval('#calc-menu button.wm-i', bs => bs.filter(b => b.id !== 'menu-reset').map(b => ({ label: b.querySelector('.wm-l').textContent, on: b.getAttribute('aria-checked') === 'true', off: b.disabled })));
-    const drawn = await page.$$eval('#menu-drawn .wm-i', es => es.map(e => ({ label: e.querySelector('.wm-l').textContent, on: !!e.querySelector('.wm-ck'), off: e.classList.contains('off') })));
+    // (pic: the item's picture, as drawn: the same picture on the page as in the widget)
+    const live = await page.$$eval('#calc-menu button.wm-i', bs => bs.filter(b => b.id !== 'menu-reset').map(b => ({ label: b.querySelector('.wm-l').textContent, on: b.getAttribute('aria-checked') === 'true', off: b.disabled, pic: (b.querySelector('.wm-ic svg') || {}).innerHTML || '' })));
+    const drawn = await page.$$eval('#menu-drawn .wm-i', es => es.map(e => ({ label: e.querySelector('.wm-l').textContent, on: !!e.querySelector('.wm-ck'), off: e.classList.contains('off'), pic: (e.querySelector('.wm-ic svg') || {}).innerHTML || '' })));
     const terms = await page.$$eval('#menu-items dt', ds => ds.map(d => d.textContent));
     const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
     if (!same(drawn.slice(0, live.length), live)) fail(where, 'the drawn menu differs from the widget\'s: ' + JSON.stringify(live));
-    else if (!same(drawn.slice(live.length).map(d => d.label), ['Fill the board', 'Reset', 'Close'])) fail(where, 'the drawn menu should end with Fill the board, Reset and Close');
-    else ok(`the drawn menu matches the widget's ${live.length} items, ticks and greyed-out ones`);
+    else if (!same(drawn.slice(live.length).map(d => d.label), ['Zoom to fill', 'Reset…', 'Close'])) fail(where, 'the drawn menu should end with Zoom to fill, Reset…, and Close');
+    else ok(`the drawn menu matches the widget's ${live.length} items, ticks, greyed-out ones, and pictures`);
     const heads = sel => page.$$eval(sel, hs => hs.map(h => h.textContent));
     if (!same(await heads('#menu-drawn .wm-h'), await heads('#calc-menu .wm-h'))) fail(where, 'the drawn menu\'s headings differ from the widget\'s: ' + JSON.stringify(await heads('#calc-menu .wm-h')));
     else ok('the drawn menu has the widget\'s headings: ' + (await heads('#calc-menu .wm-h')).join(', '));

@@ -341,7 +341,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
         <div class="pg-card">
           <h3>Sizes</h3>
           <p>A new window opens at <!--@OPENS-->. The smallest is <!--@SMALLEST-->.</p>
-          <p>Fill the board, and the panels share the space.</p>
+          <p>Zoom to fill, and the panels share the space.</p>
         </div>
         <div class="pg-card">
           <h3>Growing</h3>
@@ -370,6 +370,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">History</span></div>
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Steps</span><svg class="wm-ck" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">In words</span></div>
+            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Swap sides</span></div>
             <div class="wm-sep"></div>
             <div class="wm-h">Answers</div>
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">As decimals</span><svg class="wm-ck" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg></div>
@@ -377,13 +378,12 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">With remainders</span></div>
             <div class="wm-sep"></div>
             <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Advanced keys</span></div>
-            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Hide the answer</span></div>
-            <div class="wm-i"><span class="wm-ic"></span><span class="wm-l">Swap sides</span></div>
+            <div class="wm-i"><span class="wm-ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="4" stroke-dasharray="3 5.142" stroke-dashoffset="-3.5"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span><span class="wm-l">Hide the answer</span></div>
             <div class="wm-sep"></div>
             <div class="wm-i off"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></span><span class="wm-l">Clear history</span></div>
             <div class="wm-sep"></div>
-            <div class="wm-i"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></span><span class="wm-l">Fill the board</span></div>
-            <div class="wm-i"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/></svg></span><span class="wm-l">Reset</span></div>
+            <div class="wm-i"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg></span><span class="wm-l">Zoom to fill</span></div>
+            <div class="wm-i"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/></svg></span><span class="wm-l">Reset…</span></div>
             <div class="wm-i"><span class="wm-ic"><svg viewBox="0 0 24 24"><path d="M18 6L6 18M6 6l12 12"/></svg></span><span class="wm-l">Close</span></div>
           </div>
           <p class="pg-note">As a new window opens.</p>
@@ -393,17 +393,17 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
           <dt>History</dt><dd>Your problems, one to a line, the newest at the bottom. Tap one to change it. Tap its answer to use it.</dd>
           <dt>Steps</dt><dd>Next step, Back, and Show all, under the problem.<span class="grey">Greyed out while Canvas is off.</span></dd>
           <dt>In words</dt><dd>“2 plus 3 times 4 equals 14” under the problem.<span class="grey">Greyed out while Canvas is off.</span></dd>
+          <dt>Swap sides</dt><dd>The panels trade sides.</dd>
           <dt>As decimals</dt><dd>Answers start as decimals, such as 0.125. ⇄ switches one to a fraction.</dd>
           <dt>As fractions</dt><dd>Answers start as fractions, such as 1/8. ⇄ switches one to a decimal.</dd>
           <dt>With remainders</dt><dd>A whole number ÷ a whole number shows its remainder, such as 17 ÷ 5 = 3 R 2. Other answers are decimals.</dd>
           <dt>Advanced keys</dt><dd>Adds a² aᵇ ⁿ√ ∛ π % a/b and → above the keys.</dd>
           <dt>Desmos %</dt><dd>On, % means “% of”, as in Desmos. Off, 50 + 10% = 55, as on iPhone.<span class="grey">Shows while Advanced keys are on.</span></dd>
           <dt>Hide the answer</dt><dd>The answer hides behind a ? until you tap it. The class predicts first.</dd>
-          <dt>Swap sides</dt><dd>The panels trade sides.</dd>
           <dt>Clear history</dt><dd>Empties History.<span class="grey">Greyed out while History is empty.</span></dd>
         </dl>
       </div>
-      <p class="pg-note">Fill the board, Reset, and Close come with every window. Earlier versions… joins them once Board history has one.</p>
+      <p class="pg-note">Zoom to fill, Reset…, and Close come with every window. Go back… joins them once Board history has an earlier version.</p>
     </div>
   </section>
 
@@ -627,8 +627,8 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
         <li>Each window keeps its problem, the last <!--@HISTORY--> in History, and its menu settings.</li>
         <li>Two Calculator windows keep their own work.</li>
         <li>With Board Sync, your other devices get it too. If two devices change a window at once, the later change wins. Board history keeps the other.</li>
-        <li>Board history keeps earlier versions. Earlier versions… in the window menu brings one back.</li>
-        <li>Reset clears the problem, History, and settings. The window goes back to its first size.</li>
+        <li>Board history keeps earlier versions. Go back… in the window menu brings one back.</li>
+        <li>Reset… clears the problem, History, and settings. The window goes back to its first size.</li>
         <li>A full backup keeps it all. A blank template keeps the settings, without the problem or History.</li>
         <li>After a reload, the steps start over and a hidden answer hides again.</li>
       </ul>
@@ -799,7 +799,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
     // The window menu: the widget's own items, then the board's Reset (with its question first, as on the board)
     function renderMenu() {
       if (confirming) {
-        menuEl.innerHTML = '<div class="wm-confirm"><b>Reset Calculator?</b><br>This clears everything in this window and restores its starting size.</div>' +
+        menuEl.innerHTML = '<div class="wm-confirm"><b>Reset Calculator?</b><br>This clears everything you did in this window.</div>' +
           `<button type="button" class="wm-i danger" role="menuitem" id="menu-reset-yes"><span class="wm-ic">${ICON.reset}</span><span class="wm-l">Reset</span></button>` +
           '<button type="button" class="wm-i" role="menuitem" id="menu-reset-no"><span class="wm-ic"></span><span class="wm-l">Cancel</span></button>';
         return;
@@ -814,7 +814,7 @@ footer { margin-top: 48px; font-size: 13.5px; color: var(--muted); }
           `<span class="wm-ic">${/^<svg[\s>]/.test(i.icon || '') && !/<script|\bon\w+=/i.test(i.icon) ? i.icon : ''}</span><span class="wm-l">${esc(i.label)}</span>${i.checked === true ? ICON.check : ''}</button>`;
       }
       if (html) html += '<div class="wm-sep" role="separator"></div>';
-      html += `<button type="button" class="wm-i" role="menuitem" id="menu-reset"><span class="wm-ic">${ICON.reset}</span><span class="wm-l">Reset</span></button>`;
+      html += `<button type="button" class="wm-i" role="menuitem" id="menu-reset"><span class="wm-ic">${ICON.reset}</span><span class="wm-l">Reset…</span></button>`;
       const had = document.activeElement && menuEl.contains(document.activeElement) ? document.activeElement.id : '';
       menuEl.innerHTML = html;
       if (had && $(had)) $(had).focus({ preventScroll: true });

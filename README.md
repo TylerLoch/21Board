@@ -92,13 +92,13 @@ widget.
 | **Move a window** | Drag its title bar. In widgets without typing, such as Timer, Calendar, and Dice, drag anywhere inside. In widgets with typing, such as Notes, drag inside with two fingers. The Video Player's video takes every tap, so move or bring forward its window by the title bar. Windows snap next to each other and resist overlapping. Keep pushing to overlap anyway. Two people can drag two windows at once. |
 | **Resize** | Tap a window to select it, then drag the handles at its corners and the middle of each side. Edges snap to line up with nearby windows and to match their width or height. Some widgets keep a fixed shape. |
 | **Select a window** | Tap anywhere on it. It comes forward and gets an outline in the accent color, a stronger title bar tint, and resize handles. Tap the empty board to deselect. |
-| **Window menu** | Tap the widget's name ⌄ in the title bar for its own options, **Fill the board**, **Reset**, and **Close**. 21Sketch, 21Timer, and 21DocCam have **Reload** and **Open in new tab** instead of Reset. Double-tap the title bar to fill the board or restore the window. A tap that slides a little still counts as a tap. On a keyboard, Enter on the window's name opens the menu, the arrow keys move, Enter chooses, and Escape closes. |
+| **Window menu** | Tap the widget's name ⌄ in the title bar for its own options, **Zoom to fill**, **Reset…**, and **Close**. 21Sketch, 21Timer, and 21DocCam swap **Reset…** for **Refresh** and **Open in new tab**. Double-tap the title bar to fill the board or restore the window. A tap that slides a little still counts as a tap. On a keyboard, Enter on the window's name opens the menu, the arrow keys move, Enter chooses, and Escape closes. |
 | **Close a window** | Its content is kept. Open the widget again to pick up where you left off. Several of one widget come back in order: 1, 2, 3. |
 | **Export** | *Full backup* saves everything, closed windows too. *Blank template* saves the layout and widget settings with no content, so it's safe to share with colleagues. With several pages, choose *All pages*, *This page*, or *This page as a blank template*. You get a `.21board` file. In Chrome and Edge on computers and Chromebooks, you choose where it goes, such as Google Drive. *Back up now* in Settings and the backup reminders always save every page. |
 | **Import** | Pick a `.21board` file, or drop it on the board. The suggested choice is *Open as a new page*. The others are *Replace this page* and *Add to this page*. For a file of several pages, choose *Add these pages* or *Replace all pages*, which has Undo. *Replace this page* keeps the page itself and takes the file's theme, accent color, and text style, and says so when they differ. With Board Sync, the new windows, content, theme, accent color, and text style reach your other devices too. Its Undo puts back the page, theme, accent color, and text style it replaced. The other choices leave the theme, accent color, and text style alone. A Board Sync device file opens as a backup of every page. |
 | **Paste** | Ctrl+V or ⌘V opens a copied picture in a new Picture window. A copied video link opens in a new Video Player. Dropping either on the board does the same. On a touch screen, tap *Paste* in the Widget Picker. An animation copied from a web page pastes as a still. Open or drop its file to keep it moving. |
 | **Different screens** | The board is 16:9 and scales like a picture to fit any screen, so your layout looks the same on a laptop and the smartboard. In Settings, *Fill* lets the board take any window's shape, and you can change the size of windows and menus. |
-| **Board history** | Undo a big change, or recover from a curious student. Settings → Classroom → **Board history…** lists earlier versions in a column beside Settings. Tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board, and can be undone. *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, and Import. An empty board offers *Go back to an earlier version*. Each window's menu has *Earlier versions…*. |
+| **Board history** | Undo a big change, or recover from a curious student. Settings → Classroom → **Board history…** lists earlier versions in a column beside Settings. Tap one to see it in a third column, with a small preview and what changed. *Go back* restores the whole board, and can be undone. *Put back* brings back one window. Undo also appears after Reset, Delete, Close all, and Import. An empty board offers *Go back to an earlier version*. Each window's menu has *Go back…*, for that window's earlier versions. |
 | **Lock** | Tap **Lock** in the Widget Picker, then choose. *Lock everything*: nothing on the board responds. Timers and videos keep going. *Widgets still work*: windows can't move, resize, or close, and widgets can still be used. Either way ▦ stays put and won't open. A tap says “The board is locked.” A 🔒 sits in the top corner above each ▦. To unlock, hold 🔒 for 2 seconds. A quick tap shows *Hold to unlock*. On a keyboard, press Enter on 🔒, then *Unlock*. Every tab on this device locks and unlocks together. Messages show without their buttons. Under *Widgets still work*, a file dropped on the board asks to unlock first. *Lock everything* refuses it. |
 | **Kiosk mode** | For a ChromeOS kiosk with no sign-in, add `?kiosk=yes` to the address. Full screen and Board Sync go away, and a red ✕ Quit follows the Settings gear. See [Kiosk mode](#kiosk-mode). |
 | **Several tabs** | 21Board tabs and windows on one computer stay in sync. |
@@ -563,13 +563,13 @@ repeats the last step, so 5 + 5 = = = counts by 5s. A faint comma groups the dig
   it.
 - **Steps:** Next step, Back, and Show all, with each step's rule lit. A clicker's Page Down works too.
 - **In words:** "2 plus 3 times 4 equals 14" under the problem.
+- **Swap sides:** the panels change sides, for a teacher on the left of a flat panel.
 - **Answers:** as decimals, as fractions, or with remainders. Decimals to start. With remainders, 17 ÷ 5 = 3 R 2, and
   any other answer is a decimal. ⇄ beside an answer switches that one.
 - **Advanced keys:** a² aᵇ ⁿ√ ∛ π % a/b →. Off to start.
 - **Desmos %:** under Advanced keys, while they're on. On, % means "% of", as in Desmos. Off, 50 + 10% = 55, as on
   iPhone. On to start.
 - **Hide the answer:** the class predicts, then taps to see.
-- **Swap sides:** the panels change sides, for a teacher on the left of a flat panel.
 - **Clear history:** empties History.
 
 Turning on History or the canvas widens the window, where the board has room. In a tall window, the canvas goes above
@@ -629,8 +629,8 @@ doesn't copy the apps or their work.
   anything, because 21Board can't see taps inside another site's page. A window nothing covers takes every tap
   straight away, so two people can draw in 21Sketch and use another window at once. The outline may then stay on the
   other window. Move the window by its title bar.
-- **The window menu** has *Reload 21Sketch*, to load the app again, such as after the connection comes back, and
-  *Open in new tab*. It has no *Reset* or *Earlier versions*, because the app's work isn't
+- **The window menu** has *Refresh 21Sketch*, to load the app again, such as after the connection comes back, and
+  *Open in new tab*. It has no *Reset…* or *Go back…*, because the app's work isn't
   21Board's to reset or bring back.
 - **Backups, templates, the Google Drive folder, and Board history** keep the window's place and whether it's open,
   never the app's work. A board opened on another device opens that device's 21Sketch, with whatever is saved there.
@@ -654,7 +654,7 @@ copy of 21Sketch and a test worker. Offline, the window opened 21Sketch with the
 - Offline, the window's title says **Offline**, and a message says once that you're offline and the app works only
   if it's saved on this device. 21Board can't see into another site's page, so it can't tell whether the app
   loaded, and covers nothing. An app with its own offline copy works as usual. One without shows the browser's "no
-  connection" page. When the connection is back, choose *Reload 21Sketch*, *Reload 21Timer*, or *Reload 21DocCam* in
+  connection" page. When the connection is back, choose *Refresh 21Sketch*, *Refresh 21Timer*, or *Refresh 21DocCam* in
   the window's menu. The same goes for a window that opened while the site was out of reach, such as before Wi-Fi
   was up, at a sign-in page, or with the server down. 21Board can't tell, so it doesn't reload the window by itself.
   *Ready to work offline* in Settings is about 21Board itself.
@@ -721,7 +721,7 @@ Tap the version again, or its ✕, to close the column. The Undo strip, the sugg
 *Deleted pages*, *Save this version now*, what's kept, and the copies in the Google Drive folder stay in the list's
 column.
 
-Opened from a window's *Earlier versions…*, a message, or the empty board, Board history opens alone at the screen
+Opened from a window's *Go back…*, a message, or the empty board, Board history opens alone at the screen
 edge, and a version is the second column. Each column is as wide as Settings at the chosen size of windows and
 menus. On a 1366 × 768 Chromebook all three fit side by side at the usual size. Where one doesn't fit, such as on an
 iPad or at a large size, it covers the column before it, with *‹ Settings* or *‹ Board history* to go back. Escape

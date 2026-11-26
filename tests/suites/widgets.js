@@ -452,7 +452,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await page.click('.win[data-ikey="21sketch:1"] .win-label'); await page.waitForTimeout(250);
     await page.screenshot({ path: OUT + '90-district-apps-light.png' });
     const acts = await B(() => Array.from(document.querySelectorAll('#menu [data-act]')).map(b => b.dataset.act + ':' + b.textContent.trim()));
-    ok(JSON.stringify(acts) === JSON.stringify(['maximize:Fill the board', 'reload:Reload 21Sketch', 'own:Open in new tab', 'close:Close']), 'its menu: Fill the board, “Reload 21Sketch”, “Open in new tab”, Close (no Reset, no Earlier versions): ' + acts.join(', '));
+    ok(JSON.stringify(acts) === JSON.stringify(['maximize:Zoom to fill', 'reload:Refresh 21Sketch', 'own:Open in new tab', 'close:Close']), 'its menu: Zoom to fill, “Refresh 21Sketch”, “Open in new tab”, Close (no Reset…, no Go back…): ' + acts.join(', '));
     const popup = ctx.waitForEvent('page', { timeout: 5000 }).catch(() => null);
     await page.click('#menu [data-act="own"]');
     const pop = await popup;
@@ -465,7 +465,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     ok(!frameOf(page, '21timer') && page.frames().some(f => /^chrome-error:/.test(f.url())), '(while 21Timer’s site can’t be reached, its window shows the browser’s error page)');
     down.delete('21timer');
     await page.click('.win[data-ikey="21timer:1"] .win-label'); await page.click('#menu [data-act="reload"]'); await page.waitForTimeout(800);
-    ok(!!frameOf(page, '21timer') && await frameOf(page, '21timer').title() === '21Timer stand-in' && await focused() === '21timer:1', '“Reload 21Timer” in its menu loads it again once the site answers');
+    ok(!!frameOf(page, '21timer') && await frameOf(page, '21timer').title() === '21Timer stand-in' && await focused() === '21timer:1', '“Refresh 21Timer” in its menu loads it again once the site answers');
 
     // ---- Settings says the app keeps its own work; deleting the window leaves that work alone.
     await openSettings(page, ['saved', 'advanced']);
@@ -565,7 +565,7 @@ parent.postMessage({ b21: 1, type: 'window', op: 'maximize', args: [] }, '*');
     await k.touchscreen.tap(kr.x + kr.width / 2, kr.y + kr.height / 2); await k.waitForTimeout(300);
     ok(await k.evaluate(() => window.__board21.state.focused) === '21sketch:1' && await ktaps() === 2, 'with Dice partly over it, a touch inside 21Sketch brings it to the front');
     await k.tap('.win[data-ikey="21sketch:1"] .win-label'); await k.waitForTimeout(250);
-    ok(await k.locator('#menu [data-act="own"]').count() === 0 && await k.locator('#menu [data-act="reload"]').count() === 1 && await k.locator('#menu [data-act="close"]').count() === 1, 'in kiosk mode its menu has “Reload 21Sketch” but no “Open 21Sketch on its own”');
+    ok(await k.locator('#menu [data-act="own"]').count() === 0 && await k.locator('#menu [data-act="reload"]').count() === 1 && await k.locator('#menu [data-act="close"]').count() === 1, 'in kiosk mode its menu has “Refresh 21Sketch” but no “Open in new tab”');
     await kctx.close();
 
     // ---- Opened from disk there is no origin to check messages by: the board still takes none from these apps.
