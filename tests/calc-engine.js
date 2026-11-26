@@ -881,7 +881,8 @@ test('HTML: superscript powers, nested for 2^3^2', () => {
   assert.ok(html('5²').includes('<sup class="ce-sup"><span class="ce-num">2</span></sup>'));
 });
 test('HTML: a radical with a bar over everything under it', () => {
-  assert.ok(html('√9+16').includes('<span class="ce-sqrt"><span class="ce-radic">√</span><span class="ce-radicand"><span class="ce-num">9</span><span class="ce-op"> + </span><span class="ce-num">16</span></span></span>'));
+  const h = html('√9+16');
+  assert.ok(/<span class="ce-sqrt"><span class="ce-radic"><span class="ce-surd">√<\/span><svg [^]*?<\/svg><\/svg><\/span><span class="ce-radicand"><span class="ce-num">9<\/span><span class="ce-op">[^<]*\+[^<]*<\/span><span class="ce-num">16<\/span><\/span><\/span>/.test(h), h);
   assert.ok(html('√4²').includes('<span class="ce-radicand"><span class="ce-pow"><span class="ce-num">4</span><sup class="ce-sup"><span class="ce-num">2</span></sup></span></span>'));
 });
 test('HTML: a root with its small number', () => assert.ok(html('∛8').includes('<span class="ce-root"><span class="ce-index"><span class="ce-num">3</span></span><span class="ce-sqrt">')));
@@ -2674,7 +2675,9 @@ test('17/5 after a remainder: As decimals and As fractions give what they gave i
     u.useAnswer(1); u.input('×5=');
     assert.strictEqual(u.state().equation.text, as === 'decimal' ? '3.4 × 5 = 17' : '17/5 × 5 = 17', `${as}: History’s Use`);
     all += u.state().equation.html + JSON.stringify(u.serialize());
-    assert.strictEqual(require('crypto').createHash('sha256').update(all).digest('hex').slice(0, 16), HASH[as], `${as}: drawn and saved exactly as in 2026.11.23-1`);
+    // (The √ has been drawn as a picture since 2026.11.26: it counts here as the √ it was.)
+    const radic = /<span class="ce-radic"><span class="ce-surd">√<\/span><svg [^]*?<\/svg><\/svg><\/span>/g;
+    assert.strictEqual(require('crypto').createHash('sha256').update(all.replace(radic, '<span class="ce-radic">√</span>')).digest('hex').slice(0, 16), HASH[as], `${as}: drawn and saved exactly as in 2026.11.23-1`);
   }
 });
 
