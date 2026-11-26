@@ -11,14 +11,14 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.25-6';
+const VERSION = '2026.11.25-7';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '4345fb8c';
+const BUILD = 'b6d95260';
 const FILES = {
-  './': 'a12d1624456b5bfb',
-  'index.html': 'a12d1624456b5bfb',
-  'board.js': '9a08767e1b19826f',
+  './': '64f2b10ffcd66686',
+  'index.html': '64f2b10ffcd66686',
+  'board.js': '62b585db2d38646d',
   'sdk/board21.js': 'd4ac31b44e3ea26e',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': '200e2628e5b24e79',
@@ -46,19 +46,19 @@ const FILES = {
   'widgets/notes/fonts/CrayonLibre-LICENSE.txt': 'f4e7f373b9b99695',
   'widgets/notes/fonts/Excalifont-Regular.woff2': 'ee41ec4c06bfa072',
   'widgets/notes/fonts/Excalifont-OFL.txt': '862c615026e6b939',
-  'widgets/name-picker/index.html': 'd3ccafa2031f5da6',
+  'widgets/name-picker/index.html': 'e30889ad1ecd8738',
   'widgets/name-picker/style-bigname.js': '9d6775ffa5fb7f17',
   'widgets/name-picker/style-wheel.js': '075d8ee73bbcab4d',
   'widgets/name-picker/style-spotlight.js': '275408a405cc9a54',
   'widgets/name-picker/style-lotto.js': 'b34332daca17e15b',
-  'widgets/name-picker/style-versus.js': '69b38381093daac5',
+  'widgets/name-picker/style-versus.js': '9344c716f271af5d',
   'widgets/name-picker/vs-lightning.js': '6d34946be8338ab8',
   'widgets/name-picker/vs-forged.js': '07556f56a9ccea89',
   'widgets/name-picker/vs-crest.js': '5215473e36a8b620',
   'widgets/name-picker/vs-comic.js': '282eeb9624080002',
   'widgets/name-picker/vs-flame.js': 'f7f0828ff757f68c',
   'widgets/name-picker/style-groups.js': '7a1b0a0be51ac9fe',
-  'widgets/name-picker/style-bracket.js': 'bf64e3a8072c82fa',
+  'widgets/name-picker/style-bracket.js': '626ae95cae9d2924',
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
   'widgets/zones-check-in/index.html': '0e0cdcaa866f8428',
   'widgets/dice/index.html': '7e6e22547b32875e',

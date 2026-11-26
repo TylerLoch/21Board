@@ -4,7 +4,7 @@
  * first draw every name waits on the stage as a tile, as in Groups. The bracket's two halves meet at a trophy in the
  * middle, seed 1's half on the left, one column for each round. A student with a bye sits in round 2, and each half
  * takes one row for each student in it. On a draw the names gather into a stack, then deal out one at a time into their
- * first spots, with a pop as each lands and a chime after the last: about 3 seconds for any class (with Quick about
+ * first spots, with a pop as each lands and a zap with the last: about 3 seconds for any class (with Quick about
  * 1½). A tap on a name in a ready match slides it on to its next spot. Every name is one size, as large as fits.
  * The host draws and saves the bracket and each tap (host.tap); this file only lays it out and puts on the shows. How a
  * style plugs in, and how the spots are numbered: the comment at the top of index.html.
@@ -278,7 +278,7 @@ NamePicker.register('bracket', {
     });
 
     // ---- A tap's slide: the name goes from its spot on to the next (or, for Undo, back), and the spot it lands in shows it
-    // with a pop. The last tap lands in the champion's spot, with the chime.
+    // with a pop. The last tap lands in the champion's spot, with the champion's zap.
     function anim(list, el, frames, opts) {
       if (!el.animate) return null;
       try { const a = el.animate(frames, opts); list.push(a); return a; } catch (e) { return null; }
@@ -291,7 +291,7 @@ NamePicker.register('bracket', {
       e.addEventListener('animationend', () => e.classList.remove(P_ + 'land'), { once: true });
       if (to === 1) trophy.classList.add(P_ + 'gold');
       host.sound('pop');
-      if (to === 1) host.sound('chime');
+      if (to === 1) host.sound('champion');
     }
     function slide(s, on, view) {
       const from = at.get(on ? s : s >> 1), to = at.get(on ? s >> 1 : s);
@@ -362,7 +362,7 @@ NamePicker.register('bracket', {
         if (!a) g.remove();
       }
     }
-    // One name flies from the stack to its first spot, and lands with a pop. The last one lands with the chime.
+    // One name flies from the stack to its first spot, and lands with a pop. The last one lands with the zap.
     function fly(s, j, n) {
       const T = run.T, sp = at.get(s), st = stackRect(), r = rectOf(sp);
       nextUp(j + 1);
@@ -380,7 +380,7 @@ NamePicker.register('bracket', {
         // (No more than about 30 pops a second, for a big class with Quick.)
         const now = performance.now();
         if (now - run.popAt >= 34 || run.landed === n) { run.popAt = now; host.sound('pop', { pitch: 0.9 + 0.25 * (j / Math.max(1, n - 1)) }); }
-        if (run.landed === n) { host.sound('chime'); end(false); }
+        if (run.landed === n) { host.sound('zap'); end(false); }
       };
       const a = anim(run.anims, f, [{ transform: 'none', opacity: 1 }, { transform: `translate(${px(dx)}, ${px(dy)})`, opacity: 1, offset: 0.85 }, { transform: `translate(${px(dx)}, ${px(dy)})`, opacity: 0 }],
         { duration: T.fly, easing: 'cubic-bezier(.3, .7, .4, 1)', fill: 'forwards' });

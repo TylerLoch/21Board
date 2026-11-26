@@ -36,7 +36,7 @@
  *                    fade it in, about 0.3 s, nothing moving.
  *                    Bracket: how.moved is the spot whose name a tap here has just moved on (to spot >> 1): slide it
  *                    there, about 0.3 s (0.15 s with Quick, at once with reduce motion), with host.sound('pop') as it
- *                    lands, and 'chime' too when it lands in spot 1. how.back is the spot Undo here has just taken a name
+ *                    lands, and 'champion' too when it lands in spot 1. how.back is the spot Undo here has just taken a name
  *                    back to, from spot >> 1: slide it back. A spot that had the keyboard focus passes it on to the next
  *                    ready spot, or lets it go when none is left (the host then puts it on the main button).
  *                    Only called while the stage is on screen with something on it: at least one name, or a bracket.
@@ -86,8 +86,10 @@
  *                               name moves on: the host saves it, says it, and calls show(view, { moved: spot }).
  *                               Anything else, or a tap during the show, does nothing.
  *   host.sound(name, opts)      'tick' (a soft tick: the hopping light), 'click' (the wheel's clicker), 'clack'
- *                               (lotto balls knocking), 'pop' (a ball rolling out, a name landing), 'slam' (a deep
- *                               thud: Versus's emblem landing), 'chime' (the winners).
+ *                               (lotto balls knocking), 'pop' (a ball rolling out, a name landing), 'drum' (a soft
+ *                               drum: Versus rolls it before the slam), 'slam' (a deep thud: Versus's emblem landing),
+ *                               'chime' (the winners), 'challenge' (Versus's pair on screen), 'zap' (Bracket's
+ *                               draw dealt), 'champion' (Bracket's champion).
  *                               opts: { volume: 0-1, pitch: 0.5-2 }. Silent unless Sound is ticked
  *                               and the window has been tapped; never throws. Don't call it more than ~30 times a
  *                               second.
@@ -354,6 +356,9 @@ window.NamePicker = {
   const grouping = () => config.style === 'groups';
   const bracketing = () => config.style === 'bracket';
   const versus = () => config.style === 'versus';
+  // The sound a show ends on, which Sound plays as its sample too: the challenge in Versus, the zap in Bracket, and the
+  // chime in the rest.
+  const ending = () => versus() ? 'challenge' : bracketing() ? 'zap' : 'chime';
   // The ways that pick winners (all but Groups and Bracket): they share the pick round, No repeats, and Start over, and
   // all but Versus Names at a time.
   const picking = () => !grouping() && !bracketing();
@@ -702,8 +707,8 @@ window.NamePicker = {
     say('');
     if (reduced() || document.hidden || !pickVisible() || !mounted || typeof mounted.api.play !== 'function') {
       render({ fade: true }); announce();
-      // Reduce motion means less movement, not less sound: the winners still get their chime (when Sound is ticked).
-      if (reduced() && pickVisible()) Sound.play('chime');
+      // Reduce motion still plays the show's last sound, when Sound is ticked.
+      if (reduced() && pickVisible()) Sound.play(ending());
       return;
     }
     showing = { at: performance.now(), timer: setTimeout(skipShow, config.quick ? 4000 : 10000) };
@@ -794,7 +799,36 @@ window.NamePicker = {
       }
       const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
       s.buffer = noiseBuf; f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = q;
-      g.gain.setValueAtTime(vol, at); g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      // (Silent until it starts: a burst that starts between two samples would otherwise click, at full volume, on the
+      // one before.)
+      g.gain.setValueAtTime(0, 0); g.gain.setValueAtTime(vol, at); g.gain.exponentialRampToValueAtTime(0.0001, at + len);
+      s.connect(f).connect(g).connect(ctx.destination); s.start(at); s.stop(at + len + 0.02);
+    }
+    // A note with a soft start and end, through a low-pass, so square, sawtooth, and pulse waves sound clean.
+    // o: { cut: filter Hz, atk: seconds to full volume, sus: share left at the end, glide: seconds to f1, wob: [Hz, cents] }
+    function synth(at, f0, f1, len, wave, vol, o = {}) {
+      const s = ctx.createOscillator(), f = ctx.createBiquadFilter(), g = ctx.createGain(), atk = o.atk || 0.008;
+      if (wave !== 'pulse') s.type = wave;   // (pulse: a 25% pulse wave, the reedy lead of an arcade game)
+      else s.setPeriodicWave(ctx.createPeriodicWave(Float32Array.from({ length: 32 }, (_, k) => k && Math.sin(Math.PI * k / 4) / k), new Float32Array(32)));
+      s.frequency.setValueAtTime(f0, at);
+      if (f1 !== f0) s.frequency.exponentialRampToValueAtTime(f1, at + (o.glide || len));
+      f.type = 'lowpass'; f.frequency.value = o.cut || 3000; f.Q.value = 0.5;
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(vol, at + atk);
+      g.gain.exponentialRampToValueAtTime(vol * (o.sus || 0.35), at + Math.max(atk + 0.005, len - 0.04));
+      g.gain.linearRampToValueAtTime(0, at + len);
+      if (o.wob) {   // (a shiver: the pitch wobbles wob[0] times a second, wob[1] cents each way)
+        const w = ctx.createOscillator(), d = ctx.createGain();
+        w.frequency.value = o.wob[0]; d.gain.value = o.wob[1]; w.connect(d).connect(s.detune); w.start(at); w.stop(at + len + 0.02);
+      }
+      s.connect(f).connect(g).connect(ctx.destination); s.start(at); s.stop(at + len + 0.02);
+    }
+    // Noise through a band-pass sweeping from f0 to f1 Hz, swelling in, then cut short: the fizz of a spark.
+    function fizz(at, f0, f1, len, q, vol) {
+      const b = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * (len + 0.03)), ctx.sampleRate), x = b.getChannelData(0);
+      for (let i = 0; i < x.length; i++) x[i] = Math.random() * 2 - 1;
+      const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+      s.buffer = b; f.type = 'bandpass'; f.Q.value = q; f.frequency.setValueAtTime(f0, at); f.frequency.exponentialRampToValueAtTime(f1, at + len);
+      g.gain.setValueAtTime(0, at); g.gain.linearRampToValueAtTime(vol, at + len * 0.75); g.gain.linearRampToValueAtTime(0, at + len);
       s.connect(f).connect(g).connect(ctx.destination); s.start(at); s.stop(at + len + 0.02);
     }
     // (v: volume 0-1, p: pitch)
@@ -805,7 +839,58 @@ window.NamePicker = {
       pop: (t, v, p) => tone(t, 640 * p, 260 * p, 0.12, 'sine', 0.3 * v),
       // A short, deep thud: a sine sweeping down from 150 Hz to 45 Hz, with a low burst of noise. No louder than the chime.
       slam: (t, v, p) => { tone(t, 150 * p, 45 * p, 0.35, 'sine', 0.2 * v); noise(t, 90 * p, 0.7, 0.09, 0.2 * v); },
-      chime: (t, v, p) => { tone(t, 1046.5 * p, 1046.5 * p, 0.8, 'sine', 0.2 * v); tone(t + 0.12, 1318.5 * p, 1318.5 * p, 1, 'sine', 0.18 * v); tone(t + 0.24, 1568 * p, 1568 * p, 1.3, 'sine', 0.15 * v); }
+      // A soft drum: a short tap of noise with a low body, no louder than a tick. Versus rolls it, faster and faster.
+      drum: (t, v, p) => { noise(t, 1500 * p, 0.9, 0.045, 0.07 * v); tone(t, 210 * p, 150 * p, 0.05, 'sine', 0.018 * v); },
+      chime: (t, v, p) => { tone(t, 1046.5 * p, 1046.5 * p, 0.8, 'sine', 0.2 * v); tone(t + 0.12, 1318.5 * p, 1318.5 * p, 1, 'sine', 0.18 * v); tone(t + 0.24, 1568 * p, 1568 * p, 1.3, 'sine', 0.15 * v); },
+      // Pixel rally, once Versus's pair is on screen: a quick arcade tune jumps up four notes and holds the last.
+      challenge: (t, v, p) => {
+        const lead = (at, f, len) => synth(t + at, f * p, f * p, len, 'pulse', 0.12 * v, { sus: 0.7 });
+        const pad = (at, f, len, wave, vol) => synth(t + at, f * p, f * p, len, wave, vol * v);
+        // D, A, C, then D, bent up into place with a shiver, over D major. The bass steps from C up to D.
+        lead(0, 587.3, 0.07); pad(0, 293.7, 0.15, 'triangle', 0.04);
+        lead(0.075, 880, 0.07);
+        lead(0.15, 1046.5, 0.14); pad(0.15, 261.6, 0.14, 'triangle', 0.04);
+        synth(t + 0.3, 1108.7 * p, 1174.7 * p, 0.85, 'pulse', 0.12 * v, { glide: 0.04, wob: [6, 15] });
+        pad(0.3, 740, 0.8, 'square', 0.04); pad(0.3, 880, 0.8, 'square', 0.035);
+        pad(0.3, 293.7, 0.85, 'triangle', 0.04); pad(0.3, 587.3, 0.85, 'triangle', 0.04);
+      },
+      // Neon zap, when Bracket's draw is dealt: an electric zap shoots up and lands on a bright ba-BAM chord.
+      zap: (t, v, p) => {
+        // The zap: two sawtooths rise two octaves, with a shiver and a fizz.
+        synth(t, 220 * p, 880 * p, 0.24, 'sawtooth', 0.083 * v, { cut: 2600, atk: 0.2, sus: 0.6, wob: [30, 40] });
+        synth(t, 440 * p, 1760 * p, 0.24, 'sawtooth', 0.042 * v, { cut: 3500, atk: 0.2, sus: 0.6, wob: [30, 40] });
+        fizz(t, 900 * p, 3200 * p, 0.24, 3, 0.12 * v);
+        // Then it lands, ba-BAM: an A power chord, then A major.
+        const hit = (at, len, top) => {
+          synth(at, 220 * p, 220 * p, len, 'triangle', 0.036 * v);
+          synth(at, 440 * p, 440 * p, len, 'triangle', 0.06 * v);
+          synth(at, 440 * p, 440 * p, len, 'square', 0.065 * v);
+          synth(at, 659.3 * p, 659.3 * p, len, 'square', 0.054 * v);
+          synth(at, top * p, top * p, len, 'square', 0.048 * v, { wob: [6, 12] });
+        };
+        hit(t + 0.23, 0.1, 880);
+        hit(t + 0.34, 0.85, 1108.7);
+      },
+      // Neon zap for the champion: it zaps up once more, one step higher.
+      champion: (t, v, p) => {
+        // The zap's rise and ba-BAM, shorter.
+        synth(t, 220 * p, 880 * p, 0.24, 'sawtooth', 0.083 * v, { cut: 2600, atk: 0.2, sus: 0.6, wob: [30, 40] });
+        synth(t, 440 * p, 1760 * p, 0.24, 'sawtooth', 0.042 * v, { cut: 3500, atk: 0.2, sus: 0.6, wob: [30, 40] });
+        fizz(t, 900 * p, 3200 * p, 0.24, 3, 0.12 * v);
+        const hit = (at, len, root, top) => {
+          synth(at, root / 2 * p, root / 2 * p, len, 'triangle', 0.036 * v);
+          synth(at, root * p, root * p, len, 'triangle', 0.06 * v);
+          synth(at, root * p, root * p, len, 'square', 0.065 * v);
+          synth(at, root * 1.4983 * p, root * 1.4983 * p, len, 'square', 0.054 * v);
+          synth(at, top * p, top * p, len, 'square', 0.048 * v, { wob: [6, 12] });
+        };
+        hit(t + 0.23, 0.1, 440, 880);
+        hit(t + 0.34, 0.26, 440, 1108.7);
+        // A second zap lifts it a whole step, to B major.
+        synth(t + 0.56, 494 * p, 1976 * p, 0.13, 'sawtooth', 0.054 * v, { cut: 3500, atk: 0.11, sus: 0.6, wob: [30, 40] });
+        fizz(t + 0.56, 1200 * p, 3600 * p, 0.13, 3, 0.107 * v);
+        hit(t + 0.68, 0.9, 493.9, 1244.5);
+      }
     };
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
     return {
@@ -828,10 +913,10 @@ window.NamePicker = {
         last[name] = t;
         try { SOUNDS[name](t + 0.005, v, p); } catch (e) { /* no sound on this device */ }
       },
-      // What it sounds like, when Sound is ticked.
+      // What it sounds like, when Sound is ticked: the sound this style's show ends on.
       sample() {
         this.wake();
-        if (ctx) Promise.resolve(ctx.state === 'running' || ctx.resume()).then(() => this.play('chime'), () => {});
+        if (ctx) Promise.resolve(ctx.state === 'running' || ctx.resume()).then(() => this.play(ending()), () => {});
       },
       stop() { if (ctx) ctx.close().catch(() => {}); ctx = null; }
     };
@@ -860,7 +945,8 @@ window.NamePicker = {
     else if (id === 'edit') setView('edit', true);
     else if (id === 'sound') {
       config.sound = !config.sound; saveConfig(); setMenu();
-      if (config.sound) Sound.sample(); else Sound.stop();
+      // No sample during a show. Its own sounds play.
+      if (config.sound) { if (showing) Sound.wake(); else Sound.sample(); } else Sound.stop();
     } else if (id === 'quick') { config.quick = !config.quick; saveConfig(); setMenu(); }
   });
 

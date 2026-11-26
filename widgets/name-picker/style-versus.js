@@ -1,8 +1,9 @@
 /*
  * Name Picker style: Versus.
  * Two students face off. The stage splits on a diagonal, red-orange on the left and blue-cyan on the right, with a thin
- * slash between them. On a pick the names flicker on each side and slow down, the left one locks in with a pop, then the
- * right one, and a VS emblem slams down between them with a thud. Then the chime: about 3 seconds (with Quick about 1½).
+ * slash between them. On a pick the names clear and the stage builds up: the lights go down, a drum rolls faster and
+ * faster, each side lights up in turn with it, and the emblem trembles, still grey. Then the VS emblem slams down, and
+ * both names land with its thud. Then the challenge sound: about 2½ seconds in all (with Quick about 1).
  * Before the first pick, and after Start over, a "?" waits on each grey side, with an emblem in its waiting state.
  * The emblem comes in five looks, one file each (vs-<look>.js, registered in NamePicker.looks). Each pick plays the look
  * the host dealt it (view.versusLook); the waiting stage takes one at random each time it appears.
@@ -20,22 +21,30 @@ NamePicker.register('versus', {
 .versus-waiting .versus-l, .versus-waiting .versus-r { filter: saturate(.25) brightness(1.08); opacity: .75; }
 .versus-name { position: absolute; transform: translate(-50%, -50%) skewX(-9deg); color: #fff; font-weight: 900; font-style: italic; white-space: nowrap;
   line-height: 1; -webkit-text-stroke: .07em #111827; paint-order: stroke fill; text-shadow: .04em .07em 0 rgba(0, 0, 0, .45); }
-.versus-blur { filter: blur(1.5px); opacity: .85; }
 /* Above and below the emblem, the names are in front of it: the looks' slams come down through them. */
 .versus-tall .versus-name { z-index: 1; }
 .versus-probe { left: 0; top: 0; transform: none; font-size: 100px; visibility: hidden; }
-.versus-box { position: absolute; transform: translate(-50%, -50%); }
-.versus-box > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.versus-box, .versus-ghost { position: absolute; transform: translate(-50%, -50%); }
+.versus-box > svg, .versus-shake > svg { display: block; width: 100%; height: 100%; overflow: visible; }
+/* The build-up: the lights go down, and each side lights up in turn with the drum. Only their opacity changes. The grey
+   emblem trembles in .versus-shake, and fades out as .versus-ghost when the slam comes. */
+.versus-dim { position: absolute; inset: 0; background: #111827; opacity: 0; pointer-events: none; }
+.versus .versus-glow { opacity: 0; pointer-events: none; }
+.versus .versus-glow.versus-l { background: #ffe2b8; }
+.versus .versus-glow.versus-r { background: #d2f4ff; }
+.versus-shake { position: absolute; inset: 0; transform-origin: 50% 60%; }
 .versus-fade { animation: versus-fade .3s ease-out; }
 @keyframes versus-fade { from { opacity: 0; } to { opacity: 1; } }
 `,
   mount(root, host) {
     const LOOKS = NamePicker.looks, has = id => typeof id === 'string' && Object.prototype.hasOwnProperty.call(LOOKS, id);
-    // The show (ms from its start): the names flicker, each flicker `grow` times longer than the last, until the left one
-    // locks in, then the right one. The emblem slams down at `slam`, and the chime comes once its slam is over (or after
-    // `most` at the latest). `pop`: a name locking in.
-    const NORMAL = { step: 55, grow: 1.09, left: 1400, right: 1800, slam: 1950, most: 1300, pop: 300 };
-    const QUICK = { step: 40, grow: 1.1, left: 650, right: 850, slam: 950, most: 750, pop: 200 };
+    // The show (ms from its start). The stage builds up for `build`, with no names on it. A drum rolls: its first beats
+    // `first` apart, closer each time, `last` apart by the end, and it keeps rolling until the slam lands. Each beat lights
+    // up one side, left and right in turn. Then the emblem slams down, and both names land on its impact, with its thud.
+    // The challenge sound comes once its slam is over (or after `most` at the latest). `fade`: the grey emblem going as
+    // the slam comes. `stamp`: the names landing.
+    const NORMAL = { build: 1600, first: 170, last: 42, most: 1300, fade: 140, stamp: 220 };
+    const QUICK = { build: 650, first: 110, last: 40, most: 750, fade: 90, stamp: 150 };
     const NAME = 'translate(-50%, -50%) skewX(-9deg)';   // (as .versus-name)
     const BAR = 40;   // the window's title bar, in px, above this page (docs/WIDGET-SDK.md)
     const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -46,7 +55,7 @@ NamePicker.register('versus', {
     let stage = null;     // .versus: the sides, the slash, the two names, and the emblem's box (the looks' `stage`)
     let names = [], box = null;
     let now = null;       // what the stage shows: { pair: [left, right] (null: waiting), look, pickId }
-    let run = null;       // the show running: { T, quick, pair, look, deck, g, t0, ev, ei, locked, anims, raf, thud, last, slammed }
+    let run = null;       // the show running: { T, quick, pair, look, g, t0, ev, ei, up, layers, anims, stamp, raf, last, slammed, landed, … }
     let dead = false;
 
     // A fresh stage. Whatever a show added to the old one goes with it.
@@ -126,11 +135,11 @@ NamePicker.register('versus', {
       if (g.tall) { const w = Math.min(g.aw, em(text).w * fs * 1.12); x = i ? g.W - g.edge - w / 2 : g.edge + w / 2; y = i ? g.H - g.band / 2 : g.band / 2; }
       Object.assign(names[i].style, { left: px(x), top: px(y), fontSize: px(fs) });
     }
-    // The look's emblem in its box, drawn fresh.
-    function emblem(look, state, g) {
-      box.replaceChildren();
+    // The look's emblem in its box (or in el), drawn fresh.
+    function emblem(look, state, g, el = box) {
+      el.replaceChildren();
       if (!has(look) || !(g.bw > 0 && g.bh > 0)) return;
-      try { box.innerHTML = LOOKS[look].markup(state, { dark: dark(), w: g.bw, h: g.bh }); } catch (e) { console.error(`Name Picker: the ${look} look couldn’t be drawn`, e); }
+      try { el.innerHTML = LOOKS[look].markup(state, { dark: dark(), w: g.bw, h: g.bh }); } catch (e) { console.error(`Name Picker: the ${look} look couldn’t be drawn`, e); }
     }
     // The stage as it is, with no show: the pair (or "?" and "?" while waiting) and the emblem at rest.
     function draw(pair, look, pickId, fade) {
@@ -155,50 +164,85 @@ NamePicker.register('versus', {
     }
     const pairOf = view => view.winners.length === 2 ? view.winners.map(i => view.names[i]) : null;
 
-    // ---- The show. Events at set times, played by animation frames; the slam is the look's own animations.
+    // ---- The show. Events at set times, played by animation frames; the build-up's light and the slam are animations.
+    // The drum's beats: closer each time, from `first` apart to `last`, so the last of the build-up's lands just before
+    // its end. Then it rolls on, `last` apart, until the slam lands.
     function schedule(T) {
-      const ev = [];
-      for (let t = 0, dt = T.step; t < T.right - 20; t += dt, dt *= T.grow) ev.push({ t, fn: flicker });
-      ev.push({ t: T.left, fn: () => lock(0) }, { t: T.right, fn: () => lock(1) }, { t: T.slam, fn: slam });
-      return ev.sort((a, b) => a.t - b.t);
+      const ev = [], beats = [], k = (T.build - T.first) / (T.build - T.last);
+      for (let t = 0, dt = T.first; t < T.build + T.most; t += dt, dt = Math.max(T.last, dt * k)) {
+        if (t < T.build) beats.push({ t, dt });
+        ev.push({ t, fn: () => beat(t) });
+      }
+      ev.push({ t: T.build, fn: slam });
+      return { ev: ev.sort((a, b) => a.t - b.t), beats };
     }
-    function frame() {
+    function frame(ts) {
       const r = run;
       if (!r || dead) return;
       r.raf = 0;
       const t = performance.now() - r.t0;
       while (run === r && r.ei < r.ev.length && r.ev[r.ei].t <= t) r.ev[r.ei++].fn();
-      if (run === r && r.ei < r.ev.length) r.raf = requestAnimationFrame(frame);
-    }
-    // A new name on each side still flickering (not the one it had, nor the other side's), and a soft tick.
-    function flicker() {
-      const r = run;
-      for (let i = 0; i < 2; i++) {
-        if (r.locked[i]) continue;
-        let t, n = 0;
-        do t = any(r.deck); while (++n < 8 && r.deck.length > 2 && (t === names[i].textContent || t === names[1 - i].textContent));
-        names[i].textContent = t;
-        put(r.g, i, t, Math.min(r.g.fs, fit(r.g, t)));
+      // The impact: the first frame that draws the look's animations at its hit, on their own clock.
+      if (run === r && r.slammed && !r.landed) {
+        const s = r.hitBy ? r.hitBy.startTime : r.slamAt;
+        if (s != null && (ts == null ? performance.now() : ts) >= s + r.hit) land();
       }
-      host.sound('tick', { volume: 0.6 });
+      if (run === r && !r.landed) r.raf = requestAnimationFrame(frame);
     }
-    // A side locks in on its name, with a pop.
-    function lock(i) {
-      const r = run, n = names[i];
-      r.locked[i] = true;
-      n.textContent = r.pair[i];
-      put(r.g, i, r.pair[i], r.g.fs);
-      n.classList.remove('versus-blur');
-      n.removeAttribute('aria-hidden');
-      if (n.animate) r.anims.push(n.animate([{ transform: NAME + ' scale(.8)' }, { transform: NAME + ' scale(1.12)', offset: 0.6 }, { transform: NAME }], { duration: r.T.pop, easing: 'ease-out' }));
-      host.sound('pop');
+    // A beat of the drum, louder and a little higher as the build-up goes on.
+    function beat(t) {
+      if (run.landed) return;
+      const p = Math.min(1, t / run.T.build);
+      host.sound('drum', { volume: 0.55 + 0.45 * p * p, pitch: 1 + 0.15 * p });
     }
-    // The look's slam and impact, as designed, and the thud at its moment of impact (its `hit`). That moment is timed
-    // from the slam's own clock: its animations start a frame or more after this call, as setting them up can take 25 to
-    // 80 ms on a slow Chromebook.
+    // The build-up, on an empty stage. The lights go down and come back up by the slam. Each beat lights up one side, left
+    // and right in turn, less as the beats close in, while both sides glow more and more. The waiting emblem trembles,
+    // harder and harder. Every change of light is small and soft, so nothing flashes.
+    function buildUp() {
+      const r = run, T = r.T, B = T.build, cut = stage.querySelector('.vs-cut');
+      const layer = cls => { const e = host.el('div', cls); e.setAttribute('aria-hidden', 'true'); stage.insertBefore(e, cut); r.layers.push(e); return e; };
+      const an = (e, k, o) => { if (!e.animate) return null; const a = e.animate(k, Object.assign({ duration: B, fill: 'both' }, o)); r.up.push(a); r.anims.push(a); return a; };
+      an(layer('versus-dim'), [{ opacity: 0.5 }, { opacity: 0 }], { easing: 'ease-in' });
+      const glow = p => 0.1 * p * p, at = t => Math.min(1, Math.max(0, t / B));
+      [layer('versus-side versus-l versus-glow'), layer('versus-side versus-r versus-glow')].forEach((e, side) => {
+        const k = [{ offset: 0, opacity: 0 }];
+        r.beats.forEach(({ t, dt }, i) => {
+          if (i % 2 !== side) return;
+          const fall = Math.min(t + 1.6 * dt, B);
+          k.push({ offset: at(t - 1), opacity: glow(at(t - 1)) }, { offset: at(t), opacity: glow(at(t)) + 0.2 * Math.min(1, dt / NORMAL.first), easing: 'cubic-bezier(.2,.7,.4,1)' },
+            { offset: at(fall), opacity: glow(at(fall)) });
+        });
+        k.push({ offset: 1, opacity: glow(1) });
+        an(e, k);
+      });
+      // (The emblem's own detail depends on its size: it trembles in a layer of the box, drawn again on a resize.)
+      const shake = r.shake = host.el('div', 'versus-shake', box);
+      emblem(r.look, 'waiting', r.g, shake);
+      const A = clamp(r.g.bh * 0.025, 1.5, 9), step = r.quick ? 30 : 40, k = [];
+      for (let t = 0; t <= B; t += step) {
+        const p = at(t), a = A * (0.1 + 0.9 * p * p), rnd = () => Math.random() * 2 - 1;
+        k.push({ offset: p, transform: `translate(${px(rnd() * a)}, ${px(rnd() * a * 0.6)}) rotate(${(rnd() * 2.4 * p * p).toFixed(2)}deg) scale(${(1 + 0.05 * p).toFixed(3)})` });
+      }
+      if (k.length > 1) an(shake, k, { fill: 'none' });
+    }
+    // The look's slam and impact, as designed. The grey emblem lets go as the slam comes down: it swells and fades over
+    // the box, gone before the emblem lands. The impact is timed from the slam's own clock: its animations start a frame
+    // or more after this call, as setting them up can take 25 to 80 ms on a slow Chromebook.
     function slam() {
       const r = run, E = LOOKS[r.look];
       r.slammed = true;
+      if (r.shake && r.shake.parentNode === box) {
+        // (After the box, so the looks find their own emblem first.)
+        const ghost = host.el('div', 'versus-ghost', stage);
+        ghost.setAttribute('aria-hidden', 'true');
+        Object.assign(ghost.style, { left: box.style.left, top: box.style.top, width: box.style.width, height: box.style.height });
+        ghost.appendChild(r.shake);
+        if (ghost.animate) {
+          const a = ghost.animate([{ opacity: 1, transform: 'translate(-50%, -50%)' }, { opacity: 0, transform: 'translate(-50%, -50%) scale(1.15)' }], { duration: r.T.fade, easing: 'ease-in', fill: 'both' });
+          const gone = () => ghost.remove();
+          a.finished.then(gone, gone); r.anims.push(a);
+        } else ghost.remove();
+      }
       emblem(r.look, 'final', r.g);
       let anims = [];
       if (E) {
@@ -206,16 +250,31 @@ NamePicker.register('versus', {
         catch (e) { console.error(`Name Picker: the ${r.look} look’s slam failed`, e); }
       }
       r.anims.push(...anims);
-      const hit = (E && E.hit && Number(r.quick ? E.hit.quick : E.hit.normal)) || 0;
-      const thud = start => { if (run === r) r.thud = setTimeout(() => { if (run === r) host.sound('slam'); }, Math.max(0, start + hit - performance.now())); };
-      if (anims.length) anims[0].ready.then(a => thud(a.startTime == null ? performance.now() : a.startTime), () => {}); else thud(performance.now());
-      Promise.all(anims.map(a => a.finished)).then(() => { if (run === r) finish(); }, () => {});
+      r.hit = (E && E.hit && Number(r.quick ? E.hit.quick : E.hit.normal)) || 0;
+      r.hitBy = anims[0] || null; r.slamAt = performance.now();
+      if (!anims.length) land();   // (a look with no slam: the names land at once)
+      // (Once the slam is over and the names have landed.)
+      Promise.all(anims.map(a => a.finished)).then(() => Promise.all(r.stamp.map(a => a.finished))).then(() => { if (run === r) finish(); }, () => {});
       r.last = setTimeout(() => { if (run === r) finish(); }, r.T.most);
     }
-    // The show is over: the stage drawn fresh with the pair and its emblem at rest, the chime, and the host told.
+    // The impact: both names land at once, in their places and at their size, with the thud, as the build-up's light goes.
+    function land() {
+      const r = run;
+      r.landed = true;
+      for (const a of r.up) { try { a.cancel(); } catch (e) { /* gone */ } }
+      for (const e of r.layers) e.remove();
+      names.forEach((n, i) => {
+        n.textContent = r.pair[i];
+        if (n.animate) r.stamp.push(n.animate([{ transform: NAME + ' translateY(-.06em) scale(1, 1.12)' }, { transform: NAME + ' translateY(.03em) scale(1, .95)', offset: 0.45 }, { transform: NAME }],
+          { duration: r.T.stamp, easing: 'ease-out' }));
+      });
+      r.anims.push(...r.stamp);
+      host.sound('slam');
+    }
+    // The show is over: the stage drawn fresh with the pair and its emblem at rest, the challenge sound, and the host told.
     function finish() {
       end();
-      host.sound('chime');
+      host.sound('challenge');
       host.done();
     }
     // Everything the show started is cancelled, and (unless the style is going) the stage is drawn fresh, as it ends.
@@ -224,7 +283,7 @@ NamePicker.register('versus', {
       if (!r) return;
       run = null;
       if (r.raf) cancelAnimationFrame(r.raf);
-      clearTimeout(r.thud); clearTimeout(r.last);
+      clearTimeout(r.last);
       const all = new Set(r.anims.concat(stage && stage.getAnimations ? stage.getAnimations({ subtree: true }) : []));
       for (const a of all) { try { a.cancel(); } catch (e) { /* gone */ } }
       if (redraw) draw(r.pair, r.look, r.pickId);
@@ -247,15 +306,14 @@ NamePicker.register('versus', {
       const pair = pairOf(view);
       if (!pair) { show(view); host.done(); return; }
       const look = lookFor(view, pair), T = view.quick ? QUICK : NORMAL;
-      // The names that flicker: the ones that were in the draw (or everyone, when that's too few to flicker).
-      const inDraw = view.names.filter((n, i) => !view.picked[i] || view.winners.includes(i));
       now = { pair, look, pickId: view.pickId };
+      // A fresh stage, with no names on it: a pair on screen before goes with the old one. The names land with the slam.
       build(look, false);
-      const g = place(look, pair);
-      for (const n of names) { n.classList.add('versus-blur'); n.setAttribute('aria-hidden', 'true'); }   // (the flicker isn't the pair)
-      run = { T, quick: !!view.quick, pair, look, pickId: view.pickId, deck: inDraw.length >= 3 ? inDraw : view.names, g, t0: performance.now(), ev: schedule(T), ei: 0,
-        locked: [false, false], anims: [], raf: 0, thud: 0, last: 0, slammed: false };
+      const g = place(look, pair), { ev, beats } = schedule(T);
+      run = { T, quick: !!view.quick, pair, look, pickId: view.pickId, g, t0: performance.now(), ev, beats, ei: 0, up: [], layers: [], anims: [], stamp: [],
+        shake: null, raf: 0, last: 0, slammed: false, landed: false, hit: 0, hitBy: null, slamAt: 0 };
       if (!(g.fs > 0)) { finish(); return; }   // (no room to show it)
+      buildUp();
       frame();
     }
     return {
@@ -266,15 +324,20 @@ NamePicker.register('versus', {
         if (dead || !stage) return;
         fam = ''; widths.clear();   // (the letters may have changed, or a font finished loading: measure again)
         if (run) {
-          // The slam is laid out for the stage it began on: if that changes, the show ends there.
-          if (run.slammed) { if (stage.clientWidth !== run.g.W || stage.clientHeight !== run.g.H) finish(); return; }
-          run.g = place(run.look, run.pair);
-          for (let i = 0; i < 2; i++) if (!run.locked[i] && run.g.fs > 0) put(run.g, i, names[i].textContent, Math.min(run.g.fs, fit(run.g, names[i].textContent)));
+          // The show is laid out for the stage it began on. A new size ends it at once, as a skip does. It ends on the
+          // challenge sound only once the names have landed.
+          if (stage.clientWidth !== run.g.W || stage.clientHeight !== run.g.H) { if (run.landed) finish(); else { end(); host.done(); } return; }
+          // The letters changed. In the build-up, the names take their new places, and the grey emblem is drawn again.
+          if (!run.slammed) { run.g = place(run.look, run.pair); if (run.shake) emblem(run.look, 'waiting', run.g, run.shake); }
           return;
         }
         if (now) relayout();
       },
-      theme() { if (!dead && stage && now && !run) emblem(now.look, now.pair ? 'final' : 'waiting', geo(now.look, now.pair || ['?', '?'])); },
+      theme() {
+        if (dead || !stage || !now) return;
+        if (!run) emblem(now.look, now.pair ? 'final' : 'waiting', geo(now.look, now.pair || ['?', '?']));
+        else if (!run.slammed && run.shake) emblem(run.look, 'waiting', run.g, run.shake);
+      },
       destroy() { dead = true; end(false); if (stage) stage.remove(); }
     };
   }
