@@ -789,10 +789,15 @@ module.exports = T => {
       let m = await menuOf(page, ik);
       ok(m === '[Style] | ✓ Analog | Digital | Date | [Analog clock face] | ✓ Simple | Old | Teaching | — | LCD look (off) | Show seconds | 24-hour time (off) | Time written out as words | — | Mark a time | Choose the time',
         `a new Clock: Style (Analog, Digital, Date), Analog clock face (Simple, Old, Teaching), a line, LCD look, Show seconds, 24-hour time, Time written out as words, a line, Mark a time, Choose the time; LCD and 24-hour off without Digital (${m})`);
-      await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200);
-      const pics = await page.evaluate(() => Array.from(document.querySelectorAll('#menu [data-act="widget"]')).filter(b => b.querySelector('.icon-slot svg')).map(b => b.dataset.id).join());
-      await page.keyboard.press('Escape'); await page.waitForTimeout(150);
-      ok(pics === 'analog,digital,date', `Analog, Digital, and Date each have a picture, and no other item does (${pics})`);
+      // The items with a picture, in the open menu.
+      const picsOf = async () => {
+        await page.click(`.win[data-ikey="${ik}"] .win-label`); await page.waitForTimeout(200);
+        const ids = await page.evaluate(() => Array.from(document.querySelectorAll('#menu [data-act="widget"]')).filter(b => b.querySelector('.icon-slot svg')).map(b => b.dataset.id).join());
+        await page.keyboard.press('Escape'); await page.waitForTimeout(150);
+        return ids;
+      };
+      let pics = await picsOf();
+      ok(pics === 'analog,digital,date,set', `Analog, Digital, Date, and Choose the time each have a picture, and no other item does (${pics})`);
       await choose(page, ik, 'face:old');
       m = await menuOf(page, ik);
       ok(m.includes('[Analog clock face] | Simple | ✓ Old | Teaching | Upright numerals | IV for four | —') && !m.includes('Hour hand only'), `Old: Upright numerals and IV for four right after the faces (${m})`);
@@ -803,6 +808,8 @@ module.exports = T => {
       m = await menuOf(page, ik);
       ok(m.startsWith('[Style] | ✓ Analog | ✓ Digital | Date |') && m.includes('— | LCD look | Show seconds | 24-hour time | Time written out as words | — | Mark a time | Quiz | Choose the time'),
         `Digital too: both checked, LCD and 24-hour on, and Quiz between Mark a time and Set the time (${m})`);
+      pics = await picsOf();
+      ok(pics === 'analog,digital,date,quiz,set', `Quiz has a picture too (${pics})`);
       await choose(page, ik, 'analog');
       m = await menuOf(page, ik);
       ok(m.startsWith('[Style] | Analog | ✓ Digital | Date | — | LCD look |') && !/clock face|Simple|Old|Teaching|Hour hand only|Mark a time/.test(m) && m.includes('— | Choose the time') && !m.includes('Quiz'),
