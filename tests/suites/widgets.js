@@ -149,6 +149,8 @@ module.exports = T => {
     let ms = await menuState();
     ok(ms.headings.join('|') === 'Theme|Chalk color' && ms.themes.join('|') === 'Sticky note|Chalkboard*|Whiteboard', `the menu lists themes separately: ${ms.themes.join(', ')}`);
     ok(ms.swatches.length === 6 && ms.swatches.includes('chalk:white*'), 'Chalkboard offers a row of chalk colors (white chosen)');
+    const themePics = await page.evaluate(() => ({ ids: window.__board21.state.wins.get('notes:1').menuItems.filter(i => i.icon).map(i => i.id), svgs: new Set(window.__board21.state.wins.get('notes:1').menuItems.filter(i => i.icon).map(i => i.icon)).size, drawn: document.querySelectorAll('#menu [data-id^="theme:"] .icon-slot svg').length }));
+    ok(themePics.ids.join() === 'theme:sticky,theme:chalkboard,theme:whiteboard' && themePics.svgs === 3 && themePics.drawn === 3, `each theme has a picture of its own, and no other item has one (${themePics.ids.join(', ')}; ${themePics.drawn} drawn)`);
     await page.click('#menu [data-id="chalk:yellow"]'); await page.waitForTimeout(300);
     ok(await ink() === 'rgb(253, 230, 138)' && (await page.evaluate(() => window.__board21.state.conf.get('notes:1').chalk)) === 'yellow', 'picking yellow chalk writes in yellow chalk');
     await openMenu(); await page.click('#menu [data-id="theme:whiteboard"]'); await page.waitForTimeout(400);

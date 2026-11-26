@@ -571,6 +571,7 @@ window.NamePicker = {
   // Groups how many groups. Versus and Bracket have no number: Versus is always two, and in Bracket everyone plays. No
   // repeats and Start over are for picking, so Groups and Bracket leave them out.
   const PENCIL = '<svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13.5 6.5l4 4"/></svg>';
+  const SPEAKER = '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6"/><path d="M18.2 6.4a7.6 7.6 0 0 1 0 11.2"/></svg>';
   function setMenu() {
     const row = (id, label, from, to, on) => [{ heading: true, label },
       { id, label, choices: Array.from({ length: to - from + 1 }, (_, i) => ({ id: id + ':' + (from + i), label: String(from + i), checked: on === from + i })) }];
@@ -582,7 +583,7 @@ window.NamePicker = {
       ...(grouping() ? row('groups', 'Groups', 2, MOST_GROUPS, config.groups) : bracketing() || versus() ? [] : row('winners', 'Names at a time', 1, MOST, config.winners)),
       { separator: true },
       ...(picking() ? [{ id: 'norepeat', label: 'No repeats', checked: config.noRepeats }, { id: 'round', label: 'Start over', disabled: !canStartOver() }] : []),
-      { id: 'sound', label: 'Sound', checked: config.sound },
+      { id: 'sound', label: 'Sound', checked: config.sound, icon: SPEAKER },
       { id: 'quick', label: 'Quick', checked: config.quick }
     ]);
   }
