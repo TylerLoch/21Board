@@ -13,6 +13,7 @@
  *     button.onclick = () => Board21.save({ count: ++count });
  *
  * Full reference: docs/WIDGET-SDK.md
+ * Words come from a table, in English, Spanish, Russian, and Ukrainian: docs/WIDGET-SDK.md, "Languages".
  *
  * Talks to the board with window.postMessage, so a widget never touches
  * IndexedDB itself.
@@ -32,7 +33,7 @@
   // from the old page doesn't count.)
   if (window.Board21 && window.Board21.page === document.documentElement) return;
 
-  var SDK_VERSION = '1.5.0';
+  var SDK_VERSION = '1.6.0';
   var PROTOCOL = 1;
   var ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
   var me = document.currentScript;
@@ -104,10 +105,11 @@
   function applyTheme(theme, palette) {
     palette = palette || PALETTES[theme] || PALETTES.light;
     var root = document.documentElement;
+    var font = Words.fontFor(palette.font, language);   // (a Russian or Ukrainian window skips the bundled Latin fonts)
     root.setAttribute('data-b21-theme', theme);
     root.style.colorScheme = theme;
-    Object.keys(palette).forEach(function (k) { root.style.setProperty('--b21-' + k, palette[k]); });
-    applyLetters(palette.font);
+    Object.keys(palette).forEach(function (k) { root.style.setProperty('--b21-' + k, k === 'font' ? font : palette[k]); });
+    applyLetters(font);
   }
 
   // ---------------------------------------------------------------- text style
@@ -155,6 +157,337 @@
   }
   if (document.fonts && document.fonts.addEventListener) {
     document.fonts.addEventListener('loadingdone', function () { if (Object.keys(lettersAdded).length) refit(); });
+  }
+
+  // #region Words
+  // tests/words.js and tools/words.js load this region by its markers.
+  // A widget's words, in English, Spanish, Russian, and Ukrainian: its table (Board21.words), looked up in the window's
+  // language (Board21.t) or the board's (Board21.ui), with plurals, placeholders, the pseudo language, and dates. No DOM
+  // here: the code after the region wires it to the page.
+  var LANGS = ['en', 'es', 'ru', 'uk'];
+  var PSEUDO = 'qps';   // the pseudo language, for developers: every word from the table, accented, longer, and in ［ ］
+  var LOCALES = { en: 'en-US', es: 'es-US', ru: 'ru-RU', uk: 'uk-UA', qps: 'ru-RU' };
+  var NAMES = { en: 'English', es: 'Español', ru: 'Русский', uk: 'Українська' };
+  var IN_ENGLISH = { en: 'English', es: 'Spanish', ru: 'Russian', uk: 'Ukrainian', qps: 'the pseudo language' };   // (for messages)
+  // The plural forms a row gives, by Intl.PluralRules category. Spanish may add many (exact millions), never must.
+  var FORMS = { en: ['one', 'other'], es: ['one', 'other'], ru: ['one', 'few', 'many', 'other'], uk: ['one', 'few', 'many', 'other'] };
+  var OPTIONAL_FORMS = { es: ['many'] };
+  var KEY_RE = /^[a-z][a-zA-Z0-9]*(\.[a-z][a-zA-Z0-9]*)*$/;
+  var PLACEHOLDER = /\{([A-Za-z0-9]+)\}/g;
+
+  // #region Common words
+  // Common words: one meaning in every widget, in English, Spanish, Russian, and Ukrainian.
+  // Every key starts with b21.
+  // Widgets show them with Board21.t() and data-t, like their own window words.
+  // Change any text in quotes. Rules: docs/TRANSLATING.md.
+  var COMMON_WORDS = {
+    window: {
+      'b21.start': { note: 'Button that starts a timer or a game. Often a play icon, with this as its screen reader name.',
+        en: 'Start',
+        es: 'Iniciar',
+        ru: 'Старт',
+        uk: 'Старт' },
+      'b21.pause': { note: 'Button that stops for now. Start goes on from the same spot.',
+        en: 'Pause',
+        es: 'Pausar',
+        ru: 'Пауза',
+        uk: 'Пауза' },
+      'b21.reset': { note: 'Button that puts a timer or a game back to its start. Not the board’s Reset…, which clears a window.',
+        en: 'Reset',
+        es: 'Restablecer',
+        ru: 'Сбросить',
+        uk: 'Скинути' }
+    }
+  };
+  // #endregion Common words
+
+  var hasOwn = function (o, k) { return !!o && Object.prototype.hasOwnProperty.call(o, k); };
+  var isCode = function (c) { return typeof c === 'string' && (LANGS.indexOf(c) >= 0 || c === PSEUDO); };
+  var blank = function (v) { return v == null || v === '' || (typeof v === 'string' && !v.trim()); };
+  // "a", "a and b", "a, b, and c"
+  function andList(items) {
+    return items.length < 3 ? items.join(' and ') : items.slice(0, -1).join(', ') + ', and ' + items[items.length - 1];
+  }
+
+  // The language at the end of a frame's name, 'b21-board:<window>;<language>', or English.
+  function langFromName(name) {
+    var m = /^b21-board:[^;]*;([a-z]+)$/.exec(String(name || ''));
+    return m && isCode(m[1]) ? m[1] : 'en';
+  }
+  // b21-lang=<language> in the address's #, or English.
+  function langFromHash(hash) {
+    var m = /(?:^#|[#&])b21-lang=([a-z]+)(?=&|$)/.exec(String(hash || ''));
+    return m && isCode(m[1]) ? m[1] : 'en';
+  }
+  // The board's word for the window's language wins, when it is one.
+  function confirmLang(sent, current) { return isCode(sent) ? sent : current; }
+  // The board's locale, when it is one for the window's language ('es-MX' in a Spanish window). Else null, so dates
+  // follow the window's words and not the device's language.
+  function localeFrom(sent, lang) {
+    var base = String(LOCALES[lang] || 'en-US').split('-')[0];
+    return typeof sent === 'string' && new RegExp('^' + base + '(-|$)', 'i').test(sent) ? sent : null;
+  }
+
+  // ---- Plurals, placeholders, and the pseudo language
+  var pluralRules = {};
+  function pluralOf(n, locale) {
+    if (typeof Intl === 'undefined' || !Intl.PluralRules) return 'other';
+    var r = pluralRules[locale] || (pluralRules[locale] = new Intl.PluralRules(locale));
+    return r.select(Number(n));
+  }
+  // The names of the placeholders in a text, or in every form of a plural one.
+  function placeholders(value) {
+    var out = [], texts = typeof value === 'string' ? [value] : value && typeof value === 'object' ? Object.keys(value).map(function (k) { return value[k]; }) : [];
+    texts.forEach(function (t) { String(t).replace(PLACEHOLDER, function (m, name) { if (out.indexOf(name) < 0) out.push(name); return m; }); });
+    return out.sort();
+  }
+  // {name} filled with String(vars.name), as plain text. One with no value stays as it is.
+  function fill(text, vars) {
+    var unfilled = [];
+    var out = String(text).replace(PLACEHOLDER, function (m, name) {
+      if (vars != null && typeof vars === 'object' && hasOwn(vars, name) && vars[name] !== undefined) return String(vars[name]);
+      if (unfilled.indexOf(name) < 0) unfilled.push(name);
+      return m;
+    });
+    return { text: out, unfilled: unfilled };
+  }
+  var ACCENTS = {
+    a: 'à', b: 'ƀ', c: 'ç', d: 'ď', e: 'é', f: 'ƒ', g: 'ĝ', h: 'ĥ', i: 'í', j: 'ĵ', k: 'ķ', l: 'ĺ', m: 'ɱ', n: 'ñ', o: 'ö', p: 'þ', q: 'ʠ', r: 'ŕ', s: 'š',
+    t: 'ţ', u: 'ü', v: 'ṽ', w: 'ŵ', x: 'ẋ', y: 'ý', z: 'ž', A: 'À', B: 'Ɓ', C: 'Ç', D: 'Ď', E: 'É', F: 'Ƒ', G: 'Ĝ', H: 'Ĥ', I: 'Í', J: 'Ĵ', K: 'Ķ', L: 'Ĺ',
+    M: 'Ṁ', N: 'Ñ', O: 'Ö', P: 'Þ', Q: 'Ǫ', R: 'Ŕ', S: 'Ŝ', T: 'Ţ', U: 'Ü', V: 'Ṽ', W: 'Ŵ', X: 'Ẋ', Y: 'Ý', Z: 'Ž'
+  };
+  // English in look-alike letters, with one Cyrillic letter, padded to `longest`, inside ［ ］. Placeholders stay.
+  function pseudoText(en, longest) {
+    var s = String(en == null ? '' : en).replace(/\{[A-Za-z0-9]+\}|[A-Za-z]/g, function (c) { return c.length > 1 ? c : ACCENTS[c]; }) + 'д';
+    while (s.length < longest) s += '·';
+    return '［' + s + '］';
+  }
+  // A window row in the pseudo language: a text, or its forms by Russian rules (one from English one; few, many, and
+  // other from English other), each as long as that form's longest Spanish, Russian, or Ukrainian.
+  function pseudo(row) {
+    var formOf = function (v, f) { return typeof v === 'string' ? v : v && typeof v === 'object' && typeof v[f] === 'string' ? v[f] : ''; };
+    var longest = function (f) { return Math.max.apply(null, ['es', 'ru', 'uk'].map(function (l) { return formOf(row[l], f).length; })); };
+    var en = row.en;
+    if (en && typeof en === 'object') {
+      var out = {};
+      FORMS.ru.forEach(function (f) { out[f] = pseudoText(f === 'one' && en.one != null ? en.one : en.other, longest(f)); });
+      return out;
+    }
+    return pseudoText(en, longest(null));
+  }
+  // The Latin words of two or more letters outside ［ ］: English the pseudo language left.
+  function auditText(text) {
+    return String(text == null ? '' : text).replace(/［[^］]*(］|$)/g, ' ').match(/[A-Za-zÀ-ɏ]{2,}/g) || [];
+  }
+
+  // ---- Fonts
+  // A family to put first for a language. Empty, and planned to stay so: one font for all four.
+  var LANG_FONT = { en: null, es: null, ru: null, uk: null };
+  // The scripts each bundled family has (fonts/). Neither has Cyrillic letters.
+  var FACE_SCRIPTS = { 'Atkinson Hyperlegible': ['latin'], '21Board Early Readers': ['latin'] };
+  var LANG_SCRIPT = { en: 'latin', es: 'latin', ru: 'cyrillic', uk: 'cyrillic', qps: 'cyrillic' };
+  // The teacher's font stack for a language: a leading bundled family without its letters is dropped, so a Russian or
+  // Ukrainian window keeps the device's own font, with no mixed letters.
+  function fontFor(stack, lang) {
+    var s = String(stack == null ? '' : stack), script = LANG_SCRIPT[lang] || 'latin', m;
+    while ((m = /^\s*"([^"]+)"\s*(?:,\s*|$)/.exec(s)) && hasOwn(FACE_SCRIPTS, m[1]) && FACE_SCRIPTS[m[1]].indexOf(script) < 0) s = s.slice(m[0].length);
+    return LANG_FONT[lang] ? '"' + LANG_FONT[lang] + '", ' + s : s;
+  }
+
+  // ---- Numbers and dates. Numbers always in English form; dates in the window's locale.
+  var format = {
+    number: function (n, options) { return new Intl.NumberFormat('en-US', options).format(n); },
+    // 12-hour unless the options ask, with the time of day in words in Russian and Ukrainian ('3:05 дня').
+    date: function (date, options, locale) {
+      var o = {}, lang = String(locale || 'en-US').slice(0, 2).toLowerCase();
+      for (var k in options) if (hasOwn(options, k)) o[k] = options[k];
+      if (o.hour !== undefined && o.hour12 === undefined && o.hourCycle === undefined) {
+        o.hourCycle = 'h12';
+        if (lang === 'ru' || lang === 'uk') o.dayPeriod = 'short';
+      }
+      var s = new Intl.DateTimeFormat(locale, o).format(new Date(date));
+      if (lang === 'ru') s = s.replace(/полд\./g, 'дня');   // (noon: a word a child can read)
+      if (lang === 'uk') s = s.replace(/ʼ/g, '’');   // (the apostrophe the tables use)
+      return s;
+    },
+    list: function (items, type, locale) {
+      items = Array.prototype.map.call(items || [], String);
+      if (typeof Intl === 'undefined' || !Intl.ListFormat) return items.join(', ');
+      return new Intl.ListFormat(locale, { type: type === 'or' ? 'disjunction' : 'conjunction', style: 'long' }).format(items);
+    },
+    plural: function (n, locale) { return pluralOf(n, locale); },
+    capital: function (text, locale) {
+      var s = String(text == null ? '' : text), n = /^[\uD800-\uDBFF][\uDC00-\uDFFF]/.test(s) ? 2 : 1;
+      return s.slice(0, n).toLocaleUpperCase(locale) + s.slice(n);
+    }
+  };
+
+  // ---- A page's words: its tables, and lookups in its language. opts: { lang: () => code, say: (level, text) }.
+  // Each problem is said once (per key, or per key and language), and counted for report().
+  function createWords(opts) {
+    var lang = opts.lang, say = opts.say || function () {};
+    var rows = { window: {}, board: {} }, said = {}, missing = [], fallback = [];
+    var once = function (id, level, text) { if (!said[id]) { said[id] = true; say(level, text); } };
+    var note = function (list, key) { if (list.indexOf(key) < 0) list.push(key); };
+    function add(table) {
+      if (!table || typeof table !== 'object' || Array.isArray(table)) { say('error', '21Board: words() takes a table: { window, board }.'); return; }
+      var need = [];
+      ['window', 'board'].forEach(function (sec) {
+        var src = table[sec];
+        if (!src || typeof src !== 'object') return;
+        Object.keys(src).forEach(function (key) {
+          var row = src[key];
+          if (/^b21\./.test(key)) { once('common ' + key, 'warn', '21Board: "' + key + '" is a common word. Use it without a row.'); return; }
+          if (!row || typeof row !== 'object') return;
+          delete rows[sec === 'window' ? 'board' : 'window'][key];
+          rows[sec][key] = row;
+          var lacking = sec === 'window' ? LANGS.filter(function (l) { return blank(row[l]); }) : [];
+          if (lacking.length) need.push(key + ': ' + andList(lacking.map(function (l) { return IN_ENGLISH[l]; })) + '.');
+        });
+      });
+      if (need.length) say('warn', '21Board: ' + need.length + (need.length === 1 ? ' row needs' : ' rows need') + ' more languages. ' + need.join(' '));
+    }
+    function find(key) {
+      if (hasOwn(COMMON_WORDS.window, key)) return { row: COMMON_WORDS.window[key], board: false };
+      if (hasOwn(rows.window, key)) return { row: rows.window[key], board: false };
+      if (hasOwn(rows.board, key)) return { row: rows.board[key], board: true };
+      return null;
+    }
+    // The row's form for n, in its language: a missing form uses other, then English (Spanish many uses other, as usual).
+    function form(key, row, value, l, n) {
+      if (!value || typeof value !== 'object') return value;
+      var cat = n == null ? 'other' : pluralOf(n, LOCALES[l]);
+      if (!blank(value[cat])) return value[cat];
+      if (!blank(value.other)) {
+        if (!(l === 'es' && cat === 'many')) {
+          note(fallback, key);
+          once('form ' + l + ' ' + key, 'warn', '21Board: "' + key + '" in ' + IN_ENGLISH[l] + ' has no ' + cat + ' form, so it shows the other form.');
+        }
+        return value.other;
+      }
+      if (l === 'en') return null;
+      note(fallback, key);
+      once('lang ' + l + ' ' + key, 'warn', '21Board: "' + key + '" has no ' + IN_ENGLISH[l] + ', so it shows in English.');
+      return form(key, row, row.en, 'en', n);
+    }
+    function text(key, vars, ui) {
+      key = String(key);
+      var hit = find(key), n = vars != null && typeof vars === 'object' ? vars.n : undefined;
+      var l = ui || (hit && hit.board) ? 'en' : lang(), value;
+      if (hit && l === PSEUDO) {
+        value = pseudo(hit.row);
+        if (typeof value === 'object') value = value[n == null ? 'other' : pluralOf(n, LOCALES.qps)];
+      } else if (hit) {
+        value = hit.row[l];
+        if (blank(value) && l !== 'en') {
+          note(fallback, key);
+          once('lang ' + l + ' ' + key, 'warn', '21Board: "' + key + '" has no ' + IN_ENGLISH[l] + ', so it shows in English.');
+          value = hit.row.en; l = 'en';
+        }
+        value = form(key, hit.row, value, l, n);
+      }
+      if (blank(value) || typeof value !== 'string') {
+        note(missing, key);
+        once('missing ' + key, 'error', '21Board: no words for "' + key + '". Add it to the words table.');
+        return key;
+      }
+      var r = fill(value, vars);
+      if (r.unfilled.length) once('fill ' + key, 'error', '21Board: "' + key + '" needs a value for ' + andList(r.unfilled.map(function (p) { return '{' + p + '}'; })) + '.');
+      return r.text;
+    }
+    return {
+      add: add,
+      t: function (key, vars) { return text(key, vars, false); },
+      ui: function (key, vars) { return text(key, vars, true); },
+      report: function () { return { missing: missing.slice(), fallback: fallback.slice() }; }
+    };
+  }
+
+  var Words = {
+    LANGS: LANGS, PSEUDO: PSEUDO, LOCALES: LOCALES, NAMES: NAMES, IN_ENGLISH: IN_ENGLISH, FORMS: FORMS, OPTIONAL_FORMS: OPTIONAL_FORMS,
+    KEY_RE: KEY_RE, COMMON_WORDS: COMMON_WORDS, LANG_FONT: LANG_FONT, FACE_SCRIPTS: FACE_SCRIPTS, LANG_SCRIPT: LANG_SCRIPT,
+    isCode: isCode, langFromName: langFromName, langFromHash: langFromHash, confirm: confirmLang, localeFrom: localeFrom,
+    htmlLang: function (lang) { return lang === PSEUDO ? 'en-XA' : LOCALES[lang] || 'en-US'; },
+    placeholders: placeholders, fill: fill, plural: pluralOf, pseudo: pseudo, auditText: auditText, fontFor: fontFor, andList: andList,
+    format: format, create: createWords
+  };
+  // #endregion Words
+
+  // ------------------------------------------------------------ the window's language
+  // Known before any widget script runs, so Board21.t() is right from the start: inside 21Board from the frame's name
+  // (the board names it 'b21-board:<window>;<language>' before it loads), on its own from #b21-lang=… in the address.
+  // The dev window's own page has none: the widget's frame inside it decides.
+  var language = role === 'board' ? Words.langFromName(window.name) : role === 'bare' ? Words.langFromHash(location.hash) : 'en';
+  var boardLocale = null;   // context.locale, once the board has sent context.language, if it suits that language
+  var book = Words.create({ lang: function () { return language; }, say: function (level, text) { console[level](text); } });
+  function currentLocale() { return boardLocale || Words.LOCALES[language]; }
+  // <html lang> for screen readers' voices, and translate="no": 21Board has its own languages, and a browser's page
+  // translation would send a window's words, names included, away. A page written in another language keeps its own
+  // lang while its window is English.
+  var ownLang = document.documentElement.getAttribute('lang') || '';
+  function markLanguage() {
+    var root = document.documentElement;
+    root.lang = language === 'en' && ownLang && !/^en(-|$)/i.test(ownLang) ? ownLang : Words.htmlLang(language);
+    root.setAttribute('translate', 'no');
+  }
+  // data-t="key" → the element's text; data-t-aria-label="key" (and -title, -placeholder, -alt, -aria-description) → that
+  // attribute. Each from Board21.t().
+  var DATA_T = [['data-t', ''], ['data-t-aria-label', 'aria-label'], ['data-t-title', 'title'], ['data-t-placeholder', 'placeholder'], ['data-t-alt', 'alt'], ['data-t-aria-description', 'aria-description']];
+  var DATA_T_SEL = DATA_T.map(function (d) { return '[' + d[0] + ']'; }).join(',');
+  function applyWords(root) {
+    root = root || document;
+    if (!root.querySelectorAll) return;
+    var els = Array.prototype.slice.call(root.querySelectorAll(DATA_T_SEL));
+    if (root.nodeType === 1 && root.matches && root.matches(DATA_T_SEL)) els.unshift(root);
+    els.forEach(function (el) {
+      DATA_T.forEach(function (d) {
+        var key = el.getAttribute(d[0]);
+        if (!key) return;
+        var text = book.t(key);
+        if (d[1]) { if (el.getAttribute(d[1]) !== text) el.setAttribute(d[1], text); } else if (el.textContent !== text) el.textContent = text;
+      });
+    });
+  }
+  // The board's language for the window, when it sends one (from Phase 1b), at init. Older boards send none: the
+  // context then gets the window's own.
+  function takeLanguage(ctx) {
+    if (Words.isCode(ctx.language)) {
+      var was = language;
+      language = Words.confirm(ctx.language, language);
+      boardLocale = Words.localeFrom(ctx.locale, language);
+      if (language !== was) { markLanguage(); if (document.readyState !== 'loading') applyWords(document); }
+    } else ctx.language = language;
+    if (ctx.uiLanguage == null) ctx.uiLanguage = 'en';
+    if (ctx.uiLocale == null) ctx.uiLocale = 'en-US';
+  }
+  // For the pseudo language's check (tests): the English a page still shows, and what doesn't fit its box or the window.
+  // It skips <title>, scripts, styles, inputs, text boxes, translate="no" below <html>, hidden elements, and the SDK's own
+  // standalone menu and note (data-b21-chrome).
+  function audit() {
+    var missed = [], cut = [], W = window.innerWidth, H = window.innerHeight, ATTRS = ['aria-label', 'title', 'placeholder', 'alt'];
+    var name = function (el, text) { return el.tagName.toLowerCase() + (el.id ? '#' + el.id : '') + (text ? ' "' + text.slice(0, 40) + '"' : ''); };
+    (function walk(el) {
+      if (/^(SCRIPT|STYLE|TITLE|TEMPLATE|NOSCRIPT|INPUT|TEXTAREA)$/.test(el.tagName) || el.isContentEditable || el.hasAttribute('data-b21-chrome') ||
+        (el !== document.documentElement && el.getAttribute('translate') === 'no')) return;
+      var cs = getComputedStyle(el);
+      if (cs.display === 'none') return;
+      var own = '';
+      for (var c = el.firstChild; c; c = c.nextSibling) if (c.nodeType === 3) own += c.nodeValue;
+      own = own.replace(/\s+/g, ' ').trim();
+      if (cs.visibility !== 'hidden' && el.getClientRects().length) {
+        if (own && Words.auditText(own).length) missed.push(own);
+        ATTRS.forEach(function (a) { var v = el.getAttribute(a); if (v && Words.auditText(v).length) missed.push(a + ': ' + v); });
+        if (own || DATA_T.some(function (d) { return el.hasAttribute(d[0]); })) {
+          var r = el.getBoundingClientRect(), why = [];
+          if (el.scrollWidth > el.clientWidth + 1) why.push('wider than its box');
+          if (el.scrollHeight > el.clientHeight + 1) why.push('taller than its box');
+          if (r.left < -0.5 || r.top < -0.5 || r.right > W + 0.5 || r.bottom > H + 0.5) why.push('outside the window');
+          if (why.length) cut.push(name(el, own) + ': ' + why.join(', '));
+        }
+      }
+      for (var k = el.firstElementChild; k; k = k.nextElementSibling) walk(k);
+    })(document.body || document.documentElement);
+    return { missed: missed, cut: cut };
   }
 
   function post(type, payload) {
@@ -229,7 +562,7 @@
       widgetId: standaloneId(), widgetName: String(man.name || document.title || 'Widget'), widgetVersion: String(man.version || ''), instance: 1,
       data: s.data === undefined ? null : s.data, config: s.config === undefined ? null : s.config,
       theme: theme, palette: PALETTES[theme], window: windowInfo(),
-      locale: navigator.language || 'en-US', devMode: true, host: 'standalone', timers: []
+      locale: navigator.language || 'en-US', language: language, uiLanguage: 'en', uiLocale: 'en-US', devMode: true, host: 'standalone', timers: []
     };
     applyTheme(theme);
     window.addEventListener('resize', function () { emit('resize', windowInfo()); });
@@ -264,6 +597,7 @@
     if (!menuItems.length) { if (standaloneMenuBtn) { standaloneMenuBtn.remove(); standaloneMenuBtn = null; } return; }
     if (!standaloneMenuBtn) {
       standaloneMenuBtn = document.createElement('select');
+      standaloneMenuBtn.setAttribute('data-b21-chrome', '');
       standaloneMenuBtn.title = 'Window menu items';
       standaloneMenuBtn.style.cssText = 'position:fixed;top:6px;right:6px;z-index:2147483647;font:12px system-ui;opacity:.85';
       standaloneMenuBtn.addEventListener('change', function () {
@@ -296,6 +630,7 @@
         if (context) return; // already initialised (or already fell back to standalone)
         context = m.context;
         context.standalone = false;
+        takeLanguage(context);
         applyTheme(context.theme, context.palette);
         devReport(context.host === 'dev');
         readyResolve(context);
@@ -443,11 +778,28 @@
   } else if (role === 'bare' && window.__board21DevNote !== undefined) {
     devNote = window.__board21DevNote ? 'The 21Board dev window could not start: ' + window.__board21DevNote : '';
   }
+  // (Only now: the dev window copies <html>'s attributes as they were. On its own after all, the address decides.)
+  if (role === 'bare') language = Words.langFromHash(location.hash);
+  markLanguage();
+  // data-t words go in as the parser adds each element, before the page paints, so the English never shows while a slow
+  // script holds back DOMContentLoaded. Then one pass over the whole page, and the watch stops.
+  if (document.readyState === 'loading') {
+    var parsing = window.MutationObserver ? new MutationObserver(function (records) {
+      records.forEach(function (rec) {
+        var host = rec.target.nodeType === 1 && rec.target.closest ? rec.target.closest('[data-t]') : null;   // (text added to one)
+        if (host) applyWords(host);
+        for (var i = 0; i < rec.addedNodes.length; i++) if (rec.addedNodes[i].nodeType === 1) applyWords(rec.addedNodes[i]);
+      });
+    }) : null;
+    if (parsing) parsing.observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener('DOMContentLoaded', function () { if (parsing) parsing.disconnect(); applyWords(document); });
+  } else applyWords(document);
   // A small note at the top of a standalone page saying why it isn't in a 21Board window.
   function showDevNote() {
     if (!document.body || !devNote) return;
     var bar = document.createElement('div');
     bar.setAttribute('data-b21-note', '');
+    bar.setAttribute('data-b21-chrome', '');
     bar.style.cssText = 'position:fixed;left:6px;top:6px;z-index:2147483647;max-width:calc(100% - 120px);display:flex;gap:8px;align-items:center;' +
       'padding:6px 8px 6px 12px;border-radius:10px;background:#1f2937;color:#fff;font:12.5px/1.35 system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25)';
     var txt = document.createElement('span');
@@ -610,9 +962,39 @@
       return readyPromise.then(function () {
         if (standalone) console.info('[21Board toast] ' + text); else post('toast', { text: String(text) });
       });
-    }
+    },
+
+    // ---- Words: your table, in English, Spanish, Russian, and Ukrainian (docs/WIDGET-SDK.md, "Languages").
+    /** Adds your words table: { window, board, dynamic }. Call it before you show any words. */
+    words: function (table) { book.add(table); },
+    /** The words for key in the window's language. vars: { n } for a plural, and any {name} in the text. */
+    t: function (key, vars) { return book.t(key, vars); },
+    /** The words for key in English, the board's own language: menu rows, the title bar, and toasts. */
+    ui: function (key, vars) { return book.ui(key, vars); },
+    /** Puts data-t words in root, or the whole page: for markup added after the page loaded. */
+    applyWords: function (root) { applyWords(root || document); },
+    /** Dates in the window's language, and numbers always in English form. */
+    format: {
+      date: function (date, options, locale) { return Words.format.date(date, options, locale || currentLocale()); },
+      number: function (n, options) { return Words.format.number(n, options); },
+      list: function (items, type) { return Words.format.list(items, type, currentLocale()); },
+      plural: function (n, locale) { return Words.format.plural(n, locale || currentLocale()); },
+      capital: function (text, locale) { return Words.format.capital(text, locale || currentLocale()); }
+    },
+    /** The window's language: 'en', 'es', 'ru', or 'uk' ('qps', the pseudo language, for developers). */
+    get language() { return language; },
+    /** The locale for dates, such as 'es-US'. */
+    get locale() { return currentLocale(); },
+    /** The board's own language and locale. */
+    get uiLanguage() { return 'en'; },
+    get uiLocale() { return 'en-US'; },
+    languages: Object.freeze(LANGS.slice()),
+    languageNames: Object.freeze(JSON.parse(JSON.stringify(NAMES)))
   };
 
   Object.defineProperty(Board21, 'page', { value: document.documentElement });
+  // For tests: the keys this page looked up with no row or no words in its language, and the pseudo language's check.
+  Object.defineProperty(Board21, '__words', { value: function () { return book.report(); } });
+  Object.defineProperty(Board21, '__audit', { value: audit });
   window.Board21 = Board21;
 })();

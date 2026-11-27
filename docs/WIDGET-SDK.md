@@ -12,6 +12,7 @@ Widgets talk to the board through one script: `sdk/board21.js`, which defines `w
 - [Multiple instances and sync](#multiple-instances-and-sync)
 - [Moving windows from inside](#moving-windows-from-inside)
 - [Theming](#theming)
+- [Languages](#languages)
 - [Registering a widget](#registering-a-widget)
 - [Testing a widget](#testing-a-widget) (the dev window, building with AI tools, the widget lab)
 - [Submission checklist](#submission-checklist)
@@ -113,6 +114,9 @@ The **context**:
   palette: { bg, text, accent, ... },   // same values as the --b21-* CSS variables
   window: { width, height, x, y, maximized, focused, zoom, corners },  // content size in CSS px; focused = selected; zoom, corners below
   locale: 'en-US',
+  language: 'en',            // this window's language: 'en', 'es', 'ru', or 'uk'. English inside 21Board for now
+  uiLanguage: 'en',          // the board's own, for menu rows and the title bar
+  uiLocale: 'en-US',
   devMode: false,            // Developer mode is on in Settings
   boardVersion: '2026.11.12-1',  // the 21Board release's name (for display; don't compare)
   sdkProtocol: 1,
@@ -252,6 +256,20 @@ or an element.
 **Right-click.** The SDK turns off the browser's menu in your widget, except on links, in text boxes, in Developer
 mode, and in the dev window. To show a menu of your own, listen for `contextmenu` and call `preventDefault()`.
 
+### Words
+
+| Call | Description |
+| --- | --- |
+| `Board21.words(table)` | Adds your words table. See [Languages](#languages). |
+| `Board21.t(key, vars)` | The words for `key` in the window's language. |
+| `Board21.ui(key, vars)` | The words for `key` in English, for menu rows, the title bar, and toasts. |
+| `Board21.applyWords(root)` | Puts `data-t` words in `root`, or the whole page. |
+| `Board21.language` | The window's language: `'en'`, `'es'`, `'ru'`, or `'uk'`. |
+| `Board21.locale` | The locale for dates, such as `'es-US'`. |
+| `Board21.uiLanguage`, `Board21.uiLocale` | The board's own: `'en'` and `'en-US'`. |
+| `Board21.languages`, `Board21.languageNames` | The four codes, and each language's name in that language. |
+| `Board21.format.date(date, options)`, `number(n, options)`, `list(items, type)`, `plural(n)`, `capital(text)` | Dates in the window's language, and numbers always in English form. See [Numbers and dates](#numbers-and-dates). |
+
 ---
 
 ## Content vs. config
@@ -354,7 +372,8 @@ The SDK sets these CSS variables on your `<html>` element and keeps them updated
 Appearance → *Text style*. With Board Sync, that choice is the same on all the teacher's devices. `--b21-font` then
 starts with a font that comes with 21Board, which the SDK loads from the board's `fonts/` folder. A widget on
 another site gets that font only if the board's site allows it (CORS). Otherwise its text stays in the device's own
-font. So does a widget uploaded as a file in Developer mode, which is sealed off from the board's files.
+font. So does a widget uploaded as a file in Developer mode, which is sealed off from the board's files. A Russian or
+Ukrainian window skips those fonts, which have no Cyrillic letters, and keeps the device's own.
 
 If you fit text to the window, fit it on `resize`, the window's or `Board21.on('resize')`. One fires when the text
 style changes, and again once the new font has loaded. Form controls don't take the page's font by themselves.
@@ -362,6 +381,115 @@ Give `button`, `input`, `textarea`, and `select` `font-family: inherit` (or `fon
 the text style too.
 
 Use `[data-b21-theme="dark"] .thing { … }` for anything else that should change in dark mode.
+
+---
+
+## Languages
+
+A window can show its words in English, Spanish, Russian, or Ukrainian. Inside 21Board every window is English for
+now. To see another language, open the widget on its own with `#b21-bare&b21-lang=es` at the end of its address. Use
+`ru` for Russian and `uk` for Ukrainian.
+
+### Words tables
+
+Keep your words in `words.js` in your widget's folder. Load it right after the SDK:
+
+```html
+<script src="../../sdk/board21.js"></script>
+<script src="words.js"></script>
+```
+
+It holds one call. Three of the Timer's rows:
+
+```js
+Board21.words({
+  window: {
+    'chip.min': { note: 'Preset buttons 1m, 2m, 3m, 5m, 10m, and 15m. The m means minutes. All six share one small row.', max: 6, fill: { n: '15' },
+      en: '{n}m',
+      es: '{n} min',
+      ru: '{n} мин',
+      uk: '{n} хв' },
+    minus: { note: 'Screen reader name of the −1:00 button.',
+      en: 'Subtract one minute',
+      es: 'Restar un minuto',
+      ru: 'Убавить минуту',
+      uk: 'Відняти хвилину' }
+  },
+  board: {
+    'title.done': { note: 'Title bar when the time is up.', en: 'Done!' }
+  }
+});
+```
+
+- `window` rows are the words inside the window. Each needs all four languages.
+- `board` rows are menu rows and title bar words. They need only `en`, and stay English for now.
+- `note` tells a translator where the words show and who reads them. `max` is the most characters the spot holds, in
+  every language. `fill` gives each placeholder's longest value, for `max`. `to: 'teacher'` marks words only the
+  teacher sees.
+- `dynamic` lists the start of each key your code builds, such as `'sound.'` for `Board21.ui('sound.' + name)`.
+- A key is words joined by dots, such as `chip.min`. A new meaning gets a new key.
+- Keys that start with `b21.` are the SDK's common words: Start, Pause, and Reset. Use them with no row of your own.
+- Type ’ for an apostrophe. A straight `'` ends the text early.
+- List `words.js` in your widget's `files` in `widgets/registry.js`, so it works offline.
+- `node tools/words.js` checks every table. `node tools/words.js --format` lays them out. Translators read
+  [docs/TRANSLATING.md](TRANSLATING.md).
+
+### Showing words
+
+- `Board21.t(key, vars)` gives a `window` row in the window's language. `Board21.ui(key, vars)` gives any row in
+  English, for menu rows, the title bar, and toasts. Both are right as soon as your script runs.
+- In your markup, add `data-t` with a key, and the SDK puts its words in as the page loads. `data-t-aria-label`,
+  `data-t-title`, `data-t-placeholder`, `data-t-alt`, and `data-t-aria-description` set those attributes. Keep the
+  English in the markup too:
+
+  ```html
+  <button id="minus" aria-label="Subtract one minute" data-t-aria-label="minus">−1:00</button>
+  ```
+
+- For markup you add later, call `Board21.applyWords(element)`.
+- Put words on the page with `textContent`, never `innerHTML`.
+- A row without the window's language shows its English. A key with no row shows the key. The console says which.
+
+### Plurals and placeholders
+
+- For a count, give each form the language needs: `one` and `other` in English and Spanish, and `one`, `few`,
+  `many`, and `other` in Russian and Ukrainian. Pass the count as `n`, as in `Board21.t('chip.label', { n: 5 })`.
+- Write `{n}` in `one` too. In Russian and Ukrainian, 21 takes `one`.
+- Any other `{name}` is filled in as plain text. Numbers go in with no commas, so a year reads 2026.
+- Give each whole sentence a row of its own. Never glue words to a count in code.
+
+### Numbers and dates
+
+- `Board21.format.number(n, options)` always uses English rules: `1,234.5`.
+- `Board21.format.date(date, options)` follows the window's language. With `hour` in the options, time is 12-hour.
+  Russian and Ukrainian give the time of day in words:
+
+  | | 9:05 | 15:05 | 20:05 |
+  | --- | --- | --- | --- |
+  | English | 9:05 AM | 3:05 PM | 8:05 PM |
+  | Spanish | 9:05 a.m. | 3:05 p.m. | 8:05 p.m. |
+  | Russian | 9:05 утра | 3:05 дня | 8:05 вечера |
+  | Ukrainian | 9:05 ранку | 3:05 дня | 8:05 вечора |
+
+  For 24-hour time, pass `hourCycle: 'h23'`.
+- `format.list(items, type)` joins a list with `'and'` or `'or'` in the window's language. `format.plural(n)` gives
+  a count's form. `format.capital(text)` capitalizes a month or weekday.
+- `Board21.locale` is the window's locale, such as `'es-US'`. Pass it to other `Intl` calls for dates and words.
+  Numbers always take `'en-US'`.
+
+### What the SDK sets
+
+- `<html lang>` is the window's locale, so a screen reader picks the right voice. A page written in another language
+  keeps its own `lang` in an English window.
+- `translate="no"` goes on `<html>`, so a browser's page translation never sends a window's words away.
+- A Russian or Ukrainian window skips the easier-to-read fonts, which have no Cyrillic letters.
+
+### Trying a language
+
+Open the widget on its own with `#b21-bare&b21-lang=es`, `ru`, or `uk`. Reload to change the language.
+
+`#b21-bare&b21-lang=qps` shows the pseudo language. Every word from your table shows in ［brackets］, longer, with
+accents and a Cyrillic letter. English outside the brackets isn't in your table yet.
 
 ---
 
@@ -480,7 +608,8 @@ The footer shows the window's content size, shape lock, minimum size, and board 
   error panel sees them.
 - **Just the widget:** *⋯ ▸ Show the widget on its own*, or add `#b21-bare` to the address, or
   `data-dev="off"` to the SDK's script tag. This is standalone mode: data in `localStorage`, window calls
-  ignored, menu items in a small dropdown in the corner.
+  ignored, menu items in a small dropdown in the corner. Add `&b21-lang=es`, `ru`, or `uk` after `#b21-bare` to see
+  the widget in that language.
 - If the SDK **isn't the first script** in `<head>`, the widget runs on its own with a note saying so.
 - Without a manifest block, a widget in this repo's `widgets/` folder uses its `widgets/registry.js`
   entry; otherwise the window is 400 × 300.

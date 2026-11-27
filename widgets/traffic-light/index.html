@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Traffic Light</title>
 <script src="../../sdk/board21.js"></script>
+<script src="words.js"></script>
 <style>
   html, body { margin: 0; height: 100%; }
   body { background: var(--b21-bg); overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: manipulation; display: flex; align-items: center; justify-content: center; }
@@ -28,16 +29,16 @@
 </head>
 <body>
   <div class="housing">
-    <button class="lamp red" data-c="red" aria-label="Red"></button>
-    <button class="lamp yellow" data-c="yellow" aria-label="Yellow"></button>
-    <button class="lamp green" data-c="green" aria-label="Green"></button>
+    <button class="lamp red" data-c="red" aria-label="Red" data-t-aria-label="red"></button>
+    <button class="lamp yellow" data-c="yellow" aria-label="Yellow" data-t-aria-label="yellow"></button>
+    <button class="lamp green" data-c="green" aria-label="Green" data-t-aria-label="green"></button>
   </div>
 <script>
   // Content: { active: 'red' | 'yellow' | 'green' | null }, the color the teacher chose.
   // Config:  { follow: true } while Follow timers is on: the light shows the color of the Timer or 21Timer on the page
   //   that is closest to ending (the board's 'timers'). That color is worked out here, the same in every tab and on
   //   every device, from what the board sends. It is never saved.
-  const LABELS = { red: 'Red', yellow: 'Yellow', green: 'Green' };
+  const COLORS = ['red', 'yellow', 'green'];
   let state = { active: null };
   let config = {};
   let timers = [];     // [{ id, endsAt, remaining, warnMs }]: endsAt while running, else remaining (0 when done)
@@ -71,12 +72,12 @@
     if (sig !== drawn) {
       drawn = sig;
       document.querySelectorAll('.lamp').forEach(b => { b.classList.toggle('on', b.dataset.c === c); b.setAttribute('aria-pressed', String(b.dataset.c === c)); });
-      Board21.window.setTitle(c ? LABELS[c] : '');
+      Board21.window.setTitle(c ? Board21.ui(c) : '');
       // (The colors are tapped on the light itself.)
       Board21.menu.set([
-        { id: 'off', label: 'All off', disabled: !c },
+        { id: 'off', label: Board21.ui('menu.off'), disabled: !c },
         { separator: true },
-        { id: 'follow', label: 'Follow timers', checked: following() }
+        { id: 'follow', label: Board21.ui('menu.follow'), checked: following() }
       ]);
     }
     plan();
@@ -119,7 +120,7 @@
     } else if (id === 'off') set(null);
   });
   // (Saved content and config can come from an imported file: a lamp is on only if it names one of the three.)
-  const readState = d => ({ active: d && Object.prototype.hasOwnProperty.call(LABELS, d.active) ? d.active : null });
+  const readState = d => ({ active: d && COLORS.includes(d.active) ? d.active : null });
   const readConfig = c => (c && typeof c === 'object' && !Array.isArray(c) ? c : {});
   const num = v => typeof v === 'number' && isFinite(v);
   const readTimers = l => (Array.isArray(l) ? l : []).filter(t => t && typeof t.id === 'string' && (num(t.endsAt) || num(t.remaining)))

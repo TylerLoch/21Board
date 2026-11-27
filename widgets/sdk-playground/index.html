@@ -238,6 +238,19 @@
   };
   const EXAMPLE_NAMES = { checkmarks: 'Checkmarks', heading: 'Heading', swatches: 'Swatches', choices: 'Choices', icon: 'Icon' };
 
+  // ---- A words table to try t() and ui() with. It's added as the page loads, so t() works before any Run.
+  const EXAMPLE_WORDS = {
+    window: {
+      hello: { en: 'Hello', es: 'Hola', ru: 'Привет', uk: 'Привіт' },
+      apples: { en: { one: '{n} apple', other: '{n} apples' },
+        es: { one: '{n} manzana', other: '{n} manzanas' },
+        ru: { one: '{n} яблоко', few: '{n} яблока', many: '{n} яблок', other: '{n} яблока' },
+        uk: { one: '{n} яблуко', few: '{n} яблука', many: '{n} яблук', other: '{n} яблука' } }
+    },
+    board: { 'menu.hello': { en: 'Say hello' } }
+  };
+  Board21.words(EXAMPLE_WORDS);
+
   // ---- Events, and what a handler gets.
   const EVENTS = ['data', 'config', 'theme', 'resize', 'focus', 'blur', 'menu', 'beforeclose', 'file', 'timers'];
   const SIGNATURES = { data: '(data, { reason })', config: '(config, { reason })', theme: '(theme, palette)', resize: '(info)', focus: '()', blur: '()', menu: '(id, item)', beforeclose: '()', file: '(file, { reason })', timers: '(timers)' };
@@ -283,6 +296,25 @@
       { call: 'Board21.embedded', prop: true },
       { call: 'Board21.theme', prop: true },
       { call: 'Board21.version', prop: true }
+    ]],
+    ['Words', 'Open this page with #b21-bare&b21-lang=es to try Spanish.', [
+      { call: 'Board21.words', args: [['table', 'json', json(EXAMPLE_WORDS)]] },
+      { call: 'Board21.t', args: [['key', 'text', 'apples'], ['vars', 'json', json({ n: 5 })]] },
+      { call: 'Board21.ui', args: [['key', 'text', 'apples'], ['vars', 'json', json({ n: 5 })]] },
+      { call: 'Board21.applyWords' },
+      { call: 'Board21.language', prop: true },
+      { call: 'Board21.locale', prop: true },
+      { call: 'Board21.uiLanguage', prop: true },
+      { call: 'Board21.uiLocale', prop: true },
+      { call: 'Board21.languages', prop: true },
+      { call: 'Board21.languageNames', prop: true }
+    ]],
+    ['Format', 'Dates follow the window’s language. Numbers always use English rules.', [
+      { call: 'Board21.format.date', args: [['date', 'text', '2026-11-27T15:05'], ['options', 'json', json({ weekday: 'long', hour: 'numeric', minute: '2-digit' })]] },
+      { call: 'Board21.format.number', args: [['n', 'json', '1234.5'], ['options', 'json', json({ minimumFractionDigits: 2 })]] },
+      { call: 'Board21.format.list', args: [['items', 'list', json(['red', 'yellow', 'green'])], ['type', 'text', 'and']] },
+      { call: 'Board21.format.plural', args: [['n', 'json', '21']] },
+      { call: 'Board21.format.capital', args: [['text', 'text', 'noviembre de 2026']] }
     ]]
   ];
 
@@ -471,7 +503,7 @@
   wide.addEventListener('change', () => { showTab(current); if (wide.matches) Log.toEnd(); });
 
   // ---- State: content, config, window info and the context, as they are now.
-  const CONTEXT_KEYS = ['widgetId', 'widgetName', 'widgetVersion', 'instance', 'theme', 'text-style', 'palette', 'locale', 'devMode', 'boardVersion', 'sdkProtocol', 'host', 'kiosk', 'timers', 'standalone'];   // (on the board, only the Traffic Light and Clock get timers: — here)
+  const CONTEXT_KEYS = ['widgetId', 'widgetName', 'widgetVersion', 'instance', 'theme', 'text-style', 'palette', 'locale', 'language', 'uiLanguage', 'uiLocale', 'devMode', 'boardVersion', 'sdkProtocol', 'host', 'kiosk', 'timers', 'standalone'];   // (on the board, only the Traffic Light and Clock get timers: — here)
   const WINDOW_KEYS = ['width', 'height', 'x', 'y', 'maximized', 'focused', 'zoom', 'corners'];
   const SECTIONS = { data: 'Content', config: 'Config' };
   // The text style the teacher chose, from the font that leads --b21-font.

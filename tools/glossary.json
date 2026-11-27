@@ -1,0 +1,1490 @@
+[
+ {
+  "en": "school",
+  "es": "escuela",
+  "ru": "школа",
+  "uk": "школа",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Calendars: \"Escuela Primaria\", \"Начальная школа\", \"Початкова школа\"."
+ },
+ {
+  "en": "class (the group of students)",
+  "es": "clase; grupo",
+  "ru": "класс",
+  "uk": "клас",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Mexican teachers call their class \"el grupo\". A lesson is \"clase\" (es), \"урок\" or \"занятие\" (ru), \"урок\" or \"заняття\" (uk). ru/uk \"класс/клас\" also means grade."
+ },
+ {
+  "en": "classroom",
+  "es": "salón de clases",
+  "ru": "класс",
+  "uk": "клас; класна кімната",
+  "source": "HB-ES p4 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p5 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf)",
+  "note": "District: \"en el salón de clases\", \"с учащимися в классе\". \"Aula\" is Spain-leaning and formal; it shows up only in the machine-translated newsletter (NL-2023-11-ES p2)."
+ },
+ {
+  "en": "teacher",
+  "es": "maestro; maestra",
+  "ru": "учитель; учительница",
+  "uk": "учитель; учителька",
+  "source": "HB-ES p4 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p5 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Mexico says \"maestro/maestra\" in K-8, not \"profesor\". Ukrainian swaps у/в by sound: \"Учитель\" at the start, \"до вчителя\" after a vowel (CAL-UK p1 \"вчительські\")."
+ },
+ {
+  "en": "student",
+  "es": "estudiante; alumno",
+  "ru": "ученик; ученица",
+  "uk": "учень; учениця",
+  "source": "HB-ES p4 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p4 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2023-10-UK p2 (https://drive.google.com/file/d/16jX2LXH6mrKVl5c2JmJ44TH_0A0i4r1i/view)",
+  "note": "District writes \"estudiantes\" (es) and formal \"учащиеся\" (ru). For K-8 kids use ru \"ученик\", uk \"учень\" (NL \"учнів\"). uk \"студент\" means a college student; the machine newsletters misuse it."
+ },
+ {
+  "en": "homeroom teacher",
+  "es": "maestro del salón",
+  "ru": "классный руководитель",
+  "uk": "класний керівник",
+  "source": "HB-ES p4 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p5 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf)",
+  "note": "Both from the handbook sign-off form."
+ },
+ {
+  "en": "friend",
+  "es": "amigo; amiga",
+  "ru": "друг; подруга",
+  "uk": "друг; подруга",
+  "source": "ADM3-ES p3 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "Zones idea \"Help a friend\": \"Ayuda a un amigo\", \"Помоги другу\", \"Допоможи другові\"."
+ },
+ {
+  "en": "group",
+  "es": "grupo",
+  "ru": "группа",
+  "uk": "група",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); NL-2023-12-UK p7 (https://drive.google.com/file/d/1C16oXBtffp_afW8qa9nsTeXULkOtuxOO/view)",
+  "note": "Plurals: ru 1 группа, 2 группы, 5 групп; uk 1 група, 2 групи, 5 груп. \"Make 3 groups\": \"Hacer 3 grupos\", \"Сделать 3 группы\", \"Створити 3 групи\"."
+ },
+ {
+  "en": "team",
+  "es": "equipo",
+  "ru": "команда",
+  "uk": "команда",
+  "source": "HB-ES p38 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p12 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2023-10-UK p2 (https://drive.google.com/file/d/16jX2LXH6mrKVl5c2JmJ44TH_0A0i4r1i/view)",
+  "note": "\"Deportes de equipo\", \"командных видах спорта\"."
+ },
+ {
+  "en": "turn",
+  "es": "turno",
+  "ru": "ход; очередь",
+  "uk": "хід; черга",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "\"Your turn\": \"Es tu turno\", \"Твой ход\", \"Твій хід\". \"Take turns\": \"Tomar turnos\", \"По очереди\", \"По черзі\"."
+ },
+ {
+  "en": "winner",
+  "es": "ganador; ganadora",
+  "ru": "победитель; победительница",
+  "uk": "переможець; переможниця",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Gendered in all three, and the board does not know a name's gender. Prefer a verb: \"{name} wins\" as \"¡Gana {name}!\", \"Побеждает {name}!\", \"Перемагає {name}!\". Ukrainian puts names in the vocative when you speak to someone (\"Аню\"); a name the teacher typed cannot be inflected, so avoid direct address with a name."
+ },
+ {
+  "en": "name / names",
+  "es": "nombre; nombres",
+  "ru": "имя; имени; имён",
+  "uk": "ім’я; імені; імен",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "ru 1 имя, 2 имени, 5 имён; uk 1 ім’я, 2 імені, 5 імен. \"Pick a name\": \"Elegir un nombre\", \"Выбрать имя\", \"Вибрати ім’я\"."
+ },
+ {
+  "en": "grade (school level)",
+  "es": "grado",
+  "ru": "класс",
+  "uk": "клас",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); ADM3-ES p1 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Ordinals: es \"3.er grado\", \"2.º grado\" (Amplify style); ru \"3-й класс\"; uk \"3-й клас\". District: \"Grados 1-8\", \"1-8 классы\", \"1–8 класи\"."
+ },
+ {
+  "en": "kindergarten",
+  "es": "kínder",
+  "ru": "подготовительный класс",
+  "uk": "підготовчий клас",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "District es writes \"Kinder\" (RAE: \"kínder\"). CAL-RU keeps the English word \"Kindergarten\". CAL-UK says \"дитячий садок\", which means daycare. On the board, \"K\" works in all four."
+ },
+ {
+  "en": "preschool / Pre-K",
+  "es": "preescolar",
+  "ru": "Pre-K",
+  "uk": "Pre-K",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "ru/uk calendars keep \"Pre-K\" in Latin letters (CAL-RU also writes \"Пре-K\")."
+ },
+ {
+  "en": "parents / guardians",
+  "es": "padres; tutores",
+  "ru": "родители; опекуны",
+  "uk": "батьки; опікуни",
+  "source": "HB-ES p10 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p10 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2023-11-UK p3 (https://drive.google.com/file/d/1COeb0xeArWg8skd7uLt1Ban-vZYiLDhn/view)",
+  "note": "District: \"padres/tutores\", \"родителям или опекунам\", \"батьків/опікунів\". uk \"батьки\" is plural only."
+ },
+ {
+  "en": "schedule",
+  "es": "horario",
+  "ru": "расписание",
+  "uk": "розклад",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Calendars: \"HORARIO ESCOLAR\", \"РОЗКЛАД НАВЧАЛЬНОГО ДНЯ\". CAL-RU p1 says \"УЧЕБНЫЕ ЧАСЫ\" (school hours)."
+ },
+ {
+  "en": "day / days",
+  "es": "día; días",
+  "ru": "день; дня; дней",
+  "uk": "день; дні; днів",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "ru 1 день, 2 дня, 5 дней; uk 1 день, 2 дні, 5 днів."
+ },
+ {
+  "en": "week",
+  "es": "semana",
+  "ru": "неделя",
+  "uk": "тиждень",
+  "source": "HB-ES p4 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p5 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2023-10-UK p2 (https://drive.google.com/file/d/16jX2LXH6mrKVl5c2JmJ44TH_0A0i4r1i/view)",
+  "note": "False friend: uk \"неділя\" means Sunday. Never write \"неделя\" in Ukrainian."
+ },
+ {
+  "en": "today",
+  "es": "hoy",
+  "ru": "сегодня",
+  "uk": "сьогодні",
+  "source": "NL-2023-10-ES p4 (https://drive.google.com/file/d/1kF_RBmMaYG7osDDYSBVjl7au_G3iJ5em/view); NL-2023-10-RU p4 (https://drive.google.com/file/d/1UA0htY37lz7dwua55YO33E-od4WvlykI/view); NL-2023-10-UK p4 (https://drive.google.com/file/d/16jX2LXH6mrKVl5c2JmJ44TH_0A0i4r1i/view)",
+  "note": ""
+ },
+ {
+  "en": "tomorrow",
+  "es": "mañana",
+  "ru": "завтра",
+  "uk": "завтра",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "es \"mañana\" also means \"morning\"."
+ },
+ {
+  "en": "yesterday",
+  "es": "ayer",
+  "ru": "вчера",
+  "uk": "учора",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"учора\" and \"вчора\" are both standard; use \"Учора\" at the start of a label."
+ },
+ {
+  "en": "now",
+  "es": "ahora",
+  "ru": "сейчас",
+  "uk": "зараз",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Weather \"Now\" column. uk \"зараз\", never \"сейчас\"."
+ },
+ {
+  "en": "morning",
+  "es": "mañana; por la mañana",
+  "ru": "утро; утром",
+  "uk": "ранок; вранці",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Greeting: \"Buenos días\", \"Доброе утро\", \"Доброго ранку\". CAL-ES p2 \"Clases solo por la Mañana\". CAL-UK p2 writes \"до обіду\" (before lunch) for AM."
+ },
+ {
+  "en": "afternoon",
+  "es": "tarde; por la tarde",
+  "ru": "день; после обеда",
+  "uk": "день; після обіду",
+  "source": "CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Greeting: \"Buenas tardes\", \"Добрый день\", \"Добрий день\". CAL-UK p2 \"(після обіду)\" for PM. CAL-RU p2 leaves \"AM\" and \"PM\" in English."
+ },
+ {
+  "en": "a.m. / p.m.",
+  "es": "a. m.; p. m.",
+  "ru": "AM; PM",
+  "uk": "AM; PM",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); NL-2023-10-ES p6 (https://drive.google.com/file/d/1kF_RBmMaYG7osDDYSBVjl7au_G3iJ5em/view); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Mexico uses the 12-hour clock with \"a. m./p. m.\" (NL: \"9:30 a. m. a 2:45 p. m.\"; CAL-ES p1 leaves \"9 a.m. to 3:30 p.m.\" in English). ru/uk have no AM/PM; their calendars use 24-hour time (\"c 0900 до 1530\", \"9:00 – 15:30\"). Open question for the Clock. An American classroom suggests a 12-hour face in every language, with \"AM/PM\" kept in Latin letters for ru/uk as CAL-RU p2 does."
+ },
+ {
+  "en": "hour / hours",
+  "es": "hora; horas",
+  "ru": "час; часа; часов",
+  "uk": "година; години; годин",
+  "source": "HB-ES p15 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p9 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2023-11-UK p6 (https://drive.google.com/file/d/1COeb0xeArWg8skd7uLt1Ban-vZYiLDhn/view)",
+  "note": "ru/uk need four plural forms: one (1, 21), few (2-4), many (5-20, 0), other (1.5): ru час/часа/часов/часа, uk година/години/годин/години. Short: \"h\", \"ч\", \"год\". uk \"час\" means time and \"годинник\" means clock."
+ },
+ {
+  "en": "minute / minutes",
+  "es": "minuto; minutos",
+  "ru": "минута; минуты; минут",
+  "uk": "хвилина; хвилини; хвилин",
+  "source": "NL-2024-02-ES p4 (https://drive.google.com/file/d/1LqJ11Fl9dbgR5j-PHqfysWoc9sYM3sSJ/view); NL-2024-02-RU p4 (https://drive.google.com/file/d/1UKCq9-hWT09FSm677AX89PzhM6mSJYgB/view); NL-2024-02-UK p4 (https://drive.google.com/file/d/1TKC-Q0BDE2JSqeIQs3E0C5CmSuWVBugW/view)",
+  "note": "After \"for\" ru/uk take the accusative: \"1 минуту\", \"1 хвилину\" (\"Sit quietly for 2 minutes\": \"Siéntate en silencio 2 minutos\", \"Посиди тихо 2 минуты\", \"Посидь тихо 2 хвилини\"). Other (1.5): \"минуты\", \"хвилини\". Short: \"min\", \"мин\", \"хв\" (uk is not \"мин\")."
+ },
+ {
+  "en": "second / seconds",
+  "es": "segundo; segundos",
+  "ru": "секунда; секунды; секунд",
+  "uk": "секунда; секунди; секунд",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Short: \"s\", \"с\", \"с\". Same four plural slots as minute."
+ },
+ {
+  "en": "timer",
+  "es": "temporizador",
+  "ru": "таймер",
+  "uk": "таймер",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Apple es-MX Clock says \"Temporizador\". \"Cronómetro\" is the stopwatch."
+ },
+ {
+  "en": "stopwatch",
+  "es": "cronómetro",
+  "ru": "секундомер",
+  "uk": "секундомір",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"секундомір\", not \"секундомер\"."
+ },
+ {
+  "en": "clock",
+  "es": "reloj",
+  "ru": "часы",
+  "uk": "годинник",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "ru \"часы\" is plural only. uk \"годинник\" (not \"часи\")."
+ },
+ {
+  "en": "calendar",
+  "es": "calendario",
+  "ru": "календарь",
+  "uk": "календар",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": ""
+ },
+ {
+  "en": "start (button)",
+  "es": "Iniciar",
+  "ru": "Старт",
+  "uk": "Старт",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Plain \"begin\": \"Empezar\", \"Начать\", \"Почати\". Buttons: Spanish infinitive; ru/uk a noun or infinitive, as phone clock apps do."
+ },
+ {
+  "en": "stop (button)",
+  "es": "Detener",
+  "ru": "Стоп",
+  "uk": "Стоп",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "A shouted \"Stop!\" in a game or on a sign is es \"¡Alto!\" (see stop/slow/go)."
+ },
+ {
+  "en": "pause",
+  "es": "Pausar",
+  "ru": "Пауза",
+  "uk": "Пауза",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "The title bar status \"Paused\" stays English (answers.md Q1)."
+ },
+ {
+  "en": "resume",
+  "es": "Reanudar",
+  "ru": "Продолжить",
+  "uk": "Продовжити",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Button words above. The calendars' \"classes resume\" is \"Regreso a Clases\", \"Уроки начинаются снова\", \"Відновлення занять\"."
+ },
+ {
+  "en": "reset",
+  "es": "Restablecer",
+  "ru": "Сбросить",
+  "uk": "Скинути",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "es \"Reiniciar\" means restart; Apple es-MX stopwatch uses \"Restablecer\". uk \"Скинути\", not \"Сбросить\"."
+ },
+ {
+  "en": "undo",
+  "es": "Deshacer",
+  "ru": "Отменить",
+  "uk": "Скасувати",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"Скасувати\" is also \"Cancel\"; if both sit on one screen, make Cancel \"Закрити\" or rephrase. Avoid \"Відмінити\" (a Russism in this sense)."
+ },
+ {
+  "en": "cancel",
+  "es": "Cancelar",
+  "ru": "Отмена",
+  "uk": "Скасувати",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "start over",
+  "es": "Empezar de nuevo",
+  "ru": "Начать заново",
+  "uk": "Почати знову",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Name Picker and Zones \"Start over\"."
+ },
+ {
+  "en": "next",
+  "es": "Siguiente",
+  "ru": "Далее; следующий",
+  "uk": "Далі; наступний",
+  "source": "HB-ES p15 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p15 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2023-10-UK p5 (https://drive.google.com/file/d/16jX2LXH6mrKVl5c2JmJ44TH_0A0i4r1i/view)",
+  "note": "Button: \"Siguiente\", \"Далее\", \"Далі\". Adjective: \"el próximo año\", \"следующий учебный год\", \"наступного тижня\". uk never \"следующий\"."
+ },
+ {
+  "en": "previous",
+  "es": "Anterior",
+  "ru": "Назад; предыдущий",
+  "uk": "Назад; попередній",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "\"Previous month\": \"Mes anterior\", \"Предыдущий месяц\", \"Попередній місяць\"."
+ },
+ {
+  "en": "done; finished",
+  "es": "¡Listo!; terminado",
+  "ru": "Готово!",
+  "uk": "Готово!",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "\"All done!\": \"¡Todo listo!\", \"Всё готово!\", \"Усе готово!\"."
+ },
+ {
+  "en": "ready",
+  "es": "listo; lista",
+  "ru": "готов; готова",
+  "uk": "готовий; готова",
+  "source": "BMC-ES p1 (https://www2.bmc.org/sites/default/files/Patient_Care/Specialty_Care/Pediatrics%20-%20Autism/resources/Zonas%20de%20regulaci%C3%B3n%20emocional.pdf)",
+  "note": "Gendered. Zones \"Ready to Learn\": \"Listo para aprender\" (BMC-ES p1); ru/uk gender-free nouns \"Готовность учиться\", \"Готовність учитися\"."
+ },
+ {
+  "en": "time's up",
+  "es": "¡Se acabó el tiempo!",
+  "ru": "Время вышло!",
+  "uk": "Час сплив!",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"Час сплив\" is the native idiom; \"Час вийшов\" copies Russian."
+ },
+ {
+  "en": "almost done (time nearly up)",
+  "es": "Queda poco tiempo",
+  "ru": "Осталось немного",
+  "uk": "Залишилося трохи",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Timer warning: the time, not a task, is nearly up. Title bar stays English (Q1)."
+ },
+ {
+  "en": "lap",
+  "es": "vuelta",
+  "ru": "круг",
+  "uk": "коло",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "\"Lap 3\": \"Vuelta 3\", \"Круг 3\", \"Коло 3\". \"Fastest lap\": \"Vuelta más rápida\", \"Самый быстрый круг\", \"Найшвидше коло\"."
+ },
+ {
+  "en": "record; best time",
+  "es": "récord; mejor tiempo",
+  "ru": "рекорд; лучшее время",
+  "uk": "рекорд; найкращий час",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "\"New record\": \"¡Nuevo récord!\", \"Новый рекорд!\", \"Новий рекорд!\". uk \"найкращий\", not \"лучший\"."
+ },
+ {
+  "en": "total (time)",
+  "es": "total",
+  "ru": "всего",
+  "uk": "усього",
+  "source": "ADM3-ES p3 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "Stopwatch \"Total\" beside a lap time. Dice total is \"Suma\"/\"Сумма\"/\"Сума\" (see Games)."
+ },
+ {
+  "en": "holiday (no school)",
+  "es": "día festivo (no hay clases)",
+  "ru": "праздник (школы нет)",
+  "uk": "свято (занять немає)",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Calendar legends: \"Día Festivo (No hay Clases)\", \"праздничный день (Школы нет)\", \"Свято (занять немає)\". Write Spanish in sentence case, not the calendar's Title Case."
+ },
+ {
+  "en": "first day of school",
+  "es": "primer día de clases",
+  "ru": "первый день занятий",
+  "uk": "перший день навчання",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": ""
+ },
+ {
+  "en": "break (days off)",
+  "es": "vacaciones",
+  "ru": "каникулы",
+  "uk": "канікули",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "\"Winter break\": \"Vacaciones de invierno\", \"Зимние каникулы\", \"Зимові канікули\". ru/uk are plural only (CAL-RU p1 \"осенний каникул\" is a grammar error)."
+ },
+ {
+  "en": "school year",
+  "es": "año escolar",
+  "ru": "учебный год",
+  "uk": "навчальний рік",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": ""
+ },
+ {
+  "en": "Sunday",
+  "es": "domingo (dom)",
+  "ru": "воскресенье (Вс)",
+  "uk": "неділя (Нд)",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Not on the district calendar (school days only). US and Mexican calendars start on Sunday; Russian and Ukrainian ones start on Monday."
+ },
+ {
+  "en": "Monday",
+  "es": "lunes (lun)",
+  "ru": "понедельник (Пн)",
+  "uk": "понеділок (Пн)",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "Weekdays are lowercase mid-sentence in all three. The ru/uk calendars use made-up headers (\"ПО В С Ч ПЯ\", \"ПО В С Ч П'\"); use the standard two-letter forms shown."
+ },
+ {
+  "en": "Tuesday",
+  "es": "martes (mar)",
+  "ru": "вторник (Вт)",
+  "uk": "вівторок (Вт)",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": ""
+ },
+ {
+  "en": "Wednesday",
+  "es": "miércoles (mié)",
+  "ru": "среда (Ср)",
+  "uk": "середа (Ср)",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": ""
+ },
+ {
+  "en": "Thursday",
+  "es": "jueves (jue)",
+  "ru": "четверг (Чт)",
+  "uk": "четвер (Чт)",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": ""
+ },
+ {
+  "en": "Friday",
+  "es": "viernes (vie)",
+  "ru": "пятница (Пт)",
+  "uk": "п’ятниця (Пт)",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "uk apostrophe is ’ (U+2019), as CAL-UK p2 \"п’ятниця\"."
+ },
+ {
+  "en": "Saturday",
+  "es": "sábado (sáb)",
+  "ru": "суббота (Сб)",
+  "uk": "субота (Сб)",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"субота\" has one б."
+ },
+ {
+  "en": "January",
+  "es": "enero",
+  "ru": "январь",
+  "uk": "січень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de enero\", \"19 января\", \"19 січня\". Month names are lowercase in all three except at the start of a header. Ukrainian names share nothing with Russian. CAL-RU p2 writes \"Август 19\" (English order); don't copy it. Intl gives ru \"январь 2027 г.\" and uk \"січень 2027 р.\"; capitalize the first letter for a header."
+ },
+ {
+  "en": "February",
+  "es": "febrero",
+  "ru": "февраль",
+  "uk": "лютий",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de febrero\", \"19 февраля\", \"19 лютого\"."
+ },
+ {
+  "en": "March",
+  "es": "marzo",
+  "ru": "март",
+  "uk": "березень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de marzo\", \"19 марта\", \"19 березня\"."
+ },
+ {
+  "en": "April",
+  "es": "abril",
+  "ru": "апрель",
+  "uk": "квітень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de abril\", \"19 апреля\", \"19 квітня\"."
+ },
+ {
+  "en": "May",
+  "es": "mayo",
+  "ru": "май",
+  "uk": "травень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de mayo\", \"19 мая\", \"19 травня\"."
+ },
+ {
+  "en": "June",
+  "es": "junio",
+  "ru": "июнь",
+  "uk": "червень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de junio\", \"19 июня\", \"19 червня\"."
+ },
+ {
+  "en": "July",
+  "es": "julio",
+  "ru": "июль",
+  "uk": "липень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de julio\", \"19 июля\", \"19 липня\"."
+ },
+ {
+  "en": "August",
+  "es": "agosto",
+  "ru": "август",
+  "uk": "серпень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de agosto\", \"19 августа\", \"19 серпня\"."
+ },
+ {
+  "en": "September",
+  "es": "septiembre",
+  "ru": "сентябрь",
+  "uk": "вересень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de septiembre\", \"19 сентября\", \"19 вересня\"."
+ },
+ {
+  "en": "October",
+  "es": "octubre",
+  "ru": "октябрь",
+  "uk": "жовтень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de octubre\", \"19 октября\", \"19 жовтня\"."
+ },
+ {
+  "en": "November",
+  "es": "noviembre",
+  "ru": "ноябрь",
+  "uk": "листопад",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de noviembre\", \"19 ноября\", \"19 листопада\"."
+ },
+ {
+  "en": "December",
+  "es": "diciembre",
+  "ru": "декабрь",
+  "uk": "грудень",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "In a date: \"19 de diciembre\", \"19 декабря\", \"19 грудня\"."
+ },
+ {
+  "en": "fall; autumn",
+  "es": "otoño",
+  "ru": "осень",
+  "uk": "осінь",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "First/Then themes. Calendars: \"Vacaciones otoño\", \"осенний\", \"Осінні канікули\"."
+ },
+ {
+  "en": "winter",
+  "es": "invierno",
+  "ru": "зима",
+  "uk": "зима",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": ""
+ },
+ {
+  "en": "spring",
+  "es": "primavera",
+  "ru": "весна",
+  "uk": "весна",
+  "source": "CAL-ES p2 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); CAL-RU p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p2 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": ""
+ },
+ {
+  "en": "summer",
+  "es": "verano",
+  "ru": "лето",
+  "uk": "літо",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "activity",
+  "es": "actividad",
+  "ru": "занятие",
+  "uk": "заняття",
+  "source": "HB-ES p6 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); CAL-RU p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-RUS.pdf); CAL-UK p1 (https://ccsd21.org/wp-content/uploads/2026/02/2026-2027-Academic-Calendar-UKR.pdf)",
+  "note": "ru \"мероприятие\" means an event; a class activity is \"занятие\"."
+ },
+ {
+  "en": "first / then",
+  "es": "Primero / Después",
+  "ru": "Сначала / Потом",
+  "uk": "Спочатку / Потім",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Standard first-then board words in each language. The widget's CSS makes them capitals."
+ },
+ {
+  "en": "break (short rest)",
+  "es": "descanso",
+  "ru": "перерыв",
+  "uk": "перерва",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Keep apart from recess in uk (see next row)."
+ },
+ {
+  "en": "recess",
+  "es": "recreo",
+  "ru": "перемена",
+  "uk": "велика перерва",
+  "source": "HB-ES p40 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); NL-2024-02-RU p5 (https://drive.google.com/file/d/1UKCq9-hWT09FSm677AX89PzhM6mSJYgB/view); NL-2024-02-UK p5 (https://drive.google.com/file/d/1TKC-Q0BDE2JSqeIQs3E0C5CmSuWVBugW/view)",
+  "note": "HB-ES p40 \"Educación Física/Recreo\". HB-RU p39 drops recess. The machine newsletters say \"перемен\", \"перерв\". Russian and Ukrainian schools have no recess; \"перемена\" is the break between lessons. uk \"велика перерва\" (the long break) keeps it apart from \"перерва\"."
+ },
+ {
+  "en": "lunch",
+  "es": "almuerzo",
+  "ru": "обед",
+  "uk": "обід",
+  "source": "HB-ES p6 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p7 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2024-02-UK p5 (https://drive.google.com/file/d/1TKC-Q0BDE2JSqeIQs3E0C5CmSuWVBugW/view)",
+  "note": "\"Programa de desayuno y almuerzo\", \"Программа завтрака и обеда\". Mexican kids also say \"lonche\"."
+ },
+ {
+  "en": "snack",
+  "es": "refrigerio",
+  "ru": "перекус",
+  "uk": "перекус",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Mexican school word \"refrigerio\". \"Merienda\" is an afternoon snack; \"bocadillo\" is a sandwich in Spain."
+ },
+ {
+  "en": "reading",
+  "es": "lectura",
+  "ru": "чтение",
+  "uk": "читання",
+  "source": "HB-ES p3 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p4 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2023-12-UK p4 (https://drive.google.com/file/d/1C16oXBtffp_afW8qa9nsTeXULkOtuxOO/view)",
+  "note": ""
+ },
+ {
+  "en": "writing",
+  "es": "escritura",
+  "ru": "письмо",
+  "uk": "письмо",
+  "source": "ADM4-ES p14 (https://amplify.com/wp-content/uploads/2025/09/ADM-4-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "ru/uk \"письмо\" also means a letter."
+ },
+ {
+  "en": "math",
+  "es": "matemáticas",
+  "ru": "математика",
+  "uk": "математика",
+  "source": "HB-ES p3 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p4 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2024-02-UK p4 (https://drive.google.com/file/d/1TKC-Q0BDE2JSqeIQs3E0C5CmSuWVBugW/view)",
+  "note": ""
+ },
+ {
+  "en": "science",
+  "es": "ciencias",
+  "ru": "естествознание",
+  "uk": "природознавство",
+  "source": "NL-2024-04-ES p4 (https://drive.google.com/file/d/1UHR9tPrdgNOdg8Phk4IenSpU0bmsDwIM/view); NL-2024-04-RU p4 (https://drive.google.com/file/d/1jE_uQy8gLoP_P-d9m7D9LD4GkW7BtFYf/view)",
+  "note": "NL: \"Evaluación de ciencias\", \"естественных наук\". ru \"наука\" alone is wrong for the school subject. For middle school \"естественные науки\", \"природничі науки\"."
+ },
+ {
+  "en": "art",
+  "es": "arte",
+  "ru": "рисование",
+  "uk": "малювання",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "K-5 art class is drawing class in ru/uk. Middle school: \"ИЗО\", \"образотворче мистецтво\". \"Art & coloring\": \"Arte y colorear\", \"Рисование и раскраски\", \"Малювання й розмальовки\"."
+ },
+ {
+  "en": "music",
+  "es": "música",
+  "ru": "музыка",
+  "uk": "музика",
+  "source": "NL-2023-12-RU p2 (https://drive.google.com/file/d/1o_ofticGT58XTEfj5ssaJLA_6KL1bpNw/view)",
+  "note": "\"Music class\": \"Clase de música\", \"Урок музыки\", \"Урок музики\"."
+ },
+ {
+  "en": "PE; gym",
+  "es": "educación física; gimnasio",
+  "ru": "физкультура; спортзал",
+  "uk": "фізкультура; спортзал",
+  "source": "HB-ES p40 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p39 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2023-10-UK p6 (https://drive.google.com/file/d/16jX2LXH6mrKVl5c2JmJ44TH_0A0i4r1i/view); NL-2023-11-ES p4 (https://drive.google.com/file/d/17ADNXzXwmDAS8jFyPTUXV00yYdLogeH4/view); NL-2023-11-UK p4 (https://drive.google.com/file/d/1COeb0xeArWg8skd7uLt1Ban-vZYiLDhn/view)",
+  "note": "Class: \"educación física\", \"физкультура\" (HB-RU p39), \"фізкультура\". Room: \"gimnasio\", \"спортзал\"."
+ },
+ {
+  "en": "library",
+  "es": "biblioteca",
+  "ru": "библиотека",
+  "uk": "бібліотека",
+  "source": "NL-2023-10-ES p6 (https://drive.google.com/file/d/1kF_RBmMaYG7osDDYSBVjl7au_G3iJ5em/view); NL-2023-10-RU p6 (https://drive.google.com/file/d/1UA0htY37lz7dwua55YO33E-od4WvlykI/view); NL-2023-10-UK p6 (https://drive.google.com/file/d/16jX2LXH6mrKVl5c2JmJ44TH_0A0i4r1i/view)",
+  "note": ""
+ },
+ {
+  "en": "clean up",
+  "es": "Recoger",
+  "ru": "Уборка",
+  "uk": "Прибирання",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Mexican teachers: \"¡A recoger!\". \"Limpiar\" means to wipe clean."
+ },
+ {
+  "en": "line up",
+  "es": "Hacer fila",
+  "ru": "Построиться",
+  "uk": "Шикуватися",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Mexican classrooms say \"Formarse\" (\"¡Fórmense!\"); \"hacer fila\" is understood everywhere."
+ },
+ {
+  "en": "quiet",
+  "es": "silencio",
+  "ru": "тишина",
+  "uk": "тиша",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "\"Quiet corner\": \"Rincón tranquilo\", \"Тихий уголок\", \"Тихий куточок\". \"Calm corner\": \"Rincón de la calma\", \"Уголок спокойствия\", \"Куточок спокою\"."
+ },
+ {
+  "en": "listen",
+  "es": "escuchar",
+  "ru": "слушать",
+  "uk": "слухати",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"слухати\", not \"слушати\"."
+ },
+ {
+  "en": "wash hands",
+  "es": "Lavarse las manos",
+  "ru": "Помыть руки",
+  "uk": "Помити руки",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "bathroom",
+  "es": "baño",
+  "ru": "туалет",
+  "uk": "туалет",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Mexico \"baño\"; \"sanitario\" is formal signage."
+ },
+ {
+  "en": "computer",
+  "es": "computadora",
+  "ru": "компьютер",
+  "uk": "комп’ютер",
+  "source": "HB-ES p28 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p28 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2023-11-UK p6 (https://drive.google.com/file/d/1COeb0xeArWg8skd7uLt1Ban-vZYiLDhn/view)",
+  "note": "Mexico/US \"computadora\" (Spain \"ordenador\"). Keep \"Chromebook\" and \"iPad\" in Latin letters, as the district does (NL-2023-11-UK p6)."
+ },
+ {
+  "en": "cell phone",
+  "es": "celular",
+  "ru": "мобильный телефон",
+  "uk": "мобільний телефон",
+  "source": "HB-ES p30 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); HB-RU p30 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); COBB-ES p2 (https://media.cobbk12.org/media/WWWCobb/medialib/zonesofregulation_parentresource_english-spanish_spanishrevised.1a4a16134473.pdf)",
+  "note": "HB-ES p30 used Spain's \"teléfonos móviles\"; Mexican/US Spanish says \"celular\" (COBB-ES p2)."
+ },
+ {
+  "en": "language",
+  "es": "idioma",
+  "ru": "язык",
+  "uk": "мова",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"мова\", never \"язик\" (that is the tongue). Menu names stay English (Tyler)."
+ },
+ {
+  "en": "Zones of Regulation",
+  "es": "Zonas de Regulación",
+  "ru": "Зоны регуляции",
+  "uk": "Зони регуляції",
+  "source": "COBB-ES p2 (https://media.cobbk12.org/media/WWWCobb/medialib/zonesofregulation_parentresource_english-spanish_spanishrevised.1a4a16134473.pdf)",
+  "note": "Zone names: \"Zona azul/verde/amarilla/roja\"; \"Синяя/Зелёная/Жёлтая/Красная зона\"; \"Синя/Зелена/Жовта/Червона зона\". Feelings below follow widgets/zones-check-in/index.html:259-279."
+ },
+ {
+  "en": "sad",
+  "es": "Triste",
+  "ru": "Грусть",
+  "uk": "Сум",
+  "source": "BMC-ES p1 (https://www2.bmc.org/sites/default/files/Patient_Care/Specialty_Care/Pediatrics%20-%20Autism/resources/Zonas%20de%20regulaci%C3%B3n%20emocional.pdf)",
+  "note": "Pattern: Spanish adjectives in the masculine, as Mexican classroom posters do; ru/uk nouns, as Russian and Ukrainian emotion cards do. Nouns keep ru/uk free of gender, which the board cannot know. Adjectives if wanted: ru грустный/грустная, uk сумний/сумна."
+ },
+ {
+  "en": "tired",
+  "es": "Cansado",
+  "ru": "Усталость",
+  "uk": "Втома",
+  "source": "BMC-ES p1 (https://www2.bmc.org/sites/default/files/Patient_Care/Specialty_Care/Pediatrics%20-%20Autism/resources/Zonas%20de%20regulaci%C3%B3n%20emocional.pdf)",
+  "note": ""
+ },
+ {
+  "en": "sick",
+  "es": "Enfermo",
+  "ru": "Болею",
+  "uk": "Хворію",
+  "source": "BMC-ES p1 (https://www2.bmc.org/sites/default/files/Patient_Care/Specialty_Care/Pediatrics%20-%20Autism/resources/Zonas%20de%20regulaci%C3%B3n%20emocional.pdf)",
+  "note": "ru/uk first-person verbs are gender-free."
+ },
+ {
+  "en": "slow",
+  "es": "Lento",
+  "ru": "Вялость",
+  "uk": "Млявість",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "The turtle chip."
+ },
+ {
+  "en": "ready to learn",
+  "es": "Listo para aprender",
+  "ru": "Готовность учиться",
+  "uk": "Готовність учитися",
+  "source": "BMC-ES p1 (https://www2.bmc.org/sites/default/files/Patient_Care/Specialty_Care/Pediatrics%20-%20Autism/resources/Zonas%20de%20regulaci%C3%B3n%20emocional.pdf)",
+  "note": ""
+ },
+ {
+  "en": "calm",
+  "es": "Tranquilo",
+  "ru": "Спокойствие",
+  "uk": "Спокій",
+  "source": "BMC-ES p1 (https://www2.bmc.org/sites/default/files/Patient_Care/Specialty_Care/Pediatrics%20-%20Autism/resources/Zonas%20de%20regulaci%C3%B3n%20emocional.pdf)",
+  "note": "Mexico \"tranquilo\"; \"calmado\" is fine too."
+ },
+ {
+  "en": "happy",
+  "es": "Feliz",
+  "ru": "Радость",
+  "uk": "Радість",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "BMC-ES p1 also lists \"Contento\"."
+ },
+ {
+  "en": "elevated",
+  "es": "Acelerado",
+  "ru": "Много энергии",
+  "uk": "Багато енергії",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Avoid es \"excitado\", ru \"возбуждение\", uk \"збудження\": all carry a sexual sense."
+ },
+ {
+  "en": "silly",
+  "es": "Juguetón",
+  "ru": "Дурачусь",
+  "uk": "Пустую",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "BMC-ES p1 says \"Tonto\", which means dumb; use \"juguetón\". Nouns if wanted: \"Озорство\", \"Пустощі\"."
+ },
+ {
+  "en": "frustrated",
+  "es": "Frustrado",
+  "ru": "Досада",
+  "uk": "Досада",
+  "source": "BMC-ES p1 (https://www2.bmc.org/sites/default/files/Patient_Care/Specialty_Care/Pediatrics%20-%20Autism/resources/Zonas%20de%20regulaci%C3%B3n%20emocional.pdf)",
+  "note": "ru/uk \"фрустрация/фрустрація\" is clinical."
+ },
+ {
+  "en": "angry",
+  "es": "Enojado",
+  "ru": "Злость",
+  "uk": "Злість",
+  "source": "BMC-ES p1 (https://www2.bmc.org/sites/default/files/Patient_Care/Specialty_Care/Pediatrics%20-%20Autism/resources/Zonas%20de%20regulaci%C3%B3n%20emocional.pdf)",
+  "note": "Mexico \"enojado\" (Spain \"enfadado\")."
+ },
+ {
+  "en": "intense",
+  "es": "Alterado",
+  "ru": "Напряжение",
+  "uk": "Напруга",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "es \"intenso\" describes a personality, not a feeling."
+ },
+ {
+  "en": "overwhelmed",
+  "es": "Abrumado",
+  "ru": "Перегрузка",
+  "uk": "Перевантаження",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "BMC-ES p1 also lists \"Agobiado\"."
+ },
+ {
+  "en": "worried",
+  "es": "Preocupado",
+  "ru": "Тревога",
+  "uk": "Тривога",
+  "source": "BMC-ES p1 (https://www2.bmc.org/sites/default/files/Patient_Care/Specialty_Care/Pediatrics%20-%20Autism/resources/Zonas%20de%20regulaci%C3%B3n%20emocional.pdf)",
+  "note": ""
+ },
+ {
+  "en": "excited",
+  "es": "Emocionado",
+  "ru": "Восторг",
+  "uk": "Захват",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Never es \"excitado\". BMC-ES p1 has \"Entusiasmado\"."
+ },
+ {
+  "en": "Drink water (an idea line)",
+  "es": "Toma agua",
+  "ru": "Попей воды",
+  "uk": "Попий води",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Sample of the \"you\" form for one student: tú (es), ты (ru), ти (uk). Mexico \"tomar agua\" (Spain \"beber\")."
+ },
+ {
+  "en": "Take 3 deep breaths",
+  "es": "Respira hondo 3 veces",
+  "ru": "Сделай 3 глубоких вдоха",
+  "uk": "Зроби 3 глибокі вдихи",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Numbers change the case: ru \"3 глубоких вдоха\", uk \"3 глибокі вдихи\"."
+ },
+ {
+  "en": "Talk to your teacher",
+  "es": "Habla con tu maestro",
+  "ru": "Поговори с учителем",
+  "uk": "Поговори з учителем",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "es uses the masculine as the generic. The board can't know the teacher is a woman (\"tu maestra\")."
+ },
+ {
+  "en": "stress ball; fidget",
+  "es": "pelota antiestrés",
+  "ru": "мячик-антистресс",
+  "uk": "м’ячик-антистрес",
+  "source": "COBB-ES p4 (https://media.cobbk12.org/media/WWWCobb/medialib/zonesofregulation_parentresource_english-spanish_spanishrevised.1a4a16134473.pdf)",
+  "note": "\"Use a fidget\": \"Usa un juguete antiestrés\", \"Возьми антистресс\", \"Візьми антистрес\"."
+ },
+ {
+  "en": "weather",
+  "es": "clima; tiempo",
+  "ru": "погода",
+  "uk": "погода",
+  "source": "HB-ES p49 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookSpanish.pdf); NL-2024-01-ES p2 (https://drive.google.com/file/d/1BZh_BBiQDrKcqEksTkADQ7QDHOAK-55x/view); HB-RU p48 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf); NL-2024-01-UK p2 (https://drive.google.com/file/d/1ASmp2DPmkEc8FYFAI-wAEj-nVdsaymNy/view)",
+  "note": "Mexico/US say \"el clima\" for weather (\"inclemencias del clima\"); Spain says \"el tiempo\"."
+ },
+ {
+  "en": "sunny",
+  "es": "Soleado",
+  "ru": "Солнечно",
+  "uk": "Сонячно",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Condition words follow widgets/weather/index.html:1141-1142. "
+ },
+ {
+  "en": "clear (night)",
+  "es": "Despejado",
+  "ru": "Ясно",
+  "uk": "Ясно",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "mostly sunny",
+  "es": "Mayormente soleado",
+  "ru": "Преимущественно солнечно",
+  "uk": "Переважно сонячно",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"переважно\", never \"преимущественно\"."
+ },
+ {
+  "en": "mostly clear",
+  "es": "Mayormente despejado",
+  "ru": "Преимущественно ясно",
+  "uk": "Переважно ясно",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "partly cloudy",
+  "es": "Parcialmente nublado",
+  "ru": "Переменная облачность",
+  "uk": "Мінлива хмарність",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "cloudy",
+  "es": "Nublado",
+  "ru": "Облачно",
+  "uk": "Хмарно",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"хмарно\", not \"облачно\"."
+ },
+ {
+  "en": "fog",
+  "es": "Niebla",
+  "ru": "Туман",
+  "uk": "Туман",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "drizzle",
+  "es": "Llovizna",
+  "ru": "Морось",
+  "uk": "Мряка",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"мряка\", not \"морось\"."
+ },
+ {
+  "en": "rain",
+  "es": "Lluvia",
+  "ru": "Дождь",
+  "uk": "Дощ",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "snow",
+  "es": "Nieve",
+  "ru": "Снег",
+  "uk": "Сніг",
+  "source": "CAL-ES p1 (https://ccsd21.org/wp-content/uploads/2026/04/2026-2027-Academic-Calendar-SPA-1.pdf); NL-2024-01-UK p5 (https://drive.google.com/file/d/1ASmp2DPmkEc8FYFAI-wAEj-nVdsaymNy/view)",
+  "note": "CAL-ES p1 \"días de emergencia/nieve\"; NL \"снігові/надзвичайні дні\"."
+ },
+ {
+  "en": "thunderstorms",
+  "es": "Tormentas eléctricas",
+  "ru": "Гроза",
+  "uk": "Гроза",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "es \"tormenta\" alone is any storm."
+ },
+ {
+  "en": "wind",
+  "es": "Viento",
+  "ru": "Ветер",
+  "uk": "Вітер",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "temperature",
+  "es": "Temperatura",
+  "ru": "Температура",
+  "uk": "Температура",
+  "source": "HB-RU p35 (https://ccsd21.org/wp-content/uploads/2017/04/1617ParentStudentHandbookRussian.pdf)",
+  "note": ""
+ },
+ {
+  "en": "feels like",
+  "es": "Sensación térmica",
+  "ru": "Ощущается как",
+  "uk": "Відчувається як",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "high / low",
+  "es": "Máxima / Mínima",
+  "ru": "Макс. / Мин.",
+  "uk": "Макс. / Мін.",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"Мін.\" with і."
+ },
+ {
+  "en": "sunrise",
+  "es": "Salida del sol",
+  "ru": "Восход",
+  "uk": "Схід сонця",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "widgets/weather/index.html:1232."
+ },
+ {
+  "en": "sunset",
+  "es": "Puesta del sol",
+  "ru": "Закат",
+  "uk": "Захід сонця",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"захід\", not \"закат\"."
+ },
+ {
+  "en": "air quality",
+  "es": "Calidad del aire",
+  "ru": "Качество воздуха",
+  "uk": "Якість повітря",
+  "source": "AIRNOW-ES (https://www.airnow.gov/aqi/aqi-basics-in-spanish/)",
+  "note": "AQI levels below agree with the noun: ru neuter (качество), uk feminine (якість). widgets/weather/index.html:1178-1183."
+ },
+ {
+  "en": "air quality: Good",
+  "es": "Bueno",
+  "ru": "Хорошее",
+  "uk": "Добра",
+  "source": "AIRNOW-ES (https://www.airnow.gov/aqi/aqi-basics-in-spanish/)",
+  "note": "Spanish is EPA's own wording (its page prints \"Insalubres\" for red; singular is correct)."
+ },
+ {
+  "en": "air quality: Moderate",
+  "es": "Moderado",
+  "ru": "Умеренное",
+  "uk": "Помірна",
+  "source": "AIRNOW-ES (https://www.airnow.gov/aqi/aqi-basics-in-spanish/)",
+  "note": ""
+ },
+ {
+  "en": "air quality: Unhealthy for sensitive groups",
+  "es": "Insalubre para grupos sensibles",
+  "ru": "Вредное для чувствительных групп",
+  "uk": "Шкідлива для чутливих груп",
+  "source": "AIRNOW-ES (https://www.airnow.gov/aqi/aqi-basics-in-spanish/)",
+  "note": ""
+ },
+ {
+  "en": "air quality: Unhealthy",
+  "es": "Insalubre",
+  "ru": "Вредное",
+  "uk": "Шкідлива",
+  "source": "AIRNOW-ES (https://www.airnow.gov/aqi/aqi-basics-in-spanish/)",
+  "note": ""
+ },
+ {
+  "en": "air quality: Very unhealthy",
+  "es": "Muy insalubre",
+  "ru": "Очень вредное",
+  "uk": "Дуже шкідлива",
+  "source": "AIRNOW-ES (https://www.airnow.gov/aqi/aqi-basics-in-spanish/)",
+  "note": ""
+ },
+ {
+  "en": "air quality: Hazardous",
+  "es": "Peligroso",
+  "ru": "Опасное",
+  "uk": "Небезпечна",
+  "source": "AIRNOW-ES (https://www.airnow.gov/aqi/aqi-basics-in-spanish/)",
+  "note": ""
+ },
+ {
+  "en": "coat",
+  "es": "Abrigo",
+  "ru": "Зимняя куртка",
+  "uk": "Зимова куртка",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "What to wear: widgets/weather/index.html:602-610. ru/uk \"пальто\" is a dress coat; kids wear a winter jacket."
+ },
+ {
+  "en": "jacket",
+  "es": "Chamarra",
+  "ru": "Куртка",
+  "uk": "Куртка",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Mexico \"chamarra\" (Spain \"chaqueta\")."
+ },
+ {
+  "en": "rain jacket",
+  "es": "Impermeable",
+  "ru": "Дождевик",
+  "uk": "Дощовик",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "hat (winter)",
+  "es": "Gorro",
+  "ru": "Шапка",
+  "uk": "Шапка",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "es \"sombrero\" is a brimmed hat; \"gorra\" is a cap."
+ },
+ {
+  "en": "gloves",
+  "es": "Guantes",
+  "ru": "Перчатки",
+  "uk": "Рукавички",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"рукавички\", not \"перчатки\". Mittens: \"manoplas\", \"варежки\", \"рукавиці\"."
+ },
+ {
+  "en": "scarf",
+  "es": "Bufanda",
+  "ru": "Шарф",
+  "uk": "Шарф",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "boots",
+  "es": "Botas",
+  "ru": "Сапоги",
+  "uk": "Чоботи",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "uk \"чоботи\", not \"сапоги\"."
+ },
+ {
+  "en": "T-shirt",
+  "es": "Playera",
+  "ru": "Футболка",
+  "uk": "Футболка",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Mexico \"playera\" (Spain \"camiseta\")."
+ },
+ {
+  "en": "shorts",
+  "es": "Shorts",
+  "ru": "Шорты",
+  "uk": "Шорти",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Mexico says \"shorts\"."
+ },
+ {
+  "en": "Dress for … weather (tier words)",
+  "es": "helado, muy frío, frío, fresco, templado, caluroso",
+  "ru": "очень холодно, холодно, прохладно, свежо, тепло, жарко",
+  "uk": "дуже холодно, холодно, прохолодно, свіжо, тепло, спекотно",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Tiers very cold, cold, chilly, cool, mild, warm (widgets/weather/index.html:603-610). The sentence is built; translate each whole sentence, e.g. \"Hace frío. Ponte el abrigo.\", \"Холодно. Надень куртку.\", \"Холодно. Одягни куртку.\""
+ },
+ {
+  "en": "die; dice",
+  "es": "dado; dados",
+  "ru": "кубик; кубики",
+  "uk": "кубик; кубики",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "ru \"игральные кости\" is formal; kids say \"кубик\". \"Number of dice\": \"Número de dados\", \"Количество кубиков\", \"Кількість кубиків\"."
+ },
+ {
+  "en": "roll (button)",
+  "es": "Lanzar",
+  "ru": "Бросить",
+  "uk": "Кинути",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "es \"Tirar\" is also common; \"Lanzar\" avoids the \"throw away\" sense. uk \"Кинути\", not \"Бросити\"."
+ },
+ {
+  "en": "total (dice sum)",
+  "es": "Suma; total",
+  "ru": "Сумма",
+  "uk": "Сума",
+  "source": "ADM3-ES p3 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "uk has one м. Amplify: \"cantidad total\"."
+ },
+ {
+  "en": "shuffle",
+  "es": "Mezclar",
+  "ru": "Перемешать",
+  "uk": "Перемішати",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Name Picker \"Shuffle again\": \"Mezclar otra vez\", \"Перемешать снова\", \"Перемішати знову\"."
+ },
+ {
+  "en": "red",
+  "es": "rojo",
+  "ru": "красный",
+  "uk": "червоний",
+  "source": "NL-2023-10-ES p5 (https://drive.google.com/file/d/1kF_RBmMaYG7osDDYSBVjl7au_G3iJ5em/view); NL-2023-10-RU p5 (https://drive.google.com/file/d/1UA0htY37lz7dwua55YO33E-od4WvlykI/view); NL-2023-10-UK p5 (https://drive.google.com/file/d/16jX2LXH6mrKVl5c2JmJ44TH_0A0i4r1i/view)",
+  "note": "uk \"червоний\"; \"красний\" means beautiful in old Ukrainian."
+ },
+ {
+  "en": "yellow",
+  "es": "amarillo",
+  "ru": "жёлтый",
+  "uk": "жовтий",
+  "source": "NL-2023-10-ES p5 (https://drive.google.com/file/d/1kF_RBmMaYG7osDDYSBVjl7au_G3iJ5em/view); NL-2023-10-RU p5 (https://drive.google.com/file/d/1UA0htY37lz7dwua55YO33E-od4WvlykI/view); NL-2023-10-UK p5 (https://drive.google.com/file/d/16jX2LXH6mrKVl5c2JmJ44TH_0A0i4r1i/view)",
+  "note": "Write ё in ru for children (HB-RU p5 writes \"ребёнку\"). es \"amarillo\", not Spain's \"ámbar\"."
+ },
+ {
+  "en": "green",
+  "es": "verde",
+  "ru": "зелёный",
+  "uk": "зелений",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "blue",
+  "es": "azul",
+  "ru": "синий",
+  "uk": "синій",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Zones blue is \"синий/синій\", not light blue \"голубой/блакитний\"."
+ },
+ {
+  "en": "traffic light",
+  "es": "semáforo",
+  "ru": "светофор",
+  "uk": "світлофор",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": ""
+ },
+ {
+  "en": "red / yellow / green light",
+  "es": "luz roja / amarilla / verde",
+  "ru": "красный / жёлтый / зелёный свет",
+  "uk": "червоне / жовте / зелене світло",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "ru \"свет\" is masculine; uk \"світло\" is neuter. The Traffic Light shows no words in the window."
+ },
+ {
+  "en": "stop / slow / go",
+  "es": "Alto / Despacio / Siga",
+  "ru": "Стоп / Медленно / Иди",
+  "uk": "Стоп / Повільно / Іди",
+  "source": "COBB-ES p2 (https://media.cobbk12.org/media/WWWCobb/medialib/zonesofregulation_parentresource_english-spanish_spanishrevised.1a4a16134473.pdf)",
+  "note": "Mexican stop signs say \"ALTO\" (COBB-ES p2 \"ALTO/PARE\", \"LENTO\"). The children's game is \"Luz roja, luz verde\". \"Вперёд\"/\"Вперед\" also work for go."
+ },
+ {
+  "en": "plus; add",
+  "es": "más; sumar",
+  "ru": "плюс; сложить",
+  "uk": "плюс; додати",
+  "source": "ADM3-ES p19 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "Spoken operators: widgets/calculator/calc-engine.js:612. Read \"3 + 4\" as \"3 más 4\", \"3 плюс 4\", \"3 плюс 4\". Amplify: \"la suma, la resta y la multiplicación\"."
+ },
+ {
+  "en": "minus; subtract",
+  "es": "menos; restar",
+  "ru": "минус; вычесть",
+  "uk": "мінус; відняти",
+  "source": "ADM3-ES p19 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf); ADM4-ES p22 (https://amplify.com/wp-content/uploads/2025/09/ADM-4-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": ""
+ },
+ {
+  "en": "times; multiply",
+  "es": "por; multiplicar",
+  "ru": "умножить на; умножить",
+  "uk": "помножити на; помножити",
+  "source": "ADM3-ES p1 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "\"3 × 4\": \"3 por 4\", \"3 умножить на 4\", \"3 помножити на 4\"."
+ },
+ {
+  "en": "divided by; divide",
+  "es": "entre; dividir",
+  "ru": "разделить на; разделить",
+  "uk": "поділити на; поділити",
+  "source": "ADM3-ES p1 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "\"12 ÷ 3\": \"12 entre 3\" (Mexican school usage), \"12 разделить на 3\", \"12 поділити на 3\". Keep ÷ and × on screen; ru/uk schools use \":\" and \"·\", but Tyler wants English math rules."
+ },
+ {
+  "en": "equals",
+  "es": "es igual a",
+  "ru": "равно",
+  "uk": "дорівнює",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "\"3 + 4 = 7\": \"3 más 4 es igual a 7\", \"3 плюс 4 равно 7\", \"3 плюс 4 дорівнює 7\". uk never \"рівно\"."
+ },
+ {
+  "en": "remainder",
+  "es": "residuo",
+  "ru": "остаток",
+  "uk": "остача",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Mexico's textbooks say \"residuo\"; ADM3-ES uses \"resto\" only as \"the rest\" (p18). Russian/Ukrainian school notation is \"3 (ост. 2)\"; the US \"3 R 2\" may stay as is in an American classroom. uk \"остача\", never \"остаток\"."
+ },
+ {
+  "en": "quotient",
+  "es": "cociente",
+  "ru": "частное",
+  "uk": "частка",
+  "source": "ADM3-ES p4 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": ""
+ },
+ {
+  "en": "answer",
+  "es": "respuesta",
+  "ru": "ответ",
+  "uk": "відповідь",
+  "source": "ADM3-ES p4 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "uk \"відповідь\", never \"ответ\"."
+ },
+ {
+  "en": "fraction",
+  "es": "fracción",
+  "ru": "дробь",
+  "uk": "дріб",
+  "source": "ADM4-ES p3 (https://amplify.com/wp-content/uploads/2025/09/ADM-4-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "\"Show as a fraction\" is a menu label; menus stay English (Tyler)."
+ },
+ {
+  "en": "mixed number",
+  "es": "número mixto",
+  "ru": "смешанное число",
+  "uk": "мішане число",
+  "source": "ADM4-ES p3 (https://amplify.com/wp-content/uploads/2025/09/ADM-4-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": ""
+ },
+ {
+  "en": "decimal",
+  "es": "decimal; número decimal",
+  "ru": "десятичная дробь",
+  "uk": "десятковий дріб",
+  "source": "ADM4-ES p3 (https://amplify.com/wp-content/uploads/2025/09/ADM-4-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "The board writes \"3.5\" in every language (Tyler). Mexico already uses the point; ru/uk schools write \"3,5\". Read aloud \"3.5\": es \"3 punto 5\"; ru/uk have no \"point\" reading (school form \"три целых пять десятых\"), so spoken decimals need a rule (calc-engine.js:1098 names the key \"point\")."
+ },
+ {
+  "en": "tenths",
+  "es": "décimas",
+  "ru": "десятые",
+  "uk": "десяті",
+  "source": "ADM4-ES p3 (https://amplify.com/wp-content/uploads/2025/09/ADM-4-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": ""
+ },
+ {
+  "en": "percent",
+  "es": "por ciento; porcentaje",
+  "ru": "процент",
+  "uk": "відсоток",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "ru 1 процент, 2 процента, 5 процентов; uk 1 відсоток, 2 відсотки, 5 відсотків. uk never \"процент\"."
+ },
+ {
+  "en": "square root",
+  "es": "raíz cuadrada",
+  "ru": "квадратный корень",
+  "uk": "квадратний корінь",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "\"√9\" read aloud (calc-engine.js:771 \"the square root of\"): \"la raíz cuadrada de 9\", \"квадратный корень из 9\", \"квадратний корінь з 9\"."
+ },
+ {
+  "en": "pi",
+  "es": "pi",
+  "ru": "пи",
+  "uk": "пі",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "The π sign stays."
+ },
+ {
+  "en": "negative",
+  "es": "menos; negativo",
+  "ru": "минус",
+  "uk": "мінус",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "calc-engine.js:750 says \"negative 5\". Read as \"menos 5\", \"минус 5\", \"мінус 5\". The adjective: \"negativo\", \"отрицательное\", \"від’ємне\"."
+ },
+ {
+  "en": "equation",
+  "es": "ecuación",
+  "ru": "уравнение",
+  "uk": "рівняння",
+  "source": "ADM3-ES p4 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "Amplify labels \"ecuación:\" and \"respuesta:\" on student pages."
+ },
+ {
+  "en": "expression",
+  "es": "expresión",
+  "ru": "выражение",
+  "uk": "вираз",
+  "source": "ADM3-ES p3 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": ""
+ },
+ {
+  "en": "number",
+  "es": "número",
+  "ru": "число",
+  "uk": "число",
+  "source": "ADM3-ES p3 (https://amplify.com/wp-content/uploads/2025/09/ADM-3-4-caregiver-unit-overview-1E-ES.pdf)",
+  "note": "ru/uk \"цифра\" means a digit only."
+ },
+ {
+  "en": "all clear (AC key)",
+  "es": "Borrar todo",
+  "ru": "Очистить всё",
+  "uk": "Очистити все",
+  "source": "none (no CCSD21 or Amplify use found; standard usage)",
+  "note": "Key name at calc-engine.js:1104. The key keeps its \"AC\" label."
+ }
+]
