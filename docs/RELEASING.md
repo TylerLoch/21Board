@@ -29,6 +29,7 @@ Test what the change does, with the fewest checks that prove it.
 - Name a suite for what it tests, not for its release.
 - Don't tie a check to this release. A recorded layout or a version number fails the next one.
 - Set a window's language through the board, never the browser's locale.
+- Board Sync gets the most thorough tests. Never cut `tests/merge.js`'s runs to save time.
 
 ## 1. Spec
 

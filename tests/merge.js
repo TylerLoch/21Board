@@ -2431,10 +2431,8 @@ async function randomized(scale) {
   // (and runs with devices still on 2026.11.16-4, updated as they go, then one leaving for good (variant.old, see run).
   // Such runs found that a left device's file stayed for good while every other device kept its own text style: with 3
   // devices, seeds 15, 101, 109, 183, 289, 358 and 581.)
-  // (2026.11.27-2 added a sixth window part, which every round hashes and versions, and devices on 2026.11.27-1: about
-  // a sixth more time per run. So the first five batches run about an eighth fewer runs than before, 2000, 500, 1200,
-  // 500, and 300, and the whole run takes about as long as it did.)
-  const batches = [[1750, 3, 150], [440, 5, 300], [1050, 3, 150, { atOnce: 0.6 }], [440, 3, 150, { atOnce: 0.25 }], [260, 5, 300, { atOnce: 0.6 }], [100, 5, 300, { atOnce: 0.25 }],
+  // (Never fewer runs to save time. Tyler: Board Sync gets the more thorough test.)
+  const batches = [[2000, 3, 150], [500, 5, 300], [1200, 3, 150, { atOnce: 0.6 }], [500, 3, 150, { atOnce: 0.25 }], [300, 5, 300, { atOnce: 0.6 }], [100, 5, 300, { atOnce: 0.25 }],
     [600, 3, 150, { old: 0.7, atOnce: 0.3 }], [100, 5, 300, { old: 0.6, atOnce: 0.25 }]];
   const what = v => (v && v.old ? `, some devices on 2026.11.16-4 until a step of their own (${v.old}), and one then leaving for good` : '') + (v && v.atOnce ? `, two or more setting up the folder at once (${v.atOnce})` : '');
   for (const [n, nDev, steps, variant] of batches) {
