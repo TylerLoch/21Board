@@ -7,11 +7,13 @@ export const meta = {
     { title: 'Fix', detail: 'confirmed findings, stamp, suites, final screenshots, commit' },
   ],
 }
-// Claude Code's Workflow tool runs this file, not Node: Workflow({ scriptPath: 'tools/release-workflow.js', args }).
-// docs/RELEASING.md has the whole routine, and what to pass.
+// Claude Code's Workflow tool runs this file, not Node. Name the run first, so it shows as the release, not as
+// release-from-spec: node tools/release-name.js <spec folder>/release-args.json <spec folder>/release-workflow.js
+// Then Workflow({ scriptPath: '<spec folder>/release-workflow.js', args }). docs/RELEASING.md has the whole routine.
 //
 // args: {
 //   title,            the release's name and one-line summary
+//   name?, summary?   a short name and one line for the run's title, for tools/release-name.js
 //   spec,             the spec's path. Its folder gets the logs, shots/ and final-shots/
 //   wt, branch, base, the worktree, its branch, and the commit it starts from
 //   version,          VERSION in sw.js for this release
@@ -26,7 +28,7 @@ if (missing.length) { log('missing args: ' + missing.join(', ')); return { missi
 const CLAUDE_MD = `${A.wt}/CLAUDE.md`
 const CPU = 'Memory is tight (16 GB, no swap; an earlier run crashed the machine) and another build may be testing: before starting any test process (tests/run.js or your own browser scripts), check `pgrep -fc "node tests/run.js"`; if 2 or more are running, wait and poll every 30 s. Run at most 1 test process of your own at a time, never more than one Chromium of your own, and close every browser you open. A failure seen while other tests ran: rerun it alone once before treating it as real, and report both runs.'
 const VOICE = `Every label, message, hint and line of docs you add or change follows ${CLAUDE_MD} ("Voice"): Apple-like, less is more, every word earns its place. Reread each one before you commit. Every word a window shows goes in its widget's words table in English, Spanish, Russian, and Ukrainian (CLAUDE.md, "Languages"), and node tools/words.js passes.`
-const TESTS = 'Tests follow docs/RELEASING.md ("Writing tests"): the fewest checks that prove the change, each rule at two or three sizes, the area\'s own helpers reused, no exact pixel positions unless the spec sets them, no checks of the docs\' words, an old test changed only where the behavior it checks changed, and new checks in the feature\'s suite, in its area\'s file in tests/suites/ (shared helpers are in tests/lib.js), a new suite named for what it tests, never its release, and no check tied to this release, such as a recorded layout or the version number. tests/run.js prints only failures and a count per suite; add --verbose to see every check. Set a window's language through the board (its menu's Language, or inst.language), never the browser's locale.'
+const TESTS = 'Tests follow docs/RELEASING.md ("Writing tests"): the fewest checks that prove the change, each rule at two or three sizes, the area\'s own helpers reused, no exact pixel positions unless the spec sets them, no checks of the docs\' words, an old test changed only where the behavior it checks changed, and new checks in the feature\'s suite, in its area\'s file in tests/suites/ (shared helpers are in tests/lib.js), a new suite named for what it tests, never its release, and no check tied to this release, such as a recorded layout or the version number. tests/run.js prints only failures and a count per suite; add --verbose to see every check. Set a window\'s language through the board (its menu\'s Language, or inst.language), never the browser\'s locale.'
 const GUIDES = `The Teacher Guide (docs/teacher-guide) is part of every release that changes the interface, a widget or how the board behaves: update its words and retake the screenshots that show the change (its README has the steps), then run its build.js and check.js. If the Calculator changes, do the same for docs/calculator-manual. Don't publish either; the session publishes them after the merge.`
 
 const BUILD_SCHEMA = { type: 'object', properties: {

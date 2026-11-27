@@ -220,6 +220,7 @@ tools/make-glossary.py  Builds docs/GLOSSARY.md and tools/glossary.json from one
 tools/test-halves.js    Runs tests/run.js as two halves at once. See Tests.
 tools/ci-wait.js        Waits for GitHub to test a push and prints the failures. See Tests.
 tools/release-workflow.js  Builds, reviews, and fixes a release with Claude Code. See docs/RELEASING.md.
+tools/release-name.js   Names a release's run after the release, and checks the script runs. See docs/RELEASING.md.
 tests/run.js            Runs the browser tests. See Tests.
 tests/words.js          The Node test of the words tables and the SDK's words engine
 tests/suites/<area>.js  The browser tests, one file per area, such as calculator.js or board-sync.js

@@ -48,7 +48,16 @@ The main branch is `claude/focused-curie-9oovoy`, GitHub's default. Make a branc
 git worktree add -b <key> <spec folder>/wt claude/focused-curie-9oovoy
 ```
 
-Then run `tools/release-workflow.js` with Claude Code's Workflow tool. Its top lists the args. It runs four agents:
+Write the args to `release-args.json` in the spec's folder. The top of `tools/release-workflow.js` lists them. Give it a
+short `name` and a one-line `summary`, such as "Languages 1b" and "A language for each Timer and Traffic Light window."
+Then name the run:
+
+```bash
+node tools/release-name.js <spec folder>/release-args.json <spec folder>/release-workflow.js
+```
+
+It writes a copy of the script that shows as "Release 2026.11.27-2 · Languages 1b", and checks that it runs. Run that copy
+with Claude Code's Workflow tool. It runs four agents:
 
 - **Build.** Writes the tests first and shows they fail on the old code. Then builds the change, updates the docs and the
   guides, stamps the release, and commits.
