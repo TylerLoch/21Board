@@ -288,6 +288,7 @@
     if (chips.some(b => b.scrollWidth > b.clientWidth)) chips.forEach(b => { b.textContent = String(b.dataset.min); });
   }
   fitChips();
+  Board21.ready().then(fitChips);   // (again in the window's font: on its own, the SDK sets it after this script)
   addEventListener('resize', fitChips);   // (also when the text style's font changes)
   $('chips').onclick = e => { const b = e.target.closest('button'); if (b) setDuration(+b.dataset.min * 60000); };
 

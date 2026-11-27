@@ -221,6 +221,12 @@
   }
   // The board's word for the window's language wins, when it is one.
   function confirmLang(sent, current) { return isCode(sent) ? sent : current; }
+  // The board's locale, when it is one for the window's language ('es-MX' in a Spanish window). Else null, so dates
+  // follow the window's words and not the device's language.
+  function localeFrom(sent, lang) {
+    var base = String(LOCALES[lang] || 'en-US').split('-')[0];
+    return typeof sent === 'string' && new RegExp('^' + base + '(-|$)', 'i').test(sent) ? sent : null;
+  }
 
   // ---- Plurals, placeholders, and the pseudo language
   var pluralRules = {};
@@ -400,7 +406,7 @@
   var Words = {
     LANGS: LANGS, PSEUDO: PSEUDO, LOCALES: LOCALES, NAMES: NAMES, IN_ENGLISH: IN_ENGLISH, FORMS: FORMS, OPTIONAL_FORMS: OPTIONAL_FORMS,
     KEY_RE: KEY_RE, COMMON_WORDS: COMMON_WORDS, LANG_FONT: LANG_FONT, FACE_SCRIPTS: FACE_SCRIPTS, LANG_SCRIPT: LANG_SCRIPT,
-    isCode: isCode, langFromName: langFromName, langFromHash: langFromHash, confirm: confirmLang,
+    isCode: isCode, langFromName: langFromName, langFromHash: langFromHash, confirm: confirmLang, localeFrom: localeFrom,
     htmlLang: function (lang) { return lang === PSEUDO ? 'en-XA' : LOCALES[lang] || 'en-US'; },
     placeholders: placeholders, fill: fill, plural: pluralOf, pseudo: pseudo, auditText: auditText, fontFor: fontFor, andList: andList,
     format: format, create: createWords
@@ -412,14 +418,16 @@
   // (the board names it 'b21-board:<window>;<language>' before it loads), on its own from #b21-lang=… in the address.
   // The dev window's own page has none: the widget's frame inside it decides.
   var language = role === 'board' ? Words.langFromName(window.name) : role === 'bare' ? Words.langFromHash(location.hash) : 'en';
-  var boardLocale = null;   // context.locale, once the board has sent context.language
+  var boardLocale = null;   // context.locale, once the board has sent context.language, if it suits that language
   var book = Words.create({ lang: function () { return language; }, say: function (level, text) { console[level](text); } });
   function currentLocale() { return boardLocale || Words.LOCALES[language]; }
   // <html lang> for screen readers' voices, and translate="no": 21Board has its own languages, and a browser's page
-  // translation would send a window's words, names included, away.
+  // translation would send a window's words, names included, away. A page written in another language keeps its own
+  // lang while its window is English.
+  var ownLang = document.documentElement.getAttribute('lang') || '';
   function markLanguage() {
     var root = document.documentElement;
-    root.lang = Words.htmlLang(language);
+    root.lang = language === 'en' && ownLang && !/^en(-|$)/i.test(ownLang) ? ownLang : Words.htmlLang(language);
     root.setAttribute('translate', 'no');
   }
   // data-t="key" → the element's text; data-t-aria-label="key" (and -title, -placeholder, -alt, -aria-description) → that
@@ -436,7 +444,7 @@
         var key = el.getAttribute(d[0]);
         if (!key) return;
         var text = book.t(key);
-        if (d[1]) el.setAttribute(d[1], text); else el.textContent = text;
+        if (d[1]) { if (el.getAttribute(d[1]) !== text) el.setAttribute(d[1], text); } else if (el.textContent !== text) el.textContent = text;
       });
     });
   }
@@ -446,7 +454,7 @@
     if (Words.isCode(ctx.language)) {
       var was = language;
       language = Words.confirm(ctx.language, language);
-      boardLocale = ctx.locale ? String(ctx.locale) : null;
+      boardLocale = Words.localeFrom(ctx.locale, language);
       if (language !== was) { markLanguage(); if (document.readyState !== 'loading') applyWords(document); }
     } else ctx.language = language;
     if (ctx.uiLanguage == null) ctx.uiLanguage = 'en';
@@ -773,7 +781,19 @@
   // (Only now: the dev window copies <html>'s attributes as they were. On its own after all, the address decides.)
   if (role === 'bare') language = Words.langFromHash(location.hash);
   markLanguage();
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { applyWords(document); }); else applyWords(document);
+  // data-t words go in as the parser adds each element, before the page paints, so the English never shows while a slow
+  // script holds back DOMContentLoaded. Then one pass over the whole page, and the watch stops.
+  if (document.readyState === 'loading') {
+    var parsing = window.MutationObserver ? new MutationObserver(function (records) {
+      records.forEach(function (rec) {
+        var host = rec.target.nodeType === 1 && rec.target.closest ? rec.target.closest('[data-t]') : null;   // (text added to one)
+        if (host) applyWords(host);
+        for (var i = 0; i < rec.addedNodes.length; i++) if (rec.addedNodes[i].nodeType === 1) applyWords(rec.addedNodes[i]);
+      });
+    }) : null;
+    if (parsing) parsing.observe(document.documentElement, { childList: true, subtree: true });
+    document.addEventListener('DOMContentLoaded', function () { if (parsing) parsing.disconnect(); applyWords(document); });
+  } else applyWords(document);
   // A small note at the top of a standalone page saying why it isn't in a 21Board window.
   function showDevNote() {
     if (!document.body || !devNote) return;

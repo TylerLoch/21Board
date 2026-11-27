@@ -4,7 +4,7 @@ module.exports = T => {
   const {
     http, fs, path, ROOT, OUT, ok, freeBoard, openSettings, lockBoard, unlockBoard, fillNote, DEV_WIDGET, AWAY,
     DRIVE_PICK, readFolder, eventually, readHistory, release, stamped, STAMPED, boardUp, stubVideos, picOpen,
-    picFile, drawPic, BASE
+    picFile, drawPic, wordsOf, BASE
   } = T;
   return [
   ['SDK, developer mode, standalone', async (browser) => {
@@ -80,19 +80,24 @@ module.exports = T => {
     const t0 = Date.now();
     await sp.goto(BASE + 'widgets/timer/index.html#b21-bare'); await sp.waitForFunction(() => window.Board21 && Board21.context, null, { timeout: 3000 });
     ok(await sp.evaluate(() => Board21.context.standalone === true && !document.getElementById('b21-dev')) && Date.now() - t0 < 2500, 'with #b21-bare a widget runs on its own, at once');
-    // ---- The Timer's words: its chips, their names, and its buttons' names, in English and in Russian.
+    // ---- The Timer's words: its chips, their names, and its buttons' names, in English and in Russian, each as its
+    // words.js has them (wordsOf).
     const timerWords = p => p.evaluate(() => {
       const chips = [...document.querySelectorAll('#chips button')];
       return { html: document.documentElement.lang, chips: chips.map(b => b.textContent).join(), names: chips.map(b => b.getAttribute('aria-label')).join(), spill: chips.filter(b => b.scrollWidth > b.clientWidth).map(b => b.textContent),
         buttons: ['minus', 'go', 'reset', 'plus'].map(id => document.getElementById(id).getAttribute('aria-label')).join(), words: Board21.__words() };
     });
+    const MINS = [1, 2, 3, 5, 10, 15], NUMBERS = MINS.join();
+    const timerIn = lang => { const w = wordsOf('timer', lang);
+      return { chips: MINS.map(n => w.t('chip.min', { n })).join(), names: MINS.map(n => w.t('chip.label', { n })).join(), buttons: ['minus', 'b21.start', 'b21.reset', 'plus'].map(k => w.t(k)).join(), pause: w.t('b21.pause'), minus: w.t('minus') }; };
+    const EN = timerIn('en'), RU = timerIn('ru'), ES = timerIn('es');
     const clean = w => !!w && !w.missing.length && !w.fallback.length;
     let tw = await timerWords(sp);
-    ok(tw.html === 'en-US' && tw.chips === '1m,2m,3m,5m,10m,15m' && tw.names === '1 minute,2 minutes,3 minutes,5 minutes,10 minutes,15 minutes' && tw.buttons.split(',')[1] === 'Start' && clean(tw.words),
-      `the Timer on its own, in English: chips 1m to 15m, each named in minutes, and Start (${JSON.stringify(tw)})`);
+    ok(tw.html === 'en-US' && tw.chips === EN.chips && tw.names === EN.names && tw.buttons === EN.buttons && clean(tw.words),
+      `the Timer on its own, in English: its chips, their names, and its buttons (${JSON.stringify(tw)})`);
     await sp.setViewportSize({ width: 240, height: 214 }); await sp.waitForTimeout(200);
     tw = await timerWords(sp);
-    ok(tw.chips === '1m,2m,3m,5m,10m,15m' && !tw.spill.length, `at 240 × 214 the English chips still read 1m to 15m (${tw.chips})`);
+    ok(tw.chips === EN.chips && !tw.spill.length, `at 240 × 214 the English chips keep their words (${tw.chips})`);
     await sp.setViewportSize({ width: 1400, height: 860 });
     await sp.click('#go'); await sp.waitForTimeout(300); await sp.reload(); await sp.waitForTimeout(500);
     ok(await sp.evaluate(() => (JSON.parse(localStorage.getItem('21board:standalone:timer')) || {}).data.endsAt > 0), 'standalone save persists to localStorage (by widget id)');
@@ -106,30 +111,64 @@ module.exports = T => {
     };
     const rp = await own('widgets/timer/index.html#b21-bare&b21-lang=ru', 380, 260);
     tw = await timerWords(rp);
-    ok(tw.html === 'ru-RU' && tw.buttons === 'Убавить минуту,Старт,Сбросить,Добавить минуту' && tw.chips === '1 мин,2 мин,3 мин,5 мин,10 мин,15 мин' && tw.names === '1 минута,2 минуты,3 минуты,5 минут,10 минут,15 минут' && clean(tw.words),
+    ok(tw.html === 'ru-RU' && tw.buttons === RU.buttons && tw.chips === RU.chips && tw.names === RU.names && clean(tw.words),
       `with #b21-lang=ru the Timer is in Russian: its buttons, chips, and their names (${JSON.stringify(tw)})`);
     await rp.click('#go'); await rp.waitForTimeout(300);
     const ru = await rp.evaluate(() => ({ go: document.getElementById('go').getAttribute('aria-label'), n: Board21.format.number(1234.5),
-      times: [[9, 5], [15, 5], [20, 5], [12, 0]].map(([h, m]) => Board21.format.date(new Date(2026, 10, 27, h, m), { hour: 'numeric', minute: '2-digit' }).replace(/[\u00a0\u202f]/g, ' ')).join(), words: Board21.__words() }));
-    ok(ru.go === 'Пауза' && ru.times === '9:05 утра,3:05 дня,8:05 вечера,12:00 дня' && ru.n === '1,234.5' && clean(ru.words), `a tap names it Пауза; times of day in words, and numbers in English form (${JSON.stringify(ru)})`);
+      times: [[9, 5], [15, 5], [20, 5], [12, 0]].map(([h, m]) => Board21.format.date(new Date(2026, 10, 27, h, m), { hour: 'numeric', minute: '2-digit' }).replace(/[  ]/g, ' ')).join(), words: Board21.__words() }));
+    ok(ru.go === RU.pause && ru.times === '9:05 утра,3:05 дня,8:05 вечера,12:00 дня' && ru.n === '1,234.5' && clean(ru.words), `a tap names it ${RU.pause}; times of day in words, and numbers in English form (${JSON.stringify(ru)})`);
+    // The chip fallback, at 240 × 214: the words if they fit, else the bare numbers, all six alike, names kept. Then
+    // words three times as long, so they spill whatever the words file holds; then the real words again at 380 × 260.
     await rp.setViewportSize({ width: 240, height: 214 }); await rp.waitForTimeout(200);
     const small = await timerWords(rp);
+    await rp.evaluate(() => { Board21.words({ window: { 'chip.min': { en: '{n} minutes long', es: '{n} minutos largos', ru: '{n} долгих минут', uk: '{n} довгих хвилин' } } }); dispatchEvent(new Event('resize')); });
+    await rp.waitForTimeout(100);
+    const long = await timerWords(rp);
+    await rp.evaluate(row => { Board21.words({ window: { 'chip.min': row } }); }, wordsOf('timer', 'ru').table.window['chip.min']);
     await rp.setViewportSize({ width: 380, height: 260 }); await rp.waitForTimeout(200);
     tw = await timerWords(rp);
-    ok(small.chips === '1,2,3,5,10,15' && !small.spill.length && small.names === tw.names && tw.chips === '1 мин,2 мин,3 мин,5 мин,10 мин,15 мин',
-      `at 240 × 214 the Russian chips show bare numbers, each inside its chip, with the same names; at 380 × 260 the words come back (${small.chips}; ${tw.chips})`);
+    ok([RU.chips, NUMBERS].includes(small.chips) && !small.spill.length && small.names === RU.names && long.chips === NUMBERS && !long.spill.length && long.names === RU.names && tw.chips === RU.chips,
+      `at 240 × 214 a chip whose words spill shows its bare number, all six alike, with the same names; at 380 × 260 the words come back (${small.chips}; ${long.chips}; ${tw.chips})`);
     // A frame the board names for Spanish: the SDK reads the language from the name, before the board says anything.
-    const t1 = Date.now();
     await rp.evaluate(() => { const fr = document.createElement('iframe'); fr.name = 'b21-board:timer:1;es'; fr.src = 'index.html'; fr.style.cssText = 'position:fixed;left:0;top:0;width:380px;height:260px;border:0'; document.body.append(fr); });
     await rp.waitForFunction(() => { try { const w = document.querySelector('iframe').contentWindow; return !!w.Board21 && w.document.readyState !== 'loading'; } catch (e) { return false; } }, null, { timeout: 3000 });
     const es = await rp.evaluate(() => { const fr = document.querySelector('iframe'), w = fr.contentWindow, d = w.document;
       const r = { language: w.Board21.language, context: w.Board21.context, minus: d.getElementById('minus').getAttribute('aria-label'), chips: [...d.querySelectorAll('#chips button')].map(b => b.textContent).join() }; fr.remove(); return r; });
-    ok(es.language === 'es' && es.context === null && es.minus === 'Restar un minuto' && es.chips.split(',')[0] === '1 min' && Date.now() - t1 < 4000, `a frame named b21-board:timer:1;es is in Spanish before the board says anything (${JSON.stringify(es)})`);
+    ok(es.language === 'es' && es.context === null && es.minus === ES.minus && es.chips === ES.chips, `a frame named b21-board:timer:1;es is in Spanish before the board says anything (${JSON.stringify(es)})`);
     await rp.close();
+    // Opened straight at a small size, the chips fit at once, as after a resize: the first fit waits for the window's font.
+    for (const [w, h] of [[240, 400], [260, 214]]) {
+      const p = await own('widgets/timer/index.html#b21-bare&b21-lang=ru', w, h);
+      const atLoad = await timerWords(p);
+      await p.evaluate(() => dispatchEvent(new Event('resize'))); await p.waitForTimeout(100);
+      const after = await timerWords(p);
+      ok(!atLoad.spill.length && atLoad.chips === after.chips, `the Russian Timer opened at ${w} × ${h}: its chips fit at once (${atLoad.chips} | ${JSON.stringify(atLoad.spill)}; after a resize ${after.chips})`);
+      await p.close();
+    }
+    const TL = wordsOf('traffic-light', 'uk');
     const up = await own('widgets/traffic-light/index.html#b21-bare&b21-lang=uk', 170, 380);
     const uk = await up.evaluate(() => ({ html: document.documentElement.lang, names: [...document.querySelectorAll('.lamp')].map(b => b.getAttribute('aria-label')).join() }));
-    ok(uk.html === 'uk-UA' && uk.names === 'Червоний,Жовтий,Зелений', `the Traffic Light in Ukrainian names its lamps (${JSON.stringify(uk)})`);
+    ok(uk.html === 'uk-UA' && uk.names === ['red', 'yellow', 'green'].map(k => TL.t(k)).join(), `the Traffic Light in Ukrainian names its lamps (${JSON.stringify(uk)})`);
     await up.close();
+    // A page of a developer's own, written in Spanish: its <html lang> stays while the window is English. In another
+    // language the window's wins. And data-t words go in as the page loads, so English never shows while a slow script
+    // holds back DOMContentLoaded.
+    let letGo; const slow = new Promise(r => { letGo = r; });
+    await ctx.route(BASE + '__test/slow.js', async r => { await slow; await r.fulfill({ contentType: 'text/javascript', body: '' }).catch(() => {}); });
+    await ctx.route(BASE + '__test/own.html', r => r.fulfill({ contentType: 'text/html; charset=utf-8', body: `<!doctype html><html lang="es"><head><meta charset="utf-8"><script src="../sdk/board21.js"></script>
+<script>Board21.words({ window: { hello: { en: 'Hello there', es: 'Hola', ru: 'Привет', uk: 'Привіт' } } });</script></head>
+<body><p id="p" data-t="hello" data-t-title="hello" title="Hello there">Hello there</p><script src="slow.js"></script></body></html>` }));
+    const ep = await ctx.newPage();
+    ep.on('pageerror', e => errors.push('own.html: ' + e.message));
+    const loading = ep.goto(BASE + '__test/own.html#b21-bare&b21-lang=uk').catch(() => {});
+    await ep.waitForFunction(() => !!document.getElementById('p'), null, { timeout: 3000 });
+    const early = await ep.evaluate(() => ({ state: document.readyState, text: document.getElementById('p').textContent, title: document.getElementById('p').title, html: document.documentElement.lang }));
+    letGo(); await loading;
+    ok(early.state === 'loading' && early.text === 'Привіт' && early.title === 'Привіт' && early.html === 'uk-UA', `data-t words go in as the page loads, before DOMContentLoaded (${JSON.stringify(early)})`);
+    await ep.goto(BASE + '__test/own.html#b21-bare'); await ep.reload(); await ep.waitForFunction(() => window.Board21 && Board21.context, null, { timeout: 3000 });
+    const mine = await ep.evaluate(() => [document.documentElement.lang, document.documentElement.getAttribute('translate')]);
+    ok(mine.join() === 'es,no', `a page written in Spanish keeps <html lang="es"> while its window is English (${mine})`);
+    await ep.close(); await ctx.unroute(BASE + '__test/slow.js'); await ctx.unroute(BASE + '__test/own.html');
     // The pseudo language: every word from the table, so English left over or a word cut off shows.
     const audit = async (p, what) => {
       const a = await p.evaluate(() => ({ html: document.documentElement.lang, audit: Board21.__audit(), words: Board21.__words() }));

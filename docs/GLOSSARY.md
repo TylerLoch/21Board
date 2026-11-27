@@ -47,7 +47,7 @@ lines use *usted* ("Puede leer… con su estudiante", ADM3-ES p1). Words lean Me
 clases" and "maestro del salón" (HB-ES p4), "computadora" (HB-ES p28), "Kinder" and "Preescolar"
 (CAL-ES p2). One slip: "teléfonos móviles" (HB-ES p30), where Mexico says "celular". The Spanish calendar
 copies English Title Case ("Primer Día de Clases", "Todos los Edificios están Cerrados"); Spanish uses
-sentence case. Weekdays and months are lowercase (correct).
+sentence case. Weekdays and months are lowercase, as Spanish writes them.
 
 **Russian.** Families get formal *вы*, lowercase in the body: "Уважаемый родитель/опекун!" (FEE-RU p1),
 "Уважаемые учащиеся и родители!" (HB-RU p5), "спросите учителя вашей дочери или сына" (HB-RU p5). Students
@@ -80,7 +80,7 @@ Clock does. Russian and Ukrainian take a short noun or infinitive (Старт, �
 **Gender.** The board never knows a child's gender. Spanish uses the masculine on single words, as Mexican
 classroom posters do, or a gender-free word (triste, feliz). Russian and Ukrainian use nouns or
 present-tense verbs, which carry no gender: "Грусть", "Болею", "Побеждает {name}". Avoid past tense with a
-name in ru/uk ("выиграл/выиграла").
+name in Russian and Ukrainian ("выиграл/выиграла").
 
 **Plurals.** Spanish has one and other. Russian and Ukrainian need four slots for Intl.PluralRules: one (1,
 21, 31), few (2-4, 22-24), many (0, 5-20, 25-30), and other (fractions such as 1.5). The noun's case also
@@ -378,16 +378,16 @@ uk "збудження / збуджений". Use "emocionado", "восторг"
 ## What we couldn't find
 
 - **The current handbooks.** ccsd21.org/handbook/ links 2025-26 handbooks per school in English, Spanish,
-  Russian, and Ukrainian, but only as FlipHTML5 flipbooks (online.fliphtml5.com/ccsd21/…). Their text sits
-  behind an encrypted config, and decoding it meant running the viewer's code, which wasn't allowed. So there is no Ukrainian handbook text here at all, and the Spanish and Russian
-  handbook rows come from the 2016-17 PDFs.
+  Russian, and Ukrainian, but only as FlipHTML5 flipbooks (online.fliphtml5.com/ccsd21/…). Their text can't be
+  read outside the viewer, so there is no Ukrainian handbook text here. The Spanish and Russian handbook rows come
+  from the 2016-17 PDFs.
 - **Any district text written for students.** Every CCSD21 document is for families. The "you" choice for
   children rests on Amplify (Spanish) and common practice (Russian, Ukrainian).
 - **Classroom-board words in district documents.** No CCSD21 use of timer, stopwatch, lap, record, dice,
   roll, feelings or Zones words, traffic light words, line up, clean up, or weather words beyond weather,
   snow, cold, and temperature. Those rows are marked "—".
 - **Russian and Ukrainian math words.** Amplify has no Russian or Ukrainian editions. The math rows in
-  ru/uk are standard school terms. Amplify's two units never say "remainder" ("residuo") or "percent".
+  Russian and Ukrainian are standard school terms. Amplify's two units never say "remainder" ("residuo") or "percent".
 - **Spanish and English fee waiver PDFs.** Cloudflare refused them (403) after retries. The Polish one was not
   tried. The Russian one was read.
 - **Newsletters from 2024-25 on.** They're Smore pages labeled English only. Not opened in other languages.

@@ -474,11 +474,13 @@ Board21.words({
   For 24-hour time, pass `hourCycle: 'h23'`.
 - `format.list(items, type)` joins a list with `'and'` or `'or'` in the window's language. `format.plural(n)` gives
   a count's form. `format.capital(text)` capitalizes a month or weekday.
-- `Board21.locale` is the window's locale, such as `'es-US'`. Pass it to any other `Intl` call.
+- `Board21.locale` is the window's locale, such as `'es-US'`. Pass it to other `Intl` calls for dates and words.
+  Numbers always take `'en-US'`.
 
 ### What the SDK sets
 
-- `<html lang>` is the window's locale, so a screen reader picks the right voice.
+- `<html lang>` is the window's locale, so a screen reader picks the right voice. A page written in another language
+  keeps its own `lang` in an English window.
 - `translate="no"` goes on `<html>`, so a browser's page translation never sends a window's words away.
 - A Russian or Ukrainian window skips the easier-to-read fonts, which have no Cyrillic letters.
 

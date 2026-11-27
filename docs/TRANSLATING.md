@@ -84,8 +84,9 @@ where your language needs it.
 ## Check your work
 
 1. Run `node tools/words.js`. It names each problem with its file and line.
-2. Open the widget on its own with `#b21-bare&b21-lang=ru` at the end of its address. Use `es` or `uk` for the
-   others. Read every word at the window's smallest size.
+2. Open the Timer in Russian at <https://tylerloch.github.io/21Board/widgets/timer/index.html#b21-bare&b21-lang=ru>.
+   For another widget, change `timer` to its folder. For another language, change `ru` to `es` or `uk`. Read every
+   word at the window's smallest size.
 
 ## The Sheet
 

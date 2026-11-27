@@ -443,6 +443,16 @@ const storedRecords = page => page.evaluate(() => new Promise((res, rej) => {
 // asked (every file requested) and fault {file: res => ...}: answer it and return true, or wait and return
 // nothing (the file is then served as usual).
 const release = require(path.join(ROOT, 'tools', 'release.js'));
+// The words a built-in widget shows in a window's language, from its words.js through the SDK's own engine:
+// wordsOf('timer', 'ru').t('minus'), and .table, the file's table. A check compares a page with these, so it holds no
+// words of its own and a reviewer's edit to a words file never breaks it.
+const wordsTool = require(path.join(ROOT, 'tools', 'words.js'));
+const wordsOf = (id, lang) => {
+  const file = `widgets/${id}/words.js`, read = f => fs.readFileSync(path.join(ROOT, f), 'utf8');
+  const w = wordsTool.loadRegion(read('sdk/board21.js')).create({ lang: () => lang }), table = wordsTool.parse(file, read(file));
+  w.add(table);
+  return Object.assign(w, { table });
+};
 // Does the release stamp in sw.js, board.js and index.html match the files? (A device saves its offline copy only if it does.)
 const stamped = () => { try { require('child_process').execFileSync(process.execPath, [path.join(ROOT, 'tools', 'release.js'), '--check'], { stdio: 'pipe' }); return true; } catch (e) { return false; } };
 const STAMPED = 'the release stamp matches the files (after changing a file the app ships: node tools/release.js)';
@@ -1124,7 +1134,7 @@ module.exports = {
   driveDevice, readFolder, fileText, putText, readPhotos, addPhotos, ownFile, deliver, dupFolder, seedFolder,
   setUpSync, SHORT, syncWaits, nameDevice, linkFolder, syncNow, shownBoard, sorted, sameBoards, notesText,
   loseLedger, typeNote, addNote, noteOf, addWin, winList, copiesOf, ikOf, saveData, syncDev, exchange, ownJSON, hear,
-  heard, eventually, readHistory, writeHistory, OLD_NOTE, OLD_HIST_NOTE, STORAGE_FAULTS, storedRecords, release,
+  heard, eventually, readHistory, writeHistory, OLD_NOTE, OLD_HIST_NOTE, STORAGE_FAULTS, storedRecords, release, wordsOf,
   stamped, STAMPED, SITES, deploy, marked, parts, updateCheck, boardUp, VID, VID2, YT_TITLES, YT_LABEL, OEMBED,
   EMBED, EMBED_CODE, PLAYLIST_EMBED, D1, D2, RK, V1, V2, VH, VIMEO_TITLES, DRIVE_EMBED, VIMEO_EMBED, VIMEO_OEMBED,
   DRIVE_OPEN, VIMEO_OPEN, DRIVE_LABEL, VMSG, vidFrames, DRIVE_CODE, VIMEO_CODE, stubVideos, ytWin, ytLook, ytFrames,

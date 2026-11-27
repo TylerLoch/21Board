@@ -41,9 +41,16 @@ const lineAt = (text, i) => text.slice(0, i).split('\n').length;
 // ---- The SDK's Words region.
 function loadRegion(src) {
   const start = src.indexOf('// #region Words'), end = src.indexOf('// #endregion Words', start);
-  if (start < 0 || end < 0) throw new Error(`${SDK}: the Words region is missing`);
+  if (start < 0 || end < 0) throw new Error('Its // #region Words markers are missing.');
   return vm.compileFunction(src.slice(start, end) + '\nreturn Words;', [], { filename: 'board21.js#words' })();
 }
+const sentence = s => (/[.!?]$/.test(s) ? s : s + '.');
+// The Words region, or one message that names the SDK's file once.
+function sdkWords(src) {
+  try { return loadRegion(src); } catch (e) { throw new Error(`${SDK}: the Words region can’t be read. ${sentence(String(e && e.message || e))}`); }
+}
+// A text in quotes that ends a sentence: no second period after one that ends in its own.
+const endQuote = s => '“' + s + '”' + (/[.!?…]$/.test(s) ? '' : '.');
 
 // ---- A small reader for words files: tokens, then the one call's object literal, with each key's line.
 function lex(text) {
@@ -153,20 +160,18 @@ function modelOf(text, root) {
   return { sections };
 }
 
-// Reads a words file (or inline table) as the SDK would: run in a bare vm with only Board21.words, one call and
-// comments. Returns { model, header, trailer } or { problem }.
+// Reads a words file (or inline table): one Board21.words(…) call of plain text, numbers, lists, and braces, and
+// comments. The file never runs. It is only compiled, which runs nothing, to find the line a JavaScript error is on;
+// then the tokens prove it holds nothing else. Returns { model, header, trailer } or { problem }.
 function readTable(rel, text, offset = 0) {
   const at = n => `${rel} line ${n + offset}`;
-  let calls = 0;
-  try {
-    const script = new vm.Script(text, { filename: rel });
-    script.runInContext(vm.createContext({ Board21: { words: () => { calls++; } } }), { timeout: 1000 });
-  } catch (e) {
+  try { new vm.Script(text, { filename: rel }); } catch (e) {
     if (e && e.name === 'SyntaxError') {
       const m = /:(\d+)\n/.exec(String(e.stack || '')), n = m ? +m[1] : 1;
       const src = (text.split('\n')[n - 1] || '').replace(/\/\/.*$/, '');
       const quotes = (src.replace(/\\./g, '').match(/'/g) || []).length;
-      return { problem: /\p{L}'\p{L}/u.test(src) || quotes % 2 ? `${at(n)}: a ' ends the text early. Type ’ instead.` : `${at(n)}: this line can’t be read. Check its quotes, commas, and braces.` };
+      // A ' inside the text: a word's apostrophe, or a third quote on the line. A single one is a text never closed.
+      return { problem: /\p{L}'\p{L}/u.test(src) || (quotes % 2 && quotes > 1) ? `${at(n)}: a ' ends the text early. Type ’ instead.` : `${at(n)}: this line can’t be read. Check its quotes, commas, and braces.` };
     }
     return { problem: `${rel}: a words file holds one Board21.words(…) call and comments. Nothing else.` };
   }
@@ -174,7 +179,7 @@ function readTable(rel, text, offset = 0) {
   const isTok = (t, type, v) => t && t.t === type && t.v === v;
   let root = null;
   try {
-    if (calls !== 1 || !isTok(toks[0], 'id', 'Board21') || !isTok(toks[1], 'p', '.') || !isTok(toks[2], 'id', 'words') || !isTok(toks[3], 'p', '(')) throw new Error('shape');
+    if (!isTok(toks[0], 'id', 'Board21') || !isTok(toks[1], 'p', '.') || !isTok(toks[2], 'id', 'words') || !isTok(toks[3], 'p', '(')) throw new Error('shape');
     k.i = 4;
     root = parseValue(toks, k);
     if (root.type !== 'obj' || !isTok(toks[k.i], 'p', ')')) throw new Error('shape');
@@ -184,6 +189,15 @@ function readTable(rel, text, offset = 0) {
   } catch (e) { return { problem: `${rel}: a words file holds one Board21.words(…) call and comments. Nothing else.` }; }
   const close = toks[k.i - 1];
   return { model: modelOf(text, root), header: text.slice(0, toks[0].s), trailer: text.slice(close.e), offset };
+}
+
+// A words file's table as the SDK gets it, { window, board, dynamic }, read without running it.
+function parse(rel, text) {
+  const t = readTable(rel, text);
+  if (t.problem) throw new Error(t.problem);
+  const out = {};
+  for (const s of t.model.sections) out[s.name] = s.rows ? Object.fromEntries(s.rows.map(r => [r.key, r.value])) : s.items ? s.items.map(x => x.value) : s.value;
+  return out;
 }
 
 // The common words: `var COMMON_WORDS = {…};` inside // #region Common words in the SDK.
@@ -271,9 +285,10 @@ function commonText(src, c, Words) {
 
 // ---- The widgets and their tables.
 function registry(r) {
-  const box = { self: {} };
-  vm.runInNewContext(r.read('widgets/registry.js'), box, { filename: 'widgets/registry.js' });
-  return (box.self.BOARD21_WIDGETS || []).filter(w => w && !w.external);
+  const box = vm.createContext(Object.create(null), { codeGeneration: { strings: false, wasm: false } });
+  vm.runInContext('var self = this;', box);
+  vm.runInContext(r.read('widgets/registry.js'), box, { filename: 'widgets/registry.js', timeout: 1000 });
+  return Array.from(box.BOARD21_WIDGETS || []).filter(w => w && !w.external);
 }
 // Every table: { id, file, files (the widget's own, with its table taken out), text, offset, read: readTable's result }.
 function tables(r) {
@@ -351,7 +366,7 @@ function check(opts = {}) {
   const r = reader(opts), problems = [], list = [];
   let Words;
   const sdkText = r.read(SDK);
-  try { Words = loadRegion(sdkText); } catch (e) { return { tables: [], rows: 0, problems: [`${SDK}: the Words region can’t be read. ${e.message}`] }; }
+  try { Words = sdkWords(sdkText); } catch (e) { return { tables: [], rows: 0, problems: [e.message] }; }
   const LANGS = Words.LANGS, NAME = Words.IN_ENGLISH, common = Words.COMMON_WORDS.window;
   const seg = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('en', { granularity: 'grapheme' }) : null;
   const graphemes = s => (seg ? [...seg.segment(s)].length : [...s].length);
@@ -368,16 +383,16 @@ function check(opts = {}) {
     const secs = rd.model.sections, rowsOf = n => (secs.find(s => s.name === n && s.rows) || { rows: [] }).rows;
     let count = 0;
     for (const s of secs) if (!SECTIONS.includes(s.name)) problems.push(`${at(s.line)}: “${s.name}” isn’t a section. Use window, board, or dynamic.`);
-    const seen = {};
+    const seen = new Map();
     for (const sec of ['window', 'board']) {
       for (const row of rowsOf(sec)) {
         count++;
         const k = row.key, v = row.value, ln = f => at(row.lines[f] || row.line);
-        if (seen[k]) problems.push(`${at(row.line)}: ${k} is in ${seen[k]} and ${sec}. Keep it in one.`);
-        seen[k] = sec;
+        if (seen.has(k)) problems.push(seen.get(k) === sec ? `${at(row.line)}: ${k} is in ${sec} twice. Keep one.` : `${at(row.line)}: ${k} is in ${seen.get(k)} and ${sec}. Keep it in one.`);
+        seen.set(k, sec);
         if (!Words.KEY_RE.test(k)) problems.push(`${at(row.line)}: “${k}” isn’t a key. Use words joined by dots, such as chip.min.`);
         else if (!t.common && /^b21\./.test(k)) problems.push(`${at(row.line)}: ${k} is a common word. Use it without a row.`);
-        if (!row.isObj || !v || typeof v !== 'object' || Array.isArray(v)) { problems.push(`${at(row.line)}: ${k} needs braces: { en: …, es: …, ru: …, uk: … }.`); continue; }
+        if (!row.isObj || !v || typeof v !== 'object' || Array.isArray(v)) { problems.push(`${at(row.line)}: ${k} needs braces: ${sec === 'board' ? '{ en: … }' : '{ en: …, es: …, ru: …, uk: … }'}.`); continue; }
         for (const f of Object.keys(v)) if (!META.includes(f) && !LANGS.includes(f)) problems.push(`${at(row.line)}: ${k} has “${f}”. A row takes note, max, fill, to, and its languages.`);
         if (v.to !== undefined && v.to !== 'teacher') problems.push(`${ln('to')}: ${k}’s to can only be 'teacher'.`);
         if (v.max !== undefined && !(Number.isInteger(v.max) && v.max > 0)) problems.push(`${ln('max')}: ${k}’s max is a number of characters, such as 6.`);
@@ -457,8 +472,8 @@ function check(opts = {}) {
       continue;
     }
     // The widget's files: every key named has a row, every row is used, no English left in its pages, numbers and dates.
-    const rowSec = {};
-    for (const sec of ['window', 'board']) for (const x of rowsOf(sec)) rowSec[x.key] = sec;
+    const rowSec = new Map();
+    for (const sec of ['window', 'board']) for (const x of rowsOf(sec)) rowSec.set(x.key, sec);
     const quoted = new Set();
     for (const f of t.files) {
       let text = r.read(f);
@@ -467,7 +482,7 @@ function check(opts = {}) {
       sc.quoted.forEach(x => quoted.add(x));
       for (const u of sc.named) {
         quoted.add(u.key);
-        const sec = /^b21\./.test(u.key) && Object.prototype.hasOwnProperty.call(common, u.key) ? 'window' : rowSec[u.key];
+        const sec = /^b21\./.test(u.key) && Object.prototype.hasOwnProperty.call(common, u.key) ? 'window' : rowSec.get(u.key);
         if (!sec) problems.push(`${f} line ${u.line}: no row for ${u.key}.`);
         else if (sec === 'board' && u.how !== 'ui') problems.push(`${f} line ${u.line}: ${u.key} is a board row. Show it with Board21.ui().`);
       }
@@ -476,7 +491,7 @@ function check(opts = {}) {
           const attr = h.kind === 'text' ? 'data-t' : 'data-t-' + h.kind, key = h.el.attrs[attr];
           if (key == null) { problems.push(`${f} line ${h.line}: “${h.text}” isn’t in the words table. Add ${attr} with its key.`); continue; }
           const row = Object.prototype.hasOwnProperty.call(common, key) ? common[key] : (rowsOf('window').concat(rowsOf('board')).find(x => x.key === key) || {}).value;
-          if (row && typeof row.en === 'string' && row.en !== h.text) problems.push(`${f} line ${h.line}: “${h.text}” doesn’t match ${key} in English, “${row.en}”.`);
+          if (row && typeof row.en === 'string' && row.en !== h.text) problems.push(`${f} line ${h.line}: “${h.text}” doesn’t match ${key} in English, ${endQuote(row.en)}`);
         }
       }
       for (const n of text.matchAll(/\b(toLocaleString|toLocaleDateString|toLocaleTimeString|Intl\.NumberFormat|Intl\.DateTimeFormat)\(/g)) {
@@ -512,18 +527,18 @@ function usedCommon(r, rel) {
 function layout(rel, text, opts = {}) {
   const r = reader(opts);
   if (rel === SDK) {
-    const Words = loadRegion(text), c = readCommon(text);
+    const Words = sdkWords(text), c = readCommon(text);
     if (c.problem) throw new Error(c.problem);
     return commonText(text, c, Words);
   }
-  const Words = loadRegion(r.read(SDK)), t = readTable(rel, text);
+  const Words = sdkWords(r.read(SDK)), t = readTable(rel, text);
   if (t.problem) throw new Error(t.problem);
   return fileText(t, Words, usedCommon(r, rel));
 }
 
 // ---- One table by id, for --list, --glossary, --sheet, and --apply.
 function table(id, r) {
-  const sdkText = r.read(SDK), Words = loadRegion(sdkText);
+  const sdkText = r.read(SDK), Words = sdkWords(sdkText);
   if (id === 'common') {
     const c = readCommon(sdkText);
     if (c.problem) throw new Error(c.problem);
@@ -539,6 +554,10 @@ function table(id, r) {
 const rowsIn = model => model.sections.filter(s => s.rows && (s.name === 'window' || s.name === 'board')).flatMap(s => s.rows.map(row => ({ section: s.name, row })));
 const cell = (v, form) => (form ? (v && typeof v === 'object' && typeof v[form] === 'string' ? v[form] : '') : typeof v === 'string' ? v : '');
 const hash = (key, form, cells) => crypto.createHash('sha256').update(JSON.stringify([key, form].concat(cells))).digest('hex').slice(0, 12);
+// A cell holds a tab, a new line, or a backslash as \t, \n, or \\, so a Sheet tab keeps one line per row. The Hash is
+// taken from the words themselves.
+const toCell = s => String(s).replace(/[\\\t\n\r]/g, c => ({ '\\': '\\\\', '\t': '\\t', '\n': '\\n', '\r': '\\r' })[c]);
+const fromCell = s => String(s).replace(/\\([\\tnr])/g, (m, c) => ({ '\\': '\\', t: '\t', n: '\n', r: '\r' })[c]);
 const formsOf = v => { const set = new Set(); for (const l of ['en', 'es', 'ru', 'uk']) if (v[l] && typeof v[l] === 'object') Object.keys(v[l]).forEach(f => set.add(f)); return FORM_ORDER.filter(f => set.has(f)); };
 
 function list(id, opts = {}) {
@@ -577,33 +596,47 @@ function sheet(id, opts = {}) {
       lines.push([row.key, form, form ? HINTS[form] || '' : '', section, v.note || '', v.max != null ? String(v.max) : ''].concat(cells, ['', '', '', '', hash(row.key, form, cells)]));
     }
   }
-  return lines.map(l => l.map(x => String(x).replace(/[\t\n\r]+/g, ' ')).join('\t')).join('\n') + '\n';
+  return lines.map(l => l.map(toCell).join('\t')).join('\n') + '\n';
 }
-// Sheet edits back into a file: Spanish, Russian, and Ukrainian cells, only where the file still matches the line's Hash.
+// Sheet edits back into a file: Spanish, Russian, and Ukrainian cells. A line's Hash is of its words when the Sheet was
+// made. Each cell then had the Sheet's word or the file's, so the one mix of the two that matches the Hash shows which
+// side changed each cell: the Sheet's change comes in where the file kept the old word. When no mix matches, a word
+// changed in both places, and the line's differing cells are named and left alone.
 function apply(tsv, opts = {}) {
   const r = reader(opts), messages = [], writes = {};
   const rows = tsv.split(/\r?\n/).filter(l => l.trim()).map(l => l.split('\t'));
   const head = rows.shift() || [], col = name => head.indexOf(name);
   if (COLUMNS.some(c => col(c) < 0)) return { writes, messages: ['That file isn’t a Sheet tab from --sheet. Its first line names the columns.'], changes: 0, conflicts: 0 };
-  const keys = [...new Set(rows.map(x => x[col('Key')]))];
+  const keys = [...new Set(rows.map(x => fromCell(x[col('Key')] || '')))];
   const ids = ['common'].concat(tables(r).filter(t => !t.inline).map(t => t.id));
   let tb = null;
   for (const id of ids) { try { const x = table(id, r); if (keys.every(k => rowsIn(x.model).some(y => y.row.key === k))) { tb = x; break; } } catch (e) { /* (a table that can't be read is checked on its own) */ } }
   if (!tb) return { writes, messages: ['No words table has every key in that file.'], changes: 0, conflicts: 0 };
-  const LANG_COLS = { en: 'English', es: 'Español', ru: 'Русский', uk: 'Українська' };
+  const LANG_COLS = { en: 'English', es: 'Español', ru: 'Русский', uk: 'Українська' }, LANGS = ['en', 'es', 'ru', 'uk'];
   let changes = 0, conflicts = 0;
   const english = new Set();
   for (const line of rows) {
-    const key = line[col('Key')], form = line[col('Form')] || '', found = rowsIn(tb.model).find(y => y.row.key === key);
-    const v = found.row.value, sheetCells = ['en', 'es', 'ru', 'uk'].map(l => line[col(LANG_COLS[l])] || ''), fileCells = ['en', 'es', 'ru', 'uk'].map(l => cell(v[l], form));
+    const key = fromCell(line[col('Key')] || ''), form = fromCell(line[col('Form')] || ''), found = rowsIn(tb.model).find(y => y.row.key === key);
+    const v = found.row.value, sheetCells = LANGS.map(l => fromCell(line[col(LANG_COLS[l])] || '')), fileCells = LANGS.map(l => cell(v[l], form));
     const was = line[col('Hash')];
-    if (hash(key, form, sheetCells) === was) continue;   // (nobody changed this line)
-    const fresh = hash(key, form, fileCells) === was;
-    if (fresh && sheetCells[0] !== fileCells[0]) english.add(key);
-    ['es', 'ru', 'uk'].forEach((l, i) => {
-      const s = sheetCells[i + 1], f = fileCells[i + 1];
-      if (!s || s === f) return;
-      if (!fresh) { conflicts++; messages.push(`Conflict: ${key} in ${tb.Words.IN_ENGLISH[l]} changed in the file since the Sheet was made. File “${f}”, Sheet “${s}”. Pick one by hand.`); return; }
+    if (hash(key, form, sheetCells) === was) continue;   // (nobody changed this line in the Sheet)
+    let made = null;
+    for (let mix = 0; mix < 16 && !made; mix++) {
+      const cells = LANGS.map((l, i) => (mix & (1 << i) ? fileCells[i] : sheetCells[i]));
+      if (hash(key, form, cells) === was) made = cells;
+    }
+    if (!made) {
+      const differ = LANGS.slice(1).map((l, i) => [l, fileCells[i + 1], sheetCells[i + 1]]).filter(([, f, s]) => s && s !== f);
+      if (differ.length) {
+        conflicts++;
+        messages.push(`Conflict: ${key} changed in the file and in the Sheet. ` + differ.map(([l, f, s]) => `${tb.Words.IN_ENGLISH[l]}: file “${f}”, Sheet ${endQuote(s)}`).join(' ') + ' Pick one by hand.');
+      } else if (sheetCells[0] !== fileCells[0]) english.add(key);   // (only the English changed in both)
+      continue;
+    }
+    if (sheetCells[0] !== made[0]) english.add(key);
+    LANGS.forEach((l, i) => {
+      const s = sheetCells[i];
+      if (!i || !s || s === made[i] || s === fileCells[i]) return;   // (English, an emptied cell, or no edit)
       if (form) { if (!v[l] || typeof v[l] !== 'object') v[l] = {}; v[l][form] = s; } else v[l] = s;
       changes++;
     });
@@ -616,7 +649,7 @@ function apply(tsv, opts = {}) {
   return { writes, messages, changes, conflicts };
 }
 
-module.exports = { ROOT, HINTS, COLUMNS, loadRegion, check, summary, layout, list, glossary, sheet, apply };
+module.exports = { ROOT, HINTS, COLUMNS, loadRegion, parse, check, summary, layout, list, glossary, sheet, apply };
 
 // ---- The command line.
 if (require.main === module) {
@@ -629,10 +662,12 @@ if (require.main === module) {
       const r = reader();
       const files = args.length > 1 ? args.slice(1).map(f => path.relative(ROOT, path.resolve(f)).split(path.sep).join('/')) : tables(r).filter(t => !t.inline).map(t => t.file).concat([SDK]);
       for (const f of files) {
+        if (!r.has(f)) { console.log(`${f} isn’t there.`); process.exitCode = 1; continue; }
         const text = r.read(f), out = layout(f, text);
         if (out !== text) { fs.writeFileSync(path.join(ROOT, f), out); console.log(`${f}: laid out.`); }
       }
     } else if ((cmd === '--list' || cmd === '--glossary' || cmd === '--sheet') && args[1]) process.stdout.write({ '--list': list, '--glossary': glossary, '--sheet': sheet }[cmd](args[1]));
+    else if (cmd === '--apply' && args[1] && !fs.existsSync(args[1])) { console.log(`${args[1]} isn’t there.`); process.exitCode = 1; }
     else if (cmd === '--apply' && args[1]) {
       const res = apply(fs.readFileSync(args[1], 'utf8'));
       res.messages.forEach(m => console.log(m));
