@@ -2161,13 +2161,13 @@ module.exports = T => {
     if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
   }],
 
-  ['Clock: the Date view, filling the board as without the corners', async (browser) => {
+  ['Clock: the Date view, filling the board as without the corners, and a growing board', async (browser) => {
     const { errors, part, F, choose, WED, newBoard, openClock, NAME, mix, look, clashes, said } = dateView(browser);
 
     // ---- 19. Filling the board: wherever the date is already clear of the board's buttons in the bottom corners, the
     // Clock is exactly as it is in a window of the same size that doesn't fill the board. Where it isn't, the date moves
     // up or shrinks to stay 8 px clear. On the longest date, Wednesday, September 30 (the room is measured for the
-    // longest). Part 19b, in the next suite, grows the board.
+    // longest). Then the board grows 4 px at a time with a Clock filling it, and the time and the date never shrink.
     await part('Filling the board, as without the corners', async () => {
       const off = [], same = [], cut = [];
       const lookAt = async (page, ik) => {
@@ -2218,17 +2218,6 @@ module.exports = T => {
         await ctx.close();
       }
       ok(!off.length && same.length >= 11 && cut.length >= 6, `filling the board, a date already 8 px clear of the board’s buttons changes nothing (${same.join('; ')}), and one that isn’t moves up or shrinks to stay 8 px clear, giving up only what it must (${cut.join('; ')})${off.length ? ': off: ' + off.join(' | ') : ''}`);
-    });
-
-    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
-  }],
-
-  ['Clock: the Date view, a growing board, maximizing, and the corner clock', async (browser) => {
-    const { errors, part, F, choose, FRI, WED, newBoard, openClock, NAME, mix, look, said } = dateView(browser);
-
-    // ---- 19b. A board that grows 4 px at a time with a Clock filling it, on the longest date. The time and the date
-    // never shrink.
-    await part('A growing board', async () => {
       const drops = [], ran = [];
       for (const corner of ['off', 'on']) {
         const { ctx, page } = await newBoard(WED, { viewport: { width: 1366, height: 700 } });
@@ -2248,6 +2237,12 @@ module.exports = T => {
       }
       ok(!drops.length && ran.length === 2, `Digital + Date with Time in words filling a board that grows from 1366 × 700 to 1366 × 820, 4 px at a time: the time and the date never shrink (${ran.join('; ')})${drops.length ? ': ' + drops.join(' | ') : ''}`);
     });
+
+    if (errors.length) ok(false, 'no page errors: ' + errors.join(' | '));
+  }],
+
+  ['Clock: the Date view, maximizing and the corner clock', async (browser) => {
+    const { errors, part, F, choose, FRI, newBoard, openClock, NAME, mix, look, said } = dateView(browser);
 
     // ---- 20. Maximizing from the ⌄ menu: nothing changes before the window starts to grow, and then the time only grows.
     // The board's buttons count only once the window has its full size. Restore is the same backwards: nothing changes
