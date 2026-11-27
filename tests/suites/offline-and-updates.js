@@ -599,7 +599,7 @@ module.exports = T => {
 
       // ---- a release with one more file, while the server still hands out the widget list from before
       const listBefore = fs.readFileSync(path.join(ROOT, 'widgets', 'registry.js'));
-      const s5 = deploy('kiosk', { version: 'TEST-5', change: Object.assign(marked('v5'), { 'widgets/registry.js': t => t.replace("files: ['widgets/timer/index.html']", "files: ['widgets/timer/index.html', 'widgets/_template/index.html']") }) });
+      const s5 = deploy('kiosk', { version: 'TEST-5', change: Object.assign(marked('v5'), { 'widgets/registry.js': t => t.replace("files: ['widgets/sdk-playground/index.html']", "files: ['widgets/sdk-playground/index.html', 'widgets/_template/index.html']") }) });
       let stale = true;
       s5.fault['widgets/registry.js'] = res => { if (!stale) return; stale = false; res.writeHead(200, { 'Content-Type': 'text/javascript' }); res.end(listBefore); return true; };
       ok(String(s5.files['widgets/registry.js']).includes('_template') && await tried(page, s5, 'widgets/registry.js') && !stale && !(await page.evaluate(() => window.__board21.state.sw.updateReady)),

@@ -22,6 +22,9 @@ module.exports = T => {
     ok(await page.locator('[data-widget="sdk-playground"]').count() === 1, 'developer mode shows SDK Playground');
     await page.click('[data-widget="sdk-playground"]'); await page.waitForTimeout(1000);
     const f = page.frameLocator('.win[data-ikey="sdk-playground:1"] iframe');
+    // On the board every window is English, with <html lang> and translate="no" from the SDK.
+    const en = await f.locator('html').evaluate(() => ({ language: Board21.language, locale: Board21.locale, ctx: Board21.context && Board21.context.language, html: document.documentElement.lang, translate: document.documentElement.getAttribute('translate') }));
+    ok(en.language === 'en' && en.locale === 'en-US' && en.ctx === 'en' && en.html === 'en-US' && en.translate === 'no', `on the board a window is English, <html lang="en-US" translate="no"> (${JSON.stringify(en)})`);
     // A call in the Playground, run with these values (its inputs, boxes and lists by their data-arg).
     const btn = async (name, args = {}) => {
       const c = f.locator(`[data-call="${name}"]`);
@@ -77,8 +80,69 @@ module.exports = T => {
     const t0 = Date.now();
     await sp.goto(BASE + 'widgets/timer/index.html#b21-bare'); await sp.waitForFunction(() => window.Board21 && Board21.context, null, { timeout: 3000 });
     ok(await sp.evaluate(() => Board21.context.standalone === true && !document.getElementById('b21-dev')) && Date.now() - t0 < 2500, 'with #b21-bare a widget runs on its own, at once');
+    // ---- The Timer's words: its chips, their names, and its buttons' names, in English and in Russian.
+    const timerWords = p => p.evaluate(() => {
+      const chips = [...document.querySelectorAll('#chips button')];
+      return { html: document.documentElement.lang, chips: chips.map(b => b.textContent).join(), names: chips.map(b => b.getAttribute('aria-label')).join(), spill: chips.filter(b => b.scrollWidth > b.clientWidth).map(b => b.textContent),
+        buttons: ['minus', 'go', 'reset', 'plus'].map(id => document.getElementById(id).getAttribute('aria-label')).join(), words: Board21.__words() };
+    });
+    const clean = w => !!w && !w.missing.length && !w.fallback.length;
+    let tw = await timerWords(sp);
+    ok(tw.html === 'en-US' && tw.chips === '1m,2m,3m,5m,10m,15m' && tw.names === '1 minute,2 minutes,3 minutes,5 minutes,10 minutes,15 minutes' && tw.buttons.split(',')[1] === 'Start' && clean(tw.words),
+      `the Timer on its own, in English: chips 1m to 15m, each named in minutes, and Start (${JSON.stringify(tw)})`);
+    await sp.setViewportSize({ width: 240, height: 214 }); await sp.waitForTimeout(200);
+    tw = await timerWords(sp);
+    ok(tw.chips === '1m,2m,3m,5m,10m,15m' && !tw.spill.length, `at 240 × 214 the English chips still read 1m to 15m (${tw.chips})`);
+    await sp.setViewportSize({ width: 1400, height: 860 });
     await sp.click('#go'); await sp.waitForTimeout(300); await sp.reload(); await sp.waitForTimeout(500);
     ok(await sp.evaluate(() => (JSON.parse(localStorage.getItem('21board:standalone:timer')) || {}).data.endsAt > 0), 'standalone save persists to localStorage (by widget id)');
+    await sp.evaluate(() => localStorage.removeItem('21board:standalone:timer'));   // (so the Timers below start stopped)
+    const own = async (url, w, h) => {
+      const p = await ctx.newPage();
+      p.on('pageerror', e => errors.push(url + ': ' + e.message));
+      await p.setViewportSize({ width: w, height: h });
+      await p.goto(BASE + url); await p.waitForFunction(() => window.Board21 && Board21.context, null, { timeout: 3000 }); await p.waitForTimeout(150);
+      return p;
+    };
+    const rp = await own('widgets/timer/index.html#b21-bare&b21-lang=ru', 380, 260);
+    tw = await timerWords(rp);
+    ok(tw.html === 'ru-RU' && tw.buttons === 'Убавить минуту,Старт,Сбросить,Добавить минуту' && tw.chips === '1 мин,2 мин,3 мин,5 мин,10 мин,15 мин' && tw.names === '1 минута,2 минуты,3 минуты,5 минут,10 минут,15 минут' && clean(tw.words),
+      `with #b21-lang=ru the Timer is in Russian: its buttons, chips, and their names (${JSON.stringify(tw)})`);
+    await rp.click('#go'); await rp.waitForTimeout(300);
+    const ru = await rp.evaluate(() => ({ go: document.getElementById('go').getAttribute('aria-label'), n: Board21.format.number(1234.5),
+      times: [[9, 5], [15, 5], [20, 5], [12, 0]].map(([h, m]) => Board21.format.date(new Date(2026, 10, 27, h, m), { hour: 'numeric', minute: '2-digit' }).replace(/[\u00a0\u202f]/g, ' ')).join(), words: Board21.__words() }));
+    ok(ru.go === 'Пауза' && ru.times === '9:05 утра,3:05 дня,8:05 вечера,12:00 дня' && ru.n === '1,234.5' && clean(ru.words), `a tap names it Пауза; times of day in words, and numbers in English form (${JSON.stringify(ru)})`);
+    await rp.setViewportSize({ width: 240, height: 214 }); await rp.waitForTimeout(200);
+    const small = await timerWords(rp);
+    await rp.setViewportSize({ width: 380, height: 260 }); await rp.waitForTimeout(200);
+    tw = await timerWords(rp);
+    ok(small.chips === '1,2,3,5,10,15' && !small.spill.length && small.names === tw.names && tw.chips === '1 мин,2 мин,3 мин,5 мин,10 мин,15 мин',
+      `at 240 × 214 the Russian chips show bare numbers, each inside its chip, with the same names; at 380 × 260 the words come back (${small.chips}; ${tw.chips})`);
+    // A frame the board names for Spanish: the SDK reads the language from the name, before the board says anything.
+    const t1 = Date.now();
+    await rp.evaluate(() => { const fr = document.createElement('iframe'); fr.name = 'b21-board:timer:1;es'; fr.src = 'index.html'; fr.style.cssText = 'position:fixed;left:0;top:0;width:380px;height:260px;border:0'; document.body.append(fr); });
+    await rp.waitForFunction(() => { try { const w = document.querySelector('iframe').contentWindow; return !!w.Board21 && w.document.readyState !== 'loading'; } catch (e) { return false; } }, null, { timeout: 3000 });
+    const es = await rp.evaluate(() => { const fr = document.querySelector('iframe'), w = fr.contentWindow, d = w.document;
+      const r = { language: w.Board21.language, context: w.Board21.context, minus: d.getElementById('minus').getAttribute('aria-label'), chips: [...d.querySelectorAll('#chips button')].map(b => b.textContent).join() }; fr.remove(); return r; });
+    ok(es.language === 'es' && es.context === null && es.minus === 'Restar un minuto' && es.chips.split(',')[0] === '1 min' && Date.now() - t1 < 4000, `a frame named b21-board:timer:1;es is in Spanish before the board says anything (${JSON.stringify(es)})`);
+    await rp.close();
+    const up = await own('widgets/traffic-light/index.html#b21-bare&b21-lang=uk', 170, 380);
+    const uk = await up.evaluate(() => ({ html: document.documentElement.lang, names: [...document.querySelectorAll('.lamp')].map(b => b.getAttribute('aria-label')).join() }));
+    ok(uk.html === 'uk-UA' && uk.names === 'Червоний,Жовтий,Зелений', `the Traffic Light in Ukrainian names its lamps (${JSON.stringify(uk)})`);
+    await up.close();
+    // The pseudo language: every word from the table, so English left over or a word cut off shows.
+    const audit = async (p, what) => {
+      const a = await p.evaluate(() => ({ html: document.documentElement.lang, audit: Board21.__audit(), words: Board21.__words() }));
+      ok(a.html === 'en-XA' && !a.audit.missed.length && !a.audit.cut.length && clean(a.words), `${what} in the pseudo language: no English left, and nothing cut off (${JSON.stringify(a)})`);
+    };
+    const qp = await own('widgets/timer/index.html#b21-bare&b21-lang=qps', 380, 260);
+    await audit(qp, 'the Timer at 380 × 260');
+    await qp.setViewportSize({ width: 240, height: 214 }); await qp.waitForTimeout(200);
+    await audit(qp, 'the Timer at 240 × 214');
+    await qp.close();
+    const ql = await own('widgets/traffic-light/index.html#b21-bare&b21-lang=qps', 170, 380);
+    await audit(ql, 'the Traffic Light at 170 × 380');
+    await ql.close();
 
     // ---- phone width: no horizontal overflow of the panel
     const ph = await browser.newContext({ viewport: { width: 375, height: 700 }, hasTouch: true });
@@ -182,13 +246,13 @@ module.exports = T => {
 
     // ---- P1. Everything the SDK has and the guide documents: calls, events, the context and window info, menu items.
     const api = between('## API reference', '## Content vs. config');
-    const calls = new Set(api.match(/Board21\.(?:window\.|menu\.)?[A-Za-z]+/g));
+    const calls = new Set(api.match(/Board21\.(?:window\.|menu\.|format\.)?[A-Za-z]+/g));
     for (const row of api.split('\n').filter(l => /^\| `Board21\./.test(l))) {   // (`Board21.window.maximize()` / `restore()`)
-      const cell = row.split('|')[1], pre = /`(Board21\.(?:window\.|menu\.)?)/.exec(cell)[1];
+      const cell = row.split('|')[1], pre = /`(Board21\.(?:window\.|menu\.|format\.)?)/.exec(cell)[1];
       for (const m of cell.matchAll(/`([A-Za-z]+)\(/g)) calls.add(pre + m[1]);
     }
-    const live = await F(() => [].concat(Object.keys(Board21).filter(k => k !== 'window' && k !== 'menu').map(k => 'Board21.' + k),
-      Object.keys(Board21.window).map(k => 'Board21.window.' + k), Object.keys(Board21.menu).map(k => 'Board21.menu.' + k)));
+    const live = await F(() => [].concat(Object.keys(Board21).filter(k => k !== 'window' && k !== 'menu' && k !== 'format').map(k => 'Board21.' + k),
+      Object.keys(Board21.window).map(k => 'Board21.window.' + k), Object.keys(Board21.menu).map(k => 'Board21.menu.' + k), Object.keys(Board21.format || {}).map(k => 'Board21.format.' + k)));
     live.forEach(c => calls.add(c));
     const shown = await F(() => [...document.querySelectorAll('[data-call]')].filter(c => c.querySelector('.run') && c.querySelector('.code') && c.querySelector('.copy')).map(c => c.dataset.call));
     let missing = [...calls].filter(c => !shown.includes(c));
@@ -295,7 +359,7 @@ module.exports = T => {
         const fn = o[k];
         o[k] = function (...a) { window.__ran.push([p + k, JSON.parse(JSON.stringify(a))]); return fn.apply(this, a); };
       });
-      wrap(Board21, 'Board21.'); wrap(Board21.window, 'Board21.window.'); wrap(Board21.menu, 'Board21.menu.');
+      wrap(Board21, 'Board21.'); wrap(Board21.window, 'Board21.window.'); wrap(Board21.menu, 'Board21.menu.'); wrap(Board21.format || {}, 'Board21.format.');
     });
     const evalCode = text => {
       const out = [];
@@ -317,6 +381,7 @@ module.exports = T => {
       ['Board21.window.getInfo'], ['Board21.window.focus'], ['Board21.window.requestAttention'],
       ['Board21.menu.set', { example: 'swatches' }], ['Board21.menu.set', { example: 'icon' }], ['Board21.menu.clear'],
       ['Board21.toast', { text: 'Done!' }],
+      ['Board21.t', { key: 'b21.start' }], ['Board21.format.number', { n: '1234.5' }], ['Board21.words'],
       ['Board21.on', { event: 'resize' }], ['Board21.off', { event: 'resize' }], ['Board21.on', { event: 'resize' }],
       ['Board21.ready']
     ];

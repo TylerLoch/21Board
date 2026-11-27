@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Timer</title>
 <script src="../../sdk/board21.js"></script>
+<script src="words.js"></script>
 <style>
   html, body { margin: 0; height: 100%; }
   body {
@@ -30,7 +31,7 @@
   button.primary { background: var(--b21-accent); color: var(--b21-on-accent); min-width: clamp(70px, 26vw, 160px); }
   button svg { width: 1.1em; height: 1.1em; fill: currentColor; }
   button svg.line { fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-  .chips button { height: clamp(28px, 8vh, 44px); font-size: clamp(12px, 3.4vh, 17px); padding: 0 clamp(6px, 2vw, 14px); background: transparent; box-shadow: inset 0 0 0 1.5px var(--b21-border); }
+  .chips button { height: clamp(28px, 8vh, 44px); font-size: clamp(12px, 3.4vh, 17px); padding: 0 clamp(6px, 2vw, 14px); background: transparent; box-shadow: inset 0 0 0 1.5px var(--b21-border); white-space: nowrap; }
   .chips button.on { box-shadow: inset 0 0 0 2px var(--b21-accent); color: var(--b21-accent); }
   @media (max-height: 210px) { .chips { display: none; } }
   @media (max-height: 130px) { .controls { display: none; } }
@@ -52,10 +53,10 @@
   <div class="controls">
     <div class="row chips" id="chips"></div>
     <div class="row">
-      <button id="minus" aria-label="Subtract one minute">−1:00</button>
-      <button id="go" class="primary" aria-label="Start"></button>
-      <button id="reset" aria-label="Reset"><svg class="line" viewBox="0 0 24 24"><path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/></svg></button>
-      <button id="plus" aria-label="Add one minute">+1:00</button>
+      <button id="minus" aria-label="Subtract one minute" data-t-aria-label="minus">−1:00</button>
+      <button id="go" class="primary" aria-label="Start" data-t-aria-label="b21.start"></button>
+      <button id="reset" aria-label="Reset" data-t-aria-label="b21.reset"><svg class="line" viewBox="0 0 24 24"><path d="M4.87 11.48A7.5 7.5 0 1 0 13.19 6.4"/><path d="M7.2 6.3L12 2.3L12 10.3Z" fill="currentColor" stroke-width="1.5"/></svg></button>
+      <button id="plus" aria-label="Add one minute" data-t-aria-label="plus">+1:00</button>
     </div>
   </div>
 <script>
@@ -107,7 +108,7 @@
     $('display').textContent = fmt(ms);
     $('bar').style.transform = `scaleX(${state.duration ? ms / state.duration : 0})`;
     // Only touch the button when it changes: replacing its icon under a finger would lose the press.
-    const label = running() ? 'Pause' : 'Start';
+    const label = Board21.t(running() ? 'b21.pause' : 'b21.start');
     if ($('go').getAttribute('aria-label') !== label || !$('go').firstChild) { $('go').innerHTML = running() ? PAUSE : PLAY; $('go').setAttribute('aria-label', label); }
     // The warning: in its last minutes, running or paused, for a timer longer than the warning. Worked out on every
     // render and never saved, so every copy agrees. (board.js, Timers.ofTimer, has the same rule.)
@@ -116,7 +117,7 @@
     document.body.classList.toggle('done', done);
     document.body.classList.toggle('warn', warn);
     document.querySelectorAll('#chips button').forEach(b => b.classList.toggle('on', +b.dataset.min * 60000 === state.duration));
-    Board21.window.setTitle(done ? 'Done!' : warn ? 'Almost done' : running() ? 'Running' : (ms < state.duration ? 'Paused' : ''));
+    Board21.window.setTitle(done ? Board21.ui('title.done') : warn ? Board21.ui('title.warn') : running() ? Board21.ui('title.running') : (ms < state.duration ? Board21.ui('title.paused') : ''));
   }
 
   function tick() {
@@ -146,12 +147,12 @@
   // Alarm sounds, made with Web Audio (no sound files, so they work offline).
   // Each note: [start (s), frequency (Hz), length (s), wave, volume].
   const SOUNDS = {
-    beep:    { label: 'Beep',    notes: [[0, 880, 0.28, 'sine', 0.4], [0.35, 880, 0.28, 'sine', 0.4], [0.7, 880, 0.28, 'sine', 0.4]] },
-    chime:   { label: 'Chime',   notes: [[0, 1318.5, 1.2, 'sine', 0.3], [0.45, 1046.5, 1.6, 'sine', 0.3]] },
-    bell:    { label: 'Bell',    notes: [[0, 660, 2.2, 'sine', 0.35], [0, 1821.6, 1.2, 'sine', 0.12], [0, 3564, 0.6, 'sine', 0.06]] },
-    marimba: { label: 'Marimba', notes: [[0, 523.25, 0.4, 'triangle', 0.45], [0.15, 659.25, 0.4, 'triangle', 0.45], [0.3, 783.99, 0.4, 'triangle', 0.45], [0.45, 1046.5, 0.7, 'triangle', 0.45]] },
-    gentle:  { label: 'Gentle',  notes: [[0, 392, 1.4, 'sine', 0.22], [0.6, 523.25, 1.6, 'sine', 0.22]], slowAttack: true },
-    alarm:   { label: 'Alarm',   notes: [0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75].map((t, i) => [t, i % 2 ? 660 : 880, 0.22, 'square', 0.12]) }
+    beep:    { notes: [[0, 880, 0.28, 'sine', 0.4], [0.35, 880, 0.28, 'sine', 0.4], [0.7, 880, 0.28, 'sine', 0.4]] },
+    chime:   { notes: [[0, 1318.5, 1.2, 'sine', 0.3], [0.45, 1046.5, 1.6, 'sine', 0.3]] },
+    bell:    { notes: [[0, 660, 2.2, 'sine', 0.35], [0, 1821.6, 1.2, 'sine', 0.12], [0, 3564, 0.6, 'sine', 0.06]] },
+    marimba: { notes: [[0, 523.25, 0.4, 'triangle', 0.45], [0.15, 659.25, 0.4, 'triangle', 0.45], [0.3, 783.99, 0.4, 'triangle', 0.45], [0.45, 1046.5, 0.7, 'triangle', 0.45]] },
+    gentle:  { notes: [[0, 392, 1.4, 'sine', 0.22], [0.6, 523.25, 1.6, 'sine', 0.22]], slowAttack: true },
+    alarm:   { notes: [0, 0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75].map((t, i) => [t, i % 2 ? 660 : 880, 0.22, 'square', 0.12]) }
   };
   const soundName = () => config.sound === true || config.sound === undefined ? 'beep' : config.sound === false ? 'off'
     : (Object.prototype.hasOwnProperty.call(SOUNDS, config.sound) || config.sound === 'off') ? config.sound : 'beep';
@@ -273,20 +274,34 @@
     save(); plan(); render();
   }
 
-  $('chips').innerHTML = PRESETS.map(m => `<button data-min="${m}">${m}m</button>`).join('');
+  // The presets: each chip's words in the window's language, and its full name for a screen reader.
+  const chips = PRESETS.map(m => {
+    const b = document.createElement('button');
+    b.dataset.min = m;
+    b.setAttribute('aria-label', Board21.t('chip.label', { n: m }));
+    return b;
+  });
+  $('chips').append(...chips);
+  // A chip whose words spill past it shows the bare number instead, in all six. (Its name keeps the words.)
+  function fitChips() {
+    chips.forEach(b => { b.textContent = Board21.t('chip.min', { n: +b.dataset.min }); });
+    if (chips.some(b => b.scrollWidth > b.clientWidth)) chips.forEach(b => { b.textContent = String(b.dataset.min); });
+  }
+  fitChips();
+  addEventListener('resize', fitChips);   // (also when the text style's font changes)
   $('chips').onclick = e => { const b = e.target.closest('button'); if (b) setDuration(+b.dataset.min * 60000); };
 
   // Window menu: pick the alarm sound (picking one plays it), or turn it off; then the warning near the end.
   function setMenu() {
     const cur = soundName(), w = warnMin();
     Board21.menu.set([
-      ...Object.keys(SOUNDS).map(k => ({ id: 'sound:' + k, label: SOUNDS[k].label, checked: cur === k })),
-      { id: 'sound:off', label: 'No sound', checked: cur === 'off' },
+      ...Object.keys(SOUNDS).map(k => ({ id: 'sound:' + k, label: Board21.ui('sound.' + k), checked: cur === k })),
+      { id: 'sound:off', label: Board21.ui('sound.off'), checked: cur === 'off' },
       { separator: true },
-      { id: 'test', label: 'Play sound', disabled: cur === 'off' },
+      { id: 'test', label: Board21.ui('sound.test'), disabled: cur === 'off' },
       { separator: true },
-      { heading: true, label: 'Warning' },
-      ...WARNS.map(m => ({ id: 'warn:' + m, label: m === 0 ? 'Off' : m === 1 ? '1 minute' : m + ' minutes', checked: w === m }))
+      { heading: true, label: Board21.ui('warn') },
+      ...WARNS.map(m => ({ id: 'warn:' + m, label: m === 0 ? Board21.ui('warn.off') : Board21.ui('warn.minutes', { n: m }), checked: w === m }))
     ]);
   }
 

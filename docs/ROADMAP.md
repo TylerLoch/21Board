@@ -46,13 +46,12 @@ What it would involve:
 
 ## 21Board in other languages
 
-Every word 21Board shows is written in English, in `board.js` and `index.html`. Each built-in widget has its own
-words in its own page.
+Done:
+- The SDK reads each widget's words table, with plurals, and shows dates in the window's language. Numbers stay in
+  English form.
+- The Timer and the Traffic Light have their words in English, Spanish, Russian, and Ukrainian.
 
-What it would involve:
-- A table of strings for each language, and a language setting. Decide whether it syncs like the theme and text
-  style.
-- Dates and times in the language's own form.
-- The SDK passing the language to widgets, as it does the theme. The built-in widgets translated.
-- The README, the widget guide, and the AI prompt telling widget authors how.
-- Tests in each language. Right-to-left languages would also need the layout mirrored.
+Next:
+- A Language row in each window's menu, and a default for new windows in Settings.
+- Then the other widgets, a few at a time.
+- Then the board's own words. Its menus and Settings stay English for now.

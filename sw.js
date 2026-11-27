@@ -11,19 +11,19 @@
  * >>> Before you deploy: bump VERSION, then run `node tools/release.js`. <<<   (README, "Deploying")
  * If files change without that, the tests fail, and devices keep the version they have.
  */
-const VERSION = '2026.11.26-11';
+const VERSION = '2026.11.27-1';
 // Written by tools/release.js, never by hand. BUILD: one fingerprint for this file and everything in FILES.
 // FILES: every file of the offline copy, with its own fingerprint.
-const BUILD = '9f9ce5c7';
+const BUILD = 'b2274654';
 const FILES = {
-  './': '0ac68359e559d713',
-  'index.html': '0ac68359e559d713',
-  'board.js': 'fe5e07c17b7bca34',
-  'sdk/board21.js': 'd4ac31b44e3ea26e',
+  './': '46c6a44345e5f229',
+  'index.html': '46c6a44345e5f229',
+  'board.js': '0509812bcfaaa5b1',
+  'sdk/board21.js': '51727210037485c8',
   'sdk/board21-dev.js': '4bc3617a17b2185c',
   'sdk/dev/board-shell.js': 'ab3f1ec62f52697e',
   'sdk/lab.html': '53da73e5ab2bad8b',
-  'widgets/registry.js': '29c42f8b3e2bbc4a',
+  'widgets/registry.js': 'ae15a05c3bb4ec69',
   'manifest.webmanifest': '31bc5d66238072ca',
   'icons/icon-192.png': '03358970ec7a0961',
   'icons/icon-512.png': '9dc3eedc618872bc',
@@ -37,7 +37,8 @@ const FILES = {
   'fonts/EarlyReaders-Regular.woff2': 'e96901beca9ae308',
   'fonts/EarlyReaders-Bold.woff2': '8f61f2e4a4be5a06',
   'fonts/EarlyReaders-OFL.txt': '43ee152fcd7be0c6',
-  'widgets/timer/index.html': '52a0094eeebbb200',
+  'widgets/timer/index.html': '2e14c2fd2f17699d',
+  'widgets/timer/words.js': '16517f04ba8ae70f',
   'widgets/stopwatch/index.html': '5c56c767f8f86c2a',
   'widgets/task-timer/index.html': 'db23b33641e050b2',
   'widgets/calendar/index.html': 'ba81d5cd6e7732a7',
@@ -63,7 +64,8 @@ const FILES = {
   'widgets/first-then-board/index.html': '94c34fadb9dadeaf',
   'widgets/zones-check-in/index.html': '9264fcdf821b3af2',
   'widgets/dice/index.html': '7e6e22547b32875e',
-  'widgets/traffic-light/index.html': '32cdeb7c2423d2a3',
+  'widgets/traffic-light/index.html': '16a8b931b0dc6d66',
+  'widgets/traffic-light/words.js': 'fdb19ea10bfd8c2b',
   'widgets/youtube-player/index.html': '176df55af520e59f',
   'widgets/youtube-player/video-links.js': '85e2d36eb6f5b8b4',
   'widgets/image/index.html': 'af8342c7d8c343fa',
@@ -71,7 +73,7 @@ const FILES = {
   'widgets/calculator/calc-engine.js': 'bef93f908446ec8e',
   'widgets/weather/index.html': '1b8face7bdbe9970',
   'widgets/weather/calendar.js': '6b801ee9abb6d70d',
-  'widgets/sdk-playground/index.html': '865e44d9a5333e9d'
+  'widgets/sdk-playground/index.html': '6f72b8cc9da26bdd'
 };
 const CACHE_PREFIX = '21board-';
 const CACHE = CACHE_PREFIX + VERSION + '-' + BUILD;

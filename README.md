@@ -199,8 +199,11 @@ sdk/dev/board-shell.js  index.html's markup for the dev window (made by tools/bu
 sdk/lab.html            Widget lab: paste a widget's HTML and try it in a real window
 widgets/registry.js     The list of widgets, for the Widget Picker and the offline copy
 widgets/<id>/index.html One folder per widget
+widgets/<id>/words.js   A widget's words in English, Spanish, Russian, and Ukrainian
 widgets/_template/      Starter for new widgets, not registered
 docs/WIDGET-SDK.md      How to build a widget; SDK reference; submission checklist
+docs/TRANSLATING.md     How to translate and review a widget's words
+docs/GLOSSARY.md        The words CCSD21 uses in Spanish, Russian, and Ukrainian
 docs/AI-PROMPT.md       A prompt for staff building a widget with an AI tool such as Gemini, ChatGPT, or Claude
 docs/DATA-FORMAT.md     IndexedDB layout, sync protocol, .21board file format
 docs/ROADMAP.md         Big changes saved for later: shared widget storage, telling copies of a widget apart, other languages
@@ -209,10 +212,13 @@ LICENSE                 Apache License 2.0 (the code)
 LICENSE-DOCS            CC BY 4.0 (the documentation)
 NOTICE                  Copyright and credits that copies keep
 tools/release.js        Stamps a release with its name and build. See Deploying.
+tools/words.js          Checks every words table, and moves words to and from the review Sheet
+tools/make-glossary.py  Builds docs/GLOSSARY.md and tools/glossary.json from one list
 tools/test-halves.js    Runs tests/run.js as two halves at once. See Tests.
 tools/ci-wait.js        Waits for GitHub to test a push and prints the failures. See Tests.
 tools/release-workflow.js  Builds, reviews, and fixes a release with Claude Code. See docs/RELEASING.md.
 tests/run.js            Runs the browser tests. See Tests.
+tests/words.js          The Node test of the words tables and the SDK's words engine
 tests/suites/<area>.js  The browser tests, one file per area, such as calculator.js or board-sync.js
 tests/lib.js            What the suites share: ok(), page helpers, fixtures, and stand-in sites
 tests/timings.json      How long each suite takes, to split the tests evenly
@@ -821,6 +827,9 @@ while it waits. It needs the GitHub CLI, `gh`. Add `--save-timings` to save how 
 `tests/timings.json`. `PART=k/n` uses those times to give each part about the same work.
 
 `node tests/calc-engine.js` tests the Calculator's math in Node, with the answers Desmos gave. It runs as a suite too.
+
+`node tests/words.js` checks every words table and the SDK's words engine in Node, in about a second. It runs as a
+suite too. `node tools/words.js` runs just the table check.
 
 The tests check that the release stamp matches the files, with `node tools/release.js --check`. If that fails, run
 `node tools/release.js`. The *Updating* suites serve one release, then a changed one. They check the prompt,

@@ -48,7 +48,7 @@ self.BOARD21_WIDGETS = [
     description: 'Count down with presets and an alarm.',
     version: '1.0.0',
     entry: 'widgets/timer/index.html',
-    files: ['widgets/timer/index.html'],
+    files: ['widgets/timer/index.html', 'widgets/timer/words.js'],
     color: '#ef4444',
     icon: '<svg viewBox="0 0 24 24"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 13.5V9.5"/><path d="M10 2.5h4"/><path d="M12 2.5V6"/><path d="M18.5 6.5l1.5-1.5"/></svg>',
     window: { width: 380, height: 260, minWidth: 240, minHeight: 170 },
@@ -176,7 +176,7 @@ self.BOARD21_WIDGETS = [
     description: 'Show noise level or work time in red, yellow, and green.',
     version: '1.0.0',
     entry: 'widgets/traffic-light/index.html',
-    files: ['widgets/traffic-light/index.html'],
+    files: ['widgets/traffic-light/index.html', 'widgets/traffic-light/words.js'],
     color: '#27272a',
     icon: '<svg viewBox="0 0 24 24"><rect x="7" y="2.5" width="10" height="19" rx="3"/><circle cx="12" cy="7" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="12" cy="17" r="1.6"/></svg>',
     window: { width: 170, height: 380, minWidth: 90, minHeight: 90 },   // (no shape lock: wider than tall, it turns sideways)
